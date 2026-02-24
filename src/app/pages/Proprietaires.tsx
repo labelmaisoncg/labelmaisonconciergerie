@@ -3,9 +3,9 @@ import { Helmet } from 'react-helmet-async';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { Home, TrendingUp, Shield, Clock, ArrowRight, Star, Quote } from 'lucide-react';
 
-// Placeholder images (remplacez par vos captures d'écran Airbnb)
-const airbnbRevenue = 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80';
-const airbnbRevenueJanvier = 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&q=80';
+// Images des performances (Décembre 2025 et Janvier 2026)
+const airbnbRevenue = '/images/img-proprietaire-decembre.png';
+const airbnbRevenueJanvier = '/images/img-proprietaire-janvier.png';
 
 export function Proprietaires() {
   const benefits = [
