@@ -1,8 +1,6 @@
 import { Helmet } from 'react-helmet-async';
 import {
-  Watch,
   ShoppingBag,
-  Gem,
   Sparkles,
   Search,
   ShieldCheck,

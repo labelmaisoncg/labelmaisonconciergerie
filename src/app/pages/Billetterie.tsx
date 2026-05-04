@@ -47,7 +47,7 @@ const cabins = [
   {
     title: 'Jet Privé',
     description: "Vol sur mesure, départ quand vous voulez, depuis l'aéroport de votre choix. Discrétion totale.",
-    image: 'https://images.unsplash.com/photo-1583416750470-9d0c81c19c87?auto=format&fit=crop&w=1200&q=80',
+    image: 'https://images.unsplash.com/photo-1540962351504-03099e0a754b?auto=format&fit=crop&w=1200&q=80',
     badge: 'Sur mesure',
   },
 ];
