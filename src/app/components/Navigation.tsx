@@ -86,15 +86,15 @@ export function Navigation() {
             <a
               href={PHONE_HREF}
               aria-label={`Appeler ${PHONE_DISPLAY}`}
-              className="inline-flex items-center justify-center bg-black text-white w-11 h-11 rounded-full hover:bg-neutral-700"
+              className="inline-flex items-center justify-center bg-black text-white font-bold text-[12px] sm:text-[13px] px-3.5 sm:px-4 h-11 rounded-full hover:bg-neutral-700 whitespace-nowrap"
             >
-              <Phone size={18} />
+              {PHONE_DISPLAY}
             </a>
             <button
               onClick={() => setOpen((v) => !v)}
               aria-label={open ? 'Fermer le menu' : 'Ouvrir le menu'}
               aria-expanded={open}
-              className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-black/5 hover:bg-black/10"
+              className="inline-flex items-center justify-center w-11 h-11 rounded-full bg-black/5 hover:bg-black/10 shrink-0"
             >
               {open ? <X size={20} /> : <Menu size={20} />}
             </button>

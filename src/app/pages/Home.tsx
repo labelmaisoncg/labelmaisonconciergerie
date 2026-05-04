@@ -123,7 +123,7 @@ function LeadFormSection() {
           <div className="md:w-7/12 p-4 md:p-6">
             <h2 className="text-[24px] md:text-[32px] leading-tight font-bold">
               Découvrez notre solution de conciergerie{' '}
-              <span className="font-serif-italic font-bold text-[#556B2F]">conçue pour vous !</span>
+              <span className="font-serif-italic font-bold text-[#556B2F]">conçue pour vous&nbsp;!</span>
             </h2>
             <p className="mt-3 text-[15px] text-neutral-700">
               Avec nous, un appartement de 2 chambres à Paris peut vous faire gagner{' '}
@@ -878,7 +878,7 @@ function FaqSection() {
             FAQ
           </span>
           <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05]">
-            Vous avez des <span className="font-serif-italic font-bold text-[#556B2F]">questions ?</span>
+            Vous avez des <span className="font-serif-italic font-bold text-[#556B2F]">questions&nbsp;?</span>
           </h2>
           <p className="mt-4 text-[15px] text-neutral-700 leading-relaxed">
             Confier sa gestion patrimoniale ou ses expériences premium soulève des questions légitimes.
@@ -977,7 +977,7 @@ function ValuesSection() {
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nos valeurs"
-          title={<>Pourquoi nous <em className="font-serif-italic font-bold text-[#556B2F] not-italic">choisir ?</em></>}
+          title={<>Pourquoi nous <em className="font-serif-italic font-bold text-[#556B2F] not-italic">choisir&nbsp;?</em></>}
         />
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
