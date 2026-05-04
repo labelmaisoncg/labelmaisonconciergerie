@@ -5,3 +5,12 @@ dist
 .env.*.local
 *.log
 .DS_Store
+
+# Dossiers de référence / sources design (non destinés au déploiement)
+/capdagdeconciergerie.fr_rh9tsj/
+/logo labelmaison conciegerie/
+/Instagram.html
+
+# Images sources brutes à la racine (les actifs sont dans /public/images)
+/img propriaitaire*.png
+/575676*.jpg

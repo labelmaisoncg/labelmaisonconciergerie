@@ -3,6 +3,7 @@ import { HelmetProvider } from 'react-helmet-async';
 import { Navigation } from './components/Navigation';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
+import { SplashIntro } from './components/SplashIntro';
 import { Home } from './pages/Home';
 import { Proprietaires } from './pages/Proprietaires';
 import { Billetterie } from './pages/Billetterie';
@@ -14,6 +15,7 @@ import { Shopping } from './pages/Shopping';
 export default function App() {
   return (
     <HelmetProvider>
+      <SplashIntro />
       <BrowserRouter>
         <ScrollToTop />
         <div className="min-h-screen">

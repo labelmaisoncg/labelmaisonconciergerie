@@ -1,178 +1,121 @@
-import { motion } from 'motion/react';
-import { ImageWithFallback } from '../components/figma/ImageWithFallback';
-import { Plane, Shield, Star, Clock, Quote } from 'lucide-react';
+import { Helmet } from 'react-helmet-async';
+import { Plane, Crown, Zap, Clock } from 'lucide-react';
+import {
+  PageHero,
+  SectionHeader,
+  FeatureCard,
+  FinalCta,
+  Section,
+} from '../components/sections/PageBlocks';
+
+const benefits = [
+  {
+    icon: <Plane size={22} />,
+    title: 'Vols privés',
+    description: 'Jets privés et hélicoptères pour vos déplacements en toute discrétion.',
+  },
+  {
+    icon: <Crown size={22} />,
+    title: 'Première classe',
+    description: 'Les meilleures cabines du monde : Emirates, Qatar Airways, Singapore Airlines.',
+  },
+  {
+    icon: <Zap size={22} />,
+    title: 'Priorité totale',
+    description: 'Fast track aéroport, salons VIP, transferts limousine inclus à chaque voyage.',
+  },
+  {
+    icon: <Clock size={22} />,
+    title: 'Disponibilité 24/7',
+    description: 'Réservation instantanée, même à la dernière minute. Notre équipe est joignable en permanence.',
+  },
+];
+
+const cabins = [
+  {
+    title: 'Business Class',
+    description: "Sièges lie-flat, lounges privés, transferts inclus. Le confort premium pour vos voyages d'affaires.",
+    image: 'https://images.unsplash.com/photo-1556388158-158ea5ccacbd?auto=format&fit=crop&w=1200&q=80',
+    badge: 'Emirates · Qatar',
+  },
+  {
+    title: 'Première Classe',
+    description: "Suites privées, douche en vol, champagne Krug. L'expérience aérienne ultime.",
+    image: 'https://images.unsplash.com/photo-1540339832862-474599807836?auto=format&fit=crop&w=1200&q=80',
+    badge: 'Qatar Airways',
+  },
+  {
+    title: 'Jet Privé',
+    description: "Vol sur mesure, départ quand vous voulez, depuis l'aéroport de votre choix. Discrétion totale.",
+    image: 'https://images.unsplash.com/photo-1583416750470-9d0c81c19c87?auto=format&fit=crop&w=1200&q=80',
+    badge: 'Sur mesure',
+  },
+];
 
 export function Billetterie() {
   return (
-    <div className="min-h-screen pt-20">
-      <section className="relative h-[70vh] flex items-center justify-center">
-        <div className="absolute inset-0 bg-black">
-          <ImageWithFallback
-            src="https://images.unsplash.com/photo-1545610095-4d00a3f4f547?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&q=80&w=1920"
-            alt="Business class cabin"
-            className="w-full h-full object-cover opacity-50"
-          />
+    <div className="bg-white text-neutral-900">
+      <Helmet>
+        <title>Billetterie d'avion · Vols privés et première classe · Label Maison</title>
+        <meta
+          name="description"
+          content="Réservation de vols premium : jets privés, première classe Emirates, Qatar Airways. Notre équipe orchestre vos voyages 24/7 avec discrétion."
+        />
+      </Helmet>
+
+      <PageHero
+        badge="Voyage premium"
+        badgeIcon={<Plane size={14} />}
+        titleStart="Voyager n'est plus"
+        titleAccent="une contrainte"
+        subtitle="Du sol au ciel, tout est orchestré. Jets privés, première classe et business sur les meilleures compagnies du monde — réservation en quelques heures."
+        imageUrl="https://images.unsplash.com/photo-1545610095-4d00a3f4f547?auto=format&fit=crop&w=1600&q=80"
+        imageAlt="Cabine première classe luxe"
+        ctas={[{ label: 'Réserver mon vol', href: '/#contact', primary: true }]}
+      />
+
+      <Section bg="white">
+        <SectionHeader
+          eyebrow="Notre expertise"
+          titleStart="Tout est"
+          titleAccent="orchestré"
+          titleEnd="pour votre confort"
+          subtitle="De la sélection de la compagnie au transfert depuis l'aéroport, chaque détail est anticipé."
+        />
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {benefits.map((b) => (
+            <FeatureCard key={b.title} {...b} />
+          ))}
         </div>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 30 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
-          className="relative z-10 text-center text-white px-6 max-w-4xl"
-        >
-          <h1 className="text-5xl md:text-7xl mb-6" style={{ fontFamily: 'Cormorant Garamond, serif' }}>
-            Voyager n'est plus<br />une contrainte
-          </h1>
-          <p className="text-lg md:text-xl text-white/80 tracking-wide">
-            Du sol au ciel, tout est orchestré.
-          </p>
-        </motion.div>
-      </section>
+      </Section>
 
-      <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <h2 className="text-4xl md:text-5xl mb-6" style={{ fontFamily: 'Cormorant Garamond, serif' }}>
-              L'excellence du voyage
-            </h2>
-            <p className="text-black/60 max-w-2xl mx-auto">
-              Des solutions sur-mesure pour tous vos déplacements professionnels et privés
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {[
-              { icon: Plane, title: 'Vols privés', desc: 'Jets privés et hélicoptères' },
-              { icon: Star, title: 'Première classe', desc: 'Meilleures cabines mondiales' },
-              { icon: Shield, title: 'Priorité totale', desc: 'Fast track et salons VIP' },
-              { icon: Clock, title: 'Disponibilité 24/7', desc: 'Réservation instantanée' },
-            ].map((item, index) => {
-              const Icon = item.icon;
-              return (
-                <motion.div
-                  key={item.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.1 }}
-                  className="text-center p-6"
-                >
-                  <div className="w-16 h-16 mx-auto mb-4 bg-[#f5f5f0] flex items-center justify-center">
-                    <Icon className="w-8 h-8 text-[#556B2F]" />
-                  </div>
-                  <h3 className="text-xl mb-3" style={{ fontFamily: 'Cormorant Garamond, serif' }}>
-                    {item.title}
-                  </h3>
-                  <p className="text-sm text-black/60">{item.desc}</p>
-                </motion.div>
-              );
-            })}
-          </div>
+      <Section bg="zinc">
+        <SectionHeader
+          eyebrow="Nos cabines"
+          titleStart="Trois façons de"
+          titleAccent="prendre les airs"
+        />
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-5">
+          {cabins.map((c) => (
+            <FeatureCard
+              key={c.title}
+              image={c.image}
+              imageAlt={c.title}
+              title={c.title}
+              description={c.description}
+              badge={c.badge}
+            />
+          ))}
         </div>
-      </section>
+      </Section>
 
-      {/* Testimonials Section */}
-      <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="text-center mb-16"
-          >
-            <p className="text-sm tracking-widest text-[#556B2F] mb-4 uppercase">Témoignages</p>
-            <h2 className="text-4xl md:text-5xl mb-4" style={{ fontFamily: 'Cormorant Garamond, serif' }}>
-              Voyagez comme nos clients
-            </h2>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                name: 'Karim A.',
-                destination: 'Paris → Dubaï',
-                text: 'Vol business avec Emirates réservé en 2h. Siège lie-flat, lounge privé, et transfert hôtel inclus. LabelMaison a tout géré, je n\'ai eu qu\'à embarquer.',
-                class: 'Business Class'
-              },
-              {
-                name: 'Nadia R.',
-                destination: 'Paris → Doha',
-                text: 'Qatar Airways First Class. Un rêve. Suite privée, service aux petits soins, et champagne Krug à volonté. Merci pour cette expérience inoubliable.',
-                class: 'First Class'
-              },
-              {
-                name: 'Thomas V.',
-                destination: 'Genève → Marrakech',
-                text: 'Jet privé pour un weekend entre amis. Organisation parfaite, discrétion totale, prix négocié. On ne voyage plus autrement maintenant.',
-                class: 'Jet Privé'
-              }
-            ].map((testimonial, index) => (
-              <motion.div
-                key={testimonial.name}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: index * 0.1 }}
-                className="relative group"
-              >
-                <div className="bg-[#f5f5f0] border border-black/5 p-8 h-full hover:shadow-xl transition-all">
-                  <Quote className="w-8 h-8 text-[#556B2F] mb-4" />
-                  
-                  <div className="flex gap-1 mb-4">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="w-4 h-4 fill-[#D4AF37] text-[#D4AF37]" />
-                    ))}
-                  </div>
-
-                  <p className="text-black/80 mb-6 leading-relaxed italic">
-                    "{testimonial.text}"
-                  </p>
-
-                  <div className="flex items-center justify-between pt-4 border-t border-black/10">
-                    <div>
-                      <p className="text-black">{testimonial.name}</p>
-                      <p className="text-sm text-black/50">{testimonial.destination}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[#556B2F] text-sm tracking-wider">{testimonial.class}</p>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="bg-black text-white py-24">
-        <div className="max-w-4xl mx-auto px-6 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <h2 className="text-4xl md:text-5xl mb-6" style={{ fontFamily: 'Cormorant Garamond, serif' }}>
-              Réservez votre prochain voyage
-            </h2>
-            <p className="text-white/70 mb-8 max-w-2xl mx-auto">
-              Laissez-nous organiser votre prochain déplacement avec le niveau de service que vous méritez
-            </p>
-            <a 
-              href="https://www.instagram.com/labelmaisoncg/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-block px-10 py-5 bg-[#556B2F] text-white hover:bg-[#6B8E3A] transition-all tracking-wide text-lg"
-            >
-              👉 Nous contacter
-            </a>
-          </motion.div>
-        </div>
-      </section>
+      <FinalCta
+        titleStart="Réservez votre"
+        titleAccent="prochain voyage"
+        subtitle="Notre équipe vous propose les meilleures options selon votre destination, vos dates et votre budget. Réponse sous 2 heures."
+        ctaLabel="Nous contacter"
+        ctaHref="/#contact"
+      />
     </div>
   );
 }
