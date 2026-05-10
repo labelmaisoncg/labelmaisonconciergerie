@@ -154,3 +154,24 @@
     scroll-behavior: smooth;
   }
 }
+
+@keyframes scroll-up-proofs {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}
+
+.proof-vscroll {
+  animation: scroll-up-proofs 32s linear infinite;
+  will-change: transform;
+}
+
+.proof-vscroll-wrap:hover .proof-vscroll,
+.proof-vscroll-wrap:focus-within .proof-vscroll {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .proof-vscroll {
+    animation: none;
+  }
+}

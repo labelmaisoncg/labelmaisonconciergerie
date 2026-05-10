@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'motion/react';
 import { Link } from 'react-router-dom';
@@ -26,6 +26,7 @@ import {
   ClipboardCheck,
 } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
+import { DragCarousel } from '../components/drag-carousel/DragCarousel';
 
 const PHONE_DISPLAY = '+33 7 49 54 83 55';
 const PHONE_HREF = 'tel:+33749548355';
@@ -567,20 +568,6 @@ function ProcessSection() {
 }
 
 // =============================================================================
-// OFFER
-// =============================================================================
-const offerFeatures = [
-  "Création d'une annonce optimisée",
-  'Boost de votre référencement',
-  'Yield Management : Gestion dynamique des prix & calendrier',
-  'Assistance communication : 24h/24 - 7j/7',
-  'Entrées - Sorties',
-  'Gestion du ménage & linge',
-  "Maintenance et travaux d'aménagement",
-  'Surprise pour vos voyageurs',
-];
-
-// =============================================================================
 // CLEANING PARTNER — bnbcleaning.fr automated housekeeping
 // =============================================================================
 function CleaningPartnerSection() {
@@ -741,89 +728,6 @@ function CleaningPartnerSection() {
               </motion.div>
             </div>
           </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function OfferSection() {
-  return (
-    <section id="offre" className="py-[60px] md:py-[100px] bg-gradient-to-br from-gray-50 to-gray-100">
-      <div className="max-w-[1152px] mx-auto px-6 space-y-10 md:space-y-14">
-        <SectionHeader
-          eyebrow="Notre offre"
-          title={<>Notre <em className="font-serif-italic font-bold text-[#556B2F] not-italic">offre</em></>}
-        />
-
-        <p className="text-center md:text-left text-[16px] md:text-[18px] text-neutral-700 max-w-3xl">
-          <strong className="font-bold text-neutral-900">L'adhésion est gratuite</strong>,
-          pas de frais d'abonnements ni d'entrée.
-        </p>
-
-        <div className="flex flex-col md:flex-row gap-6 items-stretch">
-          {/* Pricing card — black, prominent 90% */}
-          <div className="relative bg-gray-900 rounded-2xl p-8 md:p-10 flex flex-col gap-5 md:w-[32%] shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
-            <div className="flex items-start justify-center gap-1 mt-2">
-              <span className="text-white text-[80px] md:text-[88px] font-extrabold leading-none">90</span>
-              <div className="flex flex-col justify-start pt-3">
-                <span className="text-white text-[40px] font-bold leading-none">%</span>
-                <span className="text-white/70 text-[12px] font-semibold uppercase tracking-wider mt-1">
-                  TTC
-                </span>
-              </div>
-            </div>
-            <p className="text-center text-white/80 text-[14px]">à la nuitée</p>
-            <div className="text-center text-white text-[14px] font-semibold border border-white/20 bg-white/10 rounded-full px-5 py-3">
-              De chaque réservation
-            </div>
-            <div className="border-t border-white/10 my-1" />
-            <div className="bg-white/10 rounded-xl p-4">
-              <p className="text-white text-[13px] leading-relaxed">
-                + Forfait ménage / linge à la charge du voyageur
-              </p>
-            </div>
-            <a
-              href="#contact"
-              className="mt-2 text-center bg-white text-gray-900 font-bold text-[14px] px-5 py-3.5 rounded-full hover:bg-neutral-100 transition-colors"
-            >
-              Je veux tester
-            </a>
-          </div>
-
-          {/* Features card */}
-          <div className="bg-white rounded-2xl border border-black/5 p-8 md:p-10 md:w-[68%]">
-            <h4 className="text-[20px] md:text-[22px] font-bold mb-5 text-gray-900">Services inclus</h4>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3">
-              {offerFeatures.map((f) => (
-                <li key={f} className="flex items-center gap-3">
-                  <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#556B2F]/15 text-[#556B2F] text-xs font-bold shrink-0">
-                    ✓
-                  </span>
-                  <span className="text-[14px] md:text-[15px] text-gray-700 leading-snug">{f}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-
-        {/* Action banner */}
-        <div className="bg-[#556B2F] text-white rounded-2xl p-8 md:p-12 flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-8">
-          <div className="md:flex-1">
-            <h3 className="text-[26px] md:text-[34px] font-bold leading-tight">
-              Je passe à <span className="font-serif-italic font-bold">l'action</span>
-            </h3>
-            <p className="mt-2 text-[15px] md:text-[16px] text-white/90 max-w-2xl">
-              Prêt à franchir le pas et maximiser la rentabilité de votre logement ?
-              Prenez contact avec nous dès aujourd'hui pour un accompagnement personnalisé.
-            </p>
-          </div>
-          <a
-            href="#contact"
-            className="inline-flex items-center gap-2 bg-white text-[#3d4d22] font-bold text-[15px] px-7 py-4 rounded-full hover:bg-neutral-100 transition-colors"
-          >
-            Nous contacter <ArrowRight size={16} />
-          </a>
         </div>
       </div>
     </section>
@@ -1094,73 +998,569 @@ function AboutSection() {
 }
 
 // =============================================================================
-// BLOG
+// PROOF — drag carousel (screenshots + reels Instagram/TikTok/YouTube)
 // =============================================================================
-const posts = [
+type ProofItem =
+  | {
+      kind: 'screenshot';
+      image: string;
+      label: string;
+      caption: string;
+    }
+  | {
+      kind: 'instagram' | 'tiktok' | 'youtube';
+      url: string;
+      poster?: string;
+      label: string;
+      caption: string;
+    };
+
+const proofs: ProofItem[] = [
   {
-    title: 'Comment maximiser vos revenus locatifs à Paris en 2026',
-    excerpt: "Les leviers d'optimisation pour une location courte durée rentable, saison après saison : tarification dynamique, taux d'occupation, plateformes.",
-    image: 'https://images.unsplash.com/photo-1493809842364-78817add7ffb?auto=format&fit=crop&w=1200&q=80',
-    date: 'Avril 2026',
+    kind: 'screenshot',
+    image: '/images/proof/IMG_7303.jpeg',
+    label: 'Message client',
+    caption: '« Franchement merci beaucoup, c\'est vraiment top ce que vous faites. »',
   },
   {
-    title: 'Jets privés vs première classe : que choisir pour vos voyages ?',
-    excerpt: 'Comparatif des deux options premium : confort, prix, flexibilité. Notre guide pour choisir le bon mode de voyage selon votre destination.',
-    image: 'https://images.unsplash.com/photo-1556388158-158ea5ccacbd?auto=format&fit=crop&w=1200&q=80',
-    date: 'Mars 2026',
+    kind: 'screenshot',
+    image: '/images/proof/IMG_7304.jpeg',
+    label: 'Message client',
+    caption: 'Retour propriétaire après remise en gestion',
+  },
+  {
+    kind: 'screenshot',
+    image: '/images/proof/IMG_7305.jpeg',
+    label: 'Message client',
+    caption: 'Avis post-séjour voyageur',
+  },
+  {
+    kind: 'screenshot',
+    image: '/images/proof/IMG_7306.jpeg',
+    label: 'Message client',
+    caption: 'Suivi locatif courte durée',
+  },
+  {
+    kind: 'youtube',
+    url: 'https://youtu.be/v6YqaM2bW78',
+    poster: 'https://i.ytimg.com/vi/v6YqaM2bW78/hqdefault.jpg',
+    label: 'Podcast YouTube',
+    caption: 'Génération Business · LabelMaison CG',
+  },
+  {
+    kind: 'youtube',
+    url: 'https://youtu.be/bI8vGt5UN9w',
+    poster: 'https://i.ytimg.com/vi/bI8vGt5UN9w/hqdefault.jpg',
+    label: 'Podcast YouTube',
+    caption: 'Coulisses & business mindset',
+  },
+  {
+    kind: 'instagram',
+    url: 'https://www.instagram.com/reel/DRE5FEOiNdw/',
+    label: 'Reel Instagram',
+    caption: 'Coulisses ménage & check-in',
+  },
+  {
+    kind: 'instagram',
+    url: 'https://www.instagram.com/reel/DU2xyqUiH_B/',
+    label: 'Reel Instagram',
+    caption: 'Standards qualité Label Maison',
+  },
+  {
+    kind: 'instagram',
+    url: 'https://www.instagram.com/reel/DQwkeSAiOhU/',
+    label: 'Reel Instagram',
+    caption: 'Préparation d\'un appartement',
+  },
+  {
+    kind: 'instagram',
+    url: 'https://www.instagram.com/reel/DV6ccxiCMKF/',
+    label: 'Reel Instagram',
+    caption: 'Le quotidien de l\'équipe terrain',
+  },
+  {
+    kind: 'instagram',
+    url: 'https://www.instagram.com/reel/DV3zKRGiDgX/',
+    label: 'Reel Instagram',
+    caption: 'Avant / après remise en location',
+  },
+  {
+    kind: 'tiktok',
+    url: 'https://www.tiktok.com/@labelmaisoncg/video/7611119478264401185',
+    label: 'TikTok',
+    caption: '@labelmaisoncg · Coulisses',
+  },
+  {
+    kind: 'tiktok',
+    url: 'https://www.tiktok.com/@labelmaisoncg/video/7610028564758465824',
+    label: 'TikTok',
+    caption: '@labelmaisoncg · Conseils proprio',
+  },
+  {
+    kind: 'tiktok',
+    url: 'https://www.tiktok.com/@labelmaisoncg/video/7628608422681873686',
+    label: 'TikTok',
+    caption: '@labelmaisoncg · Mission terrain',
+  },
+  {
+    kind: 'tiktok',
+    url: 'https://www.tiktok.com/@labelmaisoncg/video/7596974690468384022',
+    label: 'TikTok',
+    caption: '@labelmaisoncg · Astuce locative',
+  },
+  {
+    kind: 'tiktok',
+    url: 'https://www.tiktok.com/@labelmaisoncg/video/7625243889615506710',
+    label: 'TikTok',
+    caption: '@labelmaisoncg · Standards Label Maison',
   },
 ];
 
-function BlogSection() {
+function PlatformBadge({ kind }: { kind: ProofItem['kind'] }) {
+  if (kind === 'youtube') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-[#FF0000] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
+        YouTube
+      </span>
+    );
+  }
+  if (kind === 'instagram') {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md"
+        style={{
+          background:
+            'linear-gradient(45deg,#F58529 0%,#DD2A7B 50%,#8134AF 75%,#515BD4 100%)',
+        }}
+      >
+        Instagram
+      </span>
+    );
+  }
+  if (kind === 'tiktok') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-black text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
+        TikTok
+      </span>
+    );
+  }
   return (
-    <section className="py-[60px] md:py-[100px]">
-      <div className="max-w-[1152px] mx-auto px-6">
-        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4 mb-10">
-          <div>
-            <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
-              Le blog
+    <span className="inline-flex items-center gap-1 bg-[#556B2F] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
+      Avis client
+    </span>
+  );
+}
+
+function PlayOverlay() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="w-14 h-14 rounded-full bg-white/95 shadow-[0_8px_24px_rgba(0,0,0,0.35)] flex items-center justify-center">
+        <svg width="20" height="22" viewBox="0 0 20 22" fill="none">
+          <path d="M2 2L18 11L2 20V2Z" fill="#0A0A0A" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+function ProofCard({ item, isCenter }: { item: ProofItem; isCenter: boolean }) {
+  const ctaLabel =
+    item.kind === 'youtube'
+      ? 'Regarder sur YouTube'
+      : item.kind === 'instagram'
+        ? 'Voir sur Instagram'
+        : item.kind === 'tiktok'
+          ? 'Voir sur TikTok'
+          : 'Avis vérifié';
+
+  return (
+    <article
+      className="relative bg-white rounded-[28px] overflow-hidden border border-black/5 transition-all duration-500 flex flex-col"
+      style={{
+        height: 520,
+        transform: isCenter ? 'scale(1)' : 'scale(0.94)',
+        boxShadow: isCenter
+          ? '0 28px 60px rgba(10,10,10,0.18)'
+          : '0 8px 24px rgba(10,10,10,0.08)',
+      }}
+    >
+      {/* Header type "BNBCleaning ✓" */}
+      <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
+        <div className="w-9 h-9 rounded-full bg-[#556B2F] text-white flex items-center justify-center text-[12px] font-bold shrink-0">
+          LM
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            <span className="text-[13px] font-bold text-neutral-900 truncate">
+              Label Maison
             </span>
-            <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05]">
-              Dernières <span className="font-serif-italic font-bold text-[#556B2F]">publications</span>
-            </h2>
+            <CheckCircle2 size={12} className="text-[#1d9bf0] shrink-0" />
+          </div>
+          <span className="text-[11px] text-neutral-500 truncate block">{item.label}</span>
+        </div>
+        <PlatformBadge kind={item.kind} />
+      </div>
+
+      {/* Visuel */}
+      <div className="relative flex-1 mx-3 rounded-2xl overflow-hidden bg-neutral-100">
+        {item.kind === 'screenshot' && (
+          <ImageWithFallback
+            src={item.image}
+            alt={item.caption}
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+        )}
+
+        {item.kind === 'youtube' && (
+          <>
+            <ImageWithFallback
+              src={item.poster ?? ''}
+              alt={item.caption}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/20" />
+            <PlayOverlay />
+          </>
+        )}
+
+        {(item.kind === 'instagram' || item.kind === 'tiktok') && (
+          <>
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  item.kind === 'instagram'
+                    ? 'linear-gradient(135deg,#F58529 0%,#DD2A7B 45%,#8134AF 75%,#515BD4 100%)'
+                    : 'linear-gradient(135deg,#25F4EE 0%,#000000 50%,#FE2C55 100%)',
+              }}
+            />
+            <div className="absolute inset-0 bg-black/15" />
+            <div className="absolute top-3 left-3 right-3 flex items-center justify-between text-white">
+              <span className="text-[11px] font-semibold uppercase tracking-[1.5px] opacity-90">
+                {item.kind === 'instagram' ? 'Reel' : 'Video'}
+              </span>
+              <span className="text-[11px] font-semibold opacity-90">@labelmaisoncg</span>
+            </div>
+            <PlayOverlay />
+            <div className="absolute bottom-3 left-3 right-3 text-white">
+              <p className="text-[13px] font-semibold leading-tight drop-shadow-md">
+                {item.caption}
+              </p>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer / CTA visuel (toute la carte est cliquable) */}
+      <div className="px-4 pt-3 pb-4">
+        {item.kind === 'screenshot' ? (
+          <p className="text-[12px] text-neutral-700 leading-snug line-clamp-2">
+            {item.caption}
+          </p>
+        ) : (
+          <div className="flex items-center justify-center gap-2 w-full bg-neutral-900 text-white text-[13px] font-semibold py-2.5 rounded-full">
+            {ctaLabel} <ArrowRight size={13} />
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+// Wrapper qui rend la carte cliquable sans déclencher après un drag
+function ClickableCard({
+  children,
+  onClick,
+  ariaLabel,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  ariaLabel: string;
+}) {
+  const startRef = useRef({ x: 0, y: 0, dragged: false });
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      className="cursor-pointer h-full outline-none focus-visible:ring-2 focus-visible:ring-[#556B2F] focus-visible:ring-offset-2 rounded-[28px]"
+      onPointerDown={(e) => {
+        startRef.current = { x: e.clientX, y: e.clientY, dragged: false };
+      }}
+      onPointerMove={(e) => {
+        const { x, y } = startRef.current;
+        if (Math.abs(e.clientX - x) > 6 || Math.abs(e.clientY - y) > 6) {
+          startRef.current.dragged = true;
+        }
+      }}
+      onClick={() => {
+        if (!startRef.current.dragged) onClick();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+// Extrait l'URL d'embed selon la plateforme
+function getEmbedUrl(item: ProofItem): string | null {
+  if (item.kind === 'youtube') {
+    const m = item.url.match(/(?:youtu\.be\/|v=)([\w-]+)/);
+    return m ? `https://www.youtube.com/embed/${m[1]}?autoplay=1&rel=0&modestbranding=1` : null;
+  }
+  if (item.kind === 'instagram') {
+    const m = item.url.match(/\/reel\/([\w-]+)/);
+    return m ? `https://www.instagram.com/reel/${m[1]}/embed/captioned/` : null;
+  }
+  if (item.kind === 'tiktok') {
+    const m = item.url.match(/\/video\/(\d+)/);
+    return m
+      ? `https://www.tiktok.com/player/v1/${m[1]}?autoplay=1&music_info=1&description=1`
+      : null;
+  }
+  return null;
+}
+
+function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [onClose]);
+
+  const embed = item.kind !== 'screenshot' ? getEmbedUrl(item) : null;
+  const isYouTube = item.kind === 'youtube';
+  const externalUrl = item.kind !== 'screenshot' ? item.url : null;
+  const platformLabel =
+    item.kind === 'youtube'
+      ? 'YouTube'
+      : item.kind === 'instagram'
+        ? 'Instagram'
+        : item.kind === 'tiktok'
+          ? 'TikTok'
+          : 'Image';
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 animate-[fadeIn_.2s_ease-out]"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Lecture ${platformLabel}`}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Fermer"
+        className="absolute top-4 right-4 w-11 h-11 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center text-2xl leading-none transition-colors z-10"
+      >
+        ×
+      </button>
+
+      <div
+        className="relative w-full"
+        style={{ maxWidth: isYouTube ? 960 : 420 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {item.kind === 'screenshot' ? (
+          <img
+            src={item.image}
+            alt={item.caption}
+            className="w-full h-auto max-h-[85vh] object-contain rounded-2xl shadow-2xl mx-auto block"
+          />
+        ) : embed ? (
+          <div
+            className="w-full bg-black rounded-2xl overflow-hidden shadow-2xl"
+            style={{ aspectRatio: isYouTube ? '16 / 9' : '9 / 16', maxHeight: '85vh' }}
+          >
+            <iframe
+              src={embed}
+              title={item.caption}
+              className="w-full h-full block"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share; fullscreen"
+              allowFullScreen
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+            />
+          </div>
+        ) : null}
+
+        {externalUrl && (
+          <div className="mt-4 flex justify-center">
+            <a
+              href={externalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 bg-white/15 hover:bg-white/25 text-white text-[13px] font-semibold px-5 py-2.5 rounded-full transition-colors"
+            >
+              Ouvrir sur {platformLabel} <ArrowRight size={13} />
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Carte compacte pour la colonne verticale (screenshots clients)
+function CompactProofCard({ item }: { item: Extract<ProofItem, { kind: 'screenshot' }> }) {
+  return (
+    <article className="bg-white rounded-xl border border-black/5 overflow-hidden shadow-[0_4px_16px_rgba(10,10,10,0.05)] flex">
+      <div className="relative w-[88px] shrink-0 bg-neutral-50">
+        <ImageWithFallback
+          src={item.image}
+          alt={item.caption}
+          className="absolute inset-0 w-full h-full object-cover object-top"
+        />
+      </div>
+      <div className="flex-1 min-w-0 px-3 py-2.5 flex flex-col justify-between gap-1.5">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-full bg-[#556B2F] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+            LM
+          </div>
+          <div className="flex-1 min-w-0 leading-tight">
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-bold text-neutral-900 truncate">
+                Label Maison
+              </span>
+              <CheckCircle2 size={10} className="text-[#1d9bf0] shrink-0" />
+            </div>
+            <span className="text-[9px] text-neutral-500 truncate block">{item.label}</span>
+          </div>
+          <span className="bg-[#556B2F]/10 text-[#3d4d22] text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0">
+            Vérifié
+          </span>
+        </div>
+        <p className="text-[11px] text-neutral-700 italic leading-snug line-clamp-2">
+          {item.caption}
+        </p>
+      </div>
+    </article>
+  );
+}
+
+function VerticalProofColumn({
+  items,
+  onSelect,
+}: {
+  items: Extract<ProofItem, { kind: 'screenshot' }>[];
+  onSelect: (i: ProofItem) => void;
+}) {
+  const doubled = [...items, ...items];
+  return (
+    <div
+      className="proof-vscroll-wrap relative h-[520px] md:h-[600px] overflow-hidden mx-auto w-full max-w-[360px]"
+      style={{
+        maskImage:
+          'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
+        WebkitMaskImage:
+          'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
+      }}
+    >
+      <div className="proof-vscroll flex flex-col gap-3">
+        {doubled.map((item, i) => (
+          <ClickableCard
+            key={i}
+            ariaLabel={`Voir le message client : ${item.caption}`}
+            onClick={() => onSelect(item)}
+          >
+            <CompactProofCard item={item} />
+          </ClickableCard>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ProofSection() {
+  const [active, setActive] = useState<ProofItem | null>(null);
+  const screenshots = proofs.filter(
+    (p): p is Extract<ProofItem, { kind: 'screenshot' }> => p.kind === 'screenshot',
+  );
+  const videos = proofs.filter((p) => p.kind !== 'screenshot');
+
+  return (
+    <section className="py-[60px] md:py-[100px] bg-zinc-50">
+      <div className="max-w-[1152px] mx-auto px-6">
+        <div className="text-center mb-12 md:mb-16">
+          <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
+            Preuves & coulisses
+          </span>
+          <h2 className="mt-4 text-[30px] md:text-[44px] font-bold leading-[1.05]">
+            Ils adorent,{' '}
+            <span className="font-serif-italic font-bold text-[#556B2F]">
+              pourquoi pas vous&nbsp;?
+            </span>
+          </h2>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-8 items-start">
+          {/* COLONNE GAUCHE — screenshots clients (auto-scroll vertical) */}
+          <div className="flex flex-col">
+            <VerticalProofColumn items={screenshots} onSelect={setActive} />
+            <div className="mt-6 md:mt-8">
+              <h3 className="text-[20px] md:text-[24px] font-bold leading-tight">
+                Ils nous font confiance
+              </h3>
+              <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700 leading-relaxed">
+                Propriétaires & voyageurs nous écrivent au quotidien — chaque message
+                provient d'un client réel pris en charge par Label Maison Conciergerie.
+              </p>
+            </div>
           </div>
 
-          <a
-            href="#contact"
-            className="inline-flex items-center gap-2 bg-black/5 text-neutral-800 font-bold text-[14px] px-6 py-3 rounded-full hover:bg-black/10 self-start"
-          >
-            Voir le blog <ArrowRight size={14} />
-          </a>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {posts.map((p) => (
-            <motion.article
-              key={p.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.2 }}
-              className="group rounded-2xl overflow-hidden bg-white border border-black/5 hover:shadow-lg transition-all"
-            >
-              <div className="aspect-[16/9] overflow-hidden">
-                <ImageWithFallback
-                  src={p.image}
-                  alt={p.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          {/* COLONNE DROITE — reels Instagram, TikTok, YouTube */}
+          <div className="flex flex-col">
+            <div className="relative h-[520px] md:h-[600px] flex items-center -mx-2">
+              <div className="w-full">
+                <DragCarousel
+                  count={videos.length}
+                  cardWidth={260}
+                  loop
+                  ariaLabel="Coulisses Label Maison — faites glisser pour explorer"
+                  renderCard={({ index, isCenter }) => {
+                    const item = videos[index];
+                    return (
+                      <ClickableCard
+                        ariaLabel={`Lire ${item.label} : ${item.caption}`}
+                        onClick={() => setActive(item)}
+                      >
+                        <ProofCard item={item} isCenter={isCenter} />
+                      </ClickableCard>
+                    );
+                  }}
                 />
               </div>
-              <div className="p-6">
-                <p className="text-[12px] font-semibold uppercase tracking-[1px] text-[#3d4d22]">{p.date}</p>
-                <h3 className="mt-2 text-[20px] font-bold leading-tight">{p.title}</h3>
-                <p className="mt-2 text-[15px] text-neutral-700">{p.excerpt}</p>
-                <div className="mt-4 inline-flex items-center gap-2 text-[#3d4d22] font-bold text-[14px]">
-                  Lire l'article <ArrowRight size={14} />
-                </div>
-              </div>
-            </motion.article>
-          ))}
+            </div>
+            <div className="mt-6 md:mt-8">
+              <h3 className="text-[20px] md:text-[24px] font-bold leading-tight">
+                Dans les coulisses de Label Maison
+              </h3>
+              <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700 leading-relaxed">
+                Reels Instagram, vidéos TikTok et podcasts YouTube : le quotidien terrain
+                de l'équipe et nos conseils en gestion locative — lecture directe depuis
+                le site.
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      {active && <ProofLightbox item={active} onClose={() => setActive(null)} />}
     </section>
   );
 }
@@ -1293,12 +1693,12 @@ function ContactSection() {
                 <div>
                   <p className="font-semibold">TikTok</p>
                   <a
-                    href="https://www.tiktok.com/@labelmaison.cg"
+                    href="https://www.tiktok.com/@labelmaisoncg"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-neutral-700 hover:text-[#556B2F]"
                   >
-                    @labelmaison.cg
+                    @labelmaisoncg
                   </a>
                 </div>
               </li>
@@ -1369,11 +1769,10 @@ export function Home() {
       <BenefitsSection />
       <ProcessSection />
       <CleaningPartnerSection />
-      <OfferSection />
       <ValuesSection />
       <FaqSection />
       <AboutSection />
-      <BlogSection />
+      <ProofSection />
       <ContactSection />
     </div>
   );
