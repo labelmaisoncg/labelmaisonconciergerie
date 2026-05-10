@@ -5,7 +5,6 @@ import { useLocation } from 'react-router-dom';
 
 const navLinks = [
   { hash: 'services', label: 'Services' },
-  { hash: 'offre', label: 'Offre' },
   { hash: 'faq', label: 'F.A.Q' },
   { hash: 'apropos', label: 'Qui sommes-nous ?' },
   { hash: 'valeurs', label: 'Nos valeurs' },

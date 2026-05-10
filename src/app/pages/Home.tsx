@@ -32,6 +32,27 @@ const PHONE_DISPLAY = '+33 7 49 54 83 55';
 const PHONE_HREF = 'tel:+33749548355';
 const EMAIL = 'contact@labelmaisoncgexperience.fr';
 
+async function submitContactForm(
+  type: 'lead' | 'contact',
+  form: HTMLFormElement,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const data = Object.fromEntries(new FormData(form).entries());
+  try {
+    const res = await fetch('/api/contact', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type, ...data }),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || !json.ok) {
+      return { ok: false, error: json.error || `Erreur ${res.status}` };
+    }
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Connexion impossible. Réessayez.' };
+  }
+}
+
 // =============================================================================
 // HERO
 // =============================================================================
@@ -97,10 +118,17 @@ function HeroSection() {
 // =============================================================================
 function LeadFormSection() {
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setSubmitted(true);
+    setError(null);
+    setSending(true);
+    const result = await submitContactForm('lead', e.currentTarget);
+    setSending(false);
+    if (result.ok) setSubmitted(true);
+    else setError(result.error);
   };
 
   return (
@@ -184,11 +212,15 @@ function LeadFormSection() {
                     />
                   </Field>
                 </div>
+                {error && (
+                  <p className="text-[13px] font-semibold text-red-600">{error}</p>
+                )}
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-neutral-700"
+                  disabled={sending}
+                  className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-neutral-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Prendre contact <Send size={14} />
+                  {sending ? 'Envoi…' : 'Prendre contact'} <Send size={14} />
                 </button>
               </form>
             )}
@@ -1419,33 +1451,33 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
 // Carte compacte pour la colonne verticale (screenshots clients)
 function CompactProofCard({ item }: { item: Extract<ProofItem, { kind: 'screenshot' }> }) {
   return (
-    <article className="bg-white rounded-xl border border-black/5 overflow-hidden shadow-[0_4px_16px_rgba(10,10,10,0.05)] flex">
-      <div className="relative w-[88px] shrink-0 bg-neutral-50">
+    <article className="bg-white rounded-2xl border border-black/5 overflow-hidden shadow-[0_6px_20px_rgba(10,10,10,0.06)] flex">
+      <div className="relative w-[120px] shrink-0 bg-neutral-50">
         <ImageWithFallback
           src={item.image}
           alt={item.caption}
           className="absolute inset-0 w-full h-full object-cover object-top"
         />
       </div>
-      <div className="flex-1 min-w-0 px-3 py-2.5 flex flex-col justify-between gap-1.5">
-        <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-full bg-[#556B2F] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+      <div className="flex-1 min-w-0 px-4 py-3.5 flex flex-col justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-[#556B2F] text-white flex items-center justify-center text-[11px] font-bold shrink-0">
             LM
           </div>
           <div className="flex-1 min-w-0 leading-tight">
             <div className="flex items-center gap-1">
-              <span className="text-[11px] font-bold text-neutral-900 truncate">
+              <span className="text-[13px] font-bold text-neutral-900 truncate">
                 Label Maison
               </span>
-              <CheckCircle2 size={10} className="text-[#1d9bf0] shrink-0" />
+              <CheckCircle2 size={12} className="text-[#1d9bf0] shrink-0" />
             </div>
-            <span className="text-[9px] text-neutral-500 truncate block">{item.label}</span>
+            <span className="text-[11px] text-neutral-500 truncate block">{item.label}</span>
           </div>
-          <span className="bg-[#556B2F]/10 text-[#3d4d22] text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-md shrink-0">
+          <span className="bg-[#556B2F]/10 text-[#3d4d22] text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md shrink-0">
             Vérifié
           </span>
         </div>
-        <p className="text-[11px] text-neutral-700 italic leading-snug line-clamp-2">
+        <p className="text-[13px] text-neutral-700 italic leading-snug line-clamp-3">
           {item.caption}
         </p>
       </div>
@@ -1463,7 +1495,7 @@ function VerticalProofColumn({
   const doubled = [...items, ...items];
   return (
     <div
-      className="proof-vscroll-wrap relative h-[520px] md:h-[600px] overflow-hidden mx-auto w-full max-w-[360px]"
+      className="proof-vscroll-wrap relative h-[520px] md:h-[600px] overflow-hidden mx-auto w-full max-w-[420px]"
       style={{
         maskImage:
           'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
@@ -1473,7 +1505,7 @@ function VerticalProofColumn({
     >
       <div className="proof-vscroll flex flex-col">
         {doubled.map((item, i) => (
-          <div key={i} className="mb-3">
+          <div key={i} className="mb-4">
             <ClickableCard
               ariaLabel={`Voir le message client : ${item.caption}`}
               onClick={() => onSelect(item)}
@@ -1569,6 +1601,18 @@ function ProofSection() {
 // =============================================================================
 function ContactSection() {
   const [submitted, setSubmitted] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setSending(true);
+    const result = await submitContactForm('contact', e.currentTarget);
+    setSending(false);
+    if (result.ok) setSubmitted(true);
+    else setError(result.error);
+  };
 
   return (
     <section id="contact" className="py-[60px] md:py-[100px] bg-zinc-50">
@@ -1589,16 +1633,11 @@ function ContactSection() {
                 </div>
               </div>
             ) : (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  setSubmitted(true);
-                }}
-                className="space-y-4"
-              >
+              <form onSubmit={onSubmit} className="space-y-4">
                 <Field label="Adresse du bien">
                   <input
                     type="text"
+                    name="adresse"
                     required
                     placeholder="Adresse du bien"
                     className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
@@ -1606,6 +1645,7 @@ function ContactSection() {
                 </Field>
                 <Field label="Nombre de chambres">
                   <select
+                    name="chambres"
                     required
                     defaultValue=""
                     className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
@@ -1622,6 +1662,7 @@ function ContactSection() {
                   <Field label="Adresse e-mail" required>
                     <input
                       type="email"
+                      name="email"
                       required
                       placeholder="adresse@email.com"
                       className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
@@ -1630,6 +1671,7 @@ function ContactSection() {
                   <Field label="Téléphone">
                     <input
                       type="tel"
+                      name="tel"
                       placeholder="+33 6 12 34 56 78"
                       className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
                     />
@@ -1637,16 +1679,21 @@ function ContactSection() {
                 </div>
                 <Field label="Votre message">
                   <textarea
+                    name="message"
                     rows={4}
                     placeholder="Parlez-nous de votre projet"
                     className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F] resize-y"
                   />
                 </Field>
+                {error && (
+                  <p className="text-[13px] font-semibold text-red-600">{error}</p>
+                )}
                 <button
                   type="submit"
-                  className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-neutral-700"
+                  disabled={sending}
+                  className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-neutral-700 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Prendre contact <Send size={14} />
+                  {sending ? 'Envoi…' : 'Prendre contact'} <Send size={14} />
                 </button>
               </form>
             )}
