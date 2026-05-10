@@ -1356,7 +1356,7 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 animate-[fadeIn_.2s_ease-out]"
+      className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -1471,15 +1471,16 @@ function VerticalProofColumn({
           'linear-gradient(to bottom, transparent 0%, black 8%, black 92%, transparent 100%)',
       }}
     >
-      <div className="proof-vscroll flex flex-col gap-3">
+      <div className="proof-vscroll flex flex-col">
         {doubled.map((item, i) => (
-          <ClickableCard
-            key={i}
-            ariaLabel={`Voir le message client : ${item.caption}`}
-            onClick={() => onSelect(item)}
-          >
-            <CompactProofCard item={item} />
-          </ClickableCard>
+          <div key={i} className="mb-3">
+            <ClickableCard
+              ariaLabel={`Voir le message client : ${item.caption}`}
+              onClick={() => onSelect(item)}
+            >
+              <CompactProofCard item={item} />
+            </ClickableCard>
+          </div>
         ))}
       </div>
     </div>
@@ -1525,26 +1526,24 @@ function ProofSection() {
 
           {/* COLONNE DROITE — reels Instagram, TikTok, YouTube */}
           <div className="flex flex-col">
-            <div className="relative h-[520px] md:h-[600px] flex items-center -mx-2">
-              <div className="w-full">
-                <DragCarousel
-                  count={videos.length}
-                  cardWidth={260}
-                  loop
-                  ariaLabel="Coulisses Label Maison — faites glisser pour explorer"
-                  renderCard={({ index, isCenter }) => {
-                    const item = videos[index];
-                    return (
-                      <ClickableCard
-                        ariaLabel={`Lire ${item.label} : ${item.caption}`}
-                        onClick={() => setActive(item)}
-                      >
-                        <ProofCard item={item} isCenter={isCenter} />
-                      </ClickableCard>
-                    );
-                  }}
-                />
-              </div>
+            <div className="-mx-2">
+              <DragCarousel
+                count={videos.length}
+                cardWidth={260}
+                loop
+                ariaLabel="Coulisses Label Maison — faites glisser pour explorer"
+                renderCard={({ index, isCenter }) => {
+                  const item = videos[index];
+                  return (
+                    <ClickableCard
+                      ariaLabel={`Lire ${item.label} : ${item.caption}`}
+                      onClick={() => setActive(item)}
+                    >
+                      <ProofCard item={item} isCenter={isCenter} />
+                    </ClickableCard>
+                  );
+                }}
+              />
             </div>
             <div className="mt-6 md:mt-8">
               <h3 className="text-[20px] md:text-[24px] font-bold leading-tight">
