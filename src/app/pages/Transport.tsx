@@ -79,8 +79,8 @@ export function Transport() {
         titleStart="Chaque déplacement devient"
         titleAccent="un privilège"
         subtitle="Arrivez avec élégance. Une flotte premium, des chauffeurs formés et une coordination parfaite pour tous vos trajets, à Paris comme à l'international."
-        imageUrl="https://images.unsplash.com/photo-1547731269-e4073e054f12?auto=format&fit=crop&w=1600&q=80"
-        imageAlt="Intérieur de berline de luxe"
+        imageUrl="/images/real/voiture-vip-interieur.jpeg"
+        imageAlt="Intérieur d'un véhicule premium Label Maison Conciergerie"
         ctas={[{ label: 'Réserver un chauffeur', href: '/#contact', primary: true }]}
       />
 

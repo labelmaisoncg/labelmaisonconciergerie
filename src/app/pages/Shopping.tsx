@@ -20,7 +20,8 @@ const categories = [
   {
     title: 'Haute horlogerie',
     description: 'Rolex, Patek Philippe, Audemars Piguet, Richard Mille. Pièces rares, éditions limitées, sourcing international.',
-    image: 'https://images.unsplash.com/photo-1623998021661-dc7555b2213d?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/montre-rolex-datejust-bleue.png',
+    imageFit: 'contain' as const,
     badge: 'Watches',
   },
   {
@@ -93,8 +94,8 @@ export function Shopping() {
         titleStart="L'exclusivité"
         titleAccent="sur demande"
         subtitle="Ce que vous désirez, nous le trouvons. Pièces rares, éditions limitées, sur-mesure : notre réseau international source les acquisitions les plus exigeantes."
-        imageUrl="https://images.unsplash.com/photo-1767009951357-9d9d455aa903?auto=format&fit=crop&w=1600&q=80"
-        imageAlt="Montre de luxe"
+        imageUrl="/images/real/montre-rolex-gmt.jpeg"
+        imageAlt="Rolex GMT-Master II sourcée par Label Maison Conciergerie"
         ctas={[{ label: 'Demande personnalisée', href: '/#contact', primary: true }]}
       />
 
@@ -110,6 +111,7 @@ export function Shopping() {
               key={c.title}
               image={c.image}
               imageAlt={c.title}
+              imageFit={'imageFit' in c ? c.imageFit : 'cover'}
               title={c.title}
               description={c.description}
               badge={c.badge}

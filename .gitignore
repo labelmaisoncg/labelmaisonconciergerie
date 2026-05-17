@@ -14,3 +14,6 @@ dist
 # Images sources brutes à la racine (les actifs sont dans /public/images)
 /img propriaitaire*.png
 /575676*.jpg
+/IMG_*.jpeg
+/IMG_*.jpg
+/Capture*.png

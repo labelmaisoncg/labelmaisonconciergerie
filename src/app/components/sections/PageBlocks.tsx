@@ -131,6 +131,7 @@ export function SectionHeader({
 export function FeatureCard({
   image,
   imageAlt,
+  imageFit = 'cover',
   icon,
   badge,
   title,
@@ -138,11 +139,13 @@ export function FeatureCard({
 }: {
   image?: string;
   imageAlt?: string;
+  imageFit?: 'cover' | 'contain';
   icon?: ReactNode;
   badge?: string;
   title: string;
   description: string;
 }) {
+  const contain = imageFit === 'contain';
   return (
     <motion.article
       initial={{ opacity: 0, y: 20 }}
@@ -151,13 +154,23 @@ export function FeatureCard({
       className="group relative bg-white rounded-2xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_40px_rgba(0,0,0,0.12)] transition-shadow duration-300 flex flex-col"
     >
       {image && (
-        <div className="relative h-48 md:h-52 overflow-hidden">
+        <div
+          className={`relative overflow-hidden ${
+            contain ? 'h-60 md:h-72 bg-zinc-100' : 'h-48 md:h-52'
+          }`}
+        >
           <ImageWithFallback
             src={image}
             alt={imageAlt ?? title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            className={`w-full h-full transition-transform duration-500 ${
+              contain
+                ? 'object-contain p-4 group-hover:scale-[1.03]'
+                : 'object-cover group-hover:scale-105'
+            }`}
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          {!contain && (
+            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+          )}
           {icon && (
             <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#556B2F] flex items-center justify-center shadow-lg">
               {icon}
