@@ -68,7 +68,7 @@ export function Billetterie() {
         badgeIcon={<Plane size={14} />}
         titleStart="Voyager n'est plus"
         titleAccent="une contrainte"
-        subtitle="Du sol au ciel, tout est orchestré. Jets privés, première classe et business sur les meilleures compagnies du monde — réservation en quelques heures."
+        subtitle="Du sol au ciel, tout est orchestré. Jets privés, première classe et business sur les meilleures compagnies du monde. Réservation en quelques heures."
         imageUrl="https://images.unsplash.com/photo-1545610095-4d00a3f4f547?auto=format&fit=crop&w=1600&q=80"
         imageAlt="Cabine première classe luxe"
         ctas={[{ label: 'Réserver mon vol', href: '/#contact', primary: true }]}

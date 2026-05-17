@@ -114,7 +114,7 @@ export function AnimatedLogo({
           <span className="line" data-text="CONCIERGERIE"></span>
         </h2>
 
-        {showBaseline && <div className="baseline">— Service d'exception —</div>}
+        {showBaseline && <div className="baseline">Service d'exception</div>}
       </div>
 
       {showReplay && (

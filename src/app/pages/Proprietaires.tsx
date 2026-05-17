@@ -111,9 +111,9 @@ export function Proprietaires() {
             </p>
             <ul className="mt-6 space-y-3">
               {[
-                { strong: "Taux d'occupation optimisé", text: ' — Nos biens sont réservés 90 % du temps' },
-                { strong: 'Tarification dynamique', text: ' — Prix ajustés en temps réel selon la demande' },
-                { strong: 'Gestion complète incluse', text: ' — Vous ne touchez à rien, nous gérons tout' },
+                { strong: "Taux d'occupation optimisé", text: ' : Nos biens sont réservés 90 % du temps' },
+                { strong: 'Tarification dynamique', text: ' : Prix ajustés en temps réel selon la demande' },
+                { strong: 'Gestion complète incluse', text: ' : Vous ne touchez à rien, nous gérons tout' },
               ].map((item) => (
                 <li key={item.strong} className="flex items-start gap-3">
                   <span className="w-2 h-2 mt-2.5 rounded-full bg-[#556B2F] shrink-0" />
@@ -136,7 +136,7 @@ export function Proprietaires() {
             <div className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.12)] overflow-hidden border border-black/5">
               <img
                 src="/images/img-proprietaire-decembre.png"
-                alt="Revenus Airbnb décembre 2025 — 6 359,32 €"
+                alt="Revenus Airbnb décembre 2025 : 6 359,32 €"
                 className="w-full h-auto"
                 loading="lazy"
               />
@@ -161,7 +161,7 @@ export function Proprietaires() {
             <div className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.12)] border border-black/5 p-6 md:p-8">
               <div className="border-b border-black/10 pb-4">
                 <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
-                  Janvier 2026 — en cours
+                  Janvier 2026 (en cours)
                 </p>
                 <p className="mt-1 text-2xl md:text-3xl font-bold">Suivi en temps réel</p>
               </div>
@@ -184,7 +184,7 @@ export function Proprietaires() {
             <div className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.12)] overflow-hidden border border-black/5">
               <img
                 src="/images/img-proprietaire-janvier.png"
-                alt="Revenus Airbnb janvier 2026 — 8 782 € prévus"
+                alt="Revenus Airbnb janvier 2026 : 8 782 € prévus"
                 className="w-full h-auto"
                 loading="lazy"
               />
@@ -220,7 +220,7 @@ export function Proprietaires() {
               <p className="text-neutral-800 italic">
                 « La constance des performances, mois après mois, différencie une gestion amateur d'un service professionnel. »
               </p>
-              <p className="mt-2 text-[13px] text-neutral-500">— Label Maison Conciergerie</p>
+              <p className="mt-2 text-[13px] text-neutral-500">Label Maison Conciergerie</p>
             </div>
           </motion.div>
         </div>

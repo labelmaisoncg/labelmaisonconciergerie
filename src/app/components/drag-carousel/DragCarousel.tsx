@@ -32,7 +32,7 @@ export function DragCarousel({
   showIndicator = true,
   showHint = true,
   className,
-  ariaLabel = 'Carousel — faites glisser pour explorer',
+  ariaLabel = 'Carousel, faites glisser pour explorer',
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const [hintHidden, setHintHidden] = useState(false);

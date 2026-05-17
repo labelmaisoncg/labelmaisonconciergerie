@@ -69,7 +69,7 @@ export function SplashIntro() {
         opacity: fading ? 0 : 1,
         transition: `opacity ${FADE_OUT_MS}ms ease-out`,
       }}
-      aria-label="Intro Label Maison Conciergerie — cliquez pour passer"
+      aria-label="Intro Label Maison Conciergerie, cliquez pour passer"
     >
       <div style={{ width: 'min(86vmin, 920px)', aspectRatio: '1 / 1' }}>
         <AnimatedLogo />

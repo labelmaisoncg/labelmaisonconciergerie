@@ -185,7 +185,7 @@ function LeadFormSection() {
                     defaultValue=""
                     className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
                   >
-                    <option value="" disabled>— Choisissez —</option>
+                    <option value="" disabled>Choisissez</option>
                     <option>Studio</option>
                     <option>1 chambre</option>
                     <option>2 chambres</option>
@@ -250,7 +250,7 @@ const benefits = [
   {
     emoji: '🤍',
     title: 'Confidentialité absolue',
-    text: "Votre vie privée et la protection de vos actifs sont notre priorité. Chaque intervention — gestion, voyage, acquisition — est menée avec la plus grande discrétion.",
+    text: "Votre vie privée et la protection de vos actifs sont notre priorité. Chaque intervention (gestion, voyage, acquisition) est menée avec la plus grande discrétion.",
   },
   {
     emoji: '🕐',
@@ -303,7 +303,7 @@ function ResultsSection() {
             <div className="p-3 md:p-4 bg-zinc-50">
               <img
                 src="/images/img-proprietaire-decembre.png"
-                alt="Revenus Airbnb décembre 2025 — 6 359,32 €"
+                alt="Revenus Airbnb décembre 2025 : 6 359,32 €"
                 className="w-full h-auto rounded-lg"
                 loading="lazy"
               />
@@ -333,7 +333,7 @@ function ResultsSection() {
             <div className="p-3 md:p-4 bg-zinc-50">
               <img
                 src="/images/img-proprietaire-janvier.png"
-                alt="Revenus Airbnb janvier 2026 — 8 782 € prévus"
+                alt="Revenus Airbnb janvier 2026 : 8 782 € prévus"
                 className="w-full h-auto rounded-lg"
                 loading="lazy"
               />
@@ -1003,8 +1003,8 @@ function AboutSection() {
             </p>
             <p>
               Nous accompagnons propriétaires, investisseurs et <strong className="font-bold">clients privés</strong> avec une approche globale :
-              stratégie, exécution et suivi permanent. De la gestion locative clé en main aux <strong className="font-bold">services premium</strong> —
-              transport privé, billetterie, activités exclusives, personal shopping — chaque détail est maîtrisé,
+              stratégie, exécution et suivi permanent. De la gestion locative clé en main aux <strong className="font-bold">services premium</strong>
+              (transport privé, billetterie, activités exclusives, personal shopping), chaque détail est maîtrisé,
               chaque attente anticipée.
             </p>
             <p>
@@ -1550,7 +1550,7 @@ function ProofSection() {
                 Ils nous font confiance
               </h3>
               <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700 leading-relaxed">
-                Propriétaires & voyageurs nous écrivent au quotidien — chaque message
+                Propriétaires & voyageurs nous écrivent au quotidien. Chaque message
                 provient d'un client réel pris en charge par Label Maison Conciergerie.
               </p>
             </div>
@@ -1563,7 +1563,7 @@ function ProofSection() {
                 count={videos.length}
                 cardWidth={260}
                 loop
-                ariaLabel="Coulisses Label Maison — faites glisser pour explorer"
+                ariaLabel="Coulisses Label Maison, faites glisser pour explorer"
                 renderCard={({ index, isCenter }) => {
                   const item = videos[index];
                   return (
@@ -1583,7 +1583,7 @@ function ProofSection() {
               </h3>
               <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700 leading-relaxed">
                 Reels Instagram, vidéos TikTok et podcasts YouTube : le quotidien terrain
-                de l'équipe et nos conseils en gestion locative — lecture directe depuis
+                de l'équipe et nos conseils en gestion locative, lecture directe depuis
                 le site.
               </p>
             </div>
@@ -1650,7 +1650,7 @@ function ContactSection() {
                     defaultValue=""
                     className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
                   >
-                    <option value="" disabled>— Choisissez —</option>
+                    <option value="" disabled>Choisissez</option>
                     <option>Studio</option>
                     <option>1 chambre</option>
                     <option>2 chambres</option>
