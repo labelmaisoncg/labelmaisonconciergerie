@@ -222,6 +222,66 @@
       "destination": "/pourquoi-conciergerie-airbnb.html"
     },
     {
+      "source": "/arpajon",
+      "destination": "/conciergerie-airbnb-arpajon.html"
+    },
+    {
+      "source": "/athis-mons",
+      "destination": "/conciergerie-airbnb-athis-mons.html"
+    },
+    {
+      "source": "/bretigny-sur-orge",
+      "destination": "/conciergerie-airbnb-bretigny-sur-orge.html"
+    },
+    {
+      "source": "/brunoy",
+      "destination": "/conciergerie-airbnb-brunoy.html"
+    },
+    {
+      "source": "/corbeil-essonnes",
+      "destination": "/conciergerie-airbnb-corbeil-essonnes.html"
+    },
+    {
+      "source": "/essonne",
+      "destination": "/conciergerie-airbnb-essonne.html"
+    },
+    {
+      "source": "/evry-courcouronnes",
+      "destination": "/conciergerie-airbnb-evry-courcouronnes.html"
+    },
+    {
+      "source": "/ile-de-france",
+      "destination": "/conciergerie-airbnb-ile-de-france.html"
+    },
+    {
+      "source": "/juvisy-sur-orge",
+      "destination": "/conciergerie-airbnb-juvisy-sur-orge.html"
+    },
+    {
+      "source": "/longjumeau",
+      "destination": "/conciergerie-airbnb-longjumeau.html"
+    },
+    {
+      "source": "/massy",
+      "destination": "/conciergerie-airbnb-massy.html"
+    },
+    {
+      "source": "/montgeron",
+      "destination": "/conciergerie-airbnb-montgeron.html"
+    },
+    {
+      "source": "/palaiseau",
+      "destination": "/conciergerie-airbnb-palaiseau.html"
+    },
+    {
+      "source": "/viry-chatillon",
+      "destination": "/conciergerie-airbnb-viry-chatillon.html"
+    },
+    {
+      "source": "/yerres",
+      "destination": "/conciergerie-airbnb-yerres.html"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
