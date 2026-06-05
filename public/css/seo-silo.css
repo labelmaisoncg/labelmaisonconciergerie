@@ -1,0 +1,192 @@
+/* ==========================================================================
+   LabelMaison — Silo SEO Airbnb Essonne
+   Feuille de style alignée sur la charte du site (labelmaisoncg.fr)
+   Police : Figtree (texte/titres) + Playfair Display italic (accent)
+   Couleurs : vert olive #556B2F · noir #0a0a0a · blanc — (sans doré)
+   ========================================================================== */
+
+:root{
+  --green:#556B2F;
+  --green-d:#3d4d22;
+  --green-l:#6B8E3A;
+  --ink:#0a0a0a;
+  --muted:#6b6b6b;
+  --line:rgba(10,10,10,.10);
+  --surface:#f4f4f5;   /* zinc-100, comme le site */
+  --white:#fff;
+  --radius:.625rem;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;overflow-x:hidden}
+body{
+  margin:0;
+  font-family:'Figtree',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  color:var(--ink);
+  background:var(--white);
+  line-height:1.7;
+  font-size:17px;
+  -webkit-font-smoothing:antialiased;
+}
+
+h1,h2,h3,h4{font-family:'Figtree',sans-serif;font-weight:700;line-height:1.2;color:var(--ink)}
+h1{font-size:2.35rem;margin:0 0 .6rem}
+h2{font-size:1.7rem;margin:2.4rem 0 1rem}
+h3{font-size:1.18rem;margin:1.4rem 0 .5rem}
+p{margin:0 0 1rem}
+a{color:var(--green-d)}
+strong{font-weight:700}
+
+.font-serif-italic{font-family:'Playfair Display',Georgia,serif;font-style:italic;font-weight:700}
+.wrap{max-width:1120px;margin:0 auto;padding:0 22px}
+.muted{color:var(--muted)}
+.lead{font-size:1.16rem;color:var(--muted)}
+
+/* ---------- Boutons (pills, façon site) ---------- */
+.btn{
+  display:inline-block;background:var(--green);color:#fff;text-decoration:none;
+  padding:13px 24px;border-radius:999px;font-weight:700;font-size:.95rem;
+  border:0;cursor:pointer;transition:.15s;text-align:center;line-height:1.1;
+}
+.btn:hover{background:var(--green-d)}
+/* l'ancien bouton "gold" devient le CTA noir de la charte (fort contraste sur fond vert) */
+.btn.gold{background:var(--ink);color:#fff}
+.btn.gold:hover{background:#333}
+.btn.ghost{background:transparent;border:1.6px solid var(--green);color:var(--green-d)}
+.btn.ghost:hover{background:var(--green);color:#fff}
+
+/* ---------- Header ---------- */
+header.top{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px solid var(--line)}
+header.top.scrolled,header.top{box-shadow:0 1px 0 rgba(0,0,0,.02)}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:10px 22px;max-width:1120px;margin:0 auto}
+.brand{display:inline-flex;align-items:center}
+.brand img{height:56px;width:auto;object-fit:contain;display:block}
+.topnav{display:flex;align-items:center;gap:24px}
+.topnav a.lnk{text-decoration:none;color:#404040;font-size:15px;font-weight:500}
+.topnav a.lnk:hover{color:var(--green)}
+.phone{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:#fff;text-decoration:none;font-weight:700;font-size:14px;padding:11px 20px;border-radius:999px;white-space:nowrap;transition:.15s}
+.phone:hover{background:#404040}
+@media(max-width:820px){.topnav a.lnk{display:none}.brand img{height:48px}}
+
+/* ---------- Hero ---------- */
+.hero{background:linear-gradient(135deg,#2f3b1d 0%,#556B2F 60%,#6B8E3A 100%);color:#fff;padding:64px 0 56px}
+.hero h1{color:#fff;max-width:20ch}
+.hero p.sub{font-size:1.18rem;max-width:60ch;color:#eef2e3;margin-bottom:1.6rem}
+.hero .cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:1.8rem}
+.badges{display:flex;gap:10px;flex-wrap:wrap}
+.badge{background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.28);padding:8px 14px;border-radius:999px;font-size:.86rem;color:#fff}
+.badge b{color:#dcebbf;color:#e3efca;font-weight:800}
+
+/* ---------- Sections génériques ---------- */
+section{padding:6px 0}
+.grid{display:grid;gap:18px}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:820px){.g3,.g2{grid-template-columns:1fr}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:22px}
+.card h3{margin-top:.2rem}
+.ico{width:44px;height:44px;border-radius:10px;background:var(--green);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.2rem;margin-bottom:8px}
+
+/* ---------- Étapes ---------- */
+.steps{counter-reset:s;display:grid;gap:16px;grid-template-columns:repeat(4,1fr)}
+@media(max-width:820px){.steps{grid-template-columns:1fr}}
+.step{position:relative;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px 16px 16px}
+.step::before{counter-increment:s;content:counter(s);position:absolute;top:-14px;left:16px;width:30px;height:30px;background:var(--green);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800}
+.step h3{font-size:1.02rem;margin:.5rem 0 .2rem}
+
+/* ---------- Calculateur ---------- */
+.calc{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:26px}
+.calc .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:680px){.calc .row{grid-template-columns:1fr}}
+.field label{display:block;font-weight:600;font-size:.9rem;margin-bottom:6px}
+.field select,.field input{width:100%;padding:12px;border:1px solid #d4d4d8;border-radius:10px;font-size:1rem;background:#fff;font-family:inherit}
+.calcout{margin-top:18px;background:var(--green);color:#fff;border-radius:14px;padding:22px;display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:680px){.calcout{grid-template-columns:1fr}}
+.calcout .big{font-size:1.9rem;font-weight:800;color:#fff}
+.calcout .gold{color:#e3efca}
+.disc{font-size:.8rem;color:var(--muted);margin-top:10px}
+
+/* ---------- Zones / villes ---------- */
+.zones{display:flex;flex-wrap:wrap;gap:10px}
+.zones a,.zones span{display:inline-block;padding:9px 16px;border-radius:999px;text-decoration:none;font-size:.93rem;border:1px solid var(--line)}
+.zones a{background:#fff;color:var(--green-d)}
+.zones a:hover{background:var(--green);color:#fff;border-color:var(--green)}
+.zones span{background:var(--surface);color:var(--muted)}
+
+/* ---------- Citations / avis ---------- */
+.quote{background:var(--surface);border-left:4px solid var(--green);border-radius:12px;padding:18px 20px}
+.quote .stars{color:var(--green);letter-spacing:2px}
+.quote cite{display:block;margin-top:8px;font-style:normal;font-weight:600;font-size:.9rem}
+
+/* ---------- FAQ ---------- */
+details{border:1px solid var(--line);border-radius:12px;padding:0;margin-bottom:10px;background:#fff;overflow:hidden}
+details summary{cursor:pointer;padding:16px 18px;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:12px}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";color:var(--green);font-size:1.4rem;line-height:1}
+details[open] summary::after{content:"–"}
+details .ans{padding:0 18px 16px;color:var(--muted)}
+
+/* ---------- Bande CTA ---------- */
+.band{background:linear-gradient(135deg,#3d4d22,#556B2F);color:#fff;border-radius:18px;padding:34px;margin:22px 0}
+.band h2{color:#fff;margin-top:0}
+.band a.btn.gold{margin-right:8px}
+
+/* ---------- Formulaire ---------- */
+.formcard{background:#fff;border:1px solid var(--line);border-radius:16px;padding:24px}
+.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:680px){.formgrid{grid-template-columns:1fr}}
+.formgrid .full{grid-column:1/-1}
+.formcard label{font-weight:600;font-size:.88rem;display:block;margin-bottom:5px}
+.formcard input,.formcard select,.formcard textarea{width:100%;padding:12px;border:1px solid #d4d4d8;border-radius:10px;font-size:1rem;font-family:inherit}
+
+/* ---------- Articles / blog ---------- */
+.crumb{font-size:.82rem;color:var(--muted);padding:16px 0 0}
+.crumb a{color:var(--muted)}
+.article{max-width:760px;margin:0 auto;padding:6px 22px 10px}
+.catpill{display:inline-block;background:var(--surface);color:var(--green-d);border:1px solid var(--line);padding:5px 14px;border-radius:999px;font-size:.78rem;font-weight:700;margin-bottom:10px}
+.artmeta{color:var(--muted);font-size:.88rem;margin:0 0 14px;border-bottom:1px solid var(--line);padding-bottom:14px}
+.article p,.article li{font-size:1.06rem}
+.article ul{padding-left:1.2rem}
+.article li{margin-bottom:.4rem}
+.tip{background:var(--surface);border-left:4px solid var(--green);border-radius:12px;padding:14px 18px;margin:18px 0}
+table.cmp{width:100%;border-collapse:collapse;margin:16px 0;font-size:.98rem}
+table.cmp th,table.cmp td{border:1px solid var(--line);padding:10px 12px;text-align:left;vertical-align:top}
+table.cmp th{background:var(--green);color:#fff}
+table.cmp tr:nth-child(even) td{background:var(--surface)}
+.related{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin:24px 0}
+.related h3{margin:.1rem 0 .6rem}
+.related a{display:block;padding:6px 0;text-decoration:none;border-bottom:1px solid var(--line)}
+.related a:last-child{border-bottom:0}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:18px;margin-top:18px}
+@media(max-width:740px){.cards{grid-template-columns:1fr}}
+.pcard{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+.pcard .body{padding:16px}
+.pcard .cat{font-size:.74rem;color:var(--green);font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+.pcard h3{margin:.3rem 0 .4rem;font-size:1.12rem}
+.pcard h3 a{text-decoration:none;color:var(--ink)}
+.pcard p{color:var(--muted);font-size:.95rem;margin:0 0 12px}
+.pcard .more{margin-top:auto;font-weight:700;font-size:.9rem}
+
+/* ---------- Footer (clair, façon site) ---------- */
+footer{background:var(--surface);color:#404040;margin-top:60px;padding:56px 0 28px;font-size:.95rem}
+footer a{color:#404040;text-decoration:none}
+footer a:hover{color:var(--green)}
+.fbrand img{height:84px;width:auto;object-fit:contain;margin-bottom:14px}
+.ftag{font-size:1.35rem;font-weight:700;line-height:1.25;max-width:24ch;color:var(--ink)}
+.ftag .font-serif-italic{color:var(--green)}
+.fcols{display:grid;grid-template-columns:1.6fr 1fr 1fr;gap:30px}
+@media(max-width:760px){.fcols{grid-template-columns:1fr}}
+.fcols h4{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin:0 0 14px}
+.fcols ul{list-style:none;padding:0;margin:0}
+.fcols li{margin-bottom:10px}
+.fbot{border-top:1px solid var(--line);margin-top:30px;padding-top:18px;color:var(--muted);font-size:.84rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px}
+
+/* ---------- CTA mobile collant ---------- */
+.mobcta{position:fixed;bottom:0;left:0;right:0;z-index:50;display:none;gap:8px;padding:10px;background:#fff;border-top:1px solid var(--line);box-shadow:0 -4px 14px rgba(0,0,0,.06)}
+.mobcta a{flex:1;text-align:center}
+@media(max-width:760px){.mobcta{display:flex}body{padding-bottom:72px}}
+
+@media(max-width:680px){
+  h1{font-size:1.95rem}
+  .hero{padding:48px 0 44px}
+}
