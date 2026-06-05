@@ -116,7 +116,7 @@ t.addEventListener('change',calc);o.addEventListener('input',calc);calc();})();
 </div>
 <div class="formcard">
 <!-- ⚠️ Remplacez l'action par votre endpoint (Formspree, Brevo, etc.) pour recevoir les leads par e-mail -->
-<form action="https://formspree.io/f/VOTRE_ID" method="POST">
+<form class="auditform" action="/api/contact" method="POST" novalidate>
 <div class="formgrid">
 <div><label>Prénom *</label><input name="prenom" required></div>
 <div><label>Téléphone *</label><input name="telephone" type="tel" required></div>
@@ -133,4 +133,4 @@ t.addEventListener('change',calc);o.addEventListener('input',calc);calc();})();
 </div>
 </div></section><footer id="contact"><div class="wrap fcols"><div class="fbrand"><img src="/images/logo-label-maison.jpg" alt="Label Maison Conciergerie"><p class="ftag">Votre conciergerie de confiance pour faire de votre logement une <span class="font-serif-italic">source de revenu passif</span>.</p><ul style="list-style:none;padding:0;margin:14px 0 0"><li>📧 <a href="mailto:labelmaisonconciergerie@gmail.com">labelmaisonconciergerie@gmail.com</a></li><li>📞 <a href="tel:+33749548355">+33 7 49 54 83 55</a></li><li>📍 Essonne &amp; Île-de-France</li></ul><div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap"><a href="https://www.instagram.com/labelmaisoncg/" target="_blank" rel="noopener">Instagram @labelmaisoncg</a><a href="https://www.tiktok.com/@labelmaison.cg" target="_blank" rel="noopener">TikTok @labelmaison.cg</a></div></div><div><h4>Conciergerie</h4><ul><li><a href="/conciergerie-airbnb-essonne.html">Conciergerie Airbnb Essonne</a></li><li><a href="/conciergerie-airbnb-ile-de-france.html">Île-de-France</a></li><li><a href="/conciergerie-airbnb-massy.html">Massy</a></li><li><a href="/conciergerie-airbnb-evry-courcouronnes.html">Évry-Courcouronnes</a></li><li><a href="/blog.html">Blog</a></li></ul></div><div><h4>Le site</h4><ul><li><a href="https://www.labelmaisoncg.fr/#services">Services</a></li><li><a href="https://www.labelmaisoncg.fr/#apropos">Qui sommes-nous&nbsp;?</a></li><li><a href="https://www.labelmaisoncg.fr/#faq">F.A.Q</a></li><li><a href="https://www.labelmaisoncg.fr/">Accueil labelmaisoncg.fr</a></li></ul></div></div><div class="wrap fbot"><span>© 2026 Label Maison Conciergerie · Tous droits réservés</span><span>Commission 10&nbsp;% · Essonne (91)</span></div></footer>
 <div class="mobcta"><a class="btn ghost" href="tel:+33749548355">Appeler</a><a class="btn" href="#audit">Audit gratuit</a></div>
-</body></html>
+<script defer src="/js/audit-form.js"></script></body></html>

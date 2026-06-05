@@ -1,12 +1,17 @@
 import { Resend } from 'resend';
 
 type Payload = {
-  type?: 'lead' | 'contact';
+  type?: 'lead' | 'contact' | 'audit';
   adresse?: string;
   chambres?: string;
   email?: string;
   tel?: string;
   message?: string;
+  // Champs additionnels du formulaire d'audit (silo SEO Airbnb Essonne)
+  prenom?: string;
+  ville?: string;
+  typeBien?: string;
+  page?: string;
 };
 
 const escapeHtml = (s: unknown): string =>
@@ -43,7 +48,8 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ ok: false, error: 'JSON invalide.' });
   }
 
-  const { type, adresse, chambres, email, tel, message } = body;
+  const { type, adresse, chambres, email, tel, message, prenom, ville, typeBien, page } =
+    body;
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res
@@ -57,36 +63,52 @@ export default async function handler(req: any, res: any) {
     'Label Maison Conciergerie <onboarding@resend.dev>';
 
   const isLead = type === 'lead';
-  const subject = isLead
-    ? `[Lead] Nouveau prospect — ${adresse || email}`
-    : `[Contact] Nouveau message — ${adresse || email}`;
+  const isAudit = type === 'audit';
+  const heading = isAudit
+    ? 'Nouvelle demande d’audit'
+    : isLead
+      ? 'Nouveau prospect'
+      : 'Nouveau message contact';
+  const subject = isAudit
+    ? `[Audit] Demande — ${ville || page || prenom || email}`
+    : isLead
+      ? `[Lead] Nouveau prospect — ${adresse || email}`
+      : `[Contact] Nouveau message — ${adresse || email}`;
 
   const html = `<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f5;padding:24px;margin:0">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,.06)">
     <div style="background:#556B2F;color:#fff;padding:20px 24px">
       <p style="margin:0;font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.85">Label Maison Conciergerie</p>
-      <h1 style="margin:6px 0 0;font-size:20px">${escapeHtml(isLead ? 'Nouveau prospect' : 'Nouveau message contact')}</h1>
+      <h1 style="margin:6px 0 0;font-size:20px">${escapeHtml(heading)}</h1>
     </div>
     <table style="width:100%;border-collapse:collapse;margin:16px 0">
-      ${row('Type', isLead ? 'Lead (page d’accueil)' : 'Formulaire contact')}
+      ${row('Type', isAudit ? 'Demande d’audit (silo Airbnb)' : isLead ? 'Lead (page d’accueil)' : 'Formulaire contact')}
+      ${row('Prénom', prenom)}
+      ${row('Ville du bien', ville)}
+      ${row('Type de bien', typeBien)}
       ${row('Adresse du bien', adresse)}
       ${row('Chambres', chambres)}
       ${row('Email', email)}
       ${row('Téléphone', tel)}
       ${row('Message', message)}
+      ${row('Page source', page)}
     </table>
     <p style="padding:16px 24px;margin:0;color:#6b6b6b;font-size:12px;border-top:1px solid rgba(0,0,0,.06)">Reçu via labelmaisoncgexperience.fr — répondre directement à cet e-mail revient au prospect.</p>
   </div>
 </body></html>`;
 
   const text = [
-    isLead ? 'Nouveau prospect (lead)' : 'Nouveau message contact',
+    heading,
     '',
+    prenom && `Prénom : ${prenom}`,
+    ville && `Ville du bien : ${ville}`,
+    typeBien && `Type de bien : ${typeBien}`,
     adresse && `Adresse du bien : ${adresse}`,
     chambres && `Chambres : ${chambres}`,
     `Email : ${email}`,
     tel && `Téléphone : ${tel}`,
+    page && `Page source : ${page}`,
     message && `\nMessage :\n${message}`,
   ]
     .filter(Boolean)
