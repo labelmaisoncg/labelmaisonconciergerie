@@ -1,0 +1,72 @@
+====================================================================
+ LabelMaison — Site « Conciergerie Airbnb Essonne »
+ PAQUET PRÊT À METTRE EN LIGNE
+====================================================================
+
+CE QUE CONTIENT CE DOSSIER
+--------------------------------------------------------------------
+/public/        -> Tous les fichiers du site à mettre en ligne :
+                   - conciergerie-airbnb-essonne.html  (page principale)
+                   - conciergerie-airbnb-ile-de-france.html
+                   - 13 pages villes (conciergerie-airbnb-<ville>.html)
+                   - blog.html + 8 articles
+                   - sitemap.xml et robots.txt
+/ressources/    -> schemas-organization-review.html
+                   (code JSON-LD Organization + avis à coller, optionnel)
+A_LIRE_DEPLOIEMENT.txt -> ce fichier
+
+--------------------------------------------------------------------
+MISE EN LIGNE — OPTION A : VERCEL (recommandé, votre cas)
+--------------------------------------------------------------------
+1. Ouvrez le code de votre site (le projet Vite déployé sur Vercel).
+2. Copiez TOUT le contenu du dossier /public/ de ce paquet dans le
+   dossier "public/" de votre projet (créez-le s'il n'existe pas).
+   -> Avec Vite, tout ce qui est dans public/ est servi à la racine
+      du site, AVANT l'application React : aucun conflit.
+3. Enregistrez, puis : git add . && git commit -m "Ajout silo Airbnb Essonne" && git push
+   (ou lancez : vercel --prod)
+   Vercel redéploie automatiquement.
+4. Vérifiez dans le navigateur :
+   https://www.labelmaisoncg.fr/conciergerie-airbnb-essonne.html
+5. Dans Google Search Console, soumettez le sitemap :
+   https://www.labelmaisoncg.fr/sitemap.xml
+
+--------------------------------------------------------------------
+MISE EN LIGNE — OPTION B : autre hébergement / FTP
+--------------------------------------------------------------------
+Téléversez simplement les fichiers du dossier /public/ à la racine
+de votre site (même niveau que la page d'accueil).
+
+--------------------------------------------------------------------
+À PERSONNALISER AVANT (ou juste après) LA MISE EN LIGNE
+--------------------------------------------------------------------
+1. FORMULAIRE : dans chaque page, le formulaire d'audit pointe vers
+   "https://formspree.io/f/VOTRE_ID". Créez un compte (Formspree,
+   Brevo, etc.) et remplacez VOTRE_ID par votre identifiant pour
+   recevoir les demandes par e-mail. (Sinon, les boutons téléphone et
+   WhatsApp fonctionnent déjà.)
+2. SCHÉMAS : dans /ressources/schemas-organization-review.html,
+   renseignez SIREN, adresse, et vos VRAIS avis Google (note + nombre)
+   puis collez les blocs dans les pages (voir commentaires du fichier).
+   ⚠️ N'inventez jamais d'avis : Google sanctionne.
+3. IMAGES SOCIALES : ajoutez une image "og-<nom-de-page>.jpg" et un
+   "logo.png" à la racine (aperçu lors des partages réseaux sociaux).
+4. SOUS-DOMAINE : si vous publiez ailleurs que sur labelmaisoncg.fr,
+   remplacez l'URL de base dans les balises <link rel="canonical">,
+   "og:url" et dans sitemap.xml.
+
+--------------------------------------------------------------------
+OPTION : URL SANS .html (plus propre)
+--------------------------------------------------------------------
+Sur Vercel, ajoutez à votre fichier vercel.json :
+   { "cleanUrls": true }
+Les pages seront alors accessibles sans .html
+(ex. /conciergerie-airbnb-massy). Pensez à mettre à jour les
+balises canonical en conséquence si vous activez cette option.
+
+--------------------------------------------------------------------
+CONTACT INTÉGRÉ AUX PAGES
+--------------------------------------------------------------------
+Téléphone : +33 7 49 54 83 55   |   E-mail : labelmaisonconciergerie@gmail.com
+Commission affichée : 10 %       |   Instagram/TikTok : @labelmaisoncg
+====================================================================

@@ -1,0 +1,129 @@
+<!-- =====================================================================
+   LabelMaison — Données structurées JSON-LD (Étape 8 — compléments)
+   À ajouter en plus des schémas déjà intégrés aux pages du silo
+   (LocalBusiness, Service, FAQPage, BreadcrumbList sont déjà en place).
+
+   ⚠️ RÈGLE GOOGLE : n'indiquez JAMAIS de note ou d'avis inventés.
+   Renseignez "ratingValue" / "reviewCount" uniquement avec vos VRAIS
+   chiffres Google. Les avis affichés en JSON-LD doivent exister réellement
+   et être visibles sur le site (sinon risque de pénalité / non-affichage).
+
+   Remplacez tous les champs [À COMPLÉTER].
+   ===================================================================== -->
+
+
+<!-- ---------------------------------------------------------------------
+   1) ORGANIZATION  →  à placer sur TOUTES les pages (idéalement dans le
+   <head>, une seule fois par page). Identité de marque pour Google.
+---------------------------------------------------------------------- -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://www.labelmaisoncg.fr/#organization",
+  "name": "LabelMaison Conciergerie",
+  "legalName": "[À COMPLÉTER — raison sociale]",
+  "url": "https://www.labelmaisoncg.fr/",
+  "logo": "https://www.labelmaisoncg.fr/logo.png",
+  "image": "https://www.labelmaisoncg.fr/og-conciergerie-airbnb-essonne.jpg",
+  "description": "Conciergerie Airbnb et gestion de location courte durée en Essonne (91) et en Île-de-France. Gestion 100% déléguée, commission de 10%.",
+  "email": "labelmaisonconciergerie@gmail.com",
+  "telephone": "+33 7 49 54 83 55",
+  "foundingDate": "[À COMPLÉTER — ex. 2023]",
+  "vatID": "[À COMPLÉTER — n° TVA si applicable]",
+  "taxID": "[À COMPLÉTER — SIREN/SIRET]",
+  "address": {
+    "@type": "PostalAddress",
+    "streetAddress": "[À COMPLÉTER — adresse]",
+    "addressLocality": "[À COMPLÉTER — ville]",
+    "postalCode": "[À COMPLÉTER — code postal]",
+    "addressRegion": "Île-de-France",
+    "addressCountry": "FR"
+  },
+  "areaServed": [
+    { "@type": "AdministrativeArea", "name": "Essonne (91)" },
+    { "@type": "AdministrativeArea", "name": "Île-de-France" }
+  ],
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "telephone": "+33 7 49 54 83 55",
+    "contactType": "customer service",
+    "areaServed": "FR",
+    "availableLanguage": ["French"]
+  },
+  "sameAs": [
+    "https://www.instagram.com/labelmaisoncg/",
+    "https://www.tiktok.com/@labelmaisoncg",
+    "[À COMPLÉTER — URL fiche Google Business]",
+    "[À COMPLÉTER — Facebook]",
+    "[À COMPLÉTER — LinkedIn]"
+  ]
+}
+</script>
+
+
+<!-- ---------------------------------------------------------------------
+   2) LOCALBUSINESS + AVIS  →  à placer sur la PAGE PRINCIPALE Essonne
+   (remplace/complète le bloc LocalBusiness déjà présent sur cette page).
+   Renseignez aggregateRating + review avec vos VRAIS avis Google.
+---------------------------------------------------------------------- -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": ["LocalBusiness", "PropertyManagementCompany"],
+  "@id": "https://www.labelmaisoncg.fr/conciergerie-airbnb-essonne.html#business",
+  "name": "LabelMaison Conciergerie",
+  "url": "https://www.labelmaisoncg.fr/conciergerie-airbnb-essonne.html",
+  "image": "https://www.labelmaisoncg.fr/og-conciergerie-airbnb-essonne.jpg",
+  "telephone": "+33 7 49 54 83 55",
+  "email": "labelmaisonconciergerie@gmail.com",
+  "priceRange": "€€",
+  "parentOrganization": { "@id": "https://www.labelmaisoncg.fr/#organization" },
+  "address": {
+    "@type": "PostalAddress",
+    "addressLocality": "Évry-Courcouronnes",
+    "postalCode": "91000",
+    "addressRegion": "Île-de-France",
+    "addressCountry": "FR"
+  },
+  "areaServed": { "@type": "AdministrativeArea", "name": "Essonne (91)" },
+  "sameAs": [
+    "https://www.instagram.com/labelmaisoncg/",
+    "https://www.tiktok.com/@labelmaisoncg"
+  ],
+
+  "aggregateRating": {
+    "@type": "AggregateRating",
+    "ratingValue": "[À COMPLÉTER — ex. 4.9]",
+    "reviewCount": "[À COMPLÉTER — nb réel d'avis]",
+    "bestRating": "5",
+    "worstRating": "1"
+  },
+
+  "review": [
+    {
+      "@type": "Review",
+      "author": { "@type": "Person", "name": "[À COMPLÉTER — prénom client]" },
+      "datePublished": "[AAAA-MM-JJ]",
+      "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+      "reviewBody": "[À COMPLÉTER — texte de l'avis Google réel]"
+    },
+    {
+      "@type": "Review",
+      "author": { "@type": "Person", "name": "[À COMPLÉTER]" },
+      "datePublished": "[AAAA-MM-JJ]",
+      "reviewRating": { "@type": "Rating", "ratingValue": "5", "bestRating": "5" },
+      "reviewBody": "[À COMPLÉTER — avis réel]"
+    }
+  ]
+}
+</script>
+
+
+<!-- ---------------------------------------------------------------------
+   VÉRIFICATION
+   • Testez chaque page sur https://search.google.com/test/rich-results
+   • Et sur https://validator.schema.org/
+   • Objectif : 0 erreur, et obtention des extraits "FAQ" + (si avis réels)
+     des étoiles d'avis dans les résultats.
+---------------------------------------------------------------------- -->
