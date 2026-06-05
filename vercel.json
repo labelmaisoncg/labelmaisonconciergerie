@@ -2,8 +2,228 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/airbnb-evry-guide-proprietaire.html",
+      "destination": "/airbnb-evry-guide-proprietaire",
+      "permanent": true
+    },
+    {
+      "source": "/airbnb-massy-rentabilite-2026.html",
+      "destination": "/airbnb-massy-rentabilite-2026",
+      "permanent": true
+    },
+    {
+      "source": "/blog.html",
+      "destination": "/blog",
+      "permanent": true
+    },
+    {
+      "source": "/combien-rapporte-airbnb-91.html",
+      "destination": "/combien-rapporte-airbnb-91",
+      "permanent": true
+    },
+    {
+      "source": "/comment-rentabiliser-airbnb-essonne.html",
+      "destination": "/comment-rentabiliser-airbnb-essonne",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-arpajon.html",
+      "destination": "/conciergerie-airbnb-arpajon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-athis-mons.html",
+      "destination": "/conciergerie-airbnb-athis-mons",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-bretigny-sur-orge.html",
+      "destination": "/conciergerie-airbnb-bretigny-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-brunoy.html",
+      "destination": "/conciergerie-airbnb-brunoy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-corbeil-essonnes.html",
+      "destination": "/conciergerie-airbnb-corbeil-essonnes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-essonne.html",
+      "destination": "/conciergerie-airbnb-essonne",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-evry-courcouronnes.html",
+      "destination": "/conciergerie-airbnb-evry-courcouronnes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-ile-de-france.html",
+      "destination": "/conciergerie-airbnb-ile-de-france",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-juvisy-sur-orge.html",
+      "destination": "/conciergerie-airbnb-juvisy-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-longjumeau.html",
+      "destination": "/conciergerie-airbnb-longjumeau",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-massy.html",
+      "destination": "/conciergerie-airbnb-massy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-montgeron.html",
+      "destination": "/conciergerie-airbnb-montgeron",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-palaiseau.html",
+      "destination": "/conciergerie-airbnb-palaiseau",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-viry-chatillon.html",
+      "destination": "/conciergerie-airbnb-viry-chatillon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-yerres.html",
+      "destination": "/conciergerie-airbnb-yerres",
+      "permanent": true
+    },
+    {
+      "source": "/erreurs-proprietaires-airbnb.html",
+      "destination": "/erreurs-proprietaires-airbnb",
+      "permanent": true
+    },
+    {
+      "source": "/fiscalite-airbnb-ile-de-france.html",
+      "destination": "/fiscalite-airbnb-ile-de-france",
+      "permanent": true
+    },
+    {
+      "source": "/gestion-airbnb-ou-gestion-classique.html",
+      "destination": "/gestion-airbnb-ou-gestion-classique",
+      "permanent": true
+    },
+    {
+      "source": "/pourquoi-conciergerie-airbnb.html",
+      "destination": "/pourquoi-conciergerie-airbnb",
+      "permanent": true
+    }
+  ],
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/airbnb-evry-guide-proprietaire",
+      "destination": "/airbnb-evry-guide-proprietaire.html"
+    },
+    {
+      "source": "/airbnb-massy-rentabilite-2026",
+      "destination": "/airbnb-massy-rentabilite-2026.html"
+    },
+    {
+      "source": "/blog",
+      "destination": "/blog.html"
+    },
+    {
+      "source": "/combien-rapporte-airbnb-91",
+      "destination": "/combien-rapporte-airbnb-91.html"
+    },
+    {
+      "source": "/comment-rentabiliser-airbnb-essonne",
+      "destination": "/comment-rentabiliser-airbnb-essonne.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-arpajon",
+      "destination": "/conciergerie-airbnb-arpajon.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-athis-mons",
+      "destination": "/conciergerie-airbnb-athis-mons.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-bretigny-sur-orge",
+      "destination": "/conciergerie-airbnb-bretigny-sur-orge.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-brunoy",
+      "destination": "/conciergerie-airbnb-brunoy.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-corbeil-essonnes",
+      "destination": "/conciergerie-airbnb-corbeil-essonnes.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-essonne",
+      "destination": "/conciergerie-airbnb-essonne.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-evry-courcouronnes",
+      "destination": "/conciergerie-airbnb-evry-courcouronnes.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-ile-de-france",
+      "destination": "/conciergerie-airbnb-ile-de-france.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-juvisy-sur-orge",
+      "destination": "/conciergerie-airbnb-juvisy-sur-orge.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-longjumeau",
+      "destination": "/conciergerie-airbnb-longjumeau.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-massy",
+      "destination": "/conciergerie-airbnb-massy.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-montgeron",
+      "destination": "/conciergerie-airbnb-montgeron.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-palaiseau",
+      "destination": "/conciergerie-airbnb-palaiseau.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-viry-chatillon",
+      "destination": "/conciergerie-airbnb-viry-chatillon.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-yerres",
+      "destination": "/conciergerie-airbnb-yerres.html"
+    },
+    {
+      "source": "/erreurs-proprietaires-airbnb",
+      "destination": "/erreurs-proprietaires-airbnb.html"
+    },
+    {
+      "source": "/fiscalite-airbnb-ile-de-france",
+      "destination": "/fiscalite-airbnb-ile-de-france.html"
+    },
+    {
+      "source": "/gestion-airbnb-ou-gestion-classique",
+      "destination": "/gestion-airbnb-ou-gestion-classique.html"
+    },
+    {
+      "source": "/pourquoi-conciergerie-airbnb",
+      "destination": "/pourquoi-conciergerie-airbnb.html"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
   ]
 }
