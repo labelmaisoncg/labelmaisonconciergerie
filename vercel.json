@@ -122,6 +122,11 @@
       "source": "/pourquoi-conciergerie-airbnb.html",
       "destination": "/pourquoi-conciergerie-airbnb",
       "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-sens.html",
+      "destination": "/conciergerie-airbnb-sens",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -280,6 +285,14 @@
     {
       "source": "/yerres",
       "destination": "/conciergerie-airbnb-yerres.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-sens",
+      "destination": "/conciergerie-airbnb-sens.html"
+    },
+    {
+      "source": "/sens",
+      "destination": "/conciergerie-airbnb-sens.html"
     },
     {
       "source": "/((?!api/).*)",
