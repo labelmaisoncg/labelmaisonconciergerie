@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Menu, X, Phone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLocation } from 'react-router-dom';
+import { BrandLogo } from './BrandLogo';
 
 const navLinks = [
   { hash: 'services', label: 'Services' },
@@ -33,18 +34,14 @@ export function Navigation() {
   return (
     <header
       className={`fixed top-0 left-0 right-0 z-50 bg-white transition-shadow ${
-        scrolled ? 'shadow-[0_4px_24px_rgba(0,0,0,0.06)]' : 'shadow-none'
+        scrolled ? 'shadow-[0_4px_24px_rgba(64,49,24,0.07)]' : 'shadow-none'
       }`}
     >
       {/* Desktop */}
       <div className="hidden md:block">
         <div className="max-w-[1152px] mx-auto px-6 min-h-[90px] grid grid-cols-[auto_1fr_auto] items-center gap-8">
           <a href="/" className="flex items-center" aria-label="Label Maison Conciergerie - Accueil">
-            <img
-              src="/images/logo-label-maison.jpg"
-              alt="Label Maison Conciergerie"
-              className="h-16 w-auto object-contain"
-            />
+            <BrandLogo layout="stacked" size={14} />
           </a>
 
           <nav className="flex items-center justify-center gap-7 text-[15px] font-medium">
@@ -52,7 +49,7 @@ export function Navigation() {
               <a
                 key={l.hash}
                 href={anchorHref(l.hash)}
-                className="text-neutral-700 hover:text-[#556B2F] transition-colors"
+                className="text-neutral-700 hover:text-[#A97C30] transition-colors"
               >
                 {l.label}
               </a>
@@ -62,7 +59,7 @@ export function Navigation() {
           <a
             href={PHONE_HREF}
             aria-label={`Appeler ${PHONE_DISPLAY}`}
-            className="inline-flex items-center gap-2 bg-black text-white font-bold text-[14px] px-5 py-3 rounded-full hover:bg-neutral-700 transition-colors"
+            className="inline-flex items-center gap-2 bg-[#403118] text-white font-bold text-[14px] px-5 py-3 rounded-full hover:bg-[#2C2418] transition-colors"
           >
             <Phone size={16} />
             {PHONE_DISPLAY}
@@ -74,18 +71,14 @@ export function Navigation() {
       <div className="md:hidden">
         <div className="px-4 min-h-[70px] flex items-center justify-between">
           <a href="/" className="flex items-center" aria-label="Label Maison Conciergerie - Accueil">
-            <img
-              src="/images/logo-label-maison.jpg"
-              alt="Label Maison Conciergerie"
-              className="h-14 w-auto object-contain"
-            />
+            <BrandLogo layout="stacked" size={11} />
           </a>
 
           <div className="flex items-center gap-2">
             <a
               href={PHONE_HREF}
               aria-label={`Appeler ${PHONE_DISPLAY}`}
-              className="inline-flex items-center justify-center bg-black text-white font-bold text-[12px] sm:text-[13px] px-3.5 sm:px-4 h-11 rounded-full hover:bg-neutral-700 whitespace-nowrap"
+              className="inline-flex items-center justify-center bg-[#403118] text-white font-bold text-[12px] sm:text-[13px] px-3.5 sm:px-4 h-11 rounded-full hover:bg-[#2C2418] whitespace-nowrap"
             >
               {PHONE_DISPLAY}
             </a>
@@ -115,7 +108,7 @@ export function Navigation() {
                     <a
                       href={anchorHref(l.hash)}
                       onClick={() => setOpen(false)}
-                      className="block py-3 text-[15px] font-medium text-neutral-800 hover:text-[#556B2F]"
+                      className="block py-3 text-[15px] font-medium text-neutral-800 hover:text-[#A97C30]"
                     >
                       {l.label}
                     </a>

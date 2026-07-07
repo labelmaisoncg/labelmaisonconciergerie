@@ -61,7 +61,7 @@
 }
 
 .scroller:focus-visible {
-  outline: 2px solid #556b2f;
+  outline: 2px solid #A97C30;
   outline-offset: 4px;
   border-radius: 16px;
 }
@@ -90,7 +90,7 @@
   border-radius: 9999px;
   font-size: 12px;
   font-weight: 600;
-  color: #3d4d22;
+  color: #7C561D;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
   pointer-events: none;
   z-index: 2;
@@ -127,7 +127,7 @@
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  background: #556b2f;
+  background: #A97C30;
   color: white;
   padding: 0.55rem 1.1rem;
   border-radius: 9999px;
@@ -136,7 +136,7 @@
   pointer-events: none;
   z-index: 2;
   white-space: nowrap;
-  box-shadow: 0 8px 24px rgba(85, 107, 47, 0.35);
+  box-shadow: 0 8px 24px rgba(169,124,48, 0.35);
   animation: hint-bounce 2s ease-in-out;
   animation-iteration-count: 3;
   transition: opacity 0.3s ease-out;

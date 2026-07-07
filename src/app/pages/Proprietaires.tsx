@@ -97,16 +97,16 @@ export function Proprietaires() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
           >
-            <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
+            <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
               Décembre 2025
             </p>
             <h3 className="mt-2 text-[36px] md:text-[52px] font-bold leading-[1.05]">
-              <span className="font-serif-italic font-bold text-[#556B2F]">6 359,32 €</span>
+              <span className="font-serif-italic font-bold text-[#A97C30]">6 359,32 €</span>
               <br />en un seul mois
             </h3>
             <p className="mt-4 text-[16px] md:text-[18px] text-neutral-700 leading-relaxed">
               Un seul bien géré en location courte durée,{' '}
-              <span className="text-[#556B2F] font-semibold">plus de 6 000 € de revenus nets</span>{' '}
+              <span className="text-[#A97C30] font-semibold">plus de 6 000 € de revenus nets</span>{' '}
               générés en décembre 2025. Une performance mesurée et reproductible.
             </p>
             <ul className="mt-6 space-y-3">
@@ -116,7 +116,7 @@ export function Proprietaires() {
                 { strong: 'Gestion complète incluse', text: ' : Vous ne touchez à rien, nous gérons tout' },
               ].map((item) => (
                 <li key={item.strong} className="flex items-start gap-3">
-                  <span className="w-2 h-2 mt-2.5 rounded-full bg-[#556B2F] shrink-0" />
+                  <span className="w-2 h-2 mt-2.5 rounded-full bg-[#A97C30] shrink-0" />
                   <p className="text-[15px] text-neutral-800">
                     <span className="font-semibold">{item.strong}</span>
                     {item.text}
@@ -132,8 +132,8 @@ export function Proprietaires() {
             viewport={{ once: true }}
             className="relative"
           >
-            <div className="absolute -inset-4 bg-gradient-to-br from-[#556B2F]/15 to-transparent blur-2xl" />
-            <div className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.12)] overflow-hidden border border-black/5">
+            <div className="absolute -inset-4 bg-gradient-to-br from-[#A97C30]/15 to-transparent blur-2xl" />
+            <div className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_20px_60px_rgba(64,49,24,0.11)] overflow-hidden border border-black/5">
               <img
                 src="/images/img-proprietaire-decembre.png"
                 alt="Revenus Airbnb décembre 2025 : 6 359,32 €"
@@ -141,7 +141,7 @@ export function Proprietaires() {
                 loading="lazy"
               />
             </div>
-            <div className="absolute -bottom-3 -right-3 bg-[#556B2F] text-white px-5 py-3 rounded-xl shadow-xl">
+            <div className="absolute -bottom-3 -right-3 bg-[#A97C30] text-white px-5 py-3 rounded-xl shadow-xl">
               <p className="text-[10px] tracking-widest uppercase opacity-90">Décembre 2025</p>
               <p className="text-[18px] font-bold">Un seul bien</p>
             </div>
@@ -158,9 +158,9 @@ export function Proprietaires() {
             viewport={{ once: true }}
             className="relative order-2 lg:order-1 space-y-6"
           >
-            <div className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.12)] border border-black/5 p-6 md:p-8">
+            <div className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_20px_60px_rgba(64,49,24,0.11)] border border-black/5 p-6 md:p-8">
               <div className="border-b border-black/10 pb-4">
-                <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
+                <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
                   Janvier 2026 (en cours)
                 </p>
                 <p className="mt-1 text-2xl md:text-3xl font-bold">Suivi en temps réel</p>
@@ -170,9 +170,9 @@ export function Proprietaires() {
                   <span className="text-neutral-700">Déjà encaissé</span>
                   <span className="text-2xl font-bold text-emerald-600">1 456 €</span>
                 </div>
-                <div className="flex items-center justify-between p-4 bg-[#556B2F]/10 border-l-4 border-[#556B2F] rounded-r-lg">
+                <div className="flex items-center justify-between p-4 bg-[#A97C30]/10 border-l-4 border-[#A97C30] rounded-r-lg">
                   <span className="text-neutral-700">Réservations confirmées</span>
-                  <span className="text-2xl font-bold text-[#556B2F]">7 326 €</span>
+                  <span className="text-2xl font-bold text-[#A97C30]">7 326 €</span>
                 </div>
                 <div className="flex items-center justify-between p-4 bg-amber-50 border-l-4 border-amber-500 rounded-r-lg mt-4 pt-5 border-t border-black/10">
                   <span className="font-semibold text-neutral-900">Total prévu janvier</span>
@@ -181,7 +181,7 @@ export function Proprietaires() {
               </div>
             </div>
 
-            <div className="relative bg-white rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.12)] overflow-hidden border border-black/5">
+            <div className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_20px_60px_rgba(64,49,24,0.11)] overflow-hidden border border-black/5">
               <img
                 src="/images/img-proprietaire-janvier.png"
                 alt="Revenus Airbnb janvier 2026 : 8 782 € prévus"
@@ -197,16 +197,16 @@ export function Proprietaires() {
             viewport={{ once: true }}
             className="order-1 lg:order-2"
           >
-            <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
+            <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
               Janvier 2026
             </p>
             <h3 className="mt-2 text-[36px] md:text-[52px] font-bold leading-[1.05]">
-              <span className="font-serif-italic font-bold text-[#556B2F]">8 782 €</span>
+              <span className="font-serif-italic font-bold text-[#A97C30]">8 782 €</span>
               <br />prévus ce mois-ci
             </h3>
             <p className="mt-4 text-[16px] md:text-[18px] text-neutral-700 leading-relaxed">
               La performance se mesure dans la durée. Janvier 2026 confirme notre approche :{' '}
-              <span className="text-[#556B2F] font-semibold">
+              <span className="text-[#A97C30] font-semibold">
                 1 456 € déjà encaissés, 7 326 € en réservations confirmées
               </span>
               .
@@ -216,7 +216,7 @@ export function Proprietaires() {
               mais sur une méthode éprouvée : tarification intelligente, taux d'occupation optimal,
               et gestion opérationnelle irréprochable. Vous profitez, nous gérons.
             </p>
-            <div className="mt-6 bg-zinc-50 p-5 border-l-4 border-[#556B2F] rounded-r-xl">
+            <div className="mt-6 bg-[#F3EEE3] p-5 border-l-4 border-[#A97C30] rounded-r-xl">
               <p className="text-neutral-800 italic">
                 « La constance des performances, mois après mois, différencie une gestion amateur d'un service professionnel. »
               </p>

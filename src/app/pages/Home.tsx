@@ -24,6 +24,13 @@ import {
   Zap,
   Cpu,
   ClipboardCheck,
+  Lock,
+  Clock,
+  Award,
+  TrendingUp,
+  ShieldCheck,
+  Feather,
+  type LucideIcon,
 } from 'lucide-react';
 import { ImageWithFallback } from '../components/figma/ImageWithFallback';
 import { DragCarousel } from '../components/drag-carousel/DragCarousel';
@@ -58,7 +65,10 @@ async function submitContactForm(
 // =============================================================================
 function HeroSection() {
   return (
-    <section className="relative bg-zinc-100 overflow-hidden">
+    <section
+      className="relative overflow-hidden"
+      style={{ background: 'radial-gradient(130% 90% at 50% 0%, #FDFCF9 0%, #F9F7F1 62%, #F4EFE6 100%)' }}
+    >
       <div className="max-w-[1336px] mx-auto px-6 md:px-12 pt-[120px] md:pt-[160px] pb-12 md:pb-0 flex flex-col md:flex-row gap-10 items-stretch">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -66,13 +76,13 @@ function HeroSection() {
           transition={{ duration: 0.6 }}
           className="relative z-20 flex flex-col items-center md:items-start text-center md:text-left gap-6 md:w-3/5 md:pr-12 md:pb-[120px]"
         >
-          <span className="inline-flex items-center gap-2 bg-black/10 px-4 py-1.5 rounded-full text-[13px] font-medium">
-            <MapPin size={14} /> Paris · International
+          <span className="inline-flex items-center gap-2 bg-white border border-[#E2D7BD] text-[#403118] px-4 py-1.5 rounded-full text-[13px] font-medium">
+            <MapPin size={14} className="text-[#A97C30]" /> Paris · International
           </span>
 
           <h1 className="text-[34px] md:text-[48px] leading-[1.05] font-bold tracking-tight">
             Conciergerie privée haut de gamme :{' '}
-            <span className="font-serif-italic font-bold text-[#556B2F]">services sur mesure</span>{' '}
+            <span className="font-serif-italic font-bold text-[#A97C30]">services sur mesure</span>{' '}
             pour une clientèle d'exception
           </h1>
 
@@ -85,13 +95,13 @@ function HeroSection() {
           <div className="flex flex-row gap-3 w-full sm:w-auto">
             <a
               href="#contact"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 sm:py-4 rounded-full hover:bg-neutral-700 transition-colors whitespace-nowrap"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 sm:py-4 rounded-full hover:bg-[#2C2418] transition-colors whitespace-nowrap"
             >
               Contacter <ArrowRight size={16} className="shrink-0" />
             </a>
             <a
               href="#services"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-black/10 text-neutral-900 font-bold text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 sm:py-4 rounded-full hover:bg-black/15 transition-colors whitespace-nowrap"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-transparent border border-[#403118]/20 text-[#403118] font-bold text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 sm:py-4 rounded-full hover:border-[#A97C30] hover:text-[#7C561D] transition-colors whitespace-nowrap"
             >
               Services <ArrowDown size={16} className="shrink-0" />
             </a>
@@ -139,7 +149,7 @@ function LeadFormSection() {
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.5 }}
-          className="bg-white rounded-2xl shadow-[0_40px_100px_rgba(14,6,53,0.1)] p-3 md:flex md:items-stretch md:gap-3 md:max-w-[900px] md:mx-auto"
+          className="bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_40px_100px_rgba(14,6,53,0.1)] p-3 md:flex md:items-stretch md:gap-3 md:max-w-[900px] md:mx-auto"
         >
           <div
             className="relative md:w-5/12 min-h-[220px] md:min-h-[420px] rounded-xl overflow-hidden bg-cover bg-center"
@@ -152,7 +162,7 @@ function LeadFormSection() {
           <div className="md:w-7/12 p-4 md:p-6">
             <h2 className="text-[24px] md:text-[32px] leading-tight font-bold">
               Découvrez notre solution de conciergerie{' '}
-              <span className="font-serif-italic font-bold text-[#556B2F]">conçue pour vous&nbsp;!</span>
+              <span className="font-serif-italic font-bold text-[#A97C30]">conçue pour vous&nbsp;!</span>
             </h2>
             <p className="mt-3 text-[15px] text-neutral-700">
               Avec nous, un appartement de 2 chambres à Paris peut vous faire gagner{' '}
@@ -160,7 +170,7 @@ function LeadFormSection() {
             </p>
 
             {submitted ? (
-              <div className="mt-5 flex items-start gap-3 bg-[#556B2F]/10 text-[#3d4d22] rounded-lg p-4">
+              <div className="mt-5 flex items-start gap-3 bg-[#A97C30]/10 text-[#7C561D] rounded-lg p-4">
                 <CheckCircle2 size={20} className="shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Merci !</p>
@@ -175,7 +185,7 @@ function LeadFormSection() {
                     name="adresse"
                     required
                     placeholder="Adresse du bien"
-                    className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                    className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                   />
                 </Field>
                 <Field label="Nombre de chambres">
@@ -183,7 +193,7 @@ function LeadFormSection() {
                     name="chambres"
                     required
                     defaultValue=""
-                    className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                    className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                   >
                     <option value="" disabled>Choisissez</option>
                     <option>Studio</option>
@@ -200,7 +210,7 @@ function LeadFormSection() {
                       name="email"
                       required
                       placeholder="adresse@email.com"
-                      className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                      className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                     />
                   </Field>
                   <Field label="Téléphone">
@@ -208,7 +218,7 @@ function LeadFormSection() {
                       type="tel"
                       name="tel"
                       placeholder="+33 6 12 34 56 78"
-                      className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                      className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                     />
                   </Field>
                 </div>
@@ -218,7 +228,7 @@ function LeadFormSection() {
                 <button
                   type="submit"
                   disabled={sending}
-                  className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-neutral-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-[#2C2418] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {sending ? 'Envoi…' : 'Prendre contact'} <Send size={14} />
                 </button>
@@ -246,19 +256,19 @@ function Field({ label, required, children }: { label: string; required?: boolea
 // =============================================================================
 // BENEFITS
 // =============================================================================
-const benefits = [
+const benefits: { icon: LucideIcon; title: string; text: string }[] = [
   {
-    emoji: '🤍',
+    icon: Lock,
     title: 'Confidentialité absolue',
     text: "Votre vie privée et la protection de vos actifs sont notre priorité. Chaque intervention (gestion, voyage, acquisition) est menée avec la plus grande discrétion.",
   },
   {
-    emoji: '🕐',
+    icon: Clock,
     title: 'Disponibilité 24/7',
     text: "Où que vous soyez, à tout moment, notre équipe dédiée est à votre écoute pour répondre à vos demandes : urgence, dernière minute, demande sur mesure.",
   },
   {
-    emoji: '🏆',
+    icon: Award,
     title: 'Excellence opérationnelle',
     text: "Un savoir-faire reconnu, un réseau mondial de partenaires sélectionnés et une exigence sans faille pour chaque prestation, du standard premium au sur-mesure exclusif.",
   },
@@ -269,11 +279,11 @@ const benefits = [
 // =============================================================================
 function ResultsSection() {
   return (
-    <section className="py-[60px] md:py-[100px] bg-zinc-50">
+    <section className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Performance mesurée"
-          title={<>Des résultats <em className="font-serif-italic font-bold text-[#556B2F] not-italic">concrets</em>, mois après mois</>}
+          title={<>Des résultats <em className="font-serif-italic font-bold text-[#A97C30] not-italic">concrets</em>, mois après mois</>}
         />
         <p className="mt-4 max-w-2xl text-[15px] md:text-[16px] text-neutral-700">
           Nos chiffres ne sont pas des promesses, ce sont des preuves. Voici les revenus
@@ -285,14 +295,14 @@ function ResultsSection() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
-            className="relative bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.08)] overflow-hidden"
+            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_8px_40px_rgba(64,49,24,0.09)] overflow-hidden"
           >
             <div className="p-6 md:p-7 border-b border-black/5">
-              <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
+              <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
                 Décembre 2025
               </p>
               <h3 className="mt-2 text-[28px] md:text-[34px] font-bold leading-tight">
-                <span className="font-serif-italic font-bold text-[#556B2F]">6 359,32 €</span>
+                <span className="font-serif-italic font-bold text-[#A97C30]">6 359,32 €</span>
                 <br />en un seul mois
               </h3>
               <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700">
@@ -300,7 +310,7 @@ function ResultsSection() {
                 nets générés en un mois.
               </p>
             </div>
-            <div className="p-3 md:p-4 bg-zinc-50">
+            <div className="p-3 md:p-4 bg-[#F7F4EE]">
               <img
                 src="/images/img-proprietaire-decembre.png"
                 alt="Revenus Airbnb décembre 2025 : 6 359,32 €"
@@ -315,14 +325,14 @@ function ResultsSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ delay: 0.1 }}
-            className="relative bg-white rounded-2xl shadow-[0_8px_40px_rgba(0,0,0,0.08)] overflow-hidden"
+            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_8px_40px_rgba(64,49,24,0.09)] overflow-hidden"
           >
             <div className="p-6 md:p-7 border-b border-black/5">
-              <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
+              <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
                 Janvier 2026
               </p>
               <h3 className="mt-2 text-[28px] md:text-[34px] font-bold leading-tight">
-                <span className="font-serif-italic font-bold text-[#556B2F]">8 782 €</span>
+                <span className="font-serif-italic font-bold text-[#A97C30]">8 782 €</span>
                 <br />prévus ce mois-ci
               </h3>
               <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700">
@@ -330,7 +340,7 @@ function ResultsSection() {
                 La performance se confirme dans la durée.
               </p>
             </div>
-            <div className="p-3 md:p-4 bg-zinc-50">
+            <div className="p-3 md:p-4 bg-[#F7F4EE]">
               <img
                 src="/images/img-proprietaire-janvier.png"
                 alt="Revenus Airbnb janvier 2026 : 8 782 € prévus"
@@ -351,7 +361,7 @@ function BenefitsSection() {
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nos engagements"
-          title={<>Pourquoi nous confier vos{' '}<em className="font-serif-italic font-bold text-[#556B2F] not-italic">demandes les plus exigeantes</em></>}
+          title={<>Pourquoi nous confier vos{' '}<em className="font-serif-italic font-bold text-[#A97C30] not-italic">demandes les plus exigeantes</em></>}
         />
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -362,11 +372,11 @@ function BenefitsSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.2 }}
               transition={{ delay: i * 0.08 }}
-              className="bg-white rounded-2xl p-6 md:p-8 shadow-[0_8px_40px_rgba(0,0,0,0.08)] hover:shadow-[0_16px_60px_rgba(0,0,0,0.12)] transition-shadow duration-300 flex flex-col gap-4"
+              className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-8 shadow-[0_8px_40px_rgba(64,49,24,0.09)] hover:shadow-[0_16px_60px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col gap-4"
             >
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#556B2F]/10 text-[#556B2F] text-xl shrink-0">
-                  {b.emoji}
+                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#A97C30]/10 text-[#A97C30] shrink-0">
+                  <b.icon size={20} strokeWidth={1.6} />
                 </div>
                 <span className="text-lg font-semibold text-gray-900">{b.title}</span>
               </div>
@@ -439,13 +449,13 @@ function ServicesSection() {
   return (
     <section id="services" className="relative py-[60px] md:py-[100px] overflow-hidden">
       {/* Decorative ellipses */}
-      <div className="pointer-events-none absolute -top-32 -left-24 w-[500px] h-[500px] rounded-full bg-[#556B2F]/10 blur-3xl" />
+      <div className="pointer-events-none absolute -top-32 -left-24 w-[500px] h-[500px] rounded-full bg-[#A97C30]/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-32 -right-24 w-[500px] h-[500px] rounded-full bg-amber-100/40 blur-3xl" />
 
       <div className="relative max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nos services"
-          title={<>Six expertises pour un service{' '}<em className="font-serif-italic font-bold text-[#556B2F] not-italic">d'exception</em></>}
+          title={<>Six expertises pour un service{' '}<em className="font-serif-italic font-bold text-[#A97C30] not-italic">d'exception</em></>}
         />
         <p className="mt-4 max-w-2xl text-[15px] md:text-[16px] text-neutral-700">
           De la gestion de votre patrimoine à l'organisation de vos expériences les plus exclusives,
@@ -463,7 +473,7 @@ function ServicesSection() {
             >
               <Link
                 to={s.href}
-                className="group relative bg-white rounded-2xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_40px_rgba(0,0,0,0.12)] transition-shadow duration-300 flex flex-col cursor-pointer h-full"
+                className="group relative bg-white rounded-2xl border border-[#ECE3D0] overflow-hidden shadow-[0_4px_24px_rgba(64,49,24,0.08)] hover:shadow-[0_8px_40px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col cursor-pointer h-full"
               >
                 <div className="relative h-48 md:h-52 overflow-hidden">
                   <ImageWithFallback
@@ -472,10 +482,10 @@ function ServicesSection() {
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                  <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#556B2F] flex items-center justify-center shadow-lg">
+                  <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#A97C30] flex items-center justify-center shadow-lg">
                     <s.icon size={20} />
                   </div>
-                  <span className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-[1px] text-[#556B2F] px-2.5 py-1 rounded-full">
+                  <span className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-[1px] text-[#A97C30] px-2.5 py-1 rounded-full">
                     {s.eyebrow}
                   </span>
                 </div>
@@ -485,7 +495,7 @@ function ServicesSection() {
                   </h3>
                   <p className="text-[14px] md:text-[15px] leading-relaxed text-gray-600">{s.text}</p>
                   <div className="mt-auto pt-3">
-                    <span className="inline-flex items-center gap-1.5 text-[#556B2F] text-[13px] font-semibold group-hover:gap-2.5 transition-all">
+                    <span className="inline-flex items-center gap-1.5 text-[#A97C30] text-[13px] font-semibold group-hover:gap-2.5 transition-all">
                       En savoir plus <ArrowRight size={14} />
                     </span>
                   </div>
@@ -501,7 +511,7 @@ function ServicesSection() {
           </p>
           <a
             href="#contact"
-            className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3 rounded-full hover:bg-neutral-700"
+            className="inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] px-6 py-3 rounded-full hover:bg-[#2C2418]"
           >
             Nous contacter <ArrowRight size={14} />
           </a>
@@ -544,11 +554,11 @@ const steps = [
 
 function ProcessSection() {
   return (
-    <section id="process" className="py-[60px] md:py-[100px] bg-zinc-50">
+    <section id="process" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Comment ça marche ?"
-          title={<>Notre <em className="font-serif-italic font-bold text-[#556B2F] not-italic">process</em></>}
+          title={<>Notre <em className="font-serif-italic font-bold text-[#A97C30] not-italic">process</em></>}
         />
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-[1fr_1.2fr] gap-10 md:gap-16 items-start">
@@ -556,14 +566,14 @@ function ProcessSection() {
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
-            className="relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#556B2F]/10"
+            className="relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#A97C30]/10"
           >
             <ImageWithFallback
               src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
               alt="Notre process"
               className="w-full h-full object-cover"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#3d4d22]/40 to-transparent" />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#7C561D]/40 to-transparent" />
             <div className="absolute bottom-6 left-6 right-6 text-white">
               <p className="text-[12px] font-semibold uppercase tracking-[2px] opacity-80">Notre engagement</p>
               <p className="text-[20px] md:text-[22px] font-bold leading-tight mt-1">
@@ -573,7 +583,7 @@ function ProcessSection() {
           </motion.div>
 
           <ol className="relative space-y-6 md:space-y-7">
-            <span className="absolute left-[19px] top-2 bottom-2 w-px bg-[#556B2F]/30 hidden md:block" />
+            <span className="absolute left-[19px] top-2 bottom-2 w-px bg-[#A97C30]/30 hidden md:block" />
             {steps.map((s, i) => (
               <motion.li
                 key={s.n}
@@ -583,7 +593,7 @@ function ProcessSection() {
                 transition={{ delay: i * 0.06 }}
                 className="relative flex items-start gap-4 md:gap-5"
               >
-                <span className="relative z-10 shrink-0 w-10 h-10 rounded-full bg-[#556B2F] text-white flex items-center justify-center font-bold text-[14px]">
+                <span className="relative z-10 shrink-0 w-10 h-10 rounded-full bg-[#A97C30] text-white flex items-center justify-center font-bold text-[14px]">
                   {s.n}
                 </span>
                 <div>
@@ -606,10 +616,10 @@ function CleaningPartnerSection() {
   return (
     <section className="py-[60px] md:py-[100px]">
       <div className="max-w-[1152px] mx-auto px-6">
-        <div className="relative bg-gray-900 text-white rounded-[28px] overflow-hidden p-8 md:p-12 lg:p-16">
+        <div className="relative bg-[#403118] text-white rounded-[28px] overflow-hidden p-8 md:p-12 lg:p-16">
           {/* Decorative accents */}
-          <div className="pointer-events-none absolute -top-32 -right-32 w-[400px] h-[400px] rounded-full bg-[#556B2F]/30 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-32 -left-32 w-[400px] h-[400px] rounded-full bg-[#a3c47a]/15 blur-3xl" />
+          <div className="pointer-events-none absolute -top-32 -right-32 w-[400px] h-[400px] rounded-full bg-[#A97C30]/30 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-32 -left-32 w-[400px] h-[400px] rounded-full bg-[#D5C69F]/15 blur-3xl" />
 
           <div className="relative grid grid-cols-1 md:grid-cols-[1.2fr_1fr] gap-10 md:gap-14 items-center">
             <div>
@@ -619,13 +629,13 @@ function CleaningPartnerSection() {
 
               <h2 className="mt-5 text-[28px] md:text-[40px] font-bold leading-[1.05]">
                 Un ménage{' '}
-                <span className="font-serif-italic font-bold text-[#a3c47a]">automatisé</span>
+                <span className="font-serif-italic font-bold text-[#D5C69F]">automatisé</span>
                 {' '}et piloté par{' '}
                 <a
                   href="https://bnbcleaning.fr"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-serif-italic font-bold text-[#a3c47a] underline decoration-[#a3c47a]/40 underline-offset-4 hover:decoration-[#a3c47a]"
+                  className="font-serif-italic font-bold text-[#D5C69F] underline decoration-[#D5C69F]/40 underline-offset-4 hover:decoration-[#D5C69F]"
                 >
                   bnbcleaning.fr
                 </a>
@@ -647,7 +657,7 @@ function CleaningPartnerSection() {
                   { icon: CheckCircle2, label: 'Linge hôtelier renouvelé à chaque rotation' },
                 ].map((f) => (
                   <li key={f.label} className="flex items-start gap-3 text-[14px] md:text-[15px] text-white/85">
-                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#556B2F]/30 text-[#a3c47a] shrink-0">
+                    <span className="flex items-center justify-center w-7 h-7 rounded-lg bg-[#A97C30]/30 text-[#D5C69F] shrink-0">
                       <f.icon size={14} />
                     </span>
                     {f.label}
@@ -659,7 +669,7 @@ function CleaningPartnerSection() {
                 href="https://bnbcleaning.fr"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-8 inline-flex items-center gap-2 bg-white text-gray-900 font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-[#a3c47a] transition-colors"
+                className="mt-8 inline-flex items-center gap-2 bg-white text-gray-900 font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-[#D5C69F] transition-colors"
               >
                 Découvrir bnbcleaning.fr <ArrowRight size={16} />
               </a>
@@ -681,7 +691,7 @@ function CleaningPartnerSection() {
                 />
                 {/* Color grade overlay matching brand */}
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-900/30 via-transparent to-gray-900/60" />
-                <div className="absolute inset-0 bg-[#556B2F]/10 mix-blend-multiply" />
+                <div className="absolute inset-0 bg-[#A97C30]/10 mix-blend-multiply" />
 
                 {/* TOP-LEFT — agent en mission */}
                 <motion.div
@@ -692,7 +702,7 @@ function CleaningPartnerSection() {
                   className="absolute top-4 left-4 bg-white/90 backdrop-blur-md rounded-2xl px-3 py-2 shadow-lg flex items-center gap-2.5 max-w-[200px]"
                 >
                   <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#556B2F] to-[#3d4d22] flex items-center justify-center text-white text-[13px] font-bold">
+                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#A97C30] to-[#7C561D] flex items-center justify-center text-white text-[13px] font-bold">
                       SR
                     </div>
                     <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
@@ -716,7 +726,7 @@ function CleaningPartnerSection() {
                   className="absolute inset-x-4 bottom-4 bg-white/95 backdrop-blur-xl rounded-2xl p-4 md:p-5 shadow-2xl"
                 >
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#556B2F]">
+                    <span className="text-[10px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
                       Tableau de bord · cette semaine
                     </span>
                     <span className="text-[10px] text-gray-400">bnbcleaning.fr</span>
@@ -732,7 +742,7 @@ function CleaningPartnerSection() {
                       <p className="text-[22px] md:text-[26px] font-bold text-gray-900 leading-none">4.9</p>
                       <div className="flex items-center gap-0.5 mt-1">
                         {[...Array(5)].map((_, i) => (
-                          <Star key={i} size={8} className="fill-[#556B2F] text-[#556B2F]" />
+                          <Star key={i} size={8} className="fill-[#A97C30] text-[#A97C30]" />
                         ))}
                       </div>
                     </div>
@@ -754,7 +764,7 @@ function CleaningPartnerSection() {
                 whileInView={{ opacity: 1, scale: 1 }}
                 viewport={{ once: true }}
                 transition={{ delay: 0.7, type: 'spring', stiffness: 200 }}
-                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#556B2F] flex items-center justify-center shadow-xl ring-4 ring-gray-900"
+                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#A97C30] flex items-center justify-center shadow-xl ring-4 ring-gray-900"
               >
                 <CheckCircle2 size={26} className="text-white" strokeWidth={2.5} />
               </motion.div>
@@ -807,14 +817,14 @@ const faqs = [
 function FaqSection() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="py-[60px] md:py-[100px] bg-zinc-50">
+    <section id="faq" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6 grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-10 md:gap-16 items-start">
         <div className="md:sticky md:top-28">
-          <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
+          <span className="inline-flex items-center bg-[#A97C30]/15 text-[#7C561D] text-[13px] font-semibold px-4 py-1.5 rounded-full">
             FAQ
           </span>
           <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05]">
-            Vous avez des <span className="font-serif-italic font-bold text-[#556B2F]">questions&nbsp;?</span>
+            Vous avez des <span className="font-serif-italic font-bold text-[#A97C30]">questions&nbsp;?</span>
           </h2>
           <p className="mt-4 text-[15px] text-neutral-700 leading-relaxed">
             Confier sa gestion patrimoniale ou ses expériences premium soulève des questions légitimes.
@@ -822,7 +832,7 @@ function FaqSection() {
           </p>
           <a
             href="#contact"
-            className="mt-6 inline-flex items-center gap-2 bg-[#556B2F] text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-[#3d4d22]"
+            className="mt-6 inline-flex items-center gap-2 bg-gradient-to-r from-[#A97C30] to-[#7C561D] text-white font-bold text-[14px] px-6 py-3.5 rounded-full shadow-[0_6px_20px_rgba(124,86,29,0.28)] hover:to-[#5C4A26] transition-all"
           >
             Nous contacter <ArrowRight size={14} />
           </a>
@@ -835,7 +845,7 @@ function FaqSection() {
               <li
                 key={f.q}
                 className={`rounded-xl border transition-colors ${
-                  isOpen ? 'bg-white border-[#556B2F]/30' : 'bg-white border-black/5 hover:border-black/10'
+                  isOpen ? 'bg-white border-[#A97C30]/30' : 'bg-white border-black/5 hover:border-black/10'
                 }`}
               >
                 <button
@@ -847,7 +857,7 @@ function FaqSection() {
                   <span className="font-semibold text-[16px] md:text-[17px]">{f.q}</span>
                   <ChevronDown
                     size={20}
-                    className={`shrink-0 text-[#556B2F] transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                    className={`shrink-0 text-[#A97C30] transition-transform ${isOpen ? 'rotate-180' : ''}`}
                   />
                 </button>
                 {isOpen && (
@@ -868,7 +878,7 @@ function FaqSection() {
 // VALUES
 // =============================================================================
 type ValueItem = {
-  emoji: string;
+  icon: LucideIcon;
   title: string;
   description?: string;
   highlight?: string;
@@ -877,18 +887,18 @@ type ValueItem = {
 
 const values: ValueItem[] = [
   {
-    emoji: '⏱',
+    icon: Clock,
     title: 'Temps',
     description: "Gagnez du temps, laissez votre conciergerie s'occuper de tout.",
   },
   {
-    emoji: '📈',
+    icon: TrendingUp,
     title: 'Rentabilité',
     description: 'Une conciergerie peut augmenter la rentabilité de votre location de',
     highlight: '15 à 40 %',
   },
   {
-    emoji: '🛡',
+    icon: ShieldCheck,
     title: 'Fiabilité',
     list: [
       'Un service sûr et toujours au rendez-vous.',
@@ -897,7 +907,7 @@ const values: ValueItem[] = [
     ],
   },
   {
-    emoji: '🌿',
+    icon: Feather,
     title: 'Sérénité',
     list: [
       'Libérez-vous des contraintes et profitez pleinement.',
@@ -913,7 +923,7 @@ function ValuesSection() {
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nos valeurs"
-          title={<>Pourquoi nous <em className="font-serif-italic font-bold text-[#556B2F] not-italic">choisir&nbsp;?</em></>}
+          title={<>Pourquoi nous <em className="font-serif-italic font-bold text-[#A97C30] not-italic">choisir&nbsp;?</em></>}
         />
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
@@ -924,11 +934,11 @@ function ValuesSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.2 }}
               transition={{ delay: i * 0.06 }}
-              className="bg-white rounded-2xl p-6 md:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_40px_rgba(0,0,0,0.12)] transition-shadow duration-300 flex flex-col gap-4"
+              className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-7 shadow-[0_4px_24px_rgba(64,49,24,0.08)] hover:shadow-[0_8px_40px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col gap-4"
             >
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#556B2F]/10 text-[#556B2F] text-xl shrink-0">
-                  {v.emoji}
+                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#A97C30]/10 text-[#A97C30] shrink-0">
+                  <v.icon size={20} strokeWidth={1.6} />
                 </div>
                 <span className="text-[16px] md:text-[18px] font-semibold text-gray-900">{v.title}</span>
               </div>
@@ -937,7 +947,7 @@ function ValuesSection() {
                   <ul className="flex flex-col gap-1.5">
                     {v.list.map((item, idx) => (
                       <li key={idx} className="flex items-start gap-2">
-                        <span className="text-[#556B2F] mt-0.5 shrink-0">✓</span>
+                        <span className="text-[#A97C30] mt-0.5 shrink-0">✓</span>
                         <span>{item}</span>
                       </li>
                     ))}
@@ -948,7 +958,7 @@ function ValuesSection() {
                     {v.highlight && (
                       <>
                         {' '}
-                        <strong className="font-bold text-[#556B2F]">{v.highlight}</strong>.
+                        <strong className="font-bold text-[#A97C30]">{v.highlight}</strong>.
                       </>
                     )}
                   </p>
@@ -967,7 +977,7 @@ function ValuesSection() {
 // =============================================================================
 function AboutSection() {
   return (
-    <section id="apropos" className="py-[60px] md:py-[100px] bg-zinc-50">
+    <section id="apropos" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -980,19 +990,19 @@ function AboutSection() {
             alt="Notre conciergerie à Paris"
             className="w-full h-full object-cover"
           />
-          <div className="absolute -bottom-3 -right-3 bg-[#556B2F] text-white px-5 py-3 rounded-xl shadow-xl">
+          <div className="absolute -bottom-3 -right-3 bg-[#A97C30] text-white px-5 py-3 rounded-xl shadow-xl">
             <p className="text-[11px] tracking-widest uppercase opacity-90">Paris · Côte d'Azur · Dubaï · Marrakech</p>
             <p className="text-[18px] font-bold">Réseau international</p>
           </div>
         </motion.div>
 
         <div>
-          <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
+          <span className="inline-flex items-center bg-[#A97C30]/15 text-[#7C561D] text-[13px] font-semibold px-4 py-1.5 rounded-full">
             Qui sommes-nous ?
           </span>
           <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05]">
             L'excellence d'une conciergerie pensée pour{' '}
-            <span className="font-serif-italic font-bold text-[#556B2F]">l'exception</span>
+            <span className="font-serif-italic font-bold text-[#A97C30]">l'exception</span>
           </h2>
 
           <div className="mt-5 space-y-4 text-[15px] md:text-[16px] text-neutral-700 leading-relaxed">
@@ -1013,8 +1023,8 @@ function AboutSection() {
             </p>
           </div>
 
-          <div className="mt-6 inline-flex items-center gap-3 bg-zinc-50 rounded-xl px-5 py-4">
-            <span className="w-10 h-10 rounded-full bg-[#556B2F]/15 text-[#556B2F] flex items-center justify-center font-bold text-[15px]">
+          <div className="mt-6 inline-flex items-center gap-3 bg-[#F7F4EE] rounded-xl px-5 py-4">
+            <span className="w-10 h-10 rounded-full bg-[#A97C30]/15 text-[#A97C30] flex items-center justify-center font-bold text-[15px]">
               24/7
             </span>
             <p className="text-[14px] text-neutral-700">
@@ -1177,7 +1187,7 @@ function PlatformBadge({ kind }: { kind: ProofItem['kind'] }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 bg-[#556B2F] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
+    <span className="inline-flex items-center gap-1 bg-[#A97C30] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
       Avis client
     </span>
   );
@@ -1218,7 +1228,7 @@ function ProofCard({ item, isCenter }: { item: ProofItem; isCenter: boolean }) {
     >
       {/* Header type "BNBCleaning ✓" */}
       <div className="flex items-center gap-2.5 px-4 pt-4 pb-3">
-        <div className="w-9 h-9 rounded-full bg-[#556B2F] text-white flex items-center justify-center text-[12px] font-bold shrink-0">
+        <div className="w-9 h-9 rounded-full bg-[#A97C30] text-white flex items-center justify-center text-[12px] font-bold shrink-0">
           LM
         </div>
         <div className="flex-1 min-w-0">
@@ -1316,7 +1326,7 @@ function ClickableCard({
       role="button"
       tabIndex={0}
       aria-label={ariaLabel}
-      className="cursor-pointer h-full outline-none focus-visible:ring-2 focus-visible:ring-[#556B2F] focus-visible:ring-offset-2 rounded-[28px]"
+      className="cursor-pointer h-full outline-none focus-visible:ring-2 focus-visible:ring-[#A97C30] focus-visible:ring-offset-2 rounded-[28px]"
       onPointerDown={(e) => {
         startRef.current = { x: e.clientX, y: e.clientY, dragged: false };
       }}
@@ -1451,7 +1461,7 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
 // Carte compacte pour la colonne verticale (screenshots clients)
 function CompactProofCard({ item }: { item: Extract<ProofItem, { kind: 'screenshot' }> }) {
   return (
-    <article className="bg-white rounded-2xl border border-black/5 overflow-hidden shadow-[0_6px_20px_rgba(10,10,10,0.06)] flex">
+    <article className="bg-white rounded-2xl border border-[#ECE3D0] border border-black/5 overflow-hidden shadow-[0_6px_20px_rgba(10,10,10,0.06)] flex">
       <div className="relative w-[120px] shrink-0 bg-neutral-50">
         <ImageWithFallback
           src={item.image}
@@ -1461,7 +1471,7 @@ function CompactProofCard({ item }: { item: Extract<ProofItem, { kind: 'screensh
       </div>
       <div className="flex-1 min-w-0 px-4 py-3.5 flex flex-col justify-between gap-2">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-[#556B2F] text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+          <div className="w-8 h-8 rounded-full bg-[#A97C30] text-white flex items-center justify-center text-[11px] font-bold shrink-0">
             LM
           </div>
           <div className="flex-1 min-w-0 leading-tight">
@@ -1473,7 +1483,7 @@ function CompactProofCard({ item }: { item: Extract<ProofItem, { kind: 'screensh
             </div>
             <span className="text-[11px] text-neutral-500 truncate block">{item.label}</span>
           </div>
-          <span className="bg-[#556B2F]/10 text-[#3d4d22] text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md shrink-0">
+          <span className="bg-[#A97C30]/10 text-[#7C561D] text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md shrink-0">
             Vérifié
           </span>
         </div>
@@ -1527,15 +1537,15 @@ function ProofSection() {
   const videos = proofs.filter((p) => p.kind !== 'screenshot');
 
   return (
-    <section className="py-[60px] md:py-[100px] bg-zinc-50">
+    <section className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <div className="text-center mb-12 md:mb-16">
-          <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
+          <span className="inline-flex items-center bg-[#A97C30]/15 text-[#7C561D] text-[13px] font-semibold px-4 py-1.5 rounded-full">
             Preuves & coulisses
           </span>
           <h2 className="mt-4 text-[30px] md:text-[44px] font-bold leading-[1.05]">
             Ils adorent,{' '}
-            <span className="font-serif-italic font-bold text-[#556B2F]">
+            <span className="font-serif-italic font-bold text-[#A97C30]">
               pourquoi pas vous&nbsp;?
             </span>
           </h2>
@@ -1615,17 +1625,17 @@ function ContactSection() {
   };
 
   return (
-    <section id="contact" className="py-[60px] md:py-[100px] bg-zinc-50">
+    <section id="contact" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nous contacter"
-          title={<>Nous <em className="font-serif-italic font-bold text-[#556B2F] not-italic">contacter</em></>}
+          title={<>Nous <em className="font-serif-italic font-bold text-[#A97C30] not-italic">contacter</em></>}
         />
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-start">
-          <div className="bg-white rounded-2xl border border-black/5 p-6 md:p-8">
+          <div className="bg-white rounded-2xl border border-[#ECE3D0] border border-black/5 p-6 md:p-8">
             {submitted ? (
-              <div className="flex items-start gap-3 bg-[#556B2F]/10 text-[#3d4d22] rounded-lg p-4">
+              <div className="flex items-start gap-3 bg-[#A97C30]/10 text-[#7C561D] rounded-lg p-4">
                 <CheckCircle2 size={20} className="shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Merci pour votre message !</p>
@@ -1640,7 +1650,7 @@ function ContactSection() {
                     name="adresse"
                     required
                     placeholder="Adresse du bien"
-                    className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                    className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                   />
                 </Field>
                 <Field label="Nombre de chambres">
@@ -1648,7 +1658,7 @@ function ContactSection() {
                     name="chambres"
                     required
                     defaultValue=""
-                    className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                    className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                   >
                     <option value="" disabled>Choisissez</option>
                     <option>Studio</option>
@@ -1665,7 +1675,7 @@ function ContactSection() {
                       name="email"
                       required
                       placeholder="adresse@email.com"
-                      className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                      className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                     />
                   </Field>
                   <Field label="Téléphone">
@@ -1673,7 +1683,7 @@ function ContactSection() {
                       type="tel"
                       name="tel"
                       placeholder="+33 6 12 34 56 78"
-                      className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F]"
+                      className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30]"
                     />
                   </Field>
                 </div>
@@ -1682,7 +1692,7 @@ function ContactSection() {
                     name="message"
                     rows={4}
                     placeholder="Parlez-nous de votre projet"
-                    className="w-full bg-zinc-100 px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#556B2F] resize-y"
+                    className="w-full bg-[#F4F1EA] px-3 py-2.5 rounded-md border-b border-neutral-300 focus:outline-none focus:border-[#A97C30] resize-y"
                   />
                 </Field>
                 {error && (
@@ -1691,7 +1701,7 @@ function ContactSection() {
                 <button
                   type="submit"
                   disabled={sending}
-                  className="inline-flex items-center justify-center gap-2 bg-black text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-neutral-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] px-6 py-3.5 rounded-full hover:bg-[#2C2418] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {sending ? 'Envoi…' : 'Prendre contact'} <Send size={14} />
                 </button>
@@ -1703,53 +1713,53 @@ function ContactSection() {
             <h3 className="text-[20px] md:text-[22px] font-bold mb-5">Coordonnées</h3>
             <ul className="space-y-4 text-[15px]">
               <li className="flex items-start gap-3">
-                <Phone size={20} className="text-[#556B2F] shrink-0 mt-0.5" />
+                <Phone size={20} className="text-[#A97C30] shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Téléphone</p>
-                  <a href={PHONE_HREF} className="text-neutral-700 hover:text-[#556B2F]">
+                  <a href={PHONE_HREF} className="text-neutral-700 hover:text-[#A97C30]">
                     {PHONE_DISPLAY}
                   </a>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <Mail size={20} className="text-[#556B2F] shrink-0 mt-0.5" />
+                <Mail size={20} className="text-[#A97C30] shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Email</p>
-                  <a href={`mailto:${EMAIL}`} className="text-neutral-700 hover:text-[#556B2F] break-all">
+                  <a href={`mailto:${EMAIL}`} className="text-neutral-700 hover:text-[#A97C30] break-all">
                     {EMAIL}
                   </a>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <Instagram size={20} className="text-[#556B2F] shrink-0 mt-0.5" />
+                <Instagram size={20} className="text-[#A97C30] shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Instagram</p>
                   <a
                     href="https://www.instagram.com/labelmaisoncg/"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-neutral-700 hover:text-[#556B2F]"
+                    className="text-neutral-700 hover:text-[#A97C30]"
                   >
                     @labelmaisoncg
                   </a>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <Music size={20} className="text-[#556B2F] shrink-0 mt-0.5" />
+                <Music size={20} className="text-[#A97C30] shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">TikTok</p>
                   <a
                     href="https://www.tiktok.com/@labelmaisoncg"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-neutral-700 hover:text-[#556B2F]"
+                    className="text-neutral-700 hover:text-[#A97C30]"
                   >
                     @labelmaisoncg
                   </a>
                 </div>
               </li>
               <li className="flex items-start gap-3">
-                <MapPin size={20} className="text-[#556B2F] shrink-0 mt-0.5" />
+                <MapPin size={20} className="text-[#A97C30] shrink-0 mt-0.5" />
                 <div>
                   <p className="font-semibold">Secteur</p>
                   <p className="text-neutral-700">Paris</p>
@@ -1784,9 +1794,10 @@ function SectionHeader({
 }) {
   return (
     <div className="text-center md:text-left">
-      <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
+      <span className="block text-[#7C561D] text-[12px] font-semibold uppercase tracking-[0.24em]">
         {eyebrow}
       </span>
+      <span className="mt-2.5 block mx-auto md:mx-0 h-px w-11 bg-gradient-to-r from-[#a8813a] to-transparent" />
       <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05] max-w-3xl">
         {title}
       </h2>
@@ -1799,7 +1810,7 @@ function SectionHeader({
 // =============================================================================
 export function Home() {
   return (
-    <div className="bg-white text-neutral-900">
+    <div className="bg-[#FBF9F4] text-[#2C2418]">
       <Helmet>
         <title>Label Maison Conciergerie · Conciergerie privée haut de gamme à Paris</title>
         <meta

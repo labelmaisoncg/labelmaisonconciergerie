@@ -63,7 +63,7 @@
       form.appendChild(el);
     }
     el.textContent = msg || '';
-    el.style.color = kind === 'ok' ? '#3d4d22' : kind === 'err' ? '#b00020' : 'inherit';
+    el.style.color = kind === 'ok' ? '#7C561D' : kind === 'err' ? '#b00020' : 'inherit';
   }
 
   document.addEventListener('DOMContentLoaded', function () {

@@ -124,9 +124,9 @@ export function Activites() {
           {steps.map((s) => (
             <li
               key={s.n}
-              className="bg-white rounded-2xl p-6 md:p-7 shadow-[0_4px_24px_rgba(0,0,0,0.07)] flex flex-col gap-3"
+              className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-7 shadow-[0_4px_24px_rgba(64,49,24,0.08)] flex flex-col gap-3"
             >
-              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#556B2F] text-white font-bold">
+              <span className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#A97C30] text-white font-bold">
                 {s.n}
               </span>
               <h3 className="text-[18px] font-semibold">{s.title}</h3>

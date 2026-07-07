@@ -78,7 +78,7 @@ export default async function handler(req: any, res: any) {
   const html = `<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f5;padding:24px;margin:0">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid rgba(0,0,0,.06)">
-    <div style="background:#556B2F;color:#fff;padding:20px 24px">
+    <div style="background:#A97C30;color:#fff;padding:20px 24px">
       <p style="margin:0;font-size:12px;letter-spacing:1px;text-transform:uppercase;opacity:.85">Label Maison Conciergerie</p>
       <h1 style="margin:6px 0 0;font-size:20px">${escapeHtml(heading)}</h1>
     </div>

@@ -28,8 +28,7 @@ export function SplashIntro() {
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    // The AnimatedLogo finishes its main reveal around 5.8s
-    // (key 0.1→3s, wordmark 3.2→4.6s, baseline ends 5.8s).
+    // L'AnimatedLogo finit sa révélation vers 5.8s (clé 0.1→3s, wordmark 3.2→4.6s, baseline ~5.8s).
     const totalAnimation = 5800;
     const fadeStart = window.setTimeout(() => setFading(true), totalAnimation + HOLD_AFTER_ANIMATION_MS);
     const unmount = window.setTimeout(() => {
@@ -62,7 +61,7 @@ export function SplashIntro() {
         position: 'fixed',
         inset: 0,
         zIndex: 9999,
-        background: '#d6dcd5',
+        background: '#EDE4CD',
         display: 'grid',
         placeItems: 'center',
         cursor: 'pointer',
@@ -86,8 +85,8 @@ export function SplashIntro() {
           top: 24,
           right: 24,
           background: 'transparent',
-          color: '#2f4a3a',
-          border: '1px solid rgba(47, 74, 58, 0.35)',
+          color: '#7C561D',
+          border: '1px solid rgba(168, 129, 58, 0.45)',
           padding: '8px 16px',
           fontSize: 11,
           fontWeight: 500,

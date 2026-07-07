@@ -30,7 +30,10 @@ export function PageHero({
   ctas?: Cta[];
 }) {
   return (
-    <section className="relative bg-zinc-100 overflow-hidden">
+    <section
+      className="relative overflow-hidden"
+      style={{ background: 'radial-gradient(130% 90% at 50% 0%, #FDFCF9 0%, #F9F7F1 62%, #F4EFE6 100%)' }}
+    >
       <div className="max-w-[1336px] mx-auto px-6 md:px-12 pt-[120px] md:pt-[160px] pb-[280px] md:pb-0 flex flex-col md:flex-row gap-10 items-stretch">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -38,13 +41,13 @@ export function PageHero({
           transition={{ duration: 0.6 }}
           className="relative z-20 flex flex-col items-center md:items-start text-center md:text-left gap-6 md:w-3/5 md:pr-12 md:pb-[120px]"
         >
-          <span className="inline-flex items-center gap-2 bg-black/10 px-4 py-1.5 rounded-full text-[13px] font-medium">
-            {badgeIcon ?? <MapPin size={14} />} {badge}
+          <span className="inline-flex items-center gap-2 bg-white border border-[#E2D7BD] text-[#403118] px-4 py-1.5 rounded-full text-[13px] font-medium">
+            {badgeIcon ?? <MapPin size={14} className="text-[#A97C30]" />} {badge}
           </span>
 
           <h1 className="text-[34px] md:text-[48px] leading-[1.05] font-bold tracking-tight">
             {titleStart && <>{titleStart} </>}
-            <span className="font-serif-italic font-bold text-[#556B2F]">{titleAccent}</span>
+            <span className="font-serif-italic font-bold text-[#A97C30]">{titleAccent}</span>
             {titleEnd && <> {titleEnd}</>}
           </h1>
 
@@ -62,8 +65,8 @@ export function PageHero({
                   rel={cta.external ? 'noopener noreferrer' : undefined}
                   className={`inline-flex items-center justify-center gap-2 font-bold text-[15px] px-7 py-4 rounded-full transition-colors ${
                     cta.primary
-                      ? 'bg-[#556B2F] text-white hover:bg-[#3d4d22]'
-                      : 'bg-black text-white hover:bg-neutral-700'
+                      ? 'bg-[#A97C30] text-white hover:bg-[#7C561D]'
+                      : 'bg-[#403118] text-white hover:bg-[#2C2418]'
                   }`}
                 >
                   {cta.label} <ArrowRight size={16} />
@@ -108,12 +111,17 @@ export function SectionHeader({
 }) {
   return (
     <div className={align === 'center' ? 'text-center mx-auto' : 'text-center md:text-left'}>
-      <span className="inline-flex items-center bg-[#556B2F]/15 text-[#3d4d22] text-[13px] font-semibold px-4 py-1.5 rounded-full">
+      <span className="block text-[#7C561D] text-[12px] font-semibold uppercase tracking-[0.24em]">
         {eyebrow}
       </span>
+      <span
+        className={`mt-2.5 block h-px w-11 bg-gradient-to-r from-[#a8813a] to-transparent ${
+          align === 'center' ? 'mx-auto' : 'mx-auto md:mx-0'
+        }`}
+      />
       <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05] max-w-3xl mx-auto md:mx-0">
         {titleStart && <>{titleStart} </>}
-        <span className="font-serif-italic font-bold text-[#556B2F]">{titleAccent}</span>
+        <span className="font-serif-italic font-bold text-[#A97C30]">{titleAccent}</span>
         {titleEnd && <> {titleEnd}</>}
       </h2>
       {subtitle && (
@@ -151,12 +159,12 @@ export function FeatureCard({
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.15 }}
-      className="group relative bg-white rounded-2xl overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.07)] hover:shadow-[0_8px_40px_rgba(0,0,0,0.12)] transition-shadow duration-300 flex flex-col"
+      className="group relative bg-white rounded-2xl border border-[#ECE3D0] overflow-hidden shadow-[0_4px_24px_rgba(64,49,24,0.08)] hover:shadow-[0_8px_40px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col"
     >
       {image && (
         <div
           className={`relative overflow-hidden ${
-            contain ? 'h-60 md:h-72 bg-zinc-100' : 'h-48 md:h-52'
+            contain ? 'h-60 md:h-72 bg-[#F4F1EA]' : 'h-48 md:h-52'
           }`}
         >
           <ImageWithFallback
@@ -172,12 +180,12 @@ export function FeatureCard({
             <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
           )}
           {icon && (
-            <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#556B2F] flex items-center justify-center shadow-lg">
+            <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#A97C30] flex items-center justify-center shadow-lg">
               {icon}
             </div>
           )}
           {badge && (
-            <span className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-[1px] text-[#556B2F] px-2.5 py-1 rounded-full">
+            <span className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-[1px] text-[#A97C30] px-2.5 py-1 rounded-full">
               {badge}
             </span>
           )}
@@ -185,7 +193,7 @@ export function FeatureCard({
       )}
       <div className="flex flex-col flex-1 p-5 md:p-6 gap-3">
         {!image && icon && (
-          <div className="w-12 h-12 rounded-xl bg-[#556B2F]/10 text-[#556B2F] flex items-center justify-center shrink-0">
+          <div className="w-12 h-12 rounded-xl bg-[#A97C30]/10 text-[#A97C30] flex items-center justify-center shrink-0">
             {icon}
           </div>
         )}
@@ -224,10 +232,10 @@ export function TestimonialCard({
       transition={{ delay: (index % 3) * 0.05 }}
       className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-6 md:p-7 hover:bg-white/10 transition-colors duration-300 flex flex-col"
     >
-      <Quote size={28} className="text-[#a3c47a] mb-3" />
+      <Quote size={28} className="text-[#D5C69F] mb-3" />
       <div className="flex gap-1 mb-3">
         {[...Array(5)].map((_, idx) => (
-          <Star key={idx} size={14} className="fill-[#a3c47a] text-[#a3c47a]" />
+          <Star key={idx} size={14} className="fill-[#D5C69F] text-[#D5C69F]" />
         ))}
       </div>
       <p className="text-[14px] md:text-[15px] text-white/85 italic leading-relaxed flex-1">
@@ -239,7 +247,7 @@ export function TestimonialCard({
           <p className="text-[12px] text-white/50">{context}</p>
         </div>
         {badge && (
-          <span className="text-[11px] font-semibold uppercase tracking-[1px] text-[#a3c47a] whitespace-nowrap">
+          <span className="text-[11px] font-semibold uppercase tracking-[1px] text-[#D5C69F] whitespace-nowrap">
             {badge}
           </span>
         )}
@@ -271,14 +279,15 @@ export function FinalCta({
   return (
     <section className="py-[60px] md:py-[100px]">
       <div className="max-w-[1152px] mx-auto px-6">
-        <div className="bg-[#556B2F] text-white rounded-2xl p-8 md:p-12 lg:p-16 flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-8">
-          <div className="md:flex-1">
+        <div className="relative overflow-hidden bg-gradient-to-br from-[#403118] to-[#2A2013] text-white rounded-2xl p-8 md:p-12 lg:p-16 flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-8">
+          <div className="pointer-events-none absolute -top-24 -right-16 w-[360px] h-[360px] rounded-full bg-[#A97C30]/20 blur-3xl" />
+          <div className="relative md:flex-1">
             <h2 className="text-[26px] md:text-[36px] font-bold leading-tight">
               {titleStart && <>{titleStart} </>}
-              <span className="font-serif-italic font-bold">{titleAccent}</span>
+              <span className="font-serif-italic font-bold text-[#D5C69F]">{titleAccent}</span>
               {titleEnd && <> {titleEnd}</>}
             </h2>
-            <p className="mt-3 text-[15px] md:text-[17px] text-white/90 max-w-2xl leading-relaxed">
+            <p className="mt-3 text-[15px] md:text-[17px] text-white/80 max-w-2xl leading-relaxed">
               {subtitle}
             </p>
           </div>
@@ -286,7 +295,7 @@ export function FinalCta({
             href={ctaHref}
             target={external ? '_blank' : undefined}
             rel={external ? 'noopener noreferrer' : undefined}
-            className="inline-flex items-center gap-2 bg-white text-[#3d4d22] font-bold text-[15px] px-7 py-4 rounded-full hover:bg-neutral-100 transition-colors whitespace-nowrap"
+            className="relative inline-flex items-center gap-2 bg-gradient-to-r from-[#C39A4A] to-[#A97C30] text-[#2A1E0C] font-bold text-[15px] px-7 py-4 rounded-full hover:to-[#C39A4A] transition-all whitespace-nowrap"
           >
             {ctaLabel} <ArrowRight size={16} />
           </a>
@@ -312,7 +321,7 @@ export function Section({
     bg === 'gradient'
       ? 'bg-gradient-to-br from-gray-50 to-gray-100'
       : bg === 'zinc'
-      ? 'bg-zinc-50'
+      ? 'bg-[#F7F4EE]'
       : '';
   return (
     <section id={id} className={`py-[60px] md:py-[100px] ${bgClass}`}>

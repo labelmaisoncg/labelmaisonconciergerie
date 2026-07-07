@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 /**
  * Animated brand logo — antique key drawn with progressive stroke + wordmark
- * letter-by-letter reveal, then subtle breathing loop. Uses the original
- * forest-green palette (#2f4a3a) from the brand identity.
+ * letter-by-letter reveal, then subtle breathing loop. Palette « Ivoire & or » :
+ * clé + filet or, « LABEL MAISON » brun, « CONCIERGERIE » or grisé, fond ivoire.
  */
 export function AnimatedLogo({
   showBaseline = true,
@@ -125,17 +125,19 @@ export function AnimatedLogo({
 
       <style>{`
         .animated-logo-stage {
-          --bg: #d6dcd5;
-          --bg-2: #cfd5cd;
-          --ink: #2f4a3a;
-          --ink-soft: #38513f;
-          --hairline: rgba(47, 74, 58, 0.35);
+          --bg: #F4ECDA;
+          --bg-2: #EADFC4;
+          --ink: #A8813A;           /* or — clé, filet, ornements */
+          --ink-soft: #8A6A28;      /* or profond — baseline */
+          --word: #3A2C15;          /* brun profond — LABEL MAISON */
+          --word-2: #9A855A;        /* or grisé — CONCIERGERIE */
+          --hairline: rgba(168, 129, 58, 0.45);
           font-family: 'Cormorant Garamond', 'Garamond', 'Times New Roman', serif;
           color: var(--ink);
           position: relative;
           width: 100%;
           aspect-ratio: 1 / 1;
-          background: radial-gradient(70% 60% at 50% 45%, #dee3dc 0%, var(--bg) 55%, var(--bg-2) 100%);
+          background: radial-gradient(70% 60% at 50% 45%, #FBF6EA 0%, var(--bg) 58%, var(--bg-2) 100%);
           border-radius: 24px;
           overflow: hidden;
           display: grid;
@@ -261,7 +263,7 @@ export function AnimatedLogo({
           font-weight: 500;
           font-size: clamp(16px, 4.2cqw, 56px);
           text-transform: uppercase;
-          color: var(--ink);
+          color: var(--word);
           user-select: none;
           margin: 0;
           width: 100%;
@@ -271,7 +273,12 @@ export function AnimatedLogo({
           display: block;
           white-space: nowrap;
         }
-        .wordmark .line + .line { margin-top: 0.18em; }
+        .wordmark .line + .line {
+          margin-top: 0.22em;
+          color: var(--word-2);
+          font-size: 0.62em;
+          letter-spacing: 0.30em;
+        }
         .wordmark .ch {
           display: inline-block;
           opacity: 0;
