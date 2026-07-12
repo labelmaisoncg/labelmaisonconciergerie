@@ -35,13 +35,15 @@ strong{font-weight:700}
 
 .wrap{max-width:1152px;margin:0 auto;padding:0 24px}
 .muted{color:var(--muted)}
-section{padding:8px 0}
+section{padding:30px 0}
+@media(min-width:768px){section{padding:60px 0}}
+.hero{padding:0}
 
 /* éléments de titre façon accueil */
-h2{font-size:30px;margin:0 0 1rem;max-width:46rem}
+h2{font-size:30px;margin:0 0 1.5rem;max-width:46rem;letter-spacing:-.01em}
 @media(min-width:768px){h2{font-size:40px}}
-h3{font-size:19px;margin:1.4rem 0 .5rem}
-.lead{font-size:18px;color:var(--body)}
+h3{font-size:19px;margin:1.7rem 0 .6rem}
+.lead{font-size:18px;color:var(--body);margin:0 0 6px;max-width:60rem}
 .eyebrow,.catpill{display:inline-block;color:var(--green-d);font-size:12px;font-weight:700;letter-spacing:.22em;text-transform:uppercase;margin-bottom:16px}
 .eyebrow::after,.catpill::after{content:"";display:block;width:44px;height:1px;margin-top:8px;background:linear-gradient(90deg,#a8813a,transparent)}
 
@@ -90,7 +92,7 @@ header.top{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px so
 @media(min-width:880px){.hero-grid{flex-direction:row;padding:72px 24px;gap:48px}.hero-copy{width:56%}.hero-media{width:44%}}
 .hero-copy{display:flex;flex-direction:column;gap:22px}
 .hero-badge{align-self:flex-start;display:inline-flex;align-items:center;gap:8px;background:rgba(10,10,10,.08);color:var(--ink);font-size:13px;font-weight:600;padding:7px 16px;border-radius:999px}
-.hero h1{color:var(--ink);font-size:34px;line-height:1.05;letter-spacing:-.02em;max-width:18ch;margin:0}
+.hero h1{color:var(--ink);font-size:34px;line-height:1.06;letter-spacing:-.02em;max-width:20ch;margin:0;overflow-wrap:break-word;hyphens:auto}
 @media(min-width:768px){.hero h1{font-size:48px}}
 .hero p.sub{font-size:18px;color:#404040;max-width:60ch;margin:0;line-height:1.6}
 .hero .cta{display:flex;gap:12px;flex-wrap:wrap}
@@ -102,11 +104,11 @@ header.top{position:sticky;top:0;z-index:40;background:#fff;border-bottom:1px so
 .badge b{color:var(--green);font-weight:800}
 
 /* ---------- Grilles & cartes ---------- */
-.grid{display:grid;gap:20px}
+.grid{display:grid;gap:24px}
 .g3{grid-template-columns:repeat(3,1fr)}
 .g2{grid-template-columns:repeat(2,1fr)}
 @media(max-width:860px){.g3{grid-template-columns:1fr}.g2{grid-template-columns:1fr}}
-.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:26px;box-shadow:var(--shadow);transition:box-shadow .3s}
+.card{background:#fff;border:1px solid var(--line);border-radius:20px;padding:30px;box-shadow:var(--shadow);transition:box-shadow .3s}
 .card:hover{box-shadow:var(--shadow-h)}
 .card h3{margin-top:0;font-size:19px;font-weight:600;color:#111}
 .ico{width:44px;height:44px;border-radius:12px;background:rgba(169,124,48,.10);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:14px}
@@ -219,3 +221,23 @@ footer a:hover{color:var(--green)}
 @media(max-width:760px){.mobcta{display:flex}body{padding-bottom:74px}}
 
 @media(max-width:680px){.hero h1{font-size:30px}.band{padding:28px}}
+
+/* ---------- Carrousel tactile horizontal (galeries photos) ---------- */
+.hscroll-wrap{position:relative;margin-top:20px}
+.hscroll{display:flex;gap:14px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-behavior:smooth;padding:4px 2px 14px;-webkit-overflow-scrolling:touch;scrollbar-width:none;cursor:grab}
+.hscroll:active{cursor:grabbing}
+.hscroll::-webkit-scrollbar{display:none}
+.hscroll figure{margin:0;flex:0 0 auto;width:250px;height:330px;scroll-snap-align:start;border-radius:16px;overflow:hidden;box-shadow:var(--shadow);background:#efeadf}
+.hscroll figure img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+@media(max-width:640px){.hscroll figure{width:210px;height:280px}}
+.hscroll-nav{display:flex;gap:10px;margin-top:12px}
+.hscroll-nav button{width:46px;height:46px;border-radius:50%;border:1px solid rgba(64,49,24,.25);background:#fff;color:var(--green-d);font-size:18px;line-height:1;cursor:pointer;transition:.15s}
+.hscroll-nav button:hover{border-color:var(--green);color:var(--green)}
+.hscroll-nav button.next{background:var(--ink);color:#fff;border-color:var(--ink)}
+.hscroll-nav button.next:hover{background:#2C2418}
+
+/* Icônes filaires or dans les cartes (remplacent les emojis) */
+.ico{background:linear-gradient(150deg,rgba(169,124,48,.14),rgba(169,124,48,.06));border:1px solid rgba(169,124,48,.22)}
+.ico svg{width:22px;height:22px;display:block}
+.card{transition:box-shadow .3s,transform .3s,border-color .3s}
+.card:hover{transform:translateY(-3px);border-color:rgba(169,124,48,.30)}

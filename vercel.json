@@ -197,6 +197,46 @@
       "source": "/activites-marrakech.html",
       "destination": "/activites-marrakech",
       "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-joigny.html",
+      "destination": "/conciergerie-airbnb-joigny",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-villeneuve-sur-yonne.html",
+      "destination": "/conciergerie-airbnb-villeneuve-sur-yonne",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-paron.html",
+      "destination": "/conciergerie-airbnb-paron",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-saint-clement.html",
+      "destination": "/conciergerie-airbnb-saint-clement",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-pont-sur-yonne.html",
+      "destination": "/conciergerie-airbnb-pont-sur-yonne",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-malay-le-grand.html",
+      "destination": "/conciergerie-airbnb-malay-le-grand",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-sergines.html",
+      "destination": "/conciergerie-airbnb-sergines",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-airbnb-villeneuve-l-archeveque.html",
+      "destination": "/conciergerie-airbnb-villeneuve-l-archeveque",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -439,6 +479,70 @@
     {
       "source": "/activites-marrakech",
       "destination": "/activites-marrakech.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-joigny",
+      "destination": "/conciergerie-airbnb-joigny.html"
+    },
+    {
+      "source": "/joigny",
+      "destination": "/conciergerie-airbnb-joigny.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-villeneuve-sur-yonne",
+      "destination": "/conciergerie-airbnb-villeneuve-sur-yonne.html"
+    },
+    {
+      "source": "/villeneuve-sur-yonne",
+      "destination": "/conciergerie-airbnb-villeneuve-sur-yonne.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-paron",
+      "destination": "/conciergerie-airbnb-paron.html"
+    },
+    {
+      "source": "/paron",
+      "destination": "/conciergerie-airbnb-paron.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-saint-clement",
+      "destination": "/conciergerie-airbnb-saint-clement.html"
+    },
+    {
+      "source": "/saint-clement",
+      "destination": "/conciergerie-airbnb-saint-clement.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-pont-sur-yonne",
+      "destination": "/conciergerie-airbnb-pont-sur-yonne.html"
+    },
+    {
+      "source": "/pont-sur-yonne",
+      "destination": "/conciergerie-airbnb-pont-sur-yonne.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-malay-le-grand",
+      "destination": "/conciergerie-airbnb-malay-le-grand.html"
+    },
+    {
+      "source": "/malay-le-grand",
+      "destination": "/conciergerie-airbnb-malay-le-grand.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-sergines",
+      "destination": "/conciergerie-airbnb-sergines.html"
+    },
+    {
+      "source": "/sergines",
+      "destination": "/conciergerie-airbnb-sergines.html"
+    },
+    {
+      "source": "/conciergerie-airbnb-villeneuve-l-archeveque",
+      "destination": "/conciergerie-airbnb-villeneuve-l-archeveque.html"
+    },
+    {
+      "source": "/villeneuve-l-archeveque",
+      "destination": "/conciergerie-airbnb-villeneuve-l-archeveque.html"
     },
     {
       "source": "/((?!api/).*)",

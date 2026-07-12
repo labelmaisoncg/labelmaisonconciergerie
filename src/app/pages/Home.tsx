@@ -593,7 +593,7 @@ const LIFESTYLE_VIDEOS: { src: string; poster: string; label: string }[] = [
 ];
 
 function LifestyleShowcase() {
-  const items = [...LIFESTYLE_VIDEOS, ...LIFESTYLE_VIDEOS];
+  const items = LIFESTYLE_VIDEOS;
   return (
     <section className="bg-[#FBF9F4]">
       {/* Bande vidéo cinématique */}
@@ -638,15 +638,13 @@ function LifestyleShowcase() {
         </motion.div>
       </div>
 
-      {/* Galerie photos défilante */}
-      <div className="lifestyle-marquee-wrap relative py-[56px] md:py-[80px] overflow-hidden">
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-16 md:w-32 z-10 bg-gradient-to-r from-[#FBF9F4] to-transparent" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-16 md:w-32 z-10 bg-gradient-to-l from-[#FBF9F4] to-transparent" />
-        <div className="lifestyle-marquee flex gap-4 md:gap-5 w-max">
+      {/* Galerie vidéos — défilement tactile (swipe), sans auto-scroll */}
+      <div className="py-[56px] md:py-[80px]">
+        <div className="flex gap-4 md:gap-5 overflow-x-auto snap-x scroll-smooth px-6 md:px-10 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden cursor-grab active:cursor-grabbing">
           {items.map((p, i) => (
             <figure
               key={i}
-              className="relative shrink-0 w-[210px] h-[280px] md:w-[260px] md:h-[340px] rounded-2xl overflow-hidden bg-neutral-200"
+              className="relative shrink-0 snap-start w-[210px] h-[280px] md:w-[260px] md:h-[340px] rounded-2xl overflow-hidden bg-neutral-200"
             >
               <video
                 src={p.src}
