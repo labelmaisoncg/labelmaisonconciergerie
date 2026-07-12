@@ -413,15 +413,25 @@ function StorySection() {
 // =============================================================================
 function ServicesCarousel() {
   const [active, setActive] = useState(0);
-  const [paused, setPaused] = useState(false);
   const navigate = useNavigate();
   const n = services.length;
 
-  useEffect(() => {
-    if (paused) return;
-    const t = setInterval(() => setActive((a) => (a + 1) % n), 5000);
-    return () => clearInterval(t);
-  }, [paused, n]);
+  // Navigation au glissement (tactile / souris), sans auto-défilement
+  const swipe = useRef({ down: false, startX: 0, moved: false });
+  const go = (dir: number) => setActive((a) => (a + dir + n) % n);
+  const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    swipe.current = { down: true, startX: e.clientX, moved: false };
+  };
+  const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (swipe.current.down && Math.abs(e.clientX - swipe.current.startX) > 8) swipe.current.moved = true;
+  };
+  const onUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!swipe.current.down) return;
+    const dx = e.clientX - swipe.current.startX;
+    swipe.current.down = false;
+    if (dx < -40) go(1);
+    else if (dx > 40) go(-1);
+  };
 
   const offsetFor = (j: number) => {
     let o = j - active;
@@ -486,9 +496,12 @@ function ServicesCarousel() {
 
       {/* Scène coverflow */}
       <div
-        className="relative w-full max-w-[1120px] mx-auto flex items-center justify-center min-h-[540px] mt-6"
-        onMouseEnter={() => setPaused(true)}
-        onMouseLeave={() => setPaused(false)}
+        className="relative w-full max-w-[1120px] mx-auto flex items-center justify-center min-h-[540px] mt-6 cursor-grab active:cursor-grabbing select-none"
+        style={{ touchAction: 'pan-y' }}
+        onPointerDown={onDown}
+        onPointerMove={onMove}
+        onPointerUp={onUp}
+        onPointerLeave={onUp}
       >
         <div
           className="pointer-events-none absolute top-1/2 left-1/2 w-[460px] h-[400px] rounded-full"
@@ -507,7 +520,10 @@ function ServicesCarousel() {
               <div
                 key={s.title}
                 style={cardStyle(o)}
-                onClick={() => (isCenter ? navigate(s.href) : setActive(j))}
+                onClick={() => {
+                  if (swipe.current.moved) return;
+                  isCenter ? navigate(s.href) : setActive(j);
+                }}
                 role={isCenter ? 'link' : 'button'}
                 aria-label={isCenter ? `Découvrir ${s.title}` : `Voir ${s.title}`}
               >
@@ -537,26 +553,8 @@ function ServicesCarousel() {
         </div>
       </div>
 
-      {/* Contrôles */}
-      <div className="relative z-[5] flex flex-col items-center gap-5 mt-2">
-        <div className="flex items-center gap-6">
-          <button
-            onClick={() => { setActive((a) => (a - 1 + n) % n); setPaused(false); }}
-            aria-label="Service précédent"
-            className="w-12 h-12 rounded-full border bg-white text-[#A97C30] text-[18px] flex items-center justify-center hover:bg-[#FBF6EC] transition-colors"
-            style={{ borderColor: 'rgba(169,124,48,.4)', boxShadow: '0 4px 14px rgba(64,49,24,.06)' }}
-          >
-            ←
-          </button>
-          <button
-            onClick={() => { setActive((a) => (a + 1) % n); setPaused(false); }}
-            aria-label="Service suivant"
-            className="w-[74px] h-[74px] rounded-full text-[#F6EFDE] text-[26px] flex items-center justify-center hover:scale-105 transition-transform"
-            style={{ background: '#403118', boxShadow: '0 14px 32px -8px rgba(64,49,24,.5)' }}
-          >
-            →
-          </button>
-        </div>
+      {/* Repères (glissez pour naviguer) */}
+      <div className="relative z-[5] flex flex-col items-center gap-4 mt-2">
         <span className="font-serif-title text-[17px] text-[#A97C30] tracking-[0.1em]">
           {String(active + 1).padStart(2, '0')} / {String(n).padStart(2, '0')}
         </span>
@@ -593,7 +591,46 @@ const LIFESTYLE_VIDEOS: { src: string; poster: string; label: string }[] = [
 ];
 
 function LifestyleShowcase() {
-  const items = LIFESTYLE_VIDEOS;
+  // Boucle infinie : on triple les items et on recentre invisiblement sur le set du milieu
+  const items = [...LIFESTYLE_VIDEOS, ...LIFESTYLE_VIDEOS, ...LIFESTYLE_VIDEOS];
+  // Défilement tactile : glisser à la souris ET au doigt (pas d'auto-scroll, pas de CTA)
+  const trackRef = useRef<HTMLDivElement>(null);
+  const drag = useRef({ down: false, startX: 0, startLeft: 0 });
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (el) el.scrollLeft = el.scrollWidth / 3; // démarre sur le set du milieu
+  }, []);
+
+  // Recentre en boucle : dès qu'on approche d'un bord, on saute d'un set (imperceptible)
+  const onScrollLoop = () => {
+    const el = trackRef.current;
+    if (!el) return;
+    const set = el.scrollWidth / 3;
+    if (el.scrollLeft < set * 0.5) {
+      el.scrollLeft += set;
+      drag.current.startLeft += set;
+    } else if (el.scrollLeft > set * 1.5) {
+      el.scrollLeft -= set;
+      drag.current.startLeft -= set;
+    }
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = trackRef.current;
+    if (!el) return;
+    drag.current = { down: true, startX: e.clientX, startLeft: el.scrollLeft };
+    el.setPointerCapture?.(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const el = trackRef.current;
+    if (!el || !drag.current.down) return;
+    el.scrollLeft = drag.current.startLeft - (e.clientX - drag.current.startX);
+  };
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    drag.current.down = false;
+    trackRef.current?.releasePointerCapture?.(e.pointerId);
+  };
   return (
     <section className="bg-[#FBF9F4]">
       {/* Bande vidéo cinématique */}
@@ -640,7 +677,15 @@ function LifestyleShowcase() {
 
       {/* Galerie vidéos — défilement tactile (swipe), sans auto-scroll */}
       <div className="py-[56px] md:py-[80px]">
-        <div className="flex gap-4 md:gap-5 overflow-x-auto snap-x scroll-smooth px-6 md:px-10 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden cursor-grab active:cursor-grabbing">
+        <div
+          ref={trackRef}
+          onScroll={onScrollLoop}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerLeave={endDrag}
+          className="flex gap-4 md:gap-5 overflow-x-auto px-6 md:px-10 pb-2 select-none touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden cursor-grab active:cursor-grabbing"
+        >
           {items.map((p, i) => (
             <figure
               key={i}
