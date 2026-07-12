@@ -19,3 +19,6 @@ dist
 /IMG_*.jpeg
 /IMG_*.jpg
 /Capture*.png
+
+# Vidéos sources Instagram (brutes) — les .mp4 web sont dans public/videos
+/insta lmcg/

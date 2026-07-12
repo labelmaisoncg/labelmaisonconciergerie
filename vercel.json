@@ -127,6 +127,76 @@
       "source": "/conciergerie-airbnb-sens.html",
       "destination": "/conciergerie-airbnb-sens",
       "permanent": true
+    },
+    {
+      "source": "/conciergerie-privee-paris.html",
+      "destination": "/conciergerie-privee-paris",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-dubai.html",
+      "destination": "/conciergerie-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-marrakech.html",
+      "destination": "/conciergerie-marrakech",
+      "permanent": true
+    },
+    {
+      "source": "/chauffeur-prive-paris.html",
+      "destination": "/chauffeur-prive-paris",
+      "permanent": true
+    },
+    {
+      "source": "/personal-shopper-paris.html",
+      "destination": "/personal-shopper-paris",
+      "permanent": true
+    },
+    {
+      "source": "/location-appartement-luxe-paris.html",
+      "destination": "/location-appartement-luxe-paris",
+      "permanent": true
+    },
+    {
+      "source": "/activites-vip-paris.html",
+      "destination": "/activites-vip-paris",
+      "permanent": true
+    },
+    {
+      "source": "/location-villa-dubai.html",
+      "destination": "/location-villa-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/chauffeur-prive-dubai.html",
+      "destination": "/chauffeur-prive-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/yacht-dubai.html",
+      "destination": "/yacht-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/activites-vip-dubai.html",
+      "destination": "/activites-vip-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/location-villa-marrakech.html",
+      "destination": "/location-villa-marrakech",
+      "permanent": true
+    },
+    {
+      "source": "/chauffeur-prive-marrakech.html",
+      "destination": "/chauffeur-prive-marrakech",
+      "permanent": true
+    },
+    {
+      "source": "/activites-marrakech.html",
+      "destination": "/activites-marrakech",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -293,6 +363,82 @@
     {
       "source": "/sens",
       "destination": "/conciergerie-airbnb-sens.html"
+    },
+    {
+      "source": "/conciergerie-privee-paris",
+      "destination": "/conciergerie-privee-paris.html"
+    },
+    {
+      "source": "/paris-conciergerie",
+      "destination": "/conciergerie-privee-paris.html"
+    },
+    {
+      "source": "/conciergerie-dubai",
+      "destination": "/conciergerie-dubai.html"
+    },
+    {
+      "source": "/dubai",
+      "destination": "/conciergerie-dubai.html"
+    },
+    {
+      "source": "/dubai-conciergerie",
+      "destination": "/conciergerie-dubai.html"
+    },
+    {
+      "source": "/conciergerie-marrakech",
+      "destination": "/conciergerie-marrakech.html"
+    },
+    {
+      "source": "/marrakech",
+      "destination": "/conciergerie-marrakech.html"
+    },
+    {
+      "source": "/marrakech-conciergerie",
+      "destination": "/conciergerie-marrakech.html"
+    },
+    {
+      "source": "/chauffeur-prive-paris",
+      "destination": "/chauffeur-prive-paris.html"
+    },
+    {
+      "source": "/personal-shopper-paris",
+      "destination": "/personal-shopper-paris.html"
+    },
+    {
+      "source": "/location-appartement-luxe-paris",
+      "destination": "/location-appartement-luxe-paris.html"
+    },
+    {
+      "source": "/activites-vip-paris",
+      "destination": "/activites-vip-paris.html"
+    },
+    {
+      "source": "/location-villa-dubai",
+      "destination": "/location-villa-dubai.html"
+    },
+    {
+      "source": "/chauffeur-prive-dubai",
+      "destination": "/chauffeur-prive-dubai.html"
+    },
+    {
+      "source": "/yacht-dubai",
+      "destination": "/yacht-dubai.html"
+    },
+    {
+      "source": "/activites-vip-dubai",
+      "destination": "/activites-vip-dubai.html"
+    },
+    {
+      "source": "/location-villa-marrakech",
+      "destination": "/location-villa-marrakech.html"
+    },
+    {
+      "source": "/chauffeur-prive-marrakech",
+      "destination": "/chauffeur-prive-marrakech.html"
+    },
+    {
+      "source": "/activites-marrakech",
+      "destination": "/activites-marrakech.html"
     },
     {
       "source": "/((?!api/).*)",

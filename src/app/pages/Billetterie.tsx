@@ -5,6 +5,8 @@ import {
   SectionHeader,
   FeatureCard,
   FinalCta,
+  ProofVideo,
+  MediaCarousel,
   Section,
 } from '../components/sections/PageBlocks';
 
@@ -69,9 +71,19 @@ export function Billetterie() {
         titleStart="Voyager n'est plus"
         titleAccent="une contrainte"
         subtitle="Du sol au ciel, tout est orchestré. Jets privés, première classe et business sur les meilleures compagnies du monde. Réservation en quelques heures."
-        imageUrl="https://images.unsplash.com/photo-1545610095-4d00a3f4f547?auto=format&fit=crop&w=1600&q=80"
-        imageAlt="Cabine première classe luxe"
+        imageUrl="/images/real/billetterie-avion.jpg"
+        imageAlt="Vol premium au-dessus des nuages"
         ctas={[{ label: 'Réserver mon vol', href: '/#contact', primary: true }]}
+      />
+
+      <ProofVideo
+        eyebrow="En vidéo · En vol"
+        titleStart="Du sol au ciel,"
+        titleAccent="tout est orchestré"
+        text="Première classe, business, jet privé : nous réservons et coordonnons chaque étape. Un instant réel, capté au-dessus des nuages."
+        videoSrc="/videos/proof-avion.mp4"
+        poster="/images/real/proof-avion-poster.jpg"
+        caption="Au-dessus des nuages"
       />
 
       <Section bg="white">
@@ -108,6 +120,26 @@ export function Billetterie() {
           ))}
         </div>
       </Section>
+
+      <MediaCarousel
+        bg="zinc"
+        eyebrow="Destinations en images"
+        titleStart="Le voyage,"
+        titleAccent="orchestré de bout en bout"
+        subtitle="Du vol premium aux plus belles destinations : Dubaï, Marrakech, Ibiza, Rome. Faites glisser pour explorer."
+        items={[
+          { type: 'video', src: '/videos/proof-avion.mp4', poster: '/images/real/proof-avion-poster.jpg', label: 'Au-dessus des nuages' },
+          { type: 'video', src: '/videos/activite-skyline-nuit.mp4', poster: '/images/real/activite-skyline-nuit-poster.jpg', label: 'Dubaï by night' },
+          { type: 'video', src: '/videos/activite-croisiere-nuit.mp4', poster: '/images/real/activite-croisiere-nuit-poster.jpg', label: 'Croisière nocturne' },
+          { type: 'image', src: '/images/real/billetterie-avion.jpg', label: 'Vol premium' },
+          { type: 'image', src: '/images/real/dubai-skyline.jpg', label: 'Dubaï' },
+          { type: 'image', src: '/images/real/dubai-marina.jpg', label: 'Dubaï Marina' },
+          { type: 'image', src: '/images/real/marrakech-menara.jpg', label: 'Marrakech' },
+          { type: 'image', src: '/images/real/ibiza.jpg', label: 'Ibiza' },
+          { type: 'image', src: '/images/real/rome-colisee.jpg', label: 'Rome' },
+        ]}
+        cta={{ label: 'Réserver mon voyage', href: '/#contact' }}
+      />
 
       <FinalCta
         titleStart="Réservez votre"

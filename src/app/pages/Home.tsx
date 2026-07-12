@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { motion } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowDown,
   ArrowRight,
@@ -63,62 +63,97 @@ async function submitContactForm(
 // =============================================================================
 // HERO
 // =============================================================================
+// ⚠️  HERO_IMAGE : mets ici le chemin d'un VRAI intérieur que tu gères
+//     (dépose-le dans public/images/real/, ex. '/images/real/hero-appartement.jpg').
+//     Tant qu'il vaut null, le hero affiche un canvas ivoire de marque (aucun stock).
+const HERO_IMAGE: string | null = null;
+
 function HeroSection() {
+  const hasPhoto = Boolean(HERO_IMAGE);
   return (
     <section
-      className="relative overflow-hidden"
-      style={{ background: 'radial-gradient(130% 90% at 50% 0%, #FDFCF9 0%, #F9F7F1 62%, #F4EFE6 100%)' }}
+      className="relative overflow-hidden min-h-[640px] md:min-h-[88vh] flex flex-col justify-center"
+      style={
+        hasPhoto
+          ? undefined
+          : { background: 'radial-gradient(130% 90% at 50% 0%, #FDFCF9 0%, #F9F7F1 58%, #F1EADB 100%)' }
+      }
     >
-      <div className="max-w-[1336px] mx-auto px-6 md:px-12 pt-[120px] md:pt-[160px] pb-12 md:pb-0 flex flex-col md:flex-row gap-10 items-stretch">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="relative z-20 flex flex-col items-center md:items-start text-center md:text-left gap-6 md:w-3/5 md:pr-12 md:pb-[120px]"
-        >
-          <span className="inline-flex items-center gap-2 bg-white border border-[#E2D7BD] text-[#403118] px-4 py-1.5 rounded-full text-[13px] font-medium">
-            <MapPin size={14} className="text-[#A97C30]" /> Paris · International
-          </span>
-
-          <h1 className="text-[34px] md:text-[48px] leading-[1.05] font-bold tracking-tight">
-            Conciergerie privée haut de gamme :{' '}
-            <span className="font-serif-italic font-bold text-[#A97C30]">services sur mesure</span>{' '}
-            pour une clientèle d'exception
-          </h1>
-
-          <p className="text-[16px] md:text-[18px] text-neutral-700 leading-relaxed max-w-xl">
-            Label Maison Conciergerie accompagne propriétaires, investisseurs et clients privés à travers une{' '}
-            <strong className="font-bold">conciergerie premium</strong> alliant
-            gestion de biens immobiliers, services lifestyle et expériences exclusives.
-          </p>
-
-          <div className="flex flex-row gap-3 w-full sm:w-auto">
-            <a
-              href="#contact"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 sm:py-4 rounded-full hover:bg-[#2C2418] transition-colors whitespace-nowrap"
-            >
-              Contacter <ArrowRight size={16} className="shrink-0" />
-            </a>
-            <a
-              href="#services"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-transparent border border-[#403118]/20 text-[#403118] font-bold text-[14px] sm:text-[15px] px-6 sm:px-7 py-3.5 sm:py-4 rounded-full hover:border-[#A97C30] hover:text-[#7C561D] transition-colors whitespace-nowrap"
-            >
-              Services <ArrowDown size={16} className="shrink-0" />
-            </a>
-          </div>
-        </motion.div>
-
-        <div className="relative w-full md:w-2/5 md:min-h-[600px]">
-          <div className="relative h-[420px] md:absolute md:inset-y-0 md:-right-[40%] md:left-0 md:w-[140%] md:h-full rounded-2xl md:rounded-none overflow-hidden">
-            <ImageWithFallback
-              src="https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?auto=format&fit=crop&w=1600&q=80"
-              alt="Logement à Paris géré par Label Maison Conciergerie"
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
-          </div>
+      {/* Fond photo cinématique (si vraie photo dispo) */}
+      {hasPhoto && (
+        <div className="absolute inset-0 z-0">
+          <ImageWithFallback
+            src={HERO_IMAGE as string}
+            alt="Intérieur d'un bien géré par Label Maison Conciergerie"
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-black/60" />
         </div>
-      </div>
+      )}
+
+      {/* Filigrane monogramme discret (mode canvas ivoire) */}
+      {!hasPhoto && (
+        <img
+          src="/images/key-gold-deep.png"
+          alt=""
+          aria-hidden
+          className="pointer-events-none absolute right-[-40px] top-1/2 -translate-y-1/2 w-[420px] max-w-[55%] h-auto opacity-[0.06]"
+        />
+      )}
+
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+        className={`relative z-10 w-full max-w-[1000px] mx-auto px-6 pt-[120px] md:pt-[132px] pb-16 md:pb-[132px] flex flex-col items-center text-center gap-7 ${
+          hasPhoto ? 'text-white' : 'text-[#2C2418]'
+        }`}
+      >
+        <span
+          className={`inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.28em] ${
+            hasPhoto ? 'text-white/80' : 'text-[#7C561D]'
+          }`}
+        >
+          <span className={`h-px w-8 ${hasPhoto ? 'bg-white/50' : 'bg-[#a8813a]'}`} />
+          Paris · Dubaï · Marrakech
+          <span className={`h-px w-8 ${hasPhoto ? 'bg-white/50' : 'bg-[#a8813a]'}`} />
+        </span>
+
+        <h1 className="text-[38px] md:text-[64px] leading-[1.04] font-bold tracking-tight max-w-[16ch]">
+          Votre patrimoine,{' '}
+          <span className={`font-serif-italic font-bold ${hasPhoto ? 'text-[#E7D4A6]' : 'text-[#A97C30]'}`}>
+            géré comme une maison de confiance.
+          </span>
+        </h1>
+
+        <p
+          className={`text-[16px] md:text-[19px] leading-relaxed max-w-xl ${
+            hasPhoto ? 'text-white/85' : 'text-neutral-700'
+          }`}
+        >
+          Gestion de biens, séjours d'exception et services sur mesure pour
+          propriétaires et clients privés, avec exigence, présence et discrétion.
+        </p>
+
+        <div className="flex flex-row gap-3 mt-1">
+          <a
+            href="#contact"
+            className="inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] sm:text-[15px] px-7 py-4 rounded-full hover:bg-[#2C2418] transition-colors whitespace-nowrap"
+          >
+            Prendre contact <ArrowRight size={16} className="shrink-0" />
+          </a>
+          <a
+            href="#services"
+            className={`inline-flex items-center justify-center gap-2 font-bold text-[14px] sm:text-[15px] px-7 py-4 rounded-full transition-colors whitespace-nowrap ${
+              hasPhoto
+                ? 'border border-white/40 text-white hover:bg-white/10'
+                : 'border border-[#403118]/20 text-[#403118] hover:border-[#A97C30] hover:text-[#7C561D]'
+            }`}
+          >
+            Nos services <ArrowDown size={16} className="shrink-0" />
+          </a>
+        </div>
+      </motion.div>
     </section>
   );
 }
@@ -142,25 +177,24 @@ function LeadFormSection() {
   };
 
   return (
-    <section className="relative z-10 mt-8 md:-mt-24">
+    <section className="relative z-10 mt-8 md:-mt-16">
       <div className="max-w-[1152px] mx-auto px-4">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, amount: 0.2 }}
           transition={{ duration: 0.5 }}
-          className="bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_40px_100px_rgba(14,6,53,0.1)] p-3 md:flex md:items-stretch md:gap-3 md:max-w-[900px] md:mx-auto"
+          className="bg-white rounded-3xl border border-[#ECE3D0] shadow-[0_30px_80px_rgba(64,49,24,0.08)] p-3 md:flex md:items-stretch md:gap-3 md:max-w-[900px] md:mx-auto"
         >
           <div
             className="relative md:w-5/12 min-h-[220px] md:min-h-[420px] rounded-xl overflow-hidden bg-cover bg-center"
             style={{
-              backgroundImage:
-                "url('https://images.unsplash.com/photo-1530841377377-3ff06c0ca713?auto=format&fit=crop&w=1200&q=80')",
+              backgroundImage: "url('/images/real/gestion-villa.jpg')",
             }}
           />
 
           <div className="md:w-7/12 p-4 md:p-6">
-            <h2 className="text-[24px] md:text-[32px] leading-tight font-bold">
+            <h2 className="font-serif-title text-[26px] md:text-[36px] leading-[1.1] font-normal">
               Découvrez notre solution de conciergerie{' '}
               <span className="font-serif-italic font-bold text-[#A97C30]">conçue pour vous&nbsp;!</span>
             </h2>
@@ -254,6 +288,389 @@ function Field({ label, required, children }: { label: string; required?: boolea
 }
 
 // =============================================================================
+// STORY / FONDATEUR — récit de marque (à la Maison Rivage)
+// -----------------------------------------------------------------------------
+// ⚠️  À PERSONNALISER : remplace le texte ci-dessous par ta vraie histoire et
+//     la photo placeholder (bloc monogramme) par un vrai portrait :
+//     dépose ta photo dans public/images/real/ (ex. portrait-fondateur.jpg)
+//     puis mets STORY_PORTRAIT = '/images/real/portrait-fondateur.jpg'.
+// =============================================================================
+const STORY_PORTRAIT: string | null = '/images/real/portrait-abdel.jpg'; // portrait d'Abdel, fondateur
+
+// Panneau monogramme de marque — sert de fond ET de fallback si la photo manque.
+function MonogramPanel() {
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center gap-6"
+      style={{ background: 'radial-gradient(120% 100% at 50% 0%, #403118 0%, #2C2418 100%)' }}
+    >
+      <img
+        src="/images/key-gold-deep.png"
+        alt=""
+        aria-hidden
+        className="w-16 md:w-20 h-auto opacity-95"
+        style={{ filter: 'drop-shadow(0 6px 24px rgba(169,124,48,0.4))' }}
+      />
+      <p className="font-serif-italic text-[#D5C69F] text-[22px] md:text-[26px] tracking-wide">
+        Label Maison
+      </p>
+    </div>
+  );
+}
+
+// Portrait d'Abdel superposé au monogramme ; retombe sur le monogramme si le fichier est absent.
+function StoryPortrait() {
+  const [failed, setFailed] = useState(false);
+  return (
+    <>
+      <MonogramPanel />
+      {STORY_PORTRAIT && !failed && (
+        <img
+          src={STORY_PORTRAIT}
+          alt="Abdel, fondateur de Label Maison Conciergerie"
+          onError={() => setFailed(true)}
+          className="absolute inset-0 w-full h-full object-cover object-top"
+        />
+      )}
+    </>
+  );
+}
+
+function StorySection() {
+  return (
+    <section id="histoire" className="py-[72px] md:py-[120px] bg-[#FBF9F4]">
+      <div className="max-w-[1152px] mx-auto px-6 grid grid-cols-1 md:grid-cols-[0.9fr_1.1fr] gap-12 md:gap-20 items-center">
+        {/* PORTRAIT — vraie photo si dispo, sinon panneau monogramme de marque */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.7 }}
+          className="relative aspect-[4/5] rounded-[20px] overflow-hidden"
+        >
+          <StoryPortrait />
+        </motion.div>
+
+        {/* RÉCIT */}
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.7, delay: 0.1 }}
+        >
+          <span className="block text-[#7C561D] text-[12px] font-semibold uppercase tracking-[0.24em]">
+            Notre histoire
+          </span>
+          <span className="mt-3 block h-px w-11 bg-gradient-to-r from-[#a8813a] to-transparent" />
+
+          <h2 className="mt-6 text-[30px] md:text-[44px] font-bold leading-[1.08] max-w-2xl">
+            Née d'une conviction&nbsp;:{' '}
+            <span className="font-serif-italic font-bold text-[#A97C30]">
+              un bien confié mérite le même soin qu'un bien habité.
+            </span>
+          </h2>
+
+          <div className="mt-7 space-y-5 text-[16px] md:text-[17px] text-neutral-700 leading-relaxed max-w-xl">
+            <p>
+              Trop de propriétaires vivent la même chose&nbsp;: un logement laissé
+              à des prestataires qui ne se coordonnent pas, des séjours gérés à distance,
+              un patrimoine qui perd de la valeur faute d'un vrai interlocuteur.{' '}
+              <strong className="font-semibold text-neutral-900">Label Maison est née de ce constat.</strong>
+            </p>
+            <p>
+              Nous avons bâti une conciergerie qui prend réellement en charge&nbsp;:
+              présence sur le terrain, exigence à chaque détail, transparence sur les
+              résultats. Pas de promesses, des preuves, mois après mois.
+            </p>
+            <p>
+              {/* ✏️  Abdel : ajuste librement ce paragraphe avec ton vrai parcours. */}
+              Je m'appelle <strong className="font-semibold text-neutral-900">Abdel</strong>. J'ai fondé Label Maison
+              pour offrir aux propriétaires ce que je cherchais moi-même&nbsp;: quelqu'un qui traite
+              leur bien comme le sien, à Paris comme à Dubaï ou Marrakech, sans jamais rogner
+              sur l'exigence.
+            </p>
+          </div>
+
+          <div className="mt-8 flex items-center gap-4">
+            <span className="font-serif-italic text-[#A97C30] text-[26px] md:text-[30px]">
+              Abdel
+            </span>
+            <span className="text-[13px] text-neutral-500 leading-tight">
+              Fondateur
+              <br />
+              Label Maison Conciergerie · Paris · Dubaï · Marrakech
+            </span>
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+// =============================================================================
+// SERVICES CARROUSEL — coverflow 3D à défilement automatique
+// (fusion « Nos services » + « En images ») — port du design Carrousel Conciergerie
+// =============================================================================
+function ServicesCarousel() {
+  const [active, setActive] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const navigate = useNavigate();
+  const n = services.length;
+
+  useEffect(() => {
+    if (paused) return;
+    const t = setInterval(() => setActive((a) => (a + 1) % n), 5000);
+    return () => clearInterval(t);
+  }, [paused, n]);
+
+  const offsetFor = (j: number) => {
+    let o = j - active;
+    if (o > n / 2) o -= n;
+    if (o < -n / 2) o += n;
+    return o;
+  };
+
+  const cardStyle = (o: number): React.CSSProperties => {
+    const a = Math.abs(o);
+    const sc = Math.max(1 - a * 0.14, 0.56);
+    const rot = Math.max(Math.min(o * -28, 52), -52);
+    const op = a > 3 ? 0 : Math.max(1 - a * 0.28, 0.16);
+    return {
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      width: 300,
+      height: 440,
+      marginTop: -220,
+      marginLeft: -150,
+      borderRadius: 18,
+      overflow: 'hidden',
+      background: '#FFFFFF',
+      cursor: 'pointer',
+      transition:
+        'transform .75s cubic-bezier(.22,.61,.36,1), opacity .6s, box-shadow .6s, border-color .6s',
+      transform: `translateX(${o * 214}px) scale(${sc}) rotateY(${rot}deg)`,
+      opacity: op,
+      zIndex: 30 - a,
+      pointerEvents: a > 3 ? 'none' : 'auto',
+      boxShadow:
+        o === 0
+          ? '0 40px 70px -22px rgba(64,49,24,.34), 0 0 0 1px rgba(169,124,48,.5)'
+          : '0 26px 50px -26px rgba(64,49,24,.28)',
+      border: o === 0 ? '1px solid rgba(169,124,48,.5)' : '1px solid #ECE3D0',
+    };
+  };
+
+  return (
+    <section
+      id="services"
+      className="relative overflow-hidden py-[80px] md:py-[120px]"
+      style={{ background: 'radial-gradient(120% 80% at 50% 0%, #FFFFFF 0%, #FBF9F4 46%, #F4ECDA 100%)' }}
+    >
+      {/* En-tête */}
+      <div className="relative z-[5] max-w-[660px] mx-auto px-6 text-center">
+        <div className="flex items-center justify-center gap-2.5 mb-4">
+          <span className="h-px w-6" style={{ background: 'linear-gradient(90deg,transparent,#C39A4A)' }} />
+          <span className="text-[12px] tracking-[0.34em] uppercase text-[#A97C30] font-semibold">Nos services</span>
+          <span className="h-px w-6" style={{ background: 'linear-gradient(90deg,#C39A4A,transparent)' }} />
+        </div>
+        <h2 className="font-bold leading-[1.06] tracking-[-0.015em] text-[clamp(32px,5vw,52px)]">
+          Six expertises pour un service{' '}
+          <em className="font-serif-italic font-bold text-[#A97C30]">d'exception</em>
+        </h2>
+        <p className="mt-4 text-[#6E6554] text-[15.5px] leading-[1.6]">
+          De la gestion de votre patrimoine à l'organisation de vos expériences les plus
+          exclusives, nos six pôles couvrent tous les besoins d'une clientèle exigeante.
+        </p>
+      </div>
+
+      {/* Scène coverflow */}
+      <div
+        className="relative w-full max-w-[1120px] mx-auto flex items-center justify-center min-h-[540px] mt-6"
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+      >
+        <div
+          className="pointer-events-none absolute top-1/2 left-1/2 w-[460px] h-[400px] rounded-full"
+          style={{
+            transform: 'translate(-50%,-50%)',
+            background: 'radial-gradient(circle, rgba(169,124,48,.16) 0%, rgba(169,124,48,0) 70%)',
+            filter: 'blur(14px)',
+            animation: 'cc-glow 6.5s ease-in-out infinite',
+          }}
+        />
+        <div style={{ position: 'relative', width: '100%', height: 500, perspective: '1800px', transformStyle: 'preserve-3d' }}>
+          {services.map((s, j) => {
+            const o = offsetFor(j);
+            const isCenter = o === 0;
+            return (
+              <div
+                key={s.title}
+                style={cardStyle(o)}
+                onClick={() => (isCenter ? navigate(s.href) : setActive(j))}
+                role={isCenter ? 'link' : 'button'}
+                aria-label={isCenter ? `Découvrir ${s.title}` : `Voir ${s.title}`}
+              >
+                <div style={{ position: 'relative', height: 236, overflow: 'hidden', background: '#F1EEE7' }}>
+                  <ImageWithFallback src={s.image} alt={s.title} className="absolute inset-0 w-full h-full object-cover" />
+                  <div
+                    className="absolute inset-0 pointer-events-none"
+                    style={{ background: 'linear-gradient(180deg, rgba(24,18,8,0) 42%, rgba(24,18,8,.55) 100%)' }}
+                  />
+                  <div
+                    className="absolute left-[18px] bottom-3.5 text-[11px] tracking-[0.16em] uppercase font-semibold pointer-events-none"
+                    style={{ color: '#F6EFDE', textShadow: '0 1px 4px rgba(0,0,0,.4)' }}
+                  >
+                    {s.eyebrow}
+                  </div>
+                </div>
+                <div className="flex flex-col" style={{ padding: '20px 22px 22px', height: 'calc(100% - 236px)' }}>
+                  <h3 className="text-[19px] font-bold leading-[1.2] tracking-[-0.01em] text-[#2C2418] mb-2">{s.title}</h3>
+                  <p className="text-[14px] leading-[1.55] text-[#6E6554]">{s.text}</p>
+                  <div className="mt-auto pt-3.5 flex items-center gap-1.5 text-[#A97C30] text-[13px] font-semibold">
+                    En savoir plus <span className="text-[15px]">→</span>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Contrôles */}
+      <div className="relative z-[5] flex flex-col items-center gap-5 mt-2">
+        <div className="flex items-center gap-6">
+          <button
+            onClick={() => { setActive((a) => (a - 1 + n) % n); setPaused(false); }}
+            aria-label="Service précédent"
+            className="w-12 h-12 rounded-full border bg-white text-[#A97C30] text-[18px] flex items-center justify-center hover:bg-[#FBF6EC] transition-colors"
+            style={{ borderColor: 'rgba(169,124,48,.4)', boxShadow: '0 4px 14px rgba(64,49,24,.06)' }}
+          >
+            ←
+          </button>
+          <button
+            onClick={() => { setActive((a) => (a + 1) % n); setPaused(false); }}
+            aria-label="Service suivant"
+            className="w-[74px] h-[74px] rounded-full text-[#F6EFDE] text-[26px] flex items-center justify-center hover:scale-105 transition-transform"
+            style={{ background: '#403118', boxShadow: '0 14px 32px -8px rgba(64,49,24,.5)' }}
+          >
+            →
+          </button>
+        </div>
+        <span className="font-serif-title text-[17px] text-[#A97C30] tracking-[0.1em]">
+          {String(active + 1).padStart(2, '0')} / {String(n).padStart(2, '0')}
+        </span>
+        <div className="flex gap-2.5">
+          {services.map((_, j) => (
+            <button
+              key={j}
+              onClick={() => setActive(j)}
+              aria-label={`Aller à la carte ${j + 1}`}
+              className="h-2 rounded-md border-0 p-0 transition-all"
+              style={{ width: j === active ? 26 : 8, background: j === active ? '#A97C30' : 'rgba(169,124,48,.28)' }}
+            />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =============================================================================
+// LIFESTYLE SHOWCASE — bande vidéo cinématique + galerie photos défilante
+// (vraies photos/vidéos IG @labelmaisoncg)
+// =============================================================================
+const LIFESTYLE_VIDEOS: { src: string; poster: string; label: string }[] = [
+  { src: '/videos/life-dubai.mp4', poster: '/images/real/life-dubai-poster.jpg', label: 'Dubaï' },
+  { src: '/videos/life-burj.mp4', poster: '/images/real/life-burj-poster.jpg', label: 'Burj Al Arab' },
+  { src: '/videos/life-jetski.mp4', poster: '/images/real/life-jetski-poster.jpg', label: 'Jet-ski' },
+  { src: '/videos/sejour-mer.mp4', poster: '/images/real/sejour-mer-poster.jpg', label: 'Séjours en mer' },
+  { src: '/videos/life-catamaran.mp4', poster: '/images/real/life-catamaran-poster.jpg', label: 'En mer' },
+  { src: '/videos/proof-avion.mp4', poster: '/images/real/proof-avion-poster.jpg', label: 'Vol premium' },
+  { src: '/videos/proof-voiture-nuit.mp4', poster: '/images/real/proof-voiture-nuit-poster.jpg', label: 'Transport privé' },
+  { src: '/videos/life-quad.mp4', poster: '/images/real/life-quad-poster.jpg', label: 'Quad · désert' },
+  { src: '/videos/proof-dubai-fontaines.mp4', poster: '/images/real/proof-dubai-fontaines-poster.jpg', label: 'Fontaines de Dubaï' },
+];
+
+function LifestyleShowcase() {
+  const items = [...LIFESTYLE_VIDEOS, ...LIFESTYLE_VIDEOS];
+  return (
+    <section className="bg-[#FBF9F4]">
+      {/* Bande vidéo cinématique */}
+      <div className="relative w-full h-[58vh] md:h-[76vh] overflow-hidden">
+        <video
+          className="absolute inset-0 w-full h-full object-cover"
+          src="/videos/sejour-mer.mp4"
+          poster="/images/real/sejour-mer-poster.jpg"
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(180deg, rgba(20,14,6,.35) 0%, rgba(20,14,6,.22) 45%, rgba(20,14,6,.72) 100%)' }}
+        />
+        <motion.div
+          initial={{ opacity: 0, y: 24 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
+          className="relative z-10 h-full flex flex-col items-center justify-center text-center text-white px-6"
+        >
+          <span className="inline-flex items-center gap-2.5 text-[12px] font-semibold uppercase tracking-[0.28em] text-white/80">
+            <span className="h-px w-8 bg-white/50" /> Séjours &amp; expériences <span className="h-px w-8 bg-white/50" />
+          </span>
+          <h2 className="mt-5 font-serif-title text-[34px] md:text-[56px] font-normal leading-[1.06] max-w-[18ch]">
+            L'art de vivre Label Maison,{' '}
+            <span className="font-serif-italic text-[#E7D4A6]">en mouvement.</span>
+          </h2>
+          <p className="mt-5 text-[16px] md:text-[18px] text-white/85 max-w-xl leading-relaxed">
+            De Paris à Dubaï, de Marrakech aux plus belles côtes : un aperçu réel
+            de nos séjours, expériences et acquisitions.
+          </p>
+          <a
+            href="#contact"
+            className="mt-8 inline-flex items-center gap-2 bg-white text-[#2C2418] font-bold text-[14px] px-7 py-4 rounded-full hover:bg-[#E7D4A6] transition-colors"
+          >
+            Composer votre séjour <ArrowRight size={16} />
+          </a>
+        </motion.div>
+      </div>
+
+      {/* Galerie photos défilante */}
+      <div className="lifestyle-marquee-wrap relative py-[56px] md:py-[80px] overflow-hidden">
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-16 md:w-32 z-10 bg-gradient-to-r from-[#FBF9F4] to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-16 md:w-32 z-10 bg-gradient-to-l from-[#FBF9F4] to-transparent" />
+        <div className="lifestyle-marquee flex gap-4 md:gap-5 w-max">
+          {items.map((p, i) => (
+            <figure
+              key={i}
+              className="relative shrink-0 w-[210px] h-[280px] md:w-[260px] md:h-[340px] rounded-2xl overflow-hidden bg-neutral-200"
+            >
+              <video
+                src={p.src}
+                poster={p.poster}
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+              <figcaption className="absolute bottom-3.5 left-4 text-white text-[12px] font-semibold uppercase tracking-[1.5px]">
+                {p.label}
+              </figcaption>
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =============================================================================
 // BENEFITS
 // =============================================================================
 const benefits: { icon: LucideIcon; title: string; text: string }[] = [
@@ -279,7 +696,7 @@ const benefits: { icon: LucideIcon; title: string; text: string }[] = [
 // =============================================================================
 function ResultsSection() {
   return (
-    <section className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
+    <section className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Performance mesurée"
@@ -295,7 +712,7 @@ function ResultsSection() {
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
-            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_8px_40px_rgba(64,49,24,0.09)] overflow-hidden"
+            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_16px_50px_rgba(64,49,24,0.06)] overflow-hidden"
           >
             <div className="p-6 md:p-7 border-b border-black/5">
               <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
@@ -325,7 +742,7 @@ function ResultsSection() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.2 }}
             transition={{ delay: 0.1 }}
-            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_8px_40px_rgba(64,49,24,0.09)] overflow-hidden"
+            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_16px_50px_rgba(64,49,24,0.06)] overflow-hidden"
           >
             <div className="p-6 md:p-7 border-b border-black/5">
               <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
@@ -357,7 +774,7 @@ function ResultsSection() {
 
 function BenefitsSection() {
   return (
-    <section className="py-[60px] md:py-[100px]">
+    <section className="py-[80px] md:py-[140px]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nos engagements"
@@ -372,7 +789,7 @@ function BenefitsSection() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.2 }}
               transition={{ delay: i * 0.08 }}
-              className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-8 shadow-[0_8px_40px_rgba(64,49,24,0.09)] hover:shadow-[0_16px_60px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col gap-4"
+              className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-8 shadow-[0_10px_40px_rgba(64,49,24,0.05)] hover:shadow-[0_14px_46px_rgba(64,49,24,0.07)] transition-shadow duration-300 flex flex-col gap-4"
             >
               <div className="flex items-center gap-3">
                 <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#A97C30]/10 text-[#A97C30] shrink-0">
@@ -399,7 +816,7 @@ const services = [
     icon: HomeIcon,
     title: 'Gestion de biens immobiliers',
     text: "Gestion clé en main de votre patrimoine : entretien, location courte durée, optimisation des revenus et reporting mensuel.",
-    image: 'https://images.unsplash.com/photo-1621693722835-44c9dcb724fd?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/gestion-villa.jpg',
     href: '/proprietaires',
     eyebrow: 'Notre cœur de métier',
   },
@@ -407,7 +824,7 @@ const services = [
     icon: Plane,
     title: "Billetterie d'avion",
     text: "Vols privés, jets, classe affaires et première classe. Du sol au ciel, tout est orchestré.",
-    image: 'https://images.unsplash.com/photo-1545610095-4d00a3f4f547?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/billetterie-avion.jpg',
     href: '/billetterie',
     eyebrow: 'Voyage premium',
   },
@@ -415,7 +832,7 @@ const services = [
     icon: Bed,
     title: "Logement d'exception",
     text: "Studios, suites avec jacuzzi, villas et penthouses. Des lieux à la hauteur de votre style de vie.",
-    image: 'https://images.unsplash.com/photo-1592229506151-845940174bb0?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/logement-suite.jpg',
     href: '/logement',
     eyebrow: 'Résidences premium',
   },
@@ -431,7 +848,7 @@ const services = [
     icon: Compass,
     title: 'Activités exclusives',
     text: "Yacht privé à Dubaï, croisière sur la Seine, hammam royal à Marrakech. Vivre ce que peu peuvent s'offrir.",
-    image: 'https://images.unsplash.com/photo-1743819458014-f5cf74f175e3?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/activites-jetski-burj.jpg',
     href: '/activites',
     eyebrow: 'Expériences VIP',
   },
@@ -445,81 +862,7 @@ const services = [
   },
 ];
 
-function ServicesSection() {
-  return (
-    <section id="services" className="relative py-[60px] md:py-[100px] overflow-hidden">
-      {/* Decorative ellipses */}
-      <div className="pointer-events-none absolute -top-32 -left-24 w-[500px] h-[500px] rounded-full bg-[#A97C30]/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-32 -right-24 w-[500px] h-[500px] rounded-full bg-amber-100/40 blur-3xl" />
-
-      <div className="relative max-w-[1152px] mx-auto px-6">
-        <SectionHeader
-          eyebrow="Nos services"
-          title={<>Six expertises pour un service{' '}<em className="font-serif-italic font-bold text-[#A97C30] not-italic">d'exception</em></>}
-        />
-        <p className="mt-4 max-w-2xl text-[15px] md:text-[16px] text-neutral-700">
-          De la gestion de votre patrimoine à l'organisation de vos expériences les plus exclusives,
-          nos six pôles d'expertise couvrent tous les besoins d'une clientèle exigeante.
-        </p>
-
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {services.map((s, i) => (
-            <motion.div
-              key={s.title}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true, amount: 0.15 }}
-              transition={{ delay: (i % 3) * 0.06 }}
-            >
-              <Link
-                to={s.href}
-                className="group relative bg-white rounded-2xl border border-[#ECE3D0] overflow-hidden shadow-[0_4px_24px_rgba(64,49,24,0.08)] hover:shadow-[0_8px_40px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col cursor-pointer h-full"
-              >
-                <div className="relative h-48 md:h-52 overflow-hidden">
-                  <ImageWithFallback
-                    src={s.image}
-                    alt={s.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                  <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#A97C30] flex items-center justify-center shadow-lg">
-                    <s.icon size={20} />
-                  </div>
-                  <span className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-[1px] text-[#A97C30] px-2.5 py-1 rounded-full">
-                    {s.eyebrow}
-                  </span>
-                </div>
-                <div className="flex flex-col flex-1 p-5 md:p-6 gap-3">
-                  <h3 className="text-[17px] md:text-[19px] font-semibold text-gray-900 leading-snug">
-                    {s.title}
-                  </h3>
-                  <p className="text-[14px] md:text-[15px] leading-relaxed text-gray-600">{s.text}</p>
-                  <div className="mt-auto pt-3">
-                    <span className="inline-flex items-center gap-1.5 text-[#A97C30] text-[13px] font-semibold group-hover:gap-2.5 transition-all">
-                      En savoir plus <ArrowRight size={14} />
-                    </span>
-                  </div>
-                </div>
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-
-        <div className="mt-10 backdrop-blur-md bg-black/5 rounded-full p-2 md:p-3 flex flex-col md:flex-row items-center md:items-stretch gap-3 md:gap-4 max-w-2xl mx-auto">
-          <p className="md:flex-1 px-4 py-2 text-center md:text-left text-[15px] font-medium">
-            Une solution clé en main pour les propriétaires
-          </p>
-          <a
-            href="#contact"
-            className="inline-flex items-center justify-center gap-2 bg-[#403118] text-white font-bold text-[14px] px-6 py-3 rounded-full hover:bg-[#2C2418]"
-          >
-            Nous contacter <ArrowRight size={14} />
-          </a>
-        </div>
-      </div>
-    </section>
-  );
-}
+// (ServicesSection en grille remplacé par ServicesCarousel — voir plus haut)
 
 // =============================================================================
 // PROCESS
@@ -554,7 +897,7 @@ const steps = [
 
 function ProcessSection() {
   return (
-    <section id="process" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
+    <section id="process" className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Comment ça marche ?"
@@ -569,7 +912,7 @@ function ProcessSection() {
             className="relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#A97C30]/10"
           >
             <ImageWithFallback
-              src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=1200&q=80"
+              src="/images/real/hero-logement-exception.jpg"
               alt="Notre process"
               className="w-full h-full object-cover"
             />
@@ -614,7 +957,7 @@ function ProcessSection() {
 // =============================================================================
 function CleaningPartnerSection() {
   return (
-    <section className="py-[60px] md:py-[100px]">
+    <section className="py-[80px] md:py-[140px]">
       <div className="max-w-[1152px] mx-auto px-6">
         <div className="relative bg-[#403118] text-white rounded-[28px] overflow-hidden p-8 md:p-12 lg:p-16">
           {/* Decorative accents */}
@@ -627,7 +970,7 @@ function CleaningPartnerSection() {
                 <Cpu size={14} /> Partenaire technologique
               </span>
 
-              <h2 className="mt-5 text-[28px] md:text-[40px] font-bold leading-[1.05]">
+              <h2 className="mt-5 font-serif-title text-[30px] md:text-[46px] font-normal leading-[1.08]">
                 Un ménage{' '}
                 <span className="font-serif-italic font-bold text-[#D5C69F]">automatisé</span>
                 {' '}et piloté par{' '}
@@ -693,30 +1036,6 @@ function CleaningPartnerSection() {
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-900/30 via-transparent to-gray-900/60" />
                 <div className="absolute inset-0 bg-[#A97C30]/10 mix-blend-multiply" />
 
-                {/* TOP-LEFT — agent en mission */}
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: 0.45 }}
-                  className="absolute top-4 left-4 bg-white/90 backdrop-blur-md rounded-2xl px-3 py-2 shadow-lg flex items-center gap-2.5 max-w-[200px]"
-                >
-                  <div className="relative shrink-0">
-                    <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#A97C30] to-[#7C561D] flex items-center justify-center text-white text-[13px] font-bold">
-                      SR
-                    </div>
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
-                  </div>
-                  <div>
-                    <p className="text-[11px] font-semibold text-gray-900 leading-tight">
-                      Sarah · Agent Pro
-                    </p>
-                    <p className="text-[10px] text-gray-500 leading-tight">
-                      Mission en cours
-                    </p>
-                  </div>
-                </motion.div>
-
                 {/* BOTTOM — stats glass card */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -756,17 +1075,6 @@ function CleaningPartnerSection() {
                     </div>
                   </div>
                 </motion.div>
-              </motion.div>
-
-              {/* Floating decorative checkmark badge */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
-                transition={{ delay: 0.7, type: 'spring', stiffness: 200 }}
-                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#A97C30] flex items-center justify-center shadow-xl ring-4 ring-gray-900"
-              >
-                <CheckCircle2 size={26} className="text-white" strokeWidth={2.5} />
               </motion.div>
             </div>
           </div>
@@ -817,13 +1125,13 @@ const faqs = [
 function FaqSection() {
   const [open, setOpen] = useState<number | null>(0);
   return (
-    <section id="faq" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
+    <section id="faq" className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6 grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-10 md:gap-16 items-start">
         <div className="md:sticky md:top-28">
           <span className="inline-flex items-center bg-[#A97C30]/15 text-[#7C561D] text-[13px] font-semibold px-4 py-1.5 rounded-full">
             FAQ
           </span>
-          <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05]">
+          <h2 className="mt-4 font-serif-title text-[34px] md:text-[52px] font-normal leading-[1.08]">
             Vous avez des <span className="font-serif-italic font-bold text-[#A97C30]">questions&nbsp;?</span>
           </h2>
           <p className="mt-4 text-[15px] text-neutral-700 leading-relaxed">
@@ -879,91 +1187,83 @@ function FaqSection() {
 // =============================================================================
 type ValueItem = {
   icon: LucideIcon;
+  n: string;
   title: string;
-  description?: string;
-  highlight?: string;
-  list?: string[];
+  lead: string;
+  text: string;
 };
 
 const values: ValueItem[] = [
   {
     icon: Clock,
+    n: '01',
     title: 'Temps',
-    description: "Gagnez du temps, laissez votre conciergerie s'occuper de tout.",
+    lead: 'Gagnez un temps précieux',
+    text: "Laissez votre conciergerie s'occuper de tout, de la mise en ligne à la remise des clés.",
   },
   {
     icon: TrendingUp,
+    n: '02',
     title: 'Rentabilité',
-    description: 'Une conciergerie peut augmenter la rentabilité de votre location de',
-    highlight: '15 à 40 %',
+    lead: '+15 à 40 % de revenus',
+    text: 'Une gestion professionnelle qui optimise le rendement de votre bien en location courte durée.',
   },
   {
     icon: ShieldCheck,
+    n: '03',
     title: 'Fiabilité',
-    list: [
-      'Un service sûr et toujours au rendez-vous.',
-      'Fiable à chaque étape, pour une tranquillité totale.',
-      'Votre quotidien géré avec rigueur et efficacité.',
-    ],
+    lead: 'Toujours au rendez-vous',
+    text: 'Un service sûr et rigoureux, fiable à chaque étape, pour une tranquillité totale.',
   },
   {
     icon: Feather,
+    n: '04',
     title: 'Sérénité',
-    list: [
-      'Libérez-vous des contraintes et profitez pleinement.',
-      "La tranquillité d'esprit à portée de main.",
-      'Chaque détail géré, pour un quotidien sans stress.',
-    ],
+    lead: "L'esprit enfin tranquille",
+    text: 'Libérez-vous des contraintes : chaque détail est géré, pour un quotidien sans stress.',
   },
 ];
 
 function ValuesSection() {
   return (
-    <section id="valeurs" className="py-[60px] md:py-[100px]">
+    <section id="valeurs" className="py-[80px] md:py-[140px]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nos valeurs"
           title={<>Pourquoi nous <em className="font-serif-italic font-bold text-[#A97C30] not-italic">choisir&nbsp;?</em></>}
         />
 
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+        <div className="mt-16 md:mt-20 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-6">
           {values.map((v, i) => (
             <motion.article
               key={v.title}
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 24 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.2 }}
-              transition={{ delay: i * 0.06 }}
-              className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-7 shadow-[0_4px_24px_rgba(64,49,24,0.08)] hover:shadow-[0_8px_40px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col gap-4"
+              transition={{ duration: 0.6, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+              className="group relative overflow-hidden bg-gradient-to-b from-white to-[#FBF8F1] rounded-[20px] border border-[#ECE3D0] p-7 md:p-8 shadow-[0_10px_36px_rgba(64,49,24,0.05)] hover:shadow-[0_22px_50px_-14px_rgba(64,49,24,0.16)] hover:-translate-y-1 hover:border-[#A97C30]/40 transition-all duration-[400ms] flex flex-col"
             >
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-[#A97C30]/10 text-[#A97C30] shrink-0">
-                  <v.icon size={20} strokeWidth={1.6} />
-                </div>
-                <span className="text-[16px] md:text-[18px] font-semibold text-gray-900">{v.title}</span>
+              {/* Numéro filigrane serif */}
+              <span
+                aria-hidden
+                className="pointer-events-none absolute -top-4 right-3 font-serif-title text-[92px] leading-none text-[#A97C30] opacity-[0.07] select-none"
+              >
+                {v.n}
+              </span>
+
+              <div className="relative flex items-center justify-center w-12 h-12 rounded-full bg-[#A97C30]/10 text-[#A97C30] ring-1 ring-[#A97C30]/20 group-hover:bg-[#A97C30]/15 transition-colors">
+                <v.icon size={20} strokeWidth={1.6} />
               </div>
-              <div className="text-[14px] md:text-[15px] leading-relaxed text-gray-600">
-                {v.list ? (
-                  <ul className="flex flex-col gap-1.5">
-                    {v.list.map((item, idx) => (
-                      <li key={idx} className="flex items-start gap-2">
-                        <span className="text-[#A97C30] mt-0.5 shrink-0">✓</span>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>
-                    {v.description}
-                    {v.highlight && (
-                      <>
-                        {' '}
-                        <strong className="font-bold text-[#A97C30]">{v.highlight}</strong>.
-                      </>
-                    )}
-                  </p>
-                )}
-              </div>
+
+              <h3 className="relative mt-5 text-[13px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                {v.title}
+              </h3>
+              <p className="relative mt-2 font-serif-title text-[21px] md:text-[23px] leading-[1.15] text-[#A97C30]">
+                {v.lead}
+              </p>
+              <p className="relative mt-3 text-[14px] md:text-[15px] leading-relaxed text-gray-600">
+                {v.text}
+              </p>
             </motion.article>
           ))}
         </div>
@@ -977,7 +1277,7 @@ function ValuesSection() {
 // =============================================================================
 function AboutSection() {
   return (
-    <section id="apropos" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
+    <section id="apropos" className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
         <motion.div
           initial={{ opacity: 0, x: -20 }}
@@ -1000,7 +1300,7 @@ function AboutSection() {
           <span className="inline-flex items-center bg-[#A97C30]/15 text-[#7C561D] text-[13px] font-semibold px-4 py-1.5 rounded-full">
             Qui sommes-nous ?
           </span>
-          <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05]">
+          <h2 className="mt-4 font-serif-title text-[34px] md:text-[52px] font-normal leading-[1.08]">
             L'excellence d'une conciergerie pensée pour{' '}
             <span className="font-serif-italic font-bold text-[#A97C30]">l'exception</span>
           </h2>
@@ -1055,7 +1355,24 @@ type ProofItem =
       poster?: string;
       label: string;
       caption: string;
+    }
+  | {
+      kind: 'localvideo';
+      src: string;
+      poster: string;
+      label: string;
+      caption: string;
     };
+
+// Vidéos réelles (stories IG @labelmaisoncg) montées en preuve/coulisses
+const proofVideos: ProofItem[] = [
+  { kind: 'localvideo', src: '/videos/proof-client-retour.mp4', poster: '/images/real/proof-client-retour-poster.jpg', label: 'Retour client', caption: 'Accueil client · fleurs & attentions' },
+  { kind: 'localvideo', src: '/videos/proof-voiture-nuit.mp4', poster: '/images/real/proof-voiture-nuit-poster.jpg', label: 'Mobilité haut de gamme', caption: 'Chaque déplacement devient un privilège' },
+  { kind: 'localvideo', src: '/videos/proof-arrivee.mp4', poster: '/images/real/proof-arrivee-poster.jpg', label: 'Transfert privé', caption: 'De l\'aéroport à la maison, sans couture' },
+  { kind: 'localvideo', src: '/videos/proof-dubai-marina.mp4', poster: '/images/real/proof-dubai-marina-poster.jpg', label: 'Coulisses', caption: 'Marina de Dubaï, de nuit' },
+  { kind: 'localvideo', src: '/videos/proof-dubai-fontaines.mp4', poster: '/images/real/proof-dubai-fontaines-poster.jpg', label: 'Coulisses', caption: 'Fontaines de Dubaï' },
+  { kind: 'localvideo', src: '/videos/proof-avion.mp4', poster: '/images/real/proof-avion-poster.jpg', label: 'Voyage premium', caption: 'Au-dessus des nuages' },
+];
 
 const proofs: ProofItem[] = [
   {
@@ -1186,6 +1503,13 @@ function PlatformBadge({ kind }: { kind: ProofItem['kind'] }) {
       </span>
     );
   }
+  if (kind === 'localvideo') {
+    return (
+      <span className="inline-flex items-center gap-1 bg-[#403118] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
+        Vidéo
+      </span>
+    );
+  }
   return (
     <span className="inline-flex items-center gap-1 bg-[#A97C30] text-white text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-md">
       Avis client
@@ -1213,7 +1537,9 @@ function ProofCard({ item, isCenter }: { item: ProofItem; isCenter: boolean }) {
         ? 'Voir sur Instagram'
         : item.kind === 'tiktok'
           ? 'Voir sur TikTok'
-          : 'Avis vérifié';
+          : item.kind === 'localvideo'
+            ? 'Voir la vidéo'
+            : 'Avis vérifié';
 
   return (
     <article
@@ -1262,6 +1588,29 @@ function ProofCard({ item, isCenter }: { item: ProofItem; isCenter: boolean }) {
             />
             <div className="absolute inset-0 bg-black/20" />
             <PlayOverlay />
+          </>
+        )}
+
+        {item.kind === 'localvideo' && (
+          <>
+            <ImageWithFallback
+              src={item.poster}
+              alt={item.caption}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/20" />
+            <div className="absolute top-3 left-3 right-3 flex items-center justify-between text-white">
+              <span className="text-[11px] font-semibold uppercase tracking-[1.5px] opacity-90">
+                Réel
+              </span>
+              <span className="text-[11px] font-semibold opacity-90">@labelmaisoncg</span>
+            </div>
+            <PlayOverlay />
+            <div className="absolute bottom-3 left-3 right-3 text-white">
+              <p className="text-[13px] font-semibold leading-tight drop-shadow-md">
+                {item.caption}
+              </p>
+            </div>
           </>
         )}
 
@@ -1386,7 +1735,10 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
 
   const embed = item.kind !== 'screenshot' ? getEmbedUrl(item) : null;
   const isYouTube = item.kind === 'youtube';
-  const externalUrl = item.kind !== 'screenshot' ? item.url : null;
+  const externalUrl =
+    item.kind === 'instagram' || item.kind === 'tiktok' || item.kind === 'youtube'
+      ? item.url
+      : null;
   const platformLabel =
     item.kind === 'youtube'
       ? 'YouTube'
@@ -1394,7 +1746,9 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
         ? 'Instagram'
         : item.kind === 'tiktok'
           ? 'TikTok'
-          : 'Image';
+          : item.kind === 'localvideo'
+            ? 'Vidéo'
+            : 'Image';
 
   return (
     <div
@@ -1423,6 +1777,15 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
             src={item.image}
             alt={item.caption}
             className="w-full h-auto max-h-[85vh] object-contain rounded-2xl shadow-2xl mx-auto block"
+          />
+        ) : item.kind === 'localvideo' ? (
+          <video
+            src={item.src}
+            poster={item.poster}
+            controls
+            autoPlay
+            playsInline
+            className="w-full h-auto max-h-[85vh] rounded-2xl shadow-2xl mx-auto block bg-black"
           />
         ) : embed ? (
           <div
@@ -1461,7 +1824,7 @@ function ProofLightbox({ item, onClose }: { item: ProofItem; onClose: () => void
 // Carte compacte pour la colonne verticale (screenshots clients)
 function CompactProofCard({ item }: { item: Extract<ProofItem, { kind: 'screenshot' }> }) {
   return (
-    <article className="bg-white rounded-2xl border border-[#ECE3D0] border border-black/5 overflow-hidden shadow-[0_6px_20px_rgba(10,10,10,0.06)] flex">
+    <article className="bg-white rounded-2xl border border-[#ECE3D0] overflow-hidden shadow-[0_6px_20px_rgba(10,10,10,0.06)] flex">
       <div className="relative w-[120px] shrink-0 bg-neutral-50">
         <ImageWithFallback
           src={item.image}
@@ -1534,16 +1897,16 @@ function ProofSection() {
   const screenshots = proofs.filter(
     (p): p is Extract<ProofItem, { kind: 'screenshot' }> => p.kind === 'screenshot',
   );
-  const videos = proofs.filter((p) => p.kind !== 'screenshot');
+  const videos = [...proofVideos, ...proofs.filter((p) => p.kind !== 'screenshot')];
 
   return (
-    <section className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
+    <section className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <div className="text-center mb-12 md:mb-16">
           <span className="inline-flex items-center bg-[#A97C30]/15 text-[#7C561D] text-[13px] font-semibold px-4 py-1.5 rounded-full">
             Preuves & coulisses
           </span>
-          <h2 className="mt-4 text-[30px] md:text-[44px] font-bold leading-[1.05]">
+          <h2 className="mt-4 font-serif-title text-[34px] md:text-[52px] font-normal leading-[1.08]">
             Ils adorent,{' '}
             <span className="font-serif-italic font-bold text-[#A97C30]">
               pourquoi pas vous&nbsp;?
@@ -1625,7 +1988,7 @@ function ContactSection() {
   };
 
   return (
-    <section id="contact" className="py-[60px] md:py-[100px] bg-[#F7F4EE]">
+    <section id="contact" className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
       <div className="max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Nous contacter"
@@ -1633,7 +1996,7 @@ function ContactSection() {
         />
 
         <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-14 items-start">
-          <div className="bg-white rounded-2xl border border-[#ECE3D0] border border-black/5 p-6 md:p-8">
+          <div className="bg-white rounded-2xl border border-[#ECE3D0] p-6 md:p-8">
             {submitted ? (
               <div className="flex items-start gap-3 bg-[#A97C30]/10 text-[#7C561D] rounded-lg p-4">
                 <CheckCircle2 size={20} className="shrink-0 mt-0.5" />
@@ -1797,8 +2160,8 @@ function SectionHeader({
       <span className="block text-[#7C561D] text-[12px] font-semibold uppercase tracking-[0.24em]">
         {eyebrow}
       </span>
-      <span className="mt-2.5 block mx-auto md:mx-0 h-px w-11 bg-gradient-to-r from-[#a8813a] to-transparent" />
-      <h2 className="mt-4 text-[30px] md:text-[40px] font-bold leading-[1.05] max-w-3xl">
+      <span className="mt-3 block mx-auto md:mx-0 h-px w-16 bg-gradient-to-r from-[#a8813a] to-transparent" />
+      <h2 className="mt-5 font-serif-title text-[34px] md:text-[52px] font-normal leading-[1.08] tracking-[-0.01em] max-w-3xl">
         {title}
       </h2>
     </div>
@@ -1821,14 +2184,14 @@ export function Home() {
 
       <HeroSection />
       <LeadFormSection />
-      <ServicesSection />
+      <StorySection />
+      <ServicesCarousel />
+      <LifestyleShowcase />
       <ResultsSection />
-      <BenefitsSection />
       <ProcessSection />
       <CleaningPartnerSection />
       <ValuesSection />
       <FaqSection />
-      <AboutSection />
       <ProofSection />
       <ContactSection />
     </div>

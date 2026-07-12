@@ -5,27 +5,41 @@ import {
   SectionHeader,
   FeatureCard,
   FinalCta,
+  ProofVideo,
+  MediaCarousel,
   Section,
 } from '../components/sections/PageBlocks';
 
 const destinations = [
   {
-    title: 'Paris',
-    description: 'Croisière privée sur la Seine, rooftops avec vue Tour Eiffel, musées privés, shooting photo lifestyle, accès aux restaurants emblématiques.',
-    image: 'https://images.unsplash.com/photo-1431274172761-fca41d930114?auto=format&fit=crop&w=1200&q=80',
-    badge: 'Capitale',
-  },
-  {
     title: 'Dubaï',
-    description: 'Yacht privé au coucher du soleil, safari désert + dîner BBQ + spectacle, vol en hélicoptère sur la Palm Jumeirah, jet ski et restaurants iconiques.',
-    image: 'https://images.unsplash.com/photo-1677151420167-b2de389d02db?auto=format&fit=crop&w=1200&q=80',
+    description: 'Yacht privé au coucher du soleil, jet ski devant le Burj Al Arab, safari désert, hélicoptère sur la Palm. L\'exception à chaque instant.',
+    image: '/images/real/activites-jetski-burj.jpg',
     badge: 'Émirats',
   },
   {
     title: 'Marrakech',
-    description: 'Hammam royal et spa traditionnel, quad et désert d\'Agafay, dîner romantique en riad privatisé, escapades dans l\'Atlas.',
-    image: 'https://images.unsplash.com/photo-1653323792487-6ecc6217040b?auto=format&fit=crop&w=1200&q=80',
+    description: 'Hammam royal et spa traditionnel, quad et désert d\'Agafay, dîner en riad privatisé, escapades dans l\'Atlas.',
+    image: '/images/real/marrakech-menara.jpg',
     badge: 'Maroc',
+  },
+  {
+    title: 'Ibiza',
+    description: 'Sorties en mer, beach clubs privatisés, villas avec vue, soirées d\'exception. L\'île de tous les possibles.',
+    image: '/images/real/ibiza.jpg',
+    badge: 'Baléares',
+  },
+  {
+    title: 'Rome',
+    description: 'Visites privées hors foule, tables mythiques, chauffeur et guide dédiés. La dolce vita, orchestrée.',
+    image: '/images/real/rome-colisee.jpg',
+    badge: 'Italie',
+  },
+  {
+    title: 'Paris',
+    description: 'Croisière privée sur la Seine, rooftops avec vue Tour Eiffel, musées privés, accès aux restaurants emblématiques.',
+    image: 'https://images.unsplash.com/photo-1431274172761-fca41d930114?auto=format&fit=crop&w=1200&q=80',
+    badge: 'Capitale',
   },
 ];
 
@@ -76,9 +90,19 @@ export function Activites() {
         titleStart="Vivre ce que peu"
         titleAccent="peuvent s'offrir"
         subtitle="L'exception n'attend pas. Yacht privé, hammam royal, dîner étoilé, shooting privatif : nous orchestrons les expériences que vous n'oublierez pas."
-        imageUrl="https://images.unsplash.com/photo-1743819458014-f5cf74f175e3?auto=format&fit=crop&w=1600&q=80"
-        imageAlt="Yacht privé au coucher du soleil"
+        imageUrl="/images/real/activites-jetski-burj.jpg"
+        imageAlt="Jet ski devant le Burj Al Arab à Dubaï"
         ctas={[{ label: 'Planifier une expérience', href: '/#contact', primary: true }]}
+      />
+
+      <ProofVideo
+        eyebrow="En vidéo · Dubaï"
+        titleStart="Des expériences"
+        titleAccent="que peu peuvent s'offrir"
+        text="Yacht, jet ski, fontaines de Dubaï au coucher du soleil… Voici un aperçu réel des moments que nous orchestrons pour nos clients."
+        videoSrc="/videos/proof-dubai-fontaines.mp4"
+        poster="/images/real/proof-dubai-fontaines-poster.jpg"
+        caption="Fontaines de Dubaï"
       />
 
       <Section bg="white">
@@ -135,6 +159,36 @@ export function Activites() {
           ))}
         </ol>
       </Section>
+
+      <MediaCarousel
+        cta={{ label: 'Planifier une expérience', href: '/#contact' }}
+        eyebrow="Expériences en images"
+        titleStart="Un aperçu réel de nos"
+        titleAccent="moments d'exception"
+        subtitle="Yachts, jet-ski, quad dans le désert, fontaines de Dubaï, escapades à Marrakech, Ibiza, Rome."
+        items={[
+          { type: 'video', src: '/videos/activite-jetski2.mp4', poster: '/images/real/activite-jetski2-poster.jpg', label: 'Jet-ski · Dubaï' },
+          { type: 'video', src: '/videos/activite-catamaran2.mp4', poster: '/images/real/activite-catamaran2-poster.jpg', label: 'Catamaran' },
+          { type: 'video', src: '/videos/activite-quad2.mp4', poster: '/images/real/activite-quad2-poster.jpg', label: 'Quad · Agafay' },
+          { type: 'video', src: '/videos/activite-fontaines2.mp4', poster: '/images/real/activite-fontaines2-poster.jpg', label: 'Fontaines · nuit' },
+          { type: 'video', src: '/videos/activite-croisiere-nuit.mp4', poster: '/images/real/activite-croisiere-nuit-poster.jpg', label: 'Croisière nocturne' },
+          { type: 'video', src: '/videos/activite-skyline-nuit.mp4', poster: '/images/real/activite-skyline-nuit-poster.jpg', label: 'Skyline by night' },
+          { type: 'video', src: '/videos/activite-fontaines3.mp4', poster: '/images/real/activite-fontaines3-poster.jpg', label: 'Fontaines de Dubaï' },
+          { type: 'video', src: '/videos/activite-jetski3.mp4', poster: '/images/real/activite-jetski3-poster.jpg', label: 'Jet-ski' },
+          { type: 'video', src: '/videos/life-jetski.mp4', poster: '/images/real/life-jetski-poster.jpg', label: 'Jet-ski' },
+          { type: 'image', src: '/images/real/activites-jetski-burj.jpg', label: 'Burj Al Arab' },
+          { type: 'video', src: '/videos/life-catamaran.mp4', poster: '/images/real/life-catamaran-poster.jpg', label: 'En mer' },
+          { type: 'image', src: '/images/real/yacht-82.jpg', label: 'Yacht 82ft' },
+          { type: 'video', src: '/videos/life-quad.mp4', poster: '/images/real/life-quad-poster.jpg', label: 'Quad · désert' },
+          { type: 'image', src: '/images/real/marrakech-menara.jpg', label: 'Marrakech' },
+          { type: 'video', src: '/videos/proof-dubai-fontaines.mp4', poster: '/images/real/proof-dubai-fontaines-poster.jpg', label: 'Fontaines de Dubaï' },
+          { type: 'image', src: '/images/real/ibiza.jpg', label: 'Ibiza' },
+          { type: 'video', src: '/videos/life-burj.mp4', poster: '/images/real/life-burj-poster.jpg', label: 'Burj Al Arab' },
+          { type: 'image', src: '/images/real/yacht-55.jpg', label: 'Yacht 55ft' },
+          { type: 'image', src: '/images/real/rome-colisee.jpg', label: 'Rome' },
+          { type: 'image', src: '/images/real/dubai-marina.jpg', label: 'Dubaï Marina' },
+        ]}
+      />
 
       <FinalCta
         titleStart="Planifiez votre"

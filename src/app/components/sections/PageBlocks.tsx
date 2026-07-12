@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useRef, type ReactNode } from 'react';
 import { motion } from 'motion/react';
 import { ArrowRight, MapPin, Quote, Star } from 'lucide-react';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
@@ -159,39 +159,39 @@ export function FeatureCard({
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.15 }}
-      className="group relative bg-white rounded-2xl border border-[#ECE3D0] overflow-hidden shadow-[0_4px_24px_rgba(64,49,24,0.08)] hover:shadow-[0_8px_40px_rgba(64,49,24,0.11)] transition-shadow duration-300 flex flex-col"
+      className="group relative bg-white rounded-[20px] border border-[#ECE3D0] overflow-hidden shadow-[0_10px_36px_rgba(64,49,24,0.05)] hover:shadow-[0_24px_60px_-12px_rgba(64,49,24,0.18)] hover:-translate-y-1 transition-all duration-[400ms] flex flex-col"
     >
       {image && (
         <div
           className={`relative overflow-hidden ${
-            contain ? 'h-60 md:h-72 bg-[#F4F1EA]' : 'h-48 md:h-52'
+            contain ? 'h-64 md:h-80 bg-[#F4F1EA]' : 'h-72 md:h-[360px]'
           }`}
         >
           <ImageWithFallback
             src={image}
             alt={imageAlt ?? title}
-            className={`w-full h-full transition-transform duration-500 ${
+            className={`w-full h-full transition-transform duration-[600ms] ease-out ${
               contain
                 ? 'object-contain p-4 group-hover:scale-[1.03]'
-                : 'object-cover group-hover:scale-105'
+                : 'object-cover group-hover:scale-[1.06]'
             }`}
           />
           {!contain && (
-            <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
+            <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/25 to-transparent pointer-events-none" />
           )}
           {icon && (
-            <div className="absolute top-4 left-4 w-11 h-11 rounded-xl bg-white/95 backdrop-blur-sm text-[#A97C30] flex items-center justify-center shadow-lg">
+            <div className="absolute top-4 left-4 w-11 h-11 rounded-full bg-white/90 backdrop-blur-md text-[#A97C30] flex items-center justify-center shadow-md">
               {icon}
             </div>
           )}
           {badge && (
-            <span className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm text-[10px] font-semibold uppercase tracking-[1px] text-[#A97C30] px-2.5 py-1 rounded-full">
+            <span className="absolute top-4 right-4 bg-white/90 backdrop-blur-md text-[10px] font-semibold uppercase tracking-[1.5px] text-[#7C561D] px-3 py-1.5 rounded-full shadow-sm">
               {badge}
             </span>
           )}
         </div>
       )}
-      <div className="flex flex-col flex-1 p-5 md:p-6 gap-3">
+      <div className="flex flex-col flex-1 p-6 md:p-7 gap-2.5">
         {!image && icon && (
           <div className="w-12 h-12 rounded-xl bg-[#A97C30]/10 text-[#A97C30] flex items-center justify-center shrink-0">
             {icon}
@@ -253,6 +253,256 @@ export function TestimonialCard({
         )}
       </div>
     </motion.article>
+  );
+}
+
+// =============================================================================
+// PROOF VIDEO — vraie vidéo (story IG) en preuve, format téléphone + texte
+// =============================================================================
+export function ProofVideo({
+  eyebrow = 'En vidéo',
+  titleStart,
+  titleAccent,
+  text,
+  videoSrc,
+  poster,
+  caption,
+  reverse = false,
+  bg = 'zinc',
+}: {
+  eyebrow?: string;
+  titleStart?: string;
+  titleAccent: string;
+  text: string;
+  videoSrc: string;
+  poster: string;
+  caption?: string;
+  reverse?: boolean;
+  bg?: 'white' | 'zinc' | 'gradient';
+}) {
+  return (
+    <Section bg={bg}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-10 md:gap-16 items-center">
+        <div className={reverse ? 'md:order-2' : ''}>
+          <div className="relative mx-auto w-full max-w-[300px] aspect-[9/16] rounded-[24px] overflow-hidden shadow-[0_30px_70px_-20px_rgba(64,49,24,0.5)] ring-1 ring-black/5 bg-black">
+            <video
+              src={videoSrc}
+              poster={poster}
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-black/10 pointer-events-none" />
+            <div className="absolute top-3 left-3 right-3 flex items-center justify-between text-white text-[11px] font-semibold uppercase tracking-[1.5px] opacity-90 pointer-events-none">
+              <span>Réel</span>
+              <span>@labelmaisoncg</span>
+            </div>
+            {caption && (
+              <p className="absolute bottom-4 left-4 right-4 text-white text-[13px] font-semibold leading-tight drop-shadow-md pointer-events-none">
+                {caption}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className={reverse ? 'md:order-1' : ''}>
+          <span className="block text-[#7C561D] text-[12px] font-semibold uppercase tracking-[0.24em]">
+            {eyebrow}
+          </span>
+          <span className="mt-3 block h-px w-16 bg-gradient-to-r from-[#a8813a] to-transparent" />
+          <h2 className="mt-5 font-serif-title text-[30px] md:text-[44px] font-normal leading-[1.08]">
+            {titleStart && <>{titleStart} </>}
+            <span className="font-serif-italic font-bold text-[#A97C30]">{titleAccent}</span>
+          </h2>
+          <p className="mt-5 text-[16px] md:text-[17px] text-neutral-700 leading-relaxed max-w-xl">
+            {text}
+          </p>
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+// =============================================================================
+// MEDIA MARQUEE — galerie défilante mixte (photos + vidéos), plein largeur
+// =============================================================================
+type MediaItem = { type: 'image' | 'video'; src: string; poster?: string; label?: string };
+
+export function MediaMarquee({
+  eyebrow = 'En images',
+  titleStart,
+  titleAccent,
+  subtitle,
+  items,
+  bg = 'white',
+}: {
+  eyebrow?: string;
+  titleStart?: string;
+  titleAccent: string;
+  subtitle?: string;
+  items: MediaItem[];
+  bg?: 'white' | 'zinc' | 'gradient';
+}) {
+  const doubled = [...items, ...items];
+  const bgHex = bg === 'zinc' ? '#F7F4EE' : '#FFFFFF';
+  const sectionBg = bg === 'zinc' ? 'bg-[#F7F4EE]' : bg === 'gradient' ? 'bg-gradient-to-br from-gray-50 to-gray-100' : 'bg-white';
+  return (
+    <section className={`py-[60px] md:py-[100px] overflow-hidden ${sectionBg}`}>
+      <div className="max-w-[1152px] mx-auto px-6">
+        <SectionHeader eyebrow={eyebrow} titleStart={titleStart} titleAccent={titleAccent} subtitle={subtitle} />
+      </div>
+      <div className="lifestyle-marquee-wrap relative mt-12 md:mt-16">
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 w-16 md:w-32 z-10"
+          style={{ background: `linear-gradient(to right, ${bgHex}, transparent)` }}
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 w-16 md:w-32 z-10"
+          style={{ background: `linear-gradient(to left, ${bgHex}, transparent)` }}
+        />
+        <div className="lifestyle-marquee flex gap-4 md:gap-5 w-max">
+          {doubled.map((m, i) => (
+            <figure
+              key={i}
+              className="relative shrink-0 w-[220px] h-[300px] md:w-[270px] md:h-[360px] rounded-2xl overflow-hidden bg-neutral-200"
+            >
+              {m.type === 'video' ? (
+                <video
+                  src={m.src}
+                  poster={m.poster}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                <ImageWithFallback src={m.src} alt={m.label ?? ''} className="absolute inset-0 w-full h-full object-cover" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+              {m.label && (
+                <figcaption className="absolute bottom-3.5 left-4 text-white text-[12px] font-semibold uppercase tracking-[1.5px]">
+                  {m.label}
+                </figcaption>
+              )}
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+// =============================================================================
+// MEDIA CAROUSEL — carrousel interactif (flèches) mixte photos/vidéos + CTA
+// =============================================================================
+export function MediaCarousel({
+  eyebrow = 'En images',
+  titleStart,
+  titleAccent,
+  subtitle,
+  items,
+  cta,
+  bg = 'white',
+}: {
+  eyebrow?: string;
+  titleStart?: string;
+  titleAccent: string;
+  subtitle?: string;
+  items: MediaItem[];
+  cta?: { label: string; href: string; external?: boolean };
+  bg?: 'white' | 'zinc' | 'gradient';
+}) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const scroll = (dir: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * el.clientWidth * 0.8, behavior: 'smooth' });
+  };
+  const sectionBg =
+    bg === 'zinc' ? 'bg-[#F7F4EE]' : bg === 'gradient' ? 'bg-gradient-to-br from-gray-50 to-gray-100' : 'bg-white';
+
+  const Arrows = ({ className = '' }: { className?: string }) => (
+    <div className={`items-center gap-3 ${className}`}>
+      <button
+        type="button"
+        onClick={() => scroll(-1)}
+        aria-label="Précédent"
+        className="w-12 h-12 rounded-full border border-[#A97C30]/40 bg-white text-[#A97C30] text-[18px] flex items-center justify-center hover:bg-[#FBF6EC] transition-colors"
+      >
+        ←
+      </button>
+      <button
+        type="button"
+        onClick={() => scroll(1)}
+        aria-label="Suivant"
+        className="w-12 h-12 rounded-full bg-[#403118] text-[#F6EFDE] text-[18px] flex items-center justify-center hover:bg-[#2C2418] transition-colors"
+      >
+        →
+      </button>
+    </div>
+  );
+
+  return (
+    <section className={`py-[60px] md:py-[100px] ${sectionBg}`}>
+      <div className="max-w-[1152px] mx-auto px-6">
+        <div className="flex items-end justify-between gap-6">
+          <SectionHeader eyebrow={eyebrow} titleStart={titleStart} titleAccent={titleAccent} subtitle={subtitle} />
+          <Arrows className="hidden md:flex shrink-0 pb-1" />
+        </div>
+
+        <div
+          ref={trackRef}
+          className="mt-10 md:mt-12 flex gap-4 md:gap-5 overflow-x-auto snap-x snap-mandatory scroll-smooth pb-2 -mx-1 px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {items.map((m, i) => (
+            <figure
+              key={i}
+              className="relative shrink-0 snap-start w-[240px] h-[320px] md:w-[290px] md:h-[390px] rounded-2xl overflow-hidden bg-neutral-200"
+            >
+              {m.type === 'video' ? (
+                <video
+                  src={m.src}
+                  poster={m.poster}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  preload="metadata"
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+              ) : (
+                <ImageWithFallback src={m.src} alt={m.label ?? ''} className="absolute inset-0 w-full h-full object-cover" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+              {m.label && (
+                <figcaption className="absolute bottom-3.5 left-4 text-white text-[12px] font-semibold uppercase tracking-[1.5px]">
+                  {m.label}
+                </figcaption>
+              )}
+            </figure>
+          ))}
+        </div>
+
+        <div className="mt-9 flex items-center gap-4">
+          {cta && (
+            <a
+              href={cta.href}
+              target={cta.external ? '_blank' : undefined}
+              rel={cta.external ? 'noopener noreferrer' : undefined}
+              className="inline-flex items-center gap-2 bg-[#A97C30] text-white font-bold text-[15px] px-7 py-4 rounded-full hover:bg-[#7C561D] transition-colors"
+            >
+              {cta.label} <ArrowRight size={16} />
+            </a>
+          )}
+          <Arrows className="flex md:hidden ml-auto" />
+        </div>
+      </div>
+    </section>
   );
 }
 

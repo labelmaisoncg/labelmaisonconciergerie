@@ -11,6 +11,7 @@ import {
   SectionHeader,
   FeatureCard,
   FinalCta,
+  MediaCarousel,
   Section,
 } from '../components/sections/PageBlocks';
 
@@ -53,8 +54,8 @@ export function Proprietaires() {
         titleStart="Gestion clé en main de biens immobiliers"
         titleAccent="d'exception"
         subtitle="Confiez la gestion de votre patrimoine immobilier à une conciergerie privée haut de gamme et profitez d'un service sur mesure, discret et performant."
-        imageUrl="https://images.unsplash.com/photo-1694967832949-09984640b143?auto=format&fit=crop&w=1600&q=80"
-        imageAlt="Villa de luxe gérée par Label Maison"
+        imageUrl="/images/real/gestion-villa.jpg"
+        imageAlt="Bien d'exception géré par Label Maison"
         ctas={[
           {
             label: 'Audit gratuit propriétaires',
@@ -225,6 +226,24 @@ export function Proprietaires() {
           </motion.div>
         </div>
       </Section>
+
+      <MediaCarousel
+        eyebrow="Biens gérés en images"
+        titleStart="Des biens"
+        titleAccent="sélectionnés et préparés"
+        subtitle="Chaque logement est inspecté et préparé par nos soins avant chaque voyageur. Faites glisser pour explorer."
+        items={[
+          { type: 'video', src: '/videos/proof-logement.mp4', poster: '/images/real/proof-logement-poster.jpg', label: "Visite d'un bien" },
+          { type: 'video', src: '/videos/logement-salon.mp4', poster: '/images/real/logement-salon-poster.jpg', label: 'Salon' },
+          { type: 'video', src: '/videos/logement-chambre2.mp4', poster: '/images/real/logement-chambre2-poster.jpg', label: 'Chambre' },
+          { type: 'video', src: '/videos/logement-sdb.mp4', poster: '/images/real/logement-sdb-poster.jpg', label: 'Salle de bain' },
+          { type: 'video', src: '/videos/logement-riad.mp4', poster: '/images/real/logement-riad-poster.jpg', label: 'Riad' },
+          { type: 'image', src: '/images/real/hero-logement-exception.jpg', label: "Bien d'exception" },
+          { type: 'image', src: '/images/real/gestion-villa.jpg', label: 'Villa gérée' },
+          { type: 'image', src: '/images/real/desert-pool.jpg', label: 'Piscine' },
+        ]}
+        cta={{ label: 'Audit gratuit propriétaires', href: 'https://audit.labelmaisoncg.fr/a5ea1983', external: true }}
+      />
 
       <FinalCta
         titleStart="Confiez-nous la gestion de votre"

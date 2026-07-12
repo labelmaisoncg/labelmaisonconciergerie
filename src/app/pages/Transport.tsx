@@ -5,27 +5,47 @@ import {
   SectionHeader,
   FeatureCard,
   FinalCta,
+  ProofVideo,
+  MediaCarousel,
   Section,
 } from '../components/sections/PageBlocks';
 
 const vehicles = [
   {
-    title: 'Berlines de luxe',
-    description: "Mercedes Classe S, BMW Série 7, Audi A8. L'élégance discrète pour vos déplacements urbains et professionnels.",
-    image: 'https://images.unsplash.com/photo-1597509560792-796c8682d017?auto=format&fit=crop&w=1200&q=80',
-    badge: 'Classique',
+    title: 'Mercedes Classe G',
+    description: "L'icône tout-terrain de luxe. Présence, confort et sécurité pour vos déplacements en ville comme en escapade.",
+    image: '/images/real/g-wagon.jpg',
+    badge: 'Iconique',
   },
   {
-    title: 'SUV premium',
-    description: 'Mercedes Classe G, Range Rover, BMW X7. Pour vos déplacements en groupe ou avec bagages volumineux.',
-    image: 'https://images.unsplash.com/photo-1739950075618-f9ae2f90b0c0?auto=format&fit=crop&w=1200&q=80',
-    badge: 'Polyvalent',
+    title: 'Lamborghini Urus',
+    description: 'Le super-SUV. Sensations et prestige pour ceux qui veulent marquer chaque arrivée.',
+    image: '/images/real/lamborghini.jpg',
+    badge: 'Sport',
   },
   {
-    title: 'Véhicules blindés',
-    description: "Pour les déplacements à haut niveau de sécurité. Conducteurs formés, discrétion absolue.",
-    image: 'https://images.unsplash.com/photo-1637252166739-b47f8875f304?auto=format&fit=crop&w=1200&q=80',
-    badge: 'Sécurité',
+    title: 'McLaren',
+    description: "L'exception à l'état pur. Une supercar pour les occasions qui ne se répètent pas.",
+    image: '/images/real/voiture-sport.jpg',
+    badge: 'Supercar',
+  },
+  {
+    title: 'Ferrari',
+    description: 'Le mythe italien. Louez la légende, avec chauffeur ou pour vous-même.',
+    image: '/images/real/ferrari.jpg',
+    badge: 'Exclusif',
+  },
+  {
+    title: 'Berline & intérieur VIP',
+    description: "L'élégance discrète pour vos trajets professionnels et transferts, dans un habitacle soigné.",
+    image: '/images/real/voiture-vip-interieur.jpeg',
+    badge: 'Élégance',
+  },
+  {
+    title: 'Van premium',
+    description: 'Pour vos déplacements en groupe ou avec bagages. Espace, confort et discrétion.',
+    image: '/images/real/mercedes-van.jpg',
+    badge: 'Groupe',
   },
 ];
 
@@ -84,6 +104,16 @@ export function Transport() {
         ctas={[{ label: 'Réserver un chauffeur', href: '/#contact', primary: true }]}
       />
 
+      <ProofVideo
+        eyebrow="En vidéo · Coulisses"
+        titleStart="L'accueil"
+        titleAccent="fait toute la différence"
+        text="Chaque déplacement devient un privilège : accueil personnalisé, attentions, coordination parfaite. Voici un vrai moment client, capté sur le terrain."
+        videoSrc="/videos/proof-client-retour.mp4"
+        poster="/images/real/proof-client-retour-poster.jpg"
+        caption="Accueil client · fleurs & attentions"
+      />
+
       <Section bg="white">
         <SectionHeader
           eyebrow="Notre flotte"
@@ -117,6 +147,39 @@ export function Transport() {
           ))}
         </div>
       </Section>
+
+      <ProofVideo
+        bg="white"
+        eyebrow="En vidéo · Flotte"
+        titleStart="Une flotte"
+        titleAccent="à la hauteur de vos trajets"
+        text="Berlines, SUV, sportives et vans premium, coordonnés avec des chauffeurs formés, à Paris comme à l'international. Un aperçu réel de nos prestations."
+        videoSrc="/videos/proof-transport.mp4"
+        poster="/images/real/proof-transport-poster.jpg"
+        caption="Transport privé"
+        reverse
+      />
+
+      <MediaCarousel
+        bg="zinc"
+        cta={{ label: 'Réserver un chauffeur', href: '/#contact' }}
+        eyebrow="La flotte en images"
+        titleStart="Notre univers"
+        titleAccent="mobilité"
+        subtitle="Voitures d'exception, transferts privés et arrivées soignées, en images réelles."
+        items={[
+          { type: 'video', src: '/videos/transport-lambo.mp4', poster: '/images/real/transport-lambo-poster.jpg', label: 'Lamborghini Urus' },
+          { type: 'image', src: '/images/real/lamborghini.jpg', label: 'Lamborghini' },
+          { type: 'video', src: '/videos/proof-voiture-nuit.mp4', poster: '/images/real/proof-voiture-nuit-poster.jpg', label: 'De nuit' },
+          { type: 'image', src: '/images/real/g-wagon.jpg', label: 'Mercedes Classe G' },
+          { type: 'image', src: '/images/real/voiture-sport.jpg', label: 'McLaren' },
+          { type: 'video', src: '/videos/proof-transport.mp4', poster: '/images/real/proof-transport-poster.jpg', label: 'Transport privé' },
+          { type: 'image', src: '/images/real/ferrari.jpg', label: 'Ferrari' },
+          { type: 'image', src: '/images/real/voiture-vip-interieur.jpeg', label: 'Intérieur VIP' },
+          { type: 'video', src: '/videos/proof-arrivee.mp4', poster: '/images/real/proof-arrivee-poster.jpg', label: 'Arrivée' },
+          { type: 'image', src: '/images/real/mercedes-van.jpg', label: 'Van premium' },
+        ]}
+      />
 
       <FinalCta
         titleStart="Réservez votre"

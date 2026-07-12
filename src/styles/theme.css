@@ -160,6 +160,11 @@
     font-style: italic;
   }
 
+  .font-serif-title {
+    font-family: 'Playfair Display', serif;
+    font-style: normal;
+  }
+
   html {
     font-size: var(--font-size);
     scroll-behavior: smooth;
@@ -171,8 +176,30 @@
   to   { transform: translateY(-50%); }
 }
 
+/* Halo pulsé derrière le carrousel services (coverflow) */
+@keyframes cc-glow {
+  0%, 100% { opacity: .5; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: .8; transform: translate(-50%, -50%) scale(1.07); }
+}
+
+/* Galerie lifestyle — défilement horizontal continu */
+@keyframes scroll-left-lifestyle {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.lifestyle-marquee {
+  animation: scroll-left-lifestyle 60s linear infinite;
+  will-change: transform;
+}
+.lifestyle-marquee-wrap:hover .lifestyle-marquee {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lifestyle-marquee { animation: none; }
+}
+
 .proof-vscroll {
-  animation: scroll-up-proofs 32s linear infinite;
+  animation: scroll-up-proofs 60s linear infinite;
   will-change: transform;
 }
 

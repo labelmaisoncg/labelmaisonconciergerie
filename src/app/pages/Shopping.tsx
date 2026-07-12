@@ -13,6 +13,8 @@ import {
   SectionHeader,
   FeatureCard,
   FinalCta,
+  ProofVideo,
+  MediaCarousel,
   Section,
 } from '../components/sections/PageBlocks';
 
@@ -27,7 +29,7 @@ const categories = [
   {
     title: 'Mode & maroquinerie',
     description: 'Hermès, Chanel, Louis Vuitton. Birkin sur liste d\'attente, créations exclusives, sur mesure haute couture.',
-    image: 'https://images.unsplash.com/photo-1722236525367-00a4ff86ec00?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/louis-vuitton.jpg',
     badge: 'Fashion',
   },
   {
@@ -39,7 +41,7 @@ const categories = [
   {
     title: 'Sur mesure',
     description: 'Tout ce qui fait l\'objet de votre désir, nous le trouvons. Dites-nous, nous sourçons.',
-    image: 'https://images.unsplash.com/flagged/photo-1553277004-39d655b57262?auto=format&fit=crop&w=1200&q=80',
+    image: '/images/real/pshop-cadeau.jpg',
     badge: 'Custom',
   },
 ];
@@ -99,6 +101,28 @@ export function Shopping() {
         ctas={[{ label: 'Demande personnalisée', href: '/#contact', primary: true }]}
       />
 
+      <ProofVideo
+        eyebrow="En vidéo · Acquisitions"
+        titleStart="Des pièces"
+        titleAccent="qui se portent, pas qui s'exposent"
+        text="Haute horlogerie sourcée, authentifiée et livrée en main propre. « Pièce récupérée cet après-midi pour un client » : un vrai moment, en toute discrétion."
+        videoSrc="/videos/proof-montre-client.mp4"
+        poster="/images/real/proof-montre-client-poster.jpg"
+        caption="Pièce récupérée pour un client"
+      />
+
+      <ProofVideo
+        bg="white"
+        eyebrow="En vidéo · Joaillerie"
+        titleStart="La pièce"
+        titleAccent="qui vous ressemble"
+        text="Diamants, joaillerie et pièces d'exception, sourcés et authentifiés. Un aperçu réel des acquisitions confiées à Label Maison."
+        videoSrc="/videos/proof-bijou-client.mp4"
+        poster="/images/real/proof-bijou-client-poster.jpg"
+        caption="Bracelet joaillerie sur mesure"
+        reverse
+      />
+
       <Section bg="white">
         <SectionHeader
           eyebrow="Nos spécialités"
@@ -133,6 +157,27 @@ export function Shopping() {
           ))}
         </div>
       </Section>
+
+      <MediaCarousel
+        bg="zinc"
+        eyebrow="Acquisitions en images"
+        titleStart="Des pièces"
+        titleAccent="d'exception"
+        subtitle="Horlogerie, joaillerie, maroquinerie et mode : de vraies acquisitions confiées à Label Maison. Faites glisser pour explorer."
+        items={[
+          { type: 'video', src: '/videos/shopping-montre2.mp4', poster: '/images/real/shopping-montre2-poster.jpg', label: 'Rolex GMT · récupérée' },
+          { type: 'video', src: '/videos/proof-montre-client.mp4', poster: '/images/real/proof-montre-client-poster.jpg', label: 'Rolex · client' },
+          { type: 'video', src: '/videos/shopping-bijoux2.mp4', poster: '/images/real/shopping-bijoux2-poster.jpg', label: 'Joaillerie' },
+          { type: 'video', src: '/videos/proof-bijou-client.mp4', poster: '/images/real/proof-bijou-client-poster.jpg', label: 'Bijou · client' },
+          { type: 'image', src: '/images/real/rolex-gmt-poignet.jpg', label: 'Rolex GMT' },
+          { type: 'image', src: '/images/real/louis-vuitton.jpg', label: 'Louis Vuitton' },
+          { type: 'image', src: '/images/real/montre-rolex-datejust.jpeg', label: 'Rolex Datejust' },
+          { type: 'image', src: '/images/real/rolex-coffret.jpg', label: 'Coffret' },
+          { type: 'image', src: '/images/real/amiri-boutique.jpg', label: 'Mode' },
+          { type: 'image', src: '/images/real/pshop-cadeau.jpg', label: 'Sur mesure' },
+        ]}
+        cta={{ label: 'Demande personnalisée', href: '/#contact' }}
+      />
 
       <FinalCta
         titleStart="Confiez-nous"

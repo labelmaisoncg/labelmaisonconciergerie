@@ -7,7 +7,7 @@ import { BrandLogo } from './BrandLogo';
 const navLinks = [
   { hash: 'services', label: 'Services' },
   { hash: 'faq', label: 'F.A.Q' },
-  { hash: 'apropos', label: 'Qui sommes-nous ?' },
+  { hash: 'histoire', label: 'Qui sommes-nous ?' },
   { hash: 'valeurs', label: 'Nos valeurs' },
   { hash: 'contact', label: 'Contact' },
 ];
