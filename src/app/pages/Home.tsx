@@ -737,10 +737,38 @@ const benefits: { icon: LucideIcon; title: string; text: string }[] = [
 // =============================================================================
 // RESULTS — proof of performance with proprietor screenshots
 // =============================================================================
+const results = [
+  {
+    month: 'Décembre 2025',
+    amount: '6 359,32 €',
+    label: 'en un seul mois',
+    text: 'Un seul bien géré en location courte durée : plus de 6 000 € de revenus nets, générés en un mois.',
+    stats: [
+      { k: 'Revenus nets', v: '6 359 €' },
+      { k: 'Bien géré', v: '1 seul' },
+    ],
+    img: '/images/img-proprietaire-decembre.png',
+    imgAlt: 'Revenus Airbnb décembre 2025 : 6 359,32 € — capture réelle',
+  },
+  {
+    month: 'Janvier 2026',
+    amount: '8 782 €',
+    label: 'prévus ce mois-ci',
+    text: 'La performance se confirme dans la durée, avec des réservations déjà sécurisées.',
+    stats: [
+      { k: 'Déjà encaissé', v: '1 456 €' },
+      { k: 'Confirmé', v: '7 326 €' },
+    ],
+    img: '/images/img-proprietaire-janvier.png',
+    imgAlt: 'Revenus Airbnb janvier 2026 : 8 782 € prévus — capture réelle',
+  },
+];
+
 function ResultsSection() {
   return (
-    <section className="py-[80px] md:py-[140px] bg-[#F7F4EE]">
-      <div className="max-w-[1152px] mx-auto px-6">
+    <section className="relative py-[80px] md:py-[140px] bg-[#F7F4EE] overflow-hidden">
+      <div className="pointer-events-none absolute -top-28 -right-20 w-[440px] h-[440px] rounded-full bg-[#A97C30]/10 blur-3xl" />
+      <div className="relative max-w-[1152px] mx-auto px-6">
         <SectionHeader
           eyebrow="Performance mesurée"
           title={<>Des résultats <em className="font-serif-italic font-bold text-[#A97C30] not-italic">concrets</em>, mois après mois</>}
@@ -750,65 +778,62 @@ function ResultsSection() {
           générés par un seul logement géré par notre conciergerie.
         </p>
 
-        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-          <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_16px_50px_rgba(64,49,24,0.06)] overflow-hidden"
-          >
-            <div className="p-6 md:p-7 border-b border-black/5">
-              <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
-                Décembre 2025
-              </p>
-              <h3 className="mt-2 text-[28px] md:text-[34px] font-bold leading-tight">
-                <span className="font-serif-italic font-bold text-[#A97C30]">6 359,32 €</span>
-                <br />en un seul mois
-              </h3>
-              <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700">
-                Un seul bien géré en location courte durée. Plus de 6 000 € de revenus
-                nets générés en un mois.
-              </p>
-            </div>
-            <div className="p-3 md:p-4 bg-[#F7F4EE]">
-              <img
-                src="/images/img-proprietaire-decembre.png"
-                alt="Revenus Airbnb décembre 2025 : 6 359,32 €"
-                className="w-full h-auto rounded-lg"
-                loading="lazy"
-              />
-            </div>
-          </motion.article>
+        <div className="mt-12 flex flex-col gap-8 md:gap-10">
+          {results.map((r, i) => (
+            <motion.article
+              key={r.month}
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, amount: 0.15 }}
+              transition={{ delay: i * 0.1 }}
+              className="group relative bg-white rounded-[22px] border border-[#ECE3D0] shadow-[0_18px_54px_rgba(64,49,24,0.07)] hover:shadow-[0_24px_66px_rgba(64,49,24,0.11)] transition-shadow duration-300 overflow-hidden"
+            >
+              <div className="h-1 w-full bg-gradient-to-r from-[#C39A4A] via-[#A97C30] to-[#7C561D]" />
 
-          <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.2 }}
-            transition={{ delay: 0.1 }}
-            className="relative bg-white rounded-2xl border border-[#ECE3D0] shadow-[0_16px_50px_rgba(64,49,24,0.06)] overflow-hidden"
-          >
-            <div className="p-6 md:p-7 border-b border-black/5">
-              <p className="text-[12px] font-semibold uppercase tracking-[1.5px] text-[#A97C30]">
-                Janvier 2026
-              </p>
-              <h3 className="mt-2 text-[28px] md:text-[34px] font-bold leading-tight">
-                <span className="font-serif-italic font-bold text-[#A97C30]">8 782 €</span>
-                <br />prévus ce mois-ci
-              </h3>
-              <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700">
-                1 456 € déjà encaissés et 7 326 € en réservations confirmées.
-                La performance se confirme dans la durée.
-              </p>
-            </div>
-            <div className="p-3 md:p-4 bg-[#F7F4EE]">
-              <img
-                src="/images/img-proprietaire-janvier.png"
-                alt="Revenus Airbnb janvier 2026 : 8 782 € prévus"
-                className="w-full h-auto rounded-lg"
-                loading="lazy"
-              />
-            </div>
-          </motion.article>
+              {/* En-tête : montant + détail */}
+              <div className="p-6 md:p-9 flex flex-col md:flex-row md:items-center gap-5 md:gap-10">
+                <div className="md:w-[40%] md:shrink-0">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <span className="text-[12px] font-semibold uppercase tracking-[1.6px] text-[#A97C30]">
+                      {r.month}
+                    </span>
+                    <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#7C561D] bg-[#A97C30]/10 px-2.5 py-1 rounded-full">
+                      <CheckCircle2 size={13} /> Preuve réelle
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-end gap-3">
+                    <span className="font-serif-italic font-bold text-[#A97C30] text-[46px] md:text-[60px] leading-[0.92]">
+                      {r.amount}
+                    </span>
+                    <TrendingUp className="text-[#A97C30] mb-2.5 shrink-0" size={30} strokeWidth={2} />
+                  </div>
+                  <p className="mt-1.5 text-[20px] md:text-[24px] font-bold text-[#2C2418]">{r.label}</p>
+                </div>
+
+                <div className="md:flex-1">
+                  <p className="text-[14px] md:text-[15px] text-neutral-600 leading-relaxed max-w-md">{r.text}</p>
+                  <div className="mt-4 flex flex-wrap gap-2.5">
+                    {r.stats.map((s) => (
+                      <div
+                        key={s.k}
+                        className="flex flex-col px-4 py-2.5 rounded-xl bg-[#FBF6EC] border border-[#ECE3D0]"
+                      >
+                        <span className="text-[10.5px] uppercase tracking-[0.5px] text-[#8A7A52]">{s.k}</span>
+                        <span className="text-[16px] font-bold text-[#403118]">{s.v}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Preuve : la capture Airbnb, en grand */}
+              <div className="px-4 pb-4 md:px-6 md:pb-6">
+                <div className="relative rounded-xl overflow-hidden border border-[#ECE3D0] shadow-[0_10px_30px_rgba(64,49,24,0.10)]">
+                  <img src={r.img} alt={r.imgAlt} className="w-full h-auto block" loading="lazy" />
+                </div>
+              </div>
+            </motion.article>
+          ))}
         </div>
       </div>
     </section>
