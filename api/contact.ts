@@ -1,7 +1,7 @@
 import { Resend } from 'resend';
 
 type Payload = {
-  type?: 'lead' | 'contact' | 'audit';
+  type?: 'lead' | 'contact' | 'audit' | 'cercle';
   adresse?: string;
   chambres?: string;
   email?: string;
@@ -12,6 +12,12 @@ type Payload = {
   ville?: string;
   typeBien?: string;
   page?: string;
+  // Champs additionnels du Cercle LabelMaison (programme d'affiliation)
+  nom?: string;
+  profil?: string;
+  dejaProprio?: string;
+  // Honeypot anti-spam (doit rester vide)
+  website?: string;
 };
 
 const escapeHtml = (s: unknown): string =>
@@ -48,8 +54,27 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ ok: false, error: 'JSON invalide.' });
   }
 
-  const { type, adresse, chambres, email, tel, message, prenom, ville, typeBien, page } =
-    body;
+  const {
+    type,
+    adresse,
+    chambres,
+    email,
+    tel,
+    message,
+    prenom,
+    ville,
+    typeBien,
+    page,
+    nom,
+    profil,
+    dejaProprio,
+    website,
+  } = body;
+
+  // Honeypot : un bot remplit le champ caché « website ». On répond OK sans envoyer.
+  if (website && String(website).trim() !== '') {
+    return res.status(200).json({ ok: true });
+  }
 
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res
@@ -64,16 +89,21 @@ export default async function handler(req: any, res: any) {
 
   const isLead = type === 'lead';
   const isAudit = type === 'audit';
-  const heading = isAudit
-    ? 'Nouvelle demande d’audit'
-    : isLead
-      ? 'Nouveau prospect'
-      : 'Nouveau message contact';
-  const subject = isAudit
-    ? `[Audit] Demande — ${ville || page || prenom || email}`
-    : isLead
-      ? `[Lead] Nouveau prospect — ${adresse || email}`
-      : `[Contact] Nouveau message — ${adresse || email}`;
+  const isCercle = type === 'cercle';
+  const heading = isCercle
+    ? 'Nouvelle candidature — Cercle LabelMaison'
+    : isAudit
+      ? 'Nouvelle demande d’audit'
+      : isLead
+        ? 'Nouveau prospect'
+        : 'Nouveau message contact';
+  const subject = isCercle
+    ? `[Cercle] Candidature — ${nom || email}`
+    : isAudit
+      ? `[Audit] Demande — ${ville || page || prenom || email}`
+      : isLead
+        ? `[Lead] Nouveau prospect — ${adresse || email}`
+        : `[Contact] Nouveau message — ${adresse || email}`;
 
   const html = `<!doctype html>
 <html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f4f4f5;padding:24px;margin:0">
@@ -83,9 +113,12 @@ export default async function handler(req: any, res: any) {
       <h1 style="margin:6px 0 0;font-size:20px">${escapeHtml(heading)}</h1>
     </div>
     <table style="width:100%;border-collapse:collapse;margin:16px 0">
-      ${row('Type', isAudit ? 'Demande d’audit (silo Airbnb)' : isLead ? 'Lead (page d’accueil)' : 'Formulaire contact')}
+      ${row('Type', isCercle ? 'Candidature Cercle LabelMaison (affiliation)' : isAudit ? 'Demande d’audit (silo Airbnb)' : isLead ? 'Lead (page d’accueil)' : 'Formulaire contact')}
+      ${row('Nom et prénom', nom)}
       ${row('Prénom', prenom)}
-      ${row('Ville du bien', ville)}
+      ${row('Profil', profil)}
+      ${row('A déjà un propriétaire en tête', dejaProprio)}
+      ${row('Ville / zone', ville)}
       ${row('Type de bien', typeBien)}
       ${row('Adresse du bien', adresse)}
       ${row('Chambres', chambres)}
@@ -101,8 +134,11 @@ export default async function handler(req: any, res: any) {
   const text = [
     heading,
     '',
+    nom && `Nom et prénom : ${nom}`,
     prenom && `Prénom : ${prenom}`,
-    ville && `Ville du bien : ${ville}`,
+    profil && `Profil : ${profil}`,
+    dejaProprio && `A déjà un propriétaire en tête : ${dejaProprio}`,
+    ville && `Ville / zone : ${ville}`,
     typeBien && `Type de bien : ${typeBien}`,
     adresse && `Adresse du bien : ${adresse}`,
     chambres && `Chambres : ${chambres}`,

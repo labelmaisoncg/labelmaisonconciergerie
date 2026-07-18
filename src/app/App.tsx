@@ -11,6 +11,8 @@ import { Logement } from './pages/Logement';
 import { Transport } from './pages/Transport';
 import { Activites } from './pages/Activites';
 import { Shopping } from './pages/Shopping';
+import { CercleLabelMaison } from './pages/CercleLabelMaison';
+import { CercleAnnounce } from './components/CercleAnnounce';
 
 export default function App() {
   return (
@@ -28,8 +30,10 @@ export default function App() {
             <Route path="/transport" element={<Transport />} />
             <Route path="/activites" element={<Activites />} />
             <Route path="/shopping" element={<Shopping />} />
+            <Route path="/cerclelabelmaison" element={<CercleLabelMaison />} />
           </Routes>
           <Footer />
+          <CercleAnnounce />
         </div>
       </BrowserRouter>
     </HelmetProvider>
