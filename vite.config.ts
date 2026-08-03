@@ -56,7 +56,7 @@ function vercelDevRewrites(): Plugin {
   try {
     const cfg = JSON.parse(fs.readFileSync(path.resolve(__dirname, 'vercel.json'), 'utf-8'))
     rewrites = (cfg.rewrites || []).filter(
-      (r: { destination: string }) => r.destination && !r.destination.includes('index.html'),
+      (r: { destination: string }) => r.destination && r.destination !== '/index.html',
     )
   } catch {
     /* pas de vercel.json : on ne fait rien */

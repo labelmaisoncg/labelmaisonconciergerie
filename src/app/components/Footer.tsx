@@ -80,6 +80,13 @@ export function Footer() {
                   Notre offre
                 </a>
               </li>
+              {/* Lien permanent vers la love room : présent sur toutes les pages
+                  de l'app, il fait remonter /bacam-spa dans le maillage interne. */}
+              <li>
+                <a href="/bacam-spa" className="hover:text-[#A97C30]">
+                  Ba'cam Spa — love room &amp; spa privatif
+                </a>
+              </li>
             </ul>
           </div>
 

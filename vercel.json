@@ -4,6 +4,36 @@
   "framework": "vite",
   "redirects": [
     {
+      "source": "/love-room-sens.html",
+      "destination": "/love-room-sens",
+      "permanent": true
+    },
+    {
+      "source": "/love-room-proche-paris.html",
+      "destination": "/love-room-proche-paris",
+      "permanent": true
+    },
+    {
+      "source": "/week-end-romantique-bourgogne.html",
+      "destination": "/week-end-romantique-bourgogne",
+      "permanent": true
+    },
+    {
+      "source": "/ba-cam-spa",
+      "destination": "/bacam-spa",
+      "permanent": true
+    },
+    {
+      "source": "/bacam",
+      "destination": "/bacam-spa",
+      "permanent": true
+    },
+    {
+      "source": "/love-room-etigny",
+      "destination": "/bacam-spa",
+      "permanent": true
+    },
+    {
       "source": "/airbnb-evry-guide-proprietaire.html",
       "destination": "/airbnb-evry-guide-proprietaire",
       "permanent": true
@@ -543,6 +573,22 @@
     {
       "source": "/villeneuve-l-archeveque",
       "destination": "/conciergerie-airbnb-villeneuve-l-archeveque.html"
+    },
+    {
+      "source": "/bacam-spa",
+      "destination": "/bacam-spa/index.html"
+    },
+    {
+      "source": "/love-room-sens",
+      "destination": "/love-room-sens.html"
+    },
+    {
+      "source": "/love-room-proche-paris",
+      "destination": "/love-room-proche-paris.html"
+    },
+    {
+      "source": "/week-end-romantique-bourgogne",
+      "destination": "/week-end-romantique-bourgogne.html"
     },
     {
       "source": "/((?!api/).*)",
