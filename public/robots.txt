@@ -1,4 +1,10 @@
 User-agent: *
 Allow: /
 
+# Pas d'indexation des points d'API
+Disallow: /api/
+
 Sitemap: https://www.labelmaisoncg.fr/sitemap.xml
+Sitemap: https://www.labelmaisoncg.fr/sitemap-pages.xml
+Sitemap: https://www.labelmaisoncg.fr/sitemap-communes-1.xml
+Sitemap: https://www.labelmaisoncg.fr/sitemap-communes-2.xml

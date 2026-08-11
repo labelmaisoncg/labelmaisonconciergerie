@@ -267,6 +267,636 @@
       "source": "/conciergerie-airbnb-villeneuve-l-archeveque.html",
       "destination": "/conciergerie-airbnb-villeneuve-l-archeveque",
       "permanent": true
+    },
+    {
+      "source": "/conciergerie-aix-en-provence",
+      "destination": "/conciergerie-airbnb-aix-en-provence",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-ajaccio",
+      "destination": "/conciergerie-airbnb-ajaccio",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-annecy",
+      "destination": "/conciergerie-airbnb-annecy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-antibes",
+      "destination": "/conciergerie-airbnb-antibes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-arcachon",
+      "destination": "/conciergerie-airbnb-arcachon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-argenteuil",
+      "destination": "/conciergerie-airbnb-argenteuil",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-arpajon",
+      "destination": "/conciergerie-airbnb-arpajon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-asnieres-sur-seine",
+      "destination": "/conciergerie-airbnb-asnieres-sur-seine",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-athis-mons",
+      "destination": "/conciergerie-airbnb-athis-mons",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-aubervilliers",
+      "destination": "/conciergerie-airbnb-aubervilliers",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-avignon",
+      "destination": "/conciergerie-airbnb-avignon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-bagnolet",
+      "destination": "/conciergerie-airbnb-bagnolet",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-bastia",
+      "destination": "/conciergerie-airbnb-bastia",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-bayonne",
+      "destination": "/conciergerie-airbnb-bayonne",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-biarritz",
+      "destination": "/conciergerie-airbnb-biarritz",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-biot",
+      "destination": "/conciergerie-airbnb-biot",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-bordeaux",
+      "destination": "/conciergerie-airbnb-bordeaux",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-boulogne-billancourt",
+      "destination": "/conciergerie-airbnb-boulogne-billancourt",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-bretigny-sur-orge",
+      "destination": "/conciergerie-airbnb-bretigny-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-brunoy",
+      "destination": "/conciergerie-airbnb-brunoy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-cagnes-sur-mer",
+      "destination": "/conciergerie-airbnb-cagnes-sur-mer",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-cannes",
+      "destination": "/conciergerie-airbnb-cannes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-cergy",
+      "destination": "/conciergerie-airbnb-cergy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-charenton-le-pont",
+      "destination": "/conciergerie-airbnb-charenton-le-pont",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-chilly-mazarin",
+      "destination": "/conciergerie-airbnb-chilly-mazarin",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-clermont-ferrand",
+      "destination": "/conciergerie-airbnb-clermont-ferrand",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-clichy",
+      "destination": "/conciergerie-airbnb-clichy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-cogolin",
+      "destination": "/conciergerie-airbnb-cogolin",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-colmar",
+      "destination": "/conciergerie-airbnb-colmar",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-corbeil-essonnes",
+      "destination": "/conciergerie-airbnb-corbeil-essonnes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-courbevoie",
+      "destination": "/conciergerie-airbnb-courbevoie",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-creteil",
+      "destination": "/conciergerie-airbnb-creteil",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-dijon",
+      "destination": "/conciergerie-airbnb-dijon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-dourdan",
+      "destination": "/conciergerie-airbnb-dourdan",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-draveil",
+      "destination": "/conciergerie-airbnb-draveil",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-enghien-les-bains",
+      "destination": "/conciergerie-airbnb-enghien-les-bains",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-epinay-sur-orge",
+      "destination": "/conciergerie-airbnb-epinay-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-etampes",
+      "destination": "/conciergerie-airbnb-etampes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-evry-courcouronnes",
+      "destination": "/conciergerie-airbnb-evry-courcouronnes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-fontainebleau",
+      "destination": "/conciergerie-airbnb-fontainebleau",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-frejus",
+      "destination": "/conciergerie-airbnb-frejus",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-gif-sur-yvette",
+      "destination": "/conciergerie-airbnb-gif-sur-yvette",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-grasse",
+      "destination": "/conciergerie-airbnb-grasse",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-grenoble",
+      "destination": "/conciergerie-airbnb-grenoble",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-hyeres",
+      "destination": "/conciergerie-airbnb-hyeres",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-igny",
+      "destination": "/conciergerie-airbnb-igny",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-issy-les-moulineaux",
+      "destination": "/conciergerie-airbnb-issy-les-moulineaux",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-ivry-sur-seine",
+      "destination": "/conciergerie-airbnb-ivry-sur-seine",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-juvisy-sur-orge",
+      "destination": "/conciergerie-airbnb-juvisy-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-la-rochelle",
+      "destination": "/conciergerie-airbnb-la-rochelle",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-le-bourget",
+      "destination": "/conciergerie-airbnb-le-bourget",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-le-cannet",
+      "destination": "/conciergerie-airbnb-le-cannet",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-le-havre",
+      "destination": "/conciergerie-airbnb-le-havre",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-le-kremlin-bicetre",
+      "destination": "/conciergerie-airbnb-le-kremlin-bicetre",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-les-ulis",
+      "destination": "/conciergerie-airbnb-les-ulis",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-levallois-perret",
+      "destination": "/conciergerie-airbnb-levallois-perret",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-lille",
+      "destination": "/conciergerie-airbnb-lille",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-longjumeau",
+      "destination": "/conciergerie-airbnb-longjumeau",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-lyon",
+      "destination": "/conciergerie-airbnb-lyon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-maisons-alfort",
+      "destination": "/conciergerie-airbnb-maisons-alfort",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-mandelieu-la-napoule",
+      "destination": "/conciergerie-airbnb-mandelieu-la-napoule",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-marseille",
+      "destination": "/conciergerie-airbnb-marseille",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-massy",
+      "destination": "/conciergerie-airbnb-massy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-meaux",
+      "destination": "/conciergerie-airbnb-meaux",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-mennecy",
+      "destination": "/conciergerie-airbnb-mennecy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-menton",
+      "destination": "/conciergerie-airbnb-menton",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-metz",
+      "destination": "/conciergerie-airbnb-metz",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-montgeron",
+      "destination": "/conciergerie-airbnb-montgeron",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-montpellier",
+      "destination": "/conciergerie-airbnb-montpellier",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-montreuil",
+      "destination": "/conciergerie-airbnb-montreuil",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-montrouge",
+      "destination": "/conciergerie-airbnb-montrouge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-morangis",
+      "destination": "/conciergerie-airbnb-morangis",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-mougins",
+      "destination": "/conciergerie-airbnb-mougins",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-nancy",
+      "destination": "/conciergerie-airbnb-nancy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-nanterre",
+      "destination": "/conciergerie-airbnb-nanterre",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-nantes",
+      "destination": "/conciergerie-airbnb-nantes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-neuilly-sur-seine",
+      "destination": "/conciergerie-airbnb-neuilly-sur-seine",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-nice",
+      "destination": "/conciergerie-airbnb-nice",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-nogent-sur-marne",
+      "destination": "/conciergerie-airbnb-nogent-sur-marne",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-noisy-le-grand",
+      "destination": "/conciergerie-airbnb-noisy-le-grand",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-orleans",
+      "destination": "/conciergerie-airbnb-orleans",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-orly",
+      "destination": "/conciergerie-airbnb-orly",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-orsay",
+      "destination": "/conciergerie-airbnb-orsay",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-palaiseau",
+      "destination": "/conciergerie-airbnb-palaiseau",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-pantin",
+      "destination": "/conciergerie-airbnb-pantin",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-paris",
+      "destination": "/conciergerie-airbnb-paris",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-perpignan",
+      "destination": "/conciergerie-airbnb-perpignan",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-poissy",
+      "destination": "/conciergerie-airbnb-poissy",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-porto-vecchio",
+      "destination": "/conciergerie-airbnb-porto-vecchio",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-reims",
+      "destination": "/conciergerie-airbnb-reims",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-rennes",
+      "destination": "/conciergerie-airbnb-rennes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-ris-orangis",
+      "destination": "/conciergerie-airbnb-ris-orangis",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-roquebrune-cap-martin",
+      "destination": "/conciergerie-airbnb-roquebrune-cap-martin",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-rouen",
+      "destination": "/conciergerie-airbnb-rouen",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-rueil-malmaison",
+      "destination": "/conciergerie-airbnb-rueil-malmaison",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-cloud",
+      "destination": "/conciergerie-airbnb-saint-cloud",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-denis-93",
+      "destination": "/conciergerie-airbnb-saint-denis-93",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-germain-en-laye",
+      "destination": "/conciergerie-airbnb-saint-germain-en-laye",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-laurent-du-var",
+      "destination": "/conciergerie-airbnb-saint-laurent-du-var",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-malo",
+      "destination": "/conciergerie-airbnb-saint-malo",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-mande",
+      "destination": "/conciergerie-airbnb-saint-mande",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-michel-sur-orge",
+      "destination": "/conciergerie-airbnb-saint-michel-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-ouen-sur-seine",
+      "destination": "/conciergerie-airbnb-saint-ouen-sur-seine",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-saint-raphael",
+      "destination": "/conciergerie-airbnb-saint-raphael",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-sainte-genevieve-des-bois",
+      "destination": "/conciergerie-airbnb-sainte-genevieve-des-bois",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-sainte-maxime",
+      "destination": "/conciergerie-airbnb-sainte-maxime",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-sanary-sur-mer",
+      "destination": "/conciergerie-airbnb-sanary-sur-mer",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-savigny-sur-orge",
+      "destination": "/conciergerie-airbnb-savigny-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-sens",
+      "destination": "/conciergerie-airbnb-sens",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-six-fours-les-plages",
+      "destination": "/conciergerie-airbnb-six-fours-les-plages",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-strasbourg",
+      "destination": "/conciergerie-airbnb-strasbourg",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-toulon",
+      "destination": "/conciergerie-airbnb-toulon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-toulouse",
+      "destination": "/conciergerie-airbnb-toulouse",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-tours",
+      "destination": "/conciergerie-airbnb-tours",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-vannes",
+      "destination": "/conciergerie-airbnb-vannes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-vence",
+      "destination": "/conciergerie-airbnb-vence",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-verrieres-le-buisson",
+      "destination": "/conciergerie-airbnb-verrieres-le-buisson",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-versailles",
+      "destination": "/conciergerie-airbnb-versailles",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-vigneux-sur-seine",
+      "destination": "/conciergerie-airbnb-vigneux-sur-seine",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-villebon-sur-yvette",
+      "destination": "/conciergerie-airbnb-villebon-sur-yvette",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-villejuif",
+      "destination": "/conciergerie-airbnb-villejuif",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-villeneuve-loubet",
+      "destination": "/conciergerie-airbnb-villeneuve-loubet",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-villepinte",
+      "destination": "/conciergerie-airbnb-villepinte",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-vincennes",
+      "destination": "/conciergerie-airbnb-vincennes",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-viry-chatillon",
+      "destination": "/conciergerie-airbnb-viry-chatillon",
+      "permanent": true
+    },
+    {
+      "source": "/conciergerie-yerres",
+      "destination": "/conciergerie-airbnb-yerres",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -594,5 +1224,7 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
 }

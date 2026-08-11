@@ -22,3 +22,9 @@ dist
 
 # Vidéos sources Instagram (brutes) — les .mp4 web sont dans public/videos
 /insta lmcg/
+
+# Cache du référentiel des communes (8 Mo, retéléchargé au besoin)
+scripts/.cache/
+
+# Caches Python des générateurs SEO
+scripts/__pycache__/

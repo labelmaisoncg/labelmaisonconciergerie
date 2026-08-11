@@ -62,13 +62,24 @@ function vercelDevRewrites(): Plugin {
     /* pas de vercel.json : on ne fait rien */
   }
   const map = new Map(rewrites.map((r) => [r.source.replace(/\/$/, ''), r.destination]))
+  const publicDir = path.resolve(__dirname, 'public')
   return {
     name: 'vercel-dev-rewrites',
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
         if (req.url) {
           const [pathname, query] = req.url.split('?')
-          const dest = map.get(pathname.replace(/\/$/, ''))
+          const clean = pathname.replace(/\/$/, '')
+          let dest = map.get(clean)
+          // Émule `cleanUrls: true` de Vercel : /ma-page -> public/ma-page.html.
+          // Sans ça, les milliers de pages du silo national (qui n'ont pas de
+          // rewrite dédié dans vercel.json) tomberaient sur le catch-all SPA en dev.
+          if (!dest && clean && !path.extname(clean)) {
+            const candidat = path.join(publicDir, clean + '.html')
+            if (candidat.startsWith(publicDir) && fs.existsSync(candidat)) {
+              dest = clean + '.html'
+            }
+          }
           if (dest) req.url = dest + (query ? '?' + query : '')
         }
         next()

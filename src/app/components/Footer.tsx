@@ -141,6 +141,98 @@ export function Footer() {
           </div>
         </div>
 
+        {/* Section 2 bis — Maillage territorial.
+            Ces liens sont présents sur toutes les pages de l'app : ils font remonter
+            les hubs des silos SEO (Paris, France, Côte d'Azur, banlieue, Essonne)
+            et les pages de service, qui distribuent ensuite vers les communes. */}
+        <nav aria-label="Nos territoires et services" className="border-t border-black/10 pt-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 text-[13px] text-neutral-600">
+            <div>
+              <h4 className="font-semibold uppercase tracking-[1px] text-neutral-500 mb-3">
+                Nos territoires
+              </h4>
+              <ul className="space-y-2">
+                {[
+                  ['Conciergerie Airbnb à Paris', '/conciergerie-airbnb-paris'],
+                  ['Banlieue parisienne', '/conciergerie-airbnb-banlieue-parisienne'],
+                  ['Essonne (91)', '/conciergerie-airbnb-essonne'],
+                  ['Côte d’Azur', '/conciergerie-cote-d-azur'],
+                  ['Toute la France', '/conciergerie-airbnb-france'],
+                ].map(([label, href]) => (
+                  <li key={href}>
+                    <a href={href} className="hover:text-[#A97C30]">
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold uppercase tracking-[1px] text-neutral-500 mb-3">
+                Propriétaires
+              </h4>
+              <ul className="space-y-2">
+                {[
+                  ['Estimer mes revenus', '/estimation-rentabilite-airbnb'],
+                  ['Gestion locative à Paris', '/gestion-locative-paris'],
+                  ['Gestion locative en France', '/gestion-locative-france'],
+                  ['Investissement locatif', '/investissement-locatif-paris'],
+                  ['Gestion de villa Côte d’Azur', '/gestion-villa-cote-d-azur'],
+                ].map(([label, href]) => (
+                  <li key={href}>
+                    <a href={href} className="hover:text-[#A97C30]">
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold uppercase tracking-[1px] text-neutral-500 mb-3">
+                Conciergerie privée
+              </h4>
+              <ul className="space-y-2">
+                {[
+                  ['Conciergerie de luxe à Paris', '/conciergerie-privee-paris'],
+                  ['Conciergerie à Nice', '/conciergerie-privee-nice'],
+                  ['Conciergerie de luxe à Cannes', '/conciergerie-luxe-cannes'],
+                  ['Conciergerie à Monaco', '/conciergerie-monaco'],
+                  ['Marrakech & Dubaï', '/conciergerie-marrakech'],
+                ].map(([label, href]) => (
+                  <li key={href}>
+                    <a href={href} className="hover:text-[#A97C30]">
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="font-semibold uppercase tracking-[1px] text-neutral-500 mb-3">
+                Nos services
+              </h4>
+              <ul className="space-y-2">
+                {[
+                  ['Van avec chauffeur', '/van-avec-chauffeur-paris'],
+                  ['Navette aéroport', '/navette-aeroport-paris'],
+                  ['Montres de luxe', '/achat-vente-montres-de-luxe'],
+                  ['Personal shopper', '/personal-shopper-paris'],
+                  ['Le blog des propriétaires', '/blog'],
+                ].map(([label, href]) => (
+                  <li key={href}>
+                    <a href={href} className="hover:text-[#A97C30]">
+                      {label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </nav>
+
         {/* Section 3 — Copyright */}
         <div className="border-t border-black/10 pt-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-[13px] text-neutral-500">
           <p>© 2026 Label Maison Conciergerie · Tous droits réservés</p>
