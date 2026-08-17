@@ -175,6 +175,7 @@ export function Footer() {
               <ul className="space-y-2">
                 {[
                   ['Estimer mes revenus', '/estimation-rentabilite-airbnb'],
+                  ['Simulateur de revenus', '/simulateur-revenus-airbnb'],
                   ['Gestion locative à Paris', '/gestion-locative-paris'],
                   ['Gestion locative en France', '/gestion-locative-france'],
                   ['Investissement locatif', '/investissement-locatif-paris'],
