@@ -28,3 +28,6 @@ scripts/.cache/
 
 # Caches Python des générateurs SEO
 scripts/__pycache__/
+
+# Dépôt git distinct présent dans le dossier de travail (projet love room)
+/love room /
