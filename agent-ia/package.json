@@ -1,0 +1,22 @@
+{
+  "name": "label-maison-agent-ia",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Agent IA Telegram pour Label Maison Conciergerie",
+  "scripts": {
+    "dev": "vercel dev",
+    "chat-id": "node scripts/get-chat-id.mjs",
+    "set-webhook": "node scripts/set-webhook.mjs",
+    "webhook-info": "node scripts/set-webhook.mjs --info",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.120.0",
+    "@vercel/functions": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}
