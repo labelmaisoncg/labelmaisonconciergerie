@@ -897,6 +897,151 @@
       "source": "/conciergerie-yerres",
       "destination": "/conciergerie-airbnb-yerres",
       "permanent": true
+    },
+    {
+      "source": "/arpajon",
+      "destination": "/conciergerie-airbnb-arpajon",
+      "permanent": true
+    },
+    {
+      "source": "/athis-mons",
+      "destination": "/conciergerie-airbnb-athis-mons",
+      "permanent": true
+    },
+    {
+      "source": "/bretigny-sur-orge",
+      "destination": "/conciergerie-airbnb-bretigny-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/brunoy",
+      "destination": "/conciergerie-airbnb-brunoy",
+      "permanent": true
+    },
+    {
+      "source": "/corbeil-essonnes",
+      "destination": "/conciergerie-airbnb-corbeil-essonnes",
+      "permanent": true
+    },
+    {
+      "source": "/essonne",
+      "destination": "/conciergerie-airbnb-essonne",
+      "permanent": true
+    },
+    {
+      "source": "/evry-courcouronnes",
+      "destination": "/conciergerie-airbnb-evry-courcouronnes",
+      "permanent": true
+    },
+    {
+      "source": "/ile-de-france",
+      "destination": "/conciergerie-airbnb-ile-de-france",
+      "permanent": true
+    },
+    {
+      "source": "/juvisy-sur-orge",
+      "destination": "/conciergerie-airbnb-juvisy-sur-orge",
+      "permanent": true
+    },
+    {
+      "source": "/longjumeau",
+      "destination": "/conciergerie-airbnb-longjumeau",
+      "permanent": true
+    },
+    {
+      "source": "/massy",
+      "destination": "/conciergerie-airbnb-massy",
+      "permanent": true
+    },
+    {
+      "source": "/montgeron",
+      "destination": "/conciergerie-airbnb-montgeron",
+      "permanent": true
+    },
+    {
+      "source": "/palaiseau",
+      "destination": "/conciergerie-airbnb-palaiseau",
+      "permanent": true
+    },
+    {
+      "source": "/viry-chatillon",
+      "destination": "/conciergerie-airbnb-viry-chatillon",
+      "permanent": true
+    },
+    {
+      "source": "/yerres",
+      "destination": "/conciergerie-airbnb-yerres",
+      "permanent": true
+    },
+    {
+      "source": "/sens",
+      "destination": "/conciergerie-airbnb-sens",
+      "permanent": true
+    },
+    {
+      "source": "/paris-conciergerie",
+      "destination": "/conciergerie-privee-paris",
+      "permanent": true
+    },
+    {
+      "source": "/dubai",
+      "destination": "/conciergerie-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/dubai-conciergerie",
+      "destination": "/conciergerie-dubai",
+      "permanent": true
+    },
+    {
+      "source": "/marrakech",
+      "destination": "/conciergerie-marrakech",
+      "permanent": true
+    },
+    {
+      "source": "/marrakech-conciergerie",
+      "destination": "/conciergerie-marrakech",
+      "permanent": true
+    },
+    {
+      "source": "/joigny",
+      "destination": "/conciergerie-airbnb-joigny",
+      "permanent": true
+    },
+    {
+      "source": "/villeneuve-sur-yonne",
+      "destination": "/conciergerie-airbnb-villeneuve-sur-yonne",
+      "permanent": true
+    },
+    {
+      "source": "/paron",
+      "destination": "/conciergerie-airbnb-paron",
+      "permanent": true
+    },
+    {
+      "source": "/saint-clement",
+      "destination": "/conciergerie-airbnb-saint-clement",
+      "permanent": true
+    },
+    {
+      "source": "/pont-sur-yonne",
+      "destination": "/conciergerie-airbnb-pont-sur-yonne",
+      "permanent": true
+    },
+    {
+      "source": "/malay-le-grand",
+      "destination": "/conciergerie-airbnb-malay-le-grand",
+      "permanent": true
+    },
+    {
+      "source": "/sergines",
+      "destination": "/conciergerie-airbnb-sergines",
+      "permanent": true
+    },
+    {
+      "source": "/villeneuve-l-archeveque",
+      "destination": "/conciergerie-airbnb-villeneuve-l-archeveque",
+      "permanent": true
     }
   ],
   "rewrites": [
@@ -997,71 +1142,7 @@
       "destination": "/pourquoi-conciergerie-airbnb.html"
     },
     {
-      "source": "/arpajon",
-      "destination": "/conciergerie-airbnb-arpajon.html"
-    },
-    {
-      "source": "/athis-mons",
-      "destination": "/conciergerie-airbnb-athis-mons.html"
-    },
-    {
-      "source": "/bretigny-sur-orge",
-      "destination": "/conciergerie-airbnb-bretigny-sur-orge.html"
-    },
-    {
-      "source": "/brunoy",
-      "destination": "/conciergerie-airbnb-brunoy.html"
-    },
-    {
-      "source": "/corbeil-essonnes",
-      "destination": "/conciergerie-airbnb-corbeil-essonnes.html"
-    },
-    {
-      "source": "/essonne",
-      "destination": "/conciergerie-airbnb-essonne.html"
-    },
-    {
-      "source": "/evry-courcouronnes",
-      "destination": "/conciergerie-airbnb-evry-courcouronnes.html"
-    },
-    {
-      "source": "/ile-de-france",
-      "destination": "/conciergerie-airbnb-ile-de-france.html"
-    },
-    {
-      "source": "/juvisy-sur-orge",
-      "destination": "/conciergerie-airbnb-juvisy-sur-orge.html"
-    },
-    {
-      "source": "/longjumeau",
-      "destination": "/conciergerie-airbnb-longjumeau.html"
-    },
-    {
-      "source": "/massy",
-      "destination": "/conciergerie-airbnb-massy.html"
-    },
-    {
-      "source": "/montgeron",
-      "destination": "/conciergerie-airbnb-montgeron.html"
-    },
-    {
-      "source": "/palaiseau",
-      "destination": "/conciergerie-airbnb-palaiseau.html"
-    },
-    {
-      "source": "/viry-chatillon",
-      "destination": "/conciergerie-airbnb-viry-chatillon.html"
-    },
-    {
-      "source": "/yerres",
-      "destination": "/conciergerie-airbnb-yerres.html"
-    },
-    {
       "source": "/conciergerie-airbnb-sens",
-      "destination": "/conciergerie-airbnb-sens.html"
-    },
-    {
-      "source": "/sens",
       "destination": "/conciergerie-airbnb-sens.html"
     },
     {
@@ -1069,31 +1150,11 @@
       "destination": "/conciergerie-privee-paris.html"
     },
     {
-      "source": "/paris-conciergerie",
-      "destination": "/conciergerie-privee-paris.html"
-    },
-    {
       "source": "/conciergerie-dubai",
       "destination": "/conciergerie-dubai.html"
     },
     {
-      "source": "/dubai",
-      "destination": "/conciergerie-dubai.html"
-    },
-    {
-      "source": "/dubai-conciergerie",
-      "destination": "/conciergerie-dubai.html"
-    },
-    {
       "source": "/conciergerie-marrakech",
-      "destination": "/conciergerie-marrakech.html"
-    },
-    {
-      "source": "/marrakech",
-      "destination": "/conciergerie-marrakech.html"
-    },
-    {
-      "source": "/marrakech-conciergerie",
       "destination": "/conciergerie-marrakech.html"
     },
     {
@@ -1145,15 +1206,7 @@
       "destination": "/conciergerie-airbnb-joigny.html"
     },
     {
-      "source": "/joigny",
-      "destination": "/conciergerie-airbnb-joigny.html"
-    },
-    {
       "source": "/conciergerie-airbnb-villeneuve-sur-yonne",
-      "destination": "/conciergerie-airbnb-villeneuve-sur-yonne.html"
-    },
-    {
-      "source": "/villeneuve-sur-yonne",
       "destination": "/conciergerie-airbnb-villeneuve-sur-yonne.html"
     },
     {
@@ -1161,15 +1214,7 @@
       "destination": "/conciergerie-airbnb-paron.html"
     },
     {
-      "source": "/paron",
-      "destination": "/conciergerie-airbnb-paron.html"
-    },
-    {
       "source": "/conciergerie-airbnb-saint-clement",
-      "destination": "/conciergerie-airbnb-saint-clement.html"
-    },
-    {
-      "source": "/saint-clement",
       "destination": "/conciergerie-airbnb-saint-clement.html"
     },
     {
@@ -1177,15 +1222,7 @@
       "destination": "/conciergerie-airbnb-pont-sur-yonne.html"
     },
     {
-      "source": "/pont-sur-yonne",
-      "destination": "/conciergerie-airbnb-pont-sur-yonne.html"
-    },
-    {
       "source": "/conciergerie-airbnb-malay-le-grand",
-      "destination": "/conciergerie-airbnb-malay-le-grand.html"
-    },
-    {
-      "source": "/malay-le-grand",
       "destination": "/conciergerie-airbnb-malay-le-grand.html"
     },
     {
@@ -1193,15 +1230,7 @@
       "destination": "/conciergerie-airbnb-sergines.html"
     },
     {
-      "source": "/sergines",
-      "destination": "/conciergerie-airbnb-sergines.html"
-    },
-    {
       "source": "/conciergerie-airbnb-villeneuve-l-archeveque",
-      "destination": "/conciergerie-airbnb-villeneuve-l-archeveque.html"
-    },
-    {
-      "source": "/villeneuve-l-archeveque",
       "destination": "/conciergerie-airbnb-villeneuve-l-archeveque.html"
     },
     {
