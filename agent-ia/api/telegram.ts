@@ -54,7 +54,8 @@ export default async function handler(req: any, res: any) {
   const chatId = update?.message?.chat.id ?? update?.callback_query?.message?.chat.id;
   if (!chatId) return res.status(200).json({ ok: true });
 
-  if (!(await autorise(chatId))) {
+  const texteBrut = update.message?.text;
+  if (!(await autorise(chatId, texteBrut))) {
     // On ne répond rien : un inconnu ne doit pas savoir que le bot est actif.
     // Le chat_id est journalisé pour pouvoir l'ajouter si c'est quelqu'un de légitime.
     console.warn(`[telegram] chat_id non autorisé : ${chatId}`);
@@ -67,13 +68,70 @@ export default async function handler(req: any, res: any) {
 }
 
 /**
- * Double porte : la liste d'amorçage (variable d'environnement) laisse entrer
- * l'éditeur avant qu'aucune conciergerie n'existe ; ensuite, c'est la table
- * `membres` qui fait foi.
+ * Trois portes, dans cet ordre :
+ *  1. la liste d'amorçage (variable d'environnement), pour l'éditeur avant
+ *     qu'aucune conciergerie n'existe ;
+ *  2. la table `membres`, pour les conciergeries déjà rattachées ;
+ *  3. un `/start <code>` porteur d'une invitation valide — c'est le seul cas
+ *     où un inconnu peut entrer, et le code fait office de preuve.
  */
-async function autorise(chatId: number | string): Promise<boolean> {
+async function autorise(chatId: number | string, texte?: string): Promise<boolean> {
   if (chatAutorise(chatId)) return true;
-  return Boolean(await store.conciergerieParChat(chatId));
+  if (await store.conciergerieParChat(chatId)) return true;
+  return Boolean(codeInvitation(texte));
+}
+
+/** Extrait le code d'un `/start ABCD…` envoyé par Telegram au premier contact. */
+function codeInvitation(texte?: string): string | null {
+  const m = /^\/start\s+([A-Z0-9]{8,24})\s*$/i.exec((texte ?? '').trim());
+  return m ? m[1]!.toUpperCase() : null;
+}
+
+/**
+ * Rattachement d'une nouvelle conciergerie. Renvoie true si le message était
+ * une invitation et a été traité — auquel cas il n'y a rien d'autre à faire.
+ */
+async function traiterInvitation(chatId: number | string, texte: string): Promise<boolean> {
+  const code = codeInvitation(texte);
+  if (!code) return false;
+
+  const deja = await store.conciergerieParChat(chatId);
+  if (deja) {
+    await envoyerMessage(chatId, `Vous êtes déjà rattaché à ${deja.nom}. Que puis-je faire pour vous ?`);
+    return true;
+  }
+
+  const invitation = await store.consommerInvitation(code, chatId);
+  if (!invitation) {
+    await envoyerMessage(
+      chatId,
+      "Ce lien d'invitation n'est plus valable : il a déjà servi, ou il a expiré. " +
+        'Demandez-en un nouveau à Label Maison.',
+    );
+    return true;
+  }
+
+  // La conciergerie côté Channex n'est créée qu'au premier besoin réel : ici on
+  // se contente d'ouvrir la fiche et de rattacher la personne.
+  let conciergerieId = invitation.conciergerieId;
+  if (!conciergerieId) {
+    const c = await store.creerConciergerie(invitation.nomConciergerie, null, chatId);
+    conciergerieId = c.id;
+    await store.lierInvitation(code, c.id);
+  } else {
+    await store.rattacherMembre(conciergerieId, chatId);
+  }
+
+  console.log(`[telegram] invitation consommée : ${invitation.nomConciergerie} → ${chatId}`);
+  await envoyerMessage(
+    chatId,
+    `Bienvenue, ${invitation.nomConciergerie}.\n\n` +
+      "Je suis votre assistant : réservations, ménages, arrivées, départs, et les " +
+      'messages de vos voyageurs.\n\n' +
+      "Pour commencer, connectons votre compte Airbnb. Dites-moi simplement " +
+      '« connecte mon Airbnb » et je vous envoie le lien.',
+  );
+  return true;
 }
 
 async function traiterMessage(update: TelegramUpdate): Promise<void> {
@@ -85,6 +143,10 @@ async function traiterMessage(update: TelegramUpdate): Promise<void> {
 
     const texte = await extraireTexte(message);
     if (!texte) return;
+
+    // Un `/start <code>` est un enrôlement, pas une conversation : on le traite
+    // à part et on s'arrête là.
+    if (await traiterInvitation(chatId, texte)) return;
 
     const conciergerie = await store.conciergerieParChat(chatId);
     const fil = await store.historique(chatId);

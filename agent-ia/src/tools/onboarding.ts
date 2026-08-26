@@ -28,7 +28,15 @@ const NOM_PROVISOIRE = 'Conciergerie (à nommer)';
  */
 async function conciergerieOuCreation(ctx: Contexte): Promise<store.Conciergerie> {
   const existante = await store.conciergerieParChat(ctx.chatId);
-  if (existante) return existante;
+
+  // Une conciergerie enrôlée par invitation existe en base mais n'a pas encore
+  // de groupe Channex : on le crée au premier besoin réel, pas à l'inscription.
+  if (existante?.channexGroupId) return existante;
+  if (existante) {
+    const groupe = await channex.creerGroupe(existante.nom);
+    await store.definirGroupeChannex(existante.id, groupe.id);
+    return { ...existante, channexGroupId: groupe.id };
+  }
 
   const groupe = await channex.creerGroupe(NOM_PROVISOIRE);
   return store.creerConciergerie(NOM_PROVISOIRE, groupe.id, ctx.chatId);

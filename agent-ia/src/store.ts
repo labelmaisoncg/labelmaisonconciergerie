@@ -85,6 +85,7 @@ const mem = {
   actions: new Map<string, ActionEnAttente>(),
   conversations: new Map<string, Array<{ role: string; contenu: unknown }>>(),
   liens: new Map<string, LienConnexion>(),
+  invitations: new Map<string, Invitation>(),
   souvenirs: [] as Array<Souvenir & { conciergerieId: string }>,
   resumes: new Map<string, string>(),
   initiatives: new Set<string>(),
@@ -119,7 +120,7 @@ export async function conciergerieParChat(chatId: string | number): Promise<Conc
 
 export async function creerConciergerie(
   nom: string,
-  channexGroupId: string,
+  channexGroupId: string | null,
   chatId: string | number,
 ): Promise<Conciergerie> {
   const chat = String(chatId);
@@ -180,6 +181,15 @@ export async function renommerLogement(
     update logements
     set nom = ${nom}, ville = coalesce(${ville}, ville)
     where id = ${id}`;
+}
+
+export async function definirGroupeChannex(id: string, groupId: string): Promise<void> {
+  if (!sql) {
+    const c = mem.conciergeries.get(id);
+    if (c) c.channexGroupId = groupId;
+    return;
+  }
+  await sql`update conciergeries set channex_group_id = ${groupId} where id = ${id}`;
 }
 
 export async function enregistrerStyle(
@@ -456,6 +466,91 @@ export async function marquerTraite(
     insert into messages_traites (thread_id, message_id, conciergerie_id, reponse_envoyee)
     values (${threadId}, ${messageId}, ${conciergerieId}, ${reponse})
     on conflict do nothing`;
+}
+
+// --- Authentification par invitation ---
+
+/**
+ * Code d'invitation. Alphabet sans I, O, 0 ni 1 : ces caractères se confondent
+ * quand quelqu'un recopie un code à la main.
+ */
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const nouveauCode = (): string =>
+  Array.from(crypto.getRandomValues(new Uint8Array(12)))
+    .map((n) => ALPHABET[n % ALPHABET.length])
+    .join('');
+
+export type Invitation = {
+  id: string;
+  code: string;
+  nomConciergerie: string;
+  conciergerieId: string | null;
+};
+
+export async function creerInvitation(
+  nomConciergerie: string,
+  email: string | null,
+  emisePar: string,
+): Promise<string> {
+  const code = nouveauCode();
+  if (!sql) {
+    mem.invitations.set(code, { id: idMem(), code, nomConciergerie, conciergerieId: null });
+    return code;
+  }
+  await sql`
+    insert into invitations (code, nom_conciergerie, email, emise_par)
+    values (${code}, ${nomConciergerie}, ${email}, ${emisePar})`;
+  return code;
+}
+
+/** Consomme une invitation et rattache le chat_id. À usage unique. */
+export async function consommerInvitation(
+  code: string,
+  chatId: string | number,
+): Promise<{ nomConciergerie: string; conciergerieId: string | null } | null> {
+  const c = code.trim().toUpperCase();
+  if (!sql) {
+    const i = mem.invitations.get(c);
+    if (!i) return null;
+    mem.invitations.delete(c);
+    return { nomConciergerie: i.nomConciergerie, conciergerieId: i.conciergerieId };
+  }
+  const [r] = await sql<any[]>`
+    update invitations
+    set utilise_le = now(), chat_id_utilise = ${String(chatId)}
+    where code = ${c} and utilise_le is null and expire_le > now()
+    returning nom_conciergerie, conciergerie_id`;
+  return r ? { nomConciergerie: r.nom_conciergerie, conciergerieId: r.conciergerie_id } : null;
+}
+
+/** Rattache un chat_id à une conciergerie existante. */
+export async function rattacherMembre(
+  conciergerieId: string,
+  chatId: string | number,
+  role = 'proprietaire',
+): Promise<void> {
+  const chat = String(chatId);
+  if (!sql) {
+    mem.membres.set(chat, conciergerieId);
+    return;
+  }
+  await sql`
+    insert into membres (conciergerie_id, chat_id, role)
+    values (${conciergerieId}, ${chat}, ${role})
+    on conflict (chat_id) do update
+      set conciergerie_id = excluded.conciergerie_id, role = excluded.role`;
+}
+
+export async function lierInvitation(code: string, conciergerieId: string): Promise<void> {
+  if (!sql) return;
+  await sql`update invitations set conciergerie_id = ${conciergerieId} where code = ${code}`;
+}
+
+export async function estEditeur(chatId: string | number): Promise<boolean> {
+  if (!sql) return true;
+  const [r] = await sql<any[]>`
+    select 1 from membres where chat_id = ${String(chatId)} and role = 'editeur'`;
+  return Boolean(r);
 }
 
 // --- Liens de connexion servis sous notre domaine ---
