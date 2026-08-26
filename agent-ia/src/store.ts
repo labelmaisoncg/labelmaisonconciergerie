@@ -84,6 +84,7 @@ const mem = {
   connaissances: [] as Array<Connaissance & { conciergerieId: string }>,
   actions: new Map<string, ActionEnAttente>(),
   conversations: new Map<string, Array<{ role: string; contenu: unknown }>>(),
+  liens: new Map<string, LienConnexion>(),
   souvenirs: [] as Array<Souvenir & { conciergerieId: string }>,
   resumes: new Map<string, string>(),
   initiatives: new Set<string>(),
@@ -455,6 +456,73 @@ export async function marquerTraite(
     insert into messages_traites (thread_id, message_id, conciergerie_id, reponse_envoyee)
     values (${threadId}, ${messageId}, ${conciergerieId}, ${reponse})
     on conflict do nothing`;
+}
+
+// --- Liens de connexion servis sous notre domaine ---
+
+export type LienConnexion = {
+  id: string;
+  conciergerieId: string;
+  logementId: string;
+  canal: 'airbnb' | 'booking';
+  channexCanalId: string | null;
+};
+
+export async function creerLien(
+  conciergerieId: string,
+  logementId: string,
+  canal: 'airbnb' | 'booking',
+  channexCanalId: string | null,
+): Promise<string> {
+  if (!sql) {
+    const id = idMem();
+    mem.liens.set(id, { id, conciergerieId, logementId, canal, channexCanalId });
+    return id;
+  }
+  const [r] = await sql<any[]>`
+    insert into liens_connexion (conciergerie_id, logement_id, canal, channex_canal_id)
+    values (${conciergerieId}, ${logementId}, ${canal}, ${channexCanalId})
+    returning id`;
+  return r.id;
+}
+
+export async function lienConnexion(id: string): Promise<LienConnexion | null> {
+  if (!sql) return mem.liens.get(id) ?? null;
+  const [r] = await sql<any[]>`
+    update liens_connexion set ouvert_le = coalesce(ouvert_le, now())
+    where id = ${id} and expire_le > now()
+    returning id, conciergerie_id, logement_id, canal, channex_canal_id`;
+  return r
+    ? {
+        id: r.id,
+        conciergerieId: r.conciergerie_id,
+        logementId: r.logement_id,
+        canal: r.canal,
+        channexCanalId: r.channex_canal_id,
+      }
+    : null;
+}
+
+export async function conciergerieParId(id: string): Promise<Conciergerie | null> {
+  if (!sql) return mem.conciergeries.get(id) ?? null;
+  const [r] = await sql<any[]>`
+    select id, nom, channex_group_id, style_profil, style_exemples
+    from conciergeries where id = ${id}`;
+  return r
+    ? {
+        id: r.id,
+        nom: r.nom,
+        channexGroupId: r.channex_group_id,
+        styleProfil: r.style_profil,
+        styleExemples: r.style_exemples ?? [],
+      }
+    : null;
+}
+
+export async function logementParId(id: string): Promise<Logement | null> {
+  if (!sql) return mem.logements.find((l) => l.id === id) ?? null;
+  const [r] = await sql<any[]>`select * from logements where id = ${id}`;
+  return r ? versLogement(r) : null;
 }
 
 // --- Mémoire longue ---

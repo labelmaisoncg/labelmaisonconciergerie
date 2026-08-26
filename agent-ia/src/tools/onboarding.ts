@@ -124,19 +124,23 @@ const connecterCompte: Outil = {
       console.warn('[onboarding] création du canal impossible :', err);
     }
 
-    const lien = await channex.lienConnexion(propId, c.channexGroupId!, canal, c.nom, canalId);
+    // Le lien pointe sur NOTRE page, pas sur Channex : la conciergerie reste
+    // chez Label Maison, et le jeton Channex — qui ne vit que 15 minutes — sera
+    // fabriqué à l'ouverture de la page, pas maintenant. Un lien reçu lundi et
+    // ouvert jeudi fonctionne donc encore.
+    const lienId = await store.creerLien(c.id, logement.id, canal, canalId ?? null);
+    const base = (process.env.APP_URL || 'https://agent-ia-ochre.vercel.app').replace(/\/$/, '');
+    const lien = `${base}/connexion/${lienId}`;
 
     return {
       canal: args.canal,
       etiquette: args.etiquette ?? null,
       lien,
-      valide_minutes: 15,
+      valide_jours: 7,
       consigne:
-        "Envoie le lien tel quel, puis précise en une phrase : sur la page qui " +
-        "s'ouvre, descendre jusqu'au bouton rouge « Connect with Airbnb » " +
-        '(ou « Connect with Booking.com ») et cliquer dessus — il est en bas du ' +
-        'formulaire, sous « Host ID ». Sans cette précision la personne cherche. ' +
-        "Demande ensuite de te prévenir une fois l'autorisation donnée, et " +
+        "Envoie le lien tel quel. La page qui s'ouvre est la nôtre et explique " +
+        'déjà quoi faire : inutile de détailler la marche à suivre, une phrase ' +
+        "suffit. Demande de te prévenir une fois l'autorisation donnée, et " +
         "n'aborde aucun autre sujet pour le moment.",
       ...(channex.enProduction()
         ? {}
