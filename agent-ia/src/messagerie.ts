@@ -116,16 +116,28 @@ export async function traiterMessagesVoyageurs(
   let repondus = 0;
   let escalades = 0;
 
+  // UN SEUL appel pour tous les logements de la conciergerie. Interroger
+  // propriété par propriété multipliait les requêtes toutes les deux minutes —
+  // exactement ce que la certification Channex sanctionne.
+  let tousLesFils: channex.FilMessages[] = [];
+  try {
+    tousLesFils = await channex.filsDeMessages();
+  } catch (err) {
+    console.error('[messagerie] fils illisibles :', err);
+    return { repondus: 0, escalades: 0 };
+  }
+
+  const parPropriete = new Map<string, channex.FilMessages[]>();
+  for (const f of tousLesFils) {
+    if (!f.logementId) continue;
+    const liste = parPropriete.get(f.logementId) ?? [];
+    liste.push(f);
+    parPropriete.set(f.logementId, liste);
+  }
+
   for (const logement of logements) {
     if (!logement.channexPropertyId) continue;
-
-    let fils: channex.FilMessages[] = [];
-    try {
-      fils = await channex.filsDeMessages(logement.channexPropertyId);
-    } catch (err) {
-      console.error(`[messagerie] fils illisibles pour ${logement.nom} :`, err);
-      continue;
-    }
+    const fils = parPropriete.get(logement.channexPropertyId) ?? [];
 
     for (const fil of fils) {
       if (fil.ferme) continue;

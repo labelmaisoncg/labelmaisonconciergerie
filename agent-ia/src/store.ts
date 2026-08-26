@@ -49,6 +49,8 @@ export type Logement = {
   nom: string;
   ville: string | null;
   channexPropertyId: string | null;
+  channexRoomTypeId: string | null;
+  channexRatePlanId: string | null;
   airbnbConnecte: boolean;
   bookingConnecte: boolean;
   cleBoite: string | null;
@@ -248,6 +250,8 @@ export async function creerLogement(
       nom,
       ville,
       channexPropertyId,
+      channexRoomTypeId: null,
+      channexRatePlanId: null,
       airbnbConnecte: false,
       bookingConnecte: false,
       cleBoite: null,
@@ -279,6 +283,8 @@ export async function majLogement(
   const colonnes: Record<string, string> = {
     airbnbConnecte: 'airbnb_connecte',
     bookingConnecte: 'booking_connecte',
+    channexRoomTypeId: 'channex_room_type_id',
+    channexRatePlanId: 'channex_rate_plan_id',
     cleBoite: 'cle_boite',
     wifiNom: 'wifi_nom',
     wifiCode: 'wifi_code',
@@ -299,6 +305,8 @@ const versLogement = (r: any): Logement => ({
   nom: r.nom,
   ville: r.ville,
   channexPropertyId: r.channex_property_id,
+  channexRoomTypeId: r.channex_room_type_id,
+  channexRatePlanId: r.channex_rate_plan_id,
   airbnbConnecte: r.airbnb_connecte,
   bookingConnecte: r.booking_connecte,
   cleBoite: r.cle_boite,
@@ -618,6 +626,73 @@ export async function logementParId(id: string): Promise<Logement | null> {
   if (!sql) return mem.logements.find((l) => l.id === id) ?? null;
   const [r] = await sql<any[]>`select * from logements where id = ${id}`;
   return r ? versLogement(r) : null;
+}
+
+/** Retrouve le logement (et sa conciergerie) à partir d'un property_id Channex.
+ *  Le flux de réservations ne dit pas à qui appartient la propriété : c'est
+ *  notre base qui le sait. */
+export async function logementParChannexId(
+  proprieteId: string,
+): Promise<{ logement: Logement; conciergerie: Conciergerie } | null> {
+  if (!sql) {
+    const l = mem.logements.find((x) => x.channexPropertyId === proprieteId);
+    const c = l ? mem.conciergeries.get(l.conciergerieId) : null;
+    return l && c ? { logement: l, conciergerie: c } : null;
+  }
+  const [r] = await sql<any[]>`
+    select l.*, c.nom as c_nom, c.channex_group_id as c_group,
+           c.style_profil as c_style, c.style_exemples as c_exemples
+    from logements l join conciergeries c on c.id = l.conciergerie_id
+    where l.channex_property_id = ${proprieteId} limit 1`;
+  if (!r) return null;
+  return {
+    logement: versLogement(r),
+    conciergerie: {
+      id: r.conciergerie_id,
+      nom: r.c_nom,
+      channexGroupId: r.c_group,
+      styleProfil: r.c_style,
+      styleExemples: r.c_exemples ?? [],
+    },
+  };
+}
+
+/** Une révision déjà acquittée ne doit pas être renotifiée. */
+export async function reservationDejaVue(revisionId: string): Promise<boolean> {
+  if (!sql) return false;
+  const [r] = await sql<any[]>`select 1 from reservations_acquittees where revision_id = ${revisionId}`;
+  return Boolean(r);
+}
+
+export async function marquerReservationVue(r: {
+  revisionId: string;
+  bookingId: string | null;
+  conciergerieId: string | null;
+  logementId: string | null;
+  statut: string;
+  arrivee: string | null;
+  depart: string | null;
+}): Promise<void> {
+  if (!sql) return;
+  await sql`
+    insert into reservations_acquittees
+      (revision_id, booking_id, conciergerie_id, logement_id, statut, arrivee, depart)
+    values (${r.revisionId}, ${r.bookingId}, ${r.conciergerieId}, ${r.logementId},
+            ${r.statut}, ${r.arrivee}, ${r.depart})
+    on conflict (revision_id) do nothing`;
+}
+
+/** Le chat_id du propriétaire d'une conciergerie. */
+export async function proprietaireDe(conciergerieId: string): Promise<string | null> {
+  if (!sql) {
+    for (const [chat, id] of mem.membres) if (id === conciergerieId) return chat;
+    return null;
+  }
+  const [r] = await sql<any[]>`
+    select chat_id from membres
+    where conciergerie_id = ${conciergerieId} and role in ('proprietaire','editeur')
+    order by cree_le limit 1`;
+  return r?.chat_id ?? null;
 }
 
 // --- Mémoire longue ---

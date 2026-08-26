@@ -143,15 +143,22 @@ export async function executerActionConfirmee(
   const l = logements.find((x) => x.id === args.logementId);
   if (!l?.channexPropertyId) return "Logement introuvable, rien n'a été modifié.";
 
-  const types = await channex.typesDeChambre(l.channexPropertyId);
-  if (types.length === 0) {
-    return `Aucun type de chambre configuré chez Channex pour ${l.nom} : impossible d'écrire le calendrier.`;
+  // Le type de chambre est créé avec le logement ; on ne le redemande à
+  // Channex que s'il manque, pour ne pas multiplier les appels.
+  let typeId = l.channexRoomTypeId;
+  if (!typeId) {
+    const types = await channex.typesDeChambre(l.channexPropertyId);
+    typeId = types[0]?.id ?? null;
+    if (typeId) await store.majLogement(l.id, { channexRoomTypeId: typeId });
+  }
+  if (!typeId) {
+    return `${l.nom} n'est pas encore configuré côté Channex : impossible d'écrire le calendrier.`;
   }
 
   const quantite = outil === 'bloquer_dates' ? 0 : 1;
   await channex.definirDisponibilite(
     l.channexPropertyId,
-    types[0]!.id,
+    typeId,
     String(args.du),
     String(args.au),
     quantite,

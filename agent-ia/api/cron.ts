@@ -1,6 +1,7 @@
 /**
  * Tâches planifiées.
  *
+ *   /api/cron?tache=reservations  rattrapage du flux Channex — toutes les 15 min
  *   /api/cron?tache=messages   messages voyageurs — toutes les 1 à 2 minutes
  *   /api/cron?tache=matin      résumé du jour — n'agit qu'à 8 h heure de Paris
  *   /api/cron?tache=sante      santé des connexions OTA — à 5 h heure de Paris
@@ -16,6 +17,7 @@
 
 import { traiterMessagesVoyageurs } from '../src/messagerie.js';
 import { veiller } from '../src/veille.js';
+import { releverReservations } from '../src/reservations.js';
 import * as channex from '../src/channex.js';
 import * as store from '../src/store.js';
 import { envoyerMessage } from '../src/telegram.js';
@@ -66,6 +68,13 @@ export default async function handler(req: any, res: any) {
       let alertes = 0;
       for (const c of conciergeries) alertes += await verifierSante(c);
       return res.status(200).json({ ok: true, tache, alertes });
+    }
+
+    if (tache === 'reservations') {
+      // Rattrapage du flux Channex : un seul appel pour toutes les propriétés,
+      // toutes conciergeries confondues.
+      const r = await releverReservations();
+      return res.status(200).json({ ok: true, tache, ...r });
     }
 
     if (tache === 'veille') {

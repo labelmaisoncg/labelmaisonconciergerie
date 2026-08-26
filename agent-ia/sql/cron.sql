@@ -64,3 +64,17 @@ select cron.schedule(
   );
   $$
 );
+
+-- Rattrapage du flux de réservations : toutes les 15 minutes.
+-- Channex l'EXIGE en complément du webhook, même quand celui-ci fonctionne :
+-- un webhook perdu est une réservation manquée, donc un surbooking.
+select cron.schedule(
+  'agent-reservations',
+  '*/15 * * * *',
+  $$
+  select net.http_post(
+    url := 'AGENT_URL/api/cron?tache=reservations',
+    headers := '{"Authorization": "Bearer CRON_SECRET"}'::jsonb
+  );
+  $$
+);

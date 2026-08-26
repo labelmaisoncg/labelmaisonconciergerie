@@ -73,6 +73,133 @@ export async function creerPropriete(l: {
   return { id: r.data.id, titre: r.data.attributes.title };
 }
 
+/**
+ * Type de chambre et plan tarifaire.
+ *
+ * Exigés par la certification, et indispensables en pratique : sans eux on ne
+ * peut pousser ni disponibilité ni prix. Pour une location courte durée on
+ * crée un logement entier — un seul « room type », une seule unité.
+ */
+export async function creerTypeChambre(
+  proprieteId: string,
+  titre = 'Logement entier',
+): Promise<string> {
+  const r = await appel('POST', '/room_types', {
+    room_type: {
+      property_id: proprieteId,
+      title: titre,
+      count_of_rooms: 1,
+      occ_adults: 4,
+      occ_children: 2,
+      occ_infants: 1,
+      default_occupancy: 2,
+      room_kind: 'room',
+      facilities: [],
+    },
+  });
+  return r.data.id;
+}
+
+export async function creerTarif(
+  proprieteId: string,
+  typeChambreId: string,
+  prixParNuit = 100,
+): Promise<string> {
+  const r = await appel('POST', '/rate_plans', {
+    rate_plan: {
+      property_id: proprieteId,
+      room_type_id: typeChambreId,
+      title: 'Tarif standard',
+      currency: 'EUR',
+      sell_mode: 'per_room',
+      rate_mode: 'manual',
+      // Channex attend les montants en centimes.
+      options: [{ occupancy: 2, is_primary: true, rate: Math.round(prixParNuit * 100) }],
+    },
+  });
+  return r.data.id;
+}
+
+/**
+ * Prix et restrictions. Endpoint distinct de la disponibilité : Channex sépare
+ * « combien d'unités sont vendables » de « à quel prix et sous quelles
+ * conditions ».
+ */
+export async function definirTarif(
+  proprieteId: string,
+  planTarifaireId: string,
+  du: string,
+  au: string,
+  prixParNuit: number,
+  sejourMinimum?: number,
+): Promise<void> {
+  await appel('POST', '/restrictions', {
+    values: [
+      {
+        property_id: proprieteId,
+        rate_plan_id: planTarifaireId,
+        date_from: du,
+        date_to: au,
+        rate: Math.round(prixParNuit * 100),
+        ...(sejourMinimum ? { min_stay_arrival: sejourMinimum } : {}),
+      },
+    ],
+  });
+}
+
+// --- Flux de réservations (voie certifiée) ---
+
+export type RevisionReservation = {
+  revisionId: string;
+  bookingId: string | null;
+  proprieteId: string | null;
+  arrivee: string | null;
+  depart: string | null;
+  statut: string;
+  voyageur: string | null;
+  personnes: number | null;
+  montant: number | null;
+  canal: string;
+};
+
+/**
+ * Flux des révisions de réservations — la méthode que Channex demande, en
+ * complément du webhook. Un webhook peut échouer ; ce rattrapage garantit
+ * qu'aucune réservation n'est perdue.
+ *
+ * IMPORTANT : on interroge TOUTES les propriétés en un seul appel. Interroger
+ * propriété par propriété multiplie les requêtes et c'est précisément ce que
+ * la certification sanctionne.
+ */
+export async function fluxReservations(limite = 50): Promise<RevisionReservation[]> {
+  const r = await appel('GET', `/booking_revisions/feed?pagination%5Blimit%5D=${limite}`);
+  return (r.data ?? []).map((b: any) => {
+    const a = b.attributes ?? {};
+    const client = a.customer ?? {};
+    return {
+      revisionId: b.id,
+      bookingId: a.booking_id ?? null,
+      proprieteId: a.property_id ?? null,
+      arrivee: a.arrival_date ?? null,
+      depart: a.departure_date ?? null,
+      statut: a.status ?? 'inconnu',
+      voyageur: [client.name, client.surname].filter(Boolean).join(' ') || null,
+      personnes:
+        a.occupancy?.adults != null ? a.occupancy.adults + (a.occupancy.children ?? 0) : null,
+      montant: a.amount != null ? Number(a.amount) : null,
+      canal: a.ota_name ?? a.ota ?? 'inconnu',
+    };
+  });
+}
+
+/**
+ * Acquittement. OBLIGATOIRE : sans lui, Channex renvoie indéfiniment la même
+ * réservation dans le flux, et la certification échoue.
+ */
+export async function acquitterReservation(revisionId: string): Promise<void> {
+  await appel('POST', `/booking_revisions/${revisionId}/ack`, {});
+}
+
 // --- Canaux et connexion des OTA ---
 
 /**

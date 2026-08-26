@@ -42,6 +42,29 @@ async function conciergerieOuCreation(ctx: Contexte): Promise<store.Conciergerie
   return store.creerConciergerie(NOM_PROVISOIRE, groupe.id, ctx.chatId);
 }
 
+
+/**
+ * Équipe un logement de son type de chambre et de son plan tarifaire.
+ *
+ * Une propriété Channex nue ne sert à rien : sans « room type » on ne peut pas
+ * pousser de disponibilité, sans « rate plan » pas de prix. C'est aussi ce que
+ * la certification vérifie. Pour une location courte durée, un logement entier
+ * = un type, une unité.
+ */
+async function equiperLogement(l: store.Logement): Promise<void> {
+  if (!l.channexPropertyId || l.channexRoomTypeId) return;
+  try {
+    const typeId = await channex.creerTypeChambre(l.channexPropertyId);
+    const tarifId = await channex.creerTarif(l.channexPropertyId, typeId);
+    await store.majLogement(l.id, { channexRoomTypeId: typeId, channexRatePlanId: tarifId });
+    l.channexRoomTypeId = typeId;
+    l.channexRatePlanId = tarifId;
+  } catch (err) {
+    // Non bloquant pour la connexion du compte : on pourra réessayer plus tard.
+    console.error(`[onboarding] équipement de ${l.nom} impossible :`, err);
+  }
+}
+
 const connecterCompte: Outil = {
   definition: {
     name: 'connecter_compte',
@@ -114,6 +137,7 @@ const connecterCompte: Outil = {
         groupId: c.channexGroupId!,
       });
       logement = await store.creerLogement(c.id, provisoire.titre, 'France', provisoire.id);
+      await equiperLogement(logement);
     }
 
     const propId = logement.channexPropertyId!;
@@ -282,6 +306,7 @@ const ajouterLogement: Outil = {
       groupId: c.channexGroupId!,
     });
     const l = await store.creerLogement(c.id, propriete.titre, String(args.ville), propriete.id);
+    await equiperLogement(l);
     const tous = await store.logements(c.id);
     return { ajoute: l.nom, total_logements: tous.length };
   },
