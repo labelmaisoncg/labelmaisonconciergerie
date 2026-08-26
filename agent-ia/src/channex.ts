@@ -24,11 +24,35 @@ const CODES: Record<Canal, { api: string; lien: string; nom: string }> = {
 
 export const enProduction = (): boolean => BASE.includes('secure.channex.io');
 
+/**
+ * Contrôle de débit sur les écritures ARI.
+ *
+ * Channex plafonne à 20 appels ARI par minute et la certification demande de
+ * démontrer qu'on sait le respecter. On espace donc les écritures.
+ *
+ * Limite connue : en serverless chaque invocation a sa propre mémoire, ce
+ * compteur ne voit donc pas les appels des autres instances. Il protège contre
+ * une boucle locale, pas contre une charge distribuée. Le vrai rempart reste le
+ * groupage — un seul appel pour dix plages — et le fait qu'une écriture ne part
+ * qu'après confirmation humaine.
+ */
+const ARI = new Set(['/availability', '/restrictions']);
+const INTERVALLE_ARI = 3000; // 20 par minute
+let derniereEcritureAri = 0;
+
+async function patienterSiEcritureAri(chemin: string): Promise<void> {
+  if (![...ARI].some((c) => chemin.startsWith(c))) return;
+  const attente = derniereEcritureAri + INTERVALLE_ARI - Date.now();
+  if (attente > 0) await new Promise((r) => setTimeout(r, attente));
+  derniereEcritureAri = Date.now();
+}
+
 async function appel<T = any>(
   methode: 'GET' | 'POST' | 'PUT',
   chemin: string,
   corps?: unknown,
 ): Promise<T> {
+  if (methode === 'POST') await patienterSiEcritureAri(chemin);
   const reponse = await fetch(`${BASE}/api/v1${chemin}`, {
     method: methode,
     headers: { 'user-api-key': CLE(), 'Content-Type': 'application/json' },
@@ -125,27 +149,56 @@ export async function creerTarif(
  * « combien d'unités sont vendables » de « à quel prix et sous quelles
  * conditions ».
  */
-export async function definirTarif(
+export type PlageTarif = {
+  proprieteId: string;
+  planTarifaireId: string;
+  du: string;
+  au: string;
+  prixParNuit?: number;
+  sejourMinimum?: number;
+  arriveeInterdite?: boolean;
+  departInterdit?: boolean;
+  venteArretee?: boolean;
+};
+
+/**
+ * Prix et restrictions, en un SEUL appel quel que soit le nombre de plages.
+ *
+ * `/rates` n'existe pas sur cette version de l'API malgré ce qu'indique le
+ * guide de certification : tout passe par `/restrictions`, qui accepte le prix
+ * comme les restrictions. Vérifié sur le staging.
+ *
+ * Le groupage est exigé : les tests « Single Date Update for Multiple Rates »,
+ * « Multiple Date Update » et « Multiple Restrictions Update » vérifient tous
+ * qu'un seul appel couvre plusieurs lignes.
+ */
+export async function definirTarifs(plages: PlageTarif[]): Promise<void> {
+  if (plages.length === 0) return;
+  await appel('POST', '/restrictions', {
+    values: plages.map((p) => ({
+      property_id: p.proprieteId,
+      rate_plan_id: p.planTarifaireId,
+      date_from: p.du,
+      date_to: p.au,
+      // Channex attend les montants en centimes.
+      ...(p.prixParNuit != null ? { rate: Math.round(p.prixParNuit * 100) } : {}),
+      ...(p.sejourMinimum != null ? { min_stay_arrival: p.sejourMinimum } : {}),
+      ...(p.arriveeInterdite != null ? { closed_to_arrival: p.arriveeInterdite } : {}),
+      ...(p.departInterdit != null ? { closed_to_departure: p.departInterdit } : {}),
+      ...(p.venteArretee != null ? { stop_sell: p.venteArretee } : {}),
+    })),
+  });
+}
+
+export const definirTarif = (
   proprieteId: string,
   planTarifaireId: string,
   du: string,
   au: string,
   prixParNuit: number,
   sejourMinimum?: number,
-): Promise<void> {
-  await appel('POST', '/restrictions', {
-    values: [
-      {
-        property_id: proprieteId,
-        rate_plan_id: planTarifaireId,
-        date_from: du,
-        date_to: au,
-        rate: Math.round(prixParNuit * 100),
-        ...(sejourMinimum ? { min_stay_arrival: sejourMinimum } : {}),
-      },
-    ],
-  });
-}
+): Promise<void> =>
+  definirTarifs([{ proprieteId, planTarifaireId, du, au, prixParNuit, sejourMinimum }]);
 
 // --- Flux de réservations (voie certifiée) ---
 
@@ -193,8 +246,12 @@ export async function fluxReservations(limite = 50): Promise<RevisionReservation
 }
 
 /**
- * Acquittement. OBLIGATOIRE : sans lui, Channex renvoie indéfiniment la même
- * réservation dans le flux, et la certification échoue.
+ * Acquittement. Obligatoire pour la certification.
+ *
+ * La règle exacte de Channex : « n'acquittez que lorsque vous avez enregistré
+ * la réservation avec succès — si elle est acquittée, c'est qu'elle est dans le
+ * PMS ». Une révision non acquittée n'est pas perdue : elle reste dans le flux
+ * pendant 30 minutes, après quoi Channex envoie un avertissement par e-mail.
  */
 export async function acquitterReservation(revisionId: string): Promise<void> {
   await appel('POST', `/booking_revisions/${revisionId}/ack`, {});
@@ -352,29 +409,43 @@ export async function typesDeChambre(proprieteId: string): Promise<Array<{ id: s
   return (r.data ?? []).map((t: any) => ({ id: t.id, titre: t.attributes.title }));
 }
 
+export type PlageDisponibilite = {
+  proprieteId: string;
+  typeChambreId: string;
+  du: string;
+  au: string;
+  quantite: number;
+};
+
 /**
- * Bloque ou débloque des dates. Part chez l'OTA en quelques secondes — pas de
- * retour en arrière silencieux, d'où la confirmation par bouton en amont.
+ * Disponibilités, en un SEUL appel quel que soit le nombre de plages.
+ *
+ * Le groupage n'est pas une optimisation : la certification Channex rejette
+ * explicitement les intégrations qui envoient un appel par date ou par plage.
+ * Leur test « Multiple Date Availability Update » vérifie précisément ça.
  */
-export async function definirDisponibilite(
+export async function definirDisponibilites(plages: PlageDisponibilite[]): Promise<void> {
+  if (plages.length === 0) return;
+  await appel('POST', '/availability', {
+    values: plages.map((p) => ({
+      property_id: p.proprieteId,
+      room_type_id: p.typeChambreId,
+      date_from: p.du,
+      date_to: p.au,
+      availability: p.quantite,
+    })),
+  });
+}
+
+/** Cas courant : une seule plage. Passe par le même chemin groupé. */
+export const definirDisponibilite = (
   proprieteId: string,
   typeChambreId: string,
   du: string,
   au: string,
   quantite: number,
-): Promise<void> {
-  await appel('POST', '/availability', {
-    values: [
-      {
-        property_id: proprieteId,
-        room_type_id: typeChambreId,
-        date_from: du,
-        date_to: au,
-        availability: quantite,
-      },
-    ],
-  });
-}
+): Promise<void> =>
+  definirDisponibilites([{ proprieteId, typeChambreId, du, au, quantite }]);
 
 // --- Messagerie voyageurs ---
 

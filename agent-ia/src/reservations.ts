@@ -39,8 +39,11 @@ export async function releverReservations(): Promise<{
   for (const r of revisions) {
     lues++;
 
-    // On acquitte TOUJOURS, même ce qu'on ne sait pas traiter : sinon la
-    // révision revient à chaque passage et bloque le flux derrière elle.
+    // Règle Channex : on n'acquitte qu'une fois la réservation ENREGISTRÉE.
+    // C'est pourquoi chaque branche ci-dessous écrit en base avant d'acquitter,
+    // y compris pour une propriété inconnue — la trace vaut enregistrement.
+    // Ne pas acquitter n'est pas dramatique : la révision reste dans le flux
+    // 30 minutes, puis Channex prévient par e-mail.
     const acquitter = async () => {
       try {
         await channex.acquitterReservation(r.revisionId);
