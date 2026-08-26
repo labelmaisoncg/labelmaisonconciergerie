@@ -14,6 +14,7 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { OUTILS_ONBOARDING } from './onboarding.js';
 import { OUTILS_EXPLOITATION } from './exploitation.js';
 import { OUTILS_ACTIONS } from './actions.js';
+import { OUTILS_TARIFS } from './tarifs.js';
 import { OUTILS_CONNAISSANCES } from './connaissances.js';
 import { OUTILS_MEMOIRE } from './memoire.js';
 import { OUTILS_INVITATIONS } from './invitations.js';
@@ -42,6 +43,7 @@ const tous: Outil[] = [
   ...OUTILS_MEMOIRE,
   ...OUTILS_INVITATIONS,
   ...OUTILS_ACTIONS,
+  ...OUTILS_TARIFS,
 ];
 
 export const OUTILS: Record<string, Outil> = Object.fromEntries(

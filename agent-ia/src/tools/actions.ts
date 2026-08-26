@@ -13,6 +13,7 @@
 import * as channex from '../channex.js';
 import * as store from '../store.js';
 import { enFrancais, estValide } from '../dates.js';
+import { appliquerTarifs } from './tarifs.js';
 import type { Contexte, Outil } from './index.js';
 
 async function cible(chatId: string | number, nomLogement: string) {
@@ -134,6 +135,8 @@ export async function executerActionConfirmee(
   outil: string,
   args: Record<string, unknown>,
 ): Promise<string> {
+  if (outil === 'modifier_tarifs') return appliquerTarifs(args);
+
   if (outil !== 'bloquer_dates' && outil !== 'debloquer_dates') {
     return `Action inconnue : ${outil}`;
   }
