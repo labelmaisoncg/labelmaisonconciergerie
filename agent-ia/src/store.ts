@@ -1,0 +1,450 @@
+/**
+ * Persistance.
+ *
+ * Deux pilotes derrière la même API :
+ *  - Postgres, dès que DATABASE_URL est renseignée. C'est le mode réel.
+ *  - mémoire, sinon. Utile pour le banc d'essai local, INUTILISABLE en
+ *    serverless : chaque démarrage à froid repart de zéro, un onboarding
+ *    interrompu serait perdu. Le démarrage le signale bruyamment.
+ *
+ * Schéma : sql/schema.sql, à exécuter une fois sur la base.
+ */
+
+import postgres from 'postgres';
+
+const URL_BASE = process.env.DATABASE_URL || '';
+export const persistanceReelle = (): boolean => Boolean(URL_BASE);
+
+const sql = URL_BASE
+  ? postgres(URL_BASE, {
+      // En serverless, une connexion par invocation : inutile d'en garder un
+      // pool ouvert, et les bases gratuites plafonnent vite.
+      max: 1,
+      idle_timeout: 20,
+      connect_timeout: 10,
+      prepare: false, // requis derrière un pooler type PgBouncer
+    })
+  : null;
+
+if (!sql) {
+  console.warn(
+    '[store] DATABASE_URL absente — stockage en MÉMOIRE. ' +
+      'La configuration sera perdue à chaque redémarrage. Ne pas déployer ainsi.',
+  );
+}
+
+// --- Types du domaine ---
+
+export type Conciergerie = {
+  id: string;
+  nom: string;
+  channexGroupId: string | null;
+  styleProfil: string | null;
+  styleExemples: string[];
+};
+
+export type Logement = {
+  id: string;
+  conciergerieId: string;
+  nom: string;
+  ville: string | null;
+  channexPropertyId: string | null;
+  airbnbConnecte: boolean;
+  bookingConnecte: boolean;
+  cleBoite: string | null;
+  wifiNom: string | null;
+  wifiCode: string | null;
+  heureArrivee: string | null;
+  heureDepart: string | null;
+  consignes: string | null;
+};
+
+export type Connaissance = {
+  id: string;
+  logementId: string | null;
+  question: string;
+  reponse: string;
+};
+
+export type ActionEnAttente = {
+  id: string;
+  conciergerieId: string;
+  chatId: string;
+  outil: string;
+  arguments: Record<string, unknown>;
+  recap: string;
+};
+
+// --- Pilote mémoire ---
+
+const mem = {
+  conciergeries: new Map<string, Conciergerie>(),
+  membres: new Map<string, string>(), // chatId -> conciergerieId
+  logements: [] as Logement[],
+  connaissances: [] as Array<Connaissance & { conciergerieId: string }>,
+  actions: new Map<string, ActionEnAttente>(),
+  conversations: new Map<string, Array<{ role: string; contenu: unknown }>>(),
+  compteur: 0,
+};
+const idMem = () => `mem-${++mem.compteur}`;
+
+// --- Conciergeries et membres ---
+
+export async function conciergerieParChat(chatId: string | number): Promise<Conciergerie | null> {
+  const chat = String(chatId);
+  if (!sql) {
+    const id = mem.membres.get(chat);
+    return id ? (mem.conciergeries.get(id) ?? null) : null;
+  }
+  const [r] = await sql<any[]>`
+    select c.id, c.nom, c.channex_group_id, c.style_profil, c.style_exemples
+    from conciergeries c
+    join membres m on m.conciergerie_id = c.id
+    where m.chat_id = ${chat} and c.actif
+    limit 1`;
+  return r
+    ? {
+        id: r.id,
+        nom: r.nom,
+        channexGroupId: r.channex_group_id,
+        styleProfil: r.style_profil,
+        styleExemples: r.style_exemples ?? [],
+      }
+    : null;
+}
+
+export async function creerConciergerie(
+  nom: string,
+  channexGroupId: string,
+  chatId: string | number,
+): Promise<Conciergerie> {
+  const chat = String(chatId);
+  if (!sql) {
+    const c: Conciergerie = {
+      id: idMem(),
+      nom,
+      channexGroupId,
+      styleProfil: null,
+      styleExemples: [],
+    };
+    mem.conciergeries.set(c.id, c);
+    mem.membres.set(chat, c.id);
+    return c;
+  }
+  const [c] = await sql<any[]>`
+    insert into conciergeries (nom, channex_group_id)
+    values (${nom}, ${channexGroupId})
+    returning id, nom, channex_group_id, style_profil, style_exemples`;
+  await sql`
+    insert into membres (conciergerie_id, chat_id, role)
+    values (${c.id}, ${chat}, 'proprietaire')
+    on conflict (chat_id) do update set conciergerie_id = excluded.conciergerie_id`;
+  return {
+    id: c.id,
+    nom: c.nom,
+    channexGroupId: c.channex_group_id,
+    styleProfil: c.style_profil,
+    styleExemples: c.style_exemples ?? [],
+  };
+}
+
+export async function enregistrerStyle(
+  conciergerieId: string,
+  profil: string,
+  exemples: string[],
+): Promise<void> {
+  if (!sql) {
+    const c = mem.conciergeries.get(conciergerieId);
+    if (c) {
+      c.styleProfil = profil;
+      c.styleExemples = exemples;
+    }
+    return;
+  }
+  await sql`
+    update conciergeries
+    set style_profil = ${profil}, style_exemples = ${sql.json(exemples)}
+    where id = ${conciergerieId}`;
+}
+
+// --- Logements ---
+
+export async function logements(conciergerieId: string): Promise<Logement[]> {
+  if (!sql) return mem.logements.filter((l) => l.conciergerieId === conciergerieId);
+  const rs = await sql<any[]>`
+    select * from logements where conciergerie_id = ${conciergerieId} and actif order by nom`;
+  return rs.map(versLogement);
+}
+
+/** Résolution par nom, tolérante : « massy » trouve « Studio de Massy ». */
+export async function logementParNom(
+  conciergerieId: string,
+  nom: string,
+): Promise<Logement | null> {
+  const n = nom.trim().toLowerCase();
+  const tous = await logements(conciergerieId);
+  return (
+    tous.find((l) => l.nom.toLowerCase() === n) ??
+    tous.find((l) => l.nom.toLowerCase().includes(n)) ??
+    tous.find((l) => n.includes(l.nom.toLowerCase())) ??
+    null
+  );
+}
+
+export async function creerLogement(
+  conciergerieId: string,
+  nom: string,
+  ville: string,
+  channexPropertyId: string,
+): Promise<Logement> {
+  if (!sql) {
+    const l: Logement = {
+      id: idMem(),
+      conciergerieId,
+      nom,
+      ville,
+      channexPropertyId,
+      airbnbConnecte: false,
+      bookingConnecte: false,
+      cleBoite: null,
+      wifiNom: null,
+      wifiCode: null,
+      heureArrivee: null,
+      heureDepart: null,
+      consignes: null,
+    };
+    mem.logements.push(l);
+    return l;
+  }
+  const [r] = await sql<any[]>`
+    insert into logements (conciergerie_id, nom, ville, channex_property_id)
+    values (${conciergerieId}, ${nom}, ${ville}, ${channexPropertyId})
+    returning *`;
+  return versLogement(r);
+}
+
+export async function majLogement(
+  logementId: string,
+  champs: Partial<Record<string, unknown>>,
+): Promise<void> {
+  if (!sql) {
+    const l = mem.logements.find((x) => x.id === logementId);
+    if (l) Object.assign(l, champs);
+    return;
+  }
+  const colonnes: Record<string, string> = {
+    airbnbConnecte: 'airbnb_connecte',
+    bookingConnecte: 'booking_connecte',
+    cleBoite: 'cle_boite',
+    wifiNom: 'wifi_nom',
+    wifiCode: 'wifi_code',
+    heureArrivee: 'heure_arrivee',
+    heureDepart: 'heure_depart',
+    consignes: 'consignes',
+  };
+  for (const [cle, valeur] of Object.entries(champs)) {
+    const col = colonnes[cle];
+    if (!col) continue;
+    await sql`update logements set ${sql(col)} = ${valeur as any} where id = ${logementId}`;
+  }
+}
+
+const versLogement = (r: any): Logement => ({
+  id: r.id,
+  conciergerieId: r.conciergerie_id,
+  nom: r.nom,
+  ville: r.ville,
+  channexPropertyId: r.channex_property_id,
+  airbnbConnecte: r.airbnb_connecte,
+  bookingConnecte: r.booking_connecte,
+  cleBoite: r.cle_boite,
+  wifiNom: r.wifi_nom,
+  wifiCode: r.wifi_code,
+  heureArrivee: r.heure_arrivee,
+  heureDepart: r.heure_depart,
+  consignes: r.consignes,
+});
+
+// --- Base de connaissances ---
+
+export async function ajouterConnaissances(
+  conciergerieId: string,
+  logementId: string | null,
+  entrees: Array<{ question: string; reponse: string }>,
+  source = 'manuel',
+): Promise<number> {
+  if (entrees.length === 0) return 0;
+  if (!sql) {
+    for (const e of entrees) {
+      mem.connaissances.push({ id: idMem(), conciergerieId, logementId, ...e });
+    }
+    return entrees.length;
+  }
+  await sql`
+    insert into connaissances ${sql(
+      entrees.map((e) => ({
+        conciergerie_id: conciergerieId,
+        logement_id: logementId,
+        question: e.question,
+        reponse: e.reponse,
+        source,
+      })),
+    )}`;
+  return entrees.length;
+}
+
+export async function connaissances(
+  conciergerieId: string,
+  logementId?: string | null,
+): Promise<Connaissance[]> {
+  if (!sql) {
+    return mem.connaissances
+      .filter((c) => c.conciergerieId === conciergerieId)
+      .filter((c) => !logementId || c.logementId === logementId || c.logementId === null);
+  }
+  const rs = logementId
+    ? await sql<any[]>`
+        select id, logement_id, question, reponse from connaissances
+        where conciergerie_id = ${conciergerieId}
+          and (logement_id = ${logementId} or logement_id is null)`
+    : await sql<any[]>`
+        select id, logement_id, question, reponse from connaissances
+        where conciergerie_id = ${conciergerieId}`;
+  return rs.map((r) => ({
+    id: r.id,
+    logementId: r.logement_id,
+    question: r.question,
+    reponse: r.reponse,
+  }));
+}
+
+// --- Mémoire de conversation ---
+
+export async function historique(
+  chatId: string | number,
+  limite = 20,
+): Promise<Array<{ role: 'user' | 'assistant'; contenu: any }>> {
+  const chat = String(chatId);
+  if (!sql) return (mem.conversations.get(chat) ?? []).slice(-limite) as any;
+  const rs = await sql<any[]>`
+    select role, contenu from conversations
+    where chat_id = ${chat}
+    order by cree_le desc limit ${limite}`;
+  return rs.reverse().map((r) => ({ role: r.role, contenu: r.contenu }));
+}
+
+export async function ajouterAuFil(
+  chatId: string | number,
+  conciergerieId: string | null,
+  role: 'user' | 'assistant',
+  contenu: unknown,
+): Promise<void> {
+  const chat = String(chatId);
+  if (!sql) {
+    const fil = mem.conversations.get(chat) ?? [];
+    fil.push({ role, contenu });
+    mem.conversations.set(chat, fil);
+    return;
+  }
+  await sql`
+    insert into conversations (chat_id, conciergerie_id, role, contenu)
+    values (${chat}, ${conciergerieId}, ${role}, ${sql.json(contenu as any)})`;
+}
+
+// --- Actions en attente de confirmation ---
+
+export async function deposerAction(a: Omit<ActionEnAttente, 'id'>): Promise<string> {
+  if (!sql) {
+    const id = idMem();
+    mem.actions.set(id, { id, ...a });
+    return id;
+  }
+  const [r] = await sql<any[]>`
+    insert into actions_en_attente (conciergerie_id, chat_id, outil, arguments, recap)
+    values (${a.conciergerieId}, ${a.chatId}, ${a.outil}, ${sql.json(a.arguments as any)}, ${a.recap})
+    returning id`;
+  return r.id;
+}
+
+export async function retirerAction(id: string, statut: 'confirmee' | 'refusee'): Promise<ActionEnAttente | null> {
+  if (!sql) {
+    const a = mem.actions.get(id) ?? null;
+    mem.actions.delete(id);
+    return a;
+  }
+  const [r] = await sql<any[]>`
+    update actions_en_attente set statut = ${statut}
+    where id = ${id} and statut = 'attente' and expire_le > now()
+    returning id, conciergerie_id, chat_id, outil, arguments, recap`;
+  return r
+    ? {
+        id: r.id,
+        conciergerieId: r.conciergerie_id,
+        chatId: r.chat_id,
+        outil: r.outil,
+        arguments: r.arguments,
+        recap: r.recap,
+      }
+    : null;
+}
+
+// --- Journal et déduplication ---
+
+export async function journaliser(
+  conciergerieId: string | null,
+  chatId: string | null,
+  outil: string,
+  args: unknown,
+  resultat: unknown,
+): Promise<void> {
+  if (!sql) return;
+  await sql`
+    insert into actions_log (conciergerie_id, chat_id, outil, arguments, resultat)
+    values (${conciergerieId}, ${chatId}, ${outil}, ${sql.json(args as any)}, ${sql.json(resultat as any)})`;
+}
+
+/** true si ce message voyageur a déjà été traité — évite de répondre deux fois. */
+export async function dejaTraite(threadId: string, messageId: string): Promise<boolean> {
+  if (!sql) return false;
+  const [r] = await sql<any[]>`
+    select 1 from messages_traites where thread_id = ${threadId} and message_id = ${messageId}`;
+  return Boolean(r);
+}
+
+export async function marquerTraite(
+  threadId: string,
+  messageId: string,
+  conciergerieId: string | null,
+  reponse: string,
+): Promise<void> {
+  if (!sql) return;
+  await sql`
+    insert into messages_traites (thread_id, message_id, conciergerie_id, reponse_envoyee)
+    values (${threadId}, ${messageId}, ${conciergerieId}, ${reponse})
+    on conflict do nothing`;
+}
+
+/** Toutes les conciergeries actives — pour les crons. */
+export async function toutesConciergeries(): Promise<Array<Conciergerie & { chatIds: string[] }>> {
+  if (!sql) {
+    return [...mem.conciergeries.values()].map((c) => ({
+      ...c,
+      chatIds: [...mem.membres.entries()].filter(([, id]) => id === c.id).map(([chat]) => chat),
+    }));
+  }
+  const rs = await sql<any[]>`
+    select c.id, c.nom, c.channex_group_id, c.style_profil, c.style_exemples,
+           coalesce(array_agg(m.chat_id) filter (where m.role = 'proprietaire'), '{}') as chat_ids
+    from conciergeries c
+    left join membres m on m.conciergerie_id = c.id
+    where c.actif
+    group by c.id`;
+  return rs.map((r) => ({
+    id: r.id,
+    nom: r.nom,
+    channexGroupId: r.channex_group_id,
+    styleProfil: r.style_profil,
+    styleExemples: r.style_exemples ?? [],
+    chatIds: r.chat_ids ?? [],
+  }));
+}

@@ -51,6 +51,49 @@ export async function envoyerMessage(chatId: number | string, texte: string): Pr
   }
 }
 
+/**
+ * Envoi avec boutons de confirmation.
+ *
+ * Un bouton vaut mieux qu'un « oui » tapé : au vocal surtout, une transcription
+ * approximative sur une phrase d'action donne un blocage sur le mauvais
+ * logement. Le récapitulatif affiché est ce que l'utilisateur valide.
+ */
+export async function envoyerAvecBoutons(
+  chatId: number | string,
+  texte: string,
+  boutons: Array<{ libelle: string; donnee: string }>,
+): Promise<void> {
+  await appel('sendMessage', {
+    chat_id: chatId,
+    text: texte,
+    reply_markup: {
+      inline_keyboard: [boutons.map((b) => ({ text: b.libelle, callback_data: b.donnee }))],
+    },
+  });
+}
+
+/** Acquitte le clic : sans ça, Telegram laisse le bouton tourner indéfiniment. */
+export async function accuserClic(callbackQueryId: string, texte?: string): Promise<void> {
+  try {
+    await appel('answerCallbackQuery', { callback_query_id: callbackQueryId, text: texte });
+  } catch {
+    // Purement cosmétique.
+  }
+}
+
+/** Retire les boutons d'un message déjà traité, pour empêcher un double clic. */
+export async function retirerBoutons(chatId: number | string, messageId: number): Promise<void> {
+  try {
+    await appel('editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: { inline_keyboard: [] },
+    });
+  } catch {
+    // Sans importance si le message a été supprimé entre-temps.
+  }
+}
+
 /** Affiche « en train d'écrire… » pendant que Claude réfléchit. Expire après 5 s. */
 export async function indiquerFrappe(chatId: number | string): Promise<void> {
   try {
@@ -70,15 +113,23 @@ export async function telechargerFichier(fileId: string): Promise<ArrayBuffer> {
 
 // --- Types partiels des mises à jour, limités à ce qu'on exploite ---
 
+type Message = {
+  message_id: number;
+  date: number;
+  chat: { id: number; type: string; first_name?: string; username?: string };
+  from?: { id: number; first_name?: string; username?: string };
+  text?: string;
+  voice?: { file_id: string; duration: number; mime_type?: string };
+  audio?: { file_id: string; duration: number; mime_type?: string };
+};
+
 export type TelegramUpdate = {
   update_id: number;
-  message?: {
-    message_id: number;
-    date: number;
-    chat: { id: number; type: string; first_name?: string; username?: string };
-    from?: { id: number; first_name?: string; username?: string };
-    text?: string;
-    voice?: { file_id: string; duration: number; mime_type?: string };
-    audio?: { file_id: string; duration: number; mime_type?: string };
+  message?: Message;
+  callback_query?: {
+    id: string;
+    data?: string;
+    from?: { id: number; username?: string };
+    message?: Message;
   };
 };
