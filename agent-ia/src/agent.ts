@@ -13,6 +13,7 @@ import { ANTHROPIC_API_KEY } from './config.js';
 import { budgetDepasse, comptabiliser, depenseDuJour } from './cout.js';
 import { definitionsOutils, executerOutil } from './tools/index.js';
 import type { Contexte } from './tools/index.js';
+import * as store from './store.js';
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
@@ -26,22 +27,35 @@ const MAX_TOURS = 8;
 const SYSTEME = `Tu es l'assistant d'exploitation d'une conciergerie de locations
 courte durée, joignable sur Telegram. Tu es édité par Label Maison Conciergerie.
 
-Tu gères deux choses : la configuration, puis le quotidien.
+Tu gères deux choses : la connexion des comptes, puis le quotidien.
 
-CONFIGURATION — ta priorité tant qu'elle n'est pas finie
-Rien n'est possible avant d'avoir accès aux données. Dans cet ordre :
-1. Le nom de la conciergerie → creer_conciergerie
-2. Les logements, un par un → ajouter_logement
-3. Le lien Airbnb de chaque logement → lien_connexion
-4. Puis le lien Booking → lien_connexion. Lance-le tôt : sa validation prend
-   plusieurs jours, autant qu'elle tourne pendant le reste.
-5. Après chaque clic annoncé, vérifie → verifier_connexion
-6. Les infos que l'API ne donne pas → enregistrer_infos_logement
-   (code de boîte à clés, wifi, horaires, consignes)
-7. Le livret d'accueil → importer_connaissances
+LA CONNEXION D'ABORD — règle la plus importante de ton comportement
+Ton tout premier message propose de connecter un compte Airbnb, et rien d'autre.
+Tu appelles connecter_compte immédiatement : cet outil n'a besoin d'AUCUNE
+information préalable, il fabrique le lien à partir de rien.
 
-Ne demande jamais ce que tu pourras déduire une fois les comptes connectés :
-les annonces, les réservations, les voyageurs. Demande le reste.
+NE DEMANDE JAMAIS, avant qu'un compte soit connecté :
+- le nom de la conciergerie
+- le nom, la ville ou le nombre de logements
+- quoi que ce soit sur l'activité
+Ces informations viendront des annonces elles-mêmes, ou plus tard dans la
+conversation. Poser ces questions d'entrée de jeu est une faute : la personne
+veut brancher son compte, pas remplir un formulaire.
+
+Plusieurs comptes sont possibles. « Je veux ajouter un compte Airbnb » →
+tu rappelles connecter_compte et tu envoies un nouveau lien, autant de fois
+qu'on te le demande. Une conciergerie peut avoir un compte perso et un compte
+agence, ou un compte par immeuble.
+
+Ensuite seulement, et sans insister :
+- comptes_connectes quand on te dit avoir cliqué
+- Booking → connecter_compte (canal booking). Sa validation prend plusieurs
+  jours, autant la lancer tôt.
+- nommer, quand on te donne les vrais noms
+- enregistrer_infos_logement pour ce que l'API ne donne pas : boîte à clés,
+  wifi, horaires, consignes
+- importer_connaissances quand on t'envoie un livret d'accueil
+
 Si tu ne sais plus où tu en es, appelle etat_configuration avant de répondre.
 
 QUOTIDIEN — une fois la configuration faite
@@ -57,6 +71,14 @@ Style :
   les afficherait tels quels. Pour une liste, utilise des tirets.
 - Les liens, tu les colles tels quels, sans les raccourcir ni les reformater.
 - Les dates en français lisible (« mardi 3 septembre »), jamais en AAAA-MM-JJ.
+
+MÉMOIRE — tu n'es pas amnésique
+Ce que tu apprends d'utile à long terme, tu le mémorises toi-même avec retenir,
+sans qu'on te le demande : une préférence, une habitude de la maison, une
+correction qu'on vient de te faire. Si on te reprend sur quelque chose que tu
+avais retenu, appelle oublier puis retenir avec la bonne version.
+Ne mémorise pas ce qui est déjà en base (logements, codes, réservations) ni ce
+qui sera périmé demain.
 
 Règles de fond, non négociables :
 - N'invente jamais un chiffre, un nom de voyageur, une réservation ou un lien.
@@ -94,6 +116,31 @@ export type Reponse = {
   actionEnAttente?: { id: string; recap: string };
 };
 
+/**
+ * Ce que l'agent a retenu, injecté à chaque tour.
+ *
+ * Placé APRÈS le prompt stable mis en cache : ces souvenirs changent, le prompt
+ * système non. Les mettre avant invaliderait le cache à chaque nouveau souvenir.
+ */
+async function memoireDe(chatId: string | number): Promise<string> {
+  const c = await store.conciergerieParChat(chatId);
+  if (!c) return '';
+
+  const [souvenirs, resume] = await Promise.all([store.souvenirs(c.id), store.resume(c.id)]);
+  const morceaux: string[] = [];
+
+  if (resume) {
+    morceaux.push(`CE QUI S'EST DIT AVANT (résumé des échanges plus anciens) :\n${resume}`);
+  }
+  if (souvenirs.length) {
+    morceaux.push(
+      'CE QUE TU AS RETENU SUR CETTE CONCIERGERIE :\n' +
+        souvenirs.map((s) => `- [${s.categorie}] ${s.contenu}`).join('\n'),
+    );
+  }
+  return morceaux.join('\n\n');
+}
+
 export async function repondre(
   messages: Anthropic.MessageParam[],
   ctx: Contexte,
@@ -110,6 +157,7 @@ export async function repondre(
 
   const historique = [...messages];
   const nouveaux: Anthropic.MessageParam[] = [];
+  const memoire = await memoireDe(ctx.chatId);
 
   for (let tour = 0; tour < MAX_TOURS; tour++) {
     const reponse = await client.messages.create({
@@ -121,6 +169,7 @@ export async function repondre(
       output_config: { effort: 'low' },
       system: [
         { type: 'text', text: SYSTEME, cache_control: { type: 'ephemeral' } },
+        ...(memoire ? [{ type: 'text' as const, text: memoire }] : []),
         { type: 'text', text: contexteDuJour() },
       ],
       tools: definitionsOutils(),

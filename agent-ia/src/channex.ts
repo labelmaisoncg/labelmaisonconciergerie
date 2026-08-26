@@ -144,7 +144,10 @@ export async function lienConnexion(
   canalId?: string,
 ): Promise<string> {
   const jeton = await jetonUnique(proprieteId, groupId, utilisateur);
-  const destination = canalId ? `/channels/${canalId}` : '/channels/create';
+  // La route du canal est `/channels/{id}/edit`, pas `/channels/{id}` :
+  // cette dernière n'existe pas et Channex retombe silencieusement sur son
+  // tableau de bord, ce qui donne l'impression que le lien est cassé.
+  const destination = canalId ? `/channels/${canalId}/edit` : '/channels/create';
   return (
     `${BASE}/auth/exchange` +
     `?oauth_session_key=${encodeURIComponent(jeton)}` +

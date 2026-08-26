@@ -84,6 +84,9 @@ const mem = {
   connaissances: [] as Array<Connaissance & { conciergerieId: string }>,
   actions: new Map<string, ActionEnAttente>(),
   conversations: new Map<string, Array<{ role: string; contenu: unknown }>>(),
+  souvenirs: [] as Array<Souvenir & { conciergerieId: string }>,
+  resumes: new Map<string, string>(),
+  initiatives: new Set<string>(),
   compteur: 0,
 };
 const idMem = () => `mem-${++mem.compteur}`;
@@ -146,6 +149,36 @@ export async function creerConciergerie(
     styleProfil: c.style_profil,
     styleExemples: c.style_exemples ?? [],
   };
+}
+
+/** Les vrais noms arrivent après la connexion, pas avant : on renomme ce qui a
+ *  été créé sous un intitulé provisoire. */
+export async function renommerConciergerie(id: string, nom: string): Promise<void> {
+  if (!sql) {
+    const c = mem.conciergeries.get(id);
+    if (c) c.nom = nom;
+    return;
+  }
+  await sql`update conciergeries set nom = ${nom} where id = ${id}`;
+}
+
+export async function renommerLogement(
+  id: string,
+  nom: string,
+  ville: string | null,
+): Promise<void> {
+  if (!sql) {
+    const l = mem.logements.find((x) => x.id === id);
+    if (l) {
+      l.nom = nom;
+      if (ville) l.ville = ville;
+    }
+    return;
+  }
+  await sql`
+    update logements
+    set nom = ${nom}, ville = coalesce(${ville}, ville)
+    where id = ${id}`;
 }
 
 export async function enregistrerStyle(
@@ -422,6 +455,104 @@ export async function marquerTraite(
     insert into messages_traites (thread_id, message_id, conciergerie_id, reponse_envoyee)
     values (${threadId}, ${messageId}, ${conciergerieId}, ${reponse})
     on conflict do nothing`;
+}
+
+// --- Mémoire longue ---
+
+export type Souvenir = { id: string; contenu: string; categorie: string };
+
+export async function retenir(
+  conciergerieId: string,
+  contenu: string,
+  categorie: string,
+): Promise<void> {
+  if (!sql) {
+    mem.souvenirs.push({ id: idMem(), conciergerieId, contenu, categorie });
+    return;
+  }
+  await sql`
+    insert into souvenirs (conciergerie_id, contenu, categorie)
+    values (${conciergerieId}, ${contenu}, ${categorie})`;
+}
+
+export async function souvenirs(conciergerieId: string): Promise<Souvenir[]> {
+  if (!sql) return mem.souvenirs.filter((s) => s.conciergerieId === conciergerieId);
+  const rs = await sql<any[]>`
+    select id, contenu, categorie from souvenirs
+    where conciergerie_id = ${conciergerieId}
+    order by cree_le desc limit 60`;
+  return rs.map((r) => ({ id: r.id, contenu: r.contenu, categorie: r.categorie }));
+}
+
+/** Supprime un souvenir devenu faux. Une mémoire qu'on ne peut pas corriger
+ *  est pire que pas de mémoire du tout. */
+export async function oublier(conciergerieId: string, recherche: string): Promise<number> {
+  if (!sql) {
+    const avant = mem.souvenirs.length;
+    mem.souvenirs = mem.souvenirs.filter(
+      (s) => s.conciergerieId !== conciergerieId || !s.contenu.toLowerCase().includes(recherche.toLowerCase()),
+    );
+    return avant - mem.souvenirs.length;
+  }
+  const rs = await sql<any[]>`
+    delete from souvenirs
+    where conciergerie_id = ${conciergerieId} and contenu ilike ${'%' + recherche + '%'}
+    returning id`;
+  return rs.length;
+}
+
+export async function resume(conciergerieId: string): Promise<string | null> {
+  if (!sql) return mem.resumes.get(conciergerieId) ?? null;
+  const [r] = await sql<any[]>`
+    select resume_conversation from conciergeries where id = ${conciergerieId}`;
+  return r?.resume_conversation ?? null;
+}
+
+export async function enregistrerResume(conciergerieId: string, texte: string): Promise<void> {
+  if (!sql) {
+    mem.resumes.set(conciergerieId, texte);
+    return;
+  }
+  await sql`
+    update conciergeries
+    set resume_conversation = ${texte}, resume_jusqua = now()
+    where id = ${conciergerieId}`;
+}
+
+export async function nombreDeMessages(chatId: string | number): Promise<number> {
+  if (!sql) return (mem.conversations.get(String(chatId)) ?? []).length;
+  const [r] = await sql<any[]>`
+    select count(*)::int as n from conversations where chat_id = ${String(chatId)}`;
+  return r?.n ?? 0;
+}
+
+// --- Veille autonome ---
+
+/** true si ce sujet a déjà été signalé récemment — évite de répéter la même
+ *  alerte à chaque passage, ce qui rendrait l'agent insupportable. */
+export async function dejaSignale(conciergerieId: string, sujet: string, joursDeSilence = 7): Promise<boolean> {
+  if (!sql) return mem.initiatives.has(`${conciergerieId}:${sujet}`);
+  const [r] = await sql<any[]>`
+    select 1 from initiatives
+    where conciergerie_id = ${conciergerieId} and sujet = ${sujet}
+      and cree_le > now() - (${joursDeSilence} || ' days')::interval`;
+  return Boolean(r);
+}
+
+export async function noterInitiative(
+  conciergerieId: string,
+  sujet: string,
+  message: string,
+): Promise<void> {
+  if (!sql) {
+    mem.initiatives.add(`${conciergerieId}:${sujet}`);
+    return;
+  }
+  await sql`
+    insert into initiatives (conciergerie_id, sujet, message)
+    values (${conciergerieId}, ${sujet}, ${message})
+    on conflict (conciergerie_id, sujet)
+    do update set message = excluded.message, cree_le = now()`;
 }
 
 /** Toutes les conciergeries actives — pour les crons. */

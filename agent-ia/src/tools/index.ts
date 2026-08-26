@@ -15,6 +15,7 @@ import { OUTILS_ONBOARDING } from './onboarding.js';
 import { OUTILS_EXPLOITATION } from './exploitation.js';
 import { OUTILS_ACTIONS } from './actions.js';
 import { OUTILS_CONNAISSANCES } from './connaissances.js';
+import { OUTILS_MEMOIRE } from './memoire.js';
 
 /** Ce que le code sait de l'appelant, et que le modèle ne peut pas falsifier. */
 export type Contexte = {
@@ -37,6 +38,7 @@ const tous: Outil[] = [
   ...OUTILS_ONBOARDING,
   ...OUTILS_EXPLOITATION,
   ...OUTILS_CONNAISSANCES,
+  ...OUTILS_MEMOIRE,
   ...OUTILS_ACTIONS,
 ];
 

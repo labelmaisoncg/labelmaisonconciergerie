@@ -1,48 +1,236 @@
 /**
- * Outils d'onboarding : connecter les comptes, décrire les logements.
+ * Outils de connexion et de configuration.
+ *
+ * PRINCIPE : la connexion d'abord, les questions ensuite. On ne demande jamais
+ * le nom de la conciergerie ni celui des logements avant d'avoir branché un
+ * compte — l'essentiel viendra des annonces elles-mêmes.
+ *
+ * Contrainte Channex : fabriquer un lien exige un `group` et une `property`
+ * existants. On les crée donc en silence, sous un nom provisoire, et on les
+ * renomme plus tard. L'utilisateur ne voit que le lien.
  *
  * RÈGLE DE SÉCURITÉ CENTRALE : aucun outil n'accepte d'identifiant Channex ou
- * de base venant du modèle. Les `group_id` et `property_id` sont résolus par le
- * code à partir du `chat_id` authentifié. Si Claude pouvait passer un
- * `property_id` en argument, une formulation habile suffirait à lire ou modifier
- * les données d'une autre conciergerie.
- *
- * Le modèle ne manipule que des NOMS ; le code fait la traduction.
+ * de base venant du modèle. Tout est résolu par le code depuis le `chatId`
+ * authentifié. Si Claude pouvait passer un `property_id`, une formulation
+ * habile suffirait à atteindre les données d'une autre conciergerie.
  */
 
 import * as channex from '../channex.js';
 import * as store from '../store.js';
-import type { Outil } from './index.js';
+import type { Contexte, Outil } from './index.js';
 
-/** Résout la conciergerie de l'appelant, ou explique quoi faire. */
-async function laConciergerie(chatId: string | number) {
-  const c = await store.conciergerieParChat(chatId);
-  if (!c) throw new Error("Aucune conciergerie n'est encore enregistrée pour cette conversation.");
-  return c;
+const NOM_PROVISOIRE = 'Conciergerie (à nommer)';
+
+/**
+ * Renvoie la conciergerie de l'appelant, en la créant à la volée si besoin.
+ * C'est ce qui permet d'envoyer un lien dès le premier message, sans interroger
+ * l'utilisateur sur son nom.
+ */
+async function conciergerieOuCreation(ctx: Contexte): Promise<store.Conciergerie> {
+  const existante = await store.conciergerieParChat(ctx.chatId);
+  if (existante) return existante;
+
+  const groupe = await channex.creerGroupe(NOM_PROVISOIRE);
+  return store.creerConciergerie(NOM_PROVISOIRE, groupe.id, ctx.chatId);
 }
 
-const creerConciergerie: Outil = {
+const connecterCompte: Outil = {
   definition: {
-    name: 'creer_conciergerie',
+    name: 'connecter_compte',
     description:
-      "Enregistre la conciergerie. À appeler une seule fois, dès que la personne " +
-      'a donné son nom. Sans elle, aucun autre outil ne fonctionne.',
+      "Génère le lien de connexion d'un compte Airbnb ou Booking. C'est LE premier " +
+      "outil à appeler, dès qu'on te parle de connexion — tu n'as besoin de RIEN " +
+      "savoir au préalable, ni le nom de la conciergerie ni celui des logements. " +
+      "Appelle-le autant de fois que nécessaire : une conciergerie peut avoir " +
+      'plusieurs comptes Airbnb, chacun donnant lieu à un lien distinct. ' +
+      'Envoie le lien tel quel. Il expire au bout de 15 minutes — au-delà, ' +
+      "régénère-en un plutôt que de renvoyer le même.",
     input_schema: {
       type: 'object',
-      properties: { nom: { type: 'string', description: 'Nom de la conciergerie.' } },
-      required: ['nom'],
+      properties: {
+        canal: {
+          type: 'string',
+          enum: ['airbnb', 'booking'],
+          description: 'Plateforme à connecter.',
+        },
+        etiquette: {
+          type: 'string',
+          description:
+            "Nom donné à ce compte quand la conciergerie en a plusieurs " +
+            "(« compte perso », « compte agence »). Facultatif.",
+        },
+        logement: {
+          type: 'string',
+          description:
+            'Rattacher ce compte à un logement déjà connu. Facultatif : sans lui, ' +
+            'un emplacement provisoire est créé et sera nommé plus tard.',
+        },
+        nouveau_compte: {
+          type: 'boolean',
+          description:
+            "true quand on te demande d'AJOUTER un compte supplémentaire " +
+            "(« je veux ajouter un autre compte Airbnb »). false quand il s'agit de " +
+            'régénérer un lien pour un compte déjà entamé (lien expiré, clic raté). ' +
+            'La différence compte : un nouveau compte a ses propres annonces et ne ' +
+            "doit pas écraser le précédent.",
+        },
+      },
+      required: ['canal'],
       additionalProperties: false,
     },
-    strict: true,
   },
   ecriture: true,
   executer: async (args, ctx) => {
-    const existante = await store.conciergerieParChat(ctx.chatId);
-    if (existante) return { deja_enregistree: true, nom: existante.nom };
+    const c = await conciergerieOuCreation(ctx);
+    const canal = args.canal as channex.Canal;
+    const nouveau = args.nouveau_compte === true;
 
-    const groupe = await channex.creerGroupe(String(args.nom));
-    const c = await store.creerConciergerie(groupe.titre, groupe.id, ctx.chatId);
-    return { cree: true, nom: c.nom };
+    // Choix de la propriété support. Un compte supplémentaire a ses propres
+    // annonces : il lui faut son propre emplacement, sinon le second compte
+    // écrase le premier sur la même propriété Channex.
+    let logement: store.Logement | null = null;
+    if (args.logement) {
+      logement = await store.logementParNom(c.id, String(args.logement));
+      if (!logement) return { erreur: `Logement introuvable : ${args.logement}` };
+    } else if (!nouveau) {
+      const tous = await store.logements(c.id);
+      logement = tous[0] ?? null;
+    }
+
+    if (!logement) {
+      const tous = await store.logements(c.id);
+      const titre = String(args.etiquette || `Logement ${tous.length + 1} (à nommer)`);
+      const provisoire = await channex.creerPropriete({
+        titre,
+        ville: 'France',
+        groupId: c.channexGroupId!,
+      });
+      logement = await store.creerLogement(c.id, provisoire.titre, 'France', provisoire.id);
+    }
+
+    const propId = logement.channexPropertyId!;
+    const attendu = canal === 'airbnb' ? 'AirBNB' : 'BookingCom';
+
+    // On ne réutilise un canal que pour reprendre une connexion inachevée.
+    // Pour un compte supplémentaire, on en crée toujours un nouveau.
+    let canalId: string | undefined;
+    try {
+      const existants = nouveau ? [] : await channex.canauxDe(propId);
+      const inacheve = existants.find((x) => x.code === attendu && !x.actif);
+      canalId = inacheve?.id ?? (await channex.creerCanal(propId, c.channexGroupId!, canal)).id;
+    } catch (err) {
+      // Pas bloquant : sans canal préexistant, le lien mène au formulaire de
+      // création. Un clic de plus, mais la connexion reste possible.
+      console.warn('[onboarding] création du canal impossible :', err);
+    }
+
+    const lien = await channex.lienConnexion(propId, c.channexGroupId!, canal, c.nom, canalId);
+
+    return {
+      canal: args.canal,
+      etiquette: args.etiquette ?? null,
+      lien,
+      valide_minutes: 15,
+      consigne:
+        "Envoie le lien tel quel et demande de te prévenir une fois l'autorisation " +
+        'donnée. Ne demande aucune autre information pour le moment.',
+      ...(channex.enProduction()
+        ? {}
+        : {
+            _avertissement:
+              'ENVIRONNEMENT DE TEST (staging Channex). Ce lien NE connectera PAS un ' +
+              "vrai compte. Préviens-en l'utilisateur.",
+          }),
+      ...(canal === 'booking'
+        ? {
+            _note_booking:
+              'Booking exige en plus une validation de Channex comme fournisseur de ' +
+              'connectivité depuis leur extranet : compter plusieurs jours.',
+          }
+        : {}),
+    };
+  },
+};
+
+const comptesConnectes: Outil = {
+  definition: {
+    name: 'comptes_connectes',
+    description:
+      'Liste les comptes Airbnb et Booking rattachés, et lesquels ont réellement ' +
+      "abouti. À appeler quand on te dit avoir cliqué sur un lien, ou quand on te " +
+      'demande où en est la connexion.',
+    input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
+    strict: true,
+  },
+  executer: async (_args, ctx) => {
+    const c = await store.conciergerieParChat(ctx.chatId);
+    if (!c) return { aucun_compte: true, consigne: 'Propose de connecter un compte Airbnb.' };
+
+    const logements = await store.logements(c.id);
+    const lignes = [];
+    for (const l of logements) {
+      if (!l.channexPropertyId) continue;
+      const canaux = await channex.canauxDe(l.channexPropertyId);
+      const airbnb = canaux.some((x) => x.code === 'AirBNB' && x.actif);
+      const booking = canaux.some((x) => x.code === 'BookingCom' && x.actif);
+      await store.majLogement(l.id, { airbnbConnecte: airbnb, bookingConnecte: booking });
+      lignes.push({
+        logement: l.nom,
+        airbnb: airbnb ? 'connecté' : 'pas encore',
+        booking: booking ? 'connecté' : 'pas encore',
+        canaux: canaux.map((x) => `${x.titre}${x.actif ? '' : ' (en attente)'}`),
+      });
+    }
+
+    return {
+      conciergerie: c.nom === NOM_PROVISOIRE ? null : c.nom,
+      comptes: lignes,
+      ...(c.nom === NOM_PROVISOIRE
+        ? { _a_faire: 'Le nom de la conciergerie reste à demander, une fois la connexion faite.' }
+        : {}),
+    };
+  },
+};
+
+const nommer: Outil = {
+  definition: {
+    name: 'nommer',
+    description:
+      "Donne son vrai nom à la conciergerie ou à un logement créé sous un nom " +
+      'provisoire. À utiliser une fois la connexion établie, quand on te donne ' +
+      "les noms — jamais en les demandant avant d'avoir connecté un compte.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        conciergerie: { type: 'string', description: 'Nouveau nom de la conciergerie.' },
+        logement_actuel: { type: 'string', description: 'Nom actuel du logement à renommer.' },
+        logement_nouveau: { type: 'string', description: 'Son vrai nom.' },
+        ville: { type: 'string', description: 'Ville du logement.' },
+      },
+      required: [],
+      additionalProperties: false,
+    },
+  },
+  ecriture: true,
+  executer: async (args, ctx) => {
+    const c = await store.conciergerieParChat(ctx.chatId);
+    if (!c) return { erreur: 'Rien à nommer : aucun compte connecté pour le moment.' };
+
+    const fait: string[] = [];
+
+    if (args.conciergerie) {
+      await store.renommerConciergerie(c.id, String(args.conciergerie));
+      fait.push(`conciergerie → ${args.conciergerie}`);
+    }
+
+    if (args.logement_actuel && args.logement_nouveau) {
+      const l = await store.logementParNom(c.id, String(args.logement_actuel));
+      if (!l) return { erreur: `Logement introuvable : ${args.logement_actuel}` };
+      await store.renommerLogement(l.id, String(args.logement_nouveau), args.ville ? String(args.ville) : null);
+      fait.push(`logement → ${args.logement_nouveau}`);
+    }
+
+    return fait.length ? { renomme: fait } : { erreur: 'Rien à renommer.' };
   },
 };
 
@@ -50,13 +238,13 @@ const ajouterLogement: Outil = {
   definition: {
     name: 'ajouter_logement',
     description:
-      "Ajoute un logement. Indispensable avant de générer un lien de connexion : " +
-      'chaque connexion Airbnb ou Booking se fait logement par logement.',
+      'Ajoute un logement supplémentaire. Utile quand la conciergerie en gère ' +
+      "plusieurs et qu'ils ne sont pas tous couverts par les comptes connectés.",
     input_schema: {
       type: 'object',
       properties: {
-        nom: { type: 'string', description: "Nom du logement, tel que la conciergerie l'appelle." },
-        ville: { type: 'string', description: 'Ville du logement.' },
+        nom: { type: 'string' },
+        ville: { type: 'string' },
       },
       required: ['nom', 'ville'],
       additionalProperties: false,
@@ -65,7 +253,7 @@ const ajouterLogement: Outil = {
   },
   ecriture: true,
   executer: async (args, ctx) => {
-    const c = await laConciergerie(ctx.chatId);
+    const c = await conciergerieOuCreation(ctx);
 
     // Idempotence : sans ce garde-fou, un modèle qui rejoue une étape crée un
     // doublon chez Channex — et un doublon de propriété est facturé.
@@ -80,109 +268,6 @@ const ajouterLogement: Outil = {
     const l = await store.creerLogement(c.id, propriete.titre, String(args.ville), propriete.id);
     const tous = await store.logements(c.id);
     return { ajoute: l.nom, total_logements: tous.length };
-  },
-};
-
-const lienConnexion: Outil = {
-  definition: {
-    name: 'lien_connexion',
-    description:
-      "Génère le lien que la conciergerie ouvre pour connecter son compte Airbnb " +
-      'ou Booking à un logement. Envoie-lui ce lien tel quel, sans le raccourcir. ' +
-      "IMPORTANT : il expire au bout de 15 minutes. Si elle revient plus tard sans " +
-      'avoir cliqué, régénère-en un plutôt que de renvoyer le même.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        logement: { type: 'string', description: 'Nom du logement concerné.' },
-        canal: { type: 'string', enum: ['airbnb', 'booking'], description: 'Plateforme à connecter.' },
-      },
-      required: ['logement', 'canal'],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-  executer: async (args, ctx) => {
-    const c = await laConciergerie(ctx.chatId);
-    const l = await store.logementParNom(c.id, String(args.logement));
-    if (!l) {
-      const tous = await store.logements(c.id);
-      return { erreur: `Logement introuvable : ${args.logement}`, logements_connus: tous.map((x) => x.nom) };
-    }
-
-    const canal = args.canal as channex.Canal;
-    const propId = l.channexPropertyId!;
-
-    // Le canal est créé AVANT l'envoi du lien : la cliente tombe alors
-    // directement sur le bouton de connexion, au lieu d'un formulaire vide.
-    let canalId: string | undefined;
-    try {
-      const existants = await channex.canauxDe(propId);
-      const attendu = canal === 'airbnb' ? 'AirBNB' : 'BookingCom';
-      canalId =
-        existants.find((x) => x.code === attendu)?.id ??
-        (await channex.creerCanal(propId, c.channexGroupId!, canal)).id;
-    } catch (err) {
-      // Pas bloquant : sans canal préexistant, le lien mène au formulaire de
-      // création. Un clic de plus, mais la connexion reste possible.
-      console.warn('[onboarding] création du canal impossible :', err);
-    }
-
-    const lien = await channex.lienConnexion(propId, c.channexGroupId!, canal, c.nom, canalId);
-
-    return {
-      logement: l.nom,
-      canal: args.canal,
-      lien,
-      valide_minutes: 15,
-      ...(channex.enProduction()
-        ? {}
-        : {
-            _avertissement:
-              'ENVIRONNEMENT DE TEST (staging Channex). Ce lien NE connectera PAS ' +
-              "un vrai compte Airbnb ou Booking. Préviens-en l'utilisateur.",
-          }),
-      ...(canal === 'booking'
-        ? {
-            _note_booking:
-              'Booking exige en plus une validation de Channex comme fournisseur de ' +
-              'connectivité depuis leur extranet : compter plusieurs jours. Autant lancer tôt.',
-          }
-        : {}),
-    };
-  },
-};
-
-const verifierConnexion: Outil = {
-  definition: {
-    name: 'verifier_connexion',
-    description:
-      "Vérifie quelles plateformes sont réellement connectées à un logement. " +
-      "À appeler quand la personne dit avoir cliqué, pour confirmer que ça a abouti.",
-    input_schema: {
-      type: 'object',
-      properties: { logement: { type: 'string', description: 'Nom du logement.' } },
-      required: ['logement'],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-  executer: async (args, ctx) => {
-    const c = await laConciergerie(ctx.chatId);
-    const l = await store.logementParNom(c.id, String(args.logement));
-    if (!l) return { erreur: `Logement introuvable : ${args.logement}` };
-
-    const canaux = await channex.canauxDe(l.channexPropertyId!);
-    const airbnb = canaux.some((x) => x.code === 'AirBNB' && x.actif);
-    const booking = canaux.some((x) => x.code === 'BookingCom' && x.actif);
-    await store.majLogement(l.id, { airbnbConnecte: airbnb, bookingConnecte: booking });
-
-    return {
-      logement: l.nom,
-      airbnb: airbnb ? 'connecté' : 'pas encore',
-      booking: booking ? 'connecté' : 'pas encore',
-      canaux_montes: canaux.map((x) => `${x.titre}${x.actif ? '' : ' (inactif)'}`),
-    };
   },
 };
 
@@ -211,11 +296,11 @@ const enregistrerInfos: Outil = {
   },
   ecriture: true,
   executer: async (args, ctx) => {
-    const c = await laConciergerie(ctx.chatId);
+    const c = await store.conciergerieParChat(ctx.chatId);
+    if (!c) return { erreur: 'Aucun compte connecté pour le moment.' };
     const l = await store.logementParNom(c.id, String(args.logement));
     if (!l) return { erreur: `Logement introuvable : ${args.logement}` };
 
-    const champs: Record<string, unknown> = {};
     const corr: Record<string, string> = {
       cle_boite: 'cleBoite',
       wifi_nom: 'wifiNom',
@@ -224,6 +309,7 @@ const enregistrerInfos: Outil = {
       heure_depart: 'heureDepart',
       consignes: 'consignes',
     };
+    const champs: Record<string, unknown> = {};
     for (const [entree, interne] of Object.entries(corr)) {
       if (args[entree] != null) champs[interne] = args[entree];
     }
@@ -238,24 +324,29 @@ const etatConfiguration: Outil = {
   definition: {
     name: 'etat_configuration',
     description:
-      'Fait le point : conciergerie, logements, plateformes connectées, fiches ' +
-      "remplies, et ce qui manque. À appeler quand tu ne sais pas où tu en es.",
+      'Fait le point : comptes connectés, logements, fiches remplies, et ce qui ' +
+      "manque. À appeler quand tu ne sais pas où tu en es.",
     input_schema: { type: 'object', properties: {}, required: [], additionalProperties: false },
     strict: true,
   },
   executer: async (_args, ctx) => {
     const c = await store.conciergerieParChat(ctx.chatId);
-    if (!c) return { etape: 'debut', manque: 'le nom de la conciergerie' };
+    if (!c) {
+      return {
+        etape: 'rien_de_connecte',
+        consigne: 'Commence par proposer de connecter un compte Airbnb.',
+      };
+    }
 
     const tous = await store.logements(c.id);
     const manque: string[] = [];
-    if (tous.length === 0) manque.push('aucun logement ajouté');
-    if (tous.some((l) => !l.airbnbConnecte)) manque.push('des connexions Airbnb');
-    if (tous.some((l) => !l.bookingConnecte)) manque.push('des connexions Booking');
+    if (!tous.some((l) => l.airbnbConnecte || l.bookingConnecte)) manque.push('aucun compte connecté');
+    if (c.nom === NOM_PROVISOIRE) manque.push('le nom de la conciergerie');
+    if (tous.some((l) => l.nom.includes('à nommer'))) manque.push('le nom des logements');
     if (tous.some((l) => !l.wifiCode || !l.cleBoite)) manque.push('des fiches logement incomplètes');
 
     return {
-      conciergerie: c.nom,
+      conciergerie: c.nom === NOM_PROVISOIRE ? null : c.nom,
       persistance: store.persistanceReelle() ? 'base de données' : 'MÉMOIRE (perdue au redémarrage)',
       logements: tous.map((l) => ({
         nom: l.nom,
@@ -269,10 +360,10 @@ const etatConfiguration: Outil = {
 };
 
 export const OUTILS_ONBOARDING: Outil[] = [
-  creerConciergerie,
+  connecterCompte,
+  comptesConnectes,
+  nommer,
   ajouterLogement,
-  lienConnexion,
-  verifierConnexion,
   enregistrerInfos,
   etatConfiguration,
 ];
