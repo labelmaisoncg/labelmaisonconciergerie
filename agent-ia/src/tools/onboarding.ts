@@ -132,8 +132,12 @@ const connecterCompte: Outil = {
       lien,
       valide_minutes: 15,
       consigne:
-        "Envoie le lien tel quel et demande de te prévenir une fois l'autorisation " +
-        'donnée. Ne demande aucune autre information pour le moment.',
+        "Envoie le lien tel quel, puis précise en une phrase : sur la page qui " +
+        "s'ouvre, descendre jusqu'au bouton rouge « Connect with Airbnb » " +
+        '(ou « Connect with Booking.com ») et cliquer dessus — il est en bas du ' +
+        'formulaire, sous « Host ID ». Sans cette précision la personne cherche. ' +
+        "Demande ensuite de te prévenir une fois l'autorisation donnée, et " +
+        "n'aborde aucun autre sujet pour le moment.",
       ...(channex.enProduction()
         ? {}
         : {
