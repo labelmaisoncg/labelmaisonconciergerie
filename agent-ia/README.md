@@ -530,6 +530,26 @@ envoi de message vers Telegram vérifié de bout en bout.
   erreur.
 - **Fail closed partout.** Pas de conciergerie rattachée = pas de réponse.
 
+### Exploitation — deux pièges qui font perdre une heure
+
+**Le domaine doit être rattaché au PROJET, pas à un déploiement.**
+`vercel alias set <url-de-déploiement> <domaine>` épingle le domaine sur CE
+déploiement : les suivants mettent bien à jour l'URL `.vercel.app`, mais le
+domaine reste figé sur l'ancien build. Les correctifs semblent alors sans effet
+alors que le build réussit — symptôme trompeur s'il en est. La bonne méthode est
+d'ajouter le domaine aux *Domains* du projet (ou `POST /v10/projects/:id/domains`).
+
+**La protection de déploiement Vercel bloque Telegram.**
+Réglée sur « all_except_custom_domains », elle laisse quand même passer un
+domaine ajouté APRÈS : Telegram reçoit une redirection vers la page de connexion
+Vercel et le webhook échoue en 401, sans message explicite. À revérifier après
+toute manipulation d'alias.
+
+**Sonder ce qui tourne vraiment.** En cas de doute, ajouter temporairement une
+route `/api/version` renvoyant un marqueur et la liste des outils : c'est ce qui
+a permis de comprendre que le domaine servait un vieux build. À retirer ensuite,
+elle expose la surface interne.
+
 ### Commandes
 
 ```bash
