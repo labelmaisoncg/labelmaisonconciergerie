@@ -34,29 +34,39 @@ white-label est conçue.
 
 ## 2. L'onboarding conversationnel — le cœur du produit
 
-C'est la partie qui fait la différence avec un simple tableau de bord. Le bot
-mène l'entretien, une question à la fois, et construit la configuration au fur et
-à mesure.
+C'est la partie qui fait la différence avec un simple tableau de bord.
+
+**Principe directeur : les accès d'abord, les questions ensuite.** Le bot ne
+demande jamais ce qu'il peut déduire. Dès qu'Airbnb est connecté, il voit les
+annonces et les réservations — l'entretien se réduit à confirmer et à combler
+les trous.
 
 ```
 Bot   Bonjour. Je vais devenir votre assistant. Comment s'appelle
       votre conciergerie ?
 Elle  Conciergerie du Lac
-Bot   Combien de logements gérez-vous aujourd'hui ?
-Elle  4
-Bot   On va les ajouter un par un. Le premier : son nom et sa ville ?
-Elle  Le Studio des Halles, à Sens
-Bot   C'est noté. Pour que je voie ses réservations, connectez son
-      compte Airbnb ici — le lien est valable 15 minutes :
+Bot   Avant tout, connectons vos comptes. Airbnb d'abord — ce lien
+      est valable 15 minutes :
       https://secure.channex.io/auth/exchange?...
 Elle  [clique, autorise Airbnb, revient]
-Bot   Airbnb est connecté, je vois 2 annonces. Laquelle correspond
-      au Studio des Halles ?
-      [Studio Halles 32m²]  [T2 Gare]
-Elle  [appuie sur le premier]
-Bot   Parfait. Le code de la boîte à clés ?
+Bot   Connecté. Je vois 4 annonces :
+      · Studio des Halles 32m²  · T2 Gare
+      · Maison Vieux Port       · Loft Sens
+      Je les reprends telles quelles ?     [✅ Oui]  [Renommer]
+Elle  [✅]
+Bot   Fait. Booking maintenant : sa validation prend plusieurs jours,
+      autant la lancer tout de suite.      [Lancer la demande]
 ...
+Bot   Il me reste ce que l'API ne donne pas : le livret d'accueil.
+      Envoyez-moi vos réponses types, un PDF, un tableur, ce que
+      vous avez — j'en fais ma base de connaissances.
 ```
+
+**Pourquoi cet ordre.** Connecter Airbnb livre les annonces, les réservations et
+les messages. Ça ne livre **pas** le code de la boîte à clés, l'heure du
+check-out ni les consignes d'usage : tout cela vit dans le livret d'accueil, pas
+dans l'API. D'où la base de connaissances ci-dessous, qui comble exactement ce
+trou.
 
 **Conséquences techniques, à ne pas sous-estimer :**
 

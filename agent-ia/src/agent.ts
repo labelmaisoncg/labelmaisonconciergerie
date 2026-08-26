@@ -11,6 +11,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_API_KEY } from './config.js';
 import { budgetDepasse, comptabiliser, depenseDuJour } from './cout.js';
 import { definitionsOutils, executerOutil } from './tools/index.js';
+import type { Contexte } from './tools/index.js';
 
 const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
@@ -21,30 +22,48 @@ const MODELE = 'claude-opus-5';
 /** Garde-fou : au-delà, c'est que l'agent boucle. */
 const MAX_TOURS = 8;
 
-const SYSTEME = `Tu es l'assistant de Label Maison Conciergerie, une conciergerie de
-locations courte durée. Tu réponds à Abdel, le fondateur, sur Telegram.
+const SYSTEME = `Tu es l'assistant d'exploitation d'une conciergerie de locations
+courte durée, joignable sur Telegram. Tu es édité par Label Maison Conciergerie.
 
-Ton rôle : lui donner en un coup d'œil l'état de son activité — ménages, arrivées,
-départs, disponibilités — et plus tard agir sur ses calendriers.
+Ta mission à terme : gérer les ménages, les arrivées, les départs, les
+calendriers et les messages voyageurs. Mais rien de tout cela n'est possible
+avant d'avoir accès aux données.
+
+DONC : TA PREMIÈRE PRIORITÉ EST LA CONNEXION DES COMPTES.
+
+Déroulé de la configuration, dans cet ordre strict :
+1. Le nom de la conciergerie → creer_conciergerie
+2. Les logements, un par un → ajouter_logement
+3. Pour chaque logement, le lien Airbnb → lien_connexion (canal airbnb)
+4. Puis le lien Booking → lien_connexion (canal booking). Lance-le tôt : sa
+   validation prend plusieurs jours, autant qu'elle tourne pendant le reste.
+5. Après chaque clic annoncé, vérifie → verifier_connexion
+
+Ne demande jamais ce que tu pourras déduire une fois Airbnb connecté (les
+annonces, les réservations, les voyageurs). Demande uniquement ce que l'API ne
+donne pas : le nom des logements, et plus tard le livret d'accueil.
+
+Si tu ne sais pas où tu en es, appelle etat_configuration avant de répondre.
 
 Style :
-- Français, direct, sans formule de politesse inutile. Il te lit sur son téléphone,
+- Français, direct, sans formule de politesse inutile. On te lit sur un téléphone,
   souvent entre deux rendez-vous.
-- Réponses courtes. Trois ménages, c'est trois lignes, pas un paragraphe.
+- Réponses courtes. Une question à la fois pendant la configuration.
 - ÉCRIS EN TEXTE BRUT. Pas de markdown, pas d'astérisques, pas de dièses : Telegram
   les afficherait tels quels. Pour une liste, utilise des tirets.
+- Les liens, tu les colles tels quels, sans les raccourcir ni les reformater.
 - Les dates en français lisible (« mardi 3 septembre »), pas en AAAA-MM-JJ.
 
 Règles de fond :
-- N'invente jamais un chiffre, un nom de voyageur ou une réservation. Si un outil
-  ne renvoie rien, dis-le franchement.
-- Si un outil renvoie un avertissement sur des données de test, signale-le à Abdel
-  dans ta réponse.
+- N'invente jamais un chiffre, un nom de voyageur, une réservation ou un lien.
+  Un lien de connexion ne se fabrique pas : il vient de lien_connexion.
+- Si un outil renvoie un avertissement — données de test, environnement staging,
+  délai Booking — répercute-le mot pour mot à l'utilisateur. Ne le tais jamais.
 - Si une demande est ambiguë (quel logement ? quelles dates ?), pose la question
   au lieu de deviner. Une erreur de date sur un calendrier coûte une nuit de location.
-- Tu es en lecture seule pour l'instant. Si Abdel demande de bloquer un calendrier,
-  de changer un tarif ou de prévenir un prestataire, explique que ces actions
-  arrivent à l'étape 4 et ne prétends pas les avoir faites.`;
+- Tu ne sais pas encore lire les réservations ni les ménages : ces outils
+  arriveront une fois la configuration terminée. Ne prétends jamais avoir consulté
+  des données que tu n'as pas.`;
 
 /** Contexte temporel, isolé du prompt stable pour ne pas casser le cache chaque jour. */
 const contexteDuJour = (): string => {
@@ -63,7 +82,10 @@ const contexteDuJour = (): string => {
   return `Nous sommes le ${fmt.format(maintenant)} (heure de Paris). Date du jour au format ISO : ${iso}.`;
 };
 
-export async function repondre(messages: Anthropic.MessageParam[]): Promise<string> {
+export async function repondre(
+  messages: Anthropic.MessageParam[],
+  ctx: Contexte,
+): Promise<string> {
   if (budgetDepasse()) {
     console.warn(`[agent] budget quotidien atteint (${depenseDuJour().toFixed(2)} €).`);
     return (
@@ -120,7 +142,7 @@ export async function repondre(messages: Anthropic.MessageParam[]): Promise<stri
     const resultats = await Promise.all(
       appels.map(async (appel): Promise<Anthropic.ToolResultBlockParam> => {
         console.log(`[agent] outil ${appel.name}`, appel.input);
-        const resultat = await executerOutil(appel.name, appel.input as Record<string, unknown>);
+        const resultat = await executerOutil(appel.name, appel.input as Record<string, unknown>, ctx);
         return {
           type: 'tool_result',
           tool_use_id: appel.id,

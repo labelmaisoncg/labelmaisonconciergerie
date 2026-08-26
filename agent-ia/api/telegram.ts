@@ -72,7 +72,7 @@ async function traiter(update: TelegramUpdate): Promise<void> {
     const texte = await extraireTexte(message);
     if (!texte) return;
 
-    const reponse = await repondre([{ role: 'user', content: texte }]);
+    const reponse = await repondre([{ role: 'user', content: texte }], { chatId });
     await envoyerMessage(chatId, reponse);
   } catch (err) {
     console.error('[telegram] erreur de traitement :', err);
