@@ -90,8 +90,21 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
 
+  // Un identifiant mal formé ferait échouer la requête Postgres et renverrait
+  // une erreur 500 brute. On le filtre pour servir la page « expiré », qui dit
+  // à la personne quoi faire.
   const id = String(req.query?.l ?? '');
-  if (!id) return res.status(400).send(erreur('Lien incomplet.', "L'adresse est tronquée. Redemandez un lien à votre assistant."));
+  const bienForme = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+  if (!bienForme) {
+    return res
+      .status(404)
+      .send(
+        erreur(
+          'Ce lien n’est pas valide.',
+          "Écrivez « connecte mon compte » à votre assistant, il vous en enverra un nouveau dans la seconde.",
+        ),
+      );
+  }
 
   try {
     const lien = await store.lienConnexion(id);
