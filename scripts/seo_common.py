@@ -103,6 +103,72 @@ PHOTOS_VILLE = {
          "Stefan Bauer", "CC BY-SA 2.5", "https://creativecommons.org/licenses/by-sa/2.5",
          "https://commons.wikimedia.org/wiki/File:Weinberg_Cote_de_Nuits.jpg"),
     ],
+    "beaune": [
+        ("villes/beaune/hotel-dieu-cour.webp", 1600, 800,
+         "La cour intérieure de l'Hôtel-Dieu de Beaune et ses toits de tuiles vernissées",
+         "L'Hôtel-Dieu et ses toits vernissés : le premier motif de venue à Beaune. Les séjours se "
+         "calent sur la visite, donc sur deux à trois nuits en centre-ville.",
+         "Stefan Bauer", "CC BY-SA 2.5", "https://creativecommons.org/licenses/by-sa/2.5",
+         "https://commons.wikimedia.org/wiki/File:Hostel_Dieu_Beaune.jpg"),
+        ("villes/beaune/hospices-toits.webp", 1000, 665,
+         "Détail des toits polychromes des Hospices de Beaune",
+         "Les Hospices attirent une clientèle internationale et âgée de plus de quarante ans : elle "
+         "réserve tôt, annule peu et paie le confort.",
+         "Jebulon", "domaine public", "",
+         "https://commons.wikimedia.org/wiki/File:Hospices_beaune_toits1.jpg"),
+        ("villes/beaune/hotel-de-ville.webp", 1000, 563,
+         "La cour de l'hôtel de ville de Beaune",
+         "Le centre intra-muros, ceinturé par les remparts : c'est là que se joue la différence de "
+         "prix à la nuitée, à quelques rues près.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Beaune_-_H%C3%B4tel_de_Ville_-_2.jpg"),
+        ("villes/beaune/place-carnot-nuit.webp", 1000, 666,
+         "La place Carnot de Beaune illuminée le soir",
+         "Place Carnot le soir : restaurants et caves à deux pas. Un logement à moins de cinq "
+         "minutes à pied d'ici se loue toute l'année, pas seulement en saison.",
+         "Mark Fischer", "CC BY 4.0", "https://creativecommons.org/licenses/by/4.0",
+         "https://commons.wikimedia.org/wiki/File:Place_Carnot,_Beaune,_France.jpg"),
+        ("villes/beaune/vignoble-cote-de-beaune.webp", 1000, 750,
+         "Beaune vue depuis les vignes de la Côte de Beaune en automne",
+         "La Côte de Beaune commence au bout des rues. La Vente des vins des Hospices, le troisième "
+         "week-end de novembre, sature la ville : les tarifs y sont sans rapport avec le reste de "
+         "l'automne.",
+         "Florian Pépellin", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Beaune_et_vignobles_en_automne_(2018).JPG"),
+    ],
+    "lyon": [
+        ("villes/lyon/saone-vieux-lyon.webp", 1600, 800,
+         "Les quais de Saône, le Vieux Lyon et la colline de Fourvière depuis la passerelle "
+         "Saint-Georges",
+         "Le Vieux Lyon et la colline de Fourvière depuis la Saône : le secteur le plus recherché "
+         "en courte durée, et celui où la contrainte réglementaire est la plus forte.",
+         "Zairon", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Lyon_Quai_Fulchiron_03.jpg"),
+        ("villes/lyon/colline-fourviere.webp", 1000, 659,
+         "La colline de Fourvière et sa basilique vues depuis la Presqu'île à Lyon",
+         "Fourvière domine la Presqu'île. Un bien à dix minutes à pied du Vieux Lyon se remplit "
+         "seul le week-end ; le reste de la semaine se joue sur la clientèle d'affaires.",
+         "Romainbehar", "CC0", "https://creativecommons.org/publicdomain/zero/1.0/",
+         "https://commons.wikimedia.org/wiki/File:Lyon_2e_-_Jardins_suspendus_de_Perrache_-_Vue_sur_la_colline_et_la_basilique_de_Fourvi%C3%A8re.jpg"),
+        ("villes/lyon/quais-de-saone.webp", 1000, 666,
+         "Immeubles lyonnais en bord de Saône, quai Saint-Vincent",
+         "Le parc lyonnais, ce sont surtout ces immeubles anciens : beaux volumes, mais des "
+         "escaliers, du bruit de quai et des équipements à corriger avant la mise en ligne.",
+         "Andrzej Otrębski", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Lyon_Quai_Saint-Vincent_2.jpg"),
+        ("villes/lyon/croix-rousse.webp", 1000, 666,
+         "La montée de la Grande Côte, sur les pentes de la Croix-Rousse à Lyon",
+         "Les pentes de la Croix-Rousse : appartements de canut, grande hauteur sous plafond, "
+         "clientèle plus jeune et séjours plus longs qu'en Presqu'île.",
+         "Guilhem Vellut", "CC BY 2.0", "https://creativecommons.org/licenses/by/2.0",
+         "https://commons.wikimedia.org/wiki/File:Mont%C3%A9e_de_la_Grande_C%C3%B4te_@_Croix-Rousse_@_Lyon_(35584702353).jpg"),
+        ("villes/lyon/fete-des-lumieres.webp", 1000, 667,
+         "Lyon illuminée la nuit pendant la Fête des Lumières",
+         "La Fête des Lumières, début décembre : quatre nuits qui pèsent lourd dans une année. "
+         "Elles se paramètrent en septembre, pas la semaine d'avant.",
+         "Myrabella", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Lyon_fete_des_Lumieres_2013.jpg"),
+    ],
 }
 
 
@@ -343,10 +409,13 @@ def galerie(idg: str, photos: list) -> str:
 
 
 def _fig_ville(f, w, h, alt, legende, auteur, lic, licurl, src, eager=False) -> str:
-    credit = (f'<span class="vg-credit">© <a href="{src}" rel="nofollow noopener" '
-              f'target="_blank">{esc(auteur)}</a> · '
-              f'<a href="{licurl}" rel="nofollow noopener license" target="_blank">{esc(lic)}</a>'
-              "</span>")
+    # Une image du domaine public n'a pas d'URL de licence, et le « © » n'y a pas
+    # de sens : on crédite alors l'auteur sans symbole de copyright.
+    mention = (f'<a href="{licurl}" rel="nofollow noopener license" target="_blank">{esc(lic)}</a>'
+               if licurl else esc(lic))
+    prefixe = "Photo" if lic.lower().startswith(("domaine public", "cc0")) else "©"
+    credit = (f'<span class="vg-credit">{prefixe} <a href="{src}" rel="nofollow noopener" '
+              f'target="_blank">{esc(auteur)}</a> · {mention}</span>')
     return (f'<figure class="vg-fig"><img src="/images/{f}" alt="{esc(alt)}" '
             f'loading="{"eager" if eager else "lazy"}" decoding="async" width="{w}" height="{h}">'
             f'<figcaption>{esc(legende)} {credit}</figcaption></figure>')

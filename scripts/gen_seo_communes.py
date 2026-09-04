@@ -327,6 +327,9 @@ def page_commune(c, dept_url: str, region_url: str, couvertes: dict) -> str:
             f"prix. Dans cet ordre. Baisser le tarif d'une annonce mal présentée ne remplit pas un "
             f"calendrier : cela réduit simplement la marge.",
         ], titre=f"Le marché de la location courte durée à {c.nom}"),
+        C.galerie_ville(c.slug, c.nom,
+                        f"Les secteurs sur lesquels nous positionnons les biens de {c.nom}, et ce "
+                        f"qu'ils changent concrètement pour un calendrier de réservations."),
         C.cartes(f"Conciergerie privée et gestion de résidence à {c.nom}",
                  "Vous ne souhaitez pas louer ? Nous veillons quand même sur votre bien.",
                  CONCIERGERIE_PRIVEE),
