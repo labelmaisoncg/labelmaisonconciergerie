@@ -64,6 +64,48 @@ PHOTOS_LOGEMENT = [
 ]
 
 
+# Photographies de ville sous licence libre (Wikimedia Commons), stockées dans
+# public/images/villes/<slug>/. Ce sont de vraies photographies — jamais d'IA ni
+# de banque d'images générique — et chaque cliché porte son crédit auteur +
+# licence, comme l'exigent les licences Creative Commons.
+# Format : (fichier, largeur, hauteur, alt, légende, auteur, licence, url_licence, url_source)
+PHOTOS_VILLE = {
+    "dijon": [
+        ("villes/dijon/place-liberation-nuit.webp", 1600, 800,
+         "La place de la Libération et le palais des Ducs de Bourgogne illuminés la nuit, à Dijon",
+         "La place de la Libération et le palais des Ducs : le périmètre le plus demandé en courte "
+         "durée. La quasi-totalité des voyageurs cherchent un logement à moins de dix minutes à pied "
+         "d'ici.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Dijon_-_Place_de_la_Lib%C3%A9ration_-_Nuit_-_01.jpg"),
+        ("villes/dijon/palais-des-ducs.webp", 1000, 500,
+         "Le palais des Ducs et des États de Bourgogne, place de la Libération à Dijon",
+         "Le palais des Ducs, départ du parcours de la Chouette : les séjours de deux à trois nuits "
+         "s'organisent presque tous dans ce rayon.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Dijon_-_Palais_des_Ducs_et_des_%C3%89tats_de_Bourgogne_-_01.jpg"),
+        ("villes/dijon/place-francois-rude.webp", 1000, 618,
+         "Maisons à pans de bois et carrousel place François-Rude, dans le centre historique de Dijon",
+         "Place François-Rude, ses pans de bois et ses terrasses, à deux pas des Halles : l'argument "
+         "qui fait accepter une nuitée plus élevée.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Dijon_-_Place_Fran%C3%A7ois_Rude_-_1.jpg"),
+        ("villes/dijon/vieille-ville-notre-dame.webp", 1000, 668,
+         "Rue du centre ancien de Dijon menant à l'église Notre-Dame",
+         "Le secteur Notre-Dame et ses rues piétonnes : hypercentre, commerces, tout à pied — c'est "
+         "ce que filtre en premier un voyageur qui arrive en train.",
+         "eugene_o", "CC BY 2.0", "https://creativecommons.org/licenses/by/2.0",
+         "https://commons.wikimedia.org/wiki/File:20180628_-_Dijon_-_3_(43797528152).jpg"),
+        ("villes/dijon/route-des-grands-crus.webp", 1000, 580,
+         "Vignoble de la Côte de Nuits, sur la route des Grands Crus au sud de Dijon",
+         "La Côte de Nuits commence à vingt minutes au sud. L'œnotourisme réserve court — deux à "
+         "trois nuits — mais toute l'année, et à un budget élevé.",
+         "Stefan Bauer", "CC BY-SA 2.5", "https://creativecommons.org/licenses/by-sa/2.5",
+         "https://commons.wikimedia.org/wiki/File:Weinberg_Cote_de_Nuits.jpg"),
+    ],
+}
+
+
 def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
@@ -300,6 +342,36 @@ def galerie(idg: str, photos: list) -> str:
             "</section>")
 
 
+def _fig_ville(f, w, h, alt, legende, auteur, lic, licurl, src, eager=False) -> str:
+    credit = (f'<span class="vg-credit">© <a href="{src}" rel="nofollow noopener" '
+              f'target="_blank">{esc(auteur)}</a> · '
+              f'<a href="{licurl}" rel="nofollow noopener license" target="_blank">{esc(lic)}</a>'
+              "</span>")
+    return (f'<figure class="vg-fig"><img src="/images/{f}" alt="{esc(alt)}" '
+            f'loading="{"eager" if eager else "lazy"}" decoding="async" width="{w}" height="{h}">'
+            f'<figcaption>{esc(legende)} {credit}</figcaption></figure>')
+
+
+def galerie_ville(slug: str, nom: str, lead: str = "") -> str:
+    """Bande photo de la ville elle-même (photos libres de droits, créditées).
+
+    Rend une section vide si la ville n'a pas encore de photos : la fonction
+    peut donc être appelée sur toutes les pages d'un silo sans condition.
+    """
+    photos = PHOTOS_VILLE.get(slug)
+    if not photos:
+        return ""
+    hero = _fig_ville(*photos[0], eager=False)
+    tiles = "".join(_fig_ville(*p) for p in photos[1:])
+    l = f'<p class="lead">{lead}</p>' if lead else ""
+    return (f'<section class="wrap"><h2>{esc(nom)}, le terrain que nous couvrons</h2>{l}'
+            f'<div class="villegal"><div class="vg-hero">{hero}</div>'
+            f'<div class="vg-grid">{tiles}</div></div>'
+            f'<p class="vg-note">Photographies de {esc(nom)} sous licence Creative Commons, '
+            "redimensionnées pour le web. Les photos de logements présentées sur cette page sont "
+            "celles de biens réellement gérés par nos équipes.</p></section>")
+
+
 def zones(titre: str, lead: str, links: list, extra: str = "") -> str:
     z = "".join(f'<a href="{u}">{esc(n)}</a>' for n, u in links)
     l = f'<p class="lead">{lead}</p>' if lead else ""
@@ -383,7 +455,9 @@ MARQUEUR_AUTO = "<!-- lm:auto-commune -->"
 
 def write(slug: str, parts: list, auto: bool = False) -> pathlib.Path:
     p = OUT / f"{slug}.html"
-    corps = "\n".join(parts) + "\n" + TAIL
+    # Les blocs optionnels (galerie ville…) renvoient "" quand ils n'ont rien à
+    # afficher : on les écarte pour ne pas laisser de ligne vide dans le HTML.
+    corps = "\n".join(x for x in parts if x) + "\n" + TAIL
     if auto:
         corps = MARQUEUR_AUTO + "\n" + corps
     p.write_text(corps, encoding="utf-8")

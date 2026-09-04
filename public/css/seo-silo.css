@@ -236,6 +236,22 @@ footer a:hover{color:var(--green)}
 .hscroll-nav button.next{background:var(--ink);color:#fff;border-color:var(--ink)}
 .hscroll-nav button.next:hover{background:#2C2418}
 
+/* ---------- Galerie « ville » : photos de la ville, créditées ---------- */
+.villegal{margin-top:26px}
+.vg-fig{margin:0}
+.vg-fig img{width:100%;height:auto;display:block;object-fit:cover;border-radius:16px;box-shadow:var(--shadow);background:#efeadf}
+.vg-fig figcaption{margin:10px 2px 0;font-size:14px;line-height:1.55;color:var(--body)}
+.vg-hero .vg-fig img{aspect-ratio:2/1}
+.vg-hero .vg-fig figcaption{font-size:15px;max-width:70ch}
+.vg-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-top:26px}
+.vg-grid .vg-fig img{aspect-ratio:3/2}
+.vg-credit{display:block;margin-top:4px;font-size:12px;color:var(--muted)}
+.vg-credit a{color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.vg-credit a:hover{color:var(--green-d)}
+.vg-note{margin-top:22px;font-size:13px;color:var(--muted);max-width:78ch}
+@media(max-width:860px){.vg-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.vg-grid{grid-template-columns:1fr;gap:20px}.vg-hero .vg-fig img{aspect-ratio:3/2}}
+
 /* Icônes filaires or dans les cartes (remplacent les emojis) */
 .ico{background:linear-gradient(150deg,rgba(169,124,48,.14),rgba(169,124,48,.06));border:1px solid rgba(169,124,48,.22)}
 .ico svg{width:22px;height:22px;display:block}

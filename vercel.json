@@ -1042,6 +1042,11 @@
       "source": "/villeneuve-l-archeveque",
       "destination": "/conciergerie-airbnb-villeneuve-l-archeveque",
       "permanent": true
+    },
+    {
+      "source": "/dijon",
+      "destination": "/conciergerie-airbnb-dijon",
+      "permanent": true
     }
   ],
   "rewrites": [
