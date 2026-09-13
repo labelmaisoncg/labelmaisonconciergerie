@@ -145,7 +145,7 @@ function page(
   :root{
     /* Fond beige crème, carte en ivoire plus clair : le contraste des deux
        donne le relief sans avoir à charger en or. */
-    --ground:#EFE8DA; --surface:#FDFBF6; --field:#F7F2E7;
+    --ground:#EAE1CF; --surface:#FDFBF6; --field:#F6F1E6;
     --ink:#2C2418; --ink-2:#7A7264; --ink-3:#9C9484;
     --line:rgba(40,34,22,.10); --line-2:rgba(40,34,22,.15);
     --gold:#A97C30; --gold-soft:rgba(169,124,48,.16);
