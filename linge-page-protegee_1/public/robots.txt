@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+
+# Pas d'indexation des points d'API
+Disallow: /api/
+
+# Registre interne du linge (protégé par mot de passe)
+Disallow: /linge
+
+Sitemap: https://www.labelmaisoncg.fr/sitemap.xml
+Sitemap: https://www.labelmaisoncg.fr/sitemap-pages.xml
+Sitemap: https://www.labelmaisoncg.fr/sitemap-communes-1.xml
+Sitemap: https://www.labelmaisoncg.fr/sitemap-communes-2.xml
