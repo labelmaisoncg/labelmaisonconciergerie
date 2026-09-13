@@ -188,6 +188,43 @@
   summary:hover{color:var(--gold-dark)}
   details pre{margin:0;padding:0 var(--s3) var(--s3);font-family:var(--f-raw);font-size:12.5px;line-height:1.65;color:var(--ink-2);white-space:pre-wrap;word-break:break-word}
 
+  /* ---------- calendrier ---------- */
+  .cal{border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);overflow:hidden}
+  .cal-tete{display:flex;align-items:center;gap:var(--s2);padding:11px var(--s3);border-bottom:1px solid var(--line)}
+  .cal-tete h3{margin:0;font-family:var(--f-emph);font-weight:600;font-size:17px;text-transform:capitalize}
+  .cal-tete .bilan{margin-left:auto;font-size:12px;color:var(--ink-3);text-align:right}
+  .cal-nav{display:flex;gap:5px}
+  .cal-nav button{
+    width:29px;height:29px;display:grid;place-items:center;font:inherit;font-size:14px;line-height:1;
+    color:var(--ink-2);background:var(--surface-2);border:1px solid var(--line);
+    border-radius:var(--r-sm);cursor:pointer;
+  }
+  .cal-nav button:hover{color:var(--gold-dark);border-color:var(--champagne)}
+  .cal-grille{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line)}
+  .cal-grille>*{background:var(--surface)}
+  .cal-grille .dow{
+    text-align:center;padding:7px 0;font-size:10px;font-weight:700;
+    letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);
+  }
+  .cal-grille .jour{
+    position:relative;min-height:54px;padding:6px 7px;border:0;
+    font:inherit;font-size:13px;color:var(--ink-3);text-align:left;
+  }
+  .cal-grille button.jour{cursor:pointer;color:var(--ink);font-weight:600}
+  .cal-grille button.jour:hover{background:var(--gold-wash)}
+  .cal-grille .jour.marque{background:var(--gold-wash);color:var(--gold-dark)}
+  .cal-grille .jour.aujourdhui{box-shadow:inset 0 0 0 1.5px var(--champagne)}
+  .cal-grille .jour.sel{background:var(--gold);color:#fff}
+  .cal-grille .jour.sel .pastille{background:#fff;color:var(--gold-dark)}
+  .cal-grille .pastille{
+    position:absolute;right:6px;bottom:6px;min-width:16px;height:16px;padding:0 4px;
+    display:grid;place-items:center;border-radius:8px;
+    background:var(--gold);color:#fff;font-size:10px;font-weight:700;
+  }
+  .cal-detail{border-top:1px solid var(--line);padding:var(--s3);display:grid;gap:var(--s2)}
+  .cal-detail .invite{margin:0;font-family:var(--f-emph);font-style:italic;font-size:13.5px;color:var(--ink-3)}
+  .cal-detail .entry{border:1px solid var(--line);border-radius:var(--r-sm)}
+
   /* ---------- états ---------- */
   .state{
     border:1px solid var(--line-2);border-radius:var(--r);background:var(--surface);
@@ -302,6 +339,122 @@
     ? `<ul>${items.map(i=>`<li><span>${esc(cap(i.article))}</span><b>${esc(i.quantite)}</b></li>`).join("")}</ul>`
     : '<p class="empty">Rien d\'enregistré.</p>';
 
+  function carteEntree(e){
+    return `
+        <article class="entry">
+          <div class="entry-head">
+            <span class="date-chip">${fmtDate(e.date)}${e.heure?" · "+esc(e.heure):""}</span>
+            <span class="place">${esc(e.logement || "Logement non précisé")}</span>
+            <span class="meta">${e.equipe ? esc(e.equipe) : "prestataire non précisé"}</span>
+          </div>
+          <div class="flows">
+            <div class="flow out"><h4>↙ Récupéré · sale</h4>${flowList(e.linge_recupere)}</div>
+            <div class="flow in"><h4>↗ Déposé · propre</h4>${flowList(e.linge_depose)}</div>
+          </div>
+          ${e.notes ? `<p class="entry-notes"><strong>Notes —</strong> ${esc(e.notes)}</p>` : ""}
+          ${e.message_brut ? `<details><summary>Message d'origine</summary><pre>${esc(e.message_brut)}</pre></details>` : ""}
+        </article>`;
+  }
+
+  /* ------------------------------- calendrier ------------------------------ */
+
+  const MOIS_LONG = ["janvier","février","mars","avril","mai","juin","juillet",
+                     "août","septembre","octobre","novembre","décembre"];
+  const JOURS = ["lun","mar","mer","jeu","ven","sam","dim"];
+
+  // Clé locale AAAA-MM-JJ : passer par toISOString() décalerait d'un jour selon
+  // le fuseau, et une intervention se retrouverait la veille dans la grille.
+  const clefJour = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+
+  const cal = { annee:0, mois:0, parJour:new Map(), selection:null };
+
+  function dessinerCalendrier(){
+    const { annee, mois, parJour, selection } = cal;
+    const premier = new Date(annee, mois, 1);
+    const decalage = (premier.getDay() + 6) % 7;      // grille qui commence le lundi
+    const nbJours = new Date(annee, mois + 1, 0).getDate();
+    const auj = clefJour(new Date());
+
+    let cases = JOURS.map(j => `<div class="dow">${j}</div>`).join("");
+    for (let i = 0; i < decalage; i++) cases += '<div class="jour"></div>';
+
+    let duMois = 0, piecesDuMois = 0;
+    for (let n = 1; n <= nbJours; n++){
+      const clef = `${annee}-${String(mois+1).padStart(2,"0")}-${String(n).padStart(2,"0")}`;
+      const jour = parJour.get(clef);
+      const classes = ["jour"];
+      if (jour) classes.push("marque");
+      if (clef === auj) classes.push("aujourdhui");
+      if (clef === selection) classes.push("sel");
+      if (jour){
+        duMois += jour.length;
+        jour.forEach(e => { piecesDuMois += sumQty(e.linge_recupere) + sumQty(e.linge_depose); });
+        const libelle = `${n} ${MOIS_LONG[mois]} ${annee}, ${jour.length} intervention${jour.length>1?"s":""}`;
+        cases += `<button type="button" class="${classes.join(" ")}" data-jour="${clef}"
+          aria-pressed="${clef === selection}" aria-label="${esc(libelle)}">${n}<span class="pastille">${jour.length}</span></button>`;
+      } else {
+        cases += `<div class="${classes.join(" ")}">${n}</div>`;
+      }
+    }
+
+    const bilan = duMois
+      ? `${duMois} intervention${duMois>1?"s":""} · ${piecesDuMois} pièce${piecesDuMois>1?"s":""}`
+      : "aucune intervention ce mois-ci";
+
+    const choisies = selection ? (parJour.get(selection) || []) : [];
+    const detail = selection
+      ? (choisies.length
+          ? choisies.map(carteEntree).join("")
+          : `<p class="invite">Rien d'enregistré le ${fmtDate(selection)}.</p>`)
+      : '<p class="invite">Choisir un jour marqué pour voir le détail de l\'intervention.</p>';
+
+    document.getElementById("calendrier").innerHTML = `
+      <div class="cal-tete">
+        <div class="cal-nav">
+          <button type="button" data-pas="-1" aria-label="Mois précédent">‹</button>
+          <button type="button" data-pas="1" aria-label="Mois suivant">›</button>
+        </div>
+        <h3>${MOIS_LONG[mois]} ${annee}</h3>
+        <span class="bilan">${bilan}</span>
+      </div>
+      <div class="cal-grille">${cases}</div>
+      <div class="cal-detail">${detail}</div>`;
+  }
+
+  function brancherCalendrier(REGISTRE){
+    cal.parJour = new Map();
+    REGISTRE.forEach(e => {
+      if (!e.date) return;
+      if (!cal.parJour.has(e.date)) cal.parJour.set(e.date, []);
+      cal.parJour.get(e.date).push(e);
+    });
+
+    // On ouvre sur le mois de la dernière intervention, pas sur le mois courant :
+    // un registre alimenté par à-coups s'ouvrirait sinon sur une grille vide.
+    const dates = [...cal.parJour.keys()].sort();
+    const ancre = dates.length ? new Date(dates[dates.length-1] + "T12:00:00") : new Date();
+    cal.annee = ancre.getFullYear();
+    cal.mois = ancre.getMonth();
+    cal.selection = dates.length ? dates[dates.length-1] : null;
+
+    document.getElementById("calendrier").addEventListener("click", ev => {
+      const nav = ev.target.closest("[data-pas]");
+      if (nav){
+        const d = new Date(cal.annee, cal.mois + Number(nav.dataset.pas), 1);
+        cal.annee = d.getFullYear(); cal.mois = d.getMonth();
+        dessinerCalendrier();
+        return;
+      }
+      const jour = ev.target.closest("[data-jour]");
+      if (jour){
+        cal.selection = cal.selection === jour.dataset.jour ? null : jour.dataset.jour;
+        dessinerCalendrier();
+      }
+    });
+
+    dessinerCalendrier();
+  }
+
   function construireAlertes(REGISTRE){
     const alertes = [];
 
@@ -368,20 +521,7 @@
 
     const historique = [...REGISTRE]
       .sort((a,b) => String(b.date).localeCompare(String(a.date)) || String(b.enregistre_le||"").localeCompare(String(a.enregistre_le||"")))
-      .map(e => `
-        <article class="entry">
-          <div class="entry-head">
-            <span class="date-chip">${fmtDate(e.date)}${e.heure?" · "+esc(e.heure):""}</span>
-            <span class="place">${esc(e.logement || "Logement non précisé")}</span>
-            <span class="meta">${e.equipe ? esc(e.equipe) : "prestataire non précisé"}</span>
-          </div>
-          <div class="flows">
-            <div class="flow out"><h4>↙ Récupéré · sale</h4>${flowList(e.linge_recupere)}</div>
-            <div class="flow in"><h4>↗ Déposé · propre</h4>${flowList(e.linge_depose)}</div>
-          </div>
-          ${e.notes ? `<p class="entry-notes"><strong>Notes —</strong> ${esc(e.notes)}</p>` : ""}
-          ${e.message_brut ? `<details><summary>Message d'origine</summary><pre>${esc(e.message_brut)}</pre></details>` : ""}
-        </article>`).join("");
+      .map(carteEntree).join("");
 
     contenu.innerHTML = `
       <section>
@@ -394,6 +534,14 @@
             ? alertes.map(a => `<div class="alert is-${a.level}"><span class="tag">${a.tag}</span><div><p>${a.title}</p><p>${a.sub}</p></div></div>`).join("")
             : '<div class="alert"><span class="tag">Rien à signaler</span><div><p>Le registre est cohérent en l\'état.</p></div></div>'
         }</div>
+      </section>
+
+      <section>
+        <div class="sec-head">
+          <h2>Calendrier des interventions</h2>
+          <p>Les jours marqués portent une intervention. Cliquer sur l'un d'eux en ouvre le détail juste en dessous.</p>
+        </div>
+        <div class="cal" id="calendrier"></div>
       </section>
 
       <section>
@@ -420,6 +568,8 @@
         </div>
         <div class="log">${historique}</div>
       </section>`;
+
+    brancherCalendrier(REGISTRE);
 
     const maj = meta && meta.genere_le ? new Date(meta.genere_le) : null;
     document.getElementById("freshness").textContent =

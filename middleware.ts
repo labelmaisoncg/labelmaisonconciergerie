@@ -109,7 +109,26 @@ const ENTETES_HTML = {
   'X-Robots-Tag': 'noindex, nofollow',
 };
 
-function page(titre: string, corps: string, statut: number, entetes: HeadersInit = {}): Response {
+const ICONE_CADENAS =
+  '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="4.2" y="10.4" width="15.6" height="9.9" rx="2.6"/>' +
+  '<path d="M8.1 10.4V7.2a3.9 3.9 0 0 1 7.8 0v3.2"/></svg>';
+
+const ICONE_CLE =
+  '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<circle cx="8.2" cy="15.8" r="3.6"/><path d="M10.9 13.2 20 4.1"/>' +
+  '<path d="M17.2 6.9l2.1 2.1"/><path d="M14.6 9.5l2.1 2.1"/></svg>';
+
+/** Coquille commune : badge, titre, sous-titre, panneau. */
+function page(
+  titre: string,
+  sousTitre: string,
+  panneau: string,
+  statut: number,
+  entetes: HeadersInit = {},
+): Response {
   return new Response(
     `<!DOCTYPE html>
 <html lang="fr">
@@ -121,81 +140,111 @@ function page(titre: string, corps: string, statut: number, entetes: HeadersInit
 <link rel="icon" href="/images/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant:wght@500;600&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Playfair+Display:wght@500;600&display=swap">
 <style>
   :root{
-    --ground:#FBF9F4;--surface:#FFFFFF;--ink:#2C2418;--ink-2:#7A7264;--ink-3:#9C9484;
-    --line:rgba(40,34,22,.10);--line-2:rgba(40,34,22,.16);--champagne:#D5C69F;
-    --gold:#A97C30;--gold-dark:#7C561D;--gold-wash:#FAF5E9;--brun:#403118;
-    --crit:#B0322F;--crit-wash:#FBEEED;
+    /* Fond beige crème, carte en ivoire plus clair : le contraste des deux
+       donne le relief sans avoir à charger en or. */
+    --ground:#EFE8DA; --surface:#FDFBF6; --field:#F7F2E7;
+    --ink:#2C2418; --ink-2:#7A7264; --ink-3:#9C9484;
+    --line:rgba(40,34,22,.10); --line-2:rgba(40,34,22,.15);
+    --gold:#A97C30; --gold-soft:rgba(169,124,48,.16);
+    --brun:#2C2418; --brun-hover:#403118; --sur-brun:#F7F2E6;
+    --crit:#B0322F; --crit-wash:#FBEEED;
     --f-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
-    --f-serif:"Cormorant","Cormorant Garamond",Georgia,serif;
+    --f-serif:"Playfair Display",Georgia,serif;
+    --ombre:0 1px 2px rgba(40,34,22,.04), 0 18px 44px -26px rgba(40,34,22,.34);
   }
-  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-    --ground:#191410;--surface:#221B14;--ink:#F4ECDA;--ink-2:#B7AB91;--ink-3:#8C8269;
-    --line:rgba(213,198,159,.14);--line-2:rgba(213,198,159,.22);--champagne:#6B5A37;
-    --gold:#C39A4A;--gold-dark:#DCC07C;--gold-wash:#2A2216;--brun:#E2D7BD;
-    --crit:#DD817A;--crit-wash:#2E1A18;
+  @media (prefers-color-scheme:dark){:root{
+    --ground:#191410; --surface:#221B14; --field:#1E1811;
+    --ink:#F4ECDA; --ink-2:#B7AB91; --ink-3:#8C8269;
+    --line:rgba(213,198,159,.12); --line-2:rgba(213,198,159,.20);
+    --gold:#C39A4A; --gold-soft:rgba(195,154,74,.20);
+    --brun:#E7DCC2; --brun-hover:#F4ECDA; --sur-brun:#191410;
+    --crit:#DD817A; --crit-wash:#2E1A18;
+    --ombre:0 1px 2px rgba(0,0,0,.3), 0 18px 44px -26px rgba(0,0,0,.7);
   }}
+
   *{box-sizing:border-box}
-  html,body{height:100%}
   body{
-    margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-sans);
-    font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased;
-    display:flex;align-items:center;justify-content:center;padding:24px;
+    margin:0; min-height:100vh; background:var(--ground); color:var(--ink);
+    font-family:var(--f-sans); font-size:15px; line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    display:flex; align-items:center; justify-content:center; padding:32px 20px;
   }
-  .carte{width:100%;max-width:390px}
-  .brandlogo{display:inline-flex;align-items:center;gap:.55em;line-height:1;font-family:var(--f-serif);font-size:24px}
-  .bl-key{display:block;width:3.1em;height:auto;flex:none;filter:drop-shadow(0 2px 8px rgba(120,90,30,.22))}
-  .bl-key.on-dark{display:none}
-  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .bl-key.on-light{display:none}
-    :root:not([data-theme="light"]) .bl-key.on-dark{display:block}}
-  .bl-divider{width:1px;height:1.9em;flex:none;background:linear-gradient(180deg,transparent,var(--champagne),transparent)}
-  .bl-text{display:flex;flex-direction:column}
-  .bl-name{font-weight:600;letter-spacing:.06em;color:var(--brun);white-space:nowrap}
-  .bl-sub{font-family:var(--f-sans);font-size:.4em;font-weight:600;letter-spacing:.3em;color:var(--ink-3)}
+  .carte{width:100%; max-width:420px; text-align:center}
+
+  .badge{
+    width:76px; height:76px; margin:0 auto 22px; border-radius:20px;
+    background:var(--brun); display:flex; align-items:center; justify-content:center;
+    box-shadow:var(--ombre);
+  }
+  .badge img{width:44px; height:auto; display:block}
+
+  h1{
+    font-family:var(--f-serif); font-weight:600; font-size:38px; line-height:1.08;
+    letter-spacing:-.01em; margin:0 0 8px; color:var(--ink);
+  }
+  .sous-titre{margin:0 0 30px; font-size:15px; color:var(--ink-3)}
+
   .panneau{
-    margin-top:26px;background:var(--surface);border:1px solid var(--line-2);
-    border-radius:12px;padding:30px 26px 26px;
-    box-shadow:0 1px 2px rgba(40,34,22,.04),0 12px 32px -18px rgba(40,34,22,.30);
+    background:var(--surface); border:1px solid var(--line-2);
+    border-radius:16px; padding:28px 26px 24px; text-align:left; box-shadow:var(--ombre);
   }
-  .kicker{font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);margin:0 0 6px}
-  h1{font-family:var(--f-serif);font-weight:600;font-size:30px;line-height:1.1;margin:0 0 8px;color:var(--ink)}
-  .lede{margin:0 0 22px;font-size:13.5px;color:var(--ink-2)}
-  label{display:block;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);margin-bottom:7px}
-  input[type=password]{
-    width:100%;padding:11px 13px;font:inherit;color:var(--ink);
-    background:var(--ground);border:1px solid var(--line-2);border-radius:8px;
+
+  label{display:block; font-size:14.5px; font-weight:500; color:var(--ink-2); margin-bottom:9px}
+
+  .champ{position:relative; display:flex; align-items:center}
+  .champ .ic{
+    position:absolute; left:15px; width:20px; height:20px;
+    color:var(--ink-3); pointer-events:none;
   }
-  input[type=password]:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:transparent}
+  .champ input{
+    width:100%; padding:15px 16px 15px 46px; font:inherit; font-size:16px; color:var(--ink);
+    background:var(--field); border:1px solid var(--line-2); border-radius:11px;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .champ input::placeholder{color:var(--ink-3)}
+  .champ input:focus{
+    outline:none; border-color:var(--gold); box-shadow:0 0 0 4px var(--gold-soft);
+  }
+  .champ:focus-within .ic{color:var(--gold)}
+
   button{
-    width:100%;margin-top:16px;padding:12px 16px;font:inherit;font-weight:600;letter-spacing:.02em;
-    color:#fff;background:var(--gold);border:0;border-radius:8px;cursor:pointer;
+    width:100%; margin-top:14px; padding:15px 18px;
+    display:inline-flex; align-items:center; justify-content:center; gap:10px;
+    font:inherit; font-size:16px; font-weight:600; letter-spacing:.01em;
+    color:var(--sur-brun); background:var(--brun);
+    border:0; border-radius:11px; cursor:pointer; transition:background .15s;
   }
-  button:hover{background:var(--gold-dark);color:var(--ground)}
-  button:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+  button .ic{width:19px; height:19px}
+  button:hover{background:var(--brun-hover)}
+  button:focus-visible{outline:2px solid var(--gold); outline-offset:3px}
+
   .erreur{
-    margin:0 0 18px;padding:10px 12px;border-radius:8px;font-size:13.5px;
-    background:var(--crit-wash);border:1px solid var(--crit);color:var(--crit);
+    margin:0 0 18px; padding:11px 14px; border-radius:11px; font-size:14px;
+    background:var(--crit-wash); border:1px solid var(--crit); color:var(--crit);
   }
-  .note{margin:18px 0 0;padding-top:14px;border-top:1px solid var(--line);font-size:12px;color:var(--ink-3)}
-  .note code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}
-  .pied{margin-top:18px;text-align:center;font-size:12px;color:var(--ink-3)}
-  .pied a{color:var(--gold-dark)}
+
+  .separateur{margin:22px 0 0; border:0; border-top:1px solid var(--line)}
+  .note{margin:16px 0 0; text-align:center; font-size:13.5px; color:var(--ink-3)}
+  .note code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; color:var(--ink-2);
+  }
+  .pied{margin:22px 0 0; font-size:13px; color:var(--ink-3)}
+  .pied a{color:var(--ink-3); text-decoration:none}
+  .pied a:hover{color:var(--gold); text-decoration:underline}
+
+  @media (max-width:420px){ h1{font-size:32px} .panneau{padding:24px 20px 20px} }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
 <div class="carte">
-  <span class="brandlogo">
-    <img class="bl-key on-light" src="/images/key-gold-deep.png" alt="" width="586" height="223">
-    <img class="bl-key on-dark" src="/images/key-gold.png" alt="" width="586" height="223">
-    <span class="bl-divider"></span>
-    <span class="bl-text">
-      <span class="bl-name">LABEL MAISON</span>
-      <span class="bl-sub">CONCIERGERIE</span>
-    </span>
-  </span>
-  <div class="panneau">${corps}</div>
+  <div class="badge"><img src="/images/key-gold.png" alt="Label Maison Conciergerie" width="586" height="223"></div>
+  <h1>${echapper(titre)}</h1>
+  <p class="sous-titre">${echapper(sousTitre)}</p>
+  <div class="panneau">${panneau}</div>
   <p class="pied"><a href="/">← Retour au site</a></p>
 </div>
 </body>
@@ -204,20 +253,29 @@ function page(titre: string, corps: string, statut: number, entetes: HeadersInit
   );
 }
 
-function pageConnexion(suite: string, erreur: string, statut: number, entetes: HeadersInit = {}): Response {
+function pageConnexion(
+  suite: string,
+  erreur: string,
+  statut: number,
+  entetes: HeadersInit = {},
+): Response {
   return page(
     'Registre du linge',
-    `<p class="kicker">Document interne</p>
-     <h1>Registre du linge</h1>
-     <p class="lede">Accès réservé à l'équipe Label Maison.</p>
-     ${erreur ? `<p class="erreur">${echapper(erreur)}</p>` : ''}
+    'Label Maison Conciergerie — accès interne',
+    `${erreur ? `<p class="erreur">${echapper(erreur)}</p>` : ''}
      <form method="post" action="${CONNEXION}">
        <input type="hidden" name="suite" value="${echapper(suite)}">
        <label for="mdp">Mot de passe</label>
-       <input id="mdp" type="password" name="motdepasse" autocomplete="current-password"
-              autofocus required spellcheck="false" autocapitalize="off">
-       <button type="submit">Entrer</button>
-     </form>`,
+       <div class="champ">
+         ${ICONE_CADENAS}
+         <input id="mdp" type="password" name="motdepasse" placeholder="Entrez le mot de passe"
+                autocomplete="current-password" autofocus required
+                spellcheck="false" autocapitalize="off">
+       </div>
+       <button type="submit">${ICONE_CLE} Accéder au registre</button>
+     </form>
+     <hr class="separateur">
+     <p class="note">Accès réservé à l'équipe Label Maison.</p>`,
     statut,
     entetes,
   );
@@ -231,13 +289,13 @@ function pageConnexion(suite: string, erreur: string, statut: number, entetes: H
 function pageMalConfiguree(): Response {
   return page(
     'Accès indisponible',
-    `<p class="kicker">Configuration</p>
-     <h1>Accès indisponible</h1>
-     <p class="lede">La protection du registre n'est pas configurée, l'accès est donc
-     refusé par sécurité.</p>
-     <p class="note">À faire : Vercel → Settings → Environment Variables → ajouter
-     <code>LINGE_PASSWORD</code> (Production + Preview), puis <strong>redéployer</strong>
-     (la valeur est injectée au build).</p>`,
+    'Label Maison Conciergerie — registre du linge',
+    `<p style="margin:0;color:var(--ink-2)">La protection du registre n'est pas
+     configurée : l'accès est refusé par sécurité plutôt que laissé ouvert.</p>
+     <hr class="separateur">
+     <p class="note">Vercel → Settings → Environment Variables → ajouter
+     <code>LINGE_PASSWORD</code> (Production + Preview), puis <strong>redéployer</strong> :
+     la valeur est injectée au build.</p>`,
     503,
   );
 }
