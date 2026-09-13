@@ -10,6 +10,10 @@
  *   LINGE_USER      identifiant  (optionnel, défaut : "labelmaison")
  *   LINGE_PASSWORD  mot de passe (obligatoire)
  *
+ * Après ajout ou modification d'une variable, il faut REDÉPLOYER : les valeurs
+ * sont injectées au build, un simple enregistrement dans l'interface Vercel ne
+ * suffit pas.
+ *
  * Si LINGE_PASSWORD n'est pas défini, l'accès est refusé — jamais ouvert.
  */
 
@@ -17,18 +21,43 @@ export const config = {
   matcher: ['/linge', '/linge/:path*'],
 };
 
-const REALM = 'Label Maison — registre du linge';
+// ASCII strictement : une valeur d'en-tête HTTP est une ByteString (0-255).
+// Le tiret cadratin « — » (U+2014) y faisait planter `new Response(...)`, donc
+// le middleware entier, donc /linge répondait 500 quoi qu'on tape.
+const REALM = 'Label Maison - registre du linge';
 
+const ENTETES_COMMUNES = {
+  'Content-Type': 'text/plain; charset=utf-8',
+  'Cache-Control': 'no-store',
+  'X-Robots-Tag': 'noindex, nofollow',
+};
+
+/** 401 : identifiants absents ou faux. Le navigateur affiche la fenêtre de connexion. */
 function refuser(): Response {
   return new Response('Authentification requise.', {
     status: 401,
     headers: {
+      ...ENTETES_COMMUNES,
       'WWW-Authenticate': `Basic realm="${REALM}", charset="UTF-8"`,
-      'Content-Type': 'text/plain; charset=utf-8',
-      'Cache-Control': 'no-store',
-      'X-Robots-Tag': 'noindex, nofollow',
     },
   });
+}
+
+/**
+ * 503 : la protection est mal configurée côté Vercel.
+ * Message distinct du 401 à dessein — sans ça, « variable absente » et
+ * « mot de passe faux » sont indiscernables et le diagnostic est impossible.
+ * Pas de WWW-Authenticate ici : redemander un mot de passe qui ne pourra
+ * jamais être vérifié ne ferait que boucler.
+ */
+function malConfigure(): Response {
+  return new Response(
+    "LINGE_PASSWORD n'est pas défini dans la configuration Vercel — " +
+      "accès refusé par sécurité.\n" +
+      'À faire : Vercel → Settings → Environment Variables → ajouter ' +
+      'LINGE_PASSWORD (Production + Preview), puis redéployer.',
+    { status: 503, headers: ENTETES_COMMUNES },
+  );
 }
 
 /** Comparaison à temps constant : ne fuit pas la longueur du préfixe correct. */
@@ -48,10 +77,12 @@ function decodeBase64(b64: string): string {
 }
 
 export default function middleware(request: Request): Response | undefined {
-  const utilisateur = process.env.LINGE_USER || 'labelmaison';
-  const motDePasse = process.env.LINGE_PASSWORD;
+  // trim() : un copier-coller dans l'interface Vercel embarque très souvent un
+  // espace ou un retour à la ligne final, invisible et impossible à retaper.
+  const utilisateur = (process.env.LINGE_USER || 'labelmaison').trim();
+  const motDePasse = (process.env.LINGE_PASSWORD || '').trim();
 
-  if (!motDePasse) return refuser();
+  if (!motDePasse) return malConfigure();
 
   const entete = request.headers.get('authorization') || '';
   if (!entete.startsWith('Basic ')) return refuser();

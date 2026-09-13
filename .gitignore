@@ -31,3 +31,6 @@ scripts/__pycache__/
 
 # Dépôt git distinct présent dans le dossier de travail (projet love room)
 /love room /
+
+# Projection JSON du registre du linge, régénérée à chaque build
+public/linge/registre.json

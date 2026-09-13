@@ -73,6 +73,15 @@ Si l'utilisateur signale une erreur (« en fait c'était 3 draps »), retrouver
 la ligne concernée, la corriger (en conservant `message_brut` intact) et
 confirmer la modification.
 
+## Page web du registre
+
+Le registre est aussi consultable en ligne sur `/linge` (protégé par mot de
+passe via `middleware.ts` — variables Vercel `LINGE_USER` / `LINGE_PASSWORD`).
+La page lit `public/linge/registre.json`, **régénéré à chaque build** par
+`scripts/build-linge.mjs` à partir du `.jsonl`. Donc : une nouvelle ligne
+n'apparaît en ligne qu'après un commit **sur `main`** et le redéploiement
+Vercel qui suit.
+
 ## Après chaque enregistrement
 
 Proposer de committer si l'utilisateur est en fin de session, pour que le

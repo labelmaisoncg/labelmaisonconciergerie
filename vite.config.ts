@@ -75,9 +75,14 @@ function vercelDevRewrites(): Plugin {
           // Sans ça, les milliers de pages du silo national (qui n'ont pas de
           // rewrite dédié dans vercel.json) tomberaient sur le catch-all SPA en dev.
           if (!dest && clean && !path.extname(clean)) {
-            const candidat = path.join(publicDir, clean + '.html')
-            if (candidat.startsWith(publicDir) && fs.existsSync(candidat)) {
-              dest = clean + '.html'
+            // /ma-page -> public/ma-page.html, sinon /ma-page -> public/ma-page/index.html
+            // (c'est la forme utilisée par /linge, page statique dans son propre dossier).
+            for (const suffixe of ['.html', '/index.html']) {
+              const candidat = path.join(publicDir, clean + suffixe)
+              if (candidat.startsWith(publicDir) && fs.existsSync(candidat)) {
+                dest = clean + suffixe
+                break
+              }
             }
           }
           if (dest) req.url = dest + (query ? '?' + query : '')
