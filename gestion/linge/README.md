@@ -38,3 +38,20 @@ Règles :
 - `linge_recupere` = linge repris (sale) ; `linge_depose` = linge installé (propre).
 - Le message original est toujours conservé dans `message_brut` (preuve / audit).
 - Aucune quantité n'est inventée : si le message est ambigu, Claude demande.
+
+## Accès à la page en ligne
+
+Le registre est publié sur <https://www.labelmaisoncg.fr/linge>, derrière une
+page de connexion : **pas d'identifiant, seulement un mot de passe**. Une fois
+saisi, un cookie signé garde la session ouverte 30 jours ; le lien
+« Se déconnecter » en bas de page la ferme.
+
+Le mot de passe est la variable `LINGE_PASSWORD` du projet Vercel
+(Settings → Environment Variables, à définir pour Production **et** Preview).
+Après l'avoir ajoutée ou modifiée, **redéployer** : la valeur est injectée au
+build, l'enregistrer dans l'interface ne suffit pas. Changer le mot de passe
+invalide automatiquement toutes les sessions ouvertes.
+
+La page lit `public/linge/registre.json`, régénéré à chaque build par
+`scripts/build-linge.mjs` depuis le `.jsonl` : une nouvelle ligne n'apparaît
+en ligne qu'après un commit sur `main` et le déploiement qui suit.

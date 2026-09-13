@@ -244,6 +244,7 @@
   <footer>
     <span>Source : <code>gestion/linge/registre.jsonl</code></span>
     <span id="freshness"></span>
+    <span><a href="/linge/deconnexion">Se déconnecter</a></span>
   </footer>
 
 </div>
@@ -430,11 +431,17 @@
     .then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
     .then(data => rendre(Array.isArray(data) ? data : (data.entrees || []), data))
     .catch(err => {
-      document.getElementById("contenu").innerHTML =
-        '<div class="state"><strong>Registre indisponible</strong>' +
-        'Le fichier <code>registre.json</code> n\'a pas pu être chargé. ' +
-        'Il est généré au build à partir de <code>gestion/linge/registre.jsonl</code> — ' +
-        'vérifier que le déploiement est bien passé.</div>';
+      // 401 = la session a expiré pendant que l'onglet était ouvert : ce n'est
+      // pas une panne du registre, il suffit de repasser par la connexion.
+      const expiree = /HTTP 401/.test(String(err && err.message));
+      document.getElementById("contenu").innerHTML = expiree
+        ? '<div class="state"><strong>Session expirée</strong>' +
+          'La connexion au registre n\'est plus valide. ' +
+          '<a href="/linge/connexion">Se reconnecter</a>.</div>'
+        : '<div class="state"><strong>Registre indisponible</strong>' +
+          'Le fichier <code>registre.json</code> n\'a pas pu être chargé. ' +
+          'Il est généré au build à partir de <code>gestion/linge/registre.jsonl</code> — ' +
+          'vérifier que le déploiement est bien passé.</div>';
       console.error("[linge]", err);
     });
 })();

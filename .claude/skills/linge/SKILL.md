@@ -75,8 +75,9 @@ confirmer la modification.
 
 ## Page web du registre
 
-Le registre est aussi consultable en ligne sur `/linge` (protégé par mot de
-passe via `middleware.ts` — variables Vercel `LINGE_USER` / `LINGE_PASSWORD`).
+Le registre est aussi consultable en ligne sur `/linge`, derrière une page de
+connexion (`middleware.ts`, variable Vercel `LINGE_PASSWORD` — pas
+d'identifiant, seulement un mot de passe ; session de 30 jours par cookie).
 La page lit `public/linge/registre.json`, **régénéré à chaque build** par
 `scripts/build-linge.mjs` à partir du `.jsonl`. Donc : une nouvelle ligne
 n'apparaît en ligne qu'après un commit **sur `main`** et le redéploiement
