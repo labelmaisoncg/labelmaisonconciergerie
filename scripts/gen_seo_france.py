@@ -473,6 +473,9 @@ def page_ville(v, i: int) -> None:
             f"entre une gestion amateur et une gestion professionnelle : anticiper les pics des semaines "
             f"à l'avance, et remplir les creux avec des séjours plus longs plutôt que de brader la nuitée.",
         ], titre=f"Le marché de la location courte durée à {nom}"),
+        C.galerie_ville(slug_v, nom,
+                        f"Les secteurs sur lesquels nous positionnons les biens de {nom}, et ce "
+                        f"qu'ils changent concrètement pour un calendrier de réservations."),
         C.texte([regl,
                  "<strong>Notre principe :</strong> nous ne mettons en ligne que des biens conformes. "
                  "Un revenu locatif durable ne se construit pas sur une zone grise. Quand la courte "

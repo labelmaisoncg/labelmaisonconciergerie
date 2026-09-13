@@ -64,6 +64,114 @@ PHOTOS_LOGEMENT = [
 ]
 
 
+# Photographies de ville sous licence libre (Wikimedia Commons), stockées dans
+# public/images/villes/<slug>/. Ce sont de vraies photographies — jamais d'IA ni
+# de banque d'images générique — et chaque cliché porte son crédit auteur +
+# licence, comme l'exigent les licences Creative Commons.
+# Format : (fichier, largeur, hauteur, alt, légende, auteur, licence, url_licence, url_source)
+PHOTOS_VILLE = {
+    "dijon": [
+        ("villes/dijon/place-liberation-nuit.webp", 1600, 800,
+         "La place de la Libération et le palais des Ducs de Bourgogne illuminés la nuit, à Dijon",
+         "La place de la Libération et le palais des Ducs : le périmètre le plus demandé en courte "
+         "durée. La quasi-totalité des voyageurs cherchent un logement à moins de dix minutes à pied "
+         "d'ici.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Dijon_-_Place_de_la_Lib%C3%A9ration_-_Nuit_-_01.jpg"),
+        ("villes/dijon/palais-des-ducs.webp", 1000, 500,
+         "Le palais des Ducs et des États de Bourgogne, place de la Libération à Dijon",
+         "Le palais des Ducs, départ du parcours de la Chouette : les séjours de deux à trois nuits "
+         "s'organisent presque tous dans ce rayon.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Dijon_-_Palais_des_Ducs_et_des_%C3%89tats_de_Bourgogne_-_01.jpg"),
+        ("villes/dijon/place-francois-rude.webp", 1000, 618,
+         "Maisons à pans de bois et carrousel place François-Rude, dans le centre historique de Dijon",
+         "Place François-Rude, ses pans de bois et ses terrasses, à deux pas des Halles : l'argument "
+         "qui fait accepter une nuitée plus élevée.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Dijon_-_Place_Fran%C3%A7ois_Rude_-_1.jpg"),
+        ("villes/dijon/vieille-ville-notre-dame.webp", 1000, 668,
+         "Rue du centre ancien de Dijon menant à l'église Notre-Dame",
+         "Le secteur Notre-Dame et ses rues piétonnes : hypercentre, commerces, tout à pied — c'est "
+         "ce que filtre en premier un voyageur qui arrive en train.",
+         "eugene_o", "CC BY 2.0", "https://creativecommons.org/licenses/by/2.0",
+         "https://commons.wikimedia.org/wiki/File:20180628_-_Dijon_-_3_(43797528152).jpg"),
+        ("villes/dijon/route-des-grands-crus.webp", 1000, 580,
+         "Vignoble de la Côte de Nuits, sur la route des Grands Crus au sud de Dijon",
+         "La Côte de Nuits commence à vingt minutes au sud. L'œnotourisme réserve court — deux à "
+         "trois nuits — mais toute l'année, et à un budget élevé.",
+         "Stefan Bauer", "CC BY-SA 2.5", "https://creativecommons.org/licenses/by-sa/2.5",
+         "https://commons.wikimedia.org/wiki/File:Weinberg_Cote_de_Nuits.jpg"),
+    ],
+    "beaune": [
+        ("villes/beaune/hotel-dieu-cour.webp", 1600, 800,
+         "La cour intérieure de l'Hôtel-Dieu de Beaune et ses toits de tuiles vernissées",
+         "L'Hôtel-Dieu et ses toits vernissés : le premier motif de venue à Beaune. Les séjours se "
+         "calent sur la visite, donc sur deux à trois nuits en centre-ville.",
+         "Stefan Bauer", "CC BY-SA 2.5", "https://creativecommons.org/licenses/by-sa/2.5",
+         "https://commons.wikimedia.org/wiki/File:Hostel_Dieu_Beaune.jpg"),
+        ("villes/beaune/hospices-toits.webp", 1000, 665,
+         "Détail des toits polychromes des Hospices de Beaune",
+         "Les Hospices attirent une clientèle internationale et âgée de plus de quarante ans : elle "
+         "réserve tôt, annule peu et paie le confort.",
+         "Jebulon", "domaine public", "",
+         "https://commons.wikimedia.org/wiki/File:Hospices_beaune_toits1.jpg"),
+        ("villes/beaune/hotel-de-ville.webp", 1000, 563,
+         "La cour de l'hôtel de ville de Beaune",
+         "Le centre intra-muros, ceinturé par les remparts : c'est là que se joue la différence de "
+         "prix à la nuitée, à quelques rues près.",
+         "Benjamin Smith", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Beaune_-_H%C3%B4tel_de_Ville_-_2.jpg"),
+        ("villes/beaune/place-carnot-nuit.webp", 1000, 666,
+         "La place Carnot de Beaune illuminée le soir",
+         "Place Carnot le soir : restaurants et caves à deux pas. Un logement à moins de cinq "
+         "minutes à pied d'ici se loue toute l'année, pas seulement en saison.",
+         "Mark Fischer", "CC BY 4.0", "https://creativecommons.org/licenses/by/4.0",
+         "https://commons.wikimedia.org/wiki/File:Place_Carnot,_Beaune,_France.jpg"),
+        ("villes/beaune/vignoble-cote-de-beaune.webp", 1000, 750,
+         "Beaune vue depuis les vignes de la Côte de Beaune en automne",
+         "La Côte de Beaune commence au bout des rues. La Vente des vins des Hospices, le troisième "
+         "week-end de novembre, sature la ville : les tarifs y sont sans rapport avec le reste de "
+         "l'automne.",
+         "Florian Pépellin", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Beaune_et_vignobles_en_automne_(2018).JPG"),
+    ],
+    "lyon": [
+        ("villes/lyon/saone-vieux-lyon.webp", 1600, 800,
+         "Les quais de Saône, le Vieux Lyon et la colline de Fourvière depuis la passerelle "
+         "Saint-Georges",
+         "Le Vieux Lyon et la colline de Fourvière depuis la Saône : le secteur le plus recherché "
+         "en courte durée, et celui où la contrainte réglementaire est la plus forte.",
+         "Zairon", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Lyon_Quai_Fulchiron_03.jpg"),
+        ("villes/lyon/colline-fourviere.webp", 1000, 659,
+         "La colline de Fourvière et sa basilique vues depuis la Presqu'île à Lyon",
+         "Fourvière domine la Presqu'île. Un bien à dix minutes à pied du Vieux Lyon se remplit "
+         "seul le week-end ; le reste de la semaine se joue sur la clientèle d'affaires.",
+         "Romainbehar", "CC0", "https://creativecommons.org/publicdomain/zero/1.0/",
+         "https://commons.wikimedia.org/wiki/File:Lyon_2e_-_Jardins_suspendus_de_Perrache_-_Vue_sur_la_colline_et_la_basilique_de_Fourvi%C3%A8re.jpg"),
+        ("villes/lyon/quais-de-saone.webp", 1000, 666,
+         "Immeubles lyonnais en bord de Saône, quai Saint-Vincent",
+         "Le parc lyonnais, ce sont surtout ces immeubles anciens : beaux volumes, mais des "
+         "escaliers, du bruit de quai et des équipements à corriger avant la mise en ligne.",
+         "Andrzej Otrębski", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Lyon_Quai_Saint-Vincent_2.jpg"),
+        ("villes/lyon/croix-rousse.webp", 1000, 666,
+         "La montée de la Grande Côte, sur les pentes de la Croix-Rousse à Lyon",
+         "Les pentes de la Croix-Rousse : appartements de canut, grande hauteur sous plafond, "
+         "clientèle plus jeune et séjours plus longs qu'en Presqu'île.",
+         "Guilhem Vellut", "CC BY 2.0", "https://creativecommons.org/licenses/by/2.0",
+         "https://commons.wikimedia.org/wiki/File:Mont%C3%A9e_de_la_Grande_C%C3%B4te_@_Croix-Rousse_@_Lyon_(35584702353).jpg"),
+        ("villes/lyon/fete-des-lumieres.webp", 1000, 667,
+         "Lyon illuminée la nuit pendant la Fête des Lumières",
+         "La Fête des Lumières, début décembre : quatre nuits qui pèsent lourd dans une année. "
+         "Elles se paramètrent en septembre, pas la semaine d'avant.",
+         "Myrabella", "CC BY-SA 4.0", "https://creativecommons.org/licenses/by-sa/4.0",
+         "https://commons.wikimedia.org/wiki/File:Lyon_fete_des_Lumieres_2013.jpg"),
+    ],
+}
+
+
 def esc(s: str) -> str:
     return html.escape(s, quote=True)
 
@@ -300,6 +408,39 @@ def galerie(idg: str, photos: list) -> str:
             "</section>")
 
 
+def _fig_ville(f, w, h, alt, legende, auteur, lic, licurl, src, eager=False) -> str:
+    # Une image du domaine public n'a pas d'URL de licence, et le « © » n'y a pas
+    # de sens : on crédite alors l'auteur sans symbole de copyright.
+    mention = (f'<a href="{licurl}" rel="nofollow noopener license" target="_blank">{esc(lic)}</a>'
+               if licurl else esc(lic))
+    prefixe = "Photo" if lic.lower().startswith(("domaine public", "cc0")) else "©"
+    credit = (f'<span class="vg-credit">{prefixe} <a href="{src}" rel="nofollow noopener" '
+              f'target="_blank">{esc(auteur)}</a> · {mention}</span>')
+    return (f'<figure class="vg-fig"><img src="/images/{f}" alt="{esc(alt)}" '
+            f'loading="{"eager" if eager else "lazy"}" decoding="async" width="{w}" height="{h}">'
+            f'<figcaption>{esc(legende)} {credit}</figcaption></figure>')
+
+
+def galerie_ville(slug: str, nom: str, lead: str = "") -> str:
+    """Bande photo de la ville elle-même (photos libres de droits, créditées).
+
+    Rend une section vide si la ville n'a pas encore de photos : la fonction
+    peut donc être appelée sur toutes les pages d'un silo sans condition.
+    """
+    photos = PHOTOS_VILLE.get(slug)
+    if not photos:
+        return ""
+    hero = _fig_ville(*photos[0], eager=False)
+    tiles = "".join(_fig_ville(*p) for p in photos[1:])
+    l = f'<p class="lead">{lead}</p>' if lead else ""
+    return (f'<section class="wrap"><h2>{esc(nom)}, le terrain que nous couvrons</h2>{l}'
+            f'<div class="villegal"><div class="vg-hero">{hero}</div>'
+            f'<div class="vg-grid">{tiles}</div></div>'
+            f'<p class="vg-note">Photographies de {esc(nom)} sous licence Creative Commons, '
+            "redimensionnées pour le web. Les photos de logements présentées sur cette page sont "
+            "celles de biens réellement gérés par nos équipes.</p></section>")
+
+
 def zones(titre: str, lead: str, links: list, extra: str = "") -> str:
     z = "".join(f'<a href="{u}">{esc(n)}</a>' for n, u in links)
     l = f'<p class="lead">{lead}</p>' if lead else ""
@@ -383,7 +524,9 @@ MARQUEUR_AUTO = "<!-- lm:auto-commune -->"
 
 def write(slug: str, parts: list, auto: bool = False) -> pathlib.Path:
     p = OUT / f"{slug}.html"
-    corps = "\n".join(parts) + "\n" + TAIL
+    # Les blocs optionnels (galerie ville…) renvoient "" quand ils n'ont rien à
+    # afficher : on les écarte pour ne pas laisser de ligne vide dans le HTML.
+    corps = "\n".join(x for x in parts if x) + "\n" + TAIL
     if auto:
         corps = MARQUEUR_AUTO + "\n" + corps
     p.write_text(corps, encoding="utf-8")
