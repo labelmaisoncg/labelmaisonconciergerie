@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/spa-shells.mjs",
+    "build": "node scripts/build-linge.mjs && vite build && node scripts/spa-shells.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
