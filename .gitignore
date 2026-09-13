@@ -34,3 +34,4 @@ scripts/__pycache__/
 
 # Projection JSON du registre du linge, régénérée à chaque build
 public/linge/registre.json
+.vercel
