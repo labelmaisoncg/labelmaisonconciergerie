@@ -134,7 +134,7 @@ function page(
 <html lang="fr">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">\n<meta name="color-scheme" content="light">
 <meta name="robots" content="noindex, nofollow">
 <title>${echapper(titre)} — Label Maison Conciergerie</title>
 <link rel="icon" href="/images/favicon.svg" type="image/svg+xml">
@@ -155,16 +155,9 @@ function page(
     --f-serif:"Playfair Display",Georgia,serif;
     --ombre:0 1px 2px rgba(40,34,22,.04), 0 18px 44px -26px rgba(40,34,22,.34);
   }
-  @media (prefers-color-scheme:dark){:root{
-    --ground:#191410; --surface:#221B14; --field:#1E1811;
-    --ink:#F4ECDA; --ink-2:#B7AB91; --ink-3:#8C8269;
-    --line:rgba(213,198,159,.12); --line-2:rgba(213,198,159,.20);
-    --gold:#C39A4A; --gold-soft:rgba(195,154,74,.20);
-    --brun:#E7DCC2; --brun-hover:#F4ECDA; --sur-brun:#191410;
-    --crit:#DD817A; --crit-wash:#2E1A18;
-    --ombre:0 1px 2px rgba(0,0,0,.3), 0 18px 44px -26px rgba(0,0,0,.7);
-  }}
 
+  /* Palette unique : pas de variante sombre automatique, le fond reste beige. */
+  :root{color-scheme:light}
   *{box-sizing:border-box}
   body{
     margin:0; min-height:100vh; background:var(--ground); color:var(--ink);

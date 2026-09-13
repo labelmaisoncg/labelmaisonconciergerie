@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
 <meta name="robots" content="noindex, nofollow, noarchive">
 <title>Registre du linge — Label Maison Conciergerie</title>
 <link rel="icon" href="/images/favicon.svg" type="image/svg+xml">
@@ -32,27 +33,10 @@
     --s1:6px; --s2:10px; --s3:16px; --s4:24px; --s5:38px; --s6:60px;
   }
 
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]){
-      --ground:#191410; --surface:#221B14; --surface-2:#2B2319;
-      --ink:#F4ECDA; --ink-2:#B7AB91; --ink-3:#8C8269;
-      --line:rgba(213,198,159,.14); --line-2:rgba(213,198,159,.22); --champagne:#6B5A37;
-      --gold:#C39A4A; --gold-dark:#A97C30; --gold-light:#DCC07C;
-      --gold-text:#D0B878; --gold-wash:#2A2216;
-      --brun:#E2D7BD; --brun-soft:#C6B896;
-      --crit:#DD817A; --crit-wash:#2E1A18;
-    }
-  }
-  :root[data-theme="dark"]{
-    --ground:#191410; --surface:#221B14; --surface-2:#2B2319;
-    --ink:#F4ECDA; --ink-2:#B7AB91; --ink-3:#8C8269;
-    --line:rgba(213,198,159,.14); --line-2:rgba(213,198,159,.22); --champagne:#6B5A37;
-    --gold:#C39A4A; --gold-dark:#A97C30; --gold-light:#DCC07C;
-    --gold-text:#D0B878; --gold-wash:#2A2216;
-    --brun:#E2D7BD; --brun-soft:#C6B896;
-    --crit:#DD817A; --crit-wash:#2E1A18;
-  }
-
+  /* Palette unique « Ivoire & or ». Pas de variante sombre automatique : sur un
+     système en mode sombre la page virait au brun, alors que le registre doit
+     rester sur son fond beige. */
+  :root{color-scheme:light}
   *{box-sizing:border-box}
   html{-webkit-text-size-adjust:100%}
   body{
@@ -79,20 +63,6 @@
   .bl-text{display:flex;flex-direction:column}
   .bl-name{font-weight:600;font-size:1em;letter-spacing:.06em;color:var(--brun);white-space:nowrap}
   .bl-sub{font-size:.4em;letter-spacing:.46em;text-indent:.46em;margin-top:.34em;color:var(--gold-text);white-space:nowrap}
-  @media (prefers-color-scheme: dark){
-    :root:not([data-theme="light"]) .bl-key.on-light{display:none}
-    :root:not([data-theme="light"]) .bl-key.on-dark{display:block}
-    :root:not([data-theme="light"]) .bl-name{
-      background:linear-gradient(160deg,#f2e4b4,#dcc07c 50%,#c39a4a);
-      -webkit-background-clip:text;background-clip:text;color:transparent;
-    }
-  }
-  :root[data-theme="dark"] .bl-key.on-light{display:none}
-  :root[data-theme="dark"] .bl-key.on-dark{display:block}
-  :root[data-theme="dark"] .bl-name{
-    background:linear-gradient(160deg,#f2e4b4,#dcc07c 50%,#c39a4a);
-    -webkit-background-clip:text;background-clip:text;color:transparent;
-  }
 
   /* ---------- header ---------- */
   .masthead{
