@@ -1445,27 +1445,39 @@ const proofVideos: ProofItem[] = [
 const proofs: ProofItem[] = [
   {
     kind: 'screenshot',
-    image: '/images/proof/IMG_7303.jpeg',
-    label: 'Message client',
-    caption: '« Franchement merci beaucoup, c\'est vraiment top ce que vous faites. »',
+    image: '/images/sens/sens-04.jpg',
+    label: 'Appartement géré',
+    caption: 'Salon aux poutres apparentes — maison de ville en gestion',
   },
   {
     kind: 'screenshot',
-    image: '/images/proof/IMG_7304.jpeg',
-    label: 'Message client',
-    caption: 'Retour propriétaire après remise en gestion',
+    image: '/images/sens/sens-08.jpg',
+    label: 'Appartement géré',
+    caption: 'Chambre donnant sur les maisons à pans de bois',
   },
   {
     kind: 'screenshot',
-    image: '/images/proof/IMG_7305.jpeg',
-    label: 'Message client',
-    caption: 'Avis post-séjour voyageur',
+    image: '/images/sens/sens-12.jpg',
+    label: 'Appartement géré',
+    caption: 'Studio avec terrasse en cœur de ville',
   },
   {
     kind: 'screenshot',
-    image: '/images/proof/IMG_7306.jpeg',
-    label: 'Message client',
-    caption: 'Suivi locatif courte durée',
+    image: '/images/sens/sens-11.jpg',
+    label: 'Appartement géré',
+    caption: 'Cuisine équipée sur cour pavée',
+  },
+  {
+    kind: 'screenshot',
+    image: '/images/sens/sens-09.jpg',
+    label: 'Appartement géré',
+    caption: 'Chambre lumineuse en centre-ville',
+  },
+  {
+    kind: 'screenshot',
+    image: '/images/sens/sens-14.jpg',
+    label: 'Appartement géré',
+    caption: 'Chambre d\'une maison de caractère',
   },
   {
     kind: 'youtube',
@@ -1975,9 +1987,9 @@ function ProofSection() {
             Preuves & coulisses
           </span>
           <h2 className="mt-4 font-serif-title text-[34px] md:text-[52px] font-normal leading-[1.08]">
-            Ils adorent,{' '}
+            Nos appartements,{' '}
             <span className="font-serif-italic font-bold text-[#A97C30]">
-              pourquoi pas vous&nbsp;?
+              en vrai
             </span>
           </h2>
         </div>
@@ -1988,11 +2000,11 @@ function ProofSection() {
             <VerticalProofColumn items={screenshots} onSelect={setActive} />
             <div className="mt-6 md:mt-8">
               <h3 className="text-[20px] md:text-[24px] font-bold leading-tight">
-                Ils nous font confiance
+                Nos appartements en gestion
               </h3>
               <p className="mt-2 text-[14px] md:text-[15px] text-neutral-700 leading-relaxed">
-                Propriétaires & voyageurs nous écrivent au quotidien. Chaque message
-                provient d'un client réel pris en charge par Label Maison Conciergerie.
+                Un aperçu réel des biens que nous préparons et gérons au quotidien :
+                chaque logement est photographié tel que les voyageurs le trouvent.
               </p>
             </div>
           </div>
