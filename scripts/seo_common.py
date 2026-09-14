@@ -46,16 +46,20 @@ ICONS = (
 )
 
 # Photos réelles réutilisables (rotation par index pour éviter la répétition).
-# On ne garde ici que des clichés nets et lumineux, sans texte incrusté ni flou
-# de bougé : ces images représentent la qualité des biens gérés.
+# Uniquement des photos de biens réellement gérés (public/images/sens : nos
+# appartements et maisons en France), nettes, lumineuses, cadrées paysage —
+# le type de logement que l'on trouve dans les villes que nous couvrons.
 PHOTOS_LOGEMENT = [
-    ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré par Label Maison Conciergerie"),
-    ("real/proof-logement-poster.jpg", "Salon lumineux d'un logement préparé avant l'arrivée des voyageurs"),
-    ("real/gestion-villa.jpg", "Villa avec piscine gérée par Label Maison Conciergerie"),
-    ("real/logement-salon-poster.jpg", "Salon d'un appartement en gestion locative"),
-    ("real/hero-logement-exception.jpg", "Logement d'exception en gestion clé en main"),
-    ("real/logement-video.jpg", "Chambre préparée avec vue sur la piscine"),
-    ("real/jacuzzi.jpg", "Bien d'exception avec espace bien-être"),
+    ("sens/sens-04.jpg", "Salon aux poutres apparentes d'une maison de ville gérée par Label Maison"),
+    ("sens/sens-08.jpg", "Chambre préparée donnant sur les maisons à pans de bois du centre ancien"),
+    ("sens/sens-12.jpg", "Séjour avec terrasse d'un studio géré en cœur de ville"),
+    ("sens/sens-05.jpg", "Salon d'un appartement géré dans un immeuble de caractère"),
+    ("sens/sens-09.jpg", "Chambre d'un appartement de centre-ville géré par nos équipes"),
+    ("sens/sens-11.jpg", "Cuisine équipée sur cour pavée d'une maison de ville en gestion"),
+    ("sens/sens-14.jpg", "Chambre d'une maison de caractère gérée par Label Maison"),
+    ("sens/sens-01.jpg", "Salle de bain rénovée d'un bien en gestion, prête pour une arrivée"),
+    ("sens/sens-15.jpg", "Chambre dressée avec linge hôtelier avant une arrivée voyageur"),
+    ("sens/sens-16.jpg", "Séjour d'un appartement meublé géré en location courte durée"),
 ]
 
 
