@@ -45,17 +45,21 @@ ICONS = (
     '<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">'
 )
 
-# Photos réelles réutilisables (rotation par index pour éviter la répétition).
-# On ne garde ici que des clichés nets et lumineux, sans texte incrusté ni flou
-# de bougé : ces images représentent la qualité des biens gérés.
+# Photos d'intérieurs réutilisables (rotation par index pour éviter la
+# répétition). Clichés professionnels d'appartements de style européen
+# (licence Unsplash, usage commercial autorisé, sans attribution requise) :
+# nets, lumineux, cadrés paysage — le type de logement que nous gérons en
+# ville. Présentés comme photos d'illustration, jamais comme des biens
+# précis du portefeuille.
 PHOTOS_LOGEMENT = [
-    ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré par Label Maison Conciergerie"),
-    ("real/proof-logement-poster.jpg", "Salon lumineux d'un logement préparé avant l'arrivée des voyageurs"),
-    ("real/gestion-villa.jpg", "Villa avec piscine gérée par Label Maison Conciergerie"),
-    ("real/logement-salon-poster.jpg", "Salon d'un appartement en gestion locative"),
-    ("real/hero-logement-exception.jpg", "Logement d'exception en gestion clé en main"),
-    ("real/logement-video.jpg", "Chambre préparée avec vue sur la piscine"),
-    ("real/jacuzzi.jpg", "Bien d'exception avec espace bien-être"),
+    ("logements/sejour-appartement.jpg", "Séjour lumineux d'un appartement meublé en centre-ville"),
+    ("logements/salon-parquet.jpg", "Salon au parquet point de Hongrie d'un appartement meublé"),
+    ("logements/chambre-double.jpg", "Chambre double dressée avec linge de qualité hôtelière"),
+    ("logements/cuisine-equipee.jpg", "Cuisine entièrement équipée d'un logement meublé"),
+    ("logements/salon-canape-cuir.jpg", "Salon chaleureux d'un appartement préparé pour la location"),
+    ("logements/chambre-vue-ville.jpg", "Chambre avec vue urbaine, prête pour une arrivée"),
+    ("logements/salon-contemporain.jpg", "Salon contemporain d'un appartement en location meublée"),
+    ("logements/coin-salon.jpg", "Coin salon soigné d'un logement meublé"),
 ]
 
 
@@ -392,12 +396,14 @@ def galerie(idg: str, photos: list) -> str:
     figs = "".join(
         f'<figure><img src="/images/{f}" alt="{esc(a)}" loading="lazy" '
         'decoding="async" width="900" height="675"></figure>' for f, a in photos)
-    return (f'<section class="wrap"><h2>Nos biens gérés en images</h2>'
+    return (f'<section class="wrap"><h2>Des logements préparés au standard hôtelier</h2>'
             f'<div class="hscroll-wrap"><div class="hscroll" id="{idg}">{figs}</div>'
             f'<div class="hscroll-nav">'
             f'<button type="button" onclick="gal(\'{idg}\',-1)" aria-label="Photo précédente">&larr;</button>'
             f'<button type="button" class="next" onclick="gal(\'{idg}\',1)" aria-label="Photo suivante">&rarr;</button>'
             "</div></div>"
+            '<p class="vg-note">Photos d\'illustration. Chaque bien que nous prenons en gestion '
+            "est préparé, photographié et mis en valeur avec ce niveau d'exigence.</p>"
             "<script>function gal(i,d){var e=document.getElementById(i);"
             'e.scrollBy({left:d*Math.max(280,e.clientWidth*0.8),behavior:"smooth"});}</script>'
             "</section>")
@@ -432,8 +438,8 @@ def galerie_ville(slug: str, nom: str, lead: str = "") -> str:
             f'<div class="villegal"><div class="vg-hero">{hero}</div>'
             f'<div class="vg-grid">{tiles}</div></div>'
             f'<p class="vg-note">Photographies de {esc(nom)} sous licence Creative Commons, '
-            "redimensionnées pour le web. Les photos de logements présentées sur cette page sont "
-            "celles de biens réellement gérés par nos équipes.</p></section>")
+            "redimensionnées pour le web. Les photos d'intérieurs de cette page sont des photos "
+            "d'illustration.</p></section>")
 
 
 def zones(titre: str, lead: str, links: list, extra: str = "") -> str:

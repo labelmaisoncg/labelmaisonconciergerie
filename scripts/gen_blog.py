@@ -148,7 +148,7 @@ def hub(tous: list) -> str:
                "Réglementation, fiscalité, rentabilité, exploitation : ce que nous appliquons "
                "réellement sur les logements que nous gérons, expliqué sans jargon et sans "
                "chiffres inventés.",
-               p[0], "Logement géré par Label Maison Conciergerie",
+               p[0], "Intérieur d'un logement meublé en location courte durée",
                [f"<b>{len(tous)}</b> articles", "Sources <b>citées</b>",
                 "Aucun <b>rendement promis</b>", "Mise à jour <b>régulière</b>"],
                cta1="Estimer mes revenus"),

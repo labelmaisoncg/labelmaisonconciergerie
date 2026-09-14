@@ -136,7 +136,7 @@ def page(silo: Silo, v, i: int, toutes: list) -> str:
                silo.h1_tpl.format(nom=nom),
                f"Votre bien à {nom} peut rapporter sans vous prendre une heure. Annonce, prix, "
                f"voyageurs, ménage, imprévus : nous gérons. {hook}",
-               p1[0], f"Logement géré par notre conciergerie à {nom}",
+               p1[0], f"Appartement meublé pour la location courte durée à {nom}",
                ["Gestion <b>clé en main</b>", "Commission au <b>résultat</b>",
                 "Équipe <b>locale</b>", "Courte & <b>moyenne durée</b>"]),
         C.texte(intro, pad=True),

@@ -435,7 +435,7 @@ HUB_SPEC = dict(
     sub="Aéroports, parcs des expositions, stades, hôpitaux, Disneyland : la couronne parisienne "
         "concentre des moteurs de demande que Paris intra-muros n'a pas. Encore faut-il savoir les "
         "jouer.",
-    alt="Appartement géré par Label Maison Conciergerie en banlieue parisienne",
+    alt="Appartement meublé en location courte durée en banlieue parisienne",
     puces=["92 · 93 · 94 · 78 · 95 · 77", "Salons & <b>événements</b>",
            "Aéroports <b>CDG & Orly</b>", "Bail mobilité <b>inclus</b>"],
     intro=[
