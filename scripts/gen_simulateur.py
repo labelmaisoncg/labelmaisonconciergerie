@@ -172,7 +172,7 @@ def main() -> str:
                "Simulateur de <span class=\"font-serif-italic\">revenus locatifs</span>",
                "Combien reste-t-il vraiment une fois le ménage, le linge, les commissions et les "
                "charges payés ? Renseignez vos hypothèses, le calcul se fait instantanément.",
-               p[0], "Intérieur d'un logement meublé en location courte durée",
+               p[0], "Logement en location courte durée géré par Label Maison Conciergerie",
                ["Calcul <b>instantané</b>", "Charges <b>incluses</b>",
                 "Comparaison <b>longue durée</b>", "Aucune <b>donnée collectée</b>"],
                cta1="Aller au simulateur"),

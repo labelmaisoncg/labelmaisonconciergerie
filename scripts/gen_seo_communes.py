@@ -302,7 +302,7 @@ def page_commune(c, dept_url: str, region_url: str, couvertes: dict) -> str:
                f"Conciergerie à <span class=\"font-serif-italic\">{c.nom}</span>",
                f"Location courte et moyenne durée, entretien de résidence secondaire, accueil et "
                f"intendance : nous prenons votre bien en charge à {c.nom} et vous rendons votre temps.",
-               photo[0], f"Appartement meublé en location courte durée à {c.nom}",
+               photo[0], f"Logement géré par Label Maison Conciergerie à {c.nom}",
                ["Gestion <b>clé en main</b>", "Commission au <b>résultat</b>",
                 "Ménage <b>hôtelier</b>", "Sans <b>engagement</b>"]),
         C.texte([
@@ -442,7 +442,7 @@ def page_dept(code: str, nom: str, communes: list, slug: str, region_url: str,
                f"Conciergerie <span class=\"font-serif-italic\">{dl}</span>",
                f"Gestion locative, accueil des voyageurs, ménage hôtelier et entretien de "
                f"résidence secondaire dans {len(communes)} communes du département.",
-               photo[0], f"Logement meublé en location courte durée {dl}",
+               photo[0], f"Bien géré par Label Maison Conciergerie {dl}",
                [f"<b>{len(communes)}</b> communes", "Équipes <b>locales</b>",
                 "Commission au <b>résultat</b>", "Estimation <b>gratuite</b>"]),
         C.texte([
@@ -526,7 +526,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
                f"Conciergerie <span class=\"font-serif-italic\">{rl}</span>",
                f"{len(depts)} départements, {len(communes)} communes couvertes : gestion locative, "
                f"accueil, ménage hôtelier et entretien de résidences secondaires.",
-               photo[0], f"Logement meublé en location courte durée {rl}",
+               photo[0], f"Bien géré par Label Maison Conciergerie {rl}",
                [f"<b>{len(depts)}</b> départements", f"<b>{len(communes)}</b> communes",
                 "Équipes <b>locales</b>", "Estimation <b>gratuite</b>"]),
         C.texte([

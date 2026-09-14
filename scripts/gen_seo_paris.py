@@ -259,7 +259,7 @@ def page_arr(a, i: int) -> None:
                f"Conciergerie Airbnb à <span class=\"font-serif-italic\">Paris {label}</span>",
                f"Vous possédez un bien dans le {cp} ? Nous gérons tout — annonce, prix, voyageurs, ménage, "
                f"maintenance — et vous encaissez. {hook}",
-               p1[0], f"Appartement meublé en location courte durée à Paris {label}",
+               p1[0], f"Appartement géré par notre conciergerie Airbnb à Paris {label}",
                ["Gestion <b>clé en main</b>", "Rémunérés au <b>résultat</b>",
                 "Ménage <b>hôtelier</b>", "Accueil <b>7j/7</b>"]),
         C.texte([
@@ -401,7 +401,7 @@ def page_hub() -> None:
                "Votre appartement parisien mérite mieux qu'un calendrier vide ou qu'une gestion "
                "à temps perdu. Nous nous occupons de tout — annonce, prix, voyageurs, ménage, "
                "maintenance — dans les 20 arrondissements.",
-               p[0], "Appartement parisien meublé pour la location courte durée",
+               p[0], "Appartement parisien géré par Label Maison Conciergerie",
                ["20 <b>arrondissements</b>", "Gestion <b>clé en main</b>",
                 "Rémunérés au <b>résultat</b>", "Ménage <b>hôtelier</b>"]),
         C.texte([

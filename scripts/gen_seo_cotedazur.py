@@ -390,7 +390,7 @@ HUB_SPEC = dict(
     sub="Villas avec piscine, appartements vue mer, résidences secondaires : nous gérons votre bien "
         "azuréen toute l'année — location saisonnière, accueil, ménage hôtelier, piscine, jardin et "
         "gardiennage hors saison.",
-    alt="Intérieur soigné d'un logement meublé sur la Côte d'Azur",
+    alt="Villa avec piscine gérée par Label Maison Conciergerie sur la Côte d'Azur",
     puces=["De <b>Menton</b> à <b>Cassis</b>", "Villas & <b>piscines</b>",
            "Accueil <b>voyageurs</b>", "Gardiennage <b>hors saison</b>"],
     intro=[

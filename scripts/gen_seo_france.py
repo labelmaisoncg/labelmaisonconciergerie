@@ -447,7 +447,7 @@ def page_ville(v, i: int) -> None:
                f"Conciergerie Airbnb à <span class=\"font-serif-italic\">{nom}</span>",
                f"Votre logement à {nom} peut rapporter sans vous coûter une heure de votre temps. "
                f"Nous gérons annonce, prix, voyageurs, ménage et imprévus. {hook}",
-               p1[0], f"Appartement meublé pour la location courte durée à {nom}",
+               p1[0], f"Logement géré par notre conciergerie Airbnb à {nom}",
                ["Gestion <b>clé en main</b>", "Commission au <b>résultat</b>",
                 "Équipes <b>locales</b>", "Courte & <b>moyenne durée</b>"]),
         C.texte([
@@ -584,7 +584,7 @@ def page_hub() -> None:
                "Conciergerie Airbnb <span class=\"font-serif-italic\">en France</span>",
                "Métropoles, littoral, montagne, villes de province : nous gérons des logements en "
                "location courte et moyenne durée avec des équipes locales et un interlocuteur unique.",
-               p[0], "Appartement meublé en location courte durée en France",
+               p[0], "Logements gérés par Label Maison Conciergerie partout en France",
                [f"<b>{len(V)}</b> villes", "Équipes <b>locales</b>",
                 "Commission au <b>résultat</b>", "Courte & <b>moyenne durée</b>"]),
         C.texte([
