@@ -900,7 +900,7 @@ const services = [
     icon: Bed,
     title: "Logement d'exception",
     text: "Studios, suites avec jacuzzi, villas et penthouses. Des lieux à la hauteur de votre style de vie.",
-    image: '/images/real/logement-suite.jpg',
+    image: '/images/real/logement-hero.jpg',
     href: '/logement',
     eyebrow: 'Résidences premium',
   },

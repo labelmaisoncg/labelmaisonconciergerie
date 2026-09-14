@@ -46,21 +46,16 @@ ICONS = (
 )
 
 # Photos réelles réutilisables (rotation par index pour éviter la répétition).
+# On ne garde ici que des clichés nets et lumineux, sans texte incrusté ni flou
+# de bougé : ces images représentent la qualité des biens gérés.
 PHOTOS_LOGEMENT = [
-    ("real/logement-hero.jpg", "Séjour d'un logement géré par Label Maison Conciergerie"),
-    ("real/residence-chambre.jpg", "Chambre préparée pour une arrivée voyageur"),
-    ("real/logement-suite.jpg", "Suite meublée gérée en location courte durée"),
-    ("real/residence-penthouse.jpg", "Penthouse géré par notre conciergerie"),
+    ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré par Label Maison Conciergerie"),
+    ("real/proof-logement-poster.jpg", "Salon lumineux d'un logement préparé avant l'arrivée des voyageurs"),
+    ("real/gestion-villa.jpg", "Villa avec piscine gérée par Label Maison Conciergerie"),
     ("real/logement-salon-poster.jpg", "Salon d'un appartement en gestion locative"),
-    ("real/residence-villa.jpg", "Villa gérée par Label Maison Conciergerie"),
-    ("real/logement-chambre2-poster.jpg", "Chambre dressée avec linge hôtelier"),
-    ("real/gestion-villa.jpg", "Préparation d'un bien avant l'arrivée des voyageurs"),
-    ("real/logement-sdb-poster.jpg", "Salle de bain préparée avec produits d'accueil"),
-    ("real/suite-hotel.jpg", "Intérieur d'exception géré par Label Maison Conciergerie"),
-    ("real/proof-logement-poster.jpg", "Logement remis en état après un séjour"),
-    ("real/jacuzzi.jpg", "Bien d'exception avec espace bien-être"),
     ("real/hero-logement-exception.jpg", "Logement d'exception en gestion clé en main"),
-    ("real/proof-arrivee-poster.jpg", "Arrivée voyageur préparée par la conciergerie"),
+    ("real/logement-video.jpg", "Chambre préparée avec vue sur la piscine"),
+    ("real/jacuzzi.jpg", "Bien d'exception avec espace bien-être"),
 ]
 
 
