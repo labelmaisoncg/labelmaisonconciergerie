@@ -37,7 +37,7 @@ const residences = [
   {
     title: 'Studios & Appartements',
     description: 'Espaces raffinés pour vos séjours urbains, idéalement placés à Paris.',
-    image: '/images/real/suite-hotel.jpg',
+    image: '/images/real/logement-salon-poster.jpg',
     badge: 'Citadin',
   },
   {

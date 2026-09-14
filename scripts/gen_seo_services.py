@@ -116,7 +116,7 @@ PAGES_IMMO = [
         sub="Meublé longue durée, bail mobilité ou courte durée : nous gérons votre bien parisien de "
             "bout en bout — locataires, loyers, travaux, états des lieux — et vous n'avez plus qu'à "
             "suivre vos revenus.",
-        photo=("real/logement-suite.jpg", "Appartement parisien en gestion locative"),
+        photo=("real/proof-logement-poster.jpg", "Appartement parisien en gestion locative"),
         puces=["Locataires <b>sélectionnés</b>", "Loyers <b>suivis</b>",
                "Travaux <b>coordonnés</b>", "Un <b>interlocuteur</b> unique"],
         cta="Confier mon bien",
@@ -245,7 +245,7 @@ PAGES_IMMO = [
         h1="Gestion locative <span class=\"font-serif-italic\">partout en France</span>",
         sub="Vous possédez un bien loin de chez vous ? Nous le louons, le suivons et l'entretenons "
             "avec des équipes locales, et vous rendons des comptes chaque mois.",
-        photo=("real/residence-villa.jpg", "Bien géré par Label Maison Conciergerie en France"),
+        photo=("real/gestion-villa.jpg", "Bien géré par Label Maison Conciergerie en France"),
         puces=["Équipes <b>locales</b>", "Loyers <b>suivis</b>",
                "Travaux <b>coordonnés</b>", "Reporting <b>mensuel</b>"],
         cta="Confier mon bien",
@@ -366,7 +366,7 @@ PAGES_IMMO = [
         h1="Investissement locatif <span class=\"font-serif-italic\">clé en main</span> à Paris",
         sub="De la recherche du bien à la première quittance : nous sélectionnons, chiffrons, "
             "rénovons, meublons et louons. Vous validez, nous exécutons.",
-        photo=("real/residence-penthouse.jpg", "Bien parisien préparé pour la mise en location"),
+        photo=("real/logement-salon-poster.jpg", "Bien parisien préparé pour la mise en location"),
         puces=["Rentabilité <b>chiffrée</b>", "Travaux <b>coordonnés</b>",
                "Ameublement <b>inclus</b>", "Mise en <b>location</b>"],
         cta="Parler de mon projet",

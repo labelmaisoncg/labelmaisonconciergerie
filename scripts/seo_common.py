@@ -46,21 +46,20 @@ ICONS = (
 )
 
 # Photos réelles réutilisables (rotation par index pour éviter la répétition).
+# Uniquement des photos de biens réellement gérés (public/images/sens : nos
+# appartements et maisons en France), nettes, lumineuses, cadrées paysage —
+# le type de logement que l'on trouve dans les villes que nous couvrons.
 PHOTOS_LOGEMENT = [
-    ("real/logement-hero.jpg", "Séjour d'un logement géré par Label Maison Conciergerie"),
-    ("real/residence-chambre.jpg", "Chambre préparée pour une arrivée voyageur"),
-    ("real/logement-suite.jpg", "Suite meublée gérée en location courte durée"),
-    ("real/residence-penthouse.jpg", "Penthouse géré par notre conciergerie"),
-    ("real/logement-salon-poster.jpg", "Salon d'un appartement en gestion locative"),
-    ("real/residence-villa.jpg", "Villa gérée par Label Maison Conciergerie"),
-    ("real/logement-chambre2-poster.jpg", "Chambre dressée avec linge hôtelier"),
-    ("real/gestion-villa.jpg", "Préparation d'un bien avant l'arrivée des voyageurs"),
-    ("real/logement-sdb-poster.jpg", "Salle de bain préparée avec produits d'accueil"),
-    ("real/suite-hotel.jpg", "Intérieur d'exception géré par Label Maison Conciergerie"),
-    ("real/proof-logement-poster.jpg", "Logement remis en état après un séjour"),
-    ("real/jacuzzi.jpg", "Bien d'exception avec espace bien-être"),
-    ("real/hero-logement-exception.jpg", "Logement d'exception en gestion clé en main"),
-    ("real/proof-arrivee-poster.jpg", "Arrivée voyageur préparée par la conciergerie"),
+    ("sens/sens-04.jpg", "Salon aux poutres apparentes d'une maison de ville gérée par Label Maison"),
+    ("sens/sens-08.jpg", "Chambre préparée donnant sur les maisons à pans de bois du centre ancien"),
+    ("sens/sens-12.jpg", "Séjour avec terrasse d'un studio géré en cœur de ville"),
+    ("sens/sens-05.jpg", "Salon d'un appartement géré dans un immeuble de caractère"),
+    ("sens/sens-09.jpg", "Chambre d'un appartement de centre-ville géré par nos équipes"),
+    ("sens/sens-11.jpg", "Cuisine équipée sur cour pavée d'une maison de ville en gestion"),
+    ("sens/sens-14.jpg", "Chambre d'une maison de caractère gérée par Label Maison"),
+    ("sens/sens-01.jpg", "Salle de bain rénovée d'un bien en gestion, prête pour une arrivée"),
+    ("sens/sens-15.jpg", "Chambre dressée avec linge hôtelier avant une arrivée voyageur"),
+    ("sens/sens-16.jpg", "Séjour d'un appartement meublé géré en location courte durée"),
 ]
 
 
