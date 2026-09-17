@@ -26,7 +26,7 @@ import {
   stripe,
   verifierQuota,
   type OffreKey,
-} from './_studio';
+} from './_studio.js';
 
 type Corps = { session_id?: string; scelle?: string; jeton?: string };
 

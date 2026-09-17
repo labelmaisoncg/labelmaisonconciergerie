@@ -23,7 +23,7 @@ import {
   sceller,
   verifierQuota,
   type AmbianceKey,
-} from './_studio';
+} from './_studio.js';
 
 type Corps = { photo?: string; ambiance?: string; precisions?: string; jeton?: string };
 

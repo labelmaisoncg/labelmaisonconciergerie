@@ -22,7 +22,7 @@ import {
   stripe,
   verifierQuota,
   type OffreKey,
-} from './_studio';
+} from './_studio.js';
 
 function corpsBrut(req: any): string {
   if (typeof req.body === 'string') return req.body;

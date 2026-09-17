@@ -23,7 +23,7 @@ import {
   stripe,
   AMBIANCES,
   type OffreKey,
-} from './_studio';
+} from './_studio.js';
 
 type Corps = { scelle?: string; offre?: string; email?: string };
 

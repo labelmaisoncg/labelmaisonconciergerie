@@ -21,7 +21,7 @@ import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
 import { Resend } from 'resend';
-import { WATERMARK_TILE_PNG } from './_studio-watermark';
+import { WATERMARK_TILE_PNG } from './_studio-watermark.js';
 
 // -----------------------------------------------------------------------------
 // Ambiances proposées dans le studio
