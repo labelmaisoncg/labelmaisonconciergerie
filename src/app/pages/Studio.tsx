@@ -619,10 +619,10 @@ function Exemple() {
               .
             </h2>
             <p className="mt-4 text-[15px] md:text-[17px] leading-relaxed" style={{ color: INK_2 }}>
-              À gauche, la photo brute d’un logement que nous gérons. À droite, le rendu produit par
-              le studio en ambiance <strong style={{ color: INK }}>Contemporain chic</strong> : mêmes
-              murs, même porte, même point de vue, même lumière d’origine. Seuls le mobilier, les
-              matières et la mise en scène changent.
+              La photo brute d’un logement que nous gérons, puis le rendu produit par le studio en
+              ambiance <strong style={{ color: INK }}>Contemporain chic</strong> : mêmes murs, même
+              porte, même point de vue, même lumière d’origine. Seuls le mobilier, les matières et la
+              mise en scène changent.
             </p>
             <ul className="mt-6 grid gap-2 text-[14px]" style={{ color: INK_2 }}>
               {[
@@ -645,15 +645,23 @@ function Exemple() {
             </a>
           </motion.div>
 
-          <motion.div {...fadeUp} className="max-w-[440px] w-full mx-auto">
-            <Comparateur
-              avant="/images/studio/exemple-avant.jpg"
-              apres="/images/studio/exemple-apres.jpg"
-              legende="Après · Contemporain chic"
-              ratio="3 / 4"
+          <motion.div {...fadeUp} className="max-w-[360px] w-full mx-auto">
+            {/* La vidéo que le studio livre avec le rendu HD : format vertical 9:16,
+                prête à poster. Elle tourne en boucle, sans son. */}
+            <video
+              src="/videos/studio-demo.mp4"
+              poster="/videos/studio-demo-poster.jpg"
+              autoPlay
+              muted
+              loop
+              playsInline
+              controls
+              className="w-full rounded-2xl"
+              style={{ border: `1px solid ${LINE}`, aspectRatio: '9 / 16', objectFit: 'cover', background: IVORY_ALT }}
             />
             <p className="mt-3 text-center text-[12px]" style={{ color: INK_2 }}>
-              Glissez le curseur pour comparer.
+              La vidéo avant/après livrée avec le rendu — format vertical, prête pour Instagram et
+              TikTok.
             </p>
           </motion.div>
         </div>
