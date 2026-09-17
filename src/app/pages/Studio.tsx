@@ -620,9 +620,8 @@ function Exemple() {
             </h2>
             <p className="mt-4 text-[15px] md:text-[17px] leading-relaxed" style={{ color: INK_2 }}>
               La photo brute d’une cuisine à rénover, et le rendu produit par le studio. Glissez le
-              curseur pour comparer, ou regardez la vidéo : même fenêtre, même ouverture sur le
-              séjour, même faïence, même lumière rasante au sol. Seuls les finitions, le mobilier et
-              la mise en scène changent.
+              curseur pour comparer : même fenêtre, même ouverture sur le séjour, même faïence, même
+              lumière rasante au sol. Seuls les finitions, le mobilier et la mise en scène changent.
             </p>
             <ul className="mt-6 grid gap-2 text-[14px]" style={{ color: INK_2 }}>
               {[
@@ -645,42 +644,18 @@ function Exemple() {
             </a>
           </motion.div>
 
-          <motion.div {...fadeUp} className="w-full max-w-[460px] mx-auto flex flex-col gap-7">
-            <div>
-              <Comparateur
-                avant="/images/studio/exemple-cuisine-avant.jpg"
-                apres="/images/studio/exemple-cuisine-apres.jpg"
-                legende="Après · Contemporain chic"
-                ratio="4 / 3"
-              />
-              <p className="mt-2.5 text-center text-[12px]" style={{ color: INK_2 }}>
-                Glissez le curseur pour comparer.
-              </p>
-            </div>
-
-            <div className="mx-auto w-[62%] max-w-[240px]">
-              {/* La vidéo verticale livrée avec le rendu HD, prête à poster. */}
-              <video
-                src="/videos/studio-demo.mp4"
-                poster="/videos/studio-demo-poster.jpg"
-                autoPlay
-                muted
-                loop
-                playsInline
-                controls
-                className="w-full rounded-2xl"
-                style={{
-                  border: `1px solid ${LINE}`,
-                  aspectRatio: '9 / 16',
-                  objectFit: 'cover',
-                  background: IVORY_ALT,
-                }}
-              />
-              <p className="mt-2.5 text-center text-[12px]" style={{ color: INK_2 }}>
-                La vidéo avant/après livrée avec le rendu — 9:16, prête pour Instagram et TikTok.
-              </p>
-            </div>
+          <motion.div {...fadeUp} className="w-full max-w-[520px] mx-auto">
+            <Comparateur
+              avant="/images/studio/exemple-cuisine-avant.jpg"
+              apres="/images/studio/exemple-cuisine-apres.jpg"
+              legende="Après · Contemporain chic"
+              ratio="4 / 3"
+            />
+            <p className="mt-3 text-center text-[12px]" style={{ color: INK_2 }}>
+              Glissez le curseur pour comparer.
+            </p>
           </motion.div>
+
         </div>
       </div>
     </section>
