@@ -25,6 +25,7 @@ CACHE = pathlib.Path(__file__).with_name(".cache") / "communes_urls.json"
 
 # Pages servies par l'application React (pas de fichier .html dans public/)
 SPA = [("/", "1.0", "weekly"), ("/proprietaires", "0.8", "monthly"),
+       ("/studio", "0.9", "weekly"),
        ("/logement", "0.7", "monthly"), ("/transport", "0.7", "monthly"),
        ("/activites", "0.7", "monthly"), ("/shopping", "0.7", "monthly"),
        ("/billetterie", "0.7", "monthly"), ("/cerclelabelmaison", "0.7", "monthly")]
@@ -34,7 +35,8 @@ HUBS = {"/conciergerie-airbnb-france", "/conciergerie-airbnb-paris",
         "/conciergerie-airbnb-essonne", "/conciergerie-airbnb-ile-de-france",
         "/conciergerie-privee-paris", "/conciergerie-dubai", "/conciergerie-marrakech",
         "/estimation-rentabilite-airbnb", "/gestion-locative-paris",
-        "/achat-vente-montres-de-luxe", "/van-avec-chauffeur-paris", "/bacam-spa"}
+        "/achat-vente-montres-de-luxe", "/van-avec-chauffeur-paris", "/bacam-spa",
+        "/idee-deco-chambre-luxe"}
 
 
 def inventaire() -> tuple:
