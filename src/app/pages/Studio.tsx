@@ -687,21 +687,8 @@ type Bulle =
 let compteurBulles = 0;
 const idBulle = () => `b${(compteurBulles += 1)}`;
 
-const ACCUEIL: Bulle = {
-  id: idBulle(),
-  de: 'studio',
-  type: 'texte',
-  texte: (
-    <>
-      Bonjour, ici le studio Label Maison. <strong>Envoyez-moi une photo de la pièce</strong> que
-      vous aimeriez voir en version luxe — chambre, salon, salle de bain — et dites-moi ce dont vous
-      avez envie. Le premier aperçu est offert.
-    </>
-  ),
-};
-
 function LeStudio() {
-  const [fil, setFil] = useState<Bulle[]>([ACCUEIL]);
+  const [fil, setFil] = useState<Bulle[]>([]);
   const [photo, setPhoto] = useState<string | null>(null);
   const [ambiance, setAmbiance] = useState<AmbianceKey>('contemporain');
   const [saisie, setSaisie] = useState('');
@@ -942,7 +929,6 @@ function LeStudio() {
       setJeton(etat.jeton ?? null);
       const label = AMBIANCES.find((a) => a.key === etat.ambiance)?.label ?? '';
       setFil([
-        ACCUEIL,
         { id: idBulle(), de: 'moi', type: 'photo', url: etat.photo },
         { id: idBulle(), de: 'moi', type: 'texte', texte: label },
       ]);
@@ -1111,7 +1097,7 @@ function LeStudio() {
                 Label Maison Studio
               </span>
               <span className="text-[12px]" style={{ color: INK_2 }}>
-                {occupe ? 'écrit…' : 'en ligne · répond en moins d’une minute'}
+                {occupe ? 'écrit…' : 'en ligne'}
               </span>
             </span>
           </div>
@@ -1139,10 +1125,10 @@ function LeStudio() {
                 <span className="flex flex-col items-center gap-2">
                   <ImagePlus size={28} style={{ color: GOLD }} />
                   <span className="text-[16px] font-bold" style={{ color: INK }}>
-                    Déposez votre photo ici
+                    Déposez la photo de votre pièce
                   </span>
                   <span className="text-[13px]" style={{ color: INK_2 }}>
-                    JPG ou PNG · glissez-déposez ou cliquez · le premier aperçu est offert
+                    JPG ou PNG · premier aperçu offert
                   </span>
                 </span>
                 <input
@@ -1232,9 +1218,7 @@ function LeStudio() {
                     envoyer();
                   }
                 }}
-                placeholder={
-                  photo ? 'Ex. : canapé beige, tapis, plus de lumière…' : 'Envoyez une photo, puis écrivez votre envie…'
-                }
+                placeholder="Dites ce que vous voulez changer…"
                 className="flex-1 text-[15px] px-4 py-3 rounded-full outline-none"
                 style={{ border: `1px solid ${LINE}`, background: '#FFFFFF', color: INK }}
               />
@@ -1251,9 +1235,8 @@ function LeStudio() {
               </button>
             </div>
 
-            <p className="mt-2 px-1 text-[11.5px] leading-relaxed" style={{ color: INK_2 }}>
-              Un aperçu gratuit par visiteur. Votre photo sert uniquement à produire le rendu. Rendu à
-              titre indicatif, non contractuel.
+            <p className="mt-2 px-1 text-[11.5px]" style={{ color: INK_2 }}>
+              Rendu à titre indicatif, non contractuel.
             </p>
           </div>
         </div>
