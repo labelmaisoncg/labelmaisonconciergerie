@@ -75,13 +75,21 @@ async function genererApres(cheminAvant) {
   return dest;
 }
 
-/** Cadre une image en 1080x1920 sans déformation. */
+/**
+ * Cadre une image en 1080x1920 sans déformation. Les captures d'écran de
+ * téléphone arrivent souvent avec des bandes noires : on les retire d'abord.
+ */
 async function cadrer(chemin, dest) {
-  await sharp(chemin)
-    .rotate()
-    .resize(L, H, { fit: 'cover', position: 'attention' })
-    .jpeg({ quality: 94 })
-    .toFile(dest);
+  let image = sharp(chemin).rotate();
+  try {
+    const rogne = await image.clone().trim({ background: '#000000', threshold: 14 }).toBuffer();
+    const { width, height } = await sharp(rogne).metadata();
+    // On ne garde le rognage que s'il reste une image exploitable.
+    if (width > 400 && height > 400) image = sharp(rogne);
+  } catch {
+    /* rien à rogner */
+  }
+  await image.resize(L, H, { fit: 'cover', position: 'attention' }).jpeg({ quality: 94 }).toFile(dest);
   return dest;
 }
 
