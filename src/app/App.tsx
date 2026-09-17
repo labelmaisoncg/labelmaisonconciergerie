@@ -12,6 +12,8 @@ import { Transport } from './pages/Transport';
 import { Activites } from './pages/Activites';
 import { Shopping } from './pages/Shopping';
 import { CercleLabelMaison } from './pages/CercleLabelMaison';
+import { Studio } from './pages/Studio';
+import { StudioConditions } from './pages/StudioConditions';
 import { CercleAnnounce } from './components/CercleAnnounce';
 
 export default function App() {
@@ -31,6 +33,8 @@ export default function App() {
             <Route path="/activites" element={<Activites />} />
             <Route path="/shopping" element={<Shopping />} />
             <Route path="/cerclelabelmaison" element={<CercleLabelMaison />} />
+            <Route path="/studio" element={<Studio />} />
+            <Route path="/studio/conditions" element={<StudioConditions />} />
           </Routes>
           <Footer />
           <CercleAnnounce />

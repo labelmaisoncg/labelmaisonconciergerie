@@ -2,6 +2,20 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
+  "functions": {
+    "api/studio-generate.ts": {
+      "maxDuration": 60,
+      "memory": 1536
+    },
+    "api/studio-unlock.ts": {
+      "maxDuration": 60,
+      "memory": 1536
+    },
+    "api/studio-webhook.ts": {
+      "maxDuration": 60,
+      "memory": 1536
+    }
+  },
   "redirects": [
     {
       "source": "/love-room-sens.html",

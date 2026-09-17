@@ -6,17 +6,48 @@ import react from '@vitejs/plugin-react'
 
 // Sert les fonctions serverless /api/*.ts pendant `npm run dev` (Vite seul ne
 // les exécute pas — c'est Vercel qui le fait en prod). Sans ce plugin, tout
-// POST /api/contact renvoie 404 en local. On charge aussi le .env pour que
-// RESEND_API_KEY (et consorts) soient disponibles côté serveur de dev.
+// POST /api/contact (ou /api/studio-*) renvoie 404 en local. On charge aussi le
+// .env pour que les clés (Resend, Stripe, moteur d'images…) soient disponibles
+// côté serveur de dev.
+const CLES_ENV = [
+  'RESEND_API_KEY',
+  'CONTACT_TO_EMAIL',
+  'CONTACT_FROM_EMAIL',
+  'STUDIO_SECRET',
+  'STUDIO_GRATUIT_PAR_JOUR',
+  'STUDIO_PRIX_UNIQUE_CENTIMES',
+  'STUDIO_PRIX_TRIO_CENTIMES',
+  'STUDIO_FAL_MODEL',
+  'STUDIO_REPLICATE_MODEL',
+  'STUDIO_GEMINI_MODEL',
+  'FAL_KEY',
+  'REPLICATE_API_TOKEN',
+  'GEMINI_API_KEY',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'SUPABASE_STUDIO_BUCKET',
+  'STRIPE_SECRET_KEY',
+  'STRIPE_WEBHOOK_SECRET',
+]
+
 function devApiRoutes(): Plugin {
   return {
     name: 'dev-api-routes',
     configureServer(server) {
       const env = loadEnv('development', process.cwd(), '')
-      for (const k of ['RESEND_API_KEY', 'CONTACT_TO_EMAIL', 'CONTACT_FROM_EMAIL']) {
+      for (const k of CLES_ENV) {
         if (env[k] && !process.env[k]) process.env[k] = env[k]
       }
-      server.middlewares.use('/api/contact', async (req, res) => {
+      server.middlewares.use(async (req, res, next) => {
+        const chemin = (req.url || '').split('?')[0]
+        if (!chemin.startsWith('/api/')) return next()
+
+        // Les modules techniques (préfixe « _ ») ne sont pas des routes, comme chez Vercel.
+        const nom = chemin.slice('/api/'.length)
+        if (!/^[a-z0-9-]+$/i.test(nom)) return next()
+        const fichier = path.resolve(__dirname, 'api', nom + '.ts')
+        if (!fs.existsSync(fichier)) return next()
+
         try {
           let raw = ''
           for await (const chunk of req) raw += chunk
@@ -35,10 +66,10 @@ function devApiRoutes(): Plugin {
               return this
             },
           }
-          const mod = await server.ssrLoadModule('/api/contact.ts')
+          const mod = await server.ssrLoadModule('/api/' + nom + '.ts')
           await mod.default(req, shim)
         } catch (err) {
-          server.config.logger.error(`[dev-api] /api/contact a échoué: ${String(err)}`)
+          server.config.logger.error(`[dev-api] /api/${nom} a échoué: ${String(err)}`)
           res.statusCode = 500
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify({ ok: false, error: 'Erreur serveur de dev.' }))

@@ -1,4 +1,5 @@
 import { Instagram, Mail, MapPin, Music, Phone } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import { BrandLogo } from './BrandLogo';
 
 const EMAIL = 'contact@labelmaisoncgexperience.fr';
@@ -6,6 +7,10 @@ const PHONE_DISPLAY = '+33 7 49 54 83 55';
 const PHONE_HREF = 'tel:+33749548355';
 
 export function Footer() {
+  // La landing /studio a son propre pied de page, réduit à l'essentiel.
+  const location = useLocation();
+  if (location.pathname.startsWith('/studio')) return null;
+
   return (
     <footer className="relative bg-[#F4F1EA] mt-[60px] md:mt-[100px] overflow-hidden">
       <div className="relative max-w-[1152px] mx-auto px-6 pt-[60px] md:pt-[100px] pb-10 md:pb-[60px] flex flex-col gap-10 md:gap-[60px]">

@@ -20,6 +20,9 @@ export function Navigation() {
   const [scrolled, setScrolled] = useState(false);
   const location = useLocation();
   const isHome = location.pathname === '/';
+  // « Label Maison Studio » est une landing dédiée : elle a sa propre barre
+  // (StudioChrome) et n'affiche pas la navigation générale du site.
+  const surStudio = location.pathname.startsWith('/studio');
 
   // Smart anchor href — uses /#xxx from sub-pages so the nav always works
   const anchorHref = (hash: string) => (isHome ? `#${hash}` : `/#${hash}`);
@@ -30,6 +33,8 @@ export function Navigation() {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  if (surStudio) return null;
 
   return (
     <header
