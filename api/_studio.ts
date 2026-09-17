@@ -338,8 +338,31 @@ export async function genererRendu(
   }
 
   // Normalisation : orientation, taille raisonnable, JPEG de qualité.
-  const hd = await sharp(sortie.hd)
-    .rotate()
+  let rendu = sharp(sortie.hd).rotate();
+
+  // Certains modèles renvoient un format qui n'est pas celui de la photo
+  // d'origine (une pièce photographiée à l'horizontale revient à la verticale).
+  // On recale le rendu sur le cadrage du visiteur : sans ça, l'avant et l'après
+  // ne se superposent plus dans le comparateur ni dans la vidéo.
+  try {
+    const source = await sharp(Buffer.from(photoB64, 'base64')).metadata();
+    const obtenu = await rendu.clone().metadata();
+    if (source.width && source.height && obtenu.width && obtenu.height) {
+      const vise = source.width / source.height;
+      const actuel = obtenu.width / obtenu.height;
+      if (Math.abs(vise - actuel) / vise > 0.03) {
+        const largeur = vise >= actuel ? obtenu.width : Math.round(obtenu.height * vise);
+        const hauteur = vise >= actuel ? Math.round(obtenu.width / vise) : obtenu.height;
+        rendu = sharp(
+          await rendu.resize(largeur, hauteur, { fit: 'cover', position: 'attention' }).toBuffer(),
+        );
+      }
+    }
+  } catch {
+    /* métadonnées illisibles : on garde le rendu tel quel */
+  }
+
+  const hd = await rendu
     .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: 90, mozjpeg: true })
     .toBuffer();

@@ -612,17 +612,17 @@ function Exemple() {
               className="mt-5 font-serif-title text-[30px] md:text-[46px] font-normal leading-[1.08]"
               style={{ color: INK }}
             >
-              La même cuisine,{' '}
+              Avant / après,{' '}
               <span className="font-serif-italic" style={{ color: GOLD }}>
-                révélée
+                en vrai
               </span>
               .
             </h2>
             <p className="mt-4 text-[15px] md:text-[17px] leading-relaxed" style={{ color: INK_2 }}>
-              La photo brute d’une cuisine à rénover, puis le rendu produit par le studio en ambiance{' '}
-              <strong style={{ color: INK }}>Contemporain chic</strong> : même fenêtre, même
-              ouverture sur le séjour, même lumière d’origine, même point de vue. Seuls les
-              finitions, le mobilier et la mise en scène changent.
+              Deux pièces réelles passées par le studio. Glissez le curseur sur le séjour, et
+              regardez la cuisine à rénover se transformer dans la vidéo : à chaque fois, mêmes murs,
+              mêmes fenêtres, même point de vue, même lumière d’origine. Seuls les finitions, le
+              mobilier et la mise en scène changent.
             </p>
             <ul className="mt-6 grid gap-2 text-[14px]" style={{ color: INK_2 }}>
               {[
@@ -645,24 +645,41 @@ function Exemple() {
             </a>
           </motion.div>
 
-          <motion.div {...fadeUp} className="max-w-[360px] w-full mx-auto">
-            {/* La vidéo que le studio livre avec le rendu HD : format vertical 9:16,
-                prête à poster. Elle tourne en boucle, sans son. */}
-            <video
-              src="/videos/studio-demo.mp4"
-              poster="/videos/studio-demo-poster.jpg"
-              autoPlay
-              muted
-              loop
-              playsInline
-              controls
-              className="w-full rounded-2xl"
-              style={{ border: `1px solid ${LINE}`, aspectRatio: '9 / 16', objectFit: 'cover', background: IVORY_ALT }}
-            />
-            <p className="mt-3 text-center text-[12px]" style={{ color: INK_2 }}>
-              La vidéo avant/après livrée avec le rendu — format vertical, prête pour Instagram et
-              TikTok.
-            </p>
+          <motion.div {...fadeUp} className="w-full max-w-[460px] mx-auto flex flex-col gap-7">
+            <div>
+              <Comparateur
+                avant="/images/studio/exemple-avant.jpg"
+                apres="/images/studio/exemple-apres.jpg"
+                legende="Après · Contemporain chic"
+                ratio="3 / 4"
+              />
+              <p className="mt-2.5 text-center text-[12px]" style={{ color: INK_2 }}>
+                Glissez le curseur pour comparer.
+              </p>
+            </div>
+
+            <div className="mx-auto w-[62%] max-w-[240px]">
+              {/* La vidéo verticale livrée avec le rendu HD, prête à poster. */}
+              <video
+                src="/videos/studio-demo.mp4"
+                poster="/videos/studio-demo-poster.jpg"
+                autoPlay
+                muted
+                loop
+                playsInline
+                controls
+                className="w-full rounded-2xl"
+                style={{
+                  border: `1px solid ${LINE}`,
+                  aspectRatio: '9 / 16',
+                  objectFit: 'cover',
+                  background: IVORY_ALT,
+                }}
+              />
+              <p className="mt-2.5 text-center text-[12px]" style={{ color: INK_2 }}>
+                La vidéo avant/après livrée avec le rendu — 9:16, prête pour Instagram et TikTok.
+              </p>
+            </div>
           </motion.div>
         </div>
       </div>
