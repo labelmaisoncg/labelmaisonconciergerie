@@ -76,20 +76,42 @@ async function genererApres(cheminAvant) {
 }
 
 /**
- * Cadre une image en 1080x1920 sans déformation. Les captures d'écran de
- * téléphone arrivent souvent avec des bandes noires : on les retire d'abord.
+ * Met une image au format 1080x1920 sans rien déformer :
+ *  - photo verticale : on recadre (cover) ;
+ *  - photo horizontale : on l'affiche en entier, posée sur un fond flouté tiré
+ *    de la photo elle-même — sinon on perdrait la moitié de la pièce.
+ * Les captures d'écran de téléphone arrivent souvent avec des bandes noires :
+ * on les retire d'abord.
  */
 async function cadrer(chemin, dest) {
   let image = sharp(chemin).rotate();
   try {
     const rogne = await image.clone().trim({ background: '#000000', threshold: 14 }).toBuffer();
     const { width, height } = await sharp(rogne).metadata();
-    // On ne garde le rognage que s'il reste une image exploitable.
     if (width > 400 && height > 400) image = sharp(rogne);
   } catch {
     /* rien à rogner */
   }
-  await image.resize(L, H, { fit: 'cover', position: 'attention' }).jpeg({ quality: 94 }).toFile(dest);
+
+  const source = await image.jpeg({ quality: 96 }).toBuffer();
+  const { width, height } = await sharp(source).metadata();
+
+  if (height / width >= H / L) {
+    await sharp(source).resize(L, H, { fit: 'cover', position: 'attention' }).jpeg({ quality: 94 }).toFile(dest);
+    return dest;
+  }
+
+  const fond = await sharp(source)
+    .resize(L, H, { fit: 'cover', position: 'centre' })
+    .blur(45)
+    .modulate({ brightness: 0.62 })
+    .toBuffer();
+  const premierPlan = await sharp(source).resize({ width: L }).toBuffer();
+  const hauteurPP = (await sharp(premierPlan).metadata()).height;
+  await sharp(fond)
+    .composite([{ input: premierPlan, top: Math.round((H - hauteurPP) / 2), left: 0 }])
+    .jpeg({ quality: 94 })
+    .toFile(dest);
   return dest;
 }
 

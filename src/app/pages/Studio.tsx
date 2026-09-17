@@ -612,17 +612,17 @@ function Exemple() {
               className="mt-5 font-serif-title text-[30px] md:text-[46px] font-normal leading-[1.08]"
               style={{ color: INK }}
             >
-              Le même salon,{' '}
+              La même cuisine,{' '}
               <span className="font-serif-italic" style={{ color: GOLD }}>
-                révélé
+                révélée
               </span>
               .
             </h2>
             <p className="mt-4 text-[15px] md:text-[17px] leading-relaxed" style={{ color: INK_2 }}>
-              La photo brute d’un logement que nous gérons, puis le rendu produit par le studio en
-              ambiance <strong style={{ color: INK }}>Contemporain chic</strong> : mêmes murs, même
-              porte, même point de vue, même lumière d’origine. Seuls le mobilier, les matières et la
-              mise en scène changent.
+              La photo brute d’une cuisine à rénover, puis le rendu produit par le studio en ambiance{' '}
+              <strong style={{ color: INK }}>Contemporain chic</strong> : même fenêtre, même
+              ouverture sur le séjour, même lumière d’origine, même point de vue. Seuls les
+              finitions, le mobilier et la mise en scène changent.
             </p>
             <ul className="mt-6 grid gap-2 text-[14px]" style={{ color: INK_2 }}>
               {[
@@ -1129,11 +1129,43 @@ function LeStudio() {
             ref={filRef}
             className="px-4 md:px-6 py-6 overflow-y-auto flex flex-col gap-4"
             style={{
-              height: 'min(70vh, 560px)',
+              minHeight: 260,
+              maxHeight: 'min(70vh, 560px)',
               background: survol ? '#FBF5E9' : '#FFFFFF',
               transition: 'background .15s',
             }}
           >
+            {!photo && (
+              <label
+                htmlFor="studio-depot"
+                className="block cursor-pointer rounded-2xl text-center px-6 py-10 transition-colors"
+                style={{
+                  border: `1.5px dashed ${survol ? GOLD : '#D9CBA6'}`,
+                  background: survol ? '#F7F1E4' : IVORY_ALT,
+                }}
+              >
+                <span className="flex flex-col items-center gap-2">
+                  <ImagePlus size={28} style={{ color: GOLD }} />
+                  <span className="text-[16px] font-bold" style={{ color: INK }}>
+                    Déposez votre photo ici
+                  </span>
+                  <span className="text-[13px]" style={{ color: INK_2 }}>
+                    JPG ou PNG · glissez-déposez ou cliquez · le premier aperçu est offert
+                  </span>
+                </span>
+                <input
+                  id="studio-depot"
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    void recevoirPhoto(e.target.files?.[0]);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+            )}
+
             {fil.map((b) => (
               <BulleDuFil
                 key={b.id}
