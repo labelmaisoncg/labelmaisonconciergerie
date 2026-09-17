@@ -45,11 +45,23 @@ const PROMPT =
   'sharp, realistic, magazine quality. No people, no text, no logo, no watermark, ' +
   'no added or removed walls.';
 
+/** Retire les bandes noires des captures d'écran de téléphone. */
+async function sansBandesNoires(chemin) {
+  const image = sharp(chemin).rotate();
+  try {
+    const rogne = await image.clone().trim({ background: '#000000', threshold: 14 }).toBuffer();
+    const { width, height } = await sharp(rogne).metadata();
+    if (width > 400 && height > 400) return rogne;
+  } catch {
+    /* rien à rogner */
+  }
+  return image.toBuffer();
+}
+
 async function genererApres(cheminAvant) {
   const cle = process.env.FAL_KEY;
   if (!cle) throw new Error('FAL_KEY absente de .env');
-  const source = await sharp(cheminAvant)
-    .rotate()
+  const source = await sharp(await sansBandesNoires(cheminAvant))
     .resize({ width: 1280, height: 1280, fit: 'inside', withoutEnlargement: true })
     .jpeg({ quality: 88 })
     .toBuffer();
@@ -69,7 +81,22 @@ async function genererApres(cheminAvant) {
   if (!rep.ok) throw new Error(`fal.ai ${rep.status} : ${JSON.stringify(json).slice(0, 300)}`);
   const url = json?.images?.[0]?.url;
   if (!url) throw new Error('aucune image renvoyée');
-  const bin = Buffer.from(await (await fetch(url)).arrayBuffer());
+  let bin = Buffer.from(await (await fetch(url)).arrayBuffer());
+
+  // Le modèle ne respecte pas toujours le format de la photo d'origine : on
+  // recale le rendu sur le cadrage de départ, sinon l'avant et l'après ne se
+  // superposent pas au balayage.
+  const dep = await sharp(source).metadata();
+  const arr = await sharp(bin).metadata();
+  const vise = dep.width / dep.height;
+  const actuel = arr.width / arr.height;
+  if (Math.abs(vise - actuel) / vise > 0.03) {
+    const largeur = vise >= actuel ? arr.width : Math.round(arr.height * vise);
+    const hauteur = vise >= actuel ? Math.round(arr.width / vise) : arr.height;
+    bin = await sharp(bin).resize(largeur, hauteur, { fit: 'cover', position: 'attention' }).jpeg({ quality: 94 }).toBuffer();
+    console.log(`[demo] rendu recadré en ${largeur}x${hauteur} pour coller à la photo d'origine`);
+  }
+
   const dest = join(TMP, 'apres.jpg');
   writeFileSync(dest, bin);
   return dest;
@@ -84,16 +111,7 @@ async function genererApres(cheminAvant) {
  * on les retire d'abord.
  */
 async function cadrer(chemin, dest) {
-  let image = sharp(chemin).rotate();
-  try {
-    const rogne = await image.clone().trim({ background: '#000000', threshold: 14 }).toBuffer();
-    const { width, height } = await sharp(rogne).metadata();
-    if (width > 400 && height > 400) image = sharp(rogne);
-  } catch {
-    /* rien à rogner */
-  }
-
-  const source = await image.jpeg({ quality: 96 }).toBuffer();
+  const source = await sharp(await sansBandesNoires(chemin)).jpeg({ quality: 96 }).toBuffer();
   const { width, height } = await sharp(source).metadata();
 
   if (height / width >= H / L) {

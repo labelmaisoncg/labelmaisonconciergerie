@@ -612,17 +612,17 @@ function Exemple() {
               className="mt-5 font-serif-title text-[30px] md:text-[46px] font-normal leading-[1.08]"
               style={{ color: INK }}
             >
-              Avant / après,{' '}
+              La même cuisine,{' '}
               <span className="font-serif-italic" style={{ color: GOLD }}>
-                en vrai
+                révélée
               </span>
               .
             </h2>
             <p className="mt-4 text-[15px] md:text-[17px] leading-relaxed" style={{ color: INK_2 }}>
-              Deux pièces réelles passées par le studio. Glissez le curseur sur le séjour, et
-              regardez la cuisine à rénover se transformer dans la vidéo : à chaque fois, mêmes murs,
-              mêmes fenêtres, même point de vue, même lumière d’origine. Seuls les finitions, le
-              mobilier et la mise en scène changent.
+              La photo brute d’une cuisine à rénover, et le rendu produit par le studio. Glissez le
+              curseur pour comparer, ou regardez la vidéo : même fenêtre, même ouverture sur le
+              séjour, même faïence, même lumière rasante au sol. Seuls les finitions, le mobilier et
+              la mise en scène changent.
             </p>
             <ul className="mt-6 grid gap-2 text-[14px]" style={{ color: INK_2 }}>
               {[
@@ -648,10 +648,10 @@ function Exemple() {
           <motion.div {...fadeUp} className="w-full max-w-[460px] mx-auto flex flex-col gap-7">
             <div>
               <Comparateur
-                avant="/images/studio/exemple-avant.jpg"
-                apres="/images/studio/exemple-apres.jpg"
+                avant="/images/studio/exemple-cuisine-avant.jpg"
+                apres="/images/studio/exemple-cuisine-apres.jpg"
                 legende="Après · Contemporain chic"
-                ratio="3 / 4"
+                ratio="4 / 3"
               />
               <p className="mt-2.5 text-center text-[12px]" style={{ color: INK_2 }}>
                 Glissez le curseur pour comparer.
