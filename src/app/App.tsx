@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { ErpFiletSecurite } from './securite/ErpFiletSecurite';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Navigation } from './components/Navigation';
@@ -59,9 +60,11 @@ export default function App() {
           <Route
             path="/erp/*"
             element={
-              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
-                <ErpApp />
-              </Suspense>
+              <ErpFiletSecurite>
+                <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
+                  <ErpApp />
+                </Suspense>
+              </ErpFiletSecurite>
             }
           />
           <Route path="*" element={<SiteShell />} />

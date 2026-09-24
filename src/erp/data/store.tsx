@@ -116,8 +116,16 @@ function fusionner(existants: EvenementAuto[], nouveaux: EvenementAuto[]): Evene
 
 // La maquette vit à une heure figée : les constats gardent des ids stables
 // d'un passage à l'autre, donc le journal ne se remplit pas de doublons.
-const automatiser = (d: ErpDonnees, actives: Record<string, boolean>) =>
-  executerAutomatisations(d, { date: AUJOURDHUI, maintenant: MAINTENANT, reglesActives: clesActives(actives) });
+// Une règle qui échoue sur des données inattendues ne doit jamais bloquer
+// l'ERP : on garde les données telles quelles et on le signale en console.
+const automatiser = (d: ErpDonnees, actives: Record<string, boolean>): ResultatMoteur => {
+  try {
+    return executerAutomatisations(d, { date: AUJOURDHUI, maintenant: MAINTENANT, reglesActives: clesActives(actives) });
+  } catch (erreur) {
+    console.error('[erp] automatisations interrompues', erreur);
+    return { donnees: d, evenements: [], changements: [], passes: 0 };
+  }
+};
 
 const Contexte = createContext<ErpContexte | null>(null);
 
