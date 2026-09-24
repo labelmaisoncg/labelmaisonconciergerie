@@ -73,7 +73,7 @@ export default function TableauDeBord() {
         <RelevesAEnvoyer />
       </div>
 
-      <Section titre="7 prochains jours">
+      <Section>
         <Agenda />
       </Section>
     </>
