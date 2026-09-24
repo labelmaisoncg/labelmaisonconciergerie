@@ -3,6 +3,7 @@ import { estErreurDeChargement, rechargerUneFois } from './rechargement';
 
 interface Etat {
   erreur: Error | null;
+  pile?: string;
 }
 
 /**
@@ -19,6 +20,10 @@ export class ErpFiletSecurite extends Component<{ children: ReactNode }, Etat> {
 
   componentDidCatch(erreur: Error, info: ErrorInfo) {
     console.error('[erp] panne générale', erreur, info.componentStack);
+    // Détail affiché à l'écran : une capture suffit pour retrouver la ligne
+    // exacte dans le build (identique à celui en ligne).
+    const pile = [erreur.stack, info.componentStack].filter(Boolean).join('\n').split('\n').slice(0, 14).join('\n');
+    this.setState({ pile });
     if (estErreurDeChargement(erreur)) rechargerUneFois();
   }
 
@@ -78,6 +83,12 @@ export class ErpFiletSecurite extends Component<{ children: ReactNode }, Etat> {
             </button>
           </div>
           <p style={{ marginTop: 18, fontSize: 12, color: 'rgba(20,17,14,.45)', wordBreak: 'break-word' }}>{erreur.message}</p>
+          {this.state.pile && (
+            <details style={{ marginTop: 10, textAlign: 'left', fontSize: 11, color: 'rgba(20,17,14,.55)' }}>
+              <summary style={{ cursor: 'pointer' }}>Détails techniques</summary>
+              <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', marginTop: 8 }}>{this.state.pile}</pre>
+            </details>
+          )}
         </div>
       </main>
     );
