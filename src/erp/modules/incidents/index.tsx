@@ -44,7 +44,7 @@ export default function Incidents() {
   const hautes = ouverts.filter((i) => i.gravite === 'haute').length;
   const mois = fenetreMois();
   const coutMois = incidents.filter((i) => i.date >= mois.debut && i.date < mois.fin).reduce((s, i) => s + (i.coutCentimes ?? 0), 0);
-  const aRefacturer = incidents.filter((i) => i.refacturable !== 'aucun').reduce((s, i) => s + (i.coutCentimes ?? 0), 0);
+  const aRefacturer = incidents.filter((i) => i.refacturable !== 'aucun' && !i.recupereLe).reduce((s, i) => s + (i.coutCentimes ?? 0), 0);
 
   const colonnes: Colonne<Incident>[] = [
     { cle: 'date', titre: 'Date', rendu: (i) => <span className="lm-chiffres whitespace-nowrap">{dateCourte(i.date)}</span>, tri: (a, b) => a.date.localeCompare(b.date) },
@@ -70,7 +70,7 @@ export default function Incidents() {
         <Stat label="Incidents ouverts" valeur={nombre(ouverts.length)} icone={<AlertTriangle />} tone={ouverts.length ? 'alerte' : 'succes'} />
         <Stat label="Haute gravité" valeur={nombre(hautes)} icone={<AlertOctagon />} tone={hautes ? 'danger' : 'neutre'} aide="non résolus" />
         <Stat label="Coût du mois" valeur={euros(coutMois, true)} icone={<Wallet />} />
-        <Stat label="Refacturable à récupérer" valeur={euros(aRefacturer, true)} icone={<Receipt />} aide="propriétaire, voyageur, prestataire" />
+        <Stat label="Refacturable à récupérer" valeur={euros(aRefacturer, true)} icone={<Receipt />} aide="non encore récupéré" />
       </div>
 
       <Retour message={message} onFermer={fermer} />

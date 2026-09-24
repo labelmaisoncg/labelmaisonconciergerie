@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, Hand, RotateCcw } from 'lucide-react';
+import { CheckCircle2, Hand, HandCoins, RotateCcw } from 'lucide-react';
 import { AUJOURDHUI, dateCourte, euros, versCentimes } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
@@ -62,9 +62,16 @@ export function IncidentDrawer({ incident: i, onFermer }: Props) {
     setRetour('Incident résolu.');
   };
   const rouvrir = () => {
-    d.upsert('incidents', { ...i, statut: 'en_cours', resoluLe: undefined });
+    d.upsert('incidents', { ...i, statut: 'en_cours', resoluLe: undefined, recupereLe: undefined });
     setRetour('Incident rouvert.');
   };
+  const recuperer = () => {
+    const r = d.marquerIncidentRecupere(i.id);
+    if (!r.ok) return setErreur(r.erreur);
+    setErreur(null);
+    setRetour('Somme refacturée marquée récupérée.');
+  };
+  const aRecuperer = i.statut === 'resolu' && i.refacturable !== 'aucun' && !i.recupereLe;
 
   return (
     <Drawer
@@ -80,7 +87,10 @@ export function IncidentDrawer({ incident: i, onFermer }: Props) {
       }
       pied={
         i.statut === 'resolu' ? (
-          <Button icone={<RotateCcw />} onClick={rouvrir}>Rouvrir</Button>
+          <>
+            <Button icone={<RotateCcw />} onClick={rouvrir}>Rouvrir</Button>
+            {aRecuperer && <Button variant="primary" icone={<HandCoins />} onClick={recuperer}>Marquer récupéré</Button>}
+          </>
         ) : i.statut === 'ouvert' ? (
           <Button variant="primary" icone={<Hand />} onClick={prendre}>Prendre en charge</Button>
         ) : undefined
@@ -88,6 +98,7 @@ export function IncidentDrawer({ incident: i, onFermer }: Props) {
     >
       <div className="space-y-4 text-[13px]">
         {retour && <Alert tone="succes">{retour}</Alert>}
+        {erreur && i.statut === 'resolu' && <Alert tone="danger">{erreur}</Alert>}
         <p className="text-[14px] leading-relaxed text-(--lm-encre)">{i.description}</p>
 
         <dl className="divide-y divide-(--lm-bord)">
@@ -98,6 +109,11 @@ export function IncidentDrawer({ incident: i, onFermer }: Props) {
           <Ligne label="Coût">{i.coutCentimes !== undefined ? <span className="lm-chiffres">{euros(i.coutCentimes)}</span> : '-'}</Ligne>
           <Ligne label="Refacturable à"><Badge tone={i.refacturable === 'aucun' ? 'neutre' : 'or'}>{LIBELLES.refacturable[i.refacturable]}</Badge></Ligne>
           {i.resoluLe && <Ligne label="Résolu le">{dateCourte(i.resoluLe)}</Ligne>}
+          {i.refacturable !== 'aucun' && i.statut === 'resolu' && (
+            <Ligne label="Refacturation">
+              {i.recupereLe ? <Badge tone="succes">Récupérée le {dateCourte(i.recupereLe)}</Badge> : <Badge tone="alerte">À récupérer</Badge>}
+            </Ligne>
+          )}
         </dl>
 
         <section aria-label="Preuves">

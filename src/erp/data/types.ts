@@ -264,6 +264,8 @@ export interface Incident {
   refacturable: Refacturable;
   preuves: string[];
   resoluLe?: DateISO;
+  /** Date à laquelle la somme refacturable a été récupérée. */
+  recupereLe?: DateISO;
 }
 
 /* ------------------------------------------------------------ prestataires */

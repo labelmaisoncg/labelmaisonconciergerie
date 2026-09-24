@@ -11,7 +11,7 @@ interface Props {
 
 /** Refus d'une mission : commentaire obligatoire, la mission n'est pas payée. */
 export function RefuserModal({ mission, onFermer, onSucces }: Props) {
-  const { upsert } = useErp();
+  const { refuserMission } = useErp();
   const [commentaire, setCommentaire] = useState('');
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -25,7 +25,8 @@ export function RefuserModal({ mission, onFermer, onSucces }: Props) {
   const valider = () => {
     const texte = commentaire.trim();
     if (texte.length < 10) return setErreur('Décrivez le motif du refus (10 caractères minimum).');
-    upsert('missions', { ...mission, statut: 'refusee', commentaire: texte });
+    const r = refuserMission(mission.id, texte);
+    if (!r.ok) return setErreur(r.erreur);
     onSucces('Mission refusée. Elle ne sera pas payée ; un repassage peut être demandé.');
     fermer();
   };

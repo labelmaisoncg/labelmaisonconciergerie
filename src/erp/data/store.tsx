@@ -55,6 +55,8 @@ export interface ErpContexte extends ErpDonnees {
 
   changerStatutMission: (id: Id, statut: StatutMission) => Resultat;
   validerMission: (id: Id) => Resultat;
+  /** Refus d'une mission : commentaire obligatoire, la mission ne sera pas payée. */
+  refuserMission: (id: Id, commentaire: string) => Resultat;
   attribuerMission: (id: Id, prestataireId: Id) => Resultat;
   avancerProspect: (id: Id, etape?: EtapeProspect) => Resultat;
   cocherChecklistLancement: (logementId: Id, cle: CleChecklistLancement, fait?: boolean, preuve?: string) => Resultat;
@@ -62,6 +64,8 @@ export interface ErpContexte extends ErpDonnees {
   ajouterMouvementLinge: (mouvement: Omit<MouvementLinge, 'id'>) => MouvementLinge;
   creerIncident: (incident: NouvelIncident) => Incident;
   resoudreIncident: (id: Id, options?: { coutCentimes?: number; date?: DateISO }) => Resultat;
+  /** La somme refacturable d'un incident résolu a été récupérée. */
+  marquerIncidentRecupere: (id: Id, date?: DateISO) => Resultat;
   marquerFacturePayee: (id: Id, date?: DateISO) => Resultat;
 
   reinitialiserDemo: () => void;
@@ -293,6 +297,17 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       return OK;
     };
 
+    const refuserMission = (id: Id, commentaire: string): Resultat => {
+      const m = trouver('missions', id);
+      if (!m) return echec('Mission introuvable.');
+      const texte = commentaire.trim();
+      if (!texte) return echec('Le motif du refus est obligatoire.');
+      if (m.statut === 'validee') return echec('Une mission validée ne peut plus être refusée.');
+      if (m.statut === 'annulee') return echec('Mission annulée.');
+      appliquer((d) => modifier(d, 'missions', id, (x) => ({ ...x, statut: 'refusee', commentaire: texte })), 'Mission refusée', 'mission', id, texte);
+      return OK;
+    };
+
     const changerStatutMission = (id: Id, statut: StatutMission): Resultat => {
       if (statut === 'validee') return validerMission(id);
       const m = trouver('missions', id);
@@ -402,6 +417,17 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       return OK;
     };
 
+    const marquerIncidentRecupere = (id: Id, date: DateISO = AUJOURDHUI): Resultat => {
+      const i = trouver('incidents', id);
+      if (!i) return echec('Incident introuvable.');
+      if (i.statut !== 'resolu') return echec('Résolvez d’abord l’incident.');
+      if (i.refacturable === 'aucun') return echec('Cet incident n’est pas refacturable.');
+      if (i.recupereLe) return echec('Somme déjà récupérée.');
+      appliquer((d) => modifier(d, 'incidents', id, (x) => ({ ...x, recupereLe: date })), 'Refacturation récupérée', 'incident', id,
+        i.refacturable);
+      return OK;
+    };
+
     const marquerFacturePayee = (id: Id, date: DateISO = AUJOURDHUI): Resultat => {
       const f = trouver('factures', id);
       if (!f) return echec('Facture introuvable.');
@@ -421,6 +447,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       remove,
       changerStatutMission,
       validerMission,
+      refuserMission,
       attribuerMission,
       avancerProspect,
       cocherChecklistLancement,
@@ -428,6 +455,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       ajouterMouvementLinge,
       creerIncident,
       resoudreIncident,
+      marquerIncidentRecupere,
       marquerFacturePayee,
       reinitialiserDemo,
     };
