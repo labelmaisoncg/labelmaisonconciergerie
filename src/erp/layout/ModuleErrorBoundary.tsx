@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { estErreurDeChargement, rechargerUneFois } from '../../app/securite/rechargement';
 import { Alert, Button } from '../ui';
 
 interface Props {
@@ -18,6 +19,8 @@ export class ModuleErrorBoundary extends Component<Props, Etat> {
 
   componentDidCatch(erreur: Error, info: ErrorInfo) {
     console.error('[erp] module en erreur', erreur, info.componentStack);
+    // Écran d'une ancienne version introuvable après un déploiement.
+    if (estErreurDeChargement(erreur)) rechargerUneFois();
   }
 
   render() {
@@ -27,8 +30,8 @@ export class ModuleErrorBoundary extends Component<Props, Etat> {
         tone="danger"
         titre="Cet écran a rencontré une erreur"
         actions={
-          <Button size="sm" onClick={() => this.setState({ erreur: null })}>
-            Réessayer
+          <Button size="sm" onClick={() => window.location.reload()}>
+            Recharger la page
           </Button>
         }
       >
