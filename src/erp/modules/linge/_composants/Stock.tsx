@@ -6,10 +6,12 @@ import { positionLinge, type PositionArticle, type PositionLogement } from './ca
 const chiffre = (n: number, ton?: string) => <span className={cn('lm-chiffres', n > 0 && ton)}>{n}</span>;
 
 /** Stock par logement : dotation contre position réelle du linge. */
-export function Stock() {
+export function Stock({ logementInitial }: { logementInitial?: string }) {
   const { logements, mouvementsLinge } = useErp();
   const positions = logements.filter((l) => l.statut !== 'sorti').map((l) => positionLinge(l, mouvementsLinge));
-  const [choisi, setChoisi] = useState(positions[0]?.logement.id ?? '');
+  const [choisi, setChoisi] = useState(
+    positions.some((p) => p.logement.id === logementInitial) ? logementInitial! : (positions[0]?.logement.id ?? ''),
+  );
   const detail = positions.find((p) => p.logement.id === choisi);
 
   const colonnes: Colonne<PositionLogement>[] = [

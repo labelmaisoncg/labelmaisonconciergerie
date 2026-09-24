@@ -20,6 +20,8 @@ export default function Linge() {
   const { logements, mouvementsLinge } = useErp();
   const [params, setParams] = useSearchParams();
   const vue: Vue = (VUES as readonly string[]).includes(params.get('vue') ?? '') ? (params.get('vue') as Vue) : 'stock';
+  // Lien « ?logement=… » depuis une fiche logement : on s'y place directement.
+  const logementFiltre = params.get('logement') ?? undefined;
   const [nouveau, setNouveau] = useState(false);
   const { message, setMessage, fermer } = useRetour();
 
@@ -80,9 +82,9 @@ export default function Linge() {
 
       <Retour message={message} onFermer={fermer} />
 
-      {vue === 'stock' && <Stock />}
+      {vue === 'stock' && <Stock logementInitial={logementFiltre} />}
       {vue === 'ecarts' && <Ecarts onMessage={(texte) => setMessage({ ton: 'succes', texte })} />}
-      {vue === 'journal' && <Journal />}
+      {vue === 'journal' && <Journal logementInitial={logementFiltre} />}
 
       <NouveauMouvement ouvert={nouveau} onFermer={() => setNouveau(false)} onSucces={(texte) => setMessage({ ton: 'succes', texte })} />
     </>

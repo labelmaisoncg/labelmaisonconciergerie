@@ -18,10 +18,10 @@ export const TON_MOUVEMENT: Record<TypeMouvementLinge, Ton> = {
 };
 
 /** Journal de tous les mouvements de linge, du plus récent au plus ancien. */
-export function Journal() {
+export function Journal({ logementInitial = '' }: { logementInitial?: string }) {
   const { mouvementsLinge, logements, prestataires } = useErp();
   const [types, setTypes] = useState<string[]>([]);
-  const [logement, setLogement] = useState('');
+  const [logement, setLogement] = useState(logementInitial);
   const [prestataire, setPrestataire] = useState('');
   const [recherche, setRecherche] = useState('');
 
