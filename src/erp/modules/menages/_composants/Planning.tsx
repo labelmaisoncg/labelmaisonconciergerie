@@ -66,7 +66,7 @@ export function Planning() {
               )}
             >
               <header className="mb-2 flex items-center justify-between px-1">
-                <p className={cn('text-[12.5px] font-semibold capitalize', estAujourdhui ? 'text-(--lm-or)' : 'text-(--lm-encre)')}>
+                <p className={cn('text-[12.5px] font-semibold first-letter:uppercase', estAujourdhui ? 'text-(--lm-or)' : 'text-(--lm-encre)')}>
                   {dateJour(jour)}
                   {estAujourdhui && <span className="sr-only"> (aujourd’hui)</span>}
                 </p>

@@ -18,6 +18,7 @@ import {
   Target,
   Users,
   Wallet,
+  Workflow,
   Wrench,
   type LucideIcon,
 } from 'lucide-react';
@@ -74,6 +75,7 @@ const module = (
 
 export const MODULES: ModuleErp[] = [
   module('tableau-de-bord', '', 'Tableau de bord', 'pilotage', LayoutDashboard, lazy(() => import('./tableau-de-bord'))),
+  module('automatisations', 'automatisations', 'Automatisations', 'pilotage', Workflow, lazy(() => import('./automatisations'))),
   module('commercial', 'commercial', 'Pipeline & lancements', 'commercial', Target, lazy(() => import('./commercial'))),
   module('proprietaires', 'proprietaires', 'Propriétaires', 'referentiel', Users, lazy(() => import('./proprietaires'))),
   module('mandats', 'mandats', 'Mandats', 'referentiel', FileSignature, lazy(() => import('./mandats'))),

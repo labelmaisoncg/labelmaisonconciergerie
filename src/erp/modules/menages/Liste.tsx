@@ -51,10 +51,15 @@ export function Liste() {
         <Stat label="À valider" valeur={nombre(nbAValider)} icone={<ClipboardCheck />} tone={nbAValider ? 'alerte' : 'neutre'} />
         <Stat label="Validées avec photos (30 j)" valeur={pourcentage(taux)} icone={<Camera />} tone={taux < 0.9 ? 'alerte' : 'succes'} aide="Objectif 100 %" />
         <Stat
-          label="Délai moyen de validation"
+          label={delai.source === 'journal' ? 'Délai moyen de validation' : 'Attente moyenne de validation'}
           valeur={delai.heures === undefined ? '-' : `${nombre(delai.heures, 1)} h`}
           icone={<Timer />}
-          aide={delai.echantillon ? `Sur ${delai.echantillon} validation${delai.echantillon > 1 ? 's' : ''} tracée${delai.echantillon > 1 ? 's' : ''}` : 'Aucune validation tracée'}
+          aide={
+            delai.source === 'journal'
+              ? `Sur ${delai.echantillon} validation${delai.echantillon > 1 ? 's' : ''} tracée${delai.echantillon > 1 ? 's' : ''}`
+              : `Attente actuelle, ${delai.echantillon} mission${delai.echantillon > 1 ? 's' : ''} à valider`
+          }
+          tone={delai.heures !== undefined && delai.heures > 24 ? 'alerte' : 'neutre'}
           className="col-span-2 md:col-span-1"
         />
       </div>

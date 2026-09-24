@@ -20,7 +20,7 @@ function alertes(l: LigneRentabilite) {
   return a;
 }
 
-const signe = (v: number) => (v < 0 ? `- ${euros(-v, true)}` : euros(v, true));
+const signe = (v: number) => (v < 0 ? `- ${euros(-v, true)}` : euros(v || 0, true));
 
 export default function Rentabilite({ onglets }: PageFinanceProps) {
   const d = useErp();

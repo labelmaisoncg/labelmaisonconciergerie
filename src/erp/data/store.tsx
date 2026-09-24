@@ -8,7 +8,14 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ETAPES_PIPELINE } from './constantes';
-import { AUJOURDHUI, horodatageMaintenant } from './format';
+import { AUJOURDHUI, MAINTENANT, horodatageMaintenant } from './format';
+import {
+  CLE_AUTOMATISATIONS,
+  REGLES,
+  executerAutomatisations,
+  type EvenementAuto,
+  type ResultatMoteur,
+} from '../automatisations';
 import { creerSeed } from './seed';
 import { logementActivable, missionValidable, prestataireConforme } from './selectors';
 import type {
@@ -58,7 +65,55 @@ export interface ErpContexte extends ErpDonnees {
   marquerFacturePayee: (id: Id, date?: DateISO) => Resultat;
 
   reinitialiserDemo: () => void;
+
+  /* Automatisations : le moteur tourne au chargement et après chaque action. */
+  evenementsAuto: EvenementAuto[];
+  reglesActives: Record<string, boolean>;
+  estRegleActive: (cle: string) => boolean;
+  basculerRegle: (cle: string, actif: boolean) => void;
+  /** Relance le moteur tout de suite et renvoie ce qu'il a fait. */
+  lancerAutomatisations: () => ResultatMoteur;
+  ajouterEvenementsAuto: (evenements: EvenementAuto[]) => void;
+  viderJournalAuto: () => void;
 }
+
+/* ------------------------------------------------------- automatisations */
+
+interface EtatAuto {
+  actives: Record<string, boolean>;
+  evenements: EvenementAuto[];
+}
+
+const MAX_EVENEMENTS = 500;
+
+function lireAuto(): EtatAuto {
+  try {
+    const brut = window.localStorage.getItem(CLE_AUTOMATISATIONS);
+    if (brut) {
+      const e = JSON.parse(brut) as Partial<EtatAuto>;
+      if (e && typeof e.actives === 'object' && Array.isArray(e.evenements)) return e as EtatAuto;
+    }
+  } catch {
+    /* stockage indisponible : état par défaut */
+  }
+  return { actives: {}, evenements: [] };
+}
+
+function clesActives(actives: Record<string, boolean>): string[] {
+  return REGLES.filter((r) => actives[r.cle] ?? r.actifParDefaut).map((r) => r.cle);
+}
+
+/** Nouveaux événements en tête, dédoublonnés par id (un constat connu ne s'empile pas). */
+function fusionner(existants: EvenementAuto[], nouveaux: EvenementAuto[]): EvenementAuto[] {
+  const connus = new Set(existants.map((e) => e.id));
+  const inedits = nouveaux.filter((e) => !connus.has(e.id));
+  return inedits.length ? [...inedits, ...existants].slice(0, MAX_EVENEMENTS) : existants;
+}
+
+// La maquette vit à une heure figée : les constats gardent des ids stables
+// d'un passage à l'autre, donc le journal ne se remplit pas de doublons.
+const automatiser = (d: ErpDonnees, actives: Record<string, boolean>) =>
+  executerAutomatisations(d, { date: AUJOURDHUI, maintenant: MAINTENANT, reglesActives: clesActives(actives) });
 
 const Contexte = createContext<ErpContexte | null>(null);
 
@@ -110,7 +165,15 @@ const OK: Resultat = { ok: true };
 /* ---------------------------------------------------------------- provider */
 
 export function ErpProvider({ children }: { children: ReactNode }) {
-  const [donnees, setDonnees] = useState<ErpDonnees>(charger);
+  const [depart] = useState(() => {
+    const auto = lireAuto();
+    const r = automatiser(charger(), auto.actives);
+    return { donnees: r.donnees, auto: { ...auto, evenements: fusionner(auto.evenements, r.evenements) } };
+  });
+  const [donnees, setDonnees] = useState<ErpDonnees>(depart.donnees);
+  const [etatAuto, setEtatAuto] = useState<EtatAuto>(depart.auto);
+  const autoRef = useRef(etatAuto);
+  autoRef.current = etatAuto;
   const [utilisateurId, setUtilisateurId] = useState<Id>(lireUtilisateur);
   const ref = useRef(donnees);
   ref.current = donnees;
@@ -121,6 +184,33 @@ export function ErpProvider({ children }: { children: ReactNode }) {
   const mode: ErpContexte['mode'] = import.meta.env.VITE_SUPABASE_URL ? 'supabase' : 'demo';
 
   useEffect(() => enregistrer(donnees), [donnees]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(CLE_AUTOMATISATIONS, JSON.stringify(etatAuto));
+    } catch {
+      /* navigation privée : l'état reste en mémoire */
+    }
+  }, [etatAuto]);
+
+  const ajouterEvenementsAuto = useCallback((nouveaux: EvenementAuto[]) => {
+    if (!nouveaux.length) return;
+    setEtatAuto((e) => {
+      const evenements = fusionner(e.evenements, nouveaux);
+      return evenements === e.evenements ? e : { ...e, evenements };
+    });
+  }, []);
+
+  /** Fait passer le moteur sur des données, les pose dans l'état, garde ses constats. */
+  const poser = useCallback(
+    (d: ErpDonnees): ResultatMoteur => {
+      const r = automatiser(d, autoRef.current.actives);
+      ref.current = r.donnees;
+      setDonnees(r.donnees);
+      ajouterEvenementsAuto(r.evenements);
+      return r;
+    },
+    [ajouterEvenementsAuto],
+  );
 
   const utilisateur =
     donnees.utilisateurs.find((u) => u.id === utilisateurId) ?? donnees.utilisateurs[0];
@@ -140,11 +230,9 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         entiteId,
         details,
       };
-      const avecJournal = { ...suivant, journal: [trace, ...suivant.journal] };
-      ref.current = avecJournal;
-      setDonnees(avecJournal);
+      poser({ ...suivant, journal: [trace, ...suivant.journal] });
     },
-    [],
+    [poser],
   );
 
   /** Remplace un élément d'une collection par son id. */
@@ -316,9 +404,8 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     };
 
     const reinitialiserDemo = () => {
-      const neuf = creerSeed();
-      ref.current = neuf;
-      setDonnees(neuf);
+      setEtatAuto((e) => ({ ...e, evenements: [] }));
+      poser(creerSeed());
     };
 
     return {
@@ -336,7 +423,24 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       marquerFacturePayee,
       reinitialiserDemo,
     };
-  }, [appliquer, modifier, trouver]);
+  }, [appliquer, modifier, trouver, poser]);
+
+  const automatisations = useMemo(
+    () => ({
+      estRegleActive: (cle: string) =>
+        etatAuto.actives[cle] ?? REGLES.find((r) => r.cle === cle)?.actifParDefaut ?? false,
+      basculerRegle: (cle: string, actif: boolean) => {
+        const actives = { ...autoRef.current.actives, [cle]: actif };
+        autoRef.current = { ...autoRef.current, actives };
+        setEtatAuto((e) => ({ ...e, actives }));
+        // Une règle rallumée rattrape aussitôt ce qu'elle aurait dû faire.
+        if (actif) poser(ref.current);
+      },
+      lancerAutomatisations: () => poser(ref.current),
+      viderJournalAuto: () => setEtatAuto((e) => ({ ...e, evenements: [] })),
+    }),
+    [etatAuto.actives, poser],
+  );
 
   const changerUtilisateur = useCallback((id: Id) => {
     setUtilisateurId(id);
@@ -356,8 +460,12 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       utilisateur,
       changerUtilisateur,
       ...actions,
+      evenementsAuto: etatAuto.evenements,
+      reglesActives: etatAuto.actives,
+      ajouterEvenementsAuto,
+      ...automatisations,
     }),
-    [donnees, mode, utilisateur, changerUtilisateur, actions],
+    [donnees, mode, utilisateur, changerUtilisateur, actions, etatAuto, ajouterEvenementsAuto, automatisations],
   );
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;

@@ -5,7 +5,7 @@ import { checklistMenageVierge, SEUIL_NOTE_CONTROLE } from '../data/constantes';
 import { ajouterJours, jourMois } from '../data/format';
 import { logementById, prestataireConforme, reservationById } from '../data/selectors';
 import type { Logement, Mission, Prestataire } from '../data/types';
-import { chevauche, collecteur, hachage, heureDe } from './outils';
+import { collecteur, hachage, heureDe } from './outils';
 import type { Regle } from './types';
 
 const INACTIVES: Mission['statut'][] = ['annulee', 'refusee'];
@@ -18,11 +18,14 @@ function couvre(p: Prestataire, l: Logement): boolean {
   return false;
 }
 
+/** Ménages qu'un prestataire peut enchaîner dans la fenêtre départ-arrivée. */
+const CAPACITE_MENAGES_JOUR = 2;
+
 export const attribuerAutomatiquement: Regle = {
   cle: 'attribution-auto',
   nom: 'Attribution automatique',
   description:
-    'Quand un ménage est à attribuer, alors il est confié au meilleur prestataire conforme (contrat, RC Pro, URSSAF valides), actif, qui couvre la ville et n’a pas d’autre mission sur ce créneau : meilleure note d’abord, puis le moins chargé ce jour-là.',
+    'Quand un ménage est à attribuer, alors il est confié au meilleur prestataire conforme (contrat, RC Pro, URSSAF valides), actif, qui couvre la ville et n’a pas atteint sa capacité du jour (2 ménages, enchaînés entre 11 h et 16 h) : meilleure note d’abord, puis le moins chargé ce jour-là.',
   spec: '§2.3',
   domaine: 'operations',
   declencheur: 'mission',
@@ -39,8 +42,9 @@ export const attribuerAutomatiquement: Regle = {
       if (!l) continue;
       const candidats = d.prestataires
         .filter((p) => p.type === 'menage' && p.statut === 'actif' && prestataireConforme(p, ctx.date).ok && couvre(p, l))
-        .filter((p) => !planning.some((x) => x.prestataireId === p.id && x.date === m.date && chevauche(x, m)))
         .map((p) => ({ p, charge: planning.filter((x) => x.prestataireId === p.id && x.date === m.date).length }))
+        // Un ménage prend environ 2 h dans la fenêtre 11 h - 16 h : deux par jour, enchaînés.
+        .filter(({ charge }) => charge < CAPACITE_MENAGES_JOUR)
         .sort((a, b) => (b.p.noteMoyenne ?? 0) - (a.p.noteMoyenne ?? 0) || a.charge - b.charge || a.p.nom.localeCompare(b.p.nom));
       const choix = candidats[0]?.p;
       if (!choix) {

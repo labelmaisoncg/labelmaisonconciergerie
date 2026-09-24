@@ -70,7 +70,7 @@ export function Infos({ mission: m, tarif }: { mission: Mission; tarif: string }
           <Ligne label="Départ">
             {depart ? (
               <Link className={lien} to={`/erp/reservations/${depart.id}`}>
-                {depart.voyageur.nom}, <span className="capitalize">{dateJour(depart.depart)}</span>
+                {depart.voyageur.nom}, <span>{dateJour(depart.depart)}</span>
               </Link>
             ) : (
               'Aucun séjour lié'
@@ -79,7 +79,7 @@ export function Infos({ mission: m, tarif }: { mission: Mission; tarif: string }
           <Ligne label="Arrivée suivante">
             {suivante ? (
               <Link className={lien} to={`/erp/reservations/${suivante.id}`}>
-                {suivante.voyageur.nom}, <span className="capitalize">{dateJour(suivante.arrivee)}</span>
+                {suivante.voyageur.nom}, <span>{dateJour(suivante.arrivee)}</span>
               </Link>
             ) : (
               'Aucune'

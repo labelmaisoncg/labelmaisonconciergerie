@@ -41,18 +41,34 @@ export function urgence(m: Mission, d: Pick<ErpDonnees, 'reservations' | 'logeme
   return { heures: h, libelle, ton };
 }
 
-/** Délai moyen (heures) entre la dernière photo « après » et la validation, d'après le journal. */
-export function delaiMoyenValidation(missions: Mission[], journal: Journal[]): { heures: number | undefined; echantillon: number } {
+export interface DelaiValidation {
+  heures: number | undefined;
+  echantillon: number;
+  /** 'journal' : validations tracées ; 'attente' : ancienneté des missions encore à valider. */
+  source: 'journal' | 'attente';
+}
+
+/**
+ * Délai moyen de validation : entre la dernière photo « après » et la
+ * validation tracée au journal (délais > 14 j écartés : reprise de données).
+ * Sans validation tracée, on mesure l'attente actuelle des missions à valider.
+ */
+export function delaiMoyenValidation(missions: Mission[], journal: Journal[]): DelaiValidation {
   const delais: number[] = [];
   for (const j of journal.filter((x) => x.action === 'Mission validée')) {
     const m = missions.find((x) => x.id === j.entiteId);
     const apres = m?.photos.filter((p) => p.moment === 'apres').map((p) => ms(p.prisLe));
     if (!apres?.length) continue;
     const h = (ms(j.horodatage) - Math.max(...apres)) / 3_600_000;
-    if (h >= 0) delais.push(h);
+    if (h >= 0 && h <= 14 * 24) delais.push(h);
   }
-  if (!delais.length) return { heures: undefined, echantillon: 0 };
-  return { heures: delais.reduce((s, x) => s + x, 0) / delais.length, echantillon: delais.length };
+  const moyenne = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+  if (delais.length) return { heures: moyenne(delais), echantillon: delais.length, source: 'journal' };
+  const attentes = missions
+    .filter((m) => m.statut === 'a_valider')
+    .map((m) => -heuresAvant(m.date, m.heureFinMax))
+    .filter((h) => h >= 0);
+  return { heures: attentes.length ? moyenne(attentes) : undefined, echantillon: attentes.length, source: 'attente' };
 }
 
 /** Lundi de la semaine d'une date. */

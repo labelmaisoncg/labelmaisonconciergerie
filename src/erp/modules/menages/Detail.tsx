@@ -56,7 +56,7 @@ export function Detail() {
             <StatusBadge type="statutMission" valeur={m.statut} className="font-sans text-[13px]" />
           </span>
         }
-        sousTitre={<span className="capitalize">{`${dateJour(m.date)}, de ${m.heureDebut} à ${m.heureFinMax} au plus tard`}</span>}
+        sousTitre={<span className="inline-block first-letter:uppercase">{`${dateJour(m.date)}, de ${m.heureDebut} à ${m.heureFinMax} au plus tard`}</span>}
         actions={
           <>
             {m.statut === 'a_attribuer' && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Attribuer</Button>}
@@ -101,7 +101,7 @@ export function Detail() {
           <Card>
             <CardHeader
               titre="Checklist"
-              actions={<Badge tone={m.checklist.every((c) => c.fait) ? 'succes' : 'alerte'}>{m.checklist.filter((c) => c.fait).length}/{m.checklist.length}</Badge>}
+              actions={m.checklist.length > 0 && <Badge tone={m.checklist.every((c) => c.fait) ? 'succes' : 'alerte'}>{m.checklist.filter((c) => c.fait).length}/{m.checklist.length}</Badge>}
             />
             {m.checklist.length ? (
               <Checklist

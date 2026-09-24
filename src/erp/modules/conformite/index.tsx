@@ -27,7 +27,7 @@ function Pastille({ point }: { point?: PointConformite }) {
   if (!point) return null;
   const Icone = ICONES[point.statut];
   return (
-    <span className="inline-flex items-center gap-1.5 text-[12.5px] whitespace-nowrap" title={point.action ?? point.constat}>
+    <span className="relative inline-flex items-center gap-1.5 text-[12.5px] whitespace-nowrap" title={point.action ?? point.constat}>
       <Icone className={`size-4 shrink-0 ${COULEUR[point.statut]}`} aria-hidden />
       <span className="sr-only">{LIBELLE_STATUT[point.statut]} :</span>
       <span className="max-w-40 truncate text-(--lm-encre-2)">{point.constat}</span>

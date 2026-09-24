@@ -88,7 +88,7 @@ export function Paiements({ prestataire: p }: { prestataire: Prestataire }) {
   const siens = paiementsPrestataires.filter((x) => x.prestataireId === p.id);
   const nonPayables = missionsDe(missions, p.id).filter((m) => m.date < AUJOURDHUI && ['a_valider', 'en_cours', 'refusee'].includes(m.statut)).length;
   const colonnes: Colonne<PaiementPrestataire>[] = [
-    { cle: 'periode', titre: 'Période', rendu: (x) => <span className="capitalize">{moisAnnee(x.periode)}</span>, tri: (a, b) => a.periode.localeCompare(b.periode) },
+    { cle: 'periode', titre: 'Période', rendu: (x) => <span className="inline-block first-letter:uppercase">{moisAnnee(x.periode)}</span>, tri: (a, b) => a.periode.localeCompare(b.periode) },
     { cle: 'missions', titre: 'Missions', align: 'droite', rendu: (x) => <span className="lm-chiffres">{x.missions.length}</span> },
     { cle: 'montant', titre: 'Montant', align: 'droite', rendu: (x) => <span className="lm-chiffres">{euros(x.montantCentimes)}</span> },
     { cle: 'retenue', titre: 'Retenue', align: 'droite', masquerMobile: true, rendu: (x) => (x.retenueCentimes ? <span className="lm-chiffres text-(--lm-danger)" title={x.motifRetenue}>-{euros(x.retenueCentimes)}</span> : '-') },

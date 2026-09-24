@@ -25,7 +25,13 @@ export default function Synthese({ onglets }: PageFinanceProps) {
   const libelle = periode === 'annee' ? '12 derniers mois' : moisAnnee(periode === 'mois' ? mois[1] : mois[0]);
 
   const s = useMemo(() => synthese(d, fenetre), [d, fenetre]);
-  const serie = useMemo(() => serieMensuelle(d), [d]);
+  const serie = useMemo(() => {
+    const toute = serieMensuelle(d);
+    // Pas de mois vides avant le premier séjour géré (6 mois affichés au minimum).
+    const premier = toute.findIndex((m) => m.brut > 0);
+    return toute.slice(Math.max(0, Math.min(premier < 0 ? 0 : premier, toute.length - 6)));
+  }, [d]);
+  const depuis = serie.length < 12 ? `Depuis ${moisAnnee(serie[0].periode)}, premier mois d’activité.` : '12 derniers mois.';
   const parLogement = useMemo(
     () => rentabiliteParLogement(d, fenetre).filter((l) => l.brut > 0).sort((a, b) => b.commission + b.fraisMenage - (a.commission + a.fraisMenage)),
     [d, fenetre],
@@ -95,8 +101,8 @@ export default function Synthese({ onglets }: PageFinanceProps) {
 
       <div className="mb-6 grid gap-4 xl:grid-cols-2">
         <Card>
-          <CardHeader titre="Revenu brut géré, 12 mois" description="Argent des propriétaires, transite par Label Maison." />
-          <div className="h-60" role="img" aria-label="Histogramme du revenu brut géré sur 12 mois">
+          <CardHeader titre="Revenu brut géré par mois" description={`Argent des propriétaires, transite par Label Maison. ${depuis}`} />
+          <div className="h-60" role="img" aria-label="Histogramme mensuel du revenu brut géré">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={serie} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke={COULEURS.grille} />
@@ -109,8 +115,8 @@ export default function Synthese({ onglets }: PageFinanceProps) {
           </div>
         </Card>
         <Card>
-          <CardHeader titre="Chiffre d’affaires Label Maison et marge, 12 mois" description="Commissions + frais de ménage, puis marge après ménage et charges." />
-          <div className="h-60" role="img" aria-label="Histogramme du chiffre d’affaires Label Maison et courbe de marge sur 12 mois">
+          <CardHeader titre="Chiffre d’affaires Label Maison et marge par mois" description={`Commissions + frais de ménage, et marge après ménage et charges. ${depuis}`} />
+          <div className="h-60" role="img" aria-label="Histogramme mensuel du chiffre d’affaires Label Maison et courbe de marge">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={serie} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
                 <CartesianGrid vertical={false} stroke={COULEURS.grille} />

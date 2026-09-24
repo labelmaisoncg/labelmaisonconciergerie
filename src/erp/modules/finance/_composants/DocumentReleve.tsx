@@ -16,6 +16,7 @@ interface Props {
 
 const TH = 'px-2.5 py-2 text-[11.5px] font-medium text-(--lm-encre-2) whitespace-nowrap';
 const TD = 'px-2.5 py-2 whitespace-nowrap';
+const moins = (c: number) => (c ? `- ${euros(c)}` : euros(0));
 
 /** Relevé mensuel imprimable (SPEC §2.7). Seul ce bloc est imprimé. */
 export function DocumentReleve({ proprietaire, periode, releve, logements, mandats }: Props) {
@@ -65,9 +66,8 @@ export function DocumentReleve({ proprietaire, periode, releve, logements, manda
           <thead className="bg-(--lm-surface-2) text-left">
             <tr>
               <th scope="col" className={TH}>Séjour</th>
-              <th scope="col" className={TH}>Logement</th>
-              <th scope="col" className={`${TH} text-right`}>Payé par le voyageur</th>
-              <th scope="col" className={`${TH} text-right`}>Commission plateforme</th>
+              <th scope="col" className={`${TH} text-right`}>Payé voyageur</th>
+              <th scope="col" className={`${TH} text-right`}>Comm. plateforme</th>
               <th scope="col" className={`${TH} text-right`}>Frais de ménage</th>
               <th scope="col" className={`${TH} text-right`}>Commission Label Maison</th>
               <th scope="col" className={`${TH} text-right`}>Net propriétaire</th>
@@ -76,7 +76,7 @@ export function DocumentReleve({ proprietaire, periode, releve, logements, manda
           <tbody className="lm-chiffres">
             {releve.lignes.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-(--lm-encre-3)">Aucun séjour terminé sur la période.</td>
+                <td colSpan={6} className="px-3 py-6 text-center text-(--lm-encre-3)">Aucun séjour terminé sur la période.</td>
               </tr>
             )}
             {releve.lignes.map((l) => (
@@ -85,24 +85,24 @@ export function DocumentReleve({ proprietaire, periode, releve, logements, manda
                   <span className="font-medium">{l.reservation.voyageur.nom}</span>
                   <span className="block text-[11.5px] text-(--lm-encre-3)">
                     {jourMois(l.reservation.arrivee)} au {jourMois(l.reservation.depart)} · {l.reservation.nuits} n. · {LIBELLES.canal[l.reservation.canal]}
+                    {siens.length > 1 && <> · {l.logement.nom}</>}
                   </span>
                 </td>
-                <td className={TD}>{l.logement.nom}</td>
                 <td className={`${TD} text-right`}>{euros(l.brut)}</td>
-                <td className={`${TD} text-right`}>- {euros(l.commissionPlateforme)}</td>
-                <td className={`${TD} text-right`}>- {euros(l.fraisMenage)}</td>
-                <td className={`${TD} text-right`}>- {euros(l.commission)}</td>
+                <td className={`${TD} text-right`}>{moins(l.commissionPlateforme)}</td>
+                <td className={`${TD} text-right`}>{moins(l.fraisMenage)}</td>
+                <td className={`${TD} text-right`}>{moins(l.commission)}</td>
                 <td className={`${TD} text-right font-semibold`}>{euros(l.net)}</td>
               </tr>
             ))}
           </tbody>
           <tfoot className="lm-chiffres border-t-2 border-(--lm-bord-fort) bg-(--lm-surface-2) font-semibold">
             <tr>
-              <th scope="row" colSpan={2} className={`${TD} text-left`}>Total {moisAnnee(periode)}</th>
+              <th scope="row" className={`${TD} text-left`}>Total {moisAnnee(periode)}</th>
               <td className={`${TD} text-right`}>{euros(totaux.brut)}</td>
-              <td className={`${TD} text-right`}>- {euros(totaux.commissionPlateforme)}</td>
-              <td className={`${TD} text-right`}>- {euros(totaux.fraisMenage)}</td>
-              <td className={`${TD} text-right`}>- {euros(totaux.commission)}</td>
+              <td className={`${TD} text-right`}>{moins(totaux.commissionPlateforme)}</td>
+              <td className={`${TD} text-right`}>{moins(totaux.fraisMenage)}</td>
+              <td className={`${TD} text-right`}>{moins(totaux.commission)}</td>
               <td className={`${TD} text-right`}>{euros(totaux.net)}</td>
             </tr>
           </tfoot>

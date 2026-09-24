@@ -18,7 +18,9 @@ export const AXE = { fontSize: 11.5, fill: COULEURS.axe } as const;
 /** Montant compact pour les axes : 12 400 € → « 12 k€ ». */
 export function eurosAxe(centimes: number): string {
   const e = centimes / 100;
-  return Math.abs(e) >= 1000 ? `${Math.round(e / 1000)} k€` : `${Math.round(e)} €`;
+  const k = Math.abs(e) / 1000;
+  if (k < 1) return `${Math.round(e)} €`;
+  return `${(e / 1000).toLocaleString('fr-FR', { maximumFractionDigits: k < 10 ? 1 : 0 })} k€`;
 }
 
 interface EntreeInfobulle {

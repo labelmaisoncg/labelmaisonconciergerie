@@ -41,7 +41,7 @@ export function CarteMontant({ titre, precision, montant, couleur, icone, lignes
           {lignes.map(([l, v]) => (
             <div key={l} className="flex justify-between gap-3">
               <dt className="text-(--lm-encre-2)">{l}</dt>
-              <dd className="lm-chiffres whitespace-nowrap text-(--lm-encre)">{v < 0 ? `- ${euros(-v, true)}` : euros(v, true)}</dd>
+              <dd className="lm-chiffres whitespace-nowrap text-(--lm-encre)">{v < 0 ? `- ${euros(-v, true)}` : euros(v || 0, true)}</dd>
             </div>
           ))}
         </dl>

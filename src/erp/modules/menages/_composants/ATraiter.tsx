@@ -43,7 +43,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
                   <Link to={`/erp/menages/${m.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or) hover:underline">
                     {nom(m.logementId)}
                   </Link>
-                  <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2) capitalize">
+                  <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2) first-letter:uppercase">
                     {LIBELLES.typeMission[m.type]} · {dateJour(m.date)} · {m.heureDebut} à {m.heureFinMax}
                   </p>
                 </div>
@@ -82,7 +82,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
                       <Link to={`/erp/menages/${m.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or) hover:underline">
                         {nom(m.logementId)}
                       </Link>
-                      <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2) capitalize">
+                      <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2) first-letter:uppercase">
                         {dateJour(m.date)} · {p?.nom ?? 'Sans prestataire'} · checklist {faits}/{m.checklist.length} · photos {avant} avant, {apres} après
                       </p>
                     </div>
