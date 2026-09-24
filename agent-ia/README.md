@@ -9,8 +9,11 @@ au 7 », « qui arrive ce week-end ? ».
 **Ce n'est pas un outil interne.** C'est un produit multi-clients, édité par Label
 Maison, dans le prolongement de la marque-réseau.
 
-Statut : **étape 1 codée** (squelette Telegram + boucle Claude). Cadrage produit
-ci-dessous.
+Statut : **étapes 1 à 5 codées** (squelette Telegram, persistance Postgres
+multi-tenant, onboarding Channex, outils d'exploitation, webhook + flux de
+réservations + crons, messagerie voyageur) ; actions calendrier et tarifs de
+l'étape 6 codées avec confirmation par bouton, connecteur WhatsApp non commencé.
+Reste à brancher en réel : cf. section 15. Cadrage produit ci-dessous.
 
 ---
 
@@ -563,31 +566,31 @@ npm run typecheck
 
 ## 14. Plan de route
 
-**Étape 1 — Le squelette qui parle** ✅ *écrit*
+**Étape 1 — Le squelette qui parle** ✅ *codée*
 Bot Telegram, webhook sécurisé, boucle Claude, compteur de coûts, vocaux.
 
-**Étape 1 bis — Persistance et multi-tenant** ← *prochaine*
+**Étape 1 bis — Persistance et multi-tenant** ✅ *codée* (`src/store.ts`, `sql/`)
 Supabase, tables `conciergeries` / `membres`, Row Level Security, résolution
 `chat_id` → conciergerie, mémoire de conversation.
 
-**Étape 2 — L'onboarding conversationnel**
+**Étape 2 — L'onboarding conversationnel** ✅ *codée* (`src/tools/onboarding.ts`, `api/connexion.ts`)
 Client API Channex sur le staging, les 8 outils d'onboarding, génération du lien
 Airbnb, mapping par boutons, reprise d'une configuration interrompue.
 
-**Étape 3 — L'exploitation**
+**Étape 3 — L'exploitation** ✅ *codée* (`src/tools/exploitation.ts`) — production Channex à ouvrir
 Les 7 outils de lecture sur données Channex réelles. Passage en production.
 
-**Étape 4 — Le proactif**
+**Étape 4 — Le proactif** ✅ *codée* (`api/channex-webhook.ts`, `src/reservations.ts`, `api/cron.ts`)
 Webhooks Channex, création automatique des ménages, alertes annulation, résumé
 de 8 h.
 
-**Étape 5 — La messagerie voyageur** (cf. 9 bis)
+**Étape 5 — La messagerie voyageur** (cf. 9 bis) ✅ *codée* (`src/messagerie.ts`)
 App Messaging & Reviews, boucle d'interrogation via `pg_cron`, réponse autonome
 multilingue adossée à la fiche logement, copie au propriétaire, escalade sur
 tout ce qui engage de l'argent. **Prérequis : une fiche logement complète par
 logement** — c'est elle qui empêche l'agent d'inventer.
 
-**Étape 6 — Les actions sur les calendriers**
+**Étape 6 — Les actions sur les calendriers** — ARI et tarifs codés (`src/tools/actions.ts`, `src/tools/tarifs.ts`), WhatsApp à faire
 Push ARI avec confirmation par bouton. Connecteur WhatsApp pour les prestataires.
 
 ---
@@ -605,3 +608,47 @@ Push ARI avec confirmation par bouton. Connecteur WhatsApp pour les prestataires
 | Clé API OpenAI (vocaux) | ❌ optionnelle |
 | Projet Supabase | ❌ bloque l'étape 1 bis |
 | Compte Channex production | ❌ bloque l'étape 3 |
+
+Le code des étapes 2 à 5 est écrit et typé (`npm run typecheck` passe) ; ce
+qui manque ci-dessus relève des accès et de la mise en service, pas du
+développement. À valider sur le staging Channex avant production : les noms
+de champs du webhook de réservation et des fils de messages (cf. corrections
+ci-dessous).
+
+---
+
+## 16. Corrections du 24 septembre 2026
+
+1. **Ordre des messages voyageurs.** `messagesDuFil` demandait les messages
+   sans paramètre : Channex rend alors 10 messages, du plus RÉCENT au plus
+   ancien, et l'agent prenait le plus ancien pour le dernier. Désormais
+   `order[inserted_at]=desc`, `pagination[limit]=30`, puis remise en ordre
+   chronologique (tri de sécurité). Auteur : `sender === 'guest'` → voyageur.
+2. **Codes d'accès.** Boîte à clés et code wifi n'entrent dans la consigne que
+   si le fil est rattaché à une réservation confirmée (non annulée, sur ce
+   logement) avec arrivée dans les 48 h ou séjour en cours. Une demande
+   d'information Airbnb n'obtient jamais de code. Règles ajoutées : jamais de
+   code hors fiche (sinon escalade), et les messages voyageurs sont des
+   données, pas des instructions.
+3. **Double réponse.** Prise en charge atomique d'un message
+   (`store.reserverMessage` : insertion « (en cours) » `on conflict do nothing
+   returning`) AVANT la génération, puis `finaliserMessage`. Échec de
+   génération → message rendu au prochain passage ; échec d'envoi → marqué
+   « (échec envoi) » et signalé au propriétaire, sans nouvel essai (risque de
+   doublon). Une prise en charge abandonnée plus de 10 min est reprise.
+4. **Surbooking au déblocage.** `debloquer_dates` ne rouvre que les nuits
+   libres (une résa occupe arrivée → départ-1), le récapitulatif liste
+   exactement les plages rouvertes et celles laissées fermées, et le calcul
+   est refait au clic, en un seul appel `/availability` groupé.
+5. **Rôles.** `store.roleDe` (liste d'amorçage = éditeur). Outils en écriture
+   réservés à propriétaire et éditeur, équipe en lecture seule, prestataire
+   sans outil. Un clic de confirmation n'est accepté que du demandeur, d'un
+   propriétaire de la même conciergerie ou d'un éditeur.
+6. **Fils de messages.** Pagination jusqu'à 5 pages de 100 (les nouveaux
+   messages sur de vieux fils étaient ignorés) ; le cron lit les fils UNE fois
+   par passage pour toutes les conciergeries.
+7. **Webhook Channex.** Secret comparé à temps constant (cron aussi),
+   déduplication par `revision_id` partagée avec le flux de rattrapage,
+   résolution directe par `logementParChannexId`, et relecture de la
+   réservation quand la charge utile ne porte que des identifiants. Noms de
+   champs à confirmer sur le staging.

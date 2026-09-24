@@ -196,6 +196,20 @@ async function traiterClic(update: TelegramUpdate): Promise<void> {
     await accuserClic(clic.id);
     if (clic.message?.message_id) await retirerBoutons(chatId, clic.message.message_id);
 
+    // Qui clique ? Une action ne se confirme (ou ne s'annule) que par la
+    // personne qui l'a demandée, ou par un propriétaire / éditeur de la même
+    // conciergerie. On vérifie AVANT de consommer l'action.
+    const enAttente = await store.lireAction(actionId ?? '');
+    if (!enAttente) {
+      await envoyerMessage(chatId, 'Cette demande a expiré ou a déjà été traitée. Redemande-la-moi.');
+      return;
+    }
+    if (!(await peutValider(clic.from?.id ?? chatId, chatId, enAttente))) {
+      console.warn(`[telegram] clic refusé sur l'action ${enAttente.id} par ${clic.from?.id ?? chatId}`);
+      await envoyerMessage(chatId, "Seul le propriétaire de la conciergerie peut valider cette action.");
+      return;
+    }
+
     if (verdict === 'non') {
       const refusee = await store.retirerAction(actionId!, 'refusee');
       await envoyerMessage(chatId, refusee ? "Annulé, je n'ai rien modifié." : 'Cette demande a déjà été traitée.');
@@ -208,9 +222,11 @@ async function traiterClic(update: TelegramUpdate): Promise<void> {
       return;
     }
 
+    // Le chat qui a DEMANDÉ l'action désigne la conciergerie visée, même si
+    // c'est un éditeur ou un autre propriétaire qui confirme.
     const resultat = await executerActionConfirmee(action.outil, {
       ...action.arguments,
-      __chatId: String(chatId),
+      __chatId: action.chatId,
     });
     await store.journaliser(action.conciergerieId, String(chatId), action.outil, action.arguments, resultat);
     await envoyerMessage(chatId, resultat);
@@ -220,6 +236,31 @@ async function traiterClic(update: TelegramUpdate): Promise<void> {
       () => undefined,
     );
   }
+}
+
+/**
+ * Droit de valider une action en attente :
+ *  - le chat qui l'a demandée, s'il a toujours un rôle en écriture (un rôle
+ *    rétrogradé entre la demande et le clic ne valide plus rien) ;
+ *  - un propriétaire de la MÊME conciergerie ;
+ *  - un éditeur (y compris la liste d'amorçage).
+ * `cliqueur` est l'identifiant de la personne (callback_query.from) : dans un
+ * groupe, il diffère du chat où les boutons sont affichés.
+ */
+async function peutValider(
+  cliqueur: number | string,
+  chatDuClic: number | string,
+  action: store.ActionEnAttente,
+): Promise<boolean> {
+  if (String(cliqueur) === action.chatId || String(chatDuClic) === action.chatId) {
+    const role = await store.roleDe(action.chatId);
+    if (store.peutEcrire(role)) return true;
+  }
+  const role = await store.roleDe(cliqueur);
+  if (role === 'editeur') return true;
+  if (role !== 'proprietaire') return false;
+  const c = await store.conciergerieParChat(cliqueur);
+  return c?.id === action.conciergerieId;
 }
 
 /** Texte tapé, ou vocal transcrit. */

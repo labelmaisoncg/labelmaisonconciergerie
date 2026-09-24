@@ -22,6 +22,7 @@ import * as channex from '../src/channex.js';
 import * as store from '../src/store.js';
 import { envoyerMessage } from '../src/telegram.js';
 import { aujourdhui, enFrancais, heureParis } from '../src/dates.js';
+import { egalTempsConstant } from '../src/config.js';
 
 const HEURE_RESUME = 8;
 const HEURE_SANTE = 5;
@@ -30,7 +31,7 @@ export default async function handler(req: any, res: any) {
   const attendu = process.env.CRON_SECRET;
   const fourni =
     String(req.headers.authorization ?? '').replace(/^Bearer /, '') || String(req.query?.cle ?? '');
-  if (!attendu || fourni !== attendu) {
+  if (!egalTempsConstant(attendu, fourni)) {
     console.warn('[cron] appel non autorisé.');
     return res.status(401).json({ ok: false });
   }
@@ -44,8 +45,17 @@ export default async function handler(req: any, res: any) {
     if (tache === 'messages') {
       let repondus = 0;
       let escalades = 0;
+      // Les fils couvrent tout le compte Channex : UNE lecture par passage,
+      // partagée entre toutes les conciergeries — et non une par conciergerie.
+      let fils: channex.FilMessages[];
+      try {
+        fils = await channex.filsDeMessages();
+      } catch (err) {
+        console.error('[cron] fils de messages illisibles :', err);
+        return res.status(502).json({ ok: false, tache, error: 'fils de messages illisibles' });
+      }
       for (const c of conciergeries) {
-        const r = await traiterMessagesVoyageurs(c);
+        const r = await traiterMessagesVoyageurs(c, fils);
         repondus += r.repondus;
         escalades += r.escalades;
       }

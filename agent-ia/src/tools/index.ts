@@ -18,6 +18,7 @@ import { OUTILS_TARIFS } from './tarifs.js';
 import { OUTILS_CONNAISSANCES } from './connaissances.js';
 import { OUTILS_MEMOIRE } from './memoire.js';
 import { OUTILS_INVITATIONS } from './invitations.js';
+import * as store from '../store.js';
 
 /** Ce que le code sait de l'appelant, et que le modèle ne peut pas falsifier. */
 export type Contexte = {
@@ -60,6 +61,27 @@ export async function executerOutil(
   const outil = OUTILS[nom];
   if (!outil) return { erreur: `Outil inconnu : ${nom}` };
   try {
+    // Contrôle des rôles, côté code — le modèle ne peut ni le voir ni le
+    // contourner. Propriétaire et éditeur : tout. Équipe : lecture seule.
+    // Prestataire (ou rôle inconnu) : aucun outil, faute d'outil dédié à son
+    // seul planning pour l'instant.
+    const role = await store.roleDe(ctx.chatId);
+    if (!role || role === 'prestataire') {
+      return {
+        refuse: true,
+        raison:
+          "Cet accès ne permet pas de consulter ni de modifier la conciergerie. " +
+          'Explique-le poliment et invite la personne à se rapprocher de la conciergerie.',
+      };
+    }
+    if (outil.ecriture && !store.peutEcrire(role)) {
+      return {
+        refuse: true,
+        raison:
+          "Seul le propriétaire de la conciergerie peut faire cette modification. " +
+          'Explique-le poliment ; les consultations restent possibles.',
+      };
+    }
     return await outil.executer(args, ctx);
   } catch (err) {
     console.error(`[outils] ${nom} a échoué :`, err);

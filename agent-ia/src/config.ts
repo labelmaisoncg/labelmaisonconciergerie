@@ -29,9 +29,16 @@ export const chatAutorise = (chatId: number | string): boolean =>
  * Sans lui, n'importe qui connaissant l'URL Vercel peut simuler des messages.
  * Comparaison à temps constant pour ne pas fuiter le secret octet par octet.
  */
-export const secretValide = (recu: string | undefined): boolean => {
-  if (!TELEGRAM_SECRET_TOKEN) return false;
-  const a = Buffer.from(TELEGRAM_SECRET_TOKEN);
+export const secretValide = (recu: string | undefined): boolean =>
+  egalTempsConstant(TELEGRAM_SECRET_TOKEN, recu);
+
+/**
+ * Comparaison de secrets à temps constant. Un attendu vide ne valide jamais
+ * rien : un secret non configuré doit fermer la porte, pas l'ouvrir.
+ */
+export const egalTempsConstant = (attendu: string | undefined, recu: string | undefined): boolean => {
+  if (!attendu) return false;
+  const a = Buffer.from(attendu);
   const b = Buffer.from(recu ?? '');
   if (a.length !== b.length) return false;
   let diff = 0;

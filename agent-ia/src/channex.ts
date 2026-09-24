@@ -391,6 +391,48 @@ export async function reservations(
   return (r.data ?? []).map(versReservation);
 }
 
+/**
+ * Réservations qui OCCUPENT au moins une nuit de la plage [du, au] (bornes
+ * incluses, en nuits). Une réservation occupe les nuits arrivée..départ-1 :
+ * elle chevauche la plage si arrivée <= au ET départ > du.
+ *
+ * À la différence de `reservations()`, qui ne filtre que sur la date
+ * d'arrivée, celle-ci voit aussi un séjour commencé AVANT la plage — c'est
+ * indispensable avant de rouvrir des dates à la vente. Les annulations sont
+ * écartées : elles ne bloquent plus rien.
+ */
+export async function reservationsChevauchant(
+  proprieteId: string,
+  du: string,
+  au: string,
+): Promise<Reservation[]> {
+  const lendemain = new Date(`${du}T12:00:00Z`);
+  lendemain.setUTCDate(lendemain.getUTCDate() + 1);
+  const p = new URLSearchParams({
+    'filter[property_id]': proprieteId,
+    'filter[arrival_date][lte]': au,
+    'filter[departure_date][gte]': lendemain.toISOString().slice(0, 10),
+    'pagination[limit]': '100',
+  });
+  const r = await appel('GET', `/bookings?${p}`);
+  return (r.data ?? [])
+    .map(versReservation)
+    // Filet de sécurité si l'API ignorait un des filtres de date.
+    .filter((b: Reservation) => b.arrivee <= au && b.depart > du)
+    .filter((b: Reservation) => !/cancel/i.test(b.statut));
+}
+
+/** Une réservation par son identifiant Channex. null si introuvable. */
+export async function reservationParId(bookingId: string): Promise<Reservation | null> {
+  try {
+    const r = await appel('GET', `/bookings/${encodeURIComponent(bookingId)}`);
+    return r?.data ? versReservation(r.data) : null;
+  } catch (err) {
+    console.error(`[channex] réservation ${bookingId} illisible :`, err);
+    return null;
+  }
+}
+
 /** Départs d'une date donnée : un départ = un ménage. */
 export async function departsDu(proprieteId: string, date: string): Promise<Reservation[]> {
   const p = new URLSearchParams({
@@ -465,34 +507,79 @@ export type MessageVoyageur = {
   envoyeLe: string;
 };
 
+/**
+ * Tous les fils de messages du compte, sur plusieurs pages.
+ *
+ * Channex trie par date de création : un vieux fil qui reçoit un nouveau
+ * message ne remonte PAS en tête. Lire une seule page de 100 laissait donc
+ * passer les messages arrivant sur les fils les plus anciens. On pagine
+ * jusqu'à une page incomplète, avec un plafond pour borner le coût d'un
+ * passage de cron.
+ */
+const FILS_PAR_PAGE = 100;
+const PAGES_MAX = 5;
+
 export async function filsDeMessages(proprieteId?: string): Promise<FilMessages[]> {
-  const p = new URLSearchParams({ 'pagination[limit]': '100' });
-  if (proprieteId) p.set('filter[property_id]', proprieteId);
-  const r = await appel('GET', `/message_threads?${p}`);
-  return (r.data ?? []).map((t: any) => {
-    const a = t.attributes ?? {};
-    return {
-      id: t.id,
-      logementId: a.property_id,
-      canal: a.channel ?? 'inconnu',
-      voyageur: a.customer_name ?? null,
-      reservationRef: a.booking_id ?? null,
-      ferme: a.status === 'closed',
-    };
-  });
+  const fils: FilMessages[] = [];
+  for (let page = 1; page <= PAGES_MAX; page++) {
+    const p = new URLSearchParams({
+      'pagination[limit]': String(FILS_PAR_PAGE),
+      'pagination[page]': String(page),
+    });
+    if (proprieteId) p.set('filter[property_id]', proprieteId);
+    const r = await appel('GET', `/message_threads?${p}`);
+    const donnees: any[] = r.data ?? [];
+    for (const t of donnees) {
+      const a = t.attributes ?? {};
+      fils.push({
+        id: t.id,
+        logementId: a.property_id ?? t.relationships?.property?.data?.id,
+        canal: a.channel ?? a.provider ?? 'inconnu',
+        voyageur: a.customer_name ?? null,
+        reservationRef: a.booking_id ?? t.relationships?.booking?.data?.id ?? null,
+        ferme: a.status === 'closed' || a.is_closed === true,
+      });
+    }
+    if (donnees.length < FILS_PAR_PAGE) break;
+    if (page === PAGES_MAX) {
+      console.warn(`[channex] plus de ${PAGES_MAX * FILS_PAR_PAGE} fils : les plus anciens ne sont pas lus.`);
+    }
+  }
+  return fils;
 }
 
+/**
+ * Messages d'un fil, TOUJOURS rendus du plus ancien au plus récent.
+ *
+ * Par défaut Channex pagine par 10 et trie par `inserted_at` DÉCROISSANT : sans
+ * paramètres, `messages.at(-1)` désignait le plus ANCIEN des dix derniers
+ * messages, et l'historique arrivait à l'envers. On demande explicitement les
+ * plus récents d'abord, puis on remet dans l'ordre chronologique — le tri
+ * final sert de filet si l'API ignorait le paramètre d'ordre.
+ */
+const MESSAGES_PAR_FIL = 30;
+
 export async function messagesDuFil(filId: string): Promise<MessageVoyageur[]> {
-  const r = await appel('GET', `/message_threads/${filId}/messages`);
-  return (r.data ?? []).map((m: any) => {
+  const p = new URLSearchParams({
+    'order[inserted_at]': 'desc',
+    'pagination[limit]': String(MESSAGES_PAR_FIL),
+    'pagination[page]': '1',
+  });
+  const r = await appel('GET', `/message_threads/${filId}/messages?${p}`);
+  const messages: MessageVoyageur[] = (r.data ?? []).map((m: any) => {
     const a = m.attributes ?? {};
     return {
       id: m.id,
-      auteur: a.sender === 'guest' || a.direction === 'inbound' ? 'voyageur' : 'hote',
-      texte: a.message ?? a.text ?? '',
-      envoyeLe: a.inserted_at ?? a.sent_at ?? '',
+      // Channex : `sender` vaut « guest » ou « property ».
+      auteur: a.sender === 'guest' ? 'voyageur' : 'hote',
+      texte: a.message ?? '',
+      envoyeLe: a.inserted_at ?? '',
     };
   });
+  // reverse() d'abord : l'API rend du plus récent au plus ancien, et le tri
+  // (stable) conserve cet ordre inversé pour deux messages de même horodatage.
+  const instant = (m: MessageVoyageur) => Date.parse(m.envoyeLe) || 0;
+  return messages.reverse().sort((x, y) => instant(x) - instant(y));
 }
 
 export async function repondreAuFil(filId: string, texte: string): Promise<void> {

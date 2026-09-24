@@ -14,6 +14,8 @@
 
 import { waitUntil } from '@vercel/functions';
 import * as store from '../src/store.js';
+import * as channex from '../src/channex.js';
+import { egalTempsConstant } from '../src/config.js';
 import { envoyerMessage } from '../src/telegram.js';
 import { enFrancais } from '../src/dates.js';
 
@@ -24,7 +26,8 @@ export default async function handler(req: any, res: any) {
   }
 
   const attendu = process.env.CHANNEX_WEBHOOK_SECRET;
-  if (!attendu || String(req.query?.cle ?? '') !== attendu) {
+  // Comparaison à temps constant, comme pour le secret Telegram.
+  if (!egalTempsConstant(attendu, String(req.query?.cle ?? ''))) {
     console.warn('[channex-webhook] secret invalide — rejeté.');
     return res.status(401).json({ ok: false });
   }
@@ -41,58 +44,87 @@ export default async function handler(req: any, res: any) {
   waitUntil(traiter(corps));
 }
 
+/**
+ * ⚠️ NOMS DE CHAMPS À VÉRIFIER SUR LE STAGING CHANNEX. Selon la configuration
+ * du webhook (option « send data »), un événement de réservation peut ne
+ * porter que des identifiants — `property_id`, `booking_id`, `revision_id` —
+ * sans voyageur ni dates. Dans ce cas on relit la réservation par son
+ * identifiant (`channex.reservationParId`) avant de notifier.
+ */
 async function traiter(corps: any): Promise<void> {
   try {
     const evenement: string = corps?.event ?? corps?.type ?? '';
     const p = corps?.payload ?? corps?.data?.attributes ?? corps ?? {};
-    const proprieteId: string | undefined = p.property_id;
+    const proprieteId: string | undefined = p.property_id ?? corps?.property_id;
     if (!proprieteId) {
       console.warn('[channex-webhook] événement sans property_id, ignoré :', evenement);
       return;
     }
 
+    // Même révision déjà vue (webhook rejoué, ou déjà relevée par le flux de
+    // rattrapage) : on ne renotifie pas.
+    const revisionId: string | null = p.revision_id ?? p.booking_revision_id ?? null;
+    if (revisionId && (await store.reservationDejaVue(revisionId))) return;
+
     // Retrouver la conciergerie à partir du logement : le webhook ne dit pas
     // à qui appartient la propriété, c'est notre base qui le sait.
-    const toutes = await store.toutesConciergeries();
-    let cible: { c: (typeof toutes)[number]; l: store.Logement } | null = null;
-    for (const c of toutes) {
-      const logements = await store.logements(c.id);
-      const l = logements.find((x) => x.channexPropertyId === proprieteId);
-      if (l) {
-        cible = { c, l };
-        break;
-      }
-    }
+    const cible = await store.logementParChannexId(proprieteId);
     if (!cible) {
       console.warn(`[channex-webhook] propriété inconnue : ${proprieteId}`);
       return;
     }
+    const { logement, conciergerie } = cible;
 
-    const proprietaire = cible.c.chatIds[0];
+    const proprietaire = await store.proprietaireDe(conciergerie.id);
     if (!proprietaire) return;
 
-    const voyageur = [p.customer?.name, p.customer?.surname].filter(Boolean).join(' ');
-    const arrivee = p.arrival_date ? enFrancais(p.arrival_date) : '?';
-    const depart = p.departure_date ? enFrancais(p.departure_date) : '?';
-    const canal = p.ota_name ?? p.ota ?? 'plateforme';
-    const montant = p.amount != null ? ` — ${p.amount} €` : '';
+    // Charge utile réduite aux identifiants : on complète par la réservation.
+    const bookingId: string | null = p.booking_id ?? null;
+    let resa: channex.Reservation | null = null;
+    if ((!p.arrival_date || !p.customer) && bookingId) {
+      resa = await channex.reservationParId(String(bookingId));
+    }
 
-    const annulation = /cancel/i.test(evenement) || p.status === 'cancelled';
+    const voyageur =
+      [p.customer?.name, p.customer?.surname].filter(Boolean).join(' ') || resa?.voyageur || '';
+    const dateArrivee: string | null = p.arrival_date ?? resa?.arrivee ?? null;
+    const dateDepart: string | null = p.departure_date ?? resa?.depart ?? null;
+    const arrivee = dateArrivee ? enFrancais(dateArrivee) : '?';
+    const depart = dateDepart ? enFrancais(dateDepart) : '?';
+    const canal = p.ota_name ?? p.ota ?? resa?.canal ?? 'plateforme';
+    const somme = p.amount ?? resa?.montant;
+    const montant = somme != null ? ` — ${somme} €` : '';
+    const statut: string = p.status ?? resa?.statut ?? '';
+
+    const annulation = /cancel/i.test(evenement) || /cancel/i.test(statut);
     const modification = /modif/i.test(evenement);
 
     const texte = annulation
-      ? `Annulation — ${cible.l.nom}\n` +
+      ? `Annulation — ${logement.nom}\n` +
         `${voyageur || 'Voyageur'}, du ${arrivee} au ${depart} (${canal}).\n` +
         `Le ménage du ${depart} n'a plus lieu d'être : dis-moi si je dois le retirer.`
       : modification
-        ? `Réservation modifiée — ${cible.l.nom}\n` +
+        ? `Réservation modifiée — ${logement.nom}\n` +
           `${voyageur || 'Voyageur'}, désormais du ${arrivee} au ${depart} (${canal}).`
-        : `Nouvelle réservation — ${cible.l.nom}\n` +
+        : `Nouvelle réservation — ${logement.nom}\n` +
           `${voyageur || 'Voyageur'}, du ${arrivee} au ${depart} (${canal})${montant}.\n` +
           `Ménage à prévoir le ${depart}.`;
 
     await envoyerMessage(proprietaire, texte);
-    await store.journaliser(cible.c.id, proprietaire, `channex:${evenement}`, p, { notifie: true });
+
+    // Enregistrée : le flux de rattrapage l'acquittera sans la renotifier.
+    if (revisionId) {
+      await store.marquerReservationVue({
+        revisionId,
+        bookingId: bookingId ? String(bookingId) : null,
+        conciergerieId: conciergerie.id,
+        logementId: logement.id,
+        statut: statut || evenement || 'inconnu',
+        arrivee: dateArrivee,
+        depart: dateDepart,
+      });
+    }
+    await store.journaliser(conciergerie.id, proprietaire, `channex:${evenement}`, p, { notifie: true });
   } catch (err) {
     console.error('[channex-webhook] traitement échoué :', err);
   }

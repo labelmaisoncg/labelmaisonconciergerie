@@ -12,7 +12,7 @@
 
 import * as channex from '../channex.js';
 import * as store from '../store.js';
-import { enFrancais, estValide } from '../dates.js';
+import { ajouterJours, enFrancais, estValide } from '../dates.js';
 import { appliquerTarifs } from './tarifs.js';
 import type { Contexte, Outil } from './index.js';
 
@@ -22,6 +22,53 @@ async function cible(chatId: string | number, nomLogement: string) {
   const l = await store.logementParNom(c.id, nomLogement);
   return { c, l };
 }
+
+type Plage = { du: string; au: string };
+
+const decrirePlage = (p: Plage): string =>
+  p.du === p.au ? `la nuit du ${enFrancais(p.du)}` : `du ${enFrancais(p.du)} au ${enFrancais(p.au)}`;
+
+/**
+ * Découpe [du, au] (nuits, bornes incluses) en sous-plages LIBRES, en retirant
+ * les nuits déjà vendues. Une réservation occupe les nuits arrivée..départ-1 :
+ * la nuit du départ reste libre.
+ *
+ * Rouvrir une nuit vendue la remettrait en vente sur Airbnb et Booking :
+ * c'est un surbooking garanti. Ce calcul est refait à la confirmation, car une
+ * réservation peut tomber dans l'heure qui sépare la demande du clic.
+ */
+async function nuitsLibres(
+  proprieteId: string,
+  du: string,
+  au: string,
+): Promise<{ libres: Plage[]; occupees: Plage[] }> {
+  const resas = await channex.reservationsChevauchant(proprieteId, du, au);
+  const vendues = new Set<string>();
+  for (const r of resas) {
+    if (!r.arrivee || !r.depart) continue;
+    for (let n = r.arrivee; n < r.depart; n = ajouterJours(n, 1)) vendues.add(n);
+  }
+
+  const libres: Plage[] = [];
+  const occupees: Plage[] = [];
+  let courante: Plage | null = null;
+  let courantEstLibre = false;
+  for (let n = du; n <= au; n = ajouterJours(n, 1)) {
+    const libre = !vendues.has(n);
+    if (courante && libre === courantEstLibre) {
+      courante.au = n;
+    } else {
+      if (courante) (courantEstLibre ? libres : occupees).push(courante);
+      courante = { du: n, au: n };
+      courantEstLibre = libre;
+    }
+  }
+  if (courante) (courantEstLibre ? libres : occupees).push(courante);
+  return { libres, occupees };
+}
+
+/** Plafond de la plage débloquable d'un coup : borne la boucle nuit par nuit. */
+const NUITS_MAX = 366;
 
 /** Prépare une action et la met en attente de confirmation. */
 async function preparer(
@@ -81,7 +128,9 @@ const bloquerDates: Outil = {
 
     // On avertit si des voyageurs sont déjà là : bloquer ne les annule pas,
     // mais l'utilisateur se trompe peut-être de dates.
-    const occupees = await channex.reservations(l.channexPropertyId!, String(args.du), String(args.au));
+    const occupees = l.channexPropertyId
+      ? await channex.reservationsChevauchant(l.channexPropertyId, String(args.du), String(args.au))
+      : [];
 
     const recap =
       `Bloquer ${l.nom}\n` +
@@ -119,12 +168,34 @@ const debloquerDates: Outil = {
     const { l } = await cible(ctx.chatId, String(args.logement));
     if (!l) return { erreur: `Logement introuvable : ${args.logement}` };
     if (!estValide(args.du) || !estValide(args.au)) return { erreur: 'Dates attendues au format AAAA-MM-JJ.' };
+    if (args.au < args.du) return { erreur: 'La date de fin précède la date de début.' };
+    if (ajouterJours(args.du, NUITS_MAX) <= args.au) {
+      return { erreur: `Plage trop longue : ${NUITS_MAX} nuits au maximum en une fois.` };
+    }
+    if (!l.channexPropertyId) {
+      return { erreur: `${l.nom} n'est pas encore configuré côté Channex : impossible d'écrire le calendrier.` };
+    }
+
+    // Jamais de réouverture d'une nuit déjà vendue : on ne remet en vente que
+    // les trous, et le récapitulatif dit EXACTEMENT ce qui sera rouvert.
+    const { libres, occupees } = await nuitsLibres(l.channexPropertyId, args.du, args.au);
+    if (libres.length === 0) {
+      return {
+        erreur:
+          `Rien à remettre en vente : toutes les nuits demandées sont déjà réservées ` +
+          `(${occupees.map(decrirePlage).join(' ; ')}).`,
+      };
+    }
 
     const recap =
-      `Remettre ${l.nom} en vente\n` +
-      `du ${enFrancais(String(args.du))} au ${enFrancais(String(args.au))}`;
+      `Remettre ${l.nom} en vente :\n` +
+      libres.map((p) => `— ${decrirePlage(p)}`).join('\n') +
+      (occupees.length
+        ? `\n\nNuits déjà réservées, laissées fermées :\n` +
+          occupees.map((p) => `— ${decrirePlage(p)}`).join('\n')
+        : '');
 
-    return preparer(ctx, 'debloquer_dates', { ...args, logementId: l.id }, recap);
+    return preparer(ctx, 'debloquer_dates', { ...args, logementId: l.id, plages: libres }, recap);
   },
 };
 
@@ -158,17 +229,41 @@ export async function executerActionConfirmee(
     return `${l.nom} n'est pas encore configuré côté Channex : impossible d'écrire le calendrier.`;
   }
 
-  const quantite = outil === 'bloquer_dates' ? 0 : 1;
-  await channex.definirDisponibilite(
-    l.channexPropertyId,
-    typeId,
-    String(args.du),
-    String(args.au),
-    quantite,
+  if (outil === 'bloquer_dates') {
+    await channex.definirDisponibilite(l.channexPropertyId, typeId, String(args.du), String(args.au), 0);
+    return `${l.nom} bloqué du ${enFrancais(String(args.du))} au ${enFrancais(String(args.au))}. La mise à jour part vers les plateformes dans les prochaines minutes.`;
+  }
+
+  // Déblocage : on REVÉRIFIE les réservations. Une résa a pu tomber pendant
+  // l'heure où l'action attendait le clic ; rouvrir sa nuit serait un surbooking.
+  if (!estValide(args.du) || !estValide(args.au)) return "Dates invalides, rien n'a été modifié.";
+  const { libres, occupees } = await nuitsLibres(l.channexPropertyId, args.du, args.au);
+  if (libres.length === 0) {
+    return `Rien n'a été remis en vente : toutes les nuits de ${l.nom} sur cette période sont désormais réservées.`;
+  }
+
+  // UN SEUL appel Channex pour toutes les sous-plages.
+  await channex.definirDisponibilites(
+    libres.map((p) => ({
+      proprieteId: l.channexPropertyId!,
+      typeChambreId: typeId!,
+      du: p.du,
+      au: p.au,
+      quantite: 1,
+    })),
   );
 
-  const verbe = outil === 'bloquer_dates' ? 'bloqué' : 'remis en vente';
-  return `${l.nom} ${verbe} du ${enFrancais(String(args.du))} au ${enFrancais(String(args.au))}. La mise à jour part vers les plateformes dans les prochaines minutes.`;
+  const prevues = JSON.stringify((args.plages as Plage[] | undefined) ?? null);
+  const changement = prevues !== 'null' && prevues !== JSON.stringify(libres);
+  return (
+    `${l.nom} remis en vente :\n` +
+    libres.map((p) => `— ${decrirePlage(p)}`).join('\n') +
+    (occupees.length
+      ? `\n\nLaissées fermées car réservées :\n` + occupees.map((p) => `— ${decrirePlage(p)}`).join('\n')
+      : '') +
+    (changement ? '\n\nAttention : une réservation est arrivée depuis ta demande, la plage a été ajustée.' : '') +
+    '\n\nLa mise à jour part vers les plateformes dans les prochaines minutes.'
+  );
 }
 
 export const OUTILS_ACTIONS: Outil[] = [bloquerDates, debloquerDates];

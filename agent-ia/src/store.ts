@@ -11,6 +11,7 @@
  */
 
 import postgres from 'postgres';
+import { chatAutorise } from './config.js';
 
 const URL_BASE = process.env.DATABASE_URL || '';
 export const persistanceReelle = (): boolean => Boolean(URL_BASE);
@@ -82,6 +83,8 @@ export type ActionEnAttente = {
 const mem = {
   conciergeries: new Map<string, Conciergerie>(),
   membres: new Map<string, string>(), // chatId -> conciergerieId
+  roles: new Map<string, Role>(), // chatId -> rôle
+  traites: new Set<string>(), // `${threadId}:${messageId}` — messages voyageurs pris en charge
   logements: [] as Logement[],
   connaissances: [] as Array<Connaissance & { conciergerieId: string }>,
   actions: new Map<string, ActionEnAttente>(),
@@ -136,6 +139,7 @@ export async function creerConciergerie(
     };
     mem.conciergeries.set(c.id, c);
     mem.membres.set(chat, c.id);
+    mem.roles.set(chat, 'proprietaire');
     return c;
   }
   const [c] = await sql<any[]>`
@@ -418,6 +422,26 @@ export async function deposerAction(a: Omit<ActionEnAttente, 'id'>): Promise<str
   return r.id;
 }
 
+/** Lit une action encore en attente SANS la consommer — pour vérifier qui a
+ *  le droit de la confirmer avant d'y toucher. */
+export async function lireAction(id: string): Promise<ActionEnAttente | null> {
+  if (!sql) return mem.actions.get(id) ?? null;
+  const [r] = await sql<any[]>`
+    select id, conciergerie_id, chat_id, outil, arguments, recap
+    from actions_en_attente
+    where id = ${id} and statut = 'attente' and expire_le > now()`;
+  return r
+    ? {
+        id: r.id,
+        conciergerieId: r.conciergerie_id,
+        chatId: r.chat_id,
+        outil: r.outil,
+        arguments: r.arguments,
+        recap: r.recap,
+      }
+    : null;
+}
+
 export async function retirerAction(id: string, statut: 'confirmee' | 'refusee'): Promise<ActionEnAttente | null> {
   if (!sql) {
     const a = mem.actions.get(id) ?? null;
@@ -455,9 +479,11 @@ export async function journaliser(
     values (${conciergerieId}, ${chatId}, ${outil}, ${sql.json(args as any)}, ${sql.json(resultat as any)})`;
 }
 
-/** true si ce message voyageur a déjà été traité — évite de répondre deux fois. */
+/** true si ce message voyageur a déjà été traité — évite de répondre deux fois.
+ *  Conservé pour compatibilité : la messagerie passe désormais par
+ *  `reserverMessage`, seule garantie contre deux passages de cron simultanés. */
 export async function dejaTraite(threadId: string, messageId: string): Promise<boolean> {
-  if (!sql) return false;
+  if (!sql) return mem.traites.has(`${threadId}:${messageId}`);
   const [r] = await sql<any[]>`
     select 1 from messages_traites where thread_id = ${threadId} and message_id = ${messageId}`;
   return Boolean(r);
@@ -469,11 +495,81 @@ export async function marquerTraite(
   conciergerieId: string | null,
   reponse: string,
 ): Promise<void> {
-  if (!sql) return;
+  if (!sql) {
+    mem.traites.add(`${threadId}:${messageId}`);
+    return;
+  }
   await sql`
     insert into messages_traites (thread_id, message_id, conciergerie_id, reponse_envoyee)
     values (${threadId}, ${messageId}, ${conciergerieId}, ${reponse})
     on conflict do nothing`;
+}
+
+/** Marqueur d'un message pris en charge mais pas encore répondu. */
+export const EN_COURS = '(en cours)';
+
+/**
+ * Prise en charge ATOMIQUE d'un message voyageur.
+ *
+ * Deux passages de cron qui se chevauchent (pg_cron toutes les 1 à 2 minutes,
+ * une génération qui traîne) lisaient tous deux « pas encore traité » puis
+ * répondaient tous deux. Ici l'insertion fait office de verrou : une seule
+ * invocation obtient la ligne, les autres passent leur chemin.
+ *
+ * Une prise en charge restée « en cours » plus de 10 minutes est considérée
+ * comme abandonnée (fonction tuée en plein vol) et peut être reprise.
+ *
+ * Renvoie true si CET appel a obtenu le message.
+ */
+export async function reserverMessage(
+  threadId: string,
+  messageId: string,
+  conciergerieId: string | null,
+): Promise<boolean> {
+  if (!sql) {
+    const cle = `${threadId}:${messageId}`;
+    if (mem.traites.has(cle)) return false;
+    mem.traites.add(cle);
+    return true;
+  }
+  const rs = await sql<any[]>`
+    insert into messages_traites (thread_id, message_id, conciergerie_id, reponse_envoyee)
+    values (${threadId}, ${messageId}, ${conciergerieId}, ${EN_COURS})
+    on conflict (thread_id, message_id) do update
+      set traite_le = now()
+      where messages_traites.reponse_envoyee = ${EN_COURS}
+        and messages_traites.traite_le < now() - interval '10 minutes'
+    returning thread_id`;
+  return rs.length > 0;
+}
+
+/** Inscrit l'issue définitive : la réponse envoyée, ou « (escaladé) ». */
+export async function finaliserMessage(
+  threadId: string,
+  messageId: string,
+  reponse: string,
+): Promise<void> {
+  if (!sql) {
+    mem.traites.add(`${threadId}:${messageId}`);
+    return;
+  }
+  await sql`
+    update messages_traites
+    set reponse_envoyee = ${reponse}, traite_le = now()
+    where thread_id = ${threadId} and message_id = ${messageId}`;
+}
+
+/** Rend un message au prochain passage — uniquement quand RIEN n'est parti
+ *  vers le voyageur (échec de génération). */
+export async function libererMessage(threadId: string, messageId: string): Promise<void> {
+  if (!sql) {
+    mem.traites.delete(`${threadId}:${messageId}`);
+    return;
+  }
+  await sql`
+    delete from messages_traites
+    where thread_id = ${threadId} and message_id = ${messageId}
+      and reponse_envoyee = ${EN_COURS}`;
 }
 
 // --- Authentification par invitation ---
@@ -540,6 +636,7 @@ export async function rattacherMembre(
   const chat = String(chatId);
   if (!sql) {
     mem.membres.set(chat, conciergerieId);
+    mem.roles.set(chat, role as Role);
     return;
   }
   await sql`
@@ -552,6 +649,30 @@ export async function rattacherMembre(
 export async function lierInvitation(code: string, conciergerieId: string): Promise<void> {
   if (!sql) return;
   await sql`update invitations set conciergerie_id = ${conciergerieId} where code = ${code}`;
+}
+
+// --- Rôles ---
+
+export type Role = 'editeur' | 'proprietaire' | 'equipe' | 'prestataire';
+
+/** Rôles autorisés à modifier la configuration ou les calendriers. */
+export const peutEcrire = (role: Role | null): boolean =>
+  role === 'proprietaire' || role === 'editeur';
+
+/**
+ * Rôle d'un chat_id. La liste d'amorçage (TELEGRAM_ALLOWED_CHAT_IDS) vaut
+ * « editeur » : c'est elle qui ouvre le produit avant qu'aucune conciergerie
+ * n'existe. null = inconnu, donc aucun droit.
+ */
+export async function roleDe(chatId: string | number): Promise<Role | null> {
+  const chat = String(chatId);
+  if (chatAutorise(chat)) return 'editeur';
+  if (!sql) {
+    if (!mem.membres.has(chat)) return null;
+    return mem.roles.get(chat) ?? 'proprietaire';
+  }
+  const [r] = await sql<any[]>`select role from membres where chat_id = ${chat} limit 1`;
+  return (r?.role as Role | undefined) ?? null;
 }
 
 export async function estEditeur(chatId: string | number): Promise<boolean> {
