@@ -65,7 +65,7 @@ function Boite() {
         <ReglesAgent />
       </div>
 
-      <div className="grid overflow-hidden rounded-xl border border-(--lm-bord) bg-(--lm-surface) shadow-(--lm-ombre) lg:h-[calc(100vh-190px)] lg:min-h-[560px] lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_300px]">
+      <div className="grid overflow-hidden rounded-xl border border-(--lm-bord) bg-(--lm-surface) shadow-(--lm-ombre) lg:h-[calc(100vh-190px)] lg:min-h-[560px] lg:grid-cols-[290px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_280px]">
         <aside className={cn('min-h-0 border-(--lm-bord) lg:border-r', fil ? 'max-lg:hidden' : 'max-lg:max-h-[75vh]')} aria-label="Liste des conversations">
           <ListeFils
             fils={visibles}

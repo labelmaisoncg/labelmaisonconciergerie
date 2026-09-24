@@ -42,7 +42,7 @@ function Indicateurs() {
   }, [d.reservations, d.logements]);
   return (
     <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <Stat label="Occupation 30 j" valeur={pourcentage(k.occupation)} icone={<Percent />} aide="Logements actifs" />
+      <Stat label="Occupation 30 j" valeur={pourcentage(Math.round(k.occupation * 100) / 100)} icone={<Percent />} aide="Logements actifs" />
       <Stat label="ADR 30 j" valeur={euros(k.adr, true)} icone={<TrendingUp />} aide="Prix moyen par nuit" />
       <Stat label="RevPAR 30 j" valeur={euros(k.revpar, true)} icone={<Wallet />} aide="Par nuit disponible" />
       <Stat label="Arrivées 7 j" valeur={k.arrivees} icone={<LogIn />} aide="Aujourd’hui inclus" />

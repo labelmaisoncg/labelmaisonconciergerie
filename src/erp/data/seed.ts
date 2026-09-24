@@ -238,7 +238,7 @@ function genererMissions(h: Hasard, reservations: Reservation[]): Mission[] {
     else if (ecart === 0) statut = h.chance(0.5) ? 'en_cours' : 'attribuee';
     else if (ecart <= 2) statut = h.chance(0.3) ? 'a_attribuer' : 'attribuee';
     else if (ecart <= 10) statut = h.chance(0.12) ? 'a_attribuer' : 'attribuee';
-    else statut = h.chance(0.45) ? 'a_attribuer' : 'attribuee';
+    else statut = h.chance(0.15) ? 'a_attribuer' : 'attribuee';
 
     // Une mission refusée : la dernière de Lucas Perrin avant sa suspension.
     if (!refuseePosee && statut === 'validee' && r.logementId === 'log-juvisy' && r.depart >= '2026-08-01') {

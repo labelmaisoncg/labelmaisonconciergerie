@@ -87,7 +87,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
           <StatusBadge type="statutFil" valeur={fil.statut} />
           <StatusBadge type="traitePar" valeur={fil.traitePar} />
         </div>
-        <div className="flex w-full flex-wrap gap-1.5 sm:w-auto">
+        <div className="flex w-full flex-wrap gap-1.5">
           <Button size="sm" variant="secondary" icone={<Bot />} onClick={rendreMain} disabled={!!motifReprise} title={motifReprise}>
             Rendre la main à l’agent
           </Button>

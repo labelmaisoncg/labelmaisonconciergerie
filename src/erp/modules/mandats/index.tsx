@@ -1,12 +1,11 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+import { Route, Routes } from 'react-router-dom';
+import PageMandats from './PageMandats';
 
-/** Module Mandats : page provisoire. */
-export default function Module() {
+/** Module Mandats : table des mandats, détail en panneau (?mandat=id). */
+export default function ModuleMandats() {
   return (
-    <>
-      <PageHeader titre="Mandats" sousTitre="Conditions de gestion signées avec chaque propriétaire." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
-    </>
+    <Routes>
+      <Route path="*" element={<PageMandats />} />
+    </Routes>
   );
 }

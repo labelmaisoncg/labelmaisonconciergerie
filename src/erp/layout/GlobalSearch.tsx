@@ -100,7 +100,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         aria-controls={listeId}
         aria-autocomplete="list"
         aria-activedescendant={visible && resultats[actif] ? `${listeId}-${actif}` : undefined}
-        placeholder="Rechercher logement, propriétaire, voyageur"
+        placeholder="Rechercher"
         value={q}
         onChange={(e) => {
           setQ(e.target.value);

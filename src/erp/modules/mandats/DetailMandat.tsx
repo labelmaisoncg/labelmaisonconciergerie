@@ -69,7 +69,9 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
     <>
       <Drawer
         ouvert
-        onFermer={onFermer}
+        onFermer={() => {
+          if (!contrat && !resiliation) onFermer();
+        }}
         titre={m.reference}
         sousTitre={
           <span className="flex flex-wrap items-center gap-2">
@@ -137,7 +139,8 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
             <span className="lm-chiffres font-semibold">{euros(m.fraisMenageCentimes)}</span> par séjour, facturés au voyageur et acquis au gestionnaire.
           </Clause>
           <Clause titre="Durée">
-            Du {dateCourte(m.dateDebut)} {m.dateFin ? `au ${dateCourte(m.dateFin)}` : ', reconduction tacite annuelle'}.
+            Du {dateCourte(m.dateDebut)}
+            {m.dateFin ? ` au ${dateCourte(m.dateFin)}` : ', reconduction tacite annuelle'}.
           </Clause>
           <Clause titre="Période d’essai">
             {m.periodeEssaiFin ? `Jusqu’au ${dateCourte(m.periodeEssaiFin)}${m.periodeEssaiFin < AUJOURDHUI ? ' (terminée)' : ''}, résiliable sans préavis.` : 'Aucune.'}

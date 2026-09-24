@@ -8,9 +8,9 @@ import type { CanalReservation, DateISO, Id, Reservation, StatutReservation } fr
 
 /** Couleur de barre par canal (toujours doublée du libellé dans la légende). */
 export const COULEUR_CANAL: Record<CanalReservation, { fond: string; texte: string; bord: string }> = {
-  airbnb: { fond: '#E9DCD6', texte: '#8A2F2A', bord: '#C0564D' },
+  airbnb: { fond: '#F7DDE0', texte: '#8E1F2F', bord: '#D1495B' },
   booking: { fond: '#DCE6F2', texte: '#1F4E82', bord: '#2B6CB0' },
-  direct: { fond: '#F1E6CF', texte: '#5A4214', bord: '#A97C30' },
+  direct: { fond: '#F2E4C4', texte: '#5A4214', bord: '#A97C30' },
   autre: { fond: '#ECEAE6', texte: '#403A33', bord: '#8C857B' },
 };
 
