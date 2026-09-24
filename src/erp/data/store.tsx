@@ -127,15 +127,23 @@ export function nouvelId(prefixe: string): Id {
 const COLLECTIONS: NomCollection[] = [
   'proprietaires', 'mandats', 'logements', 'reservations', 'filsMessages', 'missions', 'prestataires',
   'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects',
-  'utilisateurs', 'journal',
+  'utilisateurs', 'journal', 'recommandations',
 ];
+
+/**
+ * Collections ajoutées après la première version : une sauvegarde locale plus
+ * ancienne ne les contient pas, on les initialise vides au lieu de tout jeter.
+ */
+const COLLECTIONS_AJOUTEES: NomCollection[] = ['recommandations'];
 
 function charger(): ErpDonnees {
   try {
     const brut = window.localStorage.getItem(CLE_STOCKAGE);
     if (brut) {
       const d = JSON.parse(brut) as Partial<ErpDonnees>;
-      if (COLLECTIONS.every((c) => Array.isArray(d[c]))) return d as ErpDonnees;
+      const migre = { ...d } as Record<string, unknown>;
+      for (const c of COLLECTIONS_AJOUTEES) if (!Array.isArray(migre[c])) migre[c] = [];
+      if (COLLECTIONS.every((c) => Array.isArray(migre[c]))) return migre as unknown as ErpDonnees;
     }
   } catch {
     /* stockage indisponible ou corrompu : on repart du seed */

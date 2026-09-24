@@ -431,8 +431,41 @@ export interface ErpDonnees {
   prospects: Prospect[];
   utilisateurs: Utilisateur[];
   journal: Journal[];
+  /** Améliorations proposées aux propriétaires (ajoutée en septembre 2026). */
+  recommandations: RecommandationProprietaire[];
 }
 
 export type NomCollection = keyof ErpDonnees;
 /** Type d'élément d'une collection donnée. */
 export type ElementDe<C extends NomCollection> = ErpDonnees[C][number];
+
+/* ------------------------------------------------- analyse des biens */
+
+export type StatutRecommandation = 'a_proposer' | 'proposee' | 'acceptee' | 'refusee' | 'realisee';
+export type PorteurRecommandation = 'proprietaire' | 'label_maison';
+
+/**
+ * Amélioration suggérée au propriétaire, suivie de la proposition au résultat
+ * observé (module Performance des biens).
+ */
+export interface RecommandationProprietaire {
+  id: Id;
+  logementId: Id;
+  proprietaireId: Id;
+  /** Code stable de l'amélioration (analyse/ameliorations.ts), ex. 'literie'. */
+  code: string;
+  titre: string;
+  detail: string;
+  /** Gain mensuel estimé, en centimes (voir `impactSur`). */
+  impactEstimeCentimesMois?: Centimes;
+  /** Sur quoi porte le gain : revenu brut du bien ou marge Label Maison. */
+  impactSur?: 'revenu_bien' | 'marge_label_maison';
+  porteur: PorteurRecommandation;
+  statut: StatutRecommandation;
+  proposeeLe?: DateISO;
+  decideeLe?: DateISO;
+  realiseeLe?: DateISO;
+  coutCentimes?: Centimes;
+  resultatObserve?: string;
+  creeLe: DateISO;
+}
