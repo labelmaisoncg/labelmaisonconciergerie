@@ -102,7 +102,7 @@ export function ATraiter({ elements, titre = 'À traiter' }: { elements: Element
           ))}
         </ul>
       ) : (
-        <EmptyState className="m-4" icone={<CheckCircle2 />} titre="Tout est en ordre" description="Aucune action en attente pour cette vue." />
+        <EmptyState className="m-4" icone={<CheckCircle2 />} titre="Tout est en ordre" description="Aucune action en attente." />
       )}
     </Card>
   );
