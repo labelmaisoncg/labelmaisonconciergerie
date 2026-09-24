@@ -34,7 +34,7 @@ export function Liste() {
   const delai = delaiMoyenValidation(d.missions, d.journal);
   const nbControles = missionsAControler(d.missions, d.reservations).filter((m) => m.noteControle === undefined).length;
 
-  const valider = (m: Mission) => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Validation impossible');
+  const valider = (m: Mission) => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Pas de validation, pas de paiement (règle 2.4)');
   const succes = (texte: string) => setMessage({ ton: 'succes', texte });
 
   return (

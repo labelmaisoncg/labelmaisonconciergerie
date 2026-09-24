@@ -56,7 +56,7 @@ export function Documents({ prestataire: p, onMettreAJour }: { prestataire: Pres
     },
     {
       cle: 'action',
-      titre: <span className="sr-only">Action</span>,
+      titre: 'Action',
       align: 'droite',
       rendu: (l) => (
         <Button size="sm" variant="secondary" icone={<Upload />} onClick={() => onMettreAJour(l.type)}>

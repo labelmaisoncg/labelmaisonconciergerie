@@ -33,11 +33,11 @@ export function Stock() {
   ];
 
   const colonnesArticles: Colonne<PositionArticle>[] = [
-    { cle: 'article', titre: 'Article', rendu: (a) => a.article },
+    { cle: 'article', titre: 'Article', rendu: (a) => <span className="whitespace-nowrap">{a.article}</span> },
     { cle: 'dotation', titre: 'Dotation', align: 'droite', rendu: (a) => chiffre(a.dotation) },
     { cle: 'enPlace', titre: 'En place', align: 'droite', rendu: (a) => chiffre(a.enPlace) },
     { cle: 'sale', titre: 'Sale', align: 'droite', rendu: (a) => chiffre(a.sale, 'text-(--lm-alerte)') },
-    { cle: 'blanchisserie', titre: 'Blanchisserie', align: 'droite', rendu: (a) => chiffre(a.blanchisserie, 'text-(--lm-info)') },
+    { cle: 'blanchisserie', titre: 'Blanch.', align: 'droite', rendu: (a) => chiffre(a.blanchisserie, 'text-(--lm-info)') },
     { cle: 'perdu', titre: 'Perdu', align: 'droite', rendu: (a) => chiffre(a.perdu, 'font-semibold text-(--lm-danger)') },
   ];
 

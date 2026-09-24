@@ -70,7 +70,7 @@ export function Detail() {
             {m.statut === 'a_valider' && (
               <>
                 <Button icone={<XCircle />} onClick={() => setRefuser(true)}>Refuser</Button>
-                <Button variant="primary" icone={<CheckCircle2 />} onClick={() => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Validation impossible')}>
+                <Button variant="primary" icone={<CheckCircle2 />} onClick={() => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Pas de validation, pas de paiement (règle 2.4)')}>
                   Valider
                 </Button>
               </>

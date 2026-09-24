@@ -10,7 +10,14 @@ import { refEnvoi } from './calculs';
 export function Ecarts({ onMessage }: { onMessage: (texte: string) => void }) {
   const { mouvementsLinge, logements, incidents, prestataires, creerIncident } = useErp();
   const ecarts = ecartsLinge(mouvementsLinge);
-  const incidentDe = (e: EcartLinge) => incidents.find((i) => i.categorie === 'linge' && i.description.includes(refEnvoi(e.envoiId)) && i.description.includes(e.article));
+  /** Incident déjà ouvert pour cet écart : par référence d'envoi, sinon même logement, même article, après l'envoi. */
+  const incidentDe = (e: EcartLinge) =>
+    incidents.find(
+      (i) =>
+        i.categorie === 'linge' &&
+        i.description.toLowerCase().includes(e.article.toLowerCase()) &&
+        (i.description.includes(refEnvoi(e.envoiId)) || (i.logementId === e.logementId && i.date >= e.date)),
+    );
 
   const creer = (e: EcartLinge) => {
     const logement = logements.find((l) => l.id === e.logementId);
