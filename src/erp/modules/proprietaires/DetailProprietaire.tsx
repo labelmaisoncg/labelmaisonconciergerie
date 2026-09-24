@@ -8,6 +8,7 @@ import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
 import { AUJOURDHUI, ajouterJours, dateCourte, debutMois, euros, moisAnnee, periode as periodeDe } from '../../data/format';
 import { montantTtc, proprietaireById } from '../../data/selectors';
 import { VisuelLogement } from '../logements/_composants/Visuel';
+import { BadgeCommission, BadgeRentabilite, economieBien } from '../logements/_composants/EconomieBien';
 import { Imprimable } from '../mandats/_composants/Imprimable';
 import { FormMandat } from '../mandats/FormMandat';
 import { FormProprietaire } from './FormProprietaire';
@@ -97,18 +98,29 @@ export default function DetailProprietaire() {
               <p className="text-sm text-(--lm-encre-3)">Aucun logement confié.</p>
             ) : (
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {logements.map((l) => (
-                  <li key={l.id}>
-                    <Link to={`/erp/logements/${l.id}`} className="flex items-center gap-3 rounded-lg border border-(--lm-bord) p-2.5 hover:border-(--lm-or-anneau)">
-                      <VisuelLogement logement={l} taille="sm" className="size-10 shrink-0 rounded-lg" />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-[13.5px] font-medium">{l.nom}</span>
-                        <span className="block truncate text-[12px] text-(--lm-encre-2)">{l.ville} · {LIBELLES.typeLogement[l.type]}</span>
-                      </span>
-                      <StatusBadge type="statutLogement" valeur={l.statut} />
-                    </Link>
-                  </li>
-                ))}
+                {logements.map((l) => {
+                  const eco = economieBien(d.donnees, l.id);
+                  return (
+                    <li key={l.id}>
+                      <Link to={`/erp/logements/${l.id}`} className="flex items-start gap-3 rounded-lg border border-(--lm-bord) p-2.5 hover:border-(--lm-or-anneau)">
+                        <VisuelLogement logement={l} taille="sm" className="size-10 shrink-0 rounded-lg" />
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-start justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="block truncate text-[13.5px] font-medium">{l.nom}</span>
+                              <span className="block truncate text-[12px] text-(--lm-encre-2)">{l.ville} · {LIBELLES.typeLogement[l.type]}</span>
+                            </span>
+                            <StatusBadge type="statutLogement" valeur={l.statut} />
+                          </span>
+                          <span className="mt-1.5 flex flex-wrap gap-1.5">
+                            <BadgeCommission eco={eco} />
+                            <BadgeRentabilite eco={eco} />
+                          </span>
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Card>

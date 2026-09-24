@@ -130,6 +130,13 @@ d'automatisations repasse sur les données (il tourne aussi au chargement).
 | Conformité & admin | Conformité | `/erp/conformite` |
 | Conformité & admin | Paramètres | `/erp/parametres` (`/integrations`, `/donnees`, `/entreprise`) |
 
+Sur chaque logement, deux chiffres sont visibles partout où il apparaît
+(liste en cartes et en tableau, en-tête de la fiche logement, fiche
+propriétaire) : la **commission** du mandat (« sous la cible » sous 18 %,
+« Pas de mandat » sinon) et la **rentabilité pour Label Maison** (marge par
+mois sur 90 jours, même calcul que `/erp/performance`). Composants dans
+`modules/logements/_composants/EconomieBien.tsx`.
+
 Chaque module est monté sur `<segment>/*` et gère ses sous-routes avec un
 `<Routes>` relatif. La recherche globale renvoie vers `/erp/logements/:id`,
 `/erp/proprietaires/:id` et `/erp/reservations/:id`.

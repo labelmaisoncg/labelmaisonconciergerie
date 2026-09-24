@@ -6,8 +6,9 @@ import { jourMois, note, pluriel, relatif } from '../../../data/format';
 import type { Logement } from '../../../data/types';
 import type { StatsLogement } from './stats';
 import { VisuelLogement } from './Visuel';
+import { BadgeCommission, BadgeRentabilite, type EconomieBien } from './EconomieBien';
 
-export function CarteLogement({ logement: l, stats }: { logement: Logement; stats: StatsLogement }) {
+export function CarteLogement({ logement: l, stats, economie }: { logement: Logement; stats: StatsLogement; economie?: EconomieBien }) {
   const prochaine = stats.prochaineArrivee;
   return (
     <Link
@@ -48,6 +49,12 @@ export function CarteLogement({ logement: l, stats }: { logement: Logement; stat
             {note(stats.note)}
           </span>
         </div>
+        {economie && (
+          <div className="flex flex-wrap gap-1.5">
+            <BadgeCommission eco={economie} />
+            <BadgeRentabilite eco={economie} />
+          </div>
+        )}
         <ProgressBar
           valeur={stats.occupation30}
           label="Occupation 30 j"

@@ -21,7 +21,7 @@ export function Synthese({ parc }: { parc: AnalyseParc }) {
   return (
     <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
       <Stat
-        label={<LibelleAide texte="Un bien est rentable quand sa marge Label Maison sur 90 jours est positive, après ménages, charges, incidents non refacturés et quote-part des frais de structure.">Biens rentables</LibelleAide>}
+        label={<LibelleAide texte="Un bien est rentable quand sa marge Label Maison sur 90 jours est positive, après ménages, charges, incidents non refacturés et quote-part des frais de structure.">Rentables pour Label Maison</LibelleAide>}
         valeur={`${rentables}/${l.length}`}
         icone={<TrendingUp />}
         tone={rentables < l.length ? 'alerte' : 'neutre'}

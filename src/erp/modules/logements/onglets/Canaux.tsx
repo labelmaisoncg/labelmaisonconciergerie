@@ -4,6 +4,7 @@ import { Alert, Badge, Button, Card, CardHeader, Field, Input } from '../../../u
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { Annonce, Canal, Logement } from '../../../data/types';
+import { CarteAnnonceLogement } from '../../annonces/_composants/CarteAnnonceLogement';
 
 const CANAUX: Canal[] = ['airbnb', 'booking', 'direct'];
 
@@ -92,6 +93,7 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
       </div>
 
       <div className="flex min-w-0 flex-col gap-5">
+        <CarteAnnonceLogement logement={l} />
         <Card>
           <CardHeader titre="Channex" description="Gestionnaire de canaux : calendrier, réservations, messagerie." />
           {l.channexPropertyId ? (

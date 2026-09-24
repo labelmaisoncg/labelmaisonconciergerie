@@ -15,6 +15,7 @@ import { OngletLinge } from './onglets/Linge';
 import { OngletCanaux } from './onglets/Canaux';
 import { OngletHistorique } from './onglets/Historique';
 import { OngletPerformance } from './onglets/Performance';
+import { BadgeCommission, BadgeRentabilite, economieBien } from './_composants/EconomieBien';
 
 const ONGLETS = ['apercu', 'performance', 'lancement', 'fiche', 'linge', 'canaux', 'historique'] as const;
 type CleOnglet = (typeof ONGLETS)[number];
@@ -49,6 +50,7 @@ export default function DetailLogement() {
   const av = avancementChecklist(l);
   const fiche = completudeFiche(l.fiche);
   const incidents = incidentsOuverts(d.incidents).filter((i) => i.logementId === l.id).length;
+  const eco = economieBien(d.donnees, l.id);
 
   return (
     <>
@@ -75,6 +77,15 @@ export default function DetailLogement() {
                 {prop.nom}
               </Link>
             )}
+            <span className="flex w-full flex-wrap items-center gap-1.5 pt-1">
+              <BadgeCommission eco={eco} />
+              <BadgeRentabilite eco={eco} complet />
+              {onglet !== 'performance' && (
+                <button type="button" onClick={() => changer('performance')} className="text-[12.5px] font-medium text-(--lm-or) hover:underline">
+                  Voir la performance
+                </button>
+              )}
+            </span>
           </span>
         }
         actions={
