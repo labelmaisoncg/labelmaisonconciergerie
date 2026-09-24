@@ -248,3 +248,56 @@ Module **Performance des biens** (`/erp/performance`, moteur pur dans
   idempotente) alerte sur les biens à sortir ou renégocier et ajoute au
   suivi chaque amélioration non encore suivie (id `reco-<logement>-<code>`).
   Une proposition d'une page au propriétaire s'imprime depuis le suivi.
+
+## 11. Rafraîchissement mensuel des annonces
+
+Module **Annonces** (`/erp/annonces`, groupe Distribution, code
+`src/erp/modules/annonces/`, générateur `src/erp/annonces/`) et encart
+« Annonce » dans l'onglet « Annonces & canaux » de chaque fiche logement.
+
+- **Principe** : changer un mot chaque jour n'améliore pas le classement
+  Airbnb. Une fois par mois, l'agent propose une version utile de chaque
+  annonce (accroche de saison, repères locaux, points faibles corrigés), un
+  humain (Abdel ou Kamel) la valide en un clic, l'ERP garde l'historique et
+  mesure l'effet sur les réservations.
+- **Données** : collection `versionsAnnonce` (`VersionAnnonce` : logement,
+  mois `YYYY-MM`, statut proposée → validée → publiée, ou rejetée avec
+  motif obligatoire ; titre, accroche, description, raisons, source agent ou
+  humain, validée par / le, publiée le). Une ancienne sauvegarde locale sans
+  cette collection est migrée (collection vide).
+- **Générateur** (`annonces/generer.ts`, pur et déterministe) : fiche
+  (type, surface, capacité, couchages, équipements, accès, parking,
+  règles), saison du mois visé (automne : télétravail, séjours pro,
+  cocooning ; hiver : fêtes et marchés de Noël en décembre ; printemps ;
+  été), repères locaux stables par ville (`annonces/ancrages.ts` : Génopole,
+  gares RER C, D et TGV, Opéra de Massy, Montparnasse, autodrome de
+  Linas-Montlhéry...), avis des 12 derniers mois (thèmes de plainte de
+  `analyse/defauts.ts`). Titre ≤ 50 caractères, accroche d'une ligne,
+  description de 600 à 1 000 caractères, sans tiret long. En production,
+  l'agent Claude (`agent-ia`) remplace ce générateur avec les mêmes entrées.
+- **Règle « n'invente rien »** : un point faible cité dans les avis n'est
+  mis en avant (ex. « literie neuve ») que si la recommandation
+  correspondante est `realisee` à la date de la proposition (ou, pour
+  l'arrivée, si la serrure est connectée). Sinon il n'apparaît pas dans le
+  texte et devient une raison « Point faible à corriger avant de le mettre
+  en avant ». Un atout contredit par un avis non corrigé (fibre et wifi
+  instable, calme et bruit) est retiré.
+- **Validation humaine obligatoire** : seuls les rôles gérant et opérations
+  valident, modifient, rejettent et publient. Pas de publication sans
+  validation, pas de rejet sans motif, contrôles de forme avant validation.
+  Publication en démo : statut publiée à la date du jour ; en production via
+  Channex si l'API le permet, sinon copier-coller dans Airbnb (bouton
+  « Copier le texte »).
+- **Automatisation** « Rafraîchissement mensuel des annonces » (pilotage,
+  idempotente) : pour chaque logement actif sans version du mois courant
+  (tout statut, rejetée comprise), crée une proposition d'id
+  `ann-<logement>-<mois>` et un événement « à valider » ; une proposition
+  en attente depuis plus de 7 jours lève l'alerte « Annonce en attente de
+  validation ». Une régénération manuelle prend l'id suivant
+  (`...-r2`).
+- **Mesure** : pour chaque version publiée, réservations dans les 30 jours
+  après la publication contre les 30 jours avant. Les réservations n'ont
+  pas de date de création : on compte les arrivées (approximation signalée
+  dans l'interface ; mesure provisoire tant que les 30 jours ne sont pas
+  écoulés). Indicateurs : versions à traiter, publiées ce mois, logements
+  sans nouvelle version depuis plus de 60 jours, effet moyen.

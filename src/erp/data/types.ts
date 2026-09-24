@@ -435,6 +435,8 @@ export interface ErpDonnees {
   journal: Journal[];
   /** Améliorations proposées aux propriétaires (ajoutée en septembre 2026). */
   recommandations: RecommandationProprietaire[];
+  /** Versions successives des descriptions d'annonce (ajoutée en septembre 2026). */
+  versionsAnnonce: VersionAnnonce[];
 }
 
 export type NomCollection = keyof ErpDonnees;
@@ -470,4 +472,34 @@ export interface RecommandationProprietaire {
   coutCentimes?: Centimes;
   resultatObserve?: string;
   creeLe: DateISO;
+}
+
+/* ------------------------------------------ rafraîchissement des annonces */
+
+export type StatutVersionAnnonce = 'proposee' | 'validee' | 'publiee' | 'rejetee';
+
+/**
+ * Version mensuelle de la description d'une annonce (SPEC §11) : proposée par
+ * l'agent (ou saisie par un humain), validée par Abdel ou Kamel, publiée,
+ * puis mesurée (réservations avant / après publication).
+ */
+export interface VersionAnnonce {
+  id: Id;
+  logementId: Id;
+  /** Mois visé 'YYYY-MM'. */
+  mois: string;
+  statut: StatutVersionAnnonce;
+  titre: string;
+  description: string;
+  /** Accroche d'une ligne (premier paragraphe visible sur Airbnb). */
+  accroche: string;
+  /** Pourquoi cette version : saison, événement local, avis voyageurs. */
+  raisons: string[];
+  source: 'agent' | 'humain';
+  creeLe: DateISO;
+  /** Nom de l'utilisateur qui a validé. */
+  valideePar?: string;
+  valideeLe?: DateISO;
+  publieeLe?: DateISO;
+  motifRejet?: string;
 }

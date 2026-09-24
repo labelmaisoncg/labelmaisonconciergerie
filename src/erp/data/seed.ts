@@ -17,6 +17,7 @@ import {
 } from './seed-referentiel';
 import { genererOperations } from './seed-operations';
 import { creerRecommandations } from './seed-recommandations';
+import { creerVersionsAnnonce } from './seed-annonces';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -509,6 +510,8 @@ export function creerSeed(): ErpDonnees {
     missionsRealisees: toutesMissions.filter((m) => m.prestataireId === p.id && m.statut === 'validee').length,
   }));
 
+  const recommandations = creerRecommandations();
+
   return {
     proprietaires: structuredClone(PROPRIETAIRES),
     mandats: structuredClone(MANDATS),
@@ -525,6 +528,7 @@ export function creerSeed(): ErpDonnees {
     prospects: structuredClone(PROSPECTS),
     utilisateurs: structuredClone(UTILISATEURS),
     journal: operations.journal,
-    recommandations: creerRecommandations(),
+    recommandations,
+    versionsAnnonce: creerVersionsAnnonce({ logements: LOGEMENTS, reservations, recommandations }),
   };
 }

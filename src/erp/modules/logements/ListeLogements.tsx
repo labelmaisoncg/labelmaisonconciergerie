@@ -23,8 +23,9 @@ import { CarteLogement } from './_composants/CarteLogement';
 import { statsLogement, type StatsLogement } from './_composants/stats';
 import { VisuelLogement } from './_composants/Visuel';
 import { EditionLogement } from './EditionLogement';
+import { BadgeCommission, BadgeRentabilite, triMarge, useEconomieParc, type EconomieBien } from './_composants/EconomieBien';
 
-type Ligne = { l: Logement; s: StatsLogement; proprietaire: string };
+type Ligne = { l: Logement; s: StatsLogement; proprietaire: string; eco: EconomieBien };
 const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 
 function lireVue(): 'cartes' | 'tableau' {
@@ -53,14 +54,16 @@ export default function ListeLogements() {
     }
   };
 
+  const economie = useEconomieParc(d.donnees);
   const lignes = useMemo<Ligne[]>(
     () =>
       d.logements.map((l) => ({
         l,
         s: statsLogement(d, l),
         proprietaire: proprietaireById(d, l.proprietaireId)?.nom ?? 'Propriétaire inconnu',
+        eco: economie.get(l.id)!,
       })),
-    [d],
+    [d, economie],
   );
   const villes = useMemo(() => [...new Set(d.logements.map((l) => l.ville))].sort(), [d.logements]);
 
@@ -92,6 +95,19 @@ export default function ListeLogements() {
     { cle: 'type', titre: 'Type', rendu: ({ l }) => `${LIBELLES.typeLogement[l.type]} · ${l.capacite} pers.`, masquerMobile: true },
     { cle: 'proprietaire', titre: 'Propriétaire', rendu: ({ proprietaire }) => proprietaire, masquerMobile: true },
     { cle: 'statut', titre: 'Statut', rendu: ({ l }) => <StatusBadge type="statutLogement" valeur={l.statut} /> },
+    {
+      cle: 'commission',
+      titre: 'Commission',
+      tri: (a, b) => (a.eco.commissionPct ?? -1) - (b.eco.commissionPct ?? -1),
+      rendu: ({ eco }) => <BadgeCommission eco={eco} />,
+    },
+    {
+      cle: 'marge',
+      titre: 'Marge LM / mois',
+      align: 'droite',
+      tri: (a, b) => triMarge(a.eco, b.eco),
+      rendu: ({ eco }) => <BadgeRentabilite eco={eco} />,
+    },
     { cle: 'occ', titre: 'Occ. 30 j', align: 'droite', tri: (a, b) => a.s.occupation30 - b.s.occupation30, rendu: ({ s }) => pourcentage(s.occupation30) },
     { cle: 'rev', titre: 'Revenu 30 j', align: 'droite', masquerMobile: true, tri: (a, b) => a.s.revenu30 - b.s.revenu30, rendu: ({ s }) => euros(s.revenu30, true) },
     { cle: 'note', titre: 'Note', align: 'droite', masquerMobile: true, tri: (a, b) => (a.s.note ?? 0) - (b.s.note ?? 0), rendu: ({ s }) => note(s.note) },
@@ -166,8 +182,8 @@ export default function ListeLogements() {
         />
       ) : vue === 'cartes' ? (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {filtrees.map(({ l, s }) => (
-            <CarteLogement key={l.id} logement={l} stats={s} />
+          {filtrees.map(({ l, s, eco }) => (
+            <CarteLogement key={l.id} logement={l} stats={s} economie={eco} />
           ))}
         </div>
       ) : (

@@ -20,6 +20,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   charges: 'Charges',
   prospects: 'Prospects',
   recommandations: 'Recommandations propriétaires',
+  versionsAnnonce: 'Versions d’annonces',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

@@ -136,8 +136,8 @@ export function analyserBien(d: ErpDonnees, logementId: Id, date: DateISO): Anal
   const verdictRentabilite = !aDonnees
     ? `Pas encore assez de recul : ${f90.jours} jour${f90.jours > 1 ? 's' : ''} de données.`
     : rentable
-      ? `Rentable : ${euros(margeMois, true)} de marge par mois pour Label Maison.`
-      : `Non rentable : le bien coûte ${euros(-margeMois, true)} par mois à Label Maison.`;
+      ? `Rentable pour Label Maison : ${euros(margeMois, true)} de marge par mois.`
+      : `Non rentable pour Label Maison : le bien coûte ${euros(-margeMois, true)} par mois.`;
 
   const { recommandation, justification } = l.statut === 'lancement'
     ? { recommandation: 'surveiller' as const, justification: ['Bien en lancement : les points manquants se règlent dans la checklist de lancement, l’analyse démarre après 30 jours en ligne.'] }

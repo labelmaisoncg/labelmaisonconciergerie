@@ -131,14 +131,20 @@ export function nouvelId(prefixe: string): Id {
 const COLLECTIONS: NomCollection[] = [
   'proprietaires', 'mandats', 'logements', 'reservations', 'filsMessages', 'missions', 'prestataires',
   'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects',
-  'utilisateurs', 'journal', 'recommandations',
+  'utilisateurs', 'journal', 'recommandations', 'versionsAnnonce',
 ];
 
 /**
  * Collections ajoutées après la première version : une sauvegarde locale plus
  * ancienne ne les contient pas, on les initialise vides au lieu de tout jeter.
  */
-const COLLECTIONS_AJOUTEES: NomCollection[] = ['recommandations'];
+const COLLECTIONS_AJOUTEES: NomCollection[] = ['recommandations', 'versionsAnnonce'];
+
+/** Garantit la présence de toutes les collections (seed ou sauvegarde plus anciens). */
+function completer(d: ErpDonnees): ErpDonnees {
+  const manquantes = COLLECTIONS.filter((c) => !Array.isArray((d as unknown as Record<string, unknown>)[c]));
+  return manquantes.length ? ({ ...d, ...Object.fromEntries(manquantes.map((c) => [c, []])) } as ErpDonnees) : d;
+}
 
 function charger(): ErpDonnees {
   try {
@@ -152,7 +158,7 @@ function charger(): ErpDonnees {
   } catch {
     /* stockage indisponible ou corrompu : on repart du seed */
   }
-  return creerSeed();
+  return completer(creerSeed());
 }
 
 function enregistrer(d: ErpDonnees) {
@@ -439,7 +445,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
 
     const reinitialiserDemo = () => {
       setEtatAuto((e) => ({ ...e, evenements: [] }));
-      poser(creerSeed());
+      poser(completer(creerSeed()));
     };
 
     return {
