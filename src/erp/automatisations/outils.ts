@@ -7,16 +7,18 @@ import type { Changement, ContexteAuto, EvenementAuto, NiveauEvenement, Resultat
 /** Accumulateur de résultat pour une règle. */
 export function collecteur(regle: string, ctx: ContexteAuto) {
   const res: ResultatRegle = { changements: [], evenements: [] };
+  // « 24 sept. » en fin de phrase ne doit pas produire « sept.. ».
+  const net = (t: string) => t.replace(/\.\./g, '.');
   return {
     res,
     creer<C extends NomCollection>(collection: C, element: ElementDe<C>, resume: string) {
-      res.changements.push({ collection, operation: 'creer', element, resume } as Changement);
+      res.changements.push({ collection, operation: 'creer', element, resume: net(resume) } as Changement);
     },
     modifier<C extends NomCollection>(collection: C, element: ElementDe<C>, resume: string) {
-      res.changements.push({ collection, operation: 'modifier', element, resume } as Changement);
+      res.changements.push({ collection, operation: 'modifier', element, resume: net(resume) } as Changement);
     },
     evenement(niveau: NiveauEvenement, cle: string, message: string, entite: string, entiteId: Id) {
-      const e: EvenementAuto = { id: `${regle}:${cle}`, regle, horodatage: ctx.maintenant, niveau, message, entite, entiteId };
+      const e: EvenementAuto = { id: `${regle}:${cle}`, regle, horodatage: ctx.maintenant, niveau, message: net(message), entite, entiteId };
       res.evenements.push(e);
     },
   };

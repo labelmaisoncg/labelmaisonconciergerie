@@ -53,7 +53,7 @@ export default function Simulateur() {
       />
       <Onglets />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <Card>
           <CardHeader titre="Le bien" description="Hypothèses annuelles." />
           <div className="grid gap-4 sm:grid-cols-2">

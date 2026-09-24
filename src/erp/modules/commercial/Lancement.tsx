@@ -69,7 +69,7 @@ export default function Lancement() {
       />
       <Onglets />
 
-      <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
         <nav aria-label="Étapes du lancement">
           <ol className="flex gap-2 overflow-x-auto lg:flex-col lm-defilement">
             {ETAPES.map((s, i) => (

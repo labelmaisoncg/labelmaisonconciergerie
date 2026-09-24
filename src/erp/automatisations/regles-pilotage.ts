@@ -87,7 +87,7 @@ export const messagesEnAttente: Regle = {
     for (const f of d.filsMessages) {
       if (f.statut === 'clos') continue;
       const l = logementById(d, f.logementId);
-      if (f.statut === 'escalade') {
+      if (f.statut === 'escalade' && f.traitePar !== 'humain') {
         c.evenement('action', `escalade:${f.id}:${f.dernierMessageLe}`,
           `Fil escaladé : Abdel doit répondre à ${f.voyageur} (${l?.nom ?? 'logement'}).`, 'message', f.id);
       } else if (f.traitePar === 'en_attente' && heuresEntre(f.dernierMessageLe, ctx.maintenant) > 1) {

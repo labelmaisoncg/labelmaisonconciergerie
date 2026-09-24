@@ -81,7 +81,7 @@ export default function TableauDeBord() {
           <Section titre="Indicateurs" description="Calculés depuis les réservations, mandats et missions, jamais saisis à la main." actions={choixHorizon}>
             <BandeKpi horizon={horizon} />
           </Section>
-          <div className="mb-6 grid gap-4 sm:mb-8 xl:grid-cols-[1.6fr_1fr]">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div id="a-traiter" className="scroll-mt-20">
               <ATraiter elements={elements} />
             </div>
@@ -96,20 +96,20 @@ export default function TableauDeBord() {
           <Section titre="Commercial">
             <KpiCommerciaux />
           </Section>
-          <div className="mb-6 grid gap-4 sm:mb-8 xl:grid-cols-[1.6fr_1fr]">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
             <div id="a-traiter" className="scroll-mt-20">
               <ATraiter elements={elements} titre="À traiter (commercial & propriétaires)" />
             </div>
             <PipelineResume />
           </div>
-          <div className="mb-6 grid gap-4 sm:mb-8 lg:grid-cols-2">
+          <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 lg:grid-cols-2 [&>*]:min-w-0">
             <ProprietairesAAppeler />
             <RelevesAEnvoyer />
           </div>
           <Section titre="Chiffres clés" description="Pour la réunion du lundi." actions={choixHorizon}>
             <BandeKpi horizon={horizon} />
           </Section>
-          <Section titre="7 prochains jours">
+          <Section>
             <div className="max-w-2xl">
               <Agenda />
             </div>

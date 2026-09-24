@@ -81,7 +81,7 @@ export function Graphiques({ horizon }: { horizon: CleHorizon }) {
   const dernier = serie[serie.length - 1];
 
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
       <Cadre
         titre="Revenu brut et commission"
         description="6 derniers mois, mois en cours inclus (réservations confirmées)."

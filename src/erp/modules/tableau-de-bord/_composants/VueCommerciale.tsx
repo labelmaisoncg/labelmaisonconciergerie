@@ -57,9 +57,9 @@ export function PipelineResume() {
           const liste = parEtape[e];
           const valeur = liste.reduce((s, p) => s + p.revenuEstimeAnnuelCentimes, 0);
           return (
-            <li key={e} className="grid grid-cols-[7.5rem_1fr_auto] items-center gap-3 text-[12.5px]">
+            <li key={e} className="grid grid-cols-[6.5rem_minmax(0,1fr)_auto] items-center gap-3 text-[12.5px]">
               <span className="truncate text-(--lm-encre-2)">{LIBELLES.etapeProspect[e]}</span>
-              <ProgressBar valeur={liste.length / max} tone={e === 'signe' ? 'succes' : 'or'} label={`${LIBELLES.etapeProspect[e]} : ${liste.length}`} />
+              <ProgressBar valeur={liste.length / max} tone={e === 'signe' ? 'succes' : 'or'} />
               <span className="lm-chiffres w-24 text-right text-(--lm-encre)">
                 <span className="font-semibold">{liste.length}</span> · {euros(valeur, true)}
               </span>
