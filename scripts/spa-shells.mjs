@@ -25,6 +25,11 @@ const routes = [...app.matchAll(/<Route\s+path="(\/[^"*]+)"/g)]
   .map((m) => m[1].replace(/\/$/, ''))
   .filter(Boolean);
 
+// ERP interne : sa route est « /erp/* » (exclue par la regex ci-dessus). On
+// écrit la coquille de /erp explicitement ; le middleware réécrit toutes les
+// sous-routes /erp/... vers ce fichier après authentification.
+if (!routes.includes('/erp')) routes.push('/erp');
+
 if (routes.length === 0) {
   console.error('[spa-shells] aucune route trouvée dans src/app/App.tsx.');
   process.exit(1);

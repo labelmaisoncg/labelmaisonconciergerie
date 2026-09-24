@@ -1,0 +1,107 @@
+/*
+ * ERP Label Maison : jetons de la charte « Ivoire & or », version outil
+ * (SPEC §5). Portée limitée à .erp-root pour ne rien changer au site public.
+ * Les composants les consomment via les utilitaires Tailwind 4 `bg-(--lm-or)`.
+ */
+.erp-root {
+  --lm-fond: #fbfaf8;
+  --lm-surface: #ffffff;
+  --lm-surface-2: #f6f3ee;
+  --lm-bord: rgba(20, 17, 14, 0.08);
+  --lm-bord-fort: rgba(20, 17, 14, 0.16);
+  --lm-encre: #14110e;
+  --lm-encre-2: rgba(20, 17, 14, 0.6);
+  --lm-encre-3: rgba(20, 17, 14, 0.42);
+  --lm-or: #a97c30;
+  --lm-or-clair: #c39a4a;
+  --lm-or-lavis: rgba(169, 124, 48, 0.1);
+  --lm-or-anneau: rgba(169, 124, 48, 0.35);
+  --lm-brun: #403118;
+
+  --lm-succes: #2f7d55;
+  --lm-succes-lavis: rgba(47, 125, 85, 0.1);
+  --lm-alerte: #b7791f;
+  --lm-alerte-lavis: rgba(183, 121, 31, 0.12);
+  --lm-danger: #b42318;
+  --lm-danger-lavis: rgba(180, 35, 24, 0.08);
+  --lm-info: #2b6cb0;
+  --lm-info-lavis: rgba(43, 108, 176, 0.1);
+  --lm-neutre-lavis: rgba(20, 17, 14, 0.06);
+
+  --lm-ombre: 0 1px 2px rgba(20, 17, 14, 0.04), 0 8px 24px -16px rgba(20, 17, 14, 0.18);
+  --lm-ombre-haute: 0 24px 64px -24px rgba(20, 17, 14, 0.35);
+  --lm-serif: 'Playfair Display', Georgia, serif;
+  --lm-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  color-scheme: light;
+  min-height: 100vh;
+  background: var(--lm-fond);
+  color: var(--lm-encre);
+  font-family: var(--lm-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+.erp-root h1,
+.erp-root h2,
+.erp-root h3,
+.erp-root h4 {
+  font-family: var(--lm-sans);
+  font-weight: 600;
+}
+
+.erp-root .lm-serif {
+  font-family: var(--lm-serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.erp-root .lm-chiffres {
+  font-variant-numeric: tabular-nums;
+}
+
+.erp-root :focus-visible {
+  outline: 2px solid var(--lm-or);
+  outline-offset: 2px;
+}
+
+/* Barres de défilement discrètes dans les conteneurs (tableaux, tiroirs). */
+.erp-root .lm-defilement {
+  scrollbar-width: thin;
+  scrollbar-color: var(--lm-bord-fort) transparent;
+}
+
+@keyframes lm-apparition {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes lm-tiroir {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+@keyframes lm-tiroir-gauche {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@keyframes lm-pulsation {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.erp-root .lm-apparition { animation: lm-apparition 0.18s ease-out; }
+.erp-root .lm-tiroir { animation: lm-tiroir 0.22s ease-out; }
+.erp-root .lm-tiroir-gauche { animation: lm-tiroir-gauche 0.22s ease-out; }
+.erp-root .lm-squelette { animation: lm-pulsation 1.4s ease-in-out infinite; background: var(--lm-neutre-lavis); }
+
+@media (prefers-reduced-motion: reduce) {
+  .erp-root *,
+  .erp-root *::before,
+  .erp-root *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media print {
+  .erp-root .lm-sans-impression { display: none !important; }
+}

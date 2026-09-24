@@ -1,0 +1,96 @@
+# E-mail à envoyer à Channex
+
+**À :** support@channex.io
+**Objet :** Demande de certification — Label Maison Conciergerie (PMS location courte durée)
+
+---
+
+Bonjour,
+
+Je suis Abdel Hadri, fondateur de Label Maison Conciergerie, en France. Nous
+éditons un assistant de gestion destiné aux conciergeries de location courte
+durée. Notre intégration est développée et fonctionne sur votre environnement de
+staging : je souhaite engager le processus de certification.
+
+**Ce que nous avons implémenté**
+
+- Création des propriétés, des room types et des rate plans par API
+- Disponibilités groupées : plusieurs plages de dates en un seul
+  `POST /availability`
+- Tarifs et restrictions groupés, via `POST /restrictions` (rate,
+  `min_stay_arrival`, `closed_to_arrival`, `closed_to_departure`, `stop_sell`)
+- Booking Revisions Feed comme voie principale, complété par un webhook et par
+  un rattrapage toutes les 15 minutes — avec `POST /booking_revisions/:id/ack`
+  sur chaque révision effectivement enregistrée de notre côté
+- Création des canaux Airbnb et Booking.com, l'autorisation OAuth étant déléguée
+  à l'hôte via le lien à jeton unique
+- Nos écritures ARI sont des mises à jour différentielles déclenchées par
+  l'utilisateur. Nous ne lançons jamais de synchronisation complète périodique.
+
+**Ce dont nous avons besoin de votre part**
+
+1. **Des comptes de test OTA sur le staging.** Nous ne pouvons pas jouer les
+   tests de réservation (création, modification, annulation) sans eux : notre
+   compte de staging ne contient aucune réservation, donc rien à acquitter.
+   Pouvez-vous activer des propriétés de test Airbnb et Booking.com sur notre
+   compte ?
+
+2. **Une question sur le lien d'autorisation Airbnb.** Aujourd'hui, nos clients
+   cliquent sur « Connect with Airbnb » depuis l'écran Channex. Existe-t-il un
+   endpoint d'API renvoyant directement l'URL d'autorisation Airbnb, afin que
+   nous puissions les envoyer sur Airbnb depuis notre propre interface ? Nous
+   préférerions ne pas reproduire nous-mêmes le paramètre `state`.
+
+3. **Deux points de documentation qui ne correspondent pas à l'API.**
+   - Le guide de certification mentionne `POST /rates`, mais ce chemin renvoie
+     `resource_not_found` sur le staging. Nous utilisons `POST /restrictions`
+     avec un champ `rate`, ce qui fonctionne. Est-ce la bonne approche ?
+   - Existe-t-il une page documentant le Booking Revisions Feed ? Les liens que
+     nous avons trouvés renvoient une erreur 404 ; nous avons travaillé à partir
+     de `llms-full.txt`.
+
+4. **Le tarif du module Messaging & Reviews.** Votre page tarifaire indique
+   « mêmes tarifs que le gestionnaire de canaux ». Cela signifie-t-il un second
+   forfait de plateforme à 130 $, ou seulement le coût par unité ? La réponse
+   change sensiblement notre modèle économique.
+
+**Réponses à vos questions « Extra Notes », par anticipation**
+
+- *Min Stay Through et Arrival ?* Nous utilisons uniquement `min_stay_arrival`.
+  Nos biens sont des logements entiers en location courte durée, où la durée
+  minimale à l'arrivée est la norme. Nous pouvons ajouter Through si c'est exigé.
+- *Restrictions non supportées ?* Aucune parmi celles qui nous sont utiles. Nous
+  gérons stop-sell, CTA, CTD et durée minimale de séjour.
+- *Plusieurs room types et rate plans ?* Notre modèle est : une propriété = un
+  logement entier = un room type + un rate plan. Notre code ne présuppose pas
+  qu'il n'y en a qu'un, mais notre usage n'en produit pas davantage.
+- *Coordonnées bancaires transmises avec les réservations ?* Nous ne demandons,
+  ne stockons et ne traitons aucune donnée de carte, à aucun moment. Les
+  paiements restent chez l'OTA.
+- *Certification PCI ?* Sans objet, pour la raison ci-dessus.
+
+Notre compte de staging est enregistré sous **kamelhadri94@gmail.com**. Nous
+sommes disponibles pour la session de revue en partage d'écran quand vous le
+souhaitez.
+
+Bien cordialement,
+
+Abdel Hadri
+Label Maison Conciergerie
+labelmaisonconciergerie@gmail.com
+
+---
+
+## Notes pour toi, à ne pas envoyer
+
+- **La question 4 est celle qui pèse le plus lourd.** Si le module de messagerie
+  ajoute 130 $/mois, ton socle fixe double et il te faut environ quatre
+  conciergeries au lieu de deux pour atteindre l'équilibre.
+- **La question 1 est bloquante** : sans réservation de test, le test « Booking
+  Receiving » ne peut pas être joué. C'est le seul des onze qu'on n'a pas pu
+  vérifier.
+- **La question 2 est celle du bouton unique vers Airbnb**, à laquelle je n'ai
+  pas trouvé de réponse dans leur documentation.
+- Les termes techniques (`room types`, `rate plans`, `stop-sell`, `CTA`, `CTD`)
+  sont laissés en anglais : ce sont les noms exacts de leur API, les traduire
+  créerait de la confusion côté support.
