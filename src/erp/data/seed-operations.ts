@@ -214,6 +214,16 @@ function genererIncidents(fils: FilMessages[], missions: Mission[], ecart?: Ecar
       description: 'Boîte à clés grippée. Cylindre remplacé par Serrures Express 91.',
       statut: 'resolu', responsable: 'Kamel', coutCentimes: 14500, refacturable: 'proprietaire', preuves: [], resoluLe: '2026-07-29',
     },
+    {
+      id: 'inc-10', logementId: 'log-juvisy', date: '2026-06-20', categorie: 'panne', gravite: 'haute',
+      description: 'Plus d’eau chaude à l’arrivée des voyageurs, relogés une nuit à l’hôtel. Geste commercial pris en charge par Label Maison.',
+      statut: 'resolu', responsable: 'Abdel', coutCentimes: 18000, refacturable: 'aucun', preuves: [], resoluLe: '2026-06-22',
+    },
+    {
+      id: 'inc-11', logementId: 'log-juvisy', date: '2026-08-16', categorie: 'acces', gravite: 'moyenne',
+      description: 'Boîte à clés bloquée à 23 h, déplacement de nuit et une nuit remboursée au voyageur.',
+      statut: 'resolu', responsable: 'Kamel', coutCentimes: 9000, refacturable: 'aucun', preuves: [], resoluLe: '2026-08-16',
+    },
   ];
   if (ecart) {
     incidents.splice(1, 0, {

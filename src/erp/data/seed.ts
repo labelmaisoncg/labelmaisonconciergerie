@@ -458,12 +458,48 @@ function genererPaiements(missions: Mission[]): PaiementPrestataire[] {
   return paiements;
 }
 
+/* -------------------------------------------------------- avis ciblés */
+
+const AVIS_JUVISY: [number, string][] = [
+  [3.5, 'Bruit des trains toute la nuit, impossible de dormir même fenêtres fermées.'],
+  [4, 'Matelas fatigué et oreillers trop plats, mal dormi.'],
+  [3.5, 'Boîte à clés bloquée à notre arrivée, 40 minutes d’attente dehors.'],
+  [4, 'Logement bruyant côté gare, fenêtres à changer.'],
+  [4.2, 'Literie à changer, le sommier grince.'],
+  [3, 'Clés introuvables dans la boîte à clés, arrivée très compliquée.'],
+  [4, 'Bruit de la rue et des trains, isolation insuffisante.'],
+];
+
+/**
+ * Avis rendus volontairement typés pour que la démo montre un parc varié
+ * (SPEC §10) : Juvisy Gare accumule les plaintes (bruit, literie, arrivée),
+ * Paris 14 Alésia est le bien vitrine. Appliqué après la génération des
+ * missions pour ne pas décaler le tirage aléatoire.
+ */
+function typerAvis(reservations: Reservation[]) {
+  const juvisy = reservations.filter((r) => r.logementId === 'log-juvisy' && r.noteVoyageur !== undefined);
+  juvisy.forEach((r, i) => {
+    if (i % 2 === 0) {
+      const [note, commentaire] = AVIS_JUVISY[(i / 2) % AVIS_JUVISY.length];
+      r.noteVoyageur = note;
+      r.commentaireVoyageur = commentaire;
+    }
+  });
+  for (const r of reservations) {
+    if (r.logementId === 'log-paris14' && r.noteVoyageur !== undefined && r.noteVoyageur < 4.6) {
+      r.noteVoyageur = 5;
+      r.commentaireVoyageur = 'Appartement superbe et impeccable, à deux pas du métro. Communication parfaite.';
+    }
+  }
+}
+
 /* ------------------------------------------------------------- assemblage */
 
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
   const reservations = genererReservations(h);
   const missions = genererMissions(h, reservations);
+  typerAvis(reservations);
   const linge = genererLinge(missions);
   const operations = genererOperations(reservations, missions, linge.ecart);
   const toutesMissions = [...missions, ...operations.missions];
