@@ -23,8 +23,10 @@
  * Si la variable d'une zone n'est pas définie, l'accès est refusé — jamais ouvert.
  *
  * L'ERP est une application React : une fois connecté, toute sous-route
- * /erp/... sans extension est réécrite vers la coquille /erp/index.html
+ * /erp/... sans extension est réécrite vers la coquille servie sous /erp
  * (cleanUrls désactive les rewrites de vercel.json, cf. scripts/spa-shells.mjs).
+ * Toujours viser l'URL propre : avec cleanUrls, Vercel répond 404 à
+ * /erp/index.html, et toute sous-route ouverte directement tombait en 404.
  */
 
 export const config = {
@@ -81,7 +83,7 @@ const ERP: Zone = {
   sousTitreIndisponible: 'Label Maison Conciergerie · ERP',
   objet: 'de l’ERP',
   separateurTitre: ' · ',
-  coquille: '/erp/index.html',
+  coquille: '/erp',
 };
 
 function zoneDe(chemin: string): Zone {
