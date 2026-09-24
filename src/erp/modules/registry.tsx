@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   CalendarDays,
   FileSignature,
+  Gauge,
   Home,
   LayoutDashboard,
   MessagesSquare,
@@ -75,6 +76,7 @@ const module = (
 
 export const MODULES: ModuleErp[] = [
   module('tableau-de-bord', '', 'Tableau de bord', 'pilotage', LayoutDashboard, lazy(() => import('./tableau-de-bord'))),
+  module('performance', 'performance', 'Performance des biens', 'pilotage', Gauge, lazy(() => import('./performance'))),
   module('automatisations', 'automatisations', 'Automatisations', 'pilotage', Workflow, lazy(() => import('./automatisations'))),
   module('commercial', 'commercial', 'Pipeline & lancements', 'commercial', Target, lazy(() => import('./commercial'))),
   module('proprietaires', 'proprietaires', 'Propriétaires', 'referentiel', Users, lazy(() => import('./proprietaires'))),
