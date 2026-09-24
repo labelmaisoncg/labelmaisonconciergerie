@@ -16,6 +16,7 @@ import {
   UTILISATEURS,
 } from './seed-referentiel';
 import { genererOperations } from './seed-operations';
+import { creerRecommandations } from './seed-recommandations';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -488,5 +489,6 @@ export function creerSeed(): ErpDonnees {
     prospects: structuredClone(PROSPECTS),
     utilisateurs: structuredClone(UTILISATEURS),
     journal: operations.journal,
+    recommandations: creerRecommandations(),
   };
 }
