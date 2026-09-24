@@ -139,7 +139,11 @@ export function analyserBien(d: ErpDonnees, logementId: Id, date: DateISO): Anal
       ? `Rentable : ${euros(margeMois, true)} de marge par mois pour Label Maison.`
       : `Non rentable : le bien coûte ${euros(-margeMois, true)} par mois à Label Maison.`;
 
-  const { recommandation, justification } = decider({ aDonnees, rentable, margeMois, margePct, note12, occupation90, moisNegatifsConsecutifs, defauts, joursDonnees: f90.jours });
+  const { recommandation, justification } = l.statut === 'lancement'
+    ? { recommandation: 'surveiller' as const, justification: ['Bien en lancement : les points manquants se règlent dans la checklist de lancement, l’analyse démarre après 30 jours en ligne.'] }
+    : l.statut === 'sorti'
+      ? { recommandation: 'sortir' as const, justification: ['Bien sorti du parc : analyse conservée pour mémoire.'] }
+      : decider({ aDonnees, rentable, margeMois, margePct, note12, occupation90, moisNegatifsConsecutifs, defauts, joursDonnees: f90.jours });
 
   const ameliorations = suggererAmeliorations({
     logement: l,

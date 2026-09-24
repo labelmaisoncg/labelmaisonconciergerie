@@ -204,3 +204,47 @@ sobre.
 - Pas de commit : l'orchestrateur commite.
 - Pas de nouvelle dépendance npm sans nécessité absolue.
 - Vérification : `npx tsc -p tsconfig.erp.json --noEmit` doit passer.
+
+## 10. Analyse des biens
+
+Module **Performance des biens** (`/erp/performance`, moteur pur dans
+`src/erp/analyse/`) et onglet « Performance » de chaque fiche logement.
+
+- **Indicateurs interprétés** (`analyse/seuils.ts`) : occupation (bon ≥ 70 %,
+  faible < 55 %), ADR et RevPAR comparés à la médiane du parc (faible à plus
+  de 15 % dessous), note 12 mois (bon ≥ 4,8, faible < 4,6), marge Label
+  Maison par mois (bon ≥ 250 €, faible < 100 €) et en % du CA (35 % / 20 %),
+  commission (cible 18-20 %, faible < 15 %), couverture du ménage, incidents
+  et charge opérationnelle pour 30 nuits, ménages validés avec photos
+  (95 % / 85 %), délai de réponse (15 / 60 min), nuits restantes en
+  résidence principale, DPE (loi Le Meur). `interpreter(kpi, valeur)`
+  renvoie niveau + explication, affichés partout en infobulle.
+- **Marge Label Maison** (90 j, ramenée à 30 j) = commission + frais de
+  ménage encaissés − ménages validés payés − charges du bien − incidents non
+  refacturés − quote-part des frais de structure (charges sans bien,
+  réparties entre biens actifs). Rentable si marge > 0.
+- **Défauts** détectés : occupation ou prix sous le parc, note < 4,6,
+  plaintes récurrentes dans les avis négatifs (propreté, bruit, literie,
+  chauffage, wifi, équipement, arrivée), incidents répétés (casse, panne,
+  accès), pertes de linge, commission < 18 %, frais de ménage sous le coût,
+  DPE E/F/G, n° d'enregistrement manquant, plafond 120 nuits proche,
+  entretien à la charge du propriétaire, marge négative ou faible.
+- **Décision** (première condition vraie) : *sortir* si conformité
+  bloquante ou 3 mois de marge négative avec note < 4,5 ; *renégocier* si
+  marge fragile et commission < 18 % ou ménage sous-facturé ; *développer*
+  si rentable, note ≥ 4,8, occupation ≥ 70 %, sans défaut grave ;
+  *surveiller* si non rentable, un défaut grave ou deux moyens ; sinon
+  *garder*. Score 0-100 : marge 35 %, occupation 20 %, note 20 %, charge
+  opérationnelle 15 %, conformité 10 %.
+- **Améliorations** déduites des défauts (literie, serrure connectée,
+  photos et annonce, tarification dynamique, équipements, rideaux, travaux
+  DPE, aménagement Label Maison Studio, commission à 18 %, frais de ménage),
+  chacune avec impact estimé, coût et porteur.
+- **Traçabilité** : collection `recommandations` (table
+  `erp.recommandations`, migration 20260925000000) : à proposer → proposée
+  → acceptée / refusée → réalisée, dates, coût et résultat observé ; chaque
+  changement passe par `upsert` et laisse une trace au journal. La règle
+  d'automatisation « Revue de performance des biens » (hebdomadaire,
+  idempotente) alerte sur les biens à sortir ou renégocier et ajoute au
+  suivi chaque amélioration non encore suivie (id `reco-<logement>-<code>`).
+  Une proposition d'une page au propriétaire s'imprime depuis le suivi.

@@ -14,8 +14,9 @@ import { OngletFiche } from './onglets/FicheVoyageur';
 import { OngletLinge } from './onglets/Linge';
 import { OngletCanaux } from './onglets/Canaux';
 import { OngletHistorique } from './onglets/Historique';
+import { OngletPerformance } from './onglets/Performance';
 
-const ONGLETS = ['apercu', 'lancement', 'fiche', 'linge', 'canaux', 'historique'] as const;
+const ONGLETS = ['apercu', 'performance', 'lancement', 'fiche', 'linge', 'canaux', 'historique'] as const;
 type CleOnglet = (typeof ONGLETS)[number];
 
 export default function DetailLogement() {
@@ -98,6 +99,7 @@ export default function DetailLogement() {
         onChange={changer}
         onglets={[
           { cle: 'apercu', libelle: 'Vue d’ensemble' },
+          { cle: 'performance', libelle: 'Performance' },
           { cle: 'lancement', libelle: `Lancement ${av.faits}/${av.total}` },
           { cle: 'fiche', libelle: `Fiche voyageur ${Math.round(fiche.ratio * 100)} %` },
           { cle: 'linge', libelle: 'Linge' },
@@ -107,6 +109,7 @@ export default function DetailLogement() {
       />
 
       {onglet === 'apercu' && <OngletVueEnsemble logement={l} allerA={changer} />}
+      {onglet === 'performance' && <OngletPerformance logement={l} />}
       {onglet === 'lancement' && <OngletLancement logement={l} />}
       {onglet === 'fiche' && <OngletFiche logement={l} />}
       {onglet === 'linge' && <OngletLinge logement={l} />}
