@@ -1,12 +1,16 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+import { Route, Routes } from 'react-router-dom';
+import Lancement from './Lancement';
+import Pipeline from './Pipeline';
+import Simulateur from './Simulateur';
 
-/** Module Commercial : page provisoire. */
-export default function Module() {
+/** Module Commercial : pipeline propriétaires, simulateur, lancement d'un mandat. */
+export default function Commercial() {
   return (
-    <>
-      <PageHeader titre="Commercial" sousTitre="Pipeline propriétaires et lancement des mandats." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
-    </>
+    <Routes>
+      <Route index element={<Pipeline />} />
+      <Route path="simulateur" element={<Simulateur />} />
+      <Route path="lancement" element={<Lancement />} />
+      <Route path="*" element={<Pipeline />} />
+    </Routes>
   );
 }

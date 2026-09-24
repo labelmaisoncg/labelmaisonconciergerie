@@ -178,7 +178,11 @@ export interface FilMessages {
   messages: Message[];
   dernierMessageLe: Horodatage;
   traitePar: TraitePar;
+  /** Pourquoi l'agent a passé la main (fil escaladé). */
+  raisonEscalade?: RaisonEscalade;
 }
+
+export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche';
 
 /* -------------------------------------------------------------- opérations */
 

@@ -33,6 +33,7 @@
  * ──────────────────────────────────────────────────────────────────────────
  */
 import type { ErpDonnees, Journal, NomCollection } from '../data/types';
+import { hachage } from './outils';
 import { REGLES } from './regles';
 import type { Changement, ContexteAuto, EvenementAuto, Regle } from './types';
 
@@ -105,7 +106,7 @@ export function executerAutomatisations(donnees: ErpDonnees, options: OptionsMot
         changements.push({ regle: regle.cle, collection: ch.collection, operation: ch.operation, id, resume: ch.resume });
         if (journaliser) {
           traces.push({
-            id: `jrn-auto-${maintenant}-${changements.length}`,
+            id: `jrn-auto-${hachage(`${maintenant}|${regle.cle}|${id}|${ch.resume}`).toString(36)}-${changements.length}`,
             horodatage: maintenant,
             auteur: 'Automatisation',
             action: regle.nom,

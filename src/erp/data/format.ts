@@ -34,7 +34,7 @@ export function versCentimes(saisie: string | number): Centimes {
 
 /* ----------------------------------------------------------------- nombres */
 
-const NOMBRE = new Intl.NumberFormat('fr-FR');
+const NOMBRE = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 });
 
 export function nombre(n: number, decimales = 0): string {
   return decimales
@@ -91,12 +91,19 @@ export function moisAnnee(valeur: string): string {
 
 /** « 24 sept. 2026 à 10:30 » */
 export function dateHeure(horodatage: string): string {
-  return format(versDate(horodatage), "d MMM yyyy 'à' HH:mm", { locale: fr });
+  return `${dateCourte(horodatage.slice(0, 10))} à ${heure(horodatage)}`;
 }
 
 /** « 10:30 » */
+// Toujours à l'heure de Paris, quel que soit le fuseau du navigateur.
+const HEURE_PARIS = new Intl.DateTimeFormat('fr-FR', {
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'Europe/Paris',
+});
+
 export function heure(horodatage: string): string {
-  return format(versDate(horodatage), 'HH:mm');
+  return HEURE_PARIS.format(new Date(horodatage));
 }
 
 /** Libellé relatif à AUJOURDHUI : « aujourd'hui », « demain », « dans 3 jours », « il y a 5 jours ». */

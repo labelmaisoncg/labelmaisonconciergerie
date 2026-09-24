@@ -1,12 +1,14 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+import { Route, Routes } from 'react-router-dom';
+import ListeProprietaires from './ListeProprietaires';
+import DetailProprietaire from './DetailProprietaire';
 
-/** Module Propriétaires : page provisoire. */
-export default function Module() {
+/** Module Propriétaires : liste et fiche (/erp/proprietaires/:id). */
+export default function ModuleProprietaires() {
   return (
-    <>
-      <PageHeader titre="Propriétaires" sousTitre="Qui nous confie quoi." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
-    </>
+    <Routes>
+      <Route index element={<ListeProprietaires />} />
+      <Route path=":id" element={<DetailProprietaire />} />
+      <Route path="*" element={<ListeProprietaires />} />
+    </Routes>
   );
 }
