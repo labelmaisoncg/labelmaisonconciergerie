@@ -24,7 +24,20 @@ const LIENS: Record<string, string> = {
   prospect: '/erp/commercial',
   message: '/erp/messagerie',
   proprietaire: '/erp/proprietaires',
+  linge: '/erp/linge?vue=journal',
 };
+
+/** Lien direct vers la fiche quand elle existe, sinon vers le module. */
+function lienDe(entite: string, id: string): string | undefined {
+  if (!id) return LIENS[entite];
+  if (entite === 'mission' || entite === 'missions') return `/erp/menages/${id}`;
+  if (entite === 'incident' || entite === 'incidents') return `/erp/incidents?id=${id}`;
+  if (entite === 'prestataire') return `/erp/prestataires/${id}`;
+  if (entite === 'logement') return `/erp/logements/${id}`;
+  if (entite === 'proprietaire') return `/erp/proprietaires/${id}`;
+  if (entite === 'message') return `/erp/messagerie/${id}`;
+  return LIENS[entite];
+}
 
 const PAS = 40;
 
@@ -73,7 +86,7 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
           {filtres.slice(0, limite).map((e) => {
             const n = NIVEAUX.find((x) => x.cle === e.niveau) ?? NIVEAUX[2];
             const Icone = n.icone;
-            const lien = LIENS[e.entite];
+            const lien = lienDe(e.entite, e.entiteId);
             const domaine = domaineDe(e.regle);
             return (
               <li key={e.id} className="flex items-start gap-3 py-2.5">
