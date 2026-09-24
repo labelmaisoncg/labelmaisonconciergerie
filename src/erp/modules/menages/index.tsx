@@ -1,12 +1,13 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+import { Route, Routes } from 'react-router-dom';
+import { Detail } from './Detail';
+import { Liste } from './Liste';
 
-/** Module Ménages : page provisoire. */
-export default function Module() {
+/** Module Ménages : missions (ménage, linge, contrôle, maintenance), preuves et validation. */
+export default function Menages() {
   return (
-    <>
-      <PageHeader titre="Ménages" sousTitre="Missions de ménage, preuves et validation." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
-    </>
+    <Routes>
+      <Route index element={<Liste />} />
+      <Route path=":id" element={<Detail />} />
+    </Routes>
   );
 }

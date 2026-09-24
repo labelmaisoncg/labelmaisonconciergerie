@@ -8,7 +8,7 @@
  */
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { AUJOURDHUI, debutMois, debutMoisSuivant } from '../../data/format';
+import { AUJOURDHUI, debutMois, debutMoisSuivant, ecartJours } from '../../data/format';
 import {
   baseCommissionnable,
   commissionLabelMaison,
@@ -19,7 +19,7 @@ import {
   revenuBrut,
   type Fenetre,
 } from '../../data/selectors';
-import type { Centimes, ErpDonnees, Id, Mission } from '../../data/types';
+import type { Centimes, ErpDonnees, Facture, Id, Mission, StatutFacture } from '../../data/types';
 
 export type Donnees = Pick<ErpDonnees, 'reservations' | 'mandats' | 'missions' | 'charges' | 'logements'>;
 
@@ -169,4 +169,22 @@ export function rentabiliteParLogement(d: Donnees, f: Fenetre): LigneRentabilite
       tauxMarge: ca ? marge / ca : 0,
     };
   });
+}
+
+/* ------------------------------------------------------------ factures */
+
+/** Statut affiché : une facture émise dont l'échéance est passée est en retard. */
+export function statutReel(f: Facture): StatutFacture {
+  return f.statut === 'emise' && f.echeance < AUJOURDHUI ? 'en_retard' : f.statut;
+}
+
+export const joursRetard = (f: Facture) => Math.max(0, ecartJours(f.echeance, AUJOURDHUI));
+
+/** Prochain numéro de facture de l'année : LM-2026-0091 après LM-2026-0090. */
+export function prochainNumero(factures: Facture[], annee = AUJOURDHUI.slice(0, 4)): string {
+  const prefixe = `LM-${annee}-`;
+  const max = factures
+    .filter((f) => f.numero.startsWith(prefixe))
+    .reduce((m, f) => Math.max(m, Number(f.numero.slice(prefixe.length)) || 0), 0);
+  return `${prefixe}${String(max + 1).padStart(4, '0')}`;
 }

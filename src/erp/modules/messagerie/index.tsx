@@ -1,12 +1,112 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+/**
+ * Module Messagerie (/erp/messagerie) : boîte de réception unifiée des
+ * voyageurs (Airbnb, Booking, direct), agent IA et équipe.
+ * Bureau : trois colonnes. Mobile : liste puis conversation (/erp/messagerie/:filId).
+ */
+import { useMemo, useState } from 'react';
+import { Route, Routes, useParams } from 'react-router-dom';
+import { MessagesSquare } from 'lucide-react';
+import { EmptyState, PageHeader, cn } from '../../ui';
+import { useErp } from '../../data/store';
+import { logementById, reservationById } from '../../data/selectors';
+import { CarteAgent, ReglesAgent } from './_composants/CarteAgent';
+import { Conversation } from './_composants/Conversation';
+import { ListeFils } from './_composants/ListeFils';
+import { PanneauContexte } from './_composants/PanneauContexte';
+import { correspond, type FiltreFil } from './_composants/logique';
 
-/** Module Messagerie : page provisoire. */
-export default function Module() {
+export default function ModuleMessagerie() {
+  return (
+    <Routes>
+      <Route index element={<Boite />} />
+      <Route path=":filId" element={<Boite />} />
+    </Routes>
+  );
+}
+
+function normaliser(s: string) {
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+function Boite() {
+  const { filId } = useParams();
+  const d = useErp();
+  const [filtre, setFiltre] = useState<FiltreFil>('tous');
+  const [recherche, setRecherche] = useState('');
+  const logements = useMemo(() => new Map(d.logements.map((l) => [l.id, l])), [d.logements]);
+
+  const tries = useMemo(() => [...d.filsMessages].sort((a, b) => b.dernierMessageLe.localeCompare(a.dernierMessageLe)), [d.filsMessages]);
+  const visibles = useMemo(() => {
+    const q = normaliser(recherche.trim());
+    return tries.filter(
+      (f) =>
+        correspond(f, filtre) &&
+        (!q ||
+          normaliser(f.voyageur).includes(q) ||
+          normaliser(logements.get(f.logementId)?.nom ?? '').includes(q) ||
+          f.messages.some((m) => normaliser(m.texte).includes(q))),
+    );
+  }, [tries, filtre, recherche, logements]);
+
+  const fil = filId ? d.filsMessages.find((f) => f.id === filId) : undefined;
+  const logement = fil ? logementById(d, fil.logementId) : undefined;
+  const reservation = fil ? reservationById(d, fil.reservationId) : undefined;
+
   return (
     <>
-      <PageHeader titre="Messagerie" sousTitre="Échanges avec les voyageurs, agent IA et équipe." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
+      <PageHeader
+        fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Messagerie' }]}
+        titre="Messagerie voyageurs"
+        sousTitre="Toutes les conversations Airbnb, Booking et directes au même endroit. L’agent IA répond, l’équipe reprend la main sur l’argent, les litiges et le hors fiche."
+        className={cn(fil && 'max-lg:hidden')}
+      />
+      <div className={cn(fil && 'max-lg:hidden')}>
+        <CarteAgent fils={d.filsMessages} />
+        <ReglesAgent />
+      </div>
+
+      <div className="grid overflow-hidden rounded-xl border border-(--lm-bord) bg-(--lm-surface) shadow-(--lm-ombre) lg:h-[calc(100vh-190px)] lg:min-h-[560px] lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_300px]">
+        <aside className={cn('min-h-0 border-(--lm-bord) lg:border-r', fil ? 'max-lg:hidden' : 'max-lg:max-h-[75vh]')} aria-label="Liste des conversations">
+          <ListeFils
+            fils={visibles}
+            tous={d.filsMessages}
+            logements={logements}
+            actifId={fil?.id}
+            filtre={filtre}
+            onFiltre={setFiltre}
+            recherche={recherche}
+            onRecherche={setRecherche}
+          />
+        </aside>
+
+        <section className={cn('min-h-0 min-w-0', !fil && 'max-lg:hidden', fil && 'max-lg:h-[calc(100dvh-120px)]')} aria-label="Conversation">
+          {fil ? (
+            <Conversation fil={fil} logement={logement} reservation={reservation} />
+          ) : (
+            <div className="grid h-full place-items-center p-6">
+              <EmptyState
+                icone={<MessagesSquare />}
+                titre={filId ? 'Conversation introuvable' : 'Choisissez une conversation'}
+                description="Les conversations escaladées et celles qui attendent une réponse sont signalées dans la liste."
+                className="border-none"
+              />
+            </div>
+          )}
+        </section>
+
+        {fil && (
+          <aside className="lm-defilement min-h-0 overflow-y-auto border-(--lm-bord) max-xl:hidden xl:border-l" aria-label="Contexte du voyageur">
+            <PanneauContexte fil={fil} logement={logement} reservation={reservation} />
+          </aside>
+        )}
+      </div>
+
+      {fil && (
+        <details className="mt-4 rounded-xl border border-(--lm-bord) bg-(--lm-surface) xl:hidden">
+          <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium text-(--lm-encre)">Contexte : réservation, logement, codes d’accès</summary>
+          <PanneauContexte fil={fil} logement={logement} reservation={reservation} />
+        </details>
+      )}
     </>
   );
 }
