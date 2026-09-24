@@ -1,12 +1,14 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+import { Route, Routes } from 'react-router-dom';
+import ListeLogements from './ListeLogements';
+import DetailLogement from './DetailLogement';
 
-/** Module Logements : page provisoire. */
-export default function Module() {
+/** Module Logements : liste (/erp/logements) et fiche détaillée (/erp/logements/:id). */
+export default function ModuleLogements() {
   return (
-    <>
-      <PageHeader titre="Logements" sousTitre="Fiches, checklist de lancement et annonces." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
-    </>
+    <Routes>
+      <Route index element={<ListeLogements />} />
+      <Route path=":id" element={<DetailLogement />} />
+      <Route path="*" element={<ListeLogements />} />
+    </Routes>
   );
 }

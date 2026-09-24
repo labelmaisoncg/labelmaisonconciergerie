@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { HelmetProvider } from 'react-helmet-async';
 import { Navigation } from './components/Navigation';
@@ -16,29 +17,55 @@ import { Studio } from './pages/Studio';
 import { StudioConditions } from './pages/StudioConditions';
 import { CercleAnnounce } from './components/CercleAnnounce';
 
+// L'ERP interne (/erp) est chargé à la demande : le site public ne télécharge
+// jamais son code. Il s'affiche seul, sans la navigation ni le pied du site.
+const ErpApp = lazy(() => import('../erp/ErpApp'));
+
+const estErp = () => typeof window !== 'undefined' && /^\/erp(\/|$)/.test(window.location.pathname);
+
+/** Habillage du site public : navigation, pages, pied de page. */
+function SiteShell() {
+  return (
+    <>
+      <ScrollToTop />
+      <div className="min-h-screen">
+        <Navigation />
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/proprietaires" element={<Proprietaires />} />
+          <Route path="/billetterie" element={<Billetterie />} />
+          <Route path="/logement" element={<Logement />} />
+          <Route path="/transport" element={<Transport />} />
+          <Route path="/activites" element={<Activites />} />
+          <Route path="/shopping" element={<Shopping />} />
+          <Route path="/cerclelabelmaison" element={<CercleLabelMaison />} />
+          <Route path="/studio" element={<Studio />} />
+          <Route path="/studio/conditions" element={<StudioConditions />} />
+        </Routes>
+        <Footer />
+        <CercleAnnounce />
+      </div>
+    </>
+  );
+}
+
 export default function App() {
   return (
     <HelmetProvider>
-      <SplashIntro />
+      {/* L'intro animée est réservée au site : jamais sous /erp. */}
+      {!estErp() && <SplashIntro />}
       <BrowserRouter>
-        <ScrollToTop />
-        <div className="min-h-screen">
-          <Navigation />
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/proprietaires" element={<Proprietaires />} />
-            <Route path="/billetterie" element={<Billetterie />} />
-            <Route path="/logement" element={<Logement />} />
-            <Route path="/transport" element={<Transport />} />
-            <Route path="/activites" element={<Activites />} />
-            <Route path="/shopping" element={<Shopping />} />
-            <Route path="/cerclelabelmaison" element={<CercleLabelMaison />} />
-            <Route path="/studio" element={<Studio />} />
-            <Route path="/studio/conditions" element={<StudioConditions />} />
-          </Routes>
-          <Footer />
-          <CercleAnnounce />
-        </div>
+        <Routes>
+          <Route
+            path="/erp/*"
+            element={
+              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
+                <ErpApp />
+              </Suspense>
+            }
+          />
+          <Route path="*" element={<SiteShell />} />
+        </Routes>
       </BrowserRouter>
     </HelmetProvider>
   );

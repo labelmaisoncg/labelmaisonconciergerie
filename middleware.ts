@@ -1,33 +1,92 @@
 /**
- * Routing Middleware — protection de /linge par mot de passe.
+ * Routing Middleware — protection de /linge et /erp par mot de passe.
  *
  * Le registre du linge contient des données internes (noms de logements,
  * prestataires, messages bruts de l'équipe conservés comme pièces d'audit).
  * Il ne doit pas être accessible publiquement, contrairement au reste du site.
+ * L'ERP (/erp) suit exactement le même modèle, avec son propre mot de passe
+ * et son propre cookie : ouvrir l'un n'ouvre pas l'autre.
  *
  * Pas de `WWW-Authenticate` / Basic auth ici : le navigateur affiche alors sa
  * propre fenêtre grise, hors charte, sans libellé exploitable et impossible à
  * quitter proprement. On sert à la place une vraie page de connexion, et la
  * session tient dans un cookie signé.
  *
- * Variable d'environnement à définir dans Vercel (Settings → Environment
+ * Variables d'environnement à définir dans Vercel (Settings → Environment
  * Variables), pour Production ET Preview :
- *   LINGE_PASSWORD  mot de passe (obligatoire)
+ *   LINGE_PASSWORD  mot de passe du registre du linge (obligatoire)
+ *   ERP_PASSWORD    mot de passe de l'ERP (obligatoire)
  *
  * Après ajout ou modification, il faut REDÉPLOYER : la valeur est injectée au
  * build, un simple enregistrement dans l'interface Vercel ne suffit pas.
  *
- * Si LINGE_PASSWORD n'est pas défini, l'accès est refusé — jamais ouvert.
+ * Si la variable d'une zone n'est pas définie, l'accès est refusé — jamais ouvert.
+ *
+ * L'ERP est une application React : une fois connecté, toute sous-route
+ * /erp/... sans extension est réécrite vers la coquille /erp/index.html
+ * (cleanUrls désactive les rewrites de vercel.json, cf. scripts/spa-shells.mjs).
  */
 
 export const config = {
-  matcher: ['/linge', '/linge/:path*'],
+  matcher: ['/linge', '/linge/:path*', '/erp', '/erp/:path*'],
 };
 
-const COOKIE = 'linge_session';
 const DUREE = 60 * 60 * 24 * 30; // 30 jours
-const CONNEXION = '/linge/connexion';
-const DECONNEXION = '/linge/deconnexion';
+
+/** Une zone protégée : racine, secret, cookie et libellés de ses pages. */
+interface Zone {
+  racine: string;
+  cookie: string;
+  connexion: string;
+  deconnexion: string;
+  /** Accès statique à process.env : Vercel n'injecte que les lectures littérales. */
+  motDePasse: () => string | undefined;
+  variable: string;
+  titre: string;
+  sousTitre: string;
+  bouton: string;
+  sousTitreIndisponible: string;
+  objet: string;
+  /** Séparateur du <title> : l'ERP n'utilise pas de tiret cadratin. */
+  separateurTitre: string;
+  /** Réécrire les sous-routes vers la coquille SPA. */
+  coquille?: string;
+}
+
+const LINGE: Zone = {
+  racine: '/linge',
+  cookie: 'linge_session',
+  connexion: '/linge/connexion',
+  deconnexion: '/linge/deconnexion',
+  motDePasse: () => process.env.LINGE_PASSWORD,
+  variable: 'LINGE_PASSWORD',
+  titre: 'Registre du linge',
+  sousTitre: 'Label Maison Conciergerie — accès interne',
+  bouton: 'Accéder au registre',
+  sousTitreIndisponible: 'Label Maison Conciergerie — registre du linge',
+  objet: 'du registre',
+  separateurTitre: ' — ',
+};
+
+const ERP: Zone = {
+  racine: '/erp',
+  cookie: 'erp_session',
+  connexion: '/erp/connexion',
+  deconnexion: '/erp/deconnexion',
+  motDePasse: () => process.env.ERP_PASSWORD,
+  variable: 'ERP_PASSWORD',
+  titre: 'ERP Label Maison',
+  sousTitre: 'Outil interne de gestion · accès réservé',
+  bouton: 'Accéder à l’ERP',
+  sousTitreIndisponible: 'Label Maison Conciergerie · ERP',
+  objet: 'de l’ERP',
+  separateurTitre: ' · ',
+  coquille: '/erp/index.html',
+};
+
+function zoneDe(chemin: string): Zone {
+  return chemin === ERP.racine || chemin.startsWith(`${ERP.racine}/`) ? ERP : LINGE;
+}
 
 /* ------------------------------------------------------------------ outils */
 
@@ -50,7 +109,7 @@ function egal(a: string, b: string): boolean {
 
 /**
  * Signature HMAC-SHA256 de l'échéance, clé = le mot de passe lui-même.
- * Conséquence utile : changer LINGE_PASSWORD invalide toutes les sessions.
+ * Conséquence utile : changer le mot de passe d'une zone invalide toutes ses sessions.
  */
 async function signer(donnee: string, secret: string): Promise<string> {
   const cle = await crypto.subtle.importKey(
@@ -92,13 +151,15 @@ const echapper = (s: string): string =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /**
- * Une destination de retour n'est acceptée que si elle reste dans /linge.
+ * Une destination de retour n'est acceptée que si elle reste dans la zone.
  * Sans ce filtre, `suite` serait une redirection ouverte offerte à n'importe qui.
  */
-function suiteSure(valeur: string): string {
-  return /^\/linge(\/[^\s]*)?$/.test(valeur) && valeur !== CONNEXION && valeur !== DECONNEXION
+function suiteSure(zone: Zone, valeur: string): string {
+  return new RegExp(`^${zone.racine}(\\/[^\\s]*)?$`).test(valeur) &&
+    valeur !== zone.connexion &&
+    valeur !== zone.deconnexion
     ? valeur
-    : '/linge';
+    : zone.racine;
 }
 
 /* -------------------------------------------------------------------- vues */
@@ -128,6 +189,7 @@ function page(
   panneau: string,
   statut: number,
   entetes: HeadersInit = {},
+  separateurTitre = ' — ',
 ): Response {
   return new Response(
     `<!DOCTYPE html>
@@ -136,7 +198,7 @@ function page(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">\n<meta name="color-scheme" content="light">
 <meta name="robots" content="noindex, nofollow">
-<title>${echapper(titre)} — Label Maison Conciergerie</title>
+<title>${echapper(titre)}${separateurTitre}Label Maison Conciergerie</title>
 <link rel="icon" href="/images/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -247,16 +309,17 @@ function page(
 }
 
 function pageConnexion(
+  zone: Zone,
   suite: string,
   erreur: string,
   statut: number,
   entetes: HeadersInit = {},
 ): Response {
   return page(
-    'Registre du linge',
-    'Label Maison Conciergerie — accès interne',
+    zone.titre,
+    zone.sousTitre,
     `${erreur ? `<p class="erreur">${echapper(erreur)}</p>` : ''}
-     <form method="post" action="${CONNEXION}">
+     <form method="post" action="${zone.connexion}">
        <input type="hidden" name="suite" value="${echapper(suite)}">
        <label for="mdp">Mot de passe</label>
        <div class="champ">
@@ -265,12 +328,13 @@ function pageConnexion(
                 autocomplete="current-password" autofocus required
                 spellcheck="false" autocapitalize="off">
        </div>
-       <button type="submit">${ICONE_CLE} Accéder au registre</button>
+       <button type="submit">${ICONE_CLE} ${echapper(zone.bouton)}</button>
      </form>
      <hr class="separateur">
      <p class="note">Accès réservé à l'équipe Label Maison.</p>`,
     statut,
     entetes,
+    zone.separateurTitre,
   );
 }
 
@@ -279,49 +343,53 @@ function pageConnexion(
  * de mot de passe à dessein — sans ça, « variable absente » et « mot de passe
  * faux » sont indiscernables et le diagnostic est impossible.
  */
-function pageMalConfiguree(): Response {
+function pageMalConfiguree(zone: Zone): Response {
   return page(
     'Accès indisponible',
-    'Label Maison Conciergerie — registre du linge',
-    `<p style="margin:0;color:var(--ink-2)">La protection du registre n'est pas
+    zone.sousTitreIndisponible,
+    `<p style="margin:0;color:var(--ink-2)">La protection ${zone.objet} n'est pas
      configurée : l'accès est refusé par sécurité plutôt que laissé ouvert.</p>
      <hr class="separateur">
      <p class="note">Vercel → Settings → Environment Variables → ajouter
-     <code>LINGE_PASSWORD</code> (Production + Preview), puis <strong>redéployer</strong> :
+     <code>${zone.variable}</code> (Production + Preview), puis <strong>redéployer</strong> :
      la valeur est injectée au build.</p>`,
     503,
+    {},
+    zone.separateurTitre,
   );
 }
 
 /* --------------------------------------------------------------- middleware */
 
 export default async function middleware(request: Request): Promise<Response | undefined> {
+  const url = new URL(request.url);
+  const zone = zoneDe(url.pathname);
+
   // trim() : un copier-coller dans l'interface Vercel embarque très souvent un
   // espace ou un retour à la ligne final, invisible et impossible à retaper.
-  const motDePasse = (process.env.LINGE_PASSWORD || '').trim();
-  if (!motDePasse) return pageMalConfiguree();
+  const motDePasse = (zone.motDePasse() || '').trim();
+  if (!motDePasse) return pageMalConfiguree(zone);
 
-  const url = new URL(request.url);
-  const chemin = url.pathname.replace(/\/+$/, '') || '/linge';
-  const connecte = await jetonValide(lireCookie(request, COOKIE), motDePasse);
+  const chemin = url.pathname.replace(/\/+$/, '') || zone.racine;
+  const connecte = await jetonValide(lireCookie(request, zone.cookie), motDePasse);
 
   const cookieVide =
-    `${COOKIE}=; Path=/linge; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
+    `${zone.cookie}=; Path=${zone.racine}; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 
-  if (chemin === DECONNEXION) {
-    return pageConnexion('/linge', '', 200, { 'Set-Cookie': cookieVide });
+  if (chemin === zone.deconnexion) {
+    return pageConnexion(zone, zone.racine, '', 200, { 'Set-Cookie': cookieVide });
   }
 
-  if (chemin === CONNEXION) {
+  if (chemin === zone.connexion) {
     if (request.method !== 'POST') {
       return connecte
-        ? new Response(null, { status: 303, headers: { Location: '/linge', 'Cache-Control': 'no-store' } })
-        : pageConnexion('/linge', '', 200);
+        ? new Response(null, { status: 303, headers: { Location: zone.racine, 'Cache-Control': 'no-store' } })
+        : pageConnexion(zone, zone.racine, '', 200);
     }
     const champs = new URLSearchParams(await request.text());
-    const suite = suiteSure(champs.get('suite') || '/linge');
+    const suite = suiteSure(zone, champs.get('suite') || zone.racine);
     if (!egal(champs.get('motdepasse') || '', motDePasse)) {
-      return pageConnexion(suite, 'Mot de passe incorrect.', 401);
+      return pageConnexion(zone, suite, 'Mot de passe incorrect.', 401);
     }
     const jeton = await fabriquerJeton(motDePasse);
     return new Response(null, {
@@ -330,12 +398,22 @@ export default async function middleware(request: Request): Promise<Response | u
         Location: suite,
         'Cache-Control': 'no-store',
         'Set-Cookie':
-          `${COOKIE}=${jeton}; Path=/linge; Max-Age=${DUREE}; HttpOnly; Secure; SameSite=Lax`,
+          `${zone.cookie}=${jeton}; Path=${zone.racine}; Max-Age=${DUREE}; HttpOnly; Secure; SameSite=Lax`,
       },
     });
   }
 
-  if (connecte) return undefined; // la requête suit son cours vers le fichier statique
+  if (connecte) {
+    // Sous-route d'application (pas un fichier) : on sert la coquille SPA, le
+    // routeur React prend le relais côté client.
+    const dernier = chemin.slice(chemin.lastIndexOf('/') + 1);
+    if (zone.coquille && chemin !== zone.racine && !dernier.includes('.')) {
+      return new Response(null, {
+        headers: { 'x-middleware-rewrite': new URL(zone.coquille, request.url).toString() },
+      });
+    }
+    return undefined; // la requête suit son cours vers le fichier statique
+  }
 
   // Les appels de données ne doivent pas récupérer du HTML de connexion : le
   // fetch() de la page échouerait sur un JSON.parse au lieu de dire « expiré ».
@@ -346,5 +424,5 @@ export default async function middleware(request: Request): Promise<Response | u
     });
   }
 
-  return pageConnexion(chemin + url.search, '', 401, { 'Set-Cookie': cookieVide });
+  return pageConnexion(zone, chemin + url.search, '', 401, { 'Set-Cookie': cookieVide });
 }

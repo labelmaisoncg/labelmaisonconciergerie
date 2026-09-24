@@ -1,4 +1,5 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { Link, type LinkProps } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { cn } from './cn';
 
@@ -26,6 +27,17 @@ const TAILLES: Record<TailleBouton, string> = {
   lg: 'h-11 px-5 text-[15px] gap-2 rounded-lg',
 };
 
+/** Classes d'un bouton, pour styler un autre élément (lien) à l'identique. */
+export function classesBouton(variant: VarianteBouton = 'secondary', size: TailleBouton = 'md', className?: string): string {
+  return cn(
+    'inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap transition-colors',
+    'disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4',
+    VARIANTES[variant],
+    TAILLES[size],
+    className,
+  );
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'md', icone, iconeFin, chargement, className, children, disabled, type = 'button', ...rest },
   ref,
@@ -36,13 +48,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       type={type}
       disabled={disabled || chargement}
       aria-busy={chargement || undefined}
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap transition-colors',
-        'disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4',
-        VARIANTES[variant],
-        TAILLES[size],
-        className,
-      )}
+      className={classesBouton(variant, size, className)}
       {...rest}
     >
       {chargement ? <Loader2 className="animate-spin" aria-hidden /> : icone}
@@ -70,3 +76,19 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
     </Button>
   );
 });
+
+export interface ButtonLinkProps extends LinkProps {
+  variant?: VarianteBouton;
+  size?: TailleBouton;
+  icone?: ReactNode;
+}
+
+/** Lien de navigation présenté comme un bouton. */
+export function ButtonLink({ variant = 'secondary', size = 'md', icone, className, children, ...rest }: ButtonLinkProps) {
+  return (
+    <Link className={classesBouton(variant, size, typeof className === 'string' ? className : undefined)} {...rest}>
+      {icone}
+      {children}
+    </Link>
+  );
+}

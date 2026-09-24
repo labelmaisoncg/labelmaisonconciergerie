@@ -704,7 +704,7 @@ export const PRESTATAIRES: Prestataire[] = [
 export const UTILISATEURS: Utilisateur[] = [
   { id: 'usr-abdel', nom: 'Abdel', email: 'abdel@labelmaisoncg.fr', role: 'gerant' },
   { id: 'usr-kamel', nom: 'Kamel', email: 'kamel@labelmaisoncg.fr', role: 'operations' },
-  { id: 'usr-samia', nom: 'Samia Ouali', email: 'so.proprete@exemple.fr', role: 'prestataire' },
+  { id: 'usr-samia', nom: 'Samia Ouali', email: 'so.proprete@exemple.fr', role: 'prestataire', prestataireId: 'pre-ouali' },
   { id: 'usr-compta', nom: 'Cabinet comptable', email: 'compta@exemple.fr', role: 'lecture' },
 ];
 

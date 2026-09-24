@@ -2,8 +2,8 @@
 export { cn } from './cn';
 export type { Ton } from './tons';
 export { TON_LAVIS, TON_PLEIN, TON_TEXTE } from './tons';
-export { Button, IconButton } from './Button';
-export type { ButtonProps, IconButtonProps, VarianteBouton, TailleBouton } from './Button';
+export { Button, IconButton, ButtonLink, classesBouton } from './Button';
+export type { ButtonProps, IconButtonProps, ButtonLinkProps, VarianteBouton, TailleBouton } from './Button';
 export { Card, CardHeader } from './Card';
 export type { CardProps, CardHeaderProps } from './Card';
 export { PageHeader } from './PageHeader';

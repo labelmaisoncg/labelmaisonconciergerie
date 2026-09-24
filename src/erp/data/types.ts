@@ -394,6 +394,8 @@ export interface Utilisateur {
   nom: string;
   email: string;
   role: RoleUtilisateur;
+  /** Pour le rôle « prestataire » : la fiche prestataire liée (accès à ses seules missions). */
+  prestataireId?: Id;
 }
 
 export interface Journal {
