@@ -1,5 +1,5 @@
 import { ImagePlus } from 'lucide-react';
-import { MAINTENANT, dateHeure } from '../../../data/format';
+import { MAINTENANT, heure, jourMois } from '../../../data/format';
 import type { MomentPhoto, Mission } from '../../../data/types';
 import { Badge, Button, Card, CardHeader, Vignette } from '../../../ui';
 
@@ -33,7 +33,7 @@ export function Photos({ mission, onAjouter, demo }: Props) {
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                 {photos.map((p, i) => (
-                  <Vignette key={`${p.url}-${i}`} url={p.url} alt={`Photo ${titre.toLowerCase()} ${i + 1}`} legende={dateHeure(p.prisLe)} />
+                  <Vignette key={`${p.url}-${i}`} url={p.url} alt={`Photo ${titre.toLowerCase()} ${i + 1}`} legende={`${jourMois(p.prisLe)} à ${heure(p.prisLe)}`} />
                 ))}
                 {photos.length === 0 && (
                   <div className="col-span-full grid place-items-center rounded-lg border border-dashed border-(--lm-bord-fort) px-3 py-6 text-center text-[12.5px] text-(--lm-encre-3)">

@@ -437,7 +437,6 @@ function genererPaiements(missions: Mission[]): PaiementPrestataire[] {
     for (const prestataireId of ['pre-ouali', 'pre-eclat', 'pre-perrin']) {
       const duMois = missions.filter((m) => m.prestataireId === prestataireId && m.date.startsWith(mois));
       const validees = duMois.filter((m) => m.statut === 'validee');
-      const refusees = duMois.filter((m) => m.statut === 'refusee');
       if (!duMois.length) continue;
       const courant = mois === '2026-08';
       const bloque = prestataireId === 'pre-perrin' && courant;
@@ -447,8 +446,9 @@ function genererPaiements(missions: Mission[]): PaiementPrestataire[] {
         periode: mois,
         missions: validees.map((m) => m.id),
         montantCentimes: validees.reduce((s, m) => s + m.tarifCentimes, 0),
-        retenueCentimes: refusees.reduce((s, m) => s + m.tarifCentimes, 0),
-        motifRetenue: refusees.length ? 'Mission refusée au contrôle : pas de validation, pas de paiement.' : undefined,
+        // Les missions refusées sont déjà exclues du montant (pas de validation,
+        // pas de paiement) : aucune retenue ne s'y ajoute.
+        retenueCentimes: 0,
         statut: bloque ? 'bloque' : courant && prestataireId === 'pre-eclat' ? 'a_payer' : 'paye',
         payeLe: bloque || (courant && prestataireId === 'pre-eclat') ? undefined : `${debutMoisSuivant(`${mois}-01`).slice(0, 7)}-08`,
       });
