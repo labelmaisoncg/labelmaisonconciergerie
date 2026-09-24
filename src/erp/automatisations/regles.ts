@@ -11,6 +11,7 @@ import { attribuerAutomatiquement, controleQualite, preuvesManquantes } from './
 import { documentsPrestataires, suiviLinge } from './regles-prestataires';
 import { annulerMenageSiAnnulation, creerMenageAuDepart } from './regles-reservations';
 import { facturationMensuelle, paiementsPrestataires, relanceFactures } from './regles-finance';
+import { revuePerformance } from './regles-analyse';
 import { ORDRE_DOMAINES, type Regle } from './types';
 
 const CATALOGUE: Regle[] = [
@@ -29,6 +30,7 @@ const CATALOGUE: Regle[] = [
   rappelsCommerciaux,
   messagesEnAttente,
   escaladeIncidents,
+  revuePerformance,
 ];
 
 /** Règles triées par domaine (tri stable : l'ordre du catalogue est conservé dans un domaine). */
