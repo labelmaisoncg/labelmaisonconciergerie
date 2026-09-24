@@ -48,11 +48,11 @@ const INTEGRATIONS: Integration[] = [
     etat: 'Actif',
     ton: 'succes',
     besoin: 'Actif (formulaires du site).',
-    details: ['Prochaine étape : envoi des relevés propriétaires'],
+    details: ['Piste : envoyer aussi les relevés propriétaires'],
   },
   {
     nom: 'Telegram',
-    role: 'Alertes internes à l’équipe (nouveaux contacts, incidents).',
+    role: 'Notifications internes à l’équipe.',
     icone: <Send />,
     etat: 'Configuré',
     ton: 'succes',

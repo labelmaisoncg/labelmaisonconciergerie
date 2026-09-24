@@ -111,7 +111,7 @@ export function Graphiques({ horizon }: { horizon: CleHorizon }) {
             <XAxis dataKey="libelle" tick={AXE} axisLine={false} tickLine={false} />
             <YAxis domain={[4, 5]} ticks={[4, 4.5, 5]} tickFormatter={(v: number) => note(v)} tick={AXE} axisLine={false} tickLine={false} width={44} />
             <Tooltip content={<Infobulle formats={{ note: (v) => `${note(v)} / 5` }} />} />
-            <Line type="monotone" dataKey="note" name="Note" stroke={OR} strokeWidth={2} dot={{ r: 4, fill: OR, stroke: '#fff', strokeWidth: 2 }} connectNulls>
+            <Line type="monotone" dataKey="note" name="Note" stroke={OR} strokeWidth={2} isAnimationActive={false} dot={{ r: 4, fill: OR, stroke: '#fff', strokeWidth: 2 }} connectNulls>
               <LabelList dataKey="note" position="top" formatter={(v: number) => note(v)} style={{ fontSize: 11, fill: 'rgba(20,17,14,0.6)' }} />
             </Line>
           </LineChart>

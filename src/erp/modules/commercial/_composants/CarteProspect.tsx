@@ -19,7 +19,7 @@ export function ProchaineAction({ p, compact }: { p: Prospect; compact?: boolean
   const retard = !!p.prochaineActionLe && p.prochaineActionLe < AUJOURDHUI && p.etape !== 'signe' && p.etape !== 'perdu';
   const jour = p.prochaineActionLe === AUJOURDHUI;
   return (
-    <span className={cn('inline-flex min-w-0 items-start gap-1', retard ? 'text-(--lm-danger)' : jour ? 'text-(--lm-alerte)' : 'text-(--lm-encre-2)')}>
+    <span className={cn(compact ? 'flex w-full min-w-0 items-start gap-1 overflow-hidden' : 'inline-flex min-w-0 items-start gap-1', retard ? 'text-(--lm-danger)' : jour ? 'text-(--lm-alerte)' : 'text-(--lm-encre-2)')}>
       <CalendarClock aria-hidden className="mt-0.5 size-3.5 shrink-0" />
       <span className={cn('min-w-0', compact && 'truncate')}>
         {p.prochaineAction ?? 'Action'}

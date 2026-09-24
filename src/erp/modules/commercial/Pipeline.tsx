@@ -117,7 +117,7 @@ export default function Pipeline() {
         <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom, ville, bien, notes" label="Rechercher un prospect" />
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
           <Select aria-label="Filtrer par source" value={source} onChange={(e) => setSource(e.target.value as SourceProspect | '')} placeholder="Toutes sources" options={opts(LIBELLES.sourceProspect)} className="sm:w-44" />
-          <Select aria-label="Filtrer par responsable" value={responsable} onChange={(e) => setResponsable(e.target.value as Responsable | '')} placeholder="Tous responsables" options={[{ valeur: 'abdel', libelle: 'Abdel' }, { valeur: 'kamel', libelle: 'Kamel' }]} className="sm:w-40" />
+          <Select aria-label="Filtrer par responsable" value={responsable} onChange={(e) => setResponsable(e.target.value as Responsable | '')} placeholder="Tous responsables" options={[{ valeur: 'abdel', libelle: 'Abdel' }, { valeur: 'kamel', libelle: 'Kamel' }]} className="sm:w-48" />
           <Select aria-label="Filtrer par étape" value={etape} onChange={(e) => setEtape(e.target.value as EtapeProspect | '')} placeholder="Toutes étapes" options={opts(LIBELLES.etapeProspect)} className="sm:w-40" />
           {affichage === 'tableau' && (
             <label className="inline-flex h-9 items-center gap-2 text-[13px] text-(--lm-encre-2)">
