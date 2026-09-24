@@ -4,7 +4,18 @@ import { useErp } from '../../../data/store';
 import { euros, note, pourcentage } from '../../../data/format';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { Stat } from '../../../ui';
+import { aideKpi, LibelleAide } from '../../performance/_composants/commun';
 import { HORIZONS, fenetresHorizon, mesurer, variation, type CleHorizon } from './calculs';
+
+/** Explications des indicateurs sans seuil dédié dans analyse/seuils.ts. */
+const AIDES = {
+  actifs: 'Logements actifs : biens sous mandat signé et en ligne. Les biens en lancement attendent leur checklist complète (SPEC §2.2).',
+  brut: 'Revenu brut géré : total payé par les voyageurs sur la période (frais de ménage inclus), proratisé à la nuit. C’est le volume d’affaires confié par les propriétaires.',
+  commission: 'Commission Label Maison : pourcentage du mandat appliqué au revenu net de plateforme hors ménage. C’est le principal chiffre d’affaires de Label Maison.',
+  adr: `${aideKpi('adr')} Ici : moyenne de tout le parc sur la période.`,
+  effectif: 'Taux de commission effectif : commission divisée par le brut géré. Plus bas que le taux des mandats car calculé sur le brut (plateformes et ménage inclus). Cible des mandats : 18 à 20 %.',
+  parLogement: 'Revenu par logement actif : brut géré divisé par le nombre de logements actifs. Permet de comparer les périodes à parc constant.',
+};
 
 /** Bande d'indicateurs (SPEC §6) avec comparaison à la période précédente. */
 export function BandeKpi({ horizon }: { horizon: CleHorizon }) {
@@ -20,24 +31,24 @@ export function BandeKpi({ horizon }: { horizon: CleHorizon }) {
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
       <Stat
-        label="Logements actifs"
+        label={<LibelleAide texte={AIDES.actifs}>Logements actifs</LibelleAide>}
         valeur={actifs}
         icone={<Home />}
         aide={`${lancement} en lancement`}
         to="/erp/logements"
       />
-      <Stat label="Taux d’occupation" valeur={pourcentage(cour.occupation)} icone={<BedDouble />}
+      <Stat label={<LibelleAide texte={aideKpi('occupation')}>Taux d’occupation</LibelleAide>} valeur={pourcentage(cour.occupation)} icone={<BedDouble />}
         delta={variation(cour.occupation, prec.occupation, 'points', lib)} />
-      <Stat label="Revenu brut géré" valeur={euros(cour.revenuBrut, true)} icone={<Euro />}
+      <Stat label={<LibelleAide texte={AIDES.brut}>Revenu brut géré</LibelleAide>} valeur={euros(cour.revenuBrut, true)} icone={<Euro />}
         delta={variation(cour.revenuBrut, prec.revenuBrut, 'euros', lib)} to="/erp/finance" />
-      <Stat label="Commission Label Maison" valeur={euros(cour.commission, true)} icone={<Coins />}
+      <Stat label={<LibelleAide texte={AIDES.commission}>Commission Label Maison</LibelleAide>} valeur={euros(cour.commission, true)} icone={<Coins />}
         delta={variation(cour.commission, prec.commission, 'euros', lib)} to="/erp/finance" />
-      <Stat label="ADR (prix moyen par nuit)" valeur={euros(cour.adr, true)} icone={<TrendingUp />}
+      <Stat label={<LibelleAide texte={AIDES.adr}>ADR (prix moyen par nuit)</LibelleAide>} valeur={euros(cour.adr, true)} icone={<TrendingUp />}
         delta={variation(cour.adr, prec.adr, 'euros', lib)} />
-      <Stat label="RevPAR" valeur={euros(cour.revpar, true)} icone={<Percent />}
+      <Stat label={<LibelleAide texte={aideKpi('revpar')}>RevPAR</LibelleAide>} valeur={euros(cour.revpar, true)} icone={<Percent />}
         delta={variation(cour.revpar, prec.revpar, 'euros', lib)} aide="par nuit disponible" />
       <Stat
-        label="Note voyageur moyenne"
+        label={<LibelleAide texte={aideKpi('note')}>Note voyageur moyenne</LibelleAide>}
         valeur={note(cour.note)}
         icone={<Star />}
         tone={cour.note !== undefined && cour.note < SEUIL_NOTE_CONTROLE ? 'alerte' : 'neutre'}
@@ -45,7 +56,7 @@ export function BandeKpi({ horizon }: { horizon: CleHorizon }) {
         aide={cour.note === undefined ? 'aucune note sur la période' : undefined}
       />
       <Stat
-        label="Ménages validés avec photos"
+        label={<LibelleAide texte={aideKpi('menagesPhotos')}>Ménages validés avec photos</LibelleAide>}
         valeur={pourcentage(cour.missionsValidees)}
         icone={<Camera />}
         tone={cour.missionsValidees < 0.9 ? 'alerte' : 'neutre'}
@@ -53,13 +64,13 @@ export function BandeKpi({ horizon }: { horizon: CleHorizon }) {
         to="/erp/menages"
       />
       <Stat
-        label="Taux de commission effectif"
+        label={<LibelleAide texte={AIDES.effectif}>Taux de commission effectif</LibelleAide>}
         valeur={cour.revenuBrut ? pourcentage(cour.commission / cour.revenuBrut, 1) : '-'}
         icone={<BadgePercent />}
         aide="commission / brut géré"
       />
       <Stat
-        label="Revenu par logement actif"
+        label={<LibelleAide texte={AIDES.parLogement}>Revenu par logement actif</LibelleAide>}
         valeur={actifs ? euros(Math.round(cour.revenuBrut / actifs), true) : '-'}
         icone={<Home />}
         aide="brut sur la période"
