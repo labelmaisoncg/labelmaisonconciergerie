@@ -10,7 +10,6 @@ export default function Module() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Paramètres' }]}
         titre="Paramètres"
         sousTitre="Qui a accès à quoi, services connectés et identité de la société."
       />

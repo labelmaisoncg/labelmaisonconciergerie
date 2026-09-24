@@ -1,12 +1,13 @@
-import { Construction } from 'lucide-react';
-import { EmptyState, PageHeader } from '../../ui';
+import { Route, Routes } from 'react-router-dom';
+import { Detail } from './Detail';
+import { Liste } from './Liste';
 
-/** Module Prestataires : page provisoire. */
-export default function Module() {
+/** Module Prestataires : conformité (règle 2.3), qualité, tarifs et paiements. */
+export default function Prestataires() {
   return (
-    <>
-      <PageHeader titre="Prestataires" sousTitre="Qui intervient, est-il en règle, est-il bon." />
-      <EmptyState icone={<Construction />} titre="Module en construction" description="Cet écran arrive bientôt dans l’ERP." />
-    </>
+    <Routes>
+      <Route index element={<Liste />} />
+      <Route path=":id" element={<Detail />} />
+    </Routes>
   );
 }

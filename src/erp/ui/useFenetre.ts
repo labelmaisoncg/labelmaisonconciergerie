@@ -5,6 +5,10 @@ import { useEffect, useRef } from 'react';
  * focus déplacé dans le panneau puis rendu à l'élément d'origine, défilement
  * de la page bloqué.
  */
+// Pile des fenêtres ouvertes : seule la plus haute réagit au clavier, pour
+// qu'Échap ferme la Modal posée sur un Drawer sans fermer le Drawer.
+const pile: symbol[] = [];
+
 export function useFenetre<T extends HTMLElement>(ouvert: boolean, onFermer: () => void) {
   const ref = useRef<T>(null);
   const fermer = useRef(onFermer);
@@ -16,8 +20,11 @@ export function useFenetre<T extends HTMLElement>(ouvert: boolean, onFermer: () 
     const debordement = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     ref.current?.focus();
+    const moi = Symbol('fenetre');
+    pile.push(moi);
 
     const touche = (e: globalThis.KeyboardEvent) => {
+      if (pile[pile.length - 1] !== moi) return;
       if (e.key === 'Escape') fermer.current();
       if (e.key !== 'Tab' || !ref.current) return;
       // Piège à focus minimal : on boucle dans le panneau.
@@ -38,6 +45,7 @@ export function useFenetre<T extends HTMLElement>(ouvert: boolean, onFermer: () 
     document.addEventListener('keydown', touche);
     return () => {
       document.removeEventListener('keydown', touche);
+      pile.splice(pile.indexOf(moi), 1);
       document.body.style.overflow = debordement;
       precedent?.focus?.();
     };

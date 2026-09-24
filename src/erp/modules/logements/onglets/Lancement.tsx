@@ -148,7 +148,7 @@ export function OngletLancement({ logement: l }: { logement: Logement }) {
               </Button>
               {refus && (
                 <Alert tone="danger" titre="Activation refusée" className="mt-3">
-                  {refus}
+                  {verdict.ok ? refus : 'Levez les blocages listés ci-dessus : mandat signé et checklist complète sont obligatoires.'}
                 </Alert>
               )}
             </>

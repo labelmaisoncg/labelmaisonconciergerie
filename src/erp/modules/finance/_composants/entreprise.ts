@@ -5,7 +5,6 @@ export const ENTREPRISE = {
   siret: '993 428 200 00014',
   adresse: '10 chemin des Bas Cornus',
   ville: '91100 Villabé',
-  email: 'contact@labelmaisoncg.fr',
   site: 'labelmaisoncg.fr',
 } as const;
 

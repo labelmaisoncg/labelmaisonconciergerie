@@ -54,8 +54,7 @@ export function EtapeChecklist({ b, maj, erreurs }: PropsEtape) {
     <div className="space-y-4">
       <Alert tone="or" icone={<Lock />} titre="Checklist de lancement bloquante">
         Le logement sera créé au statut « En lancement ». Il ne pourra passer « Actif » (et être publié) que lorsque le mandat
-        est signé ET que les {CHECKLIST_LANCEMENT.length} points ci-dessous sont faits, preuves à l’appui. Aucune exception : c’est la
-        leçon de 2026.
+        est signé ET que les {CHECKLIST_LANCEMENT.length} points ci-dessous sont faits, preuves à l’appui.
       </Alert>
       <Checklist label="À compléter depuis la fiche logement" elements={CHECKLIST_LANCEMENT.map((c) => ({ libelle: c.libelle, fait: false }))} />
       <div className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 text-[13px] text-(--lm-encre-2)">

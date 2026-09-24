@@ -5,4 +5,4 @@ export interface PageFinanceProps {
   onglets: ReactNode;
 }
 
-export const FIL_FINANCE = [{ libelle: 'ERP', to: '/erp' }, { libelle: 'Finance', to: '/erp/finance' }];
+export const FIL_FINANCE = [{ libelle: 'Finance', to: '/erp/finance' }];

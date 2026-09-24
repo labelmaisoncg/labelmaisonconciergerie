@@ -90,7 +90,6 @@ export default function Module() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Conformité' }]}
         titre="Conformité"
         sousTitre="Sommes-nous en règle ? Points réglementaires par logement, obligations de la société et documents de référence."
       />

@@ -10,7 +10,7 @@ import { Alert, Badge, Card, CardHeader, FilterChips, PageHeader, ProgressBar } 
 import { fenetre12Mois, fenetrePeriode, derniersMois, rentabiliteParLogement, serieMensuelle, synthese } from './_calculs';
 import { AXE, COULEURS, eurosAxe, Infobulle } from './_composants/graphiques';
 import { CarteMontant } from './_composants/CarteMontant';
-import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
+import type { PageFinanceProps } from './_composants/types';
 
 type Periode = 'mois' | 'precedent' | 'annee';
 
@@ -37,7 +37,6 @@ export default function Synthese({ onglets }: PageFinanceProps) {
   return (
     <>
       <PageHeader
-        fil={FIL_FINANCE}
         titre="Finance"
         sousTitre="Combien a-t-on gagné, sur quoi, et qui doit quoi. L’argent des propriétaires et le chiffre d’affaires de Label Maison sont toujours séparés."
       />

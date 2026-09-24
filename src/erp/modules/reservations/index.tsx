@@ -55,7 +55,10 @@ function PageReservations() {
   const d = useErp();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const vue = params.get('vue') === 'liste' ? 'liste' : 'calendrier';
+  const logementFiltre = params.get('logement') ?? '';
+  // Venir d'une fiche logement ouvre directement la liste filtrée.
+  const vueDemandee = params.get('vue') ?? (logementFiltre ? 'liste' : 'calendrier');
+  const vue = vueDemandee === 'liste' ? 'liste' : 'calendrier';
   const [ouverte, setOuverte] = useState<Reservation | null>(null);
   const [creation, setCreation] = useState(false);
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -99,7 +102,7 @@ function PageReservations() {
       {vue === 'calendrier' ? (
         <Calendrier logements={logementsPlanning} reservations={d.reservations} onOuvrir={setOuverte} />
       ) : (
-        <ListeReservations reservations={d.reservations} logements={d.logements} onOuvrir={setOuverte} />
+        <ListeReservations reservations={d.reservations} logements={d.logements} onOuvrir={setOuverte} logementInitial={logementFiltre} />
       )}
 
       <Drawer

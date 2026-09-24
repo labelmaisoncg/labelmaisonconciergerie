@@ -15,6 +15,8 @@ const STATUTS: StatutReservation[] = ['confirmee', 'en_cours', 'terminee', 'annu
 interface Props {
   reservations: Reservation[];
   logements: Logement[];
+  /** Filtre logement préréglé (lien « ?logement=… » depuis la fiche logement). */
+  logementInitial?: string;
   onOuvrir: (r: Reservation) => void;
 }
 
@@ -22,11 +24,11 @@ function normaliser(s: string) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
-export function ListeReservations({ reservations, logements, onOuvrir }: Props) {
+export function ListeReservations({ reservations, logements, onOuvrir, logementInitial = '' }: Props) {
   const [recherche, setRecherche] = useState('');
   const [canaux, setCanaux] = useState<string[]>([]);
   const [statuts, setStatuts] = useState<string[]>([]);
-  const [logementId, setLogementId] = useState('');
+  const [logementId, setLogementId] = useState(logementInitial);
   const [du, setDu] = useState('');
   const [au, setAu] = useState('');
   const nomLogement = useMemo(() => new Map(logements.map((l) => [l.id, l.nom])), [logements]);
