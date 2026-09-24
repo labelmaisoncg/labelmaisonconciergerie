@@ -51,7 +51,7 @@ export function Table<T>({
     const col = tri && colonnes.find((c) => c.cle === tri.cle);
     if (!col?.tri) return lignes;
     const copie = [...lignes].sort(col.tri);
-    return tri.sens === 'desc' ? copie.reverse() : copie;
+    return tri!.sens === 'desc' ? copie.reverse() : copie;
   }, [lignes, colonnes, tri]);
 
   const basculer = (cle: string) =>
