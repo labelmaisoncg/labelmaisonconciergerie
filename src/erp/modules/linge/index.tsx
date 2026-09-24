@@ -63,7 +63,7 @@ export default function Linge() {
 
       <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Stat label="En place" valeur={nombre(somme('enPlace'))} icone={<CheckCircle2 />} aide="articles propres disponibles" />
-        <Stat label="Sale à envoyer" valeur={nombre(somme('sale'))} icone={<Shirt />} tone={somme('sale') ? 'alerte' : 'neutre'} />
+        <Stat label="Sale à envoyer" valeur={nombre(somme('sale'))} icone={<Shirt />} aide="envoi groupé automatique chaque jour" tone={somme('sale') ? 'alerte' : 'neutre'} />
         <Stat label="En blanchisserie" valeur={nombre(somme('blanchisserie'))} icone={<WashingMachine />} />
         <Stat label="Perdu ou rebut (30 j)" valeur={nombre(perdus30)} icone={<PackageX />} tone={perdus30 ? 'alerte' : 'neutre'} />
         <Stat label="Écarts d’inventaire" valeur={nombre(ecarts)} icone={<AlertTriangle />} tone={ecarts ? 'danger' : 'succes'} className="col-span-2 md:col-span-1" />
