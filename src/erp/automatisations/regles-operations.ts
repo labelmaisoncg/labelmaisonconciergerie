@@ -11,7 +11,7 @@ import type { Regle } from './types';
 const INACTIVES: Mission['statut'][] = ['annulee', 'refusee'];
 
 /** Le prestataire couvre-t-il la ville du logement (ville exacte, ou département) ? */
-function couvre(p: Prestataire, l: Logement): boolean {
+export function couvre(p: Prestataire, l: Logement): boolean {
   if (p.zone.includes(l.ville)) return true;
   if (l.codePostal.startsWith('91') && p.zone.includes('Essonne')) return true;
   if (l.codePostal.startsWith('75') && p.zone.includes('Paris')) return true;

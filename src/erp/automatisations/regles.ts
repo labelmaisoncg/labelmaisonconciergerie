@@ -9,6 +9,7 @@
 import { activationLogement, escaladeIncidents, messagesEnAttente, plafondResidencePrincipale, rappelsCommerciaux } from './regles-pilotage';
 import { attribuerAutomatiquement, controleQualite, preuvesManquantes } from './regles-operations';
 import { documentsPrestataires, suiviLinge } from './regles-prestataires';
+import { envoiBlanchisserie } from './regles-linge-auto';
 import { annulerMenageSiAnnulation, creerMenageAuDepart } from './regles-reservations';
 import { facturationMensuelle, paiementsPrestataires, relanceFactures } from './regles-finance';
 import { revuePerformance } from './regles-analyse';
@@ -21,6 +22,7 @@ const CATALOGUE: Regle[] = [
   attribuerAutomatiquement,
   controleQualite,
   preuvesManquantes,
+  envoiBlanchisserie,
   suiviLinge,
   documentsPrestataires,
   paiementsPrestataires,
