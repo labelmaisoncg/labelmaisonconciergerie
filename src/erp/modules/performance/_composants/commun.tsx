@@ -89,7 +89,7 @@ export function CelluleKpi({ cle, valeur, affichage }: { cle: CleKpi; valeur: nu
   return (
     <span
       title={`${LIBELLE_NIVEAU[niveau]}. ${explication}`}
-      className={cn('lm-chiffres inline-block rounded-md px-1.5 py-0.5 text-[13px] font-medium whitespace-nowrap', TON_LAVIS[TON_NIVEAU[niveau]])}
+      className={cn('lm-chiffres relative inline-block rounded-md px-1.5 py-0.5 text-[13px] font-medium whitespace-nowrap', TON_LAVIS[TON_NIVEAU[niveau]])}
     >
       {affichage ?? SEUILS[cle].formater(valeur)}
       <span className="sr-only"> ({LIBELLE_NIVEAU[niveau]})</span>
