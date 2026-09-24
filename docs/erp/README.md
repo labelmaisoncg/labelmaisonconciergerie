@@ -121,6 +121,7 @@ d'automatisations repasse sur les données (il tourne aussi au chargement).
 | Référentiel | Mandats | `/erp/mandats` |
 | Référentiel | Logements | `/erp/logements` (`/:id?onglet=performance\|lancement\|fiche\|linge\|canaux\|historique`) |
 | Distribution | Réservations (calendrier, `?vue=liste`) | `/erp/reservations` (`/:id`) |
+| Distribution | Annonces (rafraîchissement mensuel, validation, historique, effet mesuré) | `/erp/annonces` (`?logement=`) |
 | Relation voyageur | Messagerie | `/erp/messagerie` (`/:filId`) |
 | Opérations | Ménages | `/erp/menages` (`/:id`) |
 | Opérations | Linge | `/erp/linge` (`?vue=ecarts\|journal`) |
@@ -171,6 +172,7 @@ Catalogue (`REGLES`, dans l'ordre d'exécution) :
 | Pilotage | Messages voyageurs sans réponse (`messages-en-attente`) | message | §2.8 | Message sans réponse depuis plus d'une heure : alerte ; fil escaladé par l'agent : Abdel prévenu. |
 | Pilotage | Escalade des incidents graves (`escalade-incidents`) | quotidien | | Incident de gravité haute ouvert depuis plus de 24 h : escaladé au gérant. |
 | Pilotage | Revue de performance des biens (`revue-performance`) | quotidien | §10 | Analyse hebdomadaire : alerte sur les biens à sortir ou renégocier, améliorations ajoutées au suivi (« à proposer »). |
+| Pilotage | Rafraîchissement mensuel des annonces (`rafraichissement-annonces`) | mensuel | §11 | Chaque mois, une nouvelle version de l'annonce de chaque logement actif est proposée (saison, repères locaux, rien d'inventé) ; validation humaine obligatoire avant publication. Proposition en attente depuis plus de 7 jours : alerte. |
 
 Pour ajouter une règle : un objet `Regle` dans un fichier `regles-*.ts`,
 enregistré dans `regles.ts`, puis relancer le vérificateur (seconde passe à 0).
