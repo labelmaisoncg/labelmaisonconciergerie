@@ -35,7 +35,7 @@ export function KpiCommerciaux() {
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <Stat label={<LibelleAide texte="Valeur du pipeline : revenu locatif annuel estimé des prospects en cours (ni signés ni perdus).">Valeur du pipeline</LibelleAide>} valeur={euros(valeurPipeline(d.prospects), true)} icone={<Target />} aide="revenu annuel estimé" to="/erp/commercial" />
       <Stat label={<LibelleAide texte="Commission potentielle : ce que rapporterait chaque année le pipeline s’il était signé au taux cible de 18 %.">Commission potentielle</LibelleAide>} valeur={euros(commissionPotentielle(d.prospects, 18), true)} icone={<Coins />} aide="au taux cible de 18 %" />
-      <Stat label={<LibelleAide texte="Signatures du mois : mandats signés depuis le 1er du mois. Objectif : un nouveau bien par mois.">Signatures du mois</LibelleAide>} valeur={signatures.length} icone={<FileSignature />} aide={moisAnnee(AUJOURDHUI)} to="/erp/mandats" />
+      <Stat label={<LibelleAide texte="Signatures du mois : mandats signés depuis le 1er du mois.">Signatures du mois</LibelleAide>} valeur={signatures.length} icone={<FileSignature />} aide={moisAnnee(AUJOURDHUI)} to="/erp/mandats" />
       <Stat label={<LibelleAide texte="Actions commerciales dues : relances ou rendez-vous prévus aujourd’hui ou en retard.">Actions commerciales dues</LibelleAide>} valeur={dues.length} icone={<CalendarClock />} tone={dues.length ? 'alerte' : 'neutre'} to="/erp/commercial" />
     </div>
   );
