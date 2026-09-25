@@ -183,7 +183,7 @@ export class ClientRepull {
    * Idempotency-Key : le nouvel essai ne peut alors rien créer deux fois.
    */
   async requete<T>(
-    methode: 'GET' | 'POST' | 'DELETE' | 'PATCH',
+    methode: 'GET' | 'POST' | 'DELETE' | 'PATCH' | 'PUT',
     chemin: string,
     params: Record<string, string | number | boolean | undefined> = {},
     envoi?: unknown,

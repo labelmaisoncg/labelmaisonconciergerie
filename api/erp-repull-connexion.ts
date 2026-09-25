@@ -24,6 +24,7 @@ import {
   lireFournisseurs,
   messageErreur,
   diagnostiquer,
+  ouvrirCalendrier,
   type ContexteConnexion,
 } from '../src/erp/data/repull-connexion.js';
 import { BudgetEpuise, verifierMembre } from '../src/erp/data/repull-synchro.js';
@@ -91,6 +92,9 @@ export default async function handler(req: any, res: any) {
       const f = String(corps.fournisseur ?? '').trim().toLowerCase();
       const acces = corps.acces === 'messaging' || corps.acces === 'full_access' ? corps.acces : undefined;
       return repondre(res, 200, await demarrerConnexion(ctx, f, urlRetour(req, f), acces));
+    }
+    if (ecriture && action === 'calendrier') {
+      return repondre(res, 200, await ouvrirCalendrier(ctx, corps as never));
     }
     if (ecriture && action === 'selection') {
       return repondre(res, 200, await enregistrerSelection(ctx, corps.ids, membre.email));

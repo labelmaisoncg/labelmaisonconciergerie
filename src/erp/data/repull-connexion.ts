@@ -800,3 +800,61 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
   });
   return { ok: true, lignes, appels, le: (ctx.maintenant ?? (() => new Date()))().toISOString() };
 }
+
+/* ============================================================ calendrier */
+
+export interface ResultatCalendrier {
+  ok: true;
+  annonce: string;
+  ouvertes: number;
+  gardeesFermees: number;
+  du: string;
+  au: string;
+  reponse: string;
+}
+
+const JOUR_MS = 86_400_000;
+const isoJour = (t: number) => new Date(t).toISOString().slice(0, 10);
+
+/**
+ * Ouvre le calendrier d'une annonce à la réservation, avec un prix par nuit
+ * et une durée minimale, sur `jours` jours à partir d'aujourd'hui (731 au
+ * plus). Un seul appel Repull (PUT /v1/availability/{id}), qui pousse vers
+ * toutes les plateformes reliées. Les nuits de `bloquees` (réservations
+ * connues) ne sont PAS envoyées : elles gardent leur état actuel (fermé).
+ */
+export async function ouvrirCalendrier(
+  ctx: ContexteConnexion,
+  entree: { annonce: unknown; prix: unknown; minNuits: unknown; jours: unknown; bloquees: unknown },
+): Promise<ResultatCalendrier> {
+  const annonce = texte(entree.annonce);
+  if (!/^\d{1,12}$/.test(annonce)) throw new ErreurConnexion('Logement inconnu : rechargez la page.');
+  const prix = Math.round(Number(entree.prix) * 100) / 100;
+  if (!Number.isFinite(prix) || prix < 10 || prix > 5000) throw new ErreurConnexion('Indiquez un prix par nuit entre 10 € et 5 000 €.');
+  const minNuits = Math.floor(Number(entree.minNuits) || 1);
+  if (minNuits < 1 || minNuits > 30) throw new ErreurConnexion('La durée minimale doit être comprise entre 1 et 30 nuits.');
+  const jours = Math.min(731, Math.max(1, Math.floor(Number(entree.jours) || 365)));
+  const bloquees = new Set(
+    (Array.isArray(entree.bloquees) ? entree.bloquees : []).map((x) => texte(x)).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)),
+  );
+  const maintenant = (ctx.maintenant ?? (() => new Date()))();
+  const depart = Date.parse(`${isoJour(maintenant.getTime())}T00:00:00Z`);
+  const dates: string[] = [];
+  for (let i = 0; i < jours; i++) {
+    const j = isoJour(depart + i * JOUR_MS);
+    if (!bloquees.has(j)) dates.push(j);
+  }
+  if (!dates.length) throw new ErreurConnexion('Aucune nuit à ouvrir sur cette période.');
+  const r = await avecClient(ctx, (client) =>
+    client.requete<unknown>('PUT', `/v1/availability/${annonce}`, {}, { dates, available: true, price: prix, minNights: minNuits }),
+  );
+  return {
+    ok: true,
+    annonce,
+    ouvertes: dates.length,
+    gardeesFermees: jours - dates.length,
+    du: dates[0],
+    au: dates[dates.length - 1],
+    reponse: JSON.stringify(r ?? {}).slice(0, 1500),
+  };
+}
