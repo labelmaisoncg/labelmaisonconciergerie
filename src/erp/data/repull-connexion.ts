@@ -39,6 +39,7 @@ import {
   BudgetEpuise,
   ClientRepull,
   COLLECTION_ETAT,
+  DelaiEcoule,
   ErreurRepull,
   ID_SELECTION,
   QUOTA_MOIS_DEFAUT,
@@ -677,4 +678,86 @@ export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, c
   delete cache.luLe;
   await ecrireCache(ctx.base, cache);
   return { ok: true, annoncesDesactivees: desactivees };
+}
+
+/* ============================================================ diagnostic */
+
+export interface LigneDiagnostic {
+  /** Ce qui a été demandé à Repull, en clair. */
+  question: string;
+  appel: string;
+  ok: boolean;
+  statut: number;
+  /** Réponse résumée en français. */
+  resume: string;
+  /** Extrait brut (tronqué), pour l'équipe technique. */
+  brut: string;
+}
+
+export interface ResultatDiagnostic {
+  ok: true;
+  lignes: LigneDiagnostic[];
+  appels: number;
+  le: string;
+}
+
+const tronquer = (v: unknown, n = 1500) => {
+  const s = typeof v === 'string' ? v : JSON.stringify(v, null, 1);
+  return s.length > n ? `${s.slice(0, n)}…` : s;
+};
+
+const liste = (v: unknown): Record<string, unknown>[] => {
+  if (Array.isArray(v)) return v as Record<string, unknown>[];
+  const d = (v as { data?: unknown })?.data;
+  return Array.isArray(d) ? (d as Record<string, unknown>[]) : [];
+};
+
+/**
+ * Photographie de ce que Repull sait du compte : clé, connexions, Airbnb,
+ * Booking.com (établissements et association des chambres), annonces.
+ * Six appels au plus, comptés dans le budget. Aucune donnée secrète renvoyée.
+ */
+export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDiagnostic> {
+  const lignes: LigneDiagnostic[] = [];
+  let appels = 0;
+  await avecClient(ctx, async (client) => {
+    const essai = async (question: string, appel: string, resumer: (r: unknown) => string, params: Record<string, string> = {}) => {
+      try {
+        const r = await client.get<unknown>(appel, params);
+        lignes.push({ question, appel, ok: true, statut: 200, resume: resumer(r), brut: tronquer(r) });
+      } catch (e) {
+        if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
+        const statut = e instanceof ErreurRepull ? e.statut : 0;
+        lignes.push({ question, appel, ok: false, statut, resume: messageErreur(e), brut: tronquer(e instanceof ErreurRepull ? { code: e.code, fix: e.correctif, ...e.infos } : String(e)) });
+      }
+    };
+    await essai('La clé Repull est-elle acceptée ?', '/v1/health/auth', () => 'Oui, la clé Repull de Vercel est valide.');
+    await essai('Quelles connexions Repull voit-il ?', '/v1/connect', (r) => {
+      const l = liste(r);
+      return l.length ? `${l.length} connexion(s) : ${l.map((c) => `${texte(c.provider)} (${texte(c.status) || '?'})`).join(', ')}.` : 'Aucune connexion enregistrée chez Repull.';
+    });
+    await essai('Airbnb est-il connecté ?', '/v1/connect/airbnb', (r) => {
+      const x = (r ?? {}) as Record<string, unknown>;
+      const comptes = Array.isArray(x.accounts) ? (x.accounts as Record<string, unknown>[]) : [];
+      if (!x.connected && !comptes.length) return 'Non : aucun compte Airbnb relié à Repull.';
+      return `Oui : ${comptes.length || 1} compte(s) Airbnb${comptes.length ? ` (${comptes.map((c) => texte(c.name) || texte(c.externalAccountId)).join(', ')})` : ''}.`;
+    });
+    await essai('Booking.com : quels établissements ?', '/v1/channels/booking/properties', (r) => {
+      const l = liste(r);
+      if (!l.length) return 'Aucun établissement Booking.com chez Repull : l’étape « numéro d’établissement » sur la page Repull n’est pas terminée.';
+      return l
+        .map((p) => {
+          const n = Array.isArray(p.listings) ? p.listings.length : 0;
+          const etat = p.mappingStatus === 'unmapped' ? 'chambres PAS encore associées' : `${n} chambre(s) associée(s)`;
+          return `Établissement ${texte(p.hotelId)} : ${etat}${p.active === false ? ', inactif' : ''}${texte(p.suspensionReason) ? `, suspendu (${texte(p.suspensionReason)})` : ''}.`;
+        })
+        .join(' ');
+    });
+    await essai('Quels logements Repull a-t-il ?', '/v1/listings', (r) => {
+      const l = liste(r);
+      return l.length ? `${l.length} logement(s) vu(s) (premiers) : ${l.slice(0, 5).map((a) => texte(a.name) || texte(a.title) || texte(a.id)).join(', ')}.` : 'Aucun logement chez Repull pour l’instant.';
+    }, { status: 'all', limit: '10' });
+    appels = client.appels;
+  });
+  return { ok: true, lignes, appels, le: (ctx.maintenant ?? (() => new Date()))().toISOString() };
 }

@@ -23,6 +23,7 @@ import {
   lireEtatConnexions,
   lireFournisseurs,
   messageErreur,
+  diagnostiquer,
   type ContexteConnexion,
 } from '../src/erp/data/repull-connexion.js';
 import { BudgetEpuise, verifierMembre } from '../src/erp/data/repull-synchro.js';
@@ -93,6 +94,9 @@ export default async function handler(req: any, res: any) {
     if (req.method === 'GET' && action === 'etat') {
       const forcer = ['1', 'true', 'oui'].includes(String(req.query?.forcer ?? ''));
       return repondre(res, 200, await lireEtatConnexions(ctx, { forcer }));
+    }
+    if (req.method === 'GET' && action === 'diagnostic') {
+      return repondre(res, 200, await diagnostiquer(ctx));
     }
     if (req.method === 'GET' && action === 'fournisseurs') {
       return repondre(res, 200, { ok: true, fournisseurs: await lireFournisseurs(ctx) });
