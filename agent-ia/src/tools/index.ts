@@ -13,8 +13,6 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { OUTILS_ONBOARDING } from './onboarding.js';
 import { OUTILS_EXPLOITATION } from './exploitation.js';
-import { OUTILS_ACTIONS } from './actions.js';
-import { OUTILS_TARIFS } from './tarifs.js';
 import { OUTILS_CONNAISSANCES } from './connaissances.js';
 import { OUTILS_MEMOIRE } from './memoire.js';
 import { OUTILS_INVITATIONS } from './invitations.js';
@@ -43,8 +41,8 @@ const tous: Outil[] = [
   ...OUTILS_CONNAISSANCES,
   ...OUTILS_MEMOIRE,
   ...OUTILS_INVITATIONS,
-  ...OUTILS_ACTIONS,
-  ...OUTILS_TARIFS,
+  // Pas d'outil de calendrier ni de tarifs : les plateformes restent comme à
+  // l'origine (actions.ts et tarifs.ts sont gardés mais non exposés).
 ];
 
 export const OUTILS: Record<string, Outil> = Object.fromEntries(

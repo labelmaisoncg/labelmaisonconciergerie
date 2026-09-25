@@ -20,8 +20,8 @@ import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, montantsReservation, noteSur5, heure } from './repull';
-import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
-import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, ouvrirCalendrier, type ContexteConnexion } from './repull-connexion';
+import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
+import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
@@ -836,37 +836,25 @@ async function principal() {
   verifier(String(appelAirbnb.corps?.redirectUrl).endsWith('/erp/logements/connexions?retour=airbnb'), 'retour sur la page Connexions');
   verifier(appelAirbnb.corps?.accessType === 'messaging', 'Airbnb : accès messagerie seulement (calendrier, prix et annonces jamais modifiables)');
 
-  section('Ouvrir à la réservation : Booking.com seulement');
-  const avantCal = repull.appels.length;
-  const cal = await ouvrirCalendrier(ctx(), { annonce: '104', prix: 82, minNuits: 2, jours: 10, bloquees: ['2026-10-05', '2026-10-06'] });
-  const appelsCal = repull.appels.slice(avantCal);
+  section('Plateformes jamais modifiées : lecture + messages seulement');
+  const clientLecture = new ClientRepull({ cle: 'sk_test', echeance: Date.now() + 60_000, fetch: repull.fetch as typeof fetch });
+  const avantEcritures = repull.appels.length;
+  const refusEcriture: string[] = [];
+  for (const [m, c] of [
+    ['PUT', '/v1/availability/104'],
+    ['PUT', '/v1/channels/booking/availability'],
+    ['PATCH', '/v1/listings/104'],
+    ['POST', '/v1/listings/104/pricing'],
+    ['PUT', '/v1/channels/airbnb/listings/101/availability'],
+  ] as const) {
+    await clientLecture.requete(m, c, {}, {}).catch((e) => refusEcriture.push(e instanceof ErreurRepull && e.code === 'lecture_seule' ? c : ''));
+  }
+  verifier(refusEcriture.filter(Boolean).length === 5 && repull.appels.length === avantEcritures, 'calendrier, prix, annonces : écriture refusée avant tout envoi (Airbnb et Booking)');
   verifier(
-    appelsCal.length === 3 && appelsCal.every((a) => a.chemin.startsWith('/v1/channels/booking/')),
-    `3 appels, tous vers Booking.com (${appelsCal.map((a) => `${a.methode} ${a.chemin}`).join(' ; ')})`,
+    ecritureRepullPermise('POST', '/v1/conversations/c1/messages') && ecritureRepullPermise('POST', '/v1/connect/airbnb') && ecritureRepullPermise('GET', '/v1/reservations')
+      && !ecritureRepullPermise('PUT', '/v1/conversations/c1/messages') && !ecritureRepullPermise('POST', '/v1/conversations/c1/archive'),
+    'permis : lire, répondre aux voyageurs, connecter un compte',
   );
-  verifier(!appelsCal.some((a) => a.chemin.startsWith('/v1/availability') || /airbnb/.test(a.chemin)), 'aucune écriture générique ni Airbnb');
-  const tarifs = appelsCal[1]?.corps as { type?: string; property_id?: string; updates?: { dateRange: { start: string; end: string }; price: number; restrictions?: { minStay?: number } }[] };
-  verifier(
-    tarifs?.type === 'rates' && tarifs.property_id === '9990104' && tarifs.updates?.length === 2 && tarifs.updates[0].price === 82 && tarifs.updates[0].restrictions?.minStay === 2,
-    `prix + durée minimale sur 2 périodes (${JSON.stringify(tarifs?.updates?.map((u) => u.dateRange))})`,
-  );
-  verifier(
-    JSON.stringify(tarifs?.updates?.map((u) => u.dateRange)) === JSON.stringify([{ start: '2026-10-02', end: '2026-10-04' }, { start: '2026-10-07', end: '2026-10-11' }]),
-    'nuits réservées (5 et 6 octobre) laissées fermées',
-  );
-  const dispo = appelsCal[2]?.corps as { type?: string; updates?: { availableRooms?: number; closed?: boolean }[] };
-  verifier(dispo?.type === 'availability' && dispo.updates?.every((u) => u.availableRooms === 1 && u.closed === false) === true, 'vente rouverte : 1 chambre à vendre');
-  verifier(cal.ouvertes === 8 && cal.gardeesFermees === 2 && cal.plateforme === 'booking', `bilan : ${cal.ouvertes} ouvertes, ${cal.gardeesFermees} gardées fermées`);
-
-  const avantGarde = repull.appels.length;
-  const garde = await ouvrirCalendrier(ctx(), { annonce: '104', prix: null, minNuits: null, jours: 10, bloquees: [] });
-  const appelsGarde = repull.appels.slice(avantGarde);
-  const corpsGarde = appelsGarde[appelsGarde.length - 1]?.corps as { type?: string; updates?: { restrictions?: unknown }[] };
-  verifier(
-    garde.prixConserves && appelsGarde.length === 2 && !appelsGarde.some((a) => (a.corps as { type?: string } | undefined)?.type === 'rates'),
-    'prix laissé vide : aucun prix envoyé, seule la vente est rouverte (prix Booking d’avant conservés)',
-  );
-  verifier(corpsGarde?.type === 'availability' && corpsGarde.updates?.every((u) => u.restrictions === undefined) === true, 'durée minimale inchangée quand le champ est vide');
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
   const appelBooking = repull.appels[repull.appels.length - 1];
   verifier(
