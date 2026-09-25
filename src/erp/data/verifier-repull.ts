@@ -21,7 +21,7 @@ import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, montantsReservation, noteSur5, heure } from './repull';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
-import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
+import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, ouvrirCalendrier, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
@@ -246,6 +246,12 @@ class FauxRepull {
     this.appels.push({ chemin, params: p, methode, corps, cle });
     let m: RegExpExecArray | null;
     if (this.bloque402 && methode !== 'DELETE' && !chemin.startsWith('/v1/usage/')) return this.refus402();
+    if ((m = /^\/v1\/channels\/booking\/properties\/(\d+)\/rooms$/.exec(chemin))) {
+      return json({ hotelId: '9990' + m[1], listingId: m[1], source: 'booking', rooms: [{ roomId: 'R' + m[1], roomName: 'Chambre', rates: [{ rateId: 'P1' }] }] });
+    }
+    if (chemin === '/v1/channels/booking/availability' && methode === 'PUT') {
+      return json({ ok: true });
+    }
     if (chemin === '/v1/connect/providers') {
       return json({
         data: [
@@ -828,6 +834,29 @@ async function principal() {
   const appelAirbnb = repull.appels[repull.appels.length - 1];
   verifier(c1.url.startsWith('https://connect.repull.dev/') && appelAirbnb.chemin === '/v1/connect/airbnb' && appelAirbnb.methode === 'POST', 'Airbnb : page de connexion Repull');
   verifier(String(appelAirbnb.corps?.redirectUrl).endsWith('/erp/logements/connexions?retour=airbnb'), 'retour sur la page Connexions');
+  verifier(appelAirbnb.corps?.accessType === 'messaging', 'Airbnb : accès messagerie seulement (calendrier, prix et annonces jamais modifiables)');
+
+  section('Ouvrir à la réservation : Booking.com seulement');
+  const avantCal = repull.appels.length;
+  const cal = await ouvrirCalendrier(ctx(), { annonce: '104', prix: 82, minNuits: 2, jours: 10, bloquees: ['2026-10-05', '2026-10-06'] });
+  const appelsCal = repull.appels.slice(avantCal);
+  verifier(
+    appelsCal.length === 3 && appelsCal.every((a) => a.chemin.startsWith('/v1/channels/booking/')),
+    `3 appels, tous vers Booking.com (${appelsCal.map((a) => `${a.methode} ${a.chemin}`).join(' ; ')})`,
+  );
+  verifier(!appelsCal.some((a) => a.chemin.startsWith('/v1/availability') || /airbnb/.test(a.chemin)), 'aucune écriture générique ni Airbnb');
+  const tarifs = appelsCal[1]?.corps as { type?: string; property_id?: string; updates?: { dateRange: { start: string; end: string }; price: number; restrictions?: { minStay?: number } }[] };
+  verifier(
+    tarifs?.type === 'rates' && tarifs.property_id === '9990104' && tarifs.updates?.length === 2 && tarifs.updates[0].price === 82 && tarifs.updates[0].restrictions?.minStay === 2,
+    `prix + durée minimale sur 2 périodes (${JSON.stringify(tarifs?.updates?.map((u) => u.dateRange))})`,
+  );
+  verifier(
+    JSON.stringify(tarifs?.updates?.map((u) => u.dateRange)) === JSON.stringify([{ start: '2026-10-02', end: '2026-10-04' }, { start: '2026-10-07', end: '2026-10-11' }]),
+    'nuits réservées (5 et 6 octobre) laissées fermées',
+  );
+  const dispo = appelsCal[2]?.corps as { type?: string; updates?: { availableRooms?: number; closed?: boolean }[] };
+  verifier(dispo?.type === 'availability' && dispo.updates?.every((u) => u.availableRooms === 1 && u.closed === false) === true, 'vente rouverte : 1 chambre à vendre');
+  verifier(cal.ouvertes === 8 && cal.gardeesFermees === 2 && cal.plateforme === 'booking', `bilan : ${cal.ouvertes} ouvertes, ${cal.gardeesFermees} gardées fermées`);
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
   const appelBooking = repull.appels[repull.appels.length - 1];
   verifier(
