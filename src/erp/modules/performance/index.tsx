@@ -25,12 +25,11 @@ function PagePerformance() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Pilotage' }, { libelle: 'Performance des biens' }]}
-        titre="Performance des biens"
-        sousTitre={`Rentabilité, défauts et décision pour chaque bien actif, calculées sur les 90 derniers jours au ${dateJour(AUJOURDHUI)}. Revue automatique chaque semaine.`}
+        titre="Rentabilité"
+        sousTitre={`Ce que chaque logement vous rapporte, ce qui cloche et quoi faire. Calculé sur les 90 derniers jours (au ${dateJour(AUJOURDHUI)}), mis à jour chaque semaine.`}
         actions={
           <Button variant="primary" icone={<FileText />} onClick={() => setProposition(true)}>
-            Préparer une proposition
+            Préparer des conseils pour un propriétaire
           </Button>
         }
       />
@@ -40,13 +39,13 @@ function PagePerformance() {
         actif={onglet}
         onChange={(cle) => setParams(cle === 'classement' ? {} : { onglet: cle }, { replace: true })}
         onglets={[
-          { cle: 'classement', libelle: 'Classement du parc', compteur: parc.lignes.length },
-          { cle: 'suivi', libelle: 'Suivi des recommandations', compteur: enCours },
-          { cle: 'indicateurs', libelle: 'Comprendre les indicateurs' },
+          { cle: 'classement', libelle: 'Vos logements', compteur: parc.lignes.length },
+          { cle: 'suivi', libelle: 'Conseils aux propriétaires', compteur: enCours },
+          { cle: 'indicateurs', libelle: 'Comprendre les chiffres' },
         ]}
       />
       {onglet === 'classement' && (
-        <Section description="Classés par score. Cliquez sur un bien pour son analyse complète : défauts, améliorations, marge mois par mois.">
+        <Section description="Du plus au moins rentable. Cliquez sur un logement pour voir ce qui cloche et ce qui peut être amélioré.">
           <TableauParc parc={parc} />
         </Section>
       )}

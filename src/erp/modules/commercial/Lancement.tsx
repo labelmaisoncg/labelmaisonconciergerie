@@ -63,9 +63,9 @@ export default function Lancement() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Commercial', to: '/erp/commercial' }, { libelle: 'Lancer un mandat' }]}
-        titre="Lancer un mandat"
-        sousTitre="Quand un propriétaire signe : on crée le propriétaire, le logement en lancement et le mandat, puis la checklist prend le relais."
+        fil={[{ libelle: 'Prospection', to: '/erp/commercial' }, { libelle: 'Contrat signé' }]}
+        titre="Un propriétaire a signé"
+        sousTitre="On enregistre le propriétaire, son logement et son contrat en une fois. Ensuite, une liste d’étapes vous guide jusqu’à la mise en ligne."
       />
       <Onglets />
 

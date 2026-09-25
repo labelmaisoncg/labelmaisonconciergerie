@@ -2,7 +2,7 @@ import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { AUJOURDHUI, ecartJours } from '../../../data/format';
 import { prestataireConforme, statutDocument } from '../../../data/selectors';
 import type { DocumentPrestataire, Prestataire, TypeDocument } from '../../../data/types';
-import { Alert, Badge, type Ton } from '../../../ui';
+import { Aide, Badge, type Ton } from '../../../ui';
 
 export type EtatDocument = 'valide' | 'expire' | 'manquant' | 'expire_bientot';
 
@@ -40,17 +40,18 @@ export function BadgeDocument({ etat }: { etat: EtatDocument }) {
 export function BadgeConformite({ prestataire }: { prestataire: Prestataire }) {
   const v = prestataireConforme(prestataire);
   return v.ok ? (
-    <Badge tone="succes" icone={<ShieldCheck />}>Conforme</Badge>
+    <Badge tone="succes" icone={<ShieldCheck />}>En règle</Badge>
   ) : (
-    <Badge tone="danger" icone={<ShieldAlert />} title={v.raisons.join(' ')}>Non conforme</Badge>
+    <Badge tone="danger" icone={<ShieldAlert />} title={v.raisons.join(' ')}>Papiers manquants</Badge>
   );
 }
 
 /** Rappel de la règle SPEC §2.3, affiché en tête des écrans prestataires. */
 export function RegleConformite({ className }: { className?: string }) {
   return (
-    <Alert tone="or" titre="Règle 2.3 : prestataires" className={className}>
-      Aucune mission ne peut être attribuée sans contrat signé, RC Pro et attestation URSSAF valides. Sous-traitance en cascade interdite.
-    </Alert>
+    <Aide titre="Quand peut-on confier un ménage à un prestataire ?" className={className}>
+      Seulement s’il a un contrat signé, une assurance professionnelle (RC Pro) et une attestation URSSAF à jour. Il ne peut pas confier le
+      travail à quelqu’un d’autre.
+    </Aide>
   );
 }

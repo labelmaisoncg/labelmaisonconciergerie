@@ -11,6 +11,7 @@ import { fenetre12Mois } from './_calculs';
 import { AXE, COULEURS, eurosAxe, Infobulle } from './_composants/graphiques';
 import { FormulaireCharge } from './_composants/FormulaireCharge';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 type Periode = 'mois' | 'annee';
 const CATEGORIES = Object.keys(LIBELLES.categorieCharge) as CategorieCharge[];
@@ -19,7 +20,7 @@ export default function Charges({ onglets }: PageFinanceProps) {
   const d = useErp();
   const [periode, setPeriode] = useState<Periode>('annee');
   const [categories, setCategories] = useState<string[]>([]);
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [edition, setEditionEtat] = useState<Charge | 'nouvelle'>();
   const [creationUrl, setCreationUrl] = useCreationParUrl();
   const setEdition = (e: Charge | 'nouvelle' | undefined) => {
@@ -58,8 +59,8 @@ export default function Charges({ onglets }: PageFinanceProps) {
     <>
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Charges' }]}
-        titre="Charges"
-        sousTitre="Dépenses de Label Maison : logiciels, produits, transport, assurance, linge. Hors coût des prestataires, suivi dans Paiements."
+        titre="Vos dépenses"
+        sousTitre="Logiciels, produits, transport, assurance, linge… Les prestataires sont suivis à part, dans « Payer les prestataires »."
         actions={
           <Button variant="primary" icone={<Plus />} onClick={() => setEdition('nouvelle')}>
             Ajouter une charge
@@ -82,8 +83,8 @@ export default function Charges({ onglets }: PageFinanceProps) {
 
       <div className="mb-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
-          <Stat label="Total des charges" valeur={euros(total, true)} aide={pluriel(dePeriode.length, 'dépense')} />
-          <Stat label="Affectées à un logement" valeur={euros(affectees, true)} aide="Imputées dans la rentabilité par logement" />
+          <Stat label="Total des dépenses" valeur={euros(total, true)} aide={pluriel(dePeriode.length, 'dépense')} />
+          <Stat label="Liées à un logement" valeur={euros(affectees, true)} aide="comptées dans la rentabilité du logement" />
         </div>
         <Card>
           <CardHeader titre="Par catégorie" />
@@ -100,7 +101,7 @@ export default function Charges({ onglets }: PageFinanceProps) {
               </ResponsiveContainer>
             </div>
           ) : (
-            <p className="py-6 text-center text-sm text-(--lm-encre-3)">Aucune charge sur la période.</p>
+            <p className="py-6 text-center text-sm text-(--lm-encre-3)">Pas de dépense sur cette période.</p>
           )}
         </Card>
       </div>
@@ -121,7 +122,7 @@ export default function Charges({ onglets }: PageFinanceProps) {
         cleLigne={(c) => c.id}
         onLigneClick={(c) => setEdition(c)}
         triInitial={{ cle: 'date', sens: 'desc' }}
-        vide="Aucune charge ne correspond."
+        vide="Aucune dépense ne correspond."
       />
 
       {enEdition && <FormulaireCharge charge={enEdition === 'nouvelle' ? undefined : enEdition} onFermer={() => setEdition(undefined)} />}

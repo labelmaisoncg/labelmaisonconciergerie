@@ -7,7 +7,7 @@ import { MissionCarte } from './MissionCarte';
 import { lundi } from './outils';
 
 const LEGENDE = [
-  { libelle: 'À attribuer / à valider', ton: 'alerte' },
+  { libelle: 'Sans personne ou à vérifier', ton: 'alerte' },
   { libelle: 'Attribuée', ton: 'info' },
   { libelle: 'En cours', ton: 'or' },
   { libelle: 'Validée', ton: 'succes' },
@@ -73,7 +73,7 @@ export function Planning() {
                 <span className="lm-chiffres text-[12px] text-(--lm-encre-3)">{duJour.length}</span>
               </header>
               <div className="flex flex-col gap-1.5">
-                {duJour.length === 0 && <p className="px-1 py-2 text-[12px] text-(--lm-encre-3)">Aucune mission</p>}
+                {duJour.length === 0 && <p className="px-1 py-2 text-[12px] text-(--lm-encre-3)">Rien de prévu</p>}
                 {duJour.map((m) => (
                   <MissionCarte
                     key={m.id}

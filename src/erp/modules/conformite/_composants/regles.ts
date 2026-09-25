@@ -8,7 +8,7 @@ import type { ErpDonnees, Logement } from '../../../data/types';
 
 export type StatutConformite = 'ok' | 'a_faire' | 'risque' | 'na';
 
-export const LIBELLE_STATUT: Record<StatutConformite, string> = { ok: 'OK', a_faire: 'À faire', risque: 'Risque', na: 'Non concerné' };
+export const LIBELLE_STATUT: Record<StatutConformite, string> = { ok: 'En règle', a_faire: 'À faire', risque: 'À régler vite', na: 'Pas concerné' };
 export const TON_STATUT = { ok: 'succes', a_faire: 'alerte', risque: 'danger', na: 'neutre' } as const;
 
 export interface PointConformite {

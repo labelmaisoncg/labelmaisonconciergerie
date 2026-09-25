@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertOctagon, AlertTriangle, Plus, Receipt, Wallet } from 'lucide-react';
+import { AlertTriangle, Plus, Receipt, Wallet } from 'lucide-react';
 import { dateCourte, euros, nombre } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
@@ -11,6 +11,7 @@ import { Retour, useRetour } from '../menages/_composants/retour';
 import { Board } from './_composants/Board';
 import { IncidentDrawer } from './_composants/IncidentDrawer';
 import { NouvelIncident } from './_composants/NouvelIncident';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 const GRAVITES = Object.keys(LIBELLES.gravite) as GraviteIncident[];
 const CATEGORIES = Object.keys(LIBELLES.categorieIncident) as CategorieIncident[];
@@ -20,7 +21,7 @@ export default function Incidents() {
   const { incidents, logements } = useErp();
   const [params, setParams] = useSearchParams();
   const [vue, setVue] = useState<'tableau' | 'liste'>('tableau');
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [gravites, setGravites] = useState<string[]>([]);
   const [categorie, setCategorie] = useState('');
   const [logement, setLogement] = useState('');
@@ -60,28 +61,32 @@ export default function Incidents() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Opérations' }, { libelle: 'Incidents' }]}
-        titre="Incidents et maintenance"
-        sousTitre="Casse, panne, ménage mal fait, linge manquant : chaque incident a un responsable, des preuves, un coût et une imputation."
-        actions={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Déclarer un incident</Button>}
+        titre="Incidents"
+        sousTitre="Casse, panne, ménage raté, linge perdu : tout ce qui cloche, qui s’en occupe et ce que ça coûte."
+        actions={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Signaler un incident</Button>}
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Incidents ouverts" valeur={nombre(ouverts.length)} icone={<AlertTriangle />} tone={ouverts.length ? 'alerte' : 'succes'} />
-        <Stat label="Haute gravité" valeur={nombre(hautes)} icone={<AlertOctagon />} tone={hautes ? 'danger' : 'neutre'} aide="non résolus" />
-        <Stat label="Coût du mois" valeur={euros(coutMois, true)} icone={<Wallet />} />
-        <Stat label="Refacturable à récupérer" valeur={euros(aRefacturer, true)} icone={<Receipt />} aide="non encore récupéré" />
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat
+          label="En cours"
+          valeur={nombre(ouverts.length)}
+          icone={<AlertTriangle />}
+          tone={hautes ? 'danger' : ouverts.length ? 'alerte' : 'succes'}
+          aide={ouverts.length ? (hautes ? `dont ${nombre(hautes)} grave${hautes > 1 ? 's' : ''}` : 'rien de grave') : 'tout est réglé'}
+        />
+        <Stat label="Coût ce mois-ci" valeur={euros(coutMois, true)} icone={<Wallet />} aide="réparations et remplacements" />
+        <Stat label="À se faire rembourser" valeur={euros(aRefacturer, true)} icone={<Receipt />} aide="par un voyageur, un propriétaire ou un prestataire" />
       </div>
 
       <Retour message={message} onFermer={fermer} />
 
       <Toolbar
-        recherche={{ valeur: recherche, onChange: setRecherche, placeholder: 'Description, logement...', label: 'Rechercher un incident' }}
+        recherche={{ valeur: recherche, onChange: setRecherche, placeholder: 'Un mot, un logement…', label: 'Rechercher un incident' }}
         filtres={{ filtres: GRAVITES.map((g) => ({ cle: g, libelle: LIBELLES.gravite[g] })), actifs: gravites, onChange: setGravites, label: 'Filtrer par gravité' }}
       >
         <div className="grid grid-cols-2 gap-2 sm:w-96">
-          <Select aria-label="Catégorie" value={categorie} onChange={(e) => setCategorie(e.target.value)} placeholder="Toutes catégories" options={CATEGORIES.map((c) => ({ valeur: c, libelle: LIBELLES.categorieIncident[c] }))} />
-          <Select aria-label="Logement" value={logement} onChange={(e) => setLogement(e.target.value)} placeholder="Tous logements" options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
+          <Select aria-label="Catégorie" value={categorie} onChange={(e) => setCategorie(e.target.value)} placeholder="Tous les types" options={CATEGORIES.map((c) => ({ valeur: c, libelle: LIBELLES.categorieIncident[c] }))} />
+          <Select aria-label="Logement" value={logement} onChange={(e) => setLogement(e.target.value)} placeholder="Tous les logements" options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
         </div>
       </Toolbar>
 
@@ -98,7 +103,7 @@ export default function Incidents() {
       {vue === 'tableau' ? (
         <Board incidents={filtres} onOuvrir={ouvrir} />
       ) : (
-        <Table colonnes={colonnes} lignes={filtres} cleLigne={(i) => i.id} onLigneClick={ouvrir} ligneActive={ouvertId ?? undefined} legende="Incidents" triInitial={{ cle: 'date', sens: 'desc' }} dense vide="Aucun incident ne correspond aux filtres." />
+        <Table colonnes={colonnes} lignes={filtres} cleLigne={(i) => i.id} onLigneClick={ouvrir} ligneActive={ouvertId ?? undefined} legende="Incidents" triInitial={{ cle: 'date', sens: 'desc' }} dense vide="Aucun incident ne correspond. Essayez d’enlever un filtre." />
       )}
 
       <IncidentDrawer incident={incidents.find((i) => i.id === ouvertId)} onFermer={() => setParams({})} />
@@ -106,7 +111,7 @@ export default function Incidents() {
         ouvert={creation}
         onFermer={() => setCreation(false)}
         onCree={(i) => {
-          setMessage({ ton: 'succes', texte: `Incident créé pour ${nomLogement(i.logementId)}.` });
+          setMessage({ ton: 'succes', texte: `C’est noté pour ${nomLogement(i.logementId)}. Pensez à ajouter des photos si vous en avez.` });
           setParams({ id: i.id });
         }}
       />

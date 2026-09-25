@@ -54,7 +54,7 @@ export function Stock({ logementInitial }: { logementInitial?: string }) {
           ligneActive={choisi}
           legende="Stock de linge par logement"
           dense
-          vide="Aucun logement."
+          vide="Vous n’avez pas encore de logement."
         />
         <p className="mt-2 text-[12px] text-(--lm-encre-3)">Cliquez sur un logement pour voir le détail par article.</p>
       </div>
@@ -62,7 +62,7 @@ export function Stock({ logementInitial }: { logementInitial?: string }) {
         <CardHeader
           className="px-4 pt-4"
           titre={detail ? `Détail : ${detail.logement.nom}` : 'Détail'}
-          description="Dotation étiquetée au lancement, position calculée depuis les mouvements."
+          description="Le linge étiqueté pour ce logement, et où il se trouve maintenant."
         />
         {detail && detail.articles.length ? (
           <Table colonnes={colonnesArticles} lignes={detail.articles} cleLigne={(a) => a.article} dense legende={`Linge de ${detail.logement.nom}`} className="rounded-none border-0 shadow-none" />

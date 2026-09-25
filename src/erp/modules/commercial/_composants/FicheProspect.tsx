@@ -72,7 +72,7 @@ export function FicheProspect({
       />
       <h3 className="mt-6 mb-3 text-[13px] font-semibold text-(--lm-encre)">Historique</h3>
       <Timeline
-        vide="Aucune action enregistrée pour ce prospect."
+        vide="Rien de noté pour l’instant."
         elements={historique.map((j) => ({ id: j.id, titre: j.action, meta: `${j.auteur}, ${dateHeure(j.horodatage)}`, description: j.details || undefined }))}
       />
     </Drawer>

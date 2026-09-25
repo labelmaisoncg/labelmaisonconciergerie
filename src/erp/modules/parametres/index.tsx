@@ -11,15 +11,15 @@ export default function Module() {
     <>
       <PageHeader
         titre="Paramètres"
-        sousTitre="Qui a accès à quoi, services connectés et identité de la société."
+        sousTitre="Votre équipe, les services branchés à l’ERP et les informations de votre société."
       />
       <Tabs
         label="Sections des paramètres"
         onglets={[
-          { cle: 'utilisateurs', libelle: 'Utilisateurs & rôles', to: '/erp/parametres', end: true },
-          { cle: 'integrations', libelle: 'Intégrations', to: '/erp/parametres/integrations' },
-          { cle: 'donnees', libelle: 'Données', to: '/erp/parametres/donnees' },
-          { cle: 'entreprise', libelle: 'Entreprise', to: '/erp/parametres/entreprise' },
+          { cle: 'utilisateurs', libelle: 'Votre équipe', to: '/erp/parametres', end: true },
+          { cle: 'integrations', libelle: 'Services connectés', to: '/erp/parametres/integrations' },
+          { cle: 'donnees', libelle: 'Sauvegarde', to: '/erp/parametres/donnees' },
+          { cle: 'entreprise', libelle: 'Votre société', to: '/erp/parametres/entreprise' },
         ]}
       />
       <Routes>

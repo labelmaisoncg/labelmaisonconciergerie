@@ -1,84 +1,77 @@
 import { useMemo, useState } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { CalendarRange, Target } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI } from '../../data/format';
-import { PageHeader, Section } from '../../ui';
+import { ButtonLink, Drawer, MenuActions, PageHeader } from '../../ui';
 import { Agenda } from './_composants/Agenda';
 import { ATraiter } from './_composants/ATraiter';
 import { Aujourdhui } from './_composants/Aujourdhui';
 import { Demarrage } from './_composants/Demarrage';
-import { BandeKpi } from './_composants/BandeKpi';
-import { BiensASurveiller } from './_composants/BiensASurveiller';
-import { Graphiques } from './_composants/Graphiques';
-import { Segmente } from './_composants/Segmente';
+import { VosChiffres } from './_composants/VosChiffres';
 import { construireATraiter } from './_composants/aTraiter';
-import { HORIZONS, type CleHorizon } from './_composants/calculs';
-import { KpiCommerciaux, PipelineResume, ProprietairesAAppeler, RelevesAEnvoyer } from './_composants/VueCommerciale';
 
 /**
- * Tableau de bord unique, le même pour toute l'équipe : opérations,
- * chiffres, performance des biens et commercial sur une seule page.
+ * Accueil : un bonjour, la journée en un coup d'œil, ce qui vous attend et
+ * quatre chiffres. Le détail est à un clic (panneaux, pages de rubrique).
  */
 export default function TableauDeBord() {
   const d = useErp();
-  const [horizon, setHorizon] = useState<CleHorizon>('30j');
+  const [semaine, setSemaine] = useState(false);
   const elements = useMemo(() => construireATraiter(d.donnees), [d.donnees]);
   const urgentes = elements.filter((e) => e.priorite === 1).length;
-  const date = format(parseISO(AUJOURDHUI), 'EEEE d MMMM yyyy', { locale: fr });
+  const date = format(parseISO(AUJOURDHUI), 'EEEE d MMMM', { locale: fr });
+  const heure = new Date().getHours();
+  const salut = heure >= 18 ? 'Bonsoir' : 'Bonjour';
 
   return (
     <>
       <PageHeader
-        titre={`Bonjour ${d.utilisateur.nom.split(' ')[0]}`}
-        sousTitre={<>{date.charAt(0).toUpperCase() + date.slice(1)}. Tout va-t-il bien cette semaine ?</>}
+        titre={`${salut} ${d.utilisateur.nom.split(' ')[0]}`}
+        sousTitre={
+          <>
+            Nous sommes {date}.{' '}
+            {urgentes ? `${urgentes} sujet${urgentes > 1 ? 's' : ''} à regarder aujourd’hui.` : elements.length ? 'Rien d’urgent aujourd’hui.' : 'Tout est à jour, belle journée !'}
+          </>
+        }
+        actions={
+          <MenuActions
+            texte
+            label="Plus"
+            actions={[
+              { libelle: 'Les 7 prochains jours', icone: <CalendarRange />, onClick: () => setSemaine(true) },
+              { libelle: 'Prospection et propriétaires à rappeler', icone: <Target />, to: '/erp/commercial' },
+            ]}
+          />
+        }
       />
 
       <Demarrage />
 
       <Aujourdhui alertes={elements.length} urgentes={urgentes} />
 
-      <Section
-        titre="Indicateurs"
-        description="Calculés depuis les réservations, mandats et missions, jamais saisis à la main. Survolez « ? » pour lire chaque indicateur."
-        actions={
-          <Segmente<CleHorizon>
-            label="Période des indicateurs"
-            valeur={horizon}
-            onChange={setHorizon}
-            options={HORIZONS.map((h) => ({ cle: h.cle, libelle: h.libelle }))}
-          />
+      <div id="a-faire" className="mb-6 scroll-mt-20">
+        <ATraiter elements={elements} />
+      </div>
+
+      <VosChiffres />
+
+      <Drawer
+        ouvert={semaine}
+        onFermer={() => setSemaine(false)}
+        titre="Les 7 prochains jours"
+        sousTitre="Arrivées, départs et ménages, jour par jour."
+        pied={
+          <ButtonLink to="/erp/reservations" variant="secondary">
+            Voir le planning complet
+          </ButtonLink>
         }
       >
-        <BandeKpi horizon={horizon} />
-      </Section>
-
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] [&>*]:min-w-0">
-        <div id="a-traiter" className="scroll-mt-20">
-          <ATraiter elements={elements} />
+        <div className="-mx-4 -my-4 sm:-mx-5">
+          <Agenda />
         </div>
-        <BiensASurveiller />
-      </div>
-
-      <Section titre="Tendances">
-        <Graphiques horizon={horizon} />
-      </Section>
-
-      <Section titre="Commercial" description="Pipeline propriétaires et signatures du mois.">
-        <KpiCommerciaux />
-        <div className="mt-4">
-          <PipelineResume />
-        </div>
-      </Section>
-
-      <div className="mb-6 grid grid-cols-1 gap-4 sm:mb-8 lg:grid-cols-2 [&>*]:min-w-0">
-        <ProprietairesAAppeler />
-        <RelevesAEnvoyer />
-      </div>
-
-      <Section>
-        <Agenda />
-      </Section>
+      </Drawer>
     </>
   );
 }

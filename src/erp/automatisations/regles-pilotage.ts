@@ -77,7 +77,7 @@ export const messagesEnAttente: Regle = {
   cle: 'messages-en-attente',
   nom: 'Messages voyageurs sans réponse',
   description:
-    'Quand un message voyageur attend une réponse depuis plus d’une heure, alors une alerte est levée ; quand l’agent escalade un fil, alors Abdel est prévenu pour répondre.',
+    'Quand un voyageur attend une réponse depuis plus d’une heure, une alerte est levée ; quand l’agent passe la main sur une conversation, Abdel est prévenu pour répondre.',
   spec: '§2.8',
   domaine: 'pilotage',
   declencheur: 'message',
@@ -89,7 +89,7 @@ export const messagesEnAttente: Regle = {
       const l = logementById(d, f.logementId);
       if (f.statut === 'escalade' && f.traitePar !== 'humain') {
         c.evenement('action', `escalade:${f.id}:${f.dernierMessageLe}`,
-          `Fil escaladé : Abdel doit répondre à ${f.voyageur} (${l?.nom ?? 'logement'}).`, 'message', f.id);
+          `L’agent a passé la main : Abdel doit répondre à ${f.voyageur} (${l?.nom ?? 'logement'}).`, 'message', f.id);
       } else if (f.traitePar === 'en_attente' && heuresEntre(f.dernierMessageLe, ctx.maintenant) > 1) {
         const h = Math.floor(heuresEntre(f.dernierMessageLe, ctx.maintenant));
         c.evenement('alerte', `attente:${f.id}:${f.dernierMessageLe}`,
@@ -102,8 +102,8 @@ export const messagesEnAttente: Regle = {
 
 export const escaladeIncidents: Regle = {
   cle: 'escalade-incidents',
-  nom: 'Escalade des incidents graves',
-  description: 'Quand un incident de gravité haute reste ouvert plus de 24 heures, alors il est escaladé au gérant.',
+  nom: 'Incidents graves signalés au gérant',
+  description: 'Quand un incident grave n’est pas réglé après 24 heures, le gérant est prévenu.',
   domaine: 'pilotage',
   declencheur: 'quotidien',
   actifParDefaut: true,
@@ -112,7 +112,7 @@ export const escaladeIncidents: Regle = {
     for (const i of d.incidents) {
       if (i.gravite !== 'haute' || i.statut !== 'ouvert' || ecartJours(i.date, ctx.date) < 1) continue;
       const l = logementById(d, i.logementId);
-      c.evenement('alerte', i.id, `Incident grave ouvert depuis le ${jourMois(i.date)} à ${l?.nom ?? 'un logement'} : escaladé au gérant.`, 'incident', i.id);
+      c.evenement('alerte', i.id, `Incident grave ouvert depuis le ${jourMois(i.date)} à ${l?.nom ?? 'un logement'} : le gérant est prévenu.`, 'incident', i.id);
     }
     return c.res;
   },

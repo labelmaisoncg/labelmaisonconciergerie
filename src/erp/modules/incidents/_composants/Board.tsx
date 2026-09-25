@@ -28,7 +28,7 @@ export function Board({ incidents, onOuvrir }: { incidents: Incident[]; onOuvrir
               <span className="lm-chiffres text-[12px] text-(--lm-encre-3)">{liste.length}</span>
             </header>
             <div className="flex flex-col gap-1.5">
-              {visibles.length === 0 && <p className="px-1 py-3 text-[12.5px] text-(--lm-encre-3)">Aucun incident</p>}
+              {visibles.length === 0 && <p className="px-1 py-3 text-[12.5px] text-(--lm-encre-3)">Rien ici</p>}
               {visibles.map((i) => (
                 <button
                   key={i.id}

@@ -38,12 +38,12 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
         >
           {codes.autorise ? <ShieldCheck className="mt-0.5 size-4 shrink-0" aria-hidden /> : <ShieldX className="mt-0.5 size-4 shrink-0" aria-hidden />}
           <p>
-            <span className="font-semibold">Codes d’accès : {codes.autorise ? 'autorisés' : 'non autorisés'}</span>
+            <span className="font-semibold">{codes.autorise ? 'Vous pouvez donner les codes' : 'Ne donnez pas les codes'}</span>
             <span className="block text-(--lm-encre-2)">({codes.raison})</span>
           </p>
         </div>
         <p className="mt-2 text-[12px] text-(--lm-encre-3)">
-          Boîte à clés, serrure et wifi : uniquement pour une réservation confirmée, arrivée sous 48 h ou séjour en cours.
+          Boîte à clés, serrure et wifi : seulement pour une réservation confirmée, quand le voyageur arrive sous 48 h ou est déjà sur place.
         </p>
       </Bloc>
 
@@ -65,7 +65,7 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
           </div>
         ) : (
           <p className="text-(--lm-encre-2)">
-            Aucune réservation : demande d’information avant réservation. Une vente est en jeu, à traiter en priorité.
+            Pas encore de réservation : ce voyageur se renseigne. Une réservation est peut-être à la clé, répondez vite.
           </p>
         )}
       </Bloc>
@@ -85,17 +85,17 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
             </p>
           </div>
         ) : (
-          <p className="text-(--lm-encre-3)">Logement introuvable.</p>
+          <p className="text-(--lm-encre-3)">Ce logement n’existe plus dans l’ERP.</p>
         )}
       </Bloc>
 
-      <Bloc titre="Fiche logement (source de l’agent)">
-        <ProgressBar valeur={fiche.ratio} afficherValeur label="Complétude" tone={fiche.complete ? 'succes' : 'alerte'} />
+      <Bloc titre="Ce que sait votre agent">
+        <ProgressBar valeur={fiche.ratio} afficherValeur label="Fiche du logement remplie" tone={fiche.complete ? 'succes' : 'alerte'} />
         {fiche.complete ? (
-          <p className="mt-2 text-[12px] text-(--lm-succes)">Fiche complète : l’agent peut répondre sur ce logement.</p>
+          <p className="mt-2 text-[12px] text-(--lm-succes)">La fiche est complète : votre agent peut répondre pour ce logement.</p>
         ) : (
           <p className="mt-2 text-[12px] text-(--lm-alerte)">
-            Manquant : {fiche.manquants.join(', ')}. Messagerie automatique bloquée pour ce logement.
+            Il manque : {fiche.manquants.join(', ')}. En attendant, votre agent vous passe la main pour ce logement.
           </p>
         )}
       </Bloc>

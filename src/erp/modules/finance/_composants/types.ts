@@ -5,4 +5,5 @@ export interface PageFinanceProps {
   onglets: ReactNode;
 }
 
-export const FIL_FINANCE = [{ libelle: 'Finance', to: '/erp/finance' }];
+/** Les onglets de la finance disent déjà où l'on est : pas de fil d'Ariane. */
+export const FIL_FINANCE: { libelle: string; to?: string }[] = [];

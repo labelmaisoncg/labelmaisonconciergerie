@@ -60,8 +60,8 @@ export function PrestataireModal({ ouvert, onFermer, onCree }: Props) {
       ouvert={ouvert}
       onFermer={fermer}
       taille="lg"
-      titre="Nouveau prestataire"
-      description="Il ne pourra recevoir aucune mission tant que son contrat, sa RC Pro et son attestation URSSAF ne sont pas déposés."
+      titre="Ajouter un prestataire"
+      description="Vous pourrez lui confier des ménages dès que son contrat, son assurance (RC Pro) et son attestation URSSAF seront déposés."
       pied={
         <>
           <Button variant="ghost" onClick={fermer}>Annuler</Button>

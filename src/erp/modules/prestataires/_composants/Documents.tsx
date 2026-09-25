@@ -103,7 +103,7 @@ export function Tarifs({ prestataire: p, onMessage }: { prestataire: Prestataire
             ))}
           </ul>
         ) : (
-          <p className="px-4 pb-4 text-[13px] text-(--lm-encre-3) sm:px-5">Aucun tarif défini.</p>
+          <p className="px-4 pb-4 text-[13px] text-(--lm-encre-3) sm:px-5">Pas encore de tarif.</p>
         )}
       </Card>
       <Card>

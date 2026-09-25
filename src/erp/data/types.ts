@@ -216,6 +216,49 @@ export interface FilMessages {
 
 export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche';
 
+/* ------------------------------------------------------------- réglages */
+
+export type TonAgent = 'chaleureux' | 'professionnel' | 'decontracte';
+
+/**
+ * Réglages de l'agent de messagerie (collection `reglages`, élément d'id
+ * 'agent'), modifiés dans Messagerie agentique > Configurer mon agent. Le
+ * service agent-ia/ les lit dans erp.enregistrements (collection 'reglages',
+ * id 'agent') : voir docs/erp/README.md.
+ */
+export interface ReglagesAgent {
+  id: 'agent';
+  /** En pause : l'agent ne répond plus, tout arrive à l'équipe. */
+  actif: boolean;
+  ton: TonAgent;
+  /** Langues dans lesquelles l'agent répond (codes ISO : fr, en, es...). */
+  langues: string[];
+  /** Signature ajoutée à la fin de chaque réponse. */
+  signature: string;
+  /** Plage horaire des réponses (heure de Paris). « toujours » : 24 h / 24. */
+  horaires: { mode: 'toujours' | 'plage'; debut: string; fin: string };
+  /**
+   * Ce que l'agent vous transmet au lieu de répondre seul. Argent et litiges
+   * sont toujours transmis (règle non négociable, voir agent-ia/README.md).
+   */
+  transmettre: {
+    horsFiche: boolean;
+    derogations: boolean;
+    sejoursLongs: boolean;
+    /** Nombre de nuits à partir duquel une demande est « longue ». */
+    sejoursLongsNuits: number;
+  };
+  /** Minutes sans réponse humaine avant de vous prévenir d'une conversation transmise. */
+  delaiAlerteMinutes: number;
+  /** Copie de chaque réponse et alertes sur Telegram. */
+  telegram: boolean;
+  majLe?: Horodatage;
+  majPar?: string;
+}
+
+/** Tous les réglages stockés dans la collection `reglages` (un seul type pour l'instant). */
+export type Reglage = ReglagesAgent;
+
 /* -------------------------------------------------------------- opérations */
 
 export type TypeMission = 'menage' | 'linge' | 'controle' | 'maintenance';
@@ -469,6 +512,8 @@ export interface ErpDonnees {
   recommandations: RecommandationProprietaire[];
   /** Versions successives des descriptions d'annonce (ajoutée en septembre 2026). */
   versionsAnnonce: VersionAnnonce[];
+  /** Réglages (agent de messagerie...), un élément par sujet (ajoutée en septembre 2026). */
+  reglages: Reglage[];
 }
 
 export type NomCollection = keyof ErpDonnees;

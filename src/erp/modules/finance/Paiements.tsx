@@ -52,8 +52,8 @@ export default function Paiements({ onglets }: PageFinanceProps) {
     <>
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Paiements prestataires' }]}
-        titre="Paiements prestataires"
-        sousTitre="Calculés à partir des missions de la période. Pas de validation, pas de paiement : seules les missions validées (checklist et photos avant/après) sont payées."
+        titre="Payer les prestataires"
+        sousTitre="Ce que vous devez à chaque prestataire. Seuls les ménages vérifiés (liste cochée, photos avant/après) sont payés."
       />
       {onglets}
 
@@ -66,26 +66,26 @@ export default function Paiements({ onglets }: PageFinanceProps) {
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="À payer" valeur={euros(aPayer.reduce((s, l) => s + l.net, 0), true)} tone={aPayer.length ? 'alerte' : 'neutre'} aide={pluriel(aPayer.length, 'prestataire')} />
-        <Stat label="Paiements bloqués" valeur={nombre(bloques.length)} tone={bloques.length ? 'danger' : 'neutre'} aide={bloques[0]?.paiement?.motifRetenue ? 'Motif indiqué au détail' : undefined} />
-        <Stat label="Missions non validées exclues" valeur={nombre(exclues)} tone={exclues ? 'alerte' : 'neutre'} aide="Non payées tant qu’elles ne sont pas validées" />
+        <Stat label="Paiements en attente" valeur={nombre(bloques.length)} tone={bloques.length ? 'danger' : 'neutre'} aide={bloques[0]?.paiement?.motifRetenue ? 'la raison est dans le détail' : undefined} />
+        <Stat label="Ménages pas encore vérifiés" valeur={nombre(exclues)} tone={exclues ? 'alerte' : 'neutre'} aide="payés dès qu’ils sont vérifiés" />
       </div>
 
       {exclues > 0 && (
-        <Alert tone="info" icone={<Info />} className="mb-4" titre="Missions exclues du paiement">
-          {pluriel(exclues, 'mission')} de {moisAnnee(periode)} ne {exclues > 1 ? 'sont' : 'est'} pas validée{exclues > 1 ? 's' : ''}. Ouvrez un prestataire pour voir le motif et
-          faire valider les missions dans le module Ménages.
+        <Alert tone="info" icone={<Info />} className="mb-4" titre="Des ménages attendent d’être vérifiés">
+          {pluriel(exclues, 'ménage')} de {moisAnnee(periode)} ne {exclues > 1 ? 'sont' : 'est'} pas encore vérifié{exclues > 1 ? 's' : ''} : ils seront payés ensuite.
+          Vérifiez-les dans Opérations, onglet Ménages.
         </Alert>
       )}
 
       <Table
-        legende={`Paiements prestataires, ${moisAnnee(periode)}`}
+        legende={`Paiements des prestataires, ${moisAnnee(periode)}`}
         colonnes={colonnes}
         lignes={lignes}
         cleLigne={(l) => l.cle}
         onLigneClick={(l) => setOuverte(l.cle)}
         ligneActive={ouverte}
         triInitial={{ cle: 'net', sens: 'desc' }}
-        vide={`Aucune mission de prestataire en ${moisAnnee(periode)}.`}
+        vide={`Aucun ménage fait par un prestataire en ${moisAnnee(periode)}.`}
       />
 
       {ligne && <DetailPaiement key={ligne.cle} ligne={ligne} onFermer={() => setOuverte(undefined)} />}

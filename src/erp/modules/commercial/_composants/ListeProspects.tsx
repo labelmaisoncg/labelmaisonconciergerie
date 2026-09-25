@@ -57,7 +57,7 @@ export function ListeProspects({ prospects, ouvrir, actif }: { prospects: Prospe
       onLigneClick={ouvrir}
       ligneActive={actif}
       triInitial={{ cle: 'action', sens: 'asc' }}
-      vide="Aucun prospect ne correspond aux filtres."
+      vide="Personne ne correspond. Essayez d’enlever un filtre."
     />
   );
 }

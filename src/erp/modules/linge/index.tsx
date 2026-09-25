@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, BookOpen, CheckCircle2, Plus, Shirt, PackageX, WashingMachine } from 'lucide-react';
+import { AlertTriangle, BookOpen, CheckCircle2, Plus, WashingMachine } from 'lucide-react';
 import { nombre } from '../../data/format';
 import { useErp } from '../../data/store';
 import { ecartsLinge, fenetreJours } from '../../data/selectors';
-import { Alert, Button, PageHeader, Stat, Tabs } from '../../ui';
+import { Aide, Button, MenuActions, PageHeader, Stat, Tabs } from '../../ui';
 import { Retour, useRetour } from '../menages/_composants/retour';
 import { positionLinge, totalArticles } from './_composants/calculs';
 import { Ecarts } from './_composants/Ecarts';
@@ -36,37 +36,39 @@ export default function Linge() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Opérations' }, { libelle: 'Linge' }]}
         titre="Linge"
-        sousTitre="Stock par logement, blanchisserie et écarts d’inventaire. Le linge de chaque logement est étiqueté et ne se mélange pas."
+        sousTitre="Où sont les draps et les serviettes de chaque logement : en place, sales ou à la blanchisserie."
         actions={
           <>
-            <a
-              href="/linge"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-sm font-medium text-(--lm-encre) hover:bg-(--lm-surface-2) [&_svg]:size-4"
-            >
-              <BookOpen aria-hidden /> Registre terrain
-            </a>
+            <MenuActions actions={[{ libelle: 'Ouvrir le registre de l’équipe terrain', icone: <BookOpen />, href: '/linge' }]} />
             <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
-              Nouveau mouvement
+              Noter un mouvement
             </Button>
           </>
         }
       />
 
-      <Alert tone="or" titre="Règle linge" className="mb-5">
-        Le linge ne se lave jamais au domicile d’un prestataire. Chaque mouvement est tracé : sorti sale, envoyé en blanchisserie, revenu propre, mis en place.
-        Les messages de l’équipe terrain restent consultables dans le registre terrain.
-      </Alert>
+      <Aide>
+        Le linge de chaque logement est étiqueté et ne se mélange jamais. Il ne se lave jamais chez un prestataire : il part en blanchisserie.
+        Chaque étape est notée (sorti sale, envoyé, revenu propre, remis en place) pour savoir à tout moment où il se trouve. Les messages de
+        l’équipe terrain restent lisibles dans son registre (menu « … »).
+      </Aide>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <Stat label="En place" valeur={nombre(somme('enPlace'))} icone={<CheckCircle2 />} aide="articles propres disponibles" />
-        <Stat label="Sale à envoyer" valeur={nombre(somme('sale'))} icone={<Shirt />} aide="envoi groupé automatique chaque jour" tone={somme('sale') ? 'alerte' : 'neutre'} />
-        <Stat label="En blanchisserie" valeur={nombre(somme('blanchisserie'))} icone={<WashingMachine />} />
-        <Stat label="Perdu ou rebut (30 j)" valeur={nombre(perdus30)} icone={<PackageX />} tone={perdus30 ? 'alerte' : 'neutre'} />
-        <Stat label="Écarts d’inventaire" valeur={nombre(ecarts)} icone={<AlertTriangle />} tone={ecarts ? 'danger' : 'succes'} className="col-span-2 md:col-span-1" />
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Propre et en place" valeur={nombre(somme('enPlace'))} icone={<CheckCircle2 />} aide="pièces prêtes pour les prochains voyageurs" />
+        <Stat
+          label="Sale ou à la blanchisserie"
+          valeur={nombre(somme('sale') + somme('blanchisserie'))}
+          icone={<WashingMachine />}
+          aide={`${nombre(somme('sale'))} à envoyer, ${nombre(somme('blanchisserie'))} en cours de lavage`}
+        />
+        <Stat
+          label="Linge qui manque"
+          valeur={nombre(ecarts)}
+          icone={<AlertTriangle />}
+          tone={ecarts ? 'danger' : 'succes'}
+          aide={perdus30 ? `et ${nombre(perdus30)} pièces perdues ou jetées en 30 jours` : 'rien de perdu ces 30 derniers jours'}
+        />
       </div>
 
       <Tabs
@@ -74,9 +76,9 @@ export default function Linge() {
         actif={vue}
         onChange={(cle) => setParams(cle === 'stock' ? {} : { vue: cle }, { replace: true })}
         onglets={[
-          { cle: 'stock', libelle: 'Stock par logement' },
-          { cle: 'ecarts', libelle: 'Écarts', compteur: ecarts },
-          { cle: 'journal', libelle: 'Journal des mouvements', compteur: mouvementsLinge.length },
+          { cle: 'stock', libelle: 'Par logement' },
+          { cle: 'ecarts', libelle: 'Ce qui manque', compteur: ecarts },
+          { cle: 'journal', libelle: 'Historique', compteur: mouvementsLinge.length },
         ]}
       />
 

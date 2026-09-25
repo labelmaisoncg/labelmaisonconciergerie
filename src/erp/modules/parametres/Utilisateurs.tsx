@@ -136,10 +136,10 @@ export default function Utilisateurs() {
             {ajout}
           </Alert>
         )}
-        <Table legende="Utilisateurs" colonnes={colonnes} lignes={d.utilisateurs} cleLigne={(u) => u.id} vide="Aucun membre enregistré." />
+        <Table legende="Utilisateurs" colonnes={colonnes} lignes={d.utilisateurs} cleLigne={(u) => u.id} vide="Personne dans l’équipe pour l’instant." />
         {peutModifier && (
           <Card className="mt-4">
-            <CardHeader titre="Ajouter un membre" description="Donne l’accès à l’ERP à une adresse e-mail, avec son rôle." />
+            <CardHeader titre="Ajouter quelqu’un" description="Donnez accès à l’ERP à une adresse e-mail, et choisissez ce que cette personne peut faire." />
             <form onSubmit={ajouter} className="grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
               <Field label="E-mail">
                 <Input type="email" value={nouveau.email} onChange={(e) => setNouveau((n) => ({ ...n, email: e.target.value }))} />

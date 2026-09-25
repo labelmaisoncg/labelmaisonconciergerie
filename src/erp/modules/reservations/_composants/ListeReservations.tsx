@@ -9,6 +9,7 @@ import { dateCourte, euros, nombre } from '../../../data/format';
 import type { Logement, Reservation, StatutReservation } from '../../../data/types';
 import { PastilleCanal } from './FicheReservation';
 import { CANAUX } from './outils';
+import { useRechercheUrl } from '../../../ui/useRechercheUrl';
 
 const STATUTS: StatutReservation[] = ['confirmee', 'en_cours', 'terminee', 'annulee'];
 
@@ -25,7 +26,7 @@ function normaliser(s: string) {
 }
 
 export function ListeReservations({ reservations, logements, onOuvrir, logementInitial = '' }: Props) {
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [canaux, setCanaux] = useState<string[]>([]);
   const [statuts, setStatuts] = useState<string[]>([]);
   const [logementId, setLogementId] = useState(logementInitial);
@@ -124,7 +125,7 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
         onLigneClick={onOuvrir}
         triInitial={{ cle: 'arrivee', sens: 'desc' }}
         dense
-        vide="Aucune réservation ne correspond à ces filtres."
+        vide="Aucune réservation ne correspond. Essayez d’enlever un filtre."
       />
     </div>
   );

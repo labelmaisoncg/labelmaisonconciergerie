@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { CalendarClock, Coins, FileSignature, KanbanSquare, List, Percent, Plus, Target } from 'lucide-react';
+import { CalendarClock, FileSignature, KanbanSquare, List, Plus, Target } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { ETAPES_PIPELINE } from '../../data/constantes';
-import { AUJOURDHUI, SANS_DONNEE, euros, moisAnnee, pourcentage } from '../../data/format';
+import { AUJOURDHUI, euros, moisAnnee, pourcentage } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { actionsCommercialesDues, commissionPotentielle, signaturesDuMois, valeurPipeline } from '../../data/selectors';
 import type { EtapeProspect, Prospect, Responsable, SourceProspect } from '../../data/types';
-import { Button, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
+import { Button, MenuActions, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
 import { useAvis } from './_composants/Avis';
 import type { ActionsProspect } from './_composants/CarteProspect';
 import { FicheProspect } from './_composants/FicheProspect';
@@ -15,6 +15,7 @@ import { Kanban } from './_composants/Kanban';
 import { ListeProspects } from './_composants/ListeProspects';
 import { NouveauProspect } from './_composants/NouveauProspect';
 import { Onglets } from './_composants/Onglets';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 type Affichage = 'tableau' | 'liste';
 
@@ -24,7 +25,7 @@ export default function Pipeline() {
   const [params, setParams] = useSearchParams();
   const { afficher, rendu: avis } = useAvis();
   const [affichage, setAffichage] = useState<Affichage>('tableau');
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [source, setSource] = useState<SourceProspect | ''>('');
   const [responsable, setResponsable] = useState<Responsable | ''>('');
   const [etape, setEtape] = useState<EtapeProspect | ''>('');
@@ -93,32 +94,39 @@ export default function Pipeline() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Commercial' }, { libelle: 'Pipeline' }]}
-        titre="Pipeline propriétaires"
-        sousTitre="D’où viennent les prochains logements. Un prospect signé passe par le lancement du mandat."
+        titre="Prospection"
+        sousTitre="Les propriétaires avec qui vous discutez : d’où viendront vos prochains logements."
         actions={
           <>
-            <Button icone={<FileSignature />} onClick={() => naviguer('/erp/commercial/lancement')}>Lancer un mandat</Button>
-            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau prospect</Button>
+            <MenuActions actions={[{ libelle: 'Un propriétaire a signé : lancer son contrat', icone: <FileSignature />, to: '/erp/commercial/lancement' }]} />
+            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau contact</Button>
           </>
         }
       />
       <Onglets />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <Stat label="Valeur du pipeline" valeur={euros(valeurPipeline(d.prospects), true)} icone={<Target />} aide="revenu annuel estimé en cours" />
-        <Stat label="Commission potentielle" valeur={euros(commissionPotentielle(d.prospects, 18), true)} icone={<Coins />} aide="à 18 % par an" />
-        <Stat label="Taux de conversion" valeur={signes + perdus ? pourcentage(signes / (signes + perdus)) : SANS_DONNEE} icone={<Percent />} aide={`${signes} signés, ${perdus} perdus`} />
-        <Stat label="Signatures du mois" valeur={signaturesDuMois(d.mandats).length} icone={<FileSignature />} aide={moisAnnee(AUJOURDHUI)} />
-        <Stat label="Actions dues" valeur={dues.length} icone={<CalendarClock />} tone={dues.length ? 'alerte' : 'neutre'} aide="en retard ou du jour" />
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat
+          label="En discussion"
+          valeur={euros(valeurPipeline(d.prospects), true)}
+          icone={<Target />}
+          aide={`de revenus par an pour les propriétaires, soit ${euros(commissionPotentielle(d.prospects, 18), true)} pour vous`}
+        />
+        <Stat
+          label="Signés ce mois-ci"
+          valeur={signaturesDuMois(d.mandats).length}
+          icone={<FileSignature />}
+          aide={signes + perdus ? `${pourcentage(signes / (signes + perdus))} des discussions finissent signées` : moisAnnee(AUJOURDHUI)}
+        />
+        <Stat label="À relancer" valeur={dues.length} icone={<CalendarClock />} tone={dues.length ? 'alerte' : 'neutre'} aide={dues.length ? 'aujourd’hui ou en retard' : 'personne à relancer aujourd’hui'} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom, ville, bien, notes" label="Rechercher un prospect" />
+        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Un nom, une ville, un mot…" label="Rechercher un contact" />
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
-          <Select aria-label="Filtrer par source" value={source} onChange={(e) => setSource(e.target.value as SourceProspect | '')} placeholder="Toutes sources" options={opts(LIBELLES.sourceProspect)} className="sm:w-44" />
-          <Select aria-label="Filtrer par responsable" value={responsable} onChange={(e) => setResponsable(e.target.value as Responsable | '')} placeholder="Tous responsables" options={[{ valeur: 'abdel', libelle: 'Abdel' }, { valeur: 'kamel', libelle: 'Kamel' }]} className="sm:w-48" />
-          <Select aria-label="Filtrer par étape" value={etape} onChange={(e) => setEtape(e.target.value as EtapeProspect | '')} placeholder="Toutes étapes" options={opts(LIBELLES.etapeProspect)} className="sm:w-40" />
+          <Select aria-label="Filtrer par source" value={source} onChange={(e) => setSource(e.target.value as SourceProspect | '')} placeholder="D’où qu’ils viennent" options={opts(LIBELLES.sourceProspect)} className="sm:w-44" />
+          <Select aria-label="Filtrer par responsable" value={responsable} onChange={(e) => setResponsable(e.target.value as Responsable | '')} placeholder="Suivis par tous" options={[{ valeur: 'abdel', libelle: 'Abdel' }, { valeur: 'kamel', libelle: 'Kamel' }]} className="sm:w-48" />
+          <Select aria-label="Filtrer par étape" value={etape} onChange={(e) => setEtape(e.target.value as EtapeProspect | '')} placeholder="Toutes les étapes" options={opts(LIBELLES.etapeProspect)} className="sm:w-40" />
           {affichage === 'tableau' && (
             <label className="inline-flex h-9 items-center gap-2 text-[13px] text-(--lm-encre-2)">
               <input type="checkbox" checked={avecPerdus || etape === 'perdu'} onChange={(e) => setAvecPerdus(e.target.checked)} className="size-4 accent-(--lm-or)" />
@@ -139,20 +147,20 @@ export default function Pipeline() {
 
       {affichage === 'tableau' ? (
         <>
-          <p className="mb-2 hidden text-[12px] text-(--lm-encre-3) lg:block">Glissez une carte vers une autre colonne pour changer d’étape. Déposer sur « Signé » ouvre le lancement du mandat.</p>
+          <p className="mb-2 hidden text-[12px] text-(--lm-encre-3) lg:block">Glissez une carte dans une autre colonne pour changer d’étape. Sur « Signé », on prépare son contrat.</p>
           <Kanban prospects={filtres} actions={actions} deplacer={deplacer} avecPerdus={avecPerdus || etape === 'perdu'} />
         </>
       ) : (
         <ListeProspects prospects={filtres} ouvrir={ouvrir} actif={ouvertId} />
       )}
 
-      <FicheProspect prospect={ouvert} onFermer={fermer} onLancer={lancer} onEnregistre={(p) => afficher({ ton: 'succes', texte: `Fiche de ${p.nom} enregistrée.` })} />
+      <FicheProspect prospect={ouvert} onFermer={fermer} onLancer={lancer} onEnregistre={(p) => afficher({ ton: 'succes', texte: `C’est enregistré pour ${p.nom}.` })} />
       <NouveauProspect
         ouvert={creation}
         onFermer={() => setCreation(false)}
         onCree={(p) => {
           setCreation(false);
-          afficher({ ton: 'succes', texte: `${p.nom} ajouté au pipeline (${LIBELLES.etapeProspect[p.etape]}).` });
+          afficher({ ton: 'succes', texte: `${p.nom} est ajouté à vos contacts (${LIBELLES.etapeProspect[p.etape].toLowerCase()}).` });
         }}
       />
       {avis}

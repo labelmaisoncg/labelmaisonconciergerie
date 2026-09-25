@@ -30,11 +30,11 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
       <Card flush>
         <CardHeader
           className="px-4 pt-4 sm:px-5"
-          titre={`À attribuer (${aAttribuer.length})`}
-          description="Triées par urgence : temps restant avant l’arrivée du prochain voyageur."
+          titre={`Sans personne (${aAttribuer.length})`}
+          description="Les plus pressés d’abord : le prochain voyageur arrive bientôt."
         />
         {aAttribuer.length === 0 ? (
-          <EmptyState icone={<CheckCircle2 />} titre="Tout est attribué" description="Aucune mission sans prestataire." />
+          <EmptyState icone={<CheckCircle2 />} titre="Chaque ménage a quelqu’un" description="Personne n’est oublié, tout est prévu." />
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {aAttribuer.map(({ m, u }) => (
@@ -51,7 +51,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
                   {u.libelle}
                 </Badge>
                 <Button size="sm" variant="primary" icone={<UserPlus />} onClick={() => onAttribuer(m)}>
-                  Attribuer
+                  Confier
                 </Button>
               </li>
             ))}
@@ -62,11 +62,11 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
       <Card flush>
         <CardHeader
           className="px-4 pt-4 sm:px-5"
-          titre={`À valider (${aValider.length})`}
-          description="Validation seulement si checklist cochée et photos avant/après horodatées. Pas de validation, pas de paiement."
+          titre={`À vérifier (${aValider.length})`}
+          description="Vérifiez la liste cochée et les photos avant/après. Un ménage est payé seulement une fois vérifié."
         />
         {aValider.length === 0 ? (
-          <EmptyState icone={<CheckCircle2 />} titre="Rien à valider" description="Toutes les missions terminées ont été traitées." />
+          <EmptyState icone={<CheckCircle2 />} titre="Rien à vérifier" description="Tous les ménages terminés ont été vus." />
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {aValider.map((m) => {
@@ -90,7 +90,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
                       Refuser
                     </Button>
                     <Button size="sm" variant="primary" onClick={() => onValider(m)}>
-                      Valider
+                      C’est bon
                     </Button>
                   </div>
                   {!verdict.ok && <p className="mt-1.5 text-[12.5px] font-medium text-(--lm-danger)">Bloquée : {verdict.raisons.join(' ')}</p>}
