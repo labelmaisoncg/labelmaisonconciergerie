@@ -103,7 +103,8 @@ export default async function handler(req: any, res: any) {
     }
     if (ecriture && action === 'connecter') {
       const f = String(corps.fournisseur ?? '').trim().toLowerCase();
-      return repondre(res, 200, await demarrerConnexion(ctx, f, urlRetour(req, f)));
+      const acces = corps.acces === 'messaging' || corps.acces === 'full_access' ? corps.acces : undefined;
+      return repondre(res, 200, await demarrerConnexion(ctx, f, urlRetour(req, f), acces));
     }
     if (ecriture && action === 'selection') {
       return repondre(res, 200, await enregistrerSelection(ctx, corps.ids, membre.email));

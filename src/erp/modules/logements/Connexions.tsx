@@ -154,11 +154,20 @@ export default function Connexions() {
     })();
   }, [charger, retour, params, naviguer]);
 
-  const connecter = async (fournisseur: string) => {
+  const [choixAirbnb, setChoixAirbnb] = useState(false);
+  const [accesAirbnb, setAccesAirbnb] = useState<'full_access' | 'messaging'>('full_access');
+
+  const connecter = async (fournisseur: string, acces?: 'full_access' | 'messaging') => {
+    // Airbnb : le niveau d'accès se choisit ici, pas sur la page Repull.
+    if (fournisseur === 'airbnb' && !acces) {
+      setChoixAirbnb(true);
+      return;
+    }
+    setChoixAirbnb(false);
     setConnexionEnCours(fournisseur);
     setMessage(null);
     try {
-      const r = await appeler<{ url: string }>('POST', {}, { action: 'connecter', fournisseur });
+      const r = await appeler<{ url: string }>('POST', {}, { action: 'connecter', fournisseur, ...(acces ? { acces } : {}) });
       window.location.assign(r.url);
     } catch (err) {
       setMessage({ ton: 'danger', texte: (err as Error).message });
@@ -491,6 +500,51 @@ export default function Connexions() {
       </section>
 
       <VerificationRepull actif={reel} />
+
+      <Modal
+        ouvert={choixAirbnb}
+        onFermer={() => setChoixAirbnb(false)}
+        taille="sm"
+        titre="Connecter Airbnb"
+        description="Une seule question avant d’aller sur Airbnb."
+        pied={
+          <>
+            <Button variant="ghost" onClick={() => setChoixAirbnb(false)}>
+              Annuler
+            </Button>
+            <Button variant="primary" icone={<Plug />} onClick={() => void connecter('airbnb', accesAirbnb)}>
+              Continuer vers Airbnb
+            </Button>
+          </>
+        }
+      >
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-[13.5px] text-(--lm-encre)">Utilisez-vous déjà un autre logiciel (Smoobu, Guesty, Hostaway…) sur ce compte Airbnb ?</legend>
+          {(
+            [
+              ['full_access', 'Non, Label Maison gère tout', 'Réservations, calendrier, prix et messages. Recommandé.'],
+              ['messaging', 'Oui, je garde mon logiciel', 'L’ERP lit vos logements et réservations et gère les messages ; votre logiciel garde le calendrier et les prix.'],
+            ] as const
+          ).map(([valeur, titre, aide]) => (
+            <label
+              key={valeur}
+              className={cn(
+                'flex cursor-pointer gap-3 rounded-lg border p-3',
+                accesAirbnb === valeur ? 'border-(--lm-or) bg-(--lm-or-lavis)' : 'border-(--lm-bord)',
+              )}
+            >
+              <input type="radio" name="acces-airbnb" className="mt-1" checked={accesAirbnb === valeur} onChange={() => setAccesAirbnb(valeur)} />
+              <span>
+                <span className="block text-[14px] font-medium text-(--lm-encre)">{titre}</span>
+                <span className="block text-[12.5px] text-(--lm-encre-2)">{aide}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+        <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">
+          Sur Airbnb, connectez-vous avec le compte hôte qui gère vos annonces, puis cliquez sur « Autoriser ».
+        </p>
+      </Modal>
 
       <Modal
         ouvert={!!aDeconnecter}
