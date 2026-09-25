@@ -472,7 +472,21 @@ export async function demarrerConnexion(ctx: ContexteConnexion, fournisseur: str
       });
     }
     if (f === 'airbnb') return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/airbnb', { redirectUrl: urlRetour, locale: 'fr' });
-    return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/booking', { redirectUrl: urlRetour });
+    // Booking.com : la page hébergée ouverte par /v1/connect/booking répond
+    // « Unsupported provider: booking » (constaté en production). On passe par
+    // le sélecteur hébergé, restreint à l'identifiant EXACT du registre Repull
+    // (« booking.com » ou autre), qui mène au parcours Booking de Repull.
+    if (!cache.fournisseurs?.length) await rafraichirFournisseurs(client, cache, maintenant).catch(() => undefined);
+    const idBooking = cache.fournisseurs?.find((p) => plateformeCourte(p.id) === 'booking')?.id;
+    if (idBooking) {
+      return client.post<{ url?: string; expiresAt?: string }>('/v1/connect', {
+        redirectUrl: urlRetour,
+        allowedProviders: [idBooking],
+        locale: 'fr',
+        state: 'booking',
+      });
+    }
+    return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/booking', { redirectUrl: urlRetour, locale: 'fr' });
   });
   if (!texte(r?.url) || !/^https:\/\//.test(texte(r.url))) throw new ErreurConnexion('Repull n’a pas renvoyé de page de connexion. Réessayez dans un instant.', 502);
   // Au retour, tout sera relu.
