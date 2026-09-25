@@ -488,7 +488,14 @@ async function composerEtat(ctx: ContexteConnexion, cache: CacheConnexions, aver
  * leur propre parcours ; les autres passent par le sélecteur hébergé,
  * restreint à ce seul fournisseur (formulaires d'identifiants compris).
  */
-export async function demarrerConnexion(ctx: ContexteConnexion, fournisseur: string, urlRetour: string): Promise<ResultatConnecter> {
+export type AccesAirbnb = 'full_access' | 'messaging';
+
+export async function demarrerConnexion(
+  ctx: ContexteConnexion,
+  fournisseur: string,
+  urlRetour: string,
+  accesAirbnb?: AccesAirbnb,
+): Promise<ResultatConnecter> {
   const f = texte(fournisseur).toLowerCase();
   if (!/^[a-z0-9][a-z0-9_.-]{0,40}$/.test(f)) throw new ErreurConnexion('Plateforme inconnue.');
   const maintenant = (ctx.maintenant ?? (() => new Date()))();
@@ -506,7 +513,14 @@ export async function demarrerConnexion(ctx: ContexteConnexion, fournisseur: str
         state: f,
       });
     }
-    if (f === 'airbnb') return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/airbnb', { redirectUrl: urlRetour, locale: 'fr' });
+    // Niveau d'accès choisi dans l'ERP : Repull masque alors ce choix sur sa page.
+    if (f === 'airbnb') {
+      return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/airbnb', {
+        redirectUrl: urlRetour,
+        locale: 'fr',
+        ...(accesAirbnb ? { accessType: accesAirbnb } : {}),
+      });
+    }
     // Booking.com : la page hébergée ouverte par /v1/connect/booking répond
     // « Unsupported provider: booking » (constaté en production). On passe par
     // le sélecteur hébergé, restreint à l'identifiant EXACT du registre Repull
