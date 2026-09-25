@@ -729,7 +729,7 @@ const liste = (v: unknown): Record<string, unknown>[] => {
 /**
  * Photographie de ce que Repull sait du compte : clé, connexions, Airbnb,
  * Booking.com (établissements et association des chambres), annonces.
- * Six appels au plus, comptés dans le budget. Aucune donnée secrète renvoyée.
+ * Sept appels au plus, comptés dans le budget. Aucune donnée secrète renvoyée.
  */
 export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDiagnostic> {
   const lignes: LigneDiagnostic[] = [];
@@ -771,6 +771,21 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       const l = liste(r);
       return l.length ? `${l.length} logement(s) vu(s) (premiers) : ${l.slice(0, 5).map((a) => texte(a.name) || texte(a.title) || texte(a.id)).join(', ')}.` : 'Aucun logement chez Repull pour l’instant.';
     }, { status: 'all', limit: '10' });
+    await essai('Repull a-t-il reçu des réservations ?', '/v1/reservations', (r) => {
+      const l = liste(r);
+      const total = Number((r as { pagination?: { total?: number } })?.pagination?.total ?? l.length);
+      if (!l.length) {
+        return 'Aucune réservation chez Repull. Booking n’envoie en général que les réservations faites ou modifiées APRÈS le changement de fournisseur : les suivantes arriveront toutes seules.';
+      }
+      return `${total} réservation(s). Dernières : ${l
+        .slice(0, 5)
+        .map((x) => `${texte(x.guestName) || texte((x.guest as Record<string, unknown>)?.name) || 'voyageur'} (${texte(x.checkIn) || texte(x.check_in) || '?'}, ${texte(x.status) || '?'}, ${texte(x.platform) || '?'})`)
+        .join(' ; ')}.`;
+    }, { limit: '5' });
+    await essai('Repull a-t-il reçu des conversations ?', '/v1/conversations', (r) => {
+      const l = liste(r);
+      return l.length ? `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).` : 'Aucune conversation chez Repull pour l’instant.';
+    }, { limit: '5' });
     appels = client.appels;
   });
   return { ok: true, lignes, appels, le: (ctx.maintenant ?? (() => new Date()))().toISOString() };
