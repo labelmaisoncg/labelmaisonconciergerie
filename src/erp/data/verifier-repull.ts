@@ -857,6 +857,16 @@ async function principal() {
   const dispo = appelsCal[2]?.corps as { type?: string; updates?: { availableRooms?: number; closed?: boolean }[] };
   verifier(dispo?.type === 'availability' && dispo.updates?.every((u) => u.availableRooms === 1 && u.closed === false) === true, 'vente rouverte : 1 chambre à vendre');
   verifier(cal.ouvertes === 8 && cal.gardeesFermees === 2 && cal.plateforme === 'booking', `bilan : ${cal.ouvertes} ouvertes, ${cal.gardeesFermees} gardées fermées`);
+
+  const avantGarde = repull.appels.length;
+  const garde = await ouvrirCalendrier(ctx(), { annonce: '104', prix: null, minNuits: null, jours: 10, bloquees: [] });
+  const appelsGarde = repull.appels.slice(avantGarde);
+  const corpsGarde = appelsGarde[appelsGarde.length - 1]?.corps as { type?: string; updates?: { restrictions?: unknown }[] };
+  verifier(
+    garde.prixConserves && appelsGarde.length === 2 && !appelsGarde.some((a) => (a.corps as { type?: string } | undefined)?.type === 'rates'),
+    'prix laissé vide : aucun prix envoyé, seule la vente est rouverte (prix Booking d’avant conservés)',
+  );
+  verifier(corpsGarde?.type === 'availability' && corpsGarde.updates?.every((u) => u.restrictions === undefined) === true, 'durée minimale inchangée quand le champ est vide');
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
   const appelBooking = repull.appels[repull.appels.length - 1];
   verifier(

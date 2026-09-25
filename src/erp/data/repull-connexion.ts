@@ -811,6 +811,8 @@ export interface ResultatCalendrier {
   annonce: string;
   /** Seule plateforme écrite : jamais Airbnb. */
   plateforme: 'booking';
+  /** Vrai : aucun prix envoyé, ceux déjà chez Booking sont gardés. */
+  prixConserves: boolean;
   ouvertes: number;
   gardeesFermees: number;
   du: string;
@@ -840,9 +842,15 @@ export async function ouvrirCalendrier(
 ): Promise<ResultatCalendrier> {
   const annonce = texte(entree.annonce);
   if (!/^\d{1,12}$/.test(annonce)) throw new ErreurConnexion('Logement inconnu : rechargez la page.');
-  const prix = Math.round(Number(entree.prix) * 100) / 100;
-  if (!Number.isFinite(prix) || prix < 10 || prix > 5000) throw new ErreurConnexion('Indiquez un prix par nuit entre 10 € et 5 000 €.');
-  const minNuits = Math.floor(Number(entree.minNuits) || 1);
+  // Prix absent : on rouvre seulement la vente, les prix déjà enregistrés chez
+  // Booking (ceux d'avant la connexion) restent tels quels.
+  const prixBrut = entree.prix;
+  const garderPrix = prixBrut === undefined || prixBrut === null || prixBrut === '' || Number(prixBrut) === 0;
+  const prix = garderPrix ? 0 : Math.round(Number(prixBrut) * 100) / 100;
+  if (!garderPrix && (!Number.isFinite(prix) || prix < 10 || prix > 5000)) throw new ErreurConnexion('Indiquez un prix par nuit entre 10 € et 5 000 €, ou laissez vide pour garder vos prix Booking.');
+  const minNuitsBrut = entree.minNuits;
+  const garderMin = garderPrix && (minNuitsBrut === undefined || minNuitsBrut === null || minNuitsBrut === '');
+  const minNuits = Math.floor(Number(minNuitsBrut) || 1);
   if (minNuits < 1 || minNuits > 30) throw new ErreurConnexion('La durée minimale doit être comprise entre 1 et 30 nuits.');
   const jours = Math.min(731, Math.max(1, Math.floor(Number(entree.jours) || 365)));
   const bloquees = new Set(
@@ -877,18 +885,22 @@ export async function ouvrirCalendrier(
     if (!hotel || !couples.length) {
       throw new ErreurConnexion('Ce logement n’est pas relié à Booking.com (chambre ou plan tarifaire introuvable) : rien n’a été envoyé.');
     }
-    const prixEnvoyes = await client.requete<unknown>('PUT', '/v1/channels/booking/availability', {}, {
-      type: 'rates',
-      property_id: hotel,
-      verify: false,
-      updates: couples.flatMap((c) =>
-        periodes.map((d) => ({ ...c, dateRange: d, price: prix, currency: 'EUR', restrictions: { minStay: minNuits } })),
-      ),
-    });
+    const prixEnvoyes = garderPrix
+      ? null
+      : await client.requete<unknown>('PUT', '/v1/channels/booking/availability', {}, {
+          type: 'rates',
+          property_id: hotel,
+          verify: false,
+          updates: couples.flatMap((c) =>
+            periodes.map((d) => ({ ...c, dateRange: d, price: prix, currency: 'EUR', restrictions: { minStay: minNuits } })),
+          ),
+        });
     const ouverture = await client.requete<unknown>('PUT', '/v1/channels/booking/availability', {}, {
       type: 'availability',
       property_id: hotel,
-      updates: couples.flatMap((c) => periodes.map((d) => ({ ...c, dateRange: d, availableRooms: 1, closed: false }))),
+      updates: couples.flatMap((c) =>
+        periodes.map((d) => ({ ...c, dateRange: d, availableRooms: 1, closed: false, ...(garderPrix && !garderMin ? { restrictions: { minStay: minNuits } } : {}) })),
+      ),
     });
     return { hotel, prix: prixEnvoyes, ouverture };
   });
@@ -896,6 +908,7 @@ export async function ouvrirCalendrier(
     ok: true,
     annonce,
     plateforme: 'booking',
+    prixConserves: garderPrix,
     ouvertes: dates.length,
     gardeesFermees: jours - dates.length,
     du: dates[0],

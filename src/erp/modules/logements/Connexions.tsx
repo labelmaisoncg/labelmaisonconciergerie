@@ -688,7 +688,7 @@ function OuvrirCalendriers({ annonces, actif }: { annonces: EtatConnexions['anno
 
 function CarteCalendrier({ annonce, nuitsErp, actif }: { annonce: EtatConnexions['annonces'][number]; nuitsErp: string[]; actif: boolean }) {
   const [prix, setPrix] = useState('');
-  const [minNuits, setMinNuits] = useState('1');
+  const [minNuits, setMinNuits] = useState('');
   const [jours, setJours] = useState('365');
   const [periodes, setPeriodes] = useState('');
   const [enCours, setEnCours] = useState(false);
@@ -700,17 +700,17 @@ function CarteCalendrier({ annonce, nuitsErp, actif }: { annonce: EtatConnexions
     setEnCours(true);
     setRetour(null);
     try {
-      const r = await appeler<{ ouvertes: number; gardeesFermees: number; du: string; au: string }>('POST', {}, {
+      const r = await appeler<{ ouvertes: number; gardeesFermees: number; du: string; au: string; prixConserves?: boolean }>('POST', {}, {
         action: 'calendrier',
         annonce: annonce.id,
-        prix: Number(prix.replace(',', '.')),
-        minNuits: Number(minNuits),
+        prix: prix.trim() ? Number(prix.replace(',', '.')) : null,
+        minNuits: minNuits.trim() ? Number(minNuits) : null,
         jours: Number(jours),
         bloquees: [...new Set([...nuitsErp, ...nuits])],
       });
       setRetour({
         ton: 'succes',
-        texte: `C’est ouvert : ${r.ouvertes} nuits à ${prix} € du ${r.du} au ${r.au}${r.gardeesFermees ? `, ${r.gardeesFermees} nuits déjà réservées gardées fermées` : ''}. Booking met parfois quelques minutes à l’afficher.`,
+        texte: `C’est ouvert : ${r.ouvertes} nuits ${r.prixConserves ? 'à vos prix Booking habituels' : `à ${prix} €`} du ${r.du} au ${r.au}${r.gardeesFermees ? `, ${r.gardeesFermees} nuits déjà réservées gardées fermées` : ''}. Booking met parfois quelques minutes à l’afficher.`,
       });
     } catch (e) {
       setRetour({ ton: 'danger', texte: (e as Error).message });
@@ -728,11 +728,11 @@ function CarteCalendrier({ annonce, nuitsErp, actif }: { annonce: EtatConnexions
       <div className="grid grid-cols-3 gap-2">
         <label className="text-[12px] text-(--lm-encre-2)">
           Prix / nuit (€)
-          <input inputMode="decimal" value={prix} onChange={(e) => setPrix(e.target.value)} placeholder="75" className="mt-1 w-full rounded-lg border border-(--lm-bord) bg-(--lm-surface) px-2 py-1.5 text-[14px]" />
+          <input inputMode="decimal" value={prix} onChange={(e) => setPrix(e.target.value)} placeholder="vos prix" className="mt-1 w-full rounded-lg border border-(--lm-bord) bg-(--lm-surface) px-2 py-1.5 text-[14px]" />
         </label>
         <label className="text-[12px] text-(--lm-encre-2)">
           Nuits min.
-          <input inputMode="numeric" value={minNuits} onChange={(e) => setMinNuits(e.target.value)} className="mt-1 w-full rounded-lg border border-(--lm-bord) bg-(--lm-surface) px-2 py-1.5 text-[14px]" />
+          <input inputMode="numeric" value={minNuits} onChange={(e) => setMinNuits(e.target.value)} placeholder="inchangé" className="mt-1 w-full rounded-lg border border-(--lm-bord) bg-(--lm-surface) px-2 py-1.5 text-[14px]" />
         </label>
         <label className="text-[12px] text-(--lm-encre-2)">
           Ouvrir sur
@@ -762,10 +762,12 @@ function CarteCalendrier({ annonce, nuitsErp, actif }: { annonce: EtatConnexions
           {retour.texte}
         </Alert>
       )}
-      <Button variant="primary" icone={<Plug />} chargement={enCours} disabled={!actif || enCours || !prix.trim()} onClick={() => void ouvrir()}>
+      <Button variant="primary" icone={<Plug />} chargement={enCours} disabled={!actif || enCours} onClick={() => void ouvrir()}>
         Ouvrir sur Booking.com
       </Button>
-      <p className="text-[11.5px] text-(--lm-encre-3)">N’agit que sur Booking.com : Airbnb n’est jamais modifié.</p>
+      <p className="text-[11.5px] text-(--lm-encre-3)">
+        Prix laissé vide : vos prix Booking d’avant sont gardés, seule la vente est rouverte. N’agit que sur Booking.com : Airbnb n’est jamais modifié.
+      </p>
     </Card>
   );
 }
