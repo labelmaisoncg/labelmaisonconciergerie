@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, Users, Wallet } from 'lucide-react';
-import { Avatar, Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne } from '../../ui';
+import { Avatar, Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { euros } from '../../data/format';
@@ -25,7 +25,7 @@ export default function ListeProprietaires() {
   const naviguer = useNavigate();
   const [recherche, setRecherche] = useState('');
   const [types, setTypes] = useState<string[]>([]);
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
 
   const lignes = useMemo<Ligne[]>(
     () =>

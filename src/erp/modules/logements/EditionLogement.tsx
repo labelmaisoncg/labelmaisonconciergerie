@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Button, Callout, Drawer, Field, Input, Select } from '../../ui';
+import { Button, Callout, Drawer, Field, Input, Select, Prerequis } from '../../ui';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
@@ -158,6 +158,15 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <Field label="Nom du logement" requis erreur={erreurs.nom} className="sm:col-span-2">
           <Input value={s.nom} onChange={(e) => maj('nom', e.target.value)} placeholder="Ex. Corbeil Rives de Seine" />
         </Field>
+        {!proprietaires.length && (
+          <Prerequis
+            className="sm:col-span-2"
+            manque="Aucun propriétaire enregistré."
+            detail="Chaque logement appartient à un propriétaire : ajoutez-le d’abord."
+            lien="/erp/proprietaires?nouveau=1"
+            action="Nouveau propriétaire"
+          />
+        )}
         <Field label="Propriétaire" requis erreur={erreurs.proprietaireId} className="sm:col-span-2">
           <Select
             value={s.proprietaireId}

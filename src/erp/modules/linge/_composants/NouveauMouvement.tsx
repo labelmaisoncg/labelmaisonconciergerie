@@ -4,7 +4,7 @@ import { AUJOURDHUI, dateCourte } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { TypeMouvementLinge } from '../../../data/types';
-import { Alert, Button, Field, Input, Modal, Select, Textarea } from '../../../ui';
+import { Alert, Button, Field, Input, Modal, Select, Textarea, Prerequis } from '../../../ui';
 
 const TYPES = Object.keys(LIBELLES.typeMouvementLinge) as TypeMouvementLinge[];
 const BLANCHISSERIE: TypeMouvementLinge[] = ['envoi_blanchisserie', 'retour_propre'];
@@ -89,6 +89,9 @@ export function NouveauMouvement({ ouvert, onFermer, onSucces }: Props) {
       }
     >
       <div className="space-y-4">
+        {!logements.length && (
+          <Prerequis className="mb-3" manque="Aucun logement enregistré." detail="Le linge se suit logement par logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+        )}
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Type de mouvement" requis>
             <Select value={type} onChange={(ev) => setType(ev.target.value as TypeMouvementLinge)} options={TYPES.map((t) => ({ valeur: t, libelle: LIBELLES.typeMouvementLinge[t] }))} />

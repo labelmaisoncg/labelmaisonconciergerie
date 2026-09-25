@@ -4,7 +4,7 @@ import { AUJOURDHUI, dateCourte, ecartJours, euros, pluriel, versCentimes } from
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { Prestataire, TypeDocument, TypeLogement } from '../../../data/types';
-import { Button, Card, CardHeader, Field, Input, Select, Table, type Colonne } from '../../../ui';
+import { Button, Card, CardHeader, Field, Input, LienFichier, Select, Table, type Colonne } from '../../../ui';
 import { BadgeDocument, DOCUMENTS_REQUIS, etatDocument } from './conformite';
 
 type LigneDoc = (typeof DOCUMENTS_REQUIS)[number];
@@ -50,7 +50,7 @@ export function Documents({ prestataire: p, onMettreAJour }: { prestataire: Pres
         return url.startsWith('demo://') ? (
           <span className="inline-flex items-center gap-1 text-(--lm-encre-2)"><FileText className="size-3.5" aria-hidden /> Déposée</span>
         ) : (
-          <a href={url} target="_blank" rel="noreferrer" className="text-(--lm-or) hover:underline">Ouvrir</a>
+          <LienFichier url={url} className="text-(--lm-or) hover:underline">Ouvrir</LienFichier>
         );
       },
     },

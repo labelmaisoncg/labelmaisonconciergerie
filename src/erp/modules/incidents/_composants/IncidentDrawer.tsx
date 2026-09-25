@@ -5,7 +5,7 @@ import { AUJOURDHUI, dateCourte, euros, versCentimes } from '../../../data/forma
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { Incident, Refacturable } from '../../../data/types';
-import { Alert, Badge, Button, Card, Drawer, Field, Input, Select, StatusBadge, Vignette } from '../../../ui';
+import { Alert, Badge, Button, Card, Drawer, EnvoiFichier, Field, Input, LienFichier, Select, StatusBadge, Vignette } from '../../../ui';
 
 interface Props {
   incident: Incident | undefined;
@@ -121,14 +121,25 @@ export function IncidentDrawer({ incident: i, onFermer }: Props) {
           {i.preuves.length ? (
             <div className="grid grid-cols-3 gap-2">
               {i.preuves.map((u, k) => (
-                <a key={u} href={u.startsWith('demo://') ? undefined : u} target="_blank" rel="noreferrer">
+                <LienFichier key={u} url={u}>
                   <Vignette url={u} alt={`Preuve ${k + 1}`} legende={`Preuve ${k + 1}`} />
-                </a>
+                </LienFichier>
               ))}
             </div>
           ) : (
             <p className="text-(--lm-alerte)">Aucune preuve jointe : impossible de refacturer sans photo ni document.</p>
           )}
+          <EnvoiFichier
+            className="mt-2"
+            dossier={`incidents/${i.logementId}/${i.id}`}
+            accept="image/*,application/pdf"
+            multiple
+            libelle="Ajouter une preuve"
+            onEnvoye={(urls) => {
+              const r = d.mettreAJour('incidents', i.id, (x) => ({ ...x, preuves: [...x.preuves, ...urls] }));
+              if (r.ok) setRetour(urls.length > 1 ? `${urls.length} preuves ajoutées.` : 'Preuve ajoutée.');
+            }}
+          />
         </section>
 
         {i.statut !== 'resolu' && (

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { BadgePercent, BedDouble, Camera, Coins, Euro, Home, Percent, Star, TrendingUp } from 'lucide-react';
 import { useErp } from '../../../data/store';
-import { euros, note, pourcentage } from '../../../data/format';
+import { SANS_DONNEE, euros, note, pourcentage } from '../../../data/format';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { Stat } from '../../../ui';
 import { aideKpi, LibelleAide } from '../../performance/_composants/commun';
@@ -37,19 +37,19 @@ export function BandeKpi({ horizon }: { horizon: CleHorizon }) {
         aide={`${lancement} en lancement`}
         to="/erp/logements"
       />
-      <Stat label={<LibelleAide texte={aideKpi('occupation')}>Taux d’occupation</LibelleAide>} valeur={pourcentage(cour.occupation)} icone={<BedDouble />}
-        delta={variation(cour.occupation, prec.occupation, 'points', lib)} />
+      <Stat label={<LibelleAide texte={aideKpi('occupation')}>Taux d’occupation</LibelleAide>} valeur={actifs ? pourcentage(cour.occupation) : SANS_DONNEE} icone={<BedDouble />}
+        delta={actifs ? variation(cour.occupation, prec.occupation, 'points', lib) : undefined} aide={actifs ? undefined : 'aucun logement actif'} />
       <Stat label={<LibelleAide texte={AIDES.brut}>Revenu brut géré</LibelleAide>} valeur={euros(cour.revenuBrut, true)} icone={<Euro />}
         delta={variation(cour.revenuBrut, prec.revenuBrut, 'euros', lib)} to="/erp/finance" />
       <Stat label={<LibelleAide texte={AIDES.commission}>Commission Label Maison</LibelleAide>} valeur={euros(cour.commission, true)} icone={<Coins />}
         delta={variation(cour.commission, prec.commission, 'euros', lib)} to="/erp/finance" />
-      <Stat label={<LibelleAide texte={AIDES.adr}>ADR (prix moyen par nuit)</LibelleAide>} valeur={euros(cour.adr, true)} icone={<TrendingUp />}
-        delta={variation(cour.adr, prec.adr, 'euros', lib)} />
-      <Stat label={<LibelleAide texte={aideKpi('revpar')}>RevPAR</LibelleAide>} valeur={euros(cour.revpar, true)} icone={<Percent />}
-        delta={variation(cour.revpar, prec.revpar, 'euros', lib)} aide="par nuit disponible" />
+      <Stat label={<LibelleAide texte={AIDES.adr}>ADR (prix moyen par nuit)</LibelleAide>} valeur={cour.nuits ? euros(cour.adr, true) : SANS_DONNEE} icone={<TrendingUp />}
+        delta={cour.nuits ? variation(cour.adr, prec.adr, 'euros', lib) : undefined} aide={cour.nuits ? undefined : 'aucune nuit vendue'} />
+      <Stat label={<LibelleAide texte={aideKpi('revpar')}>RevPAR</LibelleAide>} valeur={actifs ? euros(cour.revpar, true) : SANS_DONNEE} icone={<Percent />}
+        delta={actifs ? variation(cour.revpar, prec.revpar, 'euros', lib) : undefined} aide="par nuit disponible" />
       <Stat
         label={<LibelleAide texte={aideKpi('note')}>Note voyageur moyenne</LibelleAide>}
-        valeur={note(cour.note)}
+        valeur={cour.note === undefined ? SANS_DONNEE : note(cour.note)}
         icone={<Star />}
         tone={cour.note !== undefined && cour.note < SEUIL_NOTE_CONTROLE ? 'alerte' : 'neutre'}
         delta={variation(cour.note, prec.note, 'note', lib)}
@@ -57,21 +57,22 @@ export function BandeKpi({ horizon }: { horizon: CleHorizon }) {
       />
       <Stat
         label={<LibelleAide texte={aideKpi('menagesPhotos')}>Ménages validés avec photos</LibelleAide>}
-        valeur={pourcentage(cour.missionsValidees)}
+        valeur={cour.menagesPasses ? pourcentage(cour.missionsValidees) : SANS_DONNEE}
         icone={<Camera />}
-        tone={cour.missionsValidees < 0.9 ? 'alerte' : 'neutre'}
-        delta={variation(cour.missionsValidees, prec.missionsValidees, 'points', lib)}
+        tone={cour.menagesPasses && cour.missionsValidees < 0.9 ? 'alerte' : 'neutre'}
+        delta={cour.menagesPasses && prec.menagesPasses ? variation(cour.missionsValidees, prec.missionsValidees, 'points', lib) : undefined}
+        aide={cour.menagesPasses ? undefined : 'aucun ménage sur la période'}
         to="/erp/menages"
       />
       <Stat
         label={<LibelleAide texte={AIDES.effectif}>Taux de commission effectif</LibelleAide>}
-        valeur={cour.revenuBrut ? pourcentage(cour.commission / cour.revenuBrut, 1) : '-'}
+        valeur={cour.revenuBrut ? pourcentage(cour.commission / cour.revenuBrut, 1) : SANS_DONNEE}
         icone={<BadgePercent />}
         aide="commission / brut géré"
       />
       <Stat
         label={<LibelleAide texte={AIDES.parLogement}>Revenu par logement actif</LibelleAide>}
-        valeur={actifs ? euros(Math.round(cour.revenuBrut / actifs), true) : '-'}
+        valeur={actifs ? euros(Math.round(cour.revenuBrut / actifs), true) : SANS_DONNEE}
         icone={<Home />}
         aide="brut sur la période"
       />

@@ -3,7 +3,7 @@ import { AUJOURDHUI, dateCourte, versCentimes } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { CategorieIncident, GraviteIncident, Incident, Refacturable } from '../../../data/types';
-import { Button, Field, Input, Modal, Select, Textarea } from '../../../ui';
+import { Button, EnvoiFichier, Field, Input, Modal, Select, Textarea, Prerequis } from '../../../ui';
 
 const options = <K extends string>(libelles: Record<K, string>) =>
   (Object.keys(libelles) as K[]).map((k) => ({ valeur: k, libelle: libelles[k] }));
@@ -39,7 +39,7 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
     const preuves = f.preuves.split(/\s+/).map((u) => u.trim()).filter(Boolean);
     if (!f.logementId) e.logementId = 'Choisissez le logement.';
     if (f.description.trim().length < 10) e.description = 'Décrivez l’incident (10 caractères minimum).';
-    if (preuves.some((u) => !/^(https?:\/\/|demo:\/\/)/.test(u))) e.preuves = 'Chaque preuve doit être une adresse commençant par https://';
+    if (preuves.some((u) => !/^(https?:\/\/|demo:\/\/|stockage:\/\/)/.test(u))) e.preuves = 'Chaque preuve doit être une adresse commençant par https://';
     const cout = f.cout.trim() ? versCentimes(f.cout) : undefined;
     if (cout !== undefined && (Number.isNaN(cout) || cout < 0)) e.cout = 'Montant invalide.';
     setErreurs(e);
@@ -75,6 +75,9 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
       }
     >
       <div className="grid gap-3 sm:grid-cols-2">
+        {!logements.length && (
+          <Prerequis className="sm:col-span-2" manque="Aucun logement enregistré." detail="Un incident se rattache toujours à un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+        )}
         <Field label="Logement" requis erreur={erreurs.logementId}>
           <Select value={f.logementId} placeholder="Choisir" onChange={(e) => setF((x) => ({ ...x, logementId: e.target.value, reservationId: '' }))} options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
         </Field>
@@ -102,9 +105,18 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
         <Field label="Description" requis erreur={erreurs.description} className="sm:col-span-2">
           <Textarea rows={3} value={f.description} onChange={(e) => maj('description', e.target.value)} placeholder="Ce qui a été constaté, par qui, et l’impact pour le voyageur." />
         </Field>
-        <Field label="Preuves (photos, documents)" aide="Une adresse par ligne." erreur={erreurs.preuves} className="sm:col-span-2">
-          <Textarea rows={2} value={f.preuves} onChange={(e) => maj('preuves', e.target.value)} placeholder="https://..." />
-        </Field>
+        <div className="grid gap-2 sm:col-span-2">
+          <Field label="Preuves (photos, documents)" aide="Joignez des fichiers, ou collez une adresse par ligne." erreur={erreurs.preuves}>
+            <Textarea rows={2} value={f.preuves} onChange={(e) => maj('preuves', e.target.value)} placeholder="https://..." />
+          </Field>
+          <EnvoiFichier
+            dossier={`incidents/${f.logementId || 'sans-logement'}`}
+            accept="image/*,application/pdf"
+            multiple
+            libelle="Joindre des photos ou documents"
+            onEnvoye={(urls) => setF((x) => ({ ...x, preuves: [x.preuves.trim(), ...urls].filter(Boolean).join('\n') }))}
+          />
+        </div>
         <Field label="Refacturable à">
           <Select value={f.refacturable} onChange={(e) => maj('refacturable', e.target.value as Refacturable)} options={options(LIBELLES.refacturable)} />
         </Field>

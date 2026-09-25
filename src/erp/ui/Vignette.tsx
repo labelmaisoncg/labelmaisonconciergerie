@@ -1,5 +1,6 @@
 import { ImageIcon } from 'lucide-react';
 import { cn } from './cn';
+import { useLienFichier } from './Fichier';
 
 export interface VignetteProps {
   url?: string;
@@ -9,15 +10,16 @@ export interface VignetteProps {
 }
 
 /**
- * Photo (mission, incident, logement). Les URL de démo (« demo:// ») et les
- * URL absentes affichent un aplat neutre plutôt qu'une image cassée.
+ * Photo (mission, incident, logement). Les fichiers stockés dans Supabase
+ * (« stockage:// ») sont affichés par lien signé ; les URL de démo et les URL
+ * absentes affichent un aplat neutre plutôt qu'une image cassée.
  */
 export function Vignette({ url, alt, legende, className }: VignetteProps) {
-  const reelle = url && !url.startsWith('demo://');
+  const reelle = useLienFichier(url);
   return (
     <figure className={cn('overflow-hidden rounded-lg border border-(--lm-bord) bg-(--lm-surface-2)', className)}>
       {reelle ? (
-        <img src={url} alt={alt} loading="lazy" className="aspect-[4/3] w-full object-cover" />
+        <img src={reelle} alt={alt} loading="lazy" className="aspect-[4/3] w-full object-cover" />
       ) : (
         <div role="img" aria-label={alt} className="grid aspect-[4/3] w-full place-items-center text-(--lm-encre-3)">
           <ImageIcon className="size-6" aria-hidden />

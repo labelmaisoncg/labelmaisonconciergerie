@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Button, Field, Input, Modal, Select } from '../../ui';
+import { Alert, Button, Field, Input, Modal, Select, Prerequis } from '../../ui';
 import { nouvelId, useErp } from '../../data/store';
 import { COMMISSION_CIBLE_MAX, COMMISSION_CIBLE_MIN } from '../../data/constantes';
 import { AUJOURDHUI, ajouterJours, euros, versCentimes } from '../../data/format';
@@ -108,6 +108,11 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
       }
     >
       <form id="form-mandat" onSubmit={enregistrer} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {!mandat && !proprietaires.length ? (
+          <Prerequis className="sm:col-span-2" manque="Aucun propriétaire enregistré." detail="Un mandat lie un propriétaire à un logement." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
+        ) : !mandat && !logements.length ? (
+          <Prerequis className="sm:col-span-2" manque="Aucun logement enregistré." detail="Ajoutez le logement confié avant de créer son mandat." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+        ) : null}
         <Field label="Propriétaire" requis erreur={erreurs.proprietaireId}>
           <Select
             value={s.proprietaireId}

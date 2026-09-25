@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FilePen, FileSignature, Percent, Plus, RefreshCcw } from 'lucide-react';
-import { Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne } from '../../ui';
+import { Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
@@ -19,7 +19,12 @@ export default function PageMandats() {
   const [params, setParams] = useSearchParams();
   const [recherche, setRecherche] = useState('');
   const [filtres, setFiltres] = useState<string[]>([]);
-  const [form, setForm] = useState<{ ouvert: boolean; mandat?: Mandat }>({ ouvert: false });
+  const [form, setFormEtat] = useState<{ ouvert: boolean; mandat?: Mandat }>({ ouvert: false });
+  const [creationUrl, setCreationUrl] = useCreationParUrl();
+  const setForm = (f: { ouvert: boolean; mandat?: Mandat }) => {
+    if (!f.ouvert && creationUrl) setCreationUrl(false);
+    setFormEtat(f);
+  };
 
   const selection = d.mandats.find((m) => m.id === params.get('mandat'));
   const ouvrir = (id?: string) => setParams(id ? { mandat: id } : {}, { replace: !id });
@@ -140,7 +145,7 @@ export default function PageMandats() {
 
       <DetailMandat mandat={selection} onFermer={() => ouvrir()} onModifier={(m) => setForm({ ouvert: true, mandat: m })} />
       <FormMandat
-        ouvert={form.ouvert}
+        ouvert={form.ouvert || creationUrl}
         mandat={form.mandat}
         onFermer={() => setForm({ ouvert: false })}
         onEnregistre={(m) => ouvrir(m.id)}

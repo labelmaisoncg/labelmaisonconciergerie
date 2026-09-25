@@ -15,6 +15,8 @@ import {
   revenuBrut,
   revpar,
   tauxMissionsValideesAvecPhotos,
+  nbMenagesPasses,
+  nuitsVendues,
   tauxOccupation,
   type Fenetre,
 } from '../../../data/selectors';
@@ -48,6 +50,10 @@ export interface MesuresPeriode {
   revpar: number;
   note: number | undefined;
   missionsValidees: number;
+  /** Ménages passés sur la période (0 : taux sans objet). */
+  menagesPasses: number;
+  /** Nuits vendues sur la période (0 : prix moyen sans objet). */
+  nuits: number;
 }
 
 export function mesurer(d: ErpDonnees, f: Fenetre): MesuresPeriode {
@@ -60,6 +66,8 @@ export function mesurer(d: ErpDonnees, f: Fenetre): MesuresPeriode {
     revpar: revpar(d.reservations, actifs, f),
     note: noteMoyenne(d.reservations, f),
     missionsValidees: tauxMissionsValideesAvecPhotos(d.missions, f),
+    menagesPasses: nbMenagesPasses(d.missions, f),
+    nuits: nuitsVendues(d.reservations, f),
   };
 }
 

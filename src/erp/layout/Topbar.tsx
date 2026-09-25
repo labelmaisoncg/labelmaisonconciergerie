@@ -4,6 +4,7 @@ import { IconButton } from '../ui';
 import { moduleDuChemin } from '../modules/registry';
 import { GlobalSearch } from './GlobalSearch';
 import { UserSwitcher } from './UserSwitcher';
+import { IndicateurSynchro } from './EtatSynchro';
 
 export interface TopbarProps {
   onMenu: () => void;
@@ -30,6 +31,7 @@ export function Topbar({ onMenu }: TopbarProps) {
         </span>
       </nav>
       <GlobalSearch className="min-w-0 flex-1 md:ml-auto md:max-w-sm md:flex-none lg:w-96 lg:max-w-none" />
+      <IndicateurSynchro />
       <UserSwitcher />
     </header>
   );

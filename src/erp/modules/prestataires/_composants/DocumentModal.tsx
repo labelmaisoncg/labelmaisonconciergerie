@@ -5,7 +5,7 @@ import { AUJOURDHUI, dateCourte } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { DocumentPrestataire, Prestataire, TypeDocument } from '../../../data/types';
-import { Alert, Button, Field, Input, Modal, Select } from '../../../ui';
+import { Alert, Button, EnvoiFichier, Field, Input, Modal, Select } from '../../../ui';
 
 interface Props {
   prestataire: Prestataire;
@@ -84,9 +84,20 @@ export function DocumentModal({ prestataire, type: typeInitial, onFermer, onSucc
             <Input type="date" value={fin} min={AUJOURDHUI} onChange={(e) => setFin(e.target.value)} />
           </Field>
         )}
-        <Field label="Fichier (adresse)" requis>
-          <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." />
-        </Field>
+        <div className="grid gap-2">
+          <Field label="Fichier" requis aide={url.startsWith('stockage://') ? 'Fichier joint, conservé dans l’espace privé de l’ERP.' : 'Joignez le fichier, ou collez son adresse.'}>
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://..." />
+          </Field>
+          <EnvoiFichier
+            dossier={`prestataires/${prestataire.id}/${type}`}
+            accept="application/pdf,image/*"
+            libelle="Joindre le document"
+            onEnvoye={(urls) => {
+              setUrl(urls[0]);
+              setErreur(null);
+            }}
+          />
+        </div>
         {erreur && <Alert tone="danger">{erreur}</Alert>}
       </div>
     </Modal>

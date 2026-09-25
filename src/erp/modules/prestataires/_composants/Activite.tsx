@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { AUJOURDHUI, ajouterJours, dateCourte, euros, moisAnnee, nombre, note, pourcentage } from '../../../data/format';
+import { AUJOURDHUI, SANS_DONNEE, ajouterJours, dateCourte, euros, moisAnnee, nombre, note, pourcentage } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { Incident, Mission, PaiementPrestataire, Prestataire } from '../../../data/types';
@@ -51,9 +51,9 @@ export function Qualite({ prestataire: p }: { prestataire: Prestataire }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Note moyenne" valeur={note(p.noteMoyenne)} aide={`${notesVoyageurs.length} séjours notés`} />
-        <Stat label="Contrôles physiques" valeur={moyControle === undefined ? '-' : `${note(moyControle)}/5`} aide={`${controles.length} contrôles`} />
-        <Stat label="Taux de validation" valeur={passees.length ? pourcentage(validees / passees.length) : '-'} aide={`${nombre(validees)} validées sur ${nombre(passees.length)}`} />
+        <Stat label="Note moyenne" valeur={p.noteMoyenne === undefined ? SANS_DONNEE : note(p.noteMoyenne)} aide={`${notesVoyageurs.length} séjours notés`} />
+        <Stat label="Contrôles physiques" valeur={moyControle === undefined ? SANS_DONNEE : `${note(moyControle)}/5`} aide={`${controles.length} contrôles`} />
+        <Stat label="Taux de validation" valeur={passees.length ? pourcentage(validees / passees.length) : SANS_DONNEE} aide={`${nombre(validees)} validées sur ${nombre(passees.length)}`} />
         <Stat label="Refus et retards" valeur={nombre(refusees.length + retards.length)} tone={refusees.length + retards.length ? 'danger' : 'succes'} aide={`${refusees.length} refus, ${retards.length} preuves en retard`} />
       </div>
       <Card flush>

@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
 import { ArrowRight, CalendarDays, CalendarPlus, List, LogIn, LogOut, Percent, TrendingUp, Wallet } from 'lucide-react';
-import { Button, Callout, Drawer, PageHeader, Stat, StatusBadge, Tabs } from '../../ui';
+import { Button, Callout, Drawer, PageHeader, Stat, StatusBadge, Tabs, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI, ajouterJours, dateCourte, euros, pluriel, pourcentage } from '../../data/format';
 import { adr, fenetreJours, logementById, logementsActifs, revpar, tauxOccupation } from '../../data/selectors';
@@ -60,7 +60,7 @@ function PageReservations() {
   const vueDemandee = params.get('vue') ?? (logementFiltre ? 'liste' : 'calendrier');
   const vue = vueDemandee === 'liste' ? 'liste' : 'calendrier';
   const [ouverte, setOuverte] = useState<Reservation | null>(null);
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
   const [confirmation, setConfirmation] = useState<string | null>(null);
 
   const logementsPlanning = d.logements.filter((l) => l.statut === 'actif' || l.statut === 'lancement');

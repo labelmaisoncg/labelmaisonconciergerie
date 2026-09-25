@@ -13,6 +13,7 @@ import {
   Table,
   cn,
   type Colonne,
+  useCreationParUrl,
 } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
@@ -43,7 +44,7 @@ export default function ListeLogements() {
   const [statuts, setStatuts] = useState<string[]>([]);
   const [ville, setVille] = useState('');
   const [vue, setVueEtat] = useState(lireVue);
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
 
   const setVue = (v: 'cartes' | 'tableau') => {
     setVueEtat(v);

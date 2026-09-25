@@ -244,6 +244,11 @@ export function missionValidable(m: Mission): Verdict {
 }
 
 /** Part des ménages passés de la fenêtre validés avec photos avant et après (0..1). */
+/** Ménages passés de la fenêtre (base du taux de validation avec photos). */
+export function nbMenagesPasses(missions: Mission[], f: Fenetre): number {
+  return missions.filter((m) => m.type === 'menage' && m.statut !== 'annulee' && m.date >= f.debut && m.date < f.fin && m.date < AUJOURDHUI).length;
+}
+
 export function tauxMissionsValideesAvecPhotos(missions: Mission[], f: Fenetre): number {
   const passees = missions.filter(
     (m) => m.type === 'menage' && m.statut !== 'annulee' && m.date >= f.debut && m.date < f.fin && m.date < AUJOURDHUI,

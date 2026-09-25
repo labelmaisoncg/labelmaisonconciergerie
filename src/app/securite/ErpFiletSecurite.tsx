@@ -29,8 +29,11 @@ export class ErpFiletSecurite extends Component<{ children: ReactNode }, Etat> {
 
   private reinitialiser = () => {
     try {
+      // Préférences et copies locales seulement : jamais la session de
+      // connexion ni les modifications pas encore enregistrées dans la base.
+      const garder = new Set(['lm-erp-file-attente', 'lm-erp-auth']);
       for (const cle of Object.keys(window.localStorage)) {
-        if (cle.startsWith('lm-erp-')) window.localStorage.removeItem(cle);
+        if (cle.startsWith('lm-erp-') && !garder.has(cle)) window.localStorage.removeItem(cle);
       }
     } catch {
       /* stockage indisponible : le rechargement suffira */
@@ -72,14 +75,14 @@ export class ErpFiletSecurite extends Component<{ children: ReactNode }, Etat> {
           <p style={{ fontSize: 15, lineHeight: 1.6, color: 'rgba(20,17,14,.66)' }}>
             {estErreurDeChargement(erreur)
               ? 'Une nouvelle version vient d’être mise en ligne. Rechargez la page pour l’obtenir.'
-              : 'Une erreur inattendue s’est produite. Rechargez la page ; si elle revient, réinitialisez les données de démonstration enregistrées dans ce navigateur.'}
+              : 'Une erreur inattendue s’est produite. Rechargez la page ; si elle revient, videz les préférences enregistrées dans ce navigateur (vos données restent dans la base).'}
           </p>
           <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap', marginTop: 20 }}>
             <button type="button" onClick={() => window.location.reload()} style={{ ...bouton, background: '#A97C30', color: '#fff' }}>
               Recharger la page
             </button>
             <button type="button" onClick={this.reinitialiser} style={{ ...bouton, background: '#fff', color: '#14110E' }}>
-              Réinitialiser les données de démo
+              Vider les préférences locales
             </button>
           </div>
           <p style={{ marginTop: 18, fontSize: 12, color: 'rgba(20,17,14,.45)', wordBreak: 'break-word' }}>{erreur.message}</p>

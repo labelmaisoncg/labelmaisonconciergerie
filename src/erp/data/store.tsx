@@ -1,14 +1,21 @@
 /**
  * État de l'ERP : ErpProvider + useErp().
  *
- * Mode démo (par défaut) : état en mémoire initialisé depuis le seed, recopié
- * dans localStorage (clé lm-erp-demo-v1) pour que la maquette reste
- * manipulable d'une visite à l'autre. Chaque mutation laisse une trace au
- * journal. Les règles métier (SPEC §2) sont appliquées ici, pas dans les écrans.
+ * Deux modes (voir config.ts) :
+ * - « reel » (production) : connexion Supabase (e-mail + mot de passe), données
+ *   lues dans la base de Label Maison, chaque action enregistrée aussitôt
+ *   (synchro.ts), modifications des autres membres reçues en direct.
+ * - « demo » (développement local, VITE_ERP_DEMO=1) : jeu de démonstration en
+ *   mémoire, recopié dans localStorage (clé lm-erp-demo-v1).
+ *
+ * Dans les deux cas les mutations gardent la même API, synchrone : l'action
+ * est appliquée localement, le moteur d'automatisations repasse, le journal
+ * est tenu, puis la différence est enregistrée. Les règles métier (SPEC §2)
+ * sont appliquées ici, pas dans les écrans.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ETAPES_PIPELINE } from './constantes';
-import { AUJOURDHUI, MAINTENANT, horodatageMaintenant } from './format';
+import { AUJOURDHUI, MAINTENANT, dateParis, horodatageMaintenant } from './format';
 import {
   CLE_AUTOMATISATIONS,
   REGLES,
@@ -16,8 +23,21 @@ import {
   type EvenementAuto,
   type ResultatMoteur,
 } from '../automatisations';
-import { creerSeed } from './seed';
+import { COLLECTIONS, completer, trierJournal } from './collections';
+import { MODE, MODE_DEMO } from './config';
 import { logementActivable, missionValidable, prestataireConforme } from './selectors';
+import {
+  enregistrerMembre,
+  genreErreur,
+  lireMembres,
+  messageErreur,
+  obtenirClient,
+  retirerMembre,
+  RETOUR_LIEN,
+  seDeconnecter as deconnexionSupabase,
+} from './supabase';
+import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
+import { EcranPorte, type PhasePorte } from '../layout/Connexion';
 import type {
   CleChecklistLancement,
   DateISO,
@@ -32,8 +52,8 @@ import type {
   Utilisateur,
 } from './types';
 
+export { COLLECTIONS };
 export const CLE_STOCKAGE = 'lm-erp-demo-v1';
-const CLE_UTILISATEUR = 'lm-erp-demo-v1:utilisateur';
 
 export type Resultat = { ok: true } | { ok: false; erreur: string };
 
@@ -41,17 +61,29 @@ export type NouvelIncident = Omit<Incident, 'id' | 'statut' | 'preuves' | 'refac
   Partial<Pick<Incident, 'statut' | 'preuves' | 'refacturable'>>;
 
 export interface ErpContexte extends ErpDonnees {
-  /** 'supabase' dès que VITE_SUPABASE_URL est défini. */
-  mode: 'demo' | 'supabase';
-  /** Vrai tant que les données sont locales (bandeau « Données de démonstration »). */
+  /** 'reel' : base Supabase de Label Maison ; 'demo' : jeu local (développement uniquement). */
+  mode: 'demo' | 'reel';
+  /** Vrai seulement en démo locale (bandeau « Données de démonstration »). */
   demo: boolean;
   /** Toutes les collections, pratique pour les sélecteurs. */
   donnees: ErpDonnees;
+  /** Membre connecté (nom et rôle tirés de erp.membres). */
   utilisateur: Utilisateur;
-  changerUtilisateur: (id: Id) => void;
+  /** Rôle « lecture » : rien n'est enregistré. */
+  lectureSeule: boolean;
+  /** État de l'enregistrement dans la base (null en démo). */
+  synchro: EtatSynchro | null;
+  /** Relance tout de suite les écritures en attente. */
+  relancerEnregistrement: () => void;
+  /** Message à afficher (échec d'une opération hors données, ex. gestion des membres). */
+  avertissement: string | null;
+  fermerAvertissement: () => void;
+  seDeconnecter: () => void;
 
   upsert: <C extends NomCollection>(collection: C, element: ElementDe<C>) => void;
   remove: (collection: NomCollection, id: Id) => void;
+  /** Modifie un élément à partir de sa version la plus récente (après une attente : envoi de photo...). */
+  mettreAJour: <C extends NomCollection>(collection: C, id: Id, patch: (e: ElementDe<C>) => ElementDe<C>) => Resultat;
 
   changerStatutMission: (id: Id, statut: StatutMission) => Resultat;
   validerMission: (id: Id) => Resultat;
@@ -68,6 +100,7 @@ export interface ErpContexte extends ErpDonnees {
   marquerIncidentRecupere: (id: Id, date?: DateISO) => Resultat;
   marquerFacturePayee: (id: Id, date?: DateISO) => Resultat;
 
+  /** Démo uniquement : recharge le jeu de démonstration. Sans effet en production. */
   reinitialiserDemo: () => void;
 
   /* Automatisations : le moteur tourne au chargement et après chaque action. */
@@ -90,19 +123,6 @@ interface EtatAuto {
 
 const MAX_EVENEMENTS = 500;
 
-function lireAuto(): EtatAuto {
-  try {
-    const brut = window.localStorage.getItem(CLE_AUTOMATISATIONS);
-    if (brut) {
-      const e = JSON.parse(brut) as Partial<EtatAuto>;
-      if (e && typeof e.actives === 'object' && Array.isArray(e.evenements)) return e as EtatAuto;
-    }
-  } catch {
-    /* stockage indisponible : état par défaut */
-  }
-  return { actives: {}, evenements: [] };
-}
-
 function clesActives(actives: Record<string, boolean>): string[] {
   return REGLES.filter((r) => actives[r.cle] ?? r.actifParDefaut).map((r) => r.cle);
 }
@@ -110,17 +130,21 @@ function clesActives(actives: Record<string, boolean>): string[] {
 /** Nouveaux événements en tête, dédoublonnés par id (un constat connu ne s'empile pas). */
 function fusionner(existants: EvenementAuto[], nouveaux: EvenementAuto[]): EvenementAuto[] {
   const connus = new Set(existants.map((e) => e.id));
-  const inedits = nouveaux.filter((e) => !connus.has(e.id));
+  const inedits = nouveaux.filter((e) => e && typeof e.id === 'string' && !connus.has(e.id));
   return inedits.length ? [...inedits, ...existants].slice(0, MAX_EVENEMENTS) : existants;
 }
 
-// La maquette vit à une heure figée : les constats gardent des ids stables
-// d'un passage à l'autre, donc le journal ne se remplit pas de doublons.
 // Une règle qui échoue sur des données inattendues ne doit jamais bloquer
 // l'ERP : on garde les données telles quelles et on le signale en console.
+// En démo, l'heure est figée (ids de constats stables) ; en production, c'est
+// l'instant réel.
 const automatiser = (d: ErpDonnees, actives: Record<string, boolean>): ResultatMoteur => {
   try {
-    return executerAutomatisations(d, { date: AUJOURDHUI, maintenant: MAINTENANT, reglesActives: clesActives(actives) });
+    return executerAutomatisations(d, {
+      date: AUJOURDHUI,
+      maintenant: MODE_DEMO ? MAINTENANT : horodatageMaintenant(),
+      reglesActives: clesActives(actives),
+    });
   } catch (erreur) {
     console.error('[erp] automatisations interrompues', erreur);
     return { donnees: d, evenements: [], changements: [], passes: 0 };
@@ -131,91 +155,105 @@ const Contexte = createContext<ErpContexte | null>(null);
 
 /* ------------------------------------------------------------------ outils */
 
-/** Identifiant local unique, préfixé par le type d'entité. */
+/** Identifiant unique, préfixé par le type d'entité. */
 export function nouvelId(prefixe: string): Id {
   return `${prefixe}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
-const COLLECTIONS: NomCollection[] = [
-  'proprietaires', 'mandats', 'logements', 'reservations', 'filsMessages', 'missions', 'prestataires',
-  'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects',
-  'utilisateurs', 'journal', 'recommandations', 'versionsAnnonce',
-];
-
-/**
- * Collections ajoutées après la première version : une sauvegarde locale plus
- * ancienne ne les contient pas, on les initialise vides au lieu de tout jeter.
- */
-const COLLECTIONS_AJOUTEES: NomCollection[] = ['recommandations', 'versionsAnnonce'];
-
-/** Garantit la présence de toutes les collections (seed ou sauvegarde plus anciens). */
-function completer(d: ErpDonnees): ErpDonnees {
-  const manquantes = COLLECTIONS.filter((c) => !Array.isArray((d as unknown as Record<string, unknown>)[c]));
-  return manquantes.length ? ({ ...d, ...Object.fromEntries(manquantes.map((c) => [c, []])) } as ErpDonnees) : d;
-}
-
-function charger(): ErpDonnees {
-  try {
-    const brut = window.localStorage.getItem(CLE_STOCKAGE);
-    if (brut) {
-      const d = JSON.parse(brut) as Partial<ErpDonnees>;
-      const migre = { ...d } as Record<string, unknown>;
-      for (const c of COLLECTIONS_AJOUTEES) if (!Array.isArray(migre[c])) migre[c] = [];
-      if (COLLECTIONS.every((c) => Array.isArray(migre[c]))) return migre as unknown as ErpDonnees;
-    }
-  } catch {
-    /* stockage indisponible ou corrompu : on repart du seed */
-  }
-  return completer(creerSeed());
-}
-
-function enregistrer(d: ErpDonnees) {
-  try {
-    window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify(d));
-  } catch {
-    /* quota dépassé ou navigation privée : la démo reste en mémoire */
-  }
-}
-
-function lireUtilisateur(): Id {
-  try {
-    return window.localStorage.getItem(CLE_UTILISATEUR) || 'usr-abdel';
-  } catch {
-    return 'usr-abdel';
-  }
 }
 
 const echec = (erreur: string): Resultat => ({ ok: false, erreur });
 const OK: Resultat = { ok: true };
 
-/* ---------------------------------------------------------------- provider */
+/* ------------------------------------------------------------- persistance */
 
-export function ErpProvider({ children }: { children: ReactNode }) {
+/** Ce que le cœur du store délègue au mode (démo locale ou base réelle). */
+interface Persistance {
+  /** Enregistre la différence entre deux états (après moteur). */
+  donnees: (avant: ErpDonnees, apres: ErpDonnees, auteur: string) => void;
+  /** Enregistre un champ de l'état des automatisations. */
+  auto: (champ: 'actives' | 'evenements', etat: EtatAuto) => void;
+  /** Création ou modification d'un membre (production : table erp.membres). */
+  membre?: (u: Utilisateur) => Promise<string | null>;
+  /** Retrait d'un membre. */
+  retirerMembre?: (id: Id) => Promise<string | null>;
+}
+
+/* ------------------------------------------------------------ cœur (commun) */
+
+interface PropsCoeur {
+  mode: 'demo' | 'reel';
+  initial: ErpDonnees;
+  autoInitial: EtatAuto;
+  utilisateur: Utilisateur;
+  lectureSeule: boolean;
+  persistance: Persistance;
+  /** Production : synchronisation active (changements distants, relance). */
+  synchro?: Synchro | null;
+  etatSynchro: EtatSynchro | null;
+  seDeconnecter: () => void;
+  /** Démo : jeu de données de remplacement pour « Réinitialiser ». */
+  jeuDemo?: () => ErpDonnees;
+  children: ReactNode;
+}
+
+function CoeurErp({
+  mode,
+  initial,
+  autoInitial,
+  utilisateur,
+  lectureSeule,
+  persistance,
+  synchro,
+  etatSynchro,
+  seDeconnecter,
+  jeuDemo,
+  children,
+}: PropsCoeur) {
+  // Premier passage du moteur sur les données chargées (il rattrape le retard
+  // du jour : ménages à créer, factures du mois...). Son résultat est
+  // enregistré juste après le montage.
   const [depart] = useState(() => {
-    const auto = lireAuto();
-    const r = automatiser(charger(), auto.actives);
-    return { donnees: r.donnees, auto: { ...auto, evenements: fusionner(auto.evenements, r.evenements) } };
+    const r = automatiser(initial, autoInitial.actives);
+    return { avant: initial, donnees: r.donnees, auto: { ...autoInitial, evenements: fusionner(autoInitial.evenements, r.evenements) } };
   });
   const [donnees, setDonnees] = useState<ErpDonnees>(depart.donnees);
   const [etatAuto, setEtatAuto] = useState<EtatAuto>(depart.auto);
+  const [avertissement, setAvertissement] = useState<string | null>(null);
   const autoRef = useRef(etatAuto);
   autoRef.current = etatAuto;
-  const [utilisateurId, setUtilisateurId] = useState<Id>(lireUtilisateur);
   const ref = useRef(donnees);
   ref.current = donnees;
+  const persistanceRef = useRef(persistance);
+  persistanceRef.current = persistance;
+  const utilisateurRef = useRef(utilisateur);
+  utilisateurRef.current = utilisateur;
 
-  // TODO(supabase) : quand VITE_SUPABASE_URL est défini, charger et écrire via
-  // l'API REST de Supabase (schéma erp, migration 20260924000000). En attendant,
-  // on reste sur les données de démonstration locales.
-  const mode: ErpContexte['mode'] = import.meta.env.VITE_SUPABASE_URL ? 'supabase' : 'demo';
-
-  useEffect(() => enregistrer(donnees), [donnees]);
+  // Enregistre le rattrapage du moteur au chargement (une seule fois).
+  const departEnregistre = useRef(false);
   useEffect(() => {
-    try {
-      window.localStorage.setItem(CLE_AUTOMATISATIONS, JSON.stringify(etatAuto));
-    } catch {
-      /* navigation privée : l'état reste en mémoire */
-    }
+    if (departEnregistre.current) return;
+    departEnregistre.current = true;
+    persistanceRef.current.donnees(depart.avant, depart.donnees, 'Automatisation');
+  }, [depart]);
+
+  /* ---------------------------------------- état des automatisations */
+
+  // Dernières valeurs connues de la base : on n'écrit que ce qui a changé.
+  const autoConnu = useRef({ actives: JSON.stringify(autoInitial.actives), evenements: JSON.stringify(autoInitial.evenements) });
+  useEffect(() => {
+    const s = JSON.stringify(etatAuto.actives);
+    if (s === autoConnu.current.actives) return;
+    autoConnu.current.actives = s;
+    persistanceRef.current.auto('actives', etatAuto);
+  }, [etatAuto]);
+  useEffect(() => {
+    // Les constats changent souvent par petites touches : regroupés sur 1,5 s.
+    const minuterie = setTimeout(() => {
+      const s = JSON.stringify(etatAuto.evenements);
+      if (s === autoConnu.current.evenements) return;
+      autoConnu.current.evenements = s;
+      persistanceRef.current.auto('evenements', etatAuto);
+    }, 1500);
+    return () => clearTimeout(minuterie);
   }, [etatAuto]);
 
   const ajouterEvenementsAuto = useCallback((nouveaux: EvenementAuto[]) => {
@@ -226,37 +264,101 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  /** Fait passer le moteur sur des données, les pose dans l'état, garde ses constats. */
+  /* ------------------------------------------------- changements distants */
+
+  useEffect(() => {
+    if (!synchro) return;
+    let relectureEnCours = false;
+    let derniereRelecture = 0;
+    synchro.brancher({
+      surDistant: (changements: ChangementDistant[]) => {
+        const suivant = appliquerOperations(ref.current, changements);
+        if (suivant === ref.current) return;
+        ref.current = suivant;
+        setDonnees(suivant);
+      },
+      surEtatAutoDistant: (patch: Partial<EtatAutoStocke>) => {
+        setEtatAuto((e) => {
+          let suivant = e;
+          if (patch.actives && typeof patch.actives === 'object') {
+            autoConnu.current.actives = JSON.stringify(patch.actives);
+            suivant = { ...suivant, actives: patch.actives };
+          }
+          if (Array.isArray(patch.evenements)) {
+            const evenements = fusionner(suivant.evenements, patch.evenements as EvenementAuto[]);
+            if (evenements === suivant.evenements) autoConnu.current.evenements = JSON.stringify(evenements);
+            suivant = { ...suivant, evenements };
+          }
+          autoRef.current = suivant;
+          return suivant;
+        });
+      },
+      // Après une coupure (réseau, veille) : relecture complète, les
+      // modifications locales en attente restent appliquées par-dessus.
+      surResynchro: () => {
+        if (relectureEnCours || Date.now() - derniereRelecture < 5000) return;
+        relectureEnCours = true;
+        derniereRelecture = Date.now();
+        const repere = synchro.repere();
+        synchro
+          .chargerTout()
+          .then((lu) => {
+            // Ce qui s'est passé pendant la lecture est rejoué par-dessus l'instantané.
+            const suivant = synchro.appliquerFile({ ...lu, utilisateurs: ref.current.utilisateurs }, repere);
+            ref.current = suivant;
+            setDonnees(suivant);
+          })
+          .catch((e) => console.warn('[erp] relecture impossible', e))
+          .finally(() => {
+            relectureEnCours = false;
+          });
+      },
+    });
+    synchro.activerDistant();
+
+    // Onglet resté longtemps en arrière-plan (veille, autre application) : on relit au retour.
+    let cacheLe = 0;
+    const visibilite = () => {
+      if (document.visibilityState === 'hidden') cacheLe = Date.now();
+      else if (cacheLe && Date.now() - cacheLe > 2 * 60_000) {
+        cacheLe = 0;
+        void synchro.envoyer();
+        synchro.demanderResynchro();
+      }
+    };
+    document.addEventListener('visibilitychange', visibilite);
+    return () => document.removeEventListener('visibilitychange', visibilite);
+  }, [synchro]);
+
+  /** Fait passer le moteur sur des données, les pose dans l'état, enregistre la différence. */
   const poser = useCallback(
-    (d: ErpDonnees): ResultatMoteur => {
+    (d: ErpDonnees, avant: ErpDonnees, auteur: string): ResultatMoteur => {
       const r = automatiser(d, autoRef.current.actives);
       ref.current = r.donnees;
       setDonnees(r.donnees);
       ajouterEvenementsAuto(r.evenements);
+      persistanceRef.current.donnees(avant, r.donnees, auteur);
       return r;
     },
     [ajouterEvenementsAuto],
   );
 
-  const utilisateur =
-    donnees.utilisateurs.find((u) => u.id === utilisateurId) ?? donnees.utilisateurs[0];
-  const auteurRef = useRef(utilisateur.nom);
-  auteurRef.current = utilisateur.nom;
-
   /** Applique une transformation et journalise l'action. */
   const appliquer = useCallback(
     (transformer: (d: ErpDonnees) => ErpDonnees, action: string, entite: string, entiteId: Id, details = '') => {
-      const suivant = transformer(ref.current);
+      const avant = ref.current;
+      const suivant = transformer(avant);
+      const auteur = utilisateurRef.current.nom;
       const trace = {
         id: nouvelId('jrn'),
         horodatage: horodatageMaintenant(),
-        auteur: auteurRef.current,
+        auteur,
         action,
         entite,
         entiteId,
         details,
       };
-      poser({ ...suivant, journal: [trace, ...suivant.journal] });
+      poser({ ...suivant, journal: [trace, ...suivant.journal] }, avant, auteur);
     },
     [poser],
   );
@@ -276,6 +378,10 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const signaler = useCallback((message: string | null) => {
+    if (message) setAvertissement(message);
+  }, []);
+
   const actions = useMemo(() => {
     const upsert = <C extends NomCollection>(collection: C, element: ElementDe<C>) => {
       const existe = !!trouver(collection, element.id);
@@ -290,6 +396,10 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         collection,
         element.id,
       );
+      // L'équipe vit dans erp.membres (production) : on y reporte le changement.
+      if (collection === 'utilisateurs' && persistanceRef.current.membre) {
+        void persistanceRef.current.membre(element as Utilisateur).then(signaler);
+      }
     };
 
     const remove = (collection: NomCollection, id: Id) => {
@@ -299,6 +409,16 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         collection,
         id,
       );
+      if (collection === 'utilisateurs' && persistanceRef.current.retirerMembre) {
+        void persistanceRef.current.retirerMembre(id).then(signaler);
+      }
+    };
+
+    const mettreAJour = <C extends NomCollection>(collection: C, id: Id, patch: (e: ElementDe<C>) => ElementDe<C>): Resultat => {
+      const actuel = trouver(collection, id);
+      if (!actuel) return echec('Élément introuvable (supprimé entre-temps ?).');
+      upsert(collection, patch(actuel));
+      return OK;
     };
 
     const validerMission = (id: Id): Resultat => {
@@ -452,13 +572,15 @@ export function ErpProvider({ children }: { children: ReactNode }) {
     };
 
     const reinitialiserDemo = () => {
+      if (!jeuDemo) return;
       setEtatAuto((e) => ({ ...e, evenements: [] }));
-      poser(completer(creerSeed()));
+      poser(completer(jeuDemo()), ref.current, utilisateurRef.current.nom);
     };
 
     return {
       upsert,
       remove,
+      mettreAJour,
       changerStatutMission,
       validerMission,
       refuserMission,
@@ -473,7 +595,7 @@ export function ErpProvider({ children }: { children: ReactNode }) {
       marquerFacturePayee,
       reinitialiserDemo,
     };
-  }, [appliquer, modifier, trouver, poser]);
+  }, [appliquer, modifier, trouver, poser, jeuDemo, signaler]);
 
   const automatisations = useMemo(
     () => ({
@@ -484,41 +606,351 @@ export function ErpProvider({ children }: { children: ReactNode }) {
         autoRef.current = { ...autoRef.current, actives };
         setEtatAuto((e) => ({ ...e, actives }));
         // Une règle rallumée rattrape aussitôt ce qu'elle aurait dû faire.
-        if (actif) poser(ref.current);
+        if (actif) poser(ref.current, ref.current, 'Automatisation');
       },
-      lancerAutomatisations: () => poser(ref.current),
+      lancerAutomatisations: () => poser(ref.current, ref.current, 'Automatisation'),
       viderJournalAuto: () => setEtatAuto((e) => ({ ...e, evenements: [] })),
     }),
     [etatAuto.actives, poser],
   );
 
-  const changerUtilisateur = useCallback((id: Id) => {
-    setUtilisateurId(id);
-    try {
-      window.localStorage.setItem(CLE_UTILISATEUR, id);
-    } catch {
-      /* sans effet hors démo */
-    }
-  }, []);
+  const relancerEnregistrement = useCallback(() => {
+    void synchro?.envoyer();
+  }, [synchro]);
+  const fermerAvertissement = useCallback(() => setAvertissement(null), []);
 
   const valeur = useMemo<ErpContexte>(
     () => ({
       ...donnees,
       donnees,
       mode,
-      demo: true,
+      demo: mode === 'demo',
       utilisateur,
-      changerUtilisateur,
+      lectureSeule,
+      synchro: etatSynchro,
+      relancerEnregistrement,
+      avertissement,
+      fermerAvertissement,
+      seDeconnecter,
       ...actions,
       evenementsAuto: etatAuto.evenements,
       reglesActives: etatAuto.actives,
       ajouterEvenementsAuto,
       ...automatisations,
     }),
-    [donnees, mode, utilisateur, changerUtilisateur, actions, etatAuto, ajouterEvenementsAuto, automatisations],
+    [donnees, mode, utilisateur, lectureSeule, etatSynchro, relancerEnregistrement, avertissement, fermerAvertissement, seDeconnecter,
+      actions, etatAuto, ajouterEvenementsAuto, automatisations],
   );
 
   return <Contexte.Provider value={valeur}>{children}</Contexte.Provider>;
+}
+
+/* -------------------------------------------------------------------- démo */
+
+function lireAutoLocal(): EtatAuto {
+  try {
+    const brut = window.localStorage.getItem(CLE_AUTOMATISATIONS);
+    if (brut) {
+      const e = JSON.parse(brut) as Partial<EtatAuto>;
+      if (e && typeof e.actives === 'object' && Array.isArray(e.evenements)) return e as EtatAuto;
+    }
+  } catch {
+    /* stockage indisponible : état par défaut */
+  }
+  return { actives: {}, evenements: [] };
+}
+
+type ModuleSeed = typeof import('./seed');
+
+function chargerDemo(seed: ModuleSeed): ErpDonnees {
+  try {
+    const brut = window.localStorage.getItem(CLE_STOCKAGE);
+    if (brut) {
+      const d = JSON.parse(brut) as Partial<ErpDonnees>;
+      if (d && typeof d === 'object' && Array.isArray(d.logements)) return completer(d);
+    }
+  } catch {
+    /* stockage indisponible ou corrompu : on repart du seed */
+  }
+  return completer(seed.creerSeed());
+}
+
+const UTILISATEUR_DEMO: Utilisateur = { id: 'usr-demo', nom: 'Démo', email: 'demo@exemple.fr', role: 'gerant' };
+
+/** Démo locale : le jeu de démonstration est chargé à part (jamais téléchargé en production). */
+function FournisseurDemo({ children }: { children: ReactNode }) {
+  const [seed, setSeed] = useState<ModuleSeed | null>(null);
+  useEffect(() => {
+    let actif = true;
+    void import('./seed').then((m) => actif && setSeed(m));
+    return () => {
+      actif = false;
+    };
+  }, []);
+  if (!seed) return <EcranPorte phase={{ nom: 'chargement' }} onReessayer={() => undefined} onMotDePasseChange={() => undefined} onDeconnecter={() => undefined} />;
+  return <CoeurDemo seed={seed}>{children}</CoeurDemo>;
+}
+
+function CoeurDemo({ seed, children }: { seed: ModuleSeed; children: ReactNode }) {
+  const [depart] = useState(() => ({ donnees: chargerDemo(seed), auto: lireAutoLocal() }));
+  const persistance = useMemo<Persistance>(
+    () => ({
+      donnees: (_avant, apres) => {
+        try {
+          window.localStorage.setItem(CLE_STOCKAGE, JSON.stringify(apres));
+        } catch {
+          /* quota dépassé ou navigation privée : la démo reste en mémoire */
+        }
+      },
+      auto: (_champ, etat) => {
+        try {
+          window.localStorage.setItem(CLE_AUTOMATISATIONS, JSON.stringify(etat));
+        } catch {
+          /* navigation privée : l'état reste en mémoire */
+        }
+      },
+    }),
+    [],
+  );
+  const utilisateur = depart.donnees.utilisateurs.find((u) => u.role === 'gerant') ?? depart.donnees.utilisateurs[0] ?? UTILISATEUR_DEMO;
+  const jeuDemo = useCallback(() => seed.creerSeed(), [seed]);
+  return (
+    <CoeurErp
+      mode="demo"
+      initial={depart.donnees}
+      autoInitial={depart.auto}
+      utilisateur={utilisateur}
+      lectureSeule={false}
+      persistance={persistance}
+      etatSynchro={null}
+      seDeconnecter={() => window.location.assign('/erp/deconnexion')}
+      jeuDemo={jeuDemo}
+    >
+      {children}
+    </CoeurErp>
+  );
+}
+
+/* -------------------------------------------------------------------- réel */
+
+interface Session {
+  donnees: ErpDonnees;
+  auto: EtatAuto;
+  utilisateur: Utilisateur;
+  synchro: Synchro;
+}
+
+function FournisseurReel({ children }: { children: ReactNode }) {
+  const [phase, setPhase] = useState<PhasePorte>(() =>
+    RETOUR_LIEN.recuperation ? { nom: 'nouveau_mot_de_passe' } : { nom: 'demarrage' },
+  );
+  const [session, setSession] = useState<Session | null>(null);
+  const [etatSynchro, setEtatSynchro] = useState<EtatSynchro | null>(null);
+  const enRecuperation = useRef(RETOUR_LIEN.recuperation);
+  const emailCharge = useRef<string | null>(null);
+  const synchroRef = useRef<Synchro | null>(null);
+  const essai = useRef(0);
+
+  const arreterSynchro = useCallback(() => {
+    synchroRef.current?.arreter();
+    synchroRef.current = null;
+    emailCharge.current = null;
+    setSession(null);
+    setEtatSynchro(null);
+  }, []);
+
+  /** Session ouverte : vérifie l'accès, lit la base, démarre la synchronisation. */
+  const demarrer = useCallback(
+    async (email: string) => {
+      const cle = email.toLowerCase();
+      if (emailCharge.current === cle) return;
+      emailCharge.current = cle;
+      const numero = ++essai.current;
+      const encore = () => numero === essai.current;
+      setPhase({ nom: 'chargement' });
+      try {
+        const membres = await lireMembres();
+        if (!encore()) return;
+        if (!membres.ok) {
+          emailCharge.current = null;
+          const genre = genreErreur(membres.erreur, membres.status);
+          if (genre === 'base_absente') return setPhase({ nom: 'base_absente' });
+          if (genre === 'session') {
+            await deconnexionSupabase();
+            return setPhase({ nom: 'connexion', message: 'Votre session a expiré. Reconnectez-vous.' });
+          }
+          return setPhase({ nom: 'erreur', genre, message: messageErreur(membres.erreur, membres.status) });
+        }
+        const moi = membres.membres.find((m) => m.email === cle);
+        if (!moi || moi.role === 'prestataire') {
+          emailCharge.current = null;
+          return setPhase({ nom: 'non_autorise', email });
+        }
+        const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro });
+        synchro.demarrerTempsReel();
+        const [lu, auto] = await Promise.all([synchro.chargerTout(), synchro.lireEtatAuto()]);
+        if (!encore()) return synchro.arreter();
+        synchroRef.current?.arreter();
+        synchroRef.current = synchro;
+        const donnees = synchro.appliquerFile({ ...lu, utilisateurs: membres.membres });
+        setEtatSynchro(synchro.lireEtat());
+        setSession({
+          donnees,
+          auto: {
+            actives: auto?.actives && typeof auto.actives === 'object' ? auto.actives : {},
+            evenements: Array.isArray(auto?.evenements) ? (auto!.evenements as EvenementAuto[]) : [],
+          },
+          utilisateur: moi,
+          synchro,
+        });
+        setPhase({ nom: 'pret' });
+        if (synchro.enAttente) void synchro.envoyer();
+      } catch (e) {
+        if (!encore()) return;
+        emailCharge.current = null;
+        const genre = e instanceof ErreurSynchro ? e.genre : genreErreur(e);
+        if (genre === 'base_absente') return setPhase({ nom: 'base_absente' });
+        const erreur = e instanceof ErreurSynchro ? e.erreur : e;
+        const status = e instanceof ErreurSynchro ? e.status : undefined;
+        setPhase({ nom: 'erreur', genre, message: messageErreur(erreur, status) });
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const client = obtenirClient();
+    let actif = true;
+    const { data } = client.auth.onAuthStateChange((evenement, s) => {
+      // Jamais d'appel Supabase directement dans ce rappel (verrou interne) : on diffère.
+      setTimeout(() => {
+        if (!actif) return;
+        if (evenement === 'PASSWORD_RECOVERY') {
+          enRecuperation.current = true;
+          setPhase({ nom: 'nouveau_mot_de_passe' });
+          return;
+        }
+        if (evenement === 'SIGNED_OUT' || !s?.user) {
+          arreterSynchro();
+          if (enRecuperation.current && evenement === 'INITIAL_SESSION') {
+            // Lien de récupération refusé par Supabase (expiré ou déjà utilisé).
+            enRecuperation.current = false;
+            setPhase({ nom: 'connexion', message: 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ».' });
+            return;
+          }
+          if (!enRecuperation.current) setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
+          return;
+        }
+        if (enRecuperation.current) return;
+        if (evenement === 'INITIAL_SESSION' || evenement === 'SIGNED_IN' || evenement === 'USER_UPDATED') {
+          void demarrer(s.user.email ?? '');
+        }
+      }, 0);
+    });
+    return () => {
+      actif = false;
+      data.subscription.unsubscribe();
+      essai.current += 1;
+      synchroRef.current?.arreter();
+      synchroRef.current = null;
+      emailCharge.current = null;
+    };
+  }, [demarrer, arreterSynchro]);
+
+  // Changement de jour (onglet resté ouvert la nuit) : on recharge pour
+  // repartir de la bonne date, une fois tout enregistré.
+  useEffect(() => {
+    const minuterie = setInterval(() => {
+      if (dateParis() !== AUJOURDHUI && !(synchroRef.current?.enAttente ?? 0)) window.location.reload();
+    }, 60_000);
+    return () => clearInterval(minuterie);
+  }, []);
+
+  // Fermeture de l'onglet avec des modifications non confirmées : avertir.
+  useEffect(() => {
+    const avantFermeture = (e: BeforeUnloadEvent) => {
+      if (!synchroRef.current?.enAttente) return;
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', avantFermeture);
+    return () => window.removeEventListener('beforeunload', avantFermeture);
+  }, []);
+
+  const seDeconnecter = useCallback(() => {
+    void (async () => {
+      setPhase({ nom: 'demarrage' });
+      arreterSynchro();
+      await deconnexionSupabase();
+      setPhase({ nom: 'connexion' });
+    })();
+  }, [arreterSynchro]);
+
+  const reessayer = useCallback(() => {
+    void obtenirClient()
+      .auth.getSession()
+      .then(({ data }) => {
+        const email = data.session?.user?.email;
+        emailCharge.current = null;
+        if (email) void demarrer(email);
+        else setPhase({ nom: 'connexion' });
+      });
+  }, [demarrer]);
+
+  const apresNouveauMotDePasse = useCallback(() => {
+    enRecuperation.current = false;
+    reessayer();
+  }, [reessayer]);
+
+  const persistance = useMemo<Persistance | null>(() => {
+    if (!session) return null;
+    const lecture = session.utilisateur.role === 'lecture';
+    return {
+      donnees: (avant, apres, auteur) => {
+        if (lecture) return;
+        void session.synchro.sauvegarderDifferences(avant, apres, auteur);
+      },
+      auto: (champ, etat) => {
+        if (lecture) return;
+        void session.synchro.enregistrerEtatAuto(champ, etat[champ]);
+      },
+      membre: async (u) => {
+        const erreur = await enregistrerMembre(u);
+        return erreur ? `Membre non enregistré : ${messageErreur(erreur)}` : null;
+      },
+      retirerMembre: async (id) => {
+        const erreur = await retirerMembre(id);
+        return erreur ? `Membre non retiré : ${messageErreur(erreur)}` : null;
+      },
+    };
+  }, [session]);
+
+  if (phase.nom !== 'pret' || !session || !persistance) {
+    return <EcranPorte phase={phase} onReessayer={reessayer} onMotDePasseChange={apresNouveauMotDePasse} onDeconnecter={seDeconnecter} />;
+  }
+
+  return (
+    <CoeurErp
+      key={session.utilisateur.email}
+      mode="reel"
+      initial={session.donnees}
+      autoInitial={session.auto}
+      utilisateur={session.utilisateur}
+      lectureSeule={session.utilisateur.role === 'lecture'}
+      persistance={persistance}
+      synchro={session.synchro}
+      etatSynchro={etatSynchro}
+      seDeconnecter={seDeconnecter}
+    >
+      {children}
+    </CoeurErp>
+  );
+}
+
+/* --------------------------------------------------------------- provider */
+
+export function ErpProvider({ children }: { children: ReactNode }) {
+  return MODE === 'demo' ? <FournisseurDemo>{children}</FournisseurDemo> : <FournisseurReel>{children}</FournisseurReel>;
 }
 
 export function useErp(): ErpContexte {
@@ -526,3 +958,6 @@ export function useErp(): ErpContexte {
   if (!ctx) throw new Error('useErp() doit être utilisé sous <ErpProvider>.');
   return ctx;
 }
+
+/** Tri du journal exposé pour les écrans qui fusionnent plusieurs sources. */
+export { trierJournal };

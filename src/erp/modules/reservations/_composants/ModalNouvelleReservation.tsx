@@ -3,7 +3,7 @@
  * puis création du séjour et de sa mission de ménage de départ.
  */
 import { useMemo, useState, type FormEvent } from 'react';
-import { Alert, Button, Field, Input, Modal, Select } from '../../../ui';
+import { Alert, Button, Field, Input, Modal, Select, Prerequis } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { checklistMenageVierge } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours, dateCourte, dateJour, ecartJours, euros, jourMois, pluriel, versCentimes } from '../../../data/format';
@@ -137,6 +137,15 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
       }
     >
       <form id="form-resa-directe" onSubmit={soumettre} noValidate className="grid gap-4 sm:grid-cols-2">
+        {!reservables.length && (
+          <Prerequis
+            className="sm:col-span-2"
+            manque="Aucun logement actif pour l’instant."
+            detail="Un logement devient réservable quand son mandat est signé et sa checklist de lancement complète (fiche logement, onglet Lancement)."
+            lien="/erp/logements"
+            action="Voir les logements"
+          />
+        )}
         <Field label="Logement" requis erreur={erreurs.logementId} className="sm:col-span-2" aide="Seuls les logements actifs (mandat signé, checklist complète) sont réservables.">
           <Select
             value={f.logementId}

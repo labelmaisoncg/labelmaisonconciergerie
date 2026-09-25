@@ -7,6 +7,7 @@ import { PageHeader, Section } from '../../ui';
 import { Agenda } from './_composants/Agenda';
 import { ATraiter } from './_composants/ATraiter';
 import { Aujourdhui } from './_composants/Aujourdhui';
+import { Demarrage } from './_composants/Demarrage';
 import { BandeKpi } from './_composants/BandeKpi';
 import { BiensASurveiller } from './_composants/BiensASurveiller';
 import { Graphiques } from './_composants/Graphiques';
@@ -32,6 +33,8 @@ export default function TableauDeBord() {
         titre={`Bonjour ${d.utilisateur.nom.split(' ')[0]}`}
         sousTitre={<>{date.charAt(0).toUpperCase() + date.slice(1)}. Tout va-t-il bien cette semaine ?</>}
       />
+
+      <Demarrage />
 
       <Aujourdhui alertes={elements.length} urgentes={urgentes} />
 
