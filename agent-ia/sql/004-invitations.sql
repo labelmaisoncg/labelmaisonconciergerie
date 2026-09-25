@@ -28,9 +28,3 @@ create index if not exists invitations_code_idx on invitations(code);
 alter table membres drop constraint if exists membres_role_check;
 alter table membres add constraint membres_role_check
   check (role in ('editeur', 'proprietaire', 'equipe', 'prestataire'));
-
--- `channex_group_id` est unique : une chaîne vide entrerait en collision dès la
--- deuxième conciergerie enrôlée. On accepte donc NULL, et le groupe Channex
--- n'est créé qu'au premier besoin réel.
-alter table conciergeries alter column channex_group_id drop not null;
-update conciergeries set channex_group_id = null where channex_group_id = '';

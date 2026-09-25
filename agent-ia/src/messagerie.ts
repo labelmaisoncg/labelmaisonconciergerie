@@ -13,14 +13,16 @@
  * 3. Copie de chaque réponse au propriétaire. Il ne valide pas, mais il voit
  *    tout en temps réel et peut reprendre la main.
  *
- * Channex n'expose aucun webhook sur les nouveaux messages : c'est une boucle
- * d'interrogation, appelée par le cron.
+ * Deux déclencheurs : le webhook Repull `reservation.message.received`, en
+ * temps réel, et le cron, en rattrapage. La prise en charge atomique
+ * (`store.reserverMessage`) garantit qu'un message n'est traité qu'une fois,
+ * quel que soit le chemin qui l'a vu en premier.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_API_KEY } from './config.js';
 import { comptabiliser } from './cout.js';
-import * as channex from './channex.js';
+import * as repull from './repull.js';
 import * as store from './store.js';
 import { envoyerMessage } from './telegram.js';
 import { ajouterJours, aujourdhui } from './dates.js';
@@ -70,15 +72,13 @@ const JOURS_AVANT_ARRIVEE = 2; // 48 h
  * (un fil sans réservation) pouvait obtenir le code de la boîte à clés en le
  * demandant poliment. Pas de réservation rattachée → jamais de code.
  */
-async function accesAutorise(fil: channex.FilMessages, logement: store.Logement): Promise<boolean> {
+async function accesAutorise(fil: repull.FilMessages, logement: store.Logement): Promise<boolean> {
   if (!fil.reservationRef) return false;
-  const resa = await channex.reservationParId(fil.reservationRef);
+  const resa = await repull.reservationParId(fil.reservationRef);
   if (!resa || !resa.arrivee || !resa.depart) return false;
-  if (/cancel/i.test(resa.statut)) return false;
+  if (repull.estAnnulee(resa) || /pending/i.test(resa.statut)) return false;
   // Ceinture et bretelles : la réservation doit bien porter sur CE logement.
-  if (logement.channexPropertyId && resa.logementId && resa.logementId !== logement.channexPropertyId) {
-    return false;
-  }
+  if (!logement.repullListingId || resa.logementId !== logement.repullListingId) return false;
   const jour = aujourdhui();
   return resa.arrivee <= ajouterJours(jour, JOURS_AVANT_ARRIVEE) && resa.depart >= jour;
 }
