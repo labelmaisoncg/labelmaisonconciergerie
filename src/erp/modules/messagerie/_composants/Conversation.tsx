@@ -31,7 +31,9 @@ export function Conversation({ fil, logement, reservation }: Props) {
     setBrouillon('');
     setAvis(null);
   }, [fil.id]);
-  useEffect(() => fin.current?.scrollIntoView({ block: 'end' }), [fil.messages.length]);
+  useEffect(() => {
+    fin.current?.scrollIntoView({ block: 'end' });
+  }, [fil.messages.length]);
 
   const envoyer = () => {
     const texte = brouillon.trim();

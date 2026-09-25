@@ -39,7 +39,15 @@ const html = readFileSync(shell, 'utf8');
 for (const route of routes) {
   const dir = join(dist, route);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'index.html'), html);
+  // ERP : pas de traduction automatique du navigateur dès le premier octet
+  // (elle réécrit le texte sous React et fait planter l'application).
+  const page =
+    route === '/erp'
+      ? html
+          .replace('<html lang="fr">', '<html lang="fr" translate="no" class="notranslate">')
+          .replace('<head>', '<head>\n    <meta name="google" content="notranslate" />')
+      : html;
+  writeFileSync(join(dir, 'index.html'), page);
 }
 
 console.log(`[spa-shells] ${routes.length} routes générées : ${routes.join(', ')}`);

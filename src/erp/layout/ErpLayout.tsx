@@ -17,8 +17,13 @@ export function ErpLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
   const tiroir = useFenetre<HTMLDivElement>(menu, () => setMenu(false));
 
-  useEffect(() => setMenu(false), [pathname]);
-  useEffect(() => window.scrollTo(0, 0), [pathname]);
+  // Corps entre accolades : un effet ne doit rien renvoyer d'autre qu'une
+  // fonction de nettoyage. Certaines extensions du navigateur font renvoyer
+  // une valeur à window.scrollTo, et React plantait (« o is not a function »).
+  useEffect(() => {
+    setMenu(false);
+    window.scrollTo(0, 0);
+  }, [pathname]);
 
   return (
     <div className="flex min-h-screen overflow-x-clip">

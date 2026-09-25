@@ -35,7 +35,9 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
   const [equipement, setEquipement] = useState('');
   const [enregistre, setEnregistre] = useState(false);
 
-  useEffect(() => setF(l.fiche), [l.fiche]);
+  useEffect(() => {
+    setF(l.fiche);
+  }, [l.fiche]);
 
   const maj = <K extends keyof FicheLogement>(k: K, v: FicheLogement[K]) => {
     setF((x) => ({ ...x, [k]: v }));

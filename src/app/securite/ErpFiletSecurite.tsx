@@ -41,6 +41,21 @@ export class ErpFiletSecurite extends Component<{ children: ReactNode }, Etat> {
     window.location.reload();
   };
 
+  // La traduction automatique de Chrome réécrit le texte de la page sous
+  // React, qui plante ensuite en mettant l'écran à jour : on l'interdit sur
+  // toute la zone ERP (texte déjà en français), et on rétablit en sortant.
+  componentDidMount() {
+    const racine = document.documentElement;
+    racine.setAttribute('translate', 'no');
+    racine.classList.add('notranslate');
+  }
+
+  componentWillUnmount() {
+    const racine = document.documentElement;
+    racine.removeAttribute('translate');
+    racine.classList.remove('notranslate');
+  }
+
   render() {
     const { erreur } = this.state;
     if (!erreur) return this.props.children;

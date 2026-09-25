@@ -56,7 +56,9 @@ export function GlobalSearch({ className }: { className?: string }) {
     ];
   }, [q, logements, proprietaires, reservations]);
 
-  useEffect(() => setActif(0), [q]);
+  useEffect(() => {
+    setActif(0);
+  }, [q]);
 
   useEffect(() => {
     const clic = (e: MouseEvent) => {
