@@ -782,6 +782,13 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
         .map((x) => `${texte(x.guestName) || texte((x.guest as Record<string, unknown>)?.name) || 'voyageur'} (${texte(x.checkIn) || texte(x.check_in) || '?'}, ${texte(x.status) || '?'}, ${texte(x.platform) || '?'})`)
         .join(' ; ')}.`;
     }, { limit: '5' });
+    await essai('Booking.com : des réservations attendent-elles dans sa file ?', '/v1/channels/booking/reservations', (r) => {
+      const l = liste(r);
+      const l2 = l.length ? l : Array.isArray((r as { reservations?: unknown[] })?.reservations) ? ((r as { reservations: Record<string, unknown>[] }).reservations) : [];
+      return l2.length
+        ? `${l2.length} réservation(s) Booking en attente, pas encore récupérée(s) par Repull.`
+        : 'La file Booking est vide : Booking n’a transmis aucune réservation à Repull.';
+    }, { type: 'new' });
     await essai('Repull a-t-il reçu des conversations ?', '/v1/conversations', (r) => {
       const l = liste(r);
       return l.length ? `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).` : 'Aucune conversation chez Repull pour l’instant.';
