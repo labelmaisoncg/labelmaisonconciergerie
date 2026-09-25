@@ -189,9 +189,14 @@ export async function traiterMessagesVoyageurs(
     if (!logement.repullListingId) continue;
     for (const fil of parAnnonce.get(logement.repullListingId) ?? []) {
       if (fil.dernierMessageLe && Date.now() - Date.parse(fil.dernierMessageLe) > FRAICHEUR_MS) continue;
+      // Rien de nouveau dans ce fil depuis le dernier passage : on ne relit pas
+      // ses messages (chaque lecture compte dans le quota mensuel Repull).
+      if (fil.dernierMessageLe && (await store.filVuJusqua(fil.id)) === fil.dernierMessageLe) continue;
       const issue = await traiterFil(conciergerie, proprietaire, logement, fil);
       if (issue === 'repondu') repondus++;
       if (issue === 'escalade') escalades++;
+      // Fil illisible : pas de repère, il sera relu au prochain passage.
+      if (issue !== 'illisible' && fil.dernierMessageLe) await store.marquerFilVu(fil.id, fil.dernierMessageLe);
     }
   }
 
@@ -203,7 +208,7 @@ export async function traiterMessagesVoyageurs(
  * sont retrouvés par NOTRE base à partir de l'annonce du fil — jamais à partir
  * de ce que dit la charge utile.
  */
-export async function traiterFilParId(filId: string): Promise<'repondu' | 'escalade' | null> {
+export async function traiterFilParId(filId: string): Promise<'repondu' | 'escalade' | 'illisible' | null> {
   const fil = await repull.filParId(filId);
   if (!fil?.logementId) return null;
   const cible = await store.logementParRepullId(fil.logementId);
@@ -217,7 +222,7 @@ async function traiterFil(
   proprietaire: string | undefined,
   logement: store.Logement,
   fil: repull.FilMessages,
-): Promise<'repondu' | 'escalade' | null> {
+): Promise<'repondu' | 'escalade' | 'illisible' | null> {
   if (fil.ferme) return null;
 
   let messages: repull.MessageVoyageur[];
@@ -225,7 +230,7 @@ async function traiterFil(
     messages = await repull.messagesDuFil(fil.id);
   } catch (err) {
     console.error(`[messagerie] fil ${fil.id} illisible :`, err);
-    return null;
+    return 'illisible';
   }
   // `messagesDuFil` rend l'ordre chronologique : le dernier est le plus récent.
   const dernier = messages.at(-1);

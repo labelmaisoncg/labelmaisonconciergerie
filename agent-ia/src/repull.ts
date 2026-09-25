@@ -16,6 +16,8 @@
  * lue dans l'environnement et nulle part ailleurs.
  */
 
+import { compterAppelRepull } from './store.js';
+
 const BASE = 'https://api.repull.dev';
 const CLE = () => process.env.REPULL_API_KEY || '';
 
@@ -26,6 +28,15 @@ export const NOM_CANAL: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Bo
 /** Repull écrit « booking » ou « booking.com » selon l'objet : on accepte les deux. */
 const estCanal = (valeur: unknown, canal: Canal): boolean =>
   canal === 'airbnb' ? valeur === 'airbnb' : /^booking/i.test(String(valeur ?? ''));
+
+/**
+ * Budget mensuel d'appels de l'agent. L'offre gratuite Repull donne 1 000
+ * appels par mois, partagés avec la synchronisation de l'ERP (≈ 400) : l'agent
+ * en garde 600 par défaut. `REPULL_BUDGET_MENSUEL` le relève (offre payante).
+ * Les réponses aux voyageurs passent toujours : seules les lectures sont
+ * coupées une fois le budget atteint.
+ */
+const BUDGET_MENSUEL = () => Number(process.env.REPULL_BUDGET_MENSUEL || 600);
 
 /** Délai maximal d'un appel. Au-delà, on abandonne plutôt que de geler le cron. */
 const DELAI_MS = 20_000;
@@ -69,6 +80,16 @@ async function appel<T = any>(
   const rejouable = methode === 'GET' || methode === 'PUT' || Boolean(options.cleIdempotence);
 
   for (let essai = 1; ; essai++) {
+    // Chaque tentative compte dans le quota Repull, nouvel essai compris.
+    const utilises = await compterAppelRepull().catch(() => 0);
+    if (methode === 'GET' && utilises > BUDGET_MENSUEL()) {
+      throw new ErreurRepull(
+        0,
+        'budget_mensuel',
+        `[repull] budget mensuel atteint (${utilises - 1}/${BUDGET_MENSUEL()} appels) : lectures suspendues jusqu'au 1er du mois.`,
+        'Passer à une offre Repull payante et relever REPULL_BUDGET_MENSUEL dans Vercel.',
+      );
+    }
     let reponse: Response;
     try {
       reponse = await fetch(`${BASE}${chemin}`, {
