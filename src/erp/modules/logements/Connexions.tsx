@@ -490,6 +490,8 @@ export default function Connexions() {
         )}
       </section>
 
+      <VerificationRepull actif={reel} />
+
       <Modal
         ouvert={!!aDeconnecter}
         onFermer={() => !deconnexion && setADeconnecter(null)}
@@ -518,5 +520,81 @@ function LogoPlateforme({ nom, logo }: { nom: string; logo?: string }) {
     <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-[15px] font-semibold text-(--lm-brun)">
       {nom.charAt(0)}
     </span>
+  );
+}
+
+/* ------------------------------------------------------ vérification Repull */
+
+interface LigneVerif {
+  question: string;
+  appel: string;
+  ok: boolean;
+  statut: number;
+  resume: string;
+  brut: string;
+}
+
+/**
+ * « Vérifier avec Repull » : ce que Repull sait réellement du compte (clé,
+ * connexions, Airbnb, établissements Booking, logements), en clair. Sert à
+ * comprendre une connexion qui n'aboutit pas, sans accès technique.
+ */
+function VerificationRepull({ actif }: { actif: boolean }) {
+  const [lignes, setLignes] = useState<LigneVerif[] | null>(null);
+  const [enCours, setEnCours] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const verifier = async () => {
+    setEnCours(true);
+    setErreur(null);
+    try {
+      const r = await appeler<{ lignes?: LigneVerif[] }>('GET', { action: 'diagnostic' });
+      setLignes(Array.isArray(r.lignes) ? r.lignes : []);
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  return (
+    <section className="mt-8">
+      <Card>
+        <CardHeader
+          titre="Vérifier avec Repull"
+          description="Une connexion qui ne s’affiche pas ? Demandez directement à Repull ce qu’il voit de vos comptes. Cela prend quelques secondes."
+        />
+        <Button icone={<RefreshCw />} chargement={enCours} disabled={!actif || enCours} onClick={() => void verifier()}>
+          Vérifier maintenant
+        </Button>
+        {erreur && (
+          <Alert tone="danger" className="mt-3">
+            {erreur}
+          </Alert>
+        )}
+        {lignes && (
+          <ul className="mt-4 space-y-2">
+            {lignes.map((l) => (
+              <li key={l.appel} className="rounded-lg border border-(--lm-bord) p-3">
+                <p className="flex items-start gap-2 text-[13.5px]">
+                  <span aria-hidden className={l.ok ? 'text-(--lm-succes,#2f7d4f)' : 'text-(--lm-danger,#b3261e)'}>
+                    {l.ok ? '✓' : '✗'}
+                  </span>
+                  <span>
+                    <span className="font-medium text-(--lm-encre)">{l.question}</span>
+                    <br />
+                    <span className="text-(--lm-encre-2)">{l.resume}</span>
+                  </span>
+                </p>
+                <details className="mt-2 text-[12px] text-(--lm-encre-3)">
+                  <summary className="cursor-pointer">Détails techniques ({l.appel}, {l.statut || 'réseau'})</summary>
+                  <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap break-all">{l.brut}</pre>
+                </details>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
+    </section>
   );
 }
