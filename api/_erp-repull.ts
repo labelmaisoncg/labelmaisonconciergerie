@@ -76,6 +76,21 @@ export function egalConstant(a: string, b: string): boolean {
   return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
+/** Corps JSON d'une requête (objet vide si absent ou illisible). */
+export function lireCorps(req: any): Record<string, unknown> {
+  const b = req.body;
+  if (b && typeof b === 'object' && !Array.isArray(b)) return b as Record<string, unknown>;
+  if (typeof b === 'string') {
+    try {
+      const x = JSON.parse(b);
+      return x && typeof x === 'object' && !Array.isArray(x) ? x : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 export function repondre(res: any, statut: number, corps: unknown) {
   res.setHeader('Cache-Control', 'no-store');
   return res.status(statut).json(corps);

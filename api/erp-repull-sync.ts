@@ -15,10 +15,14 @@
 // le compte) : part mensuelle de l'ERP (REPULL_BUDGET_ERP, 400 par défaut),
 // et pas plus d'une synchronisation manuelle toutes les 10 minutes (le bilan
 // précédent est renvoyé à la place).
+//
+// Quand le passage apporte des messages, l'agent IA de la messagerie passe
+// juste après (api/_erp-agent.ts), si ANTHROPIC_API_KEY est présente.
 // =============================================================================
 
 import { lancer, texteErreur, verifierMembre, type DeclencheurRepull } from '../src/erp/data/repull-synchro.js';
 import { baseErp, configuration, egalConstant, repondre, variableManquante } from './_erp-repull.js';
+import { agentApresSynchro } from './_erp-agent.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 50_000;
@@ -58,7 +62,9 @@ export default async function handler(req: any, res: any) {
       lireQuota: declencheur === 'manuel',
     });
     if (declencheur === 'cron') console.log('[erp-repull-sync]', r.statut, JSON.stringify(r.bilan ?? {}).slice(0, 2000));
-    return repondre(res, 200, r);
+    // De nouveaux messages sont arrivés : l'agent IA passe tout de suite (dans le temps qui reste).
+    const agent = r.statut === 'fait' ? await agentApresSynchro(c, r.bilan?.messages ?? 0, debut + 55_000) : null;
+    return repondre(res, 200, agent ? { ...r, agent } : r);
   } catch (e) {
     console.error('[erp-repull-sync] échec', e);
     return repondre(res, 500, { ok: false, erreur: texteErreur(e) });

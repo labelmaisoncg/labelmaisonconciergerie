@@ -6,10 +6,10 @@
  * les autres collections (une ligne de erp.enregistrements : collection
  * 'reglages', id 'agent', contenu JSON dans `donnees`).
  *
- * TODO(agent-ia) : le service agent-ia/ doit lire ce réglage à chaque message
- * voyageur et l'appliquer (pause, horaires, ton, langues, signature, ce qu'il
- * transmet, délai d'alerte Telegram). Détail : docs/erp/README.md, « Réglages
- * de l'agent de messagerie ».
+ * L'agent du site (src/erp/data/agent-messagerie.ts, lancé par
+ * api/erp-agent.ts) relit ce réglage à chaque passage et l'applique : pause,
+ * horaires, ton, langues, signature, ce qu'il transmet, Telegram. Détail :
+ * docs/erp/README.md, « Messagerie et agent IA ».
  */
 import type { ErpDonnees, ReglagesAgent, TonAgent } from './types';
 

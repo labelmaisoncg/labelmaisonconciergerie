@@ -198,6 +198,36 @@ export interface Message {
   auteur: AuteurMessage;
   texte: string;
   envoyeLe: Horodatage;
+  /** Message réellement parti chez le voyageur par Repull (Airbnb, Booking.com...). */
+  envoi?: EnvoiMessage;
+}
+
+/** Trace d'un envoi par Repull (api/erp-repull-messages.ts ou l'agent IA). */
+export interface EnvoiMessage {
+  /** Plateforme par laquelle le message est parti (airbnb, booking...). */
+  canal?: string;
+  /** La plateforme a modifié le texte (lien ou téléphone retiré) : `texte` est ce qu'a reçu le voyageur. */
+  reecrit?: boolean;
+  /** Qui l'a envoyé (nom du membre, ou « Agent IA »). */
+  par?: string;
+}
+
+/**
+ * Suivi de l'agent IA sur un fil (api/erp-agent.ts) : dernier message du
+ * voyageur traité (jamais deux réponses au même message) et envoi en cours
+ * (reprise sans double envoi après une coupure).
+ */
+export interface SuiviAgent {
+  /** Dernier message du voyageur traité par l'agent. */
+  dernierMessageTraite?: Id;
+  decision?: 'repondre' | 'transmettre';
+  /** Résumé de la situation pour l'équipe (transmis) ou de la réponse. */
+  resume?: string;
+  le?: Horodatage;
+  /** Relance Telegram faite (conversation transmise restée sans réponse). */
+  relanceLe?: Horodatage;
+  /** Envoi commencé et pas encore confirmé : repris tel quel au passage suivant. */
+  enCours?: { messageId: Id; texte: string; cle: string; depuis: Horodatage; transmettre?: boolean; raison?: RaisonEscalade; resume?: string };
 }
 
 export interface FilMessages {
@@ -214,9 +244,11 @@ export interface FilMessages {
   raisonEscalade?: RaisonEscalade;
   /** Conversation importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
+  /** Suivi de l'agent IA (serveur). */
+  agent?: SuiviAgent;
 }
 
-export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche';
+export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche' | 'exception' | 'autre';
 
 /* ------------------------------------------------------------- réglages */
 
@@ -224,9 +256,9 @@ export type TonAgent = 'chaleureux' | 'professionnel' | 'decontracte';
 
 /**
  * Réglages de l'agent de messagerie (collection `reglages`, élément d'id
- * 'agent'), modifiés dans Messagerie agentique > Configurer mon agent. Le
- * service agent-ia/ les lit dans erp.enregistrements (collection 'reglages',
- * id 'agent') : voir docs/erp/README.md.
+ * 'agent'), modifiés dans Messagerie agentique > Configurer mon agent. L'agent
+ * du site (api/erp-agent.ts, src/erp/data/agent-messagerie.ts) les relit à
+ * chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
  */
 export interface ReglagesAgent {
   id: 'agent';
@@ -241,7 +273,7 @@ export interface ReglagesAgent {
   horaires: { mode: 'toujours' | 'plage'; debut: string; fin: string };
   /**
    * Ce que l'agent vous transmet au lieu de répondre seul. Argent et litiges
-   * sont toujours transmis (règle non négociable, voir agent-ia/README.md).
+   * sont toujours transmis (règle non négociable).
    */
   transmettre: {
     horsFiche: boolean;

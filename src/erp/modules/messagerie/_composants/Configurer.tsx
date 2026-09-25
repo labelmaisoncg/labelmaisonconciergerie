@@ -3,8 +3,9 @@
  * horaires, ce qu'il vous transmet, où vous prévenir.
  *
  * Enregistré dans la collection `reglages` (élément 'agent'), synchronisée
- * avec la base comme le reste. Le service agent-ia/ lit ces réglages : voir
- * docs/erp/README.md, « Réglages de l'agent ».
+ * avec la base comme le reste. L'agent du site (api/erp-agent.ts) relit ces
+ * réglages à chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
+ * Le bloc « Votre agent, en vrai » montre ce qui est branché côté serveur.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -15,6 +16,7 @@ import { LANGUES_AGENT, TONS_AGENT, reglagesAgent } from '../../../data/reglages
 import { dateCourte, heure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ReglagesAgent } from '../../../data/types';
 import { completudeFiche } from './logique';
+import { EtatAgentServeur } from './EtatAgent';
 
 const DELAIS = [
   { valeur: '15', libelle: '15 minutes' },
@@ -117,6 +119,8 @@ export function Configurer() {
           <Interrupteur actif={f.actif} onChange={(v) => maj({ actif: v })} label="Activer l’agent" disabled={bloque} />
         </label>
       </Card>
+
+      <EtatAgentServeur actifReglage={enregistre.actif} />
 
       <Bloc titre="Sa façon de parler" description="Choisissez le ton ; l’exemple se met à jour tout de suite.">
         <div role="radiogroup" aria-label="Ton de l’agent" className="grid gap-2 sm:grid-cols-3">
@@ -305,8 +309,8 @@ export function Configurer() {
           <span className="text-[13.5px]">
             <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
             <span className="block text-(--lm-encre-2)">
-              Une copie de chaque réponse de l’agent, et une alerte dès qu’il vous confie une conversation. Le groupe Telegram de l’équipe se choisit dans
-              le service de l’agent.
+              Une copie de chaque réponse de l’agent, une alerte dès qu’il vous confie une conversation, et un rappel si personne n’a répondu à temps. Le
+              groupe de l’équipe se règle dans Vercel (TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID) : voir « Votre agent, en vrai » plus haut.
             </span>
           </span>
         </label>

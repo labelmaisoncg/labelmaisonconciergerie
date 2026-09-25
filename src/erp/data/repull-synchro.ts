@@ -163,21 +163,31 @@ export class ClientRepull {
     return this.requete<T>('GET', chemin, params);
   }
 
-  /** POST JSON (connexions, activation des annonces). */
-  async post<T>(chemin: string, corps: unknown, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
-    return this.requete<T>('POST', chemin, params, corps);
+  /** POST JSON (connexions, activation des annonces, envoi d'un message). */
+  async post<T>(
+    chemin: string,
+    corps: unknown,
+    params: Record<string, string | number | boolean | undefined> = {},
+    entetes: Record<string, string> = {},
+  ): Promise<T> {
+    return this.requete<T>('POST', chemin, params, corps, entetes);
   }
 
   async supprimer<T>(chemin: string, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
     return this.requete<T>('DELETE', chemin, params);
   }
 
-  /** Une requête comptée ; un seul nouvel essai (débit, réseau, 5xx). */
+  /**
+   * Une requête comptée ; un seul nouvel essai (débit, réseau, 5xx). Un envoi
+   * qui crée quelque chose (message au voyageur) porte un en-tête
+   * Idempotency-Key : le nouvel essai ne peut alors rien créer deux fois.
+   */
   async requete<T>(
     methode: 'GET' | 'POST' | 'DELETE' | 'PATCH',
     chemin: string,
     params: Record<string, string | number | boolean | undefined> = {},
     envoi?: unknown,
+    entetes: Record<string, string> = {},
   ): Promise<T> {
     const url = new URL(this.base + chemin);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
@@ -195,6 +205,7 @@ export class ClientRepull {
             Authorization: `Bearer ${this.o.cle}`,
             Accept: 'application/json',
             ...(envoi !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...entetes,
           },
           ...(envoi !== undefined ? { body: JSON.stringify(envoi) } : {}),
           signal: abandon.signal,
@@ -395,7 +406,8 @@ export async function verifierMembre(jeton: string, o: OptionsAuth = {}): Promis
 /* ========================================================= synchronisation */
 
 export type ModeRepull = 'complet' | 'incremental';
-export type DeclencheurRepull = 'cron' | 'manuel' | 'webhook';
+/** agent : relevé léger des conversations par l'agent IA (agent-messagerie.ts). */
+export type DeclencheurRepull = 'cron' | 'manuel' | 'webhook' | 'agent';
 
 export interface Compteur {
   crees: number;
@@ -925,8 +937,8 @@ export class SessionRepull {
     const b = this.bilan;
     const rien = !b.logements.crees && !b.logements.modifies && !b.reservations.crees && !b.reservations.modifies && !b.fils.crees && !b.fils.modifies;
     // Webhooks : une ligne seulement quand quelque chose de nouveau est arrivé.
-    if (!forcer && b.declencheur === 'webhook' && !b.logements.crees && !b.reservations.crees && !b.fils.crees) return;
-    const origine = { cron: 'automatique (quotidienne)', manuel: 'lancée depuis l’ERP', webhook: 'temps réel (webhook)' }[b.declencheur];
+    if (!forcer && (b.declencheur === 'webhook' || b.declencheur === 'agent') && !b.logements.crees && !b.reservations.crees && !b.fils.crees) return;
+    const origine = { cron: 'automatique (quotidienne)', manuel: 'lancée depuis l’ERP', webhook: 'temps réel (webhook)', agent: 'relevé des messages par l’agent IA' }[b.declencheur];
     const c = (x: Compteur, un: string, f = false) => `${un} : ${x.crees} ${f ? 'créée' : 'créé'}${x.crees > 1 ? 's' : ''}, ${x.modifies} ${f ? 'modifiée' : 'modifié'}${x.modifies > 1 ? 's' : ''}`;
     const morceaux = [
       c(b.logements, 'Logements'),
@@ -1383,4 +1395,37 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     bilan,
     etat: suivant,
   };
+}
+
+/**
+ * Relevé léger des conversations (agent IA) : seulement la phase
+ * « conversations » (un appel pour la liste, un de plus par conversation dont
+ * le dernier message a bougé), compté dans la part mensuelle de l'ERP. Ne
+ * touche ni au dernier bilan ni à la date de la dernière synchronisation.
+ */
+export async function releverConversations(o: Omit<OptionsLancement, 'declencheur' | 'evenement' | 'lireQuota' | 'forcer' | 'intervalleManuelMs'>): Promise<BilanRepull | null> {
+  const maintenant = o.maintenant ?? (() => new Date());
+  const budgetMois = o.budgetMois ?? BUDGET_ERP_DEFAUT;
+  const quotaMois = o.quotaMois ?? QUOTA_MOIS_DEFAUT;
+  const selection = await lireSelection(o.base);
+  if (!selection) return null;
+  const etat = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
+  const restant = etat.budgetMois - etat.appelsMois;
+  if (restant <= 0) throw new BudgetEpuise();
+  const client = new ClientRepull({ cle: o.cle, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
+  const s = new SessionRepull({ repull: client, base: o.base, mode: 'incremental', declencheur: 'agent', maintenant, selection: new Set(selection.annonces) });
+  try {
+    await s.phaseConversations();
+  } catch (e) {
+    if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) s.bilan.complet = false;
+    else s.bilan.erreurs.push(texteErreur(e));
+  } finally {
+    await imputerAppels(o.base, maintenant(), client.appels, budgetMois, quotaMois);
+  }
+  try {
+    await s.journaliser();
+  } catch {
+    /* journal facultatif */
+  }
+  return s.terminer();
 }

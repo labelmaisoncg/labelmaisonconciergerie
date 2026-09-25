@@ -3,7 +3,7 @@
  * (agent-ia/README.md §9 bis et §16) : codes d'accès, fiche, escalade, stats.
  */
 import { AUJOURDHUI, ajouterJours, ecartJours, pluriel } from '../../../data/format';
-import type { FilMessages, Logement, Reservation } from '../../../data/types';
+import type { FilMessages, Logement, RaisonEscalade, Reservation } from '../../../data/types';
 
 /* ----------------------------------------------------------- codes d'accès */
 
@@ -48,7 +48,7 @@ export function completudeFiche(l: Logement | undefined) {
 
 /* --------------------------------------------------------------- escalade */
 
-export type MotifEscalade = 'argent' | 'litige' | 'hors_fiche';
+export type MotifEscalade = RaisonEscalade;
 
 export const LIBELLE_MOTIF: Record<MotifEscalade, { titre: string; explication: string }> = {
   argent: {
@@ -61,7 +61,15 @@ export const LIBELLE_MOTIF: Record<MotifEscalade, { titre: string; explication: 
   },
   hors_fiche: {
     titre: 'Une information qu’il n’a pas',
-    explication: 'La réponse n’est pas dans la fiche du logement, ou le voyageur demande une exception (horaire, équipement). Votre agent n’invente rien : il a dit qu’il vérifiait.',
+    explication: 'La réponse n’est pas dans la fiche du logement. Votre agent n’invente rien : il a dit qu’il vérifiait.',
+  },
+  exception: {
+    titre: 'Une demande d’exception',
+    explication: 'Le voyageur demande quelque chose hors des règles (arrivée plus tôt, départ plus tard, long séjour…). C’est à vous de décider.',
+  },
+  autre: {
+    titre: 'Une question à vérifier',
+    explication: 'Votre agent a préféré ne pas répondre seul. Jetez un œil à la conversation.',
   },
 };
 
@@ -213,12 +221,14 @@ export function activiteAgent(fils: FilMessages[], depuis: string): ActiviteAgen
       }
     }
     if (f.statut === 'escalade') {
-      // Moment du passage de main : dernier message de l'agent, sinon dernier message du fil.
+      // Moment du passage de main : noté par l'agent, sinon son dernier message, sinon le dernier message du fil.
       const agent = [...f.messages].reverse().find((m) => m.auteur === 'agent');
-      const quand = agent?.envoyeLe ?? f.dernierMessageLe;
+      const quand = (f.agent?.decision === 'transmettre' ? f.agent.le : undefined) ?? agent?.envoyeLe ?? f.dernierMessageLe;
       if (quand.slice(0, 10) >= depuis) {
         const motif = motifEscalade(f);
-        liste.push({ id: `t-${f.id}`, genre: 'transmis', quand, fil: f, texte: LIBELLE_MOTIF[motif].explication, motif });
+        // Le résumé de l'agent (ce que veut le voyageur) vaut mieux qu'une explication générale.
+        const texte = f.agent?.decision === 'transmettre' && f.agent.resume ? f.agent.resume : LIBELLE_MOTIF[motif].explication;
+        liste.push({ id: `t-${f.id}`, genre: 'transmis', quand, fil: f, texte, motif });
       }
     }
   }
