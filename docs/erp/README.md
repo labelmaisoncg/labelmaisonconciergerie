@@ -371,6 +371,69 @@ direct ; le moteur d'automatisations crée ensuite le ménage de chaque
 nouvelle réservation (tout de suite après le bouton, sinon à la prochaine
 ouverture de l'ERP).
 
+### Connexions : connecter les plateformes et choisir les logements
+
+Tout se fait depuis l'ERP, page **Logements → Connexions**
+(`/erp/logements/connexions`, bouton « Connecter Airbnb, Booking… » en tête
+de la liste des logements, et étape 1 de la carte Démarrage du tableau de
+bord). Serveur : `api/erp-repull-connexion.ts`, logique :
+`src/erp/data/repull-connexion.ts` ; page : `src/erp/modules/logements/Connexions.tsx`.
+
+1. **Vos plateformes** : Airbnb, Booking.com, Vrbo, et « Autres logiciels de
+   gestion » (liste `GET /v1/connect/providers`, gardée une semaine). « Connecter »
+   demande au serveur une page Repull Connect et y envoie le gérant ; il
+   revient ensuite sur `/erp/logements/connexions?retour=<plateforme>`, la
+   page relit tout et dit si la connexion a abouti.
+   - Airbnb : `POST /v1/connect/airbnb` (`redirectUrl`, `locale: fr`), accès
+     complet par défaut ;
+   - Booking.com : `POST /v1/connect/booking` (`redirectUrl`). La page Repull
+     guide tout : choisir Repull (FantasticStay) comme fournisseur de
+     connectivité dans l'Extranet, coller le numéro d'établissement (Hotel
+     ID), relier les chambres. Ses appels (`/v1/connect/booking/verify`,
+     `/rooms`, `/map-rooms`) sont faits par la page elle-même avec le jeton de
+     session, jamais avec notre clé ;
+   - Vrbo et les logiciels de gestion : sélecteur hébergé `POST /v1/connect`
+     limité à ce seul fournisseur (formulaire d'identifiants chez Repull).
+   - « Déconnecter » : `DELETE /v1/connect/{provider}?accountId=` (Airbnb et
+     Booking.com ; pour les autres, Repull renvoie la marche à suivre,
+     affichée telle quelle). Les logements de ce compte sortent du choix et
+     passent en pause dans l'ERP.
+2. **Choisissez les logements à gérer** : tous les logements trouvés
+   (`GET /v1/listings?status=all&include=thumbnail`, désactivés compris,
+   archivés exclus), avec photo, ville et plateformes. Compteur « 2 / 3
+   logements (offre gratuite) » : à la limite, les autres cases sont grisées.
+   La limite vient de l'offre du compte (`GET /v1/usage/tier` : free 3,
+   starter 50, custom illimité, relue une fois par jour), sinon de
+   `REPULL_LIMITE_LOGEMENTS`, sinon 3. « Enregistrer mon choix » :
+   - le serveur refuse au-delà de la limite (message en français) ;
+   - les logements non choisis sont **désactivés chez Repull**
+     (`POST /v1/listings/status`, `active: false`), puis les choisis activés :
+     la limite de l'offre est respectée chez Repull aussi, rien n'est supprimé ;
+   - le choix est gardé dans la ligne `repull / selection` de
+     `erp.enregistrements` ;
+   - un passage de synchronisation part aussitôt (complet si de nouveaux
+     logements arrivent) ; la page affiche « 3 logements importés,
+     12 réservations, 5 conversations ».
+
+Règles de la synchronisation (cron, bouton, webhooks) :
+
+- **tant qu'aucun choix n'est enregistré, rien n'est importé** et aucun appel
+  Repull n'est fait (l'ERP affiche « Choisissez vos logements ») ;
+- seuls les logements choisis entrent, avec leurs réservations, conversations
+  et avis ; le reste est ignoré ;
+- un logement retiré du choix passe en **pause** dans l'ERP (marqué
+  `repull.horsSelection`), jamais supprimé ; ses réservations restent. Choisi
+  de nouveau, il reprend le statut de son annonce.
+
+Appels : l'état de la page est relu chez Repull au plus toutes les 5 minutes
+(sauf « Actualiser » et retour de connexion) : environ 3 appels (comptes,
+logements, offre une fois par jour). Chaque appel est compté dans la part
+mensuelle de l'ERP (`REPULL_BUDGET_ERP`) ; part épuisée : la page affiche la
+dernière lecture et le dit. Si le compte dépasse déjà la limite de son offre,
+Repull refuse la liste (402) : la page le dit, garde la dernière liste connue
+et le choix désactive d'abord le surplus (toujours permis). Connecter,
+choisir et déconnecter sont réservés aux gérants.
+
 ### Ce qui est synchronisé
 
 | Repull | ERP | Détail |

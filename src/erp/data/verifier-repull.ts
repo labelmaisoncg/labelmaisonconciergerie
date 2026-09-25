@@ -20,7 +20,8 @@ import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, montantsReservation, noteSur5, heure } from './repull';
-import { BaseErp, COLLECTION_ETAT, ID_ETAT, lancer, type EtatRepull, type ResultatLancement } from './repull-synchro';
+import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
+import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
 /* ------------------------------------------------------------ assertions */
@@ -191,12 +192,29 @@ const R = {
 interface Appel {
   chemin: string;
   params: URLSearchParams;
+  methode: string;
+  corps?: Record<string, unknown>;
 }
 
 class FauxRepull {
   appels: Appel[] = [];
   /** Taille de page simulée (la vraie limite est 100) : force la pagination par curseur. */
   page = 2;
+  /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
+  limiteActives = 3;
+  /** Compte au-delà de sa limite : l'API répond 402 partout (sauf usage et DELETE). */
+  bloque402 = false;
+  connexions: Record<string, unknown>[] = [
+    { id: 'c1', provider: 'airbnb', status: 'active', externalAccountId: '4455', createdAt: '2026-09-01T10:00:00Z', host: { displayName: 'Camille' } },
+  ];
+
+  private refus402(): Response {
+    const actives = R.listings.filter((l) => l.status === 'active').length;
+    return json(
+      { error: { code: 'listings_limit_exceeded', message: 'over cap', fix: 'Reduce your active listings.', tier: 'free', limit: this.limiteActives, active_listings: actives } },
+      402,
+    );
+  }
 
   compter(prefixe: string) {
     return this.appels.filter((a) => a.chemin.startsWith(prefixe)).length;
@@ -215,8 +233,54 @@ class FauxRepull {
     if (auth !== 'Bearer sk_test_verif') return json({ error: { code: 'unauthorized', message: 'bad key' } }, 401);
     const chemin = url.pathname;
     const p = url.searchParams;
-    this.appels.push({ chemin, params: p });
+    const methode = (init?.method ?? 'GET').toUpperCase();
+    const corps = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
+    this.appels.push({ chemin, params: p, methode, corps });
     let m: RegExpExecArray | null;
+    if (this.bloque402 && methode !== 'DELETE' && !chemin.startsWith('/v1/usage/')) return this.refus402();
+    if (chemin === '/v1/connect/providers') {
+      return json({
+        data: [
+          { id: 'airbnb', displayName: 'Airbnb', category: 'ota', connectPattern: 'oauth', status: 'live', logoUrl: 'https://x/a.png', docsUrl: 'https://x' },
+          { id: 'booking', displayName: 'Booking.com', category: 'ota', connectPattern: 'claim', status: 'live', logoUrl: 'https://x/b.png', docsUrl: 'https://x' },
+          { id: 'vrbo', displayName: 'Vrbo', category: 'ota', connectPattern: 'credentials', status: 'live', logoUrl: 'https://x/v.png', docsUrl: 'https://x' },
+          { id: 'hostaway', displayName: 'Hostaway', category: 'pms', connectPattern: 'credentials', status: 'live', logoUrl: 'https://x/h.png', docsUrl: 'https://x' },
+        ],
+      });
+    }
+    if (chemin === '/v1/connect' && methode === 'GET') return this.paginer(this.connexions, p);
+    if (chemin === '/v1/connect' && methode === 'POST') {
+      return json({ sessionId: 'sess_p', url: 'https://connect.repull.dev/sess_p', expiresAt: '2026-10-01T00:00:00Z' }, 201);
+    }
+    if ((m = /^\/v1\/connect\/([^/]+)$/.exec(chemin)) && methode === 'POST') {
+      return json({ sessionId: `sess_${m[1]}`, url: `https://connect.repull.dev/${m[1]}/sess`, expiresAt: '2026-10-01T00:00:00Z' });
+    }
+    if ((m = /^\/v1\/connect\/([^/]+)$/.exec(chemin)) && methode === 'DELETE') {
+      if (m[1] !== 'airbnb' && m[1] !== 'booking') return json({ error: { code: 'not_implemented', message: 'no', fix: 'Disconnect Repull from your Hostaway settings.' } }, 501);
+      const liees = R.listings.filter((l) => (l.channels as { platform: string }[]).some((c) => c.platform === m![1]) && l.status === 'active').map((l) => String(l.id));
+      for (const l of R.listings) if (liees.includes(String(l.id))) l.status = 'inactive';
+      this.connexions = this.connexions.filter((c) => c.provider !== m![1]);
+      return json({ disconnected: true, provider: m[1], accountId: p.get('accountId'), listingsDeactivated: liees });
+    }
+    if (chemin === '/v1/listings/status' && methode === 'POST') {
+      const ids = (corps?.listingIds as string[]) ?? [];
+      const actif = corps?.active === true;
+      const inconnus = ids.filter((id) => !R.listings.some((l) => l.id === id));
+      if (inconnus.length) return json({ error: { code: 'not_found', message: inconnus.join(',') } }, 404);
+      if (actif) {
+        const apres = new Set(R.listings.filter((l) => l.status === 'active').map((l) => String(l.id)));
+        ids.forEach((id) => apres.add(id));
+        if (apres.size > this.limiteActives) return this.refus402();
+      }
+      const updated: string[] = [];
+      for (const l of R.listings) {
+        if (!ids.includes(String(l.id))) continue;
+        const cible = actif ? 'active' : 'inactive';
+        if (l.status !== cible) updated.push(String(l.id));
+        l.status = cible;
+      }
+      return json({ active: actif, updated, unchanged: ids.filter((id) => !updated.includes(id)) });
+    }
     if (chemin === '/v1/listings') return this.paginer(R.listings, p);
     if ((m = /^\/v1\/listings\/([^/]+)$/.exec(chemin))) {
       const l = R.listings.find((x) => x.id === m![1]);
@@ -224,8 +288,9 @@ class FauxRepull {
     }
     if (chemin === '/v1/reservations') {
       const depuis = Date.parse(p.get('updated_since') ?? '1970-01-01T00:00:00Z');
+      const inactives = new Set(R.listings.filter((l) => l.status === 'inactive').map((l) => String(l.id)));
       const liste = R.reservations
-        .filter((r) => Date.parse(String(r.updatedAt)) >= depuis)
+        .filter((r) => Date.parse(String(r.updatedAt)) >= depuis && !inactives.has(String(r.listingId)))
         .sort((a, b) => String(a.updatedAt).localeCompare(String(b.updatedAt)) || String(a.id).localeCompare(String(b.id)));
       return this.paginer(liste, p);
     }
@@ -414,6 +479,15 @@ async function principal() {
   verifier(m?.brut === 58866 && m.commissionPlateforme === 2194 && m.menage === 6000, `montants 5001 (${JSON.stringify(m)})`);
   verifier(canonique({ b: 1, a: { d: undefined, c: [2, 1] } }) === '{"a":{"c":[2,1]},"b":1}', 'sérialisation canonique');
 
+  /* ------------------------------------------------ sans choix de logements */
+  section('Aucun logement choisi');
+  const r0 = await lancer(options('manuel'));
+  verifier(r0.statut === 'selection' && /Choisissez vos logements/.test(r0.message ?? ''), `rien n’est importé, message clair (${r0.message})`);
+  verifier(repull.appels.length === 0 && base.ecrituresDonnees().length === 0, 'aucun appel Repull, aucune écriture');
+
+  // Choix fait sur la page Connexions (repull/selection).
+  base.poser(COLLECTION_ETAT, { id: ID_SELECTION, annonces: ['101', '102'], limite: 3, majLe: '2026-09-25T09:00:00+02:00', majPar: 'test' });
+
   /* --------------------------------------------------- premier passage */
   section('Premier passage (bouton)');
   const r1 = await lancer(options('manuel'));
@@ -561,6 +635,127 @@ async function principal() {
   horloge = new Date('2026-10-01T06:00:00.000Z');
   const r7 = await lancer(options('cron', { budgetMois: 5 }));
   verifier(r7.statut === 'fait' && r7.etat.mois === '2026-10' && r7.etat.appelsMois <= 5, `nouveau mois : compteur remis à zéro (${r7.etat.appelsMois})`);
+
+  /* ------------------------------------------------ connexions et choix */
+  section('Connexions : choix des logements (offre gratuite : 3)');
+  // Nouvelle base (autre compte) : 102 est archivée, 103, 104 et 105 viennent d'être connectées.
+  const base2 = new FausseBase();
+  const erp2 = () =>
+    new BaseErp({
+      url: 'https://base.test',
+      cleAnon: 'anon',
+      fetch: base2.fetch as typeof fetch,
+      jeton: async () => 'jeton-equipe',
+    });
+  const annonce = (id: string, nom: string, ville: string, plateforme: string) => ({
+    id,
+    name: nom,
+    address: { city: ville },
+    thumbnailUrl: `https://cdn.repull.dev/p/${id}.jpg`,
+    status: 'active',
+    channels: [{ platform: plateforme, externalId: `x${id}`, active: true, syncEnabled: true }],
+    details: { personCapacity: 4 },
+    updatedAt: '2026-10-01T05:00:00.000Z',
+  });
+  R.listings.push(annonce('103', 'Loft Saint-Martin', 'Paris', 'airbnb'), annonce('104', 'Duplex Bellecour', 'Lyon', 'booking.com'), annonce('105', 'Villa Pins', 'Arcachon', 'airbnb'));
+  R.reservations.push(
+    { id: '5104', listingId: '104', checkIn: '2026-10-20', checkOut: '2026-10-23', status: 'confirmed', source: 'booking.com', guestName: 'Lina Roy', financials: { totalPrice: 420, currency: 'EUR' }, updatedAt: '2026-10-01T05:00:00.000Z' },
+    { id: '5105', listingId: '105', checkIn: '2026-10-21', checkOut: '2026-10-24', status: 'confirmed', source: 'airbnb', guestName: 'Paul Roy', financials: { totalPrice: 610, currency: 'EUR' }, updatedAt: '2026-10-01T05:00:00.000Z' },
+  );
+  R.conversations.push({ id: '7105', platform: 'airbnb', listingId: '105', reservationId: '5105', lastMessageAt: '2026-10-01T05:00:00.000Z', updatedAt: '2026-10-01T05:00:00.000Z', status: 'open' });
+  R.messages['7105'] = [{ id: 'm105', direction: 'inbound', senderName: 'Paul', body: 'Bonjour !', attachments: [], sentAt: '2026-10-01T05:00:00.000Z' }];
+  horloge = new Date('2026-10-02T08:00:00.000Z');
+  const ctx = (): ContexteConnexion => ({
+    cle: 'sk_test_verif',
+    base: erp2(),
+    echeance: Date.now() + 50_000,
+    fetch: repull.fetch as typeof fetch,
+    maintenant: () => horloge,
+    attendre: async () => undefined,
+  });
+  const appelsBase2 = () => base2.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)?.appelsMois ?? 0;
+  const debutC = repull.appels.length;
+
+  const e1 = await lireEtatConnexions(ctx());
+  verifier(e1.limite === 3 && e1.offre === 'free' && e1.sourceLimite === 'repull', `limite lue chez Repull : offre ${e1.offre}, ${e1.limite} logements`);
+  verifier(e1.annonces.length === 4 && !e1.annonces.some((a) => a.id === '102'), `4 logements proposés, l’annonce archivée écartée (${e1.annonces.map((a) => a.id).join(',')})`);
+  verifier(e1.annonces.find((a) => a.id === '104')?.plateformes.join() === 'booking' && e1.annonces.find((a) => a.id === '103')?.ville === 'Paris', 'plateformes et ville');
+  verifier(e1.connexions.length === 1 && e1.connexions[0].fournisseur === 'airbnb' && e1.connexions[0].nom === 'Camille', 'compte Airbnb connecté');
+  verifier(e1.fournisseurs.some((f) => f.id === 'hostaway' && f.categorie === 'pms'), 'logiciels de gestion proposés');
+  verifier(e1.selection.length === 0 && e1.annonces.every((a) => !a.selectionnee && !a.importee), 'rien de choisi, rien d’importé');
+  verifier(appelsBase2() === repull.appels.length - debutC, `appels de la page comptés dans la part du mois (${appelsBase2()})`);
+  const avantCache = repull.appels.length;
+  await lireEtatConnexions(ctx());
+  verifier(repull.appels.length === avantCache, 'relecture dans les 5 min : aucun appel (mémoire)');
+
+  const avantTrop = repull.appels.length;
+  let refus = '';
+  try {
+    await enregistrerSelection(ctx(), ['101', '103', '104', '105'], 'gerant@test');
+  } catch (e) {
+    refus = e instanceof ErreurConnexion ? e.message : String(e);
+  }
+  verifier(/permet 3 logements : vous en avez choisi 4/.test(refus), `4 logements refusés, message clair (${refus})`);
+  verifier(repull.appels.length === avantTrop && !base2.get(COLLECTION_ETAT, ID_SELECTION), 'refus avant tout appel, choix non enregistré');
+
+  const s1 = await enregistrerSelection(ctx(), ['101', '103', '104'], 'gerant@test');
+  verifier(s1.ok && s1.logements === 3, `3 logements importés (${JSON.stringify({ ...s1, bilan: undefined })})`);
+  verifier(R.listings.find((l) => l.id === '105')?.status === 'inactive', 'annonce non choisie désactivée chez Repull (hors limite)');
+  verifier(!base2.get('logements', 'repull-105') && !base2.get('reservations', 'repull-5105') && !base2.get('filsMessages', 'repull-7105'), 'logement non choisi : ni logement, ni réservation, ni conversation');
+  verifier(!base2.get('reservations', 'repull-5002'), 'réservation d’une annonce non choisie ignorée');
+  verifier(base2.get<Reservation>('reservations', 'repull-5104')?.logementId === 'repull-104' && s1.reservations >= 2, `réservations des logements choisis importées (${s1.reservations})`);
+  verifier(base2.get<SelectionRepull>(COLLECTION_ETAT, ID_SELECTION)?.annonces.join() === '101,103,104', 'choix enregistré');
+  verifier(appelsBase2() === repull.appels.length - debutC, `tous les appels comptés (${appelsBase2()} = ${repull.appels.length - debutC})`);
+
+  const statut = repull.appels.filter((a) => a.chemin === '/v1/listings/status');
+  const s2 = await enregistrerSelection(ctx(), ['101', '103', '105'], 'gerant@test');
+  const ordre = repull.appels.filter((a) => a.chemin === '/v1/listings/status').slice(statut.length).map((a) => `${a.corps?.active}:${(a.corps?.listingIds as string[]).join()}`);
+  verifier(ordre.join(' ') === 'false:104 true:105', `désactiver avant d’activer, la limite n’est jamais dépassée (${ordre.join(' ')})`);
+  const l104 = base2.get<Logement>('logements', 'repull-104')!;
+  verifier(s2.ok && l104.statut === 'pause' && l104.repull?.horsSelection === true, `logement retiré : en pause, pas supprimé (${l104.statut})`);
+  verifier(!!base2.get('reservations', 'repull-5104'), 'ses réservations restent');
+  verifier(base2.get<Logement>('logements', 'repull-105')?.statut === 'actif' && !!base2.get('filsMessages', 'repull-7105'), 'nouveau logement choisi : importé avec sa conversation');
+
+  await enregistrerSelection(ctx(), ['101', '104', '105'], 'gerant@test');
+  const l104b = base2.get<Logement>('logements', 'repull-104')!;
+  verifier(l104b.statut === 'actif' && !l104b.repull?.horsSelection, 'choisi de nouveau : actif');
+  verifier(base2.get<Logement>('logements', 'repull-103')?.statut === 'pause', 'l’autre retiré passe en pause');
+  const e2 = await lireEtatConnexions(ctx(), { forcer: true });
+  verifier(
+    e2.annonces.filter((a) => a.selectionnee).map((a) => a.id).sort().join() === '101,104,105' && e2.annonces.find((a) => a.id === '103')?.importee === false,
+    'page : choix et logements importés à jour',
+  );
+
+  section('Connexions : connecter, déconnecter, offre dépassée');
+  const c1 = await demarrerConnexion(ctx(), 'airbnb', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=airbnb');
+  const appelAirbnb = repull.appels[repull.appels.length - 1];
+  verifier(c1.url.startsWith('https://connect.repull.dev/') && appelAirbnb.chemin === '/v1/connect/airbnb' && appelAirbnb.methode === 'POST', 'Airbnb : page de connexion Repull');
+  verifier(String(appelAirbnb.corps?.redirectUrl).endsWith('/erp/logements/connexions?retour=airbnb'), 'retour sur la page Connexions');
+  await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
+  verifier(repull.appels[repull.appels.length - 1].chemin === '/v1/connect/booking', 'Booking.com : page de connexion Repull');
+  await demarrerConnexion(ctx(), 'hostaway', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=hostaway');
+  const appelPicker = repull.appels[repull.appels.length - 1];
+  verifier(appelPicker.chemin === '/v1/connect' && (appelPicker.corps?.allowedProviders as string[]).join() === 'hostaway', 'autre logiciel : sélecteur Repull limité à ce logiciel');
+  let refusInconnu = '';
+  await demarrerConnexion(ctx(), 'inconnu', 'https://x').catch((e) => (refusInconnu = String(e?.message)));
+  verifier(/pas proposée/.test(refusInconnu), 'plateforme inconnue refusée');
+
+  let refus501 = '';
+  await deconnecter(ctx(), 'hostaway').catch((e) => (refus501 = e instanceof ErreurConnexion ? e.message : String(e)));
+  verifier(/depuis son propre site/.test(refus501) && /Hostaway settings/.test(refus501), `déconnexion impossible par l’API : marche à suivre de Repull (${refus501})`);
+  const d1 = await deconnecter(ctx(), 'airbnb', '4455');
+  verifier(d1.annoncesDesactivees.includes('101') && !base2.get<SelectionRepull>(COLLECTION_ETAT, ID_SELECTION)!.annonces.includes('101'), 'Airbnb déconnecté : ses logements sortent du choix');
+
+  repull.bloque402 = true;
+  const e3 = await lireEtatConnexions(ctx(), { forcer: true });
+  repull.bloque402 = false;
+  verifier(!!e3.depassement && /logements actifs chez Repull/.test(e3.depassement.message) && e3.annonces.length > 0, `offre dépassée : message clair, dernière liste gardée (${e3.depassement?.message})`);
+  verifier(appelsBase2() === repull.appels.length - debutC, `part du mois : tous les appels de la page comptés (${appelsBase2()})`);
+
+  const avantBudget = repull.appels.length;
+  const ctxEpuise = { ...ctx(), budgetMois: appelsBase2() };
+  const e4 = await lireEtatConnexions(ctxEpuise, { forcer: true });
+  verifier(repull.appels.length === avantBudget && /épuisés/.test(e4.avertissements.join(' ')), 'part du mois épuisée : aucun appel, avertissement, dernière lecture affichée');
 
   /* ----------------------------------------------------------- signature */
   section('Signature du webhook');

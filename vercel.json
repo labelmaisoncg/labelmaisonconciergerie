@@ -20,6 +20,9 @@
     },
     "api/erp-repull-webhook.ts": {
       "maxDuration": 60
+    },
+    "api/erp-repull-connexion.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
