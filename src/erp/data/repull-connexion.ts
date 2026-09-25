@@ -516,12 +516,15 @@ export async function demarrerConnexion(
         state: f,
       });
     }
-    // Niveau d'accès choisi dans l'ERP : Repull masque alors ce choix sur sa page.
+    // Airbnb : messagerie UNIQUEMENT, toujours. L'ERP ne doit jamais pouvoir
+    // modifier le calendrier, les prix ni les annonces Airbnb ; ce niveau
+    // d'accès ne l'autorise pas, et Repull masque alors ce choix sur sa page.
     if (f === 'airbnb') {
+      void accesAirbnb;
       return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/airbnb', {
         redirectUrl: urlRetour,
         locale: 'fr',
-        ...(accesAirbnb ? { accessType: accesAirbnb } : {}),
+        accessType: 'messaging',
       });
     }
     // Booking.com : la page hébergée ouverte par /v1/connect/booking répond
@@ -806,6 +809,8 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
 export interface ResultatCalendrier {
   ok: true;
   annonce: string;
+  /** Seule plateforme écrite : jamais Airbnb. */
+  plateforme: 'booking';
   ouvertes: number;
   gardeesFermees: number;
   du: string;
@@ -817,11 +822,17 @@ const JOUR_MS = 86_400_000;
 const isoJour = (t: number) => new Date(t).toISOString().slice(0, 10);
 
 /**
- * Ouvre le calendrier d'une annonce à la réservation, avec un prix par nuit
- * et une durée minimale, sur `jours` jours à partir d'aujourd'hui (731 au
- * plus). Un seul appel Repull (PUT /v1/availability/{id}), qui pousse vers
- * toutes les plateformes reliées. Les nuits de `bloquees` (réservations
- * connues) ne sont PAS envoyées : elles gardent leur état actuel (fermé).
+ * Ouvre le calendrier d'une annonce à la réservation SUR BOOKING.COM
+ * UNIQUEMENT : prix par nuit et durée minimale sur `jours` jours (731 au
+ * plus). Écrit par /v1/channels/booking/availability, qui ne touche jamais
+ * Airbnb ni aucune autre plateforme (le PUT /v1/availability générique
+ * pousserait vers toutes les plateformes reliées).
+ *   1. GET /v1/channels/booking/properties/{annonce}/rooms : chambre(s) et
+ *      plan(s) tarifaire(s) Booking de l'annonce ;
+ *   2. PUT type « rates » : prix + durée minimale sur les périodes ouvertes ;
+ *   3. PUT type « availability » : 1 chambre à vendre, vente rouverte.
+ * Les nuits de `bloquees` (réservations connues) ne sont pas envoyées :
+ * elles restent fermées.
  */
 export async function ouvrirCalendrier(
   ctx: ContexteConnexion,
@@ -845,12 +856,46 @@ export async function ouvrirCalendrier(
     if (!bloquees.has(j)) dates.push(j);
   }
   if (!dates.length) throw new ErreurConnexion('Aucune nuit à ouvrir sur cette période.');
-  const r = await avecClient(ctx, (client) =>
-    client.requete<unknown>('PUT', `/v1/availability/${annonce}`, {}, { dates, available: true, price: prix, minNights: minNuits }),
-  );
+  // Périodes continues de nuits ouvertes (bornes incluses, format Booking).
+  const periodes: { start: string; end: string }[] = [];
+  for (const j of dates) {
+    const der = periodes[periodes.length - 1];
+    if (der && Date.parse(`${j}T00:00:00Z`) - Date.parse(`${der.end}T00:00:00Z`) === JOUR_MS) der.end = j;
+    else periodes.push({ start: j, end: j });
+  }
+  const r = await avecClient(ctx, async (client) => {
+    const salles = await client.get<{ hotelId?: string; rooms?: { roomId?: string | null; rates?: { rateId?: string | null }[] }[] }>(
+      `/v1/channels/booking/properties/${annonce}/rooms`,
+    );
+    const hotel = texte(salles?.hotelId);
+    const couples: { roomId: string; rateId: string }[] = [];
+    for (const salle of salles?.rooms ?? []) {
+      for (const tarif of salle?.rates ?? []) {
+        if (texte(salle.roomId) && texte(tarif?.rateId)) couples.push({ roomId: texte(salle.roomId), rateId: texte(tarif.rateId) });
+      }
+    }
+    if (!hotel || !couples.length) {
+      throw new ErreurConnexion('Ce logement n’est pas relié à Booking.com (chambre ou plan tarifaire introuvable) : rien n’a été envoyé.');
+    }
+    const prixEnvoyes = await client.requete<unknown>('PUT', '/v1/channels/booking/availability', {}, {
+      type: 'rates',
+      property_id: hotel,
+      verify: false,
+      updates: couples.flatMap((c) =>
+        periodes.map((d) => ({ ...c, dateRange: d, price: prix, currency: 'EUR', restrictions: { minStay: minNuits } })),
+      ),
+    });
+    const ouverture = await client.requete<unknown>('PUT', '/v1/channels/booking/availability', {}, {
+      type: 'availability',
+      property_id: hotel,
+      updates: couples.flatMap((c) => periodes.map((d) => ({ ...c, dateRange: d, availableRooms: 1, closed: false }))),
+    });
+    return { hotel, prix: prixEnvoyes, ouverture };
+  });
   return {
     ok: true,
     annonce,
+    plateforme: 'booking',
     ouvertes: dates.length,
     gardeesFermees: jours - dates.length,
     du: dates[0],

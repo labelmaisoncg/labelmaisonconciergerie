@@ -155,7 +155,6 @@ export default function Connexions() {
   }, [charger, retour, params, naviguer]);
 
   const [choixAirbnb, setChoixAirbnb] = useState(false);
-  const [accesAirbnb, setAccesAirbnb] = useState<'full_access' | 'messaging'>('full_access');
 
   const connecter = async (fournisseur: string, acces?: 'full_access' | 'messaging') => {
     // Airbnb : le niveau d'accès se choisit ici, pas sur la page Repull.
@@ -516,35 +515,18 @@ export default function Connexions() {
             <Button variant="ghost" onClick={() => setChoixAirbnb(false)}>
               Annuler
             </Button>
-            <Button variant="primary" icone={<Plug />} onClick={() => void connecter('airbnb', accesAirbnb)}>
+            <Button variant="primary" icone={<Plug />} onClick={() => void connecter('airbnb', 'messaging')}>
               Continuer vers Airbnb
             </Button>
           </>
         }
       >
-        <fieldset className="grid gap-2">
-          <legend className="mb-2 text-[13.5px] text-(--lm-encre)">Utilisez-vous déjà un autre logiciel (Smoobu, Guesty, Hostaway…) sur ce compte Airbnb ?</legend>
-          {(
-            [
-              ['full_access', 'Non, Label Maison gère tout', 'Réservations, calendrier, prix et messages. Recommandé.'],
-              ['messaging', 'Oui, je garde mon logiciel', 'L’ERP lit vos logements et réservations et gère les messages ; votre logiciel garde le calendrier et les prix.'],
-            ] as const
-          ).map(([valeur, titre, aide]) => (
-            <label
-              key={valeur}
-              className={cn(
-                'flex cursor-pointer gap-3 rounded-lg border p-3',
-                accesAirbnb === valeur ? 'border-(--lm-or) bg-(--lm-or-lavis)' : 'border-(--lm-bord)',
-              )}
-            >
-              <input type="radio" name="acces-airbnb" className="mt-1" checked={accesAirbnb === valeur} onChange={() => setAccesAirbnb(valeur)} />
-              <span>
-                <span className="block text-[14px] font-medium text-(--lm-encre)">{titre}</span>
-                <span className="block text-[12.5px] text-(--lm-encre-2)">{aide}</span>
-              </span>
-            </label>
-          ))}
-        </fieldset>
+        <p className="text-[13.5px] text-(--lm-encre)">
+          L’ERP aura accès <strong>uniquement à la messagerie</strong> Airbnb : lire vos réservations et répondre aux voyageurs.
+        </p>
+        <p className="mt-2 text-[13px] text-(--lm-encre-2)">
+          Votre calendrier, vos prix et vos annonces Airbnb ne seront jamais modifiés : vous continuez à les gérer sur Airbnb comme aujourd’hui.
+        </p>
         <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">
           Sur Airbnb, connectez-vous avec le compte hôte qui gère vos annonces, puis cliquez sur « Autoriser ».
         </p>
@@ -686,7 +668,7 @@ function OuvrirCalendriers({ annonces, actif }: { annonces: EtatConnexions['anno
       <h2 className="mb-1 text-[16px] font-semibold text-(--lm-encre)">3. Ouvrez vos logements à la réservation</h2>
       <p className="mb-3 text-[13px] text-(--lm-encre-2)">
         Une fois reliés à Repull, vos logements Booking restent fermés tant qu’aucun prix n’est envoyé. Indiquez un prix par nuit : le calendrier
-        s’ouvre sur toutes vos plateformes en un clic.
+        Booking.com s’ouvre en un clic. Airbnb n’est jamais touché.
       </p>
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {annonces.map((a) => {
@@ -781,8 +763,9 @@ function CarteCalendrier({ annonce, nuitsErp, actif }: { annonce: EtatConnexions
         </Alert>
       )}
       <Button variant="primary" icone={<Plug />} chargement={enCours} disabled={!actif || enCours || !prix.trim()} onClick={() => void ouvrir()}>
-        Ouvrir à la réservation
+        Ouvrir sur Booking.com
       </Button>
+      <p className="text-[11.5px] text-(--lm-encre-3)">N’agit que sur Booking.com : Airbnb n’est jamais modifié.</p>
     </Card>
   );
 }
