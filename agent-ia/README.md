@@ -22,6 +22,23 @@ gestionnaire de canaux depuis le 25 septembre 2026.
 
 ---
 
+
+### Offre gratuite Repull (démarrage)
+
+L'offre gratuite couvre **3 logements** et **1 000 appels par mois**, sans
+webhooks. L'agent est réglé pour ce cas :
+
+- `sql/007-quota-repull.sql` : compteur mensuel des appels (`quota_repull`) et
+  repère par fil de messages (`fils_vus`) ; un fil qui n'a pas bougé n'est
+  jamais relu.
+- `REPULL_BUDGET_MENSUEL` (600 par défaut) : au-delà, les lectures s'arrêtent
+  jusqu'au 1er du mois ; les réponses aux voyageurs partent toujours.
+- `sql/cron.sql` : messages toutes les 3 h de 8 h à 23 h (Paris, été), veille,
+  réservations, résumé et santé une fois par jour. Réponse aux voyageurs en
+  3 h au plus.
+- Passage à Starter (webhooks, temps réel) : cadences « Starter » notées dans
+  `sql/cron.sql`, `RATTRAPAGE_RESERVATIONS_MIN=35`, budget relevé.
+
 ## 1. Les rôles
 
 ```

@@ -13,6 +13,30 @@ export type Horodatage = string;
 /** Montant en centimes d'euro (entier). */
 export type Centimes = number;
 
+/**
+ * Trace d'un élément importé de Repull (API unifiée Airbnb, Booking.com...),
+ * écrite par la synchronisation serveur (api/erp-repull-sync.ts). Sa présence
+ * signifie « Importé de Repull » ; son contenu sert à relier et à comparer.
+ */
+export interface OrigineRepull {
+  /** Identifiant Repull (annonce, réservation ou conversation). */
+  id: string;
+  /** Dernière modification connue chez Repull (updatedAt, ou dernier message d'une conversation). */
+  majLe?: Horodatage;
+  /** Statut brut chez Repull (active, cancelled...). */
+  statut?: string;
+  /** Précision du statut (cancelled_by_guest, declined...). */
+  statutDetail?: string;
+  /** Code de confirmation de la plateforme (HM... Airbnb, numéro Booking.com). */
+  code?: string;
+  /** Devise des montants (EUR attendu). */
+  devise?: string;
+  /** Voyageur chez Repull (pays lu dans sa fiche). */
+  voyageurId?: string;
+  /** Annonces reliées sur chaque plateforme. */
+  canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
+}
+
 /* ------------------------------------------------------------ référentiel */
 
 export type TypeProprietaire = 'particulier' | 'sci' | 'societe';
@@ -121,10 +145,13 @@ export interface Logement {
   serrure: Serrure;
   fiche: FicheLogement;
   dotationLinge: LigneArticle[];
+  /** @deprecated Ancien identifiant Channex (avant Repull), ni affiché ni écrit. */
   channexPropertyId?: string;
   annonces: Annonce[];
   checklistLancement: ElementChecklistLancement[];
   photoUrl?: string;
+  /** Annonce importée de Repull (synchronisation automatique). */
+  repull?: OrigineRepull;
 }
 
 /* ----------------------------------------------------------- distribution */
@@ -152,7 +179,10 @@ export interface Reservation {
   fraisMenageCentimes: Centimes;
   noteVoyageur?: number;
   commentaireVoyageur?: string;
+  /** @deprecated Ancienne référence Channex (avant Repull) : lue en secours pour les anciennes lignes. */
   channexBookingId?: string;
+  /** Réservation importée de Repull (synchronisation automatique). */
+  repull?: OrigineRepull;
 }
 
 /* ------------------------------------------------------ relation voyageur */
@@ -180,6 +210,8 @@ export interface FilMessages {
   traitePar: TraitePar;
   /** Pourquoi l'agent a passé la main (fil escaladé). */
   raisonEscalade?: RaisonEscalade;
+  /** Conversation importée de Repull (synchronisation automatique). */
+  repull?: OrigineRepull;
 }
 
 export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche';

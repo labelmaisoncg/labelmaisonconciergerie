@@ -93,6 +93,8 @@ const mem = {
   invitations: new Map<string, Invitation>(),
   souvenirs: [] as Array<Souvenir & { conciergerieId: string }>,
   resumes: new Map<string, string>(),
+  quotaRepull: new Map<string, number>(), // 'AAAA-MM' -> appels
+  filsVus: new Map<string, string>(), // filId -> dernierMessageLe traité
   initiatives: new Set<string>(),
   compteur: 0,
 };
@@ -1056,4 +1058,49 @@ export async function toutesConciergeries(): Promise<Array<Conciergerie & { chat
     styleExemples: r.style_exemples ?? [],
     chatIds: r.chat_ids ?? [],
   }));
+}
+
+// --- Quota Repull ---
+
+/**
+ * Compte un appel à l'API Repull pour le mois en cours (UTC) et renvoie le
+ * total du mois après cet appel. Table quota_repull (sql/007-quota-repull.sql).
+ */
+export async function compterAppelRepull(): Promise<number> {
+  const mois = new Date().toISOString().slice(0, 7);
+  if (!sql) {
+    const n = (mem.quotaRepull.get(mois) ?? 0) + 1;
+    mem.quotaRepull.set(mois, n);
+    return n;
+  }
+  const [ligne] = await sql<{ appels: number }[]>`
+    insert into quota_repull (mois, appels) values (${mois}, 1)
+    on conflict (mois) do update set appels = quota_repull.appels + 1
+    returning appels`;
+  return Number(ligne?.appels ?? 0);
+}
+
+/** Appels Repull déjà faits ce mois-ci par l'agent. */
+export async function appelsRepullDuMois(): Promise<number> {
+  const mois = new Date().toISOString().slice(0, 7);
+  if (!sql) return mem.quotaRepull.get(mois) ?? 0;
+  const [ligne] = await sql<{ appels: number }[]>`select appels from quota_repull where mois = ${mois}`;
+  return Number(ligne?.appels ?? 0);
+}
+
+/** Date du dernier message déjà examiné dans ce fil (rattrapage du cron). */
+export async function filVuJusqua(filId: string): Promise<string | null> {
+  if (!sql) return mem.filsVus.get(filId) ?? null;
+  const [ligne] = await sql<{ vu_jusqua: string }[]>`select vu_jusqua from fils_vus where fil_id = ${filId}`;
+  return ligne?.vu_jusqua ?? null;
+}
+
+export async function marquerFilVu(filId: string, dernierMessageLe: string): Promise<void> {
+  if (!sql) {
+    mem.filsVus.set(filId, dernierMessageLe);
+    return;
+  }
+  await sql`
+    insert into fils_vus (fil_id, vu_jusqua) values (${filId}, ${dernierMessageLe})
+    on conflict (fil_id) do update set vu_jusqua = excluded.vu_jusqua, maj_le = now()`;
 }

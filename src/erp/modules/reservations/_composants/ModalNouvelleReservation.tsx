@@ -196,7 +196,7 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
           <Input inputMode="decimal" value={f.menage} onChange={(e) => maj('menage', e.target.value)} placeholder={menageDefaut !== undefined ? String(menageDefaut / 100) : ''} />
         </Field>
         <p className="self-end text-[12.5px] text-(--lm-encre-2) sm:col-span-2">
-          Canal direct : aucune commission plateforme. Pensez à bloquer les dates sur Airbnb et Booking via Channex.
+          Canal direct : aucune commission plateforme. Pensez à bloquer ces dates sur Airbnb et Booking.com (dans Repull ou sur chaque plateforme) : l’ERP ne modifie pas les calendriers.
         </p>
       </form>
     </Modal>

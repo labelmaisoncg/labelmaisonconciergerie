@@ -14,8 +14,20 @@
     "api/studio-webhook.ts": {
       "maxDuration": 60,
       "memory": 1536
+    },
+    "api/erp-repull-sync.ts": {
+      "maxDuration": 60
+    },
+    "api/erp-repull-webhook.ts": {
+      "maxDuration": 60
     }
   },
+  "crons": [
+    {
+      "path": "/api/erp-repull-sync",
+      "schedule": "17 4 * * *"
+    }
+  ],
   "redirects": [
     {
       "source": "/love-room-sens.html",

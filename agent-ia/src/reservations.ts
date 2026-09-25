@@ -118,12 +118,13 @@ export async function traiterReservation(r: repull.Reservation, cle: string): Pr
 }
 
 /**
- * Rattrapage : tout ce qui a changé chez Repull depuis 35 minutes, toutes
+ * Rattrapage : tout ce qui a changé chez Repull depuis la fenêtre, toutes
  * conciergeries confondues, en une seule lecture paginée. La fenêtre déborde
- * volontairement la cadence du cron (15 min) : un passage raté est couvert par
- * le suivant.
+ * volontairement la cadence du cron : un passage raté est couvert par le
+ * suivant. Offre gratuite (un passage par jour) : 49 h par défaut ; offre
+ * Starter (toutes les 15 min) : RATTRAPAGE_RESERVATIONS_MIN=35.
  */
-const FENETRE_MINUTES = 35;
+const FENETRE_MINUTES = Number(process.env.RATTRAPAGE_RESERVATIONS_MIN || 49 * 60);
 
 export async function releverReservations(): Promise<{ lues: number; notifiees: number }> {
   let resas: repull.Reservation[];

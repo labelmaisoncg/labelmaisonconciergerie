@@ -22,7 +22,7 @@ export function CarteAgent({ fils }: { fils: FilMessages[] }) {
             </Badge>
           </p>
           <p className="text-[13px] text-(--lm-encre-2)">
-            Channex (Messaging &amp; Reviews) et crédits Anthropic requis. Une fois actif, il répond en autonomie et copie chaque réponse au propriétaire sur Telegram.
+            Repull (messagerie Airbnb et Booking.com) et crédits Anthropic requis. Une fois actif, il répond en autonomie et copie chaque réponse au propriétaire sur Telegram.
           </p>
         </div>
       </div>
