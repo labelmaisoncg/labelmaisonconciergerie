@@ -35,6 +35,8 @@ export interface OrigineRepull {
   voyageurId?: string;
   /** Annonces reliées sur chaque plateforme. */
   canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
+  /** Logement retiré du choix (page Connexions) : en pause, plus synchronisé. */
+  horsSelection?: boolean;
 }
 
 /* ------------------------------------------------------------ référentiel */
