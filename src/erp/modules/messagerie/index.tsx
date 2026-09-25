@@ -120,16 +120,30 @@ function Boite() {
             <Conversation fil={fil} logement={logement} reservation={reservation} />
           ) : (
             <div className="grid h-full place-items-center p-6">
-              <EmptyState
-                icone={<MessagesSquare />}
-                titre={filId ? 'Cette conversation n’existe plus' : 'Choisissez une conversation'}
-                description={
-                  filId
-                    ? 'Elle a peut-être été supprimée. Choisissez-en une autre dans la liste.'
-                    : 'Celles qui ont besoin de vous sont marquées dans la liste.'
-                }
-                className="border-none"
-              />
+              {!filId && d.filsMessages.length === 0 ? (
+                <EmptyState
+                  icone={<MessagesSquare />}
+                  titre="Pas encore de conversation"
+                  description="Les messages de vos voyageurs arrivent ici tout seuls dès que vous avez connecté Airbnb ou Booking et choisi vos logements (bouton « Enregistrer mon choix »)."
+                  action={
+                    <Link to="/erp/logements/connexions" className="text-[13.5px] font-medium text-(--lm-or) hover:underline">
+                      Connecter mes plateformes →
+                    </Link>
+                  }
+                  className="border-none"
+                />
+              ) : (
+                <EmptyState
+                  icone={<MessagesSquare />}
+                  titre={filId ? 'Cette conversation n’existe plus' : 'Choisissez une conversation'}
+                  description={
+                    filId
+                      ? 'Elle a peut-être été supprimée. Choisissez-en une autre dans la liste.'
+                      : 'Celles qui ont besoin de vous sont marquées dans la liste.'
+                  }
+                  className="border-none"
+                />
+              )}
             </div>
           )}
         </section>
