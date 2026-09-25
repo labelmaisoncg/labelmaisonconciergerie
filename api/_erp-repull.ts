@@ -27,9 +27,12 @@ export interface ConfigRepullErp {
   quotaMois: number;
 }
 
+/** Variable absente ou vide → valeur par défaut (Number('') vaut 0 : budget nul par erreur). */
 const entier = (v: string | undefined, defaut: number): number => {
-  const n = Number(String(v ?? '').trim());
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : defaut;
+  const brut = String(v ?? '').trim();
+  if (!brut) return defaut;
+  const n = Number(brut);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : defaut;
 };
 
 /** Lecture des variables (trim : un copier-coller Vercel embarque souvent un retour à la ligne). */
