@@ -63,7 +63,7 @@ export function Demarrage() {
     },
     {
       titre: 'Saisir les réservations à venir',
-      detail: 'En attendant Channex : chaque départ crée automatiquement son ménage.',
+      detail: 'Airbnb et Booking.com arrivent seuls par Repull ; saisissez ici les réservations directes. Chaque départ crée automatiquement son ménage.',
       fait: d.reservations.some((r) => r.statut !== 'annulee' && r.depart >= AUJOURDHUI),
       lien: '/erp/reservations?nouveau=1',
       action: 'Nouvelle réservation',

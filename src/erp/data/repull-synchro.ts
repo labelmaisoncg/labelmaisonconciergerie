@@ -782,8 +782,9 @@ export class SessionRepull {
         if (!conv?.id) continue;
         const id = filParRepull.get(String(conv.id)) ?? idRepull(conv.id);
         const existant = fils.get(id);
-        const reperes = [conv.lastMessageAt, conv.updatedAt].filter(Boolean);
-        if (existant?.repull?.majLe && reperes.length && reperes.every((x) => instant(x) <= instant(existant.repull?.majLe))) continue;
+        // Repère : l'instant du dernier message (celui que versFil garde dans repull.majLe).
+        const repere = conv.lastMessageAt || conv.updatedAt;
+        if (existant?.repull?.majLe && repere && instant(repere) <= instant(existant.repull.majLe)) continue;
         const idRes = conv.reservationId ? this.reservationParRepull.get(String(conv.reservationId)) : undefined;
         const res = reservations.get(idRes);
         const logementId = res?.logementId ?? (conv.listingId ? this.logementParRepull.get(String(conv.listingId)) : undefined) ?? existant?.logementId;

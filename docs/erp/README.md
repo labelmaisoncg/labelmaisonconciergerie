@@ -56,6 +56,13 @@ node_modules/.bin/esbuild src/erp/automatisations/verifier.ts --bundle \
 node_modules/.bin/esbuild src/erp/data/verifier-synchro.ts --bundle \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' \
   --log-level=error --outfile=/tmp/verifier-synchro.cjs && node /tmp/verifier-synchro.cjs
+
+# Auto-contrôle de la synchronisation Repull (fausses API Repull et PostgREST) :
+# formes conformes aux types, idempotence, saisies de l'équipe préservées,
+# incrémental, limite du bouton, part d'appels, signature des webhooks.
+node_modules/.bin/esbuild src/erp/data/verifier-repull.ts --bundle \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' \
+  --log-level=error --outfile=/tmp/verifier-repull.cjs && node /tmp/verifier-repull.cjs
 ```
 
 Le vérificateur du moteur l'exécute deux fois sur la démo : la seconde passe
@@ -71,7 +78,11 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
 | `VITE_SUPABASE_ANON_KEY` | build (Vercel), facultatif | Clé publique (« anon ») du même projet. Les deux vont ensemble : si l'une manque, le couple par défaut est utilisé. |
 | `VITE_ERP_DEMO` | local uniquement | `1` : jeu de démonstration en mémoire. **Jamais en production.** |
-| `CHANNEX_API_KEY`, `CHANNEX_BASE_URL`, `CHANNEX_WEBHOOK_SECRET` | serveur | Channel manager (à la mise en production réelle). |
+| `REPULL_API_KEY` | Vercel (serveur), obligatoire pour la synchronisation | Clé API Repull (`sk_live_...`). Voir « Synchronisation Repull ». |
+| `CRON_SECRET` | Vercel (serveur) | Secret du cron quotidien de synchronisation (Vercel l'envoie en `Authorization: Bearer`). |
+| `REPULL_WEBHOOK_SECRET_ERP` | Vercel (serveur), facultatif | Secret de signature (`whsec_...`) de l'abonnement webhook **de l'ERP** (distinct de celui de l'agent IA). |
+| `REPULL_BUDGET_ERP` | Vercel (serveur), facultatif | Part mensuelle des appels Repull réservée à l'ERP (défaut 400). |
+| `REPULL_QUOTA_MOIS` | Vercel (serveur), facultatif | Quota mensuel du compte Repull, pour l'affichage (défaut 1000, offre gratuite). |
 | `ANTHROPIC_API_KEY` | serveur | Agent IA de la messagerie (`agent-ia/`), jamais côté navigateur. |
 
 ## Accès et déploiement
@@ -111,6 +122,10 @@ src/erp/
                       d'attente, temps réel, état des automatisations
     collections.ts    liste des collections, jeu vide
     verifier-synchro.ts  auto-contrôle de la synchronisation (Node)
+    repull.ts         Repull → ERP : conversion et fusion (fonctions pures)
+    repull-synchro.ts synchronisation Repull côté serveur (appels, base, budget)
+    repull-signature.ts  vérification de X-Repull-Signature (webhooks)
+    verifier-repull.ts   auto-contrôle de la synchronisation Repull (Node)
     seed*.ts          jeu de démonstration déterministe (chargé seulement en démo)
   automatisations/    moteur pur (sans React) + une règle par automatisation
   analyse/            analyse des biens (SPEC §10), moteur pur
@@ -120,6 +135,8 @@ src/erp/
   modules/
     registry.tsx      liste des modules : route, menu, groupe, composant
     <module>/index.tsx
+api/erp-repull-sync.ts     synchronisation Repull (cron quotidien, bouton)
+api/erp-repull-webhook.ts  webhooks Repull de l'ERP (quand l'offre les inclut)
 supabase/erp-installation.sql  installation de la base (à coller dans le SQL Editor)
 supabase/migrations/  schéma normalisé : cible future, NON appliquée (voir son README)
 ```
@@ -323,12 +340,9 @@ base à l'instant T. Les anciennes versions de chaque élément restent dans
 
 ### Ensuite
 
-1. **Channex** : ouvrir le compte production (environ 140 USD par mois pour 10
-   logements : socle + prix par logement + module messagerie), terminer la
-   certification, relier chaque logement (`channexPropertyId`) et pointer les
-   webhooks réservations et messages vers l'ERP (`CHANNEX_*`). En attendant,
-   les réservations se saisissent à la main (Réservations → Nouvelle
-   réservation) et le ménage de chaque départ se crée tout seul.
+1. **Repull** : voir « Synchronisation Repull » ci-dessous (variables, cron,
+   webhooks). Les réservations directes se saisissent toujours à la main
+   (Réservations → Nouvelle réservation directe).
 2. **Anthropic** : recharger les crédits de l'agent IA (`agent-ia/`), poser un
    plafond de dépense mensuel dans la console, `ANTHROPIC_API_KEY` côté serveur
    uniquement. L'agent n'engage jamais d'argent.
@@ -337,9 +351,101 @@ base à l'instant T. Les anciennes versions de chaque élément restent dans
    enregistré dans la base). Les tâches du jour se font donc dès que quelqu'un
    ouvre l'ERP. Pour qu'elles tournent même si personne ne l'ouvre : fonction
    Vercel planifiée (cron quotidien protégé par `CRON_SECRET`, plus un appel
-   après chaque webhook Channex) qui lit `erp.enregistrements` avec la clé
+   après chaque synchronisation Repull) qui lit `erp.enregistrements` avec la clé
    `service_role` (côté serveur uniquement), exécute `executerAutomatisations`
    avec la date du jour à Paris et écrit la différence, exactement comme
    `synchro.ts`.
 4. **Accès prestataires** : règles RLS dédiées (leurs seules missions) avant
    de donner le rôle `prestataire` à qui que ce soit.
+
+## Synchronisation Repull
+
+Dès qu'un propriétaire connecte ses comptes (Airbnb, Booking.com, Vrbo...)
+dans [Repull](https://repull.dev/dashboard), tout arrive seul dans l'ERP :
+aucune saisie. Le travail est fait côté serveur par
+`api/erp-repull-sync.ts` (logique : `src/erp/data/repull-synchro.ts`,
+conversions : `src/erp/data/repull.ts`), qui écrit dans `erp.enregistrements`
+avec la session du compte d'équipe (même mot de passe que `ERP_PASSWORD`,
+aucune clé `service_role`). Les onglets ouverts reçoivent les lignes en
+direct ; le moteur d'automatisations crée ensuite le ménage de chaque
+nouvelle réservation (tout de suite après le bouton, sinon à la prochaine
+ouverture de l'ERP).
+
+### Ce qui est synchronisé
+
+| Repull | ERP | Détail |
+|---|---|---|
+| Annonces (`GET /v1/listings?status=all`) | `logements` (`repull-<id>`) | Nom, adresse, ville, capacité, chambres, surface, wifi, horaires d'arrivée et de départ, annonces Airbnb / Booking.com (lien Airbnb), photo. Règles, accès et équipements seulement s'ils sont vides. Archivée → « sorti », désactivée → « pause », réactivée → « actif » (seulement quand l'état change chez Repull). Nouveau logement : rattaché à la fiche **« Propriétaire à renseigner »** (aucune donnée inventée), checklist de lancement vierge. |
+| Réservations (`GET /v1/reservations?updated_since=`) | `reservations` (`repull-<id>`) | Logement, canal (airbnb, booking, direct, autre), voyageur (nom, nombre, pays), dates, nuits, statut (confirmée / en cours / terminée / annulée), montants en centimes : brut = versement hôte + commission plateforme, commission = frais facturés à l'hôte, ménage = frais « cleaning ». Les demandes en attente (à accepter, paiement ou vérification) n'entrent qu'une fois confirmées. |
+| Fiches voyageurs (`GET /v1/guests`) | `reservations.voyageur.pays` | Une fois par semaine, pour les réservations sans pays. |
+| Avis (`GET /v1/reviews`) | `reservations.noteVoyageur`, `commentaireVoyageur` | Note ramenée sur 5 (Booking.com note sur 10), avis public + message privé. |
+| Conversations et messages | `filsMessages` (`repull-<id>`) | Messages dans l'ordre chronologique (voyageur, hôte, agent pour les réponses automatiques ou IA). Nouveau message du voyageur : fil rouvert et « en attente ». |
+| Calendrier et prix | (rien) | L'ERP ne tient pas de calendrier de prix : non importés. |
+
+Fusion sans écrasement : ce qui vient de Repull est remplacé à chaque passage,
+ce que l'équipe saisit (propriétaire, mandat, commission, serrure, linge,
+checklist, numéro d'enregistrement, statut d'un fil, note hors avis...) n'est
+jamais touché, une valeur absente chez Repull ne vide rien, et rien n'est
+jamais supprimé. Un logement créé à la main se relie à son annonce dans
+Logements → fiche → Canaux → **Relier à Repull** (identifiant d'annonce) :
+il est alors mis à jour au lieu d'être dupliqué. Chaque passage laisse une
+ligne dans le journal (« Synchronisation Repull ») ; l'état (appels du mois,
+dernier bilan) est dans la ligne `repull / etat` de `erp.enregistrements`,
+ignorée par l'application.
+
+### Budget d'appels (offre gratuite Repull)
+
+L'offre gratuite compte **1 000 appels par mois pour tout le compte** (agent IA
+compris), 3 annonces au plus, et **n'inclut pas les webhooks**. L'ERP s'en
+réserve **400** (`REPULL_BUDGET_ERP`), comptés appel par appel ; une fois la
+part épuisée, plus aucun appel avant le 1er du mois suivant (message clair
+dans l'ERP et dans le journal).
+
+| Quand | Appels |
+|---|---|
+| Cron quotidien (04:17 UTC, soit 6 h 17 à Paris l'été) | annonces 1 (une fois par jour), réservations modifiées 1 par page de 100, liste des conversations 1, messages 1 par conversation dont le dernier message a changé ; avis 1 et pays 1 une fois par semaine ; toutes les réservations relues une fois par semaine. **Environ 3 à 8 appels par jour.** |
+| Bouton « Synchroniser maintenant » | Pareil, plus 1 appel pour lire le quota réel du compte (`GET /v1/usage/tier`). **Au plus un passage toutes les 10 minutes** : avant, le serveur renvoie le bilan précédent sans appeler Repull. |
+| Première importation | Quelques appels de plus (équipements : 1 par nouvelle annonce). |
+
+Estimation : 30 jours × 3 à 8 appels, plus les clics : 150 à 300 appels par mois.
+Paramètres → Intégrations affiche « Appels Repull ce mois : X / 1000 » (quota
+réel relevé au dernier clic, sinon la part de l'ERP seule) et la part de l'ERP.
+
+### À faire par les propriétaires (Vercel, projet du site)
+
+1. Settings → Environment Variables (Production et Preview) :
+   - `REPULL_API_KEY` : clé API Repull (repull.dev → Dashboard → API keys) ;
+   - `CRON_SECRET` : une longue chaîne aléatoire (Vercel l'envoie au cron) ;
+   - `ERP_PASSWORD` : déjà en place (compte d'équipe) ;
+   - facultatif : `REPULL_BUDGET_ERP` (400), `REPULL_QUOTA_MOIS` (1000).
+2. Redéployer. Le cron `/api/erp-repull-sync` (vercel.json, `17 4 * * *`)
+   tourne chaque jour : un seul cron quotidien, compatible avec l'offre Hobby
+   de Vercel.
+3. Dans l'ERP : Paramètres → Intégrations → **Synchroniser maintenant** pour
+   la première importation, puis rattacher chaque logement importé à son vrai
+   propriétaire (fiche « Propriétaire à renseigner »).
+
+### Webhooks (offre Repull Starter et plus)
+
+Inutiles pour que l'ERP soit complet ; ils apportent le temps réel quand
+l'offre les inclut. Créer un abonnement **séparé de celui de l'agent IA**
+(`POST /v1/webhooks`) :
+
+- URL : `https://www.labelmaisoncg.fr/api/erp-repull-webhook`
+- événements : `reservation.created`, `reservation.updated`,
+  `reservation.cancelled`, `reservation.request.created`,
+  `reservation.request.updated`, `reservation.alteration.responded`,
+  `reservation.message.received`, `listing.created`, `listing.updated`,
+  `listing.deleted`, `listing.suspended`, `listing.reactivated`,
+  `review.created`, `review.responded`, `account.created`,
+  `account.disconnected`
+- le secret renvoyé une seule fois (`whsec_...`) va dans
+  `REPULL_WEBHOOK_SECRET_ERP`, puis redéployer.
+
+Chaque livraison est vérifiée (`X-Repull-Signature`, HMAC-SHA256 du corps
+brut, 5 minutes de tolérance), dédoublonnée (`X-Repull-Event-Id`), puis
+l'élément concerné est relu chez Repull (1 ou 2 appels, imputés sur la part
+de l'ERP). `account.created` (nouveau compte connecté) lance une
+synchronisation complète ; `account.disconnected` laisse une alerte dans le
+journal. Avec des webhooks actifs, compter environ 1 à 2 appels par événement :
+relever alors `REPULL_BUDGET_ERP` en conséquence.

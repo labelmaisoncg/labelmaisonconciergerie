@@ -15,6 +15,7 @@ import { FicheReservation, PastilleCanal } from './_composants/FicheReservation'
 import { ListeReservations } from './_composants/ListeReservations';
 import { ModalNouvelleReservation } from './_composants/ModalNouvelleReservation';
 import { DetailReservation } from './_composants/DetailReservation';
+import { LigneSynchroRepull } from '../parametres/SynchroRepull';
 
 export default function ModuleReservations() {
   return (
@@ -78,9 +79,7 @@ function PageReservations() {
           </Button>
         }
       />
-      <Callout tone="info" titre="Source : Channex (démo)" className="mb-5">
-        En production, les réservations arrivent en temps réel d’Airbnb et Booking ; les modifications de calendrier passent par confirmation.
-      </Callout>
+      <LigneSynchroRepull className="mb-5" />
       {confirmation && (
         <Callout tone="succes" className="mb-5" actions={<Button size="sm" variant="ghost" onClick={() => setConfirmation(null)}>Masquer</Button>}>
           {confirmation}

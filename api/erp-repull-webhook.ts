@@ -20,12 +20,12 @@
 
 import crypto from 'node:crypto';
 import { lancer, texteErreur, type EvenementRepull } from '../src/erp/data/repull-synchro.js';
+import { signatureValide, type OutilsSignature } from '../src/erp/data/repull-signature.js';
 import { baseErp, configuration, continuerApresReponse, repondre, variableManquante } from './_erp-repull.js';
 
 /** La signature porte sur le corps exact reçu : pas d'analyse JSON préalable. */
 export const config = { api: { bodyParser: false } };
 
-const TOLERANCE_S = 5 * 60;
 const BUDGET_TEMPS_MS = 50_000;
 
 /** Événements déjà traités par cette instance (les nouvelles livraisons gardent le même id). */
@@ -53,27 +53,15 @@ async function corpsBrut(req: any): Promise<string> {
   return b ? JSON.stringify(b) : '';
 }
 
-/** Vérifie X-Repull-Signature (plusieurs v1 acceptés : rotation du secret). */
-export function signatureValide(brut: string, entete: unknown, secret: string, maintenantS = Math.floor(Date.now() / 1000)): boolean {
-  if (!secret) return false;
-  let t = '';
-  const v1: string[] = [];
-  for (const morceau of String(entete ?? '').split(',')) {
-    const i = morceau.indexOf('=');
-    if (i <= 0) continue;
-    const k = morceau.slice(0, i).trim();
-    const v = morceau.slice(i + 1).trim();
-    if (k === 't') t = v;
-    else if (k === 'v1') v1.push(v);
-  }
-  if (!/^\d+$/.test(t) || !v1.length) return false;
-  if (Math.abs(maintenantS - Number(t)) > TOLERANCE_S) return false;
-  const attendue = Buffer.from(crypto.createHmac('sha256', secret).update(`${t}.${brut}`).digest('hex'));
-  return v1.some((s) => {
-    const recue = Buffer.from(s);
-    return recue.length === attendue.length && crypto.timingSafeEqual(recue, attendue);
-  });
-}
+/** Calcul HMAC et comparaison à temps constant (node:crypto). */
+const OUTILS: OutilsSignature = {
+  hmacHex: (secret, message) => crypto.createHmac('sha256', secret).update(message).digest('hex'),
+  egal: (a, b) => {
+    const x = Buffer.from(a);
+    const y = Buffer.from(b);
+    return x.length === y.length && crypto.timingSafeEqual(x, y);
+  },
+};
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -88,7 +76,7 @@ export default async function handler(req: any, res: any) {
   }
 
   const brut = await corpsBrut(req);
-  if (!signatureValide(brut, req.headers?.['x-repull-signature'], c.secretWebhook)) {
+  if (!signatureValide(brut, req.headers?.['x-repull-signature'], c.secretWebhook, OUTILS)) {
     console.warn('[erp-repull-webhook] signature invalide : rejeté.');
     return repondre(res, 401, { ok: false });
   }

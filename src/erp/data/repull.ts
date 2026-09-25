@@ -493,8 +493,9 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
   // Photo : celle de l'annonce, sauf si l'équipe a déposé la sienne.
   if (texte(l.thumbnailUrl) && !(base.photoUrl ?? '').startsWith('stockage://')) suivant.photoUrl = texte(l.thumbnailUrl);
 
-  // Statut : seulement quand l'annonce change d'état chez Repull.
-  if (existant && l.status && l.status !== existant.repull?.statut) suivant.statut = statutLogement(l.status);
+  // Statut : seulement quand l'annonce change d'état chez Repull (un logement
+  // relié à la main garde le sien au premier passage).
+  if (existant?.repull?.statut && l.status && l.status !== existant.repull.statut) suivant.statut = statutLogement(l.status);
 
   const canaux = Array.isArray(l.channels)
     ? l.channels
@@ -588,7 +589,7 @@ export interface ContexteReservation {
  *
  * Repull fait foi pour : logement, canal, voyageur (nom, nombre, pays connu),
  * dates, nuits, statut, montants. Restent à l'ERP : note et commentaire hors
- * avis Repull, identifiant Channex, et tout champ ajouté par l'équipe.
+ * avis Repull, pays saisi par l'équipe, et tout champ ajouté par l'équipe.
  */
 export function versReservation(r: RepullReservation, existant: Reservation | undefined, ctx: ContexteReservation): Reservation | null {
   const statut = statutReservation(r, ctx.aujourdhui) ?? existant?.statut ?? null;

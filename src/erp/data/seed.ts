@@ -178,7 +178,10 @@ function genererReservations(h: Hasard): Reservation[] {
           montantBrutCentimes: brut,
           commissionPlateformeCentimes: Math.round(brut * TAUX_PLATEFORME[canal]),
           fraisMenageCentimes: fraisMenage,
-          channexBookingId: canal === 'direct' ? undefined : `CHX-${logement.id.slice(4, 8).toUpperCase()}-${10400 + n}`,
+          repull:
+            canal === 'direct'
+              ? undefined
+              : { id: String(210400 + n), code: canal === 'airbnb' ? `HM${logement.id.slice(4, 8).toUpperCase()}${10400 + n}` : String(4410400 + n) },
         };
         if (statut === 'terminee' && h.chance(0.78)) {
           const noteTiree = h.pondere<number>([[5, 52], [4.8, 18], [4.6, 12], [4.2, 7], [4, 6], [3.5, 3], [3, 2]]);

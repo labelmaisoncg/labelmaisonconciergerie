@@ -43,7 +43,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         .slice(0, 5)
         .map((p): Resultat => ({ id: p.id, groupe: 'Propriétaires', titre: p.nom, detail: p.contact.email, to: `/erp/proprietaires/${p.id}` })),
       ...reservations
-        .filter((r) => trouve(r.voyageur.nom, r.id, r.channexBookingId ?? ''))
+        .filter((r) => trouve(r.voyageur.nom, r.id, r.repull?.code ?? '', r.repull?.id ?? '', r.channexBookingId ?? ''))
         .sort((a, b) => b.arrivee.localeCompare(a.arrivee))
         .slice(0, 5)
         .map((r): Resultat => ({

@@ -145,6 +145,7 @@ export interface Logement {
   serrure: Serrure;
   fiche: FicheLogement;
   dotationLinge: LigneArticle[];
+  /** @deprecated Ancien identifiant Channex (avant Repull), ni affiché ni écrit. */
   channexPropertyId?: string;
   annonces: Annonce[];
   checklistLancement: ElementChecklistLancement[];
@@ -178,6 +179,7 @@ export interface Reservation {
   fraisMenageCentimes: Centimes;
   noteVoyageur?: number;
   commentaireVoyageur?: string;
+  /** @deprecated Ancienne référence Channex (avant Repull) : lue en secours pour les anciennes lignes. */
   channexBookingId?: string;
   /** Réservation importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;

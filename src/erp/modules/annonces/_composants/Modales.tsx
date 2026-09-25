@@ -135,8 +135,8 @@ export function PublicationVersion({ version, onPublier, onFermer }: {
       }
     >
       <div className="flex flex-col gap-3">
-        <Alert tone="info" titre="Mode démonstration">
-          En production, publication via Channex si l’API le permet, sinon copier-coller dans Airbnb : bouton Copier le texte.
+        <Alert tone="info" titre="Publication sur la plateforme">
+          L’ERP ne publie pas encore le texte lui-même : copiez-le (bouton Copier le texte), collez-le dans l’annonce Airbnb ou Booking.com, puis marquez la version comme publiée. Le titre publié revient dans l’ERP par Repull.
         </Alert>
         {copie === 'echec' && <Alert tone="alerte">Copie impossible dans ce navigateur : sélectionnez le texte ci-dessous.</Alert>}
         <Field label="Texte à publier">

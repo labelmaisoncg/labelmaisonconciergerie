@@ -51,7 +51,7 @@ export function Photos({ mission, onAjouter, demo }: Props) {
                     onAjouter([{ url: `demo://photos/${mission.id}/${cle}-${mission.photos.length + 1}.jpg`, moment: cle, prisLe: MAINTENANT }])
                   }
                 >
-                  Ajouter une photo (démo)
+                  Ajouter une photo
                 </Button>
               )}
               {onAjouter && !demo && (

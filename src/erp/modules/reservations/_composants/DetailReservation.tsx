@@ -1,7 +1,7 @@
 /**
  * Page détail d'une réservation (/erp/reservations/:id), adressable.
  * Seules les réservations directes s'annulent ici : celles des plateformes
- * s'annulent sur Airbnb ou Booking et redescendent par Channex.
+ * s'annulent sur Airbnb ou Booking et redescendent par Repull.
  */
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -10,6 +10,7 @@ import { Alert, Button, EmptyState, Modal, PageHeader, StatusBadge } from '../..
 import { useErp } from '../../../data/store';
 import { dateCourte, pluriel } from '../../../data/format';
 import { logementById } from '../../../data/selectors';
+import { LIBELLES } from '../../../data/libelles';
 import { FicheReservation, PastilleCanal } from './FicheReservation';
 
 export function DetailReservation() {
@@ -22,13 +23,14 @@ export function DetailReservation() {
     return (
       <>
         <PageHeader fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Réservations', to: '/erp/reservations' }, { libelle: 'Introuvable' }]} titre="Réservation introuvable" />
-        <EmptyState icone={<SearchX />} titre="Cette réservation n’existe pas ou plus." description="Elle a peut-être été supprimée de la démo." />
+        <EmptyState icone={<SearchX />} titre="Cette réservation n’existe pas ou plus." description="Elle a peut-être été supprimée." />
       </>
     );
   }
 
   const logement = logementById(d, r.logementId);
-  const annulable = r.canal === 'direct' && (r.statut === 'confirmee');
+  // Une réservation importée de Repull s'annule sur sa plateforme (sinon la synchronisation la rétablirait).
+  const annulable = r.canal === 'direct' && r.statut === 'confirmee' && !r.repull;
   const missionsOuvertes = d.missions.filter((m) => m.reservationId === r.id && m.statut !== 'validee' && m.statut !== 'annulee');
 
   const annuler = () => {
@@ -57,9 +59,9 @@ export function DetailReservation() {
           )
         }
       />
-      {r.canal !== 'direct' && r.statut === 'confirmee' && (
+      {r.repull && r.statut === 'confirmee' && (
         <Alert tone="neutre" className="mb-4">
-          Réservation {r.canal === 'airbnb' ? 'Airbnb' : 'Booking.com'} : toute modification ou annulation se fait sur la plateforme, puis redescend par Channex.
+          Réservation {r.canal === 'direct' ? 'directe' : LIBELLES.canal[r.canal]} importée de Repull : toute modification ou annulation se fait sur la plateforme, puis redescend dans l’ERP par Repull.
         </Alert>
       )}
       <div className="max-w-3xl">

@@ -90,8 +90,18 @@ export function FicheReservation({ r }: { r: Reservation }) {
             </dd>
           </div>
           <div className="col-span-2">
-            <dt className="text-[12px] text-(--lm-encre-3)">Référence Channex</dt>
-            <dd className="lm-chiffres">{r.channexBookingId ?? 'Réservation directe, hors Channex'}</dd>
+            <dt className="text-[12px] text-(--lm-encre-3)">Référence de la plateforme</dt>
+            <dd className="lm-chiffres">
+              {r.repull?.code ?? r.channexBookingId ?? (r.repull ? `Repull n° ${r.repull.id}` : 'Réservation directe, saisie dans l’ERP')}
+              {r.repull && (
+                <Badge tone="info" className="ml-2">
+                  Importé de Repull
+                </Badge>
+              )}
+            </dd>
+            {r.repull?.devise && r.repull.devise !== 'EUR' && (
+              <dd className="mt-1 text-[12px] text-(--lm-alerte)">Montants en {r.repull.devise} (devise de la plateforme), non convertis.</dd>
+            )}
           </div>
         </dl>
       </Card>

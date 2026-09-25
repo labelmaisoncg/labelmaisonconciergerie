@@ -30,9 +30,11 @@ export function CarteLogement({ logement: l, stats, economie }: { logement: Loge
           <p className="mt-0.5 flex items-center gap-1 text-[12.5px] text-(--lm-encre-2)">
             <MapPin className="size-3.5 shrink-0" aria-hidden />
             <span className="truncate">
-              {l.ville} · {LIBELLES.typeLogement[l.type]} · {l.surfaceM2} m²
+              {l.ville} · {LIBELLES.typeLogement[l.type]}
+              {l.surfaceM2 ? ` · ${l.surfaceM2} m²` : ''}
             </span>
           </p>
+          {l.repull?.majLe && <p className="mt-0.5 text-[11.5px] text-(--lm-encre-3)">Importé de Repull</p>}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12.5px] text-(--lm-encre-2)">
           <span className="inline-flex items-center gap-1">
