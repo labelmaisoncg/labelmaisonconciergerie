@@ -384,6 +384,40 @@ export async function lireEtatConnexions(ctx: ContexteConnexion, o: { forcer?: b
               if (x) connexions.push(x);
             }
           }
+          // Booking.com : un établissement rattaché n'apparaît pas toujours dans
+          // /v1/connect ; la liste qui fait foi est /v1/channels/booking/properties
+          // (un établissement « unmapped » attend encore l'association des chambres).
+          try {
+            const proprietes = await client.get<unknown>('/v1/channels/booking/properties');
+            const liste = Array.isArray(proprietes)
+              ? proprietes
+              : Array.isArray((proprietes as { data?: unknown[] })?.data)
+                ? (proprietes as { data: unknown[] }).data
+                : [];
+            for (const brut of liste) {
+              const b = (brut ?? {}) as Record<string, unknown>;
+              const hotel = texte(b.hotelId);
+              if (!hotel) continue;
+              const statut = b.mappingStatus === 'unmapped' ? 'chambres' : b.active === false || texte(b.suspendedAt) ? 'inactive' : 'active';
+              const deja = connexions.find((c) => c.fournisseur === 'booking' && (c.compte === hotel || c.id === texte(b.connectionId)));
+              if (deja) {
+                deja.statut = statut === 'active' ? deja.statut : statut;
+                deja.compte = deja.compte ?? hotel;
+              } else {
+                connexions.push({
+                  id: texte(b.connectionId) || `booking-${hotel}`,
+                  fournisseur: 'booking',
+                  statut,
+                  compte: hotel,
+                  nom: `Établissement ${hotel}`,
+                  ...(texte(b.createdAt) ? { depuis: texte(b.createdAt) } : {}),
+                });
+              }
+            }
+          } catch (e) {
+            if (e instanceof BudgetEpuise) throw e;
+            // Pas d'établissement Booking, ou lecture refusée : on garde /v1/connect seul.
+          }
           cache.connexions = connexions;
         } catch (e) {
           if (!(e instanceof ErreurRepull && e.statut === 402)) throw e;
