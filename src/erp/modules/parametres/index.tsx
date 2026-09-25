@@ -5,7 +5,7 @@ import Integrations from './Integrations';
 import Donnees from './Donnees';
 import Entreprise from './Entreprise';
 
-/** Module Paramètres : utilisateurs et rôles, intégrations, données de démo, entreprise. */
+/** Module Paramètres : utilisateurs et rôles, intégrations, données (export), entreprise. */
 export default function Module() {
   return (
     <>
@@ -18,7 +18,7 @@ export default function Module() {
         onglets={[
           { cle: 'utilisateurs', libelle: 'Utilisateurs & rôles', to: '/erp/parametres', end: true },
           { cle: 'integrations', libelle: 'Intégrations', to: '/erp/parametres/integrations' },
-          { cle: 'donnees', libelle: 'Données de démo', to: '/erp/parametres/donnees' },
+          { cle: 'donnees', libelle: 'Données', to: '/erp/parametres/donnees' },
           { cle: 'entreprise', libelle: 'Entreprise', to: '/erp/parametres/entreprise' },
         ]}
       />

@@ -6,7 +6,7 @@ import { joursRetard, statutReel } from './_calculs';
 import { LIBELLES } from '../../data/libelles';
 import { facturesEnRetard, montantTtc, proprietaireById } from '../../data/selectors';
 import type { Facture, StatutFacture } from '../../data/types';
-import { Badge, Button, PageHeader, Stat, StatusBadge, Table, Toolbar, type Colonne } from '../../ui';
+import { Badge, Button, PageHeader, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { DetailFacture } from './_composants/DetailFacture';
 import { NouvelleFacture } from './_composants/NouvelleFacture';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
@@ -18,7 +18,7 @@ export default function Factures({ onglets }: PageFinanceProps) {
   const [filtres, setFiltres] = useState<string[]>([]);
   const [recherche, setRecherche] = useState('');
   const [ouverte, setOuverte] = useState<string>();
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
 
   const nomDestinataire = (f: Facture) => proprietaireById(d, f.proprietaireId)?.nom ?? LIBELLES.destinataire[f.destinataire];
 

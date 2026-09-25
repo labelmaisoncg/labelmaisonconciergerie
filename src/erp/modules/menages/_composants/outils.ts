@@ -2,7 +2,8 @@
  * Calculs propres à l'écran Ménages (urgence, délais, contrôles).
  * Les règles partagées restent dans data/selectors.ts.
  */
-import { AUJOURDHUI, MAINTENANT, ajouterJours, pluriel } from '../../../data/format';
+import { AUJOURDHUI, MAINTENANT, ajouterJours, horodatageMaintenant, pluriel } from '../../../data/format';
+import { MODE_DEMO } from '../../../data/config';
 import { estActive } from '../../../data/selectors';
 import type { ElementChecklist, ErpDonnees, Journal, Logement, Mission, Reservation } from '../../../data/types';
 import type { Ton } from '../../../ui';
@@ -16,9 +17,11 @@ export function prochaineArrivee(m: Mission, reservations: Reservation[]): Reser
 
 const ms = (iso: string) => new Date(iso).getTime();
 
-/** Heures entre MAINTENANT (maquette) et une date + heure locales. */
+/** Heures entre maintenant (heure figée en démo) et une date + heure locales. */
 export function heuresAvant(date: string, heure: string): number {
-  return Math.round((ms(`${date}T${heure}:00+02:00`) - ms(MAINTENANT)) / 3_600_000);
+  const maintenant = MODE_DEMO ? MAINTENANT : horodatageMaintenant();
+  const decalage = maintenant.slice(19) || '+02:00';
+  return Math.round((ms(`${date}T${heure}:00${decalage}`) - ms(maintenant)) / 3_600_000);
 }
 
 export interface Urgence {

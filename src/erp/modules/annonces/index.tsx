@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Route, Routes, useSearchParams } from 'react-router-dom';
 import { CalendarClock, CheckCircle2, FileText, TrendingUp, X } from 'lucide-react';
 import { useErp } from '../../data/store';
-import { moisAnnee, nombre, pluriel } from '../../data/format';
+import { SANS_DONNEE, moisAnnee, nombre, pluriel } from '../../data/format';
 import { Alert, Button, EmptyState, PageHeader, Select, Stat, Tabs } from '../../ui';
 import type { Issue } from './_composants/actions';
 import { CarteAValider } from './_composants/CarteAValider';
@@ -38,7 +38,7 @@ function PageAnnonces() {
   };
   const signaler = (r: Issue) => setRetour(r);
 
-  const effet = k.effetMoyen === undefined ? '-' : `${k.effetMoyen > 0 ? '+' : ''}${nombre(k.effetMoyen, 1)}`;
+  const effet = k.effetMoyen === undefined ? SANS_DONNEE : `${k.effetMoyen > 0 ? '+' : ''}${nombre(k.effetMoyen, 1)}`;
 
   return (
     <>

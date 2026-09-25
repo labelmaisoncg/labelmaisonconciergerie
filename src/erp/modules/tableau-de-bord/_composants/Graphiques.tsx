@@ -103,7 +103,7 @@ export function Graphiques({ horizon }: { horizon: CleHorizon }) {
       <Cadre
         titre="Note voyageur moyenne"
         description="Par mois de départ. Une note sous 4,5 déclenche un contrôle qualité."
-        resume={`Note moyenne du mois : ${note(dernier?.note)}.`}
+        resume={dernier?.note === undefined ? 'Aucune note voyageur sur le dernier mois.' : `Note moyenne du mois : ${note(dernier.note)}.`}
       >
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={serie} margin={{ top: 16, right: 12, left: -16, bottom: 0 }}>

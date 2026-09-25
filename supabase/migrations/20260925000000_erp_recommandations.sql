@@ -1,3 +1,5 @@
+-- CIBLE FUTURE, NON APPLIQUÉE : ne pas lancer sur le projet actuel.
+-- L'ERP en production utilise supabase/erp-installation.sql (voir supabase/migrations/README.md).
 -- =============================================================================
 -- ERP Label Maison : suivi des améliorations proposées aux propriétaires
 -- (module Performance des biens, SPEC §10). Miroir de

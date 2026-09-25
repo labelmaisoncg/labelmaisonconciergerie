@@ -56,7 +56,11 @@ export default function Donnees() {
       <Card>
         <CardHeader
           titre="Mode de données"
-          description={d.mode === 'demo' ? 'Données de démonstration, enregistrées dans ce navigateur uniquement.' : 'Connecté à la base Supabase.'}
+          description={
+            d.mode === 'demo'
+              ? 'Données de démonstration (développement local), enregistrées dans ce navigateur uniquement.'
+              : 'Données réelles, enregistrées dans la base Supabase de Label Maison et partagées en direct avec l’équipe.'
+          }
         />
         {fait && (
           <Alert tone="succes" className="mb-3">
@@ -67,12 +71,16 @@ export default function Donnees() {
           <Button icone={<Download />} onClick={exporter}>
             Exporter en JSON
           </Button>
-          <Button variant="danger" icone={<RotateCcw />} onClick={() => setConfirmation(true)} disabled={d.mode !== 'demo'}>
-            Réinitialiser la démo
-          </Button>
+          {d.mode === 'demo' && (
+            <Button variant="danger" icone={<RotateCcw />} onClick={() => setConfirmation(true)}>
+              Réinitialiser la démo
+            </Button>
+          )}
         </div>
         <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
-          La réinitialisation recharge le jeu de démonstration d’origine : toutes les modifications faites dans la maquette sont perdues. Exportez d’abord si besoin.
+          {d.mode === 'demo'
+            ? 'La réinitialisation recharge le jeu de démonstration d’origine : toutes les modifications faites dans la maquette sont perdues. Exportez d’abord si besoin.'
+            : 'L’export contient toutes les données de l’ERP à cet instant : une copie de sauvegarde à garder en lieu sûr. Chaque version modifiée ou supprimée est aussi archivée dans la base (table erp.historique).'}
         </p>
       </Card>
       <Card flush>

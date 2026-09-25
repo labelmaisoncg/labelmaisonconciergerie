@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FileWarning, Plus, ShieldCheck, Star, Users } from 'lucide-react';
-import { dateCourte, nombre, note, pluriel } from '../../data/format';
+import { SANS_DONNEE, dateCourte, nombre, note, pluriel } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
 import { documentsAlertes, libelleDocument, prestataireConforme } from '../../data/selectors';
 import type { Prestataire, StatutPrestataire, TypePrestataire } from '../../data/types';
-import { Button, Card, CardHeader, PageHeader, Select, Stat, StatusBadge, Table, Toolbar, type Colonne } from '../../ui';
+import { Button, Card, CardHeader, PageHeader, Select, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { BadgeConformite, BadgeDocument, RegleConformite } from './_composants/conformite';
 import { PrestataireModal } from './_composants/PrestataireModal';
 
@@ -17,7 +17,7 @@ export function Liste() {
   const [conformite, setConformite] = useState<string[]>([]);
   const [type, setType] = useState('');
   const [statut, setStatut] = useState('');
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
 
   const actifs = prestataires.filter((p) => p.statut === 'actif');
   const conformes = actifs.filter((p) => prestataireConforme(p).ok).length;
@@ -83,7 +83,7 @@ export function Liste() {
         <Stat label="Prestataires actifs" valeur={nombre(actifs.length)} icone={<Users />} />
         <Stat label="Conformes" valeur={`${conformes}/${actifs.length}`} icone={<ShieldCheck />} tone={conformes < actifs.length ? 'danger' : 'succes'} aide="parmi les actifs" />
         <Stat label="Documents expirés ou < 30 j" valeur={nombre(alertes.length)} icone={<FileWarning />} tone={alertes.length ? 'alerte' : 'succes'} />
-        <Stat label="Note moyenne" valeur={note(moyenne)} icone={<Star />} aide="contrôles et voyageurs" />
+        <Stat label="Note moyenne" valeur={moyenne === undefined || !Number.isFinite(moyenne) ? SANS_DONNEE : note(moyenne)} icone={<Star />} aide="contrôles et voyageurs" />
       </div>
 
       {alertes.length > 0 && (

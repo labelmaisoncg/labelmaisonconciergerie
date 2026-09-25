@@ -3,7 +3,10 @@ import { FlaskConical, RotateCcw } from 'lucide-react';
 import { useErp } from '../data/store';
 import { Button, Modal } from '../ui';
 
-/** Bandeau permanent du mode démo, avec remise à zéro des données. */
+/**
+ * Bandeau permanent du mode démo (développement local, VITE_ERP_DEMO=1), avec
+ * remise à zéro. Jamais affiché en production : les données y sont réelles.
+ */
 export function DemoBanner() {
   const { demo, reinitialiserDemo } = useErp();
   const [confirmer, setConfirmer] = useState(false);
@@ -14,7 +17,7 @@ export function DemoBanner() {
         <FlaskConical className="size-3.5 shrink-0" aria-hidden />
         <p className="min-w-0 flex-1 truncate">
           <strong className="font-semibold">Données de démonstration</strong>
-          <span className="hidden sm:inline"> · rien n’est envoyé aux plateformes</span>
+          <span className="hidden sm:inline"> · développement local, rien n’est enregistré dans la base</span>
         </p>
         <button
           type="button"

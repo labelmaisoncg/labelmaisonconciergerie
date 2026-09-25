@@ -6,7 +6,7 @@ import { AUJOURDHUI, dateCourte, euros, pluriel } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { fenetreMois, logementById } from '../../data/selectors';
 import type { CategorieCharge, Charge } from '../../data/types';
-import { Button, Card, CardHeader, FilterChips, PageHeader, Stat, Table, Toolbar, type Colonne } from '../../ui';
+import { Button, Card, CardHeader, FilterChips, PageHeader, Stat, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { fenetre12Mois } from './_calculs';
 import { AXE, COULEURS, eurosAxe, Infobulle } from './_composants/graphiques';
 import { FormulaireCharge } from './_composants/FormulaireCharge';
@@ -20,7 +20,13 @@ export default function Charges({ onglets }: PageFinanceProps) {
   const [periode, setPeriode] = useState<Periode>('annee');
   const [categories, setCategories] = useState<string[]>([]);
   const [recherche, setRecherche] = useState('');
-  const [edition, setEdition] = useState<Charge | 'nouvelle'>();
+  const [edition, setEditionEtat] = useState<Charge | 'nouvelle'>();
+  const [creationUrl, setCreationUrl] = useCreationParUrl();
+  const setEdition = (e: Charge | 'nouvelle' | undefined) => {
+    if (!e && creationUrl) setCreationUrl(false);
+    setEditionEtat(e);
+  };
+  const enEdition = edition ?? (creationUrl ? 'nouvelle' : undefined);
 
   const f = periode === 'mois' ? fenetreMois(AUJOURDHUI) : fenetre12Mois();
   const dePeriode = useMemo(() => d.charges.filter((c) => c.date >= f.debut && c.date < f.fin), [d.charges, f.debut, f.fin]);
@@ -118,7 +124,7 @@ export default function Charges({ onglets }: PageFinanceProps) {
         vide="Aucune charge ne correspond."
       />
 
-      {edition && <FormulaireCharge charge={edition === 'nouvelle' ? undefined : edition} onFermer={() => setEdition(undefined)} />}
+      {enEdition && <FormulaireCharge charge={enEdition === 'nouvelle' ? undefined : enEdition} onFermer={() => setEdition(undefined)} />}
     </>
   );
 }

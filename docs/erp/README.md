@@ -11,18 +11,33 @@ Principes du fondateur, appliqués partout :
 - **tout ce qui peut être automatisé l'est** : le moteur d'automatisations fait
   le travail répétitif, les humains ne traitent que les exceptions (alertes) ;
 - **une seule vue pour tout le monde** : pas de tableau de bord par personne.
-  Le sélecteur Abdel / Kamel ne sert qu'à signer les actions au journal.
+  Chacun se connecte avec son propre compte ; son nom signe ses actions au
+  journal.
+- **données réelles** : en production, l'ERP lit et écrit dans la base
+  Supabase de Label Maison. Le jeu de démonstration ne sert plus qu'au
+  développement local.
 
 ## Lancer en local
 
 ```bash
 npm install
-npm run dev
+
+# Démo (données fictives, rien n'est écrit dans la base) : développement,
+# captures d'écran, recette des écrans.
+VITE_ERP_DEMO=1 npm run dev
 # puis http://localhost:5173/erp
+
+# Données réelles : connexion avec un compte membre, écritures dans la base.
+npm run dev
 ```
 
-En local, pas de mot de passe : le middleware Vercel ne tourne pas sous Vite.
-Les données sont celles du jeu de démonstration (voir plus bas).
+En local, pas de mot de passe de site : le middleware Vercel ne tourne pas
+sous Vite. **Sans `VITE_ERP_DEMO=1`, l'ERP travaille sur les vraies données**
+(écran de connexion Supabase). Les scripts de recette Playwright doivent donc
+lancer le serveur avec `VITE_ERP_DEMO=1` (ou un build
+`VITE_ERP_DEMO=1 npx vite build`), sauf pour tester les écrans de connexion.
+En démo, une base vide se simule en posant dans `localStorage` la clé
+`lm-erp-demo-v1` avec toutes les collections à `[]`.
 
 Vérifications à faire passer avant toute livraison :
 
@@ -32,11 +47,20 @@ npm run build                             # build complet du site + ERP
 
 # Auto-contrôle du moteur d'automatisations (idempotence sur le jeu de démo)
 node_modules/.bin/esbuild src/erp/automatisations/verifier.ts --bundle \
-  --platform=node --outfile=/tmp/verifier.cjs && node /tmp/verifier.cjs
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' \
+  --log-level=error --outfile=/tmp/verifier.cjs && node /tmp/verifier.cjs
+
+# Auto-contrôle de la synchronisation (fausse API Supabase en mémoire) :
+# base vide, création / modification / suppression, travail du moteur,
+# temps réel, échec réseau et file d'attente, base non installée.
+node_modules/.bin/esbuild src/erp/data/verifier-synchro.ts --bundle \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' \
+  --log-level=error --outfile=/tmp/verifier-synchro.cjs && node /tmp/verifier-synchro.cjs
 ```
 
-Le vérificateur exécute le moteur deux fois sur la démo : la seconde passe doit
-produire **0 changement**, le seed doit rester intact et les ids uniques.
+Le vérificateur du moteur l'exécute deux fois sur la démo : la seconde passe
+doit produire **0 changement**, le seed doit rester intact et les ids uniques.
+Le vérificateur de synchronisation doit finir sur « 0 échec ».
 
 ## Variables d'environnement
 
@@ -44,8 +68,9 @@ produire **0 changement**, le seed doit rester intact et les ids uniques.
 |---|---|---|
 | `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe de `/erp`. Absent : accès refusé (page 503), jamais ouvert. Redéployer après modification. |
 | `LINGE_PASSWORD` | Vercel | Mot de passe du registre `/linge` (inchangé). |
-| `VITE_SUPABASE_URL` | build (Vercel) | Active le mode `supabase`. Tant qu'il est absent, l'ERP reste en mode démo. |
-| `VITE_SUPABASE_ANON_KEY` | build (Vercel) | Clé publique Supabase (à brancher avec le mode `supabase`, voir plus bas). |
+| `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
+| `VITE_SUPABASE_ANON_KEY` | build (Vercel), facultatif | Clé publique (« anon ») du même projet. Les deux vont ensemble : si l'une manque, le couple par défaut est utilisé. |
+| `VITE_ERP_DEMO` | local uniquement | `1` : jeu de démonstration en mémoire. **Jamais en production.** |
 | `CHANNEX_API_KEY`, `CHANNEX_BASE_URL`, `CHANNEX_WEBHOOK_SECRET` | serveur | Channel manager (à la mise en production réelle). |
 | `ANTHROPIC_API_KEY` | serveur | Agent IA de la messagerie (`agent-ia/`), jamais côté navigateur. |
 
@@ -54,7 +79,11 @@ produire **0 changement**, le seed doit rester intact et les ids uniques.
 - `middleware.ts` protège `/erp` comme `/linge` : page de connexion à
   `/erp/connexion`, déconnexion à `/erp/deconnexion`, session dans un cookie
   signé `erp_session` (HMAC, 30 jours, `Path=/erp`). Les deux zones ont des
-  mots de passe et des cookies distincts.
+  mots de passe et des cookies distincts. C'est une **première barrière** :
+  derrière, chaque membre se connecte à l'ERP avec son compte Supabase
+  (e-mail + mot de passe) et la base applique ses droits (RLS). La page du
+  middleware garde les jetons d'un lien « mot de passe oublié » (partie `#`
+  de l'adresse) pour les transmettre à l'ERP.
 - `vercel.json` active `cleanUrls`, qui fait ignorer les rewrites : le
   middleware réécrit donc lui-même toute sous-route `/erp/...` (sans extension)
   vers `/erp/index.html`, coquille générée par `scripts/spa-shells.mjs`.
@@ -74,16 +103,25 @@ src/erp/
     libelles.ts       libellés français de toutes les énumérations
     format.ts         euros, dates FR, pluriels, AUJOURDHUI (date figée)
     selectors.ts      indicateurs (SPEC §6) et règles métier (SPEC §2)
-    store.tsx         ErpProvider + useErp() : état, mutations, journal, moteur
-    seed*.ts          jeu de démonstration déterministe
+    store.tsx         ErpProvider + useErp() : état, mutations, journal, moteur,
+                      connexion (production) ou démo locale
+    config.ts         mode (réel / démo), projet Supabase, clés localStorage
+    supabase.ts       client Supabase, connexion, membres, fichiers, erreurs
+    synchro.ts        lecture de la base, écriture par différence, file
+                      d'attente, temps réel, état des automatisations
+    collections.ts    liste des collections, jeu vide
+    verifier-synchro.ts  auto-contrôle de la synchronisation (Node)
+    seed*.ts          jeu de démonstration déterministe (chargé seulement en démo)
   automatisations/    moteur pur (sans React) + une règle par automatisation
   analyse/            analyse des biens (SPEC §10), moteur pur
   ui/                 kit de composants (Button, Table, Drawer, Stat...)
-  layout/             barre latérale, en-tête, recherche, bandeau démo
+  layout/             barre latérale, en-tête, recherche, connexion (Connexion.tsx),
+                      état d'enregistrement (EtatSynchro.tsx), bandeau démo
   modules/
     registry.tsx      liste des modules : route, menu, groupe, composant
     <module>/index.tsx
-supabase/migrations/  schéma Postgres miroir (schéma erp, RLS), à appliquer dans l'ordre
+supabase/erp-installation.sql  installation de la base (à coller dans le SQL Editor)
+supabase/migrations/  schéma normalisé : cible future, NON appliquée (voir son README)
 ```
 
 Règles de code : montants en centimes entiers, dates `YYYY-MM-DD`, jamais
@@ -93,8 +131,12 @@ en français et sans tiret cadratin.
 ### Store
 
 `useErp()` expose toutes les collections (`logements`, `reservations`,
-`missions`...), `donnees` (l'ensemble, pour les sélecteurs), l'utilisateur
-courant et des mutations. Les règles métier sont appliquées dans le store et
+`missions`...), `donnees` (l'ensemble, pour les sélecteurs), le membre
+connecté (`utilisateur`, nom et rôle lus dans `erp.membres`), l'état
+d'enregistrement (`synchro`) et des mutations, synchrones comme avant :
+`upsert`, `remove`, `mettreAJour(collection, id, patch)` (à partir de la
+version la plus récente, utile après une attente comme un envoi de photo) et
+les actions métier. Les règles métier sont appliquées dans le store et
 renvoient `{ ok: false, erreur }` quand elles bloquent :
 
 - `validerMission` : checklist complète et photos avant/après ;
@@ -177,75 +219,132 @@ Catalogue (`REGLES`, dans l'ordre d'exécution) :
 Pour ajouter une règle : un objet `Regle` dans un fichier `regles-*.ts`,
 enregistré dans `regles.ts`, puis relancer le vérificateur (seconde passe à 0).
 
-## Démo ou réel
+## Données réelles : comment ça marche
 
-| | Aujourd'hui |
-|---|---|
-| Données | Jeu de démo réaliste (11 logements en Essonne et à Paris, réservations de juin à novembre 2026, missions, linge, factures...). Noms et adresses fictifs. Date de référence figée au 24 septembre 2026. |
-| Persistance | Mémoire du navigateur + `localStorage` (clés `lm-erp-demo-v1` pour les données, `lm-erp-auto-v1` pour les automatisations). « Réinitialiser » dans le bandeau recharge la démo. |
-| Plateformes | Rien n'est envoyé à Airbnb, Booking ni Channex. |
-| Supabase | Schéma prêt (migrations ci-dessous). Le mode `supabase` est détecté mais retombe encore sur la démo (TODO dans `store.tsx`). |
-| Utilisateurs | Sélecteur Abdel / Kamel pour signer les actions ; l'authentification réelle reste le mot de passe du middleware. |
+| | Production (par défaut) | Démo locale (`VITE_ERP_DEMO=1`) |
+|---|---|---|
+| Données | Base Supabase de Label Maison, schéma `erp` | Jeu fictif (11 logements...), date figée au 24 septembre 2026 |
+| Date du jour | Date réelle à Paris ; la page se recharge seule au changement de jour | Figée |
+| Connexion | Compte Supabase par membre (e-mail + mot de passe), accès si l'e-mail est dans `erp.membres` | Aucune |
+| Persistance | Chaque action enregistrée aussitôt, modifications des autres membres reçues en direct | `localStorage` (`lm-erp-demo-v1`, `lm-erp-auto-v1`) |
+| Photos, preuves, documents | Espace privé `erp-fichiers` (liens signés d'une heure) | Adresses `demo://`, rien n'est envoyé |
+| Bandeau « Données de démonstration », « Réinitialiser » | Absents | Présents |
+
+**Modèle** : une ligne de `erp.enregistrements` par élément (collection + id),
+contenu complet en JSON dans `donnees` : ce que l'écran affiche est exactement
+ce qui est stocké, sans correspondance de colonnes à maintenir. Les
+interrupteurs et constats des automatisations sont dans
+`erp.etat_automatisations`, l'équipe dans `erp.membres`, et chaque version
+remplacée ou supprimée est archivée dans `erp.historique` (filet de sécurité).
+
+**Écriture** : chaque action est appliquée à l'écran tout de suite, le moteur
+d'automatisations repasse, puis `synchro.ts` compare avant / après et envoie
+seulement ce qui a changé (upsert par collection + id, suppressions). Les ids
+des éléments créés par le moteur sont déterministes : si les deux fondateurs
+ouvrent l'ERP en même temps, leurs moteurs écrivent les mêmes lignes et le
+résultat converge.
+
+**Jamais de perte** : tant que la base n'a pas confirmé, la modification reste
+dans une file d'attente (mémoire + `localStorage`, clé `lm-erp-file-attente`).
+En cas d'échec, un bandeau « Enregistrement échoué, nouvel essai… » s'affiche
+et l'envoi est retenté seul (1 s, 2 s, 4 s... jusqu'à 1 min), et aussitôt au
+retour du réseau. Hors ligne, l'en-tête affiche « Hors ligne » ; la file
+survit à la fermeture de l'onglet et part à la prochaine ouverture. Fermer
+l'onglet avec des modifications en attente déclenche un avertissement.
+
+**Temps réel** : Supabase Realtime pousse les modifications des autres
+membres ; l'écho de ses propres écritures est ignoré, et une modification
+locale encore en attente l'emporte sur la version distante. Après une coupure
+(réseau, veille de plus de 2 minutes), l'ERP relit toute la base.
+
+**Rôles** (appliqués par la base) : gérant et opérations lisent et écrivent,
+lecture consulte seulement (bandeau « Lecture seule », rien n'est enregistré),
+seul un gérant ajoute ou retire des membres (Paramètres, Utilisateurs &
+rôles). Le rôle prestataire n'a pas encore d'accès.
+
+**Base vide** : tout l'ERP fonctionne sans aucune donnée (indicateurs
+« Aucune donnée », listes vides expliquées). Le tableau de bord affiche une
+carte **Démarrage** (propriétaires, logements, mandats, prestataires et leurs
+documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
+(`?nouveau=1`). Elle disparaît quand les cinq étapes sont faites.
 
 ## Mise en production réelle
 
-Dans l'ordre :
+À faire une seule fois, dans cet ordre. Le projet Supabase de Label Maison est
+`https://ftfwnomkbjtlpijdevgx.supabase.co`.
 
-1. **Supabase** : créer un projet dans une région **UE** (Paris ou Francfort),
-   puis appliquer les migrations **dans l'ordre des noms** :
-   1. `supabase/migrations/20260924000000_erp_schema.sql` (schéma `erp`,
-      tables, fonctions de rôle, RLS) ;
-   2. `supabase/migrations/20260925000000_erp_recommandations.sql` (suivi des
-      améliorations, SPEC §10) ;
-   3. `supabase/migrations/20260926000000_erp_incidents_recupere.sql`
-      (colonne `recupere_le` des incidents).
+1. **Installer la base.** Supabase → **SQL Editor** → **New query** → coller
+   **tout** le fichier `supabase/erp-installation.sql` → **Run**. Le script
+   peut être relancé sans risque. L'onglet « Results » affiche une ligne de
+   bilan : `tables_erp` = 4, `temps_reel` = 2, `stockage_photos` = true,
+   `politiques_photos` = 4. (Si `stockage_photos` ou `politiques_photos` ne
+   sont pas bons, l'ERP marche mais l'envoi des photos échouera : Storage →
+   New bucket `erp-fichiers`, privé, puis relancer le script.)
+2. **Créer les comptes d'Abdel et de Kamel.** Supabase → **Authentication** →
+   **Users** → **Add user** → **Create new user** : e-mail, mot de passe,
+   cocher **Auto Confirm User** → **Create user**. Une fois par personne.
+   Conseillé : fermer les inscriptions publiques (**Authentication → Sign
+   In / Providers → Allow new users to sign up** désactivé). Un compte créé
+   sans être dans `erp.membres` ne voit de toute façon rien, mais autant
+   qu'aucun inconnu ne puisse en créer.
+3. **Leur donner l'accès à l'ERP.** Retour dans **SQL Editor**, nouvelle
+   requête, coller en remplaçant les adresses par les vraies :
 
-   Créer les comptes Abdel et Kamel dans Supabase Auth, puis leurs lignes dans
-   `erp.utilisateurs` (même `id` que `auth.users`, rôles `gerant` et
-   `operations`). Renseigner `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY`
-   dans Vercel.
-2. **Channex** : ouvrir le compte production (environ 140 USD par mois pour 10
+   ```sql
+   insert into erp.membres (email, nom, role) values
+     ('EMAIL_ABDEL', 'Abdel', 'gerant'),
+     ('EMAIL_KAMEL', 'Kamel', 'gerant')
+   on conflict (email) do update set nom = excluded.nom, role = excluded.role;
+   ```
+
+   → **Run**. Les membres suivants s'ajoutent ensuite depuis l'ERP
+   (Paramètres, Utilisateurs & rôles), puis leur compte à l'étape 2.
+4. **Adresses de retour des e-mails.** Supabase → **Authentication** →
+   **URL Configuration** : **Site URL** = `https://www.labelmaisoncg.fr`, et
+   dans **Redirect URLs** ajouter `https://www.labelmaisoncg.fr/erp` → Save.
+   (Sans cela, le lien « mot de passe oublié » ne ramène pas dans l'ERP.)
+   Attention : l'envoi d'e-mails intégré à Supabase est très limité (quelques
+   e-mails par heure, et seulement vers les adresses de l'équipe du compte
+   Supabase). Pour un « mot de passe oublié » fiable : **Authentication →
+   Emails → SMTP Settings**, brancher Resend (déjà utilisé par le site :
+   hôte `smtp.resend.com`, port 465, utilisateur `resend`, mot de passe = clé
+   API Resend, expéditeur sur le domaine vérifié).
+5. **Vercel (facultatif).** Les adresses du projet sont déjà dans le code
+   (`src/erp/data/config.ts`). Pour les changer sans toucher au code :
+   Settings → Environment Variables → `VITE_SUPABASE_URL` et
+   `VITE_SUPABASE_ANON_KEY` (les deux ensemble), puis redéployer. Ne jamais y
+   mettre `VITE_ERP_DEMO`.
+6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp`, mot de passe du
+   site, puis se connecter avec son e-mail. Si l'écran « La base de données
+   n'est pas encore installée » reste affiché après l'étape 1 : Supabase →
+   **Project Settings** → **Data API** (parfois **Settings → API**) →
+   **Exposed schemas** → ajouter `erp` → Save, puis « Réessayer ».
+   « Votre compte n'est pas autorisé » : l'e-mail n'est pas (ou mal écrit)
+   dans `erp.membres` (étape 3).
+
+Sauvegarde : Paramètres → Données → **Exporter en JSON** télécharge toute la
+base à l'instant T. Les anciennes versions de chaque élément restent dans
+`erp.historique` (Table Editor, schéma `erp`).
+
+### Ensuite
+
+1. **Channex** : ouvrir le compte production (environ 140 USD par mois pour 10
    logements : socle + prix par logement + module messagerie), terminer la
    certification, relier chaque logement (`channexPropertyId`) et pointer les
-   webhooks réservations et messages vers l'ERP (`CHANNEX_*`).
-3. **Anthropic** : recharger les crédits de l'agent IA (`agent-ia/`), poser un
+   webhooks réservations et messages vers l'ERP (`CHANNEX_*`). En attendant,
+   les réservations se saisissent à la main (Réservations → Nouvelle
+   réservation) et le ménage de chaque départ se crée tout seul.
+2. **Anthropic** : recharger les crédits de l'agent IA (`agent-ia/`), poser un
    plafond de dépense mensuel dans la console, `ANTHROPIC_API_KEY` côté serveur
    uniquement. L'agent n'engage jamais d'argent.
-4. **Basculer le store en mode `supabase`.** C'est le travail qui reste à
-   coder, précisément :
-   - **Couche d'accès aux données** (`src/erp/data/supabase.ts`, nouveau) :
-     client `@supabase/supabase-js` sur le schéma `erp` (ou appels REST
-     PostgREST avec `fetch` pour ne pas ajouter de dépendance), lecture de
-     toutes les collections au chargement, correspondance camelCase
-     (TypeScript) vers snake_case (SQL), montants en `bigint` de centimes,
-     objets imbriqués (`fiche`, `lits`, `checklist`, `photos`, `lignes`...) en
-     `jsonb`.
-   - **Écritures** : `appliquer()` dans `store.tsx` calcule déjà l'état suivant ;
-     il faut en déduire les lignes créées ou modifiées (y compris celles du
-     moteur, listées dans `ResultatMoteur.changements`) et les envoyer en
-     `upsert`, avec mise à jour optimiste et retour arrière en cas d'erreur.
-     Le journal va dans `erp.journal` (insertion seule, déjà prévu par la RLS).
-   - **Authentification et RLS** : remplacer le sélecteur Abdel / Kamel par une
-     session Supabase Auth (lien magique ou mot de passe) ; l'utilisateur
-     courant vient de `auth.uid()`. Les politiques du schéma donnent tout à
-     l'équipe (`gerant`, `operations`), la lecture seule au rôle `lecture` et
-     aux prestataires leurs seules missions. Le mot de passe du middleware
-     peut rester en première barrière.
-   - **Identifiants** : la démo utilise des ids texte, et les automatisations
-     des ids déterministes (`auto-lin-envoi-...`, `auto-inc-linge-...`,
-     `reco-...`, contrôles qualité...) qui garantissent l'idempotence. Les
-     tables en `uuid` doivent soit passer en `text` pour ces entités, soit
-     recevoir un uuid v5 dérivé de la clé déterministe (même clé, même uuid).
-   - **Où tourne le moteur** : en production il ne doit pas dépendre d'un
-     navigateur ouvert. Le déplacer dans une fonction Vercel planifiée (cron
-     quotidien protégé par `CRON_SECRET`, plus un appel après chaque webhook
-     Channex) qui lit la base, exécute `executerAutomatisations` avec la date
-     du jour réelle à la place de `AUJOURDHUI`, et écrit les changements. Le
-     navigateur garde l'exécution locale pour l'affichage immédiat.
-   - **Date du jour** : remplacer la constante `AUJOURDHUI` (figée pour la
-     démo) par la date réelle en fuseau Europe/Paris.
-   - **Fichiers** : photos de ménage, preuves d'incident et documents
-     prestataires dans Supabase Storage (bucket privé, URLs signées) au lieu
-     des `demo://`.
-   - Retirer le bandeau « Données de démonstration » quand `mode === 'supabase'`
-     (`demo: false` dans le contexte).
+3. **Moteur hors navigateur** : aujourd'hui le moteur d'automatisations tourne
+   dans le navigateur à chaque ouverture et après chaque action (résultat
+   enregistré dans la base). Les tâches du jour se font donc dès que quelqu'un
+   ouvre l'ERP. Pour qu'elles tournent même si personne ne l'ouvre : fonction
+   Vercel planifiée (cron quotidien protégé par `CRON_SECRET`, plus un appel
+   après chaque webhook Channex) qui lit `erp.enregistrements` avec la clé
+   `service_role` (côté serveur uniquement), exécute `executerAutomatisations`
+   avec la date du jour à Paris et écrit la différence, exactement comme
+   `synchro.ts`.
+4. **Accès prestataires** : règles RLS dédiées (leurs seules missions) avant
+   de donner le rôle `prestataire` à qui que ce soit.

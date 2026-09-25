@@ -5,7 +5,7 @@ import { Alert, Badge, Button, Card, CardHeader, ProgressBar, Stat, StatusBadge 
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../../data/constantes';
-import { AUJOURDHUI, dateCourte, euros, jourMois, note, pluriel, pourcentage } from '../../../data/format';
+import { SANS_DONNEE, AUJOURDHUI, dateCourte, euros, jourMois, note, pluriel, pourcentage } from '../../../data/format';
 import {
   avancementChecklist,
   estActive,
@@ -67,7 +67,7 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
           <Stat label="Occupation 30 j" valeur={pourcentage(s.occupation30)} icone={<Percent />} aide={`90 j : ${pourcentage(s.occupation90)}`} />
           <Stat label="Revenu brut 30 j" valeur={euros(s.revenu30, true)} icone={<Coins />} aide={`90 j : ${euros(s.revenu90, true)}`} />
           <Stat label="Commission 30 j" valeur={euros(s.commission30, true)} icone={<Sparkles />} aide={`90 j : ${euros(s.commission90, true)}`} />
-          <Stat label="Note voyageurs" valeur={note(s.note)} icone={<Star />} aide="12 derniers mois" />
+          <Stat label="Note voyageurs" valeur={s.note === undefined ? SANS_DONNEE : note(s.note)} icone={<Star />} aide="12 derniers mois" />
         </div>
 
         <Card flush>

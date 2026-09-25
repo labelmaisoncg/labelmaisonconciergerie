@@ -1,12 +1,12 @@
 import { ImagePlus } from 'lucide-react';
-import { MAINTENANT, heure, jourMois } from '../../../data/format';
+import { MAINTENANT, heure, horodatageMaintenant, jourMois } from '../../../data/format';
 import type { MomentPhoto, Mission } from '../../../data/types';
-import { Badge, Button, Card, CardHeader, Vignette } from '../../../ui';
+import { Badge, Button, Card, CardHeader, EnvoiFichier, Vignette } from '../../../ui';
 
 interface Props {
   mission: Mission;
   /** Absent : lecture seule. */
-  onAjouter?: (photo: Mission['photos'][number]) => void;
+  onAjouter?: (photos: Mission['photos']) => void;
   demo: boolean;
 }
 
@@ -48,11 +48,25 @@ export function Photos({ mission, onAjouter, demo }: Props) {
                   className="mt-2"
                   icone={<ImagePlus />}
                   onClick={() =>
-                    onAjouter({ url: `demo://photos/${mission.id}/${cle}-${mission.photos.length + 1}.jpg`, moment: cle, prisLe: MAINTENANT })
+                    onAjouter([{ url: `demo://photos/${mission.id}/${cle}-${mission.photos.length + 1}.jpg`, moment: cle, prisLe: MAINTENANT }])
                   }
                 >
                   Ajouter une photo (démo)
                 </Button>
+              )}
+              {onAjouter && !demo && (
+                <EnvoiFichier
+                  className="mt-2"
+                  dossier={`missions/${mission.id}/${cle}`}
+                  accept="image/*"
+                  multiple
+                  icone={<ImagePlus />}
+                  libelle={`Ajouter des photos ${titre.toLowerCase()}`}
+                  onEnvoye={(urls) => {
+                    const prisLe = horodatageMaintenant();
+                    onAjouter(urls.map((url) => ({ url, moment: cle, prisLe })));
+                  }}
+                />
               )}
             </section>
           );

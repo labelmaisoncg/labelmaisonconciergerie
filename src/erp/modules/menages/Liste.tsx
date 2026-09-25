@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AlarmClock, CalendarCheck, Camera, ClipboardCheck, Timer } from 'lucide-react';
-import { AUJOURDHUI, nombre, pourcentage } from '../../data/format';
+import { AUJOURDHUI, SANS_DONNEE, nombre, pourcentage } from '../../data/format';
 import { useErp } from '../../data/store';
-import { fenetreJours, missionsAAttribuerSous, missionsAControler, missionsDuJour, tauxMissionsValideesAvecPhotos } from '../../data/selectors';
+import { fenetreJours, missionsAAttribuerSous, missionsAControler, missionsDuJour, nbMenagesPasses, tauxMissionsValideesAvecPhotos } from '../../data/selectors';
 import type { Mission } from '../../data/types';
 import { PageHeader, Stat, Tabs } from '../../ui';
 import { ATraiter } from './_composants/ATraiter';
@@ -31,6 +31,7 @@ export function Liste() {
   const nbAValider = d.missions.filter((m) => m.statut === 'a_valider').length;
   const nbAAttribuer = d.missions.filter((m) => m.statut === 'a_attribuer').length;
   const taux = tauxMissionsValideesAvecPhotos(d.missions, fenetreJours(30));
+  const passees30 = nbMenagesPasses(d.missions, fenetreJours(30));
   const delai = delaiMoyenValidation(d.missions, d.journal);
   const nbControles = missionsAControler(d.missions, d.reservations).filter((m) => m.noteControle === undefined).length;
 
@@ -49,10 +50,10 @@ export function Liste() {
         <Stat label="Missions du jour" valeur={nombre(duJour)} icone={<CalendarCheck />} />
         <Stat label="À attribuer sous 48 h" valeur={nombre(urgentes)} icone={<AlarmClock />} tone={urgentes ? 'danger' : 'neutre'} aide={`${nbAAttribuer} au total`} />
         <Stat label="À valider" valeur={nombre(nbAValider)} icone={<ClipboardCheck />} tone={nbAValider ? 'alerte' : 'neutre'} />
-        <Stat label="Validées avec photos (30 j)" valeur={pourcentage(taux)} icone={<Camera />} tone={taux < 0.9 ? 'alerte' : 'succes'} aide="Objectif 100 %" />
+        <Stat label="Validées avec photos (30 j)" valeur={passees30 ? pourcentage(taux) : SANS_DONNEE} icone={<Camera />} tone={!passees30 ? 'neutre' : taux < 0.9 ? 'alerte' : 'succes'} aide="Objectif 100 %" />
         <Stat
           label={delai.source === 'journal' ? 'Délai moyen de validation' : 'Attente moyenne de validation'}
-          valeur={delai.heures === undefined ? '-' : `${nombre(delai.heures, 1)} h`}
+          valeur={delai.heures === undefined ? SANS_DONNEE : `${nombre(delai.heures, 1)} h`}
           icone={<Timer />}
           aide={
             delai.source === 'journal'

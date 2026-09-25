@@ -3,12 +3,13 @@ import { useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { IconButton, useFenetre } from '../ui';
 import { DemoBanner } from './DemoBanner';
+import { AlerteSynchro, BandeauLecture } from './EtatSynchro';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 
 /**
- * Cadre de l'ERP : barre latérale fixe (tiroir sous 1024 px), bandeau démo,
- * en-tête, contenu. Aucun défilement horizontal de page : les tableaux
+ * Cadre de l'ERP : barre latérale fixe (tiroir sous 1024 px), bandeau démo
+ * (développement) ou lecture seule, en-tête, contenu, alertes d'enregistrement. Aucun défilement horizontal de page : les tableaux
  * défilent dans leur propre conteneur.
  */
 export function ErpLayout({ children }: { children: ReactNode }) {
@@ -46,11 +47,13 @@ export function ErpLayout({ children }: { children: ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <DemoBanner />
+        <BandeauLecture />
         <Topbar onMenu={() => setMenu(true)} />
         <main id="contenu" className="mx-auto w-full max-w-[1400px] min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-7">
           {children}
         </main>
       </div>
+      <AlerteSynchro />
     </div>
   );
 }

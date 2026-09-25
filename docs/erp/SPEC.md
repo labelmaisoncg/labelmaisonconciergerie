@@ -64,9 +64,12 @@ couche dépend de celles du dessus.
 
 ## 3. Modèle de données
 
-Types TypeScript dans `src/erp/data/types.ts` ; schéma Postgres miroir dans
-`supabase/migrations/`. Identifiants : chaînes (`uuid` en base). Dates :
-chaînes ISO `YYYY-MM-DD`, horodatages ISO complets. Montants : **centimes
+Types TypeScript dans `src/erp/data/types.ts` ; stockés tels quels (JSON)
+dans `erp.enregistrements` (`supabase/erp-installation.sql`). Le schéma
+normalisé de `supabase/migrations/` est une cible future, non appliquée.
+Identifiants : chaînes (texte en base, ids déterministes pour les éléments
+créés par le moteur). Dates : chaînes ISO `YYYY-MM-DD`, horodatages ISO
+complets. Montants : **centimes
 entiers** (`number`), jamais de flottants pour l'argent.
 
 - `Proprietaire` : id, type (particulier | sci | societe), nom, contact
@@ -148,7 +151,7 @@ src/erp/
     types.ts            modèle §3
     seed.ts             jeu de démo réaliste (mockup)
     store.tsx           ErpProvider + hooks (useErp, useLogements…) ;
-                        mode démo en mémoire, prêt pour Supabase
+                        base Supabase réelle, démo locale en développement
     selectors.ts        calculs partagés (KPIs, montants, dates)
     format.ts           euros, dates FR, pluriels
   modules/<module>/     un dossier par module, index.tsx = page(s)
@@ -161,10 +164,15 @@ supabase/migrations/    schéma SQL (Postgres + RLS)
 - **Accès** : le middleware Vercel protège `/erp` par mot de passe
   (`ERP_PASSWORD`, cookie signé `erp_session`, sur le modèle de `/linge`) et
   réécrit `/erp/*` vers la coquille SPA (cleanUrls ignore les rewrites).
-- **Données** : mode **démo** tant que `VITE_SUPABASE_URL` n'est pas défini
-  (bandeau « Données de démonstration »). Les mutations en démo modifient
-  l'état en mémoire (et `localStorage`, clé `lm-erp-demo-v1`, avec
-  try/catch) pour que la maquette soit manipulable.
+  Derrière, chaque membre se connecte avec son compte Supabase (e-mail + mot
+  de passe) ; l'accès dépend de `erp.membres` et la base applique les droits
+  (RLS).
+- **Données** : **réelles** en production, dans la base Supabase de Label
+  Maison (`supabase/erp-installation.sql` : un document JSON par élément dans
+  `erp.enregistrements`, écriture par différence, temps réel, file d'attente
+  hors ligne ; détail dans `docs/erp/README.md`). Le mode **démo** (jeu
+  fictif en mémoire et `localStorage`, bandeau « Données de démonstration »)
+  n'existe plus qu'en développement local avec `VITE_ERP_DEMO=1`.
 - **Intégrations** (écran Paramètres → Intégrations) : Channex (réservations,
   calendrier, messagerie), Anthropic (agent IA, `agent-ia/`), Supabase
   (base), Resend (e-mails). Chaque intégration affiche son état.

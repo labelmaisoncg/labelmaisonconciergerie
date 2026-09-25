@@ -1,3 +1,5 @@
+-- CIBLE FUTURE, NON APPLIQUÉE : ne pas lancer sur le projet actuel.
+-- L'ERP en production utilise supabase/erp-installation.sql (voir supabase/migrations/README.md).
 -- =============================================================================
 -- ERP Label Maison : versions mensuelles des annonces (SPEC §11). Miroir de
 -- VersionAnnonce dans src/erp/data/types.ts.

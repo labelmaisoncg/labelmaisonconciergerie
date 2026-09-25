@@ -4,7 +4,7 @@ import { nouvelId, useErp } from '../../../data/store';
 import { AUJOURDHUI, ajouterJours, euros, versCentimes } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import type { DestinataireFacture, Facture, TypeFacture } from '../../../data/types';
-import { Alert, Button, Field, IconButton, Input, Modal, Select } from '../../../ui';
+import { Alert, Button, Field, IconButton, Input, Modal, Select, Prerequis } from '../../../ui';
 import { prochainNumero } from '../_calculs';
 
 interface LigneSaisie {
@@ -114,6 +114,9 @@ export function NouvelleFacture({ ouvert, onFermer, onCree }: Props) {
         <Field label="Destinataire">
           <Select value={destinataire} onChange={(e) => setDestinataire(e.target.value as DestinataireFacture)} options={options(LIBELLES.destinataire)} />
         </Field>
+        {destinataire === 'proprietaire' && !d.proprietaires.length && (
+          <Prerequis className="sm:col-span-2" manque="Aucun propriétaire enregistré." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
+        )}
         {destinataire === 'proprietaire' && (
           <Field label="Propriétaire" requis className="sm:col-span-2">
             <Select

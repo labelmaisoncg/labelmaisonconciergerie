@@ -44,3 +44,8 @@ export { Vignette } from './Vignette';
 export type { VignetteProps } from './Vignette';
 export { Skeleton, PageSkeleton } from './Skeleton';
 export { useFenetre } from './useFenetre';
+export { useLienFichier, LienFichier, EnvoiFichier } from './Fichier';
+export type { EnvoiFichierProps } from './Fichier';
+export { useCreationParUrl } from './useCreationParUrl';
+export { Prerequis } from './Prerequis';
+export type { PrerequisProps } from './Prerequis';

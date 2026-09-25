@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarClock, Coins, FileSignature, KanbanSquare, List, Percent, Plus, Target } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { ETAPES_PIPELINE } from '../../data/constantes';
-import { AUJOURDHUI, euros, moisAnnee, pourcentage } from '../../data/format';
+import { AUJOURDHUI, SANS_DONNEE, euros, moisAnnee, pourcentage } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { actionsCommercialesDues, commissionPotentielle, signaturesDuMois, valeurPipeline } from '../../data/selectors';
 import type { EtapeProspect, Prospect, Responsable, SourceProspect } from '../../data/types';
-import { Button, PageHeader, SearchInput, Select, Stat, cn } from '../../ui';
+import { Button, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
 import { useAvis } from './_composants/Avis';
 import type { ActionsProspect } from './_composants/CarteProspect';
 import { FicheProspect } from './_composants/FicheProspect';
@@ -29,7 +29,7 @@ export default function Pipeline() {
   const [responsable, setResponsable] = useState<Responsable | ''>('');
   const [etape, setEtape] = useState<EtapeProspect | ''>('');
   const [avecPerdus, setAvecPerdus] = useState(false);
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
 
   const ouvertId = params.get('prospect') ?? undefined;
   const ouvert = d.prospects.find((p) => p.id === ouvertId);
@@ -108,7 +108,7 @@ export default function Pipeline() {
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <Stat label="Valeur du pipeline" valeur={euros(valeurPipeline(d.prospects), true)} icone={<Target />} aide="revenu annuel estimé en cours" />
         <Stat label="Commission potentielle" valeur={euros(commissionPotentielle(d.prospects, 18), true)} icone={<Coins />} aide="à 18 % par an" />
-        <Stat label="Taux de conversion" valeur={signes + perdus ? pourcentage(signes / (signes + perdus)) : '-'} icone={<Percent />} aide={`${signes} signés, ${perdus} perdus`} />
+        <Stat label="Taux de conversion" valeur={signes + perdus ? pourcentage(signes / (signes + perdus)) : SANS_DONNEE} icone={<Percent />} aide={`${signes} signés, ${perdus} perdus`} />
         <Stat label="Signatures du mois" valeur={signaturesDuMois(d.mandats).length} icone={<FileSignature />} aide={moisAnnee(AUJOURDHUI)} />
         <Stat label="Actions dues" valeur={dues.length} icone={<CalendarClock />} tone={dues.length ? 'alerte' : 'neutre'} aide="en retard ou du jour" />
       </div>

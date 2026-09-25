@@ -332,6 +332,15 @@ function pageConnexion(
        </div>
        <button type="submit">${ICONE_CLE} ${echapper(zone.bouton)}</button>
      </form>
+     <script>
+       // Lien reçu par e-mail (mot de passe oublié de l'ERP) : l'adresse porte
+       // des jetons après « # », que le navigateur n'envoie jamais au serveur.
+       // On les garde pour la page suivante, sinon le lien serait perdu ici.
+       (function () {
+         var h = location.hash, s = document.querySelector('input[name=suite]');
+         if (h && h.length > 1 && s && s.value.indexOf('#') < 0) s.value = s.value.replace(/\\/?$/, '/') + h;
+       })();
+     </script>
      <hr class="separateur">
      <p class="note">Accès réservé à l'équipe Label Maison.</p>`,
     statut,

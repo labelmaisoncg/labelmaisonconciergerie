@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { SANS_DONNEE } from '../data/format';
 import { cn } from './cn';
 import { TON_LAVIS, TON_TEXTE, type Ton } from './tons';
 
@@ -38,7 +39,11 @@ export function Stat({ label, valeur, delta, tone = 'neutre', icone, aide, to, c
           </span>
         )}
       </div>
-      <p className="lm-chiffres mt-1.5 text-[24px] leading-none font-semibold tracking-tight text-(--lm-encre)">{valeur}</p>
+      {valeur === SANS_DONNEE ? (
+        <p className="mt-2 text-[15px] leading-tight font-medium text-(--lm-encre-3)">{valeur}</p>
+      ) : (
+        <p className="lm-chiffres mt-1.5 text-[24px] leading-none font-semibold tracking-tight text-(--lm-encre)">{valeur}</p>
+      )}
       {(delta || aide) && (
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12px]">
           {delta && <DeltaBadge {...delta} />}

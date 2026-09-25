@@ -112,7 +112,18 @@ export function Detail() {
               <p className="text-[13px] text-(--lm-encre-3)">Pas de checklist pour cette intervention.</p>
             )}
           </Card>
-          <Photos mission={m} demo={d.demo} onAjouter={verrouillee ? undefined : (p) => { d.upsert('missions', { ...m, photos: [...m.photos, p] }); info('Photo ajoutée (démo), horodatée maintenant.'); }} />
+          <Photos
+            mission={m}
+            demo={d.demo}
+            onAjouter={
+              verrouillee
+                ? undefined
+                : (ps) => {
+                    const r = d.mettreAJour('missions', m.id, (x) => ({ ...x, photos: [...x.photos, ...ps] }));
+                    if (r.ok) info(ps.length > 1 ? `${ps.length} photos ajoutées, horodatées maintenant.` : 'Photo ajoutée, horodatée maintenant.');
+                  }
+            }
+          />
           <Card>
             <CardHeader titre="Historique" />
             <Timeline elements={frise} vide="Aucun événement enregistré pour cette mission." />

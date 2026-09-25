@@ -6,7 +6,7 @@ import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
 import { fenetreMois, incidentsOuverts } from '../../data/selectors';
 import type { CategorieIncident, GraviteIncident, Incident } from '../../data/types';
-import { Badge, Button, PageHeader, Select, Stat, StatusBadge, Table, Tabs, Toolbar, type Colonne } from '../../ui';
+import { Badge, Button, PageHeader, Select, Stat, StatusBadge, Table, Tabs, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { Retour, useRetour } from '../menages/_composants/retour';
 import { Board } from './_composants/Board';
 import { IncidentDrawer } from './_composants/IncidentDrawer';
@@ -24,7 +24,7 @@ export default function Incidents() {
   const [gravites, setGravites] = useState<string[]>([]);
   const [categorie, setCategorie] = useState('');
   const [logement, setLogement] = useState('');
-  const [creation, setCreation] = useState(false);
+  const [creation, setCreation] = useCreationParUrl();
   const { message, setMessage, fermer } = useRetour();
 
   const ouvertId = params.get('id');
