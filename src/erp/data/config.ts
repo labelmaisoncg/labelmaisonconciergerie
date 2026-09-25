@@ -2,7 +2,7 @@
  * Configuration de l'ERP : mode de données et projet Supabase de Label Maison.
  *
  * - Mode « reel » (production, par défaut) : données dans la base Supabase de
- *   Label Maison, connexion par e-mail et mot de passe.
+ *   Label Maison, connexion par le mot de passe du compte d'équipe.
  * - Mode « demo » : UNIQUEMENT en développement local, quand
  *   VITE_ERP_DEMO=1 est défini au lancement (jeu de démonstration en mémoire).
  *
@@ -35,6 +35,13 @@ export const SCHEMA_ERP = 'erp';
 /** Démo : seulement si VITE_ERP_DEMO=1 (développement local, captures, tests). */
 export const MODE_DEMO = ENV.VITE_ERP_DEMO === '1';
 export const MODE: 'demo' | 'reel' = MODE_DEMO ? 'demo' : 'reel';
+
+/**
+ * Compte d'équipe unique : tout le monde a la même vue, la connexion ne demande
+ * que le mot de passe. Adresse technique (aucune boîte mail n'est nécessaire),
+ * inscrite dans erp.membres avec le rôle gérant.
+ */
+export const EMAIL_EQUIPE = ENV.VITE_ERP_EMAIL_EQUIPE?.trim() || 'equipe@labelmaisoncg.fr';
 
 /** Page où revient le lien « mot de passe oublié » (à autoriser dans Supabase, Authentication, URL configuration). */
 export const URL_RETOUR_MOT_DE_PASSE = 'https://www.labelmaisoncg.fr/erp';

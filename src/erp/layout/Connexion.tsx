@@ -1,14 +1,15 @@
 /**
- * Porte d'entrée de l'ERP (production) : chargement, connexion par e-mail et
- * mot de passe, mot de passe oublié, nouveau mot de passe (lien reçu par
- * e-mail), compte non autorisé, base pas encore installée, base injoignable.
+ * Porte d'entrée de l'ERP (production) : chargement, connexion par le seul
+ * mot de passe du compte d'équipe, nouveau mot de passe (lien de récupération),
+ * compte non autorisé, base pas encore installée, base injoignable.
  *
  * Aucun accès au store ici : ces écrans s'affichent avant que les données
  * existent.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { ArrowLeft, Database, KeyRound, Loader2, LogIn, LogOut, Mail, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
-import { changerMotDePasse, envoyerLienMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
+import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
+import { EMAIL_EQUIPE } from '../data/config';
+import { changerMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
 import { Alert, Button, Field, Input } from '../ui';
 
 export type PhasePorte =
@@ -80,7 +81,7 @@ function Marque() {
 
 function Cadre({ titre, sousTitre, icone, children }: { titre: string; sousTitre?: ReactNode; icone?: ReactNode; children: ReactNode }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-(--lm-fond) px-4 py-10">
+    <main translate="no" className="flex min-h-screen items-center justify-center bg-(--lm-fond) px-4 py-10">
       <div className="w-full max-w-[440px]">
         <Marque />
         <div className="rounded-2xl border border-(--lm-bord) bg-(--lm-surface) p-6 shadow-(--lm-ombre) sm:p-8">
@@ -107,7 +108,7 @@ function Cadre({ titre, sousTitre, icone, children }: { titre: string; sousTitre
 
 function Chargement({ texte }: { texte: string }) {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-(--lm-fond) px-4" aria-busy="true">
+    <main translate="no" className="flex min-h-screen items-center justify-center bg-(--lm-fond) px-4" aria-busy="true">
       <div className="flex flex-col items-center text-center">
         <Marque />
         <Loader2 className="size-6 animate-spin text-(--lm-or)" aria-hidden />
@@ -122,87 +123,41 @@ function Chargement({ texte }: { texte: string }) {
 /* -------------------------------------------------------------- connexion */
 
 function FormulaireConnexion({ message }: { message?: string }) {
-  const [vue, setVue] = useState<'connexion' | 'oubli'>('connexion');
-  const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [erreur, setErreur] = useState<string>();
-  const [envoye, setEnvoye] = useState(false);
   const [enCours, setEnCours] = useState(false);
+  const [aide, setAide] = useState(false);
 
   const connecter = async (e: FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !motDePasse) return setErreur('Saisissez votre e-mail et votre mot de passe.');
+    if (!motDePasse) return setErreur('Saisissez le mot de passe.');
     setEnCours(true);
     setErreur(undefined);
-    const r = await seConnecter(email, motDePasse);
+    const r = await seConnecter(EMAIL_EQUIPE, motDePasse);
     setEnCours(false);
     if (!r.ok) setErreur(r.erreur);
     // Succès : la session ouverte déclenche le chargement (ErpProvider).
   };
 
-  const envoyerLien = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!/^\S+@\S+\.\S+$/.test(email.trim())) return setErreur('Saisissez l’adresse e-mail de votre compte.');
-    setEnCours(true);
-    setErreur(undefined);
-    const r = await envoyerLienMotDePasse(email);
-    setEnCours(false);
-    if (r.ok) setEnvoye(true);
-    else setErreur(r.erreur);
-  };
-
-  if (vue === 'oubli') {
-    return (
-      <Cadre titre="Mot de passe oublié" sousTitre="Recevez un lien par e-mail pour choisir un nouveau mot de passe." icone={<Mail />}>
-        {envoye ? (
-          <Alert tone="succes" titre="E-mail envoyé">
-            Si un compte existe pour <strong className="break-all">{email.trim()}</strong>, un lien vient de partir. Ouvrez-le pour choisir un
-            nouveau mot de passe. Pensez à regarder dans les indésirables.
-          </Alert>
-        ) : (
-          <form onSubmit={envoyerLien} noValidate className="grid gap-4">
-            <Field label="E-mail">
-              <Input type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-            </Field>
-            {erreur && (
-              <Alert tone="danger" className="py-2">
-                {erreur}
-              </Alert>
-            )}
-            <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<Mail />}>
-              Envoyer le lien
-            </Button>
-          </form>
-        )}
-        <button
-          type="button"
-          onClick={() => {
-            setVue('connexion');
-            setEnvoye(false);
-            setErreur(undefined);
-          }}
-          className="mt-5 inline-flex items-center gap-1.5 text-[13px] font-medium text-(--lm-or) hover:underline"
-        >
-          <ArrowLeft className="size-3.5" aria-hidden />
-          Retour à la connexion
-        </button>
-      </Cadre>
-    );
-  }
-
   return (
-    <Cadre titre="Connexion" sousTitre="Connectez-vous avec votre compte Label Maison." icone={<LogIn />}>
+    <Cadre titre="Connexion" sousTitre="Saisissez le mot de passe de l’équipe Label Maison." icone={<LogIn />}>
       {message && (
         <Alert tone="info" className="mb-4 py-2">
           {message}
         </Alert>
       )}
       <form onSubmit={connecter} noValidate className="grid gap-4">
-        <Field label="E-mail">
-          <Input type="email" name="email" autoComplete="username" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} autoFocus />
-        </Field>
+        {/* Identifiant caché : les gestionnaires de mots de passe l'associent au mot de passe. */}
+        <input type="hidden" name="username" autoComplete="username" value={EMAIL_EQUIPE} readOnly />
         <Field label="Mot de passe">
-          <Input type="password" name="password" autoComplete="current-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} />
+          <Input
+            type="password"
+            name="password"
+            autoComplete="current-password"
+            value={motDePasse}
+            onChange={(e) => setMotDePasse(e.target.value)}
+            autoFocus
+          />
         </Field>
         {erreur && (
           <Alert tone="danger" className="py-2">
@@ -213,16 +168,16 @@ function FormulaireConnexion({ message }: { message?: string }) {
           Se connecter
         </Button>
       </form>
-      <button
-        type="button"
-        onClick={() => {
-          setVue('oubli');
-          setErreur(undefined);
-        }}
-        className="mt-5 text-[13px] font-medium text-(--lm-or) hover:underline"
-      >
-        Mot de passe oublié ?
-      </button>
+      {aide ? (
+        <p className="mt-5 text-[13px] text-(--lm-encre-2)">
+          Un gérant le réinitialise dans Supabase : Authentication, Users, compte <code>{EMAIL_EQUIPE}</code>, puis envoi d’un lien de récupération
+          (ou nouveau mot de passe).
+        </p>
+      ) : (
+        <button type="button" onClick={() => setAide(true)} className="mt-5 text-[13px] font-medium text-(--lm-or) hover:underline">
+          Mot de passe oublié ?
+        </button>
+      )}
     </Cadre>
   );
 }

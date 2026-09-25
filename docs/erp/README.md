@@ -280,42 +280,32 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    `politiques_photos` = 4. (Si `stockage_photos` ou `politiques_photos` ne
    sont pas bons, l'ERP marche mais l'envoi des photos échouera : Storage →
    New bucket `erp-fichiers`, privé, puis relancer le script.)
-2. **Créer les comptes d'Abdel et de Kamel.** Supabase → **Authentication** →
-   **Users** → **Add user** → **Create new user** : e-mail, mot de passe,
-   cocher **Auto Confirm User** → **Create user**. Une fois par personne.
-   Conseillé : fermer les inscriptions publiques (**Authentication → Sign
-   In / Providers → Allow new users to sign up** désactivé). Un compte créé
-   sans être dans `erp.membres` ne voit de toute façon rien, mais autant
-   qu'aucun inconnu ne puisse en créer.
-3. **Leur donner l'accès à l'ERP.** Retour dans **SQL Editor**, nouvelle
-   requête, coller en remplaçant les adresses par les vraies :
-
-   ```sql
-   insert into erp.membres (email, nom, role) values
-     ('EMAIL_ABDEL', 'Abdel', 'gerant'),
-     ('EMAIL_KAMEL', 'Kamel', 'gerant')
-   on conflict (email) do update set nom = excluded.nom, role = excluded.role;
-   ```
-
-   → **Run**. Les membres suivants s'ajoutent ensuite depuis l'ERP
-   (Paramètres, Utilisateurs & rôles), puis leur compte à l'étape 2.
+2. **Créer le compte d'équipe.** L'ERP a un seul compte pour toute l'équipe
+   (même vue pour tous) : l'écran de connexion ne demande que le mot de
+   passe. Supabase → **Authentication** → **Users** → **Add user** →
+   **Create new user** : e-mail `equipe@labelmaisoncg.fr` (adresse technique,
+   aucune boîte mail n'est nécessaire), mot de passe de l'équipe, cocher
+   **Auto Confirm User** → **Create user**. Conseillé : fermer les
+   inscriptions publiques (**Authentication → Sign In / Providers → Allow new
+   users to sign up** désactivé).
+3. **Lui donner l'accès à l'ERP.** Le script de l'étape 1 inscrit déjà
+   `equipe@labelmaisoncg.fr` comme gérant dans `erp.membres` (bilan :
+   `membres` = 1). Pour changer l'adresse du compte d'équipe : variable
+   Vercel `VITE_ERP_EMAIL_EQUIPE`, et la même adresse dans `erp.membres`.
+   **Mot de passe oublié :** Authentication → Users → le compte d'équipe →
+   nouveau mot de passe (ou lien de récupération).
 4. **Adresses de retour des e-mails.** Supabase → **Authentication** →
    **URL Configuration** : **Site URL** = `https://www.labelmaisoncg.fr`, et
    dans **Redirect URLs** ajouter `https://www.labelmaisoncg.fr/erp` → Save.
-   (Sans cela, le lien « mot de passe oublié » ne ramène pas dans l'ERP.)
-   Attention : l'envoi d'e-mails intégré à Supabase est très limité (quelques
-   e-mails par heure, et seulement vers les adresses de l'équipe du compte
-   Supabase). Pour un « mot de passe oublié » fiable : **Authentication →
-   Emails → SMTP Settings**, brancher Resend (déjà utilisé par le site :
-   hôte `smtp.resend.com`, port 465, utilisateur `resend`, mot de passe = clé
-   API Resend, expéditeur sur le domaine vérifié).
+   (Sans cela, un lien de récupération du mot de passe ne ramène pas dans
+   l'ERP.)
 5. **Vercel (facultatif).** Les adresses du projet sont déjà dans le code
    (`src/erp/data/config.ts`). Pour les changer sans toucher au code :
    Settings → Environment Variables → `VITE_SUPABASE_URL` et
    `VITE_SUPABASE_ANON_KEY` (les deux ensemble), puis redéployer. Ne jamais y
    mettre `VITE_ERP_DEMO`.
 6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp`, mot de passe du
-   site, puis se connecter avec son e-mail. Si l'écran « La base de données
+   site, puis le mot de passe de l'équipe. Si l'écran « La base de données
    n'est pas encore installée » reste affiché après l'étape 1 : Supabase →
    **Project Settings** → **Data API** (parfois **Settings → API**) →
    **Exposed schemas** → ajouter `erp` → Save, puis « Réessayer ».
