@@ -13,11 +13,11 @@ import Rentabilite from './Rentabilite';
 export default function Module() {
   const d = useErp();
   const onglets = [
-    { cle: 'synthese', libelle: 'Synthèse', to: '/erp/finance', end: true },
-    { cle: 'releves', libelle: 'Relevés propriétaires', to: '/erp/finance/releves' },
+    { cle: 'synthese', libelle: 'Vue d’ensemble', to: '/erp/finance', end: true },
+    { cle: 'releves', libelle: 'Relevés des propriétaires', to: '/erp/finance/releves' },
     { cle: 'factures', libelle: 'Factures', to: '/erp/finance/factures', compteur: facturesEnRetard(d.factures).length || undefined },
-    { cle: 'paiements', libelle: 'Paiements prestataires', to: '/erp/finance/paiements', compteur: paiementsAFaire(d).length || undefined },
-    { cle: 'charges', libelle: 'Charges', to: '/erp/finance/charges' },
+    { cle: 'paiements', libelle: 'Payer les prestataires', to: '/erp/finance/paiements', compteur: paiementsAFaire(d).length || undefined },
+    { cle: 'charges', libelle: 'Vos dépenses', to: '/erp/finance/charges' },
     { cle: 'rentabilite', libelle: 'Rentabilité par logement', to: '/erp/finance/rentabilite' },
   ];
   const t = <Tabs onglets={onglets} label="Sections de la finance" className="lm-sans-impression" />;

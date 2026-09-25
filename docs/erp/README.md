@@ -170,25 +170,69 @@ d'automatisations repasse sur les données (il tourne aussi au chargement).
 
 ### Modules et routes
 
-| Couche | Module | Route |
+Navigation simplifiée (septembre 2026) : **sept rubriques** dans la barre
+latérale, plus **Paramètres** en bas. Une rubrique qui regroupe plusieurs pages
+affiche une petite barre d'onglets commune sous l'en-tête
+(`layout/OngletsRubrique.tsx`), pilotée par le registre
+(`modules/registry.tsx` : chaque module déclare sa rubrique `group`). Les
+anciennes adresses restent valables : seules les entrées de menu ont changé.
+
+| Rubrique (barre latérale) | Onglets de la rubrique | Routes |
 |---|---|---|
-| Pilotage | Tableau de bord (vue unique pour tous) | `/erp` |
-| Pilotage | Performance des biens (analyse, décisions, suivi des recommandations) | `/erp/performance` |
-| Pilotage | Automatisations (règles, interrupteurs, journal, exceptions à traiter) | `/erp/automatisations` |
-| Commercial | Pipeline, simulateur de revenus, lancement d'un mandat | `/erp/commercial` (`/simulateur`, `/lancement`) |
-| Référentiel | Propriétaires | `/erp/proprietaires` (`/:id`) |
-| Référentiel | Mandats | `/erp/mandats` |
-| Référentiel | Logements | `/erp/logements` (`/:id?onglet=performance\|lancement\|fiche\|linge\|canaux\|historique`) |
-| Distribution | Réservations (calendrier, `?vue=liste`) | `/erp/reservations` (`/:id`) |
-| Distribution | Annonces (rafraîchissement mensuel, validation, historique, effet mesuré) | `/erp/annonces` (`?logement=`) |
-| Relation voyageur | Messagerie | `/erp/messagerie` (`/:filId`) |
-| Opérations | Ménages | `/erp/menages` (`/:id`) |
-| Opérations | Linge | `/erp/linge` (`?vue=ecarts\|journal`) |
-| Opérations | Incidents | `/erp/incidents` (`?id=`) |
-| Prestataires | Prestataires | `/erp/prestataires` (`/:id`) |
-| Finance | Finance | `/erp/finance` (`/releves`, `/factures`, `/paiements`, `/charges`, `/rentabilite`) |
-| Conformité & admin | Conformité | `/erp/conformite` |
-| Conformité & admin | Paramètres | `/erp/parametres` (`/integrations`, `/donnees`, `/entreprise`) |
+| Accueil | – | `/erp` : bonjour, « Aujourd'hui » (arrivées, départs, ménages, sujets), « À faire » (5 sujets, le reste dans un panneau), « Vos chiffres » (4 repères sur 30 jours) ; menu « … » : les 7 prochains jours |
+| Logements | Vos logements · Rentabilité · Annonces | `/erp/logements` (`/:id?onglet=…`, `/connexions`), `/erp/performance` (`?onglet=suivi\|indicateurs`), `/erp/annonces` (`?logement=`) |
+| Réservations | – | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
+| Messagerie agentique | (onglets internes) Conversations · Ce que l'agent a fait · Configurer mon agent | `/erp/messagerie` (`/:filId`, `?q=`), `/erp/messagerie/activite`, `/erp/messagerie/agent` |
+| Opérations | Ménages · Linge · Incidents · Prestataires | `/erp/menages` (`?vue=a-traiter\|toutes\|controle`, `/:id`), `/erp/linge` (`?vue=ecarts\|journal`), `/erp/incidents` (`?id=`), `/erp/prestataires` (`/:id`) |
+| Propriétaires | Propriétaires · Contrats de gestion · Prospection | `/erp/proprietaires` (`/:id`), `/erp/mandats` (`?mandat=`), `/erp/commercial` (`/simulateur`, `/lancement`) |
+| Finance | Finance · Conformité | `/erp/finance` (`/releves`, `/factures`, `/paiements`, `/charges`, `/rentabilite`), `/erp/conformite` |
+| Paramètres (en bas) | Paramètres · Automatisations | `/erp/parametres` (`/integrations`, `/donnees`, `/entreprise`), `/erp/automatisations` |
+
+Principes d'écran : 3 ou 4 blocs visibles au plus, une action principale, les
+actions secondaires dans un menu « … » (`ui/MenuActions.tsx`), les règles et
+explications repliées (« Comment ça marche ? », `ui/Aide.tsx`), le détail au
+clic (panneau, fenêtre). Langage : phrases courtes, vouvoiement, pas de jargon
+(« transmise à l'équipe » plutôt qu'« escaladée », « contrat de gestion »
+plutôt que « mandat »...).
+
+**Recherche globale** (`layout/GlobalSearch.tsx`, moteur pur dans
+`layout/recherche/moteur.ts`) : barre de l'en-tête, Ctrl/Cmd + K ou « / ».
+Cherche dans toutes les collections (logements, propriétaires, réservations
+et codes Airbnb/Booking, conversations, ménages, prestataires, incidents,
+factures, contrats, prospects, historique), sans accents ni casse, mot par
+mot (« dupont evry »), avec les dates (« 12/10 », « octobre »), montants
+(« 150 € ») et téléphones. Résultats groupés et classés (identique > début >
+contenu, réservations proches d'aujourd'hui d'abord), 5 par groupe,
+« Voir tout » ouvre la liste filtrée (`?q=`, lu par `ui/useRechercheUrl.ts`).
+Actions rapides et « Aller à… » chaque page ; recherches récentes dans le
+navigateur (localStorage). Plein écran sur mobile.
+
+### Réglages de l'agent de messagerie
+
+« Messagerie agentique > Configurer mon agent » enregistre un élément unique
+dans la collection **`reglages`** (id `agent`, type `ReglagesAgent` dans
+`data/types.ts`, valeurs par défaut et lecture tolérante dans
+`data/reglages.ts`). Il est synchronisé comme les autres collections : une
+ligne de `erp.enregistrements` avec `collection = 'reglages'`,
+`id = 'agent'`, contenu JSON dans `donnees` (pas de migration). Champs :
+`actif`, `ton` (`chaleureux` | `professionnel` | `decontracte`), `langues`,
+`signature`, `horaires` (`toujours` ou plage `debut`–`fin`, heure de Paris),
+`transmettre` (`horsFiche`, `derogations`, `sejoursLongs`,
+`sejoursLongsNuits` ; argent et litiges sont toujours transmis),
+`delaiAlerteMinutes`, `telegram`, `majLe`, `majPar`.
+
+**À faire côté agent (`agent-ia/`, service séparé, non modifié ici)** : lire
+ce réglage à chaque message voyageur (`select donnees from erp.enregistrements
+where collection = 'reglages' and id = 'agent'`), ne pas répondre si
+`actif = false` ou hors `horaires`, appliquer `ton`, `langues` et `signature`,
+passer la main selon `transmettre`, et prévenir sur Telegram après
+`delaiAlerteMinutes` sans réponse humaine. Absent : valeurs par défaut de
+`data/reglages.ts`.
+
+L'onglet « Ce que l'agent a fait » est calculé depuis `filsMessages` :
+messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :
+`raisonEscalade`, sinon déduite des messages), conversations qui attendent
+un humain.
 
 Sur chaque logement, deux chiffres sont visibles partout où il apparaît
 (liste en cartes et en tableau, en-tête de la fiche logement, fiche
@@ -198,8 +242,7 @@ mois sur 90 jours, même calcul que `/erp/performance`). Composants dans
 `modules/logements/_composants/EconomieBien.tsx`.
 
 Chaque module est monté sur `<segment>/*` et gère ses sous-routes avec un
-`<Routes>` relatif. La recherche globale renvoie vers `/erp/logements/:id`,
-`/erp/proprietaires/:id` et `/erp/reservations/:id`.
+`<Routes>` relatif.
 
 ## Automatisations
 

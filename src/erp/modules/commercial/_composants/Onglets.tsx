@@ -4,11 +4,11 @@ import { Tabs } from '../../../ui';
 export function Onglets() {
   return (
     <Tabs
-      label="Sections du module commercial"
+      label="Sections de la prospection"
       onglets={[
-        { cle: 'pipeline', libelle: 'Pipeline', to: '/erp/commercial', end: true },
+        { cle: 'pipeline', libelle: 'Vos contacts', to: '/erp/commercial', end: true },
         { cle: 'simulateur', libelle: 'Simulateur de revenus', to: '/erp/commercial/simulateur' },
-        { cle: 'lancement', libelle: 'Lancer un mandat', to: '/erp/commercial/lancement' },
+        { cle: 'lancement', libelle: 'Préparer un contrat signé', to: '/erp/commercial/lancement' },
       ]}
     />
   );

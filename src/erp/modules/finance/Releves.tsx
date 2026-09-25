@@ -53,8 +53,8 @@ export default function Releves({ onglets }: PageFinanceProps) {
 }`}</style>
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Relevés propriétaires' }]}
-        titre="Relevés propriétaires"
-        sousTitre="Relevé mensuel envoyé à chaque propriétaire : réservations, montants, commissions, frais de ménage et net versé. Un relevé clair évite les litiges."
+        titre="Relevés des propriétaires"
+        sousTitre="Chaque mois, un relevé clair pour chaque propriétaire : ses séjours, votre commission, le ménage et ce qui lui est versé."
         className="lm-sans-impression"
       />
       {onglets}
@@ -79,7 +79,7 @@ export default function Releves({ onglets }: PageFinanceProps) {
             <div className="border-b border-(--lm-bord) px-4 py-3">
               <p className="text-[14px] font-semibold">À envoyer pour {moisAnnee(periode)}</p>
               <p className="text-[12.5px] text-(--lm-encre-2)">
-                {restants ? `${pluriel(restants, 'relevé')} restant${restants > 1 ? 's' : ''} sur ${releves.length}` : releves.length ? 'Tous les relevés sont envoyés.' : 'Aucun séjour ce mois.'}
+                {restants ? `${pluriel(restants, 'relevé')} restant${restants > 1 ? 's' : ''} sur ${releves.length}` : releves.length ? 'Tous les relevés sont envoyés.' : 'Pas de séjour ce mois-ci.'}
               </p>
             </div>
             <ul className="divide-y divide-(--lm-bord)">
@@ -124,14 +124,14 @@ export default function Releves({ onglets }: PageFinanceProps) {
                 )}
               </div>
               {releve.lignes.length === 0 && (
-                <Alert tone="info" className="lm-sans-impression mb-3" titre="Aucun séjour terminé ce mois">
-                  Le relevé reste utile : il confirme au propriétaire qu’aucun versement n’est dû pour {moisAnnee(periode)}.
+                <Alert tone="info" className="lm-sans-impression mb-3" titre="Pas de séjour terminé ce mois-ci">
+                  Envoyez quand même le relevé : il rassure le propriétaire en confirmant qu’il n’y a rien à lui verser pour {moisAnnee(periode)}.
                 </Alert>
               )}
               <DocumentReleve proprietaire={proprietaire} periode={periode} releve={releve} logements={d.logements} mandats={d.mandats} />
             </>
           ) : (
-            <EmptyState titre="Aucun propriétaire" description="Ajoutez un propriétaire pour produire des relevés." />
+            <EmptyState titre="Pas encore de propriétaire" description="Ajoutez un propriétaire pour préparer ses relevés." />
           )}
         </div>
       </div>

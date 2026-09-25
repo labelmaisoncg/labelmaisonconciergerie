@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Clock, Play, Workflow, Zap } from 'lucide-react';
+import { AlertTriangle, Clock, Play, Zap } from 'lucide-react';
 import { executerAutomatisations, LIBELLES_DOMAINES, ORDRE_DOMAINES, REGLES, type ResultatMoteur } from '../../automatisations';
 import { ajouterJours, AUJOURDHUI, horodatageMaintenant, MAINTENANT, nombre } from '../../data/format';
 import { useErp } from '../../data/store';
 import type { ElementDe, NomCollection } from '../../data/types';
-import { Alert, Button, PageHeader, Section, Stat } from '../../ui';
+import { Aide, Button, PageHeader, Section, Stat } from '../../ui';
 import { CarteRegle } from './_composants/CarteRegle';
 import { HumainSection } from './_composants/HumainSection';
 import { JournalAuto } from './_composants/JournalAuto';
@@ -59,22 +59,26 @@ export default function Automatisations() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Pilotage' }, { libelle: 'Automatisations' }]}
         titre="Automatisations"
-        sousTitre="L'ERP fait le travail répétitif, vous traitez les exceptions."
-        actions={<Button variant="primary" icone={<Play />} onClick={lancer}>Lancer maintenant</Button>}
+        sousTitre="Ce que l’ERP fait tout seul pour vous. Vous n’avez qu’à regarder les exceptions."
+        actions={<Button variant="primary" icone={<Play />} onClick={lancer}>Vérifier maintenant</Button>}
       />
 
-      <Alert tone="or" icone={<Workflow />} titre="Tout ce qui peut être automatisé l’est" className="mb-5">
-        Ménages créés à chaque départ, attribution au prestataire conforme, contrôle qualité, relances, paiements et facturation
-        mensuelle : le moteur tourne à chaque changement et chaque jour. Vous n’intervenez que sur les alertes.
-      </Alert>
+      <Aide titre="Que fait l’ERP tout seul ?">
+        Il prévoit un ménage à chaque départ, le confie à un prestataire en règle, organise les contrôles, relance, prépare les paiements et les
+        factures du mois. Il tourne à chaque changement et une fois par jour. Chaque règle peut être mise en pause ci-dessous.
+      </Aide>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Règles actives" valeur={`${clesActives.length} / ${REGLES.length}`} icone={<Workflow />} />
-        <Stat label="Actions automatiques" valeur={nombre(actions)} icone={<Zap />} tone="succes" aide="30 derniers jours" />
-        <Stat label="Exceptions à traiter" valeur={nombre(alertes)} icone={<AlertTriangle />} tone={alertes ? 'alerte' : 'succes'} aide="alertes, 30 j" />
-        <Stat label="Temps rendu" valeur={`≈ ${nombre(heures, 1)} h`} icone={<Clock />} aide={`${MINUTES_PAR_ACTION} min par action`} />
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat
+          label="Fait tout seul (30 jours)"
+          valeur={nombre(actions)}
+          icone={<Zap />}
+          tone="succes"
+          aide={`${clesActives.length} règles sur ${REGLES.length} en marche`}
+        />
+        <Stat label="Exceptions à regarder" valeur={nombre(alertes)} icone={<AlertTriangle />} tone={alertes ? 'alerte' : 'succes'} aide="sur 30 jours" />
+        <Stat label="Temps gagné" valeur={`≈ ${nombre(heures, 1)} h`} icone={<Clock />} aide={`en comptant ${MINUTES_PAR_ACTION} minutes par action`} />
       </div>
 
       {resultat && (

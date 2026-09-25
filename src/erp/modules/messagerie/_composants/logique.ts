@@ -14,14 +14,14 @@ export type Eligibilite = { autorise: true; raison: string } | { autorise: false
  * réservation confirmée sur ce logement, avec arrivée sous 48 h ou séjour en cours.
  */
 export function eligibiliteCodes(fil: FilMessages, r: Reservation | undefined): Eligibilite {
-  if (!r) return { autorise: false, raison: 'demande sans réservation (inquiry)' };
+  if (!r) return { autorise: false, raison: 'pas encore de réservation' };
   if (r.logementId !== fil.logementId) return { autorise: false, raison: 'réservation d’un autre logement' };
   if (r.statut === 'annulee') return { autorise: false, raison: 'réservation annulée' };
   if (r.statut === 'terminee' || r.depart <= AUJOURDHUI) return { autorise: false, raison: 'séjour terminé' };
-  if (r.statut === 'en_cours' || r.arrivee <= AUJOURDHUI) return { autorise: true, raison: 'séjour en cours' };
+  if (r.statut === 'en_cours' || r.arrivee <= AUJOURDHUI) return { autorise: true, raison: 'le voyageur est sur place' };
   const jours = ecartJours(AUJOURDHUI, r.arrivee);
   if (jours <= 2) return { autorise: true, raison: jours === 0 ? 'arrivée aujourd’hui' : `arrivée dans ${pluriel(jours, 'jour')} (48 h)` };
-  return { autorise: false, raison: `arrivée dans ${pluriel(jours, 'jour')}, au-delà de 48 h` };
+  return { autorise: false, raison: `arrivée dans ${pluriel(jours, 'jour')}, c’est encore trop tôt` };
 }
 
 /* ------------------------------------------------------------------ fiche */
@@ -52,16 +52,16 @@ export type MotifEscalade = 'argent' | 'litige' | 'hors_fiche';
 
 export const LIBELLE_MOTIF: Record<MotifEscalade, { titre: string; explication: string }> = {
   argent: {
-    titre: 'Argent',
-    explication: 'Le voyageur demande un remboursement, un supplément ou un geste commercial. L’agent n’engage jamais d’argent : un humain décide.',
+    titre: 'Une question d’argent',
+    explication: 'Le voyageur parle de remboursement, de supplément ou de geste commercial. Votre agent ne s’engage jamais sur l’argent : c’est à vous de décider.',
   },
   litige: {
-    titre: 'Litige',
-    explication: 'Réclamation, plainte ou conflit (propreté, voisinage, casse). Traitement humain obligatoire, avec trace écrite.',
+    titre: 'Un souci à régler',
+    explication: 'Le voyageur se plaint (propreté, bruit, casse…). Une réponse humaine s’impose, avec une trace écrite.',
   },
   hors_fiche: {
-    titre: 'Hors fiche',
-    explication: 'Demande de dérogation ou information absente de la fiche logement (horaire, équipement). L’agent n’invente rien : il a promis de vérifier.',
+    titre: 'Une information qu’il n’a pas',
+    explication: 'La réponse n’est pas dans la fiche du logement, ou le voyageur demande une exception (horaire, équipement). Votre agent n’invente rien : il a dit qu’il vérifiait.',
   },
 };
 
@@ -69,10 +69,11 @@ const MOTS_ARGENT = /rembours|supplément|payer|paiement|€|euros?\b|remise|ges
 const MOTS_LITIGE = /sale|plainte|plaindre|voisin|bruit|litige|cass[ée]|abîm|problème|inacceptable|déçu|dirty|complain/i;
 
 /**
- * Motif d'escalade. Le modèle n'a pas encore de champ `raisonEscalade` :
- * on le déduit des messages du voyageur (argent > litige > hors fiche).
+ * Pourquoi l'agent a passé la main : le champ `raisonEscalade` s'il est
+ * renseigné, sinon déduit des messages du voyageur (argent > litige > hors fiche).
  */
 export function motifEscalade(fil: FilMessages): MotifEscalade {
+  if (fil.raisonEscalade) return fil.raisonEscalade;
   const texte = fil.messages.filter((m) => m.auteur === 'voyageur').map((m) => m.texte).join(' ');
   if (MOTS_ARGENT.test(texte)) return 'argent';
   if (MOTS_LITIGE.test(texte)) return 'litige';
@@ -84,17 +85,17 @@ export function motifEscalade(fil: FilMessages): MotifEscalade {
 export type FiltreFil = 'tous' | 'a_traiter' | 'escalades' | 'agent' | 'clos';
 
 export const FILTRES: { cle: FiltreFil; libelle: string }[] = [
-  { cle: 'tous', libelle: 'Tous' },
-  { cle: 'a_traiter', libelle: 'À traiter' },
-  { cle: 'escalades', libelle: 'Escaladés' },
-  { cle: 'agent', libelle: 'Traités par l’agent' },
-  { cle: 'clos', libelle: 'Clos' },
+  { cle: 'a_traiter', libelle: 'Pour vous' },
+  { cle: 'agent', libelle: 'Gérées par l’agent' },
+  { cle: 'tous', libelle: 'Toutes' },
+  { cle: 'clos', libelle: 'Terminées' },
 ];
 
 export function correspond(fil: FilMessages, filtre: FiltreFil): boolean {
   switch (filtre) {
     case 'a_traiter':
-      return fil.traitePar === 'en_attente' && fil.statut !== 'clos';
+      // Pour vous : transmise par l'agent, ou sans réponse de personne.
+      return fil.statut !== 'clos' && (fil.statut === 'escalade' || fil.traitePar === 'en_attente');
     case 'escalades':
       return fil.statut === 'escalade';
     case 'agent':
@@ -140,7 +141,7 @@ export function statsAgent(fils: FilMessages[]) {
 }
 
 export function formatDelai(minutes: number | undefined): string {
-  if (minutes === undefined) return '-';
+  if (minutes === undefined) return '–';
   if (minutes < 1) return '< 1 min';
   if (minutes < 60) return `${Math.round(minutes)} min`;
   const h = Math.floor(minutes / 60);
@@ -184,3 +185,49 @@ export const GABARITS: Gabarit[] = [
     texte: (_l, p) => `Merci ${p} pour votre message. Nous restons à votre disposition pendant tout votre séjour. L’équipe Label Maison`,
   },
 ];
+
+/* ------------------------------------------------------ activité de l'agent */
+
+export type GenreActivite = 'reponse' | 'transmis';
+
+export interface ActiviteAgent {
+  id: string;
+  genre: GenreActivite;
+  quand: string;
+  fil: FilMessages;
+  /** Extrait de la réponse (reponse) ou raison du passage de main (transmis). */
+  texte: string;
+  motif?: MotifEscalade;
+}
+
+/**
+ * Ce que l'agent a fait depuis `depuis` (date ISO incluse) : chaque réponse
+ * envoyée et chaque conversation passée à l'équipe, du plus récent au plus ancien.
+ */
+export function activiteAgent(fils: FilMessages[], depuis: string): ActiviteAgent[] {
+  const liste: ActiviteAgent[] = [];
+  for (const f of fils) {
+    for (const m of f.messages) {
+      if (m.auteur === 'agent' && m.envoyeLe.slice(0, 10) >= depuis) {
+        liste.push({ id: `r-${m.id}`, genre: 'reponse', quand: m.envoyeLe, fil: f, texte: m.texte });
+      }
+    }
+    if (f.statut === 'escalade') {
+      // Moment du passage de main : dernier message de l'agent, sinon dernier message du fil.
+      const agent = [...f.messages].reverse().find((m) => m.auteur === 'agent');
+      const quand = agent?.envoyeLe ?? f.dernierMessageLe;
+      if (quand.slice(0, 10) >= depuis) {
+        const motif = motifEscalade(f);
+        liste.push({ id: `t-${f.id}`, genre: 'transmis', quand, fil: f, texte: LIBELLE_MOTIF[motif].explication, motif });
+      }
+    }
+  }
+  return liste.sort((a, b) => b.quand.localeCompare(a.quand));
+}
+
+/** Conversations qui attendent un humain maintenant (transmises ou sans réponse). */
+export function enAttenteHumain(fils: FilMessages[]): FilMessages[] {
+  return fils
+    .filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente'))
+    .sort((a, b) => a.dernierMessageLe.localeCompare(b.dernierMessageLe));
+}

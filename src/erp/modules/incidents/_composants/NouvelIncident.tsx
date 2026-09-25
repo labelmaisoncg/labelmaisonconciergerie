@@ -65,8 +65,8 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
       ouvert={ouvert}
       onFermer={fermer}
       taille="lg"
-      titre="Déclarer un incident"
-      description="Tout problème constaté est tracé ici, avec ses preuves. Sans preuve, pas de refacturation possible."
+      titre="Signaler un incident"
+      description="Décrivez ce qui s’est passé et joignez des photos : sans preuve, impossible de se faire rembourser."
       pied={
         <>
           <Button variant="ghost" onClick={fermer}>Annuler</Button>
@@ -76,7 +76,7 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
     >
       <div className="grid gap-3 sm:grid-cols-2">
         {!logements.length && (
-          <Prerequis className="sm:col-span-2" manque="Aucun logement enregistré." detail="Un incident se rattache toujours à un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+          <Prerequis className="sm:col-span-2" manque="Vous n’avez pas encore de logement." detail="Un incident se rattache toujours à un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
         )}
         <Field label="Logement" requis erreur={erreurs.logementId}>
           <Select value={f.logementId} placeholder="Choisir" onChange={(e) => setF((x) => ({ ...x, logementId: e.target.value, reservationId: '' }))} options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
@@ -94,7 +94,7 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
           />
         </Field>
         <Field label="Responsable du suivi">
-          <Select value={f.responsable} placeholder="Non attribué" onChange={(e) => maj('responsable', e.target.value)} options={utilisateurs.filter((u) => u.role !== 'prestataire').map((u) => ({ valeur: u.nom, libelle: u.nom }))} />
+          <Select value={f.responsable} placeholder="Personne pour l’instant" onChange={(e) => maj('responsable', e.target.value)} options={utilisateurs.filter((u) => u.role !== 'prestataire').map((u) => ({ valeur: u.nom, libelle: u.nom }))} />
         </Field>
         <Field label="Catégorie" requis>
           <Select value={f.categorie} onChange={(e) => maj('categorie', e.target.value as CategorieIncident)} options={options(LIBELLES.categorieIncident)} />

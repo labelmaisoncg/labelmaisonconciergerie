@@ -115,7 +115,7 @@ export function NouvelleFacture({ ouvert, onFermer, onCree }: Props) {
           <Select value={destinataire} onChange={(e) => setDestinataire(e.target.value as DestinataireFacture)} options={options(LIBELLES.destinataire)} />
         </Field>
         {destinataire === 'proprietaire' && !d.proprietaires.length && (
-          <Prerequis className="sm:col-span-2" manque="Aucun propriétaire enregistré." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
+          <Prerequis className="sm:col-span-2" manque="Vous n’avez pas encore de propriétaire." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
         )}
         {destinataire === 'proprietaire' && (
           <Field label="Propriétaire" requis className="sm:col-span-2">

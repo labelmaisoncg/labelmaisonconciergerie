@@ -23,7 +23,7 @@ export function DetailReservation() {
     return (
       <>
         <PageHeader fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Réservations', to: '/erp/reservations' }, { libelle: 'Introuvable' }]} titre="Réservation introuvable" />
-        <EmptyState icone={<SearchX />} titre="Cette réservation n’existe pas ou plus." description="Elle a peut-être été supprimée." />
+        <EmptyState icone={<SearchX />} titre="Cette réservation n’existe plus" description="Elle a peut-être été annulée puis supprimée. Retrouvez les autres dans Réservations." />
       </>
     );
   }

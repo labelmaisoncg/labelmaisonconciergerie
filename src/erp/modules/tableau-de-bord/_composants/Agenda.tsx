@@ -1,28 +1,17 @@
-import { Link } from 'react-router-dom';
 import { LogIn, LogOut, Sparkles } from 'lucide-react';
 import { useErp } from '../../../data/store';
 import { AUJOURDHUI, dateJour } from '../../../data/format';
 import { logementById, prochainsJours, prestataireById } from '../../../data/selectors';
-import { Card, CardHeader, cn } from '../../../ui';
+import { cn } from '../../../ui';
 
-/** Agenda des 7 prochains jours : arrivées, départs, ménages. */
+/** Les 7 prochains jours : arrivées, départs, ménages (affiché dans un panneau de l'accueil). */
 export function Agenda() {
   const d = useErp();
   const jours = prochainsJours(d.donnees, 7);
   const nom = (id: string) => logementById(d, id)?.nom ?? 'Logement';
 
   return (
-    <Card flush>
-      <CardHeader
-        className="mb-0 border-b border-(--lm-bord) px-4 pt-4 pb-3"
-        titre="7 prochains jours"
-        actions={
-          <Link to="/erp/reservations" className="text-[12.5px] font-medium text-(--lm-or) hover:underline">
-            Calendrier
-          </Link>
-        }
-      />
-      <ol className="divide-y divide-(--lm-bord)">
+    <ol className="divide-y divide-(--lm-bord)">
         {jours.map((j) => {
           const vide = !j.arrivees.length && !j.departs.length && !j.missions.length;
           const sansPresta = j.missions.filter((m) => !m.prestataireId).length;
@@ -35,13 +24,13 @@ export function Agenda() {
                 <p className="lm-chiffres flex gap-2.5 text-[12px] text-(--lm-encre-2) [&_svg]:size-3.5">
                   <span className="inline-flex items-center gap-0.5" title="Arrivées"><LogIn aria-hidden />{j.arrivees.length}<span className="sr-only"> arrivées</span></span>
                   <span className="inline-flex items-center gap-0.5" title="Départs"><LogOut aria-hidden />{j.departs.length}<span className="sr-only"> départs</span></span>
-                  <span className={cn('inline-flex items-center gap-0.5', sansPresta && 'font-semibold text-(--lm-danger)')} title="Missions">
-                    <Sparkles aria-hidden />{j.missions.length}<span className="sr-only"> missions</span>
+                  <span className={cn('inline-flex items-center gap-0.5', sansPresta && 'font-semibold text-(--lm-danger)')} title="Ménages">
+                    <Sparkles aria-hidden />{j.missions.length}<span className="sr-only"> ménages</span>
                   </span>
                 </p>
               </div>
               {vide ? (
-                <p className="text-[12px] text-(--lm-encre-3)">Journée calme.</p>
+                <p className="text-[12px] text-(--lm-encre-3)">Rien de prévu, journée calme.</p>
               ) : (
                 <ul className="space-y-0.5 text-[12px] text-(--lm-encre-2)">
                   {j.arrivees.map((r) => (
@@ -53,7 +42,7 @@ export function Agenda() {
                   {j.missions.map((m) => (
                     <li key={`m-${m.id}`} className="truncate">
                       Ménage {m.heureDebut} · {nom(m.logementId)},{' '}
-                      {m.prestataireId ? prestataireById(d, m.prestataireId)?.nom : <span className="font-medium text-(--lm-danger)">à attribuer</span>}
+                      {m.prestataireId ? prestataireById(d, m.prestataireId)?.nom : <span className="font-medium text-(--lm-danger)">personne n’est prévu</span>}
                     </li>
                   ))}
                 </ul>
@@ -62,6 +51,5 @@ export function Agenda() {
           );
         })}
       </ol>
-    </Card>
   );
 }

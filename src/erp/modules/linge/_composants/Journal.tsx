@@ -79,7 +79,7 @@ export function Journal({ logementInitial = '' }: { logementInitial?: string }) 
         legende="Journal des mouvements de linge"
         triInitial={{ cle: 'date', sens: 'desc' }}
         dense
-        vide="Aucun mouvement ne correspond aux filtres."
+        vide="Rien ne correspond. Essayez d’enlever un filtre."
       />
       <p className="mt-2 text-[12px] text-(--lm-encre-3)">{lignes.length} mouvement{lignes.length > 1 ? 's' : ''}</p>
     </div>

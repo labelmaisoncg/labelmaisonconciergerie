@@ -109,9 +109,9 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
     >
       <form id="form-mandat" onSubmit={enregistrer} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {!mandat && !proprietaires.length ? (
-          <Prerequis className="sm:col-span-2" manque="Aucun propriétaire enregistré." detail="Un mandat lie un propriétaire à un logement." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
+          <Prerequis className="sm:col-span-2" manque="Vous n’avez pas encore de propriétaire." detail="Un mandat lie un propriétaire à un logement." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
         ) : !mandat && !logements.length ? (
-          <Prerequis className="sm:col-span-2" manque="Aucun logement enregistré." detail="Ajoutez le logement confié avant de créer son mandat." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+          <Prerequis className="sm:col-span-2" manque="Vous n’avez pas encore de logement." detail="Ajoutez le logement confié avant de créer son mandat." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
         ) : null}
         <Field label="Propriétaire" requis erreur={erreurs.proprietaireId}>
           <Select

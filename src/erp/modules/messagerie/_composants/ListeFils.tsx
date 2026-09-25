@@ -22,7 +22,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="space-y-2.5 border-b border-(--lm-bord) p-3">
-        <SearchInput valeur={recherche} onChange={onRecherche} placeholder="Voyageur, logement, message" label="Rechercher une conversation" className="sm:w-full" />
+        <SearchInput valeur={recherche} onChange={onRecherche} placeholder="Voyageur, logement, mot…" label="Rechercher une conversation" className="sm:w-full" />
         <FilterChips
           unique
           label="Filtrer les conversations"
@@ -33,7 +33,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
         />
       </div>
       {fils.length === 0 ? (
-        <p className="p-6 text-center text-[13px] text-(--lm-encre-3)">Aucune conversation dans ce filtre.</p>
+        <p className="p-6 text-center text-[13px] text-(--lm-encre-3)">{recherche.trim() ? `Aucune conversation ne parle de « ${recherche.trim()} ».` : filtre === 'a_traiter' ? 'Personne n’attend de réponse de votre part. Tout est à jour.' : 'Rien ici pour le moment.'}</p>
       ) : (
         <ul className="lm-defilement min-h-0 flex-1 overflow-y-auto" aria-label="Conversations">
           {fils.map((f) => {
@@ -63,18 +63,18 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                       {logements.get(f.logementId)?.nom ?? 'Logement'} · {LIBELLES.canal[f.canal]}
                     </p>
                     <p className={cn('mt-0.5 line-clamp-1 text-[12.5px]', attente ? 'text-(--lm-encre)' : 'text-(--lm-encre-2)')}>
-                      {dernier?.auteur === 'agent' && <Bot className="mr-1 inline size-3.5 text-(--lm-or)" aria-label="Agent IA :" />}
+                      {dernier?.auteur === 'agent' && <Bot className="mr-1 inline size-3.5 text-(--lm-or)" aria-label="Votre agent :" />}
                       {dernier?.auteur === 'hote' && <span className="text-(--lm-encre-3)">Vous : </span>}
                       {dernier?.texte}
                     </p>
                     <div className="mt-1 flex flex-wrap gap-1.5">
                       {f.statut === 'escalade' && (
                         <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-(--lm-danger)">
-                          <OctagonAlert className="size-3" aria-hidden /> Escaladé
+                          <OctagonAlert className="size-3" aria-hidden /> Transmise à l’équipe
                         </span>
                       )}
-                      {attente && <span className="text-[11.5px] font-medium text-(--lm-alerte)">Réponse attendue</span>}
-                      {f.statut === 'clos' && <span className="text-[11.5px] text-(--lm-encre-3)">Clos</span>}
+                      {attente && <span className="text-[11.5px] font-medium text-(--lm-alerte)">Attend une réponse</span>}
+                      {f.statut === 'clos' && <span className="text-[11.5px] text-(--lm-encre-3)">Terminée</span>}
                       {f.statut !== 'clos' && f.traitePar !== 'en_attente' && (
                         <span className="text-[11.5px] text-(--lm-encre-3)">{LIBELLES.traitePar[f.traitePar]}</span>
                       )}

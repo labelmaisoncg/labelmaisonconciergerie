@@ -127,7 +127,7 @@ export function IncidentDrawer({ incident: i, onFermer }: Props) {
               ))}
             </div>
           ) : (
-            <p className="text-(--lm-alerte)">Aucune preuve jointe : impossible de refacturer sans photo ni document.</p>
+            <p className="text-(--lm-alerte)">Pas encore de photo ni de document : sans preuve, impossible de se faire rembourser.</p>
           )}
           <EnvoiFichier
             className="mt-2"

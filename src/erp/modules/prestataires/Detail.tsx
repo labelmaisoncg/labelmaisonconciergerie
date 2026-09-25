@@ -29,7 +29,7 @@ export function Detail() {
     return (
       <>
         <PageHeader fil={[{ libelle: 'Prestataires', to: '/erp/prestataires' }, { libelle: 'Introuvable' }]} titre="Prestataire introuvable" />
-        <EmptyState icone={<SearchX />} titre="Ce prestataire n’existe pas" action={<Link to="/erp/prestataires" className="text-(--lm-or) underline">Retour à la liste</Link>} />
+        <EmptyState icone={<SearchX />} titre="Ce prestataire n’existe plus" action={<Link to="/erp/prestataires" className="text-(--lm-or) underline">Retour à la liste</Link>} />
       </>
     );
 
@@ -80,7 +80,7 @@ export function Detail() {
 
       <Retour message={message} onFermer={fermer} />
       {!verdict.ok ? (
-        <Alert tone="danger" titre="Non conforme : aucune mission ne peut lui être attribuée" className="mb-4">
+        <Alert tone="danger" titre="Il manque des papiers : on ne peut pas lui confier de ménage" className="mb-4">
           {verdict.raisons.join(' ')}
           {aVenir.length > 0 && ` ${aVenir.length} mission(s) à venir lui sont encore attribuées : réattribuez-les.`}
         </Alert>

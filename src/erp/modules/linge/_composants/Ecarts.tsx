@@ -60,7 +60,7 @@ export function Ecarts({ onMessage }: { onMessage: (texte: string) => void }) {
   ];
 
   if (!ecarts.length)
-    return <EmptyState icone={<CheckCircle2 />} titre="Aucun écart d’inventaire" description="Tout le linge envoyé en blanchisserie est revenu dans les délais (5 jours)." />;
+    return <EmptyState icone={<CheckCircle2 />} titre="Rien ne manque" description="Tout le linge envoyé en blanchisserie est revenu dans les délais (5 jours)." />;
 
   return (
     <div className="space-y-3">

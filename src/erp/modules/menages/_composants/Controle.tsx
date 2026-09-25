@@ -31,7 +31,7 @@ export function Controle({ onMessage }: { onMessage: (texte: string) => void }) 
         </Link>
       ),
     },
-    { cle: 'prestataire', titre: 'Prestataire', rendu: (m) => prestataires.find((p) => p.id === m.prestataireId)?.nom ?? 'Non attribuée', masquerMobile: true },
+    { cle: 'prestataire', titre: 'Prestataire', rendu: (m) => prestataires.find((p) => p.id === m.prestataireId)?.nom ?? 'Personne', masquerMobile: true },
     {
       cle: 'motif',
       titre: 'Motif',
@@ -69,17 +69,17 @@ export function Controle({ onMessage }: { onMessage: (texte: string) => void }) 
 
   return (
     <div className="space-y-4">
-      <Alert tone="or" titre="Contrôle qualité physique">
-        Une mission sur dix est tirée au sort pour un contrôle sur place, et toute note voyageur inférieure à {note(SEUIL_NOTE_CONTROLE)} en déclenche un.
-        Aucun logement ne reste un mois sans contrôle physique.
+      <Alert tone="or" titre="Des contrôles sur place, au hasard">
+        Un ménage sur dix est tiré au sort pour être contrôlé sur place, et une note voyageur sous {note(SEUIL_NOTE_CONTROLE)} en déclenche un.
+        Chaque logement est contrôlé au moins une fois par mois.
       </Alert>
       <Table
         colonnes={colonnes}
         lignes={aControler}
         cleLigne={(m) => m.id}
-        legende="Missions à contrôler"
+        legende="Ménages à contrôler"
         dense
-        vide="Aucune mission à contrôler."
+        vide="Aucun contrôle à faire pour l’instant."
       />
     </div>
   );

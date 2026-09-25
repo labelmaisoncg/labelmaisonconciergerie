@@ -4,7 +4,7 @@ import { CheckCircle2, CircleAlert, FileText, MinusCircle, OctagonAlert, Upload 
 import { useErp } from '../../data/store';
 import { nombre } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
-import { Alert, Badge, Button, Card, Drawer, FilterChips, PageHeader, Section, Stat, Table, type Colonne } from '../../ui';
+import { Alert, Badge, Button, Card, Drawer, FilterChips, PageHeader, Section, Stat, Table, Tabs, type Colonne } from '../../ui';
 import { ConformiteEntreprise } from './_composants/Entreprise';
 import { LIBELLE_STATUT, TON_STATUT, pointsLogement, statutGlobal, type PointConformite, type StatutConformite } from './_composants/regles';
 import type { Logement } from '../../data/types';
@@ -41,6 +41,7 @@ export default function Module() {
   const d = useErp();
   const [filtre, setFiltre] = useState<string[]>([]);
   const [ouvert, setOuvert] = useState<string>();
+  const [vue, setVue] = useState<'logements' | 'societe' | 'documents'>('logements');
 
   const lignes = useMemo<Ligne[]>(
     () =>
@@ -91,17 +92,33 @@ export default function Module() {
     <>
       <PageHeader
         titre="Conformité"
-        sousTitre="Sommes-nous en règle ? Points réglementaires par logement, obligations de la société et documents de référence."
+        sousTitre="Êtes-vous en règle ? Logement par logement, pour la société, et vos documents officiels."
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="Logements en règle" valeur={`${nombre(compte('ok'))} / ${nombre(lignes.length)}`} tone={compte('ok') === lignes.length ? 'succes' : 'neutre'} />
-        <Stat label="Logements avec risque" valeur={nombre(compte('risque'))} tone={compte('risque') ? 'danger' : 'neutre'} />
-        <Stat label="Logements avec points à faire" valeur={nombre(compte('a_faire'))} tone={compte('a_faire') ? 'alerte' : 'neutre'} />
-        <Stat label="Points à risque" valeur={nombre(risques.length)} tone={risques.length ? 'danger' : 'neutre'} aide="Tous logements confondus" />
+        <Stat
+          label="À régler vite"
+          valeur={nombre(compte('risque'))}
+          tone={compte('risque') ? 'danger' : 'neutre'}
+          aide={risques.length ? `${nombre(risques.length)} point${risques.length > 1 ? 's' : ''} qui peuvent coûter cher` : 'aucun risque'}
+        />
+        <Stat label="Petites choses à faire" valeur={nombre(compte('a_faire'))} tone={compte('a_faire') ? 'alerte' : 'neutre'} aide="logements concernés" />
       </div>
 
-      <Section titre="Par logement" description="Calculé depuis les fiches logement, les mandats et les réservations. Cliquez un logement pour les actions à mener.">
+      <Tabs
+        label="Sections de la conformité"
+        actif={vue}
+        onChange={(c) => setVue(c as typeof vue)}
+        onglets={[
+          { cle: 'logements', libelle: 'Vos logements', compteur: compte('risque') + compte('a_faire') || undefined },
+          { cle: 'societe', libelle: 'Votre société' },
+          { cle: 'documents', libelle: 'Documents' },
+        ]}
+      />
+
+      {vue === 'logements' && (
+      <Section description="Cliquez sur un logement pour voir quoi faire.">
         <FilterChips
           className="mb-3"
           label="Filtrer par statut"
@@ -117,25 +134,29 @@ export default function Module() {
           onLigneClick={(l) => setOuvert(l.logement.id)}
           ligneActive={ouvert}
           triInitial={{ cle: 'statut', sens: 'asc' }}
-          vide="Aucun logement pour ce filtre."
+          vide="Aucun logement dans ce cas."
         />
       </Section>
+      )}
 
-      <Section titre="Société" description="Obligations de Label Maison Conciergerie SASU. Statuts tenus sur ce poste en attendant la base de données.">
+      {vue === 'societe' && (
+      <Section description="Les obligations de Label Maison Conciergerie SASU.">
         <ConformiteEntreprise />
       </Section>
+      )}
 
-      <Section titre="Documents de référence">
+      {vue === 'documents' && (
+      <Section>
         <Card>
           <Alert tone="neutre" className="mb-3">
-            Bibliothèque à brancher sur le stockage de fichiers (Supabase Storage, région UE). En attendant, les documents restent dans le drive partagé.
+            Le dépôt de documents arrive bientôt. En attendant, ils restent dans le drive partagé.
           </Alert>
           <ul className="divide-y divide-(--lm-bord)">
             {DOCUMENTS.map((doc) => (
               <li key={doc} className="flex items-center gap-3 py-2.5">
                 <FileText className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 <span className="flex-1 text-[13.5px]">{doc}</span>
-                <Badge tone="neutre">Non déposé</Badge>
+                <Badge tone="neutre">Pas encore déposé</Badge>
                 <Button size="sm" variant="ghost" icone={<Upload />} disabled aria-label={`Déposer : ${doc} (bientôt disponible)`}>
                   <span className="hidden sm:inline">Déposer</span>
                 </Button>
@@ -144,6 +165,7 @@ export default function Module() {
           </ul>
         </Card>
       </Section>
+      )}
 
       {choisi && (
         <Drawer
@@ -174,7 +196,7 @@ export default function Module() {
                   <p className="mt-1 text-[13px] text-(--lm-encre-2)">{p.constat}</p>
                   {p.action && (
                     <p className="mt-1 text-[13px]">
-                      <span className="font-medium">Prochaine action : </span>
+                      <span className="font-medium">À faire : </span>
                       {p.action}
                     </p>
                   )}

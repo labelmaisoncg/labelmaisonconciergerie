@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { FileWarning, Plus, ShieldCheck, Star, Users } from 'lucide-react';
+import { Plus, ShieldCheck, Star, Users } from 'lucide-react';
 import { SANS_DONNEE, dateCourte, nombre, note, pluriel } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
@@ -9,11 +9,12 @@ import type { Prestataire, StatutPrestataire, TypePrestataire } from '../../data
 import { Button, Card, CardHeader, PageHeader, Select, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { BadgeConformite, BadgeDocument, RegleConformite } from './_composants/conformite';
 import { PrestataireModal } from './_composants/PrestataireModal';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 export function Liste() {
   const { prestataires } = useErp();
   const naviguer = useNavigate();
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [conformite, setConformite] = useState<string[]>([]);
   const [type, setType] = useState('');
   const [statut, setStatut] = useState('');
@@ -65,30 +66,34 @@ export function Liste() {
       tri: (a, b) => Number(prestataireConforme(a).ok) - Number(prestataireConforme(b).ok),
     },
     { cle: 'note', titre: 'Note', align: 'droite', rendu: (p) => <span className="lm-chiffres">{note(p.noteMoyenne)}</span>, tri: (a, b) => (a.noteMoyenne ?? 0) - (b.noteMoyenne ?? 0) },
-    { cle: 'missions', titre: 'Missions', align: 'droite', rendu: (p) => <span className="lm-chiffres">{nombre(p.missionsRealisees)}</span>, tri: (a, b) => a.missionsRealisees - b.missionsRealisees, masquerMobile: true },
+    { cle: 'missions', titre: 'Ménages faits', align: 'droite', rendu: (p) => <span className="lm-chiffres">{nombre(p.missionsRealisees)}</span>, tri: (a, b) => a.missionsRealisees - b.missionsRealisees, masquerMobile: true },
     { cle: 'statut', titre: 'Statut', rendu: (p) => <StatusBadge type="statutPrestataire" valeur={p.statut} /> },
   ];
 
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Prestataires' }]}
         titre="Prestataires"
-        sousTitre="Qui intervient dans nos logements, est-il en règle, travaille-t-il bien ?"
-        actions={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau prestataire</Button>}
+        sousTitre="Les personnes qui interviennent dans vos logements : sont-elles en règle, travaillent-elles bien ?"
+        actions={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Ajouter un prestataire</Button>}
       />
-      <RegleConformite className="mb-5" />
+      <RegleConformite />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Prestataires actifs" valeur={nombre(actifs.length)} icone={<Users />} />
-        <Stat label="Conformes" valeur={`${conformes}/${actifs.length}`} icone={<ShieldCheck />} tone={conformes < actifs.length ? 'danger' : 'succes'} aide="parmi les actifs" />
-        <Stat label="Documents expirés ou < 30 j" valeur={nombre(alertes.length)} icone={<FileWarning />} tone={alertes.length ? 'alerte' : 'succes'} />
-        <Stat label="Note moyenne" valeur={moyenne === undefined || !Number.isFinite(moyenne) ? SANS_DONNEE : note(moyenne)} icone={<Star />} aide="contrôles et voyageurs" />
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Qui travaillent avec vous" valeur={nombre(actifs.length)} icone={<Users />} />
+        <Stat
+          label="En règle"
+          valeur={`${conformes}/${actifs.length}`}
+          icone={<ShieldCheck />}
+          tone={conformes < actifs.length ? 'danger' : 'succes'}
+          aide={alertes.length ? `${nombre(alertes.length)} papier${alertes.length > 1 ? 's' : ''} à renouveler` : 'tous les papiers sont à jour'}
+        />
+        <Stat label="Note moyenne" valeur={moyenne === undefined || !Number.isFinite(moyenne) ? SANS_DONNEE : note(moyenne)} icone={<Star />} aide="contrôles et avis des voyageurs" />
       </div>
 
       {alertes.length > 0 && (
         <Card flush className="mb-5">
-          <CardHeader className="px-4 pt-4 sm:px-5" titre="Documents à renouveler" description="Relancez le prestataire avant l’échéance : un document expiré bloque toute attribution." />
+          <CardHeader className="px-4 pt-4 sm:px-5" titre="Papiers à renouveler" description="Relancez le prestataire à temps : avec un papier expiré, on ne peut plus lui confier de ménage." />
           <ul className="divide-y divide-(--lm-bord)">
             {alertes.map((a) => (
               <li key={`${a.prestataire.id}-${a.document.type}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-[13px] sm:px-5">
@@ -105,16 +110,16 @@ export function Liste() {
       )}
 
       <Toolbar
-        recherche={{ valeur: recherche, onChange: setRecherche, placeholder: 'Nom, zone...', label: 'Rechercher un prestataire' }}
-        filtres={{ filtres: [{ cle: 'oui', libelle: 'Conformes' }, { cle: 'non', libelle: 'Non conformes' }], actifs: conformite, onChange: setConformite, unique: true, label: 'Filtrer par conformité' }}
+        recherche={{ valeur: recherche, onChange: setRecherche, placeholder: 'Un nom, une ville…', label: 'Rechercher un prestataire' }}
+        filtres={{ filtres: [{ cle: 'oui', libelle: 'En règle' }, { cle: 'non', libelle: 'Papiers manquants' }], actifs: conformite, onChange: setConformite, unique: true, label: 'Filtrer par conformité' }}
       >
         <div className="grid grid-cols-2 gap-2 sm:w-80">
-          <Select aria-label="Métier" value={type} onChange={(e) => setType(e.target.value)} placeholder="Tous métiers" options={(Object.keys(LIBELLES.typePrestataire) as TypePrestataire[]).map((t) => ({ valeur: t, libelle: LIBELLES.typePrestataire[t] }))} />
-          <Select aria-label="Statut" value={statut} onChange={(e) => setStatut(e.target.value)} placeholder="Tous statuts" options={(Object.keys(LIBELLES.statutPrestataire) as StatutPrestataire[]).map((s) => ({ valeur: s, libelle: LIBELLES.statutPrestataire[s] }))} />
+          <Select aria-label="Métier" value={type} onChange={(e) => setType(e.target.value)} placeholder="Tous les métiers" options={(Object.keys(LIBELLES.typePrestataire) as TypePrestataire[]).map((t) => ({ valeur: t, libelle: LIBELLES.typePrestataire[t] }))} />
+          <Select aria-label="Statut" value={statut} onChange={(e) => setStatut(e.target.value)} placeholder="Tous" options={(Object.keys(LIBELLES.statutPrestataire) as StatutPrestataire[]).map((s) => ({ valeur: s, libelle: LIBELLES.statutPrestataire[s] }))} />
         </div>
       </Toolbar>
 
-      <Table colonnes={colonnes} lignes={lignes} cleLigne={(p) => p.id} onLigneClick={(p) => naviguer(`/erp/prestataires/${p.id}`)} legende="Prestataires" triInitial={{ cle: 'nom', sens: 'asc' }} vide="Aucun prestataire ne correspond aux filtres." />
+      <Table colonnes={colonnes} lignes={lignes} cleLigne={(p) => p.id} onLigneClick={(p) => naviguer(`/erp/prestataires/${p.id}`)} legende="Prestataires" triInitial={{ cle: 'nom', sens: 'asc' }} vide="Personne ne correspond. Essayez d’enlever un filtre." />
 
       <PrestataireModal ouvert={creation} onFermer={() => setCreation(false)} onCree={(p) => naviguer(`/erp/prestataires/${p.id}`)} />
     </>

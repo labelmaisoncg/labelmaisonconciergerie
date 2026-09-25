@@ -19,7 +19,7 @@ const MOMENTS: { cle: MomentPhoto; titre: string }[] = [
 export function Photos({ mission, onAjouter, demo }: Props) {
   return (
     <Card>
-      <CardHeader titre="Photos horodatées" description="Obligatoires avant et après : sans elles, la mission ne peut pas être validée." />
+      <CardHeader titre="Photos horodatées" description="Avant et après, obligatoires : sans elles, le ménage ne peut pas être vérifié ni payé." />
       <div className="grid gap-5 md:grid-cols-2">
         {MOMENTS.map(({ cle, titre }) => {
           const photos = mission.photos.filter((p) => p.moment === cle).sort((a, b) => a.prisLe.localeCompare(b.prisLe));

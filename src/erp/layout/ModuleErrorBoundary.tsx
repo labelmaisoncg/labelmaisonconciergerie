@@ -28,14 +28,15 @@ export class ModuleErrorBoundary extends Component<Props, Etat> {
     return (
       <Alert
         tone="danger"
-        titre="Cet écran a rencontré une erreur"
+        titre="Oups, cette page n’a pas pu s’afficher"
         actions={
           <Button size="sm" onClick={() => window.location.reload()}>
             Recharger la page
           </Button>
         }
       >
-        {this.state.erreur.message}
+        Rechargez la page : cela suffit presque toujours. Si le problème revient, envoyez ce message à l’équipe technique :{' '}
+        <span className="font-mono text-[12px]">{this.state.erreur.message}</span>
       </Alert>
     );
   }

@@ -6,6 +6,7 @@ import { DemoBanner } from './DemoBanner';
 import { AlerteSynchro, BandeauLecture } from './EtatSynchro';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
+import { OngletsRubrique } from './OngletsRubrique';
 
 /**
  * Cadre de l'ERP : barre latérale fixe (tiroir sous 1024 px), bandeau démo
@@ -27,7 +28,7 @@ export function ErpLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen overflow-x-clip">
-      <aside className="lm-sans-impression sticky top-0 hidden h-screen w-60 shrink-0 border-r border-(--lm-bord) lg:block">
+      <aside className="lm-sans-impression sticky top-0 hidden h-screen w-64 shrink-0 border-r border-(--lm-bord) lg:block">
         <Sidebar />
       </aside>
 
@@ -54,7 +55,8 @@ export function ErpLayout({ children }: { children: ReactNode }) {
         <DemoBanner />
         <BandeauLecture />
         <Topbar onMenu={() => setMenu(true)} />
-        <main id="contenu" className="mx-auto w-full max-w-[1400px] min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-7">
+        <main id="contenu" className="mx-auto w-full max-w-[1400px] min-w-0 flex-1 px-4 py-5 sm:px-6 sm:py-6">
+          <OngletsRubrique />
           {children}
         </main>
       </div>

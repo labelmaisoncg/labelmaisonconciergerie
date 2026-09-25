@@ -39,10 +39,10 @@ function Introuvable() {
     <EmptyState
       icone={<Compass />}
       titre="Page introuvable"
-      description="Cette adresse ne correspond à aucun écran de l’ERP."
+      description="Cette page n’existe pas (ou plus). Revenez à l’accueil, ou cherchez ce qu’il vous faut avec la recherche en haut."
       action={
         <ButtonLink to="/erp" variant="primary">
-          Retour au tableau de bord
+          Revenir à l’accueil
         </ButtonLink>
       }
     />

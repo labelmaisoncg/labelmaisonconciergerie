@@ -6,6 +6,7 @@ import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import type { Mission, StatutMission, TypeMission } from '../../../data/types';
 import { Select, StatusBadge, Table, Toolbar, cn, type Colonne } from '../../../ui';
+import { useRechercheUrl } from '../../../ui/useRechercheUrl';
 
 const STATUTS = Object.keys(LIBELLES.statutMission) as StatutMission[];
 const TYPES = Object.keys(LIBELLES.typeMission) as TypeMission[];
@@ -14,7 +15,7 @@ const TYPES = Object.keys(LIBELLES.typeMission) as TypeMission[];
 export function Toutes() {
   const { missions, logements, prestataires } = useErp();
   const naviguer = useNavigate();
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [statuts, setStatuts] = useState<string[]>([]);
   const [type, setType] = useState('');
   const [prestataire, setPrestataire] = useState('');
@@ -43,7 +44,7 @@ export function Toutes() {
     {
       cle: 'prestataire',
       titre: 'Prestataire',
-      rendu: (m) => <span className={cn(!m.prestataireId && 'text-(--lm-alerte)')}>{nomPresta(m.prestataireId) || 'Non attribuée'}</span>,
+      rendu: (m) => <span className={cn(!m.prestataireId && 'text-(--lm-alerte)')}>{nomPresta(m.prestataireId) || 'Personne'}</span>,
       tri: (a, b) => nomPresta(a.prestataireId).localeCompare(nomPresta(b.prestataireId)),
     },
     { cle: 'statut', titre: 'Statut', rendu: (m) => <StatusBadge type="statutMission" valeur={m.statut} />, tri: (a, b) => a.statut.localeCompare(b.statut) },
@@ -86,7 +87,7 @@ export function Toutes() {
           value={prestataire}
           onChange={(e) => setPrestataire(e.target.value)}
           placeholder="Tous les prestataires"
-          options={[{ valeur: '_aucun', libelle: 'Non attribuées' }, ...prestataires.map((p) => ({ valeur: p.id, libelle: p.nom }))]}
+          options={[{ valeur: '_aucun', libelle: 'Sans personne' }, ...prestataires.map((p) => ({ valeur: p.id, libelle: p.nom }))]}
         />
         <Select aria-label="Logement" value={logement} onChange={(e) => setLogement(e.target.value)} placeholder="Tous les logements" options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
       </div>
@@ -98,7 +99,7 @@ export function Toutes() {
         legende="Toutes les missions"
         triInitial={{ cle: 'date', sens: 'desc' }}
         dense
-        vide="Aucune mission ne correspond aux filtres."
+        vide="Aucun ménage ne correspond. Essayez d’enlever un filtre."
       />
     </div>
   );

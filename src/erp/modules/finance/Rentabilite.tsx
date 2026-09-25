@@ -75,19 +75,18 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Rentabilité par logement' }]}
         titre="Rentabilité par logement"
-        sousTitre="Compte de résultat Label Maison par logement sur 12 mois glissants : commission + frais de ménage encaissés, moins coût des ménages validés et charges affectées."
+        sousTitre="Ce que chaque logement vous rapporte sur les 12 derniers mois : vos commissions et frais de ménage, moins les ménages payés et les dépenses du logement."
       />
       {onglets}
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="CA Label Maison, 12 mois" valeur={euros(somme('commission') + somme('fraisMenage'), true)} aide={`sur ${euros(somme('brut'), true)} de revenu brut géré`} />
-        <Stat label="Marge après ménage et charges" valeur={signe(somme('marge'))} tone={somme('marge') < 0 ? 'danger' : 'succes'} />
-        <Stat label="Logements en marge négative" valeur={nombre(negatives)} tone={negatives ? 'danger' : 'neutre'} />
+        <Stat label="Facturé en 12 mois" valeur={euros(somme('commission') + somme('fraisMenage'), true)} aide={`sur ${euros(somme('brut'), true)} payés par les voyageurs`} />
+        <Stat label="Ce qu’il vous reste" valeur={signe(somme('marge'))} tone={somme('marge') < 0 ? 'danger' : 'succes'} />
         <Stat
-          label={`Mandats sous ${COMMISSION_CIBLE_MIN} %`}
-          valeur={nombre(sousCible.length)}
-          tone={sousCible.length ? 'alerte' : 'neutre'}
-          aide={sousCible.length ? 'À migrer au renouvellement' : undefined}
+          label="Logements qui vous coûtent"
+          valeur={nombre(negatives)}
+          tone={negatives ? 'danger' : 'neutre'}
+          aide={sousCible.length ? `${nombre(sousCible.length)} contrat${sousCible.length > 1 ? 's' : ''} sous ${COMMISSION_CIBLE_MIN} % de commission` : 'plus d’argent dépensé que gagné'}
         />
       </div>
 
@@ -109,7 +108,7 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
         lignes={lignes}
         cleLigne={(l) => l.logementId}
         triInitial={{ cle: 'marge', sens: 'asc' }}
-        vide="Aucun logement à surveiller."
+        vide="Aucun logement à surveiller, tout va bien."
       />
       <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">
         Coût ménage : missions de ménage et de linge validées uniquement (pas de validation, pas de paiement). Charges générales non réparties. Marge faible : moins de{' '}

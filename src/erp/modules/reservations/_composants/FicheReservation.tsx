@@ -109,7 +109,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
       <Card>
         <CardHeader
           titre="Montants"
-          description={mandat ? `Mandat ${mandat.reference}, commission ${mandat.commissionPct} %` : 'Aucun mandat : commission non calculée'}
+          description={mandat ? `Contrat ${mandat.reference}, commission ${mandat.commissionPct} %` : 'Pas de contrat de gestion : la commission ne peut pas être calculée'}
         />
         {annulee && <p className="mb-2 text-[13px] text-(--lm-danger)">Réservation annulée : montants indicatifs, exclus des indicateurs.</p>}
         <dl>
@@ -129,7 +129,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
       <Card>
         <CardHeader titre="Ménage de départ" actions={<Sparkles className="size-4 text-(--lm-or)" aria-hidden />} />
         {missions.length === 0 ? (
-          <p className="text-[13px] text-(--lm-encre-3)">{annulee ? 'Aucune mission : séjour annulé.' : 'Aucune mission rattachée.'}</p>
+          <p className="text-[13px] text-(--lm-encre-3)">{annulee ? 'Séjour annulé : pas de ménage à prévoir.' : 'Pas encore de ménage prévu pour ce séjour.'}</p>
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {missions.map((m) => (
@@ -152,7 +152,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
       <Card>
         <CardHeader titre="Messages voyageur" actions={<MessageSquare className="size-4 text-(--lm-or)" aria-hidden />} />
         {fils.length === 0 ? (
-          <p className="text-[13px] text-(--lm-encre-3)">Aucun échange enregistré pour ce séjour.</p>
+          <p className="text-[13px] text-(--lm-encre-3)">Pas encore de message avec ce voyageur.</p>
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {fils.map((f) => (
@@ -192,7 +192,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
       <Card>
         <CardHeader titre="Incidents" />
         {incidents.length === 0 ? (
-          <p className="text-[13px] text-(--lm-encre-3)">Aucun incident sur ce séjour.</p>
+          <p className="text-[13px] text-(--lm-encre-3)">Aucun souci pendant ce séjour.</p>
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {incidents.map((i) => (

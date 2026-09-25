@@ -29,7 +29,7 @@ export function Missions({ prestataire: p }: { prestataire: Prestataire }) {
       triInitial={{ cle: 'date', sens: 'desc' }}
       legende="Missions du prestataire"
       dense
-      vide="Aucune mission pour ce prestataire."
+      vide="Pas encore de ménage pour ce prestataire."
     />
   );
 }
@@ -57,7 +57,7 @@ export function Qualite({ prestataire: p }: { prestataire: Prestataire }) {
         <Stat label="Refus et retards" valeur={nombre(refusees.length + retards.length)} tone={refusees.length + retards.length ? 'danger' : 'succes'} aide={`${refusees.length} refus, ${retards.length} preuves en retard`} />
       </div>
       <Card flush>
-        <CardHeader className="px-4 pt-4 sm:px-5" titre="Refus, retards et incidents imputés" />
+        <CardHeader className="px-4 pt-4 sm:px-5" titre="Refus, retards et incidents" />
         <ul className="divide-y divide-(--lm-bord) text-[13px]">
           {[...refusees, ...retards].map((m) => (
             <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5">
@@ -75,7 +75,7 @@ export function Qualite({ prestataire: p }: { prestataire: Prestataire }) {
               <span className="line-clamp-1 text-(--lm-encre-2)">{i.description}</span>
             </li>
           ))}
-          {!refusees.length && !retards.length && !lies.length && <li className="px-4 py-3 text-(--lm-encre-3) sm:px-5">Aucun refus, retard ni incident imputé.</li>}
+          {!refusees.length && !retards.length && !lies.length && <li className="px-4 py-3 text-(--lm-encre-3) sm:px-5">Aucun refus, aucun retard, aucun incident. Parfait.</li>}
         </ul>
       </Card>
     </div>

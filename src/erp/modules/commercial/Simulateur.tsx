@@ -46,7 +46,7 @@ export default function Simulateur() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Commercial', to: '/erp/commercial' }, { libelle: 'Simulateur' }]}
+        fil={[{ libelle: 'Prospection', to: '/erp/commercial' }, { libelle: 'Simulateur' }]}
         titre="Simulateur de revenus"
         sousTitre="À faire tourner avec le propriétaire : ce que son bien peut rapporter, et ce qu’il touche net."
         actions={<Button variant="primary" icone={<UserPlus />} disabled={invalide} onClick={() => setCreation(true)}>Créer un prospect</Button>}

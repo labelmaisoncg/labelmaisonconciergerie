@@ -21,6 +21,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   prospects: 'Prospects',
   recommandations: 'Recommandations propriétaires',
   versionsAnnonce: 'Versions d’annonces',
+  reglages: 'Réglages (agent de messagerie)',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };
@@ -55,11 +56,11 @@ export default function Donnees() {
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <Card>
         <CardHeader
-          titre="Mode de données"
+          titre="Vos données"
           description={
             d.mode === 'demo'
               ? 'Données de démonstration (développement local), enregistrées dans ce navigateur uniquement.'
-              : 'Données réelles, enregistrées dans la base Supabase de Label Maison et partagées en direct avec l’équipe.'
+              : 'Vos vraies données, enregistrées en ligne et partagées en direct avec l’équipe.'
           }
         />
         {fait && (
@@ -69,7 +70,7 @@ export default function Donnees() {
         )}
         <div className="flex flex-wrap gap-2">
           <Button icone={<Download />} onClick={exporter}>
-            Exporter en JSON
+            Télécharger une sauvegarde
           </Button>
           {d.mode === 'demo' && (
             <Button variant="danger" icone={<RotateCcw />} onClick={() => setConfirmation(true)}>
@@ -80,12 +81,12 @@ export default function Donnees() {
         <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
           {d.mode === 'demo'
             ? 'La réinitialisation recharge le jeu de démonstration d’origine : toutes les modifications faites dans la maquette sont perdues. Exportez d’abord si besoin.'
-            : 'L’export contient toutes les données de l’ERP à cet instant : une copie de sauvegarde à garder en lieu sûr. Chaque version modifiée ou supprimée est aussi archivée dans la base (table erp.historique).'}
+            : 'La sauvegarde contient toutes vos données à cet instant : gardez-la en lieu sûr. Chaque modification et chaque suppression sont aussi gardées en mémoire dans la base.'}
         </p>
       </Card>
       <Card flush>
         <div className="p-4 pb-2 sm:p-5 sm:pb-2">
-          <CardHeader titre="Contenu actuel" className="mb-1" />
+          <CardHeader titre="Ce que contient l’ERP" className="mb-1" />
         </div>
         <dl className="grid grid-cols-2 gap-x-6 px-4 pb-4 text-[13px] sm:px-5">
           {(Object.keys(LIBELLES_COLLECTIONS) as NomCollection[]).map((c) => (

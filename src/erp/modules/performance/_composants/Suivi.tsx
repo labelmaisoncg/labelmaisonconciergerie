@@ -103,7 +103,7 @@ export function Suivi() {
       </div>
 
       {filtrees.length === 0 ? (
-        <EmptyState titre="Aucune recommandation" description="La revue hebdomadaire ajoute ici les améliorations détectées sur chaque bien." />
+        <EmptyState titre="Pas encore de conseil" description="Chaque semaine, l’ERP ajoute ici les améliorations repérées sur vos logements." />
       ) : (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
           {ETAPES.map((etape) => {
