@@ -281,10 +281,15 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    sont pas bons, l'ERP marche mais l'envoi des photos échouera : Storage →
    New bucket `erp-fichiers`, privé, puis relancer le script.)
 2. **Créer le compte d'équipe.** L'ERP a un seul compte pour toute l'équipe
-   (même vue pour tous) : l'écran de connexion ne demande que le mot de
+   (même vue pour tous) et **un seul mot de passe : `ERP_PASSWORD` (Vercel)**.
+   Une fois ce mot de passe saisi sur la page d'accès, le serveur ouvre
+   lui-même la session Supabase (`POST /erp/session` dans `middleware.ts`) :
+   le compte d'équipe doit donc avoir **exactement le même mot de passe que
+   `ERP_PASSWORD`**. Si `ERP_PASSWORD` change, changer aussi celui du compte
+   (Authentication → Users). Sinon l'ERP affiche en secours un champ mot de
    passe. Supabase → **Authentication** → **Users** → **Add user** →
    **Create new user** : e-mail `equipe@labelmaisoncg.fr` (adresse technique,
-   aucune boîte mail n'est nécessaire), mot de passe de l'équipe, cocher
+   aucune boîte mail n'est nécessaire), mot de passe = la valeur de `ERP_PASSWORD`, cocher
    **Auto Confirm User** → **Create user**. Conseillé : fermer les
    inscriptions publiques (**Authentication → Sign In / Providers → Allow new
    users to sign up** désactivé).
@@ -305,7 +310,7 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    `VITE_SUPABASE_ANON_KEY` (les deux ensemble), puis redéployer. Ne jamais y
    mettre `VITE_ERP_DEMO`.
 6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp`, mot de passe du
-   site, puis le mot de passe de l'équipe. Si l'écran « La base de données
+   site (`ERP_PASSWORD`) : l'ERP s'ouvre directement. Si l'écran « La base de données
    n'est pas encore installée » reste affiché après l'étape 1 : Supabase →
    **Project Settings** → **Data API** (parfois **Settings → API**) →
    **Exposed schemas** → ajouter `erp` → Save, puis « Réessayer ».

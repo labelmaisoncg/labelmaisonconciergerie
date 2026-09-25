@@ -138,6 +138,24 @@ export async function seConnecter(email: string, motDePasse: string): Promise<Re
   }
 }
 
+/**
+ * Connexion automatique : la page d'accès a déjà vérifié ERP_PASSWORD, le
+ * serveur (middleware) ouvre la session du compte d'équipe. Renvoie false si
+ * ce n'est pas possible (formulaire de mot de passe en secours).
+ */
+export async function connexionAutomatique(): Promise<boolean> {
+  try {
+    const r = await fetch('/erp/session', { method: 'POST', credentials: 'same-origin', cache: 'no-store' });
+    if (!r.ok) return false;
+    const d = (await r.json()) as { access_token?: string; refresh_token?: string };
+    if (!d.access_token || !d.refresh_token) return false;
+    const { error } = await obtenirClient().auth.setSession({ access_token: d.access_token, refresh_token: d.refresh_token });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 export async function envoyerLienMotDePasse(email: string): Promise<ResultatAuth> {
   try {
     const { error } = await obtenirClient().auth.resetPasswordForEmail(email.trim(), { redirectTo: URL_RETOUR_MOT_DE_PASSE });

@@ -15,7 +15,8 @@
  * Variables d'environnement à définir dans Vercel (Settings → Environment
  * Variables), pour Production ET Preview :
  *   LINGE_PASSWORD  mot de passe du registre du linge (obligatoire)
- *   ERP_PASSWORD    mot de passe de l'ERP (obligatoire)
+ *   ERP_PASSWORD    mot de passe de l'ERP (obligatoire) ; c'est aussi le mot de
+ *                   passe du compte Supabase d'équipe (connexion automatique)
  *
  * Après ajout ou modification, il faut REDÉPLOYER : la valeur est injectée au
  * build, un simple enregistrement dans l'interface Vercel ne suffit pas.
@@ -370,6 +371,40 @@ function pageMalConfiguree(zone: Zone): Response {
   );
 }
 
+/* ------------------------------------------------ session ERP (Supabase) */
+
+/**
+ * Connexion unique : une fois le mot de passe de l'ERP (ERP_PASSWORD) saisi,
+ * l'application demande ici sa session Supabase. Le compte d'équipe
+ * (equipe@labelmaisoncg.fr) a le même mot de passe que ERP_PASSWORD ; seul le
+ * serveur le connaît, le navigateur ne reçoit que les jetons de session.
+ * Adresse et clé « anon » : valeurs publiques du projet Label Maison.
+ */
+const SUPABASE_ERP_URL = 'https://ftfwnomkbjtlpijdevgx.supabase.co';
+const SUPABASE_ERP_ANON =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ0Zndub21rYmp0bHBpamRldmd4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc3NDE0ODEsImV4cCI6MjEwMzMxNzQ4MX0.rKk8o84gAIw4Acz-kQM8w1Eb3yoc-Ec1cIuaJk6G5qs';
+
+async function sessionErp(motDePasse: string): Promise<Response> {
+  const email = (process.env.VITE_ERP_EMAIL_EQUIPE || '').trim() || 'equipe@labelmaisoncg.fr';
+  const entetes = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  try {
+    const r = await fetch(`${SUPABASE_ERP_URL}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ERP_ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: motDePasse }),
+    });
+    const d = (await r.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string };
+    if (!r.ok || !d.access_token || !d.refresh_token) {
+      return new Response(JSON.stringify({ ok: false, status: r.status }), { status: 409, headers: entetes });
+    }
+    return new Response(JSON.stringify({ ok: true, access_token: d.access_token, refresh_token: d.refresh_token }), {
+      headers: entetes,
+    });
+  } catch {
+    return new Response(JSON.stringify({ ok: false, status: 0 }), { status: 502, headers: entetes });
+  }
+}
+
 /* --------------------------------------------------------------- middleware */
 
 export default async function middleware(request: Request): Promise<Response | undefined> {
@@ -412,6 +447,17 @@ export default async function middleware(request: Request): Promise<Response | u
           `${zone.cookie}=${jeton}; Path=${zone.racine}; Max-Age=${DUREE}; HttpOnly; Secure; SameSite=Lax`,
       },
     });
+  }
+
+  if (zone === ERP && chemin === '/erp/session') {
+    if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } });
+    if (!connecte) {
+      return new Response(JSON.stringify({ ok: false, status: 401 }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+    }
+    return sessionErp(motDePasse);
   }
 
   if (connecte) {
