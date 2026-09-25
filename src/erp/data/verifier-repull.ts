@@ -732,7 +732,11 @@ async function principal() {
   verifier(c1.url.startsWith('https://connect.repull.dev/') && appelAirbnb.chemin === '/v1/connect/airbnb' && appelAirbnb.methode === 'POST', 'Airbnb : page de connexion Repull');
   verifier(String(appelAirbnb.corps?.redirectUrl).endsWith('/erp/logements/connexions?retour=airbnb'), 'retour sur la page Connexions');
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
-  verifier(repull.appels[repull.appels.length - 1].chemin === '/v1/connect/booking', 'Booking.com : page de connexion Repull');
+  const appelBooking = repull.appels[repull.appels.length - 1];
+  verifier(
+    appelBooking.chemin === '/v1/connect' && JSON.stringify(appelBooking.corps?.allowedProviders) === '["booking"]',
+    'Booking.com : sélecteur Repull limité à l’identifiant exact du registre',
+  );
   await demarrerConnexion(ctx(), 'hostaway', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=hostaway');
   const appelPicker = repull.appels[repull.appels.length - 1];
   verifier(appelPicker.chemin === '/v1/connect' && (appelPicker.corps?.allowedProviders as string[]).join() === 'hostaway', 'autre logiciel : sélecteur Repull limité à ce logiciel');
