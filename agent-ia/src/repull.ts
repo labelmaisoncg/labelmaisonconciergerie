@@ -72,12 +72,20 @@ async function appel<T = any>(
   chemin: string,
   options: Options = {},
 ): Promise<T> {
+  // Plateformes jamais modifiées : on lit, on répond aux voyageurs, on ouvre
+  // une connexion. Calendriers, prix et annonces restent gérés à la main.
+  const chemin0 = chemin.split('?')[0] ?? chemin;
+  const permis = methode === 'GET'
+    || (methode === 'POST' && (/^\/v1\/conversations\/[^/]+\/messages$/.test(chemin0) || /^\/v1\/connect\/[a-z0-9_-]+$/i.test(chemin0)));
+  if (!permis) {
+    throw new ErreurRepull(403, 'lecture_seule', `[repull] écriture refusée (${methode} ${chemin0}) : l'agent ne modifie ni calendrier, ni prix, ni annonce.`, null);
+  }
   if (!CLE()) {
     throw new ErreurRepull(0, 'cle_absente', '[repull] REPULL_API_KEY absente : aucun appel possible.', null);
   }
   // Une écriture sans clé d'idempotence n'est jamais rejouée : après un délai
   // dépassé, elle a pu partir, et la renvoyer ferait un doublon chez le voyageur.
-  const rejouable = methode === 'GET' || methode === 'PUT' || Boolean(options.cleIdempotence);
+  const rejouable = methode === 'GET' || Boolean(options.cleIdempotence);
 
   for (let essai = 1; ; essai++) {
     // Chaque tentative compte dans le quota Repull, nouvel essai compris.
@@ -205,7 +213,10 @@ export async function comptesConnectes(canal: Canal): Promise<CompteConnecte[]> 
  * parcours, Repull la renvoie vers `retour`.
  */
 export async function lienConnexion(canal: Canal, retour: string): Promise<string> {
-  const r = await appel('POST', `/v1/connect/${canal}`, { corps: { redirectUrl: retour, locale: 'fr' } });
+  const r = await appel('POST', `/v1/connect/${canal}`, {
+    // Airbnb : messagerie seulement, le calendrier et les prix ne sont pas modifiables.
+    corps: { redirectUrl: retour, locale: 'fr', ...(canal === 'airbnb' ? { accessType: 'messaging' } : {}) },
+  });
   if (!r.url) throw new ErreurRepull(0, 'lien_absent', `[repull] Repull n'a pas rendu de lien de connexion ${NOM_CANAL[canal]}.`, null);
   return String(r.url);
 }

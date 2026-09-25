@@ -121,6 +121,28 @@ function messageRepull(statut: number, code: string | undefined, brut: string | 
   return `Erreur Repull ${statut}${brut ? ` : ${brut}` : ''}.`;
 }
 
+/**
+ * L'ERP extrait les données et ne répond qu'aux conversations : tout reste
+ * comme à l'origine sur les plateformes. Seules ces écritures sont permises :
+ *   - envoyer un message voyageur ;
+ *   - ouvrir ou retirer une connexion (Repull Connect, à la demande du gérant) ;
+ *   - choisir les logements suivis (/v1/listings/status : compteur interne à
+ *     Repull, la plateforme n'est jamais touchée).
+ * Calendriers, prix, disponibilités, annonces : aucune écriture, jamais.
+ */
+export function ecritureRepullPermise(methode: string, chemin: string): boolean {
+  const m = methode.toUpperCase();
+  if (m === 'GET') return true;
+  const c = chemin.split('?')[0];
+  if (m === 'POST') {
+    return /^\/v1\/conversations\/[^/]+\/messages$/.test(c)
+      || /^\/v1\/connect(\/[a-z0-9_-]+)?$/i.test(c)
+      || c === '/v1/listings/status';
+  }
+  if (m === 'DELETE') return /^\/v1\/connect\/[a-z0-9_-]+$/i.test(c);
+  return false;
+}
+
 export interface OptionsClientRepull {
   cle: string;
   base?: string;
@@ -189,6 +211,9 @@ export class ClientRepull {
     envoi?: unknown,
     entetes: Record<string, string> = {},
   ): Promise<T> {
+    if (!ecritureRepullPermise(methode, chemin)) {
+      throw new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
+    }
     const url = new URL(this.base + chemin);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
     for (let essai = 1; ; essai++) {
