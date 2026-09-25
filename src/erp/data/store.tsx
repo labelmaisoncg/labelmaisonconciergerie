@@ -35,6 +35,7 @@ import {
   retirerMembre,
   RETOUR_LIEN,
   seDeconnecter as deconnexionSupabase,
+  connexionAutomatique,
 } from './supabase';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
@@ -747,6 +748,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [etatSynchro, setEtatSynchro] = useState<EtatSynchro | null>(null);
   const enRecuperation = useRef(RETOUR_LIEN.recuperation);
+  const autoTentee = useRef(false);
   const emailCharge = useRef<string | null>(null);
   const synchroRef = useRef<Synchro | null>(null);
   const essai = useRef(0);
@@ -838,7 +840,16 @@ function FournisseurReel({ children }: { children: ReactNode }) {
             setPhase({ nom: 'connexion', message: 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ».' });
             return;
           }
-          if (!enRecuperation.current) setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
+          if (enRecuperation.current) return;
+          // Première ouverture : session automatique (mot de passe de l'ERP déjà saisi).
+          if (evenement === 'INITIAL_SESSION' && !autoTentee.current) {
+            autoTentee.current = true;
+            void connexionAutomatique().then((ok) => {
+              if (!ok && actif) setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
+            });
+            return;
+          }
+          setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
           return;
         }
         if (enRecuperation.current) return;
@@ -882,7 +893,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
       setPhase({ nom: 'demarrage' });
       arreterSynchro();
       await deconnexionSupabase();
-      setPhase({ nom: 'connexion' });
+      window.location.assign('/erp/deconnexion');
     })();
   }, [arreterSynchro]);
 
