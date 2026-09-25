@@ -1,21 +1,19 @@
 /**
  * Page de connexion d'un compte Airbnb ou Booking, servie sous notre domaine.
  *
- * Deux problèmes réglés d'un coup :
+ *   /connexion/<id>          la page d'accueil, avec le bouton
+ *   /connexion/<id>/aller    fabrique la session Repull Connect et y redirige
+ *   /connexion/<id>/retour   là où Repull renvoie la personne une fois fini
  *
- * 1. La conciergerie ne voit jamais « channex.io ». Elle reste chez Label
- *    Maison, du message Telegram jusqu'à la page d'autorisation.
- * 2. Le jeton Channex ne vit que 15 minutes. Il est fabriqué ICI, à
- *    l'ouverture de la page — donc un lien reçu lundi et ouvert jeudi
- *    fonctionne encore. C'était le piège numéro un de l'onboarding.
+ * La conciergerie part de chez Label Maison et y revient. Entre les deux, elle
+ * est sur la page hébergée par Repull, puis chez Airbnb ou Booking, où elle
+ * autorise l'accès avec SES identifiants — sans jamais créer de compte Repull.
  *
- * L'écran Channex est intégré en iframe, mode `headless`, sans son interface :
- * c'est le mode d'intégration que Channex prévoit pour les éditeurs. On ne peut
- * pas en retirer le bouton rouge « Connect with Airbnb » — il est chez eux —
- * mais tout ce qui l'entoure est à nous.
+ * La session Repull est fabriquée au CLIC, pas à l'envoi du lien : un lien reçu
+ * lundi et ouvert jeudi fonctionne encore.
  */
 
-import * as channex from '../src/channex.js';
+import { demarrerConnexion, finaliserConnexion } from '../src/comptes.js';
 import * as store from '../src/store.js';
 
 const OR = '#A97C30';
@@ -58,27 +56,7 @@ const page = (corps: string, titre: string) => `<!doctype html>
   .cta:active{transform:translateY(0)}
   .apres{font-size:13.5px;color:rgba(20,17,14,.55);max-width:430px;text-align:center;line-height:1.6}
   .apres b{color:${ENCRE};font-weight:600}
-  /* Recadrage de l'écran Channex.
-     On ne peut pas retirer d'éléments d'une iframe d'un autre domaine : on la
-     dimensionne donc en grand et on n'en laisse voir qu'une fenêtre — le
-     panneau du canal, sans la liste ni la navigation Channex.
-     Valeurs calées sur un panneau de 950 px ancré à droite. Si Channex change
-     sa mise en page, ce sont ces quatre nombres qu'il faut reprendre. */
-  .hublot{position:relative;width:100%;max-width:940px;height:1320px;overflow:hidden;
-    background:#fff;border:1px solid rgba(20,17,14,.09);border-radius:14px;
-    box-shadow:0 1px 3px rgba(20,17,14,.05)}
-  /* Seul le décalage HORIZONTAL est calé : le panneau Channex fait 940 px et
-     est ancré à droite, donc on décale de (largeur iframe − 940) pour ne
-     laisser voir que lui, sans la liste ni la navigation. Aucun calage
-     vertical : viser un bouton au pixel près sur la page d'un tiers casserait
-     à leur première mise à jour. */
-  .hublot iframe{position:absolute;top:0;left:-660px;width:1600px;height:1320px;border:0}
-  @media (max-width:980px){
-    .hublot iframe{left:-700px;width:1640px}
-  }
   footer{padding:14px 24px 26px;text-align:center;font-size:12.5px;color:rgba(20,17,14,.45);line-height:1.6}
-  .avis{max-width:560px;margin:0 auto 14px;padding:11px 15px;border-radius:10px;
-    background:#fff6e8;border:1px solid #e8c98a;color:#6b4c12;font-size:13.5px;line-height:1.5}
   .erreur{margin:60px auto;max-width:440px;text-align:center;padding:0 24px}
   .erreur h1{margin-bottom:14px}
   .erreur p{color:rgba(20,17,14,.66);line-height:1.6;font-size:15px}
@@ -106,6 +84,9 @@ export default async function handler(req: any, res: any) {
       );
   }
 
+  const plateformeDe = (canal: string) => (canal === 'airbnb' ? 'Airbnb' : 'Booking.com');
+  const etape = String(req.query?.etape ?? '');
+
   try {
     const lien = await store.lienConnexion(id);
     if (!lien) {
@@ -118,27 +99,46 @@ export default async function handler(req: any, res: any) {
           ),
         );
     }
+    const plateforme = plateformeDe(lien.canal);
 
-    const [conciergerie, logement] = await Promise.all([
-      store.conciergerieParId(lien.conciergerieId),
-      store.logementParId(lien.logementId),
-    ]);
-    if (!conciergerie?.channexGroupId || !logement?.channexPropertyId) {
-      return res.status(500).send(erreur('Configuration incomplète.', 'Prévenez votre assistant, il régénérera le lien.'));
+    if (etape === 'aller') {
+      const url = await demarrerConnexion(lien);
+      res.setHeader('Location', url);
+      return res.status(302).send('');
     }
 
-    // Le jeton est fabriqué MAINTENANT, à l'ouverture. C'est ce qui permet
-    // qu'un lien reçu il y a trois jours fonctionne encore.
-    const url = await channex.lienConnexion(
-      logement.channexPropertyId,
-      conciergerie.channexGroupId,
-      lien.canal,
-      conciergerie.nom,
-      lien.channexCanalId ?? undefined,
-    );
-
-    const plateforme = lien.canal === 'airbnb' ? 'Airbnb' : 'Booking.com';
-    const bouton = lien.canal === 'airbnb' ? 'Connect with Airbnb' : 'Connect with Booking.com';
+    if (etape === 'retour') {
+      const issue = await finaliserConnexion(lien);
+      const [titre, detail] =
+        issue.statut === 'connecte'
+          ? [
+              `Votre compte ${plateforme} est connecté.`,
+              issue.annoncesImportees > 0
+                ? `${issue.annoncesImportees} annonce(s) importée(s). Vous pouvez fermer cette page et retourner voir votre assistant.`
+                : 'Vous pouvez fermer cette page et retourner voir votre assistant : il récupère vos annonces.',
+            ]
+          : issue.statut === 'en_attente'
+            ? [
+                'Connexion pas encore aboutie.',
+                lien.canal === 'booking'
+                  ? "Booking.com peut mettre un moment à valider. Votre assistant vous préviendra ; vous pouvez fermer cette page."
+                  : "Le parcours semble avoir été interrompu. Rouvrez le lien reçu pour recommencer, ou demandez-en un nouveau à votre assistant.",
+              ]
+            : [
+                'Connexion reçue, vérification en cours.',
+                "Nous finalisons le rattachement de votre compte. Dites à votre assistant « où en est la connexion ? » dans quelques minutes.",
+              ];
+      return res.status(200).send(
+        page(
+          `<header>
+  <div class="marque">Label Maison Conciergerie</div>
+  <h1>${titre}</h1>
+  <p class="sous">${detail}</p>
+</header>`,
+          `Connexion ${plateforme}`,
+        ),
+      );
+    }
 
     return res.status(200).send(
       page(
@@ -147,21 +147,17 @@ export default async function handler(req: any, res: any) {
   <h1>Connectez votre compte ${plateforme}</h1>
   <p class="sous">Autorisez l'accès à vos annonces pour que votre assistant voie vos
   réservations, vos départs et vos messages voyageurs.</p>
-  <p class="sous">Votre logement est déjà paramétré de notre côté.
-  Il ne reste qu'une autorisation à donner.</p>
+  <p class="sous">Vos logements seront récupérés automatiquement depuis vos annonces.</p>
 </header>
 <main>
-  <a class="cta" href="${url}">Connecter mon compte ${plateforme}</a>
-  <p class="apres">Sur l'écran suivant, cliquez sur le bouton rouge
-  <b>${bouton}</b>, en bas du formulaire. Vous serez alors redirigé vers
-  ${plateforme} pour vous identifier.</p>
+  <a class="cta" href="/connexion/${lien.id}/aller">Connecter mon compte ${plateforme}</a>
+  <p class="apres">${
+    lien.canal === 'airbnb'
+      ? "Vous serez redirigé vers Airbnb pour vous identifier et <b>autoriser l'accès</b>, puis ramené ici."
+      : "Vous serez guidé pour désigner notre partenaire de connectivité dans votre <b>extranet Booking.com</b> et saisir l'identifiant de votre établissement, puis ramené ici."
+  }</p>
 </main>
 <footer>
-  ${
-    channex.enProduction()
-      ? ''
-      : `<div class="avis">Environnement de test : cette page ne connectera pas un vrai compte ${plateforme}.</div>`
-  }
   Vos identifiants ${plateforme} ne transitent jamais par Label Maison.<br>
   Vous pouvez révoquer cet accès à tout moment depuis votre compte ${plateforme}.
 </footer>`,

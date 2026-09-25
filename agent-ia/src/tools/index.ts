@@ -7,7 +7,7 @@
  * logique métier.
  *
  * RÈGLE DE SÉCURITÉ : le contexte (`chatId`) est injecté par le code, jamais
- * fourni par le modèle. Tous les identifiants Channex et base en découlent.
+ * fourni par le modèle. Tous les identifiants Repull et base en découlent.
  */
 
 import type Anthropic from '@anthropic-ai/sdk';

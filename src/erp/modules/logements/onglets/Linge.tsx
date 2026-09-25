@@ -21,7 +21,9 @@ export function OngletLinge({ logement: l }: { logement: Logement }) {
   const [lignes, setLignes] = useState<LigneSaisie[]>(() => versSaisie(l));
   const [erreur, setErreur] = useState<string>();
   const [ok, setOk] = useState(false);
-  useEffect(() => setLignes(versSaisie(l)), [l]);
+  useEffect(() => {
+    setLignes(versSaisie(l));
+  }, [l]);
 
   const articles = [...new Set([...ARTICLES_LINGE, ...l.dotationLinge.map((x) => x.article)])];
   const maj = (i: number, patch: Partial<LigneSaisie>) => {

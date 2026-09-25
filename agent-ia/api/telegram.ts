@@ -111,11 +111,11 @@ async function traiterInvitation(chatId: number | string, texte: string): Promis
     return true;
   }
 
-  // La conciergerie côté Channex n'est créée qu'au premier besoin réel : ici on
-  // se contente d'ouvrir la fiche et de rattacher la personne.
+  // Les comptes Airbnb ou Booking ne sont connectés qu'au premier besoin réel :
+  // ici on se contente d'ouvrir la fiche et de rattacher la personne.
   let conciergerieId = invitation.conciergerieId;
   if (!conciergerieId) {
-    const c = await store.creerConciergerie(invitation.nomConciergerie, null, chatId);
+    const c = await store.creerConciergerie(invitation.nomConciergerie, chatId);
     conciergerieId = c.id;
     await store.lierInvitation(code, c.id);
   } else {
@@ -160,7 +160,7 @@ async function traiterMessage(update: TelegramUpdate): Promise<void> {
 
     // On persiste les tours COMPLETS, blocs d'outils compris. Sans eux, le
     // modèle rejoue au message suivant des étapes déjà faites — et crée des
-    // doublons chez Channex.
+    // doublons (liens, logements).
     const apres = await store.conciergerieParChat(chatId);
     for (const tour of reponse.tours) {
       await store.ajouterAuFil(chatId, apres?.id ?? null, tour.role as any, tour.content);

@@ -6,15 +6,23 @@
  * erroné parti chez Airbnb, c'est une nuit vendue à 20 € ou un logement qui ne
  * se vend plus.
  *
- * Le GROUPAGE est central : un seul appel Channex quel que soit le nombre de
- * plages. La certification vérifie ce point sur la moitié de ses tests, et
- * « appels par date au lieu de regroupement » figure dans ses critères de rejet.
+ * Le GROUPAGE reste la règle : le modèle passe toutes les plages d'un coup, et
+ * le client Repull regroupe les plages aux réglages identiques en une seule
+ * écriture. Chaque appel compte dans le quota mensuel Repull.
+ *
+ * Les interdictions d'arrivée ou de départ ne sont pas proposées : le
+ * calendrier unifié de Repull ne les porte pas.
  */
 
-import * as channex from '../channex.js';
+import * as repull from '../repull.js';
 import * as store from '../store.js';
-import { enFrancais, estValide } from '../dates.js';
+import { ajouterJours, enFrancais, estValide } from '../dates.js';
 import type { Contexte, Outil } from './index.js';
+
+/** Logement sans annonce Repull : rien à écrire. Partagé avec les blocages. */
+export const NON_RELIE = (nom: string): string =>
+  `${nom} n'est relié à aucune annonce Airbnb ou Booking : impossible d'écrire le calendrier. ` +
+  "Connecte d'abord le compte (outil connecter_compte).";
 
 type Plage = {
   du: string;
@@ -22,8 +30,6 @@ type Plage = {
   prix?: number;
   sejour_minimum?: number;
   ferme_a_la_vente?: boolean;
-  arrivee_interdite?: boolean;
-  depart_interdit?: boolean;
 };
 
 const PLAGE_SCHEMA = {
@@ -33,9 +39,10 @@ const PLAGE_SCHEMA = {
     au: { type: 'string', description: 'AAAA-MM-JJ, dernier jour concerné.' },
     prix: { type: 'number', description: 'Prix par nuit en euros.' },
     sejour_minimum: { type: 'number', description: 'Nombre de nuits minimum à l’arrivée.' },
-    ferme_a_la_vente: { type: 'boolean', description: 'true = le logement ne se vend plus.' },
-    arrivee_interdite: { type: 'boolean', description: 'Aucune arrivée possible ces jours-là.' },
-    depart_interdit: { type: 'boolean', description: 'Aucun départ possible ces jours-là.' },
+    ferme_a_la_vente: {
+      type: 'boolean',
+      description: 'true = le logement ne se vend plus. Pour remettre en vente, utilise debloquer_dates.',
+    },
   },
   required: ['du', 'au'],
   additionalProperties: false,
@@ -46,9 +53,6 @@ const decrire = (p: Plage): string => {
     p.prix != null && `${p.prix} € la nuit`,
     p.sejour_minimum != null && `minimum ${p.sejour_minimum} nuit(s)`,
     p.ferme_a_la_vente === true && 'fermé à la vente',
-    p.ferme_a_la_vente === false && 'remis en vente',
-    p.arrivee_interdite && 'arrivées interdites',
-    p.depart_interdit && 'départs interdits',
   ]
     .filter(Boolean)
     .join(', ');
@@ -63,7 +67,9 @@ const modifierTarifs: Outil = {
     description:
       "Change les prix et les conditions de vente d'un logement sur une ou " +
       'plusieurs périodes : prix par nuit, durée minimale de séjour, fermeture à ' +
-      'la vente, interdiction d’arrivée ou de départ.\n\n' +
+      'la vente. Les interdictions d’arrivée ou de départ ne sont pas gérées : ' +
+      'dis-le si on te les demande. Pour remettre des dates en vente, utilise ' +
+      'debloquer_dates, qui protège les nuits déjà réservées.\n\n' +
       'REGROUPE TOUJOURS en un seul appel. Si on te demande trois changements de ' +
       'prix sur trois dates, passe les trois plages d’un coup — n’appelle pas ' +
       'l’outil trois fois.\n\n' +
@@ -92,9 +98,7 @@ const modifierTarifs: Outil = {
       const tous = await store.logements(c.id);
       return { erreur: `Logement introuvable : ${args.logement}`, logements_connus: tous.map((x) => x.nom) };
     }
-    if (!l.channexRatePlanId) {
-      return { erreur: `${l.nom} n'a pas encore de plan tarifaire côté Channex.` };
-    }
+    if (!l.repullListingId) return { erreur: NON_RELIE(l.nom) };
 
     const plages = (args.plages as Plage[]) ?? [];
     if (plages.length === 0) return { erreur: 'Aucune période fournie.' };
@@ -106,6 +110,18 @@ const modifierTarifs: Outil = {
       if (p.au < p.du) return { erreur: `La fin précède le début : ${p.du} → ${p.au}` };
       if (p.prix != null && (p.prix <= 0 || p.prix > 10000)) {
         return { erreur: `Prix invraisemblable : ${p.prix} €. Vérifie avant de confirmer.` };
+      }
+      if (p.sejour_minimum != null && (!Number.isInteger(p.sejour_minimum) || p.sejour_minimum < 1)) {
+        return { erreur: `Séjour minimum invalide : ${p.sejour_minimum}. Un nombre entier de nuits, au moins 1.` };
+      }
+      if (p.ferme_a_la_vente === false) {
+        return { erreur: 'Pour remettre des dates en vente, utilise debloquer_dates : il protège les nuits déjà réservées.' };
+      }
+      if (p.prix == null && p.sejour_minimum == null && p.ferme_a_la_vente !== true) {
+        return { erreur: `Rien à changer sur ${p.du} → ${p.au} : indique un prix, un séjour minimum ou une fermeture.` };
+      }
+      if (ajouterJours(p.du, 731) <= p.au) {
+        return { erreur: 'Plage trop longue : 731 jours au maximum.' };
       }
     }
 
@@ -137,31 +153,29 @@ export async function appliquerTarifs(args: Record<string, unknown>): Promise<st
   const c = await store.conciergerieParChat(String(args.__chatId ?? ''));
   const logements = c ? await store.logements(c.id) : [];
   const l = logements.find((x) => x.id === args.logementId);
-  if (!l?.channexPropertyId || !l.channexRatePlanId) {
-    return "Logement introuvable ou incomplet, rien n'a été modifié.";
-  }
+  if (!l) return "Logement introuvable, rien n'a été modifié.";
+  if (!l.repullListingId) return NON_RELIE(l.nom);
+  const annonceId = l.repullListingId;
 
   const plages = (args.plages as Plage[]) ?? [];
 
-  // UN SEUL appel Channex, quel que soit le nombre de plages.
-  await channex.definirTarifs(
+  const avertissement = await repull.definirTarifs(
     plages.map((p) => ({
-      proprieteId: l.channexPropertyId!,
-      planTarifaireId: l.channexRatePlanId!,
+      annonceId,
       du: p.du,
       au: p.au,
       prixParNuit: p.prix,
       sejourMinimum: p.sejour_minimum,
-      venteArretee: p.ferme_a_la_vente,
-      arriveeInterdite: p.arrivee_interdite,
-      departInterdit: p.depart_interdit,
+      venteArretee: p.ferme_a_la_vente === true,
     })),
   );
 
   return (
     `${l.nom} mis à jour :\n` +
     plages.map((p) => `— ${decrire(p)}`).join('\n') +
-    '\n\nLa mise à jour part vers les plateformes dans les prochaines minutes.'
+    (avertissement
+      ? `\n\nAttention : ${avertissement}. Vérifie le calendrier sur la plateforme concernée.`
+      : '\n\nLa mise à jour part vers les plateformes connectées.')
   );
 }
 

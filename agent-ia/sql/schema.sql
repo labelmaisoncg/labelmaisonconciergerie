@@ -8,11 +8,12 @@
 
 create extension if not exists "pgcrypto";
 
--- Une conciergerie cliente. `channex_group_id` est son cloisonnement côté Channex.
+-- Une conciergerie cliente. Son cloisonnement côté plateformes est dans
+-- `comptes_plateformes` (cf. 006-repull.sql) : Repull, lui, ne connaît qu'un
+-- seul espace, le nôtre.
 create table if not exists conciergeries (
   id               uuid primary key default gen_random_uuid(),
   nom              text not null,
-  channex_group_id text unique,
   style_profil     text,           -- voix de la conciergerie, dérivée de ses vraies réponses
   style_exemples   jsonb default '[]'::jsonb,  -- échantillon de vraies réponses
   actif            boolean not null default true,
@@ -36,7 +37,7 @@ create table if not exists logements (
   conciergerie_id     uuid not null references conciergeries(id) on delete cascade,
   nom                 text not null,
   ville               text,
-  channex_property_id text unique,
+  repull_listing_id   text unique,   -- annonce Repull (listings.id)
   airbnb_connecte     boolean not null default false,
   booking_connecte    boolean not null default false,
   -- Ce que l'API ne donne pas et que seul le livret d'accueil contient.

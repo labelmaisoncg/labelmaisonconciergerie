@@ -39,7 +39,6 @@ if (!sql) {
 export type Conciergerie = {
   id: string;
   nom: string;
-  channexGroupId: string | null;
   styleProfil: string | null;
   styleExemples: string[];
 };
@@ -49,9 +48,8 @@ export type Logement = {
   conciergerieId: string;
   nom: string;
   ville: string | null;
-  channexPropertyId: string | null;
-  channexRoomTypeId: string | null;
-  channexRatePlanId: string | null;
+  /** Annonce Repull (`listings.id`). null tant qu'aucun compte n'est relié. */
+  repullListingId: string | null;
   airbnbConnecte: boolean;
   bookingConnecte: boolean;
   cleBoite: string | null;
@@ -89,7 +87,9 @@ const mem = {
   connaissances: [] as Array<Connaissance & { conciergerieId: string }>,
   actions: new Map<string, ActionEnAttente>(),
   conversations: new Map<string, Array<{ role: string; contenu: unknown }>>(),
-  liens: new Map<string, LienConnexion>(),
+  liens: new Map<string, LienConnexion & { ouvertLe: number | null }>(),
+  comptes: new Map<string, string>(), // `${canal}:${compteId}` -> conciergerieId
+  reservationsVues: new Map<string, { bookingId: string | null; statut: string; arrivee: string | null; depart: string | null }>(),
   invitations: new Map<string, Invitation>(),
   souvenirs: [] as Array<Souvenir & { conciergerieId: string }>,
   resumes: new Map<string, string>(),
@@ -107,7 +107,7 @@ export async function conciergerieParChat(chatId: string | number): Promise<Conc
     return id ? (mem.conciergeries.get(id) ?? null) : null;
   }
   const [r] = await sql<any[]>`
-    select c.id, c.nom, c.channex_group_id, c.style_profil, c.style_exemples
+    select c.id, c.nom, c.style_profil, c.style_exemples
     from conciergeries c
     join membres m on m.conciergerie_id = c.id
     where m.chat_id = ${chat} and c.actif
@@ -116,24 +116,18 @@ export async function conciergerieParChat(chatId: string | number): Promise<Conc
     ? {
         id: r.id,
         nom: r.nom,
-        channexGroupId: r.channex_group_id,
         styleProfil: r.style_profil,
         styleExemples: r.style_exemples ?? [],
       }
     : null;
 }
 
-export async function creerConciergerie(
-  nom: string,
-  channexGroupId: string | null,
-  chatId: string | number,
-): Promise<Conciergerie> {
+export async function creerConciergerie(nom: string, chatId: string | number): Promise<Conciergerie> {
   const chat = String(chatId);
   if (!sql) {
     const c: Conciergerie = {
       id: idMem(),
       nom,
-      channexGroupId,
       styleProfil: null,
       styleExemples: [],
     };
@@ -143,9 +137,9 @@ export async function creerConciergerie(
     return c;
   }
   const [c] = await sql<any[]>`
-    insert into conciergeries (nom, channex_group_id)
-    values (${nom}, ${channexGroupId})
-    returning id, nom, channex_group_id, style_profil, style_exemples`;
+    insert into conciergeries (nom)
+    values (${nom})
+    returning id, nom, style_profil, style_exemples`;
   await sql`
     insert into membres (conciergerie_id, chat_id, role)
     values (${c.id}, ${chat}, 'proprietaire')
@@ -153,7 +147,6 @@ export async function creerConciergerie(
   return {
     id: c.id,
     nom: c.nom,
-    channexGroupId: c.channex_group_id,
     styleProfil: c.style_profil,
     styleExemples: c.style_exemples ?? [],
   };
@@ -187,15 +180,6 @@ export async function renommerLogement(
     update logements
     set nom = ${nom}, ville = coalesce(${ville}, ville)
     where id = ${id}`;
-}
-
-export async function definirGroupeChannex(id: string, groupId: string): Promise<void> {
-  if (!sql) {
-    const c = mem.conciergeries.get(id);
-    if (c) c.channexGroupId = groupId;
-    return;
-  }
-  await sql`update conciergeries set channex_group_id = ${groupId} where id = ${id}`;
 }
 
 export async function enregistrerStyle(
@@ -244,8 +228,8 @@ export async function logementParNom(
 export async function creerLogement(
   conciergerieId: string,
   nom: string,
-  ville: string,
-  channexPropertyId: string,
+  ville: string | null,
+  repullListingId: string | null,
 ): Promise<Logement> {
   if (!sql) {
     const l: Logement = {
@@ -253,9 +237,7 @@ export async function creerLogement(
       conciergerieId,
       nom,
       ville,
-      channexPropertyId,
-      channexRoomTypeId: null,
-      channexRatePlanId: null,
+      repullListingId,
       airbnbConnecte: false,
       bookingConnecte: false,
       cleBoite: null,
@@ -269,8 +251,8 @@ export async function creerLogement(
     return l;
   }
   const [r] = await sql<any[]>`
-    insert into logements (conciergerie_id, nom, ville, channex_property_id)
-    values (${conciergerieId}, ${nom}, ${ville}, ${channexPropertyId})
+    insert into logements (conciergerie_id, nom, ville, repull_listing_id)
+    values (${conciergerieId}, ${nom}, ${ville}, ${repullListingId})
     returning *`;
   return versLogement(r);
 }
@@ -287,8 +269,7 @@ export async function majLogement(
   const colonnes: Record<string, string> = {
     airbnbConnecte: 'airbnb_connecte',
     bookingConnecte: 'booking_connecte',
-    channexRoomTypeId: 'channex_room_type_id',
-    channexRatePlanId: 'channex_rate_plan_id',
+    repullListingId: 'repull_listing_id',
     cleBoite: 'cle_boite',
     wifiNom: 'wifi_nom',
     wifiCode: 'wifi_code',
@@ -308,9 +289,7 @@ const versLogement = (r: any): Logement => ({
   conciergerieId: r.conciergerie_id,
   nom: r.nom,
   ville: r.ville,
-  channexPropertyId: r.channex_property_id,
-  channexRoomTypeId: r.channex_room_type_id,
-  channexRatePlanId: r.channex_rate_plan_id,
+  repullListingId: r.repull_listing_id,
   airbnbConnecte: r.airbnb_connecte,
   bookingConnecte: r.booking_connecte,
   cleBoite: r.cle_boite,
@@ -687,56 +666,169 @@ export async function estEditeur(chatId: string | number): Promise<boolean> {
 export type LienConnexion = {
   id: string;
   conciergerieId: string;
-  logementId: string;
   canal: 'airbnb' | 'booking';
-  channexCanalId: string | null;
+  /** Comptes déjà connectés chez Repull à l'ouverture du lien. null = pas encore ouvert. */
+  comptesAvant: string[] | null;
+  finalise: boolean;
 };
 
-export async function creerLien(
-  conciergerieId: string,
-  logementId: string,
-  canal: 'airbnb' | 'booking',
-  channexCanalId: string | null,
-): Promise<string> {
+export async function creerLien(conciergerieId: string, canal: 'airbnb' | 'booking'): Promise<string> {
   if (!sql) {
     const id = idMem();
-    mem.liens.set(id, { id, conciergerieId, logementId, canal, channexCanalId });
+    mem.liens.set(id, { id, conciergerieId, canal, comptesAvant: null, finalise: false, ouvertLe: null });
     return id;
   }
   const [r] = await sql<any[]>`
-    insert into liens_connexion (conciergerie_id, logement_id, canal, channex_canal_id)
-    values (${conciergerieId}, ${logementId}, ${canal}, ${channexCanalId})
+    insert into liens_connexion (conciergerie_id, canal)
+    values (${conciergerieId}, ${canal})
     returning id`;
   return r.id;
 }
 
+/** Lit un lien encore valable et note sa première ouverture. */
 export async function lienConnexion(id: string): Promise<LienConnexion | null> {
-  if (!sql) return mem.liens.get(id) ?? null;
+  if (!sql) {
+    const l = mem.liens.get(id);
+    if (l && l.ouvertLe == null) l.ouvertLe = Date.now();
+    return l ?? null;
+  }
   const [r] = await sql<any[]>`
     update liens_connexion set ouvert_le = coalesce(ouvert_le, now())
     where id = ${id} and expire_le > now()
-    returning id, conciergerie_id, logement_id, canal, channex_canal_id`;
+    returning id, conciergerie_id, canal, comptes_avant, finalise_le`;
   return r
     ? {
         id: r.id,
         conciergerieId: r.conciergerie_id,
-        logementId: r.logement_id,
         canal: r.canal,
-        channexCanalId: r.channex_canal_id,
+        comptesAvant: r.comptes_avant ?? null,
+        finalise: r.finalise_le != null,
       }
     : null;
+}
+
+/** Photographie des comptes déjà connus, prise au départ vers Repull. */
+export async function noterComptesAvant(id: string, comptes: string[]): Promise<void> {
+  if (!sql) {
+    const l = mem.liens.get(id);
+    if (l) l.comptesAvant = comptes;
+    return;
+  }
+  await sql`update liens_connexion set comptes_avant = ${sql.json(comptes)} where id = ${id}`;
+}
+
+export async function finaliserLien(id: string): Promise<void> {
+  if (!sql) {
+    const l = mem.liens.get(id);
+    if (l) l.finalise = true;
+    return;
+  }
+  await sql`update liens_connexion set finalise_le = now() where id = ${id}`;
+}
+
+/**
+ * Autres liens du même canal, partis vers Repull et pas encore finalisés, dans
+ * les dernières 24 heures. S'il y en a, un nouveau compte apparu chez Repull peut
+ * appartenir à une autre conciergerie : on ne l'attribue pas à l'aveugle.
+ */
+export async function autresLiensEnCours(id: string, canal: 'airbnb' | 'booking'): Promise<number> {
+  if (!sql) {
+    const limite = Date.now() - 24 * 3600_000;
+    return [...mem.liens.values()].filter(
+      (l) =>
+        l.id !== id && l.canal === canal && !l.finalise && l.comptesAvant != null && (l.ouvertLe ?? 0) > limite,
+    ).length;
+  }
+  const [r] = await sql<any[]>`
+    select count(*)::int as n from liens_connexion
+    where id <> ${id} and canal = ${canal} and finalise_le is null
+      and comptes_avant is not null and ouvert_le > now() - interval '24 hours'`;
+  return r?.n ?? 0;
+}
+
+/** Liens de la conciergerie partis vers Repull et dont le retour n'a pas abouti. */
+export async function liensEnCoursDe(conciergerieId: string): Promise<LienConnexion[]> {
+  if (!sql) {
+    return [...mem.liens.values()].filter(
+      (l) => l.conciergerieId === conciergerieId && !l.finalise && l.comptesAvant != null,
+    );
+  }
+  const rs = await sql<any[]>`
+    select id, conciergerie_id, canal, comptes_avant, finalise_le from liens_connexion
+    where conciergerie_id = ${conciergerieId} and finalise_le is null
+      and comptes_avant is not null and expire_le > now()
+    order by ouvert_le`;
+  return rs.map((r) => ({
+    id: r.id,
+    conciergerieId: r.conciergerie_id,
+    canal: r.canal,
+    comptesAvant: r.comptes_avant,
+    finalise: false,
+  }));
+}
+
+// --- Comptes de plateformes : le cloisonnement entre conciergeries ---
+
+/**
+ * Rattache un compte Airbnb (hôte) ou Booking (établissement) à une
+ * conciergerie. Un compte déjà rattaché ne change JAMAIS de mains : on rend
+ * alors son propriétaire actuel, que l'appelant compare au sien.
+ */
+export async function attribuerCompte(
+  canal: 'airbnb' | 'booking',
+  compteId: string,
+  conciergerieId: string,
+): Promise<string> {
+  const cle = `${canal}:${compteId}`;
+  if (!sql) {
+    if (!mem.comptes.has(cle)) mem.comptes.set(cle, conciergerieId);
+    return mem.comptes.get(cle)!;
+  }
+  await sql`
+    insert into comptes_plateformes (canal, compte_id, conciergerie_id)
+    values (${canal}, ${compteId}, ${conciergerieId})
+    on conflict (canal, compte_id) do nothing`;
+  const [r] = await sql<any[]>`
+    select conciergerie_id from comptes_plateformes where canal = ${canal} and compte_id = ${compteId}`;
+  return r.conciergerie_id;
+}
+
+export async function comptesDe(
+  conciergerieId: string,
+): Promise<Array<{ canal: 'airbnb' | 'booking'; compteId: string }>> {
+  if (!sql) {
+    return [...mem.comptes.entries()]
+      .filter(([, id]) => id === conciergerieId)
+      .map(([cle]) => {
+        const [canal, ...reste] = cle.split(':');
+        return { canal: canal as 'airbnb' | 'booking', compteId: reste.join(':') };
+      });
+  }
+  const rs = await sql<any[]>`
+    select canal, compte_id from comptes_plateformes where conciergerie_id = ${conciergerieId}`;
+  return rs.map((r) => ({ canal: r.canal, compteId: r.compte_id }));
+}
+
+/** Tous les comptes déjà rattachés, toutes conciergeries confondues. */
+export async function comptesAttribues(canal: 'airbnb' | 'booking'): Promise<Map<string, string>> {
+  if (!sql) {
+    const m = new Map<string, string>();
+    for (const [cle, id] of mem.comptes) if (cle.startsWith(`${canal}:`)) m.set(cle.slice(canal.length + 1), id);
+    return m;
+  }
+  const rs = await sql<any[]>`select compte_id, conciergerie_id from comptes_plateformes where canal = ${canal}`;
+  return new Map(rs.map((r) => [r.compte_id as string, r.conciergerie_id as string]));
 }
 
 export async function conciergerieParId(id: string): Promise<Conciergerie | null> {
   if (!sql) return mem.conciergeries.get(id) ?? null;
   const [r] = await sql<any[]>`
-    select id, nom, channex_group_id, style_profil, style_exemples
+    select id, nom, style_profil, style_exemples
     from conciergeries where id = ${id}`;
   return r
     ? {
         id: r.id,
         nom: r.nom,
-        channexGroupId: r.channex_group_id,
         styleProfil: r.style_profil,
         styleExemples: r.style_exemples ?? [],
       }
@@ -749,44 +841,69 @@ export async function logementParId(id: string): Promise<Logement | null> {
   return r ? versLogement(r) : null;
 }
 
-/** Retrouve le logement (et sa conciergerie) à partir d'un property_id Channex.
- *  Le flux de réservations ne dit pas à qui appartient la propriété : c'est
+/** Retrouve le logement (et sa conciergerie) à partir d'une annonce Repull.
+ *  Repull ne sait pas à quelle conciergerie appartient une annonce : c'est
  *  notre base qui le sait. */
-export async function logementParChannexId(
-  proprieteId: string,
+export async function logementParRepullId(
+  annonceId: string,
 ): Promise<{ logement: Logement; conciergerie: Conciergerie } | null> {
   if (!sql) {
-    const l = mem.logements.find((x) => x.channexPropertyId === proprieteId);
+    const l = mem.logements.find((x) => x.repullListingId === annonceId);
     const c = l ? mem.conciergeries.get(l.conciergerieId) : null;
     return l && c ? { logement: l, conciergerie: c } : null;
   }
   const [r] = await sql<any[]>`
-    select l.*, c.nom as c_nom, c.channex_group_id as c_group,
+    select l.*, c.nom as c_nom,
            c.style_profil as c_style, c.style_exemples as c_exemples
     from logements l join conciergeries c on c.id = l.conciergerie_id
-    where l.channex_property_id = ${proprieteId} limit 1`;
+    where l.repull_listing_id = ${annonceId} limit 1`;
   if (!r) return null;
   return {
     logement: versLogement(r),
     conciergerie: {
       id: r.conciergerie_id,
       nom: r.c_nom,
-      channexGroupId: r.c_group,
       styleProfil: r.c_style,
       styleExemples: r.c_exemples ?? [],
     },
   };
 }
 
-/** Une révision déjà acquittée ne doit pas être renotifiée. */
-export async function reservationDejaVue(revisionId: string): Promise<boolean> {
-  if (!sql) return false;
-  const [r] = await sql<any[]>`select 1 from reservations_acquittees where revision_id = ${revisionId}`;
+// --- Réservations déjà vues ---
+//
+// Clé : `<id Repull>@<updatedAt>` — une version précise de la réservation.
+// Le webhook et le rattrapage calculent la même clé : une modification vue
+// par l'un n'est pas renotifiée par l'autre.
+
+export type ReservationVue = {
+  statut: string;
+  arrivee: string | null;
+  depart: string | null;
+};
+
+export async function reservationDejaVue(cle: string): Promise<boolean> {
+  if (!sql) return mem.reservationsVues.has(cle);
+  const [r] = await sql<any[]>`select 1 from reservations_acquittees where revision_id = ${cle}`;
   return Boolean(r);
 }
 
+/** Dernier état notifié d'une réservation, pour ne signaler que ce qui a bougé. */
+export async function derniereVueReservation(bookingId: string): Promise<ReservationVue | null> {
+  if (!sql) {
+    let derniere: ReservationVue | null = null;
+    for (const v of mem.reservationsVues.values()) if (v.bookingId === bookingId) derniere = v;
+    return derniere;
+  }
+  const [r] = await sql<any[]>`
+    select statut, arrivee::text as arrivee, depart::text as depart
+    from reservations_acquittees
+    where booking_id = ${bookingId}
+    order by acquittee_le desc limit 1`;
+  return r ? { statut: r.statut ?? '', arrivee: r.arrivee, depart: r.depart } : null;
+}
+
 export async function marquerReservationVue(r: {
-  revisionId: string;
+  cle: string;
   bookingId: string | null;
   conciergerieId: string | null;
   logementId: string | null;
@@ -794,11 +911,14 @@ export async function marquerReservationVue(r: {
   arrivee: string | null;
   depart: string | null;
 }): Promise<void> {
-  if (!sql) return;
+  if (!sql) {
+    mem.reservationsVues.set(r.cle, { bookingId: r.bookingId, statut: r.statut, arrivee: r.arrivee, depart: r.depart });
+    return;
+  }
   await sql`
     insert into reservations_acquittees
       (revision_id, booking_id, conciergerie_id, logement_id, statut, arrivee, depart)
-    values (${r.revisionId}, ${r.bookingId}, ${r.conciergerieId}, ${r.logementId},
+    values (${r.cle}, ${r.bookingId}, ${r.conciergerieId}, ${r.logementId},
             ${r.statut}, ${r.arrivee}, ${r.depart})
     on conflict (revision_id) do nothing`;
 }
@@ -923,7 +1043,7 @@ export async function toutesConciergeries(): Promise<Array<Conciergerie & { chat
     }));
   }
   const rs = await sql<any[]>`
-    select c.id, c.nom, c.channex_group_id, c.style_profil, c.style_exemples,
+    select c.id, c.nom, c.style_profil, c.style_exemples,
            coalesce(array_agg(m.chat_id) filter (where m.role = 'proprietaire'), '{}') as chat_ids
     from conciergeries c
     left join membres m on m.conciergerie_id = c.id
@@ -932,7 +1052,6 @@ export async function toutesConciergeries(): Promise<Array<Conciergerie & { chat
   return rs.map((r) => ({
     id: r.id,
     nom: r.nom,
-    channexGroupId: r.channex_group_id,
     styleProfil: r.style_profil,
     styleExemples: r.style_exemples ?? [],
     chatIds: r.chat_ids ?? [],

@@ -1,20 +1,24 @@
 -- Cadence des tâches planifiées, côté Supabase.
 --
 -- Pourquoi ici et pas sur Vercel : l'offre Hobby ne permet qu'un déclenchement
--- par jour, alors que les messages voyageurs demandent une vérification toutes
--- les deux minutes — Channex n'expose aucun webhook dessus.
+-- par jour, alors que les filets de rattrapage doivent tourner plusieurs fois
+-- par heure.
+--
+-- Les messages voyageurs et les réservations arrivent en temps réel par le
+-- webhook Repull (/api/repull-webhook). Les tâches ci-dessous ne sont que des
+-- filets : un webhook perdu ne doit pas rester sans réponse. Leur cadence est
+-- modérée parce que chaque appel compte dans le quota mensuel Repull.
 --
 -- Remplacer AGENT_URL et CRON_SECRET avant d'exécuter.
 
 create extension if not exists pg_cron;
 create extension if not exists pg_net;
 
--- Messages voyageurs : toutes les 2 minutes.
--- C'est le seul travail qui tourne en continu, donc le seul dont le coût
--- augmente avec le nombre de conciergeries.
+-- Messages voyageurs : rattrapage toutes les 10 minutes.
+-- Seuls les fils actifs depuis moins de trois jours sont relus.
 select cron.schedule(
   'agent-messages-voyageurs',
-  '*/2 * * * *',
+  '*/10 * * * *',
   $$
   select net.http_post(
     url := 'AGENT_URL/api/cron?tache=messages',
@@ -65,9 +69,9 @@ select cron.schedule(
   $$
 );
 
--- Rattrapage du flux de réservations : toutes les 15 minutes.
--- Channex l'EXIGE en complément du webhook, même quand celui-ci fonctionne :
--- un webhook perdu est une réservation manquée, donc un surbooking.
+-- Rattrapage des réservations : toutes les 15 minutes. Relit ce qui a changé
+-- chez Repull depuis 35 minutes ; ce que le webhook a déjà signalé n'est pas
+-- renotifié.
 select cron.schedule(
   'agent-reservations',
   '*/15 * * * *',

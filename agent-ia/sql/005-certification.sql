@@ -1,16 +1,9 @@
--- Éléments exigés par la certification Channex.
+-- Réservations déjà vues et notifiées.
 --
--- Une propriété seule ne suffit pas : il faut un type de chambre et un plan
--- tarifaire pour pouvoir pousser disponibilités, prix et restrictions. C'est
--- ce qui manquait, et c'est pourquoi le blocage de calendrier échouait sur
--- « aucun type de chambre configuré ».
-
-alter table logements add column if not exists channex_room_type_id text;
-alter table logements add column if not exists channex_rate_plan_id text;
-
--- Réservations déjà acquittées auprès de Channex. L'acquittement est
--- OBLIGATOIRE : sans lui, Channex renvoie indéfiniment la même réservation
--- dans le flux.
+-- Le nom de la table date de l'ancien gestionnaire de canaux, qui exigeait un
+-- acquittement. Avec Repull, `revision_id` porte la clé `<id>@<updatedAt>` :
+-- une version précise de la réservation, commune au webhook et au rattrapage,
+-- pour qu'aucune alerte ne parte deux fois.
 create table if not exists reservations_acquittees (
   revision_id     text primary key,
   booking_id      text,

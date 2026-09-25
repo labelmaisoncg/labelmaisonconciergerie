@@ -10,6 +10,14 @@
   },
   "rewrites": [
     {
+      "source": "/connexion/:id/aller",
+      "destination": "/api/connexion?l=:id&etape=aller"
+    },
+    {
+      "source": "/connexion/:id/retour",
+      "destination": "/api/connexion?l=:id&etape=retour"
+    },
+    {
       "source": "/connexion/:id",
       "destination": "/api/connexion?l=:id"
     }

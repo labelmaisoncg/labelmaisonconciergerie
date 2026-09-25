@@ -10,9 +10,7 @@
     "chat-id": "node scripts/get-chat-id.mjs",
     "set-webhook": "node scripts/set-webhook.mjs",
     "webhook-info": "node scripts/set-webhook.mjs --info",
-    "typecheck": "tsc --noEmit",
-    "basculer": "node --env-file=.env.local scripts/basculer-production.mjs",
-    "verifier-certification": "node --env-file=.env.local ./node_modules/.bin/tsx scripts/verifier-certification.ts"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.120.0",

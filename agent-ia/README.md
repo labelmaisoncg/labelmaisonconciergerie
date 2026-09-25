@@ -10,10 +10,15 @@ au 7 », « qui arrive ce week-end ? ».
 Maison, dans le prolongement de la marque-réseau.
 
 Statut : **étapes 1 à 5 codées** (squelette Telegram, persistance Postgres
-multi-tenant, onboarding Channex, outils d'exploitation, webhook + flux de
-réservations + crons, messagerie voyageur) ; actions calendrier et tarifs de
+multi-tenant, onboarding via Repull Connect, outils d'exploitation, webhook
+Repull + rattrapage des réservations + crons, messagerie voyageur) ; actions calendrier et tarifs de
 l'étape 6 codées avec confirmation par bouton, connecteur WhatsApp non commencé.
-Reste à brancher en réel : cf. section 15. Cadrage produit ci-dessous.
+Reste à brancher en réel : cf. sections 3 et 15. Cadrage produit ci-dessous.
+
+Les données des plateformes (annonces, réservations, calendriers, messages
+voyageurs) passent par **[Repull](https://repull.dev)**, une API unifiée
+Airbnb, Booking.com, VRBO, Plumguide et 50+ PMS. Repull remplace l'ancien
+gestionnaire de canaux depuis le 25 septembre 2026.
 
 ---
 
@@ -22,16 +27,16 @@ Reste à brancher en réel : cf. section 15. Cadrage produit ci-dessous.
 ```
         TOI — l'éditeur                    ELLES — les conciergeries clientes
         ──────────────────                 ──────────────────────────────────
-        1 compte Channex                   0 compte Channex
+        1 espace Repull (1 clé API)        0 compte Repull
         1 bot Telegram                     leur propre compte Airbnb / Booking
         1 clé Anthropic                    un fil Telegram avec le bot
         la facture d'infrastructure        un abonnement chez toi
 ```
 
-Le point de bascule du modèle : **tes clientes n'ont aucun compte Channex à
+Le point de bascule du modèle : **tes clientes n'ont aucun compte Repull à
 créer**. Elles autorisent Airbnb depuis un lien que le bot leur envoie, et c'est
-tout. Channex reste invisible — c'est exactement ce pour quoi son offre
-white-label est conçue.
+tout. Repull reste en coulisse : ses pages de connexion hébergées sont faites
+pour être ouvertes par les clients d'un éditeur.
 
 ---
 
@@ -45,18 +50,14 @@ annonces et les réservations — l'entretien se réduit à confirmer et à comb
 les trous.
 
 ```
-Bot   Bonjour. Je vais devenir votre assistant. Comment s'appelle
-      votre conciergerie ?
-Elle  Conciergerie du Lac
-Bot   Avant tout, connectons vos comptes. Airbnb d'abord — ce lien
-      est valable 15 minutes :
-      https://secure.channex.io/auth/exchange?...
+Bot   Bonjour. Je vais devenir votre assistant. Connectons d'abord
+      votre compte Airbnb :
+      https://<agent-ia>/connexion/7f3c…
 Elle  [clique, autorise Airbnb, revient]
-Bot   Connecté. Je vois 4 annonces :
+Bot   Connecté. J'ai récupéré 4 annonces :
       · Studio des Halles 32m²  · T2 Gare
       · Maison Vieux Port       · Loft Sens
-      Je les reprends telles quelles ?     [✅ Oui]  [Renommer]
-Elle  [✅]
+      Comment s'appelle votre conciergerie ?
 Bot   Fait. Booking maintenant : sa validation prend plusieurs jours,
       autant la lancer tout de suite.      [Lancer la demande]
 ...
@@ -76,48 +77,79 @@ trou.
 - **Une conversation d'onboarding s'étale sur plusieurs jours.** Elle démarre le
   lundi, s'interrompt, reprend le jeudi. Elle doit être **reprenable** : le bot
   sait où il en est, ce qui manque, et relance. D'où la persistance dès l'étape 1.
-- **Le jeton Channex ne vit que 15 minutes.** Si elle clique deux jours plus tard,
-  le lien est mort. Le bot doit détecter l'échec et en régénérer un.
+- **Le lien doit survivre à l'attente.** Le bot envoie un lien vers NOTRE page,
+  valable 7 jours ; la session Repull Connect n'est fabriquée qu'au clic. Un
+  lien reçu lundi et ouvert jeudi fonctionne encore.
 - **Rien ne garantit qu'elle répond dans l'ordre.** « en fait le code c'est
   plutôt 4589 » trois messages plus tard doit corriger la bonne fiche. C'est
   précisément ce qu'un agent fait bien et qu'un formulaire fait mal.
 
 ---
 
-## 3. Comment une cliente connecte son Airbnb
+## 3. Repull : mise en place et connexion des comptes
 
-Le mécanisme confirmé dans la doc Channex, et il est fait pour du chat.
+### Ce que les propriétaires du service font une fois, dans le tableau de bord Repull
+
+1. **Créer la clé API** sur <https://repull.dev/dashboard> (format
+   `sk_live_xxx`). La poser dans Vercel, variable `REPULL_API_KEY`
+   (Settings → Environment Variables, environnement Production). Jamais dans
+   le code, jamais dans git.
+2. **Créer l'abonnement webhook** (tableau de bord → Webhooks, ou
+   `POST /v1/webhooks`) vers `https://<domaine-agent-ia>/api/repull-webhook`,
+   avec les événements :
+   `reservation.created`, `reservation.updated`, `reservation.cancelled`,
+   `reservation.message.received`, `listing.created`.
+   Repull rend le **secret de signature une seule fois** (`whsec_xxx`) : le
+   poser aussitôt dans Vercel, variable `REPULL_WEBHOOK_SECRET`. Perdu ? le
+   régénérer (`rotate-secret`) et remettre la variable à jour.
+3. **Vérifier** avec « Send ping event » depuis le tableau de bord : la
+   livraison doit répondre 200. Un 401 = secret faux ou horloge décalée.
+4. **`APP_URL`** dans Vercel : l'URL publique de l'agent. Elle sert aux liens
+   envoyés aux conciergeries et au retour de Repull Connect.
+5. **Base** : exécuter `sql/006-repull.sql` une fois (après 005), puis
+   rejouer `sql/cron.sql` pour les nouvelles cadences.
+
+### Comment une conciergerie connecte son Airbnb ou son Booking
 
 ```
-1. POST /api/v1/auth/one_time_token
-      { property_id, group_id, username }   →  jeton, valable 15 min
+1. Le bot appelle connecter_compte → une ligne liens_connexion, et le lien
+   https://<agent-ia>/connexion/<id>, valable 7 jours.
 
-2. Le bot envoie ce lien dans la conversation :
-   https://secure.channex.io/auth/exchange
-      ?oauth_session_key=<jeton>
-      &app_mode=headless
-      &redirect_to=/channels
-      &property_id=<id>
-      &channels=ABB          ← ABB = Airbnb, filtre l'écran
+2. Elle ouvre la page (la nôtre) et clique « Connecter mon compte Airbnb ».
+   /connexion/<id>/aller : on photographie les comptes déjà connus
+   (GET /v1/connect/airbnb, ou /v1/channels/booking/properties), puis
+   POST /v1/connect/airbnb { redirectUrl, locale: fr }
+   → redirection vers la page hébergée par Repull.
 
-3. Elle clique depuis son téléphone. Elle arrive déjà authentifiée chez
-   Channex — sans compte Channex — sur l'écran de connexion Airbnb.
-   Elle autorise avec SES identifiants Airbnb.
+3. Elle autorise avec SES identifiants Airbnb (ou, pour Booking.com, désigne
+   le fournisseur de connectivité dans son extranet et saisit l'identifiant
+   de l'établissement). Aucun compte Repull.
 
-4. Le bot interroge GET /api/v1/channels et confirme que le canal est monté,
-   puis fait mapper les annonces aux logements par boutons.
+4. Repull la renvoie sur /connexion/<id>/retour. Le compte apparu depuis la
+   photographie lui est attribué (table comptes_plateformes), et ses annonces
+   deviennent des logements (GET /v1/channels/airbnb/listings?account_id=…).
 ```
 
-Aucune interface web à développer. Le produit tient entièrement dans la
-conversation.
+**Cloisonnement.** Repull ne connaît qu'un espace, le nôtre : les annonces de
+toutes les conciergeries y cohabitent. C'est notre base qui sait quel compte
+appartient à qui. Un compte n'est attribué automatiquement que si c'est le
+SEUL nouveau et que personne d'autre n'est en train de connecter le même
+canal ; sinon, rien n'est attribué et `comptes_connectes` retente plus tard.
+Mieux vaut un « vérification en cours » qu'une conciergerie qui verrait les
+voyageurs d'une autre.
 
-Booking.com suit le même principe côté Channex, mais la validation en tant que
-fournisseur de connectivité se compte en jours côté Booking : à lancer tôt dans
-l'onboarding de chaque cliente.
+Une annonce est rattachée au logement du même nom s'il existe (sa fiche est
+conservée), sinon un logement est créé. Les annonces arrivées plus tard sur un
+compte déjà rattaché sont importées par le webhook `listing.created` et par la
+tâche de santé quotidienne.
 
-Références : [Channel IFrame](https://docs.channex.io/api-v.1-documentation/channel-iframe) ·
-[Groups](https://docs.channex.io/api-v.1-documentation/groups-collection) ·
-[connexion Airbnb](https://help.channex.io/en/articles/8225359-how-to-connect-with-airbnb)
+**Booking.com** : la validation côté Booking peut prendre du temps. Tant
+qu'elle n'a pas abouti, la page de retour affiche « pas encore abouti » et
+`comptes_connectes` finalise dès que le compte apparaît.
+
+Références : [API Repull](https://repull.dev/docs) ·
+[signature des webhooks](https://repull.dev/docs/verify-webhook-signatures) ·
+[tarifs](https://repull.dev/pricing)
 
 ---
 
@@ -136,22 +168,22 @@ Références : [Channel IFrame](https://docs.channex.io/api-v.1-documentation/ch
                         ├─ 1. secret vérifié
                         ├─ 2. chat_id → conciergerie (sinon : rejet)
                         ├─ 3. historique + config de CETTE conciergerie
-                        ├─ 4. Claude, outils filtrés sur SON group_id
+                        ├─ 4. Claude, outils filtrés sur SES logements
                         └─ 5. réponse dans son fil
                         │
         ┌───────────────┴────────────────┐
         ▼                                ▼
-   Supabase (Postgres)            API Channex — 1 compte
-   conciergeries, logements,      ├─ group A ─ propriétés A ─ Airbnb A
-   ménages, conversations,        ├─ group B ─ propriétés B ─ Airbnb B
-   prestataires, onboarding       └─ group C ─ …
+   Supabase (Postgres)            API Repull — 1 espace
+   conciergeries, logements,      ├─ compte Airbnb A ─ annonces A
+   comptes_plateformes,           ├─ compte Airbnb B ─ annonces B
+   conversations, onboarding      └─ Booking C ─ …
 
-   Channex ──webhook──► /api/channex-webhook
-                              └─► route vers la bonne conciergerie
+   Repull ──webhook signé──► /api/repull-webhook
+                              └─► annonce → logement → conciergerie
                                   puis notifie son fil Telegram
 ```
 
-Un seul bot, un seul déploiement, un seul compte Channex. La séparation est
+Un seul bot, un seul déploiement, un seul espace Repull. La séparation est
 logique, jamais physique — ce qui déplace tout le risque sur l'isolation.
 
 ---
@@ -161,12 +193,15 @@ logique, jamais physique — ce qui déplace tout le risque sur l'isolation.
 Sur un produit multi-clients, la faute grave n'est pas la panne : c'est que la
 Conciergerie A voie le planning de la Conciergerie B. Trois règles, non négociables.
 
-1. **Aucun outil ne reçoit d'identifiant venant du modèle.** Le `group_id` et les
-   `property_id` sont injectés par le code, à partir du `chat_id` authentifié.
-   Si Claude pouvait passer un `property_id` en argument, une formulation habile
-   suffirait à lire les données d'une autre cliente.
-2. **Toute requête Channex est filtrée par `group_id`** au niveau du client API,
-   pas au niveau de l'appelant. Le filtre ne doit pas pouvoir être oublié.
+1. **Aucun outil ne reçoit d'identifiant venant du modèle.** Les identifiants
+   d'annonces Repull sont résolus par le code, à partir du `chat_id`
+   authentifié. Si Claude pouvait passer un identifiant d'annonce en argument,
+   une formulation habile suffirait à lire les données d'une autre cliente.
+2. **Toute lecture Repull part d'un logement de la conciergerie**
+   (`logements.repull_listing_id`), et tout événement entrant est rattaché par
+   notre base (annonce → logement → conciergerie), jamais par la charge utile.
+   Un compte de plateforme n'est attribué qu'à une seule conciergerie, et ne
+   change jamais de mains.
 3. **Row Level Security activée sur Supabase**, et chaque table métier porte une
    colonne `conciergerie_id`. Une requête sans filtre doit renvoyer zéro ligne,
    pas toutes les lignes.
@@ -178,16 +213,17 @@ des autres.
 
 ## 6. Les choix techniques, et pourquoi
 
-### Channex plutôt que les liens iCal
+### Repull plutôt que les liens iCal
 
-| | iCal Airbnb | **Channex** |
+| | iCal Airbnb | **Repull** |
 |---|---|---|
 | Nom et nombre de voyageurs | ❌ | ✅ |
-| Montant + commission OTA | ❌ | ✅ |
-| Temps réel | ❌ (1–3 h) | ✅ webhooks |
+| Montant | ❌ | ✅ |
+| Temps réel | ❌ (1–3 h) | ✅ webhooks signés |
 | Modifications / annulations | ❌ | ✅ |
-| Bloquer des dates, changer un tarif | ❌ | ✅ (push ARI) |
-| Onboarding délégué d'une cliente | ❌ | ✅ (lien one-time) |
+| Bloquer des dates, changer un tarif | ❌ | ✅ (`PUT /v1/availability`) |
+| Messages voyageurs | ❌ | ✅ (API unifiée + webhook) |
+| Onboarding délégué d'une cliente | ❌ | ✅ (Repull Connect) |
 
 La dernière ligne est décisive : sans elle, il n'y a pas de produit, seulement un
 outil interne.
@@ -251,8 +287,9 @@ message arrive, la fonction se réveille en ~200 ms, répond, s'éteint.
 | Route | Déclencheur | Usage |
 |---|---|---|
 | `/api/telegram` | une cliente écrit | questions, commandes, onboarding |
-| `/api/channex-webhook` | Channex | résa, annulation → alerte ciblée |
-| `/api/cron-matin` | Vercel Cron, 8 h | résumé du jour, pour chaque cliente |
+| `/api/repull-webhook` | Repull | résa, modification, annulation → alerte ciblée ; message voyageur → réponse |
+| `/api/connexion` | une cliente clique | page de connexion Airbnb / Booking, aller et retour Repull |
+| `/api/cron` | `pg_cron` Supabase | rattrapages, résumé de 8 h, santé des connexions, veille |
 
 **Points de vigilance :**
 
@@ -269,20 +306,25 @@ message arrive, la fonction se réveille en ~200 ms, répond, s'éteint.
 
 ## 8. Modèle de données (Supabase)
 
-Channex reste la source de vérité pour réservations et calendriers. Supabase
-porte le métier et le multi-tenant.
+Repull reste la source de vérité pour réservations, calendriers et messages.
+Supabase porte le métier et le multi-tenant.
 
 ```sql
-conciergeries    id, nom, channex_group_id, statut, abonnement, cree_le
+conciergeries    id, nom, style_profil, style_exemples, actif, cree_le
+comptes_plateformes  canal, compte_id, conciergerie_id
+                 -- quel compte Airbnb / Booking appartient à qui
 membres          id, conciergerie_id, chat_id_telegram, prenom, role
                  -- role : proprietaire | equipe | prestataire
 
-logements        id, conciergerie_id, nom, ville,
-                 channex_property_id, channex_room_type_id,
-                 adresse, cle_boite, wifi, consignes, actif
+logements        id, conciergerie_id, nom, ville, repull_listing_id,
+                 cle_boite, wifi, horaires, consignes, actif
+liens_connexion  id, conciergerie_id, canal, comptes_avant, ouvert_le,
+                 finalise_le, expire_le
+reservations_acquittees  revision_id (= <id Repull>@<updatedAt>), statut,
+                 arrivee, depart — ce qui a déjà été notifié
 prestataires     id, conciergerie_id, nom, telephone, logements[]
 menages          id, conciergerie_id, logement_id, date, heure,
-                 statut, prestataire_id, booking_ref_channex, notes
+                 statut, prestataire_id, booking_ref, notes
 
 onboarding       id, conciergerie_id, etape, attendu, donnees_partielles
                  -- permet de reprendre une configuration interrompue
@@ -302,13 +344,11 @@ qui empêche une requête mal écrite de traverser les cloisons.
 
 | Outil | Rôle |
 |---|---|
-| `creer_conciergerie(nom)` | crée le `group` Channex + la ligne Supabase |
-| `ajouter_logement(nom, ville)` | crée la `property` + `room_type` Channex |
-| `lien_connexion_airbnb(logement)` | jeton one-time → lien à envoyer |
-| `verifier_connexion(logement)` | le canal est-il monté ? quelles annonces ? |
-| `mapper_annonce(logement, annonce_id)` | associe l'annonce OTA au logement |
-| `enregistrer_infos(logement, champ, valeur)` | code, wifi, consignes |
-| `ajouter_prestataire(nom, telephone, logements)` | |
+| `connecter_compte(canal)` | lien vers notre page de connexion (Repull Connect au clic) |
+| `comptes_connectes()` | finalise les connexions en suspens, importe les annonces, état des canaux |
+| `nommer(...)` | vrai nom de la conciergerie ou d'un logement |
+| `ajouter_logement(nom, ville)` | logement local, sans annonce (fiche seule) |
+| `enregistrer_infos_logement(logement, ...)` | code, wifi, horaires, consignes |
 | `etat_configuration()` | ce qui est fait, ce qui manque |
 
 ### Exploitation — étape 2, lecture
@@ -329,7 +369,7 @@ qui empêche une requête mal écrite de traverser les cloisons.
 |---|---|
 | `bloquer_dates(logement, du, au, raison)` | « bloque Etigny du 3 au 7 » |
 | `debloquer_dates(...)` | |
-| `modifier_tarif(logement, du, au, prix)` | |
+| `modifier_tarifs(logement, plages)` | prix, séjour minimum, fermeture à la vente |
 | `assigner_menage(menage_id, prestataire)` | |
 | `prevenir_prestataire(prestataire, message)` | |
 | `noter_incident(logement, texte)` | |
@@ -352,35 +392,35 @@ récompense la vitesse de réponse dans son classement. Un agent qui répond en
 
 ### Le mécanisme
 
-Channex expose une API de messagerie unifiée sur **Airbnb, Booking.com et
-Expedia** — à ne pas confondre avec la synchronisation d'inventaire.
+Repull expose une messagerie unifiée sur **Airbnb, Booking.com, VRBO**, SMS
+et e-mail :
 
 ```
-GET  /api/v1/message_threads               les conversations
-GET  /api/v1/message_threads/:id/messages  l'historique d'un fil
-POST /api/v1/message_threads/:id/messages  répondre
-POST /api/v1/attachments                   pièce jointe (texte et images)
-POST /api/v1/message_threads/:id/close     clore un fil
+GET  /v1/conversations                  les fils (pagination par curseur)
+GET  /v1/conversations/{id}/messages    l'historique, du plus récent au plus ancien
+POST /v1/conversations/{id}/messages    répondre, sur le canal d'origine
+webhook reservation.message.received    un voyageur vient d'écrire
 ```
 
-Prérequis : installer l'app **Messaging & Reviews** dans Channex
-(Applications → Manage Apps).
+Chaque réponse part avec une clé d'idempotence liée au message auquel elle
+répond : même rejouée, elle n'arrive qu'une fois chez le voyageur. Quand
+Airbnb réécrit la réponse (lien, e-mail ou numéro retiré), Repull le signale
+(`contentRewritten`) et la copie au propriétaire montre le texte réellement
+livré.
 
 Cas particulier utile : les **inquiries Airbnb** créent un fil *sans réservation*.
 C'est un voyageur qui pose une question avant de réserver — donc une vente en
 jeu. À traiter en priorité, pas comme un message de service.
 
-### Deux contraintes qui coûtent
+### Temps réel, et un filet
 
-- **Aucun webhook documenté sur les nouveaux messages.** Il faut interroger
-  l'API en boucle, toutes les 1 à 2 minutes. Le cron Vercel Hobby (un
-  déclenchement par jour) est inutilisable ici : ce sera **Supabase `pg_cron`**
-  ou Vercel Pro. C'est aussi le seul composant du système qui tourne en
-  permanence, donc le seul dont le coût croît avec le nombre de clientes.
-- **Tarif à confirmer.** La grille Channex indique « mêmes tarifs que le
-  gestionnaire de canaux » pour le module Chat & Reviews. Si cela signifie un
-  second forfait de 130 $/mois, le socle fixe du produit double. **À vérifier
-  auprès de Channex avant de le vendre.**
+- **Le webhook déclenche la réponse** dès qu'un voyageur écrit.
+- **Un rattrapage** relit toutes les 10 minutes (`pg_cron`) les fils actifs
+  depuis moins de trois jours, pour le cas où une livraison se perdrait. La
+  prise en charge atomique (`store.reserverMessage`) empêche le webhook et le
+  cron de répondre deux fois au même message.
+- **Chaque appel compte dans le quota mensuel Repull** : d'où la cadence
+  modérée du rattrapage et le filtre de fraîcheur.
 
 ### Niveau d'autonomie retenu : complet
 
@@ -437,13 +477,15 @@ Conséquences sur la conception :
    réponse et est journalisé. Pas de whitelist statique : une table.
 2. **`secret_token` Telegram** vérifié à chaque requête, comparaison à temps
    constant.
-3. **Webhook Channex authentifié** par secret partagé — sinon on peut fabriquer
-   de fausses réservations.
+3. **Webhook Repull authentifié** : signature HMAC-SHA256 de `t.corps_brut`
+   vérifiée à temps constant avec `REPULL_WEBHOOK_SECRET`, horodatage de plus
+   de 5 minutes refusé (anti-rejeu). Sinon on peut fabriquer de fausses
+   réservations.
 4. **Identifiants jamais fournis par le modèle** (cf. section 5).
 5. **Rôles** : propriétaire = tout ; équipe = lecture + ménages ; prestataire =
    son seul planning.
 6. **Confirmation par bouton avant toute écriture**, journalisée dans
-   `actions_log`. Une écriture ARI part chez Airbnb en quelques secondes.
+   `actions_log`. Une écriture de calendrier part chez Airbnb en quelques secondes.
 7. **Secrets en variables d'environnement Vercel uniquement.** `.env.local` est
    ignoré par git — vérifié.
 8. **RGPD** : données de voyageurs (noms, dates, montants) hébergées en UE
@@ -457,8 +499,7 @@ Conséquences sur la conception :
 
 | Poste | Coût |
 |---|---|
-| Channex, frais de plateforme | 130 $/mois |
-| Channex, module Chat & Reviews | **à confirmer** — « mêmes tarifs », donc potentiellement +130 $/mois |
+| Repull | **gratuit** jusqu'à 3 annonces et 1 000 appels/mois ; au-delà, formule payante — voir [repull.dev/pricing](https://repull.dev/pricing) |
 | Vercel Hobby | 0 € |
 | Supabase Free | 0 € |
 | Telegram | 0 € |
@@ -467,13 +508,15 @@ Conséquences sur la conception :
 
 | Poste | Coût |
 |---|---|
-| Channex, par unité (courte durée) | 0,50 $/mois |
 | Claude + Whisper, usage quotidien | ~5–10 €/mois |
 
-Soit de l'ordre de **10 à 15 € par cliente et par mois**, au-dessus d'un socle
-fixe d'environ 120 €. Le modèle ne devient viable qu'à partir de quelques
-clientes — c'est la caractéristique d'une offre white-label, et c'est aussi ce
-qui la rend défendable une fois le seuil passé.
+La formule gratuite de Repull suffit pour développer et tester sur trois
+annonces. En production, avec plusieurs conciergeries, les webhooks et le
+volume d'appels des rattrapages, il faut une formule payante : vérifier sur
+[repull.dev/pricing](https://repull.dev/pricing) avant de fixer un prix de
+revente. Au-delà du plafond d'annonces actives, Repull répond `402
+listings_limit_exceeded` et les annonces en trop restent inactives (ni
+lecture, ni webhook).
 
 Le tarif de revente est ta décision ; ces chiffres ne servent qu'à situer le
 plancher. Le contrôle des coûts est déjà en place côté modèle : compteur de
@@ -489,16 +532,17 @@ l'historique est renvoyé à chaque message. Le 20ᵉ message coûte bien plus q
 
 ## 12. Limites connues
 
-- **Messagerie voyageur : pas de webhook.** Il faut interroger l'API en boucle
-  (cf. 9 bis) — d'où une dépendance à `pg_cron` et un coût qui croît avec le
-  nombre de clientes. Le tarif du module Chat & Reviews reste à confirmer.
-- **Propagation ARI** : instantanée vers Channex, quelques secondes à quelques
-  minutes vers l'OTA. Risque résiduel de surbooking sur une résa simultanée.
-- **Jeton d'onboarding : 15 minutes.** À régénérer si la cliente tarde.
-- **Booking.com** : validation en tant que fournisseur de connectivité, plusieurs
-  jours, à lancer tôt pour chaque cliente.
-- **Compte Channex actuel : staging, et vide.** 0 propriété, 0 canal. Parfait
-  pour développer gratuitement, incapable de voir de vraies annonces Airbnb.
+- **Propagation des calendriers** : Repull écrit et pousse vers les plateformes
+  dans la foulée ; un refus d'une plateforme est remonté en avertissement.
+  Risque résiduel de surbooking sur une résa simultanée.
+- **Pas d'interdiction d'arrivée ou de départ** : le calendrier unifié de
+  Repull ne porte que disponibilité, prix et durées de séjour.
+- **Attribution des comptes** : suspendue si plusieurs conciergeries
+  connectent le même canal au même moment (cf. section 3) ; un lien abandonné
+  bloque l'attribution automatique du même canal pendant 24 h.
+- **Booking.com** : validation par Booking, parfois longue, à lancer tôt.
+- **Quotas Repull** : plafond d'annonces actives et d'appels par mois selon
+  la formule.
 
 ---
 
@@ -507,7 +551,12 @@ l'historique est renvoyé à chaque message. Le 20ᵉ message coûte bien plus q
 ```
 agent-ia/
 ├── api/telegram.ts        webhook : secret, identification, ack, waitUntil
+├── api/repull-webhook.ts  webhook Repull : signature, réservations, messages
+├── api/connexion.ts       page de connexion Airbnb / Booking (Repull Connect)
+├── api/cron.ts            rattrapages, résumé du matin, santé, veille
 ├── src/
+│   ├── repull.ts          client de l'API Repull
+│   ├── comptes.ts         attribution des comptes, import des annonces
 │   ├── config.ts          env + garde-fous
 │   ├── telegram.ts        sendMessage, typing, getFile, découpe 4096
 │   ├── agent.ts           boucle « tool use » Claude, écrite à la main
@@ -574,24 +623,24 @@ Supabase, tables `conciergeries` / `membres`, Row Level Security, résolution
 `chat_id` → conciergerie, mémoire de conversation.
 
 **Étape 2 — L'onboarding conversationnel** ✅ *codée* (`src/tools/onboarding.ts`, `api/connexion.ts`)
-Client API Channex sur le staging, les 8 outils d'onboarding, génération du lien
-Airbnb, mapping par boutons, reprise d'une configuration interrompue.
+Client Repull, connexion par Repull Connect, import automatique des annonces,
+reprise d'une configuration interrompue.
 
-**Étape 3 — L'exploitation** ✅ *codée* (`src/tools/exploitation.ts`) — production Channex à ouvrir
-Les 7 outils de lecture sur données Channex réelles. Passage en production.
+**Étape 3 — L'exploitation** ✅ *codée* (`src/tools/exploitation.ts`)
+Les outils de lecture sur les données Repull.
 
-**Étape 4 — Le proactif** ✅ *codée* (`api/channex-webhook.ts`, `src/reservations.ts`, `api/cron.ts`)
-Webhooks Channex, création automatique des ménages, alertes annulation, résumé
-de 8 h.
+**Étape 4 — Le proactif** ✅ *codée* (`api/repull-webhook.ts`, `src/reservations.ts`, `api/cron.ts`)
+Webhooks Repull signés, alertes nouvelle résa / modification / annulation,
+rattrapage toutes les 15 min, résumé de 8 h.
 
 **Étape 5 — La messagerie voyageur** (cf. 9 bis) ✅ *codée* (`src/messagerie.ts`)
-App Messaging & Reviews, boucle d'interrogation via `pg_cron`, réponse autonome
+Webhook de message voyageur + rattrapage via `pg_cron`, réponse autonome
 multilingue adossée à la fiche logement, copie au propriétaire, escalade sur
 tout ce qui engage de l'argent. **Prérequis : une fiche logement complète par
 logement** — c'est elle qui empêche l'agent d'inventer.
 
-**Étape 6 — Les actions sur les calendriers** — ARI et tarifs codés (`src/tools/actions.ts`, `src/tools/tarifs.ts`), WhatsApp à faire
-Push ARI avec confirmation par bouton. Connecteur WhatsApp pour les prestataires.
+**Étape 6 — Les actions sur les calendriers** — blocages et tarifs codés (`src/tools/actions.ts`, `src/tools/tarifs.ts`), WhatsApp à faire
+Écriture des calendriers avec confirmation par bouton. Connecteur WhatsApp pour les prestataires.
 
 ---
 
@@ -602,28 +651,28 @@ Push ARI avec confirmation par bouton. Connecteur WhatsApp pour les prestataires
 | Token bot Telegram | ✅ en place |
 | `chat_id` propriétaire | ✅ 5333006287, envoi vérifié |
 | Secret du webhook | ✅ généré |
-| Clé API Channex | ✅ staging (production à décider) |
+| Clé API Repull (`REPULL_API_KEY`) | ❌ à créer sur repull.dev/dashboard (cf. section 3) |
+| Abonnement webhook Repull (`REPULL_WEBHOOK_SECRET`) | ❌ à créer (cf. section 3) |
 | Clé API Anthropic | ✅ `agent-telegram-prod`, workspace dédié `Agent IA Conciergerie` (`wrkspc_01MPUNtqDN7WmNtfoY83Mg4V`), plafond 50 $/mois, alerte à 25 $, sans expiration — authentification vérifiée |
 | **Crédits Anthropic** | ❌ **solde à 0 $ — bloque l'étape 1** |
 | Clé API OpenAI (vocaux) | ❌ optionnelle |
 | Projet Supabase | ❌ bloque l'étape 1 bis |
-| Compte Channex production | ❌ bloque l'étape 3 |
+| Migration `sql/006-repull.sql` | ❌ à exécuter |
 
 Le code des étapes 2 à 5 est écrit et typé (`npm run typecheck` passe) ; ce
 qui manque ci-dessus relève des accès et de la mise en service, pas du
-développement. À valider sur le staging Channex avant production : les noms
-de champs du webhook de réservation et des fils de messages (cf. corrections
-ci-dessous).
+développement. À valider sur un premier compte réel : le parcours Repull
+Connect de bout en bout (retour, attribution du compte, import des annonces)
+et les événements de test du webhook.
 
 ---
 
 ## 16. Corrections du 24 septembre 2026
 
-1. **Ordre des messages voyageurs.** `messagesDuFil` demandait les messages
-   sans paramètre : Channex rend alors 10 messages, du plus RÉCENT au plus
-   ancien, et l'agent prenait le plus ancien pour le dernier. Désormais
-   `order[inserted_at]=desc`, `pagination[limit]=30`, puis remise en ordre
-   chronologique (tri de sécurité). Auteur : `sender === 'guest'` → voyageur.
+1. **Ordre des messages voyageurs.** `messagesDuFil` rend toujours l'ordre
+   chronologique : l'API donne les plus récents d'abord, on en lit 30 puis on
+   remet dans l'ordre (tri de sécurité). Auteur : message entrant du voyageur
+   (`direction: inbound`, hors messages système) → voyageur.
 2. **Codes d'accès.** Boîte à clés et code wifi n'entrent dans la consigne que
    si le fil est rattaché à une réservation confirmée (non annulée, sur ce
    logement) avec arrivée dans les 48 h ou séjour en cours. Une demande
@@ -639,16 +688,35 @@ ci-dessous).
 4. **Surbooking au déblocage.** `debloquer_dates` ne rouvre que les nuits
    libres (une résa occupe arrivée → départ-1), le récapitulatif liste
    exactement les plages rouvertes et celles laissées fermées, et le calcul
-   est refait au clic, en un seul appel `/availability` groupé.
+   est refait au clic, en une seule écriture groupée.
 5. **Rôles.** `store.roleDe` (liste d'amorçage = éditeur). Outils en écriture
    réservés à propriétaire et éditeur, équipe en lecture seule, prestataire
    sans outil. Un clic de confirmation n'est accepté que du demandeur, d'un
    propriétaire de la même conciergerie ou d'un éditeur.
-6. **Fils de messages.** Pagination jusqu'à 5 pages de 100 (les nouveaux
-   messages sur de vieux fils étaient ignorés) ; le cron lit les fils UNE fois
-   par passage pour toutes les conciergeries.
-7. **Webhook Channex.** Secret comparé à temps constant (cron aussi),
-   déduplication par `revision_id` partagée avec le flux de rattrapage,
-   résolution directe par `logementParChannexId`, et relecture de la
-   réservation quand la charge utile ne porte que des identifiants. Noms de
-   champs à confirmer sur le staging.
+6. **Fils de messages.** Pagination jusqu'à 5 pages de 100 ; le cron lit les
+   fils UNE fois par passage pour toutes les conciergeries.
+7. **Webhook de réservations.** Secret comparé à temps constant (cron aussi),
+   déduplication partagée avec le rattrapage, résolution directe du logement
+   par l'annonce, et relecture de la réservation complète quand la charge
+   utile ne porte que l'essentiel.
+
+## 17. Passage à Repull — 25 septembre 2026
+
+Repull remplace l'ancien gestionnaire de canaux (et son forfait d'environ
+130 $/mois). Correspondance :
+
+| Avant | Avec Repull |
+|---|---|
+| groupe par conciergerie, propriété, type de chambre, plan tarifaire créés par l'agent | rien à créer : les annonces arrivent avec le compte connecté ; cloisonnement dans `comptes_plateformes` |
+| lien à jeton de 15 min, écran intégré en iframe | Repull Connect : page hébergée, session fabriquée au clic, retour sur `/connexion/<id>/retour` |
+| flux de révisions + acquittement obligatoire | webhook signé + rattrapage `updated_since` toutes les 15 min, sans acquittement |
+| pas de webhook sur les messages, interrogation toutes les 2 min | webhook `reservation.message.received` + rattrapage toutes les 10 min |
+| disponibilité et restrictions par type de chambre / plan tarifaire | `PUT /v1/availability/{annonce}` : disponibilité, prix, séjour minimum |
+| interdictions d'arrivée / de départ | non gérées (retirées de l'outil `modifier_tarifs`) |
+| certification, script de bascule staging → production | sans objet (supprimés) |
+
+Variables d'environnement : `REPULL_API_KEY`, `REPULL_WEBHOOK_SECRET`,
+`APP_URL`. Les anciennes variables du gestionnaire de canaux peuvent être
+retirées de Vercel. Migration : `sql/006-repull.sql` (les identifiants de
+l'ancien gestionnaire sont effacés ; les fiches logement sont conservées et se
+rattachent aux annonces de même nom à la reconnexion).
