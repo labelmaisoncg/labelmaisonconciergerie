@@ -727,22 +727,44 @@ export async function finaliserLien(id: string): Promise<void> {
 }
 
 /**
- * Autres liens du même canal, ouverts et pas encore finalisés, dans les deux
- * dernières heures. S'il y en a, un nouveau compte apparu chez Repull peut
+ * Autres liens du même canal, partis vers Repull et pas encore finalisés, dans
+ * les dernières 24 heures. S'il y en a, un nouveau compte apparu chez Repull peut
  * appartenir à une autre conciergerie : on ne l'attribue pas à l'aveugle.
  */
 export async function autresLiensEnCours(id: string, canal: 'airbnb' | 'booking'): Promise<number> {
   if (!sql) {
-    const limite = Date.now() - 2 * 3600_000;
+    const limite = Date.now() - 24 * 3600_000;
     return [...mem.liens.values()].filter(
-      (l) => l.id !== id && l.canal === canal && !l.finalise && l.ouvertLe != null && l.ouvertLe > limite,
+      (l) =>
+        l.id !== id && l.canal === canal && !l.finalise && l.comptesAvant != null && (l.ouvertLe ?? 0) > limite,
     ).length;
   }
   const [r] = await sql<any[]>`
     select count(*)::int as n from liens_connexion
     where id <> ${id} and canal = ${canal} and finalise_le is null
-      and ouvert_le > now() - interval '2 hours'`;
+      and comptes_avant is not null and ouvert_le > now() - interval '24 hours'`;
   return r?.n ?? 0;
+}
+
+/** Liens de la conciergerie partis vers Repull et dont le retour n'a pas abouti. */
+export async function liensEnCoursDe(conciergerieId: string): Promise<LienConnexion[]> {
+  if (!sql) {
+    return [...mem.liens.values()].filter(
+      (l) => l.conciergerieId === conciergerieId && !l.finalise && l.comptesAvant != null,
+    );
+  }
+  const rs = await sql<any[]>`
+    select id, conciergerie_id, canal, comptes_avant, finalise_le from liens_connexion
+    where conciergerie_id = ${conciergerieId} and finalise_le is null
+      and comptes_avant is not null and expire_le > now()
+    order by ouvert_le`;
+  return rs.map((r) => ({
+    id: r.id,
+    conciergerieId: r.conciergerie_id,
+    canal: r.canal,
+    comptesAvant: r.comptes_avant,
+    finalise: false,
+  }));
 }
 
 // --- Comptes de plateformes : le cloisonnement entre conciergeries ---

@@ -8,7 +8,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import * as channex from '../channex.js';
+import * as repull from '../repull.js';
 import * as store from '../store.js';
 import { ANTHROPIC_API_KEY } from '../config.js';
 import { comptabiliser } from '../cout.js';
@@ -141,11 +141,11 @@ const apprendreStyle: Outil = {
     const reponses: string[] = [];
 
     for (const l of logements) {
-      if (!l.channexPropertyId) continue;
+      if (!l.repullListingId) continue;
       try {
-        const fils = await channex.filsDeMessages(l.channexPropertyId);
+        const fils = await repull.filsDeMessages(l.repullListingId);
         for (const fil of fils.slice(0, 30)) {
-          const messages = await channex.messagesDuFil(fil.id);
+          const messages = await repull.messagesDuFil(fil.id);
           for (const m of messages) {
             // Trop court : « ok », « merci » — ça n'apprend rien.
             if (m.auteur === 'hote' && m.texte.trim().length > 25) reponses.push(m.texte.trim());

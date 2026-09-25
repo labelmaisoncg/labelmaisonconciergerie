@@ -18,7 +18,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { ANTHROPIC_API_KEY } from './config.js';
 import { comptabiliser } from './cout.js';
-import * as channex from './channex.js';
+import * as repull from './repull.js';
 import * as store from './store.js';
 import { envoyerMessage } from './telegram.js';
 import { aujourdhui, ajouterJours, enFrancais, heureParis } from './dates.js';
@@ -83,11 +83,11 @@ async function etatDeLaConciergerie(c: store.Conciergerie): Promise<string> {
     ].filter(Boolean);
 
     let activite = '';
-    if (l.channexPropertyId && (l.airbnbConnecte || l.bookingConnecte)) {
+    if (l.repullListingId && (l.airbnbConnecte || l.bookingConnecte)) {
       try {
         const [demainDeparts, semaine] = await Promise.all([
-          channex.departsDu(l.channexPropertyId, demain),
-          channex.reservations(l.channexPropertyId, aujourdhui(), ajouterJours(aujourdhui(), 7)),
+          repull.departsDu(l.repullListingId, demain),
+          repull.reservations(l.repullListingId, aujourdhui(), ajouterJours(aujourdhui(), 7)),
         ]);
         activite =
           ` — ${semaine.length} réservation(s) sur 7 jours` +

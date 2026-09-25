@@ -14,7 +14,7 @@ import { OPENAI_API_KEY } from './config.js';
  * mauvais logement. À compléter au fur et à mesure des logements et prestataires.
  */
 const VOCABULAIRE =
-  'Label Maison Conciergerie, Airbnb, Booking, Channex, conciergerie, ménage, ' +
+  'Label Maison Conciergerie, Airbnb, Booking, Repull, conciergerie, ménage, ' +
   "check-in, check-out, Massy, Évry, Étigny, Ba'cam Spa, Essonne, Sens, Arpajon, " +
   'Athis-Mons, Brétigny-sur-Orge, love room, logement, voyageur, prestataire.';
 
