@@ -22,7 +22,7 @@
  * Ce module ne doit importer que des types et des constantes (il tourne aussi
  * côté serveur, hors de Vite).
  */
-import { CHECKLIST_LANCEMENT } from './constantes';
+import { CHECKLIST_LANCEMENT } from './constantes.js';
 import type {
   Annonce,
   Canal,

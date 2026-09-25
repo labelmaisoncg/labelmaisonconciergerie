@@ -998,3 +998,228 @@ export async function traiterEvenement(ev: EvenementRepull, o: Omit<OptionsSynch
   }
   return { ...s.terminer(), ignore };
 }
+
+/* ================================== état, part d'appels et lancement d'un passage */
+
+/**
+ * État de la synchronisation, une ligne de erp.enregistrements hors des
+ * collections de l'ERP (le store l'ignore au chargement et en temps réel) :
+ * compteur d'appels du mois, dernier bilan, date du dernier passage de
+ * chaque phase, quota réel du compte Repull quand il a été relevé.
+ */
+export const COLLECTION_ETAT = 'repull';
+export const ID_ETAT = 'etat';
+/** Part mensuelle des appels Repull réservée à l'ERP (le reste va à l'agent IA). */
+export const BUDGET_ERP_DEFAUT = 400;
+/** Quota mensuel du compte Repull (offre gratuite), pour l'affichage. */
+export const QUOTA_MOIS_DEFAUT = 1000;
+/** Intervalle minimal entre deux synchronisations lancées depuis l'ERP. */
+export const INTERVALLE_MANUEL_MS = 10 * 60_000;
+
+const HEURE = 3_600_000;
+const JOUR = 24 * HEURE;
+
+export interface QuotaRepull {
+  tier?: string;
+  limite?: number | null;
+  utilise?: number;
+  restant?: number | null;
+  reinitialiseLe?: string;
+  /** Relevé le (horodatage ERP). */
+  luLe: string;
+}
+
+export interface EtatRepull {
+  id: typeof ID_ETAT;
+  /** Mois du compteur, 'YYYY-MM' (Paris). */
+  mois: string;
+  /** Appels Repull faits par l'ERP ce mois-ci. */
+  appelsMois: number;
+  /** Part mensuelle de l'ERP (REPULL_BUDGET_ERP). */
+  budgetMois: number;
+  /** Quota mensuel du compte, tous usages confondus (affichage). */
+  quotaMois: number;
+  derniereSynchro?: string;
+  dernierBilan?: BilanRepull;
+  /** Dernier passage complet (toutes les réservations relues). */
+  dernierComplet?: string;
+  /** Dernier passage mené à terme, par phase. */
+  dernieresPhases?: Partial<Record<PhaseRepull, string>>;
+  /** Quota réel lu chez Repull (GET /v1/usage/tier, bouton seulement). */
+  quota?: QuotaRepull;
+  /** Dernier événement webhook traité. */
+  dernierWebhook?: { evenement: string; recuLe: string; erreurs: string[] };
+}
+
+const moisParis = (d: Date) => dateParis(d).slice(0, 7);
+
+/** État lu en base, compteur remis à zéro au changement de mois. */
+export async function lireEtat(base: BaseErp, maintenant: Date, budgetMois = BUDGET_ERP_DEFAUT, quotaMois = QUOTA_MOIS_DEFAUT): Promise<EtatRepull> {
+  const [lu] = await base.lire<EtatRepull>(COLLECTION_ETAT, [ID_ETAT]);
+  const mois = moisParis(maintenant);
+  const etat: EtatRepull = { ...(lu ?? {}), id: ID_ETAT, mois, appelsMois: 0, budgetMois, quotaMois };
+  if (lu && lu.mois === mois && Number.isFinite(lu.appelsMois)) etat.appelsMois = lu.appelsMois;
+  if (lu?.quota && lu.mois !== mois) delete etat.quota;
+  return etat;
+}
+
+/**
+ * Phases dues selon leur fréquence : réservations et conversations à chaque
+ * passage ; annonces une fois par jour (ou dès qu'une réservation cite une
+ * annonce inconnue) ; avis et pays des voyageurs une fois par semaine (avis :
+ * une fois par jour depuis le bouton).
+ */
+export function phasesDues(etat: EtatRepull, declencheur: DeclencheurRepull, maintenant: Date): PhaseRepull[] {
+  const t = maintenant.getTime();
+  const depuis = (p: PhaseRepull) => {
+    const x = etat.dernieresPhases?.[p];
+    return x ? t - instant(x) : Infinity;
+  };
+  const res: PhaseRepull[] = [];
+  if (depuis('annonces') >= 20 * HEURE) res.push('annonces');
+  res.push('reservations');
+  if (depuis('avis') >= (declencheur === 'manuel' ? JOUR : 6.5 * JOUR)) res.push('avis');
+  res.push('conversations');
+  if (depuis('pays') >= 6.5 * JOUR) res.push('pays');
+  return res;
+}
+
+export interface OptionsLancement {
+  cle: string;
+  base: BaseErp;
+  declencheur: DeclencheurRepull;
+  /** Instant (ms) à ne pas dépasser. */
+  echeance: number;
+  budgetMois?: number;
+  quotaMois?: number;
+  fetch?: Fetch;
+  baseRepull?: string;
+  attendre?: (ms: number) => Promise<void>;
+  maintenant?: () => Date;
+  intervalleManuelMs?: number;
+  /** Webhook : l'événement à traiter (sinon, passage planifié ou manuel). */
+  evenement?: EvenementRepull;
+  /** Relever le quota réel du compte (un appel de plus : bouton seulement). */
+  lireQuota?: boolean;
+}
+
+export interface ResultatLancement {
+  ok: boolean;
+  /** fait : passage mené ; limite : trop tôt après le précédent ; budget : part du mois épuisée. */
+  statut: 'fait' | 'limite' | 'budget';
+  message?: string;
+  bilan?: BilanRepull;
+  etat: EtatRepull;
+}
+
+const heureMinute = (d: Date) =>
+  new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(d);
+
+/**
+ * Lance un passage en respectant l'intervalle minimal (bouton) et la part
+ * mensuelle d'appels, puis enregistre l'état (compteur, bilan, phases).
+ */
+export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
+  const maintenant = o.maintenant ?? (() => new Date());
+  const budgetMois = o.budgetMois ?? BUDGET_ERP_DEFAUT;
+  const quotaMois = o.quotaMois ?? QUOTA_MOIS_DEFAUT;
+  const etat = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
+
+  const intervalle = o.intervalleManuelMs ?? INTERVALLE_MANUEL_MS;
+  if (o.declencheur === 'manuel' && etat.derniereSynchro) {
+    const ecoule = maintenant().getTime() - instant(etat.derniereSynchro);
+    if (ecoule >= 0 && ecoule < intervalle) {
+      const prochaine = new Date(instant(etat.derniereSynchro) + intervalle);
+      return {
+        ok: true,
+        statut: 'limite',
+        message: `Synchronisation déjà faite il y a ${Math.max(1, Math.round(ecoule / 60_000))} min : la prochaine est possible à ${heureMinute(prochaine)} (économie des appels Repull). Résultat du dernier passage ci-dessous.`,
+        bilan: etat.dernierBilan,
+        etat,
+      };
+    }
+  }
+
+  const restant = etat.budgetMois - etat.appelsMois;
+  if (restant <= 0) {
+    const message = `Part mensuelle des appels Repull de l’ERP épuisée (${etat.appelsMois} / ${etat.budgetMois}) : plus aucune synchronisation avant le 1er du mois prochain. Augmentez REPULL_BUDGET_ERP ou passez à l’offre Repull supérieure.`;
+    if (o.declencheur === 'cron') {
+      try {
+        const s = new SessionRepull({ repull: new ClientRepull({ cle: o.cle, echeance: o.echeance, budget: 0 }), base: o.base, mode: 'incremental', declencheur: 'cron', maintenant });
+        await s.journaliser(true, message);
+      } catch {
+        /* journal facultatif */
+      }
+    }
+    return { ok: false, statut: 'budget', message, bilan: etat.dernierBilan, etat };
+  }
+
+  const client = new ClientRepull({ cle: o.cle, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
+  let bilan: BilanRepull;
+  let evenement: string | undefined;
+  if (o.evenement) {
+    evenement = o.evenement.event ?? 'inconnu';
+    bilan = await traiterEvenement(o.evenement, { repull: client, base: o.base, maintenant });
+  } else {
+    // Passage complet (toutes les réservations relues) une fois par semaine par le cron.
+    const complet = o.declencheur === 'cron' && (!etat.dernierComplet || maintenant().getTime() - instant(etat.dernierComplet) >= 6.5 * JOUR);
+    bilan = await synchroniser({
+      repull: client,
+      base: o.base,
+      mode: complet ? 'complet' : 'incremental',
+      declencheur: o.declencheur,
+      maintenant,
+      phases: phasesDues(etat, o.declencheur, maintenant()),
+    });
+  }
+
+  // Quota réel du compte (tous usages) : un appel, seulement depuis le bouton.
+  let quota = etat.quota;
+  if (o.lireQuota && client.restant > 0 && !bilan.erreurs.length) {
+    try {
+      const t = await client.get<{
+        tier?: string;
+        limits?: { monthlyRequests?: number | null };
+        used?: { monthly?: number };
+        remaining?: { monthly?: number | null };
+        resetsAt?: string;
+      }>('/v1/usage/tier');
+      quota = {
+        tier: t.tier,
+        limite: t.limits?.monthlyRequests,
+        utilise: t.used?.monthly,
+        restant: t.remaining?.monthly,
+        reinitialiseLe: t.resetsAt,
+        luLe: horodatageParis(maintenant()),
+      };
+    } catch {
+      /* affichage seulement */
+    }
+  }
+  bilan.appelsRepull = client.appels;
+
+  // Relecture juste avant d'écrire : un autre passage a pu compter ses appels entre-temps.
+  const frais = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
+  const fin = bilan.fin ?? horodatageParis(maintenant());
+  const suivant: EtatRepull = {
+    ...frais,
+    appelsMois: frais.appelsMois + client.appels,
+    dernieresPhases: { ...(frais.dernieresPhases ?? {}), ...Object.fromEntries(bilan.phases.map((p) => [p, fin])) },
+    ...(quota ? { quota } : {}),
+  };
+  if (evenement) {
+    suivant.dernierWebhook = { evenement, recuLe: fin, erreurs: bilan.erreurs };
+  } else {
+    suivant.derniereSynchro = fin;
+    suivant.dernierBilan = bilan;
+    if (bilan.mode === 'complet' && bilan.complet && bilan.phases.includes('reservations')) suivant.dernierComplet = fin;
+  }
+  await o.base.ecrire(COLLECTION_ETAT, [suivant]);
+  return {
+    ok: !bilan.erreurs.length,
+    statut: 'fait',
+    message: bilan.erreurs.length ? bilan.erreurs.join(' ') : undefined,
+    bilan,
+    etat: suivant,
+  };
+}
