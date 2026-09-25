@@ -278,13 +278,11 @@ notify pgrst, 'reload config';
 notify pgrst, 'reload schema';
 
 -- ------------------------------------------------------ membres de l'équipe
--- 1) Créer d'abord les comptes dans Authentication → Users → Add user
---    (e-mail + mot de passe, cocher « Auto Confirm User »).
--- 2) Puis retirer les deux tirets en début des lignes ci-dessous, remplacer
---    les adresses par les vraies, et relancer UNIQUEMENT ce bloc (Run).
---
--- insert into erp.membres (email, nom, role) values ('EMAIL_ABDEL', 'Abdel', 'gerant') on conflict (email) do update set nom = excluded.nom, role = excluded.role;
--- insert into erp.membres (email, nom, role) values ('EMAIL_KAMEL', 'Kamel', 'gerant') on conflict (email) do update set nom = excluded.nom, role = excluded.role;
+-- Compte d'équipe unique (même vue pour tous, connexion par mot de passe seul).
+-- Le compte lui-même se crée dans Authentication → Users → Add user :
+-- e-mail equipe@labelmaisoncg.fr, mot de passe au choix, « Auto Confirm User ».
+insert into erp.membres (email, nom, role) values ('equipe@labelmaisoncg.fr', 'Équipe Label Maison', 'gerant')
+  on conflict (email) do update set nom = excluded.nom, role = excluded.role;
 
 -- Vérification : doit lister les membres saisis.
 -- select * from erp.membres;
@@ -292,7 +290,7 @@ notify pgrst, 'reload schema';
 -- --------------------------------------------------------------- bilan
 -- Dernière instruction : son résultat s'affiche dans l'onglet « Results ».
 -- Attendu : tables_erp = 4, temps_reel = 2, stockage_photos = true,
--- politiques_photos = 4 (membres = 0 tant que le bloc ci-dessus n'est pas lancé).
+-- politiques_photos = 4, membres = 1 (le compte d'équipe).
 select
   (select count(*) from information_schema.tables where table_schema = 'erp') as tables_erp,
   (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'erp') as temps_reel,
