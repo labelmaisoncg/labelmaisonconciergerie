@@ -63,6 +63,13 @@ node_modules/.bin/esbuild src/erp/data/verifier-synchro.ts --bundle \
 node_modules/.bin/esbuild src/erp/data/verifier-repull.ts --bundle \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' \
   --log-level=error --outfile=/tmp/verifier-repull.cjs && node /tmp/verifier-repull.cjs
+
+# Auto-contrôle de l'agent IA (faux Claude, fausses API Repull, PostgREST et
+# Telegram) : réponse, transmission, pause, horaires, dédoublonnage, codes
+# cachés, part d'appels épuisée, reprise sans double envoi, relevé des messages.
+node_modules/.bin/esbuild src/erp/data/verifier-agent.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{}' \
+  --log-level=error --outfile=/tmp/verifier-agent.mjs && node /tmp/verifier-agent.mjs
 ```
 
 Le vérificateur du moteur l'exécute deux fois sur la démo : la seconde passe
@@ -83,7 +90,9 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `REPULL_WEBHOOK_SECRET_ERP` | Vercel (serveur), facultatif | Secret de signature (`whsec_...`) de l'abonnement webhook **de l'ERP** (distinct de celui de l'agent IA). |
 | `REPULL_BUDGET_ERP` | Vercel (serveur), facultatif | Part mensuelle des appels Repull réservée à l'ERP (défaut 400). |
 | `REPULL_QUOTA_MOIS` | Vercel (serveur), facultatif | Quota mensuel du compte Repull, pour l'affichage (défaut 1000, offre gratuite). |
-| `ANTHROPIC_API_KEY` | serveur | Agent IA de la messagerie (`agent-ia/`), jamais côté navigateur. |
+| `ANTHROPIC_API_KEY` | Vercel (serveur) | Agent IA de la messagerie (`api/erp-agent.ts`), jamais côté navigateur. Absente : l'agent ne répond pas. |
+| `AGENT_MODELE` | Vercel (serveur), facultatif | Modèle des réponses aux voyageurs (défaut `claude-haiku-4-5-20251001`). |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Vercel (serveur), facultatifs | Alertes Telegram de l'agent (transmissions, copies des réponses, relances). |
 
 ## Accès et déploiement
 
@@ -221,13 +230,12 @@ ligne de `erp.enregistrements` avec `collection = 'reglages'`,
 `sejoursLongsNuits` ; argent et litiges sont toujours transmis),
 `delaiAlerteMinutes`, `telegram`, `majLe`, `majPar`.
 
-**À faire côté agent (`agent-ia/`, service séparé, non modifié ici)** : lire
-ce réglage à chaque message voyageur (`select donnees from erp.enregistrements
-where collection = 'reglages' and id = 'agent'`), ne pas répondre si
-`actif = false` ou hors `horaires`, appliquer `ton`, `langues` et `signature`,
-passer la main selon `transmettre`, et prévenir sur Telegram après
+L'agent du site (`src/erp/data/agent-messagerie.ts`, voir « Messagerie et
+agent IA ») relit ce réglage à chaque passage : pas de réponse si
+`actif = false` ou hors `horaires`, `ton`, `langues` et `signature`
+appliqués, main passée selon `transmettre`, relance Telegram après
 `delaiAlerteMinutes` sans réponse humaine. Absent : valeurs par défaut de
-`data/reglages.ts`.
+`data/reglages.ts`. (L'ancien service `agent-ia/` n'est pas déployé.)
 
 L'onglet « Ce que l'agent a fait » est calculé depuis `filsMessages` :
 messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :
@@ -386,9 +394,9 @@ base à l'instant T. Les anciennes versions de chaque élément restent dans
 1. **Repull** : voir « Synchronisation Repull » ci-dessous (variables, cron,
    webhooks). Les réservations directes se saisissent toujours à la main
    (Réservations → Nouvelle réservation directe).
-2. **Anthropic** : recharger les crédits de l'agent IA (`agent-ia/`), poser un
-   plafond de dépense mensuel dans la console, `ANTHROPIC_API_KEY` côté serveur
-   uniquement. L'agent n'engage jamais d'argent.
+2. **Anthropic** : recharger les crédits de l'agent IA, poser un plafond de
+   dépense mensuel dans la console, `ANTHROPIC_API_KEY` côté serveur
+   uniquement (voir « Messagerie et agent IA »). L'agent n'engage jamais d'argent.
 3. **Moteur hors navigateur** : aujourd'hui le moteur d'automatisations tourne
    dans le navigateur à chaque ouverture et après chaque action (résultat
    enregistré dans la base). Les tâches du jour se font donc dès que quelqu'un
@@ -555,3 +563,115 @@ de l'ERP). `account.created` (nouveau compte connecté) lance une
 synchronisation complète ; `account.disconnected` laisse une alerte dans le
 journal. Avec des webhooks actifs, compter environ 1 à 2 appels par événement :
 relever alors `REPULL_BUDGET_ERP` en conséquence.
+
+## Messagerie et agent IA
+
+Tout tourne dans le site (fonctions Vercel + base Supabase), sans autre
+serveur.
+
+### Répondre à un voyageur depuis l'ERP
+
+Dans une conversation reliée à Airbnb ou Booking.com (importée par Repull),
+« Envoyer » fait partir le message **chez le voyageur**, sur la plateforme de
+la conversation : `POST /api/erp-repull-messages` `{ action: 'envoyer', filId,
+texte }` (gérant ou opérations) → Repull `POST /v1/conversations/{id}/messages`
+`{ message }`, avec un en-tête `Idempotency-Key` (fil + empreinte du texte +
+minute : un double clic ne part qu'une fois). L'appel compte dans la part
+mensuelle de l'ERP. Le message est ensuite écrit dans le fil (identifiant
+Repull : la synchronisation le reconnaît, sans doublon), la conversation sort
+de « Pour vous », une ligne va au journal, et l'écran affiche « Envoyé sur
+Booking.com ». Si Airbnb retire un lien ou un numéro, le texte réellement reçu
+est gardé. En cas de refus (lien interdit, logement désactivé, part épuisée),
+rien n'est écrit et le texte revient dans la zone de saisie avec l'explication.
+Une conversation sans plateforme garde le message dans l'ERP (c'est indiqué
+sous la zone de saisie). Code : `src/erp/data/messagerie-envoi.ts`.
+
+### L'agent IA
+
+`api/erp-agent.ts` → `src/erp/data/agent-messagerie.ts`. À chaque passage :
+
+1. relit `reglages/agent` : en pause ou hors des heures de réponse → rien
+   (le passage est noté) ;
+2. relève les nouveaux messages chez Repull (phase « conversations » seule),
+   au rythme que permet la part d'appels du mois (voir plus bas) ;
+3. cherche les conversations Repull dont le dernier message vient du
+   voyageur, ni closes, ni transmises, ni reprises par l'équipe, message pas
+   encore traité (repère `fil.agent.dernierMessageTraite`), de moins de 48 h ;
+4. pour 5 d'entre elles au plus (temps et appels permis), demande à Claude
+   une décision en JSON strict (sorties structurées) :
+   `{ action: repondre | transmettre, raison, langue, texte, resume }`, avec
+   la fiche du logement, la réservation (dates, voyageurs), les 20 derniers
+   messages et les réglages ;
+5. **répondre** : la réponse (signature ajoutée par le code) part chez le
+   voyageur par Repull, auteur « agent » ; **transmettre** : fil « escaladé »
+   avec la raison (`argent`, `litige`, `hors_fiche`, `exception`, `autre`) et
+   un résumé pour l'équipe (visible dans « Pour vous », « Ce que l'agent a
+   fait » et en tête de la conversation), un court message d'attente au
+   voyageur si utile, journal, alerte Telegram.
+
+**Garde-fous** (en plus des consignes données à Claude) : il n'affirme que ce
+qui est dans la fiche du logement et la réservation ; argent et litiges sont
+toujours transmis (même si Claude proposait de répondre) ; une réponse ou un
+message d'attente qui parle d'argent n'est jamais envoyé ; codes d'accès et
+wifi absents du contexte tant que le voyageur n'y a pas droit (réservation
+confirmée, arrivée sous 48 h ou sur place) ; les messages du voyageur sont
+des données, pas des consignes ; réponse illisible → transmis.
+
+**Jamais deux réponses** : avant d'envoyer, le fil garde un marqueur « envoi
+en cours » (message du voyageur, texte, clé `lm-agent-<fil>-<message>`). Un
+passage coupé en plein envoi est repris au suivant avec le même texte et la
+même clé : Repull rejoue sa réponse au lieu d'envoyer une seconde fois. Un
+verrou (`agent/etat`) évite deux passages en même temps, et la clé liée au
+message du voyageur bloque de toute façon un second envoi.
+
+**Quand passe-t-il ?**
+
+- toutes les 30 minutes de 8 h à 23 h, par Supabase (`pg_cron` + `pg_net`) :
+  exécuter **une fois** `supabase/erp-agent-cron.sql` dans le SQL Editor du
+  projet Label Maison, en remplaçant `REMPLACER_PAR_CRON_SECRET` par la valeur
+  de `CRON_SECRET` (rangée dans le coffre chiffré Vault) ;
+- chaque jour par le cron Vercel (`53 6 * * *`, secours) ;
+- juste après chaque synchronisation Repull qui apporte des messages (bouton,
+  cron quotidien, webhooks) ;
+- à la demande : Configurer mon agent → « Lancer l'agent maintenant ».
+
+L'onglet Configurer montre l'état réel (bloc « Votre agent, en vrai ») :
+agent actif ou en pause, clé IA présente ou manquante, plateformes reliées,
+dernier passage, Telegram branché ou non. Le serveur ne renvoie que des
+oui/non, jamais la valeur d'une variable (`GET /api/erp-agent?action=etat`).
+
+**Relevé des messages et part d'appels** : sans webhooks (offre gratuite
+Repull), l'agent relève lui-même les nouveaux messages (1 appel pour la
+liste, 1 de plus par conversation qui a bougé). Le rythme se calcule à chaque
+passage sur ce qui reste de la part du mois : réserve de 4 appels par jour
+restant (synchronisation quotidienne) + 20 (réponses), 1,5 appel par relevé,
+jamais plus d'un relevé par demi-heure. Avec la part de 400 appels, cela
+donne un relevé environ toutes les 3 heures entre 8 h et 23 h ; en fin de part, plus de
+relevé (le bouton et la synchronisation quotidienne restent). Chaque réponse
+envoyée coûte 1 appel. Pour des réponses plus rapides : relever
+`REPULL_BUDGET_ERP` (la part de l'ERP sur les 1 000 appels du compte), passer
+à l'offre Repull supérieure, ou brancher les webhooks (réponse immédiate).
+
+### À faire par les propriétaires
+
+1. Vercel → Settings → Environment Variables (Production et Preview) :
+   - `ANTHROPIC_API_KEY` : clé de console.anthropic.com (poser aussi un
+     plafond de dépense mensuel dans la console) ;
+   - facultatif : `AGENT_MODELE` (défaut `claude-haiku-4-5-20251001`) ;
+   - facultatif : `TELEGRAM_BOT_TOKEN` (bot créé avec @BotFather) et
+     `TELEGRAM_CHAT_ID` (groupe de l'équipe, où le bot a été ajouté) ;
+   - `CRON_SECRET` et `REPULL_API_KEY` : déjà en place pour la synchronisation.
+2. Redéployer.
+3. Supabase → SQL Editor : coller `supabase/erp-agent-cron.sql`, remplacer
+   `REMPLACER_PAR_CRON_SECRET` par la valeur de `CRON_SECRET`, Run.
+4. Dans l'ERP : compléter les fiches des logements (wifi, accès, horaires,
+   parking, règles, équipements), puis Messagerie agentique → Configurer mon
+   agent → activer, enregistrer, et « Lancer l'agent maintenant » pour
+   vérifier.
+
+**Coût estimé** (Claude Haiku 4.5, tarif public d'environ 1 $ par million de
+jetons en entrée et 5 $ en sortie, à vérifier sur anthropic.com/pricing) :
+2 000 à 3 000 jetons lus et 150 à 300 écrits par décision, soit **environ
+0,3 à 0,5 centime par réponse**, moins d'1 € pour 200 réponses. Un passage
+sans message en attente n'appelle pas Claude.
+

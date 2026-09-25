@@ -1,13 +1,31 @@
 /** Colonne centrale : en-tête, bandeau d'escalade, bulles et zone de réponse. */
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CheckCheck, Lock, RotateCcw, Send } from 'lucide-react';
+import { ArrowLeft, Bot, CheckCheck, Loader2, Lock, RotateCcw, Send } from 'lucide-react';
 import { Alert, Button, MenuActions, StatusBadge, Textarea, cn } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { dateJour, heure, horodatageMaintenant } from '../../../data/format';
-import type { FilMessages, Logement, Reservation } from '../../../data/types';
+import type { FilMessages, Logement, Message, Reservation } from '../../../data/types';
 import { GABARITS, LIBELLE_MOTIF, completudeFiche, eligibiliteCodes, motifEscalade } from './logique';
+import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
+
+/** Réponse de /api/erp-repull-messages. */
+interface ReponseEnvoi {
+  ok: true;
+  message: Message;
+  canal: string;
+  reecrit: boolean;
+  info: string;
+}
+
+/** Envoi en cours ou fait, affiché tout de suite (la conversation arrive ensuite par le temps réel). */
+interface EnvoiLocal {
+  cle: string;
+  texte: string;
+  etat: 'envoi' | 'envoye';
+  message?: Message;
+}
 
 interface Props {
   fil: FilMessages;
@@ -16,9 +34,15 @@ interface Props {
 }
 
 export function Conversation({ fil, logement, reservation }: Props) {
-  const { upsert } = useErp();
+  const { upsert, mode, lectureSeule } = useErp();
   const [brouillon, setBrouillon] = useState('');
   const [avis, setAvis] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [envois, setEnvois] = useState<EnvoiLocal[]>([]);
+  // Conversation reliée à Airbnb, Booking.com... : la réponse part vraiment chez le voyageur.
+  const relie = mode === 'reel' && !!fil.repull?.id;
+  const plateforme = nomPlateformeEnvoi(fil.canal);
+  const enCours = envois.some((e) => e.etat === 'envoi');
   const fin = useRef<HTMLDivElement>(null);
   const zone = useRef<HTMLTextAreaElement>(null);
   const codes = eligibiliteCodes(fil, reservation);
@@ -30,14 +54,41 @@ export function Conversation({ fil, logement, reservation }: Props) {
     fin.current?.scrollIntoView({ block: 'end' });
     setBrouillon('');
     setAvis(null);
+    setErreur(null);
+    setEnvois([]);
   }, [fil.id]);
   useEffect(() => {
     fin.current?.scrollIntoView({ block: 'end' });
-  }, [fil.messages.length]);
+  }, [fil.messages.length, envois, avis]);
+  // Le message envoyé est arrivé dans la conversation (temps réel) : la bulle provisoire s'efface.
+  const connus = new Set(fil.messages.map((m) => m.id));
+  const provisoires = envois.filter((e) => !e.message || !connus.has(e.message.id));
+
+  const envoyerPlateforme = async (texte: string) => {
+    const cle = `${Date.now()}`;
+    setEnvois((l) => [...l, { cle, texte, etat: 'envoi' }]);
+    setBrouillon('');
+    setErreur(null);
+    setAvis(null);
+    try {
+      const r = await appelerServeur<ReponseEnvoi>('/api/erp-repull-messages', 'POST', { action: 'envoyer', filId: fil.id, texte });
+      setEnvois((l) => l.map((e) => (e.cle === cle ? { ...e, etat: 'envoye', message: r.message } : e)));
+      setAvis(`${r.info} C’est maintenant l’équipe qui suit cette conversation.`);
+    } catch (e) {
+      setEnvois((l) => l.filter((x) => x.cle !== cle));
+      // Rien n'est parti : le texte revient dans la zone de saisie.
+      setBrouillon((b) => (b.trim() ? b : texte));
+      setErreur(e instanceof ErreurServeur || e instanceof Error ? e.message : 'Le message n’est pas parti. Réessayez.');
+    }
+  };
 
   const envoyer = () => {
     const texte = brouillon.trim();
-    if (!texte) return;
+    if (!texte || enCours) return;
+    if (relie) {
+      void envoyerPlateforme(texte);
+      return;
+    }
     const envoyeLe = horodatageMaintenant();
     upsert('filsMessages', {
       ...fil,
@@ -47,7 +98,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
       messages: [...fil.messages, { id: nouvelId('msg'), auteur: 'hote', texte, envoyeLe }],
     });
     setBrouillon('');
-    setAvis(`Message envoyé à ${prenom}. C’est maintenant l’équipe qui suit cette conversation.`);
+    setAvis(`Message gardé dans l’ERP : ${prenom} n’est pas relié à une plateforme, pensez à lui transmettre (téléphone, e-mail…).`);
   };
 
   const clore = () => {
@@ -106,7 +157,12 @@ export function Conversation({ fil, logement, reservation }: Props) {
 
       {fil.statut === 'escalade' && (
         <Alert tone="danger" titre={`Votre agent vous a passé la main : ${LIBELLE_MOTIF[motif].titre.toLowerCase()}`} className="mx-3 mt-3 sm:mx-4">
-          {LIBELLE_MOTIF[motif].explication}
+          {fil.agent?.decision === 'transmettre' && fil.agent.resume ? fil.agent.resume : LIBELLE_MOTIF[motif].explication}
+        </Alert>
+      )}
+      {erreur && (
+        <Alert tone="danger" titre="Le message n’est pas parti" className="mx-3 mt-3 sm:mx-4" actions={<Button size="sm" variant="ghost" onClick={() => setErreur(null)}>OK</Button>}>
+          {erreur}
         </Alert>
       )}
       {avis && (
@@ -141,6 +197,11 @@ export function Conversation({ fil, logement, reservation }: Props) {
                       </span>
                     )}
                     {m.auteur === 'hote' && <span>Équipe</span>}
+                    {m.auteur !== 'voyageur' && (m.envoi || m.id.startsWith('repull-')) && (
+                      <span className="inline-flex items-center gap-0.5" title={m.envoi?.reecrit ? 'La plateforme a retiré un lien ou un numéro : le voyageur a reçu ce texte.' : undefined}>
+                        <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(m.envoi?.canal ?? fil.canal)}
+                      </span>
+                    )}
                     <time dateTime={m.envoyeLe} className="lm-chiffres">{heure(m.envoyeLe)}</time>
                   </p>
                 </div>
@@ -148,6 +209,24 @@ export function Conversation({ fil, logement, reservation }: Props) {
             </div>
           );
         })}
+        {provisoires.map((e) => (
+          <div key={e.cle} className="flex justify-end">
+            <div className={cn('max-w-[85%] rounded-2xl rounded-br-md bg-(--lm-brun) px-3.5 py-2 text-[13.5px] leading-relaxed text-white shadow-sm sm:max-w-[75%]', e.etat === 'envoi' && 'opacity-70')}>
+              <p className="whitespace-pre-line">{e.message?.texte ?? e.texte}</p>
+              <p className="mt-1 flex items-center justify-end gap-1.5 text-[11px] text-white/70" aria-live="polite">
+                {e.etat === 'envoi' ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin" aria-hidden /> Envoi sur {plateforme}…
+                  </>
+                ) : (
+                  <>
+                    <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(e.message?.envoi?.canal ?? fil.canal)}
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+        ))}
         <div ref={fin} />
       </div>
 
@@ -193,12 +272,21 @@ export function Conversation({ fil, logement, reservation }: Props) {
             placeholder={`Écrire à ${prenom}…`}
             className="min-h-[64px] resize-y"
           />
-          <Button type="submit" variant="primary" icone={<Send />} disabled={!brouillon.trim()}>
-            <span className="hidden sm:inline">Envoyer</span>
-            <span className="sr-only sm:hidden">Envoyer</span>
+          <Button type="submit" variant="primary" icone={enCours ? <Loader2 className="animate-spin" /> : <Send />} disabled={!brouillon.trim() || enCours || (relie && lectureSeule)}>
+            <span className="hidden sm:inline">{enCours ? 'Envoi…' : 'Envoyer'}</span>
+            <span className="sr-only sm:hidden">{enCours ? 'Envoi en cours' : 'Envoyer'}</span>
           </Button>
         </form>
         <p className="mt-1.5 text-[11.5px] text-(--lm-encre-3)">
+          {relie ? (
+            <>
+              Votre message part directement chez {prenom} sur <strong className="font-medium text-(--lm-encre-2)">{plateforme}</strong>.{' '}
+            </>
+          ) : (
+            <>
+              <strong className="font-medium text-(--lm-encre-2)">Gardé dans l’ERP</strong> : ce voyageur n’est pas relié à une plateforme, rien ne lui est envoyé.{' '}
+            </>
+          )}
           En répondant, vous reprenez la conversation. Ne promettez pas d’argent sans en parler à l’équipe. Ctrl + Entrée pour envoyer.
         </p>
       </div>

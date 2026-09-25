@@ -194,6 +194,8 @@ export interface ContexteConnexion {
   fetch?: Fetch;
   baseRepull?: string;
   attendre?: (ms: number) => Promise<void>;
+  /** Appels Repull faits sous ce contexte (bilan de l'agent IA). */
+  compteur?: { appels: number };
 }
 
 /* ================================================================ outils */
@@ -304,7 +306,7 @@ async function ecrireCache(base: BaseErp, c: CacheConnexions): Promise<void> {
  * Travail avec un client Repull borné par le reste de la part mensuelle ;
  * les appels faits sont ajoutés au compteur, même en cas d'échec.
  */
-async function avecClient<T>(ctx: ContexteConnexion, travail: (c: ClientRepull) => Promise<T>): Promise<T> {
+export async function avecClient<T>(ctx: ContexteConnexion, travail: (c: ClientRepull) => Promise<T>): Promise<T> {
   const maintenant = ctx.maintenant ?? (() => new Date());
   const budgetMois = ctx.budgetMois ?? BUDGET_ERP_DEFAUT;
   const quotaMois = ctx.quotaMois ?? QUOTA_MOIS_DEFAUT;
@@ -315,6 +317,7 @@ async function avecClient<T>(ctx: ContexteConnexion, travail: (c: ClientRepull) 
   try {
     return await travail(client);
   } finally {
+    if (ctx.compteur) ctx.compteur.appels += client.appels;
     await imputerAppels(ctx.base, maintenant(), client.appels, budgetMois, quotaMois);
   }
 }

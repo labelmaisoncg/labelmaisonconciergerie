@@ -23,12 +23,22 @@
     },
     "api/erp-repull-connexion.ts": {
       "maxDuration": 60
+    },
+    "api/erp-repull-messages.ts": {
+      "maxDuration": 60
+    },
+    "api/erp-agent.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/erp-repull-sync",
       "schedule": "17 4 * * *"
+    },
+    {
+      "path": "/api/erp-agent",
+      "schedule": "53 6 * * *"
     }
   ],
   "redirects": [

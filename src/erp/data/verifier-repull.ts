@@ -22,6 +22,7 @@ import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, montantsReservation, noteSur5, heure } from './repull';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
+import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
 /* ------------------------------------------------------------ assertions */
@@ -194,10 +195,16 @@ interface Appel {
   params: URLSearchParams;
   methode: string;
   corps?: Record<string, unknown>;
+  cle?: string | null;
 }
 
 class FauxRepull {
   appels: Appel[] = [];
+  /** Réponses gardées par clé d'idempotence (Repull : 24 h). */
+  idempotence = new Map<string, { charge: string; reponse: Record<string, unknown> }>();
+  /** Refus imposé au prochain envoi de message (422 message_not_sent...). */
+  refusEnvoi: { status: number; corps: unknown } | null = null;
+  envois: { conversation: string; message: string; cle: string }[] = [];
   /** Taille de page simulée (la vraie limite est 100) : force la pagination par curseur. */
   page = 2;
   /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
@@ -235,7 +242,8 @@ class FauxRepull {
     const p = url.searchParams;
     const methode = (init?.method ?? 'GET').toUpperCase();
     const corps = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined;
-    this.appels.push({ chemin, params: p, methode, corps });
+    const cle = new Headers(init?.headers).get('idempotency-key');
+    this.appels.push({ chemin, params: p, methode, corps, cle });
     let m: RegExpExecArray | null;
     if (this.bloque402 && methode !== 'DELETE' && !chemin.startsWith('/v1/usage/')) return this.refus402();
     if (chemin === '/v1/connect/providers') {
@@ -300,6 +308,22 @@ class FauxRepull {
     }
     if (chemin === '/v1/reviews') return this.paginer(R.reviews, p);
     if (chemin === '/v1/conversations') return this.paginer(R.conversations, p);
+    if ((m = /^\/v1\/conversations\/([^/]+)\/messages$/.exec(chemin)) && methode === 'POST') {
+      const charge = JSON.stringify(corps ?? {});
+      const deja = cle ? this.idempotence.get(cle) : undefined;
+      if (deja) return deja.charge === charge ? json(deja.reponse) : json({ error: { code: 'idempotency_key_reused', message: 'key reused' } }, 422);
+      if (this.refusEnvoi) return json(this.refusEnvoi.corps, this.refusEnvoi.status);
+      const id = String(900000 + this.envois.length);
+      const texte = String(corps?.message ?? '');
+      const conv = R.conversations.find((c) => c.id === m![1]);
+      const reponse = { id, conversationId: Number(m[1]), externalMessageId: `ext-${id}`, channel: 'booking', status: 'sent', direction: 'outbound', contentRewritten: false, submittedContent: texte, deliveredContent: texte, statusReason: null, attachments: [] };
+      this.envois.push({ conversation: m[1], message: texte, cle: cle ?? '' });
+      if (cle) this.idempotence.set(cle, { charge, reponse });
+      const quand = new Date(Date.parse(String(conv?.lastMessageAt ?? '2026-09-26T08:00:00.000Z')) + 60_000).toISOString();
+      (R.messages[m[1]] ??= []).push({ id, direction: 'outbound', senderType: 'host', body: texte, attachments: [], aiGenerated: false, sentAt: quand });
+      if (conv) Object.assign(conv, { lastMessageAt: quand, updatedAt: quand });
+      return json(reponse);
+    }
     if ((m = /^\/v1\/conversations\/([^/]+)\/messages$/.exec(chemin))) {
       const liste = [...(R.messages[m[1]] ?? [])].sort((a, b) => String(b.sentAt).localeCompare(String(a.sentAt)));
       return this.paginer(p.get('order') === 'asc' ? liste.reverse() : liste, p);
@@ -608,6 +632,79 @@ async function principal() {
   verifier(base.get<Logement>('logements', 'repull-102')?.statut === 'sorti', 'annonce archivée : logement « sorti », jamais supprimé');
   verifier(base.get<Logement>('logements', 'repull-101')?.statut === 'lancement', 'annonce inchangée : statut choisi par l’équipe conservé');
   verifier(base.collection('logements').length === 2 && base.collection('reservations').length === 2, 'rien de supprimé');
+
+  /* ------------------------------------------- répondre depuis l'ERP */
+  section('Répondre au voyageur depuis l’ERP (envoi par Repull)');
+  {
+    const ctxEnvoi = (extra: Partial<ContexteConnexion> = {}): ContexteConnexion => ({
+      cle: 'sk_test_verif',
+      base: baseErp(),
+      echeance: Date.now() + 50_000,
+      fetch: repull.fetch as typeof fetch,
+      maintenant: () => horloge,
+      attendre: async () => undefined,
+      ...extra,
+    });
+    const etatAvantEnvoi = base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)!;
+    const avantEnvoi = repull.appels.length;
+    const texte = 'Bonjour Alex, c’est bien noté. Belle journée !';
+    const r1 = await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte, auteur: 'hote', par: 'camille@labelmaisoncg.fr' });
+    const posts = repull.appels.slice(avantEnvoi).filter((a) => a.methode === 'POST');
+    verifier(posts.length === 1 && posts[0].chemin === '/v1/conversations/7001/messages', 'un seul appel : POST /v1/conversations/7001/messages');
+    verifier(posts[0]?.corps?.message === texte && Object.keys(posts[0]?.corps ?? {}).length === 1, 'corps conforme à l’OpenAPI ({ message })');
+    verifier(posts[0]?.cle === cleEnvoi('repull-7001', texte, horloge) && /^lm-repull-7001-[0-9a-f]{8}-\d+$/.test(posts[0]?.cle ?? ''), `clé d’idempotence fil + texte + minute (${posts[0]?.cle})`);
+    const filEnvoi = base.get<FilMessages>('filsMessages', 'repull-7001')!;
+    const envoye = filEnvoi.messages[filEnvoi.messages.length - 1];
+    verifier(envoye.id === 'repull-900000' && envoye.auteur === 'hote' && envoye.texte === texte && envoye.envoi?.canal === 'booking', 'message écrit dans le fil : auteur hôte, id Repull, trace d’envoi');
+    verifier(filEnvoi.statut === 'ouvert' && filEnvoi.traitePar === 'humain' && filEnvoi.dernierMessageLe === envoye.envoyeLe, 'fil répondu : ouvert, suivi par l’équipe');
+    verifier(r1.info === 'Envoyé sur Booking.com.' && r1.canal === 'booking', `info prête à afficher (${r1.info})`);
+    verifier(base.collection<Journal>('journal').some((j) => j.entiteId === 'repull-7001' && /envoyé/i.test(j.action)), 'ligne de journal');
+    const etatApresEnvoi = base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)!;
+    verifier(etatApresEnvoi.appelsMois === etatAvantEnvoi.appelsMois + 1, `appel compté dans la part du mois (${etatAvantEnvoi.appelsMois} → ${etatApresEnvoi.appelsMois})`);
+
+    // Double clic : même texte, même minute → même clé, Repull rejoue, rien ne repart.
+    await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte, auteur: 'hote', par: 'camille@labelmaisoncg.fr' });
+    const filDouble = base.get<FilMessages>('filsMessages', 'repull-7001')!;
+    verifier(repull.envois.length === 1 && filDouble.messages.filter((m) => m.id === 'repull-900000').length === 1, 'double clic : un seul envoi chez le voyageur, un seul message dans le fil');
+
+    // Fil sans conversation Repull : rien n'est appelé.
+    base.poser<FilMessages>('filsMessages', { ...filDouble, id: 'fil-local', repull: undefined, messages: [] });
+    const avantLocal = repull.appels.length;
+    let eLocal: unknown;
+    await envoyerMessage(ctxEnvoi(), { filId: 'fil-local', texte: 'Coucou', auteur: 'hote', par: 'x' }).catch((e) => (eLocal = e));
+    verifier(eLocal instanceof ErreurEnvoi && eLocal.code === 'hors_plateforme' && /pas relié à une plateforme/.test(eLocal.message) && repull.appels.length === avantLocal, 'voyageur hors plateforme : message gardé dans l’ERP, aucun appel');
+
+    let eVide: unknown;
+    await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: '   ', auteur: 'hote', par: 'x' }).catch((e) => (eVide = e));
+    verifier(eVide instanceof ErreurEnvoi && eVide.code === 'texte', 'message vide refusé');
+
+    // Refus de la plateforme (422 message_not_sent) : rien d'écrit, message clair.
+    repull.refusEnvoi = { status: 422, corps: { error: { code: 'message_not_sent', message: 'refused', statusReason: 'Links are not allowed', fix: 'Remove the link.' } } };
+    let eRefus: unknown;
+    const nbAvantRefus = base.get<FilMessages>('filsMessages', 'repull-7001')!.messages.length;
+    await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: 'Voir https://exemple.fr', auteur: 'hote', par: 'x' }).catch((e) => (eRefus = e));
+    repull.refusEnvoi = null;
+    verifier(!!eRefus && /refusé le message/.test(messageEchecEnvoi(eRefus)) && /Links are not allowed/.test(messageEchecEnvoi(eRefus)), `refus de la plateforme expliqué (${messageEchecEnvoi(eRefus)})`);
+    verifier(base.get<FilMessages>('filsMessages', 'repull-7001')!.messages.length === nbAvantRefus, 'refus : rien d’écrit dans le fil');
+
+    // Part du mois épuisée : aucun appel.
+    const etatB = base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)!;
+    const avantBudget = repull.appels.length;
+    let eBudget: unknown;
+    await envoyerMessage(ctxEnvoi({ budgetMois: etatB.appelsMois }), { filId: 'repull-7001', texte: 'Autre message', auteur: 'hote', par: 'x' }).catch((e) => (eBudget = e));
+    verifier(repull.appels.length === avantBudget && /épuisés/.test(messageEchecEnvoi(eBudget)), 'part épuisée : aucun appel, message clair');
+
+    // Réponse de l'agent, puis synchronisation : pas de doublon, auteur « agent » gardé.
+    avancer(1);
+    await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: 'Réponse de l’agent', auteur: 'agent', par: 'Agent IA' });
+    avancer(15);
+    const rSync = await lancer(options('manuel'));
+    const filSync = base.get<FilMessages>('filsMessages', 'repull-7001')!;
+    verifier(rSync.statut === 'fait', 'synchronisation après envoi');
+    verifier(filSync.messages.filter((m) => m.id === 'repull-900000').length === 1 && filSync.messages.filter((m) => m.id === 'repull-900001').length === 1, 'synchronisation : messages envoyés reconnus, sans doublon');
+    verifier(filSync.messages.find((m) => m.id === 'repull-900001')?.auteur === 'agent' && !!filSync.messages.find((m) => m.id === 'repull-900001')?.envoi, 'synchronisation : auteur « agent » et trace d’envoi gardés');
+    verifierFil(filSync);
+  }
 
   /* ------------------------------------------------ moteur d'automatisations */
   section('Moteur d’automatisations sur les données importées');

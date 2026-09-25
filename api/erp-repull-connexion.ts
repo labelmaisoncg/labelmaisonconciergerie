@@ -27,7 +27,7 @@ import {
   type ContexteConnexion,
 } from '../src/erp/data/repull-connexion.js';
 import { BudgetEpuise, verifierMembre } from '../src/erp/data/repull-synchro.js';
-import { baseErp, configuration, repondre, variableManquante } from './_erp-repull.js';
+import { baseErp, configuration, lireCorps, repondre, variableManquante } from './_erp-repull.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 50_000;
@@ -40,20 +40,6 @@ function urlRetour(req: any, fournisseur: string): string {
   const permis = /^(www\.)?labelmaisoncg\.fr$|^[a-z0-9-]+\.vercel\.app$|^localhost(:\d+)?$/.test(hote);
   const origine = permis ? `${hote.startsWith('localhost') ? proto : 'https'}://${hote}` : SITE;
   return `${origine}/erp/logements/connexions?retour=${encodeURIComponent(fournisseur)}`;
-}
-
-function lireCorps(req: any): Record<string, unknown> {
-  const b = req.body;
-  if (b && typeof b === 'object' && !Array.isArray(b)) return b as Record<string, unknown>;
-  if (typeof b === 'string') {
-    try {
-      const x = JSON.parse(b);
-      return x && typeof x === 'object' && !Array.isArray(x) ? x : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
 }
 
 export default async function handler(req: any, res: any) {

@@ -696,8 +696,11 @@ export function versFil(conv: RepullConversation, messages: RepullMessage[], exi
   for (const brut of messages) {
     if (!brut?.id || !instant(brut.sentAt)) continue;
     const m = versMessage(brut);
-    if (!connus.has(m.id)) nouveaux.push(m);
-    connus.set(m.id, m);
+    const avant = connus.get(m.id);
+    if (!avant) nouveaux.push(m);
+    // Envoyé depuis l'ERP : Repull le voit comme un envoi de l'hôte (aiGenerated
+    // faux) ; l'auteur « agent », l'heure et la trace d'envoi de l'ERP restent.
+    connus.set(m.id, avant ? { ...avant, ...m, auteur: avant.auteur === 'agent' ? 'agent' : m.auteur, envoyeLe: avant.envoi ? avant.envoyeLe : m.envoyeLe } : m);
   }
   const liste = [...connus.values()].sort(parDate);
   const dernier = liste[liste.length - 1];

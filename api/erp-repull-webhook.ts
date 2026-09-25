@@ -22,6 +22,7 @@ import crypto from 'node:crypto';
 import { lancer, texteErreur, type EvenementRepull } from '../src/erp/data/repull-synchro.js';
 import { signatureValide, type OutilsSignature } from '../src/erp/data/repull-signature.js';
 import { baseErp, configuration, continuerApresReponse, repondre, variableManquante } from './_erp-repull.js';
+import { agentApresSynchro } from './_erp-agent.js';
 
 /** La signature porte sur le corps exact reçu : pas d'analyse JSON préalable. */
 export const config = { api: { bodyParser: false } };
@@ -106,8 +107,10 @@ export default async function handler(req: any, res: any) {
     quotaMois: c.quotaMois,
     evenement: ev,
   })
-    .then((r) => {
+    .then(async (r) => {
       if (!r.ok) console.warn('[erp-repull-webhook]', ev.event, r.statut, r.message);
+      // Nouveau message d'un voyageur : l'agent IA répond tout de suite.
+      if (r.statut === 'fait') await agentApresSynchro(c, r.bilan?.messages ?? 0, debut + 55_000);
       return r;
     })
     .catch((e) => {
