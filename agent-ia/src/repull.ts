@@ -154,22 +154,27 @@ async function toutesLesPages<T = any>(
 
 // --- Comptes connectés (Repull Connect) ---
 
-export type CompteConnecte = { compteId: string; actif: boolean; creeLe: string | null };
+export type CompteConnecte = { compteId: string; actif: boolean };
 
 /**
- * Comptes Airbnb (hôtes) ou Booking (établissements) reliés à notre espace.
- * `compteId` est l'identifiant côté plateforme quand Repull le donne — l'id
- * d'hôte Airbnb est celui qu'attend le filtre `account_id` des annonces.
+ * Comptes reliés à notre espace : hôtes Airbnb (id d'hôte, celui qu'attend le
+ * filtre `account_id` des annonces) ou établissements Booking.com (hotel id).
+ * Un espace peut porter plusieurs comptes par plateforme — un par conciergerie
+ * au moins.
  */
 export async function comptesConnectes(canal: Canal): Promise<CompteConnecte[]> {
-  const connexions = await toutesLesPages('/v1/connect', {}, 5);
-  return connexions
-    .filter((c: any) => estCanal(c.provider, canal))
-    .map((c: any) => ({
-      compteId: String(c.externalAccountId ?? c.id),
-      actif: c.status === 'active',
-      creeLe: c.createdAt ?? null,
-    }));
+  if (canal === 'airbnb') {
+    const r = await appel('GET', '/v1/connect/airbnb');
+    const comptes: any[] = r.accounts ?? [];
+    if (comptes.length) {
+      return comptes.map((c) => ({ compteId: String(c.externalAccountId), actif: c.connected === true }));
+    }
+    return r.connected && r.externalAccountId
+      ? [{ compteId: String(r.externalAccountId), actif: r.status === 'active' }]
+      : [];
+  }
+  const etablissements = await toutesLesPages('/v1/channels/booking/properties', {}, 5);
+  return etablissements.map((e: any) => ({ compteId: String(e.hotelId), actif: e.active !== false }));
 }
 
 /**
@@ -198,7 +203,7 @@ export async function annoncesDuCompte(canal: Canal, compteId: string): Promise<
   // les chambres associées dans le parcours Connect.
   const etablissements = await toutesLesPages('/v1/channels/booking/properties', {}, 5);
   return etablissements
-    .filter((e: any) => String(e.hotelId) === compteId || String(e.connectionId) === compteId)
+    .filter((e: any) => String(e.hotelId) === compteId)
     .flatMap((e: any) =>
       (e.listings ?? []).map((a: any) => ({
         id: String(a.listingId),

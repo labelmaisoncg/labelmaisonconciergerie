@@ -856,7 +856,7 @@ export async function logementParRepullId(
     select l.*, c.nom as c_nom,
            c.style_profil as c_style, c.style_exemples as c_exemples
     from logements l join conciergeries c on c.id = l.conciergerie_id
-    where l.repull_listing_id = ${annonceId} and l.actif and c.actif limit 1`;
+    where l.repull_listing_id = ${annonceId} limit 1`;
   if (!r) return null;
   return {
     logement: versLogement(r),

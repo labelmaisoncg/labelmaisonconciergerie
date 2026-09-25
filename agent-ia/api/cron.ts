@@ -1,8 +1,8 @@
 /**
  * Tâches planifiées.
  *
- *   /api/cron?tache=reservations  rattrapage du flux Channex — toutes les 15 min
- *   /api/cron?tache=messages   messages voyageurs — toutes les 1 à 2 minutes
+ *   /api/cron?tache=reservations  rattrapage des réservations Repull — toutes les 15 min
+ *   /api/cron?tache=messages   rattrapage des messages voyageurs — toutes les 10 min
  *   /api/cron?tache=matin      résumé du jour — n'agit qu'à 8 h heure de Paris
  *   /api/cron?tache=sante      santé des connexions OTA — à 5 h heure de Paris
  *
@@ -11,14 +11,16 @@
  * ne fait le travail qu'à la bonne heure locale. C'est la seule façon d'avoir
  * une heure vraiment fixe des deux côtés du changement d'heure.
  *
- * Vercel Hobby ne permet qu'un déclenchement par jour : la cadence des messages
- * voyageurs vient de `pg_cron` côté Supabase (cf. sql/cron.sql).
+ * Le temps réel passe par le webhook Repull ; ces tâches sont des filets.
+ * Vercel Hobby ne permet qu'un déclenchement par jour : leur cadence vient de
+ * `pg_cron` côté Supabase (cf. sql/cron.sql).
  */
 
 import { traiterMessagesVoyageurs } from '../src/messagerie.js';
 import { veiller } from '../src/veille.js';
 import { releverReservations } from '../src/reservations.js';
-import * as channex from '../src/channex.js';
+import { synchroniserAnnonces } from '../src/comptes.js';
+import * as repull from '../src/repull.js';
 import * as store from '../src/store.js';
 import { envoyerMessage } from '../src/telegram.js';
 import { aujourdhui, enFrancais, heureParis } from '../src/dates.js';
@@ -45,11 +47,11 @@ export default async function handler(req: any, res: any) {
     if (tache === 'messages') {
       let repondus = 0;
       let escalades = 0;
-      // Les fils couvrent tout le compte Channex : UNE lecture par passage,
+      // Les fils couvrent tout l'espace Repull : UNE lecture par passage,
       // partagée entre toutes les conciergeries — et non une par conciergerie.
-      let fils: channex.FilMessages[];
+      let fils: repull.FilMessages[];
       try {
-        fils = await channex.filsDeMessages();
+        fils = await repull.filsDeMessages();
       } catch (err) {
         console.error('[cron] fils de messages illisibles :', err);
         return res.status(502).json({ ok: false, tache, error: 'fils de messages illisibles' });
@@ -81,8 +83,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (tache === 'reservations') {
-      // Rattrapage du flux Channex : un seul appel pour toutes les propriétés,
-      // toutes conciergeries confondues.
+      // Rattrapage : une seule lecture pour tous les logements, toutes
+      // conciergeries confondues.
       const r = await releverReservations();
       return res.status(200).json({ ok: true, tache, ...r });
     }
@@ -119,16 +121,16 @@ async function resumeDuMatin(c: store.Conciergerie & { chatIds: string[] }): Pro
   const lignesArrivees: string[] = [];
 
   for (const l of logements) {
-    if (!l.channexPropertyId) continue;
+    if (!l.repullListingId) continue;
     try {
       const [departs, arrivees] = await Promise.all([
-        channex.departsDu(l.channexPropertyId, date),
-        channex.reservations(l.channexPropertyId, date, date),
+        repull.departsDu(l.repullListingId, date),
+        repull.reservations(l.repullListingId, date, date),
       ]);
       for (const d of departs) {
         lignesMenages.push(`- ${l.nom}${d.voyageur ? ` (départ ${d.voyageur})` : ''}`);
       }
-      for (const a of arrivees) {
+      for (const a of arrivees.filter((x) => !repull.estAnnulee(x))) {
         lignesArrivees.push(
           `- ${l.nom}${a.voyageur ? ` : ${a.voyageur}` : ''}${a.personnes ? `, ${a.personnes} pers.` : ''}`,
         );
@@ -165,24 +167,25 @@ async function resumeDuMatin(c: store.Conciergerie & { chatIds: string[] }): Pro
  */
 async function verifierSante(c: store.Conciergerie & { chatIds: string[] }): Promise<number> {
   const proprietaire = c.chatIds[0];
-  const logements = await store.logements(c.id);
+  const avant = await store.logements(c.id);
+
+  // Relit l'état des canaux de chaque annonce, et importe au passage les
+  // annonces arrivées depuis sur les comptes déjà rattachés.
+  try {
+    await synchroniserAnnonces(c.id);
+  } catch (err) {
+    console.error(`[cron] santé illisible pour ${c.nom} :`, err);
+    return 0;
+  }
+  const apres = new Map((await store.logements(c.id)).map((l) => [l.id, l]));
+
+  // On n'alerte que sur une RÉGRESSION : ce qui était connecté ne l'est plus.
   const casses: string[] = [];
-
-  for (const l of logements) {
-    if (!l.channexPropertyId) continue;
-    try {
-      const canaux = await channex.canauxDe(l.channexPropertyId);
-      const airbnb = canaux.some((x) => x.code === 'AirBNB' && x.actif);
-      const booking = canaux.some((x) => x.code === 'BookingCom' && x.actif);
-
-      // On n'alerte que sur une RÉGRESSION : ce qui était connecté ne l'est plus.
-      if (l.airbnbConnecte && !airbnb) casses.push(`${l.nom} — Airbnb déconnecté`);
-      if (l.bookingConnecte && !booking) casses.push(`${l.nom} — Booking déconnecté`);
-
-      await store.majLogement(l.id, { airbnbConnecte: airbnb, bookingConnecte: booking });
-    } catch (err) {
-      console.error(`[cron] santé illisible pour ${l.nom} :`, err);
-    }
+  for (const l of avant) {
+    const maintenant = apres.get(l.id);
+    if (!maintenant) continue;
+    if (l.airbnbConnecte && !maintenant.airbnbConnecte) casses.push(`${l.nom} — Airbnb déconnecté`);
+    if (l.bookingConnecte && !maintenant.bookingConnecte) casses.push(`${l.nom} — Booking déconnecté`);
   }
 
   if (casses.length === 0 || !proprietaire) return 0;
