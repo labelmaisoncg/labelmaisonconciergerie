@@ -141,7 +141,7 @@ export default function Connexions() {
       if (!retour) return;
       const nom = NOMS[retour] ?? e?.fournisseurs.find((f) => f.id === retour)?.nom ?? retour;
       const echec = /error|fail|cancel|denied/i.test(`${params.get('status') ?? ''} ${params.get('error') ?? ''}`);
-      const connecte = !!e?.connexions.some((c) => c.fournisseur === retour && c.statut === 'active');
+      const connecte = !!e?.connexions.some((c) => c.fournisseur === retour && (c.statut === 'active' || c.statut === 'chambres'));
       if (e && connecte && !echec) {
         setMessage({ ton: 'succes', texte: `${nom} est bien connecté. Choisissez maintenant les logements à gérer, plus bas.` });
       } else if (e) {
@@ -276,6 +276,7 @@ export default function Connexions() {
           {PRINCIPALES.map((p) => {
             const comptes = connexions.filter((c) => c.fournisseur === p.id);
             const actif = comptes.some((c) => c.statut === 'active');
+            const aFinir = !actif && comptes.some((c) => c.statut === 'chambres');
             const logo = fournisseurs.find((f) => f.id === p.id)?.logo;
             return (
               <Card key={p.id} className="flex flex-col gap-3">
@@ -287,11 +288,16 @@ export default function Connexions() {
                       <Skeleton className="mt-1 h-4 w-28" />
                     ) : (
                       <Badge tone={actif ? 'succes' : comptes.length ? 'alerte' : 'neutre'} point>
-                        {actif ? 'Connecté' : comptes.length ? 'À reconnecter' : 'Pas encore connecté'}
+                        {actif ? 'Connecté' : aFinir ? 'Presque fini : chambres à associer' : comptes.length ? 'À reconnecter' : 'Pas encore connecté'}
                       </Badge>
                     )}
                   </div>
                 </div>
+                {aFinir && (
+                  <p className="text-[12.5px] text-(--lm-encre-2)">
+                    Booking a bien accepté Repull. Il reste à associer vos chambres à vos logements : cliquez sur « Terminer la connexion », puis suivez la page.
+                  </p>
+                )}
                 {comptes.length > 0 ? (
                   <ul className="space-y-1.5">
                     {comptes.map((c) => (
@@ -314,7 +320,7 @@ export default function Connexions() {
                   disabled={!reel || !gerant || !!connexionEnCours}
                   onClick={() => void connecter(p.id)}
                 >
-                  {actif ? 'Ajouter un autre compte' : `Connecter ${p.nom}`}
+                  {actif ? 'Ajouter un autre compte' : aFinir ? 'Terminer la connexion' : `Connecter ${p.nom}`}
                 </Button>
               </Card>
             );
