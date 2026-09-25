@@ -8,6 +8,7 @@
  * relancé juste après pour créer les ménages des nouvelles réservations.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ExternalLink, RefreshCw } from 'lucide-react';
 import { ACTION_JOURNAL_REPULL } from '../../data/repull';
 import type { EtatRepull, ResultatLancement } from '../../data/repull-synchro';
@@ -79,7 +80,8 @@ export function useSynchroRepull() {
         setRetour({ ton: 'danger', texte: corps.erreur ?? `La synchronisation a échoué (erreur ${r.status}).` });
         return;
       }
-      if (corps.statut === 'limite') setRetour({ ton: 'info', texte: corps.message ?? 'Synchronisation faite il y a moins de 10 minutes.' });
+      if (corps.statut === 'selection') setRetour({ ton: 'info', texte: 'Choisissez vos logements (Logements → Connexions) : rien n’est importé tant que vous ne les avez pas choisis.' });
+      else if (corps.statut === 'limite') setRetour({ ton: 'info', texte: corps.message ?? 'Synchronisation faite il y a moins de 10 minutes.' });
       else if (corps.statut === 'budget') setRetour({ ton: 'danger', texte: corps.message ?? 'Part mensuelle des appels Repull épuisée.' });
       else if (!corps.ok) setRetour({ ton: 'alerte', texte: corps.message ?? 'Synchronisation terminée avec des erreurs.' });
       else {
@@ -171,11 +173,15 @@ export function CarteSynchroRepull() {
         </div>
       </dl>
       <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
-        Un nouveau compte ou une nouvelle annonce ?{' '}
+        Un nouveau compte ou un nouveau logement ?{' '}
+        <Link to="/erp/logements/connexions" className="text-(--lm-or) hover:underline">
+          Connectez-le et choisissez vos logements
+        </Link>{' '}
+        (ou dans{' '}
         <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or) hover:underline">
-          Connectez-le dans Repull <ExternalLink className="size-3.5" aria-hidden />
-        </a>{' '}
-        : il arrive ici à la synchronisation suivante. Pas plus d’une synchronisation manuelle toutes les 10 minutes, pour ménager le quota d’appels.
+          Repull <ExternalLink className="size-3.5" aria-hidden />
+        </a>
+        ) : il arrive ici à la synchronisation suivante. Pas plus d’une synchronisation manuelle toutes les 10 minutes, pour ménager le quota d’appels.
       </p>
     </Card>
   );

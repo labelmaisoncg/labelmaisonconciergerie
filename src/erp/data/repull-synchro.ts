@@ -41,6 +41,7 @@ import {
   ID_PROPRIETAIRE_A_RENSEIGNER,
   appliquerAvis,
   canalReservation,
+  statutLogement,
   canonique,
   dateParis,
   horodatageParis,
@@ -80,6 +81,10 @@ export class ErreurRepull extends Error {
     message: string,
     readonly statut: number,
     readonly code?: string,
+    /** Marche à suivre donnée par Repull (error.fix), en anglais. */
+    readonly correctif?: string,
+    /** Champs complémentaires de l'erreur (limit, active_listings, valid_values...). */
+    readonly infos: Record<string, unknown> = {},
   ) {
     super(message);
   }
@@ -100,7 +105,7 @@ export class BudgetEpuise extends Error {
 }
 
 interface EnveloppeErreur {
-  error?: { code?: string; message?: string; retry_after?: number; scope?: string; resetsAt?: string; tier?: string };
+  error?: { code?: string; message?: string; fix?: string; retry_after?: number; scope?: string; resetsAt?: string; tier?: string } & Record<string, unknown>;
 }
 
 function messageRepull(statut: number, code: string | undefined, brut: string | undefined): string {
@@ -155,6 +160,25 @@ export class ClientRepull {
   }
 
   async get<T>(chemin: string, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
+    return this.requete<T>('GET', chemin, params);
+  }
+
+  /** POST JSON (connexions, activation des annonces). */
+  async post<T>(chemin: string, corps: unknown, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
+    return this.requete<T>('POST', chemin, params, corps);
+  }
+
+  async supprimer<T>(chemin: string, params: Record<string, string | number | boolean | undefined> = {}): Promise<T> {
+    return this.requete<T>('DELETE', chemin, params);
+  }
+
+  /** Une requête comptée ; un seul nouvel essai (débit, réseau, 5xx). */
+  async requete<T>(
+    methode: 'GET' | 'POST' | 'DELETE' | 'PATCH',
+    chemin: string,
+    params: Record<string, string | number | boolean | undefined> = {},
+    envoi?: unknown,
+  ): Promise<T> {
     const url = new URL(this.base + chemin);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
     for (let essai = 1; ; essai++) {
@@ -166,7 +190,13 @@ export class ClientRepull {
       try {
         this.appels++;
         r = await this.f(url.toString(), {
-          headers: { Authorization: `Bearer ${this.o.cle}`, Accept: 'application/json' },
+          method: methode,
+          headers: {
+            Authorization: `Bearer ${this.o.cle}`,
+            Accept: 'application/json',
+            ...(envoi !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          },
+          ...(envoi !== undefined ? { body: JSON.stringify(envoi) } : {}),
           signal: abandon.signal,
         });
       } catch {
@@ -178,7 +208,7 @@ export class ClientRepull {
         throw new ErreurRepull(messageRepull(0, undefined, undefined), 0);
       }
       clearTimeout(minuterie);
-      if (r.ok) return (await r.json()) as T;
+      if (r.ok) return (r.status === 204 ? {} : await r.json().catch(() => ({}))) as T;
       const corps = (await r.json().catch(() => ({}))) as EnveloppeErreur;
       let code = corps.error?.code;
       // 429 de quota (mois ou jour : champs tier / scope / resetsAt) : attendre ne sert à rien.
@@ -194,7 +224,8 @@ export class ClientRepull {
         await this.patienter(1500);
         continue;
       }
-      throw new ErreurRepull(messageRepull(r.status, code, corps.error?.message), r.status, code);
+      const { code: _c, message: brut, fix, ...infos } = corps.error ?? {};
+      throw new ErreurRepull(messageRepull(r.status, code, brut), r.status, code, typeof fix === 'string' ? fix : undefined, infos);
     }
   }
 
@@ -384,7 +415,16 @@ export interface BilanRepull {
   /** Réservations dont la note ou le commentaire voyageur a changé. */
   avis: number;
   proprietaireCree: boolean;
-  ignores: { reservationsEnAttente: number; reservationsSansLogement: number; filsSansLogement: number; avisSansReservation: number };
+  ignores: {
+    reservationsEnAttente: number;
+    reservationsSansLogement: number;
+    filsSansLogement: number;
+    avisSansReservation: number;
+    /** Réservations, conversations et avis des logements non choisis (page Connexions). */
+    horsSelection?: number;
+  };
+  /** Logements retirés du choix, mis en pause dans l'ERP (jamais supprimés). */
+  misEnPause?: number;
   /** Phases menées à leur terme (annonces, reservations, avis, conversations, pays). */
   phases: PhaseRepull[];
   /** Faux : temps ou part d'appels atteint, un nouveau passage terminera. */
@@ -452,6 +492,12 @@ export interface OptionsSynchroRepull {
   maintenant?: () => Date;
   /** Phases à mener (toutes par défaut) : l'économie d'appels saute les moins urgentes. */
   phases?: PhaseRepull[];
+  /**
+   * Annonces Repull choisies sur la page Connexions : seules celles-ci (et
+   * leurs réservations, conversations, avis) entrent dans l'ERP. Absent :
+   * pas de filtre (lancer() n'appelle jamais la session sans choix).
+   */
+  selection?: ReadonlySet<string>;
 }
 
 /** Correspondance id Repull → id ERP, en préférant un élément relié à la main (id non « repull-... »). */
@@ -499,7 +545,8 @@ export class SessionRepull {
       messages: 0,
       avis: 0,
       proprietaireCree: false,
-      ignores: { reservationsEnAttente: 0, reservationsSansLogement: 0, filsSansLogement: 0, avisSansReservation: 0 },
+      ignores: { reservationsEnAttente: 0, reservationsSansLogement: 0, filsSansLogement: 0, avisSansReservation: 0, horsSelection: 0 },
+      misEnPause: 0,
       phases: [],
       complet: true,
       erreurs: [],
@@ -510,6 +557,36 @@ export class SessionRepull {
 
   private get aujourdhui() {
     return dateParis(this.maintenant());
+  }
+
+  /** L'annonce fait-elle partie des logements choisis ? (sans id : on ne sait pas, on laisse passer) */
+  private retenue(idAnnonce: unknown): boolean {
+    const sel = this.o.selection;
+    if (!sel || idAnnonce === undefined || idAnnonce === null || idAnnonce === '') return true;
+    return sel.has(String(idAnnonce));
+  }
+
+  /** Annonce Repull d'un logement de l'ERP (pour filtrer conversations et avis). */
+  private annonceDuLogement(logementId: Id | undefined): string | undefined {
+    return logementId ? this.logements?.get(logementId)?.repull?.id : undefined;
+  }
+
+  private horsSelection() {
+    this.bilan.ignores.horsSelection = (this.bilan.ignores.horsSelection ?? 0) + 1;
+  }
+
+  /**
+   * Logement retiré du choix : mis en pause, jamais supprimé (réservations,
+   * historique et saisies de l'équipe restent). Un logement « sorti » le reste.
+   */
+  private async mettreHorsSelection(idAnnonce: string, statutRepull?: string): Promise<void> {
+    const logements = await this.chargerLogements();
+    const existant = logements.get(this.logementParRepull.get(idAnnonce));
+    if (!existant || !existant.repull) return;
+    const statut: Logement['statut'] = existant.statut === 'sorti' ? 'sorti' : 'pause';
+    if (existant.repull.horsSelection && existant.statut === statut) return;
+    logements.poser({ ...existant, statut, repull: { ...existant.repull, ...(statutRepull ? { statut: statutRepull } : {}), horsSelection: true } });
+    this.bilan.misEnPause = (this.bilan.misEnPause ?? 0) + 1;
   }
 
   /** Reste-t-il assez de temps pour continuer ? Sinon, le passage est marqué partiel. */
@@ -573,6 +650,8 @@ export class SessionRepull {
       }
     }
     const logement = versLogement(annonce, existant, { id, aujourdhui: this.aujourdhui, proprietaireId: ID_PROPRIETAIRE_A_RENSEIGNER });
+    // De nouveau choisi après avoir été retiré : le statut suit de nouveau l'annonce.
+    if (existant?.repull?.horsSelection) logement.statut = statutLogement(l.status);
     logements.poser(logement);
     this.logementParRepull.set(String(l.id), id);
     return id;
@@ -589,7 +668,11 @@ export class SessionRepull {
   async phaseAnnonces(): Promise<void> {
     await this.chargerLogements();
     for await (const page of this.repull.pages<RepullListing>('/v1/listings', { status: 'all', include: 'content,details,thumbnail' })) {
-      for (const l of page) if (l?.id !== undefined && l?.id !== null) await this.poserAnnonce(l, true);
+      for (const l of page) {
+        if (l?.id === undefined || l?.id === null) continue;
+        if (this.retenue(l.id)) await this.poserAnnonce(l, true);
+        else await this.mettreHorsSelection(String(l.id), l.status);
+      }
       if (!this.tempsRestant()) break;
     }
     await this.ecrireLogements();
@@ -597,6 +680,13 @@ export class SessionRepull {
 
   /** Une annonce précise (webhook listing.*, ou réservation sur une annonce encore inconnue). */
   async importerAnnonce(idAnnonce: string, repli?: Partial<RepullListing>): Promise<Id | undefined> {
+    if (!this.retenue(idAnnonce)) {
+      // Logement non choisi : aucun appel ; s'il avait été importé, il passe en pause.
+      await this.mettreHorsSelection(idAnnonce, repli?.status);
+      await this.ecrireLogements();
+      this.horsSelection();
+      return undefined;
+    }
     let l: RepullListing | undefined;
     try {
       l = await this.repull.get<RepullListing>(`/v1/listings/${encodeURIComponent(idAnnonce)}`, { include: 'amenities,content,details' });
@@ -612,9 +702,13 @@ export class SessionRepull {
 
   /* -------------------------------------------------------- réservations */
 
-  private async poserReservation(r: RepullReservation, pays?: string): Promise<'ok' | 'attente' | 'sans_logement'> {
+  private async poserReservation(r: RepullReservation, pays?: string): Promise<'ok' | 'attente' | 'sans_logement' | 'hors_selection'> {
     const reservations = await this.chargerReservations();
     await this.chargerLogements();
+    if (!this.retenue(r.listingId)) {
+      this.horsSelection();
+      return 'hors_selection';
+    }
     let logementId = this.logementParRepull.get(String(r.listingId ?? ''));
     // Annonce encore inconnue (créée depuis le dernier relevé des annonces) : un appel, une fois.
     if (!logementId && r.listingId && !this.annoncesDemandees.has(String(r.listingId))) {
@@ -727,6 +821,11 @@ export class SessionRepull {
       this.bilan.ignores.avisSansReservation++;
       return;
     }
+    await this.chargerLogements();
+    if (!this.retenue(this.annonceDuLogement(res.logementId) ?? a.listingId)) {
+      this.horsSelection();
+      return;
+    }
     const suivant = appliquerAvis(res, a);
     if (!identiques(suivant, res)) {
       reservations.poser(suivant);
@@ -788,6 +887,10 @@ export class SessionRepull {
         const idRes = conv.reservationId ? this.reservationParRepull.get(String(conv.reservationId)) : undefined;
         const res = reservations.get(idRes);
         const logementId = res?.logementId ?? (conv.listingId ? this.logementParRepull.get(String(conv.listingId)) : undefined) ?? existant?.logementId;
+        if (!this.retenue(conv.listingId ?? this.annonceDuLogement(logementId))) {
+          this.horsSelection();
+          continue;
+        }
         if (!logementId) {
           this.bilan.ignores.filsSansLogement++;
           continue;
@@ -833,6 +936,7 @@ export class SessionRepull {
     ];
     const notes: string[] = [];
     if (b.proprietaireCree) notes.push('fiche « Propriétaire à renseigner » créée');
+    if (b.misEnPause) notes.push(`${b.misEnPause} logement(s) retiré(s) de votre choix, mis en pause`);
     if (b.ignores.reservationsEnAttente) notes.push(`${b.ignores.reservationsEnAttente} réservation(s) en attente de confirmation non importée(s)`);
     if (b.ignores.reservationsSansLogement) notes.push(`${b.ignores.reservationsSansLogement} réservation(s) sur une annonce inconnue`);
     if (b.ignores.filsSansLogement) notes.push(`${b.ignores.filsSansLogement} conversation(s) sans logement`);
@@ -1054,6 +1158,40 @@ export interface EtatRepull {
 
 const moisParis = (d: Date) => dateParis(d).slice(0, 7);
 
+/** Choix des logements (page Connexions), même collection que l'état. */
+export const ID_SELECTION = 'selection';
+
+export interface SelectionRepull {
+  id: typeof ID_SELECTION;
+  /** Annonces Repull choisies (ids). */
+  annonces: string[];
+  /** Limite de l'offre au moment du choix. */
+  limite: number | null;
+  majLe: string;
+  majPar: string;
+}
+
+/** Choix enregistré, ou null si personne n'a encore choisi. */
+export async function lireSelection(base: BaseErp): Promise<SelectionRepull | null> {
+  const [lu] = await base.lire<SelectionRepull>(COLLECTION_ETAT, [ID_SELECTION]);
+  return lu && Array.isArray(lu.annonces) ? { ...lu, annonces: lu.annonces.map(String) } : null;
+}
+
+/** Appels faits hors d'un passage (page Connexions) : ajoutés au compteur du mois. */
+export async function imputerAppels(
+  base: BaseErp,
+  maintenant: Date,
+  appels: number,
+  budgetMois = BUDGET_ERP_DEFAUT,
+  quotaMois = QUOTA_MOIS_DEFAUT,
+): Promise<EtatRepull> {
+  const frais = await lireEtat(base, maintenant, budgetMois, quotaMois);
+  if (appels <= 0) return frais;
+  const suivant: EtatRepull = { ...frais, appelsMois: frais.appelsMois + appels };
+  await base.ecrire(COLLECTION_ETAT, [suivant]);
+  return suivant;
+}
+
 /** État lu en base, compteur remis à zéro au changement de mois. */
 export async function lireEtat(base: BaseErp, maintenant: Date, budgetMois = BUDGET_ERP_DEFAUT, quotaMois = QUOTA_MOIS_DEFAUT): Promise<EtatRepull> {
   const [lu] = await base.lire<EtatRepull>(COLLECTION_ETAT, [ID_ETAT]);
@@ -1102,12 +1240,20 @@ export interface OptionsLancement {
   evenement?: EvenementRepull;
   /** Relever le quota réel du compte (un appel de plus : bouton seulement). */
   lireQuota?: boolean;
+  /**
+   * Passage demandé juste après un nouveau choix de logements : pas
+   * d'intervalle minimal, mode et phases imposés (annonces comprises).
+   */
+  forcer?: { mode: ModeRepull; phases: PhaseRepull[] };
 }
 
 export interface ResultatLancement {
   ok: boolean;
-  /** fait : passage mené ; limite : trop tôt après le précédent ; budget : part du mois épuisée. */
-  statut: 'fait' | 'limite' | 'budget';
+  /**
+   * fait : passage mené ; limite : trop tôt après le précédent ; budget :
+   * part du mois épuisée ; selection : aucun logement choisi, rien importé.
+   */
+  statut: 'fait' | 'limite' | 'budget' | 'selection';
   message?: string;
   bilan?: BilanRepull;
   etat: EtatRepull;
@@ -1126,8 +1272,21 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
   const quotaMois = o.quotaMois ?? QUOTA_MOIS_DEFAUT;
   const etat = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
 
+  // Rien n'entre dans l'ERP tant que les logements n'ont pas été choisis (et aucun appel).
+  const selection = await lireSelection(o.base);
+  if (!selection) {
+    return {
+      ok: true,
+      statut: 'selection',
+      message: 'Choisissez vos logements : rien n’est importé tant que vous ne les avez pas choisis (Logements → Connexions).',
+      bilan: etat.dernierBilan,
+      etat,
+    };
+  }
+  const choisies = new Set(selection.annonces);
+
   const intervalle = o.intervalleManuelMs ?? INTERVALLE_MANUEL_MS;
-  if (o.declencheur === 'manuel' && etat.derniereSynchro) {
+  if (o.declencheur === 'manuel' && !o.forcer && etat.derniereSynchro) {
     const ecoule = maintenant().getTime() - instant(etat.derniereSynchro);
     if (ecoule >= 0 && ecoule < intervalle) {
       const prochaine = new Date(instant(etat.derniereSynchro) + intervalle);
@@ -1160,17 +1319,18 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
   let evenement: string | undefined;
   if (o.evenement) {
     evenement = o.evenement.event ?? 'inconnu';
-    bilan = await traiterEvenement(o.evenement, { repull: client, base: o.base, maintenant });
+    bilan = await traiterEvenement(o.evenement, { repull: client, base: o.base, maintenant, selection: choisies });
   } else {
     // Passage complet (toutes les réservations relues) une fois par semaine par le cron.
     const complet = o.declencheur === 'cron' && (!etat.dernierComplet || maintenant().getTime() - instant(etat.dernierComplet) >= 6.5 * JOUR);
     bilan = await synchroniser({
       repull: client,
       base: o.base,
-      mode: complet ? 'complet' : 'incremental',
+      mode: o.forcer?.mode ?? (complet ? 'complet' : 'incremental'),
       declencheur: o.declencheur,
       maintenant,
-      phases: phasesDues(etat, o.declencheur, maintenant()),
+      phases: o.forcer?.phases ?? phasesDues(etat, o.declencheur, maintenant()),
+      selection: choisies,
     });
   }
 

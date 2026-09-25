@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, LayoutGrid, List, PauseCircle, Percent, Plus, Rocket } from 'lucide-react';
+import { Home, LayoutGrid, List, PauseCircle, Percent, Plug, Plus, Rocket } from 'lucide-react';
 import {
   Button,
+  ButtonLink,
   EmptyState,
   FilterChips,
   PageHeader,
@@ -127,9 +128,14 @@ export default function ListeLogements() {
         sousTitre="Le référentiel des biens confiés : fiche voyageur, checklist de lancement, linge et canaux de diffusion."
         fil={[{ libelle: 'Référentiel' }, { libelle: 'Logements' }]}
         actions={
-          <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
-            Nouveau logement
-          </Button>
+          <>
+            <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
+              Connecter Airbnb, Booking…
+            </ButtonLink>
+            <Button icone={<Plus />} onClick={() => setCreation(true)}>
+              Nouveau logement
+            </Button>
+          </>
         }
       />
 
@@ -173,7 +179,18 @@ export default function ListeLogements() {
         </div>
       </div>
 
-      {filtrees.length === 0 ? (
+      {d.logements.length === 0 ? (
+        <EmptyState
+          icone={<Plug />}
+          titre="Pas encore de logement"
+          description="Connectez Airbnb, Booking.com ou votre logiciel de gestion, puis choisissez vos logements : ils arrivent ici avec leurs réservations."
+          action={
+            <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
+              Connecter Airbnb, Booking…
+            </ButtonLink>
+          }
+        />
+      ) : filtrees.length === 0 ? (
         <EmptyState
           titre="Aucun logement ne correspond"
           description="Modifiez la recherche ou les filtres."

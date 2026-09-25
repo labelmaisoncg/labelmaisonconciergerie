@@ -1,0 +1,499 @@
+/**
+ * Connexions (/erp/logements/connexions) : connecter Airbnb, Booking.com,
+ * VRBO ou un logiciel de gestion, puis choisir les logements à gérer.
+ *
+ * Tout passe par le serveur (api/erp-repull-connexion.ts) : la clé Repull ne
+ * quitte jamais Vercel, l'ERP envoie seulement le jeton de session. L'offre
+ * gratuite de Repull permet 3 logements : une fois la limite atteinte, les
+ * autres cases sont grisées (et le serveur refuse de toute façon au-delà).
+ */
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Check, Home, ImageOff, Lock, Plug, RefreshCw, Unplug } from 'lucide-react';
+import type {
+  AnnonceDecouverte,
+  ConnexionPlateforme,
+  EtatConnexions,
+  FournisseurRepull,
+  ResultatSelection,
+} from '../../data/repull-connexion';
+import { useErp } from '../../data/store';
+import { obtenirClient } from '../../data/supabase';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Select, Skeleton, cn, type Ton } from '../../ui';
+
+const API = '/api/erp-repull-connexion';
+
+/** Plateformes toujours présentées, dans cet ordre. */
+const PRINCIPALES: { id: string; nom: string; aide: string }[] = [
+  { id: 'airbnb', nom: 'Airbnb', aide: 'Vous vous connectez avec votre compte Airbnb, puis vous acceptez l’accès.' },
+  {
+    id: 'booking',
+    nom: 'Booking.com',
+    aide: 'Booking.com vous demande de choisir Repull comme fournisseur dans votre Extranet, puis votre numéro d’établissement. La page vous guide pas à pas.',
+  },
+  { id: 'vrbo', nom: 'Vrbo', aide: 'Vous indiquez vos identifiants Vrbo sur la page sécurisée de Repull.' },
+];
+
+const NOMS: Record<string, string> = { airbnb: 'Airbnb', booking: 'Booking.com', vrbo: 'Vrbo' };
+
+interface Message {
+  ton: Ton;
+  texte: string;
+}
+
+/** Appel du serveur avec le jeton de la session. */
+async function appeler<T>(methode: 'GET' | 'POST', params: Record<string, string>, corps?: unknown): Promise<T> {
+  const { data } = await obtenirClient().auth.getSession();
+  const jeton = data.session?.access_token;
+  if (!jeton) throw new Error('Votre session a expiré : reconnectez-vous à l’ERP.');
+  let r: Response;
+  try {
+    r = await fetch(`${API}?${new URLSearchParams(params)}`, {
+      method: methode,
+      headers: { Authorization: `Bearer ${jeton}`, 'Content-Type': 'application/json' },
+      ...(corps !== undefined ? { body: JSON.stringify(corps) } : {}),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error('Le serveur ne répond pas. Vérifiez votre connexion, puis réessayez.');
+  }
+  const json = (await r.json().catch(() => ({}))) as T & { ok?: boolean; erreur?: string };
+  if (!r.ok || json.ok === false) throw new Error(json.erreur ?? `Une erreur est survenue (${r.status}). Réessayez dans un instant.`);
+  return json;
+}
+
+const pluriel = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plusieurs : un}`;
+
+function nomOffre(offre?: string) {
+  return { free: 'offre gratuite', starter: 'offre Starter', custom: 'votre offre' }[offre ?? 'free'] ?? 'votre offre';
+}
+
+/** Message de fin d'import (« 3 logements importés, 12 réservations, 5 conversations »). */
+function texteResultat(r: ResultatSelection): string {
+  const debut = `${pluriel(r.logements, 'logement importé', 'logements importés')}, ${pluriel(r.reservations, 'réservation')}, ${pluriel(r.conversations, 'conversation')}.`;
+  if (r.partiel) return `${debut} La suite arrive au prochain passage, dans quelques minutes.`;
+  return debut;
+}
+
+export default function Connexions() {
+  const { mode, utilisateur, lancerAutomatisations, lectureSeule } = useErp();
+  const reel = mode === 'reel';
+  const gerant = utilisateur.role === 'gerant' && !lectureSeule;
+  const [params] = useSearchParams();
+  const naviguer = useNavigate();
+  const retour = params.get('retour');
+
+  const [etat, setEtat] = useState<EtatConnexions | null>(null);
+  const [chargement, setChargement] = useState(reel);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [message, setMessage] = useState<Message | null>(null);
+  const [choix, setChoix] = useState<Set<string>>(new Set());
+  const [enregistrement, setEnregistrement] = useState(false);
+  const [connexionEnCours, setConnexionEnCours] = useState<string | null>(null);
+  const [aDeconnecter, setADeconnecter] = useState<ConnexionPlateforme | null>(null);
+  const [deconnexion, setDeconnexion] = useState(false);
+  const [autre, setAutre] = useState('');
+  const retourTraite = useRef(false);
+
+  const charger = useCallback(
+    async (forcer = false) => {
+      if (!reel) return null;
+      setChargement(true);
+      setErreur(null);
+      try {
+        const e = await appeler<EtatConnexions>('GET', { action: 'etat', ...(forcer ? { forcer: '1' } : {}) });
+        setEtat(e);
+        setChoix(new Set(e.selection));
+        return e;
+      } catch (err) {
+        setErreur((err as Error).message);
+        return null;
+      } finally {
+        setChargement(false);
+      }
+    },
+    [reel],
+  );
+
+  // Premier chargement ; au retour de la page de connexion, tout est relu.
+  useEffect(() => {
+    if (retourTraite.current) return;
+    retourTraite.current = true;
+    void (async () => {
+      const e = await charger(!!retour);
+      if (!retour) return;
+      const nom = NOMS[retour] ?? e?.fournisseurs.find((f) => f.id === retour)?.nom ?? retour;
+      const echec = /error|fail|cancel|denied/i.test(`${params.get('status') ?? ''} ${params.get('error') ?? ''}`);
+      const connecte = !!e?.connexions.some((c) => c.fournisseur === retour && c.statut === 'active');
+      if (e && connecte && !echec) {
+        setMessage({ ton: 'succes', texte: `${nom} est bien connecté. Choisissez maintenant les logements à gérer, plus bas.` });
+      } else if (e) {
+        setMessage({
+          ton: 'alerte',
+          texte: `La connexion à ${nom} n’a pas abouti. Vous pouvez réessayer : si vous avez fermé la page avant la fin, rien n’a été enregistré.`,
+        });
+      }
+      naviguer('/erp/logements/connexions', { replace: true });
+    })();
+  }, [charger, retour, params, naviguer]);
+
+  const connecter = async (fournisseur: string) => {
+    setConnexionEnCours(fournisseur);
+    setMessage(null);
+    try {
+      const r = await appeler<{ url: string }>('POST', {}, { action: 'connecter', fournisseur });
+      window.location.assign(r.url);
+    } catch (err) {
+      setMessage({ ton: 'danger', texte: (err as Error).message });
+      setConnexionEnCours(null);
+    }
+  };
+
+  const confirmerDeconnexion = async () => {
+    if (!aDeconnecter) return;
+    setDeconnexion(true);
+    try {
+      const r = await appeler<{ annoncesDesactivees: string[] }>('POST', {}, { action: 'deconnecter', fournisseur: aDeconnecter.fournisseur, compte: aDeconnecter.compte });
+      const nom = NOMS[aDeconnecter.fournisseur] ?? aDeconnecter.fournisseur;
+      setMessage({
+        ton: 'succes',
+        texte: `${nom} est déconnecté.${r.annoncesDesactivees.length ? ` ${pluriel(r.annoncesDesactivees.length, 'logement mis', 'logements mis')} de côté : ils restent dans l’ERP, en pause.` : ''}`,
+      });
+      setADeconnecter(null);
+      await charger(true);
+    } catch (err) {
+      setMessage({ ton: 'danger', texte: (err as Error).message });
+      setADeconnecter(null);
+    } finally {
+      setDeconnexion(false);
+    }
+  };
+
+  const enregistrer = async () => {
+    setEnregistrement(true);
+    setMessage(null);
+    try {
+      const r = await appeler<ResultatSelection>('POST', {}, { action: 'selection', ids: [...choix] });
+      setMessage({ ton: r.ok ? 'succes' : 'alerte', texte: r.ok ? texteResultat(r) : `${texteResultat(r)} ${r.message ?? ''}`.trim() });
+      await charger();
+      // Les lignes arrivent par le temps réel : on laisse le temps, puis on crée les ménages.
+      window.setTimeout(() => lancerAutomatisations(), 3000);
+    } catch (err) {
+      setMessage({ ton: 'danger', texte: (err as Error).message });
+    } finally {
+      setEnregistrement(false);
+    }
+  };
+
+  const limite = etat?.limite ?? null;
+  const atteinte = limite !== null && choix.size >= limite;
+  const modifie = useMemo(() => {
+    const avant = new Set(etat?.selection ?? []);
+    return avant.size !== choix.size || [...choix].some((id) => !avant.has(id));
+  }, [etat, choix]);
+  const infoLimite = `Vous avez atteint la limite de l’${nomOffre(etat?.offre)} (${pluriel(limite ?? 0, 'logement')}). Passez à l’offre Starter pour en ajouter d’autres.`;
+
+  const basculer = (a: AnnonceDecouverte) => {
+    setChoix((c) => {
+      const s = new Set(c);
+      if (s.has(a.id)) s.delete(a.id);
+      else if (limite === null || s.size < limite) s.add(a.id);
+      return s;
+    });
+  };
+
+  const fournisseurs = etat?.fournisseurs ?? [];
+  const connexions = etat?.connexions ?? [];
+  const autres = fournisseurs.filter((f) => !PRINCIPALES.some((p) => p.id === f.id) && f.statut !== 'coming-soon');
+  const autresConnectes = connexions.filter((c) => !PRINCIPALES.some((p) => p.id === c.fournisseur));
+  const nomFournisseur = (id: string) => NOMS[id] ?? fournisseurs.find((f) => f.id === id)?.nom ?? id.charAt(0).toUpperCase() + id.slice(1);
+
+  return (
+    <div>
+      <PageHeader
+        titre="Connexions"
+        sousTitre="Connectez Airbnb, Booking.com et vos autres plateformes, puis choisissez les logements à gérer dans l’ERP."
+        fil={[{ libelle: 'Logements', to: '/erp/logements' }, { libelle: 'Connexions' }]}
+        actions={
+          reel ? (
+            <Button icone={<RefreshCw />} chargement={chargement} onClick={() => void charger(true)}>
+              Actualiser
+            </Button>
+          ) : undefined
+        }
+      />
+
+      {!reel && (
+        <Alert tone="neutre" className="mb-4">
+          Vous êtes en démo : rien n’est connecté ici. Avec vos données réelles, vous connecterez vos plateformes sur cette page.
+        </Alert>
+      )}
+      {reel && !gerant && (
+        <Alert tone="info" className="mb-4" icone={<Lock />}>
+          Seul un gérant peut connecter une plateforme ou choisir les logements. Vous pouvez consulter cette page.
+        </Alert>
+      )}
+      {message && (
+        <Alert tone={message.ton} className="mb-4">
+          {message.texte}
+        </Alert>
+      )}
+      {erreur && (
+        <Alert tone="danger" className="mb-4" titre="Impossible de lire vos connexions" actions={<Button size="sm" onClick={() => void charger(true)}>Réessayer</Button>}>
+          {erreur}
+        </Alert>
+      )}
+      {etat?.avertissements.map((a) => (
+        <Alert key={a} tone="alerte" className="mb-4">
+          {a}
+        </Alert>
+      ))}
+
+      {/* ------------------------------------------------------ plateformes */}
+      <section aria-labelledby="titre-plateformes" className="mb-8">
+        <h2 id="titre-plateformes" className="mb-1 text-[16px] font-semibold text-(--lm-encre)">
+          1. Vos plateformes
+        </h2>
+        <p className="mb-3 text-[13px] text-(--lm-encre-2)">Un clic sur « Connecter » ouvre la page sécurisée de la plateforme. Vous revenez ici ensuite.</p>
+        <div className="grid gap-3 md:grid-cols-3">
+          {PRINCIPALES.map((p) => {
+            const comptes = connexions.filter((c) => c.fournisseur === p.id);
+            const actif = comptes.some((c) => c.statut === 'active');
+            const logo = fournisseurs.find((f) => f.id === p.id)?.logo;
+            return (
+              <Card key={p.id} className="flex flex-col gap-3">
+                <div className="flex items-center gap-3">
+                  <LogoPlateforme nom={p.nom} logo={logo} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-semibold text-(--lm-encre)">{p.nom}</p>
+                    {chargement && !etat ? (
+                      <Skeleton className="mt-1 h-4 w-28" />
+                    ) : (
+                      <Badge tone={actif ? 'succes' : comptes.length ? 'alerte' : 'neutre'} point>
+                        {actif ? 'Connecté' : comptes.length ? 'À reconnecter' : 'Pas encore connecté'}
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+                {comptes.length > 0 ? (
+                  <ul className="space-y-1.5">
+                    {comptes.map((c) => (
+                      <li key={c.id} className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
+                        <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
+                        <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
+                          Déconnecter
+                        </Button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-[12.5px] text-(--lm-encre-3)">{p.aide}</p>
+                )}
+                <Button
+                  className="mt-auto"
+                  variant={actif ? 'secondary' : 'primary'}
+                  icone={<Plug />}
+                  chargement={connexionEnCours === p.id}
+                  disabled={!reel || !gerant || !!connexionEnCours}
+                  onClick={() => void connecter(p.id)}
+                >
+                  {actif ? 'Ajouter un autre compte' : `Connecter ${p.nom}`}
+                </Button>
+              </Card>
+            );
+          })}
+        </div>
+
+        <Card className="mt-3">
+          <CardHeader titre="Autres logiciels de gestion" description="Vous utilisez déjà un logiciel (Hostaway, Smoobu, Lodgify…) ? Connectez-le : vos logements arrivent avec." />
+          {autresConnectes.length > 0 && (
+            <ul className="mb-3 space-y-1.5">
+              {autresConnectes.map((c) => (
+                <li key={c.id} className="flex items-center justify-between gap-2 text-[13.5px]">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <Badge tone={c.statut === 'active' ? 'succes' : 'alerte'} point>
+                      {c.statut === 'active' ? 'Connecté' : 'À reconnecter'}
+                    </Badge>
+                    <span className="truncate font-medium">{nomFournisseur(c.fournisseur)}</span>
+                  </span>
+                  <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
+                    Déconnecter
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="sm:w-72">
+              <Select
+                aria-label="Choisir un logiciel de gestion"
+                value={autre}
+                onChange={(e) => setAutre(e.target.value)}
+                placeholder={autres.length ? 'Choisir un logiciel…' : 'Liste indisponible pour l’instant'}
+                options={autres.map((f: FournisseurRepull) => ({ valeur: f.id, libelle: f.statut === 'beta' ? `${f.nom} (bêta)` : f.nom }))}
+                disabled={!reel || !autres.length}
+              />
+            </div>
+            <Button icone={<Plug />} disabled={!reel || !gerant || !autre || !!connexionEnCours} chargement={!!autre && connexionEnCours === autre} onClick={() => void connecter(autre)}>
+              Connecter
+            </Button>
+          </div>
+        </Card>
+      </section>
+
+      {/* ------------------------------------------------------- logements */}
+      <section aria-labelledby="titre-logements">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 id="titre-logements" className="mb-1 text-[16px] font-semibold text-(--lm-encre)">
+              2. Choisissez les logements à gérer
+            </h2>
+            <p className="text-[13px] text-(--lm-encre-2)">Seuls les logements cochés entrent dans l’ERP, avec leurs réservations, leurs messages et leurs avis.</p>
+          </div>
+          {etat && (
+            <div className="min-w-48 text-right">
+              <p className="lm-chiffres text-[14px] font-semibold text-(--lm-encre)" aria-live="polite">
+                {limite === null ? pluriel(choix.size, 'logement choisi', 'logements choisis') : `${choix.size} / ${pluriel(limite, 'logement')} (${nomOffre(etat.offre)})`}
+              </p>
+              {limite !== null && <ProgressBar className="mt-1.5" valeur={limite ? choix.size / limite : 0} tone={atteinte ? 'alerte' : 'or'} />}
+            </div>
+          )}
+        </div>
+
+        {etat?.depassement && (
+          <Alert tone="alerte" className="mb-3">
+            {etat.depassement.message}
+          </Alert>
+        )}
+        {etat && etat.annonces.length > 0 && etat.selection.length === 0 && !message && (
+          <Alert tone="info" className="mb-3">
+            Choisissez vos logements : rien n’est importé tant que vous ne les avez pas choisis.
+          </Alert>
+        )}
+        {atteinte && etat && etat.annonces.length > choix.size && (
+          <p className="mb-3 text-[12.5px] text-(--lm-encre-2)" role="note">
+            {infoLimite}
+          </p>
+        )}
+
+        {chargement && !etat ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-24 rounded-xl" />
+            ))}
+          </div>
+        ) : !etat || etat.annonces.length === 0 ? (
+          <EmptyState
+            icone={<Home />}
+            titre="Aucun logement trouvé pour l’instant"
+            description={
+              reel
+                ? 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici. Il faut parfois une minute ou deux après la connexion, puis « Actualiser ».'
+                : 'En démo, aucune plateforme n’est connectée.'
+            }
+          />
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {etat.annonces.map((a) => {
+              const coche = choix.has(a.id);
+              const bloque = !coche && atteinte;
+              const inactif = !gerant || enregistrement;
+              return (
+                <li key={a.id}>
+                  <label
+                    title={bloque ? infoLimite : undefined}
+                    className={cn(
+                      'flex h-full items-center gap-3 rounded-xl border bg-(--lm-surface) p-3 transition-colors',
+                      coche ? 'border-(--lm-or) ring-1 ring-(--lm-or-anneau)' : 'border-(--lm-bord)',
+                      bloque ? 'cursor-not-allowed opacity-50 grayscale' : inactif ? 'cursor-default' : 'cursor-pointer hover:border-(--lm-or-anneau)',
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 shrink-0 accent-(--lm-or)"
+                      checked={coche}
+                      disabled={bloque || inactif}
+                      onChange={() => basculer(a)}
+                      aria-describedby={bloque ? `limite-${a.id}` : undefined}
+                    />
+                    {a.photo ? (
+                      <img src={a.photo} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg object-cover" />
+                    ) : (
+                      <span aria-hidden className="grid size-14 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre-3)">
+                        <ImageOff className="size-5" />
+                      </span>
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] font-medium text-(--lm-encre)">{a.nom}</span>
+                      {a.ville && <span className="block truncate text-[12.5px] text-(--lm-encre-3)">{a.ville}</span>}
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {a.plateformes.map((p) => (
+                          <Badge key={p} tone={p === 'airbnb' ? 'danger' : p === 'booking' ? 'info' : 'neutre'}>
+                            {nomFournisseur(p)}
+                          </Badge>
+                        ))}
+                        {a.importee && (
+                          <Badge tone="succes" icone={<Check />}>
+                            Dans l’ERP
+                          </Badge>
+                        )}
+                      </span>
+                      {bloque && (
+                        <span id={`limite-${a.id}`} className="sr-only">
+                          {infoLimite}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {etat && etat.annonces.length > 0 && (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <Button variant="primary" size="lg" icone={<Check />} chargement={enregistrement} disabled={!gerant || !modifie || enregistrement} onClick={() => void enregistrer()}>
+              Enregistrer mon choix
+            </Button>
+            {enregistrement ? (
+              <p className="text-[13px] text-(--lm-encre-2)" aria-live="polite">
+                Import en cours : logements, réservations, messages… Cela peut prendre jusqu’à une minute.
+              </p>
+            ) : (
+              modifie && <p className="text-[13px] text-(--lm-encre-2)">Les logements décochés restent dans l’ERP, en pause. Rien n’est supprimé.</p>
+            )}
+          </div>
+        )}
+      </section>
+
+      <Modal
+        ouvert={!!aDeconnecter}
+        onFermer={() => !deconnexion && setADeconnecter(null)}
+        titre={`Déconnecter ${aDeconnecter ? nomFournisseur(aDeconnecter.fournisseur) : ''} ?`}
+        description="Plus rien n’arrivera de ce compte. Ses logements restent dans l’ERP, en pause, avec leurs réservations. Vous pourrez le reconnecter quand vous voudrez."
+        taille="sm"
+        pied={
+          <>
+            <Button onClick={() => setADeconnecter(null)} disabled={deconnexion}>
+              Annuler
+            </Button>
+            <Button variant="danger" icone={<Unplug />} chargement={deconnexion} onClick={() => void confirmerDeconnexion()}>
+              Déconnecter
+            </Button>
+          </>
+        }
+      />
+    </div>
+  );
+}
+
+function LogoPlateforme({ nom, logo }: { nom: string; logo?: string }) {
+  const [casse, setCasse] = useState(false);
+  if (logo && !casse) return <img src={logo} alt="" className="size-10 shrink-0 rounded-lg border border-(--lm-bord) bg-white object-contain p-1" onError={() => setCasse(true)} />;
+  return (
+    <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-[15px] font-semibold text-(--lm-brun)">
+      {nom.charAt(0)}
+    </span>
+  );
+}
