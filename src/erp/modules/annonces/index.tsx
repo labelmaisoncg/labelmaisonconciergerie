@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Route, Routes, useSearchParams } from 'react-router-dom';
-import { CalendarClock, CheckCircle2, FileText, TrendingUp, X } from 'lucide-react';
+import { CheckCircle2, FileText, TrendingUp, X } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { SANS_DONNEE, moisAnnee, nombre, pluriel } from '../../data/format';
 import { Alert, Button, EmptyState, PageHeader, Select, Stat, Tabs } from '../../ui';
@@ -43,9 +43,8 @@ function PageAnnonces() {
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Distribution' }, { libelle: 'Annonces' }]}
-        titre="Rafraîchissement des annonces"
-        sousTitre="Chaque mois, une nouvelle version utile de chaque annonce, validée par un humain. On mesure l’effet sur les réservations."
+        titre="Annonces"
+        sousTitre="Chaque mois, l’agent propose un texte rafraîchi pour chaque annonce. Vous validez, et on regarde l’effet sur les réservations."
         actions={
           <div className="w-full sm:w-64">
             <Select
@@ -59,22 +58,20 @@ function PageAnnonces() {
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Versions à valider ou publier" valeur={k.aValider} tone={k.aValider ? 'alerte' : 'neutre'} icone={<FileText />} aide="Propositions et versions validées" />
-        <Stat label={`Publiées en ${moisAnnee(MOIS_COURANT)}`} valeur={k.publieesMois} icone={<CheckCircle2 />} aide={`sur ${actifs.length} logements actifs`} />
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="À relire" valeur={k.aValider} tone={k.aValider ? 'alerte' : 'neutre'} icone={<FileText />} aide="textes proposés ou prêts à publier" />
         <Stat
-          label={`Sans nouvelle version depuis plus de ${SEUIL_ANCIENNETE_JOURS} j`}
-          valeur={k.anciens.length}
-          tone={k.anciens.length ? 'alerte' : 'neutre'}
-          icone={<CalendarClock />}
-          aide={k.anciens.map((l) => l.nom).join(', ') || 'Tous à jour'}
+          label={`Publiées en ${moisAnnee(MOIS_COURANT)}`}
+          valeur={k.publieesMois}
+          icone={<CheckCircle2 />}
+          aide={k.anciens.length ? `${k.anciens.length} annonce${k.anciens.length > 1 ? 's' : ''} pas changée${k.anciens.length > 1 ? 's' : ''} depuis ${SEUIL_ANCIENNETE_JOURS} jours` : `sur ${actifs.length} logements en ligne`}
         />
         <div title={AIDE_EFFET}>
           <Stat
-            label="Effet moyen d’une publication"
+            label="Effet d’un nouveau texte"
             valeur={effet}
             icone={<TrendingUp />}
-            aide={`réservations sur 30 j, ${pluriel(k.nbMesures, 'mesure complète', 'mesures complètes')} (arrivées, approximation)`}
+            aide={`réservations en plus sur 30 jours (${pluriel(k.nbMesures, 'mesure', 'mesures')}, estimation)`}
           />
         </div>
       </div>
@@ -101,8 +98,8 @@ function PageAnnonces() {
         actif={onglet}
         onChange={(cle) => maj({ onglet: cle === defaut ? undefined : cle })}
         onglets={[
-          { cle: 'a-valider', libelle: 'À valider', compteur: aTraiter.length },
-          { cle: 'historique', libelle: 'Historique par logement' },
+          { cle: 'a-valider', libelle: 'À relire', compteur: aTraiter.length },
+          { cle: 'historique', libelle: 'Par logement' },
         ]}
       />
 
@@ -120,8 +117,8 @@ function PageAnnonces() {
             ))
           ) : (
             <EmptyState
-              titre="Aucune version en attente"
-              description="L’agent propose une nouvelle version de chaque annonce au début de chaque mois."
+              titre="Rien à relire"
+              description="L’agent proposera de nouveaux textes au début du mois prochain."
               icone={<CheckCircle2 />}
             />
           )}

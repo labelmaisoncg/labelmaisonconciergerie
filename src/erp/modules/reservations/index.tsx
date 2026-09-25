@@ -4,11 +4,11 @@
  */
 import { useMemo, useState } from 'react';
 import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CalendarDays, CalendarPlus, List, LogIn, LogOut, Percent, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowRight, CalendarDays, CalendarPlus, List, LogIn, LogOut, Percent } from 'lucide-react';
 import { Button, Callout, Drawer, PageHeader, Stat, StatusBadge, Tabs, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI, ajouterJours, dateCourte, euros, pluriel, pourcentage } from '../../data/format';
-import { adr, fenetreJours, logementById, logementsActifs, revpar, tauxOccupation } from '../../data/selectors';
+import { adr, fenetreJours, logementById, logementsActifs, tauxOccupation } from '../../data/selectors';
 import type { Reservation } from '../../data/types';
 import { Calendrier } from './_composants/Calendrier';
 import { FicheReservation, PastilleCanal } from './_composants/FicheReservation';
@@ -36,18 +36,15 @@ function Indicateurs() {
     return {
       occupation: tauxOccupation(d.reservations, actifs, f),
       adr: adr(d.reservations.filter((r) => actifs.some((l) => l.id === r.logementId)), f),
-      revpar: revpar(d.reservations, actifs, f),
       arrivees: vivantes.filter((r) => r.arrivee >= AUJOURDHUI && r.arrivee < dans7).length,
       departs: vivantes.filter((r) => r.depart >= AUJOURDHUI && r.depart < dans7).length,
     };
   }, [d.reservations, d.logements]);
   return (
-    <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-5">
-      <Stat label="Occupation 30 j" valeur={pourcentage(Math.round(k.occupation * 100) / 100)} icone={<Percent />} aide="Logements actifs" />
-      <Stat label="ADR 30 j" valeur={euros(k.adr, true)} icone={<TrendingUp />} aide="Prix moyen par nuit" />
-      <Stat label="RevPAR 30 j" valeur={euros(k.revpar, true)} icone={<Wallet />} aide="Par nuit disponible" />
-      <Stat label="Arrivées 7 j" valeur={k.arrivees} icone={<LogIn />} aide="Aujourd’hui inclus" />
-      <Stat label="Départs 7 j" valeur={k.departs} icone={<LogOut />} aide="Ménages à prévoir" className="col-span-2 lg:col-span-1" />
+    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <Stat label="Logements occupés (30 jours)" valeur={pourcentage(Math.round(k.occupation * 100) / 100)} icone={<Percent />} aide={`Prix moyen : ${euros(k.adr, true)} la nuit`} />
+      <Stat label="Arrivées cette semaine" valeur={k.arrivees} icone={<LogIn />} aide="Aujourd’hui compris" />
+      <Stat label="Départs cette semaine" valeur={k.departs} icone={<LogOut />} aide="Autant de ménages à prévoir" />
     </div>
   );
 }
@@ -58,7 +55,7 @@ function PageReservations() {
   const [params, setParams] = useSearchParams();
   const logementFiltre = params.get('logement') ?? '';
   // Venir d'une fiche logement ouvre directement la liste filtrée.
-  const vueDemandee = params.get('vue') ?? (logementFiltre ? 'liste' : 'calendrier');
+  const vueDemandee = params.get('vue') ?? (logementFiltre || params.get('q') ? 'liste' : 'calendrier');
   const vue = vueDemandee === 'liste' ? 'liste' : 'calendrier';
   const [ouverte, setOuverte] = useState<Reservation | null>(null);
   const [creation, setCreation] = useCreationParUrl();
@@ -72,10 +69,10 @@ function PageReservations() {
       <PageHeader
         fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Réservations' }]}
         titre="Réservations"
-        sousTitre="Qui dort où, quand, à quel prix. Une ligne par logement, une barre par séjour."
+        sousTitre="Qui dort où, et quand. Une ligne par logement, une barre par séjour."
         actions={
           <Button variant="primary" icone={<CalendarPlus />} onClick={() => setCreation(true)}>
-            Nouvelle réservation directe
+            Nouvelle réservation
           </Button>
         }
       />
@@ -133,7 +130,7 @@ function PageReservations() {
         onFermer={() => setCreation(false)}
         onCree={(r) =>
           setConfirmation(
-            `Réservation de ${r.voyageur.nom} créée (${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}). Ménage de départ du ${dateCourte(r.depart)} créé, à attribuer.`,
+            `C’est noté : ${r.voyageur.nom} du ${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}. Le ménage du départ est prévu, il reste à choisir qui le fera.`,
           )
         }
       />

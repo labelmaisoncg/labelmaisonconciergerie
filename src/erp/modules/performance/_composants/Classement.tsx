@@ -1,5 +1,5 @@
 import { useNavigate, Link } from 'react-router-dom';
-import { Ban, CircleDollarSign, Handshake, ListChecks, TrendingUp } from 'lucide-react';
+import { CircleDollarSign, Handshake, TrendingUp } from 'lucide-react';
 import type { AnalyseParc, LigneParc } from '../../../analyse';
 import { euros, nombre } from '../../../data/format';
 import { useErp } from '../../../data/store';
@@ -15,27 +15,28 @@ export function Synthese({ parc }: { parc: AnalyseParc }) {
   const marge = l.reduce((s, x) => s + x.analyse.margeMois, 0);
   const n = (r: string) => l.filter((x) => x.analyse.recommandation === r).length;
   const attente = recommandations.filter((r) => r.statut === 'a_proposer' || r.statut === 'proposee').length;
-  const acceptees = recommandations.filter((r) => r.statut === 'acceptee');
-  const realisees = recommandations.filter((r) => r.statut === 'realisee');
-  const impact = [...acceptees, ...realisees].reduce((s, r) => s + (r.impactEstimeCentimesMois ?? 0), 0);
+  const impact = recommandations.filter((r) => r.statut === 'acceptee' || r.statut === 'realisee').reduce((s, r) => s + (r.impactEstimeCentimesMois ?? 0), 0);
   return (
-    <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+    <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
       <Stat
-        label={<LibelleAide texte="Un bien est rentable quand sa marge Label Maison sur 90 jours est positive, après ménages, charges, incidents non refacturés et quote-part des frais de structure.">Rentables pour Label Maison</LibelleAide>}
+        label={<LibelleAide texte="Un logement est rentable quand, sur 90 jours, il vous rapporte plus qu’il ne vous coûte : ménages, dépenses, incidents non remboursés et part des frais généraux.">Logements rentables</LibelleAide>}
         valeur={`${rentables}/${l.length}`}
         icone={<TrendingUp />}
         tone={rentables < l.length ? 'alerte' : 'neutre'}
-        aide={`${n('developper')} à développer`}
+        aide={n('developper') ? `${n('developper')} à développer` : 'sur les 90 derniers jours'}
       />
-      <Stat label={<LibelleAide texte={aideKpi('margeMois')}>Marge totale du parc</LibelleAide>} valeur={euros(marge, true)} icone={<CircleDollarSign />} aide="par mois, 90 derniers jours" />
-      <Stat label="À sortir" valeur={n('sortir')} icone={<Ban />} tone={n('sortir') ? 'danger' : 'neutre'} aide="non renouveler sans plan" />
-      <Stat label="À renégocier" valeur={n('renegocier')} icone={<Handshake />} tone={n('renegocier') ? 'alerte' : 'neutre'} aide="commission ou frais de ménage" />
-      <Stat label="Recommandations en attente" valeur={attente} icone={<ListChecks />} aide={`${acceptees.length} acceptées, ${realisees.length} réalisées`} />
       <Stat
-        label={<LibelleAide texte="Somme des gains mensuels estimés des recommandations acceptées ou réalisées (revenu du bien ou marge Label Maison selon la recommandation).">Impact cumulé estimé</LibelleAide>}
-        valeur={euros(impact, true)}
-        icone={<TrendingUp />}
-        aide="par mois, acceptées et réalisées"
+        label={<LibelleAide texte={aideKpi('margeMois')}>Ce qu’ils vous rapportent</LibelleAide>}
+        valeur={euros(marge, true)}
+        icone={<CircleDollarSign />}
+        aide={impact ? `par mois · ${euros(impact, true)} de plus attendus grâce aux conseils acceptés` : 'par mois, en moyenne sur 90 jours'}
+      />
+      <Stat
+        label="À revoir avec le propriétaire"
+        valeur={n('sortir') + n('renegocier')}
+        icone={<Handshake />}
+        tone={n('sortir') ? 'danger' : n('renegocier') ? 'alerte' : 'neutre'}
+        aide={n('sortir') + n('renegocier') ? `${n('renegocier')} à renégocier, ${n('sortir')} à arrêter` : `${attente} conseil${attente > 1 ? 's' : ''} à proposer`}
       />
     </div>
   );

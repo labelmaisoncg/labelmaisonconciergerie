@@ -17,7 +17,11 @@ export interface PageHeaderProps {
   className?: string;
 }
 
-export function PageHeader({ titre, sousTitre, actions, fil, className }: PageHeaderProps) {
+export function PageHeader({ titre, sousTitre, actions, fil: filBrut, className }: PageHeaderProps) {
+  // La barre latérale et les onglets de rubrique disent déjà où l'on est : le
+  // fil d'Ariane ne s'affiche que s'il ramène vers une page parente (fiche).
+  const sansRacine = (filBrut ?? []).filter((m) => m.libelle !== 'ERP' && m.to !== '/erp');
+  const fil = sansRacine.some((m) => m.to) ? sansRacine : undefined;
   return (
     <header className={cn('mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6', className)}>
       <div className="min-w-0">

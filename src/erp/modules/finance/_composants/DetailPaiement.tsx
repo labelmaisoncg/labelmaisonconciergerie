@@ -28,7 +28,7 @@ export function DetailPaiement({ ligne, onFermer }: { ligne: LignePaiement; onFe
     if ((retenueCentimes > 0 || statut === 'bloque') && !motif.trim())
       return setErreur(statut === 'bloque' ? 'Indiquez le motif du blocage.' : 'Indiquez le motif de la retenue.');
     if (statut === 'paye' && !ligne.validees.length)
-      return setErreur('Aucune mission validée sur la période : rien à payer. Pas de validation, pas de paiement.');
+      return setErreur('Aucun ménage vérifié sur cette période : rien à payer pour l’instant. Vérifiez d’abord les ménages terminés.');
     d.upsert('paiementsPrestataires', {
       id: ligne.paiement?.id ?? nouvelId('pay'),
       prestataireId: ligne.prestataire.id,

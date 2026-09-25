@@ -19,7 +19,7 @@ export default function Entreprise() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
-        <CardHeader titre="Identité" description="Mentions à reprendre sur les mandats, factures et relevés." actions={<Building2 className="size-4 text-(--lm-encre-3)" aria-hidden />} />
+        <CardHeader titre="Identité" description="Les informations qui apparaissent sur vos contrats, factures et relevés." actions={<Building2 className="size-4 text-(--lm-encre-3)" aria-hidden />} />
         <dl className="divide-y divide-(--lm-bord) text-[13.5px]">
           {lignes.map(([l, v]) => (
             <div key={l} className="grid grid-cols-[130px_minmax(0,1fr)] gap-3 py-2">

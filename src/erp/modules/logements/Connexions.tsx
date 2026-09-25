@@ -75,6 +75,23 @@ function texteResultat(r: ResultatSelection): string {
   return debut;
 }
 
+/** Réponse incomplète du serveur (ancienne version en cache, erreur réseau…) : jamais de plantage. */
+function normaliserEtat(e: Partial<EtatConnexions> | null | undefined): EtatConnexions {
+  const liste = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
+  return {
+    ...(e ?? {}),
+    ok: true,
+    fournisseurs: liste(e?.fournisseurs),
+    connexions: liste(e?.connexions),
+    annonces: liste(e?.annonces).map((a) => ({ ...a, plateformes: liste(a?.plateformes) })),
+    selection: liste(e?.selection),
+    limite: e?.limite === undefined ? 3 : e.limite,
+    sourceLimite: e?.sourceLimite ?? 'defaut',
+    avertissements: liste(e?.avertissements),
+    appels: e?.appels ?? { mois: 0, budget: 0 },
+  };
+}
+
 export default function Connexions() {
   const { mode, utilisateur, lancerAutomatisations, lectureSeule } = useErp();
   const reel = mode === 'reel';
@@ -101,7 +118,7 @@ export default function Connexions() {
       setChargement(true);
       setErreur(null);
       try {
-        const e = await appeler<EtatConnexions>('GET', { action: 'etat', ...(forcer ? { forcer: '1' } : {}) });
+        const e = normaliserEtat(await appeler<EtatConnexions>('GET', { action: 'etat', ...(forcer ? { forcer: '1' } : {}) }));
         setEtat(e);
         setChoix(new Set(e.selection));
         return e;
@@ -243,7 +260,7 @@ export default function Connexions() {
           {erreur}
         </Alert>
       )}
-      {etat?.avertissements.map((a) => (
+      {etat?.avertissements.filter((a) => !erreur || !a.startsWith(erreur.slice(0, 40))).map((a) => (
         <Alert key={a} tone="alerte" className="mb-4">
           {a}
         </Alert>

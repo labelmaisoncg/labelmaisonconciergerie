@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlarmClock, CalendarCheck, Camera, ClipboardCheck, Timer } from 'lucide-react';
-import { AUJOURDHUI, SANS_DONNEE, nombre, pourcentage } from '../../data/format';
+import { AlarmClock, CalendarCheck, ClipboardCheck } from 'lucide-react';
+import { AUJOURDHUI, nombre, pourcentage } from '../../data/format';
 import { useErp } from '../../data/store';
 import { fenetreJours, missionsAAttribuerSous, missionsAControler, missionsDuJour, nbMenagesPasses, tauxMissionsValideesAvecPhotos } from '../../data/selectors';
 import type { Mission } from '../../data/types';
@@ -13,7 +13,6 @@ import { Planning } from './_composants/Planning';
 import { RefuserModal } from './_composants/RefuserModal';
 import { Retour, useRetour } from './_composants/retour';
 import { Toutes } from './_composants/Toutes';
-import { delaiMoyenValidation } from './_composants/outils';
 
 const VUES = ['planning', 'a-traiter', 'toutes', 'controle'] as const;
 type Vue = (typeof VUES)[number];
@@ -32,36 +31,33 @@ export function Liste() {
   const nbAAttribuer = d.missions.filter((m) => m.statut === 'a_attribuer').length;
   const taux = tauxMissionsValideesAvecPhotos(d.missions, fenetreJours(30));
   const passees30 = nbMenagesPasses(d.missions, fenetreJours(30));
-  const delai = delaiMoyenValidation(d.missions, d.journal);
   const nbControles = missionsAControler(d.missions, d.reservations).filter((m) => m.noteControle === undefined).length;
 
-  const valider = (m: Mission) => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Pas de validation, pas de paiement (règle 2.4)');
+  const valider = (m: Mission) => traiter(d.validerMission(m.id), 'Ménage vérifié : il sera payé avec le prochain versement du prestataire.', 'Ce ménage ne peut pas encore être vérifié');
   const succes = (texte: string) => setMessage({ ton: 'succes', texte });
 
   return (
     <>
       <PageHeader
-        fil={[{ libelle: 'Opérations' }, { libelle: 'Ménages' }]}
-        titre="Ménages et interventions"
-        sousTitre="Chaque départ crée une mission. Elle n’est validée, donc payée, qu’avec la checklist cochée et les photos avant/après horodatées."
+        titre="Ménages"
+        sousTitre="Chaque départ de voyageur prévoit un ménage. Il est payé une fois vérifié : liste cochée et photos avant/après."
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <Stat label="Missions du jour" valeur={nombre(duJour)} icone={<CalendarCheck />} />
-        <Stat label="À attribuer sous 48 h" valeur={nombre(urgentes)} icone={<AlarmClock />} tone={urgentes ? 'danger' : 'neutre'} aide={`${nbAAttribuer} au total`} />
-        <Stat label="À valider" valeur={nombre(nbAValider)} icone={<ClipboardCheck />} tone={nbAValider ? 'alerte' : 'neutre'} />
-        <Stat label="Validées avec photos (30 j)" valeur={passees30 ? pourcentage(taux) : SANS_DONNEE} icone={<Camera />} tone={!passees30 ? 'neutre' : taux < 0.9 ? 'alerte' : 'succes'} aide="Objectif 100 %" />
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Aujourd’hui" valeur={nombre(duJour)} icone={<CalendarCheck />} aide={duJour ? 'ménages et interventions prévus' : 'rien de prévu aujourd’hui'} />
         <Stat
-          label={delai.source === 'journal' ? 'Délai moyen de validation' : 'Attente moyenne de validation'}
-          valeur={delai.heures === undefined ? SANS_DONNEE : `${nombre(delai.heures, 1)} h`}
-          icone={<Timer />}
-          aide={
-            delai.source === 'journal'
-              ? `Sur ${delai.echantillon} validation${delai.echantillon > 1 ? 's' : ''} tracée${delai.echantillon > 1 ? 's' : ''}`
-              : `Attente actuelle, ${delai.echantillon} mission${delai.echantillon > 1 ? 's' : ''} à valider`
-          }
-          tone={delai.heures !== undefined && delai.heures > 24 ? 'alerte' : 'neutre'}
-          className="col-span-2 md:col-span-1"
+          label="Sans personne (48 h)"
+          valeur={nombre(urgentes)}
+          icone={<AlarmClock />}
+          tone={urgentes ? 'danger' : 'neutre'}
+          aide={urgentes ? 'à confier vite à quelqu’un' : nbAAttribuer ? `${nbAAttribuer} plus tard, sans personne encore` : 'tout le monde sait où aller'}
+        />
+        <Stat
+          label="À vérifier"
+          valeur={nombre(nbAValider)}
+          icone={<ClipboardCheck />}
+          tone={nbAValider ? 'alerte' : 'neutre'}
+          aide={passees30 ? `${pourcentage(taux)} vérifiés avec photos sur 30 jours` : 'pas de ménage ces 30 derniers jours'}
         />
       </div>
 
@@ -71,9 +67,9 @@ export function Liste() {
         onChange={(cle) => setParams(cle === 'planning' ? {} : { vue: cle }, { replace: true })}
         onglets={[
           { cle: 'planning', libelle: 'Planning' },
-          { cle: 'a-traiter', libelle: 'À traiter', compteur: nbAAttribuer + nbAValider },
+          { cle: 'a-traiter', libelle: 'À faire', compteur: nbAAttribuer + nbAValider },
           { cle: 'toutes', libelle: 'Toutes' },
-          { cle: 'controle', libelle: 'Contrôle qualité', compteur: nbControles },
+          { cle: 'controle', libelle: 'Contrôles surprise', compteur: nbControles },
         ]}
       />
 

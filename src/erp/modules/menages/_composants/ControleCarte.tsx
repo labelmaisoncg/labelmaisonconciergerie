@@ -40,7 +40,7 @@ export function ControleCarte({ mission: m, onMessage }: Props) {
   return (
     <Card>
       <CardHeader
-        titre="Contrôle qualité"
+        titre="Contrôle sur place"
         actions={m.controleQualite || basse ? <Badge tone="or" icone={<ClipboardCheck />}>À contrôler</Badge> : undefined}
       />
       <div className="space-y-3 text-[13px]">

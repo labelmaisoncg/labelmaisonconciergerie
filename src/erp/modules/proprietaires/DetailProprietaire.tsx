@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FilePlus2, Landmark, Mail, MapPin, Pencil, Phone, Printer, ScrollText } from 'lucide-react';
-import { Alert, Avatar, Badge, Button, Card, CardHeader, EmptyState, FilterChips, PageHeader, StatusBadge, Table } from '../../ui';
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, FilterChips, PageHeader, StatusBadge, Table } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
@@ -31,7 +31,7 @@ export default function DetailProprietaire() {
     return (
       <>
         <PageHeader titre="Propriétaire introuvable" fil={[{ libelle: 'Propriétaires', to: '/erp/proprietaires' }]} />
-        <EmptyState titre="Ce propriétaire n’existe pas ou a été supprimé" action={<Link to="/erp/proprietaires" className="text-sm font-medium text-(--lm-or) hover:underline">Retour à la liste</Link>} />
+        <EmptyState titre="Ce propriétaire n’existe plus" action={<Link to="/erp/proprietaires" className="text-sm font-medium text-(--lm-or) hover:underline">Retour à la liste</Link>} />
       </>
     );
   }
@@ -62,7 +62,7 @@ export default function DetailProprietaire() {
         actions={
           <>
             <Button icone={<FilePlus2 />} onClick={() => setNouveauMandat(true)}>
-              Nouveau mandat
+              Nouveau contrat
             </Button>
             <Button icone={<Pencil />} onClick={() => setEdition(true)}>
               Modifier
@@ -84,18 +84,16 @@ export default function DetailProprietaire() {
           </Card>
           <Card>
             <CardHeader titre="Notes" actions={<Button size="sm" variant="ghost" onClick={() => setEdition(true)}>Modifier</Button>} />
-            <p className="text-[13.5px] whitespace-pre-line text-(--lm-encre-2)">{p.notes || 'Aucune note.'}</p>
+            <p className="text-[13.5px] whitespace-pre-line text-(--lm-encre-2)">{p.notes || 'Pas de note pour l’instant.'}</p>
           </Card>
-          <Alert tone="info" titre="Rappel contractuel">
-            Le propriétaire ne modifie pas l’annonce sans concertation.
-          </Alert>
+          <p className="px-1 text-[12.5px] text-(--lm-encre-3)">Rappel : le propriétaire ne modifie pas l’annonce sans vous en parler (c’est dans son contrat).</p>
         </div>
 
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
           <Card>
             <CardHeader titre={`Logements (${logements.length})`} />
             {logements.length === 0 ? (
-              <p className="text-sm text-(--lm-encre-3)">Aucun logement confié.</p>
+              <p className="text-sm text-(--lm-encre-3)">Pas encore de logement confié.</p>
             ) : (
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {logements.map((l) => {
@@ -125,14 +123,14 @@ export default function DetailProprietaire() {
             )}
           </Card>
 
-          <section aria-label="Mandats">
-            <h2 className="mb-2 text-[15px] font-semibold">Mandats</h2>
+          <section aria-label="Contrats de gestion">
+            <h2 className="mb-2 text-[15px] font-semibold">Contrats de gestion</h2>
             <Table
-              legende="Mandats du propriétaire"
+              legende="Contrats de gestion du propriétaire"
               dense
               lignes={mandats}
               cleLigne={(m) => m.id}
-              vide="Aucun mandat."
+              vide="Pas encore de contrat."
               colonnes={[
                 { cle: 'ref', titre: 'Référence', rendu: (m) => <Link to={`/erp/mandats?mandat=${m.id}`} className="font-medium text-(--lm-or) hover:underline">{m.reference}</Link> },
                 { cle: 'log', titre: 'Logement', masquerMobile: true, rendu: (m) => d.logements.find((l) => l.id === m.logementId)?.nom ?? 'Inconnu' },
@@ -155,7 +153,7 @@ export default function DetailProprietaire() {
           <Card>
             <CardHeader
               titre="Relevés mensuels"
-              description="Séjours au départ dans le mois, commission et frais de ménage déduits."
+              description="Les séjours du mois, moins votre commission et le ménage : ce qui lui revient."
               actions={<Button size="sm" icone={<Printer />} onClick={imprimer}>Imprimer</Button>}
             />
             <FilterChips
@@ -187,7 +185,7 @@ export default function DetailProprietaire() {
               dense
               lignes={factures.slice(0, 8)}
               cleLigne={(f) => f.id}
-              vide="Aucune facture."
+              vide="Pas de facture."
               colonnes={[
                 { cle: 'num', titre: 'Numéro', rendu: (f) => <span className="font-medium whitespace-nowrap">{f.numero}</span> },
                 { cle: 'type', titre: 'Type', masquerMobile: true, rendu: (f) => LIBELLES.typeFacture[f.type] },

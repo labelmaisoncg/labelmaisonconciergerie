@@ -25,8 +25,8 @@ export function Detail() {
   if (!m)
     return (
       <>
-        <PageHeader fil={[{ libelle: 'Ménages', to: '/erp/menages' }, { libelle: 'Introuvable' }]} titre="Mission introuvable" />
-        <EmptyState icone={<SearchX />} titre="Cette mission n’existe pas" action={<Link to="/erp/menages" className="text-(--lm-or) underline">Retour aux ménages</Link>} />
+        <PageHeader fil={[{ libelle: 'Ménages', to: '/erp/menages' }, { libelle: 'Introuvable' }]} titre="Ménage introuvable" />
+        <EmptyState icone={<SearchX />} titre="Ce ménage n’existe plus" action={<Link to="/erp/menages" className="text-(--lm-or) underline">Retour aux ménages</Link>} />
       </>
     );
 
@@ -59,10 +59,10 @@ export function Detail() {
         sousTitre={<span className="inline-block first-letter:uppercase">{`${dateJour(m.date)}, de ${m.heureDebut} à ${m.heureFinMax} au plus tard`}</span>}
         actions={
           <>
-            {m.statut === 'a_attribuer' && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Attribuer</Button>}
+            {m.statut === 'a_attribuer' && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier</Button>}
             {m.statut === 'attribuee' && (
               <>
-                <Button icone={<UserPlus />} onClick={() => setAttribuer(true)}>Réattribuer</Button>
+                <Button icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier à quelqu’un d’autre</Button>
                 <Button variant="primary" icone={<Play />} onClick={() => statut('en_cours', 'Mission démarrée.')}>Démarrer</Button>
               </>
             )}
@@ -71,7 +71,7 @@ export function Detail() {
               <>
                 <Button icone={<XCircle />} onClick={() => setRefuser(true)}>Refuser</Button>
                 <Button variant="primary" icone={<CheckCircle2 />} onClick={() => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Pas de validation, pas de paiement (règle 2.4)')}>
-                  Valider
+                  C’est bon, valider
                 </Button>
               </>
             )}
@@ -84,14 +84,14 @@ export function Detail() {
       <Retour message={message} onFermer={fermer} />
 
       {(m.statut === 'a_valider' || m.statut === 'en_cours') && !verdict.ok && (
-        <Alert tone="alerte" titre="Validation bloquée (règle 2.4 : pas de validation, pas de paiement)" className="mb-4">
+        <Alert tone="alerte" titre="Ce ménage ne peut pas encore être vérifié" className="mb-4">
           {verdict.raisons.join(' ')}
         </Alert>
       )}
-      {m.statut === 'validee' && <Alert tone="succes" className="mb-4">Mission validée avec checklist complète et photos horodatées : payable au prestataire.</Alert>}
+      {m.statut === 'validee' && <Alert tone="succes" className="mb-4">Ménage vérifié : liste complète et photos en place. Il sera payé au prestataire.</Alert>}
       {m.commentaire && <Alert tone={m.statut === 'refusee' ? 'danger' : 'info'} titre="Commentaire" className="mb-4">{m.commentaire}</Alert>}
       {prestataire && !prestataireConforme(prestataire).ok && !verrouillee && (
-        <Alert tone="danger" titre="Prestataire non conforme" className="mb-4">
+        <Alert tone="danger" titre="Il manque un papier à ce prestataire" className="mb-4">
           {prestataire.nom} : contrat, RC Pro ou URSSAF manquant ou expiré. Réattribuez la mission.
         </Alert>
       )}
@@ -126,7 +126,7 @@ export function Detail() {
           />
           <Card>
             <CardHeader titre="Historique" />
-            <Timeline elements={frise} vide="Aucun événement enregistré pour cette mission." />
+            <Timeline elements={frise} vide="Rien à signaler pour ce ménage." />
           </Card>
         </div>
         <div className="space-y-4">

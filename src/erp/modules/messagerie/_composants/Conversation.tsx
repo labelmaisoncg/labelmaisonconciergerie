@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Bot, CheckCheck, Lock, RotateCcw, Send } from 'lucide-react';
-import { Alert, Button, StatusBadge, Textarea, cn } from '../../../ui';
+import { Alert, Button, MenuActions, StatusBadge, Textarea, cn } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { dateJour, heure, horodatageMaintenant } from '../../../data/format';
@@ -47,17 +47,17 @@ export function Conversation({ fil, logement, reservation }: Props) {
       messages: [...fil.messages, { id: nouvelId('msg'), auteur: 'hote', texte, envoyeLe }],
     });
     setBrouillon('');
-    setAvis('Message envoyé au voyageur. La conversation est désormais suivie par l’équipe.');
+    setAvis(`Message envoyé à ${prenom}. C’est maintenant l’équipe qui suit cette conversation.`);
   };
 
   const clore = () => {
     upsert('filsMessages', { ...fil, statut: 'clos', traitePar: fil.traitePar === 'en_attente' ? 'humain' : fil.traitePar });
-    setAvis('Conversation close.');
+    setAvis('Conversation terminée. Vous la retrouverez dans « Terminées ».');
   };
   const rouvrir = () => upsert('filsMessages', { ...fil, statut: 'ouvert' });
   const rendreMain = () => {
     upsert('filsMessages', { ...fil, statut: 'ouvert', traitePar: 'agent' });
-    setAvis('L’agent IA reprend la conversation. Chaque réponse sera copiée au propriétaire sur Telegram.');
+    setAvis('Votre agent reprend la conversation. Vous recevrez une copie de chacune de ses réponses sur Telegram.');
   };
 
   const inserer = (texte: string) => {
@@ -66,9 +66,9 @@ export function Conversation({ fil, logement, reservation }: Props) {
   };
 
   const motifReprise = !fiche.complete
-    ? `Fiche logement incomplète (${fiche.manquants.join(', ')}) : l’agent ne peut pas reprendre.`
+    ? `Il manque des informations dans la fiche du logement (${fiche.manquants.join(', ')}) : votre agent ne peut pas répondre à sa place.`
     : fil.traitePar === 'agent' && fil.statut === 'ouvert'
-      ? 'L’agent suit déjà cette conversation.'
+      ? 'Votre agent suit déjà cette conversation.'
       : undefined;
 
   let jourPrecedent = '';
@@ -91,22 +91,21 @@ export function Conversation({ fil, logement, reservation }: Props) {
         </div>
         <div className="flex w-full flex-wrap gap-1.5">
           <Button size="sm" variant="secondary" icone={<Bot />} onClick={rendreMain} disabled={!!motifReprise} title={motifReprise}>
-            Rendre la main à l’agent
+            Confier à l’agent
           </Button>
-          {fil.statut === 'clos' ? (
-            <Button size="sm" variant="ghost" icone={<RotateCcw />} onClick={rouvrir}>
-              Rouvrir
-            </Button>
-          ) : (
-            <Button size="sm" variant="ghost" icone={<CheckCheck />} onClick={clore}>
-              Clore
-            </Button>
-          )}
+          <MenuActions
+            label="Autres actions sur la conversation"
+            actions={[
+              fil.statut === 'clos'
+                ? { libelle: 'Rouvrir la conversation', icone: <RotateCcw />, onClick: rouvrir }
+                : { libelle: 'Marquer comme terminée', icone: <CheckCheck />, onClick: clore },
+            ]}
+          />
         </div>
       </div>
 
       {fil.statut === 'escalade' && (
-        <Alert tone="danger" titre={`Escaladé par l’agent : ${LIBELLE_MOTIF[motif].titre}`} className="mx-3 mt-3 sm:mx-4">
+        <Alert tone="danger" titre={`Votre agent vous a passé la main : ${LIBELLE_MOTIF[motif].titre.toLowerCase()}`} className="mx-3 mt-3 sm:mx-4">
           {LIBELLE_MOTIF[motif].explication}
         </Alert>
       )}
@@ -138,7 +137,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   <p className={cn('mt-1 flex items-center justify-end gap-1.5 text-[11px]', m.auteur === 'hote' ? 'text-white/70' : 'text-(--lm-encre-3)')}>
                     {m.auteur === 'agent' && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-(--lm-or) px-1.5 py-px text-[10.5px] font-semibold text-white">
-                        <Bot className="size-3" aria-hidden /> Agent IA
+                        <Bot className="size-3" aria-hidden /> Votre agent
                       </span>
                     )}
                     {m.auteur === 'hote' && <span>Équipe</span>}
@@ -154,7 +153,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
 
       <div className="border-t border-(--lm-bord) bg-(--lm-surface) p-3">
         <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Réponses rapides">
-          <span className="text-[12px] text-(--lm-encre-3)">Réponses rapides :</span>
+          <span className="text-[12px] text-(--lm-encre-3)">Modèles :</span>
           {GABARITS.map((g) => {
             const bloque = (g.sensible && !codes.autorise) || !logement;
             return (
@@ -163,7 +162,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                 type="button"
                 disabled={bloque}
                 onClick={() => logement && inserer(g.texte(logement, prenom))}
-                title={bloque ? `Codes d’accès non autorisés : ${codes.raison}` : `Insérer le modèle ${g.libelle}`}
+                title={bloque ? `Pas de codes d’accès pour ce voyageur (${codes.raison})` : `Insérer le modèle ${g.libelle}`}
                 className="inline-flex h-7 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-2.5 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {bloque && <Lock className="size-3" aria-hidden />}
@@ -191,7 +190,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
             onKeyDown={(e) => {
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) envoyer();
             }}
-            placeholder={`Répondre en tant qu’équipe à ${prenom}…`}
+            placeholder={`Écrire à ${prenom}…`}
             className="min-h-[64px] resize-y"
           />
           <Button type="submit" variant="primary" icone={<Send />} disabled={!brouillon.trim()}>
@@ -200,7 +199,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
           </Button>
         </form>
         <p className="mt-1.5 text-[11.5px] text-(--lm-encre-3)">
-          Répondre vous attribue la conversation. Ne promettez aucun montant sans décision de l’équipe. Ctrl + Entrée pour envoyer.
+          En répondant, vous reprenez la conversation. Ne promettez pas d’argent sans en parler à l’équipe. Ctrl + Entrée pour envoyer.
         </p>
       </div>
     </div>

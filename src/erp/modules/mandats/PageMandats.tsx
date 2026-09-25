@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { FilePen, FileSignature, Percent, Plus, RefreshCcw } from 'lucide-react';
+import { FilePen, FileSignature, Percent, Plus } from 'lucide-react';
 import { Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
@@ -10,6 +10,7 @@ import { logementById, proprietaireById } from '../../data/selectors';
 import type { Mandat, StatutMandat } from '../../data/types';
 import { DetailMandat } from './DetailMandat';
 import { FormMandat } from './FormMandat';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 const STATUTS: StatutMandat[] = ['brouillon', 'envoye', 'signe', 'resilie'];
 const sousCible = (m: Mandat) => m.statut !== 'resilie' && m.commissionPct < COMMISSION_CIBLE_MIN;
@@ -17,7 +18,7 @@ const sousCible = (m: Mandat) => m.statut !== 'resilie' && m.commissionPct < COM
 export default function PageMandats() {
   const d = useErp();
   const [params, setParams] = useSearchParams();
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [filtres, setFiltres] = useState<string[]>([]);
   const [form, setFormEtat] = useState<{ ouvert: boolean; mandat?: Mandat }>({ ouvert: false });
   const [creationUrl, setCreationUrl] = useCreationParUrl();
@@ -97,50 +98,48 @@ export default function PageMandats() {
   return (
     <>
       <PageHeader
-        titre="Mandats"
-        sousTitre="Aucun logement ne passe actif sans mandat écrit signé. Commission cible de 18 à 20 %, migration des anciens mandats au renouvellement."
-        fil={[{ libelle: 'Référentiel' }, { libelle: 'Mandats' }]}
+        titre="Contrats de gestion"
+        sousTitre="Le contrat (mandat) signé avec chaque propriétaire. Un logement ne se met en ligne qu’avec un contrat signé."
         actions={
           <Button variant="primary" icone={<Plus />} onClick={() => setForm({ ouvert: true })}>
-            Nouveau mandat
+            Nouveau contrat
           </Button>
         }
       />
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Mandats signés" valeur={signes.length} icone={<FileSignature />} aide={`sur ${d.mandats.length} au total`} />
-        <Stat label="En attente de signature" valeur={enAttente} icone={<FilePen />} tone={enAttente ? 'alerte' : 'neutre'} aide="brouillons et envoyés" />
-        <Stat label="Commission moyenne" valeur={`${nombre(moyenne, 1)} %`} icone={<Percent />} aide="mandats signés" />
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Signés" valeur={signes.length} icone={<FileSignature />} aide={`sur ${d.mandats.length} au total`} />
+        <Stat label="En attente de signature" valeur={enAttente} icone={<FilePen />} tone={enAttente ? 'alerte' : 'neutre'} aide="brouillons et contrats envoyés" />
         <Stat
-          label="Mandats à renégocier au renouvellement"
-          valeur={aRenegocier}
-          icone={<RefreshCcw />}
+          label="Commission moyenne"
+          valeur={`${nombre(moyenne, 1)} %`}
+          icone={<Percent />}
           tone={aRenegocier ? 'alerte' : 'neutre'}
-          aide={`sous ${COMMISSION_CIBLE_MIN} %`}
+          aide={aRenegocier ? `${aRenegocier} contrat${aRenegocier > 1 ? 's' : ''} sous ${COMMISSION_CIBLE_MIN} %, à revoir au renouvellement` : 'objectif : 18 à 20 %'}
         />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Référence, propriétaire, logement" label="Rechercher un mandat" />
+        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Une référence, un propriétaire, un logement…" label="Rechercher un contrat" />
         <FilterChips
-          label="Filtrer les mandats"
+          label="Filtrer les contrats"
           actifs={filtres}
           onChange={setFiltres}
           filtres={[
             ...STATUTS.map((s) => ({ cle: s, libelle: LIBELLES.statutMandat[s], compteur: d.mandats.filter((m) => m.statut === s).length })),
-            { cle: 'sous_cible', libelle: 'Sous la cible', compteur: d.mandats.filter(sousCible).length },
+            { cle: 'sous_cible', libelle: 'Commission trop basse', compteur: d.mandats.filter(sousCible).length },
           ]}
         />
       </div>
 
       <Table
-        legende="Liste des mandats"
+        legende="Liste des contrats de gestion"
         colonnes={colonnes}
         lignes={filtrees}
         cleLigne={({ m }) => m.id}
         onLigneClick={({ m }) => ouvrir(m.id)}
         ligneActive={selection?.id}
         triInitial={{ cle: 'ref', sens: 'desc' }}
-        vide="Aucun mandat ne correspond aux filtres."
+        vide="Aucun contrat ne correspond. Essayez d’enlever un filtre."
       />
 
       <DetailMandat mandat={selection} onFermer={() => ouvrir()} onModifier={(m) => setForm({ ouvert: true, mandat: m })} />

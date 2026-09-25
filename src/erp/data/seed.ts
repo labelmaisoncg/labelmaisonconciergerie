@@ -17,6 +17,7 @@ import {
 } from './seed-referentiel';
 import { genererOperations } from './seed-operations';
 import { creerRecommandations } from './seed-recommandations';
+import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { creerVersionsAnnonce } from './seed-annonces';
 import type {
   CanalReservation,
@@ -533,5 +534,6 @@ export function creerSeed(): ErpDonnees {
     journal: operations.journal,
     recommandations,
     versionsAnnonce: creerVersionsAnnonce({ logements: LOGEMENTS, reservations, recommandations }),
+    reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }],
   };
 }

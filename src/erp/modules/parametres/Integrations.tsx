@@ -17,16 +17,16 @@ interface Integration {
 const INTEGRATIONS: Integration[] = [
   {
     nom: 'Anthropic',
-    role: 'Agent IA de la messagerie voyageurs. N’engage jamais d’argent : remboursements et gestes commerciaux restent humains.',
+    role: 'Le « cerveau » de votre agent de messagerie. Il ne promet jamais d’argent : remboursements et gestes commerciaux restent à vous.',
     icone: <Bot />,
     etat: 'Crédits épuisés',
     ton: 'danger',
-    besoin: 'Crédits à recharger (solde 0 $), plafond 50 $/mois conseillé.',
+    besoin: 'Il faut recharger des crédits (solde : 0 $). Conseil : un plafond de 50 $ par mois.',
     details: ['Clé API côté serveur uniquement', 'Plafond de dépense mensuel dans la console'],
   },
   {
     nom: 'Supabase',
-    role: 'Base de données, authentification et fichiers de l’ERP.',
+    role: 'L’endroit où sont gardées vos données, vos comptes et vos photos.',
     icone: <Database />,
     etat: 'Démo locale',
     ton: 'neutre',
@@ -35,7 +35,7 @@ const INTEGRATIONS: Integration[] = [
   },
   {
     nom: 'Resend',
-    role: 'Envoi des e-mails transactionnels.',
+    role: 'L’envoi des e-mails automatiques.',
     icone: <Mail />,
     etat: 'Actif',
     ton: 'succes',
@@ -44,7 +44,7 @@ const INTEGRATIONS: Integration[] = [
   },
   {
     nom: 'Telegram',
-    role: 'Notifications internes à l’équipe.',
+    role: 'Les alertes envoyées à l’équipe sur Telegram.',
     icone: <Send />,
     etat: 'Configuré',
     ton: 'succes',
@@ -55,11 +55,11 @@ const INTEGRATIONS: Integration[] = [
 /** Supabase en production : la base est branchée, l'état vient de la synchronisation. */
 const SUPABASE_REEL: Integration = {
   nom: 'Supabase',
-  role: 'Base de données, comptes de l’équipe et photos de l’ERP (projet Label Maison).',
+  role: 'L’endroit où sont gardées vos données, les comptes de l’équipe et les photos.',
   icone: <Database />,
   etat: 'Connectée',
   ton: 'succes',
-  besoin: 'En service : chaque action est enregistrée aussitôt et partagée en direct avec l’équipe.',
+  besoin: 'Tout fonctionne : chaque changement est enregistré tout de suite et visible par toute l’équipe.',
   details: ['Accès par compte individuel (e-mail et mot de passe)', 'Droits appliqués par la base (règles RLS)', 'Historique de chaque version (erp.historique)'],
 };
 

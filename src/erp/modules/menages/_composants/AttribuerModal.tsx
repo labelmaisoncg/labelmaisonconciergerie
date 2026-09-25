@@ -51,7 +51,7 @@ export function AttribuerModal({ mission, onFermer, onSucces }: Props) {
     <Modal
       ouvert
       onFermer={fermer}
-      titre="Attribuer la mission"
+      titre="Confier ce ménage"
       description={`${LIBELLES.typeMission[mission.type]} · ${logement?.nom ?? ''}`}
       pied={
         <>
@@ -59,7 +59,7 @@ export function AttribuerModal({ mission, onFermer, onSucces }: Props) {
             Annuler
           </Button>
           <Button variant="primary" onClick={valider}>
-            Attribuer
+            Confier
           </Button>
         </>
       }
@@ -80,7 +80,7 @@ export function AttribuerModal({ mission, onFermer, onSucces }: Props) {
           />
         </Field>
         {selection && !selection.verdict.ok && !erreur && (
-          <Alert tone="alerte" icone={<ShieldAlert />} titre="Contrat, RC Pro ou URSSAF manquant ou expiré">
+          <Alert tone="alerte" icone={<ShieldAlert />} titre="Il manque un papier à ce prestataire (contrat, assurance ou URSSAF)">
             {selection.verdict.raisons.join(' ')} L’attribution sera refusée.
           </Alert>
         )}

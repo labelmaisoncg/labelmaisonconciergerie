@@ -35,15 +35,15 @@ export function RefuserModal({ mission, onFermer, onSucces }: Props) {
     <Modal
       ouvert
       onFermer={fermer}
-      titre="Refuser la mission"
-      description="Le motif est communiqué au prestataire et conservé comme preuve."
+      titre="Refuser ce ménage"
+      description="Expliquez pourquoi : le prestataire recevra votre message, et il sera gardé en mémoire."
       pied={
         <>
           <Button variant="ghost" onClick={fermer}>
             Annuler
           </Button>
           <Button variant="danger" onClick={valider}>
-            Refuser la mission
+            Refuser ce ménage
           </Button>
         </>
       }

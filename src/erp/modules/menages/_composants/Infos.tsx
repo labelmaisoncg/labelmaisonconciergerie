@@ -51,7 +51,7 @@ export function Infos({ mission: m, tarif }: { mission: Mission; tarif: string }
                 <Badge tone={conforme?.ok ? 'succes' : 'danger'} point>{conforme?.ok ? 'Conforme' : 'Non conforme'}</Badge>
               </span>
             ) : (
-              <span className="text-(--lm-alerte)">Non attribuée</span>
+              <span className="text-(--lm-alerte)">Personne pour l’instant</span>
             )}
           </Ligne>
           <Ligne label="Tarif">
@@ -73,7 +73,7 @@ export function Infos({ mission: m, tarif }: { mission: Mission; tarif: string }
                 {depart.voyageur.nom}, <span>{dateJour(depart.depart)}</span>
               </Link>
             ) : (
-              'Aucun séjour lié'
+              'Pas de séjour lié'
             )}
           </Ligne>
           <Ligne label="Arrivée suivante">

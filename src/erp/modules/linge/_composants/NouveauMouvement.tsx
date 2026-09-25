@@ -79,8 +79,8 @@ export function NouveauMouvement({ ouvert, onFermer, onSucces }: Props) {
       ouvert={ouvert}
       onFermer={fermer}
       taille="lg"
-      titre="Nouveau mouvement de linge"
-      description="Sortie sale, envoi ou retour de blanchisserie, mise en place, perte ou rebut."
+      titre="Noter un mouvement de linge"
+      description="Linge sorti sale, parti ou revenu de la blanchisserie, remis en place, perdu ou jeté."
       pied={
         <>
           <Button variant="ghost" onClick={fermer}>Annuler</Button>
@@ -90,7 +90,7 @@ export function NouveauMouvement({ ouvert, onFermer, onSucces }: Props) {
     >
       <div className="space-y-4">
         {!logements.length && (
-          <Prerequis className="mb-3" manque="Aucun logement enregistré." detail="Le linge se suit logement par logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+          <Prerequis className="mb-3" manque="Vous n’avez pas encore de logement." detail="Le linge se suit logement par logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
         )}
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Type de mouvement" requis>

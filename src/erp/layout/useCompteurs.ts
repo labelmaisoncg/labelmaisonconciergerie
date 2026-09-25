@@ -10,7 +10,8 @@ export function useCompteurs(): Record<CleCompteur, number> {
   return useMemo(
     () => ({
       missionsAAttribuer: missions.filter((m) => m.statut === 'a_attribuer' && m.date >= AUJOURDHUI).length,
-      messagesEnAttente: filsMessages.filter((f) => f.traitePar === 'en_attente').length,
+      // Même définition que « Pour vous » dans la messagerie : confiées par l'agent ou sans réponse.
+      messagesEnAttente: filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente')).length,
       incidentsOuverts: incidentsOuverts(incidents).length,
     }),
     [missions, filsMessages, incidents],

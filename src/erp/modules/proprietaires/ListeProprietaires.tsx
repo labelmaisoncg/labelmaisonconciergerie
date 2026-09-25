@@ -8,6 +8,7 @@ import { euros } from '../../data/format';
 import type { Proprietaire, StatutMandat, TypeProprietaire } from '../../data/types';
 import { revenuNet12Mois, statutMandatPrincipal } from './_composants/calculs';
 import { FormProprietaire } from './FormProprietaire';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 interface Ligne {
   p: Proprietaire;
@@ -23,7 +24,7 @@ const TYPES: TypeProprietaire[] = ['particulier', 'sci', 'societe'];
 export default function ListeProprietaires() {
   const d = useErp();
   const naviguer = useNavigate();
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [types, setTypes] = useState<string[]>([]);
   const [creation, setCreation] = useCreationParUrl();
 
@@ -80,8 +81,8 @@ export default function ListeProprietaires() {
     { cle: 'net', titre: 'Net 12 mois', align: 'droite', masquerMobile: true, tri: (a, b) => a.net12 - b.net12, rendu: ({ net12 }) => euros(net12, true) },
     {
       cle: 'mandat',
-      titre: 'Mandat',
-      rendu: ({ statut }) => (statut ? <StatusBadge type="statutMandat" valeur={statut} /> : <Badge tone="danger">Aucun</Badge>),
+      titre: 'Contrat',
+      rendu: ({ statut }) => (statut ? <StatusBadge type="statutMandat" valeur={statut} /> : <Badge tone="danger">Pas de contrat</Badge>),
     },
     { cle: 'tel', titre: 'Téléphone', masquerMobile: true, rendu: ({ p }) => <span className="whitespace-nowrap">{p.contact.telephone}</span> },
   ];
@@ -90,22 +91,20 @@ export default function ListeProprietaires() {
     <>
       <PageHeader
         titre="Propriétaires"
-        sousTitre="Les mandants de Label Maison : contacts, biens confiés, mandats et relevés mensuels."
-        fil={[{ libelle: 'Référentiel' }, { libelle: 'Propriétaires' }]}
+        sousTitre="Les personnes qui vous confient leur logement : leurs coordonnées, leurs biens, leur contrat et leurs relevés."
         actions={
           <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
-            Nouveau propriétaire
+            Ajouter un propriétaire
           </Button>
         }
       />
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Propriétaires" valeur={d.proprietaires.length} icone={<Users />} />
-        <Stat label="Avec mandat signé" valeur={lignes.filter((l) => l.statut === 'signe').length} icone={<Building2 />} />
-        <Stat label="Sociétés et SCI" valeur={d.proprietaires.filter((p) => p.type !== 'particulier').length} icone={<Building2 />} />
-        <Stat label="Net reversé 12 mois (est.)" valeur={euros(totalNet, true)} icone={<Wallet />} aide="séjours terminés" />
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Stat label="Propriétaires" valeur={d.proprietaires.length} icone={<Users />} aide={`dont ${d.proprietaires.filter((p) => p.type !== 'particulier').length} sociétés ou SCI`} />
+        <Stat label="Avec un contrat signé" valeur={lignes.filter((l) => l.statut === 'signe').length} icone={<Building2 />} />
+        <Stat label="Reversé sur 12 mois" valeur={euros(totalNet, true)} icone={<Wallet />} aide="estimation, séjours terminés" />
       </div>
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom, e-mail, téléphone, ville" label="Rechercher un propriétaire" />
+        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Un nom, un e-mail, un téléphone, une ville…" label="Rechercher un propriétaire" />
         <FilterChips
           label="Filtrer par type"
           actifs={types}
@@ -120,7 +119,7 @@ export default function ListeProprietaires() {
         cleLigne={({ p }) => p.id}
         onLigneClick={({ p }) => naviguer(p.id)}
         triInitial={{ cle: 'nom', sens: 'asc' }}
-        vide="Aucun propriétaire ne correspond à la recherche."
+        vide="Personne ne correspond à votre recherche."
       />
       <FormProprietaire ouvert={creation} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />
     </>

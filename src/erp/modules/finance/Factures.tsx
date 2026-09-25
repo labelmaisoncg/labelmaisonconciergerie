@@ -10,13 +10,14 @@ import { Badge, Button, PageHeader, Stat, StatusBadge, Table, Toolbar, type Colo
 import { DetailFacture } from './_composants/DetailFacture';
 import { NouvelleFacture } from './_composants/NouvelleFacture';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
+import { useRechercheUrl } from '../../ui/useRechercheUrl';
 
 const FILTRES: StatutFacture[] = ['brouillon', 'emise', 'en_retard', 'payee', 'annulee'];
 
 export default function Factures({ onglets }: PageFinanceProps) {
   const d = useErp();
   const [filtres, setFiltres] = useState<string[]>([]);
-  const [recherche, setRecherche] = useState('');
+  const [recherche, setRecherche] = useRechercheUrl();
   const [ouverte, setOuverte] = useState<string>();
   const [creation, setCreation] = useCreationParUrl();
 
@@ -74,7 +75,7 @@ export default function Factures({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Factures' }]}
         titre="Factures"
-        sousTitre="Factures de commission, de ménage et de prestation émises par Label Maison. Numérotation continue LM-2026."
+        sousTitre="Les factures que vous envoyez : commissions, ménages, prestations. Elles sont numérotées à la suite (LM-2026-…)."
         actions={
           <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
             Nouvelle facture
@@ -84,9 +85,9 @@ export default function Factures({ onglets }: PageFinanceProps) {
       {onglets}
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="En retard" valeur={euros(somme(retard), true)} tone={retard.length ? 'danger' : 'neutre'} aide={pluriel(retard.length, 'facture')} />
-        <Stat label="À encaisser (TTC)" valeur={euros(somme(aEncaisser), true)} aide={pluriel(aEncaisser.length, 'facture')} />
-        <Stat label="Encaissé ce mois (TTC)" valeur={euros(somme(payeesMois), true)} tone="succes" aide={pluriel(payeesMois.length, 'facture')} />
+        <Stat label="Pas payées à temps" valeur={euros(somme(retard), true)} tone={retard.length ? 'danger' : 'neutre'} aide={pluriel(retard.length, 'facture')} />
+        <Stat label="À recevoir (TTC)" valeur={euros(somme(aEncaisser), true)} aide={pluriel(aEncaisser.length, 'facture')} />
+        <Stat label="Reçu ce mois-ci (TTC)" valeur={euros(somme(payeesMois), true)} tone="succes" aide={pluriel(payeesMois.length, 'facture')} />
       </div>
 
       <Toolbar
@@ -108,7 +109,7 @@ export default function Factures({ onglets }: PageFinanceProps) {
         onLigneClick={(f) => setOuverte(f.id)}
         ligneActive={ouverte}
         triInitial={{ cle: 'numero', sens: 'desc' }}
-        vide="Aucune facture ne correspond à ces filtres."
+        vide="Aucune facture ne correspond. Essayez d’enlever un filtre."
       />
 
       {facture && <DetailFacture key={facture.id} facture={facture} destinataire={nomDestinataire(facture)} onFermer={() => setOuverte(undefined)} />}
