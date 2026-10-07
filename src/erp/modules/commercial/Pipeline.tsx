@@ -62,7 +62,7 @@ export default function Pipeline() {
       ton: cible === 'perdu' ? 'alerte' : 'succes',
       texte: `${p.nom} : ${LIBELLES.etapeProspect[cible]}.`,
       action: (
-        <button type="button" className="text-[12.5px] font-medium text-(--lm-or) hover:underline" onClick={() => { d.avancerProspect(p.id, avant); afficher({ ton: 'info', texte: 'Changement annulé.' }); }}>
+        <button type="button" className="text-[12.5px] font-medium text-(--lm-or-texte) hover:underline" onClick={() => { d.avancerProspect(p.id, avant); afficher({ ton: 'info', texte: 'Changement annulé.' }); }}>
           Annuler
         </button>
       ),

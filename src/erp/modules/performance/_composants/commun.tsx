@@ -66,7 +66,7 @@ export function aideKpi(cle: CleKpi): string {
 /** Pastille « ? » non interactive portant l'explication en infobulle. */
 export function Aide({ texte, className }: { texte: string; className?: string }) {
   return (
-    <span role="img" aria-label={`Explication : ${texte}`} title={texte} className={cn('inline-flex cursor-help align-middle text-(--lm-encre-3) hover:text-(--lm-or)', className)}>
+    <span role="img" aria-label={`Explication : ${texte}`} title={texte} className={cn('inline-flex cursor-help align-middle text-(--lm-encre-3) hover:text-(--lm-or-texte)', className)}>
       <HelpCircle className="size-3.5" aria-hidden />
     </span>
   );

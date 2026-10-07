@@ -174,11 +174,11 @@ export function CarteSynchroRepull() {
       </dl>
       <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
         Un nouveau compte ou un nouveau logement ?{' '}
-        <Link to="/erp/logements/connexions" className="text-(--lm-or) hover:underline">
+        <Link to="/erp/logements/connexions" className="text-(--lm-or-texte) hover:underline">
           Connectez-le et choisissez vos logements
         </Link>{' '}
         (ou dans{' '}
-        <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or) hover:underline">
+        <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or-texte) hover:underline">
           Repull <ExternalLink className="size-3.5" aria-hidden />
         </a>
         ) : il arrive ici à la synchronisation suivante. Pas plus d’une synchronisation manuelle toutes les 10 minutes, pour ménager le quota d’appels.
@@ -203,8 +203,8 @@ export function LigneSynchroRepull({ className }: { className?: string }) {
     >
       {s.retour?.texte ??
         (s.derniere
-          ? `Airbnb et Booking.com synchronisés par Repull, dernier passage le ${dateHeure(s.derniere.horodatage)}.`
-          : 'Airbnb et Booking.com : synchronisation par Repull, pas encore de passage.')}
+          ? `Airbnb et Booking.com : dernière mise à jour le ${dateHeure(s.derniere.horodatage)}.`
+          : 'Airbnb et Booking.com : pas encore de mise à jour.')}
     </Alert>
   );
 }

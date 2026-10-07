@@ -10,17 +10,20 @@
   --lm-bord: rgba(20, 17, 14, 0.08);
   --lm-bord-fort: rgba(20, 17, 14, 0.16);
   --lm-encre: #14110e;
-  --lm-encre-2: rgba(20, 17, 14, 0.6);
-  --lm-encre-3: rgba(20, 17, 14, 0.42);
+  /* Textes secondaires : contrastes AA (≥ 4,5:1 sur fond blanc et ivoire). */
+  --lm-encre-2: rgba(20, 17, 14, 0.68);
+  --lm-encre-3: rgba(20, 17, 14, 0.58);
   --lm-or: #a97c30;
   --lm-or-clair: #c39a4a;
   --lm-or-lavis: rgba(169, 124, 48, 0.1);
   --lm-or-anneau: rgba(169, 124, 48, 0.35);
   --lm-brun: #403118;
+  /* Or assombri pour le texte et les liens (5,3:1) ; --lm-or reste la couleur des aplats. */
+  --lm-or-texte: #8a6424;
 
   --lm-succes: #2f7d55;
   --lm-succes-lavis: rgba(47, 125, 85, 0.1);
-  --lm-alerte: #b7791f;
+  --lm-alerte: #93600f;
   --lm-alerte-lavis: rgba(183, 121, 31, 0.12);
   --lm-danger: #b42318;
   --lm-danger-lavis: rgba(180, 35, 24, 0.08);

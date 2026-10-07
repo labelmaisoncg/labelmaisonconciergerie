@@ -32,7 +32,7 @@ export function PageHeader({ titre, sousTitre, actions, fil: filBrut, className 
                 <li key={`${m.libelle}-${i}`} className="flex items-center gap-1">
                   {i > 0 && <ChevronRight className="size-3.5" aria-hidden />}
                   {m.to ? (
-                    <Link to={m.to} className="hover:text-(--lm-or) hover:underline">
+                    <Link to={m.to} className="hover:text-(--lm-or-texte) hover:underline">
                       {m.libelle}
                     </Link>
                   ) : (

@@ -1,5 +1,5 @@
 /**
- * Bloc « Votre agent, en vrai » de l'onglet Configurer : ce qui est branché
+ * Bloc « Votre agent en ce moment » de l’onglet Configurer : en clair (actif, branché, dernier passage), puis le détail technique replié ; ce qui est branché
  * côté serveur (clé IA, planification, Telegram — oui ou non, jamais les
  * valeurs), le dernier passage, et le bouton « Lancer l'agent maintenant ».
  *
@@ -104,7 +104,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
   if (mode !== 'reel') {
     return (
       <Card>
-        <h3 className="text-[15px] font-semibold text-(--lm-encre)">Votre agent, en vrai</h3>
+        <h3 className="text-[15px] font-semibold text-(--lm-encre)">Votre agent en ce moment</h3>
         <p className="mt-1 text-[13px] text-(--lm-encre-2)">Données de démonstration : l’agent ne tourne que sur l’ERP en ligne.</p>
       </Card>
     );
@@ -114,13 +114,15 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
   const dernier = etat?.etat?.dernier;
   const derniere = etat?.etat?.derniereExecution;
   const actif = etat?.actif ?? actifReglage;
+  // Telegram est facultatif : seuls l'IA, les plateformes et la planification comptent.
+  const manques = c ? [c.ia, c.repull, c.planification].filter((ok) => !ok).length : 0;
 
   return (
     <Card>
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-semibold text-(--lm-encre)">Votre agent, en vrai</h3>
-          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Ce qui est branché sur le site, et ce qu’il a fait à son dernier passage.</p>
+          <h3 className="text-[15px] font-semibold text-(--lm-encre)">Votre agent en ce moment</h3>
+          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">S’il fonctionne, et ce qu’il a fait à son dernier passage.</p>
         </div>
         <Button size="sm" variant="ghost" icone={<RefreshCw className={cn(chargement && 'animate-spin')} />} onClick={() => void relire()} disabled={chargement}>
           Actualiser
@@ -137,24 +139,39 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
         <Ligne ok={etat ? actif : null} titre={actif ? 'Agent actif' : 'Agent en pause'}>
           {actif ? 'Il répond aux voyageurs à chaque passage.' : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
         </Ligne>
-        <Ligne ok={c ? c.ia : null} titre={c?.ia ? 'Clé IA : présente' : 'Clé IA : manquante'}>
-          {c?.ia ? `Modèle ${etat?.modele}.` : 'Ajoutez ANTHROPIC_API_KEY dans Vercel (Settings → Environment Variables), puis redéployez.'}
-        </Ligne>
-        <Ligne ok={c ? c.repull : null} titre={c?.repull ? 'Plateformes : reliées' : 'Plateformes : non reliées'}>
-          {c?.repull ? 'Les réponses partent sur Airbnb et Booking.com par Repull.' : 'REPULL_API_KEY ou ERP_PASSWORD manque dans Vercel.'}
-        </Ligne>
-        <Ligne ok={c ? c.planification && !!derniere : null} titre="Planification">
-          {derniere ? `Dernier passage ${ilYa(derniere)}.` : 'Pas encore de passage.'}{' '}
-          {c && !c.planification
-            ? 'CRON_SECRET manque dans Vercel : pas de passage automatique.'
-            : 'Passages automatiques toutes les 30 min de 8 h à 23 h (Supabase, supabase/erp-agent-cron.sql), et après chaque synchronisation.'}
-        </Ligne>
-        <Ligne ok={c ? c.telegram : null} titre={c?.telegram ? 'Telegram : branché' : 'Telegram : pas branché'}>
-          {c?.telegram
-            ? 'Alertes et copies des réponses envoyées au groupe de l’équipe (si « Sur Telegram » est activé plus bas).'
-            : 'Facultatif : ajoutez TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID dans Vercel pour être prévenu.'}
+        <Ligne ok={c ? manques === 0 : null} titre={!c ? 'Vérification…' : manques > 1 ? 'Des réglages du site manquent' : manques ? 'Un réglage du site manque' : 'Tout est branché'}>
+          {!c
+            ? 'Lecture de l’état du site.'
+            : manques
+              ? `${manques > 1 ? `${manques} réglages manquent` : 'Un réglage manque'} côté site : transmettez le détail ci-dessous à la personne qui gère le site.`
+              : derniere
+                ? `Dernier passage ${ilYa(derniere)}. Il repasse toutes les 30 minutes, de 8 h à 23 h.`
+                : 'Pas encore de passage : le premier aura lieu dans les 30 minutes.'}
         </Ligne>
       </ul>
+
+      <details className="group mt-1 text-[13px]">
+        <summary className="cursor-pointer py-1.5 font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Détails techniques (pour la personne qui gère le site)</summary>
+        <ul className="divide-y divide-(--lm-bord)">
+          <Ligne ok={c ? c.ia : null} titre={c?.ia ? 'Clé IA : présente' : 'Clé IA : manquante'}>
+            {c?.ia ? `Modèle ${etat?.modele}.` : 'Ajoutez ANTHROPIC_API_KEY dans Vercel (Settings → Environment Variables), puis redéployez.'}
+          </Ligne>
+          <Ligne ok={c ? c.repull : null} titre={c?.repull ? 'Plateformes : reliées' : 'Plateformes : non reliées'}>
+            {c?.repull ? 'Les réponses partent sur Airbnb et Booking.com par Repull.' : 'REPULL_API_KEY ou ERP_PASSWORD manque dans Vercel.'}
+          </Ligne>
+          <Ligne ok={c ? c.planification && !!derniere : null} titre="Planification">
+            {derniere ? `Dernier passage ${ilYa(derniere)}.` : 'Pas encore de passage.'}{' '}
+            {c && !c.planification
+              ? 'CRON_SECRET manque dans Vercel : pas de passage automatique.'
+              : 'Passages automatiques toutes les 30 min de 8 h à 23 h (Supabase, supabase/erp-agent-cron.sql), et après chaque synchronisation.'}
+          </Ligne>
+          <Ligne ok={c ? c.telegram : null} titre={c?.telegram ? 'Telegram : branché' : 'Telegram : pas branché'}>
+            {c?.telegram
+              ? 'Alertes et copies des réponses envoyées au groupe de l’équipe (si « Sur Telegram » est activé plus bas).'
+              : 'Facultatif : ajoutez TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID dans Vercel pour être prévenu.'}
+          </Ligne>
+        </ul>
+      </details>
 
       {dernier && (
         <p className="mt-2 rounded-lg bg-(--lm-surface-2) px-3 py-2 text-[13px] text-(--lm-encre-2)">

@@ -118,10 +118,10 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
 
         <dl className="grid grid-cols-1 gap-x-6 divide-y divide-(--lm-bord) sm:grid-cols-2 sm:divide-y-0">
           <Clause titre="Propriétaire">
-            {p ? <Link className="text-(--lm-or) hover:underline" to={`/erp/proprietaires/${p.id}`}>{p.nom}</Link> : 'Inconnu'}
+            {p ? <Link className="text-(--lm-or-texte) hover:underline" to={`/erp/proprietaires/${p.id}`}>{p.nom}</Link> : 'Inconnu'}
           </Clause>
           <Clause titre="Logement">
-            {l ? <Link className="text-(--lm-or) hover:underline" to={`/erp/logements/${l.id}`}>{l.nom}</Link> : 'Inconnu'}
+            {l ? <Link className="text-(--lm-or-texte) hover:underline" to={`/erp/logements/${l.id}`}>{l.nom}</Link> : 'Inconnu'}
           </Clause>
         </dl>
 

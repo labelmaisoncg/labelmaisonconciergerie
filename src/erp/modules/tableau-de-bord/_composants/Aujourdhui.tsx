@@ -28,7 +28,7 @@ function Tuile({
         aria-hidden
         className={cn(
           'grid size-9 shrink-0 place-items-center rounded-lg [&_svg]:size-[18px]',
-          alerte ? 'bg-(--lm-alerte-lavis) text-(--lm-alerte)' : 'bg-(--lm-or-lavis) text-(--lm-or)',
+          alerte ? 'bg-(--lm-alerte-lavis) text-(--lm-alerte)' : 'bg-(--lm-or-lavis) text-(--lm-or-texte)',
         )}
       >
         {icone}

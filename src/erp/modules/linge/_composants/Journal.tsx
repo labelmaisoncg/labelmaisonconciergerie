@@ -53,7 +53,7 @@ export function Journal({ logementInitial = '' }: { logementInitial?: string }) 
       masquerMobile: true,
       rendu: (m) =>
         m.missionId ? (
-          <Link to={`/erp/menages/${m.missionId}`} className="text-(--lm-or) hover:underline" onClick={(e) => e.stopPropagation()}>
+          <Link to={`/erp/menages/${m.missionId}`} className="text-(--lm-or-texte) hover:underline" onClick={(e) => e.stopPropagation()}>
             Voir
           </Link>
         ) : (

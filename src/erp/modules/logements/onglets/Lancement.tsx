@@ -159,7 +159,7 @@ export function OngletLancement({ logement: l }: { logement: Logement }) {
           <CardHeader titre="Mandat" />
           {mandat ? (
             <p className="text-[13.5px] text-(--lm-encre-2)">
-              <Link to={`/erp/mandats?mandat=${mandat.id}`} className="font-medium text-(--lm-or) hover:underline">
+              <Link to={`/erp/mandats?mandat=${mandat.id}`} className="font-medium text-(--lm-or-texte) hover:underline">
                 {mandat.reference}
               </Link>{' '}
               : {mandat.statut === 'signe' ? 'signé.' : 'non signé, le logement ne peut pas être activé.'}

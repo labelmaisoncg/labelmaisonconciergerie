@@ -635,9 +635,10 @@ message du voyageur bloque de toute façon un second envoi.
   cron quotidien, webhooks) ;
 - à la demande : Configurer mon agent → « Lancer l'agent maintenant ».
 
-L'onglet Configurer montre l'état réel (bloc « Votre agent, en vrai ») :
-agent actif ou en pause, clé IA présente ou manquante, plateformes reliées,
-dernier passage, Telegram branché ou non. Le serveur ne renvoie que des
+L'onglet Configurer montre l'état réel (bloc « Votre agent en ce moment ») :
+en clair, agent actif ou en pause et « tout est branché » ou non ; replié
+sous « Détails techniques », clé IA présente ou manquante, plateformes
+reliées, dernier passage, Telegram branché ou non. Le serveur ne renvoie que des
 oui/non, jamais la valeur d'une variable (`GET /api/erp-agent?action=etat`).
 
 **Relevé des messages et part d'appels** : sans webhooks (offre gratuite

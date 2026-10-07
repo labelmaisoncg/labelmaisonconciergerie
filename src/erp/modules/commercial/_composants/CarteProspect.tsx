@@ -51,7 +51,7 @@ export function CarteProspect({ p, actions }: { p: Prospect; actions: ActionsPro
     >
       <div className="flex items-start gap-2">
         <button type="button" onClick={() => actions.ouvrir(p)} className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or)">{p.nom}</span>
+          <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte)">{p.nom}</span>
           <span className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-(--lm-encre-2)">
             <MapPin aria-hidden className="size-3 shrink-0" />
             {p.ville} · {p.typeBien}

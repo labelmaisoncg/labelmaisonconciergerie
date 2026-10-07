@@ -108,7 +108,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
                   title={dateCourte(j)}
                 >
                   <span className="block text-[10.5px] text-(--lm-encre-3)">{zoom === 60 ? '' : JOURS_SEMAINE[js]}</span>
-                  <span className={cn('block text-[12px]', j.endsWith('-01') && 'font-semibold text-(--lm-or)')}>{Number(j.slice(8))}</span>
+                  <span className={cn('block text-[12px]', j.endsWith('-01') && 'font-semibold text-(--lm-or-texte)')}>{Number(j.slice(8))}</span>
                 </div>
               );
             })}

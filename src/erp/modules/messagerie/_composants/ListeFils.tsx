@@ -63,7 +63,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                       {logements.get(f.logementId)?.nom ?? 'Logement'} · {LIBELLES.canal[f.canal]}
                     </p>
                     <p className={cn('mt-0.5 line-clamp-1 text-[12.5px]', attente ? 'text-(--lm-encre)' : 'text-(--lm-encre-2)')}>
-                      {dernier?.auteur === 'agent' && <Bot className="mr-1 inline size-3.5 text-(--lm-or)" aria-label="Votre agent :" />}
+                      {dernier?.auteur === 'agent' && <Bot className="mr-1 inline size-3.5 text-(--lm-or-texte)" aria-label="Votre agent :" />}
                       {dernier?.auteur === 'hote' && <span className="text-(--lm-encre-3)">Vous : </span>}
                       {dernier?.texte}
                     </p>

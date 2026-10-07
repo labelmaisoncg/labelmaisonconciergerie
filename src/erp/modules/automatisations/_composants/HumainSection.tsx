@@ -16,7 +16,7 @@ export function HumainSection() {
       <ul className="grid gap-3 sm:grid-cols-2">
         {DECISIONS.map(({ icone: Icone, titre, texte }) => (
           <li key={titre} className="flex gap-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
-            <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-(--lm-or-lavis) text-(--lm-or) [&_svg]:size-4">
+            <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-4">
               <Icone />
             </span>
             <div className="min-w-0">

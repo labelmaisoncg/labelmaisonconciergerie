@@ -40,7 +40,7 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       titre: 'Logement',
       rendu: (l) => (
         <span className="block min-w-44">
-          <Link to={`/erp/logements/${l.logementId}`} onClick={(e) => e.stopPropagation()} className="font-medium hover:text-(--lm-or) hover:underline">
+          <Link to={`/erp/logements/${l.logementId}`} onClick={(e) => e.stopPropagation()} className="font-medium hover:text-(--lm-or-texte) hover:underline">
             {l.nom}
           </Link>
           <span className="mt-1 flex flex-wrap gap-1">

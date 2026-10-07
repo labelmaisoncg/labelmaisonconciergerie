@@ -18,7 +18,7 @@ function Ligne({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const lien = 'text-(--lm-or) hover:underline';
+const lien = 'text-(--lm-or-texte) hover:underline';
 
 /** Colonne d'informations d'une mission : logement, séjours, prestataire, paiement. */
 export function Infos({ mission: m, tarif }: { mission: Mission; tarif: string }) {

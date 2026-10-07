@@ -18,7 +18,7 @@ import type {
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
 import { obtenirClient } from '../../data/supabase';
-import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Skeleton, cn, type Ton } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Repli, Skeleton, cn, type Ton } from '../../ui';
 
 const API = '/api/erp-repull-connexion';
 
@@ -28,9 +28,8 @@ const PRINCIPALES: { id: string; nom: string; aide: string }[] = [
   {
     id: 'booking',
     nom: 'Booking.com',
-    aide: 'Messagerie, réservations et avis seulement : vos prix et votre calendrier restent gérés dans l’Extranet, rien n’est fermé. Le plus simple : inviter l’utilisateur Repull indiqué dans Extranet → Compte → Utilisateurs. Ne choisissez pas Repull comme fournisseur de connectivité.',
+    aide: 'Messagerie, réservations et avis seulement : vos prix et votre calendrier restent gérés dans l’Extranet. Le plus simple : dans l’Extranet (Compte → Utilisateurs), invitez l’utilisateur « Repull » indiqué, notre service de connexion. Ne le choisissez pas comme « fournisseur de connectivité ».',
   },
-  { id: 'vrbo', nom: 'Vrbo', aide: 'Vous indiquez vos identifiants Vrbo sur la page sécurisée de Repull.' },
 ];
 
 const NOMS: Record<string, string> = { airbnb: 'Airbnb', booking: 'Booking.com', vrbo: 'Vrbo' };
@@ -234,7 +233,7 @@ export default function Connexions() {
     <div>
       <PageHeader
         titre="Connexions"
-        sousTitre="Connectez Airbnb et Booking.com (lecture et messagerie seulement), puis choisissez les logements à gérer dans l’ERP."
+        sousTitre="Deux étapes : connectez Airbnb et Booking.com, puis choisissez les logements à gérer. L’ERP lit vos données et répond aux voyageurs : vos prix et calendriers ne sont jamais modifiés."
         fil={[{ libelle: 'Logements', to: '/erp/logements' }, { libelle: 'Connexions' }]}
         actions={
           reel ? (
@@ -300,7 +299,7 @@ export default function Connexions() {
                 </div>
                 {aFinir && (
                   <p className="text-[12.5px] text-(--lm-encre-2)">
-                    Booking a bien accepté Repull. Il reste à associer vos chambres à vos logements : cliquez sur « Terminer la connexion », puis suivez la page.
+                    Booking.com a bien accepté la connexion. Il reste à associer vos chambres à vos logements : cliquez sur « Terminer la connexion », puis suivez la page.
                   </p>
                 )}
                 {comptes.length > 0 ? (
@@ -401,8 +400,15 @@ export default function Connexions() {
             titre="Aucun logement trouvé pour l’instant"
             description={
               reel
-                ? 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici. Il faut parfois une minute ou deux après la connexion, puis « Actualiser ».'
+                ? 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici. Juste après une connexion, il faut parfois une minute ou deux.'
                 : 'En démo, aucune plateforme n’est connectée.'
+            }
+            action={
+              reel && connexions.length > 0 ? (
+                <Button icone={<RefreshCw />} chargement={chargement} onClick={() => void charger(true)}>
+                  Actualiser la liste
+                </Button>
+              ) : undefined
             }
           />
         ) : (
@@ -441,7 +447,7 @@ export default function Connexions() {
                       {a.ville && <span className="block truncate text-[12.5px] text-(--lm-encre-3)">{a.ville}</span>}
                       <span className="mt-1 flex flex-wrap gap-1">
                         {a.plateformes.map((p) => (
-                          <Badge key={p} tone={p === 'airbnb' ? 'danger' : p === 'booking' ? 'info' : 'neutre'}>
+                          <Badge key={p}>
                             {nomFournisseur(p)}
                           </Badge>
                         ))}
@@ -553,7 +559,7 @@ interface LigneVerif {
 }
 
 /**
- * « Vérifier avec Repull » : ce que Repull sait réellement du compte (clé,
+ * « Une connexion ne s'affiche pas ? » (repli) : ce que Repull sait réellement du compte (clé,
  * connexions, Airbnb, établissements Booking, logements), en clair. Sert à
  * comprendre une connexion qui n'aboutit pas, sans accès technique.
  */
@@ -577,11 +583,10 @@ function VerificationRepull({ actif }: { actif: boolean }) {
 
   return (
     <section className="mt-8">
-      <Card>
-        <CardHeader
-          titre="Vérifier avec Repull"
-          description="Une connexion qui ne s’affiche pas ? Demandez directement à Repull ce qu’il voit de vos comptes. Cela prend quelques secondes."
-        />
+      <Repli
+        titre="Une connexion ne s’affiche pas ?"
+        description="Vérifiez ce que notre service de connexion (Repull) voit réellement de vos comptes. Cela prend quelques secondes."
+      >
         <Button icone={<RefreshCw />} chargement={enCours} disabled={!actif || enCours} onClick={() => void verifier()}>
           Vérifier maintenant
         </Button>
@@ -595,8 +600,9 @@ function VerificationRepull({ actif }: { actif: boolean }) {
             {lignes.map((l) => (
               <li key={l.appel} className="rounded-lg border border-(--lm-bord) p-3">
                 <p className="flex items-start gap-2 text-[13.5px]">
-                  <span aria-hidden className={l.ok ? 'text-(--lm-succes,#2f7d4f)' : 'text-(--lm-danger,#b3261e)'}>
-                    {l.ok ? '✓' : '✗'}
+                  <span className={l.ok ? 'text-(--lm-succes)' : 'text-(--lm-danger)'}>
+                    <span aria-hidden>{l.ok ? '✓' : '✗'}</span>
+                    <span className="sr-only">{l.ok ? 'Oui :' : 'Non :'}</span>
                   </span>
                   <span>
                     <span className="font-medium text-(--lm-encre)">{l.question}</span>
@@ -612,7 +618,7 @@ function VerificationRepull({ actif }: { actif: boolean }) {
             ))}
           </ul>
         )}
-      </Card>
+      </Repli>
     </section>
   );
 }

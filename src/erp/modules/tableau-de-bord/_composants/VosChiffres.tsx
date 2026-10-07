@@ -29,7 +29,7 @@ export function VosChiffres() {
           </h2>
           <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Les 30 derniers jours, calculés à partir de vos réservations.</p>
         </div>
-        <Link to="/erp/performance" className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or) hover:underline">
+        <Link to="/erp/performance" className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           Rentabilité de vos logements <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </div>

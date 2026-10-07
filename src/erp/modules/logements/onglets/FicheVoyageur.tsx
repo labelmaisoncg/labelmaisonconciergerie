@@ -90,7 +90,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
               <Textarea value={f.acces} onChange={(e) => maj('acces', e.target.value)} rows={3} />
             </Field>
             <div className="flex items-center gap-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) px-3 py-2.5 sm:col-span-2">
-              <KeyRound className="size-4 shrink-0 text-(--lm-or)" aria-hidden />
+              <KeyRound className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
               <div className="min-w-0 flex-1 text-[13px]">
                 <p className="font-medium">Code d’accès : {LIBELLES.serrure[l.serrure]}</p>
                 <p className="text-(--lm-encre-2)">
