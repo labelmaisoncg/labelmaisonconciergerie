@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CheckCircle2, CircleAlert, FileText, MinusCircle, OctagonAlert, Upload } from 'lucide-react';
+import { CheckCircle2, CircleAlert, FileText, MinusCircle, OctagonAlert, Plug, Upload } from 'lucide-react';
 import { useErp } from '../../data/store';
-import { nombre } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
-import { Alert, Badge, Button, Card, Drawer, FilterChips, PageHeader, Section, Stat, Table, Tabs, type Colonne } from '../../ui';
+import { Alert, Badge, Button, ButtonLink, Card, Drawer, EmptyState, FilterChips, PageHeader, Section, Table, Tabs, type Colonne } from '../../ui';
 import { ConformiteEntreprise } from './_composants/Entreprise';
 import { LIBELLE_STATUT, TON_STATUT, pointsLogement, statutGlobal, type PointConformite, type StatutConformite } from './_composants/regles';
 import type { Logement } from '../../data/types';
@@ -29,8 +28,9 @@ function Pastille({ point }: { point?: PointConformite }) {
   return (
     <span className="relative inline-flex items-center gap-1.5 text-[12.5px] whitespace-nowrap" title={point.action ?? point.constat}>
       <Icone className={`size-4 shrink-0 ${COULEUR[point.statut]}`} aria-hidden />
-      <span className="sr-only">{LIBELLE_STATUT[point.statut]} :</span>
-      <span className="max-w-40 truncate text-(--lm-encre-2)">{point.constat}</span>
+      <span className="sr-only">
+        {LIBELLE_STATUT[point.statut]} : {point.constat}
+      </span>
     </span>
   );
 }
@@ -55,7 +55,6 @@ export default function Module() {
   );
   const visibles = filtre.length ? lignes.filter((l) => filtre.includes(l.statut)) : lignes;
   const compte = (s: StatutConformite) => lignes.filter((l) => l.statut === s).length;
-  const risques = lignes.flatMap((l) => l.points.filter((p) => p.statut === 'risque'));
   const choisi = lignes.find((l) => l.logement.id === ouvert);
 
   const point = (l: Ligne, cle: PointConformite['cle']) => l.points.find((p) => p.cle === cle);
@@ -90,21 +89,8 @@ export default function Module() {
 
   return (
     <>
-      <PageHeader
-        titre="Conformité"
-        sousTitre="Êtes-vous en règle ? Logement par logement, pour la société, et vos documents officiels."
-      />
+      <PageHeader titre="Conformité" />
 
-      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Logements en règle" valeur={`${nombre(compte('ok'))} / ${nombre(lignes.length)}`} tone={compte('ok') === lignes.length ? 'succes' : 'neutre'} />
-        <Stat
-          label="À régler vite"
-          valeur={nombre(compte('risque'))}
-          tone={compte('risque') ? 'danger' : 'neutre'}
-          aide={risques.length ? `${nombre(risques.length)} point${risques.length > 1 ? 's' : ''} qui peuvent coûter cher` : 'aucun risque'}
-        />
-        <Stat label="Petites choses à faire" valeur={nombre(compte('a_faire'))} tone={compte('a_faire') ? 'alerte' : 'neutre'} aide="logements concernés" />
-      </div>
 
       <Tabs
         label="Sections de la conformité"
@@ -117,8 +103,20 @@ export default function Module() {
         ]}
       />
 
-      {vue === 'logements' && (
-      <Section description="Cliquez sur un logement pour voir quoi faire.">
+      {vue === 'logements' && lignes.length === 0 && (
+        <EmptyState
+          titre="Pas encore de logement"
+          description="Ajoutez vos logements pour vérifier qu’ils sont en règle."
+          action={
+            <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
+              Connecter vos annonces
+            </ButtonLink>
+          }
+        />
+      )}
+
+      {vue === 'logements' && lignes.length > 0 && (
+      <Section>
         <FilterChips
           className="mb-3"
           label="Filtrer par statut"
@@ -140,7 +138,7 @@ export default function Module() {
       )}
 
       {vue === 'societe' && (
-      <Section description="Les obligations de Label Maison Conciergerie SASU.">
+      <Section>
         <ConformiteEntreprise />
       </Section>
       )}

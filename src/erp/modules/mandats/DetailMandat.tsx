@@ -106,7 +106,7 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
           </Alert>
         )}
         <div className="mb-4 flex flex-wrap gap-2">
-          <Button variant="primary" icone={<FileText />} onClick={() => setContrat(true)}>
+          <Button icone={<FileText />} onClick={() => setContrat(true)}>
             Générer le contrat
           </Button>
           {m.statut !== 'resilie' && (
@@ -145,14 +145,6 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
           <Clause titre="Période d’essai">
             {m.periodeEssaiFin ? `Jusqu’au ${dateCourte(m.periodeEssaiFin)}${m.periodeEssaiFin < AUJOURDHUI ? ' (terminée)' : ''}, résiliable sans préavis.` : 'Aucune.'}
           </Clause>
-          <Clause titre="Préavis de résiliation">{m.preavisJours} jours, par lettre recommandée.</Clause>
-          <Clause titre="Non-sollicitation">
-            Le propriétaire ne contracte pas directement avec les voyageurs et prestataires présentés, pendant le mandat et {NON_SOLLICITATION_MOIS} mois après.
-          </Clause>
-          <Clause titre="Annonces">Le propriétaire ne modifie pas l’annonce sans concertation.</Clause>
-          <Clause titre="Gestionnaire">
-            {SOCIETE.nom}, {SOCIETE.forme}, SIRET {SOCIETE.siret}, {SOCIETE.adresse}.
-          </Clause>
           {m.statut === 'resilie' && (
             <Clause titre="Résiliation">
               Le {m.resilieLe ? dateCourte(m.resilieLe) : 'date inconnue'}
@@ -160,6 +152,19 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
             </Clause>
           )}
         </dl>
+        <details className="mt-3">
+          <summary className="cursor-pointer rounded-md text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Autres clauses</summary>
+          <dl className="mt-2 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord) px-4">
+            <Clause titre="Préavis de résiliation">{m.preavisJours} jours, par lettre recommandée.</Clause>
+            <Clause titre="Non-sollicitation">
+              Le propriétaire ne contracte pas directement avec les voyageurs et prestataires présentés, pendant le mandat et {NON_SOLLICITATION_MOIS} mois après.
+            </Clause>
+            <Clause titre="Annonces">Le propriétaire ne modifie pas l’annonce sans concertation.</Clause>
+            <Clause titre="Gestionnaire">
+              {SOCIETE.nom}, {SOCIETE.forme}, SIRET {SOCIETE.siret}, {SOCIETE.adresse}.
+            </Clause>
+          </dl>
+        </details>
       </Drawer>
 
       <ApercuContrat ouvert={contrat} onFermer={() => setContrat(false)} mandat={m} proprietaire={p} logement={l} />

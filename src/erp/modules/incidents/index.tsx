@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { AlertTriangle, Plus, Receipt, Wallet } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Plus, Receipt, Wallet } from 'lucide-react';
 import { dateCourte, euros, nombre } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
 import { fenetreMois, incidentsOuverts } from '../../data/selectors';
 import type { CategorieIncident, GraviteIncident, Incident } from '../../data/types';
-import { Badge, Button, PageHeader, Select, Stat, StatusBadge, Table, Tabs, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
+import { Badge, Button, EmptyState, PageHeader, Select, Stat, StatusBadge, Table, Tabs, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { Retour, useRetour } from '../menages/_composants/retour';
 import { Board } from './_composants/Board';
 import { IncidentDrawer } from './_composants/IncidentDrawer';
@@ -62,23 +62,31 @@ export default function Incidents() {
     <>
       <PageHeader
         titre="Incidents"
-        sousTitre="Casse, panne, ménage raté, linge perdu : tout ce qui cloche, qui s’en occupe et ce que ça coûte."
-        actions={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Signaler un incident</Button>}
+        actions={incidents.length > 0 && <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Signaler un incident</Button>}
       />
 
+      <Retour message={message} onFermer={fermer} />
+
+      {incidents.length === 0 ? (
+        <EmptyState
+          icone={<CheckCircle2 />}
+          titre="Aucun incident"
+          description="Casse, panne, ménage raté, linge perdu : notez-le ici dès qu’un problème arrive."
+          action={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Signaler un incident</Button>}
+        />
+      ) : (
+        <>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat
           label="En cours"
           valeur={nombre(ouverts.length)}
           icone={<AlertTriangle />}
           tone={hautes ? 'danger' : ouverts.length ? 'alerte' : 'succes'}
-          aide={ouverts.length ? (hautes ? `dont ${nombre(hautes)} grave${hautes > 1 ? 's' : ''}` : 'rien de grave') : 'tout est réglé'}
+          aide={hautes ? `dont ${nombre(hautes)} grave${hautes > 1 ? 's' : ''}` : undefined}
         />
-        <Stat label="Coût ce mois-ci" valeur={euros(coutMois, true)} icone={<Wallet />} aide="réparations et remplacements" />
-        <Stat label="À se faire rembourser" valeur={euros(aRefacturer, true)} icone={<Receipt />} aide="par un voyageur, un propriétaire ou un prestataire" />
+        <Stat label="Coût ce mois-ci" valeur={euros(coutMois, true)} icone={<Wallet />} />
+        <Stat label="À se faire rembourser" valeur={euros(aRefacturer, true)} icone={<Receipt />} />
       </div>
-
-      <Retour message={message} onFermer={fermer} />
 
       <Toolbar
         recherche={{ valeur: recherche, onChange: setRecherche, placeholder: 'Un mot, un logement…', label: 'Rechercher un incident' }}
@@ -104,6 +112,8 @@ export default function Incidents() {
         <Board incidents={filtres} onOuvrir={ouvrir} />
       ) : (
         <Table colonnes={colonnes} lignes={filtres} cleLigne={(i) => i.id} onLigneClick={ouvrir} ligneActive={ouvertId ?? undefined} legende="Incidents" triInitial={{ cle: 'date', sens: 'desc' }} dense vide="Aucun incident ne correspond. Essayez d’enlever un filtre." />
+      )}
+        </>
       )}
 
       <IncidentDrawer incident={incidents.find((i) => i.id === ouvertId)} onFermer={() => setParams({})} />

@@ -6,7 +6,7 @@ import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
 import { missionValidable, prestataireConforme } from '../../data/selectors';
 import type { StatutMission } from '../../data/types';
-import { Alert, Badge, Button, Card, CardHeader, Checklist, EmptyState, PageHeader, StatusBadge, Timeline, type EvenementFrise } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, Checklist, EmptyState, MenuActions, PageHeader, Repli, StatusBadge, Timeline, type EvenementFrise } from '../../ui';
 import { AttribuerModal } from './_composants/AttribuerModal';
 import { ControleCarte } from './_composants/ControleCarte';
 import { Photos } from './_composants/Photos';
@@ -60,23 +60,25 @@ export function Detail() {
         actions={
           <>
             {m.statut === 'a_attribuer' && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier</Button>}
-            {m.statut === 'attribuee' && (
-              <>
-                <Button icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier à quelqu’un d’autre</Button>
-                <Button variant="primary" icone={<Play />} onClick={() => statut('en_cours', 'Mission démarrée.')}>Démarrer</Button>
-              </>
-            )}
+            {m.statut === 'attribuee' && <Button variant="primary" icone={<Play />} onClick={() => statut('en_cours', 'Mission démarrée.')}>Démarrer</Button>}
             {m.statut === 'en_cours' && <Button variant="primary" icone={<Send />} onClick={() => statut('a_valider', 'Mission terminée, en attente de validation.')}>Terminer</Button>}
             {m.statut === 'a_valider' && (
               <>
                 <Button icone={<XCircle />} onClick={() => setRefuser(true)}>Refuser</Button>
-                <Button variant="primary" icone={<CheckCircle2 />} onClick={() => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Pas de validation, pas de paiement (règle 2.4)')}>
+                <Button variant="primary" icone={<CheckCircle2 />} onClick={() => traiter(d.validerMission(m.id), 'Mission validée : elle entre dans le prochain paiement du prestataire.', 'Ce ménage ne peut pas encore être validé')}>
                   C’est bon, valider
                 </Button>
               </>
             )}
             {m.statut === 'refusee' && <Button icone={<RotateCcw />} onClick={() => statut('en_cours', 'Repassage demandé : la mission repasse en cours.')}>Demander un repassage</Button>}
-            {!verrouillee && <Button variant="ghost" icone={<Ban />} onClick={() => statut('annulee', 'Mission annulée.')}>Annuler</Button>}
+            <MenuActions
+              label="Plus"
+              texte
+              actions={[
+                m.statut === 'attribuee' && { libelle: 'Confier à quelqu’un d’autre', icone: <UserPlus />, onClick: () => setAttribuer(true) },
+                !verrouillee && { libelle: 'Annuler la mission', icone: <Ban />, onClick: () => statut('annulee', 'Mission annulée.') },
+              ]}
+            />
           </>
         }
       />
@@ -88,7 +90,6 @@ export function Detail() {
           {verdict.raisons.join(' ')}
         </Alert>
       )}
-      {m.statut === 'validee' && <Alert tone="succes" className="mb-4">Ménage vérifié : liste complète et photos en place. Il sera payé au prestataire.</Alert>}
       {m.commentaire && <Alert tone={m.statut === 'refusee' ? 'danger' : 'info'} titre="Commentaire" className="mb-4">{m.commentaire}</Alert>}
       {prestataire && !prestataireConforme(prestataire).ok && !verrouillee && (
         <Alert tone="danger" titre="Il manque un papier à ce prestataire" className="mb-4">
@@ -124,10 +125,9 @@ export function Detail() {
                   }
             }
           />
-          <Card>
-            <CardHeader titre="Historique" />
+          <Repli titre="Historique">
             <Timeline elements={frise} vide="Rien à signaler pour ce ménage." />
-          </Card>
+          </Repli>
         </div>
         <div className="space-y-4">
           <Infos mission={m} tarif={euros(m.tarifCentimes)} />

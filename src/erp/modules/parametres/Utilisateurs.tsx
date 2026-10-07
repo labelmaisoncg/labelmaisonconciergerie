@@ -4,7 +4,7 @@ import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { pluriel } from '../../data/format';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
-import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Input, Select, Table, type Colonne } from '../../ui';
+import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Input, Repli, Select, Table, type Colonne } from '../../ui';
 
 const ROLES: { role: RoleUtilisateur; description: string; acces: string[] }[] = [
   {
@@ -119,7 +119,7 @@ export default function Utilisateurs() {
   ];
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)]">
+    <div className="max-w-4xl">
       <div>
         {message && (
           <Alert tone="danger" className="mb-3">
@@ -139,7 +139,7 @@ export default function Utilisateurs() {
         <Table legende="Utilisateurs" colonnes={colonnes} lignes={d.utilisateurs} cleLigne={(u) => u.id} vide="Personne dans l’équipe pour l’instant." />
         {peutModifier && (
           <Card className="mt-4">
-            <CardHeader titre="Ajouter quelqu’un" description="Donnez accès à l’ERP à une adresse e-mail, et choisissez ce que cette personne peut faire." />
+            <CardHeader titre="Ajouter quelqu’un" />
             <form onSubmit={ajouter} className="grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
               <Field label="E-mail">
                 <Input type="email" value={nouveau.email} onChange={(e) => setNouveau((n) => ({ ...n, email: e.target.value }))} />
@@ -160,25 +160,31 @@ export default function Utilisateurs() {
             </form>
           </Card>
         )}
-        <p className="mt-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
+      </div>
+      <Repli className="mt-4" titre="Que peut faire chaque rôle ?">
+        <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
           {d.mode === 'reel'
-            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Les droits sont appliqués par la base elle-même (règles RLS) : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres. Le rôle prestataire n’a pas encore d’accès.'
-            : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base applique les droits (règles RLS).'}
+            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres. Le rôle prestataire n’a pas encore d’accès.'
+            : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.'}
         </p>
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-        {ROLES.map((r) => (
-          <Card key={r.role}>
-            <CardHeader titre={LIBELLES.role[r.role]} description={r.description} actions={<Badge tone={TON_ROLE[r.role]}>{pluriel(d.utilisateurs.filter((u) => u.role === r.role).length, 'compte')}</Badge>} className="mb-2" />
-            <ul className="list-disc space-y-0.5 pl-5 text-[12.5px] text-(--lm-encre-2)">
-              {r.acces.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
-          </Card>
-        ))}
-      </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {ROLES.map((r) => (
+            <div key={r.role} className="rounded-lg border border-(--lm-bord) p-3">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <p className="text-[14px] font-semibold">{LIBELLES.role[r.role]}</p>
+                <Badge tone={TON_ROLE[r.role]}>{pluriel(d.utilisateurs.filter((u) => u.role === r.role).length, 'compte')}</Badge>
+              </div>
+              <p className="mb-1 text-[12.5px] text-(--lm-encre-2)">{r.description}</p>
+              <ul className="list-disc space-y-0.5 pl-5 text-[12.5px] text-(--lm-encre-2)">
+                {r.acces.map((a) => (
+                  <li key={a}>{a}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Repli>
     </div>
   );
 }

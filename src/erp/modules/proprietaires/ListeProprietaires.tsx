@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Building2, Plus, Users, Wallet } from 'lucide-react';
-import { Avatar, Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
+import { Avatar, Badge, Button, EmptyState, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { euros } from '../../data/format';
@@ -91,17 +91,30 @@ export default function ListeProprietaires() {
     <>
       <PageHeader
         titre="Propriétaires"
-        sousTitre="Les personnes qui vous confient leur logement : leurs coordonnées, leurs biens, leur contrat et leurs relevés."
         actions={
-          <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
-            Ajouter un propriétaire
-          </Button>
+          d.proprietaires.length > 0 && (
+            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
+              Ajouter un propriétaire
+            </Button>
+          )
         }
       />
-      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Propriétaires" valeur={d.proprietaires.length} icone={<Users />} aide={`dont ${d.proprietaires.filter((p) => p.type !== 'particulier').length} sociétés ou SCI`} />
+      {d.proprietaires.length === 0 ? (
+        <EmptyState
+          icone={<Users />}
+          titre="Pas encore de propriétaire"
+          description="Ajoutez les personnes qui vous confient leur logement."
+          action={
+            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
+              Ajouter un propriétaire
+            </Button>
+          }
+        />
+      ) : (
+        <>
+      <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Stat label="Avec un contrat signé" valeur={lignes.filter((l) => l.statut === 'signe').length} icone={<Building2 />} />
-        <Stat label="Reversé sur 12 mois" valeur={euros(totalNet, true)} icone={<Wallet />} aide="estimation, séjours terminés" />
+        <Stat label="Reversé sur 12 mois" valeur={euros(totalNet, true)} icone={<Wallet />} />
       </div>
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Un nom, un e-mail, un téléphone, une ville…" label="Rechercher un propriétaire" />
@@ -121,6 +134,8 @@ export default function ListeProprietaires() {
         triInitial={{ cle: 'nom', sens: 'asc' }}
         vide="Personne ne correspond à votre recherche."
       />
+        </>
+      )}
       <FormProprietaire ouvert={creation} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />
     </>
   );

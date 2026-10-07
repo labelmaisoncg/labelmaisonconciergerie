@@ -54,7 +54,7 @@ const POINTS: PointEntreprise[] = [
     cle: 'rgpd',
     titre: 'RGPD : données voyageurs',
     description: 'Données des voyageurs et des propriétaires hébergées dans l’Union européenne, registre des traitements, durée de conservation, mentions d’information.',
-    action: 'Créer le projet Supabase en région UE, tenir le registre et publier la politique de confidentialité à jour.',
+    action: 'Héberger les données dans l’Union européenne, tenir le registre et publier la politique de confidentialité à jour.',
     statutInitial: 'a_faire',
   },
 ];
@@ -98,11 +98,11 @@ export function ConformiteEntreprise() {
                   <Badge tone="info">{p.avis}</Badge>
                 </p>
               )}
-              <p className="mt-2 text-[13px] text-(--lm-encre-2)">{p.description}</p>
-              <p className="mt-2 text-[13px]">
-                <span className="font-medium">Prochaine action : </span>
-                {p.action}
-              </p>
+              <p className="mt-2 text-[13px]">{p.action}</p>
+              <details className="mt-1.5">
+                <summary className="cursor-pointer rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Pourquoi ?</summary>
+                <p className="mt-1 text-[13px] text-(--lm-encre-2)">{p.description}</p>
+              </details>
               <div className="mt-3 w-40">
                 <Select
                   aria-label={`Statut : ${p.titre}`}

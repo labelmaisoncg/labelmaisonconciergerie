@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useErp } from '../../data/store';
 import { euros, nombre, pourcentage } from '../../data/format';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
-import { Badge, FilterChips, PageHeader, Stat, Table, type Colonne } from '../../ui';
+import { Aide, Badge, FilterChips, PageHeader, Stat, Table, type Colonne } from '../../ui';
 import { fenetre12Mois, rentabiliteParLogement, type LigneRentabilite } from './_calculs';
+import { FinanceVide, financeSansActivite } from './_composants/FinanceVide';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
 
 /** Sous ce taux de marge (marge / CA Label Maison), le logement est signalé. */
@@ -75,9 +76,13 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Rentabilité par logement' }]}
         titre="Rentabilité par logement"
-        sousTitre="Ce que chaque logement vous rapporte sur les 12 derniers mois : vos commissions et frais de ménage, moins les ménages payés et les dépenses du logement."
+        sousTitre="Sur les 12 derniers mois."
       />
       {onglets}
+      {financeSansActivite(d) ? (
+        <FinanceVide />
+      ) : (
+        <>
 
       <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Facturé en 12 mois" valeur={euros(somme('commission') + somme('fraisMenage'), true)} aide={`sur ${euros(somme('brut'), true)} payés par les voyageurs`} />
@@ -110,10 +115,13 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
         triInitial={{ cle: 'marge', sens: 'asc' }}
         vide="Aucun logement à surveiller, tout va bien."
       />
-      <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">
-        Coût ménage : missions de ménage et de linge validées uniquement (pas de validation, pas de paiement). Charges générales non réparties. Marge faible : moins de{' '}
+      <Aide titre="Comment c’est calculé ?" className="mt-4">
+        Ce que chaque logement vous rapporte : vos commissions et frais de ménage, moins les ménages payés et les dépenses du logement. Coût ménage : missions
+        de ménage et de linge validées uniquement (pas de validation, pas de paiement). Charges générales non réparties. Marge faible : moins de{' '}
         {pourcentage(SEUIL_MARGE_FAIBLE)} du chiffre d’affaires du logement.
-      </p>
+      </Aide>
+        </>
+      )}
     </>
   );
 }

@@ -6,7 +6,7 @@ import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
 import { documentsAlertes, libelleDocument, prestataireConforme } from '../../data/selectors';
 import type { Prestataire, StatutPrestataire, TypePrestataire } from '../../data/types';
-import { Button, Card, CardHeader, PageHeader, Select, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
+import { Button, Card, CardHeader, EmptyState, PageHeader, Select, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { BadgeConformite, BadgeDocument, RegleConformite } from './_composants/conformite';
 import { PrestataireModal } from './_composants/PrestataireModal';
 import { useRechercheUrl } from '../../ui/useRechercheUrl';
@@ -54,15 +54,7 @@ export function Liste() {
     {
       cle: 'conformite',
       titre: 'Conformité',
-      rendu: (p) => {
-        const v = prestataireConforme(p);
-        return (
-          <div className="flex flex-col items-start gap-0.5">
-            <BadgeConformite prestataire={p} />
-            {!v.ok && <span className="max-w-64 text-[12px] text-(--lm-danger)">{v.raisons.join(' ')}</span>}
-          </div>
-        );
-      },
+      rendu: (p) => <BadgeConformite prestataire={p} />,
       tri: (a, b) => Number(prestataireConforme(a).ok) - Number(prestataireConforme(b).ok),
     },
     { cle: 'note', titre: 'Note', align: 'droite', rendu: (p) => <span className="lm-chiffres">{note(p.noteMoyenne)}</span>, tri: (a, b) => (a.noteMoyenne ?? 0) - (b.noteMoyenne ?? 0) },
@@ -74,11 +66,18 @@ export function Liste() {
     <>
       <PageHeader
         titre="Prestataires"
-        sousTitre="Les personnes qui interviennent dans vos logements : sont-elles en règle, travaillent-elles bien ?"
-        actions={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Ajouter un prestataire</Button>}
+        actions={prestataires.length > 0 && <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Ajouter un prestataire</Button>}
       />
-      <RegleConformite />
 
+      {prestataires.length === 0 ? (
+        <EmptyState
+          icone={<Users />}
+          titre="Pas encore de prestataire"
+          description="Ajoutez les personnes qui font les ménages pour pouvoir leur confier des missions."
+          action={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Ajouter un prestataire</Button>}
+        />
+      ) : (
+        <>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="Qui travaillent avec vous" valeur={nombre(actifs.length)} icone={<Users />} />
         <Stat
@@ -86,14 +85,14 @@ export function Liste() {
           valeur={`${conformes}/${actifs.length}`}
           icone={<ShieldCheck />}
           tone={conformes < actifs.length ? 'danger' : 'succes'}
-          aide={alertes.length ? `${nombre(alertes.length)} papier${alertes.length > 1 ? 's' : ''} à renouveler` : 'tous les papiers sont à jour'}
+          aide={alertes.length ? `${nombre(alertes.length)} papier${alertes.length > 1 ? 's' : ''} à renouveler` : undefined}
         />
-        <Stat label="Note moyenne" valeur={moyenne === undefined || !Number.isFinite(moyenne) ? SANS_DONNEE : note(moyenne)} icone={<Star />} aide="contrôles et avis des voyageurs" />
+        <Stat label="Note moyenne" valeur={moyenne === undefined || !Number.isFinite(moyenne) ? SANS_DONNEE : note(moyenne)} icone={<Star />} />
       </div>
 
       {alertes.length > 0 && (
         <Card flush className="mb-5">
-          <CardHeader className="px-4 pt-4 sm:px-5" titre="Papiers à renouveler" description="Relancez le prestataire à temps : avec un papier expiré, on ne peut plus lui confier de ménage." />
+          <CardHeader className="px-4 pt-4 sm:px-5" titre="Papiers à renouveler" />
           <ul className="divide-y divide-(--lm-bord)">
             {alertes.map((a) => (
               <li key={`${a.prestataire.id}-${a.document.type}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-[13px] sm:px-5">
@@ -120,6 +119,10 @@ export function Liste() {
       </Toolbar>
 
       <Table colonnes={colonnes} lignes={lignes} cleLigne={(p) => p.id} onLigneClick={(p) => naviguer(`/erp/prestataires/${p.id}`)} legende="Prestataires" triInitial={{ cle: 'nom', sens: 'asc' }} vide="Personne ne correspond. Essayez d’enlever un filtre." />
+
+      <RegleConformite className="mt-6 mb-0" />
+        </>
+      )}
 
       <PrestataireModal ouvert={creation} onFermer={() => setCreation(false)} onCree={(p) => naviguer(`/erp/prestataires/${p.id}`)} />
     </>

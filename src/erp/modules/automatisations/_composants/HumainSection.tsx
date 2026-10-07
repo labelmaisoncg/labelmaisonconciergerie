@@ -1,9 +1,9 @@
 import { Eye, FileSignature, Gift, Scale } from 'lucide-react';
-import { Card, CardHeader } from '../../../ui';
+import { Repli } from '../../../ui';
 
 const DECISIONS = [
   { icone: Scale, titre: 'Trancher un litige', texte: 'Casse contestée, caution, désaccord avec un voyageur ou un propriétaire.' },
-  { icone: Gift, titre: 'Accorder un geste commercial', texte: 'Remboursement, réduction, nuit offerte : l’ERP et l’agent n’engagent jamais d’argent (SPEC §2.8).' },
+  { icone: Gift, titre: 'Accorder un geste commercial', texte: 'Remboursement, réduction, nuit offerte : l’ERP et l’agent n’engagent jamais d’argent.' },
   { icone: FileSignature, titre: 'Signer un mandat', texte: 'La relation propriétaire et l’engagement contractuel restent entre les mains d’Abdel.' },
   { icone: Eye, titre: 'Faire le contrôle physique', texte: 'L’ERP planifie le contrôle qualité, Kamel se rend sur place et note le ménage.' },
 ];
@@ -11,8 +11,7 @@ const DECISIONS = [
 /** La philosophie rendue explicite : ce que l'ERP ne fera jamais seul. */
 export function HumainSection() {
   return (
-    <Card>
-      <CardHeader titre="Ce qui reste humain" description="Tout le reste est automatique. Ces décisions demandent un jugement, une signature ou une présence." />
+    <Repli titre="Ce qui reste humain">
       <ul className="grid gap-3 sm:grid-cols-2">
         {DECISIONS.map(({ icone: Icone, titre, texte }) => (
           <li key={titre} className="flex gap-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
@@ -26,6 +25,6 @@ export function HumainSection() {
           </li>
         ))}
       </ul>
-    </Card>
+    </Repli>
   );
 }
