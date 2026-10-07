@@ -10,7 +10,7 @@ import { ATraiter } from './_composants/ATraiter';
 import { Aujourdhui } from './_composants/Aujourdhui';
 import { Demarrage } from './_composants/Demarrage';
 import { VosChiffres } from './_composants/VosChiffres';
-import { construireATraiter } from './_composants/aTraiter';
+import { construireATraiter } from './_composants/logique-a-traiter';
 
 /**
  * Accueil : un bonjour, la journée en un coup d'œil, ce qui vous attend et
