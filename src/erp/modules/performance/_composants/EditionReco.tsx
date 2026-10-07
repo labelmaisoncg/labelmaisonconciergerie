@@ -4,7 +4,7 @@ import { useErp } from '../../../data/store';
 import type { RecommandationProprietaire, StatutRecommandation } from '../../../data/types';
 import { Alert, Button, Field, Input, Modal, Select, Textarea } from '../../../ui';
 import { BadgeStatutReco } from './commun';
-import { ETAPES, faireAvancer } from './suivi';
+import { ETAPES, faireAvancer } from './logique-suivi';
 import { LIBELLES_STATUT_RECO } from '../../../analyse';
 
 interface Props {

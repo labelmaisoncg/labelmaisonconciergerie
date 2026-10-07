@@ -8,7 +8,7 @@ import type { RecommandationProprietaire, StatutRecommandation } from '../../../
 import { Badge, Button, EmptyState, FilterChips, IconButton, Select, TON_PLEIN, cn } from '../../../ui';
 import { EditionReco } from './EditionReco';
 import { Proposition } from './Proposition';
-import { ETAPES, LIBELLE_IMPACT, LIBELLE_PORTEUR, TRANSITIONS, faireAvancer } from './suivi';
+import { ETAPES, LIBELLE_IMPACT, LIBELLE_PORTEUR, TRANSITIONS, faireAvancer } from './logique-suivi';
 import { TONS_STATUT_RECO } from '../../../analyse';
 
 function Carte({ r, onEditer }: { r: RecommandationProprietaire; onEditer: (r: RecommandationProprietaire, cible?: StatutRecommandation) => void }) {
