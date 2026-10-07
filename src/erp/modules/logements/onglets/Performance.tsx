@@ -125,7 +125,7 @@ export function OngletPerformance({ logement }: { logement: Logement }) {
           className="mb-0 border-b border-(--lm-bord) px-4 pt-4 pb-3"
           titre="Améliorations à suggérer"
           description="Ajoutez-les au suivi pour tracer la proposition, la décision du propriétaire et le résultat."
-          actions={<Link to="/erp/performance?onglet=suivi" className="text-[12.5px] font-medium text-(--lm-or) hover:underline">Suivi des recommandations</Link>}
+          actions={<Link to="/erp/performance?onglet=suivi" className="text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">Suivi des recommandations</Link>}
         />
         {a.ameliorations.length ? (
           <ul className="divide-y divide-(--lm-bord)">

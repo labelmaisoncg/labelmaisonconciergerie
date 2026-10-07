@@ -74,7 +74,7 @@ function Marque() {
       <span aria-hidden className="grid size-11 place-items-center rounded-xl bg-(--lm-brun) text-[15px] font-semibold text-[#F7F2E6]">
         LM
       </span>
-      <p className="mt-3 text-[11.5px] font-semibold tracking-[0.2em] text-(--lm-or) uppercase">Label Maison · ERP</p>
+      <p className="mt-3 text-[11.5px] font-semibold tracking-[0.2em] text-(--lm-or-texte) uppercase">Label Maison · ERP</p>
     </div>
   );
 }
@@ -87,7 +87,7 @@ function Cadre({ titre, sousTitre, icone, children }: { titre: string; sousTitre
         <div className="rounded-2xl border border-(--lm-bord) bg-(--lm-surface) p-6 shadow-(--lm-ombre) sm:p-8">
           <div className="mb-5 flex items-start gap-3">
             {icone && (
-              <span aria-hidden className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or) [&_svg]:size-[18px]">
+              <span aria-hidden className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
                 {icone}
               </span>
             )}
@@ -111,7 +111,7 @@ function Chargement({ texte }: { texte: string }) {
     <main translate="no" className="flex min-h-screen items-center justify-center bg-(--lm-fond) px-4" aria-busy="true">
       <div className="flex flex-col items-center text-center">
         <Marque />
-        <Loader2 className="size-6 animate-spin text-(--lm-or)" aria-hidden />
+        <Loader2 className="size-6 animate-spin text-(--lm-or-texte)" aria-hidden />
         <p role="status" className="mt-3 text-[14px] text-(--lm-encre-2)">
           {texte}
         </p>
@@ -174,7 +174,7 @@ function FormulaireConnexion({ message }: { message?: string }) {
           (ou nouveau mot de passe).
         </p>
       ) : (
-        <button type="button" onClick={() => setAide(true)} className="mt-5 text-[13px] font-medium text-(--lm-or) hover:underline">
+        <button type="button" onClick={() => setAide(true)} className="mt-5 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           Mot de passe oublié ?
         </button>
       )}

@@ -55,11 +55,11 @@ export function Demarrage() {
       action: 'Nouveau propriétaire',
     },
     {
-      titre: 'Créer les mandats',
-      detail: 'Votre commission, les frais de ménage et les dates. Sans mandat signé, un logement ne passe pas actif.',
+      titre: 'Créer les contrats de gestion',
+      detail: 'Votre commission, les frais de ménage et les dates. Sans contrat signé, un logement ne passe pas actif.',
       fait: d.mandats.length > 0,
       lien: '/erp/mandats?nouveau=1',
-      action: 'Nouveau mandat',
+      action: 'Nouveau contrat',
     },
     {
       titre: 'Ajouter les prestataires et leurs documents',
@@ -92,7 +92,7 @@ export function Demarrage() {
   return (
     <Card className="mb-6 sm:mb-8" aria-labelledby="demarrage-titre">
       <div className="flex items-start gap-3">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or) [&_svg]:size-[18px]">
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
           <Rocket />
         </span>
         <div className="min-w-0 flex-1">
@@ -119,7 +119,7 @@ export function Demarrage() {
             key={e.titre}
             className={cn(
               'flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4',
-              i === 0 && !e.fait && '-mx-2 my-1 rounded-lg border-0 bg-(--lm-or-lavis) px-2 sm:-mx-3 sm:px-3',
+              i === prochaine && '-mx-2 my-1 rounded-lg border-0 bg-(--lm-or-lavis) px-2 sm:-mx-3 sm:px-3',
             )}
           >
             <div className="flex min-w-0 flex-1 items-start gap-3">
@@ -140,15 +140,18 @@ export function Demarrage() {
                 <p className="text-[12.5px] text-(--lm-encre-3)">{e.detail}</p>
               </div>
             </div>
-            <ButtonLink
-              to={e.lien}
-              size={i === 0 && !e.fait ? 'md' : 'sm'}
-              variant={i === prochaine ? 'primary' : 'secondary'}
-              icone={e.icone ?? <Plus />}
-              className="self-start sm:self-center"
-            >
-              {e.action}
-            </ButtonLink>
+            {/* Une seule action mise en avant : l'étape suivante. Les autres restent accessibles, en retrait. */}
+            {!e.fait && (
+              <ButtonLink
+                to={e.lien}
+                size={i === prochaine ? 'md' : 'sm'}
+                variant={i === prochaine ? 'primary' : 'ghost'}
+                icone={e.icone ?? <Plus />}
+                className="self-start sm:self-center"
+              >
+                {e.action}
+              </ButtonLink>
+            )}
           </li>
         ))}
       </ol>

@@ -61,7 +61,7 @@ export default function PageMandats() {
       titre: 'Propriétaire',
       tri: (a, b) => a.proprietaire.localeCompare(b.proprietaire),
       rendu: ({ m, proprietaire }) => (
-        <Link to={`/erp/proprietaires/${m.proprietaireId}`} onClick={(e) => e.stopPropagation()} className="whitespace-nowrap hover:text-(--lm-or) hover:underline">
+        <Link to={`/erp/proprietaires/${m.proprietaireId}`} onClick={(e) => e.stopPropagation()} className="whitespace-nowrap hover:text-(--lm-or-texte) hover:underline">
           {proprietaire}
         </Link>
       ),
@@ -71,7 +71,7 @@ export default function PageMandats() {
       titre: 'Logement',
       masquerMobile: true,
       rendu: ({ m, logement }) => (
-        <Link to={`/erp/logements/${m.logementId}`} onClick={(e) => e.stopPropagation()} className="whitespace-nowrap hover:text-(--lm-or) hover:underline">
+        <Link to={`/erp/logements/${m.logementId}`} onClick={(e) => e.stopPropagation()} className="whitespace-nowrap hover:text-(--lm-or-texte) hover:underline">
           {logement}
         </Link>
       ),

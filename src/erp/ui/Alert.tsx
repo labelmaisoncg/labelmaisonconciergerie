@@ -14,7 +14,7 @@ export interface AlertProps {
 
 const STYLES: Record<Ton, string> = {
   neutre: 'border-(--lm-bord-fort) bg-(--lm-surface-2) [&>svg]:text-(--lm-encre-2)',
-  or: 'border-(--lm-or-anneau) bg-(--lm-or-lavis) [&>svg]:text-(--lm-or)',
+  or: 'border-(--lm-or-anneau) bg-(--lm-or-lavis) [&>svg]:text-(--lm-or-texte)',
   succes: 'border-(--lm-succes)/30 bg-(--lm-succes-lavis) [&>svg]:text-(--lm-succes)',
   alerte: 'border-(--lm-alerte)/30 bg-(--lm-alerte-lavis) [&>svg]:text-(--lm-alerte)',
   danger: 'border-(--lm-danger)/30 bg-(--lm-danger-lavis) [&>svg]:text-(--lm-danger)',

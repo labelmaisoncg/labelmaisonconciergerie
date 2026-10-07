@@ -41,7 +41,7 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
           return (
             <Card key={c}>
               <div className="flex flex-wrap items-center gap-3">
-                <span className="grid size-9 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or)">
+                <span className="grid size-9 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte)">
                   <Radio className="size-4" aria-hidden />
                 </span>
                 <div className="min-w-0 flex-1">
@@ -121,7 +121,7 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
               </Badge>
               <p className="mb-3 text-[12.5px] text-(--lm-encre-2)">
                 Connectez l’annonce dans{' '}
-                <a href="https://repull.dev/dashboard" target="_blank" rel="noreferrer" className="text-(--lm-or) hover:underline">
+                <a href="https://repull.dev/dashboard" target="_blank" rel="noreferrer" className="text-(--lm-or-texte) hover:underline">
                   Repull
                 </a>{' '}
                 : elle arrive dans l’ERP à la synchronisation suivante. Pour qu’elle mette à jour ce logement plutôt que d’en créer un second, saisissez son identifiant d’annonce Repull.
@@ -142,7 +142,7 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
         <Card>
           <CardHeader titre="Accès voyageur" />
           <p className="flex items-center gap-2 text-[13.5px]">
-            <KeyRound className="size-4 text-(--lm-or)" aria-hidden />
+            <KeyRound className="size-4 text-(--lm-or-texte)" aria-hidden />
             {LIBELLES.serrure[l.serrure]}
           </p>
           {l.serrure === 'cles' && <p className="mt-2 text-[12.5px] text-(--lm-alerte)">Remise de clés : accès non sécurisé au sens de la checklist.</p>}

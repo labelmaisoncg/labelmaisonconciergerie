@@ -106,8 +106,8 @@ export default function Synthese({ onglets }: PageFinanceProps) {
       <p className="mb-6 text-[12.5px] text-(--lm-encre-3)">{libelle}. Un séjour à cheval sur deux mois est partagé nuit par nuit ; le ménage compte le jour du départ.</p>
 
       <details className="group mb-6">
-        <summary className="mb-3 inline-flex cursor-pointer list-none items-center gap-1.5 text-[13.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or) [&::-webkit-details-marker]:hidden">
-          <ChevronRight className="size-4 text-(--lm-or) transition-transform group-open:rotate-90" aria-hidden />
+        <summary className="mb-3 inline-flex cursor-pointer list-none items-center gap-1.5 text-[13.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte) [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-4 text-(--lm-or-texte) transition-transform group-open:rotate-90" aria-hidden />
           Voir l’évolution mois par mois
         </summary>
       <div className="grid gap-4 xl:grid-cols-2">
@@ -150,7 +150,7 @@ export default function Synthese({ onglets }: PageFinanceProps) {
             <CardHeader
               titre="Ce que vous facturez, logement par logement"
               description={libelle}
-              actions={<Link to="/erp/finance/rentabilite" className="text-[13px] font-medium text-(--lm-or) hover:underline">Voir la rentabilité</Link>}
+              actions={<Link to="/erp/finance/rentabilite" className="text-[13px] font-medium text-(--lm-or-texte) hover:underline">Voir la rentabilité</Link>}
             />
           </div>
           <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
@@ -177,7 +177,7 @@ export default function Synthese({ onglets }: PageFinanceProps) {
             {sousCible.length > 0 && (
               <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
                 {nombre(sousCible.length)} contrat{sousCible.length > 1 ? 's' : ''} sous {COMMISSION_CIBLE_MIN} % (anciennes conditions), à revoir au renouvellement.{' '}
-                <Link to="/erp/mandats" className="font-medium text-(--lm-or) hover:underline">Voir les contrats</Link>
+                <Link to="/erp/mandats" className="font-medium text-(--lm-or-texte) hover:underline">Voir les contrats</Link>
               </p>
             )}
           </Card>

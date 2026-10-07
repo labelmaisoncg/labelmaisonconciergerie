@@ -26,7 +26,7 @@ export function Controle({ onMessage }: { onMessage: (texte: string) => void }) 
       cle: 'logement',
       titre: 'Logement',
       rendu: (m) => (
-        <Link to={`/erp/menages/${m.id}`} className="font-medium hover:text-(--lm-or) hover:underline" onClick={(e) => e.stopPropagation()}>
+        <Link to={`/erp/menages/${m.id}`} className="font-medium hover:text-(--lm-or-texte) hover:underline" onClick={(e) => e.stopPropagation()}>
           {logements.find((l) => l.id === m.logementId)?.nom}
         </Link>
       ),

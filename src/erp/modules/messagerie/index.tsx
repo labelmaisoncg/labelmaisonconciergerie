@@ -9,8 +9,8 @@
  */
 import { useMemo, useState } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { MessagesSquare } from 'lucide-react';
-import { EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
+import { MessagesSquare, Plug } from 'lucide-react';
+import { ButtonLink, EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { reglagesAgent } from '../../data/reglages';
 import { logementById, reservationById } from '../../data/selectors';
@@ -124,11 +124,11 @@ function Boite() {
                 <EmptyState
                   icone={<MessagesSquare />}
                   titre="Pas encore de conversation"
-                  description="Les messages de vos voyageurs arrivent ici tout seuls dès que vous avez connecté Airbnb ou Booking et choisi vos logements (bouton « Enregistrer mon choix »)."
+                  description="Les messages de vos voyageurs arriveront ici tout seuls, dès qu’Airbnb ou Booking.com est connecté et vos logements choisis."
                   action={
-                    <Link to="/erp/logements/connexions" className="text-[13.5px] font-medium text-(--lm-or) hover:underline">
-                      Connecter mes plateformes →
-                    </Link>
+                    <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
+                      Connecter mes plateformes
+                    </ButtonLink>
                   }
                   className="border-none"
                 />

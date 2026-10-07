@@ -26,7 +26,7 @@ export function Detail() {
     return (
       <>
         <PageHeader fil={[{ libelle: 'Ménages', to: '/erp/menages' }, { libelle: 'Introuvable' }]} titre="Ménage introuvable" />
-        <EmptyState icone={<SearchX />} titre="Ce ménage n’existe plus" action={<Link to="/erp/menages" className="text-(--lm-or) underline">Retour aux ménages</Link>} />
+        <EmptyState icone={<SearchX />} titre="Ce ménage n’existe plus" action={<Link to="/erp/menages" className="text-(--lm-or-texte) underline">Retour aux ménages</Link>} />
       </>
     );
 

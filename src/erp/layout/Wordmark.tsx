@@ -9,7 +9,7 @@ export function Wordmark({ className }: { className?: string }) {
         LM
       </span>
       <span className="flex flex-col leading-none">
-        <span className="text-[11.5px] font-semibold tracking-[0.18em] text-(--lm-or) [font-variant:small-caps]">Label Maison</span>
+        <span className="text-[11.5px] font-semibold tracking-[0.18em] text-(--lm-or-texte) [font-variant:small-caps]">Label Maison</span>
         <span className="lm-serif mt-1 text-[17px] text-(--lm-encre)">ERP</span>
       </span>
     </Link>

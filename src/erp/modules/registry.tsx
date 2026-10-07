@@ -9,7 +9,7 @@
  * layout/OngletsRubrique.tsx) ; les anciennes adresses restent valables.
  */
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { BotMessageSquare, CalendarDays, Home, House, Settings, Sparkles, Users, Wallet, type LucideIcon } from 'lucide-react';
+import { BotMessageSquare, Building2, CalendarDays, House, Settings, Sparkles, Users, Wallet, type LucideIcon } from 'lucide-react';
 
 export type GroupeModule =
   | 'accueil'
@@ -34,7 +34,7 @@ export interface Rubrique {
 /** Rubriques de la barre latérale, dans l'ordre. */
 export const GROUPES: Rubrique[] = [
   { cle: 'accueil', libelle: 'Accueil', icon: House, path: '/erp' },
-  { cle: 'logements', libelle: 'Logements', icon: Home, path: '/erp/logements' },
+  { cle: 'logements', libelle: 'Logements', icon: Building2, path: '/erp/logements' },
   { cle: 'reservations', libelle: 'Réservations', icon: CalendarDays, path: '/erp/reservations' },
   { cle: 'messagerie', libelle: 'Messagerie agentique', icon: BotMessageSquare, path: '/erp/messagerie' },
   { cle: 'operations', libelle: 'Opérations', icon: Sparkles, path: '/erp/menages' },

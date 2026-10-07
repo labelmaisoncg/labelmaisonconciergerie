@@ -28,7 +28,7 @@ export function Sidebar({ onNaviguer, className }: SidebarProps) {
           className={cn(
             'flex h-10 items-center gap-2.5 rounded-lg px-3 text-[13.5px] font-medium transition-colors',
             actif
-              ? 'bg-(--lm-or-lavis) text-(--lm-brun) [&>svg]:text-(--lm-or)'
+              ? 'bg-(--lm-or-lavis) text-(--lm-brun) [&>svg]:text-(--lm-or-texte)'
               : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
           )}
         >
