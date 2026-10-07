@@ -3,11 +3,11 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CalendarClock, FileSignature, KanbanSquare, List, Plus, Target } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { ETAPES_PIPELINE } from '../../data/constantes';
-import { AUJOURDHUI, euros, moisAnnee, pourcentage } from '../../data/format';
+import { euros, pourcentage } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { actionsCommercialesDues, commissionPotentielle, signaturesDuMois, valeurPipeline } from '../../data/selectors';
 import type { EtapeProspect, Prospect, Responsable, SourceProspect } from '../../data/types';
-import { Button, MenuActions, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
+import { Button, EmptyState, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
 import { useAvis } from './_composants/Avis';
 import type { ActionsProspect } from './_composants/CarteProspect';
 import { FicheProspect } from './_composants/FicheProspect';
@@ -95,30 +95,34 @@ export default function Pipeline() {
     <>
       <PageHeader
         titre="Prospection"
-        sousTitre="Les propriétaires avec qui vous discutez : d’où viendront vos prochains logements."
-        actions={
-          <>
-            <MenuActions actions={[{ libelle: 'Un propriétaire a signé : lancer son contrat', icone: <FileSignature />, to: '/erp/commercial/lancement' }]} />
-            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau contact</Button>
-          </>
-        }
+        actions={d.prospects.length > 0 && <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau contact</Button>}
       />
       <Onglets />
+
+      {d.prospects.length === 0 ? (
+        <EmptyState
+          icone={<Target />}
+          titre="Pas encore de contact"
+          description="Notez les propriétaires avec qui vous discutez : vos prochains logements viendront d’eux."
+          action={<Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau contact</Button>}
+        />
+      ) : (
+        <>
 
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat
           label="En discussion"
           valeur={euros(valeurPipeline(d.prospects), true)}
           icone={<Target />}
-          aide={`de revenus par an pour les propriétaires, soit ${euros(commissionPotentielle(d.prospects, 18), true)} pour vous`}
+          aide={`soit ${euros(commissionPotentielle(d.prospects, 18), true)} par an pour vous`}
         />
         <Stat
           label="Signés ce mois-ci"
           valeur={signaturesDuMois(d.mandats).length}
           icone={<FileSignature />}
-          aide={signes + perdus ? `${pourcentage(signes / (signes + perdus))} des discussions finissent signées` : moisAnnee(AUJOURDHUI)}
+          aide={signes + perdus ? `${pourcentage(signes / (signes + perdus))} des discussions signées` : undefined}
         />
-        <Stat label="À relancer" valeur={dues.length} icone={<CalendarClock />} tone={dues.length ? 'alerte' : 'neutre'} aide={dues.length ? 'aujourd’hui ou en retard' : 'personne à relancer aujourd’hui'} />
+        <Stat label="À relancer" valeur={dues.length} icone={<CalendarClock />} tone={dues.length ? 'alerte' : 'neutre'} aide={dues.length ? 'aujourd’hui ou en retard' : undefined} />
       </div>
 
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
@@ -146,12 +150,11 @@ export default function Pipeline() {
       </div>
 
       {affichage === 'tableau' ? (
-        <>
-          <p className="mb-2 hidden text-[12px] text-(--lm-encre-3) lg:block">Glissez une carte dans une autre colonne pour changer d’étape. Sur « Signé », on prépare son contrat.</p>
-          <Kanban prospects={filtres} actions={actions} deplacer={deplacer} avecPerdus={avecPerdus || etape === 'perdu'} />
-        </>
+        <Kanban prospects={filtres} actions={actions} deplacer={deplacer} avecPerdus={avecPerdus || etape === 'perdu'} />
       ) : (
         <ListeProspects prospects={filtres} ouvrir={ouvrir} actif={ouvertId} />
+      )}
+        </>
       )}
 
       <FicheProspect prospect={ouvert} onFermer={fermer} onLancer={lancer} onEnregistre={(p) => afficher({ ton: 'succes', texte: `C’est enregistré pour ${p.nom}.` })} />

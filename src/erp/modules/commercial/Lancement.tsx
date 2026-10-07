@@ -65,7 +65,7 @@ export default function Lancement() {
       <PageHeader
         fil={[{ libelle: 'Prospection', to: '/erp/commercial' }, { libelle: 'Contrat signé' }]}
         titre="Un propriétaire a signé"
-        sousTitre="On enregistre le propriétaire, son logement et son contrat en une fois. Ensuite, une liste d’étapes vous guide jusqu’à la mise en ligne."
+        sousTitre="Propriétaire, logement et contrat, en une seule fois."
       />
       <Onglets />
 

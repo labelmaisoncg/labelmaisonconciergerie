@@ -92,7 +92,7 @@ export function Tarifs({ prestataire: p, onMessage }: { prestataire: Prestataire
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card flush>
-        <CardHeader className="px-4 pt-4 sm:px-5" titre="Grille tarifaire" description="Prix d’une prestation par type de logement, hors fournitures." />
+        <CardHeader className="px-4 pt-4 sm:px-5" titre="Grille tarifaire" />
         {p.tarifs.length ? (
           <ul className="divide-y divide-(--lm-bord)">
             {p.tarifs.map((t) => (

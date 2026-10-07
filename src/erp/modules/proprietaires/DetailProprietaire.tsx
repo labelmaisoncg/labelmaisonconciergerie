@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FilePlus2, Landmark, Mail, MapPin, Pencil, Phone, Printer, ScrollText } from 'lucide-react';
-import { Avatar, Badge, Button, Card, CardHeader, EmptyState, FilterChips, PageHeader, StatusBadge, Table } from '../../ui';
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, FilterChips, MenuActions, PageHeader, Repli, StatusBadge, Table } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
@@ -58,15 +58,20 @@ export default function DetailProprietaire() {
             <span className="min-w-0">{p.nom}</span>
           </span>
         }
-        sousTitre={`${LIBELLES.typeProprietaire[p.type]} · client depuis le ${dateCourte(p.creeLe)} · net reversé 12 mois : ${euros(revenuNet12Mois(d, p.id), true)}`}
+        sousTitre={`${LIBELLES.typeProprietaire[p.type]} · client depuis le ${dateCourte(p.creeLe)}`}
         actions={
           <>
-            <Button icone={<FilePlus2 />} onClick={() => setNouveauMandat(true)}>
-              Nouveau contrat
-            </Button>
             <Button icone={<Pencil />} onClick={() => setEdition(true)}>
               Modifier
             </Button>
+            <MenuActions
+              label="Plus"
+              texte
+              actions={[
+                { libelle: 'Nouveau contrat', icone: <FilePlus2 />, onClick: () => setNouveauMandat(true) },
+                { libelle: 'Imprimer le relevé', icone: <Printer />, onClick: imprimer },
+              ]}
+            />
           </>
         }
       />
@@ -82,11 +87,12 @@ export default function DetailProprietaire() {
               <li className="flex items-start gap-2.5"><Landmark className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><span className="lm-chiffres">{p.ibanMasque || 'IBAN non renseigné'}</span></li>
             </ul>
           </Card>
-          <Card>
-            <CardHeader titre="Notes" actions={<Button size="sm" variant="ghost" onClick={() => setEdition(true)}>Modifier</Button>} />
-            <p className="text-[13.5px] whitespace-pre-line text-(--lm-encre-2)">{p.notes || 'Pas de note pour l’instant.'}</p>
-          </Card>
-          <p className="px-1 text-[12.5px] text-(--lm-encre-3)">Rappel : le propriétaire ne modifie pas l’annonce sans vous en parler (c’est dans son contrat).</p>
+          {p.notes && (
+            <Card>
+              <CardHeader titre="Notes" />
+              <p className="text-[13.5px] whitespace-pre-line text-(--lm-encre-2)">{p.notes}</p>
+            </Card>
+          )}
         </div>
 
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
@@ -150,16 +156,11 @@ export default function DetailProprietaire() {
             />
           </section>
 
-          <Card>
-            <CardHeader
-              titre="Relevés mensuels"
-              description="Les séjours du mois, moins votre commission et le ménage : ce qui lui revient."
-              actions={<Button size="sm" icone={<Printer />} onClick={imprimer}>Imprimer</Button>}
-            />
+          <Repli titre="Relevé mensuel" description={`Reversé sur 12 mois : ${euros(revenuNet12Mois(d, p.id), true)}`}>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <FilterChips
               unique
               label="Période du relevé"
-              className="mb-4"
               actifs={[periode]}
               onChange={(a) => a[0] && setPeriode(a[0])}
               filtres={[PERIODE_PRECEDENTE, PERIODE_COURANTE].map((x) => ({
@@ -167,11 +168,14 @@ export default function DetailProprietaire() {
                 libelle: `${moisAnnee(x)}${x === PERIODE_COURANTE ? ' (en cours)' : ''}`,
               }))}
             />
+              <Button size="sm" icone={<Printer />} onClick={imprimer}>Imprimer</Button>
+            </div>
             <div className="rounded-lg border border-(--lm-bord) p-3 sm:p-5">
               <DocumentReleve proprietaire={p} periode={periode} />
             </div>
-          </Card>
+          </Repli>
 
+          {factures.length > 0 && (
           <section aria-label="Factures">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-[15px] font-semibold">Factures</h2>
@@ -195,6 +199,7 @@ export default function DetailProprietaire() {
               ]}
             />
           </section>
+          )}
         </div>
       </div>
 

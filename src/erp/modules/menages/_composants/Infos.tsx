@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
 import { dateJour } from '../../../data/format';
-import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
 import { prestataireConforme } from '../../../data/selectors';
 import type { Mission } from '../../../data/types';
@@ -40,7 +39,6 @@ export function Infos({ mission: m, tarif }: { mission: Mission; tarif: string }
             {logement ? <Link className={lien} to={`/erp/logements/${logement.id}`}>{logement.nom}</Link> : '-'}
           </Ligne>
           <Ligne label="Adresse">{logement ? `${logement.adresse}, ${logement.ville}` : '-'}</Ligne>
-          <Ligne label="Type">{LIBELLES.typeMission[m.type]}</Ligne>
           <Ligne label="Fenêtre">
             <span className="lm-chiffres">{m.heureDebut} → prêt avant {m.heureFinMax}</span>
           </Ligne>

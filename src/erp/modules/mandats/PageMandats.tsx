@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FilePen, FileSignature, Percent, Plus } from 'lucide-react';
-import { Badge, Button, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
+import { Badge, Button, EmptyState, FilterChips, PageHeader, SearchInput, Stat, StatusBadge, Table, type Colonne, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
@@ -90,31 +90,43 @@ export default function PageMandats() {
     },
     { cle: 'menage', titre: 'Frais ménage', align: 'droite', masquerMobile: true, rendu: ({ m }) => euros(m.fraisMenageCentimes) },
     { cle: 'debut', titre: 'Début', masquerMobile: true, tri: (a, b) => a.m.dateDebut.localeCompare(b.m.dateDebut), rendu: ({ m }) => <span className="whitespace-nowrap">{dateCourte(m.dateDebut)}</span> },
-    { cle: 'essai', titre: 'Fin d’essai', masquerMobile: true, rendu: ({ m }) => (m.periodeEssaiFin ? <span className="whitespace-nowrap">{dateCourte(m.periodeEssaiFin)}</span> : '-') },
     { cle: 'statut', titre: 'Statut', rendu: ({ m }) => <StatusBadge type="statutMandat" valeur={m.statut} /> },
-    { cle: 'signe', titre: 'Signé le', masquerMobile: true, tri: (a, b) => (a.m.signeLe ?? '').localeCompare(b.m.signeLe ?? ''), rendu: ({ m }) => (m.signeLe ? <span className="whitespace-nowrap">{dateCourte(m.signeLe)}</span> : '-') },
   ];
 
   return (
     <>
       <PageHeader
         titre="Contrats de gestion"
-        sousTitre="Le contrat (mandat) signé avec chaque propriétaire. Un logement ne se met en ligne qu’avec un contrat signé."
         actions={
-          <Button variant="primary" icone={<Plus />} onClick={() => setForm({ ouvert: true })}>
-            Nouveau contrat
-          </Button>
+          d.mandats.length > 0 && (
+            <Button variant="primary" icone={<Plus />} onClick={() => setForm({ ouvert: true })}>
+              Nouveau contrat
+            </Button>
+          )
         }
       />
+      {d.mandats.length === 0 ? (
+        <EmptyState
+          icone={<FileSignature />}
+          titre="Pas encore de contrat"
+          description="Un logement ne se met en ligne qu’avec un contrat signé par son propriétaire."
+          action={
+            <Button variant="primary" icone={<Plus />} onClick={() => setForm({ ouvert: true })}>
+              Nouveau contrat
+            </Button>
+          }
+        />
+      ) : (
+        <>
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Signés" valeur={signes.length} icone={<FileSignature />} aide={`sur ${d.mandats.length} au total`} />
-        <Stat label="En attente de signature" valeur={enAttente} icone={<FilePen />} tone={enAttente ? 'alerte' : 'neutre'} aide="brouillons et contrats envoyés" />
+        <Stat label="Signés" valeur={signes.length} icone={<FileSignature />} />
+        <Stat label="En attente de signature" valeur={enAttente} icone={<FilePen />} tone={enAttente ? 'alerte' : 'neutre'} />
         <Stat
           label="Commission moyenne"
           valeur={`${nombre(moyenne, 1)} %`}
           icone={<Percent />}
           tone={aRenegocier ? 'alerte' : 'neutre'}
-          aide={aRenegocier ? `${aRenegocier} contrat${aRenegocier > 1 ? 's' : ''} sous ${COMMISSION_CIBLE_MIN} %, à revoir au renouvellement` : 'objectif : 18 à 20 %'}
+          aide={aRenegocier ? `${aRenegocier} contrat${aRenegocier > 1 ? 's' : ''} sous ${COMMISSION_CIBLE_MIN} %` : undefined}
         />
       </div>
 
@@ -141,6 +153,8 @@ export default function PageMandats() {
         triInitial={{ cle: 'ref', sens: 'desc' }}
         vide="Aucun contrat ne correspond. Essayez d’enlever un filtre."
       />
+        </>
+      )}
 
       <DetailMandat mandat={selection} onFermer={() => ouvrir()} onModifier={(m) => setForm({ ouvert: true, mandat: m })} />
       <FormMandat

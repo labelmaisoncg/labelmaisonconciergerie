@@ -5,7 +5,7 @@ import { nouvelId, useErp } from '../../../data/store';
 import { missionsAControler } from '../../../data/selectors';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import type { Mission } from '../../../data/types';
-import { Alert, Badge, Button, StatusBadge, Table, type Colonne } from '../../../ui';
+import { Aide, Badge, Button, StatusBadge, Table, type Colonne } from '../../../ui';
 import { controlePlanifie, nouveauControle } from './outils';
 
 /** Contrôle qualité (SPEC §2.5) : tirage 1 sur 10 et toute note voyageur < 4,5. */
@@ -69,10 +69,6 @@ export function Controle({ onMessage }: { onMessage: (texte: string) => void }) 
 
   return (
     <div className="space-y-4">
-      <Alert tone="or" titre="Des contrôles sur place, au hasard">
-        Un ménage sur dix est tiré au sort pour être contrôlé sur place, et une note voyageur sous {note(SEUIL_NOTE_CONTROLE)} en déclenche un.
-        Chaque logement est contrôlé au moins une fois par mois.
-      </Alert>
       <Table
         colonnes={colonnes}
         lignes={aControler}
@@ -81,6 +77,10 @@ export function Controle({ onMessage }: { onMessage: (texte: string) => void }) 
         dense
         vide="Aucun contrôle à faire pour l’instant."
       />
+      <Aide titre="Comment sont choisis les contrôles ?" className="mb-0">
+        Un ménage sur dix est tiré au sort pour être contrôlé sur place, et une note voyageur sous {note(SEUIL_NOTE_CONTROLE)} en déclenche un. Chaque
+        logement est contrôlé au moins une fois par mois.
+      </Aide>
     </div>
   );
 }

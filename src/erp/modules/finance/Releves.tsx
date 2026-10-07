@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, Printer, Send } from 'lucide-react';
+import { CheckCircle2, Plus, Printer, Send } from 'lucide-react';
 import { useErp, nouvelId } from '../../data/store';
 import { dateHeure, horodatageMaintenant, moisAnnee, pluriel } from '../../data/format';
 import { releveProprietaire } from '../../data/selectors';
-import { Alert, Badge, Button, Card, EmptyState, Field, PageHeader, Select } from '../../ui';
+import { Alert, Badge, Button, ButtonLink, Card, EmptyState, Field, MenuActions, PageHeader, Select } from '../../ui';
 import { derniersMois } from './_calculs';
 import { DocumentReleve } from './_composants/DocumentReleve';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
@@ -44,6 +44,23 @@ export default function Releves({ onglets }: PageFinanceProps) {
     });
   };
 
+  if (d.proprietaires.length === 0)
+    return (
+      <>
+        <PageHeader titre="Relevés des propriétaires" />
+        {onglets}
+        <EmptyState
+          titre="Pas encore de propriétaire"
+          description="Ajoutez un propriétaire pour préparer ses relevés."
+          action={
+            <ButtonLink to="/erp/proprietaires?nouveau=1" variant="primary" icone={<Plus />}>
+              Ajouter un propriétaire
+            </ButtonLink>
+          }
+        />
+      </>
+    );
+
   return (
     <>
       <style>{`@media print {
@@ -54,7 +71,6 @@ export default function Releves({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Relevés propriétaires' }]}
         titre="Relevés des propriétaires"
-        sousTitre="Chaque mois, un relevé clair pour chaque propriétaire : ses séjours, votre commission, le ménage et ce qui lui est versé."
         className="lm-sans-impression"
       />
       {onglets}
@@ -111,12 +127,10 @@ export default function Releves({ onglets }: PageFinanceProps) {
           {proprietaire && releve ? (
             <>
               <div className="lm-sans-impression mb-3 flex flex-wrap items-center gap-2">
-                <Button icone={<Printer />} onClick={() => window.print()}>
-                  Imprimer ou PDF
-                </Button>
                 <Button variant="primary" icone={<Send />} onClick={marquerEnvoye} disabled={!!envoiCourant || releve.lignes.length === 0}>
                   {envoiCourant ? 'Déjà envoyé' : 'Marquer comme envoyé'}
                 </Button>
+                <MenuActions label="Plus" texte actions={[{ libelle: 'Imprimer ou PDF', icone: <Printer />, onClick: () => window.print() }]} />
                 {envoiCourant && (
                   <span className="text-[12.5px] text-(--lm-encre-2)">
                     Envoyé le {dateHeure(envoiCourant.horodatage)} par {envoiCourant.auteur}
@@ -124,9 +138,7 @@ export default function Releves({ onglets }: PageFinanceProps) {
                 )}
               </div>
               {releve.lignes.length === 0 && (
-                <Alert tone="info" className="lm-sans-impression mb-3" titre="Pas de séjour terminé ce mois-ci">
-                  Envoyez quand même le relevé : il rassure le propriétaire en confirmant qu’il n’y a rien à lui verser pour {moisAnnee(periode)}.
-                </Alert>
+                <Alert tone="info" className="lm-sans-impression mb-3" titre="Pas de séjour ce mois-ci : envoyez quand même le relevé." />
               )}
               <DocumentReleve proprietaire={proprietaire} periode={periode} releve={releve} logements={d.logements} mandats={d.mandats} />
             </>

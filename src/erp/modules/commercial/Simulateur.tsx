@@ -5,7 +5,7 @@ import { euros, nombre } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
 import type { TypeLogement } from '../../data/types';
-import { Alert, Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, cn } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, PageHeader, Repli, Select, cn } from '../../ui';
 import { useAvis } from './_composants/Avis';
 import { NouveauProspect } from './_composants/NouveauProspect';
 import { Onglets } from './_composants/Onglets';
@@ -48,14 +48,13 @@ export default function Simulateur() {
       <PageHeader
         fil={[{ libelle: 'Prospection', to: '/erp/commercial' }, { libelle: 'Simulateur' }]}
         titre="Simulateur de revenus"
-        sousTitre="À faire tourner avec le propriétaire : ce que son bien peut rapporter, et ce qu’il touche net."
         actions={<Button variant="primary" icone={<UserPlus />} disabled={invalide} onClick={() => setCreation(true)}>Créer un prospect</Button>}
       />
       <Onglets />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
         <Card>
-          <CardHeader titre="Le bien" description="Hypothèses annuelles." />
+          <CardHeader titre="Le bien" />
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Ville">
               <Input value={p.ville} onChange={(e) => setP((x) => ({ ...x, ville: e.target.value }))} />
@@ -86,7 +85,7 @@ export default function Simulateur() {
           <Card>
             <CardHeader
               titre={<span className="inline-flex items-center gap-2"><Calculator className="size-4 text-(--lm-or-texte)" aria-hidden />Estimation annuelle</span>}
-              description={`${LIBELLES.typeLogement[p.type]} à ${p.ville || 'ville à préciser'}, ${p.capacite} pers. · ${nombre(r.nuits)} nuits louées, environ ${nombre(r.sejours)} séjours.`}
+              description={`${nombre(r.nuits)} nuits louées, environ ${nombre(r.sejours)} séjours.`}
               actions={<Badge tone="or">{p.commissionPct} %</Badge>}
             />
             <dl>
@@ -97,12 +96,10 @@ export default function Simulateur() {
             </dl>
             <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">
               Soit <span className="lm-chiffres font-medium text-(--lm-encre)">{euros(Math.round(r.netProprietaire / 12), true)}</span> par mois en moyenne.
-              Les frais de ménage ({euros(r.fraisMenageVoyageurs, true)} par an) sont payés par les voyageurs et couvrent le ménage professionnel.
             </p>
           </Card>
 
-          <Card flush>
-            <CardHeader className="mb-0 px-4 pt-4 pb-3" titre="Comparer les commissions" description="Même bien, trois barèmes Label Maison." />
+          <Repli titre="Comparer les commissions">
             <div className="lm-defilement overflow-x-auto">
               <table className="w-full text-[13.5px]">
                 <caption className="sr-only">Comparaison des commissions à 10, 18 et 20 %</caption>
@@ -129,7 +126,7 @@ export default function Simulateur() {
                 </tbody>
               </table>
             </div>
-          </Card>
+          </Repli>
         </div>
       </div>
 

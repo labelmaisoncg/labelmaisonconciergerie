@@ -6,7 +6,7 @@ import { AUJOURDHUI, dateCourte, euros, pluriel } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { fenetreMois, logementById } from '../../data/selectors';
 import type { CategorieCharge, Charge } from '../../data/types';
-import { Button, Card, CardHeader, FilterChips, PageHeader, Stat, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
+import { Button, Card, EmptyState, CardHeader, FilterChips, PageHeader, Stat, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { fenetre12Mois } from './_calculs';
 import { AXE, COULEURS, eurosAxe, Infobulle } from './_composants/graphiques';
 import { FormulaireCharge } from './_composants/FormulaireCharge';
@@ -60,14 +60,28 @@ export default function Charges({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Charges' }]}
         titre="Vos dépenses"
-        sousTitre="Logiciels, produits, transport, assurance, linge… Les prestataires sont suivis à part, dans « Payer les prestataires »."
         actions={
-          <Button variant="primary" icone={<Plus />} onClick={() => setEdition('nouvelle')}>
-            Ajouter une charge
-          </Button>
+          d.charges.length > 0 && (
+            <Button variant="primary" icone={<Plus />} onClick={() => setEdition('nouvelle')}>
+              Ajouter une dépense
+            </Button>
+          )
         }
       />
       {onglets}
+
+      {d.charges.length === 0 ? (
+        <EmptyState
+          titre="Pas encore de dépense"
+          description="Logiciels, produits, transport, assurance… Notez-les ici pour suivre ce qu’il vous reste."
+          action={
+            <Button variant="primary" icone={<Plus />} onClick={() => setEdition('nouvelle')}>
+              Ajouter une dépense
+            </Button>
+          }
+        />
+      ) : (
+        <>
 
       <FilterChips
         label="Période"
@@ -84,7 +98,7 @@ export default function Charges({ onglets }: PageFinanceProps) {
       <div className="mb-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-1">
           <Stat label="Total des dépenses" valeur={euros(total, true)} aide={pluriel(dePeriode.length, 'dépense')} />
-          <Stat label="Liées à un logement" valeur={euros(affectees, true)} aide="comptées dans la rentabilité du logement" />
+          <Stat label="Liées à un logement" valeur={euros(affectees, true)} />
         </div>
         <Card>
           <CardHeader titre="Par catégorie" />
@@ -124,6 +138,8 @@ export default function Charges({ onglets }: PageFinanceProps) {
         triInitial={{ cle: 'date', sens: 'desc' }}
         vide="Aucune dépense ne correspond."
       />
+        </>
+      )}
 
       {enEdition && <FormulaireCharge charge={enEdition === 'nouvelle' ? undefined : enEdition} onFermer={() => setEdition(undefined)} />}
     </>

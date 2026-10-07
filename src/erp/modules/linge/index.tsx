@@ -4,7 +4,7 @@ import { AlertTriangle, BookOpen, CheckCircle2, Plus, WashingMachine } from 'luc
 import { nombre } from '../../data/format';
 import { useErp } from '../../data/store';
 import { ecartsLinge, fenetreJours } from '../../data/selectors';
-import { Aide, Button, MenuActions, PageHeader, Stat, Tabs } from '../../ui';
+import { Aide, Button, EmptyState, MenuActions, PageHeader, Stat, Tabs } from '../../ui';
 import { Retour, useRetour } from '../menages/_composants/retour';
 import { positionLinge, totalArticles } from './_composants/calculs';
 import { Ecarts } from './_composants/Ecarts';
@@ -37,37 +37,45 @@ export default function Linge() {
     <>
       <PageHeader
         titre="Linge"
-        sousTitre="Où sont les draps et les serviettes de chaque logement : en place, sales ou à la blanchisserie."
         actions={
           <>
-            <MenuActions actions={[{ libelle: 'Ouvrir le registre de l’équipe terrain', icone: <BookOpen />, href: '/linge' }]} />
-            <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
-              Noter un mouvement
-            </Button>
+            <MenuActions label="Plus" texte actions={[{ libelle: 'Ouvrir le registre de l’équipe terrain', icone: <BookOpen />, href: '/linge' }]} />
+            {mouvementsLinge.length > 0 && (
+              <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
+                Noter un mouvement
+              </Button>
+            )}
           </>
         }
       />
 
-      <Aide>
-        Le linge de chaque logement est étiqueté et ne se mélange jamais. Il ne se lave jamais chez un prestataire : il part en blanchisserie.
-        Chaque étape est notée (sorti sale, envoyé, revenu propre, remis en place) pour savoir à tout moment où il se trouve. Les messages de
-        l’équipe terrain restent lisibles dans son registre (menu « … »).
-      </Aide>
-
+      {mouvementsLinge.length === 0 ? (
+        <EmptyState
+          icone={<WashingMachine />}
+          titre="Pas encore de linge suivi"
+          description="Notez un premier mouvement pour savoir où se trouvent draps et serviettes."
+          action={
+            <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
+              Noter un mouvement
+            </Button>
+          }
+        />
+      ) : (
+        <>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Stat label="Propre et en place" valeur={nombre(somme('enPlace'))} icone={<CheckCircle2 />} aide="pièces prêtes pour les prochains voyageurs" />
+        <Stat label="Propre et en place" valeur={nombre(somme('enPlace'))} icone={<CheckCircle2 />} />
         <Stat
           label="Sale ou à la blanchisserie"
           valeur={nombre(somme('sale') + somme('blanchisserie'))}
           icone={<WashingMachine />}
-          aide={`${nombre(somme('sale'))} à envoyer, ${nombre(somme('blanchisserie'))} en cours de lavage`}
+          aide={`${nombre(somme('sale'))} à envoyer, ${nombre(somme('blanchisserie'))} en lavage`}
         />
         <Stat
           label="Linge qui manque"
           valeur={nombre(ecarts)}
           icone={<AlertTriangle />}
           tone={ecarts ? 'danger' : 'succes'}
-          aide={perdus30 ? `et ${nombre(perdus30)} pièces perdues ou jetées en 30 jours` : 'rien de perdu ces 30 derniers jours'}
+          aide={perdus30 ? `et ${nombre(perdus30)} pièces perdues ou jetées en 30 jours` : undefined}
         />
       </div>
 
@@ -87,6 +95,14 @@ export default function Linge() {
       {vue === 'stock' && <Stock logementInitial={logementFiltre} />}
       {vue === 'ecarts' && <Ecarts onMessage={(texte) => setMessage({ ton: 'succes', texte })} />}
       {vue === 'journal' && <Journal logementInitial={logementFiltre} />}
+
+      <Aide className="mt-6 mb-0">
+        Le linge de chaque logement est étiqueté et ne se mélange jamais. Il ne se lave jamais chez un prestataire : il part en blanchisserie.
+        Chaque étape est notée (sorti sale, envoyé, revenu propre, remis en place) pour savoir à tout moment où il se trouve. Les messages de
+        l’équipe terrain restent lisibles dans son registre (menu « Plus »).
+      </Aide>
+        </>
+      )}
 
       <NouveauMouvement ouvert={nouveau} onFermer={() => setNouveau(false)} onSucces={(texte) => setMessage({ ton: 'succes', texte })} />
     </>

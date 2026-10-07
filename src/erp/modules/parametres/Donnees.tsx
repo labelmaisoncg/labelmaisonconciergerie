@@ -3,7 +3,7 @@ import { Download, RotateCcw } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI, nombre } from '../../data/format';
 import type { NomCollection } from '../../data/types';
-import { Alert, Button, Card, CardHeader, Modal } from '../../ui';
+import { Alert, Button, Card, CardHeader, Modal, Repli } from '../../ui';
 
 const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   proprietaires: 'Propriétaires',
@@ -57,11 +57,7 @@ export default function Donnees() {
       <Card>
         <CardHeader
           titre="Vos données"
-          description={
-            d.mode === 'demo'
-              ? 'Données de démonstration (développement local), enregistrées dans ce navigateur uniquement.'
-              : 'Vos vraies données, enregistrées en ligne et partagées en direct avec l’équipe.'
-          }
+          description={d.mode === 'demo' ? 'Démonstration : enregistrées dans ce navigateur uniquement.' : 'Enregistrées en ligne et partagées avec l’équipe.'}
         />
         {fait && (
           <Alert tone="succes" className="mb-3">
@@ -78,17 +74,9 @@ export default function Donnees() {
             </Button>
           )}
         </div>
-        <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
-          {d.mode === 'demo'
-            ? 'La réinitialisation recharge le jeu de démonstration d’origine : toutes les modifications faites dans la maquette sont perdues. Exportez d’abord si besoin.'
-            : 'La sauvegarde contient toutes vos données à cet instant : gardez-la en lieu sûr. Chaque modification et chaque suppression sont aussi gardées en mémoire dans la base.'}
-        </p>
       </Card>
-      <Card flush>
-        <div className="p-4 pb-2 sm:p-5 sm:pb-2">
-          <CardHeader titre="Ce que contient l’ERP" className="mb-1" />
-        </div>
-        <dl className="grid grid-cols-2 gap-x-6 px-4 pb-4 text-[13px] sm:px-5">
+      <Repli titre="Ce que contient l’ERP" className="self-start">
+        <dl className="grid grid-cols-2 gap-x-6 text-[13px]">
           {(Object.keys(LIBELLES_COLLECTIONS) as NomCollection[]).map((c) => (
             <div key={c} className="flex justify-between border-b border-(--lm-bord) py-1.5">
               <dt className="text-(--lm-encre-2)">{LIBELLES_COLLECTIONS[c]}</dt>
@@ -96,7 +84,7 @@ export default function Donnees() {
             </div>
           ))}
         </dl>
-      </Card>
+      </Repli>
       <Modal
         ouvert={confirmation}
         onFermer={() => setConfirmation(false)}

@@ -56,18 +56,16 @@ export function Stock({ logementInitial }: { logementInitial?: string }) {
           dense
           vide="Vous n’avez pas encore de logement."
         />
-        <p className="mt-2 text-[12px] text-(--lm-encre-3)">Cliquez sur un logement pour voir le détail par article.</p>
       </div>
       <Card flush className="xl:col-span-2">
         <CardHeader
           className="px-4 pt-4"
           titre={detail ? `Détail : ${detail.logement.nom}` : 'Détail'}
-          description="Le linge étiqueté pour ce logement, et où il se trouve maintenant."
         />
         {detail && detail.articles.length ? (
           <Table colonnes={colonnesArticles} lignes={detail.articles} cleLigne={(a) => a.article} dense legende={`Linge de ${detail.logement.nom}`} className="rounded-none border-0 shadow-none" />
         ) : (
-          <p className="px-4 pb-4 text-[13px] text-(--lm-encre-3)">Aucune dotation définie pour ce logement : le lancement est bloqué tant que le linge n’est pas étiqueté.</p>
+          <p className="px-4 pb-4 text-[13px] text-(--lm-encre-3)">Pas encore de linge étiqueté pour ce logement.</p>
         )}
       </Card>
     </div>

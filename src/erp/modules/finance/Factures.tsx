@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Receipt } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI, dateCourte, euros, pluriel } from '../../data/format';
 import { joursRetard, statutReel } from './_calculs';
 import { LIBELLES } from '../../data/libelles';
 import { facturesEnRetard, montantTtc, proprietaireById } from '../../data/selectors';
 import type { Facture, StatutFacture } from '../../data/types';
-import { Badge, Button, PageHeader, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
+import { Badge, Button, EmptyState, PageHeader, Stat, StatusBadge, Table, Toolbar, type Colonne, useCreationParUrl } from '../../ui';
 import { DetailFacture } from './_composants/DetailFacture';
 import { NouvelleFacture } from './_composants/NouvelleFacture';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
@@ -75,15 +75,29 @@ export default function Factures({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Factures' }]}
         titre="Factures"
-        sousTitre="Les factures que vous envoyez : commissions, ménages, prestations. Elles sont numérotées à la suite (LM-2026-…)."
         actions={
-          <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
-            Nouvelle facture
-          </Button>
+          d.factures.length > 0 && (
+            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
+              Nouvelle facture
+            </Button>
+          )
         }
       />
       {onglets}
 
+      {d.factures.length === 0 ? (
+        <EmptyState
+          icone={<Receipt />}
+          titre="Pas encore de facture"
+          description="Vos factures apparaîtront ici, numérotées à la suite."
+          action={
+            <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>
+              Nouvelle facture
+            </Button>
+          }
+        />
+      ) : (
+        <>
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="Pas payées à temps" valeur={euros(somme(retard), true)} tone={retard.length ? 'danger' : 'neutre'} aide={pluriel(retard.length, 'facture')} />
         <Stat label="À recevoir (TTC)" valeur={euros(somme(aEncaisser), true)} aide={pluriel(aEncaisser.length, 'facture')} />
@@ -111,6 +125,8 @@ export default function Factures({ onglets }: PageFinanceProps) {
         triInitial={{ cle: 'numero', sens: 'desc' }}
         vide="Aucune facture ne correspond. Essayez d’enlever un filtre."
       />
+        </>
+      )}
 
       {facture && <DetailFacture key={facture.id} facture={facture} destinataire={nomDestinataire(facture)} onFermer={() => setOuverte(undefined)} />}
       <NouvelleFacture ouvert={creation} onFermer={() => setCreation(false)} onCree={(id) => setOuverte(id)} />

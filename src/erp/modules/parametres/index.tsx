@@ -9,10 +9,7 @@ import Entreprise from './Entreprise';
 export default function Module() {
   return (
     <>
-      <PageHeader
-        titre="Paramètres"
-        sousTitre="Votre équipe, les services branchés à l’ERP et les informations de votre société."
-      />
+      <PageHeader titre="Paramètres" />
       <Tabs
         label="Sections des paramètres"
         onglets={[
