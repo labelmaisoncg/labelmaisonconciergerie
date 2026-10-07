@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Plus, Trash2 } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardHeader, IconButton, Input, Select } from '../../../ui';
+import { Aide, Alert, Badge, Button, Card, CardHeader, IconButton, Input, Select } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { ARTICLES_LINGE } from '../../../data/constantes';
@@ -57,16 +57,12 @@ export function OngletLinge({ logement: l }: { logement: Logement }) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       <Card className="min-w-0 lg:col-span-2">
-        <CardHeader
-          titre="Dotation de linge"
-          description="Stock étiqueté affecté au logement : un jeu en place, un en blanchisserie, un de secours."
-          actions={<Badge tone="or">{total} articles</Badge>}
-        />
-        {lignes.length === 0 && (
-          <Alert tone="alerte" titre="Aucune dotation définie" className="mb-3">
-            Le point « Linge étiqueté, dotation définie » de la checklist de lancement ne peut pas être validé.
-          </Alert>
-        )}
+        <CardHeader titre="Dotation de linge" actions={<Badge tone="or">{total} articles</Badge>} />
+        <Aide titre="Règles du linge" className="mb-4">
+          Stock étiqueté affecté au logement : un jeu en place, un en blanchisserie, un de secours. Sans dotation, le point « Linge étiqueté » de la
+          checklist de lancement ne peut pas être validé. Le linge n’est jamais lavé au domicile d’un prestataire.
+        </Aide>
+        {lignes.length === 0 && <Alert tone="alerte" titre="Aucune dotation définie." className="mb-3" />}
         <ul className="space-y-2">
           {lignes.map((x, i) => (
             <li key={i} className="flex items-center gap-2">
@@ -105,9 +101,7 @@ export function OngletLinge({ logement: l }: { logement: Logement }) {
 
       <div className="flex min-w-0 flex-col gap-5">
         {ecarts.length > 0 && (
-          <Alert tone="danger" titre={`${ecarts.length} écart${ecarts.length > 1 ? 's' : ''} d’inventaire`}>
-            Linge envoyé en blanchisserie non revenu dans les délais. Un écart est un incident.
-          </Alert>
+          <Alert tone="danger" titre={`${ecarts.length} écart${ecarts.length > 1 ? 's' : ''} d’inventaire : linge non revenu de blanchisserie.`} />
         )}
         <Card>
           <CardHeader
@@ -134,7 +128,6 @@ export function OngletLinge({ logement: l }: { logement: Logement }) {
             </ul>
           )}
         </Card>
-        <p className="text-[12.5px] text-(--lm-encre-3)">Rappel : le linge n’est jamais lavé au domicile d’un prestataire.</p>
       </div>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, Plug, Plus, Rocket, X } from 'lucide-react';
 import { useErp } from '../../../data/store';
 import { AUJOURDHUI } from '../../../data/format';
@@ -99,9 +100,6 @@ export function Demarrage() {
           <h2 id="demarrage-titre" className="text-[16px] font-semibold text-(--lm-encre)">
             Démarrage
           </h2>
-          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">
-            Cinq étapes pour démarrer avec vos vrais logements. Ensuite, l’ERP s’occupe du reste.
-          </p>
           <div className="mt-3 flex items-center gap-3">
             <ProgressBar valeur={faites / etapes.length} className="max-w-xs flex-1" />
             <span className="lm-chiffres text-[12.5px] text-(--lm-encre-2)">
@@ -134,18 +132,25 @@ export function Demarrage() {
               </span>
               <div className="min-w-0">
                 <p className={cn('text-[14px] font-medium', e.fait ? 'text-(--lm-encre-2) line-through decoration-(--lm-encre-3)' : 'text-(--lm-encre)')}>
-                  {e.titre}
+                  {/* Les autres étapes restent accessibles par leur titre, sans bouton concurrent. */}
+                  {!e.fait && i !== prochaine ? (
+                    <Link to={e.lien} className="hover:text-(--lm-or-texte) hover:underline">
+                      {e.titre}
+                    </Link>
+                  ) : (
+                    e.titre
+                  )}
                   <span className="sr-only">{e.fait ? ' (fait)' : ' (à faire)'}</span>
                 </p>
-                <p className="text-[12.5px] text-(--lm-encre-3)">{e.detail}</p>
+                {/* Le « pourquoi » seulement pour l'étape en cours : les autres tiennent sur une ligne. */}
+                {i === prochaine && <p className="text-[12.5px] text-(--lm-encre-2)">{e.detail}</p>}
               </div>
             </div>
             {/* Une seule action mise en avant : l'étape suivante. Les autres restent accessibles, en retrait. */}
-            {!e.fait && (
+            {i === prochaine && (
               <ButtonLink
                 to={e.lien}
-                size={i === prochaine ? 'md' : 'sm'}
-                variant={i === prochaine ? 'primary' : 'ghost'}
+                variant="primary"
                 icone={e.icone ?? <Plus />}
                 className="self-start sm:self-center"
               >

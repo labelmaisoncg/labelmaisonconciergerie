@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, CalendarDays, Coins, Percent, Sparkles, Star } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardHeader, ProgressBar, Stat, StatusBadge } from '../../../ui';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, ProgressBar, Stat, StatusBadge } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../../data/constantes';
@@ -53,23 +53,36 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
         {l.statut === 'lancement' && (
           <Alert
             tone="or"
-            titre={`Logement en lancement : ${av.faits}/${av.total} points de checklist validés`}
+            titre={`En lancement : ${av.faits}/${av.total} points validés. Activation après mandat signé et checklist complète.`}
             actions={
               <Button size="sm" onClick={() => allerA('lancement')}>
                 Voir la checklist
               </Button>
             }
-          >
-            Il ne sera activé qu’avec un mandat signé et une checklist complète.
-          </Alert>
+          />
         )}
-        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-          <Stat label="Occupation 30 j" valeur={pourcentage(s.occupation30)} icone={<Percent />} aide={`90 j : ${pourcentage(s.occupation90)}`} />
-          <Stat label="Revenu brut 30 j" valeur={euros(s.revenu30, true)} icone={<Coins />} aide={`90 j : ${euros(s.revenu90, true)}`} />
-          <Stat label="Commission 30 j" valeur={euros(s.commission30, true)} icone={<Sparkles />} aide={`90 j : ${euros(s.commission90, true)}`} />
-          <Stat label="Note voyageurs" valeur={s.note === undefined ? SANS_DONNEE : note(s.note)} icone={<Star />} aide="12 derniers mois" />
-        </div>
+        {/* Sans activité, pas de cartes à zéro : l'analyse complète est dans l'onglet Performance. */}
+        {(s.revenu30 > 0 || s.occupation30 > 0 || s.note !== undefined) && (
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <Stat label="Occupation 30 j" valeur={pourcentage(s.occupation30)} icone={<Percent />} />
+            <Stat label="Revenu brut 30 j" valeur={euros(s.revenu30, true)} icone={<Coins />} />
+            <Stat label="Commission 30 j" valeur={euros(s.commission30, true)} icone={<Sparkles />} />
+            <Stat label="Note voyageurs" valeur={s.note === undefined ? SANS_DONNEE : note(s.note)} icone={<Star />} />
+          </div>
+        )}
 
+        {resas.length === 0 && menages.length === 0 ? (
+          <EmptyState
+            icone={<CalendarDays />}
+            titre="Aucune réservation ni ménage à venir."
+            action={
+              <Link to={`/erp/reservations?logement=${l.id}`} className={lien}>
+                Calendrier <ArrowRight className="size-3.5" />
+              </Link>
+            }
+          />
+        ) : (
+        <>
         <Card flush>
           <div className="p-4 pb-0 sm:p-5 sm:pb-0">
             <CardHeader titre="Prochaines réservations" actions={<Link to={`/erp/reservations?logement=${l.id}`} className={lien}>Calendrier <ArrowRight className="size-3.5" /></Link>} />
@@ -80,15 +93,14 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
             <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
               {resas.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 sm:px-5">
-                  <CalendarDays className="size-4 text-(--lm-encre-3)" aria-hidden />
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13.5px] font-medium">{r.voyageur.nom}</p>
+                    <Link to={`/erp/reservations/${r.id}`} className="block truncate text-[13.5px] font-medium hover:text-(--lm-or-texte) hover:underline">
+                      {r.voyageur.nom}
+                    </Link>
                     <p className="text-[12px] text-(--lm-encre-2)">
-                      Du {jourMois(r.arrivee)} au {jourMois(r.depart)} · {pluriel(r.nuits, 'nuit')} · {pluriel(r.voyageur.nbPersonnes, 'voyageur')}
+                      Du {jourMois(r.arrivee)} au {jourMois(r.depart)} · {pluriel(r.nuits, 'nuit')}
                     </p>
                   </div>
-                  <Badge>{LIBELLES.canal[r.canal]}</Badge>
-                  <StatusBadge type="statutReservation" valeur={r.statut} />
                   <span className="lm-chiffres w-20 text-right text-[13.5px] font-medium">{euros(r.montantBrutCentimes, true)}</span>
                 </li>
               ))}
@@ -118,6 +130,8 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
             </ul>
           )}
         </Card>
+        </>
+        )}
       </div>
 
       <div className="flex min-w-0 flex-col gap-5">
@@ -125,6 +139,7 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
 
         <Card>
           <CardHeader titre="Propriétaire et mandat" />
+          {/* L'essentiel ; frais, dates et référence sont sur la fiche du mandat. */}
           <dl className="divide-y divide-(--lm-bord)">
             <Ligne libelle="Propriétaire">
               {prop ? <Link to={`/erp/proprietaires/${prop.id}`} className="text-(--lm-or-texte) hover:underline">{prop.nom}</Link> : 'Inconnu'}
@@ -132,17 +147,15 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
             {mandat ? (
               <>
                 <Ligne libelle="Mandat">
-                  <Link to={`/erp/mandats?mandat=${mandat.id}`} className="text-(--lm-or-texte) hover:underline">{mandat.reference}</Link>
+                  <Link to={`/erp/mandats?mandat=${mandat.id}`} className="inline-flex items-center gap-1.5 hover:underline">
+                    <StatusBadge type="statutMandat" valeur={mandat.statut} />
+                    <span className="sr-only">Voir le mandat</span>
+                  </Link>
                 </Ligne>
-                <Ligne libelle="Statut"><StatusBadge type="statutMandat" valeur={mandat.statut} /></Ligne>
                 <Ligne libelle="Commission">
                   <span className="lm-chiffres">{mandat.commissionPct} %</span>
                   {mandat.commissionPct < COMMISSION_CIBLE_MIN && <Badge tone="alerte" className="ml-1.5">Sous la cible</Badge>}
                 </Ligne>
-                <Ligne libelle="Frais de ménage"><span className="lm-chiffres">{euros(mandat.fraisMenageCentimes)}</span></Ligne>
-                <Ligne libelle="Début">{dateCourte(mandat.dateDebut)}</Ligne>
-                {mandat.periodeEssaiFin && <Ligne libelle="Fin de période d’essai">{dateCourte(mandat.periodeEssaiFin)}</Ligne>}
-                {mandat.dateFin && <Ligne libelle="Fin">{dateCourte(mandat.dateFin)}</Ligne>}
               </>
             ) : (
               <Ligne libelle="Mandat"><Badge tone="danger">Aucun mandat</Badge></Ligne>
@@ -153,37 +166,35 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
         <Card>
           <CardHeader titre="Informations clés" />
           <dl className="divide-y divide-(--lm-bord)">
-            <Ligne libelle="Type">{LIBELLES.typeLogement[l.type]}, {l.surfaceM2} m²</Ligne>
+            <Ligne libelle="Adresse">{l.adresse}, {l.codePostal} {l.ville}</Ligne>
             <Ligne libelle="Couchage">{pluriel(l.chambres, 'chambre')}, {lits}</Ligne>
             <Ligne libelle="Accès">{LIBELLES.serrure[l.serrure]}</Ligne>
             <Ligne libelle="DPE">{l.dpe ?? <Badge tone="alerte">Non fourni</Badge>}</Ligne>
             <Ligne libelle="N° d’enregistrement">{l.numeroEnregistrement ?? <Badge tone="alerte">Manquant</Badge>}</Ligne>
-            <Ligne libelle="Résidence principale">{l.residencePrincipale ? 'Oui (120 nuits max.)' : 'Non'}</Ligne>
           </dl>
         </Card>
 
+        {incidents.length > 0 && (
         <Card>
           <CardHeader
             titre={`Incidents ouverts (${incidents.length})`}
             actions={<Link to="/erp/incidents" className={lien}>Incidents <ArrowRight className="size-3.5" /></Link>}
           />
-          {incidents.length === 0 ? (
-            <p className="text-sm text-(--lm-encre-3)">Aucun incident ouvert.</p>
-          ) : (
+          {(
             <ul className="space-y-2.5">
               {incidents.map((i) => (
                 <li key={i.id} className="text-[13.5px]">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <StatusBadge type="gravite" valeur={i.gravite} />
-                    <Badge>{LIBELLES.categorieIncident[i.categorie]}</Badge>
                     <span className="text-[12px] text-(--lm-encre-3)">{dateCourte(i.date)}</span>
                   </div>
-                  <p className="mt-1 text-(--lm-encre-2)">{i.description}</p>
+                  <p className="mt-1 line-clamp-2 text-(--lm-encre-2)">{i.description}</p>
                 </li>
               ))}
             </ul>
           )}
         </Card>
+        )}
 
         {l.statut !== 'lancement' && av.ratio < 1 && (
           <Card>

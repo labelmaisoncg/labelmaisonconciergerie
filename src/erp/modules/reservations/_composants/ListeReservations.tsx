@@ -3,7 +3,8 @@
  * et totaux de la sélection.
  */
 import { useMemo, useState } from 'react';
-import { Card, Field, FilterChips, Input, SearchInput, Select, StatusBadge, Table, type Colonne } from '../../../ui';
+import { ChevronDown } from 'lucide-react';
+import { Field, FilterChips, Input, SearchInput, Select, StatusBadge, Table, type Colonne } from '../../../ui';
 import { LIBELLES } from '../../../data/libelles';
 import { dateCourte, euros, nombre } from '../../../data/format';
 import type { Logement, Reservation, StatutReservation } from '../../../data/types';
@@ -77,8 +78,6 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
     { cle: 'canal', titre: 'Canal', masquerMobile: true, rendu: (r) => <PastilleCanal canal={r.canal} /> },
     { cle: 'statut', titre: 'Statut', rendu: (r) => <StatusBadge type="statutReservation" valeur={r.statut} /> },
     { cle: 'brut', titre: 'Brut', align: 'droite', tri: (a, b) => a.montantBrutCentimes - b.montantBrutCentimes, rendu: (r) => euros(r.montantBrutCentimes) },
-    { cle: 'plateforme', titre: 'Com. plateforme', align: 'droite', masquerMobile: true, rendu: (r) => euros(r.commissionPlateformeCentimes) },
-    { cle: 'menage', titre: 'Ménage', align: 'droite', masquerMobile: true, rendu: (r) => euros(r.fraisMenageCentimes) },
   ];
 
   return (
@@ -86,7 +85,20 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
       <div className="mb-4 grid gap-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
           <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Rechercher un voyageur" label="Rechercher un voyageur" />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:flex-1">
+          <FilterChips
+            label="Statut"
+            filtres={STATUTS.map((s) => ({ cle: s, libelle: LIBELLES.statutReservation[s], compteur: reservations.filter((r) => r.statut === s).length }))}
+            actifs={statuts}
+            onChange={setStatuts}
+          />
+        </div>
+        {/* Filtres moins fréquents : repliés, ouverts d'office s'ils sont utilisés. */}
+        <details open={!!(logementId || du || au || canaux.length) || undefined} className="group">
+          <summary className="inline-flex cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+            Plus de filtres
+            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Logement">
               <Select value={logementId} onChange={(e) => setLogementId(e.target.value)} placeholder="Tous les logements" options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
             </Field>
@@ -97,25 +109,22 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
               <Input type="date" value={au} onChange={(e) => setAu(e.target.value)} />
             </Field>
           </div>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-2">
-          <FilterChips label="Canal" filtres={CANAUX.filter((c) => c !== 'autre').map((c) => ({ cle: c, libelle: LIBELLES.canal[c] }))} actifs={canaux} onChange={setCanaux} />
-          <FilterChips
-            label="Statut"
-            filtres={STATUTS.map((s) => ({ cle: s, libelle: LIBELLES.statutReservation[s], compteur: reservations.filter((r) => r.statut === s).length }))}
-            actifs={statuts}
-            onChange={setStatuts}
-          />
-        </div>
+          <FilterChips className="mt-3" label="Canal" filtres={CANAUX.filter((c) => c !== 'autre').map((c) => ({ cle: c, libelle: LIBELLES.canal[c] }))} actifs={canaux} onChange={setCanaux} />
+        </details>
       </div>
 
-      <Card className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5" aria-label="Totaux de la sélection">
-        <Total libelle="Séjours (hors annulés)" valeur={nombre(totaux.n)} />
-        <Total libelle="Nuits" valeur={nombre(totaux.nuits)} />
-        <Total libelle="Montant brut" valeur={euros(totaux.brut, true)} />
-        <Total libelle="Commissions plateforme" valeur={euros(totaux.plateforme, true)} />
-        <Total libelle="Frais de ménage" valeur={euros(totaux.menage, true)} />
-      </Card>
+      {/* Totaux de la sélection en une ligne ; commissions et ménage à un clic. */}
+      <details className="mb-3 text-[13px] text-(--lm-encre-2)" aria-label="Totaux de la sélection">
+        <summary className="lm-chiffres cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+          <span className="font-semibold text-(--lm-encre)">{nombre(totaux.n)}</span> séjours hors annulés ·{' '}
+          <span className="font-semibold text-(--lm-encre)">{nombre(totaux.nuits)}</span> nuits ·{' '}
+          <span className="font-semibold text-(--lm-encre)">{euros(totaux.brut, true)}</span> brut{' '}
+          <span className="text-(--lm-or-texte) hover:underline">Détail</span>
+        </summary>
+        <p className="lm-chiffres mt-1">
+          Commissions plateforme {euros(totaux.plateforme, true)} · Frais de ménage {euros(totaux.menage, true)}
+        </p>
+      </details>
 
       <Table
         legende="Réservations"
@@ -125,17 +134,8 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
         onLigneClick={onOuvrir}
         triInitial={{ cle: 'arrivee', sens: 'desc' }}
         dense
-        vide="Aucune réservation ne correspond. Essayez d’enlever un filtre."
+        vide="Aucune réservation ne correspond."
       />
-    </div>
-  );
-}
-
-function Total({ libelle, valeur }: { libelle: string; valeur: string }) {
-  return (
-    <div>
-      <p className="text-[12px] text-(--lm-encre-3)">{libelle}</p>
-      <p className="lm-chiffres text-[17px] font-semibold text-(--lm-encre)">{valeur}</p>
     </div>
   );
 }
