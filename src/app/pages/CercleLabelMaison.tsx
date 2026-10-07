@@ -166,7 +166,7 @@ const STEPS = [
 
 const STEP_PHOTOS = [
   '/images/real/logement-salon-poster.jpg',
-  '/images/real/residence-penthouse.jpg',
+  '/images/real/proof-logement-poster.jpg',
   '/images/real/gestion-villa.jpg',
 ];
 

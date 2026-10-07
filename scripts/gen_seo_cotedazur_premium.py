@@ -30,7 +30,7 @@ PAGES = [
          sub="Festival, MIPIM, MIPCOM, saison estivale : à Cannes, tout se réserve avant tout le "
              "monde. Villa, chauffeur, bateau, table, plage privée — nous ouvrons les portes qui "
              "sont censées être fermées.",
-         photo=("real/suite-hotel.jpg", "Intérieur d'exception préparé pour un séjour à Cannes"),
+         photo=("real/logement-hero.jpg", "Intérieur d'exception préparé pour un séjour à Cannes"),
          puces=["Pendant le <b>Festival</b>", "Villas & <b>Croisette</b>",
                 "Chauffeur & <b>yacht</b>", "Discrétion <b>absolue</b>"],
          intro=[
@@ -151,7 +151,7 @@ PAGES = [
          h1="Conciergerie privée à <span class=\"font-serif-italic\">Nice</span>",
          sub="De l'aéroport à la villa, du Cap-Ferrat au Vieux-Nice : nous organisons votre séjour "
              "sur la Riviera et restons joignables du premier au dernier jour.",
-         photo=("real/residence-penthouse.jpg", "Résidence d'exception sur la Riviera"),
+         photo=("real/hero-logement-exception.jpg", "Résidence d'exception sur la Riviera"),
          puces=["Transferts <b>aéroport</b>", "Villas & <b>Cap-Ferrat</b>",
                 "Réservations <b>premium</b>", "Assistance <b>7j/7</b>"],
          intro=[

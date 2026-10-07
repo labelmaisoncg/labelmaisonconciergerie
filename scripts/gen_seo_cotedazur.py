@@ -513,7 +513,7 @@ PREMIUM = [
          h1="Gestion de <span class=\"font-serif-italic\">villa</span> sur la Côte d'Azur",
          sub="Votre villa vous attend en parfait état quand vous arrivez, et elle travaille pour vous "
              "quand vous n'êtes pas là. Location saisonnière, entretien, piscine, jardin, gardiennage.",
-         photo=("real/residence-villa.jpg", "Villa avec piscine gérée sur la Côte d'Azur"),
+         photo=("real/gestion-villa.jpg", "Villa avec piscine gérée sur la Côte d'Azur"),
          puces=["Piscine & <b>jardin</b>", "Ménage <b>hôtelier</b>",
                 "Gardiennage <b>hors saison</b>", "Location <b>pilotée</b>"],
          cta="Confier ma villa",
