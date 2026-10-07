@@ -22,7 +22,7 @@ export function DemoBanner() {
         <button
           type="button"
           onClick={() => setConfirmer(true)}
-          className="inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-medium hover:bg-(--lm-or-lavis) hover:underline"
+          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium hover:bg-(--lm-or-lavis) hover:underline"
         >
           <RotateCcw className="size-3.5" aria-hidden />
           Réinitialiser

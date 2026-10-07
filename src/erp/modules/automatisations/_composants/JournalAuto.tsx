@@ -104,7 +104,7 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
                   </p>
                 </div>
                 {lien && (
-                  <Link to={lien} className="mt-0.5 inline-flex shrink-0 items-center gap-0.5 rounded text-[12.5px] font-medium text-(--lm-or-texte) hover:text-(--lm-brun)">
+                  <Link to={lien} className="mt-0.5 inline-flex shrink-0 items-center gap-0.5 rounded-md text-[12.5px] font-medium text-(--lm-or-texte) hover:text-(--lm-brun)">
                     Ouvrir <ArrowUpRight className="size-3.5" aria-hidden />
                   </Link>
                 )}

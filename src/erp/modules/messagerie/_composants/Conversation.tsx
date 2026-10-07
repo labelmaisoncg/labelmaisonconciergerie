@@ -171,7 +171,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
         </Alert>
       )}
 
-      <div className="lm-defilement min-h-0 flex-1 space-y-2.5 overflow-y-auto bg-(--lm-surface-2) px-3 py-4 sm:px-5" aria-live="polite">
+      <div className="lm-defilement min-h-0 flex-1 space-y-3 overflow-y-auto bg-(--lm-surface) px-3 py-4 sm:px-5" aria-live="polite">
         {fil.messages.map((m) => {
           const jour = m.envoyeLe.slice(0, 10);
           const separateur = jour !== jourPrecedent;
@@ -180,51 +180,51 @@ export function Conversation({ fil, logement, reservation }: Props) {
           return (
             <div key={m.id}>
               {separateur && <p className="my-2 text-center text-[11.5px] font-medium text-(--lm-encre-3) capitalize">{dateJour(jour)}</p>}
-              <div className={cn('flex', voyageur ? 'justify-start' : 'justify-end')}>
+              <div className={cn('flex flex-col', voyageur ? 'items-start' : 'items-end')}>
                 <div
                   className={cn(
-                    'max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed shadow-sm sm:max-w-[75%]',
-                    voyageur && 'rounded-bl-md border border-(--lm-bord) bg-(--lm-surface) text-(--lm-encre)',
-                    m.auteur === 'agent' && 'rounded-br-md border border-(--lm-or-anneau) bg-(--lm-or-lavis) text-(--lm-encre)',
-                    m.auteur === 'hote' && 'rounded-br-md bg-(--lm-brun) text-white',
+                    'max-w-[85%] rounded-[18px] px-3.5 py-2 text-[14px] leading-relaxed sm:max-w-[72%]',
+                    voyageur && 'rounded-bl-[6px] bg-(--lm-bulle) text-(--lm-encre)',
+                    m.auteur === 'agent' && 'rounded-br-[6px] bg-(--lm-or-texte) text-white',
+                    m.auteur === 'hote' && 'rounded-br-[6px] bg-(--lm-brun) text-white',
                   )}
                 >
                   <p className="whitespace-pre-line">{m.texte}</p>
-                  <p className={cn('mt-1 flex items-center justify-end gap-1.5 text-[11px]', m.auteur === 'hote' ? 'text-white/70' : 'text-(--lm-encre-3)')}>
-                    {m.auteur === 'agent' && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-(--lm-or) px-1.5 py-px text-[10.5px] font-semibold text-white">
-                        <Bot className="size-3" aria-hidden /> Votre agent
-                      </span>
-                    )}
-                    {m.auteur === 'hote' && <span>Équipe</span>}
-                    {m.auteur !== 'voyageur' && (m.envoi || m.id.startsWith('repull-')) && (
-                      <span className="inline-flex items-center gap-0.5" title={m.envoi?.reecrit ? 'La plateforme a retiré un lien ou un numéro : le voyageur a reçu ce texte.' : undefined}>
-                        <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(m.envoi?.canal ?? fil.canal)}
-                      </span>
-                    )}
-                    <time dateTime={m.envoyeLe} className="lm-chiffres">{heure(m.envoyeLe)}</time>
-                  </p>
                 </div>
+                <p className="mt-1 flex items-center gap-1.5 px-2 text-[11px] text-(--lm-encre-3)">
+                  {m.auteur === 'agent' && (
+                    <span className="inline-flex items-center gap-1 font-medium text-(--lm-or-texte)">
+                      <Bot className="size-3" aria-hidden /> Votre agent
+                    </span>
+                  )}
+                  {m.auteur === 'hote' && <span className="font-medium">Équipe</span>}
+                  {m.auteur !== 'voyageur' && (m.envoi || m.id.startsWith('repull-')) && (
+                    <span className="inline-flex items-center gap-0.5" title={m.envoi?.reecrit ? 'La plateforme a retiré un lien ou un numéro : le voyageur a reçu ce texte.' : undefined}>
+                      <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(m.envoi?.canal ?? fil.canal)}
+                    </span>
+                  )}
+                  <time dateTime={m.envoyeLe} className="lm-chiffres">{heure(m.envoyeLe)}</time>
+                </p>
               </div>
             </div>
           );
         })}
         {provisoires.map((e) => (
-          <div key={e.cle} className="flex justify-end">
-            <div className={cn('max-w-[85%] rounded-2xl rounded-br-md bg-(--lm-brun) px-3.5 py-2 text-[13.5px] leading-relaxed text-white shadow-sm sm:max-w-[75%]', e.etat === 'envoi' && 'opacity-70')}>
+          <div key={e.cle} className="flex flex-col items-end">
+            <div className={cn('max-w-[85%] rounded-[18px] rounded-br-[6px] bg-(--lm-brun) px-3.5 py-2 text-[14px] leading-relaxed text-white sm:max-w-[72%]', e.etat === 'envoi' && 'opacity-70')}>
               <p className="whitespace-pre-line">{e.message?.texte ?? e.texte}</p>
-              <p className="mt-1 flex items-center justify-end gap-1.5 text-[11px] text-white/70" aria-live="polite">
-                {e.etat === 'envoi' ? (
-                  <>
-                    <Loader2 className="size-3 animate-spin" aria-hidden /> Envoi sur {plateforme}…
-                  </>
-                ) : (
-                  <>
-                    <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(e.message?.envoi?.canal ?? fil.canal)}
-                  </>
-                )}
-              </p>
             </div>
+            <p className="mt-1 flex items-center gap-1.5 px-2 text-[11px] text-(--lm-encre-3)" aria-live="polite">
+              {e.etat === 'envoi' ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" aria-hidden /> Envoi sur {plateforme}…
+                </>
+              ) : (
+                <>
+                  <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(e.message?.envoi?.canal ?? fil.canal)}
+                </>
+              )}
+            </p>
           </div>
         ))}
         <div ref={fin} />

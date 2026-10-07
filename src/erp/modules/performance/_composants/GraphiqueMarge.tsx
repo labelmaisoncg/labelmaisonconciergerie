@@ -4,7 +4,7 @@ import { euros, moisAnnee } from '../../../data/format';
 
 const VERT = '#2f7d55';
 const ROUGE = '#b42318';
-const GRILLE = 'rgba(20,17,14,0.08)';
+const GRILLE = 'rgba(20,17,14,0.06)';
 const AXE = { fontSize: 11.5, fill: 'rgba(20,17,14,0.6)' };
 
 function Infobulle({ active, payload }: TooltipProps<number, string>) {
@@ -37,7 +37,7 @@ export function GraphiqueMarge({ mois }: { mois: MoisMarge[] }) {
           <YAxis tick={AXE} axisLine={false} tickLine={false} width={52} tickFormatter={(v: number) => euros(v, true)} />
           <ReferenceLine y={0} stroke="rgba(20,17,14,0.3)" />
           <Tooltip content={<Infobulle />} cursor={{ fill: 'rgba(169,124,48,0.08)' }} />
-          <Bar dataKey="marge" name="Marge" radius={[4, 4, 0, 0]} maxBarSize={36}>
+          <Bar dataKey="marge" name="Marge" radius={[6, 6, 0, 0]} maxBarSize={36}>
             {donnees.map((m) => (
               <Cell key={m.mois} fill={m.marge < 0 ? ROUGE : VERT} fillOpacity={m.partiel ? 0.5 : 1} />
             ))}

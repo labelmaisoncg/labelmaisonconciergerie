@@ -27,7 +27,7 @@ export function SearchInput({ valeur, onChange, placeholder = 'Rechercher', labe
           type="button"
           onClick={() => onChange('')}
           aria-label="Effacer la recherche"
-          className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded text-(--lm-encre-3) hover:text-(--lm-encre)"
+          className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
         >
           <X className="size-3.5" />
         </button>
