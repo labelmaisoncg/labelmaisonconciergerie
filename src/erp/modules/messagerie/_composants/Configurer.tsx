@@ -5,7 +5,7 @@
  * Enregistré dans la collection `reglages` (élément 'agent'), synchronisée
  * avec la base comme le reste. L'agent du site (api/erp-agent.ts) relit ces
  * réglages à chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
- * Le bloc « Votre agent, en vrai » montre ce qui est branché côté serveur.
+ * Le bloc « Votre agent en ce moment » montre ce qui est branché côté serveur.
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -310,7 +310,7 @@ export function Configurer() {
             <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
             <span className="block text-(--lm-encre-2)">
               Une copie de chaque réponse de l’agent, une alerte dès qu’il vous confie une conversation, et un rappel si personne n’a répondu à temps. Le
-              groupe de l’équipe se règle dans Vercel (TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID) : voir « Votre agent, en vrai » plus haut.
+              groupe Telegram de l’équipe est branché par la personne qui gère le site (voir « Détails techniques » plus haut).
             </span>
           </span>
         </label>

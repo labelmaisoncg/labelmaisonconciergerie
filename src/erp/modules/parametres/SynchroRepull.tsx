@@ -203,8 +203,8 @@ export function LigneSynchroRepull({ className }: { className?: string }) {
     >
       {s.retour?.texte ??
         (s.derniere
-          ? `Airbnb et Booking.com synchronisés par Repull, dernier passage le ${dateHeure(s.derniere.horodatage)}.`
-          : 'Airbnb et Booking.com : synchronisation par Repull, pas encore de passage.')}
+          ? `Airbnb et Booking.com : dernière mise à jour le ${dateHeure(s.derniere.horodatage)}.`
+          : 'Airbnb et Booking.com : pas encore de mise à jour.')}
     </Alert>
   );
 }

@@ -61,7 +61,7 @@ export function DetailReservation() {
       />
       {r.repull && r.statut === 'confirmee' && (
         <Alert tone="neutre" className="mb-4">
-          Réservation {r.canal === 'direct' ? 'directe' : LIBELLES.canal[r.canal]} importée de Repull : toute modification ou annulation se fait sur la plateforme, puis redescend dans l’ERP par Repull.
+          Réservation {r.canal === 'direct' ? 'directe' : LIBELLES.canal[r.canal]} importée automatiquement : toute modification ou annulation se fait sur la plateforme, puis arrive ici toute seule.
         </Alert>
       )}
       <div className="max-w-3xl">

@@ -95,7 +95,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
               {r.repull?.code ?? r.channexBookingId ?? (r.repull ? `Repull n° ${r.repull.id}` : 'Réservation directe, saisie dans l’ERP')}
               {r.repull && (
                 <Badge tone="info" className="ml-2">
-                  Importé de Repull
+                  Importée automatiquement
                 </Badge>
               )}
             </dd>

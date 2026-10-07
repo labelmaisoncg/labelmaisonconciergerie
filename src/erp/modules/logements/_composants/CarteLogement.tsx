@@ -34,7 +34,7 @@ export function CarteLogement({ logement: l, stats, economie }: { logement: Loge
               {l.surfaceM2 ? ` · ${l.surfaceM2} m²` : ''}
             </span>
           </p>
-          {l.repull?.majLe && <p className="mt-0.5 text-[11.5px] text-(--lm-encre-3)">Importé de Repull</p>}
+          {l.repull?.majLe && <p className="mt-0.5 text-[11.5px] text-(--lm-encre-3)">Importé automatiquement</p>}
         </div>
         <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12.5px] text-(--lm-encre-2)">
           <span className="inline-flex items-center gap-1">

@@ -174,7 +174,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         type="button"
         onClick={() => setOuvert(true)}
         aria-haspopup="dialog"
-        aria-label="Rechercher partout (raccourci Ctrl + K)"
+        aria-label={`Rechercher partout (raccourci ${mac ? 'Cmd' : 'Ctrl'} + K)`}
         className="flex h-9 w-full min-w-0 items-center gap-2 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) px-2.5 text-left text-[13.5px] text-(--lm-encre-3) transition-colors hover:border-(--lm-bord-fort) hover:bg-(--lm-surface)"
       >
         <Search className="size-4 shrink-0" aria-hidden />

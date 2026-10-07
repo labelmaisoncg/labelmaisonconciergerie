@@ -53,6 +53,8 @@ export { MenuActions } from './MenuActions';
 export type { MenuActionsProps, ActionMenu } from './MenuActions';
 export { Aide } from './Aide';
 export type { AideProps } from './Aide';
+export { Repli } from './Repli';
+export type { RepliProps } from './Repli';
 export { useRechercheUrl } from './useRechercheUrl';
 export { Interrupteur } from './Interrupteur';
 export type { InterrupteurProps } from './Interrupteur';
