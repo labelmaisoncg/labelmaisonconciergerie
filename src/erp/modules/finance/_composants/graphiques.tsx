@@ -9,7 +9,7 @@ export const COULEURS = {
   brut: '#4F7FC0',
   ca: '#B8862F',
   marge: '#2F9170',
-  grille: 'rgba(20,17,14,0.08)',
+  grille: 'rgba(20,17,14,0.06)',
   axe: 'rgba(20,17,14,0.5)',
 } as const;
 

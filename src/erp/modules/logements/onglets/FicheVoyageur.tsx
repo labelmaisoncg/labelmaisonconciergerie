@@ -21,7 +21,7 @@ function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) =>
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? 'Masquer le code wifi' : 'Afficher le code wifi'}
-        className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded text-(--lm-encre-3) hover:text-(--lm-encre)"
+        className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
       >
         {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
       </button>

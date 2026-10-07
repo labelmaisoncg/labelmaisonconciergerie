@@ -108,7 +108,7 @@ export function AlerteSynchro() {
         <div role="alert" className="lm-apparition pointer-events-auto flex w-full items-start gap-2.5 rounded-xl border border-(--lm-danger)/30 bg-(--lm-surface) p-3.5 text-[13px] shadow-(--lm-ombre-haute)">
           <AlertTriangle className="mt-0.5 size-[18px] shrink-0 text-(--lm-danger)" aria-hidden />
           <p className="min-w-0 flex-1 text-(--lm-encre)">{avertissement}</p>
-          <button type="button" onClick={fermerAvertissement} aria-label="Fermer" className="rounded p-0.5 text-(--lm-encre-3) hover:text-(--lm-encre)">
+          <button type="button" onClick={fermerAvertissement} aria-label="Fermer" className="rounded-md p-0.5 text-(--lm-encre-3) hover:text-(--lm-encre)">
             <X className="size-4" aria-hidden />
           </button>
         </div>

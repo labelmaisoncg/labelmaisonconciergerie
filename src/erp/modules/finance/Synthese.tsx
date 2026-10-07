@@ -120,7 +120,7 @@ export default function Synthese({ onglets }: PageFinanceProps) {
                 <XAxis dataKey="libelle" tick={AXE} tickLine={false} axisLine={false} interval="preserveStartEnd" />
                 <YAxis tickFormatter={eurosAxe} tick={AXE} tickLine={false} axisLine={false} width={48} />
                 <Tooltip content={<Infobulle />} cursor={{ fill: 'rgba(20,17,14,0.04)' }} />
-                <Bar dataKey="brut" name="Payé par les voyageurs" fill={COULEURS.brut} radius={[4, 4, 0, 0]} maxBarSize={28} />
+                <Bar dataKey="brut" name="Payé par les voyageurs" fill={COULEURS.brut} radius={[6, 6, 0, 0]} maxBarSize={28} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -135,8 +135,8 @@ export default function Synthese({ onglets }: PageFinanceProps) {
                 <YAxis tickFormatter={eurosAxe} tick={AXE} tickLine={false} axisLine={false} width={48} />
                 <Tooltip content={<Infobulle />} cursor={{ fill: 'rgba(20,17,14,0.04)' }} />
                 <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="ca" name="Facturé" fill={COULEURS.ca} radius={[4, 4, 0, 0]} maxBarSize={28} />
-                <Line dataKey="marge" name="Il vous reste" stroke={COULEURS.marge} strokeWidth={2} dot={{ r: 3, strokeWidth: 0, fill: COULEURS.marge }} />
+                <Bar dataKey="ca" name="Facturé" fill={COULEURS.ca} radius={[6, 6, 0, 0]} maxBarSize={28} />
+                <Line type="monotone" dataKey="marge" name="Il vous reste" stroke={COULEURS.marge} strokeWidth={2.5} dot={false} activeDot={{ r: 4, strokeWidth: 0, fill: COULEURS.marge }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>

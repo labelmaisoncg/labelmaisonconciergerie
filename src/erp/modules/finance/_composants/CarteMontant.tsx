@@ -22,11 +22,14 @@ export function CarteMontant({ titre, precision, montant, couleur, icone, lignes
         'flex flex-col rounded-xl border bg-(--lm-surface) p-4 shadow-(--lm-ombre) sm:p-5',
         accent ? 'border-(--lm-or-anneau)' : 'border-(--lm-bord)',
       )}
-      style={{ borderTop: `3px solid ${couleur}` }}
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-[14px] font-semibold text-(--lm-encre)">{titre}</p>
+          <p className="flex items-center gap-2 text-[14px] font-semibold text-(--lm-encre)">
+            {/* Pastille de la couleur de la série dans les graphiques (repère, pas décor). */}
+            <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ background: couleur }} />
+            {titre}
+          </p>
           <p className="text-[12.5px] text-(--lm-encre-2)">({precision})</p>
         </div>
         <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-md bg-(--lm-surface-2) text-(--lm-encre-2) [&_svg]:size-4">

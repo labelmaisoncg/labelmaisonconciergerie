@@ -182,7 +182,7 @@ export function GlobalSearch({ className }: { className?: string }) {
           <span className="sm:hidden">Rechercher</span>
           <span className="hidden sm:inline">Rechercher un voyageur, un logement, une facture…</span>
         </span>
-        <kbd className="hidden shrink-0 rounded border border-(--lm-bord-fort) bg-(--lm-surface) px-1.5 font-sans text-[11px] text-(--lm-encre-3) md:inline">
+        <kbd className="hidden shrink-0 rounded-md border border-(--lm-bord-fort) bg-(--lm-surface) px-1.5 font-sans text-[11px] text-(--lm-encre-3) md:inline">
           {mac ? '⌘' : 'Ctrl'} K
         </kbd>
       </button>

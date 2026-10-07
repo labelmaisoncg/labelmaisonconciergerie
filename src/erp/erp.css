@@ -30,6 +30,21 @@
   --lm-info: #2b6cb0;
   --lm-info-lavis: rgba(43, 108, 176, 0.1);
   --lm-neutre-lavis: rgba(20, 17, 14, 0.06);
+  /* Bulle du voyageur (messagerie) : gris chaud, sans contour. */
+  --lm-bulle: #efebe4;
+
+  /*
+   * Échelle des arrondis (règles Apple : cohérence + arrondis concentriques,
+   * l'élément intérieur est toujours moins arrondi que son conteneur) :
+   *   rounded-2xl 16 px  fenêtres, panneaux, feuilles
+   *   rounded-xl  12 px  cartes
+   *   rounded-lg   8 px  blocs dans une carte, boutons, champs
+   *   rounded-md   6 px  petits boutons, petites étiquettes
+   *   rounded-full       pastilles, avatars, interrupteurs
+   *   18 px              bulles de messagerie
+   *   rounded-sm   2 px  seulement surlignage dans un texte et pastilles de légende
+   * Pas d’autre valeur.
+   */
 
   --lm-ombre: 0 1px 2px rgba(20, 17, 14, 0.04), 0 8px 24px -16px rgba(20, 17, 14, 0.18);
   --lm-ombre-haute: 0 24px 64px -24px rgba(20, 17, 14, 0.35);

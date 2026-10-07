@@ -96,7 +96,7 @@ export default function Charges({ onglets }: PageFinanceProps) {
                   <XAxis type="number" tickFormatter={eurosAxe} tick={AXE} tickLine={false} axisLine={false} />
                   <YAxis type="category" dataKey="libelle" tick={AXE} tickLine={false} axisLine={false} width={84} />
                   <Tooltip content={<Infobulle />} cursor={{ fill: 'rgba(20,17,14,0.04)' }} />
-                  <Bar dataKey="montant" name="Charges" fill={COULEURS.ca} radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar dataKey="montant" name="Charges" fill={COULEURS.ca} radius={[0, 6, 6, 0]} barSize={16} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
