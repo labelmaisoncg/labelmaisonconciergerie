@@ -14,12 +14,11 @@ import type {
   AnnonceDecouverte,
   ConnexionPlateforme,
   EtatConnexions,
-  FournisseurRepull,
   ResultatSelection,
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
 import { obtenirClient } from '../../data/supabase';
-import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Select, Skeleton, cn, type Ton } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Skeleton, cn, type Ton } from '../../ui';
 
 const API = '/api/erp-repull-connexion';
 
@@ -109,7 +108,6 @@ export default function Connexions() {
   const [connexionEnCours, setConnexionEnCours] = useState<string | null>(null);
   const [aDeconnecter, setADeconnecter] = useState<ConnexionPlateforme | null>(null);
   const [deconnexion, setDeconnexion] = useState(false);
-  const [autre, setAutre] = useState('');
   const retourTraite = useRef(false);
 
   const charger = useCallback(
@@ -229,7 +227,6 @@ export default function Connexions() {
 
   const fournisseurs = etat?.fournisseurs ?? [];
   const connexions = etat?.connexions ?? [];
-  const autres = fournisseurs.filter((f) => !PRINCIPALES.some((p) => p.id === f.id) && f.statut !== 'coming-soon');
   const autresConnectes = connexions.filter((c) => !PRINCIPALES.some((p) => p.id === c.fournisseur));
   const nomFournisseur = (id: string) => NOMS[id] ?? fournisseurs.find((f) => f.id === id)?.nom ?? id.charAt(0).toUpperCase() + id.slice(1);
 
@@ -237,7 +234,7 @@ export default function Connexions() {
     <div>
       <PageHeader
         titre="Connexions"
-        sousTitre="Connectez Airbnb, Booking.com et vos autres plateformes, puis choisissez les logements à gérer dans l’ERP."
+        sousTitre="Connectez Airbnb et Booking.com (lecture et messagerie seulement), puis choisissez les logements à gérer dans l’ERP."
         fil={[{ libelle: 'Logements', to: '/erp/logements' }, { libelle: 'Connexions' }]}
         actions={
           reel ? (
@@ -335,9 +332,9 @@ export default function Connexions() {
           })}
         </div>
 
+        {autresConnectes.length > 0 && (
         <Card className="mt-3">
-          <CardHeader titre="Autres logiciels de gestion" description="Vous utilisez déjà un logiciel (Hostaway, Smoobu, Lodgify…) ? Connectez-le : vos logements arrivent avec." />
-          {autresConnectes.length > 0 && (
+          <CardHeader titre="Autres connexions" description="L’ERP ne se connecte qu’à Airbnb et Booking.com, en lecture et messagerie. Vous pouvez retirer ces anciennes connexions." />
             <ul className="mb-3 space-y-1.5">
               {autresConnectes.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-2 text-[13.5px]">
@@ -353,23 +350,8 @@ export default function Connexions() {
                 </li>
               ))}
             </ul>
-          )}
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <div className="sm:w-72">
-              <Select
-                aria-label="Choisir un logiciel de gestion"
-                value={autre}
-                onChange={(e) => setAutre(e.target.value)}
-                placeholder={autres.length ? 'Choisir un logiciel…' : 'Liste indisponible pour l’instant'}
-                options={autres.map((f: FournisseurRepull) => ({ valeur: f.id, libelle: f.statut === 'beta' ? `${f.nom} (bêta)` : f.nom }))}
-                disabled={!reel || !autres.length}
-              />
-            </div>
-            <Button icone={<Plug />} disabled={!reel || !gerant || !autre || !!connexionEnCours} chargement={!!autre && connexionEnCours === autre} onClick={() => void connecter(autre)}>
-              Connecter
-            </Button>
-          </div>
         </Card>
+        )}
       </section>
 
       {/* ------------------------------------------------------- logements */}

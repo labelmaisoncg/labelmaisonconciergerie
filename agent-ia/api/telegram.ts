@@ -22,7 +22,6 @@ import {
 } from '../src/telegram.js';
 import type { TelegramUpdate } from '../src/telegram.js';
 import { transcrire, transcriptionDisponible } from '../src/transcription.js';
-import { executerActionConfirmee } from '../src/tools/actions.js';
 import * as store from '../src/store.js';
 
 export default async function handler(req: any, res: any) {
@@ -224,10 +223,11 @@ async function traiterClic(update: TelegramUpdate): Promise<void> {
 
     // Le chat qui a DEMANDÉ l'action désigne la conciergerie visée, même si
     // c'est un éditeur ou un autre propriétaire qui confirme.
-    const resultat = await executerActionConfirmee(action.outil, {
-      ...action.arguments,
-      __chatId: action.chatId,
-    });
+    // Calendriers et tarifs ne sont plus modifiables par l'agent : une action
+    // préparée avant ce changement est refusée, rien n'est envoyé.
+    const resultat =
+      "Rien n'a été modifié : l'agent ne change plus les calendriers ni les prix. " +
+      'Faites-le directement sur Airbnb ou Booking.com.';
     await store.journaliser(action.conciergerieId, String(chatId), action.outil, action.arguments, resultat);
     await envoyerMessage(chatId, resultat);
   } catch (err) {

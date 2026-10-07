@@ -851,9 +851,26 @@ async function principal() {
   }
   verifier(refusEcriture.filter(Boolean).length === 5 && repull.appels.length === avantEcritures, 'calendrier, prix, annonces : écriture refusée avant tout envoi (Airbnb et Booking)');
   verifier(
-    ecritureRepullPermise('POST', '/v1/conversations/c1/messages') && ecritureRepullPermise('POST', '/v1/connect/airbnb') && ecritureRepullPermise('GET', '/v1/reservations')
+    ecritureRepullPermise('POST', '/v1/conversations/c1/messages') && ecritureRepullPermise('POST', '/v1/connect/airbnb', { accessType: 'messaging' }) && ecritureRepullPermise('GET', '/v1/reservations')
       && !ecritureRepullPermise('PUT', '/v1/conversations/c1/messages') && !ecritureRepullPermise('POST', '/v1/conversations/c1/archive'),
     'permis : lire, répondre aux voyageurs, connecter un compte',
+  );
+  verifier(
+    !ecritureRepullPermise('POST', '/v1/connect/booking', { redirectUrl: 'x' })
+      && !ecritureRepullPermise('POST', '/v1/connect', { allowedProviders: ['booking'] })
+      && !ecritureRepullPermise('POST', '/v1/connect', { allowedProviders: ['booking-extranet-login', 'hostaway'] })
+      && !ecritureRepullPermise('POST', '/v1/connect/airbnb', { accessType: 'full_access' })
+      && !ecritureRepullPermise('POST', '/v1/connect/airbnb', {})
+      && ecritureRepullPermise('POST', '/v1/connect', { allowedProviders: ['booking-extranet-login'] })
+      && ecritureRepullPermise('POST', '/v1/connect/airbnb', { accessType: 'messaging' }),
+    'connexions : Airbnb en messagerie et Booking en Extranet login seulement (jamais fournisseur de connectivité, jamais accès complet)',
+  );
+  verifier(
+    !ecritureRepullPermise('POST', '/v1/conversations/..\\..\\availability\\1#/messages')
+      && !ecritureRepullPermise('POST', '/v1/conversations/../messages')
+      && !ecritureRepullPermise('POST', '/v1/conversations/%2e%2e/availability/messages')
+      && !ecritureRepullPermise('GET', '/v1/x/../../availability'),
+    'chemins détournés (.., \\, #, séparateurs encodés) refusés',
   );
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
   const appelBooking = repull.appels[repull.appels.length - 1];
@@ -861,12 +878,12 @@ async function principal() {
     appelBooking.chemin === '/v1/connect' && JSON.stringify(appelBooking.corps?.allowedProviders) === '["booking-extranet-login"]',
     'Booking.com : connexion « Extranet login » (messages, réservations, avis ; calendrier et prix jamais repris)',
   );
-  await demarrerConnexion(ctx(), 'hostaway', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=hostaway');
-  const appelPicker = repull.appels[repull.appels.length - 1];
-  verifier(appelPicker.chemin === '/v1/connect' && (appelPicker.corps?.allowedProviders as string[]).join() === 'hostaway', 'autre logiciel : sélecteur Repull limité à ce logiciel');
+  const avantAutre = repull.appels.length;
+  let refusAutre = '';
+  await demarrerConnexion(ctx(), 'hostaway', 'https://x').catch((e) => (refusAutre = String(e?.message)));
   let refusInconnu = '';
-  await demarrerConnexion(ctx(), 'inconnu', 'https://x').catch((e) => (refusInconnu = String(e?.message)));
-  verifier(/pas proposée/.test(refusInconnu), 'plateforme inconnue refusée');
+  await demarrerConnexion(ctx(), 'booking.com', 'https://x').catch((e) => (refusInconnu = String(e?.message)));
+  verifier(/Seuls Airbnb et Booking/.test(refusAutre) && /Seuls Airbnb et Booking/.test(refusInconnu) && repull.appels.length === avantAutre, 'logiciels de gestion et variantes de Booking refusés, sans aucun appel');
 
   let refus501 = '';
   await deconnecter(ctx(), 'hostaway').catch((e) => (refus501 = e instanceof ErreurConnexion ? e.message : String(e)));

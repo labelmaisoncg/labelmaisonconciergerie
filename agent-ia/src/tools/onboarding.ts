@@ -77,9 +77,9 @@ const connecterCompte: Outil = {
       ...(canal === 'booking'
         ? {
             _note_booking:
-              "Côté Booking.com, il faut désigner le fournisseur de connectivité indiqué " +
-              "sur la page depuis l'extranet, puis saisir l'identifiant de l'établissement. " +
-              'La validation par Booking peut prendre du temps.',
+              "Côté Booking.com, la page indique un utilisateur à inviter dans l'extranet " +
+              "(Compte → Utilisateurs). Ne JAMAIS conseiller de choisir un fournisseur de " +
+              'connectivité : Booking fermerait les logements. Prix et calendrier restent gérés dans l’extranet.',
           }
         : {}),
     };

@@ -73,10 +73,23 @@ async function appel<T = any>(
   options: Options = {},
 ): Promise<T> {
   // Plateformes jamais modifiées : on lit, on répond aux voyageurs, on ouvre
-  // une connexion. Calendriers, prix et annonces restent gérés à la main.
+  // une connexion en lecture + messagerie (Airbnb « messaging », Booking.com
+  // « Extranet login »). Calendriers, prix et annonces restent gérés à la main.
+  // Contrôle sur le chemin tel qu'envoyé (pas de « .. », « \\ », « # », ni
+  // séparateur encodé) et, pour une connexion, sur le corps.
   const chemin0 = chemin.split('?')[0] ?? chemin;
-  const permis = methode === 'GET'
-    || (methode === 'POST' && (/^\/v1\/conversations\/[^/]+\/messages$/.test(chemin0) || /^\/v1\/connect\/[a-z0-9_-]+$/i.test(chemin0)));
+  const corps = (options.corps && typeof options.corps === 'object' ? options.corps : {}) as {
+    accessType?: unknown;
+    allowedProviders?: unknown;
+  };
+  const sain = !/[\\#]|%2e|%2f|%5c/i.test(chemin) && !chemin0.split('/').some((x) => x === '.' || x === '..');
+  const fournisseurs = corps.allowedProviders;
+  const permis = sain && (methode === 'GET'
+    || (methode === 'POST' && (
+      /^\/v1\/conversations\/[^/]+\/messages$/.test(chemin0)
+      || (chemin0 === '/v1/connect/airbnb' && corps.accessType === 'messaging')
+      || (chemin0 === '/v1/connect' && Array.isArray(fournisseurs) && fournisseurs.length > 0
+        && fournisseurs.every((f) => f === 'booking-extranet-login')))));
   if (!permis) {
     throw new ErreurRepull(403, 'lecture_seule', `[repull] écriture refusée (${methode} ${chemin0}) : l'agent ne modifie ni calendrier, ni prix, ni annonce.`, null);
   }
@@ -207,16 +220,19 @@ export async function comptesConnectes(canal: Canal): Promise<CompteConnecte[]> 
 }
 
 /**
- * Lien de connexion hébergé par Repull. La conciergerie y autorise l'accès avec
- * SES identifiants Airbnb, ou désigne Repull comme fournisseur de connectivité
- * dans son extranet Booking — sans jamais créer de compte Repull. Au terme du
- * parcours, Repull la renvoie vers `retour`.
+ * Lien de connexion hébergé par Repull, en lecture + messagerie seulement :
+ *   - Airbnb : autorisation « messaging » (ni calendrier, ni prix, ni annonce) ;
+ *   - Booking.com : « Extranet login », la conciergerie invite un utilisateur
+ *     Repull dans son extranet. JAMAIS Repull comme fournisseur de
+ *     connectivité : Booking fermerait la vente jusqu'à recevoir des prix.
+ * Au terme du parcours, Repull la renvoie vers `retour`.
  */
 export async function lienConnexion(canal: Canal, retour: string): Promise<string> {
-  const r = await appel('POST', `/v1/connect/${canal}`, {
-    // Airbnb : messagerie seulement, le calendrier et les prix ne sont pas modifiables.
-    corps: { redirectUrl: retour, locale: 'fr', ...(canal === 'airbnb' ? { accessType: 'messaging' } : {}) },
-  });
+  const r = canal === 'airbnb'
+    ? await appel('POST', '/v1/connect/airbnb', { corps: { redirectUrl: retour, locale: 'fr', accessType: 'messaging' } })
+    : await appel('POST', '/v1/connect', {
+        corps: { redirectUrl: retour, locale: 'fr', allowedProviders: ['booking-extranet-login'], state: 'booking' },
+      });
   if (!r.url) throw new ErreurRepull(0, 'lien_absent', `[repull] Repull n'a pas rendu de lien de connexion ${NOM_CANAL[canal]}.`, null);
   return String(r.url);
 }

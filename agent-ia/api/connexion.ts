@@ -154,7 +154,7 @@ export default async function handler(req: any, res: any) {
   <p class="apres">${
     lien.canal === 'airbnb'
       ? "Vous serez redirigé vers Airbnb pour vous identifier et <b>autoriser l'accès</b>, puis ramené ici."
-      : "Vous serez guidé pour désigner notre partenaire de connectivité dans votre <b>extranet Booking.com</b> et saisir l'identifiant de votre établissement, puis ramené ici."
+      : "Vous serez guidé pour <b>inviter un utilisateur</b> dans votre extranet Booking.com (Compte → Utilisateurs), puis ramené ici. Vos prix et votre calendrier restent gérés dans l'extranet : ne choisissez pas de fournisseur de connectivité."
   }</p>
 </main>
 <footer>

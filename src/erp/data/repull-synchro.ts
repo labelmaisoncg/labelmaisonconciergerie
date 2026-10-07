@@ -121,23 +121,37 @@ function messageRepull(statut: number, code: string | undefined, brut: string | 
   return `Erreur Repull ${statut}${brut ? ` : ${brut}` : ''}.`;
 }
 
+/** Seuls modes de connexion permis : lecture + messagerie, jamais la gestion. */
+export const CONNEXIONS_PERMISES = ['booking-extranet-login'] as const;
+
 /**
  * L'ERP extrait les données et ne répond qu'aux conversations : tout reste
  * comme à l'origine sur les plateformes. Seules ces écritures sont permises :
  *   - envoyer un message voyageur ;
- *   - ouvrir ou retirer une connexion (Repull Connect, à la demande du gérant) ;
+ *   - connecter Airbnb en messagerie seulement (accessType « messaging ») ou
+ *     Booking.com en « Extranet login » (jamais comme fournisseur de
+ *     connectivité, qui reprend prix et calendrier) ; retirer une connexion ;
  *   - choisir les logements suivis (/v1/listings/status : compteur interne à
  *     Repull, la plateforme n'est jamais touchée).
  * Calendriers, prix, disponibilités, annonces : aucune écriture, jamais.
+ * Le contrôle porte sur le chemin tel qu'il sera envoyé (pas de « .. », « \ »,
+ * « # » ni séparateur encodé) et, pour les connexions, sur le corps.
  */
-export function ecritureRepullPermise(methode: string, chemin: string): boolean {
+export function ecritureRepullPermise(methode: string, chemin: string, corps?: unknown): boolean {
   const m = methode.toUpperCase();
-  if (m === 'GET') return true;
+  if (/[\\#]|%2e|%2f|%5c/i.test(chemin)) return false;
   const c = chemin.split('?')[0];
+  if (c.split('/').some((seg) => seg === '.' || seg === '..')) return false;
+  if (m === 'GET') return true;
+  const x = (corps && typeof corps === 'object' ? corps : {}) as { accessType?: unknown; allowedProviders?: unknown };
   if (m === 'POST') {
-    return /^\/v1\/conversations\/[^/]+\/messages$/.test(c)
-      || /^\/v1\/connect(\/[a-z0-9_-]+)?$/i.test(c)
-      || c === '/v1/listings/status';
+    if (/^\/v1\/conversations\/[^/]+\/messages$/.test(c) || c === '/v1/listings/status') return true;
+    if (c === '/v1/connect/airbnb') return x.accessType === 'messaging';
+    if (c === '/v1/connect') {
+      const l = x.allowedProviders;
+      return Array.isArray(l) && l.length > 0 && l.every((id) => (CONNEXIONS_PERMISES as readonly unknown[]).includes(id));
+    }
+    return false;
   }
   if (m === 'DELETE') return /^\/v1\/connect\/[a-z0-9_-]+$/i.test(c);
   return false;
@@ -211,7 +225,7 @@ export class ClientRepull {
     envoi?: unknown,
     entetes: Record<string, string> = {},
   ): Promise<T> {
-    if (!ecritureRepullPermise(methode, chemin)) {
+    if (!ecritureRepullPermise(methode, chemin, envoi)) {
       throw new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
     }
     const url = new URL(this.base + chemin);
