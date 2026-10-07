@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Check, FileCheck2, Lock, PauseCircle, Rocket } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardHeader, Input, ProgressBar, cn } from '../../../ui';
+import { Alert, Button, Card, CardHeader, Input, ProgressBar, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { avancementChecklist, logementActivable, mandatDuLogement } from '../../../data/selectors';
 import type { CleChecklistLancement, ElementChecklistLancement, Logement } from '../../../data/types';
@@ -104,12 +104,8 @@ export function OngletLancement({ logement: l }: { logement: Logement }) {
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       <Card flush className="min-w-0 lg:col-span-2">
         <div className="p-4 sm:p-5">
-          <CardHeader
-            titre="Checklist de lancement"
-            description="Bloquante : chaque point doit être validé, avec sa preuve, avant la mise en ligne."
-            actions={<Badge tone={av.ratio === 1 ? 'succes' : 'alerte'}>{av.faits}/{av.total}</Badge>}
-          />
-          <ProgressBar valeur={av.ratio} afficherValeur label="Avancement" tone={av.ratio === 1 ? 'succes' : 'or'} />
+          <CardHeader titre="Checklist de lancement" />
+          <ProgressBar valeur={av.ratio} afficherValeur label={`${av.faits} sur ${av.total} validés, preuve à l’appui`} tone={av.ratio === 1 ? 'succes' : 'or'} />
         </div>
         <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
           {l.checklistLancement.map((c) => (
@@ -120,20 +116,20 @@ export function OngletLancement({ logement: l }: { logement: Logement }) {
 
       <div className="flex min-w-0 flex-col gap-5">
         <Card>
-          <CardHeader titre="Activation" description="Règle : mandat signé ET checklist complète." />
+          <CardHeader titre="Activation" />
           {l.statut === 'actif' ? (
             <>
-              <Alert tone="succes" titre="Logement actif">Il est ouvert à la réservation sur ses canaux.</Alert>
+              <Alert tone="succes" titre="Logement actif, ouvert à la réservation." />
               <Button className="mt-3 w-full" icone={<PauseCircle />} onClick={() => upsert('logements', { ...l, statut: 'pause' })}>
                 Mettre en pause
               </Button>
             </>
           ) : l.statut === 'sorti' ? (
-            <Alert tone="neutre" titre="Logement sorti du parc">Il ne peut plus être activé.</Alert>
+            <Alert tone="neutre" titre="Logement sorti du parc : il ne peut plus être activé." />
           ) : (
             <>
               {verdict.ok ? (
-                <Alert tone="succes" titre="Tous les prérequis sont réunis">Le logement peut être activé.</Alert>
+                <Alert tone="succes" titre="Tout est prêt pour l’activation." />
               ) : (
                 <Alert tone="alerte" icone={<Lock />} titre={`${verdict.raisons.length} blocage${verdict.raisons.length > 1 ? 's' : ''} avant activation`}>
                   <ul className="mt-1 list-disc space-y-0.5 pl-4">
@@ -160,9 +156,9 @@ export function OngletLancement({ logement: l }: { logement: Logement }) {
           {mandat ? (
             <p className="text-[13.5px] text-(--lm-encre-2)">
               <Link to={`/erp/mandats?mandat=${mandat.id}`} className="font-medium text-(--lm-or-texte) hover:underline">
-                {mandat.reference}
-              </Link>{' '}
-              : {mandat.statut === 'signe' ? 'signé.' : 'non signé, le logement ne peut pas être activé.'}
+                {mandat.statut === 'signe' ? 'Mandat signé' : 'Mandat non signé'}
+              </Link>
+              {mandat.statut !== 'signe' && ' : activation impossible.'}
             </p>
           ) : (
             <p className="text-[13.5px] text-(--lm-danger)">Aucun mandat : créez-le depuis l’écran Mandats.</p>

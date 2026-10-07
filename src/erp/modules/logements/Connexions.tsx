@@ -233,7 +233,7 @@ export default function Connexions() {
     <div>
       <PageHeader
         titre="Connexions"
-        sousTitre="Deux étapes : connectez Airbnb et Booking.com, puis choisissez les logements à gérer. L’ERP lit vos données et répond aux voyageurs : vos prix et calendriers ne sont jamais modifiés."
+        sousTitre="Vos prix et calendriers ne sont jamais modifiés."
         fil={[{ libelle: 'Logements', to: '/erp/logements' }, { libelle: 'Connexions' }]}
         actions={
           reel ? (
@@ -246,12 +246,12 @@ export default function Connexions() {
 
       {!reel && (
         <Alert tone="neutre" className="mb-4">
-          Vous êtes en démo : rien n’est connecté ici. Avec vos données réelles, vous connecterez vos plateformes sur cette page.
+          Démo : rien n’est connecté ici.
         </Alert>
       )}
       {reel && !gerant && (
         <Alert tone="info" className="mb-4" icone={<Lock />}>
-          Seul un gérant peut connecter une plateforme ou choisir les logements. Vous pouvez consulter cette page.
+          Seul un gérant peut connecter une plateforme ou choisir les logements.
         </Alert>
       )}
       {message && (
@@ -272,10 +272,9 @@ export default function Connexions() {
 
       {/* ------------------------------------------------------ plateformes */}
       <section aria-labelledby="titre-plateformes" className="mb-8">
-        <h2 id="titre-plateformes" className="mb-1 text-[16px] font-semibold text-(--lm-encre)">
+        <h2 id="titre-plateformes" className="mb-3 text-[16px] font-semibold text-(--lm-encre)">
           1. Vos plateformes
         </h2>
-        <p className="mb-3 text-[13px] text-(--lm-encre-2)">Un clic sur « Connecter » ouvre la page sécurisée de la plateforme. Vous revenez ici ensuite.</p>
         <div className="grid gap-3 md:grid-cols-3">
           {PRINCIPALES.map((p) => {
             const comptes = connexions.filter((c) => c.fournisseur === p.id);
@@ -297,11 +296,6 @@ export default function Connexions() {
                     )}
                   </div>
                 </div>
-                {aFinir && (
-                  <p className="text-[12.5px] text-(--lm-encre-2)">
-                    Booking.com a bien accepté la connexion. Il reste à associer vos chambres à vos logements : cliquez sur « Terminer la connexion », puis suivez la page.
-                  </p>
-                )}
                 {comptes.length > 0 ? (
                   <ul className="space-y-1.5">
                     {comptes.map((c) => (
@@ -314,7 +308,11 @@ export default function Connexions() {
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-[12.5px] text-(--lm-encre-3)">{p.aide}</p>
+                  // Les consignes restent à un clic (celle de Booking.com évite de céder vos prix et calendriers).
+                  <details className="text-[12.5px] text-(--lm-encre-2)">
+                    <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Comment ça marche ?</summary>
+                    <p className="mt-1.5">{p.aide}</p>
+                  </details>
                 )}
                 <Button
                   className="mt-auto"
@@ -333,7 +331,7 @@ export default function Connexions() {
 
         {autresConnectes.length > 0 && (
         <Card className="mt-3">
-          <CardHeader titre="Autres connexions" description="L’ERP ne se connecte qu’à Airbnb et Booking.com, en lecture et messagerie. Vous pouvez retirer ces anciennes connexions." />
+          <CardHeader titre="Autres connexions" description="Anciennes connexions, que vous pouvez retirer." />
             <ul className="mb-3 space-y-1.5">
               {autresConnectes.map((c) => (
                 <li key={c.id} className="flex items-center justify-between gap-2 text-[13.5px]">
@@ -356,12 +354,9 @@ export default function Connexions() {
       {/* ------------------------------------------------------- logements */}
       <section aria-labelledby="titre-logements">
         <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 id="titre-logements" className="mb-1 text-[16px] font-semibold text-(--lm-encre)">
-              2. Choisissez les logements à gérer
-            </h2>
-            <p className="text-[13px] text-(--lm-encre-2)">Seuls les logements cochés entrent dans l’ERP, avec leurs réservations, leurs messages et leurs avis.</p>
-          </div>
+          <h2 id="titre-logements" className="text-[16px] font-semibold text-(--lm-encre)">
+            2. Choisissez les logements à gérer
+          </h2>
           {etat && (
             <div className="min-w-48 text-right">
               <p className="lm-chiffres text-[14px] font-semibold text-(--lm-encre)" aria-live="polite">
@@ -400,8 +395,8 @@ export default function Connexions() {
             titre="Aucun logement trouvé pour l’instant"
             description={
               reel
-                ? 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici. Juste après une connexion, il faut parfois une minute ou deux.'
-                : 'En démo, aucune plateforme n’est connectée.'
+                ? 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici.'
+                : undefined
             }
             action={
               reel && connexions.length > 0 ? (
@@ -585,7 +580,7 @@ function VerificationRepull({ actif }: { actif: boolean }) {
     <section className="mt-8">
       <Repli
         titre="Une connexion ne s’affiche pas ?"
-        description="Vérifiez ce que notre service de connexion (Repull) voit réellement de vos comptes. Cela prend quelques secondes."
+        description="Vérifiez ce que notre service de connexion voit de vos comptes."
       >
         <Button icone={<RefreshCw />} chargement={enCours} disabled={!actif || enCours} onClick={() => void verifier()}>
           Vérifier maintenant

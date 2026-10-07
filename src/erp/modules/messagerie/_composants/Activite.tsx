@@ -2,11 +2,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Bot, CheckCircle2, Coffee, Hand, MessageCircleReply } from 'lucide-react';
-import { Card, CardHeader, EmptyState, FilterChips, cn } from '../../../ui';
+import { Card, EmptyState, FilterChips, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
-import { LIBELLES } from '../../../data/libelles';
-import { AUJOURDHUI, ajouterJours, dateJour, heure, pluriel, relatif } from '../../../data/format';
-import { LIBELLE_MOTIF, activiteAgent, enAttenteHumain, formatDelai, motifEscalade, statsAgent, type ActiviteAgent } from './logique';
+import { AUJOURDHUI, ajouterJours, dateJour, heure, pluriel } from '../../../data/format';
+import { LIBELLE_MOTIF, activiteAgent, enAttenteHumain, formatDelai, statsAgent, type ActiviteAgent } from './logique';
 
 type Periode = 'jour' | '7j';
 
@@ -39,13 +38,17 @@ export function Activite() {
         <p className="text-[15px] text-(--lm-encre)">
           {activite.length ? (
             <>
-              {quand}, votre agent a répondu <strong className="lm-chiffres">{pluriel(reponses, 'fois', 'fois')}</strong>
+              <strong className="lm-chiffres">{pluriel(reponses, 'réponse')}</strong> de votre agent
               {transmis > 0 && (
                 <>
-                  {' '}et vous a passé la main sur <strong className="lm-chiffres">{pluriel(transmis, 'conversation')}</strong>
+                  , <strong className="lm-chiffres">{pluriel(transmis, 'conversation')}</strong> confiée{transmis > 1 ? 's' : ''} à vous
                 </>
               )}
-              .{stats.delaiMedianMinutes !== undefined && <> En général, les voyageurs ont une réponse en {formatDelai(stats.delaiMedianMinutes)}.</>}
+              {stats.delaiMedianMinutes !== undefined && (
+                <span className="text-(--lm-encre-2)" title="Délai de réponse habituel (médiane)">
+                  {' '}· réponse en {formatDelai(stats.delaiMedianMinutes)}
+                </span>
+              )}
             </>
           ) : (
             <>{quand}, votre agent n’a rien eu à faire.</>
@@ -63,54 +66,25 @@ export function Activite() {
         />
       </div>
 
+      {/* Une ligne : la liste détaillée est dans Conversations, filtre « Pour vous ». */}
       {attente.length > 0 && (
-        <Card flush className="border-(--lm-alerte)/40">
-          <CardHeader
-            className="mb-0 border-b border-(--lm-bord) px-4 pt-4 pb-3"
-            titre={`${pluriel(attente.length, 'voyageur attend', 'voyageurs attendent')} votre réponse`}
-            description="Votre agent a préféré vous laisser la main. Répondez-leur quand vous pouvez."
-          />
-          <ul className="divide-y divide-(--lm-bord)">
-            {attente.slice(0, 5).map((f) => {
-              const motif = f.statut === 'escalade' ? LIBELLE_MOTIF[motifEscalade(f)].titre : 'Pas encore de réponse';
-              return (
-                <li key={f.id}>
-                  <Link to={`/erp/messagerie/${f.id}`} className="flex items-center gap-3 px-4 py-3 hover:bg-(--lm-surface-2)">
-                    <Hand className="size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">
-                        {f.voyageur} <span className="font-normal text-(--lm-encre-3)">· {nom(f.logementId)}</span>
-                      </span>
-                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">
-                        {motif} · dernier message {relatif(f.dernierMessageLe).replace('\'', '’')}
-                      </span>
-                    </span>
-                    <span className="hidden text-[12.5px] font-medium text-(--lm-or-texte) sm:inline">Répondre</span>
-                    <ArrowRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-          {attente.length > 5 && (
-            <p className="border-t border-(--lm-bord) px-4 py-2.5 text-[12.5px]">
-              <Link to="/erp/messagerie" className="font-medium text-(--lm-or-texte) hover:underline">
-                Voir les {attente.length} conversations
-              </Link>
-            </p>
-          )}
-        </Card>
+        <Link
+          to="/erp/messagerie"
+          className="flex items-center gap-3 rounded-xl border border-(--lm-alerte)/40 bg-(--lm-surface) px-4 py-3 shadow-(--lm-ombre) hover:bg-(--lm-surface-2)"
+        >
+          <Hand className="size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
+          <span className="min-w-0 flex-1 text-[13.5px] font-medium text-(--lm-encre)">
+            {pluriel(attente.length, 'voyageur attend', 'voyageurs attendent')} votre réponse
+          </span>
+          <span className="text-[12.5px] font-medium text-(--lm-or-texte)">Répondre</span>
+          <ArrowRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
+        </Link>
       )}
 
       {jours.length === 0 ? (
         <EmptyState
           icone={attente.length ? <Coffee /> : <CheckCircle2 />}
-          titre={periode === 'jour' ? 'Rien pour l’instant aujourd’hui' : 'Une semaine calme'}
-          description={
-            periode === 'jour'
-              ? 'Aucun voyageur n’a écrit depuis ce matin. Votre agent veille et répondra dès qu’un message arrive.'
-              : 'Votre agent n’a envoyé aucune réponse ces 7 derniers jours.'
-          }
+          titre={periode === 'jour' ? 'Rien pour l’instant aujourd’hui.' : 'Une semaine calme.'}
         />
       ) : (
         <div className="space-y-5">
@@ -138,20 +112,22 @@ export function Activite() {
                             <span className="text-[13.5px] font-medium text-(--lm-encre)">
                               {a.genre === 'reponse' ? `A répondu à ${a.fil.voyageur}` : `Vous a passé ${a.fil.voyageur}`}
                             </span>
-                            <span className="text-[12px] text-(--lm-encre-3)">
-                              {nom(a.fil.logementId)} · {LIBELLES.canal[a.fil.canal]}
-                            </span>
+                            <span className="text-[12px] text-(--lm-encre-3)">{nom(a.fil.logementId)}</span>
                             <time dateTime={a.quand} className="lm-chiffres ml-auto text-[12px] text-(--lm-encre-3)">
                               {heure(a.quand)}
                             </time>
                           </span>
-                          {a.genre === 'transmis' && a.motif && (
-                            <span className="mt-0.5 block text-[12.5px] font-medium text-(--lm-alerte)">Pourquoi : {LIBELLE_MOTIF[a.motif].titre.toLowerCase()}</span>
+                          {/* Une ligne secondaire : la raison si l'agent a passé la main, sinon sa réponse. */}
+                          {a.genre === 'transmis' && a.motif ? (
+                            <span className="mt-0.5 block truncate text-[12.5px] font-medium text-(--lm-alerte)" title={a.texte}>
+                              Pourquoi : {LIBELLE_MOTIF[a.motif].titre.toLowerCase()}
+                            </span>
+                          ) : (
+                            <span className="mt-0.5 line-clamp-1 block text-[12.5px] text-(--lm-encre-2)">
+                              {a.genre === 'reponse' && <Bot className="mr-1 inline size-3.5 text-(--lm-or-texte)" aria-hidden />}
+                              {a.texte}
+                            </span>
                           )}
-                          <span className="mt-0.5 line-clamp-2 block text-[12.5px] text-(--lm-encre-2)">
-                            {a.genre === 'reponse' && <Bot className="mr-1 inline size-3.5 text-(--lm-or-texte)" aria-hidden />}
-                            {a.texte}
-                          </span>
                         </span>
                       </Link>
                     </li>

@@ -136,11 +136,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
             {logement?.nom} · {LIBELLES.canal[fil.canal]}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <StatusBadge type="statutFil" valeur={fil.statut} />
-          <StatusBadge type="traitePar" valeur={fil.traitePar} />
-        </div>
-        <div className="flex w-full flex-wrap gap-1.5">
+        {fil.statut === 'clos' && <StatusBadge type="statutFil" valeur={fil.statut} />}
+        <div className="flex flex-wrap gap-1.5">
           <Button size="sm" variant="secondary" icone={<Bot />} onClick={rendreMain} disabled={!!motifReprise} title={motifReprise}>
             Confier à l’agent
           </Button>
@@ -157,7 +154,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
 
       {fil.statut === 'escalade' && (
         <Alert tone="danger" titre={`Votre agent vous a passé la main : ${LIBELLE_MOTIF[motif].titre.toLowerCase()}`} className="mx-3 mt-3 sm:mx-4">
-          {fil.agent?.decision === 'transmettre' && fil.agent.resume ? fil.agent.resume : LIBELLE_MOTIF[motif].explication}
+          {/* Le résumé de l'agent dit ce que veut le voyageur ; l'explication générique du motif reste dans « Ce que l'agent a fait ». */}
+          {fil.agent?.decision === 'transmettre' && fil.agent.resume ? fil.agent.resume : undefined}
         </Alert>
       )}
       {erreur && (
@@ -262,6 +260,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
           </label>
           <Textarea
             id="composer"
+            aria-keyshortcuts="Control+Enter"
             ref={zone}
             rows={2}
             value={brouillon}
@@ -277,17 +276,17 @@ export function Conversation({ fil, logement, reservation }: Props) {
             <span className="sr-only sm:hidden">{enCours ? 'Envoi en cours' : 'Envoyer'}</span>
           </Button>
         </form>
-        <p className="mt-1.5 text-[11.5px] text-(--lm-encre-3)">
+        <p className="mt-1.5 text-[11.5px] text-(--lm-encre-3)" title="Ctrl + Entrée pour envoyer. En répondant, vous reprenez la conversation.">
           {relie ? (
             <>
-              Votre message part directement chez {prenom} sur <strong className="font-medium text-(--lm-encre-2)">{plateforme}</strong>.{' '}
+              Part chez {prenom} sur <strong className="font-medium text-(--lm-encre-2)">{plateforme}</strong>.{' '}
             </>
           ) : (
             <>
-              <strong className="font-medium text-(--lm-encre-2)">Gardé dans l’ERP</strong> : ce voyageur n’est pas relié à une plateforme, rien ne lui est envoyé.{' '}
+              <strong className="font-medium text-(--lm-encre-2)">Gardé dans l’ERP</strong>, rien n’est envoyé au voyageur.{' '}
             </>
           )}
-          En répondant, vous reprenez la conversation. Ne promettez pas d’argent sans en parler à l’équipe. Ctrl + Entrée pour envoyer.
+          Ne promettez pas d’argent sans l’équipe.
         </p>
       </div>
     </div>

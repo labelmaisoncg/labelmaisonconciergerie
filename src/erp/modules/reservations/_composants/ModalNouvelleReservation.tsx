@@ -124,7 +124,7 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
       onFermer={fermer}
       taille="lg"
       titre="Nouvelle réservation directe"
-      description="Séjour réservé hors plateformes. Le ménage de départ est créé automatiquement, à attribuer."
+      description="Séjour réservé hors plateformes."
       pied={
         <>
           <Button variant="ghost" onClick={fermer}>
@@ -146,7 +146,7 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
             action="Voir les logements"
           />
         )}
-        <Field label="Logement" requis erreur={erreurs.logementId} className="sm:col-span-2" aide="Seuls les logements actifs (mandat signé, checklist complète) sont réservables.">
+        <Field label="Logement" requis erreur={erreurs.logementId} className="sm:col-span-2">
           <Select
             value={f.logementId}
             onChange={(e) => maj('logementId', e.target.value)}
@@ -196,7 +196,7 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
           <Input inputMode="decimal" value={f.menage} onChange={(e) => maj('menage', e.target.value)} placeholder={menageDefaut !== undefined ? String(menageDefaut / 100) : ''} />
         </Field>
         <p className="self-end text-[12.5px] text-(--lm-encre-2) sm:col-span-2">
-          Canal direct : aucune commission plateforme. Pensez à bloquer ces dates sur Airbnb et Booking.com (dans Repull ou sur chaque plateforme) : l’ERP ne modifie pas les calendriers.
+          Bloquez aussi ces dates sur Airbnb et Booking.com : l’ERP ne modifie pas les calendriers.
         </p>
       </form>
     </Modal>

@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, LayoutGrid, List, PauseCircle, Percent, Plug, Plus, Rocket } from 'lucide-react';
+import { LayoutGrid, List, Plug, Plus } from 'lucide-react';
 import {
   Button,
   ButtonLink,
   EmptyState,
   FilterChips,
+  MenuActions,
   PageHeader,
   SearchInput,
   Select,
-  Stat,
   StatusBadge,
   Table,
   cn,
@@ -19,7 +19,7 @@ import {
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { euros, jourMois, note, pourcentage } from '../../data/format';
-import { fenetreJours, logementsActifs, proprietaireById, tauxOccupation } from '../../data/selectors';
+import { proprietaireById } from '../../data/selectors';
 import type { Logement, StatutLogement } from '../../data/types';
 import { CarteLogement } from './_composants/CarteLogement';
 import { statsLogement, type StatsLogement } from './_composants/stats';
@@ -77,7 +77,6 @@ export default function ListeLogements() {
   });
 
   const compte = (s: StatutLogement) => d.logements.filter((l) => l.statut === s).length;
-  const occupation = tauxOccupation(d.reservations, logementsActifs(d.logements), fenetreJours(30));
 
   const colonnes: Colonne<Ligne>[] = [
     {
@@ -125,27 +124,22 @@ export default function ListeLogements() {
     <>
       <PageHeader
         titre="Logements"
-        sousTitre="Le référentiel des biens confiés : fiche voyageur, checklist de lancement, linge et canaux de diffusion."
         fil={[{ libelle: 'Référentiel' }, { libelle: 'Logements' }]}
         actions={
           <>
             <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
               Connecter Airbnb, Booking…
             </ButtonLink>
-            <Button icone={<Plus />} onClick={() => setCreation(true)}>
-              Nouveau logement
-            </Button>
+            <MenuActions
+              texte
+              label="Plus"
+              actions={[{ libelle: 'Ajouter un logement à la main', icone: <Plus />, onClick: () => setCreation(true) }]}
+            />
           </>
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Logements actifs" valeur={compte('actif')} icone={<Home />} aide={`sur ${d.logements.length} au référentiel`} />
-        <Stat label="En lancement" valeur={compte('lancement')} icone={<Rocket />} tone={compte('lancement') ? 'alerte' : 'neutre'} aide="checklist bloquante" />
-        <Stat label="En pause" valeur={compte('pause')} icone={<PauseCircle />} />
-        <Stat label="Occupation moyenne" valeur={pourcentage(occupation)} icone={<Percent />} aide="logements actifs, 30 derniers jours" />
-      </div>
-
+      {d.logements.length > 0 && (
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom, ville, propriétaire, n° d’enregistrement" label="Rechercher un logement" />
         <FilterChips
@@ -178,12 +172,13 @@ export default function ListeLogements() {
           </div>
         </div>
       </div>
+      )}
 
       {d.logements.length === 0 ? (
         <EmptyState
           icone={<Plug />}
           titre="Pas encore de logement"
-          description="Connectez Airbnb, Booking.com ou votre logiciel de gestion, puis choisissez vos logements : ils arrivent ici avec leurs réservations."
+          description="Connectez vos plateformes pour importer vos logements."
           action={
             <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
               Connecter Airbnb, Booking…
@@ -193,7 +188,6 @@ export default function ListeLogements() {
       ) : filtrees.length === 0 ? (
         <EmptyState
           titre="Aucun logement ne correspond"
-          description="Modifiez la recherche ou les filtres."
           action={
             <Button onClick={() => { setRecherche(''); setStatuts([]); setVille(''); }}>Réinitialiser les filtres</Button>
           }

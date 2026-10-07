@@ -1,9 +1,8 @@
 /** Colonne de droite : réservation, logement, fiche et droit aux codes d'accès. */
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { KeyRound, ShieldCheck, ShieldX } from 'lucide-react';
-import { Badge, ProgressBar, StatusBadge, cn } from '../../../ui';
-import { LIBELLES } from '../../../data/libelles';
+import { ShieldCheck, ShieldX } from 'lucide-react';
+import { ProgressBar, StatusBadge, cn } from '../../../ui';
 import { dateCourte, pluriel, relatif } from '../../../data/format';
 import type { FilMessages, Logement, Reservation } from '../../../data/types';
 import { completudeFiche, eligibiliteCodes } from './logique';
@@ -42,9 +41,7 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
             <span className="block text-(--lm-encre-2)">({codes.raison})</span>
           </p>
         </div>
-        <p className="mt-2 text-[12px] text-(--lm-encre-3)">
-          Boîte à clés, serrure et wifi : seulement pour une réservation confirmée, quand le voyageur arrive sous 48 h ou est déjà sur place.
-        </p>
+        <p className="mt-2 text-[12px] text-(--lm-encre-3)">Règle : réservation confirmée, arrivée sous 48 h ou déjà sur place.</p>
       </Bloc>
 
       <Bloc titre="Réservation">
@@ -54,18 +51,13 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
               {dateCourte(reservation.arrivee)} au {dateCourte(reservation.depart)}
             </Link>
             <p className="text-(--lm-encre-2)">
-              {pluriel(reservation.nuits, 'nuit')} · {pluriel(reservation.voyageur.nbPersonnes, 'personne')}
-              {reservation.voyageur.pays ? ` · ${reservation.voyageur.pays}` : ''}
+              {pluriel(reservation.nuits, 'nuit')} · {pluriel(reservation.voyageur.nbPersonnes, 'personne')} · arrivée {relatif(reservation.arrivee)}
             </p>
-            <div className="flex flex-wrap gap-1.5">
-              <StatusBadge type="statutReservation" valeur={reservation.statut} />
-              <Badge>{LIBELLES.canal[reservation.canal]}</Badge>
-            </div>
-            <p className="text-[12px] text-(--lm-encre-3)">Arrivée {relatif(reservation.arrivee)}</p>
+            {reservation.statut !== 'confirmee' && <StatusBadge type="statutReservation" valeur={reservation.statut} />}
           </div>
         ) : (
           <p className="text-(--lm-encre-2)">
-            Pas encore de réservation : ce voyageur se renseigne. Une réservation est peut-être à la clé, répondez vite.
+            Pas encore de réservation : répondez vite.
           </p>
         )}
       </Bloc>
@@ -77,9 +69,6 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
               {logement.nom}
             </Link>
             <p className="text-(--lm-encre-2)">{logement.adresse}, {logement.ville}</p>
-            <p className="flex items-center gap-1.5 text-(--lm-encre-2)">
-              <KeyRound className="size-3.5" aria-hidden /> {LIBELLES.serrure[logement.serrure]}
-            </p>
             <p className="text-(--lm-encre-2)">
               Arrivée dès {logement.fiche.heureArrivee || '?'}, départ avant {logement.fiche.heureDepart || '?'}
             </p>
@@ -89,16 +78,13 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
         )}
       </Bloc>
 
-      <Bloc titre="Ce que sait votre agent">
-        <ProgressBar valeur={fiche.ratio} afficherValeur label="Fiche du logement remplie" tone={fiche.complete ? 'succes' : 'alerte'} />
-        {fiche.complete ? (
-          <p className="mt-2 text-[12px] text-(--lm-succes)">La fiche est complète : votre agent peut répondre pour ce logement.</p>
-        ) : (
-          <p className="mt-2 text-[12px] text-(--lm-alerte)">
-            Il manque : {fiche.manquants.join(', ')}. En attendant, votre agent vous passe la main pour ce logement.
-          </p>
-        )}
-      </Bloc>
+      {/* Seulement s'il y a un trou : une fiche complète n'appelle aucune action. */}
+      {!fiche.complete && (
+        <Bloc titre="Ce que sait votre agent">
+          <ProgressBar valeur={fiche.ratio} afficherValeur label="Fiche du logement remplie" tone="alerte" />
+          <p className="mt-2 text-[12px] text-(--lm-alerte)">Il manque : {fiche.manquants.join(', ')}. Votre agent vous passe la main.</p>
+        </Bloc>
+      )}
     </div>
   );
 }

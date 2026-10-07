@@ -32,14 +32,12 @@ export default function ModuleMessagerie() {
   const onglet: Onglet = segment === 'activite' ? 'activite' : segment === 'agent' ? 'agent' : 'conversations';
   // Sur mobile, une conversation ouverte prend tout l'écran.
   const filOuvert = onglet === 'conversations' && !!segment;
-  const attente = enAttenteHumain(d.filsMessages).length;
 
   return (
     <>
       <div className={cn(filOuvert && 'max-lg:hidden')}>
         <PageHeader
           titre="Messagerie"
-          sousTitre="Votre agent répond aux voyageurs à votre place et vous passe la main quand il le faut."
           actions={
             <Link
               to="/erp/messagerie/agent"
@@ -55,7 +53,8 @@ export default function ModuleMessagerie() {
           actif={onglet}
           onChange={(c) => navigate(c === 'conversations' ? '/erp/messagerie' : `/erp/messagerie/${c}`)}
           onglets={[
-            { cle: 'conversations', libelle: 'Conversations', compteur: attente || undefined },
+            // Le nombre de voyageurs en attente est déjà sur le menu latéral et sur le filtre « Pour vous ».
+            { cle: 'conversations', libelle: 'Conversations' },
             { cle: 'activite', libelle: 'Ce que l’agent a fait' },
             { cle: 'agent', libelle: 'Configurer mon agent' },
           ]}
@@ -124,7 +123,7 @@ function Boite() {
                 <EmptyState
                   icone={<MessagesSquare />}
                   titre="Pas encore de conversation"
-                  description="Les messages de vos voyageurs arriveront ici tout seuls, dès qu’Airbnb ou Booking.com est connecté et vos logements choisis."
+                  description="Ils arrivent ici dès qu’une plateforme est connectée."
                   action={
                     <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
                       Connecter mes plateformes
@@ -136,11 +135,6 @@ function Boite() {
                 <EmptyState
                   icone={<MessagesSquare />}
                   titre={filId ? 'Cette conversation n’existe plus' : 'Choisissez une conversation'}
-                  description={
-                    filId
-                      ? 'Elle a peut-être été supprimée. Choisissez-en une autre dans la liste.'
-                      : 'Celles qui ont besoin de vous sont marquées dans la liste.'
-                  }
                   className="border-none"
                 />
               )}

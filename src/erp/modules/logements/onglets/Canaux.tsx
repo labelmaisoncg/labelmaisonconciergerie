@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { ExternalLink, KeyRound, Link2, Link2Off, Radio } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardHeader, Field, Input, Repli } from '../../../ui';
+import { ExternalLink, Link2, Link2Off, Radio } from 'lucide-react';
+import { Aide, Alert, Badge, Button, Card, CardHeader, Field, Input, Repli } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { Annonce, Canal, Logement } from '../../../data/types';
@@ -32,10 +32,14 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
   return (
     <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       <div className="flex min-w-0 flex-col gap-4 lg:col-span-2">
+        <Aide className="mb-0">
+          Clause du contrat : le propriétaire ne modifie pas l’annonce sans concertation avec Label Maison. Avec Airbnb et Booking.com, réservations,
+          messages et avis arrivent seuls dans l’ERP ; vos prix et calendriers ne sont jamais modifiés. Pour un logement importé, nom, adresse,
+          capacité, horaires, wifi et état des annonces sont tenus à jour automatiquement ; propriétaire, mandat, serrure, linge et checklist restent
+          à l’équipe.
+        </Aide>
         {l.statut !== 'actif' && connectees > 0 && (
-          <Alert tone="alerte" titre="Annonces connectées sur un logement non actif">
-            Fermez le calendrier des canaux tant que le logement n’est pas actif.
-          </Alert>
+          <Alert tone="alerte" titre="Logement non actif : fermez le calendrier de ses annonces." />
         )}
         {CANAUX.map((c) => {
           const a = annonce(c);
@@ -47,9 +51,7 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[15px] font-semibold">{LIBELLES.canal[c]}</p>
-                  <p className="text-[12.5px] text-(--lm-encre-2)">
-                    {a ? (a.connecte ? (l.repull ? 'Synchronisé via Repull' : 'Connectée (suivi manuel)') : 'Annonce non synchronisée') : 'Aucune annonce créée'}
-                  </p>
+                  {a?.connecte && <p className="text-[12.5px] text-(--lm-encre-2)">{l.repull ? 'Synchronisée automatiquement' : 'Suivie à la main'}</p>}
                 </div>
                 {a?.connecte ? (
                   <Badge tone="succes" point>Connecté</Badge>
@@ -88,32 +90,29 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
             </Card>
           );
         })}
-        <Alert tone="info" titre="Clause contractuelle">
-          Le propriétaire ne modifie pas l’annonce sans concertation avec Label Maison.
-        </Alert>
       </div>
 
       <div className="flex min-w-0 flex-col gap-5">
         <CarteAnnonceLogement logement={l} />
         <Card>
-          <CardHeader titre="Plateformes" description="Airbnb et Booking.com : réservations, messages et avis arrivent seuls dans l’ERP. Vos prix et calendriers ne sont jamais modifiés." />
+          <CardHeader titre="Plateformes" />
           {importe ? (
             <>
-              <Badge tone="succes" point className="mb-3">
+              <Badge tone="succes" point>
                 Importé automatiquement
               </Badge>
               {!!l.repull?.canaux?.length && (
-                <ul className="mb-2 space-y-1 text-[12.5px] text-(--lm-encre-2)">
-                  {l.repull.canaux.map((ch) => (
-                    <li key={`${ch.plateforme}-${ch.idExterne}`}>
-                      {canalAnnonceLibelle(ch.plateforme)} : <span className="lm-chiffres">{ch.idExterne}</span> {ch.actif ? '' : '(inactive)'}
-                    </li>
-                  ))}
-                </ul>
+                <details className="mt-3 text-[12.5px] text-(--lm-encre-2)">
+                  <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Annonces reliées</summary>
+                  <ul className="mt-2 space-y-1">
+                    {l.repull.canaux.map((ch) => (
+                      <li key={`${ch.plateforme}-${ch.idExterne}`}>
+                        {canalAnnonceLibelle(ch.plateforme)} : <span className="lm-chiffres">{ch.idExterne}</span> {ch.actif ? '' : '(inactive)'}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
-              <p className="text-[12.5px] text-(--lm-encre-3)">
-                Nom, adresse, capacité, horaires, wifi et état des annonces sont tenus à jour automatiquement. Propriétaire, mandat, serrure, linge et checklist restent à l’équipe.
-              </p>
             </>
           ) : (
             <>
@@ -121,11 +120,11 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
                 {l.repull?.id ? 'Relié, en attente d’import' : 'Pas encore relié à une plateforme'}
               </Badge>
               <p className="mb-3 text-[12.5px] text-(--lm-encre-2)">
-                Connectez vos plateformes et cochez ce logement dans{' '}
+                Cochez ce logement dans{' '}
                 <Link to="/erp/logements/connexions" className="text-(--lm-or-texte) hover:underline">
-                  Logements → Connexions
-                </Link>
-                  : ses réservations et ses messages arriveront tout seuls.
+                  Connexions
+                </Link>{' '}
+                pour importer ses réservations.
               </p>
               <Repli titre="Avancé" description="Relier à la main une annonce déjà importée, pour éviter un logement en double.">
                 <Field label="Identifiant d’annonce (Repull)">
@@ -141,14 +140,6 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
               </Repli>
             </>
           )}
-        </Card>
-        <Card>
-          <CardHeader titre="Accès voyageur" />
-          <p className="flex items-center gap-2 text-[13.5px]">
-            <KeyRound className="size-4 text-(--lm-or-texte)" aria-hidden />
-            {LIBELLES.serrure[l.serrure]}
-          </p>
-          {l.serrure === 'cles' && <p className="mt-2 text-[12.5px] text-(--lm-alerte)">Remise de clés : accès non sécurisé au sens de la checklist.</p>}
         </Card>
       </div>
     </div>

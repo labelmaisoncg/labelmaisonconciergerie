@@ -28,7 +28,7 @@ export default function TableauDeBord() {
     <>
       <PageHeader
         titre={`${salut} ${d.utilisateur.nom.split(' ')[0]}`}
-        sousTitre={`Nous sommes ${date}.`}
+        sousTitre={date.charAt(0).toUpperCase() + date.slice(1)}
         actions={
           <MenuActions
             texte
@@ -55,7 +55,6 @@ export default function TableauDeBord() {
         ouvert={semaine}
         onFermer={() => setSemaine(false)}
         titre="Les 7 prochains jours"
-        sousTitre="Arrivées, départs et ménages, jour par jour."
         pied={
           <ButtonLink to="/erp/reservations" variant="secondary">
             Voir le planning complet

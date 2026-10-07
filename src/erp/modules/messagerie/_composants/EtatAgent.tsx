@@ -101,14 +101,8 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
     }
   };
 
-  if (mode !== 'reel') {
-    return (
-      <Card>
-        <h3 className="text-[15px] font-semibold text-(--lm-encre)">Votre agent en ce moment</h3>
-        <p className="mt-1 text-[13px] text-(--lm-encre-2)">Données de démonstration : l’agent ne tourne que sur l’ERP en ligne.</p>
-      </Card>
-    );
-  }
+  // En démonstration, l'agent ne tourne pas : rien à montrer (le bandeau « Données de démonstration » le dit déjà).
+  if (mode !== 'reel') return null;
 
   const c = etat?.cles;
   const dernier = etat?.etat?.dernier;
@@ -120,10 +114,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
   return (
     <Card>
       <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-semibold text-(--lm-encre)">Votre agent en ce moment</h3>
-          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">S’il fonctionne, et ce qu’il a fait à son dernier passage.</p>
-        </div>
+        <h3 className="min-w-0 flex-1 text-[15px] font-semibold text-(--lm-encre)">Votre agent en ce moment</h3>
         <Button size="sm" variant="ghost" icone={<RefreshCw className={cn(chargement && 'animate-spin')} />} onClick={() => void relire()} disabled={chargement}>
           Actualiser
         </Button>
@@ -190,9 +181,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
         <Button variant="secondary" icone={<Play />} onClick={() => void lancer()} chargement={lancement} disabled={lancement || lectureSeule || !c?.ia || etat?.etat?.enCours}>
           Lancer l’agent maintenant
         </Button>
-        <span className="text-[12.5px] text-(--lm-encre-3)">
-          {lectureSeule ? 'Réservé aux gérants et aux opérations.' : 'Il relève les nouveaux messages, puis répond ou vous passe la main.'}
-        </span>
+        {lectureSeule && <span className="text-[12.5px] text-(--lm-encre-3)">Réservé aux gérants et aux opérations.</span>}
       </div>
       {etat?.avertissement && <p className="mt-2 text-[12.5px] text-(--lm-alerte)">{etat.avertissement}</p>}
     </Card>

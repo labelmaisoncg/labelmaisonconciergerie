@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Bot, Eye, EyeOff, KeyRound, ShieldCheck, X } from 'lucide-react';
-import { Alert, Badge, Button, Callout, Card, CardHeader, Field, Input, ProgressBar, Textarea } from '../../../ui';
+import { Eye, EyeOff, KeyRound, X } from 'lucide-react';
+import { Aide, Alert, Badge, Button, Card, CardHeader, Field, Input, ProgressBar, Textarea } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { FicheLogement, Logement } from '../../../data/types';
@@ -61,9 +61,11 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
   return (
     <form onSubmit={enregistrer} className="grid grid-cols-1 gap-5 lg:grid-cols-3">
       <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
-        <Callout tone="or" icone={<Bot />} titre="Source de vérité de l’agent IA">
-          Cette fiche est la seule source que l’agent IA utilise pour répondre aux voyageurs. Une fiche incomplète bloque la messagerie automatique.
-        </Callout>
+        <Aide className="mb-0">
+          Cette fiche est la seule source que l’agent IA utilise pour répondre aux voyageurs : une fiche incomplète bloque la messagerie
+          automatique. Code wifi et code d’accès ne sont transmis qu’aux voyageurs dont la réservation est confirmée, dans les 48 h avant
+          l’arrivée.
+        </Aide>
 
         <Card>
           <CardHeader titre="Connexion wifi" />
@@ -71,7 +73,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
             <Field label="Nom du réseau">
               <Input value={f.wifiNom} onChange={(e) => maj('wifiNom', e.target.value)} />
             </Field>
-            <Field label="Code wifi" aide="Masqué par défaut.">
+            <Field label="Code wifi">
               <Secret valeur={f.wifiCode} onChange={(v) => maj('wifiCode', v)} />
             </Field>
           </div>
@@ -86,17 +88,15 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
             <Field label="Départ avant">
               <Input type="time" value={f.heureDepart} onChange={(e) => maj('heureDepart', e.target.value)} />
             </Field>
-            <Field label="Instructions d’accès" className="sm:col-span-2" aide="Emplacement de la boîte ou de la serrure, étage, digicode de l’immeuble. Jamais le code de la boîte : il change à chaque séjour.">
+            <Field label="Instructions d’accès" className="sm:col-span-2" aide="Jamais le code de la boîte : il change à chaque séjour.">
               <Textarea value={f.acces} onChange={(e) => maj('acces', e.target.value)} rows={3} />
             </Field>
             <div className="flex items-center gap-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) px-3 py-2.5 sm:col-span-2">
               <KeyRound className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
-              <div className="min-w-0 flex-1 text-[13px]">
-                <p className="font-medium">Code d’accès : {LIBELLES.serrure[l.serrure]}</p>
-                <p className="text-(--lm-encre-2)">
-                  {l.serrure === 'cles' ? 'Remise en main propre, aucun code.' : 'Code unique généré pour chaque séjour, jamais stocké en clair ici.'}
-                </p>
-              </div>
+              <p className="min-w-0 flex-1 text-[13px]">
+                <span className="font-medium">Code d’accès : {LIBELLES.serrure[l.serrure]}</span>
+                <span className="text-(--lm-encre-2)">{l.serrure === 'cles' ? ', remise en main propre.' : ', code unique par séjour, jamais stocké ici.'}</span>
+              </p>
               <span aria-label="Code masqué" className="font-mono tracking-widest text-(--lm-encre-3)">••••</span>
             </div>
             <Field label="Parking" className="sm:col-span-2">
@@ -151,7 +151,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
       <div className="flex min-w-0 flex-col gap-5 lg:sticky lg:top-4 lg:self-start">
         <Card>
-          <CardHeader titre="Complétude" description="Champs utilisés par l’agent IA." />
+          <CardHeader titre="Complétude" />
           <ProgressBar valeur={c.ratio} afficherValeur tone={c.ratio === 1 ? 'succes' : 'alerte'} label={c.ratio === 1 ? 'Fiche complète' : `${c.manquants.length} champ${c.manquants.length > 1 ? 's' : ''} manquant${c.manquants.length > 1 ? 's' : ''}`} />
           {c.manquants.length > 0 && (
             <Alert tone="alerte" titre="Messagerie automatique bloquée" className="mt-3">
@@ -170,9 +170,6 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
             {enregistre && !modifie && <p role="status" className="text-center text-[12.5px] text-(--lm-succes)">Fiche enregistrée.</p>}
           </div>
         </Card>
-        <Callout tone="info" icone={<ShieldCheck />} titre="Confidentialité des accès">
-          Code wifi et code d’accès ne sont transmis qu’aux voyageurs dont la réservation est confirmée, dans les 48 h précédant l’arrivée.
-        </Callout>
       </div>
     </form>
   );
