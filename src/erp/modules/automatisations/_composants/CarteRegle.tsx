@@ -38,12 +38,13 @@ export function CarteRegle({ regle, active, declenchements, onBasculer }: CarteR
         </h3>
         <Interrupteur actif={active} onChange={onBasculer} label={`${active ? 'Désactiver' : 'Activer'} : ${regle.nom}`} />
       </div>
-      <p className="mt-1.5 flex-1 text-[13px] leading-relaxed text-(--lm-encre-2)">{regle.description}</p>
+      <p className="mt-1.5 line-clamp-2 flex-1 text-[13px] leading-relaxed text-(--lm-encre-2)" title={regle.description}>
+        {regle.description}
+      </p>
       <div className="mt-3 flex flex-wrap items-center gap-1.5 text-[12px]">
         <Badge icone={<Icone />}>{d.libelle}</Badge>
-        {regle.spec && <Badge tone="or">SPEC {regle.spec}</Badge>}
         <span className="lm-chiffres ml-auto text-(--lm-encre-3)">
-          {active ? `déclenchée ${declenchements} fois (30 j)` : 'en pause'}
+          {active ? (declenchements ? `${declenchements} fois en 30 jours` : null) : 'en pause'}
         </span>
       </div>
     </article>

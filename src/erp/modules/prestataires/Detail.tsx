@@ -6,10 +6,10 @@ import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
 import { prestataireConforme } from '../../data/selectors';
 import type { TypeDocument } from '../../data/types';
-import { Alert, Avatar, Button, Card, EmptyState, PageHeader, StatusBadge, Tabs } from '../../ui';
+import { Alert, Avatar, Button, Card, EmptyState, MenuActions, PageHeader, StatusBadge, Tabs } from '../../ui';
 import { Retour, useRetour } from '../menages/_composants/retour';
 import { Missions, Paiements, Qualite } from './_composants/Activite';
-import { BadgeConformite, RegleConformite } from './_composants/conformite';
+import { BadgeConformite } from './_composants/conformite';
 import { DocumentModal } from './_composants/DocumentModal';
 import { Documents, Tarifs } from './_composants/Documents';
 
@@ -71,21 +71,29 @@ export function Detail() {
         }
         actions={
           <>
-            <Button icone={<Upload />} onClick={() => setDocType('contrat')}>Mettre à jour un document</Button>
-            {p.statut === 'actif' && <Button variant="danger" icone={<Pause />} onClick={suspendre}>Suspendre</Button>}
-            {p.statut === 'suspendu' && <Button variant="primary" icone={<Play />} onClick={reactiver}>Réactiver</Button>}
+            {p.statut === 'suspendu' ? (
+              <Button variant="primary" icone={<Play />} onClick={reactiver}>Réactiver</Button>
+            ) : (
+              <Button icone={<Upload />} onClick={() => setDocType('contrat')}>Mettre à jour un document</Button>
+            )}
+            <MenuActions
+              label="Plus"
+              texte
+              actions={[
+                p.statut === 'suspendu' && { libelle: 'Mettre à jour un document', icone: <Upload />, onClick: () => setDocType('contrat') },
+                p.statut === 'actif' && { libelle: 'Suspendre', icone: <Pause />, onClick: suspendre },
+              ]}
+            />
           </>
         }
       />
 
       <Retour message={message} onFermer={fermer} />
-      {!verdict.ok ? (
+      {!verdict.ok && (
         <Alert tone="danger" titre="Il manque des papiers : on ne peut pas lui confier de ménage" className="mb-4">
           {verdict.raisons.join(' ')}
           {aVenir.length > 0 && ` ${aVenir.length} mission(s) à venir lui sont encore attribuées : réattribuez-les.`}
         </Alert>
-      ) : (
-        <RegleConformite className="mb-4" />
       )}
 
       <Card className="mb-5">

@@ -62,7 +62,6 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
     <Card>
       <CardHeader
         titre="Journal des automatisations"
-        description="Ce que l’ERP a fait ou constaté. Les alertes sont les exceptions à traiter."
         actions={onVider && evenements.length > 0 ? <Button size="sm" variant="ghost" onClick={onVider}>Vider</Button> : undefined}
       />
       <div className="mb-3 flex flex-col gap-2">
@@ -72,12 +71,16 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
           actifs={niveaux}
           onChange={setNiveaux}
         />
-        <FilterChips
-          label="Filtrer par domaine"
-          filtres={ORDRE_DOMAINES.map((d) => ({ cle: d, libelle: LIBELLES_DOMAINES[d] }))}
-          actifs={domaines}
-          onChange={setDomaines}
-        />
+        <details open={domaines.length > 0 || undefined}>
+          <summary className="cursor-pointer rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Filtrer par domaine</summary>
+          <FilterChips
+            className="mt-2"
+            label="Filtrer par domaine"
+            filtres={ORDRE_DOMAINES.map((d) => ({ cle: d, libelle: LIBELLES_DOMAINES[d] }))}
+            actifs={domaines}
+            onChange={setDomaines}
+          />
+        </details>
       </div>
       {filtres.length === 0 ? (
         <EmptyState titre="Rien à signaler" description="Aucun événement ne correspond à ces filtres." icone={<Zap />} />
@@ -87,7 +90,6 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
             const n = NIVEAUX.find((x) => x.cle === e.niveau) ?? NIVEAUX[2];
             const Icone = n.icone;
             const lien = lienDe(e.entite, e.entiteId);
-            const domaine = domaineDe(e.regle);
             return (
               <li key={e.id} className="flex items-start gap-3 py-2.5">
                 <span aria-hidden className={cn('mt-0.5 grid size-7 shrink-0 place-items-center rounded-md [&_svg]:size-4', TON_LAVIS[n.ton])}>
@@ -100,7 +102,6 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
                   </p>
                   <p className="mt-0.5 text-[12px] text-(--lm-encre-3)">
                     <span className="lm-chiffres">{dateHeure(e.horodatage)}</span> · {nomDe(e.regle)}
-                    {domaine && ` · ${LIBELLES_DOMAINES[domaine]}`}
                   </p>
                 </div>
                 {lien && (

@@ -41,9 +41,6 @@ export function EtapeMandat({ b, maj, erreurs }: PropsEtape) {
           {b.essai && b.dateDebut && <span className="text-(--lm-encre-2)"> (jusqu’au {dateCourte(ajouterMois(b.dateDebut, 1))})</span>}
         </span>
       </label>
-      <Alert tone="info" className="sm:col-span-2" titre="Clause de concertation">
-        Le propriétaire ne modifie pas l’annonce sans concertation. Le mandat sera créé au statut « Envoyé » : il reste à le faire signer.
-      </Alert>
     </div>
   );
 }

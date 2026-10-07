@@ -31,10 +31,9 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
         <CardHeader
           className="px-4 pt-4 sm:px-5"
           titre={`Sans personne (${aAttribuer.length})`}
-          description="Les plus pressés d’abord : le prochain voyageur arrive bientôt."
         />
         {aAttribuer.length === 0 ? (
-          <EmptyState icone={<CheckCircle2 />} titre="Chaque ménage a quelqu’un" description="Personne n’est oublié, tout est prévu." />
+          <EmptyState icone={<CheckCircle2 />} titre="Chaque ménage a quelqu’un." />
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {aAttribuer.map(({ m, u }) => (
@@ -63,10 +62,9 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
         <CardHeader
           className="px-4 pt-4 sm:px-5"
           titre={`À vérifier (${aValider.length})`}
-          description="Vérifiez la liste cochée et les photos avant/après. Un ménage est payé seulement une fois vérifié."
         />
         {aValider.length === 0 ? (
-          <EmptyState icone={<CheckCircle2 />} titre="Rien à vérifier" description="Tous les ménages terminés ont été vus." />
+          <EmptyState icone={<CheckCircle2 />} titre="Rien à vérifier." />
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {aValider.map((m) => {

@@ -19,7 +19,7 @@ export default function Entreprise() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card>
-        <CardHeader titre="Identité" description="Les informations qui apparaissent sur vos contrats, factures et relevés." actions={<Building2 className="size-4 text-(--lm-encre-3)" aria-hidden />} />
+        <CardHeader titre="Identité" actions={<Building2 className="size-4 text-(--lm-encre-3)" aria-hidden />} />
         <dl className="divide-y divide-(--lm-bord) text-[13.5px]">
           {lignes.map(([l, v]) => (
             <div key={l} className="grid grid-cols-[130px_minmax(0,1fr)] gap-3 py-2">
@@ -28,19 +28,18 @@ export default function Entreprise() {
             </div>
           ))}
         </dl>
-        <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">Jamais « micro-entreprise » dans les documents : la société est une SASU.</p>
       </Card>
       <Card>
         <CardHeader titre="Conditions commerciales" actions={<Percent className="size-4 text-(--lm-encre-3)" aria-hidden />} />
         <p className="lm-chiffres text-[28px] leading-none font-semibold">
           {COMMISSION_CIBLE_MIN} à {COMMISSION_CIBLE_MAX} %
         </p>
-        <p className="mt-1 text-[13px] text-(--lm-encre-2)">Commission cible des nouveaux mandats, plus frais de ménage facturés à chaque séjour.</p>
-        <p className="mt-4 text-[13px]">
-          {anciens.length
-            ? `${pluriel(anciens.length, 'mandat signé', 'mandats signés')} sur ${nombre(signes.length)} encore aux anciennes conditions (${[...new Set(anciens.map((m) => `${nombre(m.commissionPct)} %`))].join(', ')}) : migration à proposer au renouvellement.`
-            : 'Tous les mandats signés sont dans la cible.'}
-        </p>
+        <p className="mt-1 text-[13px] text-(--lm-encre-2)">Commission cible des nouveaux contrats, plus les frais de ménage.</p>
+        {anciens.length > 0 && (
+          <p className="mt-4 text-[13px]">
+            {`${pluriel(anciens.length, 'contrat signé', 'contrats signés')} sur ${nombre(signes.length)} encore aux anciennes conditions (${[...new Set(anciens.map((m) => `${nombre(m.commissionPct)} %`))].join(', ')}).`}
+          </p>
+        )}
       </Card>
     </div>
   );

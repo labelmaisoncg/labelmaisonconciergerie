@@ -1,9 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Info } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI, euros, moisAnnee, nombre, pluriel } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
-import { Alert, Field, PageHeader, Select, Stat, Table, type Colonne } from '../../ui';
+import { Field, PageHeader, Select, Stat, Table, type Colonne } from '../../ui';
 import { derniersMois } from './_calculs';
 import { lignesPaiement, type LignePaiement } from './_composants/paiements';
 import { BadgePaiement, DetailPaiement } from './_composants/DetailPaiement';
@@ -37,13 +36,11 @@ export default function Paiements({ onglets }: PageFinanceProps) {
     { cle: 'validees', titre: 'Validées', align: 'droite', rendu: (l) => nombre(l.validees.length), tri: (a, b) => a.validees.length - b.validees.length },
     {
       cle: 'exclues',
-      titre: 'Non validées (exclues)',
+      titre: 'À vérifier',
       align: 'droite',
       rendu: (l) => (l.exclues.length ? <span className="font-medium text-(--lm-alerte)">{nombre(l.exclues.length)}</span> : '0'),
       masquerMobile: true,
     },
-    { cle: 'montant', titre: 'Montant validé', align: 'droite', rendu: (l) => euros(l.montant), masquerMobile: true },
-    { cle: 'retenue', titre: 'Retenue', align: 'droite', rendu: (l) => (l.retenue ? `- ${euros(l.retenue)}` : '-'), masquerMobile: true },
     { cle: 'net', titre: 'Net à verser', align: 'droite', rendu: (l) => <span className="font-semibold">{euros(l.net)}</span>, tri: (a, b) => a.net - b.net },
     { cle: 'statut', titre: 'Statut', rendu: (l) => <BadgePaiement ligne={l} /> },
   ];
@@ -53,7 +50,7 @@ export default function Paiements({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Paiements prestataires' }]}
         titre="Payer les prestataires"
-        sousTitre="Ce que vous devez à chaque prestataire. Seuls les ménages vérifiés (liste cochée, photos avant/après) sont payés."
+        sousTitre="Seuls les ménages vérifiés sont payés."
       />
       {onglets}
 
@@ -64,17 +61,12 @@ export default function Paiements({ onglets }: PageFinanceProps) {
         {enCours && <p className="pb-2 text-[12.5px] text-(--lm-encre-2)">Période en cours : montants provisoires.</p>}
       </div>
 
+      {lignes.length > 0 && (
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="À payer" valeur={euros(aPayer.reduce((s, l) => s + l.net, 0), true)} tone={aPayer.length ? 'alerte' : 'neutre'} aide={pluriel(aPayer.length, 'prestataire')} />
         <Stat label="Paiements en attente" valeur={nombre(bloques.length)} tone={bloques.length ? 'danger' : 'neutre'} aide={bloques[0]?.paiement?.motifRetenue ? 'la raison est dans le détail' : undefined} />
-        <Stat label="Ménages pas encore vérifiés" valeur={nombre(exclues)} tone={exclues ? 'alerte' : 'neutre'} aide="payés dès qu’ils sont vérifiés" />
+        <Stat label="Ménages à vérifier" valeur={nombre(exclues)} tone={exclues ? 'alerte' : 'neutre'} to={exclues ? '/erp/menages' : undefined} aide={exclues ? 'payés dès qu’ils sont vérifiés' : undefined} />
       </div>
-
-      {exclues > 0 && (
-        <Alert tone="info" icone={<Info />} className="mb-4" titre="Des ménages attendent d’être vérifiés">
-          {pluriel(exclues, 'ménage')} de {moisAnnee(periode)} ne {exclues > 1 ? 'sont' : 'est'} pas encore vérifié{exclues > 1 ? 's' : ''} : ils seront payés ensuite.
-          Vérifiez-les dans Opérations, onglet Ménages.
-        </Alert>
       )}
 
       <Table

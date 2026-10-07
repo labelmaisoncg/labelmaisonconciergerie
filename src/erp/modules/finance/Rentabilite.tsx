@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useErp } from '../../data/store';
 import { euros, nombre, pourcentage } from '../../data/format';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
-import { Badge, FilterChips, PageHeader, Stat, Table, type Colonne } from '../../ui';
+import { Aide, Badge, FilterChips, PageHeader, Stat, Table, type Colonne } from '../../ui';
 import { fenetre12Mois, rentabiliteParLogement, type LigneRentabilite } from './_calculs';
+import { FinanceVide, financeSansActivite } from './_composants/FinanceVide';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
 
 /** Sous ce taux de marge (marge / CA Label Maison), le logement est signalé. */
@@ -54,20 +55,19 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       ),
       tri: (a, b) => a.nom.localeCompare(b.nom),
     },
-    { cle: 'pct', titre: 'Mandat', align: 'droite', rendu: (l) => (l.commissionPct === undefined ? '-' : `${nombre(l.commissionPct)} %`), tri: (a, b) => (a.commissionPct ?? 0) - (b.commissionPct ?? 0) },
-    { cle: 'brut', titre: 'Revenu brut géré', align: 'droite', rendu: (l) => <span className="text-(--lm-encre-2)">{euros(l.brut, true)}</span>, tri: (a, b) => a.brut - b.brut },
-    { cle: 'commission', titre: 'Commission LM', align: 'droite', rendu: (l) => euros(l.commission, true), tri: (a, b) => a.commission - b.commission },
+    { cle: 'brut', titre: 'Payé par les voyageurs', align: 'droite', rendu: (l) => <span className="text-(--lm-encre-2)">{euros(l.brut, true)}</span>, tri: (a, b) => a.brut - b.brut },
+    { cle: 'commission', titre: 'Commission', align: 'droite', rendu: (l) => euros(l.commission, true), tri: (a, b) => a.commission - b.commission },
     { cle: 'frais', titre: 'Ménage encaissé', align: 'droite', rendu: (l) => euros(l.fraisMenage, true), tri: (a, b) => a.fraisMenage - b.fraisMenage, masquerMobile: true },
     { cle: 'cout', titre: 'Coût ménage', align: 'droite', rendu: (l) => signe(-l.coutMenage), tri: (a, b) => a.coutMenage - b.coutMenage, masquerMobile: true },
-    { cle: 'charges', titre: 'Charges affectées', align: 'droite', rendu: (l) => (l.charges ? signe(-l.charges) : '-'), tri: (a, b) => a.charges - b.charges, masquerMobile: true },
+    { cle: 'charges', titre: 'Dépenses', align: 'droite', rendu: (l) => (l.charges ? signe(-l.charges) : '-'), tri: (a, b) => a.charges - b.charges, masquerMobile: true },
     {
       cle: 'marge',
-      titre: 'Marge LM',
+      titre: 'Il vous reste',
       align: 'droite',
       rendu: (l) => <span className={`font-semibold ${l.marge < 0 ? 'text-(--lm-danger)' : ''}`}>{signe(l.marge)}</span>,
       tri: (a, b) => a.marge - b.marge,
     },
-    { cle: 'taux', titre: 'Taux de marge', align: 'droite', rendu: (l) => (l.commission + l.fraisMenage ? pourcentage(l.tauxMarge) : '-'), tri: (a, b) => a.tauxMarge - b.tauxMarge },
+    { cle: 'taux', titre: 'Marge', align: 'droite', rendu: (l) => (l.commission + l.fraisMenage ? pourcentage(l.tauxMarge) : '-'), tri: (a, b) => a.tauxMarge - b.tauxMarge },
   ];
 
   return (
@@ -75,11 +75,15 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       <PageHeader
         fil={[...FIL_FINANCE, { libelle: 'Rentabilité par logement' }]}
         titre="Rentabilité par logement"
-        sousTitre="Ce que chaque logement vous rapporte sur les 12 derniers mois : vos commissions et frais de ménage, moins les ménages payés et les dépenses du logement."
+        sousTitre="Sur les 12 derniers mois."
       />
       {onglets}
+      {financeSansActivite(d) ? (
+        <FinanceVide />
+      ) : (
+        <>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="Facturé en 12 mois" valeur={euros(somme('commission') + somme('fraisMenage'), true)} aide={`sur ${euros(somme('brut'), true)} payés par les voyageurs`} />
         <Stat label="Ce qu’il vous reste" valeur={signe(somme('marge'))} tone={somme('marge') < 0 ? 'danger' : 'succes'} />
         <Stat
@@ -110,10 +114,13 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
         triInitial={{ cle: 'marge', sens: 'asc' }}
         vide="Aucun logement à surveiller, tout va bien."
       />
-      <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">
-        Coût ménage : missions de ménage et de linge validées uniquement (pas de validation, pas de paiement). Charges générales non réparties. Marge faible : moins de{' '}
+      <Aide titre="Comment c’est calculé ?" className="mt-4">
+        Ce que chaque logement vous rapporte : vos commissions et frais de ménage, moins les ménages payés et les dépenses du logement. Coût ménage : missions
+        de ménage et de linge validées uniquement (pas de validation, pas de paiement). Charges générales non réparties. Marge faible : moins de{' '}
         {pourcentage(SEUIL_MARGE_FAIBLE)} du chiffre d’affaires du logement.
-      </p>
+      </Aide>
+        </>
+      )}
     </>
   );
 }

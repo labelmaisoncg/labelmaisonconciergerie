@@ -134,7 +134,7 @@ export function CarteSynchroRepull() {
     <Card>
       <CardHeader
         titre="Airbnb et Booking.com"
-        description="Réservations, voyageurs, messages et avis arrivent seuls dans l’ERP : chaque matin, et à la demande. Vos prix et calendriers ne sont jamais modifiés."
+        description="Vos réservations et messages arrivent seuls, chaque matin. Vos prix et calendriers ne sont jamais modifiés."
         actions={
           <Button variant="primary" icone={<RefreshCw />} chargement={s.enCours} disabled={!s.disponible || s.enCours} onClick={() => void s.synchroniser()}>
             Synchroniser maintenant
@@ -161,14 +161,12 @@ export function CarteSynchroRepull() {
           {s.derniere && <dd className="mt-1 text-[12.5px] text-(--lm-encre-2)">{s.derniere.details}</dd>}
         </div>
       </dl>
-      <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
-        Un nouveau compte ou un nouveau logement ?{' '}
-        <Link to="/erp/logements/connexions" className="text-(--lm-or-texte) hover:underline">
-          Connectez-le et choisissez vos logements
+      <p className="mt-3 text-[12.5px]">
+        <Link to="/erp/logements/connexions" className="font-medium text-(--lm-or-texte) hover:underline">
+          Gérer vos connexions
         </Link>
-        {' '}: il arrive ici à la mise à jour suivante.
       </p>
-      <Repli className="mt-3" titre="Avancé" description="Consommation du forfait Repull (notre service de connexion).">
+      <Repli className="mt-3" titre="Avancé">
         <dl className="text-[13.5px]">
           <div>
             <dt className="text-[12px] text-(--lm-encre-3)">Appels Repull ce mois</dt>

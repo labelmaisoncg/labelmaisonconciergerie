@@ -100,19 +100,13 @@ export function Configurer() {
   return (
     <div className="space-y-4 pb-24">
       {bloque && (
-        <Alert tone="info" titre="Vous êtes en lecture seule">
-          Vous pouvez consulter les réglages, mais seul un gérant peut les changer.
-        </Alert>
+        <Alert tone="info" titre="Lecture seule : seul un gérant peut changer ces réglages." />
       )}
 
       <Card className={cn('flex flex-wrap items-center gap-4', f.actif ? 'border-(--lm-succes)/40' : 'border-(--lm-alerte)/40')}>
         <div className="min-w-0 flex-1">
           <p className="text-[16px] font-semibold text-(--lm-encre)">{f.actif ? 'Votre agent répond aux voyageurs' : 'Votre agent est en pause'}</p>
-          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">
-            {f.actif
-              ? 'Il répond seul aux questions simples et vous passe la main pour le reste.'
-              : 'Il ne répond plus : tous les messages arrivent directement à l’équipe.'}
-          </p>
+          {!f.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.</p>}
         </div>
         <label className="flex items-center gap-3 text-[13.5px] font-medium text-(--lm-encre)">
           {f.actif ? 'Actif' : 'En pause'}
@@ -122,7 +116,7 @@ export function Configurer() {
 
       <EtatAgentServeur actifReglage={enregistre.actif} />
 
-      <Bloc titre="Sa façon de parler" description="Choisissez le ton ; l’exemple se met à jour tout de suite.">
+      <Bloc titre="Sa façon de parler">
         <div role="radiogroup" aria-label="Ton de l’agent" className="grid gap-2 sm:grid-cols-3">
           {TONS_AGENT.map((t) => (
             <button
@@ -133,7 +127,7 @@ export function Configurer() {
               disabled={bloque}
               onClick={() => maj({ ton: t.cle })}
               className={cn(
-                'rounded-xl border px-3.5 py-3 text-left transition-colors disabled:cursor-not-allowed',
+                'rounded-xl border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
                 f.ton === t.cle ? 'border-(--lm-or) bg-(--lm-or-lavis)' : 'border-(--lm-bord) hover:border-(--lm-bord-fort)',
               )}
             >
@@ -141,7 +135,7 @@ export function Configurer() {
                 {f.ton === t.cle && <Check className="size-4 text-(--lm-or-texte)" aria-hidden />}
                 {t.libelle}
               </span>
-              <span className="mt-0.5 block text-[12.5px] text-(--lm-encre-2)">{t.description}</span>
+              <span className="sr-only">{t.description}</span>
             </button>
           ))}
         </div>
@@ -164,7 +158,6 @@ export function Configurer() {
               onChange={(e) => maj({ signature: e.target.value })}
               placeholder="L’équipe Label Maison"
             />
-            <p className="mt-1 text-[12px] text-(--lm-encre-3)">Ajoutée à la fin de chaque réponse.</p>
           </div>
           <fieldset>
             <legend className="text-[13px] font-medium text-(--lm-encre)">Langues</legend>
@@ -189,7 +182,6 @@ export function Configurer() {
                 );
               })}
             </div>
-            <p className="mt-1 text-[12px] text-(--lm-encre-3)">Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.</p>
           </fieldset>
         </div>
       </Bloc>
@@ -229,28 +221,10 @@ export function Configurer() {
           </div>
         )}
         {horairesInvalides && <p className="mt-2 text-[12.5px] font-medium text-(--lm-danger)">L’heure de fin doit être après l’heure de début.</p>}
-        <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">
-          {f.horaires.mode === 'toujours'
-            ? 'Les voyageurs ont une réponse à toute heure, même la nuit.'
-            : 'En dehors de ces heures, votre agent ne répond pas : les messages attendent l’équipe.'}
-        </p>
       </Bloc>
 
-      <Bloc titre="Ce qu’il fait seul, ce qu’il vous confie" description="Dans le doute, votre agent vous passe toujours la main.">
-        <div className="grid gap-5 md:grid-cols-2">
-          <div>
-            <p className="mb-2 text-[13px] font-semibold text-(--lm-encre)">Il répond seul à</p>
-            <ul className="space-y-1.5 text-[13.5px] text-(--lm-encre-2)">
-              {SEUL.map((s) => (
-                <li key={s} className="flex items-start gap-2">
-                  <Check className="mt-0.5 size-4 shrink-0 text-(--lm-succes)" aria-hidden />
-                  {s}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <div>
-            <p className="mb-1 text-[13px] font-semibold text-(--lm-encre)">Il vous confie</p>
+      <Bloc titre="Ce qu’il vous confie">
+        <div className="grid gap-x-5 md:grid-cols-2">
             <Case coche verrou>
               Tout ce qui touche à l’argent : remboursement, remise, supplément
             </Case>
@@ -279,10 +253,9 @@ export function Configurer() {
                 nuits ou plus
               </span>
             </Case>
-          </div>
         </div>
         <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-(--lm-bord) pt-4 text-[13.5px] text-(--lm-encre)">
-          <label htmlFor="agent-delai">Si personne n’a répondu à une conversation qu’il vous a confiée, vous prévenir après</label>
+          <label htmlFor="agent-delai">Sans réponse de l’équipe, vous prévenir après</label>
           <Select
             id="agent-delai"
             className="w-40"
@@ -292,11 +265,19 @@ export function Configurer() {
             options={DELAIS}
           />
         </div>
-        <Aide titre="Les règles qu’il respecte toujours" className="mt-4 mb-0">
-          <ul className="list-disc space-y-1 pl-5">
+        <Aide titre="Ce qu’il fait seul et les règles qu’il respecte" className="mt-4 mb-0">
+          <p className="font-medium text-(--lm-encre)">Il répond seul à :</p>
+          <ul className="mt-1 mb-3 list-disc space-y-1 pl-5">
+            {SEUL.map((s) => (
+              <li key={s}>{s}</li>
+            ))}
+          </ul>
+          <p className="font-medium text-(--lm-encre)">Ses règles :</p>
+          <ul className="mt-1 list-disc space-y-1 pl-5">
+            <li>Dans le doute, il vous passe toujours la main.</li>
             <li>Il n’invente rien : si l’information n’est pas dans la fiche du logement, il dit qu’il vérifie et vous passe la main.</li>
             <li>Il ne promet jamais d’argent, même un petit geste.</li>
-            <li>Il répond dans la langue du voyageur.</li>
+            <li>Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.</li>
             <li>Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48 h ou sont déjà sur place.</li>
           </ul>
           <p className="mt-2">Ces règles valent aussi pour l’équipe.</p>
@@ -308,22 +289,19 @@ export function Configurer() {
           <Interrupteur actif={f.telegram} onChange={(v) => maj({ telegram: v })} label="Prévenir sur Telegram" disabled={bloque} />
           <span className="text-[13.5px]">
             <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
-            <span className="block text-(--lm-encre-2)">
-              Une copie de chaque réponse de l’agent, une alerte dès qu’il vous confie une conversation, et un rappel si personne n’a répondu à temps. Le
-              groupe Telegram de l’équipe est branché par la personne qui gère le site (voir « Détails techniques » plus haut).
-            </span>
+            <span className="block text-(--lm-encre-2)">Copie de ses réponses, alertes et rappels.</span>
           </span>
         </label>
       </Bloc>
 
-      <Bloc titre="Ce que votre agent sait de chaque logement" description="Il puise ses réponses dans la fiche du logement : wifi, accès, horaires, règles, équipements.">
+      <Bloc titre="Fiches des logements">
         {incompletes.length ? (
           <p className="text-[13.5px] text-(--lm-encre)">
             <strong>{pluriel(incompletes.length, 'fiche est incomplète', 'fiches sont incomplètes')}</strong>
-            <span className="text-(--lm-encre-2)"> ({incompletes.slice(0, 3).map((l) => l.nom).join(', ')}{incompletes.length > 3 ? '…' : ''}). Pour ces logements, votre agent vous passe la main.</span>
+            <span className="text-(--lm-encre-2)"> : votre agent vous passe la main pour ces logements.</span>
           </p>
         ) : (
-          <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes : votre agent peut répondre partout.</p>
+          <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
         )}
         <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />

@@ -20,6 +20,7 @@ export default function TableauDeBord() {
   const d = useErp();
   const [semaine, setSemaine] = useState(false);
   const elements = useMemo(() => construireATraiter(d.donnees), [d.donnees]);
+  const vide = d.reservations.length === 0;
   const date = format(parseISO(AUJOURDHUI), 'EEEE d MMMM', { locale: fr });
   const heure = new Date().getHours();
   const salut = heure >= 18 ? 'Bonsoir' : 'Bonjour';
@@ -28,7 +29,7 @@ export default function TableauDeBord() {
     <>
       <PageHeader
         titre={`${salut} ${d.utilisateur.nom.split(' ')[0]}`}
-        sousTitre={`Nous sommes ${date}.`}
+        sousTitre={date.charAt(0).toUpperCase() + date.slice(1)}
         actions={
           <MenuActions
             texte
@@ -43,19 +44,21 @@ export default function TableauDeBord() {
 
       <Demarrage />
 
-      <Aujourdhui />
+      {/* Base encore vide : seule la carte Démarrage parle (un seul état vide, une seule action). */}
+      {!vide && <Aujourdhui />}
 
-      <div id="a-faire" className="mb-6 scroll-mt-20">
-        <ATraiter elements={elements} />
-      </div>
+      {(!vide || elements.length > 0) && (
+        <div id="a-faire" className="mb-6 scroll-mt-20">
+          <ATraiter elements={elements} />
+        </div>
+      )}
 
-      <VosChiffres />
+      {!vide && <VosChiffres />}
 
       <Drawer
         ouvert={semaine}
         onFermer={() => setSemaine(false)}
         titre="Les 7 prochains jours"
-        sousTitre="Arrivées, départs et ménages, jour par jour."
         pied={
           <ButtonLink to="/erp/reservations" variant="secondary">
             Voir le planning complet

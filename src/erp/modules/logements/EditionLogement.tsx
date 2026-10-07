@@ -144,7 +144,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
       ouvert={ouvert}
       onFermer={onFermer}
       titre={logement ? `Modifier ${logement.nom}` : 'Nouveau logement'}
-      sousTitre={logement ? 'Informations de base du logement.' : 'Le logement démarre « En lancement » : il ne passera actif qu’avec un mandat signé et une checklist complète.'}
+      sousTitre={logement ? undefined : 'Il démarre « En lancement ».'}
       pied={
         <>
           <Button onClick={onFermer}>Annuler</Button>

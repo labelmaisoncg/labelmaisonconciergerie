@@ -60,14 +60,8 @@ export default function Automatisations() {
     <>
       <PageHeader
         titre="Automatisations"
-        sousTitre="Ce que l’ERP fait tout seul pour vous. Vous n’avez qu’à regarder les exceptions."
         actions={<Button variant="primary" icone={<Play />} onClick={lancer}>Vérifier maintenant</Button>}
       />
-
-      <Aide titre="Que fait l’ERP tout seul ?">
-        Il prévoit un ménage à chaque départ, le confie à un prestataire en règle, organise les contrôles, relance, prépare les paiements et les
-        factures du mois. Il tourne à chaque changement et une fois par jour. Chaque règle peut être mise en pause ci-dessous.
-      </Aide>
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat
@@ -75,10 +69,10 @@ export default function Automatisations() {
           valeur={nombre(actions)}
           icone={<Zap />}
           tone="succes"
-          aide={`${clesActives.length} règles sur ${REGLES.length} en marche`}
+          aide={clesActives.length < REGLES.length ? `${REGLES.length - clesActives.length} règle${REGLES.length - clesActives.length > 1 ? 's' : ''} en pause` : undefined}
         />
-        <Stat label="Exceptions à regarder" valeur={nombre(alertes)} icone={<AlertTriangle />} tone={alertes ? 'alerte' : 'succes'} aide="sur 30 jours" />
-        <Stat label="Temps gagné" valeur={`≈ ${nombre(heures, 1)} h`} icone={<Clock />} aide={`en comptant ${MINUTES_PAR_ACTION} minutes par action`} />
+        <Stat label="Exceptions (30 jours)" valeur={nombre(alertes)} icone={<AlertTriangle />} tone={alertes ? 'alerte' : 'succes'} />
+        <Stat label="Temps gagné" valeur={`≈ ${nombre(heures, 1)} h`} icone={<Clock />} />
       </div>
 
       {resultat && (
@@ -102,7 +96,12 @@ export default function Automatisations() {
               </Section>
             );
           })}
-          <HumainSection />
+          <Aide titre="Comment ça marche ?" className="mb-0">
+            L’ERP prévoit un ménage à chaque départ, le confie à un prestataire en règle, organise les contrôles, relance, prépare les paiements et les
+            factures du mois. Il tourne à chaque changement et une fois par jour. Chaque règle peut être mise en pause. Le temps gagné compte{' '}
+            {MINUTES_PAR_ACTION} minutes par action automatique.
+            <HumainSection />
+          </Aide>
         </div>
         <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">
           <JournalAuto evenements={etat.evenements} onVider={viderJournal} />

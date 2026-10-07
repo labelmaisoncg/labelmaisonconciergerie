@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CalendarX2, SearchX } from 'lucide-react';
-import { Alert, Button, EmptyState, Modal, PageHeader, StatusBadge } from '../../../ui';
+import { Alert, Button, ButtonLink, EmptyState, Modal, PageHeader, StatusBadge } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { dateCourte, pluriel } from '../../../data/format';
 import { logementById } from '../../../data/selectors';
@@ -23,7 +23,7 @@ export function DetailReservation() {
     return (
       <>
         <PageHeader fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Réservations', to: '/erp/reservations' }, { libelle: 'Introuvable' }]} titre="Réservation introuvable" />
-        <EmptyState icone={<SearchX />} titre="Cette réservation n’existe plus" description="Elle a peut-être été annulée puis supprimée. Retrouvez les autres dans Réservations." />
+        <EmptyState icone={<SearchX />} titre="Cette réservation n’existe plus." action={<ButtonLink to="/erp/reservations">Voir les réservations</ButtonLink>} />
       </>
     );
   }
@@ -61,7 +61,7 @@ export function DetailReservation() {
       />
       {r.repull && r.statut === 'confirmee' && (
         <Alert tone="neutre" className="mb-4">
-          Réservation {r.canal === 'direct' ? 'directe' : LIBELLES.canal[r.canal]} importée automatiquement : toute modification ou annulation se fait sur la plateforme, puis arrive ici toute seule.
+          Importée de {r.canal === 'direct' ? 'la plateforme' : LIBELLES.canal[r.canal]} : modifiez ou annulez-la là-bas, la mise à jour arrive ici seule.
         </Alert>
       )}
       <div className="max-w-3xl">

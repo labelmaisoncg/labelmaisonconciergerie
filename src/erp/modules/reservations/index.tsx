@@ -4,10 +4,10 @@
  */
 import { useMemo, useState } from 'react';
 import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CalendarDays, CalendarPlus, List, LogIn, LogOut, Percent } from 'lucide-react';
-import { Button, Callout, Drawer, PageHeader, Stat, StatusBadge, Tabs, useCreationParUrl } from '../../ui';
+import { ArrowRight, CalendarDays, CalendarPlus, List, LogIn, LogOut, Percent, RefreshCw } from 'lucide-react';
+import { Button, Callout, Drawer, MenuActions, PageHeader, StatusBadge, Tabs, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
-import { AUJOURDHUI, ajouterJours, dateCourte, euros, pluriel, pourcentage } from '../../data/format';
+import { AUJOURDHUI, ajouterJours, dateCourte, dateHeure, euros, pluriel, pourcentage } from '../../data/format';
 import { adr, fenetreJours, logementById, logementsActifs, tauxOccupation } from '../../data/selectors';
 import type { Reservation } from '../../data/types';
 import { Calendrier } from './_composants/Calendrier';
@@ -15,7 +15,7 @@ import { FicheReservation, PastilleCanal } from './_composants/FicheReservation'
 import { ListeReservations } from './_composants/ListeReservations';
 import { ModalNouvelleReservation } from './_composants/ModalNouvelleReservation';
 import { DetailReservation } from './_composants/DetailReservation';
-import { LigneSynchroRepull } from '../parametres/SynchroRepull';
+import { useSynchroRepull } from '../parametres/SynchroRepull';
 
 export default function ModuleReservations() {
   return (
@@ -26,6 +26,7 @@ export default function ModuleReservations() {
   );
 }
 
+/** Les repères de la semaine, sur une ligne : le planning juste dessous montre le détail. */
 function Indicateurs() {
   const d = useErp();
   const k = useMemo(() => {
@@ -41,11 +42,20 @@ function Indicateurs() {
     };
   }, [d.reservations, d.logements]);
   return (
-    <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-      <Stat label="Logements occupés (30 jours)" valeur={pourcentage(Math.round(k.occupation * 100) / 100)} icone={<Percent />} aide={`Prix moyen : ${euros(k.adr, true)} la nuit`} />
-      <Stat label="Arrivées cette semaine" valeur={k.arrivees} icone={<LogIn />} aide="Aujourd’hui compris" />
-      <Stat label="Départs cette semaine" valeur={k.departs} icone={<LogOut />} aide="Autant de ménages à prévoir" />
-    </div>
+    <p className="lm-chiffres mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-(--lm-encre-2) [&_svg]:size-4 [&_svg]:text-(--lm-encre-3)">
+      <span className="inline-flex items-center gap-1.5" title="Sur 7 jours, aujourd’hui compris">
+        <LogIn aria-hidden />
+        <span className="font-semibold text-(--lm-encre)">{k.arrivees}</span> arrivée{k.arrivees > 1 ? 's' : ''} cette semaine
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <LogOut aria-hidden />
+        <span className="font-semibold text-(--lm-encre)">{k.departs}</span> départ{k.departs > 1 ? 's' : ''}
+      </span>
+      <span className="inline-flex items-center gap-1.5" title={`Prix moyen : ${euros(k.adr, true)} la nuit`}>
+        <Percent aria-hidden />
+        <span className="font-semibold text-(--lm-encre)">{pourcentage(Math.round(k.occupation * 100) / 100)}</span> d’occupation sur 30 jours
+      </span>
+    </p>
   );
 }
 
@@ -63,20 +73,46 @@ function PageReservations() {
 
   const logementsPlanning = d.logements.filter((l) => l.statut === 'actif' || l.statut === 'lancement');
   const courante = ouverte ? (d.reservations.find((r) => r.id === ouverte.id) ?? ouverte) : null;
+  // Synchronisation Airbnb / Booking.com : la date tient dans le sous-titre, le bouton passe dans « Plus ».
+  const synchro = useSynchroRepull();
 
   return (
     <>
       <PageHeader
         fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Réservations' }]}
         titre="Réservations"
-        sousTitre="Qui dort où, et quand. Une ligne par logement, une barre par séjour."
+        sousTitre={
+          synchro.demo
+            ? undefined
+            : synchro.derniere
+              ? `Airbnb et Booking.com à jour le ${dateHeure(synchro.derniere.horodatage)}.`
+              : 'Airbnb et Booking.com : pas encore de mise à jour.'
+        }
         actions={
-          <Button variant="primary" icone={<CalendarPlus />} onClick={() => setCreation(true)}>
-            Nouvelle réservation
-          </Button>
+          <>
+            <Button variant="primary" icone={<CalendarPlus />} onClick={() => setCreation(true)}>
+              Nouvelle réservation
+            </Button>
+            {!synchro.demo && (
+              <MenuActions
+                actions={[
+                  {
+                    libelle: synchro.enCours ? 'Synchronisation…' : 'Synchroniser Airbnb et Booking.com',
+                    icone: <RefreshCw />,
+                    disabled: !synchro.disponible || synchro.enCours,
+                    onClick: () => void synchro.synchroniser(),
+                  },
+                ]}
+              />
+            )}
+          </>
         }
       />
-      <LigneSynchroRepull className="mb-5" />
+      {synchro.retour && (
+        <Callout tone={synchro.retour.ton} className="mb-5">
+          {synchro.retour.texte}
+        </Callout>
+      )}
       {confirmation && (
         <Callout tone="succes" className="mb-5" actions={<Button size="sm" variant="ghost" onClick={() => setConfirmation(null)}>Masquer</Button>}>
           {confirmation}
@@ -130,7 +166,7 @@ function PageReservations() {
         onFermer={() => setCreation(false)}
         onCree={(r) =>
           setConfirmation(
-            `C’est noté : ${r.voyageur.nom} du ${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}. Le ménage du départ est prévu, il reste à choisir qui le fera.`,
+            `C’est noté : ${r.voyageur.nom} du ${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}. Ménage de départ créé, à attribuer.`,
           )
         }
       />

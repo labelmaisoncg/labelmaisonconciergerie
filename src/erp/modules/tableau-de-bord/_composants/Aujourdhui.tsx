@@ -66,11 +66,21 @@ export function Aujourdhui() {
   const sansPersonne = menages.filter((m) => !m.prestataireId).length;
   const nomLogement = (id: string) => logementById(d, id)?.nom ?? 'un logement';
 
+  const rien = !arrivees.length && !departs.length && !menages.length;
+
   return (
     <section aria-labelledby="aujourdhui-titre" className="mb-6">
       <h2 id="aujourdhui-titre" className="mb-3 text-[16px] font-semibold text-(--lm-encre)">
         Aujourd’hui
       </h2>
+      {rien ? (
+        <p className="rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-3.5 text-[13.5px] text-(--lm-encre-2) shadow-(--lm-ombre)">
+          Ni arrivée, ni départ, ni ménage aujourd’hui.{' '}
+          <Link to="/erp/reservations" className="font-medium text-(--lm-or-texte) hover:underline">
+            Voir le planning
+          </Link>
+        </p>
+      ) : (
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Tuile
           titre={arrivees.length > 1 ? 'arrivées' : 'arrivée'}
@@ -101,6 +111,7 @@ export function Aujourdhui() {
           }
         />
       </div>
+      )}
     </section>
   );
 }

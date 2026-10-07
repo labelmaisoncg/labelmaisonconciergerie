@@ -53,7 +53,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
   return (
     <div className="grid gap-4">
       <Card>
-        <CardHeader titre="Séjour" actions={<PastilleCanal canal={r.canal} />} />
+        <CardHeader titre="Séjour" />
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-[13.5px]">
           <div>
             <dt className="text-[12px] text-(--lm-encre-3)">Arrivée</dt>
@@ -66,17 +66,13 @@ export function FicheReservation({ r }: { r: Reservation }) {
             <dd className="text-[12px] text-(--lm-encre-3)">{logement?.fiche.heureDepart ? `avant ${logement.fiche.heureDepart}` : ''}</dd>
           </div>
           <div>
-            <dt className="text-[12px] text-(--lm-encre-3)">Durée</dt>
-            <dd className="lm-chiffres font-medium">{pluriel(r.nuits, 'nuit')}</dd>
-          </div>
-          <div>
             <dt className="text-[12px] text-(--lm-encre-3)">Voyageurs</dt>
             <dd className="lm-chiffres font-medium">
               {pluriel(r.voyageur.nbPersonnes, 'personne')}
               {r.voyageur.pays ? ` · ${r.voyageur.pays}` : ''}
             </dd>
           </div>
-          <div className="col-span-2">
+          <div>
             <dt className="text-[12px] text-(--lm-encre-3)">Logement</dt>
             <dd className="font-medium">
               {logement ? (
@@ -89,41 +85,44 @@ export function FicheReservation({ r }: { r: Reservation }) {
               {logement && <span className="font-normal text-(--lm-encre-2)"> · {logement.ville}</span>}
             </dd>
           </div>
-          <div className="col-span-2">
-            <dt className="text-[12px] text-(--lm-encre-3)">Référence de la plateforme</dt>
-            <dd className="lm-chiffres">
-              {r.repull?.code ?? r.channexBookingId ?? (r.repull ? `Repull n° ${r.repull.id}` : 'Réservation directe, saisie dans l’ERP')}
-              {r.repull && (
-                <Badge tone="info" className="ml-2">
-                  Importée automatiquement
-                </Badge>
-              )}
-            </dd>
-            {r.repull?.devise && r.repull.devise !== 'EUR' && (
-              <dd className="mt-1 text-[12px] text-(--lm-alerte)">Montants en {r.repull.devise} (devise de la plateforme), non convertis.</dd>
-            )}
-          </div>
+          {r.repull?.devise && r.repull.devise !== 'EUR' && (
+            <dd className="col-span-2 text-[12px] text-(--lm-alerte)">Montants en {r.repull.devise} (devise de la plateforme), non convertis.</dd>
+          )}
         </dl>
+        <details className="mt-3 text-[12.5px] text-(--lm-encre-2)">
+          <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Référence de la plateforme</summary>
+          <p className="lm-chiffres mt-1.5">
+            {r.repull?.code ?? r.channexBookingId ?? (r.repull ? `Référence n° ${r.repull.id}` : 'Réservation directe, saisie dans l’ERP')}
+            {r.repull && ' · importée automatiquement'}
+          </p>
+        </details>
       </Card>
 
       <Card>
         <CardHeader
           titre="Montants"
-          description={mandat ? `Contrat ${mandat.reference}, commission ${mandat.commissionPct} %` : 'Pas de contrat de gestion : la commission ne peut pas être calculée'}
+          description={mandat ? undefined : 'Pas de contrat de gestion : la commission ne peut pas être calculée'}
         />
         {annulee && <p className="mb-2 text-[13px] text-(--lm-danger)">Réservation annulée : montants indicatifs, exclus des indicateurs.</p>}
         <dl>
+          {/* Les trois montants qui comptent ; le calcul pas à pas est replié juste dessous. */}
           <Ligne libelle="Montant brut voyageur" valeur={r.montantBrutCentimes} />
-          <Ligne libelle="Commission plateforme" valeur={r.commissionPlateformeCentimes} signe="-" />
-          <Ligne libelle="Frais de ménage" valeur={r.fraisMenageCentimes} signe="-" />
-          <Ligne libelle="Revenu hébergement (brut hors ménage)" valeur={revenuHebergement(r)} />
-          <Ligne libelle="Base commissionnable" valeur={baseCommissionnable(r)} fort />
-          <Ligne libelle={`Commission Label Maison${mandat ? ` (${mandat.commissionPct} %)` : ''}`} valeur={commissionReservation(r, mandat)} signe="-" />
+          <Ligne libelle={`Commission Label Maison${mandat ? ` (${mandat.commissionPct} %)` : ''}`} valeur={commissionReservation(r, mandat)} />
           <Ligne libelle="Net propriétaire" valeur={netProprietaire(r, mandat)} fort />
         </dl>
-        <p className="mt-2 text-[12px] text-(--lm-encre-3)">
-          Les frais de ménage reviennent à Label Maison, qui rémunère le prestataire.
-        </p>
+        <details className="mt-2 text-[13px]">
+          <summary className="cursor-pointer text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">Détail du calcul</summary>
+          <dl className="mt-1">
+            <Ligne libelle="Montant brut voyageur" valeur={r.montantBrutCentimes} />
+            <Ligne libelle="Commission plateforme" valeur={r.commissionPlateformeCentimes} signe="-" />
+            <Ligne libelle="Frais de ménage" valeur={r.fraisMenageCentimes} signe="-" />
+            <Ligne libelle="Revenu hébergement (brut hors ménage)" valeur={revenuHebergement(r)} />
+            <Ligne libelle="Base commissionnable" valeur={baseCommissionnable(r)} fort />
+            <Ligne libelle="Commission Label Maison" valeur={commissionReservation(r, mandat)} signe="-" />
+            <Ligne libelle="Net propriétaire" valeur={netProprietaire(r, mandat)} fort />
+          </dl>
+          <p className="mt-2 text-[12px] text-(--lm-encre-3)">Les frais de ménage reviennent à Label Maison, qui rémunère le prestataire.</p>
+        </details>
       </Card>
 
       <Card>
@@ -149,26 +148,23 @@ export function FicheReservation({ r }: { r: Reservation }) {
         )}
       </Card>
 
+      {fils.length > 0 && (
       <Card>
         <CardHeader titre="Messages voyageur" actions={<MessageSquare className="size-4 text-(--lm-or-texte)" aria-hidden />} />
-        {fils.length === 0 ? (
-          <p className="text-[13px] text-(--lm-encre-3)">Pas encore de message avec ce voyageur.</p>
-        ) : (
+        {(
           <ul className="divide-y divide-(--lm-bord)">
             {fils.map((f) => (
               <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <Link to={`/erp/messagerie/${f.id}`} className="min-w-0 text-[13.5px] font-medium hover:text-(--lm-or-texte) hover:underline">
                   {pluriel(f.messages.length, 'message')} · dernier le {dateHeure(f.dernierMessageLe)}
                 </Link>
-                <div className="flex gap-1.5">
-                  <StatusBadge type="statutFil" valeur={f.statut} />
-                  <StatusBadge type="traitePar" valeur={f.traitePar} />
-                </div>
+                <StatusBadge type="statutFil" valeur={f.statut} />
               </li>
             ))}
           </ul>
         )}
       </Card>
+      )}
 
       {(r.noteVoyageur !== undefined || r.commentaireVoyageur) && (
         <Card>
@@ -189,11 +185,10 @@ export function FicheReservation({ r }: { r: Reservation }) {
         </Card>
       )}
 
+      {incidents.length > 0 && (
       <Card>
         <CardHeader titre="Incidents" />
-        {incidents.length === 0 ? (
-          <p className="text-[13px] text-(--lm-encre-3)">Aucun souci pendant ce séjour.</p>
-        ) : (
+        {(
           <ul className="divide-y divide-(--lm-bord)">
             {incidents.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
@@ -206,6 +201,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
           </ul>
         )}
       </Card>
+      )}
     </div>
   );
 }

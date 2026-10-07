@@ -2,7 +2,6 @@
 import { Link } from 'react-router-dom';
 import { Bot, OctagonAlert } from 'lucide-react';
 import { Avatar, FilterChips, SearchInput, cn } from '../../../ui';
-import { LIBELLES } from '../../../data/libelles';
 import { AUJOURDHUI, heure, jourMois } from '../../../data/format';
 import type { FilMessages, Logement } from '../../../data/types';
 import { FILTRES, attendReponse, correspond, type FiltreFil } from './logique';
@@ -33,7 +32,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
         />
       </div>
       {fils.length === 0 ? (
-        <p className="p-6 text-center text-[13px] text-(--lm-encre-3)">{recherche.trim() ? `Aucune conversation ne parle de « ${recherche.trim()} ».` : filtre === 'a_traiter' ? 'Personne n’attend de réponse de votre part. Tout est à jour.' : 'Rien ici pour le moment.'}</p>
+        <p className="p-6 text-center text-[13px] text-(--lm-encre-3)">{recherche.trim() ? `Aucune conversation ne parle de « ${recherche.trim()} ».` : filtre === 'a_traiter' ? 'Personne n’attend de réponse. Tout est à jour.' : 'Rien ici pour le moment.'}</p>
       ) : (
         <ul className="lm-defilement min-h-0 flex-1 overflow-y-auto" aria-label="Conversations">
           {fils.map((f) => {
@@ -53,32 +52,34 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                 >
                   <Avatar nom={f.voyageur} />
                   <div className="min-w-0 flex-1">
+                    {/* Deux lignes : qui (et où), puis le dernier message. L'urgence se lit à un mot court (« Pour vous », « À répondre »), jamais à la couleur seule. */}
                     <div className="flex items-baseline justify-between gap-2">
-                      <p className={cn('truncate text-[13.5px] text-(--lm-encre)', attente ? 'font-semibold' : 'font-medium')}>{f.voyageur}</p>
-                      <time className="lm-chiffres shrink-0 text-[11.5px] text-(--lm-encre-3)" dateTime={f.dernierMessageLe}>
-                        {f.dernierMessageLe.slice(0, 10) === AUJOURDHUI ? heure(f.dernierMessageLe) : jourMois(f.dernierMessageLe)}
-                      </time>
+                      <p className="min-w-0 truncate text-[13.5px] text-(--lm-encre)">
+                        <span className={attente ? 'font-semibold' : 'font-medium'}>{f.voyageur}</span>
+                        <span className="text-[12px] text-(--lm-encre-3)"> · {logements.get(f.logementId)?.nom ?? 'Logement'}</span>
+                      </p>
+                      <span className="flex shrink-0 items-center gap-1.5">
+                        {f.statut === 'escalade' ? (
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-(--lm-danger)">
+                            <OctagonAlert className="size-3.5" aria-hidden /> Pour vous
+                          </span>
+                        ) : (
+                          attente && (
+                            <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-(--lm-alerte)">
+                              <span className="size-2 rounded-full bg-(--lm-alerte)" aria-hidden /> À répondre
+                            </span>
+                          )
+                        )}
+                        <time className="lm-chiffres text-[11.5px] text-(--lm-encre-3)" dateTime={f.dernierMessageLe}>
+                          {f.dernierMessageLe.slice(0, 10) === AUJOURDHUI ? heure(f.dernierMessageLe) : jourMois(f.dernierMessageLe)}
+                        </time>
+                      </span>
                     </div>
-                    <p className="truncate text-[12px] text-(--lm-encre-3)">
-                      {logements.get(f.logementId)?.nom ?? 'Logement'} · {LIBELLES.canal[f.canal]}
-                    </p>
                     <p className={cn('mt-0.5 line-clamp-1 text-[12.5px]', attente ? 'text-(--lm-encre)' : 'text-(--lm-encre-2)')}>
                       {dernier?.auteur === 'agent' && <Bot className="mr-1 inline size-3.5 text-(--lm-or-texte)" aria-label="Votre agent :" />}
                       {dernier?.auteur === 'hote' && <span className="text-(--lm-encre-3)">Vous : </span>}
                       {dernier?.texte}
                     </p>
-                    <div className="mt-1 flex flex-wrap gap-1.5">
-                      {f.statut === 'escalade' && (
-                        <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-(--lm-danger)">
-                          <OctagonAlert className="size-3" aria-hidden /> Transmise à l’équipe
-                        </span>
-                      )}
-                      {attente && <span className="text-[11.5px] font-medium text-(--lm-alerte)">Attend une réponse</span>}
-                      {f.statut === 'clos' && <span className="text-[11.5px] text-(--lm-encre-3)">Terminée</span>}
-                      {f.statut !== 'clos' && f.traitePar !== 'en_attente' && (
-                        <span className="text-[11.5px] text-(--lm-encre-3)">{LIBELLES.traitePar[f.traitePar]}</span>
-                      )}
-                    </div>
                   </div>
                 </Link>
               </li>

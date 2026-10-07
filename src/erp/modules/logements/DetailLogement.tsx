@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, MapPin, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 import { Button, EmptyState, PageHeader, StatusBadge, Tabs } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
-import { avancementChecklist, incidentsOuverts, logementById, proprietaireById } from '../../data/selectors';
+import { avancementChecklist, incidentsOuverts, logementById } from '../../data/selectors';
 import { VisuelLogement } from './_composants/Visuel';
 import { completudeFiche } from './_composants/stats';
 import { EditionLogement } from './EditionLogement';
@@ -15,7 +15,6 @@ import { OngletLinge } from './onglets/Linge';
 import { OngletCanaux } from './onglets/Canaux';
 import { OngletHistorique } from './onglets/Historique';
 import { OngletPerformance } from './onglets/Performance';
-import { BadgeCommission, BadgeRentabilite, economieBien } from './_composants/EconomieBien';
 
 const ONGLETS = ['apercu', 'performance', 'lancement', 'fiche', 'linge', 'canaux', 'historique'] as const;
 type CleOnglet = (typeof ONGLETS)[number];
@@ -46,11 +45,9 @@ export default function DetailLogement() {
   const brut = params.get('onglet');
   const onglet: CleOnglet = (ONGLETS as readonly string[]).includes(brut ?? '') ? (brut as CleOnglet) : 'apercu';
   const changer = (cle: string) => setParams(cle === 'apercu' ? {} : { onglet: cle }, { replace: true });
-  const prop = proprietaireById(d, l.proprietaireId);
   const av = avancementChecklist(l);
   const fiche = completudeFiche(l.fiche);
   const incidents = incidentsOuverts(d.incidents).filter((i) => i.logementId === l.id).length;
-  const eco = economieBien(d.donnees, l.id);
 
   return (
     <>
@@ -63,44 +60,18 @@ export default function DetailLogement() {
           </span>
         }
         sousTitre={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <StatusBadge type="statutLogement" valeur={l.statut} />
-            <span className="inline-flex items-center gap-1">
-              <MapPin className="size-3.5" aria-hidden />
-              {l.adresse}, {l.codePostal} {l.ville}
-            </span>
+          // Une seule ligne : l'adresse, le propriétaire et l'économie du bien sont dans les onglets.
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            {l.statut !== 'actif' && <StatusBadge type="statutLogement" valeur={l.statut} />}
             <span>
-              {LIBELLES.typeLogement[l.type]} · {l.surfaceM2} m² · {l.capacite} voyageurs
-            </span>
-            {prop && (
-              <Link to={`/erp/proprietaires/${prop.id}`} className="text-(--lm-or-texte) hover:underline">
-                {prop.nom}
-              </Link>
-            )}
-            <span className="flex w-full flex-wrap items-center gap-1.5 pt-1">
-              <BadgeCommission eco={eco} />
-              <BadgeRentabilite eco={eco} complet />
-              {onglet !== 'performance' && (
-                <button type="button" onClick={() => changer('performance')} className="text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
-                  Voir la performance
-                </button>
-              )}
+              {l.ville} · {LIBELLES.typeLogement[l.type]} · {l.surfaceM2} m² · {l.capacite} voyageurs
             </span>
           </span>
         }
         actions={
-          <>
-            <Link
-              to="/erp/logements"
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-sm font-medium text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis)"
-            >
-              <ArrowLeft className="size-4" aria-hidden />
-              Liste
-            </Link>
-            <Button icone={<Pencil />} onClick={() => setEdition(true)}>
-              Modifier
-            </Button>
-          </>
+          <Button icone={<Pencil />} onClick={() => setEdition(true)}>
+            Modifier
+          </Button>
         }
       />
 
@@ -111,8 +82,9 @@ export default function DetailLogement() {
         onglets={[
           { cle: 'apercu', libelle: 'Vue d’ensemble' },
           { cle: 'performance', libelle: 'Performance' },
-          { cle: 'lancement', libelle: `Lancement ${av.faits}/${av.total}` },
-          { cle: 'fiche', libelle: `Fiche voyageur ${Math.round(fiche.ratio * 100)} %` },
+          // Compteur seulement s'il reste quelque chose à faire.
+          { cle: 'lancement', libelle: 'Lancement', compteur: av.faits < av.total ? av.total - av.faits : undefined },
+          { cle: 'fiche', libelle: 'Fiche voyageur', compteur: fiche.manquants.length || undefined },
           { cle: 'linge', libelle: 'Linge' },
           { cle: 'canaux', libelle: 'Annonces & canaux' },
           { cle: 'historique', libelle: 'Historique', compteur: incidents || undefined },
