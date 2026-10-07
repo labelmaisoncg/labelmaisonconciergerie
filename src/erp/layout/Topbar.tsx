@@ -15,6 +15,9 @@ export function Topbar({ onMenu }: TopbarProps) {
   const { pathname } = useLocation();
   const module = moduleDuChemin(pathname);
   const rubrique = rubriqueDe(module);
+  // Sur une sous-page (fiche, Connexions…), le titre de la page dit où l'on est :
+  // l'en-tête ne la présente pas comme la page courante.
+  const sousPage = !!module && pathname.replace(/\/$/, '') !== module.path;
 
   return (
     <header className="lm-sans-impression sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-(--lm-bord) bg-(--lm-surface)/90 px-3 backdrop-blur sm:gap-3 sm:px-5">
@@ -28,7 +31,7 @@ export function Topbar({ onMenu }: TopbarProps) {
             {rubrique && module.label !== rubrique.libelle && (
               <>
                 <ChevronRight className="size-3.5 text-(--lm-encre-3)" aria-hidden />
-                <span aria-current="page" className="truncate font-medium text-(--lm-encre)">
+                <span aria-current={sousPage ? undefined : 'page'} className={sousPage ? 'truncate text-(--lm-encre-3)' : 'truncate font-medium text-(--lm-encre)'}>
                   {module.label}
                 </span>
               </>
