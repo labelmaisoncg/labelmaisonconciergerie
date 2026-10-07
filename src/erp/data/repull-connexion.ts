@@ -504,20 +504,12 @@ export async function demarrerConnexion(
 ): Promise<ResultatConnecter> {
   const f = texte(fournisseur).toLowerCase();
   if (!/^[a-z0-9][a-z0-9_.-]{0,40}$/.test(f)) throw new ErreurConnexion('Plateforme inconnue.');
-  const maintenant = (ctx.maintenant ?? (() => new Date()))();
   const cache = await lireCache(ctx.base);
   const r = await avecClient(ctx, async (client) => {
+    // Seuls Airbnb (messagerie) et Booking.com (Extranet login) : un logiciel
+    // de gestion ou un autre mode donnerait à la clé des droits d'écriture.
     if (f !== 'airbnb' && f !== 'booking') {
-      if (!cache.fournisseurs?.length) await rafraichirFournisseurs(client, cache, maintenant);
-      const connu = cache.fournisseurs?.find((p) => p.id === f || plateformeCourte(p.id) === f);
-      if (cache.fournisseurs?.length && !connu) throw new ErreurConnexion('Cette plateforme n’est pas proposée par Repull.');
-      if (connu?.statut === 'coming-soon') throw new ErreurConnexion(`${connu.nom} n’est pas encore disponible chez Repull.`);
-      return client.post<{ url?: string; expiresAt?: string }>('/v1/connect', {
-        redirectUrl: urlRetour,
-        allowedProviders: [connu?.id ?? f],
-        locale: 'fr',
-        state: f,
-      });
+      throw new ErreurConnexion('Seuls Airbnb et Booking.com se connectent depuis l’ERP, en lecture et messagerie.');
     }
     // Airbnb : messagerie UNIQUEMENT, toujours. L'ERP ne doit jamais pouvoir
     // modifier le calendrier, les prix ni les annonces Airbnb ; ce niveau
