@@ -15,7 +15,7 @@ import type { EtatRepull, ResultatLancement } from '../../data/repull-synchro';
 import { useErp } from '../../data/store';
 import { obtenirClient } from '../../data/supabase';
 import { dateHeure, nombre } from '../../data/format';
-import { Alert, Badge, Button, Card, CardHeader, ProgressBar, type Ton } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, ProgressBar, Repli, type Ton } from '../../ui';
 
 /** Tableau de bord Repull, où les propriétaires connectent leurs comptes. */
 export const URL_TABLEAU_REPULL = 'https://repull.dev/dashboard';
@@ -133,15 +133,15 @@ export function CarteSynchroRepull() {
   return (
     <Card>
       <CardHeader
-        titre="Repull : Airbnb, Booking.com et autres plateformes"
-        description="Annonces, réservations, voyageurs, messages et avis arrivent seuls dans l’ERP : chaque matin, et à la demande."
+        titre="Airbnb et Booking.com"
+        description="Réservations, voyageurs, messages et avis arrivent seuls dans l’ERP : chaque matin, et à la demande. Vos prix et calendriers ne sont jamais modifiés."
         actions={
           <Button variant="primary" icone={<RefreshCw />} chargement={s.enCours} disabled={!s.disponible || s.enCours} onClick={() => void s.synchroniser()}>
             Synchroniser maintenant
           </Button>
         }
       />
-      {s.demo && <Alert tone="neutre" className="mb-3">Indisponible en démo locale : la synchronisation écrit dans la base de production.</Alert>}
+      {s.demo && <Alert tone="neutre" className="mb-3">Indisponible en démonstration.</Alert>}
       {s.retour && (
         <Alert tone={s.retour.ton} className="mb-3">
           {s.retour.texte}
@@ -149,7 +149,7 @@ export function CarteSynchroRepull() {
       )}
       <dl className="grid gap-3 text-[13.5px] sm:grid-cols-2">
         <div>
-          <dt className="text-[12px] text-(--lm-encre-3)">Dernière synchronisation</dt>
+          <dt className="text-[12px] text-(--lm-encre-3)">Dernière mise à jour</dt>
           <dd className="font-medium">
             {s.derniere ? dateHeure(s.derniere.horodatage) : s.etat?.derniereSynchro ? dateHeure(s.etat.derniereSynchro) : 'Jamais'}
             {b && !b.complet && (
@@ -160,29 +160,35 @@ export function CarteSynchroRepull() {
           </dd>
           {s.derniere && <dd className="mt-1 text-[12.5px] text-(--lm-encre-2)">{s.derniere.details}</dd>}
         </div>
-        <div>
-          <dt className="text-[12px] text-(--lm-encre-3)">Appels Repull ce mois</dt>
-          <dd className="lm-chiffres font-medium">
-            {utilises !== undefined ? `${nombre(utilises)} / ${nombre(quotaMois ?? 1000)}` : `${nombre(appelsErp)} / ${nombre(quotaMois ?? 1000)} (ERP seul)`}
-          </dd>
-          <dd className="mt-1 text-[12.5px] text-(--lm-encre-2)">
-            Part de l’ERP : {nombre(appelsErp)} / {nombre(budget)}
-            {s.quota?.luLe ? ` · compte relevé le ${dateHeure(s.quota.luLe)}` : ''}
-          </dd>
-          <ProgressBar className="mt-2" valeur={part} tone={part >= 1 ? 'danger' : part >= 0.8 ? 'alerte' : 'or'} label="Part mensuelle des appels Repull de l’ERP" />
-        </div>
       </dl>
       <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
         Un nouveau compte ou un nouveau logement ?{' '}
         <Link to="/erp/logements/connexions" className="text-(--lm-or-texte) hover:underline">
           Connectez-le et choisissez vos logements
-        </Link>{' '}
-        (ou dans{' '}
-        <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or-texte) hover:underline">
-          Repull <ExternalLink className="size-3.5" aria-hidden />
-        </a>
-        ) : il arrive ici à la synchronisation suivante. Pas plus d’une synchronisation manuelle toutes les 10 minutes, pour ménager le quota d’appels.
+        </Link>
+        {' '}: il arrive ici à la mise à jour suivante.
       </p>
+      <Repli className="mt-3" titre="Avancé" description="Consommation du forfait Repull (notre service de connexion).">
+        <dl className="text-[13.5px]">
+          <div>
+            <dt className="text-[12px] text-(--lm-encre-3)">Appels Repull ce mois</dt>
+            <dd className="lm-chiffres font-medium">
+              {utilises !== undefined ? `${nombre(utilises)} / ${nombre(quotaMois ?? 1000)}` : `${nombre(appelsErp)} / ${nombre(quotaMois ?? 1000)} (ERP seul)`}
+            </dd>
+            <dd className="mt-1 text-[12.5px] text-(--lm-encre-2)">
+              Part de l’ERP : {nombre(appelsErp)} / {nombre(budget)}
+              {s.quota?.luLe ? ` · compte relevé le ${dateHeure(s.quota.luLe)}` : ''}
+            </dd>
+            <ProgressBar className="mt-2" valeur={part} tone={part >= 1 ? 'danger' : part >= 0.8 ? 'alerte' : 'or'} label="Part mensuelle des appels Repull de l’ERP" />
+          </div>
+        </dl>
+        <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
+          Pas plus d’une mise à jour manuelle toutes les 10 minutes, pour ménager le forfait.{' '}
+          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or-texte) hover:underline">
+            Tableau de bord Repull <ExternalLink className="size-3.5" aria-hidden />
+          </a>
+        </p>
+      </Repli>
     </Card>
   );
 }

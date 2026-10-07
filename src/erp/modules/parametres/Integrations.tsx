@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Bot, Database, Mail, Send } from 'lucide-react';
 import { useErp } from '../../data/store';
-import { Badge, Card, type Ton } from '../../ui';
+import { Badge, Card, Repli, type Ton } from '../../ui';
 import { CarteSynchroRepull } from './SynchroRepull';
 
 interface Integration {
@@ -64,7 +64,8 @@ const SUPABASE_REEL: Integration = {
 };
 
 export default function Integrations() {
-  const { mode, synchro } = useErp();
+  const { mode, synchro, utilisateur } = useErp();
+  const gerant = utilisateur.role === 'gerant';
   const liste = INTEGRATIONS.map((i) => {
     if (i.nom !== 'Supabase' || mode !== 'reel') return i;
     if (synchro && !synchro.enLigne) return { ...SUPABASE_REEL, etat: 'Hors ligne', ton: 'alerte' as Ton };
@@ -98,17 +99,30 @@ export default function Integrations() {
                 <p className="text-[11.5px] font-medium tracking-wide text-(--lm-encre-3) uppercase">{i.ton === 'succes' ? 'État' : 'Pour passer en production'}</p>
                 <p className="mt-0.5">{i.besoin}</p>
               </div>
-              {i.details && (
-                <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[12.5px] text-(--lm-encre-2)">
-                  {i.details.map((x) => (
-                    <li key={x}>{x}</li>
-                  ))}
-                </ul>
-              )}
             </Card>
           </li>
         ))}
       </ul>
+      {gerant && (
+        <Repli
+          className="mt-4"
+          titre="Avancé"
+          description="Détails techniques, pour la personne qui gère le site."
+        >
+          <ul className="space-y-2 text-[13px]">
+            {liste.filter((i) => i.details?.length).map((i) => (
+              <li key={i.nom}>
+                <p className="font-medium text-(--lm-encre)">{i.nom}</p>
+                <ul className="mt-0.5 list-disc space-y-0.5 pl-5 text-[12.5px] text-(--lm-encre-2)">
+                  {i.details!.map((x) => (
+                    <li key={x}>{x}</li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </Repli>
+      )}
     </>
   );
 }

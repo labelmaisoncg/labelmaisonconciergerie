@@ -43,7 +43,7 @@ export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnect
             de l’ERP.
           </Alert>
           <p className="mt-4 text-[13px] text-(--lm-encre-2)">
-            Un gérant ajoute votre adresse depuis Paramètres, Utilisateurs & rôles, ou directement dans la table <code>erp.membres</code> de Supabase.
+            Un gérant ajoute votre adresse depuis Paramètres → Votre équipe.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" icone={<RefreshCw />} onClick={onReessayer}>
@@ -170,8 +170,7 @@ function FormulaireConnexion({ message }: { message?: string }) {
       </form>
       {aide ? (
         <p className="mt-5 text-[13px] text-(--lm-encre-2)">
-          Un gérant le réinitialise dans Supabase : Authentication, Users, compte <code>{EMAIL_EQUIPE}</code>, puis envoi d’un lien de récupération
-          (ou nouveau mot de passe).
+          Demandez-le à un gérant : c’est le même mot de passe pour toute l’équipe.
         </p>
       ) : (
         <button type="button" onClick={() => setAide(true)} className="mt-5 text-[13px] font-medium text-(--lm-or-texte) hover:underline">

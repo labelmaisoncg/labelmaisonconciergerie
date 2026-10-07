@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, LogIn, LogOut, Sparkles } from 'lucide-react';
+import { LogIn, LogOut, Sparkles } from 'lucide-react';
 import { useErp } from '../../../data/store';
 import { arriveesDuJour, departsDuJour, logementById, missionsDuJour } from '../../../data/selectors';
 import { cn } from '../../../ui';
@@ -57,8 +57,8 @@ function Tuile({
 
 const noms = (liste: string[]) => (liste.length > 2 ? `${liste.slice(0, 2).join(', ')} et ${liste.length - 2} autre${liste.length > 3 ? 's' : ''}` : liste.join(' et '));
 
-/** Rangée « Aujourd'hui » : arrivées, départs, ménages et sujets à regarder. */
-export function Aujourdhui({ alertes, urgentes }: { alertes: number; urgentes: number }) {
+/** Rangée « Aujourd'hui » : arrivées, départs et ménages (les sujets à regarder sont dans « À faire », juste dessous). */
+export function Aujourdhui() {
   const d = useErp();
   const arrivees = arriveesDuJour(d.reservations);
   const departs = departsDuJour(d.reservations);
@@ -71,7 +71,7 @@ export function Aujourdhui({ alertes, urgentes }: { alertes: number; urgentes: n
       <h2 id="aujourdhui-titre" className="mb-3 text-[16px] font-semibold text-(--lm-encre)">
         Aujourd’hui
       </h2>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Tuile
           titre={arrivees.length > 1 ? 'arrivées' : 'arrivée'}
           icone={<LogIn />}
@@ -99,14 +99,6 @@ export function Aujourdhui({ alertes, urgentes }: { alertes: number; urgentes: n
                 ? `${sansPersonne} sans personne pour le faire`
                 : 'Tout le monde sait où aller.'
           }
-        />
-        <Tuile
-          titre={alertes > 1 ? 'sujets à regarder' : 'sujet à regarder'}
-          icone={<Bell />}
-          n={alertes}
-          to="#a-faire"
-          alerte={urgentes > 0}
-          texte={alertes ? (urgentes ? `dont ${urgentes} pour aujourd’hui` : 'Rien d’urgent.') : 'Tout va bien, rien à signaler.'}
         />
       </div>
     </section>
