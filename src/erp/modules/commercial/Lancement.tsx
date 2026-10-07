@@ -85,7 +85,7 @@ export default function Lancement() {
                   )}
                 >
                   <span aria-hidden className={cn('lm-chiffres grid size-6 shrink-0 place-items-center rounded-full text-[12px] font-semibold',
-                    i < etape ? 'bg-(--lm-succes) text-white' : i === etape ? 'bg-(--lm-or) text-white' : 'bg-(--lm-neutre-lavis)')}>
+                    i < etape ? 'bg-(--lm-succes) text-white' : i === etape ? 'bg-(--lm-or-texte) text-white' : 'bg-(--lm-neutre-lavis)')}>
                     {i < etape ? <Check className="size-3.5" /> : i + 1}
                   </span>
                   <span className="whitespace-nowrap lg:whitespace-normal">{s.titre}</span>

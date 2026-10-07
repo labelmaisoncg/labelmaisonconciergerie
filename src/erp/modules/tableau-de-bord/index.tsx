@@ -20,7 +20,6 @@ export default function TableauDeBord() {
   const d = useErp();
   const [semaine, setSemaine] = useState(false);
   const elements = useMemo(() => construireATraiter(d.donnees), [d.donnees]);
-  const urgentes = elements.filter((e) => e.priorite === 1).length;
   const date = format(parseISO(AUJOURDHUI), 'EEEE d MMMM', { locale: fr });
   const heure = new Date().getHours();
   const salut = heure >= 18 ? 'Bonsoir' : 'Bonjour';
@@ -29,12 +28,7 @@ export default function TableauDeBord() {
     <>
       <PageHeader
         titre={`${salut} ${d.utilisateur.nom.split(' ')[0]}`}
-        sousTitre={
-          <>
-            Nous sommes {date}.{' '}
-            {urgentes ? `${urgentes} sujet${urgentes > 1 ? 's' : ''} à regarder aujourd’hui.` : elements.length ? 'Rien d’urgent aujourd’hui.' : 'Tout est à jour, belle journée !'}
-          </>
-        }
+        sousTitre={`Nous sommes ${date}.`}
         actions={
           <MenuActions
             texte
@@ -49,7 +43,7 @@ export default function TableauDeBord() {
 
       <Demarrage />
 
-      <Aujourdhui alertes={elements.length} urgentes={urgentes} />
+      <Aujourdhui />
 
       <div id="a-faire" className="mb-6 scroll-mt-20">
         <ATraiter elements={elements} />

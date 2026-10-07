@@ -137,7 +137,7 @@ export default function Pipeline() {
         <div role="group" aria-label="Affichage" className="inline-flex self-start rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) p-0.5 lg:ml-auto">
           {([['tableau', 'Tableau', KanbanSquare], ['liste', 'Liste', List]] as const).map(([cle, lib, Icone]) => (
             <button key={cle} type="button" aria-pressed={affichage === cle} onClick={() => setAffichage(cle)}
-              className={cn('inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium', affichage === cle ? 'bg-(--lm-or) text-white' : 'text-(--lm-encre-2) hover:text-(--lm-encre)')}>
+              className={cn('inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium', affichage === cle ? 'bg-(--lm-or-texte) text-white' : 'text-(--lm-encre-2) hover:text-(--lm-encre)')}>
               <Icone aria-hidden className="size-4" />
               {lib}
             </button>

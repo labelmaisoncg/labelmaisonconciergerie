@@ -1,6 +1,7 @@
+import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { ExternalLink, KeyRound, Link2, Link2Off, Radio } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardHeader, Field, Input } from '../../../ui';
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, Repli } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { Annonce, Canal, Logement } from '../../../data/types';
@@ -95,11 +96,11 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
       <div className="flex min-w-0 flex-col gap-5">
         <CarteAnnonceLogement logement={l} />
         <Card>
-          <CardHeader titre="Repull" description="Relie Airbnb, Booking.com et les autres plateformes : annonces, réservations, messages et avis arrivent seuls dans l’ERP." />
+          <CardHeader titre="Plateformes" description="Airbnb et Booking.com : réservations, messages et avis arrivent seuls dans l’ERP. Vos prix et calendriers ne sont jamais modifiés." />
           {importe ? (
             <>
               <Badge tone="succes" point className="mb-3">
-                Importé de Repull · annonce n° {l.repull?.id}
+                Importé automatiquement
               </Badge>
               {!!l.repull?.canaux?.length && (
                 <ul className="mb-2 space-y-1 text-[12.5px] text-(--lm-encre-2)">
@@ -111,31 +112,33 @@ export function OngletCanaux({ logement: l }: { logement: Logement }) {
                 </ul>
               )}
               <p className="text-[12.5px] text-(--lm-encre-3)">
-                Nom, adresse, capacité, horaires, wifi et état des annonces sont tenus à jour par Repull. Propriétaire, mandat, serrure, linge et checklist restent à l’équipe.
+                Nom, adresse, capacité, horaires, wifi et état des annonces sont tenus à jour automatiquement. Propriétaire, mandat, serrure, linge et checklist restent à l’équipe.
               </p>
             </>
           ) : (
             <>
-              <Badge tone={l.repull?.id ? 'info' : 'alerte'} point className="mb-3">
-                {l.repull?.id ? `Relié à l’annonce Repull n° ${l.repull.id}` : 'Pas encore relié à Repull'}
+              <Badge tone={l.repull?.id ? 'info' : 'neutre'} point className="mb-3">
+                {l.repull?.id ? 'Relié, en attente d’import' : 'Pas encore relié à une plateforme'}
               </Badge>
               <p className="mb-3 text-[12.5px] text-(--lm-encre-2)">
-                Connectez l’annonce dans{' '}
-                <a href="https://repull.dev/dashboard" target="_blank" rel="noreferrer" className="text-(--lm-or-texte) hover:underline">
-                  Repull
-                </a>{' '}
-                : elle arrive dans l’ERP à la synchronisation suivante. Pour qu’elle mette à jour ce logement plutôt que d’en créer un second, saisissez son identifiant d’annonce Repull.
+                Connectez vos plateformes et cochez ce logement dans{' '}
+                <Link to="/erp/logements/connexions" className="text-(--lm-or-texte) hover:underline">
+                  Logements → Connexions
+                </Link>
+                  : ses réservations et ses messages arriveront tout seuls.
               </p>
-              <Field label="Identifiant d’annonce Repull">
-                <Input value={idRepull} onChange={(e) => setIdRepull(e.target.value)} placeholder="ex. 5668" inputMode="numeric" />
-              </Field>
-              <Button
-                className="mt-3 w-full"
-                onClick={() => upsert('logements', { ...l, repull: idRepull.trim() ? { ...(l.repull ?? {}), id: idRepull.trim() } : undefined })}
-                disabled={(l.repull?.id ?? '') === idRepull.trim()}
-              >
-                Relier à Repull
-              </Button>
+              <Repli titre="Avancé" description="Relier à la main une annonce déjà importée, pour éviter un logement en double.">
+                <Field label="Identifiant d’annonce (Repull)">
+                  <Input value={idRepull} onChange={(e) => setIdRepull(e.target.value)} placeholder="ex. 5668" inputMode="numeric" />
+                </Field>
+                <Button
+                  className="mt-3 w-full"
+                  onClick={() => upsert('logements', { ...l, repull: idRepull.trim() ? { ...(l.repull ?? {}), id: idRepull.trim() } : undefined })}
+                  disabled={(l.repull?.id ?? '') === idRepull.trim()}
+                >
+                  Relier
+                </Button>
+              </Repli>
             </>
           )}
         </Card>

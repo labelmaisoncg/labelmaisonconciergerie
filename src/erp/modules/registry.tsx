@@ -36,7 +36,7 @@ export const GROUPES: Rubrique[] = [
   { cle: 'accueil', libelle: 'Accueil', icon: House, path: '/erp' },
   { cle: 'logements', libelle: 'Logements', icon: Building2, path: '/erp/logements' },
   { cle: 'reservations', libelle: 'Réservations', icon: CalendarDays, path: '/erp/reservations' },
-  { cle: 'messagerie', libelle: 'Messagerie agentique', icon: BotMessageSquare, path: '/erp/messagerie' },
+  { cle: 'messagerie', libelle: 'Messagerie', icon: BotMessageSquare, path: '/erp/messagerie' },
   { cle: 'operations', libelle: 'Opérations', icon: Sparkles, path: '/erp/menages' },
   { cle: 'proprietaires', libelle: 'Propriétaires', icon: Users, path: '/erp/proprietaires' },
   { cle: 'finance', libelle: 'Finance', icon: Wallet, path: '/erp/finance' },
@@ -81,7 +81,7 @@ export const MODULES: ModuleErp[] = [
   module('reservations', 'reservations', 'Réservations', 'reservations', lazy(() => import('./reservations')), {
     motsCles: 'calendrier séjours voyageurs',
   }),
-  module('messagerie', 'messagerie', 'Messagerie agentique', 'messagerie', lazy(() => import('./messagerie')), {
+  module('messagerie', 'messagerie', 'Messagerie', 'messagerie', lazy(() => import('./messagerie')), {
     compteur: 'messagesEnAttente',
     motsCles: 'messages conversations agent ia voyageurs',
   }),

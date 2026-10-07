@@ -127,7 +127,7 @@ export function Demarrage() {
                 aria-hidden
                 className={cn(
                   'mt-0.5 grid size-6 shrink-0 place-items-center rounded-full text-[12px] font-semibold',
-                  e.fait ? 'bg-(--lm-succes) text-white' : i === prochaine ? 'bg-(--lm-or) text-white' : 'bg-(--lm-surface-2) text-(--lm-encre-2)',
+                  e.fait ? 'bg-(--lm-succes) text-white' : i === prochaine ? 'bg-(--lm-or-texte) text-white' : 'bg-(--lm-surface-2) text-(--lm-encre-2)',
                 )}
               >
                 {e.fait ? <Check className="size-3.5" /> : i + 1}

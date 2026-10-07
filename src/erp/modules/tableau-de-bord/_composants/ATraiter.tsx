@@ -71,13 +71,6 @@ function Ligne({ e }: { e: ElementATraiter }) {
           </button>
         )}
       </div>
-      <Link
-        to={e.to}
-        aria-label={`Ouvrir : ${e.titre}`}
-        className="mt-1 hidden shrink-0 rounded-md px-2 py-1 text-[12.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) hover:text-(--lm-encre) sm:inline-flex"
-      >
-        Ouvrir
-      </Link>
     </li>
   );
 }

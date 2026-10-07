@@ -191,7 +191,7 @@ anciennes adresses restent valables : seules les entrées de menu ont changé.
 | Accueil | – | `/erp` : bonjour, « Aujourd'hui » (arrivées, départs, ménages, sujets), « À faire » (5 sujets, le reste dans un panneau), « Vos chiffres » (4 repères sur 30 jours) ; menu « … » : les 7 prochains jours |
 | Logements | Vos logements · Rentabilité · Annonces | `/erp/logements` (`/:id?onglet=…`, `/connexions`), `/erp/performance` (`?onglet=suivi\|indicateurs`), `/erp/annonces` (`?logement=`) |
 | Réservations | – | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
-| Messagerie agentique | (onglets internes) Conversations · Ce que l'agent a fait · Configurer mon agent | `/erp/messagerie` (`/:filId`, `?q=`), `/erp/messagerie/activite`, `/erp/messagerie/agent` |
+| Messagerie | (onglets internes) Conversations · Ce que l'agent a fait · Configurer mon agent | `/erp/messagerie` (`/:filId`, `?q=`), `/erp/messagerie/activite`, `/erp/messagerie/agent` |
 | Opérations | Ménages · Linge · Incidents · Prestataires | `/erp/menages` (`?vue=a-traiter\|toutes\|controle`, `/:id`), `/erp/linge` (`?vue=ecarts\|journal`), `/erp/incidents` (`?id=`), `/erp/prestataires` (`/:id`) |
 | Propriétaires | Propriétaires · Contrats de gestion · Prospection | `/erp/proprietaires` (`/:id`), `/erp/mandats` (`?mandat=`), `/erp/commercial` (`/simulateur`, `/lancement`) |
 | Finance | Finance · Conformité | `/erp/finance` (`/releves`, `/factures`, `/paiements`, `/charges`, `/rentabilite`), `/erp/conformite` |
@@ -218,7 +218,7 @@ navigateur (localStorage). Plein écran sur mobile.
 
 ### Réglages de l'agent de messagerie
 
-« Messagerie agentique > Configurer mon agent » enregistre un élément unique
+« Messagerie > Configurer mon agent » enregistre un élément unique
 dans la collection **`reglages`** (id `agent`, type `ReglagesAgent` dans
 `data/types.ts`, valeurs par défaut et lecture tolérante dans
 `data/reglages.ts`). Il est synchronisé comme les autres collections : une
@@ -666,7 +666,7 @@ envoyée coûte 1 appel. Pour des réponses plus rapides : relever
 3. Supabase → SQL Editor : coller `supabase/erp-agent-cron.sql`, remplacer
    `REMPLACER_PAR_CRON_SECRET` par la valeur de `CRON_SECRET`, Run.
 4. Dans l'ERP : compléter les fiches des logements (wifi, accès, horaires,
-   parking, règles, équipements), puis Messagerie agentique → Configurer mon
+   parking, règles, équipements), puis Messagerie → Configurer mon
    agent → activer, enregistrer, et « Lancer l'agent maintenant » pour
    vérifier.
 

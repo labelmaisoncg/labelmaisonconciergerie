@@ -1,5 +1,5 @@
 /**
- * Messagerie agentique (/erp/messagerie) : les conversations voyageurs
+ * Messagerie (/erp/messagerie) : les conversations voyageurs
  * (Airbnb, Booking, direct), ce que l'agent a fait, et ses réglages.
  *
  * - /erp/messagerie            Conversations (bureau : liste + conversation + contexte)
@@ -38,7 +38,7 @@ export default function ModuleMessagerie() {
     <>
       <div className={cn(filOuvert && 'max-lg:hidden')}>
         <PageHeader
-          titre="Messagerie agentique"
+          titre="Messagerie"
           sousTitre="Votre agent répond aux voyageurs à votre place et vous passe la main quand il le faut."
           actions={
             <Link
