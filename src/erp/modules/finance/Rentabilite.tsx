@@ -55,20 +55,19 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       ),
       tri: (a, b) => a.nom.localeCompare(b.nom),
     },
-    { cle: 'pct', titre: 'Mandat', align: 'droite', rendu: (l) => (l.commissionPct === undefined ? '-' : `${nombre(l.commissionPct)} %`), tri: (a, b) => (a.commissionPct ?? 0) - (b.commissionPct ?? 0) },
-    { cle: 'brut', titre: 'Revenu brut géré', align: 'droite', rendu: (l) => <span className="text-(--lm-encre-2)">{euros(l.brut, true)}</span>, tri: (a, b) => a.brut - b.brut },
-    { cle: 'commission', titre: 'Commission LM', align: 'droite', rendu: (l) => euros(l.commission, true), tri: (a, b) => a.commission - b.commission },
+    { cle: 'brut', titre: 'Payé par les voyageurs', align: 'droite', rendu: (l) => <span className="text-(--lm-encre-2)">{euros(l.brut, true)}</span>, tri: (a, b) => a.brut - b.brut },
+    { cle: 'commission', titre: 'Commission', align: 'droite', rendu: (l) => euros(l.commission, true), tri: (a, b) => a.commission - b.commission },
     { cle: 'frais', titre: 'Ménage encaissé', align: 'droite', rendu: (l) => euros(l.fraisMenage, true), tri: (a, b) => a.fraisMenage - b.fraisMenage, masquerMobile: true },
     { cle: 'cout', titre: 'Coût ménage', align: 'droite', rendu: (l) => signe(-l.coutMenage), tri: (a, b) => a.coutMenage - b.coutMenage, masquerMobile: true },
-    { cle: 'charges', titre: 'Charges affectées', align: 'droite', rendu: (l) => (l.charges ? signe(-l.charges) : '-'), tri: (a, b) => a.charges - b.charges, masquerMobile: true },
+    { cle: 'charges', titre: 'Dépenses', align: 'droite', rendu: (l) => (l.charges ? signe(-l.charges) : '-'), tri: (a, b) => a.charges - b.charges, masquerMobile: true },
     {
       cle: 'marge',
-      titre: 'Marge LM',
+      titre: 'Il vous reste',
       align: 'droite',
       rendu: (l) => <span className={`font-semibold ${l.marge < 0 ? 'text-(--lm-danger)' : ''}`}>{signe(l.marge)}</span>,
       tri: (a, b) => a.marge - b.marge,
     },
-    { cle: 'taux', titre: 'Taux de marge', align: 'droite', rendu: (l) => (l.commission + l.fraisMenage ? pourcentage(l.tauxMarge) : '-'), tri: (a, b) => a.tauxMarge - b.tauxMarge },
+    { cle: 'taux', titre: 'Marge', align: 'droite', rendu: (l) => (l.commission + l.fraisMenage ? pourcentage(l.tauxMarge) : '-'), tri: (a, b) => a.tauxMarge - b.tauxMarge },
   ];
 
   return (
@@ -84,7 +83,7 @@ export default function Rentabilite({ onglets }: PageFinanceProps) {
       ) : (
         <>
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Stat label="Facturé en 12 mois" valeur={euros(somme('commission') + somme('fraisMenage'), true)} aide={`sur ${euros(somme('brut'), true)} payés par les voyageurs`} />
         <Stat label="Ce qu’il vous reste" valeur={signe(somme('marge'))} tone={somme('marge') < 0 ? 'danger' : 'succes'} />
         <Stat

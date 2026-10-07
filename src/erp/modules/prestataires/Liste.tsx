@@ -85,7 +85,6 @@ export function Liste() {
           valeur={`${conformes}/${actifs.length}`}
           icone={<ShieldCheck />}
           tone={conformes < actifs.length ? 'danger' : 'succes'}
-          aide={alertes.length ? `${nombre(alertes.length)} papier${alertes.length > 1 ? 's' : ''} à renouveler` : undefined}
         />
         <Stat label="Note moyenne" valeur={moyenne === undefined || !Number.isFinite(moyenne) ? SANS_DONNEE : note(moyenne)} icone={<Star />} />
       </div>
