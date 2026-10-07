@@ -92,7 +92,7 @@ export function Demarrage() {
   return (
     <Card className="mb-6 sm:mb-8" aria-labelledby="demarrage-titre">
       <div className="flex items-start gap-3">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or) [&_svg]:size-[18px]">
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
           <Rocket />
         </span>
         <div className="min-w-0 flex-1">

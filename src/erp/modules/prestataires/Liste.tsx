@@ -97,7 +97,7 @@ export function Liste() {
           <ul className="divide-y divide-(--lm-bord)">
             {alertes.map((a) => (
               <li key={`${a.prestataire.id}-${a.document.type}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-[13px] sm:px-5">
-                <Link to={`/erp/prestataires/${a.prestataire.id}`} className="font-medium hover:text-(--lm-or) hover:underline">{a.prestataire.nom}</Link>
+                <Link to={`/erp/prestataires/${a.prestataire.id}`} className="font-medium hover:text-(--lm-or-texte) hover:underline">{a.prestataire.nom}</Link>
                 <span className="text-(--lm-encre-2)">{libelleDocument(a.document.type)}</span>
                 <span className="lm-chiffres text-(--lm-encre-3)">
                   {a.statut === 'manquant' ? 'non fourni' : a.statut === 'expire' ? `expiré depuis ${pluriel(-a.joursRestants, 'jour')}` : `expire le ${dateCourte(a.document.valideJusquau!)} (${pluriel(a.joursRestants, 'jour')})`}

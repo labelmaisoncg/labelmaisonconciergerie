@@ -50,7 +50,7 @@ export function Documents({ prestataire: p, onMettreAJour }: { prestataire: Pres
         return url.startsWith('demo://') ? (
           <span className="inline-flex items-center gap-1 text-(--lm-encre-2)"><FileText className="size-3.5" aria-hidden /> Déposée</span>
         ) : (
-          <LienFichier url={url} className="text-(--lm-or) hover:underline">Ouvrir</LienFichier>
+          <LienFichier url={url} className="text-(--lm-or-texte) hover:underline">Ouvrir</LienFichier>
         );
       },
     },

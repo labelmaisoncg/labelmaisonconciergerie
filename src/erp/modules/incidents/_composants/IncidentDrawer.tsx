@@ -21,7 +21,7 @@ function Ligne({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-const lien = 'text-(--lm-or) hover:underline';
+const lien = 'text-(--lm-or-texte) hover:underline';
 
 /** Détail d'un incident : preuves, prise en charge, résolution et refacturation. */
 export function IncidentDrawer({ incident: i, onFermer }: Props) {

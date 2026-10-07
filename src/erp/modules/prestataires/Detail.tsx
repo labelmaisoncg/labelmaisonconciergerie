@@ -29,7 +29,7 @@ export function Detail() {
     return (
       <>
         <PageHeader fil={[{ libelle: 'Prestataires', to: '/erp/prestataires' }, { libelle: 'Introuvable' }]} titre="Prestataire introuvable" />
-        <EmptyState icone={<SearchX />} titre="Ce prestataire n’existe plus" action={<Link to="/erp/prestataires" className="text-(--lm-or) underline">Retour à la liste</Link>} />
+        <EmptyState icone={<SearchX />} titre="Ce prestataire n’existe plus" action={<Link to="/erp/prestataires" className="text-(--lm-or-texte) underline">Retour à la liste</Link>} />
       </>
     );
 
@@ -90,8 +90,8 @@ export function Detail() {
 
       <Card className="mb-5">
         <dl className="grid gap-x-6 gap-y-3 text-[13px] sm:grid-cols-2 lg:grid-cols-5">
-          <div><dt className="text-(--lm-encre-2)">Téléphone</dt><dd className="font-medium"><a href={`tel:${p.telephone}`} className="inline-flex items-center gap-1 hover:text-(--lm-or)"><Phone className="size-3.5" aria-hidden />{p.telephone}</a></dd></div>
-          <div><dt className="text-(--lm-encre-2)">E-mail</dt><dd className="truncate font-medium">{p.email ? <a href={`mailto:${p.email}`} className="inline-flex items-center gap-1 hover:text-(--lm-or)"><Mail className="size-3.5" aria-hidden />{p.email}</a> : '-'}</dd></div>
+          <div><dt className="text-(--lm-encre-2)">Téléphone</dt><dd className="font-medium"><a href={`tel:${p.telephone}`} className="inline-flex items-center gap-1 hover:text-(--lm-or-texte)"><Phone className="size-3.5" aria-hidden />{p.telephone}</a></dd></div>
+          <div><dt className="text-(--lm-encre-2)">E-mail</dt><dd className="truncate font-medium">{p.email ? <a href={`mailto:${p.email}`} className="inline-flex items-center gap-1 hover:text-(--lm-or-texte)"><Mail className="size-3.5" aria-hidden />{p.email}</a> : '-'}</dd></div>
           <div><dt className="text-(--lm-encre-2)">SIRET</dt><dd className="lm-chiffres font-medium">{p.siret ?? 'Non renseigné'}</dd></div>
           <div><dt className="text-(--lm-encre-2)">Zone</dt><dd className="font-medium">{p.zone.join(', ') || '-'}</dd></div>
           <div><dt className="text-(--lm-encre-2)">Note / missions</dt><dd className="lm-chiffres font-medium">{note(p.noteMoyenne)} · {p.missionsRealisees} réalisées</dd></div>

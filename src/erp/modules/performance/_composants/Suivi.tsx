@@ -21,7 +21,7 @@ function Carte({ r, onEditer }: { r: RecommandationProprietaire; onEditer: (r: R
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[13.5px] leading-snug font-semibold text-(--lm-encre)">{r.titre}</p>
-          <Link to={`/erp/logements/${r.logementId}?onglet=performance`} className="text-[12.5px] text-(--lm-or) hover:underline">
+          <Link to={`/erp/logements/${r.logementId}?onglet=performance`} className="text-[12.5px] text-(--lm-or-texte) hover:underline">
             {l?.nom ?? 'Logement'}
           </Link>
         </div>

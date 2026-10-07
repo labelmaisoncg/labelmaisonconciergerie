@@ -85,7 +85,7 @@ export function Activite() {
                         {motif} · dernier message {relatif(f.dernierMessageLe).replace('\'', '’')}
                       </span>
                     </span>
-                    <span className="hidden text-[12.5px] font-medium text-(--lm-or) sm:inline">Répondre</span>
+                    <span className="hidden text-[12.5px] font-medium text-(--lm-or-texte) sm:inline">Répondre</span>
                     <ArrowRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
                   </Link>
                 </li>
@@ -94,7 +94,7 @@ export function Activite() {
           </ul>
           {attente.length > 5 && (
             <p className="border-t border-(--lm-bord) px-4 py-2.5 text-[12.5px]">
-              <Link to="/erp/messagerie" className="font-medium text-(--lm-or) hover:underline">
+              <Link to="/erp/messagerie" className="font-medium text-(--lm-or-texte) hover:underline">
                 Voir les {attente.length} conversations
               </Link>
             </p>
@@ -128,7 +128,7 @@ export function Activite() {
                           aria-hidden
                           className={cn(
                             'mt-0.5 grid size-8 shrink-0 place-items-center rounded-full [&_svg]:size-4',
-                            a.genre === 'reponse' ? 'bg-(--lm-or-lavis) text-(--lm-or)' : 'bg-(--lm-alerte-lavis) text-(--lm-alerte)',
+                            a.genre === 'reponse' ? 'bg-(--lm-or-lavis) text-(--lm-or-texte)' : 'bg-(--lm-alerte-lavis) text-(--lm-alerte)',
                           )}
                         >
                           {a.genre === 'reponse' ? <MessageCircleReply /> : <Hand />}
@@ -149,7 +149,7 @@ export function Activite() {
                             <span className="mt-0.5 block text-[12.5px] font-medium text-(--lm-alerte)">Pourquoi : {LIBELLE_MOTIF[a.motif].titre.toLowerCase()}</span>
                           )}
                           <span className="mt-0.5 line-clamp-2 block text-[12.5px] text-(--lm-encre-2)">
-                            {a.genre === 'reponse' && <Bot className="mr-1 inline size-3.5 text-(--lm-or)" aria-hidden />}
+                            {a.genre === 'reponse' && <Bot className="mr-1 inline size-3.5 text-(--lm-or-texte)" aria-hidden />}
                             {a.texte}
                           </span>
                         </span>

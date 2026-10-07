@@ -331,7 +331,7 @@ function Palette({ onFermer }: { onFermer: () => void }) {
       const Icone = l.r.icone;
       return (
         <div key={l.r.id} {...commun}>
-          <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md bg-(--lm-surface-2) text-(--lm-or) [&_svg]:size-4">
+          <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md bg-(--lm-surface-2) text-(--lm-or-texte) [&_svg]:size-4">
             <Icone />
           </span>
           <span className="min-w-0 flex-1">
@@ -352,8 +352,8 @@ function Palette({ onFermer }: { onFermer: () => void }) {
     }
     return (
       <div key={`tout-${l.g.groupe.type}`} {...commun} className={cn(commun.className, 'py-1.5')}>
-        <ClipboardList className="size-4 shrink-0 text-(--lm-or)" aria-hidden />
-        <span className="text-[13px] font-medium text-(--lm-or)">
+        <ClipboardList className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
+        <span className="text-[13px] font-medium text-(--lm-or-texte)">
           Voir tout ({l.g.total}){l.g.groupe.liste ? '' : ' ici'}
         </span>
       </div>
@@ -418,7 +418,7 @@ function Palette({ onFermer }: { onFermer: () => void }) {
                   {s.compte !== undefined && <span className="lm-chiffres ml-1.5 font-medium normal-case">{s.compte}</span>}
                 </p>
                 {s.titre === 'Recherches récentes' && (
-                  <button type="button" onClick={oublier} className="text-[11.5px] text-(--lm-encre-3) hover:text-(--lm-or)">
+                  <button type="button" onClick={oublier} className="text-[11.5px] text-(--lm-encre-3) hover:text-(--lm-or-texte)">
                     Effacer l’historique
                   </button>
                 )}

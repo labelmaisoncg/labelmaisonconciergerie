@@ -53,7 +53,7 @@ export function TableauParc({ parc }: { parc: AnalyseParc }) {
     {
       cle: 'logement', titre: 'Logement',
       rendu: (x) => (
-        <Link to={`/erp/logements/${x.analyse.logement.id}?onglet=performance`} onClick={(e) => e.stopPropagation()} className="font-medium hover:text-(--lm-or) hover:underline">
+        <Link to={`/erp/logements/${x.analyse.logement.id}?onglet=performance`} onClick={(e) => e.stopPropagation()} className="font-medium hover:text-(--lm-or-texte) hover:underline">
           {x.analyse.logement.nom}
         </Link>
       ),

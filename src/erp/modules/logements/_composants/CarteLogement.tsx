@@ -46,7 +46,7 @@ export function CarteLogement({ logement: l, stats, economie }: { logement: Loge
             {pluriel(l.lits.reduce((s, x) => s + x.nombre, 0), 'lit')}
           </span>
           <span className="lm-chiffres inline-flex items-center gap-1">
-            <Star className="size-3.5 text-(--lm-or)" aria-hidden />
+            <Star className="size-3.5 text-(--lm-or-texte)" aria-hidden />
             <span className="sr-only">Note moyenne</span>
             {note(stats.note)}
           </span>

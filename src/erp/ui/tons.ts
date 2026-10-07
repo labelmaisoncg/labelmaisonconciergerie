@@ -23,7 +23,7 @@ export const TON_PLEIN: Record<Ton, string> = {
 
 export const TON_TEXTE: Record<Ton, string> = {
   neutre: 'text-(--lm-encre-2)',
-  or: 'text-(--lm-or)',
+  or: 'text-(--lm-or-texte)',
   succes: 'text-(--lm-succes)',
   alerte: 'text-(--lm-alerte)',
   danger: 'text-(--lm-danger)',

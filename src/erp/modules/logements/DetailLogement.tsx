@@ -34,7 +34,7 @@ export default function DetailLogement() {
         <EmptyState
           titre="Ce logement n’existe pas ou a été supprimé"
           action={
-            <Link to="/erp/logements" className="text-sm font-medium text-(--lm-or) hover:underline">
+            <Link to="/erp/logements" className="text-sm font-medium text-(--lm-or-texte) hover:underline">
               Retour à la liste
             </Link>
           }
@@ -73,7 +73,7 @@ export default function DetailLogement() {
               {LIBELLES.typeLogement[l.type]} · {l.surfaceM2} m² · {l.capacite} voyageurs
             </span>
             {prop && (
-              <Link to={`/erp/proprietaires/${prop.id}`} className="text-(--lm-or) hover:underline">
+              <Link to={`/erp/proprietaires/${prop.id}`} className="text-(--lm-or-texte) hover:underline">
                 {prop.nom}
               </Link>
             )}
@@ -81,7 +81,7 @@ export default function DetailLogement() {
               <BadgeCommission eco={eco} />
               <BadgeRentabilite eco={eco} complet />
               {onglet !== 'performance' && (
-                <button type="button" onClick={() => changer('performance')} className="text-[12.5px] font-medium text-(--lm-or) hover:underline">
+                <button type="button" onClick={() => changer('performance')} className="text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
                   Voir la performance
                 </button>
               )}

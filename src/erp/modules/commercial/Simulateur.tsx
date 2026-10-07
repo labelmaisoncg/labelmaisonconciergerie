@@ -85,7 +85,7 @@ export default function Simulateur() {
         <div className="flex flex-col gap-4">
           <Card>
             <CardHeader
-              titre={<span className="inline-flex items-center gap-2"><Calculator className="size-4 text-(--lm-or)" aria-hidden />Estimation annuelle</span>}
+              titre={<span className="inline-flex items-center gap-2"><Calculator className="size-4 text-(--lm-or-texte)" aria-hidden />Estimation annuelle</span>}
               description={`${LIBELLES.typeLogement[p.type]} à ${p.ville || 'ville à préciser'}, ${p.capacite} pers. · ${nombre(r.nuits)} nuits louées, environ ${nombre(r.sejours)} séjours.`}
               actions={<Badge tone="or">{p.commissionPct} %</Badge>}
             />
@@ -149,7 +149,7 @@ export default function Simulateur() {
           afficher({
             ton: 'succes',
             texte: `${x.nom} ajouté au pipeline avec cette estimation.`,
-            action: <button type="button" className="text-[12.5px] font-medium text-(--lm-or) hover:underline" onClick={() => naviguer(`/erp/commercial?prospect=${x.id}`)}>Voir</button>,
+            action: <button type="button" className="text-[12.5px] font-medium text-(--lm-or-texte) hover:underline" onClick={() => naviguer(`/erp/commercial?prospect=${x.id}`)}>Voir</button>,
           });
         }}
       />

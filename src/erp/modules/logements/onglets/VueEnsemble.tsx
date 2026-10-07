@@ -28,7 +28,7 @@ function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) 
   );
 }
 
-const lien = 'inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or) hover:underline';
+const lien = 'inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline';
 
 export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement; allerA: (onglet: string) => void }) {
   const d = useErp();
@@ -127,12 +127,12 @@ export function OngletVueEnsemble({ logement: l, allerA }: { logement: Logement;
           <CardHeader titre="Propriétaire et mandat" />
           <dl className="divide-y divide-(--lm-bord)">
             <Ligne libelle="Propriétaire">
-              {prop ? <Link to={`/erp/proprietaires/${prop.id}`} className="text-(--lm-or) hover:underline">{prop.nom}</Link> : 'Inconnu'}
+              {prop ? <Link to={`/erp/proprietaires/${prop.id}`} className="text-(--lm-or-texte) hover:underline">{prop.nom}</Link> : 'Inconnu'}
             </Ligne>
             {mandat ? (
               <>
                 <Ligne libelle="Mandat">
-                  <Link to={`/erp/mandats?mandat=${mandat.id}`} className="text-(--lm-or) hover:underline">{mandat.reference}</Link>
+                  <Link to={`/erp/mandats?mandat=${mandat.id}`} className="text-(--lm-or-texte) hover:underline">{mandat.reference}</Link>
                 </Ligne>
                 <Ligne libelle="Statut"><StatusBadge type="statutMandat" valeur={mandat.statut} /></Ligne>
                 <Ligne libelle="Commission">

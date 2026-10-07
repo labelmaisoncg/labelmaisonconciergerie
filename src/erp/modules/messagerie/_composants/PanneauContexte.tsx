@@ -50,7 +50,7 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
       <Bloc titre="Réservation">
         {reservation ? (
           <div className="space-y-1.5">
-            <Link to={`/erp/reservations/${reservation.id}`} className="font-medium text-(--lm-or) hover:underline">
+            <Link to={`/erp/reservations/${reservation.id}`} className="font-medium text-(--lm-or-texte) hover:underline">
               {dateCourte(reservation.arrivee)} au {dateCourte(reservation.depart)}
             </Link>
             <p className="text-(--lm-encre-2)">
@@ -73,7 +73,7 @@ export function PanneauContexte({ fil, logement, reservation }: Props) {
       <Bloc titre="Logement">
         {logement ? (
           <div className="space-y-1">
-            <Link to={`/erp/logements/${logement.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or) hover:underline">
+            <Link to={`/erp/logements/${logement.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
               {logement.nom}
             </Link>
             <p className="text-(--lm-encre-2)">{logement.adresse}, {logement.ville}</p>

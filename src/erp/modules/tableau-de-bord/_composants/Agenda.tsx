@@ -18,7 +18,7 @@ export function Agenda() {
           return (
             <li key={j.date} className="px-4 py-2.5">
               <div className="mb-1 flex items-center justify-between gap-2">
-                <p className={cn('text-[13px] font-semibold capitalize', j.date === AUJOURDHUI ? 'text-(--lm-or)' : 'text-(--lm-encre)')}>
+                <p className={cn('text-[13px] font-semibold capitalize', j.date === AUJOURDHUI ? 'text-(--lm-or-texte)' : 'text-(--lm-encre)')}>
                   {j.date === AUJOURDHUI ? 'Aujourd’hui' : dateJour(j.date)}
                 </p>
                 <p className="lm-chiffres flex gap-2.5 text-[12px] text-(--lm-encre-2) [&_svg]:size-3.5">

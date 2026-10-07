@@ -126,7 +126,7 @@ function Boite() {
                   titre="Pas encore de conversation"
                   description="Les messages de vos voyageurs arrivent ici tout seuls dès que vous avez connecté Airbnb ou Booking et choisi vos logements (bouton « Enregistrer mon choix »)."
                   action={
-                    <Link to="/erp/logements/connexions" className="text-[13.5px] font-medium text-(--lm-or) hover:underline">
+                    <Link to="/erp/logements/connexions" className="text-[13.5px] font-medium text-(--lm-or-texte) hover:underline">
                       Connecter mes plateformes →
                     </Link>
                   }

@@ -18,7 +18,7 @@ export function EmptyState({ titre, description, icone, action, className }: Emp
         className,
       )}
     >
-      <span aria-hidden className="mb-3 grid size-11 place-items-center rounded-full bg-(--lm-or-lavis) text-(--lm-or) [&_svg]:size-5">
+      <span aria-hidden className="mb-3 grid size-11 place-items-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-5">
         {icone ?? <Inbox />}
       </span>
       <p className="text-[15px] font-semibold text-(--lm-encre)">{titre}</p>

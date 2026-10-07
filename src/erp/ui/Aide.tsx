@@ -23,9 +23,9 @@ export function Aide({ titre = 'Comment ça marche ?', children, className }: Ai
         aria-expanded={ouvert}
         aria-controls={id}
         onClick={() => setOuvert((o) => !o)}
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or)"
+        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)"
       >
-        <CircleHelp className="size-4 text-(--lm-or)" aria-hidden />
+        <CircleHelp className="size-4 text-(--lm-or-texte)" aria-hidden />
         {titre}
         <ChevronDown className={cn('size-3.5 transition-transform', ouvert && 'rotate-180')} aria-hidden />
       </button>

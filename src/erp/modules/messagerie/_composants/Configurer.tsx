@@ -138,7 +138,7 @@ export function Configurer() {
               )}
             >
               <span className="flex items-center gap-1.5 text-[14px] font-semibold text-(--lm-encre)">
-                {f.ton === t.cle && <Check className="size-4 text-(--lm-or)" aria-hidden />}
+                {f.ton === t.cle && <Check className="size-4 text-(--lm-or-texte)" aria-hidden />}
                 {t.libelle}
               </span>
               <span className="mt-0.5 block text-[12.5px] text-(--lm-encre-2)">{t.description}</span>
@@ -325,7 +325,7 @@ export function Configurer() {
         ) : (
           <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes : votre agent peut répondre partout.</p>
         )}
-        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or) hover:underline">
+        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </Bloc>

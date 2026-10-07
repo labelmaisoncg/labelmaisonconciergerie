@@ -62,7 +62,7 @@ export function Qualite({ prestataire: p }: { prestataire: Prestataire }) {
           {[...refusees, ...retards].map((m) => (
             <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5">
               <StatusBadge type="statutMission" valeur={m.statut} />
-              <Link className="font-medium hover:text-(--lm-or) hover:underline" to={`/erp/menages/${m.id}`}>
+              <Link className="font-medium hover:text-(--lm-or-texte) hover:underline" to={`/erp/menages/${m.id}`}>
                 {logements.find((l) => l.id === m.logementId)?.nom}, {dateCourte(m.date)}
               </Link>
               <span className="text-(--lm-encre-2)">{m.commentaire ?? (m.statut === 'refusee' ? 'Refusée' : 'Preuves non transmises après 24 h')}</span>
@@ -71,7 +71,7 @@ export function Qualite({ prestataire: p }: { prestataire: Prestataire }) {
           {lies.map((i) => (
             <li key={i.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5">
               <StatusBadge type="gravite" valeur={i.gravite} />
-              <Link className="font-medium hover:text-(--lm-or) hover:underline" to={`/erp/incidents?id=${i.id}`}>Incident du {dateCourte(i.date)}</Link>
+              <Link className="font-medium hover:text-(--lm-or-texte) hover:underline" to={`/erp/incidents?id=${i.id}`}>Incident du {dateCourte(i.date)}</Link>
               <span className="line-clamp-1 text-(--lm-encre-2)">{i.description}</span>
             </li>
           ))}
@@ -100,7 +100,7 @@ export function Paiements({ prestataire: p }: { prestataire: Prestataire }) {
       <p className="text-[13px] text-(--lm-encre-2)">
         Seules les missions validées sont payées (règle 2.4).{' '}
         {nonPayables > 0 && <strong className="text-(--lm-alerte)">{nonPayables} mission{nonPayables > 1 ? 's' : ''} passée{nonPayables > 1 ? 's' : ''} non payable{nonPayables > 1 ? 's' : ''} en l’état.</strong>}{' '}
-        <Link to="/erp/finance" className="text-(--lm-or) hover:underline">Voir dans Finance</Link>
+        <Link to="/erp/finance" className="text-(--lm-or-texte) hover:underline">Voir dans Finance</Link>
       </p>
       <Table colonnes={colonnes} lignes={siens} cleLigne={(x) => x.id} triInitial={{ cle: 'periode', sens: 'desc' }} legende="Paiements" dense vide="Aucun paiement enregistré." />
     </div>

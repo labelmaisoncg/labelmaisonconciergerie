@@ -40,7 +40,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
             {aAttribuer.map(({ m, u }) => (
               <li key={m.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-5">
                 <div className="min-w-0 flex-1">
-                  <Link to={`/erp/menages/${m.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or) hover:underline">
+                  <Link to={`/erp/menages/${m.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
                     {nom(m.logementId)}
                   </Link>
                   <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2) first-letter:uppercase">
@@ -79,7 +79,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
                 <li key={m.id} className="px-4 py-3 sm:px-5">
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                     <div className="min-w-0 flex-1">
-                      <Link to={`/erp/menages/${m.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or) hover:underline">
+                      <Link to={`/erp/menages/${m.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
                         {nom(m.logementId)}
                       </Link>
                       <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2) first-letter:uppercase">

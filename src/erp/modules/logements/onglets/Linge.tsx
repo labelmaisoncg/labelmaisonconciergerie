@@ -113,7 +113,7 @@ export function OngletLinge({ logement: l }: { logement: Logement }) {
           <CardHeader
             titre="Derniers mouvements"
             actions={
-              <Link to={`/erp/linge?logement=${l.id}`} className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or) hover:underline">
+              <Link to={`/erp/linge?logement=${l.id}`} className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
                 Suivi du linge <ArrowRight className="size-3.5" />
               </Link>
             }

@@ -80,7 +80,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
             <dt className="text-[12px] text-(--lm-encre-3)">Logement</dt>
             <dd className="font-medium">
               {logement ? (
-                <Link to={`/erp/logements/${logement.id}`} className="text-(--lm-or) hover:underline">
+                <Link to={`/erp/logements/${logement.id}`} className="text-(--lm-or-texte) hover:underline">
                   {logement.nom}
                 </Link>
               ) : (
@@ -127,7 +127,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
       </Card>
 
       <Card>
-        <CardHeader titre="Ménage de départ" actions={<Sparkles className="size-4 text-(--lm-or)" aria-hidden />} />
+        <CardHeader titre="Ménage de départ" actions={<Sparkles className="size-4 text-(--lm-or-texte)" aria-hidden />} />
         {missions.length === 0 ? (
           <p className="text-[13px] text-(--lm-encre-3)">{annulee ? 'Séjour annulé : pas de ménage à prévoir.' : 'Pas encore de ménage prévu pour ce séjour.'}</p>
         ) : (
@@ -135,7 +135,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
             {missions.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
                 <div className="min-w-0">
-                  <Link to={`/erp/menages/${m.id}`} className="text-[13.5px] font-medium text-(--lm-encre) hover:text-(--lm-or) hover:underline">
+                  <Link to={`/erp/menages/${m.id}`} className="text-[13.5px] font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
                     {LIBELLES.typeMission[m.type]} du {dateCourte(m.date)}
                   </Link>
                   <p className="text-[12px] text-(--lm-encre-3)">
@@ -150,14 +150,14 @@ export function FicheReservation({ r }: { r: Reservation }) {
       </Card>
 
       <Card>
-        <CardHeader titre="Messages voyageur" actions={<MessageSquare className="size-4 text-(--lm-or)" aria-hidden />} />
+        <CardHeader titre="Messages voyageur" actions={<MessageSquare className="size-4 text-(--lm-or-texte)" aria-hidden />} />
         {fils.length === 0 ? (
           <p className="text-[13px] text-(--lm-encre-3)">Pas encore de message avec ce voyageur.</p>
         ) : (
           <ul className="divide-y divide-(--lm-bord)">
             {fils.map((f) => (
               <li key={f.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <Link to={`/erp/messagerie/${f.id}`} className="min-w-0 text-[13.5px] font-medium hover:text-(--lm-or) hover:underline">
+                <Link to={`/erp/messagerie/${f.id}`} className="min-w-0 text-[13.5px] font-medium hover:text-(--lm-or-texte) hover:underline">
                   {pluriel(f.messages.length, 'message')} · dernier le {dateHeure(f.dernierMessageLe)}
                 </Link>
                 <div className="flex gap-1.5">
@@ -197,7 +197,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
           <ul className="divide-y divide-(--lm-bord)">
             {incidents.map((i) => (
               <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <Link to={`/erp/incidents/${i.id}`} className="min-w-0 flex-1 text-[13.5px] hover:text-(--lm-or) hover:underline">
+                <Link to={`/erp/incidents/${i.id}`} className="min-w-0 flex-1 text-[13.5px] hover:text-(--lm-or-texte) hover:underline">
                   {LIBELLES.categorieIncident[i.categorie]} : {i.description}
                 </Link>
                 <StatusBadge type="statutIncident" valeur={i.statut} />
