@@ -493,6 +493,9 @@ async function composerEtat(ctx: ContexteConnexion, cache: CacheConnexions, aver
  */
 export type AccesAirbnb = 'full_access' | 'messaging';
 
+/** Fournisseur Repull « Booking.com Extranet login » : lecture + messagerie. */
+export const BOOKING_EXTRANET = 'booking-extranet-login';
+
 export async function demarrerConnexion(
   ctx: ContexteConnexion,
   fournisseur: string,
@@ -527,21 +530,19 @@ export async function demarrerConnexion(
         accessType: 'messaging',
       });
     }
-    // Booking.com : la page hébergée ouverte par /v1/connect/booking répond
-    // « Unsupported provider: booking » (constaté en production). On passe par
-    // le sélecteur hébergé, restreint à l'identifiant EXACT du registre Repull
-    // (« booking.com » ou autre), qui mène au parcours Booking de Repull.
-    if (!cache.fournisseurs?.length) await rafraichirFournisseurs(client, cache, maintenant).catch(() => undefined);
-    const idBooking = cache.fournisseurs?.find((p) => plateformeCourte(p.id) === 'booking')?.id;
-    if (idBooking) {
-      return client.post<{ url?: string; expiresAt?: string }>('/v1/connect', {
-        redirectUrl: urlRetour,
-        allowedProviders: [idBooking],
-        locale: 'fr',
-        state: 'booking',
-      });
-    }
-    return client.post<{ url?: string; expiresAt?: string }>('/v1/connect/booking', { redirectUrl: urlRetour, locale: 'fr' });
+    // Booking.com : connexion « Extranet login » UNIQUEMENT. Repull y lit les
+    // réservations, les messages et les avis, et répond aux voyageurs ; il
+    // n'écrit jamais prix, disponibilités, chambres ni contenu. Rien ne change
+    // dans l'Extranet : pas de fournisseur de connectivité à désigner, donc
+    // Booking ne ferme pas le logement. (Le mode « partenaire de connectivité »
+    // prend la main sur le calendrier : Booking ferme la vente jusqu'à recevoir
+    // des prix. Il n'est plus jamais proposé.)
+    return client.post<{ url?: string; expiresAt?: string }>('/v1/connect', {
+      redirectUrl: urlRetour,
+      allowedProviders: [BOOKING_EXTRANET],
+      locale: 'fr',
+      state: 'booking',
+    });
   });
   if (!texte(r?.url) || !/^https:\/\//.test(texte(r.url))) throw new ErreurConnexion('Repull n’a pas renvoyé de page de connexion. Réessayez dans un instant.', 502);
   // Au retour, tout sera relu.

@@ -858,8 +858,8 @@ async function principal() {
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
   const appelBooking = repull.appels[repull.appels.length - 1];
   verifier(
-    appelBooking.chemin === '/v1/connect' && JSON.stringify(appelBooking.corps?.allowedProviders) === '["booking"]',
-    'Booking.com : sélecteur Repull limité à l’identifiant exact du registre',
+    appelBooking.chemin === '/v1/connect' && JSON.stringify(appelBooking.corps?.allowedProviders) === '["booking-extranet-login"]',
+    'Booking.com : connexion « Extranet login » (messages, réservations, avis ; calendrier et prix jamais repris)',
   );
   await demarrerConnexion(ctx(), 'hostaway', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=hostaway');
   const appelPicker = repull.appels[repull.appels.length - 1];

@@ -29,7 +29,7 @@ const PRINCIPALES: { id: string; nom: string; aide: string }[] = [
   {
     id: 'booking',
     nom: 'Booking.com',
-    aide: 'Booking.com vous demande de choisir Repull comme fournisseur dans votre Extranet, puis votre numéro d’établissement. La page vous guide pas à pas.',
+    aide: 'Messagerie, réservations et avis seulement : vos prix et votre calendrier restent gérés dans l’Extranet, rien n’est fermé. Le plus simple : inviter l’utilisateur Repull indiqué dans Extranet → Compte → Utilisateurs. Ne choisissez pas Repull comme fournisseur de connectivité.',
   },
   { id: 'vrbo', nom: 'Vrbo', aide: 'Vous indiquez vos identifiants Vrbo sur la page sécurisée de Repull.' },
 ];
