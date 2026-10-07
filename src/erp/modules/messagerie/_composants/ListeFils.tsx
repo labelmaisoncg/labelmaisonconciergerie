@@ -52,7 +52,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                 >
                   <Avatar nom={f.voyageur} />
                   <div className="min-w-0 flex-1">
-                    {/* Deux lignes : qui (et où), puis le dernier message. L'urgence se lit au liseré rouge et au nom en gras. */}
+                    {/* Deux lignes : qui (et où), puis le dernier message. L'urgence se lit à un mot court (« Pour vous », « À répondre »), jamais à la couleur seule. */}
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="min-w-0 truncate text-[13.5px] text-(--lm-encre)">
                         <span className={attente ? 'font-semibold' : 'font-medium'}>{f.voyageur}</span>
@@ -60,9 +60,15 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                       </p>
                       <span className="flex shrink-0 items-center gap-1.5">
                         {f.statut === 'escalade' ? (
-                          <OctagonAlert className="size-3.5 text-(--lm-danger)" aria-label="Transmise à l’équipe" />
+                          <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-(--lm-danger)">
+                            <OctagonAlert className="size-3.5" aria-hidden /> Pour vous
+                          </span>
                         ) : (
-                          attente && <span className="size-2 rounded-full bg-(--lm-alerte)" role="img" aria-label="Attend une réponse" />
+                          attente && (
+                            <span className="inline-flex items-center gap-1 text-[11.5px] font-medium text-(--lm-alerte)">
+                              <span className="size-2 rounded-full bg-(--lm-alerte)" aria-hidden /> À répondre
+                            </span>
+                          )
                         )}
                         <time className="lm-chiffres text-[11.5px] text-(--lm-encre-3)" dateTime={f.dernierMessageLe}>
                           {f.dernierMessageLe.slice(0, 10) === AUJOURDHUI ? heure(f.dernierMessageLe) : jourMois(f.dernierMessageLe)}

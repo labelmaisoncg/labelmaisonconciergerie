@@ -96,11 +96,11 @@ export default function Automatisations() {
               </Section>
             );
           })}
-          <HumainSection />
-          <Aide titre="Que fait l’ERP tout seul ?" className="mb-0">
-            Il prévoit un ménage à chaque départ, le confie à un prestataire en règle, organise les contrôles, relance, prépare les paiements et les
+          <Aide titre="Comment ça marche ?" className="mb-0">
+            L’ERP prévoit un ménage à chaque départ, le confie à un prestataire en règle, organise les contrôles, relance, prépare les paiements et les
             factures du mois. Il tourne à chaque changement et une fois par jour. Chaque règle peut être mise en pause. Le temps gagné compte{' '}
             {MINUTES_PAR_ACTION} minutes par action automatique.
+            <HumainSection />
           </Aide>
         </div>
         <div className="min-w-0 xl:sticky xl:top-4 xl:self-start">

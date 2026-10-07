@@ -123,7 +123,7 @@ export function Activite() {
                               Pourquoi : {LIBELLE_MOTIF[a.motif].titre.toLowerCase()}
                             </span>
                           ) : (
-                            <span className="mt-0.5 line-clamp-1 block text-[12.5px] text-(--lm-encre-2)">
+                            <span className="mt-0.5 line-clamp-1 text-[12.5px] text-(--lm-encre-2)">
                               {a.genre === 'reponse' && <Bot className="mr-1 inline size-3.5 text-(--lm-or-texte)" aria-hidden />}
                               {a.texte}
                             </span>

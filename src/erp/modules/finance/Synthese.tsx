@@ -82,9 +82,8 @@ function Contenu() {
           lignes={[
             ['Commissions de gestion', s.commission],
             ['Frais de ménage encaissés', s.fraisMenage],
-            ['TVA à prévoir (20 % des commissions)', tva],
           ]}
-          note={s.brut ? `Soit ${pourcentage(s.ca / s.brut, 1)} de ce qu’ont payé les voyageurs.` : undefined}
+          note={`${s.brut ? `Soit ${pourcentage(s.ca / s.brut, 1)} de ce qu’ont payé les voyageurs. ` : ''}TVA à prévoir : ${euros(tva, true)} (20 % des commissions).`}
           accent
         />
         <CarteMontant

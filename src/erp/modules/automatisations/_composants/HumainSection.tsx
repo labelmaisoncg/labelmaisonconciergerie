@@ -1,5 +1,4 @@
 import { Eye, FileSignature, Gift, Scale } from 'lucide-react';
-import { Repli } from '../../../ui';
 
 const DECISIONS = [
   { icone: Scale, titre: 'Trancher un litige', texte: 'Casse contestée, caution, désaccord avec un voyageur ou un propriétaire.' },
@@ -11,7 +10,8 @@ const DECISIONS = [
 /** La philosophie rendue explicite : ce que l'ERP ne fera jamais seul. */
 export function HumainSection() {
   return (
-    <Repli titre="Ce qui reste humain">
+    <div className="mt-3">
+      <p className="mb-2 text-[13px] font-semibold text-(--lm-encre)">Ce qui reste humain</p>
       <ul className="grid gap-3 sm:grid-cols-2">
         {DECISIONS.map(({ icone: Icone, titre, texte }) => (
           <li key={titre} className="flex gap-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
@@ -25,6 +25,6 @@ export function HumainSection() {
           </li>
         ))}
       </ul>
-    </Repli>
+    </div>
   );
 }

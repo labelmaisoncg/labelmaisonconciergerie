@@ -137,7 +137,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
           </p>
         </div>
         {fil.statut === 'clos' && <StatusBadge type="statutFil" valeur={fil.statut} />}
-        <div className="flex flex-wrap gap-1.5">
+        {/* Actions sur leur propre ligne : le nom du voyageur reste lisible en entier. */}
+        <div className="flex w-full flex-wrap gap-1.5">
           <Button size="sm" variant="secondary" icone={<Bot />} onClick={rendreMain} disabled={!!motifReprise} title={motifReprise}>
             Confier à l’agent
           </Button>

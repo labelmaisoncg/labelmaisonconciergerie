@@ -92,7 +92,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
         <details className="mt-3 text-[12.5px] text-(--lm-encre-2)">
           <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Référence de la plateforme</summary>
           <p className="lm-chiffres mt-1.5">
-            {r.repull?.code ?? r.channexBookingId ?? (r.repull ? `Repull n° ${r.repull.id}` : 'Réservation directe, saisie dans l’ERP')}
+            {r.repull?.code ?? r.channexBookingId ?? (r.repull ? `Référence n° ${r.repull.id}` : 'Réservation directe, saisie dans l’ERP')}
             {r.repull && ' · importée automatiquement'}
           </p>
         </details>

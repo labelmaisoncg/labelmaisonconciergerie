@@ -3,7 +3,7 @@ import { CheckCircle2, Plus, Printer, Send } from 'lucide-react';
 import { useErp, nouvelId } from '../../data/store';
 import { dateHeure, horodatageMaintenant, moisAnnee, pluriel } from '../../data/format';
 import { releveProprietaire } from '../../data/selectors';
-import { Alert, Badge, Button, ButtonLink, Card, EmptyState, Field, MenuActions, PageHeader, Select } from '../../ui';
+import { Alert, Badge, Button, ButtonLink, Card, EmptyState, Field, PageHeader, Select } from '../../ui';
 import { derniersMois } from './_calculs';
 import { DocumentReleve } from './_composants/DocumentReleve';
 import { FIL_FINANCE, type PageFinanceProps } from './_composants/types';
@@ -130,7 +130,9 @@ export default function Releves({ onglets }: PageFinanceProps) {
                 <Button variant="primary" icone={<Send />} onClick={marquerEnvoye} disabled={!!envoiCourant || releve.lignes.length === 0}>
                   {envoiCourant ? 'Déjà envoyé' : 'Marquer comme envoyé'}
                 </Button>
-                <MenuActions label="Plus" texte actions={[{ libelle: 'Imprimer ou PDF', icone: <Printer />, onClick: () => window.print() }]} />
+                <Button variant="ghost" icone={<Printer />} onClick={() => window.print()}>
+                  Imprimer
+                </Button>
                 {envoiCourant && (
                   <span className="text-[12.5px] text-(--lm-encre-2)">
                     Envoyé le {dateHeure(envoiCourant.horodatage)} par {envoiCourant.auteur}
@@ -138,7 +140,7 @@ export default function Releves({ onglets }: PageFinanceProps) {
                 )}
               </div>
               {releve.lignes.length === 0 && (
-                <Alert tone="info" className="lm-sans-impression mb-3" titre="Pas de séjour ce mois-ci : envoyez quand même le relevé." />
+                <Alert tone="info" className="lm-sans-impression mb-3" titre="Pas de séjour ce mois-ci : rien à envoyer." />
               )}
               <DocumentReleve proprietaire={proprietaire} periode={periode} releve={releve} logements={d.logements} mandats={d.mandats} />
             </>
