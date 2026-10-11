@@ -358,6 +358,42 @@ PAYS = [
     ),
 ]
 
+# ----------------------------------------------------------------------------- #
+#  Photos : uniquement les clichés réels les plus lumineux. Les captures de
+#  vidéos verticales (posters sombres, flous) et les rendus IA du Studio sont
+#  exclus. hero-villa / hero-terrasse (studio/) sont des recadrages paysage de
+#  photos réelles (photo_rendu = False dans gen_silo_studio.py).
+# ----------------------------------------------------------------------------- #
+HERO = {
+    "hub": ("studio/hero-terrasse.jpg", "Terrasse et piscine d'un logement géré par Label Maison Conciergerie"),
+    "maroc": ("real/desert-pool.jpg", "Piscine d'un bien géré, désert d'Agafay près de Marrakech"),
+    "dubai": ("real/dubai-skyline.jpg", "Downtown Dubaï vu de nuit, photographié par nos équipes"),
+    "londres": ("real/gestion-villa.jpg", "Villa avec piscine préparée avant l'arrivée des voyageurs"),
+    "etats-unis": ("real/hero-logement-exception.jpg", "Terrasse avec piscine d'un logement d'exception géré"),
+    "allemagne": ("studio/hero-villa.jpg", "Piscine d'une villa gérée par Label Maison Conciergerie"),
+    "bali": ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré"),
+    "chine": ("studio/hero-terrasse.jpg", "Terrasse et piscine d'un logement géré par Label Maison Conciergerie"),
+}
+
+GALERIE = [
+    ("real/hero-logement-exception.jpg", "Terrasse avec piscine d'un logement d'exception géré"),
+    ("studio/hero-villa.jpg", "Piscine d'une villa gérée par Label Maison Conciergerie"),
+    ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré"),
+    ("real/gestion-villa.jpg", "Villa préparée avant l'arrivée des voyageurs"),
+    ("real/proof-logement-poster.jpg", "Séjour lumineux d'un appartement en gestion"),
+    ("studio/hero-terrasse.jpg", "Terrasse d'un logement géré par Label Maison Conciergerie"),
+    ("real/dubai-marina.jpg", "La Marina de Dubaï, photographiée par nos équipes"),
+    ("real/desert-pool.jpg", "Piscine dans le désert d'Agafay, près de Marrakech"),
+]
+
+
+def galerie_pour(slug: str) -> list:
+    """Même sélection partout, décalée pour que les pages ne commencent pas par la même photo."""
+    i = (list(HERO).index(slug)) % len(GALERIE)
+    g = GALERIE[i:] + GALERIE[:i]
+    hero = HERO[slug][0]
+    return [x for x in g if x[0] != hero][:6]
+
 
 def pays_par_slug(slug: str) -> dict:
     return next(p for p in PAYS if p["slug"] == slug)
@@ -510,7 +546,7 @@ def hub_spec() -> dict:
         sub="Vous vivez à Dubaï, Londres, Casablanca, New York, Berlin, Bali ou Shanghai et vous "
             "possédez un appartement à Paris, en Île-de-France ou ailleurs en France. Nous le "
             "louons, l'entretenons et vous rendons des comptes, chaque mois, par écrit.",
-        photo=("real/logement-hero.jpg", "Appartement parisien géré à distance pour un propriétaire expatrié"),
+        photo=HERO["hub"],
         puces=["Mandat <b>100 % en ligne</b>", "Clés et accès <b>gérés</b>",
                "Reporting <b>mensuel</b>", "Fiscalité non-résident <b>documentée</b>"],
         cta="Confier mon bien à distance",
@@ -540,7 +576,7 @@ def hub_spec() -> dict:
                 "écrit, et nous calons les points réguliers sur votre créneau, pas sur le nôtre.",
             ]),
         ],
-        gallery=[C.photo(k) for k in range(0, 12, 2)],
+        gallery=galerie_pour("hub"),
         steps=STEPS,
         why=WHY,
         zones=("Où que vous viviez, nous gérons votre bien en France",
@@ -582,7 +618,6 @@ def pays_spec(p: dict) -> dict:
     autres = [lien_pays(x) for x in PAYS if x["slug"] != slug]
     villes = ", ".join(p["villes"][:-1]) + " ou " + p["villes"][-1]
     idx = PAYS.index(p)
-    photo_h = C.photo(idx + 1)
     article = p["depuis"]
     return dict(
         slug=page_slug,
@@ -602,7 +637,7 @@ def pays_spec(p: dict) -> dict:
         sub=f"Vous vivez à {villes} et vous possédez — ou achetez — un appartement à Paris, en "
             f"Île-de-France ou ailleurs en France. Nous le louons, l'entretenons et vous rendons des "
             f"comptes chaque mois, à votre heure.",
-        photo=photo_h,
+        photo=HERO[slug],
         puces=["Mandat <b>en ligne</b>", "Visio <b>à votre heure</b>",
                "Reporting <b>mensuel</b>", "Relevé <b>annuel</b> pour votre déclaration"],
         cta="Confier mon bien à distance",
@@ -629,7 +664,7 @@ def pays_spec(p: dict) -> dict:
                 p["banque"],
             ]),
         ],
-        gallery=[C.photo(k) for k in range(idx, idx + 10, 2)],
+        gallery=galerie_pour(slug),
         steps=STEPS,
         why=WHY,
         zones=("Propriétaires à l'étranger : les autres pays",
