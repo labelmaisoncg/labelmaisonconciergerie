@@ -163,6 +163,7 @@ export function Footer() {
                   ['Essonne (91)', '/conciergerie-airbnb-essonne'],
                   ['Côte d’Azur', '/conciergerie-cote-d-azur'],
                   ['Toute la France', '/conciergerie-airbnb-france'],
+                  ['Propriétaires à l’étranger', '/conciergerie-airbnb-proprietaires-expatries'],
                 ].map(([label, href]) => (
                   <li key={href}>
                     <a href={href} className="hover:text-[#A97C30]">
