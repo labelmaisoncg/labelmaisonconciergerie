@@ -36,7 +36,8 @@ HUBS = {"/conciergerie-airbnb-france", "/conciergerie-airbnb-paris",
         "/conciergerie-privee-paris", "/conciergerie-dubai", "/conciergerie-marrakech",
         "/estimation-rentabilite-airbnb", "/gestion-locative-paris",
         "/achat-vente-montres-de-luxe", "/van-avec-chauffeur-paris", "/bacam-spa",
-        "/idee-deco-chambre-luxe", "/conciergerie-airbnb-proprietaires-expatries"}
+        "/idee-deco-chambre-luxe", "/conciergerie-airbnb-proprietaires-expatries",
+        "/apporteur-d-affaires", "/conciergerie-chine", "/location-voiture-de-luxe-paris"}
 
 
 def inventaire() -> tuple:

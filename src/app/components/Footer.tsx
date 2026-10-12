@@ -227,6 +227,9 @@ export function Footer() {
                   ['Navette aéroport', '/navette-aeroport-paris'],
                   ['Montres de luxe', '/achat-vente-montres-de-luxe'],
                   ['Personal shopper', '/personal-shopper-paris'],
+                  ['Voitures de luxe', '/location-voiture-de-luxe-paris'],
+                  ['Conciergerie Chine', '/conciergerie-chine'],
+                  ['Apporteur d’affaires', '/apporteur-d-affaires'],
                   ['Le blog des propriétaires', '/blog'],
                 ].map(([label, href]) => (
                   <li key={href}>
