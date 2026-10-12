@@ -359,31 +359,33 @@ PAYS = [
 ]
 
 # ----------------------------------------------------------------------------- #
-#  Photos : uniquement les clichés réels les plus lumineux. Les captures de
-#  vidéos verticales (posters sombres, flous) et les rendus IA du Studio sont
-#  exclus. hero-villa / hero-terrasse (studio/) sont des recadrages paysage de
-#  photos réelles (photo_rendu = False dans gen_silo_studio.py).
+#  Photos : uniquement des clichés réels, lumineux, en paysage. Les appartements
+#  (sens/) sont ceux du réseau Label Maison à Sens ; les captures de vidéos
+#  verticales et les rendus IA du Studio sont exclus. hero-terrasse (studio/) est
+#  un recadrage paysage d'une photo réelle (photo_rendu = False).
 # ----------------------------------------------------------------------------- #
 HERO = {
-    "hub": ("studio/hero-terrasse.jpg", "Terrasse et piscine d'un logement géré par Label Maison Conciergerie"),
+    "hub": ("sens/sens-12.jpg", "Séjour lumineux d'un appartement géré par le réseau Label Maison"),
     "maroc": ("real/desert-pool.jpg", "Piscine d'un bien géré, désert d'Agafay près de Marrakech"),
-    "dubai": ("real/dubai-skyline.jpg", "Downtown Dubaï vu de nuit, photographié par nos équipes"),
-    "londres": ("real/gestion-villa.jpg", "Villa avec piscine préparée avant l'arrivée des voyageurs"),
-    "etats-unis": ("real/hero-logement-exception.jpg", "Terrasse avec piscine d'un logement d'exception géré"),
-    "allemagne": ("studio/hero-villa.jpg", "Piscine d'une villa gérée par Label Maison Conciergerie"),
+    "dubai": ("real/dubai-downtown-nuit.jpg", "Downtown Dubaï de nuit, photographié par nos équipes"),
+    "londres": ("sens/sens-04.jpg", "Salon d'un appartement géré par le réseau Label Maison"),
+    "etats-unis": ("sens/sens-05.jpg", "Séjour d'un appartement en gestion, prêt pour une arrivée"),
+    "allemagne": ("sens/sens-08.jpg", "Chambre lumineuse d'un appartement géré"),
     "bali": ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré"),
-    "chine": ("studio/hero-terrasse.jpg", "Terrasse et piscine d'un logement géré par Label Maison Conciergerie"),
+    "chine": ("sens/sens-14.jpg", "Chambre d'un appartement ancien géré par le réseau Label Maison"),
 }
 
 GALERIE = [
+    ("sens/sens-12.jpg", "Séjour lumineux d'un appartement géré par le réseau Label Maison"),
+    ("sens/sens-04.jpg", "Salon d'un appartement géré par le réseau Label Maison"),
+    ("sens/sens-08.jpg", "Chambre lumineuse d'un appartement géré"),
+    ("sens/sens-05.jpg", "Séjour d'un appartement en gestion, prêt pour une arrivée"),
+    ("sens/sens-14.jpg", "Chambre d'un appartement ancien géré par le réseau Label Maison"),
     ("real/hero-logement-exception.jpg", "Terrasse avec piscine d'un logement d'exception géré"),
-    ("studio/hero-villa.jpg", "Piscine d'une villa gérée par Label Maison Conciergerie"),
-    ("real/logement-hero.jpg", "Chambre avec vue piscine d'un logement géré"),
-    ("real/gestion-villa.jpg", "Villa préparée avant l'arrivée des voyageurs"),
-    ("real/proof-logement-poster.jpg", "Séjour lumineux d'un appartement en gestion"),
+    ("sens/sens-09.jpg", "Chambre d'un appartement géré, lit préparé pour les voyageurs"),
     ("studio/hero-terrasse.jpg", "Terrasse d'un logement géré par Label Maison Conciergerie"),
+    ("real/gestion-villa.jpg", "Villa préparée avant l'arrivée des voyageurs"),
     ("real/dubai-marina.jpg", "La Marina de Dubaï, photographiée par nos équipes"),
-    ("real/desert-pool.jpg", "Piscine dans le désert d'Agafay, près de Marrakech"),
 ]
 
 
