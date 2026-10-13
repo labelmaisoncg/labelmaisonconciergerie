@@ -2,45 +2,21 @@ import { Helmet } from 'react-helmet-async';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { StudioFooter, StudioHeader } from '../components/StudioChrome';
+import { ACTIVITE, Bloc, EDITEUR, EMAIL, GOLD, GOLD_DARK, HEBERGEUR, INK, INK_2, IVORY, LINE, Siret, SITE_LIBELLE, SITE_URL, TEL } from '../legal';
 
 // =============================================================================
 // Conditions du service payant « Label Maison Studio » : CGV, remboursement,
 // données personnelles (RGPD) et mentions légales. Page sobre, lisible, sans
 // fioriture — c'est un document, pas une vitrine.
 //
-// ⚠ Tout est au nom de Label Maison Conciergerie. Seul le SIRET reste à
-// renseigner (constante SIRET ci-dessous) : c'est une donnée officielle, on ne
-// l'invente pas. Dès qu'il est saisi, la mention « à compléter » disparaît.
+// ⚠ Tout est au nom de Label Maison Conciergerie. Les faits légaux (éditeur,
+// contact, hébergeur, SIRET) sont partagés avec les mentions légales et la
+// politique de confidentialité : src/app/legal.tsx. Le SIRET y reste à
+// renseigner : c'est une donnée officielle, on ne l'invente pas. Dès qu'il est
+// saisi, la mention « à compléter » disparaît.
 // =============================================================================
 
-const GOLD = '#A97C30';
-const GOLD_DARK = '#7C561D';
-const INK = '#2C2418';
-const INK_2 = '#6B6252';
-const IVORY = '#FBF9F4';
-const LINE = '#E6DDC9';
-
-// Renseigner le numéro SIRET ici : il s'affichera automatiquement dans les
-// mentions légales (obligatoire pour une vente en ligne à des particuliers).
-const SIRET = '';
-
-const EDITEUR = 'Label Maison Conciergerie';
-const EMAIL = 'labelmaisonconciergerie@gmail.com';
-const TEL = '+33 7 49 54 83 55';
 const MAJ = '17 septembre 2026';
-
-function Bloc({ titre, children }: { titre: string; children: React.ReactNode }) {
-  return (
-    <section className="mt-10">
-      <h2 className="font-serif-title text-[24px] md:text-[30px] leading-tight" style={{ color: INK }}>
-        {titre}
-      </h2>
-      <div className="mt-3 grid gap-3 text-[15px] leading-relaxed" style={{ color: INK_2 }}>
-        {children}
-      </div>
-    </section>
-  );
-}
 
 export function StudioConditions() {
   return (
@@ -192,28 +168,20 @@ export function StudioConditions() {
 
         <Bloc titre="7. Mentions légales">
           <p>
-            <strong style={{ color: INK }}>Éditeur du site et du service :</strong> {EDITEUR},
-            conciergerie et gestion locative courte durée — Paris, France.
+            <strong style={{ color: INK }}>Éditeur du site et du service :</strong> {EDITEUR},{' '}
+            {ACTIVITE}.
             <br />
-            <strong style={{ color: INK }}>SIRET :</strong>{' '}
-            {SIRET || (
-              <span
-                className="px-2 py-0.5 rounded"
-                style={{ background: '#F6EAD6', color: GOLD_DARK, fontSize: '13px' }}
-              >
-                à compléter
-              </span>
-            )}
+            <strong style={{ color: INK }}>SIRET :</strong> <Siret />
             <br />
             <strong style={{ color: INK }}>Directeur de la publication :</strong> {EDITEUR}.
             <br />
             <strong style={{ color: INK }}>Contact :</strong>{' '}
             <a href={`mailto:${EMAIL}`} style={{ color: GOLD_DARK }}>{EMAIL}</a> — {TEL} —{' '}
-            <a href="https://labelmaisoncg.fr" style={{ color: GOLD_DARK }}>labelmaisoncg.fr</a>.
+            <a href={SITE_URL} style={{ color: GOLD_DARK }}>{SITE_LIBELLE}</a>.
           </p>
           <p>
-            <strong style={{ color: INK }}>Hébergeur :</strong> Vercel Inc., 340 S Lemon Ave #4133,
-            Walnut, CA 91789, États-Unis — vercel.com.
+            <strong style={{ color: INK }}>Hébergeur :</strong> {HEBERGEUR.nom}, {HEBERGEUR.adresse} —{' '}
+            {HEBERGEUR.site}.
           </p>
           <p>
             <strong style={{ color: INK }}>Paiement :</strong> Stripe Payments Europe, Ltd., 1 Grand

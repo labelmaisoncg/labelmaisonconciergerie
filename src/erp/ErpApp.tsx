@@ -2,7 +2,7 @@
  * Point d'entrée de l'ERP, monté par App.tsx sur /erp/* (chargement paresseux).
  * Routes relatives : chaque module gère ses sous-routes sous `<segment>/*`.
  */
-import { Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { Compass } from 'lucide-react';
 import './erp.css';
@@ -11,6 +11,9 @@ import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
 import { MODULES } from './modules/registry';
 import { ButtonLink, EmptyState, PageSkeleton } from './ui';
+
+// Écran d'autorisation OAuth ouvert par Claude (connecteur du CRM), hors mise en page.
+const AutoriserClaude = lazy(() => import('./modules/crm/AutoriserClaude'));
 
 /** Titre d'onglet et noindex tant que l'ERP est affiché ; état du site rétabli ensuite. */
 function useEnteteDocument() {
@@ -66,14 +69,35 @@ function Contenu() {
   );
 }
 
+/**
+ * Mise en page de l'ERP, sauf pour l'écran de consentement OAuth ouvert par
+ * Claude : plein écran, sans menu ni barre du haut, rien d'autre à faire que
+ * décider.
+ */
+function Coquille() {
+  const { pathname } = useLocation();
+  if (/^\/erp\/autoriser-claude\/?$/.test(pathname)) {
+    return (
+      <main className="min-h-screen px-4 pb-12">
+        <Suspense fallback={<PageSkeleton />}>
+          <AutoriserClaude />
+        </Suspense>
+      </main>
+    );
+  }
+  return (
+    <ErpLayout>
+      <Contenu />
+    </ErpLayout>
+  );
+}
+
 export default function ErpApp() {
   useEnteteDocument();
   return (
     <div className="erp-root">
       <ErpProvider>
-        <ErpLayout>
-          <Contenu />
-        </ErpLayout>
+        <Coquille />
       </ErpProvider>
     </div>
   );

@@ -16,6 +16,8 @@ import { Shopping } from './pages/Shopping';
 import { CercleLabelMaison } from './pages/CercleLabelMaison';
 import { Studio } from './pages/Studio';
 import { StudioConditions } from './pages/StudioConditions';
+import { MentionsLegales } from './pages/MentionsLegales';
+import { PolitiqueConfidentialite } from './pages/PolitiqueConfidentialite';
 import { CercleAnnounce } from './components/CercleAnnounce';
 
 // L'ERP interne (/erp) est chargé à la demande : le site public ne télécharge
@@ -42,6 +44,8 @@ function SiteShell() {
           <Route path="/cerclelabelmaison" element={<CercleLabelMaison />} />
           <Route path="/studio" element={<Studio />} />
           <Route path="/studio/conditions" element={<StudioConditions />} />
+          <Route path="/mentions-legales" element={<MentionsLegales />} />
+          <Route path="/politique-de-confidentialite" element={<PolitiqueConfidentialite />} />
         </Routes>
         <Footer />
         <CercleAnnounce />

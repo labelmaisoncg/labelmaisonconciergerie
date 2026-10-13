@@ -194,6 +194,16 @@ create policy "gerant ajoute"  on erp.membres for insert to authenticated with c
 create policy "gerant modifie" on erp.membres for update to authenticated using (erp.acces_gerant()) with check (erp.acces_gerant());
 create policy "gerant retire"  on erp.membres for delete to authenticated using (erp.acces_gerant());
 
+-- Collection technique « connecteurs » (connexion de Claude au CRM : empreintes
+-- des codes et jetons OAuth, date de révocation) : gérants seulement, en
+-- lecture comme en écriture. Règle RESTRICTIVE : elle s'ajoute aux règles
+-- ci-dessus sans rien ouvrir. Le serveur passe par le compte d'équipe (gérant).
+drop policy if exists "connecteurs reserves aux gerants" on erp.enregistrements;
+create policy "connecteurs reserves aux gerants" on erp.enregistrements
+  as restrictive for all to authenticated
+  using (collection <> 'connecteurs' or erp.acces_gerant())
+  with check (collection <> 'connecteurs' or erp.acces_gerant());
+
 -- historique : lecture seule pour l'équipe (écrit uniquement par le déclencheur).
 drop policy if exists "membres lisent" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated using (erp.acces_lecture());
