@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Mail, MessageSquareText, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
-import { LIBELLE_RESULTAT, LIBELLE_SOURCE_CRM, noterAppel } from '../../../data/crm';
+import { EMAIL_SUR, LIBELLE_RESULTAT, LIBELLE_SOURCE_CRM, noterAppel, STATUTS_CRM } from '../../../data/crm';
 import { dateHeure, horodatageMaintenant, pluriel } from '../../../data/format';
-import type { ContactCrm, ResultatAppel, Responsable } from '../../../data/types';
-import { Button, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
-import { PastilleStatut, relanceEnRetard } from './Grille';
+import type { ContactCrm, ResultatAppel, Responsable, StatutContactCrm } from '../../../data/types';
+import { Button, classesBouton, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
+import { relanceEnRetard } from './Grille';
 
 const TON_TRACE: Record<ResultatAppel, Ton> = {
   joint: 'succes',
@@ -42,11 +42,17 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
   };
   const appel = (r: ResultatAppel, texte?: string) => onModifier(noterAppel(contact, r, auteur, horodatageMaintenant(), texte));
   const tel = contact.telephone?.replace(/[^\d+]/g, '');
+  const emailSur = contact.email && EMAIL_SUR.test(contact.email) ? contact.email : undefined;
+  // Fermer (Échap, croix) n'abandonne pas une saisie en cours.
+  const fermer = () => {
+    enregistrerChamp();
+    onFermer();
+  };
 
   return (
     <Drawer
       ouvert
-      onFermer={onFermer}
+      onFermer={fermer}
       titre={contact.nom}
       sousTitre={`${LIBELLE_SOURCE_CRM[contact.source]} · reçu le ${dateHeure(contact.creeLe)}`}
       actions={
@@ -59,35 +65,28 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
       }
     >
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <PastilleStatut contact={contact} onModifier={onModifier} lectureSeule={lectureSeule} />
-          {contact.tentatives > 0 && (
-            <span className="text-[12.5px] text-(--lm-encre-2)">{pluriel(contact.tentatives, 'appel')} sans réponse</span>
-          )}
-          {relanceEnRetard(contact) && <span className="text-[12.5px] font-medium text-(--lm-danger)">Relance en retard</span>}
-        </div>
+        {(contact.tentatives > 0 || relanceEnRetard(contact)) && (
+          <p className="flex flex-wrap gap-x-3 text-[12.5px]">
+            {contact.tentatives > 0 && <span className="text-(--lm-encre-2)">{pluriel(contact.tentatives, 'appel')} sans réponse</span>}
+            {relanceEnRetard(contact) && <span className="font-medium text-(--lm-danger)">Relance en retard</span>}
+          </p>
+        )}
 
         {/* Appeler, puis noter le résultat en un geste. */}
         <div className="rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
           <div className="flex flex-wrap gap-2">
             {tel ? (
-              <a
-                href={`tel:${tel}`}
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-(--lm-or-texte) px-3.5 text-sm font-medium text-white hover:bg-(--lm-brun)"
-              >
-                <Phone className="size-4" aria-hidden /> Appeler {contact.telephone}
+              <a href={`tel:${tel}`} aria-label={`Appeler ${contact.nom}`} className={classesBouton('primary')}>
+                <Phone aria-hidden /> Appeler
               </a>
             ) : (
               <span className="inline-flex h-9 items-center gap-2 text-[13px] text-(--lm-encre-3)">
                 <PhoneOff className="size-4" aria-hidden /> Pas de téléphone
               </span>
             )}
-            {contact.email && (
-              <a
-                href={`mailto:${contact.email}`}
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3 text-sm text-(--lm-encre) hover:bg-(--lm-neutre-lavis)"
-              >
-                <Mail className="size-4" aria-hidden /> E-mail
+            {emailSur && (
+              <a href={`mailto:${emailSur}`} className={classesBouton('secondary')}>
+                <Mail aria-hidden /> E-mail
               </a>
             )}
           </div>
@@ -110,6 +109,16 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Étape">
+              <Select
+                value={contact.statut}
+                disabled={lectureSeule}
+                onChange={(e) => onModifier({ ...contact, statut: e.target.value as StatutContactCrm })}
+                options={STATUTS_CRM.map((x) => ({ valeur: x.cle, libelle: x.libelle }))}
+              />
+            </Field>
+          </div>
           <Field label="Nom">
             <Input value={brouillon.nom} disabled={lectureSeule} onChange={(e) => champ('nom', e.target.value)} onBlur={enregistrerChamp} />
           </Field>
@@ -176,8 +185,8 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
 
         {(contact.message || contact.typeBien || contact.adresse || contact.page) && (
           <Repli titre="Sa demande" ouvert={!!contact.message}>
+            {contact.message && <p className="mb-3 text-[13.5px] whitespace-pre-line text-(--lm-encre)">{contact.message}</p>}
             <dl className="space-y-2 text-[13.5px]">
-              {contact.message && <dd className="whitespace-pre-line text-(--lm-encre)">{contact.message}</dd>}
               {contact.typeBien && (
                 <div>
                   <dt className="text-[12px] text-(--lm-encre-3)">Bien</dt>
@@ -192,8 +201,16 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
               )}
               {contact.page && (
                 <div>
-                  <dt className="text-[12px] text-(--lm-encre-3)">Page du site</dt>
-                  <dd className="break-all">{contact.page}</dd>
+                  <dt className="text-[12px] text-(--lm-encre-3)">Envoyée depuis</dt>
+                  <dd>
+                    {contact.page.startsWith('/') ? (
+                      <a href={contact.page} target="_blank" rel="noreferrer" className="text-(--lm-or-texte) hover:underline">
+                        Voir la page du site
+                      </a>
+                    ) : (
+                      <span className="break-all">{contact.page}</span>
+                    )}
+                  </dd>
                 </div>
               )}
             </dl>

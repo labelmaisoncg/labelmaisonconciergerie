@@ -42,7 +42,7 @@ export function creerContactsCrm(): ContactCrm[] {
       tentatives: 2,
       relanceLe: AUJOURDHUI,
       historique: [
-        { le: h(-1, '18:05'), par: 'Kamel', resultat: 'messagerie', texte: 'Message laissé.' },
+        { le: h(-1, '18:05'), par: 'Kamel', resultat: 'messagerie' },
         { le: h(-2, '11:40'), par: 'Kamel', resultat: 'pas_de_reponse' },
         { le: h(-2), par: 'Site web', resultat: 'formulaire', texte: 'Demande d’estimation.' },
       ],

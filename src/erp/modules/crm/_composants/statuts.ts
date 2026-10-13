@@ -6,12 +6,12 @@
 import type { StatutContactCrm } from '../../../data/types';
 
 export const PASTILLE: Record<StatutContactCrm, string> = {
-  a_appeler: 'bg-(--lm-info-lavis) text-(--lm-info)',
+  a_appeler: 'bg-(--lm-info-lavis) text-(--lm-info-texte)',
   a_rappeler: 'bg-(--lm-orange-lavis) text-(--lm-orange)',
   contacte: 'bg-(--lm-or-lavis) text-(--lm-brun)',
   en_attente: 'bg-(--lm-violet-lavis) text-(--lm-violet)',
   rendez_vous: 'bg-(--lm-sarcelle-lavis) text-(--lm-sarcelle)',
-  signe: 'bg-(--lm-succes-lavis) text-(--lm-succes)',
+  signe: 'bg-(--lm-succes-lavis) text-(--lm-succes-texte)',
   pas_interesse: 'bg-(--lm-neutre-lavis) text-(--lm-encre-2)',
 };
 

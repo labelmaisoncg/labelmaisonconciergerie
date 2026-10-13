@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { avecDelai, enregistrerDemandeCrm, type ResultatCrm } from './_erp-crm.js';
+import { EMAIL_SUR } from '../src/erp/data/crm.js';
 
 type Payload = {
   type?: string;
@@ -36,10 +37,36 @@ const row = (label: string, value: unknown): string =>
     ? `<tr><td style="padding:6px 12px;color:#6b6b6b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;vertical-align:top">${escapeHtml(label)}</td><td style="padding:6px 12px;color:#0a0a0a;font-size:15px">${escapeHtml(value).replace(/\n/g, '<br />')}</td></tr>`
     : '';
 
+/** Pages autorisées à envoyer : le site, ses aperçus Vercel, le poste de développement. */
+const ORIGINES_SITE = /^https?:\/\/((www\.)?labelmaisoncg\.fr|(www\.)?labelmaisoncgexperience\.fr|[a-z0-9-]+\.vercel\.app|localhost(:\d+)?)(\/|$)/i;
+
+/** Au plus 5 envois par adresse IP en 10 minutes (par instance du serveur : un frein, pas un mur). */
+const ENVOIS = new Map<string, number[]>();
+const FENETRE_MS = 10 * 60_000;
+function tropDEnvois(ip: string): boolean {
+  const maintenant = Date.now();
+  const recents = (ENVOIS.get(ip) ?? []).filter((t) => maintenant - t < FENETRE_MS);
+  recents.push(maintenant);
+  ENVOIS.set(ip, recents);
+  if (ENVOIS.size > 5000) ENVOIS.clear();
+  return recents.length > 5;
+}
+const adresseIp = (req: any): string => String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
+  }
+
+  // Seuls les formulaires de nos pages peuvent écrire (un navigateur envoie
+  // toujours Origin sur un POST) : un script extérieur ne remplit pas le CRM.
+  const provenance = String(req.headers?.origin || req.headers?.referer || '');
+  if (!ORIGINES_SITE.test(provenance)) {
+    return res.status(403).json({ ok: false, error: 'Envoi refusé : utilisez le formulaire du site.' });
+  }
+  if (tropDEnvois(adresseIp(req))) {
+    return res.status(429).json({ ok: false, error: 'Trop d’envois en peu de temps. Réessayez dans quelques minutes ou appelez-nous au +33 7 49 54 83 55.' });
   }
 
   const apiKey = process.env.RESEND_API_KEY;
@@ -65,7 +92,7 @@ export default async function handler(req: any, res: any) {
     return res.status(200).json({ ok: true });
   }
 
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!email || !EMAIL_SUR.test(email.trim())) {
     return res
       .status(400)
       .json({ ok: false, error: 'Adresse e-mail manquante ou invalide.' });

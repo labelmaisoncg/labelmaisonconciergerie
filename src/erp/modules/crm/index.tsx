@@ -10,7 +10,7 @@ import { PhoneCall, Plus } from 'lucide-react';
 import { aTraiterLe, idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { useErp } from '../../data/store';
-import type { ContactCrm, StatutContactCrm } from '../../data/types';
+import type { ContactCrm } from '../../data/types';
 import { Alert, Button, EmptyState, Field, FilterChips, Input, Modal, PageHeader, SearchInput, Textarea, Toolbar, useRechercheUrl } from '../../ui';
 import { FicheContact } from './_composants/FicheContact';
 import { Grille } from './_composants/Grille';
@@ -19,7 +19,7 @@ const FILTRE_JOUR = 'aujourdhui';
 
 const aTraiterAujourdhui = (c: ContactCrm) => aTraiterLe(c, AUJOURDHUI);
 
-function NouveauContact({ ouvert, onFermer, contacts }: { ouvert: boolean; onFermer: () => void; contacts: ContactCrm[] }) {
+function NouveauContact({ ouvert, onFermer, contacts, onOuvrir }: { ouvert: boolean; onFermer: () => void; contacts: ContactCrm[]; onOuvrir: (id: string) => void }) {
   const { upsert, utilisateur } = useErp();
   const [f, setF] = useState({ nom: '', telephone: '', email: '', ville: '', typeBien: '', notes: '' });
   const doublon = useMemo(
@@ -91,8 +91,25 @@ function NouveauContact({ ouvert, onFermer, contacts }: { ouvert: boolean; onFer
           </Field>
         </div>
       </div>
+      {!f.telephone.trim() && !f.email.trim() && <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">Téléphone ou e-mail requis.</p>}
       {doublon && (
-        <Alert tone="alerte" className="mt-3" titre={`${doublon.nom} est déjà dans le CRM avec ce numéro ou cet e-mail.`} />
+        <Alert
+          tone="alerte"
+          className="mt-3"
+          titre={`${doublon.nom} est déjà dans le CRM avec ce numéro ou cet e-mail.`}
+          actions={
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                fermer();
+                onOuvrir(doublon.id);
+              }}
+            >
+              Ouvrir sa fiche
+            </Button>
+          }
+        />
       )}
     </Modal>
   );
@@ -119,7 +136,6 @@ export default function Crm() {
 
   const modifier = (c: ContactCrm) => upsert('crm', { ...c, majLe: horodatageMaintenant() });
 
-  const compte = (s: StatutContactCrm) => crm.filter((c) => c.statut === s).length;
   const aujourdhui = crm.filter(aTraiterAujourdhui).length;
 
   const visibles = useMemo(() => {
@@ -141,8 +157,9 @@ export default function Crm() {
     <>
       <PageHeader
         titre="CRM"
-        sousTitre={aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : 'Personne à appeler aujourd’hui.'}
+        sousTitre={crm.length > 0 ? (aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : 'Personne à appeler aujourd’hui.') : undefined}
         actions={
+          crm.length > 0 &&
           !lectureSeule && (
             <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
               Nouveau contact
@@ -159,7 +176,7 @@ export default function Crm() {
           action={
             !lectureSeule && (
               <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
-                Ajouter un contact
+                Nouveau contact
               </Button>
             )
           }
@@ -173,8 +190,8 @@ export default function Crm() {
               actifs={filtres}
               onChange={setFiltres}
               filtres={[
-                { cle: FILTRE_JOUR, libelle: 'Aujourd’hui', compteur: aujourdhui },
-                ...STATUTS_CRM.map((s) => ({ cle: s.cle, libelle: s.libelle, compteur: compte(s.cle) })),
+                { cle: FILTRE_JOUR, libelle: 'Aujourd’hui' },
+                ...STATUTS_CRM.map((s) => ({ cle: s.cle, libelle: s.libelle })),
               ]}
             />
           </Toolbar>
@@ -197,7 +214,7 @@ export default function Crm() {
         auteur={utilisateur.nom}
         lectureSeule={lectureSeule}
       />
-      {!lectureSeule && <NouveauContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} />}
+      {!lectureSeule && <NouveauContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} onOuvrir={ouvrir} />}
     </>
   );
 }

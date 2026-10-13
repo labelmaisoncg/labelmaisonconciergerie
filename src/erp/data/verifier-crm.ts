@@ -66,10 +66,15 @@ verifier(!trouverDoublon(liste, { telephone: '12' }), 'numéro trop court ignor�
 const contacte = { ...a, statut: 'contacte' as const, notes: 'Rappeler après 18 h' };
 const nouvelle = contactDepuisDemande({ type: 'lead', email: 'sophie@exemple.fr', adresse: '1 rue Exemple', message: 'Je relance' }, 'crm-9', T1);
 const fusion = fusionnerDemande(contacte, nouvelle, T1);
-verifier(fusion.id === 'crm-1' && fusion.statut === 'a_appeler', 'nouvelle demande : même ligne, repasse « À appeler »');
-verifier(fusion.notes === 'Rappeler après 18 h' && fusion.adresse === '1 rue Exemple' && fusion.message === 'Je relance', 'notes gardées, champs vides complétés, dernier message affiché');
-verifier(fusion.historique.length === 2 && fusion.historique[0].le === T1, 'historique : nouvelle demande en tête');
-verifier(fusionnerDemande({ ...a, statut: 'rendez_vous' }, nouvelle, T1).statut === 'rendez_vous', 'rendez-vous déjà fixé : l’étape ne recule pas');
+verifier(fusion.id === 'crm-1' && fusion.statut === 'contacte', 'nouvelle demande : même ligne, étape inchangée (un formulaire public ne réécrit pas la fiche)');
+verifier(fusion.relanceLe === '2026-10-14', 'nouvelle demande : la fiche passe dans les appels du jour');
+verifier(fusion.notes === 'Rappeler après 18 h' && fusion.adresse === '1 rue Exemple' && fusion.message === 'Bonjour', 'notes et message existants gardés, champs vides complétés');
+verifier(fusion.historique.length === 2 && fusion.historique[0].le === T1 && fusion.historique[0].texte === 'Je relance', 'historique : nouvelle demande en tête, avec son message');
+verifier(fusionnerDemande({ ...contacte, relanceLe: '2026-10-01' }, nouvelle, T1).relanceLe === '2026-10-01', 'relance déjà en retard : gardée');
+
+// E-mails qui détourneraient un lien mailto:
+verifier(contactDepuisDemande({ type: 'contact', nom: 'X', email: 'x@y.fr?bcc=pirate%40z.com' }, 'crm-5', T0).email === undefined, 'e-mail piégé (?bcc=) écarté');
+verifier(contactDepuisDemande({ type: 'contact', nom: 'X', email: 'a,b@y.fr' }, 'crm-6', T0).email === undefined, 'e-mail à virgule écarté');
 
 // Appels
 const sansReponse = noterAppel(a, 'pas_de_reponse', 'Kamel', T1);

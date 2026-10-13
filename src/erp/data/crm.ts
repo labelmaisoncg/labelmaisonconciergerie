@@ -73,6 +73,9 @@ export interface DemandeSite {
   profil?: string;
 }
 
+/** E-mail sans caractère capable de détourner un lien mailto: (?, &, %, virgule…). */
+export const EMAIL_SUR = /^[^\s@?&%,;:<>"'()\\/]+@[^\s@?&%,;:<>"'()\\/]+\.[a-z]{2,}$/i;
+
 const coupe = (v: unknown, max: number): string | undefined => {
   const s = String(v ?? '').replace(/\s+/g, ' ').trim();
   return s ? s.slice(0, max) : undefined;
@@ -100,7 +103,7 @@ export function contactDepuisDemande(d: DemandeSite, id: string, maintenant: Hor
     id,
     nom: coupe(d.nom, 120) ?? coupe(d.prenom, 120) ?? coupe(d.email, 120) ?? 'Sans nom',
     ...(coupe(d.tel ?? d.telephone, 40) ? { telephone: coupe(d.tel ?? d.telephone, 40) } : {}),
-    ...(coupe(d.email, 160) ? { email: coupe(d.email, 160)!.toLowerCase() } : {}),
+    ...(coupe(d.email, 160) && EMAIL_SUR.test(coupe(d.email, 160)!) ? { email: coupe(d.email, 160)!.toLowerCase() } : {}),
     ...(coupe(d.ville, 120) ? { ville: coupe(d.ville, 120) } : {}),
     ...(coupe(d.typeBien, 120) ? { typeBien: coupe(d.typeBien, 120) } : {}),
     ...(coupe(d.adresse, 240) ? { adresse: coupe(d.adresse, 240) } : {}),
@@ -118,8 +121,10 @@ export function contactDepuisDemande(d: DemandeSite, id: string, maintenant: Hor
 
 /**
  * La même personne renvoie un formulaire alors qu'elle est déjà suivie : pas
- * de doublon, sa ligne repasse « À appeler » (sauf rendez-vous déjà fixé) et la
- * nouvelle demande s'ajoute à l'historique. Les champs vides sont complétés.
+ * de doublon. L'étape et le message déjà saisis ne bougent pas (un formulaire
+ * public ne doit pas pouvoir réécrire une fiche) : la nouvelle demande
+ * s'ajoute à l'historique et la fiche passe dans les appels du jour (relance
+ * ramenée à aujourd'hui). Seuls les champs vides sont complétés.
  */
 export function fusionnerDemande(existant: ContactCrm, nouveau: ContactCrm, maintenant: Horodatage): ContactCrm {
   return {
@@ -129,9 +134,9 @@ export function fusionnerDemande(existant: ContactCrm, nouveau: ContactCrm, main
     ville: existant.ville || nouveau.ville,
     typeBien: existant.typeBien || nouveau.typeBien,
     adresse: existant.adresse || nouveau.adresse,
-    message: nouveau.message || existant.message,
-    page: nouveau.page || existant.page,
-    statut: existant.statut === 'rendez_vous' ? 'rendez_vous' : 'a_appeler',
+    message: existant.message || nouveau.message,
+    page: existant.page || nouveau.page,
+    relanceLe: existant.relanceLe && existant.relanceLe < maintenant.slice(0, 10) ? existant.relanceLe : maintenant.slice(0, 10),
     historique: [...nouveau.historique, ...(existant.historique ?? [])].slice(0, 100),
     majLe: maintenant,
   };

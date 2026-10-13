@@ -66,7 +66,7 @@ export const GROUPES_RECHERCHE: GroupeType[] = [
   { type: 'prestataire', libelle: 'Prestataires', liste: (q) => `/erp/prestataires?q=${encodeURIComponent(q)}` },
   { type: 'facture', libelle: 'Factures', liste: (q) => `/erp/finance/factures?q=${encodeURIComponent(q)}` },
   { type: 'mandat', libelle: 'Contrats de gestion', liste: (q) => `/erp/mandats?q=${encodeURIComponent(q)}` },
-  { type: 'contact', libelle: 'CRM', liste: (q) => `/erp/crm?q=${encodeURIComponent(q)}` },
+  { type: 'contact', libelle: 'Contacts à appeler', liste: (q) => `/erp/crm?q=${encodeURIComponent(q)}` },
   { type: 'prospect', libelle: 'Prospects', liste: (q) => `/erp/commercial?q=${encodeURIComponent(q)}` },
   { type: 'journal', libelle: 'Historique' },
 ];
