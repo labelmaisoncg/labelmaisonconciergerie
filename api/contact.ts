@@ -37,8 +37,8 @@ const row = (label: string, value: unknown): string =>
     ? `<tr><td style="padding:6px 12px;color:#6b6b6b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;vertical-align:top">${escapeHtml(label)}</td><td style="padding:6px 12px;color:#0a0a0a;font-size:15px">${escapeHtml(value).replace(/\n/g, '<br />')}</td></tr>`
     : '';
 
-/** Pages autorisées à envoyer : le site, ses aperçus Vercel, le poste de développement. */
-const ORIGINES_SITE = /^https?:\/\/((www\.)?labelmaisoncg\.fr|(www\.)?labelmaisoncgexperience\.fr|[a-z0-9-]+\.vercel\.app|localhost(:\d+)?)(\/|$)/i;
+/** Pages autorisées à envoyer : le site, les aperçus Vercel de CE projet, le poste de développement. */
+const ORIGINES_SITE = /^https?:\/\/((www\.)?labelmaisoncg\.fr|(www\.)?labelmaisoncgexperience\.fr|labelmaisonconciergerie-[a-z0-9-]+\.vercel\.app|localhost(:\d+)?)(\/|$)/i;
 
 /** Au plus 5 envois par adresse IP en 10 minutes (par instance du serveur : un frein, pas un mur). */
 const ENVOIS = new Map<string, number[]>();
@@ -59,8 +59,9 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  // Seuls les formulaires de nos pages peuvent écrire (un navigateur envoie
-  // toujours Origin sur un POST) : un script extérieur ne remplit pas le CRM.
+  // Frein, pas un mur : un navigateur envoie toujours Origin sur un POST, ce
+  // qui écarte les autres sites et les robots naïfs (un script peut forger
+  // l'en-tête ; pour plus, Turnstile ou une règle du pare-feu Vercel).
   const provenance = String(req.headers?.origin || req.headers?.referer || '');
   if (!ORIGINES_SITE.test(provenance)) {
     return res.status(403).json({ ok: false, error: 'Envoi refusé : utilisez le formulaire du site.' });

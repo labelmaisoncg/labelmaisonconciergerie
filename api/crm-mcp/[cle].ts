@@ -3,8 +3,8 @@
 // Desktop, Claude Code). Transport « Streamable HTTP » sans état : chaque POST
 // porte un message JSON-RPC et reçoit sa réponse en JSON (pas de flux SSE).
 //
-// Accès : la clé du connecteur (api/_erp-mcp.ts : MCP_CRM_TOKEN, sinon dérivée
-// d'ERP_PASSWORD) dans l'adresse, ou en en-tête « Authorization: Bearer <clé> ».
+// Accès : la clé du connecteur (api/_erp-mcp.ts : MCP_CRM_TOKEN, sinon clé
+// aléatoire gardée dans la base) dans l'adresse, ou en en-tête « Authorization: Bearer <clé> ».
 // L'adresse complète est donnée aux gérants dans l'ERP (CRM → Plus →
 // Connecter à Claude). Le CRM est lu et écrit avec le compte d'équipe
 // (ERP_PASSWORD), comme les formulaires du site.
@@ -35,9 +35,20 @@ export default async function handler(req: any, res: any) {
   const origine = String(req.headers?.origin || '');
   if (origine && !ORIGINES.test(origine)) return json(403, { error: 'Origine refusée.' });
 
-  const attendue = cleConnecteurCrm();
-  if (!attendue) return json(503, { error: 'Connecteur CRM désactivé : ERP_PASSWORD (ou MCP_CRM_TOKEN) manquant dans Vercel.' });
-  if (!egalConstant(cleFournie(req), attendue)) return json(401, { error: 'Clé du connecteur invalide.' });
+  const c = configuration();
+  if (!c.motDePasse) {
+    console.error('[crm-mcp] ERP_PASSWORD absent : CRM inaccessible.');
+    return json(503, { error: 'Connecteur indisponible.' });
+  }
+  const base = baseErp(c);
+  let attendue = '';
+  try {
+    attendue = await cleConnecteurCrm(base);
+  } catch (e) {
+    console.error('[crm-mcp] lecture de la clé :', e);
+    return json(503, { error: 'Connecteur indisponible.' });
+  }
+  if (!attendue || !egalConstant(cleFournie(req), attendue)) return json(401, { error: 'Clé du connecteur invalide.' });
 
   // Pas de flux serveur → client, pas de session à fermer (spécification : 405).
   if (req.method !== 'POST') {
@@ -45,13 +56,9 @@ export default async function handler(req: any, res: any) {
     return res.status(405).end();
   }
 
+  // Version négociée à l'initialisation : une autre version est refusée (spécification).
   const version = String(req.headers?.['mcp-protocol-version'] || '');
-  if (version && !/^\d{4}-\d{2}-\d{2}$/.test(version)) return json(400, { error: `Version de protocole invalide : ${version}` });
-  if (version && !VERSIONS_PROTOCOLE.includes(version)) console.warn('[crm-mcp] version non répertoriée, traitée comme compatible :', version);
-
-  const c = configuration();
-  if (!c.motDePasse) return json(503, { error: 'ERP_PASSWORD manquant dans Vercel : le connecteur ne peut pas lire le CRM.' });
-  const base = baseErp(c);
+  if (version && !VERSIONS_PROTOCOLE.includes(version)) return json(400, { error: `Version de protocole non prise en charge : ${version.slice(0, 20)}` });
 
   const ctx: ContexteMcp = {
     depot: {

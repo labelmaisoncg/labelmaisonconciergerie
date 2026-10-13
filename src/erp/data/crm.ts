@@ -74,7 +74,7 @@ export interface DemandeSite {
 }
 
 /** E-mail sans caractère capable de détourner un lien mailto: (?, &, %, virgule…). */
-export const EMAIL_SUR = /^[^\s@?&%,;:<>"'()\\/]+@[^\s@?&%,;:<>"'()\\/]+\.[a-z]{2,}$/i;
+export const EMAIL_SUR = /^[^\s@?&%,;:<>"()\\/]+@[^\s@?&%,;:<>"'()\\/]+\.[a-z]{2,}$/i;
 
 const coupe = (v: unknown, max: number): string | undefined => {
   const s = String(v ?? '').replace(/\s+/g, ' ').trim();
@@ -127,6 +127,12 @@ export function contactDepuisDemande(d: DemandeSite, id: string, maintenant: Hor
  * ramenée à aujourd'hui). Seuls les champs vides sont complétés.
  */
 export function fusionnerDemande(existant: ContactCrm, nouveau: ContactCrm, maintenant: Horodatage): ContactCrm {
+  const jour = maintenant.slice(0, 10);
+  const relanceAvancee = !!existant.relanceLe && existant.relanceLe > jour;
+  const trace = nouveau.historique[0];
+  const historiqueNouveau = relanceAvancee && trace
+    ? [{ ...trace, texte: [trace.texte, `Relance prévue le ${existant.relanceLe} avancée à aujourd’hui.`].filter(Boolean).join('\n') }]
+    : nouveau.historique;
   return {
     ...existant,
     telephone: existant.telephone || nouveau.telephone,
@@ -136,8 +142,8 @@ export function fusionnerDemande(existant: ContactCrm, nouveau: ContactCrm, main
     adresse: existant.adresse || nouveau.adresse,
     message: existant.message || nouveau.message,
     page: existant.page || nouveau.page,
-    relanceLe: existant.relanceLe && existant.relanceLe < maintenant.slice(0, 10) ? existant.relanceLe : maintenant.slice(0, 10),
-    historique: [...nouveau.historique, ...(existant.historique ?? [])].slice(0, 100),
+    relanceLe: existant.relanceLe && existant.relanceLe < jour ? existant.relanceLe : jour,
+    historique: [...historiqueNouveau, ...(existant.historique ?? [])].slice(0, 100),
     majLe: maintenant,
   };
 }

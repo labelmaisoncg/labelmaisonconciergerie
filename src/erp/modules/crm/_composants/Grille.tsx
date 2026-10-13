@@ -25,7 +25,7 @@ export const RESPONSABLES: { valeur: '' | Responsable; libelle: string }[] = [
  */
 const COLONNES = [
   { cle: 'num', titre: '', classe: 'hidden w-10 sm:table-cell' },
-  { cle: 'nom', titre: 'Nom', classe: 'w-52' },
+  { cle: 'nom', titre: 'Nom', classe: 'w-36 sm:w-52' },
   { cle: 'statut', titre: 'Étape', classe: 'w-36' },
   { cle: 'tel', titre: 'Téléphone', classe: 'w-40' },
   { cle: 'relance', titre: 'Relance', classe: 'w-44' },
@@ -85,7 +85,7 @@ function CelluleRelance({ c, onModifier, lectureSeule }: { c: ContactCrm; onModi
         type="button"
         onClick={() => setEdition(true)}
         aria-label={`Prévoir une relance pour ${c.nom}`}
-        className="h-8 w-full rounded-md px-1 text-left text-(--lm-encre-3) hover:bg-(--lm-neutre-lavis) focus:ring-2 focus:ring-(--lm-or-anneau) focus:outline-none"
+        className="h-8 w-full rounded-md px-1 text-left text-(--lm-encre-3) hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
       >
         —
       </button>
@@ -117,7 +117,7 @@ function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n:
         <button
           type="button"
           onClick={() => onOuvrir(c.id)}
-          className="-my-1.5 block max-w-full truncate rounded-md py-1.5 text-left font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline focus:ring-2 focus:ring-(--lm-or-anneau) focus:outline-none"
+          className="-my-1.5 block max-w-full truncate rounded-md py-1.5 text-left font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
         >
           {c.nom}
         </button>
@@ -193,7 +193,7 @@ export function Grille({ contacts, onOuvrir, onModifier, lectureSeule }: GrilleP
   return (
     <div className="lm-defilement overflow-x-auto rounded-xl border border-(--lm-bord) bg-(--lm-surface) shadow-(--lm-ombre)">
       {/* border-separate : le filet de la colonne Nom (collée) la suit au défilement. */}
-      <table className="w-full min-w-[1536px] table-fixed border-separate border-spacing-0 text-[13.5px] sm:min-w-[1576px]">
+      <table className="w-full min-w-[1472px] table-fixed border-separate border-spacing-0 text-[13.5px] sm:min-w-[1576px]">
         <caption className="sr-only">Contacts du CRM, regroupés par étape</caption>
         <thead className="bg-(--lm-surface-2)">
           <tr>
@@ -222,7 +222,7 @@ export function Grille({ contacts, onOuvrir, onModifier, lectureSeule }: GrilleP
                     type="button"
                     onClick={() => basculer(g.cle)}
                     aria-expanded={!replie}
-                    className="sticky left-0 flex h-9 items-center gap-2 px-3 text-[13px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) focus:ring-2 focus:ring-(--lm-or-anneau) focus:outline-none focus:ring-inset"
+                    className="sticky left-0 flex h-9 items-center gap-2 px-3 text-[13px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
                   >
                     {replie ? <ChevronRight className="size-4" aria-hidden /> : <ChevronDown className="size-4" aria-hidden />}
                     <span className={cn('size-2 rounded-full', POINT[g.cle])} aria-hidden />

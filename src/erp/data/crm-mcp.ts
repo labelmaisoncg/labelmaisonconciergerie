@@ -116,6 +116,7 @@ const date = (v: unknown, nom: string): string | undefined | '' => {
 async function contactExistant(ctx: ContexteMcp, id: unknown): Promise<ContactCrm> {
   const cle = texte(id, 'id', 100);
   if (!cle) throw new ErreurOutil('« id » est obligatoire (voir crm_chercher).');
+  if (!/^[a-z0-9-]{1,100}$/i.test(cle)) throw new ErreurOutil(`Identifiant invalide « ${cle.slice(0, 40)} ». Utilisez crm_chercher pour retrouver le bon.`);
   const c = await ctx.depot.un(cle);
   if (!c) throw new ErreurOutil(`Aucun contact avec l’id « ${cle} ». Utilisez crm_chercher pour retrouver le bon.`);
   return c;
@@ -286,7 +287,7 @@ export const OUTILS: Outil[] = [
         relance_le: proprietes.relance_le,
         suivi_par: proprietes.suivi_par,
         en_attente_de: { type: 'string', description: 'Pour l’étape en_attente : travaux, achat en cours, décision à deux…' },
-        notes: { type: 'string', description: 'Remplace les notes de la fiche.' },
+        notes: { type: 'string', description: 'Remplace les notes de la fiche (l’ancienne version est gardée dans l’historique).' },
         ajouter_note: { type: 'string', description: 'Ajoute une note datée à l’historique (sans toucher aux notes).' },
         nom: { type: 'string' },
         telephone: { type: 'string' },
@@ -326,7 +327,11 @@ export const OUTILS: Outil[] = [
       }
       if (!c.nom) throw new ErreurOutil('Le nom ne peut pas être vide.');
       const notes = texte(a.notes, 'notes', 4000);
-      if (notes !== undefined) c.notes = notes;
+      if (notes !== undefined && notes !== (avant.notes ?? '')) {
+        // Rien ne se perd : l'ancienne version des notes reste dans l'historique.
+        if (avant.notes) c = noterAppel(c, 'note', AUTEUR, maintenant, `Notes remplacées. Ancienne version : ${avant.notes}`);
+        c.notes = notes;
+      }
       const note = texte(a.ajouter_note, 'ajouter_note', 1000);
       if (note) c = noterAppel(c, 'note', AUTEUR, maintenant, note);
       if (statut && statut !== avant.statut) {

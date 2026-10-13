@@ -111,6 +111,10 @@ async function main() {
   const mauvaisStatut = await outil('crm_modifier', { id, statut: 'gagne' });
   verifier(mauvaisStatut.erreur && /a_appeler/.test(mauvaisStatut.texte), 'étape inconnue : liste des étapes valides');
   verifier((await outil('crm_modifier', { id, nom: '' })).erreur, 'nom vidé refusé');
+  verifier((await outil('crm_voir', { id: 'x),collection.eq.journal' })).erreur, 'identifiant hors format refusé avant la base');
+  await outil('crm_modifier', { id, notes: 'Première version' });
+  await outil('crm_modifier', { id, notes: 'Seconde version' });
+  verifier(base.get(id)!.notes === 'Seconde version' && base.get(id)!.historique.some((t) => /Ancienne version : Première version/.test(t.texte ?? '')), 'notes remplacées : ancienne version gardée dans l’historique');
   const outilInconnu = (await appel('tools/call', { name: 'crm_supprimer', arguments: { id } })) as any;
   verifier(outilInconnu.error?.code === -32602 && base.has(id), 'outil inexistant (suppression) : erreur, contact intact');
   const enPanne: ContexteMcp = { ...ctx, depot: { ...ctx.depot, tous: async () => Promise.reject(new Error('réseau')) } };

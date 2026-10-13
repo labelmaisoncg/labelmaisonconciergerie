@@ -71,6 +71,9 @@ verifier(fusion.relanceLe === '2026-10-14', 'nouvelle demande : la fiche passe d
 verifier(fusion.notes === 'Rappeler après 18 h' && fusion.adresse === '1 rue Exemple' && fusion.message === 'Bonjour', 'notes et message existants gardés, champs vides complétés');
 verifier(fusion.historique.length === 2 && fusion.historique[0].le === T1 && fusion.historique[0].texte === 'Je relance', 'historique : nouvelle demande en tête, avec son message');
 verifier(fusionnerDemande({ ...contacte, relanceLe: '2026-10-01' }, nouvelle, T1).relanceLe === '2026-10-01', 'relance déjà en retard : gardée');
+const avancee = fusionnerDemande({ ...contacte, relanceLe: '2026-11-30' }, nouvelle, T1);
+verifier(avancee.relanceLe === '2026-10-14' && /2026-11-30 avancée/.test(avancee.historique[0].texte ?? ''), 'relance future avancée à aujourd’hui, ancienne date notée dans l’historique');
+verifier(contactDepuisDemande({ type: 'contact', nom: 'X', email: "o'neil@exemple.fr" }, 'crm-7', T0).email === "o'neil@exemple.fr", 'apostrophe acceptée dans un e-mail');
 
 // E-mails qui détourneraient un lien mailto:
 verifier(contactDepuisDemande({ type: 'contact', nom: 'X', email: 'x@y.fr?bcc=pirate%40z.com' }, 'crm-5', T0).email === undefined, 'e-mail piégé (?bcc=) écarté');

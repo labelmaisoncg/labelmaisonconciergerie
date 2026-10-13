@@ -14,6 +14,17 @@ const TON_TRACE: Record<ResultatAppel, Ton> = {
   formulaire: 'info',
 };
 
+/** Lien vers une page de NOTRE site seulement (le champ vient d'un formulaire public : pas de « //autre-site »). */
+function pageDuSite(page: string): string | undefined {
+  if (!/^\/(?![\/\\])[\w\-\/.]*$/.test(page)) return undefined;
+  try {
+    const u = new URL(page, 'https://www.labelmaisoncg.fr');
+    return u.origin === 'https://www.labelmaisoncg.fr' ? u.href : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export interface FicheContactProps {
   contact: ContactCrm | undefined;
   onFermer: () => void;
@@ -203,8 +214,8 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
                 <div>
                   <dt className="text-[12px] text-(--lm-encre-3)">Envoyée depuis</dt>
                   <dd>
-                    {contact.page.startsWith('/') ? (
-                      <a href={contact.page} target="_blank" rel="noreferrer" className="text-(--lm-or-texte) hover:underline">
+                    {pageDuSite(contact.page) ? (
+                      <a href={pageDuSite(contact.page)} target="_blank" rel="noreferrer" className="text-(--lm-or-texte) hover:underline">
                         Voir la page du site
                       </a>
                     ) : (
@@ -242,7 +253,8 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
               id: `${t.le}-${i}`,
               titre: LIBELLE_RESULTAT[t.resultat],
               meta: `${dateHeure(t.le)} · ${t.par}`,
-              description: t.texte,
+              // Le message du formulaire est déjà affiché dans « Sa demande ».
+              description: t.resultat === 'formulaire' && t.texte === contact.message ? undefined : t.texte,
               tone: TON_TRACE[t.resultat],
             }))}
             vide="Rien pour l’instant."

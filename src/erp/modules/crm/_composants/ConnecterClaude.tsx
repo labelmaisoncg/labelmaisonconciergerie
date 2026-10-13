@@ -3,14 +3,26 @@ import { Check, Copy } from 'lucide-react';
 import { obtenirClient } from '../../../data/supabase';
 import { Alert, Button, Modal } from '../../../ui';
 
-/** Adresse du connecteur (réservée aux gérants, calculée par le serveur). */
-async function lireAdresse(): Promise<string> {
+const INDISPONIBLE = 'Adresse indisponible pour le moment. Réessayez dans un instant.';
+
+/** Adresse du connecteur (réservée aux gérants). `renouveler` : nouvelle adresse, l'ancienne est coupée. */
+async function demanderAdresse(renouveler = false): Promise<string> {
   const { data } = await obtenirClient().auth.getSession();
   const jeton = data.session?.access_token;
   if (!jeton) throw new Error('Votre session a expiré : reconnectez-vous à l’ERP.');
-  const r = await fetch('/api/erp-connecteur-claude', { headers: { Authorization: `Bearer ${jeton}` }, cache: 'no-store' });
+  let r: Response;
+  try {
+    r = await fetch('/api/erp-connecteur-claude', {
+      method: renouveler ? 'POST' : 'GET',
+      headers: { Authorization: `Bearer ${jeton}`, ...(renouveler ? { 'Content-Type': 'application/json' } : {}) },
+      ...(renouveler ? { body: JSON.stringify({ action: 'renouveler' }) } : {}),
+      cache: 'no-store',
+    });
+  } catch {
+    throw new Error(INDISPONIBLE);
+  }
   const json = (await r.json().catch(() => ({}))) as { ok?: boolean; url?: string; erreur?: string };
-  if (!r.ok || !json.url) throw new Error(json.erreur ?? `Une erreur est survenue (${r.status}). Réessayez dans un instant.`);
+  if (!r.ok || !json.url) throw new Error(json.erreur ?? INDISPONIBLE);
   return json.url;
 }
 
@@ -23,11 +35,26 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
   const [url, setUrl] = useState('');
   const [erreur, setErreur] = useState('');
   const [copie, setCopie] = useState(false);
+  const [confirmer, setConfirmer] = useState(false);
+  const [enCours, setEnCours] = useState(false);
 
   useEffect(() => {
     if (!ouvert || demo || url) return;
-    lireAdresse().then(setUrl, (e: Error) => setErreur(e.message));
+    demanderAdresse().then(setUrl, (e: Error) => setErreur(e.message));
   }, [ouvert, demo, url]);
+
+  const changer = async () => {
+    setEnCours(true);
+    setErreur('');
+    try {
+      setUrl(await demanderAdresse(true));
+      setConfirmer(false);
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
 
   const copier = async () => {
     try {
@@ -43,7 +70,7 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
     <Modal
       ouvert={ouvert}
       onFermer={onFermer}
-      titre="Connecter Claude au CRM"
+      titre="Connecter à Claude"
       description="Une seule fois : ensuite, demandez à Claude « Qui j’appelle aujourd’hui ? » dans n’importe quelle conversation."
       pied={
         <Button variant="ghost" onClick={onFermer}>
@@ -74,6 +101,22 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
               </div>
             )}
             <p className="mt-1.5 text-[12.5px] text-(--lm-encre-2)">Elle donne accès au CRM : ne la partagez qu’avec l’équipe.</p>
+            {url &&
+              (confirmer ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[12.5px]">
+                  <span className="text-(--lm-encre-2)">L’adresse actuelle cessera de fonctionner partout.</span>
+                  <Button size="sm" variant="danger" chargement={enCours} onClick={() => void changer()}>
+                    Changer l’adresse
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmer(false)}>
+                    Annuler
+                  </Button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => setConfirmer(true)} className="mt-1 text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+                  Changer l’adresse…
+                </button>
+              ))}
           </li>
           <li>
             <p className="font-medium">2. Ajoutez-la dans Claude</p>
