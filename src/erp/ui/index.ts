@@ -58,3 +58,5 @@ export type { RepliProps } from './Repli';
 export { useRechercheUrl } from './useRechercheUrl';
 export { Interrupteur } from './Interrupteur';
 export type { InterrupteurProps } from './Interrupteur';
+export { FicheEtapes } from './FicheEtapes';
+export type { FicheEtapesProps } from './FicheEtapes';

@@ -5,7 +5,7 @@ import type { ErpDonnees, NomCollection } from './types';
 
 export const COLLECTIONS: NomCollection[] = [
   'proprietaires', 'mandats', 'logements', 'reservations', 'filsMessages', 'missions', 'prestataires',
-  'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects', 'crm',
+  'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects', 'crm', 'dossiers',
   'utilisateurs', 'journal', 'recommandations', 'versionsAnnonce', 'reglages',
 ];
 

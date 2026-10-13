@@ -26,6 +26,7 @@ export const LIBELLE_SOURCE_CRM: Record<SourceContactCrm, string> = {
   accueil: 'Site · accueil',
   contact: 'Site · contact',
   cercle: 'Site · Cercle',
+  dossier: 'Site · dossier propriétaire',
   manuel: 'Ajout manuel',
 };
 

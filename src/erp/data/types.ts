@@ -517,7 +517,7 @@ export type StatutContactCrm =
   | 'pas_interesse';
 
 /** D'où vient la ligne : formulaire du site (par type) ou saisie à la main. */
-export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'manuel';
+export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'dossier' | 'manuel';
 
 export type ResultatAppel = 'joint' | 'pas_de_reponse' | 'messagerie' | 'note' | 'formulaire';
 
@@ -582,6 +582,21 @@ export interface Journal {
 /* ------------------------------------------------------------- agrégats */
 
 /** Toutes les collections de l'ERP, telles que tenues par le store. */
+/**
+ * Dossier propriétaire (mise en service) rempli sur /dossier-proprietaire :
+ * toutes les réponses, par identifiant de champ (src/erp/data/dossier-proprietaire.ts).
+ */
+export interface DossierProprietaire {
+  id: Id;
+  proprietaireId: Id;
+  logementId: Id;
+  /** Contact du CRM retrouvé par e-mail ou téléphone. */
+  contactCrmId?: Id;
+  recuLe: Horodatage;
+  majLe?: Horodatage;
+  valeurs: Record<string, unknown>;
+}
+
 export interface ErpDonnees {
   proprietaires: Proprietaire[];
   mandats: Mandat[];
@@ -598,6 +613,8 @@ export interface ErpDonnees {
   prospects: Prospect[];
   /** CRM d'appels, alimenté par les formulaires du site (ajoutée en octobre 2026). */
   crm: ContactCrm[];
+  /** Dossiers remplis par les propriétaires sur /dossier-proprietaire (ajoutée en octobre 2026). */
+  dossiers: DossierProprietaire[];
   utilisateurs: Utilisateur[];
   journal: Journal[];
   /** Améliorations proposées aux propriétaires (ajoutée en septembre 2026). */

@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { avecDelai, enregistrerDemandeCrm, type ResultatCrm } from './_erp-crm.js';
 import { EMAIL_SUR } from '../src/erp/data/crm.js';
+import { adresseIp, echapperHtml, freinEnvois, provenanceSite } from './_garde-formulaire.js';
 
 type Payload = {
   type?: string;
@@ -24,34 +25,15 @@ type Payload = {
   website?: string;
 };
 
-const escapeHtml = (s: unknown): string =>
-  String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+const escapeHtml = echapperHtml;
 
 const row = (label: string, value: unknown): string =>
   value
     ? `<tr><td style="padding:6px 12px;color:#6b6b6b;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;vertical-align:top">${escapeHtml(label)}</td><td style="padding:6px 12px;color:#0a0a0a;font-size:15px">${escapeHtml(value).replace(/\n/g, '<br />')}</td></tr>`
     : '';
 
-/** Pages autorisées à envoyer : le site, les aperçus Vercel de CE projet, le poste de développement. */
-const ORIGINES_SITE = /^https?:\/\/((www\.)?labelmaisoncg\.fr|(www\.)?labelmaisoncgexperience\.fr|labelmaisonconciergerie-[a-z0-9-]+\.vercel\.app|localhost(:\d+)?)(\/|$)/i;
-
 /** Au plus 5 envois par adresse IP en 10 minutes (par instance du serveur : un frein, pas un mur). */
-const ENVOIS = new Map<string, number[]>();
-const FENETRE_MS = 10 * 60_000;
-function tropDEnvois(ip: string): boolean {
-  const maintenant = Date.now();
-  const recents = (ENVOIS.get(ip) ?? []).filter((t) => maintenant - t < FENETRE_MS);
-  recents.push(maintenant);
-  ENVOIS.set(ip, recents);
-  if (ENVOIS.size > 5000) ENVOIS.clear();
-  return recents.length > 5;
-}
-const adresseIp = (req: any): string => String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+const tropDEnvois = freinEnvois(5, 10 * 60_000);
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -59,11 +41,8 @@ export default async function handler(req: any, res: any) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  // Frein, pas un mur : un navigateur envoie toujours Origin sur un POST, ce
-  // qui écarte les autres sites et les robots naïfs (un script peut forger
-  // l'en-tête ; pour plus, Turnstile ou une règle du pare-feu Vercel).
-  const provenance = String(req.headers?.origin || req.headers?.referer || '');
-  if (!ORIGINES_SITE.test(provenance)) {
+  // Frein, pas un mur : voir api/_garde-formulaire.ts.
+  if (!provenanceSite(req)) {
     return res.status(403).json({ ok: false, error: 'Envoi refusé : utilisez le formulaire du site.' });
   }
   if (tropDEnvois(adresseIp(req))) {

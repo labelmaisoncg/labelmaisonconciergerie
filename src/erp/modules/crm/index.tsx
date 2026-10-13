@@ -6,13 +6,14 @@
  */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, PhoneCall, Plus } from 'lucide-react';
+import { Bot, FileText, PhoneCall, Plus } from 'lucide-react';
 import { aTraiterLe, idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { useErp } from '../../data/store';
 import type { ContactCrm } from '../../data/types';
 import { Alert, Button, EmptyState, Field, FilterChips, Input, MenuActions, Modal, PageHeader, SearchInput, Textarea, Toolbar, useRechercheUrl } from '../../ui';
 import { ConnecterClaude } from './_composants/ConnecterClaude';
+import { EnvoyerDossier } from './_composants/EnvoyerDossier';
 import { FicheContact } from './_composants/FicheContact';
 import { Grille } from './_composants/Grille';
 
@@ -119,6 +120,7 @@ function NouveauContact({ ouvert, onFermer, contacts, onOuvrir }: { ouvert: bool
 export default function Crm() {
   const { crm, upsert, remove, utilisateur, lectureSeule, mode } = useErp();
   const [claude, setClaude] = useState(false);
+  const [lienDossier, setLienDossier] = useState(false);
   const gerant = utilisateur.role === 'gerant';
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useRechercheUrl();
@@ -163,7 +165,14 @@ export default function Crm() {
         sousTitre={crm.length > 0 ? (aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : 'Personne à appeler aujourd’hui.') : undefined}
         actions={
           <>
-            {gerant && <MenuActions texte label="Plus" actions={[{ libelle: 'Connecter à Claude', icone: <Bot />, onClick: () => setClaude(true) }]} />}
+            <MenuActions
+              texte
+              label="Plus"
+              actions={[
+                { libelle: 'Lien du dossier propriétaire', icone: <FileText />, onClick: () => setLienDossier(true) },
+                ...(gerant ? [{ libelle: 'Connecter à Claude', icone: <Bot />, onClick: () => setClaude(true) }] : []),
+              ]}
+            />
             {crm.length > 0 && !lectureSeule && (
               <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
                 Nouveau contact
@@ -220,6 +229,7 @@ export default function Crm() {
         lectureSeule={lectureSeule}
       />
       {gerant && <ConnecterClaude ouvert={claude} onFermer={() => setClaude(false)} demo={mode !== 'reel'} />}
+      <EnvoyerDossier ouvert={lienDossier} onFermer={() => setLienDossier(false)} />
       {!lectureSeule && <NouveauContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} onOuvrir={ouvrir} />}
     </>
   );

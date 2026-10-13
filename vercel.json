@@ -42,6 +42,9 @@
     "api/oauth-register.ts": {
       "maxDuration": 10
     },
+    "api/dossier-proprietaire.ts": {
+      "maxDuration": 20
+    },
     "api/erp-connecteur-claude.ts": {
       "maxDuration": 15
     }
