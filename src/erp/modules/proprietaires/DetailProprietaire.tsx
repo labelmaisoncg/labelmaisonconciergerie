@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { FilePlus2, Landmark, Mail, MapPin, Pencil, Phone, Printer, ScrollText } from 'lucide-react';
-import { Avatar, Badge, Button, Card, CardHeader, EmptyState, FilterChips, MenuActions, PageHeader, Repli, StatusBadge, Table } from '../../ui';
+import { Avatar, Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, FilterChips, MenuActions, PageHeader, Repli, StatusBadge, Table } from '../../ui';
+import { ETAPES_DOSSIER } from '../../data/dossier-proprietaire';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
-import { AUJOURDHUI, ajouterJours, dateCourte, debutMois, euros, moisAnnee, periode as periodeDe } from '../../data/format';
+import { AUJOURDHUI, ajouterJours, dateCourte, debutMois, euros, horodatageMaintenant, moisAnnee, periode as periodeDe } from '../../data/format';
 import { montantTtc, proprietaireById } from '../../data/selectors';
 import { VisuelLogement } from '../logements/_composants/Visuel';
 import { BadgeCommission, BadgeRentabilite, economieBien } from '../logements/_composants/EconomieBien';
@@ -26,6 +27,8 @@ export default function DetailProprietaire() {
   const [periode, setPeriode] = useState(PERIODE_PRECEDENTE);
   const [impression, setImpression] = useState(false);
   const p = proprietaireById(d, id);
+  // Dossiers remplis par le propriétaire sur /dossier-proprietaire, du plus récent au plus ancien.
+  const dossiers = d.donnees.dossiers.filter((x) => x.proprietaireId === id).sort((a, b) => b.recuLe.localeCompare(a.recuLe));
 
   if (!p) {
     return (
@@ -128,6 +131,22 @@ export default function DetailProprietaire() {
               </ul>
             )}
           </Card>
+
+          {dossiers.map((dos) => (
+            <Repli
+              key={dos.id}
+              titre="Dossier propriétaire"
+              description={`Reçu le ${dateCourte(dos.recuLe.slice(0, 10))} · ${d.donnees.logements.find((l) => l.id === dos.logementId)?.nom ?? 'logement retiré'}`}
+              ouvert={dossiers.length === 1}
+            >
+              <FicheEtapes
+                etapes={ETAPES_DOSSIER}
+                valeurs={dos.valeurs}
+                lectureSeule={d.lectureSeule}
+                onChange={(valeurs) => d.upsert('dossiers', { ...dos, valeurs, majLe: horodatageMaintenant() })}
+              />
+            </Repli>
+          ))}
 
           <section aria-label="Contrats de gestion">
             <h2 className="mb-2 text-[15px] font-semibold">Contrats de gestion</h2>

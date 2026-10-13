@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Mail, MessageSquareText, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
+import { FileText, Mail, MessageSquareText, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
 import { EMAIL_SUR, LIBELLE_RESULTAT, LIBELLE_SOURCE_CRM, noterAppel, STATUTS_CRM } from '../../../data/crm';
 import { dateHeure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ContactCrm, ResultatAppel, Responsable, StatutContactCrm } from '../../../data/types';
 import { Button, classesBouton, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
+import { EnvoyerDossier } from './EnvoyerDossier';
 import { relanceEnRetard } from './Grille';
 import { POINT } from './statuts';
 
@@ -40,6 +41,7 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
   const [brouillon, setBrouillon] = useState<ContactCrm | undefined>(contact);
   const [note, setNote] = useState('');
   const [confirmer, setConfirmer] = useState(false);
+  const [dossier, setDossier] = useState(false);
 
   // Nouvelle fiche ouverte, ou mise à jour reçue (autre membre, formulaire) : on repart de la version enregistrée.
   useEffect(() => {
@@ -101,6 +103,9 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
                 <Mail aria-hidden /> E-mail
               </a>
             )}
+            <Button variant="secondary" icone={<FileText />} onClick={() => setDossier(true)}>
+              Envoyer le dossier
+            </Button>
           </div>
           {!lectureSeule && (
             <div className="mt-3">
@@ -269,6 +274,13 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
           />
         </section>
       </div>
+
+      <EnvoyerDossier
+        ouvert={dossier}
+        onFermer={() => setDossier(false)}
+        contact={contact}
+        onEnvoye={lectureSeule ? undefined : (canal) => appel('note', `Dossier propriétaire envoyé par ${canal}.`)}
+      />
 
       <Modal
         ouvert={confirmer}

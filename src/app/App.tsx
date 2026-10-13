@@ -23,8 +23,11 @@ import { CercleAnnounce } from './components/CercleAnnounce';
 // L'ERP interne (/erp) est chargé à la demande : le site public ne télécharge
 // jamais son code. Il s'affiche seul, sans la navigation ni le pied du site.
 const ErpApp = lazy(() => import('../erp/ErpApp'));
+// Dossier propriétaire (assistant plein écran, lien envoyé après l'appel) : chargé à la demande, sans la navigation du site.
+const DossierProprietaire = lazy(() => import('./pages/DossierProprietaire'));
 
 const estErp = () => typeof window !== 'undefined' && /^\/erp(\/|$)/.test(window.location.pathname);
+const estDossier = () => typeof window !== 'undefined' && /^\/dossier-proprietaire\/?$/.test(window.location.pathname);
 
 /** Habillage du site public : navigation, pages, pied de page. */
 function SiteShell() {
@@ -58,7 +61,7 @@ export default function App() {
   return (
     <HelmetProvider>
       {/* L'intro animée est réservée au site : jamais sous /erp. */}
-      {!estErp() && <SplashIntro />}
+      {!estErp() && !estDossier() && <SplashIntro />}
       <BrowserRouter>
         <Routes>
           <Route
@@ -69,6 +72,14 @@ export default function App() {
                   <ErpApp />
                 </Suspense>
               </ErpFiletSecurite>
+            }
+          />
+          <Route
+            path="/dossier-proprietaire"
+            element={
+              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBF9F4' }} />}>
+                <DossierProprietaire />
+              </Suspense>
             }
           />
           <Route path="*" element={<SiteShell />} />
