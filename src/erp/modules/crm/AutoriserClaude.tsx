@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, Check, Link2Off } from 'lucide-react';
 import { adresseRetour, demandeur, lireDemande } from '../../data/oauth-regles';
@@ -13,6 +13,17 @@ const DROITS = ['Consulter les contacts et leur historique', 'Ajouter un contact
  * on connecte « CRM Label Maison ». Le gérant accepte ou refuse ; Claude
  * reçoit alors un code (ou un refus) sur son adresse de retour.
  */
+/** Écran plein, sans menu : tous les états sont centrés dans la même colonne. */
+function Colonne({ children }: { children: ReactNode }) {
+  return <div className="mx-auto max-w-md pt-10 sm:pt-20">{children}</div>;
+}
+
+const OUVRIR_CRM = (
+  <ButtonLink to="/erp/crm" variant="secondary">
+    Ouvrir le CRM
+  </ButtonLink>
+);
+
 export default function AutoriserClaude() {
   const [params] = useSearchParams();
   const { utilisateur, mode } = useErp();
@@ -22,29 +33,34 @@ export default function AutoriserClaude() {
 
   // Écran de consentement jamais affiché dans le cadre d'une autre page (détournement de clic).
   if (window.top !== window.self) {
-    return <EmptyState icone={<Link2Off />} titre="Ouvrez cette page dans son propre onglet" description="Par sécurité, l’autorisation ne s’affiche pas dans une autre page." />;
+    return (
+      <Colonne>
+        <EmptyState icone={<Link2Off />} titre="Ouvrez cette page dans son propre onglet" description="Par sécurité, l’autorisation ne s’affiche pas dans une autre page." />
+      </Colonne>
+    );
   }
   if (!lu.ok) {
     return (
-      <EmptyState
-        icone={<Link2Off />}
-        titre="Lien de connexion invalide"
-        description="Relancez la connexion depuis Claude : Paramètres → Connecteurs → CRM Label Maison."
-        action={
-          <ButtonLink to="/erp/crm" variant="secondary">
-            Ouvrir le CRM
-          </ButtonLink>
-        }
-      />
+      <Colonne>
+        <EmptyState
+          icone={<Link2Off />}
+          titre="Lien de connexion invalide"
+          description="Relancez la connexion depuis Claude : Paramètres → Connecteurs → CRM Label Maison."
+          action={OUVRIR_CRM}
+        />
+      </Colonne>
     );
   }
   if (mode !== 'reel' || utilisateur.role !== 'gerant') {
     return (
-      <EmptyState
-        icone={<Bot />}
-        titre="Connexion impossible ici"
-        description={mode !== 'reel' ? 'Disponible avec vos données réelles.' : 'Seul un gérant peut connecter Claude au CRM.'}
-      />
+      <Colonne>
+        <EmptyState
+          icone={<Bot />}
+          titre="Connexion impossible ici"
+          description={mode !== 'reel' ? 'Disponible avec vos données réelles.' : 'Seul un gérant peut connecter Claude au CRM.'}
+          action={OUVRIR_CRM}
+        />
+      </Colonne>
     );
   }
 
@@ -65,7 +81,7 @@ export default function AutoriserClaude() {
   const refuser = () => window.location.assign(adresseRetour(demande.redirect_uri, { error: 'access_denied', state: demande.state }));
 
   return (
-    <div className="mx-auto max-w-md pt-10 sm:pt-20">
+    <Colonne>
       <Card>
         <div className="space-y-5">
           <div className="flex size-11 items-center justify-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte)">
@@ -100,6 +116,6 @@ export default function AutoriserClaude() {
           </div>
         </div>
       </Card>
-    </div>
+    </Colonne>
   );
 }
