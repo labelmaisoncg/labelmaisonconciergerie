@@ -1,18 +1,20 @@
 // =============================================================================
-// /api/erp-connecteur-claude — adresse du connecteur Claude du CRM, pour les
-// gérants connectés à l'ERP (CRM → Plus → « Connecter à Claude »).
+// /api/erp-connecteur-claude — connecteur Claude du CRM, pour les gérants
+// connectés à l'ERP (CRM → Plus → « Connecter à Claude »).
 //
-//   GET  → { ok, url }  (crée la clé à la première demande)
-//   POST { action: 'renouveler' } → { ok, url }  (nouvelle adresse, l'ancienne est coupée)
+//   GET                         → { ok, fixee, existe } ou { ok, fixee: true, url }
+//   POST { action: 'creer' }    → { ok, url }  adresse NOUVELLE, montrée cette fois seulement
+//                                  (l'éventuelle ancienne cesse de fonctionner)
 //
+// La clé n'est jamais stockée (empreinte seulement, api/_erp-mcp.ts).
 // Authentification : Authorization: Bearer <jeton de session Supabase>, rôle gérant.
 // =============================================================================
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { baseErp, configuration, lireCorps, repondre } from './_erp-repull.js';
-import { cleConnecteurCrm, renouvelerCleConnecteur, URL_CONNECTEUR } from './_erp-mcp.js';
+import { cleFixee, creerCleConnecteur, etatConnecteur, URL_CONNECTEUR } from './_erp-mcp.js';
 
-const INDISPONIBLE = 'Adresse indisponible pour le moment. Réessayez dans un instant.';
+const INDISPONIBLE = 'Connecteur indisponible pour le moment. Réessayez dans un instant.';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -34,9 +36,11 @@ export default async function handler(req: any, res: any) {
   }
   try {
     const base = baseErp(c);
-    const renouveler = req.method === 'POST' && lireCorps(req).action === 'renouveler';
-    const cle = renouveler ? await renouvelerCleConnecteur(base) : await cleConnecteurCrm(base, { creer: true });
-    return repondre(res, 200, { ok: true, url: URL_CONNECTEUR(cle) });
+    if (req.method === 'GET') return repondre(res, 200, { ok: true, ...(await etatConnecteur(base)) });
+    if (lireCorps(req).action !== 'creer') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
+    const fixee = cleFixee();
+    if (fixee) return repondre(res, 200, { ok: true, fixee: true, url: URL_CONNECTEUR(fixee) });
+    return repondre(res, 200, { ok: true, fixee: false, url: URL_CONNECTEUR(await creerCleConnecteur(base)) });
   } catch (e) {
     console.error('[erp-connecteur-claude]', e);
     return repondre(res, 502, { ok: false, erreur: INDISPONIBLE });

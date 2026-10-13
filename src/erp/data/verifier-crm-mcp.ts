@@ -115,6 +115,10 @@ async function main() {
   await outil('crm_modifier', { id, notes: 'Première version' });
   await outil('crm_modifier', { id, notes: 'Seconde version' });
   verifier(base.get(id)!.notes === 'Seconde version' && base.get(id)!.historique.some((t) => /Ancienne version : Première version/.test(t.texte ?? '')), 'notes remplacées : ancienne version gardée dans l’historique');
+  const longues = 'x'.repeat(3000);
+  await outil('crm_modifier', { id, notes: longues });
+  await outil('crm_modifier', { id, notes: 'Troisième version' });
+  verifier(base.get(id)!.historique.some((t) => t.texte === `Notes remplacées. Ancienne version : ${longues}`), 'notes longues remplacées : ancienne version gardée en entier');
   const outilInconnu = (await appel('tools/call', { name: 'crm_supprimer', arguments: { id } })) as any;
   verifier(outilInconnu.error?.code === -32602 && base.has(id), 'outil inexistant (suppression) : erreur, contact intact');
   const enPanne: ContexteMcp = { ...ctx, depot: { ...ctx.depot, tous: async () => Promise.reject(new Error('réseau')) } };

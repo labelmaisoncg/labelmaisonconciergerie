@@ -215,7 +215,12 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
                   <dt className="text-[12px] text-(--lm-encre-3)">Envoyée depuis</dt>
                   <dd>
                     {pageDuSite(contact.page) ? (
-                      <a href={pageDuSite(contact.page)} target="_blank" rel="noreferrer" className="text-(--lm-or-texte) hover:underline">
+                      <a
+                        href={pageDuSite(contact.page)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex h-8 items-center rounded-md text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                      >
                         Voir la page du site
                       </a>
                     ) : (

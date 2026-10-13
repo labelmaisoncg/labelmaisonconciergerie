@@ -329,7 +329,8 @@ export const OUTILS: Outil[] = [
       const notes = texte(a.notes, 'notes', 4000);
       if (notes !== undefined && notes !== (avant.notes ?? '')) {
         // Rien ne se perd : l'ancienne version des notes reste dans l'historique.
-        if (avant.notes) c = noterAppel(c, 'note', AUTEUR, maintenant, `Notes remplacées. Ancienne version : ${avant.notes}`);
+        // Trace posée directement : noterAppel couperait le texte à 1 000 caractères (les notes vont jusqu'à 4 000).
+        if (avant.notes) c.historique = [{ le: maintenant, par: AUTEUR, resultat: 'note' as ResultatAppel, texte: `Notes remplacées. Ancienne version : ${avant.notes}` }, ...(c.historique ?? [])].slice(0, 100);
         c.notes = notes;
       }
       const note = texte(a.ajouter_note, 'ajouter_note', 1000);

@@ -4,7 +4,7 @@
 // porte un message JSON-RPC et reçoit sa réponse en JSON (pas de flux SSE).
 //
 // Accès : la clé du connecteur (api/_erp-mcp.ts : MCP_CRM_TOKEN, sinon clé
-// aléatoire gardée dans la base) dans l'adresse, ou en en-tête « Authorization: Bearer <clé> ».
+// aléatoire dont la base ne garde que l'empreinte) dans l'adresse, ou en en-tête « Authorization: Bearer <clé> ».
 // L'adresse complète est donnée aux gérants dans l'ERP (CRM → Plus →
 // Connecter à Claude). Le CRM est lu et écrit avec le compte d'équipe
 // (ERP_PASSWORD), comme les formulaires du site.
@@ -15,8 +15,8 @@
 import { traiterMcp, VERSIONS_PROTOCOLE, type ContexteMcp } from '../../src/erp/data/crm-mcp.js';
 import { horodatageParis } from '../../src/erp/data/repull.js';
 import type { ContactCrm } from '../../src/erp/data/types.js';
-import { baseErp, configuration, egalConstant, lireCorps } from '../_erp-repull.js';
-import { cleConnecteurCrm } from '../_erp-mcp.js';
+import { baseErp, configuration, lireCorps } from '../_erp-repull.js';
+import { cleValide } from '../_erp-mcp.js';
 
 /** Appels venant d'un navigateur : seulement ces origines (protection « DNS rebinding » demandée par la spécification). */
 const ORIGINES = /^https:\/\/([a-z0-9-]+\.)*(claude\.ai|anthropic\.com|labelmaisoncg\.fr)$/i;
@@ -41,14 +41,14 @@ export default async function handler(req: any, res: any) {
     return json(503, { error: 'Connecteur indisponible.' });
   }
   const base = baseErp(c);
-  let attendue = '';
+  let autorise = false;
   try {
-    attendue = await cleConnecteurCrm(base);
+    autorise = await cleValide(base, cleFournie(req));
   } catch (e) {
     console.error('[crm-mcp] lecture de la clé :', e);
     return json(503, { error: 'Connecteur indisponible.' });
   }
-  if (!attendue || !egalConstant(cleFournie(req), attendue)) return json(401, { error: 'Clé du connecteur invalide.' });
+  if (!autorise) return json(401, { error: 'Clé du connecteur invalide.' });
 
   // Pas de flux serveur → client, pas de session à fermer (spécification : 405).
   if (req.method !== 'POST') {
