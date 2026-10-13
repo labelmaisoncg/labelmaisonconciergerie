@@ -676,3 +676,11 @@ jetons en entrée et 5 $ en sortie, à vérifier sur anthropic.com/pricing) :
 0,3 à 0,5 centime par réponse**, moins d'1 € pour 200 réponses. Un passage
 sans message en attente n'appelle pas Claude.
 
+
+## CRM d'appels et connecteur Claude (octobre 2026)
+
+- **CRM** (`/erp/crm`) : chaque formulaire du site (`/api/contact`) crée une ligne « À appeler » dans la collection `crm` (sans doublon par e-mail ou téléphone), en parallèle de l'e-mail. Règles : `src/erp/data/crm.ts` ; contrôles : `verifier-crm.ts`.
+- **Connecteur MCP** (`/api/crm-mcp/<clé>`) : Claude (claude.ai, Claude Desktop, Claude Code) lit et tient le CRM avec six outils — `crm_resume`, `crm_chercher`, `crm_voir`, `crm_ajouter`, `crm_modifier`, `crm_noter_appel` (aucune suppression). Logique : `src/erp/data/crm-mcp.ts` ; contrôles : `verifier-crm-mcp.ts`.
+  1. Vercel → Settings → Environment Variables : `MCP_CRM_TOKEN` = une clé aléatoire d'au moins 32 caractères (lettres et chiffres), puis redéployer. Sans elle, le connecteur répond 503.
+  2. claude.ai → Paramètres → Connecteurs → « Ajouter un connecteur personnalisé » : nom « CRM Label Maison », URL `https://www.labelmaisoncg.fr/api/crm-mcp/<la clé>`.
+  3. La clé donne accès au CRM : ne la partager qu'avec l'équipe ; la changer dans Vercel suffit à couper l'accès.

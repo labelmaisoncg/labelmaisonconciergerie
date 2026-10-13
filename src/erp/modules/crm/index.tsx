@@ -124,7 +124,7 @@ export default function Crm() {
 
   const visibles = useMemo(() => {
     const t = q.trim().toLowerCase();
-    const chiffres = t.replace(/\D/g, '');
+    const chiffres = telephoneNormalise(t);
     return crm.filter((c) => {
       if (filtres.includes(FILTRE_JOUR) && !aTraiterAujourdhui(c)) return false;
       const etapes = filtres.filter((x) => x !== FILTRE_JOUR);
