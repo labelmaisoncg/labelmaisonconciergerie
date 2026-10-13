@@ -500,6 +500,62 @@ export interface Prospect {
   creeLe: DateISO;
 }
 
+/* ------------------------------------------------------------------- CRM */
+
+/**
+ * CRM d'appels : chaque demande du site (formulaires audit, accueil, contact,
+ * Cercle) devient une ligne « À appeler », créée automatiquement par
+ * /api/contact. L'équipe fait avancer la ligne d'étape en étape.
+ */
+export type StatutContactCrm =
+  | 'a_appeler'
+  | 'a_rappeler'
+  | 'contacte'
+  | 'en_attente'
+  | 'rendez_vous'
+  | 'signe'
+  | 'pas_interesse';
+
+/** D'où vient la ligne : formulaire du site (par type) ou saisie à la main. */
+export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'manuel';
+
+export type ResultatAppel = 'joint' | 'pas_de_reponse' | 'messagerie' | 'note' | 'formulaire';
+
+/** Une trace dans l'historique d'un contact (appel, note, nouvelle demande). */
+export interface TraceContactCrm {
+  le: Horodatage;
+  par: string;
+  resultat: ResultatAppel;
+  texte?: string;
+}
+
+export interface ContactCrm {
+  id: Id;
+  nom: string;
+  telephone?: string;
+  email?: string;
+  ville?: string;
+  typeBien?: string;
+  adresse?: string;
+  /** Message laissé dans le formulaire. */
+  message?: string;
+  /** Page du site d'où vient la demande. */
+  page?: string;
+  source: SourceContactCrm;
+  statut: StatutContactCrm;
+  /** Pour « En attente » : la raison (travaux, achat en cours, décision à deux…). */
+  motifAttente?: string;
+  /** Date de la prochaine relance prévue. */
+  relanceLe?: DateISO;
+  responsable?: Responsable;
+  notes: string;
+  /** Appels passés sans joindre la personne. */
+  tentatives: number;
+  historique: TraceContactCrm[];
+  creeLe: Horodatage;
+  majLe?: Horodatage;
+}
+
 /* ------------------------------------------------------ administration */
 
 export type RoleUtilisateur = 'gerant' | 'operations' | 'prestataire' | 'lecture';
@@ -540,6 +596,8 @@ export interface ErpDonnees {
   paiementsPrestataires: PaiementPrestataire[];
   charges: Charge[];
   prospects: Prospect[];
+  /** CRM d'appels, alimenté par les formulaires du site (ajoutée en octobre 2026). */
+  crm: ContactCrm[];
   utilisateurs: Utilisateur[];
   journal: Journal[];
   /** Améliorations proposées aux propriétaires (ajoutée en septembre 2026). */

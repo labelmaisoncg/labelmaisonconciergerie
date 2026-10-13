@@ -29,6 +29,12 @@
     },
     "api/erp-agent.ts": {
       "maxDuration": 60
+    },
+    "api/crm-mcp/[cle].ts": {
+      "maxDuration": 30
+    },
+    "api/erp-connecteur-claude.ts": {
+      "maxDuration": 15
     }
   },
   "crons": [

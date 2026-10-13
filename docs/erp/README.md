@@ -676,3 +676,12 @@ jetons en entrée et 5 $ en sortie, à vérifier sur anthropic.com/pricing) :
 0,3 à 0,5 centime par réponse**, moins d'1 € pour 200 réponses. Un passage
 sans message en attente n'appelle pas Claude.
 
+
+## CRM d'appels et connecteur Claude (octobre 2026)
+
+- **CRM** (`/erp/crm`) : chaque formulaire du site (`/api/contact`) crée une ligne « À appeler » dans la collection `crm` (sans doublon par e-mail ou téléphone), en parallèle de l'e-mail. Règles : `src/erp/data/crm.ts` ; contrôles : `verifier-crm.ts`.
+- **Connecteur MCP** (`/api/crm-mcp/<clé>`) : Claude (claude.ai, Claude Desktop, Claude Code) lit et tient le CRM avec six outils — `crm_resume`, `crm_chercher`, `crm_voir`, `crm_ajouter`, `crm_modifier`, `crm_noter_appel` (aucune suppression). Logique : `src/erp/data/crm-mcp.ts` ; contrôles : `verifier-crm-mcp.ts`.
+  1. Rien à configurer : un gérant ouvre CRM → Plus → « Connecter à Claude » (route `/api/erp-connecteur-claude`) et clique « Créer l'adresse ». Une clé aléatoire de 32 octets est tirée ; la base n'en garde que l'**empreinte** SHA-256 (collection technique `connecteurs`, `api/_erp-mcp.ts`), car `erp.enregistrements` est lisible par toute l'équipe. L'adresse complète n'est donc montrée **qu'une fois** : perdue, on en crée une nouvelle. Facultatif : `MCP_CRM_TOKEN` (32 caractères au moins) dans Vercel la remplace (« adresse fixée par l'administrateur », toujours affichable).
+  2. claude.ai → Paramètres → Connecteurs → « Ajouter un connecteur personnalisé » : nom « CRM Label Maison », URL copiée depuis l'ERP.
+  3. L'adresse donne accès au CRM : ne la partager qu'avec l'équipe. Pour couper tous les connecteurs : « Créer une nouvelle adresse… » dans la même fenêtre (l'ancienne cesse de fonctionner en une minute au plus), ou changer `MCP_CRM_TOKEN`.
+  4. RGPD : le connecteur transmet à Claude (Anthropic) des données personnelles du CRM (noms, téléphones, e-mails) : à mentionner parmi les sous-traitants de la politique de confidentialité.

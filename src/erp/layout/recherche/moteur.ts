@@ -19,6 +19,7 @@ import { LIBELLES } from '../../data/libelles';
 import { AUJOURDHUI, dateCourte, ecartJours, euros } from '../../data/format';
 import { montantTtc } from '../../data/selectors';
 import type { ErpDonnees, Logement } from '../../data/types';
+import { LIBELLE_STATUT_CRM, telephoneNormalise } from '../../data/crm';
 
 export type TypeResultat =
   | 'logement'
@@ -31,6 +32,7 @@ export type TypeResultat =
   | 'facture'
   | 'mandat'
   | 'prospect'
+  | 'contact'
   | 'journal';
 
 export interface ElementIndex {
@@ -64,6 +66,7 @@ export const GROUPES_RECHERCHE: GroupeType[] = [
   { type: 'prestataire', libelle: 'Prestataires', liste: (q) => `/erp/prestataires?q=${encodeURIComponent(q)}` },
   { type: 'facture', libelle: 'Factures', liste: (q) => `/erp/finance/factures?q=${encodeURIComponent(q)}` },
   { type: 'mandat', libelle: 'Contrats de gestion', liste: (q) => `/erp/mandats?q=${encodeURIComponent(q)}` },
+  { type: 'contact', libelle: 'Contacts à appeler', liste: (q) => `/erp/crm?q=${encodeURIComponent(q)}` },
   { type: 'prospect', libelle: 'Prospects', liste: (q) => `/erp/commercial?q=${encodeURIComponent(q)}` },
   { type: 'journal', libelle: 'Historique' },
 ];
@@ -157,6 +160,8 @@ function lienJournal(entite: string, id: string): string {
       return '/erp/finance/factures';
     case 'prospect':
       return '/erp/commercial';
+    case 'crm':
+      return `/erp/crm?contact=${i}`;
     default:
       return '/erp/parametres/donnees';
   }
@@ -322,6 +327,18 @@ export function construireIndex(d: ErpDonnees): ElementIndex[] {
       detail: `${p.ville} · ${p.typeBien}${p.prochaineAction ? ` · ${p.prochaineAction}` : ''}`,
       to: `/erp/commercial?q=${encodeURIComponent(p.nom)}`,
       texte: haystack(p.nom, p.ville, p.typeBien, p.prochaineAction, p.notes, LIBELLES.etapeProspect?.[p.etape]),
+    });
+  }
+
+  for (const c of d.crm ?? []) {
+    pousser({
+      type: 'contact',
+      id: c.id,
+      titre: c.nom,
+      detail: [LIBELLE_STATUT_CRM[c.statut], c.ville, c.telephone].filter(Boolean).join(' · '),
+      to: `/erp/crm?contact=${c.id}`,
+      texte: haystack('crm contact appel', c.nom, c.ville, c.typeBien, c.email, c.telephone, telephoneNormalise(c.telephone), c.notes, LIBELLE_STATUT_CRM[c.statut]),
+      proximite: proximite(c.relanceLe ?? c.creeLe),
     });
   }
 

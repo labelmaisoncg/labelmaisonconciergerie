@@ -358,8 +358,8 @@ export class BaseErp {
     return res;
   }
 
-  /** Upsert par lots (collection + id), fusion côté base. */
-  async ecrire(collection: string, elements: { id: string }[]): Promise<void> {
+  /** Upsert par lots (collection + id), fusion côté base. `auteur` : qui écrit (historique de la base). */
+  async ecrire(collection: string, elements: { id: string }[], auteur: string = AUTEUR_REPULL): Promise<void> {
     for (const lot of decouper(elements, LOT_ECRITURE)) {
       await this.requete('enregistrements?on_conflict=collection,id', {
         method: 'POST',
@@ -368,7 +368,7 @@ export class BaseErp {
           'Content-Profile': 'erp',
           Prefer: 'resolution=merge-duplicates,return=minimal',
         },
-        body: JSON.stringify(lot.map((e) => ({ collection, id: e.id, donnees: e, maj_par: `${AUTEUR_REPULL}#serveur` }))),
+        body: JSON.stringify(lot.map((e) => ({ collection, id: e.id, donnees: e, maj_par: `${auteur}#serveur` }))),
       });
       this.ecritures += lot.length;
     }

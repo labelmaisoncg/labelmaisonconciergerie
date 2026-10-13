@@ -19,6 +19,7 @@ import { genererOperations } from './seed-operations';
 import { creerRecommandations } from './seed-recommandations';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { creerVersionsAnnonce } from './seed-annonces';
+import { creerContactsCrm } from './seed-crm';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -530,6 +531,7 @@ export function creerSeed(): ErpDonnees {
     paiementsPrestataires: genererPaiements(missions),
     charges: operations.charges,
     prospects: structuredClone(PROSPECTS),
+    crm: creerContactsCrm(),
     utilisateurs: structuredClone(UTILISATEURS),
     journal: operations.journal,
     recommandations,

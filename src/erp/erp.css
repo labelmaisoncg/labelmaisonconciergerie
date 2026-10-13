@@ -30,6 +30,16 @@
   --lm-info: #2b6cb0;
   --lm-info-lavis: rgba(43, 108, 176, 0.1);
   --lm-neutre-lavis: rgba(20, 17, 14, 0.06);
+  /* CRM : trois teintes de plus pour distinguer les étapes (façon Airtable),
+     et deux textes plus foncés : ≥ 4,6:1 sur les pastilles, même au survol. */
+  --lm-violet: #6b46b0;
+  --lm-violet-lavis: rgba(107, 70, 176, 0.11);
+  --lm-sarcelle: #1c6f6c;
+  --lm-sarcelle-lavis: rgba(29, 116, 112, 0.11);
+  --lm-orange: #ac4308;
+  --lm-orange-lavis: rgba(172, 67, 8, 0.1);
+  --lm-info-texte: #2967a7;
+  --lm-succes-texte: #2b724d;
   /* Bulle du voyageur (messagerie) : gris chaud, sans contour. */
   --lm-bulle: #efebe4;
 

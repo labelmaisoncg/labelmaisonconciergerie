@@ -8,31 +8,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import {
-  AlertTriangle,
-  ArrowRight,
-  Bot,
-  CalendarDays,
-  CalendarPlus,
-  ClipboardList,
-  Clock,
-  CornerDownLeft,
-  FileSignature,
-  History,
-  Home,
-  Link2,
-  MessagesSquare,
-  Plus,
-  Receipt,
-  Search,
-  Sparkles,
-  Target,
-  User,
-  UserPlus,
-  Wrench,
-  X,
-  type LucideIcon,
-} from 'lucide-react';
+import { AlertTriangle, ArrowRight, Bot, CalendarDays, CalendarPlus, ClipboardList, Clock, CornerDownLeft, FileSignature, History, Home, Link2, MessagesSquare, PhoneCall, Plus, Receipt, Search, Sparkles, Target, User, UserPlus, Wrench, X, type LucideIcon } from 'lucide-react';
 import { useErp } from '../data/store';
 import { cn, useFenetre } from '../ui';
 import { MODULES, rubriqueDe } from '../modules/registry';
@@ -58,6 +34,7 @@ const ICONES: Record<TypeResultat, LucideIcon> = {
   facture: Receipt,
   mandat: FileSignature,
   prospect: Target,
+  contact: PhoneCall,
   journal: History,
 };
 
