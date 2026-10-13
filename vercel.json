@@ -32,6 +32,9 @@
     },
     "api/crm-mcp/[cle].ts": {
       "maxDuration": 30
+    },
+    "api/erp-connecteur-claude.ts": {
+      "maxDuration": 15
     }
   },
   "crons": [

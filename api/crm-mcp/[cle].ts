@@ -3,10 +3,11 @@
 // Desktop, Claude Code). Transport « Streamable HTTP » sans état : chaque POST
 // porte un message JSON-RPC et reçoit sa réponse en JSON (pas de flux SSE).
 //
-// Accès : la clé secrète MCP_CRM_TOKEN (variable Vercel, 32 caractères au
-// moins) dans l'adresse, ou en en-tête « Authorization: Bearer <clé> ». Sans
-// variable, le connecteur est désactivé. Le CRM est lu et écrit avec le compte
-// d'équipe (ERP_PASSWORD), comme les formulaires du site.
+// Accès : la clé du connecteur (api/_erp-mcp.ts : MCP_CRM_TOKEN, sinon dérivée
+// d'ERP_PASSWORD) dans l'adresse, ou en en-tête « Authorization: Bearer <clé> ».
+// L'adresse complète est donnée aux gérants dans l'ERP (CRM → Plus →
+// Connecter à Claude). Le CRM est lu et écrit avec le compte d'équipe
+// (ERP_PASSWORD), comme les formulaires du site.
 //
 // Logique des outils : src/erp/data/crm-mcp.ts.
 // =============================================================================
@@ -15,6 +16,7 @@ import { traiterMcp, VERSIONS_PROTOCOLE, type ContexteMcp } from '../../src/erp/
 import { horodatageParis } from '../../src/erp/data/repull.js';
 import type { ContactCrm } from '../../src/erp/data/types.js';
 import { baseErp, configuration, egalConstant, lireCorps } from '../_erp-repull.js';
+import { cleConnecteurCrm } from '../_erp-mcp.js';
 
 /** Appels venant d'un navigateur : seulement ces origines (protection « DNS rebinding » demandée par la spécification). */
 const ORIGINES = /^https:\/\/([a-z0-9-]+\.)*(claude\.ai|anthropic\.com|labelmaisoncg\.fr)$/i;
@@ -33,8 +35,8 @@ export default async function handler(req: any, res: any) {
   const origine = String(req.headers?.origin || '');
   if (origine && !ORIGINES.test(origine)) return json(403, { error: 'Origine refusée.' });
 
-  const attendue = (process.env.MCP_CRM_TOKEN || '').trim();
-  if (attendue.length < 32) return json(503, { error: 'Connecteur CRM désactivé : MCP_CRM_TOKEN absente ou trop courte (32 caractères au moins).' });
+  const attendue = cleConnecteurCrm();
+  if (!attendue) return json(503, { error: 'Connecteur CRM désactivé : ERP_PASSWORD (ou MCP_CRM_TOKEN) manquant dans Vercel.' });
   if (!egalConstant(cleFournie(req), attendue)) return json(401, { error: 'Clé du connecteur invalide.' });
 
   // Pas de flux serveur → client, pas de session à fermer (spécification : 405).
