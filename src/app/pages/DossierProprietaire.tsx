@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { CheckCircle2, MessageCircle } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../erp/data/dossier-proprietaire';
@@ -42,23 +42,28 @@ const BOUTON_TEXTE =
   'inline-flex h-11 items-center justify-center rounded-full px-4 text-[16px] font-semibold text-[var(--color-gold-dark)] hover:bg-[rgba(169,124,48,0.08)] focus-visible:ring-2 focus-visible:ring-[rgba(169,124,48,0.5)] focus-visible:outline-none';
 
 export default function DossierProprietaire() {
-  const brouillon = useMemo(lireBrouillon, []);
   const [phase, setPhase] = useState<'accueil' | 'assistant' | 'envoye'>('accueil');
-  const [valeurs, setValeurs] = useState<Valeurs>(() => brouillon?.valeurs ?? valeursInitiales(ETAPES_DOSSIER));
-  const [etape, setEtape] = useState<string | undefined>(brouillon?.etape);
+  const [valeurs, setValeurs] = useState<Valeurs>(() => lireBrouillon()?.valeurs ?? valeursInitiales(ETAPES_DOSSIER));
+  const [etape, setEtape] = useState<string | undefined>(() => lireBrouillon()?.etape);
   // Leurre anti-robots : un humain ne voit ni ne remplit ce champ.
   const [leurre, setLeurre] = useState('');
   const [confirmerEffacer, setConfirmerEffacer] = useState(false);
 
-  useEffect(() => {
-    if (phase === 'assistant') garderBrouillon({ valeurs, etape });
-  }, [phase, valeurs, etape]);
+  // Quelque chose à reprendre ? (pas seulement l'assistant ouvert puis refermé)
+  const reprise = JSON.stringify(valeurs) !== JSON.stringify(valeursInitiales(ETAPES_DOSSIER));
 
+  useEffect(() => {
+    if (phase === 'assistant') garderBrouillon(reprise ? { valeurs, etape } : null);
+  }, [phase, valeurs, etape, reprise]);
+
+  // « Effacer et recommencer » : retour au tout début, comme à la première visite.
   const recommencer = () => {
     garderBrouillon(null);
     setValeurs(valeursInitiales(ETAPES_DOSSIER));
     setEtape(undefined);
-    setPhase('assistant');
+    setConfirmerEffacer(false);
+    setPhase('accueil');
+    window.scrollTo(0, 0);
   };
 
   const envoyer = async () => {
@@ -95,7 +100,10 @@ export default function DossierProprietaire() {
           valeurs={valeurs}
           onChange={setValeurs}
           onEnvoyer={envoyer}
-          onFermer={() => setPhase('accueil')}
+          onFermer={() => {
+            setConfirmerEffacer(false);
+            setPhase('accueil');
+          }}
           etapeInitiale={etape}
           onEtape={setEtape}
           libelleEnvoi="Envoyer mon dossier"
@@ -146,15 +154,15 @@ export default function DossierProprietaire() {
             <p className="mt-4 text-[15px] text-[#6B6252]">Environ 2 minutes. Vos réponses restent sur cet appareil jusqu’à l’envoi.</p>
             <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
               <button type="button" onClick={() => setPhase('assistant')} className={BOUTON_PRINCIPAL}>
-                {brouillon || etape ? 'Reprendre mon dossier' : 'Commencer'}
+                {reprise ? 'Reprendre mon dossier' : 'Commencer'}
               </button>
-              {(brouillon || etape) && !confirmerEffacer && (
+              {reprise && !confirmerEffacer && (
                 <button type="button" onClick={() => setConfirmerEffacer(true)} className={BOUTON_TEXTE}>
                   Tout recommencer
                 </button>
               )}
             </div>
-            {confirmerEffacer && (
+            {reprise && confirmerEffacer && (
               <div role="alertdialog" aria-label="Effacer vos réponses" className="mt-4 rounded-2xl border border-[rgba(64,49,24,0.14)] bg-white p-4">
                 <p className="text-[15px]">Vos réponses déjà saisies seront effacées de cet appareil.</p>
                 <div className="mt-3 flex flex-wrap gap-2">
