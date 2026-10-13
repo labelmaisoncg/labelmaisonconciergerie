@@ -1,11 +1,14 @@
 import { Resend } from 'resend';
+import { avecDelai, enregistrerDemandeCrm, type ResultatCrm } from './_erp-crm.js';
 
 type Payload = {
-  type?: 'lead' | 'contact' | 'audit' | 'cercle';
+  type?: string;
   adresse?: string;
   chambres?: string;
   email?: string;
   tel?: string;
+  /** Nom du champ téléphone des formulaires d'audit envoyés sans JavaScript. */
+  telephone?: string;
   message?: string;
   // Champs additionnels du formulaire d'audit (silo SEO Airbnb Essonne)
   prenom?: string;
@@ -40,11 +43,6 @@ export default async function handler(req: any, res: any) {
   }
 
   const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    return res
-      .status(500)
-      .json({ ok: false, error: 'RESEND_API_KEY non configurée côté serveur.' });
-  }
 
   let body: Payload;
   try {
@@ -54,22 +52,13 @@ export default async function handler(req: any, res: any) {
     return res.status(400).json({ ok: false, error: 'JSON invalide.' });
   }
 
-  const {
-    type,
-    adresse,
-    chambres,
-    email,
-    tel,
-    message,
-    prenom,
-    ville,
-    typeBien,
-    page,
-    nom,
-    profil,
-    dejaProprio,
-    website,
-  } = body;
+  const { adresse, chambres, email, message, prenom, ville, page, nom, profil, dejaProprio, website } = body;
+  const tel = body.tel || body.telephone;
+  // Formulaire envoyé sans JavaScript : « type » porte le besoin (« Conciergerie
+  // Airbnb »), pas le type de formulaire.
+  const typesConnus = ['lead', 'contact', 'audit', 'cercle'];
+  const type = typesConnus.includes(String(body.type)) ? body.type : body.prenom || body.page ? 'audit' : 'contact';
+  const typeBien = body.typeBien || (typesConnus.includes(String(body.type)) ? undefined : body.type);
 
   // Honeypot : un bot remplit le champ caché « website ». On répond OK sans envoyer.
   if (website && String(website).trim() !== '') {
@@ -127,6 +116,7 @@ export default async function handler(req: any, res: any) {
       ${row('Message', message)}
       ${row('Page source', page)}
     </table>
+    <p style="padding:0 24px 16px;margin:0"><a href="https://www.labelmaisoncg.fr/erp/crm" style="display:inline-block;background:#8a6424;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:10px 16px;border-radius:8px">Ouvrir dans le CRM</a></p>
     <p style="padding:16px 24px;margin:0;color:#6b6b6b;font-size:12px;border-top:1px solid rgba(0,0,0,.06)">Reçu via labelmaisoncgexperience.fr — répondre directement à cet e-mail revient au prospect.</p>
   </div>
 </body></html>`;
@@ -146,29 +136,46 @@ export default async function handler(req: any, res: any) {
     tel && `Téléphone : ${tel}`,
     page && `Page source : ${page}`,
     message && `\nMessage :\n${message}`,
+    '',
+    'Ouvrir dans le CRM : https://www.labelmaisoncg.fr/erp/crm',
   ]
     .filter(Boolean)
     .join('\n');
 
-  try {
-    const resend = new Resend(apiKey);
-    const { error } = await resend.emails.send({
-      from: FROM,
-      to: TO,
-      replyTo: email,
-      subject,
-      html,
-      text,
-    });
-    if (error) {
-      console.error('[contact] Resend error:', error);
-      return res
-        .status(502)
-        .json({ ok: false, error: 'Envoi e-mail échoué côté Resend.' });
+  // Le CRM de l'ERP (ligne « À appeler ») et l'e-mail partent en parallèle.
+  // La demande est acceptée dès que l'un des deux a réussi : un contact
+  // n'est jamais perdu parce qu'un seul des deux services est en panne.
+  const crm = avecDelai(
+    enregistrerDemandeCrm({ type, nom, prenom, email, tel, ville, typeBien, adresse, chambres, message, page, profil }),
+    6000,
+  ).catch((err): ResultatCrm | null => {
+    console.error('[contact] CRM :', err);
+    return null;
+  });
+
+  const envoi = (async (): Promise<boolean> => {
+    if (!apiKey) {
+      console.error('[contact] RESEND_API_KEY non configurée côté serveur.');
+      return false;
     }
-    return res.status(200).json({ ok: true });
-  } catch (err) {
-    console.error('[contact] unexpected error:', err);
-    return res.status(500).json({ ok: false, error: 'Erreur serveur inattendue.' });
-  }
+    try {
+      const resend = new Resend(apiKey);
+      const { error } = await resend.emails.send({ from: FROM, to: TO, replyTo: email, subject, html, text });
+      if (error) {
+        console.error('[contact] Resend error:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('[contact] unexpected error:', err);
+      return false;
+    }
+  })();
+
+  const [resultatCrm, mailEnvoye] = await Promise.all([crm, envoi]);
+  const crmOk = !!resultatCrm && resultatCrm.etat !== 'inactif';
+  if (mailEnvoye || crmOk) return res.status(200).json({ ok: true });
+  return res
+    .status(502)
+    .json({ ok: false, error: 'Envoi impossible pour le moment. Réessayez ou appelez-nous au +33 7 49 54 83 55.' });
 }

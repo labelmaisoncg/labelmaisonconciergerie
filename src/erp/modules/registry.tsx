@@ -3,19 +3,20 @@
  * composant chargé à la demande. Chaque module gère ses propres sous-routes :
  * il est monté sur `<segment>/*`.
  *
- * Navigation simplifiée (septembre 2026) : sept rubriques dans la barre
+ * Navigation simplifiée (septembre 2026) : huit rubriques (CRM ajouté en octobre) dans la barre
  * latérale, plus Paramètres en bas. Une rubrique qui regroupe plusieurs
  * modules affiche une petite barre d'onglets sous l'en-tête (voir
  * layout/OngletsRubrique.tsx) ; les anciennes adresses restent valables.
  */
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
-import { BotMessageSquare, Building2, CalendarDays, House, Settings, Sparkles, Users, Wallet, type LucideIcon } from 'lucide-react';
+import { BotMessageSquare, Building2, CalendarDays, House, PhoneCall, Settings, Sparkles, Users, Wallet, type LucideIcon } from 'lucide-react';
 
 export type GroupeModule =
   | 'accueil'
   | 'logements'
   | 'reservations'
   | 'messagerie'
+  | 'crm'
   | 'operations'
   | 'proprietaires'
   | 'finance'
@@ -37,6 +38,7 @@ export const GROUPES: Rubrique[] = [
   { cle: 'logements', libelle: 'Logements', icon: Building2, path: '/erp/logements' },
   { cle: 'reservations', libelle: 'Réservations', icon: CalendarDays, path: '/erp/reservations' },
   { cle: 'messagerie', libelle: 'Messagerie', icon: BotMessageSquare, path: '/erp/messagerie' },
+  { cle: 'crm', libelle: 'CRM', icon: PhoneCall, path: '/erp/crm' },
   { cle: 'operations', libelle: 'Opérations', icon: Sparkles, path: '/erp/menages' },
   { cle: 'proprietaires', libelle: 'Propriétaires', icon: Users, path: '/erp/proprietaires' },
   { cle: 'finance', libelle: 'Finance', icon: Wallet, path: '/erp/finance' },
@@ -44,7 +46,7 @@ export const GROUPES: Rubrique[] = [
 ];
 
 /** Compteurs affichables dans la barre latérale (calculés par le layout). */
-export type CleCompteur = 'missionsAAttribuer' | 'messagesEnAttente' | 'incidentsOuverts';
+export type CleCompteur = 'missionsAAttribuer' | 'messagesEnAttente' | 'incidentsOuverts' | 'contactsAAppeler';
 
 export interface ModuleErp {
   key: string;
@@ -84,6 +86,10 @@ export const MODULES: ModuleErp[] = [
   module('messagerie', 'messagerie', 'Messagerie', 'messagerie', lazy(() => import('./messagerie')), {
     compteur: 'messagesEnAttente',
     motsCles: 'messages conversations agent ia voyageurs',
+  }),
+  module('crm', 'crm', 'CRM', 'crm', lazy(() => import('./crm')), {
+    compteur: 'contactsAAppeler',
+    motsCles: 'appels contacts formulaires demandes leads clients à appeler rappeler',
   }),
   module('menages', 'menages', 'Ménages', 'operations', lazy(() => import('./menages')), {
     compteur: 'missionsAAttribuer',
