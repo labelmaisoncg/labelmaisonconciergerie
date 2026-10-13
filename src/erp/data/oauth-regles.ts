@@ -31,9 +31,18 @@ export function redirectionPermise(uri: unknown): uri is string {
   }
 }
 
-/** Qui demande l'accès, en clair, pour la page d'autorisation. */
-export function demandeur(uri: string): string {
-  return /^https:\/\/claude\.(ai|com)\//.test(uri) ? 'Claude (claude.ai)' : 'Claude, sur cet ordinateur';
+/**
+ * Qui demande l'accès, pour la page d'autorisation : le nom d'hôte de
+ * l'adresse de retour (exigé par la spécification MCP), et s'il s'agit d'une
+ * application de l'ordinateur (localhost), qui mérite un avertissement.
+ */
+export function demandeur(uri: string): { hote: string; local: boolean } {
+  try {
+    const u = new URL(uri);
+    return { hote: u.hostname, local: u.protocol === 'http:' };
+  } catch {
+    return { hote: uri, local: false };
+  }
 }
 
 export interface DemandeAutorisation {
@@ -51,7 +60,8 @@ export function lireDemande(p: Record<string, unknown>): { ok: true; demande: De
   const texte = (v: unknown) => (typeof v === 'string' ? v : '');
   if (texte(p.response_type) && texte(p.response_type) !== 'code') return { ok: false, raison: 'type de réponse non pris en charge' };
   const client_id = texte(p.client_id);
-  if (!/^[\w.:-]{1,200}$/.test(client_id)) return { ok: false, raison: 'identifiant de client absent ou invalide' };
+  // Identifiant issu de l'inscription, ou adresse d'un document de métadonnées (CIMD).
+  if (!/^[\x21-\x7e]{1,300}$/.test(client_id)) return { ok: false, raison: 'identifiant de client absent ou invalide' };
   const redirect_uri = texte(p.redirect_uri);
   if (!redirectionPermise(redirect_uri)) return { ok: false, raison: 'adresse de retour non autorisée' };
   // PKCE obligatoire (OAuth 2.1), méthode S256 seulement.

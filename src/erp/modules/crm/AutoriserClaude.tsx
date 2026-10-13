@@ -45,6 +45,7 @@ export default function AutoriserClaude() {
   }
 
   const { demande } = lu;
+  const origine = demandeur(demande.redirect_uri);
   const autoriser = async () => {
     setEnvoi(true);
     setErreur('');
@@ -68,7 +69,9 @@ export default function AutoriserClaude() {
           </div>
           <div>
             <h1 className="text-[20px] font-semibold text-(--lm-encre)">Connecter Claude au CRM ?</h1>
-            <p className="mt-1 text-[14px] text-(--lm-encre-2)">{demandeur(demande.redirect_uri)} demande l’accès au CRM de Label Maison.</p>
+            <p className="mt-1 text-[14px] text-(--lm-encre-2)">
+              Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>, pour le CRM de Label Maison.
+            </p>
           </div>
           <ul className="space-y-2 text-[14px] text-(--lm-encre)">
             {DROITS.map((d) => (
@@ -79,6 +82,9 @@ export default function AutoriserClaude() {
             ))}
           </ul>
           <p className="text-[12.5px] text-(--lm-encre-2)">Pour retirer l’accès : CRM → Plus → Connecter à Claude → Déconnecter.</p>
+          {origine.local && (
+            <Alert tone="alerte" titre="Demande venue d’une application de cet ordinateur. N’autorisez que si vous venez de lancer la connexion depuis Claude Code." />
+          )}
           {erreur && <Alert tone="danger" titre={erreur} />}
           <div className="flex justify-end gap-2">
             <Button variant="secondary" disabled={envoi} onClick={refuser}>
