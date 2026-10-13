@@ -33,6 +33,7 @@ interface Code {
   redirection: string;
   defi: string;
   par: string;
+  creeLe: string;
   expire: string;
   utilise?: boolean;
 }
@@ -40,6 +41,8 @@ interface Code {
 interface Jeton {
   id: string;
   type: 'acces' | 'rafraich';
+  /** Une famille par autorisation : la rotation la garde, une réutilisation la révoque entière. */
+  famille: string;
   client: string;
   par: string;
   creeLe: string;
@@ -91,20 +94,21 @@ export async function creerCode(base: BaseErp, d: DemandeAutorisation, par: stri
     redirection: d.redirect_uri,
     defi: d.code_challenge,
     par,
+    creeLe: new Date().toISOString(),
     expire: new Date(Date.now() + DUREE_CODE_MS).toISOString(),
   };
   await base.ecrire(COLLECTION, [element], AUTEUR);
   return code;
 }
 
-async function emettre(base: BaseErp, client: string, par: string): Promise<Jetons> {
+async function emettre(base: BaseErp, client: string, par: string, famille: string): Promise<Jetons> {
   const acces = aleatoire();
   const rafraich = aleatoire();
   const maintenant = Date.now();
   const creeLe = new Date(maintenant).toISOString();
   const elements: Jeton[] = [
-    { id: idJeton(acces), type: 'acces', client, par, creeLe, expire: new Date(maintenant + DUREE_ACCES_S * 1000).toISOString() },
-    { id: idJeton(rafraich), type: 'rafraich', client, par, creeLe, expire: new Date(maintenant + DUREE_RAFRAICH_MS).toISOString() },
+    { id: idJeton(acces), type: 'acces', famille, client, par, creeLe, expire: new Date(maintenant + DUREE_ACCES_S * 1000).toISOString() },
+    { id: idJeton(rafraich), type: 'rafraich', famille, client, par, creeLe, expire: new Date(maintenant + DUREE_RAFRAICH_MS).toISOString() },
   ];
   await base.ecrire(COLLECTION, elements, AUTEUR);
   return { access_token: acces, token_type: 'Bearer', expires_in: DUREE_ACCES_S, refresh_token: rafraich, scope: 'crm' };
@@ -117,8 +121,9 @@ export async function echangerCode(
 ): Promise<Jetons> {
   if (!p.code || !p.code_verifier || !p.redirect_uri) throw new ErreurOAuth('invalid_request', 'code, code_verifier et redirect_uri sont requis.');
   if (!/^[A-Za-z0-9._~-]{43,128}$/.test(p.code_verifier)) throw new ErreurOAuth('invalid_request', 'code_verifier invalide.');
-  const [c] = await base.lire<Code>(COLLECTION, [idCode(p.code)]);
-  if (!c || c.type !== 'code' || c.utilise || Date.parse(c.expire) < Date.now()) {
+  // Un code émis avant « Déconnecter Claude » ne vaut plus rien.
+  const { element: c, revoqueAvant } = await lireAvecRevocation<Code>(base, idCode(p.code));
+  if (!c || c.type !== 'code' || c.utilise || Date.parse(c.expire) < Date.now() || Date.parse(c.creeLe) < revoqueAvant) {
     throw new ErreurOAuth('invalid_grant', 'Code inconnu, expiré ou déjà utilisé.');
   }
   if (c.redirection !== p.redirect_uri) throw new ErreurOAuth('invalid_grant', 'redirect_uri différente de celle de la demande.');
@@ -126,37 +131,48 @@ export async function echangerCode(
   const defi = crypto.createHash('sha256').update(p.code_verifier).digest('base64url');
   if (!egales(defi, c.defi)) throw new ErreurOAuth('invalid_grant', 'Vérification PKCE échouée.');
   await base.ecrire(COLLECTION, [{ ...c, utilise: true } as Code], AUTEUR);
-  return emettre(base, c.client, c.par);
+  return emettre(base, c.client, c.par, crypto.randomBytes(12).toString('hex'));
 }
 
 /** grant_type=refresh_token : rotation (l'ancien jeton de rafraîchissement est révoqué). */
 export async function rafraichir(base: BaseErp, p: { refresh_token: string; client_id?: string }): Promise<Jetons> {
   if (!p.refresh_token) throw new ErreurOAuth('invalid_request', 'refresh_token requis.');
   const { element: j, revoqueAvant } = await lireAvecRevocation<Jeton>(base, idJeton(p.refresh_token));
+  // Jeton déjà échangé puis présenté de nouveau : il a pu être volé. Toute sa famille est révoquée (OAuth 2.1).
+  if (j?.type === 'rafraich' && j.revoque && j.famille) await revoquerFamille(base, j.famille);
   if (!j || j.type !== 'rafraich' || j.revoque || Date.parse(j.expire) < Date.now() || Date.parse(j.creeLe) < revoqueAvant) {
     throw new ErreurOAuth('invalid_grant', 'Jeton de rafraîchissement inconnu, expiré ou révoqué.');
   }
   if (p.client_id && p.client_id !== j.client) throw new ErreurOAuth('invalid_grant', 'Jeton émis pour un autre client.');
   await base.ecrire(COLLECTION, [{ ...j, revoque: true } as Jeton], AUTEUR);
-  return emettre(base, j.client, j.par);
+  return emettre(base, j.client, j.par, j.famille ?? crypto.randomBytes(12).toString('hex'));
 }
 
-// Jetons d'accès valides gardés 1 min par instance (une déconnexion prend effet en 1 min au plus).
+async function revoquerFamille(base: BaseErp, famille: string): Promise<void> {
+  const tous = await base.lire<Jeton>(COLLECTION);
+  const actifs = tous.filter((t) => t.famille === famille && !t.revoque);
+  if (actifs.length) await base.ecrire(COLLECTION, actifs.map((t) => ({ ...t, revoque: true })), AUTEUR);
+  cache.clear();
+}
+
+// Jetons d'accès gardés 1 min par instance : valides (une déconnexion prend
+// effet en 1 min au plus) et refusés (un jeton révoqué que Claude rejoue ne
+// relit pas la base à chaque appel).
 const DUREE_CACHE_MS = 60_000;
-const cache = new Map<string, { par: string; jusqua: number }>();
+const cache = new Map<string, { par: string | null; jusqua: number }>();
 
 /** Jeton d'accès valide ? Renvoie le membre qui a autorisé Claude. */
 export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: string } | null> {
   if (!/^[A-Za-z0-9_-]{43}$/.test(jeton)) return null;
   const id = idJeton(jeton);
   const enCache = cache.get(id);
-  if (enCache && enCache.jusqua > Date.now()) return { par: enCache.par };
+  if (enCache && enCache.jusqua > Date.now()) return enCache.par ? { par: enCache.par } : null;
   const { element: j, revoqueAvant } = await lireAvecRevocation<Jeton>(base, id);
   const expire = j ? Date.parse(j.expire) : 0;
-  if (!j || j.type !== 'acces' || j.revoque || expire < Date.now() || Date.parse(j.creeLe) < revoqueAvant) return null;
-  if (cache.size > 500) cache.clear();
-  cache.set(id, { par: j.par, jusqua: Math.min(Date.now() + DUREE_CACHE_MS, expire) });
-  return { par: j.par };
+  const valide = !!j && j.type === 'acces' && !j.revoque && expire >= Date.now() && Date.parse(j.creeLe) >= revoqueAvant;
+  if (cache.size > 1000) cache.clear();
+  cache.set(id, { par: valide ? j!.par : null, jusqua: valide ? Math.min(Date.now() + DUREE_CACHE_MS, expire) : Date.now() + DUREE_CACHE_MS });
+  return valide ? { par: j!.par } : null;
 }
 
 /** Connexions en cours (une par application autorisée), pour la fenêtre « Connecter à Claude ». */

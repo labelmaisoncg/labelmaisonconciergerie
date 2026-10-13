@@ -18,7 +18,7 @@ const ORIGINES = /^https:\/\/([a-z0-9-]+\.)*(claude\.ai|claude\.com|anthropic\.c
 
 export type Verification = (req: any, base: BaseErp) => Promise<boolean>;
 
-export async function servirCrmMcp(req: any, res: any, autorise: Verification, enteteRefus?: string) {
+export async function servirCrmMcp(req: any, res: any, autorise: Verification, enteteRefus?: (req: any) => string) {
   res.setHeader('Cache-Control', 'no-store');
   const json = (statut: number, corps: unknown) => res.status(statut).json(corps);
 
@@ -39,7 +39,7 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
     return json(503, { error: 'Connecteur indisponible.' });
   }
   if (!ok) {
-    if (enteteRefus) res.setHeader('WWW-Authenticate', enteteRefus);
+    if (enteteRefus) res.setHeader('WWW-Authenticate', enteteRefus(req));
     return json(401, { error: 'Accès refusé : connectez Claude depuis l’ERP (CRM → Plus → Connecter à Claude).' });
   }
 

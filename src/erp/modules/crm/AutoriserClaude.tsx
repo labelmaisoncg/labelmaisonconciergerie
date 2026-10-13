@@ -20,6 +20,10 @@ export default function AutoriserClaude() {
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
 
+  // Écran de consentement jamais affiché dans le cadre d'une autre page (détournement de clic).
+  if (window.top !== window.self) {
+    return <EmptyState icone={<Link2Off />} titre="Ouvrez cette page dans son propre onglet" description="Par sécurité, l’autorisation ne s’affiche pas dans une autre page." />;
+  }
   if (!lu.ok) {
     return (
       <EmptyState
@@ -61,14 +65,14 @@ export default function AutoriserClaude() {
   const refuser = () => window.location.assign(adresseRetour(demande.redirect_uri, { error: 'access_denied', state: demande.state }));
 
   return (
-    <div className="mx-auto max-w-md pt-6 sm:pt-12">
+    <div className="mx-auto max-w-md pt-10 sm:pt-20">
       <Card>
         <div className="space-y-5">
-          <div className="flex size-11 items-center justify-center rounded-xl bg-(--lm-or-lavis) text-(--lm-or-texte)">
+          <div className="flex size-11 items-center justify-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte)">
             <Bot className="size-6" aria-hidden />
           </div>
           <div>
-            <h1 className="text-[20px] font-semibold text-(--lm-encre)">Connecter Claude au CRM ?</h1>
+            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Connecter Claude au CRM ?</h1>
             <p className="mt-1 text-[14px] text-(--lm-encre-2)">
               Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>, pour le CRM de Label Maison.
             </p>

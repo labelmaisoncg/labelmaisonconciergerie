@@ -220,10 +220,17 @@ function suiteSure(zone: Zone, valeur: string): string {
 
 /* -------------------------------------------------------------------- vues */
 
+/** Pages internes jamais affichées dans le cadre d'un autre site (détournement de clic). */
+const ANTI_CADRE = {
+  'X-Frame-Options': 'SAMEORIGIN',
+  'Content-Security-Policy': "frame-ancestors 'self'",
+};
+
 const ENTETES_HTML = {
   'Content-Type': 'text/html; charset=utf-8',
   'Cache-Control': 'no-store',
   'X-Robots-Tag': 'noindex, nofollow',
+  ...ANTI_CADRE,
 };
 
 const ICONE_CADENAS =
@@ -522,7 +529,7 @@ export default async function middleware(request: Request): Promise<Response | u
     const dernier = chemin.slice(chemin.lastIndexOf('/') + 1);
     if (zone.coquille && chemin !== zone.racine && !dernier.includes('.')) {
       return new Response(null, {
-        headers: { 'x-middleware-rewrite': new URL(zone.coquille, request.url).toString() },
+        headers: { 'x-middleware-rewrite': new URL(zone.coquille, request.url).toString(), ...ANTI_CADRE },
       });
     }
     return undefined; // la requête suit son cours vers le fichier statique

@@ -18,6 +18,7 @@ export default function handler(req: any, res: any) {
       const jeton = jetonBearer(r);
       return !!jeton && !!(await accesValide(base, jeton));
     },
-    `Bearer resource_metadata="${META_RESSOURCE}"`,
+    // Jeton présenté mais refusé (expiré, révoqué) : Claude le rafraîchit ou relance la connexion.
+    (r) => (jetonBearer(r) ? `Bearer error="invalid_token", resource_metadata="${META_RESSOURCE}"` : `Bearer resource_metadata="${META_RESSOURCE}"`),
   );
 }

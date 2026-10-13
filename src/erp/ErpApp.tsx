@@ -12,7 +12,7 @@ import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
 import { MODULES } from './modules/registry';
 import { ButtonLink, EmptyState, PageSkeleton } from './ui';
 
-// Page d'autorisation OAuth ouverte par Claude (connecteur du CRM), hors menu.
+// Écran d'autorisation OAuth ouvert par Claude (connecteur du CRM), hors mise en page.
 const AutoriserClaude = lazy(() => import('./modules/crm/AutoriserClaude'));
 
 /** Titre d'onglet et noindex tant que l'ERP est affiché ; état du site rétabli ensuite. */
@@ -62,11 +62,33 @@ function Contenu() {
           {MODULES.map(({ key, segment: seg, component: Module }) =>
             seg ? <Route key={key} path={`${seg}/*`} element={<Module />} /> : <Route key={key} index element={<Module />} />,
           )}
-          <Route path="autoriser-claude" element={<AutoriserClaude />} />
           <Route path="*" element={<Introuvable />} />
         </Routes>
       </Suspense>
     </ModuleErrorBoundary>
+  );
+}
+
+/**
+ * Mise en page de l'ERP, sauf pour l'écran de consentement OAuth ouvert par
+ * Claude : plein écran, sans menu ni barre du haut, rien d'autre à faire que
+ * décider.
+ */
+function Coquille() {
+  const { pathname } = useLocation();
+  if (/^\/erp\/autoriser-claude\/?$/.test(pathname)) {
+    return (
+      <main className="min-h-screen px-4 pb-12">
+        <Suspense fallback={<PageSkeleton />}>
+          <AutoriserClaude />
+        </Suspense>
+      </main>
+    );
+  }
+  return (
+    <ErpLayout>
+      <Contenu />
+    </ErpLayout>
   );
 }
 
@@ -75,9 +97,7 @@ export default function ErpApp() {
   return (
     <div className="erp-root">
       <ErpProvider>
-        <ErpLayout>
-          <Contenu />
-        </ErpLayout>
+        <Coquille />
       </ErpProvider>
     </div>
   );

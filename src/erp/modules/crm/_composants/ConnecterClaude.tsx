@@ -76,13 +76,13 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
         <div className="space-y-4 text-[13.5px] text-(--lm-encre)">
           {etat && etat.connexions > 0 && (
             <div className="rounded-lg bg-(--lm-surface-2) px-3 py-2">
-              <p className="flex items-center gap-1.5 font-medium">
-                <Check className="size-4 text-(--lm-succes)" aria-hidden />
+              <p className="font-medium">
+                <Check className="mr-1.5 inline size-4 align-[-3px] text-(--lm-succes)" aria-hidden />
                 Claude est connecté
-                <span className="font-normal text-(--lm-encre-2)">
-                  · {pluriel(etat.connexions, 'connexion')}
-                  {etat.derniere ? `, dernière le ${dateHeure(etat.derniere)}` : ''}
-                </span>
+              </p>
+              <p className="text-[12.5px] text-(--lm-encre-2)">
+                {pluriel(etat.connexions, 'connexion')}
+                {etat.derniere ? ` · dernière le ${dateHeure(etat.derniere)}` : ''}
               </p>
               {confirmer ? (
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px]">
