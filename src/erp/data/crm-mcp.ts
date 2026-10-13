@@ -18,7 +18,7 @@ import {
   STATUTS_CRM,
   telephoneNormalise,
   trouverDoublon,
-} from './crm';
+} from './crm.js';
 import type { ContactCrm, Horodatage, Responsable, ResultatAppel } from './types';
 
 export interface DepotCrm {
