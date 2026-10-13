@@ -8,11 +8,6 @@ import { appelerConnecteur } from './_composants/api-connecteur';
 
 const DROITS = ['Consulter les contacts et leur historique', 'Ajouter un contact, modifier une fiche, noter un appel', 'Rien ne peut être supprimé'];
 
-/**
- * /erp/autoriser-claude : page d'autorisation OAuth ouverte par Claude quand
- * on connecte « CRM Label Maison ». Le gérant accepte ou refuse ; Claude
- * reçoit alors un code (ou un refus) sur son adresse de retour.
- */
 /** Écran plein, sans menu : tous les états sont centrés dans la même colonne. */
 function Colonne({ children }: { children: ReactNode }) {
   return <div className="mx-auto max-w-md pt-10 sm:pt-20">{children}</div>;
@@ -24,6 +19,11 @@ const OUVRIR_CRM = (
   </ButtonLink>
 );
 
+/**
+ * /erp/autoriser-claude : page d'autorisation OAuth ouverte par Claude quand
+ * on connecte « CRM Label Maison ». Le gérant accepte ou refuse ; Claude
+ * reçoit alors un code (ou un refus) sur son adresse de retour.
+ */
 export default function AutoriserClaude() {
   const [params] = useSearchParams();
   const { utilisateur, mode } = useErp();
