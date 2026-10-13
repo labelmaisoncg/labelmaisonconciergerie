@@ -61,6 +61,10 @@ export interface Champ {
   autocomplete?: string;
   /** Valeur proposée au départ (ex. un plafond en euros). */
   defaut?: unknown;
+  /** Champ affiché seulement si la condition est vraie (ex. nom de la société). */
+  si?: (v: Valeurs) => boolean;
+  /** Choix courts : boutons compacts côte à côte plutôt que des cartes. */
+  affichage?: 'pastilles';
 }
 
 export interface Etape {
@@ -84,6 +88,11 @@ export const longueurMax = (c: Champ) => c.longueurMax ?? (c.type === 'zone' ? L
 /** Étapes à parcourir avec les réponses actuelles (les conditions écartent les autres). */
 export function etapesVisibles(etapes: Etape[], v: Valeurs): Etape[] {
   return etapes.filter((e) => !e.si || e.si(v));
+}
+
+/** Champs d'une étape à remplir avec les réponses actuelles. */
+export function champsVisibles(e: Etape, v: Valeurs): Champ[] {
+  return e.champs.filter((c) => !c.si || c.si(v));
 }
 
 /** Une étape sans champ obligatoire se passe (« Plus tard »). */
@@ -172,7 +181,7 @@ export function erreurChamp(c: Champ, valeur: unknown): string | undefined {
 /** Erreurs d'une étape, par champ. */
 export function erreursEtape(e: Etape, v: Valeurs): Record<string, string> {
   const r: Record<string, string> = {};
-  for (const c of e.champs) {
+  for (const c of champsVisibles(e, v)) {
     const err = erreurChamp(c, v[c.id]);
     if (err) r[c.id] = err;
   }
@@ -228,7 +237,7 @@ export interface LigneRecapitulatif {
 /** Toutes les réponses des étapes visibles, dans l'ordre (récapitulatif, e-mail, ERP). */
 export function lignesRecapitulatif(etapes: Etape[], v: Valeurs): LigneRecapitulatif[] {
   return etapesVisibles(etapes, v).flatMap((etape) =>
-    etape.champs.map((champ) => ({
+    champsVisibles(etape, v).map((champ) => ({
       etape,
       champ,
       partie: etape.partie,
@@ -287,7 +296,7 @@ export function nettoyerValeurs(etapes: Etape[], brut: unknown): { ok: true; val
   const valeurs: Valeurs = {};
   const erreurs: string[] = [];
   for (const e of etapesVisibles(etapes, tout)) {
-    for (const c of e.champs) {
+    for (const c of champsVisibles(e, tout)) {
       if (tout[c.id] !== undefined) valeurs[c.id] = tout[c.id];
       const err = erreurChamp(c, tout[c.id]);
       if (err) erreurs.push(`${e.question} (${c.libelle}) : ${err}`);

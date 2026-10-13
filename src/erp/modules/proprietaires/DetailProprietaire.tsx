@@ -136,8 +136,7 @@ export default function DetailProprietaire() {
             <Repli
               key={dos.id}
               titre="Dossier propriétaire"
-              description={`Reçu le ${dateCourte(dos.recuLe.slice(0, 10))} · ${d.donnees.logements.find((l) => l.id === dos.logementId)?.nom ?? 'logement retiré'}`}
-              ouvert={dossiers.length === 1}
+              description={`Réponses reçues le ${dateCourte(dos.recuLe.slice(0, 10))} · ${d.donnees.logements.find((l) => l.id === dos.logementId)?.nom ?? 'logement retiré'}`}
             >
               <FicheEtapes
                 etapes={ETAPES_DOSSIER}

@@ -1,6 +1,7 @@
-import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { ArrowLeft, Check, Minus, Plus, X } from 'lucide-react';
 import {
+  champsVisibles,
   erreursEtape,
   estVide,
   etapeFacultative,
@@ -42,7 +43,7 @@ export interface WizardProps {
 }
 
 const CHAMP_BASE =
-  'w-full rounded-xl border border-[rgba(64,49,24,0.22)] bg-white px-4 text-[17px] text-[var(--foreground)] placeholder:text-[#9A8F7C] focus:border-[var(--color-gold)] focus:ring-2 focus:ring-[rgba(169,124,48,0.35)] focus:outline-none';
+  'w-full rounded-xl border border-[rgba(64,49,24,0.22)] bg-white px-4 text-[17px] text-[var(--foreground)] placeholder:text-[#7D725E] focus:border-[var(--color-gold)] focus:ring-2 focus:ring-[rgba(169,124,48,0.35)] focus:outline-none';
 
 const FOCUS = 'focus-visible:ring-2 focus-visible:ring-[rgba(169,124,48,0.5)] focus-visible:outline-none';
 
@@ -142,10 +143,21 @@ export function Wizard({ etapes, valeurs, onChange, onEnvoyer, onFermer, etapeIn
     if (erreurs[id]) setErreurs(({ [id]: _, ...reste }) => reste);
   };
 
-  const incomplet = !!etape?.champs.some((c) => c.requis && estVide(c, valeurs[c.id]));
+  const champs = etape ? champsVisibles(etape, valeurs) : [];
+  // Un champ qui apparaît selon une réponse (nom de la société…) : on le montre, il peut être sous l'écran.
+  const visiblesAvant = useRef<{ etape?: string; ids: string[] }>({ ids: [] });
+  const idsVisibles = champs.map((c) => c.id).join('|');
+  useEffect(() => {
+    const avant = visiblesAvant.current;
+    const ids = idsVisibles ? idsVisibles.split('|') : [];
+    const nouveau = avant.etape === courante ? ids.find((id) => !avant.ids.includes(id)) : undefined;
+    visiblesAvant.current = { etape: courante, ids };
+    if (nouveau) document.getElementById(`champ-${nouveau}`)?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [idsVisibles, courante]);
+  const incomplet = champs.some((c) => c.requis && estVide(c, valeurs[c.id]));
   const facultative = etape ? etapeFacultative(etape) : false;
   const note = etape?.note?.(valeurs);
-  const seul = etape?.champs.length === 1 && etape.champs[0].type !== 'case';
+  const seul = champs.length === 1 && champs[0].type !== 'case';
   // Une liste (inventaire, quantités) en tête d'étape prend la question pour libellé.
   const parLaQuestion = (c: Champ, i: number) => seul || (i === 0 && (c.type === 'grille' || c.type === 'quantites'));
 
@@ -200,7 +212,7 @@ export function Wizard({ etapes, valeurs, onChange, onEnvoyer, onFermer, etapeIn
               </h1>
               {etape.aide && <p className="mt-2 text-[16px] leading-relaxed text-[#6B6252]">{etape.aide}</p>}
               <div className="mt-7 space-y-5">
-                {etape.champs.map((c, i) => (
+                {champs.map((c, i) => (
                   <ChampWizard
                     key={c.id}
                     champ={c}
@@ -291,7 +303,7 @@ function Recapitulatif({ etapes, valeurs, onModifier }: { etapes: Etape[]; valeu
                 <li key={l.champ.id} className="flex items-start gap-3 px-4 py-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-[13px] text-[#6B6252]">{l.libelle}</p>
-                    <p className={`mt-0.5 text-[15px] leading-snug break-words ${l.valeur ? '' : 'text-[#9A8F7C]'}`}>{l.valeur || 'Non renseigné'}</p>
+                    <p className={`mt-0.5 text-[15px] leading-snug break-words ${l.valeur ? '' : 'text-[#6B6252] italic'}`}>{l.valeur || 'Non renseigné'}</p>
                   </div>
                   <button
                     type="button"
@@ -311,6 +323,20 @@ function Recapitulatif({ etapes, valeurs, onModifier }: { etapes: Etape[]; valeu
 }
 
 /* -------------------------------------------------------------------- champs */
+
+/** Flèches dans un groupe de choix exclusifs : réponse suivante ou précédente, focus compris. */
+function flechesRadio(valeurs: string[], actuelle: string, choisir: (v: string) => void) {
+  return (e: KeyboardEvent<HTMLElement>) => {
+    const pas = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
+    if (!pas || !valeurs.length) return;
+    e.preventDefault();
+    const i = valeurs.indexOf(actuelle);
+    const suivante = valeurs[(i < 0 ? 0 : i + pas + valeurs.length) % valeurs.length];
+    choisir(suivante);
+    const boutons = (e.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('[role=radio]');
+    boutons[valeurs.indexOf(suivante)]?.focus();
+  };
+}
 
 interface ChampWizardProps {
   champ: Champ;
@@ -341,10 +367,10 @@ function ChampWizard({ champ: c, valeur, erreur, seul, premier, onChange }: Cham
       const multiple = c.type === 'multi';
       const choisis = multiple ? ((valeur as string[] | undefined) ?? []) : [String(valeur ?? '')];
       const options = c.options ?? [];
-      // Dans un groupe, quelques réponses courtes (Mme, M.) : boutons côte à côte plutôt que des cartes.
-      if (!seul && !multiple && options.length <= 4 && options.every((o) => o.libelle.length <= 8 && !o.aide)) {
+      // Choix courts : boutons compacts côte à côte plutôt que des cartes.
+      if (c.affichage === 'pastilles' && !multiple) {
         saisie = (
-          <div role="radiogroup" {...commun} className="flex flex-wrap gap-2">
+          <div role="radiogroup" {...commun} onKeyDown={flechesRadio(options.map((o) => o.valeur), String(valeur ?? ''), onChange)} className="flex flex-wrap gap-2">
             {options.map((o) => {
               const actif = choisis.includes(o.valeur);
               return (
@@ -354,7 +380,7 @@ function ChampWizard({ champ: c, valeur, erreur, seul, premier, onChange }: Cham
                   role="radio"
                   aria-checked={actif}
                   onClick={() => onChange(actif ? undefined : o.valeur)}
-                  className={`h-12 min-w-20 rounded-full border px-5 text-[16px] font-medium ${FOCUS} ${
+                  className={`min-h-12 min-w-16 rounded-full border px-5 py-2 text-[16px] font-medium ${FOCUS} ${
                     actif ? 'border-[var(--color-gold-dark)] bg-[var(--color-gold-dark)] text-white' : 'border-[rgba(64,49,24,0.18)] bg-white'
                   }`}
                 >
@@ -367,8 +393,13 @@ function ChampWizard({ champ: c, valeur, erreur, seul, premier, onChange }: Cham
         break;
       }
       saisie = (
-        <div role={multiple ? 'group' : 'radiogroup'} {...commun} className="grid gap-2.5">
-          {(c.options ?? []).map((o) => {
+        <div
+          role={multiple ? 'group' : 'radiogroup'}
+          {...commun}
+          onKeyDown={multiple ? undefined : flechesRadio(options.map((o) => o.valeur), String(valeur ?? ''), onChange)}
+          className="grid gap-2.5"
+        >
+          {options.map((o) => {
             const actif = choisis.includes(o.valeur);
             return (
               <button

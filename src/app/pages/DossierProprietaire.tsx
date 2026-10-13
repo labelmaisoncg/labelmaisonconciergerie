@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Helmet } from 'react-helmet-async';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, MessageCircle } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../erp/data/dossier-proprietaire';
 import { valeursInitiales, type Valeurs } from '../../erp/data/etapes-formulaire';
 import { BrandLogo } from '../components/BrandLogo';
@@ -37,7 +37,7 @@ function garderBrouillon(b: Brouillon | null) {
 }
 
 const BOUTON_PRINCIPAL =
-  'inline-flex h-14 items-center justify-center rounded-full bg-[var(--color-gold-dark)] px-8 text-[17px] font-semibold text-white hover:bg-[#6A4914] focus-visible:ring-2 focus-visible:ring-[rgba(169,124,48,0.5)] focus-visible:outline-none';
+  'inline-flex min-h-14 items-center justify-center rounded-full bg-[var(--color-gold-dark)] px-8 py-3 text-center text-[17px] font-semibold text-white hover:bg-[#6A4914] focus-visible:ring-2 focus-visible:ring-[rgba(169,124,48,0.5)] focus-visible:outline-none';
 const BOUTON_TEXTE =
   'inline-flex h-11 items-center justify-center rounded-full px-4 text-[16px] font-semibold text-[var(--color-gold-dark)] hover:bg-[rgba(169,124,48,0.08)] focus-visible:ring-2 focus-visible:ring-[rgba(169,124,48,0.5)] focus-visible:outline-none';
 
@@ -125,7 +125,8 @@ export default function DossierProprietaire() {
             </p>
             <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
               <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className={BOUTON_PRINCIPAL}>
-                Envoyer mes photos sur WhatsApp
+                <MessageCircle className="mr-2 size-5" aria-hidden />
+                Envoyer mes photos
               </a>
               <a href="/" className={BOUTON_TEXTE}>
                 Revenir au site
@@ -134,15 +135,15 @@ export default function DossierProprietaire() {
           </div>
         ) : (
           <div className="my-auto py-12">
-            <p className="text-[12px] font-semibold tracking-[0.14em] text-[var(--color-gold-dark)] uppercase">Mise en service</p>
+            <p className="text-[12px] font-semibold tracking-[0.14em] text-[var(--color-gold-dark)] uppercase">Label Maison Conciergerie</p>
             <h1 className="font-serif-title mt-3 text-[40px] leading-[1.05] sm:text-[52px]">
-              Votre logement,{' '}
-              <span className="font-serif-italic text-[var(--color-gold-dark)]">prêt à accueillir</span>
+              Bienvenue parmi nos <span className="font-serif-italic text-[var(--color-gold-dark)]">propriétaires</span>
             </h1>
             <p className="mt-5 text-[17px] leading-relaxed text-[#6B6252]">
-              L’essentiel sur vous et votre logement, une question par écran. Nous voyons le détail ensemble lors de la visite.
+              Merci de nous confier votre logement. Quelques questions sur vous et votre bien, et nous nous occupons du reste : l’annonce, les
+              voyageurs, le ménage.
             </p>
-            <p className="mt-4 text-[15px] text-[#6B6252]">Environ 3 minutes. Vos réponses restent sur cet appareil jusqu’à l’envoi.</p>
+            <p className="mt-4 text-[15px] text-[#6B6252]">Environ 2 minutes. Vos réponses restent sur cet appareil jusqu’à l’envoi.</p>
             <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
               <button type="button" onClick={() => setPhase('assistant')} className={BOUTON_PRINCIPAL}>
                 {brouillon || etape ? 'Reprendre mon dossier' : 'Commencer'}

@@ -96,8 +96,8 @@ function FenetreChamp({ ligne, valeur, onFermer, onEnregistrer }: { ligne: Ligne
       ouvert
       onFermer={onFermer}
       taille="sm"
-      titre={ligne.etape.champs.length === 1 ? ligne.etape.question : c.libelle}
-      description={ligne.etape.champs.length === 1 ? ligne.etape.aide : ligne.etape.question}
+      titre={ligne.etape.question}
+      description={ligne.etape.champs.length === 1 ? ligne.etape.aide : undefined}
       pied={
         <>
           <Button variant="ghost" onClick={onFermer}>

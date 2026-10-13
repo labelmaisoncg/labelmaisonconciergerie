@@ -18,61 +18,46 @@ const texte = (v: Valeurs, k: string) => String(v[k] ?? '').trim();
 const egal = (k: string, ...valeurs: string[]) => (v: Valeurs) => valeurs.includes(texte(v, k));
 
 /**
- * L'essentiel seulement : 13 écrans (15 au plus), environ 3 minutes. Le
- * détail (inventaire pièce par pièce, consommables, documents) se fait à la
- * visite de mise en service.
+ * L'essentiel seulement, regroupé par sujet : 6 écrans et le récapitulatif,
+ * environ 2 minutes. Le détail (inventaire pièce par pièce, wifi,
+ * consommables, documents) se voit à la visite de mise en service.
  */
 export const ETAPES_DOSSIER: Etape[] = [
-  /* ------------------------------------------------------------- Vous */
   {
-    id: 'coordonnees',
+    id: 'vous',
     partie: 'Vous',
     question: 'Qui êtes-vous ?',
-    aide: 'Pour vous joindre et vous envoyer le contrat.',
+    aide: 'Pour vous joindre et rédiger le contrat.',
     champs: [
       { id: 'prop.prenom', libelle: 'Prénom', type: 'texte', requis: true, autocomplete: 'given-name', longueurMax: 80 },
       { id: 'prop.nom', libelle: 'Nom', type: 'texte', requis: true, autocomplete: 'family-name', longueurMax: 80 },
       { id: 'prop.tel', libelle: 'Téléphone', type: 'tel', requis: true, autocomplete: 'tel', longueurMax: 30 },
       { id: 'prop.email', libelle: 'E-mail', type: 'email', requis: true, autocomplete: 'email', longueurMax: 160 },
-    ],
-  },
-  {
-    id: 'qualite',
-    partie: 'Vous',
-    question: 'À quel titre êtes-vous propriétaire ?',
-    champs: [
       {
         id: 'prop.qualite',
-        libelle: 'Qualité',
+        libelle: 'Vous êtes propriétaire',
         type: 'choix',
         requis: true,
+        affichage: 'pastilles',
         options: [
           { valeur: 'particulier', libelle: 'En nom propre' },
-          { valeur: 'indivision', libelle: 'En indivision', aide: 'Plusieurs propriétaires' },
-          { valeur: 'societe', libelle: 'Via une société', aide: 'SCI, SARL…' },
+          { valeur: 'indivision', libelle: 'En indivision' },
+          { valeur: 'societe', libelle: 'Via une société' },
         ],
+      },
+      {
+        id: 'prop.societe',
+        libelle: 'Nom de la société ou de l’indivision',
+        type: 'texte',
+        requis: true,
+        placeholder: 'SCI Les Tilleuls',
+        longueurMax: 120,
+        si: egal('prop.qualite', 'societe', 'indivision'),
       },
     ],
   },
   {
-    id: 'societe',
-    partie: 'Vous',
-    question: 'Au nom de quelle société ou indivision ?',
-    aide: 'Pour rédiger le contrat au bon nom.',
-    si: egal('prop.qualite', 'societe', 'indivision'),
-    champs: [{ id: 'prop.societe', libelle: 'Dénomination', type: 'texte', requis: true, placeholder: 'SCI Les Tilleuls', longueurMax: 120 }],
-  },
-  {
-    id: 'adresse_postale',
-    partie: 'Vous',
-    question: 'Quelle est votre adresse postale ?',
-    aide: 'Celle qui figurera sur le contrat.',
-    champs: [{ id: 'prop.adresse', libelle: 'Adresse postale', type: 'texte', requis: true, autocomplete: 'street-address', placeholder: 'N°, rue, code postal, ville' }],
-  },
-
-  /* ------------------------------------------------------- Le logement */
-  {
-    id: 'bien_adresse',
+    id: 'adresses',
     partie: 'Le logement',
     question: 'Où se trouve le logement ?',
     champs: [
@@ -80,53 +65,42 @@ export const ETAPES_DOSSIER: Etape[] = [
       { id: 'bien.complement', libelle: 'Complément', type: 'texte', placeholder: 'Bâtiment, étage, porte', autocomplete: 'address-line2' },
       { id: 'bien.cp', libelle: 'Code postal', type: 'texte', requis: true, format: 'code_postal', autocomplete: 'postal-code', longueurMax: 5 },
       { id: 'bien.ville', libelle: 'Ville', type: 'texte', requis: true, autocomplete: 'address-level2', longueurMax: 80 },
+      { id: 'prop.adresse', libelle: 'Votre adresse postale, si elle est différente', type: 'texte', placeholder: 'N°, rue, code postal, ville' },
     ],
   },
   {
-    id: 'bien_type',
+    id: 'description',
     partie: 'Le logement',
-    question: 'Quel type de logement est-ce ?',
+    question: 'Comment est-il ?',
+    aide: 'Le nombre de voyageurs fixe la capacité de l’annonce.',
     champs: [
       {
         id: 'bien.type',
         libelle: 'Type',
         type: 'choix',
         requis: true,
+        affichage: 'pastilles',
         options: [
           { valeur: 'studio', libelle: 'Studio' },
           { valeur: 'T1', libelle: 'T1' },
           { valeur: 'T2', libelle: 'T2' },
           { valeur: 'T3', libelle: 'T3' },
-          { valeur: 'T4', libelle: 'T4 ou plus' },
+          { valeur: 'T4', libelle: 'T4 et plus' },
           { valeur: 'maison', libelle: 'Maison' },
         ],
       },
-    ],
-  },
-  {
-    id: 'bien_taille',
-    partie: 'Le logement',
-    question: 'Combien de voyageurs peut-il accueillir ?',
-    aide: 'Le nombre de couchages fixe la capacité de l’annonce.',
-    champs: [
       { id: 'bien.couchages', libelle: 'Voyageurs au maximum', type: 'nombre', requis: true, min: 1, max: 30 },
       { id: 'bien.chambres', libelle: 'Chambres', type: 'nombre', min: 0, max: 30 },
       { id: 'bien.surface', libelle: 'Surface (m²)', type: 'nombre', min: 5, max: 2000 },
-    ],
-  },
-  {
-    id: 'bien_residence',
-    partie: 'Le logement',
-    question: 'Est-ce votre résidence principale ?',
-    champs: [
       {
         id: 'bien.residence',
-        libelle: 'Résidence principale',
+        libelle: 'Est-ce votre résidence principale ?',
         type: 'choix',
         requis: true,
+        affichage: 'pastilles',
         options: [
-          { valeur: 'secondaire', libelle: 'Non, il est dédié à la location', aide: 'Résidence secondaire ou investissement' },
-          { valeur: 'principale', libelle: 'Oui, c’est ma résidence principale' },
+          { valeur: 'secondaire', libelle: 'Non' },
+          { valeur: 'principale', libelle: 'Oui' },
         ],
       },
     ],
@@ -136,25 +110,55 @@ export const ETAPES_DOSSIER: Etape[] = [
         : undefined,
   },
   {
-    id: 'acces',
-    partie: 'Le logement',
-    question: 'Comment entre-t-on dans le logement ?',
+    id: 'sur_place',
+    partie: 'Pour démarrer',
+    question: 'Comment cela se passe-t-il sur place ?',
     champs: [
       {
         id: 'acces.mode',
-        libelle: 'Accès',
+        libelle: 'Comment entre-t-on ?',
         type: 'choix',
         requis: true,
+        affichage: 'pastilles',
         options: [
-          { valeur: 'boite', libelle: 'Boîte à clés à code' },
+          { valeur: 'boite', libelle: 'Boîte à clés' },
           { valeur: 'connectee', libelle: 'Serrure connectée' },
           { valeur: 'cles', libelle: 'Clés à remettre' },
         ],
       },
+      {
+        id: 'linge.fournisseur',
+        libelle: 'Qui fournit le linge ?',
+        type: 'choix',
+        requis: true,
+        affichage: 'pastilles',
+        options: [
+          { valeur: 'labelmaison', libelle: 'Label Maison' },
+          { valeur: 'proprietaire', libelle: 'Moi' },
+        ],
+      },
+      {
+        id: 'annonce.compte',
+        libelle: 'Déjà sur Airbnb ?',
+        type: 'choix',
+        requis: true,
+        affichage: 'pastilles',
+        options: [
+          { valeur: 'annonce', libelle: 'Oui, annonce en ligne' },
+          { valeur: 'compte', libelle: 'Compte sans annonce' },
+          { valeur: 'acreer', libelle: 'Non, à créer' },
+        ],
+      },
+      {
+        id: 'annonce.lien',
+        libelle: 'Lien de l’annonce',
+        type: 'texte',
+        placeholder: 'https://www.airbnb.fr/rooms/…',
+        longueurMax: 300,
+        si: egal('annonce.compte', 'annonce'),
+      },
     ],
   },
-
-  /* ------------------------------------------------------ Pour démarrer */
   {
     id: 'manquants',
     partie: 'Pour démarrer',
@@ -179,61 +183,12 @@ export const ETAPES_DOSSIER: Etape[] = [
     ],
   },
   {
-    id: 'linge',
-    partie: 'Pour démarrer',
-    question: 'Qui fournit le linge ?',
-    aide: 'Draps, serviettes et torchons.',
-    champs: [
-      {
-        id: 'linge.fournisseur',
-        libelle: 'Linge fourni par',
-        type: 'choix',
-        requis: true,
-        options: [
-          { valeur: 'labelmaison', libelle: 'Label Maison', aide: 'Géré et renouvelé par nos soins' },
-          { valeur: 'proprietaire', libelle: 'Moi, le propriétaire' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'airbnb',
-    partie: 'Pour démarrer',
-    question: 'Le logement est-il déjà sur Airbnb ?',
-    champs: [
-      {
-        id: 'annonce.compte',
-        libelle: 'Airbnb',
-        type: 'choix',
-        requis: true,
-        options: [
-          { valeur: 'annonce', libelle: 'Oui, une annonce existe' },
-          { valeur: 'compte', libelle: 'J’ai un compte, sans annonce' },
-          { valeur: 'acreer', libelle: 'Non, tout est à créer', aide: 'Nous vous guidons' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'airbnb_lien',
-    partie: 'Pour démarrer',
-    question: 'Quel est le lien de l’annonce ?',
-    aide: 'Dans l’application Airbnb : votre annonce, puis « Partager ».',
-    si: egal('annonce.compte', 'annonce'),
-    champs: [{ id: 'annonce.lien', libelle: 'Lien de l’annonce', type: 'texte', placeholder: 'https://www.airbnb.fr/rooms/…', longueurMax: 300 }],
-  },
-  {
-    id: 'particularites',
-    partie: 'Pour démarrer',
-    question: 'Une chose importante à nous dire ?',
+    id: 'fin',
+    partie: 'Pour finir',
+    question: 'Un dernier mot ?',
     aide: 'Accès, voisinage, travaux, consignes pour les voyageurs…',
-    champs: [{ id: 'notes', libelle: 'À savoir', type: 'zone', placeholder: 'Le volet de la chambre se bloque, pas d’animaux…' }],
-  },
-  {
-    id: 'declaration',
-    partie: 'Pour démarrer',
-    question: 'Tout est exact ?',
     champs: [
+      { id: 'notes', libelle: 'Une chose importante à nous dire', type: 'zone', placeholder: 'Le volet de la chambre se bloque, pas d’animaux…' },
       {
         id: 'decl.certif',
         libelle: 'Je certifie l’exactitude de ces informations et je signalerai toute modification.',
@@ -297,7 +252,7 @@ export function versProprietaire(v: Valeurs, o: { id: Id; aujourdhui: string; ex
     type: typeProprietaire(v),
     nom: nomProprietaire(v),
     contact: { email: texte(v, 'prop.email'), telephone: texte(v, 'prop.tel') },
-    adresse: texte(v, 'prop.adresse'),
+    adresse: texte(v, 'prop.adresse') || [texte(v, 'bien.adresse'), texte(v, 'bien.complement'), `${texte(v, 'bien.cp')} ${texte(v, 'bien.ville')}`.trim()].filter(Boolean).join(', '),
     ibanMasque: '',
     notes: note,
     creeLe: o.aujourdhui,

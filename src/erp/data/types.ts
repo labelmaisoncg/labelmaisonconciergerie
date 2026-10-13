@@ -517,7 +517,7 @@ export type StatutContactCrm =
   | 'pas_interesse';
 
 /** D'où vient la ligne : formulaire du site (par type) ou saisie à la main. */
-export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'manuel';
+export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'dossier' | 'manuel';
 
 export type ResultatAppel = 'joint' | 'pas_de_reponse' | 'messagerie' | 'note' | 'formulaire';
 

@@ -9,9 +9,9 @@
 // =============================================================================
 
 import crypto from 'node:crypto';
-import { noterAppel, telephoneNormalise, trouverDoublon } from '../src/erp/data/crm.js';
-import { ETAPES_DOSSIER, nomProprietaire, versLogement, versProprietaire, type DossierProprietaire } from '../src/erp/data/dossier-proprietaire.js';
-import { lignesRecapitulatif, type Valeurs } from '../src/erp/data/etapes-formulaire.js';
+import { EMAIL_SUR, idContactCrm, noterAppel, telephoneNormalise, trouverDoublon } from '../src/erp/data/crm.js';
+import { CHAMP_DOSSIER, ETAPES_DOSSIER, nomProprietaire, versLogement, versProprietaire, type DossierProprietaire } from '../src/erp/data/dossier-proprietaire.js';
+import { lignesRecapitulatif, valeurAffichee, type Valeurs } from '../src/erp/data/etapes-formulaire.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { ContactCrm, Proprietaire } from '../src/erp/data/types.js';
 import { baseErp, configuration } from './_erp-repull.js';
@@ -27,6 +27,29 @@ export interface DossierEnregistre {
   dossier: DossierProprietaire;
   proprietaireExistant: boolean;
   nomLogement: string;
+  /** Contact du CRM complété, ou créé s'il n'existait pas. */
+  crm: { id: string; cree: boolean };
+}
+
+/** Pas encore dans le CRM (dossier reçu sans appel enregistré) : on l'y ajoute, déjà « Contacté ». */
+function nouveauContact(v: Valeurs, maintenant: string, trace: string): ContactCrm {
+  const email = texte(v, 'prop.email').toLowerCase();
+  return {
+    id: idContactCrm(),
+    nom: `${texte(v, 'prop.prenom')} ${texte(v, 'prop.nom')}`.trim().slice(0, 120),
+    telephone: texte(v, 'prop.tel'),
+    ...(EMAIL_SUR.test(email) ? { email } : {}),
+    ville: texte(v, 'bien.ville'),
+    typeBien: valeurAffichee(CHAMP_DOSSIER.get('bien.type')!, v['bien.type']),
+    adresse: [texte(v, 'bien.adresse'), texte(v, 'bien.cp'), texte(v, 'bien.ville')].filter(Boolean).join(', '),
+    source: 'dossier',
+    statut: 'contacte',
+    notes: '',
+    tentatives: 0,
+    historique: [{ le: maintenant, par: AUTEUR, resultat: 'formulaire', texte: trace }],
+    creeLe: maintenant,
+    majLe: maintenant,
+  };
 }
 
 /** Propriétaire déjà connu (même e-mail ou même téléphone) : on le complète au lieu d'en créer un second. */
@@ -49,12 +72,14 @@ export async function enregistrerDossier(v: Valeurs): Promise<DossierEnregistre 
   const existant = proprietaireConnu(proprietaires, v);
   const proprietaire = versProprietaire(v, { id: id('pro'), aujourdhui, existant });
   const logement = versLogement(v, { id: id('log'), proprietaireId: proprietaire.id });
-  const contact = trouverDoublon(contacts, { email: texte(v, 'prop.email'), telephone: texte(v, 'prop.tel') });
+  const existantCrm = trouverDoublon(contacts, { email: texte(v, 'prop.email'), telephone: texte(v, 'prop.tel') });
+  const trace = `Dossier propriétaire reçu : ${logement.nom}. ${ERP}/proprietaires/${proprietaire.id}`;
+  const contact = existantCrm ? noterAppel(existantCrm, 'formulaire', AUTEUR, maintenant, trace) : nouveauContact(v, maintenant, trace);
   const dossier: DossierProprietaire = {
     id: id('dos'),
     proprietaireId: proprietaire.id,
     logementId: logement.id,
-    ...(contact ? { contactCrmId: contact.id } : {}),
+    contactCrmId: contact.id,
     recuLe: maintenant,
     valeurs: v,
   };
@@ -62,11 +87,8 @@ export async function enregistrerDossier(v: Valeurs): Promise<DossierEnregistre 
   await base.ecrire('proprietaires', [proprietaire], AUTEUR);
   await base.ecrire('logements', [logement], AUTEUR);
   await base.ecrire('dossiers', [dossier], AUTEUR);
-  if (contact) {
-    const trace = `Dossier propriétaire reçu : ${logement.nom}. ${ERP}/proprietaires/${proprietaire.id}`;
-    await base.ecrire('crm', [noterAppel(contact, 'formulaire', AUTEUR, maintenant, trace)], AUTEUR);
-  }
-  return { dossier, proprietaireExistant: !!existant, nomLogement: logement.nom };
+  await base.ecrire('crm', [contact], AUTEUR);
+  return { dossier, proprietaireExistant: !!existant, nomLogement: logement.nom, crm: { id: contact.id, cree: !existantCrm } };
 }
 
 /** E-mail récapitulatif : toutes les réponses, partie par partie. */
@@ -81,6 +103,7 @@ export function emailDossier(v: Valeurs, enregistre: DossierEnregistre | null): 
     ? [
         [`${ERP}/proprietaires/${enregistre.dossier.proprietaireId}`, enregistre.proprietaireExistant ? 'Fiche du propriétaire (déjà connu)' : 'Fiche du propriétaire'],
         [`${ERP}/logements/${enregistre.dossier.logementId}`, `Logement « ${logement} » (en lancement)`],
+        [`${ERP}/crm?contact=${enregistre.crm.id}`, enregistre.crm.cree ? 'Nouveau contact dans le CRM' : 'Contact du CRM (historique complété)'],
       ]
     : [];
   const alerte = enregistre
