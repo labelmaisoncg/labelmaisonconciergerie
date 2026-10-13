@@ -5,6 +5,7 @@ import { dateHeure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ContactCrm, ResultatAppel, Responsable, StatutContactCrm } from '../../../data/types';
 import { Button, classesBouton, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
 import { relanceEnRetard } from './Grille';
+import { POINT } from './statuts';
 
 const TON_TRACE: Record<ResultatAppel, Ton> = {
   joint: 'succes',
@@ -261,6 +262,8 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
               // Le message du formulaire est déjà affiché dans « Sa demande ».
               description: t.resultat === 'formulaire' && t.texte === contact.message ? undefined : t.texte,
               tone: TON_TRACE[t.resultat],
+              // Appel sans réponse : même orange que l'étape « À rappeler » qu'il déclenche.
+              point: t.resultat === 'pas_de_reponse' || t.resultat === 'messagerie' ? POINT.a_rappeler : undefined,
             }))}
             vide="Rien pour l’instant."
           />

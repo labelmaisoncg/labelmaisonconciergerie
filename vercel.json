@@ -33,6 +33,15 @@
     "api/crm-mcp/[cle].ts": {
       "maxDuration": 30
     },
+    "api/crm-mcp/index.ts": {
+      "maxDuration": 30
+    },
+    "api/oauth-token.ts": {
+      "maxDuration": 15
+    },
+    "api/oauth-register.ts": {
+      "maxDuration": 10
+    },
     "api/erp-connecteur-claude.ts": {
       "maxDuration": 15
     }

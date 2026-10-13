@@ -9,6 +9,8 @@ export interface EvenementFrise {
   meta?: ReactNode;
   description?: ReactNode;
   tone?: Ton;
+  /** Couleur du point quand le ton ne suffit pas (ex. couleur d'une étape du CRM). */
+  point?: string;
 }
 
 export interface TimelineProps {
@@ -26,7 +28,7 @@ export function Timeline({ elements, vide = 'Aucun événement.', className }: T
         <li key={e.id} className="relative">
           <span
             aria-hidden
-            className={cn('absolute top-1.5 -left-[25px] size-2.5 rounded-full ring-4 ring-(--lm-surface)', TON_PLEIN[e.tone ?? 'or'])}
+            className={cn('absolute top-1.5 -left-[25px] size-2.5 rounded-full ring-4 ring-(--lm-surface)', e.point ?? TON_PLEIN[e.tone ?? 'or'])}
           />
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
             <p className="text-[13.5px] font-medium text-(--lm-encre)">{e.titre}</p>

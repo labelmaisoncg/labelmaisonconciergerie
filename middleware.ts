@@ -31,8 +31,61 @@
  */
 
 export const config = {
-  matcher: ['/linge', '/linge/:path*', '/erp', '/erp/:path*'],
+  matcher: [
+    '/linge',
+    '/linge/:path*',
+    '/erp',
+    '/erp/:path*',
+    '/.well-known/oauth-protected-resource',
+    '/.well-known/oauth-protected-resource/:path*',
+    '/.well-known/oauth-authorization-server',
+    '/.well-known/oauth-authorization-server/:path*',
+  ],
 };
+
+/* ------------------------------------------- connecteur Claude (OAuth 2.1) */
+// Découverte OAuth du connecteur MCP du CRM (/api/crm-mcp) : métadonnées
+// publiques, sans secret (RFC 9728 et RFC 8414). Servies ici car les
+// rewrites de vercel.json sont ignorés (cleanUrls). Mêmes adresses que
+// src/erp/data/oauth-regles.ts.
+
+const SITE = 'https://www.labelmaisoncg.fr';
+
+const META_RESSOURCE_CRM = {
+  resource: `${SITE}/api/crm-mcp`,
+  authorization_servers: [SITE],
+  bearer_methods_supported: ['header'],
+  scopes_supported: ['crm'],
+  resource_name: 'CRM Label Maison',
+};
+
+const META_SERVEUR_OAUTH = {
+  issuer: SITE,
+  authorization_endpoint: `${SITE}/erp/autoriser-claude`,
+  token_endpoint: `${SITE}/api/oauth-token`,
+  registration_endpoint: `${SITE}/api/oauth-register`,
+  response_types_supported: ['code'],
+  grant_types_supported: ['authorization_code', 'refresh_token'],
+  code_challenge_methods_supported: ['S256'],
+  token_endpoint_auth_methods_supported: ['none'],
+  scopes_supported: ['crm'],
+};
+
+function metadonneesOAuth(chemin: string): Response | null {
+  const meta = /^\/\.well-known\/oauth-protected-resource(\/api\/crm-mcp)?\/?$/.test(chemin)
+    ? META_RESSOURCE_CRM
+    : /^\/\.well-known\/oauth-authorization-server(\/.*)?$/.test(chemin)
+      ? META_SERVEUR_OAUTH
+      : null;
+  if (!meta) return null;
+  return new Response(JSON.stringify(meta), {
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=300',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
 
 const DUREE = 60 * 60 * 24 * 30; // 30 jours
 
@@ -409,6 +462,9 @@ async function sessionErp(motDePasse: string): Promise<Response> {
 
 export default async function middleware(request: Request): Promise<Response | undefined> {
   const url = new URL(request.url);
+  if (url.pathname.startsWith('/.well-known/')) {
+    return metadonneesOAuth(url.pathname) ?? new Response('Introuvable.', { status: 404 });
+  }
   const zone = zoneDe(url.pathname);
 
   // trim() : un copier-coller dans l'interface Vercel embarque très souvent un

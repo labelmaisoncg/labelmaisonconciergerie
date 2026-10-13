@@ -1,18 +1,21 @@
 // =============================================================================
-// /api/erp-connecteur-claude — connecteur Claude du CRM, pour les gérants
-// connectés à l'ERP (CRM → Plus → « Connecter à Claude »).
+// /api/erp-connecteur-claude — connexion de Claude au CRM, pour les gérants
+// connectés à l'ERP :
 //
-//   GET                         → { ok, fixee, existe } ou { ok, fixee: true, url }
-//   POST { action: 'creer' }    → { ok, url }  adresse NOUVELLE, montrée cette fois seulement
-//                                  (l'éventuelle ancienne cesse de fonctionner)
+//   GET                                   → { ok, connexions, derniere? }
+//   POST { action: 'autoriser', …demande } → { ok, redirection }  code OAuth renvoyé à Claude
+//   POST { action: 'deconnecter' }         → { ok }               tous les jetons sont révoqués
 //
-// La clé n'est jamais stockée (empreinte seulement, api/_erp-mcp.ts).
+// La demande (client_id, redirect_uri, code_challenge, state…) vient de la
+// page /erp/autoriser-claude, ouverte par Claude ; elle est revérifiée ici
+// (src/erp/data/oauth-regles.ts). Codes et jetons : api/_oauth.ts.
 // Authentification : Authorization: Bearer <jeton de session Supabase>, rôle gérant.
 // =============================================================================
 
+import { adresseRetour, lireDemande } from '../src/erp/data/oauth-regles.js';
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { baseErp, configuration, lireCorps, repondre } from './_erp-repull.js';
-import { cleFixee, creerCleConnecteur, etatConnecteur, URL_CONNECTEUR } from './_erp-mcp.js';
+import { creerCode, deconnecterTout, etatConnexions } from './_oauth.js';
 
 const INDISPONIBLE = 'Connecteur indisponible pour le moment. Réessayez dans un instant.';
 
@@ -36,11 +39,19 @@ export default async function handler(req: any, res: any) {
   }
   try {
     const base = baseErp(c);
-    if (req.method === 'GET') return repondre(res, 200, { ok: true, ...(await etatConnecteur(base)) });
-    if (lireCorps(req).action !== 'creer') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
-    const fixee = cleFixee();
-    if (fixee) return repondre(res, 200, { ok: true, fixee: true, url: URL_CONNECTEUR(fixee) });
-    return repondre(res, 200, { ok: true, fixee: false, url: URL_CONNECTEUR(await creerCleConnecteur(base)) });
+    if (req.method === 'GET') return repondre(res, 200, { ok: true, ...(await etatConnexions(base)) });
+    const corps = lireCorps(req);
+    if (corps.action === 'autoriser') {
+      const lu = lireDemande(corps);
+      if (!lu.ok) return repondre(res, 400, { ok: false, erreur: `Demande de connexion invalide (${lu.raison}). Relancez la connexion depuis Claude.` });
+      const code = await creerCode(base, lu.demande, membre.email);
+      return repondre(res, 200, { ok: true, redirection: adresseRetour(lu.demande.redirect_uri, { code, state: lu.demande.state }) });
+    }
+    if (corps.action === 'deconnecter') {
+      await deconnecterTout(base);
+      return repondre(res, 200, { ok: true });
+    }
+    return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
   } catch (e) {
     console.error('[erp-connecteur-claude]', e);
     return repondre(res, 502, { ok: false, erreur: INDISPONIBLE });

@@ -2,7 +2,7 @@
  * Point d'entrée de l'ERP, monté par App.tsx sur /erp/* (chargement paresseux).
  * Routes relatives : chaque module gère ses sous-routes sous `<segment>/*`.
  */
-import { Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { Compass } from 'lucide-react';
 import './erp.css';
@@ -11,6 +11,9 @@ import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
 import { MODULES } from './modules/registry';
 import { ButtonLink, EmptyState, PageSkeleton } from './ui';
+
+// Page d'autorisation OAuth ouverte par Claude (connecteur du CRM), hors menu.
+const AutoriserClaude = lazy(() => import('./modules/crm/AutoriserClaude'));
 
 /** Titre d'onglet et noindex tant que l'ERP est affiché ; état du site rétabli ensuite. */
 function useEnteteDocument() {
@@ -59,6 +62,7 @@ function Contenu() {
           {MODULES.map(({ key, segment: seg, component: Module }) =>
             seg ? <Route key={key} path={`${seg}/*`} element={<Module />} /> : <Route key={key} index element={<Module />} />,
           )}
+          <Route path="autoriser-claude" element={<AutoriserClaude />} />
           <Route path="*" element={<Introuvable />} />
         </Routes>
       </Suspense>
