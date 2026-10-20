@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, Ellipsis } from 'lucide-react';
 import { cn } from './cn';
@@ -30,8 +30,16 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
   const [ouvert, setOuvert] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const bouton = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const [aGauche, setAGauche] = useState(false);
   const id = useId();
   const liste = actions.filter((a): a is ActionMenu => !!a);
+
+  // Menu aligné à droite du bouton, sauf s'il sortirait de l'écran (bouton en début de ligne, sur mobile).
+  useLayoutEffect(() => {
+    if (!ouvert) setAGauche(false);
+    else if ((menu.current?.getBoundingClientRect().left ?? 0) < 8) setAGauche(true);
+  }, [ouvert]);
 
   useEffect(() => {
     if (!ouvert) return;
@@ -90,10 +98,14 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
       </button>
       {ouvert && (
         <div
+          ref={menu}
           id={id}
           role="menu"
           aria-label={label}
-          className="lm-apparition absolute right-0 z-40 mt-1 min-w-56 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-1 shadow-(--lm-ombre-haute)"
+          className={cn(
+            'lm-apparition absolute z-40 mt-1 w-max max-w-[min(20rem,calc(100vw-2rem))] min-w-56 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-1 shadow-(--lm-ombre-haute)',
+            aGauche ? 'left-0' : 'right-0',
+          )}
         >
           {liste.map((a, i) => {
             const fermer = () => setOuvert(false);
