@@ -7,7 +7,7 @@ import type { Logement } from '../../../data/types';
 import { Alert, Badge, Button, Card, CardHeader, EmptyState, TON_LAVIS, cn } from '../../../ui';
 import { Aide, BadgeNiveau, BadgeRecommandation, BadgeStatutReco, useAnalyseBien } from '../../performance/_composants/commun';
 import { GraphiqueMarge } from '../../performance/_composants/GraphiqueMarge';
-import { depuisAmelioration, LIBELLE_COUT, LIBELLE_PORTEUR } from '../../performance/_composants/suivi';
+import { depuisAmelioration, LIBELLE_COUT, LIBELLE_PORTEUR } from '../../performance/_composants/logique-suivi';
 
 const TON_GRAVITE = { haute: 'danger', moyenne: 'alerte', faible: 'neutre' } as const;
 const LIBELLE_GRAVITE = { haute: 'Grave', moyenne: 'Moyen', faible: 'Mineur' } as const;

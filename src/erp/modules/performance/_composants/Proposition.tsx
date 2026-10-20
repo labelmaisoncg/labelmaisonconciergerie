@@ -7,7 +7,7 @@ import { useErp } from '../../../data/store';
 import type { Proprietaire, RecommandationProprietaire } from '../../../data/types';
 import { Alert, Button, Field, Modal, Select } from '../../../ui';
 import { useAnalyseParc } from './commun';
-import { faireAvancer, LIBELLE_IMPACT, LIBELLE_PORTEUR } from './suivi';
+import { faireAvancer, LIBELLE_IMPACT, LIBELLE_PORTEUR } from './logique-suivi';
 
 const STYLE_IMPRESSION = `.lm-impression { display: none; }
 @media print {
