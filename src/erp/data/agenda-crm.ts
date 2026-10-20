@@ -16,7 +16,10 @@ import type { ContactCrm, Responsable, StatutContactCrm } from './types.js';
 
 export const ERP_CRM = 'https://www.labelmaisoncg.fr/erp/crm';
 
-/** Relances de toute l'équipe, ou de celles suivies par une personne. */
+/**
+ * Relances de toute l'équipe, ou d'une personne : ses contacts et ceux que
+ * personne ne suit encore (une nouvelle demande arrive sans « Suivi par »).
+ */
 export type FiltreAgenda = 'tous' | Responsable;
 
 const VERBE: Record<StatutContactCrm, string> = {
@@ -86,7 +89,7 @@ export function evenementsRelance(contacts: ContactCrm[], aujourdhui: string, fi
   const r: EvenementRelance[] = [];
   for (const c of contacts) {
     if (!c?.id || STATUTS_CLOS.includes(c.statut)) continue;
-    if (filtre !== 'tous' && c.responsable !== filtre) continue;
+    if (filtre !== 'tous' && c.responsable && c.responsable !== filtre) continue;
     if (aTraiterLe(c, aujourdhui)) {
       // À faire aujourd'hui : nouvelle demande, ou relance échue (en retard si avant aujourd'hui).
       const reference = c.relanceLe ?? c.creeLe?.slice(0, 10) ?? aujourdhui;

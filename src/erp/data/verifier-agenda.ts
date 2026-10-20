@@ -46,8 +46,8 @@ function main() {
   verifier(retard?.jour === J && retard.enRetard, 'relance échue : ramenée à aujourd’hui, en retard');
   verifier(ev.find((e) => e.contact.id === 'c-futur')?.jour === '2026-11-03', 'relance future : à sa date');
   verifier(ids.join() === 'c-ancien,c-retard,c-nouveau,c-rdv,c-futur', `ordre chronologique (${ids.join()})`);
-  verifier(evenementsRelance(C, J, 'abdel').map((e) => e.contact.id).join() === 'c-rdv,c-futur', 'filtre « Abdel »');
-  verifier(evenementsRelance(C, J, 'kamel').map((e) => e.contact.id).join() === 'c-retard', 'filtre « Kamel »');
+  verifier(evenementsRelance(C, J, 'abdel').map((e) => e.contact.id).join() === 'c-ancien,c-nouveau,c-rdv,c-futur', 'filtre « Abdel » : ses contacts et ceux sans suivi');
+  verifier(evenementsRelance(C, J, 'kamel').map((e) => e.contact.id).join() === 'c-ancien,c-retard,c-nouveau', 'filtre « Kamel » : ses contacts et ceux sans suivi');
 
   // Format iCalendar
   verifier(ics.startsWith('BEGIN:VCALENDAR\r\nVERSION:2.0\r\n') && ics.endsWith('END:VCALENDAR\r\n'), 'enveloppe VCALENDAR, fins de ligne CRLF');
