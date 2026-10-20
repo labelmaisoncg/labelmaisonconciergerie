@@ -61,6 +61,7 @@ const PRESTATAIRES: [string, string][] = [
   ['Google (Gmail)', 'messagerie de l’équipe, qui reçoit ces e-mails et les messages que vous nous écrivez.'],
   ['Stripe', 'paiement des commandes du Studio.'],
   ['Anthropic (Claude)', 'intelligence artificielle : aide à la réponse aux voyageurs et connecteur du fichier de prospects.'],
+  ['Apple iCloud, Google Agenda', 'agendas de l’équipe, qui y reçoit les rappels du fichier de prospects (nom, coordonnées, date de relance), lorsqu’ils sont activés.'],
   ['Repull', 'gestionnaire de canaux : nous transmet les réservations et les messages des plateformes, et achemine nos réponses.'],
   ['Telegram', 'notifications internes à l’équipe (nom du voyageur, plateforme, extrait du message), lorsqu’elles sont activées.'],
 ];

@@ -6,12 +6,13 @@
  */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, FileText, PhoneCall, Plus } from 'lucide-react';
+import { Bot, CalendarPlus, FileText, PhoneCall, Plus } from 'lucide-react';
 import { aTraiterLe, idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { useErp } from '../../data/store';
 import type { ContactCrm } from '../../data/types';
 import { Alert, Button, EmptyState, Field, FilterChips, Input, MenuActions, Modal, PageHeader, SearchInput, Textarea, Toolbar, useRechercheUrl } from '../../ui';
+import { AgendaCrm } from './_composants/AgendaCrm';
 import { ConnecterClaude } from './_composants/ConnecterClaude';
 import { EnvoyerDossier } from './_composants/EnvoyerDossier';
 import { FicheContact } from './_composants/FicheContact';
@@ -121,6 +122,7 @@ export default function Crm() {
   const { crm, upsert, remove, utilisateur, lectureSeule, mode } = useErp();
   const [claude, setClaude] = useState(false);
   const [lienDossier, setLienDossier] = useState(false);
+  const [agenda, setAgenda] = useState(false);
   const gerant = utilisateur.role === 'gerant';
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useRechercheUrl();
@@ -170,7 +172,12 @@ export default function Crm() {
               label="Plus"
               actions={[
                 { libelle: 'Lien du dossier propriétaire', icone: <FileText />, onClick: () => setLienDossier(true) },
-                ...(gerant ? [{ libelle: 'Connecter à Claude', icone: <Bot />, onClick: () => setClaude(true) }] : []),
+                ...(gerant
+                  ? [
+                      { libelle: 'Relances dans Calendrier', icone: <CalendarPlus />, onClick: () => setAgenda(true) },
+                      { libelle: 'Connecter à Claude', icone: <Bot />, onClick: () => setClaude(true) },
+                    ]
+                  : []),
               ]}
             />
             {crm.length > 0 && !lectureSeule && (
@@ -229,6 +236,7 @@ export default function Crm() {
         lectureSeule={lectureSeule}
       />
       {gerant && <ConnecterClaude ouvert={claude} onFermer={() => setClaude(false)} demo={mode !== 'reel'} />}
+      {gerant && <AgendaCrm ouvert={agenda} onFermer={() => setAgenda(false)} demo={mode !== 'reel'} />}
       <EnvoyerDossier ouvert={lienDossier} onFermer={() => setLienDossier(false)} />
       {!lectureSeule && <NouveauContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} onOuvrir={ouvrir} />}
     </>
