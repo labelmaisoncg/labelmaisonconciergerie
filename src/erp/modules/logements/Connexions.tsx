@@ -294,8 +294,8 @@ export default function Connexions() {
                     {chargement && !etat ? (
                       <Skeleton className="mt-1 h-4 w-28" />
                     ) : (
-                      <Badge tone={actif ? 'succes' : comptes.length ? 'alerte' : 'neutre'} point>
-                        {actif ? 'Connecté' : aFinir ? 'Presque fini : chambres à associer' : comptes.length ? 'À reconnecter' : 'Pas encore connecté'}
+                      <Badge tone={actif && !anciens.length ? 'succes' : comptes.length ? 'alerte' : 'neutre'} point>
+                        {actif ? (anciens.length ? 'Connecté en partie' : 'Connecté') : aFinir ? 'Presque fini : chambres à associer' : comptes.length ? 'À reconnecter' : 'Pas encore connecté'}
                       </Badge>
                     )}
                   </div>
@@ -311,7 +311,7 @@ export default function Connexions() {
                   <div className={cn(valides.length > 0 && 'border-t border-(--lm-bord) pt-3')}>
                     <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-(--lm-alerte)">
                       <AlertTriangle aria-hidden className="size-3.5 shrink-0" />
-                      Ancien mode : rien n’en arrive
+                      Ancien mode : rien n’arrive dans l’ERP
                     </p>
                     <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2)">
                       {anciens.length > 1 ? 'Ces établissements restent' : 'Cet établissement reste'} sur le mode {'«\u00a0fournisseur de connectivité\u00a0»'}, hors de votre compte Extranet.
@@ -323,7 +323,7 @@ export default function Connexions() {
                     </ul>
                   </div>
                 )}
-                {valides.length === 0 && (
+                {(valides.length === 0 || anciens.length > 0) && (
                   // Les consignes restent à un clic (celle de Booking.com évite de céder vos prix et calendriers).
                   <details className="text-[12.5px] text-(--lm-encre-2)">
                     <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Comment ça marche ?</summary>
@@ -549,10 +549,11 @@ export default function Connexions() {
 }
 
 function LigneCompte({ compte: c, gerant, onDeconnecter }: { compte: ConnexionPlateforme; gerant: boolean; onDeconnecter: (c: ConnexionPlateforme) => void }) {
+  const nom = c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté');
   return (
     <li className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
-      <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
-      <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => onDeconnecter(c)}>
+      <span className="truncate">{nom}</span>
+      <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => onDeconnecter(c)} aria-label={`Déconnecter : ${nom}`}>
         Déconnecter
       </Button>
     </li>

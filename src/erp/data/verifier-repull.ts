@@ -1007,7 +1007,7 @@ async function principal() {
     );
     const resas = ligne(d1, /reçu des réservations/);
     verifier(
-      resas.ok && resas.alerte && resas.resume.startsWith('Aucune réservation chez Repull. Import Booking terminé le 1 oct. 2026 à 11:20 : 0 réservation trouvée, 2 logements vus.') && /ancien mode n’en font pas partie/.test(resas.resume) && !/changement de fournisseur/.test(resas.resume),
+      resas.ok && resas.alerte && resas.resume.startsWith('Aucune réservation chez Repull. Import Booking terminé le 1er oct. 2026 à 11:20 : 0 réservation trouvée, 2 logements vus.') && /ancien mode n’en font pas partie/.test(resas.resume) && !/changement de fournisseur/.test(resas.resume),
       `réservations : bilan de l’import Extranet (${resas.resume})`,
     );
     const etabs = ligne(d1, /quels établissements/);
@@ -1023,7 +1023,7 @@ async function principal() {
     repull.fileBooking = { OTAHotelResNotifRQ: { HotelReservations: [{ HotelReservation: [{ UniqueID: [{ $: { ID: '1' } }] }, { UniqueID: [{ $: { ID: '2' } }] }] }] } };
     const d2 = await diagnostiquer(ctx());
     const resas2 = ligne(d2, /reçu des réservations/);
-    verifier(!resas2.alerte && resas2.resume === 'Aucune réservation chez Repull. Import Booking en cours depuis le 1 oct. 2026 à 11:19 : 1 réservation lue sur 3, 2 logements vus.', `réservations : import en cours (${resas2.resume})`);
+    verifier(!resas2.alerte && resas2.resume === 'Aucune réservation chez Repull. Import Booking en cours depuis le 1er oct. 2026 à 11:19 : 1 réservation lue sur 3, 2 logements vus.', `réservations : import en cours (${resas2.resume})`);
     const etabs2 = ligne(d2, /quels établissements/);
     verifier(!etabs2.alerte && !/ancien mode/.test(etabs2.resume), `établissements tous rattachés au compte Extranet : rien à signaler (${etabs2.resume})`);
     const file2 = ligne(d2, /dans sa file/);

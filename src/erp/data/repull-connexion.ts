@@ -773,11 +773,11 @@ const nb = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plus
 /** « fournisseur de connectivité », espaces insécables : un guillemet n'est jamais seul en bout de ligne. */
 const MODE_CONNECTIVITE = '«\u00a0fournisseur de connectivité\u00a0»';
 
-/** « 25 oct. 2026 à 18:20 », à l'heure de Paris. */
+/** « 25 oct. 2026 à 18:20 » (« 1er oct. »), à l'heure de Paris. */
 function dateHeureParis(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const jour = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+  const jour = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'short', year: 'numeric' }).format(d).replace(/^1 /, '1er ');
   const h = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(d);
   return `${jour} à ${h}`;
 }
