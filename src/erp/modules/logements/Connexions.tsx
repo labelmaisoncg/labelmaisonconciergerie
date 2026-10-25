@@ -551,6 +551,7 @@ interface LigneVerif {
   statut: number;
   resume: string;
   brut: string;
+  alerte?: boolean;
 }
 
 /**
@@ -595,9 +596,11 @@ function VerificationRepull({ actif }: { actif: boolean }) {
             {lignes.map((l) => (
               <li key={l.appel} className="rounded-lg border border-(--lm-bord) p-3">
                 <p className="flex items-start gap-2 text-[13.5px]">
-                  <span className={l.ok ? 'text-(--lm-succes)' : 'text-(--lm-danger)'}>
-                    <span aria-hidden>{l.ok ? '✓' : '✗'}</span>
-                    <span className="sr-only">{l.ok ? 'Oui :' : 'Non :'}</span>
+                  <span className={!l.ok ? 'text-(--lm-danger)' : l.alerte ? 'text-(--lm-alerte)' : 'text-(--lm-succes)'}>
+                    <span aria-hidden className="inline-block w-3.5 text-center">
+                      {!l.ok ? '✗' : l.alerte ? '!' : '✓'}
+                    </span>
+                    <span className="sr-only">{!l.ok ? 'Non :' : l.alerte ? 'À regarder :' : 'Oui :'}</span>
                   </span>
                   <span>
                     <span className="font-medium text-(--lm-encre)">{l.question}</span>

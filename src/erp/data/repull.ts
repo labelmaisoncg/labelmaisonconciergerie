@@ -742,3 +742,41 @@ export function versFil(conv: RepullConversation, messages: RepullMessage[], exi
 /** Horodatage le plus récent. */
 export const plusRecent = (a: Horodatage | undefined, b: Horodatage | undefined): Horodatage | undefined =>
   !a ? b : !b ? a : instant(a) >= instant(b) ? a : b;
+
+/** Réservations et conversations écartées par un passage (bilan.ignores). */
+export interface EcartsRepull {
+  reservationsEnAttente?: number;
+  reservationsSansLogement?: number;
+  filsSansLogement?: number;
+  reservationsHorsSelection?: number;
+  filsHorsSelection?: number;
+}
+
+/**
+ * Ce que le passage a écarté, en clair (journal et message du bouton) : sans
+ * cela, « rien de nouveau » cache des réservations bien reçues de Repull mais
+ * laissées de côté (logement non choisi, annonce inconnue, en attente).
+ */
+export function ecartsBilan(b: { ignores?: EcartsRepull }): string[] {
+  const i = b.ignores ?? {};
+  const nb = (x: number, un: string) => `${x} ${un}${x > 1 ? 's' : ''}`;
+  const phrases: string[] = [];
+  const r = i.reservationsHorsSelection ?? 0;
+  const f = i.filsHorsSelection ?? 0;
+  if (r || f) {
+    const qui = [r ? nb(r, 'réservation') : '', f ? nb(f, 'conversation') : ''].filter(Boolean).join(' et ');
+    const une = r + f === 1;
+    phrases.push(
+      une
+        ? `${qui} concerne un logement non choisi : elle n’entre pas dans l’ERP. Pour l’ajouter : Logements → Connexions.`
+        : `${qui} concernent des logements non choisis : elles n’entrent pas dans l’ERP. Pour les ajouter : Logements → Connexions.`,
+    );
+  }
+  const x = i.reservationsEnAttente ?? 0;
+  if (x) phrases.push(`${nb(x, 'réservation')} en attente de confirmation, ${x > 1 ? 'importées' : 'importée'} une fois ${x > 1 ? 'confirmées' : 'confirmée'}.`);
+  const y = i.reservationsSansLogement ?? 0;
+  if (y) phrases.push(`${nb(y, 'réservation')} sur une annonce inconnue.`);
+  const z = i.filsSansLogement ?? 0;
+  if (z) phrases.push(`${nb(z, 'conversation')} sans logement.`);
+  return phrases;
+}

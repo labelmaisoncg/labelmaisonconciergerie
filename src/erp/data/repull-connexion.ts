@@ -705,6 +705,8 @@ export interface LigneDiagnostic {
   resume: string;
   /** Extrait brut (tronqué), pour l'équipe technique. */
   brut: string;
+  /** L'appel a répondu, mais la réponse montre un problème (ex. données hors des logements choisis). */
+  alerte?: boolean;
 }
 
 export interface ResultatDiagnostic {
@@ -733,11 +735,30 @@ const liste = (v: unknown): Record<string, unknown>[] => {
 export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDiagnostic> {
   const lignes: LigneDiagnostic[] = [];
   let appels = 0;
+  // Logements choisis : une réservation reçue par Repull sur un autre logement n'entre pas dans l'ERP.
+  // Seuls les éléments qui indiquent leur logement comptent (une conversation sans logement est
+  // rattachée par sa réservation pendant la synchronisation).
+  const choisis = new Set((await lireSelection(ctx.base).catch(() => null))?.annonces ?? []);
+  const surChoisis = (l: Record<string, unknown>[]): { texte: string; alerte: boolean } => {
+    const situes = l.filter((x) => texte(x.listingId));
+    if (!situes.length || !choisis.size) return { texte: '', alerte: false };
+    const n = situes.filter((x) => choisis.has(texte(x.listingId))).length;
+    if (n === situes.length) return { texte: situes.length > 1 ? ' Toutes sont sur vos logements choisis.' : ' Elle est sur vos logements choisis.', alerte: false };
+    const autres = situes.length - n;
+    return {
+      texte: n
+        ? ` ${n} sur ${situes.length} ${n > 1 ? 'sont' : 'est'} sur vos logements choisis ; ${autres > 1 ? 'les autres n’entrent' : 'l’autre n’entre'} pas dans l’ERP (étape « Choisissez les logements à gérer », plus haut).`
+        : ` ${situes.length > 1 ? 'Aucune n’est sur vos logements choisis : elles n’entrent' : 'Elle n’est pas sur vos logements choisis : elle n’entre'} pas dans l’ERP. Cochez ${situes.length > 1 ? 'leur logement' : 'son logement'} plus haut, à l’étape « Choisissez les logements à gérer ».`,
+      alerte: true,
+    };
+  };
   await avecClient(ctx, async (client) => {
-    const essai = async (question: string, appel: string, resumer: (r: unknown) => string, params: Record<string, string> = {}) => {
+    const essai = async (question: string, appel: string, resumer: (r: unknown) => string | { texte: string; alerte: boolean }, params: Record<string, string> = {}) => {
       try {
         const r = await client.get<unknown>(appel, params);
-        lignes.push({ question, appel, ok: true, statut: 200, resume: resumer(r), brut: tronquer(r) });
+        const x = resumer(r);
+        const resume = typeof x === 'string' ? { texte: x, alerte: false } : x;
+        lignes.push({ question, appel, ok: true, statut: 200, resume: resume.texte, brut: tronquer(r), ...(resume.alerte ? { alerte: true } : {}) });
       } catch (e) {
         if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
         const statut = e instanceof ErreurRepull ? e.statut : 0;
@@ -776,10 +797,14 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       if (!l.length) {
         return 'Aucune réservation chez Repull. Booking n’envoie en général que les réservations faites ou modifiées APRÈS le changement de fournisseur : les suivantes arriveront toutes seules.';
       }
-      return `${total} réservation(s). Dernières : ${l
-        .slice(0, 5)
-        .map((x) => `${texte(x.guestName) || texte((x.guest as Record<string, unknown>)?.name) || 'voyageur'} (${texte(x.checkIn) || texte(x.check_in) || '?'}, ${texte(x.status) || '?'}, ${texte(x.platform) || '?'})`)
-        .join(' ; ')}.`;
+      const choix = surChoisis(l.slice(0, 5));
+      return {
+        texte: `${total} réservation(s). Dernières : ${l
+          .slice(0, 5)
+          .map((x) => `${texte(x.guestName) || texte((x.guest as Record<string, unknown>)?.name) || 'voyageur'} (${texte(x.checkIn) || texte(x.check_in) || '?'}, ${texte(x.status) || '?'}, ${texte(x.platform) || '?'})`)
+          .join(' ; ')}.${choix.texte}`,
+        alerte: choix.alerte,
+      };
     }, { limit: '5' });
     await essai('Booking.com : des réservations attendent-elles dans sa file ?', '/v1/channels/booking/reservations', (r) => {
       const l = liste(r);
@@ -790,7 +815,9 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
     }, { type: 'new' });
     await essai('Repull a-t-il reçu des conversations ?', '/v1/conversations', (r) => {
       const l = liste(r);
-      return l.length ? `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).` : 'Aucune conversation chez Repull pour l’instant.';
+      if (!l.length) return 'Aucune conversation chez Repull pour l’instant.';
+      const choix = surChoisis(l);
+      return { texte: `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).${choix.texte}`, alerte: choix.alerte };
     }, { limit: '5' });
     appels = client.appels;
   });

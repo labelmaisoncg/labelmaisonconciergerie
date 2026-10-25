@@ -59,6 +59,7 @@ import {
   type RepullPage,
   type RepullReservation,
   type RepullReview,
+  ecartsBilan,
 } from './repull.js';
 import type { FilMessages, Id, Journal, Logement, Reservation } from './types';
 
@@ -473,6 +474,9 @@ export interface BilanRepull {
     avisSansReservation: number;
     /** Réservations, conversations et avis des logements non choisis (page Connexions). */
     horsSelection?: number;
+    /** Dont réservations et conversations (les plus parlantes pour l'équipe). */
+    reservationsHorsSelection?: number;
+    filsHorsSelection?: number;
   };
   /** Logements retirés du choix, mis en pause dans l'ERP (jamais supprimés). */
   misEnPause?: number;
@@ -758,6 +762,7 @@ export class SessionRepull {
     await this.chargerLogements();
     if (!this.retenue(r.listingId)) {
       this.horsSelection();
+      this.bilan.ignores.reservationsHorsSelection = (this.bilan.ignores.reservationsHorsSelection ?? 0) + 1;
       return 'hors_selection';
     }
     let logementId = this.logementParRepull.get(String(r.listingId ?? ''));
@@ -940,6 +945,7 @@ export class SessionRepull {
         const logementId = res?.logementId ?? (conv.listingId ? this.logementParRepull.get(String(conv.listingId)) : undefined) ?? existant?.logementId;
         if (!this.retenue(conv.listingId ?? this.annonceDuLogement(logementId))) {
           this.horsSelection();
+          this.bilan.ignores.filsHorsSelection = (this.bilan.ignores.filsHorsSelection ?? 0) + 1;
           continue;
         }
         if (!logementId) {
@@ -988,9 +994,7 @@ export class SessionRepull {
     const notes: string[] = [];
     if (b.proprietaireCree) notes.push('fiche « Propriétaire à renseigner » créée');
     if (b.misEnPause) notes.push(`${b.misEnPause} logement(s) retiré(s) de votre choix, mis en pause`);
-    if (b.ignores.reservationsEnAttente) notes.push(`${b.ignores.reservationsEnAttente} réservation(s) en attente de confirmation non importée(s)`);
-    if (b.ignores.reservationsSansLogement) notes.push(`${b.ignores.reservationsSansLogement} réservation(s) sur une annonce inconnue`);
-    if (b.ignores.filsSansLogement) notes.push(`${b.ignores.filsSansLogement} conversation(s) sans logement`);
+    notes.push(...ecartsBilan(b).map((x) => x.replace(/\.$/, '')));
     if (!b.complet) notes.push('passage partiel : la suite viendra au prochain passage');
     for (const e of b.erreurs) notes.push(`erreur : ${e}`);
     const details = texteLibre ?? `${rien ? 'Aucun changement. ' : ''}${morceaux.join(' · ')}.${notes.length ? ` ${notes.join(' ; ')}.` : ''}`;
