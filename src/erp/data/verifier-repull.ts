@@ -19,7 +19,7 @@
 import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
-import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, montantsReservation, noteSur5, heure } from './repull';
+import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure } from './repull';
 import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
@@ -806,6 +806,13 @@ async function principal() {
   verifier(R.listings.find((l) => l.id === '105')?.status === 'inactive', 'annonce non choisie désactivée chez Repull (hors limite)');
   verifier(!base2.get('logements', 'repull-105') && !base2.get('reservations', 'repull-5105') && !base2.get('filsMessages', 'repull-7105'), 'logement non choisi : ni logement, ni réservation, ni conversation');
   verifier(!base2.get('reservations', 'repull-5002'), 'réservation d’une annonce non choisie ignorée');
+  verifier((s1.bilan?.ignores.reservationsHorsSelection ?? 0) >= 1, `réservation écartée comptée (${JSON.stringify(s1.bilan?.ignores)})`);
+  verifier(
+    ecartsBilan({ ignores: { reservationsHorsSelection: 2, filsHorsSelection: 1 } }).join(' ; ') ===
+      '2 réservations écartées : logement non choisi (Logements → Connexions) ; 1 conversation écartée : logement non choisi (Logements → Connexions)',
+    'écarts expliqués en clair',
+  );
+  verifier(ecartsBilan({ ignores: {} }).length === 0 && ecartsBilan({}).length === 0, 'aucun écart : aucun message');
   verifier(base2.get<Reservation>('reservations', 'repull-5104')?.logementId === 'repull-104' && s1.reservations >= 2, `réservations des logements choisis importées (${s1.reservations})`);
   verifier(base2.get<SelectionRepull>(COLLECTION_ETAT, ID_SELECTION)?.annonces.join() === '101,103,104', 'choix enregistré');
   verifier(appelsBase2() === repull.appels.length - debutC, `tous les appels comptés (${appelsBase2()} = ${repull.appels.length - debutC})`);

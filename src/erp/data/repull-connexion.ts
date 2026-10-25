@@ -733,6 +733,15 @@ const liste = (v: unknown): Record<string, unknown>[] => {
 export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDiagnostic> {
   const lignes: LigneDiagnostic[] = [];
   let appels = 0;
+  // Logements choisis : une réservation reçue par Repull sur un autre logement n'entre pas dans l'ERP.
+  const choisis = new Set((await lireSelection(ctx.base).catch(() => null))?.annonces ?? []);
+  const surChoisis = (l: Record<string, unknown>[]) => {
+    if (!l.length || !choisis.size) return '';
+    const n = l.filter((x) => choisis.has(texte(x.listingId))).length;
+    return n === l.length
+      ? ' Toutes sur vos logements choisis.'
+      : ` Sur ces ${l.length}, ${n} sur vos logements choisis : les autres n’entrent pas dans l’ERP (Logements → Connexions, « Choisissez les logements »).`;
+  };
   await avecClient(ctx, async (client) => {
     const essai = async (question: string, appel: string, resumer: (r: unknown) => string, params: Record<string, string> = {}) => {
       try {
@@ -779,7 +788,7 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       return `${total} réservation(s). Dernières : ${l
         .slice(0, 5)
         .map((x) => `${texte(x.guestName) || texte((x.guest as Record<string, unknown>)?.name) || 'voyageur'} (${texte(x.checkIn) || texte(x.check_in) || '?'}, ${texte(x.status) || '?'}, ${texte(x.platform) || '?'})`)
-        .join(' ; ')}.`;
+        .join(' ; ')}.${surChoisis(l.slice(0, 5))}`;
     }, { limit: '5' });
     await essai('Booking.com : des réservations attendent-elles dans sa file ?', '/v1/channels/booking/reservations', (r) => {
       const l = liste(r);
@@ -790,7 +799,9 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
     }, { type: 'new' });
     await essai('Repull a-t-il reçu des conversations ?', '/v1/conversations', (r) => {
       const l = liste(r);
-      return l.length ? `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).` : 'Aucune conversation chez Repull pour l’instant.';
+      return l.length
+        ? `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).${surChoisis(l)}`
+        : 'Aucune conversation chez Repull pour l’instant.';
     }, { limit: '5' });
     appels = client.appels;
   });

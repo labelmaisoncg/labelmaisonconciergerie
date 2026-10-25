@@ -742,3 +742,29 @@ export function versFil(conv: RepullConversation, messages: RepullMessage[], exi
 /** Horodatage le plus récent. */
 export const plusRecent = (a: Horodatage | undefined, b: Horodatage | undefined): Horodatage | undefined =>
   !a ? b : !b ? a : instant(a) >= instant(b) ? a : b;
+
+/** Réservations et conversations écartées par un passage (bilan.ignores). */
+export interface EcartsRepull {
+  reservationsEnAttente?: number;
+  reservationsSansLogement?: number;
+  filsSansLogement?: number;
+  reservationsHorsSelection?: number;
+  filsHorsSelection?: number;
+}
+
+/**
+ * Ce que le passage a écarté, en clair (journal et message du bouton) : sans
+ * cela, « rien de nouveau » cache des réservations bien reçues de Repull mais
+ * laissées de côté (logement non choisi, annonce inconnue, en attente).
+ */
+export function ecartsBilan(b: { ignores?: EcartsRepull }): string[] {
+  const i = b.ignores ?? {};
+  const n = (x: number | undefined, un: string, plusieurs: string) => (x ? `${x} ${x > 1 ? plusieurs : un}` : '');
+  return [
+    i.reservationsHorsSelection ? `${n(i.reservationsHorsSelection, 'réservation écartée', 'réservations écartées')} : logement non choisi (Logements → Connexions)` : '',
+    i.filsHorsSelection ? `${n(i.filsHorsSelection, 'conversation écartée', 'conversations écartées')} : logement non choisi (Logements → Connexions)` : '',
+    i.reservationsEnAttente ? `${n(i.reservationsEnAttente, 'réservation en attente de confirmation non importée', 'réservations en attente de confirmation non importées')}` : '',
+    i.reservationsSansLogement ? `${n(i.reservationsSansLogement, 'réservation sur une annonce inconnue', 'réservations sur une annonce inconnue')}` : '',
+    i.filsSansLogement ? `${n(i.filsSansLogement, 'conversation sans logement', 'conversations sans logement')}` : '',
+  ].filter(Boolean);
+}

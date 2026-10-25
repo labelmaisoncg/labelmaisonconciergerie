@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ExternalLink, RefreshCw } from 'lucide-react';
-import { ACTION_JOURNAL_REPULL } from '../../data/repull';
+import { ACTION_JOURNAL_REPULL, ecartsBilan } from '../../data/repull';
 import type { EtatRepull, ResultatLancement } from '../../data/repull-synchro';
 import { useErp } from '../../data/store';
 import { obtenirClient } from '../../data/supabase';
@@ -88,11 +88,15 @@ export function useSynchroRepull() {
         const b = corps.bilan;
         const nouveaux = b ? b.logements.crees + b.reservations.crees + b.fils.crees : 0;
         const modifies = b ? b.logements.modifies + b.reservations.modifies + b.fils.modifies : 0;
+        // Ce qui a été reçu mais laissé de côté, sinon « rien de nouveau » ne dit pas pourquoi.
+        const ecarts = b ? ecartsBilan(b) : [];
         setRetour({
-          ton: 'succes',
+          ton: ecarts.length ? 'alerte' : 'succes',
           texte:
             (nouveaux || modifies ? `Synchronisé : ${nouveaux} nouveauté${nouveaux > 1 ? 's' : ''}, ${modifies} mise${modifies > 1 ? 's' : ''} à jour.` : 'Synchronisé : rien de nouveau.') +
-            (b && !b.complet ? ' Passage partiel : la suite viendra au prochain passage.' : ''),
+            (ecarts.length ? ` ${ecarts.join(' ; ')}.` : '') +
+            (b && !b.complet ? ' Passage partiel : la suite viendra au prochain passage.' : '') +
+            (!nouveaux && !modifies && !ecarts.length ? ' Pour voir ce que Repull a reçu de vos plateformes : Logements → Connexions → « Vérifier maintenant ».' : ''),
         });
         // Les lignes arrivent par le temps réel : on laisse le temps, puis on crée les ménages.
         window.setTimeout(() => lancerAutomatisations(), 3000);
