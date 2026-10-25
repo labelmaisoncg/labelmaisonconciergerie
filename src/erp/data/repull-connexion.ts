@@ -92,6 +92,12 @@ export interface ConnexionPlateforme {
   nom?: string;
   avatar?: string;
   depuis?: string;
+  /**
+   * Booking.com : rattaché à l'ancien mode « fournisseur de connectivité », pas à
+   * un compte Extranet. L'ERP n'utilise pas ce mode : Booking y refuse l'accès (497),
+   * rien n'en arrive.
+   */
+  ancienMode?: boolean;
 }
 
 export interface AnnonceDecouverte {
@@ -250,6 +256,34 @@ function versFournisseur(p: Record<string, unknown>): FournisseurRepull | null {
   };
 }
 
+/** Connexion Booking.com « Extranet login » (booking_extranet) : le seul mode Booking que l'ERP utilise. */
+const estExtranet = (provider: unknown) => /^booking[\s_-]*extranet/i.test(texte(provider));
+
+interface ConnexionExtranet {
+  id: string;
+  compte?: string;
+  /** Création de la connexion (ms). */
+  depuis: number;
+}
+
+function connexionsExtranet(l: Record<string, unknown>[]): ConnexionExtranet[] {
+  return l
+    .filter((c) => estExtranet(c?.provider))
+    .map((c) => ({ id: texte(c.id), ...(texte(c.externalAccountId) ? { compte: texte(c.externalAccountId) } : {}), depuis: Date.parse(texte(c.createdAt)) }));
+}
+
+/**
+ * Connexion Extranet d'un établissement Booking.com (/v1/channels/booking/properties) :
+ * même connectionId, ou établissement créé après elle, par son import (Repull lui donne
+ * alors un connectionId à lui). Aucune : il vient de l'ancien mode « fournisseur de
+ * connectivité ».
+ */
+function extranetDe(p: Record<string, unknown>, extranets: ConnexionExtranet[]): ConnexionExtranet | undefined {
+  const id = texte(p.connectionId);
+  const cree = Date.parse(texte(p.createdAt));
+  return extranets.find((x) => !!id && x.id === id) ?? extranets.find((x) => Number.isFinite(cree) && Number.isFinite(x.depuis) && cree >= x.depuis);
+}
+
 function versConnexion(c: Record<string, unknown>): ConnexionPlateforme | null {
   const fournisseur = plateformeCourte(c.provider);
   if (!fournisseur) return null;
@@ -262,6 +296,7 @@ function versConnexion(c: Record<string, unknown>): ConnexionPlateforme | null {
     ...(texte(hote.displayNameLong) || texte(hote.displayName) ? { nom: texte(hote.displayNameLong) || texte(hote.displayName) } : {}),
     ...(texte(hote.avatarUrl) ? { avatar: texte(hote.avatarUrl) } : {}),
     ...(texte(c.createdAt) ? { depuis: texte(c.createdAt) } : {}),
+    ...(fournisseur === 'booking' && !estExtranet(c.provider) ? { ancienMode: true } : {}),
   };
 }
 
@@ -382,15 +417,20 @@ export async function lireEtatConnexions(ctx: ContexteConnexion, o: { forcer?: b
         delete cache.depassement;
         try {
           const connexions: ConnexionPlateforme[] = [];
+          const brutes: Record<string, unknown>[] = [];
           for await (const page of client.pages<Record<string, unknown>>('/v1/connect')) {
             for (const c of page) {
+              if (c) brutes.push(c);
               const x = c && versConnexion(c);
               if (x) connexions.push(x);
             }
           }
+          const extranets = connexionsExtranet(brutes);
           // Booking.com : un établissement rattaché n'apparaît pas toujours dans
           // /v1/connect ; la liste qui fait foi est /v1/channels/booking/properties
           // (un établissement « unmapped » attend encore l'association des chambres).
+          // Ceux de l'ancien mode « fournisseur de connectivité » y restent aussi :
+          // ils sont marqués, pour ne pas passer pour une partie du compte Extranet.
           try {
             const proprietes = await client.get<unknown>('/v1/channels/booking/properties');
             const liste = Array.isArray(proprietes)
@@ -415,6 +455,7 @@ export async function lireEtatConnexions(ctx: ContexteConnexion, o: { forcer?: b
                   compte: hotel,
                   nom: `Établissement ${hotel}`,
                   ...(texte(b.createdAt) ? { depuis: texte(b.createdAt) } : {}),
+                  ...(extranetDe(b, extranets) ? {} : { ancienMode: true }),
                 });
               }
             }
@@ -727,10 +768,89 @@ const liste = (v: unknown): Record<string, unknown>[] => {
   return Array.isArray(d) ? (d as Record<string, unknown>[]) : [];
 };
 
+const nb = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plusieurs : un}`;
+
+/** « fournisseur de connectivité », espaces insécables : un guillemet n'est jamais seul en bout de ligne. */
+const MODE_CONNECTIVITE = '«\u00a0fournisseur de connectivité\u00a0»';
+
+/** « 25 oct. 2026 à 18:20 », à l'heure de Paris. */
+function dateHeureParis(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const jour = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: 'numeric', month: 'short', year: 'numeric' }).format(d);
+  const h = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(d);
+  return `${jour} à ${h}`;
+}
+
+/**
+ * Bloc « import » d'une connexion Extranet (/v1/connect) en clair : état, réservations
+ * trouvées (étape « reservations »), logements vus. null : pas de bloc.
+ */
+function resumeImport(c: Record<string, unknown> | undefined): { texte: string; alerte: boolean } | null {
+  const imp = c?.import;
+  if (!imp || typeof imp !== 'object') return null;
+  const i = imp as Record<string, unknown>;
+  const chiffre = (v: unknown) => (texte(v) && Number.isFinite(Number(v)) ? Number(v) : undefined);
+  const etape = (Array.isArray(i.stages) ? (i.stages as Record<string, unknown>[]) : []).find((e) => texte(e?.name) === 'reservations');
+  const attendues = chiffre(etape?.expected);
+  const lues = chiffre(etape?.done);
+  const echecs = chiffre(etape?.failed) ?? 0;
+  const logements = chiffre((i.counts as Record<string, unknown> | undefined)?.listings);
+  const le = (v: unknown) => (texte(v) ? ` le ${dateHeureParis(texte(v))}` : '');
+  const vus = logements === undefined ? [] : [nb(logements, 'logement vu', 'logements vus')];
+  const phrase = (debut: string, details: string[]) => `${debut}${details.length ? ` : ${details.join(', ')}` : ''}.`;
+  const statut = texte(i.status).toLowerCase();
+  if (/fail|error/.test(`${statut} ${texte(i.outcome).toLowerCase()}`)) {
+    return { texte: `L’import Booking a échoué${le(i.completedAt || i.lastActivityAt)}${texte(i.reason) ? ` (${texte(i.reason)})` : ''}.`, alerte: true };
+  }
+  if (statut === 'completed') {
+    const trouvees = attendues ?? lues;
+    return {
+      texte: phrase(`Import Booking terminé${le(i.completedAt)}`, [
+        ...(trouvees === undefined ? [] : [nb(trouvees, 'réservation trouvée', 'réservations trouvées')]),
+        ...vus,
+        ...(echecs ? [nb(echecs, 'réservation en échec', 'réservations en échec')] : []),
+      ]),
+      alerte: echecs > 0,
+    };
+  }
+  return {
+    texte: phrase(`Import Booking en cours${texte(i.startedAt) ? ` depuis${le(i.startedAt)}` : ''}`, [
+      ...(attendues === undefined ? [] : [`${nb(lues ?? 0, 'réservation lue', 'réservations lues')} sur ${attendues}`]),
+      ...vus,
+    ]),
+    alerte: false,
+  };
+}
+
+/**
+ * File Booking.com (/v1/channels/booking/reservations, format OTA de Booking) :
+ * réservations en attente, et établissements refusés par Booking (avertissement
+ * 497 « You do not have access to hotel:<id> », numéro vide s'il manque).
+ */
+function lireFileBooking(r: unknown): { reservations: number; refuses: string[] } {
+  let ota = 0;
+  const refuses = new Set<string>();
+  const parcourir = (v: unknown, profondeur: number): void => {
+    if (!v || typeof v !== 'object' || profondeur > 12) return;
+    if (Array.isArray(v)) return v.forEach((x) => parcourir(x, profondeur + 1));
+    const o = v as Record<string, unknown>;
+    if (texte(o.Code) === '497') refuses.add(/hotel\s*:?\s*(\d+)/i.exec(texte(o.ShortText))?.[1] ?? '');
+    for (const [k, x] of Object.entries(o)) {
+      if (k === 'HotelReservation') ota += Array.isArray(x) ? x.length : 1;
+      parcourir(x, profondeur + 1);
+    }
+  };
+  parcourir(r, 0);
+  const l = liste(r);
+  const json = l.length ? l : Array.isArray((r as { reservations?: unknown[] })?.reservations) ? (r as { reservations: unknown[] }).reservations : [];
+  return { reservations: ota || json.length, refuses: [...refuses] };
+}
+
 /**
  * Photographie de ce que Repull sait du compte : clé, connexions, Airbnb,
  * Booking.com (établissements et association des chambres), annonces.
- * Sept appels au plus, comptés dans le budget. Aucune donnée secrète renvoyée.
+ * Huit appels au plus, comptés dans le budget. Aucune donnée secrète renvoyée.
  */
 export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDiagnostic> {
   const lignes: LigneDiagnostic[] = [];
@@ -753,23 +873,32 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
     };
   };
   await avecClient(ctx, async (client) => {
-    const essai = async (question: string, appel: string, resumer: (r: unknown) => string | { texte: string; alerte: boolean }, params: Record<string, string> = {}) => {
+    /** Ajoute la ligne de l'appel ; renvoie la réponse (undefined en cas d'échec). */
+    const essai = async (question: string, appel: string, resumer: (r: unknown) => string | { texte: string; alerte: boolean }, params: Record<string, string> = {}): Promise<unknown> => {
       try {
         const r = await client.get<unknown>(appel, params);
         const x = resumer(r);
         const resume = typeof x === 'string' ? { texte: x, alerte: false } : x;
         lignes.push({ question, appel, ok: true, statut: 200, resume: resume.texte, brut: tronquer(r), ...(resume.alerte ? { alerte: true } : {}) });
+        return r;
       } catch (e) {
         if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
         const statut = e instanceof ErreurRepull ? e.statut : 0;
         lignes.push({ question, appel, ok: false, statut, resume: messageErreur(e), brut: tronquer(e instanceof ErreurRepull ? { code: e.code, fix: e.correctif, ...e.infos } : String(e)) });
+        return undefined;
       }
     };
     await essai('La clé Repull est-elle acceptée ?', '/v1/health/auth', () => 'Oui, la clé Repull de Vercel est valide.');
-    await essai('Quelles connexions Repull voit-il ?', '/v1/connect', (r) => {
-      const l = liste(r);
-      return l.length ? `${l.length} connexion(s) : ${l.map((c) => `${texte(c.provider)} (${texte(c.status) || '?'})`).join(', ')}.` : 'Aucune connexion enregistrée chez Repull.';
-    });
+    const connect = liste(
+      await essai('Quelles connexions Repull voit-il ?', '/v1/connect', (r) => {
+        const l = liste(r);
+        return l.length ? `${l.length} connexion(s) : ${l.map((c) => `${texte(c.provider)} (${texte(c.status) || '?'})`).join(', ')}.` : 'Aucune connexion enregistrée chez Repull.';
+      }),
+    );
+    const extranets = connexionsExtranet(connect);
+    const extranet = connect.find((c) => estExtranet(c.provider) && c.import) ?? connect.find((c) => estExtranet(c.provider));
+    // Établissements Booking de l'ancien mode « fournisseur de connectivité » (ligne des établissements).
+    let ancienMode: string[] = [];
     await essai('Airbnb est-il connecté ?', '/v1/connect/airbnb', (r) => {
       const x = (r ?? {}) as Record<string, unknown>;
       const comptes = Array.isArray(x.accounts) ? (x.accounts as Record<string, unknown>[]) : [];
@@ -779,13 +908,23 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
     await essai('Booking.com : quels établissements ?', '/v1/channels/booking/properties', (r) => {
       const l = liste(r);
       if (!l.length) return 'Aucun établissement Booking.com chez Repull : l’étape « numéro d’établissement » sur la page Repull n’est pas terminée.';
-      return l
+      const anciens = new Set(l.filter((p) => !extranetDe(p, extranets)).map((p) => texte(p.hotelId)));
+      ancienMode = [...anciens].filter(Boolean);
+      const phrases = l
         .map((p) => {
           const n = Array.isArray(p.listings) ? p.listings.length : 0;
           const etat = p.mappingStatus === 'unmapped' ? 'chambres PAS encore associées' : `${n} chambre(s) associée(s)`;
-          return `Établissement ${texte(p.hotelId)} : ${etat}${p.active === false ? ', inactif' : ''}${texte(p.suspensionReason) ? `, suspendu (${texte(p.suspensionReason)})` : ''}.`;
+          return `Établissement ${texte(p.hotelId)} : ${etat}${p.active === false ? ', inactif' : ''}${texte(p.suspensionReason) ? `, suspendu (${texte(p.suspensionReason)})` : ''}${anciens.has(texte(p.hotelId)) ? ', ancien mode' : ''}.`;
         })
         .join(' ');
+      if (!ancienMode.length) return phrases;
+      const compte = extranets.find((x) => x.compte)?.compte;
+      return {
+        texte:
+          `${phrases} ${nb(ancienMode.length, 'établissement est encore rattaché', 'établissements sont encore rattachés')} à l’ancien mode ${MODE_CONNECTIVITE}, ` +
+          `${extranets.length ? `pas à votre compte Extranet${compte ? ` ${compte}` : ''}` : 'et aucun compte Extranet n’est connecté'} : rien n’en arrive dans l’ERP.`,
+        alerte: true,
+      };
     });
     await essai('Quels logements Repull a-t-il ?', '/v1/listings', (r) => {
       const l = liste(r);
@@ -795,7 +934,15 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       const l = liste(r);
       const total = Number((r as { pagination?: { total?: number } })?.pagination?.total ?? l.length);
       if (!l.length) {
-        return 'Aucune réservation chez Repull. Booking n’envoie en général que les réservations faites ou modifiées APRÈS le changement de fournisseur : les suivantes arriveront toutes seules.';
+        // Connexion Extranet : son import dit combien de réservations Booking lui a données.
+        const imp = resumeImport(extranet);
+        const anciens = ancienMode.length
+          ? ` ${ancienMode.length > 1 ? 'Les établissements de l’ancien mode n’en font' : 'L’établissement de l’ancien mode n’en fait'} pas partie : rien n’en arrivera.`
+          : '';
+        return {
+          texte: `${imp ? `Aucune réservation chez Repull. ${imp.texte}` : 'Aucune réservation chez Repull pour l’instant.'}${anciens}`,
+          alerte: !!imp?.alerte || !!anciens,
+        };
       }
       const choix = surChoisis(l.slice(0, 5));
       return {
@@ -807,11 +954,19 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       };
     }, { limit: '5' });
     await essai('Booking.com : des réservations attendent-elles dans sa file ?', '/v1/channels/booking/reservations', (r) => {
-      const l = liste(r);
-      const l2 = l.length ? l : Array.isArray((r as { reservations?: unknown[] })?.reservations) ? ((r as { reservations: Record<string, unknown>[] }).reservations) : [];
-      return l2.length
-        ? `${l2.length} réservation(s) Booking en attente, pas encore récupérée(s) par Repull.`
-        : 'La file Booking est vide : Booking n’a transmis aucune réservation à Repull.';
+      const { reservations, refuses } = lireFileBooking(r);
+      const enAttente = reservations ? `${reservations} réservation(s) Booking en attente, pas encore récupérée(s) par Repull.` : '';
+      if (refuses.length) {
+        // 497 : cette file passe par l'ancien mode « fournisseur de connectivité » ; vide, elle ne prouve rien.
+        const numeros = refuses.filter(Boolean);
+        return {
+          texte:
+            `${enAttente ? `${enAttente} ` : ''}Booking refuse l’accès à ${nb(refuses.length, 'établissement')} dans l’ancien mode ${MODE_CONNECTIVITE}, que l’ERP n’utilise volontairement pas` +
+            `${numeros.length ? ` : ${numeros.join(', ')}` : ''}. Cette file ne dit donc rien de vos réservations.`,
+          alerte: true,
+        };
+      }
+      return enAttente || 'La file Booking est vide : Booking n’a transmis aucune réservation à Repull.';
     }, { type: 'new' });
     await essai('Repull a-t-il reçu des conversations ?', '/v1/conversations', (r) => {
       const l = liste(r);

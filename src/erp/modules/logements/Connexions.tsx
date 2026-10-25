@@ -9,7 +9,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Home, ImageOff, Lock, Plug, RefreshCw, Unplug } from 'lucide-react';
+import { AlertTriangle, Check, Home, ImageOff, Lock, Plug, RefreshCw, Unplug } from 'lucide-react';
 import type {
   AnnonceDecouverte,
   ConnexionPlateforme,
@@ -138,7 +138,7 @@ export default function Connexions() {
       if (!retour) return;
       const nom = NOMS[retour] ?? e?.fournisseurs.find((f) => f.id === retour)?.nom ?? retour;
       const echec = /error|fail|cancel|denied/i.test(`${params.get('status') ?? ''} ${params.get('error') ?? ''}`);
-      const connecte = !!e?.connexions.some((c) => c.fournisseur === retour && (c.statut === 'active' || c.statut === 'chambres'));
+      const connecte = !!e?.connexions.some((c) => c.fournisseur === retour && !c.ancienMode && (c.statut === 'active' || c.statut === 'chambres'));
       if (e && connecte && !echec) {
         setMessage({ ton: 'succes', texte: `${nom} est bien connecté. Choisissez maintenant les logements à gérer, plus bas.` });
       } else if (e) {
@@ -278,8 +278,12 @@ export default function Connexions() {
         <div className="grid gap-3 md:grid-cols-3">
           {PRINCIPALES.map((p) => {
             const comptes = connexions.filter((c) => c.fournisseur === p.id);
-            const actif = comptes.some((c) => c.statut === 'active');
-            const aFinir = !actif && comptes.some((c) => c.statut === 'chambres');
+            // Booking.com : les établissements de l'ancien mode « fournisseur de connectivité »
+            // ne font pas partie du compte Extranet et ne le rendent pas « Connecté ».
+            const valides = comptes.filter((c) => !c.ancienMode);
+            const anciens = comptes.filter((c) => c.ancienMode);
+            const actif = valides.some((c) => c.statut === 'active');
+            const aFinir = !actif && valides.some((c) => c.statut === 'chambres');
             const logo = fournisseurs.find((f) => f.id === p.id)?.logo;
             return (
               <Card key={p.id} className="flex flex-col gap-3">
@@ -296,18 +300,30 @@ export default function Connexions() {
                     )}
                   </div>
                 </div>
-                {comptes.length > 0 ? (
+                {valides.length > 0 && (
                   <ul className="space-y-1.5">
-                    {comptes.map((c) => (
-                      <li key={c.id} className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
-                        <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
-                        <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
-                          Déconnecter
-                        </Button>
-                      </li>
+                    {valides.map((c) => (
+                      <LigneCompte key={c.id} compte={c} gerant={gerant} onDeconnecter={setADeconnecter} />
                     ))}
                   </ul>
-                ) : (
+                )}
+                {anciens.length > 0 && (
+                  <div className={cn(valides.length > 0 && 'border-t border-(--lm-bord) pt-3')}>
+                    <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-(--lm-alerte)">
+                      <AlertTriangle aria-hidden className="size-3.5 shrink-0" />
+                      Ancien mode : rien n’en arrive
+                    </p>
+                    <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2)">
+                      {anciens.length > 1 ? 'Ces établissements restent' : 'Cet établissement reste'} sur le mode {'«\u00a0fournisseur de connectivité\u00a0»'}, hors de votre compte Extranet.
+                    </p>
+                    <ul className="mt-1.5 space-y-1.5">
+                      {anciens.map((c) => (
+                        <LigneCompte key={c.id} compte={c} gerant={gerant} onDeconnecter={setADeconnecter} />
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {valides.length === 0 && (
                   // Les consignes restent à un clic (celle de Booking.com évite de céder vos prix et calendriers).
                   <details className="text-[12.5px] text-(--lm-encre-2)">
                     <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Comment ça marche ?</summary>
@@ -529,6 +545,17 @@ export default function Connexions() {
         }
       />
     </div>
+  );
+}
+
+function LigneCompte({ compte: c, gerant, onDeconnecter }: { compte: ConnexionPlateforme; gerant: boolean; onDeconnecter: (c: ConnexionPlateforme) => void }) {
+  return (
+    <li className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
+      <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
+      <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => onDeconnecter(c)}>
+        Déconnecter
+      </Button>
+    </li>
   );
 }
 
