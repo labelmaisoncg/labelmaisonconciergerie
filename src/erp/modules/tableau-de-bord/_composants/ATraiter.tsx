@@ -17,7 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { Card, CardHeader, Drawer, EmptyState, TON_LAVIS, cn } from '../../../ui';
-import type { ElementATraiter, TypeATraiter } from './aTraiter';
+import type { ElementATraiter, TypeATraiter } from './logique-a-traiter';
 
 const ICONES: Record<TypeATraiter, LucideIcon> = {
   incident_grave: AlertTriangle,
