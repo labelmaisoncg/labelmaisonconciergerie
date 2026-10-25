@@ -994,7 +994,7 @@ export class SessionRepull {
     const notes: string[] = [];
     if (b.proprietaireCree) notes.push('fiche « Propriétaire à renseigner » créée');
     if (b.misEnPause) notes.push(`${b.misEnPause} logement(s) retiré(s) de votre choix, mis en pause`);
-    notes.push(...ecartsBilan(b));
+    notes.push(...ecartsBilan(b).map((x) => x.replace(/\.$/, '')));
     if (!b.complet) notes.push('passage partiel : la suite viendra au prochain passage');
     for (const e of b.erreurs) notes.push(`erreur : ${e}`);
     const details = texteLibre ?? `${rien ? 'Aucun changement. ' : ''}${morceaux.join(' · ')}.${notes.length ? ` ${notes.join(' ; ')}.` : ''}`;

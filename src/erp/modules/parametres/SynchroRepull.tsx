@@ -94,9 +94,9 @@ export function useSynchroRepull() {
           ton: ecarts.length ? 'alerte' : 'succes',
           texte:
             (nouveaux || modifies ? `Synchronisé : ${nouveaux} nouveauté${nouveaux > 1 ? 's' : ''}, ${modifies} mise${modifies > 1 ? 's' : ''} à jour.` : 'Synchronisé : rien de nouveau.') +
-            (ecarts.length ? ` ${ecarts.join(' ; ')}.` : '') +
+            (ecarts.length ? ` ${ecarts.join(' ')}` : '') +
             (b && !b.complet ? ' Passage partiel : la suite viendra au prochain passage.' : '') +
-            (!nouveaux && !modifies && !ecarts.length ? ' Pour voir ce que Repull a reçu de vos plateformes : Logements → Connexions → « Vérifier maintenant ».' : ''),
+            (!nouveaux && !modifies && !ecarts.length ? ' Rien n’arrive ? Logements → Connexions → « Vérifier maintenant » montre ce que vos plateformes nous envoient.' : ''),
         });
         // Les lignes arrivent par le temps réel : on laisse le temps, puis on crée les ménages.
         window.setTimeout(() => lancerAutomatisations(), 3000);

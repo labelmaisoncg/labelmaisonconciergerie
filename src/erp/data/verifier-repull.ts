@@ -808,9 +808,15 @@ async function principal() {
   verifier(!base2.get('reservations', 'repull-5002'), 'réservation d’une annonce non choisie ignorée');
   verifier((s1.bilan?.ignores.reservationsHorsSelection ?? 0) >= 1, `réservation écartée comptée (${JSON.stringify(s1.bilan?.ignores)})`);
   verifier(
-    ecartsBilan({ ignores: { reservationsHorsSelection: 2, filsHorsSelection: 1 } }).join(' ; ') ===
-      '2 réservations écartées : logement non choisi (Logements → Connexions) ; 1 conversation écartée : logement non choisi (Logements → Connexions)',
-    'écarts expliqués en clair',
+    ecartsBilan({ ignores: { reservationsHorsSelection: 4, filsHorsSelection: 2 } }).join(' ') ===
+      '4 réservations et 2 conversations concernent des logements non choisis : elles n’entrent pas dans l’ERP. Pour les ajouter : Logements → Connexions.',
+    'écarts hors choix : une seule phrase, chemin une fois',
+  );
+  verifier(
+    ecartsBilan({ ignores: { reservationsHorsSelection: 1 } })[0] === '1 réservation concerne un logement non choisi : elle n’entre pas dans l’ERP. Pour l’ajouter : Logements → Connexions.' &&
+      ecartsBilan({ ignores: { filsHorsSelection: 2, reservationsEnAttente: 1 } }).join(' ') ===
+        '2 conversations concernent des logements non choisis : elles n’entrent pas dans l’ERP. Pour les ajouter : Logements → Connexions. 1 réservation en attente de confirmation, importée une fois confirmée.',
+    'écarts : accords et autres motifs à la suite',
   );
   verifier(ecartsBilan({ ignores: {} }).length === 0 && ecartsBilan({}).length === 0, 'aucun écart : aucun message');
   verifier(base2.get<Reservation>('reservations', 'repull-5104')?.logementId === 'repull-104' && s1.reservations >= 2, `réservations des logements choisis importées (${s1.reservations})`);

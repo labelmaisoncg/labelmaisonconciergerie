@@ -759,12 +759,24 @@ export interface EcartsRepull {
  */
 export function ecartsBilan(b: { ignores?: EcartsRepull }): string[] {
   const i = b.ignores ?? {};
-  const n = (x: number | undefined, un: string, plusieurs: string) => (x ? `${x} ${x > 1 ? plusieurs : un}` : '');
-  return [
-    i.reservationsHorsSelection ? `${n(i.reservationsHorsSelection, 'réservation écartée', 'réservations écartées')} : logement non choisi (Logements → Connexions)` : '',
-    i.filsHorsSelection ? `${n(i.filsHorsSelection, 'conversation écartée', 'conversations écartées')} : logement non choisi (Logements → Connexions)` : '',
-    i.reservationsEnAttente ? `${n(i.reservationsEnAttente, 'réservation en attente de confirmation non importée', 'réservations en attente de confirmation non importées')}` : '',
-    i.reservationsSansLogement ? `${n(i.reservationsSansLogement, 'réservation sur une annonce inconnue', 'réservations sur une annonce inconnue')}` : '',
-    i.filsSansLogement ? `${n(i.filsSansLogement, 'conversation sans logement', 'conversations sans logement')}` : '',
-  ].filter(Boolean);
+  const nb = (x: number, un: string) => `${x} ${un}${x > 1 ? 's' : ''}`;
+  const phrases: string[] = [];
+  const r = i.reservationsHorsSelection ?? 0;
+  const f = i.filsHorsSelection ?? 0;
+  if (r || f) {
+    const qui = [r ? nb(r, 'réservation') : '', f ? nb(f, 'conversation') : ''].filter(Boolean).join(' et ');
+    const une = r + f === 1;
+    phrases.push(
+      une
+        ? `${qui} concerne un logement non choisi : elle n’entre pas dans l’ERP. Pour l’ajouter : Logements → Connexions.`
+        : `${qui} concernent des logements non choisis : elles n’entrent pas dans l’ERP. Pour les ajouter : Logements → Connexions.`,
+    );
+  }
+  const x = i.reservationsEnAttente ?? 0;
+  if (x) phrases.push(`${nb(x, 'réservation')} en attente de confirmation, ${x > 1 ? 'importées' : 'importée'} une fois ${x > 1 ? 'confirmées' : 'confirmée'}.`);
+  const y = i.reservationsSansLogement ?? 0;
+  if (y) phrases.push(`${nb(y, 'réservation')} sur une annonce inconnue.`);
+  const z = i.filsSansLogement ?? 0;
+  if (z) phrases.push(`${nb(z, 'conversation')} sans logement.`);
+  return phrases;
 }
