@@ -284,6 +284,23 @@ async function principal() {
   verifier(intervalleReleve(400, new Date('2026-09-01T10:00:00Z'), 15) !== null && intervalleReleve(60, new Date('2026-09-10T10:00:00Z'), 15) === null, 'relevés : rythme tiré de la part d’appels restante, aucun si trop peu');
   const ctx = construireContexte(fil(), { ...logement, fiche: { ...logement.fiche, aSavoir: 'Poubelles le mardi soir.' } }, undefined, { ...REGLAGES_AGENT_DEFAUT, actif: true }, new Date('2026-09-25T10:00:00Z'));
   verifier(/- Le logement : 2 voyageurs au plus, studio sans chambre séparée, 24 m²/.test(ctx) && /- À savoir : Poubelles le mardi soir\./.test(ctx), 'contexte : taille du logement et « À savoir » transmis à l’agent');
+  {
+    const descriptif = {
+      couchage: [{ piece: 'Chambre 1', lits: '1 lit double' }],
+      conditions: { animaux: false, fetes: false, enfants: true, calme: { debut: '22:00', fin: '07:00' }, annulation: 'Modérée' },
+      sejour: { nuitsMin: 2 },
+      prix: { devise: 'EUR', nuit: 12000 },
+      textes: { resume: 'Studio lumineux.', quartier: 'x'.repeat(2000) },
+    };
+    const c = construireContexte(fil(), { ...logement, descriptif }, undefined, { ...REGLAGES_AGENT_DEFAUT, actif: true }, new Date('2026-09-25T10:00:00Z'));
+    verifier(
+      /- Couchage : Chambre 1 : 1 lit double/.test(c) && /- Animaux : non acceptés/.test(c) && /- Fêtes et événements : interdits/.test(c) && /- Heures de calme : de 22:00 à 07:00/.test(c) && /- Durée de séjour : 2 nuits minimum/.test(c) && /- Description de l’annonce : Studio lumineux\./.test(c),
+      'contexte : couchage, conditions, durée de séjour et description de l’annonce transmis',
+    );
+    verifier(!/120/.test(c), 'contexte : prix de base jamais donnés à l’agent (ils varient)');
+    const q = /- Le quartier : (x+…)/.exec(c);
+    verifier(!!q && q[1].length <= 600, 'contexte : textes longs de l’annonce raccourcis');
+  }
   verifier(!/motdepasse101|code 4821/.test(ctx), 'contexte sans réservation : ni wifi ni code d’accès');
 
   /* --------------------------------------------------- pause, horaires, clé */

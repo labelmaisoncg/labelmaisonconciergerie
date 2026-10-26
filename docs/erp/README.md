@@ -201,11 +201,24 @@ Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
 (`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé
 directement, hors du lot commun) ; choix court : `ui/Segmente.tsx`.
 
-**Photos et prix par nuit** (`enrichirAnnonce`, `data/repull-synchro.ts`) : à
-chaque relevé des annonces (une fois par jour), pour chaque logement choisi,
-`GET /v1/availability/{id}?from&to` (60 jours de prix, réécrits seulement s'ils
-changent) et, une fois par semaine, `GET /v1/listings/{id}/photos` (adresses
-https seulement, 24 au plus). Lectures seules, sautées quand la part d'appels
+**Annonce complète** (`phaseAnnonces`, `versDescriptif`, `data/repull.ts`) : les
+pages `GET /v1/listings` sont lues avec
+`include=content,details,thumbnail,photos,rooms,policies,rules,pricing,fees` (un
+appel par page pour tous les logements ; repli sur `content,details,thumbnail`
+si Repull répond 422). Photos dans l'ordre de l'annonce (https, 24 au plus) et
+`Logement.descriptif` : titre, textes (bornés à 1 500 caractères), couchage
+pièce par pièce, conditions (animaux, fumer, fêtes, enfants, calme, annulation,
+arrivée), durée de séjour, prix de base et autres frais. Chaque partie n'est
+remplacée que si l'annonce la renvoie. Affiché dans l'Aperçu de la fiche
+logement ; l'agent reçoit couchage, conditions et textes (jamais les prix, qui
+varient). Relevé une fois par jour, ou au bouton « Synchroniser » si le dernier
+date de plus d'une heure.
+
+**Prix par nuit** (`enrichirAnnonce`, `data/repull-synchro.ts`) : à chaque relevé
+des annonces, pour chaque logement choisi, `GET /v1/availability/{id}?from&to`
+(60 jours de prix, réécrits seulement s'ils changent) et, une fois par semaine
+et seulement si l'annonce n'a pas renvoyé de photos, `GET
+/v1/listings/{id}/photos`. Lectures seules, sautées quand la part d'appels
 descend sous 20 ; affichés dans la fiche, jamais renvoyés aux plateformes.
 
 Principes d'écran : 3 ou 4 blocs visibles au plus, une action principale, les

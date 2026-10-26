@@ -2,24 +2,10 @@ import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { BedDouble, LogIn, LogOut } from 'lucide-react';
 import { useErp } from '../../../data/store';
-import { AUJOURDHUI, ajouterJours } from '../../../data/format';
+import { AUJOURDHUI } from '../../../data/format';
 import { estActive, logementById } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
-import { Segmente } from '../../../ui';
-
-type Periode = 'jour' | 'demain' | 'semaine';
-
-const PERIODES: { valeur: Periode; libelle: string }[] = [
-  { valeur: 'jour', libelle: 'Aujourd’hui' },
-  { valeur: 'demain', libelle: 'Demain' },
-  { valeur: 'semaine', libelle: '7 jours' },
-];
-
-/** Bornes [debut, fin) de la période. */
-function bornes(p: Periode): { debut: string; fin: string } {
-  if (p === 'demain') return { debut: ajouterJours(AUJOURDHUI, 1), fin: ajouterJours(AUJOURDHUI, 2) };
-  return { debut: AUJOURDHUI, fin: ajouterJours(AUJOURDHUI, p === 'semaine' ? 7 : 1) };
-}
+import { ChoixPeriode, type Periode } from './ChoixPeriode';
 
 function Tuile({ titre, icone, n, texte }: { titre: string; icone: ReactNode; n: number; texte: string }) {
   return (
@@ -45,20 +31,24 @@ function Tuile({ titre, icone, n, texte }: { titre: string; icone: ReactNode; n:
 
 const noms = (liste: string[]) => (liste.length > 2 ? `${liste.slice(0, 2).join(', ')} et ${liste.length - 2} autre${liste.length > 3 ? 's' : ''}` : liste.join(' et '));
 
-/** Arrivées, départs et voyageurs sur place, pour aujourd'hui, demain ou les 7 prochains jours. */
+/**
+ * Arrivées, départs et voyageurs sur place : aujourd'hui par défaut, ou sur la
+ * période choisie au calendrier (bornes comprises).
+ */
 export function Aujourdhui() {
   const d = useErp();
-  const [periode, setPeriode] = useState<Periode>('jour');
-  const { debut, fin } = bornes(periode);
+  const [periode, setPeriode] = useState<Periode>({ debut: AUJOURDHUI, fin: AUJOURDHUI });
+  const { debut, fin } = periode;
+  const unJour = debut === fin;
   const actives = d.reservations.filter(estActive);
-  const dans = (date: string) => date >= debut && date < fin;
+  const dans = (date: string) => date >= debut && date <= fin;
   const arrivees = actives.filter((r) => dans(r.arrivee));
   const departs = actives.filter((r) => dans(r.depart));
-  // Sur place au premier jour de la période (arrivés avant, repartent après).
-  const surPlace = actives.filter((r) => r.arrivee < debut && r.depart > debut);
+  // Sur place : au moins une nuit dans la période (un jour : les logements occupés ce soir-là).
+  const surPlace = actives.filter((r) => r.arrivee <= fin && r.depart > debut);
   const prenom = (r: Reservation) => r.voyageur.nom.split(' ')[0];
   const logement = (r: Reservation) => logementById(d, r.logementId)?.nom ?? 'un logement';
-  const quand = periode === 'jour' ? 'aujourd’hui' : periode === 'demain' ? 'demain' : 'cette semaine';
+  const quand = !unJour ? 'sur la période' : debut === AUJOURDHUI ? 'aujourd’hui' : 'ce jour-là';
 
   return (
     <section aria-labelledby="aujourdhui-titre" className="mb-6">
@@ -66,7 +56,7 @@ export function Aujourdhui() {
         <h2 id="aujourdhui-titre" className="text-[16px] font-semibold text-(--lm-encre)">
           Arrivées et départs
         </h2>
-        <Segmente label="Période" options={PERIODES} valeur={periode} onChange={setPeriode} />
+        <ChoixPeriode valeur={periode} onChange={setPeriode} />
       </div>
       <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Tuile
@@ -85,7 +75,7 @@ export function Aujourdhui() {
           titre="sur place"
           icone={<BedDouble />}
           n={surPlace.length}
-          texte={surPlace.length ? noms(surPlace.map(logement)) : periode === 'demain' ? 'Personne sur place demain matin.' : 'Personne sur place ce matin.'}
+          texte={surPlace.length ? noms(surPlace.map(logement)) : `Personne sur place ${quand}.`}
         />
       </div>
     </section>

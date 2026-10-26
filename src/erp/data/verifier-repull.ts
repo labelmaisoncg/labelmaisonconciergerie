@@ -54,7 +54,14 @@ const R = {
         { platform: 'airbnb', externalId: '998877665544332211', active: true, syncEnabled: true },
         { platform: 'booking', externalId: '5566771', active: true, syncEnabled: true },
       ],
-      content: { name: 'Studio Cœur de Ville', houseRules: 'Pas de fête. Non-fumeur.' },
+      content: {
+        name: 'Studio Cœur de Ville',
+        houseRules: 'Pas de fête. Non-fumeur.',
+        summary: 'Studio lumineux au cœur de la ville.',
+        description: 'Idéal pour un couple.\r\n\r\n\r\n\r\nCuisine équipée.',
+        neighborhoodOverview: 'Commerces au pied de l’immeuble.',
+        transit: '',
+      },
       details: {
         propertyType: 'apartment',
         propertyTypeCategory: 'apartment',
@@ -79,7 +86,37 @@ const R = {
       status: 'active',
       channels: [{ platform: 'airbnb', externalId: '112233', active: true, syncEnabled: true }],
       content: null,
-      details: { propertyTypeCategory: 'house', bedrooms: 3, personCapacity: 6, checkInTimeStart: '15:00', checkOutTime: '10:00' },
+      details: { propertyTypeCategory: 'house', bedrooms: 3, personCapacity: 6, checkInTimeStart: '15:00', checkOutTime: '10:00', bathrooms: '1.5' },
+      // Lectures ?include=photos,rooms,policies,rules,pricing,fees (schémas ListingContentPhoto, ListingRoom…).
+      publicName: 'Maison familiale avec jardin',
+      photos: [
+        { url: 'https://cdn.repull.dev/p/102-b.jpg', sortOrder: 2 },
+        { url: 'http://pas-sur/102.jpg', sortOrder: 0 },
+        { url: 'https://cdn.repull.dev/p/102-a.jpg', sortOrder: 1 },
+      ],
+      rooms: [
+        { type: 'bedroom', number: 1, beds: [{ type: 'queen_bed', quantity: 1 }] },
+        { type: 'bedroom', number: 2, beds: [{ type: 'single_bed', quantity: 2 }] },
+        { type: 'living_room', beds: [{ type: 'sofa_bed', quantity: 1 }] },
+        { type: 'full_bathroom', beds: [] },
+      ],
+      policies: {
+        cancellationPolicy: 'moderate',
+        checkIn: { method: 'lockbox', instructions: 'Boîte à clés sous la boîte aux lettres.', from: '15:00', until: '22:00' },
+        checkOut: { until: '10:00' },
+        allowsPets: false,
+        allowsSmoking: false,
+        allowsEvents: false,
+        allowsChildren: true,
+        quietHours: { start: '22:00', end: '07:00' },
+        securityDeposit: 300,
+      },
+      rules: { minNights: 2, maxNights: 28, advanceNoticeHours: 24, instantBook: 'everyone' },
+      pricing: { currency: 'EUR', basePrice: 120, weekendPrice: 140, cleaningFee: 50, extraGuestFee: 0, guestsIncluded: 4, weeklyDiscountPercent: 10 },
+      fees: [
+        { type: 'cleaning', amount: 50, amountType: 'flat', chargedPer: 'stay' },
+        { type: 'pet', amount: 15, amountType: 'flat', chargedPer: 'stay', optional: true },
+      ],
       createdAt: '2026-02-10T10:00:00.000Z',
       updatedAt: '2026-09-02T10:00:00.000Z',
     },
@@ -207,6 +244,8 @@ class FauxRepull {
   envois: { conversation: string; message: string; cle: string }[] = [];
   /** Taille de page simulée (la vraie limite est 100) : force la pagination par curseur. */
   page = 2;
+  /** Lectures étendues des annonces refusées (422), pour tester le repli. */
+  refusInclusEtendus = false;
   /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
   limiteActives = 3;
   /** Compte au-delà de sa limite : l'API répond 402 partout (sauf usage et DELETE). */
@@ -295,7 +334,16 @@ class FauxRepull {
       }
       return json({ active: actif, updated, unchanged: ids.filter((id) => !updated.includes(id)) });
     }
-    if (chemin === '/v1/listings') return this.paginer(R.listings, p);
+    if (chemin === '/v1/listings') {
+      // Les lectures étendues n'arrivent que demandées (?include=…), comme l'API.
+      const inclus = new Set((p.get('include') ?? '').split(','));
+      if (this.refusInclusEtendus && inclus.has('photos')) return json({ error: { code: 'invalid_include', message: 'bad include', valid_values: ['content', 'details', 'thumbnail'] } }, 422);
+      const etendus = ['photos', 'rooms', 'policies', 'rules', 'pricing', 'fees'];
+      return this.paginer(
+        R.listings.map((l) => Object.fromEntries(Object.entries(l).filter(([k]) => !etendus.includes(k) || inclus.has(k)))),
+        p,
+      );
+    }
     if (chemin === '/v1/listings/101/photos') {
       return json({ listingId: '101', photos: [{ url: 'https://cdn.repull.dev/p/101-1.jpg' }, { url: 'https://cdn.repull.dev/p/101-2.jpg' }, { url: 'http://pas-sur/x.jpg' }, { url: 'javascript:alert(1)' }, { url: 'https://cdn.repull.dev/p/101-1.jpg' }] });
     }
@@ -566,7 +614,45 @@ async function principal() {
   const lecturesTarifs = repull.appels.filter((a) => a.chemin.startsWith('/v1/availability/') || a.chemin.endsWith('/photos'));
   verifier(lecturesTarifs.length > 0 && lecturesTarifs.every((a) => a.methode === 'GET'), 'photos et prix : lectures seules (GET)');
   verifier(lecturesTarifs.some((a) => a.chemin === '/v1/availability/101' && /^\d{4}-\d{2}-\d{2}$/.test(a.params.get('from') ?? '') && /^\d{4}-\d{2}-\d{2}$/.test(a.params.get('to') ?? '')), 'prix demandés sur une période datée');
-  verifier(base.get<Logement>('logements', 'repull-102')?.photos === undefined, 'sans photo chez la plateforme : rien d’inventé');
+  const l102 = base.get<Logement>('logements', 'repull-102')!;
+  verifier(
+    JSON.stringify(l102.photos) === '["https://cdn.repull.dev/p/102-a.jpg","https://cdn.repull.dev/p/102-b.jpg"]',
+    `photos de l’annonce : ordre de la plateforme, https seulement (${JSON.stringify(l102.photos)})`,
+  );
+  verifier(!repull.appels.some((a) => a.chemin === '/v1/listings/102/photos'), 'photos déjà lues avec l’annonce : aucun appel de plus');
+  verifier(
+    repull.appels.filter((a) => a.chemin === '/v1/listings').every((a) => (a.params.get('include') ?? '').split(',').includes('photos')),
+    'annonces lues avec photos, couchage, conditions et prix en un appel par page',
+  );
+  const d102 = l102.descriptif;
+  verifier(d102?.titre === 'Maison familiale avec jardin', `titre vu par les voyageurs (${d102?.titre})`);
+  verifier(
+    canonique(d102?.couchage) === canonique([
+      { piece: 'Chambre 1', lits: '1 lit queen size' },
+      { piece: 'Chambre 2', lits: '2 lits simples' },
+      { piece: 'Salon', lits: '1 canapé-lit' },
+    ]) && d102?.sallesDeBain === 1.5,
+    `couchage pièce par pièce, salles de bain (${JSON.stringify(d102?.couchage)})`,
+  );
+  verifier(
+    d102?.conditions?.animaux === false && d102.conditions.fetes === false && d102.conditions.enfants === true && d102.conditions.annulation === 'Modérée' && d102.conditions.arrivee === 'Boîte à clés' && d102.conditions.arriveeJusqua === '22:00' && d102.conditions.calme?.debut === '22:00',
+    `conditions en clair (${JSON.stringify(d102?.conditions)})`,
+  );
+  verifier(
+    d102?.sejour?.nuitsMin === 2 && d102.sejour.nuitsMax === 28 && d102.sejour.reservationInstantanee === true,
+    `durée de séjour (${JSON.stringify(d102?.sejour)})`,
+  );
+  verifier(
+    d102?.prix?.nuit === 12000 && d102.prix.weekend === 14000 && d102.prix.menage === 5000 && d102.prix.caution === 30000 && d102.prix.remiseSemainePct === 10 && d102.prix.voyageurSupplementaire === undefined,
+    `prix de base en centimes (${JSON.stringify(d102?.prix)})`,
+  );
+  verifier(JSON.stringify(d102?.frais) === '["Animal : 15 € par séjour (en option)"]', `autres frais, ménage à part (${JSON.stringify(d102?.frais)})`);
+  verifier(l102.fiche.acces === 'Boîte à clés sous la boîte aux lettres.', 'accès repris des conditions d’arrivée quand la fiche est vide');
+  const t101 = base.get<Logement>('logements', 'repull-101')?.descriptif?.textes;
+  verifier(
+    t101?.resume === 'Studio lumineux au cœur de la ville.' && t101.description === 'Idéal pour un couple.\n\nCuisine équipée.' && t101.quartier?.startsWith('Commerces') && !('transports' in t101),
+    `textes de l’annonce nettoyés, champs vides écartés (${JSON.stringify(t101)})`,
+  );
   const prop = base.get<Proprietaire>('proprietaires', ID_PROPRIETAIRE_A_RENSEIGNER);
   verifier(prop?.nom === 'Propriétaire à renseigner' && prop.contact.email === '' && prop.ibanMasque === '', 'fiche propriétaire d’attente, sans donnée inventée');
 
@@ -666,6 +752,27 @@ async function principal() {
   verifier(base.get<Logement>('logements', 'repull-102')?.statut === 'sorti', 'annonce archivée : logement « sorti », jamais supprimé');
   verifier(base.get<Logement>('logements', 'repull-101')?.statut === 'lancement', 'annonce inchangée : statut choisi par l’équipe conservé');
   verifier(base.collection('logements').length === 2 && base.collection('reservations').length === 2, 'rien de supprimé');
+
+  section('Lectures étendues refusées : relevé de base');
+  {
+    const avant = base.get<Logement>('logements', 'repull-102')!;
+    repull.refusInclusEtendus = true;
+    avancer(60 * 24);
+    const debut = repull.appels.length;
+    const r = await lancer(options('cron'));
+    repull.refusInclusEtendus = false;
+    const annonces = repull.appels.slice(debut).filter((a) => a.chemin === '/v1/listings');
+    verifier(r.ok, `passage réussi malgré le refus (${r.message ?? ''})`);
+    verifier(
+      annonces.length === 2 && annonces[1].params.get('include') === 'content,details,thumbnail',
+      `second essai avec les lectures de base (${annonces.map((a) => a.params.get('include')).join(' | ')})`,
+    );
+    const apres = base.get<Logement>('logements', 'repull-102')!;
+    verifier(
+      canonique(apres.photos) === canonique(avant.photos) && canonique(apres.descriptif?.couchage) === canonique(avant.descriptif?.couchage) && canonique(apres.descriptif?.prix) === canonique(avant.descriptif?.prix),
+      'photos, couchage et prix gardés de la dernière lecture',
+    );
+  }
 
   /* ------------------------------------------- répondre depuis l'ERP */
   section('Répondre au voyageur depuis l’ERP (envoi par Repull)');
