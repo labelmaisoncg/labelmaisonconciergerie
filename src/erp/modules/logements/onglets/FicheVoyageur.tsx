@@ -5,6 +5,7 @@ import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { FicheLogement, Logement } from '../../../data/types';
 import { completudeFiche } from '../_composants/stats';
+import { SectionGuides, SectionQuestions } from './GuidesFiche';
 
 function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) => void }) {
   const [visible, setVisible] = useState(false);
@@ -149,6 +150,10 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
           <Textarea value={f.aSavoir ?? ''} onChange={(e) => maj('aSavoir', e.target.value)} rows={4} />
         </Field>
       </Card>
+
+      <SectionQuestions questions={f.questions ?? []} onChange={(q) => maj('questions', q.length ? q : undefined)} />
+
+      <SectionGuides logementId={l.id} guides={f.guides ?? []} onChange={(g) => maj('guides', g.length ? g : undefined)} />
 
       {/* Barre collante : « Enregistrer » reste à portée, même en bas d'une longue fiche. */}
       <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-(--lm-bord) bg-(--lm-fond) px-4 py-3 sm:mx-0 sm:rounded-xl sm:border sm:px-4">

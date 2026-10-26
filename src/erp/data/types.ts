@@ -116,6 +116,38 @@ export interface FicheLogement {
   equipements: string[];
   /** Ce qu'il faut savoir d'autre (poubelles, voisinage, chauffage…), lu par l'agent. */
   aSavoir?: string;
+  /** Guides du logement (vidéo, photo, document, lien) que l'agent joint à sa réponse. */
+  guides?: GuideLogement[];
+  /** Questions fréquentes et leur réponse, sûres pour l'agent. */
+  questions?: QuestionFrequente[];
+}
+
+/**
+ * Un guide pratique du logement (« Comment récupérer la clé »…) : l'agent le
+ * joint par son id quand la question du voyageur y correspond.
+ */
+export interface GuideLogement {
+  id: Id;
+  titre: string;
+  /** Quand l'envoyer, en clair (« le voyageur demande comment entrer »). */
+  quand?: string;
+  media: {
+    type: 'video' | 'photo' | 'document' | 'lien';
+    /** Adresse https (YouTube, Drive, iCloud…). */
+    url?: string;
+    /** Fichier déposé dans l'espace privé (« stockage://… ») : envoyé en lien signé. */
+    fichier?: string;
+  };
+  /** Contient l'accès au logement (clé, code) : envoyé seulement quand les codes sont communicables. */
+  acces?: boolean;
+  ajouteLe: Horodatage;
+  ajoutePar: string;
+}
+
+export interface QuestionFrequente {
+  id: Id;
+  question: string;
+  reponse: string;
 }
 
 export interface LigneArticle {

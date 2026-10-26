@@ -6,7 +6,12 @@ import { useErp } from '../../data/store';
 import { Alert, Button, ButtonLink, Card, EmptyState } from '../../ui';
 import { appelerConnecteur } from './_composants/api-connecteur';
 
-const DROITS = ['Consulter les contacts et leur historique', 'Ajouter un contact, modifier une fiche, noter un appel', 'Rien ne peut être supprimé'];
+const DROITS = [
+  'Consulter logements, réservations, messages et chiffres (sans codes d’accès ni wifi)',
+  'CRM : ajouter un contact, modifier une fiche, noter un appel',
+  'Préparer une réponse à un voyageur, sans jamais l’envoyer',
+  'Rien ne peut être supprimé, rien n’est modifié sur Airbnb ou Booking',
+];
 
 /** Écran plein, sans menu : tous les états sont centrés dans la même colonne. */
 function Colonne({ children }: { children: ReactNode }) {
@@ -21,7 +26,7 @@ const OUVRIR_CRM = (
 
 /**
  * /erp/autoriser-claude : page d'autorisation OAuth ouverte par Claude quand
- * on connecte « CRM Label Maison ». Le gérant accepte ou refuse ; Claude
+ * on connecte « Label Maison ». Le gérant accepte ou refuse ; Claude
  * reçoit alors un code (ou un refus) sur son adresse de retour.
  */
 export default function AutoriserClaude() {
@@ -45,7 +50,7 @@ export default function AutoriserClaude() {
         <EmptyState
           icone={<Link2Off />}
           titre="Lien de connexion invalide"
-          description="Relancez la connexion depuis Claude : Paramètres → Connecteurs → CRM Label Maison."
+          description="Relancez la connexion depuis Claude : Paramètres → Connecteurs → Label Maison."
           action={OUVRIR_CRM}
         />
       </Colonne>
@@ -57,7 +62,7 @@ export default function AutoriserClaude() {
         <EmptyState
           icone={<Bot />}
           titre="Connexion impossible ici"
-          description={mode !== 'reel' ? 'Disponible avec vos données réelles.' : 'Seul un gérant peut connecter Claude au CRM.'}
+          description={mode !== 'reel' ? 'Disponible avec vos données réelles.' : 'Seul un gérant peut connecter Claude à l’ERP.'}
           action={OUVRIR_CRM}
         />
       </Colonne>
@@ -88,9 +93,9 @@ export default function AutoriserClaude() {
             <Bot className="size-6" aria-hidden />
           </div>
           <div>
-            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Connecter Claude au CRM ?</h1>
+            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Connecter Claude à Label Maison ?</h1>
             <p className="mt-1 text-[14px] text-(--lm-encre-2)">
-              Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>, pour le CRM de Label Maison.
+              Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>, pour l’ERP de Label Maison : logements, réservations, messages et CRM.
             </p>
           </div>
           <ul className="space-y-2 text-[14px] text-(--lm-encre)">

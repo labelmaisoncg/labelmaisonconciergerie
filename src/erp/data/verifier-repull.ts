@@ -87,7 +87,7 @@ const R = {
       status: 'active',
       channels: [{ platform: 'airbnb', externalId: '112233', active: true, syncEnabled: true }],
       content: null,
-      details: { propertyTypeCategory: 'house', bedrooms: 3, personCapacity: 6, checkInTimeStart: '15:00', checkOutTime: '10:00', bathrooms: '1.5' },
+      details: { propertyTypeCategory: 'house', bedrooms: 3, personCapacity: 6, checkInTimeStart: '15:00', checkOutTime: '10:00', bathrooms: '1.5', houseManual: 'Poubelles : local vélo, sortie le mardi soir.' },
       // Lectures ?include=photos,rooms,policies,rules,pricing,fees (schémas ListingContentPhoto, ListingRoom…).
       publicName: 'Maison familiale avec jardin',
       photos: [
@@ -824,6 +824,7 @@ async function principal() {
   );
   verifier(JSON.stringify(d102?.frais) === '["Animal : 15 € par séjour (en option)"]', `autres frais, ménage à part (${JSON.stringify(d102?.frais)})`);
   verifier(l102.fiche.acces === 'Boîte à clés sous la boîte aux lettres.', 'accès repris des conditions d’arrivée quand la fiche est vide');
+  verifier(l102.fiche.aSavoir === 'Poubelles : local vélo, sortie le mardi soir.' && !base.get<Logement>('logements', 'repull-101')?.fiche.aSavoir, 'livret d’accueil de l’annonce repris dans « À savoir » quand il est vide');
   const t101 = base.get<Logement>('logements', 'repull-101')?.descriptif?.textes;
   verifier(
     t101?.resume === 'Studio lumineux au cœur de la ville.' && t101.description === 'Idéal pour un couple.\n\nCuisine équipée.' && t101.quartier?.startsWith('Commerces') && !('transports' in t101),
