@@ -68,7 +68,8 @@ import {
   type RepullReview,
   ecartsBilan,
 } from './repull.js';
-import type { FilMessages, Id, Journal, LectureAnnonce, Logement, Reservation } from './types';
+import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb, type FaitsPageAirbnb } from './page-airbnb.js';
+import type { FilMessages, Id, Journal, LectureAnnonce, Lit, Logement, Reservation, TypeLit } from './types';
 
 type Fetch = typeof fetch;
 
@@ -580,6 +581,37 @@ export interface OptionsSynchroRepull {
    * pas de filtre (lancer() n'appelle jamais la session sans choix).
    */
   selection?: ReadonlySet<string>;
+  /** Réseau pour les pages publiques des annonces (Airbnb), hors service de connexion. */
+  fetchPages?: Fetch;
+}
+
+/** Lits d'un texte de couchage (« 1 lit double, 2 lits simples, 1 canapé-lit ») ; types inconnus ignorés. */
+function litsDuCouchage(textes: string[]): Lit[] {
+  const parType = new Map<TypeLit, number>();
+  for (const t of textes) {
+    for (const m of t.toLowerCase().matchAll(/(\d+)\s+([a-zà-ÿ' -]+?)(?=,|$)/g)) {
+      const quoi = m[2];
+      const type: TypeLit | undefined = /canap/.test(quoi) ? 'canape' : /simple|superpos|une place/.test(quoi) ? 'simple' : /double|queen|king|deux places/.test(quoi) ? 'double' : undefined;
+      if (type) parType.set(type, (parType.get(type) ?? 0) + Number(m[1]));
+    }
+  }
+  return [...parType.entries()].map(([type, nombre]) => ({ type, nombre }));
+}
+
+/**
+ * Faits lus sur la page publique d'une annonce : capacité, chambres et lits,
+ * seulement s'ils sont vides ou à 0 (jamais par-dessus une saisie de
+ * l'équipe ni une valeur du service de connexion).
+ */
+function completerParFaits(l: Logement, f: FaitsPageAirbnb): Logement {
+  const s: Logement = { ...l };
+  if (!(s.capacite > 0) && f.voyageurs) s.capacite = f.voyageurs;
+  if (!(s.chambres > 0) && f.chambres) s.chambres = f.chambres;
+  if (!s.lits?.length && f.couchage?.length) {
+    const lits = litsDuCouchage(f.couchage.map((c) => c.lits));
+    if (lits.length) s.lits = lits;
+  }
+  return s;
 }
 
 /** Correspondance id Repull → id ERP, en préférant un élément relié à la main (id non « repull-... »). */
@@ -614,9 +646,11 @@ export class SessionRepull {
   private annoncesDemandees = new Set<string>();
   /** Chambres Booking.com par annonce Repull (lues une fois par passage, au besoin). */
   private chambresBooking?: Promise<Map<string, { hotel: string; chambre?: string }>>;
+  private readonly fetchPages: Fetch;
 
   constructor(private readonly o: OptionsSynchroRepull) {
     this.repull = o.repull;
+    this.fetchPages = o.fetchPages ?? fetch;
     this.base = o.base;
     this.maintenant = o.maintenant ?? (() => new Date());
     this.bilan = {
@@ -670,15 +704,55 @@ export class SessionRepull {
     const statut: Logement['statut'] = existant.statut === 'sorti' ? 'sorti' : 'pause';
     // Photo de couverture : la liste des annonces la donne même pour un logement en pause (sans appel de plus).
     const photo = typeof couverture === 'string' && /^https:\/\//.test(couverture.trim()) && !(existant.photoUrl ?? '').startsWith('stockage://') ? couverture.trim() : existant.photoUrl;
-    if (existant.repull.horsSelection && existant.statut === statut && photo === existant.photoUrl) return;
-    const enPause = !(existant.repull.horsSelection && existant.statut === statut);
-    logements.poser({
+    let suivant: Logement = {
       ...existant,
       statut,
       ...(photo ? { photoUrl: photo } : {}),
       repull: { ...existant.repull, ...(statutRepull ? { statut: statutRepull } : {}), horsSelection: true },
-    });
-    if (enPause) this.bilan.misEnPause = (this.bilan.misEnPause ?? 0) + 1;
+    };
+    // Ses photos par la page publique de l'annonce Airbnb : aucun appel au service de connexion.
+    if (statut !== 'sorti') suivant = await this.photosParPageEnPause(suivant);
+    if (identiques(suivant, existant)) return;
+    logements.poser(suivant);
+    if (!(existant.repull.horsSelection && existant.statut === statut)) this.bilan.misEnPause = (this.bilan.misEnPause ?? 0) + 1;
+  }
+
+  /** Page publique de l'annonce Airbnb : photos et faits, ou la raison d'un échec. */
+  private async lirePage(idAirbnb: string): Promise<{ photos: string[]; faits: FaitsPageAirbnb; manque?: string }> {
+    const delaiMs = Math.min(8_000, Math.max(1_000, this.repull.echeance - Date.now() - 5_000));
+    const r = await lirePageAirbnb(idAirbnb, this.fetchPages, { delaiMs });
+    if (!r.ok) return { photos: [], faits: {}, manque: 'Airbnb : page indisponible' };
+    const photos = photosPageAirbnb(r.html, idAirbnb);
+    return { photos, faits: faitsPageAirbnb(r.html), ...(photos.length ? {} : { manque: 'Airbnb : aucune photo sur la page de l’annonce' }) };
+  }
+
+  /**
+   * Logement en pause (hors du forfait du service de connexion) : ses photos
+   * viennent de la page publique de son annonce Airbnb, relue une fois par
+   * semaine si elle a réussi, une fois par jour sinon.
+   */
+  private async photosParPageEnPause(l: Logement): Promise<Logement> {
+    const id = idAirbnbDuLogement(l);
+    if (!id) return l;
+    const avant = l.repull?.lecture;
+    const aDesPhotos = !!l.photos?.length;
+    const maintenant = horodatageParis(this.maintenant());
+    const lues = l.repull?.photosLuesLe;
+    const ecart = lues ? instant(maintenant) - instant(lues) : Infinity;
+    if ((avant && ecart < (aDesPhotos ? 6.5 * JOUR : 20 * HEURE)) || !this.tempsRestant(12_000)) return l;
+    const p = await this.lirePage(id);
+    const s = completerParFaits(l, p.faits);
+    if (p.photos.length) s.photos = p.photos;
+    const lecture: LectureAnnonce = {
+      photos: p.photos.length ? 'airbnb-page' : aDesPhotos ? avant?.photos ?? 'airbnb-page' : 'aucune',
+      prix: avant?.prix ?? (l.tarifs ? 'repull' : 'aucun'),
+      le: this.aujourdhui,
+    };
+    if (lecture.photos === 'aucune' && p.manque) lecture.raisonPhotos = p.manque;
+    if (lecture.prix === 'aucun' && avant?.raisonPrix) lecture.raisonPrix = avant.raisonPrix;
+    if (avant && canonique({ ...avant, le: '' }) === canonique({ ...lecture, le: '' })) lecture.le = avant.le;
+    s.repull = { ...(s.repull ?? { id: '' }), photosLuesLe: maintenant, lecture };
+    return s;
   }
 
   /** Reste-t-il assez de temps pour continuer ? Sinon, le passage est marqué partiel. */
@@ -862,11 +936,16 @@ export class SessionRepull {
     // semaine. Sans photo : une recherche complète vaine n'est refaite qu'une fois par jour.
     const ecart = lues ? instant(maintenant) - instant(lues) : Infinity;
     const dues = !avant || ecart >= (aDejaDesPhotos ? 6.5 * JOUR : 20 * HEURE);
-    if (!photosDeLAnnonce && dues && assez()) {
+    const idPage = idAirbnbDuLogement(l);
+    if (!photosDeLAnnonce && dues && (assez() || (idPage && this.tempsRestant(12_000)))) {
       const manques: string[] = [];
-      let photos = photosDepuisContenu(await lire<RepullPhotos>(`/v1/listings/${chemin}/photos`));
-      if (photos.length) sourcePhotos = 'repull';
-      else if (echec && echec !== 'introuvable') manques.push(`Notre service de connexion : ${echec}`);
+      let manqueAirbnb = '';
+      let photos: string[] = [];
+      if (assez()) {
+        photos = photosDepuisContenu(await lire<RepullPhotos>(`/v1/listings/${chemin}/photos`));
+        if (photos.length) sourcePhotos = 'repull';
+        else if (echec && echec !== 'introuvable') manques.push(`Notre service de connexion : ${echec}`);
+      }
       if (!photos.length && surBooking && assez()) {
         const b = (await this.lireChambresBooking()).get(idAnnonce);
         if (!b) manques.push('Booking.com : ce logement n’est relié à aucune chambre d’un établissement');
@@ -883,10 +962,21 @@ export class SessionRepull {
       if (!photos.length && surAirbnb && assez()) {
         photos = photosDepuisContenu(await lire(`/v1/channels/airbnb/listings/${chemin}/photos`));
         if (photos.length) sourcePhotos = 'airbnb';
-        else manques.push(`Airbnb : ${echec || 'aucune photo renvoyée'}`);
+        else manqueAirbnb = `Airbnb : ${echec || 'aucune photo renvoyée'}`;
       }
-      if (!surBooking && !surAirbnb) manques.push('aucune plateforme reliée à ce logement');
+      // Dernier recours, hors du budget d'appels : la page publique de l'annonce Airbnb.
+      if (!photos.length && idPage && this.tempsRestant(12_000)) {
+        const p = await this.lirePage(idPage);
+        Object.assign(suivant, completerParFaits(suivant, p.faits));
+        if (p.photos.length) {
+          photos = p.photos;
+          sourcePhotos = 'airbnb-page';
+        } else if (p.manque) manqueAirbnb = p.manque;
+      }
+      if (manqueAirbnb) manques.push(manqueAirbnb);
+      if (!surBooking && !surAirbnb && !idPage) manques.push('aucune plateforme reliée à ce logement');
       if (photos.length) suivant.photos = photos;
+      else if (aDejaDesPhotos) sourcePhotos = avant?.photos ?? 'repull';
       else {
         sourcePhotos = 'aucune';
         raisonPhotos = manques.join(' ; ') || 'aucune photo renvoyée par les plateformes';
@@ -1617,6 +1707,7 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
       maintenant,
       phases: o.forcer?.phases ?? phasesDues(etat, o.declencheur, maintenant()),
       selection: choisies,
+      fetchPages: o.fetch,
     });
   }
 

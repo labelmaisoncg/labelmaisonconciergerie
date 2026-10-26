@@ -23,6 +23,7 @@ import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservati
 import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, phasesDues, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
+import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb } from './page-airbnb';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
 /* ------------------------------------------------------------ assertions */
@@ -248,6 +249,10 @@ class FauxRepull {
   ficheRepullVide = false;
   /** Booking.com refuse les lectures (403 listing_inactive), pour les raisons en clair. */
   bookingInactif = false;
+  /** Pages publiques Airbnb servies (id d'annonce → HTML) ; les autres répondent 403. */
+  pagesAirbnb = new Map<string, string>();
+  /** Pages publiques Airbnb demandées (adresse, en-têtes). */
+  lecturesAirbnb: { url: string; entetes: Headers }[] = [];
   /** Lectures étendues des annonces refusées (422), pour tester le repli. */
   refusInclusEtendus = false;
   /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
@@ -279,6 +284,11 @@ class FauxRepull {
 
   fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
+    if (url.hostname === 'www.airbnb.fr') {
+      this.lecturesAirbnb.push({ url: url.href, entetes: new Headers(init?.headers) });
+      const html = this.pagesAirbnb.get(/^\/rooms\/(\d+)$/.exec(url.pathname)?.[1] ?? '');
+      return html ? new Response(html, { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }) : new Response('Accès refusé', { status: 403 });
+    }
     const auth = new Headers(init?.headers).get('authorization');
     if (auth !== 'Bearer sk_test_verif') return json({ error: { code: 'unauthorized', message: 'bad key' } }, 401);
     const chemin = url.pathname;
@@ -514,6 +524,30 @@ class FausseBase {
   }
 }
 
+/* ------------------------------------------------- page publique Airbnb */
+
+const b64Airbnb = (id: string) => btoa(`StaySupplyListing:${id}`);
+const imageAirbnb = (cle: string, fichier: string, q = '') => `https://a0.muscache.com/im/pictures/hosting/Hosting-${cle}/original/${fichier}${q}`;
+
+/** Page d'annonce Airbnb réduite : photos du logement (clé en base64 et ancienne clé en clair), images d'Airbnb et d'autres logements, résumé, couchage. */
+function pageAirbnbFactice(id: string, n = 3): string {
+  const photos = Array.from({ length: n }, (_, i) => imageAirbnb(b64Airbnb(id), `photo-${i + 1}.jpeg`));
+  return [
+    '<!doctype html><html><head>',
+    '<meta property="og:title" content="Appartement · Corbeil-Essonnes · ★4,8 · 2 chambres · 3 lits · 1\u00a0salle de bain"/>',
+    `<meta property="og:image" content="${imageAirbnb(b64Airbnb(id), 'photo-1.jpeg', '?im_w=720&amp;width=720')}"/>`,
+    '</head><body>',
+    '<img src="https://a0.muscache.com/im/pictures/AirbnbPlatformAssets/AirbnbPlatformAssets-Favicons/original/icone.png?im_w=240">',
+    '<img src="https://a0.muscache.com/im/pictures/user/User-42/original/profil.jpeg">',
+    `<img src="${imageAirbnb(b64Airbnb('999'), 'autre-logement.jpeg')}">`,
+    `<img src="https://a0.muscache.com/im/pictures/hosting/Hosting-${id}9/original/voisin.jpeg">`,
+    `<script>{"personCapacity":4,${photos.map((u) => `"uri":"${u}"`).join(',')},"uri":"https://a0.muscache.com/im/pictures/miso/Hosting-${id}/original/ancienne.jpg",`,
+    '"sleepingArrangements":{"__typename":"MediaTour","stops":[{"__typename":"MediaTourStop","id":"a","name":"Chambre 1","items":[],"description":{"descriptions":[{"__typename":"LocalizedText","text":"1 lit double"}]}},{"__typename":"MediaTourStop","id":"b","name":"Chambre 2","items":[],"description":{"descriptions":[{"__typename":"LocalizedText","text":"2 lits simples"}]}}],"name":"Où vous dormirez"},',
+    '"overview":{"__typename":"StaysPdpOverview","title":"Appartement","items":["4 voyageurs","2 chambres","3 lits","1\u00a0salle de bain"]}}</script>',
+    '</body></html>',
+  ].join('\n');
+}
+
 /* ----------------------------------------------------------- contrôles de forme */
 
 const estChaine = (v: unknown) => typeof v === 'string';
@@ -634,6 +668,63 @@ async function principal() {
       `tarifs Booking : tarif ouvert le moins cher, plus de chambre à vendre = pris, prix aberrants et hors période écartés (${JSON.stringify(t?.jours)})`,
     );
     verifier(tarifsDepuisBooking({ hotelId: '1' }, '2026-10-19T06:00:00+02:00', '2026-10-19', '2026-12-18') === undefined, 'tarifs Booking : rien de daté → aucun prix');
+  }
+
+  section('Page publique Airbnb : lecture');
+  {
+    const html = pageAirbnbFactice('111');
+    const photos = photosPageAirbnb(html, '111');
+    verifier(
+      JSON.stringify(photos) ===
+        JSON.stringify([
+          `${imageAirbnb(b64Airbnb('111'), 'photo-1.jpeg')}?im_w=1200`,
+          `${imageAirbnb(b64Airbnb('111'), 'photo-2.jpeg')}?im_w=1200`,
+          `${imageAirbnb(b64Airbnb('111'), 'photo-3.jpeg')}?im_w=1200`,
+          'https://a0.muscache.com/im/pictures/miso/Hosting-111/original/ancienne.jpg?im_w=1200',
+        ]),
+      `photos du seul logement (clé en base64 et en clair), ordre de la page, sans doublon (${JSON.stringify(photos)})`,
+    );
+    verifier(!photos.some((u) => /AirbnbPlatformAssets|User-42|autre-logement|voisin/.test(u)), 'icônes d’Airbnb, profils et autres logements écartés');
+    verifier(photosPageAirbnb(pageAirbnbFactice('111', 30), '111').length === 24, 'photos plafonnées à 24');
+    verifier(photosPageAirbnb(html, '11').length === 0 && photosPageAirbnb(html, 'abc').length === 0, 'id voisin ou invalide : aucune photo');
+    const f = faitsPageAirbnb(html);
+    verifier(
+      f.voyageurs === 4 && f.chambres === 2 && f.lits === 3 && f.sallesDeBain === 1 && f.titre?.startsWith('Appartement') &&
+        canonique(f.couchage) === canonique([{ piece: 'Chambre 1', lits: '1 lit double' }, { piece: 'Chambre 2', lits: '2 lits simples' }]),
+      `faits lus : voyageurs, chambres, lits, salle de bain, couchage (${JSON.stringify(f)})`,
+    );
+    verifier(
+      idAirbnbDuLogement({ repull: { canaux: [{ plateforme: 'booking', idExterne: '55' }, { plateforme: 'airbnb', idExterne: '123' }] } }) === '123' &&
+        idAirbnbDuLogement({ annonces: [{ canal: 'airbnb', url: 'https://www.airbnb.fr/rooms/456?x=1' }] }) === '456' &&
+        idAirbnbDuLogement({ annonces: [{ canal: 'booking', url: 'https://www.booking.com/hotel/fr/x.html' }] }) === undefined,
+      'id Airbnb : canal relié, sinon adresse de l’annonce',
+    );
+    const vues: { url: string; init?: RequestInit }[] = [];
+    const ok = await lirePageAirbnb('111', (async (u: string, init?: RequestInit) => {
+      vues.push({ url: u, init });
+      return new Response(html, { status: 200 });
+    }) as typeof fetch);
+    const h = new Headers(vues[0]?.init?.headers);
+    verifier(
+      ok.ok && vues[0]?.url === 'https://www.airbnb.fr/rooms/111' && vues[0].init?.method === 'GET' && /Mozilla/.test(h.get('user-agent') ?? '') && !h.get('cookie') && vues[0].init?.credentials === 'omit',
+      'page lue en GET, comme un navigateur, sans cookie',
+    );
+    const refusee = await lirePageAirbnb('111', (async () => new Response('Non', { status: 403 })) as typeof fetch);
+    verifier(!refusee.ok, 'page refusée (403) : pas de lecture');
+    const lente = await lirePageAirbnb(
+      '111',
+      ((_: string, init?: RequestInit) => new Promise<Response>((_r, rejeter) => init?.signal?.addEventListener('abort', () => rejeter(new Error('abort'))))) as typeof fetch,
+      { delaiMs: 30 },
+    );
+    verifier(!lente.ok && lente.raison === 'délai dépassé', 'page trop lente : abandon après le délai');
+    let appelee = false;
+    const invalide = await lirePageAirbnb('../x', (async () => {
+      appelee = true;
+      return new Response('');
+    }) as typeof fetch);
+    verifier(!invalide.ok && !appelee, 'id non numérique : aucune requête');
+    const grosse = await lirePageAirbnb('111', (async () => new Response('x'.repeat(50_000), { status: 200 })) as typeof fetch, { maxOctets: 1_000 });
+    verifier(grosse.ok && grosse.html.length === 1_000, 'taille de la page plafonnée');
   }
 
   /* ------------------------------------------------ sans choix de logements */
@@ -892,7 +983,7 @@ async function principal() {
     verifier(r.ok && r.statut === 'fait', `passage réussi (${r.message ?? ''})`);
     verifier(
       n?.photos === 'aucune' &&
-        n.raisonPhotos === 'Booking.com : annonce inactive (hors de votre forfait) ; Airbnb : introuvable',
+        n.raisonPhotos === 'Booking.com : annonce inactive (hors de votre forfait) ; Airbnb : page indisponible',
       `photos manquantes : chaque plateforme dit pourquoi (${n?.raisonPhotos})`,
     );
     verifier(
@@ -916,7 +1007,96 @@ async function principal() {
       !appels2.some((a) => a.chemin === '/v1/listings/101/photos' || a.chemin === '/v1/channels/booking/content' || a.chemin === '/v1/channels/airbnb/listings/101/photos'),
       `recherche de photos vaine : pas refaite avant le lendemain (${appels2.map((a) => a.chemin).join(', ')})`,
     );
+    verifier(repull.lecturesAirbnb.length === 1, `page Airbnb indisponible : pas relue avant le lendemain (${repull.lecturesAirbnb.length} lecture)`);
     base.poser('logements', l);
+  }
+
+  section('Page publique Airbnb : logement choisi sans photo');
+  {
+    const l = base.get<Logement>('logements', 'repull-101')!;
+    const idAirbnb = l.repull!.canaux!.find((c) => c.plateforme === 'airbnb')!.idExterne;
+    repull.pagesAirbnb.set(idAirbnb, pageAirbnbFactice(idAirbnb));
+    repull.ficheRepullVide = true;
+    repull.bookingInactif = true;
+    base.poser('logements', { ...l, photos: undefined, lits: [], repull: { ...l.repull!, photosLuesLe: undefined } });
+    avancer(11);
+    const r = await lancer(options('manuel'));
+    const apres = base.get<Logement>('logements', 'repull-101')!;
+    verifier(r.ok && r.statut === 'fait', `passage réussi (${r.message ?? ''})`);
+    verifier(
+      apres.photos?.length === 4 && apres.photos[0] === `${imageAirbnb(b64Airbnb(idAirbnb), 'photo-1.jpeg')}?im_w=1200` && apres.repull?.lecture?.photos === 'airbnb-page' && !apres.repull.lecture.raisonPhotos,
+      `photos lues sur la page publique Airbnb en dernier recours (${apres.repull?.lecture?.photos}, ${apres.photos?.length})`,
+    );
+    verifier(
+      l.capacite === 2 && apres.capacite === 2 && l.chambres === 0 && apres.chambres === 2,
+      `capacité déjà connue : jamais remplacée par la page ; chambres à 0 : complétées (${apres.capacite}, ${apres.chambres})`,
+    );
+    verifier(canonique(apres.lits) === canonique([{ type: 'double', nombre: 1 }, { type: 'simple', nombre: 2 }]), `lits vides : remplis depuis « Où vous dormirez » (${JSON.stringify(apres.lits)})`);
+    // Passage suivant : photos trouvées, page relue une fois par semaine seulement ; rien ne change.
+    const lectures = repull.lecturesAirbnb.length;
+    avancer(11);
+    await lancer(options('manuel'));
+    repull.ficheRepullVide = false;
+    repull.bookingInactif = false;
+    verifier(repull.lecturesAirbnb.length === lectures, 'page déjà lue avec succès : pas relue avant une semaine');
+    verifier(canonique(base.get('logements', 'repull-101')) === canonique(apres), 'passage suivant : logement inchangé (idempotence)');
+    base.poser('logements', l);
+  }
+
+  section('Page publique Airbnb : logement en pause');
+  {
+    const l = base.get<Logement>('logements', 'repull-101')!;
+    const enPause: Logement = {
+      ...l,
+      id: 'repull-109',
+      nom: 'Studio en pause',
+      statut: 'pause',
+      capacite: 0,
+      chambres: 0,
+      lits: [],
+      photos: undefined,
+      photoUrl: undefined,
+      tarifs: undefined,
+      repull: { id: '109', statut: 'inactive', horsSelection: true, canaux: [{ plateforme: 'airbnb', idExterne: '20669368', actif: false }] },
+    };
+    base.poser('logements', enPause);
+    R.listings.push({ id: '109', name: 'Studio en pause', status: 'inactive', thumbnailUrl: null, address: { city: 'Paris' }, channels: [{ platform: 'airbnb', externalId: '20669368', active: false }] });
+    repull.pagesAirbnb.set('20669368', pageAirbnbFactice('20669368', 5));
+    const debut = repull.appels.length;
+    avancer(61);
+    const r = await lancer(options('manuel'));
+    const p = base.get<Logement>('logements', 'repull-109')!;
+    verifier(r.ok, `passage réussi (${r.message ?? ''})`);
+    verifier(
+      p.photos?.length === 6 && p.repull?.lecture?.photos === 'airbnb-page' && p.statut === 'pause' && p.repull.horsSelection === true,
+      `logement en pause : photos lues sur sa page Airbnb, reste en pause (${p.photos?.length}, ${p.repull?.lecture?.photos})`,
+    );
+    verifier(p.capacite === 4 && p.chambres === 2 && canonique(p.lits) === canonique([{ type: 'double', nombre: 1 }, { type: 'simple', nombre: 2 }]), 'capacité, chambres et lits vides : remplis depuis la page');
+    verifier(!repull.appels.slice(debut).some((a) => a.chemin.includes('/109')), 'logement en pause : aucun appel au service de connexion');
+    // Page qui devient indisponible : on garde les photos, relecture hebdomadaire seulement.
+    const lectures = repull.lecturesAirbnb.length;
+    avancer(11);
+    await lancer(options('manuel'));
+    verifier(repull.lecturesAirbnb.length === lectures && canonique(base.get('logements', 'repull-109')) === canonique(p), 'passage suivant : page pas relue, logement inchangé');
+    // Un autre logement en pause dont la page est refusée : raison en clair, nouvel essai le lendemain.
+    base.poser('logements', { ...enPause, id: 'repull-110', repull: { ...enPause.repull!, id: '110', canaux: [{ plateforme: 'airbnb', idExterne: '7777', actif: false }] } });
+    R.listings.push({ id: '110', name: 'Autre en pause', status: 'inactive', thumbnailUrl: null, address: { city: 'Paris' }, channels: [{ platform: 'airbnb', externalId: '7777', active: false }] });
+    avancer(61);
+    await lancer(options('manuel'));
+    const refuse = base.get<Logement>('logements', 'repull-110')!;
+    verifier(
+      refuse.repull?.lecture?.photos === 'aucune' && refuse.repull.lecture.raisonPhotos === 'Airbnb : page indisponible' && !refuse.photos,
+      `page refusée : note « Airbnb : page indisponible » (${JSON.stringify(refuse.repull?.lecture)})`,
+    );
+    const avantNouvelEssai = repull.lecturesAirbnb.length;
+    avancer(61);
+    await lancer(options('manuel'));
+    verifier(repull.lecturesAirbnb.length === avantNouvelEssai, 'page refusée : pas redemandée avant le lendemain');
+    // Retour à l'état d'avant (les sections suivantes comptent les logements et les annonces).
+    R.listings.splice(R.listings.findIndex((x) => x.id === '109'), 2);
+    base.lignes.delete(base.cle('logements', 'repull-109'));
+    base.lignes.delete(base.cle('logements', 'repull-110'));
+    repull.pagesAirbnb.clear();
   }
 
   section('Lectures étendues refusées : relevé de base');

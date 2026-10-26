@@ -218,7 +218,11 @@ date de plus d'une heure.
 chaque logement choisi, en lecture seule (GET) :
 - photos : celles de l'annonce si la liste les renvoie ; sinon `GET
   /v1/listings/{id}/photos`, puis Booking.com (`/v1/channels/booking/content?type=photos`,
-  galerie de la chambre puis de l'établissement), puis Airbnb. Relues une fois par
+  galerie de la chambre puis de l'établissement), puis Airbnb, et en dernier recours la
+  page publique de l'annonce Airbnb (`data/page-airbnb.ts` : `https://www.airbnb.fr/rooms/<id>`,
+  GET sans cookie, 8 s et 3 Mo au plus, seules les photos `Hosting-<id>` du logement, hors
+  budget d'appels ; elle complète aussi capacité, chambres et lits restés vides ou à 0, et
+  sert aussi aux logements en pause). Booking.com protège sa page publique : pas lue. Relues une fois par
   semaine quand le logement en a déjà ; sans photo, au prochain relevé, puis une
   recherche vaine n'est refaite qu'une fois par jour ; sans note de lecture (relevés
   d'avant), tout de suite ;
