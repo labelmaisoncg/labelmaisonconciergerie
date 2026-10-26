@@ -183,6 +183,10 @@ html:has(.erp-root) body {
   padding-bottom: env(safe-area-inset-bottom);
   background-color: var(--lm-surface);
 }
+/* Focus donné à la fenêtre à son ouverture (useFenetre) : pas d'anneau autour de toute la feuille. */
+.erp-root [role='dialog'][tabindex='-1']:focus-visible {
+  outline: none;
+}
 
 /*
  * Téléphone et tablette (sous lg, 64rem) : barre d'onglets en bas

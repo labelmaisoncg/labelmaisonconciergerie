@@ -89,21 +89,15 @@ export function useNotifications() {
     setOccupe('activer');
     setRetour(null);
     try {
-      const s = await sAbonner(serveur.clePublique);
-      if (!s) {
-        setEtape(autorisation() === 'refusee' ? 'refusee' : 'a-activer');
-        if (autorisation() !== 'refusee') setRetour({ ton: 'alerte', texte: 'Notifications non autorisées. Touchez de nouveau « Activer » et choisissez « Autoriser ».' });
+      const r = await activerSurCetAppareil(serveur.clePublique, preferences);
+      if (r.etat !== 'activee') {
+        setEtape(r.etat === 'refusee' ? 'refusee' : 'a-activer');
+        if (r.etat === 'ignoree') setRetour({ ton: 'alerte', texte: 'Notifications non autorisées. Touchez de nouveau « Activer » et choisissez « Autoriser ».' });
         return;
       }
-      const r = await appelerServeur<{ preferences: PreferencesNotifications }>(API, 'POST', {
-        action: 'abonner',
-        abonnement: versAbonnement(s),
-        preferences,
-        nom: NOM_APPAREIL[appareil()],
-      });
-      setEndpoint(s.endpoint);
-      setPreferences(r.preferences ?? {});
-      setServeur((x) => (x ? { ...x, appareil: { preferences: r.preferences ?? {} } } : x));
+      setEndpoint(r.endpoint);
+      setPreferences(r.preferences);
+      setServeur((x) => (x ? { ...x, appareil: { preferences: r.preferences } } : x));
       setEtape('actives');
       setRetour({ ton: 'succes', texte: 'Notifications activées sur cet appareil.' });
     } catch (e) {
@@ -177,6 +171,43 @@ export function useNotifications() {
     desactiver,
     relire,
   };
+}
+
+/* ------------------------------------------------ activer sur cet appareil */
+
+export type ResultatActivation =
+  | { etat: 'activee'; endpoint: string; preferences: PreferencesNotifications }
+  /** Refusées dans la fenêtre du système (permission « denied »). */
+  | { etat: 'refusee' }
+  /** Fenêtre du système fermée sans choix : rien n'a changé. */
+  | { etat: 'ignoree' };
+
+/**
+ * Dans le geste de l'utilisateur (iPhone : obligatoire) : autorisation du
+ * système, abonnement du navigateur, puis enregistrement de l'appareil sur le
+ * serveur. Lève une erreur lisible si le serveur refuse.
+ */
+export async function activerSurCetAppareil(clePublique: string, preferences: PreferencesNotifications = {}): Promise<ResultatActivation> {
+  const s = await sAbonner(clePublique);
+  if (!s) {
+    const a = autorisation();
+    if (a === 'refusee') return { etat: 'refusee' };
+    if (a === 'accordee') throw new Error('Cet appareil n’a pas pu s’abonner. Réessayez dans un instant.');
+    return { etat: 'ignoree' };
+  }
+  const r = await appelerServeur<{ preferences: PreferencesNotifications }>(API, 'POST', {
+    action: 'abonner',
+    abonnement: versAbonnement(s),
+    preferences,
+    nom: NOM_APPAREIL[appareil()],
+  });
+  return { etat: 'activee', endpoint: s.endpoint, preferences: r.preferences ?? {} };
+}
+
+/** État du serveur seul (clés présentes), pour la demande à l'ouverture. */
+export async function serveurNotifications(): Promise<{ actif: boolean; clePublique: string | null }> {
+  const r = await appelerServeur<ReponseEtat>(`${API}?action=etat`, 'GET');
+  return { actif: !!r.actif && !!r.clePublique, clePublique: r.clePublique };
 }
 
 /* ------------------------------------------------- clés du serveur (gérant) */
