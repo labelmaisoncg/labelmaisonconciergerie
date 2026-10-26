@@ -11,7 +11,7 @@ export function useCompteurs(): Record<CleCompteur, number> {
   return useMemo(
     () => ({
       missionsAAttribuer: missions.filter((m) => m.statut === 'a_attribuer' && m.date >= AUJOURDHUI).length,
-      // Même définition que « Pour vous » dans la messagerie : confiées par l'agent ou sans réponse.
+      // Même définition que « À répondre » dans la messagerie : confiées par l'agent ou sans réponse.
       messagesEnAttente: filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente')).length,
       incidentsOuverts: incidentsOuverts(incidents).length,
       // Nouvelles demandes du site et relances arrivées à échéance.

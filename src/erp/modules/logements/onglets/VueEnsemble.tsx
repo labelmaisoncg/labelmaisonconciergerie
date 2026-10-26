@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, ExternalLink, Mail, Phone } from 'lucide-react';
+import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
 import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, Input, Repli } from '../../../ui';
@@ -10,7 +10,7 @@ import { LIBELLES } from '../../../data/libelles';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
 import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, note, pluriel, pourcentage } from '../../../data/format';
 import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors';
-import type { Canal, Logement } from '../../../data/types';
+import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
 import { CompteurNuits } from '../_composants/CompteurNuits';
 import { Galerie } from '../_composants/Galerie';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
@@ -58,7 +58,9 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
     .filter((r) => r.logementId === l.id && estActive(r) && r.depart >= AUJOURDHUI)
     .sort((a, b) => a.arrivee.localeCompare(b.arrivee))
     .slice(0, 5);
-  const lits = l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
+  const desc = l.descriptif;
+  // Le couchage de l'annonce (pièce par pièce) remplace la ligne saisie à la main.
+  const lits = desc?.couchage?.length ? '' : l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
   const jours = (l.tarifs?.jours ?? []).filter((j) => j.date >= AUJOURDHUI).slice(0, 60);
   const importe = !!l.repull?.majLe || l.id.startsWith('repull-');
   const bas = jours.length ? Math.min(...jours.map((j) => j.prixCentimes)) : 0;
@@ -124,21 +126,32 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
             )}
           </Card>
 
-          {jours.length > 1 && prix && (
+          {desc && <Annonce descriptif={desc} />}
+
+          {!!desc?.couchage?.length && <Couchage pieces={desc.couchage} />}
+
+          {((jours.length > 1 && prix) || desc?.prix) && (
             <Card>
-              <CardHeader
-                titre="Prix des prochaines semaines"
-                description={`De ${euros(bas, true)} à ${euros(haut, true)} par nuit sur ${jours.length} jours · lus sur les plateformes le ${dateHeure(prix.luLe)}`}
-              />
-              <GraphiqueCourbe
-                label={`Prix par nuit des ${jours.length} prochains jours, de ${euros(bas, true)} à ${euros(haut, true)}`}
-                points={jours.map((j) => ({ libelle: jourMois(j.date), valeur: j.prixCentimes }))}
-                formater={(v) => `${euros(v, true)} la nuit`}
-                formaterAxe={(v) => euros(v, true)}
-                domaine={[0, 'auto']}
-                paliers
-                hauteur={180}
-              />
+              {jours.length > 1 && prix ? (
+                <>
+                  <CardHeader
+                    titre="Prix des prochaines semaines"
+                    description={`De ${euros(bas, true)} à ${euros(haut, true)} par nuit sur ${jours.length} jours · lus sur les plateformes le ${dateHeure(prix.luLe)}`}
+                  />
+                  <GraphiqueCourbe
+                    label={`Prix par nuit des ${jours.length} prochains jours, de ${euros(bas, true)} à ${euros(haut, true)}`}
+                    points={jours.map((j) => ({ libelle: jourMois(j.date), valeur: j.prixCentimes }))}
+                    formater={(v) => `${euros(v, true)} la nuit`}
+                    formaterAxe={(v) => euros(v, true)}
+                    domaine={[0, 'auto']}
+                    paliers
+                    hauteur={180}
+                  />
+                </>
+              ) : (
+                <CardHeader titre="Prix" description="Prix de base de l’annonce, lus sur les plateformes" />
+              )}
+              {desc?.prix && <PrixDeBase prix={desc.prix} frais={desc.frais ?? []} separe={jours.length > 1 && !!prix} />}
             </Card>
           )}
         </div>
@@ -154,12 +167,15 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               </Ligne>
               {lits && <Ligne libelle="Couchage">{lits}</Ligne>}
               {l.surfaceM2 > 0 && <Ligne libelle="Surface">{l.surfaceM2} m²</Ligne>}
+              {!!desc?.sallesDeBain && <Ligne libelle="Salles de bain">{String(desc.sallesDeBain).replace('.', ',')}</Ligne>}
               <Ligne libelle="Arrivée · départ">
                 {l.fiche.heureArrivee || '—'} · {l.fiche.heureDepart || '—'}
               </Ligne>
-              <Ligne libelle="Accès">{LIBELLES.serrure[l.serrure]}</Ligne>
+              <Ligne libelle="Accès">{desc?.conditions?.arrivee ?? LIBELLES.serrure[l.serrure]}</Ligne>
             </dl>
           </Card>
+
+          {desc && <Conditions descriptif={desc} />}
 
           <Card>
             <CardHeader titre="Plateformes" />
@@ -289,5 +305,137 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
       )}
       {renseigne && <FormProprietaire ouvert={edition} onFermer={() => setEdition(false)} proprietaire={prop} />}
     </>
+  );
+}
+
+/* ------------------------------------------------------- l'annonce */
+
+/** Titre et textes de l'annonce, repliés au-delà de quelques lignes. */
+function Annonce({ descriptif: d }: { descriptif: DescriptifLogement }) {
+  const [ouvert, setOuvert] = useState(false);
+  const t = d.textes ?? {};
+  const principal = [t.resume, t.description].filter(Boolean).join('\n\n');
+  const autres = [
+    { titre: 'Le logement', texte: t.espace },
+    { titre: 'Accès des voyageurs', texte: t.accesVoyageurs },
+    { titre: 'Le quartier', texte: t.quartier },
+    { titre: 'Se déplacer', texte: t.transports },
+  ].filter((x): x is { titre: string; texte: string } => !!x.texte);
+  if (!d.titre && !principal && !autres.length) return null;
+  const long = principal.length > 320 || autres.length > 0;
+  return (
+    <Card>
+      <CardHeader titre="L’annonce" description="Telle que les voyageurs la lisent sur les plateformes" />
+      {d.titre && <p className="text-[15px] font-semibold text-(--lm-encre)">{d.titre}</p>}
+      {principal && (
+        // Replié : le premier paragraphe seulement, sur trois lignes au plus.
+        <p className={`mt-1.5 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2) ${!ouvert && long ? 'line-clamp-3' : ''}`}>
+          {!ouvert && long ? principal.split(/\n\n/)[0] : principal}
+        </p>
+      )}
+      {ouvert &&
+        autres.map((x) => (
+          <div key={x.titre} className="mt-4">
+            <h3 className="text-[13.5px] font-semibold text-(--lm-encre)">{x.titre}</h3>
+            <p className="mt-1 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2)">{x.texte}</p>
+          </div>
+        ))}
+      {long && (
+        <button
+          type="button"
+          aria-expanded={ouvert}
+          onClick={() => setOuvert((o) => !o)}
+          className="mt-2 inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+        >
+          {ouvert ? 'Réduire' : 'Lire la suite'}
+        </button>
+      )}
+    </Card>
+  );
+}
+
+/** Où dorment les voyageurs, pièce par pièce (comme sur l'annonce). */
+function Couchage({ pieces }: { pieces: NonNullable<DescriptifLogement['couchage']> }) {
+  return (
+    <Card>
+      <CardHeader titre="Couchage" />
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+        {pieces.map((p, i) => {
+          const Icone = /canapé/i.test(p.lits) && !/lit (double|simple|queen|king)/i.test(p.lits) ? Sofa : BedDouble;
+          return (
+            <li key={`${p.piece}-${i}`} className="rounded-lg border border-(--lm-bord) p-3.5">
+              <Icone className="size-5 text-(--lm-encre-2)" aria-hidden />
+              <p className="mt-2 text-[13.5px] font-semibold text-(--lm-encre)">{p.piece}</p>
+              <p className="text-[12.5px] text-(--lm-encre-2)">{p.lits}</p>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
+
+const pct = (n: number) => `${String(Math.round(n * 10) / 10).replace('.', ',')} %`;
+
+/** Prix de base de l'annonce : nuit, week-end, ménage, caution, remises. */
+function PrixDeBase({ prix: p, frais, separe }: { prix: NonNullable<DescriptifLogement['prix']>; frais: string[]; separe: boolean }) {
+  const lignes = [
+    { libelle: 'Nuit (prix de base)', valeur: p.nuit !== undefined ? euros(p.nuit, true) : '' },
+    { libelle: 'Nuit le week-end', valeur: p.weekend !== undefined ? euros(p.weekend, true) : '' },
+    { libelle: 'Ménage', valeur: p.menage !== undefined ? euros(p.menage, true) : '' },
+    {
+      libelle: 'Voyageur en plus',
+      valeur: p.voyageurSupplementaire ? `${euros(p.voyageurSupplementaire, true)} / nuit${p.voyageursInclus ? ` au-delà de ${p.voyageursInclus}` : ''}` : '',
+    },
+    { libelle: 'Caution', valeur: p.caution ? euros(p.caution, true) : '' },
+    { libelle: 'Remise à la semaine', valeur: p.remiseSemainePct ? pct(p.remiseSemainePct) : '' },
+    { libelle: 'Remise au mois', valeur: p.remiseMoisPct ? pct(p.remiseMoisPct) : '' },
+    // Autres frais, déjà en clair : « Animal : 15 € par séjour ».
+    ...frais.map((f) => {
+      const i = f.indexOf(' : ');
+      return i > 0 ? { libelle: f.slice(0, i), valeur: f.slice(i + 3) } : { libelle: 'Frais', valeur: f };
+    }),
+  ].filter((x) => x.valeur);
+  if (!lignes.length) return null;
+  return (
+    <dl className={`divide-y divide-(--lm-bord) ${separe ? 'mt-4 border-t border-(--lm-bord) pt-2' : ''}`}>
+      {lignes.map((x) => (
+        <Ligne key={x.libelle} libelle={x.libelle}>
+          <span className="lm-chiffres">{x.valeur}</span>
+        </Ligne>
+      ))}
+    </dl>
+  );
+}
+
+const permis = (v: boolean | undefined, oui: string, non: string) => (v === undefined ? '' : v ? oui : non);
+
+/** Règles et conditions de l'annonce, en clair. */
+function Conditions({ descriptif: d }: { descriptif: DescriptifLogement }) {
+  const c = d.conditions ?? {};
+  const s = d.sejour ?? {};
+  const lignes = [
+    { libelle: 'Durée du séjour', valeur: [s.nuitsMin ? `${pluriel(s.nuitsMin, 'nuit')} minimum` : '', s.nuitsMax ? `${s.nuitsMax} maximum` : ''].filter(Boolean).join(', ') },
+    { libelle: 'Arrivée', valeur: c.arriveeJusqua ? `Jusqu’à ${c.arriveeJusqua}` : '' },
+    { libelle: 'Animaux', valeur: permis(c.animaux, 'Acceptés', 'Non acceptés') },
+    { libelle: 'Fumer', valeur: permis(c.fumeur, 'Autorisé', 'Interdit') },
+    { libelle: 'Fêtes', valeur: permis(c.fetes, 'Autorisées', 'Interdites') },
+    { libelle: 'Enfants', valeur: [permis(c.enfants, 'Bienvenus', 'Non adapté'), c.ageMinEnfants ? `dès ${c.ageMinEnfants} ans` : ''].filter(Boolean).join(', ') },
+    { libelle: 'Heures de calme', valeur: c.calme ? `${c.calme.debut} – ${c.calme.fin}` : '' },
+    { libelle: 'Réservation', valeur: s.reservationInstantanee === undefined ? '' : s.reservationInstantanee ? 'Instantanée' : 'Sur demande' },
+    { libelle: 'Annulation', valeur: c.annulation ?? '' },
+  ].filter((x) => x.valeur);
+  if (!lignes.length) return null;
+  return (
+    <Card>
+      <CardHeader titre="Conditions" />
+      <dl className="divide-y divide-(--lm-bord)">
+        {lignes.map((x) => (
+          <Ligne key={x.libelle} libelle={x.libelle}>
+            {x.valeur}
+          </Ligne>
+        ))}
+      </dl>
+    </Card>
   );
 }

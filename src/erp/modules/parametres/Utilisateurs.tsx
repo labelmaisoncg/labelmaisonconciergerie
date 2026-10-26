@@ -9,27 +9,31 @@ import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Inpu
 const ROLES: { role: RoleUtilisateur; description: string; acces: string[] }[] = [
   {
     role: 'gerant',
-    description: 'Pilote la société : propriétaires, mandats, finance, paramètres.',
-    acces: ['Tous les modules', 'Finance et relevés', 'Utilisateurs et intégrations'],
+    description: 'Pilote tout, y compris l’équipe et les plateformes.',
+    acces: ['Tous les modules', 'Équipe et plateformes'],
   },
   {
     role: 'operations',
-    description: 'Fait tourner l’exploitation au quotidien.',
-    acces: ['Réservations, messagerie', 'Ménages, linge, incidents', 'Prestataires, paiements'],
+    description: 'Fait tourner le quotidien.',
+    acces: ['Logements et réservations', 'Messagerie et agent', 'CRM'],
   },
   {
     role: 'prestataire',
-    description: 'Accès limité à ses missions : checklist, photos avant/après, linge.',
-    acces: ['Ses missions uniquement', 'Aucune donnée financière', 'Aucune donnée propriétaire'],
+    description: 'Ancien accès des prestataires de ménage (le ménage passe désormais par BNB Cleaning).',
+    acces: ['Aucun accès pour l’instant'],
   },
   {
     role: 'lecture',
     description: 'Consultation sans modification, par exemple l’expert-comptable.',
-    acces: ['Tableaux et relevés en lecture', 'Aucune action'],
+    acces: ['Tout en lecture', 'Aucune action'],
   },
 ];
 
-const TON_ROLE = { gerant: 'or', operations: 'info', prestataire: 'neutre', lecture: 'neutre' } as const;
+const TON_ROLE = { gerant: 'or', operations: 'neutre', prestataire: 'neutre', lecture: 'neutre' } as const;
+
+/** Rôles proposés : le rôle prestataire n'est plus attribué (gardé s'il l'est déjà). */
+const rolesProposes = (actuel?: RoleUtilisateur) =>
+  ROLES.filter((r) => r.role !== 'prestataire' || r.role === actuel).map((r) => ({ valeur: r.role, libelle: LIBELLES.role[r.role] }));
 
 export default function Utilisateurs() {
   const d = useErp();
@@ -72,8 +76,11 @@ export default function Utilisateurs() {
       titre: 'Utilisateur',
       rendu: (u) => (
         <span className="flex items-center gap-2.5">
-          <Avatar nom={u.nom} />
-          <span className="min-w-0">
+          {/* Sur téléphone, sans avatar : nom, rôle et retrait tiennent dans la largeur. */}
+          <span className="hidden sm:block">
+            <Avatar nom={u.nom} />
+          </span>
+          <span className="max-w-[6.5rem] min-w-0 sm:max-w-none">
             <span className="block font-medium">
               {u.nom}
               {u.id === d.utilisateur.id && <span className="ml-1.5 text-[12px] font-normal text-(--lm-encre-3)">(vous)</span>}
@@ -89,12 +96,12 @@ export default function Utilisateurs() {
       titre: 'Rôle',
       rendu: (u) =>
         peutModifier ? (
-          <div className="w-44">
+          <div className="w-[8.75rem] sm:w-44">
             <Select
               aria-label={`Rôle de ${u.nom}`}
               value={u.role}
               onChange={(e) => changerRole(u, e.target.value as RoleUtilisateur)}
-              options={ROLES.map((r) => ({ valeur: r.role, libelle: LIBELLES.role[r.role] }))}
+              options={rolesProposes(u.role)}
             />
           </div>
         ) : (
@@ -151,7 +158,7 @@ export default function Utilisateurs() {
                 <Select
                   value={nouveau.role}
                   onChange={(e) => setNouveau((n) => ({ ...n, role: e.target.value as RoleUtilisateur }))}
-                  options={ROLES.map((r) => ({ valeur: r.role, libelle: LIBELLES.role[r.role] }))}
+                  options={rolesProposes()}
                 />
               </Field>
               <Button type="submit" variant="primary" icone={<UserPlus />}>
@@ -165,11 +172,11 @@ export default function Utilisateurs() {
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
           {d.mode === 'reel'
-            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres. Le rôle prestataire n’a pas encore d’accès.'
+            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
             : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.'}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {ROLES.map((r) => (
+          {ROLES.filter((r) => r.role !== 'prestataire' || d.utilisateurs.some((u) => u.role === 'prestataire')).map((r) => (
             <div key={r.role} className="rounded-lg border border-(--lm-bord) p-3">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[14px] font-semibold">{LIBELLES.role[r.role]}</p>

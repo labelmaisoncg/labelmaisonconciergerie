@@ -11,7 +11,7 @@
  *    part d'appels Repull), demande à Claude une décision en JSON strict :
  *    répondre (le message part chez le voyageur par Repull, auteur « agent »)
  *    ou transmettre à l'équipe (fil « escaladé » avec la raison et un résumé,
- *    visible dans « Pour vous » et « Ce que l'agent a fait ») ;
+ *    visible dans « À répondre » et « Activité ») ;
  * 4. prévient sur Telegram si c'est branché (alerte à chaque transmission,
  *    copie de chaque réponse, relance quand personne n'a répondu à temps).
  *
@@ -39,7 +39,7 @@ import { BudgetEpuise, DelaiEcoule, ErreurRepull, lireEtat, releverConversations
 import type { ContexteConnexion } from './repull-connexion.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi, nomPlateforme } from './messagerie-envoi.js';
 import { REGLAGES_AGENT_DEFAUT, reglagesAgent } from './reglages.js';
-import type { FilMessages, Journal, Logement, Message, RaisonEscalade, ReglagesAgent, Reservation, SuiviAgent } from './types';
+import type { DescriptifLogement, FilMessages, Journal, Logement, Message, RaisonEscalade, ReglagesAgent, Reservation, SuiviAgent } from './types';
 
 type Fetch = typeof fetch;
 
@@ -49,7 +49,7 @@ export const MODELE_AGENT_DEFAUT = 'claude-haiku-4-5-20251001';
 export const MAX_FILS_PAR_PASSAGE = 5;
 /** Messages de la conversation donnés à Claude (les plus récents). */
 const MESSAGES_CONTEXTE = 20;
-/** Un message du voyageur plus ancien n'est plus traité par l'agent (il reste dans « Pour vous »). */
+/** Un message du voyageur plus ancien n'est plus traité par l'agent (il reste dans « À répondre »). */
 const AGE_MAX_MESSAGE_MS = 48 * 3_600_000;
 /** Temps à garder pour traiter une conversation (Claude + Repull + écritures). */
 const TEMPS_PAR_FIL_MS = 15_000;
@@ -299,6 +299,37 @@ const ligne = (libelle: string, v: unknown) => {
   return t ? `- ${libelle} : ${t}` : '';
 };
 
+const permis = (v: boolean | undefined, oui: string, non: string) => (v === undefined ? '' : v ? oui : non);
+
+/** Ce que dit l'annonce sur les plateformes (couchage, conditions, textes), sans prix : ils varient. */
+function lignesAnnonce(d: DescriptifLogement | undefined): string[] {
+  if (!d) return [];
+  const c = d.conditions ?? {};
+  const s = d.sejour ?? {};
+  const t = d.textes ?? {};
+  const court = (v: string | undefined, max = 900) => (v && v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v ?? '');
+  return [
+    ligne('Couchage', (d.couchage ?? []).map((x) => `${x.piece} : ${x.lits}`).join(' ; ')),
+    ligne('Salles de bain', d.sallesDeBain ? String(d.sallesDeBain).replace('.', ',') : ''),
+    ligne('Animaux', permis(c.animaux, 'acceptés', 'non acceptés')),
+    ligne('Fumer', permis(c.fumeur, 'autorisé', 'interdit')),
+    ligne('Fêtes et événements', permis(c.fetes, 'autorisés', 'interdits')),
+    ligne(
+      'Enfants',
+      [permis(c.enfants, 'bienvenus', 'non adapté aux enfants'), c.ageMinEnfants ? `à partir de ${c.ageMinEnfants} ans` : '', permis(c.bebes, 'bébés bienvenus', 'non adapté aux bébés')].filter(Boolean).join(', '),
+    ),
+    ligne('Heures de calme', c.calme ? `de ${c.calme.debut} à ${c.calme.fin}` : ''),
+    ligne('Arrivée', [c.arrivee ? `en autonomie (${c.arrivee.toLowerCase()})` : '', c.arriveeJusqua ? `jusqu’à ${c.arriveeJusqua}` : ''].filter(Boolean).join(', ')),
+    ligne('Durée de séjour', [s.nuitsMin ? `${s.nuitsMin} nuit${s.nuitsMin > 1 ? 's' : ''} minimum` : '', s.nuitsMax ? `${s.nuitsMax} nuits maximum` : ''].filter(Boolean).join(', ')),
+    ligne('Annulation (conditions de la plateforme)', c.annulation ?? ''),
+    ligne('Description de l’annonce', court([t.resume, t.description].filter(Boolean).join(' — '))),
+    ligne('Espace', court(t.espace, 600)),
+    ligne('Accès des voyageurs (parties du logement)', court(t.accesVoyageurs, 400)),
+    ligne('Le quartier', court(t.quartier, 600)),
+    ligne('Transports', court(t.transports, 400)),
+  ].filter(Boolean);
+}
+
 /** Contexte donné à Claude pour une conversation (texte). */
 export function construireContexte(
   fil: FilMessages,
@@ -330,6 +361,7 @@ export function construireContexte(
         ligne('Règles de la maison', f.regles),
         ligne('Équipements', f.equipements),
         ligne('À savoir', f.aSavoir ?? ''),
+        ...lignesAnnonce(logement?.descriptif),
         ...(codes.ok
           ? [ligne('Accès et remise des clés', f.acces), ligne('Réseau wifi', f.wifiNom), ligne('Mot de passe wifi', f.wifiCode)]
           : [`- Accès, codes et wifi : pas encore communicables (${codes.raison}).`]),

@@ -29,6 +29,7 @@ import type {
   CanalReservation,
   Centimes,
   DateISO,
+  DescriptifLogement,
   FicheLogement,
   FilMessages,
   Horodatage,
@@ -94,7 +95,75 @@ export interface RepullListingContent {
   name?: string | null;
   summary?: string | null;
   description?: string | null;
+  space?: string | null;
+  guestAccess?: string | null;
+  neighborhoodOverview?: string | null;
+  transit?: string | null;
+  gettingAround?: string | null;
   houseRules?: string | null;
+}
+
+/** ListingContentPhoto (?include=photos), dans l'ordre d'affichage. */
+export interface RepullListingPhoto {
+  url?: string;
+  thumbnailUrl?: string | null;
+  caption?: string | null;
+  sortOrder?: number;
+}
+
+/** ListingRoom (?include=rooms). */
+export interface RepullListingRoom {
+  type?: string;
+  name?: string | null;
+  number?: number | null;
+  beds?: { type?: string; quantity?: number }[];
+}
+
+/** ListingPolicies (?include=policies). */
+export interface RepullListingPolicies {
+  cancellationPolicy?: string | null;
+  houseRules?: string | null;
+  checkIn?: { method?: string | null; instructions?: string | null; from?: string | null; until?: string | null };
+  checkOut?: { until?: string | null };
+  allowsPets?: boolean | null;
+  allowsSmoking?: boolean | null;
+  allowsEvents?: boolean | null;
+  allowsChildren?: boolean | null;
+  allowsInfants?: boolean | null;
+  childrenMinAge?: number | null;
+  quietHours?: { start?: string; end?: string } | null;
+  securityDeposit?: number | null;
+}
+
+/** ListingRules (?include=rules). */
+export interface RepullListingRules {
+  minNights?: number | null;
+  maxNights?: number | null;
+  advanceNoticeHours?: number | null;
+  instantBook?: string | null;
+}
+
+/** ListingPricingSettings (?include=pricing) : prix de base, en unités de la devise. */
+export interface RepullListingPricing {
+  currency?: string | null;
+  basePrice?: number | null;
+  weekendPrice?: number | null;
+  cleaningFee?: number | null;
+  extraGuestFee?: number | null;
+  guestsIncluded?: number | null;
+  securityDeposit?: number | null;
+  weeklyDiscountPercent?: number | null;
+  monthlyDiscountPercent?: number | null;
+}
+
+/** ListingFee (?include=fees). */
+export interface RepullListingFee {
+  type?: string;
+  name?: string | null;
+  amount?: number;
+  amountType?: 'flat' | 'percent' | string;
+  chargedPer?: 'stay' | 'night' | 'guest' | 'guest_night' | string;
+  optional?: boolean;
 }
 
 /** GET /v1/listings/{id}/photos. */
@@ -114,6 +183,8 @@ export interface RepullDisponibilite {
 export interface RepullListing {
   id: string;
   name?: string;
+  /** Titre vu par les voyageurs (name est le surnom interne de l'hôte). */
+  publicName?: string | null;
   address?: { street?: string | null; city?: string | null };
   thumbnailUrl?: string | null;
   status?: 'active' | 'inactive' | 'archived' | string;
@@ -121,6 +192,12 @@ export interface RepullListing {
   amenities?: RepullAmenity[];
   content?: RepullListingContent | null;
   details?: RepullListingDetails | null;
+  photos?: RepullListingPhoto[];
+  rooms?: RepullListingRoom[];
+  policies?: RepullListingPolicies | null;
+  rules?: RepullListingRules | null;
+  pricing?: RepullListingPricing | null;
+  fees?: RepullListingFee[];
   createdAt?: string;
   updatedAt?: string;
 }
@@ -475,12 +552,15 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
   const fiche: FicheLogement = { ...base.fiche, equipements: [...(base.fiche?.equipements ?? [])] };
   if (texte(d?.wifiNetwork)) fiche.wifiNom = texte(d?.wifiNetwork);
   if (texte(d?.wifiPassword)) fiche.wifiCode = texte(d?.wifiPassword);
-  const arrivee = heure(d?.checkInTimeStart);
+  const pol = l.policies ?? undefined;
+  const arrivee = heure(d?.checkInTimeStart) ?? heure(pol?.checkIn?.from);
   if (arrivee) fiche.heureArrivee = arrivee;
-  const depart = heure(d?.checkOutTime);
+  const depart = heure(d?.checkOutTime) ?? heure(pol?.checkOut?.until);
   if (depart) fiche.heureDepart = depart;
-  if (!texte(fiche.regles) && texte(c?.houseRules)) fiche.regles = texte(c?.houseRules);
-  if (!texte(fiche.acces) && texte(d?.directions)) fiche.acces = texte(d?.directions);
+  const regles = texte(c?.houseRules) || texte(pol?.houseRules);
+  if (!texte(fiche.regles) && regles) fiche.regles = regles;
+  const acces = texte(d?.directions) || texte(pol?.checkIn?.instructions);
+  if (!texte(fiche.acces) && acces) fiche.acces = acces;
   if (!fiche.equipements.length && l.amenities?.length) {
     fiche.equipements = l.amenities.filter((a) => a.isPresent && texte(a.amenityKey)).map((a) => libelleEquipement(a.amenityKey));
   }
@@ -506,6 +586,12 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
 
   // Photo : celle de l'annonce, sauf si l'équipe a déposé la sienne.
   if (texte(l.thumbnailUrl) && !(base.photoUrl ?? '').startsWith('stockage://')) suivant.photoUrl = texte(l.thumbnailUrl);
+  // Galerie : les photos de l'annonce quand la plateforme les renvoie (sinon celles déjà lues).
+  const photos = photosAnnonce(l.photos);
+  if (photos.length) suivant.photos = photos;
+  const descriptif = versDescriptif(l, base.descriptif);
+  if (descriptif) suivant.descriptif = descriptif;
+  else delete suivant.descriptif;
 
   // Statut : seulement quand l'annonce change d'état chez Repull (un logement
   // relié à la main garde le sien au premier passage).
@@ -802,15 +888,257 @@ export const JOURS_TARIFS = 60;
 /** Photos gardées par logement (galerie de la fiche). */
 export const MAX_PHOTOS = 24;
 
-/** Photos d'une annonce : adresses https seulement, sans doublon, 24 au plus. */
-export function versPhotos(r: RepullPhotos | null | undefined): string[] {
+/** Adresses de photos : https seulement, sans doublon, 24 au plus. */
+function adressesPhotos(liste: { url?: unknown }[]): string[] {
   const vues = new Set<string>();
-  for (const p of Array.isArray(r?.photos) ? r!.photos : []) {
+  for (const p of liste) {
     const u = typeof p?.url === 'string' ? p.url.trim() : '';
     if (/^https:\/\/[^\s"'<>]+$/i.test(u)) vues.add(u);
     if (vues.size >= MAX_PHOTOS) break;
   }
   return [...vues];
+}
+
+/** Photos déposées chez Repull (GET /v1/listings/{id}/photos). */
+export function versPhotos(r: RepullPhotos | null | undefined): string[] {
+  return adressesPhotos(Array.isArray(r?.photos) ? r!.photos : []);
+}
+
+/** Photos de l'annonce (?include=photos), dans l'ordre d'affichage de la plateforme. */
+export function photosAnnonce(liste: RepullListingPhoto[] | null | undefined): string[] {
+  if (!Array.isArray(liste)) return [];
+  const ordre = (p: RepullListingPhoto) => (typeof p?.sortOrder === 'number' && Number.isFinite(p.sortOrder) ? p.sortOrder : Infinity);
+  return adressesPhotos(liste.map((p, i) => ({ p, i })).sort((a, b) => ordre(a.p) - ordre(b.p) || a.i - b.i).map((x) => x.p));
+}
+
+/* ---------------------------------------------------------- descriptif */
+
+/** Longueur gardée par texte d'annonce (fiche et contexte de l'agent). */
+export const MAX_TEXTE_ANNONCE = 1500;
+
+const borne = (v: unknown, max = MAX_TEXTE_ANNONCE): string | undefined => {
+  const t = texte(v).replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n');
+  if (!t) return undefined;
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+};
+const oui = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined);
+const entierPositif = (v: unknown): number | undefined => {
+  const n = nombre(v);
+  return n !== undefined && n >= 0 ? Math.round(n) : undefined;
+};
+const prixCentimes = (v: unknown): Centimes | undefined => {
+  const n = nombre(v);
+  return n !== undefined && n >= 0 ? centimes(n) : undefined;
+};
+/** Objet sans clé vide (undefined, objet vide, liste vide) ; undefined s'il ne reste rien. */
+function compact<T extends object>(o: T): T | undefined {
+  const r: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(o)) {
+    if (v === undefined || v === '') continue;
+    if (Array.isArray(v) && !v.length) continue;
+    if (v && typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length) continue;
+    r[k] = v;
+  }
+  return Object.keys(r).length ? (r as T) : undefined;
+}
+
+const LITS: Record<string, [string, string]> = {
+  king_bed: ['lit king size', 'lits king size'],
+  queen_bed: ['lit queen size', 'lits queen size'],
+  double_bed: ['lit double', 'lits doubles'],
+  single_bed: ['lit simple', 'lits simples'],
+  sofa_bed: ['canapé-lit', 'canapés-lits'],
+  couch: ['canapé', 'canapés'],
+  bunk_bed: ['lit superposé', 'lits superposés'],
+  crib: ['lit bébé', 'lits bébé'],
+  toddler_bed: ['lit enfant', 'lits enfant'],
+  air_mattress: ['matelas gonflable', 'matelas gonflables'],
+  floor_mattress: ['matelas au sol', 'matelas au sol'],
+  small_double_bed: ['petit lit double', 'petits lits doubles'],
+  hammock: ['hamac', 'hamacs'],
+  water_bed: ['lit à eau', 'lits à eau'],
+};
+const PIECES: Record<string, string> = {
+  bedroom: 'Chambre',
+  living_room: 'Salon',
+  common_space: 'Espace commun',
+  common_spaces: 'Espace commun',
+  office: 'Bureau',
+  kitchen: 'Cuisine',
+};
+const ANNULATION: Record<string, string> = {
+  flexible: 'Flexible',
+  moderate: 'Modérée',
+  firm: 'Ferme',
+  limited: 'Limitée',
+  strict: 'Stricte',
+  strict_14_with_grace_period: 'Stricte',
+  super_strict_30: 'Très stricte',
+  super_strict_60: 'Très stricte',
+  non_refundable: 'Non remboursable',
+};
+const ARRIVEE: Record<string, string> = {
+  lockbox: 'Boîte à clés',
+  smartlock: 'Serrure connectée',
+  keypad: 'Digicode',
+  doorman: 'Gardien',
+  host_greets: 'Accueil sur place',
+  building_staff: 'Personnel de l’immeuble',
+};
+const FRAIS: Record<string, string> = {
+  pet: 'Animal',
+  linen: 'Linge',
+  resort: 'Frais de séjour',
+  management: 'Frais de gestion',
+  community: 'Frais de résidence',
+  extra_guest: 'Voyageur supplémentaire',
+};
+const PAR: Record<string, string> = { stay: 'par séjour', night: 'par nuit', guest: 'par voyageur', guest_night: 'par voyageur et par nuit' };
+
+/** Clé en clair (« strict_14 » → « Strict 14 ») quand elle n'est pas connue. */
+const enClair = (cle: string) => {
+  const t = cle.replace(/[_-]+/g, ' ').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : '';
+};
+
+function versCouchage(rooms: RepullListingRoom[]): { piece: string; lits: string }[] {
+  const res: { piece: string; lits: string }[] = [];
+  for (const r of rooms) {
+    const lits = (Array.isArray(r?.beds) ? r.beds : [])
+      .map((b) => {
+        const n = entierPositif(b?.quantity) ?? 1;
+        const type = texte(b?.type).toLowerCase();
+        if (!n || !type) return '';
+        const [un, plusieurs] = LITS[type] ?? [enClair(type).toLowerCase(), enClair(type).toLowerCase()];
+        return `${n} ${n > 1 ? plusieurs : un}`;
+      })
+      .filter(Boolean);
+    if (!lits.length) continue;
+    const type = texte(r?.type).toLowerCase();
+    const num = entierPositif(r?.number);
+    const piece = texte(r?.name) || `${PIECES[type] ?? 'Autre pièce'}${type === 'bedroom' && num ? ` ${num}` : ''}`;
+    res.push({ piece, lits: lits.join(', ') });
+    if (res.length >= 20) break;
+  }
+  return res;
+}
+
+function versFrais(fees: RepullListingFee[], devise: string): string[] {
+  const res: string[] = [];
+  for (const f of fees) {
+    const type = texte(f?.type).toLowerCase();
+    // Le ménage est déjà dans les prix de base.
+    if (!type || type === 'cleaning') continue;
+    const montant = nombre(f?.amount);
+    if (montant === undefined || montant < 0) continue;
+    const nom = FRAIS[type] ?? (texte(f?.name) || enClair(type));
+    const valeur =
+      f.amountType === 'percent'
+        ? `${String(Math.round(montant * 10) / 10).replace('.', ',')} %`
+        : `${(Math.round(montant * 100) / 100).toLocaleString('fr-FR', { maximumFractionDigits: 2 })} ${devise === 'EUR' ? '€' : devise}`;
+    const par = PAR[texte(f?.chargedPer)] ?? '';
+    res.push(`${nom} : ${valeur}${par ? ` ${par}` : ''}${f.optional ? ' (en option)' : ''}`);
+    if (res.length >= 10) break;
+  }
+  return res;
+}
+
+/**
+ * Ce que l'annonce dit du logement. Chaque partie (textes, couchage,
+ * conditions, séjour, prix, frais) n'est remplacée que quand Repull la
+ * renvoie : un relevé sans ?include=… garde la dernière lecture.
+ */
+export function versDescriptif(l: RepullListing, avant: DescriptifLogement | undefined): DescriptifLogement | undefined {
+  const r: DescriptifLogement = { ...(avant ?? {}) };
+  const titre = borne(l.publicName, 200);
+  if (titre) r.titre = titre;
+  else if ('publicName' in l) delete r.titre;
+
+  if ('content' in l) {
+    const c = l.content ?? undefined;
+    const textes = c
+      ? compact({
+          resume: borne(c.summary),
+          description: borne(c.description),
+          espace: borne(c.space),
+          accesVoyageurs: borne(c.guestAccess),
+          quartier: borne(c.neighborhoodOverview),
+          transports: borne(c.transit) ?? borne(c.gettingAround),
+        })
+      : undefined;
+    if (textes) r.textes = textes;
+    else delete r.textes;
+  }
+  if (Array.isArray(l.rooms)) {
+    const couchage = versCouchage(l.rooms);
+    if (couchage.length) r.couchage = couchage;
+    else delete r.couchage;
+  }
+  if ('details' in l) {
+    const sdb = Number.parseFloat(texte(l.details?.bathrooms).replace(',', '.'));
+    if (Number.isFinite(sdb) && sdb > 0) r.sallesDeBain = sdb;
+    else delete r.sallesDeBain;
+  }
+  if ('policies' in l) {
+    const p = l.policies ?? undefined;
+    const annulation = texte(p?.cancellationPolicy).toLowerCase();
+    const methode = texte(p?.checkIn?.method).toLowerCase();
+    const calme = heure(p?.quietHours?.start) && heure(p?.quietHours?.end) ? { debut: heure(p?.quietHours?.start)!, fin: heure(p?.quietHours?.end)! } : undefined;
+    const conditions = p
+      ? compact({
+          animaux: oui(p.allowsPets),
+          fumeur: oui(p.allowsSmoking),
+          fetes: oui(p.allowsEvents),
+          enfants: oui(p.allowsChildren),
+          bebes: oui(p.allowsInfants),
+          ageMinEnfants: entierPositif(p.childrenMinAge) || undefined,
+          calme,
+          annulation: annulation ? ANNULATION[annulation] ?? enClair(annulation) : undefined,
+          arrivee: methode && methode !== 'other' ? ARRIVEE[methode] ?? enClair(methode) : undefined,
+          arriveeJusqua: heure(p.checkIn?.until),
+        })
+      : undefined;
+    if (conditions) r.conditions = conditions;
+    else delete r.conditions;
+  }
+  if ('rules' in l) {
+    const u = l.rules ?? undefined;
+    const direct = texte(u?.instantBook).toLowerCase();
+    const sejour = u
+      ? compact({
+          nuitsMin: entierPositif(u.minNights) || undefined,
+          nuitsMax: entierPositif(u.maxNights) || undefined,
+          preavisHeures: entierPositif(u.advanceNoticeHours),
+          reservationInstantanee: direct ? !['off', 'none', 'false', 'disabled', 'no'].includes(direct) : undefined,
+        })
+      : undefined;
+    if (sejour) r.sejour = sejour;
+    else delete r.sejour;
+  }
+  const devise = texte(l.pricing?.currency) || 'EUR';
+  if ('pricing' in l) {
+    const x = l.pricing ?? undefined;
+    const prix = x
+      ? compact({
+          nuit: prixCentimes(x.basePrice),
+          weekend: prixCentimes(x.weekendPrice),
+          menage: prixCentimes(x.cleaningFee),
+          voyageurSupplementaire: prixCentimes(x.extraGuestFee) || undefined,
+          voyageursInclus: entierPositif(x.guestsIncluded) || undefined,
+          caution: prixCentimes(x.securityDeposit ?? l.policies?.securityDeposit) || undefined,
+          remiseSemainePct: nombre(x.weeklyDiscountPercent) || undefined,
+          remiseMoisPct: nombre(x.monthlyDiscountPercent) || undefined,
+        })
+      : undefined;
+    if (prix) r.prix = { devise, ...prix };
+    else delete r.prix;
+  }
+  if (Array.isArray(l.fees)) {
+    const frais = versFrais(l.fees, devise);
+    if (frais.length) r.frais = frais;
+    else delete r.frais;
+  }
+  return compact(r);
 }
 
 /** Prix par nuit lus sur les plateformes (centimes) ; jours sans prix ou mal datés écartés. */

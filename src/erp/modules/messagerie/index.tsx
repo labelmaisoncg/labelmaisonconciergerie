@@ -2,32 +2,31 @@
  * Messagerie (/erp/messagerie) : les conversations voyageurs
  * (Airbnb, Booking, direct), ce que l'agent a fait, et ses réglages.
  *
- * - /erp/messagerie            Conversations (bureau : liste + conversation + contexte)
+ * - /erp/messagerie            Conversations (bureau : liste + conversation ; séjour à droite sur grand écran)
  * - /erp/messagerie/:filId     une conversation (mobile : plein écran)
- * - /erp/messagerie/activite   Ce que l'agent a fait
- * - /erp/messagerie/agent      Configurer mon agent
+ * - /erp/messagerie/activite   Activité de l'agent
+ * - /erp/messagerie/agent      Réglages de l'agent
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { MessagesSquare, Plug } from 'lucide-react';
+import { ArrowLeft, MessagesSquare, Plug } from 'lucide-react';
 import { ButtonLink, EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
 import { useErp } from '../../data/store';
-import { reglagesAgent } from '../../data/reglages';
 import { logementById, reservationById } from '../../data/selectors';
 import { Activite } from './_composants/Activite';
 import { Configurer } from './_composants/Configurer';
 import { Conversation } from './_composants/Conversation';
+import { PastilleAgent } from './_composants/EtatAgent';
 import { ListeFils } from './_composants/ListeFils';
 import { PanneauContexte } from './_composants/PanneauContexte';
-import { correspond, enAttenteHumain, type FiltreFil } from './_composants/logique';
+import { attendEquipe, correspond, type FiltreFil } from './_composants/logique';
+import { useHauteurDisponible } from './_composants/useHauteurDisponible';
 
 type Onglet = 'conversations' | 'activite' | 'agent';
 
 export default function ModuleMessagerie() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const d = useErp();
-  const reglages = reglagesAgent(d);
   const segment = pathname.replace(/^\/erp\/messagerie\/?/, '').split('/')[0] ?? '';
   const onglet: Onglet = segment === 'activite' ? 'activite' : segment === 'agent' ? 'agent' : 'conversations';
   // Sur mobile, une conversation ouverte prend tout l'écran.
@@ -36,27 +35,16 @@ export default function ModuleMessagerie() {
   return (
     <>
       <div className={cn(filOuvert && 'max-lg:hidden')}>
-        <PageHeader
-          titre="Messagerie"
-          actions={
-            <Link
-              to="/erp/messagerie/agent"
-              className="inline-flex h-9 items-center gap-2 rounded-full border border-(--lm-bord) bg-(--lm-surface) px-3.5 text-[13px] font-medium text-(--lm-encre) hover:border-(--lm-or-anneau)"
-            >
-              <span aria-hidden className={cn('size-2 rounded-full', reglages.actif ? 'bg-(--lm-succes)' : 'bg-(--lm-alerte)')} />
-              {reglages.actif ? 'Votre agent est actif' : 'Votre agent est en pause'}
-            </Link>
-          }
-        />
+        <PageHeader titre="Messagerie" actions={<PastilleAgent />} />
         <Tabs
           label="Sections de la messagerie"
           actif={onglet}
           onChange={(c) => navigate(c === 'conversations' ? '/erp/messagerie' : `/erp/messagerie/${c}`)}
           onglets={[
-            // Le nombre de voyageurs en attente est déjà sur le menu latéral et sur le filtre « Pour vous ».
+            // Le nombre de voyageurs en attente est sur le menu latéral et sur le filtre « À répondre ».
             { cle: 'conversations', libelle: 'Conversations' },
-            { cle: 'activite', libelle: 'Ce que l’agent a fait' },
-            { cle: 'agent', libelle: 'Configurer mon agent' },
+            { cle: 'activite', libelle: 'Activité' },
+            { cle: 'agent', libelle: 'Réglages de l’agent' },
           ]}
         />
       </div>
@@ -74,16 +62,24 @@ function normaliser(s: string) {
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 }
 
+/**
+ * Boîte de réception. Ordinateur : un panneau à la hauteur de l'écran, la
+ * liste à gauche et la conversation à droite (le séjour en 3ᵉ colonne à partir
+ * de 1440 px). Mobile : la liste en pleine page, la conversation en plein écran.
+ */
 function Boite() {
   const { filId } = useParams();
   const d = useErp();
-  const [filtre, setFiltre] = useState<FiltreFil>(() => (enAttenteHumain(d.filsMessages).length ? 'a_traiter' : 'tous'));
+  const [filtre, setFiltre] = useState<FiltreFil>(() => (d.filsMessages.some(attendEquipe) ? 'a_traiter' : 'tous'));
   const [recherche, setRecherche] = useRechercheUrl();
+  // 24 px : la marge du bas de page sur ordinateur.
+  const [boite, hauteur] = useHauteurDisponible<HTMLDivElement>(24);
   const logements = useMemo(() => new Map(d.logements.map((l) => [l.id, l])), [d.logements]);
 
   const tries = useMemo(() => [...d.filsMessages].sort((a, b) => b.dernierMessageLe.localeCompare(a.dernierMessageLe)), [d.filsMessages]);
   const visibles = useMemo(() => {
     const q = normaliser(recherche.trim());
+    // Une recherche porte sur toutes les conversations, quel que soit le filtre.
     return tries.filter(
       (f) =>
         (q ? true : correspond(f, filtre)) &&
@@ -98,63 +94,77 @@ function Boite() {
   const logement = fil ? logementById(d, fil.logementId) : undefined;
   const reservation = fil ? reservationById(d, fil.reservationId) : undefined;
 
+  if (d.filsMessages.length === 0) {
+    return (
+      <EmptyState
+        icone={<MessagesSquare />}
+        titre="Pas encore de conversation"
+        description="Les messages des voyageurs arrivent ici dès qu’une plateforme est connectée."
+        action={
+          <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
+            Connecter mes plateformes
+          </ButtonLink>
+        }
+      />
+    );
+  }
+
   return (
-    <>
-      <div className="grid overflow-hidden rounded-xl border border-(--lm-bord) bg-(--lm-surface) shadow-(--lm-ombre) lg:h-[calc(100vh-250px)] lg:min-h-[540px] lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[310px_minmax(0,1fr)_280px]">
-        <aside className={cn('min-h-0 border-(--lm-bord) lg:border-r', fil ? 'max-lg:hidden' : 'max-lg:max-h-[75vh]')} aria-label="Liste des conversations">
-          <ListeFils
-            fils={visibles}
-            tous={d.filsMessages}
-            logements={logements}
-            actifId={fil?.id}
-            filtre={filtre}
-            onFiltre={setFiltre}
-            recherche={recherche}
-            onRecherche={setRecherche}
-          />
-        </aside>
+    <div
+      ref={boite}
+      style={hauteur ? ({ '--hauteur-boite': `${hauteur}px` } as CSSProperties) : undefined}
+      className={cn(
+        'lg:grid lg:h-(--hauteur-boite) lg:grid-cols-[340px_minmax(0,1fr)] lg:overflow-hidden lg:rounded-2xl lg:border lg:border-(--lm-bord) lg:bg-(--lm-surface) lg:shadow-(--lm-ombre)',
+        fil && 'min-[90rem]:grid-cols-[340px_minmax(0,1fr)_300px]',
+      )}
+    >
+      <aside className={cn('min-h-0 lg:border-r lg:border-(--lm-bord)', filId && 'max-lg:hidden')} aria-label="Liste des conversations">
+        <ListeFils
+          fils={visibles}
+          tous={d.filsMessages}
+          logements={logements}
+          actifId={fil?.id}
+          filtre={filtre}
+          onFiltre={setFiltre}
+          recherche={recherche}
+          onRecherche={setRecherche}
+        />
+      </aside>
 
-        <section className={cn('min-h-0 min-w-0', !fil && 'max-lg:hidden', fil && 'max-lg:h-[calc(100dvh-120px)]')} aria-label="Conversation">
-          {fil ? (
-            <Conversation fil={fil} logement={logement} reservation={reservation} />
-          ) : (
-            <div className="grid h-full place-items-center p-6">
-              {!filId && d.filsMessages.length === 0 ? (
-                <EmptyState
-                  icone={<MessagesSquare />}
-                  titre="Pas encore de conversation"
-                  description="Ils arrivent ici dès qu’une plateforme est connectée."
-                  action={
-                    <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
-                      Connecter mes plateformes
-                    </ButtonLink>
-                  }
-                  className="border-none"
-                />
-              ) : (
-                <EmptyState
-                  icone={<MessagesSquare />}
-                  titre={filId ? 'Cette conversation n’existe plus' : 'Choisissez une conversation'}
-                  className="border-none"
-                />
-              )}
+      <section
+        className={cn('min-h-0 min-w-0 bg-(--lm-surface)', filId ? 'max-lg:fixed max-lg:inset-0 max-lg:z-40' : 'max-lg:hidden')}
+        aria-label="Conversation"
+      >
+        {fil ? (
+          <Conversation key={fil.id} fil={fil} logement={logement} reservation={reservation} />
+        ) : filId ? (
+          <div className="flex h-full flex-col">
+            <div className="flex h-14 shrink-0 items-center border-b border-(--lm-bord) px-2 lg:hidden">
+              <Link to="/erp/messagerie" aria-label="Retour aux conversations" className="grid size-10 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis)">
+                <ArrowLeft className="size-5" />
+              </Link>
             </div>
-          )}
-        </section>
-
-        {fil && (
-          <aside className="lm-defilement min-h-0 overflow-y-auto border-(--lm-bord) max-xl:hidden xl:border-l" aria-label="À propos du voyageur">
-            <PanneauContexte fil={fil} logement={logement} reservation={reservation} />
-          </aside>
+            <div className="grid flex-1 place-items-center p-6">
+              <EmptyState
+                icone={<MessagesSquare />}
+                titre="Cette conversation n’existe plus"
+                action={<ButtonLink to="/erp/messagerie">Voir les conversations</ButtonLink>}
+                className="border-none"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="grid h-full place-items-center p-6">
+            <EmptyState icone={<MessagesSquare />} titre="Choisissez une conversation" className="border-none" />
+          </div>
         )}
-      </div>
+      </section>
 
       {fil && (
-        <details className="mt-4 rounded-xl border border-(--lm-bord) bg-(--lm-surface) xl:hidden">
-          <summary className="cursor-pointer px-4 py-3 text-[13.5px] font-medium text-(--lm-encre)">Réservation, logement et codes d’accès</summary>
+        <aside className="lm-defilement hidden min-h-0 overflow-y-auto border-l border-(--lm-bord) min-[90rem]:block" aria-label="Séjour et logement">
           <PanneauContexte fil={fil} logement={logement} reservation={reservation} />
-        </details>
+        </aside>
       )}
-    </>
+    </div>
   );
 }

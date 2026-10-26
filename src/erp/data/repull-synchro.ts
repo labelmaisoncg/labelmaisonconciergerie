@@ -53,6 +53,7 @@ import {
   versLogement,
   versReservation,
   JOURS_TARIFS,
+  photosAnnonce,
   versPhotos,
   versTarifs,
   type RepullConversation,
@@ -71,6 +72,11 @@ import type { FilMessages, Id, Journal, Logement, Reservation } from './types';
 type Fetch = typeof fetch;
 
 export const BASE_REPULL = 'https://api.repull.dev';
+
+/** Lectures demandées avec les annonces (une seule page pour tous les logements). */
+export const INCLURE_ANNONCES = 'content,details,thumbnail,photos,rooms,policies,rules,pricing,fees';
+/** Lectures de base, si Repull refuse les précédentes. */
+const INCLURE_ANNONCES_REPLI = 'content,details,thumbnail';
 /** Date de départ d'un passage complet (updated_since : ordre stable, reprise possible). */
 const DEPUIS_TOUJOURS = '2000-01-01T00:00:00Z';
 /** Marge gardée avant l'échéance pour écrire et répondre. */
@@ -724,29 +730,46 @@ export class SessionRepull {
     await logements.ecrire(this.base, this.bilan.logements);
   }
 
-  /** Toutes les annonces (actives, désactivées, archivées). */
+  /**
+   * Toutes les annonces (actives, désactivées, archivées), avec en un seul
+   * appel par page leurs photos, description, couchage, conditions et prix de
+   * base (lecture seule). Si Repull refuse ces lectures (422), le relevé
+   * reprend avec les seules lectures de base.
+   */
   async phaseAnnonces(): Promise<void> {
     await this.chargerLogements();
-    for await (const page of this.repull.pages<RepullListing>('/v1/listings', { status: 'all', include: 'content,details,thumbnail' })) {
-      for (const l of page) {
-        if (l?.id === undefined || l?.id === null) continue;
-        if (this.retenue(l.id)) {
-          await this.poserAnnonce(l, true);
-          await this.enrichirAnnonce(String(l.id));
-        } else await this.mettreHorsSelection(String(l.id), l.status);
-      }
-      if (!this.tempsRestant()) break;
+    let pages = 0;
+    try {
+      await this.parcourirAnnonces(INCLURE_ANNONCES, () => pages++);
+    } catch (e) {
+      if (!(e instanceof ErreurRepull) || e.statut !== 422 || pages > 0) throw e;
+      await this.parcourirAnnonces(INCLURE_ANNONCES_REPLI);
     }
     await this.ecrireLogements();
   }
 
+  private async parcourirAnnonces(include: string, surPage?: () => void): Promise<void> {
+    for await (const page of this.repull.pages<RepullListing>('/v1/listings', { status: 'all', include })) {
+      surPage?.();
+      for (const l of page) {
+        if (l?.id === undefined || l?.id === null) continue;
+        if (this.retenue(l.id)) {
+          await this.poserAnnonce(l, true);
+          await this.enrichirAnnonce(String(l.id), photosAnnonce(l.photos).length > 0);
+        } else await this.mettreHorsSelection(String(l.id), l.status);
+      }
+      if (!this.tempsRestant()) break;
+    }
+  }
+
   /**
-   * Photos (une fois par semaine) et prix par nuit des JOURS_TARIFS prochains
-   * jours (à chaque relevé des annonces, une fois par jour) d'un logement
-   * choisi. Lectures seules, deux appels au plus, sautées quand la part
-   * d'appels ou le temps manque ; une réponse illisible ne change rien.
+   * Photos déposées chez Repull (une fois par semaine, seulement quand
+   * l'annonce n'a pas renvoyé les siennes) et prix par nuit des JOURS_TARIFS
+   * prochains jours (à chaque relevé des annonces) d'un logement choisi.
+   * Lectures seules, deux appels au plus, sautées quand la part d'appels ou le
+   * temps manque ; une réponse illisible ne change rien.
    */
-  private async enrichirAnnonce(idAnnonce: string): Promise<void> {
+  private async enrichirAnnonce(idAnnonce: string, photosDeLAnnonce: boolean): Promise<void> {
     const logements = await this.chargerLogements();
     const id = this.logementParRepull.get(idAnnonce);
     const l = id ? logements.get(id) : undefined;
@@ -755,7 +778,7 @@ export class SessionRepull {
     const maintenant = horodatageParis(this.maintenant());
     const lues = l.repull?.photosLuesLe;
     const assez = () => this.repull.restant > 20 && this.tempsRestant(15_000);
-    if (assez() && (!lues || instant(maintenant) - instant(lues) >= 6.5 * JOUR)) {
+    if (!photosDeLAnnonce && assez() && (!lues || instant(maintenant) - instant(lues) >= 6.5 * JOUR)) {
       try {
         const photos = versPhotos(await this.repull.get<RepullPhotos>(`/v1/listings/${encodeURIComponent(idAnnonce)}/photos`));
         if (photos.length) suivant.photos = photos;
@@ -792,7 +815,13 @@ export class SessionRepull {
     }
     let l: RepullListing | undefined;
     try {
-      l = await this.repull.get<RepullListing>(`/v1/listings/${encodeURIComponent(idAnnonce)}`, { include: 'amenities,content,details' });
+      const chemin = `/v1/listings/${encodeURIComponent(idAnnonce)}`;
+      try {
+        l = await this.repull.get<RepullListing>(chemin, { include: `amenities,${INCLURE_ANNONCES.replace('thumbnail,', '')}` });
+      } catch (e) {
+        if (!(e instanceof ErreurRepull) || e.statut !== 422) throw e;
+        l = await this.repull.get<RepullListing>(chemin, { include: 'amenities,content,details' });
+      }
     } catch (e) {
       if (!(e instanceof ErreurRepull) || (e.statut !== 403 && e.statut !== 404) || !repli) throw e;
       // Annonce désactivée ou supprimée : on applique ce que dit l'événement.
@@ -1325,7 +1354,8 @@ export function phasesDues(etat: EtatRepull, declencheur: DeclencheurRepull, mai
     return x ? t - instant(x) : Infinity;
   };
   const res: PhaseRepull[] = [];
-  if (depuis('annonces') >= 20 * HEURE) res.push('annonces');
+  // Annonces : une fois par jour, ou au bouton si le dernier relevé date de plus d'une heure.
+  if (depuis('annonces') >= (declencheur === 'manuel' ? HEURE : 20 * HEURE)) res.push('annonces');
   res.push('reservations');
   if (depuis('avis') >= (declencheur === 'manuel' ? JOUR : 6.5 * JOUR)) res.push('avis');
   res.push('conversations');

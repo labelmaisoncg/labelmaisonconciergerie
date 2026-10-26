@@ -162,7 +162,7 @@ function lienJournal(entite: string, id: string): string {
     case 'crm':
       return `/erp/crm?contact=${i}`;
     default:
-      return '/erp/parametres/donnees';
+      return '/erp/parametres/societe';
   }
 }
 

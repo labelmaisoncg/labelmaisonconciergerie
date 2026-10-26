@@ -2,7 +2,9 @@
  * Règles de la messagerie voyageurs, alignées sur l'agent IA réel
  * (agent-ia/README.md §9 bis et §16) : codes d'accès, fiche, escalade, stats.
  */
-import { AUJOURDHUI, ajouterJours, ecartJours, pluriel } from '../../../data/format';
+import { format, parseISO } from 'date-fns';
+import { fr } from 'date-fns/locale';
+import { AUJOURDHUI, ajouterJours, dateJour, ecartJours, heure, jourMois, pluriel } from '../../../data/format';
 import type { FilMessages, Logement, RaisonEscalade, Reservation } from '../../../data/types';
 
 /* ----------------------------------------------------------- codes d'accès */
@@ -90,24 +92,28 @@ export function motifEscalade(fil: FilMessages): MotifEscalade {
 
 /* ------------------------------------------------------------ filtres */
 
-export type FiltreFil = 'tous' | 'a_traiter' | 'escalades' | 'agent' | 'clos';
+export type FiltreFil = 'a_traiter' | 'tous' | 'clos';
 
 export const FILTRES: { cle: FiltreFil; libelle: string }[] = [
-  { cle: 'a_traiter', libelle: 'Pour vous' },
-  { cle: 'agent', libelle: 'Gérées par l’agent' },
+  { cle: 'a_traiter', libelle: 'À répondre' },
   { cle: 'tous', libelle: 'Toutes' },
   { cle: 'clos', libelle: 'Terminées' },
 ];
 
+/**
+ * Attend une réponse de l'équipe : transmise par l'agent, ou sans réponse de
+ * personne. « Pas besoin de répondre » la termine ; elle revient d'elle-même
+ * quand le voyageur réécrit (synchronisation). Même règle que le compteur du
+ * menu et que « À faire » sur l'Accueil.
+ */
+export function attendEquipe(fil: FilMessages): boolean {
+  return fil.statut !== 'clos' && (fil.statut === 'escalade' || fil.traitePar === 'en_attente');
+}
+
 export function correspond(fil: FilMessages, filtre: FiltreFil): boolean {
   switch (filtre) {
     case 'a_traiter':
-      // Pour vous : transmise par l'agent, ou sans réponse de personne.
-      return fil.statut !== 'clos' && (fil.statut === 'escalade' || fil.traitePar === 'en_attente');
-    case 'escalades':
-      return fil.statut === 'escalade';
-    case 'agent':
-      return fil.traitePar === 'agent';
+      return attendEquipe(fil);
     case 'clos':
       return fil.statut === 'clos';
     default:
@@ -155,6 +161,23 @@ export function formatDelai(minutes: number | undefined): string {
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return m ? `${h} h ${String(m).padStart(2, '0')}` : `${h} h`;
+}
+
+/** Moment d'un message, au plus court : « 10:02 », « Hier », « lun. », « 24 sept. ». */
+export function quandCourt(horodatage: string, aujourdhui: string = AUJOURDHUI): string {
+  const jour = horodatage.slice(0, 10);
+  if (jour === aujourdhui) return heure(horodatage);
+  const ecart = ecartJours(jour, aujourdhui);
+  if (ecart === 1) return 'Hier';
+  if (ecart > 1 && ecart < 7) return format(parseISO(jour), 'EEE', { locale: fr });
+  return jourMois(jour);
+}
+
+/** Titre d'un jour dans une conversation : « Aujourd’hui », « Hier », « mer. 24 sept. ». */
+export function titreJour(jour: string, aujourdhui: string = AUJOURDHUI): string {
+  if (jour === aujourdhui) return 'Aujourd’hui';
+  if (ecartJours(jour, aujourdhui) === 1) return 'Hier';
+  return dateJour(jour);
 }
 
 /* ------------------------------------------------------ réponses rapides */
@@ -238,6 +261,6 @@ export function activiteAgent(fils: FilMessages[], depuis: string): ActiviteAgen
 /** Conversations qui attendent un humain maintenant (transmises ou sans réponse). */
 export function enAttenteHumain(fils: FilMessages[]): FilMessages[] {
   return fils
-    .filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente'))
+    .filter(attendEquipe)
     .sort((a, b) => a.dernierMessageLe.localeCompare(b.dernierMessageLe));
 }

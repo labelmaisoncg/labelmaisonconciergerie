@@ -160,6 +160,8 @@ export interface Logement {
   photos?: string[];
   /** Prix par nuit des prochaines semaines, lus sur les plateformes (jamais modifiés par l'ERP). */
   tarifs?: TarifsLogement;
+  /** Ce que dit l'annonce (description, couchage, conditions, prix de base), lu sur les plateformes. */
+  descriptif?: DescriptifLogement;
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
 }
@@ -172,6 +174,56 @@ export interface TarifsLogement {
   luLe: Horodatage;
   /** Jours connus, dans l'ordre (les jours sans donnée sont absents). */
   jours: { date: DateISO; prixCentimes: Centimes; libre: boolean }[];
+}
+
+/**
+ * Annonce telle que publiée sur les plateformes : affichée dans la fiche
+ * logement et donnée à l'agent, jamais modifiée par l'ERP. Chaque partie
+ * n'est remplacée que si la plateforme la renvoie.
+ */
+export interface DescriptifLogement {
+  /** Titre vu par les voyageurs. */
+  titre?: string;
+  textes?: {
+    resume?: string;
+    description?: string;
+    espace?: string;
+    accesVoyageurs?: string;
+    quartier?: string;
+    transports?: string;
+  };
+  /** Couchage pièce par pièce, ex. « Chambre 1 » : « 1 lit double ». */
+  couchage?: { piece: string; lits: string }[];
+  sallesDeBain?: number;
+  conditions?: {
+    animaux?: boolean;
+    fumeur?: boolean;
+    fetes?: boolean;
+    enfants?: boolean;
+    bebes?: boolean;
+    ageMinEnfants?: number;
+    /** Heures de calme, ex. 22:00 → 07:00. */
+    calme?: { debut: string; fin: string };
+    /** Conditions d'annulation, en clair (ex. « Flexible »). */
+    annulation?: string;
+    /** Arrivée : mode (« Boîte à clés »…) et heure limite. */
+    arrivee?: string;
+    arriveeJusqua?: string;
+  };
+  sejour?: { nuitsMin?: number; nuitsMax?: number; preavisHeures?: number; reservationInstantanee?: boolean };
+  prix?: {
+    devise: string;
+    nuit?: Centimes;
+    weekend?: Centimes;
+    menage?: Centimes;
+    voyageurSupplementaire?: Centimes;
+    voyageursInclus?: number;
+    caution?: Centimes;
+    remiseSemainePct?: number;
+    remiseMoisPct?: number;
+  };
+  /** Autres frais (animal, linge…), en clair : « Animal : 15 € par séjour ». */
+  frais?: string[];
 }
 
 /* ----------------------------------------------------------- distribution */
@@ -274,7 +326,7 @@ export type TonAgent = 'chaleureux' | 'professionnel' | 'decontracte';
 
 /**
  * Réglages de l'agent de messagerie (collection `reglages`, élément d'id
- * 'agent'), modifiés dans Messagerie > Configurer mon agent. L'agent
+ * 'agent'), modifiés dans Messagerie > Réglages de l’agent. L'agent
  * du site (api/erp-agent.ts, src/erp/data/agent-messagerie.ts) les relit à
  * chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
  */

@@ -1,17 +1,20 @@
 /**
- * Module Réservations (/erp/reservations) : planning multi-logements, liste
- * filtrable, détail d'un séjour (/erp/reservations/:id), réservation directe.
+ * Module Réservations (/erp/reservations) : planning multi-logements à la
+ * manière d'Airbnb, liste des séjours, détail d'un séjour
+ * (/erp/reservations/:id), réservation directe. Les chiffres de la période
+ * sont sur l'Accueil : ici, on regarde les séjours.
  */
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CalendarDays, CalendarPlus, List, LogIn, LogOut, Percent, RefreshCw } from 'lucide-react';
-import { Button, Callout, Drawer, MenuActions, PageHeader, StatusBadge, Tabs, useCreationParUrl } from '../../ui';
+import { ArrowRight, CalendarDays, CalendarPlus, List, RefreshCw } from 'lucide-react';
+import { Button, Callout, Drawer, MenuActions, PageHeader, Tabs, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
-import { AUJOURDHUI, ajouterJours, dateCourte, dateHeure, euros, pluriel, pourcentage } from '../../data/format';
-import { adr, fenetreJours, logementById, logementsActifs, tauxOccupation } from '../../data/selectors';
+import { dateCourte, dateHeure } from '../../data/format';
+import { LIBELLES } from '../../data/libelles';
 import type { Reservation } from '../../data/types';
 import { Calendrier } from './_composants/Calendrier';
-import { FicheReservation, PastilleCanal } from './_composants/FicheReservation';
+import { FicheReservation } from './_composants/FicheReservation';
+import { etatSejour, plageDates } from './_composants/outils';
 import { ListeReservations } from './_composants/ListeReservations';
 import { ModalNouvelleReservation } from './_composants/ModalNouvelleReservation';
 import { DetailReservation } from './_composants/DetailReservation';
@@ -23,39 +26,6 @@ export default function ModuleReservations() {
       <Route index element={<PageReservations />} />
       <Route path=":id" element={<DetailReservation />} />
     </Routes>
-  );
-}
-
-/** Les repères de la semaine, sur une ligne : le planning juste dessous montre le détail. */
-function Indicateurs() {
-  const d = useErp();
-  const k = useMemo(() => {
-    const f = fenetreJours(30);
-    const actifs = logementsActifs(d.logements);
-    const dans7 = ajouterJours(AUJOURDHUI, 7);
-    const vivantes = d.reservations.filter((r) => r.statut !== 'annulee');
-    return {
-      occupation: tauxOccupation(d.reservations, actifs, f),
-      adr: adr(d.reservations.filter((r) => actifs.some((l) => l.id === r.logementId)), f),
-      arrivees: vivantes.filter((r) => r.arrivee >= AUJOURDHUI && r.arrivee < dans7).length,
-      departs: vivantes.filter((r) => r.depart >= AUJOURDHUI && r.depart < dans7).length,
-    };
-  }, [d.reservations, d.logements]);
-  return (
-    <p className="lm-chiffres mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-(--lm-encre-2) [&_svg]:size-4 [&_svg]:text-(--lm-encre-3)">
-      <span className="inline-flex items-center gap-1.5" title="Sur 7 jours, aujourd’hui compris">
-        <LogIn aria-hidden />
-        <span className="font-semibold text-(--lm-encre)">{k.arrivees}</span> arrivée{k.arrivees > 1 ? 's' : ''} cette semaine
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <LogOut aria-hidden />
-        <span className="font-semibold text-(--lm-encre)">{k.departs}</span> départ{k.departs > 1 ? 's' : ''}
-      </span>
-      <span className="inline-flex items-center gap-1.5" title={`Prix moyen : ${euros(k.adr, true)} la nuit`}>
-        <Percent aria-hidden />
-        <span className="font-semibold text-(--lm-encre)">{pourcentage(Math.round(k.occupation * 100) / 100)}</span> d’occupation sur 30 jours
-      </span>
-    </p>
   );
 }
 
@@ -119,15 +89,13 @@ function PageReservations() {
         </Callout>
       )}
 
-      <Indicateurs />
-
       <Tabs
         label="Affichage des réservations"
         actif={vue}
         onChange={(v) => setParams(v === 'liste' ? { vue: 'liste' } : {}, { replace: true })}
         onglets={[
           { cle: 'calendrier', libelle: <><CalendarDays className="size-4" aria-hidden /> Planning</> },
-          { cle: 'liste', libelle: <><List className="size-4" aria-hidden /> Liste</>, compteur: d.reservations.length },
+          { cle: 'liste', libelle: <><List className="size-4" aria-hidden /> Séjours</> },
         ]}
       />
 
@@ -141,15 +109,7 @@ function PageReservations() {
         ouvert={!!courante}
         onFermer={() => setOuverte(null)}
         titre={courante?.voyageur.nom ?? ''}
-        sousTitre={
-          courante && (
-            <span className="flex flex-wrap items-center gap-2">
-              {logementById(d, courante.logementId)?.nom} · {dateCourte(courante.arrivee)} au {dateCourte(courante.depart)} · {pluriel(courante.nuits, 'nuit')}
-              <StatusBadge type="statutReservation" valeur={courante.statut} />
-              <PastilleCanal canal={courante.canal} />
-            </span>
-          )
-        }
+        sousTitre={courante && `${etatSejour(courante)} · ${plageDates(courante.arrivee, courante.depart)} · ${LIBELLES.canal[courante.canal]}`}
         pied={
           courante && (
             <Button variant="primary" iconeFin={<ArrowRight />} onClick={() => navigate(courante.id)}>

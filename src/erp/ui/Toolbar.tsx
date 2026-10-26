@@ -69,7 +69,7 @@ export function FilterChips({ filtres, actifs, onChange, unique, label = 'Filtre
             aria-pressed={actif}
             onClick={() => basculer(f.cle)}
             className={cn(
-              'inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors',
+              'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium whitespace-nowrap transition-colors',
               actif
                 ? 'border-(--lm-or) bg-(--lm-or-lavis) text-(--lm-brun)'
                 : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre-2) hover:text-(--lm-encre)',

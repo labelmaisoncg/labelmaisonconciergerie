@@ -17,6 +17,7 @@ import { ConnecterClaude } from './_composants/ConnecterClaude';
 import { EnvoyerDossier } from './_composants/EnvoyerDossier';
 import { FicheContact } from './_composants/FicheContact';
 import { Grille } from './_composants/Grille';
+import { ListeMobile } from './_composants/ListeMobile';
 
 const FILTRE_JOUR = 'aujourdhui';
 
@@ -207,6 +208,7 @@ export default function Crm() {
           <Toolbar className="mb-3">
             <SearchInput valeur={q} onChange={setQ} placeholder="Nom, téléphone, ville…" label="Rechercher un contact" />
             <FilterChips
+              className="lm-defilement -mx-4 flex-nowrap overflow-x-auto px-4 pb-0.5 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0"
               label="Filtrer par étape"
               actifs={filtres}
               onChange={setFiltres}
@@ -217,7 +219,14 @@ export default function Crm() {
             />
           </Toolbar>
           {visibles.length ? (
-            <Grille contacts={visibles} onOuvrir={ouvrir} onModifier={modifier} lectureSeule={lectureSeule} />
+            <>
+              <div className="sm:hidden">
+                <ListeMobile contacts={visibles} onOuvrir={ouvrir} onModifier={modifier} lectureSeule={lectureSeule} />
+              </div>
+              <div className="hidden sm:block">
+                <Grille contacts={visibles} onOuvrir={ouvrir} onModifier={modifier} lectureSeule={lectureSeule} />
+              </div>
+            </>
           ) : (
             <EmptyState titre="Aucun contact ne correspond" action={<Button variant="ghost" onClick={() => { setQ(''); setFiltres([]); }}>Tout afficher</Button>} />
           )}

@@ -513,7 +513,39 @@ const PHOTOS_DEMO = [
   '/images/real/jacuzzi.jpg',
 ];
 
-/** Démo : photos et prix par nuit des 60 prochains jours (plus cher le week-end), comme lus sur les plateformes. */
+/** Annonce de démonstration : ce que les plateformes renverraient (couchage, conditions, prix de base). */
+function descriptifDemo(l: Logement, base: number, i: number): Logement['descriptif'] {
+  const couchage = l.chambres
+    ? Array.from({ length: Math.min(l.chambres, 4) }, (_, k) => ({ piece: `Chambre ${k + 1}`, lits: k === 0 ? '1 lit queen size' : '2 lits simples' }))
+    : [{ piece: 'Pièce principale', lits: '1 lit double' }];
+  if (l.capacite > couchage.length * 2) couchage.push({ piece: 'Salon', lits: '1 canapé-lit' });
+  return {
+    titre: `${l.type === 'maison' ? 'Maison' : l.type === 'studio' ? 'Studio' : 'Appartement'} lumineux à ${l.ville}`,
+    textes: {
+      resume: `Un ${l.type === 'maison' ? 'logement' : 'appartement'} calme et lumineux, à deux pas des commerces de ${l.ville}.`,
+      description: 'Cuisine équipée, linge de maison fourni, arrivée autonome à toute heure.\n\nIdéal pour un séjour en famille ou un déplacement professionnel.',
+      quartier: 'Boulangerie, supermarché et pharmacie à moins de 5 minutes à pied.',
+      transports: 'RER à 10 minutes à pied, Paris en 35 minutes.',
+    },
+    couchage,
+    sallesDeBain: l.chambres > 2 ? 2 : 1,
+    conditions: {
+      animaux: i % 3 === 0,
+      fumeur: false,
+      fetes: false,
+      enfants: true,
+      calme: { debut: '22:00', fin: '08:00' },
+      annulation: i % 2 ? 'Modérée' : 'Flexible',
+      arrivee: 'Boîte à clés',
+      arriveeJusqua: '23:00',
+    },
+    sejour: { nuitsMin: l.capacite > 4 ? 2 : 1, reservationInstantanee: true },
+    prix: { devise: 'EUR', nuit: Math.round(base / 100) * 100, weekend: Math.round((base * 1.25) / 100) * 100, menage: 4000 + l.chambres * 1000, remiseSemainePct: 10 },
+    ...(i % 3 === 0 ? { frais: ['Animal : 15 € par séjour (en option)'] } : {}),
+  };
+}
+
+/** Démo : photos, prix par nuit des 60 prochains jours (plus cher le week-end) et annonce, comme lus sur les plateformes. */
 function habiller(logements: Logement[]): Logement[] {
   return logements.map((l, i) => {
     if (l.statut === 'sorti') return l;
@@ -525,7 +557,7 @@ function habiller(logements: Logement[]): Logement[] {
       return { date, prixCentimes: Math.round((base * (weekEnd ? 1.25 : 1)) / 100) * 100, libre: (k * 7 + i * 3) % 5 > 1 };
     });
     const photos = [0, 1, 2, 3, 4, 5].map((k) => PHOTOS_DEMO[(i + k) % PHOTOS_DEMO.length]);
-    return { ...l, photos, tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours } };
+    return { ...l, photos, tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours }, descriptif: descriptifDemo(l, base, i) };
   });
 }
 

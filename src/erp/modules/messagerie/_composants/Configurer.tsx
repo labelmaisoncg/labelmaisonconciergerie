@@ -1,5 +1,5 @@
 /**
- * Onglet « Configurer mon agent » : marche / pause, ton, langues, signature,
+ * Onglet « Réglages de l'agent » : marche / pause, ton, langues, signature,
  * horaires, ce qu'il vous transmet, où vous prévenir.
  *
  * Enregistré dans la collection `reglages` (élément 'agent'), synchronisée
@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Check, Lock, Save } from 'lucide-react';
+import { ArrowRight, Check, Lock } from 'lucide-react';
 import { Alert, Aide, Button, Card, Input, Interrupteur, Select, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LANGUES_AGENT, TONS_AGENT, reglagesAgent } from '../../../data/reglages';
@@ -98,7 +98,7 @@ export function Configurer() {
   };
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4">
       {bloque && (
         <Alert tone="info" titre="Lecture seule : seul un gérant peut changer ces réglages." />
       )}
@@ -303,29 +303,33 @@ export function Configurer() {
         ) : (
           <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
         )}
-        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </Bloc>
 
-      <div className="sticky bottom-0 z-20 -mx-4 flex flex-wrap items-center gap-3 border-t border-(--lm-bord) bg-(--lm-surface)/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
-        <p className="min-w-0 flex-1 text-[12.5px] text-(--lm-encre-3)" aria-live="polite">
-          {ok
-            ? 'C’est enregistré. Votre agent en tiendra compte dans ses prochaines réponses.'
-            : modifie
-              ? 'Vous avez des changements non enregistrés.'
-              : enregistre.majLe
-                ? `Dernière modification le ${dateCourte(enregistre.majLe)} à ${heure(enregistre.majLe)}${enregistre.majPar ? ` par ${enregistre.majPar}` : ''}.`
-                : 'Réglages par défaut : rien n’a encore été changé.'}
-        </p>
-        {modifie && (
-          <Button variant="ghost" onClick={() => setF(enregistre)}>
-            Annuler
-          </Button>
-        )}
-        <Button variant="primary" icone={<Save />} onClick={enregistrer} disabled={!modifie || horairesInvalides || bloque}>
+      {/* Même barre d'enregistrement que les infos d'un logement : collée en bas, l'action d'abord. */}
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-(--lm-bord) bg-(--lm-fond) px-4 py-3 sm:mx-0 sm:rounded-xl sm:border sm:px-4">
+        <Button variant="primary" onClick={enregistrer} disabled={!modifie || horairesInvalides || bloque}>
           Enregistrer
         </Button>
+        {modifie && (
+          <Button variant="ghost" onClick={() => setF(enregistre)}>
+            Annuler les modifications
+          </Button>
+        )}
+        <p
+          role="status"
+          className={cn('min-w-0 flex-1 text-[12.5px]', ok ? 'text-(--lm-succes-texte)' : 'text-(--lm-encre-3)', modifie && !ok && 'max-sm:hidden')}
+        >
+          {ok
+            ? 'Enregistré. Votre agent en tient compte dès sa prochaine réponse.'
+            : modifie
+              ? 'Changements non enregistrés.'
+              : enregistre.majLe
+                ? `Modifié le ${dateCourte(enregistre.majLe)} à ${heure(enregistre.majLe)}${enregistre.majPar ? ` par ${enregistre.majPar}` : ''}.`
+                : 'Réglages par défaut.'}
+        </p>
       </div>
     </div>
   );

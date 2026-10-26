@@ -190,7 +190,7 @@ export async function envoyerMessage(ctx: ContexteConnexion, d: DemandeEnvoi): P
     ...frais,
     messages,
     dernierMessageLe: envoyeLe,
-    // Répondu : la conversation sort de « Pour vous » (elle reste ouverte).
+    // Répondu : la conversation sort de « À répondre » (elle reste ouverte).
     statut: 'ouvert',
     traitePar: d.auteur === 'agent' ? 'agent' : 'humain',
   };
