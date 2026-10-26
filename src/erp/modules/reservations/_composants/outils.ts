@@ -1,20 +1,66 @@
 /**
- * Outils du module Réservations : couleurs de canal, chevauchements, statut
- * d'une nouvelle réservation. Les montants passent par data/selectors.
+ * Outils du module Réservations : teintes de plateforme, état d'un séjour en
+ * mots, plage de dates, chevauchements, statut d'une nouvelle réservation.
+ * Les montants passent par data/selectors.
  */
-import { AUJOURDHUI, ajouterJours, ecartJours } from '../../../data/format';
+import { AUJOURDHUI, ajouterJours, ecartJours, jourMois, pluriel } from '../../../data/format';
 import { estActive } from '../../../data/selectors';
-import type { CanalReservation, DateISO, Id, Reservation, StatutReservation } from '../../../data/types';
+import type { CanalReservation, Centimes, DateISO, Id, Reservation, StatutReservation } from '../../../data/types';
 
-/** Couleur de barre par canal (toujours doublée du libellé dans la légende). */
-export const COULEUR_CANAL: Record<CanalReservation, { fond: string; texte: string; bord: string }> = {
-  airbnb: { fond: '#F7DDE0', texte: '#8E1F2F', bord: '#D1495B' },
-  booking: { fond: '#DCE6F2', texte: '#1F4E82', bord: '#2B6CB0' },
-  direct: { fond: '#F2E4C4', texte: '#5A4214', bord: '#A97C30' },
-  autre: { fond: '#ECEAE6', texte: '#403A33', bord: '#8C857B' },
+/**
+ * Teinte par plateforme, uniquement des jetons de la charte (jamais les
+ * couleurs danger ou info) : `plein` pour un séjour à venir ou en cours,
+ * `lavis` + `encre` pour un séjour passé. Toujours doublée d'un libellé.
+ */
+export const TEINTE_CANAL: Record<CanalReservation, { plein: string; texte: string; lavis: string; encre: string; lettre: string }> = {
+  airbnb: { plein: 'var(--lm-encre)', texte: 'var(--lm-surface)', lavis: 'var(--lm-neutre-lavis)', encre: 'var(--lm-encre)', lettre: 'A' },
+  booking: { plein: 'var(--lm-sarcelle)', texte: 'var(--lm-surface)', lavis: 'var(--lm-sarcelle-lavis)', encre: 'var(--lm-sarcelle)', lettre: 'B' },
+  direct: { plein: 'var(--lm-or-texte)', texte: 'var(--lm-surface)', lavis: 'var(--lm-or-lavis)', encre: 'var(--lm-or-texte)', lettre: 'D' },
+  autre: { plein: 'var(--lm-violet)', texte: 'var(--lm-surface)', lavis: 'var(--lm-violet-lavis)', encre: 'var(--lm-violet)', lettre: '·' },
 };
 
 export const CANAUX: CanalReservation[] = ['airbnb', 'booking', 'direct', 'autre'];
+
+/** Ce que l'hôte reçoit de la plateforme : payé par le voyageur moins la commission de la plateforme. */
+export function recu(r: Reservation): Centimes {
+  return r.montantBrutCentimes - r.commissionPlateformeCentimes;
+}
+
+/** « 12–15 nov. », « 28 sept. – 3 oct. », avec l'année quand ce n'est pas l'année en cours. */
+export function plageDates(arrivee: DateISO, depart: DateISO, reference: DateISO = AUJOURDHUI): string {
+  const annee = depart.slice(0, 4) !== reference.slice(0, 4) ? ` ${depart.slice(0, 4)}` : '';
+  if (arrivee.slice(0, 7) === depart.slice(0, 7)) return `${Number(arrivee.slice(8))}–${jourMois(depart)}${annee}`;
+  return `${jourMois(arrivee)} – ${jourMois(depart)}${annee}`;
+}
+
+export type MomentSejour = 'a_venir' | 'en_cours' | 'passe' | 'annule';
+
+/** Où en est le séjour : le jour du départ, le voyageur est encore « en cours » (il part dans la journée). */
+export function momentSejour(r: Pick<Reservation, 'statut' | 'arrivee' | 'depart'>, aujourdhui: DateISO = AUJOURDHUI): MomentSejour {
+  if (r.statut === 'annulee') return 'annule';
+  if (r.arrivee > aujourdhui) return 'a_venir';
+  if (r.depart >= aujourdhui) return 'en_cours';
+  return 'passe';
+}
+
+/** L'état du séjour en quelques mots : « Arrive dans 3 j », « Sur place », « Part aujourd'hui », « Parti ». */
+export function etatSejour(r: Pick<Reservation, 'statut' | 'arrivee' | 'depart'>, aujourdhui: DateISO = AUJOURDHUI): string {
+  if (r.statut === 'annulee') return 'Annulé';
+  const avant = ecartJours(aujourdhui, r.arrivee);
+  if (avant > 1) return `Arrive dans ${avant} j`;
+  if (avant === 1) return 'Arrive demain';
+  if (avant === 0) return 'Arrive aujourd’hui';
+  const reste = ecartJours(aujourdhui, r.depart);
+  if (reste > 1) return 'Sur place';
+  if (reste === 1) return 'Part demain';
+  if (reste === 0) return 'Part aujourd’hui';
+  return 'Parti';
+}
+
+/** « 3 nuits · 2 voyageurs » */
+export function nuitsVoyageurs(r: Pick<Reservation, 'nuits' | 'voyageur'>): string {
+  return `${pluriel(r.nuits, 'nuit')} · ${pluriel(r.voyageur.nbPersonnes, 'voyageur')}`;
+}
 
 /** Nuits (dates ISO) d'un séjour : arrivée incluse, départ exclu. */
 export function nuitsDuSejour(arrivee: DateISO, depart: DateISO): DateISO[] {
