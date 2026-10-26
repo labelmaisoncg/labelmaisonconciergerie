@@ -3,6 +3,7 @@ import { ArrowLeft, Check, ClipboardCheck, RotateCcw, Star } from 'lucide-react'
 import { dateCourte, dateHeure, jourMois } from '../data/format';
 import type { ControleOps, ControleQualite } from '../data/types-operations';
 import { Badge, Button, EmptyState, Field, Modal, Textarea, cn } from '../ui';
+import { controleModifiable } from '../data/espace-operations';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { Ligne, Liste, Rubrique, TitreEspace, useOps } from './commun';
 
@@ -101,6 +102,8 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
   const aFaire = vue.controles.find((c) => c.cle === cle);
   const fait = aFaire ? undefined : vue.historiqueControles.find((c) => c.id === cle);
   const existant = aFaire?.controle ?? fait;
+  // Contrôle déjà fait : modifiable par le pôle, ou par son auteur le jour même ; sinon en lecture.
+  const lecture = !!apercu || (!!fait && !controleModifiable(fait, vue.moi, vue.aujourdhui));
   const [points, setPoints] = useState<PointBrouillon[]>(() => brouillonDe(aFaire, fait));
   const [note, setNote] = useState<number | undefined>(existant?.note);
   const [commentaire, setCommentaire] = useState(existant?.commentaire ?? '');
@@ -176,7 +179,7 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
       <ol className="space-y-3">
         {points.map((p) => (
           <li key={p.id}>
-            <Point p={p} lecture={!!apercu} onChange={(patch) => maj(p.id, patch)} />
+            <Point p={p} lecture={lecture} onChange={(patch) => maj(p.id, patch)} />
           </li>
         ))}
       </ol>
@@ -188,7 +191,7 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
             <button
               key={n}
               type="button"
-              disabled={!!apercu}
+              disabled={lecture}
               aria-label={`${n} sur 5`}
               aria-pressed={note === n}
               onClick={() => setNote(n)}
@@ -199,11 +202,11 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
           ))}
         </div>
         <Field label="Commentaire" className="mt-4">
-          <Textarea rows={2} value={commentaire} disabled={!!apercu} onChange={(e) => setCommentaire(e.target.value)} placeholder="Ce qu’il faut retenir pour la suite." maxLength={1000} />
+          <Textarea rows={2} value={commentaire} disabled={lecture} onChange={(e) => setCommentaire(e.target.value)} placeholder="Ce qu’il faut retenir pour la suite." maxLength={1000} />
         </Field>
       </section>
 
-      {!apercu && (
+      {!lecture && (
         <div className="sticky bottom-0 z-10 -mx-4 mt-5 flex flex-wrap items-center gap-3 border-t border-(--lm-bord) bg-(--lm-fond) px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] sm:mx-0 sm:rounded-xl sm:border sm:px-4">
           {erreur && (
             <p role="alert" className="w-full text-[13px] font-medium text-(--lm-danger)">
@@ -289,7 +292,7 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
       )}
       <div className="mt-2 flex flex-wrap items-start gap-1.5 [&>div:has(ul)]:basis-full">
         {lecture ? (
-          p.photo && <ChoixPhotos photos={[p.photo]} onChange={() => undefined} max={1} />
+          p.photo && <ChoixPhotos photos={[p.photo]} onChange={() => undefined} max={1} lecture />
         ) : (
           <ChoixPhotos photos={p.photo ? [p.photo] : []} onChange={(l) => onChange({ photo: l[0], photoChangee: true })} max={1} libelle="Photo" variante="ghost" />
         )}

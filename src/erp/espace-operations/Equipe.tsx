@@ -31,7 +31,7 @@ export function Equipe() {
                 key={a.id}
                 icone={<UserX />}
                 titre={nom(a.membreId)}
-                sousTitre={[a.du <= vue.aujourdhui ? `Jusqu’au ${jourMois(a.au)}` : `Du ${jourMois(a.du)} au ${jourMois(a.au)}`, a.motif].filter(Boolean).join(' · ')}
+                sousTitre={a.du <= vue.aujourdhui ? `Absence jusqu’au ${jourMois(a.au)}` : `Absence du ${jourMois(a.du)} au ${jourMois(a.au)}`}
                 onClick={() => naviguer({ absence: a.id })}
               />
             ))}
@@ -95,7 +95,7 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
     if (probleme) return setErreur(probleme);
     setErreur(undefined);
     setEnCours('confirmer');
-    const ok = await agir({ type: 'absence', ...(existante ? { id: existante.id } : {}), membreId: a.membreId, du: a.du, au: a.au, remplacantId: a.remplacantId || undefined, motif: a.motif?.trim() || undefined });
+    const ok = await agir({ type: 'absence', ...(existante ? { id: existante.id } : {}), membreId: a.membreId, du: a.du, au: a.au, remplacantId: a.remplacantId || undefined });
     setEnCours(undefined);
     if (ok) onFermer();
   };
@@ -142,9 +142,6 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
         </div>
         <Field label="Remplaçant si le logement n’en a pas">
           <Select value={a.remplacantId ?? ''} disabled={apercu} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={membres.filter((m) => m.valeur !== a.membreId)} />
-        </Field>
-        <Field label="Motif">
-          <Input value={a.motif ?? ''} disabled={apercu} placeholder="Congés, formation…" onChange={(e) => setA({ ...a, motif: e.target.value })} maxLength={200} />
         </Field>
 
         {a.membreId && (

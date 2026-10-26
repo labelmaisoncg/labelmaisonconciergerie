@@ -319,8 +319,10 @@ export function programmeDuJour(d: DonneesOps, date: DateISO): ElementProgramme[
 export const membreDe = (equipe: MembreEquipe[], id?: Id) => (id ? equipe.find((m) => m.id === id) : undefined);
 /** Membres qui peuvent recevoir un logement ou un incident. */
 export const membresActifs = (equipe: MembreEquipe[]) => equipe.filter((m) => m.actif).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-/** « Clara Dumas » → « Clara D. ». */
+/** « Clara Dumas » → « Clara D. » (noms de l'équipe ; une adresse ou un numéro ne passe pas). */
 export function court(nom?: string): string {
-  const [p, n] = String(nom ?? '').trim().split(/\s+/);
+  const propre = String(nom ?? '').trim();
+  if (/[@\d]/.test(propre)) return '';
+  const [p, n] = propre.split(/\s+/);
   return p ? `${p}${n ? ` ${n[0]}.` : ''}` : '';
 }

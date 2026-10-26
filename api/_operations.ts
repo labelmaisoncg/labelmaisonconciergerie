@@ -89,6 +89,17 @@ export async function entreesOps(b: BaseErp): Promise<EntreesOperations> {
   return { logements, reservations, incidents, missions, equipe, affectations, absences, controles, signalementsLogement };
 }
 
+/** Version actuelle des enregistrements qu'une action va réécrire (clé « collection/id »). */
+export async function relireOps(b: BaseErp, ecritures: readonly Ecriture[]): Promise<Map<string, { id: Id } & object>> {
+  const relus = new Map<string, { id: Id } & object>();
+  for (const collection of COLLECTIONS_OPS) {
+    const ids = [...new Set(ecritures.filter((x) => x.collection === collection).map((x) => x.element.id))];
+    if (!ids.length) continue;
+    for (const element of await b.lire<{ id: Id } & object>(collection, ids)) relus.set(`${collection}/${element.id}`, element);
+  }
+  return relus;
+}
+
 /** Écrit ce qu'une action a produit : collections opérations seulement, regroupées. */
 export async function ecrireOps(b: BaseErp, ecritures: readonly Ecriture[]): Promise<void> {
   for (const collection of COLLECTIONS_OPS) {

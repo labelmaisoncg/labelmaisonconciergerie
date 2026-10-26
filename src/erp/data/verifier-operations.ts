@@ -25,6 +25,7 @@ import {
   apercuAbsence,
   assigneLe,
   controlesAFaire,
+  court,
   controlesEnRetard,
   echeanceApresDepart,
   graviteDe,
@@ -45,7 +46,8 @@ import {
 import { creerSeed } from './seed';
 import type { Incident, Logement, Reservation } from './types';
 import type { AbsenceMembre, ControleQualite } from './types-operations';
-import { COLLECTIONS_OPS, appliquerAction, avecEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
+import { COLLECTIONS_OPS, appliquerAction, avecEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
+import { photoOperations } from './operations-fichiers';
 import { inviterMembre } from './operations-acces';
 import { lireSessionExterne, signerSessionExterne } from './acces-externe';
 import { ID_LABEL_MAISON } from './espaces';
@@ -407,6 +409,108 @@ section('Actions : périmètre, droits, écritures');
     [...ecrites].every((c) => (COLLECTIONS_OPS as readonly string[]).includes(c)) && ['incidents', 'controles', 'absences', 'signalementsLogement'].every((c) => ecrites.has(c)),
     `collections écrites : opérations seulement, jamais réservations ni logements (${[...ecrites].join(', ')})`,
   );
+}
+
+/* ------------------------------------------------------- audit de sécurité */
+
+section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, photos, fusion');
+{
+  let n = 0;
+  const ctx: ContexteAction = { aujourdhui: J, maintenant: `${J}T09:00:00.000Z`, nouvelId: (p) => `${p}-a${++n}`, photoAcceptee: (u) => photoOperations(u, '', 'B') };
+  const acces = (e: EntreesOperations, membre: string, logementId: string, jour = J) => vueOperations(e, membre, { aujourdhui: jour })!.logements.find((l) => l.id === logementId)?.acces;
+
+  // I1 : le code d'un logement, le jour même, à qui en a la charge (responsable ou remplaçant) ou au pôle.
+  const e = entrees();
+  verifier(!acces(e, 'B', 'L1'), 'I1 : agent qui n’est pas responsable du logement : pas de code le jour d’une arrivée');
+  verifier(!!acces(e, 'A', 'L1'), 'I1 : le responsable (et pôle) : le code le jour de l’arrivée');
+  const absenceA: AbsenceMembre = { id: 'abs-a', membreId: 'A', du: J, au: J };
+  verifier(!!acces({ ...e, absences: [absenceA] }, 'B', 'L1'), 'I1 : son remplaçant, le jour où il remplace : le code');
+  verifier(!acces(e, 'A', 'L1', '2026-10-14'), 'I1 : la veille de l’arrivée : pas de code');
+  const enRetard = entrees({ reservations: [], controles: [nouveauControle(e, { id: 'ctl-vieux', logementId: 'L1', echeance: '2026-09-01' })] });
+  verifier(!acces(enRetard, 'A', 'L1'), 'I1 : contrôle en retard depuis des semaines : pas de code tous les jours');
+  const duJour = entrees({ reservations: [], controles: [nouveauControle(e, { id: 'ctl-jour', logementId: 'L3', echeance: J })] });
+  verifier(!!acces(duJour, 'C', 'L3') && !acces(duJour, 'B', 'L3'), 'I1 : contrôle prévu ce jour-là : le code au responsable du logement, à lui seul');
+
+  // Noms : adresse ou numéro jamais affichés (même règle que l'espace propriétaire).
+  const masque = entrees({
+    reservations: [
+      { ...resa('r-mail', 'L1', J, '2026-10-18', 'confirmee'), voyageur: { nom: 'jean.dupont@gmail.com', nbPersonnes: 2 } } as unknown as Reservation,
+      { ...resa('r-tel', 'L1', '2026-10-19', '2026-10-20', 'confirmee'), voyageur: { nom: '+33 6 12 34 56 78', nbPersonnes: 1 } } as unknown as Reservation,
+    ],
+  });
+  const noms = vueOperations(masque, 'A', { aujourdhui: J })!.sejours.map((s) => s.voyageur);
+  verifier(noms.join() === 'Voyageur,Voyageur', `noms : adresse et numéro deviennent « Voyageur » (obtenu ${noms.join(', ')})`);
+  verifier(court('jean.dupont@gmail.com') === '' && court('Clara Dumas') === 'Clara D.', 'court() : un nom d’équipe abrégé, jamais une adresse');
+
+  // Absences : pas pour quelqu'un qui suit aussi des logements hors du pôle ; motif jamais montré ni saisi ici.
+  const avecD = entrees({ equipe: [...e.equipe, { id: 'D', nom: 'Denis Roy', role: 'agent', logementIds: ['L1', 'L9'], actif: true }] });
+  let r = appliquerAction(avecD, 'A', { type: 'absence', membreId: 'D', du: J, au: '2026-10-20', remplacantId: 'B' }, ctx);
+  verifier(!r.ok && r.statut === 403, 'absence d’une personne qui suit aussi des logements hors du pôle : refusée (c’est au gérant)');
+  verifier(responsableLe(avecD, 'L9', J).membreId === undefined, 'L9 ne passe à personne d’autre');
+  const maladie: AbsenceMembre = { id: 'abs-m', membreId: 'B', du: J, au: '2026-10-20', remplacantId: 'A', motif: 'Arrêt maladie', creeLe: J, par: 'Gérant' };
+  const avecMotif = entrees({ absences: [maladie] });
+  const vueA = vueOperations(avecMotif, 'A', { aujourdhui: J })!;
+  verifier(vueA.absences.length === 1 && !('motif' in vueA.absences[0]) && !JSON.stringify(vueA).includes('maladie'), 'absence : le pôle voit les dates, jamais le motif');
+  r = appliquerAction(avecMotif, 'A', { type: 'absence', id: 'abs-m', membreId: 'B', du: J, au: '2026-10-22', remplacantId: 'A' }, ctx);
+  verifier(r.ok && (r.ecritures[0].element as AbsenceMembre).motif === 'Arrêt maladie' && (r.ecritures[0].element as AbsenceMembre).au === '2026-10-22', 'absence modifiée par le pôle : le motif du gérant est gardé tel quel');
+
+  // Contrôle fait : ni réécrit par un autre agent, ni le lendemain ; le pôle peut, avec l'historique.
+  const fait: ControleQualite = {
+    ...nouveauControle(e, { id: 'ctl-f', logementId: 'L1', echeance: J }),
+    statut: 'fait',
+    parId: 'B',
+    realiseLe: `${J}T08:00:00.000Z`,
+    note: 2,
+  };
+  fait.points = fait.points.map((p, k) => ({ ...p, etat: k ? 'ok' : 'a_revoir', ...(k ? {} : { commentaire: 'Sale.' }) }));
+  const avecFait = entrees({ equipe: avecD.equipe, controles: [fait] });
+  const reecrire = (membre: string, jour = J) =>
+    appliquerAction(avecFait, membre, { type: 'controle', cle: 'ctl-f', points: [{ id: 'p1', etat: 'ok', commentaire: '' }], note: 5, terminer: true }, { ...ctx, aujourdhui: jour });
+  r = reecrire('D');
+  verifier(!r.ok && r.statut === 403, 'contrôle fait par un autre agent : réécriture refusée');
+  r = reecrire('B', '2026-10-16');
+  verifier(!r.ok && r.statut === 403, 'contrôle fait : son auteur, le lendemain, refusé');
+  r = reecrire('B');
+  const parAuteur = r.ok ? (r.ecritures[0].element as ControleQualite) : undefined;
+  verifier(parAuteur?.note === 5 && parAuteur.historique?.length === 1, 'contrôle fait : son auteur, le jour même, avec une ligne d’historique');
+  r = reecrire('A', '2026-10-20');
+  const parPole = r.ok ? (r.ecritures[0].element as ControleQualite) : undefined;
+  verifier(parPole?.parId === 'B' && parPole.realiseLe === fait.realiseLe && parPole.historique?.[0]?.par === 'Alice Martin', 'contrôle fait : le pôle peut, l’auteur et la date restent, l’historique dit qui');
+
+  // Entrées mal formées : un refus, jamais une exception.
+  let exception = '';
+  try {
+    r = appliquerAction(avecFait, 'A', { type: 'controle', cle: 'ctl-f', points: [], terminer: true, note: 3, incidentsPour: 'p1' as unknown as string[] }, ctx);
+    verifier(!r.ok && r.statut === 400, 'incidentsPour qui n’est pas une liste : refus 400');
+    r = appliquerAction(avecFait, 'A', { type: 'controle', cle: 'ctl-f', points: 'x' as unknown as [], terminer: false }, ctx);
+    verifier(!r.ok && r.statut === 400, 'points qui ne sont pas une liste : refus 400');
+    r = appliquerAction(avecFait, 'A', null as unknown as ActionOperations, ctx);
+    verifier(!r.ok, 'opération absente : refusée');
+  } catch (x) {
+    exception = (x as Error).message;
+  }
+  verifier(!exception, `entrées mal formées : aucune exception (${exception})`);
+
+  // Photos : seulement celles déposées par cette personne, dans cet espace.
+  verifier(photoOperations('stockage://erp-fichiers/operations/B/lqx1-abc123.jpg', '', 'B'), 'photo : la sienne, acceptée');
+  verifier(!photoOperations('stockage://erp-fichiers/operations/Z/lqx1-abc123.jpg', '', 'B'), 'photo : celle d’un autre membre, refusée');
+  verifier(!photoOperations('stockage://erp-fichiers/operations/B/lqx1-abc123.jpg', ''), 'photo : sans personne connue, refusée');
+  verifier(!photoOperations('stockage://erp-fichiers/5e5e0000-0000-4000-8000-000000000002/operations/B/a.jpg', '', 'B'), 'photo : autre espace, refusée');
+  verifier(!photoOperations('stockage://erp-fichiers/operations/B/../proprietaires/x.pdf', '', 'B') && !photoOperations('stockage://erp-fichiers/operations/B/x.pdf', '', 'B'), 'photo : autre dossier ou autre type de fichier, refusés');
+  r = appliquerAction(e, 'B', { type: 'noter', incidentId: 'i-B', photos: ['stockage://erp-fichiers/operations/C/autre.jpg'] }, ctx);
+  verifier(!r.ok, 'noter avec la photo d’un autre : refusé');
+
+  // Fusion : une modification faite entre la lecture et l'écriture n'est pas écrasée.
+  const avant = incident('i-f', { historique: [{ le: 'h0', par: 'A', texte: 'Signalé.' }] });
+  const apres: Incident = { ...avant, statut: 'en_cours', historique: [...avant.historique!, { le: 'h2', par: 'B', texte: 'Pris en charge.' }] };
+  const relu: Incident = { ...avant, description: 'Corrigé par le gérant.', historique: [...avant.historique!, { le: 'h1', par: 'G', texte: 'Note du gérant.' }] };
+  const fusion = fusionnerEcriture(avant, apres, relu);
+  verifier(
+    fusion.statut === 'en_cours' && fusion.description === 'Corrigé par le gérant.' && fusion.historique?.map((h) => h.le).join() === 'h0,h1,h2',
+    'fusion : champ changé repris, champ du gérant gardé, historique complété',
+  );
+  const nouveaux = fusionnerEcritures(e, [{ collection: 'incidents', element: incident('i-neuf') }], new Map());
+  verifier(nouveaux[0].element.id === 'i-neuf', 'fusion : un nouvel enregistrement s’écrit tel quel');
 }
 
 /* ---------------------------------------------------------- notifications */

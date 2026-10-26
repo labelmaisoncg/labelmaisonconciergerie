@@ -1214,8 +1214,27 @@ linge et consommables restent chez BNB Cleaning : rien ici n'y touche.
 Sur chaque logement : « Signaler un incident » (photo, urgent ou non) et
 « Ce logement n'est pas à moi » (le gérant est prévenu ; le logement reste
 affiché jusqu'à sa réponse). Voyageurs en « Prénom N. » et nombre de
-personnes ; consignes d'accès seulement le jour où la personne a quelque
-chose à faire dans le logement.
+personnes (une adresse ou un numéro saisi comme nom devient « Voyageur »,
+comme dans l'espace propriétaire). Consignes d'accès : le jour même
+seulement (arrivée, départ, intervention ou contrôle prévu ce jour-là ;
+jamais pour un contrôle en retard), et seulement pour qui a la charge du
+logement ce jour-là (le responsable, ou son remplaçant pendant une absence)
+ou le responsable de pôle.
+
+Règles de l'audit (octobre 2026) :
+
+- **Absences** : un pôle ne note pas l'absence de quelqu'un qui suit aussi
+  des logements hors des siens (c'est au gérant) ; le motif n'est ni saisi ni
+  montré dans l'espace (« Absence du … au … »), il reste chez le gérant.
+- **Contrôle fait** : il ne se réécrit plus, sauf par le responsable de pôle
+  ou par son auteur le jour même ; chaque changement ajoute une ligne
+  d'historique, l'auteur et la date restent.
+- **Entrées** : une opération mal formée est refusée (400), jamais une
+  erreur serveur.
+- **Écriture** : avant d'écrire, le serveur relit les enregistrements
+  touchés et ne reprend que les champs changés par l'action (l'historique et
+  les photos s'ajoutent à la version relue) : une modification du gérant
+  faite entre-temps n'est pas écrasée.
 
 ### Côté gérant
 
@@ -1249,7 +1268,8 @@ chose à faire dans le logement.
   de logement, de prix, de calendrier ni d'appel à Repull.
 - Photos : réduites dans le navigateur (JPEG, 1600 px), déposées dans
   `erp-fichiers/operations/<personne>/`, lues par liens signés (Label Maison
-  seulement pour l'instant).
+  seulement pour l'instant). Une action n'accepte que les photos du dossier
+  de la personne connectée, dans son espace (`photoOperations`).
 - Variables : `ACCES_SECRET` (ou `OPERATIONS_SECRET`), `ERP_PASSWORD`
   (lecture de la base), `RESEND_API_KEY` et `CONTACT_FROM_EMAIL` pour envoyer
   les liens par e-mail (sans : le lien s'affiche au gérant, qui le transmet).

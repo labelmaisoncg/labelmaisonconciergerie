@@ -160,7 +160,7 @@ function useDemo(membreId: string) {
           aujourdhui: AUJOURDHUI,
           maintenant: horodatageMaintenant(),
           nouvelId: (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-          photoAcceptee: (u) => u.startsWith('demo://operations/'),
+          photoAcceptee: (u) => u.startsWith(`demo://operations/${membreId}/`),
         });
         if (!r.ok) return { ok: false, erreur: r.erreur };
         const suivant = avecEcritures(ref.current, r.ecritures);
