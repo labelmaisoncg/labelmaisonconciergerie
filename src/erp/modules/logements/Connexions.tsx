@@ -17,6 +17,7 @@ import type {
   ResultatSelection,
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
+import { entetesServeur } from '../../data/espaces';
 import { obtenirClient } from '../../data/supabase';
 import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Repli, Skeleton, cn, type Ton } from '../../ui';
 
@@ -48,7 +49,7 @@ async function appeler<T>(methode: 'GET' | 'POST', params: Record<string, string
   try {
     r = await fetch(`${API}?${new URLSearchParams(params)}`, {
       method: methode,
-      headers: { Authorization: `Bearer ${jeton}`, 'Content-Type': 'application/json' },
+      headers: entetesServeur(jeton),
       ...(corps !== undefined ? { body: JSON.stringify(corps) } : {}),
       cache: 'no-store',
     });

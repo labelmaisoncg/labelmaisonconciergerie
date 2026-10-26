@@ -1,12 +1,15 @@
 /**
  * Accès à la base Supabase de Label Maison : client, authentification,
- * membres de l'équipe, fichiers (photos), et lecture des erreurs.
+ * espaces et membres, fichiers (photos), et lecture des erreurs.
  *
- * Toutes les tables vivent dans le schéma `erp` (supabase/erp-installation.sql).
+ * Toutes les tables vivent dans le schéma `erp` (supabase/erp-installation.sql,
+ * puis supabase/erp-espaces.sql). Chaque lecture et écriture vise l'espace
+ * ouvert (espaces.ts) ; base pas encore préparée : comme avant, sans espace.
  * La synchronisation des données elle-même est dans synchro.ts.
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SCHEMA_ERP, SUPABASE_ANON_KEY, SUPABASE_URL, URL_RETOUR_MOT_DE_PASSE } from './config';
+import { erreurBaseHistorique, espaceDesDonnees, lireEspacesMembre, prefixeFichiers, type EspaceMembre } from './espaces';
 import type { RoleUtilisateur, Utilisateur } from './types';
 
 /* ----------------------------------------------------------------- client */
@@ -182,6 +185,23 @@ export async function seDeconnecter(): Promise<void> {
   }
 }
 
+/* ---------------------------------------------------------------- espaces */
+
+export type Identite =
+  | { ok: true; mode: 'espaces'; espaces: EspaceMembre[] }
+  | { ok: true; mode: 'historique' }
+  | { ok: false; erreur: unknown; status?: number };
+
+/**
+ * Espaces du compte connecté (erp.qui_suis_je). historique : base pas encore
+ * passée aux espaces (supabase/erp-espaces.sql), tout se fait comme avant.
+ */
+export async function quiSuisJe(): Promise<Identite> {
+  const { data, error, status } = await obtenirClient().rpc('qui_suis_je');
+  if (error) return erreurBaseHistorique(error) ? { ok: true, mode: 'historique' } : { ok: false, erreur: error, status };
+  return { ok: true, mode: 'espaces', espaces: lireEspacesMembre(data) };
+}
+
 /* ---------------------------------------------------------------- membres */
 
 export interface Membre {
@@ -201,23 +221,41 @@ export function versUtilisateur(m: Membre): Utilisateur {
 
 export type LectureMembres = { ok: true; membres: Utilisateur[] } | { ok: false; erreur: unknown; status?: number };
 
-/** Membres visibles : toute l'équipe pour un membre, sa seule ligne sinon (règles RLS). */
+/** Membres visibles de l'espace ouvert : toute l'équipe pour un membre, sa seule ligne sinon (règles RLS). */
 export async function lireMembres(): Promise<LectureMembres> {
-  const { data, error, status } = await obtenirClient().from('membres').select('email,nom,role').order('email');
+  const espace = espaceDesDonnees();
+  let requete = obtenirClient().from('membres').select('email,nom,role');
+  if (espace) requete = requete.eq('espace', espace);
+  const { data, error, status } = await requete.order('email');
   if (error) return { ok: false, erreur: error, status };
   return { ok: true, membres: ((data ?? []) as Membre[]).map(versUtilisateur) };
 }
 
 export async function enregistrerMembre(u: Pick<Utilisateur, 'email' | 'nom' | 'role'>): Promise<ErreurBase | null> {
+  const espace = espaceDesDonnees();
+  const ligne: Record<string, string> = { email: u.email.trim().toLowerCase(), nom: u.nom.trim(), role: u.role };
+  if (espace) ligne.espace = espace;
   const { error } = await obtenirClient()
     .from('membres')
-    .upsert({ email: u.email.trim().toLowerCase(), nom: u.nom.trim(), role: u.role }, { onConflict: 'email' });
+    .upsert(ligne, { onConflict: espace ? 'espace,email' : 'email' });
   return error;
 }
 
 export async function retirerMembre(email: string): Promise<ErreurBase | null> {
-  const { error } = await obtenirClient().from('membres').delete().eq('email', email.trim().toLowerCase());
+  const espace = espaceDesDonnees();
+  let requete = obtenirClient().from('membres').delete().eq('email', email.trim().toLowerCase());
+  if (espace) requete = requete.eq('espace', espace);
+  const { error } = await requete;
   return error;
+}
+
+/** Un enregistrement de l'espace ouvert (null : absent). */
+export async function lireEnregistrement<T>(collection: string, id: string): Promise<T | null> {
+  const espace = espaceDesDonnees();
+  let requete = obtenirClient().from('enregistrements').select('donnees').eq('collection', collection).eq('id', id);
+  if (espace) requete = requete.eq('espace', espace);
+  const { data } = await requete.maybeSingle();
+  return ((data as { donnees?: T } | null)?.donnees ?? null) as T | null;
 }
 
 /* -------------------------------------------------------------- fichiers */
@@ -229,10 +267,14 @@ export const PREFIXE_STOCKAGE = 'stockage://';
 
 export const estFichierStocke = (url?: string): url is string => !!url && url.startsWith(PREFIXE_STOCKAGE);
 
-/** Envoie un fichier dans l'espace privé ; renvoie l'adresse « stockage://... » à enregistrer. */
+/**
+ * Envoie un fichier dans l'espace privé ; renvoie l'adresse « stockage://... »
+ * à enregistrer. Rangé dans le dossier de l'espace (sauf Label Maison, dont
+ * les chemins restent ceux d'avant).
+ */
 export async function televerser(dossier: string, fichier: File): Promise<{ url: string } | { erreur: string }> {
   const extension = (fichier.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg';
-  const chemin = `${dossier}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.${extension}`;
+  const chemin = `${prefixeFichiers()}${dossier}/${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}.${extension}`;
   try {
     const { error } = await obtenirClient().storage.from(BUCKET_FICHIERS).upload(chemin, fichier, {
       contentType: fichier.type || undefined,

@@ -183,6 +183,8 @@ export class ErreurConnexion extends Error {
 
 export interface ContexteConnexion {
   cle: string;
+  /** Workspace Repull de l'espace (X-Workspace-Id sur chaque appel). */
+  workspace?: string;
   base: BaseErp;
   /** Instant (ms) à ne pas dépasser. */
   echeance: number;
@@ -313,7 +315,7 @@ export async function avecClient<T>(ctx: ContexteConnexion, travail: (c: ClientR
   const etat = await lireEtat(ctx.base, maintenant(), budgetMois, quotaMois);
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) throw new BudgetEpuise();
-  const client = new ClientRepull({ cle: ctx.cle, fetch: ctx.fetch, base: ctx.baseRepull, echeance: ctx.echeance, budget: restant, attendre: ctx.attendre });
+  const client = new ClientRepull({ cle: ctx.cle, workspace: ctx.workspace, fetch: ctx.fetch, base: ctx.baseRepull, echeance: ctx.echeance, budget: restant, attendre: ctx.attendre });
   try {
     return await travail(client);
   } finally {
@@ -626,6 +628,7 @@ export async function enregistrerSelection(ctx: ContexteConnexion, idsBruts: unk
   const nouveaux = ids.some((id) => !(avant?.annonces ?? []).includes(id));
   const r = await lancer({
     cle: ctx.cle,
+    workspace: ctx.workspace,
     base: ctx.base,
     declencheur: 'manuel',
     echeance: ctx.echeance,

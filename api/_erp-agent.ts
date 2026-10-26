@@ -12,6 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELE_AGENT_DEFAUT, lancerAgent, type DeclencheurAgent, type OptionsAgent, type PassageAgent } from '../src/erp/data/agent-messagerie.js';
+import { estLabelMaison } from '../src/erp/data/espaces.js';
 import { baseErp, signeurFichiersErp, type ConfigRepullErp } from './_erp-repull.js';
 
 export interface ConfigAgent {
@@ -33,14 +34,19 @@ export function configurationAgent(): ConfigAgent {
 // Client Claude gardé tant que l'instance vit (un par clé).
 let client: { cle: string; ia: Anthropic } | null = null;
 
-/** Options d'un passage de l'agent, depuis les variables d'environnement. */
+/**
+ * Options d'un passage de l'agent dans l'espace de `c` : clé Claude commune ;
+ * Telegram pour Label Maison seulement ; plafond mensuel pour les autres.
+ */
 export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, echeance: number): OptionsAgent {
   const a = configurationAgent();
   if (a.cleIA && (!client || client.cle !== a.cleIA)) {
     client = { cle: a.cleIA, ia: new Anthropic({ apiKey: a.cleIA, maxRetries: 1, timeout: 25_000 }) };
   }
+  const labelMaison = estLabelMaison(c.espace);
   return {
     cle: c.cle,
+    workspace: c.workspace,
     base: baseErp(c),
     echeance,
     budgetMois: c.budgetMois,
@@ -48,8 +54,9 @@ export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, 
     declencheur,
     ia: a.cleIA && client ? client.ia : null,
     modele: a.modele,
-    telegram: a.telegram,
+    telegram: labelMaison ? a.telegram : null,
     signerFichier: signeurFichiersErp(c),
+    ...(labelMaison ? {} : { nomEspace: c.nomEspace, plafondIAMois: c.plafondIAMois }),
   };
 }
 

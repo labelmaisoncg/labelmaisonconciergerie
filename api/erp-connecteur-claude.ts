@@ -10,12 +10,14 @@
 // page /erp/autoriser-claude, ouverte par Claude ; elle est revérifiée ici
 // (src/erp/data/oauth-regles.ts). Codes et jetons : api/_oauth.ts.
 // Authentification : Authorization: Bearer <jeton de session Supabase>, rôle gérant.
+// Espace Label Maison seulement pour l'instant (jetons et clé MCP de Label Maison).
 // =============================================================================
 
 import { adresseRetour, lireDemande } from '../src/erp/data/oauth-regles.js';
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { baseErp, configuration, lireCorps, repondre } from './_erp-repull.js';
 import { creerCode, deconnecterTout, etatConnexions } from './_oauth.js';
+import { espaceDemande, refuserHorsLabelMaison } from './_erp-espaces.js';
 
 const INDISPONIBLE = 'Connecteur indisponible pour le moment. Réessayez dans un instant.';
 
@@ -27,11 +29,12 @@ export default async function handler(req: any, res: any) {
   const entete = String(req.headers?.authorization || '');
   const jeton = /^Bearer\s+/i.test(entete) ? entete.replace(/^Bearer\s+/i, '').trim() : '';
   if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Session expirée : reconnectez-vous à l’ERP.' });
-  const membre = await verifierMembre(jeton);
+  const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
   if (!membre.ok || membre.role !== 'gerant') {
     if (!membre.ok) console.warn('[erp-connecteur-claude]', membre.statut, membre.erreur);
     return repondre(res, 403, { ok: false, erreur: 'Seul un gérant peut connecter Claude au CRM.' });
   }
+  if (refuserHorsLabelMaison(res, membre.espace, 'Connexion de Claude')) return;
   const c = configuration();
   if (!c.motDePasse) {
     console.error('[erp-connecteur-claude] ERP_PASSWORD absent : base inaccessible.');

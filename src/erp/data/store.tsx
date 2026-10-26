@@ -32,11 +32,13 @@ import {
   lireMembres,
   messageErreur,
   obtenirClient,
+  quiSuisJe,
   retirerMembre,
   RETOUR_LIEN,
   seDeconnecter as deconnexionSupabase,
   connexionAutomatique,
 } from './supabase';
+import { ESPACE_LABEL_MAISON, choisirEspace, ouvrirEspace, type Espace } from './espaces';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
 import type {
@@ -748,6 +750,27 @@ interface Session {
   auto: EtatAuto;
   utilisateur: Utilisateur;
   synchro: Synchro;
+  /** Espace ouvert (Label Maison tant que la base n'est pas passée aux espaces). */
+  espace: Espace;
+}
+
+/** Dernier espace ouvert sur cet appareil (simple préférence, jamais un droit). */
+const CLE_ESPACE = 'lm-erp-espace';
+
+function espaceRetenu(): string | null {
+  try {
+    return window.localStorage.getItem(CLE_ESPACE);
+  } catch {
+    return null;
+  }
+}
+
+function retenirEspace(id: string) {
+  try {
+    window.localStorage.setItem(CLE_ESPACE, id);
+  } catch {
+    /* navigation privée */
+  }
 }
 
 function FournisseurReel({ children }: { children: ReactNode }) {
@@ -780,7 +803,20 @@ function FournisseurReel({ children }: { children: ReactNode }) {
       const encore = () => numero === essai.current;
       setPhase({ nom: 'chargement' });
       try {
-        const membres = await lireMembres();
+        // Espaces du compte ; base pas encore passée aux espaces : Label Maison, comme avant.
+        const identite = await quiSuisJe();
+        if (!encore()) return;
+        let espace: Espace | null = null;
+        if (identite.ok && identite.mode === 'espaces') {
+          const choix = choisirEspace(identite.espaces.filter((e) => e.role !== 'prestataire'), espaceRetenu());
+          if (!choix) {
+            emailCharge.current = null;
+            return setPhase({ nom: 'non_autorise', email });
+          }
+          espace = { id: choix.id, code: choix.code, nom: choix.nom };
+        }
+        ouvrirEspace(espace);
+        const membres = identite.ok ? await lireMembres() : { ok: false as const, erreur: identite.erreur, status: identite.status };
         if (!encore()) return;
         if (!membres.ok) {
           emailCharge.current = null;
@@ -797,7 +833,8 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           emailCharge.current = null;
           return setPhase({ nom: 'non_autorise', email });
         }
-        const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro });
+        if (espace) retenirEspace(espace.id);
+        const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro, espace: espace?.id ?? null, compte: cle });
         synchro.demarrerTempsReel();
         const [lu, auto] = await Promise.all([synchro.chargerTout(), synchro.lireEtatAuto()]);
         if (!encore()) return synchro.arreter();
@@ -813,6 +850,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           },
           utilisateur: moi,
           synchro,
+          espace: espace ?? ESPACE_LABEL_MAISON,
         });
         setPhase({ nom: 'pret' });
         if (synchro.enAttente) void synchro.envoyer();
@@ -951,7 +989,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
 
   return (
     <CoeurErp
-      key={session.utilisateur.email}
+      key={`${session.espace.id}:${session.utilisateur.email}`}
       mode="reel"
       initial={session.donnees}
       autoInitial={session.auto}
