@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Smartphone } from 'lucide-react';
 import { Button, ButtonLink } from '../../../ui';
-import { useInstallation } from './installation';
+import { useInstallation, type EtatInstallation } from './installation';
 
 const CLE_PLUS_TARD = 'lm-erp-installation-plus-tard';
 
@@ -13,6 +13,31 @@ function plusTardChoisi(): boolean {
   }
 }
 
+/** La proposition s'afficherait-elle (hors « Plus tard » de cette page) ? */
+export function propositionInstallationVisible(inst: Pick<EtatInstallation, 'appareil' | 'installee' | 'directe'>): boolean {
+  return !plusTardChoisi() && !inst.installee && (inst.appareil !== 'ordinateur' || inst.directe);
+}
+
+/*
+ * Demande « Recevoir les notifications ? » ouverte (DemandeNotifications) :
+ * la proposition d'installation attend, les deux ne s'affichent jamais
+ * ensemble.
+ */
+let demandeOuverte = false;
+const abonnesDemande = new Set<() => void>();
+
+export function signalerDemandeNotifications(ouverte: boolean): void {
+  demandeOuverte = ouverte;
+  abonnesDemande.forEach((f) => f());
+}
+
+const suivreDemande = (f: () => void) => {
+  abonnesDemande.add(f);
+  return () => {
+    abonnesDemande.delete(f);
+  };
+};
+
 /**
  * Proposition discrète d'installer l'app (Accueil), sur téléphone ou quand
  * le navigateur sait installer d'un clic. Ne revient jamais après « Plus
@@ -21,7 +46,8 @@ function plusTardChoisi(): boolean {
 export function PropositionInstallation() {
   const inst = useInstallation();
   const [masquee, setMasquee] = useState(plusTardChoisi);
-  if (masquee || inst.installee || (inst.appareil === 'ordinateur' && !inst.directe)) return null;
+  const demande = useSyncExternalStore(suivreDemande, () => demandeOuverte);
+  if (masquee || demande || !propositionInstallationVisible(inst)) return null;
 
   const plusTard = () => {
     setMasquee(true);
