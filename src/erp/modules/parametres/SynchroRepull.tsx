@@ -170,7 +170,7 @@ export function CarteSynchroRepull() {
           Gérer vos connexions
         </Link>
       </p>
-      <Repli className="mt-3" titre="Avancé">
+      <Repli className="mt-3 rounded-lg shadow-none" titre="Avancé">
         <dl className="text-[13.5px]">
           <div>
             <dt className="text-[12px] text-(--lm-encre-3)">Appels Repull ce mois</dt>

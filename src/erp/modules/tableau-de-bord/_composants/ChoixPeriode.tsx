@@ -30,6 +30,8 @@ export function libellePeriode(p: Periode): string {
   if (r) return r.libelle;
   const annee = (d: DateISO) => (d.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jourMois(d) : dateCourte(d));
   if (p.debut === p.fin) return annee(p.debut);
+  // Même mois : « 10–20 sept. », sinon « 28 sept. – 4 oct. ».
+  if (p.debut.slice(0, 7) === p.fin.slice(0, 7)) return `${Number(p.debut.slice(8))}–${annee(p.fin)}`;
   return `${annee(p.debut)} – ${annee(p.fin)}`;
 }
 
@@ -43,6 +45,8 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
   const [ouvert, setOuvert] = useState(false);
   const [mois, setMois] = useState(debutMois(valeur.fin));
   const [premier, setPremier] = useState<DateISO | null>(null);
+  // S'ouvre vers le haut quand la place manque sous le bouton.
+  const [versLeHaut, setVersLeHaut] = useState(false);
   const racine = useRef<HTMLDivElement>(null);
   const bouton = useRef<HTMLButtonElement>(null);
 
@@ -63,6 +67,8 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
   }, [ouvert]);
 
   const ouvrir = () => {
+    const r = bouton.current?.getBoundingClientRect();
+    setVersLeHaut(!!r && window.innerHeight - r.bottom < 420 && r.top > window.innerHeight - r.bottom);
     setMois(debutMois(valeur.fin));
     setPremier(null);
     setOuvert(true);
@@ -109,7 +115,10 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
         <div
           role="dialog"
           aria-label="Choisir la période"
-          className="lm-apparition absolute top-full right-0 z-30 mt-2 w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre-haute)"
+          className={cn(
+            'lm-apparition absolute right-0 z-30 w-[min(21rem,calc(100vw-2rem))] rounded-2xl border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre-haute)',
+            versLeHaut ? 'bottom-full mb-2' : 'top-full mt-2',
+          )}
         >
           <div className="grid grid-cols-2 gap-1.5 border-b border-(--lm-bord) pb-3">
             {RACCOURCIS.map((r) => {
@@ -176,7 +185,7 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
                     onClick={() => toucher(jour)}
                     className={cn(
                       'lm-chiffres grid size-9 place-items-center rounded-full text-[13px] focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
-                      borne ? 'bg-(--lm-or) font-semibold text-white' : 'text-(--lm-encre) hover:bg-(--lm-surface-2)',
+                      borne ? 'bg-(--lm-or-texte) font-semibold text-white' : 'text-(--lm-encre) hover:bg-(--lm-surface-2)',
                       jour === AUJOURDHUI && !borne && 'font-semibold text-(--lm-or-texte) underline decoration-2 underline-offset-4',
                     )}
                   >

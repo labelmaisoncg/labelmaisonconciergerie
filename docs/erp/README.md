@@ -190,12 +190,12 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 
 | Rubrique | Contenu | Routes |
 |---|---|---|
-| Accueil | « À faire » (voyageurs qui attendent, synchronisation en échec, avis sous 4/5, infos manquantes pour l'agent, contacts à appeler), arrivées / départs / sur place (aujourd'hui, demain, 7 jours), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
-| Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, prix des prochaines semaines lus sur les plateformes, propriétaire, logement, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
-| Réservations | Planning, liste, fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
+| Accueil | « À faire » (voyageurs qui attendent, synchronisation en échec, avis sous 4,5, infos manquantes pour l'agent, contacts à appeler), arrivées / départs / sur place (aujourd'hui, ou une période choisie au calendrier : `ChoixPeriode.tsx`), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
+| Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, l'annonce, couchage, prix des prochaines semaines et prix de base lus sur les plateformes, propriétaire, logement, conditions, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
+| Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
 | Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Réglages de l'agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
-| CRM | Appels et relances, dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
-| Paramètres | Équipe, intégrations, société, données | `/erp/parametres` |
+| CRM | Appels et relances (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
+| Paramètres | Équipe, Plateformes (synchronisation), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/societe`) |
 
 Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
 (`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé

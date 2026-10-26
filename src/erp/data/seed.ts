@@ -513,7 +513,6 @@ const PHOTOS_DEMO = [
   '/images/real/jacuzzi.jpg',
 ];
 
-/** Démo : photos et prix par nuit des 60 prochains jours (plus cher le week-end), comme lus sur les plateformes. */
 /** Annonce de démonstration : ce que les plateformes renverraient (couchage, conditions, prix de base). */
 function descriptifDemo(l: Logement, base: number, i: number): Logement['descriptif'] {
   const couchage = l.chambres
@@ -546,6 +545,7 @@ function descriptifDemo(l: Logement, base: number, i: number): Logement['descrip
   };
 }
 
+/** Démo : photos, prix par nuit des 60 prochains jours (plus cher le week-end) et annonce, comme lus sur les plateformes. */
 function habiller(logements: Logement[]): Logement[] {
   return logements.map((l, i) => {
     if (l.statut === 'sorti') return l;

@@ -50,11 +50,11 @@ export function PanneauContexte({ fil, logement, reservation, enTiroir }: Props)
           <>
             <dl>
               <Ligne libelle="Arrivée">
-                <span className="first-letter:uppercase">{dateJour(reservation.arrivee)}</span>
+                <span className="inline-block first-letter:uppercase">{dateJour(reservation.arrivee)}</span>
                 {logement?.fiche.heureArrivee && <span className="font-normal text-(--lm-encre-2)"> · {logement.fiche.heureArrivee}</span>}
               </Ligne>
               <Ligne libelle="Départ">
-                <span className="first-letter:uppercase">{dateJour(reservation.depart)}</span>
+                <span className="inline-block first-letter:uppercase">{dateJour(reservation.depart)}</span>
                 {logement?.fiche.heureDepart && <span className="font-normal text-(--lm-encre-2)"> · {logement.fiche.heureDepart}</span>}
               </Ligne>
               <Ligne libelle="Voyageurs">{pluriel(reservation.voyageur.nbPersonnes, 'personne')}</Ligne>

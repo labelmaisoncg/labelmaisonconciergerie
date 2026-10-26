@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom';
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button, ButtonLink, Card, EmptyState, IconButton, Segmente, cn } from '../../../ui';
 import { LIBELLES } from '../../../data/libelles';
-import { AUJOURDHUI, ajouterJours, debutMois, debutMoisSuivant, ecartJours, euros, moisAnnee, pluriel } from '../../../data/format';
+import { AUJOURDHUI, ajouterJours, ecartJours, euros, moisAnnee, pluriel } from '../../../data/format';
 import type { CanalReservation, DateISO, Logement, Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
 import { CANAUX, TEINTE_CANAL, etatSejour, nuitsDuSejour, nuitsVoyageurs, plageDates, recu } from './outils';
@@ -66,14 +66,15 @@ interface Bulle {
 
 export function Calendrier({ logements, reservations, onOuvrir }: Props) {
   const [plage, setPlage] = useState<Plage>(() => (estMobile() ? 'semaines' : 'mois'));
-  const [debut, setDebut] = useState<DateISO>(() => (estMobile() ? ajouterJours(AUJOURDHUI, -RECUL) : AUJOURDHUI));
+  // Les deux vues démarrent la veille d'aujourd'hui : le planning montre surtout ce qui vient.
+  const [debut, setDebut] = useState<DateISO>(() => ajouterJours(AUJOURDHUI, -RECUL));
   const [annulees, setAnnulees] = useState(false);
   const [bulle, setBulle] = useState<Bulle | null>(null);
   const [largeurDispo, setLargeurDispo] = useState(0);
   const defilement = useRef<HTMLDivElement>(null);
 
-  const debutVue = plage === 'mois' ? debutMois(debut) : debut;
-  const finVue = plage === 'mois' ? debutMoisSuivant(debutVue) : ajouterJours(debutVue, 14);
+  const debutVue = debut;
+  const finVue = ajouterJours(debutVue, plage === 'mois' ? 30 : 14);
   const n = ecartJours(debutVue, finVue);
   const jours = useMemo(() => Array.from({ length: n }, (_, i) => ajouterJours(debutVue, i)), [debutVue, n]);
   const col = largeurDispo >= 600 ? 196 : 112;
@@ -138,17 +139,17 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
   const nbAnnulees = lignes.reduce((s, x) => s + reservations.filter((r) => r.logementId === x.l.id && r.statut === 'annulee' && r.depart > debutVue && r.arrivee < finVue).length, 0);
   const canauxVus = CANAUX.filter((c) => lignes.some((x) => x.sejours.some((r) => r.canal === c && r.statut !== 'annulee')));
   // Jour de départ : la barre couvre la moitié gauche, le prix va dans la moitié droite s'il y tient.
-  const prixVisible = (c: { prix?: number; apresDepart: boolean }) => c.prix !== undefined && (!c.apresDepart || w >= 52);
+  // Sous 30 px par jour, les prix se colleraient : ils ne s'affichent pas.
+  const prixVisible = (c: { prix?: number; apresDepart: boolean }) => c.prix !== undefined && w >= 30 && (!c.apresDepart || w >= 52);
   const prixVus = lignes.some((x) => x.cases.some(prixVisible));
   const fermesVus = lignes.some((x) => x.cases.some((c) => c.ferme));
 
-  const precedent = () => setDebut(plage === 'mois' ? debutMois(ajouterJours(debutVue, -1)) : ajouterJours(debut, -7));
-  const suivant = () => setDebut(plage === 'mois' ? debutMoisSuivant(debutVue) : ajouterJours(debut, 7));
-  const revenir = () => setDebut(plage === 'mois' ? AUJOURDHUI : ajouterJours(AUJOURDHUI, -RECUL));
+  const pas = plage === 'mois' ? 28 : 7;
+  const precedent = () => setDebut(ajouterJours(debut, -pas));
+  const suivant = () => setDebut(ajouterJours(debut, pas));
+  const revenir = () => setDebut(ajouterJours(AUJOURDHUI, -RECUL));
   const changerPlage = (p: Plage) => {
     if (p === plage) return;
-    if (p === 'mois') setDebut(ajouterJours(debut, RECUL));
-    else setDebut(AUJOURDHUI >= debutVue && AUJOURDHUI < finVue ? ajouterJours(AUJOURDHUI, -RECUL) : debutVue);
     setPlage(p);
   };
 

@@ -12,7 +12,7 @@
   --lm-encre: #14110e;
   /* Textes secondaires : contrastes AA (≥ 4,5:1 sur fond blanc et ivoire). */
   --lm-encre-2: rgba(20, 17, 14, 0.68);
-  --lm-encre-3: rgba(20, 17, 14, 0.58);
+  --lm-encre-3: rgba(20, 17, 14, 0.6);
   --lm-or: #a97c30;
   --lm-or-clair: #c39a4a;
   --lm-or-lavis: rgba(169, 124, 48, 0.1);

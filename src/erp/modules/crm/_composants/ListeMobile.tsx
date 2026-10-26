@@ -69,7 +69,7 @@ function Contact({ c, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm } & 
         <button
           type="button"
           onClick={() => onOuvrir(c.id)}
-          className="block max-w-full truncate rounded-md text-left text-[14.5px] font-medium text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          className="-my-1 block min-h-8 w-full truncate rounded-md py-1 text-left text-[14.5px] font-medium text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
         >
           {c.nom}
         </button>

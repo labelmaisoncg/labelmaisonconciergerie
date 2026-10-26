@@ -76,8 +76,11 @@ export default function Utilisateurs() {
       titre: 'Utilisateur',
       rendu: (u) => (
         <span className="flex items-center gap-2.5">
-          <Avatar nom={u.nom} />
-          <span className="min-w-0">
+          {/* Sur téléphone, sans avatar : nom, rôle et retrait tiennent dans la largeur. */}
+          <span className="hidden sm:block">
+            <Avatar nom={u.nom} />
+          </span>
+          <span className="max-w-[7rem] min-w-0 sm:max-w-none">
             <span className="block font-medium">
               {u.nom}
               {u.id === d.utilisateur.id && <span className="ml-1.5 text-[12px] font-normal text-(--lm-encre-3)">(vous)</span>}
@@ -93,7 +96,7 @@ export default function Utilisateurs() {
       titre: 'Rôle',
       rendu: (u) =>
         peutModifier ? (
-          <div className="w-44">
+          <div className="w-[8.25rem] sm:w-44">
             <Select
               aria-label={`Rôle de ${u.nom}`}
               value={u.role}
@@ -174,7 +177,7 @@ export default function Utilisateurs() {
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           {ROLES.filter((r) => r.role !== 'prestataire' || d.utilisateurs.some((u) => u.role === 'prestataire')).map((r) => (
-            <div key={r.role} className="rounded-xl border border-(--lm-bord) p-3">
+            <div key={r.role} className="rounded-lg border border-(--lm-bord) p-3">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[14px] font-semibold">{LIBELLES.role[r.role]}</p>
                 <Badge tone={TON_ROLE[r.role]}>{pluriel(d.utilisateurs.filter((u) => u.role === r.role).length, 'compte')}</Badge>

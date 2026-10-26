@@ -363,7 +363,7 @@ function Couchage({ pieces }: { pieces: NonNullable<DescriptifLogement['couchage
         {pieces.map((p, i) => {
           const Icone = /canapé/i.test(p.lits) && !/lit (double|simple|queen|king)/i.test(p.lits) ? Sofa : BedDouble;
           return (
-            <li key={`${p.piece}-${i}`} className="rounded-xl border border-(--lm-bord) p-3.5">
+            <li key={`${p.piece}-${i}`} className="rounded-lg border border-(--lm-bord) p-3.5">
               <Icone className="size-5 text-(--lm-encre-2)" aria-hidden />
               <p className="mt-2 text-[13.5px] font-semibold text-(--lm-encre)">{p.piece}</p>
               <p className="text-[12.5px] text-(--lm-encre-2)">{p.lits}</p>

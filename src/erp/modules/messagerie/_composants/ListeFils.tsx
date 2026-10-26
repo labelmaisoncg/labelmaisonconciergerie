@@ -22,7 +22,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
     <div className="flex min-h-0 flex-col lg:h-full">
       {/* Mobile : la recherche et les filtres restent sous la barre du haut pendant le défilement. */}
       <div className="space-y-2.5 bg-(--lm-fond) pb-3 max-lg:sticky max-lg:top-14 max-lg:z-10 max-lg:-mx-4 max-lg:px-4 max-lg:pt-1 lg:border-b lg:border-(--lm-bord) lg:bg-(--lm-surface) lg:p-3">
-        <SearchInput valeur={recherche} onChange={onRecherche} placeholder="Rechercher un voyageur, un logement…" label="Rechercher une conversation" className="sm:w-full" />
+        <SearchInput valeur={recherche} onChange={onRecherche} placeholder="Voyageur, logement…" label="Rechercher une conversation" className="sm:w-full" />
         <Segmente
           label="Filtrer les conversations"
           valeur={filtre}

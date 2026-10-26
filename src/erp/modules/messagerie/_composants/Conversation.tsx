@@ -49,6 +49,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
   const { upsert, mode, lectureSeule } = useErp();
   const [brouillon, setBrouillon] = useState('');
   const [avis, setAvis] = useState<ReactNode>(null);
+  // Vert pour une confirmation, ambre pour un point à surveiller (texte retouché, message à transmettre soi-même).
+  const [avisAlerte, setAvisAlerte] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envois, setEnvois] = useState<EnvoiLocal[]>([]);
   const [details, setDetails] = useState(false);
@@ -105,7 +107,10 @@ export function Conversation({ fil, logement, reservation }: Props) {
       const r = await appelerServeur<ReponseEnvoi>('/api/erp-repull-messages', 'POST', { action: 'envoyer', filId: fil.id, texte });
       setEnvois((l) => l.map((e) => (e.cle === cle ? { ...e, etat: 'envoye', message: r.message } : e)));
       // « Envoyé sur … » est déjà sous la bulle : on ne prévient que si la plateforme a modifié le texte.
-      if (r.reecrit) setAvis(r.info);
+      if (r.reecrit) {
+        setAvis(r.info);
+        setAvisAlerte(true);
+      }
     } catch (e) {
       setEnvois((l) => l.filter((x) => x.cle !== cle));
       // Rien n'est parti : le texte revient dans la zone de saisie.
@@ -132,6 +137,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
     });
     setBrouillon('');
     setAvis(`${prenom} n’est pas relié à une plateforme : pensez à lui transmettre ce message (téléphone, e-mail…).`);
+    setAvisAlerte(true);
   };
 
   /** Terminer sans répondre : la conversation sort de « À répondre » jusqu'au prochain message du voyageur. */
@@ -148,6 +154,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
   const confier = () => {
     upsert('filsMessages', { ...fil, statut: 'ouvert', traitePar: 'agent' });
     const fiche = completudeFiche(logement);
+    setAvisAlerte(false);
     setAvis(
       <>
         Votre agent reprend la conversation.
@@ -250,7 +257,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
           })}
           {provisoires.map((e) => (
             <li key={e.cle} className="mt-3 flex flex-col items-end">
-              <div className={cn('max-w-[85%] rounded-[18px] rounded-br-[6px] bg-(--lm-brun) px-3.5 py-2 text-[14.5px] leading-snug text-white sm:max-w-[75%]', e.etat === 'envoi' && 'opacity-70')}>
+              <div className={cn('max-w-[85%] rounded-[18px] rounded-br-md bg-(--lm-brun) px-3.5 py-2 text-[14.5px] leading-snug text-white sm:max-w-[75%]', e.etat === 'envoi' && 'opacity-70')}>
                 <p className="whitespace-pre-line">{e.message?.texte ?? e.texte}</p>
               </div>
               <p className="mt-1 flex items-center gap-1 px-1 text-[11.5px] text-(--lm-encre-3)">
@@ -277,8 +284,12 @@ export function Conversation({ fil, logement, reservation }: Props) {
             </Alert>
           )}
           {avis && (
-            <div role="status" className="flex items-start gap-2 rounded-lg bg-(--lm-succes-lavis) py-1 pr-1 pl-3 text-[13px] text-(--lm-encre)">
-              <CheckCircle2 className="mt-1.5 size-4 shrink-0 text-(--lm-succes)" aria-hidden />
+            <div role="status" className={cn('flex items-start gap-2 rounded-lg py-1 pr-1 pl-3 text-[13px] text-(--lm-encre)', avisAlerte ? 'bg-(--lm-alerte-lavis)' : 'bg-(--lm-succes-lavis)')}>
+              {avisAlerte ? (
+                <Info className="mt-1.5 size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
+              ) : (
+                <CheckCircle2 className="mt-1.5 size-4 shrink-0 text-(--lm-succes)" aria-hidden />
+              )}
               <p className="min-w-0 flex-1 py-1">{avis}</p>
               <Fermer onClick={() => setAvis(null)} />
             </div>
@@ -409,7 +420,7 @@ function Bulle({ message: m, canal, suite, finSerie }: { message: Message; canal
         className={cn(
           'max-w-[85%] rounded-[18px] px-3.5 py-2 text-[14.5px] leading-snug sm:max-w-[75%]',
           voyageur ? 'bg-(--lm-bulle) text-(--lm-encre)' : m.auteur === 'agent' ? 'bg-(--lm-or-texte) text-white' : 'bg-(--lm-brun) text-white',
-          finSerie && (voyageur ? 'rounded-bl-[6px]' : 'rounded-br-[6px]'),
+          finSerie && (voyageur ? 'rounded-bl-md' : 'rounded-br-md'),
         )}
       >
         <p className="break-words whitespace-pre-line">{m.texte}</p>
