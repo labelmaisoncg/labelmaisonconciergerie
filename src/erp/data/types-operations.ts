@@ -99,6 +99,8 @@ export interface ControleQualite {
   /** Membre de l'équipe qui l'a fait. */
   parId?: Id;
   realiseLe?: Horodatage;
+  /** Changements après coup (contrôle déjà fait, repris par le pôle ou son auteur le jour même). */
+  historique?: { le: Horodatage; par: string; texte: string }[];
 }
 
 /* ------------------------------------------- « ce logement n'est pas à moi » */

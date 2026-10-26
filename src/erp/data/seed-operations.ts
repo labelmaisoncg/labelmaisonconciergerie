@@ -228,7 +228,7 @@ function genererIncidents(fils: FilMessages[], missions: Mission[], ecart?: Ecar
   if (ecart) {
     incidents.splice(1, 0, {
       id: 'inc-02', logementId: ecart.logementId, date: ecart.date, categorie: 'linge', gravite: 'faible',
-      description: `Écart d’inventaire : 1 ${ecart.article.toLowerCase()} manquant au retour de blanchisserie du ${jourMois(ecart.date)}. Réclamation envoyée à la Blanchisserie du Val.`,
+      description: `Écart d’inventaire : 1 ${ecart.article.toLowerCase()} manquant au retour de blanchisserie du ${jourMois(ecart.date)} ; réclamation envoyée à la Blanchisserie du Val.`,
       statut: 'en_cours', responsable: 'Kamel', coutCentimes: 2400, refacturable: 'prestataire', preuves: [],
     });
   }

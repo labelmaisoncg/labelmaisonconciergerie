@@ -348,14 +348,6 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
           </div>
         )}
         {renseigne && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
-        {!d.lectureSeule && (
-          <Link
-            to={`/erp/parametres/acces?logement=${encodeURIComponent(l.id)}`}
-            className="mt-1 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
-          >
-            Propriétaires et accès
-          </Link>
-        )}
       </Card>
       {dossier && (
         <Repli titre="Dossier propriétaire" description={`Réponses reçues le ${dateCourte(dossier.recuLe.slice(0, 10))}`}>

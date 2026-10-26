@@ -10,8 +10,14 @@
  *   personne (MembreEquipe.logementIds), encore gérés ; rien d'autre n'entre
  *   dans la vue ni n'est accepté dans une action ;
  * - voyageurs : « Prénom N. », nombre de personnes, dates ; jamais de
- *   contact, de montant ni d'avis. Les consignes d'accès d'un logement ne
- *   sont montrées que le jour où la personne y a quelque chose à faire ;
+ *   contact, de montant ni d'avis (nom masqué comme dans l'espace
+ *   propriétaire). Les consignes d'accès d'un logement ne sont montrées
+ *   que le jour même, à qui en a la charge ce jour-là (le responsable, ou
+ *   son remplaçant) ou au responsable de pôle ; jamais la veille, ni pour un
+ *   contrôle en retard ;
+ * - absences : le motif reste chez le gérant (« Absent du … au … ») ;
+ * - un contrôle fait ne se réécrit plus, sauf par le pôle ou son auteur le
+ *   jour même, avec une ligne d'historique ;
  * - responsable de pôle : tout son périmètre (urgences, incidents, contrôles,
  *   équipe, remplacements) ; il confie, priorise et clôt. Agent de terrain :
  *   les incidents qui lui sont confiés ou qu'il a signalés, les contrôles de
@@ -40,6 +46,7 @@ import {
   verifierControle,
   type DonneesOps,
 } from './operations.js';
+import { prenomInitiale } from './proprietaire.js';
 import type { CategorieIncident, DateISO, Horodatage, Id, Incident, Logement } from './types';
 import type {
   AbsenceMembre,
@@ -134,7 +141,7 @@ const sejourOps = (r: EntreesOperations['reservations'][number], l?: Logement): 
   logementId: r.logementId,
   arrivee: r.arrivee,
   depart: r.depart,
-  voyageur: court(r.voyageur?.nom) || 'Voyageur',
+  voyageur: prenomInitiale(r.voyageur?.nom),
   nbPersonnes: Math.max(0, Math.round(Number(r.voyageur?.nbPersonnes) || 0)),
   canal: r.canal,
   ...(l?.fiche?.heureArrivee ? { heureArrivee: l.fiche.heureArrivee } : {}),
@@ -166,12 +173,16 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
   const aFaire = controlesAFaire(e, aujourdhui);
   const programme = programmeDuJour(e, aujourdhui);
 
-  // Consignes d'accès : seulement là où la personne a quelque chose à faire aujourd'hui.
-  const aujourdhuiLa = new Set<Id>([
-    ...programme.map((p) => p.logementId),
-    ...aFaire.filter((c) => c.echeance <= aujourdhui).map((c) => c.logementId),
-    ...incidents.filter((i) => i.statut !== 'resolu' && assigneLe(e, i, aujourdhui).membreId === moi.id).map((i) => i.logementId),
-  ]);
+  // Consignes d'accès : le jour même, là où il se passe quelque chose (arrivée, départ,
+  // intervention, contrôle prévu ce jour-là ; pas un contrôle en retard), et seulement
+  // pour qui en a la charge ce jour-là (responsable ou remplaçant) ou le pôle.
+  const enCharge = (logementId: Id) => pole || responsableLe(e, logementId, aujourdhui).membreId === moi.id;
+  const aujourdhuiLa = new Set<Id>(
+    programme
+      .filter((p) => p.type !== 'controle' || p.controle?.echeance === aujourdhui)
+      .map((p) => p.logementId)
+      .filter(enCharge),
+  );
   const signales = new Set(e.signalementsLogement.filter((s) => s.statut === 'ouvert').map((s) => s.logementId));
 
   const logements: LogementOps[] = e.logements
@@ -265,7 +276,13 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
       ...(p.controle ? { controleCle: p.controle.cle } : {}),
     })),
     equipe,
-    absences: pole ? e.absences.filter((a) => !a.annuleeLe && a.au >= aujourdhui).sort((a, b) => a.du.localeCompare(b.du)) : [],
+    // Sans motif (il peut toucher à la santé) : « Absent du … au … », le motif reste chez le gérant.
+    absences: pole
+      ? e.absences
+          .filter((a) => !a.annuleeLe && a.au >= aujourdhui)
+          .sort((a, b) => a.du.localeCompare(b.du))
+          .map(({ motif: _motif, ...a }) => a)
+      : [],
     affectations: pole ? e.affectations : [],
   };
 }
@@ -300,7 +317,7 @@ export type ActionOperations =
       /** Points « à revoir » pour lesquels créer un incident. */
       incidentsPour?: string[];
     }
-  | { type: 'absence'; id?: Id; membreId: Id; du: DateISO; au: DateISO; remplacantId?: Id; motif?: string }
+  | { type: 'absence'; id?: Id; membreId: Id; du: DateISO; au: DateISO; remplacantId?: Id }
   | { type: 'absence-annuler'; id: Id }
   | { type: 'affectation'; logementId: Id; responsableId?: Id; remplacantId?: Id; pointsControle?: string[] };
 
@@ -430,12 +447,12 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
         message = action.urgent ? 'Passé en urgent : l’équipe est prévenue.' : 'Passé en normal.';
         if (action.urgent) aNotifier.push(i.id);
       } else if (action.type === 'resoudre') {
-        if (i.statut === 'resolu') return refus('Incident déjà résolu.');
+        if (i.statut === 'resolu') return refus('Incident déjà réglé.');
         const t = texte(action.texte, 1000);
-        suivant = historiser({ ...i, statut: 'resolu', resoluLe: aujourdhui }, maintenant, moi.nom, t ? `Résolu : ${t}` : 'Résolu.');
-        message = 'Incident résolu.';
+        suivant = historiser({ ...i, statut: 'resolu', resoluLe: aujourdhui }, maintenant, moi.nom, t ? `Réglé : ${t}` : 'Réglé.');
+        message = 'Incident réglé.';
       } else {
-        if (i.statut !== 'resolu') return refus('Cet incident n’est pas résolu.');
+        if (i.statut !== 'resolu') return refus('Cet incident n’est pas réglé.');
         const { resoluLe: _r, recupereLe: _x, ...reste } = i;
         suivant = historiser({ ...reste, statut: 'en_cours' }, maintenant, moi.nom, 'Rouvert.');
         message = 'Incident rouvert.';
@@ -444,6 +461,10 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
     }
 
     case 'controle': {
+      if (action.incidentsPour !== undefined && !(Array.isArray(action.incidentsPour) && action.incidentsPour.every((x) => typeof x === 'string'))) {
+        return refus('Liste des points à reprendre illisible.');
+      }
+      if (action.points !== undefined && !Array.isArray(action.points)) return refus('Points du contrôle illisibles.');
       const cle = String(action.cle ?? '');
       let base: ControleQualite | undefined;
       if (cle.startsWith('depart-')) {
@@ -456,6 +477,8 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
         base = e.controles.find((c) => c.id === cle);
       }
       if (!base) return refus('Contrôle introuvable.', 404);
+      const dejaFait = base.statut === 'fait';
+      if (dejaFait && !controleModifiable(base, moi, aujourdhui)) return refus('Ce contrôle est déjà fait : seul le responsable de pôle peut le modifier.', 403);
       const saisis = new Map((Array.isArray(action.points) ? action.points : []).map((p) => [String(p?.id), p]));
       let points: PointControle[] = [];
       for (const p of base.points) {
@@ -490,7 +513,9 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
       if (action.terminer) {
         const manque = verifierControle(controle);
         if (manque) return refus(manque);
-        controle = { ...controle, statut: 'fait', parId: moi.id, realiseLe: controle.statut === 'fait' && controle.realiseLe ? controle.realiseLe : maintenant };
+        controle = dejaFait
+          ? { ...controle, historique: [...(base.historique ?? []), { le: maintenant, par: moi.nom, texte: 'Contrôle modifié après coup.' }] }
+          : { ...controle, statut: 'fait', parId: moi.id, realiseLe: maintenant };
         const pour = new Set((action.incidentsPour ?? []).map(String));
         const assigneA = titulaire(controle.logementId);
         const nom = e.equipe.find((m) => m.id === assigneA)?.nom;
@@ -529,10 +554,16 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
     case 'absence': {
       if (!pole) return refus(POLE_SEUL, 403);
       if (!e.equipe.some((m) => m.id === action.membreId)) return refus('Cette personne ne fait pas partie de votre équipe.');
+      // Ses logements hors de votre périmètre passeraient à un remplaçant choisi ici : c'est au gérant de noter l'absence.
+      const complet = brutes.equipe.find((m) => m?.id === action.membreId);
+      if ((complet?.logementIds ?? []).some((l) => !ids.has(l) && brutes.logements.some((x) => x?.id === l && x.statut !== 'sorti'))) {
+        return refus('Cette personne suit aussi des logements hors des vôtres : demandez au gérant de noter son absence.', 403);
+      }
       if (action.remplacantId && !e.equipe.some((m) => m.id === action.remplacantId)) return refus('Le remplaçant doit faire partie de votre équipe.');
       const existante = idValide(action.id) ? e.absences.find((a) => a.id === action.id) : undefined;
       if (action.id && !existante) return refus('Absence introuvable.', 404);
-      const motif = texte(action.motif, 200);
+      // Le motif n'est ni montré ni saisi ici : celui noté par le gérant est gardé tel quel.
+      const motif = existante?.motif;
       const absence: AbsenceMembre = {
         id: existante?.id ?? ctx.nouvelId('abs'),
         membreId: action.membreId,
@@ -575,6 +606,52 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
     default:
       return refus('Action inconnue.');
   }
+}
+
+/**
+ * Un contrôle fait peut-il encore changer ? Pas encore fait : oui. Fait : par le
+ * responsable de pôle, ou par la personne qui l'a fait, le jour même.
+ */
+export function controleModifiable(c: Pick<ControleQualite, 'statut' | 'parId' | 'realiseLe'>, moi: Pick<MembreEquipe, 'id' | 'role'>, aujourdhui: DateISO): boolean {
+  if (c.statut !== 'fait') return true;
+  return moi.role === 'pole' || (c.parId === moi.id && String(c.realiseLe ?? '').slice(0, 10) === aujourdhui);
+}
+
+const pareil = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Écriture fusionnée avec l'enregistrement relu juste avant d'écrire : seuls
+ * les champs que l'action a changés sont repris, et les listes allongées
+ * (historique, photos) ajoutent leurs nouveaux éléments à la version relue.
+ * Ce qu'un autre a changé entre-temps sur les autres champs est gardé.
+ */
+export function fusionnerEcriture<T extends object>(avant: T, apres: T, relu: T): T {
+  const a = avant as Record<string, unknown>;
+  const n = apres as Record<string, unknown>;
+  const r: Record<string, unknown> = { ...(relu as Record<string, unknown>) };
+  for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
+    if (pareil(a[k], n[k])) continue;
+    const ancienne = a[k];
+    const nouvelle = n[k];
+    const courante = r[k];
+    if (Array.isArray(ancienne) && Array.isArray(nouvelle) && Array.isArray(courante) && nouvelle.length > ancienne.length && pareil(nouvelle.slice(0, ancienne.length), ancienne)) {
+      r[k] = [...courante, ...nouvelle.slice(ancienne.length)];
+    } else if (nouvelle === undefined) {
+      delete r[k];
+    } else {
+      r[k] = nouvelle;
+    }
+  }
+  return r as T;
+}
+
+/** Les écritures d'une action, chacune fusionnée avec sa version relue (nouvel enregistrement : tel quel). */
+export function fusionnerEcritures(avant: EntreesOperations, ecritures: readonly Ecriture[], relus: ReadonlyMap<string, { id: Id } & object>): Ecriture[] {
+  return ecritures.map((x) => {
+    const origine = (avant[x.collection] as ({ id: Id } & object)[]).find((y) => y?.id === x.element.id);
+    const relu = relus.get(`${x.collection}/${x.element.id}`);
+    return origine && relu ? { collection: x.collection, element: fusionnerEcriture(origine, x.element, relu) } : x;
+  });
 }
 
 /** Applique des écritures à des entrées (démo, et vérification). */

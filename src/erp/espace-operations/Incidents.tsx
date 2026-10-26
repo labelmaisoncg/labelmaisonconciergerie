@@ -1,14 +1,14 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Hand, Plus, RotateCcw } from 'lucide-react';
 import { dateCourte, dateHeure, jourMois } from '../data/format';
 import { LIBELLES } from '../data/libelles';
 import type { IncidentOps } from '../data/types-operations';
-import { Alert, Button, Drawer, EmptyState, Field, LienFichier, Segmente, Select, StatusBadge, Textarea, Timeline, Vignette } from '../ui';
+import { Alert, Badge, Button, Drawer, EmptyState, Field, LienFichier, Segmente, Select, Textarea, Timeline, Vignette } from '../ui';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { Ligne, Liste, PastilleUrgent, Rubrique, TitreEspace, court, useOps } from './commun';
 
-/** Ligne d'un incident : la description, puis le logement, qui s'en occupe et le statut. */
-const STATUT_COURT = { ouvert: 'nouveau', en_cours: 'en cours', resolu: 'résolu' } as const;
+/** Ligne d'un incident : la description, puis le logement, qui s'en occupe et le statut (mots de l'ERP). */
+const statutCourt = (s: IncidentOps['statut']) => LIBELLES.statutIncident[s].toLowerCase();
 
 export function LigneIncident({ incident: i }: { incident: IncidentOps }) {
   const { vue, naviguer, nomLogement, nomMembre } = useOps();
@@ -22,8 +22,8 @@ export function LigneIncident({ incident: i }: { incident: IncidentOps }) {
       deuxLignes
       sousTitre={[
         nomLogement(i.logementId),
-        resolu ? `résolu le ${dateCourte(i.resoluLe ?? i.date)}` : qui,
-        !resolu && STATUT_COURT[i.statut],
+        resolu ? `${statutCourt('resolu')} le ${dateCourte(i.resoluLe ?? i.date)}` : qui,
+        !resolu && statutCourt(i.statut),
       ]
         .filter(Boolean)
         .join(' · ')}
@@ -32,11 +32,17 @@ export function LigneIncident({ incident: i }: { incident: IncidentOps }) {
   );
 }
 
-/** Incidents de la personne : à traiter (urgents d'abord) ou résolus. */
+/** Incidents de la personne : à traiter (urgents d'abord) ou réglés. */
 export function Incidents() {
   const { vue, pole, naviguer } = useOps();
-  const [vueListe, setVueListe] = useState<'a_traiter' | 'resolus'>('a_traiter');
-  const liste = vue.incidents.filter((i) => (vueListe === 'resolus' ? i.statut === 'resolu' : i.statut !== 'resolu'));
+  const [vueListe, setVueListe] = useState<'a_traiter' | 'regles'>('a_traiter');
+  // Un incident vient d'être signalé : retour sur « À traiter », où il apparaît.
+  const nombre = useRef(vue.incidents.length);
+  useEffect(() => {
+    if (vue.incidents.length > nombre.current) setVueListe('a_traiter');
+    nombre.current = vue.incidents.length;
+  }, [vue.incidents.length]);
+  const liste = vue.incidents.filter((i) => (vueListe === 'regles' ? i.statut === 'resolu' : i.statut !== 'resolu'));
   const urgents = vueListe === 'a_traiter' ? liste.filter((i) => i.urgent) : [];
   const autres = vueListe === 'a_traiter' ? liste.filter((i) => !i.urgent) : liste;
   return (
@@ -56,11 +62,11 @@ export function Incidents() {
         onChange={setVueListe}
         options={[
           { valeur: 'a_traiter', libelle: 'À traiter' },
-          { valeur: 'resolus', libelle: 'Résolus' },
+          { valeur: 'regles', libelle: 'Réglés' },
         ]}
         className="mb-5"
       />
-      {!liste.length && <EmptyState icone={<CheckCircle2 />} titre={vueListe === 'a_traiter' ? 'Aucun incident à traiter.' : 'Aucun incident résolu.'} />}
+      {!liste.length && <EmptyState icone={<CheckCircle2 />} titre={vueListe === 'a_traiter' ? 'Aucun incident à traiter.' : 'Aucun incident réglé.'} />}
       {urgents.length > 0 && (
         <Rubrique titre={`Urgent (${urgents.length})`}>
           <Liste label="Incidents urgents">
@@ -71,8 +77,8 @@ export function Incidents() {
         </Rubrique>
       )}
       {autres.length > 0 && (
-        <Rubrique titre={vueListe === 'resolus' ? `Résolus (${autres.length})` : `Normal (${autres.length})`}>
-          <Liste label={vueListe === 'resolus' ? 'Incidents résolus' : 'Incidents normaux'}>
+        <Rubrique titre={vueListe === 'regles' ? `Réglés (${autres.length})` : `Normal (${autres.length})`}>
+          <Liste label={vueListe === 'regles' ? 'Incidents réglés' : 'Incidents normaux'}>
             {autres.map((i) => (
               <LigneIncident key={i.id} incident={i} />
             ))}
@@ -131,12 +137,12 @@ export function PanneauIncident({ id, onFermer }: { id: string; onFermer: () => 
       <>
         {pole && i.statut === 'en_cours' && (
           <Button variant="primary" icone={<CheckCircle2 />} chargement={enCours === 'resoudre'} onClick={() => void faire('resoudre', { type: 'resoudre', incidentId: i.id })}>
-            Marquer résolu
+            Marquer réglé
           </Button>
         )}
         {pole && i.statut === 'ouvert' && (
           <Button variant="ghost" chargement={enCours === 'resoudre'} onClick={() => void faire('resoudre', { type: 'resoudre', incidentId: i.id })}>
-            Marquer résolu
+            Marquer réglé
           </Button>
         )}
         {peutPrendre && (
@@ -155,7 +161,7 @@ export function PanneauIncident({ id, onFermer }: { id: string; onFermer: () => 
       sousTitre={
         <span className="flex flex-wrap items-center gap-1.5">
           <PastilleUrgent urgent={i.urgent} />
-          <StatusBadge type="statutIncident" valeur={i.statut} />
+          <Badge tone={i.statut === 'resolu' ? 'succes' : 'neutre'}>{LIBELLES.statutIncident[i.statut]}</Badge>
           <span>Signalé le {dateCourte(i.date)}</span>
         </span>
       }
@@ -222,7 +228,7 @@ export function PanneauIncident({ id, onFermer }: { id: string; onFermer: () => 
         </section>
 
         {!apercu && (pole || i.suiviPar === moi || i.assigneA === moi) && (
-          <section aria-label="Ajouter" className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
+          <section aria-label="Ajouter" className="rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
             <Field label="Ajouter un mot">
               <Textarea rows={2} value={mot} onChange={(e) => setMot(e.target.value)} placeholder="Ce qui a été fait, ce qui reste à faire." maxLength={1000} />
             </Field>

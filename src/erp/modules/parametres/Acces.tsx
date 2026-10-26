@@ -26,10 +26,10 @@ import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../data/repull';
 import { nouvelId, useErp } from '../../data/store';
 import type { Id, Logement, Proprietaire } from '../../data/types';
 import type { AccesOperations, MembreEquipe, RoleOperations, SignalementLogement } from '../../data/types-operations';
-import { Alert, Badge, Button, Card, Drawer, Field, Input, Interrupteur, Modal, Select, cn, useFenetre } from '../../ui';
+import { Alert, Badge, Button, Card, Drawer, Field, Input, Interrupteur, Modal, Repli, Select, classesBouton, cn, useFenetre } from '../../ui';
 import { EspaceOps } from '../../espace-operations/EspaceOps';
 import type { ActionsOps, Ecran } from '../../espace-operations/commun';
-import { PanneauEspace, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
+import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
 import { RelancesPaiement } from '../logements/_composants/RelancesPaiement';
 import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
 
@@ -92,6 +92,23 @@ export default function Acces() {
       )}
       <Proprietaires logementFiltre={logementFiltre} gerant={gerant} onInviter={() => setInviterProprietaire(true)} />
       <Responsables logementFiltre={logementFiltre} personne={personne} gerant={gerant} onInviter={() => setInviterResponsable(true)} />
+      <Repli titre="En savoir plus" description="Ce que voit chacun dans son espace.">
+        <div className="space-y-2 text-[13.5px] text-(--lm-encre-2)">
+          <p>
+            <span className="font-medium text-(--lm-encre)">Propriétaire.</span> {CE_QUE_VOIT_LE_PROPRIETAIRE}
+          </p>
+          <p>
+            <span className="font-medium text-(--lm-encre)">{ROLES_OPERATIONS.pole}.</span> Ses logements, les séjours, les urgences et incidents, les contrôles
+            qualité, son équipe, les absences et remplacements.
+          </p>
+          <p>
+            <span className="font-medium text-(--lm-encre)">{ROLES_OPERATIONS.agent}.</span> Ses logements, les incidents qui le concernent et les contrôles à
+            faire.
+          </p>
+          <p>Les voyageurs apparaissent en « Prénom N. », et les consignes d’accès seulement le jour où il y a quelque chose à faire sur place.</p>
+          <p>Chaque invitation part au nom de cet espace ; la personne ne voit que ses données.</p>
+        </div>
+      </Repli>
       {inviterProprietaire && <InviterProprietaire onFermer={() => setInviterProprietaire(false)} />}
       {inviterResponsable && <InviterResponsable onFermer={() => setInviterResponsable(false)} logementsInitiaux={logementFiltre ? [logementFiltre] : []} />}
     </div>
@@ -144,7 +161,7 @@ export function LienInvitation({ invitation }: { invitation: Invitation }) {
     }
   };
   return (
-    <div className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
+    <div className="rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
       <p className="text-[13px] text-(--lm-encre)">
         {invitation.envoye
           ? `Invitation envoyée à ${invitation.email}. Vous pouvez aussi envoyer ce lien par SMS ou WhatsApp.`
@@ -218,7 +235,7 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
     <section aria-labelledby="acces-proprietaires">
       <EnTete
         titre="Propriétaires"
-        description="Chaque propriétaire voit, dans son espace, les logements dont il est propriétaire : réservations, bilans publiés, factures partagées et documents. Rien d’autre."
+        description="Chaque propriétaire ne voit que ses logements."
         action={
           gerant && (
             <Button variant="primary" icone={<UserPlus />} onClick={onInviter}>
@@ -439,7 +456,7 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
     <section aria-labelledby="acces-responsables">
       <EnTete
         titre="Responsables opérationnels"
-        description="Responsables de pôle et agents de terrain : chacun voit, dans son espace opérations, seulement les logements cochés ici (réservations, urgences, incidents, contrôles qualité, équipe et remplacements)."
+        description="Chacun ne voit que les logements cochés ici."
         action={
           gerant && (
             <Button icone={<UserPlus />} onClick={onInviter}>
@@ -635,13 +652,13 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
           {(tel || fiche.email) && (
             <div className="flex flex-wrap gap-2 sm:col-span-2">
               {tel && (
-                <a href={`tel:${tel}`} className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--lm-bord-fort) px-3.5 text-sm text-(--lm-encre) hover:bg-(--lm-surface-2)">
+                <a href={`tel:${tel}`} className={classesBouton('secondary')}>
                   <Phone className="size-4" aria-hidden />
                   Appeler
                 </a>
               )}
               {fiche.email && (
-                <a href={`mailto:${fiche.email}`} className="inline-flex h-9 items-center gap-2 rounded-lg border border-(--lm-bord-fort) px-3.5 text-sm text-(--lm-encre) hover:bg-(--lm-surface-2)">
+                <a href={`mailto:${fiche.email}`} className={classesBouton('secondary')}>
                   <Mail className="size-4" aria-hidden />
                   Écrire
                 </a>

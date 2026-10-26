@@ -68,7 +68,7 @@ export function Aujourdhui() {
         <Rubrique titre={`Contrôles en retard (${enRetard.length})`}>
           <Liste label="Contrôles en retard">
             {enRetard.map((c) => (
-              <LigneControle key={c.cle} c={c} />
+              <LigneControle key={c.cle} c={c} sansBadge />
             ))}
           </Liste>
         </Rubrique>

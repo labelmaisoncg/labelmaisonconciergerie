@@ -19,7 +19,7 @@ import { AUJOURDHUI, dateCourte, euros } from '../../../data/format';
 import { useErp } from '../../../data/store';
 import { REGLAGES_RELANCES_DEFAUT, messageRelance, montantTtcFacture, planifierRelances, reglagesRelances } from '../../../data/relances';
 import type { RelancePaiement, ReglagesRelances } from '../../../data/types-proprietaire';
-import { Alert, Badge, Button, Field, Input, Interrupteur } from '../../../ui';
+import { Alert, Badge, Button, Field, Input, Interrupteur, Repli } from '../../../ui';
 import { appelerServeur } from '../../messagerie/_composants/serveur';
 
 const API = '/api/espace-proprietaire';
@@ -116,30 +116,33 @@ function Reglages({ reglages, onChange }: { reglages: ReglagesRelances; onChange
         <span className="text-[13.5px] font-medium text-(--lm-encre)">Relances des factures en retard</span>
         <Interrupteur actif={reglages.actif} label="Relances des factures en retard" onChange={(actif) => onChange({ ...reglages, actif })} />
       </div>
-      <fieldset className="space-y-1" disabled={!reglages.actif}>
-        <legend className="mb-1 text-[13px] font-medium text-(--lm-encre)">Envoi</legend>
-        <label className={radio}>
-          <input type="radio" name="mode-relances" className="mt-1 accent-(--lm-or-texte)" checked={reglages.mode === 'proposer'} onChange={() => onChange({ ...reglages, mode: 'proposer' })} />
-          <span>
-            Je valide chaque relance
-          </span>
-        </label>
-        <label className={radio}>
-          <input type="radio" name="mode-relances" className="mt-1 accent-(--lm-or-texte)" checked={reglages.mode === 'automatique'} onChange={() => onChange({ ...reglages, mode: 'automatique' })} />
-          <span>
-            Envoi automatique par e-mail
-          </span>
-        </label>
-      </fieldset>
-      <Field label="Jours après l’échéance" aide="Une relance par étape, par exemple 5, 15, 30.">
-        <Input
-          inputMode="numeric"
-          value={jours}
-          disabled={!reglages.actif}
-          onChange={(e) => setJours(e.target.value)}
-          onBlur={() => onChange({ ...reglages, jours: jours.split(/[^\d]+/).filter(Boolean).map(Number) })}
-        />
-      </Field>
+      <Repli
+        titre="Avancé"
+        description={`${reglages.mode === 'proposer' ? 'Je valide chaque relance' : 'Envoi automatique par e-mail'} · ${reglages.jours.join(', ')} jours après l’échéance`}
+      >
+        <div className="space-y-3">
+          <fieldset className="space-y-1" disabled={!reglages.actif}>
+            <legend className="mb-1 text-[13px] font-medium text-(--lm-encre)">Envoi</legend>
+            <label className={radio}>
+              <input type="radio" name="mode-relances" className="mt-1 accent-(--lm-or-texte)" checked={reglages.mode === 'proposer'} onChange={() => onChange({ ...reglages, mode: 'proposer' })} />
+              <span>Je valide chaque relance</span>
+            </label>
+            <label className={radio}>
+              <input type="radio" name="mode-relances" className="mt-1 accent-(--lm-or-texte)" checked={reglages.mode === 'automatique'} onChange={() => onChange({ ...reglages, mode: 'automatique' })} />
+              <span>Envoi automatique par e-mail</span>
+            </label>
+          </fieldset>
+          <Field label="Jours après l’échéance" aide="Une relance par étape, par exemple 5, 15, 30.">
+            <Input
+              inputMode="numeric"
+              value={jours}
+              disabled={!reglages.actif}
+              onChange={(e) => setJours(e.target.value)}
+              onBlur={() => onChange({ ...reglages, jours: jours.split(/[^\d]+/).filter(Boolean).map(Number) })}
+            />
+          </Field>
+        </div>
+      </Repli>
     </div>
   );
 }

@@ -524,6 +524,21 @@ async function principal() {
     res = await appelOps({ corps: { action: 'lien', email: EMAIL_OPS } });
     const liens = (e: string, id: string) => ((monde.lignes.get(`${e}\u0000accesOperations\u0000${id}`)?.donnees as { liens?: { motif: string }[] } | undefined)?.liens ?? []).filter((l) => l.motif === 'connexion').length;
     verifier(res.statut === 200 && liens(LM, 'eq-a') === 1 && liens(SENS, 'eq-s') === 1, 'opérations : demande de lien, un lien dans chaque espace où l’adresse a un accès', res.corps);
+
+    // Agir : la photo d'un autre dossier refusée, l'incident écrit dans Sens seulement, relu avant d'écrire.
+    const signaler = (photos: string[]) =>
+      appelOps({ entetes: { cookie: cookieSamir }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-s', urgent: false, description: 'Volet cassé dans la chambre.', photos } } });
+    res = await signaler(['stockage://erp-fichiers/operations/eq-s/lqx1-abc123.jpg']);
+    verifier(res.statut === 400, 'opérations : photo hors du dossier de Sens, refusée', res.corps);
+    monde.oublier();
+    res = await signaler([]);
+    const idIncident = String(res.corps?.id ?? '');
+    verifier(
+      res.statut === 200 && !!idIncident && monde.lignes.has(`${SENS}\u0000incidents\u0000${idIncident}`) && !monde.lignes.has(`${LM}\u0000incidents\u0000${idIncident}`),
+      'opérations : incident signalé, écrit dans Sens seulement',
+      [...monde.lignes.keys()].filter((k) => k.includes('incidents')),
+    );
+    verifier(monde.base.some((r) => r.methode === 'GET' && r.chemin === 'enregistrements' && r.url.searchParams.get('collection') === 'eq.incidents' && !!r.url.searchParams.get('id')?.startsWith('in.')), 'opérations : l’incident est relu juste avant d’être écrit');
   }
 
   section('Relances de paiement : chaque espace, son calendrier, son expéditeur');

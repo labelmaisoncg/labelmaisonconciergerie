@@ -15,12 +15,17 @@ export const DOSSIER_OPERATIONS = 'operations';
 export const TAILLE_MAX_PHOTO = 3 * 1024 * 1024;
 export const TYPES_PHOTO: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
-/** Adresse d'une photo déposée par l'espace opérations dans cet espace (et seulement elle). */
-export function photoOperations(url: unknown, prefixeEspace: string): url is string {
-  if (typeof url !== 'string' || url.length > 300) return false;
-  const debut = `stockage://${BUCKET}/${prefixeEspace}${DOSSIER_OPERATIONS}/`;
+/**
+ * Adresse d'une photo déposée par l'espace opérations, dans cet espace et par
+ * cette personne (dossier « operations/<membre>/ ») : jamais le fichier d'un
+ * autre membre, d'un autre espace ou d'un autre dossier, même si son adresse
+ * est connue. Sans membre : rien n'est accepté.
+ */
+export function photoOperations(url: unknown, prefixeEspace: string, membreId?: string): url is string {
+  if (typeof url !== 'string' || url.length > 300 || typeof membreId !== 'string' || !/^[\w-]{1,80}$/.test(membreId)) return false;
+  const debut = `stockage://${BUCKET}/${prefixeEspace}${DOSSIER_OPERATIONS}/${membreId}/`;
   if (!url.startsWith(debut)) return false;
-  return /^[\w-]+\/[\w.-]+$/.test(url.slice(debut.length)) && !url.includes('..');
+  return /^[\w-]+\.(jpg|png|webp)$/.test(url.slice(debut.length)) && !url.includes('..');
 }
 
 /** Octets d'une image envoyée en base64 (taille et type vérifiés), sinon null. */

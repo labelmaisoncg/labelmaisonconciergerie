@@ -24,7 +24,7 @@
 // calendrier, disponibilité ni annonce. Règles : src/erp/data/espace-operations.ts.
 // =============================================================================
 
-import { appliquerAction, avecEcritures, vueOperations, type ActionOperations } from '../src/erp/data/espace-operations.js';
+import { appliquerAction, avecEcritures, fusionnerEcritures, vueOperations, type ActionOperations } from '../src/erp/data/espace-operations.js';
 import {
   MESSAGES_REFUS_OPS,
   avecNouveauLien,
@@ -53,6 +53,7 @@ import {
   lireMembre,
   prefixePhotos,
   prevenirGerant,
+  relireOps,
   signeurPhotos,
 } from './_operations.js';
 
@@ -180,11 +181,13 @@ export default async function handler(req: any, res: any) {
         aujourdhui: dateParisISO(),
         maintenant: new Date().toISOString(),
         nouvelId: (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
-        photoAcceptee: (u) => photoOperations(u, prefixe),
+        photoAcceptee: (u) => photoOperations(u, prefixe, membreId),
       });
       if (!r.ok) return repondre(res, r.statut, { ok: false, erreur: r.erreur });
-      await ecrireOps(s.base, r.ecritures);
-      const apres = avecEcritures(entrees, r.ecritures);
+      // Relu juste avant d'écrire : seuls les champs changés par l'action sont repris (rien d'écrasé de ce qui a changé entre-temps).
+      const ecritures = fusionnerEcritures(entrees, r.ecritures, await relireOps(s.base, r.ecritures));
+      await ecrireOps(s.base, ecritures);
+      const apres = avecEcritures(entrees, ecritures);
       const notifier = prevenirGerant(s.base, apres, r.aNotifier);
       if (!continuerApresReponse(notifier)) await notifier;
       return repondre(res, 200, { ok: true, message: r.message, ...(r.id ? { id: r.id } : {}), vue: await vueSignee(s.espace, apres, membreId) });

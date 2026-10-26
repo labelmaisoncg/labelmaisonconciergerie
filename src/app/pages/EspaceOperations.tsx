@@ -160,7 +160,7 @@ function useDemo(membreId: string) {
           aujourdhui: AUJOURDHUI,
           maintenant: horodatageMaintenant(),
           nouvelId: (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-          photoAcceptee: (u) => u.startsWith('demo://operations/'),
+          photoAcceptee: (u) => u.startsWith(`demo://operations/${membreId}/`),
         });
         if (!r.ok) return { ok: false, erreur: r.erreur };
         const suivant = avecEcritures(ref.current, r.ecritures);
@@ -261,11 +261,13 @@ export default function EspaceOperations() {
 
   const vue = MODE_DEMO ? demo.vue : etat.nom === 'pret' ? etat.vue : null;
   const demoIntrouvable = MODE_DEMO && apercu && demo.charge && !demo.vue;
+  // Nom de la conciergerie qui a invité ; avant la vue, Label Maison seulement si le lien est le sien.
+  const conciergerie = vue?.conciergerie?.nom ?? (!espaceLien || estLabelMaison(espaceLien) ? 'Label Maison' : '');
 
   return (
     <div className="erp-root">
       <Helmet>
-        <title>Espace opérations · Label Maison</title>
+        <title>{conciergerie ? `Espace opérations · ${conciergerie}` : 'Espace opérations'}</title>
         <meta name="robots" content="noindex, nofollow" />
         <meta name="referrer" content="no-referrer" />
       </Helmet>

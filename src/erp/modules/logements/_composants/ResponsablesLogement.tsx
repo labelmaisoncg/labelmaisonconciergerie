@@ -29,7 +29,7 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
         actions={
           gerant && (
             <Link to={`/erp/parametres/acces?logement=${encodeURIComponent(l.id)}`} className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
-              Gérer
+              Voir dans Accès
             </Link>
           )
         }

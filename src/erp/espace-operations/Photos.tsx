@@ -17,6 +17,7 @@ export function ChoixPhotos({
   max = 6,
   libelle = 'Ajouter une photo',
   variante = 'secondary',
+  lecture = false,
   className,
 }: {
   photos: PhotoChoisie[];
@@ -24,6 +25,8 @@ export function ChoixPhotos({
   max?: number;
   libelle?: string;
   variante?: 'secondary' | 'ghost';
+  /** Photos montrées seulement : ni ajout ni retrait. */
+  lecture?: boolean;
   className?: string;
 }) {
   const { actions } = useOps();
@@ -54,14 +57,16 @@ export function ChoixPhotos({
           {photos.map((p, k) => (
             <li key={p.url} className="relative">
               <Vignette url={p.apercu} alt={`Photo ${k + 1}`} />
-              <IconButton label={`Retirer la photo ${k + 1}`} size="sm" variant="secondary" className="absolute top-1 right-1" onClick={() => onChange(photos.filter((x) => x.url !== p.url))}>
-                <X />
-              </IconButton>
+              {!lecture && (
+                <IconButton label={`Retirer la photo ${k + 1}`} size="sm" variant="secondary" className="absolute top-1 right-1" onClick={() => onChange(photos.filter((x) => x.url !== p.url))}>
+                  <X />
+                </IconButton>
+              )}
             </li>
           ))}
         </ul>
       )}
-      {photos.length < max && (
+      {!lecture && photos.length < max && (
         <div className="flex flex-col items-start gap-1">
           <input ref={champ} type="file" accept="image/*" multiple={max > 1} className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void choisir(e.target.files)} />
           <Button variant={variante} size="sm" icone={<Camera />} chargement={enCours} onClick={() => champ.current?.click()}>
