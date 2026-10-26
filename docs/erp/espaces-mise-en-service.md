@@ -12,7 +12,8 @@ réservations, ses messages, son Repull. Rien ne passe de l'un à l'autre.
 **Pour Label Maison, rien ne change** : même adresse, même mot de passe,
 personne n'est déconnecté, toutes les données restent où elles sont.
 
-Comptez 15 minutes aujourd'hui, puis 5 minutes au moins 24 heures plus tard.
+Comptez 15 minutes aujourd'hui, puis 5 minutes au moins 24 heures plus tard
+(voir l'étape 4 pour le point de départ exact de ces 24 heures).
 
 ## Étape 1 — Créer le compte du serveur (5 min)
 
@@ -69,11 +70,17 @@ d'importance : le nouveau code reconnaît une base pas encore préparée et
 fonctionne alors exactement comme avant. L'app se met à jour à chaque
 ouverture, et chaque nuit quand elle reste ouverte : rien à faire de votre côté.
 
-## Étape 4 — Passe 2, au moins 24 heures après la mise en ligne (5 min)
+## Étape 4 — Passe 2, au moins 24 heures après la DERNIÈRE des étapes 2 et 3 (5 min)
 
-Pourquoi attendre : après la passe 2, une ancienne version de l'app restée
-ouverte quelque part ne pourrait plus enregistrer. En 24 heures, toutes les
-apps ont pris la mise à jour (elles se rechargent seules chaque nuit).
+Les 24 heures se comptent à partir de la plus tardive de ces deux dates : la
+mise en ligne du code (étape 3) et la passe 1 (étape 2). Exemple : code en
+ligne lundi, passe 1 mercredi à 10 h → passe 2 jeudi à 10 h au plus tôt.
+
+Pourquoi attendre : après la passe 2, ne sauraient plus enregistrer une
+ancienne version de l'app restée ouverte quelque part, ni une page du nouveau
+code ouverte avant la passe 1 (elle se croit encore sur la base d'avant
+jusqu'à son rechargement). Toutes les apps se rechargent seules chaque nuit :
+24 heures suffisent.
 
 1. Supabase → **SQL Editor** → **New query** → collez de nouveau tout
    `supabase/erp-espaces.sql`.
@@ -85,6 +92,10 @@ Attendu : la même ligne qu'à l'étape 2, avec **passe = 2** et
 
 ## Plus tard — ouvrir l'espace de Sens
 
+**Seulement après la passe 2.** Avant, la base refuse de créer un autre espace
+(message « Passe 2 d'abord ») : c'est voulu, sinon les réglages techniques de
+Sens se mélangeraient à ceux de Label Maison.
+
 Avec l'étape suivante (connexion personnelle et « Créer un compte »), l'espace
 de Sens s'ouvrira depuis l'ERP. D'ici là, voici ce qui se prépare dans le SQL
 Editor (une requête à la fois) :
@@ -94,12 +105,20 @@ Editor (une requête à la fois) :
 - Repull, voie principale (le workspace que Repull ouvre pour Sens sur votre
   compte, même facture) : quand Repull vous donne son numéro,
   `update erp.espaces set repull_workspace = 'NUMÉRO' where code = 'sens';`
+  Demandez aussi à Repull si les événements de Label Maison portent un numéro
+  de workspace. Si oui, renseignez-le AVANT celui de Sens :
+  `update erp.espaces set repull_workspace = 'NUMÉRO' where code = 'label-maison';`
+  (sinon, une fois Sens relié, ces événements seraient ignorés ; la
+  synchronisation quotidienne et le bouton, eux, continuent).
 - Repull, autre voie (Sens a son propre compte Repull et sa propre clé) : la
   clé se range dans le coffre chiffré de Supabase, jamais dans Vercel :
   `select erp.ranger_secret('sens', 'repull_cle', 'LA_CLÉ');`
+- Appels Repull de Sens : 150 par mois par défaut (sa propre part, celle de
+  Label Maison n'est pas entamée). Pour la changer :
+  `update erp.espaces set config = jsonb_set(config, '{repull}', coalesce(config->'repull', '{}') || '{"budgetMois": 200}') where code = 'sens';`
 - Plafond de l'agent IA de Sens (il utilise la clé Claude de Label Maison) :
   300 décisions par mois par défaut. Pour le changer :
-  `update erp.espaces set config = jsonb_set(config, '{agent,plafondMois}', '150') where code = 'sens';`
+  `update erp.espaces set config = jsonb_set(config, '{agent}', coalesce(config->'agent', '{}') || '{"plafondMois": 150}') where code = 'sens';`
 
 L'agent de Sens démarre **en pause** : il ne répond à personne tant que
 l'équipe de Sens ne l'a pas allumé. Les alertes Telegram restent celles de

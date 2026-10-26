@@ -9,8 +9,11 @@
  * compte serveur absent ou sans son rôle (compte d'équipe, Label Maison
  * seulement), compte serveur prêt (espace nommé par l'en-tête), réglages d'un
  * espace (workspace, clé propre, rien de Label Maison), passage quotidien sur
- * chaque espace, bouton d'un membre de Sens, webhooks (workspace inconnu
- * ignoré, workspace de Sens, adresse propre à un espace avec son secret).
+ * chaque espace, bouton d'un membre de Sens, webhooks (événements tagués de
+ * Label Maison traités comme avant tant qu'aucun autre espace n'a de
+ * workspace, workspace de Sens, workspace inconnu ignoré ensuite, adresse
+ * propre à un espace avec son secret, espace inconnu = signature fausse),
+ * base qui recule (retour en arrière du SQL) relue aussitôt.
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -22,7 +25,7 @@ import crypto from 'node:crypto';
 import { ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE } from '../src/erp/data/espaces';
 import { ID_SELECTION } from '../src/erp/data/repull-synchro';
 import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, oublierEtatBase, variableManquante } from '../api/_erp-repull';
-import { PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configurationEspace, espaceDemande, espacesActifs, workspaceDeLEvenement } from '../api/_erp-espaces';
+import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configurationEspace, espaceDemande, espaceDuWorkspace, espacesActifs, workspaceDeLEvenement } from '../api/_erp-espaces';
 import routeSynchro from '../api/erp-repull-sync';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
@@ -132,7 +135,7 @@ class Monde {
       if (chemin === 'rpc/espaces_actifs') return json(serveur ? this.espaces : this.espaces.filter((e) => this.permis(jeton, null).includes(e.id)));
       if (chemin === 'rpc/secret_espace') {
         const { p_espace, p_nom } = corps as { p_espace: string; p_nom: string };
-        return json(serveur && p_espace !== LM ? (this.coffre.get(`${p_espace}:${p_nom}`) ?? null) : null);
+        return json(serveur && p_espace !== LM && entete === p_espace ? (this.coffre.get(`${p_espace}:${p_nom}`) ?? null) : null);
       }
       return json({ code: 'PGRST202' }, 404);
     }
@@ -223,6 +226,14 @@ async function principal() {
   verifier(espaceDemande({ headers: { 'x-erp-espace': SENS.toUpperCase() } }) === SENS && espaceDemande({ headers: { 'x-erp-espace': 'sens' } }) === undefined && espaceDemande({ headers: {} }) === undefined, 'espace de l’appel : uuid de l’en-tête seulement');
   verifier(workspaceDeLEvenement({ workspaceId: 1204 }) === '1204' && workspaceDeLEvenement({ data: { workspaceId: '77' } }) === '77' && workspaceDeLEvenement({}) === undefined, 'workspace d’un événement');
   verifier(codeEspaceDuWebhook({ query: { espace: 'Sens' } }) === 'sens' && codeEspaceDuWebhook({ query: { espace: 'label-maison' } }) === undefined && codeEspaceDuWebhook({ query: {} }) === undefined, 'espace de l’adresse du webhook');
+  {
+    const lm = { id: LM, code: 'label-maison', nom: 'Label Maison', repull_workspace: null, config: {} };
+    const sens = { id: SENS, code: 'sens', nom: 'Sens', repull_workspace: '1204', config: {} };
+    verifier(espaceDuWorkspace([lm], '555')?.id === LM, 'workspace d’un événement, Label Maison seul : Label Maison (comme avant)');
+    verifier(espaceDuWorkspace([lm, { ...sens, repull_workspace: null }], '555')?.id === LM, 'aucun autre espace avec un workspace : Label Maison');
+    verifier(espaceDuWorkspace([lm, sens], '1204')?.id === SENS && espaceDuWorkspace([lm, sens], '555') === null, 'Sens déclaré : son workspace chez lui, un inconnu ignoré');
+    verifier(espaceDuWorkspace([{ ...lm, repull_workspace: '42' }, sens], '42')?.id === LM, 'Label Maison peut déclarer le sien');
+  }
 
   section('Base pas encore préparée : comme avant');
   {
@@ -245,6 +256,10 @@ async function principal() {
     verifier(res.statut === 200 && typeof res.corps?.statut === 'string', 'passage quotidien : même réponse qu’avant (Label Maison seul)', res.corps);
     verifier(monde.repull.length > 0 && monde.repull.every((a) => a.workspace === null && a.cle === 'sk_test_lm'), 'Repull : clé de Label Maison, sans workspace');
     verifier(monde.base.every((r) => r.espace === null), 'base : aucune requête avec espace');
+    monde.oublier();
+    const w = reponse();
+    await routeWebhook(webhook({ event: 'reservation.message.received', data: { object: {} }, workspaceId: 555 }, 'whsec_lm'), w);
+    verifier(w.statut === 200 && !w.corps?.ignore && monde.repull.length > 0 && monde.ecritures(LM).length > 0, 'webhook tagué d’un workspace, base d’avant : traité pour Label Maison', w.corps);
   }
 
   section('Base préparée, compte serveur pas prêt');
@@ -287,6 +302,13 @@ async function principal() {
     verifier(lm.cle === 'sk_test_lm' && !lm.workspace && lm.secretWebhook === 'whsec_lm' && lm.plafondIAMois === undefined, 'Label Maison : variables de Vercel, sans plafond', lm);
     const sens = await configurationEspace(SENS);
     verifier(sens.espace === SENS && sens.cle === 'sk_test_lm' && sens.workspace === '1204' && sens.secretWebhook === '' && sens.plafondIAMois === PLAFOND_IA_DEFAUT && sens.nomEspace === 'Sens', 'Sens : clé du compte dans SON workspace, aucun secret de Label Maison', sens);
+    verifier(sens.budgetMois === BUDGET_ESPACE_DEFAUT && BUDGET_ESPACE_DEFAUT < lm.budgetMois, 'Sens : sa propre part d’appels, plus petite que celle de Label Maison', sens.budgetMois);
+    monde.espaces[1].config = { repull: { budgetMois: 0 } };
+    verifier((await configurationEspace(SENS)).budgetMois === 0, 'part d’appels à 0 permise');
+    monde.espaces[1].config = {};
+    monde.oublier();
+    await configurationEspace(SENS);
+    verifier(monde.base.filter((r) => r.chemin === 'rpc/secret_espace').every((r) => r.espace === SENS), 'secrets du coffre demandés avec l’en-tête de l’espace');
     monde.coffre.set(`${SENS}:repull_cle`, 'sk_test_sens');
     monde.espaces[1].config = { agent: { plafondMois: 50 } };
     const propre = await configurationEspace(SENS);
@@ -297,6 +319,16 @@ async function principal() {
     let m = '';
     await configurationEspace('9a9a0000-0000-4000-8000-000000000009').catch((x: Error) => (m = x.message));
     verifier(/inconnu/.test(m), 'espace inconnu : refusé', m);
+  }
+
+  section('Webhook tagué, seul Label Maison configuré');
+  {
+    monde.espaces[1].repull_workspace = null;
+    monde.oublier();
+    const w = reponse();
+    await routeWebhook(webhook({ event: 'reservation.message.received', data: { object: {} }, workspaceId: 555 }, 'whsec_lm'), w);
+    verifier(w.statut === 200 && !w.corps?.ignore && monde.ecritures(LM).length > 0 && monde.repull.every((a) => a.workspace === null), 'aucun autre espace avec un workspace : traité pour Label Maison', w.corps);
+    monde.espaces[1].repull_workspace = '1204';
   }
 
   section('Passage quotidien sur chaque espace');
@@ -346,7 +378,7 @@ async function principal() {
     verifier(res.statut === 200 && monde.repull.every((a) => a.workspace === null) && monde.ecritures(LM).length > 0 && monde.ecritures(SENS).length === 0, 'sans workspace : Label Maison, comme avant');
     res = reponse();
     await routeWebhook(webhook(message, 'whsec_lm', { espace: 'sens' }), res);
-    verifier(res.statut === 503, 'adresse de Sens sans secret rangé : refusée (le secret de Label Maison ne vaut pas)', res.corps);
+    verifier(res.statut === 401 && JSON.stringify(res.corps) === '{"ok":false}', 'adresse de Sens sans secret rangé : refusée comme une signature fausse', res.corps);
     monde.coffre.set(`${SENS}:repull_webhook`, 'whsec_sens');
     res = reponse();
     await routeWebhook(webhook(message, 'whsec_lm', { espace: 'sens' }), res);
@@ -357,7 +389,25 @@ async function principal() {
     verifier(res.statut === 200 && monde.ecritures(SENS).length > 0 && monde.ecritures(LM).length === 0, 'adresse de Sens, son secret : traité dans Sens', res.corps);
     res = reponse();
     await routeWebhook(webhook(message, 'whsec_sens', { espace: 'inconnu' }), res);
-    verifier(res.statut === 404, 'espace inconnu : 404', res.statut);
+    verifier(res.statut === 401 && JSON.stringify(res.corps) === '{"ok":false}', 'espace inconnu : même réponse qu’une signature fausse', res);
+    res = reponse();
+    await routeWebhook(webhook(message, 'whsec_faux', { espace: 'sens' }), res);
+    verifier(res.statut === 401 && JSON.stringify(res.corps) === '{"ok":false}', 'signature fausse : la même réponse', res.statut);
+  }
+
+  section('Retour en arrière du SQL');
+  {
+    const c = configuration();
+    verifier((await etatBase(c)).serveur, 'état gardé : base préparée, compte serveur prêt');
+    monde.historique = true;
+    let m = '';
+    await baseErp(c).lire('crm').catch((x: Error) => (m = x.message));
+    verifier(m === MESSAGE_BASE_PAS_PREPAREE, 'colonne espace refusée : « Base pas encore préparée »', m);
+    verifier((await etatBase(c)).mode === 'historique', 'état oublié aussitôt : la base est relue (historique)');
+    monde.oublier();
+    await baseErp(c).lire('crm');
+    const r = monde.base[monde.base.length - 1];
+    verifier(r.espace === null && r.jeton === 'jeton-equipe', 'Label Maison repart comme avant (compte d’équipe, sans espace)', r.espace);
   }
 
   process.stdout.write(`\n${reussis} contrôles réussis, ${echecs} en échec.\n`);

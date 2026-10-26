@@ -7,7 +7,11 @@
 // webhook, Telegram, MCP). Un autre espace n'en reprend JAMAIS aucune :
 //   - Repull : son workspace (en-tête X-Workspace-Id) sur le compte de Label
 //     Maison, ou sa propre clé rangée dans le coffre de Supabase (Vault) ;
-//   - webhook : son propre secret (coffre), seulement avec sa propre clé ;
+//     part mensuelle d'appels propre (config.repull.budgetMois, 150 par
+//     défaut : la part de Label Maison n'est jamais entamée par défaut) ;
+//   - webhook : par workspace, ses événements arrivent à l'adresse de Label
+//     Maison, « tagués » (espaceDuWorkspace) ; avec sa propre clé, sa propre
+//     adresse (?espace=<code>) et son propre secret (coffre) ;
 //   - agent IA : la clé Claude commune, avec un plafond mensuel
 //     (config.agent.plafondMois, 300 par défaut), sans Telegram.
 //
@@ -19,6 +23,9 @@ import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, repondre, typ
 
 /** Plafond mensuel des décisions de l'agent IA d'un autre espace que Label Maison. */
 export const PLAFOND_IA_DEFAUT = 300;
+
+/** Part mensuelle d'appels Repull d'un autre espace que Label Maison, sauf réglage (0 permis). */
+export const BUDGET_ESPACE_DEFAUT = 150;
 
 /** Espace actif tel que le lit le serveur (erp.espaces_actifs). */
 export interface FicheEspace {
@@ -78,7 +85,7 @@ export async function configurationEspace(espace: string = ID_LABEL_MAISON, fich
     workspace: workspace || undefined,
     // Le secret du webhook de Label Maison ne vaut jamais pour un autre espace.
     secretWebhook: typeof secretWebhook === 'string' ? secretWebhook.trim() : '',
-    budgetMois: entierPositif(f.config?.repull?.budgetMois, c.budgetMois) || c.budgetMois,
+    budgetMois: entierPositif(f.config?.repull?.budgetMois, BUDGET_ESPACE_DEFAUT),
     plafondIAMois: entierPositif(f.config?.agent?.plafondMois, PLAFOND_IA_DEFAUT),
   };
 }
@@ -98,6 +105,19 @@ export function refuserHorsLabelMaison(res: any, espace: string, quoi: string): 
   if (estLabelMaison(espace)) return false;
   repondre(res, 403, { ok: false, code: 'espace', erreur: `${quoi} : disponible pour l’instant dans l’espace Label Maison seulement.` });
   return true;
+}
+
+/**
+ * Espace d'un événement « tagué » workspaceId reçu à l'adresse de Label Maison :
+ * l'espace qui a déclaré ce workspace (Label Maison compris) ; à défaut, Label
+ * Maison tant qu'aucun autre espace n'a de workspace (comme avant les espaces) ;
+ * sinon null : workspace inconnu, l'événement est ignoré.
+ */
+export function espaceDuWorkspace(espaces: FicheEspace[], workspace: string): FicheEspace | null {
+  const trouve = espaces.find((e) => (e.repull_workspace ?? '') === workspace);
+  if (trouve) return trouve;
+  if (espaces.some((e) => !estLabelMaison(e.id) && e.repull_workspace)) return null;
+  return espaces.find((e) => estLabelMaison(e.id)) ?? FICHE_LABEL_MAISON;
 }
 
 /** Workspace Repull d'un événement de webhook (les sous-workspaces sont « tagués »). */

@@ -348,6 +348,8 @@ export interface OptionsBase {
    * premier accès, quand l'état de la base est connu.
    */
   espace?: string | null | (() => Promise<string | null>);
+  /** La base refuse la colonne espace (SQL retiré) : prévenir qui garde son état. */
+  surBaseHistorique?: () => void;
 }
 
 /** Accès à erp.enregistrements par PostgREST (schéma erp). */
@@ -389,8 +391,14 @@ export class BaseErp {
       if (r.status === 401 && essai === 1) continue;
       if (!r.ok) {
         const t = await r.text().catch(() => '');
-        if (r.status === 401 || r.status === 403) throw new Error(`Écriture refusée par la base (${r.status}) : le compte du serveur est-il bien autorisé dans cet espace ? ${t.slice(0, 200)}`);
-        if (espace && /42703|PGRST204|PGRST202|42883/.test(t)) throw new Error(MESSAGE_BASE_PAS_PREPAREE);
+        if (r.status === 401 || r.status === 403) {
+          const qui = espace ? 'le compte du serveur est-il bien autorisé dans cet espace ?' : 'le compte d’équipe est-il bien membre gérant ?';
+          throw new Error(`Écriture refusée par la base (${r.status}) : ${qui} ${t.slice(0, 200)}`);
+        }
+        if (espace && /42703|PGRST204|PGRST202|42883/.test(t)) {
+          this.o.surBaseHistorique?.();
+          throw new Error(MESSAGE_BASE_PAS_PREPAREE);
+        }
         if (/PGRST106|PGRST205|schema/i.test(t)) throw new Error('Base de l’ERP non installée (supabase/erp-installation.sql).');
         throw new Error(`Base de l’ERP : erreur ${r.status} ${t.slice(0, 200)}`);
       }

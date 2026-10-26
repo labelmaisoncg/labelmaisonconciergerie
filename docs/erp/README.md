@@ -963,17 +963,26 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - **Deux passes** (une ligne à changer en haut du fichier) :
   1. passe 1 : colonne avec Label Maison par défaut, nouvelles clés en plus
      des anciennes. L'ancien et le nouveau code marchent tous les deux ;
-  2. passe 2, au moins 24 h après la mise en ligne du code : clés primaires
-     `(espace, …)` (le même identifiant possible dans deux espaces, une
-     adresse membre de plusieurs espaces), plus de valeur par défaut. L'ancien
-     code ne sait plus écrire : d'où l'attente.
+  2. passe 2, au moins 24 h après la PLUS TARDIVE de la mise en ligne du code
+     et de la passe 1 : clés primaires `(espace, …)` (le même identifiant
+     possible dans deux espaces, une adresse membre de plusieurs espaces),
+     plus de valeur par défaut. Ne savent plus écrire ensuite : l'ancien code,
+     et une page du nouveau code ouverte avant la passe 1 (restée en mode
+     « historique » jusqu'à son rechargement de la nuit, qui relit
+     `qui_suis_je`). D'où l'attente.
+- Un autre espace que Label Maison ne peut être créé qu'après la passe 2
+  (déclencheur `espaces_apres_passe_2`, message « Passe 2 d'abord ») : avant,
+  ses lignes techniques (`repull/etat`, `agent/etat`, `etat_automatisations/
+  global`) heurteraient celles de Label Maison (erreur 23505).
 - Compte technique `serveur@labelmaisoncg.fr` (`app_metadata.erp_role =
   serveur`, posé par le script) : il ne voit **que** l'espace nommé par
   l'en-tête `x-erp-espace`, avec les droits d'un gérant ; sans en-tête, rien.
 - Fonctions : `erp.qui_suis_je()` (espaces et rôle du compte),
   `erp.espaces_actifs()`, `erp.secret_espace()` (coffre Vault, serveur
-  seulement, jamais pour Label Maison), `erp.ranger_secret()` (SQL Editor
-  seulement), `erp.recette_espaces()` (essai des règles, annulé).
+  seulement, pour l'espace de l'en-tête seulement, jamais pour Label Maison),
+  `erp.ranger_secret()` (SQL Editor seulement), `erp.recette_espaces()`
+  (essai des règles, annulé). Relancer le fichier après la passe 2 ne recrée
+  rien en double (`erp.cle_par_espace`).
 - `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
   aucune règle d'accès d'ici là.
 - `erp-installation.sql` et `erp-connecteurs-gerants.sql` refusent de tourner
@@ -1000,16 +1009,25 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - `configurationEspace(espace)` (`api/_erp-espaces.ts`) : Label Maison garde
   ses variables Vercel. Un autre espace n'en reprend **aucune** :
   Repull par son workspace (`repull_workspace`, en-tête `X-Workspace-Id` sur
-  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; secret de
-  webhook propre (coffre) ; agent IA avec la clé Claude commune, un plafond de
+  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; sa part
+  d'appels Repull (`config.repull.budgetMois`, 150 par défaut, 0 permis : la
+  part de Label Maison n'est pas entamée) ; secret de webhook propre (coffre)
+  pour une adresse propre ; agent IA avec la clé Claude commune, un plafond de
   décisions par mois (`config.agent.plafondMois`, 300 par défaut), en pause
   tant que l'équipe ne l'allume pas, jamais de Telegram. Sans workspace ni
   clé, Repull est coupé pour l'espace (message clair).
 - Passages planifiés (cron de synchronisation, réveil de l'agent) : chaque
-  espace actif à son tour, Label Maison d'abord. Webhook : un événement
-  « tagué » `workspaceId` va à l'espace qui a ce workspace, ou est ignoré —
-  jamais versé dans Label Maison. Un espace avec son propre compte Repull a son
-  adresse : `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret.
+  espace actif à son tour, Label Maison d'abord ; Label Maison seul : même
+  passage et même réponse qu'avant. Webhook (`espaceDuWorkspace`) : un
+  événement « tagué » `workspaceId` va à l'espace qui a déclaré ce workspace
+  (Label Maison compris, s'il a déclaré le sien) ; tant qu'aucun autre espace
+  n'en a déclaré, tout reste à Label Maison comme avant ; ensuite, un
+  workspace inconnu est ignoré — jamais versé dans Label Maison. Un espace
+  avec son propre compte Repull a son adresse :
+  `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret ; un espace
+  inconnu, fermé ou sans secret y reçoit la réponse d'une signature fausse.
+- Retour en arrière du SQL : la première écriture refusée (colonne `espace`
+  inconnue) fait oublier l'état gardé de la base, relue au prochain appel.
 - Toujours en lecture seule sur les plateformes : `ecritureRepullPermise` et le
   verrou de l'agent sont inchangés ; l'en-tête de workspace n'ouvre rien.
 
@@ -1018,6 +1036,8 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - Connexion personnelle, « Créer un compte » et invitations (fin du mot de
   passe commun `ERP_PASSWORD`), choix de l'espace à l'écran.
 - Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
+- Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
+  qui n'est pas encore dans les dépendances de développement.
 - Liens signés des guides déposés en fichier pour un autre espace que Label
   Maison (ses guides en lien https partent déjà).
 
