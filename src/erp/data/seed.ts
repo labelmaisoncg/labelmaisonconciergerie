@@ -556,6 +556,26 @@ function habiller(logements: Logement[]): Logement[] {
       const weekEnd = jour === 5 || jour === 6;
       return { date, prixCentimes: Math.round((base * (weekEnd ? 1.25 : 1)) / 100) * 100, libre: (k * 7 + i * 3) % 5 > 1 };
     });
+    if (l.id === 'log-massy') {
+      // Une annonce dont les plateformes n'ont transmis ni photo ni prix : repli et note de lecture.
+      const { prix: _prix, ...descriptif } = descriptifDemo(l, base, i) ?? {};
+      return {
+        ...l,
+        photoUrl: undefined,
+        descriptif,
+        repull: {
+          id: '219001',
+          canaux: [{ plateforme: 'booking', idExterne: '9910001', actif: true }],
+          lecture: {
+            photos: 'aucune',
+            prix: 'aucun',
+            raisonPhotos: 'Booking.com : aucune photo renvoyée pour cette annonce',
+            raisonPrix: 'Calendrier : aucun prix enregistré ; Booking.com : aucun tarif lisible',
+            le: AUJOURDHUI,
+          },
+        },
+      };
+    }
     const photos = [0, 1, 2, 3, 4, 5].map((k) => PHOTOS_DEMO[(i + k) % PHOTOS_DEMO.length]);
     return { ...l, photos, tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours }, descriptif: descriptifDemo(l, base, i) };
   });

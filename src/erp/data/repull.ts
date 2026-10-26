@@ -607,8 +607,9 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
     majLe: l.updatedAt ?? base.repull?.majLe,
     statut: l.status ?? base.repull?.statut,
     canaux,
-    // Relevé hebdomadaire des photos (repull-synchro) : la date survit au passage des annonces.
+    // Relevé des photos et note de lecture (repull-synchro) : ils survivent au passage des annonces.
     ...(base.repull?.photosLuesLe ? { photosLuesLe: base.repull.photosLuesLe } : {}),
+    ...(base.repull?.lecture ? { lecture: base.repull.lecture } : {}),
   };
   suivant.repull = origine;
   return suivant;

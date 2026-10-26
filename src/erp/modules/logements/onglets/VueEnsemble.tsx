@@ -13,6 +13,7 @@ import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors
 import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
 import { CompteurNuits } from '../_composants/CompteurNuits';
 import { Galerie } from '../_composants/Galerie';
+import { SansPhoto } from '../_composants/SansPhoto';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
@@ -68,7 +69,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
   return (
     <>
-      <Galerie photos={photosLogement(l)} nom={l.nom} />
+      {photosLogement(l).length ? <Galerie photos={photosLogement(l)} nom={l.nom} /> : <SansPhoto logement={l} />}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">

@@ -11,7 +11,7 @@ import { EditionLogement } from './EditionLogement';
 
 const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 
-/** Logements en cartes : photo, prochain événement, prix ou occupation, note. */
+/** Logements en cartes, comme des annonces : photo, note, ville, prochain événement, prix de la nuit. */
 export default function ListeLogements() {
   const d = useErp();
   const naviguer = useNavigate();
@@ -89,7 +89,9 @@ export default function ListeLogements() {
           }
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(16.5rem,1fr))] gap-x-6 gap-y-9">
+          {/* Autant de colonnes que la largeur le permet (16,5 rem au moins par carte, menu latéral compris) :
+              1 sur téléphone, 2 sur tablette, 3 à 1280 px, 4 à 1440 px — la ligne « ville · type · voyageurs » reste entière. */}
           {filtrees.map(({ l, s }) => (
             <CarteLogement key={l.id} logement={l} stats={s} />
           ))}
