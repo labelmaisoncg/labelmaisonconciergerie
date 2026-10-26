@@ -699,7 +699,8 @@ async function principal() {
     verifier(
       !!releve &&
         phasesDues({ ...e, annoncesIncompletes: true }, 'manuel', t15).includes('annonces') &&
-        !phasesDues({ ...e, annoncesIncompletes: undefined }, 'manuel', t15).includes('annonces') &&
+        !phasesDues({ ...e, annoncesIncompletes: false }, 'manuel', t15).includes('annonces') &&
+        phasesDues({ ...e, annoncesIncompletes: undefined }, 'manuel', t15).includes('annonces') &&
         !phasesDues({ ...e, annoncesIncompletes: true }, 'cron', t15).includes('annonces'),
       'bouton : annonces relues tout de suite s’il manque une photo ou un prix (sinon après une heure) ; le cron garde son rythme',
     );
