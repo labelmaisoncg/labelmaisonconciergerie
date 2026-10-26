@@ -1,17 +1,12 @@
 import { useLocation } from 'react-router-dom';
-import { ChevronRight, Menu } from 'lucide-react';
-import { IconButton } from '../ui';
+import { ChevronRight } from 'lucide-react';
 import { moduleDuChemin, rubriqueDe } from '../modules/registry';
 import { GlobalSearch } from './GlobalSearch';
 import { UserSwitcher } from './UserSwitcher';
 import { IndicateurSynchro } from './EtatSynchro';
 
-export interface TopbarProps {
-  onMenu: () => void;
-}
-
-/** En-tête : menu mobile, où l'on est, recherche globale, utilisateur. */
-export function Topbar({ onMenu }: TopbarProps) {
+/** En-tête : où l'on est, recherche globale, utilisateur (sur téléphone, les rubriques sont en bas). */
+export function Topbar() {
   const { pathname } = useLocation();
   const module = moduleDuChemin(pathname);
   const rubrique = rubriqueDe(module);
@@ -21,9 +16,6 @@ export function Topbar({ onMenu }: TopbarProps) {
 
   return (
     <header className="lm-sans-impression sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-(--lm-bord) bg-(--lm-surface)/90 px-3 backdrop-blur sm:gap-3 sm:px-5">
-      <IconButton label="Ouvrir le menu" onClick={onMenu} className="lg:hidden">
-        <Menu />
-      </IconButton>
       <nav aria-label="Vous êtes ici" className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
         {module ? (
           <>

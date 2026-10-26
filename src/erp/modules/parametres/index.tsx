@@ -4,8 +4,9 @@ import Utilisateurs from './Utilisateurs';
 import Integrations from './Integrations';
 import Donnees from './Donnees';
 import Entreprise from './Entreprise';
+import Application from './Application';
 
-/** Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation), la société et sa sauvegarde. */
+/** Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation), l'app et ses notifications, la société et sa sauvegarde. */
 export default function Module() {
   return (
     <>
@@ -15,12 +16,14 @@ export default function Module() {
         onglets={[
           { cle: 'utilisateurs', libelle: 'Équipe', to: '/erp/parametres', end: true },
           { cle: 'plateformes', libelle: 'Plateformes', to: '/erp/parametres/plateformes' },
+          { cle: 'application', libelle: 'Application', to: '/erp/parametres/application' },
           { cle: 'societe', libelle: 'Société', to: '/erp/parametres/societe' },
         ]}
       />
       <Routes>
         <Route index element={<Utilisateurs />} />
         <Route path="plateformes" element={<Integrations />} />
+        <Route path="application" element={<Application />} />
         <Route
           path="societe"
           element={
@@ -34,6 +37,7 @@ export default function Module() {
         <Route path="integrations" element={<Navigate to="/erp/parametres/plateformes" replace />} />
         <Route path="donnees" element={<Navigate to="/erp/parametres/societe" replace />} />
         <Route path="entreprise" element={<Navigate to="/erp/parametres/societe" replace />} />
+        <Route path="notifications" element={<Navigate to="/erp/parametres/application" replace />} />
         <Route path="*" element={<Navigate to="/erp/parametres" replace />} />
       </Routes>
     </>

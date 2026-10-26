@@ -21,8 +21,11 @@
 // =============================================================================
 
 import { lancer, texteErreur, verifierMembre, type DeclencheurRepull } from '../src/erp/data/repull-synchro.js';
+import { dateParis } from '../src/erp/data/repull.js';
+import { rappelDuMatin, synchroEnEchec } from '../src/erp/data/notifications.js';
 import { baseErp, configuration, egalConstant, repondre, variableManquante } from './_erp-repull.js';
 import { agentApresSynchro } from './_erp-agent.js';
+import { surveiller } from './_erp-notifications.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 50_000;
@@ -52,18 +55,39 @@ export default async function handler(req: any, res: any) {
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
 
   try {
-    const r = await lancer({
-      cle: c.cle,
-      base: baseErp(c),
-      declencheur,
-      echeance: debut + BUDGET_TEMPS_MS,
-      budgetMois: c.budgetMois,
-      quotaMois: c.quotaMois,
-      lireQuota: declencheur === 'manuel',
-    });
-    if (declencheur === 'cron') console.log('[erp-repull-sync]', r.statut, JSON.stringify(r.bilan ?? {}).slice(0, 2000));
-    // De nouveaux messages sont arrivés : l'agent IA passe tout de suite (dans le temps qui reste).
-    const agent = r.statut === 'fait' ? await agentApresSynchro(c, r.bilan?.messages ?? 0, debut + 55_000) : null;
+    const base = baseErp(c);
+    const aujourdhui = dateParis(new Date());
+    // Notifications de ce que le passage apporte (réservations, messages, réponses de l'agent),
+    // rappel du matin au passage quotidien, échec signalé une fois par jour.
+    const { r, agent } = await surveiller(
+      base,
+      async () => {
+        const r = await lancer({
+          cle: c.cle,
+          base,
+          declencheur,
+          echeance: debut + BUDGET_TEMPS_MS,
+          budgetMois: c.budgetMois,
+          quotaMois: c.quotaMois,
+          lireQuota: declencheur === 'manuel',
+        });
+        if (declencheur === 'cron') console.log('[erp-repull-sync]', r.statut, JSON.stringify(r.bilan ?? {}).slice(0, 2000));
+        // De nouveaux messages sont arrivés : l'agent IA passe tout de suite (dans le temps qui reste).
+        const agent = r.statut === 'fait' ? await agentApresSynchro(c, r.bilan?.messages ?? 0, debut + 55_000) : null;
+        return { r, agent };
+      },
+      {
+        limite: debut + 58_000,
+        apres: ({ r }, photo) => {
+          const plus = [];
+          if (r.bilan?.erreurs?.length) plus.push(synchroEnEchec(aujourdhui, r.bilan.erreurs[0]));
+          const rappel = declencheur === 'cron' && photo ? rappelDuMatin(photo.reservations, photo.logements, aujourdhui) : null;
+          if (rappel) plus.push(rappel);
+          return plus;
+        },
+        enEchec: (e) => [synchroEnEchec(aujourdhui, texteErreur(e))],
+      },
+    );
     return repondre(res, 200, agent ? { ...r, agent } : r);
   } catch (e) {
     console.error('[erp-repull-sync] échec', e);

@@ -70,6 +70,13 @@ node_modules/.bin/esbuild src/erp/data/verifier-repull.ts --bundle \
 node_modules/.bin/esbuild src/erp/data/verifier-agent.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{}' \
   --log-level=error --outfile=/tmp/verifier-agent.mjs && node /tmp/verifier-agent.mjs
+
+# Auto-contrôle des notifications de l'app (vecteur officiel RFC 8291, signature
+# VAPID, choix des notifications, problème signalé, idempotence, appareils
+# expirés, envoi sans clés ou base en panne, surveillance d'un passage).
+node_modules/.bin/esbuild src/erp/data/verifier-notifications.ts --bundle --format=esm \
+  --platform=node --log-level=error --outfile=/tmp/verifier-notifications.mjs \
+  && node /tmp/verifier-notifications.mjs
 ```
 
 Le vérificateur du moteur l'exécute deux fois sur la démo : la seconde passe
@@ -93,6 +100,8 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `ANTHROPIC_API_KEY` | Vercel (serveur) | Agent IA de la messagerie (`api/erp-agent.ts`), jamais côté navigateur. Absente : l'agent ne répond pas. |
 | `AGENT_MODELE` | Vercel (serveur), facultatif | Modèle des réponses aux voyageurs (défaut `claude-haiku-4-5-20251001`). |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Vercel (serveur), facultatifs | Alertes Telegram de l'agent (transmissions, copies des réponses, relances). |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
+| `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
 
 ## Accès et déploiement
 
@@ -180,7 +189,13 @@ d'automatisations repasse sur les données (il tourne aussi au chargement).
 ### Modules et routes
 
 **Channel manager (octobre 2026)** : six rubriques dans la barre latérale,
-Paramètres en bas. Finance, Opérations (ménages, linge, incidents,
+Paramètres en bas. Sur téléphone et tablette (sous 1024 px), une barre
+d'onglets en bas remplace la barre latérale, comme une app : Accueil,
+Logements, Réservations, Messages, CRM, avec les compteurs en pastille
+(`layout/BarreOnglets.tsx`) ; Paramètres est dans le menu du compte (avatar,
+en haut à droite) ; une conversation ouverte prend tout l'écran, sans la
+barre. Le contenu réserve sa hauteur (`--lm-barre-onglets`, `erp.css`), et
+les barres « Enregistrer » collées en bas se posent au-dessus. Finance, Opérations (ménages, linge, incidents,
 prestataires), Rentabilité, Annonces et la rubrique Propriétaires sont sortis
 du menu sur décision du gérant : leur code et leurs données restent (ménages et
 linge reviendront avec BNB Cleaning), leurs anciennes adresses mènent vers la
@@ -195,7 +210,7 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 | Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
 | Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Réglages de l'agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
 | CRM | Appels et relances (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
-| Paramètres | Équipe, Plateformes (synchronisation), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/societe`) |
+| Paramètres | Équipe, Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/application`, `/societe`) |
 
 Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
 (`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé
@@ -766,3 +781,96 @@ sans message en attente n'appelle pas Claude.
   1. CRM → Plus → « Relances dans Calendrier » (gérants) : choisir « Toute l'équipe », « Abdel » ou « Kamel » (ses contacts, plus ceux que personne ne suit encore), « Créer le lien », puis « Ouvrir dans Calendrier » (lien `webcal://`) → « S'abonner » (emplacement iCloud pour l'avoir sur tous les appareils). Ailleurs : coller le lien `https://` (Calendrier → Fichier → Nouvel abonnement, Google Agenda → Autres agendas → À partir de l'URL).
   2. Contenu (`src/erp/data/agenda-crm.ts`, contrôles `verifier-agenda.ts`) : un événement par contact, sur la journée, avec un rappel à 9 h. Aujourd'hui : chaque « À appeler » et chaque relance échue (« en retard ») ; à sa date : chaque relance prévue ; jamais : « Signé » et « Pas intéressé ». La date suit la relance (UID stable). Rafraîchissement demandé toutes les 15 min (Calendrier d'Apple décide du rythme réel ; Google Agenda relit en quelques heures).
   3. Clés (`api/_agenda.ts`, route gérant `/api/erp-agenda`) : 256 bits, montrées une seule fois ; la collection `connecteurs` n'en garde que l'empreinte SHA-256. « Couper tous les liens… » les révoque (effet en 1 min au plus, l'agenda abonné garde sa dernière copie). Le lien donne noms et téléphones des contacts : à garder pour soi. RGPD : Apple (iCloud) et Google (Agenda) figurent parmi les sous-traitants de la politique de confidentialité.
+
+
+## App installable et notifications (octobre 2026)
+
+L'ERP s'installe comme une app (sans App Store) : icône sur l'écran d'accueil
+du téléphone ou dans le Dock, plein écran, et notifications envoyées par
+Apple, Google ou Mozilla selon l'appareil (Web Push).
+
+**Le lien à envoyer à l'équipe : `https://www.labelmaisoncg.fr/erp/installer`**
+(aussi dans Paramètres → Application, avec « Copier » et « Partager »).
+
+1. On ouvre le lien et on se connecte (mot de passe de l'ERP) ; la page
+   reconnaît l'appareil.
+2. **iPhone / iPad** (Safari) : Partager → « Sur l'écran d'accueil » →
+   « Ajouter ». **Android** (Chrome) et **ordinateur** (Chrome, Edge) : bouton
+   « Installer l'app » (sinon menu ⋮ → « Installer l'application », ou Safari
+   sur Mac : Fichier → « Ajouter au Dock »).
+3. On ouvre l'app, on se connecte une fois dedans (sur iPhone, l'app de
+   l'écran d'accueil ne partage pas la session de Safari), puis Paramètres →
+   Application → « Activer les notifications » et « Envoyer une notification
+   de test ».
+
+Une proposition discrète « Installez l'app » apparaît sur l'Accueil (téléphone,
+ou navigateur qui installe d'un clic) ; elle ne revient plus après « Plus
+tard » et disparaît une fois l'app installée.
+
+### Activer les notifications (une fois, par le gérant)
+
+1. Paramètres → Application → Avancé → « Générer les clés ». La paire est
+   montrée **une seule fois** et n'est enregistrée nulle part par l'ERP.
+2. Vercel → projet du site → Settings → Environment Variables : ajouter
+   `VAPID_PUBLIC_KEY` et `VAPID_PRIVATE_KEY` (Production), et au besoin
+   `VAPID_SUBJECT`, puis redéployer.
+3. Chaque membre active les notifications sur chacun de ses appareils.
+
+Sans ces variables, tout fonctionne et Paramètres affiche « Notifications pas
+encore activées sur le serveur ». Remplacer les clés oblige chaque appareil à
+réactiver ses notifications.
+
+### Les notifications
+
+Un interrupteur par type, réglé par appareil (Paramètres → Application). Tout
+est activé par défaut, sauf le rappel du matin. Un toucher ouvre le bon écran.
+
+| Type | Quand | Ouvre |
+|---|---|---|
+| Nouvelle réservation | Réservation confirmée ou en cours, pas encore terminée (plus de 5 d'un coup : une seule notification « N nouvelles réservations ») | la réservation |
+| Réservation annulée ou modifiée | Annulation, nouvelles dates, nombre de voyageurs | la réservation |
+| Nouveau message d'un voyageur | Message de moins de 48 h | la conversation |
+| L'agent a répondu | L'agent a répondu à la place de l'équipe | la conversation |
+| L'agent vous passe la main | L'agent transmet, avec la raison en clair | la conversation |
+| Problème signalé dans un logement | Raison « litige » de l'agent, ou mots d'un problème en français ou en anglais (panne, fuite, clé, bruit, ménage…) | la conversation |
+| Nouvel avis | Avec la note ; « Avis à lire » sous 4,5 | la réservation |
+| Mise à jour des plateformes en échec | Une fois par jour au plus | Paramètres → Plateformes |
+| Rappel du matin | Arrivées et départs du jour (cron du matin) | l'Accueil |
+
+Un même message ne donne qu'**une** notification, la plus importante pour
+l'appareil (problème, puis l'agent passe la main, l'agent a répondu, nouveau
+message). Chaque notification a une clé : elle ne part jamais deux fois.
+
+### Fonctionnement
+
+- **App** : manifeste `public/erp-app/manifest.webmanifest` (portée et départ
+  `/erp`), icônes générées par `node scripts/icones-erp.mjs`, balises Apple
+  ajoutées à la coquille `/erp` par `scripts/spa-shells.mjs`, encoche et
+  barre d'accueil de l'iPhone gérées par `env(safe-area-inset-*)` (`erp.css`).
+  Manifeste, icônes et service worker sont servis hors de `/erp` : le
+  navigateur les lit sans session, et `middleware.ts` n'a pas changé.
+- **Service worker** (`public/erp-sw.js`, portée `/erp`) : ne garde en cache
+  que les fichiers `/assets/` (noms uniques à chaque version) ; pages, données
+  et `/api` passent toujours par le réseau ; sans réseau, une courte page
+  « Pas de connexion internet ». Chaque déploiement le remplace et vide
+  l'ancien cache.
+- **Envoi** : `api/erp-repull-sync.ts`, `api/erp-repull-webhook.ts` et
+  `api/erp-agent.ts` enveloppent leur travail dans `surveiller`
+  (`src/erp/data/notifications-envoi.ts`) : photo de la base avant et après,
+  puis envoi de ce qui est nouveau (`notificationsEntre`,
+  `src/erp/data/notifications.ts`). Un envoi raté ne casse jamais la
+  synchronisation ni l'agent ; un appareil expiré (404/410) est retiré ; sans
+  clés, rien n'est lu en plus.
+- **Chiffrement** : `src/erp/data/web-push.ts` (WebCrypto, sans dépendance),
+  RFC 8291 (contenu chiffré de bout en bout : Apple, Google ou Mozilla ne
+  voient que l'appareil destinataire) et RFC 8292 (signature VAPID), contrôlé
+  contre le vecteur officiel de la RFC (`verifier-notifications.ts`).
+- **Appareils** : collection technique `connecteurs` (réservée aux gérants),
+  un enregistrement par appareil (`notifications-appareil-…`) et le journal
+  des envois (`notifications-journal`, 800 dernières clés). Route :
+  `/api/erp-notifications` (membres gérant ou opérations ; clés : gérant).
+- **Limites** : iPhone et iPad avec iOS / iPadOS 16.4 ou plus récent, app
+  ajoutée à l'écran d'accueil (Safari seul ne reçoit pas de notifications).
+  Les notifications partent quand l'ERP apprend la nouveauté : webhook Repull
+  (quasi immédiat, offre Starter), passage de l'agent, ou synchronisation
+  (quotidienne, ou « Synchroniser maintenant »).
