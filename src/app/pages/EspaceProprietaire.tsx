@@ -161,15 +161,20 @@ export default function EspaceProprietaire() {
   const onglet: OngletEspace = ongletUrl && ONGLETS_ESPACE.includes(ongletUrl) ? ongletUrl : 'accueil';
   const bilanUrl = parametres.get('bilan') ?? undefined;
   const bilan = moisValide(bilanUrl) ? bilanUrl : undefined;
+  const logement = parametres.get('logement') ?? undefined;
+  const facture = parametres.get('facture') ?? undefined;
 
-  const regler = (o: OngletEspace, b?: string) =>
+  const regler = (o: OngletEspace, suite: { bilan?: string; logement?: string; facture?: string } = {}) =>
     setParametres(
       (p) => {
         const n = new URLSearchParams(p);
         if (o === 'accueil') n.delete('onglet');
         else n.set('onglet', o);
-        if (b) n.set('bilan', b);
-        else n.delete('bilan');
+        for (const cle of ['bilan', 'logement', 'facture'] as const) {
+          const v = suite[cle];
+          if (v) n.set(cle, v);
+          else n.delete(cle);
+        }
         return n;
       },
       { replace: false },
@@ -257,7 +262,11 @@ export default function EspaceProprietaire() {
           onglet={onglet}
           onOnglet={(o) => regler(o)}
           bilan={bilan}
-          onBilan={(m) => regler('bilans', m)}
+          onBilan={(m) => regler('bilans', { bilan: m })}
+          logement={logement}
+          onLogement={(id) => regler('logements', { logement: id })}
+          facture={facture}
+          onFacture={(id) => regler('factures', { facture: id })}
           onMoisCalendrier={(m) => void changerMois(m)}
           calendrierEnCours={calendrierEnCours}
           LienDocument={etat.demo ? LienDocumentDemo : LienDocumentServeur}

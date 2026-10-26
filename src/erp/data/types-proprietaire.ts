@@ -45,6 +45,8 @@ export interface DocumentProprietaire {
   id: Id;
   proprietaireId: Id;
   logementId?: Id;
+  /** PDF d'une facture partagée (catégorie « facture »). */
+  factureId?: Id;
   categorie: CategorieDocumentProprietaire;
   titre: string;
   /** « stockage://erp-fichiers/proprietaires/<id>/… » (jamais envoyé au propriétaire). */
@@ -197,6 +199,127 @@ export interface ContactsConciergerie {
   site: string;
 }
 
+/* ------------------------------------------ fiche « Mes logements » */
+
+/** Un mois d'un logement. `suivi` : le mois est couvert par les données de l'ERP. */
+export interface MoisPerformance {
+  mois: string;
+  suivi: boolean;
+  net: Centimes;
+  encaisse: Centimes;
+  /** Encaissé hors ménage (base du prix moyen par nuit). */
+  hebergement: Centimes;
+  nuits: number;
+  sejours: number;
+  /** Jours où le logement était géré (dénominateur de l'occupation). */
+  jours: number;
+  occupation: number;
+  prixMoyenNuit: Centimes;
+}
+
+/** Totaux sur des mois suivis : séjours comptés une fois, même à cheval sur deux mois. */
+export interface TotauxPerformance {
+  mois: number;
+  net: Centimes;
+  encaisse: Centimes;
+  nuits: number;
+  sejours: number;
+  jours: number;
+  occupation: number;
+  prixMoyenNuit: Centimes;
+}
+
+/** Mêmes mois, un an plus tôt : seulement les mois suivis les deux années. */
+export interface ComparaisonPerformance {
+  nbMois: number;
+  actuel: TotauxPerformance;
+  precedent: TotauxPerformance;
+}
+
+/** Avis d'un voyageur : « Prénom N. », note, partie publique du commentaire seulement. */
+export interface AvisVue {
+  date: DateISO;
+  note: number;
+  texte?: string;
+  voyageur: string;
+  canal: CanalReservation;
+}
+
+export interface FicheLogementVue {
+  logementId: Id;
+  /** Les 12 derniers mois terminés, du plus ancien au plus récent. */
+  mois: MoisPerformance[];
+  totaux: TotauxPerformance;
+  comparaison?: ComparaisonPerformance;
+  avis?: { moyenne: number; nombre: number; derniers: AvisVue[] };
+  /** Séjour en cours et prochains séjours. */
+  prochainsSejours: ArriveeVue[];
+}
+
+/* ------------------------------------------- factures et relances */
+
+/** Statut vu par le propriétaire. */
+export type StatutFactureVue = 'a_payer' | 'en_retard' | 'payee';
+
+export interface FactureVue {
+  id: Id;
+  numero: string;
+  dateEmission: DateISO;
+  echeance: DateISO;
+  montantHt: Centimes;
+  tvaPct: number;
+  montantTtc: Centimes;
+  statut: StatutFactureVue;
+  payeeLe?: DateISO;
+  lignes: { libelle: string; quantite: number; pu: Centimes }[];
+  /** Document PDF partagé (ouvert par lien signé) ; absent : version imprimable. */
+  pdf?: Id;
+  /** Dernier rappel envoyé. */
+  dernierRappel?: DateISO;
+}
+
+export type StatutRelance = 'proposee' | 'envoyee' | 'annulee' | 'sans_objet';
+
+/**
+ * Relance d'une facture (id = `${factureId}-r${niveau}` : une par étape et
+ * par facture). Collection serveur `relancesPaiement` : écrite seulement par
+ * le serveur (passage quotidien, envoi ou annulation par un gérant).
+ */
+export interface RelancePaiement {
+  id: Id;
+  factureId: Id;
+  proprietaireId: Id;
+  numero: string;
+  /** Étape : 1 = premier rappel (J+5 par défaut), 2, 3… */
+  niveau: number;
+  joursApresEcheance: number;
+  /** Date où la relance est due (échéance + jours). */
+  dueLe: DateISO;
+  statut: StatutRelance;
+  creeLe: Horodatage;
+  /** Pourquoi une relance du mode automatique reste à valider. */
+  motif?: 'sans_expediteur' | 'sans_adresse' | 'echec_envoi' | 'remplacee';
+  destinataire?: string;
+  envoyeeLe?: Horodatage;
+  /** « automatique » ou l'adresse du gérant qui a validé. */
+  envoyeePar?: string;
+  annuleeLe?: Horodatage;
+  annuleePar?: string;
+  espace?: string;
+}
+
+/** Réglages des relances d'un espace (collection serveur `reglagesRelances`, id « relances »). */
+export interface ReglagesRelances {
+  id: 'relances';
+  actif: boolean;
+  /** proposer : le gérant valide chaque envoi ; automatique : envoi par e-mail. */
+  mode: 'proposer' | 'automatique';
+  /** Jours après l'échéance, une étape par valeur (5, 15, 30 par défaut). */
+  jours: number[];
+  majLe?: Horodatage;
+  majPar?: string;
+}
+
 /** Tout ce que le propriétaire voit, et rien d'autre. */
 export interface VueProprietaire {
   proprietaire: { id: Id; nom: string };
@@ -208,8 +331,12 @@ export interface VueProprietaire {
   moisPrecedent: ChiffresMoisVue;
   prochainesArrivees: ArriveeVue[];
   calendrier: { mois: string; logements: CalendrierLogement[] };
+  /** Une fiche par logement géré (onglet « Mes logements »). */
+  fiches: FicheLogementVue[];
   bilans: BilanVue[];
   documents: DocumentVue[];
+  /** Factures partagées avec lui, des plus récentes aux plus anciennes. */
+  factures: FactureVue[];
   /** Contacts de la conciergerie ; absents si l'espace n'en a pas renseigné. */
   contacts?: ContactsConciergerie;
 }

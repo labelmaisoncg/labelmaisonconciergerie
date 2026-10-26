@@ -107,6 +107,11 @@ node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --forma
 node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platform=node \
   --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-operations.cjs && node /tmp/verifier-operations.cjs
+
+# Auto-contrôle des factures partagées et des relances de paiement.
+node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-relances.mjs && node /tmp/verifier-relances.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -972,17 +977,26 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - **Deux passes** (une ligne à changer en haut du fichier) :
   1. passe 1 : colonne avec Label Maison par défaut, nouvelles clés en plus
      des anciennes. L'ancien et le nouveau code marchent tous les deux ;
-  2. passe 2, au moins 24 h après la mise en ligne du code : clés primaires
-     `(espace, …)` (le même identifiant possible dans deux espaces, une
-     adresse membre de plusieurs espaces), plus de valeur par défaut. L'ancien
-     code ne sait plus écrire : d'où l'attente.
+  2. passe 2, au moins 24 h après la PLUS TARDIVE de la mise en ligne du code
+     et de la passe 1 : clés primaires `(espace, …)` (le même identifiant
+     possible dans deux espaces, une adresse membre de plusieurs espaces),
+     plus de valeur par défaut. Ne savent plus écrire ensuite : l'ancien code,
+     et une page du nouveau code ouverte avant la passe 1 (restée en mode
+     « historique » jusqu'à son rechargement de la nuit, qui relit
+     `qui_suis_je`). D'où l'attente.
+- Un autre espace que Label Maison ne peut être créé qu'après la passe 2
+  (déclencheur `espaces_apres_passe_2`, message « Passe 2 d'abord ») : avant,
+  ses lignes techniques (`repull/etat`, `agent/etat`, `etat_automatisations/
+  global`) heurteraient celles de Label Maison (erreur 23505).
 - Compte technique `serveur@labelmaisoncg.fr` (`app_metadata.erp_role =
   serveur`, posé par le script) : il ne voit **que** l'espace nommé par
   l'en-tête `x-erp-espace`, avec les droits d'un gérant ; sans en-tête, rien.
 - Fonctions : `erp.qui_suis_je()` (espaces et rôle du compte),
   `erp.espaces_actifs()`, `erp.secret_espace()` (coffre Vault, serveur
-  seulement, jamais pour Label Maison), `erp.ranger_secret()` (SQL Editor
-  seulement), `erp.recette_espaces()` (essai des règles, annulé).
+  seulement, pour l'espace de l'en-tête seulement, jamais pour Label Maison),
+  `erp.ranger_secret()` (SQL Editor seulement), `erp.recette_espaces()`
+  (essai des règles, annulé). Relancer le fichier après la passe 2 ne recrée
+  rien en double (`erp.cle_par_espace`).
 - `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
   aucune règle d'accès d'ici là.
 - `erp-installation.sql` et `erp-connecteurs-gerants.sql` refusent de tourner
@@ -1009,16 +1023,25 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - `configurationEspace(espace)` (`api/_erp-espaces.ts`) : Label Maison garde
   ses variables Vercel. Un autre espace n'en reprend **aucune** :
   Repull par son workspace (`repull_workspace`, en-tête `X-Workspace-Id` sur
-  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; secret de
-  webhook propre (coffre) ; agent IA avec la clé Claude commune, un plafond de
+  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; sa part
+  d'appels Repull (`config.repull.budgetMois`, 150 par défaut, 0 permis : la
+  part de Label Maison n'est pas entamée) ; secret de webhook propre (coffre)
+  pour une adresse propre ; agent IA avec la clé Claude commune, un plafond de
   décisions par mois (`config.agent.plafondMois`, 300 par défaut), en pause
   tant que l'équipe ne l'allume pas, jamais de Telegram. Sans workspace ni
   clé, Repull est coupé pour l'espace (message clair).
 - Passages planifiés (cron de synchronisation, réveil de l'agent) : chaque
-  espace actif à son tour, Label Maison d'abord. Webhook : un événement
-  « tagué » `workspaceId` va à l'espace qui a ce workspace, ou est ignoré —
-  jamais versé dans Label Maison. Un espace avec son propre compte Repull a son
-  adresse : `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret.
+  espace actif à son tour, Label Maison d'abord ; Label Maison seul : même
+  passage et même réponse qu'avant. Webhook (`espaceDuWorkspace`) : un
+  événement « tagué » `workspaceId` va à l'espace qui a déclaré ce workspace
+  (Label Maison compris, s'il a déclaré le sien) ; tant qu'aucun autre espace
+  n'en a déclaré, tout reste à Label Maison comme avant ; ensuite, un
+  workspace inconnu est ignoré — jamais versé dans Label Maison. Un espace
+  avec son propre compte Repull a son adresse :
+  `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret ; un espace
+  inconnu, fermé ou sans secret y reçoit la réponse d'une signature fausse.
+- Retour en arrière du SQL : la première écriture refusée (colonne `espace`
+  inconnue) fait oublier l'état gardé de la base, relue au prochain appel.
 - Toujours en lecture seule sur les plateformes : `ecritureRepullPermise` et le
   verrou de l'agent sont inchangés ; l'en-tête de workspace n'ouvre rien.
 
@@ -1027,6 +1050,8 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - Connexion personnelle, « Créer un compte » et invitations (fin du mot de
   passe commun `ERP_PASSWORD`), choix de l'espace à l'écran.
 - Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
+- Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
+  qui n'est pas encore dans les dépendances de développement.
 - Liens signés des guides déposés en fichier pour un autre espace que Label
   Maison (ses guides en lien https partent déjà).
 
@@ -1040,8 +1065,10 @@ seule. Quatre onglets (barre du bas sur téléphone, en-tête sur ordinateur) :
 | Onglet | Ce que voit le propriétaire |
 |---|---|
 | Accueil | Ses logements (photo, nom), le net du mois en cours et du mois dernier (nuits, occupation ; « Bilan publié » ou « Provisoire »), les prochaines arrivées, les contacts de Label Maison, les derniers documents. |
+| Logements | « Mes logements » : une fiche par logement (photo, nom, ville) avec les 12 derniers mois terminés : revenu net par mois (graphique en barres, survol et clavier, tableau mois par mois), occupation, prix moyen par nuit, séjours et nuits, comparaison avec les mêmes mois de l'an dernier quand il y a des données ; note moyenne et derniers avis (partie publique seulement) ; séjour en cours et prochains séjours. L'accueil mène à chaque fiche. |
 | Calendrier | Un mois par logement : nuits réservées et libres, arrivées et départs (bande dorée du milieu du jour d'arrivée au milieu du jour de départ), navigation de mois en mois, séjours du mois. |
-| Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Finances → Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Finances → Factures | Les factures partagées : montant TTC, échéance, statut, PDF (voir « Phase 2 »). |
 | Documents | Rangés par catégorie (Contrat, Attestation, Bilan, Facture, Autre), ouverts par un lien signé de 2 minutes. |
 
 Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autre
@@ -1107,7 +1134,14 @@ d'août publié et deux documents ; son espace :
   septembre, montants partagés de même) ; commission Label Maison =
   (encaissé − frais de plateforme − ménage) × taux du mandat en vigueur ;
   net = encaissé − frais − ménage − commission, au centime sur chaque ligne ;
-  occupation = nuits réservées / (jours du mois × logements). La fiche
+  occupation = nuits réservées / (jours du mois × logements). Fiche d'un
+  logement (`ficheLogement`) : un mois n'est « suivi » qu'à partir du premier
+  séjour connu dans l'ERP (et du début du mandat) — avant, ce n'est pas un
+  mois vide mais un mois sans données, exclu des totaux et du graphique ;
+  l'occupation se compte sur les jours gérés ; la comparaison ne garde que
+  les mois suivis les deux années ; prix moyen par nuit = encaissé hors
+  ménage / nuits ; avis : jamais le « Message privé » ni adresse, numéro ou
+  lien glissé dans le texte, voyageur en « Prénom N. ». La fiche
   d'attente des logements importés (`repull-proprietaire-a-renseigner`)
   n'a jamais d'espace.
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
@@ -1115,22 +1149,53 @@ d'août publié et deux documents ; son espace :
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
   `publie`, chiffres figés).
 
-### Phase 2 : factures et relances de paiement (modèle prévu, pas construit)
+### Phase 2 : factures partagées et relances de paiement
 
-- **Factures** : on reprend `Facture` (`types.ts`, destinataire
-  `proprietaire`, `proprietaireId`). Ajouts : `partageeLe?` (visible dans
-  l'espace seulement une fois partagée) et le PDF en `DocumentProprietaire`
-  de catégorie `facture` avec `factureId`. Onglet « Factures » : numéro,
-  date, échéance, montant TTC, statut (à payer, payée le…, en retard),
-  téléchargement ; même filtrage strict par propriétaire.
-- **Relances** : collection `relancesPaiement` `{ id, factureId,
-  proprietaireId, niveau (1, 2, 3), prevueLe, envoyeeLe?, statut (prevue,
-  envoyee, annulee, payee), canal: 'email' }`, calendrier dans `reglages`
-  (par défaut J+5, J+15 et J+30 après l'échéance), mode « proposer » (le
-  gérant valide chaque envoi, par défaut) ou « automatique ». Un passage
-  quotidien (cron existant) crée les relances dues et les envoie par Resend ;
-  tout s'arrête dès que la facture est payée. Le propriétaire voit les
-  rappels dans son espace, le gérant dans la carte Propriétaire.
+- **Factures** (onglet « Finances » → « Factures » ; bilans et factures sous
+  un même onglet pour garder cinq onglets dans la barre du bas) : le
+  propriétaire voit les factures dont il est le `proprietaireId` ET qui sont
+  partagées (`Facture.partageeLe`), ni brouillon ni annulée : numéro, date,
+  échéance, montant TTC, statut « À payer » (neutre), « En retard » (alerte,
+  jamais rouge), « Payée le… » (succès), dernier rappel envoyé. Le PDF est un
+  `DocumentProprietaire` de catégorie `facture` avec `factureId`, ouvert par
+  lien signé ; sans PDF, la facture s'imprime depuis l'espace. Une facture
+  qui n'est plus partagée disparaît, son PDF aussi (liste et lien signé).
+  L'accueil signale d'une ligne les factures à régler.
+- **Relances** (`src/erp/data/relances.ts`, `api/_relances.ts`) : pour les
+  factures partagées et à payer seulement. Calendrier par espace (J+5, J+15,
+  J+30 après l'échéance par défaut), une relance par étape et par facture
+  (`<factureId>-r<niveau>`) ; très en retard d'un coup : seule l'étape la
+  plus avancée ; une relance encore à valider est remplacée par l'étape
+  suivante ; tout s'arrête dès que la facture est payée, annulée ou plus
+  partagée (« sans objet »). Mode « proposer » (par défaut) : le passage
+  quotidien ne fait que proposer, un gérant valide chaque envoi. Mode
+  « automatique » : envoi par e-mail avec l'expéditeur de l'espace (jamais
+  celui de Label Maison pour un autre espace) ; sans expéditeur ou sans
+  adresse, la relance reste à valider avec le motif. Jamais deux fois : la
+  relance est notée envoyée avant l'envoi, remise à valider si l'envoi
+  échoue. Message poli et court, signé du nom de l'espace : montant TTC,
+  numéro, échéance, virement avec le numéro en référence ; aucune
+  coordonnée bancaire.
+- **Passage quotidien** : `api/erp-repull-sync.ts` (cron) appelle
+  `relancesDuJour()` pour chaque espace actif avant la synchronisation
+  Repull, sans jamais la bloquer (base d'avant les espaces : Label Maison).
+- **Données serveur** : collections `relancesPaiement` et
+  `reglagesRelances` (id `relances` : actif, mode, jours), lues et écrites
+  par le serveur seul, dans la base de chaque espace ; le navigateur ne les
+  synchronise pas. Gérant : `GET ?action=relances`, `POST relance-envoyer`,
+  `relance-annuler`, `relances-reglages` (api/espace-proprietaire.ts, gérant
+  de l'espace).
+- **Écrans du gérant** : `logements/_composants/FacturesProprietaire.tsx`
+  (partager ou non chaque facture, joindre son PDF), dans le panneau
+  « Espace propriétaire » après « Bilans mensuels » ; `RelancesPaiement.tsx`
+  (réglages, relances à valider avec l'aperçu du message, relances
+  envoyées ; `useRelances()`) dans Paramètres → Accès, section
+  Propriétaires, et, limité au propriétaire, dans son panneau. « Je valide
+  chaque relance » (`proposer`) reste le réglage par défaut.
+- **Contrôles** : `verifier-relances.ts` (calendrier, idempotence, arrêt au
+  paiement, message, ce que voit chaque propriétaire) et
+  `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
+  n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
 
 
 ## Espace opérations (octobre 2026)

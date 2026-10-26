@@ -25,6 +25,8 @@ import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
 import { bilanDuMois, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
 import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
 import { appelerServeur } from '../../messagerie/_composants/serveur';
+import { FacturesProprietaire } from './FacturesProprietaire';
+import { RelancesPaiement } from './RelancesPaiement';
 
 interface EtatServeur {
   actif: boolean;
@@ -94,6 +96,8 @@ export function PanneauEspace({ proprietaire: p, logement, onFermer }: { proprie
         <div className="space-y-7">
           <Acces proprietaire={p} serveur={serveur} />
           <Bilans proprietaire={p} />
+          <FacturesProprietaire proprietaire={p} />
+          <RelancesPaiement proprietaireId={p.id} />
           <Documents proprietaire={p} logement={logement} />
         </div>
       </Drawer>

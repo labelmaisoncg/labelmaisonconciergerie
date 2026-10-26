@@ -19,12 +19,14 @@
 //
 // Espaces (api/_erp-espaces.ts) :
 //   - /api/erp-repull-webhook : compte Repull de Label Maison, signé avec
-//     REPULL_WEBHOOK_SECRET_ERP. Un événement « tagué » workspaceId vient du
-//     workspace d'un autre espace : traité dans cet espace, ou ignoré si aucun
-//     espace n'a ce workspace (JAMAIS versé dans Label Maison) ;
+//     REPULL_WEBHOOK_SECRET_ERP. Un événement « tagué » workspaceId va à
+//     l'espace qui a déclaré ce workspace. Tant qu'aucun autre espace n'en a
+//     déclaré, tout reste à Label Maison, comme avant ; ensuite, un workspace
+//     inconnu est ignoré (jamais versé dans Label Maison) ;
 //   - /api/erp-repull-webhook?espace=<code> : espace qui a son propre compte
 //     Repull, signé avec SON secret (coffre de Supabase), jamais celui de
-//     Label Maison.
+//     Label Maison. Espace inconnu, fermé ou sans secret : même réponse
+//     qu'une signature fausse (l'adresse ne dit pas quels espaces existent).
 // =============================================================================
 
 import crypto from 'node:crypto';
@@ -32,7 +34,8 @@ import { lancer, texteErreur, type EvenementRepull } from '../src/erp/data/repul
 import { signatureValide, type OutilsSignature } from '../src/erp/data/repull-signature.js';
 import { baseErp, configuration, continuerApresReponse, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { agentApresSynchro } from './_erp-agent.js';
-import { codeEspaceDuWebhook, configurationEspace, espacesActifs, workspaceDeLEvenement } from './_erp-espaces.js';
+import { estLabelMaison } from '../src/erp/data/espaces.js';
+import { codeEspaceDuWebhook, configurationEspace, espaceDuWorkspace, espacesActifs, workspaceDeLEvenement } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
 
 /** La signature porte sur le corps exact reçu : pas d'analyse JSON préalable. */
@@ -85,18 +88,24 @@ export default async function handler(req: any, res: any) {
   const code = codeEspaceDuWebhook(req);
   if (code) {
     // Espace avec son propre compte Repull : son secret, jamais celui de Label Maison.
+    let secret = '';
     try {
-      const fiche = (await espacesActifs(c)).find((e) => e.code === code);
-      if (!fiche) return repondre(res, 404, { ok: false });
-      c = await configurationEspace(fiche.id, fiche);
+      const fiche = (await espacesActifs(c)).find((e) => e.code === code && !estLabelMaison(e.id));
+      if (fiche) {
+        c = await configurationEspace(fiche.id, fiche);
+        secret = c.secretWebhook;
+      }
     } catch (e) {
       console.error('[erp-repull-webhook] espace', code, texteErreur(e));
-      return repondre(res, 503, { ok: false });
     }
-  }
-  if (!c.secretWebhook) {
-    console.error('[erp-repull-webhook] secret du webhook manquant : livraison refusée.', code ?? '');
-    return repondre(res, 503, { ok: false, erreur: code ? 'Secret du webhook de cet espace manquant.' : 'REPULL_WEBHOOK_SECRET_ERP manquant.' });
+    if (!secret) {
+      // Inconnu, fermé ou sans secret : réponse d'une signature fausse.
+      console.warn('[erp-repull-webhook] espace inconnu, fermé ou sans secret : rejeté.', code);
+      return repondre(res, 401, { ok: false });
+    }
+  } else if (!c.secretWebhook) {
+    console.error('[erp-repull-webhook] REPULL_WEBHOOK_SECRET_ERP manquant : livraison refusée.');
+    return repondre(res, 503, { ok: false, erreur: 'REPULL_WEBHOOK_SECRET_ERP manquant.' });
   }
 
   const brut = await corpsBrut(req);
@@ -114,17 +123,19 @@ export default async function handler(req: any, res: any) {
   const idEvenement = String(req.headers?.['x-repull-event-id'] ?? ev?.eventId ?? '');
   if (ev?.event === 'repull.ping') return repondre(res, 200, { ok: true, ping: true });
 
-  // Événement d'un workspace : l'espace qui l'a, sinon rien (jamais Label Maison par défaut).
   const workspace = workspaceDeLEvenement(ev);
-  if (workspace && workspace !== c.workspace) {
-    if (code) return repondre(res, 200, { ok: true, ignore: 'workspace' });
+  if (code) {
+    // Compte propre : si l'espace a déclaré un workspace, l'événement doit en venir.
+    if (workspace && c.workspace && workspace !== c.workspace) return repondre(res, 200, { ok: true, ignore: 'workspace' });
+  } else if (workspace) {
+    // Événement d'un workspace : l'espace qui l'a déclaré (voir espaceDuWorkspace).
     try {
-      const fiche = (await espacesActifs(c)).find((e) => (e.repull_workspace ?? '') === workspace);
+      const fiche = espaceDuWorkspace(await espacesActifs(c), workspace);
       if (!fiche) {
         console.warn('[erp-repull-webhook] workspace sans espace : ignoré', workspace);
         return repondre(res, 200, { ok: true, ignore: 'workspace' });
       }
-      c = await configurationEspace(fiche.id, fiche);
+      if (!estLabelMaison(fiche.id)) c = await configurationEspace(fiche.id, fiche);
     } catch (e) {
       console.error('[erp-repull-webhook] espace du workspace', workspace, texteErreur(e));
       return repondre(res, 503, { ok: false });

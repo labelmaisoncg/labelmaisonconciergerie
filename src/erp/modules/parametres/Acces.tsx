@@ -30,6 +30,7 @@ import { Alert, Badge, Button, Card, Drawer, Field, Input, Interrupteur, Modal, 
 import { EspaceOps } from '../../espace-operations/EspaceOps';
 import type { ActionsOps, Ecran } from '../../espace-operations/commun';
 import { PanneauEspace, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
+import { RelancesPaiement } from '../logements/_composants/RelancesPaiement';
 import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
 
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
@@ -217,7 +218,7 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
     <section aria-labelledby="acces-proprietaires">
       <EnTete
         titre="Propriétaires"
-        description="Chaque propriétaire voit, dans son espace, les logements dont il est propriétaire : réservations, bilans publiés et documents. Rien d’autre."
+        description="Chaque propriétaire voit, dans son espace, les logements dont il est propriétaire : réservations, bilans publiés, factures partagées et documents. Rien d’autre."
         action={
           gerant && (
             <Button variant="primary" icone={<UserPlus />} onClick={onInviter}>
@@ -262,6 +263,11 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
         </ul>
       ) : (
         <p className="text-[13.5px] text-(--lm-encre-2)">{logementFiltre ? 'Ce logement n’a pas encore de propriétaire renseigné.' : 'Aucun propriétaire pour l’instant.'}</p>
+      )}
+      {gerant && !logementFiltre && (
+        <div className="mt-6 border-t border-(--lm-bord) pt-5">
+          <RelancesPaiement />
+        </div>
       )}
       {choix && <LogementsProprietaire proprietaire={choix} onFermer={() => setChoix(null)} />}
       {panneau && <PanneauEspace proprietaire={panneau} onFermer={() => setPanneau(null)} />}

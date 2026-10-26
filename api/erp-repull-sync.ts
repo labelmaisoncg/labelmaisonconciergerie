@@ -30,6 +30,7 @@ import { baseErp, configuration, egalConstant, repondre, variableManquante, type
 import { agentApresSynchro } from './_erp-agent.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
+import { relancesDuJour } from './_relances.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 50_000;
@@ -48,6 +49,9 @@ export default async function handler(req: any, res: any) {
 
   // Passage quotidien : chaque espace actif à son tour, le temps partagé entre ceux qui restent.
   if (c.secretCron && egalConstant(jeton, c.secretCron)) {
+    // Relances de paiement des factures partagées (chaque espace) : sans Repull, sans jamais bloquer la suite.
+    const relances = await relancesDuJour();
+    if (Object.keys(relances).length) console.log('[erp-repull-sync] relances', JSON.stringify(relances));
     const manque = variableManquante(c);
     if (manque) return repondre(res, 503, { ok: false, erreur: manque });
     let espaces;
