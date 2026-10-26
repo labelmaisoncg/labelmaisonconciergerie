@@ -22,7 +22,7 @@ import type { Logement, Proprietaire } from '../../../data/types';
 import type { AccesProprietaire, BilanProprietaire, CategorieDocumentProprietaire } from '../../../data/types-proprietaire';
 import { BilanDetail } from '../../../espace-proprietaire/Bilans';
 import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
-import { titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
+import { bilanDuMois, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
 import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
 import { appelerServeur } from '../../messagerie/_composants/serveur';
 
@@ -35,11 +35,11 @@ interface EtatServeur {
 const API = '/api/espace-proprietaire';
 
 /** État de l'accès en une ligne (« Connecté le 21 sept. 2026 »). */
-function statutAcces(a: AccesProprietaire | undefined): { texte: string; ton: 'neutre' | 'succes' | 'or' | 'danger' } {
+function statutAcces(a: AccesProprietaire | undefined): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
   if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
-  if (a.statut === 'retire') return { texte: `Accès retiré${a.retireLe ? ` le ${dateCourte(a.retireLe.slice(0, 10))}` : ''}`, ton: 'danger' };
+  if (a.statut === 'retire') return { texte: `Accès retiré${a.retireLe ? ` le ${dateCourte(a.retireLe.slice(0, 10))}` : ''}`, ton: 'neutre' };
   if (a.statut === 'actif') return { texte: `Connecté${a.derniereConnexion ? ` le ${dateCourte(a.derniereConnexion.slice(0, 10))}` : ''}`, ton: 'succes' };
-  return { texte: `Invité le ${dateCourte(a.inviteLe.slice(0, 10))}`, ton: 'or' };
+  return { texte: `Invité le ${dateCourte(a.inviteLe.slice(0, 10))}`, ton: 'alerte' };
 }
 
 /** Ligne de la carte Propriétaire : état de l'accès et ouverture du panneau. */
@@ -236,7 +236,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
         </p>
       )}
       {invitation && (
-        <div className="mt-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
+        <div className="mt-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
           <p className="text-[13px] text-(--lm-encre)">
             {invitation.envoye
               ? `Invitation envoyée à ${email.trim().toLowerCase()}. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
@@ -325,7 +325,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
       ouvert
       onFermer={onFermer}
       taille="lg"
-      titre={`Bilan de ${titreMois(mois).toLowerCase()}`}
+      titre={bilanDuMois(mois)}
       description={
         publie
           ? `Publié le ${dateCourte(existant.publieLe!.slice(0, 10))}.${change ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.' : ''}`
@@ -356,7 +356,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
       <Field label="Le mot de Label Maison" aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
         <Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} maxLength={1200} />
       </Field>
-      <div className="mt-5 rounded-xl border border-(--lm-bord) bg-(--lm-fond) p-3 sm:p-4">
+      <div className="mt-5 border-t border-(--lm-bord) pt-5">
         <BilanDetail bilan={{ mois, commentaire, chiffres, publieLe: publie ? existant.publieLe : undefined }} proprietaire={p.nom} />
       </div>
     </Modal>

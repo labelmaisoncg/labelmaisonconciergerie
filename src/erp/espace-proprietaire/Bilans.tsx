@@ -1,9 +1,9 @@
-import { ChevronLeft, ChevronRight, Download, FileBarChart } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileBarChart, Printer } from 'lucide-react';
 import { dateCourte, euros, jourMois, nombre, pluriel, pourcentage } from '../data/format';
 import type { BilanVue, ChiffresBilan, VueProprietaire } from '../data/types-proprietaire';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Button, Card, EmptyState, cn } from '../ui';
-import { CANAL, TitreEspace, titreMois } from './commun';
+import { bilanDuMois, CANAL, TitreEspace, titreMois } from './commun';
 
 const moins = (c: number) => (c ? `− ${euros(c)}` : euros(0));
 
@@ -43,7 +43,7 @@ export function BilanDetail({
   const plusieurs = c.logements.length > 1;
   const nomLogement = (id: string) => c.logements.find((l) => l.logementId === id)?.nom ?? 'Logement';
   return (
-    <article className="lm-bilan-imprimable" aria-label={`Bilan de ${titreMois(c.mois)}`}>
+    <article className="lm-bilan-imprimable" aria-label={bilanDuMois(c.mois)}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{ENTREPRISE_LIGNE}</p>
@@ -52,8 +52,8 @@ export function BilanDetail({
           {bilan.publieLe && <p className="text-[13px] text-(--lm-encre-2)">Publié le {dateCourte(bilan.publieLe.slice(0, 10))}</p>}
         </div>
         {onImprimer && (
-          <Button variant="primary" icone={<Download />} onClick={onImprimer} className="lm-sans-impression">
-            Télécharger en PDF
+          <Button variant="primary" icone={<Printer />} onClick={onImprimer} className="lm-sans-impression">
+            Imprimer ou enregistrer en PDF
           </Button>
         )}
       </header>

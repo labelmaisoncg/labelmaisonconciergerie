@@ -122,7 +122,7 @@ function Connexion({ message, ton }: { message?: string; ton?: 'danger' | 'succe
         </Card>
         <p className="mt-5 text-center text-[13px] text-(--lm-encre-2)">
           Besoin d’aide ?{' '}
-          <a href={c.lienTelephone} className="font-medium text-(--lm-or-texte) hover:underline">
+          <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
             {c.telephone}
           </a>
         </p>

@@ -28,6 +28,12 @@ export const titreMois = (mois: string) => {
   return t.charAt(0).toLocaleUpperCase('fr') + t.slice(1);
 };
 
+/** « Bilan de septembre 2026 », « Bilan d’août 2026 » (élision devant une voyelle). */
+export const bilanDuMois = (mois: string) => {
+  const t = moisAnnee(mois).toLocaleLowerCase('fr');
+  return `Bilan ${/^[aàâeéèêiîoôuû]/.test(t) ? 'd’' : 'de '}${t}`;
+};
+
 /** Photo de couverture d'un logement (lien signé résolu au besoin), sinon une vignette neutre. */
 export function PhotoLogement({ url, nom, className }: { url?: string; nom: string; className?: string }) {
   const lien = useLienFichier(url);

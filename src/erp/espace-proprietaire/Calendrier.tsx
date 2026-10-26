@@ -7,7 +7,7 @@ import { Card, cn } from '../ui';
 import { CANAL, TitreEspace, titreMois } from './commun';
 
 const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-const BANDE = 'absolute inset-y-1.5 bg-(--lm-or)/25';
+const BANDE = 'absolute inset-y-1.5 bg-(--lm-or)/40';
 
 /**
  * Un jour : la bande dorée couvre les nuits réservées. Elle commence au
