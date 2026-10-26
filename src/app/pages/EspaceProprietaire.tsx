@@ -2,7 +2,9 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import '../../erp/erp.css';
+import { lireLienAcces } from '../../erp/data/acces-externe';
 import { MODE_DEMO } from '../../erp/data/config';
+import { estLabelMaison } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
 import { CONTACTS_LABEL_MAISON, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { VueProprietaire } from '../../erp/data/types-proprietaire';
@@ -63,7 +65,11 @@ function LienDocumentDemo({ className, children }: LienDocumentProps) {
   );
 }
 
-function Connexion({ message, ton }: { message?: string; ton?: 'danger' | 'succes' | 'neutre' }) {
+/**
+ * Connexion. Sans espace connu (ou Label Maison) : la marque et le numéro de
+ * Label Maison ; arrivé par le lien d'un autre espace : rien de Label Maison.
+ */
+function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; labelMaison: boolean }) {
   const [email, setEmail] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' }>();
@@ -86,7 +92,7 @@ function Connexion({ message, ton }: { message?: string; ton?: 'danger' | 'succe
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
-        <p className="lm-serif text-center text-[22px] text-(--lm-brun)">Label Maison</p>
+        {labelMaison && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">Label Maison</p>}
         <Card className="mt-6 p-6">
           <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Votre espace propriétaire</h1>
           <p className="mt-2 text-[14px] text-(--lm-encre-2)">
@@ -121,14 +127,20 @@ function Connexion({ message, ton }: { message?: string; ton?: 'danger' | 'succe
           )}
         </Card>
         <p className="mt-5 text-center text-[13px] text-(--lm-encre-2)">
-          Besoin d’aide ?{' '}
-          <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
-            {c.telephone}
-          </a>
+          {labelMaison ? (
+            <>
+              Besoin d’aide ?{' '}
+              <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                {c.telephone}
+              </a>
+            </>
+          ) : (
+            'Besoin d’aide ? Contactez votre conciergerie.'
+          )}
         </p>
         {MODE_DEMO && (
           <p className="mt-2 text-center text-[13px]">
-            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="font-medium text-(--lm-or-texte) hover:underline">
+            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
               Voir l’espace de démonstration
             </a>
           </p>
@@ -141,6 +153,8 @@ function Connexion({ message, ton }: { message?: string; ton?: 'danger' | 'succe
 export default function EspaceProprietaire() {
   const [parametres, setParametres] = useSearchParams();
   const [etat, setEtat] = useState<Etat>({ nom: 'chargement' });
+  // Espace du lien reçu (un ancien lien sans espace : Label Maison).
+  const [espaceLien, setEspaceLien] = useState<string>();
   const [calendrierEnCours, setCalendrierEnCours] = useState(false);
   const apercu = MODE_DEMO ? (parametres.get('apercu') ?? '') : '';
   const ongletUrl = parametres.get('onglet') as OngletEspace | null;
@@ -177,11 +191,12 @@ export default function EspaceProprietaire() {
   useEffect(() => {
     let actif = true;
     void (async () => {
-      // Lien reçu par e-mail : « #jeton=… », retiré de l'adresse aussitôt (historique, partage d'écran).
-      const jeton = new URLSearchParams(window.location.hash.slice(1)).get('jeton');
+      // Lien reçu par e-mail : « #espace=…&jeton=… », retiré de l'adresse aussitôt (historique, partage d'écran).
+      const { jeton, espace } = lireLienAcces(window.location.hash);
+      if (jeton) setEspaceLien(espace);
       if (jeton && !MODE_DEMO) {
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-        const r = await appeler('POST', { action: 'entrer', jeton });
+        const r = await appeler('POST', { action: 'entrer', jeton, espace });
         if (!actif) return;
         if (r.statut !== 200) {
           if (r.statut === 503) return setEtat({ nom: 'ferme', message: String(r.json.erreur ?? '') });
@@ -213,7 +228,7 @@ export default function EspaceProprietaire() {
   return (
     <div className="erp-root">
       <Helmet>
-        <title>Espace propriétaire · Label Maison</title>
+        <title>{etat.nom === 'pret' ? `Espace propriétaire · ${etat.vue.conciergerie.nom}` : 'Espace propriétaire'}</title>
         <meta name="robots" content="noindex, nofollow" />
         <meta name="referrer" content="no-referrer" />
       </Helmet>
@@ -222,11 +237,11 @@ export default function EspaceProprietaire() {
           <PageSkeleton />
         </div>
       )}
-      {etat.nom === 'connexion' && <Connexion message={etat.message} ton={etat.ton} />}
+      {etat.nom === 'connexion' && <Connexion message={etat.message} ton={etat.ton} labelMaison={!espaceLien || estLabelMaison(espaceLien)} />}
       {(etat.nom === 'ferme' || etat.nom === 'erreur') && (
         <div className="grid min-h-screen place-items-center px-4">
           <Card className="w-full max-w-sm p-6 text-center">
-            <p className="lm-serif text-[22px] text-(--lm-brun)">Label Maison</p>
+            <p className="lm-serif text-[22px] text-(--lm-brun)">Espace propriétaire</p>
             <p className="mt-3 text-[14px] text-(--lm-encre-2)">{etat.message}</p>
             {etat.nom === 'erreur' && (
               <Button variant="secondary" className="mt-4" onClick={() => window.location.reload()}>

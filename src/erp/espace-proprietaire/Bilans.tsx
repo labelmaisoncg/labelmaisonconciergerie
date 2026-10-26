@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight, FileBarChart, Printer } from 'lucide-react';
 import { dateCourte, euros, jourMois, nombre, pluriel, pourcentage } from '../data/format';
+import { espaceOuvert } from '../data/espaces';
 import type { BilanVue, ChiffresBilan, VueProprietaire } from '../data/types-proprietaire';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Button, Card, EmptyState, cn } from '../ui';
@@ -32,10 +33,13 @@ function tauxCommission(c: ChiffresBilan): string | undefined {
 export function BilanDetail({
   bilan,
   proprietaire,
+  conciergerie = espaceOuvert().nom,
   onImprimer,
 }: {
   bilan: Pick<BilanVue, 'mois' | 'commentaire' | 'chiffres'> & { publieLe?: string };
   proprietaire: string;
+  /** Nom de la conciergerie (espace) ; sans : l'espace ouvert dans l'ERP. */
+  conciergerie?: string;
   onImprimer?: () => void;
 }) {
   const c = bilan.chiffres;
@@ -46,7 +50,7 @@ export function BilanDetail({
     <article className="lm-bilan-imprimable" aria-label={bilanDuMois(c.mois)}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{ENTREPRISE_LIGNE}</p>
+          <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{conciergerie === 'Label Maison' ? ENTREPRISE_LIGNE : conciergerie}</p>
           <p className="hidden text-[13px] font-medium text-(--lm-encre) print:block">Bilan locatif · {proprietaire}</p>
           <h2 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">{titreMois(c.mois)}</h2>
           {bilan.publieLe && <p className="text-[13px] text-(--lm-encre-2)">Publié le {dateCourte(bilan.publieLe.slice(0, 10))}</p>}
@@ -60,7 +64,7 @@ export function BilanDetail({
 
       {bilan.commentaire.trim() && (
         <blockquote className="mt-4 rounded-xl border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3 text-[14px] whitespace-pre-line text-(--lm-encre)">
-          <p className="mb-1 text-[12.5px] font-semibold text-(--lm-brun)">Le mot de Label Maison</p>
+          <p className="mb-1 text-[12.5px] font-semibold text-(--lm-brun)">Le mot de {conciergerie}</p>
           {bilan.commentaire.trim()}
         </blockquote>
       )}
@@ -73,7 +77,7 @@ export function BilanDetail({
             <Ligne libelle="Encaissé sur les séjours" valeur={euros(t.encaisse)} />
             <Ligne libelle="Frais des plateformes" valeur={moins(t.fraisPlateforme)} />
             <Ligne libelle="Ménage" valeur={moins(t.menage)} />
-            <Ligne libelle="Commission Label Maison" detail={tauxCommission(c)} valeur={moins(t.commission)} />
+            <Ligne libelle={`Commission ${conciergerie}`} detail={tauxCommission(c)} valeur={moins(t.commission)} />
             <Ligne libelle="Net propriétaire" valeur={euros(t.net)} fort />
           </dl>
         </Card>
@@ -153,7 +157,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
         <EmptyState
           icone={<FileBarChart />}
           titre="Aucun bilan publié pour l’instant"
-          description="Chaque mois, Label Maison publie ici le bilan de vos séjours : ce qui a été encaissé, les frais et ce qui vous revient."
+          description={`Chaque mois, ${vue.conciergerie.nom} publie ici le bilan de vos séjours : ce qui a été encaissé, les frais et ce qui vous revient.`}
         />
       </>
     );
@@ -180,7 +184,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
             </button>
           </div>
         </div>
-        <BilanDetail bilan={bilan} proprietaire={vue.proprietaire.nom} onImprimer={() => window.print()} />
+        <BilanDetail bilan={bilan} proprietaire={vue.proprietaire.nom} conciergerie={vue.conciergerie.nom} onImprimer={() => window.print()} />
       </>
     );
   }

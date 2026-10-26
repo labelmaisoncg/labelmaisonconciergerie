@@ -131,6 +131,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
+| `OPERATIONS_SECRET`, `ACCES_SECRET` | Vercel (serveur), facultatives | Sessions de l'espace opérations ; `ACCES_SECRET` sert de secours aux deux genres d'accès (le genre est signé dans la session : un cookie propriétaire ne vaut pas pour les opérations). |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
 
 ## Accès et déploiement
@@ -1091,6 +1092,21 @@ d'août publié et deux documents ; son espace :
   retirer l'accès ou changer d'adresse ferme aussitôt toutes les sessions.
   Le propriétaire peut redemander un lien avec son adresse (valable 1 heure,
   réponse identique que l'adresse ait un accès ou non, 5 demandes par heure).
+- **Espaces** (`api/_acces-externe.ts`, commun aux propriétaires et aux
+  opérations) : un accès appartient à l'espace du gérant qui invite (en-tête
+  `x-erp-espace`, `verifierMembre(jeton, { espace })`). Il est écrit, lu et
+  revérifié dans la base de cet espace seulement ; le lien porte l'espace
+  (`#espace=<uuid>&jeton=…`, l'espace n'est pas secret ; un ancien lien sans
+  espace vaut Label Maison) et la session signée aussi (genre, propriétaire,
+  espace, version) : un cookie dont on change l'espace est refusé.
+  « Recevoir mon lien » cherche l'adresse dans chaque espace actif et envoie
+  un lien par espace (chaque espace est un compte à part), avec la même
+  réponse neutre. E-mails et écrans portent le nom de l'espace ; un autre
+  espace que Label Maison n'utilise ni l'expéditeur ni les contacts de Label
+  Maison (sa fiche : `config.email.expediteur`, `config.contacts` ; sans
+  expéditeur, le gérant copie le lien). Base d'avant les espaces : Label
+  Maison seul, comme avant. Pour l'instant, photos déposées et documents
+  (`stockage://`) ne sont signés que pour Label Maison.
 - **Lecture seule** : le propriétaire ne lit jamais la base.
   `api/espace-proprietaire.ts` (via `api/_proprietaire.ts`, session du compte
   d'équipe) lit puis filtre par propriétaire avant tout calcul, et ne renvoie

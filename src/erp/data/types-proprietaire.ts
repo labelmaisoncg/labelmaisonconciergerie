@@ -5,29 +5,25 @@
  * Le propriétaire ne lit jamais la base : api/espace-proprietaire.ts filtre
  * par propriétaire et ne renvoie que les champs de VueProprietaire.
  */
+import type { AccesExterne, LienAccesExterne } from './acces-externe';
 import type { CanalReservation, Centimes, DateISO, Horodatage, Id } from './types';
 
 /* ------------------------------------------------------------------ accès */
 
 export type StatutAccesProprietaire = 'invite' | 'actif' | 'retire';
 
-/** Lien de connexion à usage unique : seule son empreinte (SHA-256) est gardée. */
-export interface LienAccesProprietaire {
-  empreinte: string;
-  /** Invitation du gérant (7 jours) ou lien demandé par le propriétaire (1 heure). */
-  motif: 'invitation' | 'connexion';
-  creeLe: Horodatage;
-  expireLe: Horodatage;
-  utiliseLe?: Horodatage;
-}
+/** Lien de connexion à usage unique : invitation du gérant (7 jours) ou lien demandé (1 heure). */
+export type LienAccesProprietaire = LienAccesExterne;
 
 /**
  * Accès d'un propriétaire à son espace, un par propriétaire (id = proprietaireId).
  * Écrit uniquement par le serveur (invitation, connexion, retrait).
  */
-export interface AccesProprietaire {
+export interface AccesProprietaire extends AccesExterne {
   id: Id;
   proprietaireId: Id;
+  /** Espace qui a invité (Label Maison, Sens…) ; absent (accès d'avant les espaces) : Label Maison. */
+  espace?: string;
   /** Adresse qui reçoit les liens de connexion (en minuscules). */
   email: string;
   statut: StatutAccesProprietaire;
@@ -204,6 +200,8 @@ export interface ContactsConciergerie {
 /** Tout ce que le propriétaire voit, et rien d'autre. */
 export interface VueProprietaire {
   proprietaire: { id: Id; nom: string };
+  /** Conciergerie (espace) qui gère ses logements : « Label Maison », « Sens »… */
+  conciergerie: { nom: string };
   aujourdhui: DateISO;
   logements: LogementVue[];
   moisCourant: ChiffresMoisVue;
@@ -212,5 +210,6 @@ export interface VueProprietaire {
   calendrier: { mois: string; logements: CalendrierLogement[] };
   bilans: BilanVue[];
   documents: DocumentVue[];
-  contacts: ContactsConciergerie;
+  /** Contacts de la conciergerie ; absents si l'espace n'en a pas renseigné. */
+  contacts?: ContactsConciergerie;
 }

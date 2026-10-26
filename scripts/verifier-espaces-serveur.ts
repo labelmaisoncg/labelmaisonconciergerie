@@ -13,7 +13,10 @@
  * Label Maison traités comme avant tant qu'aucun autre espace n'a de
  * workspace, workspace de Sens, workspace inconnu ignoré ensuite, adresse
  * propre à un espace avec son secret, espace inconnu = signature fausse),
- * base qui recule (retour en arrière du SQL) relue aussitôt.
+ * base qui recule (retour en arrière du SQL) relue aussitôt, espace
+ * propriétaire (accès créé, lu et revérifié dans l'espace qui invite, lien
+ * sans espace = Label Maison, cookie dont on change l'espace refusé,
+ * « Recevoir mon lien » cherché dans chaque espace).
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -29,6 +32,7 @@ import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configura
 import routeSynchro from '../api/erp-repull-sync';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
+import routeProprietaire from '../api/espace-proprietaire';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -262,6 +266,34 @@ async function principal() {
     verifier(w.statut === 200 && !w.corps?.ignore && monde.repull.length > 0 && monde.ecritures(LM).length > 0, 'webhook tagué d’un workspace, base d’avant : traité pour Label Maison', w.corps);
   }
 
+  section('Espace propriétaire, base pas encore préparée : Label Maison comme avant');
+  const ORIGINE = { origin: 'https://labelmaisoncg.fr' };
+  const EMAIL_PROPRIO = 'proprio@exemple.invalid';
+  const jetonDuLien = (lien: string) => new URLSearchParams(String(lien).split('#')[1] ?? '').get('jeton') ?? '';
+  const appelProprio = async (o: { methode?: string; entetes?: Record<string, string>; corps?: unknown; query?: Record<string, string> }) => {
+    const res = reponse();
+    await routeProprietaire(requete({ ...o, entetes: { ...ORIGINE, ...(o.entetes ?? {}) } }), res);
+    return res;
+  };
+  const cookieDe = (res: { entetes: Record<string, string> }) => String(res.entetes['Set-Cookie'] ?? '').split(';')[0];
+  let cookieAlice = '';
+  {
+    env.PROPRIETAIRE_SECRET = 'secret-de-test-espace-proprietaire-0123456789';
+    monde.poser(LM, 'proprietaires', { id: 'pro-a', nom: 'Alice Label', contact: { email: EMAIL_PROPRIO, telephone: '' } } as { id: string });
+    monde.poser(LM, 'logements', { id: 'log-a', nom: 'Chez Alice', ville: 'Évry', statut: 'actif', proprietaireId: 'pro-a', capacite: 4, chambres: 1 } as { id: string });
+    monde.poser(LM, 'reservations', { id: 'res-a', logementId: 'log-a', canal: 'airbnb', voyageur: { nom: 'Bob Martin', nbPersonnes: 2 }, arrivee: '2099-01-10', depart: '2099-01-12', nuits: 2, statut: 'confirmee', montantBrutCentimes: 20000, commissionPlateformeCentimes: 3000, fraisMenageCentimes: 4000 } as { id: string });
+    let res = await appelProprio({ entetes: { authorization: 'Bearer jeton-equipe' }, corps: { action: 'inviter', proprietaireId: 'pro-a', email: EMAIL_PROPRIO } });
+    verifier(res.statut === 200 && String(res.corps?.lien).includes(`/espace-proprietaire#espace=${LM}&jeton=`), 'invitation du gérant : lien de Label Maison', res.corps);
+    const acces = monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-a`)?.donnees as { espace?: string } | undefined;
+    verifier(acces?.espace === LM && monde.base.filter((r) => r.chemin === 'enregistrements').every((r) => r.espace === null), 'accès rangé dans Label Maison, sans en-tête (base d’avant les espaces)', acces);
+    // Ancien lien, sans espace : Label Maison.
+    res = await appelProprio({ corps: { action: 'entrer', jeton: jetonDuLien(res.corps?.lien) } });
+    cookieAlice = cookieDe(res);
+    verifier(res.statut === 200 && cookieAlice.startsWith('lm_proprio='), 'lien sans espace : ouvert dans Label Maison', res.corps);
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
+    verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Label Maison' && !!res.corps?.vue?.contacts && res.corps?.vue?.logements?.[0]?.id === 'log-a', 'vue de Label Maison, avec ses contacts', res.corps);
+  }
+
   section('Base préparée, compte serveur pas prêt');
   monde.historique = false;
   env.ERP_SERVEUR_MOT_DE_PASSE = 'mdp-serveur';
@@ -358,6 +390,50 @@ async function principal() {
     res = reponse();
     await routeAgenda(requete({ methode: 'GET', entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS } }), res);
     verifier(res.statut === 403 && res.corps?.code === 'espace', 'agenda du CRM : Label Maison seulement pour l’instant', res.corps);
+  }
+
+  section('Espace propriétaire : chaque accès dans l’espace qui invite');
+  {
+    monde.poser(SENS, 'proprietaires', { id: 'pro-s', nom: 'Sophie Sens', contact: { email: EMAIL_PROPRIO, telephone: '' } } as { id: string });
+    monde.poser(SENS, 'logements', { id: 'log-s', nom: 'Chez Sophie', ville: 'Sens', statut: 'actif', proprietaireId: 'pro-s', capacite: 2, chambres: 1 } as { id: string });
+    monde.poser(SENS, 'reservations', { id: 'res-s', logementId: 'log-s', canal: 'booking', voyageur: { nom: 'Zoé Sensible', nbPersonnes: 1 }, arrivee: '2099-02-10', depart: '2099-02-12', nuits: 2, statut: 'confirmee', montantBrutCentimes: 20000, commissionPlateformeCentimes: 3000, fraisMenageCentimes: 4000 } as { id: string });
+    monde.oublier();
+    let res = await appelProprio({ entetes: { authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS }, corps: { action: 'inviter', proprietaireId: 'pro-s', email: EMAIL_PROPRIO } });
+    verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : invitation refusée', res.corps);
+    res = await appelProprio({ entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }, corps: { action: 'inviter', proprietaireId: 'pro-s', email: EMAIL_PROPRIO } });
+    verifier(res.statut === 200 && String(res.corps?.lien).includes(`#espace=${SENS}&jeton=`) && res.corps?.envoye === false, 'gérant de Sens : lien de Sens (pas d’expéditeur pour Sens : lien à copier)', res.corps);
+    const lienSens = String(res.corps?.lien);
+    verifier(
+      (monde.lignes.get(`${SENS}\u0000accesProprietaires\u0000pro-s`)?.donnees as { espace?: string } | undefined)?.espace === SENS && !monde.lignes.has(`${LM}\u0000accesProprietaires\u0000pro-s`) && monde.ecritures(LM).length === 0,
+      'accès écrit dans Sens seulement',
+    );
+    res = await appelProprio({ corps: { action: 'entrer', jeton: jetonDuLien(lienSens), espace: LM } });
+    verifier(res.statut === 401, 'lien de Sens présenté à Label Maison : refusé', res.corps);
+    res = await appelProprio({ corps: { action: 'entrer', jeton: jetonDuLien(lienSens), espace: SENS } });
+    const cookieSophie = cookieDe(res);
+    verifier(res.statut === 200 && !!cookieSophie, 'lien de Sens : session ouverte', res.corps);
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieSophie } });
+    const texte = JSON.stringify(res.corps?.vue ?? {});
+    verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Sens' && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-s', 'propriétaire de Sens : son logement, au nom de Sens', res.corps);
+    verifier(!/Alice|log-a|Bob|Label Maison|74954|labelmaisoncg/i.test(texte) && !res.corps?.vue?.contacts && /Zoé S\./.test(texte) && !/Sensible/.test(texte), 'rien de Label Maison (ni données, ni contacts), voyageur en « Prénom N. »', texte.slice(0, 300));
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
+    verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-a' && !/Sophie|log-s|Zoé/.test(JSON.stringify(res.corps?.vue)), 'propriétaire de Label Maison : rien de Sens', res.corps?.vue?.logements);
+    // Cookie dont on change l'espace : la signature ne correspond plus.
+    const [nom, valeur] = cookieSophie.split('=');
+    const [corps, signature] = valeur.split('.');
+    const charge = JSON.parse(Buffer.from(corps, 'base64url').toString()) as Record<string, unknown>;
+    const falsifie = `${nom}=${Buffer.from(JSON.stringify({ ...charge, e: LM })).toString('base64url')}.${signature}`;
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: falsifie } });
+    verifier(res.statut === 401, 'cookie dont l’espace est changé : refusé', res.statut);
+    // « Recevoir mon lien » : la même adresse a un accès dans Label Maison et dans Sens.
+    monde.oublier();
+    res = await appelProprio({ corps: { action: 'lien', email: EMAIL_PROPRIO } });
+    const liens = (e: string, id: string) => ((monde.lignes.get(`${e}\u0000accesProprietaires\u0000${id}`)?.donnees as { liens?: { motif: string }[] } | undefined)?.liens ?? []).filter((l) => l.motif === 'connexion').length;
+    verifier(res.statut === 200 && liens(LM, 'pro-a') === 1 && liens(SENS, 'pro-s') === 1, 'demande de lien : un lien dans chaque espace où l’adresse a un accès', res.corps);
+    const message = res.corps?.message;
+    monde.oublier();
+    res = await appelProprio({ corps: { action: 'lien', email: 'inconnu@exemple.invalid' } });
+    verifier(res.statut === 200 && res.corps?.message === message && monde.base.every((r) => r.methode !== 'POST' || r.chemin !== 'enregistrements'), 'adresse inconnue : même réponse, rien d’écrit', res.corps);
   }
 
   section('Webhooks');

@@ -8,12 +8,28 @@
  * - le lien ne sert qu'une fois : il ouvre une session, cookie HttpOnly signé
  *   HMAC-SHA256 avec PROPRIETAIRE_SECRET (30 jours) ;
  * - chaque requête revérifie l'accès en base : retirer l'accès (ou changer
- *   d'adresse) augmente la version et ferme aussitôt toutes les sessions.
+ *   d'adresse) augmente la version et ferme aussitôt toutes les sessions ;
+ * - l'accès appartient à l'espace qui l'a créé (Label Maison, Sens…) : le
+ *   lien et la session le portent (src/erp/data/acces-externe.ts).
+ *
+ * Les fonctions sur les accès sont génériques : l'espace opérations s'en
+ * sert aussi (même forme d'accès, autre collection).
  *
  * Web Crypto (navigateur, Node 18+) ; imports en « .js » pour Node.
  */
-import { b64url, deB64url, empreinte } from './web-push.js';
-import type { AccesProprietaire, LienAccesProprietaire } from './types-proprietaire';
+import { ID_LABEL_MAISON } from './espaces.js';
+import {
+  enteteCookieExterne,
+  espaceDe,
+  lireCookieExterne,
+  lireSessionExterne,
+  sessionExterneValide,
+  signerSessionExterne,
+  type AccesExterne,
+  type LienAccesExterne,
+} from './acces-externe.js';
+import { b64url, empreinte } from './web-push.js';
+import type { AccesProprietaire } from './types-proprietaire';
 
 export const NOM_COOKIE = 'lm_proprio';
 /** Le cookie ne part qu'avec les appels de l'espace propriétaire. */
@@ -28,8 +44,6 @@ export const LONGUEUR_SECRET_MIN = 32;
 export const secretValide = (s: string | undefined): s is string => typeof s === 'string' && s.length >= LONGUEUR_SECRET_MIN;
 export const emailValide = (e: unknown): e is string => typeof e === 'string' && e.length <= 254 && /^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]{2,}$/.test(e);
 export const normaliserEmail = (e: unknown): string => String(e ?? '').trim().toLowerCase();
-
-const utf8 = (t: string) => new TextEncoder().encode(t);
 
 /** Web Crypto du navigateur ou de Node (global à partir de Node 19, module avant). */
 async function webCrypto(): Promise<Crypto> {
@@ -50,11 +64,11 @@ export const jetonBienForme = (j: unknown): j is string => typeof j === 'string'
 export const empreinteJeton = (jeton: string): Promise<string> => empreinte(jeton);
 
 const iso = (ms: number) => new Date(ms).toISOString();
-const valable = (l: LienAccesProprietaire, maintenantMs: number) => !l.utiliseLe && Date.parse(l.expireLe) > maintenantMs;
+const valable = (l: LienAccesExterne, maintenantMs: number) => !l.utiliseLe && Date.parse(l.expireLe) > maintenantMs;
 
 /** Ajoute un lien (les liens utilisés ou expirés tombent, 3 au plus). */
-export function avecNouveauLien(acces: AccesProprietaire, empreinteLien: string, motif: LienAccesProprietaire['motif'], maintenantMs: number): AccesProprietaire {
-  const lien: LienAccesProprietaire = {
+export function avecNouveauLien<T extends AccesExterne = AccesProprietaire>(acces: T, empreinteLien: string, motif: LienAccesExterne['motif'], maintenantMs: number): T {
+  const lien: LienAccesExterne = {
     empreinte: empreinteLien,
     motif,
     creeLe: iso(maintenantMs),
@@ -64,16 +78,18 @@ export function avecNouveauLien(acces: AccesProprietaire, empreinteLien: string,
 }
 
 /**
- * Invitation (ou nouvelle invitation) du gérant. Une autre adresse ferme les
- * sessions ouvertes et oublie les liens envoyés à l'ancienne.
+ * Invitation (ou nouvelle invitation) du gérant, dans son espace. Une autre
+ * adresse ferme les sessions ouvertes et oublie les liens envoyés à
+ * l'ancienne. `espace` absent : Label Maison (base d'avant les espaces).
  */
 export function inviter(
   precedent: AccesProprietaire | undefined,
-  o: { proprietaireId: string; email: string; par: string; maintenantMs: number },
+  o: { proprietaireId: string; email: string; par: string; maintenantMs: number; espace?: string },
 ): AccesProprietaire {
   const email = normaliserEmail(o.email);
+  const espace = espaceDe(o.espace ?? precedent?.espace);
   if (!precedent) {
-    return { id: o.proprietaireId, proprietaireId: o.proprietaireId, email, statut: 'invite', inviteLe: iso(o.maintenantMs), invitePar: o.par, version: 1, liens: [] };
+    return { id: o.proprietaireId, proprietaireId: o.proprietaireId, espace, email, statut: 'invite', inviteLe: iso(o.maintenantMs), invitePar: o.par, version: 1, liens: [] };
   }
   const autreAdresse = precedent.email !== email;
   const { retireLe: _retire, ...reste } = precedent;
@@ -81,6 +97,7 @@ export function inviter(
     ...reste,
     id: o.proprietaireId,
     proprietaireId: o.proprietaireId,
+    espace,
     email,
     statut: precedent.statut === 'actif' && !autreAdresse ? 'actif' : 'invite',
     inviteLe: iso(o.maintenantMs),
@@ -91,18 +108,18 @@ export function inviter(
 }
 
 /** Retrait : plus de lien, toutes les sessions fermées. */
-export function retirer(acces: AccesProprietaire, maintenantMs: number): AccesProprietaire {
+export function retirer<T extends AccesExterne = AccesProprietaire>(acces: T, maintenantMs: number): T {
   return { ...acces, statut: 'retire', retireLe: iso(maintenantMs), version: (acces.version ?? 1) + 1, liens: [] };
 }
 
 export type RefusLien = 'inconnu' | 'expire' | 'utilise' | 'retire';
 
 /** Utilise un lien : l'accès devient actif, le lien ne servira plus. */
-export async function utiliserLien(
-  acces: readonly AccesProprietaire[],
+export async function utiliserLien<T extends AccesExterne = AccesProprietaire>(
+  acces: readonly T[],
   jeton: unknown,
   maintenantMs: number,
-): Promise<{ ok: true; acces: AccesProprietaire } | { ok: false; raison: RefusLien }> {
+): Promise<{ ok: true; acces: T } | { ok: false; raison: RefusLien }> {
   if (!jetonBienForme(jeton)) return { ok: false, raison: 'inconnu' };
   const h = await empreinteJeton(jeton);
   const a = acces.find((x) => (x?.liens ?? []).some((l) => l.empreinte === h));
@@ -122,7 +139,7 @@ export const MESSAGES_REFUS: Record<RefusLien, string> = {
   inconnu: 'Ce lien n’est pas valable. Demandez un nouveau lien avec votre adresse e-mail.',
   expire: 'Ce lien a expiré. Demandez un nouveau lien avec votre adresse e-mail.',
   utilise: 'Ce lien a déjà servi. Demandez un nouveau lien avec votre adresse e-mail.',
-  retire: 'Votre accès à l’espace propriétaire a été retiré. Contactez Label Maison.',
+  retire: 'Votre accès à l’espace propriétaire a été retiré. Contactez votre conciergerie.',
 };
 
 /* ---------------------------------------------------------------- session */
@@ -134,51 +151,35 @@ export interface SessionProprietaire {
   v: number;
   /** Fin de validité, en secondes. */
   exp: number;
+  /** Espace de l'accès ; absent : Label Maison. */
+  e?: string;
 }
-
-const cle = async (secret: string) =>
-  (await webCrypto()).subtle.importKey('raw', utf8(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify']);
 
 export async function signerSession(secret: string, s: SessionProprietaire): Promise<string> {
-  const corps = b64url(utf8(JSON.stringify({ p: s.p, v: s.v, exp: s.exp })));
-  const signature = new Uint8Array(await (await webCrypto()).subtle.sign('HMAC', await cle(secret), utf8(corps)));
-  return `${corps}.${b64url(signature)}`;
+  return signerSessionExterne(secret, { k: 'proprietaire', p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp });
 }
 
-/** Session lue dans le cookie : signature vérifiée (temps constant), pas expirée. */
+/** Session lue dans le cookie : signature vérifiée (temps constant), pas expirée, d'un propriétaire. */
 export async function lireSession(secret: string, valeur: unknown, maintenantS: number): Promise<SessionProprietaire | null> {
-  if (typeof valeur !== 'string' || valeur.length > 600) return null;
-  const [corps, signature, ...reste] = valeur.split('.');
-  if (!corps || !signature || reste.length) return null;
-  const sig = deB64url(signature);
-  if (sig.length !== 32) return null;
-  const ok = await (await webCrypto()).subtle.verify('HMAC', await cle(secret), new Uint8Array(sig), utf8(corps)).catch(() => false);
-  if (!ok) return null;
-  try {
-    const s = JSON.parse(new TextDecoder().decode(deB64url(corps))) as Partial<SessionProprietaire>;
-    if (typeof s.p !== 'string' || !s.p || typeof s.v !== 'number' || typeof s.exp !== 'number') return null;
-    if (s.exp <= maintenantS) return null;
-    return { p: s.p, v: s.v, exp: s.exp };
-  } catch {
-    return null;
-  }
+  const s = await lireSessionExterne(secret, valeur, 'proprietaire', maintenantS);
+  return s ? { p: s.p, v: s.v, exp: s.exp, e: s.e } : null;
 }
 
-/** La session correspond toujours à un accès actif, de même version. */
+/** La session correspond toujours à un accès actif, de même version, dans le même espace. */
 export function sessionEncoreValide(s: SessionProprietaire, acces: AccesProprietaire | undefined): acces is AccesProprietaire {
-  return !!acces && acces.id === s.p && acces.proprietaireId === s.p && acces.statut === 'actif' && acces.version === s.v;
+  return (
+    !!acces &&
+    acces.proprietaireId === s.p &&
+    sessionExterneValide({ k: 'proprietaire', p: s.p, e: espaceDe(s.e ?? ID_LABEL_MAISON), v: s.v, exp: s.exp }, acces)
+  );
 }
 
 export function enteteCookie(valeur: string, maxAgeS: number): string {
-  return `${NOM_COOKIE}=${valeur}; Path=${CHEMIN_COOKIE}; Max-Age=${maxAgeS}; HttpOnly; Secure; SameSite=Lax`;
+  return enteteCookieExterne(NOM_COOKIE, CHEMIN_COOKIE, valeur, maxAgeS);
 }
 
 export const cookieEfface = (): string => enteteCookie('', 0);
 
 export function lireCookie(entete: unknown, nom: string = NOM_COOKIE): string | undefined {
-  for (const morceau of String(entete ?? '').split(';')) {
-    const i = morceau.indexOf('=');
-    if (i > 0 && morceau.slice(0, i).trim() === nom) return morceau.slice(i + 1).trim();
-  }
-  return undefined;
+  return lireCookieExterne(entete, nom);
 }
