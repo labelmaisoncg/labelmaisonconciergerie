@@ -50,8 +50,12 @@ export interface EnvoiFichierProps {
   icone?: ReactNode;
   className?: string;
   disabled?: boolean;
-  /** Adresses à enregistrer (« stockage://... »), dans l'ordre des fichiers choisis. */
-  onEnvoye: (urls: string[]) => void;
+  /** Taille maximale d'un fichier, en Mo (15 par défaut). */
+  tailleMaxMo?: number;
+  /** Conseil ajouté au message « trop lourd » (ex. passer par un lien). */
+  conseilTropLourd?: string;
+  /** Adresses à enregistrer (« stockage://... »), dans l'ordre des fichiers choisis, avec les fichiers d'origine. */
+  onEnvoye: (urls: string[], fichiers: File[]) => void;
 }
 
 /** Bouton « joindre un fichier » : choix, envoi, erreurs affichées sous le bouton. */
@@ -65,6 +69,8 @@ export function EnvoiFichier({
   icone,
   className,
   disabled,
+  tailleMaxMo = 15,
+  conseilTropLourd,
   onEnvoye,
 }: EnvoiFichierProps) {
   const champ = useRef<HTMLInputElement>(null);
@@ -76,24 +82,31 @@ export function EnvoiFichier({
     if (champ.current) champ.current.value = '';
     if (!liste.length) return;
     setErreur(undefined);
+    const tropLourd = (f: File) => f.size > tailleMaxMo * 1024 * 1024;
+    const message = (f: File) => `${f.name} : fichier trop lourd (${tailleMaxMo} Mo au plus).${conseilTropLourd ? ` ${conseilTropLourd}` : ''}`;
     if (MODE_DEMO) {
-      onEnvoye(liste.map((f) => `demo://${dossier}/${f.name}`));
+      const ok = liste.filter((f) => !tropLourd(f));
+      if (ok.length) onEnvoye(ok.map((f) => `demo://${dossier}/${f.name}`), ok);
+      if (ok.length < liste.length) setErreur(message(liste.find(tropLourd)!));
       return;
     }
     setEnCours(true);
     const urls: string[] = [];
+    const envoyes: File[] = [];
     const erreurs: string[] = [];
     for (const f of liste) {
-      if (f.size > 15 * 1024 * 1024) {
-        erreurs.push(`${f.name} : fichier trop lourd (15 Mo au plus).`);
+      if (tropLourd(f)) {
+        erreurs.push(message(f));
         continue;
       }
       const r = await televerser(dossier, f);
-      if ('url' in r) urls.push(r.url);
-      else erreurs.push(r.erreur);
+      if ('url' in r) {
+        urls.push(r.url);
+        envoyes.push(f);
+      } else erreurs.push(r.erreur);
     }
     setEnCours(false);
-    if (urls.length) onEnvoye(urls);
+    if (urls.length) onEnvoye(urls, envoyes);
     if (erreurs.length) setErreur(erreurs[0]);
   };
 

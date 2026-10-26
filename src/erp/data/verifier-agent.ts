@@ -32,8 +32,9 @@ import {
   type OptionsAgent,
 } from './agent-messagerie';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { DUREE_LIEN_GUIDE_S, guidesAJoindre, signerFichierStockage, texteAvecGuides } from './guides';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, type EtatRepull } from './repull-synchro';
-import type { FilMessages, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
+import type { FilMessages, GuideLogement, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -436,6 +437,105 @@ async function principal() {
   const avantAuto = repull.appels.length;
   await lancerAgent(options({ releve: 'auto' }));
   verifier(repull.appels.length === avantAuto, 'planifié juste après : pas de nouveau relevé (économie d’appels)');
+
+  /* ------------------------------------------- guides et questions fréquentes */
+  section('Guides et questions fréquentes');
+  {
+    const guides: GuideLogement[] = [
+      { id: 'g-cle', titre: 'Récupérer la clé', quand: 'le voyageur demande comment entrer', media: { type: 'video', fichier: 'stockage://erp-fichiers/guides/cle.mp4' }, acces: true, ajouteLe: iso(0), ajoutePar: 'Abdel' },
+      { id: 'g-four', titre: 'Utiliser le four', media: { type: 'lien', url: 'https://youtu.be/exemple-four' }, ajouteLe: iso(0), ajoutePar: 'Abdel' },
+      { id: 'g-casse', titre: 'Sans lien valable', media: { type: 'lien', url: 'http://pas-sur/x' }, ajouteLe: iso(0), ajoutePar: 'Abdel' },
+    ];
+    const questions = [
+      { id: 'q1', question: 'Où jeter les poubelles ?', reponse: 'Local au rez-de-chaussée, à droite de l’entrée.' },
+      { id: 'q2', question: '  ', reponse: 'Incomplète : ignorée.' },
+    ];
+    const avecGuides: Logement = { ...logement, fiche: { ...logement.fiche, guides, questions } };
+
+    // Outils purs.
+    const a = guidesAJoindre(['g-four', 'inconnu', 'g-four', 'g-cle', 'g-casse'], guides, false);
+    verifier(a.joints.map((g) => g.id).join() === 'g-four' && a.retires.map((g) => g.id).join() === 'g-cle', 'guides : id inconnu, doublon et guide sans lien valable ignorés ; guide d’accès retenu avant l’heure');
+    const b = guidesAJoindre(['g-cle', 'g-four', 'g-four'], guides, true);
+    verifier(b.joints.map((g) => g.id).join() === 'g-cle,g-four' && !b.retires.length, 'guides : accès permis, deux guides joints au plus');
+    verifier(texteAvecGuides('Bonjour.', [{ titre: 'Four', lien: 'https://x.fr/f' }]) === 'Bonjour.\n\nFour : https://x.fr/f', 'texte : « Titre : lien » après la réponse');
+    const signe = await signerFichierStockage(
+      {
+        url: 'https://base.test',
+        cleAnon: 'anon',
+        jeton: async () => 'jeton-equipe',
+        fetch: (async (u: RequestInfo | URL, init?: RequestInit) => {
+          const ok =
+            String(u) === 'https://base.test/storage/v1/object/sign/erp-fichiers/guides/cle.mp4' &&
+            new Headers(init?.headers).get('authorization') === 'Bearer jeton-equipe' &&
+            JSON.parse(String(init?.body)).expiresIn === DUREE_LIEN_GUIDE_S;
+          return ok ? json({ signedURL: '/object/sign/erp-fichiers/guides/cle.mp4?token=t7' }) : json({ error: 'refus' }, 400);
+        }) as typeof fetch,
+      },
+      'stockage://erp-fichiers/guides/cle.mp4',
+      DUREE_LIEN_GUIDE_S,
+    );
+    verifier(signe === 'https://base.test/storage/v1/object/sign/erp-fichiers/guides/cle.mp4?token=t7', `lien signé de 7 jours pour un fichier déposé (${signe})`);
+    verifier(
+      (await signerFichierStockage({ jeton: async () => 'j', fetch: (async () => json({ signedURL: '/x' })) as typeof fetch }, 'stockage://erp-fichiers/../secret', 60)) === null,
+      'lien signé : chemin avec « .. » refusé',
+    );
+
+    // Contexte : questions fréquentes dans la fiche, guides sans adresse.
+    const sansResa = construireContexte(fil(), avecGuides, undefined, { ...REGLAGES_AGENT_DEFAUT, actif: true }, horloge);
+    verifier(
+      /- Question fréquente : Où jeter les poubelles \? → Réponse : Local au rez-de-chaussée/.test(sansResa) && !/Incomplète/.test(sansResa),
+      'contexte : questions fréquentes complètes transmises comme réponses sûres',
+    );
+    verifier(
+      /\[g-four\] Utiliser le four \(lien\)/.test(sansResa) && !/g-cle|g-casse/.test(sansResa) && /Guides d’accès \(clé, code\) : envoyés dans les 48 heures/.test(sansResa) && !/youtu\.be|stockage:\/\//.test(sansResa),
+      'contexte : guides par id sans adresse ; guide d’accès caché avant l’heure ; guide sans lien valable écarté',
+    );
+    const avecResa = construireContexte(fil(), avecGuides, reservation, { ...REGLAGES_AGENT_DEFAUT, actif: true }, horloge);
+    verifier(/\[g-cle\] Récupérer la clé \(vidéo\) — à envoyer : le voyageur demande comment entrer/.test(avecResa), 'contexte : guide d’accès proposé quand les codes sont communicables');
+
+    // Réponse avec deux guides (dont un fichier signé) et un id inventé ; arrivée demain : codes communicables.
+    base.poser('reservations', reservation);
+    base.poser('logements', avecGuides);
+    base.poser<FilMessages>('filsMessages', { ...fil(), statut: 'ouvert', traitePar: 'agent' });
+    avancer(5);
+    ecrireVoyageur('repull-m8', 'Comment je récupère la clé ? Et le four ?');
+    ia.reponses.push({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: 'Bonjour Alex, je vous joins deux courtes vidéos.', resume: 'Clé et four expliqués.', guides: ['g-cle', 'g-four', 'g-invente'] });
+    const signatures: string[] = [];
+    const avantGuides = repull.envois.length;
+    p = await lancerAgent(
+      options({
+        signerFichier: async (f, secondes) => {
+          signatures.push(`${f}|${secondes}`);
+          return 'https://base.test/storage/v1/object/sign/erp-fichiers/guides/cle.mp4?token=t7';
+        },
+      }),
+    );
+    const envoye = repull.envois[avantGuides]?.message ?? '';
+    verifier(p.repondus === 1 && envoye.startsWith('Bonjour Alex, je vous joins deux courtes vidéos.\n\n'), `réponse envoyée avec ses guides (${p.message})`);
+    verifier(
+      envoye.includes('Récupérer la clé : https://base.test/storage/v1/object/sign/erp-fichiers/guides/cle.mp4?token=t7') &&
+        envoye.includes('Utiliser le four : https://youtu.be/exemple-four') &&
+        envoye.endsWith(`\n\n${SIGNATURE}`),
+      `liens ajoutés par le serveur avant la signature (${JSON.stringify(envoye)})`,
+    );
+    verifier(signatures.join() === `stockage://erp-fichiers/guides/cle.mp4|${DUREE_LIEN_GUIDE_S}` && !/invente/.test(envoye), 'fichier signé pour 7 jours, id inventé ignoré');
+    verifier(/Guides joints : « Récupérer la clé », « Utiliser le four »/.test(fil().agent?.resume ?? ''), `suivi : guides notés pour l’équipe (${fil().agent?.resume})`);
+
+    // Guide d'accès demandé trop tôt : retenu, la réponse part sans lui.
+    base.poser('reservations', { ...reservation, arrivee: '2026-10-20', depart: '2026-10-23' });
+    avancer(5);
+    ecrireVoyageur('repull-m9', 'Vous pouvez m’envoyer la vidéo pour la clé ?');
+    ia.reponses.push({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: 'Bonjour Alex, vous la recevrez 48 heures avant votre arrivée.', resume: 'Vidéo de la clé demandée.', guides: ['g-cle'] });
+    const avantTot = repull.envois.length;
+    p = await lancerAgent(options({ signerFichier: async () => 'https://base.test/signe' }));
+    const tot = repull.envois[avantTot]?.message ?? '';
+    verifier(
+      p.repondus === 1 && !/signe|Récupérer la clé :/.test(tot) && /retenu : accès pas encore communicable/.test(fil().agent?.resume ?? ''),
+      'guide d’accès avant 48 h : retiré du message, noté pour l’équipe',
+    );
+    base.poser('reservations', reservation);
+    base.poser('logements', logement);
+  }
 
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;

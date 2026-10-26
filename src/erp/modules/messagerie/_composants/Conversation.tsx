@@ -8,12 +8,15 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CheckCheck, CheckCircle2, Hand, Info, Loader2, Lock, RotateCcw, Send, X } from 'lucide-react';
+import { ArrowLeft, Bot, CheckCheck, CheckCircle2, FileText, Hand, Image, Info, Link2, Loader2, Lock, RotateCcw, Send, Video, X } from 'lucide-react';
 import { Alert, Avatar, Button, Drawer, IconButton, MenuActions, Textarea, cn, type ActionMenu } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { heure, horodatageMaintenant, jourMois } from '../../../data/format';
 import type { FilMessages, Logement, Message, Reservation } from '../../../data/types';
+import { DUREE_LIEN_GUIDE_S, guideEnvoyable } from '../../../data/guides';
+import { lienPartage } from '../../../data/supabase';
+import type { GuideLogement } from '../../../data/types';
 import { GABARITS, LIBELLE_MOTIF, attendEquipe, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
 import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
@@ -176,6 +179,19 @@ export function Conversation({ fil, logement, reservation }: Props) {
     zone.current?.focus();
   };
 
+  // Guides du logement : « Titre : lien » ; un fichier déposé part en lien signé de 7 jours.
+  const guides = (logement?.fiche.guides ?? []).filter((g) => guideEnvoyable(g) || g.media.fichier?.startsWith('demo://'));
+  const [guideEnCours, setGuideEnCours] = useState<string | null>(null);
+  const insererGuide = async (g: GuideLogement) => {
+    if (g.media.url) return inserer(`${g.titre} : ${g.media.url}`);
+    if (!g.media.fichier || g.media.fichier.startsWith('demo://')) return inserer(`${g.titre} : (lien créé à l’envoi, démonstration)`);
+    setGuideEnCours(g.id);
+    const lien = await lienPartage(g.media.fichier, DUREE_LIEN_GUIDE_S);
+    setGuideEnCours(null);
+    if (lien) inserer(`${g.titre} : ${lien}`);
+    else setErreur(`Le lien du guide « ${g.titre} » n’a pas pu être créé. Réessayez.`);
+  };
+
   const infos = [
     logement?.nom,
     reservation ? `${jourMois(reservation.arrivee)} – ${jourMois(reservation.depart)}` : undefined,
@@ -321,7 +337,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
             </div>
           )}
 
-          <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Modèles de réponse">
+          <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Modèles de réponse et guides">
             <span className="shrink-0 text-[12px] text-(--lm-encre-3)">Modèles</span>
             {GABARITS.map((g) => {
               const bloque = (g.sensible && !codes.autorise) || !logement;
@@ -339,6 +355,35 @@ export function Conversation({ fil, logement, reservation }: Props) {
                 </button>
               );
             })}
+            {guides.length > 0 && (
+              <>
+                <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-(--lm-bord-fort)" />
+                <span className="shrink-0 text-[12px] text-(--lm-encre-3)">Guides</span>
+                {guides.map((g) => {
+                  const bloque = !!g.acces && !codes.autorise;
+                  const Icone = { video: Video, photo: Image, document: FileText, lien: Link2 }[g.media.type];
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      disabled={bloque || guideEnCours === g.id}
+                      onClick={() => void insererGuide(g)}
+                      title={bloque ? `Guide d’accès : pas encore pour ce voyageur (${codes.raison})` : `Insérer le guide ${g.titre}`}
+                      className="inline-flex h-8 max-w-[14rem] shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {guideEnCours === g.id ? (
+                        <Loader2 className="size-3 animate-spin" aria-hidden />
+                      ) : bloque ? (
+                        <Lock className="size-3" aria-hidden />
+                      ) : (
+                        <Icone className="size-3" aria-hidden />
+                      )}
+                      <span className="truncate">{g.titre}</span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
 
           <form

@@ -546,6 +546,34 @@ function descriptifDemo(l: Logement, base: number, i: number): Logement['descrip
 }
 
 /** Démo : photos, prix par nuit des 60 prochains jours (plus cher le week-end) et annonce, comme lus sur les plateformes. */
+/** Guides de démonstration : adresses factices évidentes (exemple.invalid), jamais envoyées. */
+function guidesDemo(id: string): NonNullable<Logement['fiche']['guides']> {
+  return [
+    {
+      id: `${id}-guide-cle`,
+      titre: 'Récupérer la clé',
+      quand: 'Quand le voyageur demande comment entrer dans le logement',
+      media: { type: 'video', url: 'https://videos.exemple.invalid/recuperer-la-cle' },
+      acces: true,
+      ajouteLe: `${AUJOURDHUI}T09:00:00+02:00`,
+      ajoutePar: 'Abdel',
+    },
+    {
+      id: `${id}-guide-plaques`,
+      titre: 'Allumer les plaques de cuisson',
+      quand: 'Quand le voyageur n’arrive pas à cuisiner',
+      media: { type: 'lien', url: 'https://videos.exemple.invalid/plaques' },
+      ajouteLe: `${AUJOURDHUI}T09:05:00+02:00`,
+      ajoutePar: 'Abdel',
+    },
+  ];
+}
+
+const QUESTIONS_DEMO = [
+  { id: 'q-poubelles', question: 'Où jeter les poubelles ?', reponse: 'Local au rez-de-chaussée, à droite de l’entrée. Sortie le mardi soir.' },
+  { id: 'q-chauffage', question: 'Comment marche le chauffage ?', reponse: 'Thermostat dans l’entrée : appuyez sur + pour monter la température.' },
+];
+
 function habiller(logements: Logement[]): Logement[] {
   return logements.map((l, i) => {
     if (l.statut === 'sorti') return l;
@@ -577,7 +605,9 @@ function habiller(logements: Logement[]): Logement[] {
       };
     }
     const photos = [0, 1, 2, 3, 4, 5].map((k) => PHOTOS_DEMO[(i + k) % PHOTOS_DEMO.length]);
-    return { ...l, photos, tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours }, descriptif: descriptifDemo(l, base, i) };
+    // Démo : guides (liens factices) et questions fréquentes sur les deux premiers logements.
+    const fiche = i < 2 ? { ...l.fiche, guides: guidesDemo(l.id), questions: QUESTIONS_DEMO } : l.fiche;
+    return { ...l, fiche, photos, tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours }, descriptif: descriptifDemo(l, base, i) };
   });
 }
 

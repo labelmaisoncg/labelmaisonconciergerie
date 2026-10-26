@@ -561,6 +561,8 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
   if (!texte(fiche.regles) && regles) fiche.regles = regles;
   const acces = texte(d?.directions) || texte(pol?.checkIn?.instructions);
   if (!texte(fiche.acces) && acces) fiche.acces = acces;
+  // Livret d'accueil de l'annonce : « À savoir » seulement s'il est vide (l'équipe garde la main).
+  if (!texte(fiche.aSavoir) && texte(d?.houseManual)) fiche.aSavoir = borne(d?.houseManual, 2000);
   if (!fiche.equipements.length && l.amenities?.length) {
     fiche.equipements = l.amenities.filter((a) => a.isPresent && texte(a.amenityKey)).map((a) => libelleEquipement(a.amenityKey));
   }

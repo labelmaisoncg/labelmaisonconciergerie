@@ -662,6 +662,24 @@ wifi absents du contexte tant que le voyageur n'y a pas droit (réservation
 confirmée, arrivée sous 48 h ou sur place) ; les messages du voyageur sont
 des données, pas des consignes ; réponse illisible → transmis.
 
+**Guides et questions fréquentes** (`src/erp/data/guides.ts`, onglet « Infos
+pour l'agent » : `onglets/GuidesFiche.tsx`) : chaque logement peut avoir des
+guides (vidéo, photo, PDF déposés, 50 Mo au plus, ou lien https : YouTube non
+répertoriée, Google Drive, iCloud…) avec « quand l'envoyer », et des questions
+fréquentes (question + réponse). Les questions fréquentes entrent dans la
+fiche donnée à Claude comme réponses sûres. Les guides lui sont listés par id
+et titre, sans adresse ; il peut en joindre 2 au plus (champ `guides` de sa
+réponse). Le serveur vérifie les ids (inconnu : ignoré), ajoute « Titre :
+lien » avant la signature et, pour un fichier déposé, crée un lien signé de
+7 jours (Storage, compte d'équipe). Un guide marqué « Contient l'accès » suit
+la règle des codes : retiré (et noté pour l'équipe) tant que le voyageur n'y a
+pas droit. Si une plateforme refuse le message à cause du lien, la
+conversation est transmise à l'équipe avec le nom du guide. Dans la
+Messagerie, la rangée « Modèles » propose aussi les guides du logement
+(cadenas pour un guide d'accès, même règle que le modèle « Arrivée »). Au
+relevé des annonces, le livret d'accueil Repull (`details.houseManual`)
+remplit « À savoir » s'il est vide.
+
 **Jamais deux réponses** : avant d'envoyer, le fil garde un marqueur « envoi
 en cours » (message du voyageur, texte, clé `lm-agent-<fil>-<message>`). Un
 passage coupé en plein envoi est repris au suivant avec le même texte et la
