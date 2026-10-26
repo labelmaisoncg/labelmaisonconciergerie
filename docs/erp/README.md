@@ -87,6 +87,13 @@ node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm
   --platform=node --define:import.meta.env='{}' \
   --log-level=error --outfile=/tmp/verifier-espaces.mjs && node /tmp/verifier-espaces.mjs
 
+# Connexion à l'ERP (middleware.ts) : e-mail et mot de passe d'un membre,
+# non-membre refusé, autre site refusé, anciens cookies (mot de passe commun)
+# refusés, relais remis une fois, jamais la session du compte d'équipe.
+node_modules/.bin/esbuild scripts/verifier-connexion-erp.ts --bundle --format=esm \
+  --platform=node --log-level=error --outfile=/tmp/verifier-connexion-erp.mjs \
+  && node /tmp/verifier-connexion-erp.mjs
+
 # Même chose côté routes /api : compte serveur, réglages d'un espace, passage
 # quotidien sur chaque espace, bouton d'un membre, routage des webhooks.
 node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
@@ -126,7 +133,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 
 | Variable | Où | Rôle |
 |---|---|---|
-| `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe de `/erp`. Absent : accès refusé (page 503), jamais ouvert. Redéployer après modification. |
+| `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe du compte d'équipe `equipe@labelmaisoncg.fr` (fonctions serveur) et clé de signature des sessions de `/erp`. On n'entre plus dans l'ERP avec ce seul mot de passe : chacun se connecte avec son adresse e-mail et son mot de passe. Absent : accès refusé (page 503), jamais ouvert. Le changer déconnecte tout le monde. Redéployer après modification. |
 | `ERP_SERVEUR_MOT_DE_PASSE` | Vercel (serveur), facultatif tant qu'il n'y a que Label Maison | Mot de passe du compte technique `serveur@labelmaisoncg.fr` (voir « Espaces »). Absent : le serveur écrit avec le compte d'équipe, dans Label Maison seulement. |
 | `LINGE_PASSWORD` | Vercel | Mot de passe du registre `/linge` (inchangé). |
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
@@ -472,14 +479,13 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    `politiques_photos` = 4. (Si `stockage_photos` ou `politiques_photos` ne
    sont pas bons, l'ERP marche mais l'envoi des photos échouera : Storage →
    New bucket `erp-fichiers`, privé, puis relancer le script.)
-2. **Créer le compte d'équipe.** L'ERP a un seul compte pour toute l'équipe
-   (même vue pour tous) et **un seul mot de passe : `ERP_PASSWORD` (Vercel)**.
-   Une fois ce mot de passe saisi sur la page d'accès, le serveur ouvre
-   lui-même la session Supabase (`POST /erp/session` dans `middleware.ts`) :
-   le compte d'équipe doit donc avoir **exactement le même mot de passe que
-   `ERP_PASSWORD`**. Si `ERP_PASSWORD` change, changer aussi celui du compte
-   (Authentication → Users). Sinon l'ERP affiche en secours un champ mot de
-   passe. Supabase → **Authentication** → **Users** → **Add user** →
+2. **Créer le compte d'équipe.** Les fonctions serveur (synchronisation,
+   agent, CRM…) écrivent avec le compte d'équipe, dont le mot de passe est
+   **exactement `ERP_PASSWORD`** (Vercel). Si `ERP_PASSWORD` change, changer
+   aussi celui du compte (Authentication → Users). Ce compte peut aussi se
+   connecter à l'ERP comme n'importe quel membre (page d'accès : adresse
+   `equipe@labelmaisoncg.fr` et ce mot de passe).
+   Supabase → **Authentication** → **Users** → **Add user** →
    **Create new user** : e-mail `equipe@labelmaisoncg.fr` (adresse technique,
    aucune boîte mail n'est nécessaire), mot de passe = la valeur de `ERP_PASSWORD`, cocher
    **Auto Confirm User** → **Create user**. Conseillé : fermer les
@@ -501,8 +507,9 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    Settings → Environment Variables → `VITE_SUPABASE_URL` et
    `VITE_SUPABASE_ANON_KEY` (les deux ensemble), puis redéployer. Ne jamais y
    mettre `VITE_ERP_DEMO`.
-6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp`, mot de passe du
-   site (`ERP_PASSWORD`) : l'ERP s'ouvre directement. Si l'écran « La base de données
+6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp` et se connecter
+   avec une adresse membre et son mot de passe : l'ERP s'ouvre directement.
+   Si l'écran « La base de données
    n'est pas encore installée » reste affiché après l'étape 1 : Supabase →
    **Project Settings** → **Data API** (parfois **Settings → API**) →
    **Exposed schemas** → ajouter `erp` → Save, puis « Réessayer ».
@@ -532,6 +539,34 @@ base à l'instant T. Les anciennes versions de chaque élément restent dans
    `synchro.ts`.
 4. **Accès prestataires** : règles RLS dédiées (leurs seules missions) avant
    de donner le rôle `prestataire` à qui que ce soit.
+
+## Connexion à l'ERP
+
+Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
+de `/erp`, servie par `middleware.ts`). Il n'y a plus de « Retour au site » :
+l'ERP est une application.
+
+- **Pour l'équipe :** connectez-vous avec `equipe@labelmaisoncg.fr` et le mot
+  de passe actuel de l'ERP, ou avec votre compte personnel créé dans
+  Supabase → Authentication → Users (« Add user », « Auto Confirm User »),
+  dont l'adresse figure dans les membres (Paramètres → Équipe).
+- **Mot de passe oublié ?** sur la même page : Supabase envoie un lien qui
+  ramène sur `/erp`, où l'on choisit un nouveau mot de passe (8 caractères
+  au moins). Les liens d'invitation de Supabase (« Invite user ») marchent de
+  la même façon. Il faut que `https://www.labelmaisoncg.fr/erp` soit dans
+  Authentication → URL Configuration → Redirect URLs.
+- **Comment ça marche :** la page se connecte directement auprès de Supabase
+  (ses limites de tentatives jouent par personne), puis envoie les jetons à
+  `/erp/connexion`, qui vérifie le compte et son appartenance à l'ERP
+  (`erp.qui_suis_je`, ou `erp.membres` avant les espaces). Elle pose alors
+  `erp_session` (cookie signé, lié au compte, 30 jours) et `erp_relais`
+  (5 minutes) que l'application échange une seule fois contre sa session
+  sur `/erp/session`. Le navigateur ne reçoit jamais la session du compte
+  d'équipe. Un non-membre est refusé ; une demande venue d'un autre site
+  aussi.
+- **Anciens accès :** les sessions ouvertes avec l'ancien mot de passe commun
+  ne valent plus rien ; chacun se reconnecte une fois. « Se déconnecter »
+  (menu du compte) ferme aussi la page d'accès.
 
 ## Synchronisation Repull
 
@@ -855,8 +890,8 @@ Apple, Google ou Mozilla selon l'appareil (Web Push).
 **Le lien à envoyer à l'équipe : `https://www.labelmaisoncg.fr/erp/installer`**
 (aussi dans Paramètres → Application, avec « Copier » et « Partager »).
 
-1. On ouvre le lien et on se connecte (mot de passe de l'ERP) ; la page
-   reconnaît l'appareil.
+1. On ouvre le lien et on se connecte (son adresse e-mail et son mot de
+   passe) ; la page reconnaît l'appareil.
 2. **iPhone / iPad** (Safari) : Partager → « Sur l'écran d'accueil » →
    « Ajouter ». **Android** (Chrome) et **ordinateur** (Chrome, Edge) : bouton
    « Installer l'app » (sinon menu ⋮ → « Installer l'application », ou Safari
@@ -1047,8 +1082,9 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 
 ### Pas encore (étapes suivantes)
 
-- Connexion personnelle, « Créer un compte » et invitations (fin du mot de
-  passe commun `ERP_PASSWORD`), choix de l'espace à l'écran.
+- « Créer un compte » et invitations depuis l'ERP (la connexion personnelle,
+  elle, est en place : voir « Connexion à l'ERP »), choix de l'espace à
+  l'écran.
 - Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
 - Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
   qui n'est pas encore dans les dépendances de développement.

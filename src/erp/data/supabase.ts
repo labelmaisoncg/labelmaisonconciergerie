@@ -115,7 +115,7 @@ export function messageErreur(e: unknown, status?: number): string {
 /* ------------------------------------------------------ authentification */
 
 const TRADUCTIONS_AUTH: [RegExp, string][] = [
-  [/invalid login credentials/i, 'Mot de passe incorrect.'],
+  [/invalid login credentials/i, 'Adresse ou mot de passe incorrect.'],
   [/email not confirmed/i, 'Adresse e-mail non confirmée. Demandez à un gérant de confirmer le compte dans Supabase.'],
   [/rate limit|too many/i, 'Trop de tentatives. Patientez une minute avant de réessayer.'],
   [/password should be at least|weak password/i, 'Mot de passe trop court : 8 caractères au minimum.'],
