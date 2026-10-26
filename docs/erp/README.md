@@ -153,6 +153,8 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
 | `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Redéployer après ajout. |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
+| `SITE_URL` | Vercel (serveur), facultative | Site des liens envoyés (invitations, « Recevoir mon lien », relances), origine `https://` seulement. Défaut `https://www.labelmaisoncg.fr`. Les liens ne prennent **jamais** l'adresse de la page qui appelle (en-tête Origin ou Host). |
+| `ORIGINES_APERCU` | Vercel (serveur), facultative | Aperçus Vercel autorisés à appeler les formulaires et les espaces extérieurs : origines **exactes**, séparées par des virgules (`https://mon-apercu.vercel.app`). Sans : seuls `labelmaisoncg.fr`, `labelmaisoncgexperience.fr` (avec ou sans `www`) et, hors Vercel en ligne, `localhost`. |
 
 ## Accès et déploiement
 
@@ -1034,8 +1036,9 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   rien en double (`erp.cle_par_espace`).
 - `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
   aucune règle d'accès d'ici là.
-- `erp-installation.sql` et `erp-connecteurs-gerants.sql` refusent de tourner
-  une fois les espaces en place (ils remettraient les règles d'avant).
+- `erp-installation.sql`, `erp-connecteurs-gerants.sql` et
+  `erp-acces-gerants.sql` refusent de tourner une fois les espaces en place
+  (ils remettraient les règles d'avant).
 
 ### Dans le code
 
@@ -1232,6 +1235,56 @@ d'août publié et deux documents ; son espace :
   paiement, message, ce que voit chaque propriétaire) et
   `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
   n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
+
+### Sécurité des accès extérieurs (audit d'octobre 2026)
+
+Pour les deux espaces extérieurs (propriétaires et opérations,
+`api/_acces-externe.ts`) :
+
+- **Liens sur le site fixe** : invitation, « Recevoir mon lien » et lien des
+  relances pointent toujours vers `SITE_URL` (défaut
+  `https://www.labelmaisoncg.fr`), jamais vers l'adresse de la page qui
+  appelle. Avant, une page publiée sur un projet Vercel au nom proche
+  (`labelmaisonconciergerie-….vercel.app`) pouvait faire envoyer par le vrai
+  site un lien vers chez elle et y lire le jeton. Les origines acceptées
+  (`api/_garde-formulaire.ts`) sont le site en production et, pour un aperçu,
+  la liste exacte `ORIGINES_APERCU` ; plus de motif `*.vercel.app`.
+- **L'adresse de la fiche fait foi** : à l'invitation, l'adresse de la fiche
+  (propriétaire : `contact.email` ; équipe : `email`) est relevée dans l'accès
+  (`emailFiche`). Si le gérant met une autre adresse dans la fiche sans
+  « Retirer », la session tombe au prochain appel, le lien ne s'ouvre plus et
+  l'ancienne adresse ne reçoit plus de lien de connexion. Un accès d'avant ce
+  relevé vaut tant que la fiche a la même adresse que l'accès (ou aucune).
+  Fiche supprimée : accès fermé. Réinviter remet le relevé à jour.
+- **Usage unique, vraiment** : le lien est marqué utilisé par une écriture
+  conditionnelle (`BaseErp.remplacerSi` : PATCH filtré sur `maj_le`, la
+  version lue) ; présenté deux fois en même temps, il n'ouvre qu'une session.
+  Même chose pour l'envoi d'une relance (deux validations simultanées : un
+  seul e-mail) et son annulation, et pour l'ajout d'un lien de connexion (il
+  n'écrase pas un lien utilisé au même instant).
+- **Un lien de connexion toutes les 2 minutes au plus** par accès, compté
+  dans l'accès lui-même (date du dernier lien), donc valable pour toutes les
+  instances du serveur ; le frein par instance (5 demandes par heure et par
+  adresse IP) reste en plus.
+- **Label Maison seulement si c'est Label Maison** : fiche d'espace illisible
+  (panne passagère, espace fermé) = pas d'e-mail (le gérant copie le lien),
+  pas de contacts, nom « Votre conciergerie » ; jamais l'expéditeur ou les
+  contacts de Label Maison par défaut.
+- **Factures** : seules celles adressées au propriétaire
+  (`destinataire = 'proprietaire'`) et à son nom sont partagées et relancées.
+- **Base réservée aux gérants** : `accesProprietaires`, `accesOperations`,
+  `relancesPaiement`, `reglagesRelances` ne sont lisibles et modifiables que
+  par un gérant (et le compte serveur, gérant de l'espace nommé). Sans cette
+  règle, un compte « opérations » pourrait écrire un accès avec l'empreinte
+  d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire.
+  **À faire une fois dans Supabase → SQL Editor** :
+  - base d'avant les espaces : lancer `supabase/erp-acces-gerants.sql`
+    (attendu dans « Results » : `regle = 1`, `recette = ok`) ;
+  - base passée aux espaces : relancer `supabase/erp-espaces.sql` (la règle y
+    est, par espace ; `recette = ok`).
+
+  Conséquence dans l'ERP : un compte « opérations » ou « lecture » ne voit
+  plus l'état des accès (Paramètres → Accès, fiche logement) ; le gérant, si.
 
 
 ## Espace opérations (octobre 2026)
