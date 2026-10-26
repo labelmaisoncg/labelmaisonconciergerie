@@ -24,6 +24,9 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   recommandations: 'Recommandations propriétaires',
   versionsAnnonce: 'Versions d’annonces',
   reglages: 'Réglages (agent de messagerie)',
+  accesProprietaires: 'Accès à l’espace propriétaire',
+  documentsProprietaire: 'Documents partagés aux propriétaires',
+  bilansProprietaire: 'Bilans mensuels des propriétaires',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };
