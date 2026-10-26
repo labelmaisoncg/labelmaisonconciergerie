@@ -37,6 +37,9 @@ interface EtatServeur {
 const API = '/api/espace-proprietaire';
 
 /** État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour Paramètres → Accès. */
+/** Ce que voit un propriétaire (même phrase ici et dans Paramètres → Accès). */
+export const CE_QUE_VOIT_LE_PROPRIETAIRE = 'Il voit ses logements, son calendrier, ses bilans publiés, ses factures partagées et ses documents. Rien d’autre, et il ne modifie rien.';
+
 export function statutAcces(a: AccesProprietaire | undefined): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
   if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
   if (a.statut === 'retire') return { texte: `Accès retiré${a.retireLe ? ` le ${dateCourte(a.retireLe.slice(0, 10))}` : ''}`, ton: 'neutre' };
@@ -192,7 +195,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
 
   return (
     <section>
-      <Titre description="Il voit ses logements, son calendrier, ses bilans publiés et ses documents. Rien d’autre, et il ne modifie rien.">Accès</Titre>
+      <Titre description={CE_QUE_VOIT_LE_PROPRIETAIRE}>Accès</Titre>
       {serveur && !serveur.actif && (
         <Alert tone="alerte" className="mb-3">
           {serveur.raison ?? 'L’espace propriétaire n’est pas encore ouvert sur le serveur.'}

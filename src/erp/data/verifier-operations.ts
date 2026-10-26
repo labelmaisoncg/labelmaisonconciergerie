@@ -361,7 +361,7 @@ section('Actions : périmètre, droits, écritures');
   verifier(element<Incident>(r)?.assigneA === 'A' && r.ok && r.aNotifier.includes('i-B'), 'pôle : confier, la personne est prévenue');
   r = agir('A', { type: 'resoudre', incidentId: 'i-A', texte: 'Plombier passé.' });
   const resolu = element<Incident>(r);
-  verifier(resolu?.statut === 'resolu' && resolu.resoluLe === J && resolu.historique?.at(-1)?.texte === 'Résolu : Plombier passé.', 'pôle : clore, noté dans l’historique');
+  verifier(resolu?.statut === 'resolu' && resolu.resoluLe === J && resolu.historique?.at(-1)?.texte === 'Réglé : Plombier passé.', 'pôle : clore, noté dans l’historique');
   r = agir('A', { type: 'priorite', incidentId: 'i-C', urgent: true });
   verifier(element<Incident>(r)?.gravite === 'haute' && r.ok && r.aNotifier.includes('i-C'), 'pôle : passer en urgent, l’équipe est prévenue');
 

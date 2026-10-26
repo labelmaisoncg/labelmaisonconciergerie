@@ -6,8 +6,8 @@ import { Badge, Button, EmptyState, Field, Modal, Textarea, cn } from '../ui';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { Ligne, Liste, Rubrique, TitreEspace, useOps } from './commun';
 
-/** Un contrôle à faire : le logement, pourquoi et pour quand. */
-export function LigneControle({ c }: { c: ControleOps }) {
+/** Un contrôle à faire : le logement, pourquoi et pour quand. `sansBadge` : liste déjà titrée « en retard ». */
+export function LigneControle({ c, sansBadge }: { c: ControleOps; sansBadge?: boolean }) {
   const { vue, naviguer, nomLogement } = useOps();
   const s = c.reservationId ? vue.sejours.find((x) => x.id === c.reservationId) : undefined;
   const quand = c.echeance === vue.aujourdhui ? 'aujourd’hui' : `avant le ${jourMois(c.echeance)}`;
@@ -17,7 +17,7 @@ export function LigneControle({ c }: { c: ControleOps }) {
       icone={<ClipboardCheck />}
       titre={nomLogement(c.logementId)}
       sousTitre={[s ? `Départ du ${jourMois(s.depart)}` : 'Contrôle planifié', !c.enRetard && `à faire ${quand}`].filter(Boolean).join(' · ')}
-      fin={c.enRetard && <Badge tone="danger">En retard</Badge>}
+      fin={c.enRetard && !sansBadge && <Badge tone="danger">En retard</Badge>}
       onClick={() => naviguer({ controle: c.cle })}
     />
   );
@@ -28,7 +28,7 @@ export function Controles() {
   const { vue, naviguer, nomLogement, nomMembre } = useOps();
   return (
     <>
-      <TitreEspace titre="Contrôles qualité" description="Un contrôle est proposé après chaque départ. Il se remplit sur place, au téléphone." />
+      <TitreEspace titre="Contrôles qualité" description="Un contrôle est proposé après chaque départ." />
       <Rubrique titre={vue.controles.length ? `À faire (${vue.controles.length})` : 'À faire'}>
         {vue.controles.length ? (
           <Liste label="Contrôles à faire">

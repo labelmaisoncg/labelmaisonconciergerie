@@ -21,7 +21,8 @@ export function Interrupteur({ actif, onChange, label, disabled, id }: Interrupt
       disabled={disabled}
       onClick={() => onChange(!actif)}
       className={cn(
-        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+        // Zone de toucher de 32 px (bord invisible au-dessus et au-dessous), sans changer l'aspect.
+        'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors after:absolute after:inset-x-0 after:-inset-y-1 disabled:cursor-not-allowed disabled:opacity-60',
         actif ? 'bg-(--lm-or)' : 'bg-(--lm-bord-fort)',
       )}
     >

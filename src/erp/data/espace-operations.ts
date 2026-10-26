@@ -430,12 +430,12 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
         message = action.urgent ? 'Passé en urgent : l’équipe est prévenue.' : 'Passé en normal.';
         if (action.urgent) aNotifier.push(i.id);
       } else if (action.type === 'resoudre') {
-        if (i.statut === 'resolu') return refus('Incident déjà résolu.');
+        if (i.statut === 'resolu') return refus('Incident déjà réglé.');
         const t = texte(action.texte, 1000);
-        suivant = historiser({ ...i, statut: 'resolu', resoluLe: aujourdhui }, maintenant, moi.nom, t ? `Résolu : ${t}` : 'Résolu.');
-        message = 'Incident résolu.';
+        suivant = historiser({ ...i, statut: 'resolu', resoluLe: aujourdhui }, maintenant, moi.nom, t ? `Réglé : ${t}` : 'Réglé.');
+        message = 'Incident réglé.';
       } else {
-        if (i.statut !== 'resolu') return refus('Cet incident n’est pas résolu.');
+        if (i.statut !== 'resolu') return refus('Cet incident n’est pas réglé.');
         const { resoluLe: _r, recupereLe: _x, ...reste } = i;
         suivant = historiser({ ...reste, statut: 'en_cours' }, maintenant, moi.nom, 'Rouvert.');
         message = 'Incident rouvert.';
