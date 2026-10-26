@@ -80,7 +80,7 @@ export default function Utilisateurs() {
           <span className="hidden sm:block">
             <Avatar nom={u.nom} />
           </span>
-          <span className="max-w-[7rem] min-w-0 sm:max-w-none">
+          <span className="max-w-[6.5rem] min-w-0 sm:max-w-none">
             <span className="block font-medium">
               {u.nom}
               {u.id === d.utilisateur.id && <span className="ml-1.5 text-[12px] font-normal text-(--lm-encre-3)">(vous)</span>}
@@ -96,7 +96,7 @@ export default function Utilisateurs() {
       titre: 'Rôle',
       rendu: (u) =>
         peutModifier ? (
-          <div className="w-[8.25rem] sm:w-44">
+          <div className="w-[8.75rem] sm:w-44">
             <Select
               aria-label={`Rôle de ${u.nom}`}
               value={u.role}

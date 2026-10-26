@@ -68,7 +68,7 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
 
   const ouvrir = () => {
     const r = bouton.current?.getBoundingClientRect();
-    setVersLeHaut(!!r && window.innerHeight - r.bottom < 420 && r.top > window.innerHeight - r.bottom);
+    setVersLeHaut(!!r && window.innerHeight - r.bottom < 420 && r.top >= 420);
     setMois(debutMois(valeur.fin));
     setPremier(null);
     setOuvert(true);

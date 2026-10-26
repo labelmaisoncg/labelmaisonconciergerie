@@ -41,9 +41,10 @@ const jourSemaine = (date: DateISO) => new Date(`${date}T12:00:00`).getDay();
 const estWeekEnd = (date: DateISO) => [0, 6].includes(jourSemaine(date));
 const majuscule = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-function estMobile(): boolean {
+/** Assez large pour 30 jours avec leurs prix (30 px par jour au moins) ; sinon on ouvre sur 2 semaines. */
+function estTresLarge(): boolean {
   try {
-    return window.matchMedia('(max-width: 639px)').matches;
+    return window.matchMedia('(min-width: 1600px)').matches;
   } catch {
     return false;
   }
@@ -65,7 +66,7 @@ interface Bulle {
 }
 
 export function Calendrier({ logements, reservations, onOuvrir }: Props) {
-  const [plage, setPlage] = useState<Plage>(() => (estMobile() ? 'semaines' : 'mois'));
+  const [plage, setPlage] = useState<Plage>(() => (estTresLarge() ? 'mois' : 'semaines'));
   // Les deux vues démarrent la veille d'aujourd'hui : le planning montre surtout ce qui vient.
   const [debut, setDebut] = useState<DateISO>(() => ajouterJours(AUJOURDHUI, -RECUL));
   const [annulees, setAnnulees] = useState(false);
