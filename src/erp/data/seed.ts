@@ -585,20 +585,22 @@ function habiller(logements: Logement[]): Logement[] {
       return { date, prixCentimes: Math.round((base * (weekEnd ? 1.25 : 1)) / 100) * 100, libre: (k * 7 + i * 3) % 5 > 1 };
     });
     if (l.id === 'log-massy') {
-      // Une annonce dont les plateformes n'ont transmis ni photo ni prix : repli et note de lecture.
+      // Une annonce uniquement Booking.com : la connexion ne transmet ni photo ni prix (cas réel) ;
+      // repli, note de lecture et prix constaté sur les séjours.
       const { prix: _prix, ...descriptif } = descriptifDemo(l, base, i) ?? {};
       return {
         ...l,
         photoUrl: undefined,
         descriptif,
+        annonces: [{ canal: 'booking', connecte: true }],
         repull: {
           id: '219001',
           canaux: [{ plateforme: 'booking', idExterne: '9910001', actif: true }],
           lecture: {
             photos: 'aucune',
             prix: 'aucun',
-            raisonPhotos: 'Booking.com : aucune photo renvoyée pour cette annonce',
-            raisonPrix: 'Calendrier : aucun prix enregistré ; Booking.com : aucun tarif lisible',
+            raisonPhotos: 'Booking.com : accès refusé',
+            raisonPrix: 'Calendrier : aucun prix enregistré ; Booking.com : accès refusé',
             le: AUJOURDHUI,
           },
         },

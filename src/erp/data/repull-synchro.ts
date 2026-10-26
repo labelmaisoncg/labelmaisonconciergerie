@@ -1031,7 +1031,7 @@ export class SessionRepull {
         !l.repull.horsSelection &&
         this.retenue(l.repull.id) &&
         l.statut !== 'sorti' &&
-        (!(l.photos?.length || /^https:\/\//.test(l.photoUrl ?? '')) || !l.tarifs?.jours.length),
+        (!(l.photosEquipe?.length || l.photos?.length || /^https:\/\//.test(l.photoUrl ?? '')) || !l.tarifs?.jours.length),
     );
   }
 

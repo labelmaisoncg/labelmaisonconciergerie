@@ -81,19 +81,38 @@ export function prixAVenir(l: Logement, jours = 30, aujourdhui = AUJOURDHUI): { 
   };
 }
 
+export interface PrixNuit {
+  centimes: number;
+  /** Ce soir ou prochaine nuit (lus sur les plateformes), prix de base de l'annonce, ou moyenne constatée. */
+  source: 'soir' | 'prochaine' | 'base' | 'constate';
+  date?: string;
+  luLe?: string;
+}
+
 /**
  * Prix de la nuit, d'un coup d'œil : celui de ce soir lu sur les plateformes
- * (sinon de la prochaine nuit connue), sinon le prix de base de l'annonce.
+ * (sinon de la prochaine nuit connue), sinon le prix de base de l'annonce,
+ * sinon le prix moyen réellement encaissé par nuit sur les séjours des 90
+ * derniers jours (`adr90`, hors ménage).
  */
-export function prixNuit(l: Logement, aujourdhui = AUJOURDHUI): { centimes: number; source: 'soir' | 'prochaine' | 'base'; date?: string; luLe?: string } | undefined {
+export function prixNuit(l: Logement, o: { adr90?: number; aujourdhui?: string } = {}): PrixNuit | undefined {
+  const aujourdhui = o.aujourdhui ?? AUJOURDHUI;
   const j = (l.tarifs?.jours ?? []).find((x) => x.date >= aujourdhui && x.prixCentimes > 0);
   if (j && l.tarifs) return { centimes: j.prixCentimes, source: j.date === aujourdhui ? 'soir' : 'prochaine', date: j.date, luLe: l.tarifs.luLe };
   const base = l.descriptif?.prix?.nuit;
-  return base ? { centimes: base, source: 'base' } : undefined;
+  if (base) return { centimes: base, source: 'base' };
+  return o.adr90 && o.adr90 > 0 ? { centimes: o.adr90, source: 'constate' } : undefined;
 }
 
-/** Photos du logement : celles des plateformes, sinon la photo déposée par l'équipe. */
+/**
+ * Photos du logement : d'abord celles de l'équipe (dans l'ordre choisi, la
+ * première est la couverture ; une ancienne photo déposée « stockage:// »
+ * compte aussi), puis celles des plateformes, sinon leur photo de couverture.
+ * Sans doublon.
+ */
 export function photosLogement(l: Logement): string[] {
-  if (l.photos?.length) return l.photos;
-  return l.photoUrl && /^https?:\/\//.test(l.photoUrl) ? [l.photoUrl] : [];
+  const equipe = [...(l.photosEquipe ?? [])];
+  if (l.photoUrl?.startsWith('stockage://') && !equipe.includes(l.photoUrl)) equipe.push(l.photoUrl);
+  const plateformes = l.photos?.length ? l.photos : l.photoUrl && /^https?:\/\//.test(l.photoUrl) ? [l.photoUrl] : [];
+  return [...new Set([...equipe, ...plateformes])];
 }

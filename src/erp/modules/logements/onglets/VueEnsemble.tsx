@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa } from 'lucide-react';
+import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa, X } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
-import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, Input, Repli } from '../../../ui';
+import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, IconButton, Input, Repli } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
@@ -14,6 +14,8 @@ import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
 import { CompteurNuits } from '../_composants/CompteurNuits';
 import { Galerie } from '../_composants/Galerie';
 import { SansPhoto } from '../_composants/SansPhoto';
+import { AjouterPhotos, LienAirbnb, OrganiserPhotos } from '../_composants/PhotosEquipe';
+import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
@@ -69,7 +71,19 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
   return (
     <>
-      {photosLogement(l).length ? <Galerie photos={photosLogement(l)} nom={l.nom} /> : <SansPhoto logement={l} />}
+      {photosLogement(l).length ? (
+        <>
+          <Galerie photos={photosLogement(l)} nom={l.nom} />
+          {!d.lectureSeule && (
+            <div className="-mt-3 mb-5 flex flex-wrap justify-end gap-2">
+              <OrganiserPhotos logement={l} />
+              <AjouterPhotos logement={l} />
+            </div>
+          )}
+        </>
+      ) : (
+        <SansPhoto logement={l} />
+      )}
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
@@ -184,20 +198,45 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               <p className="text-[13.5px] text-(--lm-encre-2)">Aucune annonce reliée.</p>
             ) : (
               <ul className="space-y-2">
-                {l.annonces.map((a) => (
-                  <li key={a.canal} className="flex items-center justify-between gap-3 text-[13.5px]">
-                    <span className="flex items-center gap-2">
-                      <span className="font-medium text-(--lm-encre)">{PLATEFORME[a.canal] ?? a.canal}</span>
-                      <Badge tone={a.connecte ? 'succes' : 'neutre'}>{a.connecte ? 'En ligne' : 'Hors ligne'}</Badge>
-                    </span>
-                    {a.url && /^https:\/\//.test(a.url) && (
-                      <a href={a.url} target="_blank" rel="noopener noreferrer" className={lien} aria-label={`Voir l’annonce ${PLATEFORME[a.canal] ?? a.canal}`}>
-                        Voir <ExternalLink className="size-3.5" aria-hidden />
-                      </a>
-                    )}
-                  </li>
-                ))}
+                {l.annonces.map((a) => {
+                  // Lien Airbnb saisi par l'équipe (pas une annonce reliée) : on peut le retirer.
+                  const saisi = a.canal === 'airbnb' && !a.connecte && !(l.repull?.canaux ?? []).some((c) => /airbnb/i.test(c.plateforme));
+                  return (
+                    <li key={a.canal} className="flex items-center justify-between gap-3 text-[13.5px]">
+                      <span className="flex items-center gap-2">
+                        <span className="font-medium text-(--lm-encre)">{PLATEFORME[a.canal] ?? a.canal}</span>
+                        {saisi ? (
+                          <span className="text-[12.5px] text-(--lm-encre-2)">Lien ajouté</span>
+                        ) : (
+                          <Badge tone={a.connecte ? 'succes' : 'neutre'}>{a.connecte ? 'En ligne' : 'Hors ligne'}</Badge>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        {a.url && /^https:\/\//.test(a.url) && (
+                          <a href={a.url} target="_blank" rel="noopener noreferrer" className={lien} aria-label={`Voir l’annonce ${PLATEFORME[a.canal] ?? a.canal}`}>
+                            Voir <ExternalLink className="size-3.5" aria-hidden />
+                          </a>
+                        )}
+                        {saisi && !d.lectureSeule && (
+                          <IconButton
+                            label="Retirer le lien Airbnb"
+                            size="sm"
+                            onClick={() => d.upsert('logements', { ...l, annonces: l.annonces.filter((x) => x !== a) })}
+                          >
+                            <X />
+                          </IconButton>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
+            )}
+            {/* Sans photo, l'encadré du haut propose déjà le lien : pas de doublon. */}
+            {photosLogement(l).length > 0 && !idAirbnbDuLogement(l) && !d.lectureSeule && (
+              <div className="mt-3 border-t border-(--lm-bord) pt-3">
+                <LienAirbnb logement={l} />
+              </div>
             )}
           </Card>
 
