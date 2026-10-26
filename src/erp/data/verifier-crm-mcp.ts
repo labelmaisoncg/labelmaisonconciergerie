@@ -1,6 +1,7 @@
 /**
- * Vérification du connecteur MCP du CRM (src/erp/data/crm-mcp.ts) : protocole
- * JSON-RPC et outils, sur un CRM en mémoire (aucune base, aucun réseau).
+ * Vérification du connecteur Claude (MCP) : protocole JSON-RPC, outils du CRM
+ * (crm-mcp.ts) et du channel manager (cm-mcp.ts), sur des données en mémoire
+ * (jeu de démonstration ; aucune base, aucun réseau).
  *
  * Lancement :
  *   node_modules/.bin/esbuild src/erp/data/verifier-crm-mcp.ts --bundle --platform=node \
@@ -8,8 +9,12 @@
  *     && node /tmp/verifier-crm-mcp.cjs
  */
 import { OUTILS, traiterMcp, type ContexteMcp } from './crm-mcp';
+import { attendEquipe, prenomInitiale } from './cm-mcp';
 import { creerContactsCrm } from './seed-crm';
-import type { ContactCrm } from './types';
+import { creerSeed } from './seed';
+import { fenetreJours } from './selectors';
+import { mesurer as mesurerAccueil } from '../modules/tableau-de-bord/_composants/calculs';
+import type { ContactCrm, FilMessages } from './types';
 
 let ok = 0;
 let ko = 0;
@@ -23,6 +28,26 @@ function verifier(condition: boolean, libelle: string) {
 
 const base = new Map<string, ContactCrm>(creerContactsCrm().map((c) => [c.id, c]));
 let ecritures = 0;
+// Channel manager : jeu de démonstration (date du jour 2026-09-24) et une conversation piège
+// (e-mail, téléphone, code wifi et code d'accès dans les messages).
+const seed = creerSeed();
+const logementPiege = seed.logements.find((l) => l.fiche?.wifiCode)!;
+logementPiege.fiche = { ...logementPiege.fiche, acces: 'Boîte à clés, code 4821.' };
+const filPiege: FilMessages = {
+  id: 'fil-piege',
+  logementId: logementPiege.id,
+  canal: 'airbnb',
+  voyageur: 'Marie-Claire Dupont',
+  statut: 'ouvert',
+  traitePar: 'en_attente',
+  dernierMessageLe: '2026-09-24T09:00:00+02:00',
+  messages: [
+    { id: 'p1', auteur: 'hote', texte: `Le wifi : ${logementPiege.fiche.wifiCode}, la boîte : 4821.`, envoyeLe: '2026-09-23T18:00:00+02:00' },
+    { id: 'p2', auteur: 'voyageur', texte: 'Merci ! Écrivez-moi à marie.dupont@exemple.fr ou au 06 12 34 56 78 (ou +33 6 12 34 56 78).', envoyeLe: '2026-09-24T09:00:00+02:00' },
+  ],
+};
+const fils = new Map<string, FilMessages>([...seed.filsMessages, filPiege].map((f) => [f.id, f]));
+let ecrituresFils = 0;
 const ctx: ContexteMcp = {
   depot: {
     tous: async () => [...base.values()].map((c) => structuredClone(c)),
@@ -30,6 +55,16 @@ const ctx: ContexteMcp = {
     enregistrer: async (c) => {
       ecritures++;
       base.set(c.id, structuredClone(c));
+    },
+  },
+  cm: {
+    logements: async () => structuredClone(seed.logements),
+    reservations: async () => structuredClone(seed.reservations),
+    fils: async () => [...fils.values()].map((f) => structuredClone(f)),
+    fil: async (id) => (fils.has(id) ? structuredClone(fils.get(id)!) : undefined),
+    enregistrerFil: async (f) => {
+      ecrituresFils++;
+      fils.set(f.id, structuredClone(f));
     },
   },
   aujourdhui: () => '2026-09-24',
@@ -51,7 +86,8 @@ async function main() {
   // Protocole
   const init = await appel('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
   verifier((init as any).result?.protocolVersion === '2025-06-18' && !!(init as any).result?.capabilities?.tools, 'initialize : version reprise, outils annoncés');
-  verifier(/CRM d'appels/.test((init as any).result?.instructions ?? ''), 'initialize : instructions en français pour Claude');
+  verifier(/CRM d'appels/.test((init as any).result?.instructions ?? '') && /cm_resume/.test((init as any).result?.instructions ?? ''), 'initialize : instructions en français pour Claude (CRM et channel manager)');
+  verifier((init as any).result?.serverInfo?.name === 'label-maison' && (init as any).result?.serverInfo?.title === 'Label Maison' && (init as any).result?.serverInfo?.version === '2.0.0', 'serveur « Label Maison » 2.0.0');
   const inconnue = await appel('initialize', { protocolVersion: '2099-01-01' });
   verifier((inconnue as any).result?.protocolVersion === '2025-06-18', 'version inconnue : le serveur propose la sienne');
   const notif = await traiterMcp({ jsonrpc: '2.0', method: 'notifications/initialized' }, ctx);
@@ -64,10 +100,15 @@ async function main() {
 
   const liste = (await appel('tools/list')) as any;
   const noms = liste.result.tools.map((t: { name: string }) => t.name);
-  verifier(noms.join() === 'crm_resume,crm_chercher,crm_voir,crm_ajouter,crm_modifier,crm_noter_appel', `6 outils (${noms.join(', ')})`);
+  const NOUVEAUX = 'cm_resume,logements_lister,logement_voir,reservations_periode,reservation_voir,conversations_a_repondre,conversation_voir,conversation_pas_besoin_de_repondre,reponse_preparer,indicateurs';
+  verifier(noms.join() === `crm_resume,crm_chercher,crm_voir,crm_ajouter,crm_modifier,crm_noter_appel,${NOUVEAUX}`, `6 outils du CRM gardés, puis 10 du channel manager (${noms.join(', ')})`);
+  verifier(!noms.some((x: string) => /envoy|send|message_envoyer/.test(x)), 'aucun outil d’envoi aux voyageurs');
   verifier(liste.result.tools.every((t: any) => t.inputSchema?.type === 'object' && t.description && typeof t.annotations?.readOnlyHint === 'boolean'), 'chaque outil : schéma, description, annotations');
   verifier(!noms.some((x: string) => /suppr|delete/.test(x)), 'aucun outil de suppression');
-  verifier(OUTILS.filter((o) => o.annotations.readOnlyHint).map((o) => o.name).join() === 'crm_resume,crm_chercher,crm_voir', 'lecture seule bien signalée');
+  verifier(
+    OUTILS.filter((o) => !o.annotations.readOnlyHint).map((o) => o.name).join() === 'crm_ajouter,crm_modifier,crm_noter_appel,conversation_pas_besoin_de_repondre',
+    'lecture seule bien signalée (seules écritures : CRM et « pas besoin de répondre »)',
+  );
 
   // Lecture
   const avantLecture = ecritures;
@@ -125,8 +166,127 @@ async function main() {
   const panne = (await traiterMcp({ jsonrpc: '2.0', id: 99, method: 'tools/call', params: { name: 'crm_resume', arguments: {} } }, enPanne)) as any;
   verifier(panne.corps.result.isError === true && /momentanément inaccessible/.test(panne.corps.result.content[0].text), 'base injoignable : erreur lisible, pas de plantage');
 
+  await channelManager();
+
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
+}
+
+/* --------------------------------------------------------- channel manager */
+
+/** Rien de sensible dans une réponse : wifi, code d'accès, e-mail, téléphone ou nom complet de voyageur. */
+function sansDonneeSensible(x: unknown, libelle: string) {
+  const t = JSON.stringify(x);
+  const fuites = [logementPiege.fiche.wifiCode, '4821', 'marie.dupont@exemple.fr', '06 12 34 56 78', '+33 6 12 34 56 78', 'Dupont'].filter((v) => t.includes(v));
+  const wifi = /"wifi(Nom|Code)"/.test(t);
+  verifier(!fuites.length && !wifi, `${libelle} : aucune donnée sensible ${fuites.length ? `(${fuites.join(', ')})` : ''}`);
+}
+
+const eur = (c: number) => `${(c / 100).toLocaleString('fr-FR', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })} €`;
+
+async function channelManager() {
+  const J = '2026-09-24';
+  const avant = { crm: ecritures, fils: ecrituresFils };
+  const actives = seed.reservations.filter((x) => x.statut !== 'annulee');
+  const attente = [...fils.values()].filter(attendEquipe);
+
+  // cm_resume
+  const r = await outil('cm_resume');
+  verifier(!r.erreur && r.donnees.date === J && r.donnees.conversations_a_repondre === attente.length && attente.length > 0, `cm_resume : ${attente.length} conversations à répondre`);
+  verifier(
+    r.donnees.arrivees_aujourdhui.length === actives.filter((x) => x.arrivee === J).length && r.donnees.departs_aujourdhui.length === actives.filter((x) => x.depart === J).length,
+    'cm_resume : arrivées et départs du jour',
+  );
+  verifier(r.donnees.sur_place_ce_soir === actives.filter((x) => x.arrivee <= J && x.depart > J).length && typeof r.donnees.contacts_a_appeler === 'number', 'cm_resume : sur place ce soir, appels du CRM');
+  verifier(r.donnees.conversations.every((c: any) => /^\S+( \S\.)?$/.test(c.voyageur)), 'cm_resume : voyageurs « Prénom N. »');
+  sansDonneeSensible(r.donnees, 'cm_resume');
+
+  // logements_lister / logement_voir
+  const ll = await outil('logements_lister');
+  verifier(ll.donnees.total === seed.logements.length && ll.donnees.logements.every((l: any) => l.id && l.nom && l.statut && l.prochain_evenement), 'logements_lister : tous, avec statut et prochain événement');
+  verifier(ll.donnees.logements.some((l: any) => l.prix_nuit) && ll.donnees.logements.filter((l: any) => l.prix_nuit).every((l: any) => l.statut === 'Actif'), 'logements_lister : prix de la nuit, seulement pour un logement en location');
+  const actifs = await outil('logements_lister', { statut: 'actif' });
+  verifier(actifs.donnees.total === seed.logements.filter((l) => l.statut === 'actif').length, 'logements_lister : filtre par statut');
+  verifier((await outil('logements_lister', { statut: 'ouvert' })).erreur, 'logements_lister : statut inconnu refusé');
+  const lv = await outil('logement_voir', { id: logementPiege.id });
+  verifier(!lv.erreur && lv.donnees.nom === logementPiege.nom && lv.donnees.prix_14_nuits.length > 0 && lv.donnees.prix_14_nuits.length <= 14 && /logements\//.test(lv.donnees.lien_erp), 'logement_voir : fiche, 14 prochaines nuits au plus, lien ERP');
+  sansDonneeSensible(lv.donnees, 'logement_voir');
+  const parNom = await outil('logement_voir', { recherche: logementPiege.nom });
+  verifier(!parNom.erreur && parNom.donnees.id === logementPiege.id, 'logement_voir : recherche par nom');
+  const ambigu = await outil('logement_voir', { recherche: 'e' });
+  verifier(ambigu.erreur && /Précisez l’id/.test(ambigu.texte), 'logement_voir : recherche ambiguë → liste des ids');
+  verifier((await outil('logement_voir', { id: 'inconnu' })).erreur && (await outil('logement_voir', {})).erreur, 'logement_voir : id inconnu ou absent refusé');
+
+  // reservations_periode / reservation_voir
+  const jour = await outil('reservations_periode');
+  verifier(jour.donnees.du === J && jour.donnees.au === J && jour.donnees.arrivees.every((x: any) => x.arrivee === J), 'reservations_periode : aujourd’hui par défaut');
+  const semaine = await outil('reservations_periode', { du: '2026-09-21', au: '2026-09-27' });
+  const dans = (d: string) => d >= '2026-09-21' && d <= '2026-09-27';
+  verifier(
+    semaine.donnees.arrivees.length === actives.filter((x) => dans(x.arrivee)).length &&
+      semaine.donnees.departs.length === actives.filter((x) => dans(x.depart)).length &&
+      semaine.donnees.sur_place.length === actives.filter((x) => x.arrivee <= '2026-09-27' && x.depart > '2026-09-21').length,
+    'reservations_periode : arrivées, départs et sur place sur la période',
+  );
+  verifier(![...semaine.donnees.arrivees, ...semaine.donnees.departs, ...semaine.donnees.sur_place].some((x: any) => x.statut === 'Annulée'), 'reservations_periode : réservations annulées exclues');
+  verifier((await outil('reservations_periode', { du: '2026-09-27', au: '2026-09-21' })).erreur, 'reservations_periode : « au » avant « du » refusé');
+  verifier((await outil('reservations_periode', { du: '2026-01-01', au: '2026-12-31' })).erreur, 'reservations_periode : plus de 92 jours refusé');
+  verifier((await outil('reservations_periode', { du: '24/09/2026' })).erreur, 'reservations_periode : date hors format refusée');
+  const unSejour = actives.find((x) => x.commissionPlateformeCentimes > 0)!;
+  const rv = await outil('reservation_voir', { id: unSejour.id });
+  verifier(
+    !rv.erreur && rv.donnees.montants.vous_recevez === eur(unSejour.montantBrutCentimes - unSejour.commissionPlateformeCentimes) && /reservations\//.test(rv.donnees.lien_erp),
+    `reservation_voir : vous recevez = total − frais de la plateforme (${rv.donnees.montants?.vous_recevez})`,
+  );
+  sansDonneeSensible(rv.donnees, 'reservation_voir');
+  verifier((await outil('reservation_voir', { id: 'x),collection.eq.journal' })).erreur, 'reservation_voir : identifiant hors format refusé');
+
+  // Conversations
+  const ar = await outil('conversations_a_repondre');
+  verifier(ar.donnees.total === attente.length && ar.donnees.conversations.every((c: any) => attente.some((f) => f.id === c.id)), 'conversations_a_repondre : toutes celles qui attendent l’équipe');
+  verifier(ar.donnees.conversations.find((c: any) => c.id === 'fil-piege')?.voyageur === 'Marie-Claire D.', 'conversations : nom au format « Prénom N. »');
+  sansDonneeSensible(ar.donnees, 'conversations_a_repondre');
+  const cv = await outil('conversation_voir', { id: 'fil-piege' });
+  verifier(!cv.erreur && cv.donnees.messages.length === 2 && cv.donnees.attend_une_reponse === true, 'conversation_voir : messages et état');
+  const [hote, voyageur] = cv.donnees.messages.map((m: { texte: string }) => m.texte);
+  verifier(
+    /\[e-mail masqué\]/.test(voyageur) && (voyageur.match(/\[téléphone masqué\]/g) ?? []).length === 2 && (hote.match(/••••/g) ?? []).length === 2,
+    `conversation_voir : e-mail, téléphones et codes masqués (${voyageur} | ${hote})`,
+  );
+  sansDonneeSensible(cv.donnees, 'conversation_voir');
+  const rp = await outil('reponse_preparer', { id: 'fil-piege' });
+  verifier(!rp.erreur && rp.donnees.consignes.some((c: string) => /pas envoyée/.test(c)) && /messagerie\/fil-piege/.test(rp.donnees.lien_erp), 'reponse_preparer : contexte et consignes, rien n’est envoyé');
+  sansDonneeSensible(rp.donnees, 'reponse_preparer');
+  verifier((await outil('conversation_voir', { id: 'inconnue' })).erreur, 'conversation_voir : id inconnu refusé');
+  verifier(ecritures === avant.crm && ecrituresFils === avant.fils, 'outils de lecture du channel manager : aucune écriture');
+
+  const pb = await outil('conversation_pas_besoin_de_repondre', { id: 'fil-piege' });
+  const apres = fils.get('fil-piege')!;
+  verifier(
+    !pb.erreur && pb.donnees.modifie === true && apres.statut === 'clos' && apres.traitePar === 'humain' && ecrituresFils === avant.fils + 1,
+    'pas besoin de répondre : terminée, plus « en attente », une seule écriture dans l’ERP',
+  );
+  verifier(apres.messages.length === 2 && ecritures === avant.crm, 'pas besoin de répondre : aucun message ajouté ni envoyé, rien d’autre écrit');
+  const encore = await outil('conversation_pas_besoin_de_repondre', { id: 'fil-piege' });
+  verifier(encore.donnees.modifie === false && ecrituresFils === avant.fils + 1, 'pas besoin de répondre : déjà terminée, rien d’écrit');
+  verifier((await outil('conversations_a_repondre')).donnees.total === attente.length - 1, 'la conversation sort de « À répondre »');
+
+  // Indicateurs : mêmes chiffres que l'Accueil (data/selectors) sur 30 jours.
+  const ind = await outil('indicateurs');
+  const accueil = mesurerAccueil(seed, fenetreJours(30));
+  verifier(
+    ind.donnees.occupation === `${Math.round(accueil.occupation * 100)} %` &&
+      ind.donnees.revenu_verse_par_les_plateformes === eur(accueil.revenu) &&
+      ind.donnees.prix_moyen_par_nuit === eur(accueil.adr) &&
+      ind.donnees.note_moyenne === (accueil.note === undefined ? 'aucun avis sur la période' : Math.round(accueil.note * 10) / 10),
+    `indicateurs : mêmes chiffres que l’Accueil (${ind.donnees.occupation}, ${ind.donnees.revenu_verse_par_les_plateformes}, ${ind.donnees.prix_moyen_par_nuit}, ${ind.donnees.note_moyenne})`,
+  );
+  verifier(ind.donnees.periode.du === '2026-08-25' && ind.donnees.periode.au === '2026-09-23' && !!ind.donnees.periode_precedente, 'indicateurs : 30 derniers jours, comparés aux 30 précédents');
+  const ete = await outil('indicateurs', { du: '2026-07-01', au: '2026-08-31' });
+  verifier(!ete.erreur && ete.donnees.periode.jours === 62, 'indicateurs : période choisie');
+  verifier((await outil('indicateurs', { du: '2026-09-10', au: '2026-09-01' })).erreur, 'indicateurs : période à l’envers refusée');
+
+  verifier(prenomInitiale('Daniel A.') === 'Daniel A.' && prenomInitiale('Alex Morgan') === 'Alex M.' && prenomInitiale('') === 'Voyageur', 'noms « Prénom N. »');
 }
 
 void main();

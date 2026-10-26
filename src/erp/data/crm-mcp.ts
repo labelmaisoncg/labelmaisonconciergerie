@@ -1,11 +1,14 @@
 /**
- * Connecteur MCP du CRM : outils que Claude (claude.ai, Claude Desktop,
- * Claude Code) peut appeler pour lire et tenir le CRM d'appels.
+ * Connecteur Claude (MCP) de Label Maison : outils que Claude (claude.ai,
+ * Claude Desktop, Claude Code) peut appeler pour lire et tenir le CRM d'appels
+ * (crm_*) et suivre le channel manager (cm-mcp.ts : logements, réservations,
+ * conversations, indicateurs).
  *
  * Ce fichier ne contient que la logique (outils + protocole JSON-RPC) ; le
- * stockage est passé en paramètre (`DepotCrm`) : la route api/crm-mcp/[cle].ts
- * lui donne la base de l'ERP, les vérifications un dépôt en mémoire.
+ * stockage est passé en paramètre (`ContexteMcp`) : la route api/crm-mcp lui
+ * donne la base de l'ERP, les vérifications des dépôts en mémoire.
  * Pas de suppression possible par ce connecteur : on corrige, on ne détruit pas.
+ * Rien n'est envoyé aux voyageurs ni écrit vers les plateformes.
  */
 import {
   aTraiterLe,
@@ -19,30 +22,24 @@ import {
   telephoneNormalise,
   trouverDoublon,
 } from './crm.js';
-import type { ContactCrm, Horodatage, Responsable, ResultatAppel } from './types';
+import { OUTILS_CM } from './cm-mcp.js';
+import { choix, date, ECRITURE, ErreurOutil, LECTURE, texte, type Args, type ContexteMcp, type Outil } from './mcp-commun.js';
+import type { ContactCrm, Responsable, ResultatAppel } from './types';
 
-export interface DepotCrm {
-  tous(): Promise<ContactCrm[]>;
-  un(id: string): Promise<ContactCrm | undefined>;
-  enregistrer(c: ContactCrm): Promise<void>;
-}
-
-export interface ContexteMcp {
-  depot: DepotCrm;
-  /** Date du jour à Paris (AAAA-MM-JJ). */
-  aujourdhui: () => string;
-  maintenant: () => Horodatage;
-}
+export type { ContexteMcp, DepotChannelManager, DepotCrm } from './mcp-commun.js';
 
 const AUTEUR = 'Claude';
 const STATUTS = STATUTS_CRM.map((s) => s.cle);
 const RESPONSABLES: Responsable[] = ['abdel', 'kamel'];
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const VERSIONS_PROTOCOLE = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
-export const INSTRUCTIONS_SERVEUR = `CRM d'appels de Label Maison Conciergerie (gestion locative courte durée en Essonne).
-Chaque demande envoyée depuis le site labelmaisoncg.fr (formulaires audit, accueil, contact, Cercle) arrive automatiquement dans le CRM à l'étape « À appeler ».
+export const INSTRUCTIONS_SERVEUR = `Label Maison Conciergerie (gestion locative courte durée en Essonne) : channel manager et CRM d'appels.
+CHANNEL MANAGER (Airbnb, Booking.com, direct) — pour savoir quoi faire maintenant : cm_resume (voyageurs qui attendent une réponse, arrivées et départs du jour, avis à lire, appels du jour).
+Logements : logements_lister, puis logement_voir (fiche, couchage, conditions, prix des 14 prochains jours). Réservations : reservations_periode (arrivées, départs, sur place entre deux dates), reservation_voir.
+Messagerie : conversations_a_repondre, conversation_voir ; conversation_pas_besoin_de_repondre la classe « terminée » dans l'ERP (elle se rouvre si le voyageur réécrit). Pour aider à répondre : reponse_preparer donne le contexte ; proposez la réponse, l'équipe l'envoie elle-même depuis l'ERP (ce connecteur n'envoie jamais rien aux voyageurs). Chiffres : indicateurs (occupation, revenu, prix moyen par nuit, note).
+Codes d'accès, wifi, e-mails et téléphones des voyageurs ne sont jamais transmis ; les voyageurs sont nommés « Prénom N. ».
+CRM D'APPELS — chaque demande envoyée depuis le site labelmaisoncg.fr (formulaires audit, accueil, contact, Cercle) arrive automatiquement dans le CRM à l'étape « À appeler ».
 Étapes : ${STATUTS_CRM.map((s) => `${s.cle} (${s.libelle} : ${s.aide})`).join(' ; ')}.
 Pour savoir quoi faire aujourd'hui : crm_resume. Pour retrouver quelqu'un : crm_chercher (nom, téléphone, ville…), puis crm_voir pour sa fiche complète et son historique.
 Après un appel, utiliser crm_noter_appel (l'étape avance toute seule) ; pour changer l'étape, une relance, le suivi ou les notes : crm_modifier. Un nouveau contact : crm_ajouter (les doublons par e-mail ou téléphone sont détectés).
@@ -86,33 +83,6 @@ function fiche(c: ContactCrm, aujourdhui: string) {
 
 /* -------------------------------------------------------------- outils */
 
-type Args = Record<string, unknown>;
-
-class ErreurOutil extends Error {}
-
-const texte = (v: unknown, nom: string, max: number): string | undefined => {
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== 'string') throw new ErreurOutil(`« ${nom} » doit être un texte.`);
-  const s = v.trim();
-  if (s.length > max) throw new ErreurOutil(`« ${nom} » : ${max} caractères au plus.`);
-  return s;
-};
-
-const choix = <T extends string>(v: unknown, nom: string, valeurs: readonly T[]): T | undefined => {
-  if (v === undefined || v === null || v === '') return undefined;
-  if (typeof v !== 'string' || !valeurs.includes(v as T)) throw new ErreurOutil(`« ${nom} » doit valoir : ${valeurs.join(', ')}.`);
-  return v as T;
-};
-
-const date = (v: unknown, nom: string): string | undefined | '' => {
-  if (v === undefined || v === null) return undefined;
-  if (v === '') return '';
-  if (typeof v !== 'string' || !DATE.test(v) || Number.isNaN(Date.parse(`${v}T12:00:00Z`))) {
-    throw new ErreurOutil(`« ${nom} » doit être une date AAAA-MM-JJ (ou "" pour l’effacer).`);
-  }
-  return v;
-};
-
 async function contactExistant(ctx: ContexteMcp, id: unknown): Promise<ContactCrm> {
   const cle = texte(id, 'id', 100);
   if (!cle) throw new ErreurOutil('« id » est obligatoire (voir crm_chercher).');
@@ -122,25 +92,13 @@ async function contactExistant(ctx: ContexteMcp, id: unknown): Promise<ContactCr
   return c;
 }
 
-interface Outil {
-  name: string;
-  title: string;
-  description: string;
-  inputSchema: Record<string, unknown>;
-  annotations: { readOnlyHint: boolean; destructiveHint: boolean; idempotentHint: boolean; openWorldHint: boolean };
-  executer: (args: Args, ctx: ContexteMcp) => Promise<Record<string, unknown>>;
-}
-
-const LECTURE = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false };
-const ECRITURE = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false };
-
 const proprietes = {
   statut: { type: 'string', enum: STATUTS, description: `Étape : ${STATUTS_CRM.map((s) => `${s.cle} = ${s.libelle}`).join(', ')}.` },
   suivi_par: { type: 'string', enum: [...RESPONSABLES, ''], description: 'Qui suit le contact (abdel, kamel ; "" pour personne).' },
   relance_le: { type: 'string', description: 'Date de relance prévue, AAAA-MM-JJ ("" pour l’effacer).' },
 };
 
-export const OUTILS: Outil[] = [
+const OUTILS_CRM: Outil[] = [
   {
     name: 'crm_resume',
     title: 'Résumé du CRM',
@@ -376,6 +334,9 @@ export const OUTILS: Outil[] = [
   },
 ];
 
+/** Tous les outils : CRM d'abord (connexions déjà faites dans Claude), puis channel manager. */
+export const OUTILS: Outil[] = [...OUTILS_CRM, ...OUTILS_CM];
+
 /* ------------------------------------------------------------ JSON-RPC */
 
 type Id = string | number | null;
@@ -399,7 +360,7 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
       return resultat(id, {
         protocolVersion: VERSIONS_PROTOCOLE.includes(demandee) ? demandee : '2025-06-18',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'label-maison-crm', title: 'CRM Label Maison', version: '1.0.0' },
+        serverInfo: { name: 'label-maison', title: 'Label Maison', version: '2.0.0' },
         instructions: INSTRUCTIONS_SERVEUR,
       });
     }
@@ -419,7 +380,7 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
         return resultat(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }], structuredContent: r });
       } catch (e) {
         // Erreur d'utilisation ou de base : renvoyée à Claude pour qu'il corrige ou explique.
-        const message = e instanceof ErreurOutil ? e.message : `Le CRM est momentanément inaccessible (${e instanceof Error ? e.message.slice(0, 200) : 'erreur'}). Réessayez dans un instant.`;
+        const message = e instanceof ErreurOutil ? e.message : `Les données de Label Maison sont momentanément inaccessibles (${e instanceof Error ? e.message.slice(0, 200) : 'erreur'}). Réessayez dans un instant.`;
         return resultat(id, { content: [{ type: 'text', text: message }], isError: true });
       }
     }

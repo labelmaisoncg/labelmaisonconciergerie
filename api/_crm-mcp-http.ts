@@ -1,16 +1,17 @@
 // =============================================================================
-// Transport MCP « Streamable HTTP » sans état du connecteur CRM, partagé par :
+// Transport MCP « Streamable HTTP » sans état du connecteur Claude de Label
+// Maison (CRM + channel manager), partagé par :
 //   /api/crm-mcp         accès OAuth (jeton Bearer) — l'adresse donnée dans l'ERP
 //   /api/crm-mcp/<clé>   accès par clé fixée par l'administrateur (MCP_CRM_TOKEN)
 // Chaque POST porte un message JSON-RPC et reçoit sa réponse en JSON (pas de SSE).
-// Le CRM est lu et écrit avec le compte d'équipe (ERP_PASSWORD).
-// Logique des outils : src/erp/data/crm-mcp.ts.
+// Les données sont lues (et le CRM écrit) avec le compte d'équipe (ERP_PASSWORD).
+// Logique des outils : src/erp/data/crm-mcp.ts (CRM) et cm-mcp.ts (channel manager).
 // =============================================================================
 
 import { traiterMcp, VERSIONS_PROTOCOLE, type ContexteMcp } from '../src/erp/data/crm-mcp.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
-import type { ContactCrm } from '../src/erp/data/types.js';
+import type { ContactCrm, FilMessages, Logement, Reservation } from '../src/erp/data/types.js';
 import { baseErp, configuration, lireCorps } from './_erp-repull.js';
 
 /** Appels venant d'un navigateur : seulement ces origines (protection « DNS rebinding » demandée par la spécification). */
@@ -54,11 +55,7 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
   if (version && !VERSIONS_PROTOCOLE.includes(version)) return json(400, { error: `Version de protocole non prise en charge : ${version.slice(0, 20)}` });
 
   const ctx: ContexteMcp = {
-    depot: {
-      tous: () => base.lire<ContactCrm>('crm'),
-      un: async (id) => (await base.lire<ContactCrm>('crm', [id]))[0],
-      enregistrer: (contact) => base.ecrire('crm', [contact], 'Claude'),
-    },
+    ...depotsMcp(base),
     aujourdhui: () => horodatageParis().slice(0, 10),
     maintenant: () => horodatageParis(),
   };
@@ -69,6 +66,29 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
   const r = await traiterMcp(corps, ctx);
   if (r.statut === 202) return res.status(202).end();
   return json(r.statut, r.corps);
+}
+
+/**
+ * Les données de l'utilisateur connecté, seul point d'entrée des outils :
+ * quand les espaces séparés arriveront, `base` sera celle de l'espace porté
+ * par le jeton (ou la clé), et rien d'autre n'aura à changer ici.
+ */
+export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm'> {
+  return {
+    depot: {
+      tous: () => base.lire<ContactCrm>('crm'),
+      un: async (id) => (await base.lire<ContactCrm>('crm', [id]))[0],
+      enregistrer: (contact) => base.ecrire('crm', [contact], 'Claude'),
+    },
+    cm: {
+      logements: () => base.lire<Logement>('logements'),
+      reservations: () => base.lire<Reservation>('reservations'),
+      fils: () => base.lire<FilMessages>('filsMessages'),
+      fil: async (id) => (await base.lire<FilMessages>('filsMessages', [id]))[0],
+      // Seule écriture du channel manager : une conversation classée « terminée » (rien vers les plateformes).
+      enregistrerFil: (f) => base.ecrire('filsMessages', [f], 'Claude'),
+    },
+  };
 }
 
 function lireJson(s: string): unknown {
