@@ -12,6 +12,7 @@ import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
 import { ANCIENNES_ADRESSES, MODULES } from './modules/registry';
 import { ButtonLink, EmptyState, PageSkeleton } from './ui';
+import { figerEcran } from './layout/ecranFige';
 
 // Écran d'autorisation OAuth ouvert par Claude (connecteur du CRM), hors mise en page.
 const AutoriserClaude = lazy(() => import('./modules/crm/AutoriserClaude'));
@@ -87,6 +88,7 @@ function useApplication() {
     suivre.current = naviguer;
   });
   useEffect(() => demarrerApplication((chemin) => suivre.current(chemin)), []);
+  useEffect(() => figerEcran(), []);
 }
 
 /**
