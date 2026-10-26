@@ -51,7 +51,7 @@ function coquilleErp(page) {
     return texte.replace(motif, par);
   };
   let p = remplacer(page, /<html lang="fr">/, '<html lang="fr" translate="no" class="notranslate">');
-  p = remplacer(p, /<meta name="viewport" content="[^"]*"\s*\/?>/, '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />');
+  p = remplacer(p, /<meta name="viewport" content="[^"]*"\s*\/?>/, '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />');
   p = remplacer(p, /<meta name="theme-color" content="[^"]*"\s*\/?>/, '<meta name="theme-color" content="#fbfaf8" />');
   p = remplacer(p, /<link rel="apple-touch-icon" href="[^"]*"\s*\/?>/, '<link rel="apple-touch-icon" href="/erp-app/apple-touch-icon.png" />');
   return p.replace(

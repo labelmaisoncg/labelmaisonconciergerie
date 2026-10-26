@@ -145,6 +145,30 @@ html:has(.erp-root) body {
 }
 
 /*
+ * Écran figé comme une app (demande de l'utilisateur) : ni pincement ni
+ * double tap pour zoomer, pas de rebond qui fait glisser la page, taille du
+ * texte stable en paysage (layout/ecranFige.ts pour Safari). Sur écran
+ * tactile, les champs font 16 px : en dessous, l'iPhone zoome dès qu'on les
+ * touche.
+ */
+html:has(.erp-root) {
+  touch-action: pan-x pan-y;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+html:has(.erp-root) body {
+  overscroll-behavior: none;
+}
+@media (pointer: coarse) {
+  .erp-root input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  .erp-root textarea,
+  .erp-root select {
+    font-size: 16px;
+  }
+}
+
+/*
  * iPhone (viewport-fit=cover, scripts/spa-shells.mjs) : rien sous l'encoche
  * en paysage ni sous la barre d'accueil, page comme fenêtres (tiroirs,
  * feuilles, recherche). env() vaut 0 partout ailleurs.
