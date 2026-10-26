@@ -16,6 +16,7 @@
 
 import crypto from 'node:crypto';
 import { BaseErp, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT, fabriqueJetonEquipe } from '../src/erp/data/repull-synchro.js';
+import { signerFichierStockage, type SignerFichier } from '../src/erp/data/guides.js';
 
 export interface ConfigRepullErp {
   cle: string;
@@ -67,6 +68,13 @@ export function baseErp(c: ConfigRepullErp): BaseErp {
   const cle = `${c.email}\u0000${c.motDePasse}`;
   if (!jetons || jetons.cle !== cle) jetons = { cle, obtenir: fabriqueJetonEquipe(c.email, c.motDePasse) };
   return new BaseErp({ jeton: jetons.obtenir });
+}
+
+/** Liens signés des fichiers de l'espace privé (guides envoyés aux voyageurs), avec la session du compte d'équipe. */
+export function signeurFichiersErp(c: ConfigRepullErp): SignerFichier {
+  baseErp(c);
+  const obtenir = jetons!.obtenir;
+  return (fichier, secondes) => signerFichierStockage({ jeton: () => obtenir() }, fichier, secondes);
 }
 
 /** Comparaison à temps constant (secrets). */

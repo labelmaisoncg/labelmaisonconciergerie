@@ -12,7 +12,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { MODELE_AGENT_DEFAUT, lancerAgent, type DeclencheurAgent, type OptionsAgent, type PassageAgent } from '../src/erp/data/agent-messagerie.js';
-import { baseErp, type ConfigRepullErp } from './_erp-repull.js';
+import { baseErp, signeurFichiersErp, type ConfigRepullErp } from './_erp-repull.js';
 
 export interface ConfigAgent {
   cleIA: string;
@@ -49,6 +49,7 @@ export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, 
     ia: a.cleIA && client ? client.ia : null,
     modele: a.modele,
     telegram: a.telegram,
+    signerFichier: signeurFichiersErp(c),
   };
 }
 

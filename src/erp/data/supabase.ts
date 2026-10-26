@@ -254,6 +254,24 @@ export async function televerser(dossier: string, fichier: File): Promise<{ url:
 const cacheLiens = new Map<string, { lien: string; expire: number }>();
 
 /** Lien signé (1 h) vers un fichier « stockage://... » ; l'URL telle quelle sinon. */
+/**
+ * Lien à envoyer à un voyageur vers un fichier de l'espace privé (guide) :
+ * signé pour `secondes` (7 jours pour un guide), sans cache. Une adresse web
+ * est rendue telle quelle ; null si le lien ne peut pas être créé.
+ */
+export async function lienPartage(url: string, secondes: number): Promise<string | null> {
+  if (!estFichierStocke(url)) return /^https:\/\//.test(url) ? url : null;
+  const reste = url.slice(PREFIXE_STOCKAGE.length);
+  const bucket = reste.slice(0, reste.indexOf('/'));
+  const chemin = reste.slice(bucket.length + 1);
+  try {
+    const { data, error } = await obtenirClient().storage.from(bucket).createSignedUrl(chemin, secondes);
+    return error || !data?.signedUrl ? null : data.signedUrl;
+  } catch {
+    return null;
+  }
+}
+
 export async function lienFichier(url: string): Promise<string | null> {
   if (!estFichierStocke(url)) return url;
   const cache = cacheLiens.get(url);
