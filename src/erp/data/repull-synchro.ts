@@ -52,9 +52,14 @@ import {
   versFil,
   versLogement,
   versReservation,
+  JOURS_TARIFS,
+  versPhotos,
+  versTarifs,
   type RepullConversation,
+  type RepullDisponibilite,
   type RepullGuest,
   type RepullListing,
+  type RepullPhotos,
   type RepullMessage,
   type RepullPage,
   type RepullReservation,
@@ -725,12 +730,55 @@ export class SessionRepull {
     for await (const page of this.repull.pages<RepullListing>('/v1/listings', { status: 'all', include: 'content,details,thumbnail' })) {
       for (const l of page) {
         if (l?.id === undefined || l?.id === null) continue;
-        if (this.retenue(l.id)) await this.poserAnnonce(l, true);
-        else await this.mettreHorsSelection(String(l.id), l.status);
+        if (this.retenue(l.id)) {
+          await this.poserAnnonce(l, true);
+          await this.enrichirAnnonce(String(l.id));
+        } else await this.mettreHorsSelection(String(l.id), l.status);
       }
       if (!this.tempsRestant()) break;
     }
     await this.ecrireLogements();
+  }
+
+  /**
+   * Photos (une fois par semaine) et prix par nuit des JOURS_TARIFS prochains
+   * jours (à chaque relevé des annonces, une fois par jour) d'un logement
+   * choisi. Lectures seules, deux appels au plus, sautées quand la part
+   * d'appels ou le temps manque ; une réponse illisible ne change rien.
+   */
+  private async enrichirAnnonce(idAnnonce: string): Promise<void> {
+    const logements = await this.chargerLogements();
+    const id = this.logementParRepull.get(idAnnonce);
+    const l = id ? logements.get(id) : undefined;
+    if (!l || l.statut === 'sorti') return;
+    const suivant: Logement = { ...l };
+    const maintenant = horodatageParis(this.maintenant());
+    const lues = l.repull?.photosLuesLe;
+    const assez = () => this.repull.restant > 20 && this.tempsRestant(15_000);
+    if (assez() && (!lues || instant(maintenant) - instant(lues) >= 6.5 * JOUR)) {
+      try {
+        const photos = versPhotos(await this.repull.get<RepullPhotos>(`/v1/listings/${encodeURIComponent(idAnnonce)}/photos`));
+        if (photos.length) suivant.photos = photos;
+        suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), photosLuesLe: maintenant };
+      } catch (e) {
+        if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) throw e;
+        // Pas de photos chez la plateforme : on ne redemande que la semaine suivante.
+        if (e instanceof ErreurRepull && (e.statut === 403 || e.statut === 404)) suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), photosLuesLe: maintenant };
+      }
+    }
+    if (assez()) {
+      try {
+        const du = this.aujourdhui;
+        const r = await this.repull.get<RepullDisponibilite>(`/v1/availability/${encodeURIComponent(idAnnonce)}`, { from: du, to: plusJours(du, JOURS_TARIFS) });
+        const tarifs = versTarifs(r, maintenant);
+        // Mêmes prix qu'à la dernière lecture : rien à écrire (luLe garde la date du dernier changement).
+        if (tarifs && (tarifs.devise !== l.tarifs?.devise || canonique(tarifs.jours) !== canonique(l.tarifs?.jours))) suivant.tarifs = tarifs;
+      } catch (e) {
+        if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) throw e;
+        /* prix facultatifs : on garde la dernière lecture */
+      }
+    }
+    if (!identiques(suivant, l)) logements.poser(suivant);
   }
 
   /** Une annonce précise (webhook listing.*, ou réservation sur une annonce encore inconnue). */
@@ -1178,6 +1226,13 @@ export const INTERVALLE_MANUEL_MS = 10 * 60_000;
 
 const HEURE = 3_600_000;
 const JOUR = 24 * HEURE;
+
+/** Date AAAA-MM-JJ décalée de `n` jours (midi UTC : pas d'effet d'heure d'été). */
+function plusJours(date: string, n: number): string {
+  const d = new Date(`${date}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 export interface QuotaRepull {
   tier?: string;

@@ -124,8 +124,17 @@ interface EtatAuto {
 
 const MAX_EVENEMENTS = 500;
 
+/**
+ * Channel manager (octobre 2026) : ménages, linge, prestataires, finance et
+ * annonces sortent de l'ERP (BNB Cleaning reprendra ménages et linge). Leurs
+ * règles ne tournent plus, sinon elles créeraient missions et alertes que
+ * plus aucun écran n'affiche. Restent celles qui servent les logements et
+ * les voyageurs.
+ */
+export const REGLES_CHANNEL_MANAGER = new Set(['activation-logement', 'plafond-120-nuits', 'messages-en-attente']);
+
 function clesActives(actives: Record<string, boolean>): string[] {
-  return REGLES.filter((r) => actives[r.cle] ?? r.actifParDefaut).map((r) => r.cle);
+  return REGLES.filter((r) => REGLES_CHANNEL_MANAGER.has(r.cle) && (actives[r.cle] ?? r.actifParDefaut)).map((r) => r.cle);
 }
 
 /** Nouveaux événements en tête, dédoublonnés par id (un constat connu ne s'empile pas). */

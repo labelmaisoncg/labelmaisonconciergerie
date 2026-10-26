@@ -1,5 +1,5 @@
 /**
- * Calculs propres au tableau de bord : périodes comparées, séries mensuelles.
+ * Calculs propres à l'accueil : périodes comparées, séries des deux courbes.
  * Les indicateurs eux-mêmes viennent de data/selectors (jamais recalculés ici).
  */
 import { format, parseISO } from 'date-fns';
@@ -7,16 +7,11 @@ import { fr } from 'date-fns/locale';
 import { AUJOURDHUI, ajouterJours, debutMois, nombre } from '../../../data/format';
 import {
   adr,
-  commissionLabelMaison,
   fenetreJours,
   fenetreMois,
   logementsActifs,
   noteMoyenne,
-  revenuBrut,
-  revpar,
-  tauxMissionsValideesAvecPhotos,
-  nbMenagesPasses,
-  nuitsVendues,
+  revenuNet,
   tauxOccupation,
   type Fenetre,
 } from '../../../data/selectors';
@@ -42,32 +37,23 @@ export function fenetresHorizon(h: CleHorizon): { courante: Fenetre; precedente:
   return { courante: fenetreJours(n), precedente: fenetreJours(n, ajouterJours(AUJOURDHUI, -n)) };
 }
 
+/** Les quatre repères d'un channel manager (occupation, revenu, prix moyen par nuit, note). */
 export interface MesuresPeriode {
+  /** Nuits vendues ÷ nuits des logements actifs (0..1). */
   occupation: number;
-  revenuBrut: number;
-  commission: number;
+  /** Versé par les plateformes (brut − commission), en centimes. */
+  revenu: number;
+  /** Prix moyen par nuit vendue, hors ménage, en centimes. */
   adr: number;
-  revpar: number;
   note: number | undefined;
-  missionsValidees: number;
-  /** Ménages passés sur la période (0 : taux sans objet). */
-  menagesPasses: number;
-  /** Nuits vendues sur la période (0 : prix moyen sans objet). */
-  nuits: number;
 }
 
 export function mesurer(d: ErpDonnees, f: Fenetre): MesuresPeriode {
-  const actifs = logementsActifs(d.logements);
   return {
-    occupation: tauxOccupation(d.reservations, actifs, f),
-    revenuBrut: revenuBrut(d.reservations, f),
-    commission: commissionLabelMaison(d.reservations, d.mandats, f),
+    occupation: tauxOccupation(d.reservations, logementsActifs(d.logements), f),
+    revenu: revenuNet(d.reservations, f),
     adr: adr(d.reservations, f),
-    revpar: revpar(d.reservations, actifs, f),
     note: noteMoyenne(d.reservations, f),
-    missionsValidees: tauxMissionsValideesAvecPhotos(d.missions, f),
-    menagesPasses: nbMenagesPasses(d.missions, f),
-    nuits: nuitsVendues(d.reservations, f),
   };
 }
 
@@ -101,23 +87,46 @@ export function variation(
 export interface PointMensuel {
   mois: string;
   libelle: string;
-  revenuBrut: number;
-  commission: number;
-  note: number | undefined;
+  /** Versé par les plateformes ce mois-là (centimes). */
+  revenu: number;
 }
 
 /** Les `n` derniers mois (mois en cours inclus), du plus ancien au plus récent. */
-export function serieMensuelle(d: ErpDonnees, n = 6): PointMensuel[] {
+export function serieMensuelle(d: ErpDonnees, n = 12): PointMensuel[] {
   const debuts: string[] = [debutMois(AUJOURDHUI)];
   while (debuts.length < n) debuts.unshift(moisPrecedent(debuts[0]));
-  return debuts.map((mois) => {
-    const f = fenetreMois(mois);
-    return {
-      mois,
-      libelle: format(parseISO(mois), 'MMM', { locale: fr }).replace('.', ''),
-      revenuBrut: revenuBrut(d.reservations, f),
-      commission: commissionLabelMaison(d.reservations, d.mandats, f),
-      note: noteMoyenne(d.reservations, f),
-    };
-  });
+  return debuts.map((mois) => ({
+    mois,
+    libelle: format(parseISO(mois), 'MMM', { locale: fr }).replace('.', ''),
+    revenu: revenuNet(d.reservations, fenetreMois(mois)),
+  }));
+}
+
+export interface PointHebdo {
+  debut: string;
+  libelle: string;
+  /** Occupation de la semaine (0..1). */
+  occupation: number;
+  /** Semaine qui commence aujourd'hui ou plus tard : réservations déjà prises. */
+  aVenir: boolean;
+}
+
+/**
+ * Occupation par semaine : `avant` semaines passées et `apres` à venir (la
+ * semaine en cours compte comme à venir). Les semaines démarrent aujourd'hui,
+ * de 7 en 7 jours.
+ */
+export function serieHebdo(d: ErpDonnees, avant = 8, apres = 8): PointHebdo[] {
+  const actifs = logementsActifs(d.logements);
+  const res: PointHebdo[] = [];
+  for (let i = -avant; i < apres; i++) {
+    const debut = ajouterJours(AUJOURDHUI, i * 7);
+    res.push({
+      debut,
+      libelle: format(parseISO(debut), 'd MMM', { locale: fr }).replace('.', ''),
+      occupation: tauxOccupation(d.reservations, actifs, { debut, fin: ajouterJours(debut, 7) }),
+      aVenir: i >= 0,
+    });
+  }
+  return res;
 }

@@ -1,14 +1,13 @@
 /**
  * Nouvelle réservation directe : contrôle de chevauchement sur le logement,
- * puis création du séjour et de sa mission de ménage de départ.
+ * puis création du séjour (les ménages sont sortis de l'ERP, octobre 2026).
  */
 import { useMemo, useState, type FormEvent } from 'react';
 import { Alert, Button, Field, Input, Modal, Select, Prerequis } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
-import { checklistMenageVierge } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours, dateCourte, dateJour, ecartJours, euros, jourMois, pluriel, versCentimes } from '../../../data/format';
 import { mandatDuLogement } from '../../../data/selectors';
-import type { Id, Mission, Reservation } from '../../../data/types';
+import type { Id, Reservation } from '../../../data/types';
 import { conflits, statutSelonDates } from './outils';
 
 interface Props {
@@ -95,25 +94,7 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
       commissionPlateformeCentimes: 0,
       fraisMenageCentimes: men,
     };
-    const dernierTarif = d.missions
-      .filter((m) => m.logementId === logement.id && m.type === 'menage')
-      .sort((a, b) => b.date.localeCompare(a.date))[0]?.tarifCentimes;
-    const mission: Mission = {
-      id: nouvelId('mis'),
-      type: 'menage',
-      logementId: logement.id,
-      reservationId: reservation.id,
-      date: reservation.depart,
-      heureDebut: logement.fiche.heureDepart,
-      heureFinMax: logement.fiche.heureArrivee,
-      statut: 'a_attribuer',
-      checklist: checklistMenageVierge(),
-      photos: [],
-      tarifCentimes: dernierTarif ?? 3500,
-      controleQualite: false,
-    };
     d.upsert('reservations', reservation);
-    d.upsert('missions', mission);
     onCree(reservation);
     fermer();
   };

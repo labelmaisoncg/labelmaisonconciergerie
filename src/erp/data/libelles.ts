@@ -35,7 +35,7 @@ import type {
 
 export const LIBELLES = {
   statutMandat: { brouillon: 'Brouillon', envoye: 'Envoyé', signe: 'Signé', resilie: 'Résilié' } satisfies Record<StatutMandat, string>,
-  statutLogement: { lancement: 'En lancement', actif: 'Actif', pause: 'En pause', sorti: 'Sorti' } satisfies Record<StatutLogement, string>,
+  statutLogement: { lancement: 'En préparation', actif: 'Actif', pause: 'En pause', sorti: 'Sorti' } satisfies Record<StatutLogement, string>,
   statutReservation: { confirmee: 'Confirmée', annulee: 'Annulée', en_cours: 'En cours', terminee: 'Terminée' } satisfies Record<StatutReservation, string>,
   statutFil: { ouvert: 'En cours', escalade: 'Transmise à l’équipe', clos: 'Terminée' } satisfies Record<StatutFil, string>,
   traitePar: { agent: 'Gérée par l’agent', humain: 'Gérée par l’équipe', en_attente: 'Attend une réponse' } satisfies Record<TraitePar, string>,

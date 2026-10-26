@@ -3,13 +3,13 @@
  * Routes relatives : chaque module gère ses sous-routes sous `<segment>/*`.
  */
 import { lazy, Suspense, useEffect } from 'react';
-import { Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { Compass } from 'lucide-react';
 import './erp.css';
 import { ErpProvider } from './data/store';
 import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
-import { MODULES } from './modules/registry';
+import { ANCIENNES_ADRESSES, MODULES, MODULES_HORS_MENU } from './modules/registry';
 import { ButtonLink, EmptyState, PageSkeleton } from './ui';
 
 // Écran d'autorisation OAuth ouvert par Claude (connecteur du CRM), hors mise en page.
@@ -59,9 +59,12 @@ function Contenu() {
     <ModuleErrorBoundary key={segment}>
       <Suspense fallback={<PageSkeleton />}>
         <Routes>
-          {MODULES.map(({ key, segment: seg, component: Module }) =>
+          {[...MODULES, ...MODULES_HORS_MENU].map(({ key, segment: seg, component: Module }) =>
             seg ? <Route key={key} path={`${seg}/*`} element={<Module />} /> : <Route key={key} index element={<Module />} />,
           )}
+          {Object.entries(ANCIENNES_ADRESSES).map(([seg, vers]) => (
+            <Route key={seg} path={`${seg}/*`} element={<Navigate to={vers} replace />} />
+          ))}
           <Route path="*" element={<Introuvable />} />
         </Routes>
       </Suspense>

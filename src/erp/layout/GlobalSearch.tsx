@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
-import { AlertTriangle, ArrowRight, Bot, CalendarDays, CalendarPlus, ClipboardList, Clock, CornerDownLeft, FileSignature, History, Home, Link2, MessagesSquare, PhoneCall, Plus, Receipt, Search, Sparkles, Target, User, UserPlus, Wrench, X, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Bot, CalendarDays, CalendarPlus, ClipboardList, Clock, CornerDownLeft, FileSignature, History, Home, Link2, MessagesSquare, PhoneCall, Plus, Receipt, Search, Sparkles, Target, User, Wrench, X, type LucideIcon } from 'lucide-react';
 import { useErp } from '../data/store';
 import { cn, useFenetre } from '../ui';
 import { MODULES, rubriqueDe } from '../modules/registry';
@@ -49,9 +49,7 @@ interface Raccourci {
 
 const ACTIONS: Raccourci[] = [
   { id: 'a-resa', libelle: 'Nouvelle réservation', detail: 'Réservation directe, hors plateformes', to: '/erp/reservations?nouveau=1', icone: CalendarPlus, motsCles: 'ajouter créer séjour' },
-  { id: 'a-proprio', libelle: 'Nouveau propriétaire', to: '/erp/proprietaires?nouveau=1', icone: UserPlus, motsCles: 'ajouter créer client' },
   { id: 'a-logement', libelle: 'Nouveau logement', to: '/erp/logements?nouveau=1', icone: Plus, motsCles: 'ajouter créer bien' },
-  { id: 'a-incident', libelle: 'Signaler un incident', to: '/erp/incidents?nouveau=1', icone: AlertTriangle, motsCles: 'déclarer casse panne problème' },
   {
     id: 'a-connexion',
     libelle: 'Connecter Airbnb, Booking…',
@@ -157,7 +155,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         <Search className="size-4 shrink-0" aria-hidden />
         <span className="min-w-0 flex-1 truncate">
           <span className="sm:hidden">Rechercher</span>
-          <span className="hidden sm:inline">Rechercher un voyageur, un logement, une facture…</span>
+          <span className="hidden sm:inline">Rechercher un voyageur, un logement, une conversation…</span>
         </span>
         <kbd className="hidden shrink-0 rounded-md border border-(--lm-bord-fort) bg-(--lm-surface) px-1.5 font-sans text-[11px] text-(--lm-encre-3) md:inline">
           {mac ? '⌘' : 'Ctrl'} K

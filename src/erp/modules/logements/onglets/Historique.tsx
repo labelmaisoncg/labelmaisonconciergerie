@@ -1,21 +1,19 @@
 import { useMemo, useState } from 'react';
-import { Button, Card, FilterChips, Timeline, type EvenementFrise, type Ton } from '../../../ui';
+import { Button, Card, FilterChips, Timeline, type EvenementFrise } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { dateCourte, dateHeure, euros, pluriel } from '../../../data/format';
-import { prestataireById } from '../../../data/selectors';
 import type { Logement } from '../../../data/types';
 
-type Genre = 'reservation' | 'mission' | 'incident' | 'journal';
+type Genre = 'reservation' | 'journal';
 type Evenement = EvenementFrise & { genre: Genre; tri: string };
 
 const GENRES: { cle: Genre; libelle: string }[] = [
-  { cle: 'reservation', libelle: 'Réservations' },
-  { cle: 'mission', libelle: 'Missions' },
-  { cle: 'incident', libelle: 'Incidents' },
+  { cle: 'reservation', libelle: 'Séjours' },
   { cle: 'journal', libelle: 'Journal' },
 ];
 
+/** Séjours et journal du logement (ménages et incidents sont sortis de l'ERP). */
 export function OngletHistorique({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const [actifs, setActifs] = useState<string[]>([]);
@@ -34,28 +32,6 @@ export function OngletHistorique({ logement: l }: { logement: Logement }) {
           titre: `Séjour ${r.voyageur.nom} (${LIBELLES.canal[r.canal]})`,
           meta: `${dateCourte(r.arrivee)} · ${LIBELLES.statutReservation[r.statut]}`,
           description: `${pluriel(r.nuits, 'nuit')}, ${euros(r.montantBrutCentimes)}${r.noteVoyageur !== undefined ? `, note ${r.noteVoyageur}` : ''}`,
-        })),
-      ...d.missions
-        .filter((m) => m.logementId === l.id)
-        .map((m): Evenement => ({
-          id: m.id,
-          genre: 'mission',
-          tri: m.date,
-          tone: m.statut === 'validee' ? 'succes' : m.statut === 'refusee' ? 'danger' : 'or',
-          titre: `${LIBELLES.typeMission[m.type]} · ${LIBELLES.statutMission[m.statut]}`,
-          meta: dateCourte(m.date),
-          description: prestataireById(d, m.prestataireId)?.nom ?? 'Non attribuée',
-        })),
-      ...d.incidents
-        .filter((i) => i.logementId === l.id)
-        .map((i): Evenement => ({
-          id: i.id,
-          genre: 'incident',
-          tri: i.date,
-          tone: (i.statut === 'resolu' ? 'succes' : i.gravite === 'haute' ? 'danger' : 'alerte') as Ton,
-          titre: `Incident ${LIBELLES.categorieIncident[i.categorie].toLowerCase()} · ${LIBELLES.statutIncident[i.statut]}`,
-          meta: dateCourte(i.date),
-          description: i.description,
         })),
       ...d.journal
         .filter((j) => j.entiteId === l.id || mandats.has(j.entiteId))

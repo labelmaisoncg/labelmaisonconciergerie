@@ -170,6 +170,13 @@ export function revenuBrut(reservations: Reservation[], f: Fenetre): Centimes {
   return reservations.filter(estActive).reduce((s, r) => s + prorata(r.montantBrutCentimes, r, f), 0);
 }
 
+/** Versé par les plateformes sur la fenêtre : payé par les voyageurs moins leur commission (proratisé à la nuit). */
+export function revenuNet(reservations: Reservation[], f: Fenetre): Centimes {
+  return reservations
+    .filter(estActive)
+    .reduce((s, r) => s + prorata(r.montantBrutCentimes - r.commissionPlateformeCentimes, r, f), 0);
+}
+
 /** Commission Label Maison sur la fenêtre, au pourcentage de chaque mandat. */
 export function commissionLabelMaison(reservations: Reservation[], mandats: Mandat[], f: Fenetre): Centimes {
   return reservations

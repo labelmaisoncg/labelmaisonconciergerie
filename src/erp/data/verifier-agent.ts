@@ -21,6 +21,7 @@ import {
   MODELE_AGENT_DEFAUT,
   appliquerGardeFous,
   cleAgent,
+  construireContexte,
   dansLesHoraires,
   intervalleReleve,
   lancerAgent,
@@ -281,6 +282,9 @@ async function principal() {
   const g = appliquerGardeFous({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: 'Nous vous offrons 20 € de remise.', resume: '' }, fil());
   verifier(g.action === 'transmettre' && g.raison === 'argent' && !g.texte, 'garde-fou : réponse qui promet de l’argent → transmise, rien d’envoyé');
   verifier(intervalleReleve(400, new Date('2026-09-01T10:00:00Z'), 15) !== null && intervalleReleve(60, new Date('2026-09-10T10:00:00Z'), 15) === null, 'relevés : rythme tiré de la part d’appels restante, aucun si trop peu');
+  const ctx = construireContexte(fil(), { ...logement, fiche: { ...logement.fiche, aSavoir: 'Poubelles le mardi soir.' } }, undefined, { ...REGLAGES_AGENT_DEFAUT, actif: true }, new Date('2026-09-25T10:00:00Z'));
+  verifier(/- Le logement : 2 voyageurs au plus, studio sans chambre séparée, 24 m²/.test(ctx) && /- À savoir : Poubelles le mardi soir\./.test(ctx), 'contexte : taille du logement et « À savoir » transmis à l’agent');
+  verifier(!/motdepasse101|code 4821/.test(ctx), 'contexte sans réservation : ni wifi ni code d’accès');
 
   /* --------------------------------------------------- pause, horaires, clé */
   section('Pause, horaires, clé absente');

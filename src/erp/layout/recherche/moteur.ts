@@ -56,18 +56,17 @@ export interface GroupeType {
   liste?: (q: string) => string;
 }
 
+/**
+ * Groupes affichés, dans l'ordre. Channel manager (octobre 2026) : ménages,
+ * incidents, prestataires, factures, contrats et prospects ne sont plus
+ * cherchés (modules sortis du menu) ; un propriétaire s'ouvre depuis sa fiche.
+ */
 export const GROUPES_RECHERCHE: GroupeType[] = [
   { type: 'reservation', libelle: 'Réservations', liste: (q) => `/erp/reservations?vue=liste&q=${encodeURIComponent(q)}` },
   { type: 'logement', libelle: 'Logements' },
-  { type: 'proprietaire', libelle: 'Propriétaires', liste: (q) => `/erp/proprietaires?q=${encodeURIComponent(q)}` },
   { type: 'conversation', libelle: 'Conversations', liste: (q) => `/erp/messagerie?q=${encodeURIComponent(q)}` },
-  { type: 'mission', libelle: 'Ménages', liste: (q) => `/erp/menages?vue=toutes&q=${encodeURIComponent(q)}` },
-  { type: 'incident', libelle: 'Incidents', liste: (q) => `/erp/incidents?q=${encodeURIComponent(q)}` },
-  { type: 'prestataire', libelle: 'Prestataires', liste: (q) => `/erp/prestataires?q=${encodeURIComponent(q)}` },
-  { type: 'facture', libelle: 'Factures', liste: (q) => `/erp/finance/factures?q=${encodeURIComponent(q)}` },
-  { type: 'mandat', libelle: 'Contrats de gestion', liste: (q) => `/erp/mandats?q=${encodeURIComponent(q)}` },
   { type: 'contact', libelle: 'Contacts à appeler', liste: (q) => `/erp/crm?q=${encodeURIComponent(q)}` },
-  { type: 'prospect', libelle: 'Prospects', liste: (q) => `/erp/commercial?q=${encodeURIComponent(q)}` },
+  { type: 'proprietaire', libelle: 'Propriétaires' },
   { type: 'journal', libelle: 'Historique' },
 ];
 

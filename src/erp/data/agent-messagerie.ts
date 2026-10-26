@@ -312,11 +312,24 @@ export function construireContexte(
   const f = logement?.fiche;
   const fiche = f
     ? [
+        ligne(
+          'Le logement',
+          logement
+            ? [
+                logement.capacite ? `${logement.capacite} voyageurs au plus` : '',
+                Number.isFinite(logement.chambres) ? (logement.chambres ? `${logement.chambres} chambre${logement.chambres > 1 ? 's' : ''}` : 'studio sans chambre séparée') : '',
+                logement.surfaceM2 ? `${logement.surfaceM2} m²` : '',
+              ]
+                .filter(Boolean)
+                .join(', ')
+            : '',
+        ),
         ligne('Heure d’arrivée (à partir de)', f.heureArrivee),
         ligne('Heure de départ (avant)', f.heureDepart),
         ligne('Parking', f.parking),
         ligne('Règles de la maison', f.regles),
         ligne('Équipements', f.equipements),
+        ligne('À savoir', f.aSavoir ?? ''),
         ...(codes.ok
           ? [ligne('Accès et remise des clés', f.acces), ligne('Réseau wifi', f.wifiNom), ligne('Mot de passe wifi', f.wifiCode)]
           : [`- Accès, codes et wifi : pas encore communicables (${codes.raison}).`]),

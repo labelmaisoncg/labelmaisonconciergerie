@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Eye, EyeOff, KeyRound, X } from 'lucide-react';
-import { Aide, Alert, Badge, Button, Card, CardHeader, Field, Input, ProgressBar, Textarea } from '../../../ui';
+import { BotMessageSquare, Eye, EyeOff, X } from 'lucide-react';
+import { Badge, Button, Card, CardHeader, Field, Input, Textarea } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { FicheLogement, Logement } from '../../../data/types';
@@ -29,6 +29,11 @@ function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) =>
   );
 }
 
+/**
+ * « Infos pour l'agent » : tout ce que l'agent IA peut dire aux voyageurs de
+ * ce logement. Ce qui n'y est pas, il le transmet à l'équipe. Code wifi et
+ * accès ne partent qu'aux voyageurs confirmés, dans les 48 h avant l'arrivée.
+ */
 export function OngletFiche({ logement: l }: { logement: Logement }) {
   const { upsert } = useErp();
   const [f, setF] = useState<FicheLogement>(l.fiche);
@@ -54,122 +59,120 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
   const enregistrer = (e: FormEvent) => {
     e.preventDefault();
-    upsert('logements', { ...l, fiche: { ...f, equipements: f.equipements } });
+    upsert('logements', { ...l, fiche: { ...f, aSavoir: f.aSavoir?.trim() || undefined } });
     setEnregistre(true);
   };
 
   return (
-    <form onSubmit={enregistrer} className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-      <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
-        <Aide className="mb-0">
-          Cette fiche est la seule source que l’agent IA utilise pour répondre aux voyageurs : une fiche incomplète bloque la messagerie
-          automatique. Code wifi et code d’accès ne sont transmis qu’aux voyageurs dont la réservation est confirmée, dans les 48 h avant
-          l’arrivée.
-        </Aide>
-
-        <Card>
-          <CardHeader titre="Connexion wifi" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Nom du réseau">
-              <Input value={f.wifiNom} onChange={(e) => maj('wifiNom', e.target.value)} />
-            </Field>
-            <Field label="Code wifi">
-              <Secret valeur={f.wifiCode} onChange={(v) => maj('wifiCode', v)} />
-            </Field>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader titre="Arrivée, départ et accès" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Field label="Arrivée à partir de">
-              <Input type="time" value={f.heureArrivee} onChange={(e) => maj('heureArrivee', e.target.value)} />
-            </Field>
-            <Field label="Départ avant">
-              <Input type="time" value={f.heureDepart} onChange={(e) => maj('heureDepart', e.target.value)} />
-            </Field>
-            <Field label="Instructions d’accès" className="sm:col-span-2" aide="Jamais le code de la boîte : il change à chaque séjour.">
-              <Textarea value={f.acces} onChange={(e) => maj('acces', e.target.value)} rows={3} />
-            </Field>
-            <div className="flex items-center gap-3 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) px-3 py-2.5 sm:col-span-2">
-              <KeyRound className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
-              <p className="min-w-0 flex-1 text-[13px]">
-                <span className="font-medium">Code d’accès : {LIBELLES.serrure[l.serrure]}</span>
-                <span className="text-(--lm-encre-2)">{l.serrure === 'cles' ? ', remise en main propre.' : ', code unique par séjour, jamais stocké ici.'}</span>
-              </p>
-              <span aria-label="Code masqué" className="font-mono tracking-widest text-(--lm-encre-3)">••••</span>
-            </div>
-            <Field label="Parking" className="sm:col-span-2">
-              <Input value={f.parking} onChange={(e) => maj('parking', e.target.value)} />
-            </Field>
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader titre="Règles et équipements" />
-          <Field label="Règles de la maison">
-            <Textarea value={f.regles} onChange={(e) => maj('regles', e.target.value)} rows={3} />
-          </Field>
-          <div className="mt-4">
-            <p className="mb-1.5 text-[13px] font-medium">Équipements</p>
-            <ul className="mb-2 flex flex-wrap gap-1.5" aria-label="Équipements">
-              {f.equipements.map((e) => (
-                <li key={e}>
-                  <Badge tone="or" className="pr-1">
-                    {e}
-                    <button
-                      type="button"
-                      aria-label={`Retirer ${e}`}
-                      onClick={() => maj('equipements', f.equipements.filter((x) => x !== e))}
-                      className="ml-1 rounded-full p-0.5 hover:bg-(--lm-or-lavis)"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </Badge>
-                </li>
-              ))}
-              {f.equipements.length === 0 && <li className="text-[13px] text-(--lm-encre-3)">Aucun équipement renseigné.</li>}
-            </ul>
-            <div className="flex gap-2">
-              <Input
-                aria-label="Nouvel équipement"
-                placeholder="Ex. Lave-vaisselle"
-                value={equipement}
-                onChange={(e) => setEquipement(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    ajouterEquipement();
-                  }
-                }}
-              />
-              <Button onClick={ajouterEquipement}>Ajouter</Button>
-            </div>
-          </div>
-        </Card>
+    <form onSubmit={enregistrer} className="flex max-w-3xl flex-col gap-5">
+      <div className="flex items-start gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 shadow-(--lm-ombre)">
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
+          <BotMessageSquare />
+        </span>
+        <div className="min-w-0 text-[13.5px]">
+          <p className="font-medium text-(--lm-encre)">L’agent répond aux voyageurs avec ces informations.</p>
+          <p className="text-(--lm-encre-2)">
+            {c.manquants.length
+              ? `Il manque : ${c.manquants.join(', ').toLowerCase()}. Sur ces sujets, il vous transmet la question.`
+              : 'Tout est renseigné. Wifi et accès ne sont donnés qu’aux voyageurs confirmés, 48 h avant l’arrivée.'}
+          </p>
+        </div>
       </div>
 
-      <div className="flex min-w-0 flex-col gap-5 lg:sticky lg:top-4 lg:self-start">
-        <Card>
-          <CardHeader titre="Complétude" />
-          <ProgressBar valeur={c.ratio} afficherValeur tone={c.ratio === 1 ? 'succes' : 'alerte'} label={c.ratio === 1 ? 'Fiche complète' : `${c.manquants.length} champ${c.manquants.length > 1 ? 's' : ''} manquant${c.manquants.length > 1 ? 's' : ''}`} />
-          {c.manquants.length > 0 && (
-            <Alert tone="alerte" titre="Messagerie automatique bloquée" className="mt-3">
-              À compléter : {c.manquants.join(', ')}.
-            </Alert>
-          )}
-          <div className="mt-4 flex flex-col gap-2">
-            <Button variant="primary" type="submit" disabled={!modifie}>
-              Enregistrer la fiche
-            </Button>
-            {modifie && (
-              <Button variant="ghost" onClick={() => setF(l.fiche)}>
-                Annuler les modifications
-              </Button>
-            )}
-            {enregistre && !modifie && <p role="status" className="text-center text-[12.5px] text-(--lm-succes)">Fiche enregistrée.</p>}
+      <Card>
+        <CardHeader titre="Arrivée et départ" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Arrivée à partir de">
+            <Input type="time" value={f.heureArrivee} onChange={(e) => maj('heureArrivee', e.target.value)} />
+          </Field>
+          <Field label="Départ avant">
+            <Input type="time" value={f.heureDepart} onChange={(e) => maj('heureDepart', e.target.value)} />
+          </Field>
+          <Field label="Accès au logement" className="sm:col-span-2" aide={`${LIBELLES.serrure[l.serrure]}. Jamais le code lui-même : il change à chaque séjour.`}>
+            <Textarea value={f.acces} onChange={(e) => maj('acces', e.target.value)} rows={3} />
+          </Field>
+          <Field label="Parking" className="sm:col-span-2">
+            <Input value={f.parking} onChange={(e) => maj('parking', e.target.value)} placeholder="Ex. place 12 au sous-sol, ou « pas de parking »" />
+          </Field>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader titre="Wifi" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Nom du réseau">
+            <Input value={f.wifiNom} onChange={(e) => maj('wifiNom', e.target.value)} />
+          </Field>
+          <Field label="Code wifi">
+            <Secret valeur={f.wifiCode} onChange={(v) => maj('wifiCode', v)} />
+          </Field>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader titre="Règles et équipements" />
+        <Field label="Règles de la maison">
+          <Textarea value={f.regles} onChange={(e) => maj('regles', e.target.value)} rows={3} />
+        </Field>
+        <div className="mt-4">
+          <p className="mb-1.5 text-[13px] font-medium">Équipements</p>
+          <ul className="mb-2 flex flex-wrap gap-1.5" aria-label="Équipements">
+            {f.equipements.map((e) => (
+              <li key={e}>
+                <Badge tone="or" className="pr-1">
+                  {e}
+                  <button
+                    type="button"
+                    aria-label={`Retirer ${e}`}
+                    onClick={() => maj('equipements', f.equipements.filter((x) => x !== e))}
+                    className="ml-1 rounded-full p-0.5 hover:bg-(--lm-or-lavis)"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </Badge>
+              </li>
+            ))}
+            {f.equipements.length === 0 && <li className="text-[13px] text-(--lm-encre-3)">Aucun équipement renseigné.</li>}
+          </ul>
+          <div className="flex gap-2">
+            <Input
+              aria-label="Nouvel équipement"
+              placeholder="Ex. Lave-vaisselle"
+              value={equipement}
+              onChange={(e) => setEquipement(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  ajouterEquipement();
+                }
+              }}
+            />
+            <Button onClick={ajouterEquipement}>Ajouter</Button>
           </div>
-        </Card>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader titre="À savoir" />
+        <Field label="Ce que l’agent doit savoir d’autre" aide="Poubelles, chauffage, voisinage, commerces proches… Facultatif.">
+          <Textarea value={f.aSavoir ?? ''} onChange={(e) => maj('aSavoir', e.target.value)} rows={4} />
+        </Field>
+      </Card>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" type="submit" disabled={!modifie}>
+          Enregistrer
+        </Button>
+        {modifie && (
+          <Button variant="ghost" onClick={() => setF(l.fiche)}>
+            Annuler les modifications
+          </Button>
+        )}
+        {enregistre && !modifie && (
+          <p role="status" className="text-[12.5px] text-(--lm-succes-texte)">
+            Enregistré. L’agent s’en sert dès maintenant.
+          </p>
+        )}
       </div>
     </form>
   );

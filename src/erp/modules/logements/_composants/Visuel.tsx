@@ -1,6 +1,7 @@
 import { cn } from '../../../ui';
 import { initiales } from '../../../data/format';
 import type { Logement } from '../../../data/types';
+import { photosLogement } from './stats';
 
 const DEGRADES = [
   'linear-gradient(135deg,#F5ECDD 0%,#DCC296 55%,#A97C30 100%)',
@@ -16,11 +17,11 @@ function teinte(id: string): string {
   return DEGRADES[h % DEGRADES.length];
 }
 
-/** Visuel d'un logement : photo réelle, sinon aplat dégradé ivoire et or avec initiales. */
+/** Visuel d'un logement : première photo de l'annonce, sinon aplat dégradé ivoire et or avec initiales. */
 export function VisuelLogement({ logement, className, taille = 'md' }: { logement: Logement; className?: string; taille?: 'sm' | 'md' }) {
-  const reelle = logement.photoUrl && !logement.photoUrl.startsWith('demo://');
-  if (reelle) {
-    return <img src={logement.photoUrl} alt={logement.nom} loading="lazy" className={cn('object-cover', className)} />;
+  const photo = photosLogement(logement)[0];
+  if (photo) {
+    return <img src={photo} alt={logement.nom} loading="lazy" className={cn('object-cover', className)} />;
   }
   return (
     <div

@@ -4,19 +4,16 @@ import { Pencil } from 'lucide-react';
 import { Button, EmptyState, PageHeader, StatusBadge, Tabs } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
-import { avancementChecklist, incidentsOuverts, logementById } from '../../data/selectors';
-import { VisuelLogement } from './_composants/Visuel';
+import { pluriel } from '../../data/format';
+import { logementById } from '../../data/selectors';
 import { completudeFiche } from './_composants/stats';
 import { EditionLogement } from './EditionLogement';
 import { OngletVueEnsemble } from './onglets/VueEnsemble';
-import { OngletLancement } from './onglets/Lancement';
 import { OngletFiche } from './onglets/FicheVoyageur';
-import { OngletLinge } from './onglets/Linge';
-import { OngletCanaux } from './onglets/Canaux';
 import { OngletHistorique } from './onglets/Historique';
-import { OngletPerformance } from './onglets/Performance';
 
-const ONGLETS = ['apercu', 'performance', 'lancement', 'fiche', 'linge', 'canaux', 'historique'] as const;
+/** Trois onglets, comme un channel manager : l'aperçu, ce que lit l'agent, l'historique. */
+const ONGLETS = ['apercu', 'fiche', 'historique'] as const;
 type CleOnglet = (typeof ONGLETS)[number];
 
 export default function DetailLogement() {
@@ -43,28 +40,23 @@ export default function DetailLogement() {
   }
 
   const brut = params.get('onglet');
+  // Anciennes adresses (performance, linge, canaux, lancement…) : on retombe sur l'aperçu.
   const onglet: CleOnglet = (ONGLETS as readonly string[]).includes(brut ?? '') ? (brut as CleOnglet) : 'apercu';
   const changer = (cle: string) => setParams(cle === 'apercu' ? {} : { onglet: cle }, { replace: true });
-  const av = avancementChecklist(l);
-  const fiche = completudeFiche(l.fiche);
-  const incidents = incidentsOuverts(d.incidents).filter((i) => i.logementId === l.id).length;
+  const manquants = completudeFiche(l.fiche).manquants.length;
 
   return (
     <>
       <PageHeader
         fil={[{ libelle: 'Logements', to: '/erp/logements' }, { libelle: l.nom }]}
-        titre={
-          <span className="flex items-center gap-3">
-            <VisuelLogement logement={l} taille="sm" className="hidden size-11 shrink-0 rounded-xl sm:grid" />
-            <span className="min-w-0">{l.nom}</span>
-          </span>
-        }
+        titre={l.nom}
         sousTitre={
-          // Une seule ligne : l'adresse, le propriétaire et l'économie du bien sont dans les onglets.
           <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
             {l.statut !== 'actif' && <StatusBadge type="statutLogement" valeur={l.statut} />}
             <span>
-              {l.ville} · {LIBELLES.typeLogement[l.type]} · {l.surfaceM2} m² · {l.capacite} voyageurs
+              {[l.ville, LIBELLES.typeLogement[l.type], l.capacite ? `${l.capacite} voyageurs` : '', l.chambres ? pluriel(l.chambres, 'chambre') : '']
+                .filter(Boolean)
+                .join(' · ')}
             </span>
           </span>
         }
@@ -80,23 +72,15 @@ export default function DetailLogement() {
         actif={onglet}
         onChange={changer}
         onglets={[
-          { cle: 'apercu', libelle: 'Vue d’ensemble' },
-          { cle: 'performance', libelle: 'Performance' },
-          // Compteur seulement s'il reste quelque chose à faire.
-          { cle: 'lancement', libelle: 'Lancement', compteur: av.faits < av.total ? av.total - av.faits : undefined },
-          { cle: 'fiche', libelle: 'Fiche voyageur', compteur: fiche.manquants.length || undefined },
-          { cle: 'linge', libelle: 'Linge' },
-          { cle: 'canaux', libelle: 'Annonces & canaux' },
-          { cle: 'historique', libelle: 'Historique', compteur: incidents || undefined },
+          { cle: 'apercu', libelle: 'Aperçu' },
+          // Compteur seulement s'il manque quelque chose à l'agent.
+          { cle: 'fiche', libelle: 'Infos pour l’agent', compteur: manquants || undefined },
+          { cle: 'historique', libelle: 'Historique' },
         ]}
       />
 
-      {onglet === 'apercu' && <OngletVueEnsemble logement={l} allerA={changer} />}
-      {onglet === 'performance' && <OngletPerformance logement={l} />}
-      {onglet === 'lancement' && <OngletLancement logement={l} />}
+      {onglet === 'apercu' && <OngletVueEnsemble logement={l} />}
       {onglet === 'fiche' && <OngletFiche logement={l} />}
-      {onglet === 'linge' && <OngletLinge logement={l} />}
-      {onglet === 'canaux' && <OngletCanaux logement={l} />}
       {onglet === 'historique' && <OngletHistorique logement={l} />}
 
       <EditionLogement ouvert={edition} onFermer={() => setEdition(false)} logement={l} />

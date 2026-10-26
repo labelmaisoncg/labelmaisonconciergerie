@@ -179,23 +179,34 @@ d'automatisations repasse sur les données (il tourne aussi au chargement).
 
 ### Modules et routes
 
-Navigation simplifiée (septembre 2026) : **sept rubriques** dans la barre
-latérale, plus **Paramètres** en bas. Une rubrique qui regroupe plusieurs pages
-affiche une petite barre d'onglets commune sous l'en-tête
-(`layout/OngletsRubrique.tsx`), pilotée par le registre
-(`modules/registry.tsx` : chaque module déclare sa rubrique `group`). Les
-anciennes adresses restent valables : seules les entrées de menu ont changé.
+**Channel manager (octobre 2026)** : six rubriques dans la barre latérale,
+Paramètres en bas. Finance, Opérations (ménages, linge, incidents,
+prestataires), Rentabilité, Annonces et la rubrique Propriétaires sont sortis
+du menu sur décision du gérant : leur code et leurs données restent (ménages et
+linge reviendront avec BNB Cleaning), leurs anciennes adresses mènent vers la
+page la plus proche (`ANCIENNES_ADRESSES`, `modules/registry.tsx`), et leurs
+automatisations ne tournent plus (`REGLES_CHANNEL_MANAGER`, `data/store.tsx` :
+seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 
-| Rubrique (barre latérale) | Onglets de la rubrique | Routes |
+| Rubrique | Contenu | Routes |
 |---|---|---|
-| Accueil | – | `/erp` : bonjour, « Aujourd'hui » (arrivées, départs, ménages, sujets), « À faire » (5 sujets, le reste dans un panneau), « Vos chiffres » (4 repères sur 30 jours) ; menu « … » : les 7 prochains jours |
-| Logements | Vos logements · Rentabilité · Annonces | `/erp/logements` (`/:id?onglet=…`, `/connexions`), `/erp/performance` (`?onglet=suivi\|indicateurs`), `/erp/annonces` (`?logement=`) |
-| Réservations | – | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
-| Messagerie | (onglets internes) Conversations · Ce que l'agent a fait · Configurer mon agent | `/erp/messagerie` (`/:filId`, `?q=`), `/erp/messagerie/activite`, `/erp/messagerie/agent` |
-| Opérations | Ménages · Linge · Incidents · Prestataires | `/erp/menages` (`?vue=a-traiter\|toutes\|controle`, `/:id`), `/erp/linge` (`?vue=ecarts\|journal`), `/erp/incidents` (`?id=`), `/erp/prestataires` (`/:id`) |
-| Propriétaires | Propriétaires · Contrats de gestion · Prospection | `/erp/proprietaires` (`/:id`), `/erp/mandats` (`?mandat=`), `/erp/commercial` (`/simulateur`, `/lancement`) |
-| Finance | Finance · Conformité | `/erp/finance` (`/releves`, `/factures`, `/paiements`, `/charges`, `/rentabilite`), `/erp/conformite` |
-| Paramètres (en bas) | Paramètres · Automatisations | `/erp/parametres` (`/integrations`, `/donnees`, `/entreprise`), `/erp/automatisations` |
+| Accueil | « À faire » (voyageurs qui attendent, synchronisation en échec, avis sous 4/5, infos manquantes pour l'agent, contacts à appeler), arrivées / départs / sur place (aujourd'hui, demain, 7 jours), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
+| Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, prix des prochaines semaines lus sur les plateformes, propriétaire, logement, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
+| Réservations | Planning, liste, fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
+| Messagerie | Conversations · Ce que l'agent a fait · Configurer mon agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
+| CRM | Appels et relances, dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
+| Paramètres | Équipe, intégrations, société, données | `/erp/parametres` |
+
+Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
+(`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé
+directement, hors du lot commun) ; choix court : `ui/Segmente.tsx`.
+
+**Photos et prix par nuit** (`enrichirAnnonce`, `data/repull-synchro.ts`) : à
+chaque relevé des annonces (une fois par jour), pour chaque logement choisi,
+`GET /v1/availability/{id}?from&to` (60 jours de prix, réécrits seulement s'ils
+changent) et, une fois par semaine, `GET /v1/listings/{id}/photos` (adresses
+https seulement, 24 au plus). Lectures seules, sautées quand la part d'appels
+descend sous 20 ; affichés dans la fiche, jamais renvoyés aux plateformes.
 
 Principes d'écran : 3 ou 4 blocs visibles au plus, une action principale, les
 actions secondaires dans un menu « … » (`ui/MenuActions.tsx`), les règles et
