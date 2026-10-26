@@ -45,7 +45,7 @@ export function EspaceVue({ vue, onglet, onOnglet, bilan, onBilan, onMoisCalendr
       <header className="lm-sans-impression sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4">
           <div className="min-w-0">
-            <p className="lm-serif truncate text-[18px] leading-tight text-(--lm-brun)">Label Maison</p>
+            <p className="lm-serif truncate text-[18px] leading-tight text-(--lm-brun)">{vue.conciergerie.nom}</p>
             <p className="truncate text-[11.5px] text-(--lm-encre-2)">Espace propriétaire</p>
           </div>
           <nav aria-label="Rubriques" className="hidden items-center gap-1 sm:flex">

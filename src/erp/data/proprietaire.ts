@@ -13,6 +13,7 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
+import { espaceOuvert, estLabelMaison } from './espaces.js';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull.js';
 import type { CanalReservation, DateISO, Id, Logement, Mandat, Proprietaire, Reservation } from './types';
 import type {
@@ -404,6 +405,17 @@ export interface OptionsVue {
   mois?: string;
   /** Adresse affichable d'une photo (lien signé côté serveur) ; sans : telle quelle. */
   photo?: (l: Logement) => string | undefined;
+  /**
+   * Conciergerie de l'espace (le serveur la donne toujours). Sans : l'espace
+   * ouvert dans l'ERP (aperçu du gérant), avec les contacts de Label Maison
+   * pour Label Maison seulement.
+   */
+  conciergerie?: { nom: string; contacts?: ContactsConciergerie };
+}
+
+function conciergerieOuverte(): { nom: string; contacts?: ContactsConciergerie } {
+  const e = espaceOuvert();
+  return estLabelMaison(e) ? { nom: 'Label Maison', contacts: CONTACTS_LABEL_MAISON } : { nom: e.nom };
 }
 
 const CATEGORIES = new Set<string>(CATEGORIES_DOCUMENT.map((c) => c.valeur));
@@ -421,6 +433,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
   if (!proprietaireAutorise(proprietaireId)) return null;
   const p = e.proprietaires.find((x) => x?.id === proprietaireId);
   if (!p) return null;
+  const conciergerie = o.conciergerie ?? conciergerieOuverte();
   const aujourdhui = dateValide(o.aujourdhui) ? o.aujourdhui : dateParisISO();
   const tous = logementsDe(e.logements, proprietaireId);
   const tousIds = new Set(tous.map((l) => l.id));
@@ -467,6 +480,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     calendrier: { mois: moisCalendrier, logements: geres.map((l) => calendrierMois(actifs, l.id, moisCalendrier)) },
     bilans,
     documents,
-    contacts: CONTACTS_LABEL_MAISON,
+    conciergerie: { nom: conciergerie.nom },
+    ...(conciergerie.contacts ? { contacts: conciergerie.contacts } : {}),
   };
 }

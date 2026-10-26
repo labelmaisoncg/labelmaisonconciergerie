@@ -5,15 +5,15 @@ import type { VueProprietaire } from '../data/types-proprietaire';
 import { Card, EmptyState } from '../ui';
 import { TitreEspace, type LienDocument } from './commun';
 
-/** Documents partagés par Label Maison, rangés par catégorie. */
+/** Documents partagés par la conciergerie, rangés par catégorie. */
 export function Documents({ vue, LienDocument }: { vue: VueProprietaire; LienDocument: LienDocument }) {
   const nomLogement = (id?: string) => (id && vue.logements.length > 1 ? vue.logements.find((l) => l.id === id)?.nom : undefined);
   const groupes = CATEGORIES_DOCUMENT.map((c) => ({ ...c, documents: vue.documents.filter((d) => d.categorie === c.valeur) })).filter((g) => g.documents.length);
   return (
     <>
-      <TitreEspace titre="Documents" description="Contrats, attestations et autres documents partagés par Label Maison. Touchez un document pour l’ouvrir." />
+      <TitreEspace titre="Documents" description={`Contrats, attestations et autres documents partagés par ${vue.conciergerie.nom}. Touchez un document pour l’ouvrir.`} />
       {!groupes.length ? (
-        <EmptyState icone={<FolderOpen />} titre="Aucun document pour l’instant" description="Les documents que Label Maison partage avec vous apparaîtront ici." />
+        <EmptyState icone={<FolderOpen />} titre="Aucun document pour l’instant" description={`Les documents que ${vue.conciergerie.nom} partage avec vous apparaîtront ici.`} />
       ) : (
         <div className="space-y-6">
           {groupes.map((g) => (

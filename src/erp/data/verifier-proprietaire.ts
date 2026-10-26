@@ -2,7 +2,7 @@
  * Vérification de l'espace propriétaire (pur, sans réseau) : filtrage strict
  * par propriétaire, aucune donnée personnelle de voyageur, prorata d'un séjour
  * à cheval sur deux mois, bilans non publiés invisibles, liens à usage unique
- * et sessions signées.
+ * et sessions signées, rattachées à l'espace qui a invité (Label Maison, Sens…).
  *
  * Lancement :
  *   node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --platform=node --format=esm \
@@ -45,6 +45,8 @@ import {
   utiliserLien,
 } from './proprietaire-acces';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull';
+import { ID_LABEL_MAISON } from './espaces';
+import { lienAcces, lireLienAcces, lireSessionExterne, signerSessionExterne } from './acces-externe';
 import { creerSeed } from './seed';
 import { b64url } from './web-push';
 import type { Logement, Mandat, Proprietaire, Reservation } from './types';
@@ -287,6 +289,38 @@ async function main() {
   const entete = enteteCookie(cookie, 60);
   verifier(/HttpOnly/.test(entete) && /Secure/.test(entete) && /SameSite=Lax/.test(entete) && /Path=\/api\/espace-proprietaire/.test(entete), 'cookie HttpOnly, Secure, SameSite, limité à l’API');
   verifier(lireCookie(`autre=1; lm_proprio=${cookie}; x=2`) === cookie && lireCookie('autre=1') === undefined, 'lecture du cookie');
+
+  /* espaces : chaque accès appartient à l'espace qui l'a créé */
+  const LM = ID_LABEL_MAISON;
+  const SENS = '5e5e0000-0000-4000-8000-000000000002';
+  const lien = lienAcces('https://labelmaisoncg.fr/', '/espace-proprietaire', SENS, jeton);
+  verifier(lien === `https://labelmaisoncg.fr/espace-proprietaire#espace=${SENS}&jeton=${jeton}`, 'lien : espace et jeton après #');
+  verifier(lireLienAcces(lien.split('#')[1]).espace === SENS && lireLienAcces(`#jeton=${jeton}`).espace === LM && lireLienAcces('#espace=pas-un-uuid&jeton=x').espace === LM, 'lien lu : un ancien lien sans espace vaut Label Maison');
+  const accesSens = inviter(undefined, { proprietaireId: A, email: 'alice@exemple.fr', par: 'g', maintenantMs: t0, espace: SENS });
+  verifier(accesSens.espace === SENS && inviter(accesSens, { proprietaireId: A, email: 'alice@exemple.fr', par: 'g', maintenantMs: t0 }).espace === SENS, 'invitation : rangée dans l’espace du gérant, gardée à la réinvitation');
+  verifier(inviter(undefined, { proprietaireId: A, email: 'a@b.fr', par: 'g', maintenantMs: t0 }).espace === LM, 'invitation sans espace (base d’avant les espaces) : Label Maison');
+  const actifSens = { ...accesSens, statut: 'actif' as const };
+  const actifLM = { ...actifSens, espace: LM };
+  const cookieSens = await signerSession(secret, { p: A, v: actifSens.version, exp: s0 + 3600, e: SENS });
+  const sens = await lireSession(secret, cookieSens, s0);
+  verifier(sens?.e === SENS && sessionEncoreValide(sens, actifSens), 'session de Sens : valable pour l’accès de Sens');
+  verifier(!!sens && !sessionEncoreValide(sens, actifLM), 'session de Sens : jamais pour le même propriétaire dans Label Maison');
+  verifier(!!lue && lue.e === LM && !sessionEncoreValide(lue, actifSens), 'session de Label Maison : jamais pour un accès de Sens');
+  const [corpsSens, sigSens] = cookieSens.split('.');
+  const charge = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(corpsSens.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0)))) as Record<string, unknown>;
+  const espaceChange = `${b64url(new TextEncoder().encode(JSON.stringify({ ...charge, e: LM })))}.${sigSens}`;
+  verifier((await lireSession(secret, espaceChange, s0)) === null, 'cookie dont on change l’espace : refusé');
+  // Cookie d'avant les espaces ({ p, v, exp }, sans genre ni espace) : propriétaire de Label Maison.
+  const cleHmac = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const ancienCorps = b64url(new TextEncoder().encode(JSON.stringify({ p: A, v: 2, exp: s0 + 3600 })));
+  const ancien = `${ancienCorps}.${b64url(new Uint8Array(await crypto.subtle.sign('HMAC', cleHmac, new TextEncoder().encode(ancienCorps))))}`;
+  const ancienne = await lireSession(secret, ancien, s0);
+  verifier(ancienne?.e === LM && ancienne.p === A && ancienne.v === 2, 'ancien cookie sans espace : Label Maison');
+  const operations = await signerSessionExterne(secret, { k: 'operations', p: A, e: LM, v: 1, exp: s0 + 3600 });
+  verifier((await lireSession(secret, operations, s0)) === null && (await lireSessionExterne(secret, operations, 'operations', s0))?.k === 'operations', 'session des opérations : jamais valable comme propriétaire');
+  const vueSens = vueProprietaire(e, A, { aujourdhui: '2026-09-24', conciergerie: { nom: 'Sens' } })!;
+  verifier(vueSens.conciergerie.nom === 'Sens' && !vueSens.contacts && !/labelmaison|74954/i.test(JSON.stringify(vueSens)), 'vue d’un autre espace : son nom, aucun contact de Label Maison');
+  verifier(vue.conciergerie.nom === 'Label Maison' && vue.contacts?.telephone === '+33 7 49 54 83 55', 'vue de Label Maison : ses contacts');
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
