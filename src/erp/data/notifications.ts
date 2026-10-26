@@ -14,7 +14,7 @@
  * signalé », et non trois.
  */
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
-import type { FilMessages, Logement, RaisonEscalade, Reservation } from './types';
+import type { FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
 
 export type TypeNotification =
   | 'reservation'
@@ -25,7 +25,8 @@ export type TypeNotification =
   | 'probleme'
   | 'avis'
   | 'synchro'
-  | 'rappel';
+  | 'rappel'
+  | 'urgence';
 
 /** Les types, dans l'ordre des réglages, avec leur valeur par défaut. */
 export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; detail: string; defaut: boolean }[] = [
@@ -35,6 +36,7 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'agent_repondu', libelle: 'L’agent a répondu', detail: 'Quand l’agent a répondu à votre place.', defaut: true },
   { type: 'agent_main', libelle: 'L’agent vous passe la main', detail: 'Un voyageur attend votre réponse, avec la raison.', defaut: true },
   { type: 'probleme', libelle: 'Problème signalé dans un logement', detail: 'Panne, fuite, clé, bruit, ménage…', defaut: true },
+  { type: 'urgence', libelle: 'Urgence dans un logement', detail: 'Nouvel incident urgent, ou incident confié à un membre de l’équipe.', defaut: true },
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
   { type: 'synchro', libelle: 'Mise à jour des plateformes en échec', detail: 'Une fois par jour au plus.', defaut: true },
   { type: 'rappel', libelle: 'Rappel du matin', detail: 'Les arrivées et départs du jour.', defaut: false },
@@ -320,6 +322,33 @@ export function synchroEnEchec(aujourdhui: string, raison: string): GroupeNotifi
   return {
     cle: `synchro-${aujourdhui}`,
     variantes: [{ type: 'synchro', titre: 'Airbnb et Booking : mise à jour en échec', corps: extrait(raison || 'Ouvrez Paramètres → Plateformes pour relancer.', 140), url: '/erp/parametres/plateformes' }],
+  };
+}
+
+/**
+ * Espace Opérations : un incident urgent vient d'être signalé, ou un incident
+ * vient d'être confié à quelqu'un. Une notification par incident et par
+ * personne assignée (rien pour un incident normal sans personne, ni résolu).
+ */
+export function notificationUrgence(
+  i: Pick<Incident, 'id' | 'gravite' | 'statut' | 'description' | 'assigneA'>,
+  logement: string,
+  assigne?: string,
+): GroupeNotification | null {
+  const urgent = i.gravite === 'haute';
+  if (i.statut === 'resolu' || (!urgent && !i.assigneA)) return null;
+  const qui = assigne ? prenomInitiale(assigne) : '';
+  return {
+    cle: `urgence-${i.id}-${i.assigneA ?? 'personne'}`,
+    urgente: urgent,
+    variantes: [
+      {
+        type: 'urgence',
+        titre: urgent ? `Urgence · ${logement || 'un logement'}` : `Incident confié à ${qui || 'l’équipe'} · ${logement || 'un logement'}`,
+        corps: `${extrait(i.description, 120)}${urgent && qui ? ` (${qui})` : ''}`,
+        url: `/erp/operations/incidents?id=${encodeURIComponent(i.id)}`,
+      },
+    ],
   };
 }
 
