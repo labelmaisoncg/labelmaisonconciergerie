@@ -68,7 +68,7 @@ import {
   type RepullReview,
   ecartsBilan,
 } from './repull.js';
-import type { FilMessages, Id, Journal, Logement, Reservation } from './types';
+import type { FilMessages, Id, Journal, LectureAnnonce, Logement, Reservation } from './types';
 
 type Fetch = typeof fetch;
 
@@ -101,6 +101,19 @@ export class ErreurRepull extends Error {
   ) {
     super(message);
   }
+}
+
+/** Une erreur de lecture en quelques mots, pour la note de lecture d'une annonce. */
+export function erreurEnClair(e: unknown): string {
+  if (e instanceof ErreurRepull) {
+    if (e.code === 'listing_inactive') return 'annonce inactive (hors de votre forfait)';
+    if (e.statut === 404) return 'introuvable';
+    if (e.statut === 403) return 'accès refusé';
+    if (e.statut === 429) return 'trop de demandes, nouvel essai au prochain relevé';
+    if (e.statut >= 500) return 'service indisponible, nouvel essai au prochain relevé';
+    return 'demande refusée';
+  }
+  return 'pas de réponse, nouvel essai au prochain relevé';
 }
 
 /** Le temps imparti est écoulé : le passage s'arrête, le suivant reprendra. */
@@ -492,6 +505,8 @@ export interface BilanRepull {
   };
   /** Logements retirés du choix, mis en pause dans l'ERP (jamais supprimés). */
   misEnPause?: number;
+  /** Relevé des annonces : un logement choisi reste sans photo ou sans prix. */
+  annoncesIncompletes?: boolean;
   /** Phases menées à leur terme (annonces, reservations, avis, conversations, pays). */
   phases: PhaseRepull[];
   /** Faux : temps ou part d'appels atteint, un nouveau passage terminera. */
@@ -756,6 +771,7 @@ export class SessionRepull {
       if (!(e instanceof ErreurRepull) || e.statut !== 422 || pages > 0) throw e;
       await this.parcourirAnnonces(INCLURE_ANNONCES_REPLI);
     }
+    await this.noterAnnoncesIncompletes();
     await this.ecrireLogements();
   }
 
@@ -799,13 +815,15 @@ export class SessionRepull {
   }
 
   /**
-   * Photos (une fois par semaine, seulement quand l'annonce n'a pas renvoyé
-   * les siennes) et prix par nuit des JOURS_TARIFS prochains jours (à chaque
-   * relevé des annonces) d'un logement choisi. Photos : celles déposées chez
-   * Repull, sinon celles de Booking.com (chambre, puis établissement), sinon
-   * celles d'Airbnb. Prix : le calendrier Repull, sinon les tarifs lus chez
-   * Booking.com. Lectures seules, sautées quand la part d'appels ou le temps
-   * manque ; une réponse illisible ne change rien.
+   * Photos et prix par nuit des JOURS_TARIFS prochains jours d'un logement
+   * choisi, avec une note de lecture (source, ou raison d'un manque).
+   * - Photos : celles de l'annonce si la liste les a renvoyées ; sinon celles
+   *   déposées chez Repull, puis Booking.com (chambre, puis établissement),
+   *   puis Airbnb. Relues une fois par semaine quand le logement en a déjà ;
+   *   à chaque relevé tant qu'il n'en a aucune.
+   * - Prix : le calendrier Repull, sinon les tarifs lus chez Booking.com.
+   * Lectures seules, sautées quand la part d'appels ou le temps manque ; une
+   * réponse illisible ne change rien.
    */
   private async enrichirAnnonce(idAnnonce: string, photosDeLAnnonce: boolean): Promise<void> {
     const logements = await this.chargerLogements();
@@ -820,39 +838,111 @@ export class SessionRepull {
     const surBooking = canaux.some((c) => c.includes('booking'));
     const surAirbnb = canaux.some((c) => c.includes('airbnb'));
     const chemin = encodeURIComponent(idAnnonce);
+    const avant = l.repull?.lecture;
     // Une lecture facultative : null si elle échoue (403/404 : rien à lire ; autre : à retenter).
     let aRetenter = false;
+    let echec = '';
     const lire = async <T,>(url: string, params: Record<string, string | number> = {}): Promise<T | null> => {
+      echec = '';
       try {
         return await this.repull.get<T>(url, params);
       } catch (e) {
         if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) throw e;
         if (!(e instanceof ErreurRepull && (e.statut === 403 || e.statut === 404))) aRetenter = true;
+        echec = erreurEnClair(e);
         return null;
       }
     };
-    if (!photosDeLAnnonce && assez() && (!lues || instant(maintenant) - instant(lues) >= 6.5 * JOUR)) {
+
+    let sourcePhotos: LectureAnnonce['photos'] | undefined = photosDeLAnnonce ? 'annonce' : undefined;
+    let raisonPhotos: string | undefined;
+    const aDejaDesPhotos = !!l.photos?.length || /^https:\/\//.test(l.photoUrl ?? '');
+    // Sans note de lecture (relevés d'avant les lectures Booking.com et Airbnb, dont le
+    // « photosLuesLe » ne veut rien dire) : relu tout de suite. Avec des photos : une fois par
+    // semaine. Sans photo : une recherche complète vaine n'est refaite qu'une fois par jour.
+    const ecart = lues ? instant(maintenant) - instant(lues) : Infinity;
+    const dues = !avant || ecart >= (aDejaDesPhotos ? 6.5 * JOUR : 20 * HEURE);
+    if (!photosDeLAnnonce && dues && assez()) {
+      const manques: string[] = [];
       let photos = photosDepuisContenu(await lire<RepullPhotos>(`/v1/listings/${chemin}/photos`));
+      if (photos.length) sourcePhotos = 'repull';
+      else if (echec && echec !== 'introuvable') manques.push(`Notre service de connexion : ${echec}`);
       if (!photos.length && surBooking && assez()) {
         const b = (await this.lireChambresBooking()).get(idAnnonce);
-        if (b?.chambre && assez()) photos = photosDepuisContenu(await lire(`/v1/channels/booking/content`, { property_id: b.hotel, type: 'photos', room_id: b.chambre }));
-        if (b && !photos.length && assez()) photos = photosDepuisContenu(await lire(`/v1/channels/booking/content`, { property_id: b.hotel, type: 'photos' }));
+        if (!b) manques.push('Booking.com : ce logement n’est relié à aucune chambre d’un établissement');
+        if (b?.chambre && assez()) {
+          photos = photosDepuisContenu(await lire(`/v1/channels/booking/content`, { property_id: b.hotel, type: 'photos', room_id: b.chambre }));
+          if (photos.length) sourcePhotos = 'booking-chambre';
+        }
+        if (b && !photos.length && assez()) {
+          photos = photosDepuisContenu(await lire(`/v1/channels/booking/content`, { property_id: b.hotel, type: 'photos' }));
+          if (photos.length) sourcePhotos = 'booking-etablissement';
+          else manques.push(`Booking.com : ${echec || 'aucune photo renvoyée'}`);
+        }
       }
-      if (!photos.length && surAirbnb && assez()) photos = photosDepuisContenu(await lire(`/v1/channels/airbnb/listings/${chemin}/photos`));
+      if (!photos.length && surAirbnb && assez()) {
+        photos = photosDepuisContenu(await lire(`/v1/channels/airbnb/listings/${chemin}/photos`));
+        if (photos.length) sourcePhotos = 'airbnb';
+        else manques.push(`Airbnb : ${echec || 'aucune photo renvoyée'}`);
+      }
+      if (!surBooking && !surAirbnb) manques.push('aucune plateforme reliée à ce logement');
       if (photos.length) suivant.photos = photos;
-      // Rien chez les plateformes : on ne redemande que la semaine suivante (sauf erreur passagère).
+      else {
+        sourcePhotos = 'aucune';
+        raisonPhotos = manques.join(' ; ') || 'aucune photo renvoyée par les plateformes';
+      }
+      // Rien chez les plateformes : marqué lu, sauf erreur passagère (nouvel essai au prochain relevé).
       if (photos.length || !aRetenter) suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), photosLuesLe: maintenant };
     }
+
+    let sourcePrix: LectureAnnonce['prix'] | undefined;
+    let raisonPrix: string | undefined;
     if (assez()) {
       const du = this.aujourdhui;
+      const manques: string[] = [];
       let tarifs = versTarifs(await lire<RepullDisponibilite>(`/v1/availability/${chemin}`, { from: du, to: plusJours(du, JOURS_TARIFS) }), maintenant);
+      if (tarifs) sourcePrix = 'repull';
+      else manques.push(`Calendrier : ${echec && echec !== 'introuvable' ? echec : 'aucun prix enregistré'}`);
       if (!tarifs && surBooking && assez()) {
         tarifs = tarifsDepuisBooking(await lire(`/v1/channels/booking/listings/${chemin}/pricing`, { startDate: du, number_of_days: JOURS_TARIFS }), maintenant, du, plusJours(du, JOURS_TARIFS));
+        if (tarifs) sourcePrix = 'booking';
+        else manques.push(`Booking.com : ${echec || 'aucun tarif lisible'}`);
+      }
+      if (!tarifs) {
+        sourcePrix = 'aucun';
+        raisonPrix = manques.join(' ; ');
       }
       // Mêmes prix qu'à la dernière lecture : rien à écrire (luLe garde la date du dernier changement).
       if (tarifs && (tarifs.devise !== l.tarifs?.devise || canonique(tarifs.jours) !== canonique(l.tarifs?.jours))) suivant.tarifs = tarifs;
     }
+
+    // Note de lecture : ce qui n'a pas été relu ce passage garde sa dernière note.
+    const lecture: LectureAnnonce = {
+      photos: sourcePhotos ?? avant?.photos ?? (aDejaDesPhotos ? 'repull' : 'aucune'),
+      prix: sourcePrix ?? avant?.prix ?? (l.tarifs ? 'repull' : 'aucun'),
+      le: this.aujourdhui,
+    };
+    const rp = sourcePhotos ? raisonPhotos : lecture.photos === 'aucune' ? avant?.raisonPhotos : undefined;
+    const rx = sourcePrix ? raisonPrix : lecture.prix === 'aucun' ? avant?.raisonPrix : undefined;
+    if (rp) lecture.raisonPhotos = rp;
+    if (rx) lecture.raisonPrix = rx;
+    // Même note qu'avant : la date d'origine reste (aucune réécriture d'un passage à l'autre).
+    if (avant && canonique({ ...avant, le: '' }) === canonique({ ...lecture, le: '' })) lecture.le = avant.le;
+    suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), lecture };
     if (!identiques(suivant, l)) logements.poser(suivant);
+  }
+
+  /** Après le relevé : un logement choisi est-il resté sans photo ou sans prix ? (bouton : relevé refait sans attendre) */
+  private async noterAnnoncesIncompletes(): Promise<void> {
+    const logements = await this.chargerLogements();
+    this.bilan.annoncesIncompletes = [...logements.elements.values()].some(
+      (l) =>
+        !!l.repull?.id &&
+        !l.repull.horsSelection &&
+        this.retenue(l.repull.id) &&
+        l.statut !== 'sorti' &&
+        (!(l.photos?.length || /^https:\/\//.test(l.photoUrl ?? '')) || !l.tarifs?.jours.length),
+    );
   }
 
   /** Une annonce précise (webhook listing.*, ou réservation sur une annonce encore inconnue). */
@@ -1344,6 +1434,8 @@ export interface EtatRepull {
   quota?: QuotaRepull;
   /** Dernier événement webhook traité. */
   dernierWebhook?: { evenement: string; recuLe: string; erreurs: string[] };
+  /** Le dernier relevé des annonces a laissé un logement choisi sans photo ou sans prix. */
+  annoncesIncompletes?: boolean;
 }
 
 const moisParis = (d: Date) => dateParis(d).slice(0, 7);
@@ -1405,8 +1497,10 @@ export function phasesDues(etat: EtatRepull, declencheur: DeclencheurRepull, mai
     return x ? t - instant(x) : Infinity;
   };
   const res: PhaseRepull[] = [];
-  // Annonces : une fois par jour, ou au bouton si le dernier relevé date de plus d'une heure.
-  if (depuis('annonces') >= (declencheur === 'manuel' ? HEURE : 20 * HEURE)) res.push('annonces');
+  // Annonces : une fois par jour ; au bouton, si le dernier relevé date de plus d'une heure,
+  // ou tout de suite s'il a laissé un logement sans photo ou sans prix (le bouton reste limité à une fois par 10 min).
+  const seuilBouton = etat.annoncesIncompletes ? 0 : HEURE;
+  if (depuis('annonces') >= (declencheur === 'manuel' ? seuilBouton : 20 * HEURE)) res.push('annonces');
   res.push('reservations');
   if (depuis('avis') >= (declencheur === 'manuel' ? JOUR : 6.5 * JOUR)) res.push('avis');
   res.push('conversations');
@@ -1559,6 +1653,11 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     dernieresPhases: { ...(frais.dernieresPhases ?? {}), ...Object.fromEntries(bilan.phases.map((p) => [p, fin])) },
     ...(quota ? { quota } : {}),
   };
+  // Relevé des annonces mené à terme : le marqueur suit son résultat.
+  if (bilan.phases.includes('annonces')) {
+    if (bilan.annoncesIncompletes) suivant.annoncesIncompletes = true;
+    else delete suivant.annoncesIncompletes;
+  }
   if (evenement) {
     suivant.dernierWebhook = { evenement, recuLe: fin, erreurs: bilan.erreurs };
   } else {

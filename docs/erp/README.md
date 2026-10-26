@@ -214,12 +214,30 @@ logement ; l'agent reçoit couchage, conditions et textes (jamais les prix, qui
 varient). Relevé une fois par jour, ou au bouton « Synchroniser » si le dernier
 date de plus d'une heure.
 
-**Prix par nuit** (`enrichirAnnonce`, `data/repull-synchro.ts`) : à chaque relevé
-des annonces, pour chaque logement choisi, `GET /v1/availability/{id}?from&to`
-(60 jours de prix, réécrits seulement s'ils changent) et, une fois par semaine
-et seulement si l'annonce n'a pas renvoyé de photos, `GET
-/v1/listings/{id}/photos`. Lectures seules, sautées quand la part d'appels
-descend sous 20 ; affichés dans la fiche, jamais renvoyés aux plateformes.
+**Photos et prix par nuit** (`enrichirAnnonce`, `data/repull-synchro.ts`), pour
+chaque logement choisi, en lecture seule (GET) :
+- photos : celles de l'annonce si la liste les renvoie ; sinon `GET
+  /v1/listings/{id}/photos`, puis Booking.com (`/v1/channels/booking/content?type=photos`,
+  galerie de la chambre puis de l'établissement), puis Airbnb. Relues une fois par
+  semaine quand le logement en a déjà ; sans photo, au prochain relevé, puis une
+  recherche vaine n'est refaite qu'une fois par jour ; sans note de lecture (relevés
+  d'avant), tout de suite ;
+- prix : `GET /v1/availability/{id}?from&to` (60 jours, réécrits seulement s'ils
+  changent), sinon les tarifs Booking.com (`/v1/channels/booking/listings/{id}/pricing`).
+
+Chaque logement garde une **note de lecture** (`repull.lecture` : source des photos et
+des prix, raison en clair d'un manque, date du dernier changement). La fiche logement
+l'affiche à la place de la galerie quand il n'y a pas de photo, avec « Mettre à jour ».
+Un relevé qui laisse un logement choisi sans photo ou sans prix marque l'état
+(`annoncesIncompletes`) : le bouton « Synchroniser » relit alors les annonces sans
+attendre l'heure habituelle (toujours au plus une fois par 10 min). Lectures sautées
+quand la part d'appels descend sous 20 ; rien n'est jamais renvoyé aux plateformes.
+
+**Cartes des logements** (`CarteLogement.tsx`) : comme une annonce Airbnb, photo
+arrondie sans cadre, nom et note, ville · type · voyageurs, prochain événement,
+« 165 € par nuit » (ce soir, sinon la prochaine nuit connue, sinon le prix de base ;
+rien pour un logement qui n'est pas en location). Sans photo, ou si elle ne se charge
+pas, un aplat neutre (`Visuel.tsx`), jamais une fausse photo.
 
 Principes d'écran : 3 ou 4 blocs visibles au plus, une action principale, les
 actions secondaires dans un menu « … » (`ui/MenuActions.tsx`), les règles et

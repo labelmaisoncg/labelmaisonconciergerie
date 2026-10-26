@@ -39,6 +39,22 @@ export interface OrigineRepull {
   horsSelection?: boolean;
   /** Dernière lecture des photos de l'annonce (relues une fois par semaine). */
   photosLuesLe?: Horodatage;
+  /** D'où viennent les photos et les prix, ou pourquoi ils manquent (dernier relevé). */
+  lecture?: LectureAnnonce;
+}
+
+/**
+ * Note de lecture d'une annonce : la source des photos et des prix, et en
+ * clair la raison d'un manque. `le` ne change que si la note change.
+ */
+export interface LectureAnnonce {
+  photos: 'annonce' | 'repull' | 'booking-chambre' | 'booking-etablissement' | 'airbnb' | 'aucune';
+  prix: 'repull' | 'booking' | 'aucun';
+  /** Pourquoi il n'y a pas de photo (« Booking.com n'a renvoyé aucune photo »). */
+  raisonPhotos?: string;
+  /** Pourquoi il n'y a pas de prix. */
+  raisonPrix?: string;
+  le: DateISO;
 }
 
 /* ------------------------------------------------------------ référentiel */

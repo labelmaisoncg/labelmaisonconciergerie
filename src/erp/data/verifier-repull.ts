@@ -20,7 +20,7 @@ import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure, photosDepuisContenu, tarifsDepuisBooking } from './repull';
-import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
+import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, phasesDues, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
@@ -246,6 +246,8 @@ class FauxRepull {
   page = 2;
   /** Rien de déposé chez Repull pour 101 (photos, calendrier) : les lectures Booking.com prennent le relais. */
   ficheRepullVide = false;
+  /** Booking.com refuse les lectures (403 listing_inactive), pour les raisons en clair. */
+  bookingInactif = false;
   /** Lectures étendues des annonces refusées (422), pour tester le repli. */
   refusInclusEtendus = false;
   /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
@@ -348,6 +350,9 @@ class FauxRepull {
     }
     if (chemin === '/v1/channels/booking/properties' && methode === 'GET' && this.ficheRepullVide) {
       return json([{ hotelId: '5566771', mappingStatus: 'mapped', active: true, listings: [{ listingId: '101', roomBookingId: '556677101', status: 'active' }] }]);
+    }
+    if (this.bookingInactif && (chemin === '/v1/channels/booking/content' || /^\/v1\/channels\/booking\/listings\/[^/]+\/pricing$/.test(chemin)) && methode === 'GET') {
+      return json({ error: { code: 'listing_inactive', message: 'Listing is inactive', fix: 'Activate the listing.' } }, 403);
     }
     if (chemin === '/v1/channels/booking/content' && methode === 'GET') {
       if (p.get('property_id') !== '5566771' || p.get('type') !== 'photos') return json({ error: { code: 'not_found' } }, 404);
@@ -512,6 +517,8 @@ class FausseBase {
 /* ----------------------------------------------------------- contrôles de forme */
 
 const estChaine = (v: unknown) => typeof v === 'string';
+/** Date 'YYYY-MM-DD' à Paris (comme l'ERP). */
+const dateParisVerif = (d: Date) => new Intl.DateTimeFormat('fr-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 const estEntier = (v: unknown) => typeof v === 'number' && Number.isInteger(v);
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -677,6 +684,27 @@ async function principal() {
   );
   verifier(!repull.appels.some((a) => a.chemin === '/v1/listings/102/photos'), 'photos déjà lues avec l’annonce : aucun appel de plus');
   verifier(
+    l101.repull?.lecture?.photos === 'repull' && l101.repull.lecture.prix === 'repull' && !l101.repull.lecture.raisonPhotos && !l101.repull.lecture.raisonPrix,
+    `note de lecture : photos déposées chez Repull, prix du calendrier Repull (${JSON.stringify(l101.repull?.lecture)})`,
+  );
+  verifier(
+    l102.repull?.lecture?.photos === 'annonce' && l102.repull.lecture.prix === 'aucun' && l102.repull.lecture.raisonPrix === 'Calendrier : aucun prix enregistré',
+    `note de lecture : photos de l’annonce, manque de prix expliqué (${JSON.stringify(l102.repull?.lecture)})`,
+  );
+  {
+    const e = base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)!;
+    verifier(e.annoncesIncompletes === true, 'un logement choisi sans prix : relevé des annonces marqué incomplet');
+    const releve = e.dernieresPhases?.annonces ?? '';
+    const t15 = new Date(Date.parse(releve) + 15 * 60_000);
+    verifier(
+      !!releve &&
+        phasesDues({ ...e, annoncesIncompletes: true }, 'manuel', t15).includes('annonces') &&
+        !phasesDues({ ...e, annoncesIncompletes: undefined }, 'manuel', t15).includes('annonces') &&
+        !phasesDues({ ...e, annoncesIncompletes: true }, 'cron', t15).includes('annonces'),
+      'bouton : annonces relues tout de suite s’il manque une photo ou un prix (sinon après une heure) ; le cron garde son rythme',
+    );
+  }
+  verifier(
     repull.appels.filter((a) => a.chemin === '/v1/listings').every((a) => (a.params.get('include') ?? '').split(',').includes('photos')),
     'annonces lues avec photos, couchage, conditions et prix en un appel par page',
   );
@@ -770,6 +798,10 @@ async function principal() {
   verifier(r3.ok, `passage du cron réussi (${r3.message ?? ''})`);
   verifier(base.ecrituresDonnees().length === 0, `rien n’a changé chez Repull : aucune écriture de données (${JSON.stringify(base.ecrituresDonnees())})`);
   verifier(canonique(base.get('logements', 'repull-101')) === canonique(figes.l), 'logement : saisies de l’équipe intactes');
+  verifier(
+    base.get<Logement>('logements', 'repull-101')?.repull?.lecture?.le === (figes.l as Logement).repull?.lecture?.le,
+    'note de lecture identique : sa date d’origine reste, rien n’est réécrit',
+  );
   verifier(canonique(base.get('reservations', 'repull-5001')) === canonique(figes.r), 'réservation : saisies de l’équipe intactes');
   verifier(canonique(base.get('filsMessages', 'repull-7001')) === canonique(figes.f), 'fil : statut et escalade intacts');
   const appelsResa = repull.appels.slice(appelsAvant).filter((a) => a.chemin === '/v1/reservations');
@@ -812,9 +844,12 @@ async function principal() {
   section('Annonce Booking.com sans photo ni calendrier chez Repull');
   {
     repull.ficheRepullVide = true;
-    // Photos jamais relevées pour 101 (elles se relisent une fois par semaine).
+    // 101 tel qu'en production avant les lectures Booking.com : aucune photo de plateforme (seule
+    // celle déposée par l'équipe), un « photosLuesLe » posé il y a une heure par l'ancienne
+    // version, et pas encore de note de lecture. Il doit être relu tout de suite.
     const l = base.get<Logement>('logements', 'repull-101')!;
-    base.poser('logements', { ...l, photos: undefined, repull: { ...l.repull!, photosLuesLe: undefined } });
+    const { lecture: _ancienne, ...origine } = l.repull!;
+    base.poser('logements', { ...l, photos: undefined, repull: { ...origine, photosLuesLe: new Date(horloge.getTime() + 61 * 60_000 - 3_600_000).toISOString() } });
     const avant = repull.appels.length;
     avancer(61); // bouton : annonces relues si le dernier relevé a plus d'une heure
     const r = await lancer(options('manuel'));
@@ -826,6 +861,7 @@ async function principal() {
       JSON.stringify(l101.photos) === '["https://cf.bstatic.com/xdata/images/hotel/max1280/1.jpg","https://cf.bstatic.com/xdata/images/hotel/max1280/2.jpg"]',
       `photos lues chez Booking.com : chambre, puis établissement (${JSON.stringify(l101.photos)})`,
     );
+    verifier(appels.some((a) => a.chemin === '/v1/listings/101/photos'), 'ancien marqueur « photos lues » récent mais sans note de lecture : photos relues tout de suite');
     const contenus = appels.filter((a) => a.chemin === '/v1/channels/booking/content');
     verifier(contenus.length === 2 && contenus[0].params.get('room_id') === '556677101' && !contenus[1].params.get('room_id'), 'galerie de la chambre demandée d’abord, puis celle de l’établissement');
     verifier(
@@ -833,7 +869,53 @@ async function principal() {
       `prix par nuit lus chez Booking.com quand le calendrier Repull est vide (${JSON.stringify(l101.tarifs?.jours)})`,
     );
     verifier(appels.filter((a) => a.chemin === '/v1/channels/booking/properties').length === 1, 'établissements Booking.com lus une seule fois par passage');
+    verifier(
+      l101.repull?.lecture?.photos === 'booking-etablissement' && l101.repull.lecture.prix === 'booking' && !l101.repull.lecture.raisonPhotos && !l101.repull.lecture.raisonPrix,
+      `note de lecture : photos de l’établissement Booking.com, prix Booking.com (${JSON.stringify(l101.repull?.lecture)})`,
+    );
     verifier(appels.every((a) => a.methode === 'GET' || /\/messages$/.test(a.chemin)), 'lectures Booking.com : GET seulement');
+  }
+
+  section('Photos et prix introuvables : raisons en clair');
+  {
+    const l = base.get<Logement>('logements', 'repull-101')!;
+    repull.ficheRepullVide = true;
+    repull.bookingInactif = true;
+    // Plus de photo, et la dernière recherche de photos date d'hier ou avant (marqueur effacé).
+    base.poser('logements', { ...l, photos: undefined, repull: { ...l.repull!, photosLuesLe: undefined } });
+    avancer(61); // relevé précédent complet : le bouton relit les annonces après une heure
+    const r = await lancer(options('manuel'));
+    repull.ficheRepullVide = false;
+    repull.bookingInactif = false;
+    const n = base.get<Logement>('logements', 'repull-101')!.repull?.lecture;
+    verifier(r.ok && r.statut === 'fait', `passage réussi (${r.message ?? ''})`);
+    verifier(
+      n?.photos === 'aucune' &&
+        n.raisonPhotos === 'Booking.com : annonce inactive (hors de votre forfait) ; Airbnb : introuvable',
+      `photos manquantes : chaque plateforme dit pourquoi (${n?.raisonPhotos})`,
+    );
+    verifier(
+      n?.prix === 'aucun' && n.raisonPrix === 'Calendrier : aucun prix enregistré ; Booking.com : annonce inactive (hors de votre forfait)',
+      `prix manquants : raisons en clair (${n?.raisonPrix})`,
+    );
+    verifier(n?.le === dateParisVerif(horloge), 'note datée du jour où elle a changé');
+    verifier(base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)?.annoncesIncompletes === true, 'relevé toujours incomplet : le bouton relira les annonces');
+    // Second clic 11 min plus tard : annonces relues (relevé incomplet), mais la recherche de
+    // photos, vaine il y a 11 min, n'est refaite qu'une fois par jour (budget d'appels).
+    repull.ficheRepullVide = true;
+    repull.bookingInactif = true;
+    avancer(11);
+    const debut = repull.appels.length;
+    const r2 = await lancer(options('manuel'));
+    repull.ficheRepullVide = false;
+    repull.bookingInactif = false;
+    const appels2 = repull.appels.slice(debut);
+    verifier(r2.statut === 'fait' && appels2.some((a) => a.chemin === '/v1/listings'), 'bouton : annonces relues sans attendre une heure (relevé incomplet)');
+    verifier(
+      !appels2.some((a) => a.chemin === '/v1/listings/101/photos' || a.chemin === '/v1/channels/booking/content' || a.chemin === '/v1/channels/airbnb/listings/101/photos'),
+      `recherche de photos vaine : pas refaite avant le lendemain (${appels2.map((a) => a.chemin).join(', ')})`,
+    );
+    base.poser('logements', l);
   }
 
   section('Lectures étendues refusées : relevé de base');
