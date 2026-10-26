@@ -33,7 +33,9 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): Elem
   const liste: ElementATraiter[] = [];
   const nom = (id?: string) => logementById(d, id)?.nom ?? 'Logement';
 
-  const messages = d.filsMessages.filter((f) => f.statut === 'escalade' || f.traitePar === 'en_attente');
+  // Même règle que « À répondre » dans la Messagerie : une conversation terminée
+  // (« Pas besoin de répondre ») n'attend plus rien, jusqu'au prochain message du voyageur.
+  const messages = d.filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente'));
   if (messages.length)
     liste.push({
       id: 'message', type: 'message', priorite: 1, ton: 'alerte', to: '/erp/messagerie',

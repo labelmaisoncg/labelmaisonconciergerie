@@ -1,14 +1,21 @@
 /**
- * Bloc « Votre agent en ce moment » de l’onglet Configurer : en clair (actif, branché, dernier passage), puis le détail technique replié ; ce qui est branché
- * côté serveur (clé IA, planification, Telegram — oui ou non, jamais les
- * valeurs), le dernier passage, et le bouton « Lancer l'agent maintenant ».
+ * État de l'agent côté serveur :
+ * - `PastilleAgent` : l'indicateur unique de l'en-tête de la Messagerie
+ *   (actif, en pause, ou pas encore branché côté site) ;
+ * - `EtatAgentServeur` : le bloc « Votre agent en ce moment » des réglages,
+ *   en clair (actif, branché, dernier passage), puis le détail technique
+ *   replié ; ce qui est branché côté serveur (clé IA, planification, Telegram —
+ *   oui ou non, jamais les valeurs), le dernier passage, et le bouton
+ *   « Lancer l'agent maintenant ».
  *
- * Source : GET /api/erp-agent?action=etat ; bouton : POST { action: 'lancer' }.
+ * Source : GET /api/erp-agent?action=etat (lu une fois par minute au plus) ;
+ * bouton : POST { action: 'lancer' }.
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Check, Play, RefreshCw, X } from 'lucide-react';
 import { Alert, Button, Card, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
+import { reglagesAgent } from '../../../data/reglages';
 import type { EtatAgent, PassageAgent } from '../../../data/agent-messagerie';
 import { appelerServeur } from './serveur';
 
@@ -19,6 +26,67 @@ interface EtatServeur {
   actif?: boolean;
   etat: (Omit<EtatAgent, 'verrou'> & { enCours: boolean }) | null;
   avertissement?: string;
+}
+
+/** Dernière lecture de l'état : l'en-tête et les réglages partagent le même appel. */
+let memo: { le: number; promesse: Promise<EtatServeur> } | null = null;
+
+function lireEtat(forcer: boolean): Promise<EtatServeur> {
+  if (!forcer && memo && Date.now() - memo.le < 60_000) return memo.promesse;
+  const promesse = appelerServeur<EtatServeur>('/api/erp-agent?action=etat', 'GET');
+  memo = { le: Date.now(), promesse };
+  promesse.catch(() => {
+    if (memo?.promesse === promesse) memo = null;
+  });
+  return promesse;
+}
+
+/** État serveur de l'agent (mode réel seulement ; rien en démonstration). */
+function useEtatAgent() {
+  const { mode } = useErp();
+  const [etat, setEtat] = useState<EtatServeur | null>(null);
+  const [chargement, setChargement] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const relire = useCallback(
+    async (forcer = false) => {
+      if (mode !== 'reel') return;
+      setChargement(true);
+      try {
+        setEtat(await lireEtat(forcer));
+        setErreur(null);
+      } catch (e) {
+        setErreur(e instanceof Error ? e.message : String(e));
+      } finally {
+        setChargement(false);
+      }
+    },
+    [mode],
+  );
+
+  useEffect(() => {
+    void relire();
+  }, [relire]);
+
+  return { etat, chargement, erreur, relire };
+}
+
+/**
+ * Indicateur unique de l'en-tête : le réglage marche / pause fait foi, et
+ * l'agent n'est « actif » que si le site est branché (clé IA, plateformes).
+ */
+export function PastilleAgent() {
+  const d = useErp();
+  const actif = reglagesAgent(d).actif;
+  const { etat } = useEtatAgent();
+  const branche = !etat || (etat.cles.ia && etat.cles.repull);
+  const ok = actif && branche;
+  return (
+    <p role="status" className="inline-flex items-center gap-2 text-[13px] font-medium text-(--lm-encre-2)">
+      <span aria-hidden className={cn('size-2 rounded-full', ok ? 'bg-(--lm-succes)' : 'bg-(--lm-alerte)')} />
+      {!actif ? 'Agent en pause' : branche ? 'Agent actif' : 'Agent pas encore branché'}
+    </p>
+  );
 }
 
 /** « il y a 12 min », « il y a 3 h », « il y a 2 jours ». */
@@ -63,28 +131,9 @@ function Ligne({ ok, titre, children }: { ok: boolean | null; titre: string; chi
 
 export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
   const { mode, lectureSeule } = useErp();
-  const [etat, setEtat] = useState<EtatServeur | null>(null);
-  const [chargement, setChargement] = useState(false);
+  const { etat, chargement, erreur, relire } = useEtatAgent();
   const [lancement, setLancement] = useState(false);
   const [retour, setRetour] = useState<{ ton: 'succes' | 'info' | 'danger'; texte: string } | null>(null);
-  const [erreur, setErreur] = useState<string | null>(null);
-
-  const relire = useCallback(async () => {
-    if (mode !== 'reel') return;
-    setChargement(true);
-    try {
-      setEtat(await appelerServeur<EtatServeur>('/api/erp-agent?action=etat', 'GET'));
-      setErreur(null);
-    } catch (e) {
-      setErreur(e instanceof Error ? e.message : String(e));
-    } finally {
-      setChargement(false);
-    }
-  }, [mode]);
-
-  useEffect(() => {
-    void relire();
-  }, [relire]);
 
   const lancer = async () => {
     setLancement(true);
@@ -93,7 +142,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
       const r = await appelerServeur<{ ok: boolean; passage: PassageAgent }>('/api/erp-agent', 'POST', { action: 'lancer' });
       const p = r.passage;
       setRetour({ ton: p.statut === 'fait' ? 'succes' : p.statut === 'erreur' || p.statut === 'budget' ? 'danger' : 'info', texte: resumePassage(p) });
-      void relire();
+      void relire(true);
     } catch (e) {
       setRetour({ ton: 'danger', texte: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -115,7 +164,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
     <Card>
       <div className="flex flex-wrap items-start gap-3">
         <h3 className="min-w-0 flex-1 text-[15px] font-semibold text-(--lm-encre)">Votre agent en ce moment</h3>
-        <Button size="sm" variant="ghost" icone={<RefreshCw className={cn(chargement && 'animate-spin')} />} onClick={() => void relire()} disabled={chargement}>
+        <Button size="sm" variant="ghost" icone={<RefreshCw className={cn(chargement && 'animate-spin')} />} onClick={() => void relire(true)} disabled={chargement}>
           Actualiser
         </Button>
       </div>
