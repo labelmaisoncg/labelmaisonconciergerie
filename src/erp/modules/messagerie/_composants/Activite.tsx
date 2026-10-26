@@ -1,11 +1,11 @@
-/** Onglet « Ce que l'agent a fait » : ses réponses, ce qu'il vous a transmis, ce qui vous attend. */
+/** Onglet « Activité » : ce que l'agent a fait (ses réponses, ce qu'il vous a transmis). */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Bot, CheckCircle2, Coffee, Hand, MessageCircleReply } from 'lucide-react';
-import { Card, EmptyState, FilterChips, cn } from '../../../ui';
+import { Bot, CheckCircle2, Hand, MessageCircleReply } from 'lucide-react';
+import { Card, EmptyState, Segmente, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
-import { AUJOURDHUI, ajouterJours, dateJour, heure, pluriel } from '../../../data/format';
-import { LIBELLE_MOTIF, activiteAgent, enAttenteHumain, formatDelai, statsAgent, type ActiviteAgent } from './logique';
+import { AUJOURDHUI, ajouterJours, heure, pluriel } from '../../../data/format';
+import { LIBELLE_MOTIF, activiteAgent, formatDelai, statsAgent, titreJour, type ActiviteAgent } from './logique';
 
 type Periode = 'jour' | '7j';
 
@@ -14,7 +14,6 @@ export function Activite() {
   const [periode, setPeriode] = useState<Periode>('7j');
   const depuis = periode === 'jour' ? AUJOURDHUI : ajouterJours(AUJOURDHUI, -6);
   const activite = useMemo(() => activiteAgent(d.filsMessages, depuis), [d.filsMessages, depuis]);
-  const attente = useMemo(() => enAttenteHumain(d.filsMessages), [d.filsMessages]);
   const stats = useMemo(() => statsAgent(d.filsMessages), [d.filsMessages]);
   const nom = (id: string) => d.logements.find((l) => l.id === id)?.nom ?? 'Logement';
 
@@ -54,66 +53,46 @@ export function Activite() {
             <>{quand}, votre agent n’a rien eu à faire.</>
           )}
         </p>
-        <FilterChips
-          unique
+        <Segmente
           label="Période"
-          filtres={[
-            { cle: 'jour', libelle: 'Aujourd’hui' },
-            { cle: '7j', libelle: '7 derniers jours' },
+          valeur={periode}
+          onChange={setPeriode}
+          options={[
+            { valeur: 'jour', libelle: 'Aujourd’hui' },
+            { valeur: '7j', libelle: '7 derniers jours' },
           ]}
-          actifs={[periode]}
-          onChange={(a) => setPeriode((a[0] as Periode) ?? '7j')}
         />
       </div>
 
-      {/* Une ligne : la liste détaillée est dans Conversations, filtre « Pour vous ». */}
-      {attente.length > 0 && (
-        <Link
-          to="/erp/messagerie"
-          className="flex items-center gap-3 rounded-xl border border-(--lm-alerte)/40 bg-(--lm-surface) px-4 py-3 shadow-(--lm-ombre) hover:bg-(--lm-surface-2)"
-        >
-          <Hand className="size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
-          <span className="min-w-0 flex-1 text-[13.5px] font-medium text-(--lm-encre)">
-            {pluriel(attente.length, 'voyageur attend', 'voyageurs attendent')} votre réponse
-          </span>
-          <span className="text-[12.5px] font-medium text-(--lm-or-texte)">Répondre</span>
-          <ArrowRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
-        </Link>
-      )}
-
+      {/* Les voyageurs qui attendent une réponse sont dans Conversations, filtre « À répondre » : pas de rappel ici. */}
       {jours.length === 0 ? (
-        <EmptyState
-          icone={attente.length ? <Coffee /> : <CheckCircle2 />}
-          titre={periode === 'jour' ? 'Rien pour l’instant aujourd’hui.' : 'Une semaine calme.'}
-        />
+        <EmptyState icone={<CheckCircle2 />} titre={periode === 'jour' ? 'Rien pour l’instant aujourd’hui.' : 'Une semaine calme.'} />
       ) : (
         <div className="space-y-5">
           {jours.map(([jour, liste]) => (
-            <section key={jour} aria-label={dateJour(jour)}>
-              <h3 className="mb-2 text-[12px] font-semibold tracking-wide text-(--lm-encre-3) uppercase">
-                {jour === AUJOURDHUI ? 'Aujourd’hui' : dateJour(jour)}
-              </h3>
+            <section key={jour} aria-label={titreJour(jour)}>
+              <h3 className="mb-2 text-[12px] font-semibold tracking-wide text-(--lm-encre-3) uppercase">{titreJour(jour)}</h3>
               <Card flush>
                 <ol className="divide-y divide-(--lm-bord)">
                   {liste.map((a) => (
                     <li key={a.id}>
-                      <Link to={`/erp/messagerie/${a.fil.id}`} className="flex gap-3 px-4 py-3 hover:bg-(--lm-surface-2)">
+                      <Link to={`/erp/messagerie/${a.fil.id}`} className="flex min-h-16 items-center gap-3 px-4 py-3 hover:bg-(--lm-surface-2)">
                         <span
                           aria-hidden
                           className={cn(
-                            'mt-0.5 grid size-8 shrink-0 place-items-center rounded-full [&_svg]:size-4',
+                            'grid size-9 shrink-0 place-items-center rounded-full [&_svg]:size-4',
                             a.genre === 'reponse' ? 'bg-(--lm-or-lavis) text-(--lm-or-texte)' : 'bg-(--lm-alerte-lavis) text-(--lm-alerte)',
                           )}
                         >
                           {a.genre === 'reponse' ? <MessageCircleReply /> : <Hand />}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className="flex flex-wrap items-baseline gap-x-2">
-                            <span className="text-[13.5px] font-medium text-(--lm-encre)">
-                              {a.genre === 'reponse' ? `A répondu à ${a.fil.voyageur}` : `Vous a passé ${a.fil.voyageur}`}
+                          <span className="flex items-baseline gap-2">
+                            <span className="min-w-0 flex-1 truncate text-[13.5px] text-(--lm-encre)">
+                              <span className="font-medium">{a.genre === 'reponse' ? `A répondu à ${a.fil.voyageur}` : `Vous a passé ${a.fil.voyageur}`}</span>
+                              <span className="text-[12.5px] text-(--lm-encre-3)"> · {nom(a.fil.logementId)}</span>
                             </span>
-                            <span className="text-[12px] text-(--lm-encre-3)">{nom(a.fil.logementId)}</span>
-                            <time dateTime={a.quand} className="lm-chiffres ml-auto text-[12px] text-(--lm-encre-3)">
+                            <time dateTime={a.quand} className="lm-chiffres shrink-0 text-[12px] text-(--lm-encre-3)">
                               {heure(a.quand)}
                             </time>
                           </span>

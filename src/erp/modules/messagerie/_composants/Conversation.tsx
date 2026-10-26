@@ -1,13 +1,21 @@
-/** Colonne centrale : en-tête, bandeau d'escalade, bulles et zone de réponse. */
-import { useEffect, useRef, useState } from 'react';
+/**
+ * Une conversation : en-tête compact, ce que l'agent a transmis, les bulles,
+ * puis la zone de réponse (où en est la conversation, modèles, message).
+ *
+ * « Pas besoin de répondre » termine la conversation sans écrire au voyageur :
+ * elle quitte « À répondre » et « À faire », et revient d'elle-même quand il
+ * réécrit (synchronisation des messages).
+ */
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CheckCheck, Loader2, Lock, RotateCcw, Send } from 'lucide-react';
-import { Alert, Button, MenuActions, StatusBadge, Textarea, cn } from '../../../ui';
+import { ArrowLeft, Bot, CheckCheck, CheckCircle2, Hand, Info, Loader2, Lock, RotateCcw, Send, X } from 'lucide-react';
+import { Alert, Avatar, Button, Drawer, IconButton, MenuActions, Textarea, cn, type ActionMenu } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
-import { dateJour, heure, horodatageMaintenant } from '../../../data/format';
+import { heure, horodatageMaintenant, jourMois } from '../../../data/format';
 import type { FilMessages, Logement, Message, Reservation } from '../../../data/types';
-import { GABARITS, LIBELLE_MOTIF, completudeFiche, eligibiliteCodes, motifEscalade } from './logique';
+import { GABARITS, LIBELLE_MOTIF, attendEquipe, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
+import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 
 /** Réponse de /api/erp-repull-messages. */
@@ -33,36 +41,59 @@ interface Props {
   reservation?: Reservation;
 }
 
+/** Sur ordinateur (souris, pavé tactile), Entrée envoie ; sur téléphone, elle va à la ligne. */
+const ENTREE_ENVOIE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
+const HAUTEUR_MAX_SAISIE = 160;
+
 export function Conversation({ fil, logement, reservation }: Props) {
   const { upsert, mode, lectureSeule } = useErp();
   const [brouillon, setBrouillon] = useState('');
-  const [avis, setAvis] = useState<string | null>(null);
+  const [avis, setAvis] = useState<ReactNode>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envois, setEnvois] = useState<EnvoiLocal[]>([]);
+  const [details, setDetails] = useState(false);
   // Conversation reliée à Airbnb, Booking.com... : la réponse part vraiment chez le voyageur.
   const relie = mode === 'reel' && !!fil.repull?.id;
   const plateforme = nomPlateformeEnvoi(fil.canal);
   const enCours = envois.some((e) => e.etat === 'envoi');
-  const fin = useRef<HTMLDivElement>(null);
+  const defile = useRef<HTMLDivElement>(null);
   const zone = useRef<HTMLTextAreaElement>(null);
   const codes = eligibiliteCodes(fil, reservation);
-  const fiche = completudeFiche(logement);
-  const motif = motifEscalade(fil);
   const prenom = fil.voyageur.split(' ')[0];
+  const attend = attendEquipe(fil);
+  const suivieParAgent = fil.traitePar === 'agent' && fil.statut !== 'clos';
 
-  useEffect(() => {
-    fin.current?.scrollIntoView({ block: 'end' });
-    setBrouillon('');
-    setAvis(null);
-    setErreur(null);
-    setEnvois([]);
-  }, [fil.id]);
-  useEffect(() => {
-    fin.current?.scrollIntoView({ block: 'end' });
-  }, [fil.messages.length, envois, avis]);
   // Le message envoyé est arrivé dans la conversation (temps réel) : la bulle provisoire s'efface.
   const connus = new Set(fil.messages.map((m) => m.id));
   const provisoires = envois.filter((e) => !e.message || !connus.has(e.message.id));
+
+  // Sur le dernier message : à l'ouverture, à chaque nouveau message, et quand la
+  // zone change de taille (fenêtre, panneau qui prend sa hauteur), sauf si l'on
+  // est remonté lire plus haut.
+  const enBas = useRef(true);
+  useLayoutEffect(() => {
+    const el = defile.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    enBas.current = true;
+  }, [fil.messages.length, provisoires.length]);
+  useEffect(() => {
+    const el = defile.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const suivre = new ResizeObserver(() => {
+      if (enBas.current) el.scrollTop = el.scrollHeight;
+    });
+    suivre.observe(el);
+    return () => suivre.disconnect();
+  }, []);
+
+  // La zone de saisie grandit avec le texte, jusqu'à HAUTEUR_MAX_SAISIE.
+  useLayoutEffect(() => {
+    const z = zone.current;
+    if (!z) return;
+    z.style.height = 'auto';
+    z.style.height = `${Math.min(z.scrollHeight + 2, HAUTEUR_MAX_SAISIE)}px`;
+  }, [brouillon]);
 
   const envoyerPlateforme = async (texte: string) => {
     const cle = `${Date.now()}`;
@@ -73,7 +104,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
     try {
       const r = await appelerServeur<ReponseEnvoi>('/api/erp-repull-messages', 'POST', { action: 'envoyer', filId: fil.id, texte });
       setEnvois((l) => l.map((e) => (e.cle === cle ? { ...e, etat: 'envoye', message: r.message } : e)));
-      setAvis(`${r.info} C’est maintenant l’équipe qui suit cette conversation.`);
+      // « Envoyé sur … » est déjà sous la bulle : on ne prévient que si la plateforme a modifié le texte.
+      if (r.reecrit) setAvis(r.info);
     } catch (e) {
       setEnvois((l) => l.filter((x) => x.cle !== cle));
       // Rien n'est parti : le texte revient dans la zone de saisie.
@@ -84,31 +116,52 @@ export function Conversation({ fil, logement, reservation }: Props) {
 
   const envoyer = () => {
     const texte = brouillon.trim();
-    if (!texte || enCours) return;
+    if (!texte || enCours || (relie && lectureSeule)) return;
     if (relie) {
       void envoyerPlateforme(texte);
       return;
     }
     const envoyeLe = horodatageMaintenant();
+    // Comme un envoi sur une plateforme : répondu, la conversation sort de « À répondre » et reste ouverte.
     upsert('filsMessages', {
       ...fil,
-      statut: fil.statut === 'clos' ? 'ouvert' : fil.statut,
+      statut: 'ouvert',
       traitePar: 'humain',
       dernierMessageLe: envoyeLe,
       messages: [...fil.messages, { id: nouvelId('msg'), auteur: 'hote', texte, envoyeLe }],
     });
     setBrouillon('');
-    setAvis(`Message gardé dans l’ERP : ${prenom} n’est pas relié à une plateforme, pensez à lui transmettre (téléphone, e-mail…).`);
+    setAvis(`${prenom} n’est pas relié à une plateforme : pensez à lui transmettre ce message (téléphone, e-mail…).`);
   };
 
-  const clore = () => {
+  /** Terminer sans répondre : la conversation sort de « À répondre » jusqu'au prochain message du voyageur. */
+  const terminer = () => {
     upsert('filsMessages', { ...fil, statut: 'clos', traitePar: fil.traitePar === 'en_attente' ? 'humain' : fil.traitePar });
-    setAvis('Conversation terminée. Vous la retrouverez dans « Terminées ».');
+    setAvis(null);
   };
-  const rouvrir = () => upsert('filsMessages', { ...fil, statut: 'ouvert' });
-  const rendreMain = () => {
+  // Rouvrir : sauf si l'équipe a écrit en dernier, la conversation revient dans « À répondre »
+  // (le voyageur, ou l'agent qui disait transmettre, attend l'équipe).
+  const rouvrir = () => {
+    const equipeEnDernier = fil.messages[fil.messages.length - 1]?.auteur === 'hote';
+    upsert('filsMessages', { ...fil, statut: 'ouvert', traitePar: !equipeEnDernier && fil.traitePar !== 'agent' ? 'en_attente' : fil.traitePar });
+  };
+  const confier = () => {
     upsert('filsMessages', { ...fil, statut: 'ouvert', traitePar: 'agent' });
-    setAvis('Votre agent reprend la conversation. Vous recevrez une copie de chacune de ses réponses sur Telegram.');
+    const fiche = completudeFiche(logement);
+    setAvis(
+      <>
+        Votre agent reprend la conversation.
+        {logement && !fiche.complete && (
+          <>
+            {' '}Il répondra mieux avec les infos du logement :{' '}
+            <Link to={`/erp/logements/${logement.id}?onglet=fiche`} className="font-medium text-(--lm-or-texte) underline-offset-2 hover:underline">
+              les compléter
+            </Link>
+            .
+          </>
+        )}
+      </>,
+    );
   };
 
   const inserer = (texte: string) => {
@@ -116,180 +169,269 @@ export function Conversation({ fil, logement, reservation }: Props) {
     zone.current?.focus();
   };
 
-  const motifReprise = !fiche.complete
-    ? `Il manque des informations dans la fiche du logement (${fiche.manquants.join(', ')}) : votre agent ne peut pas répondre à sa place.`
-    : fil.traitePar === 'agent' && fil.statut === 'ouvert'
-      ? 'Votre agent suit déjà cette conversation.'
-      : undefined;
+  const infos = [
+    logement?.nom,
+    reservation ? `${jourMois(reservation.arrivee)} – ${jourMois(reservation.depart)}` : undefined,
+    LIBELLES.canal[fil.canal],
+  ].filter(Boolean);
 
-  let jourPrecedent = '';
+  const confierAction: ActionMenu | false = !suivieParAgent && { libelle: 'Confier à l’agent', icone: <Bot />, onClick: confier };
+  // « Pas besoin de répondre » et « Rouvrir » sont dans la zone de réponse ; ici, seulement le cas restant.
+  const terminerAction: ActionMenu | false = !attend && fil.statut !== 'clos' && { libelle: 'Marquer comme terminée', icone: <CheckCheck />, onClick: terminer };
+
+  const motif = fil.statut === 'escalade' ? motifEscalade(fil) : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-wrap items-center gap-2 border-b border-(--lm-bord) px-3 py-2.5 sm:px-4">
-        <Link to="/erp/messagerie" className="grid size-8 place-items-center rounded-md text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) lg:hidden" aria-label="Retour aux conversations">
-          <ArrowLeft className="size-4" />
+      <header className="flex h-16 shrink-0 items-center gap-2 border-b border-(--lm-bord) px-2 sm:gap-3 sm:px-4">
+        <Link
+          to="/erp/messagerie"
+          aria-label="Retour aux conversations"
+          className="grid size-10 shrink-0 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) lg:hidden"
+        >
+          <ArrowLeft className="size-5" />
         </Link>
+        <Avatar nom={fil.voyageur} taille="lg" className="max-sm:hidden" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-[15px] font-semibold text-(--lm-encre)">{fil.voyageur}</h2>
-          <p className="truncate text-[12px] text-(--lm-encre-3)">
-            {logement?.nom} · {LIBELLES.canal[fil.canal]}
-          </p>
+          <p className="truncate text-[12.5px] text-(--lm-encre-3)">{infos.join(' · ')}</p>
         </div>
-        {fil.statut === 'clos' && <StatusBadge type="statutFil" valeur={fil.statut} />}
-        {/* Actions sur leur propre ligne : le nom du voyageur reste lisible en entier. */}
-        <div className="flex w-full flex-wrap gap-1.5">
-          <Button size="sm" variant="secondary" icone={<Bot />} onClick={rendreMain} disabled={!!motifReprise} title={motifReprise}>
+        {!suivieParAgent && (
+          <Button variant="secondary" icone={<Bot />} onClick={confier} className="max-sm:hidden">
             Confier à l’agent
           </Button>
-          <MenuActions
-            label="Autres actions sur la conversation"
-            actions={[
-              fil.statut === 'clos'
-                ? { libelle: 'Rouvrir la conversation', icone: <RotateCcw />, onClick: rouvrir }
-                : { libelle: 'Marquer comme terminée', icone: <CheckCheck />, onClick: clore },
-            ]}
-          />
+        )}
+        {/* Même allure que le menu « … » voisin : deux carrés de 36 px. */}
+        <IconButton label="Séjour et logement" variant="secondary" onClick={() => setDetails(true)} className="min-[90rem]:hidden">
+          <Info />
+        </IconButton>
+        {/* Mobile : « Confier à l'agent » rejoint le menu. */}
+        <MenuActions label="Autres actions sur la conversation" actions={[confierAction, terminerAction]} className="sm:hidden" />
+        <MenuActions label="Autres actions sur la conversation" actions={[terminerAction]} className="max-sm:hidden" />
+      </header>
+
+      {motif && (
+        <div className="shrink-0 border-b border-(--lm-bord) bg-(--lm-alerte-lavis) px-4 py-2.5 text-[13px]">
+          <p className="flex items-start gap-2 font-medium text-(--lm-encre)">
+            <Hand className="mt-0.5 size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
+            <span>
+              Votre agent vous a passé la main : {LIBELLE_MOTIF[motif].titre.toLowerCase()}
+              {/* Le résumé de l'agent dit ce que veut le voyageur. */}
+              {fil.agent?.decision === 'transmettre' && fil.agent.resume && <span className="mt-0.5 block font-normal text-(--lm-encre-2)">{fil.agent.resume}</span>}
+            </span>
+          </p>
         </div>
-      </div>
-
-      {fil.statut === 'escalade' && (
-        <Alert tone="danger" titre={`Votre agent vous a passé la main : ${LIBELLE_MOTIF[motif].titre.toLowerCase()}`} className="mx-3 mt-3 sm:mx-4">
-          {/* Le résumé de l'agent dit ce que veut le voyageur ; l'explication générique du motif reste dans « Ce que l'agent a fait ». */}
-          {fil.agent?.decision === 'transmettre' && fil.agent.resume ? fil.agent.resume : undefined}
-        </Alert>
-      )}
-      {erreur && (
-        <Alert tone="danger" titre="Le message n’est pas parti" className="mx-3 mt-3 sm:mx-4" actions={<Button size="sm" variant="ghost" onClick={() => setErreur(null)}>OK</Button>}>
-          {erreur}
-        </Alert>
-      )}
-      {avis && (
-        <Alert tone="succes" className="mx-3 mt-3 sm:mx-4" actions={<Button size="sm" variant="ghost" onClick={() => setAvis(null)}>OK</Button>}>
-          {avis}
-        </Alert>
       )}
 
-      <div className="lm-defilement min-h-0 flex-1 space-y-3 overflow-y-auto bg-(--lm-surface) px-3 py-4 sm:px-5" aria-live="polite">
-        {fil.messages.map((m) => {
-          const jour = m.envoyeLe.slice(0, 10);
-          const separateur = jour !== jourPrecedent;
-          jourPrecedent = jour;
-          const voyageur = m.auteur === 'voyageur';
-          return (
-            <div key={m.id}>
-              {separateur && <p className="my-2 text-center text-[11.5px] font-medium text-(--lm-encre-3) capitalize">{dateJour(jour)}</p>}
-              <div className={cn('flex flex-col', voyageur ? 'items-start' : 'items-end')}>
-                <div
-                  className={cn(
-                    'max-w-[85%] rounded-[18px] px-3.5 py-2 text-[14px] leading-relaxed sm:max-w-[72%]',
-                    voyageur && 'rounded-bl-[6px] bg-(--lm-bulle) text-(--lm-encre)',
-                    m.auteur === 'agent' && 'rounded-br-[6px] bg-(--lm-or-texte) text-white',
-                    m.auteur === 'hote' && 'rounded-br-[6px] bg-(--lm-brun) text-white',
-                  )}
-                >
-                  <p className="whitespace-pre-line">{m.texte}</p>
-                </div>
-                <p className="mt-1 flex items-center gap-1.5 px-2 text-[11px] text-(--lm-encre-3)">
-                  {m.auteur === 'agent' && (
-                    <span className="inline-flex items-center gap-1 font-medium text-(--lm-or-texte)">
-                      <Bot className="size-3" aria-hidden /> Votre agent
-                    </span>
-                  )}
-                  {m.auteur === 'hote' && <span className="font-medium">Équipe</span>}
-                  {m.auteur !== 'voyageur' && (m.envoi || m.id.startsWith('repull-')) && (
-                    <span className="inline-flex items-center gap-0.5" title={m.envoi?.reecrit ? 'La plateforme a retiré un lien ou un numéro : le voyageur a reçu ce texte.' : undefined}>
-                      <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(m.envoi?.canal ?? fil.canal)}
-                    </span>
-                  )}
-                  <time dateTime={m.envoyeLe} className="lm-chiffres">{heure(m.envoyeLe)}</time>
-                </p>
-              </div>
-            </div>
-          );
-        })}
-        {provisoires.map((e) => (
-          <div key={e.cle} className="flex flex-col items-end">
-            <div className={cn('max-w-[85%] rounded-[18px] rounded-br-[6px] bg-(--lm-brun) px-3.5 py-2 text-[14px] leading-relaxed text-white sm:max-w-[72%]', e.etat === 'envoi' && 'opacity-70')}>
-              <p className="whitespace-pre-line">{e.message?.texte ?? e.texte}</p>
-            </div>
-            <p className="mt-1 flex items-center gap-1.5 px-2 text-[11px] text-(--lm-encre-3)" aria-live="polite">
-              {e.etat === 'envoi' ? (
-                <>
-                  <Loader2 className="size-3 animate-spin" aria-hidden /> Envoi sur {plateforme}…
-                </>
-              ) : (
-                <>
-                  <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(e.message?.envoi?.canal ?? fil.canal)}
-                </>
-              )}
-            </p>
-          </div>
-        ))}
-        <div ref={fin} />
-      </div>
-
-      <div className="border-t border-(--lm-bord) bg-(--lm-surface) p-3">
-        <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Réponses rapides">
-          <span className="text-[12px] text-(--lm-encre-3)">Modèles :</span>
-          {GABARITS.map((g) => {
-            const bloque = (g.sensible && !codes.autorise) || !logement;
+      <div
+        ref={defile}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          enBas.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+        }}
+        className="lm-defilement min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-6"
+        aria-live="polite"
+      >
+        <ol className="mx-auto flex max-w-3xl flex-col" aria-label={`Messages avec ${fil.voyageur}`}>
+          {fil.messages.map((m, i) => {
+            const prec = fil.messages[i - 1];
+            const suiv = fil.messages[i + 1];
+            const jour = m.envoyeLe.slice(0, 10);
+            const nouveauJour = !prec || prec.envoyeLe.slice(0, 10) !== jour;
+            const suite = !nouveauJour && prec?.auteur === m.auteur;
+            // Auteur et heure sous la dernière bulle d'une série.
+            const finSerie = !suiv || suiv.auteur !== m.auteur || suiv.envoyeLe.slice(0, 10) !== jour;
             return (
-              <button
-                key={g.cle}
-                type="button"
-                disabled={bloque}
-                onClick={() => logement && inserer(g.texte(logement, prenom))}
-                title={bloque ? `Pas de codes d’accès pour ce voyageur (${codes.raison})` : `Insérer le modèle ${g.libelle}`}
-                className="inline-flex h-7 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-2.5 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {bloque && <Lock className="size-3" aria-hidden />}
-                {g.libelle}
-              </button>
+              <li key={m.id}>
+                {nouveauJour && <p className={cn('mb-1 text-center text-[12px] font-medium text-(--lm-encre-3) first-letter:uppercase', i > 0 && 'mt-6')}>{titreJour(jour)}</p>}
+                <Bulle message={m} canal={fil.canal} suite={suite} finSerie={finSerie} />
+              </li>
             );
           })}
-        </div>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            envoyer();
-          }}
-          className="flex items-end gap-2"
-        >
-          <label htmlFor="composer" className="sr-only">
-            Répondre à {fil.voyageur}
-          </label>
-          <Textarea
-            id="composer"
-            aria-keyshortcuts="Control+Enter"
-            ref={zone}
-            rows={2}
-            value={brouillon}
-            onChange={(e) => setBrouillon(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) envoyer();
-            }}
-            placeholder={`Écrire à ${prenom}…`}
-            className="min-h-[64px] resize-y"
-          />
-          <Button type="submit" variant="primary" icone={enCours ? <Loader2 className="animate-spin" /> : <Send />} disabled={!brouillon.trim() || enCours || (relie && lectureSeule)}>
-            <span className="hidden sm:inline">{enCours ? 'Envoi…' : 'Envoyer'}</span>
-            <span className="sr-only sm:hidden">{enCours ? 'Envoi en cours' : 'Envoyer'}</span>
-          </Button>
-        </form>
-        <p className="mt-1.5 text-[11.5px] text-(--lm-encre-3)" title="Ctrl + Entrée pour envoyer. En répondant, vous reprenez la conversation.">
-          {relie ? (
-            <>
-              Part chez {prenom} sur <strong className="font-medium text-(--lm-encre-2)">{plateforme}</strong>.{' '}
-            </>
-          ) : (
-            <>
-              <strong className="font-medium text-(--lm-encre-2)">Gardé dans l’ERP</strong>, rien n’est envoyé au voyageur.{' '}
-            </>
-          )}
-          Ne promettez pas d’argent sans l’équipe.
-        </p>
+          {provisoires.map((e) => (
+            <li key={e.cle} className="mt-3 flex flex-col items-end">
+              <div className={cn('max-w-[85%] rounded-[18px] rounded-br-[6px] bg-(--lm-brun) px-3.5 py-2 text-[14.5px] leading-snug text-white sm:max-w-[75%]', e.etat === 'envoi' && 'opacity-70')}>
+                <p className="whitespace-pre-line">{e.message?.texte ?? e.texte}</p>
+              </div>
+              <p className="mt-1 flex items-center gap-1 px-1 text-[11.5px] text-(--lm-encre-3)">
+                {e.etat === 'envoi' ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin" aria-hidden /> Envoi sur {plateforme}…
+                  </>
+                ) : (
+                  <>
+                    <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(e.message?.envoi?.canal ?? fil.canal)}
+                  </>
+                )}
+              </p>
+            </li>
+          ))}
+        </ol>
       </div>
+
+      <div className="shrink-0 border-t border-(--lm-bord) bg-(--lm-surface) px-3 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-4">
+        <div className="mx-auto max-w-3xl space-y-2">
+          {erreur && (
+            <Alert tone="danger" titre="Le message n’est pas parti" className="py-2.5" actions={<Fermer onClick={() => setErreur(null)} />}>
+              {erreur}
+            </Alert>
+          )}
+          {avis && (
+            <div role="status" className="flex items-start gap-2 rounded-lg bg-(--lm-succes-lavis) py-1 pr-1 pl-3 text-[13px] text-(--lm-encre)">
+              <CheckCircle2 className="mt-1.5 size-4 shrink-0 text-(--lm-succes)" aria-hidden />
+              <p className="min-w-0 flex-1 py-1">{avis}</p>
+              <Fermer onClick={() => setAvis(null)} />
+            </div>
+          )}
+
+          {(attend || fil.statut === 'clos' || suivieParAgent) && (
+            <div className="flex min-h-10 items-center gap-2 rounded-lg bg-(--lm-surface-2) py-1 pr-1 pl-3 text-[13px]">
+              <p className="min-w-0 flex-1 text-(--lm-encre-2)">
+                {attend ? (
+                  <>
+                    <strong className="font-medium text-(--lm-encre)">{prenom}</strong> attend votre réponse.
+                  </>
+                ) : fil.statut === 'clos' ? (
+                  'Conversation terminée. Elle revient ici si le voyageur réécrit.'
+                ) : (
+                  'Votre agent suit cette conversation. Si vous répondez, vous reprenez la main.'
+                )}
+              </p>
+              {attend && (
+                <Button size="sm" variant="ghost" icone={<CheckCheck />} onClick={terminer} className="shrink-0">
+                  Pas besoin de répondre
+                </Button>
+              )}
+              {fil.statut === 'clos' && (
+                <Button size="sm" variant="ghost" icone={<RotateCcw />} onClick={rouvrir} className="shrink-0">
+                  Rouvrir
+                </Button>
+              )}
+            </div>
+          )}
+
+          <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Modèles de réponse">
+            <span className="shrink-0 text-[12px] text-(--lm-encre-3)">Modèles</span>
+            {GABARITS.map((g) => {
+              const bloque = (g.sensible && !codes.autorise) || !logement;
+              return (
+                <button
+                  key={g.cle}
+                  type="button"
+                  disabled={bloque}
+                  onClick={() => logement && inserer(g.texte(logement, prenom))}
+                  title={bloque ? `Pas de codes d’accès pour ce voyageur (${codes.raison})` : `Insérer le modèle ${g.libelle}`}
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {bloque && <Lock className="size-3" aria-hidden />}
+                  {g.libelle}
+                </button>
+              );
+            })}
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              envoyer();
+            }}
+            className="flex items-end gap-2"
+          >
+            <label htmlFor="composer" className="sr-only">
+              Répondre à {fil.voyageur}
+            </label>
+            <Textarea
+              id="composer"
+              aria-keyshortcuts={ENTREE_ENVOIE ? 'Enter' : 'Control+Enter'}
+              ref={zone}
+              rows={1}
+              value={brouillon}
+              onChange={(e) => setBrouillon(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                if (e.metaKey || e.ctrlKey || (ENTREE_ENVOIE && !e.shiftKey)) {
+                  e.preventDefault();
+                  envoyer();
+                }
+              }}
+              placeholder={relie ? `Répondre à ${prenom} sur ${plateforme}…` : `Écrire à ${prenom}…`}
+              className="min-h-11 resize-none py-2.5"
+              style={{ maxHeight: HAUTEUR_MAX_SAISIE }}
+            />
+            <Button
+              type="submit"
+              variant="primary"
+              aria-label={enCours ? 'Envoi en cours' : 'Envoyer'}
+              icone={enCours ? <Loader2 className="animate-spin" /> : <Send />}
+              disabled={!brouillon.trim() || enCours || (relie && lectureSeule)}
+              className="h-11 w-11 shrink-0 px-0 sm:w-auto sm:px-4"
+            >
+              <span className="max-sm:hidden">{enCours ? 'Envoi…' : 'Envoyer'}</span>
+            </Button>
+          </form>
+          <p className="text-[12px] text-(--lm-encre-3)">
+            {relie ? (
+              <>
+                Part chez {prenom} sur <strong className="font-medium text-(--lm-encre-2)">{plateforme}</strong>.
+              </>
+            ) : (
+              <>
+                <strong className="font-medium text-(--lm-encre-2)">Gardé dans l’ERP</strong> : rien n’est envoyé au voyageur.
+              </>
+            )}
+            {ENTREE_ENVOIE && <span className="max-lg:hidden"> Entrée pour envoyer, Maj + Entrée pour aller à la ligne.</span>}
+          </p>
+        </div>
+      </div>
+
+      <Drawer ouvert={details} onFermer={() => setDetails(false)} titre={fil.voyageur} sousTitre="Séjour et logement" largeur="md">
+        <PanneauContexte fil={fil} logement={logement} reservation={reservation} enTiroir />
+      </Drawer>
+    </div>
+  );
+}
+
+function Fermer({ onClick }: { onClick: () => void }) {
+  return (
+    <IconButton label="Fermer" size="sm" onClick={onClick}>
+      <X />
+    </IconButton>
+  );
+}
+
+/** Bulle sans contour : voyageur à gauche, agent (or) et équipe (brun) à droite ; auteur et heure dessous. */
+function Bulle({ message: m, canal, suite, finSerie }: { message: Message; canal: string; suite: boolean; finSerie: boolean }) {
+  const voyageur = m.auteur === 'voyageur';
+  const envoye = !voyageur && (m.envoi || m.id.startsWith('repull-'));
+  return (
+    <div className={cn('flex flex-col', voyageur ? 'items-start' : 'items-end', suite ? 'mt-1' : 'mt-3')}>
+      <div
+        className={cn(
+          'max-w-[85%] rounded-[18px] px-3.5 py-2 text-[14.5px] leading-snug sm:max-w-[75%]',
+          voyageur ? 'bg-(--lm-bulle) text-(--lm-encre)' : m.auteur === 'agent' ? 'bg-(--lm-or-texte) text-white' : 'bg-(--lm-brun) text-white',
+          finSerie && (voyageur ? 'rounded-bl-[6px]' : 'rounded-br-[6px]'),
+        )}
+      >
+        <p className="break-words whitespace-pre-line">{m.texte}</p>
+      </div>
+      {finSerie && (
+        <p className="mt-1 flex flex-wrap items-center gap-x-1.5 px-1 text-[11.5px] text-(--lm-encre-3)">
+          {m.auteur === 'agent' && (
+            <span className="inline-flex items-center gap-1 font-medium text-(--lm-or-texte)">
+              <Bot className="size-3" aria-hidden /> Réponse de l’agent
+            </span>
+          )}
+          {m.auteur === 'hote' && <span className="font-medium">Équipe</span>}
+          {envoye && (
+            <span className="inline-flex items-center gap-0.5" title={m.envoi?.reecrit ? 'La plateforme a retiré un lien ou un numéro : le voyageur a reçu ce texte.' : undefined}>
+              <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(m.envoi?.canal ?? canal)}
+            </span>
+          )}
+          <time dateTime={m.envoyeLe} className="lm-chiffres">
+            {heure(m.envoyeLe)}
+          </time>
+        </p>
+      )}
     </div>
   );
 }
