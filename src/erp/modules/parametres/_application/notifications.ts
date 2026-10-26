@@ -40,7 +40,7 @@ const message = (e: unknown) => (e instanceof ErreurServeur ? e.message : 'L’a
 
 /** Activation ratée : message du serveur, sinon une phrase claire (jamais l'erreur brute du navigateur). */
 export const messageActivation = (e: unknown) =>
-  e instanceof ErreurServeur ? e.message : 'L’activation n’a pas abouti sur cet appareil. Réessayez, ou activez-les dans Paramètres → Application.';
+  e instanceof ErreurServeur ? e.message : 'L’activation n’a pas abouti sur cet appareil. Réessayez dans un instant.';
 
 /** Valeurs par défaut, pour montrer les réglages avant l'abonnement. */
 export const PREFERENCES_DEFAUT: Record<TypeNotification, boolean> = Object.fromEntries(
