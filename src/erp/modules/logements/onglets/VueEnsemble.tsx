@@ -16,6 +16,7 @@ import { Galerie } from '../_composants/Galerie';
 import { SansPhoto } from '../_composants/SansPhoto';
 import { AjouterPhotos, LienAirbnb, OrganiserPhotos } from '../_composants/PhotosEquipe';
 import { CarteEspaceProprietaire } from '../_composants/EspaceProprietaireGerant';
+import { ResponsablesLogement } from '../_composants/ResponsablesLogement';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 
@@ -174,6 +175,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
         <div className="flex min-w-0 flex-col gap-5">
           <Proprietaire logement={l} />
+          <ResponsablesLogement logement={l} />
 
           <Card>
             <CardHeader titre="Le logement" />
@@ -295,6 +297,17 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
   const prop = proprietaireById(d, l.proprietaireId);
   const dossier = d.donnees.dossiers.find((x) => x.logementId === l.id);
   const renseigne = prop && prop.id !== ID_PROPRIETAIRE_A_RENSEIGNER;
+  // Mandat de gestion du logement : le plus récent.
+  const mandat = d.mandats.filter((m) => m.logementId === l.id).sort((a, b) => (b.signeLe ?? b.dateDebut).localeCompare(a.signeLe ?? a.dateDebut))[0];
+  const ligneMandat = !mandat
+    ? undefined
+    : mandat.statut === 'signe'
+      ? `Mandat signé le ${dateCourte(mandat.signeLe ?? mandat.dateDebut)} · ${String(mandat.commissionPct).replace('.', ',')} %`
+      : mandat.statut === 'envoye'
+        ? 'Mandat envoyé, pas encore signé'
+        : mandat.statut === 'resilie'
+          ? `Mandat résilié${mandat.resilieLe ? ` le ${dateCourte(mandat.resilieLe)}` : ''}`
+          : 'Mandat en préparation';
   return (
     <>
       <Card>
@@ -331,9 +344,18 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
                 <span className="truncate">{prop.contact.email}</span>
               </a>
             )}
+            {ligneMandat && <p className="pt-0.5 text-(--lm-encre-2)">{ligneMandat}</p>}
           </div>
         )}
         {renseigne && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
+        {!d.lectureSeule && (
+          <Link
+            to={`/erp/parametres/acces?logement=${encodeURIComponent(l.id)}`}
+            className="mt-1 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+          >
+            Propriétaires et accès
+          </Link>
+        )}
       </Card>
       {dossier && (
         <Repli titre="Dossier propriétaire" description={`Réponses reçues le ${dateCourte(dossier.recuLe.slice(0, 10))}`}>

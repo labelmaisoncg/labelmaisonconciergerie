@@ -34,8 +34,8 @@ interface EtatServeur {
 
 const API = '/api/espace-proprietaire';
 
-/** État de l'accès en une ligne (« Connecté le 21 sept. 2026 »). */
-function statutAcces(a: AccesProprietaire | undefined): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
+/** État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour Paramètres → Accès. */
+export function statutAcces(a: AccesProprietaire | undefined): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
   if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
   if (a.statut === 'retire') return { texte: `Accès retiré${a.retireLe ? ` le ${dateCourte(a.retireLe.slice(0, 10))}` : ''}`, ton: 'neutre' };
   if (a.statut === 'actif') return { texte: `Connecté${a.derniereConnexion ? ` le ${dateCourte(a.derniereConnexion.slice(0, 10))}` : ''}`, ton: 'succes' };
@@ -62,7 +62,8 @@ export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietai
   );
 }
 
-function PanneauEspace({ proprietaire: p, logement, onFermer }: { proprietaire: Proprietaire; logement: Logement; onFermer: () => void }) {
+/** Le panneau complet (accès, bilans, documents) ; ouvert aussi depuis Paramètres → Accès, sans logement. */
+export function PanneauEspace({ proprietaire: p, logement, onFermer }: { proprietaire: Proprietaire; logement?: Logement; onFermer: () => void }) {
   const [apercu, setApercu] = useState(false);
   const [serveur, setServeur] = useState<EtatServeur | null>(MODE_DEMO ? { actif: true, email: false } : null);
   useEffect(() => {
@@ -365,7 +366,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
 
 /* ------------------------------------------------------------- documents */
 
-function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; logement: Logement }) {
+function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; logement?: Logement }) {
   const d = useErp();
   const [categorie, setCategorie] = useState<CategorieDocumentProprietaire>('contrat');
   const [titre, setTitre] = useState('');
@@ -381,7 +382,7 @@ function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; 
       d.upsert('documentsProprietaire', {
         id: nouvelId('docp'),
         proprietaireId: p.id,
-        logementId: logement.id,
+        ...(logement ? { logementId: logement.id } : {}),
         categorie,
         titre: (urls.length === 1 && titre.trim()) || nom.replace(/\.[a-z0-9]{1,5}$/i, ''),
         fichier: url,
