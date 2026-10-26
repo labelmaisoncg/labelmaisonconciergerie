@@ -12,14 +12,14 @@
  * même calcul tourne dans le navigateur et rien n'est envoyé.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Send, X } from 'lucide-react';
+import { ChevronDown, Send, X } from 'lucide-react';
 import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros } from '../../../data/format';
 import { useErp } from '../../../data/store';
 import { REGLAGES_RELANCES_DEFAUT, messageRelance, montantTtcFacture, planifierRelances, reglagesRelances } from '../../../data/relances';
 import type { RelancePaiement, ReglagesRelances } from '../../../data/types-proprietaire';
-import { Alert, Badge, Button, Field, Input, Interrupteur, Repli } from '../../../ui';
+import { Alert, Badge, Button, Field, Input, Interrupteur } from '../../../ui';
 import { appelerServeur } from '../../messagerie/_composants/serveur';
 
 const API = '/api/espace-proprietaire';
@@ -122,14 +122,12 @@ function Reglages({ reglages, onChange }: { reglages: ReglagesRelances; onChange
           <input type="radio" name="mode-relances" className="mt-1 accent-(--lm-or-texte)" checked={reglages.mode === 'proposer'} onChange={() => onChange({ ...reglages, mode: 'proposer' })} />
           <span>
             Je valide chaque relance
-            <span className="block text-[12.5px] text-(--lm-encre-2)">Le passage du matin prépare les relances ; rien ne part sans vous.</span>
           </span>
         </label>
         <label className={radio}>
           <input type="radio" name="mode-relances" className="mt-1 accent-(--lm-or-texte)" checked={reglages.mode === 'automatique'} onChange={() => onChange({ ...reglages, mode: 'automatique' })} />
           <span>
             Envoi automatique par e-mail
-            <span className="block text-[12.5px] text-(--lm-encre-2)">Avec l’expéditeur de l’espace ; sans expéditeur, la relance attend votre validation.</span>
           </span>
         </label>
       </fieldset>
@@ -165,7 +163,7 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
         <h3 className="text-[15px] font-semibold text-(--lm-encre)">Relances de paiement</h3>
         <p className="text-[13px] text-(--lm-encre-2)">Pour les factures partagées et à payer, après l’échéance. Tout s’arrête dès qu’une facture est payée.</p>
       </div>
-      {erreur && <Alert tone="alerte">{erreur}</Alert>}
+      {erreur && <Alert tone="danger">{erreur}</Alert>}
       {!etat ? (
         <p className="text-[13.5px] text-(--lm-encre-2)">Chargement…</p>
       ) : (
@@ -208,10 +206,16 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
                         </div>
                       </div>
                       {m && (
-                        <Repli titre="Voir le message" className="mt-2">
-                          <p className="text-[13px] font-medium text-(--lm-encre)">{m.sujet}</p>
-                          <p className="mt-1 text-[13px] whitespace-pre-line text-(--lm-encre-2)">{m.texte}</p>
-                        </Repli>
+                        <details className="group mt-1">
+                          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+                            Voir le message
+                            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+                          </summary>
+                          <div className="mt-1 rounded-lg bg-(--lm-surface-2) p-3">
+                            <p className="text-[13px] font-medium text-(--lm-encre)">{m.sujet}</p>
+                            <p className="mt-1 text-[13px] whitespace-pre-line text-(--lm-encre-2)">{m.texte}</p>
+                          </div>
+                        </details>
                       )}
                     </li>
                   );
@@ -231,7 +235,7 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
                     </span>
                     <span className="shrink-0 text-(--lm-encre-2)">
                       {r.envoyeeLe ? dateCourte(r.envoyeeLe.slice(0, 10)) : ''}
-                      {r.envoyeePar === 'automatique' ? ' · auto' : ''}
+                      {r.envoyeePar === 'automatique' ? ' · automatique' : ''}
                     </span>
                   </li>
                 ))}

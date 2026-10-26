@@ -64,7 +64,6 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
                   <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)">
                     {f.numero}
                     <Badge tone={s.ton}>{s.libelle}</Badge>
-                    {f.partageeLe && <Badge tone="neutre">Partagée</Badge>}
                   </p>
                   <p className="text-[12.5px] text-(--lm-encre-2)">
                     {euros(montantTtcFacture(f))} TTC · échéance {dateCourte(f.echeance)}
