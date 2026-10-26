@@ -10,10 +10,12 @@
  *     && node /tmp/verifier-proprietaire.mjs
  */
 import {
+  avisPublic,
   bilanMensuel,
   bilansPublies,
   calendrierMois,
   chiffresPublics,
+  ficheLogement,
   joursDuMois,
   logementsDe,
   memesChiffres,
@@ -112,7 +114,8 @@ const resa = (logementId: string, arrivee: string, depart: string, o: Partial<Re
   commissionPlateformeCentimes: 7_500,
   fraisMenageCentimes: 5_000,
   noteVoyageur: 5,
-  commentaireVoyageur: 'AVIS-PRIVE',
+  // Seul le « Message privé » est privé : il ne doit jamais sortir.
+  commentaireVoyageur: 'Très bon séjour.\n\nMessage privé : AVIS-PRIVE',
   ...o,
 });
 
@@ -289,6 +292,78 @@ async function main() {
   const entete = enteteCookie(cookie, 60);
   verifier(/HttpOnly/.test(entete) && /Secure/.test(entete) && /SameSite=Lax/.test(entete) && /Path=\/api\/espace-proprietaire/.test(entete), 'cookie HttpOnly, Secure, SameSite, limité à l’API');
   verifier(lireCookie(`autre=1; lm_proprio=${cookie}; x=2`) === cookie && lireCookie('autre=1') === undefined, 'lecture du cookie');
+
+  /* « Mes logements » : 12 derniers mois, comparaison, avis, prochains séjours */
+  {
+    const P = 'pro-p';
+    const Q = 'pro-q';
+    const l1 = logement('log-p1', P);
+    const l2 = logement('log-p2', P);
+    const lq = logement('log-q', Q);
+    const r = (logementId: string, arrivee: string, depart: string, brut: number, o: Partial<Reservation> = {}) =>
+      resa(logementId, arrivee, depart, { montantBrutCentimes: brut, commissionPlateformeCentimes: 0, fraisMenageCentimes: 2_000, voyageur: { nom: 'Lucie Perrin', nbPersonnes: 2 }, noteVoyageur: undefined, commentaireVoyageur: undefined, ...o });
+    const donnees: EntreesProprietaire = {
+      proprietaires: [proprietaire(P, 'Paul P'), proprietaire(Q, 'Quentin Q')],
+      logements: [l1, l2, lq],
+      mandats: [{ ...mandat('m-p1', P, 'log-p1', 20), dateDebut: '2024-06-01' }, { ...mandat('m-p2', P, 'log-p2', 10), dateDebut: '2026-08-16' }, mandat('m-q', Q, 'log-q', 20)],
+      reservations: [
+        // log-p1 : premier séjour en novembre 2024 (septembre et octobre 2024 : pas de données).
+        r('log-p1', '2024-11-05', '2024-11-09', 42_000),
+        r('log-p1', '2025-08-10', '2025-08-14', 42_000),
+        r('log-p1', '2025-09-28', '2025-10-02', 42_000, { noteVoyageur: 4, commentaireVoyageur: 'Bien, merci.\n\nMessage privé : PRIVE-NE-PAS-MONTRER' }),
+        r('log-p1', '2026-08-10', '2026-08-14', 62_000, { noteVoyageur: 5, commentaireVoyageur: 'Parfait ! Écrivez-moi : lucie@exemple.invalid ou 06 12 34 56 78, https://exemple.invalid/x' }),
+        r('log-p1', '2026-08-30', '2026-09-02', 32_000, { noteVoyageur: 3 }),
+        r('log-p1', '2026-07-01', '2026-07-05', 99_000, { statut: 'annulee', noteVoyageur: 1, commentaireVoyageur: 'ANNULEE' }),
+        r('log-p1', '2026-09-22', '2026-09-26', 40_000, { statut: 'en_cours', voyageur: { nom: 'Marc Durand', nbPersonnes: 3 } }),
+        r('log-p1', '2026-10-03', '2026-10-05', 30_000, { statut: 'confirmee' }),
+        // log-p2 : mandat au 16 août 2026.
+        r('log-p2', '2026-08-17', '2026-08-21', 30_000),
+        // Un autre propriétaire : jamais dans la fiche de P.
+        r('log-q', '2026-08-02', '2026-08-06', 70_000, { noteVoyageur: 2, commentaireVoyageur: 'AVIS-DE-QUENTIN', voyageur: { nom: 'Zacharie Autre', nbPersonnes: 4 } }),
+      ],
+      documentsProprietaire: [],
+      bilansProprietaire: [],
+    };
+    const auj = '2026-09-24';
+    const f = ficheLogement(donnees, 'log-p1', auj);
+    verifier(f.mois.length === 12 && f.mois[0].mois === '2025-09' && f.mois[11].mois === '2026-08', 'fiche : les 12 derniers mois terminés');
+    verifier(f.mois.every((m) => m.suivi), 'fiche : mois suivis depuis le premier séjour connu');
+    const aout = f.mois[11];
+    // Août 2026 : 4 nuits (10-14) + 2 nuits sur 3 (30 août → 2 sept.), l'annulé exclu.
+    verifier(aout.nuits === 6 && aout.sejours === 2 && Math.abs(aout.occupation - 6 / 31) < 1e-9, 'mois : nuits, séjours, occupation');
+    const b = bilanMensuel(donnees, P, '2026-08');
+    const bP1 = b.logements.find((l) => l.logementId === 'log-p1')!;
+    verifier(aout.net === bP1.net && aout.encaisse === bP1.encaisse, 'mois : même net que le bilan du mois');
+    verifier(aout.prixMoyenNuit === Math.round(aout.hebergement / aout.nuits) && aout.hebergement === bP1.encaisse - bP1.menage, 'mois : prix moyen par nuit = encaissé hors ménage / nuits');
+    const sept25 = f.mois[0];
+    verifier(sept25.nuits === 3 && f.mois[1].nuits === 1 && f.mois[1].mois === '2025-10', 'séjour à cheval (28 sept. → 2 oct.) : 3 nuits en septembre, 1 en octobre');
+    verifier(f.totaux.nuits === f.mois.reduce((x, m) => x + m.nuits, 0) && f.totaux.net === f.mois.reduce((x, m) => x + m.net, 0), '12 mois : totaux = somme des mois');
+    verifier(f.totaux.sejours === 3, '12 mois : un séjour à cheval sur deux mois compté une fois');
+    verifier(f.totaux.jours === 365 && Math.abs(f.totaux.occupation - f.totaux.nuits / 365) < 1e-9, '12 mois : occupation sur les jours gérés');
+    // Comparaison : sept. et oct. 2024 sans données → 10 mois comparables.
+    verifier(f.comparaison?.nbMois === 10, 'comparaison : seulement les mois suivis les deux années');
+    verifier(f.comparaison!.precedent.nuits === 4 + 4 && f.comparaison!.actuel.nuits === f.mois.slice(2).reduce((x, m) => x + m.nuits, 0), 'comparaison : mêmes mois, un an plus tôt');
+    const f2 = ficheLogement(donnees, 'log-p2', auj);
+    verifier(f2.mois.filter((m) => m.suivi).map((m) => m.mois).join() === '2026-08' && f2.mois[11].jours === 16 && Math.abs(f2.mois[11].occupation - 4 / 16) < 1e-9, 'mandat au 16 août : août seul, occupation sur 16 jours');
+    verifier(!f2.comparaison && !f2.avis, 'pas de données l’an dernier ni d’avis : ni comparaison ni avis');
+    const vide = ficheLogement({ reservations: [], mandats: [] }, 'log-vide', auj);
+    verifier(vide.mois.every((m) => !m.suivi) && vide.totaux.mois === 0 && vide.totaux.nuits === 0 && !vide.comparaison, 'logement sans séjour : aucun mois inventé');
+    // Avis : séjours terminés et non annulés, partie publique seulement.
+    verifier(f.avis?.nombre === 3 && f.avis.moyenne === 4, 'avis : moyenne et nombre (annulé exclu)');
+    verifier(f.avis!.derniers.map((a) => a.date).join() === '2026-09-02,2026-08-14,2025-10-02', 'avis : les plus récents d’abord');
+    const textes = JSON.stringify(f.avis);
+    verifier(!/PRIVE-NE-PAS-MONTRER|Message privé|lucie@|06 12 34|https?:|ANNULEE|Perrin/.test(textes) && /Lucie P\./.test(textes), 'avis : sans message privé, adresse, numéro, lien ni nom complet');
+    verifier(avisPublic('Message privé : rien') === undefined && avisPublic('a'.repeat(700))!.length === 600 && avisPublic('Super séjour') === 'Super séjour', 'avis : partie publique, 600 caractères au plus');
+    // Prochains séjours : en cours puis à venir.
+    verifier(f.prochainsSejours.map((s) => s.arrivee).join() === '2026-09-22,2026-10-03' && f.prochainsSejours[0].voyageur === 'Marc D.', 'prochains séjours : séjour en cours, puis à venir, « Prénom N. »');
+    // Isolation : la vue de P ne contient que ses fiches.
+    const vP = vueProprietaire(donnees, P, { aujourdhui: auj })!;
+    const tP = JSON.stringify(vP.fiches);
+    verifier(vP.fiches.map((x) => x.logementId).join() === 'log-p1,log-p2', 'vue : une fiche par logement du propriétaire');
+    verifier(!/log-q|AVIS-DE-QUENTIN|Zacharie|Quentin/.test(tP), 'vue : rien du logement d’un autre propriétaire (avis, voyageurs, montants)');
+    const fq = ficheLogement(donnees, 'log-q', auj);
+    verifier(!JSON.stringify(fq).includes('Lucie') && fq.avis?.nombre === 1, 'fiche d’un logement : ses séjours seulement');
+  }
 
   /* espaces : chaque accès appartient à l'espace qui l'a créé */
   const LM = ID_LABEL_MAISON;

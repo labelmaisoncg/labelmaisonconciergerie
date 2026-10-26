@@ -197,6 +197,63 @@ export interface ContactsConciergerie {
   site: string;
 }
 
+/* ------------------------------------------ fiche « Mes logements » */
+
+/** Un mois d'un logement. `suivi` : le mois est couvert par les données de l'ERP. */
+export interface MoisPerformance {
+  mois: string;
+  suivi: boolean;
+  net: Centimes;
+  encaisse: Centimes;
+  /** Encaissé hors ménage (base du prix moyen par nuit). */
+  hebergement: Centimes;
+  nuits: number;
+  sejours: number;
+  /** Jours où le logement était géré (dénominateur de l'occupation). */
+  jours: number;
+  occupation: number;
+  prixMoyenNuit: Centimes;
+}
+
+/** Totaux sur des mois suivis : séjours comptés une fois, même à cheval sur deux mois. */
+export interface TotauxPerformance {
+  mois: number;
+  net: Centimes;
+  encaisse: Centimes;
+  nuits: number;
+  sejours: number;
+  jours: number;
+  occupation: number;
+  prixMoyenNuit: Centimes;
+}
+
+/** Mêmes mois, un an plus tôt : seulement les mois suivis les deux années. */
+export interface ComparaisonPerformance {
+  nbMois: number;
+  actuel: TotauxPerformance;
+  precedent: TotauxPerformance;
+}
+
+/** Avis d'un voyageur : « Prénom N. », note, partie publique du commentaire seulement. */
+export interface AvisVue {
+  date: DateISO;
+  note: number;
+  texte?: string;
+  voyageur: string;
+  canal: CanalReservation;
+}
+
+export interface FicheLogementVue {
+  logementId: Id;
+  /** Les 12 derniers mois terminés, du plus ancien au plus récent. */
+  mois: MoisPerformance[];
+  totaux: TotauxPerformance;
+  comparaison?: ComparaisonPerformance;
+  avis?: { moyenne: number; nombre: number; derniers: AvisVue[] };
+  /** Séjour en cours et prochains séjours. */
+  prochainsSejours: ArriveeVue[];
+}
+
 /** Tout ce que le propriétaire voit, et rien d'autre. */
 export interface VueProprietaire {
   proprietaire: { id: Id; nom: string };
@@ -208,6 +265,8 @@ export interface VueProprietaire {
   moisPrecedent: ChiffresMoisVue;
   prochainesArrivees: ArriveeVue[];
   calendrier: { mois: string; logements: CalendrierLogement[] };
+  /** Une fiche par logement géré (onglet « Mes logements »). */
+  fiches: FicheLogementVue[];
   bilans: BilanVue[];
   documents: DocumentVue[];
   /** Contacts de la conciergerie ; absents si l'espace n'en a pas renseigné. */
