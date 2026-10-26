@@ -31,14 +31,23 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
   const ref = useRef<HTMLDivElement>(null);
   const bouton = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const [aGauche, setAGauche] = useState(false);
+  // Décalage horizontal pour que le menu reste dans l'écran, quel que soit l'emplacement du bouton.
+  const [decalage, setDecalage] = useState(0);
   const id = useId();
   const liste = actions.filter((a): a is ActionMenu => !!a);
 
-  // Menu aligné à droite du bouton, sauf s'il sortirait de l'écran (bouton en début de ligne, sur mobile).
+  // Menu aligné à droite du bouton, puis ramené dans l'écran s'il en sortirait d'un côté ou de l'autre (mobile).
   useLayoutEffect(() => {
-    if (!ouvert) setAGauche(false);
-    else if ((menu.current?.getBoundingClientRect().left ?? 0) < 8) setAGauche(true);
+    if (!ouvert) {
+      setDecalage(0);
+      return;
+    }
+    const r = menu.current?.getBoundingClientRect();
+    if (!r) return;
+    const marge = 8;
+    const largeur = document.documentElement.clientWidth;
+    if (r.left < marge) setDecalage(marge - r.left);
+    else if (r.right > largeur - marge) setDecalage(largeur - marge - r.right);
   }, [ouvert]);
 
   useEffect(() => {
@@ -104,8 +113,9 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
           aria-label={label}
           className={cn(
             'lm-apparition absolute z-40 mt-1 w-max max-w-[min(20rem,calc(100vw-2rem))] min-w-56 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-1 shadow-(--lm-ombre-haute)',
-            aGauche ? 'left-0' : 'right-0',
+            'right-0',
           )}
+          style={decalage ? { right: -decalage } : undefined}
         >
           {liste.map((a, i) => {
             const fermer = () => setOuvert(false);
