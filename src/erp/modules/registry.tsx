@@ -80,15 +80,6 @@ export const MODULES: ModuleErp[] = [
   module('parametres', 'parametres', 'Paramètres', 'parametres', lazy(() => import('./parametres')), { motsCles: 'utilisateurs équipe connexions' }),
 ];
 
-/**
- * Pages hors du menu mais encore ouvertes depuis une autre page (la fiche
- * d'un propriétaire, depuis la fiche de son logement). Ni rubrique, ni
- * recherche « Aller à… ».
- */
-export const MODULES_HORS_MENU: ModuleErp[] = [
-  module('proprietaires', 'proprietaires', 'Propriétaire', 'logements', lazy(() => import('./proprietaires'))),
-];
-
 /** Anciennes adresses des modules sortis du menu → page la plus proche. */
 export const ANCIENNES_ADRESSES: Record<string, string> = {
   performance: '/erp/logements',
@@ -102,13 +93,15 @@ export const ANCIENNES_ADRESSES: Record<string, string> = {
   finance: '/erp',
   conformite: '/erp/logements',
   automatisations: '/erp/parametres',
+  // Le propriétaire est dans la fiche de son logement.
+  proprietaires: '/erp/logements',
 };
 
 /** Module correspondant à un chemin sous /erp. */
 export function moduleDuChemin(pathname: string): ModuleErp | undefined {
   const reste = pathname.replace(/^\/erp\/?/, '');
   const segment = reste.split('/')[0] ?? '';
-  return MODULES.find((m) => m.segment === segment) ?? MODULES_HORS_MENU.find((m) => m.segment === segment);
+  return MODULES.find((m) => m.segment === segment);
 }
 
 /** Rubrique d'un module. */

@@ -1,12 +1,14 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, ExternalLink, Mail, Phone } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EmptyState, Field, Input, Repli } from '../../../ui';
+import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
+import { FormProprietaire } from '../../proprietaires/FormProprietaire';
+import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, Input, Repli } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
-import { AUJOURDHUI, SANS_DONNEE, dateHeure, euros, jourMois, note, pluriel, pourcentage } from '../../../data/format';
+import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, note, pluriel, pourcentage } from '../../../data/format';
 import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors';
 import type { Canal, Logement } from '../../../data/types';
 import { CompteurNuits } from '../_composants/CompteurNuits';
@@ -52,7 +54,6 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const s = statsLogement(d, l);
   const prix = prixAVenir(l);
-  const prop = proprietaireById(d, l.proprietaireId);
   const resas = d.reservations
     .filter((r) => r.logementId === l.id && estActive(r) && r.depart >= AUJOURDHUI)
     .sort((a, b) => a.arrivee.localeCompare(b.arrivee))
@@ -60,6 +61,8 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   const lits = l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
   const jours = (l.tarifs?.jours ?? []).filter((j) => j.date >= AUJOURDHUI).slice(0, 60);
   const importe = !!l.repull?.majLe || l.id.startsWith('repull-');
+  const bas = jours.length ? Math.min(...jours.map((j) => j.prixCentimes)) : 0;
+  const haut = jours.length ? Math.max(...jours.map((j) => j.prixCentimes)) : 0;
 
   return (
     <>
@@ -103,7 +106,13 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">{r.voyageur.nom}</span>
                         <span className="block text-[12px] text-(--lm-encre-2)">
-                          {r.arrivee <= AUJOURDHUI ? `Sur place jusqu’au ${jourMois(r.depart)}` : `Du ${jourMois(r.arrivee)} au ${jourMois(r.depart)}`} · {pluriel(r.nuits, 'nuit')} ·{' '}
+                          {r.arrivee === AUJOURDHUI
+                            ? `Arrive aujourd’hui, jusqu’au ${jourMois(r.depart)}`
+                            : r.depart === AUJOURDHUI
+                              ? 'Part aujourd’hui'
+                              : r.arrivee < AUJOURDHUI
+                                ? `Sur place jusqu’au ${jourMois(r.depart)}`
+                                : `Du ${jourMois(r.arrivee)} au ${jourMois(r.depart)}`} · {pluriel(r.nuits, 'nuit')} ·{' '}
                           {LIBELLES.canal[r.canal]}
                         </span>
                       </span>
@@ -119,10 +128,10 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
             <Card>
               <CardHeader
                 titre="Prix des prochaines semaines"
-                description={`De ${euros(prix.min, true)} à ${euros(prix.max, true)} par nuit sur 30 jours · lus sur les plateformes le ${dateHeure(prix.luLe)}`}
+                description={`De ${euros(bas, true)} à ${euros(haut, true)} par nuit sur ${jours.length} jours · lus sur les plateformes le ${dateHeure(prix.luLe)}`}
               />
               <GraphiqueCourbe
-                label={`Prix par nuit des ${jours.length} prochains jours, de ${euros(prix.min, true)} à ${euros(prix.max, true)}`}
+                label={`Prix par nuit des ${jours.length} prochains jours, de ${euros(bas, true)} à ${euros(haut, true)}`}
                 points={jours.map((j) => ({ libelle: jourMois(j.date), valeur: j.prixCentimes }))}
                 formater={(v) => `${euros(v, true)} la nuit`}
                 formaterAxe={(v) => euros(v, true)}
@@ -135,30 +144,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
         </div>
 
         <div className="flex min-w-0 flex-col gap-5">
-          <Card>
-            <CardHeader titre="Propriétaire" />
-            {!prop || prop.id === ID_PROPRIETAIRE_A_RENSEIGNER ? (
-              <p className="text-[13.5px] text-(--lm-encre-2)">Pas encore renseigné : utilisez « Modifier » pour le choisir.</p>
-            ) : (
-              <div className="space-y-1.5 text-[13.5px]">
-                <Link to={`/erp/proprietaires/${prop.id}`} className="font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
-                  {prop.nom}
-                </Link>
-                {prop.contact.telephone && (
-                  <a href={`tel:${prop.contact.telephone.replace(/[^\d+]/g, '')}`} className="flex items-center gap-2 text-(--lm-encre-2) hover:text-(--lm-or-texte)">
-                    <Phone className="size-3.5 shrink-0" aria-hidden />
-                    {prop.contact.telephone}
-                  </a>
-                )}
-                {prop.contact.email && (
-                  <a href={`mailto:${prop.contact.email}`} className="flex min-w-0 items-center gap-2 text-(--lm-encre-2) hover:text-(--lm-or-texte)">
-                    <Mail className="size-3.5 shrink-0" aria-hidden />
-                    <span className="truncate">{prop.contact.email}</span>
-                  </a>
-                )}
-              </div>
-            )}
-          </Card>
+          <Proprietaire logement={l} />
 
           <Card>
             <CardHeader titre="Le logement" />
@@ -166,8 +152,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               <Ligne libelle="Adresse">
                 {l.adresse ? `${l.adresse}, ${l.codePostal} ${l.ville}`.replace(/^, |, $/, '') : l.ville}
               </Ligne>
-              <Ligne libelle="Voyageurs">{l.capacite || SANS_DONNEE}</Ligne>
-              <Ligne libelle="Couchage">{[pluriel(l.chambres, 'chambre'), lits].filter(Boolean).join(', ')}</Ligne>
+              {lits && <Ligne libelle="Couchage">{lits}</Ligne>}
               {l.surfaceM2 > 0 && <Ligne libelle="Surface">{l.surfaceM2} m²</Ligne>}
               <Ligne libelle="Arrivée · départ">
                 {l.fiche.heureArrivee || '—'} · {l.fiche.heureDepart || '—'}
@@ -239,5 +224,65 @@ function Relier({ logement: l }: { logement: Logement }) {
         </Button>
       </div>
     </div>
+  );
+}
+
+/**
+ * Le propriétaire, dans la fiche de son logement : coordonnées, « Modifier »,
+ * et le dossier qu'il a rempli (s'il existe) — il n'y a plus de rubrique
+ * Propriétaires.
+ */
+function Proprietaire({ logement: l }: { logement: Logement }) {
+  const d = useErp();
+  const [edition, setEdition] = useState(false);
+  const prop = proprietaireById(d, l.proprietaireId);
+  const dossier = d.donnees.dossiers.find((x) => x.logementId === l.id);
+  const renseigne = prop && prop.id !== ID_PROPRIETAIRE_A_RENSEIGNER;
+  return (
+    <>
+      <Card>
+        <CardHeader
+          titre="Propriétaire"
+          actions={
+            renseigne &&
+            !d.lectureSeule && (
+              <button type="button" onClick={() => setEdition(true)} className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+                Modifier
+              </button>
+            )
+          }
+        />
+        {!renseigne ? (
+          <p className="text-[13.5px] text-(--lm-encre-2)">Pas encore renseigné : « Modifier » en haut de la page permet de le choisir.</p>
+        ) : (
+          <div className="space-y-1.5 text-[13.5px]">
+            <p className="font-semibold text-(--lm-encre)">{prop.nom}</p>
+            {prop.contact.telephone && (
+              <a href={`tel:${prop.contact.telephone.replace(/[^\d+]/g, '')}`} className="flex min-h-8 items-center gap-2 text-(--lm-encre-2) hover:text-(--lm-or-texte)">
+                <Phone className="size-3.5 shrink-0" aria-hidden />
+                {prop.contact.telephone}
+              </a>
+            )}
+            {prop.contact.email && (
+              <a href={`mailto:${prop.contact.email}`} className="flex min-h-8 min-w-0 items-center gap-2 text-(--lm-encre-2) hover:text-(--lm-or-texte)">
+                <Mail className="size-3.5 shrink-0" aria-hidden />
+                <span className="truncate">{prop.contact.email}</span>
+              </a>
+            )}
+          </div>
+        )}
+      </Card>
+      {dossier && (
+        <Repli titre="Dossier propriétaire" description={`Réponses reçues le ${dateCourte(dossier.recuLe.slice(0, 10))}`}>
+          <FicheEtapes
+            etapes={ETAPES_DOSSIER}
+            valeurs={dossier.valeurs}
+            lectureSeule={d.lectureSeule}
+            onChange={(valeurs) => d.upsert('dossiers', { ...dossier, valeurs, majLe: horodatageMaintenant() })}
+          />
+        </Repli>
+      )}
+      {renseigne && <FormProprietaire ouvert={edition} onFermer={() => setEdition(false)} proprietaire={prop} />}
+    </>
   );
 }

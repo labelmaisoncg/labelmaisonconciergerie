@@ -504,12 +504,10 @@ function typerAvis(reservations: Reservation[]) {
 
 /** Photos du site, pour que la démo montre une vraie galerie. */
 const PHOTOS_DEMO = [
-  '/images/real/logement-hero.jpg',
   '/images/real/logement-salon-poster.jpg',
-  '/images/real/logement-chambre2-poster.jpg',
-  '/images/real/logement-sdb-poster.jpg',
   '/images/real/logement-suite.jpg',
-  '/images/real/dining.jpg',
+  '/images/real/logement-hero.jpg',
+  '/images/real/logement-sdb-poster.jpg',
   '/images/real/hero-logement-exception.jpg',
   '/images/real/logement-riad-poster.jpg',
   '/images/real/jacuzzi.jpg',

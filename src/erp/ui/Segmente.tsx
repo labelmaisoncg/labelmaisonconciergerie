@@ -25,7 +25,7 @@ export function Segmente<T extends string>({ options, valeur, onChange, label, c
           aria-pressed={valeur === o.valeur}
           onClick={() => onChange(o.valeur)}
           className={cn(
-            'h-7 rounded-md px-2.5 text-[12.5px] font-medium whitespace-nowrap focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
+            'h-8 rounded-md px-3 text-[12.5px] font-medium whitespace-nowrap focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
             valeur === o.valeur ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:text-(--lm-encre)',
           )}
         >

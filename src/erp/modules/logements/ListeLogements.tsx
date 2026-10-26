@@ -35,7 +35,6 @@ export default function ListeLogements() {
     <>
       <PageHeader
         titre="Logements"
-        sousTitre={d.logements.length ? `${d.logements.filter((l) => l.statut === 'actif').length} en location` : undefined}
         actions={
           d.logements.length > 0 && (
             <MenuActions

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Button, Card, FilterChips, Timeline, type EvenementFrise } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
-import { dateCourte, dateHeure, euros, pluriel } from '../../../data/format';
+import { dateCourte, dateHeure, euros, note, pluriel } from '../../../data/format';
 import type { Logement } from '../../../data/types';
 
 type Genre = 'reservation' | 'journal';
@@ -31,7 +31,7 @@ export function OngletHistorique({ logement: l }: { logement: Logement }) {
           tone: r.statut === 'annulee' ? 'danger' : 'info',
           titre: `Séjour ${r.voyageur.nom} (${LIBELLES.canal[r.canal]})`,
           meta: `${dateCourte(r.arrivee)} · ${LIBELLES.statutReservation[r.statut]}`,
-          description: `${pluriel(r.nuits, 'nuit')}, ${euros(r.montantBrutCentimes)}${r.noteVoyageur !== undefined ? `, note ${r.noteVoyageur}` : ''}`,
+          description: `${pluriel(r.nuits, 'nuit')}, ${euros(r.montantBrutCentimes)}${r.noteVoyageur !== undefined ? `, note ${note(r.noteVoyageur)}` : ''}`,
         })),
       ...d.journal
         .filter((j) => j.entiteId === l.id || mandats.has(j.entiteId))
@@ -55,7 +55,7 @@ export function OngletHistorique({ logement: l }: { logement: Logement }) {
       <FilterChips
         label="Type d’événement"
         className="mb-5"
-        filtres={GENRES.map((g) => ({ ...g, compteur: evenements.filter((e) => e.genre === g.cle).length }))}
+        filtres={GENRES.map((g) => ({ ...g, compteur: evenements.filter((e) => e.genre === g.cle).length })).filter((g) => g.compteur > 0)}
         actifs={actifs}
         onChange={setActifs}
       />

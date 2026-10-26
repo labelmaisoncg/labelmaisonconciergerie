@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { BotMessageSquare, Eye, EyeOff, X } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, Field, Input, Textarea } from '../../../ui';
+import { Badge, Button, Callout, Card, CardHeader, Field, Input, Textarea } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { FicheLogement, Logement } from '../../../data/types';
@@ -21,7 +21,7 @@ function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) =>
         type="button"
         onClick={() => setVisible((v) => !v)}
         aria-label={visible ? 'Masquer le code wifi' : 'Afficher le code wifi'}
-        className="absolute top-1/2 right-1.5 grid size-7 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
+        className="absolute top-1/2 right-0.5 grid size-8 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
       >
         {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
       </button>
@@ -65,19 +65,11 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
   return (
     <form onSubmit={enregistrer} className="flex max-w-3xl flex-col gap-5">
-      <div className="flex items-start gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 shadow-(--lm-ombre)">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
-          <BotMessageSquare />
-        </span>
-        <div className="min-w-0 text-[13.5px]">
-          <p className="font-medium text-(--lm-encre)">L’agent répond aux voyageurs avec ces informations.</p>
-          <p className="text-(--lm-encre-2)">
-            {c.manquants.length
-              ? `Il manque : ${c.manquants.join(', ').toLowerCase()}. Sur ces sujets, il vous transmet la question.`
-              : 'Tout est renseigné. Wifi et accès ne sont donnés qu’aux voyageurs confirmés, 48 h avant l’arrivée.'}
-          </p>
-        </div>
-      </div>
+      <Callout tone={c.manquants.length ? 'alerte' : 'or'} icone={<BotMessageSquare />} titre="L’agent répond aux voyageurs avec ces informations.">
+        {c.manquants.length
+          ? `Il manque : ${c.manquants.join(', ').toLowerCase()}. Sur ces sujets, il vous transmet la question.`
+          : 'Tout est renseigné. Wifi et accès ne sont donnés qu’aux voyageurs confirmés, 48 h avant l’arrivée.'}
+      </Callout>
 
       <Card>
         <CardHeader titre="Arrivée et départ" />
@@ -125,7 +117,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
                     type="button"
                     aria-label={`Retirer ${e}`}
                     onClick={() => maj('equipements', f.equipements.filter((x) => x !== e))}
-                    className="ml-1 rounded-full p-0.5 hover:bg-(--lm-or-lavis)"
+                    className="-my-2 -mr-1.5 ml-0.5 grid size-8 place-items-center rounded-full hover:bg-(--lm-or-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
                   >
                     <X className="size-3" />
                   </button>
@@ -159,7 +151,8 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
         </Field>
       </Card>
 
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Barre collante : « Enregistrer » reste à portée, même en bas d'une longue fiche. */}
+      <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-(--lm-bord) bg-(--lm-fond) px-4 py-3 sm:mx-0 sm:rounded-xl sm:border sm:px-4">
         <Button variant="primary" type="submit" disabled={!modifie}>
           Enregistrer
         </Button>

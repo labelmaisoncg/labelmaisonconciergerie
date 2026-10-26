@@ -9,7 +9,7 @@ import './erp.css';
 import { ErpProvider } from './data/store';
 import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
-import { ANCIENNES_ADRESSES, MODULES, MODULES_HORS_MENU } from './modules/registry';
+import { ANCIENNES_ADRESSES, MODULES } from './modules/registry';
 import { ButtonLink, EmptyState, PageSkeleton } from './ui';
 
 // Écran d'autorisation OAuth ouvert par Claude (connecteur du CRM), hors mise en page.
@@ -59,7 +59,7 @@ function Contenu() {
     <ModuleErrorBoundary key={segment}>
       <Suspense fallback={<PageSkeleton />}>
         <Routes>
-          {[...MODULES, ...MODULES_HORS_MENU].map(({ key, segment: seg, component: Module }) =>
+          {MODULES.map(({ key, segment: seg, component: Module }) =>
             seg ? <Route key={key} path={`${seg}/*`} element={<Module />} /> : <Route key={key} index element={<Module />} />,
           )}
           {Object.entries(ANCIENNES_ADRESSES).map(([seg, vers]) => (

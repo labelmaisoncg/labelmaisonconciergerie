@@ -1,20 +1,19 @@
 /**
- * Contenu du détail d'une réservation : séjour, montants, ménage, messages,
- * avis voyageur, incidents. Utilisé par le tiroir et la page dédiée.
+ * Contenu du détail d'une réservation : séjour, montants, messages et avis
+ * du voyageur. Utilisé par le tiroir et la page dédiée.
  */
 import { Link } from 'react-router-dom';
-import { MessageSquare, Sparkles, Star } from 'lucide-react';
+import { MessageSquare, Star } from 'lucide-react';
 import { Badge, Card, CardHeader, StatusBadge } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
-import { dateCourte, dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../data/format';
+import { dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../data/format';
 import {
   baseCommissionnable,
   commissionReservation,
   logementById,
   mandatDuLogement,
   netProprietaire,
-  prestataireById,
   revenuHebergement,
 } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
@@ -45,9 +44,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
   const d = useErp();
   const logement = logementById(d, r.logementId);
   const mandat = mandatDuLogement(d.mandats, r.logementId);
-  const missions = d.missions.filter((m) => m.reservationId === r.id);
   const fils = d.filsMessages.filter((f) => f.reservationId === r.id);
-  const incidents = d.incidents.filter((i) => i.reservationId === r.id);
   const annulee = r.statut === 'annulee';
 
   return (
@@ -125,29 +122,6 @@ export function FicheReservation({ r }: { r: Reservation }) {
         </details>
       </Card>
 
-      <Card>
-        <CardHeader titre="Ménage de départ" actions={<Sparkles className="size-4 text-(--lm-or-texte)" aria-hidden />} />
-        {missions.length === 0 ? (
-          <p className="text-[13px] text-(--lm-encre-3)">{annulee ? 'Séjour annulé : pas de ménage à prévoir.' : 'Pas encore de ménage prévu pour ce séjour.'}</p>
-        ) : (
-          <ul className="divide-y divide-(--lm-bord)">
-            {missions.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <div className="min-w-0">
-                  <Link to={`/erp/menages/${m.id}`} className="text-[13.5px] font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
-                    {LIBELLES.typeMission[m.type]} du {dateCourte(m.date)}
-                  </Link>
-                  <p className="text-[12px] text-(--lm-encre-3)">
-                    {m.heureDebut} à {m.heureFinMax} · {prestataireById(d, m.prestataireId)?.nom ?? 'Prestataire à attribuer'}
-                  </p>
-                </div>
-                <StatusBadge type="statutMission" valeur={m.statut} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-
       {fils.length > 0 && (
       <Card>
         <CardHeader titre="Messages voyageur" actions={<MessageSquare className="size-4 text-(--lm-or-texte)" aria-hidden />} />
@@ -180,28 +154,11 @@ export function FicheReservation({ r }: { r: Reservation }) {
           />
           {r.commentaireVoyageur && <blockquote className="border-l-2 border-(--lm-or) pl-3 text-[13.5px] text-(--lm-encre-2) italic">« {r.commentaireVoyageur} »</blockquote>}
           {r.noteVoyageur !== undefined && r.noteVoyageur < 4.5 && (
-            <p className="mt-2 text-[12.5px] text-(--lm-danger)">Note inférieure à 4,5 : contrôle qualité déclenché sur le ménage.</p>
+            <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Note sous 4,5 : à lire et, si besoin, à traiter avec l’équipe.</p>
           )}
         </Card>
       )}
 
-      {incidents.length > 0 && (
-      <Card>
-        <CardHeader titre="Incidents" />
-        {(
-          <ul className="divide-y divide-(--lm-bord)">
-            {incidents.map((i) => (
-              <li key={i.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
-                <Link to={`/erp/incidents/${i.id}`} className="min-w-0 flex-1 text-[13.5px] hover:text-(--lm-or-texte) hover:underline">
-                  {LIBELLES.categorieIncident[i.categorie]} : {i.description}
-                </Link>
-                <StatusBadge type="statutIncident" valeur={i.statut} />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
-      )}
     </div>
   );
 }

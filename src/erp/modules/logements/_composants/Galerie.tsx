@@ -2,6 +2,15 @@ import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Images } from 'lucide-react';
 import { IconButton, Modal } from '../../../ui';
 
+/** Grille selon le nombre de photos (1 à 5 affichées) : la première prend toute la hauteur. */
+const GRILLES: Record<number, string> = {
+  1: 'grid-cols-1',
+  2: 'grid-cols-2',
+  3: 'grid-cols-[2fr_1fr] grid-rows-2',
+  4: 'grid-cols-[2fr_1fr_1fr] grid-rows-2 [&>button:nth-child(4)]:col-span-2',
+  5: 'grid-cols-[2fr_1fr_1fr] grid-rows-2',
+};
+
 /**
  * Photos de l'annonce : une grande et quatre petites sur ordinateur, un
  * défilement horizontal sur téléphone. Un clic ouvre la visionneuse.
@@ -24,16 +33,10 @@ export function Galerie({ photos, nom }: { photos: string[]; nom: string }) {
         ))}
       </div>
 
-      {/* Ordinateur : une grande photo, quatre petites. */}
-      <div className="relative mb-5 hidden h-[340px] grid-cols-4 grid-rows-2 gap-2 overflow-hidden rounded-2xl sm:grid">
+      {/* Ordinateur : une grande photo et jusqu'à quatre petites, sans case vide. */}
+      <div className={`relative mb-5 hidden h-[340px] gap-2 overflow-hidden rounded-xl sm:grid ${GRILLES[Math.min(n, 5)]}`}>
         {photos.slice(0, 5).map((p, i) => (
-          <button
-            key={p}
-            type="button"
-            onClick={() => setOuverte(i)}
-            className={i === 0 ? 'col-span-2 row-span-2' : n < 3 ? 'col-span-2 row-span-2' : ''}
-            aria-label={`Agrandir la photo ${i + 1} sur ${n}`}
-          >
+          <button key={p} type="button" onClick={() => setOuverte(i)} className={i === 0 && n > 1 ? 'row-span-2' : ''} aria-label={`Agrandir la photo ${i + 1} sur ${n}`}>
             <img src={p} alt="" loading={i ? 'lazy' : 'eager'} className={vignette} />
           </button>
         ))}

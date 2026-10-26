@@ -3,6 +3,7 @@
  * arrondies, quadrillage discret, pas de ligne d'axe, courbe lissée sans
  * points (point au survol), infobulle sobre. Couleurs : jetons de erp.css.
  */
+import { useId } from 'react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 
 const GRILLE = 'var(--lm-bord)';
@@ -104,12 +105,13 @@ export function GraphiqueCourbe({
   paliers?: boolean;
   hauteur?: number;
 }) {
+  const aire = `lm-aire-${useId().replace(/:/g, '')}`;
   return (
     <div role="img" aria-label={label} style={{ height: hauteur }}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={points} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
           <defs>
-            <linearGradient id="lm-aire" x1="0" y1="0" x2="0" y2="1">
+            <linearGradient id={aire} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="var(--lm-or)" stopOpacity={0.22} />
               <stop offset="100%" stopColor="var(--lm-or)" stopOpacity={0} />
             </linearGradient>
@@ -131,7 +133,7 @@ export function GraphiqueCourbe({
             dataKey="valeur"
             stroke="var(--lm-or-texte)"
             strokeWidth={2}
-            fill="url(#lm-aire)"
+            fill={`url(#${aire})`}
             dot={false}
             activeDot={{ r: 4, fill: 'var(--lm-or-texte)', stroke: 'var(--lm-surface)', strokeWidth: 2 }}
             isAnimationActive={false}

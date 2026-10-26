@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Button, Drawer, Field, Input, Select, Prerequis } from '../../ui';
+import { Plus } from 'lucide-react';
+import { Button, Drawer, Field, Input, Select } from '../../ui';
+import { FormProprietaire } from '../proprietaires/FormProprietaire';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
@@ -67,6 +69,7 @@ const entier = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : NaN);
 
 export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
   const { proprietaires, upsert } = useErp();
+  const [nouveauProprietaire, setNouveauProprietaire] = useState(false);
   const [s, setS] = useState<Saisie>(() => initial(logement));
   const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
 
@@ -150,6 +153,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
   };
 
   return (
+    <>
     <Drawer
       ouvert={ouvert}
       onFermer={onFermer}
@@ -173,23 +177,22 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <Field label="Nom du logement" requis erreur={erreurs.nom} className="sm:col-span-2">
           <Input value={s.nom} onChange={(e) => maj('nom', e.target.value)} placeholder="Ex. Corbeil Rives de Seine" />
         </Field>
-        {!proprietaires.length && (
-          <Prerequis
-            className="sm:col-span-2"
-            manque="Aucun propriétaire enregistré."
-            detail="Chaque logement appartient à un propriétaire : ajoutez-le d’abord."
-            lien="/erp/proprietaires?nouveau=1"
-            action="Nouveau propriétaire"
-          />
-        )}
         <Field label="Propriétaire" requis erreur={erreurs.proprietaireId} className="sm:col-span-2">
           <Select
             value={s.proprietaireId}
             onChange={(e) => maj('proprietaireId', e.target.value)}
-            placeholder="Choisir un propriétaire"
+            placeholder={proprietaires.length ? 'Choisir un propriétaire' : 'Aucun propriétaire : ajoutez-le'}
             options={proprietaires.map((p) => ({ valeur: p.id, libelle: p.nom }))}
           />
         </Field>
+        <button
+          type="button"
+          onClick={() => setNouveauProprietaire(true)}
+          className="-mt-2 inline-flex h-8 items-center gap-1 justify-self-start text-[13px] font-medium text-(--lm-or-texte) hover:underline sm:col-span-2"
+        >
+          <Plus className="size-3.5" aria-hidden />
+          Nouveau propriétaire
+        </button>
         <Field label="Adresse" requis erreur={erreurs.adresse} className="sm:col-span-2">
           <Input value={s.adresse} onChange={(e) => maj('adresse', e.target.value)} autoComplete="street-address" />
         </Field>
@@ -245,5 +248,8 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         </label>
       </form>
     </Drawer>
+    {/* Hors du panneau : une fenêtre par-dessus, pas dedans. */}
+    <FormProprietaire ouvert={nouveauProprietaire} onFermer={() => setNouveauProprietaire(false)} onCree={(id) => maj('proprietaireId', id)} />
+    </>
   );
 }
