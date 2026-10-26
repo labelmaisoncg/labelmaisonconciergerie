@@ -4,7 +4,7 @@ import { espaceOuvert } from '../data/espaces';
 import type { BilanVue, ChiffresBilan, VueProprietaire } from '../data/types-proprietaire';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Button, Card, EmptyState, cn } from '../ui';
-import { bilanDuMois, CANAL, TitreEspace, titreMois } from './commun';
+import { bilanDuMois, CANAL, deNom, TitreEspace, titreMois } from './commun';
 
 const moins = (c: number) => (c ? `− ${euros(c)}` : euros(0));
 
@@ -64,7 +64,7 @@ export function BilanDetail({
 
       {bilan.commentaire.trim() && (
         <blockquote className="mt-4 rounded-xl border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3 text-[14px] whitespace-pre-line text-(--lm-encre)">
-          <p className="mb-1 text-[12.5px] font-semibold text-(--lm-brun)">Le mot de {conciergerie}</p>
+          <p className="mb-1 text-[12.5px] font-semibold text-(--lm-brun)">Le mot {deNom(conciergerie)}</p>
           {bilan.commentaire.trim()}
         </blockquote>
       )}

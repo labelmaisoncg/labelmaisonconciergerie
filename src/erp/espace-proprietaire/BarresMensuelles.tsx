@@ -94,7 +94,7 @@ export function BarresMensuelles({ mois, titre }: { mois: MoisPerformance[]; tit
                   {x.suivi && x.net > 0 && (
                     <span
                       className={cn(
-                        'absolute bottom-0 left-1/2 w-[min(24px,62%)] -translate-x-1/2 rounded-t-[4px] transition-colors',
+                        'absolute bottom-0 left-1/2 w-[min(24px,62%)] -translate-x-1/2 rounded-t-sm transition-colors',
                         actif === i ? 'bg-(--lm-or-texte)' : 'bg-(--lm-or)',
                       )}
                       style={{ height: `${h}%` }}

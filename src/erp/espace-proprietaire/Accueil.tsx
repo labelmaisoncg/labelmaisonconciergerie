@@ -138,7 +138,7 @@ export function Accueil({
       </Rubrique>
 
       <div className="grid gap-x-6 lg:grid-cols-2">
-        <Rubrique titre="Derniers documents" action={vue.documents.length > 3 ? <LienAction onClick={() => onOnglet('documents')}>Tout voir</LienAction> : undefined}>
+        <Rubrique className={c ? undefined : 'lg:col-span-2'} titre="Derniers documents" action={vue.documents.length > 3 ? <LienAction onClick={() => onOnglet('documents')}>Tout voir</LienAction> : undefined}>
           {vue.documents.length ? (
             <Card flush>
               <ul className="divide-y divide-(--lm-bord)">

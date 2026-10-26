@@ -131,9 +131,9 @@ function TableauMois({ mois }: { mois: MoisPerformance[] }) {
 
 function Etoiles({ note }: { note: number }) {
   return (
-    <span className="inline-flex items-center gap-0.5" aria-label={`${nombre(note, 1)} sur 5`}>
+    <span role="img" className="inline-flex items-center gap-0.5" aria-label={`${nombre(note, 1)} sur 5`}>
       {[1, 2, 3, 4, 5].map((i) => (
-        <Star key={i} className={cn('size-3.5', note >= i - 0.25 ? 'fill-(--lm-or) text-(--lm-or)' : 'text-(--lm-bord-fort)')} aria-hidden />
+        <Star key={i} className={cn('size-3.5', note >= i - 0.25 ? 'fill-(--lm-or) text-(--lm-or)' : 'text-(--lm-encre-3)')} aria-hidden />
       ))}
     </span>
   );
@@ -212,7 +212,7 @@ export function FicheLogement({ logement: l, fiche: f, aujourdhui }: { logement:
                       <span className="font-medium text-(--lm-encre)">
                         {jourMois(s.arrivee)} → {jourMois(s.depart)}
                       </span>
-                      {enCours ? <Badge tone="succes">En cours</Badge> : <span className="lm-chiffres shrink-0 text-[13px] text-(--lm-encre-2)">{pluriel(s.nuits, 'nuit')}</span>}
+                      {enCours ? <Badge tone="or">En cours</Badge> : <span className="lm-chiffres shrink-0 text-[13px] text-(--lm-encre-2)">{pluriel(s.nuits, 'nuit')}</span>}
                     </p>
                     <p className="text-[13px] text-(--lm-encre-2)">
                       {s.voyageur} · {pluriel(s.nbPersonnes, 'voyageur')} · {CANAL[s.canal]}

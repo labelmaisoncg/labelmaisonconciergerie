@@ -28,6 +28,9 @@ export const titreMois = (mois: string) => {
   return t.charAt(0).toLocaleUpperCase('fr') + t.slice(1);
 };
 
+/** « de Label Maison », « d’Essonne Conciergerie » (élision devant une voyelle). */
+export const deNom = (nom: string) => (/^[aàâeéèêiîoôuûAÀÂEÉÈÊIÎOÔUÛ]/.test(nom) ? `d’${nom}` : `de ${nom}`);
+
 /** « Bilan de septembre 2026 », « Bilan d’août 2026 » (élision devant une voyelle). */
 export const bilanDuMois = (mois: string) => {
   const t = moisAnnee(mois).toLocaleLowerCase('fr');
