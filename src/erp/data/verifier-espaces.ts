@@ -266,6 +266,16 @@ async function principal() {
     let message = '';
     await sens.lire('crm').catch((e: Error) => (message = e.message));
     verifier(message === MESSAGE_BASE_PAS_PREPAREE, 'espace demandé sur une base pas préparée : message clair', message);
+    const refus = async (espace: string | null) => {
+      let texte = '';
+      await new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: sb.fetch as typeof fetch, jeton: async () => 'jeton-inconnu', espace }).lire('crm').catch((e: Error) => (texte = e.message));
+      return texte;
+    };
+    sb.historique = false;
+    const refusServeur = await refus(SENS);
+    sb.historique = true;
+    const refusEquipe = await refus(null);
+    verifier(/compte du serveur/.test(refusServeur) && /compte d’équipe/.test(refusEquipe) && !/serveur/.test(refusEquipe), 'accès refusé : le message nomme le bon compte', { refusServeur, refusEquipe });
     let appels = 0;
     const paresseuse = new BaseErp({
       url: 'https://base.test',

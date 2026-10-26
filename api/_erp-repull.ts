@@ -181,6 +181,10 @@ async function jetonPour(c: ConfigRepullErp, espace: string, renouveler = false)
 export function baseErp(c: ConfigRepullErp, espace: string = c.espace): BaseErp {
   return new BaseErp({
     jeton: (renouveler) => jetonPour(c, espace, renouveler),
+    // Colonne espace refusée (retour en arrière du SQL) : la base sera relue au prochain appel.
+    surBaseHistorique: () => {
+      etat = null;
+    },
     espace: async () => {
       if ((await etatBase(c)).mode === 'espaces') return espace;
       if (estLabelMaison(espace)) return null;

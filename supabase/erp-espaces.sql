@@ -12,10 +12,16 @@
 --
 --   Passe 1 (tout de suite) : ajoute les espaces sans rien casser. L'ERP en
 --     ligne (ancien comme nouveau code) continue de fonctionner normalement.
---   Passe 2 (au moins 24 h APRÈS la mise en ligne du nouveau code) : passe
---     les clés des tables à (espace, …), ce qui permet le même identifiant
---     dans deux espaces. L'ancien code ne sait plus écrire après la passe 2 :
---     c'est pourquoi on attend que toutes les apps aient pris la mise à jour.
+--   Passe 2 (au moins 24 h APRÈS le plus tardif des deux : la mise en ligne
+--     du nouveau code ET la passe 1) : passe les clés des tables à
+--     (espace, …), ce qui permet le même identifiant dans deux espaces.
+--     Après la passe 2, ne savent plus écrire : l'ancien code, et une page du
+--     nouveau code ouverte AVANT la passe 1 (elle se croit sur la base
+--     d'avant jusqu'à son rechargement, qui a lieu chaque nuit). D'où les 24 h.
+--
+-- Un autre espace que Label Maison ne peut être créé qu'APRÈS la passe 2
+-- (refus explicite avant) : avant, ses lignes techniques (repull/etat,
+-- agent/etat…) heurteraient celles de Label Maison.
 --
 -- Idempotent : chaque passe peut être relancée sans risque.
 -- Prérequis : supabase/erp-installation.sql déjà passé (ne PAS le relancer
@@ -88,12 +94,53 @@ alter table erp.membres              add column if not exists espace uuid not nu
 alter table erp.historique           add column if not exists espace uuid not null
   default '4c4d0000-0000-4000-8000-000000000001' references erp.espaces (id);
 
+-- La clé primaire d'une table contient-elle déjà la colonne espace (passe 2 faite) ?
+create or replace function erp.cle_par_espace(p_table regclass) returns boolean
+language sql stable set search_path = ''
+as $$
+  select exists (
+    select 1 from pg_catalog.pg_constraint c
+    join pg_catalog.pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+    where c.conrelid = p_table and c.contype = 'p' and a.attname = 'espace');
+$$;
+revoke all on function erp.cle_par_espace(regclass) from public, anon, authenticated;
+
 -- Clés du nouveau code (espace, …). Elles coexistent avec les anciennes jusqu'à
--- la passe 2, qui en fait les clés primaires.
-create unique index if not exists enregistrements_espace_cle      on erp.enregistrements (espace, collection, id);
-create unique index if not exists etat_automatisations_espace_cle on erp.etat_automatisations (espace, id);
-create unique index if not exists membres_espace_cle              on erp.membres (espace, email);
+-- la passe 2, qui en fait les clés primaires (après elle, rien à recréer).
+do $$
+begin
+  if not erp.cle_par_espace('erp.enregistrements') then
+    create unique index if not exists enregistrements_espace_cle on erp.enregistrements (espace, collection, id);
+  end if;
+  if not erp.cle_par_espace('erp.etat_automatisations') then
+    create unique index if not exists etat_automatisations_espace_cle on erp.etat_automatisations (espace, id);
+  end if;
+  if not erp.cle_par_espace('erp.membres') then
+    create unique index if not exists membres_espace_cle on erp.membres (espace, email);
+  end if;
+end;
+$$;
 create unique index if not exists membres_espace_email_minuscules on erp.membres (espace, lower(email));
+
+-- Un autre espace que Label Maison s'ouvre après la passe 2 seulement : avant,
+-- ses lignes techniques (repull/etat, agent/etat, etat_automatisations/global)
+-- auraient la même clé que celles de Label Maison.
+create or replace function erp.garder_espaces() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if new.id <> erp.id_label_maison()
+     and not erp.cle_par_espace('erp.enregistrements')
+     and coalesce(current_setting('erp.recette', true), '') <> 'en_cours' then
+    raise exception 'Passe 2 d''abord : un autre espace que Label Maison s''ouvre après la passe 2 de supabase/erp-espaces.sql.';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.garder_espaces() from public, anon, authenticated;
+drop trigger if exists espaces_apres_passe_2 on erp.espaces;
+create trigger espaces_apres_passe_2 before insert or update of id on erp.espaces
+  for each row execute function erp.garder_espaces();
 create index if not exists historique_espace_element_idx on erp.historique (espace, collection, id, archive_le desc);
 
 -- ------------------------------------------------------------- fonctions
@@ -284,13 +331,15 @@ as $$
   order by (s.id = erp.id_label_maison()) desc, s.cree_le;
 $$;
 
--- Secret d'un espace rangé dans le coffre (Vault), pour le serveur seulement.
--- Label Maison n'en a jamais : ses clés restent dans Vercel.
+-- Secret d'un espace rangé dans le coffre (Vault), pour le serveur seulement,
+-- et seulement pour l'espace que nomme l'en-tête x-erp-espace. Label Maison
+-- n'en a jamais : ses clés restent dans Vercel.
 create or replace function erp.secret_espace(p_espace uuid, p_nom text) returns text
 language plpgsql stable security definer set search_path = ''
 as $$
 begin
-  if not erp.est_serveur() or p_nom not in ('repull_cle', 'repull_webhook') or p_espace = erp.id_label_maison() then
+  if not erp.est_serveur() or p_nom not in ('repull_cle', 'repull_webhook') or p_espace = erp.id_label_maison()
+     or p_espace is distinct from erp.espace_entete() then
     return null;
   end if;
   return (select d.decrypted_secret from vault.decrypted_secrets d
@@ -511,11 +560,7 @@ begin
     from pg_constraint c
     where c.conrelid = format('erp.%I', t.tbl)::regclass and c.contype = 'p';
     -- Déjà fait si la clé primaire contient la colonne espace.
-    if pk is null or not exists (
-      select 1 from pg_constraint c
-      join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
-      where c.conrelid = format('erp.%I', t.tbl)::regclass and c.contype = 'p' and a.attname = 'espace'
-    ) then
+    if not erp.cle_par_espace(format('erp.%I', t.tbl)::regclass) then
       if pk is not null then
         execute format('alter table erp.%I drop constraint %I, add constraint %I primary key using index %I', t.tbl, pk, t.tbl || '_pkey', t.idx);
       else
@@ -546,11 +591,12 @@ declare
   essai constant uuid := 'e55a1000-0000-4000-8000-0000000000e5';
   resultat text := 'ok';
   n int;
-  v text;
   j jsonb;
 begin
   begin
-    -- Données d'essai : un espace, un membre dans chaque espace, une ligne chacun.
+    -- Données d'essai : un espace, un membre dans chaque espace, une ligne chacun
+    -- (l'espace d'essai est permis avant la passe 2 : tout est annulé à la fin).
+    perform set_config('erp.recette', 'en_cours', true);
     insert into erp.espaces (id, code, nom) values (essai, 'recette-espaces', 'Recette');
     insert into erp.membres (espace, email, nom, role) values
       (lm, 'recette-lm@exemple.invalid', 'Recette LM', 'operations'),
@@ -651,10 +697,8 @@ select
   (select count(*) from information_schema.columns
     where table_schema = 'erp' and column_name = 'espace'
       and table_name in ('enregistrements', 'etat_automatisations', 'membres', 'historique')) as colonnes_espace,
-  (select count(*) from pg_constraint c
-    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
-    where c.contype = 'p' and a.attname = 'espace'
-      and c.conrelid in ('erp.enregistrements'::regclass, 'erp.etat_automatisations'::regclass, 'erp.membres'::regclass)) as cles_par_espace,
+  (select count(*) from unnest(array['erp.enregistrements', 'erp.etat_automatisations', 'erp.membres']::regclass[]) t
+    where erp.cle_par_espace(t)) as cles_par_espace,
   (select case
      when not exists (select 1 from auth.users where lower(email) = 'serveur@labelmaisoncg.fr')
        then 'à créer (Authentication → Add user), puis relancer'
@@ -668,7 +712,9 @@ select
 -- =============================================================================
 -- RETOUR EN ARRIÈRE (seulement en cas de problème, et tant qu'aucun autre
 -- espace n'a de données). Copier le bloc dans une nouvelle requête, retirer
--- les « -- » de début de ligne, Run, puis relancer erp-installation.sql.
+-- les « -- » de début de ligne, Run, puis relancer erp-installation.sql
+-- AUSSITÔT : jusque-là, erp.archiver_version lit encore old.espace (colonne
+-- retirée) et chaque modification de l'ERP échoue.
 -- =============================================================================
 -- begin;
 -- -- Si la passe 2 a été faite : anciennes clés primaires.
@@ -691,7 +737,8 @@ select
 -- drop function if exists erp.recette_espaces(), erp.qui_suis_je(), erp.espaces_actifs(),
 --   erp.secret_espace(uuid, text), erp.ranger_secret(text, text, text),
 --   erp.role_membre(uuid), erp.acces_lecture(uuid), erp.acces_ecriture(uuid), erp.acces_gerant(uuid),
---   erp.espace_du_chemin(text), erp.espaces_lecture(), erp.espaces_ecriture(), erp.espaces_gerant() cascade;
+--   erp.espace_du_chemin(text), erp.espaces_lecture(), erp.espaces_ecriture(), erp.espaces_gerant(),
+--   erp.garder_espaces(), erp.cle_par_espace(regclass) cascade;
 -- drop table if exists erp.invitations, erp.espaces cascade;
 -- drop function if exists erp.mes_espaces(), erp.est_serveur(), erp.espace_entete(), erp.id_label_maison() cascade;
 -- commit;
