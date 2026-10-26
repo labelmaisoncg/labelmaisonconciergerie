@@ -2,10 +2,11 @@
  * Point d'entrée de l'ERP, monté par App.tsx sur /erp/* (chargement paresseux).
  * Routes relatives : chaque module gère ses sous-routes sous `<segment>/*`.
  */
-import { lazy, Suspense, useEffect } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { lazy, Suspense, useEffect, useRef } from 'react';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { Compass } from 'lucide-react';
 import './erp.css';
+import { demarrerApplication } from './data/application';
 import { ErpProvider } from './data/store';
 import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
@@ -14,6 +15,8 @@ import { ButtonLink, EmptyState, PageSkeleton } from './ui';
 
 // Écran d'autorisation OAuth ouvert par Claude (connecteur du CRM), hors mise en page.
 const AutoriserClaude = lazy(() => import('./modules/crm/AutoriserClaude'));
+// Page du lien d'installation de l'app (téléphone, ordinateur), hors mise en page.
+const Installer = lazy(() => import('./modules/parametres/_application/Installer'));
 
 /** Titre d'onglet et noindex tant que l'ERP est affiché ; état du site rétabli ensuite. */
 function useEnteteDocument() {
@@ -73,12 +76,27 @@ function Contenu() {
 }
 
 /**
+ * App installée : service worker (version construite) et notifications
+ * touchées pendant que l'app est ouverte, qui mènent au bon écran.
+ */
+function useApplication() {
+  const naviguer = useNavigate();
+  // useNavigate change à chaque page : on garde la dernière sans réenregistrer le service worker.
+  const suivre = useRef(naviguer);
+  useEffect(() => {
+    suivre.current = naviguer;
+  });
+  useEffect(() => demarrerApplication((chemin) => suivre.current(chemin)), []);
+}
+
+/**
  * Mise en page de l'ERP, sauf pour l'écran de consentement OAuth ouvert par
- * Claude : plein écran, sans menu ni barre du haut, rien d'autre à faire que
- * décider.
+ * Claude (plein écran, sans menu ni barre du haut, rien d'autre à faire que
+ * décider) et la page d'installation de l'app.
  */
 function Coquille() {
   const { pathname } = useLocation();
+  useApplication();
   if (/^\/erp\/autoriser-claude\/?$/.test(pathname)) {
     return (
       <main className="min-h-screen px-4 pb-12">
@@ -86,6 +104,13 @@ function Coquille() {
           <AutoriserClaude />
         </Suspense>
       </main>
+    );
+  }
+  if (/^\/erp\/installer\/?$/.test(pathname)) {
+    return (
+      <Suspense fallback={<PageSkeleton />}>
+        <Installer />
+      </Suspense>
     );
   }
   return (

@@ -143,3 +143,50 @@
 html:has(.erp-root) body {
   overflow-x: clip;
 }
+
+/*
+ * iPhone (viewport-fit=cover, scripts/spa-shells.mjs) : rien sous l'encoche
+ * en paysage ni sous la barre d'accueil, page comme fenêtres (tiroirs,
+ * feuilles, recherche). env() vaut 0 partout ailleurs.
+ */
+.erp-root {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+.erp-root [role='dialog'][aria-modal='true'] {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  background-color: var(--lm-surface);
+}
+
+/*
+ * Téléphone et tablette (sous lg, 64rem) : barre d'onglets en bas
+ * (layout/BarreOnglets.tsx). Le contenu réserve sa hauteur et la barre
+ * d'accueil de l'iPhone ; les barres « Enregistrer » collées en bas (infos
+ * pour l'agent, réglages de l'agent) se posent au-dessus des onglets.
+ */
+.erp-root {
+  --lm-barre-onglets: 0px;
+}
+.erp-root .lm-barre-onglets {
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+@media (width < 64rem) {
+  .erp-root {
+    --lm-barre-onglets: calc(3.5rem + 1px + env(safe-area-inset-bottom));
+  }
+  .erp-root #contenu {
+    padding-bottom: calc(1.25rem + var(--lm-barre-onglets));
+  }
+  .erp-root #contenu .sticky.bottom-0 {
+    bottom: var(--lm-barre-onglets);
+  }
+}
+@media (width >= 64rem) and (display-mode: standalone) {
+  .erp-root #contenu {
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+}

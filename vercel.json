@@ -53,6 +53,9 @@
     },
     "api/erp-connecteur-claude.ts": {
       "maxDuration": 15
+    },
+    "api/erp-notifications.ts": {
+      "maxDuration": 15
     }
   },
   "crons": [

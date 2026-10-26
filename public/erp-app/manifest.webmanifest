@@ -1,0 +1,24 @@
+{
+  "id": "/erp",
+  "name": "Label Maison",
+  "short_name": "Label Maison",
+  "description": "Logements, réservations et messages de Label Maison Conciergerie.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "/erp",
+  "scope": "/erp",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#fbfaf8",
+  "theme_color": "#fbfaf8",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/erp-app/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/erp-app/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/erp-app/icone-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Messagerie", "url": "/erp/messagerie", "icons": [{ "src": "/erp-app/icone-192.png", "sizes": "192x192" }] },
+    { "name": "Réservations", "url": "/erp/reservations", "icons": [{ "src": "/erp-app/icone-192.png", "sizes": "192x192" }] }
+  ]
+}

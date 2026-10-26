@@ -10,11 +10,13 @@ import { Courbes } from './_composants/Courbes';
 import { Demarrage } from './_composants/Demarrage';
 import { Indicateurs } from './_composants/Indicateurs';
 import { construireATraiter } from './_composants/aTraiter';
+import { PropositionInstallation } from '../parametres/_application/PropositionInstallation';
 
 /**
- * Accueil du channel manager, dans l'ordre où l'on s'en sert : ce qui
- * attend une action, les arrivées et départs, quatre repères sur 30 jours,
- * puis deux courbes. Le détail est à un clic (pages de rubrique, panneaux).
+ * Accueil du channel manager, dans l'ordre où l'on s'en sert : la mise en
+ * service (et, sur téléphone, l'installation de l'app), ce qui attend une
+ * action, les arrivées et départs, quatre repères sur 30 jours, puis deux
+ * courbes. Le détail est à un clic (pages de rubrique, panneaux).
  */
 export default function TableauDeBord() {
   const d = useErp();
@@ -32,6 +34,7 @@ export default function TableauDeBord() {
       />
 
       <Demarrage />
+      <PropositionInstallation />
 
       {/* Rien à faire : pas de carte « tout est à jour », la page commence par les arrivées. */}
       {elements.length > 0 && (
