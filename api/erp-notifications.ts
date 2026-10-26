@@ -12,7 +12,9 @@
 //                                         Vercel (jamais enregistrée ni journalisée)
 //
 // Authentification : Authorization: Bearer <jeton de session Supabase>,
-// membre gérant ou opérations. Envoi et règles : src/erp/data/notifications-envoi.ts.
+// membre gérant ou opérations. Les appareils sont rangés dans l'espace de
+// l'en-tête x-erp-espace (chaque espace notifie les siens) ; les clés serveur
+// sont communes (même app). Envoi et règles : src/erp/data/notifications-envoi.ts.
 // =============================================================================
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
@@ -21,6 +23,7 @@ import { baseErp, configuration, lireCorps, repondre, variableManquante } from '
 import { abonnementValide, enregistrerAppareil, envoyerNotifications, lireAppareil, oublierAppareil, reglerAppareil } from '../src/erp/data/notifications-envoi.js';
 import { genererClesVapid } from '../src/erp/data/web-push.js';
 import { clesServeur } from './_erp-notifications.js';
+import { espaceDemande, refuserHorsLabelMaison } from './_erp-espaces.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -30,7 +33,7 @@ export default async function handler(req: any, res: any) {
   const entete = String(req.headers?.authorization || '');
   const jeton = /^Bearer\s+/i.test(entete) ? entete.replace(/^Bearer\s+/i, '').trim() : '';
   if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Authentification requise.' });
-  const membre = await verifierMembre(jeton);
+  const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
   if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.erreur });
 
   const corps = req.method === 'POST' ? lireCorps(req) : {};
@@ -40,6 +43,7 @@ export default async function handler(req: any, res: any) {
   // Clés serveur : générées à la demande du gérant, montrées une fois, jamais gardées.
   if (action === 'cles' && req.method === 'POST') {
     if (membre.role !== 'gerant') return repondre(res, 403, { ok: false, erreur: 'Réservé au gérant.' });
+    if (refuserHorsLabelMaison(res, membre.espace, 'Clés des notifications')) return;
     const k = await genererClesVapid();
     return repondre(res, 200, { ok: true, publique: k.publique, privee: k.privee, dejaActives: !!clesServeur() });
   }
@@ -48,7 +52,7 @@ export default async function handler(req: any, res: any) {
   if (action === 'etat' && req.method === 'GET') {
     let appareil: { preferences: unknown; nom?: string } | null = null;
     if (cles && endpoint && !variableManquante(configuration())) {
-      const a = await lireAppareil(baseErp(configuration()), endpoint).catch(() => undefined);
+      const a = await lireAppareil(baseErp(configuration(), membre.espace), endpoint).catch(() => undefined);
       if (a && !a.expire) appareil = { preferences: a.preferences ?? {}, ...(a.nom ? { nom: a.nom } : {}) };
     }
     return repondre(res, 200, { ok: true, actif: !!cles, clePublique: cles?.publique ?? null, appareil, types: TYPES_NOTIFICATION });
@@ -59,7 +63,7 @@ export default async function handler(req: any, res: any) {
   const c = configuration();
   const manque = variableManquante(c);
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
-  const base = baseErp(c);
+  const base = baseErp(c, membre.espace);
 
   try {
     if (action === 'abonner') {

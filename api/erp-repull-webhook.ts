@@ -16,13 +16,23 @@
 // Chaque événement relit l'élément concerné chez Repull (un ou deux appels,
 // imputés sur la part mensuelle de l'ERP) ; account.created (nouveau compte
 // connecté) lance une synchronisation complète.
+//
+// Espaces (api/_erp-espaces.ts) :
+//   - /api/erp-repull-webhook : compte Repull de Label Maison, signé avec
+//     REPULL_WEBHOOK_SECRET_ERP. Un événement « tagué » workspaceId vient du
+//     workspace d'un autre espace : traité dans cet espace, ou ignoré si aucun
+//     espace n'a ce workspace (JAMAIS versé dans Label Maison) ;
+//   - /api/erp-repull-webhook?espace=<code> : espace qui a son propre compte
+//     Repull, signé avec SON secret (coffre de Supabase), jamais celui de
+//     Label Maison.
 // =============================================================================
 
 import crypto from 'node:crypto';
 import { lancer, texteErreur, type EvenementRepull } from '../src/erp/data/repull-synchro.js';
 import { signatureValide, type OutilsSignature } from '../src/erp/data/repull-signature.js';
-import { baseErp, configuration, continuerApresReponse, repondre, variableManquante } from './_erp-repull.js';
+import { baseErp, configuration, continuerApresReponse, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { agentApresSynchro } from './_erp-agent.js';
+import { codeEspaceDuWebhook, configurationEspace, espacesActifs, workspaceDeLEvenement } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
 
 /** La signature porte sur le corps exact reçu : pas d'analyse JSON préalable. */
@@ -71,10 +81,22 @@ export default async function handler(req: any, res: any) {
     return repondre(res, 405, { ok: false });
   }
   const debut = Date.now();
-  const c = configuration();
+  let c: ConfigRepullErp = configuration();
+  const code = codeEspaceDuWebhook(req);
+  if (code) {
+    // Espace avec son propre compte Repull : son secret, jamais celui de Label Maison.
+    try {
+      const fiche = (await espacesActifs(c)).find((e) => e.code === code);
+      if (!fiche) return repondre(res, 404, { ok: false });
+      c = await configurationEspace(fiche.id, fiche);
+    } catch (e) {
+      console.error('[erp-repull-webhook] espace', code, texteErreur(e));
+      return repondre(res, 503, { ok: false });
+    }
+  }
   if (!c.secretWebhook) {
-    console.error('[erp-repull-webhook] REPULL_WEBHOOK_SECRET_ERP manquant : livraison refusée.');
-    return repondre(res, 503, { ok: false, erreur: 'REPULL_WEBHOOK_SECRET_ERP manquant.' });
+    console.error('[erp-repull-webhook] secret du webhook manquant : livraison refusée.', code ?? '');
+    return repondre(res, 503, { ok: false, erreur: code ? 'Secret du webhook de cet espace manquant.' : 'REPULL_WEBHOOK_SECRET_ERP manquant.' });
   }
 
   const brut = await corpsBrut(req);
@@ -91,6 +113,23 @@ export default async function handler(req: any, res: any) {
   }
   const idEvenement = String(req.headers?.['x-repull-event-id'] ?? ev?.eventId ?? '');
   if (ev?.event === 'repull.ping') return repondre(res, 200, { ok: true, ping: true });
+
+  // Événement d'un workspace : l'espace qui l'a, sinon rien (jamais Label Maison par défaut).
+  const workspace = workspaceDeLEvenement(ev);
+  if (workspace && workspace !== c.workspace) {
+    if (code) return repondre(res, 200, { ok: true, ignore: 'workspace' });
+    try {
+      const fiche = (await espacesActifs(c)).find((e) => (e.repull_workspace ?? '') === workspace);
+      if (!fiche) {
+        console.warn('[erp-repull-webhook] workspace sans espace : ignoré', workspace);
+        return repondre(res, 200, { ok: true, ignore: 'workspace' });
+      }
+      c = await configurationEspace(fiche.id, fiche);
+    } catch (e) {
+      console.error('[erp-repull-webhook] espace du workspace', workspace, texteErreur(e));
+      return repondre(res, 503, { ok: false });
+    }
+  }
   if (dejaTraite(idEvenement)) return repondre(res, 200, { ok: true, doublon: true });
 
   const manque = variableManquante(c);
@@ -106,6 +145,7 @@ export default async function handler(req: any, res: any) {
     () =>
       lancer({
         cle: c.cle,
+        workspace: c.workspace,
         base,
         declencheur: 'webhook',
         echeance: debut + BUDGET_TEMPS_MS,

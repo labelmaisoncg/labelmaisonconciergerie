@@ -4,7 +4,10 @@
  *
  * - /api/erp-repull-messages : envoyer une réponse au voyageur (Repull)
  * - /api/erp-agent           : état de l'agent IA, « Lancer l'agent maintenant »
+ *
+ * L'espace ouvert part avec chaque appel (en-tête x-erp-espace).
  */
+import { entetesServeur } from '../../../data/espaces';
 import { obtenirClient } from '../../../data/supabase';
 
 /** Erreur du serveur, avec son code quand il en donne un (hors_plateforme, budget...). */
@@ -26,7 +29,7 @@ export async function appelerServeur<T>(chemin: string, methode: 'GET' | 'POST',
   try {
     r = await fetch(chemin, {
       method: methode,
-      headers: { Authorization: `Bearer ${jeton}`, 'Content-Type': 'application/json' },
+      headers: entetesServeur(jeton),
       ...(corps !== undefined ? { body: JSON.stringify(corps) } : {}),
       cache: 'no-store',
     });

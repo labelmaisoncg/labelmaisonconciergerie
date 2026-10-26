@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Badge, Card, Select } from '../../../ui';
 import { LIBELLE_STATUT, TON_STATUT, type StatutConformite } from './regles';
+import { cleLocale } from '../../../data/espaces';
 
 interface PointEntreprise {
   cle: string;
@@ -59,11 +60,12 @@ const POINTS: PointEntreprise[] = [
   },
 ];
 
-const CLE = 'lm-erp-conformite-entreprise';
+/** Statuts de cet appareil, propres à l'espace ouvert (chaque société a les siens). */
+const cle = () => cleLocale('lm-erp-conformite-entreprise');
 
 function lire(): Record<string, StatutConformite> {
   try {
-    return JSON.parse(window.localStorage.getItem(CLE) ?? '{}') as Record<string, StatutConformite>;
+    return JSON.parse(window.localStorage.getItem(cle()) ?? '{}') as Record<string, StatutConformite>;
   } catch {
     return {};
   }
@@ -74,7 +76,7 @@ export function ConformiteEntreprise() {
   const [statuts, setStatuts] = useState<Record<string, StatutConformite>>(lire);
   useEffect(() => {
     try {
-      window.localStorage.setItem(CLE, JSON.stringify(statuts));
+      window.localStorage.setItem(cle(), JSON.stringify(statuts));
     } catch {
       /* stockage indisponible : l'état reste en mémoire */
     }

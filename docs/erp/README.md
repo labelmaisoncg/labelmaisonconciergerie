@@ -6,7 +6,8 @@ des charges complet est dans [`SPEC.md`](./SPEC.md).
 
 Principes du fondateur, appliqués partout :
 
-- l'ERP sert Label Maison et personne d'autre (pas de multi-clients) ;
+- l'ERP sert Label Maison ; une autre équipe (Sens…) peut y avoir son propre
+  **espace**, aux données complètement séparées (voir « Espaces ») ;
 - simple : un écran par question métier, pas de paramétrage superflu ;
 - **tout ce qui peut être automatisé l'est** : le moteur d'automatisations fait
   le travail répétitif, les humains ne traitent que les exceptions (alertes) ;
@@ -77,7 +78,25 @@ node_modules/.bin/esbuild src/erp/data/verifier-agent.ts --bundle --format=esm \
 node_modules/.bin/esbuild src/erp/data/verifier-notifications.ts --bundle --format=esm \
   --platform=node --log-level=error --outfile=/tmp/verifier-notifications.mjs \
   && node /tmp/verifier-notifications.mjs
+
+# Auto-contrôle des espaces (fausses API Supabase et Repull) : choix de
+# l'espace, workspace Repull sur chaque appel, BaseErp avec ou sans espace,
+# base pas encore préparée, vérification d'un membre, synchronisation du
+# navigateur (filtres, clés, temps réel, file locale), plafond de l'agent.
+node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{}' \
+  --log-level=error --outfile=/tmp/verifier-espaces.mjs && node /tmp/verifier-espaces.mjs
+
+# Même chose côté routes /api : compte serveur, réglages d'un espace, passage
+# quotidien sur chaque espace, bouton d'un membre, routage des webhooks.
+node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{}' \
+  --log-level=error --outfile=/tmp/verifier-espaces-serveur.mjs && node /tmp/verifier-espaces-serveur.mjs
 ```
+
+La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
+se vérifie au moment de la lancer : le bilan affiche `recette = ok` (essai des
+règles avec des comptes fictifs, annulé aussitôt).
 
 Le vérificateur du moteur l'exécute deux fois sur la démo : la seconde passe
 doit produire **0 changement**, le seed doit rester intact et les ids uniques.
@@ -88,6 +107,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | Variable | Où | Rôle |
 |---|---|---|
 | `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe de `/erp`. Absent : accès refusé (page 503), jamais ouvert. Redéployer après modification. |
+| `ERP_SERVEUR_MOT_DE_PASSE` | Vercel (serveur), facultatif tant qu'il n'y a que Label Maison | Mot de passe du compte technique `serveur@labelmaisoncg.fr` (voir « Espaces »). Absent : le serveur écrit avec le compte d'équipe, dans Label Maison seulement. |
 | `LINGE_PASSWORD` | Vercel | Mot de passe du registre `/linge` (inchangé). |
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
 | `VITE_SUPABASE_ANON_KEY` | build (Vercel), facultatif | Clé publique (« anon ») du même projet. Les deux vont ensemble : si l'une manque, le couple par défaut est utilisé. |
@@ -135,11 +155,14 @@ src/erp/
     store.tsx         ErpProvider + useErp() : état, mutations, journal, moteur,
                       connexion (production) ou démo locale
     config.ts         mode (réel / démo), projet Supabase, clés localStorage
-    supabase.ts       client Supabase, connexion, membres, fichiers, erreurs
+    supabase.ts       client Supabase, connexion, espaces et membres, fichiers, erreurs
+    espaces.ts        espaces (Label Maison, Sens…) : identifiants, choix, en-tête,
+                      base « historique » (avant supabase/erp-espaces.sql)
     synchro.ts        lecture de la base, écriture par différence, file
                       d'attente, temps réel, état des automatisations
     collections.ts    liste des collections, jeu vide
     verifier-synchro.ts  auto-contrôle de la synchronisation (Node)
+    verifier-espaces.ts  auto-contrôle des espaces (Node)
     repull.ts         Repull → ERP : conversion et fusion (fonctions pures)
     repull-synchro.ts synchronisation Repull côté serveur (appels, base, budget)
     repull-signature.ts  vérification de X-Repull-Signature (webhooks)
@@ -155,7 +178,9 @@ src/erp/
     <module>/index.tsx
 api/erp-repull-sync.ts     synchronisation Repull (cron quotidien, bouton)
 api/erp-repull-webhook.ts  webhooks Repull de l'ERP (quand l'offre les inclut)
+api/_erp-espaces.ts        réglages d'un espace, espaces actifs, garde « Label Maison seulement »
 supabase/erp-installation.sql  installation de la base (à coller dans le SQL Editor)
+supabase/erp-espaces.sql   espaces séparés, en deux passes (après l'installation)
 supabase/migrations/  schéma normalisé : cible future, NON appliquée (voir son README)
 ```
 
@@ -888,3 +913,82 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
   Les notifications partent quand l'ERP apprend la nouveauté : webhook Repull
   (quasi immédiat, offre Starter), passage de l'agent, ou synchronisation
   (quotidienne, ou « Synchroniser maintenant »).
+
+## Espaces (octobre 2026)
+
+La même application sert plusieurs équipes, chacune dans son **espace** :
+Label Maison, puis Sens. Se connecter à l'espace de Label Maison, c'est voir
+les données et le Repull de Label Maison ; à celui de Sens, ceux de Sens.
+Aucune donnée ne passe d'un espace à l'autre. Mise en service pas à pas, pour
+les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
+
+### Dans la base (`supabase/erp-espaces.sql`)
+
+- Table `erp.espaces` (code, nom, actif, `repull_workspace`, `config` non
+  secrète). Label Maison a l'identifiant fixe
+  `4c4d0000-0000-4000-8000-000000000001` et reçoit toutes les données d'avant.
+- Colonne `espace` sur `enregistrements`, `etat_automatisations`, `membres`,
+  `historique`. Toutes les règles RLS portent dessus, plus une règle
+  **restrictive** « cloison des espaces » qui tient même si une règle plus
+  large est ajoutée un jour. Les fichiers du stockage appartiennent à l'espace
+  de leur premier dossier (`<espace>/menages/…`), Label Maison sinon.
+- **Deux passes** (une ligne à changer en haut du fichier) :
+  1. passe 1 : colonne avec Label Maison par défaut, nouvelles clés en plus
+     des anciennes. L'ancien et le nouveau code marchent tous les deux ;
+  2. passe 2, au moins 24 h après la mise en ligne du code : clés primaires
+     `(espace, …)` (le même identifiant possible dans deux espaces, une
+     adresse membre de plusieurs espaces), plus de valeur par défaut. L'ancien
+     code ne sait plus écrire : d'où l'attente.
+- Compte technique `serveur@labelmaisoncg.fr` (`app_metadata.erp_role =
+  serveur`, posé par le script) : il ne voit **que** l'espace nommé par
+  l'en-tête `x-erp-espace`, avec les droits d'un gérant ; sans en-tête, rien.
+- Fonctions : `erp.qui_suis_je()` (espaces et rôle du compte),
+  `erp.espaces_actifs()`, `erp.secret_espace()` (coffre Vault, serveur
+  seulement, jamais pour Label Maison), `erp.ranger_secret()` (SQL Editor
+  seulement), `erp.recette_espaces()` (essai des règles, annulé).
+- `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
+  aucune règle d'accès d'ici là.
+- `erp-installation.sql` et `erp-connecteurs-gerants.sql` refusent de tourner
+  une fois les espaces en place (ils remettraient les règles d'avant).
+
+### Dans le code
+
+- **Base « historique »** : tant que le SQL n'est pas passé, `qui_suis_je` ou
+  la colonne `espace` manquent ; le navigateur et le serveur le voient et font
+  **exactement comme avant** (Label Maison, sans colonne ni en-tête). Le code
+  peut donc partir en ligne avant le SQL.
+- Navigateur : `store.tsx` ouvre l'espace du compte (`quiSuisJe`, Label Maison
+  d'abord, dernier choix retenu sur l'appareil) ; `synchro.ts` filtre, écrit et
+  supprime dans cet espace, ignore le temps réel des autres espaces, et ne
+  reprend une file locale que pour le même espace et le même compte. Les appels
+  aux routes `/api` portent l'en-tête `x-erp-espace` (même origine) ; les
+  requêtes à Supabase, elles, n'en ont pas besoin (règles par membre).
+- Serveur : `baseErp(c, espace)` écrit avec le compte serveur et l'en-tête de
+  l'espace ; sans compte serveur prêt, avec le compte d'équipe et **pour Label
+  Maison seulement**. `verifierMembre(jeton, { espace })` vérifie le rôle dans
+  l'espace de l'en-tête (Label Maison à défaut : anciennes versions de l'app).
+  Le site public (formulaires, dossier propriétaire), le connecteur Claude,
+  OAuth et l'agenda du CRM restent dans Label Maison.
+- `configurationEspace(espace)` (`api/_erp-espaces.ts`) : Label Maison garde
+  ses variables Vercel. Un autre espace n'en reprend **aucune** :
+  Repull par son workspace (`repull_workspace`, en-tête `X-Workspace-Id` sur
+  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; secret de
+  webhook propre (coffre) ; agent IA avec la clé Claude commune, un plafond de
+  décisions par mois (`config.agent.plafondMois`, 300 par défaut), en pause
+  tant que l'équipe ne l'allume pas, jamais de Telegram. Sans workspace ni
+  clé, Repull est coupé pour l'espace (message clair).
+- Passages planifiés (cron de synchronisation, réveil de l'agent) : chaque
+  espace actif à son tour, Label Maison d'abord. Webhook : un événement
+  « tagué » `workspaceId` va à l'espace qui a ce workspace, ou est ignoré —
+  jamais versé dans Label Maison. Un espace avec son propre compte Repull a son
+  adresse : `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret.
+- Toujours en lecture seule sur les plateformes : `ecritureRepullPermise` et le
+  verrou de l'agent sont inchangés ; l'en-tête de workspace n'ouvre rien.
+
+### Pas encore (étapes suivantes)
+
+- Connexion personnelle, « Créer un compte » et invitations (fin du mot de
+  passe commun `ERP_PASSWORD`), choix de l'espace à l'écran.
+- Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
+- Liens signés des guides déposés en fichier pour un autre espace que Label
+  Maison (ses guides en lien https partent déjà).

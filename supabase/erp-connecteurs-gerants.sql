@@ -8,7 +8,19 @@
 -- (empreintes des jetons de Claude, date de révocation) ne sont plus lisibles
 -- ni modifiables que par un gérant. Sans cette règle, un compte « opérations »
 -- pourrait écrire un faux jeton. Rien d'autre ne change.
+--
+-- Après supabase/erp-espaces.sql, cette règle y est déjà (par espace) : ce
+-- script refuse alors de tourner.
 -- =============================================================================
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'erp' and table_name = 'enregistrements' and column_name = 'espace') then
+    raise exception 'Base passée aux espaces : la règle est dans supabase/erp-espaces.sql, relancez celui-ci.';
+  end if;
+end;
+$$;
 
 drop policy if exists "connecteurs reserves aux gerants" on erp.enregistrements;
 create policy "connecteurs reserves aux gerants" on erp.enregistrements
