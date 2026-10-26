@@ -54,7 +54,7 @@ export function Accueil({
   const c = vue.contacts;
   return (
     <>
-      <TitreEspace titre={`Bonjour, ${vue.proprietaire.nom}`} description="L’activité de vos logements, mise à jour chaque jour par Label Maison." />
+      <TitreEspace titre={`Bonjour, ${vue.proprietaire.nom}`} description={`L’activité de vos logements, mise à jour chaque jour par ${vue.conciergerie.nom}.`} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <CarteMois titre="Ce mois-ci" c={vue.moisCourant} />
@@ -149,31 +149,33 @@ export function Accueil({
           )}
         </Rubrique>
 
-        <Rubrique titre="Label Maison, à votre écoute">
-          <Card>
-            <p className="text-[14px] text-(--lm-encre-2)">Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.</p>
-            <ul className="mt-3 space-y-1 text-[14px]">
-              <li>
-                <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
-                  <Phone className="size-4 text-(--lm-or-texte)" aria-hidden />
-                  {c.telephone}
-                </a>
-              </li>
-              <li>
-                <a href={c.whatsapp} target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
-                  <MessageCircle className="size-4 text-(--lm-or-texte)" aria-hidden />
-                  WhatsApp
-                </a>
-              </li>
-              <li>
-                <a href={`mailto:${c.email}`} className="flex min-h-9 min-w-0 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
-                  <Mail className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
-                  <span className="truncate">{c.email}</span>
-                </a>
-              </li>
-            </ul>
-          </Card>
-        </Rubrique>
+        {c && (
+          <Rubrique titre={`${vue.conciergerie.nom}, à votre écoute`}>
+            <Card>
+              <p className="text-[14px] text-(--lm-encre-2)">Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.</p>
+              <ul className="mt-3 space-y-1 text-[14px]">
+                <li>
+                  <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
+                    <Phone className="size-4 text-(--lm-or-texte)" aria-hidden />
+                    {c.telephone}
+                  </a>
+                </li>
+                <li>
+                  <a href={c.whatsapp} target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
+                    <MessageCircle className="size-4 text-(--lm-or-texte)" aria-hidden />
+                    WhatsApp
+                  </a>
+                </li>
+                <li>
+                  <a href={`mailto:${c.email}`} className="flex min-h-9 min-w-0 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
+                    <Mail className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
+                    <span className="truncate">{c.email}</span>
+                  </a>
+                </li>
+              </ul>
+            </Card>
+          </Rubrique>
+        )}
       </div>
     </>
   );
