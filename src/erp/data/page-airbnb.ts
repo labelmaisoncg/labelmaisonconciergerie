@@ -195,6 +195,21 @@ export async function lirePageAirbnb(idAirbnb: string, f: Fetch = fetch, o: { de
   }
 }
 
+/**
+ * Id d'annonce Airbnb dans un lien collé par l'équipe : airbnb.fr, .com,
+ * .co.uk… avec ou sans « https:// » et « www. », « /rooms/<id> » ou
+ * « /rooms/plus/<id> », paramètres ignorés. Undefined si ce n'en est pas un
+ * (lien court abnb.me compris : il ne contient pas l'id).
+ */
+export function extraireIdAirbnb(lien: string): string | undefined {
+  const t = lien.trim();
+  const m = /^(?:https?:\/\/)?(?:[a-z]+\.)?airbnb\.[a-z]{2,3}(?:\.[a-z]{2})?\/rooms\/(?:plus\/)?(\d{1,20})(?:[/?#].*)?$/i.exec(t);
+  return m ? m[1] : undefined;
+}
+
+/** Lien canonique d'une annonce Airbnb, à enregistrer sur le logement. */
+export const lienAnnonceAirbnb = (id: string) => `https://www.airbnb.fr/rooms/${id}`;
+
 /** Id Airbnb d'un logement : son canal Airbnb relié, sinon l'adresse de son annonce (…/rooms/<id>). */
 export function idAirbnbDuLogement(l: { repull?: { canaux?: { plateforme: string; idExterne: string }[] }; annonces?: { canal: string; url?: string }[] }): string | undefined {
   for (const c of l.repull?.canaux ?? []) {

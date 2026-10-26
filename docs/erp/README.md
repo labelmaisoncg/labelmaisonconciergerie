@@ -252,9 +252,23 @@ Un relevé qui laisse un logement choisi sans photo ou sans prix marque l'état
 attendre l'heure habituelle (toujours au plus une fois par 10 min). Lectures sautées
 quand la part d'appels descend sous 20 ; rien n'est jamais renvoyé aux plateformes.
 
+**Annonces uniquement Booking.com** : la connexion « Booking.com Extranet » de Repull
+ne lit que réservations et messages (ni photos, ni contenu, ni tarifs). Dans la fiche
+logement, l'équipe peut donc :
+- **ajouter le lien de l'annonce Airbnb** du même logement (`extraireIdAirbnb`,
+  `data/page-airbnb.ts` : airbnb.fr, .com…, `/rooms/<id>`) : enregistré dans
+  `annonces` (canal airbnb, `connecte: false`, « Lien ajouté » dans Plateformes, retirable) ;
+  ses photos sont lues sur la page publique au prochain relevé (« Mettre à jour ») ;
+- **ajouter ses photos** (`photosEquipe`, `stockage://erp-fichiers/logements/<id>/photos/…`,
+  liens signés à l'affichage) : elles passent avant celles des plateformes, la première
+  sert de couverture (« Vos photos » : mettre en couverture, retirer), et aucune
+  synchronisation ne les touche.
+
 **Cartes des logements** (`CarteLogement.tsx`) : comme une annonce Airbnb, photo
 arrondie sans cadre, nom et note, ville · type · voyageurs, prochain événement,
-« 165 € par nuit » (ce soir, sinon la prochaine nuit connue, sinon le prix de base ;
+« 165 € par nuit » (ce soir, sinon la prochaine nuit connue, sinon le prix de base,
+sinon « 95 € par nuit · moyenne constatée » : le prix moyen encaissé par nuit sur les
+séjours des 90 derniers jours, hors ménage ;
 rien pour un logement qui n'est pas en location). Sans photo, ou si elle ne se charge
 pas, un aplat neutre (`Visuel.tsx`), jamais une fausse photo.
 

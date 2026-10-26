@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { House } from 'lucide-react';
-import { cn } from '../../../ui';
+import { cn, useLienFichier } from '../../../ui';
 import { initiales } from '../../../data/format';
 import type { Logement } from '../../../data/types';
 import { photosLogement } from './stats';
 
 /**
- * Visuel d'un logement : première photo de l'annonce. Sans photo, ou si elle
- * ne se charge pas, un aplat neutre (maison discrète, initiales en petit
- * format) : jamais une image cassée ni une fausse photo.
+ * Visuel d'un logement : sa première photo (celle choisie par l'équipe, sinon
+ * celle de l'annonce ; une photo déposée s'affiche par lien signé). Sans
+ * photo, ou si elle ne se charge pas, un aplat neutre (maison discrète,
+ * initiales en petit format) : jamais une image cassée ni une fausse photo.
  */
 export function VisuelLogement({
   logement,
@@ -22,7 +23,7 @@ export function VisuelLogement({
   /** Le nom est déjà écrit à côté (carte) : l'image n'est pas relue. */
   decoratif?: boolean;
 }) {
-  const photo = photosLogement(logement)[0];
+  const photo = useLienFichier(photosLogement(logement)[0]);
   const [casse, setCasse] = useState<string | null>(null);
   if (photo && casse !== photo) {
     return (

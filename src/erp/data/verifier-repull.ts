@@ -1100,6 +1100,48 @@ async function principal() {
     repull.pagesAirbnb.clear();
   }
 
+  section('Annonce uniquement Booking.com : lien Airbnb saisi, photos de l’équipe');
+  {
+    const l = base.get<Logement>('logements', 'repull-101')!;
+    const canaux = R.listings[0].channels;
+    // L'annonce n'est que sur Booking.com chez Repull (cas réel : ni photo ni contenu transmis) ;
+    // l'équipe colle le lien de la même annonce sur Airbnb.
+    R.listings[0].channels = [{ platform: 'booking', externalId: '5566771', active: true, syncEnabled: true }];
+    repull.pagesAirbnb.set('424242', pageAirbnbFactice('424242'));
+    repull.ficheRepullVide = true;
+    repull.bookingInactif = true;
+    base.poser('logements', {
+      ...l,
+      photos: undefined,
+      annonces: [...l.annonces.filter((x) => x.canal !== 'airbnb'), { canal: 'airbnb', url: 'https://www.airbnb.fr/rooms/424242', connecte: false }],
+      repull: { ...l.repull!, photosLuesLe: undefined },
+    });
+    avancer(61);
+    const r = await lancer(options('manuel'));
+    const apres = base.get<Logement>('logements', 'repull-101')!;
+    verifier(r.ok && r.statut === 'fait', `passage réussi (${r.message ?? ''})`);
+    verifier(
+      !(apres.repull?.canaux ?? []).some((c) => c.plateforme === 'airbnb') && apres.annonces.some((x) => x.canal === 'airbnb' && x.url === 'https://www.airbnb.fr/rooms/424242' && !x.connecte),
+      'lien Airbnb saisi par l’équipe : gardé par la synchronisation',
+    );
+    verifier(
+      apres.photos?.length === 4 && apres.repull?.lecture?.photos === 'airbnb-page' && repull.lecturesAirbnb.some((x) => x.url === 'https://www.airbnb.fr/rooms/424242'),
+      `annonce uniquement Booking.com : photos lues sur la page de l’annonce Airbnb saisie (${apres.repull?.lecture?.photos})`,
+    );
+    // Photos déposées par l'équipe : jamais écrasées, quelle que soit la relecture.
+    const equipe = ['stockage://erp-fichiers/logements/repull-101/photos/b.jpg', 'stockage://erp-fichiers/logements/repull-101/photos/a.jpg'];
+    base.poser('logements', { ...apres, photosEquipe: equipe, repull: { ...apres.repull!, photosLuesLe: undefined } });
+    avancer(61);
+    await lancer(options('manuel'));
+    const final = base.get<Logement>('logements', 'repull-101')!;
+    verifier(JSON.stringify(final.photosEquipe) === JSON.stringify(equipe) && final.photos?.length === 4, 'photos de l’équipe : jamais touchées par la synchronisation (ordre compris)');
+    R.listings[0].channels = canaux;
+    repull.ficheRepullVide = false;
+    repull.bookingInactif = false;
+    repull.pagesAirbnb.clear();
+    base.poser('logements', l);
+  }
+
   section('Lectures étendues refusées : relevé de base');
   {
     const avant = base.get<Logement>('logements', 'repull-102')!;
