@@ -18,6 +18,7 @@ import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull.js';
 import type { CanalReservation, DateISO, Id, Logement, Mandat, Proprietaire, Reservation } from './types';
 import type {
   ArriveeVue,
+  AvisVue,
   BilanProprietaire,
   BilanVue,
   CalendrierLogement,
@@ -27,11 +28,14 @@ import type {
   ContactsConciergerie,
   DocumentProprietaire,
   DocumentVue,
+  FicheLogementVue,
   JourCalendrier,
   LogementBilan,
   LogementVue,
+  MoisPerformance,
   SejourBilan,
   TotauxBilan,
+  TotauxPerformance,
   VueProprietaire,
 } from './types-proprietaire';
 
@@ -60,6 +64,10 @@ export const CONTACTS_LABEL_MAISON: ContactsConciergerie = {
 
 /** Prochaines arrivées montrées sur l'accueil. */
 export const NB_PROCHAINES_ARRIVEES = 5;
+/** Fiche d'un logement : mois de performance, derniers avis, prochains séjours. */
+export const NB_MOIS_PERFORMANCE = 12;
+export const NB_DERNIERS_AVIS = 3;
+export const NB_PROCHAINS_SEJOURS = 6;
 
 /* ----------------------------------------------------------------- dates */
 
@@ -388,6 +396,132 @@ export function calendrierMois(reservations: readonly Reservation[], logementId:
   };
 }
 
+/* --------------------------------------------- fiche « Mes logements » */
+
+/**
+ * Partie publique d'un avis : jamais le « Message privé » (retour réservé à
+ * l'hôte), ni adresse, numéro ou lien glissé dans le texte ; 600 caractères
+ * au plus.
+ */
+export function avisPublic(texte: unknown): string | undefined {
+  let t = String(texte ?? '');
+  const prive = t.search(/(^|\n)\s*Message privé\s*:/i);
+  if (prive >= 0) t = t.slice(0, prive);
+  t = t
+    .replace(/https?:\/\/\S+|www\.\S+/gi, '…')
+    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '…')
+    .replace(/\+?\d[\d\s.-]{7,}\d/g, '…')
+    .replace(/[ \t]+\n/g, '\n')
+    .trim();
+  if (t.length > 600) t = `${t.slice(0, 599).trimEnd()}…`;
+  return t || undefined;
+}
+
+const noteValide = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 5;
+
+/** Totaux des mois suivis ; séjours comptés une fois (ids des séjours de ces mois). */
+function totauxPerformance(mois: readonly MoisPerformance[], sejoursParMois: ReadonlyMap<string, ReadonlySet<string>>): TotauxPerformance {
+  const suivis = mois.filter((m) => m.suivi);
+  const somme = (k: 'net' | 'encaisse' | 'hebergement' | 'nuits' | 'jours') => suivis.reduce((x, m) => x + m[k], 0);
+  const sejours = new Set(suivis.flatMap((m) => [...(sejoursParMois.get(m.mois) ?? [])]));
+  const nuits = somme('nuits');
+  const jours = somme('jours');
+  return {
+    mois: suivis.length,
+    net: somme('net'),
+    encaisse: somme('encaisse'),
+    nuits,
+    sejours: sejours.size,
+    jours,
+    occupation: jours ? Math.min(1, nuits / jours) : 0,
+    prixMoyenNuit: nuits ? Math.round(somme('hebergement') / nuits) : 0,
+  };
+}
+
+/**
+ * Fiche d'un logement : les 12 derniers mois terminés, comparés aux mêmes
+ * mois un an plus tôt, avec les seules données de l'ERP. Un mois n'est
+ * « suivi » qu'à partir du premier séjour connu (et du début du mandat) :
+ * avant, l'ERP n'a pas de données, ce n'est pas un mois vide.
+ */
+export function ficheLogement(
+  d: { reservations: readonly Reservation[]; mandats: readonly Mandat[] },
+  logementId: Id,
+  aujourdhui: DateISO,
+): FicheLogementVue {
+  const actifs = sejoursDe(d.reservations, new Set([logementId]));
+  const mandat = mandatEnVigueur(d.mandats, logementId);
+  const debutMandat = dateValide(mandat?.dateDebut) ? mandat!.dateDebut : undefined;
+  const premier = actifs.reduce<DateISO | undefined>((m, r) => (!m || r.arrivee < m ? r.arrivee : m), undefined);
+  const debutSuivi = premier && debutMandat && debutMandat > premier ? debutMandat : premier;
+
+  // 24 mois : les 12 derniers mois terminés et les 12 d'avant.
+  const fin = moisPrecedent(moisDe(aujourdhui));
+  const liste: string[] = [];
+  for (let i = 0, m = fin; i < 2 * NB_MOIS_PERFORMANCE; i++, m = moisPrecedent(m)) liste.unshift(m);
+  const sejoursParMois = new Map<string, Set<string>>();
+  const mois: MoisPerformance[] = liste.map((m) => {
+    const suivi = !!debutSuivi && m >= moisDe(debutSuivi);
+    const lignes = suivi ? actifs.map((r) => ({ r, s: sejourDuMois(r, mandat, m) })).filter((x): x is { r: Reservation; s: SejourBilan } => !!x.s) : [];
+    sejoursParMois.set(m, new Set(lignes.map((x) => x.r.id)));
+    const debut = `${m}-01`;
+    const jours = !suivi ? 0 : debutMandat && debutMandat > debut ? Math.max(0, ecartJoursISO(debutMandat, `${moisSuivant(m)}-01`)) : joursDuMois(m);
+    const nuits = lignes.reduce((x, l) => x + l.s.nuits, 0);
+    const hebergement = lignes.reduce((x, l) => x + l.s.encaisse - l.s.menage, 0);
+    return {
+      mois: m,
+      suivi,
+      net: lignes.reduce((x, l) => x + l.s.net, 0),
+      encaisse: lignes.reduce((x, l) => x + l.s.encaisse, 0),
+      hebergement,
+      nuits,
+      sejours: lignes.length,
+      jours,
+      occupation: jours ? Math.min(1, nuits / jours) : 0,
+      prixMoyenNuit: nuits ? Math.round(hebergement / nuits) : 0,
+    };
+  });
+  const precedents = mois.slice(0, NB_MOIS_PERFORMANCE);
+  const derniers = mois.slice(NB_MOIS_PERFORMANCE);
+  const comparables = derniers.map((m, i) => m.suivi && precedents[i].suivi);
+  const nbMois = comparables.filter(Boolean).length;
+
+  const avecNote = actifs.filter((r) => noteValide(r.noteVoyageur) && r.depart <= aujourdhui).sort((a, b) => b.depart.localeCompare(a.depart));
+  const avis: AvisVue[] = avecNote.slice(0, NB_DERNIERS_AVIS).map((r) => {
+    const texte = avisPublic(r.commentaireVoyageur);
+    return { date: r.depart, note: r.noteVoyageur!, voyageur: prenomInitiale(r.voyageur?.nom), canal: canalPublic(r.canal), ...(texte ? { texte } : {}) };
+  });
+
+  return {
+    logementId,
+    mois: derniers,
+    totaux: totauxPerformance(derniers, sejoursParMois),
+    ...(nbMois
+      ? {
+          comparaison: {
+            nbMois,
+            actuel: totauxPerformance(derniers.filter((_, i) => comparables[i]), sejoursParMois),
+            precedent: totauxPerformance(precedents.filter((_, i) => comparables[i]), sejoursParMois),
+          },
+        }
+      : {}),
+    ...(avecNote.length
+      ? {
+          avis: {
+            moyenne: Math.round((avecNote.reduce((x, r) => x + r.noteVoyageur!, 0) / avecNote.length) * 10) / 10,
+            nombre: avecNote.length,
+            derniers: avis,
+          },
+        }
+      : {}),
+    prochainsSejours: actifs
+      .filter((r) => r.depart > aujourdhui)
+      .sort((a, b) => a.arrivee.localeCompare(b.arrivee))
+      .slice(0, NB_PROCHAINS_SEJOURS)
+      .map((r) => ({ logementId, ...sejourVu(r) })),
+  };
+}
+
 /* ---------------------------------------------------------------- la vue */
 
 export interface EntreesProprietaire {
@@ -478,6 +612,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     moisPrecedent: publiePrecedent ? chiffresMois(publiePrecedent.chiffres, false) : chiffresMois(bilanMensuel(donnees, proprietaireId, precedent), true),
     prochainesArrivees,
     calendrier: { mois: moisCalendrier, logements: geres.map((l) => calendrierMois(actifs, l.id, moisCalendrier)) },
+    fiches: geres.map((l) => ficheLogement({ reservations: actifs, mandats: e.mandats }, l.id, aujourdhui)),
     bilans,
     documents,
     conciergerie: { nom: conciergerie.nom },

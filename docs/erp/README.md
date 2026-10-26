@@ -1052,6 +1052,7 @@ seule. Quatre onglets (barre du bas sur téléphone, en-tête sur ordinateur) :
 | Onglet | Ce que voit le propriétaire |
 |---|---|
 | Accueil | Ses logements (photo, nom), le net du mois en cours et du mois dernier (nuits, occupation ; « Bilan publié » ou « Provisoire »), les prochaines arrivées, les contacts de Label Maison, les derniers documents. |
+| Logements | « Mes logements » : une fiche par logement (photo, nom, ville) avec les 12 derniers mois terminés : revenu net par mois (graphique en barres, survol et clavier, tableau mois par mois), occupation, prix moyen par nuit, séjours et nuits, comparaison avec les mêmes mois de l'an dernier quand il y a des données ; note moyenne et derniers avis (partie publique seulement) ; séjour en cours et prochains séjours. L'accueil mène à chaque fiche. |
 | Calendrier | Un mois par logement : nuits réservées et libres, arrivées et départs (bande dorée du milieu du jour d'arrivée au milieu du jour de départ), navigation de mois en mois, séjours du mois. |
 | Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
 | Documents | Rangés par catégorie (Contrat, Attestation, Bilan, Facture, Autre), ouverts par un lien signé de 2 minutes. |
@@ -1119,7 +1120,14 @@ d'août publié et deux documents ; son espace :
   septembre, montants partagés de même) ; commission Label Maison =
   (encaissé − frais de plateforme − ménage) × taux du mandat en vigueur ;
   net = encaissé − frais − ménage − commission, au centime sur chaque ligne ;
-  occupation = nuits réservées / (jours du mois × logements). La fiche
+  occupation = nuits réservées / (jours du mois × logements). Fiche d'un
+  logement (`ficheLogement`) : un mois n'est « suivi » qu'à partir du premier
+  séjour connu dans l'ERP (et du début du mandat) — avant, ce n'est pas un
+  mois vide mais un mois sans données, exclu des totaux et du graphique ;
+  l'occupation se compte sur les jours gérés ; la comparaison ne garde que
+  les mois suivis les deux années ; prix moyen par nuit = encaissé hors
+  ménage / nuits ; avis : jamais le « Message privé » ni adresse, numéro ou
+  lien glissé dans le texte, voyageur en « Prénom N. ». La fiche
   d'attente des logements importés (`repull-proprietaire-a-renseigner`)
   n'a jamais d'espace.
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec

@@ -1,4 +1,4 @@
-import { FileText, Mail, MessageCircle, Phone } from 'lucide-react';
+import { ChevronRight, FileText, Mail, MessageCircle, Phone } from 'lucide-react';
 import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/format';
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
@@ -41,11 +41,14 @@ export function Accueil({
   vue,
   onOnglet,
   onBilan,
+  onLogement,
   LienDocument,
 }: {
   vue: VueProprietaire;
   onOnglet: (o: OngletEspace) => void;
   onBilan: (mois: string) => void;
+  /** Ouvre la fiche du logement (onglet « Mes logements »). */
+  onLogement: (id: string) => void;
   LienDocument: LienDocument;
 }) {
   const nom = (id: string) => vue.logements.find((l) => l.id === id)?.nom ?? 'Logement';
@@ -79,12 +82,22 @@ export function Accueil({
               const occ = occupationMois(l.id);
               return (
                 <li key={l.id}>
-                  <PhotoLogement url={l.photo} nom={l.nom} className="aspect-[4/3] w-full rounded-xl" />
-                  <p className="mt-2.5 text-[15px] font-semibold text-(--lm-encre)">{l.nom}</p>
-                  <p className="text-[13.5px] text-(--lm-encre-2)">
-                    {l.ville} · {pluriel(l.capacite, 'voyageur')} · {pluriel(l.chambres, 'chambre')}
-                  </p>
-                  {occ !== undefined && <p className="mt-0.5 text-[13.5px] text-(--lm-encre-2)">Ce mois-ci : {pourcentage(occ)} réservé</p>}
+                  <button
+                    type="button"
+                    onClick={() => onLogement(l.id)}
+                    className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-offset-4 focus:outline-none"
+                  >
+                    <PhotoLogement url={l.photo} nom={l.nom} className="aspect-[4/3] w-full rounded-xl transition-opacity group-hover:opacity-90" />
+                    <span className="mt-2.5 block text-[15px] font-semibold text-(--lm-encre)">{l.nom}</span>
+                    <span className="block text-[13.5px] text-(--lm-encre-2)">
+                      {l.ville} · {pluriel(l.capacite, 'voyageur')} · {pluriel(l.chambres, 'chambre')}
+                    </span>
+                    {occ !== undefined && <span className="mt-0.5 block text-[13.5px] text-(--lm-encre-2)">Ce mois-ci : {pourcentage(occ)} réservé</span>}
+                    <span className="mt-1 inline-flex min-h-8 items-center gap-0.5 text-[13px] font-medium text-(--lm-or-texte) group-hover:underline">
+                      Performances et avis
+                      <ChevronRight className="size-3.5" aria-hidden />
+                    </span>
+                  </button>
                 </li>
               );
             })}
