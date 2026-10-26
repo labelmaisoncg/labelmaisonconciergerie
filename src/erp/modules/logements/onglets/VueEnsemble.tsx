@@ -15,6 +15,7 @@ import { CompteurNuits } from '../_composants/CompteurNuits';
 import { Galerie } from '../_composants/Galerie';
 import { SansPhoto } from '../_composants/SansPhoto';
 import { AjouterPhotos, LienAirbnb, OrganiserPhotos } from '../_composants/PhotosEquipe';
+import { CarteEspaceProprietaire } from '../_composants/EspaceProprietaireGerant';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 
@@ -332,6 +333,7 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
             )}
           </div>
         )}
+        {renseigne && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
       </Card>
       {dossier && (
         <Repli titre="Dossier propriétaire" description={`Réponses reçues le ${dateCourte(dossier.recuLe.slice(0, 10))}`}>

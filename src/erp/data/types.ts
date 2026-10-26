@@ -5,6 +5,8 @@
  * ISO complets. Montants : centimes entiers, jamais de flottants.
  */
 
+import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
+
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
 export type DateISO = string;
@@ -747,6 +749,12 @@ export interface ErpDonnees {
   versionsAnnonce: VersionAnnonce[];
   /** Réglages (agent de messagerie...), un élément par sujet (ajoutée en septembre 2026). */
   reglages: Reglage[];
+  /** Accès des propriétaires à leur espace, écrits par le serveur (ajoutée en octobre 2026). */
+  accesProprietaires: AccesProprietaire[];
+  /** Documents partagés dans l'espace propriétaire (ajoutée en octobre 2026). */
+  documentsProprietaire: DocumentProprietaire[];
+  /** Bilans mensuels préparés puis publiés dans l'espace propriétaire (ajoutée en octobre 2026). */
+  bilansProprietaire: BilanProprietaire[];
 }
 
 export type NomCollection = keyof ErpDonnees;

@@ -25,9 +25,12 @@ import { CercleAnnounce } from './components/CercleAnnounce';
 const ErpApp = lazy(() => import('../erp/ErpApp'));
 // Dossier propriétaire (assistant plein écran, lien envoyé après l'appel) : chargé à la demande, sans la navigation du site.
 const DossierProprietaire = lazy(() => import('./pages/DossierProprietaire'));
+// Espace propriétaire (logements, calendrier, bilans, documents) : chargé à la demande, sans la navigation du site.
+const EspaceProprietaire = lazy(() => import('./pages/EspaceProprietaire'));
 
 const estErp = () => typeof window !== 'undefined' && /^\/erp(\/|$)/.test(window.location.pathname);
 const estDossier = () => typeof window !== 'undefined' && /^\/dossier-proprietaire\/?$/.test(window.location.pathname);
+const estEspaceProprietaire = () => typeof window !== 'undefined' && /^\/espace-proprietaire\/?$/.test(window.location.pathname);
 
 /** Habillage du site public : navigation, pages, pied de page. */
 function SiteShell() {
@@ -61,7 +64,7 @@ export default function App() {
   return (
     <HelmetProvider>
       {/* L'intro animée est réservée au site : jamais sous /erp. */}
-      {!estErp() && !estDossier() && <SplashIntro />}
+      {!estErp() && !estDossier() && !estEspaceProprietaire() && <SplashIntro />}
       <BrowserRouter>
         <Routes>
           <Route
@@ -79,6 +82,14 @@ export default function App() {
             element={
               <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBF9F4' }} />}>
                 <DossierProprietaire />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/espace-proprietaire"
+            element={
+              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
+                <EspaceProprietaire />
               </Suspense>
             }
           />

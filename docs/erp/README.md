@@ -92,6 +92,13 @@ node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm
 node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{}' \
   --log-level=error --outfile=/tmp/verifier-espaces-serveur.mjs && node /tmp/verifier-espaces-serveur.mjs
+
+# Auto-contrôle de l'espace propriétaire : jamais le logement ou la réservation
+# d'un autre, aucune donnée personnelle de voyageur, séjour à cheval sur deux
+# mois, bilan non publié invisible, lien expiré ou réutilisé refusé, sessions.
+node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-proprietaire.mjs && node /tmp/verifier-proprietaire.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -123,6 +130,8 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Vercel (serveur), facultatifs | Alertes Telegram de l'agent (transmissions, copies des réponses, relances). |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
+| `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
+| `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
 
 ## Accès et déploiement
 
@@ -1011,3 +1020,91 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
 - Liens signés des guides déposés en fichier pour un autre espace que Label
   Maison (ses guides en lien https partent déjà).
+
+## Espace propriétaire (octobre 2026)
+
+Une page à part, **`https://www.labelmaisoncg.fr/espace-proprietaire`** (pas
+`/proprietaires`, qui reste la page commerciale du site), pour rassurer les
+propriétaires sans leur ouvrir l'ERP : mobile d'abord, épurée, en lecture
+seule. Quatre onglets (barre du bas sur téléphone, en-tête sur ordinateur) :
+
+| Onglet | Ce que voit le propriétaire |
+|---|---|
+| Accueil | Ses logements (photo, nom), le net du mois en cours et du mois dernier (nuits, occupation ; « Bilan publié » ou « Provisoire »), les prochaines arrivées, les contacts de Label Maison, les derniers documents. |
+| Calendrier | Un mois par logement : nuits réservées et libres, arrivées et départs (bande dorée du milieu du jour d'arrivée au milieu du jour de départ), navigation de mois en mois, séjours du mois. |
+| Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Documents | Rangés par catégorie (Contrat, Attestation, Bilan, Facture, Autre), ouverts par un lien signé de 2 minutes. |
+
+Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autre
+(ni contact, ni pays, ni avis, ni code d'accès, ni identifiant de réservation).
+
+### Côté gérant (fiche logement → carte « Propriétaire » → « Inviter » / « Gérer »)
+
+- **Accès** : adresse e-mail, « Inviter dans l'espace propriétaire » (lien
+  valable 7 jours, à usage unique, envoyé par e-mail et affiché pour le
+  copier), état « Invité le… » / « Connecté le… » / « Accès retiré »,
+  « Retirer l'accès » (déconnexion immédiate). Réservé au gérant.
+- **Bilans mensuels** : les six derniers mois terminés, calculés
+  automatiquement ; « Ouvrir » montre l'**aperçu exact**, le mot de Label
+  Maison, puis « Publier » / « Dépublier » / « Mettre à jour » (signalé quand
+  les chiffres ont changé depuis la publication). Les chiffres sont figés à la
+  publication : le propriétaire voit exactement l'aperçu.
+- **Documents partagés** : catégorie, titre, « Déposer un document »
+  (`stockage://erp-fichiers/proprietaires/<id>/…`), ouvrir, retirer.
+- **Voir son espace** : l'espace complet tel que le propriétaire le voit.
+
+Démo (`VITE_ERP_DEMO=1`) : SCI Les Tilleuls est connectée, avec le bilan
+d'août publié et deux documents ; son espace :
+`/espace-proprietaire?apercu=pro-sci-tilleuls`.
+
+### Fonctionnement
+
+- **Connexion sans compte ni SQL** (`src/erp/data/proprietaire-acces.ts`) :
+  jeton aléatoire de 32 octets dans un lien `…/espace-proprietaire#jeton=…`
+  (après `#` : jamais envoyé aux serveurs ni dans les journaux, retiré de la
+  barre d'adresse à l'ouverture). Seule son empreinte SHA-256 est gardée,
+  dans la collection `accesProprietaires` (un enregistrement par
+  propriétaire, écrit **uniquement par le serveur**). Le lien ouvre une
+  session : cookie `lm_proprio` HttpOnly, Secure, SameSite=Lax, limité à
+  `/api/espace-proprietaire`, signé HMAC-SHA256 avec `PROPRIETAIRE_SECRET`,
+  30 jours. Chaque appel revérifie l'accès en base (actif, même version) :
+  retirer l'accès ou changer d'adresse ferme aussitôt toutes les sessions.
+  Le propriétaire peut redemander un lien avec son adresse (valable 1 heure,
+  réponse identique que l'adresse ait un accès ou non, 5 demandes par heure).
+- **Lecture seule** : le propriétaire ne lit jamais la base.
+  `api/espace-proprietaire.ts` (via `api/_proprietaire.ts`, session du compte
+  d'équipe) lit puis filtre par propriétaire avant tout calcul, et ne renvoie
+  que la `VueProprietaire` (`src/erp/data/types-proprietaire.ts`). Le serveur
+  n'écrit que les accès ; rien sur les logements, réservations, prix ou
+  calendrier, et rien vers les plateformes.
+- **Calculs** (`src/erp/data/proprietaire.ts`, purs, partagés par le serveur,
+  l'aperçu du gérant et la démo) : bilan d'un mois **au prorata des nuits**
+  (un séjour du 29 août au 3 septembre compte 3 nuits en août et 2 en
+  septembre, montants partagés de même) ; commission Label Maison =
+  (encaissé − frais de plateforme − ménage) × taux du mandat en vigueur ;
+  net = encaissé − frais − ménage − commission, au centime sur chaque ligne ;
+  occupation = nuits réservées / (jours du mois × logements). La fiche
+  d'attente des logements importés (`repull-proprietaire-a-renseigner`)
+  n'a jamais d'espace.
+- **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
+  les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
+  `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
+  `publie`, chiffres figés).
+
+### Phase 2 : factures et relances de paiement (modèle prévu, pas construit)
+
+- **Factures** : on reprend `Facture` (`types.ts`, destinataire
+  `proprietaire`, `proprietaireId`). Ajouts : `partageeLe?` (visible dans
+  l'espace seulement une fois partagée) et le PDF en `DocumentProprietaire`
+  de catégorie `facture` avec `factureId`. Onglet « Factures » : numéro,
+  date, échéance, montant TTC, statut (à payer, payée le…, en retard),
+  téléchargement ; même filtrage strict par propriétaire.
+- **Relances** : collection `relancesPaiement` `{ id, factureId,
+  proprietaireId, niveau (1, 2, 3), prevueLe, envoyeeLe?, statut (prevue,
+  envoyee, annulee, payee), canal: 'email' }`, calendrier dans `reglages`
+  (par défaut J+5, J+15 et J+30 après l'échéance), mode « proposer » (le
+  gérant valide chaque envoi, par défaut) ou « automatique ». Un passage
+  quotidien (cron existant) crée les relances dues et les envoie par Resend ;
+  tout s'arrête dès que la facture est payée. Le propriétaire voit les
+  rappels dans son espace, le gérant dans la carte Propriétaire.
+

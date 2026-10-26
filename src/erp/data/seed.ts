@@ -21,6 +21,7 @@ import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { creerVersionsAnnonce } from './seed-annonces';
 import { creerContactsCrm } from './seed-crm';
 import { creerDossiersDemo } from './seed-dossiers';
+import { creerEspaceProprietaireDemo } from './seed-proprietaire';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -629,7 +630,7 @@ export function creerSeed(): ErpDonnees {
 
   const recommandations = creerRecommandations();
 
-  return {
+  const donnees = {
     proprietaires: structuredClone(PROPRIETAIRES),
     mandats: structuredClone(MANDATS),
     logements: habiller(structuredClone(LOGEMENTS)),
@@ -651,4 +652,5 @@ export function creerSeed(): ErpDonnees {
     versionsAnnonce: creerVersionsAnnonce({ logements: LOGEMENTS, reservations, recommandations }),
     reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }],
   };
+  return { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
 }
