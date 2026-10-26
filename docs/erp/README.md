@@ -6,7 +6,8 @@ des charges complet est dans [`SPEC.md`](./SPEC.md).
 
 Principes du fondateur, appliqués partout :
 
-- l'ERP sert Label Maison et personne d'autre (pas de multi-clients) ;
+- l'ERP sert Label Maison ; une autre équipe (Sens…) peut y avoir son propre
+  **espace**, aux données complètement séparées (voir « Espaces ») ;
 - simple : un écran par question métier, pas de paramétrage superflu ;
 - **tout ce qui peut être automatisé l'est** : le moteur d'automatisations fait
   le travail répétitif, les humains ne traitent que les exceptions (alertes) ;
@@ -77,7 +78,32 @@ node_modules/.bin/esbuild src/erp/data/verifier-agent.ts --bundle --format=esm \
 node_modules/.bin/esbuild src/erp/data/verifier-notifications.ts --bundle --format=esm \
   --platform=node --log-level=error --outfile=/tmp/verifier-notifications.mjs \
   && node /tmp/verifier-notifications.mjs
+
+# Auto-contrôle des espaces (fausses API Supabase et Repull) : choix de
+# l'espace, workspace Repull sur chaque appel, BaseErp avec ou sans espace,
+# base pas encore préparée, vérification d'un membre, synchronisation du
+# navigateur (filtres, clés, temps réel, file locale), plafond de l'agent.
+node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{}' \
+  --log-level=error --outfile=/tmp/verifier-espaces.mjs && node /tmp/verifier-espaces.mjs
+
+# Même chose côté routes /api : compte serveur, réglages d'un espace, passage
+# quotidien sur chaque espace, bouton d'un membre, routage des webhooks.
+node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{}' \
+  --log-level=error --outfile=/tmp/verifier-espaces-serveur.mjs && node /tmp/verifier-espaces-serveur.mjs
+
+# Auto-contrôle de l'espace propriétaire : jamais le logement ou la réservation
+# d'un autre, aucune donnée personnelle de voyageur, séjour à cheval sur deux
+# mois, bilan non publié invisible, lien expiré ou réutilisé refusé, sessions.
+node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-proprietaire.mjs && node /tmp/verifier-proprietaire.mjs
 ```
+
+La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
+se vérifie au moment de la lancer : le bilan affiche `recette = ok` (essai des
+règles avec des comptes fictifs, annulé aussitôt).
 
 Le vérificateur du moteur l'exécute deux fois sur la démo : la seconde passe
 doit produire **0 changement**, le seed doit rester intact et les ids uniques.
@@ -88,6 +114,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | Variable | Où | Rôle |
 |---|---|---|
 | `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe de `/erp`. Absent : accès refusé (page 503), jamais ouvert. Redéployer après modification. |
+| `ERP_SERVEUR_MOT_DE_PASSE` | Vercel (serveur), facultatif tant qu'il n'y a que Label Maison | Mot de passe du compte technique `serveur@labelmaisoncg.fr` (voir « Espaces »). Absent : le serveur écrit avec le compte d'équipe, dans Label Maison seulement. |
 | `LINGE_PASSWORD` | Vercel | Mot de passe du registre `/linge` (inchangé). |
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
 | `VITE_SUPABASE_ANON_KEY` | build (Vercel), facultatif | Clé publique (« anon ») du même projet. Les deux vont ensemble : si l'une manque, le couple par défaut est utilisé. |
@@ -103,6 +130,9 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | Vercel (serveur), facultatifs | Alertes Telegram de l'agent (transmissions, copies des réponses, relances). |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
+| `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
+| `OPERATIONS_SECRET`, `ACCES_SECRET` | Vercel (serveur), facultatives | Sessions de l'espace opérations ; `ACCES_SECRET` sert de secours aux deux genres d'accès (le genre est signé dans la session : un cookie propriétaire ne vaut pas pour les opérations). |
+| `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
 
 ## Accès et déploiement
 
@@ -136,11 +166,14 @@ src/erp/
     store.tsx         ErpProvider + useErp() : état, mutations, journal, moteur,
                       connexion (production) ou démo locale
     config.ts         mode (réel / démo), projet Supabase, clés localStorage
-    supabase.ts       client Supabase, connexion, membres, fichiers, erreurs
+    supabase.ts       client Supabase, connexion, espaces et membres, fichiers, erreurs
+    espaces.ts        espaces (Label Maison, Sens…) : identifiants, choix, en-tête,
+                      base « historique » (avant supabase/erp-espaces.sql)
     synchro.ts        lecture de la base, écriture par différence, file
                       d'attente, temps réel, état des automatisations
     collections.ts    liste des collections, jeu vide
     verifier-synchro.ts  auto-contrôle de la synchronisation (Node)
+    verifier-espaces.ts  auto-contrôle des espaces (Node)
     repull.ts         Repull → ERP : conversion et fusion (fonctions pures)
     repull-synchro.ts synchronisation Repull côté serveur (appels, base, budget)
     repull-signature.ts  vérification de X-Repull-Signature (webhooks)
@@ -156,7 +189,9 @@ src/erp/
     <module>/index.tsx
 api/erp-repull-sync.ts     synchronisation Repull (cron quotidien, bouton)
 api/erp-repull-webhook.ts  webhooks Repull de l'ERP (quand l'offre les inclut)
+api/_erp-espaces.ts        réglages d'un espace, espaces actifs, garde « Label Maison seulement »
 supabase/erp-installation.sql  installation de la base (à coller dans le SQL Editor)
+supabase/erp-espaces.sql   espaces séparés, en deux passes (après l'installation)
 supabase/migrations/  schéma normalisé : cible future, NON appliquée (voir son README)
 ```
 
@@ -907,3 +942,213 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
   Les notifications partent quand l'ERP apprend la nouveauté : webhook Repull
   (quasi immédiat, offre Starter), passage de l'agent, ou synchronisation
   (quotidienne, ou « Synchroniser maintenant »).
+
+## Espaces (octobre 2026)
+
+La même application sert plusieurs équipes, chacune dans son **espace** :
+Label Maison, puis Sens. Se connecter à l'espace de Label Maison, c'est voir
+les données et le Repull de Label Maison ; à celui de Sens, ceux de Sens.
+Aucune donnée ne passe d'un espace à l'autre. Mise en service pas à pas, pour
+les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
+
+### Dans la base (`supabase/erp-espaces.sql`)
+
+- Table `erp.espaces` (code, nom, actif, `repull_workspace`, `config` non
+  secrète). Label Maison a l'identifiant fixe
+  `4c4d0000-0000-4000-8000-000000000001` et reçoit toutes les données d'avant.
+- Colonne `espace` sur `enregistrements`, `etat_automatisations`, `membres`,
+  `historique`. Toutes les règles RLS portent dessus, plus une règle
+  **restrictive** « cloison des espaces » qui tient même si une règle plus
+  large est ajoutée un jour. Les fichiers du stockage appartiennent à l'espace
+  de leur premier dossier (`<espace>/menages/…`), Label Maison sinon.
+- **Deux passes** (une ligne à changer en haut du fichier) :
+  1. passe 1 : colonne avec Label Maison par défaut, nouvelles clés en plus
+     des anciennes. L'ancien et le nouveau code marchent tous les deux ;
+  2. passe 2, au moins 24 h après la PLUS TARDIVE de la mise en ligne du code
+     et de la passe 1 : clés primaires `(espace, …)` (le même identifiant
+     possible dans deux espaces, une adresse membre de plusieurs espaces),
+     plus de valeur par défaut. Ne savent plus écrire ensuite : l'ancien code,
+     et une page du nouveau code ouverte avant la passe 1 (restée en mode
+     « historique » jusqu'à son rechargement de la nuit, qui relit
+     `qui_suis_je`). D'où l'attente.
+- Un autre espace que Label Maison ne peut être créé qu'après la passe 2
+  (déclencheur `espaces_apres_passe_2`, message « Passe 2 d'abord ») : avant,
+  ses lignes techniques (`repull/etat`, `agent/etat`, `etat_automatisations/
+  global`) heurteraient celles de Label Maison (erreur 23505).
+- Compte technique `serveur@labelmaisoncg.fr` (`app_metadata.erp_role =
+  serveur`, posé par le script) : il ne voit **que** l'espace nommé par
+  l'en-tête `x-erp-espace`, avec les droits d'un gérant ; sans en-tête, rien.
+- Fonctions : `erp.qui_suis_je()` (espaces et rôle du compte),
+  `erp.espaces_actifs()`, `erp.secret_espace()` (coffre Vault, serveur
+  seulement, pour l'espace de l'en-tête seulement, jamais pour Label Maison),
+  `erp.ranger_secret()` (SQL Editor seulement), `erp.recette_espaces()`
+  (essai des règles, annulé). Relancer le fichier après la passe 2 ne recrée
+  rien en double (`erp.cle_par_espace`).
+- `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
+  aucune règle d'accès d'ici là.
+- `erp-installation.sql` et `erp-connecteurs-gerants.sql` refusent de tourner
+  une fois les espaces en place (ils remettraient les règles d'avant).
+
+### Dans le code
+
+- **Base « historique »** : tant que le SQL n'est pas passé, `qui_suis_je` ou
+  la colonne `espace` manquent ; le navigateur et le serveur le voient et font
+  **exactement comme avant** (Label Maison, sans colonne ni en-tête). Le code
+  peut donc partir en ligne avant le SQL.
+- Navigateur : `store.tsx` ouvre l'espace du compte (`quiSuisJe`, Label Maison
+  d'abord, dernier choix retenu sur l'appareil) ; `synchro.ts` filtre, écrit et
+  supprime dans cet espace, ignore le temps réel des autres espaces, et ne
+  reprend une file locale que pour le même espace et le même compte. Les appels
+  aux routes `/api` portent l'en-tête `x-erp-espace` (même origine) ; les
+  requêtes à Supabase, elles, n'en ont pas besoin (règles par membre).
+- Serveur : `baseErp(c, espace)` écrit avec le compte serveur et l'en-tête de
+  l'espace ; sans compte serveur prêt, avec le compte d'équipe et **pour Label
+  Maison seulement**. `verifierMembre(jeton, { espace })` vérifie le rôle dans
+  l'espace de l'en-tête (Label Maison à défaut : anciennes versions de l'app).
+  Le site public (formulaires, dossier propriétaire), le connecteur Claude,
+  OAuth et l'agenda du CRM restent dans Label Maison.
+- `configurationEspace(espace)` (`api/_erp-espaces.ts`) : Label Maison garde
+  ses variables Vercel. Un autre espace n'en reprend **aucune** :
+  Repull par son workspace (`repull_workspace`, en-tête `X-Workspace-Id` sur
+  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; sa part
+  d'appels Repull (`config.repull.budgetMois`, 150 par défaut, 0 permis : la
+  part de Label Maison n'est pas entamée) ; secret de webhook propre (coffre)
+  pour une adresse propre ; agent IA avec la clé Claude commune, un plafond de
+  décisions par mois (`config.agent.plafondMois`, 300 par défaut), en pause
+  tant que l'équipe ne l'allume pas, jamais de Telegram. Sans workspace ni
+  clé, Repull est coupé pour l'espace (message clair).
+- Passages planifiés (cron de synchronisation, réveil de l'agent) : chaque
+  espace actif à son tour, Label Maison d'abord ; Label Maison seul : même
+  passage et même réponse qu'avant. Webhook (`espaceDuWorkspace`) : un
+  événement « tagué » `workspaceId` va à l'espace qui a déclaré ce workspace
+  (Label Maison compris, s'il a déclaré le sien) ; tant qu'aucun autre espace
+  n'en a déclaré, tout reste à Label Maison comme avant ; ensuite, un
+  workspace inconnu est ignoré — jamais versé dans Label Maison. Un espace
+  avec son propre compte Repull a son adresse :
+  `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret ; un espace
+  inconnu, fermé ou sans secret y reçoit la réponse d'une signature fausse.
+- Retour en arrière du SQL : la première écriture refusée (colonne `espace`
+  inconnue) fait oublier l'état gardé de la base, relue au prochain appel.
+- Toujours en lecture seule sur les plateformes : `ecritureRepullPermise` et le
+  verrou de l'agent sont inchangés ; l'en-tête de workspace n'ouvre rien.
+
+### Pas encore (étapes suivantes)
+
+- Connexion personnelle, « Créer un compte » et invitations (fin du mot de
+  passe commun `ERP_PASSWORD`), choix de l'espace à l'écran.
+- Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
+- Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
+  qui n'est pas encore dans les dépendances de développement.
+- Liens signés des guides déposés en fichier pour un autre espace que Label
+  Maison (ses guides en lien https partent déjà).
+
+## Espace propriétaire (octobre 2026)
+
+Une page à part, **`https://www.labelmaisoncg.fr/espace-proprietaire`** (pas
+`/proprietaires`, qui reste la page commerciale du site), pour rassurer les
+propriétaires sans leur ouvrir l'ERP : mobile d'abord, épurée, en lecture
+seule. Quatre onglets (barre du bas sur téléphone, en-tête sur ordinateur) :
+
+| Onglet | Ce que voit le propriétaire |
+|---|---|
+| Accueil | Ses logements (photo, nom), le net du mois en cours et du mois dernier (nuits, occupation ; « Bilan publié » ou « Provisoire »), les prochaines arrivées, les contacts de Label Maison, les derniers documents. |
+| Logements | « Mes logements » : une fiche par logement (photo, nom, ville) avec les 12 derniers mois terminés : revenu net par mois (graphique en barres, survol et clavier, tableau mois par mois), occupation, prix moyen par nuit, séjours et nuits, comparaison avec les mêmes mois de l'an dernier quand il y a des données ; note moyenne et derniers avis (partie publique seulement) ; séjour en cours et prochains séjours. L'accueil mène à chaque fiche. |
+| Calendrier | Un mois par logement : nuits réservées et libres, arrivées et départs (bande dorée du milieu du jour d'arrivée au milieu du jour de départ), navigation de mois en mois, séjours du mois. |
+| Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Documents | Rangés par catégorie (Contrat, Attestation, Bilan, Facture, Autre), ouverts par un lien signé de 2 minutes. |
+
+Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autre
+(ni contact, ni pays, ni avis, ni code d'accès, ni identifiant de réservation).
+
+### Côté gérant (fiche logement → carte « Propriétaire » → « Inviter » / « Gérer »)
+
+- **Accès** : adresse e-mail, « Inviter dans l'espace propriétaire » (lien
+  valable 7 jours, à usage unique, envoyé par e-mail et affiché pour le
+  copier), état « Invité le… » / « Connecté le… » / « Accès retiré »,
+  « Retirer l'accès » (déconnexion immédiate). Réservé au gérant.
+- **Bilans mensuels** : les six derniers mois terminés, calculés
+  automatiquement ; « Ouvrir » montre l'**aperçu exact**, le mot de Label
+  Maison, puis « Publier » / « Dépublier » / « Mettre à jour » (signalé quand
+  les chiffres ont changé depuis la publication). Les chiffres sont figés à la
+  publication : le propriétaire voit exactement l'aperçu.
+- **Documents partagés** : catégorie, titre, « Déposer un document »
+  (`stockage://erp-fichiers/proprietaires/<id>/…`), ouvrir, retirer.
+- **Voir son espace** : l'espace complet tel que le propriétaire le voit.
+
+Démo (`VITE_ERP_DEMO=1`) : SCI Les Tilleuls est connectée, avec le bilan
+d'août publié et deux documents ; son espace :
+`/espace-proprietaire?apercu=pro-sci-tilleuls`.
+
+### Fonctionnement
+
+- **Connexion sans compte ni SQL** (`src/erp/data/proprietaire-acces.ts`) :
+  jeton aléatoire de 32 octets dans un lien `…/espace-proprietaire#jeton=…`
+  (après `#` : jamais envoyé aux serveurs ni dans les journaux, retiré de la
+  barre d'adresse à l'ouverture). Seule son empreinte SHA-256 est gardée,
+  dans la collection `accesProprietaires` (un enregistrement par
+  propriétaire, écrit **uniquement par le serveur**). Le lien ouvre une
+  session : cookie `lm_proprio` HttpOnly, Secure, SameSite=Lax, limité à
+  `/api/espace-proprietaire`, signé HMAC-SHA256 avec `PROPRIETAIRE_SECRET`,
+  30 jours. Chaque appel revérifie l'accès en base (actif, même version) :
+  retirer l'accès ou changer d'adresse ferme aussitôt toutes les sessions.
+  Le propriétaire peut redemander un lien avec son adresse (valable 1 heure,
+  réponse identique que l'adresse ait un accès ou non, 5 demandes par heure).
+- **Espaces** (`api/_acces-externe.ts`, commun aux propriétaires et aux
+  opérations) : un accès appartient à l'espace du gérant qui invite (en-tête
+  `x-erp-espace`, `verifierMembre(jeton, { espace })`). Il est écrit, lu et
+  revérifié dans la base de cet espace seulement ; le lien porte l'espace
+  (`#espace=<uuid>&jeton=…`, l'espace n'est pas secret ; un ancien lien sans
+  espace vaut Label Maison) et la session signée aussi (genre, propriétaire,
+  espace, version) : un cookie dont on change l'espace est refusé.
+  « Recevoir mon lien » cherche l'adresse dans chaque espace actif et envoie
+  un lien par espace (chaque espace est un compte à part), avec la même
+  réponse neutre. E-mails et écrans portent le nom de l'espace ; un autre
+  espace que Label Maison n'utilise ni l'expéditeur ni les contacts de Label
+  Maison (sa fiche : `config.email.expediteur`, `config.contacts` ; sans
+  expéditeur, le gérant copie le lien). Base d'avant les espaces : Label
+  Maison seul, comme avant. Pour l'instant, photos déposées et documents
+  (`stockage://`) ne sont signés que pour Label Maison.
+- **Lecture seule** : le propriétaire ne lit jamais la base.
+  `api/espace-proprietaire.ts` (via `api/_proprietaire.ts`, session du compte
+  d'équipe) lit puis filtre par propriétaire avant tout calcul, et ne renvoie
+  que la `VueProprietaire` (`src/erp/data/types-proprietaire.ts`). Le serveur
+  n'écrit que les accès ; rien sur les logements, réservations, prix ou
+  calendrier, et rien vers les plateformes.
+- **Calculs** (`src/erp/data/proprietaire.ts`, purs, partagés par le serveur,
+  l'aperçu du gérant et la démo) : bilan d'un mois **au prorata des nuits**
+  (un séjour du 29 août au 3 septembre compte 3 nuits en août et 2 en
+  septembre, montants partagés de même) ; commission Label Maison =
+  (encaissé − frais de plateforme − ménage) × taux du mandat en vigueur ;
+  net = encaissé − frais − ménage − commission, au centime sur chaque ligne ;
+  occupation = nuits réservées / (jours du mois × logements). Fiche d'un
+  logement (`ficheLogement`) : un mois n'est « suivi » qu'à partir du premier
+  séjour connu dans l'ERP (et du début du mandat) — avant, ce n'est pas un
+  mois vide mais un mois sans données, exclu des totaux et du graphique ;
+  l'occupation se compte sur les jours gérés ; la comparaison ne garde que
+  les mois suivis les deux années ; prix moyen par nuit = encaissé hors
+  ménage / nuits ; avis : jamais le « Message privé » ni adresse, numéro ou
+  lien glissé dans le texte, voyageur en « Prénom N. ». La fiche
+  d'attente des logements importés (`repull-proprietaire-a-renseigner`)
+  n'a jamais d'espace.
+- **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
+  les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
+  `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
+  `publie`, chiffres figés).
+
+### Phase 2 : factures et relances de paiement (modèle prévu, pas construit)
+
+- **Factures** : on reprend `Facture` (`types.ts`, destinataire
+  `proprietaire`, `proprietaireId`). Ajouts : `partageeLe?` (visible dans
+  l'espace seulement une fois partagée) et le PDF en `DocumentProprietaire`
+  de catégorie `facture` avec `factureId`. Onglet « Factures » : numéro,
+  date, échéance, montant TTC, statut (à payer, payée le…, en retard),
+  téléchargement ; même filtrage strict par propriétaire.
+- **Relances** : collection `relancesPaiement` `{ id, factureId,
+  proprietaireId, niveau (1, 2, 3), prevueLe, envoyeeLe?, statut (prevue,
+  envoyee, annulee, payee), canal: 'email' }`, calendrier dans `reglages`
+  (par défaut J+5, J+15 et J+30 après l'échéance), mode « proposer » (le
+  gérant valide chaque envoi, par défaut) ou « automatique ». Un passage
+  quotidien (cron existant) crée les relances dues et les envoie par Resend ;
+  tout s'arrête dès que la facture est payée. Le propriétaire voit les
+  rappels dans son espace, le gérant dans la carte Propriétaire.
+

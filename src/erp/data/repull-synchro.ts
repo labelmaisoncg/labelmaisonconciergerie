@@ -28,13 +28,16 @@
  *   Repull et PostgREST en mémoire.
  *
  * Écriture : PostgREST du projet Supabase de Label Maison, avec la session du
- * compte d'équipe (même mot de passe que ERP_PASSWORD, comme middleware.ts).
- * Aucune clé service_role : les règles RLS s'appliquent comme pour l'équipe.
+ * compte serveur (espace nommé par l'en-tête x-erp-espace) ou, pour Label
+ * Maison, du compte d'équipe (même mot de passe que ERP_PASSWORD, comme
+ * middleware.ts). Aucune clé service_role : les règles RLS s'appliquent.
+ * Espaces : src/erp/data/espaces.ts et api/_erp-espaces.ts.
  *
  * Imports relatifs avec « .js » : ce fichier tourne aussi sous Node (ESM) dans
  * les fonctions Vercel, qui exigent l'extension.
  */
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config.js';
+import { ENTETE_ESPACE, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, lireEspacesMembre, type EspaceMembre } from './espaces.js';
 import {
   ACTION_JOURNAL_REPULL,
   AUTEUR_REPULL,
@@ -186,6 +189,11 @@ export function ecritureRepullPermise(methode: string, chemin: string, corps?: u
 
 export interface OptionsClientRepull {
   cle: string;
+  /**
+   * Workspace Repull de l'espace (en-tête X-Workspace-Id sur CHAQUE appel) :
+   * un espace qui partage le compte Repull de Label Maison ne lit que le sien.
+   */
+  workspace?: string;
   base?: string;
   fetch?: Fetch;
   /** Instant (ms) au-delà duquel on n'attend plus (429, nouvel essai). */
@@ -272,6 +280,7 @@ export class ClientRepull {
             Accept: 'application/json',
             ...(envoi !== undefined ? { 'Content-Type': 'application/json' } : {}),
             ...entetes,
+            ...(this.o.workspace ? { 'X-Workspace-Id': this.o.workspace } : {}),
           },
           ...(envoi !== undefined ? { body: JSON.stringify(envoi) } : {}),
           signal: abandon.signal,
@@ -330,8 +339,17 @@ export interface OptionsBase {
   url?: string;
   cleAnon?: string;
   fetch?: Fetch;
-  /** Jeton d'accès du compte d'équipe ; `renouveler` : l'ancien a été refusé. */
+  /** Jeton d'accès du compte qui écrit ; `renouveler` : l'ancien a été refusé. */
   jeton: (renouveler?: boolean) => Promise<string>;
+  /**
+   * Espace lu et écrit (supabase/erp-espaces.sql) : en-tête x-erp-espace,
+   * filtre et clé (espace, collection, id). Absent ou null : base d'avant les
+   * espaces (Label Maison seul, rien d'envoyé). Une fonction est appelée au
+   * premier accès, quand l'état de la base est connu.
+   */
+  espace?: string | null | (() => Promise<string | null>);
+  /** La base refuse la colonne espace (SQL retiré) : prévenir qui garde son état. */
+  surBaseHistorique?: () => void;
 }
 
 /** Accès à erp.enregistrements par PostgREST (schéma erp). */
@@ -339,6 +357,7 @@ export class BaseErp {
   private readonly f: Fetch;
   private readonly url: string;
   private readonly cleAnon: string;
+  private espaceLu: Promise<string | null> | null = null;
   ecritures = 0;
 
   constructor(private readonly o: OptionsBase) {
@@ -347,17 +366,39 @@ export class BaseErp {
     this.cleAnon = o.cleAnon ?? SUPABASE_ANON_KEY;
   }
 
+  /** Espace des données (null : base d'avant les espaces). */
+  espace(): Promise<string | null> {
+    if (!this.espaceLu) {
+      const e = this.o.espace;
+      const lu = typeof e === 'function' ? e() : Promise.resolve(e ?? null);
+      // Un échec (base injoignable) n'est pas gardé : l'appel suivant réessaie.
+      lu.catch(() => {
+        if (this.espaceLu === lu) this.espaceLu = null;
+      });
+      this.espaceLu = lu;
+    }
+    return this.espaceLu;
+  }
+
   private async requete(chemin: string, init: RequestInit & { entetes?: Record<string, string> }): Promise<Response> {
+    const espace = await this.espace();
     for (let essai = 1; ; essai++) {
       const jeton = await this.o.jeton(essai > 1);
       const r = await this.f(`${this.url}/rest/v1/${chemin}`, {
         ...init,
-        headers: { apikey: this.cleAnon, Authorization: `Bearer ${jeton}`, ...init.entetes },
+        headers: { apikey: this.cleAnon, Authorization: `Bearer ${jeton}`, ...init.entetes, ...(espace ? { [ENTETE_ESPACE]: espace } : {}) },
       });
       if (r.status === 401 && essai === 1) continue;
       if (!r.ok) {
         const t = await r.text().catch(() => '');
-        if (r.status === 401 || r.status === 403) throw new Error(`Écriture refusée par la base (${r.status}) : le compte d’équipe est-il bien membre gérant ? ${t.slice(0, 200)}`);
+        if (r.status === 401 || r.status === 403) {
+          const qui = espace ? 'le compte du serveur est-il bien autorisé dans cet espace ?' : 'le compte d’équipe est-il bien membre gérant ?';
+          throw new Error(`Écriture refusée par la base (${r.status}) : ${qui} ${t.slice(0, 200)}`);
+        }
+        if (espace && /42703|PGRST204|PGRST202|42883/.test(t)) {
+          this.o.surBaseHistorique?.();
+          throw new Error(MESSAGE_BASE_PAS_PREPAREE);
+        }
         if (/PGRST106|PGRST205|schema/i.test(t)) throw new Error('Base de l’ERP non installée (supabase/erp-installation.sql).');
         throw new Error(`Base de l’ERP : erreur ${r.status} ${t.slice(0, 200)}`);
       }
@@ -368,11 +409,13 @@ export class BaseErp {
   /** Éléments d'une collection (tous, ou seulement ces ids). */
   async lire<T>(collection: string, ids?: string[]): Promise<T[]> {
     const res: T[] = [];
+    const espace = await this.espace();
+    const dansEspace = espace ? `&espace=eq.${espace}` : '';
     const filtres = ids ? decouper(ids, 80).map((l) => `&id=in.(${l.map((i) => `"${i.replace(/"/g, '')}"`).join(',')})`) : [''];
     for (const filtre of filtres) {
       for (let depart = 0; ; depart += 1000) {
         const r = await this.requete(
-          `enregistrements?select=id,donnees&collection=eq.${encodeURIComponent(collection)}${filtre}&order=id&limit=1000&offset=${depart}`,
+          `enregistrements?select=id,donnees${dansEspace}&collection=eq.${encodeURIComponent(collection)}${filtre}&order=id&limit=1000&offset=${depart}`,
           { method: 'GET', entetes: { 'Accept-Profile': 'erp' } },
         );
         const lignes = (await r.json()) as { id: string; donnees: unknown }[];
@@ -385,20 +428,31 @@ export class BaseErp {
     return res;
   }
 
-  /** Upsert par lots (collection + id), fusion côté base. `auteur` : qui écrit (historique de la base). */
+  /** Upsert par lots (espace + collection + id), fusion côté base. `auteur` : qui écrit (historique de la base). */
   async ecrire(collection: string, elements: { id: string }[], auteur: string = AUTEUR_REPULL): Promise<void> {
+    const espace = await this.espace();
     for (const lot of decouper(elements, LOT_ECRITURE)) {
-      await this.requete('enregistrements?on_conflict=collection,id', {
+      await this.requete(`enregistrements?on_conflict=${espace ? 'espace,collection,id' : 'collection,id'}`, {
         method: 'POST',
         entetes: {
           'Content-Type': 'application/json',
           'Content-Profile': 'erp',
           Prefer: 'resolution=merge-duplicates,return=minimal',
         },
-        body: JSON.stringify(lot.map((e) => ({ collection, id: e.id, donnees: e, maj_par: `${auteur}#serveur` }))),
+        body: JSON.stringify(lot.map((e) => ({ ...(espace ? { espace } : {}), collection, id: e.id, donnees: e, maj_par: `${auteur}#serveur` }))),
       });
       this.ecritures += lot.length;
     }
+  }
+
+  /** Fonction de la base (schéma erp), avec l'espace en en-tête. */
+  async rpc<T>(nom: string, args: Record<string, unknown> = {}): Promise<T> {
+    const r = await this.requete(`rpc/${nom}`, {
+      method: 'POST',
+      entetes: { 'Content-Type': 'application/json', 'Content-Profile': 'erp', 'Accept-Profile': 'erp' },
+      body: JSON.stringify(args),
+    });
+    return (await r.json()) as T;
   }
 }
 
@@ -414,12 +468,14 @@ export interface OptionsAuth {
   url?: string;
   cleAnon?: string;
   fetch?: Fetch;
+  /** Variable Vercel du mot de passe (message d'erreur). */
+  variable?: string;
 }
 
 /**
- * Session du compte d'équipe (grant « password », comme sessionErp de
- * middleware.ts). Gardée en mémoire tant que l'instance vit, pour ne pas
- * rouvrir une session à chaque webhook.
+ * Session d'un compte technique (grant « password », comme sessionErp de
+ * middleware.ts) : compte d'équipe ou compte serveur. Gardée en mémoire tant
+ * que l'instance vit, pour ne pas rouvrir une session à chaque webhook.
  */
 export function fabriqueJetonEquipe(email: string, motDePasse: string, o: OptionsAuth = {}) {
   let cache: { jeton: string; expire: number } | null = null;
@@ -434,7 +490,7 @@ export function fabriqueJetonEquipe(email: string, motDePasse: string, o: Option
     if (!r.ok || !d.access_token) {
       cache = null;
       throw new Error(
-        `Connexion du compte d’équipe (${email}) refusée par Supabase (${r.status}) : son mot de passe doit être égal à ERP_PASSWORD.`,
+        `Connexion du compte ${email} refusée par Supabase (${r.status}) : son mot de passe doit être égal à ${o.variable ?? 'ERP_PASSWORD'}.`,
       );
     }
     cache = { jeton: d.access_token, expire: Date.now() + (d.expires_in ?? 3600) * 1000 };
@@ -442,13 +498,49 @@ export function fabriqueJetonEquipe(email: string, motDePasse: string, o: Option
   };
 }
 
-export type ResultatMembre = { ok: true; email: string; role: string } | { ok: false; statut: number; erreur: string };
+/** Réponse de erp.qui_suis_je() : le compte, et les espaces dont il est membre. */
+export interface Identite {
+  email: string;
+  serveur: boolean;
+  espaces: EspaceMembre[];
+}
+
+/**
+ * erp.qui_suis_je() avec ce jeton. null : base d'avant les espaces (la
+ * fonction n'existe pas encore). Toute autre erreur est levée.
+ */
+export async function lireIdentite(jeton: string, o: OptionsAuth = {}): Promise<Identite | null> {
+  const f = o.fetch ?? fetch;
+  const url = (o.url ?? SUPABASE_URL).replace(/\/+$/, '');
+  const r = await f(`${url}/rest/v1/rpc/qui_suis_je`, {
+    method: 'POST',
+    headers: {
+      apikey: o.cleAnon ?? SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${jeton}`,
+      'Content-Type': 'application/json',
+      'Content-Profile': 'erp',
+      'Accept-Profile': 'erp',
+    },
+    body: '{}',
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    if (/PGRST202|42883/.test(t)) return null;
+    throw new Error(`Base de l’ERP : erreur ${r.status} ${t.slice(0, 200)}`);
+  }
+  const d = (await r.json().catch(() => ({}))) as { email?: unknown; serveur?: unknown };
+  return { email: String(d.email ?? '').toLowerCase(), serveur: d.serveur === true, espaces: lireEspacesMembre(d) };
+}
+
+export type ResultatMembre = { ok: true; email: string; role: string; espace: string } | { ok: false; statut: number; erreur: string };
 
 /**
  * Vérifie un jeton de session de l'ERP : compte Supabase valide ET membre
- * de l'équipe autorisé à écrire (gérant ou opérations, table erp.membres).
+ * autorisé à écrire (gérant ou opérations) de l'espace demandé (en-tête
+ * x-erp-espace de l'appel ; à défaut Label Maison, ou le seul espace du
+ * compte). Base d'avant les espaces : table erp.membres, Label Maison.
  */
-export async function verifierMembre(jeton: string, o: OptionsAuth = {}): Promise<ResultatMembre> {
+export async function verifierMembre(jeton: string, o: OptionsAuth & { espace?: string } = {}): Promise<ResultatMembre> {
   const f = o.fetch ?? fetch;
   const url = (o.url ?? SUPABASE_URL).replace(/\/+$/, '');
   const cle = o.cleAnon ?? SUPABASE_ANON_KEY;
@@ -457,16 +549,40 @@ export async function verifierMembre(jeton: string, o: OptionsAuth = {}): Promis
   const moi = (await u.json().catch(() => ({}))) as { email?: string };
   const email = (moi.email ?? '').trim().toLowerCase();
   if (!email) return { ok: false, statut: 401, erreur: 'Session sans adresse e-mail.' };
-  const m = await f(`${url}/rest/v1/membres?select=email,role`, {
-    headers: { apikey: cle, Authorization: `Bearer ${jeton}`, 'Accept-Profile': 'erp' },
-  }).catch(() => null);
-  const lignes = m && m.ok ? ((await m.json().catch(() => [])) as { email?: string; role?: string }[]) : [];
-  const ligne = lignes.find((l) => (l.email ?? '').trim().toLowerCase() === email);
-  if (!ligne) return { ok: false, statut: 403, erreur: 'Ce compte n’est pas membre de l’équipe (erp.membres).' };
-  if (ligne.role !== 'gerant' && ligne.role !== 'operations') {
+  const demande = o.espace?.toLowerCase();
+
+  const identite = await lireIdentite(jeton, o).catch(() => undefined);
+  if (identite === undefined) return { ok: false, statut: 503, erreur: 'Base de l’ERP injoignable : réessayez dans un instant.' };
+  let role: string | undefined;
+  let espace = ID_LABEL_MAISON;
+  if (identite === null) {
+    // Base d'avant les espaces : une seule équipe, Label Maison.
+    if (demande && !estLabelMaison(demande)) return { ok: false, statut: 503, erreur: MESSAGE_BASE_PAS_PREPAREE };
+    const m = await f(`${url}/rest/v1/membres?select=email,role`, {
+      headers: { apikey: cle, Authorization: `Bearer ${jeton}`, 'Accept-Profile': 'erp' },
+    }).catch(() => null);
+    const lignes = m && m.ok ? ((await m.json().catch(() => [])) as { email?: string; role?: string }[]) : [];
+    role = lignes.find((l) => (l.email ?? '').trim().toLowerCase() === email)?.role;
+    if (!role) return { ok: false, statut: 403, erreur: 'Ce compte n’est pas membre de l’équipe (erp.membres).' };
+  } else {
+    // Sans en-tête (ancienne version de l'app) : Label Maison, ou le seul espace du compte.
+    const choisi = demande
+      ? identite.espaces.find((e) => e.id === demande)
+      : (identite.espaces.find((e) => estLabelMaison(e)) ?? (identite.espaces.length === 1 ? identite.espaces[0] : undefined));
+    if (!choisi) {
+      return {
+        ok: false,
+        statut: 403,
+        erreur: identite.espaces.length ? 'Ce compte n’est pas membre de cet espace.' : 'Ce compte n’est pas membre de l’équipe (erp.membres).',
+      };
+    }
+    role = choisi.role;
+    espace = choisi.id;
+  }
+  if (role !== 'gerant' && role !== 'operations') {
     return { ok: false, statut: 403, erreur: 'Seuls les gérants et les opérations peuvent lancer la synchronisation.' };
   }
-  return { ok: true, email, role: ligne.role };
+  return { ok: true, email, role, espace };
 }
 
 /* ========================================================= synchronisation */
@@ -1601,6 +1717,8 @@ export function phasesDues(etat: EtatRepull, declencheur: DeclencheurRepull, mai
 
 export interface OptionsLancement {
   cle: string;
+  /** Workspace Repull de l'espace (voir OptionsClientRepull). */
+  workspace?: string;
   base: BaseErp;
   declencheur: DeclencheurRepull;
   /** Instant (ms) à ne pas dépasser. */
@@ -1681,7 +1799,7 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     const message = `Part mensuelle des appels Repull de l’ERP épuisée (${etat.appelsMois} / ${etat.budgetMois}) : plus aucune synchronisation avant le 1er du mois prochain. Augmentez REPULL_BUDGET_ERP ou passez à l’offre Repull supérieure.`;
     if (o.declencheur === 'cron') {
       try {
-        const s = new SessionRepull({ repull: new ClientRepull({ cle: o.cle, echeance: o.echeance, budget: 0 }), base: o.base, mode: 'incremental', declencheur: 'cron', maintenant });
+        const s = new SessionRepull({ repull: new ClientRepull({ cle: o.cle, workspace: o.workspace, echeance: o.echeance, budget: 0 }), base: o.base, mode: 'incremental', declencheur: 'cron', maintenant });
         await s.journaliser(true, message);
       } catch {
         /* journal facultatif */
@@ -1690,7 +1808,7 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     return { ok: false, statut: 'budget', message, bilan: etat.dernierBilan, etat };
   }
 
-  const client = new ClientRepull({ cle: o.cle, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
+  const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
   let bilan: BilanRepull;
   let evenement: string | undefined;
   if (o.evenement) {
@@ -1781,7 +1899,7 @@ export async function releverConversations(o: Omit<OptionsLancement, 'declencheu
   const etat = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) throw new BudgetEpuise();
-  const client = new ClientRepull({ cle: o.cle, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
+  const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
   const s = new SessionRepull({ repull: client, base: o.base, mode: 'incremental', declencheur: 'agent', maintenant, selection: new Set(selection.annonces) });
   try {
     await s.phaseConversations();

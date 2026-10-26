@@ -15,6 +15,11 @@
  * 4. prévient sur Telegram si c'est branché (alerte à chaque transmission,
  *    copie de chaque réponse, relance quand personne n'a répondu à temps).
  *
+ * Espaces : chaque espace a son agent (réglages, état, fils dans sa base).
+ * Un autre espace que Label Maison utilise la même clé Claude, avec un
+ * plafond de décisions par mois (plafondIAMois, compté dans agent/etat), et
+ * jamais le Telegram de Label Maison.
+ *
  * Garde-fous (en plus des consignes données à Claude) : argent et litiges
  * toujours transmis, réponse qui parle d'argent transmise au lieu d'être
  * envoyée, codes d'accès et wifi absents du contexte tant que le voyageur n'y
@@ -91,6 +96,8 @@ export interface PassageAgent {
   erreurs: string[];
   appelsRepull: number;
   jetons: { entree: number; sortie: number };
+  /** Décisions demandées à Claude pendant ce passage. */
+  appelsIA?: number;
   modele?: string;
   /** Relevé des nouveaux messages chez Repull fait au début du passage. */
   releve?: { messages: number; appels: number; erreurs: string[] };
@@ -105,6 +112,8 @@ export interface EtatAgent {
   derniereExecution?: string;
   /** Dernier relevé des messages chez Repull fait par l'agent. */
   dernierReleve?: string;
+  /** Décisions de Claude du mois (AAAA-MM), pour le plafond de l'espace. */
+  iaMois?: { mois: string; appels: number };
   verrou?: { jusqua: number; id: string };
 }
 
@@ -148,8 +157,8 @@ export const SCHEMA_DECISION = {
   additionalProperties: false,
 } as const;
 
-/** Consignes fixes (identiques d'un appel à l'autre). */
-export const CONSIGNES_AGENT = `Tu es l'agent de messagerie de Label Maison, conciergerie de locations de courte durée. Tu réponds aux voyageurs au nom de l'équipe, ou tu passes la main à l'équipe. Tu reçois : les réglages, la fiche du logement, la réservation et la conversation.
+/** Consignes fixes (identiques d'un appel à l'autre), au nom de l'espace. */
+export const consignesAgent = (nom: string): string => `Tu es l'agent de messagerie de ${nom}, conciergerie de locations de courte durée. Tu réponds aux voyageurs au nom de l'équipe, ou tu passes la main à l'équipe. Tu reçois : les réglages, la fiche du logement, la réservation et la conversation.
 
 Règles absolues :
 1. N'invente jamais rien. Tu n'affirmes que ce qui est écrit dans la FICHE DU LOGEMENT ou la RÉSERVATION. Pas d'adresse de restaurant, d'horaire, d'équipement, de règle ou de code qui n'y figure pas. Si la réponse n'y est pas : suis la consigne « hors fiche » des réglages.
@@ -169,6 +178,8 @@ Ta réponse (champ texte) :
 Quand tu transmets, le champ texte peut contenir un court message d'attente poli (« je vérifie avec l'équipe et je reviens vers vous »), sans rien promettre ; laisse-le vide si le voyageur n'attend rien.
 Le champ resume : une phrase en français pour l'équipe, qui dit ce que veut le voyageur et ce que tu as fait.
 Le champ raison : "aucune" quand tu réponds seul.`;
+
+export const CONSIGNES_AGENT = consignesAgent('Label Maison');
 
 /* ============================================================== options */
 
@@ -190,7 +201,16 @@ export interface OptionsAgent extends ContexteConnexion {
   telegram?: { jeton: string; chat: string; fetch?: Fetch } | null;
   /** Lien signé d'un fichier de guide déposé ; absent : seuls les guides en lien https partent. */
   signerFichier?: SignerFichier;
+  /** Nom de l'espace dans les consignes (Label Maison par défaut). */
+  nomEspace?: string;
+  /** Décisions de Claude permises par mois pour cet espace ; absent : sans plafond. */
+  plafondIAMois?: number;
+  /** Décisions déjà prises ce mois-ci (agent/etat, lu par lancerAgent). */
+  iaDejaCeMois?: number;
 }
+
+/** Plafond mensuel des décisions de Claude atteint pour cet espace. */
+class PlafondIA extends Error {}
 
 /* ================================================================ outils */
 
@@ -577,10 +597,13 @@ class Passage {
   /* ------------------------------------------------------- décision */
 
   private async decider(fil: FilMessages, logement: Logement | undefined, reservation: Reservation | undefined): Promise<DecisionAgent> {
+    const faits = (this.o.iaDejaCeMois ?? 0) + (this.bilan.appelsIA ?? 0);
+    if (this.o.plafondIAMois !== undefined && faits >= this.o.plafondIAMois) throw new PlafondIA();
+    this.bilan.appelsIA = (this.bilan.appelsIA ?? 0) + 1;
     const m = await this.o.ia!.messages.create({
       model: this.o.modele ?? MODELE_AGENT_DEFAUT,
       max_tokens: 1024,
-      system: CONSIGNES_AGENT,
+      system: this.o.nomEspace ? consignesAgent(this.o.nomEspace) : CONSIGNES_AGENT,
       messages: [{ role: 'user', content: construireContexte(fil, logement, reservation, this.reglages, this.maintenant()) }],
       output_config: { format: { type: 'json_schema', schema: SCHEMA_DECISION as unknown as Record<string, unknown> } },
     });
@@ -802,6 +825,11 @@ class Passage {
           b.reportes = aFaire.length - traites + 1;
           return this.finir('budget', 'Les appels Repull du mois sont épuisés : l’agent s’arrête, les conversations restantes attendent l’équipe.');
         }
+        if (e instanceof PlafondIA) {
+          b.reportes = aFaire.length - traites + 1;
+          const n = this.o.plafondIAMois ?? 0;
+          return this.finir('budget', `Plafond du mois atteint pour cet espace (${n} décision${n > 1 ? 's' : ''} de l’agent) : les conversations restantes attendent l’équipe.`);
+        }
         if (e instanceof DelaiEcoule) {
           b.reportes = aFaire.length - traites + 1;
           break;
@@ -865,7 +893,9 @@ export async function lancerAgent(o: OptionsAgent): Promise<PassageAgent> {
   const maintenant = o.maintenant ?? (() => new Date());
   const idPassage = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   const etat = await lireEtatAgent(o);
-  const p = new Passage({ ...o, dernierReleve: o.dernierReleve ?? etat.dernierReleve });
+  const mois = horodatageParis(maintenant()).slice(0, 7);
+  const iaDejaCeMois = etat.iaMois?.mois === mois ? etat.iaMois.appels : 0;
+  const p = new Passage({ ...o, dernierReleve: o.dernierReleve ?? etat.dernierReleve, iaDejaCeMois });
   if (etat.verrou && etat.verrou.jusqua > maintenant().getTime()) {
     return p.finir('occupe', 'Un passage de l’agent est déjà en cours : réessayez dans une minute.');
   }
@@ -889,6 +919,7 @@ export async function lancerAgent(o: OptionsAgent): Promise<PassageAgent> {
     historique: [bilan, ...(frais.historique ?? [])].slice(0, 10),
     ...(examine ? { derniereExecution: bilan.fin } : {}),
     ...(bilan.releve ? { dernierReleve: bilan.fin } : {}),
+    ...(bilan.appelsIA ? { iaMois: { mois, appels: (frais.iaMois?.mois === mois ? frais.iaMois.appels : 0) + bilan.appelsIA } } : {}),
   };
   if (!frais.verrou || frais.verrou.id === idPassage) delete suivant.verrou;
   await o.base.ecrire(COLLECTION_AGENT, [suivant]).catch(() => undefined);

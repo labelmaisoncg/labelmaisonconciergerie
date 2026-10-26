@@ -13,7 +13,8 @@ import { ExternalLink, RefreshCw } from 'lucide-react';
 import { ACTION_JOURNAL_REPULL, ecartsBilan } from '../../data/repull';
 import type { EtatRepull, ResultatLancement } from '../../data/repull-synchro';
 import { useErp } from '../../data/store';
-import { obtenirClient } from '../../data/supabase';
+import { entetesServeur } from '../../data/espaces';
+import { lireEnregistrement, obtenirClient } from '../../data/supabase';
 import { dateHeure, nombre } from '../../data/format';
 import { Alert, Badge, Button, Card, CardHeader, ProgressBar, Repli, type Ton } from '../../ui';
 
@@ -38,8 +39,7 @@ export function useSynchroRepull() {
   const relire = useCallback(async () => {
     if (mode !== 'reel') return;
     try {
-      const { data } = await obtenirClient().from('enregistrements').select('donnees').eq('collection', 'repull').eq('id', 'etat').maybeSingle();
-      setEtat(((data as { donnees?: EtatRepull } | null)?.donnees ?? null) as EtatRepull | null);
+      setEtat(await lireEnregistrement<EtatRepull>('repull', 'etat'));
     } catch {
       /* affichage seulement */
     }
@@ -70,7 +70,7 @@ export function useSynchroRepull() {
       }
       const r = await fetch('/api/erp-repull-sync', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${jeton}`, 'Content-Type': 'application/json' },
+        headers: entetesServeur(jeton),
         body: '{}',
         cache: 'no-store',
       });

@@ -11,8 +11,10 @@
 //
 // Authentification : Authorization: Bearer <jeton de session Supabase>, membre
 // de l'équipe (gérant ou opérations) ; connecter, choisir et déconnecter sont
-// réservés aux gérants. Chaque appel Repull est compté dans la part mensuelle
-// de l'ERP (REPULL_BUDGET_ERP). Détail : src/erp/data/repull-connexion.ts.
+// réservés aux gérants. Espace : celui de l'en-tête x-erp-espace (Label Maison
+// à défaut), avec son accès Repull (workspace ou clé propre). Chaque appel
+// Repull est compté dans la part mensuelle de l'espace (REPULL_BUDGET_ERP pour
+// Label Maison). Détail : src/erp/data/repull-connexion.ts.
 // =============================================================================
 
 import {
@@ -27,7 +29,8 @@ import {
   type ContexteConnexion,
 } from '../src/erp/data/repull-connexion.js';
 import { BudgetEpuise, verifierMembre } from '../src/erp/data/repull-synchro.js';
-import { baseErp, configuration, lireCorps, repondre, variableManquante } from './_erp-repull.js';
+import { baseErp, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
+import { configurationEspace, espaceDemande } from './_erp-espaces.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 50_000;
@@ -48,20 +51,26 @@ export default async function handler(req: any, res: any) {
     return repondre(res, 405, { ok: false, erreur: 'Méthode non autorisée.' });
   }
   const debut = Date.now();
-  const c = configuration();
 
   const entete = String(req.headers?.authorization || '');
   const jeton = /^Bearer\s+/i.test(entete) ? entete.replace(/^Bearer\s+/i, '').trim() : '';
   if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Session expirée : reconnectez-vous à l’ERP.' });
-  const membre = await verifierMembre(jeton);
+  const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
   if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.erreur });
 
+  let c: ConfigRepullErp;
+  try {
+    c = await configurationEspace(membre.espace);
+  } catch (e) {
+    return repondre(res, 503, { ok: false, erreur: e instanceof Error ? e.message : String(e) });
+  }
   const manque = variableManquante(c);
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
 
   const limite = Number(String(process.env.REPULL_LIMITE_LOGEMENTS ?? '').trim());
   const ctx: ContexteConnexion = {
     cle: c.cle,
+    workspace: c.workspace,
     base: baseErp(c),
     echeance: debut + BUDGET_TEMPS_MS,
     budgetMois: c.budgetMois,

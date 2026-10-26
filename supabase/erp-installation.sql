@@ -19,7 +19,19 @@
 --
 -- Les migrations de supabase/migrations/ (schéma normalisé) sont une cible
 -- future : NE PAS les appliquer sur ce projet.
+--
+-- Après supabase/erp-espaces.sql, ce script refuse de tourner (il remettrait
+-- les règles d'avant les espaces) : c'est erp-espaces.sql qu'on relance.
 -- =============================================================================
+
+do $$
+begin
+  if exists (select 1 from information_schema.columns
+             where table_schema = 'erp' and table_name = 'enregistrements' and column_name = 'espace') then
+    raise exception 'Base déjà passée aux espaces : relancez supabase/erp-espaces.sql, pas ce script.';
+  end if;
+end;
+$$;
 
 create schema if not exists erp;
 

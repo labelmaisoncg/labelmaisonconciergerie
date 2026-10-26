@@ -7,6 +7,7 @@ export const COLLECTIONS: NomCollection[] = [
   'proprietaires', 'mandats', 'logements', 'reservations', 'filsMessages', 'missions', 'prestataires',
   'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects', 'crm', 'dossiers',
   'utilisateurs', 'journal', 'recommandations', 'versionsAnnonce', 'reglages',
+  'accesProprietaires', 'documentsProprietaire', 'bilansProprietaire',
 ];
 
 /**

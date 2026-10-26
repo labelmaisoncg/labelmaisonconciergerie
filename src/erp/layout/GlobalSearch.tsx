@@ -22,6 +22,7 @@ import {
   type GroupeResultats,
   type TypeResultat,
 } from './recherche/moteur';
+import { cleLocale } from '../data/espaces';
 
 const ICONES: Record<TypeResultat, LucideIcon> = {
   logement: Home,
@@ -73,11 +74,12 @@ const PAGES: Raccourci[] = MODULES.map((m) => {
   };
 });
 
-const CLE_RECENTES = 'lm-erp-recherches-recentes';
+/** Recherches récentes de cet appareil, propres à l'espace ouvert. */
+const cleRecentes = () => cleLocale('lm-erp-recherches-recentes');
 
 function lireRecentes(): string[] {
   try {
-    const v = JSON.parse(localStorage.getItem(CLE_RECENTES) ?? '[]');
+    const v = JSON.parse(localStorage.getItem(cleRecentes()) ?? '[]');
     return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 6) : [];
   } catch {
     return [];
@@ -89,7 +91,7 @@ function memoriser(q: string) {
   if (t.length < 2) return;
   try {
     const liste = [t, ...lireRecentes().filter((x) => x.toLowerCase() !== t.toLowerCase())].slice(0, 6);
-    localStorage.setItem(CLE_RECENTES, JSON.stringify(liste));
+    localStorage.setItem(cleRecentes(), JSON.stringify(liste));
   } catch {
     /* stockage indisponible (navigation privée) : sans conséquence */
   }
@@ -263,7 +265,7 @@ function Palette({ onFermer }: { onFermer: () => void }) {
 
   const oublier = () => {
     try {
-      localStorage.removeItem(CLE_RECENTES);
+      localStorage.removeItem(cleRecentes());
     } catch {
       /* rien */
     }

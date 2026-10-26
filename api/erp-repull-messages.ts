@@ -11,13 +11,15 @@
 //
 // Authentification : Authorization: Bearer <jeton de session Supabase>,
 // membre gérant ou opérations (la lecture seule ne peut pas écrire aux
-// voyageurs). L'appel Repull est compté dans la part mensuelle de l'ERP.
+// voyageurs), dans l'espace de l'en-tête x-erp-espace (Label Maison à
+// défaut). L'appel Repull est compté dans la part mensuelle de l'espace.
 // Détail : src/erp/data/messagerie-envoi.ts.
 // =============================================================================
 
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from '../src/erp/data/messagerie-envoi.js';
 import { BudgetEpuise, ErreurRepull, verifierMembre } from '../src/erp/data/repull-synchro.js';
-import { baseErp, configuration, lireCorps, repondre, variableManquante } from './_erp-repull.js';
+import { baseErp, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
+import { configurationEspace, espaceDemande } from './_erp-espaces.js';
 
 const BUDGET_TEMPS_MS = 50_000;
 
@@ -27,14 +29,19 @@ export default async function handler(req: any, res: any) {
     return repondre(res, 405, { ok: false, erreur: 'Méthode non autorisée.' });
   }
   const debut = Date.now();
-  const c = configuration();
 
   const entete = String(req.headers?.authorization || '');
   const jeton = /^Bearer\s+/i.test(entete) ? entete.replace(/^Bearer\s+/i, '').trim() : '';
   if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Session expirée : reconnectez-vous à l’ERP.' });
-  const membre = await verifierMembre(jeton);
+  const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
   if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.erreur });
 
+  let c: ConfigRepullErp;
+  try {
+    c = await configurationEspace(membre.espace);
+  } catch (e) {
+    return repondre(res, 503, { ok: false, erreur: e instanceof Error ? e.message : String(e) });
+  }
   const manque = variableManquante(c);
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
 
@@ -43,7 +50,7 @@ export default async function handler(req: any, res: any) {
   const filId = String(corps.filId ?? '').trim();
   if (!filId) return repondre(res, 400, { ok: false, erreur: 'Conversation non précisée.' });
 
-  const ctx = { cle: c.cle, base: baseErp(c), echeance: debut + BUDGET_TEMPS_MS, budgetMois: c.budgetMois, quotaMois: c.quotaMois };
+  const ctx = { cle: c.cle, workspace: c.workspace, base: baseErp(c), echeance: debut + BUDGET_TEMPS_MS, budgetMois: c.budgetMois, quotaMois: c.quotaMois };
   try {
     const r = await envoyerMessage(ctx, { filId, texte: String(corps.texte ?? ''), auteur: 'hote', par: membre.email });
     return repondre(res, 200, r);

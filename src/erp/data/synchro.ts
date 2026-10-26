@@ -18,8 +18,13 @@
  *   modification locale encore en attente l'emporte sur la version distante.
  * - Automatisations : interrupteurs et constats dans erp.etat_automatisations,
  *   chaque champ écrit séparément pour ne jamais écraser celui de l'autre.
+ * - Espaces (supabase/erp-espaces.sql) : avec `espace`, tout est filtré et
+ *   écrit dans cet espace (clé espace + collection + id), le temps réel
+ *   ignore les autres espaces et la file locale n'est reprise que par le même
+ *   espace et le même compte. Sans `espace` : base d'avant, comme avant.
  */
 import { CLE_FILE_ATTENTE, SUPABASE_URL } from './config';
+import { ID_LABEL_MAISON } from './espaces';
 import { COLLECTIONS_SYNCHRONISEES, donneesVides, trierJournal } from './collections';
 import { genreErreur, messageErreur, type ClientErp, type ErreurBase, type GenreErreur } from './supabase';
 import type { ErpDonnees, NomCollection } from './types';
@@ -77,6 +82,10 @@ interface StockageSimple {
 
 export interface OptionsSynchro {
   client: ClientErp;
+  /** Espace des données (supabase/erp-espaces.sql) ; absent ou null : base d'avant les espaces. */
+  espace?: string | null;
+  /** Compte connecté : sa file locale n'est reprise que par lui. */
+  compte?: string;
   /** Localstorage (ou substitut en test). null : file en mémoire seulement. */
   stockage?: StockageSimple | null;
   /** Identifiant de cet onglet (écho des écritures). */
@@ -214,6 +223,9 @@ interface EntreeFile {
 
 interface SlotStocke {
   projet: string;
+  /** Absent : file d'avant les espaces (Label Maison). */
+  espace?: string;
+  compte?: string;
   vu: number;
   operations: { op: Operation; auteur: string }[];
   auto?: Partial<EtatAutoStocke>;
@@ -221,6 +233,8 @@ interface SlotStocke {
 
 export class Synchro {
   readonly idOnglet: string;
+  /** Espace des données (null : base d'avant les espaces). */
+  readonly espace: string | null;
   private readonly client: ClientErp;
   private readonly stockage: StockageSimple | null;
   private readonly opts: OptionsSynchro;
@@ -247,6 +261,7 @@ export class Synchro {
   constructor(opts: OptionsSynchro) {
     this.opts = opts;
     this.client = opts.client;
+    this.espace = opts.espace ?? null;
     this.stockage = opts.stockage === undefined ? stockageNavigateur() : opts.stockage;
     this.idOnglet = opts.idOnglet ?? `o${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
     this.etat = { statut: 'a_jour', enAttente: 0, enLigne: this.enLigne(), tempsReel: 'inactif' };
@@ -304,15 +319,26 @@ export class Synchro {
     return typeof majPar === 'string' && majPar.slice(majPar.lastIndexOf('#') + 1) === this.idOnglet;
   }
 
+  /** Ligne d'un autre espace (temps réel) : ignorée. Sans colonne espace, rien n'est écarté. */
+  private autreEspace(ligne: Record<string, unknown> | undefined): boolean {
+    const e = ligne?.espace;
+    return !!this.espace && typeof e === 'string' && e.toLowerCase() !== this.espace;
+  }
+
+  /** Espace de la file locale (Label Maison pour la base d'avant). */
+  private get espaceFile(): string {
+    return this.espace ?? ID_LABEL_MAISON;
+  }
+
   /* ------------------------------------------------------------- lecture */
 
   /** Lit tous les enregistrements et construit le jeu de données (collections vides si aucune ligne). */
   async chargerTout(): Promise<ErpDonnees> {
     const lignes: { collection: string; id: string; donnees: unknown }[] = [];
     for (let debut = 0; ; debut += TAILLE_PAGE) {
-      const { data, error, status } = await this.client
-        .from(TABLE)
-        .select('collection,id,donnees')
+      let requete = this.client.from(TABLE).select('collection,id,donnees');
+      if (this.espace) requete = requete.eq('espace', this.espace);
+      const { data, error, status } = await requete
         .order('collection')
         .order('id')
         .range(debut, debut + TAILLE_PAGE - 1);
@@ -326,7 +352,9 @@ export class Synchro {
 
   /** Interrupteurs et constats des automatisations (null : jamais enregistrés). */
   async lireEtatAuto(): Promise<Partial<EtatAutoStocke> | null> {
-    const { data, error, status } = await this.client.from(TABLE_AUTO).select('actives,evenements').eq('id', 'global').maybeSingle();
+    let requete = this.client.from(TABLE_AUTO).select('actives,evenements').eq('id', 'global');
+    if (this.espace) requete = requete.eq('espace', this.espace);
+    const { data, error, status } = await requete.maybeSingle();
     if (error) throw new ErreurSynchro(error, status);
     const lu = (data ?? null) as Partial<EtatAutoStocke> | null;
     // Une valeur locale pas encore envoyée l'emporte.
@@ -441,12 +469,13 @@ export class Synchro {
       const ecritures = instantane.filter((e) => e.op.type === 'ecrire');
       for (const lot of paquets(ecritures, LOT_ECRITURE)) {
         const lignes = lot.map((e) => ({
+          ...(this.espace ? { espace: this.espace } : {}),
           collection: e.op.collection,
           id: e.op.id,
           donnees: (e.op as Extract<Operation, { type: 'ecrire' }>).donnees,
           maj_par: this.majParPour(e.auteur),
         }));
-        const { error, status } = await this.client.from(TABLE).upsert(lignes, { onConflict: 'collection,id' });
+        const { error, status } = await this.client.from(TABLE).upsert(lignes, { onConflict: this.espace ? 'espace,collection,id' : 'collection,id' });
         if (error) return { erreur: error, status };
         this.retirer(lot);
       }
@@ -455,7 +484,7 @@ export class Synchro {
       for (const e of suppressions) parCollection.set(e.op.collection, [...(parCollection.get(e.op.collection) ?? []), e]);
       for (const [collection, entrees] of parCollection) {
         for (const lot of paquets(entrees, LOT_SUPPRESSION)) {
-          const { error, status } = await this.client
+          let requete = this.client
             .from(TABLE)
             .delete()
             .eq('collection', collection)
@@ -463,15 +492,17 @@ export class Synchro {
               'id',
               lot.map((e) => e.op.id),
             );
+          if (this.espace) requete = requete.eq('espace', this.espace);
+          const { error, status } = await requete;
           if (error) return { erreur: error, status };
           this.retirer(lot);
         }
       }
       if (this.fileAuto.size) {
         const envoyes = [...this.fileAuto.entries()];
-        const ligne: Record<string, unknown> = { id: 'global' };
+        const ligne: Record<string, unknown> = this.espace ? { espace: this.espace, id: 'global' } : { id: 'global' };
         for (const [champ, { valeur }] of envoyes) ligne[champ] = valeur;
-        const { error, status } = await this.client.from(TABLE_AUTO).upsert(ligne, { onConflict: 'id' });
+        const { error, status } = await this.client.from(TABLE_AUTO).upsert(ligne, { onConflict: this.espace ? 'espace,id' : 'id' });
         if (error) return { erreur: error, status };
         for (const [champ, { version }] of envoyes) if (this.fileAuto.get(champ)?.version === version) this.fileAuto.delete(champ);
         this.persister();
@@ -542,6 +573,8 @@ export class Synchro {
       for (const [champ, { valeur }] of this.fileAuto) (auto as Record<string, unknown>)[champ] = valeur;
       slots[this.idOnglet] = {
         projet: SUPABASE_URL,
+        espace: this.espaceFile,
+        ...(this.opts.compte ? { compte: this.opts.compte } : {}),
         vu: this.arrete ? 0 : Date.now(),
         operations: [...this.file.values()].map((e) => ({ op: e.op, auteur: e.auteur })),
         auto: this.fileAuto.size ? auto : undefined,
@@ -550,12 +583,21 @@ export class Synchro {
     this.ecrireSlots(slots);
   }
 
-  /** Reprend les écritures laissées par un onglet fermé avant d'avoir pu les envoyer. */
+  /** Reprend les écritures laissées par un onglet fermé avant d'avoir pu les envoyer (même espace, même compte). */
   private reprendreFilesAbandonnees() {
     const slots = this.lireSlots();
     const limite = Date.now() - ONGLET_ABANDONNE_MS;
+    const compte = this.opts.compte;
     const repris = Object.entries(slots)
-      .filter(([id, s]) => id !== this.idOnglet && s && s.projet === SUPABASE_URL && (s.vu ?? 0) < limite)
+      .filter(
+        ([id, s]) =>
+          id !== this.idOnglet &&
+          s &&
+          s.projet === SUPABASE_URL &&
+          (s.espace ?? ID_LABEL_MAISON) === this.espaceFile &&
+          (!s.compte || !compte || s.compte === compte) &&
+          (s.vu ?? 0) < limite,
+      )
       .sort(([, a], [, b]) => (a.vu ?? 0) - (b.vu ?? 0));
     if (!repris.length) return;
     for (const [id, s] of repris) {
@@ -623,6 +665,7 @@ export class Synchro {
   /** Traite un changement reçu de Supabase Realtime (public pour les tests). */
   recevoir(p: ChangementBrut) {
     if (this.arrete || !p) return;
+    if (this.autreEspace(p.eventType === 'DELETE' ? p.old : p.new)) return;
     if (p.table === TABLE_AUTO) {
       const n = (p.new ?? {}) as Partial<EtatAutoStocke>;
       const patch: Partial<EtatAutoStocke> = {};
@@ -652,7 +695,9 @@ export class Synchro {
   }
 
   private async relireLigne(collection: NomCollection, id: string) {
-    const { data, error } = await this.client.from(TABLE).select('collection,id,donnees,maj_par').eq('collection', collection).eq('id', id).maybeSingle();
+    let requete = this.client.from(TABLE).select('collection,id,donnees,maj_par').eq('collection', collection).eq('id', id);
+    if (this.espace) requete = requete.eq('espace', this.espace);
+    const { data, error } = await requete.maybeSingle();
     if (error || this.file.has(cle(collection, id))) return;
     const ligne = data as LigneBrute | null;
     if (!ligne) return this.pousser({ collection, id, donnees: null });

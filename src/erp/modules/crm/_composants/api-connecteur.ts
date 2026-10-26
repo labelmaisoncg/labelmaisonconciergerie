@@ -1,3 +1,4 @@
+import { entetesServeur } from '../../../data/espaces';
 import { obtenirClient } from '../../../data/supabase';
 
 export const INDISPONIBLE = 'Connecteur indisponible pour le moment. Réessayez dans un instant.';
@@ -28,7 +29,7 @@ export async function appelerRouteGerant<T extends { ok?: boolean; erreur?: stri
   try {
     r = await fetch(route, {
       method: corps ? 'POST' : 'GET',
-      headers: { Authorization: `Bearer ${jeton}`, ...(corps ? { 'Content-Type': 'application/json' } : {}) },
+      headers: entetesServeur(jeton, !!corps),
       ...(corps ? { body: JSON.stringify(corps) } : {}),
       cache: 'no-store',
     });
