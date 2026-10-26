@@ -110,18 +110,17 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
           <p className="mb-1.5 text-[13px] font-medium">Équipements</p>
           <ul className="mb-2 flex flex-wrap gap-1.5" aria-label="Équipements">
             {f.equipements.map((e) => (
-              <li key={e}>
-                <Badge tone="or" className="pr-1">
-                  {e}
-                  <button
-                    type="button"
-                    aria-label={`Retirer ${e}`}
-                    onClick={() => maj('equipements', f.equipements.filter((x) => x !== e))}
-                    className="-my-2 -mr-1.5 ml-0.5 grid size-8 place-items-center rounded-full hover:bg-(--lm-or-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
-                  >
-                    <X className="size-3" />
-                  </button>
-                </Badge>
+              <li key={e} className="inline-flex items-center">
+                <Badge tone="or">{e}</Badge>
+                {/* Hors de la pastille : une vraie zone de 32 px, sans couper le libellé. */}
+                <button
+                  type="button"
+                  aria-label={`Retirer ${e}`}
+                  onClick={() => maj('equipements', f.equipements.filter((x) => x !== e))}
+                  className="-ml-1.5 grid size-8 place-items-center rounded-full text-(--lm-encre-2) hover:bg-(--lm-or-lavis) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                >
+                  <X className="size-3.5" aria-hidden />
+                </button>
               </li>
             ))}
             {f.equipements.length === 0 && <li className="text-[13px] text-(--lm-encre-3)">Aucun équipement renseigné.</li>}

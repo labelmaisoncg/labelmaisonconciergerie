@@ -7,6 +7,7 @@ import { MessageSquare, Star } from 'lucide-react';
 import { Badge, Card, CardHeader, StatusBadge } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
+import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../data/format';
 import {
   baseCommissionnable,
@@ -146,14 +147,14 @@ export function FicheReservation({ r }: { r: Reservation }) {
             titre="Avis du voyageur"
             actions={
               r.noteVoyageur !== undefined && (
-                <Badge tone={r.noteVoyageur < 4.5 ? 'danger' : 'succes'} icone={<Star />}>
+                <Badge tone={r.noteVoyageur < SEUIL_NOTE_CONTROLE ? 'alerte' : 'succes'} icone={<Star />}>
                   {note(r.noteVoyageur)} / 5
                 </Badge>
               )
             }
           />
           {r.commentaireVoyageur && <blockquote className="border-l-2 border-(--lm-or) pl-3 text-[13.5px] text-(--lm-encre-2) italic">« {r.commentaireVoyageur} »</blockquote>}
-          {r.noteVoyageur !== undefined && r.noteVoyageur < 4.5 && (
+          {r.noteVoyageur !== undefined && r.noteVoyageur < SEUIL_NOTE_CONTROLE && (
             <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Note sous 4,5 : à lire et, si besoin, à traiter avec l’équipe.</p>
           )}
         </Card>

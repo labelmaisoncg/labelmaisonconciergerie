@@ -52,13 +52,16 @@ export function OngletHistorique({ logement: l }: { logement: Logement }) {
 
   return (
     <Card>
-      <FilterChips
-        label="Type d’événement"
-        className="mb-5"
-        filtres={GENRES.map((g) => ({ ...g, compteur: evenements.filter((e) => e.genre === g.cle).length })).filter((g) => g.compteur > 0)}
-        actifs={actifs}
-        onChange={setActifs}
-      />
+      {/* Un seul type d'événement : rien à filtrer. */}
+      {GENRES.filter((g) => evenements.some((e) => e.genre === g.cle)).length > 1 && (
+        <FilterChips
+          label="Type d’événement"
+          className="mb-5"
+          filtres={GENRES.map((g) => ({ ...g, compteur: evenements.filter((e) => e.genre === g.cle).length })).filter((g) => g.compteur > 0)}
+          actifs={actifs}
+          onChange={setActifs}
+        />
+      )}
       <Timeline elements={filtres.slice(0, limite)} vide="Aucun événement pour ce logement." />
       {filtres.length > limite && (
         <Button className="mt-5" onClick={() => setLimite((n) => n + 30)}>

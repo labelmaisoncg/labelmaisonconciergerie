@@ -52,7 +52,7 @@ export function GraphiqueBarres({
         <BarChart data={points} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} barCategoryGap="28%">
           <CartesianGrid vertical={false} stroke={GRILLE} />
           <XAxis dataKey="libelle" axisLine={false} tickLine={false} tick={AXE} interval="preserveStartEnd" minTickGap={8} />
-          <YAxis axisLine={false} tickLine={false} tick={AXE} width={48} tickFormatter={formaterAxe} />
+          <YAxis axisLine={false} tickLine={false} tick={AXE} width={56} tickFormatter={formaterAxe} />
           <Tooltip cursor={{ fill: 'var(--lm-or-lavis)' }} content={<Infobulle formater={formater} />} />
           <Bar
             dataKey="valeur"

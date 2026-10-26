@@ -133,3 +133,13 @@
 @media print {
   .erp-root .lm-sans-impression { display: none !important; }
 }
+
+/*
+ * Le site met overflow-x: hidden sur html ET body : body devient une zone de
+ * défilement qui ne défile jamais, et position: sticky n'a plus d'effet
+ * (barre « Enregistrer » des infos pour l'agent, barre latérale). Dans l'ERP,
+ * clip garde le même rendu sans créer cette zone.
+ */
+html:has(.erp-root) body {
+  overflow-x: clip;
+}

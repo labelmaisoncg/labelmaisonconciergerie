@@ -246,7 +246,12 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
           actions={
             renseigne &&
             !d.lectureSeule && (
-              <button type="button" onClick={() => setEdition(true)} className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <button
+                type="button"
+                onClick={() => setEdition(true)}
+                aria-label="Modifier le propriétaire"
+                className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+              >
                 Modifier
               </button>
             )

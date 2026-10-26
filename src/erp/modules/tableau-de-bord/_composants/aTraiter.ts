@@ -5,6 +5,7 @@
  * prestataires (sortis de l'ERP).
  */
 import { aTraiterLe } from '../../../data/crm';
+import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours } from '../../../data/format';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
@@ -25,8 +26,8 @@ export interface ElementATraiter {
   to: string;
 }
 
-/** Une note voyageur sous ce seuil (sur 5) mérite d'être lue. */
-const NOTE_A_LIRE = 4;
+/** Une note voyageur sous ce seuil (sur 5) mérite d'être lue : le même partout dans l'ERP. */
+const NOTE_A_LIRE = SEUIL_NOTE_CONTROLE;
 
 export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): ElementATraiter[] {
   const liste: ElementATraiter[] = [];
@@ -55,7 +56,7 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): Elem
   if (avis.length)
     liste.push({
       id: 'avis', type: 'avis', priorite: 2, ton: 'alerte', to: `/erp/reservations/${avis[0].id}`,
-      titre: avis.length > 1 ? `${avis.length} avis sous ${NOTE_A_LIRE}/5 à lire` : `Un avis sous ${NOTE_A_LIRE}/5 à lire`,
+      titre: avis.length > 1 ? `${avis.length} avis sous ${String(NOTE_A_LIRE).replace('.', ',')}/5 à lire` : `Un avis sous ${String(NOTE_A_LIRE).replace('.', ',')}/5 à lire`,
       details: avis.map((r) => `${r.voyageur.nom} : ${String(r.noteVoyageur).replace('.', ',')}/5 (${nom(r.logementId)})`),
     });
 

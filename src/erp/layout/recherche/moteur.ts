@@ -148,7 +148,7 @@ function lienJournal(entite: string, id: string): string {
     case 'incident':
       return `/erp/incidents?id=${i}`;
     case 'proprietaire':
-      return `/erp/proprietaires/${i}`;
+      return '/erp/logements';
     case 'prestataire':
       return `/erp/prestataires/${i}`;
     case 'mandat':
@@ -204,7 +204,8 @@ export function construireIndex(d: ErpDonnees): ElementIndex[] {
       id: p.id,
       titre: p.nom,
       detail: [p.contact.email, p.contact.telephone, biens.length ? `${biens.length} logement${biens.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
-      to: `/erp/proprietaires/${p.id}`,
+      // Le propriétaire est dans la fiche de son logement (plus de page Propriétaires).
+      to: biens[0] ? `/erp/logements/${biens[0].id}` : '/erp/logements',
       texte: haystack(
         p.nom,
         LIBELLES.typeProprietaire?.[p.type],
