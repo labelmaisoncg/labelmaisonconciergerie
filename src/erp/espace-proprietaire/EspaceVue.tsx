@@ -1,19 +1,21 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { BarChart3, Building2, CalendarDays, FolderOpen, Home, LogOut } from 'lucide-react';
 import type { VueProprietaire } from '../data/types-proprietaire';
-import { cn } from '../ui';
+import { Tabs, cn } from '../ui';
 import { Accueil } from './Accueil';
 import { Bilans } from './Bilans';
 import { Calendrier } from './Calendrier';
 import { Documents } from './Documents';
+import { Factures } from './Factures';
 import { Logements } from './Logements';
-import type { LienDocument, OngletEspace } from './commun';
+import { TitreEspace, type LienDocument, type OngletEspace } from './commun';
 
 const ONGLETS: { cle: OngletEspace; libelle: string; icone: ReactNode }[] = [
   { cle: 'accueil', libelle: 'Accueil', icone: <Home /> },
   { cle: 'logements', libelle: 'Logements', icone: <Building2 /> },
   { cle: 'calendrier', libelle: 'Calendrier', icone: <CalendarDays /> },
-  { cle: 'bilans', libelle: 'Bilans', icone: <BarChart3 /> },
+  // Bilans et factures sous un même onglet : cinq onglets au plus dans la barre du bas.
+  { cle: 'bilans', libelle: 'Finances', icone: <BarChart3 /> },
   { cle: 'documents', libelle: 'Documents', icone: <FolderOpen /> },
 ];
 
@@ -28,6 +30,10 @@ export interface EspaceVueProps {
   logement?: string;
   /** Ouvre l'onglet « Mes logements » sur cette fiche (sans id : sur la liste). */
   onLogement?: (id?: string) => void;
+  /** Facture ouverte ; sans `onFacture`, retenue ici. */
+  facture?: string;
+  /** Ouvre l'onglet des factures sur celle-ci (sans id : sur la liste). */
+  onFacture?: (id?: string) => void;
   onMoisCalendrier: (mois: string) => void;
   calendrierEnCours?: boolean;
   LienDocument: LienDocument;
@@ -40,7 +46,29 @@ export interface EspaceVueProps {
  * L'espace du propriétaire : quatre onglets, barre du bas sur téléphone
  * (comme une app), onglets dans l'en-tête sur ordinateur.
  */
-export function EspaceVue({ vue, onglet, onOnglet, bilan, onBilan, logement: logementProp, onLogement, onMoisCalendrier, calendrierEnCours, LienDocument, onSortir, bandeau }: EspaceVueProps) {
+export function EspaceVue({
+  vue,
+  onglet,
+  onOnglet,
+  bilan,
+  onBilan,
+  logement: logementProp,
+  onLogement,
+  facture: factureProp,
+  onFacture,
+  onMoisCalendrier,
+  calendrierEnCours,
+  LienDocument,
+  onSortir,
+  bandeau,
+}: EspaceVueProps) {
+  const [factureLocale, setFactureLocale] = useState<string>();
+  const facture = onFacture ? factureProp : factureLocale;
+  const choisirFacture = (id?: string) => {
+    if (onFacture) return onFacture(id);
+    setFactureLocale(id);
+    onOnglet('factures');
+  };
   const [logementLocal, setLogementLocal] = useState<string>();
   const logement = onLogement ? logementProp : logementLocal;
   /** « Mes logements », sur une fiche ou sur la liste. */
@@ -50,10 +78,12 @@ export function EspaceVue({ vue, onglet, onOnglet, bilan, onBilan, logement: log
     onOnglet('logements');
   };
   // Toucher « Logements » revient à la liste.
-  const allerA = (o: OngletEspace) => (o === 'logements' ? choisirLogement(undefined) : onOnglet(o));
+  const allerA = (o: OngletEspace) => (o === 'logements' ? choisirLogement(undefined) : o === 'factures' ? choisirFacture(undefined) : onOnglet(o));
+  const finances = onglet === 'bilans' || onglet === 'factures';
+  const aRegler = vue.factures.filter((f) => f.statut !== 'payee').length;
   useEffect(() => {
     window.scrollTo({ top: 0 });
-  }, [onglet, bilan, logement]);
+  }, [onglet, bilan, logement, facture]);
 
   return (
     <div className="min-h-screen bg-(--lm-fond)">
@@ -69,11 +99,11 @@ export function EspaceVue({ vue, onglet, onOnglet, bilan, onBilan, logement: log
               <button
                 key={o.cle}
                 type="button"
-                aria-current={o.cle === onglet ? 'page' : undefined}
+                aria-current={o.cle === onglet || (o.cle === 'bilans' && finances) ? 'page' : undefined}
                 onClick={() => allerA(o.cle)}
                 className={cn(
                   'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
-                  o.cle === onglet ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
+                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
                 )}
               >
                 {o.icone}
@@ -100,7 +130,21 @@ export function EspaceVue({ vue, onglet, onOnglet, bilan, onBilan, logement: log
         {onglet === 'accueil' && <Accueil vue={vue} onOnglet={allerA} onBilan={onBilan} onLogement={choisirLogement} LienDocument={LienDocument} />}
         {onglet === 'logements' && <Logements vue={vue} choisi={logement} onChoisir={choisirLogement} />}
         {onglet === 'calendrier' && <Calendrier vue={vue} onMois={onMoisCalendrier} enCours={calendrierEnCours} />}
+        {finances && !(onglet === 'bilans' && bilan) && !(onglet === 'factures' && facture) && <TitreEspace titre="Finances" />}
+        {finances && !(onglet === 'bilans' && bilan) && !(onglet === 'factures' && facture) && (
+          <Tabs
+            className="lm-sans-impression"
+            label="Finances"
+            actif={onglet}
+            onChange={(c) => allerA(c as OngletEspace)}
+            onglets={[
+              { cle: 'bilans', libelle: 'Bilans mensuels' },
+              { cle: 'factures', libelle: 'Factures', ...(aRegler ? { compteur: aRegler } : {}) },
+            ]}
+          />
+        )}
         {onglet === 'bilans' && <Bilans vue={vue} choisi={bilan} onChoisir={onBilan} />}
+        {onglet === 'factures' && <Factures vue={vue} choisie={facture} onChoisir={choisirFacture} LienDocument={LienDocument} />}
         {onglet === 'documents' && <Documents vue={vue} LienDocument={LienDocument} />}
       </main>
 
@@ -113,11 +157,11 @@ export function EspaceVue({ vue, onglet, onOnglet, bilan, onBilan, logement: log
             <li key={o.cle}>
               <button
                 type="button"
-                aria-current={o.cle === onglet ? 'page' : undefined}
+                aria-current={o.cle === onglet || (o.cle === 'bilans' && finances) ? 'page' : undefined}
                 onClick={() => allerA(o.cle)}
                 className={cn(
                   'flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset [&_svg]:size-5',
-                  o.cle === onglet ? 'text-(--lm-or-texte)' : 'text-(--lm-encre-2)',
+                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'text-(--lm-or-texte)' : 'text-(--lm-encre-2)',
                 )}
               >
                 {o.icone}

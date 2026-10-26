@@ -1,20 +1,24 @@
 /**
  * Démo de l'espace propriétaire : SCI Les Tilleuls (Corbeil Centre Familial)
- * est connectée, a deux documents partagés et le bilan d'août publié.
+ * est connectée, a deux documents partagés, le bilan d'août publié et ses
+ * factures émises partagées (une payée avec son PDF, une en retard).
  * Aperçu : /espace-proprietaire?apercu=pro-sci-tilleuls (VITE_ERP_DEMO=1).
  */
 import { bilanMensuel } from './proprietaire';
-import type { Logement, Mandat, Reservation } from './types';
+import type { Facture, Logement, Mandat, Reservation } from './types';
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 
 export const PROPRIETAIRE_DEMO = 'pro-sci-tilleuls';
 
-export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservations: Reservation[]; mandats: Mandat[] }): {
+export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservations: Reservation[]; mandats: Mandat[]; factures: Facture[] }): {
   accesProprietaires: AccesProprietaire[];
   documentsProprietaire: DocumentProprietaire[];
   bilansProprietaire: BilanProprietaire[];
+  factures: Facture[];
 } {
   const p = PROPRIETAIRE_DEMO;
+  const factures = d.factures.map((f) => (f.proprietaireId === p && f.statut !== 'brouillon' && f.statut !== 'annulee' ? { ...f, partageeLe: `${f.dateEmission}T09:00:00.000Z` } : f));
+  const premiere = factures.filter((f) => f.partageeLe).sort((a, b) => a.dateEmission.localeCompare(b.dateEmission))[0];
   return {
     accesProprietaires: [
       {
@@ -52,6 +56,21 @@ export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservat
         ajouteLe: '2026-09-04T08:30:00.000Z',
         ajoutePar: 'equipe@labelmaisoncg.fr',
       },
+      ...(premiere
+        ? [
+            {
+              id: `doc-tilleuls-${premiere.id}`,
+              proprietaireId: p,
+              factureId: premiere.id,
+              categorie: 'facture' as const,
+              titre: `Facture ${premiere.numero}`,
+              fichier: `demo://proprietaires/${p}/${premiere.numero}.pdf`,
+              nomFichier: `${premiere.numero}.pdf`,
+              ajouteLe: `${premiere.dateEmission}T09:00:00.000Z`,
+              ajoutePar: 'equipe@labelmaisoncg.fr',
+            },
+          ]
+        : []),
     ],
     bilansProprietaire: [
       {
@@ -67,5 +86,6 @@ export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservat
         majLe: '2026-09-03T08:00:00.000Z',
       },
     ],
+    factures,
   };
 }

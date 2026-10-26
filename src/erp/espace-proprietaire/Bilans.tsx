@@ -4,7 +4,7 @@ import { espaceOuvert } from '../data/espaces';
 import type { BilanVue, ChiffresBilan, VueProprietaire } from '../data/types-proprietaire';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Button, Card, EmptyState, cn } from '../ui';
-import { bilanDuMois, CANAL, deNom, TitreEspace, titreMois } from './commun';
+import { bilanDuMois, CANAL, deNom, titreMois } from './commun';
 
 const moins = (c: number) => (c ? `− ${euros(c)}` : euros(0));
 
@@ -153,7 +153,6 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
   if (!vue.bilans.length) {
     return (
       <>
-        <TitreEspace titre="Bilans mensuels" />
         <EmptyState
           icone={<FileBarChart />}
           titre="Aucun bilan publié pour l’instant"
@@ -190,7 +189,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
   }
   return (
     <>
-      <TitreEspace titre="Bilans mensuels" description="Le bilan de chaque mois : séjours, nuits, ce qui a été encaissé, les frais et ce qui vous revient." />
+      <p className="mb-4 text-[14px] text-(--lm-encre-2)">Le bilan de chaque mois : séjours, nuits, ce qui a été encaissé, les frais et ce qui vous revient.</p>
       <Card flush>
         <ul className="divide-y divide-(--lm-bord)">
           {vue.bilans.map((b) => (

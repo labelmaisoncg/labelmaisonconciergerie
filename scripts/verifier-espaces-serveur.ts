@@ -16,7 +16,10 @@
  * base qui recule (retour en arrière du SQL) relue aussitôt, espace
  * propriétaire (accès créé, lu et revérifié dans l'espace qui invite, lien
  * sans espace = Label Maison, cookie dont on change l'espace refusé,
- * « Recevoir mon lien » cherché dans chaque espace).
+ * « Recevoir mon lien » cherché dans chaque espace), relances de paiement
+ * (passage quotidien de chaque espace, « proposer » n'envoie jamais seul,
+ * pas d'expéditeur = pas d'envoi, expéditeur de l'espace, jamais deux fois,
+ * arrêt au paiement).
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -33,6 +36,7 @@ import routeSynchro from '../api/erp-repull-sync';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
 import routeProprietaire from '../api/espace-proprietaire';
+import { relancesDuJour } from '../api/_relances';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -84,6 +88,8 @@ class Monde {
   lignes = new Map<string, Ligne>();
   base: { methode: string; chemin: string; url: URL; jeton: string; espace: string | null; corps: unknown }[] = [];
   repull: { methode: string; chemin: string; workspace: string | null; cle: string }[] = [];
+  /** E-mails envoyés par Resend (relances, liens). */
+  emails: { from: string; to: string[]; subject: string; text: string; replyTo?: unknown }[] = [];
 
   emailDe = (jeton: string) => Object.entries(this.comptes).find(([, c]) => c.jeton === jeton)?.[0];
   poser(espace: string, collection: string, e: { id: string }) {
@@ -110,6 +116,11 @@ class Monde {
     const h = new Headers(init?.headers);
     const methode = (init?.method ?? 'GET').toUpperCase();
     const jeton = (h.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+    if (url.hostname === 'api.resend.com') {
+      const e = JSON.parse(String(init?.body)) as { from: string; to: string[]; subject: string; text: string; reply_to?: unknown };
+      this.emails.push({ from: e.from, to: e.to, subject: e.subject, text: e.text, replyTo: e.reply_to });
+      return json({ id: `email-${this.emails.length}` });
+    }
     if (url.hostname === 'api.repull.dev') {
       this.repull.push({ methode, chemin: url.pathname, workspace: h.get('x-workspace-id'), cle: jeton });
       return json({ data: [], pagination: { hasMore: false, nextCursor: null } });
@@ -276,6 +287,11 @@ async function principal() {
     return res;
   };
   const cookieDe = (res: { entetes: Record<string, string> }) => String(res.entetes['Set-Cookie'] ?? '').split(';')[0];
+  // Factures partagées, échéance il y a `jours` jours.
+  const ilYa = (jours: number) => new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
+  const facture = (id: string, proprietaireId: string, joursDeRetard: number, o: Record<string, unknown> = {}) =>
+    ({ id, numero: `N-${id}`, type: 'commission', destinataire: 'proprietaire', proprietaireId, dateEmission: ilYa(joursDeRetard + 15), echeance: ilYa(joursDeRetard), montantHtCentimes: 10000, tvaPct: 20, statut: 'emise', lignes: [], partageeLe: '2026-01-01T00:00:00.000Z', ...o }) as { id: string };
+  const relance = (espace: string, id: string) => monde.lignes.get(`${espace}\u0000relancesPaiement\u0000${id}`)?.donnees as { statut?: string; motif?: string; envoyeePar?: string } | undefined;
   let cookieAlice = '';
   {
     env.PROPRIETAIRE_SECRET = 'secret-de-test-espace-proprietaire-0123456789';
@@ -292,6 +308,12 @@ async function principal() {
     verifier(res.statut === 200 && cookieAlice.startsWith('lm_proprio='), 'lien sans espace : ouvert dans Label Maison', res.corps);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
     verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Label Maison' && !!res.corps?.vue?.contacts && res.corps?.vue?.logements?.[0]?.id === 'log-a', 'vue de Label Maison, avec ses contacts', res.corps);
+    // Relances, base d'avant les espaces : Label Maison seul, mode « proposer » par défaut.
+    monde.poser(LM, 'factures', facture('fac-lm', 'pro-a', 6));
+    monde.oublier();
+    const bilan = await relancesDuJour();
+    verifier((bilan['label-maison'] as { creees?: number })?.creees === 1 && monde.emails.length === 0, 'relances (base d’avant les espaces) : proposée, rien d’envoyé', bilan);
+    verifier(relance(LM, 'fac-lm-r1')?.statut === 'proposee' && monde.base.every((r) => r.espace === null), 'relance rangée dans Label Maison, sans en-tête');
   }
 
   section('Base préparée, compte serveur pas prêt');
@@ -434,6 +456,70 @@ async function principal() {
     monde.oublier();
     res = await appelProprio({ corps: { action: 'lien', email: 'inconnu@exemple.invalid' } });
     verifier(res.statut === 200 && res.corps?.message === message && monde.base.every((r) => r.methode !== 'POST' || r.chemin !== 'enregistrements'), 'adresse inconnue : même réponse, rien d’écrit', res.corps);
+  }
+
+  section('Relances de paiement : chaque espace, son calendrier, son expéditeur');
+  {
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    monde.poser(SENS, 'factures', facture('fac-s', 'pro-s', 6));
+    monde.poser(SENS, 'reglagesRelances', { id: 'relances', actif: true, mode: 'automatique', jours: [5, 15, 30] } as { id: string });
+    monde.oublier();
+    monde.emails = [];
+    let res = reponse();
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), res);
+    verifier(relance(SENS, 'fac-s-r1')?.statut === 'proposee' && relance(SENS, 'fac-s-r1')?.motif === 'sans_expediteur', 'Sens, automatique sans expéditeur : la relance attend une validation', relance(SENS, 'fac-s-r1'));
+    verifier(monde.emails.length === 0, 'passage quotidien : aucun e-mail (Label Maison « proposer », Sens sans expéditeur)', monde.emails);
+    verifier(!monde.lignes.has(`${LM}\u0000relancesPaiement\u0000fac-s-r1`) && !monde.lignes.has(`${SENS}\u0000relancesPaiement\u0000fac-lm-r1`), 'relances rangées chacune dans son espace');
+    const avant = [...monde.lignes.keys()].filter((k) => k.includes('relancesPaiement')).length;
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier([...monde.lignes.keys()].filter((k) => k.includes('relancesPaiement')).length === avant && monde.emails.length === 0, 'nouveau passage le même jour : rien de plus, rien d’envoyé');
+
+    // Validation par un gérant : expéditeur de l'espace, une seule fois.
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-lm-r1' } });
+    verifier(res.statut === 200 && monde.emails.length === 1 && monde.emails[0].from === env.CONTACT_FROM_EMAIL && monde.emails[0].to[0] === EMAIL_PROPRIO && /N-fac-lm/.test(monde.emails[0].subject), 'gérant de Label Maison : relance envoyée avec l’expéditeur de Label Maison', monde.emails);
+    verifier(relance(LM, 'fac-lm-r1')?.statut === 'envoyee', 'relance notée envoyée');
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-lm-r1' } });
+    verifier(res.statut === 409 && monde.emails.length === 1, 'deuxième envoi : refusé, jamais deux fois', res.corps);
+    res = await appelProprio({ entetes: { ...gerantLM, 'x-erp-espace': SENS }, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    verifier(res.statut === 403, 'compte de Label Maison sur une relance de Sens : refusé', res.corps);
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    verifier(res.statut === 409 && monde.emails.length === 1, 'relance de Sens demandée dans Label Maison : introuvable', res.corps);
+    res = await appelProprio({ entetes: gerantSens, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    verifier(res.statut === 409 && monde.emails.length === 1 && relance(SENS, 'fac-s-r1')?.statut === 'proposee', 'Sens sans expéditeur : rien ne part (jamais celui de Label Maison)', res.corps);
+    monde.espaces[1].config = { ...monde.espaces[1].config, email: { expediteur: 'Sens <bonjour@sens.invalid>' } };
+    res = await appelProprio({ entetes: gerantSens, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    const mailSens = monde.emails[1];
+    verifier(res.statut === 200 && mailSens?.from === 'Sens <bonjour@sens.invalid>' && /Sens/.test(mailSens.text) && !/Label Maison/.test(mailSens.text), 'Sens avec son expéditeur : envoyée en son nom', mailSens);
+    res = await appelProprio({ methode: 'GET', query: { action: 'relances' }, entetes: gerantSens });
+    verifier(res.statut === 200 && res.corps?.relances?.every((r: { factureId: string }) => r.factureId === 'fac-s') && res.corps?.reglages?.mode === 'automatique', 'liste des relances : celles de l’espace seulement', res.corps);
+
+    // Automatique avec expéditeur : envoyée au passage, une seule fois.
+    monde.poser(LM, 'reglagesRelances', { id: 'relances', actif: true, mode: 'automatique', jours: [5, 15, 30] } as { id: string });
+    monde.poser(LM, 'factures', facture('fac-lm3', 'pro-a', 7));
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(relance(LM, 'fac-lm3-r1')?.statut === 'envoyee' && relance(LM, 'fac-lm3-r1')?.envoyeePar === 'automatique' && monde.emails.length === 3, 'Label Maison automatique : envoyée au passage', monde.emails.length);
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(monde.emails.length === 3, 'passage suivant : jamais renvoyée');
+
+    // Arrêt au paiement.
+    monde.poser(LM, 'reglagesRelances', { id: 'relances', actif: true, mode: 'proposer', jours: [5, 15, 30] } as { id: string });
+    monde.poser(LM, 'factures', facture('fac-lm2', 'pro-a', 20));
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(relance(LM, 'fac-lm2-r2')?.statut === 'proposee' && !relance(LM, 'fac-lm2-r1'), '20 jours de retard : seule l’étape J+15 est proposée');
+    monde.poser(LM, 'factures', facture('fac-lm2', 'pro-a', 20, { statut: 'payee', payeeLe: ilYa(1) }));
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-lm2-r2' } });
+    verifier(relance(LM, 'fac-lm2-r2')?.statut === 'sans_objet' && res.statut === 409 && monde.emails.length === 3, 'facture payée : relance sans objet, rien ne part', relance(LM, 'fac-lm2-r2'));
+
+    // Ce que voit le propriétaire : ses factures partagées, le dernier rappel.
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
+    const factures = (res.corps?.vue?.factures ?? []) as { id: string; dernierRappel?: string }[];
+    verifier(factures.some((f) => f.id === 'fac-lm' && !!f.dernierRappel) && !factures.some((f) => f.id === 'fac-s'), 'propriétaire de Label Maison : ses factures et leurs rappels, rien de Sens', factures);
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
   }
 
   section('Webhooks');

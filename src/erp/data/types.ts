@@ -563,6 +563,8 @@ export interface Facture {
   statut: StatutFacture;
   payeeLe?: DateISO;
   lignes: LigneFacture[];
+  /** Partagée dans l'espace propriétaire (visible et relancée) depuis cet instant ; absent : pas partagée. */
+  partageeLe?: Horodatage;
 }
 
 export type StatutPaiementPrestataire = 'a_payer' | 'paye' | 'bloque';

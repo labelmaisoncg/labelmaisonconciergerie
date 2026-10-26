@@ -239,7 +239,7 @@ async function main() {
   /* démo */
   const seed = creerSeed();
   const demo = vueProprietaire(seed, 'pro-sci-tilleuls', { aujourdhui: '2026-09-24' })!;
-  verifier(!!demo && demo.logements.length >= 1 && demo.bilans.length === 1 && demo.documents.length === 2, 'démo : SCI Les Tilleuls, un bilan publié, deux documents');
+  verifier(!!demo && demo.logements.length >= 1 && demo.bilans.length === 1 && demo.documents.filter((x) => x.categorie !== 'facture').length === 2, 'démo : SCI Les Tilleuls, un bilan publié, deux documents (plus le PDF d’une facture)');
   const autres = new Set(seed.logements.filter((l) => l.proprietaireId !== 'pro-sci-tilleuls').map((l) => l.id));
   verifier(!demo.calendrier.logements.some((c) => autres.has(c.logementId)) && !demo.bilans[0].chiffres.sejours.some((s) => autres.has(s.logementId)), 'démo : rien d’un autre propriétaire');
 

@@ -14,8 +14,9 @@
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
 import { espaceOuvert, estLabelMaison } from './espaces.js';
+import { facturePartagee, facturesVue } from './relances.js';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull.js';
-import type { CanalReservation, DateISO, Id, Logement, Mandat, Proprietaire, Reservation } from './types';
+import type { CanalReservation, DateISO, Facture, Id, Logement, Mandat, Proprietaire, Reservation } from './types';
 import type {
   ArriveeVue,
   AvisVue,
@@ -33,6 +34,7 @@ import type {
   LogementBilan,
   LogementVue,
   MoisPerformance,
+  RelancePaiement,
   SejourBilan,
   TotauxBilan,
   TotauxPerformance,
@@ -531,6 +533,10 @@ export interface EntreesProprietaire {
   mandats: readonly Mandat[];
   documentsProprietaire: readonly DocumentProprietaire[];
   bilansProprietaire: readonly BilanProprietaire[];
+  /** Factures (seules les siennes, partagées, sont vues). */
+  factures?: readonly Facture[];
+  /** Relances envoyées (date du dernier rappel) ; collection serveur. */
+  relancesPaiement?: readonly RelancePaiement[];
 }
 
 export interface OptionsVue {
@@ -592,8 +598,10 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     return { id: l.id, nom: l.nom, ville: l.ville, capacite: entier(l.capacite), chambres: entier(l.chambres), ...(photo ? { photo } : {}) };
   });
 
+  // Le PDF d'une facture ne se voit que tant que la facture est partagée.
+  const facturesPartagees = new Set((e.factures ?? []).filter((f) => facturePartagee(f, proprietaireId)).map((f) => f.id));
   const documents: DocumentVue[] = e.documentsProprietaire
-    .filter((x) => x?.proprietaireId === proprietaireId && CATEGORIES.has(x.categorie))
+    .filter((x) => x?.proprietaireId === proprietaireId && CATEGORIES.has(x.categorie) && (!x.factureId || facturesPartagees.has(x.factureId)))
     .map((x) => ({
       id: x.id,
       categorie: x.categorie,
@@ -615,6 +623,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     fiches: geres.map((l) => ficheLogement({ reservations: actifs, mandats: e.mandats }, l.id, aujourdhui)),
     bilans,
     documents,
+    factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement }),
     conciergerie: { nom: conciergerie.nom },
     ...(conciergerie.contacts ? { contacts: conciergerie.contacts } : {}),
   };
