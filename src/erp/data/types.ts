@@ -48,7 +48,7 @@ export interface OrigineRepull {
  * clair la raison d'un manque. `le` ne change que si la note change.
  */
 export interface LectureAnnonce {
-  photos: 'annonce' | 'repull' | 'booking-chambre' | 'booking-etablissement' | 'airbnb' | 'aucune';
+  photos: 'annonce' | 'repull' | 'booking-chambre' | 'booking-etablissement' | 'airbnb' | 'airbnb-page' | 'aucune';
   prix: 'repull' | 'booking' | 'aucun';
   /** Pourquoi il n'y a pas de photo (« Booking.com n'a renvoyé aucune photo »). */
   raisonPhotos?: string;

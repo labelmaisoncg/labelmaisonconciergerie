@@ -1,6 +1,7 @@
 import { House, RefreshCw } from 'lucide-react';
 import { Button } from '../../../ui';
 import { dateCourte } from '../../../data/format';
+import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import type { Logement } from '../../../data/types';
 import { useSynchroRepull } from '../../parametres/SynchroRepull';
 
@@ -16,10 +17,12 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
   const s = useSynchroRepull();
   const n = l.repull?.lecture;
   const enPause = !!l.repull?.horsSelection;
+  // Un logement en pause n'est lu que par la page publique de son annonce Airbnb.
+  const lisible = !enPause || !!idAirbnbDuLogement(l);
 
   let texte: string;
-  if (enPause) texte = 'Ce logement est en pause : hors de votre forfait, seule sa photo de couverture est lue, et la plateforme n’en a pas transmis.';
-  else if (n?.photos === 'aucune') texte = `${phrase(n.raisonPhotos ?? 'aucune photo transmise par les plateformes')} (lu le ${dateCourte(n.le)}).`;
+  if (n?.photos === 'aucune') texte = `${phrase(n.raisonPhotos ?? 'aucune photo transmise par les plateformes')} (lu le ${dateCourte(n.le)}).`;
+  else if (!lisible) texte = 'Ce logement est en pause (hors de votre forfait) et n’a pas d’annonce Airbnb dont lire les photos.';
   else texte = 'Les photos de l’annonce arrivent à la prochaine mise à jour.';
 
   return (
@@ -38,7 +41,7 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
           </p>
         )}
       </div>
-      {s.disponible && !enPause && (
+      {s.disponible && lisible && (
         <Button icone={<RefreshCw />} chargement={s.enCours} disabled={s.enCours} onClick={() => void s.synchroniser()} className="self-start sm:self-center">
           Mettre à jour
         </Button>
