@@ -8,6 +8,8 @@ export const COLLECTIONS: NomCollection[] = [
   'mouvementsLinge', 'incidents', 'factures', 'paiementsPrestataires', 'charges', 'prospects', 'crm', 'dossiers',
   'utilisateurs', 'journal', 'recommandations', 'versionsAnnonce', 'reglages',
   'accesProprietaires', 'documentsProprietaire', 'bilansProprietaire',
+  // Espace opérations (octobre 2026) : absentes des anciennes sauvegardes, complétées à vide.
+  'equipe', 'accesOperations', 'affectations', 'absences', 'controles', 'signalementsLogement',
 ];
 
 /**

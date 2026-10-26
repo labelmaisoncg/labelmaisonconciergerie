@@ -100,6 +100,14 @@ node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --forma
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-proprietaire.mjs && node /tmp/verifier-proprietaire.mjs
 
+# Auto-contrôle de l'espace opérations : urgences d'abord, contrôles après un
+# départ, absences et remplaçants, périmètre (pôle / agent), « Prénom N. »,
+# consignes d'accès le jour même, droits par rôle, collections écrites,
+# « ce logement n'est pas à moi », invitation par espace, sessions par genre.
+node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platform=node \
+  --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-operations.cjs && node /tmp/verifier-operations.cjs
+
 # Auto-contrôle des factures partagées et des relances de paiement.
 node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
@@ -136,7 +144,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
-| `OPERATIONS_SECRET`, `ACCES_SECRET` | Vercel (serveur), facultatives | Sessions de l'espace opérations ; `ACCES_SECRET` sert de secours aux deux genres d'accès (le genre est signé dans la session : un cookie propriétaire ne vaut pas pour les opérations). |
+| `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Redéployer après ajout. |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
 
 ## Accès et déploiement
@@ -1177,12 +1185,73 @@ d'août publié et deux documents ; son espace :
   synchronise pas. Gérant : `GET ?action=relances`, `POST relance-envoyer`,
   `relance-annuler`, `relances-reglages` (api/espace-proprietaire.ts, gérant
   de l'espace).
-- **Écrans du gérant** (pas encore montés) :
-  `logements/_composants/FacturesProprietaire.tsx` (partager ou non chaque
-  facture, joindre son PDF) et `RelancesPaiement.tsx` (réglages, relances à
-  valider avec l'aperçu du message, relances envoyées ; `useRelances()`).
+- **Écrans du gérant** : `logements/_composants/FacturesProprietaire.tsx`
+  (partager ou non chaque facture, joindre son PDF), dans le panneau
+  « Espace propriétaire » après « Bilans mensuels » ; `RelancesPaiement.tsx`
+  (réglages, relances à valider avec l'aperçu du message, relances
+  envoyées ; `useRelances()`) dans Paramètres → Accès, section
+  Propriétaires, et, limité au propriétaire, dans son panneau. « Je valide
+  chaque relance » (`proposer`) reste le réglage par défaut.
 - **Contrôles** : `verifier-relances.ts` (calendrier, idempotence, arrêt au
   paiement, message, ce que voit chaque propriétaire) et
   `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
   n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
 
+
+## Espace opérations (octobre 2026)
+
+Une page à part, **`https://www.labelmaisoncg.fr/espace-operations`**, pour
+les personnes de terrain : leur espace à elles, hors de l'ERP du gérant,
+avec leur propre connexion (lien à usage unique reçu par e-mail, session
+signée de 30 jours, mêmes mécanismes que l'espace propriétaire). Ménage,
+linge et consommables restent chez BNB Cleaning : rien ici n'y touche.
+
+| Rôle | Ce que voit la personne |
+|---|---|
+| Responsable de pôle | Ses logements (ceux que le gérant a cochés), les séjours, les urgences et incidents de ces logements, les contrôles qualité, son équipe, les absences et remplacements. Cinq onglets : Aujourd'hui, Logements, Incidents, Contrôles, Équipe. |
+| Agent de terrain | Ses logements, les incidents qu'il a signalés ou qui lui sont confiés, les contrôles à faire. Quatre onglets (pas d'Équipe). |
+
+Sur chaque logement : « Signaler un incident » (photo, urgent ou non) et
+« Ce logement n'est pas à moi » (le gérant est prévenu ; le logement reste
+affiché jusqu'à sa réponse). Voyageurs en « Prénom N. » et nombre de
+personnes ; consignes d'accès seulement le jour où la personne a quelque
+chose à faire dans le logement.
+
+### Côté gérant
+
+- **Paramètres → Accès** : « Propriétaires » (un propriétaire par logement ;
+  cocher le logement d'un autre propriétaire le lui reprend après
+  confirmation ; « Inviter un propriétaire ») et « Responsables
+  opérationnels » (nom, e-mail, rôle, logements cochés, plusieurs personnes
+  par logement, invitation, accès, « Voir son espace » en aperçu, et les
+  « ce logement n'est pas à moi » à traiter : « Le garder » / « Lui retirer »).
+- **Fiche logement** : sous la carte Propriétaire (avec la ligne du mandat :
+  « Mandat signé le … · 18 % » ou « Mandat envoyé, pas encore signé »), une
+  carte « Responsables opérationnels » : qui suit le logement, son accès,
+  « Ajouter un responsable » (quelqu'un de l'équipe ou une invitation).
+- Une invitation est rangée dans l'espace de l'ERP qui invite (Label Maison,
+  Sens…) et part au nom de cet espace ; la personne ne voit que la base de
+  cet espace.
+- Notification « Urgence » sur les appareils de l'ERP quand un incident
+  urgent est signalé ou confié (désactivable dans Paramètres → Application).
+
+### Fonctionnement
+
+- Données : collections `equipe`, `accesOperations`, `affectations`,
+  `absences`, `controles`, `signalementsLogement` (+ `incidents`) dans
+  `erp.enregistrements`, base de l'espace (`baseErp(c, espace)`).
+- `api/espace-operations.ts` : `lien`, `entrer`, `sortir`, `vue`, `agir`,
+  `photo` (personne connectée), `etat`, `inviter`, `retirer` (gérant).
+  Chaque appel relit l'accès dans la base de l'espace ; la vue et les
+  actions sont calculées par `src/erp/data/espace-operations.ts` sur le seul
+  périmètre de la personne. Écritures limitées à `incidents`, `controles`,
+  `absences`, `affectations`, `signalementsLogement` : jamais de réservation,
+  de logement, de prix, de calendrier ni d'appel à Repull.
+- Photos : réduites dans le navigateur (JPEG, 1600 px), déposées dans
+  `erp-fichiers/operations/<personne>/`, lues par liens signés (Label Maison
+  seulement pour l'instant).
+- Variables : `ACCES_SECRET` (ou `OPERATIONS_SECRET`), `ERP_PASSWORD`
+  (lecture de la base), `RESEND_API_KEY` et `CONTACT_FROM_EMAIL` pour envoyer
+  les liens par e-mail (sans : le lien s'affiche au gérant, qui le transmet).
+- Démo : `/espace-operations?apercu=eq-ines` (responsable de pôle),
+  `/espace-operations?apercu=eq-yanis` (agent de terrain).

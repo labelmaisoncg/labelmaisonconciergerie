@@ -2,8 +2,8 @@
  * Factures d'un propriétaire, côté gérant : partager (ou ne plus partager)
  * chaque facture dans son espace propriétaire, joindre son PDF.
  *
- * Pas encore monté : à placer dans le panneau « Espace propriétaire » de la
- * fiche logement (après « Bilans mensuels »). Les factures passent par le
+ * Monté dans le panneau « Espace propriétaire » (fiche logement et
+ * Paramètres → Accès), après « Bilans mensuels ». Les factures passent par le
  * store comme le reste de l'ERP ; une facture partagée et à payer entre dans
  * les relances (RelancesPaiement.tsx).
  */
@@ -60,7 +60,7 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
             const pdf = pdfDe(f);
             return (
               <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
-                <div className="min-w-0 flex-1">
+                <div className="min-w-48 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)">
                     {f.numero}
                     <Badge tone={s.ton}>{s.libelle}</Badge>

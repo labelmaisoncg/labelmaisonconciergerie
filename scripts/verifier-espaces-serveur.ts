@@ -20,6 +20,9 @@
  * (passage quotidien de chaque espace, « proposer » n'envoie jamais seul,
  * pas d'expéditeur = pas d'envoi, expéditeur de l'espace, jamais deux fois,
  * arrêt au paiement).
+ * Espace opérations (mêmes règles que l’espace propriétaire, logements de
+ * la personne seulement, un cookie propriétaire ne vaut pas pour les
+ * opérations).
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -36,6 +39,7 @@ import routeSynchro from '../api/erp-repull-sync';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
 import routeProprietaire from '../api/espace-proprietaire';
+import routeOperations from '../api/espace-operations';
 import { relancesDuJour } from '../api/_relances';
 
 /* ------------------------------------------------------------ assertions */
@@ -316,6 +320,39 @@ async function principal() {
     verifier(relance(LM, 'fac-lm-r1')?.statut === 'proposee' && monde.base.every((r) => r.espace === null), 'relance rangée dans Label Maison, sans en-tête');
   }
 
+  section('Espace opérations, base pas encore préparée : Label Maison comme avant');
+  const EMAIL_OPS = 'terrain@exemple.invalid';
+  const appelOps = async (o: { methode?: string; entetes?: Record<string, string>; corps?: unknown; query?: Record<string, string> }) => {
+    const res = reponse();
+    await routeOperations(requete({ ...o, entetes: { ...ORIGINE, ...(o.entetes ?? {}) } }), res);
+    return res;
+  };
+  let cookieAgathe = '';
+  {
+    // Un seul secret pour les deux espaces : le genre est signé dans la session.
+    env.ACCES_SECRET = 'secret-commun-des-espaces-exterieurs-0123456789';
+    monde.poser(LM, 'logements', { id: 'log-b', nom: 'Pas pour Agathe', ville: 'Massy', statut: 'actif', proprietaireId: 'pro-b', capacite: 2, chambres: 1 } as { id: string });
+    monde.poser(LM, 'equipe', { id: 'eq-a', nom: 'Agathe Terrain', role: 'pole', email: EMAIL_OPS, logementIds: ['log-a'], actif: true } as { id: string });
+    let res = await appelOps({ entetes: { authorization: 'Bearer jeton-equipe' }, corps: { action: 'inviter', membreId: 'eq-a', email: EMAIL_OPS } });
+    verifier(res.statut === 200 && String(res.corps?.lien).includes(`/espace-operations#espace=${LM}&jeton=`), 'opérations : invitation du gérant, lien de Label Maison', res.corps);
+    verifier((monde.lignes.get(`${LM}\u0000accesOperations\u0000eq-a`)?.donnees as { espace?: string } | undefined)?.espace === LM, 'opérations : accès rangé dans Label Maison');
+    res = await appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(res.corps?.lien) } });
+    cookieAgathe = cookieDe(res);
+    verifier(res.statut === 200 && cookieAgathe.startsWith('lm_operations='), 'opérations : lien sans espace ouvert dans Label Maison', res.corps);
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAgathe } });
+    verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-a' && res.corps?.vue?.conciergerie?.nom === 'Label Maison', 'opérations : seulement ses logements, au nom de Label Maison', res.corps?.vue?.logements);
+    res = await appelOps({ entetes: { cookie: cookieAgathe }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-b', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
+    verifier(res.statut === 403, 'opérations : incident sur un logement qui n’est pas le sien refusé', res.corps);
+    monde.oublier();
+    res = await appelOps({ entetes: { cookie: cookieAgathe }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-a', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
+    const ecrits = monde.base.filter((r) => r.methode === 'POST' && r.chemin === 'enregistrements');
+    verifier(res.statut === 200 && res.corps?.vue?.incidents?.some((i: { urgent: boolean }) => i.urgent), 'opérations : urgence signalée, vue à jour', res.corps?.message);
+    verifier(ecrits.length > 0 && ecrits.every((r) => (r.corps as { collection: string }[]).every((l) => l.collection === 'incidents')), 'opérations : seule la collection des incidents est écrite', ecrits.map((r) => r.corps));
+    // Un cookie propriétaire ne vaut pas pour les opérations (genre signé dans la session).
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice.replace(/^lm_proprio=/, 'lm_operations=') } });
+    verifier(res.statut === 401, 'opérations : cookie propriétaire refusé', res.statut);
+  }
+
   section('Base préparée, compte serveur pas prêt');
   monde.historique = false;
   env.ERP_SERVEUR_MOT_DE_PASSE = 'mdp-serveur';
@@ -456,6 +493,37 @@ async function principal() {
     monde.oublier();
     res = await appelProprio({ corps: { action: 'lien', email: 'inconnu@exemple.invalid' } });
     verifier(res.statut === 200 && res.corps?.message === message && monde.base.every((r) => r.methode !== 'POST' || r.chemin !== 'enregistrements'), 'adresse inconnue : même réponse, rien d’écrit', res.corps);
+  }
+
+  section('Espace opérations : chaque accès dans l’espace qui invite');
+  {
+    monde.poser(SENS, 'equipe', { id: 'eq-s', nom: 'Samir Sens', role: 'agent', email: EMAIL_OPS, logementIds: ['log-s'], actif: true } as { id: string });
+    let res = await appelOps({ entetes: { authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS }, corps: { action: 'inviter', membreId: 'eq-s', email: EMAIL_OPS } });
+    verifier(res.statut === 403, 'opérations : compte de Label Maison avec l’en-tête de Sens, invitation refusée', res.corps);
+    res = await appelOps({ entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }, corps: { action: 'inviter', membreId: 'eq-s', email: EMAIL_OPS } });
+    verifier(res.statut === 200 && String(res.corps?.lien).includes(`/espace-operations#espace=${SENS}&jeton=`) && res.corps?.envoye === false, 'opérations : gérant de Sens, lien de Sens à copier', res.corps);
+    const lienSens = String(res.corps?.lien);
+    verifier(!monde.lignes.has(`${LM}\u0000accesOperations\u0000eq-s`) && (monde.lignes.get(`${SENS}\u0000accesOperations\u0000eq-s`)?.donnees as { espace?: string } | undefined)?.espace === SENS, 'opérations : accès écrit dans Sens seulement');
+    res = await appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(lienSens), espace: LM } });
+    verifier(res.statut === 401, 'opérations : lien de Sens présenté à Label Maison, refusé', res.corps);
+    res = await appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(lienSens), espace: SENS } });
+    const cookieSamir = cookieDe(res);
+    verifier(res.statut === 200 && !!cookieSamir, 'opérations : lien de Sens, session ouverte', res.corps);
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieSamir } });
+    const texte = JSON.stringify(res.corps?.vue ?? {});
+    verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-s' && res.corps?.vue?.conciergerie?.nom === 'Sens', 'opérations : son logement de Sens, au nom de Sens', res.corps?.vue?.logements);
+    verifier(!/Alice|log-a|Agathe|Label Maison/.test(texte), 'opérations : rien de Label Maison', texte.slice(0, 200));
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAgathe } });
+    verifier(res.statut === 200 && !/log-s|Samir|Sophie/.test(JSON.stringify(res.corps?.vue ?? {})), 'opérations : la personne de Label Maison ne voit rien de Sens');
+    const [nom, valeur] = cookieSamir.split('=');
+    const [corps, signature] = valeur.split('.');
+    const charge = JSON.parse(Buffer.from(corps, 'base64url').toString()) as Record<string, unknown>;
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: `${nom}=${Buffer.from(JSON.stringify({ ...charge, e: LM })).toString('base64url')}.${signature}` } });
+    verifier(res.statut === 401, 'opérations : cookie dont l’espace est changé, refusé', res.statut);
+    monde.oublier();
+    res = await appelOps({ corps: { action: 'lien', email: EMAIL_OPS } });
+    const liens = (e: string, id: string) => ((monde.lignes.get(`${e}\u0000accesOperations\u0000${id}`)?.donnees as { liens?: { motif: string }[] } | undefined)?.liens ?? []).filter((l) => l.motif === 'connexion').length;
+    verifier(res.statut === 200 && liens(LM, 'eq-a') === 1 && liens(SENS, 'eq-s') === 1, 'opérations : demande de lien, un lien dans chaque espace où l’adresse a un accès', res.corps);
   }
 
   section('Relances de paiement : chaque espace, son calendrier, son expéditeur');

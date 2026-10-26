@@ -6,6 +6,7 @@
  */
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
+import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -501,6 +502,14 @@ export interface Incident {
   resoluLe?: DateISO;
   /** Date à laquelle la somme refacturable a été récupérée. */
   recupereLe?: DateISO;
+  /** Espace opérations (octobre 2026) : membre de l'équipe de terrain qui s'en occupe. */
+  assigneA?: Id;
+  /** Membre de l'équipe de terrain qui l'a signalé. */
+  signalePar?: Id;
+  /** Contrôle qualité d'où vient l'incident (point « à revoir »). */
+  controleId?: Id;
+  /** Ce qui s'est passé, du plus ancien au plus récent. */
+  historique?: { le: Horodatage; par: string; texte: string }[];
 }
 
 /* ------------------------------------------------------------ prestataires */
@@ -757,6 +766,14 @@ export interface ErpDonnees {
   documentsProprietaire: DocumentProprietaire[];
   /** Bilans mensuels préparés puis publiés dans l'espace propriétaire (ajoutée en octobre 2026). */
   bilansProprietaire: BilanProprietaire[];
+  /** Espace opérations (ajoutées en octobre 2026) : équipe de terrain et ses accès (écrits par le serveur), */
+  equipe: MembreEquipe[];
+  accesOperations: AccesOperations[];
+  /** qui suit chaque logement, absences, contrôles qualité, « ce logement n'est pas à moi ». */
+  affectations: AffectationLogement[];
+  absences: AbsenceMembre[];
+  controles: ControleQualite[];
+  signalementsLogement: SignalementLogement[];
 }
 
 export type NomCollection = keyof ErpDonnees;

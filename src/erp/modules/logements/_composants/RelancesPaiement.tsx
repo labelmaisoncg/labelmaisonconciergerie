@@ -3,8 +3,8 @@
  * étapes), relances à valider (envoyer ou annuler, aperçu du message) et
  * relances envoyées.
  *
- * Pas encore monté : à placer dans Paramètres → Accès (réglages et file à
- * valider de tout l'espace), ou dans le panneau « Espace propriétaire » avec
+ * Monté dans Paramètres → Accès, section Propriétaires (réglages et file à
+ * valider de tout l'espace), et dans le panneau « Espace propriétaire » avec
  * `proprietaireId` (ses relances seulement).
  *
  * Les relances sont écrites par le serveur seul (api/espace-proprietaire.ts,
@@ -187,7 +187,7 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
                   return (
                     <li key={r.id} className="px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-48 flex-1">
                           <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)">
                             {r.numero}
                             <Badge tone="neutre">{etape(r.niveau)}</Badge>

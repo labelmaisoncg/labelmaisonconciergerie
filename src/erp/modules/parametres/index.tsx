@@ -5,8 +5,13 @@ import Integrations from './Integrations';
 import Donnees from './Donnees';
 import Entreprise from './Entreprise';
 import Application from './Application';
+import Acces from './Acces';
 
-/** Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation), l'app et ses notifications, la société et sa sauvegarde. */
+/**
+ * Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation),
+ * les accès des propriétaires et des responsables opérationnels à leur espace,
+ * l'app et ses notifications, la société et sa sauvegarde.
+ */
 export default function Module() {
   return (
     <>
@@ -16,6 +21,7 @@ export default function Module() {
         onglets={[
           { cle: 'utilisateurs', libelle: 'Équipe', to: '/erp/parametres', end: true },
           { cle: 'plateformes', libelle: 'Plateformes', to: '/erp/parametres/plateformes' },
+          { cle: 'acces', libelle: 'Accès', to: '/erp/parametres/acces' },
           { cle: 'application', libelle: 'Application', to: '/erp/parametres/application' },
           { cle: 'societe', libelle: 'Société', to: '/erp/parametres/societe' },
         ]}
@@ -23,6 +29,7 @@ export default function Module() {
       <Routes>
         <Route index element={<Utilisateurs />} />
         <Route path="plateformes" element={<Integrations />} />
+        <Route path="acces" element={<Acces />} />
         <Route path="application" element={<Application />} />
         <Route
           path="societe"

@@ -59,6 +59,9 @@
     },
     "api/espace-proprietaire.ts": {
       "maxDuration": 20
+    },
+    "api/espace-operations.ts": {
+      "maxDuration": 20
     }
   },
   "crons": [
