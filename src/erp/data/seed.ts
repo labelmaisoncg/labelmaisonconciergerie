@@ -502,6 +502,33 @@ function typerAvis(reservations: Reservation[]) {
 
 /* ------------------------------------------------------------- assemblage */
 
+/** Photos du site, pour que la démo montre une vraie galerie. */
+const PHOTOS_DEMO = [
+  '/images/real/logement-salon-poster.jpg',
+  '/images/real/logement-suite.jpg',
+  '/images/real/logement-hero.jpg',
+  '/images/real/logement-sdb-poster.jpg',
+  '/images/real/hero-logement-exception.jpg',
+  '/images/real/logement-riad-poster.jpg',
+  '/images/real/jacuzzi.jpg',
+];
+
+/** Démo : photos et prix par nuit des 60 prochains jours (plus cher le week-end), comme lus sur les plateformes. */
+function habiller(logements: Logement[]): Logement[] {
+  return logements.map((l, i) => {
+    if (l.statut === 'sorti') return l;
+    const base = 6500 + l.capacite * 1500 + (i % 3) * 1000;
+    const jours = Array.from({ length: 60 }, (_, k) => {
+      const date = ajouterJours(AUJOURDHUI, k);
+      const jour = new Date(`${date}T12:00:00Z`).getUTCDay();
+      const weekEnd = jour === 5 || jour === 6;
+      return { date, prixCentimes: Math.round((base * (weekEnd ? 1.25 : 1)) / 100) * 100, libre: (k * 7 + i * 3) % 5 > 1 };
+    });
+    const photos = [0, 1, 2, 3, 4, 5].map((k) => PHOTOS_DEMO[(i + k) % PHOTOS_DEMO.length]);
+    return { ...l, photos, tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours } };
+  });
+}
+
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
   const reservations = genererReservations(h);
@@ -521,7 +548,7 @@ export function creerSeed(): ErpDonnees {
   return {
     proprietaires: structuredClone(PROPRIETAIRES),
     mandats: structuredClone(MANDATS),
-    logements: structuredClone(LOGEMENTS),
+    logements: habiller(structuredClone(LOGEMENTS)),
     reservations,
     filsMessages: operations.filsMessages,
     missions: toutesMissions,

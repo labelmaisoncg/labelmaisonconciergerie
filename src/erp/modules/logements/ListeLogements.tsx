@@ -1,184 +1,73 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LayoutGrid, List, Plug, Plus } from 'lucide-react';
-import {
-  Button,
-  ButtonLink,
-  EmptyState,
-  FilterChips,
-  MenuActions,
-  PageHeader,
-  SearchInput,
-  Select,
-  StatusBadge,
-  Table,
-  cn,
-  type Colonne,
-  useCreationParUrl,
-} from '../../ui';
+import { Plug, Plus } from 'lucide-react';
+import { Button, ButtonLink, EmptyState, FilterChips, MenuActions, PageHeader, SearchInput, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
-import { euros, jourMois, note, pourcentage } from '../../data/format';
-import { proprietaireById } from '../../data/selectors';
-import type { Logement, StatutLogement } from '../../data/types';
+import type { StatutLogement } from '../../data/types';
 import { CarteLogement } from './_composants/CarteLogement';
-import { statsLogement, type StatsLogement } from './_composants/stats';
-import { VisuelLogement } from './_composants/Visuel';
+import { statsLogement } from './_composants/stats';
 import { EditionLogement } from './EditionLogement';
-import { BadgeCommission, BadgeRentabilite, triMarge, useEconomieParc, type EconomieBien } from './_composants/EconomieBien';
 
-type Ligne = { l: Logement; s: StatsLogement; proprietaire: string; eco: EconomieBien };
 const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 
-function lireVue(): 'cartes' | 'tableau' {
-  try {
-    return window.localStorage.getItem('lm-erp-logements-vue') === 'tableau' ? 'tableau' : 'cartes';
-  } catch {
-    return 'cartes';
-  }
-}
-
+/** Logements en cartes : photo, prochain événement, prix ou occupation, note. */
 export default function ListeLogements() {
   const d = useErp();
   const naviguer = useNavigate();
   const [recherche, setRecherche] = useState('');
   const [statuts, setStatuts] = useState<string[]>([]);
-  const [ville, setVille] = useState('');
-  const [vue, setVueEtat] = useState(lireVue);
   const [creation, setCreation] = useCreationParUrl();
 
-  const setVue = (v: 'cartes' | 'tableau') => {
-    setVueEtat(v);
-    try {
-      window.localStorage.setItem('lm-erp-logements-vue', v);
-    } catch {
-      /* préférence non mémorisée */
-    }
-  };
-
-  const economie = useEconomieParc(d.donnees);
-  const lignes = useMemo<Ligne[]>(
-    () =>
-      d.logements.map((l) => ({
-        l,
-        s: statsLogement(d, l),
-        proprietaire: proprietaireById(d, l.proprietaireId)?.nom ?? 'Propriétaire inconnu',
-        eco: economie.get(l.id)!,
-      })),
-    [d, economie],
-  );
-  const villes = useMemo(() => [...new Set(d.logements.map((l) => l.ville))].sort(), [d.logements]);
-
-  const filtrees = lignes.filter(({ l, proprietaire }) => {
-    if (statuts.length && !statuts.includes(l.statut)) return false;
-    if (ville && l.ville !== ville) return false;
-    const q = recherche.trim().toLowerCase();
-    return !q || [l.nom, l.ville, l.adresse, proprietaire, l.numeroEnregistrement ?? ''].some((x) => x.toLowerCase().includes(q));
-  });
-
-  const compte = (s: StatutLogement) => d.logements.filter((l) => l.statut === s).length;
-
-  const colonnes: Colonne<Ligne>[] = [
-    {
-      cle: 'nom',
-      titre: 'Logement',
-      tri: (a, b) => a.l.nom.localeCompare(b.l.nom),
-      rendu: ({ l }) => (
-        <div className="flex min-w-[200px] items-center gap-3">
-          <VisuelLogement logement={l} taille="sm" className="size-9 shrink-0 rounded-lg" />
-          <div className="min-w-0">
-            <p className="truncate font-medium">{l.nom}</p>
-            <p className="truncate text-[12px] text-(--lm-encre-2)">{l.ville}</p>
-          </div>
-        </div>
-      ),
-    },
-    { cle: 'type', titre: 'Type', rendu: ({ l }) => `${LIBELLES.typeLogement[l.type]} · ${l.capacite} pers.`, masquerMobile: true },
-    { cle: 'proprietaire', titre: 'Propriétaire', rendu: ({ proprietaire }) => proprietaire, masquerMobile: true },
-    { cle: 'statut', titre: 'Statut', rendu: ({ l }) => <StatusBadge type="statutLogement" valeur={l.statut} /> },
-    {
-      cle: 'commission',
-      titre: 'Commission',
-      tri: (a, b) => (a.eco.commissionPct ?? -1) - (b.eco.commissionPct ?? -1),
-      rendu: ({ eco }) => <BadgeCommission eco={eco} />,
-    },
-    {
-      cle: 'marge',
-      titre: 'Marge LM / mois',
-      align: 'droite',
-      tri: (a, b) => triMarge(a.eco, b.eco),
-      rendu: ({ eco }) => <BadgeRentabilite eco={eco} />,
-    },
-    { cle: 'occ', titre: 'Occ. 30 j', align: 'droite', tri: (a, b) => a.s.occupation30 - b.s.occupation30, rendu: ({ s }) => pourcentage(s.occupation30) },
-    { cle: 'rev', titre: 'Revenu 30 j', align: 'droite', masquerMobile: true, tri: (a, b) => a.s.revenu30 - b.s.revenu30, rendu: ({ s }) => euros(s.revenu30, true) },
-    { cle: 'note', titre: 'Note', align: 'droite', masquerMobile: true, tri: (a, b) => (a.s.note ?? 0) - (b.s.note ?? 0), rendu: ({ s }) => note(s.note) },
-    {
-      cle: 'arrivee',
-      titre: 'Prochaine arrivée',
-      masquerMobile: true,
-      rendu: ({ s }) => (s.prochaineArrivee ? jourMois(s.prochaineArrivee.arrivee) : <span className="text-(--lm-encre-3)">Aucune</span>),
-    },
-  ];
+  const lignes = useMemo(() => d.logements.map((l) => ({ l, s: statsLogement(d, l) })), [d]);
+  const presents = STATUTS.filter((s) => d.logements.some((l) => l.statut === s));
+  const filtrees = lignes
+    .filter(({ l }) => {
+      if (statuts.length && !statuts.includes(l.statut)) return false;
+      const q = recherche.trim().toLowerCase();
+      return !q || [l.nom, l.ville, l.adresse].some((x) => x.toLowerCase().includes(q));
+    })
+    // Actifs d'abord, puis par nom.
+    .sort((a, b) => STATUTS.indexOf(a.l.statut) - STATUTS.indexOf(b.l.statut) || a.l.nom.localeCompare(b.l.nom, 'fr'));
+  const connecte = d.logements.some((l) => l.repull?.id);
 
   return (
     <>
       <PageHeader
         titre="Logements"
-        fil={[{ libelle: 'Référentiel' }, { libelle: 'Logements' }]}
         actions={
-          <>
-            <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
-              Connecter Airbnb, Booking…
-            </ButtonLink>
+          d.logements.length > 0 && (
             <MenuActions
               texte
               label="Plus"
-              actions={[{ libelle: 'Ajouter un logement à la main', icone: <Plus />, onClick: () => setCreation(true) }]}
+              actions={[
+                { libelle: connecte ? 'Plateformes et logements suivis' : 'Connecter Airbnb, Booking…', icone: <Plug />, to: '/erp/logements/connexions' },
+                { libelle: 'Ajouter un logement à la main', icone: <Plus />, onClick: () => setCreation(true) },
+              ]}
             />
-          </>
+          )
         }
       />
 
       {d.logements.length > 0 && (
-      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
-        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom, ville, propriétaire, n° d’enregistrement" label="Rechercher un logement" />
-        <FilterChips
-          label="Filtrer par statut"
-          filtres={STATUTS.map((s) => ({ cle: s, libelle: LIBELLES.statutLogement[s], compteur: compte(s) }))}
-          actifs={statuts}
-          onChange={setStatuts}
-        />
-        <div className="flex items-center gap-2 lg:ml-auto">
-          <Select aria-label="Filtrer par ville" value={ville} onChange={(e) => setVille(e.target.value)} placeholder="Toutes les villes" options={villes.map((v) => ({ valeur: v, libelle: v }))} className="w-48" />
-          <div role="group" aria-label="Affichage" className="flex rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) p-0.5">
-            {(
-              [
-                ['cartes', LayoutGrid, 'Cartes'],
-                ['tableau', List, 'Tableau'],
-              ] as const
-            ).map(([v, Icone, libelle]) => (
-              <button
-                key={v}
-                type="button"
-                aria-pressed={vue === v}
-                aria-label={`Affichage en ${libelle.toLowerCase()}`}
-                title={libelle}
-                onClick={() => setVue(v)}
-                className={cn('grid h-8 w-8 place-items-center rounded-md text-(--lm-encre-2)', vue === v && 'bg-(--lm-or-lavis) text-(--lm-brun)')}
-              >
-                <Icone className="size-4" aria-hidden />
-              </button>
-            ))}
-          </div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom, ville, adresse" label="Rechercher un logement" />
+          {presents.length > 1 && (
+            <FilterChips
+              label="Filtrer par statut"
+              filtres={presents.map((s) => ({ cle: s, libelle: LIBELLES.statutLogement[s], compteur: d.logements.filter((l) => l.statut === s).length }))}
+              actifs={statuts}
+              onChange={setStatuts}
+            />
+          )}
         </div>
-      </div>
       )}
 
       {d.logements.length === 0 ? (
         <EmptyState
           icone={<Plug />}
           titre="Pas encore de logement"
-          description="Connectez vos plateformes pour importer vos logements."
+          description="Connectez Airbnb ou Booking : vos logements arrivent avec leurs photos, réservations et messages."
           action={
             <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
               Connecter Airbnb, Booking…
@@ -189,24 +78,22 @@ export default function ListeLogements() {
         <EmptyState
           titre="Aucun logement ne correspond"
           action={
-            <Button onClick={() => { setRecherche(''); setStatuts([]); setVille(''); }}>Réinitialiser les filtres</Button>
+            <Button
+              onClick={() => {
+                setRecherche('');
+                setStatuts([]);
+              }}
+            >
+              Tout afficher
+            </Button>
           }
         />
-      ) : vue === 'cartes' ? (
+      ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {filtrees.map(({ l, s, eco }) => (
-            <CarteLogement key={l.id} logement={l} stats={s} economie={eco} />
+          {filtrees.map(({ l, s }) => (
+            <CarteLogement key={l.id} logement={l} stats={s} />
           ))}
         </div>
-      ) : (
-        <Table
-          legende="Liste des logements"
-          colonnes={colonnes}
-          lignes={filtrees}
-          cleLigne={({ l }) => l.id}
-          onLigneClick={({ l }) => naviguer(l.id)}
-          triInitial={{ cle: 'nom', sens: 'asc' }}
-        />
       )}
 
       <EditionLogement ouvert={creation} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />

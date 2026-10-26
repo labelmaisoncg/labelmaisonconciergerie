@@ -166,7 +166,7 @@ function PageReservations() {
         onFermer={() => setCreation(false)}
         onCree={(r) =>
           setConfirmation(
-            `C’est noté : ${r.voyageur.nom} du ${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}. Ménage de départ créé, à attribuer.`,
+            `C’est noté : ${r.voyageur.nom} du ${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}.`,
           )
         }
       />

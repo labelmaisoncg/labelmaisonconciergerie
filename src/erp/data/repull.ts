@@ -40,6 +40,7 @@ import type {
   Reservation,
   StatutLogement,
   StatutReservation,
+  TarifsLogement,
   TypeLogement,
 } from './types';
 
@@ -94,6 +95,19 @@ export interface RepullListingContent {
   summary?: string | null;
   description?: string | null;
   houseRules?: string | null;
+}
+
+/** GET /v1/listings/{id}/photos. */
+export interface RepullPhotos {
+  listingId?: string;
+  photos?: { url?: string; path?: string; size?: number; createdAt?: string }[];
+}
+
+/** GET /v1/availability/{propertyId}?from&to : prix et disponibilité par jour (lecture seule). */
+export interface RepullDisponibilite {
+  propertyId?: string;
+  currency?: string;
+  days?: { date?: string; available?: boolean; price?: number; minNights?: number; availableUnits?: number }[];
 }
 
 /** GET /v1/listings, GET /v1/listings/{id}. */
@@ -507,6 +521,8 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
     majLe: l.updatedAt ?? base.repull?.majLe,
     statut: l.status ?? base.repull?.statut,
     canaux,
+    // Relevé hebdomadaire des photos (repull-synchro) : la date survit au passage des annonces.
+    ...(base.repull?.photosLuesLe ? { photosLuesLe: base.repull.photosLuesLe } : {}),
   };
   suivant.repull = origine;
   return suivant;
@@ -779,4 +795,30 @@ export function ecartsBilan(b: { ignores?: EcartsRepull }): string[] {
   const z = i.filsSansLogement ?? 0;
   if (z) phrases.push(`${nb(z, 'conversation')} sans logement.`);
   return phrases;
+}
+
+/** Nombre de jours de prix lus à l'avance (fiche logement). */
+export const JOURS_TARIFS = 60;
+/** Photos gardées par logement (galerie de la fiche). */
+export const MAX_PHOTOS = 24;
+
+/** Photos d'une annonce : adresses https seulement, sans doublon, 24 au plus. */
+export function versPhotos(r: RepullPhotos | null | undefined): string[] {
+  const vues = new Set<string>();
+  for (const p of Array.isArray(r?.photos) ? r!.photos : []) {
+    const u = typeof p?.url === 'string' ? p.url.trim() : '';
+    if (/^https:\/\/[^\s"'<>]+$/i.test(u)) vues.add(u);
+    if (vues.size >= MAX_PHOTOS) break;
+  }
+  return [...vues];
+}
+
+/** Prix par nuit lus sur les plateformes (centimes) ; jours sans prix ou mal datés écartés. */
+export function versTarifs(r: RepullDisponibilite | null | undefined, luLe: Horodatage): TarifsLogement | undefined {
+  const jours = (Array.isArray(r?.days) ? r!.days : [])
+    .filter((j) => typeof j?.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(j.date) && typeof j.price === 'number' && Number.isFinite(j.price) && j.price >= 0)
+    .map((j) => ({ date: j.date as string, prixCentimes: Math.round((j.price as number) * 100), libre: j.available === true }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!jours.length) return undefined;
+  return { devise: (typeof r?.currency === 'string' && r.currency.trim()) || 'EUR', luLe, jours };
 }

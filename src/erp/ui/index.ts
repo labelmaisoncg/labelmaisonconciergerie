@@ -60,3 +60,6 @@ export { Interrupteur } from './Interrupteur';
 export type { InterrupteurProps } from './Interrupteur';
 export { FicheEtapes } from './FicheEtapes';
 export type { FicheEtapesProps } from './FicheEtapes';
+export { Segmente } from './Segmente';
+export type { SegmenteProps, OptionSegment } from './Segmente';
+// Graphiques : importer directement depuis './Graphiques' (recharts reste hors du lot commun).

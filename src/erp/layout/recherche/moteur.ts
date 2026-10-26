@@ -56,18 +56,17 @@ export interface GroupeType {
   liste?: (q: string) => string;
 }
 
+/**
+ * Groupes affichés, dans l'ordre. Channel manager (octobre 2026) : ménages,
+ * incidents, prestataires, factures, contrats et prospects ne sont plus
+ * cherchés (modules sortis du menu) ; un propriétaire s'ouvre depuis sa fiche.
+ */
 export const GROUPES_RECHERCHE: GroupeType[] = [
   { type: 'reservation', libelle: 'Réservations', liste: (q) => `/erp/reservations?vue=liste&q=${encodeURIComponent(q)}` },
   { type: 'logement', libelle: 'Logements' },
-  { type: 'proprietaire', libelle: 'Propriétaires', liste: (q) => `/erp/proprietaires?q=${encodeURIComponent(q)}` },
   { type: 'conversation', libelle: 'Conversations', liste: (q) => `/erp/messagerie?q=${encodeURIComponent(q)}` },
-  { type: 'mission', libelle: 'Ménages', liste: (q) => `/erp/menages?vue=toutes&q=${encodeURIComponent(q)}` },
-  { type: 'incident', libelle: 'Incidents', liste: (q) => `/erp/incidents?q=${encodeURIComponent(q)}` },
-  { type: 'prestataire', libelle: 'Prestataires', liste: (q) => `/erp/prestataires?q=${encodeURIComponent(q)}` },
-  { type: 'facture', libelle: 'Factures', liste: (q) => `/erp/finance/factures?q=${encodeURIComponent(q)}` },
-  { type: 'mandat', libelle: 'Contrats de gestion', liste: (q) => `/erp/mandats?q=${encodeURIComponent(q)}` },
   { type: 'contact', libelle: 'Contacts à appeler', liste: (q) => `/erp/crm?q=${encodeURIComponent(q)}` },
-  { type: 'prospect', libelle: 'Prospects', liste: (q) => `/erp/commercial?q=${encodeURIComponent(q)}` },
+  { type: 'proprietaire', libelle: 'Propriétaires' },
   { type: 'journal', libelle: 'Historique' },
 ];
 
@@ -149,7 +148,7 @@ function lienJournal(entite: string, id: string): string {
     case 'incident':
       return `/erp/incidents?id=${i}`;
     case 'proprietaire':
-      return `/erp/proprietaires/${i}`;
+      return '/erp/logements';
     case 'prestataire':
       return `/erp/prestataires/${i}`;
     case 'mandat':
@@ -205,7 +204,8 @@ export function construireIndex(d: ErpDonnees): ElementIndex[] {
       id: p.id,
       titre: p.nom,
       detail: [p.contact.email, p.contact.telephone, biens.length ? `${biens.length} logement${biens.length > 1 ? 's' : ''}` : ''].filter(Boolean).join(' · '),
-      to: `/erp/proprietaires/${p.id}`,
+      // Le propriétaire est dans la fiche de son logement (plus de page Propriétaires).
+      to: biens[0] ? `/erp/logements/${biens[0].id}` : '/erp/logements',
       texte: haystack(
         p.nom,
         LIBELLES.typeProprietaire?.[p.type],

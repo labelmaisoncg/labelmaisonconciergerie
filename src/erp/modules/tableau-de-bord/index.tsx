@@ -1,24 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { CalendarRange, Target } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI } from '../../data/format';
-import { ButtonLink, Drawer, MenuActions, PageHeader } from '../../ui';
-import { Agenda } from './_composants/Agenda';
+import { PageHeader } from '../../ui';
 import { ATraiter } from './_composants/ATraiter';
 import { Aujourdhui } from './_composants/Aujourdhui';
+import { Courbes } from './_composants/Courbes';
 import { Demarrage } from './_composants/Demarrage';
-import { VosChiffres } from './_composants/VosChiffres';
+import { Indicateurs } from './_composants/Indicateurs';
 import { construireATraiter } from './_composants/aTraiter';
 
 /**
- * Accueil : un bonjour, la journée en un coup d'œil, ce qui vous attend et
- * quatre chiffres. Le détail est à un clic (panneaux, pages de rubrique).
+ * Accueil du channel manager, dans l'ordre où l'on s'en sert : ce qui
+ * attend une action, les arrivées et départs, quatre repères sur 30 jours,
+ * puis deux courbes. Le détail est à un clic (pages de rubrique, panneaux).
  */
 export default function TableauDeBord() {
   const d = useErp();
-  const [semaine, setSemaine] = useState(false);
   const elements = useMemo(() => construireATraiter(d.donnees), [d.donnees]);
   const vide = d.reservations.length === 0;
   const date = format(parseISO(AUJOURDHUI), 'EEEE d MMMM', { locale: fr });
@@ -30,45 +29,26 @@ export default function TableauDeBord() {
       <PageHeader
         titre={`${salut} ${d.utilisateur.nom.split(' ')[0]}`}
         sousTitre={date.charAt(0).toUpperCase() + date.slice(1)}
-        actions={
-          <MenuActions
-            texte
-            label="Plus"
-            actions={[
-              { libelle: 'Les 7 prochains jours', icone: <CalendarRange />, onClick: () => setSemaine(true) },
-              { libelle: 'Prospection et propriétaires à rappeler', icone: <Target />, to: '/erp/commercial' },
-            ]}
-          />
-        }
       />
 
       <Demarrage />
 
-      {/* Base encore vide : seule la carte Démarrage parle (un seul état vide, une seule action). */}
-      {!vide && <Aujourdhui />}
-
-      {(!vide || elements.length > 0) && (
+      {/* Rien à faire : pas de carte « tout est à jour », la page commence par les arrivées. */}
+      {elements.length > 0 && (
         <div id="a-faire" className="mb-6 scroll-mt-20">
           <ATraiter elements={elements} />
         </div>
       )}
 
-      {!vide && <VosChiffres />}
+      {/* Base encore vide : seule la carte Démarrage parle (un seul état vide, une seule action). */}
+      {!vide && (
+        <>
+          <Aujourdhui />
+          <Indicateurs />
+          <Courbes />
+        </>
+      )}
 
-      <Drawer
-        ouvert={semaine}
-        onFermer={() => setSemaine(false)}
-        titre="Les 7 prochains jours"
-        pied={
-          <ButtonLink to="/erp/reservations" variant="secondary">
-            Voir le planning complet
-          </ButtonLink>
-        }
-      >
-        <div className="-mx-4 -my-4 sm:-mx-5">
-          <Agenda />
-        </div>
-      </Drawer>
     </>
   );
 }

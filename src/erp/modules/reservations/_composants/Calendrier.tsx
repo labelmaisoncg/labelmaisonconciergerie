@@ -120,7 +120,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
               <div className="sticky left-0 z-10 flex w-(--col) shrink-0 flex-col justify-center border-r border-(--lm-bord) bg-(--lm-surface) px-3 py-1.5">
                 <span className="truncate text-[13px] font-medium text-(--lm-encre)">{l.nom}</span>
                 <span className="truncate text-[11.5px] text-(--lm-encre-3)">
-                  {l.statut === 'lancement' ? 'En lancement' : `${l.ville} · ${l.type}`}
+                  {l.statut === 'lancement' ? 'En préparation' : `${l.ville} · ${l.type}`}
                 </span>
               </div>
               <div className="relative h-12 shrink-0" style={{ width: largeurGrille }}>

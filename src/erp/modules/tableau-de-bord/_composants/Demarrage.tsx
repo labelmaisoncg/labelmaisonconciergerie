@@ -1,11 +1,9 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { Check, Plug, Plus, Rocket, X } from 'lucide-react';
+import { BotMessageSquare, Check, Plug, Plus, Rocket, X } from 'lucide-react';
 import { useErp } from '../../../data/store';
-import { AUJOURDHUI } from '../../../data/format';
-import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
-import { prestataireConforme } from '../../../data/selectors';
 import { ButtonLink, Card, IconButton, ProgressBar, cn } from '../../../ui';
+import { completudeFiche } from '../../logements/_composants/stats';
 
 const CLE_MASQUE = 'lm-erp-demarrage-masque';
 
@@ -27,9 +25,8 @@ function lireMasque(): boolean {
 }
 
 /**
- * Mise en service de l'ERP sur une base vide : d'abord connecter les
- * plateformes et choisir les logements (page Connexions), puis les saisies
- * qui rendent tout le reste utile (automatisations, finance, pilotage). La
+ * Mise en service : connecter les plateformes et choisir les logements (page
+ * Connexions), puis donner à l'agent les informations de chaque logement. La
  * carte disparaît d'elle-même quand tout est fait.
  */
 export function Demarrage() {
@@ -38,6 +35,7 @@ export function Demarrage() {
 
   // Un logement venu d'une plateforme et gardé dans le choix : plateforme connectée et logement choisi.
   const importes = d.logements.filter((l) => l.repull?.id && !l.repull.horsSelection);
+  const incomplet = d.logements.find((l) => l.statut === 'actif' && completudeFiche(l.fiche).manquants.length);
   const etapes: Etape[] = [
     {
       titre: 'Connectez Airbnb, Booking…',
@@ -48,33 +46,12 @@ export function Demarrage() {
       icone: <Plug />,
     },
     {
-      titre: 'Ajouter les propriétaires',
-      detail: 'Reliez chaque logement importé à son propriétaire.',
-      fait:
-        d.proprietaires.some((p) => p.id !== ID_PROPRIETAIRE_A_RENSEIGNER) && !d.logements.some((l) => l.proprietaireId === ID_PROPRIETAIRE_A_RENSEIGNER),
-      lien: '/erp/proprietaires?nouveau=1',
-      action: 'Nouveau propriétaire',
-    },
-    {
-      titre: 'Créer les contrats de gestion',
-      detail: 'Votre commission, les frais de ménage et les dates. Sans contrat signé, un logement ne passe pas actif.',
-      fait: d.mandats.length > 0,
-      lien: '/erp/mandats?nouveau=1',
-      action: 'Nouveau contrat',
-    },
-    {
-      titre: 'Ajouter les prestataires et leurs documents',
-      detail: 'Contrat, assurance RC Pro et attestation URSSAF à jour : sans eux, on ne peut pas leur confier de mission.',
-      fait: d.prestataires.some((p) => p.statut === 'actif' && prestataireConforme(p).ok),
-      lien: '/erp/prestataires?nouveau=1',
-      action: 'Nouveau prestataire',
-    },
-    {
-      titre: 'Ajouter les réservations directes',
-      detail: 'Celles qui ne passent ni par Airbnb ni par Booking. Chaque départ crée tout seul son ménage.',
-      fait: d.reservations.some((r) => r.statut !== 'annulee' && r.depart >= AUJOURDHUI),
-      lien: '/erp/reservations?nouveau=1',
-      action: 'Nouvelle réservation',
+      titre: 'Renseignez les infos pour l’agent',
+      detail: 'Arrivée, accès, wifi, règles : l’agent répond aux voyageurs avec ces informations.',
+      fait: importes.length > 0 && !incomplet,
+      lien: incomplet ? `/erp/logements/${incomplet.id}?onglet=fiche` : '/erp/logements',
+      action: 'Compléter les infos',
+      icone: <BotMessageSquare />,
     },
   ];
   const faites = etapes.filter((e) => e.fait).length;

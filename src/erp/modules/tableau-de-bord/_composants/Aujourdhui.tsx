@@ -1,117 +1,93 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { LogIn, LogOut, Sparkles } from 'lucide-react';
+import { BedDouble, LogIn, LogOut } from 'lucide-react';
 import { useErp } from '../../../data/store';
-import { arriveesDuJour, departsDuJour, logementById, missionsDuJour } from '../../../data/selectors';
-import { cn } from '../../../ui';
+import { AUJOURDHUI, ajouterJours } from '../../../data/format';
+import { estActive, logementById } from '../../../data/selectors';
+import type { Reservation } from '../../../data/types';
+import { Segmente } from '../../../ui';
 
-function Tuile({
-  titre,
-  icone,
-  n,
-  to,
-  texte,
-  alerte,
-}: {
-  titre: string;
-  icone: ReactNode;
-  n: number;
-  to: string;
-  texte: string;
-  alerte?: boolean;
-}) {
-  const classes =
-    'group flex min-w-0 items-start gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-3.5 shadow-(--lm-ombre) transition-colors hover:border-(--lm-or-anneau)';
-  const contenu = (
-    <>
-      <span
-        aria-hidden
-        className={cn(
-          'grid size-9 shrink-0 place-items-center rounded-lg [&_svg]:size-[18px]',
-          alerte ? 'bg-(--lm-alerte-lavis) text-(--lm-alerte)' : 'bg-(--lm-or-lavis) text-(--lm-or-texte)',
-        )}
-      >
+type Periode = 'jour' | 'demain' | 'semaine';
+
+const PERIODES: { valeur: Periode; libelle: string }[] = [
+  { valeur: 'jour', libelle: 'Aujourd’hui' },
+  { valeur: 'demain', libelle: 'Demain' },
+  { valeur: 'semaine', libelle: '7 jours' },
+];
+
+/** Bornes [debut, fin) de la période. */
+function bornes(p: Periode): { debut: string; fin: string } {
+  if (p === 'demain') return { debut: ajouterJours(AUJOURDHUI, 1), fin: ajouterJours(AUJOURDHUI, 2) };
+  return { debut: AUJOURDHUI, fin: ajouterJours(AUJOURDHUI, p === 'semaine' ? 7 : 1) };
+}
+
+function Tuile({ titre, icone, n, texte }: { titre: string; icone: ReactNode; n: number; texte: string }) {
+  return (
+    <Link
+      to="/erp/reservations"
+      className="flex min-w-0 items-start gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre) transition-colors hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none sm:p-3.5"
+    >
+      <span aria-hidden className="hidden size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) sm:grid [&_svg]:size-[18px]">
         {icone}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-baseline gap-1.5">
+        <span className="flex flex-col sm:flex-row sm:items-baseline sm:gap-1.5">
           <span className="lm-chiffres text-[22px] leading-none font-semibold text-(--lm-encre)">{n}</span>
-          <span className="text-[13px] font-medium text-(--lm-encre-2)">{titre}</span>
+          <span className="mt-1 text-[12.5px] font-medium text-(--lm-encre-2) sm:mt-0 sm:text-[13px]">{titre}</span>
         </span>
-        <span className="mt-1 line-clamp-2 block text-[12.5px] text-(--lm-encre-3)" title={texte}>
+        <span className="mt-1 line-clamp-2 hidden text-[12.5px] text-(--lm-encre-3) sm:block" title={texte}>
           {texte}
         </span>
       </span>
-    </>
-  );
-  return to.startsWith('#') ? (
-    <a href={to} className={classes}>
-      {contenu}
-    </a>
-  ) : (
-    <Link to={to} className={classes}>
-      {contenu}
     </Link>
   );
 }
 
 const noms = (liste: string[]) => (liste.length > 2 ? `${liste.slice(0, 2).join(', ')} et ${liste.length - 2} autre${liste.length > 3 ? 's' : ''}` : liste.join(' et '));
 
-/** Rangée « Aujourd'hui » : arrivées, départs et ménages (les sujets à regarder sont dans « À faire », juste dessous). */
+/** Arrivées, départs et voyageurs sur place, pour aujourd'hui, demain ou les 7 prochains jours. */
 export function Aujourdhui() {
   const d = useErp();
-  const arrivees = arriveesDuJour(d.reservations);
-  const departs = departsDuJour(d.reservations);
-  const menages = missionsDuJour(d.missions);
-  const sansPersonne = menages.filter((m) => !m.prestataireId).length;
-  const nomLogement = (id: string) => logementById(d, id)?.nom ?? 'un logement';
-
-  const rien = !arrivees.length && !departs.length && !menages.length;
+  const [periode, setPeriode] = useState<Periode>('jour');
+  const { debut, fin } = bornes(periode);
+  const actives = d.reservations.filter(estActive);
+  const dans = (date: string) => date >= debut && date < fin;
+  const arrivees = actives.filter((r) => dans(r.arrivee));
+  const departs = actives.filter((r) => dans(r.depart));
+  // Sur place au premier jour de la période (arrivés avant, repartent après).
+  const surPlace = actives.filter((r) => r.arrivee < debut && r.depart > debut);
+  const prenom = (r: Reservation) => r.voyageur.nom.split(' ')[0];
+  const logement = (r: Reservation) => logementById(d, r.logementId)?.nom ?? 'un logement';
+  const quand = periode === 'jour' ? 'aujourd’hui' : periode === 'demain' ? 'demain' : 'cette semaine';
 
   return (
     <section aria-labelledby="aujourdhui-titre" className="mb-6">
-      <h2 id="aujourdhui-titre" className="mb-3 text-[16px] font-semibold text-(--lm-encre)">
-        Aujourd’hui
-      </h2>
-      {rien ? (
-        <p className="rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-3.5 text-[13.5px] text-(--lm-encre-2) shadow-(--lm-ombre)">
-          Ni arrivée, ni départ, ni ménage aujourd’hui.{' '}
-          <Link to="/erp/reservations" className="font-medium text-(--lm-or-texte) hover:underline">
-            Voir le planning
-          </Link>
-        </p>
-      ) : (
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 id="aujourdhui-titre" className="text-[16px] font-semibold text-(--lm-encre)">
+          Arrivées et départs
+        </h2>
+        <Segmente label="Période" options={PERIODES} valeur={periode} onChange={setPeriode} />
+      </div>
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         <Tuile
           titre={arrivees.length > 1 ? 'arrivées' : 'arrivée'}
           icone={<LogIn />}
           n={arrivees.length}
-          to="/erp/reservations"
-          texte={arrivees.length ? noms(arrivees.map((r) => r.voyageur.nom.split(' ')[0])) : 'Personne n’arrive aujourd’hui, journée calme.'}
+          texte={arrivees.length ? noms(arrivees.map(prenom)) : `Personne n’arrive ${quand}.`}
         />
         <Tuile
           titre={departs.length > 1 ? 'départs' : 'départ'}
           icone={<LogOut />}
           n={departs.length}
-          to="/erp/reservations"
-          texte={departs.length ? noms(departs.map((r) => nomLogement(r.logementId))) : 'Aucun départ aujourd’hui.'}
+          texte={departs.length ? noms(departs.map(logement)) : `Aucun départ ${quand}.`}
         />
         <Tuile
-          titre={menages.length > 1 ? 'ménages' : 'ménage'}
-          icone={<Sparkles />}
-          n={menages.length}
-          to="/erp/menages"
-          alerte={sansPersonne > 0}
-          texte={
-            !menages.length
-              ? 'Pas de ménage prévu aujourd’hui.'
-              : sansPersonne
-                ? `${sansPersonne} sans personne pour le faire`
-                : 'Tout le monde sait où aller.'
-          }
+          titre="sur place"
+          icone={<BedDouble />}
+          n={surPlace.length}
+          texte={surPlace.length ? noms(surPlace.map(logement)) : periode === 'demain' ? 'Personne sur place demain matin.' : 'Personne sur place ce matin.'}
         />
       </div>
-      )}
     </section>
   );
 }

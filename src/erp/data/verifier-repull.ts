@@ -296,6 +296,22 @@ class FauxRepull {
       return json({ active: actif, updated, unchanged: ids.filter((id) => !updated.includes(id)) });
     }
     if (chemin === '/v1/listings') return this.paginer(R.listings, p);
+    if (chemin === '/v1/listings/101/photos') {
+      return json({ listingId: '101', photos: [{ url: 'https://cdn.repull.dev/p/101-1.jpg' }, { url: 'https://cdn.repull.dev/p/101-2.jpg' }, { url: 'http://pas-sur/x.jpg' }, { url: 'javascript:alert(1)' }, { url: 'https://cdn.repull.dev/p/101-1.jpg' }] });
+    }
+    if (chemin === '/v1/availability/101') {
+      return json({
+        propertyId: '101',
+        currency: 'EUR',
+        days: [
+          { date: '2026-09-26', available: true, price: 89, minNights: 2, availableUnits: 1 },
+          { date: '2026-09-25', available: false, price: 95.5, minNights: 2, availableUnits: 0 },
+          { date: 'demain', available: true, price: 80 },
+          { date: '2026-09-27', available: true, price: -5 },
+        ],
+        coverage: { requestedDays: 61, coveredDays: 2, missingDates: [] },
+      });
+    }
     if ((m = /^\/v1\/listings\/([^/]+)$/.exec(chemin))) {
       const l = R.listings.find((x) => x.id === m![1]);
       return l ? json({ ...l, amenities: R.amenities }) : json({ error: { code: 'not_found' } }, 404);
@@ -539,6 +555,18 @@ async function principal() {
   verifier(l101.annonces.length === 2 && l101.annonces[0].url === 'https://www.airbnb.fr/rooms/998877665544332211', 'annonces Airbnb (avec lien) et Booking');
   verifier(l101.statut === 'actif' && l101.proprietaireId === ID_PROPRIETAIRE_A_RENSEIGNER, 'actif, rattaché au propriétaire à renseigner');
   verifier(base.get<Logement>('logements', 'repull-102')?.type === 'maison', 'maison déduite du type Repull');
+  verifier(
+    JSON.stringify(l101.photos) === '["https://cdn.repull.dev/p/101-1.jpg","https://cdn.repull.dev/p/101-2.jpg"]' && !!l101.repull?.photosLuesLe,
+    `photos lues : https seulement, sans doublon (${JSON.stringify(l101.photos)})`,
+  );
+  verifier(
+    l101.tarifs?.devise === 'EUR' && canonique(l101.tarifs.jours) === canonique([{ date: '2026-09-25', prixCentimes: 9550, libre: false }, { date: '2026-09-26', prixCentimes: 8900, libre: true }]),
+    `prix par nuit lus, triés, jours illisibles écartés (${JSON.stringify(l101.tarifs?.jours)})`,
+  );
+  const lecturesTarifs = repull.appels.filter((a) => a.chemin.startsWith('/v1/availability/') || a.chemin.endsWith('/photos'));
+  verifier(lecturesTarifs.length > 0 && lecturesTarifs.every((a) => a.methode === 'GET'), 'photos et prix : lectures seules (GET)');
+  verifier(lecturesTarifs.some((a) => a.chemin === '/v1/availability/101' && /^\d{4}-\d{2}-\d{2}$/.test(a.params.get('from') ?? '') && /^\d{4}-\d{2}-\d{2}$/.test(a.params.get('to') ?? '')), 'prix demandés sur une période datée');
+  verifier(base.get<Logement>('logements', 'repull-102')?.photos === undefined, 'sans photo chez la plateforme : rien d’inventé');
   const prop = base.get<Proprietaire>('proprietaires', ID_PROPRIETAIRE_A_RENSEIGNER);
   verifier(prop?.nom === 'Propriétaire à renseigner' && prop.contact.email === '' && prop.ibanMasque === '', 'fiche propriétaire d’attente, sans donnée inventée');
 

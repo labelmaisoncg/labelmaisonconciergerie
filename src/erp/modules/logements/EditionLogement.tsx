@@ -1,14 +1,16 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Button, Callout, Drawer, Field, Input, Select, Prerequis } from '../../ui';
+import { Plus } from 'lucide-react';
+import { Button, Drawer, Field, Input, Select } from '../../ui';
+import { FormProprietaire } from '../proprietaires/FormProprietaire';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
-import type { Dpe, Logement, Serrure, TypeLit, TypeLogement } from '../../data/types';
+import type { Dpe, Logement, Serrure, StatutLogement, TypeLit, TypeLogement } from '../../data/types';
 
 interface Props {
   ouvert: boolean;
   onFermer: () => void;
-  /** Absent : création d'un nouveau logement (statut « En lancement »). */
+  /** Absent : création d'un nouveau logement (statut « En préparation »). */
   logement?: Logement;
   onCree?: (id: string) => void;
 }
@@ -28,11 +30,19 @@ interface Saisie {
   residencePrincipale: boolean;
   serrure: Serrure;
   proprietaireId: string;
+  statut: StatutLogement;
 }
 
 const TYPES = Object.entries(LIBELLES.typeLogement).map(([valeur, libelle]) => ({ valeur, libelle }));
 const SERRURES = Object.entries(LIBELLES.serrure).map(([valeur, libelle]) => ({ valeur, libelle }));
 const DPES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((v) => ({ valeur: v, libelle: v }));
+/** « En préparation » : pas encore en location (logement créé à la main ou par le dossier propriétaire). */
+const STATUTS: { valeur: StatutLogement; libelle: string }[] = [
+  { valeur: 'actif', libelle: 'Actif' },
+  { valeur: 'pause', libelle: 'En pause' },
+  { valeur: 'lancement', libelle: 'En préparation' },
+  { valeur: 'sorti', libelle: 'Sorti (plus géré)' },
+];
 
 function initial(l?: Logement): Saisie {
   const lits = (t: TypeLit) => String(l?.lits.find((x) => x.type === t)?.nombre ?? 0);
@@ -51,6 +61,7 @@ function initial(l?: Logement): Saisie {
     residencePrincipale: l?.residencePrincipale ?? false,
     serrure: l?.serrure ?? 'boite_a_cles',
     proprietaireId: l?.proprietaireId ?? '',
+    statut: l?.statut ?? 'lancement',
   };
 }
 
@@ -58,6 +69,7 @@ const entier = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : NaN);
 
 export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
   const { proprietaires, upsert } = useErp();
+  const [nouveauProprietaire, setNouveauProprietaire] = useState(false);
   const [s, setS] = useState<Saisie>(() => initial(logement));
   const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
 
@@ -133,6 +145,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
       residencePrincipale: s.residencePrincipale,
       serrure: s.serrure,
       proprietaireId: s.proprietaireId,
+      statut: logement ? s.statut : base.statut,
     };
     upsert('logements', suivant);
     onFermer();
@@ -140,11 +153,12 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
   };
 
   return (
+    <>
     <Drawer
       ouvert={ouvert}
       onFermer={onFermer}
       titre={logement ? `Modifier ${logement.nom}` : 'Nouveau logement'}
-      sousTitre={logement ? undefined : 'Il démarre « En lancement ».'}
+      sousTitre={logement ? undefined : 'Il démarre « En préparation ».'}
       pied={
         <>
           <Button onClick={onFermer}>Annuler</Button>
@@ -155,26 +169,30 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
       }
     >
       <form id="form-logement" onSubmit={enregistrer} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {logement && (
+          <Field label="Statut" className="sm:col-span-2">
+            <Select value={s.statut} onChange={(e) => maj('statut', e.target.value as StatutLogement)} options={STATUTS} />
+          </Field>
+        )}
         <Field label="Nom du logement" requis erreur={erreurs.nom} className="sm:col-span-2">
           <Input value={s.nom} onChange={(e) => maj('nom', e.target.value)} placeholder="Ex. Corbeil Rives de Seine" />
         </Field>
-        {!proprietaires.length && (
-          <Prerequis
-            className="sm:col-span-2"
-            manque="Aucun propriétaire enregistré."
-            detail="Chaque logement appartient à un propriétaire : ajoutez-le d’abord."
-            lien="/erp/proprietaires?nouveau=1"
-            action="Nouveau propriétaire"
-          />
-        )}
         <Field label="Propriétaire" requis erreur={erreurs.proprietaireId} className="sm:col-span-2">
           <Select
             value={s.proprietaireId}
             onChange={(e) => maj('proprietaireId', e.target.value)}
-            placeholder="Choisir un propriétaire"
+            placeholder={proprietaires.length ? 'Choisir un propriétaire' : 'Aucun propriétaire : ajoutez-le'}
             options={proprietaires.map((p) => ({ valeur: p.id, libelle: p.nom }))}
           />
         </Field>
+        <button
+          type="button"
+          onClick={() => setNouveauProprietaire(true)}
+          className="-mt-2 inline-flex h-8 items-center gap-1 justify-self-start text-[13px] font-medium text-(--lm-or-texte) hover:underline sm:col-span-2"
+        >
+          <Plus className="size-3.5" aria-hidden />
+          Nouveau propriétaire
+        </button>
         <Field label="Adresse" requis erreur={erreurs.adresse} className="sm:col-span-2">
           <Input value={s.adresse} onChange={(e) => maj('adresse', e.target.value)} autoComplete="street-address" />
         </Field>
@@ -213,7 +231,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <Field label="Serrure / accès">
           <Select value={s.serrure} onChange={(e) => maj('serrure', e.target.value as Serrure)} options={SERRURES} />
         </Field>
-        <Field label="N° d’enregistrement meublé de tourisme" erreur={erreurs.numeroEnregistrement} aide="Obligatoire pour activer le logement." className="sm:col-span-2">
+        <Field label="N° d’enregistrement meublé de tourisme" erreur={erreurs.numeroEnregistrement} className="sm:col-span-2">
           <Input value={s.numeroEnregistrement} onChange={(e) => maj('numeroEnregistrement', e.target.value)} placeholder="91174000125RX" />
         </Field>
         <label className="flex items-start gap-2.5 text-[13.5px] sm:col-span-2">
@@ -228,12 +246,10 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
             <span className="block text-[12px] text-(--lm-encre-3)">Location limitée à {PLAFOND_NUITS_RESIDENCE_PRINCIPALE} nuits par année civile.</span>
           </span>
         </label>
-        {s.serrure === 'cles' && (
-          <Callout tone="alerte" className="sm:col-span-2" titre="Accès non sécurisé">
-            La remise de clés en main propre ne valide pas le point « Accès sécurisé » de la checklist de lancement.
-          </Callout>
-        )}
       </form>
     </Drawer>
+    {/* Hors du panneau : une fenêtre par-dessus, pas dedans. */}
+    <FormProprietaire ouvert={nouveauProprietaire} onFermer={() => setNouveauProprietaire(false)} onCree={(id) => maj('proprietaireId', id)} />
+    </>
   );
 }

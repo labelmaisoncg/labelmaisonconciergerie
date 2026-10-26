@@ -1,140 +1,83 @@
 /**
- * Liste « À traiter » : tout ce qui demande une action humaine, trié par
- * priorité. Chaque entrée renvoie vers le module où l'action se fait.
+ * « À faire » de l'accueil : ce qui demande une action, trié par priorité.
+ * Channel manager (octobre 2026) : seulement les voyageurs, les logements,
+ * les contacts et la synchronisation ; plus de ménages, linge, factures ni
+ * prestataires (sortis de l'ERP).
  */
-import { dateJour, euros, jourMois, relatif } from '../../../data/format';
-import {
-  actionsCommercialesDues,
-  avancementChecklist,
-  documentsAlertes,
-  ecartsLinge,
-  facturesEnRetard,
-  incidentsOuverts,
-  libelleDocument,
-  logementById,
-  missionsAAttribuerSous,
-  montantTtc,
-  paiementsAFaire,
-  prestataireById,
-} from '../../../data/selectors';
+import { aTraiterLe } from '../../../data/crm';
+import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
+import { AUJOURDHUI, ajouterJours } from '../../../data/format';
+import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
+import { logementById } from '../../../data/selectors';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
+import { completudeFiche } from '../../logements/_composants/stats';
 
-export type TypeATraiter =
-  | 'incident_grave'
-  | 'mission_attribuer'
-  | 'document'
-  | 'message'
-  | 'mission_valider'
-  | 'incident'
-  | 'linge'
-  | 'facture'
-  | 'paiement'
-  | 'lancement'
-  | 'commercial';
+export type TypeATraiter = 'message' | 'avis' | 'agent' | 'crm' | 'synchro';
 
 export interface ElementATraiter {
   id: string;
   type: TypeATraiter;
-  /** 1 = bloquant aujourd'hui, 2 = cette semaine, 3 = à planifier. */
-  priorite: 1 | 2 | 3;
+  /** 1 = aujourd'hui, 2 = cette semaine. */
+  priorite: 1 | 2;
   ton: Ton;
   titre: string;
   details: string[];
   to: string;
 }
 
-const nom = (d: ErpDonnees, id?: string) => logementById(d, id)?.nom ?? 'Logement';
+/** Une note voyageur sous ce seuil (sur 5) mérite d'être lue : le même partout dans l'ERP. */
+const NOTE_A_LIRE = SEUIL_NOTE_CONTROLE;
 
-export function construireATraiter(d: ErpDonnees): ElementATraiter[] {
+export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): ElementATraiter[] {
   const liste: ElementATraiter[] = [];
-  const pousser = (e: ElementATraiter, n: number) => n > 0 && liste.push(e);
-
-  const ouverts = incidentsOuverts(d.incidents);
-  const graves = ouverts.filter((i) => i.gravite === 'haute');
-  pousser({
-    id: 'incident_grave', type: 'incident_grave', priorite: 1, ton: 'danger', to: '/erp/incidents',
-    titre: graves.length > 1 ? `${graves.length} problèmes graves à régler` : 'Un problème grave à régler',
-    details: graves.map((i) => `${nom(d, i.logementId)} : ${i.description}`),
-  }, graves.length);
-
-  const aAttribuer = missionsAAttribuerSous(d.missions, 48).sort((a, b) => (a.date + a.heureDebut).localeCompare(b.date + b.heureDebut));
-  pousser({
-    id: 'mission_attribuer', type: 'mission_attribuer', priorite: 1, ton: 'danger', to: '/erp/menages',
-    titre: aAttribuer.length > 1 ? `${aAttribuer.length} ménages sans personne dans les 48 h` : 'Un ménage sans personne dans les 48 h',
-    details: aAttribuer.map((m) => `${nom(d, m.logementId)}, ${relatif(m.date)} à ${m.heureDebut}`),
-  }, aAttribuer.length);
-
-  const docs = documentsAlertes(d.prestataires, 30);
-  const docsBloquants = docs.filter((a) => a.statut !== 'expire_bientot');
-  pousser({
-    id: 'document', type: 'document', priorite: docsBloquants.length ? 1 : 2, ton: docsBloquants.length ? 'danger' : 'alerte',
-    to: '/erp/prestataires',
-    titre: docs.length > 1 ? `${docs.length} papiers de prestataires à renouveler` : 'Un papier de prestataire à renouveler',
-    details: docs.map((a) =>
-      `${a.prestataire.nom} : ${libelleDocument(a.document.type)} ${
-        a.statut === 'manquant' ? 'manquant' : a.statut === 'expire' ? 'expiré' : `expire le ${jourMois(a.document.valideJusquau!)}`
-      }`),
-  }, docs.length);
+  const nom = (id?: string) => logementById(d, id)?.nom ?? 'Logement';
 
   const messages = d.filsMessages.filter((f) => f.statut === 'escalade' || f.traitePar === 'en_attente');
-  pousser({
-    id: 'message', type: 'message', priorite: 1, ton: 'alerte', to: '/erp/messagerie',
-    titre: messages.length > 1 ? `${messages.length} voyageurs attendent votre réponse` : 'Un voyageur attend votre réponse',
-    details: messages.map((f) => `${f.voyageur} (${nom(d, f.logementId)})${f.statut === 'escalade' ? ', confié par votre agent' : ''}`),
-  }, messages.length);
+  if (messages.length)
+    liste.push({
+      id: 'message', type: 'message', priorite: 1, ton: 'alerte', to: '/erp/messagerie',
+      titre: messages.length > 1 ? `${messages.length} voyageurs attendent votre réponse` : 'Un voyageur attend votre réponse',
+      details: messages.map((f) => `${f.voyageur} (${nom(f.logementId)})${f.statut === 'escalade' ? ', confié par votre agent' : ''}`),
+    });
 
-  const aValider = d.missions.filter((m) => m.statut === 'a_valider');
-  pousser({
-    id: 'mission_valider', type: 'mission_valider', priorite: 2, ton: 'alerte', to: '/erp/menages',
-    titre: aValider.length > 1 ? `${aValider.length} ménages terminés à vérifier` : 'Un ménage terminé à vérifier',
-    details: aValider.map((m) => `${nom(d, m.logementId)}, ${dateJour(m.date)}, ${prestataireById(d, m.prestataireId)?.nom ?? 'sans prestataire'}`),
-  }, aValider.length);
+  const journal = [...d.journal].filter((j) => j.action === ACTION_JOURNAL_REPULL).sort((a, b) => b.horodatage.localeCompare(a.horodatage));
+  if (journal[0] && /erreur/i.test(journal[0].details))
+    liste.push({
+      id: 'synchro', type: 'synchro', priorite: 1, ton: 'danger', to: '/erp/parametres',
+      titre: 'La dernière mise à jour Airbnb et Booking a échoué',
+      details: ['Réservations et messages ne sont peut-être plus à jour.'],
+    });
 
-  const autres = ouverts.filter((i) => i.gravite !== 'haute').sort((a, b) => (a.gravite === 'moyenne' ? -1 : 1) - (b.gravite === 'moyenne' ? -1 : 1));
-  pousser({
-    id: 'incident', type: 'incident', priorite: 2, ton: 'alerte', to: '/erp/incidents',
-    titre: autres.length > 1 ? `${autres.length} petits problèmes en cours` : 'Un petit problème en cours',
-    details: autres.map((i) => `${nom(d, i.logementId)} : ${i.description}`),
-  }, autres.length);
+  const depuis = ajouterJours(aujourdhui, -14);
+  const avis = d.reservations
+    .filter((r) => r.noteVoyageur !== undefined && r.noteVoyageur < NOTE_A_LIRE && r.depart >= depuis && r.depart <= aujourdhui)
+    .sort((a, b) => b.depart.localeCompare(a.depart));
+  if (avis.length)
+    liste.push({
+      id: 'avis', type: 'avis', priorite: 2, ton: 'alerte', to: `/erp/reservations/${avis[0].id}`,
+      titre: avis.length > 1 ? `${avis.length} avis sous ${String(NOTE_A_LIRE).replace('.', ',')}/5 à lire` : `Un avis sous ${String(NOTE_A_LIRE).replace('.', ',')}/5 à lire`,
+      details: avis.map((r) => `${r.voyageur.nom} : ${String(r.noteVoyageur).replace('.', ',')}/5 (${nom(r.logementId)})`),
+    });
 
-  const ecarts = ecartsLinge(d.mouvementsLinge);
-  pousser({
-    id: 'linge', type: 'linge', priorite: 2, ton: 'alerte', to: '/erp/linge',
-    titre: ecarts.length > 1 ? `Du linge manque dans ${ecarts.length} cas` : 'Du linge manque',
-    details: ecarts.map((e) => `${nom(d, e.logementId)} : ${e.manquant} × ${e.article} (envoyé le ${jourMois(e.date)})`),
-  }, ecarts.length);
+  const incompletes = d.logements
+    .filter((l) => l.statut === 'actif')
+    .map((l) => ({ l, manquants: completudeFiche(l.fiche).manquants }))
+    .filter((x) => x.manquants.length);
+  if (incompletes.length)
+    liste.push({
+      id: 'agent', type: 'agent', priorite: 2, ton: 'or', to: `/erp/logements/${incompletes[0].l.id}?onglet=fiche`,
+      titre: incompletes.length > 1 ? `L’agent manque d’informations sur ${incompletes.length} logements` : `L’agent manque d’informations sur ${incompletes[0].l.nom}`,
+      details: incompletes.map((x) => `${x.l.nom} : ${x.manquants.slice(0, 3).join(', ').toLowerCase()}${x.manquants.length > 3 ? '…' : ''}`),
+    });
 
-  const retard = facturesEnRetard(d.factures);
-  pousser({
-    id: 'facture', type: 'facture', priorite: 2, ton: 'danger', to: '/erp/finance',
-    titre: retard.length > 1 ? `${retard.length} factures pas encore payées` : 'Une facture pas encore payée',
-    details: retard.map((f) => `${f.numero} : ${euros(montantTtc(f))}, à payer depuis le ${jourMois(f.echeance)}`),
-  }, retard.length);
-
-  const paiements = paiementsAFaire(d);
-  pousser({
-    id: 'paiement', type: 'paiement', priorite: 3, ton: 'info', to: '/erp/finance',
-    titre: paiements.length > 1 ? `${paiements.length} prestataires à payer` : 'Un prestataire à payer',
-    details: paiements.map((p) => `${prestataireById(d, p.prestataireId)?.nom ?? 'Prestataire'} : ${euros(p.montantCentimes - p.retenueCentimes)} (${p.periode})`),
-  }, paiements.length);
-
-  for (const l of d.logements.filter((x) => x.statut === 'lancement')) {
-    const a = avancementChecklist(l);
-    const restants = l.checklistLancement.filter((c) => !c.fait);
-    pousser({
-      id: `lancement-${l.id}`, type: 'lancement', priorite: 2, ton: 'or', to: `/erp/logements/${l.id}`,
-      titre: `${l.nom} : encore ${a.total - a.faits} étape${a.total - a.faits > 1 ? 's' : ''} avant la mise en ligne`,
-      details: restants.map((c) => c.libelle),
-    }, restants.length);
-  }
-
-  const dues = actionsCommercialesDues(d.prospects);
-  pousser({
-    id: 'commercial', type: 'commercial', priorite: 2, ton: 'or', to: '/erp/commercial',
-    titre: dues.length > 1 ? `${dues.length} propriétaires à recontacter` : 'Un propriétaire à recontacter',
-    details: dues.map((p) => `${p.nom} : ${p.prochaineAction ?? 'relance'} (${relatif(p.prochaineActionLe!)})`),
-  }, dues.length);
+  const aAppeler = d.crm.filter((c) => aTraiterLe(c, aujourdhui));
+  if (aAppeler.length)
+    liste.push({
+      id: 'crm', type: 'crm', priorite: 2, ton: 'or', to: '/erp/crm',
+      titre: aAppeler.length > 1 ? `${aAppeler.length} personnes à appeler aujourd’hui` : 'Une personne à appeler aujourd’hui',
+      details: aAppeler.map((c) => `${c.nom}${c.ville ? ` (${c.ville})` : ''}`),
+    });
 
   return liste.sort((a, b) => a.priorite - b.priorite);
 }

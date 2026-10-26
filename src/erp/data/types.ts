@@ -37,6 +37,8 @@ export interface OrigineRepull {
   canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
   /** Logement retiré du choix (page Connexions) : en pause, plus synchronisé. */
   horsSelection?: boolean;
+  /** Dernière lecture des photos de l'annonce (relues une fois par semaine). */
+  photosLuesLe?: Horodatage;
 }
 
 /* ------------------------------------------------------------ référentiel */
@@ -96,6 +98,8 @@ export interface FicheLogement {
   parking: string;
   regles: string;
   equipements: string[];
+  /** Ce qu'il faut savoir d'autre (poubelles, voisinage, chauffage…), lu par l'agent. */
+  aSavoir?: string;
 }
 
 export interface LigneArticle {
@@ -152,8 +156,22 @@ export interface Logement {
   annonces: Annonce[];
   checklistLancement: ElementChecklistLancement[];
   photoUrl?: string;
+  /** Photos de l'annonce, lues sur les plateformes (jamais envoyées par l'ERP). */
+  photos?: string[];
+  /** Prix par nuit des prochaines semaines, lus sur les plateformes (jamais modifiés par l'ERP). */
+  tarifs?: TarifsLogement;
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
+}
+
+/** Calendrier des prix lu sur les plateformes : affiché, jamais modifié. */
+export interface TarifsLogement {
+  /** Devise des prix (EUR attendu). */
+  devise: string;
+  /** Instant de la lecture. */
+  luLe: Horodatage;
+  /** Jours connus, dans l'ordre (les jours sans donnée sont absents). */
+  jours: { date: DateISO; prixCentimes: Centimes; libre: boolean }[];
 }
 
 /* ----------------------------------------------------------- distribution */

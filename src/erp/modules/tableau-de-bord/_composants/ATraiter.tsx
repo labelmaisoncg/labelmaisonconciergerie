@@ -1,39 +1,18 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  AlertTriangle,
-  Banknote,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  ClipboardCheck,
-  FileWarning,
-  MessageSquareWarning,
-  Receipt,
-  Rocket,
-  Shirt,
-  Target,
-  UserPlus,
-  type LucideIcon,
-} from 'lucide-react';
+import { BotMessageSquare, CheckCircle2, ChevronDown, ChevronRight, MessageSquareWarning, PhoneCall, RefreshCw, Star, type LucideIcon } from 'lucide-react';
 import { Card, CardHeader, Drawer, EmptyState, TON_LAVIS, cn } from '../../../ui';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
 const ICONES: Record<TypeATraiter, LucideIcon> = {
-  incident_grave: AlertTriangle,
-  mission_attribuer: UserPlus,
-  document: FileWarning,
   message: MessageSquareWarning,
-  mission_valider: ClipboardCheck,
-  incident: AlertTriangle,
-  linge: Shirt,
-  facture: Receipt,
-  paiement: Banknote,
-  lancement: Rocket,
-  commercial: Target,
+  synchro: RefreshCw,
+  avis: Star,
+  agent: BotMessageSquare,
+  crm: PhoneCall,
 };
 
-const PRIORITES = { 1: 'Aujourd’hui', 2: 'Cette semaine', 3: 'Quand vous pouvez' } as const;
+const PRIORITES = { 1: 'Aujourd’hui', 2: 'Cette semaine' } as const;
 
 /** `complet` : panneau « Tout voir » (priorité et détails dépliables) ; sinon une ligne principale et une ligne secondaire. */
 function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
