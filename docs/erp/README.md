@@ -193,7 +193,7 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 | Accueil | « À faire » (voyageurs qui attendent, synchronisation en échec, avis sous 4/5, infos manquantes pour l'agent, contacts à appeler), arrivées / départs / sur place (aujourd'hui, demain, 7 jours), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
 | Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, prix des prochaines semaines lus sur les plateformes, propriétaire, logement, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
 | Réservations | Planning, liste, fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
-| Messagerie | Conversations · Ce que l'agent a fait · Configurer mon agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
+| Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Réglages de l'agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
 | CRM | Appels et relances, dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
 | Paramètres | Équipe, intégrations, société, données | `/erp/parametres` |
 
@@ -242,7 +242,7 @@ navigateur (localStorage). Plein écran sur mobile.
 
 ### Réglages de l'agent de messagerie
 
-« Messagerie > Configurer mon agent » enregistre un élément unique
+« Messagerie > Réglages de l'agent » enregistre un élément unique
 dans la collection **`reglages`** (id `agent`, type `ReglagesAgent` dans
 `data/types.ts`, valeurs par défaut et lecture tolérante dans
 `data/reglages.ts`). Il est synchronisé comme les autres collections : une
@@ -261,7 +261,7 @@ appliqués, main passée selon `transmettre`, relance Telegram après
 `delaiAlerteMinutes` sans réponse humaine. Absent : valeurs par défaut de
 `data/reglages.ts`. (L'ancien service `agent-ia/` n'est pas déployé.)
 
-L'onglet « Ce que l'agent a fait » est calculé depuis `filsMessages` :
+L'onglet « Activité » est calculé depuis `filsMessages` :
 messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :
 `raisonEscalade`, sinon déduite des messages), conversations qui attendent
 un humain.
@@ -603,7 +603,7 @@ texte }` (gérant ou opérations) → Repull `POST /v1/conversations/{id}/messag
 minute : un double clic ne part qu'une fois). L'appel compte dans la part
 mensuelle de l'ERP. Le message est ensuite écrit dans le fil (identifiant
 Repull : la synchronisation le reconnaît, sans doublon), la conversation sort
-de « Pour vous », une ligne va au journal, et l'écran affiche « Envoyé sur
+de « À répondre », une ligne va au journal, et l'écran affiche « Envoyé sur
 Booking.com ». Si Airbnb retire un lien ou un numéro, le texte réellement reçu
 est gardé. En cas de refus (lien interdit, logement désactivé, part épuisée),
 rien n'est écrit et le texte revient dans la zone de saisie avec l'explication.
@@ -629,8 +629,7 @@ sous la zone de saisie). Code : `src/erp/data/messagerie-envoi.ts`.
 5. **répondre** : la réponse (signature ajoutée par le code) part chez le
    voyageur par Repull, auteur « agent » ; **transmettre** : fil « escaladé »
    avec la raison (`argent`, `litige`, `hors_fiche`, `exception`, `autre`) et
-   un résumé pour l'équipe (visible dans « Pour vous », « Ce que l'agent a
-   fait » et en tête de la conversation), un court message d'attente au
+   un résumé pour l'équipe (visible dans « À répondre », « Activité » et en tête de la conversation), un court message d'attente au
    voyageur si utile, journal, alerte Telegram.
 
 **Garde-fous** (en plus des consignes données à Claude) : il n'affirme que ce
@@ -657,9 +656,9 @@ message du voyageur bloque de toute façon un second envoi.
 - chaque jour par le cron Vercel (`53 6 * * *`, secours) ;
 - juste après chaque synchronisation Repull qui apporte des messages (bouton,
   cron quotidien, webhooks) ;
-- à la demande : Configurer mon agent → « Lancer l'agent maintenant ».
+- à la demande : Réglages de l'agent → « Lancer l'agent maintenant ».
 
-L'onglet Configurer montre l'état réel (bloc « Votre agent en ce moment ») :
+L'onglet Réglages de l'agent montre l'état réel (bloc « Votre agent en ce moment ») :
 en clair, agent actif ou en pause et « tout est branché » ou non ; replié
 sous « Détails techniques », clé IA présente ou manquante, plateformes
 reliées, dernier passage, Telegram branché ou non. Le serveur ne renvoie que des
@@ -690,8 +689,8 @@ envoyée coûte 1 appel. Pour des réponses plus rapides : relever
 3. Supabase → SQL Editor : coller `supabase/erp-agent-cron.sql`, remplacer
    `REMPLACER_PAR_CRON_SECRET` par la valeur de `CRON_SECRET`, Run.
 4. Dans l'ERP : compléter les fiches des logements (wifi, accès, horaires,
-   parking, règles, équipements), puis Messagerie → Configurer mon
-   agent → activer, enregistrer, et « Lancer l'agent maintenant » pour
+   parking, règles, équipements), puis Messagerie → Réglages de
+   l'agent → activer, enregistrer, et « Lancer l'agent maintenant » pour
    vérifier.
 
 **Coût estimé** (Claude Haiku 4.5, tarif public d'environ 1 $ par million de

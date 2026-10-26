@@ -348,7 +348,7 @@ async function principal() {
   p = await lancerAgent(options());
   f = fil();
   verifier(p.transmis === 1 && p.repondus === 0 && repull.envois.length === 1, 'argent : transmis, rien envoyé au voyageur');
-  verifier(f.statut === 'escalade' && f.raisonEscalade === 'argent' && f.traitePar === 'en_attente' && f.agent?.decision === 'transmettre' && !!f.agent.resume, 'fil escaladé (argent) avec résumé : visible dans « Pour vous »');
+  verifier(f.statut === 'escalade' && f.raisonEscalade === 'argent' && f.traitePar === 'en_attente' && f.agent?.decision === 'transmettre' && !!f.agent.resume, 'fil escaladé (argent) avec résumé : visible dans « À répondre »');
   verifier(base.collection<Journal>('journal').some((j) => j.auteur === 'Agent IA' && /transmise/.test(j.details)), 'journal : transmission notée');
   verifier(telegram.length === 1 && /à vous de jouer/.test(telegram[0]), 'alerte Telegram');
   p = await lancerAgent(options());

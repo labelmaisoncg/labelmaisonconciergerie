@@ -11,7 +11,7 @@
  *    part d'appels Repull), demande à Claude une décision en JSON strict :
  *    répondre (le message part chez le voyageur par Repull, auteur « agent »)
  *    ou transmettre à l'équipe (fil « escaladé » avec la raison et un résumé,
- *    visible dans « Pour vous » et « Ce que l'agent a fait ») ;
+ *    visible dans « À répondre » et « Activité ») ;
  * 4. prévient sur Telegram si c'est branché (alerte à chaque transmission,
  *    copie de chaque réponse, relance quand personne n'a répondu à temps).
  *
@@ -49,7 +49,7 @@ export const MODELE_AGENT_DEFAUT = 'claude-haiku-4-5-20251001';
 export const MAX_FILS_PAR_PASSAGE = 5;
 /** Messages de la conversation donnés à Claude (les plus récents). */
 const MESSAGES_CONTEXTE = 20;
-/** Un message du voyageur plus ancien n'est plus traité par l'agent (il reste dans « Pour vous »). */
+/** Un message du voyageur plus ancien n'est plus traité par l'agent (il reste dans « À répondre »). */
 const AGE_MAX_MESSAGE_MS = 48 * 3_600_000;
 /** Temps à garder pour traiter une conversation (Claude + Repull + écritures). */
 const TEMPS_PAR_FIL_MS = 15_000;

@@ -58,8 +58,8 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): Elem
   if (avis.length)
     liste.push({
       id: 'avis', type: 'avis', priorite: 2, ton: 'alerte', to: `/erp/reservations/${avis[0].id}`,
-      titre: avis.length > 1 ? `${avis.length} avis sous ${String(NOTE_A_LIRE).replace('.', ',')}/5 à lire` : `Un avis sous ${String(NOTE_A_LIRE).replace('.', ',')}/5 à lire`,
-      details: avis.map((r) => `${r.voyageur.nom} : ${String(r.noteVoyageur).replace('.', ',')}/5 (${nom(r.logementId)})`),
+      titre: avis.length > 1 ? `${avis.length} avis sous ${String(NOTE_A_LIRE).replace('.', ',')} à lire` : `Un avis sous ${String(NOTE_A_LIRE).replace('.', ',')} à lire`,
+      details: avis.map((r) => `${r.voyageur.nom}, note ${String(r.noteVoyageur).replace('.', ',')} (${nom(r.logementId)})`),
     });
 
   const incompletes = d.logements

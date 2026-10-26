@@ -326,7 +326,7 @@ export type TonAgent = 'chaleureux' | 'professionnel' | 'decontracte';
 
 /**
  * Réglages de l'agent de messagerie (collection `reglages`, élément d'id
- * 'agent'), modifiés dans Messagerie > Configurer mon agent. L'agent
+ * 'agent'), modifiés dans Messagerie > Réglages de l’agent. L'agent
  * du site (api/erp-agent.ts, src/erp/data/agent-messagerie.ts) les relit à
  * chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
  */
