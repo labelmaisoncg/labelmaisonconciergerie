@@ -330,3 +330,66 @@ export function notificationTest(cle: string): GroupeNotification {
     variantes: [{ type: 'message', titre: 'Label Maison', corps: 'Les notifications fonctionnent sur cet appareil.', url: '/erp/parametres/application' }],
   };
 }
+
+/* ------------------------------------- demande à la première ouverture */
+
+/** « Plus tard » sur la demande d'autorisation : on ne la repose pas avant ce délai. */
+export const JOURS_PLUS_TARD_NOTIFICATIONS = 7;
+
+/** Tout ce qui décide d'afficher « Recevoir les notifications ? » à l'ouverture de l'ERP. */
+export interface ContexteDemandeNotifications {
+  demo: boolean;
+  /** Clés présentes sur le serveur (`?action=etat`). */
+  serveurActif: boolean;
+  /** Notification.permission, ou 'indisponible' sans API Notification. */
+  permission: 'default' | 'granted' | 'denied' | 'indisponible';
+  /** Service worker, PushManager et Notification présents. */
+  navigateurCapable: boolean;
+  iphone: boolean;
+  /** Ouvert comme une app (display-mode: standalone). */
+  dansLApp: boolean;
+  /** Cet appareil a déjà un abonnement. */
+  abonne: boolean;
+  /** Date (ms) du dernier « Plus tard », s'il y en a un. */
+  plusTardLe: number | null;
+  /** Refusée depuis cette fenêtre : on ne la repropose plus. */
+  refusee: boolean;
+  /** La proposition d'installation de l'app est affichée. */
+  propositionInstallation: boolean;
+  /** Une autre fenêtre (feuille, tiroir, recherche) est ouverte. */
+  autreFenetre: boolean;
+  maintenant: number;
+}
+
+export type RaisonDemande =
+  | 'demo'
+  | 'serveur-inactif'
+  | 'navigateur'
+  | 'iphone-hors-app'
+  | 'deja-decide'
+  | 'refusee'
+  | 'abonne'
+  | 'plus-tard'
+  | 'installation'
+  | 'autre-fenetre'
+  | 'proposer';
+
+/**
+ * Faut-il demander les notifications à l'ouverture de l'ERP ? Toutes les
+ * conditions sont requises ; la réponse dit laquelle manque (dans l'ordre de
+ * vérification), ou « proposer ». Sur iPhone, seulement dans l'app de l'écran
+ * d'accueil : dans Safari, c'est la proposition d'installation qui parle.
+ */
+export function demandeNotifications(c: ContexteDemandeNotifications): RaisonDemande {
+  if (c.demo) return 'demo';
+  if (!c.serveurActif) return 'serveur-inactif';
+  if (c.iphone && !c.dansLApp) return 'iphone-hors-app';
+  if (!c.navigateurCapable || c.permission === 'indisponible') return 'navigateur';
+  if (c.permission !== 'default') return 'deja-decide';
+  if (c.refusee) return 'refusee';
+  if (c.abonne) return 'abonne';
+  if (c.plusTardLe !== null && c.maintenant - c.plusTardLe < JOURS_PLUS_TARD_NOTIFICATIONS * 86_400_000) return 'plus-tard';
+  if (c.propositionInstallation) return 'installation';
+  if (c.autreFenetre) return 'autre-fenetre';
+  return 'proposer';
+}

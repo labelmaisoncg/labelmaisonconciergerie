@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
+import { DemandeNotifications } from '../modules/parametres/_application/DemandeNotifications';
 import { BarreOnglets } from './BarreOnglets';
 import { DemoBanner } from './DemoBanner';
 import { AlerteSynchro, BandeauLecture } from './EtatSynchro';
@@ -10,8 +11,9 @@ import { OngletsRubrique } from './OngletsRubrique';
 /**
  * Cadre de l'ERP : barre latérale fixe (barre d'onglets en bas sous
  * 1024 px, comme une app), bandeau démo (développement) ou lecture seule,
- * en-tête, contenu, alertes d'enregistrement. Aucun défilement horizontal de
- * page : les tableaux défilent dans leur propre conteneur.
+ * en-tête, contenu, alertes d'enregistrement, demande des notifications à
+ * l'ouverture. Aucun défilement horizontal de page : les tableaux défilent
+ * dans leur propre conteneur.
  */
 export function ErpLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
@@ -40,6 +42,7 @@ export function ErpLayout({ children }: { children: ReactNode }) {
       </div>
       <BarreOnglets />
       <AlerteSynchro />
+      <DemandeNotifications />
     </div>
   );
 }

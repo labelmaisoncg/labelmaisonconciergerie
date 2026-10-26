@@ -6,7 +6,9 @@
  *     chaque type, avec une seule notification par message (la plus
  *     importante) et les préférences de chaque appareil ;
  *   - envoi : idempotence, abonnements expirés oubliés, envoi raté sans
- *     conséquence, rien sans clés serveur.
+ *     conséquence, rien sans clés serveur ;
+ *   - demande « Recevoir les notifications ? » à l'ouverture : chaque
+ *     condition qui l'empêche.
  *
  * Lancement (Node 18+) :
  *   node_modules/.bin/esbuild src/erp/data/verifier-notifications.ts --bundle --platform=node \
@@ -16,13 +18,16 @@
 import { envoyerNotifications, enregistrerAppareil, lireAppareils, surveiller, type BaseNotifications } from './notifications-envoi';
 import { b64url, chiffrer, deB64url, endpointAccepte, enteteVapid, genererClesVapid, type AbonnementPush } from './web-push';
 import {
+  demandeNotifications,
   estProbleme,
+  JOURS_PLUS_TARD_NOTIFICATIONS,
   nettoyerPreferences,
   notificationsEntre,
   prenomInitiale,
   rappelDuMatin,
   synchroEnEchec,
   varianteAEnvoyer,
+  type ContexteDemandeNotifications,
   type GroupeNotification,
   type Instantane,
 } from './notifications';
@@ -294,6 +299,45 @@ async function principal() {
     const s = synchroEnEchec('2026-10-26', 'Repull ne répond pas');
     verifier(s.cle === 'synchro-2026-10-26' && s.variantes[0].url === '/erp/parametres/plateformes', 'synchronisation en échec : une par jour, vers Plateformes');
     verifier(JSON.stringify(nettoyerPreferences({ message: false, inconnu: true, avis: 'oui' })) === '{"message":false}', 'préférences nettoyées (types connus, booléens)');
+  }
+
+  section('Demande à l’ouverture : « Recevoir les notifications ? »');
+  {
+    const JOUR = 86_400_000;
+    const maintenant = Date.parse('2026-10-26T09:00:00Z');
+    // iPhone, app de l'écran d'accueil, rien de décidé : on propose.
+    const base: ContexteDemandeNotifications = {
+      demo: false,
+      serveurActif: true,
+      permission: 'default',
+      navigateurCapable: true,
+      iphone: true,
+      dansLApp: true,
+      abonne: false,
+      plusTardLe: null,
+      refusee: false,
+      propositionInstallation: false,
+      autreFenetre: false,
+      maintenant,
+    };
+    const d = (x: Partial<ContexteDemandeNotifications>) => demandeNotifications({ ...base, ...x });
+    verifier(d({}) === 'proposer', 'iPhone dans l’app, serveur prêt, rien de décidé : proposer');
+    verifier(d({ iphone: false, dansLApp: false }) === 'proposer', 'Android ou ordinateur dans le navigateur : proposer');
+    verifier(d({ demo: true }) === 'demo', 'jamais en démonstration');
+    verifier(d({ serveurActif: false }) === 'serveur-inactif', 'serveur sans clés : rien');
+    verifier(d({ dansLApp: false }) === 'iphone-hors-app', 'Safari sur iPhone, app non installée : rien (proposition d’installation)');
+    verifier(d({ dansLApp: false, navigateurCapable: false, permission: 'indisponible' }) === 'iphone-hors-app', 'iPhone sans API de notifications hors de l’app : rien');
+    verifier(d({ iphone: false, navigateurCapable: false }) === 'navigateur', 'navigateur sans PushManager : rien');
+    verifier(d({ iphone: false, permission: 'indisponible' }) === 'navigateur', 'navigateur sans API Notification : rien');
+    verifier(d({ permission: 'granted' }) === 'deja-decide', 'déjà autorisées : rien');
+    verifier(d({ permission: 'denied' }) === 'deja-decide', 'déjà refusées dans le navigateur : rien');
+    verifier(d({ refusee: true }) === 'refusee', 'refusées depuis la fenêtre : plus jamais reproposées');
+    verifier(d({ abonne: true }) === 'abonne', 'appareil déjà abonné : rien');
+    verifier(d({ plusTardLe: maintenant - 2 * JOUR }) === 'plus-tard', '« Plus tard » il y a 2 jours : rien');
+    verifier(d({ plusTardLe: maintenant - (JOURS_PLUS_TARD_NOTIFICATIONS * JOUR - 60_000) }) === 'plus-tard', '« Plus tard » il y a presque 7 jours : rien');
+    verifier(d({ plusTardLe: maintenant - JOURS_PLUS_TARD_NOTIFICATIONS * JOUR }) === 'proposer', '« Plus tard » il y a 7 jours : on repropose');
+    verifier(d({ propositionInstallation: true }) === 'installation', 'pas en même temps que la proposition d’installation');
+    verifier(d({ autreFenetre: true }) === 'autre-fenetre', 'jamais par-dessus une autre fenêtre');
   }
 
   section('Envoi : appareils, idempotence, abonnements expirés');

@@ -92,6 +92,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
 | `VITE_SUPABASE_ANON_KEY` | build (Vercel), facultatif | Clé publique (« anon ») du même projet. Les deux vont ensemble : si l'une manque, le couple par défaut est utilisé. |
 | `VITE_ERP_DEMO` | local uniquement | `1` : jeu de démonstration en mémoire. **Jamais en production.** |
+| `VITE_ERP_APERCU_NOTIFICATIONS` | local uniquement | `1` (avec la démo) : affiche la demande « Recevoir les notifications ? » pour les captures d'écran. **Jamais en production.** |
 | `REPULL_API_KEY` | Vercel (serveur), obligatoire pour la synchronisation | Clé API Repull (`sk_live_...`). Voir « Synchronisation Repull ». |
 | `CRON_SECRET` | Vercel (serveur) | Secret du cron quotidien de synchronisation (Vercel l'envoie en `Authorization: Bearer`). |
 | `REPULL_WEBHOOK_SECRET_ERP` | Vercel (serveur), facultatif | Secret de signature (`whsec_...`) de l'abonnement webhook **de l'ERP** (distinct de celui de l'agent IA). |
@@ -812,10 +813,28 @@ Apple, Google ou Mozilla selon l'appareil (Web Push).
    « Ajouter ». **Android** (Chrome) et **ordinateur** (Chrome, Edge) : bouton
    « Installer l'app » (sinon menu ⋮ → « Installer l'application », ou Safari
    sur Mac : Fichier → « Ajouter au Dock »).
-3. On ouvre l'app, on se connecte une fois dedans (sur iPhone, l'app de
-   l'écran d'accueil ne partage pas la session de Safari), puis Paramètres →
-   Application → « Activer les notifications » et « Envoyer une notification
-   de test ».
+3. On ouvre l'app et on se connecte une fois dedans (sur iPhone, l'app de
+   l'écran d'accueil ne partage pas la session de Safari). L'ERP demande
+   aussitôt « Recevoir les notifications ? » : « Activer » suffit. Sinon,
+   Paramètres → Application → « Activer les notifications » ; « Envoyer une
+   notification de test » vérifie que tout marche.
+
+La demande à l'ouverture (`_application/DemandeNotifications.tsx`) : feuille
+du bas sur téléphone, fenêtre au centre sur ordinateur, un seul bouton
+principal « Activer » qui ouvre l'autorisation du système dans le même
+toucher (obligatoire sur iPhone : jamais au chargement), tous les types par
+défaut. Elle ne s'affiche que si toutes ces conditions sont réunies
+(`demandeNotifications`, `data/notifications.ts`, contrôlée par
+`verifier-notifications.ts`) : clés présentes sur le serveur, autorisation
+encore jamais demandée sur cet appareil, navigateur capable (sur iPhone,
+seulement dans l'app de l'écran d'accueil : dans Safari, c'est la
+proposition d'installation qui parle), appareil pas encore abonné, pas de
+« Plus tard » depuis moins de 7 jours, ni proposition d'installation ni
+autre fenêtre ouverte, jamais en démonstration. Acceptée : « Notifications
+activées » en bas de l'écran. Refusée : la marche à suivre (Réglages de
+l'iPhone → Notifications → Label Maison), et plus jamais reproposée. Pour la
+voir en capture d'écran avec la démo : construire avec
+`VITE_ERP_DEMO=1 VITE_ERP_APERCU_NOTIFICATIONS=1` (sans effet en production).
 
 Une proposition discrète « Installez l'app » apparaît sur l'Accueil (téléphone,
 ou navigateur qui installe d'un clic) ; elle ne revient plus après « Plus
