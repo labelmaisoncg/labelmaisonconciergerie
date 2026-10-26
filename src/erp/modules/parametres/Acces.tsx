@@ -481,14 +481,15 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
 }
 
 /** « Ce logement n'est pas à moi » : retirer le logement à la personne, ou confirmer qu'il est bien à elle. */
-export function Signalements({ liste, gerant }: { liste: SignalementLogement[]; gerant: boolean }) {
+/** `imbrique` : posé dans une carte (coins plus petits que ceux de la carte). */
+export function Signalements({ liste, gerant, imbrique }: { liste: SignalementLogement[]; gerant: boolean; imbrique?: boolean }) {
   const d = useErp();
   const traiter = (s: SignalementLogement, decision: 'retire' | 'confirme') => {
     if (decision === 'retire') d.mettreAJour('equipe', s.membreId, (m) => ({ ...m, logementIds: m.logementIds.filter((x) => x !== s.logementId) }));
     d.upsert('signalementsLogement', { ...s, statut: 'traite', decision, traiteLe: horodatageMaintenant(), traitePar: d.utilisateur.nom });
   };
   return (
-    <div className="mb-4 rounded-xl border border-(--lm-alerte)/30 bg-(--lm-alerte-lavis) p-3">
+    <div className={cn('mb-4 border border-(--lm-alerte)/30 bg-(--lm-alerte-lavis) p-3', imbrique ? 'rounded-lg' : 'rounded-xl')}>
       <p className="mb-2 text-[13.5px] font-semibold text-(--lm-encre)">À traiter : « ce logement n’est pas à moi »</p>
       <ul className="divide-y divide-(--lm-alerte)/20">
         {liste.map((s) => {

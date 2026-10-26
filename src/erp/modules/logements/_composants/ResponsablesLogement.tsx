@@ -34,7 +34,7 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
           )
         }
       />
-      {signalements.length > 0 && <Signalements liste={signalements} gerant={gerant} />}
+      {signalements.length > 0 && <Signalements liste={signalements} gerant={gerant} imbrique />}
       {rattaches.length ? (
         <ul className="divide-y divide-(--lm-bord)">
           {rattaches.map((m) => {
@@ -43,10 +43,10 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
             return (
               <li key={m.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                 <span className="min-w-0 flex-1">
-                  <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="block truncate text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte)">
-                    {m.nom}
+                  <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
+                    <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{m.nom}</span>
+                    <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{ROLES_OPERATIONS[m.role]}</span>
                   </Link>
-                  <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{ROLES_OPERATIONS[m.role]}</span>
                   <Badge tone={s.ton} point className="mt-1">
                     {s.texte}
                   </Badge>
