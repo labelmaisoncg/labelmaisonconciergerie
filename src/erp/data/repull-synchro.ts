@@ -1434,7 +1434,7 @@ export interface EtatRepull {
   quota?: QuotaRepull;
   /** Dernier événement webhook traité. */
   dernierWebhook?: { evenement: string; recuLe: string; erreurs: string[] };
-  /** Le dernier relevé des annonces a laissé un logement choisi sans photo ou sans prix. */
+  /** Le dernier relevé des annonces a laissé un logement choisi sans photo ou sans prix (absent : pas encore mesuré, traité comme incomplet). */
   annoncesIncompletes?: boolean;
 }
 
@@ -1498,8 +1498,9 @@ export function phasesDues(etat: EtatRepull, declencheur: DeclencheurRepull, mai
   };
   const res: PhaseRepull[] = [];
   // Annonces : une fois par jour ; au bouton, si le dernier relevé date de plus d'une heure,
-  // ou tout de suite s'il a laissé un logement sans photo ou sans prix (le bouton reste limité à une fois par 10 min).
-  const seuilBouton = etat.annoncesIncompletes ? 0 : HEURE;
+  // ou tout de suite s'il a laissé un logement sans photo ou sans prix — ou si ce n'est pas encore
+  // mesuré (état d'avant le marqueur). Le bouton reste limité à une fois par 10 min.
+  const seuilBouton = etat.annoncesIncompletes === false ? HEURE : 0;
   if (depuis('annonces') >= (declencheur === 'manuel' ? seuilBouton : 20 * HEURE)) res.push('annonces');
   res.push('reservations');
   if (depuis('avis') >= (declencheur === 'manuel' ? JOUR : 6.5 * JOUR)) res.push('avis');
@@ -1655,8 +1656,7 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
   };
   // Relevé des annonces mené à terme : le marqueur suit son résultat.
   if (bilan.phases.includes('annonces')) {
-    if (bilan.annoncesIncompletes) suivant.annoncesIncompletes = true;
-    else delete suivant.annoncesIncompletes;
+    suivant.annoncesIncompletes = !!bilan.annoncesIncompletes;
   }
   if (evenement) {
     suivant.dernierWebhook = { evenement, recuLe: fin, erreurs: bilan.erreurs };
