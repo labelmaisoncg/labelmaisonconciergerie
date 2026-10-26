@@ -6,12 +6,12 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { CalendarX2, SearchX } from 'lucide-react';
-import { Alert, Button, ButtonLink, EmptyState, Modal, PageHeader, StatusBadge } from '../../../ui';
+import { Button, ButtonLink, EmptyState, Modal, PageHeader } from '../../../ui';
 import { useErp } from '../../../data/store';
-import { dateCourte, pluriel } from '../../../data/format';
-import { logementById } from '../../../data/selectors';
+import { pluriel } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
-import { FicheReservation, PastilleCanal } from './FicheReservation';
+import { FicheReservation } from './FicheReservation';
+import { etatSejour, plageDates } from './outils';
 
 export function DetailReservation() {
   const { id } = useParams();
@@ -28,7 +28,6 @@ export function DetailReservation() {
     );
   }
 
-  const logement = logementById(d, r.logementId);
   // Une réservation importée de Repull s'annule sur sa plateforme (sinon la synchronisation la rétablirait).
   const annulable = r.canal === 'direct' && r.statut === 'confirmee' && !r.repull;
   const missionsOuvertes = d.missions.filter((m) => m.reservationId === r.id && m.statut !== 'validee' && m.statut !== 'annulee');
@@ -44,13 +43,7 @@ export function DetailReservation() {
       <PageHeader
         fil={[{ libelle: 'ERP', to: '/erp' }, { libelle: 'Réservations', to: '/erp/reservations' }, { libelle: r.voyageur.nom }]}
         titre={r.voyageur.nom}
-        sousTitre={
-          <span className="flex flex-wrap items-center gap-2">
-            {logement?.nom} · {dateCourte(r.arrivee)} au {dateCourte(r.depart)} · {pluriel(r.nuits, 'nuit')}
-            <StatusBadge type="statutReservation" valeur={r.statut} />
-            <PastilleCanal canal={r.canal} />
-          </span>
-        }
+        sousTitre={`${etatSejour(r)} · ${plageDates(r.arrivee, r.depart)} · ${LIBELLES.canal[r.canal]}`}
         actions={
           annulable && (
             <Button variant="secondary" icone={<CalendarX2 />} onClick={() => setConfirmer(true)}>
@@ -59,11 +52,6 @@ export function DetailReservation() {
           )
         }
       />
-      {r.repull && r.statut === 'confirmee' && (
-        <Alert tone="neutre" className="mb-4">
-          Importée de {r.canal === 'direct' ? 'la plateforme' : LIBELLES.canal[r.canal]} : modifiez ou annulez-la là-bas, la mise à jour arrive ici seule.
-        </Alert>
-      )}
       <div className="max-w-3xl">
         <FicheReservation r={r} />
       </div>
