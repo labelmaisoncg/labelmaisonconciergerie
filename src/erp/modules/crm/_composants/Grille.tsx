@@ -73,38 +73,53 @@ export function relanceEnRetard(c: ContactCrm): boolean {
   return !!c.relanceLe && c.relanceLe < AUJOURDHUI && !STATUTS_CLOS.includes(c.statut);
 }
 
-/** Date de relance : « — » tant qu'il n'y en a pas, le calendrier au clic. */
+/**
+ * Date de relance, courte (« 20 oct. », « · en retard » en rouge) : elle tient
+ * dans sa colonne quel que soit le navigateur. Un clic ouvre le calendrier ;
+ * « — » tant qu'il n'y en a pas.
+ */
 function CelluleRelance({ c, onModifier, lectureSeule }: { c: ContactCrm; onModifier: (c: ContactCrm) => void; lectureSeule: boolean }) {
   const [edition, setEdition] = useState(false);
   const retard = relanceEnRetard(c);
-  if (!c.relanceLe && !edition) {
-    return lectureSeule ? (
-      <span className="text-(--lm-encre-3)">—</span>
+  if (!edition) {
+    const texte = c.relanceLe ? (
+      <span className={cn('lm-chiffres truncate', retard ? 'font-medium text-(--lm-danger)' : 'text-(--lm-encre)')}>
+        {jourMois(c.relanceLe)}
+        {retard && ' · en retard'}
+      </span>
     ) : (
+      <span className="text-(--lm-encre-3)">—</span>
+    );
+    if (lectureSeule) return <span className="flex h-8 items-center">{texte}</span>;
+    return (
       <button
         type="button"
         onClick={() => setEdition(true)}
-        aria-label={`Prévoir une relance pour ${c.nom}`}
-        className="h-8 w-full rounded-md px-1 text-left text-(--lm-encre-3) hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+        aria-label={c.relanceLe ? `Relance de ${c.nom} : ${jourMois(c.relanceLe)}${retard ? ', en retard' : ''}. Modifier` : `Prévoir une relance pour ${c.nom}`}
+        className="flex h-8 w-full min-w-0 items-center rounded-md px-1 text-left hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
       >
-        —
+        {texte}
       </button>
     );
   }
   return (
-    <div className="flex items-center gap-1.5">
-      <input
-        type="date"
-        autoFocus={edition && !c.relanceLe}
-        aria-label={`Relance de ${c.nom}`}
-        value={c.relanceLe ?? ''}
-        disabled={lectureSeule}
-        onBlur={() => setEdition(false)}
-        onChange={(e) => onModifier({ ...c, relanceLe: e.target.value || undefined })}
-        className={cn(CHAMP, 'lm-chiffres w-[8.5rem] px-1', retard ? 'font-medium text-(--lm-danger)' : 'text-(--lm-encre)')}
-      />
-      {retard && <span className="text-[11.5px] font-medium whitespace-nowrap text-(--lm-danger)">en retard</span>}
-    </div>
+    <input
+      type="date"
+      autoFocus
+      aria-label={`Relance de ${c.nom}`}
+      value={c.relanceLe ?? ''}
+      onFocus={(e) => {
+        // Le calendrier s'ouvre directement (navigateurs qui le permettent).
+        try {
+          e.currentTarget.showPicker?.();
+        } catch {
+          /* ouverture au clic sinon */
+        }
+      }}
+      onBlur={() => setEdition(false)}
+      onChange={(e) => onModifier({ ...c, relanceLe: e.target.value || undefined })}
+      className={cn(CHAMP, 'lm-chiffres w-full min-w-0 px-1 text-(--lm-encre)')}
+    />
   );
 }
 
