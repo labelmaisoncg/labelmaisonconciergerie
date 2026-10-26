@@ -2,9 +2,9 @@ import { Link } from 'react-router-dom';
 import { Star } from 'lucide-react';
 import { StatusBadge } from '../../../ui';
 import { LIBELLES } from '../../../data/libelles';
-import { AUJOURDHUI, ajouterJours, euros, jourMois, note, pourcentage } from '../../../data/format';
+import { AUJOURDHUI, ajouterJours, dateHeure, euros, jourMois, note } from '../../../data/format';
 import type { Logement } from '../../../data/types';
-import { prixAVenir, type StatsLogement } from './stats';
+import { prixNuit, type StatsLogement } from './stats';
 import { VisuelLogement } from './Visuel';
 
 /** Le prochain événement, en une ligne : départ du voyageur sur place, sinon prochaine arrivée. */
@@ -18,7 +18,14 @@ function prochainEvenement(s: StatsLogement): string {
 }
 
 export function CarteLogement({ logement: l, stats }: { logement: Logement; stats: StatsLogement }) {
-  const prix = prixAVenir(l);
+  const prix = prixNuit(l);
+  const detailPrix = !prix
+    ? ''
+    : prix.source === 'soir'
+      ? `Prix de ce soir, lu sur les plateformes le ${dateHeure(prix.luLe!)}`
+      : prix.source === 'prochaine'
+        ? `Prix de la nuit du ${jourMois(prix.date!)}, lu sur les plateformes le ${dateHeure(prix.luLe!)}`
+        : 'Prix de base de l’annonce';
   return (
     <Link
       to={l.id}
@@ -42,14 +49,18 @@ export function CarteLogement({ logement: l, stats }: { logement: Logement; stat
           )}
         </div>
         <p className="truncate text-[12.5px] text-(--lm-encre-2)">
-          {[l.ville, LIBELLES.typeLogement[l.type], l.capacite ? `${l.capacite} voyageurs` : ''].filter(Boolean).join(' · ')}
+          {/* « Autre » n'apprend rien : le type n'apparaît que s'il est connu. */}
+          {[l.ville, l.type !== 'autre' ? LIBELLES.typeLogement[l.type] : '', l.capacite ? `${l.capacite} voyageurs` : ''].filter(Boolean).join(' · ')}
         </p>
-        <p className="mt-auto flex items-center justify-between gap-2 pt-2 text-[12.5px]">
-          <span className="truncate font-medium text-(--lm-encre)">{prochainEvenement(stats)}</span>
-          <span className="lm-chiffres shrink-0 text-(--lm-encre-2)">
-            {prix ? `${euros(prix.moyen, true)}/nuit` : `${pourcentage(stats.occupation30)} occupé`}
-          </span>
-        </p>
+        <div className="mt-auto flex items-end justify-between gap-2 pt-2">
+          <span className="truncate text-[12.5px] font-medium text-(--lm-encre)">{prochainEvenement(stats)}</span>
+          {prix && (
+            <span className="lm-chiffres shrink-0 text-[12.5px] text-(--lm-encre-2)" title={detailPrix}>
+              <span className="text-[16px] font-semibold text-(--lm-encre)">{euros(prix.centimes, true)}</span> / nuit
+              <span className="sr-only"> ({detailPrix})</span>
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );

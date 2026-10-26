@@ -31,7 +31,7 @@
  *
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
-import { horodatageParis } from './repull.js';
+import { dateParis, horodatageParis, photosDepuisContenu, tarifsDepuisBooking } from './repull.js';
 import type { RepullListing } from './repull.js';
 import {
   BUDGET_ERP_DEFAUT,
@@ -729,8 +729,10 @@ const liste = (v: unknown): Record<string, unknown>[] => {
 
 /**
  * Photographie de ce que Repull sait du compte : clé, connexions, Airbnb,
- * Booking.com (établissements et association des chambres), annonces.
- * Sept appels au plus, comptés dans le budget. Aucune donnée secrète renvoyée.
+ * Booking.com (établissements et association des chambres), annonces, et
+ * pour le premier logement choisi, ses photos et ses prix (chez Repull puis
+ * chez Booking.com). Treize appels au plus, comptés dans le budget, tous en
+ * lecture. Aucune donnée secrète renvoyée.
  */
 export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDiagnostic> {
   const lignes: LigneDiagnostic[] = [];
@@ -753,16 +755,18 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
     };
   };
   await avecClient(ctx, async (client) => {
-    const essai = async (question: string, appel: string, resumer: (r: unknown) => string | { texte: string; alerte: boolean }, params: Record<string, string> = {}) => {
+    const essai = async (question: string, appel: string, resumer: (r: unknown) => string | { texte: string; alerte: boolean }, params: Record<string, string> = {}): Promise<unknown> => {
       try {
         const r = await client.get<unknown>(appel, params);
         const x = resumer(r);
         const resume = typeof x === 'string' ? { texte: x, alerte: false } : x;
         lignes.push({ question, appel, ok: true, statut: 200, resume: resume.texte, brut: tronquer(r), ...(resume.alerte ? { alerte: true } : {}) });
+        return r;
       } catch (e) {
         if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
         const statut = e instanceof ErreurRepull ? e.statut : 0;
         lignes.push({ question, appel, ok: false, statut, resume: messageErreur(e), brut: tronquer(e instanceof ErreurRepull ? { code: e.code, fix: e.correctif, ...e.infos } : String(e)) });
+        return undefined;
       }
     };
     await essai('La clé Repull est-elle acceptée ?', '/v1/health/auth', () => 'Oui, la clé Repull de Vercel est valide.');
@@ -776,7 +780,7 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       if (!x.connected && !comptes.length) return 'Non : aucun compte Airbnb relié à Repull.';
       return `Oui : ${comptes.length || 1} compte(s) Airbnb${comptes.length ? ` (${comptes.map((c) => texte(c.name) || texte(c.externalAccountId)).join(', ')})` : ''}.`;
     });
-    await essai('Booking.com : quels établissements ?', '/v1/channels/booking/properties', (r) => {
+    const etablissements = await essai('Booking.com : quels établissements ?', '/v1/channels/booking/properties', (r) => {
       const l = liste(r);
       if (!l.length) return 'Aucun établissement Booking.com chez Repull : l’étape « numéro d’établissement » sur la page Repull n’est pas terminée.';
       return l
@@ -819,6 +823,51 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
       const choix = surChoisis(l);
       return { texte: `${l.length} conversation(s) récentes (plateformes : ${[...new Set(l.map((c) => texte(c.platform) || '?'))].join(', ')}).${choix.texte}`, alerte: choix.alerte };
     }, { limit: '5' });
+
+    // Photos et prix du premier logement choisi : ce que Repull, puis Booking.com, renvoient vraiment.
+    const premier = [...choisis][0];
+    if (premier) {
+      const id = encodeURIComponent(premier);
+      const du = dateParis((ctx.maintenant ?? (() => new Date()))());
+      const au = new Date(Date.parse(`${du}T12:00:00Z`) + 14 * 86_400_000).toISOString().slice(0, 10);
+      await essai(`Logement ${premier} : photos et fiche chez Repull ?`, `/v1/listings/${id}`, (r) => {
+        const x = (r ?? {}) as Record<string, unknown>;
+        const photos = photosDepuisContenu(x.photos ?? []).length;
+        const alerte = !photos && !texte(x.thumbnailUrl);
+        return {
+          texte: `${photos} photo(s), photo de couverture : ${texte(x.thumbnailUrl) ? 'oui' : 'non'}, fiche détaillée : ${x.details ? 'oui' : 'non'}, description : ${x.content ? 'oui' : 'non'}.${alerte ? ' Repull n’a pas les photos de ce logement : l’ERP les lit chez Booking.com ou Airbnb.' : ''}`,
+          alerte,
+        };
+      }, { include: 'photos,details,content' });
+      await essai(`Logement ${premier} : prix par nuit chez Repull ?`, `/v1/availability/${id}`, (r) => {
+        const jours = Array.isArray((r as { days?: unknown })?.days) ? ((r as { days: { price?: unknown }[] }).days) : [];
+        const avecPrix = jours.filter((j) => typeof j?.price === 'number').length;
+        return avecPrix ? `${avecPrix} jour(s) avec un prix sur 14.` : { texte: 'Aucun prix chez Repull pour ce logement : l’ERP les lit chez Booking.com.', alerte: true };
+      }, { from: du, to: au });
+      const etab = liste(etablissements).length ? liste(etablissements) : Array.isArray(etablissements) ? (etablissements as Record<string, unknown>[]) : [];
+      let hotel = '';
+      let chambre = '';
+      for (const e of etab) {
+        const x = (Array.isArray(e.listings) ? (e.listings as Record<string, unknown>[]) : []).find((l) => texte(l.listingId) === premier);
+        if (x) {
+          hotel = texte(e.hotelId);
+          chambre = texte(x.roomBookingId);
+          break;
+        }
+      }
+      if (hotel) {
+        await essai(`Logement ${premier} : photos chez Booking.com ?`, '/v1/channels/booking/content', (r) => {
+          const n = photosDepuisContenu(r).length;
+          return n ? `${n} photo(s) lue(s) chez Booking.com.` : { texte: 'Aucune photo lisible dans la réponse de Booking.com.', alerte: true };
+        }, { property_id: hotel, type: 'photos', ...(chambre ? { room_id: chambre } : {}) });
+        await essai(`Logement ${premier} : prix par nuit chez Booking.com ?`, `/v1/channels/booking/listings/${id}/pricing`, (r) => {
+          const t = tarifsDepuisBooking(r, horodatageParis(), du, au);
+          if (!t) return { texte: 'Aucun prix lisible dans la réponse de Booking.com.', alerte: true };
+          const prix = t.jours.map((j) => j.prixCentimes / 100);
+          return `${t.jours.length} jour(s) avec un prix, de ${Math.min(...prix)} à ${Math.max(...prix)} ${t.devise === 'EUR' ? '€' : t.devise}.`;
+        }, { startDate: du, number_of_days: '14' });
+      }
+    }
     appels = client.appels;
   });
   return { ok: true, lignes, appels, le: (ctx.maintenant ?? (() => new Date()))().toISOString() };

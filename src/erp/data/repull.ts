@@ -899,6 +899,127 @@ function adressesPhotos(liste: { url?: unknown }[]): string[] {
   return [...vues];
 }
 
+/* Lectures propres aux plateformes (Booking.com, Airbnb) : la forme exacte
+ * n'est pas décrite par Repull (« ce que la plateforme renvoie »), d'où une
+ * lecture prudente qui ne garde que ce qui est sûr. */
+
+const IMAGE_HTTPS = /^https:\/\/[^\s"'<>]+$/i;
+/** Adresse qui ressemble à une image (extension, ou CDN photo connu). */
+const RESSEMBLE_IMAGE = /\.(jpe?g|png|webp|avif)(\?|$)|bstatic\.com|muscache\.com|\/images?\//i;
+
+/** Rang d'une clé de photo : la plus grande taille d'abord, les vignettes en dernier. */
+function rangCle(cle: string): number {
+  const k = cle.toLowerCase();
+  if (/thumb|square|small|mini|60|100|150|300/.test(k)) return 50;
+  const ordre = ['original', 'max', 'large', '1280', '1024', 'xl', 'url', 'src', 'href', 'standard', 'medium'];
+  const i = ordre.findIndex((o) => k.includes(o));
+  return i === -1 ? 40 : i;
+}
+
+/** L'adresse d'une photo : chaîne https, ou la meilleure adresse https d'un objet photo. */
+function adressePhoto(x: unknown, profondeur = 0): string | undefined {
+  if (typeof x === 'string') {
+    const u = x.trim();
+    return IMAGE_HTTPS.test(u) && RESSEMBLE_IMAGE.test(u) ? u : undefined;
+  }
+  if (!x || typeof x !== 'object' || Array.isArray(x) || profondeur > 3) return undefined;
+  const o = x as Record<string, unknown>;
+  for (const k of Object.keys(o).sort((a, b) => rangCle(a) - rangCle(b))) {
+    const v = o[k];
+    const u = typeof v === 'string' ? (IMAGE_HTTPS.test(v.trim()) && (rangCle(k) < 40 || RESSEMBLE_IMAGE.test(v)) ? v.trim() : undefined) : adressePhoto(v, profondeur + 1);
+    if (u) return u;
+  }
+  return undefined;
+}
+
+/** Première liste trouvée sous « photos », « images », « data »… (ou la réponse elle-même). */
+function listePhotos(r: unknown, profondeur = 0): unknown[] {
+  if (Array.isArray(r)) return r;
+  if (!r || typeof r !== 'object' || profondeur > 3) return [];
+  const o = r as Record<string, unknown>;
+  for (const k of ['photos', 'images', 'pictures', 'data', 'items', 'results']) {
+    const v = o[k];
+    if (Array.isArray(v)) return v;
+    if (v && typeof v === 'object') {
+      const l = listePhotos(v, profondeur + 1);
+      if (l.length) return l;
+    }
+  }
+  return [];
+}
+
+/**
+ * Photos d'une réponse dont la forme varie selon la plateforme (Booking.com
+ * « content?type=photos », Airbnb « listings/{id}/photos ») : une adresse
+ * https par photo, la plus grande taille, sans doublon, 24 au plus.
+ */
+export function photosDepuisContenu(r: unknown): string[] {
+  const vues = new Set<string>();
+  for (const p of listePhotos(r)) {
+    const u = adressePhoto(p);
+    if (u) vues.add(u);
+    if (vues.size >= MAX_PHOTOS) break;
+  }
+  return [...vues];
+}
+
+const DATE_ISO = /^\d{4}-\d{2}-\d{2}$/;
+const nombreTexte = (v: unknown): number => (typeof v === 'number' ? v : typeof v === 'string' && /^\s*\d+(\.\d+)?\s*$/.test(v) ? Number(v) : NaN);
+
+/**
+ * Prix par nuit lus chez Booking.com (« listings/{id}/pricing », relais de
+ * getRoomRateAvailability, forme libre). Pour chaque jour daté : le prix
+ * « price » le plus bas parmi les tarifs ouverts (sinon le plus bas des
+ * « priceN »), entre 5 et 10 000 ; libre si des chambres restent à vendre
+ * (ou si Booking.com ne le dit pas). Jours hors de [du, au[ écartés.
+ */
+export function tarifsDepuisBooking(r: unknown, luLe: Horodatage, du: DateISO, au: DateISO): TarifsLogement | undefined {
+  // Par jour : prix « price » et « priceN » des tarifs ouverts, chambres à vendre.
+  const jours = new Map<string, { standard?: number; autre?: number; aVendre?: number }>();
+  const ferme = (v: unknown) => v === true || v === 1 || v === '1' || v === 'true';
+  const visiter = (x: unknown, date: string | undefined, profondeur: number) => {
+    if (profondeur > 14 || !x || typeof x !== 'object') return;
+    if (Array.isArray(x)) {
+      for (const e of x) visiter(e, date, profondeur + 1);
+      return;
+    }
+    const o = x as Record<string, unknown>;
+    let d = date;
+    for (const k of ['date', 'value', '@value', '@_value', '_value', 'day']) {
+      const v = o[k];
+      if (typeof v === 'string' && DATE_ISO.test(v.trim())) {
+        d = v.trim();
+        break;
+      }
+    }
+    if (d) {
+      const j = jours.get(d) ?? {};
+      const entrees = Object.entries(o).map(([k, v]) => [k.toLowerCase().replace(/^[@_]+/, ''), v] as const);
+      // Un tarif fermé (closed, stop_sell) ne donne pas de prix pour ce jour.
+      const tarifFerme = entrees.some(([k, v]) => (k === 'closed' || k === 'stop_sell' || k === 'stopsell') && ferme(v));
+      for (const [k, v] of entrees) {
+        const n = nombreTexte(v);
+        if (/^price\d*$/.test(k) && n >= 5 && n <= 10_000 && !tarifFerme) {
+          if (k === 'price') j.standard = Math.min(j.standard ?? Infinity, n);
+          else j.autre = Math.min(j.autre ?? Infinity, n);
+        } else if (/^rooms?_?to_?sell$/.test(k) && Number.isFinite(n)) {
+          j.aVendre = Math.max(j.aVendre ?? 0, n);
+        }
+      }
+      jours.set(d, j);
+    }
+    for (const v of Object.values(o)) if (v && typeof v === 'object') visiter(v, d, profondeur + 1);
+  };
+  visiter(r, undefined, 0);
+  const res = [...jours.entries()]
+    .filter(([date, j]) => date >= du && date < au && (j.standard ?? j.autre) !== undefined)
+    .map(([date, j]) => ({ date, prixCentimes: Math.round((j.standard ?? j.autre)! * 100), libre: j.aVendre === undefined || j.aVendre > 0 }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (!res.length) return undefined;
+  const devise = typeof (r as { currency?: unknown })?.currency === 'string' ? String((r as { currency: string }).currency).trim() : '';
+  return { devise: devise || 'EUR', luLe, jours: res };
+}
+
 /** Photos déposées chez Repull (GET /v1/listings/{id}/photos). */
 export function versPhotos(r: RepullPhotos | null | undefined): string[] {
   return adressesPhotos(Array.isArray(r?.photos) ? r!.photos : []);

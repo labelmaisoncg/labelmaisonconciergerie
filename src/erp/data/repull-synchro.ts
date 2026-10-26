@@ -54,7 +54,8 @@ import {
   versReservation,
   JOURS_TARIFS,
   photosAnnonce,
-  versPhotos,
+  photosDepuisContenu,
+  tarifsDepuisBooking,
   versTarifs,
   type RepullConversation,
   type RepullDisponibilite,
@@ -596,6 +597,8 @@ export class SessionRepull {
   private proprietaireVerifie = false;
   /** Annonces inconnues déjà demandées à Repull pendant ce passage. */
   private annoncesDemandees = new Set<string>();
+  /** Chambres Booking.com par annonce Repull (lues une fois par passage, au besoin). */
+  private chambresBooking?: Promise<Map<string, { hotel: string; chambre?: string }>>;
 
   constructor(private readonly o: OptionsSynchroRepull) {
     this.repull = o.repull;
@@ -645,14 +648,22 @@ export class SessionRepull {
    * Logement retiré du choix : mis en pause, jamais supprimé (réservations,
    * historique et saisies de l'équipe restent). Un logement « sorti » le reste.
    */
-  private async mettreHorsSelection(idAnnonce: string, statutRepull?: string): Promise<void> {
+  private async mettreHorsSelection(idAnnonce: string, statutRepull?: string, couverture?: string | null): Promise<void> {
     const logements = await this.chargerLogements();
     const existant = logements.get(this.logementParRepull.get(idAnnonce));
     if (!existant || !existant.repull) return;
     const statut: Logement['statut'] = existant.statut === 'sorti' ? 'sorti' : 'pause';
-    if (existant.repull.horsSelection && existant.statut === statut) return;
-    logements.poser({ ...existant, statut, repull: { ...existant.repull, ...(statutRepull ? { statut: statutRepull } : {}), horsSelection: true } });
-    this.bilan.misEnPause = (this.bilan.misEnPause ?? 0) + 1;
+    // Photo de couverture : la liste des annonces la donne même pour un logement en pause (sans appel de plus).
+    const photo = typeof couverture === 'string' && /^https:\/\//.test(couverture.trim()) && !(existant.photoUrl ?? '').startsWith('stockage://') ? couverture.trim() : existant.photoUrl;
+    if (existant.repull.horsSelection && existant.statut === statut && photo === existant.photoUrl) return;
+    const enPause = !(existant.repull.horsSelection && existant.statut === statut);
+    logements.poser({
+      ...existant,
+      statut,
+      ...(photo ? { photoUrl: photo } : {}),
+      repull: { ...existant.repull, ...(statutRepull ? { statut: statutRepull } : {}), horsSelection: true },
+    });
+    if (enPause) this.bilan.misEnPause = (this.bilan.misEnPause ?? 0) + 1;
   }
 
   /** Reste-t-il assez de temps pour continuer ? Sinon, le passage est marqué partiel. */
@@ -756,18 +767,45 @@ export class SessionRepull {
         if (this.retenue(l.id)) {
           await this.poserAnnonce(l, true);
           await this.enrichirAnnonce(String(l.id), photosAnnonce(l.photos).length > 0);
-        } else await this.mettreHorsSelection(String(l.id), l.status);
+        } else await this.mettreHorsSelection(String(l.id), l.status, l.thumbnailUrl);
       }
       if (!this.tempsRestant()) break;
     }
   }
 
+  /** Établissements Booking.com : annonce Repull → établissement et chambre (un appel par passage, au besoin). */
+  private lireChambresBooking(): Promise<Map<string, { hotel: string; chambre?: string }>> {
+    this.chambresBooking ??= (async () => {
+      const carte = new Map<string, { hotel: string; chambre?: string }>();
+      try {
+        const r = await this.repull.get<unknown>('/v1/channels/booking/properties');
+        const etablissements = Array.isArray(r) ? r : Array.isArray((r as { data?: unknown })?.data) ? (r as { data: unknown[] }).data : [];
+        for (const e of etablissements as Record<string, unknown>[]) {
+          const hotel = String(e?.hotelId ?? '').trim();
+          if (!hotel) continue;
+          for (const x of (Array.isArray(e.listings) ? e.listings : []) as Record<string, unknown>[]) {
+            const id = String(x?.listingId ?? '').trim();
+            const chambre = String(x?.roomBookingId ?? '').trim();
+            if (id && !carte.has(id)) carte.set(id, { hotel, ...(chambre ? { chambre } : {}) });
+          }
+        }
+      } catch (e) {
+        if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) throw e;
+        /* établissements illisibles : pas de lecture Booking.com ce passage */
+      }
+      return carte;
+    })();
+    return this.chambresBooking;
+  }
+
   /**
-   * Photos déposées chez Repull (une fois par semaine, seulement quand
-   * l'annonce n'a pas renvoyé les siennes) et prix par nuit des JOURS_TARIFS
-   * prochains jours (à chaque relevé des annonces) d'un logement choisi.
-   * Lectures seules, deux appels au plus, sautées quand la part d'appels ou le
-   * temps manque ; une réponse illisible ne change rien.
+   * Photos (une fois par semaine, seulement quand l'annonce n'a pas renvoyé
+   * les siennes) et prix par nuit des JOURS_TARIFS prochains jours (à chaque
+   * relevé des annonces) d'un logement choisi. Photos : celles déposées chez
+   * Repull, sinon celles de Booking.com (chambre, puis établissement), sinon
+   * celles d'Airbnb. Prix : le calendrier Repull, sinon les tarifs lus chez
+   * Booking.com. Lectures seules, sautées quand la part d'appels ou le temps
+   * manque ; une réponse illisible ne change rien.
    */
   private async enrichirAnnonce(idAnnonce: string, photosDeLAnnonce: boolean): Promise<void> {
     const logements = await this.chargerLogements();
@@ -778,28 +816,41 @@ export class SessionRepull {
     const maintenant = horodatageParis(this.maintenant());
     const lues = l.repull?.photosLuesLe;
     const assez = () => this.repull.restant > 20 && this.tempsRestant(15_000);
-    if (!photosDeLAnnonce && assez() && (!lues || instant(maintenant) - instant(lues) >= 6.5 * JOUR)) {
+    const canaux = (l.repull?.canaux ?? []).map((c) => c.plateforme.toLowerCase());
+    const surBooking = canaux.some((c) => c.includes('booking'));
+    const surAirbnb = canaux.some((c) => c.includes('airbnb'));
+    const chemin = encodeURIComponent(idAnnonce);
+    // Une lecture facultative : null si elle échoue (403/404 : rien à lire ; autre : à retenter).
+    let aRetenter = false;
+    const lire = async <T,>(url: string, params: Record<string, string | number> = {}): Promise<T | null> => {
       try {
-        const photos = versPhotos(await this.repull.get<RepullPhotos>(`/v1/listings/${encodeURIComponent(idAnnonce)}/photos`));
-        if (photos.length) suivant.photos = photos;
-        suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), photosLuesLe: maintenant };
+        return await this.repull.get<T>(url, params);
       } catch (e) {
         if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) throw e;
-        // Pas de photos chez la plateforme : on ne redemande que la semaine suivante.
-        if (e instanceof ErreurRepull && (e.statut === 403 || e.statut === 404)) suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), photosLuesLe: maintenant };
+        if (!(e instanceof ErreurRepull && (e.statut === 403 || e.statut === 404))) aRetenter = true;
+        return null;
       }
+    };
+    if (!photosDeLAnnonce && assez() && (!lues || instant(maintenant) - instant(lues) >= 6.5 * JOUR)) {
+      let photos = photosDepuisContenu(await lire<RepullPhotos>(`/v1/listings/${chemin}/photos`));
+      if (!photos.length && surBooking && assez()) {
+        const b = (await this.lireChambresBooking()).get(idAnnonce);
+        if (b?.chambre && assez()) photos = photosDepuisContenu(await lire(`/v1/channels/booking/content`, { property_id: b.hotel, type: 'photos', room_id: b.chambre }));
+        if (b && !photos.length && assez()) photos = photosDepuisContenu(await lire(`/v1/channels/booking/content`, { property_id: b.hotel, type: 'photos' }));
+      }
+      if (!photos.length && surAirbnb && assez()) photos = photosDepuisContenu(await lire(`/v1/channels/airbnb/listings/${chemin}/photos`));
+      if (photos.length) suivant.photos = photos;
+      // Rien chez les plateformes : on ne redemande que la semaine suivante (sauf erreur passagère).
+      if (photos.length || !aRetenter) suivant.repull = { ...(suivant.repull ?? { id: idAnnonce }), photosLuesLe: maintenant };
     }
     if (assez()) {
-      try {
-        const du = this.aujourdhui;
-        const r = await this.repull.get<RepullDisponibilite>(`/v1/availability/${encodeURIComponent(idAnnonce)}`, { from: du, to: plusJours(du, JOURS_TARIFS) });
-        const tarifs = versTarifs(r, maintenant);
-        // Mêmes prix qu'à la dernière lecture : rien à écrire (luLe garde la date du dernier changement).
-        if (tarifs && (tarifs.devise !== l.tarifs?.devise || canonique(tarifs.jours) !== canonique(l.tarifs?.jours))) suivant.tarifs = tarifs;
-      } catch (e) {
-        if (e instanceof DelaiEcoule || e instanceof BudgetEpuise) throw e;
-        /* prix facultatifs : on garde la dernière lecture */
+      const du = this.aujourdhui;
+      let tarifs = versTarifs(await lire<RepullDisponibilite>(`/v1/availability/${chemin}`, { from: du, to: plusJours(du, JOURS_TARIFS) }), maintenant);
+      if (!tarifs && surBooking && assez()) {
+        tarifs = tarifsDepuisBooking(await lire(`/v1/channels/booking/listings/${chemin}/pricing`, { startDate: du, number_of_days: JOURS_TARIFS }), maintenant, du, plusJours(du, JOURS_TARIFS));
       }
+      // Mêmes prix qu'à la dernière lecture : rien à écrire (luLe garde la date du dernier changement).
+      if (tarifs && (tarifs.devise !== l.tarifs?.devise || canonique(tarifs.jours) !== canonique(l.tarifs?.jours))) suivant.tarifs = tarifs;
     }
     if (!identiques(suivant, l)) logements.poser(suivant);
   }
