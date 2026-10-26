@@ -28,7 +28,7 @@
 // =============================================================================
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
-import { MESSAGE_BASE_PAS_PREPAREE } from '../src/erp/data/espaces.js';
+import { MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
 import { dateParisISO, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
 import { MESSAGES_REFUS, avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
 import { facturePartagee } from '../src/erp/data/relances.js';
@@ -37,7 +37,19 @@ import type { AccesProprietaire } from '../src/erp/data/types-proprietaire';
 import { MESSAGE_COMPTE_SERVEUR, continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
 import { espaceDemande } from './_erp-espaces.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
-import { accesParEmail, baseAcces, contactsEspace, cookieSessionEfface, entrerAvecLien, expediteurEspace, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
+import {
+  GENRES,
+  accesParEmail,
+  avecEmailFiche,
+  baseAcces,
+  contactsEspace,
+  cookieSessionEfface,
+  entrerAvecLien,
+  expediteurEspace,
+  ficheEspace,
+  lienDAcces,
+  sessionAcces,
+} from './_acces-externe.js';
 import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
 import { ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
 
@@ -119,15 +131,16 @@ export default async function handler(req: any, res: any) {
       const email = normaliserEmail(corps.email);
       if (!emailValide(email)) return repondre(res, 400, { ok: false, erreur: 'Adresse e-mail du propriétaire invalide.' });
       const jeton = await nouveauJeton();
+      // L'adresse de la fiche est relevée : si elle change ensuite sans « Retirer », l'accès ne vaut plus.
       const acces = avecNouveauLien(
-        inviter(precedent, { proprietaireId, email, par: g.email, maintenantMs: maintenant, espace: g.espace }),
+        avecEmailFiche('proprietaire', inviter(precedent, { proprietaireId, email, par: g.email, maintenantMs: maintenant, espace: g.espace }), proprietaire),
         await empreinteJeton(jeton),
         'invitation',
         maintenant,
       );
       await ecrireAcces(b, acces);
       const lien = lienDAcces(req, 'proprietaire', g.espace, jeton);
-      const envoye = await envoyerLien({ fiche: await ficheEspace(g.espace), email, nom: proprietaire.nom, lien, motif: 'invitation' });
+      const envoye = await envoyerLien({ fiche: await ficheEspace(g.espace).catch(() => undefined), email, nom: proprietaire.nom, lien, motif: 'invitation' });
       return repondre(res, 200, { ok: true, lien, envoye, espace: g.espace, expireLe: acces.liens[acces.liens.length - 1].expireLe });
     }
 
@@ -142,12 +155,13 @@ export default async function handler(req: any, res: any) {
       // Un lien par espace où l'adresse a un accès ; chaque espace est un compte à part.
       // Écritures et envois après la réponse quand la plateforme le permet : même délai, que l'adresse ait un accès ou non.
       const envoi = (async () => {
-        for (const { fiche, acces, base } of await accesParEmail<AccesProprietaire>('proprietaire', email)) {
+        for (const { fiche, acces, base, version } of await accesParEmail<AccesProprietaire>('proprietaire', email)) {
           const proprietaire = await lireProprietaire(base, acces.proprietaireId);
           if (!proprietaire || !proprietaireAutorise(acces.proprietaireId)) continue;
           const maintenant = Date.now();
           const jeton = await nouveauJeton();
-          await ecrireAcces(base, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant));
+          // Conditionnelle : n'écrase pas un lien utilisé au même moment (il redeviendrait valable).
+          if (!(await base.remplacerSi(GENRES.proprietaire.collection, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant), version, 'espace-proprietaire'))) continue;
           await envoyerLien({ fiche, email, nom: proprietaire.nom, lien: lienDAcces(req, 'proprietaire', fiche.id, jeton), motif: 'connexion' });
         }
       })().catch((e) => console.error('[espace-proprietaire] lien', e instanceof Error ? e.message : e));
@@ -175,7 +189,7 @@ export default async function handler(req: any, res: any) {
         res.setHeader('Set-Cookie', cookieSessionEfface('proprietaire'));
         return repondre(res, 401, { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
       }
-      const fiche = await ficheEspace(s.espace);
+      const fiche = await ficheEspace(s.espace).catch(() => undefined);
       const entrees = await entreesDuProprietaire(s.base, s.acces.proprietaireId);
       const photos = await photosSignees(entrees.logements, s.espace);
       const mois = moisValide(req.query?.mois) ? String(req.query.mois) : undefined;
@@ -183,7 +197,8 @@ export default async function handler(req: any, res: any) {
         aujourdhui: dateParisISO(),
         mois,
         photo: (l) => photos.get(l.id),
-        conciergerie: { nom: fiche?.nom || 'Label Maison', contacts: contactsEspace(fiche) },
+        // Fiche illisible : Label Maison seulement si c'est explicitement son espace.
+        conciergerie: { nom: fiche?.nom || (estLabelMaison(s.espace) ? 'Label Maison' : 'Votre conciergerie'), contacts: contactsEspace(fiche, s.espace) },
       });
       if (!vue) return repondre(res, 404, { ok: false, erreur: 'Espace introuvable. Contactez votre conciergerie.' });
       return repondre(res, 200, { ok: true, vue });

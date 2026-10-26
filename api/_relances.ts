@@ -11,7 +11,9 @@
 // autre. Envoi avec l'expéditeur de l'espace seulement ; sans expéditeur, la
 // relance reste à valider (le gérant peut appeler ou écrire lui-même).
 // Pour ne jamais envoyer deux fois, la relance est notée « envoyée » AVANT
-// l'envoi, et remise « à valider » si l'envoi échoue.
+// l'envoi, par une écriture conditionnelle (BaseErp.remplacerSi : seulement
+// si elle n'a pas changé depuis sa lecture), et remise « à valider » si
+// l'envoi échoue.
 //
 // Règles pures : src/erp/data/relances.ts. Un fichier préfixé par « _ »
 // n'est pas exposé comme route par Vercel.
@@ -25,12 +27,12 @@ import {
   reglagesRelances,
   relanceEnvoyable,
 } from '../src/erp/data/relances.js';
-import { espaceDe } from '../src/erp/data/acces-externe.js';
+import { accesToujoursDeLaFiche, espaceDe } from '../src/erp/data/acces-externe.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import type { Facture, Proprietaire } from '../src/erp/data/types';
 import type { AccesProprietaire, RelancePaiement, ReglagesRelances } from '../src/erp/data/types-proprietaire';
-import { GENRES, SITE_PAR_DEFAUT, baseAcces, envoyerEmailEspace, expediteurEspace } from './_acces-externe.js';
+import { GENRES, adresseSite, baseAcces, envoyerEmailEspace, expediteurEspace } from './_acces-externe.js';
 import { espacesActifs, type FicheEspace } from './_erp-espaces.js';
 
 const AUTEUR = 'relances-paiement';
@@ -48,45 +50,54 @@ export async function ecrireReglagesRelances(base: BaseErp, brut: Partial<Reglag
 
 export const lireRelances = (base: BaseErp): Promise<RelancePaiement[]> => base.lire<RelancePaiement>(COLLECTION_RELANCES);
 
-/** Adresse du propriétaire : celle de son accès à l'espace, sinon celle de sa fiche. */
+/**
+ * Adresse du propriétaire : celle de son accès à l'espace (tant qu'elle vaut
+ * pour sa fiche, voir accesToujoursDeLaFiche), sinon celle de sa fiche.
+ */
 async function destinataire(base: BaseErp, p: Proprietaire): Promise<string | undefined> {
   const [acces] = await base.lire<AccesProprietaire>(GENRES.proprietaire.collection, [p.id]).catch(() => []);
-  const email = (acces && acces.statut !== 'retire' ? acces.email : '') || p.contact?.email || '';
+  const accesValable = !!acces && acces.statut !== 'retire' && accesToujoursDeLaFiche(acces, { email: p.contact?.email });
+  const email = (accesValable ? acces.email : '') || p.contact?.email || '';
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim()) ? email.trim().toLowerCase() : undefined;
 }
 
 type Envoi = { ok: true; relance: RelancePaiement } | { ok: false; relance?: RelancePaiement; erreur: string };
 
+/** Relance lue avec sa version (maj_le) : toute décision s'écrit SI elle n'a pas changé entre-temps. */
+type RelanceLue = { element: RelancePaiement; version: string };
+
+const DEJA_TRAITEE = 'Cette relance vient d’être traitée (envoyée ou annulée) : rechargez la liste.';
+
 /**
  * Envoi d'une relance encore à valider. `par` : « automatique » (passage
- * quotidien) ou l'adresse du gérant. Jamais deux fois : notée envoyée avant
- * l'envoi, remise à valider (avec le motif) si l'envoi n'a pas pu se faire.
+ * quotidien) ou l'adresse du gérant. Jamais deux fois : notée envoyée AVANT
+ * l'envoi par une écriture conditionnelle (toujours « à valider » au moment
+ * d'écrire : deux validations simultanées, un seul e-mail), remise à valider
+ * (avec le motif) si l'envoi n'a pas pu se faire.
  */
-async function envoyer(base: BaseErp, fiche: FicheEspace | undefined, r: RelancePaiement, f: Facture, jours: number[], par: string): Promise<Envoi> {
+async function envoyer(base: BaseErp, fiche: FicheEspace | undefined, lu: RelanceLue, f: Facture, jours: number[], par: string): Promise<Envoi> {
+  const r = lu.element;
   if (!relanceEnvoyable(r, f)) return { ok: false, relance: r, erreur: 'Cette relance n’est plus à envoyer (facture payée, relance déjà envoyée ou annulée).' };
   const [p] = await base.lire<Proprietaire>('proprietaires', [r.proprietaireId]);
-  const motif = (m: RelancePaiement['motif'], erreur: string): Envoi => ({ ok: false, relance: { ...r, motif: m }, erreur });
-  if (!expediteurEspace(fiche)) {
-    const res = motif('sans_expediteur', 'Pas d’expéditeur d’e-mails pour cet espace : relancez le propriétaire par téléphone ou par votre messagerie.');
-    await base.ecrire(COLLECTION_RELANCES, [res.relance!], AUTEUR);
-    return res;
-  }
+  const motif = async (m: RelancePaiement['motif'], erreur: string): Promise<Envoi> => {
+    const relance: RelancePaiement = { ...r, motif: m };
+    if (!(await base.remplacerSi(COLLECTION_RELANCES, relance, lu.version, AUTEUR))) return { ok: false, relance: r, erreur: DEJA_TRAITEE };
+    return { ok: false, relance, erreur };
+  };
+  if (!expediteurEspace(fiche)) return motif('sans_expediteur', 'Pas d’expéditeur d’e-mails pour cet espace : relancez le propriétaire par téléphone ou par votre messagerie.');
   const email = p ? await destinataire(base, p) : undefined;
-  if (!p || !email) {
-    const res = motif('sans_adresse', 'Pas d’adresse e-mail pour ce propriétaire.');
-    await base.ecrire(COLLECTION_RELANCES, [res.relance!], AUTEUR);
-    return res;
-  }
+  if (!p || !email) return motif('sans_adresse', 'Pas d’adresse e-mail pour ce propriétaire.');
   const envoyee: RelancePaiement = { ...r, statut: 'envoyee', envoyeeLe: new Date().toISOString(), envoyeePar: par, destinataire: email };
   delete envoyee.motif;
-  await base.ecrire(COLLECTION_RELANCES, [envoyee], AUTEUR);
+  if (!(await base.remplacerSi(COLLECTION_RELANCES, envoyee, lu.version, AUTEUR))) return { ok: false, relance: r, erreur: DEJA_TRAITEE };
   const m = messageRelance({
     relance: r,
     dernier: r.niveau >= jours.length,
     facture: f,
     proprietaire: p,
-    conciergerie: fiche?.nom || 'Label Maison',
-    lienEspace: `${SITE_PAR_DEFAUT}${GENRES.proprietaire.page}`,
+    conciergerie: fiche?.nom || 'Votre conciergerie',
+    // Toujours le site fixe (jamais l'adresse de la demande).
+    lienEspace: `${adresseSite()}${GENRES.proprietaire.page}`,
   });
   if (await envoyerEmailEspace(fiche, { to: email, sujet: m.sujet, html: m.html, text: m.texte })) return { ok: true, relance: envoyee };
   const echec: RelancePaiement = { ...r, motif: 'echec_envoi' };
@@ -122,9 +133,12 @@ export async function passageRelances(fiche: FicheEspace, o: { aujourdhui?: stri
     aValider: 0,
     sansObjet: plan.modifiees.filter((r) => r.statut === 'sans_objet').length,
   };
+  // Relues avec leur version : l'envoi automatique passe par la même écriture conditionnelle qu'un gérant.
+  const lues = reglages.mode === 'automatique' && plan.nouvelles.length ? await base.lireVersions<RelancePaiement>(COLLECTION_RELANCES, plan.nouvelles.map((r) => r.id)) : [];
   for (const r of plan.nouvelles) {
     const f = factures.find((x) => x.id === r.factureId)!;
-    if (reglages.mode === 'automatique' && (await envoyer(base, fiche, r, f, reglages.jours, 'automatique')).ok) bilan.envoyees += 1;
+    const lu = lues.find((x) => x.element.id === r.id);
+    if (lu && (await envoyer(base, fiche, lu, f, reglages.jours, 'automatique')).ok) bilan.envoyees += 1;
     else bilan.aValider += 1;
   }
   return bilan;
@@ -133,20 +147,21 @@ export async function passageRelances(fiche: FicheEspace, o: { aujourdhui?: stri
 /** Envoi validé par un gérant de l'espace. */
 export async function envoyerRelance(fiche: FicheEspace | undefined, espace: string, id: string, par: string): Promise<Envoi> {
   const base = baseAcces(espace);
-  const [r] = await base.lire<RelancePaiement>(COLLECTION_RELANCES, [id]);
-  if (!r) return { ok: false, erreur: 'Relance introuvable.' };
-  const [[f], reglages] = await Promise.all([base.lire<Facture>('factures', [r.factureId]), lireReglagesRelances(base)]);
-  return envoyer(base, fiche, r, f, reglages.jours, par);
+  const [lu] = await base.lireVersions<RelancePaiement>(COLLECTION_RELANCES, [id]);
+  if (!lu) return { ok: false, erreur: 'Relance introuvable.' };
+  const [[f], reglages] = await Promise.all([base.lire<Facture>('factures', [lu.element.factureId]), lireReglagesRelances(base)]);
+  return envoyer(base, fiche, lu, f, reglages.jours, par);
 }
 
-/** Annulation par un gérant (une relance à valider seulement). */
+/** Annulation par un gérant (une relance à valider seulement, et toujours à valider au moment d'écrire). */
 export async function annulerRelance(espace: string, id: string, par: string): Promise<Envoi> {
   const base = baseAcces(espace);
-  const [r] = await base.lire<RelancePaiement>(COLLECTION_RELANCES, [id]);
-  if (!r) return { ok: false, erreur: 'Relance introuvable.' };
+  const [lu] = await base.lireVersions<RelancePaiement>(COLLECTION_RELANCES, [id]);
+  if (!lu) return { ok: false, erreur: 'Relance introuvable.' };
+  const r = lu.element;
   if (r.statut !== 'proposee') return { ok: false, relance: r, erreur: 'Seule une relance à valider peut être annulée.' };
   const annulee: RelancePaiement = { ...r, statut: 'annulee', annuleeLe: new Date().toISOString(), annuleePar: par };
-  await base.ecrire(COLLECTION_RELANCES, [annulee], AUTEUR);
+  if (!(await base.remplacerSi(COLLECTION_RELANCES, annulee, lu.version, AUTEUR))) return { ok: false, relance: r, erreur: DEJA_TRAITEE };
   return { ok: true, relance: annulee };
 }
 

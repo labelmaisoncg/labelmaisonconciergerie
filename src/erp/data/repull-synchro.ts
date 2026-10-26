@@ -408,24 +408,61 @@ export class BaseErp {
 
   /** Éléments d'une collection (tous, ou seulement ces ids). */
   async lire<T>(collection: string, ids?: string[]): Promise<T[]> {
-    const res: T[] = [];
+    return (await this.lireVersions<T>(collection, ids)).map((x) => x.element);
+  }
+
+  /**
+   * Éléments avec leur version (colonne maj_le, changée à chaque écriture),
+   * pour une écriture conditionnelle (remplacerSi). Ids encodés dans
+   * l'adresse : un id avec « & », « # » ou « + » ne casse pas la requête.
+   */
+  async lireVersions<T>(collection: string, ids?: string[]): Promise<{ element: T; version: string }[]> {
+    const res: { element: T; version: string }[] = [];
     const espace = await this.espace();
     const dansEspace = espace ? `&espace=eq.${espace}` : '';
-    const filtres = ids ? decouper(ids, 80).map((l) => `&id=in.(${l.map((i) => `"${i.replace(/"/g, '')}"`).join(',')})`) : [''];
+    const filtres = ids ? decouper(ids, 80).map((l) => `&id=in.(${l.map((i) => encodeURIComponent(`"${i.replace(/"/g, '')}"`)).join(',')})`) : [''];
     for (const filtre of filtres) {
       for (let depart = 0; ; depart += 1000) {
         const r = await this.requete(
-          `enregistrements?select=id,donnees${dansEspace}&collection=eq.${encodeURIComponent(collection)}${filtre}&order=id&limit=1000&offset=${depart}`,
+          `enregistrements?select=id,donnees,maj_le${dansEspace}&collection=eq.${encodeURIComponent(collection)}${filtre}&order=id&limit=1000&offset=${depart}`,
           { method: 'GET', entetes: { 'Accept-Profile': 'erp' } },
         );
-        const lignes = (await r.json()) as { id: string; donnees: unknown }[];
+        const lignes = (await r.json()) as { id: string; donnees: unknown; maj_le?: string }[];
         for (const l of lignes) {
-          if (l?.donnees && typeof l.donnees === 'object' && !Array.isArray(l.donnees)) res.push({ ...(l.donnees as object), id: l.id } as T);
+          if (l?.donnees && typeof l.donnees === 'object' && !Array.isArray(l.donnees)) {
+            res.push({ element: { ...(l.donnees as object), id: l.id } as T, version: String(l.maj_le ?? '') });
+          }
         }
         if (lignes.length < 1000) break;
       }
     }
     return res;
+  }
+
+  /**
+   * Remplace un élément SEULEMENT s'il n'a pas changé depuis sa lecture
+   * (même maj_le) : de deux écritures simultanées, une seule passe (la
+   * seconde attend le verrou de la ligne, puis ne la retrouve plus).
+   * Vrai : écrit ; faux : quelqu'un est passé avant.
+   */
+  async remplacerSi(collection: string, element: { id: string }, version: string, auteur: string = AUTEUR_REPULL): Promise<boolean> {
+    if (!version) return false;
+    const espace = await this.espace();
+    const filtres = [
+      `collection=eq.${encodeURIComponent(collection)}`,
+      `id=eq.${encodeURIComponent(element.id)}`,
+      `maj_le=eq.${encodeURIComponent(version)}`,
+      ...(espace ? [`espace=eq.${espace}`] : []),
+    ].join('&');
+    const r = await this.requete(`enregistrements?${filtres}`, {
+      method: 'PATCH',
+      entetes: { 'Content-Type': 'application/json', 'Content-Profile': 'erp', 'Accept-Profile': 'erp', Prefer: 'return=representation' },
+      body: JSON.stringify({ donnees: element, maj_par: `${auteur}#serveur` }),
+    });
+    const lignes = (await r.json().catch(() => [])) as unknown[];
+    const ecrit = Array.isArray(lignes) && lignes.length > 0;
+    if (ecrit) this.ecritures += 1;
+    return ecrit;
   }
 
   /** Upsert par lots (espace + collection + id), fusion côté base. `auteur` : qui écrit (historique de la base). */

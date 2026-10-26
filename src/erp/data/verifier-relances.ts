@@ -78,6 +78,10 @@ function main() {
   verifier(montantTtcFacture(f) === 120_000, 'montant TTC');
   verifier(facturePartagee(f, A) && !facturePartagee(f, B) && !facturePartagee(retirerPartageFacture(f), A), 'partagée : avec son propriétaire seulement, et tant qu’elle l’est');
   verifier(!facturePartagee({ ...f, statut: 'brouillon' }, A) && !facturePartagee({ ...f, statut: 'annulee' }, A), 'brouillon ou annulée : jamais vue');
+  verifier(
+    !facturePartagee({ ...f, destinataire: 'voyageur' }, A) && !factureAPayer({ ...f, destinataire: 'voyageur' }) && !facturePartagee({ ...f, proprietaireId: undefined }, ''),
+    'facture voyageur rattachée au propriétaire, ou sans propriétaire : jamais vue ni relancée',
+  );
   verifier(partagerFacture(retirerPartageFacture(f), 'X').partageeLe === 'X' && partagerFacture(f, 'Y').partageeLe === f.partageeLe, 'partager : date gardée si déjà partagée');
   verifier(statutFactureVue(f, '2026-09-05') === 'a_payer' && statutFactureVue(f, '2026-09-11') === 'en_retard' && statutFactureVue({ ...f, statut: 'payee', payeeLe: '2026-09-12' }, '2026-09-20') === 'payee', 'statut vu : à payer, en retard, payée');
 
