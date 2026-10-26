@@ -204,6 +204,8 @@ export interface ElementProgrammeOps {
 /** Tout ce que voit une personne de l'équipe, et rien d'autre. */
 export interface VueOperations {
   moi: { id: Id; nom: string; role: RoleOperations };
+  /** Conciergerie de l'espace qui a invité (nom affiché en tête de l'espace). */
+  conciergerie?: { nom: string };
   aujourdhui: DateISO;
   logements: LogementOps[];
   sejours: SejourOps[];

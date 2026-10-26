@@ -37,7 +37,7 @@ export interface EspaceOpsProps {
  * pôle (quatre pour l'agent), barre du bas sur téléphone comme une app,
  * onglets dans l'en-tête sur ordinateur.
  */
-export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, apercu, conciergerie = 'Label Maison' }: EspaceOpsProps) {
+export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, apercu, conciergerie = vue.conciergerie?.nom ?? 'Label Maison' }: EspaceOpsProps) {
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' } | null>(null);
   const pole = vue.moi.role === 'pole';
   const onglets = ONGLETS.filter((o) => !o.pole || pole);

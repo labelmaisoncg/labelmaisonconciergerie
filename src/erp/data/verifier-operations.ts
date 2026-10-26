@@ -1,12 +1,16 @@
 /**
- * Auto-contrôle de l'espace Opérations (sans réseau ni navigateur) :
+ * Auto-contrôle de l'espace opérations (sans réseau ni navigateur) :
  *   - priorités et ordre de travail des incidents (urgents d'abord) ;
  *   - contrôles qualité proposés après un départ, échéance et retard ;
  *   - point « à revoir » → incident rattaché au logement, au séjour et au contrôle ;
  *   - absence : logements et incidents passent au remplaçant, aperçu avant
  *     confirmation, retour au titulaire après la période ;
- *   - droits par rôle, cinquième onglet du téléphone ;
- *   - notification « Urgence », jeu de démo, recherche.
+ *   - vue d'une personne : ses logements seulement, voyageurs en « Prénom N. »,
+ *     consignes d'accès le jour même ; responsable de pôle et agent de terrain ;
+ *   - actions : périmètre, droits par rôle, collections écrites, photos,
+ *     « ce logement n'est pas à moi », contrôle et ses incidents ;
+ *   - invitation dans l'espace qui invite, session d'un genre refusée pour l'autre ;
+ *   - notification « Urgence », jeu de démo.
  *
  * Lancement (Node 18+) :
  *   node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platform=node \
@@ -20,10 +24,8 @@ import {
   POINTS_CONTROLE_DEFAUT,
   apercuAbsence,
   assigneLe,
-  cinquiemeOnglet,
   controlesAFaire,
   controlesEnRetard,
-  droitsOperations,
   echeanceApresDepart,
   graviteDe,
   incidentDepuisPoint,
@@ -41,8 +43,12 @@ import {
   type DonneesOps,
 } from './operations';
 import { creerSeed } from './seed';
-import type { AbsenceMembre, ControleQualite, Incident, Logement, Reservation } from './types';
-import { construireIndex } from '../layout/recherche/moteur';
+import type { Incident, Logement, Reservation } from './types';
+import type { AbsenceMembre, ControleQualite } from './types-operations';
+import { COLLECTIONS_OPS, appliquerAction, avecEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
+import { inviterMembre } from './operations-acces';
+import { lireSessionExterne, signerSessionExterne } from './acces-externe';
+import { ID_LABEL_MAISON } from './espaces';
 
 let echecs = 0;
 let reussis = 0;
@@ -86,9 +92,9 @@ const base = (o: Partial<DonneesOps> = {}): DonneesOps => ({
   incidents: [],
   missions: [],
   equipe: [
-    { id: 'A', nom: 'Alice Martin', role: 'superviseur', actif: true },
-    { id: 'B', nom: 'Bruno Petit', role: 'technicien', actif: true },
-    { id: 'C', nom: 'Chloé Roux', role: 'accueil', actif: true },
+    { id: 'A', nom: 'Alice Martin', role: 'pole', logementIds: ['L1', 'L2', 'L3'], actif: true },
+    { id: 'B', nom: 'Bruno Petit', role: 'agent', logementIds: ['L1'], actif: true },
+    { id: 'C', nom: 'Chloé Roux', role: 'agent', logementIds: ['L3'], actif: true },
   ],
   affectations: [
     { id: 'L1', responsableId: 'A', remplacantId: 'B' },
@@ -257,17 +263,150 @@ section('Absences et remplaçants');
   verifier(verifierAbsence(absenceA, [absenceA]) === null, 'modifier une absence : ne se chevauche pas elle-même');
 }
 
-/* ----------------------------------------------------------------- droits */
+/* ------------------------------------------------------- vue d'une personne */
 
-section('Droits par rôle et barre du téléphone');
+const entrees = (o: Partial<EntreesOperations> = {}): EntreesOperations => ({
+  ...base({
+    logements: [
+      { ...logement('L1'), fiche: { heureArrivee: '16:00', heureDepart: '11:00', acces: 'Boîte à clés, code 1234.' } } as unknown as Logement,
+      logement('L2'),
+      { ...logement('L3'), fiche: { heureArrivee: '15:00', heureDepart: '10:00', acces: 'Digicode 9876.' } } as unknown as Logement,
+      logement('L4', 'sorti'),
+      logement('L9'),
+    ],
+    reservations: [
+      { ...resa('r-L1', 'L1', J, '2026-10-18', 'confirmee'), voyageur: { nom: 'Jean-Pierre Dupont', nbPersonnes: 3, email: 'jp@exemple.invalid', telephone: '06 00 00 00 00' } } as unknown as Reservation,
+      resa('r-L3', 'L3', '2026-10-20', '2026-10-22', 'confirmee'),
+      resa('r-L9', 'L9', J, '2026-10-17', 'confirmee'),
+    ],
+    incidents: [
+      incident('i-B', { logementId: 'L1', assigneA: 'B' }),
+      incident('i-A', { logementId: 'L2', assigneA: 'A', gravite: 'haute' }),
+      incident('i-C', { logementId: 'L3', assigneA: 'C' }),
+      incident('i-L9', { logementId: 'L9' }),
+    ],
+    equipe: base().equipe.map((m) => ({ ...m, email: `${m.id.toLowerCase()}@exemple.fr` })),
+  }),
+  signalementsLogement: [],
+  ...o,
+});
+
+section('Vue d’une personne : ses logements, rien d’autre');
 {
-  verifier(JSON.stringify(droitsOperations('gerant')) === '{"voir":true,"agir":true}', 'gérant : voit et agit');
-  verifier(JSON.stringify(droitsOperations('operations')) === '{"voir":true,"agir":true}', 'opérations : voit et agit');
-  verifier(JSON.stringify(droitsOperations('lecture')) === '{"voir":true,"agir":false}', 'lecture seule : consulte seulement');
-  verifier(JSON.stringify(droitsOperations('prestataire')) === '{"voir":false,"agir":false}', 'prestataire : pas d’accès');
-  verifier(!droitsOperations('gerant', true).agir, 'compte en lecture seule : rien ne s’écrit');
-  verifier(cinquiemeOnglet('operations') === 'operations' && cinquiemeOnglet('gerant') === 'crm' && cinquiemeOnglet('lecture') === 'crm', '5ᵉ onglet : Opérations pour le rôle opérations, CRM sinon');
-  verifier(cinquiemeOnglet('gerant', 'operations') === 'operations' && cinquiemeOnglet('operations', 'crm') === 'crm', 'le choix de l’appareil l’emporte');
+  const e = entrees();
+  verifier([...perimetre(e, 'A')].sort().join() === 'L1,L2,L3' && [...perimetre(e, 'B')].join() === 'L1', 'périmètre : les logements confiés par le gérant, encore gérés');
+  verifier(perimetre({ ...e, equipe: e.equipe.map((m) => (m.id === 'B' ? { ...m, actif: false } : m)) }, 'B').size === 0, 'plus dans l’équipe : plus rien');
+  const vA = vueOperations(e, 'A', { aujourdhui: J })!;
+  const texteA = JSON.stringify(vA);
+  verifier(vA.logements.map((l) => l.id).join() === 'L1,L2,L3' && !texteA.includes('L9') && !texteA.includes('L4'), 'pôle : ni logement d’un autre périmètre, ni logement sorti');
+  verifier(vA.incidents.map((i) => i.id).sort().join() === 'i-A,i-B,i-C', 'pôle : tous les incidents de ses logements');
+  const sejour = vA.sejours.find((x) => x.id === 'r-L1');
+  verifier(!/Dupont|jp@|06 00 00/.test(texteA) && sejour?.voyageur === 'Jean-Pierre D.' && sejour.nbPersonnes === 3, 'voyageur : « Prénom N. » et nombre de personnes, ni nom, ni contact');
+  verifier(vA.logements.find((l) => l.id === 'L1')?.acces === 'Boîte à clés, code 1234.' && !vA.logements.find((l) => l.id === 'L3')?.acces, 'accès : le jour où il y a quelque chose à faire (arrivée sur L1), pas avant (L3)');
+  verifier(vA.equipe.map((m) => m.id).join() === 'A,B,C' && !texteA.includes('@'), 'pôle : les personnes de ses logements, sans adresse e-mail');
+  const vB = vueOperations(e, 'B', { aujourdhui: J })!;
+  verifier(vB.logements.map((l) => l.id).join() === 'L1' && vB.incidents.map((i) => i.id).join() === 'i-B', 'agent : son logement et ses incidents seulement');
+  verifier(vB.equipe.length === 1 && vB.absences.length === 0 && vB.affectations.length === 0, 'agent : ni équipe, ni absences, ni affectations');
+  verifier(!/Chloé|L3|Digicode/.test(JSON.stringify(vB)), 'agent : rien des autres logements ni des autres personnes');
+  verifier(vueOperations(e, 'Z', { aujourdhui: J }) === null, 'personne inconnue : pas de vue');
+  const signe = vueOperations(
+    { ...e, incidents: [incident('i-p', { logementId: 'L1', assigneA: 'B', preuves: ['stockage://erp-fichiers/operations/B/a.jpg', 'stockage://erp-fichiers/autre.jpg'] })] },
+    'B',
+    { aujourdhui: J, photo: (u) => (u.includes('/operations/') ? `https://signe.test/${u.slice(-5)}` : undefined) },
+  )!;
+  verifier(signe.incidents[0].photos.join() === 'https://signe.test/a.jpg', 'photos : liens signés seulement, les autres retirées');
+}
+
+/* ----------------------------------------------------------------- actions */
+
+section('Actions : périmètre, droits, écritures');
+{
+  let n = 0;
+  const ctx: ContexteAction = { aujourdhui: J, maintenant: `${J}T09:00:00.000Z`, nouvelId: (p) => `${p}-${++n}`, photoAcceptee: (u) => u.startsWith('stockage://erp-fichiers/operations/') };
+  const e = entrees();
+  const ecrites = new Set<string>();
+  const agir = (membre: string, a: ActionOperations, x = e) => {
+    const r = appliquerAction(x, membre, a, ctx);
+    if (r.ok) r.ecritures.forEach((w) => ecrites.add(w.collection));
+    return r;
+  };
+  const element = <T,>(r: ReturnType<typeof agir>, collection = r.ok ? r.ecritures[0]?.collection : undefined) =>
+    (r.ok ? r.ecritures.find((w) => w.collection === collection)?.element : undefined) as T | undefined;
+
+  let r = agir('B', { type: 'signaler', logementId: 'L3', urgent: true, description: 'Fuite d’eau sous l’évier.' });
+  verifier(!r.ok && r.statut === 403, 'signaler hors de ses logements : refusé');
+  r = agir('B', { type: 'signaler', logementId: 'L1', urgent: true, description: 'court' });
+  verifier(!r.ok && r.statut === 400, 'description trop courte : refusée');
+  r = agir('B', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite d’eau sous l’évier.', photos: ['https://ailleurs.test/x.jpg'] });
+  verifier(!r.ok, 'photo venue d’ailleurs : refusée');
+  r = agir('B', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite d’eau sous l’évier.', reservationId: 'r-L9', photos: ['stockage://erp-fichiers/operations/B/f.jpg'] });
+  const cree = element<Incident>(r);
+  verifier(r.ok && r.ecritures.length === 1 && r.ecritures[0].collection === 'incidents', 'signaler : un incident, rien d’autre');
+  verifier(
+    cree?.gravite === 'haute' && cree.signalePar === 'B' && cree.assigneA === 'A' && !cree.reservationId && cree.preuves.length === 1 && r.ok && r.aNotifier.includes(cree.id),
+    'urgent, signalé par l’agent, confié au responsable du logement, séjour d’un autre logement ignoré, gérant prévenu',
+  );
+
+  r = agir('B', { type: 'assigner', incidentId: 'i-B', membreId: 'B' });
+  verifier(!r.ok && r.statut === 403, 'agent : confier un incident, réservé au pôle');
+  r = agir('B', { type: 'resoudre', incidentId: 'i-B' });
+  verifier(!r.ok && r.statut === 403, 'agent : clore un incident, réservé au pôle');
+  r = agir('B', { type: 'prendre', incidentId: 'i-B' });
+  verifier(element<Incident>(r)?.statut === 'en_cours', 'agent : prend en charge un incident qui lui est confié');
+  r = agir('B', { type: 'noter', incidentId: 'i-C', texte: 'Vu.' });
+  verifier(!r.ok && r.statut === 404, 'agent : incident d’un autre logement introuvable');
+  r = agir('A', { type: 'assigner', incidentId: 'i-B', membreId: 'C' });
+  verifier(!r.ok, 'pôle : confier à quelqu’un qui ne suit pas le logement, refusé');
+  r = agir('A', { type: 'assigner', incidentId: 'i-B', membreId: 'A' });
+  verifier(element<Incident>(r)?.assigneA === 'A' && r.ok && r.aNotifier.includes('i-B'), 'pôle : confier, la personne est prévenue');
+  r = agir('A', { type: 'resoudre', incidentId: 'i-A', texte: 'Plombier passé.' });
+  const resolu = element<Incident>(r);
+  verifier(resolu?.statut === 'resolu' && resolu.resoluLe === J && resolu.historique?.at(-1)?.texte === 'Résolu : Plombier passé.', 'pôle : clore, noté dans l’historique');
+  r = agir('A', { type: 'priorite', incidentId: 'i-C', urgent: true });
+  verifier(element<Incident>(r)?.gravite === 'haute' && r.ok && r.aNotifier.includes('i-C'), 'pôle : passer en urgent, l’équipe est prévenue');
+
+  r = agir('B', { type: 'pas-a-moi', logementId: 'L1', motif: 'Je ne m’en occupe plus.' });
+  verifier(r.ok && r.ecritures[0].collection === 'signalementsLogement' && element<{ statut: string }>(r)?.statut === 'ouvert', '« ce logement n’est pas à moi » : un signalement ouvert pour le gérant');
+  const apres = r.ok ? avecEcritures(e, r.ecritures) : e;
+  const vueApres = vueOperations(apres, 'B', { aujourdhui: J })!;
+  verifier(vueApres.logements.length === 1 && vueApres.logements[0].signale === true, 'le logement reste dans son espace, marqué « signalé »');
+  r = agir('B', { type: 'pas-a-moi', logementId: 'L1' }, apres);
+  verifier(r.ok && r.ecritures.length === 0, 'deuxième signalement : rien de plus');
+
+  r = agir('B', { type: 'absence', membreId: 'B', du: J, au: '2026-10-20' });
+  verifier(!r.ok && r.statut === 403, 'agent : absences, réservées au pôle');
+  r = agir('A', { type: 'absence', membreId: 'B', du: J, au: '2026-10-20', remplacantId: 'A' });
+  const absence = element<AbsenceMembre>(r);
+  verifier(absence?.membreId === 'B' && absence.remplacantId === 'A', 'pôle : absence notée avec son remplaçant');
+  const avecAbsence = r.ok ? avecEcritures(e, r.ecritures) : e;
+  r = agir('A', { type: 'absence-annuler', id: absence?.id ?? '' }, avecAbsence);
+  verifier(!!element<AbsenceMembre>(r)?.annuleeLe, 'pôle : absence annulée (gardée pour l’historique)');
+  r = agir('A', { type: 'affectation', logementId: 'L1', responsableId: 'B', remplacantId: 'C' });
+  verifier(!r.ok, 'remplaçant qui ne suit pas le logement : refusé');
+  r = agir('A', { type: 'affectation', logementId: 'L9', responsableId: 'A' });
+  verifier(!r.ok && r.statut === 403, 'affectation hors de ses logements : refusée');
+  r = agir('B', { type: 'affectation', logementId: 'L1', responsableId: 'B' });
+  verifier(!r.ok && r.statut === 403, 'agent : affectations, réservées au pôle');
+
+  const ctl = nouveauControle(e, { id: 'ctl-x', logementId: 'L1', echeance: J });
+  const avecCtl = { ...e, controles: [ctl] };
+  r = agir(
+    'B',
+    { type: 'controle', cle: 'ctl-x', points: ctl.points.map((p, k) => ({ id: p.id, etat: k === 0 ? 'a_revoir' : 'ok', ...(k === 0 ? { commentaire: 'Traces.' } : {}) })), note: 3, terminer: true, incidentsPour: ['p1'] },
+    avecCtl,
+  );
+  const fait = element<ControleQualite>(r, 'controles');
+  const issu = element<Incident>(r, 'incidents');
+  verifier(fait?.statut === 'fait' && fait.parId === 'B' && fait.points[0].incidentId === issu?.id && issu?.controleId === 'ctl-x', 'contrôle : fait par l’agent, un incident relié au point à revoir');
+  r = agir('B', { type: 'controle', cle: 'ctl-x', points: [], terminer: true }, avecCtl);
+  verifier(!r.ok, 'contrôle incomplet : refusé');
+  r = agir('B', { type: 'controle', cle: 'ctl-x', points: [{ id: 'p1', etat: 'ok', photo: 'https://ailleurs.test/p.jpg' }], terminer: false }, avecCtl);
+  verifier(!r.ok, 'contrôle : photo venue d’ailleurs refusée');
+
+  verifier(
+    [...ecrites].every((c) => (COLLECTIONS_OPS as readonly string[]).includes(c)) && ['incidents', 'controles', 'absences', 'signalementsLogement'].every((c) => ecrites.has(c)),
+    `collections écrites : opérations seulement, jamais réservations ni logements (${[...ecrites].join(', ')})`,
+  );
 }
 
 /* ---------------------------------------------------------- notifications */
@@ -280,7 +419,7 @@ section('Notification « Urgence »');
   verifier(notificationUrgence(incident('r', { gravite: 'haute', statut: 'resolu' }), 'Studio') === null, 'incident résolu : rien');
   const u = notificationUrgence(incident('u', { gravite: 'haute' }), 'Studio Évry');
   verifier(u?.cle === 'urgence-u-personne' && u.urgente && u.variantes[0].type === 'urgence' && u.variantes[0].titre === 'Urgence · Studio Évry', 'urgent : notification immédiate « Urgence · logement »');
-  verifier(u?.variantes[0].url === '/erp/operations/incidents?id=u', 'le toucher ouvre l’incident');
+  verifier(u?.variantes[0].url === '/erp/logements/L1?onglet=historique', 'le toucher ouvre l’historique du logement (ses incidents)');
   const a = notificationUrgence(incident('a', { assigneA: 'B' }), 'T2', 'Bruno Petit');
   verifier(a?.cle === 'urgence-a-B' && !a.urgente && a.variantes[0].titre === 'Incident confié à Bruno P. · T2', 'confié : une notification par personne, nom abrégé');
   verifier(notificationUrgence(incident('a', { assigneA: 'C' }), 'T2', 'Chloé Roux')?.cle === 'urgence-a-C', 'confié à quelqu’un d’autre : nouvelle clé, nouvelle notification');
@@ -291,7 +430,8 @@ section('Notification « Urgence »');
 section('Jeu de démo et intégration');
 {
   const s = creerSeed();
-  verifier(s.equipe.length === 3 && s.equipe.every((m) => /^06 39 98 /.test(m.telephone ?? '')), '3 membres fictifs, numéros réservés à la fiction');
+  verifier(s.equipe.length === 3 && s.equipe.every((m) => /^06 39 98 /.test(m.telephone ?? '') && /@exemple\.fr$/.test(m.email ?? '')), '3 membres fictifs, numéros et adresses réservés à la fiction');
+  verifier(s.equipe.filter((m) => m.role === 'pole').length === 1 && s.accesOperations.length === 2 && s.signalementsLogement.length === 1, 'démo : une responsable de pôle, deux accès, un « pas à moi »');
   verifier(s.absences.length === 1 && !!s.absences[0].remplacantId, '1 absence avec son remplaçant');
   verifier(s.controles.length === 2 && controlesEnRetard(s, DATE_DEMO).filter((c) => c.controle).length === 1, '2 contrôles enregistrés, dont 1 en retard');
   const nouveaux = s.incidents.filter((i) => i.id === 'inc-12' || i.id === 'inc-13');
@@ -316,10 +456,28 @@ section('Jeu de démo et intégration');
 
   // Accueil « À faire » : mêmes règles (urgencesOuvertes, controlesEnRetard).
   verifier(urgencesOuvertes(s.incidents).length >= 1 && controlesEnRetard(s, DATE_DEMO).length >= 1, 'Accueil « À faire » : au moins une urgence et un contrôle en retard dans la démo');
-  const index = construireIndex(s);
-  verifier(index.some((e) => e.type === 'membre' && e.to.startsWith('/erp/operations/equipe')), 'recherche : l’équipe');
-  verifier(index.filter((e) => e.type === 'incident').every((e) => e.to.startsWith('/erp/operations/incidents?id=')), 'recherche : les incidents ouvrent l’espace Opérations');
 }
 
-console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
-(globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+/* --------------------------------------------------- invitation et session */
+
+async function invitationEtSession() {
+  section('Invitation dans l’espace qui invite, session par genre');
+  const AUTRE = '4c4d0000-0000-4000-8000-0000000000aa';
+  const a = inviterMembre(undefined, { membreId: 'eq-1', espace: AUTRE, email: ' Agent@Exemple.fr ', par: 'g', maintenantMs: 0 });
+  verifier(a.id === 'eq-1' && a.espace === AUTRE && a.email === 'agent@exemple.fr' && a.statut === 'invite' && a.version === 1, 'invitation : rangée dans l’espace du gérant, adresse en minuscules');
+  verifier(inviterMembre(undefined, { membreId: 'eq-2', email: 'x@exemple.fr', par: 'g', maintenantMs: 0 }).espace === ID_LABEL_MAISON, 'sans espace (base d’avant) : Label Maison');
+  const autre = inviterMembre({ ...a, statut: 'actif' }, { membreId: 'eq-1', espace: AUTRE, email: 'autre@exemple.fr', par: 'g', maintenantMs: 1 });
+  verifier(autre.version === 2 && autre.statut === 'invite' && autre.liens.length === 0, 'autre adresse : sessions fermées, liens oubliés');
+
+  const secret = 'secret-de-test-operations-0123456789-abcdef';
+  const cookie = await signerSessionExterne(secret, { k: 'operations', p: 'eq-1', e: AUTRE, v: 1, exp: 2_000_000_000 });
+  verifier((await lireSessionExterne(secret, cookie, 'operations', 1_000))?.e === AUTRE, 'session opérations lue avec son espace');
+  verifier((await lireSessionExterne(secret, cookie, 'proprietaire', 1_000)) === null, 'session opérations refusée côté propriétaire');
+  const proprio = await signerSessionExterne(secret, { k: 'proprietaire', p: 'pro-1', e: ID_LABEL_MAISON, v: 1, exp: 2_000_000_000 });
+  verifier((await lireSessionExterne(secret, proprio, 'operations', 1_000)) === null, 'session propriétaire refusée côté opérations');
+}
+
+invitationEtSession().then(() => {
+  console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+});

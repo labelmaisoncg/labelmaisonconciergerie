@@ -123,6 +123,8 @@ export function restreindre(e: EntreesOperations, membreId: Id): EntreesOperatio
 
 export interface OptionsVueOps {
   aujourdhui: DateISO;
+  /** Nom de la conciergerie (espace qui a invité) ; Label Maison par défaut. */
+  conciergerie?: string;
   /** Adresse affichable d'une photo (lien signé côté serveur) ; sans : telle quelle. */
   photo?: (url: string) => string | undefined;
 }
@@ -247,6 +249,7 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
 
   return {
     moi: { id: moi.id, nom: moi.nom, role: moi.role },
+    conciergerie: { nom: o.conciergerie || 'Label Maison' },
     aujourdhui,
     logements,
     sejours,

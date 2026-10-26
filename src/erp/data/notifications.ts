@@ -331,7 +331,7 @@ export function synchroEnEchec(aujourdhui: string, raison: string): GroupeNotifi
  * personne assignée (rien pour un incident normal sans personne, ni résolu).
  */
 export function notificationUrgence(
-  i: Pick<Incident, 'id' | 'gravite' | 'statut' | 'description' | 'assigneA'>,
+  i: Pick<Incident, 'id' | 'logementId' | 'gravite' | 'statut' | 'description' | 'assigneA'>,
   logement: string,
   assigne?: string,
 ): GroupeNotification | null {
@@ -346,7 +346,7 @@ export function notificationUrgence(
         type: 'urgence',
         titre: urgent ? `Urgence · ${logement || 'un logement'}` : `Incident confié à ${qui || 'l’équipe'} · ${logement || 'un logement'}`,
         corps: `${extrait(i.description, 120)}${urgent && qui ? ` (${qui})` : ''}`,
-        url: `/erp/operations/incidents?id=${encodeURIComponent(i.id)}`,
+        url: `/erp/logements/${encodeURIComponent(i.logementId)}?onglet=historique`,
       },
     ],
   };

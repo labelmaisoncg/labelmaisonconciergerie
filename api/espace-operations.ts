@@ -63,10 +63,11 @@ const tropDePhotos = freinEnvois(60, 15 * 60_000);
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace opérations, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
-/** La vue de la personne, photos signées. */
+/** La vue de la personne, photos signées, au nom de la conciergerie de son espace. */
 async function vueSignee(espace: string, e: Awaited<ReturnType<typeof entreesOps>>, membreId: string) {
   const aujourdhui = dateParisISO();
-  const brute = vueOperations(e, membreId, { aujourdhui });
+  const conciergerie = (await ficheEspace(espace).catch(() => undefined))?.nom;
+  const brute = vueOperations(e, membreId, { aujourdhui, conciergerie });
   if (!brute) return null;
   const urls = [
     ...brute.logements.map((l) => l.photo ?? ''),
@@ -74,7 +75,7 @@ async function vueSignee(espace: string, e: Awaited<ReturnType<typeof entreesOps
     ...[...brute.controles.map((c) => c.controle), ...brute.historiqueControles].flatMap((c) => (c?.points ?? []).map((p) => p.photo ?? '')),
   ].filter(Boolean);
   const photo = await signeurPhotos(espace, urls);
-  return vueOperations(e, membreId, { aujourdhui, photo });
+  return vueOperations(e, membreId, { aujourdhui, conciergerie, photo });
 }
 
 export default async function handler(req: any, res: any) {
