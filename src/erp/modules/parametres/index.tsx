@@ -5,7 +5,7 @@ import Integrations from './Integrations';
 import Donnees from './Donnees';
 import Entreprise from './Entreprise';
 
-/** Module Paramètres : utilisateurs et rôles, intégrations, données (export), entreprise. */
+/** Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation), la société et sa sauvegarde. */
 export default function Module() {
   return (
     <>
@@ -13,17 +13,27 @@ export default function Module() {
       <Tabs
         label="Sections des paramètres"
         onglets={[
-          { cle: 'utilisateurs', libelle: 'Votre équipe', to: '/erp/parametres', end: true },
-          { cle: 'integrations', libelle: 'Services connectés', to: '/erp/parametres/integrations' },
-          { cle: 'donnees', libelle: 'Sauvegarde', to: '/erp/parametres/donnees' },
-          { cle: 'entreprise', libelle: 'Votre société', to: '/erp/parametres/entreprise' },
+          { cle: 'utilisateurs', libelle: 'Équipe', to: '/erp/parametres', end: true },
+          { cle: 'plateformes', libelle: 'Plateformes', to: '/erp/parametres/plateformes' },
+          { cle: 'societe', libelle: 'Société', to: '/erp/parametres/societe' },
         ]}
       />
       <Routes>
         <Route index element={<Utilisateurs />} />
-        <Route path="integrations" element={<Integrations />} />
-        <Route path="donnees" element={<Donnees />} />
-        <Route path="entreprise" element={<Entreprise />} />
+        <Route path="plateformes" element={<Integrations />} />
+        <Route
+          path="societe"
+          element={
+            <div className="flex max-w-3xl flex-col gap-4">
+              <Entreprise />
+              <Donnees />
+            </div>
+          }
+        />
+        {/* Anciennes adresses. */}
+        <Route path="integrations" element={<Navigate to="/erp/parametres/plateformes" replace />} />
+        <Route path="donnees" element={<Navigate to="/erp/parametres/societe" replace />} />
+        <Route path="entreprise" element={<Navigate to="/erp/parametres/societe" replace />} />
         <Route path="*" element={<Navigate to="/erp/parametres" replace />} />
       </Routes>
     </>

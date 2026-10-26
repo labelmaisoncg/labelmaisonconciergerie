@@ -55,11 +55,11 @@ export default function Donnees() {
   };
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <>
       <Card>
         <CardHeader
-          titre="Vos données"
-          description={d.mode === 'demo' ? 'Démonstration : enregistrées dans ce navigateur uniquement.' : 'Enregistrées en ligne et partagées avec l’équipe.'}
+          titre="Sauvegarde"
+          description={d.mode === 'demo' ? 'Démonstration : données enregistrées dans ce navigateur uniquement.' : 'Vos données sont enregistrées en ligne et partagées avec l’équipe. Vous pouvez aussi en garder une copie.'}
         />
         {fait && (
           <Alert tone="succes" className="mb-3">
@@ -77,9 +77,9 @@ export default function Donnees() {
           )}
         </div>
       </Card>
-      <Repli titre="Ce que contient l’ERP" className="self-start">
-        <dl className="grid grid-cols-2 gap-x-6 text-[13px]">
-          {(Object.keys(LIBELLES_COLLECTIONS) as NomCollection[]).map((c) => (
+      <Repli titre="Ce que contient la sauvegarde">
+        <dl className="grid gap-x-6 text-[13px] sm:grid-cols-2">
+          {(Object.keys(LIBELLES_COLLECTIONS) as NomCollection[]).filter((c) => d.donnees[c].length > 0).map((c) => (
             <div key={c} className="flex justify-between border-b border-(--lm-bord) py-1.5">
               <dt className="text-(--lm-encre-2)">{LIBELLES_COLLECTIONS[c]}</dt>
               <dd className="lm-chiffres font-medium">{nombre(d.donnees[c].length)}</dd>
@@ -104,6 +104,6 @@ export default function Donnees() {
           </>
         }
       />
-    </div>
+    </>
   );
 }
