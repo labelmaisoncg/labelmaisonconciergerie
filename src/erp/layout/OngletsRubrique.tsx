@@ -39,7 +39,7 @@ export function OngletsRubrique() {
           >
             {m.label}
             {n > 0 && (
-              <span className="lm-chiffres rounded-full bg-(--lm-or) px-1.5 text-[11px] font-semibold text-white">
+              <span className="lm-chiffres rounded-full bg-(--lm-or-texte) px-1.5 text-[11px] font-semibold text-white">
                 {n}
                 <span className="sr-only"> à regarder</span>
               </span>

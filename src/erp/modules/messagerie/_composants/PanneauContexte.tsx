@@ -10,6 +10,7 @@ import { StatusBadge, cn } from '../../../ui';
 import { dateJour, pluriel, relatif } from '../../../data/format';
 import type { FilMessages, Logement, Reservation } from '../../../data/types';
 import { photosLogement } from '../../logements/_composants/stats';
+import { VisuelLogement } from '../../logements/_composants/Visuel';
 import { completudeFiche, eligibiliteCodes } from './logique';
 
 interface Props {
@@ -96,7 +97,7 @@ export function PanneauContexte({ fil, logement, reservation, enTiroir }: Props)
       <Bloc titre="Logement" enTiroir={enTiroir}>
         {logement ? (
           <div className="space-y-2.5">
-            {photo && <img src={photo} alt="" loading="lazy" className="aspect-[16/10] w-full rounded-xl object-cover" />}
+            {photo && logement && <VisuelLogement logement={logement} decoratif className="aspect-[16/10] w-full rounded-xl" />}
             <div>
               <Link to={`/erp/logements/${logement.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
                 {logement.nom}

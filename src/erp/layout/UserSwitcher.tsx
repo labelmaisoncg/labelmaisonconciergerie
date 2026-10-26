@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ChevronDown, LogOut, Settings } from 'lucide-react';
 import { useErp } from '../data/store';
 import { LIBELLES } from '../data/libelles';
 import { pluriel } from '../data/format';
 import { Avatar } from '../ui';
 
-/** Menu du membre connecté : nom, rôle, adresse, déconnexion. */
+/** Menu du membre connecté : nom, rôle, adresse, Paramètres (le seul accès sur téléphone), déconnexion. */
 export function UserSwitcher() {
   const { utilisateur, seDeconnecter, synchro, mode } = useErp();
   const [ouvert, setOuvert] = useState(false);
@@ -45,6 +46,7 @@ export function UserSwitcher() {
         type="button"
         aria-haspopup="menu"
         aria-expanded={ouvert}
+        aria-label={`${utilisateur.nom} : compte et paramètres`}
         onClick={() => setOuvert((o) => !o)}
         className="flex h-9 items-center gap-2 rounded-lg px-1.5 hover:bg-(--lm-surface-2)"
       >
@@ -67,6 +69,15 @@ export function UserSwitcher() {
             </span>
           </div>
           <div className="my-1 border-t border-(--lm-bord)" />
+          <Link
+            to="/erp/parametres"
+            role="menuitem"
+            onClick={() => setOuvert(false)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
+          >
+            <Settings className="size-4" aria-hidden />
+            Paramètres
+          </Link>
           <button
             type="button"
             role="menuitem"

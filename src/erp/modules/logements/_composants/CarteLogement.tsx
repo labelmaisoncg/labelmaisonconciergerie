@@ -25,14 +25,16 @@ function prochainEvenement(s: StatsLogement): string {
  */
 export function CarteLogement({ logement: l, stats }: { logement: Logement; stats: StatsLogement }) {
   const enLocation = l.statut === 'actif';
-  const prix = enLocation ? prixNuit(l) : undefined;
+  const prix = enLocation ? prixNuit(l, { adr90: stats.adr90 }) : undefined;
   const detailPrix = !prix
     ? ''
     : prix.source === 'soir'
       ? `Prix de ce soir, lu sur les plateformes le ${dateHeure(prix.luLe!)}`
       : prix.source === 'prochaine'
         ? `Prix de la nuit du ${jourMois(prix.date!)}, lu sur les plateformes le ${dateHeure(prix.luLe!)}`
-        : 'Prix de base de l’annonce';
+        : prix.source === 'base'
+          ? 'Prix de base de l’annonce'
+          : 'Prix moyen encaissé par nuit sur les séjours des 90 derniers jours, hors ménage';
   const taille = [
     l.ville,
     // « Autre » n'apprend rien : le type n'apparaît que s'il est connu.
@@ -71,6 +73,7 @@ export function CarteLogement({ logement: l, stats }: { logement: Logement; stat
           (prix ? (
             <p className="mt-1.5 text-(--lm-encre)" title={detailPrix}>
               <span className="lm-chiffres font-semibold">{euros(prix.centimes, true)}</span> par nuit
+              {prix.source === 'constate' && <span className="text-(--lm-encre-2)"> · moyenne constatée</span>}
               <span className="sr-only"> ({detailPrix})</span>
             </p>
           ) : (

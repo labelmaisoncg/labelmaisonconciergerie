@@ -35,7 +35,7 @@ export function Sidebar({ onNaviguer, className }: SidebarProps) {
           <Icone className="size-[18px] shrink-0" aria-hidden />
           <span className="flex-1 truncate">{g.libelle}</span>
           {n > 0 && (
-            <span className="lm-chiffres rounded-full bg-(--lm-or) px-1.5 py-px text-[11px] font-semibold text-white">
+            <span className="lm-chiffres rounded-full bg-(--lm-or-texte) px-1.5 py-px text-[11px] font-semibold text-white">
               {n}
               <span className="sr-only"> à regarder</span>
             </span>

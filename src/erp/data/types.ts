@@ -204,6 +204,12 @@ export interface Logement {
   annonces: Annonce[];
   checklistLancement: ElementChecklistLancement[];
   photoUrl?: string;
+  /**
+   * Photos déposées par l'équipe (« stockage://… »), dans l'ordre choisi (la
+   * première est la couverture) : toujours avant celles des plateformes, et
+   * jamais modifiées par la synchronisation.
+   */
+  photosEquipe?: string[];
   /** Photos de l'annonce, lues sur les plateformes (jamais envoyées par l'ERP). */
   photos?: string[];
   /** Prix par nuit des prochaines semaines, lus sur les plateformes (jamais modifiés par l'ERP). */

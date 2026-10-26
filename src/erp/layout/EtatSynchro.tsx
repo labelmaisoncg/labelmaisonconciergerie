@@ -72,7 +72,7 @@ export function AlerteSynchro() {
   const secondes = synchro?.prochainEssai ? Math.max(0, Math.ceil((synchro.prochainEssai - maintenant) / 1000)) : null;
 
   return (
-    <div className="lm-sans-impression pointer-events-none fixed inset-x-3 bottom-3 z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-5 sm:bottom-5 sm:w-[380px]">
+    <div className="lm-sans-impression pointer-events-none fixed inset-x-3 bottom-[calc(var(--lm-barre-onglets)+0.75rem)] z-50 flex flex-col items-end gap-2 sm:inset-x-auto sm:right-5 sm:bottom-[calc(var(--lm-barre-onglets)+1.25rem)] sm:w-[380px]">
       {enEchec && synchro && (
         <div role="alert" className="lm-apparition pointer-events-auto w-full rounded-xl border border-(--lm-alerte)/40 bg-(--lm-surface) p-3.5 shadow-(--lm-ombre-haute)">
           <div className="flex items-start gap-2.5">

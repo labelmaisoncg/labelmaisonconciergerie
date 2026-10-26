@@ -19,6 +19,7 @@ import { REGLAGES_AGENT_DEFAUT } from '../src/erp/data/reglages.js';
 import type { ReglagesAgent } from '../src/erp/data/types';
 import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante } from './_erp-repull.js';
+import { surveiller } from './_erp-notifications.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 52_000;
@@ -67,7 +68,10 @@ export default async function handler(req: any, res: any) {
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
 
   try {
-    const passage = await lancerAgent(optionsAgent(c, planifie ? 'planifie' : 'manuel', debut + BUDGET_TEMPS_MS));
+    // Notifications : l'agent a répondu, ou passe la main (problème signalé compris).
+    const passage = await surveiller(baseErp(c), () => lancerAgent(optionsAgent(c, planifie ? 'planifie' : 'manuel', debut + BUDGET_TEMPS_MS)), {
+      limite: debut + 58_000,
+    });
     return repondre(res, 200, { ok: passage.statut !== 'erreur', passage });
   } catch (e) {
     console.error('[erp-agent] échec', e);

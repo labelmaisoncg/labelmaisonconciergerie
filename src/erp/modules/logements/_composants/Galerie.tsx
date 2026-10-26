@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight, Images } from 'lucide-react';
-import { IconButton, Modal } from '../../../ui';
+import { IconButton, Modal, cn, useLienFichier } from '../../../ui';
 
 /** Grille selon le nombre de photos (1 à 5 affichées) : la première prend toute la hauteur. */
 const GRILLES: Record<number, string> = {
@@ -10,6 +10,13 @@ const GRILLES: Record<number, string> = {
   4: 'grid-cols-[2fr_1fr_1fr] grid-rows-2 [&>button:nth-child(4)]:col-span-2',
   5: 'grid-cols-[2fr_1fr_1fr] grid-rows-2',
 };
+
+/** Une photo : lien signé pour une photo déposée par l'équipe ; signalée si elle ne se charge pas. */
+function Photo({ url, alt = '', premiere, onCasse, className }: { url: string; alt?: string; premiere?: boolean; onCasse: () => void; className?: string }) {
+  const lien = useLienFichier(url);
+  if (!lien) return <span aria-hidden className={cn('block bg-(--lm-surface-2)', className)} />;
+  return <img src={lien} alt={alt} loading={premiere ? 'eager' : 'lazy'} referrerPolicy="no-referrer" onError={onCasse} className={className} />;
+}
 
 /**
  * Photos de l'annonce : une grande et quatre petites sur ordinateur, un
@@ -33,7 +40,7 @@ export function Galerie({ photos: toutes, nom }: { photos: string[]; nom: string
       <div className="lm-defilement -mx-4 mb-5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-4 sm:hidden" aria-label={`Photos de ${nom}`}>
         {photos.map((p, i) => (
           <button key={p} type="button" onClick={() => setOuverte(i)} className="aspect-[4/3] w-[85%] shrink-0 snap-center overflow-hidden rounded-xl" aria-label={`Agrandir la photo ${i + 1} sur ${n}`}>
-            <img src={p} alt="" loading={i ? 'lazy' : 'eager'} referrerPolicy="no-referrer" onError={() => casser(p)} className={vignette} />
+            <Photo url={p} premiere={!i} onCasse={() => casser(p)} className={vignette} />
           </button>
         ))}
       </div>
@@ -42,7 +49,7 @@ export function Galerie({ photos: toutes, nom }: { photos: string[]; nom: string
       <div className={`relative mb-5 hidden h-[340px] gap-2 overflow-hidden rounded-xl sm:grid ${GRILLES[Math.min(n, 5)]}`}>
         {photos.slice(0, 5).map((p, i) => (
           <button key={p} type="button" onClick={() => setOuverte(i)} className={i === 0 && n > 1 ? 'row-span-2' : ''} aria-label={`Agrandir la photo ${i + 1} sur ${n}`}>
-            <img src={p} alt="" loading={i ? 'lazy' : 'eager'} referrerPolicy="no-referrer" onError={() => casser(p)} className={vignette} />
+            <Photo url={p} premiere={!i} onCasse={() => casser(p)} className={vignette} />
           </button>
         ))}
         {n > 1 && (
@@ -60,7 +67,7 @@ export function Galerie({ photos: toutes, nom }: { photos: string[]; nom: string
       <Modal ouvert={vue !== null} onFermer={() => setOuverte(null)} titre={nom} description={vue !== null ? `Photo ${vue + 1} sur ${n}` : undefined} taille="lg">
         {vue !== null && (
           <div className="flex flex-col gap-3">
-            <img src={photos[vue]} alt={`${nom}, photo ${vue + 1} sur ${n}`} referrerPolicy="no-referrer" className="max-h-[65vh] w-full rounded-xl bg-(--lm-surface-2) object-contain" />
+            <Photo url={photos[vue]} alt={`${nom}, photo ${vue + 1} sur ${n}`} premiere onCasse={() => casser(photos[vue])} className="max-h-[65vh] min-h-48 w-full rounded-xl bg-(--lm-surface-2) object-contain" />
             {n > 1 && (
               <div className="flex items-center justify-center gap-3">
                 <IconButton label="Photo précédente" variant="secondary" onClick={() => aller(-1)}>
