@@ -6,25 +6,21 @@ import { useSynchroRepull } from '../../parametres/SynchroRepull';
 
 /** Première lettre en majuscule (les raisons commencent par le nom d'une plateforme ou un mot courant). */
 const phrase = (t: string) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : t);
-/** Première lettre en minuscule, sauf un nom de plateforme (Booking.com, Airbnb). */
-const minuscule = (t: string) => (/^(Booking|Airbnb)/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1));
 
 /**
  * À la place de la galerie quand le logement n'a encore aucune photo : ce que
- * la dernière lecture a trouvé (ou pourquoi rien), en une ou deux phrases,
- * et de quoi relancer la mise à jour.
+ * la dernière lecture a trouvé (ou pourquoi rien), en une phrase, et de quoi
+ * relancer la mise à jour. Le prix a sa place dans les chiffres, pas ici.
  */
 export function SansPhoto({ logement: l }: { logement: Logement }) {
   const s = useSynchroRepull();
   const n = l.repull?.lecture;
   const enPause = !!l.repull?.horsSelection;
-  const sansPrix = !l.tarifs?.jours.length && !l.descriptif?.prix?.nuit;
 
   let texte: string;
   if (enPause) texte = 'Ce logement est en pause : hors de votre forfait, seule sa photo de couverture est lue, et la plateforme n’en a pas transmis.';
   else if (n?.photos === 'aucune') texte = `${phrase(n.raisonPhotos ?? 'aucune photo transmise par les plateformes')} (lu le ${dateCourte(n.le)}).`;
   else texte = 'Les photos de l’annonce arrivent à la prochaine mise à jour.';
-  const prix = !enPause && sansPrix && n?.prix === 'aucun' && n.raisonPrix ? `Pas encore de prix par nuit (${minuscule(n.raisonPrix)}).` : '';
 
   return (
     <section aria-labelledby="sans-photo-titre" className="mb-5 flex flex-col gap-4 rounded-xl bg-(--lm-surface-2) p-4 sm:flex-row sm:items-center sm:p-5">
@@ -36,7 +32,6 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
           Pas encore de photo
         </h2>
         <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{texte}</p>
-        {prix && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{prix}</p>}
         {s.retour && (
           <p role="status" className="mt-1.5 text-[13px] text-(--lm-encre)">
             {s.retour.texte}

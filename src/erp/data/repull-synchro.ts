@@ -111,7 +111,7 @@ export function erreurEnClair(e: unknown): string {
     if (e.statut === 403) return 'accès refusé';
     if (e.statut === 429) return 'trop de demandes, nouvel essai au prochain relevé';
     if (e.statut >= 500) return 'service indisponible, nouvel essai au prochain relevé';
-    return `demande refusée (${e.statut})`;
+    return 'demande refusée';
   }
   return 'pas de réponse, nouvel essai au prochain relevé';
 }
@@ -866,7 +866,7 @@ export class SessionRepull {
       const manques: string[] = [];
       let photos = photosDepuisContenu(await lire<RepullPhotos>(`/v1/listings/${chemin}/photos`));
       if (photos.length) sourcePhotos = 'repull';
-      else if (echec && echec !== 'introuvable') manques.push(`Photos déposées : ${echec}`);
+      else if (echec && echec !== 'introuvable') manques.push(`Notre service de connexion : ${echec}`);
       if (!photos.length && surBooking && assez()) {
         const b = (await this.lireChambresBooking()).get(idAnnonce);
         if (!b) manques.push('Booking.com : ce logement n’est relié à aucune chambre d’un établissement');

@@ -48,6 +48,7 @@ export function CarteLogement({ logement: l, stats }: { logement: Logement; stat
       <div className="relative overflow-hidden rounded-xl bg-(--lm-surface-2)">
         <VisuelLogement
           logement={l}
+          decoratif
           className="aspect-[20/19] w-full transition-transform duration-300 ease-out group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
         />
         {/* « Actif » est l'état normal : seul un autre statut mérite une pastille. */}
