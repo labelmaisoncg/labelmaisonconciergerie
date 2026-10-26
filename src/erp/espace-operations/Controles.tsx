@@ -1,13 +1,10 @@
 import { useState } from 'react';
 import { ArrowLeft, Check, ClipboardCheck, RotateCcw, Star } from 'lucide-react';
-import { AUJOURDHUI as _AUJOURDHUI } from '../data/format';
 import { dateCourte, dateHeure, jourMois } from '../data/format';
 import type { ControleOps, ControleQualite } from '../data/types-operations';
 import { Badge, Button, EmptyState, Field, Modal, Textarea, cn } from '../ui';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
-import { Ligne, Liste, Rubrique, TitreEspace, court, useOps } from './commun';
-
-void _AUJOURDHUI;
+import { Ligne, Liste, Rubrique, TitreEspace, useOps } from './commun';
 
 /** Un contrôle à faire : le logement, pourquoi et pour quand. */
 export function LigneControle({ c }: { c: ControleOps }) {
@@ -290,7 +287,7 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
           <Textarea rows={2} value={p.commentaire} disabled={lecture} onChange={(e) => onChange({ commentaire: e.target.value })} placeholder={aRevoir ? 'Ce qui ne va pas.' : 'Une précision.'} maxLength={500} />
         </Field>
       )}
-      <div className="mt-2 flex flex-wrap items-start gap-1.5">
+      <div className="mt-2 flex flex-wrap items-start gap-1.5 [&>div:has(ul)]:basis-full">
         {lecture ? (
           p.photo && <ChoixPhotos photos={[p.photo]} onChange={() => undefined} max={1} />
         ) : (
@@ -307,5 +304,3 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
     </div>
   );
 }
-
-export { court };

@@ -16,5 +16,5 @@
     "baseUrl": ".",
     "paths": { "@/*": ["src/*"] }
   },
-  "include": ["src/erp/**/*", "src/app/pages/EspaceProprietaire.tsx"]
+  "include": ["src/erp/**/*", "src/app/pages/EspaceProprietaire.tsx", "src/app/pages/EspaceOperations.tsx"]
 }

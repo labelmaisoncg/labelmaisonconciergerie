@@ -8,9 +8,12 @@ import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { Ligne, Liste, PastilleUrgent, Rubrique, TitreEspace, court, useOps } from './commun';
 
 /** Ligne d'un incident : la description, puis le logement, qui s'en occupe et le statut. */
+const STATUT_COURT = { ouvert: 'nouveau', en_cours: 'en cours', resolu: 'résolu' } as const;
+
 export function LigneIncident({ incident: i }: { incident: IncidentOps }) {
-  const { naviguer, nomLogement, nomMembre } = useOps();
+  const { vue, naviguer, nomLogement, nomMembre } = useOps();
   const resolu = i.statut === 'resolu';
+  const qui = i.suiviPar === vue.moi.id ? 'vous' : nomMembre(i.suiviPar) || 'personne dessus';
   return (
     <Ligne
       ton={resolu ? 'succes' : i.urgent ? 'danger' : 'alerte'}
@@ -19,8 +22,8 @@ export function LigneIncident({ incident: i }: { incident: IncidentOps }) {
       deuxLignes
       sousTitre={[
         nomLogement(i.logementId),
-        resolu ? `résolu le ${dateCourte(i.resoluLe ?? i.date)}` : nomMembre(i.suiviPar) || 'personne dessus',
-        !resolu && LIBELLES.statutIncident[i.statut].toLowerCase(),
+        resolu ? `résolu le ${dateCourte(i.resoluLe ?? i.date)}` : qui,
+        !resolu && STATUT_COURT[i.statut],
       ]
         .filter(Boolean)
         .join(' · ')}

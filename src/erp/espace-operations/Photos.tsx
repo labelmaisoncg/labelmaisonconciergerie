@@ -50,7 +50,7 @@ export function ChoixPhotos({
   return (
     <div className={cn('flex flex-col gap-2', className)}>
       {photos.length > 0 && (
-        <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+        <ul className={max === 1 ? 'grid w-32 grid-cols-1' : 'grid grid-cols-3 gap-2 sm:grid-cols-4'}>
           {photos.map((p, k) => (
             <li key={p.url} className="relative">
               <Vignette url={p.apercu} alt={`Photo ${k + 1}`} />

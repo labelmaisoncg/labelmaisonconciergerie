@@ -26,10 +26,8 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
     setEnCours(true);
     const ok = await agir({ type: 'signaler', logementId: logement, urgent, description: description.trim(), photos: photos.map((p) => p.url), ...(sejour ? { reservationId: sejour } : {}) });
     setEnCours(false);
-    if (ok) {
-      onFermer();
-      naviguer({ onglet: 'incidents', signaler: undefined });
-    }
+    // Une seule navigation : la fenêtre se ferme et la liste des incidents s'ouvre.
+    if (ok) naviguer({ onglet: 'incidents', signaler: undefined, logement: undefined });
   };
 
   return (
