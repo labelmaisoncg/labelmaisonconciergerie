@@ -19,7 +19,7 @@ export default function Installer() {
     <main className="min-h-screen px-4 pt-10 pb-[max(3rem,env(safe-area-inset-bottom))] sm:pt-16">
       <div className="mx-auto flex max-w-md flex-col">
         <img src="/erp-app/icone-192.png" alt="" width={72} height={72} className="size-18 rounded-2xl shadow-(--lm-ombre)" />
-        <h1 className="mt-5 text-[26px] leading-tight font-semibold text-(--lm-encre)">Installer l’app Label Maison</h1>
+        <h1 className="lm-serif mt-5 text-[28px] leading-tight text-(--lm-encre)">Installer l’app Label Maison</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-(--lm-encre-2)">
           Réservations, messages des voyageurs, problèmes signalés : une notification sur votre téléphone, comme une vraie app.
         </p>
