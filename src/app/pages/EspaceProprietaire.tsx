@@ -128,7 +128,7 @@ function Connexion({ message, ton }: { message?: string; ton?: 'danger' | 'succe
         </p>
         {MODE_DEMO && (
           <p className="mt-2 text-center text-[13px]">
-            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="font-medium text-(--lm-or-texte) hover:underline">
+            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
               Voir l’espace de démonstration
             </a>
           </p>
