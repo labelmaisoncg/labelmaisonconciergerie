@@ -21,7 +21,7 @@ export interface RepliProps {
 export function Repli({ titre, description, ouvert, children, className }: RepliProps) {
   return (
     <details open={ouvert} className={cn('group rounded-xl border border-(--lm-bord) bg-(--lm-surface) shadow-(--lm-ombre)', className)}>
-      <summary className="flex cursor-pointer list-none items-start gap-3 rounded-[inherit] px-4 group-open:rounded-b-none py-3.5 hover:bg-(--lm-surface-2) sm:px-5 [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-start gap-3 rounded-xl px-4 group-open:rounded-b-none py-3.5 hover:bg-(--lm-surface-2) sm:px-5 [&::-webkit-details-marker]:hidden">
         <span className="min-w-0 flex-1">
           <span className="block text-[14px] font-semibold text-(--lm-encre)">{titre}</span>
           {description && <span className="mt-0.5 block text-[13px] text-(--lm-encre-2)">{description}</span>}
