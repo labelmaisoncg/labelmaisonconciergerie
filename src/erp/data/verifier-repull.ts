@@ -21,7 +21,7 @@ import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure } from './repull';
 import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
-import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
+import { ErreurConnexion, deconnecter, demarrerConnexion, diagnostiquer, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
@@ -214,6 +214,10 @@ class FauxRepull {
   connexions: Record<string, unknown>[] = [
     { id: 'c1', provider: 'airbnb', status: 'active', externalAccountId: '4455', createdAt: '2026-09-01T10:00:00Z', host: { displayName: 'Camille' } },
   ];
+  /** Établissements Booking.com (/v1/channels/booking/properties) ; null : 404, aucun. */
+  proprietesBooking: Record<string, unknown>[] | null = null;
+  /** File Booking.com (/v1/channels/booking/reservations, format OTA) ; null : vide. */
+  fileBooking: unknown = null;
 
   private refus402(): Response {
     const actives = R.listings.filter((l) => l.status === 'active').length;
@@ -252,6 +256,10 @@ class FauxRepull {
     if (chemin === '/v1/channels/booking/availability' && methode === 'PUT') {
       return json({ ok: true });
     }
+    if (chemin === '/v1/channels/booking/properties' && this.proprietesBooking) return json(this.proprietesBooking);
+    if (chemin === '/v1/channels/booking/reservations') return json(this.fileBooking ?? { data: [] });
+    if (chemin === '/v1/health/auth') return json({ ok: true });
+    if (chemin === '/v1/connect/airbnb' && methode === 'GET') return json({ connected: false, accounts: [] });
     if (chemin === '/v1/connect/providers') {
       return json({
         data: [
@@ -942,6 +950,118 @@ async function principal() {
   const ctxEpuise = { ...ctx(), budgetMois: appelsBase2() };
   const e4 = await lireEtatConnexions(ctxEpuise, { forcer: true });
   verifier(repull.appels.length === avantBudget && /épuisés/.test(e4.avertissements.join(' ')), 'part du mois épuisée : aucun appel, avertissement, dernière lecture affichée');
+
+  section('Booking.com : compte Extranet et ancien mode « fournisseur de connectivité »');
+  {
+    // Numéros fictifs. Compte Extranet 42 (connexion 500, créée le 1er oct.) : son import a vu
+    // 2 établissements, créés par lui avec un connectionId à eux. Deux établissements de
+    // septembre restent sur l'ancien mode ; Booking refuse l'accès à tous dans ce mode (497).
+    const connexionsAvant = repull.connexions;
+    const reservationsAvant = R.reservations;
+    const extranet = {
+      id: '500',
+      provider: 'booking_extranet',
+      status: 'active',
+      externalAccountId: '42',
+      createdAt: '2026-10-01T09:00:00.000Z',
+      import: {
+        status: 'completed',
+        trigger: 'connect',
+        outcome: 'complete',
+        startedAt: '2026-10-01T09:19:44.000Z',
+        completedAt: '2026-10-01T09:20:20.000Z',
+        stages: [
+          { name: 'account', expected: 1, done: 1, failed: 0 },
+          { name: 'reservations', expected: 0, done: 0, failed: 0 },
+        ],
+        counts: { listings: 2 },
+      } as Record<string, unknown>,
+    };
+    const etab = (connectionId: string, hotelId: string, createdAt: string, listings: Record<string, unknown>[] = []) => ({
+      connectionId,
+      hotelId,
+      active: true,
+      syncEnabled: false,
+      createdAt,
+      mappingStatus: listings.length ? 'mapped' : 'unmapped',
+      listings,
+    });
+    repull.connexions = [extranet];
+    repull.proprietesBooking = [
+      etab('701', '1000001', '2026-09-01T10:00:00.000Z', [{ listingId: '104' }]),
+      etab('702', '1000002', '2026-09-01T10:05:00.000Z', [{ listingId: '103' }]),
+      // Même connectionId que la connexion Extranet : rattaché, malgré sa date.
+      etab('500', '1000003', '2026-09-01T10:10:00.000Z', [{ listingId: '105' }]),
+      etab('801', '2000001', '2026-10-01T09:19:56.000Z'),
+      etab('802', '2000002', '2026-10-01T09:19:56.000Z'),
+    ];
+    const refus = (hotel: string) => ({ $: { Code: '497', ShortText: `You do not have access to hotel:${hotel}`, Status: 'NotProcessed', Type: '6' } });
+    repull.fileBooking = {
+      OTAHotelResNotifRQ: {
+        $: { Target: 'Production', Version: '2.001' },
+        HotelReservations: [
+          { TPAExtensions: [{ Warnings: [{ Warning: [refus('2000001'), refus('1000001'), refus('1000002'), refus('1000003'), refus('2000002'), { $: { Code: '450', ShortText: 'Other' } }] }] }] },
+        ],
+      },
+    };
+
+    const e5 = await lireEtatConnexions(ctx(), { forcer: true });
+    const bk = e5.connexions.filter((c) => c.fournisseur === 'booking');
+    const anciens = bk.filter((c) => c.ancienMode).map((c) => c.compte).sort().join();
+    verifier(bk.find((c) => c.id === '500')?.compte === '42' && !bk.find((c) => c.id === '500')?.ancienMode, 'carte Booking : compte Extranet 42, pas de l’ancien mode');
+    verifier(anciens === '1000001,1000002', `carte Booking : établissements de l’ancien mode marqués à part (${anciens})`);
+    verifier(
+      ['2000001', '2000002'].every((h) => bk.some((c) => c.compte === h && !c.ancienMode && c.statut === 'chambres')) && !bk.some((c) => c.compte === '1000003'),
+      'carte Booking : établissements de l’import Extranet (date) et du même connectionId rattachés au compte',
+    );
+
+    repull.connexions = [{ id: '600', provider: 'booking', status: 'active', externalAccountId: '1000009', createdAt: '2026-09-01T09:00:00.000Z' }];
+    const e6 = await lireEtatConnexions(ctx(), { forcer: true });
+    const bk6 = e6.connexions.filter((c) => c.fournisseur === 'booking');
+    verifier(bk6.length === 6 && bk6.every((c) => c.ancienMode), `sans compte Extranet : tout Booking est de l’ancien mode (${bk6.filter((c) => c.ancienMode).length}/${bk6.length})`);
+
+    repull.connexions = [extranet];
+    R.reservations = [];
+    const d1 = await diagnostiquer(ctx());
+    // Espaces insécables (guillemets) lus comme des espaces.
+    const ligne = (d: typeof d1, q: RegExp) => {
+      const l = d.lignes.find((x) => q.test(x.question))!;
+      return { ...l, resume: l.resume.replace(/\u00a0/g, ' ') };
+    };
+    const file = ligne(d1, /dans sa file/);
+    verifier(
+      file.ok && file.alerte && /^Booking refuse l’accès à 5 établissements dans l’ancien mode « fournisseur de connectivité », que l’ERP n’utilise volontairement pas : 2000001, 1000001, 1000002, 1000003, 2000002\. /.test(file.resume) && !/vide/.test(file.resume),
+      `file Booking : refus 497 signalé (« ! »), avec les numéros (${file.resume})`,
+    );
+    const resas = ligne(d1, /reçu des réservations/);
+    verifier(
+      resas.ok && resas.alerte && resas.resume.startsWith('Aucune réservation chez Repull. Import Booking terminé le 1er oct. 2026 à 11:20 : 0 réservation trouvée, 2 logements vus.') && /ancien mode n’en font pas partie/.test(resas.resume) && !/changement de fournisseur/.test(resas.resume),
+      `réservations : bilan de l’import Extranet (${resas.resume})`,
+    );
+    const etabs = ligne(d1, /quels établissements/);
+    verifier(
+      etabs.alerte && /Établissement 1000001 : 1 chambre\(s\) associée\(s\), ancien mode\./.test(etabs.resume) && /2 établissements sont encore rattachés à l’ancien mode « fournisseur de connectivité », pas à votre compte Extranet 42 : rien n’en arrive dans l’ERP\.$/.test(etabs.resume),
+      `établissements : ancien mode signalé (${etabs.resume})`,
+    );
+    verifier(!/(1000003|2000001|2000002)[^.]*ancien mode/.test(etabs.resume), 'établissements : ceux du compte Extranet pas signalés');
+
+    // Import en cours, tous les établissements rattachés, file sans refus mais avec deux réservations.
+    extranet.import = { status: 'running', startedAt: '2026-10-01T09:19:44.000Z', stages: [{ name: 'reservations', expected: 3, done: 1, failed: 0 }], counts: { listings: 2 } };
+    repull.proprietesBooking = repull.proprietesBooking.filter((p) => !['701', '702'].includes(String(p.connectionId)));
+    repull.fileBooking = { OTAHotelResNotifRQ: { HotelReservations: [{ HotelReservation: [{ UniqueID: [{ $: { ID: '1' } }] }, { UniqueID: [{ $: { ID: '2' } }] }] }] } };
+    const d2 = await diagnostiquer(ctx());
+    const resas2 = ligne(d2, /reçu des réservations/);
+    verifier(!resas2.alerte && resas2.resume === 'Aucune réservation chez Repull. Import Booking en cours depuis le 1er oct. 2026 à 11:19 : 1 réservation lue sur 3, 2 logements vus.', `réservations : import en cours (${resas2.resume})`);
+    const etabs2 = ligne(d2, /quels établissements/);
+    verifier(!etabs2.alerte && !/ancien mode/.test(etabs2.resume), `établissements tous rattachés au compte Extranet : rien à signaler (${etabs2.resume})`);
+    const file2 = ligne(d2, /dans sa file/);
+    verifier(!file2.alerte && /^2 réservation\(s\) Booking en attente/.test(file2.resume), `file Booking sans refus : réservations comptées (${file2.resume})`);
+
+    repull.connexions = connexionsAvant;
+    repull.proprietesBooking = null;
+    repull.fileBooking = null;
+    R.reservations = reservationsAvant;
+  }
 
   /* ----------------------------------------------------------- signature */
   section('Signature du webhook');
