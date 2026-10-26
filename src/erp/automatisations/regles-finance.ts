@@ -72,7 +72,7 @@ export const paiementsPrestataires: Regle = {
 export const relanceFactures: Regle = {
   cle: 'relance-factures',
   nom: 'Relance des factures en retard',
-  description: 'Quand une facture émise dépasse son échéance, alors elle passe « en retard » et une relance automatique est envoyée au propriétaire.',
+  description: 'Quand une facture émise dépasse son échéance, alors elle passe « en retard ». Si elle est partagée dans l’espace propriétaire, une relance est proposée à J+5, J+15 et J+30 (envoyée seule si les relances sont réglées en automatique).',
   spec: '§2.7',
   domaine: 'finance',
   declencheur: 'quotidien',
@@ -84,7 +84,7 @@ export const relanceFactures: Regle = {
       const pro = d.proprietaires.find((p) => p.id === f.proprietaireId);
       c.modifier('factures', { ...f, statut: 'en_retard' }, 'Échéance dépassée.');
       c.evenement('action', `retard:${f.id}`,
-        `Facture ${f.numero} en retard (échéance ${jourMois(f.echeance)}) : relance automatique envoyée${pro ? ` à ${pro.nom}` : ''}.`, 'facture', f.id);
+        `Facture ${f.numero} en retard (échéance ${jourMois(f.echeance)})${pro ? ` : ${pro.nom}` : ''}.`, 'facture', f.id);
     }
     return c.res;
   },

@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, Download, Printer, ReceiptText } from 'lucid
 import { dateCourte, euros, jourMois, nombre } from '../data/format';
 import type { FactureVue, StatutFactureVue, VueProprietaire } from '../data/types-proprietaire';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
-import { Badge, Button, Card, EmptyState, type Ton } from '../ui';
+import { Badge, Button, Card, classesBouton, EmptyState, type Ton } from '../ui';
 import { deNom, type LienDocument } from './commun';
 
 /** Statuts : à payer (neutre), en retard (alerte, jamais rouge), payée (succès). */
@@ -45,7 +45,7 @@ function DetailFacture({ f, conciergerie, LienDocument, onRetour }: { f: Facture
           {f.pdf ? (
             <LienDocument
               id={f.pdf}
-              className="lm-sans-impression inline-flex h-9 items-center gap-2 rounded-lg bg-(--lm-or-texte) px-3.5 text-sm font-medium text-white shadow-sm hover:bg-(--lm-brun)"
+              className={classesBouton('primary', 'md', 'lm-sans-impression')}
             >
               <Download className="size-4" aria-hidden />
               Télécharger le PDF
@@ -115,7 +115,7 @@ export function Factures({ vue, choisie, onChoisir, LienDocument }: { vue: VuePr
         <>
           {aRegler.length > 0 && (
             <p className="mb-3 text-[14px] text-(--lm-encre-2)">
-              À régler : <span className="font-semibold text-(--lm-encre)">{euros(total)}</span> ({aRegler.length > 1 ? `${aRegler.length} factures` : '1 facture'})
+              À régler : <span className="font-semibold text-(--lm-encre)">{euros(total)}</span>
             </p>
           )}
           <Card flush>
