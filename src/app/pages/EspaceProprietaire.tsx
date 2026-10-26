@@ -162,14 +162,15 @@ export default function EspaceProprietaire() {
   const bilanUrl = parametres.get('bilan') ?? undefined;
   const bilan = moisValide(bilanUrl) ? bilanUrl : undefined;
   const logement = parametres.get('logement') ?? undefined;
+  const facture = parametres.get('facture') ?? undefined;
 
-  const regler = (o: OngletEspace, suite: { bilan?: string; logement?: string } = {}) =>
+  const regler = (o: OngletEspace, suite: { bilan?: string; logement?: string; facture?: string } = {}) =>
     setParametres(
       (p) => {
         const n = new URLSearchParams(p);
         if (o === 'accueil') n.delete('onglet');
         else n.set('onglet', o);
-        for (const cle of ['bilan', 'logement'] as const) {
+        for (const cle of ['bilan', 'logement', 'facture'] as const) {
           const v = suite[cle];
           if (v) n.set(cle, v);
           else n.delete(cle);
@@ -264,6 +265,8 @@ export default function EspaceProprietaire() {
           onBilan={(m) => regler('bilans', { bilan: m })}
           logement={logement}
           onLogement={(id) => regler('logements', { logement: id })}
+          facture={facture}
+          onFacture={(id) => regler('factures', { facture: id })}
           onMoisCalendrier={(m) => void changerMois(m)}
           calendrierEnCours={calendrierEnCours}
           LienDocument={etat.demo ? LienDocumentDemo : LienDocumentServeur}

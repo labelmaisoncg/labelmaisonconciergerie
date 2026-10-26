@@ -99,6 +99,11 @@ node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=
 node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-proprietaire.mjs && node /tmp/verifier-proprietaire.mjs
+
+# Auto-contrôle des factures partagées et des relances de paiement.
+node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-relances.mjs && node /tmp/verifier-relances.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -1054,7 +1059,8 @@ seule. Quatre onglets (barre du bas sur téléphone, en-tête sur ordinateur) :
 | Accueil | Ses logements (photo, nom), le net du mois en cours et du mois dernier (nuits, occupation ; « Bilan publié » ou « Provisoire »), les prochaines arrivées, les contacts de Label Maison, les derniers documents. |
 | Logements | « Mes logements » : une fiche par logement (photo, nom, ville) avec les 12 derniers mois terminés : revenu net par mois (graphique en barres, survol et clavier, tableau mois par mois), occupation, prix moyen par nuit, séjours et nuits, comparaison avec les mêmes mois de l'an dernier quand il y a des données ; note moyenne et derniers avis (partie publique seulement) ; séjour en cours et prochains séjours. L'accueil mène à chaque fiche. |
 | Calendrier | Un mois par logement : nuits réservées et libres, arrivées et départs (bande dorée du milieu du jour d'arrivée au milieu du jour de départ), navigation de mois en mois, séjours du mois. |
-| Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Finances → Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Finances → Factures | Les factures partagées : montant TTC, échéance, statut, PDF (voir « Phase 2 »). |
 | Documents | Rangés par catégorie (Contrat, Attestation, Bilan, Facture, Autre), ouverts par un lien signé de 2 minutes. |
 
 Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autre
@@ -1135,20 +1141,48 @@ d'août publié et deux documents ; son espace :
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
   `publie`, chiffres figés).
 
-### Phase 2 : factures et relances de paiement (modèle prévu, pas construit)
+### Phase 2 : factures partagées et relances de paiement
 
-- **Factures** : on reprend `Facture` (`types.ts`, destinataire
-  `proprietaire`, `proprietaireId`). Ajouts : `partageeLe?` (visible dans
-  l'espace seulement une fois partagée) et le PDF en `DocumentProprietaire`
-  de catégorie `facture` avec `factureId`. Onglet « Factures » : numéro,
-  date, échéance, montant TTC, statut (à payer, payée le…, en retard),
-  téléchargement ; même filtrage strict par propriétaire.
-- **Relances** : collection `relancesPaiement` `{ id, factureId,
-  proprietaireId, niveau (1, 2, 3), prevueLe, envoyeeLe?, statut (prevue,
-  envoyee, annulee, payee), canal: 'email' }`, calendrier dans `reglages`
-  (par défaut J+5, J+15 et J+30 après l'échéance), mode « proposer » (le
-  gérant valide chaque envoi, par défaut) ou « automatique ». Un passage
-  quotidien (cron existant) crée les relances dues et les envoie par Resend ;
-  tout s'arrête dès que la facture est payée. Le propriétaire voit les
-  rappels dans son espace, le gérant dans la carte Propriétaire.
+- **Factures** (onglet « Finances » → « Factures » ; bilans et factures sous
+  un même onglet pour garder cinq onglets dans la barre du bas) : le
+  propriétaire voit les factures dont il est le `proprietaireId` ET qui sont
+  partagées (`Facture.partageeLe`), ni brouillon ni annulée : numéro, date,
+  échéance, montant TTC, statut « À payer » (neutre), « En retard » (alerte,
+  jamais rouge), « Payée le… » (succès), dernier rappel envoyé. Le PDF est un
+  `DocumentProprietaire` de catégorie `facture` avec `factureId`, ouvert par
+  lien signé ; sans PDF, la facture s'imprime depuis l'espace. Une facture
+  qui n'est plus partagée disparaît, son PDF aussi (liste et lien signé).
+  L'accueil signale d'une ligne les factures à régler.
+- **Relances** (`src/erp/data/relances.ts`, `api/_relances.ts`) : pour les
+  factures partagées et à payer seulement. Calendrier par espace (J+5, J+15,
+  J+30 après l'échéance par défaut), une relance par étape et par facture
+  (`<factureId>-r<niveau>`) ; très en retard d'un coup : seule l'étape la
+  plus avancée ; une relance encore à valider est remplacée par l'étape
+  suivante ; tout s'arrête dès que la facture est payée, annulée ou plus
+  partagée (« sans objet »). Mode « proposer » (par défaut) : le passage
+  quotidien ne fait que proposer, un gérant valide chaque envoi. Mode
+  « automatique » : envoi par e-mail avec l'expéditeur de l'espace (jamais
+  celui de Label Maison pour un autre espace) ; sans expéditeur ou sans
+  adresse, la relance reste à valider avec le motif. Jamais deux fois : la
+  relance est notée envoyée avant l'envoi, remise à valider si l'envoi
+  échoue. Message poli et court, signé du nom de l'espace : montant TTC,
+  numéro, échéance, virement avec le numéro en référence ; aucune
+  coordonnée bancaire.
+- **Passage quotidien** : `api/erp-repull-sync.ts` (cron) appelle
+  `relancesDuJour()` pour chaque espace actif avant la synchronisation
+  Repull, sans jamais la bloquer (base d'avant les espaces : Label Maison).
+- **Données serveur** : collections `relancesPaiement` et
+  `reglagesRelances` (id `relances` : actif, mode, jours), lues et écrites
+  par le serveur seul, dans la base de chaque espace ; le navigateur ne les
+  synchronise pas. Gérant : `GET ?action=relances`, `POST relance-envoyer`,
+  `relance-annuler`, `relances-reglages` (api/espace-proprietaire.ts, gérant
+  de l'espace).
+- **Écrans du gérant** (pas encore montés) :
+  `logements/_composants/FacturesProprietaire.tsx` (partager ou non chaque
+  facture, joindre son PDF) et `RelancesPaiement.tsx` (réglages, relances à
+  valider avec l'aperçu du message, relances envoyées ; `useRelances()`).
+- **Contrôles** : `verifier-relances.ts` (calendrier, idempotence, arrêt au
+  paiement, message, ce que voit chaque propriétaire) et
+  `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
+  n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
 

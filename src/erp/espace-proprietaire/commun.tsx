@@ -8,8 +8,8 @@ import { moisAnnee } from '../data/format';
 import type { CanalReservation } from '../data/types';
 import { cn, useLienFichier } from '../ui';
 
-export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'documents';
-export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'documents'];
+export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'factures' | 'documents';
+export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'factures', 'documents'];
 
 /** Lien d'ouverture d'un document (API signée pour le propriétaire, fichier de l'ERP pour le gérant). */
 export type LienDocumentProps = { id: string; className?: string; children: ReactNode };

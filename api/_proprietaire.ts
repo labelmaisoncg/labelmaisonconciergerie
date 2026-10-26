@@ -13,8 +13,9 @@
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
 import { adresseWeb, photoCouverture, proprietaireAutorise, type EntreesProprietaire } from '../src/erp/data/proprietaire.js';
-import type { Logement, Mandat, Proprietaire, Reservation } from '../src/erp/data/types';
-import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from '../src/erp/data/types-proprietaire';
+import { COLLECTION_RELANCES, facturePartagee } from '../src/erp/data/relances.js';
+import type { Facture, Logement, Mandat, Proprietaire, Reservation } from '../src/erp/data/types';
+import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire, RelancePaiement } from '../src/erp/data/types-proprietaire';
 import { configuration, signeurFichiersErp } from './_erp-repull.js';
 import { GENRES, envoyerEmailEspace, secretAcces } from './_acces-externe.js';
 import type { FicheEspace } from './_erp-espaces.js';
@@ -58,20 +59,22 @@ export async function lireProprietaire(b: BaseErp, id: string): Promise<Propriet
 
 /**
  * Données d'un propriétaire, dans la base de son espace, filtrées dès la
- * lecture : ses logements, leurs réservations et mandats, ses documents et
- * bilans. Rien d'autre ne sort d'ici.
+ * lecture : ses logements, leurs réservations et mandats, ses documents,
+ * bilans, factures partagées et leurs relances. Rien d'autre ne sort d'ici.
  */
 export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string): Promise<EntreesProprietaire> {
   if (!proprietaireAutorise(proprietaireId)) {
-    return { proprietaires: [], logements: [], reservations: [], mandats: [], documentsProprietaire: [], bilansProprietaire: [] };
+    return { proprietaires: [], logements: [], reservations: [], mandats: [], documentsProprietaire: [], bilansProprietaire: [], factures: [], relancesPaiement: [] };
   }
-  const [proprietaires, logements, reservations, mandats, documents, bilans] = await Promise.all([
+  const [proprietaires, logements, reservations, mandats, documents, bilans, factures, relances] = await Promise.all([
     b.lire<Proprietaire>('proprietaires', [proprietaireId]),
     b.lire<Logement>('logements'),
     b.lire<Reservation>('reservations'),
     b.lire<Mandat>('mandats'),
     b.lire<DocumentProprietaire>('documentsProprietaire'),
     b.lire<BilanProprietaire>('bilansProprietaire'),
+    b.lire<Facture>('factures'),
+    b.lire<RelancePaiement>(COLLECTION_RELANCES).catch(() => []),
   ]);
   const siens = logements.filter((l) => l?.proprietaireId === proprietaireId);
   const ids = new Set(siens.map((l) => l.id));
@@ -82,6 +85,8 @@ export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string):
     mandats: mandats.filter((m) => ids.has(m?.logementId)),
     documentsProprietaire: documents.filter((d) => d?.proprietaireId === proprietaireId),
     bilansProprietaire: bilans.filter((x) => x?.proprietaireId === proprietaireId),
+    factures: factures.filter((f) => facturePartagee(f, proprietaireId)),
+    relancesPaiement: relances.filter((r) => r?.proprietaireId === proprietaireId && r.statut === 'envoyee'),
   };
 }
 

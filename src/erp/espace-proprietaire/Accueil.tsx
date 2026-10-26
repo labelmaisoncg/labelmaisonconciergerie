@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, Mail, MessageCircle, Phone } from 'lucide-react';
+import { ChevronRight, FileText, Mail, MessageCircle, Phone, ReceiptText } from 'lucide-react';
 import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/format';
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
@@ -54,6 +54,7 @@ export function Accueil({
   const nom = (id: string) => vue.logements.find((l) => l.id === id)?.nom ?? 'Logement';
   const occupationMois = (id: string) => vue.calendrier.mois === vue.moisCourant.mois ? vue.calendrier.logements.find((c) => c.logementId === id)?.occupation : undefined;
   const publie = !vue.moisPrecedent.provisoire;
+  const aRegler = vue.factures.filter((f) => f.statut !== 'payee');
   const c = vue.contacts;
   return (
     <>
@@ -74,6 +75,20 @@ export function Accueil({
           }
         />
       </div>
+
+      {aRegler.length > 0 && (
+        <button
+          type="button"
+          onClick={() => onOnglet('factures')}
+          className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2.5 text-left shadow-(--lm-ombre) hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+        >
+          <ReceiptText className="size-4 shrink-0 text-(--lm-encre-2)" aria-hidden />
+          <span className="min-w-0 flex-1 text-[14px] text-(--lm-encre)">
+            {aRegler.length > 1 ? `${aRegler.length} factures à régler` : `Facture ${aRegler[0].numero} à régler`} · {euros(aRegler.reduce((s, f) => s + f.montantTtc, 0))}
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
+        </button>
+      )}
 
       <Rubrique titre={vue.logements.length > 1 ? 'Vos logements' : 'Votre logement'}>
         {vue.logements.length ? (

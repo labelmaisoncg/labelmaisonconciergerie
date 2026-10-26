@@ -9,6 +9,10 @@
 //   GET  ?action=etat                                  espace ouvert ? e-mails ?
 //   POST { action: 'inviter', proprietaireId, email }  lien d'invitation (7 jours)
 //   POST { action: 'retirer', proprietaireId }         accès retiré, sessions fermées
+//   GET  ?action=relances                              relances de l'espace et réglages
+//   POST { action: 'relance-envoyer', id }             envoi d'une relance à valider
+//   POST { action: 'relance-annuler', id }
+//   POST { action: 'relances-reglages', reglages }     mode, étapes (jours), actif
 //
 // Propriétaire (sans compte) :
 //   POST { action: 'lien', email }            un lien par espace où l'adresse a
@@ -27,11 +31,14 @@ import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { MESSAGE_BASE_PAS_PREPAREE } from '../src/erp/data/espaces.js';
 import { dateParisISO, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
 import { MESSAGES_REFUS, avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
+import { facturePartagee } from '../src/erp/data/relances.js';
+import type { Facture } from '../src/erp/data/types';
 import type { AccesProprietaire } from '../src/erp/data/types-proprietaire';
 import { MESSAGE_COMPTE_SERVEUR, continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
 import { espaceDemande } from './_erp-espaces.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
-import { accesParEmail, baseAcces, contactsEspace, cookieSessionEfface, entrerAvecLien, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
+import { accesParEmail, baseAcces, contactsEspace, cookieSessionEfface, entrerAvecLien, expediteurEspace, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
+import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
 import { ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
 
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
@@ -68,6 +75,25 @@ export default async function handler(req: any, res: any) {
   const etat = etatEspace();
 
   try {
+    /* ------------------------------------------------- gérant : relances */
+    if (action === 'relances' || action === 'relance-envoyer' || action === 'relance-annuler' || action === 'relances-reglages') {
+      const g = await membreGerant(req);
+      if (!g.ok) return repondre(res, g.statut, { ok: false, erreur: g.erreur });
+      const b = baseAcces(g.espace);
+      if (action === 'relances' && req.method === 'GET') {
+        const [relances, reglages, fiche] = await Promise.all([lireRelances(b), lireReglagesRelances(b), ficheEspace(g.espace)]);
+        return repondre(res, 200, { ok: true, relances, reglages, expediteur: !!expediteurEspace(fiche) && !!(process.env.RESEND_API_KEY || '').trim() });
+      }
+      if (req.method !== 'POST') return repondre(res, 405, { ok: false, erreur: 'Méthode non autorisée.' });
+      if (action === 'relances-reglages') {
+        const r = corps.reglages && typeof corps.reglages === 'object' ? (corps.reglages as Record<string, unknown>) : {};
+        return repondre(res, 200, { ok: true, reglages: await ecrireReglagesRelances(b, r, g.email) });
+      }
+      const id = String(corps.id ?? '');
+      const r = action === 'relance-envoyer' ? await envoyerRelance(await ficheEspace(g.espace), g.espace, id, g.email) : await annulerRelance(g.espace, id, g.email);
+      return repondre(res, r.ok ? 200 : 409, r.ok ? { ok: true, relance: r.relance } : { ok: false, erreur: r.erreur, relance: r.relance });
+    }
+
     /* ------------------------------------------------------------ gérant */
     if (action === 'etat' || action === 'inviter' || action === 'retirer') {
       const g = await membreGerant(req);
@@ -169,7 +195,9 @@ export default async function handler(req: any, res: any) {
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       if (!s) return res.status(401).end('Session expirée : reconnectez-vous à votre espace propriétaire.');
       const doc = await lireDocument(s.base, String(req.query?.id ?? ''));
-      const lien = doc && doc.proprietaireId === s.acces.proprietaireId ? await lienDocument(String(doc.fichier ?? ''), s.espace) : null;
+      // PDF d'une facture : seulement tant qu'elle est partagée avec lui.
+      const factureVisible = !doc?.factureId || facturePartagee((await s.base.lire<Facture>('factures', [doc.factureId]))[0], s.acces.proprietaireId);
+      const lien = doc && doc.proprietaireId === s.acces.proprietaireId && factureVisible ? await lienDocument(String(doc.fichier ?? ''), s.espace) : null;
       if (!lien) return res.status(404).end('Document introuvable.');
       res.setHeader('Location', lien);
       return res.status(302).end();

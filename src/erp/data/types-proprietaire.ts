@@ -45,6 +45,8 @@ export interface DocumentProprietaire {
   id: Id;
   proprietaireId: Id;
   logementId?: Id;
+  /** PDF d'une facture partagée (catégorie « facture »). */
+  factureId?: Id;
   categorie: CategorieDocumentProprietaire;
   titre: string;
   /** « stockage://erp-fichiers/proprietaires/<id>/… » (jamais envoyé au propriétaire). */
@@ -254,6 +256,70 @@ export interface FicheLogementVue {
   prochainsSejours: ArriveeVue[];
 }
 
+/* ------------------------------------------- factures et relances */
+
+/** Statut vu par le propriétaire. */
+export type StatutFactureVue = 'a_payer' | 'en_retard' | 'payee';
+
+export interface FactureVue {
+  id: Id;
+  numero: string;
+  dateEmission: DateISO;
+  echeance: DateISO;
+  montantHt: Centimes;
+  tvaPct: number;
+  montantTtc: Centimes;
+  statut: StatutFactureVue;
+  payeeLe?: DateISO;
+  lignes: { libelle: string; quantite: number; pu: Centimes }[];
+  /** Document PDF partagé (ouvert par lien signé) ; absent : version imprimable. */
+  pdf?: Id;
+  /** Dernier rappel envoyé. */
+  dernierRappel?: DateISO;
+}
+
+export type StatutRelance = 'proposee' | 'envoyee' | 'annulee' | 'sans_objet';
+
+/**
+ * Relance d'une facture (id = `${factureId}-r${niveau}` : une par étape et
+ * par facture). Collection serveur `relancesPaiement` : écrite seulement par
+ * le serveur (passage quotidien, envoi ou annulation par un gérant).
+ */
+export interface RelancePaiement {
+  id: Id;
+  factureId: Id;
+  proprietaireId: Id;
+  numero: string;
+  /** Étape : 1 = premier rappel (J+5 par défaut), 2, 3… */
+  niveau: number;
+  joursApresEcheance: number;
+  /** Date où la relance est due (échéance + jours). */
+  dueLe: DateISO;
+  statut: StatutRelance;
+  creeLe: Horodatage;
+  /** Pourquoi une relance du mode automatique reste à valider. */
+  motif?: 'sans_expediteur' | 'sans_adresse' | 'echec_envoi' | 'remplacee';
+  destinataire?: string;
+  envoyeeLe?: Horodatage;
+  /** « automatique » ou l'adresse du gérant qui a validé. */
+  envoyeePar?: string;
+  annuleeLe?: Horodatage;
+  annuleePar?: string;
+  espace?: string;
+}
+
+/** Réglages des relances d'un espace (collection serveur `reglagesRelances`, id « relances »). */
+export interface ReglagesRelances {
+  id: 'relances';
+  actif: boolean;
+  /** proposer : le gérant valide chaque envoi ; automatique : envoi par e-mail. */
+  mode: 'proposer' | 'automatique';
+  /** Jours après l'échéance, une étape par valeur (5, 15, 30 par défaut). */
+  jours: number[];
+  majLe?: Horodatage;
+  majPar?: string;
+}
+
 /** Tout ce que le propriétaire voit, et rien d'autre. */
 export interface VueProprietaire {
   proprietaire: { id: Id; nom: string };
@@ -269,6 +335,8 @@ export interface VueProprietaire {
   fiches: FicheLogementVue[];
   bilans: BilanVue[];
   documents: DocumentVue[];
+  /** Factures partagées avec lui, des plus récentes aux plus anciennes. */
+  factures: FactureVue[];
   /** Contacts de la conciergerie ; absents si l'espace n'en a pas renseigné. */
   contacts?: ContactsConciergerie;
 }
