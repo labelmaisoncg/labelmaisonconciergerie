@@ -81,6 +81,17 @@ export function prixAVenir(l: Logement, jours = 30, aujourdhui = AUJOURDHUI): { 
   };
 }
 
+/**
+ * Prix de la nuit, d'un coup d'œil : celui de ce soir lu sur les plateformes
+ * (sinon de la prochaine nuit connue), sinon le prix de base de l'annonce.
+ */
+export function prixNuit(l: Logement, aujourdhui = AUJOURDHUI): { centimes: number; source: 'soir' | 'prochaine' | 'base'; date?: string; luLe?: string } | undefined {
+  const j = (l.tarifs?.jours ?? []).find((x) => x.date >= aujourdhui && x.prixCentimes > 0);
+  if (j && l.tarifs) return { centimes: j.prixCentimes, source: j.date === aujourdhui ? 'soir' : 'prochaine', date: j.date, luLe: l.tarifs.luLe };
+  const base = l.descriptif?.prix?.nuit;
+  return base ? { centimes: base, source: 'base' } : undefined;
+}
+
 /** Photos du logement : celles des plateformes, sinon la photo déposée par l'équipe. */
 export function photosLogement(l: Logement): string[] {
   if (l.photos?.length) return l.photos;

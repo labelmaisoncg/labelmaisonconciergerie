@@ -19,7 +19,7 @@
 import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
-import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure } from './repull';
+import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure, photosDepuisContenu, tarifsDepuisBooking } from './repull';
 import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
@@ -244,6 +244,8 @@ class FauxRepull {
   envois: { conversation: string; message: string; cle: string }[] = [];
   /** Taille de page simulée (la vraie limite est 100) : force la pagination par curseur. */
   page = 2;
+  /** Rien de déposé chez Repull pour 101 (photos, calendrier) : les lectures Booking.com prennent le relais. */
+  ficheRepullVide = false;
   /** Lectures étendues des annonces refusées (422), pour tester le repli. */
   refusInclusEtendus = false;
   /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
@@ -344,6 +346,29 @@ class FauxRepull {
         p,
       );
     }
+    if (chemin === '/v1/channels/booking/properties' && methode === 'GET' && this.ficheRepullVide) {
+      return json([{ hotelId: '5566771', mappingStatus: 'mapped', active: true, listings: [{ listingId: '101', roomBookingId: '556677101', status: 'active' }] }]);
+    }
+    if (chemin === '/v1/channels/booking/content' && methode === 'GET') {
+      if (p.get('property_id') !== '5566771' || p.get('type') !== 'photos') return json({ error: { code: 'not_found' } }, 404);
+      // Galerie de la chambre vide : celle de l'établissement sert.
+      if (p.get('room_id')) return json({ photos: [] });
+      return json({
+        photos: [
+          { photo_id: 'p1', url_square60: 'https://cf.bstatic.com/xdata/images/hotel/square60/1.jpg', url_max1280: 'https://cf.bstatic.com/xdata/images/hotel/max1280/1.jpg' },
+          { photo_id: 'p2', url_max1280: 'https://cf.bstatic.com/xdata/images/hotel/max1280/2.jpg' },
+        ],
+      });
+    }
+    if (chemin === '/v1/channels/booking/listings/101/pricing' && methode === 'GET') {
+      return json({
+        hotelId: '5566771',
+        listingId: '101',
+        room: [{ id: '556677101', date: [{ value: '2026-10-20', rate: [{ id: '1', price: '120' }, { id: '2', price: '108' }], roomstosell: '1' }, { value: '2026-10-21', rate: [{ id: '1', price: '130' }], roomstosell: '0' }] }],
+      });
+    }
+    if (chemin === '/v1/listings/101/photos' && this.ficheRepullVide) return json({ listingId: '101', photos: [] });
+    if (chemin === '/v1/availability/101' && this.ficheRepullVide) return json({ propertyId: '101', currency: 'EUR', days: [], coverage: { requestedDays: 61, coveredDays: 0, missingDates: [] } });
     if (chemin === '/v1/listings/101/photos') {
       return json({ listingId: '101', photos: [{ url: 'https://cdn.repull.dev/p/101-1.jpg' }, { url: 'https://cdn.repull.dev/p/101-2.jpg' }, { url: 'http://pas-sur/x.jpg' }, { url: 'javascript:alert(1)' }, { url: 'https://cdn.repull.dev/p/101-1.jpg' }] });
     }
@@ -572,6 +597,37 @@ async function principal() {
   const m = montantsReservation(R.reservations[0] as never);
   verifier(m?.brut === 58866 && m.commissionPlateforme === 2194 && m.menage === 6000, `montants 5001 (${JSON.stringify(m)})`);
   verifier(canonique({ b: 1, a: { d: undefined, c: [2, 1] } }) === '{"a":{"c":[2,1]},"b":1}', 'sérialisation canonique');
+  {
+    const p1 = photosDepuisContenu({ photos: [{ id: 1, url_square60: 'https://cf.bstatic.com/x/square60/1.jpg', url_max1280: 'https://cf.bstatic.com/x/max1280/1.jpg' }, { url: 'https://cdn.x.fr/2.webp' }, { url: 'http://pas-sur/3.jpg' }, { lien: 'https://www.booking.com/hotel/fr/x.html' }] });
+    verifier(JSON.stringify(p1) === '["https://cf.bstatic.com/x/max1280/1.jpg","https://cdn.x.fr/2.webp"]', `photos Booking : la grande taille, https, pas de page web (${JSON.stringify(p1)})`);
+    const p2 = photosDepuisContenu({ data: { images: ['https://a.muscache.com/im/1.jpg', 'https://a.muscache.com/im/1.jpg', 'javascript:alert(1)'] } });
+    verifier(JSON.stringify(p2) === '["https://a.muscache.com/im/1.jpg"]', `photos en liste de chaînes, sans doublon (${JSON.stringify(p2)})`);
+    verifier(photosDepuisContenu(null).length === 0 && photosDepuisContenu({ error: 'x' }).length === 0, 'photos : réponse vide ou illisible → aucune');
+    const t = tarifsDepuisBooking(
+      {
+        hotelId: '1',
+        room: [
+          {
+            id: 'r1',
+            date: [
+              { value: '2026-10-20', rate: [{ id: 'a', price: '120.00', price1: '100' }, { id: 'b', price: 108 }, { id: 'c', price: '90', closed: '1' }], roomstosell: '1' },
+              { value: '2026-10-21', rate: [{ id: 'a', price1: '95' }], roomstosell: 0 },
+              { value: '2026-10-22', rate: [{ id: 'a', price: '3' }] },
+              { value: '2020-01-01', rate: [{ id: 'a', price: '50' }] },
+            ],
+          },
+        ],
+      },
+      '2026-10-19T06:00:00+02:00',
+      '2026-10-19',
+      '2026-12-18',
+    );
+    verifier(
+      canonique(t?.jours) === canonique([{ date: '2026-10-20', prixCentimes: 10800, libre: true }, { date: '2026-10-21', prixCentimes: 9500, libre: false }]) && t?.devise === 'EUR',
+      `tarifs Booking : tarif ouvert le moins cher, plus de chambre à vendre = pris, prix aberrants et hors période écartés (${JSON.stringify(t?.jours)})`,
+    );
+    verifier(tarifsDepuisBooking({ hotelId: '1' }, '2026-10-19T06:00:00+02:00', '2026-10-19', '2026-12-18') === undefined, 'tarifs Booking : rien de daté → aucun prix');
+  }
 
   /* ------------------------------------------------ sans choix de logements */
   section('Aucun logement choisi');
@@ -752,6 +808,33 @@ async function principal() {
   verifier(base.get<Logement>('logements', 'repull-102')?.statut === 'sorti', 'annonce archivée : logement « sorti », jamais supprimé');
   verifier(base.get<Logement>('logements', 'repull-101')?.statut === 'lancement', 'annonce inchangée : statut choisi par l’équipe conservé');
   verifier(base.collection('logements').length === 2 && base.collection('reservations').length === 2, 'rien de supprimé');
+
+  section('Annonce Booking.com sans photo ni calendrier chez Repull');
+  {
+    repull.ficheRepullVide = true;
+    // Photos jamais relevées pour 101 (elles se relisent une fois par semaine).
+    const l = base.get<Logement>('logements', 'repull-101')!;
+    base.poser('logements', { ...l, photos: undefined, repull: { ...l.repull!, photosLuesLe: undefined } });
+    const avant = repull.appels.length;
+    avancer(61); // bouton : annonces relues si le dernier relevé a plus d'une heure
+    const r = await lancer(options('manuel'));
+    repull.ficheRepullVide = false;
+    const appels = repull.appels.slice(avant);
+    const l101 = base.get<Logement>('logements', 'repull-101')!;
+    verifier(r.ok && r.statut === 'fait', `passage réussi (${r.message ?? ''})`);
+    verifier(
+      JSON.stringify(l101.photos) === '["https://cf.bstatic.com/xdata/images/hotel/max1280/1.jpg","https://cf.bstatic.com/xdata/images/hotel/max1280/2.jpg"]',
+      `photos lues chez Booking.com : chambre, puis établissement (${JSON.stringify(l101.photos)})`,
+    );
+    const contenus = appels.filter((a) => a.chemin === '/v1/channels/booking/content');
+    verifier(contenus.length === 2 && contenus[0].params.get('room_id') === '556677101' && !contenus[1].params.get('room_id'), 'galerie de la chambre demandée d’abord, puis celle de l’établissement');
+    verifier(
+      canonique(l101.tarifs?.jours) === canonique([{ date: '2026-10-20', prixCentimes: 10800, libre: true }, { date: '2026-10-21', prixCentimes: 13000, libre: false }]),
+      `prix par nuit lus chez Booking.com quand le calendrier Repull est vide (${JSON.stringify(l101.tarifs?.jours)})`,
+    );
+    verifier(appels.filter((a) => a.chemin === '/v1/channels/booking/properties').length === 1, 'établissements Booking.com lus une seule fois par passage');
+    verifier(appels.every((a) => a.methode === 'GET' || /\/messages$/.test(a.chemin)), 'lectures Booking.com : GET seulement');
+  }
 
   section('Lectures étendues refusées : relevé de base');
   {
