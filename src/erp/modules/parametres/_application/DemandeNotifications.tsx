@@ -11,7 +11,7 @@ import { appareil, estInstallee, notificationsPossibles } from '../../../data/ap
 import { demandeNotifications, type ContexteDemandeNotifications } from '../../../data/notifications';
 import { useErp } from '../../../data/store';
 import { Alert, Button, Modal } from '../../../ui';
-import { activerSurCetAppareil, serveurNotifications } from './notifications';
+import { activerSurCetAppareil, messageActivation, serveurNotifications } from './notifications';
 import { propositionInstallationVisible, signalerDemandeNotifications } from './PropositionInstallation';
 import { useInstallation } from './installation';
 
@@ -130,7 +130,7 @@ export function DemandeNotifications() {
         setPhase('refusee');
       } else plusTard();
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : 'Une erreur est survenue. Réessayez dans un instant.');
+      setErreur(messageActivation(e));
     } finally {
       setEnCours(false);
     }
