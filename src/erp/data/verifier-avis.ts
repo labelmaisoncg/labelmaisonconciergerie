@@ -5,7 +5,7 @@
  * parc (moyenne, nombre, tendance récente, thèmes et fréquence, avis à lire
  * en premier), lecture de l'IA qui affine sans rien inventer, réponse simple
  * sans IA, garde-fous (nom de famille, téléphone, e-mail, adresse, code,
- * lien, message privé, geste commercial), puis « Préparer une réponse » côté
+ * lien, message privé, geste commercial), puis « Proposer une réponse » côté
  * serveur avec une fausse base et un faux Claude : IA absente, plafond du
  * mois, réponse écartée, message privé jamais donné à l'IA, rien publié sur
  * la plateforme, compte en lecture refusé.
@@ -35,6 +35,8 @@ import {
   prenomPublic,
   problemesReponse,
   reponseModele,
+  reponsePossible,
+  sansReponse,
   separerAvis,
   signatureSure,
   syntheseAvis,
@@ -375,7 +377,7 @@ section('Consignes et contexte de l’IA : jamais le message privé ni le nom co
   verifier(lireReponseIA({ content: [{ type: 'text', text: 'pas du JSON' }] }) === null && lireReponseIA({ content: [{ type: 'text', text: '{"texte":"x"}' }], stop_reason: 'refusal' }) === null, 'réponse illisible ou refusée : null');
 }
 
-/* =========================================== serveur : « Préparer une réponse » */
+/* =========================================== serveur : « Proposer une réponse » */
 
 /** Fausse base en mémoire (lire, écrire, versions). */
 class FausseBase implements BaseAssistant {
@@ -438,6 +440,7 @@ function monde(ia?: FauxClaude, o: { plafond?: number; dejaAppels?: number; comm
     resa({ id: 'r-avis', noteVoyageur: 3.5, voyageur: { nom: 'Camille Durand', nbPersonnes: 2 }, commentaireVoyageur: o.commentaire ?? `Bien situé mais bruyant la nuit.\n\nMessage privé : ${PRIVE}` }),
   );
   base.poser('reservations', resa({ id: 'r-note', noteVoyageur: 5 }));
+  base.poser('reservations', resa({ id: 'r-direct', canal: 'direct', noteVoyageur: 4, commentaireVoyageur: 'Très bien, un peu bruyant.' }));
   base.poser('reglages', { id: 'agent', signature: 'L’équipe Label Maison' } as Partial<ReglagesAgent> & { id: string });
   if (o.dejaAppels !== undefined) base.poser(COLLECTION_AGENT, { id: ID_ETAT_AGENT, iaMois: { mois: '2026-10', appels: o.dejaAppels } } as EtatAgent);
   base.ecritures = [];
@@ -528,6 +531,24 @@ section('Serveur : avis introuvable, ou sans commentaire public');
   verifier(sansTexte?.statut === 400 && /rien à répondre/.test(sansTexte.message), 'note sans commentaire : rien à répondre', sansTexte);
   const vide = await refus('');
   verifier(vide?.statut === 404, 'identifiant vide : refusé');
+}
+
+section('Séjour direct : pas de page d’avis publique, donc pas de réponse');
+{
+  const ia = new FauxClaude(repondreIA('Bonjour, merci.'));
+  const { base, options } = monde(ia);
+  let refus: ErreurAssistant | null = null;
+  try {
+    await preparerReponseAvis(options, 'r-direct');
+  } catch (e) {
+    refus = e instanceof ErreurAssistant ? e : null;
+  }
+  verifier(refus?.statut === 400 && /en direct/.test(refus.message), 'séjour direct : refusé, en clair', refus);
+  verifier(!ia.demandes.length && !base.ecritures.length, 'séjour direct : ni IA ni écriture');
+  const direct = avisDe({ canal: 'direct', noteVoyageur: 4, commentaireVoyageur: 'Très bien.' });
+  verifier(!reponsePossible(direct) && /en direct/.test(sansReponse(direct) ?? ''), 'règle partagée avec l’écran : pas de « Proposer une réponse »');
+  verifier(reponsePossible(avisDe({ canal: 'airbnb', noteVoyageur: 4, commentaireVoyageur: 'Très bien.' })) && reponsePossible(avisDe({ canal: 'autre', noteVoyageur: 4, commentaireVoyageur: 'Très bien.' })), 'Airbnb, Booking.com ou autre plateforme : réponse possible');
+  verifier(!reponsePossible(avisDe({ canal: 'airbnb', noteVoyageur: 5 })) && /commentaire public/.test(sansReponse(avisDe({ canal: 'airbnb', noteVoyageur: 5 })) ?? ''), 'note sans commentaire : pas de réponse');
 }
 
 section('Rôles : l’équipe prépare, un compte en lecture lit seulement');

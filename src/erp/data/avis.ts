@@ -11,12 +11,12 @@
  *   (négatifs, puis mitigés) ;
  * - analyseParc : la même chose pour le portefeuille et logement par logement.
  *
- * L'IA peut affiner la lecture d'un avis (« Préparer une réponse »,
+ * L'IA peut affiner la lecture d'un avis (« Proposer une réponse »,
  * avis-serveur.ts) : son sentiment et le sentiment des thèmes DÉJÀ repérés
  * (Reservation.lectureAvis). Elle n'ajoute jamais de thème, d'avis ni de
  * chiffre : les nombres sont toujours comptés ici.
  *
- * Réponse proposée (« Préparer une réponse ») : texte simple sans IA
+ * Réponse proposée (« Proposer une réponse ») : texte simple sans IA
  * (reponseModele) ou rédigé par l'IA, toujours contrôlé (problemesReponse) :
  * jamais de nom de famille, téléphone, e-mail, adresse, code ni lien, jamais
  * le message privé du voyageur, jamais de geste commercial ni de
@@ -614,6 +614,19 @@ function decalerJours(date: DateISO, n: number): DateISO {
 
 /** Rôles qui préparent une réponse (un compte en lecture la lit seulement). */
 export const peutPreparerReponse = (role: string | undefined): boolean => role === 'gerant' || role === 'operations';
+
+/**
+ * Une réponse publique a-t-elle un sens ? Il faut un commentaire public, et
+ * une plateforme où il est publié : un séjour direct n'a pas de page d'avis.
+ */
+export const reponsePossible = (a: Pick<AvisLu, 'textePublic' | 'canal'>): boolean => !!a.textePublic && a.canal !== 'direct';
+
+/** Pourquoi on ne répond pas à cet avis (undefined : on peut répondre). */
+export function sansReponse(a: Pick<AvisLu, 'textePublic' | 'canal'>): string | undefined {
+  if (!a.textePublic) return 'Pas de commentaire public : il n’y a rien à répondre.';
+  if (a.canal === 'direct') return 'Séjour réservé en direct : pas de page d’avis publique, il n’y a rien à répondre.';
+  return undefined;
+}
 
 /** Prénom seul, s'il ressemble à un prénom (jamais un nom complet, un numéro ou un e-mail). */
 export function prenomPublic(nom: string | undefined): string {
