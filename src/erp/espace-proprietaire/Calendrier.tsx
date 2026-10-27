@@ -136,12 +136,13 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
                 <span className="h-2.5 w-5 rounded-full border border-(--lm-bord-fort)" aria-hidden />
                 Libre
               </span>
-              {[...hors].map((h) => (
-                <span key={h} className="inline-flex items-center gap-1.5">
+              {/* Un seul gris, une seule entrée : le détail (avant, après, séjour de l'ancien) est dans la phrase et le libellé de chaque jour. */}
+              {hors.size > 0 && (
+                <span className="inline-flex items-center gap-1.5">
                   <span className="h-2.5 w-5 rounded-full border border-(--lm-bord) bg-(--lm-surface-2)" aria-hidden />
-                  {HORS[h]}
+                  Hors de votre période
                 </span>
-              ))}
+              )}
               <span>La bande commence le jour d’arrivée et s’arrête le jour du départ.</span>
             </div>
           </Card>

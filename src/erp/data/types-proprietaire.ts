@@ -142,8 +142,8 @@ export interface ChiffresMoisVue {
   sejours: number;
   /** Mois en cours ou bilan pas encore publié : chiffres provisoires. */
   provisoire: boolean;
-  /** Une commission a été déduite (sinon : pas de taux connu, « après frais » seulement). */
-  avecCommission?: boolean;
+  /** Commission : `aucune` (pas de taux connu, « après frais ») ou `partielle` (un logement sans taux) ; absent : déduite partout. */
+  commission?: 'aucune' | 'partielle';
 }
 
 export interface JourCalendrier {

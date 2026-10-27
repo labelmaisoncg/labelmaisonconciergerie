@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Button, Field, Input, Modal, Select, Prerequis } from '../../ui';
+import { Alert, Button, Field, Input, Interrupteur, Modal, Select, Prerequis } from '../../ui';
 import { nouvelId, useErp } from '../../data/store';
 import { COMMISSION_CIBLE_MAX, COMMISSION_CIBLE_MIN } from '../../data/constantes';
 import { AUJOURDHUI, ajouterJours, euros, versCentimes } from '../../data/format';
@@ -10,7 +10,8 @@ interface Props {
   onFermer: () => void;
   mandat?: Mandat;
   /** Valeurs initiales en création (ex. depuis une fiche propriétaire). */
-  preselection?: { proprietaireId?: string; logementId?: string; dateDebut?: string };
+  /** `dejaSigne` : proposer « Mandat déjà signé » (ex. après un changement de propriétaire, depuis la fiche). */
+  preselection?: { proprietaireId?: string; logementId?: string; dateDebut?: string; dejaSigne?: boolean };
   onEnregistre?: (m: Mandat) => void;
 }
 
@@ -46,6 +47,8 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
   });
   const [s, setS] = useState<Saisie>(vierge);
   const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
+  const proposerSigne = !mandat && preselection?.dejaSigne !== undefined;
+  const [signe, setSigne] = useState(!!preselection?.dejaSigne);
 
   useEffect(() => {
     if (ouvert) {
@@ -71,14 +74,17 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
     if (s.periodeEssaiFin && s.periodeEssaiFin <= s.dateDebut) err.periodeEssaiFin = 'Doit être après la date de début.';
     if (!/^\d+$/.test(s.preavisJours)) err.preavisJours = 'Nombre de jours.';
     const doublon = mandats.find(
-      (m) => m.logementId === s.logementId && m.id !== mandat?.id && (m.statut === 'signe' || m.statut === 'envoye'),
+      (m) => m.logementId === s.logementId && m.proprietaireId === s.proprietaireId && m.id !== mandat?.id && (m.statut === 'signe' || m.statut === 'envoye'),
     );
     if (!mandat && doublon) err.logementId = `Ce logement a déjà un mandat en cours (${doublon.reference}).`;
     setErreurs(err);
     if (Object.keys(err).length) return;
 
     const suivant: Mandat = {
-      ...(mandat ?? { id: nouvelId('man'), reference: prochaineReference(mandats), statut: 'brouillon' as const, documentUrl: undefined }),
+      ...(mandat ??
+        (proposerSigne && signe
+          ? { id: nouvelId('man'), reference: prochaineReference(mandats), statut: 'signe' as const, signeLe: s.dateDebut, documentUrl: undefined }
+          : { id: nouvelId('man'), reference: prochaineReference(mandats), statut: 'brouillon' as const, documentUrl: undefined })),
       proprietaireId: s.proprietaireId,
       logementId: s.logementId,
       commissionPct: pct,
@@ -97,7 +103,13 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
       ouvert={ouvert}
       onFermer={onFermer}
       titre={mandat ? `Modifier ${mandat.reference}` : 'Nouveau mandat'}
-      description={mandat ? undefined : 'Créé en brouillon. Il devra être envoyé puis signé avant toute activation du logement.'}
+      description={
+        mandat
+          ? undefined
+          : proposerSigne && signe
+            ? 'Mandat déjà signé : il s’applique dès la date de début.'
+            : 'Créé en brouillon. Il devra être envoyé puis signé avant toute activation du logement.'
+      }
       pied={
         <>
           <Button onClick={onFermer}>Annuler</Button>
@@ -139,6 +151,12 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
         <Field label="Préavis (jours)" requis erreur={erreurs.preavisJours}>
           <Input value={s.preavisJours} onChange={(e) => maj('preavisJours', e.target.value)} inputMode="numeric" />
         </Field>
+        {proposerSigne && (
+          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+            <span className="text-[13.5px] text-(--lm-encre)">Mandat déjà signé</span>
+            <Interrupteur actif={signe} label="Mandat déjà signé" onChange={setSigne} />
+          </div>
+        )}
         {pct > 0 && pct < COMMISSION_CIBLE_MIN && (
           <Alert tone="alerte" titre="Commission sous la cible" className="sm:col-span-2">
             Les nouveaux mandats se signent entre {COMMISSION_CIBLE_MIN} et {COMMISSION_CIBLE_MAX} %. Un taux inférieur doit rester exceptionnel.

@@ -17,7 +17,7 @@ function CarteMois({ titre, c, onVoirBilan }: { titre: string; c: ChiffresMoisVu
         {c.provisoire ? <Badge tone="neutre">{titre === 'Ce mois-ci' ? 'En cours' : 'Provisoire'}</Badge> : <Badge tone="succes">Bilan publié</Badge>}
       </div>
       <p className="lm-chiffres mt-3 text-[32px] leading-none font-semibold text-(--lm-encre)">{euros(c.net, true)}</p>
-      <p className="mt-1.5 text-[12.5px] text-(--lm-encre-2)">{c.avecCommission === false ? 'pour vous, après frais' : 'pour vous, après frais et commission'}</p>
+      <p className="mt-1.5 text-[12.5px] text-(--lm-encre-2)">{c.commission === 'aucune' ? 'pour vous, après frais' : c.commission === 'partielle' ? 'pour vous, après frais et commission selon vos mandats' : 'pour vous, après frais et commission'}</p>
       <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-(--lm-bord) pt-3 text-[13px]">
         <div>
           <dt className="text-(--lm-encre-2)">Nuits réservées</dt>

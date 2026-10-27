@@ -368,7 +368,7 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
           <FormMandat
             ouvert
             onFermer={() => setNouveauMandat(false)}
-            preselection={{ proprietaireId: prop.id, logementId: l.id, ...(l.proprietaireDepuis ? { dateDebut: l.proprietaireDepuis } : {}) }}
+            preselection={{ proprietaireId: prop.id, logementId: l.id, dejaSigne: true, ...(l.proprietaireDepuis ? { dateDebut: l.proprietaireDepuis } : {}) }}
           />
         )}
         {/* Espace propriétaire : le gérant seul (accès, bilans à publier, documents). */}

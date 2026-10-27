@@ -815,7 +815,8 @@ function conciergerieOuverte(): { nom: string; contacts?: ContactsConciergerie }
 const CATEGORIES = new Set<string>(CATEGORIES_DOCUMENT.map((c) => c.valeur));
 
 function chiffresMois(c: ChiffresBilan, provisoire: boolean): ChiffresMoisVue {
-  return { mois: c.mois, net: c.totaux.net, nuits: c.totaux.nuits, occupation: c.occupation, sejours: c.totaux.sejours, provisoire, avecCommission: c.totaux.commission > 0 };
+  const commission = !(c.totaux.commission > 0) ? ('aucune' as const) : logementsSansTaux(c).length ? ('partielle' as const) : undefined;
+  return { mois: c.mois, net: c.totaux.net, nuits: c.totaux.nuits, occupation: c.occupation, sejours: c.totaux.sejours, provisoire, ...(commission ? { commission } : {}) };
 }
 
 /**

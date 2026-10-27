@@ -85,7 +85,7 @@ export function ATraiter({ elements, titre = 'À faire', max = 5 }: { elements: 
         titre={titre}
         actions={
           elements.length > max && (
-            <button type="button" onClick={() => setTout(true)} className="text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+            <button type="button" onClick={() => setTout(true)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
               Tout voir ({elements.length})
             </button>
           )
