@@ -794,7 +794,7 @@ export interface ContexteFil {
  * ordre chronologique. Statut et prise en charge restent à l'ERP, sauf un
  * nouveau message du voyageur : fil rouvert et « en attente » (si l'agent IA
  * n'a pas la main) ; une réponse de l'hôte sur un fil en attente le passe
- * « équipe ».
+ * « équipe », et sur un fil transmis (escalade) le rouvre comme répondu.
  */
 export function versFil(conv: RepullConversation, messages: RepullMessage[], existant: FilMessages | undefined, ctx: ContexteFil): FilMessages {
   const connus = new Map<string, Message>((existant?.messages ?? []).map((m) => [m.id, m]));
@@ -821,6 +821,14 @@ export function versFil(conv: RepullConversation, messages: RepullMessage[], exi
       if (statut === 'clos') statut = 'ouvert';
       if (traitePar !== 'agent') traitePar = 'en_attente';
     } else if (dernier && dernier.auteur !== 'voyageur' && traitePar === 'en_attente') {
+      traitePar = 'humain';
+    }
+    // L'équipe a répondu directement sur la plateforme à une conversation transmise :
+    // répondue, comme une réponse envoyée depuis l'ERP (messagerie-envoi.ts). Jamais le
+    // retour d'un message parti de l'ERP (message d'attente de l'agent sans identifiant Repull).
+    const renvoiErp = (m: Message) => (existant?.messages ?? []).some((x) => !!x.envoi && x.texte.trim() === m.texte.trim());
+    if (statut === 'escalade' && dernier?.auteur === 'hote' && nouveaux.some((m) => m.id === dernier.id) && instant(dernier.envoyeLe) > avant && !renvoiErp(dernier)) {
+      statut = 'ouvert';
       traitePar = 'humain';
     }
   }

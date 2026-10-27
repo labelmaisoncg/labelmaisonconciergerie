@@ -790,6 +790,9 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
   return { fiche: source as Partial<Logement['fiche']> | undefined, descriptif };
 }
 
+/** Mots en majuscules qui suivent « code » sans en être un. */
+const MOTS_PAS_CODE = new Set(['WIFI', 'PORTE', 'PORTAIL', 'ENTREE', 'IMMEUBLE', 'PARKING', 'ACCES', 'BOITE', 'GARAGE', 'CADENAS', 'POSTAL']);
+
 /**
  * Codes, wifi et numéros d'accès : jamais dans un texte avant que le
  * voyageur y ait droit. Comptent aussi les suites de chiffres de « À
@@ -809,8 +812,11 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
   );
   const codes = [
     ...(acces.match(SUITE_CHIFFRES) ?? []),
-    // Après « code » : un jeton avec un chiffre, # ou * (« code 4821 », « code : A12B ») ; jamais un mot (« code par séjour »).
-    ...[...acces.matchAll(/code\s*:?\s*([A-Za-z]*[0-9#*][A-Za-z0-9#*]{2,})/gi)].map((m) => m[1]),
+    // Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 ») ;
+    // jamais un mot (« code par séjour »).
+    ...[...acces.matchAll(/code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi)].map((m) => m[1]),
+    // Ou un mot tout en majuscules d'au moins 4 lettres (« code SOLEIL »), sauf les mots de la fiche (« code WIFI », « code PORTE »).
+    ...[...acces.matchAll(/[Cc]ode\s*:?\s*([A-Z]{4,})(?![A-Za-z0-9])/g)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(m)),
     ...(autres.match(SUITE_CHIFFRES) ?? []),
   ];
   return [...new Set([fiche.wifiCode, fiche.wifiNom, ...codes].map((x) => String(x ?? '').trim()).filter((x) => x.length >= 3))];

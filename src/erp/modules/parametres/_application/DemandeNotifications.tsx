@@ -13,12 +13,13 @@ import { notificationsIphone } from '../../../data/marque-espace';
 import { demandeNotifications, type ContexteDemandeNotifications } from '../../../data/notifications';
 import { useErp } from '../../../data/store';
 import { Alert, Button, Modal } from '../../../ui';
-import { activerSurCetAppareil, messageActivation, serveurNotifications } from './notifications';
+import { activerSurCetAppareil, messageActivation, revoirAppareil, serveurNotifications } from './notifications';
 import { propositionInstallationVisible, signalerDemandeNotifications } from './PropositionInstallation';
 import { useInstallation } from './installation';
 
 const CLE_PLUS_TARD = 'lm-erp-notifications-plus-tard';
 const CLE_REFUSEE = 'lm-erp-notifications-refusees';
+const CLE_APPAREIL_REVU = 'lm-erp-appareil-revu';
 /** Laisse la page s'installer (et le navigateur proposer l'installation) avant de demander. */
 const DELAI_MS = 1500;
 /**
@@ -56,6 +57,18 @@ export function DemandeNotifications() {
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const [activees, setActivees] = useState(false);
+
+  // Appareil déjà abonné : son rôle suit le compte, une fois par session (prix réservés au gérant).
+  useEffect(() => {
+    if (mode !== 'reel' || APERCU || !notificationsPossibles()) return;
+    try {
+      if (window.sessionStorage.getItem(CLE_APPAREIL_REVU)) return;
+      window.sessionStorage.setItem(CLE_APPAREIL_REVU, '1');
+    } catch {
+      return;
+    }
+    void revoirAppareil().catch(() => undefined);
+  }, [mode]);
 
   useEffect(() => {
     let annule = false;
