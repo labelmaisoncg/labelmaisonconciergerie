@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CalendarPlus, Check, Copy } from 'lucide-react';
-import type { FiltreAgenda } from '../../../data/agenda-crm';
+import { filtresAgenda, type FiltreAgenda } from '../../../data/agenda-crm';
+import { espaceOuvert } from '../../../data/espaces';
 import { pluriel } from '../../../data/format';
 import { Alert, Button, classesBouton, Field, Modal, Select } from '../../../ui';
 import { appelerRouteGerant } from './api-connecteur';
@@ -16,11 +17,7 @@ interface ReponseAgenda {
 const appelerAgenda = (corps?: Record<string, unknown>) =>
   appelerRouteGerant<ReponseAgenda>('/api/erp-agenda', corps, 'Agenda indisponible pour le moment. Réessayez dans un instant.');
 
-const CHOIX: { valeur: FiltreAgenda; libelle: string }[] = [
-  { valeur: 'tous', libelle: 'Toute l’équipe' },
-  { valeur: 'abdel', libelle: 'Abdel' },
-  { valeur: 'kamel', libelle: 'Kamel' },
-];
+const LIBELLE_FILTRE: Record<FiltreAgenda, string> = { tous: 'Toute l’équipe', abdel: 'Abdel', kamel: 'Kamel' };
 
 /**
  * « Relances dans Calendrier » : un lien d'abonnement à l'agenda des relances
@@ -29,6 +26,8 @@ const CHOIX: { valeur: FiltreAgenda; libelle: string }[] = [
  * fois (la base n'en garde que l'empreinte) ; « Couper » les révoque tous.
  */
 export function AgendaCrm({ ouvert, onFermer, demo }: { ouvert: boolean; onFermer: () => void; demo: boolean }) {
+  // Label Maison : toute l'équipe, Abdel ou Kamel ; un autre espace : toute l'équipe (pas de choix à faire).
+  const choix = filtresAgenda(espaceOuvert().id).map((valeur) => ({ valeur, libelle: LIBELLE_FILTRE[valeur] }));
   const [filtre, setFiltre] = useState<FiltreAgenda>('tous');
   const [lien, setLien] = useState<{ webcal: string; https: string }>();
   const [liens, setLiens] = useState<number>();
@@ -146,9 +145,11 @@ export function AgendaCrm({ ouvert, onFermer, demo }: { ouvert: boolean; onFerme
             </>
           ) : (
             <>
-              <Field label="Relances de">
-                <Select value={filtre} onChange={(e) => setFiltre(e.target.value as FiltreAgenda)} options={CHOIX} />
-              </Field>
+              {choix.length > 1 && (
+                <Field label="Relances de">
+                  <Select value={filtre} onChange={(e) => setFiltre(e.target.value as FiltreAgenda)} options={choix} />
+                </Field>
+              )}
               <Button variant="primary" icone={<CalendarPlus />} chargement={enCours === 'creer'} onClick={() => void creer()}>
                 Créer le lien
               </Button>

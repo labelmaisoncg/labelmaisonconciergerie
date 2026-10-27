@@ -581,7 +581,11 @@ l'ERP est une application.
      (expéditeur de l'espace ; sans expéditeur, le lien s'affiche, à copier
      et envoyer par SMS ou WhatsApp). Le code (32 octets au hasard) sert une
      fois, 14 jours ; la base n'en garde que l'empreinte SHA-256
-     (`erp.inviter_membre`). Une nouvelle invitation remplace la précédente ;
+     (`erp.inviter_membre`). Une nouvelle invitation remplace la précédente.
+     Plus tard, « Envoyer l'invitation » reste sur la ligne de chaque membre
+     (gérant, sauf sa propre ligne et le rôle prestataire) ; pour un membre
+     qui a déjà activé son accès, la base répond qu'il se connecte simplement
+     (aucun code n'est créé) ;
   2. la personne ouvre le lien **sur l'appareil où elle utilisera l'ERP** :
      la page garde l'adresse et le code sur cet appareil, et s'ouvre sur
      « Créer mon compte », l'adresse fixée ; elle choisit son mot de passe
@@ -1030,7 +1034,7 @@ sans message en attente n'appelle pas Claude.
   4. Facultatif, pour un outil sans OAuth : `MCP_CRM_TOKEN` (32 caractères au moins) dans Vercel ouvre `/api/crm-mcp/<cette clé>`. Sans la variable, cette adresse est fermée.
   5. RGPD : le connecteur transmet à Claude (Anthropic) des données personnelles du CRM (noms, téléphones, e-mails) et, pour le channel manager, des prénoms et initiales de voyageurs, dates de séjour et messages (e-mails et téléphones masqués) : Anthropic figure parmi les sous-traitants de la politique de confidentialité (`/politique-de-confidentialite`).
 - **Relances dans Calendrier** (`/api/crm-agenda/<clé>`) : l'agenda des relances au format iCalendar, pour un abonnement dans Calendrier (iPhone, Mac), Google Agenda ou Outlook. Lecture seule : rien n'est écrit, ni dans le CRM ni ailleurs.
-  1. CRM → Plus → « Relances dans Calendrier » (gérants) : choisir « Toute l'équipe », « Abdel » ou « Kamel » (ses contacts, plus ceux que personne ne suit encore), « Créer le lien », puis « Ouvrir dans Calendrier » (lien `webcal://`) → « S'abonner » (emplacement iCloud pour l'avoir sur tous les appareils). Ailleurs : coller le lien `https://` (Calendrier → Fichier → Nouvel abonnement, Google Agenda → Autres agendas → À partir de l'URL).
+  1. CRM → Plus → « Relances dans Calendrier » (gérants) : choisir « Toute l'équipe », « Abdel » ou « Kamel » (ses contacts, plus ceux que personne ne suit encore ; dans un autre espace que Label Maison, toute l'équipe seulement, `filtresAgenda`, revérifié par `/api/erp-agenda`), « Créer le lien », puis « Ouvrir dans Calendrier » (lien `webcal://`) → « S'abonner » (emplacement iCloud pour l'avoir sur tous les appareils). Ailleurs : coller le lien `https://` (Calendrier → Fichier → Nouvel abonnement, Google Agenda → Autres agendas → À partir de l'URL).
   2. Contenu (`src/erp/data/agenda-crm.ts`, contrôles `verifier-agenda.ts`) : un événement par contact, sur la journée, avec un rappel à 9 h. Aujourd'hui : chaque « À appeler » et chaque relance échue (« en retard ») ; à sa date : chaque relance prévue ; jamais : « Signé » et « Pas intéressé ». La date suit la relance (UID stable). Rafraîchissement demandé toutes les 15 min (Calendrier d'Apple décide du rythme réel ; Google Agenda relit en quelques heures).
   3. Clés (`api/_agenda.ts`, route gérant `/api/erp-agenda`) : 256 bits, montrées une seule fois ; la collection `connecteurs` n'en garde que l'empreinte SHA-256. Un lien par espace, comme les jetons de Claude : rangé dans l'espace du gérant qui le crée, préfixé par l'espace hors Label Maison (liens de Label Maison inchangés), il ne donne que le CRM de cet espace (calendrier à son nom). « Couper tous les liens… » révoque ceux de l'espace ouvert (effet en 1 min au plus, l'agenda abonné garde sa dernière copie). Le lien donne noms et téléphones des contacts : à garder pour soi. RGPD : Apple (iCloud) et Google (Agenda) figurent parmi les sous-traitants de la politique de confidentialité.
 
@@ -1253,7 +1257,26 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   Maison seulement**. `verifierMembre(jeton, { espace })` vérifie le rôle dans
   l'espace de l'en-tête (Label Maison à défaut : anciennes versions de l'app).
   Le site public (formulaires, dossier propriétaire) et la clé fixe
-  `MCP_CRM_TOKEN` restent dans Label Maison. Le connecteur Claude (OAuth,
+  `MCP_CRM_TOKEN` restent dans Label Maison.
+- **Marque de l'espace** (`src/erp/data/marque-espace.ts`, contrôles
+  `verifier-marque-espace.ts`) : dans un autre espace que Label Maison, les
+  écrans principaux ne montrent ni le nom de Label Maison, ni ses associés,
+  ni ses formulaires. Titre de l'onglet « ERP · Sens » ; « Part du
+  propriétaire » d'un séjour : « Ménage (pour Sens) », « Commission Sens
+  (20 %) » ; réponse rapide « Merci » signée comme l'agent de l'espace
+  (« L'équipe Sens », ou la signature réglée) ; CRM sans « Lien du dossier
+  propriétaire » ni « Envoyer le dossier » (ses réponses iraient au CRM et à
+  la boîte de Label Maison), et sans la phrase sur les formulaires du site ;
+  « Suivi par » : les membres de l'espace (gérant, opérations ; valeur :
+  leur adresse) au lieu d'Abdel et Kamel, que Claude ne voit ni ne règle
+  dans cet espace (`outilsDeLEspace` : pas de `suivi_par`) ; carte et page
+  d'installation de l'app sans nom (« Installez l'app » : l'app installée
+  garde le nom de son manifeste, commun à tous les espaces) ; ni Telegram
+  (groupe de Label Maison) dans les réglages de l'agent, ni l'identité
+  légale de Label Maison dans Paramètres → Société (le nom de l'espace
+  seulement). Label Maison :
+  textes d'avant, à l'identique (la réponse « Merci » suit la signature
+  réglée de l'agent, « L'équipe Label Maison » par défaut). Le connecteur Claude (OAuth,
   MCP) et l'agenda du CRM suivent l'espace de leur jeton ou de leur lien
   (`espaceOuvertAuJeton`, voir « CRM d'appels et connecteur Claude ») ;
   l'invitation « Créer mon compte » part au nom de l'espace ouvert.
@@ -1325,9 +1348,9 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
   qui n'est pas encore dans les dépendances de développement.
 - Identité légale par espace : dans un autre espace, contrat de mandat,
-  relevés et factures de Finance, Paramètres → Société et Conformité portent
-  encore celle de Label Maison (voir les limites dans
-  `espaces-mise-en-service.md`).
+  relevés et factures de Finance et Conformité portent encore celle de
+  Label Maison ; Paramètres → Société n'affiche que le nom de l'espace (voir
+  les limites dans `espaces-mise-en-service.md`).
 
 ## Espace propriétaire (octobre 2026)
 
@@ -1689,7 +1712,12 @@ un autre espace (une personne de Label Maison ne reçoit rien de Sens). Pas
 de nom de voyageur ; un numéro ou une adresse tapés dans un incident sont
 masqués. « Signaler » dit qui sera vraiment prévenu (« Le gérant et Inès M.
 sont prévenus tout de suite. ») : les personnes dont le téléphone recevra
-l'urgence.
+l'urgence, et le gérant seulement si un appareil de l'app de l'ERP la
+recevra (clés du serveur, appareil abonné qui accepte « Urgence ») ; sinon
+« Le gérant le verra dans l'ERP. ». Après l'envoi, même règle (« Urgence
+signalée. » suivi de la même phrase, calculée par le serveur). Accès
+retiré : « Votre accès a été retiré. Contactez votre conciergerie. »
+partout (`ACCES_RETIRE`, espaces propriétaire et opérations).
 
 Fonctionnement :
 
@@ -1716,8 +1744,10 @@ Fonctionnement :
   (pur, contrôlé par `verifier-operations.ts`), journal d'idempotence
   `connecteurs/operations-notifications-journal` (une notification ne part
   qu'une fois). Après une action de l'espace (`agir`), avec la notification
-  « Urgence » de l'ERP ; le matin dans le passage quotidien
-  (`api/erp-repull-sync.ts`, après les relances, 8 s au plus, jamais
-  bloquant : 4 h 17 UTC, soit 5 h 17 en hiver et 6 h 17 en été) ; à la
-  réponse du gérant (l'ERP appelle `signalement-traite` juste après avoir
-  enregistré, et réessaie tant que la base ne l'a pas).
+  « Urgence » de l'ERP ; le matin avec le passage planifié de l'agent
+  (`api/erp-agent.ts`, `notificationsOpsDuJour`, 8 s au plus, jamais
+  bloquant), à partir de 7 h (heure de Paris) : le réveil de 22 h UTC tombe
+  à minuit l'été, déjà le jour suivant à Paris, et n'envoie donc rien
+  (`matinOpsOuvert`) ; à la réponse du gérant (l'ERP appelle
+  `signalement-traite` juste après avoir enregistré, et réessaie tant que la
+  base ne l'a pas).

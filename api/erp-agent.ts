@@ -43,7 +43,8 @@ export default async function handler(req: any, res: any) {
   let espace: string | undefined;
   if (planifie) {
     // App « Opérations » : remplacements qui commencent, contrôles qualité du jour.
-    // Au passage du matin de l'agent (pas à 5 h) ; borné à 8 s, jamais bloquant.
+    // Au premier passage de l'agent à partir de 7 h à Paris (rien avant, même
+    // le réveil de minuit l'été) ; borné à 8 s, jamais bloquant.
     const operations = await notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({}));
     if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
   }

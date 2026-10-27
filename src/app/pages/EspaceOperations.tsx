@@ -7,7 +7,7 @@ import { MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../erp/data/format';
 import { appliquerAction, avecEcritures, vueOperations, type EntreesOperations } from '../../erp/data/espace-operations';
-import { destinatairesUrgence } from '../../erp/data/notifications-operations';
+import { destinatairesUrgence, messageUrgence, notificationsApresAction } from '../../erp/data/notifications-operations';
 import { court } from '../../erp/data/operations';
 import type { VueOperations } from '../../erp/data/types-operations';
 import { DemandeNotificationsOps, EntreeApp, ErreurOps, FeuilleApp, useAppOps, type ServeurNotificationsOps } from '../../erp/espace-operations/AppOperations';
@@ -243,16 +243,22 @@ function useDemo(membreId: string) {
           photoAcceptee: (u) => u.startsWith(`demo://operations/${membreId}/`),
         });
         if (!r.ok) return { ok: false, erreur: r.erreur };
-        const suivant = avecEcritures(ref.current, r.ecritures);
+        const avant = ref.current;
+        const suivant = avecEcritures(avant, r.ecritures);
         ref.current = suivant;
         setEntrees(suivant);
-        return { ok: true, message: r.message, ...(r.id ? { id: r.id } : {}) };
+        // Urgence : comme si chacun avait activé les notifications (rien ne part en démonstration).
+        const urgence = (operation.type === 'signaler' || operation.type === 'priorite') && operation.urgent && r.aNotifier.length > 0;
+        const ids = urgence ? [...new Set(notificationsApresAction(avant, suivant, { aujourdhui: AUJOURDHUI, auteurId: membreId }).map((n) => n.membreId))] : [];
+        const noms = ids.map((id) => court(suivant.equipe.find((m) => m.id === id)?.nom)).filter(Boolean);
+        const message = urgence ? messageUrgence(operation.type === 'signaler' ? 'Urgence signalée' : 'Passé en urgent', { noms, gerant: true }) : r.message;
+        return { ok: true, message, ...(r.id ? { id: r.id } : {}) };
       },
       photo: async (f) => ({ url: `demo://operations/${membreId}/${Date.now().toString(36)}-${encodeURIComponent(f.name)}` }),
       // Comme si chacun avait activé les notifications (rien ne part en démonstration).
       prevenus: async (logementId) => {
         const e = ref.current;
-        return e ? destinatairesUrgence(e, membreId, logementId, AUJOURDHUI).map((id) => court(e.equipe.find((m) => m.id === id)?.nom)).filter(Boolean) : [];
+        return { noms: e ? destinatairesUrgence(e, membreId, logementId, AUJOURDHUI).map((id) => court(e.equipe.find((m) => m.id === id)?.nom)).filter(Boolean) : [], gerant: true };
       },
     }),
     [membreId],
@@ -309,10 +315,11 @@ export default function EspaceOperations() {
           return { erreur: 'Photo illisible : choisissez une autre image.' };
         }
       },
-      // Seulement les personnes dont le téléphone recevra vraiment l'urgence.
+      // Seulement les personnes dont le téléphone recevra vraiment l'urgence, et le gérant s'il la recevra.
       prevenus: async (logementId) => {
         const r = await appeler('GET', { action: 'prevenus', logement: logementId });
-        return r.statut === 200 && Array.isArray(r.json.noms) ? r.json.noms.map(String) : [];
+        if (r.statut !== 200) throw new Error('prevenus');
+        return { noms: Array.isArray(r.json.noms) ? r.json.noms.map(String) : [], gerant: r.json.gerant === true };
       },
     }),
     [],

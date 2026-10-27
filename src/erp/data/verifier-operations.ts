@@ -34,7 +34,11 @@ import {
   destinatairesUrgence,
   envoyerNotificationsOps,
   idAppareilsOps,
+  HEURE_MATIN_OPS,
+  heureParis,
   lienOps,
+  matinOpsOuvert,
+  messageUrgence,
   notificationSignalementTraite,
   notificationTestOps,
   notificationsApresAction,
@@ -42,6 +46,7 @@ import {
   notificationsDuJour,
   notificationsIncidents,
   oublierAppareilsOps,
+  phraseNotificationsOps,
   phrasePrevenus,
   sansCoordonnees,
   type AppareilsOps,
@@ -88,8 +93,9 @@ import type { AbsenceMembre, AccesOperations, ControleQualite, MembreEquipe } fr
 import { COLLECTIONS_OPS, affectationsEffectives, remplacantsPossibles, appliquerAction, avecEcritures, conflitEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
 import { photoOperations } from './operations-fichiers';
 import { ficheResponsableInvite, logementsSansPersonne, mandatDuProprietaire, phraseRemplacement, phrasesTransferts, statutAccesExterne, transfertsProprietaire } from './acces-gerant';
-import { inviterMembre } from './operations-acces';
-import { lireSessionExterne, signerSessionExterne } from './acces-externe';
+import { MESSAGES_REFUS_OPS, inviterMembre } from './operations-acces';
+import { MESSAGES_REFUS } from './proprietaire-acces';
+import { ACCES_RETIRE, lireSessionExterne, signerSessionExterne } from './acces-externe';
 import { ID_LABEL_MAISON } from './espaces';
 
 let echecs = 0;
@@ -406,6 +412,16 @@ section('Actions : périmètre, droits, écritures');
   verifier(resolu?.statut === 'resolu' && resolu.resoluLe === J && resolu.historique?.at(-1)?.texte === 'Réglé : Plombier passé.', 'pôle : clore, noté dans l’historique');
   r = agir('A', { type: 'priorite', incidentId: 'i-C', urgent: true });
   verifier(element<Incident>(r)?.gravite === 'haute' && r.ok && r.aNotifier.includes('i-C'), 'pôle : passer en urgent, l’équipe est prévenue');
+  // Le message ne promet rien : qui est vraiment prévenu, le serveur le dit (messageUrgence).
+  verifier(r.ok && r.message === 'Passé en urgent.', `passer en urgent : « Passé en urgent. », sans « l’équipe est prévenue » (${r.ok ? r.message : r.erreur})`);
+  r = agir('B', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite sous l’évier de la cuisine.' });
+  verifier(r.ok && r.message === 'Urgence signalée.', `urgence signalée : « Urgence signalée. », sans « l’équipe est prévenue » (${r.ok ? r.message : r.erreur})`);
+  r = agir('inconnu', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite sous l’évier de la cuisine.' });
+  verifier(!r.ok && r.erreur === ACCES_RETIRE && r.statut === 403, 'plus dans l’équipe : « Votre accès a été retiré. Contactez votre conciergerie. »');
+  verifier(
+    ACCES_RETIRE === 'Votre accès a été retiré. Contactez votre conciergerie.' && MESSAGES_REFUS_OPS.retire === ACCES_RETIRE && MESSAGES_REFUS.retire === ACCES_RETIRE,
+    'accès retiré : la même phrase partout (lien, session, action ; opérations et propriétaires)',
+  );
 
   r = agir('B', { type: 'pas-a-moi', logementId: 'L1', motif: 'Je ne m’en occupe plus.' });
   verifier(r.ok && r.ecritures[0].collection === 'signalementsLogement' && element<{ statut: string }>(r)?.statut === 'ouvert', '« ce logement n’est pas à moi » : un signalement ouvert pour le gérant');
@@ -928,6 +944,35 @@ async function notificationsAppOperations() {
       phrasePrevenus(['Alice M.']) === 'Le gérant et Alice M. sont prévenus tout de suite.' &&
       phrasePrevenus(['Alice M.', 'Chloé R.']) === 'Le gérant, Alice M. et Chloé R. sont prévenus tout de suite.',
     '« Signaler » dit qui est prévenu',
+  );
+  verifier(
+    phrasePrevenus([], false) === 'Le gérant le verra dans l’ERP.' &&
+      phrasePrevenus(['Alice M.'], false) === 'Alice M. reçoit l’alerte tout de suite. Le gérant le verra dans l’ERP.' &&
+      phrasePrevenus(['Alice M.', 'Chloé R.'], false) === 'Alice M. et Chloé R. reçoivent l’alerte tout de suite. Le gérant le verra dans l’ERP.',
+    '« Signaler », sans appareil du gérant : jamais « le gérant est prévenu »',
+  );
+  verifier(
+    messageUrgence('Urgence signalée', { noms: ['Alice M.'], gerant: true }) === 'Urgence signalée. Le gérant et Alice M. sont prévenus tout de suite.' &&
+      messageUrgence('Passé en urgent', { noms: [], gerant: false }) === 'Passé en urgent. Le gérant le verra dans l’ERP.',
+    'après l’envoi : la même phrase, d’après qui est vraiment prévenu',
+  );
+  const phrase = phraseNotificationsOps();
+  verifier(
+    phrase === 'Urgences, incidents confiés, remplacements, contrôles du jour et réponses du gérant à « Ce logement n’est pas à moi » : sur vos logements seulement.' &&
+      NOTIFICATIONS_OPS.every((n) => phrase.toLowerCase().includes(n.court.toLowerCase())),
+    `ce que vous recevez : les cinq notifications, tirées de NOTIFICATIONS_OPS (${phrase})`,
+  );
+  // Passage du matin : pas avant 7 h à Paris (hiver UTC+1, été UTC+2).
+  verifier(
+    HEURE_MATIN_OPS === 7 &&
+      heureParis(new Date('2026-07-14T22:00:00Z')) === 0 &&
+      !matinOpsOuvert(new Date('2026-07-14T22:00:00Z')) &&
+      !matinOpsOuvert(new Date('2026-07-15T04:59:00Z')) &&
+      matinOpsOuvert(new Date('2026-07-15T05:00:00Z')) &&
+      !matinOpsOuvert(new Date('2026-12-15T05:59:00Z')) &&
+      matinOpsOuvert(new Date('2026-12-15T06:00:00Z')) &&
+      matinOpsOuvert(new Date('2026-12-15T22:30:00Z')),
+    'passage du matin : à partir de 7 h à Paris, jamais à minuit l’été',
   );
   verifier(lienOps() === '/espace-operations' && NOTIFICATIONS_OPS.length === 5 && sansCoordonnees('Appeler +33 6 12 34 56 78') === 'Appeler …', 'adresses de l’espace, liste des notifications, coordonnées masquées');
 

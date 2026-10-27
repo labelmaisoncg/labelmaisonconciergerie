@@ -48,6 +48,7 @@ import {
   verifierControle,
   type DonneesOps,
 } from './operations.js';
+import { ACCES_RETIRE } from './acces-externe.js';
 import { prenomInitiale } from './proprietaire.js';
 import type { CategorieIncident, DateISO, Horodatage, Id, Incident, Logement } from './types';
 import type {
@@ -384,7 +385,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
 
 function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperations, ctx: ContexteAction): ResultatAction {
   const moi = membreConnecte(brutes, membreId);
-  if (!moi) return refus('Votre accès a été retiré. Contactez votre conciergerie.', 403);
+  if (!moi) return refus(ACCES_RETIRE, 403);
   const e = restreindre(brutes, membreId);
   const ids = new Set(e.logements.map((l) => l.id));
   const pole = moi.role === 'pole';
@@ -444,7 +445,8 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
           ...(assigneA ? [{ le: maintenant, par: moi.nom, texte: `Confié à ${court(nom)}.` }] : []),
         ],
       };
-      return ok([{ collection: 'incidents', element: incident }], action.urgent ? 'Urgence signalée : l’équipe est prévenue.' : 'Incident signalé.', {
+      // Qui est vraiment prévenu : dit par le serveur, qui le sait (messageUrgence, notifications-operations.ts).
+      return ok([{ collection: 'incidents', element: incident }], action.urgent ? 'Urgence signalée.' : 'Incident signalé.', {
         id: incident.id,
         aNotifier: action.urgent || assigneA ? [incident.id] : [],
       });
@@ -492,7 +494,7 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
       } else if (action.type === 'priorite') {
         if (estUrgent(i) === !!action.urgent) return ok([], 'Rien à changer.');
         suivant = historiser({ ...i, gravite: graviteDe(action.urgent ? 'urgente' : 'normale', i.gravite) }, maintenant, moi.nom, action.urgent ? 'Passé en urgent.' : 'Passé en normal.');
-        message = action.urgent ? 'Passé en urgent : l’équipe est prévenue.' : 'Passé en normal.';
+        message = action.urgent ? 'Passé en urgent.' : 'Passé en normal.';
         if (action.urgent) aNotifier.push(i.id);
       } else if (action.type === 'resoudre') {
         if (i.statut === 'resolu') return refus('Incident déjà réglé.');

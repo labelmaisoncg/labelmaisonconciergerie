@@ -8,7 +8,9 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, CalendarPlus, FileText, PhoneCall, Plus } from 'lucide-react';
 import { aTraiterLe, idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
+import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
+import { aideCrmVide, dossierProprietaireDisponible } from '../../data/marque-espace';
 import { useErp } from '../../data/store';
 import type { ContactCrm } from '../../data/types';
 import { Alert, Button, EmptyState, Field, FilterChips, Input, MenuActions, Modal, PageHeader, SearchInput, Textarea, Toolbar, useRechercheUrl } from '../../ui';
@@ -125,6 +127,18 @@ export default function Crm() {
   const [lienDossier, setLienDossier] = useState(false);
   const [agenda, setAgenda] = useState(false);
   const gerant = utilisateur.role === 'gerant';
+  // Le dossier propriétaire du site remplit le CRM de Label Maison : jamais proposé dans un autre espace.
+  const espace = espaceOuvert();
+  const dossier = dossierProprietaireDisponible(espace);
+  const plus = [
+    ...(dossier ? [{ libelle: 'Lien du dossier propriétaire', icone: <FileText />, onClick: () => setLienDossier(true) }] : []),
+    ...(gerant
+      ? [
+          { libelle: 'Relances dans Calendrier', icone: <CalendarPlus />, onClick: () => setAgenda(true) },
+          { libelle: 'Connecter à Claude', icone: <Bot />, onClick: () => setClaude(true) },
+        ]
+      : []),
+  ];
   const [params, setParams] = useSearchParams();
   const [q, setQ] = useRechercheUrl();
   const [filtres, setFiltres] = useState<string[]>([]);
@@ -168,19 +182,7 @@ export default function Crm() {
         sousTitre={crm.length > 0 ? (aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : 'Personne à appeler aujourd’hui.') : undefined}
         actions={
           <>
-            <MenuActions
-              texte
-              label="Plus"
-              actions={[
-                { libelle: 'Lien du dossier propriétaire', icone: <FileText />, onClick: () => setLienDossier(true) },
-                ...(gerant
-                  ? [
-                      { libelle: 'Relances dans Calendrier', icone: <CalendarPlus />, onClick: () => setAgenda(true) },
-                      { libelle: 'Connecter à Claude', icone: <Bot />, onClick: () => setClaude(true) },
-                    ]
-                  : []),
-              ]}
-            />
+            {plus.length > 0 && <MenuActions texte label="Plus" actions={plus} />}
             {crm.length > 0 && !lectureSeule && (
               <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
                 Nouveau contact
@@ -194,7 +196,7 @@ export default function Crm() {
         <EmptyState
           icone={<PhoneCall />}
           titre="Aucun contact pour l’instant"
-          description="Chaque formulaire envoyé depuis le site arrive ici tout seul, dans « À appeler »."
+          description={aideCrmVide(espace)}
           action={
             !lectureSeule && (
               <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
@@ -243,10 +245,11 @@ export default function Crm() {
         }}
         auteur={utilisateur.nom}
         lectureSeule={lectureSeule}
+        dossier={dossier}
       />
       {gerant && <ConnecterClaude ouvert={claude} onFermer={() => setClaude(false)} demo={mode !== 'reel'} />}
       {gerant && <AgendaCrm ouvert={agenda} onFermer={() => setAgenda(false)} demo={mode !== 'reel'} />}
-      <EnvoyerDossier ouvert={lienDossier} onFermer={() => setLienDossier(false)} />
+      {dossier && <EnvoyerDossier ouvert={lienDossier} onFermer={() => setLienDossier(false)} />}
       {!lectureSeule && <NouveauContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} onOuvrir={ouvrir} />}
     </>
   );

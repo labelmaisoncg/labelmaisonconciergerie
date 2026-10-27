@@ -8,6 +8,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { CheckCircle2 } from 'lucide-react';
 import { appareil, estInstallee, notificationsPossibles } from '../../../data/application';
+import { espaceOuvert } from '../../../data/espaces';
+import { notificationsIphone } from '../../../data/marque-espace';
 import { demandeNotifications, type ContexteDemandeNotifications } from '../../../data/notifications';
 import { useErp } from '../../../data/store';
 import { Alert, Button, Modal } from '../../../ui';
@@ -171,7 +173,7 @@ export function DemandeNotifications() {
         titre="Notifications refusées"
         description={
           iphone
-            ? 'Pour les activer plus tard : Réglages de l’iPhone → Notifications → Label Maison.'
+            ? `Pour les activer plus tard : Réglages de l’iPhone → ${notificationsIphone(espaceOuvert())}.`
             : 'Pour les activer plus tard : réglages du navigateur (cadenas à gauche de l’adresse → Notifications), puis Paramètres → Application.'
         }
         pied={

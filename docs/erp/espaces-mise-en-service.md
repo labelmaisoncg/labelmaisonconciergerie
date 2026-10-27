@@ -258,10 +258,12 @@ Une requête à la fois.
   d'abord). D'où une adresse par conciergerie.
 - **Identité légale** : dans l'ERP d'une autre conciergerie, les documents
   faits côté gérant (contrat de mandat, relevés et factures de Finance,
-  Paramètres → Société, Conformité) portent encore la raison sociale, le
-  SIRET et l'adresse de Label Maison. Ne les envoyez pas tels quels : la
-  conciergerie joint ses propres documents. L'espace propriétaire, lui,
-  imprime le nom de la conciergerie, jamais l'identité de Label Maison.
+  Conformité) portent encore la raison sociale, le SIRET et l'adresse de
+  Label Maison : ne les envoyez pas tels quels, la conciergerie joint ses
+  propres documents. Paramètres → Société n'affiche que le nom de l'espace
+  (raison sociale, SIRET et siège pas encore réglables). L'espace
+  propriétaire, lui, imprime le nom de la conciergerie, jamais l'identité
+  de Label Maison.
 - **Fichiers** (documents, photos, guides) d'un autre espace : signés et
   déposés par le compte serveur, dans le dossier de cet espace seulement. À
   vérifier une fois, avec la première conciergerie : un document déposé pour
@@ -275,15 +277,21 @@ Une requête à la fois.
   (réglable ci-dessus) ; « Avancé » affiche pour repère le quota du compte de
   Label Maison.
 - **Site public** (formulaires, dossier propriétaire) : Label Maison seulement.
+  Le CRM d'une autre conciergerie ne propose donc pas « Envoyer le dossier ».
+- **Relances dans Calendrier** : un agenda pour toute l'équipe (pas encore
+  un agenda par personne).
+- **Claude** ne voit ni ne règle « Suivi par » : on le choisit dans l'ERP.
 
 ## Comptes de l'équipe et Claude, dans chaque espace
 
 - **Ajouter quelqu'un** : un gérant de l'espace, dans Paramètres → Équipe,
-  ajoute l'adresse et le rôle, puis touche **Envoyer l'invitation**. La
+  ajoute l'adresse et le rôle, puis touche **Envoyer l'invitation** (ou plus
+  tard, sur la ligne de la personne : e-mail perdu, lien jamais ouvert). La
   personne ouvre le lien sur son appareil, choisit son mot de passe, confirme
   son adresse par l'e-mail reçu, puis saisit son mot de passe : c'est tout
   (plus rien à faire dans Supabase). Le lien sert une fois, 14 jours ; une
-  nouvelle invitation remplace la précédente.
+  nouvelle invitation remplace la précédente. Une personne qui a déjà activé
+  son accès n'a pas besoin d'invitation : elle se connecte.
 - **Compte créé à la main dans Supabase** (sans invitation) : reliez-le à sa
   ligne de membre dans le SQL Editor :
   `select erp.lier_compte('prenom@exemple.fr', 'CODE');`

@@ -11,7 +11,7 @@
 // cet espace : il ne donne que son CRM (api/_agenda.ts).
 // =============================================================================
 
-import type { FiltreAgenda } from '../src/erp/data/agenda-crm.js';
+import { filtresAgenda, type FiltreAgenda } from '../src/erp/data/agenda-crm.js';
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { configuration, lireCorps, repondre } from './_erp-repull.js';
 import { adressesAgenda, couperLiensAgenda, creerLienAgenda, etatAgenda, FILTRES } from './_agenda.js';
@@ -45,7 +45,8 @@ export default async function handler(req: any, res: any) {
     const corps = lireCorps(req);
     if (corps.action === 'creer') {
       const filtre = String(corps.filtre ?? 'tous') as FiltreAgenda;
-      if (!FILTRES.includes(filtre)) return repondre(res, 400, { ok: false, erreur: 'Choix inconnu.' });
+      // Un autre espace que Label Maison : toute l'équipe seulement (jamais Abdel ni Kamel).
+      if (!FILTRES.includes(filtre) || !filtresAgenda(espace.id).includes(filtre)) return repondre(res, 400, { ok: false, erreur: 'Choix inconnu.' });
       const cle = await creerLienAgenda(base, filtre, membre.email, espace.id);
       return repondre(res, 200, { ok: true, ...adressesAgenda(cle) });
     }
