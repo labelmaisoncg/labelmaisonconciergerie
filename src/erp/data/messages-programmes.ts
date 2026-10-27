@@ -487,7 +487,7 @@ export const RAISONS = {
   repriseAnnulee: 'Réservation annulée pendant l’envoi : rien n’est reparti. Vérifiez sur la plateforme.',
   repriseCodes: 'Les codes ne sont plus permis pour ce séjour (dates changées) : rien n’est reparti. Vérifiez sur la plateforme.',
   repriseConversation: 'La conversation ne correspond plus à ce séjour : rien n’est reparti. Vérifiez sur la plateforme.',
-  codesEnClair: 'Le texte contient un code d’accès ou le wifi écrit en dur, trop tôt pour ce séjour : pas envoyé.',
+  codesEnClair: 'Le texte contient un code d’accès ou le wifi écrit en toutes lettres, trop tôt pour ce séjour : pas envoyé.',
 } as const;
 
 /** Ce qui empêche l'envoi en ce moment, s'il y a quelque chose. `final` : ça ne changera plus. */

@@ -145,7 +145,8 @@ export function MessagesAutomatiques() {
               const detail =
                 e.statut === 'envoye'
                   ? `Envoyé le ${quand(moment)}`
-                  : `${s.libelle} le ${dateCourte(moment.slice(0, 10))}${e.raison ? ` : ${e.raison.charAt(0).toLowerCase()}${e.raison.slice(1).replace(/\.$/, '')}` : ''}`;
+                  : // Un seul « : » : celui qui introduit la raison ; les suivants deviennent des virgules.
+                    `${s.libelle} le ${dateCourte(moment.slice(0, 10))}${e.raison ? ` : ${e.raison.charAt(0).toLowerCase()}${e.raison.slice(1).replace(/\.$/, '').replace(/\s:\s/g, ', ')}` : ''}`;
               return (
                 <li key={e.id}>
                   <Link

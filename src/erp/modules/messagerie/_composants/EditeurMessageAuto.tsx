@@ -8,7 +8,7 @@
  * texteAffiche / texteStocke (data/messages-programmes.ts).
  */
 import { useMemo, useRef, useState } from 'react';
-import { ChevronDown, Lock, Plus, X } from 'lucide-react';
+import { ChevronDown, Lock, Plus, TriangleAlert, X } from 'lucide-react';
 import { Button, Drawer, Field, IconButton, Select, Textarea } from '../../../ui';
 import { AUJOURDHUI, dateJour, ecartJours, pluriel } from '../../../data/format';
 import {
@@ -198,8 +198,12 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
                 </div>
               )}
               {apercu.codesEnClair && !apercu.coupe ? (
-                <p role="alert" className="mt-2 text-[12.5px] font-medium text-(--lm-danger)">
-                  Ce texte contient un code ou le wifi écrit en toutes lettres : il ne partira pas plus de 48 h avant l’arrivée. Utilisez plutôt « Accès et clés » et « Wifi ».
+                <p role="alert" className="mt-2 flex items-start gap-1.5 text-[12.5px] font-medium text-(--lm-danger)">
+                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                  <span>
+                    Ce texte contient un code ou le wifi écrit en toutes lettres : ce message ne partira pas s’il est envoyé plus de 48 h avant l’arrivée. Utilisez
+                    plutôt «&nbsp;Accès et clés&nbsp;» et «&nbsp;Wifi&nbsp;».
+                  </span>
                 </p>
               ) : (
                 !apercu.codes &&
