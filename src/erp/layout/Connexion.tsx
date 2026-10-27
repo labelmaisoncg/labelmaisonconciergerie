@@ -67,7 +67,7 @@ export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnect
       return (
         <Cadre titre="Se déconnecter pour continuer ?" icone={<Users />}>
           <p className="text-[14px] text-(--lm-encre)">
-            Vous êtes connecté avec <strong className="[overflow-wrap:anywhere]">{phase.actuel}</strong>. Ce lien est pour{' '}
+            Compte ouvert&nbsp;: <strong className="[overflow-wrap:anywhere]">{phase.actuel}</strong>. Ce lien est pour{' '}
             {phase.autre ? <strong className="[overflow-wrap:anywhere]">{phase.autre}</strong> : 'un autre compte'}.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -82,7 +82,7 @@ export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnect
       return (
         <Cadre titre="Accès non autorisé" icone={<ShieldAlert />}>
           <Alert tone="alerte" titre={phase.motif ?? MESSAGE_SANS_ACCES}>
-            Vous êtes connecté avec <strong className="[overflow-wrap:anywhere]">{phase.email}</strong>.
+            Compte ouvert&nbsp;: <strong className="[overflow-wrap:anywhere]">{phase.email}</strong>.
           </Alert>
           {!phase.motif && (
             <p className="mt-4 text-[13px] text-(--lm-encre-2)">
@@ -116,7 +116,7 @@ export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnect
 function Marque() {
   return (
     <div className="mb-6 flex flex-col items-center text-center">
-      <span aria-hidden className="grid size-11 place-items-center rounded-xl bg-(--lm-brun) text-[15px] font-semibold text-[#F7F2E6]">
+      <span aria-hidden className="grid size-11 place-items-center rounded-xl bg-(--lm-brun) text-[15px] font-semibold text-(--lm-sur-brun)">
         LM
       </span>
       <p className="mt-3 text-[11.5px] font-semibold tracking-[0.2em] text-(--lm-or-texte) uppercase">Label Maison · ERP</p>
@@ -172,7 +172,7 @@ const LIEN_TEXTE = 'inline-flex min-h-8 items-center text-[13px] font-medium tex
 /** Sans code d'invitation sur l'appareil, « Créer mon compte » ne mène à rien : on le dit. */
 const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
 /** Base d'avant les espaces : pas de création de compte par l'ERP. */
-const MESSAGE_CREATION_FERMEE = 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.';
+const MESSAGE_CREATION_FERMEE = 'La création de compte n’est pas encore ouverte : demandez à un gérant de vous ajouter.';
 
 function FormulaireConnexion({ message }: { message?: string }) {
   // Lien d'invitation (#creer=<adresse>&code=…) : on commence par « Créer mon compte ».

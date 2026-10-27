@@ -143,7 +143,7 @@ export function Configurer() {
             </button>
           ))}
         </div>
-        <figure className="mt-4 rounded-2xl rounded-br-md border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3" aria-live="polite">
+        <figure className="mt-4 rounded-lg rounded-br-sm border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3" aria-live="polite">
           <figcaption className="mb-1 text-[11.5px] font-semibold tracking-wide text-(--lm-encre-3) uppercase">Exemple de réponse</figcaption>
           <p className="text-[13.5px] leading-relaxed text-(--lm-encre)">{ton.exemple(f.signature.trim() || signatureDefaut)}</p>
         </figure>

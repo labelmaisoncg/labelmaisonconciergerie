@@ -640,7 +640,7 @@ async function principal() {
     const gardee = (email: string, code = CODE, expire = Date.now() + 86_400_000) => ({ 'lm-erp-invitation': JSON.stringify({ email, code, expire }) });
     const versConnexion = (t: ReturnType<typeof essai>) => t.envois.filter((e) => e.url === '/erp/connexion');
     const SANS_CODE = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
-    const FERMEE = 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.';
+    const FERMEE = 'La création de compte n’est pas encore ouverte : demandez à un gérant de vous ajouter.';
 
     // Lien d'invitation avec son code : création, adresse fixe, code gardé sur l'appareil, rien qui connecte.
     const lien = essai(`#creer=${encodeURIComponent('Marie.Durand+erp@exemple.fr')}&code=${CODE}`);
@@ -669,11 +669,12 @@ async function principal() {
     // Base d'avant les espaces : « Créer mon compte » fermé, avec le message prévu.
     const historique = essai(`#creer=${encodeURIComponent('marie@exemple.fr')}&code=${CODE}`, { base: 'historique' });
     await historique.attendre();
-    verifier(historique.elements['f-creer']?.hidden === true && historique.elements['f-connexion']?.hidden === false && historique.elements.info?.textContent === FERMEE, 'base d’avant les espaces : création fermée, « Disponible après la mise en service des espaces… »', historique.elements.info?.textContent);
+    verifier(historique.elements['f-creer']?.hidden === true && historique.elements['f-connexion']?.hidden === false && historique.elements.info?.textContent === FERMEE, 'base d’avant les espaces : création fermée, « pas encore ouverte(s) »', historique.elements.info?.textContent);
     const historiqueNote = essai('', { base: 'historique' });
     historiqueNote.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
     await historiqueNote.attendre();
     verifier(historiqueNote.elements.info?.textContent === FERMEE, 'base d’avant les espaces : le lien « Créer mon compte » le dit aussi');
+    verifier(historique.elements['note-creer']?.hidden === true && historiqueNote.elements['note-creer']?.hidden === true, 'base d’avant les espaces : « Vous avez reçu une invitation ? Créer mon compte » n’est plus proposé');
 
     // Contrôles avant l'envoi.
     const court = essai(`#creer=a%40exemple.fr&code=${CODE}`);

@@ -129,9 +129,12 @@ export const titreCarteApp = (e: Pick<Espace, 'id'>): string => (estLabelMaison(
 /** Titre de la page d'installation (/erp/installer). */
 export const titrePageInstallation = (e: Pick<Espace, 'id'>): string => (estLabelMaison(e) ? 'Installer l’app Label Maison' : 'Installer l’app');
 
-/** Où réactiver les notifications sur iPhone, après « Réglages → » (« Notifications → Label Maison »). */
+/**
+ * Où réactiver les notifications sur iPhone, après « Réglages → » (« Notifications → Label Maison »).
+ * L'app installée garde le nom de son manifeste : ailleurs, on renvoie au nom sous son icône.
+ */
 export const notificationsIphone = (e: Pick<Espace, 'id'>): string =>
-  estLabelMaison(e) ? 'Notifications → Label Maison' : 'Notifications, puis l’app de l’ERP';
+  estLabelMaison(e) ? 'Notifications → Label Maison' : 'Notifications, puis le nom affiché sous l’icône de l’app';
 
 /** Nom de l'app dans « Ouvrez l’app … » (undefined : sans nom). */
 export const nomAppAffiche = (e: Pick<Espace, 'id'>): string | undefined => (estLabelMaison(e) ? 'Label Maison' : undefined);

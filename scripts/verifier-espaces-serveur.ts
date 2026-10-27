@@ -660,10 +660,10 @@ async function principal() {
     res = await inviter({ ...gerantLM, origin: 'https://pirate.example', host: 'pirate.example' }, ' Nouvelle_Recrue@Exemple.invalid ');
     verifier(
       res.statut === 409 && res.corps?.code === 'historique' && res.corps?.erreur === MESSAGE_INVITATION_HISTORIQUE && !res.corps?.lien && monde.emails.length === 0,
-      'base d’avant les espaces : pas d’invitation, « Disponible après la mise en service des espaces… », aucun e-mail',
+      'base d’avant les espaces : pas d’invitation, « pas encore ouverte(s) », aucun e-mail',
       res.corps,
     );
-    verifier(MESSAGE_INVITATION_HISTORIQUE === 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.', 'message de la base d’avant : le texte prévu');
+    verifier(MESSAGE_INVITATION_HISTORIQUE === 'Les invitations ne sont pas encore ouvertes : la mise à jour de l’ERP doit d’abord être terminée.', 'message de la base d’avant : le texte prévu');
     verifier(!monde.base.some((r) => r.chemin === 'rpc/inviter_membre'), 'base d’avant : aucun code gardé');
     res = await inviter(gerantLM, 'pas une adresse');
     verifier(res.statut === 400, 'adresse invalide : refusée', res.statut);

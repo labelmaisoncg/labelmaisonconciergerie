@@ -668,10 +668,16 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          var b = form.querySelectorAll('button');
          for (var i = 0; i < b.length; i++) b[i].disabled = oui;
        }
-       // Un seul formulaire à la fois ; « Créer mon compte » sous la connexion seulement.
+       // Un seul formulaire à la fois ; « Créer mon compte » sous la connexion seulement,
+       // et plus du tout une fois la création de compte connue fermée.
+       var creationFermee = false;
        function montrer(form) {
          for (var i = 0; i < formulaires.length; i++) formulaires[i].hidden = formulaires[i] !== form;
-         noteCreer.hidden = form !== fConnexion;
+         noteCreer.hidden = form !== fConnexion || creationFermee;
+       }
+       function fermerCreation() {
+         creationFermee = true;
+         noteCreer.hidden = true;
        }
        // Mêmes traductions que l'application (src/erp/data/supabase.ts).
        function traduire(d, statut) {
@@ -726,7 +732,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
            })
            .catch(function () { return false; });
        }
-       var MESSAGE_FERMEE = 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.';
+       var MESSAGE_FERMEE = 'La création de compte n’est pas encore ouverte : demandez à un gérant de vous ajouter.';
        var MESSAGE_SANS_CODE = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
 
        // Jetons Supabase → session de l'ERP (vérifiée par le serveur), puis l'application.
@@ -795,11 +801,12 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          if (!inv) {
            montrerConnexion(saisie);
            dire(MESSAGE_SANS_CODE, 'info');
-           baseHistorique().then(function (h) { if (h && !fConnexion.hidden) dire(MESSAGE_FERMEE, 'info'); });
+           baseHistorique().then(function (h) { if (h) fermerCreation(); if (h && !fConnexion.hidden) dire(MESSAGE_FERMEE, 'info'); });
            return;
          }
          montrerCreation(inv.email);
          baseHistorique().then(function (h) {
+           if (h) fermerCreation();
            if (h && !fCreer.hidden) { montrerConnexion(inv.email); dire(MESSAGE_FERMEE, 'info'); }
          });
        }

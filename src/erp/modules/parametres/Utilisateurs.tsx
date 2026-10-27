@@ -162,6 +162,8 @@ export default function Utilisateurs() {
     setMessage(undefined);
   };
 
+  const envoiEnCours = (u: Utilisateur) => invitation?.email === u.email && invitation.enCours;
+
   /**
    * « Envoyer l'invitation » sur la ligne : gérant, jamais pour soi-même ni
    * pour le rôle prestataire (pas d'accès à l'ERP). La base ne dit pas qui a
@@ -177,34 +179,16 @@ export default function Utilisateurs() {
       titre: 'Utilisateur',
       rendu: (u) => (
         <span className="flex items-center gap-2.5">
-          {/* Sur téléphone, sans avatar : nom, rôle et retrait tiennent dans la largeur. */}
+          {/* Sur téléphone, sans avatar : nom, rôle, invitation et retrait tiennent dans la largeur. */}
           <span className="hidden sm:block">
             <Avatar nom={u.nom} />
           </span>
-          <span className="max-w-[6.5rem] min-w-0 sm:max-w-none">
+          <span className="max-w-20 min-w-0 sm:max-w-none">
             <span className="block font-medium">
               {u.nom}
               {u.id === d.utilisateur.id && <span className="ml-1.5 text-[12px] font-normal text-(--lm-encre-3)">(vous)</span>}
             </span>
             <span className="block truncate text-[12px] text-(--lm-encre-3)">{u.email}</span>
-            {invitable(u) && (
-              <Button
-                size="sm"
-                variant="ghost"
-                icone={<Mail />}
-                className="mt-1 -ml-2.5"
-                chargement={invitation?.email === u.email && invitation.enCours}
-                onClick={() => void envoyerInvitation(u.nom, u.email, 'ligne')}
-              >
-                {/* Nom lu par les lecteurs d'écran, à la suite du texte visible. */}
-                <span className="sm:hidden">
-                  Inviter<span className="sr-only"> {u.nom}</span>
-                </span>
-                <span className="hidden sm:inline">
-                  Envoyer l’invitation<span className="sr-only"> à {u.nom}</span>
-                </span>
-              </Button>
-            )}
           </span>
         </span>
       ),
@@ -215,7 +199,7 @@ export default function Utilisateurs() {
       titre: 'Rôle',
       rendu: (u) =>
         peutModifier ? (
-          <div className="w-[8.75rem] sm:w-44">
+          <div className="w-[8.5rem] sm:w-44">
             <Select
               aria-label={`Rôle de ${u.nom}`}
               value={u.role}
@@ -233,11 +217,24 @@ export default function Utilisateurs() {
             cle: 'retirer',
             titre: '',
             align: 'droite' as const,
+            // Les actions de la ligne côte à côte : la ligne reste nom + e-mail.
             rendu: (u: Utilisateur) =>
               u.id === d.utilisateur.id ? null : (
-                <IconButton label={`Retirer l’accès de ${u.nom}`} size="sm" onClick={() => retirer(u)}>
-                  <Trash2 />
-                </IconButton>
+                <span className="inline-flex items-center">
+                  {invitable(u) && (
+                    <IconButton
+                      label={`Envoyer l’invitation à ${u.nom}`}
+                      size="sm"
+                      chargement={envoiEnCours(u)}
+                      onClick={() => void envoyerInvitation(u.nom, u.email, 'ligne')}
+                    >
+                      {!envoiEnCours(u) && <Mail />}
+                    </IconButton>
+                  )}
+                  <IconButton label={`Retirer l’accès de ${u.nom}`} size="sm" onClick={() => retirer(u)}>
+                    <Trash2 />
+                  </IconButton>
+                </span>
               ),
           },
         ]
@@ -294,7 +291,7 @@ export default function Utilisateurs() {
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
           {d.mode === 'reel'
-            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Sans compte, il le crée depuis la page de connexion (« Créer mon compte »), avec l’adresse inscrite ici. Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
+            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Pour créer son compte, il ouvre le lien de son invitation (l’enveloppe sur sa ligne la lui envoie). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
             : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.'}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">

@@ -10,7 +10,7 @@
  * Aucun accès au store ici : l'écran s'affiche avant que les données existent.
  */
 import { useState, type FormEvent } from 'react';
-import { LogOut, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { creerEspace } from '../data/supabase';
 import type { Espace, InvitationEspace } from '../data/espaces';
 import { dateCourte } from '../data/format';
@@ -81,10 +81,10 @@ export function CreerEspace({ email, invitation, onCree, onDeconnecter }: Props)
           <button
             type="button"
             onClick={onDeconnecter}
-            className="mt-3 inline-flex min-h-8 items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-encre) hover:underline"
+            className="mt-3 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
           >
-            <LogOut className="size-4" aria-hidden />
-            Ce n’est pas moi : se déconnecter
+            {/* Même lien que « Dernière étape » (Connexion.tsx). */}
+            Ce n’est pas moi&nbsp;: se déconnecter
           </button>
         </div>
       </div>

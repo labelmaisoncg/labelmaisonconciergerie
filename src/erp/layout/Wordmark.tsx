@@ -16,7 +16,7 @@ export function Wordmark({ className }: { className?: string }) {
   const nom = espaceOuvert().nom;
   return (
     <Link to="/erp" className={cn('group flex items-center gap-2.5', className)} aria-label={`ERP ${nom}, tableau de bord`}>
-      <span aria-hidden className="grid size-8 place-items-center rounded-lg bg-(--lm-brun) text-[13px] font-semibold text-[#F7F2E6]">
+      <span aria-hidden className="grid size-8 place-items-center rounded-lg bg-(--lm-brun) text-[13px] font-semibold text-(--lm-sur-brun)">
         {initiales(nom)}
       </span>
       <span className="flex min-w-0 flex-col leading-none">

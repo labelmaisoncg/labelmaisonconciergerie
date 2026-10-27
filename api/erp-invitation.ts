@@ -31,7 +31,7 @@ import { espaceDemande } from './_erp-espaces.js';
 import { envoyerEmailEspace, ficheEspace } from './_acces-externe.js';
 
 /** Message de la base d'avant les espaces : pas d'invitation par lien. */
-export const MESSAGE_INVITATION_HISTORIQUE = 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.';
+export const MESSAGE_INVITATION_HISTORIQUE = 'Les invitations ne sont pas encore ouvertes : la mise à jour de l’ERP doit d’abord être terminée.';
 
 type Invitation = { ok: true; deja: boolean } | { ok: false; statut: number; erreur: string; code?: string };
 
