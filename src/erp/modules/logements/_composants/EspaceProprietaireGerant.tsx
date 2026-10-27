@@ -7,8 +7,11 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { Check, Copy, Eye, FileText, Trash2, X } from 'lucide-react';
+import { statutAccesExterne } from '../../../data/acces-gerant';
 import { MODE_DEMO } from '../../../data/config';
-import { AUJOURDHUI, dateCourte, euros } from '../../../data/format';
+import { espaceOuvert } from '../../../data/espaces';
+import { AUJOURDHUI, dateCourte, euros, horodatageMaintenant } from '../../../data/format';
+import { facturePartagee } from '../../../data/relances';
 import { nouvelId, useErp } from '../../../data/store';
 import {
   CATEGORIES_DOCUMENT,
@@ -22,9 +25,9 @@ import type { Logement, Proprietaire } from '../../../data/types';
 import type { AccesProprietaire, BilanProprietaire, CategorieDocumentProprietaire } from '../../../data/types-proprietaire';
 import { BilanDetail } from '../../../espace-proprietaire/Bilans';
 import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
-import { bilanDuMois, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
+import { bilanDuMois, deNom, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
 import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
-import { appelerServeur } from '../../messagerie/_composants/serveur';
+import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 import { FacturesProprietaire } from './FacturesProprietaire';
 import { RelancesPaiement } from './RelancesPaiement';
 
@@ -36,15 +39,35 @@ interface EtatServeur {
 
 const API = '/api/espace-proprietaire';
 
-/** État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour Paramètres → Accès. */
-/** Ce que voit un propriétaire (même phrase ici et dans Paramètres → Accès). */
-export const CE_QUE_VOIT_LE_PROPRIETAIRE = 'Il voit ses logements, son calendrier, ses bilans publiés, ses factures partagées et ses documents. Rien d’autre, et il ne modifie rien.';
+/**
+ * Invitation envoyée par le serveur. La fiche (nouvelle, ou dont l'adresse
+ * vient de changer) peut mettre un instant à arriver en base : on réessaie
+ * tant que le serveur ne la voit pas encore (404) ou pas encore à jour (409).
+ */
+export async function inviterAvecReessai(api: string, corps: Record<string, unknown>): Promise<{ lien: string; envoye: boolean }> {
+  let derniere: unknown;
+  for (const attente of [0, 1500, 3000, 6000]) {
+    if (attente) await new Promise((r) => setTimeout(r, attente));
+    try {
+      return await appelerServeur<{ lien: string; envoye: boolean }>(api, 'POST', corps);
+    } catch (e) {
+      derniere = e;
+      if (!(e instanceof ErreurServeur) || !(e.statut === 404 || (e.statut === 409 && e.code === 'fiche'))) throw e;
+    }
+  }
+  throw derniere;
+}
 
-export function statutAcces(a: AccesProprietaire | undefined): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
-  if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
-  if (a.statut === 'retire') return { texte: `Accès retiré${a.retireLe ? ` le ${dateCourte(a.retireLe.slice(0, 10))}` : ''}`, ton: 'neutre' };
-  if (a.statut === 'actif') return { texte: `Connecté${a.derniereConnexion ? ` le ${dateCourte(a.derniereConnexion.slice(0, 10))}` : ''}`, ton: 'succes' };
-  return { texte: `Invité le ${dateCourte(a.inviteLe.slice(0, 10))}`, ton: 'alerte' };
+/** Ce que voit un propriétaire (même phrase ici et dans Paramètres → Accès). */
+export const CE_QUE_VOIT_LE_PROPRIETAIRE = 'Il voit ses logements, son calendrier, ses bilans publiés, ses factures partagées et ses documents, sans rien pouvoir modifier.';
+
+/**
+ * État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour
+ * Paramètres → Accès ; « Adresse changée : réinvitez » si l'adresse de la
+ * fiche n'est plus celle de l'invitation.
+ */
+export function statutAcces(a: AccesProprietaire | undefined, p: Pick<Proprietaire, 'contact'>): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
+  return statutAccesExterne(a, p.contact?.email);
 }
 
 /** Ligne de la carte Propriétaire : état de l'accès et ouverture du panneau. */
@@ -52,7 +75,7 @@ export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietai
   const d = useErp();
   const [ouvert, setOuvert] = useState(false);
   const acces = d.donnees.accesProprietaires.find((a) => a.id === proprietaire.id);
-  const s = statutAcces(acces);
+  const s = statutAcces(acces, proprietaire);
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--lm-bord) pt-3">
       <div className="min-w-0">
@@ -60,7 +83,7 @@ export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietai
         <p className="text-[12.5px] text-(--lm-encre-2)">{s.texte}</p>
       </div>
       <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
-        {acces && acces.statut !== 'retire' ? 'Gérer' : 'Inviter'}
+        Gérer
       </Button>
       {ouvert && <PanneauEspace proprietaire={proprietaire} logement={logement} onFermer={() => setOuvert(false)} />}
     </div>
@@ -123,13 +146,14 @@ function Titre({ children, description }: { children: string; description?: stri
 function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serveur: EtatServeur | null }) {
   const d = useErp();
   const acces = d.donnees.accesProprietaires.find((a) => a.id === p.id);
-  const [email, setEmail] = useState(acces?.email ?? p.contact.email ?? '');
+  // L'adresse de la fiche, toujours (une autre adresse saisie ici devient celle de la fiche).
+  const [email, setEmail] = useState(p.contact.email ?? '');
   const [enCours, setEnCours] = useState<'inviter' | 'retirer'>();
   const [erreur, setErreur] = useState<string>();
   const [invitation, setInvitation] = useState<{ lien: string; envoye: boolean }>();
   const [confirmer, setConfirmer] = useState(false);
   const [copie, setCopie] = useState(false);
-  const s = statutAcces(acces);
+  const s = statutAcces(acces, p);
   const ferme = !serveur?.actif;
 
   const inviter = async () => {
@@ -137,25 +161,29 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
     setInvitation(undefined);
     const adresse = email.trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(adresse)) return setErreur('Adresse e-mail invalide.');
+    // Une autre adresse : c'est désormais celle de la fiche (le serveur n'invite que l'adresse de la fiche).
+    if (adresse !== (p.contact.email ?? '').trim().toLowerCase()) d.mettreAJour('proprietaires', p.id, (x) => ({ ...x, contact: { ...x.contact, email: adresse } }));
     if (MODE_DEMO) {
-      const maintenant = new Date().toISOString();
+      // Mêmes règles que le serveur : autre adresse, sessions fermées (version) et liens oubliés.
+      const autre = !!acces && acces.email !== adresse;
       d.upsert('accesProprietaires', {
         id: p.id,
         proprietaireId: p.id,
         email: adresse,
-        statut: acces?.statut === 'actif' ? 'actif' : 'invite',
-        inviteLe: maintenant,
+        emailFiche: adresse,
+        statut: acces?.statut === 'actif' && !autre ? 'actif' : 'invite',
+        inviteLe: horodatageMaintenant(),
         invitePar: d.utilisateur.email,
-        version: acces?.version ?? 1,
+        version: (acces?.version ?? 1) + (autre && acces?.statut === 'actif' ? 1 : 0),
         liens: [],
-        ...(acces?.derniereConnexion ? { derniereConnexion: acces.derniereConnexion } : {}),
+        ...(acces?.derniereConnexion && !autre ? { derniereConnexion: acces.derniereConnexion } : {}),
       });
       setInvitation({ lien: `${window.location.origin}/espace-proprietaire?apercu=${encodeURIComponent(p.id)}`, envoye: false });
       return;
     }
     setEnCours('inviter');
     try {
-      const r = await appelerServeur<{ lien: string; envoye: boolean }>(API, 'POST', { action: 'inviter', proprietaireId: p.id, email: adresse });
+      const r = await inviterAvecReessai(API, { action: 'inviter', proprietaireId: p.id, email: adresse });
       setInvitation({ lien: r.lien, envoye: r.envoye });
     } catch (e) {
       setErreur((e as Error).message);
@@ -169,7 +197,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
     setConfirmer(false);
     setInvitation(undefined);
     if (MODE_DEMO) {
-      if (acces) d.upsert('accesProprietaires', { ...acces, statut: 'retire', retireLe: new Date().toISOString(), version: acces.version + 1, liens: [] });
+      if (acces) d.upsert('accesProprietaires', { ...acces, statut: 'retire', retireLe: horodatageMaintenant(), version: acces.version + 1, liens: [] });
       return;
     }
     setEnCours('retirer');
@@ -212,7 +240,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
       </Field>
       <div className="mt-3 flex flex-wrap gap-2">
         <Button variant="primary" onClick={() => void inviter()} chargement={enCours === 'inviter'} disabled={ferme || !!enCours}>
-          {acces && acces.statut !== 'retire' ? 'Renvoyer une invitation' : 'Inviter dans l’espace propriétaire'}
+          {acces && acces.statut !== 'retire' ? 'Renvoyer une invitation' : 'Inviter'}
         </Button>
         {acces && acces.statut !== 'retire' && !confirmer && (
           <Button variant="ghost" onClick={() => setConfirmer(true)} disabled={ferme || !!enCours}>
@@ -278,7 +306,7 @@ function Bilans({ proprietaire: p }: { proprietaire: Proprietaire }) {
     .filter(({ m, calcule }) => calcule.totaux.nuits > 0 || publies.some((b) => b.mois === m));
   return (
     <section>
-      <Titre description="Calculés chaque mois sur les séjours. Le propriétaire ne voit un bilan qu’une fois publié.">Bilans mensuels</Titre>
+      <Titre description="Calculés chaque mois sur les séjours, visibles par le propriétaire une fois publiés.">Bilans mensuels</Titre>
       {!mois.length && <p className="text-[13.5px] text-(--lm-encre-2)">Aucun séjour sur les six derniers mois.</p>}
       <ul className={mois.length ? 'divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)' : 'hidden'}>
         {mois.map(({ m, calcule }) => {
@@ -319,7 +347,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
   const change = publie && (!memesChiffres(existant.chiffres, chiffres) || existant.commentaire !== commentaire);
 
   const enregistrer = (statut: BilanProprietaire['statut']) => {
-    const maintenant = new Date().toISOString();
+    const maintenant = horodatageMaintenant();
     const base = { id, proprietaireId: p.id, mois, commentaire: commentaire.trim(), chiffres, majLe: maintenant };
     d.upsert(
       'bilansProprietaire',
@@ -361,7 +389,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
         )
       }
     >
-      <Field label="Le mot de Label Maison" aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
+      <Field label={`Le mot ${deNom(espaceOuvert().nom)}`} aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
         <Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} maxLength={1200} />
       </Field>
       <div className="mt-5 border-t border-(--lm-bord) pt-5">
@@ -378,12 +406,14 @@ function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; 
   const [categorie, setCategorie] = useState<CategorieDocumentProprietaire>('contrat');
   const [titre, setTitre] = useState('');
   const [aRetirer, setARetirer] = useState<string>();
+  // Le PDF d'une facture ne compte que si la facture est partagée (comme dans l'espace du propriétaire).
   const documents = d.donnees.documentsProprietaire
     .filter((x) => x.proprietaireId === p.id)
+    .filter((x) => !x.factureId || facturePartagee(d.donnees.factures.find((f) => f.id === x.factureId)!, p.id))
     .sort((a, b) => String(b.ajouteLe).localeCompare(String(a.ajouteLe)));
 
   const deposer = (urls: string[], fichiers: File[]) => {
-    const maintenant = new Date().toISOString();
+    const maintenant = horodatageMaintenant();
     urls.forEach((url, i) => {
       const nom = fichiers[i]?.name ?? 'document';
       d.upsert('documentsProprietaire', {
@@ -403,7 +433,7 @@ function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; 
 
   return (
     <section>
-      <Titre description="Contrat, attestations, bilans signés… Le propriétaire les ouvre depuis son espace, par un lien valable 2 minutes.">Documents partagés</Titre>
+      <Titre description="Contrat, attestations, bilans signés : le propriétaire les ouvre depuis son espace.">Documents partagés</Titre>
       {documents.length ? (
         <ul className="mb-4 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
           {documents.map((doc) => (

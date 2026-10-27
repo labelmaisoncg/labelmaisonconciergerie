@@ -17,21 +17,33 @@
  */
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Check, Copy, Eye, Mail, Phone, UserPlus, X } from 'lucide-react';
+import { ArrowRight, Check, Copy, Eye, Mail, Phone, UserPlus, X } from 'lucide-react';
+import { ficheResponsableInvite, logementsSansPersonne, phrasesTransferts, statutAccesExterne, transfertsProprietaire, type Transfert } from '../../data/acces-gerant';
 import { MODE_DEMO } from '../../data/config';
-import { AUJOURDHUI, dateCourte, horodatageMaintenant } from '../../data/format';
+import { espaceOuvert } from '../../data/espaces';
+import { AUJOURDHUI, dateCourte, horodatageMaintenant, jourMois } from '../../data/format';
 import { vueOperations } from '../../data/espace-operations';
-import { ROLES_OPERATIONS } from '../../data/operations';
+import {
+  ROLES_OPERATIONS,
+  ROLES_SUR_LOGEMENT,
+  absencesValables,
+  affectationsSans,
+  affecter,
+  apercuAbsence,
+  roleSurLogement,
+  verifierAbsence,
+  type RoleSurLogement,
+} from '../../data/operations';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../data/repull';
 import { nouvelId, useErp } from '../../data/store';
 import type { Id, Logement, Proprietaire } from '../../data/types';
-import type { AccesOperations, MembreEquipe, RoleOperations, SignalementLogement } from '../../data/types-operations';
+import type { AbsenceMembre, AccesOperations, AffectationLogement, MembreEquipe, RoleOperations, SignalementLogement } from '../../data/types-operations';
 import { Alert, Badge, Button, Card, Drawer, Field, Input, Interrupteur, Modal, Repli, Select, classesBouton, cn, useFenetre } from '../../ui';
 import { EspaceOps } from '../../espace-operations/EspaceOps';
 import type { ActionsOps, Ecran } from '../../espace-operations/commun';
-import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
+import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, inviterAvecReessai, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
 import { RelancesPaiement } from '../logements/_composants/RelancesPaiement';
-import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
+import { appelerServeur } from '../messagerie/_composants/serveur';
 
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
 const API_OPERATIONS = '/api/espace-operations';
@@ -39,27 +51,9 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 type Invitation = { lien: string; envoye: boolean; email: string };
 
-/** Invitation envoyée par le serveur ; la fiche toute neuve peut mettre un instant à arriver en base. */
-async function inviterAvecReessai(api: string, corps: Record<string, unknown>): Promise<{ lien: string; envoye: boolean }> {
-  let derniere: unknown;
-  for (const attente of [0, 1500, 3000, 6000]) {
-    if (attente) await new Promise((r) => setTimeout(r, attente));
-    try {
-      return await appelerServeur<{ lien: string; envoye: boolean }>(api, 'POST', corps);
-    } catch (e) {
-      derniere = e;
-      if (!(e instanceof ErreurServeur) || e.statut !== 404) throw e;
-    }
-  }
-  throw derniere;
-}
-
-/** État de l'accès d'un membre de l'équipe (mêmes mots et tons que pour les propriétaires). */
-export function statutAccesOps(a: AccesOperations | undefined): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
-  if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
-  if (a.statut === 'retire') return { texte: `Accès retiré${a.retireLe ? ` le ${dateCourte(a.retireLe.slice(0, 10))}` : ''}`, ton: 'neutre' };
-  if (a.statut === 'actif') return { texte: `Connecté${a.derniereConnexion ? ` le ${dateCourte(a.derniereConnexion.slice(0, 10))}` : ''}`, ton: 'succes' };
-  return { texte: `Invité le ${dateCourte(a.inviteLe.slice(0, 10))}`, ton: 'alerte' };
+/** État de l'accès d'un membre de l'équipe (mêmes mots et tons que pour les propriétaires, adresse de sa fiche comprise). */
+export function statutAccesOps(a: AccesOperations | undefined, m: Pick<MembreEquipe, 'email'>): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
+  return statutAccesExterne(a, m.email);
 }
 
 const logementsGeres = (logements: Logement[]) => logements.filter((l) => l.statut !== 'sorti').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
@@ -73,6 +67,9 @@ export default function Acces() {
   const [inviterProprietaire, setInviterProprietaire] = useState(false);
   const [inviterResponsable, setInviterResponsable] = useState(false);
   const nomFiltre = logementFiltre ? d.logements.find((l) => l.id === logementFiltre)?.nom : undefined;
+
+  // Accès, invitations et absences : le gérant seul (les autres comptes ne lisent pas les accès).
+  if (d.utilisateur.role !== 'gerant') return <p className="text-[13.5px] text-(--lm-encre-2)">Réservé au gérant.</p>;
 
   return (
     <div className="flex max-w-4xl flex-col gap-8">
@@ -248,7 +245,7 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {proprietaires.map((p) => {
             const acces = d.donnees.accesProprietaires.find((a) => a.id === p.id);
-            const s = statutAcces(acces);
+            const s = statutAcces(acces, p);
             const siens = logementsGeres(d.logements).filter((l) => l.proprietaireId === p.id);
             return (
               <li key={p.id}>
@@ -256,7 +253,7 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-(--lm-encre)">{p.nom}</p>
-                      <p className="truncate text-[12.5px] text-(--lm-encre-2)">{acces?.email || p.contact.email || 'Pas d’adresse e-mail'}</p>
+                      <p className="truncate text-[12.5px] text-(--lm-encre-2)">{p.contact.email || 'Pas d’adresse e-mail'}</p>
                     </div>
                     <Badge tone={s.ton} point className="shrink-0">
                       {s.texte}
@@ -269,7 +266,7 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
                         Choisir ses logements
                       </Button>
                       <Button size="sm" variant="ghost" onClick={() => setPanneau(p)}>
-                        {acces && acces.statut !== 'retire' ? 'Gérer l’accès' : 'Inviter'}
+                        Gérer
                       </Button>
                     </div>
                   )}
@@ -296,11 +293,18 @@ function Proprietaires({ logementFiltre, gerant, onInviter }: { logementFiltre?:
 function LogementsProprietaire({ proprietaire: p, onFermer }: { proprietaire: Proprietaire; onFermer: () => void }) {
   const d = useErp();
   const [coches, setCoches] = useState<Id[]>([]);
+  const [aConfirmer, setAConfirmer] = useState<Transfert[]>();
   const logements = logementsGeres(d.logements);
   const nomProprietaire = (id: Id) => (id === ID_PROPRIETAIRE_A_RENSEIGNER ? 'à renseigner' : (d.proprietaires.find((x) => x.id === id)?.nom ?? 'inconnu'));
-  const enregistrer = () => {
+  const attribuer = () => {
     for (const id of coches) d.mettreAJour('logements', id, (l) => ({ ...l, proprietaireId: p.id }));
     onFermer();
+  };
+  // Un logement d'un autre propriétaire : on le dit avant (il ne le verra plus).
+  const enregistrer = () => {
+    const transferts = transfertsProprietaire(d.logements, d.proprietaires, coches, p.id, ID_PROPRIETAIRE_A_RENSEIGNER);
+    if (transferts.length && !aConfirmer) return setAConfirmer(transferts);
+    attribuer();
   };
   return (
     <Modal
@@ -314,18 +318,36 @@ function LogementsProprietaire({ proprietaire: p, onFermer }: { proprietaire: Pr
             Annuler
           </Button>
           <Button variant="primary" onClick={enregistrer} disabled={!coches.length}>
-            {coches.length > 1 ? `Attribuer ${coches.length} logements` : 'Attribuer'}
+            {aConfirmer ? 'Confirmer' : coches.length > 1 ? `Attribuer ${coches.length} logements` : 'Attribuer'}
           </Button>
         </>
       }
     >
+      {aConfirmer && <ConfirmationTransferts transferts={aConfirmer} />}
       <ListeLogements
         logements={logements}
         coches={coches}
-        onChange={setCoches}
+        onChange={(ids) => {
+          setCoches(ids);
+          setAConfirmer(undefined);
+        }}
         regle={(l) => (l.proprietaireId === p.id ? { verrou: true, detail: 'À ce propriétaire' } : { detail: `Actuellement : ${nomProprietaire(l.proprietaireId)}` })}
       />
     </Modal>
+  );
+}
+
+/** Ce que perd l'ancien propriétaire, dit avant d'attribuer. */
+function ConfirmationTransferts({ transferts }: { transferts: Transfert[] }) {
+  return (
+    <Alert tone="alerte" className="mb-3">
+      {phrasesTransferts(transferts).map((t) => (
+        <span key={t} className="block">
+          {t}
+        </span>
+      ))}
+      <span className="block">Confirmez pour attribuer.</span>
+    </Alert>
   );
 }
 
@@ -339,15 +361,20 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
   const [invitation, setInvitation] = useState<Invitation>();
+  const [aConfirmer, setAConfirmer] = useState<Transfert[]>();
   const nomProprietaire = (id: Id) => (id === ID_PROPRIETAIRE_A_RENSEIGNER ? 'à renseigner' : (d.proprietaires.find((x) => x.id === id)?.nom ?? 'inconnu'));
+  const adresseSaisie = email.trim().toLowerCase();
+  const existant = adresseSaisie ? d.proprietaires.find((p) => p.contact.email.trim().toLowerCase() === adresseSaisie) : undefined;
 
   const envoyer = async () => {
-    const adresse = email.trim().toLowerCase();
-    if (nom.trim().length < 2) return setErreur('Indiquez le nom du propriétaire.');
+    const adresse = adresseSaisie;
+    if (nom.trim().length < 2 && !existant) return setErreur('Indiquez le nom du propriétaire.');
     if (!EMAIL.test(adresse)) return setErreur('Adresse e-mail invalide.');
     setErreur(undefined);
+    // Un logement d'un autre propriétaire : on le dit avant (il ne le verra plus).
+    const transferts = transfertsProprietaire(d.logements, d.proprietaires, coches, existant?.id ?? '', ID_PROPRIETAIRE_A_RENSEIGNER);
+    if (transferts.length && !aConfirmer) return setAConfirmer(transferts);
     setEnCours(true);
-    const existant = d.proprietaires.find((p) => p.contact.email.trim().toLowerCase() === adresse);
     const p: Proprietaire = existant
       ? { ...existant, nom: existant.nom || nom.trim(), contact: { email: adresse, telephone: existant.contact.telephone || telephone.trim() } }
       : { id: nouvelId('pro'), type: 'particulier', nom: nom.trim(), contact: { email: adresse, telephone: telephone.trim() }, adresse: '', ibanMasque: '', notes: '', creeLe: horodatageMaintenant().slice(0, 10) };
@@ -356,16 +383,18 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
     try {
       if (MODE_DEMO) {
         const acces = d.donnees.accesProprietaires.find((a) => a.id === p.id);
+        const autre = !!acces && acces.email !== adresse;
         d.upsert('accesProprietaires', {
           id: p.id,
           proprietaireId: p.id,
           email: adresse,
-          statut: acces?.statut === 'actif' ? 'actif' : 'invite',
-          inviteLe: new Date().toISOString(),
+          emailFiche: adresse,
+          statut: acces?.statut === 'actif' && !autre ? 'actif' : 'invite',
+          inviteLe: horodatageMaintenant(),
           invitePar: d.utilisateur.email,
-          version: acces?.version ?? 1,
+          version: (acces?.version ?? 1) + (autre && acces?.statut === 'actif' ? 1 : 0),
           liens: [],
-          ...(acces?.derniereConnexion ? { derniereConnexion: acces.derniereConnexion } : {}),
+          ...(acces?.derniereConnexion && !autre ? { derniereConnexion: acces.derniereConnexion } : {}),
         });
         setInvitation({ lien: `${window.location.origin}/espace-proprietaire?apercu=${encodeURIComponent(p.id)}`, envoye: false, email: adresse });
       } else {
@@ -397,7 +426,7 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
               Annuler
             </Button>
             <Button variant="primary" chargement={enCours} onClick={() => void envoyer()}>
-              Inviter
+              {aConfirmer ? 'Confirmer et inviter' : 'Inviter'}
             </Button>
           </>
         )
@@ -407,10 +436,15 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
         <LienInvitation invitation={invitation} />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Nom" requis>
-            <Input value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="off" placeholder="Ex. SCI Les Tilleuls" />
+          {aConfirmer && (
+            <div className="sm:col-span-2">
+              <ConfirmationTransferts transferts={aConfirmer} />
+            </div>
+          )}
+          <Field label="Nom" requis={!existant}>
+            <Input value={existant ? existant.nom : nom} disabled={!!existant} onChange={(e) => setNom(e.target.value)} autoComplete="off" placeholder="Ex. SCI Les Tilleuls" />
           </Field>
-          <Field label="Adresse e-mail" requis aide="Une fiche avec cette adresse est reprise, sans doublon.">
+          <Field label="Adresse e-mail" requis aide={existant ? 'Une fiche existe déjà avec cette adresse : elle est reprise.' : 'Une fiche avec cette adresse est reprise, sans doublon.'}>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
           </Field>
           <Field label="Téléphone" aide="Facultatif.">
@@ -418,7 +452,15 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
           </Field>
           <div className="sm:col-span-2">
             <p className="mb-1.5 text-[13px] font-medium text-(--lm-encre)">Ses logements</p>
-            <ListeLogements logements={logementsGeres(d.logements)} coches={coches} onChange={setCoches} regle={(l) => ({ detail: `Actuellement : ${nomProprietaire(l.proprietaireId)}` })} />
+            <ListeLogements
+              logements={logementsGeres(d.logements)}
+              coches={coches}
+              onChange={(ids) => {
+                setCoches(ids);
+                setAConfirmer(undefined);
+              }}
+              regle={(l) => (existant && l.proprietaireId === existant.id ? { verrou: true, detail: 'À ce propriétaire' } : { detail: `Actuellement : ${nomProprietaire(l.proprietaireId)}` })}
+            />
           </div>
           {erreur && (
             <Alert tone="danger" className="sm:col-span-2">
@@ -440,7 +482,7 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
   useEffect(() => setOuvert(personne), [personne]);
   const nomLogement = (id: Id) => d.logements.find((l) => l.id === id)?.nom ?? 'Logement';
   const membres = [...d.donnees.equipe]
-    .filter((m) => !logementFiltre || m.logementIds.includes(logementFiltre))
+    .filter((m) => !logementFiltre || (m.actif && m.logementIds.includes(logementFiltre)))
     .sort((a, b) => Number(b.actif) - Number(a.actif) || a.nom.localeCompare(b.nom, 'fr'));
   const signalements = d.donnees.signalementsLogement.filter((s) => s.statut === 'ouvert' && (!logementFiltre || s.logementId === logementFiltre));
   const fermer = () => {
@@ -469,7 +511,7 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
       {membres.length ? (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {membres.map((m) => {
-            const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id));
+            const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id), m);
             return (
               <li key={m.id}>
                 <Card className={cn('flex h-full flex-col gap-2', !m.actif && 'opacity-70')}>
@@ -507,9 +549,19 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
 /** `imbrique` : posé dans une carte (coins plus petits que ceux de la carte). */
 export function Signalements({ liste, gerant, imbrique }: { liste: SignalementLogement[]; gerant: boolean; imbrique?: boolean }) {
   const d = useErp();
+  const [aConfirmer, setAConfirmer] = useState<Id>();
   const traiter = (s: SignalementLogement, decision: 'retire' | 'confirme') => {
-    if (decision === 'retire') d.mettreAJour('equipe', s.membreId, (m) => ({ ...m, logementIds: m.logementIds.filter((x) => x !== s.logementId) }));
+    if (decision === 'retire') {
+      d.mettreAJour('equipe', s.membreId, (m) => ({ ...m, logementIds: m.logementIds.filter((x) => x !== s.logementId) }));
+      for (const a of affectationsSans(d.donnees.affectations, s.membreId, [s.logementId])) d.upsert('affectations', a);
+    }
     d.upsert('signalementsLogement', { ...s, statut: 'traite', decision, traiteLe: horodatageMaintenant(), traitePar: d.utilisateur.nom });
+    setAConfirmer(undefined);
+  };
+  // Dernière personne sur ce logement : on le dit avant de lui retirer.
+  const retirer = (s: SignalementLogement) => {
+    if (logementsSansPersonne(d.donnees.equipe, s.membreId, [s.logementId]).length && aConfirmer !== s.id) return setAConfirmer(s.id);
+    traiter(s, 'retire');
   };
   return (
     <div className={cn('mb-4 border border-(--lm-alerte)/30 bg-(--lm-alerte-lavis) p-3', imbrique ? 'rounded-lg' : 'rounded-xl')}>
@@ -531,11 +583,12 @@ export function Signalements({ liste, gerant, imbrique }: { liste: SignalementLo
                   <Button size="sm" variant="ghost" onClick={() => traiter(s, 'confirme')}>
                     Le garder
                   </Button>
-                  <Button size="sm" onClick={() => traiter(s, 'retire')}>
-                    Lui retirer
+                  <Button size="sm" onClick={() => retirer(s)}>
+                    {aConfirmer === s.id ? 'Retirer quand même' : 'Lui retirer'}
                   </Button>
                 </div>
               )}
+              {aConfirmer === s.id && <p className="w-full text-[12.5px] font-medium text-(--lm-encre)">Plus personne ne suivra {l?.nom ?? 'ce logement'}.</p>}
             </li>
           );
         })}
@@ -544,44 +597,68 @@ export function Signalements({ liste, gerant, imbrique }: { liste: SignalementLo
   );
 }
 
-/** Une personne de terrain : fiche, logements, accès (inviter, renvoyer, retirer). */
+/** Une personne de terrain : fiche, logements et ce dont elle s'occupe, absences, accès (inviter, renvoyer, retirer). */
 function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean; onFermer: () => void }) {
   const d = useErp();
   const m = d.donnees.equipe.find((x) => x.id === id)!;
   const acces = d.donnees.accesOperations.find((a) => a.id === id);
-  const s = statutAccesOps(acces);
+  const s = statutAccesOps(acces, m);
   const [fiche, setFiche] = useState<MembreEquipe>(m);
+  // Rôles choisis ici, par logement (les autres restent tels qu'ils sont).
+  const [roles, setRoles] = useState<Record<Id, RoleSurLogement>>({});
   const [enCours, setEnCours] = useState<'inviter' | 'retirer'>();
   const [erreur, setErreur] = useState<string>();
   const [invitation, setInvitation] = useState<Invitation>();
   const [confirmer, setConfirmer] = useState(false);
   const [apercu, setApercu] = useState(false);
-  const change = JSON.stringify(fiche) !== JSON.stringify(m);
+  const change = JSON.stringify(fiche) !== JSON.stringify(m) || Object.keys(roles).length > 0;
   const tel = fiche.telephone?.replace(/[^\d+]/g, '');
+  const geres = logementsGeres(d.logements);
+  const nomLogement = (l: Id) => d.logements.find((x) => x.id === l)?.nom ?? 'Logement';
+
+  // L'équipe telle qu'elle sera : sert au choix par défaut (seule personne qui suit un logement).
+  const equipeApres = d.donnees.equipe.map((x) => (x.id === id ? { ...x, logementIds: fiche.logementIds, actif: fiche.actif } : x));
+  const suivis = fiche.actif ? geres.filter((l) => fiche.logementIds.includes(l.id)) : [];
+  const roleDe = (l: Id): RoleSurLogement => roles[l] ?? roleSurLogement({ affectations: d.donnees.affectations, equipe: equipeApres }, l, id);
+  const quittes = m.logementIds.filter((l) => !fiche.actif || !fiche.logementIds.includes(l));
+  const sansPersonne = logementsSansPersonne(d.donnees.equipe, id, quittes).filter((l) => geres.some((x) => x.id === l));
 
   const enregistrer = () => {
     if (fiche.nom.trim().length < 2) return setErreur('Indiquez le nom.');
-    d.upsert('equipe', { ...fiche, nom: fiche.nom.trim(), email: fiche.email?.trim().toLowerCase() || undefined, telephone: fiche.telephone?.trim() || undefined });
+    const propre: MembreEquipe = { ...fiche, nom: fiche.nom.trim(), email: fiche.email?.trim().toLowerCase() || undefined, telephone: fiche.telephone?.trim() || undefined };
+    d.upsert('equipe', propre);
+    // Plus responsable ni remplaçante là où elle n'est plus ; puis les rôles choisis.
+    let affectations = d.donnees.affectations;
+    const ecrire = (a: AffectationLogement) => {
+      affectations = [...affectations.filter((x) => x.id !== a.id), a];
+      d.upsert('affectations', a);
+    };
+    for (const a of affectationsSans(affectations, id, quittes)) ecrire(a);
+    for (const [l, role] of Object.entries(roles)) if (propre.actif && propre.logementIds.includes(l)) ecrire(affecter({ affectations, equipe: equipeApres }, l, id, role));
+    setRoles({});
     setErreur(undefined);
   };
   const inviter = async () => {
     const adresse = (fiche.email ?? '').trim().toLowerCase();
     if (!EMAIL.test(adresse)) return setErreur('Adresse e-mail invalide.');
+    // L'adresse invitée est celle de la fiche : on l'enregistre d'abord.
     if (change) enregistrer();
     setErreur(undefined);
     setEnCours('inviter');
     try {
       if (MODE_DEMO) {
+        const autre = !!acces && acces.email !== adresse;
         d.upsert('accesOperations', {
           id,
           membreId: id,
           email: adresse,
-          statut: acces?.statut === 'actif' ? 'actif' : 'invite',
-          inviteLe: new Date().toISOString(),
+          emailFiche: adresse,
+          statut: acces?.statut === 'actif' && !autre ? 'actif' : 'invite',
+          inviteLe: horodatageMaintenant(),
           invitePar: d.utilisateur.email,
-          version: acces?.version ?? 1,
+          version: (acces?.version ?? 1) + (autre && acces?.statut === 'actif' ? 1 : 0),
           liens: [],
-          ...(acces?.derniereConnexion ? { derniereConnexion: acces.derniereConnexion } : {}),
+          ...(acces?.derniereConnexion && !autre ? { derniereConnexion: acces.derniereConnexion } : {}),
         });
         setInvitation({ lien: `${window.location.origin}/espace-operations?apercu=${encodeURIComponent(id)}`, envoye: false, email: adresse });
       } else {
@@ -600,7 +677,7 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
     setEnCours('retirer');
     try {
       if (MODE_DEMO) {
-        if (acces) d.upsert('accesOperations', { ...acces, statut: 'retire', retireLe: new Date().toISOString(), version: acces.version + 1, liens: [] });
+        if (acces) d.upsert('accesOperations', { ...acces, statut: 'retire', retireLe: horodatageMaintenant(), version: acces.version + 1, liens: [] });
       } else await appelerServeur(API_OPERATIONS, 'POST', { action: 'retirer', membreId: id });
     } catch (e) {
       setErreur((e as Error).message);
@@ -670,8 +747,38 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
         <section>
           <p className="mb-1 text-[15px] font-semibold text-(--lm-encre)">Ses logements</p>
           <p className="mb-2 text-(--lm-encre-2)">Il ne voit que ceux-là. Un logement peut avoir plusieurs personnes.</p>
-          <ListeLogements logements={logementsGeres(d.logements)} coches={fiche.logementIds} onChange={(ids) => gerant && setFiche({ ...fiche, logementIds: ids })} />
+          <ListeLogements logements={geres} coches={fiche.logementIds} onChange={(ids) => gerant && setFiche({ ...fiche, logementIds: ids })} />
+          {gerant && sansPersonne.length > 0 && (
+            <Alert tone="alerte" className="mt-3">
+              Plus personne ne suivra {sansPersonne.map(nomLogement).join(', ')}.
+            </Alert>
+          )}
         </section>
+
+        {suivis.length > 0 && (
+          <section>
+            <p className="mb-1 text-[15px] font-semibold text-(--lm-encre)">Ce dont il s’occupe</p>
+            <p className="mb-2 text-(--lm-encre-2)">Au quotidien, il reçoit les incidents et les consignes d’accès du jour.</p>
+            <ul className="divide-y divide-(--lm-bord) rounded-lg border border-(--lm-bord)">
+              {suivis.map((l) => (
+                <li key={l.id} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+                  <span className="min-w-40 flex-1 truncate text-[13.5px] font-medium text-(--lm-encre)">{l.nom}</span>
+                  <div className="w-48 shrink-0">
+                    <Select
+                      aria-label={`Rôle sur ${l.nom}`}
+                      value={roleDe(l.id)}
+                      disabled={!gerant}
+                      onChange={(e) => setRoles({ ...roles, [l.id]: e.target.value as RoleSurLogement })}
+                      options={(Object.keys(ROLES_SUR_LOGEMENT) as RoleSurLogement[]).map((r) => ({ valeur: r, libelle: ROLES_SUR_LOGEMENT[r] }))}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {gerant && m.actif && <AbsencesGerant membre={m} />}
 
         <section className="border-t border-(--lm-bord) pt-5">
           <p className="mb-2 text-[15px] font-semibold text-(--lm-encre)">Accès à l’espace opérations</p>
@@ -737,34 +844,197 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
   );
 }
 
-/** Inviter un responsable : sa fiche dans l'espace ouvert, ses logements, puis l'invitation. */
+/**
+ * Absences d'une personne, notées par le gérant (seul à pouvoir changer
+ * celles-ci ; un responsable de pôle note les siennes dans son espace) :
+ * dates, remplaçant parmi ceux qui suivent les mêmes logements, et ce qui
+ * change pendant l'absence, calculé comme dans l'espace opérations.
+ */
+function AbsencesGerant({ membre: m }: { membre: MembreEquipe }) {
+  const d = useErp();
+  const [edition, setEdition] = useState<AbsenceMembre | null>(null);
+  const absences = absencesValables(d.donnees.absences)
+    .filter((a) => a.membreId === m.id && a.au >= AUJOURDHUI)
+    .sort((a, b) => a.du.localeCompare(b.du));
+  const nom = (id?: Id) => (id ? (d.donnees.equipe.find((x) => x.id === id)?.nom ?? 'Personne') : 'Personne');
+  return (
+    <section>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[15px] font-semibold text-(--lm-encre)">Absences</p>
+        <Button size="sm" onClick={() => setEdition({ id: '', membreId: m.id, du: AUJOURDHUI, au: AUJOURDHUI })}>
+          Noter une absence
+        </Button>
+      </div>
+      {absences.length ? (
+        <ul className="divide-y divide-(--lm-bord) rounded-lg border border-(--lm-bord)">
+          {absences.map((a) => (
+            <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
+              <span className="min-w-40 flex-1">
+                <span className="block text-[13.5px] font-medium text-(--lm-encre)">{a.du === a.au ? `Le ${jourMois(a.du)}` : `Du ${jourMois(a.du)} au ${jourMois(a.au)}`}</span>
+                <span className="block text-[12.5px] text-(--lm-encre-2)">
+                  {[a.remplacantId ? `Relais : ${nom(a.remplacantId)}` : 'Sans relais choisi', a.parMembreId ? `notée par ${nom(a.parMembreId)}` : undefined, a.motif].filter(Boolean).join(' · ')}
+                </span>
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => setEdition(a)}>
+                Modifier
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-(--lm-encre-2)">Aucune absence prévue.</p>
+      )}
+      {edition && <FormulaireAbsence membre={m} absence={edition} onFermer={() => setEdition(null)} />}
+    </section>
+  );
+}
+
+function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEquipe; absence: AbsenceMembre; onFermer: () => void }) {
+  const d = useErp();
+  const [a, setA] = useState<AbsenceMembre>(absence);
+  const [erreur, setErreur] = useState<string>();
+  const existante = !!absence.id;
+  // Relais possibles : les personnes de l'équipe qui suivent au moins un de ses logements.
+  const relais = d.donnees.equipe
+    .filter((x) => x.actif && x.id !== m.id && x.logementIds.some((l) => m.logementIds.includes(l)))
+    .sort((x, y) => x.nom.localeCompare(y.nom, 'fr'))
+    .map((x) => ({ valeur: x.id, libelle: x.nom }));
+  const apercu = useMemo(() => apercuAbsence(d.donnees, { ...a, id: a.id || 'nouvelle' }, AUJOURDHUI), [d.donnees, a]);
+  const nom = (id?: Id) => (id ? (d.donnees.equipe.find((x) => x.id === id)?.nom ?? 'Personne') : 'Personne');
+  const nomLogement = (id: Id) => d.logements.find((x) => x.id === id)?.nom ?? 'Logement';
+  const texteIncident = (id: Id) => d.donnees.incidents.find((i) => i.id === id)?.description ?? 'Incident';
+
+  const enregistrer = () => {
+    const propre: AbsenceMembre = {
+      ...a,
+      id: a.id || nouvelId('abs'),
+      ...(a.motif?.trim() ? { motif: a.motif.trim() } : { motif: undefined }),
+      creeLe: a.creeLe ?? horodatageMaintenant(),
+      par: a.par ?? d.utilisateur.nom,
+    };
+    const probleme = verifierAbsence(propre, d.donnees.absences);
+    if (probleme) return setErreur(probleme);
+    d.upsert('absences', propre);
+    onFermer();
+  };
+  const annuler = () => {
+    d.upsert('absences', { ...a, annuleeLe: horodatageMaintenant() });
+    onFermer();
+  };
+
+  return (
+    <Modal
+      ouvert
+      onFermer={onFermer}
+      titre={existante ? `Absence de ${m.nom}` : 'Noter une absence'}
+      description="Pendant l’absence, ses logements et ses incidents passent au relais."
+      pied={
+        <>
+          {existante && (
+            <Button variant="ghost" onClick={annuler}>
+              Annuler l’absence
+            </Button>
+          )}
+          <Button variant="primary" onClick={enregistrer}>
+            Enregistrer
+          </Button>
+        </>
+      }
+    >
+      <div className="grid grid-cols-1 gap-3 text-[13px] sm:grid-cols-2">
+        {erreur && (
+          <Alert tone="danger" className="sm:col-span-2">
+            {erreur}
+          </Alert>
+        )}
+        <Field label="Du" requis>
+          <Input type="date" value={a.du} onChange={(e) => setA({ ...a, du: e.target.value })} />
+        </Field>
+        <Field label="Au (inclus)" requis>
+          <Input type="date" value={a.au} min={a.du} onChange={(e) => setA({ ...a, au: e.target.value })} />
+        </Field>
+        <Field label="Relais si le logement n’en a pas" className="sm:col-span-2">
+          <Select value={a.remplacantId ?? ''} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={relais} />
+        </Field>
+        <Field label="Motif" aide="Facultatif, visible par vous seul." className="sm:col-span-2">
+          <Input value={a.motif ?? ''} onChange={(e) => setA({ ...a, motif: e.target.value })} maxLength={200} />
+        </Field>
+        <section aria-label="Ce qui change" className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 sm:col-span-2">
+          <p className="text-[13.5px] font-semibold text-(--lm-encre)">
+            Ce qui change du {jourMois(a.du)} au {jourMois(a.au)}
+          </p>
+          {!apercu.logements.length && !apercu.incidents.length ? (
+            <p className="mt-1 text-(--lm-encre-2)">Rien à reprendre : aucun logement ni incident ouvert à son nom.</p>
+          ) : (
+            <ul className="mt-2 space-y-1.5">
+              {apercu.logements.map((x) => (
+                <li key={x.logementId} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-(--lm-encre)">{nomLogement(x.logementId)}</span>
+                  <ArrowRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-label="passe à" />
+                  <span className={x.vers ? 'font-medium text-(--lm-encre)' : 'font-medium text-(--lm-danger)'}>{nom(x.vers)}</span>
+                </li>
+              ))}
+              {apercu.incidents.map((x) => (
+                <li key={x.incidentId} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-(--lm-encre-2)">Incident · {texteIncident(x.incidentId)}</span>
+                  <ArrowRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-label="passe à" />
+                  <span className={x.vers ? 'font-medium text-(--lm-encre)' : 'font-medium text-(--lm-danger)'}>{nom(x.vers)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {apercu.sansRemplacant > 0 && (
+            <p className="mt-2 text-[12.5px] text-(--lm-danger)">
+              Personne pour reprendre {apercu.sansRemplacant > 1 ? `${apercu.sansRemplacant} lignes` : 'une ligne'} : choisissez un relais.
+            </p>
+          )}
+          <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">Au retour, tout revient à la personne.</p>
+        </section>
+      </div>
+    </Modal>
+  );
+}
+
+/** Inviter un responsable : sa fiche dans l'espace ouvert (ou celle qui a déjà cette adresse, son rôle gardé), ses logements, puis l'invitation. */
 export function InviterResponsable({ onFermer, logementsInitiaux = [] }: { onFermer: () => void; logementsInitiaux?: Id[] }) {
   const d = useErp();
   const [nom, setNom] = useState('');
   const [email, setEmail] = useState('');
   const [telephone, setTelephone] = useState('');
-  const [role, setRole] = useState<RoleOperations>('pole');
+  // Rôle choisi ici ; sinon celui de la fiche reprise, ou agent de terrain pour une nouvelle personne.
+  const [roleChoisi, setRoleChoisi] = useState<RoleOperations>();
   const [coches, setCoches] = useState<Id[]>(logementsInitiaux);
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
   const [invitation, setInvitation] = useState<Invitation>();
   const logements = useMemo(() => logementsGeres(d.logements), [d.logements]);
+  const adresse = email.trim().toLowerCase();
+  const existant = adresse ? d.donnees.equipe.find((m) => (m.email ?? '').trim().toLowerCase() === adresse) : undefined;
+  const role = roleChoisi ?? existant?.role ?? 'agent';
 
   const envoyer = async () => {
-    const adresse = email.trim().toLowerCase();
-    if (nom.trim().length < 2) return setErreur('Indiquez le nom.');
+    if (!existant && nom.trim().length < 2) return setErreur('Indiquez le nom.');
     if (!EMAIL.test(adresse)) return setErreur('Adresse e-mail invalide.');
-    if (!coches.length) return setErreur('Cochez au moins un logement.');
+    if (!coches.length && !existant?.logementIds.length) return setErreur('Cochez au moins un logement.');
     setErreur(undefined);
     setEnCours(true);
-    const existant = d.donnees.equipe.find((m) => (m.email ?? '').toLowerCase() === adresse);
-    const m: MembreEquipe = existant
-      ? { ...existant, actif: true, role, logementIds: [...new Set([...existant.logementIds, ...coches])], ...(telephone.trim() && !existant.telephone ? { telephone: telephone.trim() } : {}) }
-      : { id: nouvelId('eq'), nom: nom.trim(), role, email: adresse, ...(telephone.trim() ? { telephone: telephone.trim() } : {}), logementIds: coches, actif: true };
+    const { membre: m } = ficheResponsableInvite(d.donnees.equipe, { nom, email: adresse, telephone, role: roleChoisi, logementIds: coches }, () => nouvelId('eq'));
     d.upsert('equipe', m);
     try {
       if (MODE_DEMO) {
-        d.upsert('accesOperations', { id: m.id, membreId: m.id, email: adresse, statut: 'invite', inviteLe: new Date().toISOString(), invitePar: d.utilisateur.email, version: 1, liens: [] });
+        const acces = d.donnees.accesOperations.find((a) => a.id === m.id);
+        d.upsert('accesOperations', {
+          id: m.id,
+          membreId: m.id,
+          email: adresse,
+          emailFiche: adresse,
+          statut: acces?.statut === 'actif' && acces.email === adresse ? 'actif' : 'invite',
+          inviteLe: horodatageMaintenant(),
+          invitePar: d.utilisateur.email,
+          version: acces?.version ?? 1,
+          liens: [],
+          ...(acces?.derniereConnexion && acces.email === adresse ? { derniereConnexion: acces.derniereConnexion } : {}),
+        });
         setInvitation({ lien: `${window.location.origin}/espace-operations?apercu=${encodeURIComponent(m.id)}`, envoye: false, email: adresse });
       } else {
         const r = await inviterAvecReessai(API_OPERATIONS, { action: 'inviter', membreId: m.id, email: adresse });
@@ -805,21 +1075,21 @@ export function InviterResponsable({ onFermer, logementsInitiaux = [] }: { onFer
         <LienInvitation invitation={invitation} />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Nom" requis>
-            <Input value={nom} onChange={(e) => setNom(e.target.value)} autoComplete="off" />
-          </Field>
-          <Field label="Rôle">
-            <Select value={role} onChange={(e) => setRole(e.target.value as RoleOperations)} options={(Object.keys(ROLES_OPERATIONS) as RoleOperations[]).map((r) => ({ valeur: r, libelle: ROLES_OPERATIONS[r] }))} />
-          </Field>
-          <Field label="Adresse e-mail" requis>
+          <Field label="Adresse e-mail" requis aide={existant ? 'Une fiche existe déjà avec cette adresse : elle est reprise.' : undefined} className="sm:col-span-2">
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
           </Field>
+          <Field label="Nom" requis={!existant}>
+            <Input value={existant ? existant.nom : nom} disabled={!!existant} onChange={(e) => setNom(e.target.value)} autoComplete="off" />
+          </Field>
+          <Field label="Rôle">
+            <Select value={role} onChange={(e) => setRoleChoisi(e.target.value as RoleOperations)} options={(Object.keys(ROLES_OPERATIONS) as RoleOperations[]).map((r) => ({ valeur: r, libelle: ROLES_OPERATIONS[r] }))} />
+          </Field>
           <Field label="Téléphone" aide="Facultatif.">
-            <Input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="off" />
+            <Input type="tel" value={existant?.telephone ?? telephone} disabled={!!existant?.telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="off" />
           </Field>
           <div className="sm:col-span-2">
             <p className="mb-1.5 text-[13px] font-medium text-(--lm-encre)">Ses logements</p>
-            <ListeLogements logements={logements} coches={coches} onChange={setCoches} />
+            <ListeLogements logements={logements} coches={coches} onChange={setCoches} regle={(l) => (existant?.logementIds.includes(l.id) ? { verrou: true, detail: 'Déjà suivi' } : {})} />
           </div>
           {erreur && (
             <Alert tone="danger" className="sm:col-span-2">
@@ -837,7 +1107,8 @@ function ApercuOps({ membre, onFermer }: { membre: MembreEquipe; onFermer: () =>
   const d = useErp();
   const ref = useFenetre<HTMLDivElement>(true, onFermer);
   const [ecran, setEcran] = useState<Ecran>({ onglet: 'aujourdhui' });
-  const vue = useMemo(() => vueOperations(d.donnees, membre.id, { aujourdhui: AUJOURDHUI }), [d.donnees, membre.id]);
+  // Au nom de l'espace ouvert, comme le serveur (une personne de Sens voit « Sens »).
+  const vue = useMemo(() => vueOperations(d.donnees, membre.id, { aujourdhui: AUJOURDHUI, conciergerie: espaceOuvert().nom }), [d.donnees, membre.id]);
   const actions = useMemo<ActionsOps>(
     () => ({
       agir: async () => ({ ok: false, erreur: 'Aperçu : rien n’est envoyé.' }),

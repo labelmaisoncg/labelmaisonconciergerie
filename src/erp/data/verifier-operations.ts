@@ -24,8 +24,13 @@ import {
   POINTS_CONTROLE_DEFAUT,
   apercuAbsence,
   assigneLe,
+  affectationsSans,
+  affecter,
   controlesAFaire,
   court,
+  remplacantDe,
+  roleSurLogement,
+  titulaireDe,
   controlesEnRetard,
   echeanceApresDepart,
   graviteDe,
@@ -48,6 +53,7 @@ import type { Incident, Logement, Reservation } from './types';
 import type { AbsenceMembre, ControleQualite } from './types-operations';
 import { COLLECTIONS_OPS, appliquerAction, avecEcritures, conflitEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
 import { photoOperations } from './operations-fichiers';
+import { ficheResponsableInvite, logementsSansPersonne, phrasesTransferts, statutAccesExterne, transfertsProprietaire } from './acces-gerant';
 import { inviterMembre } from './operations-acces';
 import { lireSessionExterne, signerSessionExterne } from './acces-externe';
 import { ID_LABEL_MAISON } from './espaces';
@@ -446,7 +452,7 @@ section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, p
   const avecD = entrees({ equipe: [...e.equipe, { id: 'D', nom: 'Denis Roy', role: 'agent', logementIds: ['L1', 'L9'], actif: true }] });
   let r = appliquerAction(avecD, 'A', { type: 'absence', membreId: 'D', du: J, au: '2026-10-20', remplacantId: 'B' }, ctx);
   verifier(!r.ok && r.statut === 403, 'absence d’une personne qui suit aussi des logements hors du pôle : refusée (c’est au gérant)');
-  verifier(responsableLe(avecD, 'L9', J).membreId === undefined, 'L9 ne passe à personne d’autre');
+  verifier(responsableLe(avecD, 'L9', J).membreId === 'D', 'L9 reste à D, seul à le suivre : il ne passe à personne d’autre');
   const maladie: AbsenceMembre = { id: 'abs-m', membreId: 'B', du: J, au: '2026-10-20', remplacantId: 'A', motif: 'Arrêt maladie', creeLe: J, par: 'Gérant' };
   const avecMotif = entrees({ absences: [maladie] });
   const vueA = vueOperations(avecMotif, 'A', { aujourdhui: J })!;
@@ -570,6 +576,72 @@ section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, p
   }
   const nouveaux = fusionnerEcritures(e, [{ collection: 'incidents', element: incident('i-neuf') }], new Map());
   verifier(nouveaux[0].element.id === 'i-neuf', 'fusion : un nouvel enregistrement s’écrit tel quel');
+}
+
+/* ------------------------------------------- écrans du gérant (relecture) */
+
+section('Gérant : en charge par défaut, rôles par logement, adresse changée, transferts, rôle gardé');
+{
+  // B3 : sans aucune affectation (production), la seule personne qui suit un logement en a la charge.
+  const sans = entrees({ affectations: [] });
+  verifier(titulaireDe(sans, 'L3') === undefined && titulaireDe(sans, 'L2') === 'A', 'sans affectation : L2 (suivi par A seule) à A ; L3 (A et C) à choisir');
+  verifier(responsableLe(sans, 'L2', J).membreId === 'A' && !responsableLe(sans, 'L1', J).membreId, 'responsable du jour : par défaut, et personne quand plusieurs suivent sans choix');
+  const solo = entrees({ affectations: [], equipe: [{ id: 'S', nom: 'Sam Seul', role: 'agent', logementIds: ['L1'], actif: true }] });
+  verifier(!!vueOperations(solo, 'S', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'sans affectation : la seule personne du logement a le code le jour de l’arrivée');
+  let n = 0;
+  const ctxG: ContexteAction = { aujourdhui: J, maintenant: `${J}T09:00:00.000Z`, nouvelId: (p) => `${p}-g${++n}`, photoAcceptee: () => false };
+  const signale = appliquerAction(solo, 'S', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite d’eau sous l’évier.' }, ctxG);
+  verifier(signale.ok && (signale.ecritures[0].element as Incident).assigneA === 'S', 'sans affectation : l’incident signalé lui est confié');
+  verifier(!vueOperations(sans, 'B', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'plusieurs personnes, aucun choix : pas de code tant que le gérant n’a pas choisi');
+  const vuePole = vueOperations(sans, 'A', { aujourdhui: J })!;
+  verifier(vuePole.affectations.find((a) => a.id === 'L2')?.responsableId === 'A', 'vue du pôle : affectations effectives (choix par défaut compris)');
+
+  // Rôles par logement choisis par le gérant.
+  const a1 = affecter(sans, 'L1', 'B', 'quotidien');
+  verifier(a1.responsableId === 'B' && !a1.remplacantId, '« Au quotidien » : B responsable de L1');
+  const apresA1 = { ...sans, affectations: [a1] };
+  const a2 = affecter(apresA1, 'L1', 'A', 'absence');
+  verifier(a2.responsableId === 'B' && a2.remplacantId === 'A', '« Pendant une absence » : A remplaçante, B reste responsable');
+  const a3 = affecter({ ...sans, affectations: [a2] }, 'L1', 'B', 'absence');
+  verifier(!a3.responsableId && a3.remplacantId === 'B', 'passer de « au quotidien » à « pendant une absence » : plus responsable');
+  verifier(roleSurLogement(apresA1, 'L1', 'B') === 'quotidien' && roleSurLogement(apresA1, 'L1', 'A') === 'renfort' && roleSurLogement(sans, 'L2', 'A') === 'quotidien', 'rôle affiché : choisi, en renfort, ou par défaut');
+  verifier(affecter({ ...sans, affectations: [{ id: 'L3', pointsControle: ['Jacuzzi'] }] }, 'L3', 'C', 'quotidien').pointsControle?.[0] === 'Jacuzzi', 'les points de contrôle du logement restent');
+  const parti = { ...sans, affectations: [{ id: 'L1', responsableId: 'Z', remplacantId: 'B' }] };
+  verifier(titulaireDe(parti, 'L1') === undefined && remplacantDe(parti, 'L1') === 'B', 'responsable choisi qui ne suit plus le logement : plus en charge');
+
+  // 9 : retirer quelqu'un d'un logement.
+  const nettoyees = affectationsSans([{ id: 'L1', responsableId: 'B', remplacantId: 'A' }, { id: 'L2', responsableId: 'A' }, { id: 'L3', remplacantId: 'B' }], 'B', ['L1']);
+  verifier(nettoyees.length === 1 && nettoyees[0].id === 'L1' && !nettoyees[0].responsableId && nettoyees[0].remplacantId === 'A', '« Lui retirer » : plus responsable de L1, rien d’autre ne change');
+  verifier(logementsSansPersonne(entrees().equipe, 'B', ['L1']).length === 0 && logementsSansPersonne(entrees().equipe, 'A', ['L2']).join() === 'L2', 'logement qui resterait sans personne : signalé (L2), pas L1 (A le suit aussi)');
+
+  // B2 : adresse changée dans la fiche.
+  const accesActif = { id: 'B', email: 'ancienne@exemple.fr', emailFiche: 'ancienne@exemple.fr', statut: 'actif' as const, version: 1, liens: [], inviteLe: `${J}T08:00:00Z`, derniereConnexion: `${J}T09:00:00Z` };
+  verifier(statutAccesExterne(accesActif, 'ancienne@exemple.fr').ton === 'succes', 'accès de la fiche : « Connecté »');
+  const change = statutAccesExterne(accesActif, 'nouvelle@exemple.fr');
+  verifier(change.texte === 'Adresse changée : réinvitez' && change.ton === 'alerte', 'adresse changée dans la fiche : « Adresse changée : réinvitez »');
+  verifier(statutAccesExterne({ ...accesActif, statut: 'retire' }, 'nouvelle@exemple.fr').texte.startsWith('Accès retiré'), 'accès retiré : reste « Accès retiré »');
+  verifier(statutAccesExterne(undefined, 'x@exemple.fr').texte === 'Pas encore invité', 'pas d’accès : « Pas encore invité »');
+
+  // 3 : logements repris à un autre propriétaire.
+  const logs = [
+    { id: 'J', nom: 'Juvisy Gare', proprietaireId: 'thomas' },
+    { id: 'K', nom: 'Cosy F2', proprietaireId: 'thomas' },
+    { id: 'M', nom: 'Massy', proprietaireId: 'a-renseigner' },
+    { id: 'N', nom: 'Linas', proprietaireId: 'nouveau' },
+  ];
+  const pros = [{ id: 'thomas', nom: 'Thomas Nguyen' }];
+  const t = transfertsProprietaire(logs, pros, ['J', 'K', 'M', 'N'], 'nouveau', 'a-renseigner');
+  verifier(t.map((x) => x.logementId).join() === 'J,K', 'transferts : seulement les logements d’un autre propriétaire (ni « à renseigner », ni les siens)');
+  verifier(phrasesTransferts(t).join() === 'Thomas Nguyen ne verra plus Juvisy Gare et Cosy F2.', `phrase de confirmation (obtenu : ${phrasesTransferts(t).join(' ')})`);
+  verifier(!transfertsProprietaire(logs, pros, ['M'], 'nouveau', 'a-renseigner').length, 'logement « à renseigner » : pas de confirmation');
+
+  // 4 : réinviter une personne existante garde son rôle.
+  const equipe = entrees().equipe.map((m) => ({ ...m, email: `${m.id.toLowerCase()}@exemple.fr` }));
+  const repris = ficheResponsableInvite(equipe, { nom: 'Autre nom', email: ' B@Exemple.fr ', logementIds: ['L2'] }, () => 'nouveau');
+  verifier(repris.reprise && repris.membre.id === 'B' && repris.membre.role === 'agent' && repris.membre.nom === 'Bruno Petit' && repris.membre.logementIds.join() === 'L1,L2', 'fiche reprise : rôle et nom gardés, logements ajoutés');
+  verifier(ficheResponsableInvite(equipe, { nom: 'x', email: 'b@exemple.fr', role: 'pole', logementIds: [] }, () => 'n').membre.role === 'pole', 'rôle choisi explicitement : appliqué');
+  const nouvelle = ficheResponsableInvite(equipe, { nom: ' Nina ', email: 'nina@exemple.fr', logementIds: ['L1'] }, () => 'eq-nina');
+  verifier(!nouvelle.reprise && nouvelle.membre.id === 'eq-nina' && nouvelle.membre.role === 'agent' && nouvelle.membre.nom === 'Nina', 'nouvelle personne : agent de terrain par défaut');
 }
 
 /* ---------------------------------------------------------- notifications */

@@ -1,16 +1,19 @@
 /**
  * Fiche logement, carte « Responsables opérationnels » : les personnes de
  * terrain rattachées au logement (mêmes données que Paramètres → Accès :
- * MembreEquipe.logementIds), leur accès à l'espace opérations, et les
- * « ce logement n'est pas à moi » à traiter. Le gérant rattache une personne
- * existante ici, ou en invite une nouvelle.
+ * MembreEquipe.logementIds), qui s'en occupe au quotidien et pendant une
+ * absence (affectation ; par défaut, la seule personne qui le suit), leur
+ * accès à l'espace opérations, et les « ce logement n'est pas à moi » à
+ * traiter. Le gérant rattache une personne existante ici, ou en invite une
+ * nouvelle ; les autres comptes voient les noms, sans les accès.
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, UserPlus } from 'lucide-react';
-import { ROLES_OPERATIONS } from '../../../data/operations';
+import { ROLES_OPERATIONS, quiSuit, remplacantDe, titulaireDe } from '../../../data/operations';
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
+import type { AffectationLogement } from '../../../data/types-operations';
 import { Badge, Button, Card, CardHeader, Field, Modal, Select } from '../../../ui';
 import { InviterResponsable, Signalements, statutAccesOps } from '../../parametres/Acces';
 
@@ -19,8 +22,19 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
   const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
   const [ajouter, setAjouter] = useState(false);
   const [inviter, setInviter] = useState(false);
-  const rattaches = d.donnees.equipe.filter((m) => m.actif && m.logementIds.includes(l.id)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  const rattaches = quiSuit(d.donnees.equipe, l.id).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   const signalements = d.donnees.signalementsLogement.filter((s) => s.statut === 'ouvert' && s.logementId === l.id);
+  const responsableId = titulaireDe(d.donnees, l.id);
+  const remplacantId = remplacantDe(d.donnees, l.id);
+  const choix = rattaches.map((m) => ({ valeur: m.id, libelle: m.nom }));
+  const affecter = (patch: { responsableId?: string; remplacantId?: string }) => {
+    const avant = d.donnees.affectations.find((a) => a.id === l.id);
+    const r = 'responsableId' in patch ? patch.responsableId : responsableId;
+    let s = 'remplacantId' in patch ? patch.remplacantId : remplacantId;
+    if (s && s === r) s = undefined;
+    const a: AffectationLogement = { id: l.id, ...(r ? { responsableId: r } : {}), ...(s ? { remplacantId: s } : {}), ...(avant?.pointsControle?.length ? { pointsControle: avant.pointsControle } : {}) };
+    d.upsert('affectations', a);
+  };
 
   return (
     <Card>
@@ -34,22 +48,32 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
           )
         }
       />
-      {signalements.length > 0 && <Signalements liste={signalements} gerant={gerant} imbrique />}
+      {gerant && signalements.length > 0 && <Signalements liste={signalements} gerant={gerant} imbrique />}
       {rattaches.length ? (
         <ul className="divide-y divide-(--lm-bord)">
           {rattaches.map((m) => {
-            const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id));
+            const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id), m);
             const tel = m.telephone?.replace(/[^\d+]/g, '');
+            const charge = m.id === responsableId ? 'Au quotidien' : m.id === remplacantId ? 'Pendant une absence' : undefined;
             return (
               <li key={m.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                 <span className="min-w-0 flex-1">
-                  <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
-                    <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{m.nom}</span>
-                    <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{ROLES_OPERATIONS[m.role]}</span>
-                  </Link>
-                  <Badge tone={s.ton} point className="mt-1">
-                    {s.texte}
-                  </Badge>
+                  {gerant ? (
+                    <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
+                      <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{m.nom}</span>
+                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{[ROLES_OPERATIONS[m.role], charge].filter(Boolean).join(' · ')}</span>
+                    </Link>
+                  ) : (
+                    <>
+                      <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre)">{m.nom}</span>
+                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{[ROLES_OPERATIONS[m.role], charge].filter(Boolean).join(' · ')}</span>
+                    </>
+                  )}
+                  {gerant && (
+                    <Badge tone={s.ton} point className="mt-1">
+                      {s.texte}
+                    </Badge>
+                  )}
                 </span>
                 {tel && (
                   <a
@@ -66,6 +90,16 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
         </ul>
       ) : (
         <p className="text-[13.5px] text-(--lm-encre-2)">Aucun responsable rattaché.</p>
+      )}
+      {gerant && rattaches.length > 0 && (
+        <div className="mt-3 grid grid-cols-1 gap-3 border-t border-(--lm-bord) pt-3 sm:grid-cols-2">
+          <Field label="Au quotidien" aide={rattaches.length === 1 ? 'Seule personne qui suit ce logement.' : responsableId ? undefined : 'À choisir : personne n’a les codes ni les incidents.'}>
+            <Select value={responsableId ?? ''} placeholder="Personne" onChange={(e) => affecter({ responsableId: e.target.value || undefined })} options={choix} />
+          </Field>
+          <Field label="Pendant une absence">
+            <Select value={remplacantId ?? ''} placeholder="Personne" onChange={(e) => affecter({ remplacantId: e.target.value || undefined })} options={choix.filter((c) => c.valeur !== responsableId)} />
+          </Field>
+        </div>
       )}
       {gerant && (
         <div className="mt-3 border-t border-(--lm-bord) pt-3">

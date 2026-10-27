@@ -349,7 +349,8 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
             {ligneMandat && <p className="pt-0.5 text-(--lm-encre-2)">{ligneMandat}</p>}
           </div>
         )}
-        {renseigne && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
+        {/* Espace propriétaire : le gérant seul (accès, bilans à publier, documents). */}
+        {renseigne && d.utilisateur.role === 'gerant' && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
       </Card>
       {dossier && (
         <Repli titre="Dossier propriétaire" description={`Réponses reçues le ${dateCourte(dossier.recuLe.slice(0, 10))}`}>

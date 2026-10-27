@@ -116,6 +116,11 @@ export default async function handler(req: any, res: any) {
       if (!membre.actif) return repondre(res, 400, { ok: false, erreur: 'Cette personne ne fait plus partie de l’équipe.' });
       const email = normaliserEmail(corps.email);
       if (!emailValide(email)) return repondre(res, 400, { ok: false, erreur: 'Adresse e-mail invalide.' });
+      // Seulement l'adresse de la fiche : réinviter l'ancienne après un changement rouvrirait l'accès à qui est parti.
+      const deLaFiche = normaliserEmail(membre.email ?? '');
+      if (deLaFiche && deLaFiche !== email) {
+        return repondre(res, 409, { ok: false, code: 'fiche', erreur: 'Cette adresse n’est pas celle de la fiche : enregistrez-la dans sa fiche, puis réessayez.' });
+      }
       const jeton = await nouveauJeton();
       // L'adresse de la fiche est relevée : si elle change ensuite sans « Retirer », l'accès ne vaut plus.
       const invite = avecEmailFiche('operations', inviterMembre(precedent, { membreId, espace: g.espace, email, par: g.email, maintenantMs: maintenant }), membre);
