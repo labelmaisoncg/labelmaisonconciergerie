@@ -110,7 +110,7 @@ export function CarteAvisADeposer({ r }: { r: Reservation }) {
           <Textarea aria-label="Texte de l’avis" rows={4} value={texte} disabled={!modifiable} onChange={(e) => setTexte(e.target.value)} />
           <p className="mt-1.5 text-[12.5px] text-(--lm-encre-3)">
             {etat.joursRestants > 0 ? `Encore ${pluriel(etat.joursRestants, 'jour')} pour le déposer sur Airbnb.` : 'Dernier jour pour le déposer sur Airbnb.'}
-            {etat.avis?.source === 'ia' ? ' Texte préparé par l’IA.' : ''}
+            {etat.avis?.source === 'ia' ? ' Texte préparé par votre agent.' : ''}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button icone={<Copy />} onClick={() => void copier()} disabled={!texte.trim()}>

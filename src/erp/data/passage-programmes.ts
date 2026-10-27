@@ -25,7 +25,8 @@
  *
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
-import { COLLECTION_AGENT, ID_ETAT_AGENT, MODELE_AGENT_DEFAUT, texteErreurIA, type ClientIA, type EtatAgent } from './agent-messagerie.js';
+import { MODELE_AGENT_DEFAUT, texteErreurIA, type ClientIA } from './agent-messagerie.js';
+import { ErreurAssistant, compterAppelIA } from './agent-assistant.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi.js';
 import { BUDGET_ERP_DEFAUT, BudgetEpuise, DelaiEcoule, ErreurRepull, QUOTA_MOIS_DEFAUT, lireEtat } from './repull-synchro.js';
 import type { ContexteConnexion } from './repull-connexion.js';
@@ -40,6 +41,7 @@ import {
   PAR_MESSAGE_AUTO,
   RAISONS,
   SCHEMA_AVIS,
+  alerteTexteAvis,
   avisAPreparer,
   cleEnvoiProgramme,
   codesAutorises,
@@ -59,6 +61,7 @@ import {
   signatureProgrammes,
   texteAvisParDefaut,
   unMomentAllume,
+  variablesDuTexte,
   type DecisionPlanifiee,
   type ReservationsVues,
 } from './messages-programmes.js';
@@ -151,7 +154,7 @@ class Passage {
     }
     if (!unMomentAllume(reglages) && !d.envois.some((x) => x.statut === 'en_cours')) return vues.vues;
 
-    const plan = planifierEnvois({ reservations: d.reservations, fils: d.fils, reglages, envois: d.envois, vues: vues.vues, maintenant });
+    const plan = planifierEnvois({ reservations: d.reservations, fils: d.fils, reglages, envois: d.envois, vues: vues.vues, maintenant, logements: [...d.logements.values()] });
     if (plan.some((p) => p.decision.genre === 'envoyer' || p.decision.genre === 'reprendre')) {
       const etat = await lireEtat(this.o.base, maintenant, this.o.budgetMois ?? BUDGET_ERP_DEFAUT, this.o.quotaMois ?? QUOTA_MOIS_DEFAUT);
       if (etat.budgetMois - etat.appelsMois <= 0) this.repullEpuise = true;
@@ -167,7 +170,8 @@ class Passage {
           await this.ecrireEnvoi({ ...base, statut: 'ignore', raison: x.raison });
           this.bilan.ignores++;
         } else if (x.genre === 'verifier') {
-          await this.ecrireEnvoi({ ...x.envoi, statut: 'a_verifier', raison: x.raison, le: this.le() });
+          // Le texte (qui peut contenir un code) ne reste que dans la conversation, comme après un envoi.
+          await this.ecrireEnvoi({ ...x.envoi, statut: 'a_verifier', raison: x.raison, texte: undefined, le: this.le() });
           this.bilan.aVerifier++;
         } else if (x.genre === 'envoyer' || x.genre === 'reprendre') {
           if (this.repullEpuise || this.arretEnvois || this.bilan.envoyes >= max || this.o.echeance - Date.now() < TEMPS_PAR_ENVOI_MS) {
@@ -175,13 +179,8 @@ class Passage {
             continue;
           }
           if (x.genre === 'envoyer') await this.envoyer(p, x.fil, x.modele, signature, d.logements.get(p.reservation.logementId));
-          else {
-            const fil = x.fil ?? d.fils.find((f) => f.id === x.envoi.filId);
-            if (!fil || !x.envoi.texte || !x.envoi.cle) {
-              await this.ecrireEnvoi({ ...x.envoi, statut: 'a_verifier', raison: RAISONS.pasConfirme, le: this.le() });
-              this.bilan.aVerifier++;
-            } else await this.partir(x.envoi, fil);
-          }
+          // Reprise revérifiée par deciderEnvoi ; la clé est recalculée (jamais celle lue dans la ligne).
+          else await this.partir({ ...x.envoi, cle: cleEnvoiProgramme(p.reservation.id, p.declencheur), filId: x.fil.id }, x.fil);
         }
       } catch (e) {
         // Écriture refusée par la base : rien n'est parti pour cette ligne (marque posée avant l'envoi).
@@ -210,14 +209,15 @@ class Passage {
     const r = p.reservation;
     const aujourdhui = dateParisDe(this.maintenant());
     let lien: string | undefined;
-    if (modele.includes('{lien_guide}')) {
+    if (variablesDuTexte(modele).includes('lien_guide')) {
       const g = guidePourMessage(logement?.fiche?.guides, codesAutorises(r, fil.logementId, aujourdhui));
       if (g) lien = (await lienGuide(g, this.o.signerFichier)) ?? undefined;
     }
     const rendu = rendreMessage(modele, { reservation: r, logement, fil, signature, lienGuide: lien, aujourdhui });
     const base = { ...this.ligne(p), filId: fil.id };
-    if (!rendu.texte) {
-      await this.ecrireEnvoi({ ...base, statut: 'ignore', raison: RAISONS.vide });
+    if (!rendu.texte || rendu.codesEnClair) {
+      // Vide, ou un code d'accès écrit en dur dans le modèle, trop tôt pour ce séjour : rien ne part.
+      await this.ecrireEnvoi({ ...base, statut: 'ignore', raison: rendu.texte ? RAISONS.codesEnClair : RAISONS.vide });
       this.bilan.ignores++;
       return;
     }
@@ -318,19 +318,20 @@ class Passage {
     }
     if (!aPreparer.length) return;
 
-    const iaPermise = await this.iaPermise();
     const maxIA = this.o.maxAvisIA ?? MAX_AVIS_IA_PAR_PASSAGE;
+    // Plus d'IA pour ce passage : clé refusée, service indisponible, ou plafond du mois de l'espace atteint.
     let iaEnPanne = false;
     for (const r of aPreparer) {
       const raisons = raisonsARelire(r, signaux);
       const prenom = prenomDe(r.voyageur?.nom);
       let texte = '';
       let source: AvisADeposer['source'] = 'modele';
-      const ia = this.o.ia && !iaEnPanne && iaPermise.ok(this.bilan.appelsIA);
-      if (ia) {
+      if (this.o.ia && !iaEnPanne) {
         // Pas le temps, ou assez d'appels pour ce passage : l'IA s'en chargera au suivant.
         if (this.bilan.appelsIA >= maxIA || this.o.echeance - Date.now() < TEMPS_PAR_AVIS_IA_MS) break;
         try {
+          // Compté AVANT l'appel, dans le compteur du mois de l'espace (agent/etat) : refusé au plafond.
+          await compterAppelIA({ base: this.o.base, plafondIAMois: this.o.plafondIAMois, maintenant: this.o.maintenant });
           this.bilan.appelsIA++;
           // Borné au temps qui reste (le client commun attend jusqu'à 25 s, deux fois) : jamais au-delà du passage.
           const creer = this.o.ia!.messages.create as (p: Parameters<ClientIA['messages']['create']>[0], o?: { timeout?: number; maxRetries?: number }) => ReturnType<ClientIA['messages']['create']>;
@@ -350,12 +351,15 @@ class Passage {
           if (lu) {
             texte = lu.texte;
             source = 'ia';
-            if (lu.aRelire) raisons.push(lu.raison || 'L’IA signale un point à vérifier');
+            if (lu.aRelire) raisons.push(lu.raison || 'Votre agent signale un point à vérifier');
+            // Un avis public : jamais de lien, d'adresse, de chiffre ni d'e-mail sans relecture.
+            const alerte = alerteTexteAvis(texte);
+            if (alerte) raisons.push(alerte);
           }
         } catch (e) {
-          // Clé refusée, service indisponible : texte simple pour ce séjour, plus d'IA pour ce passage.
+          // Plafond atteint, clé refusée, service indisponible : texte simple pour ce séjour, plus d'IA pour ce passage.
           iaEnPanne = true;
-          this.bilan.erreurs.push(`Avis de ${prenom || 'voyageur'} : ${texteErreurIA(e)}`);
+          if (!(e instanceof ErreurAssistant && e.code === 'plafond')) this.bilan.erreurs.push(`Avis de ${prenom || 'voyageur'} : ${texteErreurIA(e)}`);
         }
       }
       const finales = [...new Set(raisons)];
@@ -378,7 +382,6 @@ class Passage {
         if (finales.length) this.bilan.avisARelire++;
       }
     }
-    if (this.bilan.appelsIA) await this.compterIA(this.bilan.appelsIA);
   }
 
   /**
@@ -394,31 +397,6 @@ class Passage {
     if (!attendus.includes(lu.element.statut)) return false;
     const suivant: AvisADeposer = { ...lu.element, ...a, creeLe: lu.element.creeLe ?? a.creeLe };
     return this.o.base.remplacerSi(COLLECTION_AVIS_A_DEPOSER, suivant, lu.version, PAR_MESSAGE_AUTO);
-  }
-
-  /** Plafond mensuel de l'IA de l'espace (le même que l'agent, compté dans agent/etat). */
-  private async iaPermise(): Promise<{ ok: (faitsCePassage: number) => boolean }> {
-    const plafond = this.o.plafondIAMois;
-    if (plafond === undefined) return { ok: () => true };
-    const mois = horodatageParis(this.maintenant()).slice(0, 7);
-    const [etat] = await this.o.base.lire<EtatAgent>(COLLECTION_AGENT, [ID_ETAT_AGENT]).catch(() => [] as EtatAgent[]);
-    const deja = etat?.iaMois?.mois === mois ? etat.iaMois.appels : 0;
-    return { ok: (n) => deja + n < plafond };
-  }
-
-  /** Ajoute les appels de l'IA au compteur du mois de l'agent (écriture conditionnelle, un nouvel essai). */
-  private async compterIA(n: number): Promise<void> {
-    const mois = horodatageParis(this.maintenant()).slice(0, 7);
-    for (let essai = 0; essai < 2; essai++) {
-      const [lu] = await this.o.base.lireVersions<EtatAgent>(COLLECTION_AGENT, [ID_ETAT_AGENT]).catch(() => []);
-      const etat: EtatAgent = { ...(lu?.element ?? {}), id: ID_ETAT_AGENT };
-      const suivant: EtatAgent = { ...etat, iaMois: { mois, appels: (etat.iaMois?.mois === mois ? etat.iaMois.appels : 0) + n } };
-      if (!lu) {
-        await this.o.base.ecrire(COLLECTION_AGENT, [suivant]).catch(() => undefined);
-        return;
-      }
-      if (await this.o.base.remplacerSi(COLLECTION_AGENT, suivant, lu.version).catch(() => false)) return;
-    }
   }
 
   private async journal(details: string) {
@@ -443,6 +421,33 @@ class Passage {
 }
 
 /**
+ * Verrou du passage, pris de façon atomique : ligne créée seulement si elle
+ * n'existe pas (ajouterSiAbsent), sinon remplacée seulement si elle n'a pas
+ * changé depuis sa lecture (remplacerSi). De deux passages simultanés, un seul
+ * l'obtient. null : un autre passage le tient.
+ */
+async function prendreVerrou(o: OptionsProgrammes, id: string, t: number): Promise<EtatProgrammes | null> {
+  const verrou = { jusqua: t + VERROU_MS, id };
+  const neuf: EtatProgrammes = { id: ID_ETAT_PROGRAMMES, verrou };
+  if ((await o.base.ajouterSiAbsent(COLLECTION_ETAT_PROGRAMMES, [neuf], PAR_MESSAGE_AUTO)) > 0) return neuf;
+  const [lu] = await o.base.lireVersions<EtatProgrammes>(COLLECTION_ETAT_PROGRAMMES, [ID_ETAT_PROGRAMMES]);
+  if (!lu || (lu.element.verrou && lu.element.verrou.jusqua > t)) return null;
+  const pris: EtatProgrammes = { ...lu.element, id: ID_ETAT_PROGRAMMES, verrou };
+  return (await o.base.remplacerSi(COLLECTION_ETAT_PROGRAMMES, pris, lu.version, PAR_MESSAGE_AUTO)) ? pris : null;
+}
+
+/** Fin du passage : bilan et liste des réservations vues gardés, verrou rendu (s'il est encore à ce passage). */
+async function rendreVerrou(o: OptionsProgrammes, id: string, bilan: BilanProgrammes, vues: ReservationsVues | undefined): Promise<void> {
+  for (let essai = 0; essai < 3; essai++) {
+    const [lu] = await o.base.lireVersions<EtatProgrammes>(COLLECTION_ETAT_PROGRAMMES, [ID_ETAT_PROGRAMMES]).catch(() => []);
+    if (!lu) return;
+    const suivant: EtatProgrammes = { ...lu.element, id: ID_ETAT_PROGRAMMES, dernier: bilan, ...(vues ? { vues } : {}) };
+    if (suivant.verrou?.id === id) delete suivant.verrou;
+    if (await o.base.remplacerSi(COLLECTION_ETAT_PROGRAMMES, suivant, lu.version, PAR_MESSAGE_AUTO).catch(() => false)) return;
+  }
+}
+
+/**
  * Un passage dans l'espace de `o.base` : messages automatiques dus, puis
  * avis à préparer. Un seul passage à la fois (verrou dans programmes/etat).
  */
@@ -450,11 +455,8 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
   const maintenant = o.maintenant ?? (() => new Date());
   const p = new Passage(o);
   const idPassage = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-  const [lu] = await o.base.lire<EtatProgrammes>(COLLECTION_ETAT_PROGRAMMES, [ID_ETAT_PROGRAMMES]);
-  const etat: EtatProgrammes = { ...(lu ?? {}), id: ID_ETAT_PROGRAMMES };
-  if (etat.verrou && etat.verrou.jusqua > maintenant().getTime()) return p.finir('occupe');
-  const verrouille: EtatProgrammes = { ...etat, verrou: { jusqua: maintenant().getTime() + VERROU_MS, id: idPassage } };
-  await o.base.ecrire(COLLECTION_ETAT_PROGRAMMES, [verrouille]);
+  const etat = await prendreVerrou(o, idPassage, maintenant().getTime());
+  if (!etat) return p.finir('occupe');
 
   let vues = etat.vues;
   try {
@@ -485,10 +487,7 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
   }
 
   const bilan = p.bilan.fin ? p.bilan : p.finir();
-  const frais = await o.base.lire<EtatProgrammes>(COLLECTION_ETAT_PROGRAMMES, [ID_ETAT_PROGRAMMES]).catch(() => [] as EtatProgrammes[]);
-  const suivant: EtatProgrammes = { ...(frais[0] ?? etat), id: ID_ETAT_PROGRAMMES, dernier: bilan, ...(vues ? { vues } : {}) };
-  if (!suivant.verrou || suivant.verrou.id === idPassage) delete suivant.verrou;
-  await o.base.ecrire(COLLECTION_ETAT_PROGRAMMES, [suivant]).catch(() => undefined);
+  await rendreVerrou(o, idPassage, bilan, vues);
   if (bilan.envoyes || bilan.echecs || bilan.avisPrepares || bilan.erreurs.length) {
     console.log('[programmes]', bilan.statut, JSON.stringify({ envoyes: bilan.envoyes, ignores: bilan.ignores, echecs: bilan.echecs, avis: bilan.avisPrepares, erreurs: bilan.erreurs.length }));
   }

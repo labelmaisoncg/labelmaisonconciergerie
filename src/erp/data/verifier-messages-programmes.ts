@@ -28,6 +28,9 @@ import {
   PAR_MESSAGE_AUTO,
   RAISONS,
   SEUIL_IMPORT,
+  TEXTES_DEFAUT,
+  VARIABLES,
+  alerteTexteAvis,
   avisAPreparer,
   avisATraiter,
   cleEnvoiProgramme,
@@ -48,7 +51,9 @@ import {
   rendreMessage,
   sejourAvecAvis,
   signatureProgrammes,
+  texteAffiche,
   texteAvisParDefaut,
+  texteStocke,
   type ReservationsVues,
 } from './messages-programmes';
 import { lancerProgrammes, type OptionsProgrammes } from './passage-programmes';
@@ -375,6 +380,63 @@ function apercu() {
   verifier(prochainEnvoi(d, reglagesProgrammes({ reglages: [] }), 'veille_arrivee', paris('2026-10-25T10:00:00Z')) === null, 'éteint : pas de prochain envoi');
 }
 
+function repriseReverifiee() {
+  section('Reprise d’un envoi « en cours » : tout est revérifié');
+  const reglages = reglagesAllumes(['veille_arrivee']);
+  const texte = 'Bonjour Marie, Boîte à clés 4821, wifi soleil2026';
+  const ligne = (p: Partial<EnvoiProgramme> = {}): EnvoiProgramme => ({
+    id: idEnvoi('r1', 'veille_arrivee'), reservationId: 'r1', logementId: 'log-1', declencheur: 'veille_arrivee', voyageur: 'Marie', statut: 'en_cours',
+    le: '2026-10-25T18:31:00+01:00', depuis: '2026-10-25T18:31:00+01:00', texte, cle: cleEnvoiProgramme('r1', 'veille_arrivee'), filId: 'fil-1', ...p,
+  });
+  // logement null : inconnu (undefined prendrait la valeur par défaut).
+  const d = (r: Reservation, iso: string, p: Partial<EnvoiProgramme> = {}, fils = [fil('fil-1', 'r1')], logement: Logement | null = LOGEMENT) =>
+    deciderEnvoi({ declencheur: 'veille_arrivee', reservation: r, reglages, fils, envoi: ligne(p), maintenant: paris(iso), logement: logement ?? undefined });
+  const annulee = d(resa('r1', { statut: 'annulee' }), '2026-10-25T18:00:00Z');
+  verifier(annulee.genre === 'verifier' && annulee.raison === RAISONS.repriseAnnulee, 'séjour annulé entre-temps : « à vérifier », rien ne repart (codes compris)');
+  const deplacee = d(resa('r1', { arrivee: '2026-11-05', depart: '2026-11-08' }), '2026-10-25T18:00:00Z');
+  verifier(deplacee.genre === 'verifier' && deplacee.raison === RAISONS.repriseCodes, 'arrivée repoussée de 10 jours, texte avec codes : « à vérifier »');
+  const sansCode = d(resa('r1', { arrivee: '2026-11-05', depart: '2026-11-08' }), '2026-10-25T18:00:00Z', { texte: 'Bonjour Marie, à bientôt.' });
+  verifier(sansCode.genre === 'reprendre', 'arrivée repoussée, texte sans code : repris');
+  verifier(d(resa('r1', { arrivee: '2026-11-05', depart: '2026-11-08' }), '2026-10-25T18:00:00Z', { texte: 'Bonjour' }, [fil('fil-1', 'r1')], null).genre === 'verifier', 'logement inconnu et codes plus permis : on ne peut pas savoir, « à vérifier »');
+  const nuit = d(resa('r1'), '2026-10-25T22:30:00Z');
+  verifier(nuit.genre === 'attendre' && nuit.raison === RAISONS.horsHeures, 'reprise à 23:30 : attend 8 h');
+  verifier(d(resa('r1'), '2026-10-26T07:05:00Z').genre === 'reprendre', '08:05 le lendemain : reprise (codes encore permis)');
+  const autreFil = d(resa('r1'), '2026-10-25T18:00:00Z', { filId: 'fil-9' }, [fil('fil-1', 'r1'), fil('fil-9', 'r9')]);
+  verifier(autreFil.genre === 'verifier' && autreFil.raison === RAISONS.repriseConversation, 'ligne qui vise la conversation d’un autre séjour : « à vérifier »');
+  verifier(d(resa('r1'), '2026-10-25T18:00:00Z', { texte: '' }).genre === 'verifier', 'ligne « en cours » sans texte : « à vérifier »');
+}
+
+function codesEnDur() {
+  section('Codes écrits en dur dans un modèle');
+  const ctx = (r: Reservation, aujourdhui: string) => ({ reservation: r, logement: LOGEMENT, fil: fil('fil-1', r.id), signature: 'L’équipe Label Maison', aujourdhui });
+  const tot = rendreMessage('Bonjour {prenom}, le code est 4821.', ctx(resa('r1', { arrivee: '2026-11-10', depart: '2026-11-12' }), '2026-10-25'));
+  verifier(tot.codesEnClair && !tot.codes, '15 jours avant, code en dur : refusé (codesEnClair)');
+  verifier(!rendreMessage('Bonjour {prenom}, le code est 4821.', ctx(resa('r1'), '2026-10-25')).codesEnClair, 'la veille : permis');
+  verifier(!rendreMessage('Bonjour {prenom}, à bientôt.', ctx(resa('r1', { arrivee: '2026-11-10', depart: '2026-11-12' }), '2026-10-25')).codesEnClair, 'sans code : rien à signaler');
+}
+
+function libelles() {
+  section('Variables : libellés à l’écran, clés en base');
+  const affiches = DECLENCHEURS.map((k) => texteAffiche(TEXTES_DEFAUT[k]));
+  verifier(affiches.every((t) => !/\{[a-z_]+\}/.test(t)), 'textes par défaut : aucun nom technique à l’écran');
+  verifier(affiches[1].includes('{Heure d’arrivée}') && affiches[1].includes('{Prénom}') && affiches[1].includes('{Lien du guide}'), 'libellés des pastilles (« {Prénom} », « {Heure d’arrivée} »)');
+  verifier(DECLENCHEURS.every((k) => texteStocke(texteAffiche(TEXTES_DEFAUT[k])) === TEXTES_DEFAUT[k]), 'aller-retour écran → base sans perte');
+  verifier(VARIABLES.every((v) => texteStocke(texteAffiche(`{${v.cle}}`)) === `{${v.cle}}`), 'aller-retour pour chaque variable');
+  verifier(texteStocke('{Date d\'arrivée} et {DATE D’ARRIVEE} et {prenom}') === '{date_arrivee} et {date_arrivee} et {prenom}', 'apostrophe droite, majuscules, ancienne clé : acceptés');
+  verifier(texteStocke('{Prénomm}') === '{Prénomm}' && texteAffiche('{inconnue}') === '{inconnue}', 'variable inconnue : laissée telle quelle');
+  const ctx = { reservation: resa('r1', { voyageur: { nom: '{Logement}', nbPersonnes: 1 } }), logement: LOGEMENT, signature: 'L’équipe', aujourdhui: '2026-10-25' };
+  verifier(rendreMessage('Bonjour {prenom},', ctx).texte === 'Bonjour {Logement},', 'voyageur nommé comme une variable : son nom tel quel, jamais remplacé');
+  verifier(rendreMessage(texteStocke('Bonjour {Prénom}, {Logement}'), { ...ctx, reservation: resa('r1') }).texte === 'Bonjour Marie, Corbeil Rives de Seine', 'texte de l’écran : envoyé avec les vraies valeurs');
+  verifier(rendreMessage('Bonjour {Prénom}', { ...ctx, reservation: resa('r1') }).texte === 'Bonjour Marie', 'un libellé arrivé tel quel en base est compris');
+  verifier(rendreMessage('Ligne {Prénomm}\nReste', { ...ctx, reservation: resa('r1') }).texte === 'Reste', 'libellé mal tapé : la ligne est retirée (jamais d’accolades chez le voyageur)');
+}
+
+function alertesAvis() {
+  section('Avis préparés par l’IA : à relire s’ils contiennent un lien, une adresse, un chiffre, un e-mail');
+  verifier(alerteTexteAvis('Lucas a été un voyageur parfait.') === null, 'texte simple : rien à signaler');
+  verifier(['Voir https://exemple.fr', 'Écrivez à lucas@exemple.fr', 'Il était 4 personnes', 'Logement rue de la Paix', 'Voir www.site.com', 'Voir monsite.fr'].every((t) => alerteTexteAvis(t) !== null), 'lien, e-mail, chiffre, adresse : à relire');
+}
+
 /* ==================================================== passage simulé */
 
 class FausseBase {
@@ -409,6 +471,12 @@ class FausseBase {
     }
     const lot = JSON.parse(String(init?.body)) as { collection: string; id: string; donnees: unknown }[];
     if (lot.some((l) => this.echoue?.(l.collection))) return new Response('panne', { status: 500 });
+    // ajouterSiAbsent : les lignes déjà là ne bougent pas, seules les ajoutées reviennent.
+    if (/ignore-duplicates/.test(new Headers(init?.headers).get('prefer') ?? '')) {
+      const ajoutees = lot.filter((l) => !this.lignes.has(this.cle(l.collection, l.id)));
+      for (const l of ajoutees) this.lignes.set(this.cle(l.collection, l.id), { collection: l.collection, id: l.id, donnees: JSON.parse(JSON.stringify(l.donnees)), maj: ++this.n });
+      return json(ajoutees.map((l) => ({ id: l.id })));
+    }
     for (const l of lot) this.lignes.set(this.cle(l.collection, l.id), { collection: l.collection, id: l.id, donnees: JSON.parse(JSON.stringify(l.donnees)), maj: ++this.n });
     return new Response(null, { status: 201 });
   };
@@ -604,10 +672,59 @@ async function passageSimule() {
   await lancerProgrammes(options());
   verifier(envoi('r1', 'jour_depart')?.statut === 'a_verifier' && repull.envois.length === nb, 'envoi coupé trop ancien : « à vérifier », rien ne repart');
 
+  verifier(!envoi('r1', 'jour_depart')?.texte, '« à vérifier » : le texte (codes compris) n’est plus gardé dans la ligne');
+
+  // Reprise après une première tentative qui n'a pas atteint la plateforme : séjour annulé, arrivée déplacée, nuit.
+  const enCours = (rid: string, filId: string, texte: string): EnvoiProgramme => ({
+    id: idEnvoi(rid, 'veille_arrivee'), reservationId: rid, logementId: 'log-1', declencheur: 'veille_arrivee', voyageur: 'Paul', statut: 'en_cours',
+    texte, cle: 'cle-de-la-ligne', filId, depuis: '2026-10-26T20:30:00+01:00', le: '2026-10-26T20:30:00+01:00',
+  });
+  const avecCodes = 'Bonjour Paul, boîte à clés 4821, wifi soleil2026';
+  base.poser('reservations', resa('rx1', { statut: 'annulee', arrivee: '2026-10-27', depart: '2026-10-29' }));
+  base.poser('reservations', resa('rx2', { arrivee: '2026-11-06', depart: '2026-11-08' }));
+  base.poser('reservations', resa('rx3', { arrivee: '2026-10-27', depart: '2026-10-29' }));
+  for (const [rid, filId] of [['rx1', 'fil-901'], ['rx2', 'fil-902'], ['rx3', 'fil-903']]) {
+    base.poser('filsMessages', fil(filId, rid));
+    base.poser(COLLECTION_ENVOIS_PROGRAMMES, enCours(rid, filId, avecCodes));
+  }
+  const avantReprise = repull.envois.length;
+  horloge = paris('2026-10-26T22:30:00Z'); // 23:30 à Paris
+  await lancerProgrammes(options());
+  verifier(envoi('rx1', 'veille_arrivee')?.statut === 'a_verifier' && envoi('rx1', 'veille_arrivee')?.raison === RAISONS.repriseAnnulee, 'reprise : séjour annulé → « à vérifier »');
+  verifier(envoi('rx2', 'veille_arrivee')?.statut === 'a_verifier' && envoi('rx2', 'veille_arrivee')?.raison === RAISONS.repriseCodes, 'reprise : arrivée déplacée, codes plus permis → « à vérifier »');
+  verifier(!envoi('rx1', 'veille_arrivee')?.texte && !envoi('rx2', 'veille_arrivee')?.texte, '« à vérifier » : le texte avec les codes est retiré de la ligne');
+  verifier(envoi('rx3', 'veille_arrivee')?.statut === 'en_cours', 'reprise à 23:30 : attend le matin');
+  verifier(repull.envois.length === avantReprise, 'aucun message avec les codes n’est parti');
+  horloge = paris('2026-10-27T07:05:00Z'); // 08:05, jour de l'arrivée : codes permis
+  await lancerProgrammes(options());
+  // (La confirmation de rx3, allumée elle aussi, part avec sa propre clé.)
+  const repris = repull.envois.filter((e) => e.conversation === '903' && e.message === avecCodes);
+  verifier(repris.length === 1 && repris[0].cle === cleEnvoiProgramme('rx3', 'veille_arrivee'), 'reprise à 08:05 : partie une fois, avec la clé du séjour');
+  verifier(!repull.envois.some((e) => e.cle === 'cle-de-la-ligne'), 'la clé lue dans la ligne n’est jamais utilisée');
+
+  // Code écrit en dur dans un modèle : refusé avant la fenêtre des codes.
+  reglages(reglagesAllumes(['confirmation'], ALLUME_LE, (r) => {
+    r.modeles.confirmation.activeLe = '2026-10-25T22:00:00+01:00';
+    r.modeles.confirmation.texte = 'Bonjour {prenom}, la boîte à clés : 4821.';
+  }));
+  base.poser('reservations', resa('rx4', { arrivee: '2026-11-20', depart: '2026-11-22', voyageur: { nom: 'Léa', nbPersonnes: 1 } }));
+  base.poser('filsMessages', fil('fil-904', 'rx4'));
+  horloge = paris('2026-10-27T08:00:00Z');
+  await lancerProgrammes(options());
+  verifier(envoi('rx4', 'confirmation')?.statut === 'ignore' && envoi('rx4', 'confirmation')?.raison === RAISONS.codesEnClair, 'code en dur 3 semaines avant : pas envoyé, noté');
+  verifier(!repull.envois.some((e) => e.conversation === '904'), 'rien n’est parti chez le voyageur');
+
   // Verrou : un seul passage à la fois.
   base.poser('programmes', { id: 'etat', verrou: { jusqua: Date.now() + 3_600_000 * 24 * 365, id: 'autre' } });
   verifier((await lancerProgrammes(options())).statut === 'occupe', 'un autre passage en cours : rien');
   base.poser('programmes', { id: 'etat' });
+  // Deux passages en même temps : un seul prend le verrou (écriture atomique).
+  const deux = await Promise.all([lancerProgrammes(options()), lancerProgrammes(options())]);
+  verifier(deux.filter((x) => x.statut === 'occupe').length === 1, 'deux passages simultanés : un seul tourne');
+  base.lignes.delete(base.cle('programmes', 'etat'));
+  const premiers = await Promise.all([lancerProgrammes(options()), lancerProgrammes(options())]);
+  verifier(premiers.filter((x) => x.statut === 'occupe').length === 1, 'tout premier passage, deux à la fois : un seul tourne');
+  verifier(!base.get<{ verrou?: unknown }>('programmes', 'etat')?.verrou, 'verrou rendu à la fin du passage');
 
   /* ------------------------------------------------ avis à déposer */
   section('Passage simulé : avis à déposer');
@@ -660,6 +777,18 @@ async function passageSimule() {
   verifier(ia2.appels.length === 1 && String(ia2.appels[0]?.system).includes('Sens') && !String(ia2.appels[0]?.system).includes('Label Maison'), 'sous le plafond : l’IA rédige au nom de l’espace, jamais de Label Maison');
   verifier(base2.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === 3, 'l’appel compte dans le plafond de l’espace');
 
+  // Appel compté AVANT : un appel qui échoue compte quand même ; un texte avec un chiffre est à relire.
+  const base4 = new FausseBase();
+  base4.poser('reservations', resa('u-1', { arrivee: '2026-10-20', depart: '2026-10-23', statut: 'terminee', voyageur: { nom: 'Ana', nbPersonnes: 1 } }));
+  base4.poser('reservations', resa('u-2', { arrivee: '2026-10-21', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Tom', nbPersonnes: 1 } }));
+  const ia4 = new FausseIA();
+  ia4.reponses = [{ texte: 'Ana, 4 étoiles, à revoir au 12 rue des Lilas.', a_relire: false, raison: '' }, new Error('panne')];
+  await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base4.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: ia4, nomEspace: 'Sens', plafondIAMois: 10 }));
+  const u1 = base4.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'u-1');
+  verifier(u1?.statut === 'a_relire' && !!u1.raisons?.some((x) => x.includes('chiffre')), 'avis de l’IA avec chiffre ou adresse : « à relire », jamais « prêt »');
+  verifier(base4.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === 2, 'appels comptés avant l’appel : l’appel en panne compte aussi');
+  verifier(base4.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'u-2')?.source === 'modele', 'appel en panne : texte simple');
+
   // Sans clé IA : texte simple, jamais bloqué.
   const base3 = new FausseBase();
   base3.poser('reservations', resa('t-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Léo', nbPersonnes: 1 } }));
@@ -679,6 +808,10 @@ async function principal() {
   signatures();
   fileAvis();
   apercu();
+  repriseReverifiee();
+  codesEnDur();
+  libelles();
+  alertesAvis();
   await passageSimule();
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;

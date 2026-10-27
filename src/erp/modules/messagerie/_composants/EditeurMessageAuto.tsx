@@ -2,21 +2,27 @@
  * Panneau d'un message automatique : heure d'envoi, texte (variables en
  * pastilles à toucher), aperçu avec un vrai séjour à venir, et texte propre
  * à un logement. Enregistré dans `reglages` (élément 'messages-programmes').
+ *
+ * À l'écran, les variables s'écrivent par leur libellé (« {Prénom} »,
+ * « {Heure d’arrivée} ») ; en base et à l'envoi, par leur clé (« {prenom} ») :
+ * texteAffiche / texteStocke (data/messages-programmes.ts).
  */
 import { useMemo, useRef, useState } from 'react';
-import { Lock, Plus, X } from 'lucide-react';
-import { Button, Drawer, Field, Select, Textarea, cn } from '../../../ui';
+import { ChevronDown, Lock, Plus, X } from 'lucide-react';
+import { Button, Drawer, Field, IconButton, Select, Textarea } from '../../../ui';
 import { AUJOURDHUI, dateJour, ecartJours, pluriel } from '../../../data/format';
 import {
   HEURES_ENVOI,
   LIBELLES_DECLENCHEURS,
   VARIABLES,
+  codesAutorises,
   filDuSejour,
   guidePourMessage,
-  codesAutorises,
   rendreMessage,
   sejoursPourApercu,
-  type CleVariable,
+  texteAffiche,
+  texteStocke,
+  variablesDuTexte,
 } from '../../../data/messages-programmes';
 import type { FilMessages, Logement, Reservation } from '../../../data/types';
 import type { DeclencheurMessage, ModeleLogement, ModeleProgramme } from '../../../data/types-programmes';
@@ -30,6 +36,7 @@ export interface EditeurMessageAutoProps {
   signature: string;
   modifiable: boolean;
   onFermer: () => void;
+  /** Textes déjà convertis pour la base (clés des variables). */
   onEnregistrer: (k: DeclencheurMessage, m: Pick<ModeleProgramme, 'texte' | 'heure' | 'logements'>) => void;
 }
 
@@ -49,12 +56,16 @@ function Pastille({ libelle, sensible, onClick, disabled }: { libelle: string; s
   );
 }
 
+/** Textes propres aux logements, d'une forme à l'autre (écran ↔ base). */
+const convertir = (propres: Record<string, ModeleLogement> | undefined, f: (t: string) => string): Record<string, ModeleLogement> =>
+  Object.fromEntries(Object.entries(propres ?? {}).map(([id, m]) => [id, m.texte !== undefined ? { ...m, texte: f(m.texte) } : m]));
+
 export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
   // Le panneau est remonté à chaque ouverture (clé du parent) : l'état repart du modèle enregistré.
   const k = p.declencheur;
-  const [texte, setTexte] = useState(p.modele?.texte ?? '');
+  const [texte, setTexte] = useState(() => texteAffiche(p.modele?.texte ?? ''));
   const [heure, setHeure] = useState(p.modele?.heure);
-  const [propres, setPropres] = useState<Record<string, ModeleLogement>>(p.modele?.logements ?? {});
+  const [propres, setPropres] = useState<Record<string, ModeleLogement>>(() => convertir(p.modele?.logements, texteAffiche));
   const zone = useRef<HTMLTextAreaElement>(null);
 
   const sejours = useMemo(() => (k ? sejoursPourApercu(p.reservations, k, AUJOURDHUI).slice(0, 15) : []), [k, p.reservations]);
@@ -72,21 +83,26 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
     const guide = guidePourMessage(logement?.fiche?.guides, codes);
     const lien = guide ? (guide.media.url?.trim() || 'lien du guide') : undefined;
     const propre = propres[sejour.logementId];
-    const modele = propre?.texte?.trim() ? propre.texte : texte;
-    return { ...rendreMessage(modele, { reservation: sejour, logement, fil, signature: p.signature, lienGuide: lien, aujourdhui: jour }), jour, coupe: propre?.actif === false };
+    const modele = texteStocke(propre?.texte?.trim() ? propre.texte : texte);
+    const variables = variablesDuTexte(modele);
+    return {
+      ...rendreMessage(modele, { reservation: sejour, logement, fil, signature: p.signature, lienGuide: lien, aujourdhui: jour }),
+      jour,
+      coupe: propre?.actif === false,
+      demandeCodes: variables.includes('acces') || variables.includes('wifi'),
+    };
   }, [sejour, k, p.fils, p.signature, logement, propres, texte]);
 
   if (!k || !p.modele) return null;
   const libelle = LIBELLES_DECLENCHEURS[k];
 
-  const inserer = (cle: CleVariable) => {
+  const inserer = (nom: string) => {
     const el = zone.current;
-    const jeton = `{${cle}}`;
+    const jeton = `{${nom}}`;
     if (!el) return setTexte((t) => `${t}${jeton}`);
     const debut = el.selectionStart ?? texte.length;
     const fin = el.selectionEnd ?? texte.length;
-    const suivant = `${texte.slice(0, debut)}${jeton}${texte.slice(fin)}`;
-    setTexte(suivant);
+    setTexte(`${texte.slice(0, debut)}${jeton}${texte.slice(fin)}`);
     requestAnimationFrame(() => {
       el.focus();
       el.setSelectionRange(debut + jeton.length, debut + jeton.length);
@@ -94,7 +110,9 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
   };
 
   const sansPropre = p.logements.filter((l) => l.statut !== 'sorti' && !propres[l.id]);
+  const nbPropres = Object.keys(propres).length;
   const vide = !texte.trim();
+  const enregistrer = () => p.onEnregistrer(k, { texte: texteStocke(texte), ...(heure ? { heure } : {}), logements: convertir(propres, texteStocke) });
 
   return (
     <Drawer
@@ -108,7 +126,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             {p.modifiable ? 'Annuler' : 'Fermer'}
           </Button>
           {p.modifiable && (
-            <Button variant="primary" disabled={vide} onClick={() => p.onEnregistrer(k, { texte, ...(heure ? { heure } : {}), logements: propres })}>
+            <Button variant="primary" disabled={vide} onClick={enregistrer}>
               Enregistrer
             </Button>
           )}
@@ -140,7 +158,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
               <p className="mb-1.5 text-[12px] text-(--lm-encre-3)">Touchez pour ajouter :</p>
               <div className="flex flex-wrap gap-1.5">
                 {VARIABLES.map((v) => (
-                  <Pastille key={v.cle} libelle={v.libelle} sensible={v.sensible} onClick={() => inserer(v.cle)} />
+                  <Pastille key={v.cle} libelle={v.libelle} sensible={v.sensible} onClick={() => inserer(v.libelle)} />
                 ))}
               </div>
               <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-3)">
@@ -166,7 +184,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             )}
           </div>
           {!sejour || !apercu ? (
-            <p className="rounded-lg bg-(--lm-surface-2) px-3.5 py-3 text-[13px] text-(--lm-encre-2)">Pas de séjour à venir pour l’aperçu.</p>
+            <p className="text-[13px] text-(--lm-encre-2)">Pas de séjour à venir pour l’aperçu.</p>
           ) : (
             <div>
               <p className="mb-2 text-[12px] text-(--lm-encre-3)">
@@ -179,69 +197,78 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
                   <div className="max-w-[92%] rounded-[18px] rounded-br-md bg-(--lm-brun) px-3.5 py-2 text-[14px] leading-snug whitespace-pre-line text-white">{apercu.texte}</div>
                 </div>
               )}
-              {!apercu.codes && texte.match(/\{(acces|wifi)\}/) && !apercu.coupe && (
-                <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-2)">
-                  <Lock className="size-3 shrink-0" aria-hidden />
-                  Accès et wifi retirés : {joursAvant(apercu.jour, sejour.arrivee)}.
+              {apercu.codesEnClair && !apercu.coupe ? (
+                <p role="alert" className="mt-2 text-[12.5px] font-medium text-(--lm-danger)">
+                  Ce texte contient un code ou le wifi écrit en toutes lettres : il ne partira pas plus de 48 h avant l’arrivée. Utilisez plutôt « Accès et clés » et « Wifi ».
                 </p>
+              ) : (
+                !apercu.codes &&
+                apercu.demandeCodes &&
+                !apercu.coupe && (
+                  <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-2)">
+                    <Lock className="size-3 shrink-0" aria-hidden />
+                    Accès et wifi retirés : {joursAvant(apercu.jour, sejour.arrivee)}.
+                  </p>
+                )
               )}
             </div>
           )}
         </section>
 
-        <details className="group rounded-lg border border-(--lm-bord)" open={Object.keys(propres).length > 0}>
-          <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-2 px-3.5 text-[13.5px] font-medium text-(--lm-encre) [&::-webkit-details-marker]:hidden">
-            Texte différent pour un logement
-            <span className="text-[12px] font-normal text-(--lm-encre-3)">{Object.keys(propres).length ? pluriel(Object.keys(propres).length, 'logement') : 'Facultatif'}</span>
+        {/* Repli sans cadre (comme « Avancé ») : ses champs ne sont pas dans un second cadre aussi arrondi qu'eux. */}
+        <details className="group" open={nbPropres > 0}>
+          <summary className="-my-1.5 inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+            Texte différent pour un logement{nbPropres ? ` (${nbPropres})` : ''}
+            <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
           </summary>
-          <div className="space-y-3 border-t border-(--lm-bord) px-3.5 py-3">
-            {Object.entries(propres).map(([id, m]) => (
-              <div key={id} className="rounded-md border border-(--lm-bord) bg-(--lm-surface-2) p-3">
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="truncate text-[13.5px] font-medium text-(--lm-encre)">{nomLogement(id)}</p>
-                  {p.modifiable && (
-                    <button
-                      type="button"
-                      aria-label={`Retirer le texte de ${nomLogement(id)}`}
-                      onClick={() => setPropres((x) => Object.fromEntries(Object.entries(x).filter(([cle]) => cle !== id)))}
-                      className="grid size-8 shrink-0 place-items-center rounded-md text-(--lm-encre-3) hover:bg-(--lm-neutre-lavis) hover:text-(--lm-encre)"
-                    >
-                      <X className="size-4" />
-                    </button>
-                  )}
-                </div>
-                <label className="mb-2 flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-(--lm-encre)">
-                  <input
-                    type="checkbox"
-                    className="size-4 accent-(--lm-or)"
-                    checked={m.actif === false}
-                    disabled={!p.modifiable}
-                    onChange={(e) => setPropres((x) => ({ ...x, [id]: { ...x[id], actif: e.target.checked ? false : undefined } }))}
-                  />
-                  Ne rien envoyer pour ce logement
-                </label>
-                {m.actif !== false && (
-                  <Textarea
-                    aria-label={`Message pour ${nomLogement(id)}`}
-                    rows={5}
-                    value={m.texte ?? ''}
-                    disabled={!p.modifiable}
-                    onChange={(e) => setPropres((x) => ({ ...x, [id]: { ...x[id], texte: e.target.value } }))}
-                  />
-                )}
-              </div>
-            ))}
-            {p.modifiable && sansPropre.length > 0 && (
+          <div className="mt-2 border-t border-(--lm-bord) pt-3">
+            {nbPropres > 0 && (
+              <ul className="mb-3 divide-y divide-(--lm-bord)">
+                {Object.entries(propres).map(([id, m]) => (
+                  <li key={id} className="py-3 first:pt-0">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <p className="truncate text-[13.5px] font-medium text-(--lm-encre)">{nomLogement(id)}</p>
+                      {p.modifiable && (
+                        <IconButton label={`Retirer le texte de ${nomLogement(id)}`} size="sm" onClick={() => setPropres((x) => Object.fromEntries(Object.entries(x).filter(([cle]) => cle !== id)))}>
+                          <X />
+                        </IconButton>
+                      )}
+                    </div>
+                    <label className="mb-2 flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-(--lm-encre)">
+                      <input
+                        type="checkbox"
+                        className="size-4 accent-(--lm-or)"
+                        checked={m.actif === false}
+                        disabled={!p.modifiable}
+                        onChange={(e) => setPropres((x) => ({ ...x, [id]: { ...x[id], actif: e.target.checked ? false : undefined } }))}
+                      />
+                      Ne rien envoyer pour ce logement
+                    </label>
+                    {m.actif !== false && (
+                      <Textarea
+                        aria-label={`Message pour ${nomLogement(id)}`}
+                        rows={5}
+                        value={m.texte ?? ''}
+                        disabled={!p.modifiable}
+                        onChange={(e) => setPropres((x) => ({ ...x, [id]: { ...x[id], texte: e.target.value } }))}
+                      />
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {p.modifiable && sansPropre.length > 0 ? (
               <Select
                 aria-label="Ajouter un logement"
                 value=""
                 placeholder="Ajouter un logement…"
-                className={cn('text-[13px]')}
+                className="text-[13px]"
                 onChange={(e) => e.target.value && setPropres((x) => ({ ...x, [e.target.value]: { texte } }))}
                 options={sansPropre.map((l) => ({ valeur: l.id, libelle: l.nom }))}
               />
+            ) : (
+              !nbPropres && <p className="text-[13px] text-(--lm-encre-2)">Le même texte pour tous les logements.</p>
             )}
-            {!Object.keys(propres).length && !p.modifiable && <p className="text-[13px] text-(--lm-encre-2)">Le même texte pour tous les logements.</p>}
           </div>
         </details>
       </div>

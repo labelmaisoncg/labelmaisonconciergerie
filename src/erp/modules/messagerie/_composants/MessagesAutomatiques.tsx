@@ -145,7 +145,7 @@ export function MessagesAutomatiques() {
               const detail =
                 e.statut === 'envoye'
                   ? `Envoyé le ${quand(moment)}`
-                  : `${s.libelle} le ${dateCourte(moment.slice(0, 10))}${e.raison ? ` : ${e.raison.replace(/\.$/, '').toLowerCase()}` : ''}`;
+                  : `${s.libelle} le ${dateCourte(moment.slice(0, 10))}${e.raison ? ` : ${e.raison.charAt(0).toLowerCase()}${e.raison.slice(1).replace(/\.$/, '')}` : ''}`;
               return (
                 <li key={e.id}>
                   <Link

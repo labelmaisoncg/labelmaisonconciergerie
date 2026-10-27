@@ -425,6 +425,17 @@ apparaît dans « À faire » et sur la réservation : « Copier le texte »,
 « Ouvrir Airbnb » (simple lien, rien n'est publié), « C’est fait » ou
 « Passer ». Incident, note sous 4 ou message négatif : « à relire ».
 
+Garanties dans la base (`supabase/erp-espaces.sql`, à relancer en passe 1
+ou 2 ; même règle avant les espaces dans `erp-installation.sql` et
+`erp-acces-gerants.sql`) : écriture réservée aux gérants de l'espace (et au
+compte serveur) pour `envoisProgrammes`, `programmes`, `agent`, `repull`,
+`factures`, `passagesFacturesMensuelles`, `conseilsPrix` (`reglages`,
+`etat`) et `reglages` (`messages-programmes`, `societe`,
+`numerotation-factures`) ; niveau d'autonomie de l'agent changé par un
+gérant seulement (déclencheur) ; numéro de facture attribué par
+`erp.numeroter_facture(p_id)` (à la suite, jamais deux fois) ; une facture
+numérotée ne change plus, sauf paiement et partage, et ne se supprime pas.
+
 L'onglet « Activité » est calculé depuis `filsMessages` :
 messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :
 `raisonEscalade`, sinon déduite des messages), conversations qui attendent

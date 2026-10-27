@@ -25,6 +25,7 @@
  *
  * Imports relatifs avec « .js » : ce fichier tourne aussi sous Node.
  */
+import { contientCodeAcces } from './messagerie-ia.js';
 import { reglagesAgent } from './reglages.js';
 import type { DateISO, ErpDonnees, FilMessages, GuideLogement, Horodatage, Id, Incident, Logement, Reservation } from './types';
 import type { ControleQualite } from './types-operations';
@@ -121,7 +122,36 @@ export const VARIABLES: VariableMessage[] = [
 ];
 
 const VARIABLES_PAR_CLE = new Map(VARIABLES.map((v) => [v.cle, v]));
-const MOTIF_VARIABLE = /\{([a-z_]+)\}/g;
+/** Une variable dans un texte : « {prenom} » (stocké) ou « {Prénom} » (écran). */
+const MOTIF_JETON = /\{([^{}\n]{1,40})\}/g;
+
+/** Libellé ou clé, sans casse, accents ni apostrophe courbe : « Date d’arrivée » = « date d'arrivee » = « date_arrivee ». */
+const normaliserJeton = (t: string): string =>
+  t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[’‘`]/g, "'").replace(/[\s_]+/g, ' ').trim().toLowerCase();
+
+const CLE_PAR_JETON = new Map<string, CleVariable>(VARIABLES.flatMap((v) => [[normaliserJeton(v.libelle), v.cle] as const, [normaliserJeton(v.cle), v.cle] as const]));
+
+/** Clé d'une variable écrite à l'écran ou stockée ; undefined : inconnue. */
+export const cleDuJeton = (jeton: string): CleVariable | undefined => CLE_PAR_JETON.get(normaliserJeton(jeton));
+
+/**
+ * Texte montré au gérant : variables par leur libellé (« {Prénom} »,
+ * « {Heure d’arrivée} »), jamais par leur nom technique.
+ */
+export function texteAffiche(stocke: string): string {
+  return stocke.replace(MOTIF_JETON, (tout, jeton: string) => {
+    const cle = cleDuJeton(jeton);
+    return cle ? `{${VARIABLES_PAR_CLE.get(cle)!.libelle}}` : tout;
+  });
+}
+
+/** Texte enregistré et envoyé : variables par leur clé (« {prenom} ») ; une variable inconnue reste telle quelle. */
+export function texteStocke(affiche: string): string {
+  return affiche.replace(MOTIF_JETON, (tout, jeton: string) => {
+    const cle = cleDuJeton(jeton);
+    return cle ? `{${cle}}` : tout;
+  });
+}
 
 /* ================================================================ heures */
 
@@ -284,6 +314,8 @@ export interface MessageRendu {
   codes: boolean;
   /** Variables sans valeur (ou retenues) dont la ligne a été retirée. */
   retirees: CleVariable[];
+  /** Le texte contient un code ou le wifi du logement écrit en dur, avant l'heure : il ne part pas. */
+  codesEnClair: boolean;
 }
 
 /** Valeur de chaque variable pour ce séjour ; les codes seulement s'ils sont permis. */
@@ -319,8 +351,10 @@ export function rendreMessage(modele: string, c: ContexteMessage): MessageRendu 
   const lignes: string[] = [];
   for (const ligne of modele.replace(/\r\n/g, '\n').split('\n')) {
     let retirer = false;
-    const remplacee = ligne.replace(MOTIF_VARIABLE, (tout, cle: string) => {
-      const v = VARIABLES_PAR_CLE.get(cle as CleVariable);
+    // Clé ou libellé (« {prenom} », « {Prénom} ») ; une variable inconnue retire sa ligne.
+    const remplacee = ligne.replace(MOTIF_JETON, (tout, jeton: string) => {
+      const cle = cleDuJeton(jeton);
+      const v = cle ? VARIABLES_PAR_CLE.get(cle) : undefined;
       if (!v) {
         retirer = true;
         return '';
@@ -337,12 +371,12 @@ export function rendreMessage(modele: string, c: ContexteMessage): MessageRendu 
     lignes.push(remplacee.replace(/[ \t]+([,.!?;:])/g, (m, p: string) => (p === ':' || p === ';' || p === '!' || p === '?' ? ` ${p}` : p)).replace(/[ \t]{2,}/g, ' ').trimEnd());
   }
   const texte = lignes.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { texte, codes, retirees: [...retirees] };
+  return { texte, codes, retirees: [...retirees], codesEnClair: !codes && contientCodeAcces(texte, c.logement?.fiche) };
 }
 
 /** Variables utilisées dans un texte, dans l'ordre (pour l'aperçu). */
 export function variablesDuTexte(texte: string): CleVariable[] {
-  return [...new Set([...texte.matchAll(MOTIF_VARIABLE)].map((m) => m[1] as CleVariable).filter((k) => VARIABLES_PAR_CLE.has(k)))];
+  return [...new Set([...texte.matchAll(MOTIF_JETON)].map((m) => cleDuJeton(m[1])).filter((k): k is CleVariable => !!k))];
 }
 
 /* ============================================================ décisions */
@@ -435,8 +469,8 @@ export type DecisionEnvoi =
   /** Pas envoyé, pour de bon : noté une fois dans l'historique. */
   | { genre: 'ignorer'; raison: string }
   | { genre: 'envoyer'; fil: FilMessages; modele: string; fin: number }
-  /** Envoi commencé (en_cours) à reprendre avec la même clé et le même texte. */
-  | { genre: 'reprendre'; envoi: EnvoiProgramme; fil?: FilMessages }
+  /** Envoi commencé (en_cours) à reprendre avec la même clé et le même texte, tout revérifié. */
+  | { genre: 'reprendre'; envoi: EnvoiProgramme; fil: FilMessages }
   /** Envoi commencé trop ancien (ou moment éteint entre-temps) : rien n'est renvoyé, à vérifier sur la plateforme. */
   | { genre: 'verifier'; envoi: EnvoiProgramme; raison: string };
 
@@ -450,6 +484,10 @@ export const RAISONS = {
   vide: 'Message vide après remplacement des informations.',
   eteint: 'Message éteint pendant l’envoi : vérifiez sur la plateforme s’il est parti.',
   pasConfirme: 'Envoi commencé mais pas confirmé à temps : vérifiez sur la plateforme s’il est parti.',
+  repriseAnnulee: 'Réservation annulée pendant l’envoi : rien n’est reparti. Vérifiez sur la plateforme.',
+  repriseCodes: 'Les codes ne sont plus permis pour ce séjour (dates changées) : rien n’est reparti. Vérifiez sur la plateforme.',
+  repriseConversation: 'La conversation ne correspond plus à ce séjour : rien n’est reparti. Vérifiez sur la plateforme.',
+  codesEnClair: 'Le texte contient un code d’accès ou le wifi écrit en dur, trop tôt pour ce séjour : pas envoyé.',
 } as const;
 
 /** Ce qui empêche l'envoi en ce moment, s'il y a quelque chose. `final` : ça ne changera plus. */
@@ -470,6 +508,8 @@ export interface EntreeDecision {
   fils: readonly FilMessages[];
   vues?: ReservationsVues;
   maintenant: Date;
+  /** Logement du séjour (codes et wifi de sa fiche : reprise d'un envoi). */
+  logement?: Pick<Logement, 'fiche'>;
 }
 
 /** Que faire pour ce séjour et ce moment, maintenant ? Pur : aucune écriture, aucun envoi. */
@@ -480,9 +520,18 @@ export function deciderEnvoi(e: EntreeDecision): DecisionEnvoi {
 
   if (envoi && envoi.statut !== 'reporte') {
     if (envoi.statut !== 'en_cours') return { genre: 'rien' };
+    // Reprise d'un envoi commencé : tout est revérifié avant de rejouer (rien n'a peut-être encore atteint la plateforme).
     if (!m.actif) return { genre: 'verifier', envoi, raison: RAISONS.eteint };
-    if (t - (instantDe(envoi.depuis ?? envoi.le) || 0) > REPRISE_MAX_MS) return { genre: 'verifier', envoi, raison: RAISONS.pasConfirme };
-    return { genre: 'reprendre', envoi, fil: e.fils.find((f) => f.id === envoi.filId) };
+    if (t - (instantDe(envoi.depuis ?? envoi.le) || 0) > REPRISE_MAX_MS || !envoi.texte?.trim()) return { genre: 'verifier', envoi, raison: RAISONS.pasConfirme };
+    if (r.statut === 'annulee') return { genre: 'verifier', envoi, raison: RAISONS.repriseAnnulee };
+    const filReprise = e.fils.find((f) => f.id === envoi.filId && f.reservationId === r.id && !!f.repull?.id);
+    if (!filReprise) return { genre: 'verifier', envoi, raison: RAISONS.repriseConversation };
+    // Codes plus permis (séjour annulé, dates déplacées) : un texte qui en contient ne repart pas ; logement inconnu, on ne peut pas le savoir.
+    if (!codesAutorises(r, filReprise.logementId, dateParisDe(maintenant)) && (!e.logement || contientCodeAcces(envoi.texte, e.logement.fiche))) {
+      return { genre: 'verifier', envoi, raison: RAISONS.repriseCodes };
+    }
+    if (!dansPlageEnvoi(maintenant)) return { genre: 'attendre', raison: RAISONS.horsHeures };
+    return { genre: 'reprendre', envoi, fil: filReprise };
   }
   if (!m.actif) return { genre: 'rien' };
   // Réservation déjà là quand la confirmation a été allumée, ou arrivée par importation : pas de confirmation.
@@ -521,13 +570,24 @@ export function planifierEnvois(o: {
   envois: readonly EnvoiProgramme[];
   vues?: ReservationsVues;
   maintenant: Date;
+  logements?: readonly Pick<Logement, 'id' | 'fiche'>[];
 }): DecisionPlanifiee[] {
   const parId = new Map(o.envois.map((x) => [x.id, x]));
+  const logements = new Map((o.logements ?? []).map((l) => [l.id, l]));
   const res: DecisionPlanifiee[] = [];
   for (const k of DECLENCHEURS) {
     if (!o.reglages.modeles[k].actif && !o.envois.some((x) => x.declencheur === k && x.statut === 'en_cours')) continue;
     for (const r of o.reservations) {
-      const decision = deciderEnvoi({ declencheur: k, reservation: r, reglages: o.reglages, envoi: parId.get(idEnvoi(r.id, k)), fils: o.fils, vues: o.vues, maintenant: o.maintenant });
+      const decision = deciderEnvoi({
+        declencheur: k,
+        reservation: r,
+        reglages: o.reglages,
+        envoi: parId.get(idEnvoi(r.id, k)),
+        fils: o.fils,
+        vues: o.vues,
+        maintenant: o.maintenant,
+        logement: logements.get(r.logementId),
+      });
       if (decision.genre !== 'rien') res.push({ declencheur: k, reservation: r, decision });
     }
   }
@@ -633,6 +693,17 @@ export function raisonsARelire(
     raisons.push('Un message signale un souci');
   }
   return raisons;
+}
+
+/** Ce qu'un avis public ne doit pas contenir : lien, adresse e-mail, chiffre (code, numéro, prix) ou adresse postale. */
+const LIEN_AVIS = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:fr|com|net|org|eu|io|be|ch)\b/i;
+const ADRESSE_AVIS = /\b(?:rue|avenue|av\.|boulevard|bd|allée|allee|chemin|impasse|place|quai|route|cours|résidence|residence|bâtiment|batiment)\b/i;
+
+/** Raison de relire un avis rédigé par l'IA (lien, adresse, chiffre, e-mail) ; null : rien à signaler. */
+export function alerteTexteAvis(texte: string): string | null {
+  const t = String(texte ?? '');
+  if (LIEN_AVIS.test(t) || /@/.test(t) || /\d/.test(t) || ADRESSE_AVIS.test(t)) return 'Le texte contient un lien, une adresse, un chiffre ou un e-mail : à vérifier avant de déposer';
+  return null;
 }
 
 /** Texte simple quand l'IA n'est pas disponible (jamais pour un séjour à relire sans relecture). */
