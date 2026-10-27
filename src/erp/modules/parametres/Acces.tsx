@@ -50,6 +50,8 @@ import { ErreurServeur, appelerServeur } from '../messagerie/_composants/serveur
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
 const API_OPERATIONS = '/api/espace-operations';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** La fiche sans l'ancien IBAN masqué (l'ERP ne le demande ni ne le garde plus). */
+const sansIban = ({ ibanMasque: _ancien, ...p }: Proprietaire): Proprietaire => p;
 
 type Invitation = { lien: string; envoye: boolean; email: string };
 
@@ -378,8 +380,9 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
     const transferts = transfertsProprietaire(d.logements, d.proprietaires, coches, existant?.id ?? '', ID_PROPRIETAIRE_A_RENSEIGNER);
     if (transferts.length && !aConfirmer) return setAConfirmer(transferts);
     setEnCours(true);
+    // Fiche existante reprise telle quelle, sans l'ancien IBAN (plus conservé).
     const p: Proprietaire = existant
-      ? { ...existant, nom: existant.nom || nom.trim(), contact: { email: adresse, telephone: existant.contact.telephone || telephone.trim() } }
+      ? { ...sansIban(existant), nom: existant.nom || nom.trim(), contact: { email: adresse, telephone: existant.contact.telephone || telephone.trim() } }
       : { id: nouvelId('pro'), type: 'particulier', nom: nom.trim(), contact: { email: adresse, telephone: telephone.trim() }, adresse: '', notes: '', creeLe: horodatageMaintenant().slice(0, 10) };
     d.upsert('proprietaires', p);
     for (const id of coches) d.mettreAJour('logements', id, (l) => changerProprietaire(l, p.id, AUJOURDHUI));
