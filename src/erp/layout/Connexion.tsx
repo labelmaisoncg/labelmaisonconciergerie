@@ -38,7 +38,7 @@ export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnect
     case 'non_autorise':
       return (
         <Cadre titre="Accès non autorisé" icone={<ShieldAlert />}>
-          <Alert tone="alerte" titre="Votre compte n’est pas autorisé. Demandez l’accès à un gérant.">
+          <Alert tone="alerte" titre="Ce compte n’a pas accès à l’ERP. Demandez à un gérant de vous ajouter.">
             Vous êtes connecté avec <strong className="break-all">{phase.email}</strong>, mais cette adresse ne figure pas dans la liste des membres
             de l’ERP.
           </Alert>
@@ -147,11 +147,11 @@ function FormulaireConnexion({ message }: { message?: string }) {
     const r = await envoyerLienMotDePasse(email);
     if (!r.ok && /trop de tentatives/i.test(r.erreur)) return setErreur(r.erreur);
     // Même réponse que l'adresse ait un compte ou non.
-    setInfo('Si cette adresse a un compte, un lien pour choisir un mot de passe vient de lui être envoyé.');
+    setInfo('Si cette adresse a un compte, un lien pour choisir un mot de passe vient de lui être envoyé. Pensez à regarder dans les indésirables.');
   };
 
   return (
-    <Cadre titre="Connexion" sousTitre="Votre adresse e-mail et votre mot de passe." icone={<LogIn />}>
+    <Cadre titre="ERP Label Maison" sousTitre="Outil interne de gestion" icone={<LogIn />}>
       {message && (
         <Alert tone="info" className="mb-4 py-2">
           {message}

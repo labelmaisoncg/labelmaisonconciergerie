@@ -884,7 +884,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           if (enRecuperation.current && evenement === 'INITIAL_SESSION') {
             // Lien de récupération refusé par Supabase (expiré ou déjà utilisé).
             enRecuperation.current = false;
-            setPhase({ nom: 'connexion', message: 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ».' });
+            setPhase({ nom: 'connexion', message: 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».' });
             return;
           }
           if (enRecuperation.current) return;
