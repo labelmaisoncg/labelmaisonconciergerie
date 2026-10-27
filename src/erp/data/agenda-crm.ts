@@ -23,6 +23,15 @@ export const ERP_CRM = 'https://www.labelmaisoncg.fr/erp/crm';
  */
 export type FiltreAgenda = 'tous' | Responsable;
 
+/**
+ * Choix « Relances de » permis dans un espace : Label Maison, toute l'équipe,
+ * Abdel ou Kamel (comme avant) ; un autre espace, toute l'équipe seulement
+ * (jamais les associés de Label Maison).
+ */
+export function filtresAgenda(espace: string | null | undefined): FiltreAgenda[] {
+  return estLabelMaison(espace) ? ['tous', 'abdel', 'kamel'] : ['tous'];
+}
+
 const VERBE: Record<StatutContactCrm, string> = {
   a_appeler: 'Appeler',
   a_rappeler: 'Rappeler',

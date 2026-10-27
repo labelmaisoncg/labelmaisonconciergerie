@@ -16,6 +16,8 @@ import { heure, horodatageMaintenant, jourMois } from '../../../data/format';
 import type { FilMessages, Logement, Message, Reservation } from '../../../data/types';
 import { DUREE_LIEN_GUIDE_S, guideEnvoyable } from '../../../data/guides';
 import { lienPartage } from '../../../data/supabase';
+import { espaceOuvert } from '../../../data/espaces';
+import { signatureEspace } from '../../../data/marque-espace';
 import type { GuideLogement } from '../../../data/types';
 import { GABARITS, LIBELLE_MOTIF, attendEquipe, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
 import { PanneauContexte } from './PanneauContexte';
@@ -49,7 +51,9 @@ const ENTREE_ENVOIE = typeof window !== 'undefined' && !!window.matchMedia?.('(p
 const HAUTEUR_MAX_SAISIE = 160;
 
 export function Conversation({ fil, logement, reservation }: Props) {
-  const { upsert, mode, lectureSeule } = useErp();
+  const { upsert, mode, lectureSeule, reglages } = useErp();
+  // Réponses rapides signées comme l'agent de l'espace (Label Maison : « L’équipe Label Maison »).
+  const signature = signatureEspace({ reglages }, espaceOuvert());
   const [brouillon, setBrouillon] = useState('');
   const [avis, setAvis] = useState<ReactNode>(null);
   // Vert pour une confirmation, ambre pour un point à surveiller (texte retouché, message à transmettre soi-même).
@@ -346,7 +350,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   key={g.cle}
                   type="button"
                   disabled={bloque}
-                  onClick={() => logement && inserer(g.texte(logement, prenom))}
+                  onClick={() => logement && inserer(g.texte(logement, prenom, signature))}
                   title={bloque ? `Pas de codes d’accès pour ce voyageur (${codes.raison})` : `Insérer le modèle ${g.libelle}`}
                   className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
                 >

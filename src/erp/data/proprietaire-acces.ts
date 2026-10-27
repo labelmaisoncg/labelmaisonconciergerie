@@ -19,6 +19,7 @@
  */
 import { ID_LABEL_MAISON } from './espaces.js';
 import {
+  ACCES_RETIRE,
   enteteCookieExterne,
   espaceDe,
   lireCookieExterne,
@@ -148,7 +149,7 @@ export const MESSAGES_REFUS: Record<RefusLien, string> = {
   inconnu: 'Ce lien n’est pas valable. Demandez un nouveau lien avec votre adresse e-mail.',
   expire: 'Ce lien a expiré. Demandez un nouveau lien avec votre adresse e-mail.',
   utilise: 'Ce lien a déjà servi. Demandez un nouveau lien avec votre adresse e-mail.',
-  retire: 'Votre accès à l’espace propriétaire a été retiré. Contactez votre conciergerie.',
+  retire: ACCES_RETIRE,
 };
 
 /* ---------------------------------------------------------------- session */

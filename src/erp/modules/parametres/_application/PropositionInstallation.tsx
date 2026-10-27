@@ -1,5 +1,7 @@
 import { useState, useSyncExternalStore } from 'react';
 import { Smartphone } from 'lucide-react';
+import { espaceOuvert } from '../../../data/espaces';
+import { titreProposerApp } from '../../../data/marque-espace';
 import { Button, ButtonLink } from '../../../ui';
 import { useInstallation, type EtatInstallation } from './installation';
 
@@ -67,7 +69,7 @@ export function PropositionInstallation() {
       <div className="flex min-w-0 flex-1 items-start gap-3">
         <Smartphone className="mt-0.5 size-[18px] shrink-0 text-(--lm-encre-2)" aria-hidden />
         <div className="min-w-0 text-[13.5px]">
-          <p className="font-semibold text-(--lm-encre)">Installez l’app Label Maison</p>
+          <p className="font-semibold text-(--lm-encre)">{titreProposerApp(espaceOuvert())}</p>
           <p className="mt-0.5 text-(--lm-encre-2)">Une notification à chaque réservation, message ou problème signalé.</p>
         </div>
       </div>

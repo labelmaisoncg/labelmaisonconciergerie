@@ -15,6 +15,9 @@ import { ID_LABEL_MAISON, idEspaceValide } from './espaces.js';
 import { b64url, deB64url } from './web-push.js';
 
 export type GenreAcces = 'proprietaire' | 'operations';
+
+/** Accès retiré : la même phrase partout (lien, session, action), espace propriétaire et opérations. */
+export const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
 export const GENRES_ACCES: GenreAcces[] = ['proprietaire', 'operations'];
 
 /** Lien à usage unique : seule son empreinte (SHA-256) est gardée. */

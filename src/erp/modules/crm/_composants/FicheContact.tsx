@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import { FileText, Mail, MessageSquareText, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
 import { EMAIL_SUR, LIBELLE_RESULTAT, LIBELLE_SOURCE_CRM, noterAppel, STATUTS_CRM } from '../../../data/crm';
+import { espaceOuvert } from '../../../data/espaces';
 import { dateHeure, horodatageMaintenant, pluriel } from '../../../data/format';
-import type { ContactCrm, ResultatAppel, Responsable, StatutContactCrm } from '../../../data/types';
+import { optionsSuiviCrm } from '../../../data/marque-espace';
+import { useErp } from '../../../data/store';
+import type { ContactCrm, ResultatAppel, StatutContactCrm, SuiviCrm } from '../../../data/types';
 import { Button, classesBouton, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
 import { EnvoyerDossier } from './EnvoyerDossier';
 import { relanceEnRetard } from './Grille';
@@ -34,10 +37,13 @@ export interface FicheContactProps {
   onSupprimer: (id: string) => void;
   auteur: string;
   lectureSeule: boolean;
+  /** « Envoyer le dossier » (dossier propriétaire du site) : Label Maison seulement. */
+  dossier: boolean;
 }
 
 /** Fiche d'un contact : coordonnées, appel en un geste, notes et historique. */
-export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteur, lectureSeule }: FicheContactProps) {
+export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteur, lectureSeule, dossier: dossierPropose }: FicheContactProps) {
+  const { utilisateurs } = useErp();
   const [brouillon, setBrouillon] = useState<ContactCrm | undefined>(contact);
   const [note, setNote] = useState('');
   const [confirmer, setConfirmer] = useState(false);
@@ -103,9 +109,11 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
                 <Mail aria-hidden /> E-mail
               </a>
             )}
-            <Button variant="secondary" icone={<FileText />} onClick={() => setDossier(true)}>
-              Envoyer le dossier
-            </Button>
+            {dossierPropose && (
+              <Button variant="secondary" icone={<FileText />} onClick={() => setDossier(true)}>
+                Envoyer le dossier
+              </Button>
+            )}
           </div>
           {!lectureSeule && (
             <div className="mt-3">
@@ -172,12 +180,8 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
             <Select
               value={brouillon.responsable ?? ''}
               disabled={lectureSeule}
-              onChange={(e) => onModifier({ ...contact, responsable: (e.target.value || undefined) as Responsable | undefined })}
-              options={[
-                { valeur: '', libelle: 'Personne' },
-                { valeur: 'abdel', libelle: 'Abdel' },
-                { valeur: 'kamel', libelle: 'Kamel' },
-              ]}
+              onChange={(e) => onModifier({ ...contact, responsable: (e.target.value || undefined) as SuiviCrm | undefined })}
+              options={[{ valeur: '', libelle: 'Personne' }, ...optionsSuiviCrm(espaceOuvert(), utilisateurs, brouillon.responsable)]}
             />
           </Field>
           {contact.statut === 'en_attente' && (
@@ -275,12 +279,14 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
         </section>
       </div>
 
-      <EnvoyerDossier
-        ouvert={dossier}
-        onFermer={() => setDossier(false)}
-        contact={contact}
-        onEnvoye={lectureSeule ? undefined : (canal) => appel('note', `Dossier propriétaire envoyé par ${canal}.`)}
-      />
+      {dossierPropose && (
+        <EnvoyerDossier
+          ouvert={dossier}
+          onFermer={() => setDossier(false)}
+          contact={contact}
+          onEnvoye={lectureSeule ? undefined : (canal) => appel('note', `Dossier propriétaire envoyé par ${canal}.`)}
+        />
+      )}
 
       <Modal
         ouvert={confirmer}

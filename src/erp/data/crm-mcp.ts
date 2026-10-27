@@ -33,6 +33,14 @@ const AUTEUR = 'Claude';
 const STATUTS = STATUTS_CRM.map((s) => s.cle);
 const RESPONSABLES: Responsable[] = ['abdel', 'kamel'];
 
+/**
+ * « Suivi par » : Abdel ou Kamel, dans l'espace de Label Maison seulement.
+ * Un autre espace choisit ses membres dans l'ERP ; Claude n'y voit ni ne
+ * règle le suivi (jamais les associés de Label Maison).
+ */
+const suiviPermis = (ctx: Pick<ContexteMcp, 'espace'>): boolean => !ctx.espace || estLabelMaison(ctx.espace.id);
+const SUIVI_FERME = '« suivi_par » n’existe pas dans cet espace : choisissez qui suit le contact dans l’ERP.';
+
 export const VERSIONS_PROTOCOLE = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
 /** Mode d'emploi commun à tous les espaces : channel manager. */
@@ -41,7 +49,7 @@ Logements : logements_lister, puis logement_voir (fiche, couchage, conditions, p
 Messagerie : conversations_a_repondre, conversation_voir ; conversation_pas_besoin_de_repondre la classe « terminée » dans l'ERP (elle se rouvre si le voyageur réécrit). Pour aider à répondre : reponse_preparer donne le contexte ; proposez la réponse, l'équipe l'envoie elle-même depuis l'ERP (ce connecteur n'envoie jamais rien aux voyageurs). Chiffres : indicateurs (occupation, revenu, prix moyen par nuit, note).
 Codes d'accès, wifi, e-mails et téléphones des voyageurs ne sont jamais transmis ; les voyageurs sont nommés « Prénom N. ».`;
 
-/** Mode d'emploi commun à tous les espaces : CRM d'appels. */
+/** Mode d'emploi commun à tous les espaces : CRM d'appels (« le suivi » : Label Maison seulement). */
 const MODE_EMPLOI_CRM = `Étapes : ${STATUTS_CRM.map((s) => `${s.cle} (${s.libelle} : ${s.aide})`).join(' ; ')}.
 Pour savoir quoi faire aujourd'hui : crm_resume. Pour retrouver quelqu'un : crm_chercher (nom, téléphone, ville…), puis crm_voir pour sa fiche complète et son historique.
 Après un appel, utiliser crm_noter_appel (l'étape avance toute seule) ; pour changer l'étape, une relance, le suivi ou les notes : crm_modifier. Un nouveau contact : crm_ajouter (les doublons par e-mail ou téléphone sont détectés).
@@ -63,13 +71,13 @@ export function instructionsServeur(espace?: { id: string; nom: string }): strin
   return `${espace.nom} (espace de l'ERP) : channel manager et CRM d'appels de cet espace seulement.
 ${MODE_EMPLOI_CM}
 CRM D'APPELS — les contacts de l'espace ${espace.nom}.
-${MODE_EMPLOI_CRM}`;
+${MODE_EMPLOI_CRM.replace('une relance, le suivi ou les notes', 'une relance ou les notes')}`;
 }
 
 /* ----------------------------------------------------------- présentation */
 
-/** Vue compacte d'un contact (listes). */
-function resume(c: ContactCrm, aujourdhui: string) {
+/** Vue compacte d'un contact (listes). `suivi` : « suivi_par » montré (Label Maison). */
+function resume(c: ContactCrm, aujourdhui: string, suivi = true) {
   return {
     id: c.id,
     nom: c.nom,
@@ -79,16 +87,16 @@ function resume(c: ContactCrm, aujourdhui: string) {
     ...(c.ville ? { ville: c.ville } : {}),
     ...(c.typeBien ? { bien: c.typeBien } : {}),
     ...(c.relanceLe ? { relance_le: c.relanceLe, relance_en_retard: c.relanceLe < aujourdhui && !STATUTS_CLOS.includes(c.statut) } : {}),
-    ...(c.responsable ? { suivi_par: c.responsable } : {}),
+    ...(suivi && c.responsable ? { suivi_par: c.responsable } : {}),
     ...(c.notes ? { notes: c.notes.slice(0, 200) } : {}),
     recu_le: c.creeLe.slice(0, 10),
   };
 }
 
 /** Fiche complète (crm_voir). */
-function fiche(c: ContactCrm, aujourdhui: string) {
+function fiche(c: ContactCrm, aujourdhui: string, suivi = true) {
   return {
-    ...resume(c, aujourdhui),
+    ...resume(c, aujourdhui, suivi),
     ...(c.email ? { email: c.email } : {}),
     ...(c.adresse ? { adresse: c.adresse } : {}),
     ...(c.motifAttente ? { en_attente_de: c.motifAttente } : {}),
@@ -136,7 +144,7 @@ const OUTILS_CRM: Outil[] = [
         total: tous.length,
         par_etape: Object.fromEntries(STATUTS_CRM.map((s) => [s.libelle, tous.filter((c) => c.statut === s.cle).length])),
         a_appeler_aujourdhui: aFaire.length,
-        liste_du_jour: aFaire.slice(0, 15).map((c) => resume(c, j)),
+        liste_du_jour: aFaire.slice(0, 15).map((c) => resume(c, j, suiviPermis(ctx))),
         relances_en_retard: tous.filter((c) => c.relanceLe && c.relanceLe < j && !STATUTS_CLOS.includes(c.statut)).length,
       };
     },
@@ -164,6 +172,7 @@ const OUTILS_CRM: Outil[] = [
       const q = (texte(a.recherche, 'recherche', 200) ?? '').toLowerCase();
       const chiffres = telephoneNormalise(q);
       const statuts = Array.isArray(a.statuts) ? a.statuts.map((s) => choix(s, 'statuts', STATUTS)!).filter(Boolean) : [];
+      if (a.suivi_par !== undefined && !suiviPermis(ctx)) throw new ErreurOutil(SUIVI_FERME);
       const suivi = choix(a.suivi_par, 'suivi_par', RESPONSABLES);
       const limite = Math.min(100, Math.max(1, Number.isInteger(a.limite) ? (a.limite as number) : 25));
       const decalage = Math.max(0, Number.isInteger(a.decalage) ? (a.decalage as number) : 0);
@@ -184,7 +193,7 @@ const OUTILS_CRM: Outil[] = [
         renvoyes: page.length,
         decalage,
         ...(decalage + page.length < trouves.length ? { suite: decalage + page.length } : {}),
-        contacts: page.map((c) => resume(c, j)),
+        contacts: page.map((c) => resume(c, j, suiviPermis(ctx))),
       };
     },
   },
@@ -199,7 +208,7 @@ const OUTILS_CRM: Outil[] = [
       additionalProperties: false,
     },
     annotations: LECTURE,
-    executer: async (a, ctx) => fiche(await contactExistant(ctx, a.id), ctx.aujourdhui()),
+    executer: async (a, ctx) => fiche(await contactExistant(ctx, a.id), ctx.aujourdhui(), suiviPermis(ctx)),
   },
   {
     name: 'crm_ajouter',
@@ -232,11 +241,12 @@ const OUTILS_CRM: Outil[] = [
       if (!telephone && !email) throw new ErreurOutil('Indiquez au moins un téléphone ou un e-mail.');
       const statut = choix(a.statut, 'statut', STATUTS) ?? 'a_appeler';
       const relance = date(a.relance_le, 'relance_le');
+      if (a.suivi_par !== undefined && !suiviPermis(ctx)) throw new ErreurOutil(SUIVI_FERME);
       const suivi = choix(a.suivi_par, 'suivi_par', RESPONSABLES);
       const tous = await ctx.depot.tous();
       const doublon = trouverDoublon(tous, { email, telephone });
       if (doublon && a.forcer !== true) {
-        return { cree: false, raison: 'Déjà dans le CRM (même e-mail ou téléphone). Rien n’a été créé.', contact: fiche(doublon, ctx.aujourdhui()) };
+        return { cree: false, raison: 'Déjà dans le CRM (même e-mail ou téléphone). Rien n’a été créé.', contact: fiche(doublon, ctx.aujourdhui(), suiviPermis(ctx)) };
       }
       const maintenant = ctx.maintenant();
       const base = contactDepuisDemande({ nom, email, tel: telephone, ville: texte(a.ville, 'ville', 120), typeBien: texte(a.type_bien, 'type_bien', 120) }, idContactCrm(), maintenant);
@@ -250,7 +260,7 @@ const OUTILS_CRM: Outil[] = [
         historique: [{ le: maintenant, par: AUTEUR, resultat: 'note', texte: 'Contact ajouté depuis Claude.' }],
       };
       await ctx.depot.enregistrer(c);
-      return { cree: true, contact: fiche(c, ctx.aujourdhui()) };
+      return { cree: true, contact: fiche(c, ctx.aujourdhui(), suiviPermis(ctx)) };
     },
   },
   {
@@ -279,6 +289,7 @@ const OUTILS_CRM: Outil[] = [
     },
     annotations: ECRITURE,
     executer: async (a, ctx) => {
+      if (a.suivi_par !== undefined && !suiviPermis(ctx)) throw new ErreurOutil(SUIVI_FERME);
       const avant = await contactExistant(ctx, a.id);
       const maintenant = ctx.maintenant();
       let c: ContactCrm = { ...avant };
@@ -319,7 +330,7 @@ const OUTILS_CRM: Outil[] = [
       }
       c.majLe = maintenant;
       await ctx.depot.enregistrer(c);
-      return { modifie: true, contact: fiche(c, ctx.aujourdhui()) };
+      return { modifie: true, contact: fiche(c, ctx.aujourdhui(), suiviPermis(ctx)) };
     },
   },
   {
@@ -350,13 +361,32 @@ const OUTILS_CRM: Outil[] = [
         delete c.relanceLe;
       } else if (relance) c = { ...c, relanceLe: relance };
       await ctx.depot.enregistrer(c);
-      return { note: true, etape_avant: LIBELLE_STATUT_CRM[avant.statut], etape: LIBELLE_STATUT_CRM[c.statut], contact: fiche(c, ctx.aujourdhui()) };
+      return { note: true, etape_avant: LIBELLE_STATUT_CRM[avant.statut], etape: LIBELLE_STATUT_CRM[c.statut], contact: fiche(c, ctx.aujourdhui(), suiviPermis(ctx)) };
     },
   },
 ];
 
 /** Tous les outils : CRM d'abord (connexions déjà faites dans Claude), puis channel manager. */
 export const OUTILS: Outil[] = [...OUTILS_CRM, ...OUTILS_CM];
+
+/**
+ * Outils annoncés à Claude pour l'espace du jeton : Label Maison, exactement
+ * OUTILS ; un autre espace, les mêmes sans « suivi_par » (ni dans les
+ * schémas, ni dans les descriptions).
+ */
+export function outilsDeLEspace(espace?: { id: string }): Outil[] {
+  if (!espace || estLabelMaison(espace.id)) return OUTILS;
+  return OUTILS.map((o) => {
+    const proprietes = (o.inputSchema as { properties?: Record<string, unknown> }).properties;
+    if (!proprietes || !('suivi_par' in proprietes)) return o;
+    const { suivi_par: _s, ...reste } = proprietes;
+    return {
+      ...o,
+      description: o.description.replace(', suivi_par,', ',').replace('date de relance, suivi, motif', 'date de relance, motif'),
+      inputSchema: { ...o.inputSchema, properties: reste },
+    };
+  });
+}
 
 /* ------------------------------------------------------------ JSON-RPC */
 
@@ -389,7 +419,7 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
       return resultat(id, {});
     case 'tools/list':
       return resultat(id, {
-        tools: OUTILS.map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, annotations: { title, ...annotations } })),
+        tools: outilsDeLEspace(ctx.espace).map(({ name, title, description, inputSchema, annotations }) => ({ name, title, description, inputSchema, annotations: { title, ...annotations } })),
       });
     case 'tools/call': {
       const nom = m.params?.name;

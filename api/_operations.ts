@@ -20,8 +20,8 @@ import { espaceDe } from '../src/erp/data/acces-externe.js';
 import { prefixeFichiers } from '../src/erp/data/espaces.js';
 import { COLLECTIONS_OPS, type EntreesOperations, type Ecriture } from '../src/erp/data/espace-operations.js';
 import { DOSSIER_OPERATIONS } from '../src/erp/data/operations-fichiers.js';
-import { notificationUrgence, type GroupeNotification } from '../src/erp/data/notifications.js';
-import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
+import { notificationUrgence, varianteAEnvoyer, type GroupeNotification } from '../src/erp/data/notifications.js';
+import { envoyerNotifications, lireAppareils, type BaseNotifications } from '../src/erp/data/notifications-envoi.js';
 import type { Id, Incident, Logement, Mission, Reservation } from '../src/erp/data/types';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from '../src/erp/data/types-operations';
 import { configuration, deposeurFichiersErp, signeurFichiersErp, stockageFerme } from './_erp-repull.js';
@@ -135,15 +135,31 @@ export async function deposerPhoto(espace: string, membreId: Id, octets: Uint8Ar
   return deposer(`${prefixePhotos(espace)}${DOSSIER_OPERATIONS}/${membreId}/${nom}`, octets, type);
 }
 
-/** Prévient le gérant (notification « Urgence » de l'app de l'ERP) ; sans clés, rien. */
-export async function prevenirGerant(b: BaseErp, e: EntreesOperations, ids: readonly Id[]): Promise<void> {
-  const cles = clesServeur();
-  if (!cles || !ids.length) return;
-  const groupes = ids
+/** Notifications de l'app de l'ERP pour ces incidents (« Urgence », « Incident confié »). */
+export function groupesGerant(e: Pick<EntreesOperations, 'incidents' | 'logements' | 'equipe'>, ids: readonly Id[]): GroupeNotification[] {
+  return ids
     .map((id) => e.incidents.find((i) => i.id === id))
     .filter((i): i is Incident => !!i)
     .map((i) => notificationUrgence(i, e.logements.find((l) => l.id === i.logementId)?.nom ?? '', e.equipe.find((m) => m.id === i.assigneA)?.nom))
     .filter((g): g is GroupeNotification => !!g);
+}
+
+/**
+ * Le gérant recevra-t-il vraiment ces notifications ? Clés du serveur, et un
+ * appareil de l'app de l'ERP abonné dans l'espace qui les accepte (ses
+ * réglages). Sinon il le verra dans l'ERP, sans notification.
+ */
+export async function gerantRecevra(b: BaseNotifications, groupes: readonly GroupeNotification[]): Promise<boolean> {
+  if (!clesServeur() || !groupes.length) return false;
+  const appareils = await lireAppareils(b);
+  return appareils.some((a) => groupes.some((g) => !!varianteAEnvoyer(g, a.preferences)));
+}
+
+/** Prévient le gérant (notification « Urgence » de l'app de l'ERP) ; sans clés, rien. */
+export async function prevenirGerant(b: BaseErp, e: EntreesOperations, ids: readonly Id[]): Promise<void> {
+  const cles = clesServeur();
+  if (!cles || !ids.length) return;
+  const groupes = groupesGerant(e, ids);
   if (groupes.length) await envoyerNotifications(b, groupes, { cles }).catch((err) => console.error('[espace-operations] notification', err instanceof Error ? err.message : err));
 }
 
