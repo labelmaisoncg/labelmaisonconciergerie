@@ -479,7 +479,11 @@ async function principal() {
       'message : « réservée au gérant ou facture déjà validée », ou facture validée entre-temps',
     );
     const trace = traceRefus(refus[0], { auteur: 'Abdel', id: 'jrn-1', horodatage: MAINTENANT });
-    verifier(trace.action === 'Modification non enregistrée' && /factures\/fac-figee/.test(trace.details) && !/Autre/.test(trace.details), 'ligne de journal : collections et identifiants, jamais le contenu', trace);
+    verifier(
+      trace.action === 'Modification non enregistrée' && trace.entite === 'factures' && trace.entiteId === 'fac-figee' && !/fac-figee|Autre/.test(trace.details),
+      'ligne de journal : la fiche concernée (entité), un détail lisible sans identifiant ni contenu',
+      trace,
+    );
     await attendre(1300);
     verifier(base.compter('POST') === 4, 'aucun nouvel essai ensuite', base.requetes);
 

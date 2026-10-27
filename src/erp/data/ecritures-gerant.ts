@@ -47,19 +47,19 @@ export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boo
 
 /* ------------------------------------------------- refus de la base (store) */
 
-export const MESSAGE_REFUS_GERANT = 'Une modification n’a pas pu être enregistrée : elle est réservée au gérant ou la facture est déjà validée.';
+export const MESSAGE_REFUS_GERANT = 'Modification non enregistrée : elle est réservée au gérant. L’écran affiche de nouveau la version enregistrée.';
 export const MESSAGE_REFUS_FACTURE = 'Cette facture a été validée entre-temps : elle ne change plus. Sa version enregistrée vient d’être rechargée.';
 
 /** Message affiché une fois par envoi refusé (synchro.ts, surRefus). */
 export function messageRefus(refus: readonly RefusBase[]): string {
-  const facturesFigees = refus.length > 0 && refus.every((r) => (CODES_REFUS_BASE as readonly string[]).includes(r.code ?? ''));
+  // Tout refus portant sur des factures (code LMF, ou 42501 des anciennes installations) : le message de la facture.
+  const facturesFigees = refus.length > 0 && refus.every((r) => (CODES_REFUS_BASE as readonly string[]).includes(r.code ?? '') || r.collection === 'factures');
   return facturesFigees ? MESSAGE_REFUS_FACTURE : MESSAGE_REFUS_GERANT;
 }
 
 /** Ligne de journal d'un envoi refusé : collections et identifiants seulement, jamais le contenu. */
 export function traceRefus(refus: readonly RefusBase[], o: { auteur: string; id: string; horodatage: string }): Journal {
   const premier = refus[0];
-  const lignes = refus.slice(0, 5).map((r) => `${r.collection}/${r.id}`).join(', ') + (refus.length > 5 ? '…' : '');
   return {
     id: o.id,
     horodatage: o.horodatage,
@@ -67,6 +67,7 @@ export function traceRefus(refus: readonly RefusBase[], o: { auteur: string; id:
     action: 'Modification non enregistrée',
     entite: premier?.collection ?? 'enregistrement',
     entiteId: premier?.id ?? '',
-    details: `${refus.length > 1 ? `${refus.length} modifications refusées` : 'Refusée'} par la base (réservée au gérant ou facture déjà validée) : ${lignes}. La version enregistrée a été rechargée.`,
+    // Lisible dans l'Historique : pas d'identifiants techniques (ils restent dans entite / entiteId).
+    details: `${refus.length > 1 ? `${refus.length} modifications refusées` : '1 modification refusée'} (réservée au gérant ou facture déjà validée). La version enregistrée a été rechargée.`,
   };
 }
