@@ -46,6 +46,9 @@ import {
   MESSAGES_ATTENTE,
   messageAttente,
   niveauAutonomie,
+  explicationNiveau,
+  reglagesAEnregistrer,
+  REGLAGES_AGENT_GERANT,
   reponseSensible,
   secretsAcces,
   validationServeur,
@@ -70,9 +73,11 @@ import {
   type AlerteControleAgent,
   type ControleReponse,
 } from './controle-reponse';
-import { rendreMessage } from './messages-programmes';
+import { PAR_MESSAGE_AUTO, rendreMessage } from './messages-programmes';
 import { creerSeed } from './seed';
+import { donneesVides } from './collections';
 import { construireATraiter } from '../modules/tableau-de-bord/_composants/aTraiter.js';
+import { attendEquipe, auteurAffiche } from '../modules/messagerie/_composants/logique';
 import type { GroupeNotification } from './notifications';
 import { BaseErp } from './repull-synchro';
 import type { FilMessages, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
@@ -337,17 +342,64 @@ async function principal() {
   const valider = politiqueEnvoi({ autonomie: 'valider' }, true);
   const simples = politiqueEnvoi({ autonomie: 'simples' }, false);
   const autonome = politiqueEnvoi({ autonomie: 'autonome' }, false);
-  const historique = politiqueEnvoi({}, true);
+  const labelMaisonSansChoix = politiqueEnvoi({}, true);
   verifier(!valider.envoiAuto && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 1, intention: 'infos' }, valider, 'Le parking ?').verdict === 'valider', '« Je valide tout » : rien ne part seul, même sûr de lui');
   verifier(simples.seuil === SEUIL_SIMPLES && SEUIL_SIMPLES === 0.85 && autonome.seuil === SEUIL_AUTONOME && SEUIL_AUTONOME === 0.7, 'seuils : questions simples 0,85, autonome 0,7');
   const v = (p: typeof simples, confiance: number | undefined, intention: (typeof INTENTIONS)[number]) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance, intention, langue: 'fr' }, p, 'Bonjour').verdict;
   verifier(v(simples, 0.9, 'infos') === 'envoyer' && v(simples, 0.84, 'infos') === 'valider', 'questions simples : 0,90 envoyé, 0,84 à valider');
   verifier(v(simples, 0.99, 'prolongation') === 'valider' && v(simples, 0.99, 'arrivee_anticipee') === 'valider', 'questions simples : prolongation, arrivée plus tôt → à valider');
   verifier(v(autonome, 0.7, 'prolongation') === 'envoyer' && v(autonome, 0.69, 'infos') === 'valider', 'autonome : 0,70 envoyé (hors sensible), 0,69 à valider');
-  verifier(v(autonome, undefined, 'infos') === 'valider' && v(historique, undefined, 'infos') === 'envoyer', 'sans confiance : à valider, sauf l’agent d’avant de Label Maison');
-  verifier(politiqueEnvoi({}, false).niveau === 'valider' && historique.niveau === 'historique' && historique.seuil === 0, 'sans choix : nouvel espace « Je valide tout », Label Maison inchangé');
+  verifier(v(autonome, undefined, 'infos') === 'valider' && v(labelMaisonSansChoix, undefined, 'infos') === 'valider', 'sans confiance : à valider, Label Maison compris');
+  verifier(
+    politiqueEnvoi({}, false).niveau === 'valider' && JSON.stringify(labelMaisonSansChoix) === JSON.stringify(autonome) && niveauAutonomie({}, true) === labelMaisonSansChoix.niveau,
+    'sans choix : nouvel espace « Je valide tout » ; Label Maison exactement « Autonome hors sujets sensibles » (seuil 0,7), comme l’écran l’affiche',
+  );
+  verifier(v(labelMaisonSansChoix, 0.69, 'infos') === 'valider' && v(labelMaisonSansChoix, 0.7, 'infos') === 'envoyer', 'Label Maison sans choix : même seuil que « Autonome »');
   verifier(niveauAutonomie({}, true) === 'autonome' && niveauAutonomie({}, false) === 'valider' && niveauAutonomie({ autonomie: 'simples' }, true) === 'simples', 'niveau affiché dans les réglages');
   verifier(verdictEnvoi({ action: 'transmettre', raison: 'hors_fiche' }, autonome, 'Une piscine ?').verdict === 'transmettre', 'choix de l’agent de transmettre : respecté');
+
+  /* ------------------------------------- écran « Votre agent » selon le niveau */
+  section('Écran « Votre agent » : ce qui est dit suit le niveau');
+  for (const n of ['valider', 'simples', 'autonome'] as const) {
+    const e = explicationNiveau(n, { horsFiche: true });
+    const tout = [e.titre, e.sousTitre, e.sujets, ...e.regles].join('\n');
+    const envoiSeul = politiqueEnvoi({ autonomie: n }, false).envoiAuto;
+    verifier(/répond seul/.test(e.sujets) === envoiSeul && /répond/.test(e.titre) === envoiSeul, `« ${n} » : « il répond seul » affiché seulement s’il envoie seul (${e.titre} / ${e.sujets})`);
+    verifier(/message d’attente|court message/.test(tout) && /court message/.test(tout) === envoiSeul, `« ${n} » : message d’attente annoncé seulement s’il peut partir`);
+    verifier(!/il dit qu’il vérifie/.test(tout), `« ${n} » : plus de « il dit qu’il vérifie »`);
+  }
+  {
+    const e = explicationNiveau('valider', { horsFiche: true });
+    verifier(
+      e.titre === 'Votre agent prépare les réponses' && /validez avant l’envoi/.test(e.sousTitre) && /n’envoie jamais rien seul, pas même un message d’attente/.test(e.regles.join()),
+      '« Je valide tout » : « Votre agent prépare les réponses », vous validez, rien ne part seul',
+    );
+    verifier(/fiche du logement, sa réponse le dit/.test(explicationNiveau('valider', { horsFiche: false }).regles.join()) && /il le dit au voyageur/.test(explicationNiveau('autonome', { horsFiche: false }).regles.join()), 'hors fiche décoché : la règle le suit');
+    verifier(/qu’en français ou en anglais/.test(explicationNiveau('simples', { horsFiche: true }).regles.join()) && !/qu’en français ou en anglais/.test(e.regles.join()), 'envoi seul en français ou en anglais : dit aux niveaux qui envoient seuls');
+  }
+  {
+    // Marche, niveau, horaires, ce qu'il vous confie : gérant seulement ; ton, signature, langues : toute l'équipe.
+    const enregistres: ReglagesAgent = { ...REGLAGES_AGENT_DEFAUT, actif: false };
+    const formulaire: ReglagesAgent = {
+      ...enregistres,
+      actif: true,
+      autonomie: 'autonome',
+      horaires: { mode: 'plage', debut: '09:00', fin: '18:00' },
+      transmettre: { ...enregistres.transmettre, horsFiche: !enregistres.transmettre.horsFiche },
+      delaiAlerteMinutes: enregistres.delaiAlerteMinutes + 15,
+      ton: 'professionnel',
+      signature: 'Inès',
+      langues: ['fr'],
+    };
+    const membre = reglagesAEnregistrer(formulaire, enregistres, false);
+    verifier(
+      membre.actif === false && !('autonomie' in membre) && JSON.stringify(membre.horaires) === JSON.stringify(enregistres.horaires) && JSON.stringify(membre.transmettre) === JSON.stringify(enregistres.transmettre) && membre.delaiAlerteMinutes === enregistres.delaiAlerteMinutes,
+      'membre de l’équipe : marche, niveau, horaires, ce qu’il confie et délai restent ceux du gérant',
+    );
+    verifier(membre.ton === 'professionnel' && membre.signature === 'Inès' && membre.langues.join() === 'fr', 'membre de l’équipe : ton, signature et langues enregistrés');
+    verifier(reglagesAEnregistrer(formulaire, enregistres, true) === formulaire && reglagesAEnregistrer(formulaire, { ...enregistres, autonomie: 'simples' }, false).autonomie === 'simples', 'gérant : tout enregistré ; niveau choisi gardé pour l’équipe');
+    verifier(REGLAGES_AGENT_GERANT.join() === 'actif,autonomie,horaires,transmettre,delaiAlerteMinutes', 'liste des réglages réservés au gérant');
+  }
 
   /* ------------------------------------------------------------- triage */
   section('Ordre de « À répondre »');
@@ -389,6 +441,10 @@ async function principal() {
     `problème pendant le séjour, puis arrivée sous 24 h, puis problème hors séjour, puis le plus récent (${ordre.join()})`,
   );
   verifier(niveau(fils[1]) === 3 && niveau(fils[2]) === 2 && niveau(fils[3]) === 1 && niveau(fils[0]) === 0, 'niveaux : 3 rouge, 2 urgent discret, 1, 0');
+  // Accueil, « N voyageurs attendent votre réponse » : le même ordre que « À répondre ».
+  const accueil = construireATraiter({ ...donneesVides(), filsMessages: fils, reservations: [...reservations.values()] }, aujourdhui).find((x) => x.id === 'message');
+  const ordreAccueil = (accueil?.details ?? []).map((x) => x.split(' (')[0]);
+  verifier(ordreAccueil.join() === ordre.join(), `Accueil : voyageurs dans l’ordre de la Messagerie (${ordreAccueil.join()})`);
   const repondu: FilMessages = { ...fils[1], messages: [...fils[1].messages, { id: 'h', auteur: 'hote', texte: 'On arrive.', envoyeLe: '2026-09-25T08:10:00+02:00' }] };
   verifier(niveau(repondu) === 0, 'l’équipe a répondu : plus urgent');
   const attente: FilMessages = { ...fils[1], messages: [...fils[1].messages, { id: 'a', auteur: 'agent', texte: 'Je préviens l’équipe.', envoyeLe: '2026-09-25T08:01:00+02:00' }] };
@@ -1003,6 +1059,23 @@ async function principal() {
     const apresN: FilMessages = { ...avantN, agent: { decision: 'a_valider', le: iso(1), dernierMessageTraite: 'repull-m1' } };
     const groupes = notificationsEntre({ reservations: [], fils: [avantN], logements: [logement] }, { reservations: [], fils: [apresN], logements: [logement] }, MAINTENANT);
     verifier(groupes.some((g) => g.variantes.some((x) => x.type === 'agent_main' && /à valider/.test(x.corps))), 'notification « attend votre réponse » : réponse à valider');
+  }
+
+  /* ------------------------------------------ qui a écrit (bulle, liste) */
+  section('Qui a écrit : bulle de la conversation et aperçu de la liste');
+  {
+    const auto: Pick<Message, 'auteur' | 'envoi'> = { auteur: 'hote', envoi: { canal: 'airbnb', par: PAR_MESSAGE_AUTO } };
+    const equipe: Pick<Message, 'auteur' | 'envoi'> = { auteur: 'hote', envoi: { canal: 'airbnb', par: 'gerant@exemple.fr' } };
+    verifier(PAR_MESSAGE_AUTO === 'Message automatique', 'valeur écrite par les messages automatiques dans envoi.par');
+    verifier(auteurAffiche(auto) === 'Message automatique' && auteurAffiche(auto, 'apercu') === 'Message automatique', 'message automatique : « Message automatique », jamais « Équipe »');
+    verifier(auteurAffiche(equipe) === 'Équipe' && auteurAffiche(equipe, 'apercu') === 'Vous', 'message de l’équipe : « Équipe » sous la bulle, « Vous » dans la liste');
+    verifier(auteurAffiche({ auteur: 'hote' }) === 'Équipe', 'message de l’équipe lu sur la plateforme (sans trace d’envoi) : « Équipe »');
+    verifier(auteurAffiche({ auteur: 'agent', envoi: { par: 'Agent IA' } }) === 'Réponse de votre agent' && auteurAffiche({ auteur: 'agent' }, 'apercu') === 'Votre agent', 'réponse de l’agent : « votre agent »');
+    verifier(auteurAffiche({ auteur: 'voyageur', envoi: { par: PAR_MESSAGE_AUTO } }) === null, 'message du voyageur : rien');
+
+    // Démonstration : une conversation où l'équipe a répondu en dernier n'est pas « À répondre ».
+    const repondusEnAttente = creerSeed().filsMessages.filter((f) => f.messages[f.messages.length - 1]?.auteur === 'hote' && attendEquipe(f));
+    verifier(!repondusEnAttente.length, `démonstration : aucune conversation répondue par l’équipe dans « À répondre » (${repondusEnAttente.map((f) => f.voyageur).join(', ')})`);
   }
 
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

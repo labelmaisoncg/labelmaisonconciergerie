@@ -26,7 +26,7 @@ import { espaceOuvert } from '../../../data/espaces';
 import { signatureEspace } from '../../../data/marque-espace';
 import type { GuideLogement } from '../../../data/types';
 import { LIBELLE_INTENTION, dernierVoyageur, intentionFil, langueFil, langueMessage, marquerBrouillonValide, messagesSansReponse, nomLangue, type ValidationBrouillon } from '../../../data/messagerie-ia';
-import { GABARITS, LIBELLE_MOTIF, attendEquipe, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
+import { GABARITS, LIBELLE_MOTIF, attendEquipe, auteurAffiche, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
 import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
@@ -357,7 +357,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
     LIBELLES.canal[fil.canal],
   ].filter(Boolean);
 
-  const confierAction: ActionMenu | false = !suivieParAgent && { libelle: 'Confier à l’agent', icone: <Bot />, onClick: confier };
+  const confierAction: ActionMenu | false = !suivieParAgent && { libelle: 'Confier à votre agent', icone: <Bot />, onClick: confier };
   // « Pas besoin de répondre » et « Rouvrir » sont dans la zone de réponse ; ici, seulement le cas restant.
   const terminerAction: ActionMenu | false = !attend && fil.statut !== 'clos' && { libelle: 'Marquer comme terminée', icone: <CheckCheck />, onClick: terminer };
 
@@ -394,7 +394,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
         </div>
         {!suivieParAgent && (
           <Button variant="secondary" icone={<Bot />} onClick={confier} className="max-sm:hidden">
-            Confier à l’agent
+            Confier à votre agent
           </Button>
         )}
         {/* Même allure que le menu « … » voisin : deux carrés de 36 px. */}
@@ -755,10 +755,10 @@ function Bulle({
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 px-1 text-[11.5px] text-(--lm-encre-3)">
           {m.auteur === 'agent' && (
             <span className="inline-flex items-center gap-1 font-medium text-(--lm-or-texte)">
-              <Bot className="size-3" aria-hidden /> Réponse de l’agent
+              <Bot className="size-3" aria-hidden /> {auteurAffiche(m)}
             </span>
           )}
-          {m.auteur === 'hote' && <span className="font-medium">Équipe</span>}
+          {m.auteur === 'hote' && <span className="font-medium">{auteurAffiche(m)}</span>}
           {envoye && (
             <span className="inline-flex items-center gap-0.5" title={m.envoi?.reecrit ? 'La plateforme a retiré un lien ou un numéro : le voyageur a reçu ce texte.' : undefined}>
               <CheckCheck className="size-3" aria-hidden /> Envoyé sur {nomPlateformeEnvoi(m.envoi?.canal ?? canal)}

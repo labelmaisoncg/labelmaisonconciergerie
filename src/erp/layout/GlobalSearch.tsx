@@ -59,7 +59,7 @@ const ACTIONS: Raccourci[] = [
     icone: Link2,
     motsCles: 'repull plateformes synchroniser importer',
   },
-  { id: 'a-agent', libelle: 'Réglages de l’agent', detail: 'Ton, horaires, ce qu’il vous transmet', to: '/erp/messagerie/agent', icone: Bot, motsCles: 'ia messagerie réglages' },
+  { id: 'a-agent', libelle: 'Réglages de votre agent', detail: 'Ton, horaires, ce qu’il vous transmet', to: '/erp/messagerie/agent', icone: Bot, motsCles: 'ia messagerie réglages' },
 ];
 
 const PAGES: Raccourci[] = MODULES.map((m) => {

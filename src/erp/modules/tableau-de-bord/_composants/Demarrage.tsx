@@ -88,8 +88,8 @@ export function Demarrage() {
       icone: <Plug />,
     },
     {
-      titre: 'Renseignez les infos pour l’agent',
-      detail: 'Arrivée, accès, wifi, règles : l’agent répond aux voyageurs avec ces informations.',
+      titre: 'Renseignez les infos pour votre agent',
+      detail: 'Arrivée, accès, wifi, règles : votre agent répond aux voyageurs avec ces informations.',
       fait: importes.length > 0 && !incomplet,
       lien: incomplet ? `/erp/logements/${incomplet.id}?onglet=fiche` : '/erp/logements',
       action: 'Compléter les infos',
@@ -114,11 +114,11 @@ export function Demarrage() {
             icone: <UserPlus />,
           },
           {
-            titre: 'Allumez l’agent quand tout est prêt',
+            titre: 'Allumez votre agent quand tout est prêt',
             detail: 'Il est en pause : il ne répond à aucun voyageur tant que vous ne l’allumez pas. Ses réponses sont limitées chaque mois.',
             fait: reglagesAgent(d).actif,
             lien: '/erp/messagerie/agent',
-            action: 'Régler l’agent',
+            action: 'Régler votre agent',
             icone: <Power />,
           },
         ]

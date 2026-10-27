@@ -477,7 +477,7 @@ export type TonAgent = 'chaleureux' | 'professionnel' | 'decontracte';
 
 /**
  * Réglages de l'agent de messagerie (collection `reglages`, élément d'id
- * 'agent'), modifiés dans Messagerie > Réglages de l’agent. L'agent
+ * 'agent'), modifiés dans Messagerie > Votre agent. L'agent
  * du site (api/erp-agent.ts, src/erp/data/agent-messagerie.ts) les relit à
  * chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
  */
@@ -511,8 +511,8 @@ export interface ReglagesAgent {
    * Ce que l'agent envoie seul (choisi par un gérant) : valider (il prépare,
    * l'équipe envoie), simples (questions pratiques quand il est sûr de lui),
    * autonome (tout sauf les sujets sensibles quand il est sûr de lui).
-   * Absent : « valider » pour un nouvel espace ; Label Maison garde son
-   * fonctionnement d'avant (messagerie-ia.ts, politiqueEnvoi).
+   * Absent : « valider » pour un nouvel espace, « autonome » pour Label
+   * Maison (messagerie-ia.ts, niveauAutonomie).
    */
   autonomie?: NiveauAutonomie;
   majLe?: Horodatage;

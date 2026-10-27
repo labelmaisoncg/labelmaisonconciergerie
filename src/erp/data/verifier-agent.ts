@@ -154,7 +154,8 @@ class FausseIA implements ClientIA {
       this.appels.push(p);
       const r = this.reponses.shift() ?? { action: 'transmettre', raison: 'autre', langue: 'fr', texte: '', resume: 'Rien de prévu.' };
       if (r instanceof Error) throw r;
-      const texte = r === 'illisible' ? 'Je ne sais pas.' : JSON.stringify({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: '', resume: '', ...r });
+      // Réponse sûre par défaut : Label Maison sans choix est « Autonome » (seuil 0,7).
+      const texte = r === 'illisible' ? 'Je ne sais pas.' : JSON.stringify({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: '', resume: '', confiance: 0.95, intention: 'infos', ...r });
       return {
         id: 'msg_test',
         type: 'message',

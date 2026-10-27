@@ -239,7 +239,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button variant="secondary" icone={<Play />} onClick={() => void lancer()} chargement={lancement} disabled={lancement || lectureSeule || !c?.ia || etat?.etat?.enCours}>
-          Lancer l’agent maintenant
+          Lancer votre agent maintenant
         </Button>
         {lectureSeule && <span className="text-[12.5px] text-(--lm-encre-3)">Réservé aux gérants et aux opérations.</span>}
       </div>
