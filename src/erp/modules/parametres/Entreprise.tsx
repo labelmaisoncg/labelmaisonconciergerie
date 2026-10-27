@@ -13,7 +13,6 @@ import { Check } from 'lucide-react';
 import { espaceOuvert, type Espace } from '../../data/espaces';
 import { horodatageMaintenant } from '../../data/format';
 import {
-  MENTIONS_PROFESSIONNEL,
   MENTION_FRANCHISE_TVA,
   REGIMES_TVA,
   type ChampIdentite,
@@ -139,14 +138,14 @@ function Formulaire({ identite, espace }: { identite: IdentiteSociete & { enregi
 
         <Field
           label="Mentions sur vos factures"
-          aide={`Facultatif. Sans mention de votre part, les factures d’un propriétaire société (SCI…) portent : « ${MENTIONS_PROFESSIONNEL} »`}
+          aide="Facultatif. Sans texte de votre part, les factures d’une société (SCI…) portent les pénalités de retard et l’indemnité de 40 €."
         >
           <Textarea
             rows={3}
             value={s.mentions ?? ''}
             onChange={(e) => maj('mentions', e.target.value)}
             maxLength={600}
-            placeholder="Ex. Pas d’escompte pour paiement anticipé. Pénalités de retard : trois fois le taux d’intérêt légal."
+            placeholder="Ex. Pas d’escompte pour paiement anticipé."
           />
         </Field>
 

@@ -141,14 +141,15 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
   const d = useErp();
   const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
   const p = d.donnees.proprietaires.find((x) => x.id === proprietaire.id) ?? proprietaire;
-  const f = d.donnees.factures.find((x) => x.id === factureId);
+  // Facture validée par la base : affichée telle que relue (numéro compris) tant que la copie locale ne l'a pas encore.
+  const [validee, setValidee] = useState<Facture>();
+  const enStore = d.donnees.factures.find((x) => x.id === factureId);
+  const f = enStore?.numero || !validee ? enStore : validee;
   const identite = useMemo(() => identiteConciergerie({ reglages: d.donnees.reglages }, espaceOuvert()), [d.donnees.reglages]);
   const [confirmer, setConfirmer] = useState(false);
   const [erreur, setErreur] = useState<string>();
   const [ajout, setAjout] = useState<{ libelle: string; montant: string; motif: string; erreur?: string }>();
   const [enCours, setEnCours] = useState(false);
-  /** Numéro rendu par la base à la validation (affiché aussitôt, avant la relecture). */
-  const [attribue, setAttribue] = useState<string>();
   const espace = espaceOuvert();
   const figee = factureFigee(f);
   const mois = f?.mensuelle?.mois ?? '';
@@ -187,7 +188,6 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
       if (!r.ok) return setErreur(r.erreur);
       d.upsert('reglages', r.compteur);
       d.upsert('factures', r.facture);
-      setAttribue(r.facture.numero);
       return;
     }
     setEnCours(true);
@@ -203,7 +203,7 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
     setEnCours(false);
     setConfirmer(false);
     if (!r.ok) return setErreur(r.erreur);
-    setAttribue(r.numero);
+    setValidee(r.facture);
   };
 
   const ajouter = () => {
@@ -304,11 +304,6 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
         {confirmer && (
           <Alert tone="or">
             Numéro prévu : <span className="whitespace-nowrap">{prevu}</span>. Il est attribué à la validation ; la facture ne change plus ensuite.
-          </Alert>
-        )}
-        {attribue && (
-          <Alert tone="succes">
-            Facture validée sous le numéro <span className="whitespace-nowrap">{attribue}</span>.
           </Alert>
         )}
         {erreur && (

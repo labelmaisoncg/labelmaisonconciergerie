@@ -480,7 +480,9 @@ export async function validerAvecLaBase(o: OptionsValidation & AccesValidation):
   if (r.error) {
     if (numerotationAbsente(r.error, r.status)) return { ok: false, erreur: MESSAGE_VALIDATION_INDISPONIBLE };
     if (r.status === 403 || r.error.code === '42501') return { ok: false, erreur: 'Seul un gérant de l’espace peut valider une facture.' };
-    return { ok: false, erreur: `Validation impossible pour l’instant${r.error.message ? ` : ${r.error.message}` : '.'}` };
+    // Messages écrits en français par erp.numeroter_facture (facture introuvable, annulée) ; sinon un message simple.
+    const propre = (r.error.code === 'P0002' || r.error.code === '22023') && r.error.message;
+    return { ok: false, erreur: propre ? `Validation impossible : ${r.error.message}` : 'Validation impossible pour l’instant. Réessayez dans un instant.' };
   }
   const numero = typeof r.data === 'string' ? r.data.trim() : '';
   if (!NUMERO.test(numero)) return { ok: false, erreur: 'Réponse inattendue de la base : rechargez la page avant de réessayer.' };
