@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BotMessageSquare, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, MessageSquareWarning, PhoneCall, RefreshCw, Siren, Star, UserX, type LucideIcon } from 'lucide-react';
+import { BotMessageSquare, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, Gauge, MessageSquareWarning, PenLine, PhoneCall, RefreshCw, ShieldAlert, Siren, Star, Tag, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
 import { Card, CardHeader, Drawer, EmptyState, TON_LAVIS, cn } from '../../../ui';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
@@ -8,12 +8,18 @@ const ICONES: Record<TypeATraiter, LucideIcon> = {
   message: MessageSquareWarning,
   synchro: RefreshCw,
   avis: Star,
+  avisHote: PenLine,
   agent: BotMessageSquare,
   crm: PhoneCall,
   urgence: Siren,
   incident: CircleAlert,
   signalement: Flag,
   charge: UserX,
+  prix: Tag,
+  double: CalendarX2,
+  suspecte: ShieldAlert,
+  prix_anormal: TriangleAlert,
+  integrite: Gauge,
 };
 
 const PRIORITES = { 1: 'Aujourd’hui', 2: 'Cette semaine' } as const;
@@ -22,7 +28,8 @@ const PRIORITES = { 1: 'Aujourd’hui', 2: 'Cette semaine' } as const;
 function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
   const [ouvert, setOuvert] = useState(false);
   const Icone = ICONES[e.type];
-  const apercu = e.details.slice(0, ouvert ? e.details.length : 1);
+  // Dans la carte, l'aperçu s'il y en a un (ex. les logements concernés) ; sinon le premier détail.
+  const apercu = !complet && e.apercu ? [e.apercu] : e.details.slice(0, ouvert ? e.details.length : 1);
   const reste = complet ? e.details.length - 1 : 0;
   return (
     <li className="flex items-start gap-3 px-4 py-3">

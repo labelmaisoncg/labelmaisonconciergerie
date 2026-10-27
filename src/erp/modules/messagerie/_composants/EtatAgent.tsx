@@ -130,7 +130,8 @@ function Ligne({ ok, titre, children }: { ok: boolean | null; titre: string; chi
   );
 }
 
-export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
+/** `passage` : ce qu'il fait à chaque passage, selon le niveau enregistré (explicationNiveau). */
+export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: boolean; passage: string }) {
   const { mode, lectureSeule } = useErp();
   const { etat, chargement, erreur, relire } = useEtatAgent();
   const [lancement, setLancement] = useState(false);
@@ -178,8 +179,15 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
 
       <ul className="mt-2 divide-y divide-(--lm-bord)" aria-busy={chargement}>
         <Ligne ok={etat ? actif : null} titre={actif ? 'Agent actif' : 'Agent en pause'}>
-          {actif ? 'Il répond aux voyageurs à chaque passage.' : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
+          {actif ? passage : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
         </Ligne>
+        {/* Second contrôle des réponses en échec répété (controle-reponse.ts) : rien ne part seul. */}
+        {etat?.etat?.controle?.alerte && (
+          <Ligne ok={false} titre="Vérification des réponses impossible">
+            Il garde ses réponses à valider : rien ne part seul.
+            {etat.etat.controle.alerteLe ? ` Signalé ${ilYa(etat.etat.controle.alerteLe)}.` : ''}
+          </Ligne>
+        )}
         <Ligne ok={c ? manques === 0 : null} titre={!c ? 'Vérification…' : manques > 1 ? 'Des réglages du site manquent' : manques ? 'Un réglage du site manque' : 'Tout est branché'}>
           {!c
             ? 'Lecture de l’état du site.'
@@ -232,7 +240,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
 
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <Button variant="secondary" icone={<Play />} onClick={() => void lancer()} chargement={lancement} disabled={lancement || lectureSeule || !c?.ia || etat?.etat?.enCours}>
-          Lancer l’agent maintenant
+          Lancer votre agent maintenant
         </Button>
         {lectureSeule && <span className="text-[12.5px] text-(--lm-encre-3)">Réservé aux gérants et aux opérations.</span>}
       </div>

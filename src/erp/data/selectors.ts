@@ -15,6 +15,8 @@ import {
   SEUIL_NOTE_CONTROLE,
 } from './constantes';
 import { AUJOURDHUI, ajouterJours, debutMois, debutMoisSuivant, ecartJours } from './format';
+import { logementsEnLocation } from './occupation';
+import { attendEquipe } from './attente-equipe';
 import type {
   Centimes,
   DateISO,
@@ -520,11 +522,12 @@ export function indicateurs(d: ErpDonnees, date: DateISO = AUJOURDHUI) {
   return {
     logementsActifs: actifs.length,
     logementsEnLancement: d.logements.filter((l) => l.statut === 'lancement').length,
-    occupation30j: tauxOccupation(d.reservations, actifs, f30),
+    // Actifs, ou réservés sur la période (data/occupation) : jamais 0 % avec des séjours.
+    occupation30j: tauxOccupation(d.reservations, logementsEnLocation(d.logements, d.reservations, f30), f30),
     revenuBrutMois: revenuBrut(d.reservations, mois),
     commissionMois: commissionLabelMaison(d.reservations, d.mandats, mois),
     adr30j: adr(d.reservations, f30),
-    revpar30j: revpar(d.reservations, actifs, f30),
+    revpar30j: revpar(d.reservations, logementsEnLocation(d.logements, d.reservations, f30), f30),
     noteMoyenne90j: noteMoyenne(d.reservations, fenetreJours(90, date)),
     tauxMissionsValidees30j: tauxMissionsValideesAvecPhotos(d.missions, f30),
     missionsAAttribuer48h: missionsAAttribuerSous(d.missions, 48, date).length,
@@ -535,6 +538,7 @@ export function indicateurs(d: ErpDonnees, date: DateISO = AUJOURDHUI) {
     signaturesMois: signaturesDuMois(d.mandats, date).length,
     facturesEnRetard: facturesEnRetard(d.factures, date).length,
     paiementsAFaire: paiementsAFaire(d).length,
-    messagesEnAttente: d.filsMessages.filter((f) => f.traitePar === 'en_attente').length,
+    // Même règle que « À répondre » et le compteur du menu (attente-equipe.ts).
+    messagesEnAttente: d.filsMessages.filter(attendEquipe).length,
   };
 }

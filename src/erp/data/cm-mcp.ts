@@ -12,10 +12,12 @@
  * écrits ici avec une date du jour explicite : ce module tourne côté serveur,
  * où « aujourd'hui » ne peut pas être figé au chargement.
  */
+import { attendEquipe } from './attente-equipe.js';
 import { aTraiterLe } from './crm.js';
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
 import { LIBELLES } from './libelles.js';
 import { date, ECRITURE, ErreurOutil, LECTURE, texte, type Args, type ContexteMcp, type Outil } from './mcp-commun.js';
+import { mesurerOccupation } from './occupation.js';
 import type { FilMessages, Logement, RaisonEscalade, Reservation } from './types';
 
 const ERP = 'https://www.labelmaisoncg.fr/erp';
@@ -73,8 +75,8 @@ const RAISON: Record<RaisonEscalade, string> = {
 
 const AUTEUR = { voyageur: 'Voyageur', hote: 'Équipe', agent: 'Agent' } as const;
 
-/** Une conversation attend-elle l'équipe ? (même règle que « À répondre » de la Messagerie) */
-export const attendEquipe = (f: FilMessages) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente');
+/** Une conversation attend-elle l'équipe ? (même règle que « À répondre » de la Messagerie : attente-equipe.ts) */
+export { attendEquipe };
 
 /** Prix de la nuit de ce soir (sinon de la prochaine nuit connue, sinon prix de base) ; rien pour un logement qui n'est pas en location. */
 function prixNuit(l: Logement, j: string) {
@@ -160,15 +162,15 @@ async function filVise(a: Args, ctx: ContexteMcp): Promise<FilMessages> {
 
 /** Les quatre repères de l'Accueil sur une fenêtre (mêmes définitions que data/selectors). */
 export function mesurer(logements: Logement[], reservations: Reservation[], f: Fenetre) {
-  const actifs = new Set(logements.filter((l) => l.statut === 'actif').map((l) => l.id));
+  // Logements actifs, ou réservés sur la période (data/occupation, comme l'Accueil).
+  const occ = mesurerOccupation(logements, reservations, f);
   const actives = reservations.filter(active);
-  const dispo = actifs.size * Math.max(0, ecart(f.debut, f.fin));
-  const nuitsActifs = actives.filter((r) => actifs.has(r.logementId)).reduce((s, r) => s + nuitsDans(r, f), 0);
   const nuits = actives.reduce((s, r) => s + nuitsDans(r, f), 0);
   const hebergement = actives.reduce((s, r) => s + prorata(r.montantBrutCentimes - r.fraisMenageCentimes, r, f), 0);
   const notes = reservations.filter((r) => r.noteVoyageur !== undefined && r.depart >= f.debut && r.depart < f.fin).map((r) => r.noteVoyageur!);
   return {
-    occupation: dispo ? nuitsActifs / dispo : 0,
+    occupation: occ.taux,
+    logements: occ.logements,
     revenu: actives.reduce((s, r) => s + prorata(r.montantBrutCentimes - r.commissionPlateformeCentimes, r, f), 0),
     adr: nuits ? Math.round(hebergement / nuits) : 0,
     note: notes.length ? notes.reduce((s, n) => s + n, 0) / notes.length : undefined,
@@ -483,7 +485,7 @@ export const OUTILS_CM: Outil[] = [
     name: 'indicateurs',
     title: 'Indicateurs',
     description:
-      'Les quatre repères de l’Accueil sur les 30 derniers jours (ou une période donnée), comparés à la période précédente de même durée : occupation des logements actifs, revenu versé par les plateformes (total payé moins leur commission), prix moyen par nuit (hors ménage), note moyenne des voyageurs.',
+      'Les quatre repères de l’Accueil sur les 30 derniers jours (ou une période donnée), comparés à la période précédente de même durée : occupation (logements actifs, ou réservés sur la période), revenu versé par les plateformes (total payé moins leur commission), prix moyen par nuit (hors ménage), note moyenne des voyageurs.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -506,6 +508,7 @@ export const OUTILS_CM: Outil[] = [
       return {
         periode: { du, au: plusJours(fin, -1), jours: duree },
         logements_actifs: logements.filter((l) => l.statut === 'actif').length,
+        logements_comptes_dans_l_occupation: m.logements,
         occupation: pourcent(m.occupation),
         revenu_verse_par_les_plateformes: euros(m.revenu),
         prix_moyen_par_nuit: euros(m.adr),

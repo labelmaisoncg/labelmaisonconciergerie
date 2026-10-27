@@ -27,23 +27,50 @@ export type TypeNotification =
   | 'avis'
   | 'synchro'
   | 'rappel'
-  | 'urgence';
+  | 'urgence'
+  | 'prix'
+  | 'anomalie'
+  | 'annonce';
 
 /** Les types, dans l'ordre des réglages, avec leur valeur par défaut. */
 export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; detail: string; defaut: boolean }[] = [
   { type: 'reservation', libelle: 'Nouvelle réservation', detail: 'Logement, voyageur, dates et montant.', defaut: true },
   { type: 'reservation_modifiee', libelle: 'Réservation annulée ou modifiée', detail: 'Annulation, nouvelles dates ou nombre de voyageurs.', defaut: true },
   { type: 'message', libelle: 'Nouveau message d’un voyageur', detail: 'Le début du message.', defaut: true },
-  { type: 'agent_repondu', libelle: 'L’agent a répondu', detail: 'Quand l’agent a répondu à votre place.', defaut: true },
-  { type: 'agent_main', libelle: 'L’agent vous passe la main', detail: 'Un voyageur attend votre réponse, avec la raison.', defaut: true },
+  { type: 'agent_repondu', libelle: 'Votre agent a répondu', detail: 'Quand votre agent a répondu à votre place.', defaut: true },
+  { type: 'agent_main', libelle: 'Votre agent vous passe la main', detail: 'Un voyageur attend votre réponse, avec la raison.', defaut: true },
   { type: 'probleme', libelle: 'Problème signalé dans un logement', detail: 'Panne, fuite, clé, bruit, ménage…', defaut: true },
   { type: 'urgence', libelle: 'Urgence dans un logement', detail: 'Nouvel incident urgent, ou incident confié à un membre de l’équipe.', defaut: true },
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
   { type: 'synchro', libelle: 'Mise à jour des plateformes en échec', detail: 'Une fois par jour au plus.', defaut: true },
   { type: 'rappel', libelle: 'Rappel du matin', detail: 'Les arrivées et départs du jour.', defaut: false },
+  { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
+  { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
+  { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
 ];
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;
+
+/**
+ * Types réservés au gérant : les prix conseillés ne partent jamais vers
+ * l'appareil d'un autre rôle (comme leur carte et leur ligne de l'Accueil).
+ */
+export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix'];
+
+/** Ce type se règle-t-il (et part-il) pour ce rôle ? */
+export const typePourRole = (t: TypeNotification, role: string | undefined): boolean => role === 'gerant' || !TYPES_RESERVES_GERANT.includes(t);
+
+/**
+ * Préférences d'un appareil telles qu'appliquées à l'envoi : hors gérant
+ * (rôle inconnu compris : appareil abonné avant ce réglage), les types
+ * réservés sont coupés, quel que soit le réglage enregistré.
+ */
+export function preferencesPourRole(p: PreferencesNotifications | undefined, role: string | undefined): PreferencesNotifications {
+  if (role === 'gerant') return p ?? {};
+  const r: PreferencesNotifications = { ...(p ?? {}) };
+  for (const t of TYPES_RESERVES_GERANT) r[t] = false;
+  return r;
+}
 
 const DEFAUTS = Object.fromEntries(TYPES_NOTIFICATION.map((t) => [t.type, t.defaut])) as Record<TypeNotification, boolean>;
 
@@ -259,7 +286,8 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
     const agent = nouveaux.filter((m) => m.auteur === 'agent');
     const passeLaMain =
       (f.statut === 'escalade' && p?.statut !== 'escalade' && !!p) ||
-      (f.agent?.decision === 'transmettre' && !!f.agent.le && f.agent.le !== p?.agent?.le && f.traitePar === 'en_attente');
+      // Transmise, ou réponse préparée par l'agent et gardée « à valider ».
+      ((f.agent?.decision === 'transmettre' || f.agent?.decision === 'a_valider') && !!f.agent.le && f.agent.le !== p?.agent?.le && f.traitePar === 'en_attente');
     const litige = f.raisonEscalade === 'litige' && p?.raisonEscalade !== 'litige' && passeLaMain;
     const probleme = litige || voyageur.some((m) => estProbleme(m.texte));
     if (!voyageur.length && !agent.length && !passeLaMain) continue;
@@ -273,7 +301,7 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
       variantes.push({ type: 'probleme', titre: `Problème signalé · ${logement}`, corps: `${qui} : ${extrait(dernierVoyageur?.texte ?? f.agent?.resume ?? 'voir la conversation')}`, url });
     }
     if (passeLaMain) {
-      const raison = f.raisonEscalade ? RAISONS[f.raisonEscalade] : 'à voir par l’équipe';
+      const raison = f.agent?.decision === 'a_valider' ? 'réponse préparée par l’agent, à valider' : f.raisonEscalade ? RAISONS[f.raisonEscalade] : 'à voir par l’équipe';
       variantes.push({
         type: 'agent_main',
         titre: `${qui} attend votre réponse`,
@@ -282,7 +310,7 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
       });
     }
     if (agent.length) {
-      variantes.push({ type: 'agent_repondu', titre: `L’agent a répondu à ${qui}`, corps: `${logement} · « ${extrait(agent[agent.length - 1].texte, 110)} »`, url });
+      variantes.push({ type: 'agent_repondu', titre: `Votre agent a répondu à ${qui}`, corps: `${logement} · « ${extrait(agent[agent.length - 1].texte, 110)} »`, url });
     }
     if (dernierVoyageur) {
       variantes.push({ type: 'message', titre: `${qui} · ${logement}`, corps: extrait(dernierVoyageur.texte), url });

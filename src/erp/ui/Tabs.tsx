@@ -1,4 +1,4 @@
-import { useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import { cn } from './cn';
 
@@ -33,6 +33,22 @@ function Compteur({ n }: { n?: number }) {
 /** Onglets : contrôlés (état local) ou routés (NavLink) selon la présence de `to`. */
 export function Tabs({ onglets, actif, onChange, label = 'Onglets', className }: TabsProps) {
   const refs = useRef<(HTMLButtonElement | HTMLAnchorElement | null)[]>([]);
+
+  // Barre plus large que l'écran (téléphone) : l'onglet actif est ramené dans la vue,
+  // qu'il soit choisi ici ou par l'adresse (lien actif : aria-current="page").
+  const indexActif = onglets.findIndex((o) => !o.to && o.cle === actif);
+  const dernier = useRef<Element | null>(null);
+  useEffect(() => {
+    const el = refs.current[indexActif] ?? refs.current.find((x) => x?.getAttribute('aria-current') === 'page') ?? null;
+    if (el === dernier.current) return;
+    dernier.current = el;
+    const barre = el?.parentElement;
+    if (!el || !barre || barre.scrollWidth <= barre.clientWidth) return;
+    const o = el.getBoundingClientRect();
+    const b = barre.getBoundingClientRect();
+    if (o.right > b.right) barre.scrollLeft += o.right - b.right + 16;
+    else if (o.left < b.left) barre.scrollLeft -= b.left - o.left + 16;
+  });
 
   const clavier = (e: KeyboardEvent, i: number) => {
     const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;

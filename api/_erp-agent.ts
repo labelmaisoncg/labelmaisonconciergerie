@@ -11,9 +11,12 @@
 // =============================================================================
 
 import Anthropic from '@anthropic-ai/sdk';
-import { MODELE_AGENT_DEFAUT, lancerAgent, type DeclencheurAgent, type OptionsAgent, type PassageAgent } from '../src/erp/data/agent-messagerie.js';
+import { MODELE_AGENT_DEFAUT, lancerAgent, type ClientIA, type DeclencheurAgent, type OptionsAgent, type PassageAgent } from '../src/erp/data/agent-messagerie.js';
+import type { OptionsAssistant } from '../src/erp/data/agent-assistant.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
+import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
 import { baseErp, signeurFichiersErp, type ConfigRepullErp } from './_erp-repull.js';
+import { clesServeur } from './_erp-notifications.js';
 
 export interface ConfigAgent {
   cleIA: string;
@@ -38,11 +41,17 @@ let client: { cle: string; ia: Anthropic } | null = null;
  * Options d'un passage de l'agent dans l'espace de `c` : clé Claude commune ;
  * Telegram pour Label Maison seulement ; plafond mensuel pour les autres.
  */
-export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, echeance: number): OptionsAgent {
-  const a = configurationAgent();
+/** Client Claude de l'instance (créé à la première demande) ; null sans ANTHROPIC_API_KEY. */
+function clientIA(a: ConfigAgent): ClientIA | null {
   if (a.cleIA && (!client || client.cle !== a.cleIA)) {
     client = { cle: a.cleIA, ia: new Anthropic({ apiKey: a.cleIA, maxRetries: 1, timeout: 25_000 }) };
   }
+  return a.cleIA && client ? client.ia : null;
+}
+
+export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, echeance: number): OptionsAgent {
+  const a = configurationAgent();
+  const ia = clientIA(a);
   const labelMaison = estLabelMaison(c.espace);
   return {
     cle: c.cle,
@@ -53,10 +62,29 @@ export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, 
     budgetMois: c.budgetMois,
     quotaMois: c.quotaMois,
     declencheur,
-    ia: a.cleIA && client ? client.ia : null,
+    ia,
     modele: a.modele,
     telegram: labelMaison ? a.telegram : null,
     signerFichier: signeurFichiersErp(c),
+    // Contrôle des réponses en échec répété : notification aux appareils des gérants de l'espace (une fois).
+    alerter: (g) => envoyerNotifications(baseErp(c), [g], { cles: clesServeur() }),
+    ...(labelMaison ? {} : { nomEspace: c.nomEspace, plafondIAMois: c.plafondIAMois }),
+  };
+}
+
+/**
+ * Options de l'assistant de réponse (« Proposer une réponse », traductions)
+ * dans l'espace de `c` : même clé Claude et même plafond mensuel que l'agent.
+ */
+export function optionsAssistant(c: ConfigRepullErp, par: string): OptionsAssistant {
+  const a = configurationAgent();
+  const labelMaison = estLabelMaison(c.espace);
+  return {
+    base: baseErp(c),
+    ia: clientIA(a),
+    modele: a.modele,
+    signerFichier: signeurFichiersErp(c),
+    par,
     ...(labelMaison ? {} : { nomEspace: c.nomEspace, plafondIAMois: c.plafondIAMois }),
   };
 }

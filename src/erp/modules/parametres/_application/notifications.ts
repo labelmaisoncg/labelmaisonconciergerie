@@ -215,6 +215,18 @@ export async function serveurNotifications(): Promise<{ actif: boolean; clePubli
   return { actif: !!r.actif && !!r.clePublique, clePublique: r.clePublique };
 }
 
+/**
+ * À l'ouverture de l'ERP, une fois par session : le serveur revoit le rôle
+ * du compte sur cet appareil déjà abonné (« Prix à revoir » : gérant
+ * seulement), sans passer par Paramètres. Silencieux.
+ */
+export async function revoirAppareil(): Promise<void> {
+  const r = await navigator.serviceWorker.getRegistration('/erp');
+  const s = await r?.pushManager.getSubscription();
+  if (!s) return;
+  await appelerServeur<ReponseEtat>(`${API}?action=etat&endpoint=${encodeURIComponent(s.endpoint)}`, 'GET');
+}
+
 /* ------------------------------------------------- clés du serveur (gérant) */
 
 export interface ClesGenerees {

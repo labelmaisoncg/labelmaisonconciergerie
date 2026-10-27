@@ -107,7 +107,7 @@ export function PanneauContexte({ fil, logement, reservation, enTiroir }: Props)
             {/* Seulement s'il y a un trou : une fiche complète n'appelle aucune action. */}
             {!fiche.complete && (
               <p className="text-[12.5px] text-(--lm-encre-2)">
-                L’agent répondra mieux avec les infos du logement.{' '}
+                Votre agent répondra mieux avec les infos du logement.{' '}
                 <Link to={`/erp/logements/${logement.id}?onglet=fiche`} className="font-medium text-(--lm-or-texte) hover:underline">
                   Compléter
                 </Link>

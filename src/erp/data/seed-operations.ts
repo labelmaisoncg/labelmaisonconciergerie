@@ -30,6 +30,8 @@ interface Gabarit {
   statut: FilMessages['statut'];
   traitePar: FilMessages['traitePar'];
   echanges: [FilMessages['messages'][number]['auteur'], string, number, string][];
+  /** Compléments du fil (réponse préparée par l'agent, analyse, traduction gardée). */
+  suite?: (f: FilMessages) => FilMessages;
 }
 
 const enCours: Critere = (r) => r.statut === 'en_cours';
@@ -129,14 +131,49 @@ const GABARITS: Gabarit[] = [
     ],
   },
   {
+    // L'équipe a répondu en dernier : la conversation reste ouverte, hors de « À répondre ».
     critere: enCours,
-    statut: 'escalade',
+    statut: 'ouvert',
     traitePar: 'humain',
     echanges: [
       ['voyageur', 'Un voisin est venu se plaindre du bruit alors que nous étions calmes à 21 h.', -1, '21:48'],
       ['agent', 'Merci de nous prévenir. Je transmets à l’équipe, qui vous rappelle demain matin.', -1, '21:49'],
       ['hote', 'Bonjour, nous avons échangé avec le voisin, tout est rentré dans l’ordre. Bon séjour. Abdel', 0, '09:15'],
     ],
+  },
+  {
+    // Voyageur étranger qui arrive bientôt : réponse préparée par l'agent, à valider (démonstration de l'assistant).
+    critere: (r) => r.voyageur.pays !== 'France' && (r.statut === 'confirmee' || r.statut === 'en_cours') && ecartJours(AUJOURDHUI, r.arrivee) >= 0 && ecartJours(AUJOURDHUI, r.arrivee) <= 1,
+    statut: 'ouvert',
+    traitePar: 'en_attente',
+    echanges: [['voyageur', 'Hello! Our flight lands at 10am. Would it be possible to check in a bit earlier, around 1pm? Thank you!', 0, '09:12']],
+    suite: (f) => {
+      const m = f.messages[0];
+      const prenom = f.voyageur.split(' ')[0];
+      return {
+        ...f,
+        messages: [{ ...m, traductionFr: 'Bonjour ! Notre vol atterrit à 10 h. Serait-il possible d’arriver un peu plus tôt, vers 13 h ? Merci !' }],
+        analyse: { messageId: m.id, langue: 'en', intention: 'arrivee_anticipee', sentiment: 'positif', urgence: false, le: le(0, '09:13') },
+        agent: {
+          dernierMessageTraite: m.id,
+          decision: 'a_valider',
+          resume: 'Demande une arrivée vers 13 h : réponse préparée, à valider.',
+          le: le(0, '09:13'),
+          intention: 'arrivee_anticipee',
+          confiance: 0.62,
+          brouillon: {
+            messageId: m.id,
+            texte: `Hello ${prenom}, thank you for your message! I am checking with our housekeeping team whether the apartment can be ready around 1pm, and I will get back to you very soon.\n\nL’équipe Label Maison`,
+            texteFr: `Bonjour ${prenom}, merci pour votre message ! Je vérifie avec l’équipe ménage si le logement peut être prêt vers 13 h, et je reviens vers vous très vite.`,
+            langue: 'en',
+            intention: 'arrivee_anticipee',
+            confiance: 0.62,
+            motif: 'Ce n’est pas une question simple : à vous de valider.',
+            le: le(0, '09:13'),
+          },
+        },
+      };
+    },
   },
 ];
 
@@ -149,7 +186,7 @@ function genererFils(trouver: (c: Critere) => Reservation): FilMessages[] {
       texte,
       envoyeLe: le(jour, heure),
     }));
-    return {
+    const fil: FilMessages = {
       id: `fil-${String(i + 1).padStart(2, '0')}`,
       reservationId: r.id,
       logementId: r.logementId,
@@ -160,6 +197,7 @@ function genererFils(trouver: (c: Critere) => Reservation): FilMessages[] {
       dernierMessageLe: messages[messages.length - 1].envoyeLe,
       traitePar: g.traitePar,
     };
+    return g.suite ? g.suite(fil) : fil;
   });
 }
 

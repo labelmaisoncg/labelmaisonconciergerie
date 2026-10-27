@@ -730,6 +730,8 @@ export function versReservation(r: RepullReservation, existant: Reservation | un
       code: texte(r.confirmationCode) || existant?.repull?.code,
       devise: texte(r.financials?.currency) || texte(r.currency) || existant?.repull?.devise,
       voyageurId: texte(r.primaryGuest?.id) || texte(r.guestId) || existant?.repull?.voyageurId,
+      // Lecture seule : sert à repérer une réservation faite le jour même de l'arrivée (anomalies.ts).
+      reserveeLe: texte(r.bookedAt) || texte(r.createdAt) || existant?.repull?.reserveeLe,
     },
   };
   return suivant;
@@ -792,7 +794,7 @@ export interface ContexteFil {
  * ordre chronologique. Statut et prise en charge restent à l'ERP, sauf un
  * nouveau message du voyageur : fil rouvert et « en attente » (si l'agent IA
  * n'a pas la main) ; une réponse de l'hôte sur un fil en attente le passe
- * « équipe ».
+ * « équipe », et sur un fil transmis (escalade) le rouvre comme répondu.
  */
 export function versFil(conv: RepullConversation, messages: RepullMessage[], existant: FilMessages | undefined, ctx: ContexteFil): FilMessages {
   const connus = new Map<string, Message>((existant?.messages ?? []).map((m) => [m.id, m]));
@@ -819,6 +821,17 @@ export function versFil(conv: RepullConversation, messages: RepullMessage[], exi
       if (statut === 'clos') statut = 'ouvert';
       if (traitePar !== 'agent') traitePar = 'en_attente';
     } else if (dernier && dernier.auteur !== 'voyageur' && traitePar === 'en_attente') {
+      traitePar = 'humain';
+    }
+    // L'équipe a répondu directement sur la plateforme à une conversation transmise :
+    // répondue, comme une réponse envoyée depuis l'ERP (messagerie-envoi.ts). Jamais le
+    // retour d'un message parti de l'ERP (message d'attente de l'agent sans identifiant Repull).
+    const norme = (t: string) => t.normalize('NFKC').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+    const renvoiErp = (m: Message) => (existant?.messages ?? []).some((x) => !!x.envoi && norme(x.texte) === norme(m.texte));
+    // Seulement un vrai envoi de l'hôte sur la plateforme (ni message système, ni automatique, ni IA).
+    const reponsesHote = new Set(messages.filter((b) => b?.id && b.direction === 'outbound' && !b.aiGenerated && !b.isAutomated).map((b) => idRepull(b.id)));
+    if (statut === 'escalade' && dernier && reponsesHote.has(dernier.id) && nouveaux.some((m) => m.id === dernier.id) && instant(dernier.envoyeLe) > avant && !renvoiErp(dernier)) {
+      statut = 'ouvert';
       traitePar = 'humain';
     }
   }

@@ -15,7 +15,7 @@
  *     --format=esm --log-level=error --outfile=/tmp/verifier-notifications.mjs \
  *     && node /tmp/verifier-notifications.mjs
  */
-import { envoyerNotifications, enregistrerAppareil, lireAppareils, surveiller, type BaseNotifications } from './notifications-envoi';
+import { envoyerNotifications, enregistrerAppareil, lireAppareils, majRoleAppareil, reglerAppareil, surveiller, type BaseNotifications } from './notifications-envoi';
 import { b64url, chiffrer, deB64url, endpointAccepte, enteteVapid, genererClesVapid, type AbonnementPush } from './web-push';
 import {
   demandeNotifications,
@@ -23,9 +23,11 @@ import {
   JOURS_PLUS_TARD_NOTIFICATIONS,
   nettoyerPreferences,
   notificationsEntre,
+  preferencesPourRole,
   prenomInitiale,
   rappelDuMatin,
   synchroEnEchec,
+  typePourRole,
   varianteAEnvoyer,
   type ContexteDemandeNotifications,
   type GroupeNotification,
@@ -379,6 +381,41 @@ async function principal() {
     };
     const b4 = await envoyerNotifications(casse, groupes, { cles, envoyer });
     verifier(b4.envoyees === 0, 'base indisponible : aucune erreur levée');
+  }
+
+  section('Prix à revoir : appareils du gérant seulement');
+  {
+    const cles = { ...(await genererClesVapid()), sujet: 'https://www.labelmaisoncg.fr' };
+    const base = new FausseBase();
+    const p256dh = await clePubliqueNavigateur();
+    const abonnement = (n: string): AbonnementPush => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${n}`, keys: { p256dh, auth: b64url(globalThis.crypto.getRandomValues(new Uint8Array(16))) } });
+    await enregistrerAppareil(base, { abonnement: abonnement('gerant'), par: 'gerant@exemple.fr', role: 'gerant' });
+    await enregistrerAppareil(base, { abonnement: abonnement('ops'), preferences: { prix: true }, par: 'ops@exemple.fr', role: 'operations' });
+    await enregistrerAppareil(base, { abonnement: abonnement('ancien'), preferences: { prix: true } });
+    const recus: string[] = [];
+    const envoyer = async (a: AbonnementPush, c: unknown) => {
+      recus.push(`${a.endpoint.split('/').pop()}:${(c as { type: string }).type}`);
+      return { ok: true, statut: 201, expire: false };
+    };
+    const prix: GroupeNotification = { cle: 'prix-2026-10-27', variantes: [{ type: 'prix', titre: 'Prix à revoir · Massy', corps: 'Baissez à 79 €', url: '/erp/logements' }] };
+    const message: GroupeNotification = { cle: 'g-message-2', variantes: [{ type: 'message', titre: 'Message', corps: 'x', url: '/erp/messagerie/f1' }] };
+    await envoyerNotifications(base, [prix, message], { cles, envoyer, maintenant: MAINTENANT });
+    verifier(recus.includes('gerant:prix'), 'prix : envoyé à l’appareil du gérant');
+    verifier(!recus.includes('ops:prix'), 'prix : jamais à l’appareil d’un membre « opérations », même activé sur l’appareil');
+    verifier(!recus.includes('ancien:prix'), 'prix : jamais à un appareil dont le rôle est inconnu (abonné avant)');
+    verifier(recus.includes('ops:message') && recus.includes('ancien:message'), 'les autres types partent à tous les appareils');
+    verifier(preferencesPourRole({ prix: true, message: true }, 'operations').prix === false && preferencesPourRole({ prix: true }, 'gerant').prix === true, 'préférences appliquées selon le rôle');
+    verifier(!typePourRole('prix', 'operations') && !typePourRole('prix', undefined) && typePourRole('prix', 'gerant') && typePourRole('message', 'lecture'), 'réglage « Prix à revoir » proposé au gérant seul');
+
+    const ancien = (await lireAppareils(base)).find((x) => x.endpoint.endsWith('ancien'))!;
+    await majRoleAppareil(base, ancien, 'gerant');
+    const ops = (await lireAppareils(base)).find((x) => x.endpoint.endsWith('ops'))!;
+    await reglerAppareil(base, ops.endpoint, { prix: true }, 'operations');
+    recus.length = 0;
+    await envoyerNotifications(base, [{ ...prix, cle: 'prix-2026-10-28' }], { cles, envoyer, maintenant: MAINTENANT });
+    verifier(recus.includes('ancien:prix') && !recus.includes('ops:prix'), 'rôle mis à jour à l’ouverture des réglages : l’ancien appareil du gérant reçoit de nouveau les prix');
+    const parOps = await enregistrerAppareil(base, { abonnement: abonnement('gerant'), par: 'ops@exemple.fr', role: 'operations' });
+    verifier(parOps.role === 'operations', 'réabonnement par un autre compte : le rôle de ce compte remplace l’ancien');
   }
 
   section('Surveillance d’un passage');

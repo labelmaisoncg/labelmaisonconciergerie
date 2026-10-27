@@ -7,6 +7,9 @@
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
+import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
+import type { ElementPrix } from './prix-conseils';
+import type { AnnonceEquipe } from './annonces-equipe';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -36,6 +39,8 @@ export interface OrigineRepull {
   devise?: string;
   /** Voyageur chez Repull (pays lu dans sa fiche). */
   voyageurId?: string;
+  /** Réservation : quand le voyageur a réservé (bookedAt, à défaut createdAt), si la plateforme le dit. */
+  reserveeLe?: Horodatage;
   /** Annonces reliées sur chaque plateforme. */
   canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
   /** Logement retiré du choix (page Connexions) : en pause, plus synchronisé. */
@@ -343,6 +348,67 @@ export interface Message {
   envoyeLe: Horodatage;
   /** Message réellement parti chez le voyageur par Repull (Airbnb, Booking.com...). */
   envoi?: EnvoiMessage;
+  /** Traduction française d'un message du voyageur (« Voir en français »), gardée après la première demande. */
+  traductionFr?: string;
+}
+
+/** Ce que demande le voyageur (dernier message), lu par l'IA : src/erp/data/messagerie-ia.ts. */
+export type IntentionMessage =
+  | 'arrivee'
+  | 'depart'
+  | 'arrivee_anticipee'
+  | 'depart_tardif'
+  | 'facture'
+  | 'prolongation'
+  | 'probleme_technique'
+  | 'infos'
+  | 'annulation'
+  | 'paiement'
+  | 'avis'
+  | 'autre';
+
+export type SentimentMessage = 'positif' | 'neutre' | 'negatif';
+
+/**
+ * Lecture du dernier message du voyageur par l'IA (passage de l'agent ou
+ * « Proposer une réponse ») : tri de « À répondre », langue et demande
+ * affichées dans la messagerie. Aucun appel à l'IA juste pour la remplir.
+ */
+export interface AnalyseFil {
+  /** Message du voyageur lu. */
+  messageId: Id;
+  /** Code ISO de sa langue (fr, en, es...). */
+  langue?: string;
+  intention?: IntentionMessage;
+  sentiment?: SentimentMessage;
+  /** À traiter vite selon l'IA (problème sur place, voyageur très mécontent). */
+  urgence?: boolean;
+  le: Horodatage;
+}
+
+/**
+ * Réponse préparée par l'agent et pas envoyée (« à valider ») : l'équipe la
+ * relit dans la zone de réponse et l'envoie en un clic.
+ */
+export interface BrouillonAgent {
+  /** Message du voyageur auquel elle répond. */
+  messageId: Id;
+  /** Texte au voyageur, dans sa langue, signé. */
+  texte: string;
+  /** Version française pour l'équipe (absente si la réponse est en français). */
+  texteFr?: string;
+  langue?: string;
+  intention?: IntentionMessage;
+  /** Confiance de l'agent dans sa réponse (0 à 1). */
+  confiance?: number;
+  /** Pourquoi elle n'est pas partie seule. */
+  motif?: string;
+  le: Horodatage;
+  /** Envoyée par ce membre de l'équipe (api/erp-repull-messages.ts). */
+  valideePar?: string;
+  valideeLe?: Horodatage;
+  /** Retouchée avant l'envoi. */
+  modifiee?: boolean;
 }
 
 /** Trace d'un envoi par Repull (api/erp-repull-messages.ts ou l'agent IA). */
@@ -363,7 +429,13 @@ export interface EnvoiMessage {
 export interface SuiviAgent {
   /** Dernier message du voyageur traité par l'agent. */
   dernierMessageTraite?: Id;
-  decision?: 'repondre' | 'transmettre';
+  /** a_valider : réponse préparée, pas envoyée (niveau d'autonomie, confiance trop basse). */
+  decision?: 'repondre' | 'transmettre' | 'a_valider';
+  /** Demande du voyageur et confiance de l'agent, notées à chaque décision. */
+  intention?: IntentionMessage;
+  confiance?: number;
+  /** Réponse préparée par l'agent, à relire et envoyer par l'équipe. */
+  brouillon?: BrouillonAgent;
   /** Résumé de la situation pour l'équipe (transmis) ou de la réponse. */
   resume?: string;
   le?: Horodatage;
@@ -389,6 +461,13 @@ export interface FilMessages {
   repull?: OrigineRepull;
   /** Suivi de l'agent IA (serveur). */
   agent?: SuiviAgent;
+  /** Dernier message du voyageur lu par l'IA : langue, demande, ton (tri de « À répondre »). */
+  analyse?: AnalyseFil;
+  /**
+   * Dernière réponse proposée avec « Proposer une réponse » (rien d'envoyé) :
+   * le serveur la compare au texte envoyé pour noter qui l'a validée.
+   */
+  proposition?: { messageId: Id; texte: string; le: Horodatage; par: string };
 }
 
 export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche' | 'exception' | 'autre';
@@ -399,7 +478,7 @@ export type TonAgent = 'chaleureux' | 'professionnel' | 'decontracte';
 
 /**
  * Réglages de l'agent de messagerie (collection `reglages`, élément d'id
- * 'agent'), modifiés dans Messagerie > Réglages de l’agent. L'agent
+ * 'agent'), modifiés dans Messagerie > Votre agent. L'agent
  * du site (api/erp-agent.ts, src/erp/data/agent-messagerie.ts) les relit à
  * chaque passage : voir docs/erp/README.md, « Messagerie et agent IA ».
  */
@@ -429,12 +508,87 @@ export interface ReglagesAgent {
   delaiAlerteMinutes: number;
   /** Copie de chaque réponse et alertes sur Telegram. */
   telegram: boolean;
+  /**
+   * Ce que l'agent envoie seul (choisi par un gérant) : valider (il prépare,
+   * l'équipe envoie), simples (questions pratiques quand il est sûr de lui),
+   * autonome (tout sauf les sujets sensibles quand il est sûr de lui).
+   * Absent : « valider » pour un nouvel espace, « autonome » pour Label
+   * Maison (messagerie-ia.ts, niveauAutonomie).
+   */
+  autonomie?: NiveauAutonomie;
   majLe?: Horodatage;
   majPar?: string;
 }
 
-/** Tous les réglages stockés dans la collection `reglages` (un seul type pour l'instant). */
-export type Reglage = ReglagesAgent;
+export type NiveauAutonomie = 'valider' | 'simples' | 'autonome';
+
+/* ------------------------------------------- identité de la conciergerie */
+
+/** Régime de TVA de la conciergerie : franchise en base (art. 293 B du CGI) ou TVA facturée. */
+export type RegimeTva = 'franchise' | 'tva';
+
+/**
+ * Identité légale de la conciergerie de l'espace (Paramètres → Société),
+ * imprimée sur ses factures et ses bilans (data/identite-conciergerie.ts).
+ */
+export interface IdentiteSociete {
+  raisonSociale: string;
+  /** Forme juridique : SASU, SARL, EI… */
+  forme: string;
+  /** 14 chiffres, affiché « 993 428 200 00014 ». */
+  siret: string;
+  /** Adresse du siège, sur une ligne. */
+  adresse: string;
+  regimeTva: RegimeTva;
+  /** Taux de TVA facturé en régime « tva » (20 par défaut) ; sans objet en franchise. */
+  tvaPct: number;
+  /** Numéro de TVA intracommunautaire (régime « tva »). */
+  numeroTva?: string;
+  /** Mentions libres imprimées en bas des factures (conditions, pénalités…). */
+  mentions?: string;
+}
+
+/** Identité enregistrée par le gérant : élément 'societe' de la collection `reglages` de l'espace. */
+export interface ReglagesSociete extends IdentiteSociete {
+  id: 'societe';
+  majLe?: Horodatage;
+  majPar?: string;
+}
+
+/**
+ * Numérotation des factures de l'espace (élément 'numerotation-factures' de
+ * `reglages`) : dernier numéro attribué par année. Un numéro n'est jamais
+ * réutilisé, même si sa facture disparaît.
+ */
+export interface CompteurFactures {
+  id: 'numerotation-factures';
+  derniers: Record<string, number>;
+  majLe?: Horodatage;
+}
+
+
+/**
+ * Tous les réglages stockés dans la collection `reglages` : l'agent (id
+ * 'agent'), les messages automatiques ('messages-programmes'), l'identité de
+ * la société ('societe') et la numérotation des factures.
+ */
+export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures | AlerteControleAgent;
+
+/**
+ * Alerte « l'agent ne peut plus vérifier ses réponses » (collection
+ * `reglages`, id 'alerte-controle-agent'), écrite par le serveur après des
+ * échecs en série du second contrôle (controle-reponse.ts) et lue par
+ * l'« À faire » de l'accueil.
+ */
+export interface AlerteControleAgent {
+  id: 'alerte-controle-agent';
+  active: boolean;
+  message: string;
+  /** Échecs de suite au moment de l'écriture. */
+  echecs: number;
+  depuis?: Horodatage;
+  leveeLe?: Horodatage;
+}
 
 /* -------------------------------------------------------------- opérations */
 
@@ -575,6 +729,44 @@ export interface LigneFacture {
   libelle: string;
   quantite: number;
   puCentimes: Centimes;
+  /** Facture mensuelle : nature de la ligne (commission, ménage d'un séjour, ajustement du gérant). */
+  code?: 'commission' | 'menage' | 'ajustement';
+  /** Précision imprimée sous le libellé (base et taux, séjour, raison d'un ajustement). */
+  detail?: string;
+}
+
+/** Ligne ajoutée à la main par le gérant sur un brouillon de facture mensuelle, toujours avec sa raison. */
+export interface AjustementFacture {
+  id: Id;
+  libelle: string;
+  /** Montant HT, positif ou négatif (remise). */
+  montantCentimes: Centimes;
+  motif: string;
+  ajouteLe: Horodatage;
+  ajoutePar: string;
+}
+
+/**
+ * Facture mensuelle d'un propriétaire (data/factures-mensuelles.ts) :
+ * commission de gestion et ménages du mois, calculés comme son bilan.
+ * Brouillon (sans numéro) tant qu'elle n'est pas validée ; à la validation,
+ * numéro, lignes, identités et mentions sont figés.
+ */
+export interface FactureMensuelle {
+  /** Mois facturé 'AAAA-MM'. */
+  mois: string;
+  ajustements: AjustementFacture[];
+  creeeLe: Horodatage;
+  /** « automatique » (passage planifié du 1er) ou l'adresse du gérant. */
+  creeePar: string;
+  valideeLe?: Horodatage;
+  valideePar?: string;
+  /** Figés à la validation. */
+  emetteur?: IdentiteSociete;
+  client?: { nom: string; adresse: string };
+  logements?: string[];
+  /** « TVA non applicable, art. 293 B du CGI » en franchise en base. */
+  mentionTva?: string;
 }
 
 export interface Facture {
@@ -592,6 +784,8 @@ export interface Facture {
   lignes: LigneFacture[];
   /** Partagée dans l'espace propriétaire (visible et relancée) depuis cet instant ; absent : pas partagée. */
   partageeLe?: Horodatage;
+  /** Facture mensuelle du propriétaire (id `fm-<propriétaire>-<mois>`). */
+  mensuelle?: FactureMensuelle;
 }
 
 export type StatutPaiementPrestataire = 'a_payer' | 'paye' | 'bloque';
@@ -800,6 +994,17 @@ export interface ErpDonnees {
   absences: AbsenceMembre[];
   controles: ControleQualite[];
   signalementsLogement: SignalementLogement[];
+  /** Messages automatiques (ajoutées en octobre 2026) : envois et refus, écrits par le serveur, */
+  envoisProgrammes: EnvoiProgramme[];
+  /** avis à déposer sur les voyageurs après leur départ (texte préparé, fait / passé). */
+  avisADeposer: AvisADeposer[];
+  /** Prix conseillés (octobre 2026) : réglages, « C'est fait » / « Ignorer », état du passage du matin. */
+  conseilsPrix: ElementPrix[];
+  /**
+   * Annonces à l'équipe (octobre 2026) : messages du gérant affichés en haut de l'Accueil de chaque
+   * membre (rien à voir avec l'annonce d'un logement, versionsAnnonce). Écrites par le gérant seul.
+   */
+  annoncesEquipe: AnnonceEquipe[];
 }
 
 export type NomCollection = keyof ErpDonnees;

@@ -9,6 +9,10 @@
  * Paramètres → Accès), après « Bilans mensuels ». Les factures passent par le
  * store comme le reste de l'ERP ; une facture partagée et à payer entre dans
  * les relances (RelancesPaiement.tsx).
+ *
+ * Factures mensuelles (FacturesMensuelles.tsx) : brouillons à relire et
+ * valider en tête ; une fois validée, la facture rejoint la liste et s'ouvre
+ * par son numéro (aperçu, partage, impression).
  */
 import { useState } from 'react';
 import { CheckCircle2, FileText, Share2, X } from 'lucide-react';
@@ -17,7 +21,9 @@ import { nouvelId, useErp } from '../../../data/store';
 import { annulerPaiementFacture, datePaiementValide, montantTtcFacture, partagerFacture, retirerPartageFacture, statutFactureVue } from '../../../data/relances';
 import type { Facture, Proprietaire } from '../../../data/types';
 import type { StatutFactureVue } from '../../../data/types-proprietaire';
+import { estFactureMensuelle } from '../../../data/factures-mensuelles';
 import { Badge, Button, EnvoiFichier, IconButton, Input, LienFichier, type Ton } from '../../../ui';
+import { FacturesMensuellesAPreparer, FenetreFactureMensuelle } from './FacturesMensuelles';
 
 const STATUT: Record<StatutFactureVue, { libelle: string; ton: Ton }> = {
   a_payer: { libelle: 'À payer', ton: 'neutre' },
@@ -36,6 +42,8 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
   const maintenant = () => new Date().toISOString();
   // Facture dont on saisit le paiement (une à la fois), et sa date.
   const [paiement, setPaiement] = useState<{ id: string; date: string; erreur?: string }>();
+  // Facture mensuelle ouverte (brouillon à valider, ou validée).
+  const [ouverte, setOuverte] = useState<string>();
 
   const payer = () => {
     if (!paiement) return;
@@ -67,6 +75,7 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
         <h3 className="text-[15px] font-semibold text-(--lm-encre)">Factures</h3>
         <p className="text-[13px] text-(--lm-encre-2)">Une facture partagée se voit dans son espace (avec son PDF) et, à payer, entre dans les relances.</p>
       </div>
+      {gerant && <FacturesMensuellesAPreparer proprietaire={p} onOuvrir={setOuverte} />}
       {!factures.length ? (
         <p className="text-[13.5px] text-(--lm-encre-2)">Aucune facture émise pour ce propriétaire.</p>
       ) : (
@@ -80,7 +89,18 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
               <li key={f.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
                 <div className="min-w-48 flex-1">
                   <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)">
-                    {f.numero}
+                    {estFactureMensuelle(f) ? (
+                      <button
+                        type="button"
+                        onClick={() => setOuverte(f.id)}
+                        aria-label={`Voir la facture ${f.numero}`}
+                        className="-mx-1 inline-flex min-h-8 items-center rounded-md px-1 text-(--lm-or-texte) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                      >
+                        {f.numero}
+                      </button>
+                    ) : (
+                      f.numero
+                    )}
                     <Badge tone={s.ton}>{s.libelle}</Badge>
                   </p>
                   <p className="text-[12.5px] text-(--lm-encre-2)">
@@ -168,6 +188,15 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
           })}
         </ul>
       )}
+      {/* Deux numérotations côte à côte (« 2026-0001 » et une ancienne « LM-2026-… ») : ce n'est pas une remise à zéro. */}
+      {factures.some(estFactureMensuelle) && factures.some((f) => !estFactureMensuelle(f)) && (
+        <p className="mt-2 text-[12px] text-(--lm-encre-2)">
+          Les factures mensuelles ont leur propre numérotation, continue : année puis numéro d’ordre (
+          <span className="whitespace-nowrap">{factures.find(estFactureMensuelle)!.numero.slice(0, 4)}-0001</span>,{' '}
+          <span className="whitespace-nowrap">{factures.find(estFactureMensuelle)!.numero.slice(0, 4)}-0002…</span>).
+        </p>
+      )}
+      {ouverte && <FenetreFactureMensuelle proprietaire={p} factureId={ouverte} onFermer={() => setOuverte(undefined)} />}
     </section>
   );
 }

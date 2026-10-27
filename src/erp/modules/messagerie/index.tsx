@@ -5,7 +5,8 @@
  * - /erp/messagerie            Conversations (bureau : liste + conversation ; séjour à droite sur grand écran)
  * - /erp/messagerie/:filId     une conversation (mobile : plein écran)
  * - /erp/messagerie/activite   Activité de l'agent
- * - /erp/messagerie/agent      Réglages de l'agent
+ * - /erp/messagerie/agent      Votre agent (état et réglages)
+ * - /erp/messagerie/automatiques  Messages automatiques et leur historique
  */
 import { useMemo, useState, type CSSProperties } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -13,22 +14,25 @@ import { ArrowLeft, MessagesSquare, Plug } from 'lucide-react';
 import { ButtonLink, EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { logementById, reservationById } from '../../data/selectors';
+import { AUJOURDHUI } from '../../data/format';
+import { langueFil, trierParUrgence, urgenceFil } from '../../data/messagerie-ia';
 import { Activite } from './_composants/Activite';
 import { Configurer } from './_composants/Configurer';
 import { Conversation } from './_composants/Conversation';
 import { PastilleAgent } from './_composants/EtatAgent';
-import { ListeFils } from './_composants/ListeFils';
+import { ListeFils, type TriFil } from './_composants/ListeFils';
+import { MessagesAutomatiques } from './_composants/MessagesAutomatiques';
 import { PanneauContexte } from './_composants/PanneauContexte';
 import { attendEquipe, correspond, type FiltreFil } from './_composants/logique';
 import { useHauteurDisponible } from './_composants/useHauteurDisponible';
 
-type Onglet = 'conversations' | 'activite' | 'agent';
+type Onglet = 'conversations' | 'activite' | 'agent' | 'automatiques';
 
 export default function ModuleMessagerie() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const segment = pathname.replace(/^\/erp\/messagerie\/?/, '').split('/')[0] ?? '';
-  const onglet: Onglet = segment === 'activite' ? 'activite' : segment === 'agent' ? 'agent' : 'conversations';
+  const onglet: Onglet = segment === 'activite' || segment === 'agent' || segment === 'automatiques' ? segment : 'conversations';
   // Sur mobile, une conversation ouverte prend tout l'écran.
   const filOuvert = onglet === 'conversations' && !!segment;
 
@@ -44,7 +48,8 @@ export default function ModuleMessagerie() {
             // Le nombre de voyageurs en attente est sur le menu latéral et sur le filtre « À répondre ».
             { cle: 'conversations', libelle: 'Conversations' },
             { cle: 'activite', libelle: 'Activité' },
-            { cle: 'agent', libelle: 'Réglages de l’agent' },
+            { cle: 'agent', libelle: 'Votre agent' },
+            { cle: 'automatiques', libelle: 'Messages automatiques' },
           ]}
         />
       </div>
@@ -52,6 +57,7 @@ export default function ModuleMessagerie() {
         <Route index element={<Boite />} />
         <Route path="activite" element={<Activite />} />
         <Route path="agent" element={<Configurer />} />
+        <Route path="automatiques" element={<MessagesAutomatiques />} />
         <Route path=":filId" element={<Boite />} />
       </Routes>
     </>
@@ -77,8 +83,20 @@ function Boite() {
   const logements = useMemo(() => new Map(d.logements.map((l) => [l.id, l])), [d.logements]);
 
   const tries = useMemo(() => [...d.filsMessages].sort((a, b) => b.dernierMessageLe.localeCompare(a.dernierMessageLe)), [d.filsMessages]);
+  // Tri de « À répondre » : urgence (dates du séjour, problème signalé, voyageur mécontent) et langue du voyageur.
+  const tri = useMemo(() => {
+    const reservations = new Map(d.reservations.map((r) => [r.id, r]));
+    return new Map<string, TriFil>(
+      d.filsMessages.map((f) => [
+        f.id,
+        { urgence: attendEquipe(f) ? urgenceFil(f, f.reservationId ? reservations.get(f.reservationId) : undefined, AUJOURDHUI) : { niveau: 0 }, langue: langueFil(f) },
+      ]),
+    );
+  }, [d.filsMessages, d.reservations]);
   const visibles = useMemo(() => {
     const q = normaliser(recherche.trim());
+    // « À répondre » : les plus urgentes d'abord, puis les plus récentes.
+    if (!q && filtre === 'a_traiter') return trierParUrgence(tries.filter((f) => correspond(f, filtre)), (f) => tri.get(f.id)?.urgence.niveau ?? 0);
     // Une recherche porte sur toutes les conversations, quel que soit le filtre.
     return tries.filter(
       (f) =>
@@ -88,7 +106,7 @@ function Boite() {
           normaliser(logements.get(f.logementId)?.nom ?? '').includes(q) ||
           f.messages.some((m) => normaliser(m.texte).includes(q))),
     );
-  }, [tries, filtre, recherche, logements]);
+  }, [tries, filtre, recherche, logements, tri]);
 
   const fil = filId ? d.filsMessages.find((f) => f.id === filId) : undefined;
   const logement = fil ? logementById(d, fil.logementId) : undefined;
@@ -128,6 +146,7 @@ function Boite() {
           onFiltre={setFiltre}
           recherche={recherche}
           onRecherche={setRecherche}
+          tri={tri}
         />
       </aside>
 

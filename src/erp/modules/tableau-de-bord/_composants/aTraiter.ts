@@ -13,11 +13,19 @@ import { sansChargeLe } from '../../../data/operations';
 import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
+import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
+import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
+import { trierParUrgence, urgenceFil } from '../../../data/messagerie-ia';
+import { attendEquipe } from '../../../data/attente-equipe';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
+import { elementsPrixEtAnomalies } from './aTraiterAnalyse';
 
-export type TypeATraiter = 'message' | 'avis' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge';
+export type TypeATraiter =
+  | 'message' | 'avis' | 'avisHote' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge'
+  // Prix conseillés et anomalies (aTraiterAnalyse.ts).
+  | 'prix' | 'double' | 'suspecte' | 'prix_anormal' | 'integrite';
 
 export interface ElementATraiter {
   id: string;
@@ -27,6 +35,8 @@ export interface ElementATraiter {
   ton: Ton;
   titre: string;
   details: string[];
+  /** Ligne montrée dans la carte à la place du premier détail (ex. les logements concernés). */
+  apercu?: string;
   /** Lien de chaque détail (même ordre), quand chacun mène ailleurs. */
   liens?: string[];
   to: string;
@@ -42,7 +52,12 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
 
   // Même règle que « À répondre » dans la Messagerie : une conversation terminée
   // (« Pas besoin de répondre ») n'attend plus rien, jusqu'au prochain message du voyageur.
-  const messages = d.filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente'));
+  // Même ordre aussi : les plus urgentes d'abord (séjour en cours, arrivée, problème), puis les plus récentes.
+  const reservations = new Map(d.reservations.map((r) => [r.id, r]));
+  const messages = trierParUrgence(
+    d.filsMessages.filter(attendEquipe),
+    (f) => urgenceFil(f, f.reservationId ? reservations.get(f.reservationId) : undefined, aujourdhui).niveau,
+  );
   if (messages.length)
     liste.push({
       id: 'message', type: 'message', priorite: 1, ton: 'alerte', to: '/erp/messagerie',
@@ -67,6 +82,18 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       details: autres.map(ligneIncident),
       ...(autres.length > 1 ? { liens: autres.map(lienIncident) } : {}),
     });
+
+  // Avis à déposer sur Airbnb après chaque départ : aucun séjour terminé sans son avis traité.
+  const aDeposer = avisATraiter(d, aujourdhui);
+  if (aDeposer.length) {
+    const lien = (id: string) => `/erp/reservations/${encodeURIComponent(id)}`;
+    liste.push({
+      id: 'avisHote', type: 'avisHote', priorite: aDeposer.some((a) => a.joursRestants <= 2) ? 1 : 2, ton: 'or', to: lien(aDeposer[0].reservation.id),
+      titre: aDeposer.length > 1 ? `${aDeposer.length} avis à déposer` : 'Un avis à déposer',
+      details: aDeposer.map((a) => `${prenomDe(a.reservation.voyageur.nom)} (${nom(a.reservation.logementId)})${a.statut === 'a_relire' ? ', à relire' : ''} · encore ${a.joursRestants} j`),
+      liens: aDeposer.map((a) => lien(a.reservation.id)),
+    });
+  }
 
   // Logements où personne n'a la charge aujourd'hui (ni choix ni seul agent, ou absent sans relais) :
   // codes et incidents sans destinataire. Une absence sans relais compte pour aujourd'hui.
@@ -106,7 +133,8 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   if (avis.length)
     liste.push({
       id: 'avis', type: 'avis', priorite: 2, ton: 'alerte', to: `/erp/reservations/${avis[0].id}`,
-      titre: avis.length > 1 ? `${avis.length} avis sous ${String(NOTE_A_LIRE).replace('.', ',')} à lire` : `Un avis sous ${String(NOTE_A_LIRE).replace('.', ',')} à lire`,
+      // Notes LAISSÉES par les voyageurs (à lire), à ne pas confondre avec « N avis à déposer » (ceux que vous écrivez).
+      titre: avis.length > 1 ? `${avis.length} notes de voyageurs sous ${String(NOTE_A_LIRE).replace('.', ',')}` : `Une note de voyageur sous ${String(NOTE_A_LIRE).replace('.', ',')}`,
       details: avis.map((r) => `${r.voyageur.nom}, note ${String(r.noteVoyageur).replace('.', ',')} (${nom(r.logementId)})`),
     });
 
@@ -117,8 +145,17 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   if (incompletes.length)
     liste.push({
       id: 'agent', type: 'agent', priorite: 2, ton: 'or', to: `/erp/logements/${incompletes[0].l.id}?onglet=fiche`,
-      titre: incompletes.length > 1 ? `L’agent manque d’informations sur ${incompletes.length} logements` : `L’agent manque d’informations sur ${incompletes[0].l.nom}`,
+      titre: incompletes.length > 1 ? `Votre agent manque d’informations sur ${incompletes.length} logements` : `Votre agent manque d’informations sur ${incompletes[0].l.nom}`,
       details: incompletes.map((x) => `${x.l.nom} : ${x.manquants.slice(0, 3).join(', ').toLowerCase()}${x.manquants.length > 3 ? '…' : ''}`),
+    });
+
+  // L'agent ne peut plus faire contrôler ses réponses (échecs en série) : il les garde toutes à valider.
+  const alerteControle = (d.reglages ?? []).find((r): r is AlerteControleAgent => r?.id === ID_ALERTE_CONTROLE);
+  if (alerteControle?.active)
+    liste.push({
+      id: 'agent-controle', type: 'agent', priorite: 1, ton: 'alerte', to: '/erp/messagerie/agent',
+      titre: 'Votre agent ne vérifie plus ses réponses',
+      details: ['Rien ne part seul : ses réponses restent à valider dans la Messagerie.'],
     });
 
   const aAppeler = d.crm.filter((c) => aTraiterLe(c, aujourdhui));
@@ -128,6 +165,9 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       titre: aAppeler.length > 1 ? `${aAppeler.length} personnes à appeler aujourd’hui` : 'Une personne à appeler aujourd’hui',
       details: aAppeler.map((c) => `${c.nom}${c.ville ? ` (${c.ville})` : ''}`),
     });
+
+  // Prix à revoir (une ligne groupée) et anomalies.
+  liste.push(...elementsPrixEtAnomalies(d, aujourdhui, { gerant }));
 
   return liste.sort((a, b) => a.priorite - b.priorite);
 }

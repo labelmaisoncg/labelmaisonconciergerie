@@ -66,7 +66,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
   return (
     <form onSubmit={enregistrer} className="flex max-w-3xl flex-col gap-5">
-      <Callout tone={c.manquants.length ? 'alerte' : 'or'} icone={<BotMessageSquare />} titre="L’agent répond aux voyageurs avec ces informations.">
+      <Callout tone={c.manquants.length ? 'alerte' : 'or'} icone={<BotMessageSquare />} titre="Votre agent répond aux voyageurs avec ces informations.">
         {c.manquants.length
           ? `Il manque : ${c.manquants.join(', ').toLowerCase()}. Sur ces sujets, il vous transmet la question.`
           : 'Tout est renseigné. Wifi et accès ne sont donnés qu’aux voyageurs confirmés, dans les 48 h avant l’arrivée ou pendant le séjour.'}
@@ -146,7 +146,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
       <Card>
         <CardHeader titre="À savoir" />
-        <Field label="Ce que l’agent doit savoir d’autre" aide="Poubelles, chauffage, voisinage, commerces proches… Facultatif.">
+        <Field label="Ce que votre agent doit savoir d’autre" aide="Poubelles, chauffage, voisinage, commerces proches… Facultatif.">
           <Textarea value={f.aSavoir ?? ''} onChange={(e) => maj('aSavoir', e.target.value)} rows={4} />
         </Field>
       </Card>
@@ -167,7 +167,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
         )}
         {enregistre && !modifie && (
           <p role="status" className="text-[12.5px] text-(--lm-succes-texte)">
-            Enregistré. L’agent s’en sert dès maintenant.
+            Enregistré. Votre agent s’en sert dès maintenant.
           </p>
         )}
       </div>

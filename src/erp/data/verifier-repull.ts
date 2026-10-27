@@ -19,11 +19,14 @@
 import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
-import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure, photosDepuisContenu, tarifsDepuisBooking } from './repull';
+import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure, photosDepuisContenu, tarifsDepuisBooking, versFil, type RepullConversation } from './repull';
+import { attendEquipe } from './attente-equipe';
 import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, phasesDues, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb } from './page-airbnb';
+import { PAR_MESSAGE_AUTO } from './messages-programmes';
+import { auteurAffiche } from '../modules/messagerie/_composants/logique';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
 /* ------------------------------------------------------------ assertions */
@@ -907,6 +910,39 @@ async function principal() {
   verifier(repull.appels.slice(appelsAvant).every((a) => a.chemin !== '/v1/usage/tier'), 'quota réel : bouton seulement');
 
   /* ------------------------------------------------- changements Repull */
+  section('Conversation transmise, répondue sur la plateforme');
+  {
+    const transmise = {
+      id: 'repull-9001',
+      logementId: 'repull-101',
+      canal: 'airbnb',
+      voyageur: 'Alex',
+      statut: 'escalade',
+      traitePar: 'en_attente',
+      raisonEscalade: 'litige',
+      messages: [
+        { id: 'repull-v1', auteur: 'voyageur', texte: 'La douche ne marche plus.', envoyeLe: '2026-09-20T10:00:00+02:00' },
+        { id: 'envoi-abc', auteur: 'agent', texte: 'Merci, l’équipe revient vers vous rapidement.', envoyeLe: '2026-09-20T10:01:00+02:00', envoi: { canal: 'airbnb', par: 'Agent IA' } },
+      ],
+      dernierMessageLe: '2026-09-20T10:01:00+02:00',
+    } as unknown as FilMessages;
+    const conv = { id: '9001', createdAt: '2026-09-20T08:00:00.000Z', lastMessageAt: '2026-09-20T09:30:00.000Z' } as unknown as RepullConversation;
+    const ctx = { id: 'repull-9001', logementId: 'repull-101', canal: 'airbnb' as const };
+    const bruts = (x: { id: string; direction: string; body: string; sentAt: string }[]) => [
+      { id: 'v1', direction: 'inbound', senderName: 'Alex', body: 'La douche ne marche plus.', sentAt: '2026-09-20T08:00:00.000Z' },
+      ...x,
+    ];
+    const repondue = versFil(conv, bruts([{ id: 'h2', direction: 'outbound', body: 'Un plombier passe à 14 h.', sentAt: '2026-09-20T09:30:00.000Z' }]), transmise, ctx);
+    verifier(repondue.statut === 'ouvert' && repondue.traitePar === 'humain' && !attendEquipe(repondue), 'réponse de l’équipe sur Airbnb : conversation répondue, plus « en attente de l’équipe »');
+    const retour = versFil(conv, bruts([{ id: 'a2', direction: 'outbound', body: "Merci, l'équipe revient\r\nvers vous  rapidement.", sentAt: '2026-09-20T08:05:00.000Z' }]), transmise, ctx);
+    verifier(retour.statut === 'escalade' && attendEquipe(retour), 'retour du message d’attente parti de l’ERP : toujours transmise');
+    const relance = versFil(conv, bruts([{ id: 'v3', direction: 'inbound', body: 'Toujours rien ?', sentAt: '2026-09-20T09:30:00.000Z' }]), transmise, ctx);
+    verifier(relance.statut === 'escalade' && attendEquipe(relance), 'nouveau message du voyageur : toujours transmise');
+    const systeme = versFil(conv, bruts([{ id: 's2', direction: 'system', body: 'Réservation modifiée.', sentAt: '2026-09-20T09:30:00.000Z' }]), transmise, ctx);
+    const auto = versFil(conv, [...bruts([]), { id: 'p2', direction: 'outbound', isAutomated: true, body: 'Rappel : arrivée demain.', sentAt: '2026-09-20T09:30:00.000Z' }], transmise, ctx);
+    verifier(systeme.statut === 'escalade' && auto.statut === 'escalade', 'message système ou automatique de la plateforme : toujours transmise');
+  }
+
   section('Changements chez Repull');
   Object.assign(R.reservations[0], { status: 'cancelled', statusDetail: 'cancelled_by_guest', updatedAt: '2026-09-26T07:00:00.000Z' });
   R.messages['7001'].push({ id: 'm3', direction: 'inbound', senderName: 'Alex', body: 'Finalement nous annulons, désolé.', attachments: [], sentAt: '2026-09-26T07:01:00.000Z' });
@@ -1227,12 +1263,23 @@ async function principal() {
     // Réponse de l'agent, puis synchronisation : pas de doublon, auteur « agent » gardé.
     avancer(1);
     await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: 'Réponse de l’agent', auteur: 'agent', par: 'Agent IA' });
+    // Message automatique (passage-programmes.ts) : même envoi, signé « Message automatique ».
+    avancer(1);
+    await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: 'Bonjour Alex, à bientôt !', auteur: 'hote', par: PAR_MESSAGE_AUTO });
     avancer(15);
     const rSync = await lancer(options('manuel'));
     const filSync = base.get<FilMessages>('filsMessages', 'repull-7001')!;
     verifier(rSync.statut === 'fait', 'synchronisation après envoi');
     verifier(filSync.messages.filter((m) => m.id === 'repull-900000').length === 1 && filSync.messages.filter((m) => m.id === 'repull-900001').length === 1, 'synchronisation : messages envoyés reconnus, sans doublon');
     verifier(filSync.messages.find((m) => m.id === 'repull-900001')?.auteur === 'agent' && !!filSync.messages.find((m) => m.id === 'repull-900001')?.envoi, 'synchronisation : auteur « agent » et trace d’envoi gardés');
+    const signature = (id: string) => {
+      const m = filSync.messages.find((x) => x.id === id);
+      return m ? auteurAffiche(m) : undefined;
+    };
+    verifier(
+      signature('repull-900000') === 'Équipe' && signature('repull-900001') === 'Réponse de votre agent' && signature('repull-900002') === 'Message automatique',
+      `après synchronisation, sous chaque bulle : équipe, agent, message automatique (${['repull-900000', 'repull-900001', 'repull-900002'].map(signature).join(' | ')})`,
+    );
     verifierFil(filSync);
   }
 

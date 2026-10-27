@@ -32,6 +32,7 @@ import {
   type OptionsAgent,
 } from './agent-messagerie';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { CONSIGNES_CONTROLE } from './controle-reponse';
 import { DUREE_LIEN_GUIDE_S, guidesAJoindre, signerFichierStockage, texteAvecGuides } from './guides';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, type EtatRepull } from './repull-synchro';
 import type { FilMessages, GuideLogement, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
@@ -141,12 +142,20 @@ class FauxRepull {
 class FausseIA implements ClientIA {
   appels: Anthropic.MessageCreateParamsNonStreaming[] = [];
   reponses: (Partial<DecisionAgent> | 'illisible' | Error)[] = [];
+  /** Second contrôle avant un envoi seul (controle-reponse.ts) : rien à signaler, compté à part. */
+  controles: Anthropic.MessageCreateParamsNonStreaming[] = [];
   messages = {
     create: async (p: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
+      if (p.system === CONSIGNES_CONTROLE) {
+        this.controles.push(p);
+        const texte = JSON.stringify({ engage: false, argent: false, exception: false, donneesPerso: false });
+        return { id: 'msg_controle', type: 'message', role: 'assistant', model: p.model, content: [{ type: 'text', text: texte, citations: null }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 80, output_tokens: 20 } } as unknown as Anthropic.Message;
+      }
       this.appels.push(p);
       const r = this.reponses.shift() ?? { action: 'transmettre', raison: 'autre', langue: 'fr', texte: '', resume: 'Rien de prévu.' };
       if (r instanceof Error) throw r;
-      const texte = r === 'illisible' ? 'Je ne sais pas.' : JSON.stringify({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: '', resume: '', ...r });
+      // Réponse sûre par défaut : Label Maison sans choix est « Autonome » (seuil 0,7).
+      const texte = r === 'illisible' ? 'Je ne sais pas.' : JSON.stringify({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: '', resume: '', confiance: 0.95, intention: 'infos', ...r });
       return {
         id: 'msg_test',
         type: 'message',
@@ -323,6 +332,7 @@ async function principal() {
   ia.reponses.push({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: 'Bonjour Alex, le wifi est « Box-101 », mot de passe motdepasse101.', resume: 'Code wifi donné.' });
   p = await lancerAgent(options());
   verifier(p.statut === 'fait' && p.repondus === 1 && p.transmis === 0 && p.examines === 1, `un fil examiné, une réponse (${p.message})`);
+  verifier(ia.controles.length === 1 && !JSON.stringify(ia.controles[0]).includes('quel est le code du wifi'), 'second contrôle de la réponse avant l’envoi (Label Maison sans choix aussi), sans le message du voyageur');
   const appelIA = ia.appels[0];
   verifier(appelIA?.model === MODELE_AGENT_DEFAUT && appelIA.output_config?.format?.type === 'json_schema', 'Claude Haiku 4.5, sortie JSON imposée');
   verifier(/motdepasse101/.test(ia.derniereFiche) && /Booking\.com/.test(ia.dernierContexte), 'contexte : fiche avec codes (arrivée demain), plateforme');
@@ -333,7 +343,7 @@ async function principal() {
   const rep = f.messages[f.messages.length - 1];
   verifier(rep.auteur === 'agent' && rep.id === 'repull-800000' && rep.envoi?.canal === 'booking', 'réponse écrite dans le fil (auteur agent, id Repull)');
   verifier(f.agent?.dernierMessageTraite === 'repull-m1' && !f.agent?.enCours && f.traitePar === 'agent' && f.statut === 'ouvert', 'suivi : message traité, marqueur retiré, fil suivi par l’agent');
-  verifier(telegram.length === 1 && /Réponse de l’agent/.test(telegram[0]), 'copie de la réponse sur Telegram');
+  verifier(telegram.length === 1 && /Réponse de votre agent/.test(telegram[0]), 'copie de la réponse sur Telegram');
   verifier(base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)?.appelsMois === 1 && p.appelsRepull === 1, 'appel Repull compté dans la part du mois');
   verifier(base.get<FilMessages>('filsMessages', 'fil-local')?.agent === undefined, 'fil sans Repull : ignoré');
 
@@ -364,7 +374,8 @@ async function principal() {
   verifier(p.relances === 0 && telegram.length === 1, 'une seule relance');
 
   section('Transmission : hors fiche, avec message d’attente');
-  base.poser<FilMessages>('filsMessages', { ...fil(), statut: 'ouvert', traitePar: 'humain', raisonEscalade: undefined });
+  // Un sujet sensible compte pour tout le séjour (messagesSujets) : la suite du scénario repart sans la demande de remboursement.
+  base.poser<FilMessages>('filsMessages', { ...fil(), messages: fil().messages.filter((m) => m.id !== 'repull-m2'), statut: 'ouvert', traitePar: 'humain', raisonEscalade: undefined });
   base.poser<Reservation>('reservations', { ...reservation, arrivee: '2026-10-10', depart: '2026-10-13' });
   ecrireVoyageur('repull-m3', 'Y a-t-il une piscine près du logement ?');
   ia.reponses.push({ action: 'transmettre', raison: 'hors_fiche', langue: 'fr', texte: 'Bonjour Alex, je vérifie avec l’équipe et je reviens vers vous.', resume: 'Demande une piscine à proximité : pas dans la fiche.' });

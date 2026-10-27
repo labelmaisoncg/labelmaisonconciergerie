@@ -1,14 +1,33 @@
 /**
  * Démo de l'espace propriétaire : SCI Les Tilleuls (Corbeil Centre Familial)
  * est connectée, a deux documents partagés, le bilan d'août publié et ses
- * factures émises partagées (une payée avec son PDF, une en retard).
+ * factures émises partagées (une payée avec son PDF, une en retard). Sa
+ * facture mensuelle d'août attend la relecture du gérant (brouillon préparé
+ * par le passage du 1er septembre), avec une prolongation (un seul ménage).
  * Aperçu : /espace-proprietaire?apercu=pro-sci-tilleuls (VITE_ERP_DEMO=1).
  */
+import { idFactureMensuelle, PAR_AUTOMATIQUE, preparerBrouillon } from './factures-mensuelles';
+import { IDENTITE_LABEL_MAISON } from './identite-conciergerie';
 import { bilanMensuel } from './proprietaire';
 import type { Facture, Logement, Mandat, Reservation } from './types';
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 
 export const PROPRIETAIRE_DEMO = 'pro-sci-tilleuls';
+
+/**
+ * Démo : en août, au Corbeil Centre Familial, la voyageuse d'un séjour
+ * prolonge par une seconde réservation qui le suit (même voyageuse) : deux
+ * réservations, un séjour, un ménage (consoliderSejours).
+ */
+export function prolongationDemo(reservations: Reservation[]): Reservation[] {
+  const aout = reservations
+    .filter((r) => r.logementId === 'log-corbeil-t3' && r.statut !== 'annulee' && r.arrivee.startsWith('2026-08'))
+    .sort((a, b) => a.arrivee.localeCompare(b.arrivee));
+  const suite = aout.find((r, i) => i > 0 && aout[i - 1].depart === r.arrivee);
+  if (!suite) return reservations;
+  const avant = aout[aout.indexOf(suite) - 1];
+  return reservations.map((r) => (r === suite ? { ...r, canal: avant.canal, voyageur: { ...avant.voyageur } } : r));
+}
 
 export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservations: Reservation[]; mandats: Mandat[]; factures: Facture[] }): {
   accesProprietaires: AccesProprietaire[];
@@ -19,6 +38,10 @@ export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservat
   const p = PROPRIETAIRE_DEMO;
   const factures = d.factures.map((f) => (f.proprietaireId === p && f.statut !== 'brouillon' && f.statut !== 'annulee' ? { ...f, partageeLe: `${f.dateEmission}T09:00:00.000Z` } : f));
   const premiere = factures.filter((f) => f.partageeLe).sort((a, b) => a.dateEmission.localeCompare(b.dateEmission))[0];
+  // Facture mensuelle d'août : brouillon préparé par le passage du 1er septembre, à relire et valider.
+  const brouillonAout = d.factures.some((f) => f.id === idFactureMensuelle(p, '2026-08'))
+    ? null
+    : preparerBrouillon({ donnees: d, proprietaireId: p, mois: '2026-08', identite: IDENTITE_LABEL_MAISON, aujourdhui: '2026-09-01', maintenant: '2026-09-01T00:30:00.000Z', par: PAR_AUTOMATIQUE });
   return {
     accesProprietaires: [
       {
@@ -86,6 +109,6 @@ export function creerEspaceProprietaireDemo(d: { logements: Logement[]; reservat
         majLe: '2026-09-03T08:00:00.000Z',
       },
     ],
-    factures,
+    factures: brouillonAout ? [...factures, brouillonAout] : factures,
   };
 }

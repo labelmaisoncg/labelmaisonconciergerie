@@ -1,8 +1,10 @@
 import { ChevronLeft, ChevronRight, Download, Printer, ReceiptText } from 'lucide-react';
 import { dateCourte, euros, jourMois, nombre } from '../data/format';
+import { documentDeFactureVue } from '../data/factures-mensuelles';
 import type { FactureVue, StatutFactureVue, VueProprietaire } from '../data/types-proprietaire';
 import { Badge, Button, Card, classesBouton, EmptyState, type Ton } from '../ui';
-import { deNom, enteteImprime, type LienDocument } from './commun';
+import { deNom, enteteImprime, titreMois, type LienDocument } from './commun';
+import { DocumentFacture, FactureImprimable } from './DocumentFacture';
 
 /** Statuts : à payer (neutre), en retard (alerte, jamais rouge), payée (succès). */
 const STATUT: Record<StatutFactureVue, { libelle: string; ton: Ton }> = {
@@ -16,10 +18,56 @@ function BadgeStatut({ f, court }: { f: FactureVue; court?: boolean }) {
   return <Badge tone={s.ton}>{!court && f.statut === 'payee' && f.payeeLe ? `Payée le ${dateCourte(f.payeeLe)}` : s.libelle}</Badge>;
 }
 
+/**
+ * Facture mensuelle (commission et ménages du mois) : la mise en page
+ * complète, figée à sa validation, imprimée seule dans la charte « Ivoire & or ».
+ */
+function DetailFactureMensuelle({ f, espace, LienDocument, onRetour }: { f: FactureVue; espace: VueProprietaire['conciergerie']; LienDocument: LienDocument; onRetour: () => void }) {
+  const doc = documentDeFactureVue(f)!;
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onRetour}
+        className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+      >
+        <ChevronLeft className="size-4" aria-hidden />
+        Toutes les factures
+      </button>
+      {/* Numéro, mois et échéance sont sur la facture elle-même : ici, l'état et l'action seulement. */}
+      <h1 className="sr-only">
+        Facture {f.numero}, {titreMois(doc.mois)}
+      </h1>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <BadgeStatut f={f} />
+        {f.pdf ? (
+          <LienDocument id={f.pdf} className={classesBouton('primary', 'md')}>
+            <Download className="size-4" aria-hidden />
+            Télécharger le PDF
+          </LienDocument>
+        ) : (
+          <Button variant="primary" icone={<Printer />} onClick={() => window.print()}>
+            Imprimer ou enregistrer en PDF
+          </Button>
+        )}
+      </div>
+      <DocumentFacture doc={doc} />
+      <FactureImprimable doc={doc} />
+      {f.statut !== 'payee' && (
+        <p className="mt-4 text-[14px] text-(--lm-encre-2)">
+          Une question sur cette facture ? Contactez {espace.nom}.
+          {f.dernierRappel && <span className="block text-[13px]">Rappel envoyé le {dateCourte(f.dernierRappel)}.</span>}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** Une facture, telle qu'imprimée : lignes, totaux, comment la régler. */
 function DetailFacture({ f, espace, LienDocument, onRetour }: { f: FactureVue; espace: VueProprietaire['conciergerie']; LienDocument: LienDocument; onRetour: () => void }) {
   const conciergerie = espace.nom;
   const tva = f.montantTtc - f.montantHt;
+  if (f.mensuelle) return <DetailFactureMensuelle f={f} espace={espace} LienDocument={LienDocument} onRetour={onRetour} />;
   return (
     <>
       <button

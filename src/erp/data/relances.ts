@@ -19,8 +19,10 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
-import type { Centimes, DateISO, Facture, Horodatage, Id, Proprietaire } from './types';
-import type { DocumentProprietaire, FactureVue, RelancePaiement, ReglagesRelances, StatutFactureVue } from './types-proprietaire';
+import { estLabelMaison } from './espaces.js';
+import { MENTIONS_PROFESSIONNEL, emetteurDeLabelMaison } from './identite-conciergerie.js';
+import type { Centimes, DateISO, Facture, Horodatage, Id, IdentiteSociete, LigneFacture, Proprietaire } from './types';
+import type { DocumentProprietaire, FactureMensuelleVue, FactureVue, RelancePaiement, ReglagesRelances, StatutFactureVue } from './types-proprietaire';
 
 /** « 2026-09-20 » + 5 jours (sans dépendre de proprietaire.ts, qui importe ce module). */
 function ajouterJoursISO(d: DateISO, n: number): DateISO {
@@ -96,12 +98,69 @@ export function retirerPartageFacture(f: Facture): Facture {
   return reste;
 }
 
+const texteVue = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '');
+const CODES_LIGNE = new Set(['commission', 'menage', 'ajustement']);
+
+/** Ligne vue par le propriétaire : libellé, quantité, prix, et la précision d'une facture mensuelle. */
+function ligneVue(l: LigneFacture): FactureVue['lignes'][number] {
+  const detail = texteVue(l.detail, 400);
+  return {
+    libelle: String(l.libelle ?? ''),
+    quantite: Number(l.quantite) || 0,
+    pu: Math.round(Number(l.puCentimes) || 0),
+    ...(detail ? { detail } : {}),
+    ...(l.code && CODES_LIGNE.has(l.code) ? { code: l.code } : {}),
+  };
+}
+
+/**
+ * Mentions d'une facture figée, telles qu'imprimées : la mention légale
+ * (propriétaire professionnel) sur sa ligne, puis celles du gérant (600
+ * caractères au plus) ; jamais coupées dans l'espace du propriétaire.
+ */
+const MAX_MENTIONS_VUE = 600 + MENTIONS_PROFESSIONNEL.length + 1;
+
+/**
+ * Partie figée d'une facture mensuelle numérotée (identités, logements,
+ * mention de TVA), champs connus seulement ; rien pour un brouillon. Hors de
+ * Label Maison, un émetteur au SIRET ou au nom de Label Maison n'est jamais
+ * montré (même règle que identiteConciergerie).
+ */
+function mensuelleVue(f: Facture, espace: string | undefined): FactureMensuelleVue | undefined {
+  const m = f.mensuelle;
+  if (!m || !String(f.numero ?? '').trim() || !m.emetteur || !m.client || !/^\d{4}-\d{2}$/.test(String(m.mois))) return undefined;
+  const e = m.emetteur;
+  if (!estLabelMaison(espace) && emetteurDeLabelMaison(e)) return undefined;
+  const emetteur: IdentiteSociete = {
+    raisonSociale: texteVue(e.raisonSociale, 120),
+    forme: texteVue(e.forme, 60),
+    siret: texteVue(e.siret, 40),
+    adresse: texteVue(e.adresse, 200),
+    regimeTva: e.regimeTva === 'tva' ? 'tva' : 'franchise',
+    tvaPct: Number(e.tvaPct) || 0,
+    ...(e.numeroTva ? { numeroTva: texteVue(e.numeroTva, 20) } : {}),
+    ...(e.mentions ? { mentions: texteVue(e.mentions, MAX_MENTIONS_VUE) } : {}),
+  };
+  return {
+    mois: m.mois,
+    emetteur,
+    client: { nom: texteVue(m.client.nom, 160), adresse: texteVue(m.client.adresse, 240) },
+    logements: (m.logements ?? []).map((x) => texteVue(x, 120)).filter(Boolean),
+    ...(m.mentionTva ? { mentionTva: texteVue(m.mentionTva, 120) } : {}),
+  };
+}
+
 /** Factures vues par le propriétaire : les siennes, partagées, des plus récentes aux plus anciennes. */
 export function facturesVue(
   factures: readonly Facture[],
   proprietaireId: Id,
   aujourdhui: DateISO,
-  o: { documents?: readonly DocumentProprietaire[]; relances?: readonly RelancePaiement[] } = {},
+  o: {
+    documents?: readonly DocumentProprietaire[];
+    relances?: readonly RelancePaiement[];
+    /** Espace des factures (absent : Label Maison, comme avant les espaces). */
+    espace?: string;
+  } = {},
 ): FactureVue[] {
   return factures
     .filter((f) => facturePartagee(f, proprietaireId))
@@ -113,6 +172,7 @@ export function facturesVue(
         .sort()
         .pop();
       const statut = statutFactureVue(f, aujourdhui);
+      const mensuelle = mensuelleVue(f, o.espace);
       return {
         id: f.id,
         numero: String(f.numero ?? ''),
@@ -123,7 +183,8 @@ export function facturesVue(
         montantTtc: montantTtcFacture(f),
         statut,
         ...(statut === 'payee' && f.payeeLe ? { payeeLe: f.payeeLe } : {}),
-        lignes: (f.lignes ?? []).map((l) => ({ libelle: String(l.libelle ?? ''), quantite: Number(l.quantite) || 0, pu: Math.round(Number(l.puCentimes) || 0) })),
+        lignes: (f.lignes ?? []).map(ligneVue),
+        ...(mensuelle ? { mensuelle } : {}),
         ...(pdf ? { pdf: pdf.id } : {}),
         ...(rappel && statut !== 'payee' ? { dernierRappel: rappel } : {}),
       };

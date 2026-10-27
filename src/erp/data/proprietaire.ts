@@ -16,14 +16,19 @@
  *   jour du changement (et du début de son mandat). Un séjour est à celui
  *   qui avait le logement le jour de l'arrivée, toutes ses nuits comprises ;
  * - taux de commission : le mandat du propriétaire, jamais celui d'un autre
- *   (sans mandat à lui : pas de taux, pas de commission).
+ *   (sans mandat à lui : pas de taux, pas de commission) ;
+ * - prolongations (réservations qui se suivent, même voyageur, même
+ *   logement) : un seul séjour, donc un seul ménage (consoliderSejours),
+ *   dans le bilan comme dans la facture mensuelle.
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
 import { ID_LABEL_MAISON, espaceOuvert, estLabelMaison } from './espaces.js';
+import { identiteComplete, identiteConciergerie, ligneLegale } from './identite-conciergerie.js';
 import { facturePartagee, facturesVue } from './relances.js';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull.js';
-import type { CanalReservation, DateISO, Facture, Id, Logement, Mandat, Proprietaire, Reservation } from './types';
+import { consoliderSejours, prolongations, type SejourConsolide } from './sejours-consolides.js';
+import type { CanalReservation, DateISO, Facture, Id, Logement, Mandat, Proprietaire, Reglage, Reservation } from './types';
 import type {
   ArriveeVue,
   AvisVue,
@@ -381,8 +386,10 @@ function nuitsEntre(r: Reservation, debut: DateISO, fin: DateISO): number {
  * Séjour du mois vu par le propriétaire. Chaque montant est proratisé, puis
  * le net est déduit des autres : les lignes s'additionnent au centime près.
  * Commission Label Maison = (encaissé − frais de plateforme − ménage) × taux du mandat.
+ * Séjour consolidé (prolongations regroupées) : ses montants additionnés,
+ * un seul ménage, et le nombre de prolongations.
  */
-export function sejourDuMois(r: Reservation, mandat: Mandat | undefined, mois: string): SejourBilan | null {
+export function sejourDuMois(r: Reservation | SejourConsolide, mandat: Mandat | undefined, mois: string): SejourBilan | null {
   const debut = `${mois}-01`;
   const fin = `${moisSuivant(mois)}-01`;
   const nuits = nuitsEntre(r, debut, fin);
@@ -398,6 +405,7 @@ export function sejourDuMois(r: Reservation, mandat: Mandat | undefined, mois: s
   const fraisPlateforme = part(plateforme);
   const menageMois = part(menage);
   const commission = part(commissionSejour);
+  const nbProlongations = prolongations(r as Partial<SejourConsolide>);
   return {
     logementId: r.logementId,
     arrivee: r.arrivee,
@@ -412,6 +420,7 @@ export function sejourDuMois(r: Reservation, mandat: Mandat | undefined, mois: s
     menage: menageMois,
     commission,
     net: encaisse - fraisPlateforme - menageMois - commission,
+    ...(nbProlongations ? { prolongations: nbProlongations } : {}),
   };
 }
 
@@ -436,12 +445,16 @@ export function bilanMensuel(
   const sejours: SejourBilan[] = [];
   const logements: LogementBilan[] = [];
   let joursGeres = 0;
+  const dansLeMois = (r: Pick<Reservation, 'arrivee' | 'depart'>) => r.arrivee < `${moisSuivant(mois)}-01` && r.depart > `${mois}-01`;
   for (const { logement: l } of siens) {
     const mandat = mandatDuProprietaire(d.mandats, l.id, proprietaireId);
     const bornes = bornesDuProprietaire(l, proprietaireId, d.mandats);
-    const duMois = valide ? actifs.filter((r) => r.logementId === l.id && r.arrivee < `${moisSuivant(mois)}-01` && r.depart > `${mois}-01`) : [];
+    const duLogement = valide ? actifs.filter((r) => r.logementId === l.id) : [];
+    const duMois = duLogement.filter(dansLeMois);
     const aLui = duMois.filter((r) => bornes.some((b) => arriveDans(r, b)));
-    const lignes = aLui
+    // Prolongations regroupées sur tous ses séjours (un séjour à cheval sur deux mois reste le même), puis bornées au mois.
+    const lignes = consoliderSejours(duLogement.filter((r) => bornes.some((b) => arriveDans(r, b))))
+      .filter(dansLeMois)
       .map((r) => sejourDuMois(r, mandat, mois))
       .filter((s): s is SejourBilan => !!s)
       .sort((a, b) => a.arrivee.localeCompare(b.arrivee));
@@ -559,6 +572,7 @@ export function chiffresPublics(c: ChiffresBilan, logementIds: ReadonlySet<Id>):
         menage: entier(s.menage),
         commission: entier(s.commission),
         net: entier(s.net),
+        ...(entier(s.prolongations) > 0 ? { prolongations: entier(s.prolongations) } : {}),
       })),
     totaux: totaux(c?.totaux),
     occupation: ratio(c?.occupation),
@@ -710,6 +724,8 @@ export function ficheLogement(
   const actifs = tous.filter((r) => bornes.some((b) => arriveDans(r, b)));
   const autres = tous.filter((r) => !actifs.includes(r));
   const debutSuivi = actifs.reduce<DateISO | undefined>((x, r) => (!x || r.arrivee < x ? r.arrivee : x), undefined);
+  // Montants : prolongations regroupées (un seul ménage), comme le bilan du mois.
+  const sejoursActifs = consoliderSejours(actifs);
 
   // 24 mois : les 12 derniers mois terminés et les 12 d'avant.
   const fin = moisPrecedent(moisDe(aujourdhui));
@@ -719,7 +735,7 @@ export function ficheLogement(
   const mois: MoisPerformance[] = liste.map((m) => {
     const joursALui = debutSuivi && m >= moisDe(debutSuivi) ? joursAuProprietaire(m, bornes, actifs, autres) : 0;
     const suivi = joursALui > 0;
-    const lignes = suivi ? actifs.map((r) => ({ r, s: sejourDuMois(r, mandat, m) })).filter((x): x is { r: Reservation; s: SejourBilan } => !!x.s) : [];
+    const lignes = suivi ? sejoursActifs.map((r) => ({ r, s: sejourDuMois(r, mandat, m) })).filter((x): x is { r: SejourConsolide; s: SejourBilan } => !!x.s) : [];
     sejoursParMois.set(m, new Set(lignes.map((x) => x.r.id)));
     const jours = joursALui;
     const nuits = lignes.reduce((x, l) => x + l.s.nuits, 0);
@@ -791,6 +807,8 @@ export interface EntreesProprietaire {
   factures?: readonly Facture[];
   /** Relances envoyées (date du dernier rappel) ; collection serveur. */
   relancesPaiement?: readonly RelancePaiement[];
+  /** Réglages de l'espace : seule l'identité de la société ('societe') sert ici (ligne légale des bilans imprimés). */
+  reglages?: readonly Reglage[];
 }
 
 export interface OptionsVue {
@@ -877,6 +895,9 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     }))
     .sort((a, b) => String(b.ajouteLe).localeCompare(String(a.ajouteLe)));
 
+  // Ligne légale imprimée en tête des bilans : l'identité de SON espace (jamais celle de Label Maison ailleurs).
+  const identite = identiteConciergerie({ reglages: e.reglages }, { id: conciergerie.espace, nom: conciergerie.nom });
+  const legale = identite.enregistree && identiteComplete(identite) ? ligneLegale(identite) : '';
   return {
     proprietaire: { id: p.id, nom: p.nom },
     aujourdhui,
@@ -889,8 +910,8 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     fiches: geres.map((l) => ficheLogement({ reservations: e.reservations, mandats: e.mandats }, l.id, aujourdhui, { proprietaireId, logement: l })),
     bilans,
     documents,
-    factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement }),
-    conciergerie: { nom: conciergerie.nom, espace: conciergerie.espace },
+    factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement, espace: conciergerie.espace }),
+    conciergerie: { nom: conciergerie.nom, espace: conciergerie.espace, ...(legale ? { ligneLegale: legale } : {}) },
     ...(conciergerie.contacts ? { contacts: conciergerie.contacts } : {}),
   };
 }

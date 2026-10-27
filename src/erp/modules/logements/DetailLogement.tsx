@@ -74,7 +74,7 @@ export default function DetailLogement() {
         onglets={[
           { cle: 'apercu', libelle: 'Aperçu' },
           // Compteur seulement s'il manque quelque chose à l'agent.
-          { cle: 'fiche', libelle: 'Infos pour l’agent', compteur: manquants || undefined },
+          { cle: 'fiche', libelle: 'Infos pour votre agent', compteur: manquants || undefined },
           { cle: 'historique', libelle: 'Historique' },
         ]}
       />

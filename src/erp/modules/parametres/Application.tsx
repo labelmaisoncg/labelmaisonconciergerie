@@ -9,7 +9,7 @@ import { Bell, Check, Copy, Download, KeyRound, Send } from 'lucide-react';
 import { espaceOuvert } from '../../data/espaces';
 import { notificationsIphone, titreCarteApp } from '../../data/marque-espace';
 import { useErp } from '../../data/store';
-import { TYPES_NOTIFICATION } from '../../data/notifications';
+import { TYPES_NOTIFICATION, typePourRole } from '../../data/notifications';
 import { Alert, Badge, Button, Card, CardHeader, Interrupteur, Repli, Skeleton, cn } from '../../ui';
 import { EtapesInstallation, LienInstallation, useInstallation } from './_application/installation';
 import { genererCles, useNotifications, PREFERENCES_DEFAUT, type ClesGenerees } from './_application/notifications';
@@ -169,7 +169,7 @@ function CarteNotifications({ n, gerant, principal }: { n: ReturnType<typeof use
 
       {listeVisible && (
         <ul className="divide-y divide-(--lm-bord) rounded-lg border border-(--lm-bord)">
-          {TYPES_NOTIFICATION.map((t) => {
+          {TYPES_NOTIFICATION.filter((t) => typePourRole(t.type, gerant ? 'gerant' : undefined)).map((t) => {
             const actif = actives ? n.estActive(t.type) : PREFERENCES_DEFAUT[t.type];
             return (
               <li key={t.type}>

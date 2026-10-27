@@ -64,7 +64,7 @@ export function CreerEspace({ email, invitation, onCree, onDeconnecter }: Props)
               <p className="text-[13px] font-medium text-(--lm-encre-2)">Nom de votre conciergerie</p>
               <p className="mt-1 text-[17px] font-semibold text-(--lm-encre) [overflow-wrap:anywhere]">{invitation.nom}</p>
               <p className="mt-1 text-[12.5px] text-(--lm-encre-2)">
-                Il apparaît pour votre équipe, vos propriétaires et dans la signature de l’agent. Une erreur&nbsp;? Demandez à Label Maison de vous renvoyer
+                Il apparaît pour votre équipe, vos propriétaires et dans la signature de votre agent. Une erreur&nbsp;? Demandez à Label Maison de vous renvoyer
                 l’invitation avec le bon nom.
               </p>
             </div>

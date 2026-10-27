@@ -1,8 +1,13 @@
 // =============================================================================
 // POST /api/erp-repull-messages — répondre à un voyageur depuis l'ERP.
 //
-//   POST { action: 'envoyer', filId, texte }
+//   POST { action: 'envoyer', filId, texte, brouillon? }
 //     → { ok: true, message, fil, canal, reecrit, info }
+//   brouillon : { source: 'agent' | 'proposition' } quand le navigateur pense
+//   que le texte vient d'une réponse de l'agent. Ce n'est qu'un indice : le
+//   serveur compare lui-même le texte envoyé à la réponse gardée sur le fil
+//   (agent.brouillon ou proposition) pour noter au journal qui l'a validée et
+//   si elle a été retouchée (et le fil, pour une réponse « à valider »).
 //
 // Le message part vraiment chez le voyageur (Airbnb, Booking.com...) par
 // Repull, avec une clé d'idempotence (pas de double envoi), puis il est écrit
@@ -17,6 +22,9 @@
 // =============================================================================
 
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from '../src/erp/data/messagerie-envoi.js';
+import { detailValidation, lireValidation, marquerBrouillonValide, validationServeur } from '../src/erp/data/messagerie-ia.js';
+import { horodatageParis } from '../src/erp/data/repull.js';
+import type { FilMessages, Journal } from '../src/erp/data/types';
 import { BudgetEpuise, ErreurRepull, verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { baseErp, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande } from './_erp-espaces.js';
@@ -51,8 +59,30 @@ export default async function handler(req: any, res: any) {
   if (!filId) return repondre(res, 400, { ok: false, erreur: 'Conversation non précisée.' });
 
   const ctx = { cle: c.cle, workspace: c.workspace, origineCle: c.origineCle, base: baseErp(c), echeance: debut + BUDGET_TEMPS_MS, budgetMois: c.budgetMois, quotaMois: c.quotaMois };
+  const texte = String(corps.texte ?? '');
   try {
-    const r = await envoyerMessage(ctx, { filId, texte: String(corps.texte ?? ''), auteur: 'hote', par: membre.email });
+    // Validation calculée ici, sur le fil tel qu'en base (jamais d'après ce que dit le navigateur).
+    const [avant] = await ctx.base.lire<FilMessages>('filsMessages', [filId]).catch(() => [] as FilMessages[]);
+    const validation = avant ? validationServeur(avant, texte, lireValidation(corps.brouillon)?.source) : undefined;
+    const r = await envoyerMessage(ctx, {
+      filId,
+      texte,
+      auteur: 'hote',
+      par: membre.email,
+      ...(validation?.source === 'agent' ? { completer: (f: FilMessages) => marquerBrouillonValide(f, membre.email, validation.modifiee, horodatageParis()) } : {}),
+    });
+    if (validation) {
+      const ligne: Journal = {
+        id: `valide-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+        horodatage: horodatageParis(),
+        auteur: membre.email,
+        action: 'Réponse de l’agent validée',
+        entite: 'filsMessages',
+        entiteId: filId,
+        details: detailValidation(validation, membre.email, r.fil.voyageur),
+      };
+      await ctx.base.ecrire('journal', [ligne]).catch(() => undefined);
+    }
     return repondre(res, 200, r);
   } catch (e) {
     const erreur = messageEchecEnvoi(e, ctx);

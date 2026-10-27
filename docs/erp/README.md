@@ -132,12 +132,33 @@ node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=es
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-relances.mjs && node /tmp/verifier-relances.mjs
 
+# Auto-contrôle des factures mensuelles (prolongations, commission, prorata,
+# numérotation, TVA, identité de chaque espace, brouillon unique par mois).
+node_modules/.bin/esbuild src/erp/data/verifier-factures.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-factures.mjs && node /tmp/verifier-factures.mjs
+
 # Incidents côté ERP : un signalement de l'espace opérations remonte dans le
 # « À faire » et sur la fiche du logement (lien de la notification « Urgence »),
 # actions du gérant, « pas à moi », remplaçant qui suit déjà les logements.
 node_modules/.bin/esbuild src/erp/data/verifier-incidents-erp.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-incidents-erp.mjs && node /tmp/verifier-incidents-erp.mjs
+
+# Messages automatiques et avis à déposer (fausses base, plateforme et IA) :
+# heures de Paris et changement d'heure, éteints par défaut, jamais avant 8 h
+# ni après 21 h, jamais deux fois (même après une coupure), annulée / sans
+# conversation écartées, codes seulement 48 h avant, plafond de l'IA.
+node_modules/.bin/esbuild src/erp/data/verifier-messages-programmes.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-messages-programmes.mjs && node /tmp/verifier-messages-programmes.mjs
+
+# Annonces à l'équipe : ce que chacun voit sur l'Accueil, « J'ai lu » sur
+# l'appareil, « Bonjour » au nom de l'espace, écriture réservée au gérant,
+# notification relue dans la base, jamais deux fois, refusée à un non-gérant.
+node_modules/.bin/esbuild src/erp/data/verifier-annonces-equipe.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-annonces-equipe.mjs && node /tmp/verifier-annonces-equipe.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -287,9 +308,9 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 | Accueil | « À faire » (voyageurs qui attendent, synchronisation en échec, avis sous 4,5, infos manquantes pour l'agent, contacts à appeler), arrivées / départs / sur place (aujourd'hui, ou une période choisie au calendrier : `ChoixPeriode.tsx`), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
 | Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, l'annonce, couchage, prix des prochaines semaines et prix de base lus sur les plateformes, propriétaire, logement, conditions, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
 | Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
-| Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Réglages de l'agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
+| Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Votre agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
 | CRM | Appels et relances (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
-| Paramètres | Équipe, Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/application`, `/societe`) |
+| Paramètres | Équipe, Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Annonces à l'équipe (gérant), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/application`, `/annonces-equipe`, `/societe`) |
 
 Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
 (`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé
@@ -355,8 +376,8 @@ Principes d'écran : 3 ou 4 blocs visibles au plus, une action principale, les
 actions secondaires dans un menu « … » (`ui/MenuActions.tsx`), les règles et
 explications repliées (« Comment ça marche ? », `ui/Aide.tsx`), le détail au
 clic (panneau, fenêtre). Langage : phrases courtes, vouvoiement, pas de jargon
-(« transmise à l'équipe » plutôt qu'« escaladée », « contrat de gestion »
-plutôt que « mandat »...).
+(« transmise à l'équipe » plutôt qu'« escaladée », « mandat de gestion »
+plutôt que « contrat de gestion »...).
 
 **Recherche globale** (`layout/GlobalSearch.tsx`, moteur pur dans
 `layout/recherche/moteur.ts`) : barre de l'en-tête, Ctrl/Cmd + K ou « / ».
@@ -372,7 +393,7 @@ navigateur (localStorage). Plein écran sur mobile.
 
 ### Réglages de l'agent de messagerie
 
-« Messagerie > Réglages de l'agent » enregistre un élément unique
+« Messagerie > Votre agent » enregistre un élément unique
 dans la collection **`reglages`** (id `agent`, type `ReglagesAgent` dans
 `data/types.ts`, valeurs par défaut et lecture tolérante dans
 `data/reglages.ts`). Il est synchronisé comme les autres collections : une
@@ -390,6 +411,57 @@ agent IA ») relit ce réglage à chaque passage : pas de réponse si
 appliqués, main passée selon `transmettre`, relance Telegram après
 `delaiAlerteMinutes` sans réponse humaine. Absent : valeurs par défaut de
 `data/reglages.ts`. (L'ancien service `agent-ia/` n'est pas déployé.)
+
+### Messages automatiques et avis à déposer
+
+« Messagerie > Messages automatiques » (gérant) : quatre messages
+(`confirmation`, `veille_arrivee`, `jour_depart`, `demande_avis`), **éteints
+par défaut**, enregistrés dans `reglages` (id `messages-programmes`, texte de
+l'espace et texte propre à un logement). Le passage planifié de l'agent
+(`api/erp-agent.ts` → `api/_erp-programmes.ts` →
+`src/erp/data/passage-programmes.ts`) envoie ce qui est dû par
+`envoyerMessage`, entre 8 h et 21 h (Paris), avec une clé d'idempotence
+par séjour et par moment ; chaque envoi ou refus est une ligne de
+`envoisProgrammes` (historique de l'écran, garantie « jamais deux fois »).
+Rien ne part à un voyageur qui attend l'équipe : dernier message de sa part,
+ou conversation transmise / en attente (`attendEquipe`,
+`src/erp/data/attente-equipe.ts`, la même règle que « À répondre » et
+l'Accueil). Règles pures : `src/erp/data/messages-programmes.ts`.
+
+Après chaque départ Airbnb, le même passage prépare l'avis à déposer sur le
+voyageur (`avisADeposer`) avec la clé et le modèle de l'agent (plafond
+mensuel partagé pour un autre espace), ou un texte simple sans IA. Il
+apparaît dans « À faire » et sur la réservation : « Copier le texte »,
+« Ouvrir Airbnb » (simple lien, rien n'est publié), « C’est fait » ou
+« Passer ». Incident, note sous 4 ou message négatif : « à relire », et
+jamais d'éloge prérempli : l'IA en est informée (avis neutre), un éloge est
+écarté, le texte simple n'est jamais proposé ; sans texte sûr, le champ
+reste vide avec une ligne « Écrivez l’avis vous-même : … ».
+
+Garanties dans la base (`supabase/erp-espaces.sql`, à relancer en passe 1
+ou 2 ; même règle avant les espaces dans `erp-installation.sql` et
+`erp-acces-gerants.sql`) : écriture réservée aux gérants de l'espace (et au
+compte serveur) pour `envoisProgrammes`, `programmes`, `agent`, `repull`,
+`factures`, `passagesFacturesMensuelles`, `annoncesEquipe`, `conseilsPrix` (`reglages`,
+`etat`) et `reglages` (`messages-programmes`, `societe`,
+`numerotation-factures`, `alerte-controle-agent`) ; dans les réglages de
+l'agent, marche, niveau d'autonomie, horaires, ce qu'il confie et délai
+changés par un gérant seulement (déclencheur `erp.garder_autonomie_agent`,
+liste `REGLAGES_AGENT_GERANT` ; ton, signature, langues et Telegram restent
+à l'équipe) ; numéro de facture
+attribué par `erp.numeroter_facture(p_id)` seulement (à la suite, jamais
+deux fois ; toute autre écriture d'un numéro est refusée, code `LMF02`, et
+un index unique par espace l'interdit en double, numéros comparés sans
+blancs autour : `erp.numero_normalise`) ; une facture numérotée ne
+change plus, sauf paiement et partage, et ne se supprime pas (code
+`LMF01`) ; une donnée ne change jamais d'espace par l'API
+(`erp.garder_espace_enregistrement`, 42501). Copie des listes dans le navigateur : `ecritures-gerant.ts` (un
+compte qui n'est pas gérant ne met pas ces écritures en file ;
+`verifier-synchro.ts` compare les listes aux fichiers SQL). Toute écriture
+refusée par la base (droits, règle RLS, déclencheur) est renvoyée ligne par
+ligne : les acceptées sont gardées, les refusées retirées de la file sans
+nouvel essai, signalées une fois (message et ligne de journal) et relues ;
+réseau et 5xx : nouvel essai comme avant (`synchro.ts`, `refusParLaBase`).
 
 L'onglet « Activité » est calculé depuis `filsMessages` :
 messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :
@@ -951,6 +1023,68 @@ wifi absents du contexte tant que le voyageur n'y a pas droit (réservation
 confirmée, arrivée sous 48 h ou sur place) ; les messages du voyageur sont
 des données, pas des consignes ; réponse illisible → transmis.
 
+**Autonomie et réponses à valider** (`src/erp/data/messagerie-ia.ts`) :
+Claude note aussi la demande du voyageur (`intention` : arrivee, depart,
+arrivee_anticipee, depart_tardif, facture, prolongation, probleme_technique,
+infos, annulation, paiement, avis, autre), son ton (`sentiment`), sa
+`confiance` (0 à 1) et la version française de sa réponse. Le gérant choisit
+dans Messagerie > Votre agent → « Ce qu'il envoie seul » : **Je valide tout**
+(défaut d'un nouvel espace : rien ne part seul), **Questions simples**
+(arrivée, départ, questions pratiques, avis, confiance ≥ 0,85) ou
+**Autonome hors sujets sensibles** (confiance ≥ 0,7). Sans choix enregistré,
+Label Maison est au niveau « Autonome hors sujets sensibles » (même seuil
+de 0,7, mêmes garde-fous ; c'est ce que l'écran affiche). Sujets
+sensibles, jamais envoyés seuls quel que soit le niveau (Label Maison sans
+choix compris) : paiement, remboursement, caution, frais, prix, gratuité,
+devises, annulation (`annul|\banul|cancel|stornier|cancelar`), réclamation,
+problème sur place, données personnelles (avec leurs paraphrases courantes :
+moitié, %, « on us », « give … back », settle…) ; ils sont cherchés dans tous
+les messages du voyageur du séjour (sinon des 7 derniers jours), lus un par
+un et collés sans séparateur, **et dans la réponse proposée elle-même**
+(texte et version française) : une consigne cachée dans un message peut
+faire écrire « nous vous remboursons » en notant « infos, confiance 0,99 ».
+Les textes sont nettoyés avant toute recherche (NFKC, caractères invisibles
+retirés) ; un mot latin qui contient une lettre cyrillique ou grecque met la
+réponse à valider. L'envoi seul suppose aussi un voyageur qui écrit
+nettement en français ou en anglais (langue devinée sans IA, aucune lettre
+d'un autre alphabet, la moitié au moins des mots reconnus) et une réponse en
+français ou en anglais (langue notée par l'IA et langue devinée) ; sinon, à
+valider. Enfin, **un second contrôle par l'IA** (`src/erp/data/controle-reponse.ts`)
+ne voit que la réponse et sa langue, jamais les messages du voyageur : il
+dit si elle engage l'équipe, parle d'argent, accorde une exception ou
+demande des données personnelles. Envoi seul seulement si les quatre sont
+faux ; appel en échec, trop long, illisible ou plafond atteint : à valider.
+Il compte dans le plafond du mois. Une réponse ou un message qui s'adresse à
+un contrôle (« note to the reviewer », « answer false », « ignorez les
+instructions », « json »…) est mis à valider sans l'appeler ; les balises du
+texte à classer sont retirées sous toutes leurs formes. Après 5 échecs de
+suite du contrôle (par exemple si le service refuse un jour un paramètre),
+une alerte s'affiche dans l'état de l'agent et dans « À faire » (« L'agent
+ne peut plus vérifier ses réponses : il les garde à valider. », élément
+`reglages/alerte-controle-agent`), une notification part aux gérants une
+seule fois ; tout se lève au premier contrôle réussi. Le message d'attente est un texte fixe
+par langue (`MESSAGES_ATTENTE`), jamais celui de Claude. Une réponse qui ne
+part pas seule est gardée sur le fil (`agent.brouillon`, décision
+`a_valider`) : la conversation reste dans « À répondre » et la réponse est
+déjà dans la zone de saisie, l'équipe l'envoie en un clic. Chaque décision
+va au journal (demande, confiance, envoyée / à valider / transmise) et dans le
+bilan du passage ; l'envoi d'une réponse de l'agent par un membre note qui
+l'a validée et si elle a été retouchée (`api/erp-repull-messages.ts` : le
+serveur compare le texte envoyé à `agent.brouillon` ou `fil.proposition`,
+le champ `brouillon` du navigateur n'est qu'un indice). La lecture du message (`fil.analyse` : langue, demande, ton,
+urgence) sert au tri de « À répondre » (urgent : problème pendant le séjour,
+puis arrivée sous 24 h ou voyageur sur place) et au libellé de la demande en
+tête de conversation ; aucun appel à l'IA juste pour trier.
+
+**Assistant de réponse** (`src/erp/data/agent-assistant.ts`, actions de
+`POST /api/erp-agent`, gérant ou opérations) : `brouillon` (« Proposer une
+réponse » : même contexte et même décision que l'agent, rien n'est envoyé ;
+proposition écartée si elle contient un code d'accès avant l'heure),
+`traduire` (« Voir en français » sous un message étranger, traduction gardée
+sur le message) et `traduire_texte` (« Traduire en … » : la réponse de
+l'équipe dans la langue du voyageur). Chaque appel compte dans le plafond
+mensuel de l'espace (`agent/etat`, `iaMois`), comme les décisions de l'agent.
+
 **Guides et questions fréquentes** (`src/erp/data/guides.ts`, onglet « Infos
 pour l'agent » : `onglets/GuidesFiche.tsx`) : chaque logement peut avoir des
 guides (vidéo, photo, PDF déposés, 50 Mo au plus, ou lien https : YouTube non
@@ -1130,6 +1264,7 @@ est activé par défaut, sauf le rappel du matin. Un toucher ouvre le bon écran
 | Nouvel avis | Avec la note ; « Avis à lire » sous 4,5 | la réservation |
 | Mise à jour des plateformes en échec | Une fois par jour au plus | Paramètres → Plateformes |
 | Rappel du matin | Arrivées et départs du jour (cron du matin) | l'Accueil |
+| Annonce à l'équipe | Le gérant publie une annonce avec « Prévenir aussi par notification » (une seule fois par annonce, jamais une annonce retirée) | l'Accueil |
 
 Un même message ne donne qu'**une** notification, la plus importante pour
 l'appareil (problème, puis l'agent passe la main, l'agent a répondu, nouveau
@@ -1162,12 +1297,49 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
 - **Appareils** : collection technique `connecteurs` (réservée aux gérants),
   un enregistrement par appareil (`notifications-appareil-…`) et le journal
   des envois (`notifications-journal`, 800 dernières clés). Route :
-  `/api/erp-notifications` (membres gérant ou opérations ; clés : gérant).
+  `/api/erp-notifications` (membres gérant ou opérations ; clés et annonces à l’équipe : gérant).
 - **Limites** : iPhone et iPad avec iOS / iPadOS 16.4 ou plus récent, app
   ajoutée à l'écran d'accueil (Safari seul ne reçoit pas de notifications).
   Les notifications partent quand l'ERP apprend la nouveauté : webhook Repull
   (quasi immédiat, offre Starter), passage de l'agent, ou synchronisation
   (quotidienne, ou « Synchroniser maintenant »).
+
+### Annonces à l'équipe
+
+Un court message du gérant à toute l'équipe de l'espace (premier essai :
+« Bonjour 👋 »). Rien à voir avec l'annonce d'un logement sur Airbnb ou
+Booking (`versionsAnnonce`).
+
+- **Gérant** : Paramètres → Annonces à l'équipe (`/erp/parametres/annonces-equipe`,
+  onglet après Application) : « Nouvelle annonce à l'équipe » (titre, texte,
+  « Prévenir aussi par notification », cochée, proposée seulement quand les
+  notifications marchent sur le serveur), « Publier » ; « Sur l'Accueil de
+  l'équipe » : les annonces publiées, « Retirer » puis « Retirer de
+  l'Accueil ». Tant que l'espace n'a aucune annonce, le formulaire propose
+  « Bonjour 👋 / Bienvenue dans l'app {nom} » au nom de la conciergerie
+  (`nomConciergerie`), à publier en un clic. Une erreur inattendue de la
+  notification propose « Réessayer » (même annonce, jamais deux envois).
+- **Chaque membre** (gérant, opérations, lecture) : une carte en haut de
+  l'Accueil, une ligne par annonce publiée (3 au plus, texte sur 4 lignes
+  et « Lire la suite »), jusqu'à « J'ai lu ». La recherche nomme leur
+  historique « Annonce à l'équipe : … ». La
+  fermeture reste sur l'appareil (localStorage, par espace et par
+  personne) : un membre qui n'est pas gérant n'écrit rien. Un membre qui
+  arrive plus tard voit les annonces encore publiées.
+- **Données** : collection `annoncesEquipe` (`erp.enregistrements`), dans
+  `erp.ecriture_gerant_seulement` : la base refuse toute écriture d'un autre
+  compte. Règles pures : `src/erp/data/annonces-equipe.ts`.
+- **Notification** : « Publier » enregistre l'annonce, puis appelle
+  `POST /api/erp-notifications { action: 'annoncer', id }` (gérant de
+  l'espace de l'en-tête seulement). Le serveur relit l'annonce dans la base,
+  l'envoie aux appareils de l'espace qui acceptent le type « Annonce à
+  l'équipe », clé `annonce-<id>` au journal des envois. Un envoi raté laisse
+  l'annonce publiée et le dit. En démonstration, aucun appel au serveur.
+- **Mise en service** (Supabase → SQL Editor, une fois) : relancer
+  `supabase/erp-espaces.sql` dans sa passe actuelle (`recette = ok`) ; base
+  d'avant les espaces : `supabase/erp-acces-gerants.sql`. Une ligne y est
+  ajoutée (`annoncesEquipe` dans `erp.ecriture_gerant_seulement`). Le code
+  marche sans : seule la garantie de la base manque jusque-là.
 
 ## Espaces (octobre 2026)
 
@@ -1546,6 +1718,63 @@ d'août publié et deux documents ; son espace :
   paiement, message, ce que voit chaque propriétaire) et
   `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
   n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
+
+### Phase 3 : factures mensuelles et identité de la société
+
+- **Calcul** (`src/erp/data/factures-mensuelles.ts`) : une facture par
+  propriétaire et par mois (id `fm-<proprietaireId>-<AAAA-MM>`), tirée de
+  son bilan (`bilanMensuel`) : commission de gestion de chaque logement (taux
+  du mandat de ce propriétaire, base nette = encaissé − commissions des
+  plateformes − ménage), puis un ménage par séjour. Prolongations
+  (`src/erp/data/sejours-consolides.ts`, `consoliderSejours`) : des
+  réservations qui se suivent, même voyageur, même logement = un séjour =
+  un ménage, dans le bilan comme dans la facture. Prorata des nuits d'un
+  mois à l'autre, comme le bilan : commission et ménages de la facture sont
+  ceux du bilan, au centime.
+- **Brouillon** : préparé à partir du 1er pour le mois terminé par le
+  passage planifié de l'agent (`api/erp-agent.ts` →
+  `api/_factures-mensuelles.ts`, une fois par mois et par espace, trace
+  `passagesFacturesMensuelles`, n'ajoute que les factures absentes :
+  `BaseErp.ajouterSiAbsent`), ou à la demande dans le panneau « Espace
+  propriétaire » → Factures (« Préparer », « Facturer un autre mois »).
+  Les lignes calculées ne se modifient pas ; un ajustement s'ajoute avec sa
+  raison. « Ne pas facturer ce mois » écarte le brouillon (gardé, pas recréé,
+  plus proposé en tête : il reste dans « Facturer un autre mois »).
+- **Validation** (`validerAvecLaBase`) : le contenu final est d'abord
+  enregistré sans numéro (émise le jour, échéance à 15 jours ; lignes,
+  montants, identités de la conciergerie et du propriétaire, logements,
+  mentions et TVA figés), puis la BASE attribue le numéro `AAAA-NNNN`
+  (`rpc('numeroter_facture', { p_id })` avec l'en-tête de l'espace : gérant
+  seulement, compteur verrouillé, idempotente), puis la facture est relue.
+  Le navigateur ne numérote jamais en production (démonstration seulement :
+  `validerFacture`) ; la fenêtre montre le « numéro prévu » avant de
+  confirmer. Fonction absente (base pas mise à jour) : « La validation des
+  factures sera disponible après la mise à jour de l’ERP. », aucun numéro.
+  Écriture refusée par le déclencheur (onglet resté ouvert qui renverrait un
+  ancien brouillon) : retirée de la file sans nouvel essai, avertissement,
+  version de la base relue (`synchro.ts`, `refusParLaBase`, codes `LMF01`
+  et `LMF02`). Après validation, seuls changent le partage
+  (`partageeLe`) et le paiement (`statut`, `payeeLe`). Puis
+  « Partager au propriétaire » : la facture entre dans son espace et dans les
+  relances (phase 2). Impression : une seule mise en page,
+  `src/erp/espace-proprietaire/DocumentFacture.tsx`, charte « Ivoire & or »,
+  fond ivoire bord à bord (`.lm-facture`, `erp.css`).
+- **Identité** (Paramètres → Société, `src/erp/data/identite-conciergerie.ts`,
+  élément `societe` de `reglages`) : raison sociale, forme, SIRET, adresse,
+  régime de TVA (franchise en base : « TVA non applicable, art. 293 B du
+  CGI » ; TVA facturée : taux de l'espace, 20 % proposé), n° de TVA, mentions.
+  Label Maison : son identité d'avant, en franchise, par défaut. Un autre
+  espace n'a jamais celle de Label Maison : son SIRET ou son nom sont
+  ignorés à la lecture, refusés à l'enregistrement et à la validation, et
+  jamais montrés au propriétaire (`emetteurDeLabelMaison`) ; sans identité
+  complète, aucune facture ne se valide. Elle donne aussi la ligne légale
+  imprimée en tête des bilans. Propriétaire société (SCI, société) : la
+  facture porte toujours « Pénalités de retard : trois fois le taux
+  d’intérêt légal. Indemnité forfaitaire pour frais de recouvrement : 40 €. »,
+  puis les mentions écrites par le gérant (`mentionsFacture`). Règlement :
+  par virement sur le compte indiqué dans le mandat de gestion (jamais de
+  coordonnées bancaires sur la facture).
+- **Contrôles** : `verifier-factures.ts`.
 
 ### Sécurité des accès extérieurs (audit d'octobre 2026)
 

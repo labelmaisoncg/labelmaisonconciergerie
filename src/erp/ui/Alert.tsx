@@ -8,6 +8,8 @@ export interface AlertProps {
   titre?: ReactNode;
   children?: ReactNode;
   actions?: ReactNode;
+  /** Petit écran : les actions passent sous le texte (un vrai bouton, pas une croix « Fermer »). */
+  actionsDessous?: boolean;
   icone?: ReactNode;
   className?: string;
 }
@@ -35,18 +37,19 @@ const ICONES: Record<Ton, ReactNode> = {
  * page, il a l'arrondi d'une carte ; posé dans une carte, celui d'un bloc
  * (arrondis concentriques).
  */
-export function Alert({ tone = 'info', titre, children, actions, icone, className }: AlertProps) {
+export function Alert({ tone = 'info', titre, children, actions, actionsDessous, icone, className }: AlertProps) {
   return (
     <div
       role={tone === 'danger' || tone === 'alerte' ? 'alert' : 'status'}
-      className={cn('flex items-start gap-3 rounded-xl border px-4 py-3 [.rounded-xl_&]:rounded-lg [&>svg]:mt-0.5 [&>svg]:size-[18px] [&>svg]:shrink-0', STYLES[tone], className)}
+      className={cn('flex items-start gap-x-3 gap-y-2 rounded-xl border px-4 py-3 [.rounded-xl_&]:rounded-lg [&>svg]:mt-0.5 [&>svg]:size-[18px] [&>svg]:shrink-0', actionsDessous && 'flex-wrap sm:flex-nowrap', STYLES[tone], className)}
     >
       {icone ?? ICONES[tone]}
       <div className="min-w-0 flex-1 text-[13.5px] text-(--lm-encre)">
         {titre && <p className="font-semibold">{titre}</p>}
         {children && <div className={cn(titre && 'mt-0.5', 'text-(--lm-encre-2)')}>{children}</div>}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {/* actionsDessous : sous le texte en petit écran, alignées sur lui (icône 18 px + 12 px). */}
+      {actions && <div className={cn('flex shrink-0 items-center gap-2', actionsDessous && 'w-full pl-[30px] sm:w-auto sm:pl-0')}>{actions}</div>}
     </div>
   );
 }

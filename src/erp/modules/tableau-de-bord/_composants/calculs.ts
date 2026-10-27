@@ -5,11 +5,11 @@
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { AUJOURDHUI, ajouterJours, debutMois, nombre } from '../../../data/format';
+import { logementsEnLocation } from '../../../data/occupation';
 import {
   adr,
   fenetreJours,
   fenetreMois,
-  logementsActifs,
   noteMoyenne,
   revenuNet,
   tauxOccupation,
@@ -39,8 +39,10 @@ export function fenetresHorizon(h: CleHorizon): { courante: Fenetre; precedente:
 
 /** Les quatre repères d'un channel manager (occupation, revenu, prix moyen par nuit, note). */
 export interface MesuresPeriode {
-  /** Nuits vendues ÷ nuits des logements actifs (0..1). */
+  /** Nuits vendues ÷ nuits des logements comptés (0..1) : actifs, ou réservés sur la période (data/occupation). */
   occupation: number;
+  /** Logements comptés dans l'occupation (0 : pas d'occupation à montrer). */
+  logements: number;
   /** Versé par les plateformes (brut − commission), en centimes. */
   revenu: number;
   /** Prix moyen par nuit vendue, hors ménage, en centimes. */
@@ -49,8 +51,10 @@ export interface MesuresPeriode {
 }
 
 export function mesurer(d: ErpDonnees, f: Fenetre): MesuresPeriode {
+  const comptes = logementsEnLocation(d.logements, d.reservations, f);
   return {
-    occupation: tauxOccupation(d.reservations, logementsActifs(d.logements), f),
+    occupation: tauxOccupation(d.reservations, comptes, f),
+    logements: comptes.length,
     revenu: revenuNet(d.reservations, f),
     adr: adr(d.reservations, f),
     note: noteMoyenne(d.reservations, f),
@@ -117,14 +121,14 @@ export interface PointHebdo {
  * de 7 en 7 jours.
  */
 export function serieHebdo(d: ErpDonnees, avant = 8, apres = 8): PointHebdo[] {
-  const actifs = logementsActifs(d.logements);
   const res: PointHebdo[] = [];
   for (let i = -avant; i < apres; i++) {
     const debut = ajouterJours(AUJOURDHUI, i * 7);
+    const f = { debut, fin: ajouterJours(debut, 7) };
     res.push({
       debut,
       libelle: format(parseISO(debut), 'd MMM', { locale: fr }).replace('.', ''),
-      occupation: tauxOccupation(d.reservations, actifs, { debut, fin: ajouterJours(debut, 7) }),
+      occupation: tauxOccupation(d.reservations, logementsEnLocation(d.logements, d.reservations, f), f),
       aVenir: i >= 0,
     });
   }

@@ -4,8 +4,10 @@
  */
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { attendEquipe } from '../../../data/attente-equipe';
 import { AUJOURDHUI, ajouterJours, dateJour, ecartJours, heure, jourMois, pluriel } from '../../../data/format';
-import type { FilMessages, Logement, RaisonEscalade, Reservation } from '../../../data/types';
+import { PAR_MESSAGE_AUTO } from '../../../data/messages-programmes';
+import type { FilMessages, Logement, Message, RaisonEscalade, Reservation } from '../../../data/types';
 
 /* ----------------------------------------------------------- codes d'accès */
 
@@ -102,13 +104,10 @@ export const FILTRES: { cle: FiltreFil; libelle: string }[] = [
 
 /**
  * Attend une réponse de l'équipe : transmise par l'agent, ou sans réponse de
- * personne. « Pas besoin de répondre » la termine ; elle revient d'elle-même
- * quand le voyageur réécrit (synchronisation). Même règle que le compteur du
- * menu et que « À faire » sur l'Accueil.
+ * personne. Même règle que le compteur du menu, « À faire » sur l'Accueil et
+ * les messages automatiques (une seule définition : data/attente-equipe.ts).
  */
-export function attendEquipe(fil: FilMessages): boolean {
-  return fil.statut !== 'clos' && (fil.statut === 'escalade' || fil.traitePar === 'en_attente');
-}
+export { attendEquipe };
 
 export function correspond(fil: FilMessages, filtre: FiltreFil): boolean {
   switch (filtre) {
@@ -119,6 +118,29 @@ export function correspond(fil: FilMessages, filtre: FiltreFil): boolean {
     default:
       return true;
   }
+}
+
+/**
+ * Qui a écrit un message de notre côté, en clair : sous la bulle
+ * (« signature ») ou devant l'aperçu de la liste (« apercu »). Un message
+ * automatique (passage-programmes.ts, envoi.par = PAR_MESSAGE_AUTO) n'est pas
+ * signé « Équipe ». Rien pour un message du voyageur.
+ */
+export function auteurAffiche(m: Pick<Message, 'auteur' | 'envoi'>, forme: 'signature' | 'apercu' = 'signature'): string | null {
+  if (m.auteur === 'agent') return forme === 'signature' ? 'Réponse de votre agent' : 'Votre agent';
+  if (m.auteur !== 'hote') return null;
+  if (m.envoi?.par === PAR_MESSAGE_AUTO) return 'Message automatique';
+  return forme === 'signature' ? 'Équipe' : 'Vous';
+}
+
+/**
+ * Série de bulles : des messages qui se suivent et sont signés pareil. Un
+ * message automatique après un message de l'équipe ouvre une nouvelle série
+ * (sinon il porterait la signature « Équipe »).
+ */
+export function memeSerie(a: Pick<Message, 'auteur' | 'envoi'> | undefined, b: Pick<Message, 'auteur' | 'envoi'> | undefined): boolean {
+  if (!a || !b) return false;
+  return (auteurAffiche(a) ?? a.auteur) === (auteurAffiche(b) ?? b.auteur);
 }
 
 /** Le dernier message vient du voyageur : une réponse est attendue. */
