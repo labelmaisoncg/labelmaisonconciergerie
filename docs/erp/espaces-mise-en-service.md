@@ -278,6 +278,10 @@ Une requête à la fois.
 - **Choix de l'espace à l'écran** : pas encore. Une adresse membre de
   plusieurs espaces ouvre le dernier utilisé sur l'appareil (Label Maison
   d'abord). D'où une adresse par conciergerie.
+- **Une adresse déjà active dans un espace ne rejoint pas un second espace**
+  par invitation : à sa connexion, le code est ignoré (rien n'est fermé ni
+  lié) et sa ligne reste « pas encore activée » dans l'autre équipe.
+  Invitez une autre adresse.
 - **Identité légale** : dans l'ERP d'une autre conciergerie, les documents
   faits côté gérant (contrat de mandat, relevés et factures de Finance,
   Conformité) portent encore la raison sociale, le SIRET et l'adresse de
