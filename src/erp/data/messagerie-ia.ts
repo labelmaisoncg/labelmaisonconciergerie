@@ -141,6 +141,8 @@ const ARGENT = new RegExp(
     '\\bon us\\b', 'on the house', '[àa] nos frais',
     '%', 'moiti[ée]', '\\bhalf\\b', '\\bmitad\\b', '\\bmet[àa]\\b', 'h[äa]lfte',
     '\\brendr(e|ons|ez|ai|a|ont)\\b', '\\brendu(e|s|es)?\\b', '\\bgive\\b.{0,40}\\bback\\b', '\\bsettle',
+    // Suppléments payants (cahier B7) : jamais vendus par l'agent seul (« supplémentaire » n'en est pas un).
+    'suppl[ée]ments?(?!aires?)', 'surco[ûu]t', 'surcharge', '\\bupsell', '\\ben sus\\b', 'zuschlag', 'aufpreis', 'suplemento', 'supplemento', 'toeslag',
     '€', '\\$', '£', '\\bCHF\\b', 'dollar', '\\beuros?\\b', '\\bEUR\\b',
   ].join('|'),
   'i',
@@ -226,6 +228,46 @@ export const reponseAEcarter = (texteReponse: string): boolean => {
   const s = reponseSensible(texteReponse);
   return !!s && s.raison !== 'litige';
 };
+
+/* ========================================================= suppléments */
+
+/**
+ * Suppléments (cahier B7) : arrivée plus tôt, départ plus tard, ménage en
+ * cours de séjour, navette. Ce sont des questions d'argent : l'agent ne les
+ * vend jamais seul, il prépare la réponse et l'équipe la valide (verdictEnvoi).
+ */
+export const INTENTIONS_SUPPLEMENTS: IntentionMessage[] = ['arrivee_anticipee', 'depart_tardif'];
+export type SupplementDemande = 'arrivee_anticipee' | 'depart_tardif' | 'menage_supplementaire' | 'navette';
+
+/** Ménage pendant le séjour, demandé par le voyageur. */
+const DEMANDE_MENAGE =
+  /m[ée]nage (en cours|pendant|suppl[ée]mentaire|en plus|de plus|au milieu)|nettoyage (en cours|pendant)|extra clean|mid.?stay clean|clean(ing)? during|changer (les )?draps|draps propres|change (the )?(sheets|towels)|fresh (sheets|towels)/i;
+/** Navette (gare, aéroport), demandée par le voyageur. */
+const DEMANDE_NAVETTE = /navette|shuttle|transfert (depuis|vers|de|du|à|a)|pick (us|me) up|pick-?up (from|at|service)|venir (nous|me) chercher|(chercher|r[ée]cup[ée]rer) (nous|me)?.{0,25}(gare|a[ée]roport)|airport (transfer|pick)/i;
+
+/** Supplément demandé dans un message du voyageur, sans IA (undefined : aucun). */
+export function supplementDansTexte(texte: string): SupplementDemande | undefined {
+  const t = nettoyerTexte(texte).replace(/[’`´]/g, "'");
+  if (!t.trim()) return undefined;
+  for (const [cle, r] of DEMANDES) if ((cle === 'arrivee_anticipee' || cle === 'depart_tardif') && r.test(t)) return cle;
+  if (DEMANDE_MENAGE.test(t)) return 'menage_supplementaire';
+  if (DEMANDE_NAVETTE.test(t)) return 'navette';
+  return undefined;
+}
+
+/** Une réponse proposée qui offre ou accorde un supplément (heure en plus, ménage, navette, « supplément »). */
+const SUPPLEMENT_REPONSE =
+  /suppl[ée]ments?(?!aires?)|early check.?in|late check.?out|arriv\w* plus t[ôo]t|part\w* plus tard|d[ée]part (plus )?tardif|check.?in (earlier|early)|check.?out (later|late)|navette|shuttle|m[ée]nage (suppl[ée]mentaire|en plus|en cours|pendant)/i;
+
+/**
+ * Motif « à valider » d'un supplément : demandé par le voyageur (demande lue
+ * par l'IA, ou ses mots) ou offert par la réponse proposée. null : aucun.
+ */
+export function supplementAValider(d: Pick<DecisionNotee, 'intention' | 'texte' | 'texteFr'>, recents: readonly string[]): string | null {
+  const demande = (d.intention && INTENTIONS_SUPPLEMENTS.includes(d.intention)) || recents.some((m) => !!supplementDansTexte(m));
+  const offre = SUPPLEMENT_REPONSE.test(nettoyerTexte(`${d.texte ?? ''}\n${d.texteFr ?? ''}`));
+  return demande || offre ? 'Arrivée plus tôt, départ plus tard ou autre supplément : c’est une question d’argent, à vous de valider.' : null;
+}
 
 /** Langues que ces garde-fous savent relire : seules elles permettent un envoi seul. */
 export const LANGUES_RELUES = ['fr', 'en'];
@@ -337,6 +379,7 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
   const arriveeDepart = 'Les questions sur l’arrivée et le départ (horaires, accès, parking)';
   const infos = 'Le wifi, les équipements, les règles de la maison';
   const argent = 'Il ne promet jamais d’argent, même un petit geste.';
+  const supplements = 'Il ne vend jamais seul un supplément (arrivée plus tôt, départ plus tard, ménage, navette) : il prépare la réponse, vous la validez.';
   if (niveau === 'valider') {
     return {
       titre: 'Votre agent prépare les réponses',
@@ -352,6 +395,7 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
         'Dans le doute, il vous passe toujours la main.',
         fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'sa réponse le dit.'),
         argent,
+        supplements,
         'Il rédige dans la langue du voyageur si elle est cochée, sinon en anglais.',
         'Il ne prépare les codes d’accès que pour les voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
       ],
@@ -374,6 +418,7 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
       fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'il le dit au voyageur.'),
       'Quand il vous passe la main, il peut prévenir le voyageur par un court message, toujours le même : « l’équipe revient vers vous rapidement ».',
       argent,
+      supplements,
       'Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.',
       'Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
       'Il ne répond seul qu’en français ou en anglais ; dans une autre langue, il prépare la réponse.',
@@ -504,6 +549,9 @@ export function verdictEnvoi(d: DecisionNotee, p: PolitiqueEnvoi, voyageur: stri
   if (sensible) return { verdict: 'transmettre', ...sensible };
   const reponse = reponseSensible([d.texte, d.texteFr].filter(Boolean).join('\n'));
   if (reponse) return { verdict: 'transmettre', ...reponse };
+  // Supplément (arrivée plus tôt, départ plus tard, ménage, navette) : jamais vendu seul, quel que soit le niveau.
+  const supplement = supplementAValider(d, recents);
+  if (supplement) return { verdict: 'valider', motif: supplement };
   if (!p.envoiAuto) return { verdict: 'valider', motif: 'Vous validez chaque réponse.' };
   const texteRecent = recents.join('\n');
   const texte = d.texte ?? '';

@@ -13,6 +13,7 @@ import { Button, Drawer, Field, IconButton, Select, Textarea } from '../../../ui
 import { AUJOURDHUI, dateJour, ecartJours, pluriel } from '../../../data/format';
 import {
   HEURES_ENVOI,
+  JOURS_AVANT_SUPPLEMENTS,
   LIBELLES_DECLENCHEURS,
   VARIABLES,
   codesAutorises,
@@ -26,8 +27,9 @@ import {
   texteStocke,
   variablesDuTexte,
 } from '../../../data/messages-programmes';
-import type { FilMessages, Logement, Reservation } from '../../../data/types';
+import type { FilMessages, Logement, Mission, Reservation } from '../../../data/types';
 import type { DeclencheurMessage, ModeleLogement, ModeleProgramme } from '../../../data/types-programmes';
+import { aDesSupplements, texteSupplementsSejour, type ReglagesSupplements } from '../../../data/supplements';
 
 export interface EditeurMessageAutoProps {
   declencheur: DeclencheurMessage | null;
@@ -35,6 +37,9 @@ export interface EditeurMessageAutoProps {
   reservations: Reservation[];
   logements: Logement[];
   fils: FilMessages[];
+  /** Ménages prévus et suppléments réglés : aperçu de « Proposer les suppléments ». */
+  missions?: Mission[];
+  supplements?: ReglagesSupplements;
   signature: string;
   modifiable: boolean;
   onFermer: () => void;
@@ -71,7 +76,16 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
   const zone = useRef<HTMLTextAreaElement>(null);
 
   // Séjours qui recevront vraiment le message (Airbnb, Booking.com, conversation de plateforme).
-  const sejours = useMemo(() => (k ? sejoursPourApercu(p.reservations, k, AUJOURDHUI, p.fils).slice(0, 15) : []), [k, p.reservations, p.fils]);
+  const sejours = useMemo(
+    () =>
+      k
+        ? sejoursPourApercu(p.reservations, k, AUJOURDHUI, p.fils)
+            // « Proposer les suppléments » : seulement les logements qui en proposent.
+            .filter((r) => k !== 'proposer_supplements' || aDesSupplements(p.supplements, r.logementId))
+            .slice(0, 15)
+        : [],
+    [k, p.reservations, p.fils, p.supplements],
+  );
   const [sejourId, setSejourId] = useState<string>(() => sejours[0]?.id ?? '');
   const sejour = sejours.find((r) => r.id === sejourId) ?? sejours[0];
   const logement = sejour ? p.logements.find((l) => l.id === sejour.logementId) : undefined;
@@ -81,20 +95,32 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
     if (!sejour || !k) return null;
     const fil = filDuSejour(p.fils, sejour.id);
     // L'aperçu se place au moment de l'envoi (la veille de l'arrivée pour les infos d'arrivée).
-    const jour = k === 'veille_arrivee' ? addJour(sejour.arrivee, -1) : k === 'jour_depart' ? sejour.depart : k === 'demande_avis' ? addJour(sejour.depart, 1) : AUJOURDHUI;
+    const jour =
+      k === 'proposer_supplements'
+        ? addJour(sejour.arrivee, -JOURS_AVANT_SUPPLEMENTS)
+        : k === 'veille_arrivee'
+          ? addJour(sejour.arrivee, -1)
+          : k === 'jour_depart'
+            ? sejour.depart
+            : k === 'demande_avis'
+              ? addJour(sejour.depart, 1)
+              : AUJOURDHUI;
     const codes = codesAutorises(sejour, fil?.logementId, jour);
     const guide = guidePourMessage(logement?.fiche?.guides, codes);
     const lien = guide ? (guide.media.url?.trim() || 'lien du guide') : undefined;
     const propre = propres[sejour.logementId];
     const modele = texteStocke(propre?.texte?.trim() ? propre.texte : texte);
     const variables = variablesDuTexte(modele);
+    const supplements = variables.includes('supplements') || k === 'proposer_supplements' ? texteSupplementsSejour(p.supplements, sejour, { reservations: p.reservations, missions: p.missions }, logement?.fiche, jour) : undefined;
     return {
-      ...rendreMessage(modele, { reservation: sejour, logement, fil, signature: p.signature, lienGuide: lien, aujourdhui: jour }),
+      ...rendreMessage(modele, { reservation: sejour, logement, fil, signature: p.signature, lienGuide: lien, aujourdhui: jour, supplements }),
       jour,
       coupe: propre?.actif === false,
       demandeCodes: variables.includes('acces') || variables.includes('wifi'),
+      // Rien de possible d'après le planning : le serveur ne l'envoie pas (RAISONS.sansSupplement).
+      sansSupplement: k === 'proposer_supplements' && !supplements,
     };
-  }, [sejour, k, p.fils, p.signature, logement, propres, texte]);
+  }, [sejour, k, p.fils, p.signature, p.supplements, p.reservations, p.missions, logement, propres, texte]);
 
   // Code ou wifi écrit en toutes lettres, pour un moment qui part souvent hors des 48 h (confirmation,
   // départ, avis) : prévenu quel que soit le séjour de l'aperçu.
@@ -176,7 +202,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             <div className="mt-2.5">
               <p className="mb-1.5 text-[12px] text-(--lm-encre-3)">Touchez pour ajouter :</p>
               <div className="flex flex-wrap gap-1.5">
-                {VARIABLES.map((v) => (
+                {VARIABLES.filter((v) => !v.moments || v.moments.includes(k)).map((v) => (
                   <Pastille key={v.cle} libelle={v.libelle} sensible={v.sensible} onClick={() => inserer(v.libelle)} />
                 ))}
               </div>
@@ -203,7 +229,11 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             )}
           </div>
           {!sejour || !apercu ? (
-            <p className="text-[13px] text-(--lm-encre-2)">Pas de séjour à venir sur Airbnb ou Booking.com pour l’aperçu.</p>
+            <p className="text-[13px] text-(--lm-encre-2)">
+              {k === 'proposer_supplements' && !p.logements.some((l) => aDesSupplements(p.supplements, l.id))
+                ? 'Aucun logement ne propose de supplément : réglez-les dans la fiche du logement.'
+                : 'Pas de séjour à venir sur Airbnb ou Booking.com pour l’aperçu.'}
+            </p>
           ) : (
             <div>
               <p className="mb-2 text-[12px] text-(--lm-encre-3)">
@@ -211,6 +241,8 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
               </p>
               {apercu.coupe ? (
                 <p className="text-[13px] text-(--lm-encre-2)">Pas de message pour ce logement.</p>
+              ) : apercu.sansSupplement ? (
+                <p className="text-[13px] text-(--lm-encre-2)">Pour ce séjour, le planning ne laisse aucun supplément possible : rien ne partira.</p>
               ) : (
                 <div className="flex justify-end">
                   <div className="max-w-[92%] rounded-[18px] rounded-br-md bg-(--lm-brun) px-3.5 py-2 text-[14px] leading-snug whitespace-pre-line text-white">{apercu.texte}</div>

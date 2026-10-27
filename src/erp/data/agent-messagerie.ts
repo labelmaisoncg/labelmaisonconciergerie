@@ -523,6 +523,8 @@ export function construireContexte(
     `- Hors fiche (réponse absente de la fiche) : ${t.horsFiche ? 'action "transmettre", raison "hors_fiche", avec un court message d’attente' : 'réponds poliment que tu n’as pas cette information, sans rien inventer'}`,
     `- Exceptions : ${t.derogations ? 'action "transmettre", raison "exception", avec un court message d’attente' : 'réponds selon la fiche (horaires et règles), sans accorder d’exception'}`,
     t.sejoursLongs ? `- Demande de séjour de ${t.sejoursLongsNuits} nuits ou plus : action "transmettre", raison "exception".` : '',
+    // Suppléments (cahier B7) : l'équipe les propose avec le prix réglé ; l'agent ne vend rien.
+    '- Arrivée plus tôt, départ plus tard, ménage pendant le séjour, navette : n’accorde rien, ne donne aucun prix, n’écris jamais « supplément » ; dis que l’équipe vérifie le planning et revient vers le voyageur.',
     '',
     `LOGEMENT : ${logement?.nom ?? 'inconnu'}${logement?.ville ? ` (${logement.ville})` : ''}`,
     'FICHE DU LOGEMENT (seules informations sûres)',

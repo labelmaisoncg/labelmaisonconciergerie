@@ -229,14 +229,15 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 -- et état des messages automatiques, état de l'agent et de la
 -- synchronisation, passages des factures mensuelles, état des prix) et ce
 -- que seul un gérant change (factures, réglages des prix, modèles des
--- messages automatiques, identité de la société, numérotation des factures).
+-- messages automatiques, identité de la société, numérotation des factures,
+-- suppléments proposés aux voyageurs).
 -- Même règle que dans erp-espaces.sql (par espace).
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
   select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
-      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'))
+      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'))
 $$;
 revoke all on function erp.ecriture_gerant_seulement(text, text) from public, anon;
 grant execute on function erp.ecriture_gerant_seulement(text, text) to authenticated;

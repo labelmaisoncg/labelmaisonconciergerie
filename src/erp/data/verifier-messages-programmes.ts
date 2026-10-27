@@ -525,7 +525,8 @@ function libelles() {
   section('Variables : libellés à l’écran, clés en base');
   const affiches = DECLENCHEURS.map((k) => texteAffiche(TEXTES_DEFAUT[k]));
   verifier(affiches.every((t) => !/\{[a-z_]+\}/.test(t)), 'textes par défaut : aucun nom technique à l’écran');
-  verifier(affiches[1].includes('{Heure d’arrivée}') && affiches[1].includes('{Prénom}') && affiches[1].includes('{Lien du guide}'), 'libellés des pastilles (« {Prénom} », « {Heure d’arrivée} »)');
+  const veille = affiches[DECLENCHEURS.indexOf('veille_arrivee')];
+  verifier(veille.includes('{Heure d’arrivée}') && veille.includes('{Prénom}') && veille.includes('{Lien du guide}'), 'libellés des pastilles (« {Prénom} », « {Heure d’arrivée} »)');
   verifier(DECLENCHEURS.every((k) => texteStocke(texteAffiche(TEXTES_DEFAUT[k])) === TEXTES_DEFAUT[k]), 'aller-retour écran → base sans perte');
   verifier(VARIABLES.every((v) => texteStocke(texteAffiche(`{${v.cle}}`)) === `{${v.cle}}`), 'aller-retour pour chaque variable');
   verifier(texteStocke('{Date d\'arrivée} et {DATE D’ARRIVEE} et {prenom}') === '{date_arrivee} et {date_arrivee} et {prenom}', 'apostrophe droite, majuscules, ancienne clé : acceptés');

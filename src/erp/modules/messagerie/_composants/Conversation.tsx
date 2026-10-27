@@ -11,6 +11,11 @@
  * par l'agent (« à valider ») y est déjà ; « Traduire en … » passe le texte
  * de l'équipe dans la langue du voyageur ; « Voir en français » sous un
  * message étranger. L'envoi reste le bouton habituel.
+ *
+ * Suppléments (cahier B7) : quand le voyageur demande une arrivée plus tôt
+ * ou un départ plus tard, la proposition prête (prix réglé, planning
+ * vérifié) s'insère dans la zone de réponse ; les suppléments du logement
+ * sont aussi dans la rangée des modèles. Rien n'est encaissé par l'ERP.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
@@ -30,6 +35,8 @@ import { GABARITS, LIBELLE_MOTIF, attendEquipe, auteurAffiche, completudeFiche, 
 import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
+import { PropositionSupplement, usePropositionsSupplements } from './PropositionSupplement';
+import { LIBELLES_SUPPLEMENTS } from '../../../data/supplements';
 
 /** Réponse de /api/erp-repull-messages. */
 interface ReponseEnvoi {
@@ -60,7 +67,8 @@ interface Props {
  */
 type Aide =
   | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string }
-  | { genre: 'traduction'; nom: string };
+  | { genre: 'traduction'; nom: string }
+  | { genre: 'supplement' };
 
 /** « Voir en français » d'un message : affiché ou non, texte, chargement. */
 interface Traduction {
@@ -124,6 +132,10 @@ export function Conversation({ fil, logement, reservation }: Props) {
   const intention = intentionFil(fil);
   const libelleIntention = intention ? LIBELLE_INTENTION[intention] : '';
   const assistant = !lectureSeule && !!dernierVoyageur(fil);
+  // Suppléments : la demande du voyageur (s'il attend une réponse) et les propositions prêtes du logement.
+  const { demande, propositions } = usePropositionsSupplements(fil, logement, reservation, prenom, signature);
+  const propositionDemandee = demande ? propositions.find((x) => x.cle === demande) : undefined;
+  const supplementsProposes = propositions.filter((x) => x.reglage.actif && x.texte && x.disponibilite.statut !== 'impossible');
 
   // Une réponse préparée par l'agent arrive pendant qu'on regarde : elle remplit la zone si elle est vide.
   useEffect(() => {
@@ -338,6 +350,16 @@ export function Conversation({ fil, logement, reservation }: Props) {
     zone.current?.focus();
   };
 
+  /** Proposition de supplément : elle remplace le texte en cours (« Rétablir mon texte »), l'équipe relit et envoie. */
+  const insererSupplement = (texte: string) => {
+    const actuel = brouillon.trim();
+    setPrecedent(actuel && actuel !== texte.trim() ? brouillon : null);
+    setBrouillon(texte);
+    setAide({ genre: 'supplement' });
+    setVoirFr(false);
+    zone.current?.focus();
+  };
+
   // Guides du logement : « Titre : lien » ; un fichier déposé part en lien signé de 7 jours.
   const guides = (logement?.fiche.guides ?? []).filter((g) => guideEnvoyable(g) || g.media.fichier?.startsWith('demo://'));
   const [guideEnCours, setGuideEnCours] = useState<string | null>(null);
@@ -518,6 +540,10 @@ export function Conversation({ fil, logement, reservation }: Props) {
             </div>
           )}
 
+          {propositionDemandee && !lectureSeule && logement && (
+            <PropositionSupplement proposition={propositionDemandee} logementId={logement.id} onInserer={insererSupplement} />
+          )}
+
           <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Aide à la réponse, modèles et guides">
             {assistant && (
               <>
@@ -532,7 +558,9 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   {iaEnCours === 'proposition' ? 'Préparation…' : 'Proposer une réponse'}
                 </button>
                 {/* Seulement quand l'équipe a écrit sa réponse (pas sur une proposition de l'agent, déjà dans la langue du voyageur). */}
-                {nomLangueVoyageur && (iaEnCours === 'traduction' || (!!brouillon.trim() && !(aide?.genre === 'proposition' && brouillon.trim() === aide.texte.trim()))) && (
+                {nomLangueVoyageur &&
+                  (iaEnCours === 'traduction' ||
+                    (!!brouillon.trim() && !(aide?.genre === 'proposition' && brouillon.trim() === aide.texte.trim()) && !(aide?.genre === 'supplement' && langue === 'en'))) && (
                   <button
                     type="button"
                     disabled={!!iaEnCours}
@@ -593,6 +621,23 @@ export function Conversation({ fil, logement, reservation }: Props) {
                 })}
               </>
             )}
+            {!lectureSeule && supplementsProposes.length > 0 && (
+              <>
+                <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-(--lm-bord-fort)" />
+                <span className="shrink-0 text-[12px] text-(--lm-encre-3)">Suppléments</span>
+                {supplementsProposes.map((x) => (
+                  <button
+                    key={x.cle}
+                    type="button"
+                    onClick={() => insererSupplement(x.texte!)}
+                    title={`Proposer « ${LIBELLES_SUPPLEMENTS[x.cle].titre} » : ${x.disponibilite.constats.join(' ') || 'prix réglé pour ce logement'}`}
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre)"
+                  >
+                    {LIBELLES_SUPPLEMENTS[x.cle].titre}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
 
           {aide && brouillon.trim() && (
@@ -602,9 +647,11 @@ export function Conversation({ fil, logement, reservation }: Props) {
                 <span className="py-1.5 text-(--lm-encre)">
                   {aide.genre === 'traduction'
                     ? `Traduit en ${aide.nom} : relisez, puis envoyez.`
-                    : aide.source === 'agent'
-                      ? 'Préparée par votre agent : relisez, puis envoyez.'
-                      : 'Proposée par votre agent : relisez, puis envoyez.'}
+                    : aide.genre === 'supplement'
+                      ? 'Proposition de supplément : relisez, puis envoyez. L’ERP n’encaisse rien.'
+                      : aide.source === 'agent'
+                        ? 'Préparée par votre agent : relisez, puis envoyez.'
+                        : 'Proposée par votre agent : relisez, puis envoyez.'}
                 </span>
                 {aide.genre === 'proposition' && aide.texteFr && (
                   <button type="button" onClick={() => setVoirFr((v) => !v)} aria-expanded={voirFr} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">

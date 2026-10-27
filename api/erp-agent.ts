@@ -28,6 +28,7 @@ import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { ReglagesAgent } from '../src/erp/data/types';
 import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { ACTIONS_ASSISTANT, repondreAssistant } from './_erp-agent-assistant.js';
+import { ACTIONS_ANNONCES, repondreAnnonces } from './_erp-annonces.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { facturesMensuellesDuJour } from './_factures-mensuelles.js';
@@ -114,6 +115,7 @@ export default async function handler(req: any, res: any) {
     return repondreAssistant(res, action, corps, espace, email);
   }
 
+  if (ACTIONS_ANNONCES.has(action)) return repondreAnnonces(res, !planifie && req.method === 'POST', corps, espace, email);
   if (action !== 'lancer' || (!planifie && req.method !== 'POST')) return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
   const manque = variableManquante(c);
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
