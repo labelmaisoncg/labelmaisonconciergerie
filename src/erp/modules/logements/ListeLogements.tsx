@@ -8,6 +8,7 @@ import type { StatutLogement } from '../../data/types';
 import { CarteLogement } from './_composants/CarteLogement';
 import { statsLogement } from './_composants/stats';
 import { EditionLogement } from './EditionLogement';
+import { OngletsLogements } from './_composants/OngletsLogements';
 
 const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 
@@ -48,6 +49,7 @@ export default function ListeLogements() {
           )
         }
       />
+      {d.logements.length > 0 && <OngletsLogements />}
 
       {d.logements.length > 0 && (
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">

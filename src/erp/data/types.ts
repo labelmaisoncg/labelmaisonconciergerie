@@ -329,6 +329,8 @@ export interface Reservation {
   fraisMenageCentimes: Centimes;
   noteVoyageur?: number;
   commentaireVoyageur?: string;
+  /** Lecture de l'avis par l'IA (« Préparer une réponse ») : affine l'analyse, src/erp/data/avis.ts. */
+  lectureAvis?: LectureAvis;
   /** @deprecated Ancienne référence Channex (avant Repull) : lue en secours pour les anciennes lignes. */
   channexBookingId?: string;
   /** Réservation importée de Repull (synchronisation automatique). */
@@ -368,6 +370,19 @@ export type IntentionMessage =
   | 'autre';
 
 export type SentimentMessage = 'positif' | 'neutre' | 'negatif';
+
+/**
+ * Lecture d'un avis par l'IA, gardée sur la réservation : son sentiment, et
+ * le sens des thèmes que l'analyse par mots-clés avait déjà repérés (jamais
+ * un thème de plus). Ne vaut que pour le texte public lu (`empreinte`).
+ */
+export interface LectureAvis {
+  empreinte: string;
+  sentiment: SentimentMessage;
+  /** Clés de THEMES_AVIS (src/erp/data/avis.ts). */
+  themes: { theme: string; sentiment: SentimentMessage }[];
+  le: Horodatage;
+}
 
 /**
  * Lecture du dernier message du voyageur par l'IA (passage de l'agent ou
