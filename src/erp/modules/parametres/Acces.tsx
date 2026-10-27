@@ -912,6 +912,8 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
       ...(a.motif?.trim() ? { motif: a.motif.trim() } : { motif: undefined }),
       creeLe: a.creeLe ?? horodatageMaintenant(),
       par: a.par ?? d.utilisateur.nom,
+      // Enregistrée par le gérant : elle devient la sienne, un pôle ne peut plus la défaire.
+      parMembreId: undefined,
     };
     const probleme = verifierAbsence(propre, d.donnees.absences);
     if (probleme) return setErreur(probleme);
