@@ -56,18 +56,21 @@ export default async function handler(req: any, res: any) {
   let espace: string | undefined;
   let email = '';
   if (planifie) {
-    // App « Opérations » : remplacements qui commencent, contrôles qualité du jour.
-    // Au premier passage de l'agent à partir de 7 h à Paris (rien avant, même
-    // le réveil de minuit l'été) ; borné à 8 s, jamais bloquant.
-    const operations = await notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({}));
+    // Trois travaux indépendants, lancés ensemble (8 s au plus en tout, jamais bloquants),
+    // pour laisser à l'agent des voyageurs l'essentiel du temps du passage :
+    // - app « Opérations » : remplacements qui commencent, contrôles qualité du jour, au
+    //   premier passage à partir de 7 h à Paris (rien avant, même le réveil de minuit l'été) ;
+    // - prix conseillés (un calcul et une notification par jour, à partir de 8 h) et anomalies
+    //   graves : lecture de la base seulement, aucun prix n'est jamais envoyé aux plateformes ;
+    // - factures mensuelles des propriétaires : brouillons du mois terminé, à partir du 1er
+    //   (une fois par mois et par espace ; ensuite une seule lecture).
+    const [operations, prix, factures] = await Promise.all([
+      notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({})),
+      passagePrixDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
+      facturesMensuellesDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
+    ]);
     if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
-    // Prix conseillés (un calcul et une notification par jour, à partir de 8 h) et anomalies graves.
-    // Lecture de la base seulement : aucun prix n'est jamais envoyé aux plateformes. Borné à 6 s.
-    const prix = await passagePrixDuJour({ limite: Date.now() + 6_000 }).catch(() => ({}));
     if (Object.keys(prix).length) console.log('[erp-agent] prix', JSON.stringify(prix));
-    // Factures mensuelles des propriétaires : brouillons du mois terminé, à partir du 1er
-    // (une fois par mois et par espace ; ensuite une seule lecture) ; borné à 6 s, jamais bloquant.
-    const factures = await facturesMensuellesDuJour({ limite: Date.now() + 6_000 }).catch(() => ({}));
     if (Object.keys(factures).length) console.log('[erp-agent] factures', JSON.stringify(factures));
   }
   if (!planifie) {
