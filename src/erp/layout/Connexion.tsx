@@ -202,7 +202,6 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
   const [confirmation, setConfirmation] = useState('');
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
-  const [fait, setFait] = useState(false);
 
   const valider = async (e: FormEvent) => {
     e.preventDefault();
@@ -213,19 +212,10 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
     const r = await changerMotDePasse(motDePasse);
     setEnCours(false);
     if (!r.ok) return setErreur(r.erreur);
-    setFait(true);
+    // « Enregistrer et ouvrir l’ERP » : on ouvre directement, comme la page d'accès.
+    onFini();
   };
 
-  if (fait) {
-    return (
-      <Cadre titre="Mot de passe modifié" icone={<KeyRound />}>
-        <Alert tone="succes">Votre nouveau mot de passe est enregistré.</Alert>
-        <Button variant="primary" size="lg" className="mt-5 w-full" onClick={onFini}>
-          Ouvrir l’ERP
-        </Button>
-      </Cadre>
-    );
-  }
 
   return (
     <Cadre titre="Nouveau mot de passe" sousTitre="Choisissez votre mot de passe : 8 caractères au moins." icone={<KeyRound />}>
