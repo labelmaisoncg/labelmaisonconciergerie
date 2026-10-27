@@ -831,7 +831,7 @@ async function principal() {
     `textes de l’annonce nettoyés, champs vides écartés (${JSON.stringify(t101)})`,
   );
   const prop = base.get<Proprietaire>('proprietaires', ID_PROPRIETAIRE_A_RENSEIGNER);
-  verifier(prop?.nom === 'Propriétaire à renseigner' && prop.contact.email === '' && prop.ibanMasque === '', 'fiche propriétaire d’attente, sans donnée inventée');
+  verifier(prop?.nom === 'Propriétaire à renseigner' && prop.contact.email === '' && !prop.ibanMasque, 'fiche propriétaire d’attente, sans donnée inventée');
 
   const r5001 = base.get<Reservation>('reservations', 'repull-5001')!;
   verifier(r5001.logementId === 'repull-101' && r5001.canal === 'airbnb' && r5001.nuits === 3, '5001 : logement, canal, nuits');

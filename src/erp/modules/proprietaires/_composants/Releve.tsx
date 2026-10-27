@@ -79,7 +79,7 @@ export function DocumentReleve({ proprietaire: p, periode }: { proprietaire: Pro
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-3 rounded-lg bg-(--lm-surface-2) px-4 py-3">
         <p className="text-[11.5px] text-(--lm-encre-2)">
-          Virement sur {p.ibanMasque || 'IBAN à renseigner'}.
+          Versé par virement.
           <br />
           Séjours dont le départ a lieu en {moisAnnee(periode)}. Frais de ménage acquis au gestionnaire.
         </p>

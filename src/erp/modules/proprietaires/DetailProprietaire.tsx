@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { FilePlus2, Landmark, Mail, MapPin, Pencil, Phone, Printer, ScrollText } from 'lucide-react';
+import { FilePlus2, Mail, MapPin, Pencil, Phone, Printer, ScrollText } from 'lucide-react';
 import { Avatar, Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, FilterChips, MenuActions, PageHeader, Repli, StatusBadge, Table } from '../../ui';
 import { ETAPES_DOSSIER } from '../../data/dossier-proprietaire';
 import { useErp } from '../../data/store';
@@ -87,7 +87,6 @@ export default function DetailProprietaire() {
               <li className="flex items-start gap-2.5"><Mail className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><a href={`mailto:${p.contact.email}`} className="break-all text-(--lm-or-texte) hover:underline">{p.contact.email}</a></li>
               <li className="flex items-start gap-2.5"><Phone className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><a href={`tel:${p.contact.telephone.replace(/\s/g, '')}`} className="hover:underline">{p.contact.telephone}</a></li>
               <li className="flex items-start gap-2.5"><MapPin className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />{p.adresse}</li>
-              <li className="flex items-start gap-2.5"><Landmark className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><span className="lm-chiffres">{p.ibanMasque || 'IBAN non renseigné'}</span></li>
             </ul>
           </Card>
           {p.notes && (

@@ -80,7 +80,6 @@ const proprietaire = (id: string, nom: string): Proprietaire => ({
   nom,
   contact: { email: `${id}@exemple.invalid`, telephone: '06 00 00 00 00' },
   adresse: '1 rue Secrète, 91000 Évry',
-  ibanMasque: 'FR76 •••• 1234',
   notes: 'NOTE-INTERNE',
   creeLe: '2026-01-01',
 });

@@ -380,7 +380,7 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
     setEnCours(true);
     const p: Proprietaire = existant
       ? { ...existant, nom: existant.nom || nom.trim(), contact: { email: adresse, telephone: existant.contact.telephone || telephone.trim() } }
-      : { id: nouvelId('pro'), type: 'particulier', nom: nom.trim(), contact: { email: adresse, telephone: telephone.trim() }, adresse: '', ibanMasque: '', notes: '', creeLe: horodatageMaintenant().slice(0, 10) };
+      : { id: nouvelId('pro'), type: 'particulier', nom: nom.trim(), contact: { email: adresse, telephone: telephone.trim() }, adresse: '', notes: '', creeLe: horodatageMaintenant().slice(0, 10) };
     d.upsert('proprietaires', p);
     for (const id of coches) d.mettreAJour('logements', id, (l) => changerProprietaire(l, p.id, AUJOURDHUI));
     try {
