@@ -8,21 +8,22 @@
 //   - prix : un calcul par jour et au plus une notification groupée
 //     (« 3 logements : prix à revoir ») ;
 //   - anomalies graves (double réservation, départ sans personne en charge,
-//     réservation inhabituelle) : chacune notifiée une seule fois.
+//     réservation inhabituelle) : cherchées au plus une fois par heure,
+//     chacune notifiée une seule fois ;
+//   - rien de dû : une seule lecture (l'état) par espace ;
+//   - l'état (« déjà notifié ») est écrit sous condition avant l'envoi :
+//     deux passages simultanés n'envoient qu'une notification.
 // Règles : src/erp/data/prix-passage.ts (pur, vérifié par
 // verifier-prix-conseils.ts).
 //
 // LECTURE SEULE vis-à-vis des plateformes : on lit la base de l'ERP et on
-// n'écrit que l'état du passage (collection « conseilsPrix »). Aucun appel à
+// n'écrit que l'état du passage (collection « conseilsPrix », id « etat »). Aucun appel à
 // notre service de connexion, aucun prix envoyé à Airbnb ou Booking.
 // Un fichier préfixé par « _ » n'est pas exposé comme route par Vercel.
 // =============================================================================
 
 import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
-import { COLLECTION_PRIX, type ElementPrix } from '../src/erp/data/prix-conseils.js';
-import { HEURE_MATIN_PRIX, heureParisDe, planifierPassage } from '../src/erp/data/prix-passage.js';
-import type { Logement, Reservation } from '../src/erp/data/types';
-import type { AbsenceMembre, AffectationLogement, MembreEquipe } from '../src/erp/data/types-operations';
+import { HEURE_MATIN_PRIX, heureParisDe, passerDansEspace } from '../src/erp/data/prix-passage.js';
 import { baseAcces } from './_acces-externe.js';
 import { espacesActifs } from './_erp-espaces.js';
 import { clesServeur } from './_erp-notifications.js';
@@ -47,25 +48,17 @@ export async function passagePrixDuJour(o: { limite?: number; maintenant?: Date 
       if (Date.now() > limite) break;
       try {
         const base = baseAcces(fiche.id);
-        const [elements, logements, reservations, equipe, affectations, absences] = await Promise.all([
-          base.lire<ElementPrix>(COLLECTION_PRIX),
-          base.lire<Logement>('logements'),
-          base.lire<Reservation>('reservations'),
-          base.lire<MembreEquipe>('equipe'),
-          base.lire<AffectationLogement>('affectations'),
-          base.lire<AbsenceMembre>('absences'),
-        ]);
-        const plan = planifierPassage({ elements, logements, reservations, equipe, affectations, absences, maintenant, notifier: !!cles });
-        if (plan.raison) {
-          bilans[fiche.code] = plan.raison;
-          continue;
-        }
-        // Envoi d'abord : si l'état ne s'écrit pas, le passage suivant recommence, et le journal
-        // des notifications (clé « prix-<jour> ») empêche tout doublon.
-        if (plan.notifications.length && cles) await envoyerNotifications(base, plan.notifications, { cles, maintenant });
-        if (plan.ecritures.length) await base.ecrire(COLLECTION_PRIX, plan.ecritures, 'Prix conseillés');
-        if (plan.ecritures.length || plan.notifications.length)
-          bilans[fiche.code] = `${plan.conseils.length} conseil(s), ${plan.anomalies.length} anomalie(s) notifiée(s), ${plan.notifications.length} notification(s)`;
+        // Lit d'abord l'état seul ; le reste seulement si quelque chose est dû (prix du jour,
+        // anomalies au plus une fois par heure). L'état est écrit sous condition AVANT l'envoi :
+        // deux passages simultanés n'envoient qu'une notification.
+        const r = await passerDansEspace(base, {
+          maintenant,
+          notifier: !!cles,
+          envoyer: (groupes) => (cles ? envoyerNotifications(base, groupes, { cles, maintenant }) : Promise.resolve()),
+        });
+        if (r.statut === 'deja-pris') bilans[fiche.code] = 'déjà fait par un autre passage';
+        else if (r.statut === 'fait' && r.plan)
+          bilans[fiche.code] = `${r.plan.conseils.length} conseil(s), ${r.plan.anomalies.length} anomalie(s) notifiée(s), ${r.plan.notifications.length} notification(s)`;
       } catch (e) {
         bilans[fiche.code] = e instanceof Error ? e.message : String(e);
         console.warn('[prix] passage du matin', fiche.code, bilans[fiche.code]);

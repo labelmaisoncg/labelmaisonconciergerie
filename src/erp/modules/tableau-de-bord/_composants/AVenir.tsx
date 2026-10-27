@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useErp } from '../../../data/store';
 import { AUJOURDHUI } from '../../../data/format';
 import { previsionParc } from '../../../data/previsionnel';
-import { CartePrevisionnel } from '../../logements/_composants/Previsionnel';
+import { CartePrevisionnel, TITRE_PREVISIONNEL } from '../../logements/_composants/Previsionnel';
 
 /**
  * Prévisionnel du parc à 30, 60 et 90 jours (occupation et revenu
@@ -16,7 +16,7 @@ export function AVenir() {
   return (
     <section aria-labelledby="a-venir-titre" className="mb-6">
       <h2 id="a-venir-titre" className="mb-3 text-[16px] font-semibold text-(--lm-encre)">
-        À venir
+        {TITRE_PREVISIONNEL}
       </h2>
       <CartePrevisionnel prevision={prevision} />
     </section>

@@ -53,7 +53,8 @@ export function PrixConseilles({ logement: l }: { logement: Logement }) {
       <div className="flex items-start gap-3 p-4 pb-3 sm:p-5 sm:pb-3">
         <div className="min-w-0 flex-1">
           <h3 className="text-[15px] font-semibold text-(--lm-encre)">Prix conseillés</h3>
-          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">À changer vous-même sur la plateforme, puis « C’est fait ».</p>
+          {/* « Rien à changer » : pas de consigne à donner. */}
+          {conseils.length > 0 && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">À changer vous-même sur la plateforme, puis « C’est fait ».</p>}
         </div>
         {(gerant || liens.length > 1) && (
           <MenuActions
@@ -82,25 +83,28 @@ export function PrixConseilles({ logement: l }: { logement: Logement }) {
                   {eurosRonds(p.prixActuel)} <span aria-hidden>→</span> <span className="font-semibold text-(--lm-encre)">{eurosRonds(p.prixConseille)}</span>
                 </p>
               </div>
-              <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2)" title={p.raison}>
-                {conseilCourt(p)}
-              </p>
-              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                {liens[0] && (
-                  <a href={liens[0].url} target="_blank" rel="noopener noreferrer" className={lien} aria-label={`Ouvrir le calendrier ${liens[0].plateforme} (nouvel onglet)`}>
-                    Ouvrir le calendrier <ExternalLink className="size-3.5" aria-hidden />
-                  </a>
-                )}
-                {!d.lectureSeule && (
-                  <span className="ml-auto flex items-center gap-1.5">
-                    <Button size="sm" variant="ghost" onClick={() => decision(p, 'ignore')}>
-                      Ignorer
-                    </Button>
-                    <Button size="sm" icone={<Check />} onClick={() => decision(p, 'fait')}>
-                      C’est fait
-                    </Button>
-                  </span>
-                )}
+              {/* Téléphone : la raison, puis les actions dessous. Plus large : sur la même ligne (deux lignes par conseil). */}
+              <div className="sm:mt-1 sm:flex sm:items-center sm:gap-3">
+                <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2) sm:mt-0 sm:min-w-0 sm:flex-1" title={p.raison}>
+                  {conseilCourt(p)}
+                </p>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 sm:mt-0 sm:shrink-0 sm:flex-nowrap">
+                  {liens[0] && (
+                    <a href={liens[0].url} target="_blank" rel="noopener noreferrer" className={lien} aria-label={`Ouvrir le calendrier ${liens[0].plateforme} (nouvel onglet)`}>
+                      Ouvrir le calendrier <ExternalLink className="size-3.5" aria-hidden />
+                    </a>
+                  )}
+                  {!d.lectureSeule && (
+                    <span className="ml-auto flex items-center gap-1.5">
+                      <Button size="sm" variant="ghost" onClick={() => decision(p, 'ignore')}>
+                        Ignorer
+                      </Button>
+                      <Button size="sm" icone={<Check />} onClick={() => decision(p, 'fait')}>
+                        C’est fait
+                      </Button>
+                    </span>
+                  )}
+                </div>
               </div>
             </li>
           ))}

@@ -18,7 +18,11 @@ import { mesurer as mesurerMcp } from './cm-mcp';
 import { mesurerOccupation } from './occupation';
 import { previsionLogement, previsionParc } from './previsionnel';
 import { conseillerPrix, conseilsParNuit, decider, lireElementsPrix, plusJours, reglagesPrix, type ElementPrix, type EntreesConseils, type SourceMarche } from './prix-conseils';
-import { planifierPassage } from './prix-passage';
+import { INTERVALLE_ANOMALIES_MS, passerDansEspace, planifierPassage, travauxDus, type BasePassagePrix } from './prix-passage';
+import type { GroupeNotification } from './notifications';
+import { DATE_DEMO } from './format';
+import { conseilsDuJour } from '../modules/logements/_composants/prix';
+import { elementsPrixEtAnomalies } from '../modules/tableau-de-bord/_composants/aTraiterAnalyse';
 import { ecritureRepullPermise } from './repull-synchro';
 import { indicateurs } from './selectors';
 import { creerSeed } from './seed';
@@ -148,7 +152,7 @@ section('Nuits proches qui ne se vendent pas → baisse');
   verifier(n5?.type === 'baisse' && n5.prixConseille === 9000, `dans 5 jours : −10 % (${n5?.prixConseille})`);
   verifier(n9?.type === 'baisse' && n9.prixConseille === 9400, `dans 9 jours : −6 % (${n9?.prixConseille})`);
   const p = conseillerPrix(base).find((x) => x.logementId === 'A' && x.debut === J);
-  verifier(!!p && p.type === 'baisse' && p.raison.startsWith('Ça ne se vend pas : Logement A reste vide') && p.raison.includes('baissez à 85 €'), `phrase : ${p?.raison}`);
+  verifier(!!p && p.type === 'baisse' && p.raison.startsWith('Peu de demande : Logement A reste vide') && p.raison.includes('baissez à 85 €'), `phrase : ${p?.raison}`);
   // Même logement presque plein autour : pas de baisse.
   const plein = [...historique('A'), resa('A', j(0), 4), resa('A', j(5), 5)];
   const lPlein = caler(logement('A'), plein);
@@ -287,7 +291,115 @@ section('Anomalies');
   const n1 = a1.notifications.find((x) => x.cle.startsWith('anomalies-'));
   verifier(!!n1 && n1.urgente && n1.variantes[0].type === 'anomalie' && n1.variantes[0].titre.startsWith('Risque de double réservation'), `double réservation : notifiée, urgente (${n1?.variantes[0].titre})`);
   const a2 = planifierPassage({ ...entrees, elements: a1.ecritures, maintenant: new Date('2026-10-05T07:30:00Z') });
-  verifier(!a2.notifications.length, 'déjà notifiée : pas une seconde fois');
+  verifier(!a2.notifications.length && !a2.dus.anomalies && !a2.ecritures.length, 'une demi-heure après : pas de nouvelle recherche des anomalies');
+  const a3 = planifierPassage({ ...entrees, elements: a1.ecritures, maintenant: new Date('2026-10-05T08:30:00Z') });
+  verifier(a3.dus.anomalies && !a3.notifications.length && a3.ecritures[0]?.anomaliesVerifieesLe === '2026-10-05T08:30:00.000Z', 'une heure et demie après : recherchée de nouveau, déjà notifiée, pas une seconde fois');
+}
+
+section('Anomalies : au plus une recherche par heure et par espace');
+{
+  const etat = (le?: string, jour = '2026-10-05') => ({ id: 'etat' as const, genre: 'etat' as const, dernierCalcul: jour, ...(le ? { anomaliesVerifieesLe: le } : {}) });
+  verifier(travauxDus(etat(), new Date('2026-10-05T07:10:00Z')).anomalies, 'jamais recherchées : dues');
+  verifier(!travauxDus(etat('2026-10-05T07:00:00.000Z'), new Date('2026-10-05T07:59:00Z')).anomalies, '59 minutes après : pas encore');
+  verifier(travauxDus(etat('2026-10-05T07:00:00.000Z'), new Date(Date.parse('2026-10-05T07:00:00Z') + INTERVALLE_ANOMALIES_MS)).anomalies, 'une heure après : dues');
+  verifier(!travauxDus(etat(), new Date('2026-10-05T07:10:00Z'), { notifier: false }).anomalies, 'sans notification possible : pas de recherche');
+  verifier(!travauxDus(etat(), new Date('2026-10-05T05:10:00Z')).anomalies && !travauxDus(undefined, new Date('2026-10-05T05:10:00Z')).prix, 'avant 8 h à Paris : rien');
+}
+
+/* ------------------------------------------------------------ base en mémoire, avec versions */
+
+/** Base de l'espace en mémoire : versions (comme maj_le), écriture conditionnelle, lectures comptées. */
+class BaseMemoire implements BasePassagePrix {
+  private lignes = new Map<string, { element: { id: string }; version: number }>();
+  private v = 0;
+  lectures: string[] = [];
+  constructor(donnees: Record<string, { id: string }[]>) {
+    for (const [c, els] of Object.entries(donnees)) for (const e of els) this.lignes.set(`${c}/${e.id}`, { element: e, version: ++this.v });
+  }
+  private async pause() {
+    await Promise.resolve();
+  }
+  async lire<T>(c: string, ids?: string[]): Promise<T[]> {
+    return (await this.lireVersions<T>(c, ids)).map((x) => x.element);
+  }
+  async lireVersions<T>(c: string, ids?: string[]): Promise<{ element: T; version: string }[]> {
+    await this.pause();
+    this.lectures.push(ids ? `${c}/${ids.join(',')}` : c);
+    return [...this.lignes.entries()]
+      .filter(([k]) => k.startsWith(`${c}/`) && (!ids || ids.includes(k.slice(c.length + 1))))
+      .map(([, x]) => ({ element: structuredClone(x.element) as T, version: String(x.version) }));
+  }
+  async remplacerSi(c: string, e: { id: string }, version: string): Promise<boolean> {
+    await this.pause();
+    const x = this.lignes.get(`${c}/${e.id}`);
+    if (!x || String(x.version) !== version) return false;
+    this.lignes.set(`${c}/${e.id}`, { element: structuredClone(e), version: ++this.v });
+    return true;
+  }
+  async ajouterSiAbsent(c: string, els: { id: string }[]): Promise<number> {
+    await this.pause();
+    let n = 0;
+    for (const e of els) {
+      if (this.lignes.has(`${c}/${e.id}`)) continue;
+      this.lignes.set(`${c}/${e.id}`, { element: structuredClone(e), version: ++this.v });
+      n++;
+    }
+    return n;
+  }
+  get<T>(c: string, id: string): T | undefined {
+    return this.lignes.get(`${c}/${id}`)?.element as T | undefined;
+  }
+}
+
+section('Deux passages en même temps : une seule notification');
+{
+  const L = logement('L');
+  const donnees = { logements: [...PARC, L], reservations: [...TOUTES, resa('L', j(5), 3, { canal: 'airbnb' }), resa('L', j(7), 2, { canal: 'booking' })] };
+  const envois: GroupeNotification[][] = [];
+  const o = (h: string) => ({ maintenant: new Date(h), notifier: true, envoyer: async (g: GroupeNotification[]) => void envois.push(g) });
+
+  // Premier passage du jour, état encore absent : « ajouter s'il est absent ».
+  const b = new BaseMemoire(donnees);
+  const [x, y] = await Promise.all([passerDansEspace(b, o('2026-10-05T07:00:00Z')), passerDansEspace(b, o('2026-10-05T07:00:00Z'))]);
+  const statuts = [x.statut, y.statut].sort().join(',');
+  verifier(statuts === 'deja-pris,fait' && envois.length === 1, `état absent : un seul passage prend la main et envoie (${statuts}, ${envois.length} envoi)`);
+  verifier(!!envois[0]?.some((g) => g.cle === 'prix-2026-10-05') && !!envois[0]?.some((g) => g.cle.startsWith('anomalies-')), 'il envoie les prix du jour et la double réservation');
+  verifier(b.get<{ dernierCalcul?: string }>('conseilsPrix', 'etat')?.dernierCalcul === '2026-10-05', 'l’état est écrit (avant l’envoi)');
+
+  // Une demi-heure plus tard : rien de dû, une seule lecture (l'état).
+  b.lectures = [];
+  const z = await passerDansEspace(b, o('2026-10-05T07:30:00Z'));
+  verifier(z.statut === 'rien' && b.lectures.length === 1 && b.lectures[0] === 'conseilsPrix/etat' && envois.length === 1, `rien de dû : une seule lecture (${b.lectures.join(' ; ')})`);
+  // Une heure après : anomalies seulement (pas de nouveau calcul des prix, ni de relecture des réglages).
+  b.lectures = [];
+  const w = await passerDansEspace(b, o('2026-10-05T08:05:00Z'));
+  verifier(w.statut === 'fait' && !!w.plan?.dus.anomalies && !w.plan.dus.prix && !b.lectures.includes('conseilsPrix') && b.lectures.includes('equipe') && envois.length === 1, `une heure après : anomalies relues, rien de renotifié (${b.lectures.join(' ; ')})`);
+
+  // Le lendemain, état présent : « remplacer s'il n'a pas changé ».
+  const [p, q] = await Promise.all([passerDansEspace(b, o('2026-10-06T07:00:00Z')), passerDansEspace(b, o('2026-10-06T07:00:00Z'))]);
+  const s2 = [p.statut, q.statut].sort().join(',');
+  verifier(s2 === 'deja-pris,fait' && envois.length === 2 && envois[1].some((g) => g.cle === 'prix-2026-10-06'), `état présent : un seul passage envoie (${s2}, ${envois.length} envois en tout)`);
+
+  // Envoi en échec : l'état reste écrit, pas de seconde tentative le même jour (au plus une notification).
+  const b2 = new BaseMemoire(donnees);
+  const echec = await passerDansEspace(b2, { maintenant: new Date('2026-10-05T07:00:00Z'), notifier: true, envoyer: async () => Promise.reject(new Error('réseau')) });
+  const encore = await passerDansEspace(b2, o('2026-10-05T07:10:00Z'));
+  verifier(echec.statut === 'fait' && encore.statut === 'rien', 'envoi en échec : le passage suivant ne renvoie pas');
+}
+
+section('Accueil : « N logements : prix à revoir »');
+{
+  const seed = creerSeed();
+  const conseils = conseilsDuJour(seed);
+  const logements = new Set(conseils.map((c) => c.logementId));
+  const ligne = elementsPrixEtAnomalies(seed, DATE_DEMO, { gerant: true }).find((x) => x.type === 'prix');
+  verifier(logements.size > 1 && ligne?.titre === `${logements.size} logements : prix à revoir`, `le titre compte les logements (${ligne?.titre} ; ${conseils.length} conseils)`);
+  verifier(ligne?.details.length === logements.size && ligne.liens?.length === logements.size && ligne.liens.every((l) => /^\/erp\/logements\/[^/]+#prix$/.test(l)), 'une ligne par logement, chacune mène à sa carte');
+  const noms = [...logements].map((id) => seed.logements.find((l) => l.id === id)!.nom);
+  verifier(!!ligne?.apercu && noms.slice(0, 3).every((n) => ligne.apercu!.includes(n)) && /et \d+ autres?$/.test(ligne.apercu), `dans la carte : les logements concernés (${ligne?.apercu})`);
+  const un = elementsPrixEtAnomalies({ ...seed, logements: seed.logements.filter((l) => l.id === conseils[0].logementId || !logements.has(l.id)) }, DATE_DEMO, { gerant: true }).find((x) => x.type === 'prix');
+  verifier(un?.titre === 'Un logement : prix à revoir' && !!un.apercu?.startsWith(`${conseils[0].nom} : `), `un seul logement : « Un logement : prix à revoir » (${un?.titre} / ${un?.apercu})`);
+  verifier(!elementsPrixEtAnomalies(seed, DATE_DEMO, { gerant: false }).some((x) => x.type === 'prix'), 'pas de ligne de prix pour un compte qui n’est pas gérant');
 }
 
 section('Occupation : jamais 0 % avec des séjours (logement « en pause »)');
@@ -356,7 +468,9 @@ section('Lecture seule : aucune écriture vers les plateformes');
   }
   const serveur = source('api/_prix-conseils.ts');
   verifier(!!serveur && !imports(serveur).some((i) => /repull-synchro|agent-ia/i.test(i)) && !/\/v1\/|ecritureRepull|RepullClient/.test(serveur), 'passage du serveur : base de l’ERP seulement, jamais les plateformes');
-  verifier(!!serveur && [...serveur.matchAll(/\.ecrire\(\s*([A-Z_]+|'[^']+')/g)].every((m) => m[1] === 'COLLECTION_PRIX'), 'le serveur n’écrit que dans la collection des prix conseillés');
+  const passage = source('src/erp/data/prix-passage.ts') ?? '';
+  const ecritures = [...passage.matchAll(/\.(ecrire|remplacerSi|ajouterSiAbsent)\(\s*([A-Z_]+|'[^']+')/g)];
+  verifier(!!serveur && !/\.ecrire\(|remplacerSi|ajouterSiAbsent/.test(serveur) && ecritures.length === 2 && ecritures.every((m) => m[1] !== 'ecrire' && m[2] === 'COLLECTION_PRIX'), `le serveur n’écrit que l’état, sous condition, dans la collection des prix conseillés (${ecritures.map((m) => m[1]).join(', ')})`);
   verifier(
     !ecritureRepullPermise('PUT', '/v1/availability/123', { price: 90 }) &&
       !ecritureRepullPermise('POST', '/v1/availability/123', {}) &&

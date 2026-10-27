@@ -2,9 +2,13 @@ import { euros, pourcentage } from '../../../data/format';
 import { METHODE_PREVISION, type Previsionnel } from '../../../data/previsionnel';
 import { Card } from '../../../ui';
 
+/** Même nom partout pour ces chiffres : « Prévisionnel » (Accueil et page du logement). */
+export const TITRE_PREVISIONNEL = 'Prévisionnel';
+
 /**
  * Prévisionnel à 30, 60 et 90 jours dans une seule carte : l'occupation
- * attendue en grand, le revenu attendu dessous, et la méthode en une ligne.
+ * attendue en grand, le revenu attendu dessous (« … prévus »), et la
+ * méthode en une ligne.
  * Rien à montrer (pas de séjour ni d'historique) : la carte n'est pas
  * affichée (voir data/previsionnel).
  */
@@ -20,7 +24,7 @@ export function CartePrevisionnel({ prevision, titre }: { prevision: Previsionne
               {pourcentage(h.occupation)}
             </dd>
             <dd className="mt-0.5 truncate text-[12px] text-(--lm-encre-2)" aria-label={`Revenu attendu ${euros(h.revenu, true)}`}>
-              {euros(h.revenu, true)}
+              {euros(h.revenu, true)} prévus
             </dd>
           </div>
         ))}
