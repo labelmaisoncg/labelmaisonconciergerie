@@ -7,7 +7,7 @@ import { AUJOURDHUI, dateCourte, horodatageMaintenant, pluriel } from '../../../
 import { plage } from '../../../data/notifications';
 import { conseilCourt, decider, eurosRonds, lireElementsPrix, plusJours, type DecisionPrix, type PlagePrix } from '../../../data/prix-conseils';
 import type { Logement } from '../../../data/types';
-import { conseilsDuJour, liensCalendrier } from './prix';
+import { conseilsDuJour, liensCalendrier, voitPrixConseilles } from './prix';
 
 /** Lignes montrées avant « Voir les autres ». */
 const MAX_LIGNES = 3;
@@ -23,25 +23,28 @@ const lien = 'inline-flex min-h-8 items-center gap-1 text-[13px] font-medium tex
  * conseillé, pourquoi, et où le changer. L'ERP ne touche jamais au prix :
  * « Ouvrir le calendrier » mène à la plateforme, puis « C'est fait ».
  * Rien à conseiller et rien de traité récemment : pas de carte.
+ * Pour le gérant seul (voitPrixConseilles) : ni les opérations, ni la
+ * lecture seule ne la voient.
  */
 export function PrixConseilles({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const { hash } = useLocation();
   const [tout, setTout] = useState(false);
   const [bornes, setBornes] = useState(false);
-  const conseils = useMemo(() => conseilsDuJour(d.donnees, l.id), [d.donnees, l.id]);
+  // Le gérant seul (même règle que la ligne « prix à revoir » de l'Accueil) : rien n'est calculé pour les autres.
+  const gerant = voitPrixConseilles(d.utilisateur, d.lectureSeule);
+  const conseils = useMemo(() => (gerant ? conseilsDuJour(d.donnees, l.id) : []), [gerant, d.donnees, l.id]);
   const { reglages, decisions } = useMemo(() => lireElementsPrix(d.conseilsPrix), [d.conseilsPrix]);
   const depuis = plusJours(AUJOURDHUI, -JOURS_HISTORIQUE);
   const traites = decisions.filter((x) => x.logementId === l.id && String(x.le).slice(0, 10) >= depuis).sort((a, b) => b.le.localeCompare(a.le));
   const liens = liensCalendrier(l);
-  const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
 
   // Ouvert depuis la notification « prix à revoir » : la carte vient à l'écran.
   useEffect(() => {
     if (hash === '#prix') document.getElementById('prix')?.scrollIntoView({ block: 'start' });
   }, [hash]);
 
-  if (!reglages.actif || (!conseils.length && !traites.length)) return null;
+  if (!gerant || !reglages.actif || (!conseils.length && !traites.length)) return null;
 
   const decision = (p: PlagePrix, quoi: DecisionPrix['decision']) => d.upsert('conseilsPrix', decider(p, quoi, { le: horodatageMaintenant(), par: d.utilisateur.nom }));
   const visibles = tout ? conseils : conseils.slice(0, MAX_LIGNES);
@@ -56,19 +59,17 @@ export function PrixConseilles({ logement: l }: { logement: Logement }) {
           {/* « Rien à changer » : pas de consigne à donner. */}
           {conseils.length > 0 && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">À changer vous-même sur la plateforme, puis « C’est fait ».</p>}
         </div>
-        {(gerant || liens.length > 1) && (
-          <MenuActions
-            className="shrink-0"
-            label="Plus d’actions sur les prix"
-            actions={[
-              ...liens.slice(1).map((x) => ({ libelle: `Calendrier ${x.plateforme}`, icone: <ExternalLink />, href: x.url })),
-              gerant && {
-                libelle: b?.plancher || b?.plafond ? `Plancher et plafond (${[b.plancher && eurosRonds(b.plancher), b.plafond && eurosRonds(b.plafond)].filter(Boolean).join(' – ')})` : 'Plancher et plafond',
-                onClick: () => setBornes(true),
-              },
-            ]}
-          />
-        )}
+        <MenuActions
+          className="shrink-0"
+          label="Plus d’actions sur les prix"
+          actions={[
+            ...liens.slice(1).map((x) => ({ libelle: `Calendrier ${x.plateforme}`, icone: <ExternalLink />, href: x.url })),
+            {
+              libelle: b?.plancher || b?.plafond ? `Plancher et plafond (${[b.plancher && eurosRonds(b.plancher), b.plafond && eurosRonds(b.plafond)].filter(Boolean).join(' – ')})` : 'Plancher et plafond',
+              onClick: () => setBornes(true),
+            },
+          ]}
+        />
       </div>
       {conseils.length ? (
         <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
@@ -94,16 +95,14 @@ export function PrixConseilles({ logement: l }: { logement: Logement }) {
                       Ouvrir le calendrier <ExternalLink className="size-3.5" aria-hidden />
                     </a>
                   )}
-                  {!d.lectureSeule && (
-                    <span className="ml-auto flex items-center gap-1.5">
-                      <Button size="sm" variant="ghost" onClick={() => decision(p, 'ignore')}>
-                        Ignorer
-                      </Button>
-                      <Button size="sm" icone={<Check />} onClick={() => decision(p, 'fait')}>
-                        C’est fait
-                      </Button>
-                    </span>
-                  )}
+                  <span className="ml-auto flex items-center gap-1.5">
+                    <Button size="sm" variant="ghost" onClick={() => decision(p, 'ignore')}>
+                      Ignorer
+                    </Button>
+                    <Button size="sm" icone={<Check />} onClick={() => decision(p, 'fait')}>
+                      C’est fait
+                    </Button>
+                  </span>
                 </div>
               </div>
             </li>
@@ -150,11 +149,9 @@ function DejaTraites({ decisions }: { decisions: DecisionPrix[] }) {
                   {x.decision === 'fait' ? 'Fait' : 'Ignoré'} le {dateCourte(x.le.slice(0, 10))} par {x.par}
                 </span>
               </span>
-              {!d.lectureSeule && (
-                <Button size="sm" variant="ghost" onClick={() => d.remove('conseilsPrix', x.id)}>
-                  Annuler
-                </Button>
-              )}
+              <Button size="sm" variant="ghost" onClick={() => d.remove('conseilsPrix', x.id)}>
+                Annuler
+              </Button>
             </li>
           ))}
         </ul>

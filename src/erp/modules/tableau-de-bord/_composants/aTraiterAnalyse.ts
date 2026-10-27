@@ -36,7 +36,8 @@ function derniereSynchroReussie(d: ErpDonnees): string | undefined {
 export function elementsPrixEtAnomalies(d: ErpDonnees, aujourdhui: DateISO, { gerant }: { gerant: boolean }): ElementATraiter[] {
   const liste: ElementATraiter[] = [];
 
-  // Prix à revoir : le gérant seul (c'est lui qui change les prix sur les plateformes).
+  // Prix à revoir : le gérant seul (c'est lui qui change les prix sur les plateformes) ;
+  // même règle que la carte « Prix conseillés » du logement (voitPrixConseilles).
   if (gerant) {
     const conseils = conseilsDuJour(d);
     if (conseils.length) {
