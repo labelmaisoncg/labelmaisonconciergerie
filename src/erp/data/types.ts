@@ -196,6 +196,14 @@ export interface Logement {
   lits: Lit[];
   statut: StatutLogement;
   proprietaireId: Id;
+  /**
+   * Premier jour (inclus) où le propriétaire actuel reçoit chiffres, avis et
+   * séjours de ce logement. Posé par changerProprietaire (data/proprietaire.ts)
+   * quand le logement change de propriétaire ; absent : depuis toujours.
+   */
+  proprietaireDepuis?: DateISO;
+  /** Propriétaires précédents, chacun jusqu'à `jusquAu` (exclu) : ce qui était à eux le reste. */
+  proprietairesPrecedents?: ProprietairePrecedent[];
   residencePrincipale: boolean;
   numeroEnregistrement?: string;
   dpe?: Dpe;
@@ -221,6 +229,13 @@ export interface Logement {
   descriptif?: DescriptifLogement;
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
+}
+
+/** Ancien propriétaire d'un logement, de `depuis` (absent : depuis toujours) à `jusquAu` (exclu). */
+export interface ProprietairePrecedent {
+  proprietaireId: Id;
+  depuis?: DateISO;
+  jusquAu: DateISO;
 }
 
 /** Calendrier des prix lu sur les plateformes : affiché, jamais modifié. */

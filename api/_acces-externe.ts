@@ -191,29 +191,48 @@ export function avecEmailFiche<T extends AccesExterne>(genre: GenreAcces, acces:
 }
 
 /**
- * Session du cookie, revérifiée dans la base de SON espace : accès actif,
- * même version, même espace, et adresse toujours celle de la fiche. null :
- * pas de session, cookie falsifié, accès retiré, adresse changée dans la
- * fiche, ou espace devenu inaccessible.
+ * Pourquoi une session est refusée : `absente` (pas de cookie valable,
+ * espace illisible), `retire` (accès retiré, fiche supprimée ou adresse
+ * changée dans la fiche), `expiree` (nouvelle invitation à une autre adresse
+ * depuis : la version a changé).
  */
+export type RefusSession = 'absente' | 'retire' | 'expiree';
+
+/**
+ * Session du cookie, revérifiée dans la base de SON espace : accès actif,
+ * même version, même espace, et adresse toujours celle de la fiche ; sinon
+ * la raison du refus (l'écran dit « Votre accès a été retiré » quand c'est le cas).
+ */
+export async function lireSessionAcces<T extends AccesExterne>(
+  req: any,
+  genre: GenreAcces,
+): Promise<{ ok: true; session: SessionExterne; acces: T; base: BaseErp; espace: string } | { ok: false; raison: RefusSession }> {
+  const secret = secretAcces(genre);
+  if (!secret) return { ok: false, raison: 'absente' };
+  const s = await lireSessionExterne(secret, lireCookieExterne(req.headers?.cookie, GENRES[genre].cookie), genre, Math.floor(Date.now() / 1000));
+  if (!s) return { ok: false, raison: 'absente' };
+  try {
+    const base = baseAcces(s.e);
+    const acces = (await base.lire<T>(GENRES[genre].collection, [s.p]))[0];
+    if (!acces || acces.statut === 'retire') return { ok: false, raison: 'retire' };
+    if (!sessionExterneValide(s, acces)) return { ok: false, raison: 'expiree' };
+    if (!accesToujoursDeLaFiche(acces, await ficheDeLAcces(base, genre, acces))) return { ok: false, raison: 'retire' };
+    return { ok: true, session: s, acces: acces as T, base, espace: s.e };
+  } catch (e) {
+    console.warn('[acces-externe] session illisible', genre, e instanceof Error ? e.message : e);
+    return { ok: false, raison: 'absente' };
+  }
+}
+
+/** Session du cookie (voir lireSessionAcces) ; null : refusée, quelle qu'en soit la raison. */
 export async function sessionAcces<T extends AccesExterne>(
   req: any,
   genre: GenreAcces,
 ): Promise<{ session: SessionExterne; acces: T; base: BaseErp; espace: string } | null> {
-  const secret = secretAcces(genre);
-  if (!secret) return null;
-  const s = await lireSessionExterne(secret, lireCookieExterne(req.headers?.cookie, GENRES[genre].cookie), genre, Math.floor(Date.now() / 1000));
-  if (!s) return null;
-  try {
-    const base = baseAcces(s.e);
-    const acces = (await base.lire<T>(GENRES[genre].collection, [s.p]))[0];
-    if (!sessionExterneValide(s, acces)) return null;
-    if (!accesToujoursDeLaFiche(acces, await ficheDeLAcces(base, genre, acces))) return null;
-    return { session: s, acces: acces as T, base, espace: s.e };
-  } catch (e) {
-    console.warn('[acces-externe] session illisible', genre, e instanceof Error ? e.message : e);
-    return null;
-  }
+  const r = await lireSessionAcces<T>(req, genre);
+  if (!r.ok) return null;
+  const { ok: _ok, ...s } = r;
+  return s;
 }
 
 /**

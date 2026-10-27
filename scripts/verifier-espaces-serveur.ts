@@ -672,6 +672,7 @@ async function principal() {
     let res = await appelProprio({ entetes: { ...gerantLM, origin: PIRATE }, corps: { action: 'inviter', proprietaireId: 'pro-c', email: 'carla@exemple.invalid' } });
     verifier(res.statut === 200 && String(res.corps?.lien).startsWith(`${SITE_PAR_DEFAUT}/espace-proprietaire#espace=${LM}&jeton=`) && lienDuMail(monde.emails[0]).startsWith(`${SITE_PAR_DEFAUT}/`), 'invitation appelée avec une Origin tierce : lien et e-mail sur le site fixe', { lien: String(res.corps?.lien).replace(/jeton=.*/, 'jeton=…'), mail: lienDuMail(monde.emails[0]).replace(/jeton=.*/, 'jeton=…') });
     verifier((monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-c`)?.donnees as { emailFiche?: string } | undefined)?.emailFiche === 'carla@exemple.invalid', 'invitation : adresse de la fiche relevée dans l’accès');
+    verifier(/vos factures partagées/.test(monde.emails[0]?.text ?? ''), 'e-mail d’invitation : il parle aussi des factures', monde.emails[0]?.text);
     const lienInvitation = String(res.corps?.lien);
     res = await appelProprio({ entetes: depuis(PIRATE, '198.51.100.1'), corps: { action: 'entrer', jeton: jetonDuLien(lienInvitation), espace: LM } });
     verifier(res.statut === 403 && !res.entetes['Set-Cookie'], 'entrer depuis une Origin tierce : refusé, pas de session', res.corps);
@@ -713,6 +714,15 @@ async function principal() {
     monde.poser(LM, 'proprietaires', { id: 'pro-c', nom: 'Carla Audit', contact: { email: 'Carla@Exemple.invalid ', telephone: '' } } as { id: string });
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
     verifier(res.statut === 200, 'adresse remise dans la fiche (casse et espaces mis à part) : session valable', res.statut);
+    verifier(res.corps?.espace === LM, 'vue : l’espace est donné (la page de connexion le garde sur l’appareil)', res.corps?.espace);
+    // « Retirer » : la page le dit, au lieu de « session expirée ».
+    await appelProprio({ entetes: gerantLM, corps: { action: 'retirer', proprietaireId: 'pro-c' } });
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 401 && res.corps?.code === 'retire' && res.corps?.erreur === 'Votre accès a été retiré. Contactez votre conciergerie.' && /Max-Age=0/.test(res.entetes['Set-Cookie'] ?? ''), 'accès retiré : « Votre accès a été retiré », cookie effacé', res.corps);
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 401 && res.corps?.code === 'retire', 'accès retiré : toujours dit tant que le cookie revient', res.corps);
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' } });
+    verifier(res.statut === 401 && res.corps?.code === 'session', 'sans cookie : « Connectez-vous »', res.corps);
 
     // I3 : règle pure, accès d'avant le relevé compris.
     const a = (o: Partial<AccesExterne>): AccesExterne => ({ id: 'x', email: 'a@x.invalid', statut: 'actif', version: 1, liens: [], ...o });

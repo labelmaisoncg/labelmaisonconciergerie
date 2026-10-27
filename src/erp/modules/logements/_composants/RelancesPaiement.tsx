@@ -1,7 +1,9 @@
 /**
  * Relances de paiement, côté gérant : réglages de l'espace (actif, mode,
- * étapes), relances à valider (envoyer ou annuler, aperçu du message) et
- * relances envoyées.
+ * étapes), relances à valider (envoyer, ou « Ne pas envoyer » après une
+ * relance par téléphone ; aperçu du message) et historique (envoyées,
+ * annulées, sans objet). Une facture marquée payée sort aussitôt de la file
+ * (« Sans objet ») ; le passage quotidien l'enregistre.
  *
  * Monté dans Paramètres → Accès, section Propriétaires (réglages et file à
  * valider de tout l'espace), et dans le panneau « Espace propriétaire » avec
@@ -17,7 +19,8 @@ import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros } from '../../../data/format';
 import { useErp } from '../../../data/store';
-import { REGLAGES_RELANCES_DEFAUT, messageRelance, montantTtcFacture, planifierRelances, reglagesRelances } from '../../../data/relances';
+import { REGLAGES_RELANCES_DEFAUT, factureAPayer, messageRelance, montantTtcFacture, nomRappel, planifierRelances, reglagesRelances } from '../../../data/relances';
+import type { Facture } from '../../../data/types';
 import type { RelancePaiement, ReglagesRelances } from '../../../data/types-proprietaire';
 import { Alert, Badge, Button, Field, Input, Interrupteur, Repli } from '../../../ui';
 import { appelerServeur } from '../../messagerie/_composants/serveur';
@@ -31,10 +34,8 @@ interface EtatRelances {
   expediteur: boolean;
 }
 
-const etape = (n: number) => (n === 1 ? '1er rappel' : `${n}e rappel`);
-
 const MOTIF: Record<NonNullable<RelancePaiement['motif']>, string> = {
-  sans_expediteur: 'Pas d’expéditeur d’e-mails pour cet espace : relancez par téléphone ou par votre messagerie, puis annulez.',
+  sans_expediteur: 'Pas d’expéditeur d’e-mails pour cet espace : relancez par téléphone ou par votre messagerie, puis « Ne pas envoyer ».',
   sans_adresse: 'Pas d’adresse e-mail pour ce propriétaire.',
   echec_envoi: 'Le dernier envoi a échoué.',
   remplacee: 'Remplacée par le rappel suivant.',
@@ -151,14 +152,27 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
   const d = useErp();
   const { etat, erreur, enCours, decider, regler } = useRelances();
   const conciergerie = espaceOuvert().nom;
-  const siennes = useMemo(() => (etat?.relances ?? []).filter((r) => !proprietaireId || r.proprietaireId === proprietaireId), [etat, proprietaireId]);
+  const facture = (id: string): Facture | undefined => d.donnees.factures.find((f) => f.id === id);
+  // Facture payée (ou plus à payer) dans l'ERP : sans objet tout de suite, sans attendre le passage quotidien.
+  const siennes = useMemo(
+    () =>
+      (etat?.relances ?? [])
+        .filter((r) => !proprietaireId || r.proprietaireId === proprietaireId)
+        .map((r): RelancePaiement => {
+          const f = d.donnees.factures.find((x) => x.id === r.factureId);
+          return r.statut === 'proposee' && f && !factureAPayer(f) ? { ...r, statut: 'sans_objet' } : r;
+        }),
+    [etat, proprietaireId, d.donnees.factures],
+  );
   const aValider = siennes.filter((r) => r.statut === 'proposee').sort((a, b) => a.dueLe.localeCompare(b.dueLe));
-  const envoyees = siennes
-    .filter((r) => r.statut === 'envoyee')
-    .sort((a, b) => String(b.envoyeeLe).localeCompare(String(a.envoyeeLe)))
-    .slice(0, 10);
+  // Historique : envoyées, « Ne pas envoyer », sans objet (pas les remplacements automatiques par l'étape suivante).
+  const quand = (r: RelancePaiement) => String(r.envoyeeLe ?? r.annuleeLe ?? r.creeLe ?? '');
+  const historique = siennes
+    .filter((r) => r.statut === 'envoyee' || r.statut === 'sans_objet' || (r.statut === 'annulee' && r.motif !== 'remplacee'))
+    .sort((a, b) => quand(b).localeCompare(quand(a)))
+    .slice(0, 12);
   const nom = (id: string) => d.donnees.proprietaires.find((p) => p.id === id)?.nom ?? 'Propriétaire';
-  const facture = (id: string) => d.donnees.factures.find((f) => f.id === id);
+  const dernier = (r: RelancePaiement) => r.niveau >= (etat?.reglages.jours.length ?? 3);
 
   return (
     <section className="space-y-4">
@@ -177,34 +191,35 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
           )}
 
           <div>
-            <p className="mb-2 text-[13.5px] font-medium text-(--lm-encre)">À valider</p>
+            <p className="text-[13.5px] font-medium text-(--lm-encre)">À valider</p>
+            <p className="mb-2 text-[12.5px] text-(--lm-encre-2)">Relancé par téléphone ? « Ne pas envoyer » la retire de la liste ; elle reste dans l’historique.</p>
             {!aValider.length ? (
               <p className="text-[13.5px] text-(--lm-encre-2)">Aucune relance à valider.</p>
             ) : (
               <ul className="divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
                 {aValider.map((r) => {
                   const f = facture(r.factureId);
-                  const m = f ? messageRelance({ relance: r, dernier: r.niveau >= etat.reglages.jours.length, facture: f, proprietaire: { nom: nom(r.proprietaireId) }, conciergerie, lienEspace: `${window.location.origin}/espace-proprietaire` }) : null;
+                  const m = f ? messageRelance({ relance: r, dernier: dernier(r), facture: f, proprietaire: { nom: nom(r.proprietaireId) }, conciergerie, lienEspace: `${window.location.origin}/espace-proprietaire` }) : null;
                   return (
                     <li key={r.id} className="px-3 py-2.5">
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                         <div className="min-w-48 flex-1">
-                          <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)">
-                            {r.numero}
-                            <Badge tone="neutre">{etape(r.niveau)}</Badge>
+                          <p className="text-[14px] font-medium text-(--lm-encre)">
+                            {r.numero} · {nom(r.proprietaireId)}
+                            {f ? ` · ${euros(montantTtcFacture(f))}` : ''}
                           </p>
                           <p className="text-[12.5px] text-(--lm-encre-2)">
-                            {nom(r.proprietaireId)}
-                            {f ? ` · ${euros(montantTtcFacture(f))}` : ''} · dû le {dateCourte(r.dueLe)}
+                            {f ? `Échéance ${dateCourte(f.echeance)} · ` : ''}
+                            {nomRappel(r.niveau, dernier(r))} le {dateCourte(r.dueLe)}
                           </p>
                           {r.motif && <p className="text-[12.5px] text-(--lm-encre-2)">{MOTIF[r.motif]}</p>}
                         </div>
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
                           <Button size="sm" variant="secondary" icone={<Send />} chargement={enCours === r.id} disabled={!!enCours} onClick={() => void decider('relance-envoyer', r.id)}>
                             Envoyer
                           </Button>
                           <Button size="sm" variant="ghost" icone={<X />} disabled={!!enCours} onClick={() => void decider('relance-annuler', r.id)}>
-                            Annuler
+                            Ne pas envoyer
                           </Button>
                         </div>
                       </div>
@@ -227,18 +242,26 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
             )}
           </div>
 
-          {envoyees.length > 0 && (
+          {historique.length > 0 && (
             <div>
-              <p className="mb-2 text-[13.5px] font-medium text-(--lm-encre)">Envoyées</p>
+              <p className="mb-2 text-[13.5px] font-medium text-(--lm-encre)">Historique</p>
               <ul className="divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
-                {envoyees.map((r) => (
-                  <li key={r.id} className="flex items-center justify-between gap-3 px-3 py-2 text-[13px]">
-                    <span className="min-w-0 truncate text-(--lm-encre)">
-                      {r.numero} · {etape(r.niveau)} · {nom(r.proprietaireId)}
+                {historique.map((r) => (
+                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-[13px]">
+                    <span className="min-w-0 text-(--lm-encre)">
+                      {r.numero} · {nomRappel(r.niveau, dernier(r))} · {nom(r.proprietaireId)}
                     </span>
-                    <span className="shrink-0 text-(--lm-encre-2)">
-                      {r.envoyeeLe ? dateCourte(r.envoyeeLe.slice(0, 10)) : ''}
-                      {r.envoyeePar === 'automatique' ? ' · automatique' : ''}
+                    <span className="flex shrink-0 items-center gap-2 text-(--lm-encre-2)">
+                      {r.statut === 'envoyee' ? (
+                        <>
+                          Envoyée{r.envoyeeLe ? ` le ${dateCourte(r.envoyeeLe.slice(0, 10))}` : ''}
+                          {r.envoyeePar === 'automatique' ? ' · automatique' : ''}
+                        </>
+                      ) : r.statut === 'annulee' ? (
+                        <Badge tone="neutre">Annulée{r.annuleeLe ? ` le ${dateCourte(r.annuleeLe.slice(0, 10))}` : ''}</Badge>
+                      ) : (
+                        <Badge tone="neutre">{facture(r.factureId)?.statut === 'payee' ? 'Sans objet · payée' : 'Sans objet'}</Badge>
+                      )}
                     </span>
                   </li>
                 ))}

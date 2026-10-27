@@ -5,6 +5,8 @@ import { FormProprietaire } from '../proprietaires/FormProprietaire';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
+import { AUJOURDHUI } from '../../data/format';
+import { changerProprietaire } from '../../data/proprietaire';
 import type { Dpe, Logement, Serrure, StatutLogement, TypeLit, TypeLogement } from '../../data/types';
 
 interface Props {
@@ -144,10 +146,10 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
       numeroEnregistrement: s.numeroEnregistrement.trim().toUpperCase() || undefined,
       residencePrincipale: s.residencePrincipale,
       serrure: s.serrure,
-      proprietaireId: s.proprietaireId,
       statut: logement ? s.statut : base.statut,
     };
-    upsert('logements', suivant);
+    // Autre propriétaire : l'ancien garde ses chiffres jusqu'à hier, le nouveau commence aujourd'hui.
+    upsert('logements', changerProprietaire(suivant, s.proprietaireId, AUJOURDHUI));
     onFermer();
     if (!logement) onCree?.(suivant.id);
   };
