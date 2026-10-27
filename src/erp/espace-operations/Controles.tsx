@@ -14,11 +14,11 @@ export function LigneControle({ c, sansBadge }: { c: ControleOps; sansBadge?: bo
   const quand = c.echeance === vue.aujourdhui ? 'aujourd’hui' : `avant le ${jourMois(c.echeance)}`;
   return (
     <Ligne
-      ton={c.enRetard ? 'danger' : 'alerte'}
+      ton="alerte"
       icone={<ClipboardCheck />}
       titre={nomLogement(c.logementId)}
       sousTitre={[s ? `Départ du ${jourMois(s.depart)}` : 'Contrôle planifié', !c.enRetard && `à faire ${quand}`].filter(Boolean).join(' · ')}
-      fin={c.enRetard && !sansBadge && <Badge tone="danger">En retard</Badge>}
+      fin={c.enRetard && !sansBadge && <Badge tone="alerte">En retard</Badge>}
       onClick={() => naviguer({ controle: c.cle })}
     />
   );
