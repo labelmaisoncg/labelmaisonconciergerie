@@ -382,12 +382,11 @@ do $$
 declare
   v_doublons text;
 begin
-  if to_regclass('erp.enregistrements_numero_facture') is not null then
-    if pg_get_indexdef('erp.enregistrements_numero_facture'::regclass) like '%numero_normalise%' then
-      return;
-    end if;
-    drop index erp.enregistrements_numero_facture;
+  if coalesce(pg_get_indexdef(to_regclass('erp.enregistrements_numero_facture')), '') like '%numero_normalise%' then
+    return;
   end if;
+  -- Doublons d'abord : s'il en reste, l'index d'une version précédente (btrim
+  -- seul) reste en place.
   select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
     from (select erp.numero_normalise(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
           where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
@@ -396,8 +395,12 @@ begin
     raise warning 'Factures : numéros en double (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
     return;
   end if;
-  create unique index enregistrements_numero_facture on erp.enregistrements ((erp.numero_normalise(donnees ->> 'numero')))
+  -- Créé sous un autre nom, puis il remplace l'ancien : la table n'est jamais
+  -- sans index d'unicité.
+  create unique index enregistrements_numero_facture_neuf on erp.enregistrements ((erp.numero_normalise(donnees ->> 'numero')))
     where collection = 'factures' and erp.numero_normalise(donnees ->> 'numero') <> '';
+  drop index if exists erp.enregistrements_numero_facture;
+  alter index erp.enregistrements_numero_facture_neuf rename to enregistrements_numero_facture;
 end;
 $$;
 

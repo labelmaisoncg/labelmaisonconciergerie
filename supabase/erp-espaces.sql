@@ -1328,30 +1328,31 @@ create trigger garder_espace_enregistrement before update on erp.enregistrements
 -- partiel). Créé seulement si les données le permettent : sinon un
 -- avertissement liste les numéros en double (colonne numeros_factures du
 -- bilan), à corriger avant de relancer ce fichier ; la passe continue.
--- L'index d'avant les espaces (numéro seul) est retiré : chaque espace a sa
--- propre suite.
-drop index if exists erp.enregistrements_numero_facture;
+-- Un index d'une version précédente (btrim seul, ou celui d'avant les
+-- espaces, numéro seul) reste en place tant que le nouveau n'est pas créé :
+-- la table n'est jamais sans index d'unicité. Celui d'avant les espaces est
+-- retiré ensuite (chaque espace a sa propre suite).
 do $$
 declare
   v_doublons text;
 begin
-  if to_regclass('erp.enregistrements_numero_facture_espace') is not null then
-    if pg_get_indexdef('erp.enregistrements_numero_facture_espace'::regclass) like '%numero_normalise%' then
+  if coalesce(pg_get_indexdef(to_regclass('erp.enregistrements_numero_facture_espace')), '') not like '%numero_normalise%' then
+    -- Doublons d'abord : s'il en reste, aucun index n'est retiré.
+    select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
+      from (select erp.numero_normalise(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
+            where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
+            group by e.espace, erp.numero_normalise(e.donnees ->> 'numero') having count(*) > 1) d;
+    if v_doublons is not null then
+      raise warning 'Factures : numéros en double dans un même espace (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
       return;
     end if;
-    -- Index d'une version précédente (btrim seul) : recréé avec la normalisation de la numérotation.
-    drop index erp.enregistrements_numero_facture_espace;
+    -- Créé sous un autre nom, puis il remplace l'ancien.
+    create unique index enregistrements_numero_facture_espace_neuf on erp.enregistrements (espace, (erp.numero_normalise(donnees ->> 'numero')))
+      where collection = 'factures' and erp.numero_normalise(donnees ->> 'numero') <> '';
+    drop index if exists erp.enregistrements_numero_facture_espace;
+    alter index erp.enregistrements_numero_facture_espace_neuf rename to enregistrements_numero_facture_espace;
   end if;
-  select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
-    from (select erp.numero_normalise(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
-          where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
-          group by e.espace, erp.numero_normalise(e.donnees ->> 'numero') having count(*) > 1) d;
-  if v_doublons is not null then
-    raise warning 'Factures : numéros en double dans un même espace (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
-    return;
-  end if;
-  create unique index enregistrements_numero_facture_espace on erp.enregistrements (espace, (erp.numero_normalise(donnees ->> 'numero')))
-    where collection = 'factures' and erp.numero_normalise(donnees ->> 'numero') <> '';
+  drop index if exists erp.enregistrements_numero_facture;
 end;
 $$;
 -- Cloison : RESTRICTIVE, elle tient même si une règle plus large est ajoutée un jour.
@@ -1523,6 +1524,7 @@ declare
   n int;
   k text;
   membres_par_espace boolean;
+  numeros_uniques boolean;
   j jsonb;
   cree uuid;
   -- Comptes fictifs (auth.users.id) et instants d'émission des jetons :
@@ -1605,7 +1607,9 @@ begin
     on conflict do nothing;
     -- Deux factures d'un espace ne partagent pas un numéro (index unique), même
     -- écrites par le propriétaire de la base ; un autre espace a sa propre suite.
-    if to_regclass('erp.enregistrements_numero_facture_espace') is not null then
+    -- (Index absent ou d'une version précédente : dit en fin de recette.)
+    numeros_uniques := coalesce(pg_get_indexdef(to_regclass('erp.enregistrements_numero_facture_espace')), '') like '%numero_normalise%';
+    if numeros_uniques then
       insert into erp.enregistrements (espace, collection, id, donnees) values
         (lm, 'factures', 'recette-doublon-1', '{"id": "recette-doublon-1", "numero": "2099-9999"}'),
         (essai, 'factures', 'recette-doublon-autre', '{"id": "recette-doublon-autre", "numero": "2099-9999"}');
@@ -2342,6 +2346,11 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Index des numéros absent ou d'une version précédente (numéros en double à
+    -- corriger) : la recette ne passe pas, comme le bilan.
+    if not numeros_uniques then
+      resultat := 'factures : numéros pas garantis uniques (index absent ou ancien, voir numeros_factures)'; raise exception 'stop';
+    end if;
 
     raise exception 'recette_terminee';
   exception when others then
@@ -2377,12 +2386,13 @@ select
      else 'rôle absent : relancer ce script'
    end) as compte_serveur,
   (select case
-     when to_regclass('erp.enregistrements_numero_facture_espace') is not null then 'uniques'
+     when coalesce(pg_get_indexdef(to_regclass('erp.enregistrements_numero_facture_espace')), '') like '%numero_normalise%'
+       then 'uniques'
      when exists (select 1 from erp.enregistrements e
                   where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
                   group by e.espace, erp.numero_normalise(e.donnees ->> 'numero') having count(*) > 1)
        then 'en double : corriger les numéros listés en avertissement, puis relancer'
-     else 'index absent : relancer ce fichier'
+     else 'index absent ou ancien : relancer ce fichier'
    end) as numeros_factures,
   erp.recette_espaces() as recette;
 
