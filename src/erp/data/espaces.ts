@@ -64,6 +64,39 @@ export function lireEspacesMembre(brut: unknown): EspaceMembre[] {
     .map((e) => ({ id: e.id.toLowerCase(), code: String(e.code ?? ''), nom: String(e.nom ?? ''), role: e.role }));
 }
 
+/**
+ * Invitation de Label Maison à ouvrir un espace, en attente pour le compte
+ * connecté : nom proposé, fin de validité. Le compte n'est alors membre
+ * d'aucun espace : l'ERP lui propose de créer celui de sa conciergerie
+ * (erp.creer_espace).
+ */
+export interface InvitationEspace {
+  nom: string;
+  expireLe: string;
+}
+
+/**
+ * Invitation en attente lue dans erp.qui_suis_je →
+ * `invitations_espace: [{ nom_espace, expire_le }]` (null : aucune). Mêmes
+ * règles que la page d'accès (middleware.ts) : une liste ; un élément vaut
+ * s'il est un objet dont l'échéance, quand elle est donnée, se lit et n'est
+ * pas passée. Toute autre forme ne vaut rien.
+ */
+export function lireInvitationEspace(brut: unknown, maintenant: number = Date.now()): InvitationEspace | null {
+  const liste = (brut as { invitations_espace?: unknown } | null)?.invitations_espace;
+  if (!Array.isArray(liste)) return null;
+  for (const i of liste) {
+    if (!i || typeof i !== 'object' || Array.isArray(i)) continue;
+    const { nom_espace: nom, expire_le: expire } = i as { nom_espace?: unknown; expire_le?: unknown };
+    if (expire !== undefined && expire !== null) {
+      const t = typeof expire === 'string' ? Date.parse(expire) : NaN;
+      if (!Number.isFinite(t) || t <= maintenant) continue;
+    }
+    return { nom: typeof nom === 'string' ? nom.trim() : '', expireLe: typeof expire === 'string' ? expire : '' };
+  }
+  return null;
+}
+
 /** Espace à ouvrir : celui demandé s'il en est membre, sinon Label Maison, sinon le premier. */
 export function choisirEspace<T extends Pick<Espace, 'id'>>(espaces: T[], demande?: string | null): T | null {
   const voulu = demande?.toLowerCase();
@@ -93,6 +126,27 @@ export function espaceDesDonnees(): string | null {
 /** Préfixe des fichiers de l'espace dans le stockage (rien pour Label Maison : chemins d'avant). */
 export function prefixeFichiers(espace: string | null = espaceDesDonnees()): string {
   return espace && !estLabelMaison(espace) ? `${espace}/` : '';
+}
+
+/** Espace privé (bucket) des fichiers de l'ERP (supabase/erp-installation.sql). */
+export const BUCKET_FICHIERS_ERP = 'erp-fichiers';
+
+/**
+ * Le fichier « stockage://erp-fichiers/… » est-il à cet espace ? Même règle
+ * que la base (erp.espace_du_chemin), en plus strict : un autre espace que
+ * Label Maison n'a que les fichiers de son dossier (« <espace>/… ») ; Label
+ * Maison a les chemins d'avant, jamais un fichier rangé sous le dossier d'un
+ * espace (premier dossier en forme d'identifiant). Autre bucket, dossier
+ * vide, « . » ou « .. » : refusé. Le serveur ne signe et ne dépose rien
+ * d'autre (api/_erp-repull.ts), quel que soit l'appelant.
+ */
+export function fichierDeLEspace(fichier: unknown, espace: string | null | undefined): fichier is string {
+  const debut = `stockage://${BUCKET_FICHIERS_ERP}/`;
+  if (typeof fichier !== 'string' || fichier.length > 1000 || !fichier.startsWith(debut)) return false;
+  const dossiers = fichier.slice(debut.length).split('/');
+  if (dossiers.some((d) => !d || d === '.' || d === '..')) return false;
+  if (estLabelMaison(espace)) return !idEspaceValide(dossiers[0]);
+  return idEspaceValide(espace) && dossiers.length > 1 && dossiers[0].toLowerCase() === espace.toLowerCase();
 }
 
 /** Clé de stockage local propre à l'espace (inchangée pour Label Maison). */

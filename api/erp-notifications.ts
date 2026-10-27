@@ -23,7 +23,8 @@ import { baseErp, configuration, lireCorps, repondre, variableManquante } from '
 import { abonnementValide, enregistrerAppareil, envoyerNotifications, lireAppareil, oublierAppareil, reglerAppareil } from '../src/erp/data/notifications-envoi.js';
 import { genererClesVapid } from '../src/erp/data/web-push.js';
 import { clesServeur } from './_erp-notifications.js';
-import { espaceDemande, refuserHorsLabelMaison } from './_erp-espaces.js';
+import { espaceDemande, espacesActifs, refuserHorsLabelMaison } from './_erp-espaces.js';
+import { estLabelMaison } from '../src/erp/data/espaces.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -85,7 +86,9 @@ export default async function handler(req: any, res: any) {
     if (action === 'tester') {
       const a = await lireAppareil(base, endpoint);
       if (!a || a.expire) return repondre(res, 404, { ok: false, code: 'inconnu', erreur: 'Cet appareil n’est plus abonné : réactivez les notifications.' });
-      const bilan = await envoyerNotifications(base, [notificationTest(`test-${Date.now()}`)], { cles, essai: true, seulement: endpoint });
+      // Au nom de l'espace : jamais « Label Maison » sur l'appareil d'un autre espace.
+      const nom = estLabelMaison(membre.espace) ? undefined : (await espacesActifs(c).catch(() => [])).find((e) => e.id === membre.espace)?.nom || 'Votre conciergerie';
+      const bilan = await envoyerNotifications(base, [notificationTest(`test-${Date.now()}`, nom)], { cles, essai: true, seulement: endpoint });
       if (!bilan.envoyees) {
         return repondre(res, 502, {
           ok: false,

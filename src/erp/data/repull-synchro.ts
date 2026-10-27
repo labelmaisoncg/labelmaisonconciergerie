@@ -37,7 +37,7 @@
  * les fonctions Vercel, qui exigent l'extension.
  */
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config.js';
-import { ENTETE_ESPACE, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, lireEspacesMembre, type EspaceMembre } from './espaces.js';
+import { ENTETE_ESPACE, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, lireEspacesMembre, lireInvitationEspace, type EspaceMembre, type InvitationEspace } from './espaces.js';
 import {
   ACTION_JOURNAL_REPULL,
   AUTEUR_REPULL,
@@ -535,11 +535,16 @@ export function fabriqueJetonEquipe(email: string, motDePasse: string, o: Option
   };
 }
 
-/** Réponse de erp.qui_suis_je() : le compte, et les espaces dont il est membre. */
+/**
+ * Réponse de erp.qui_suis_je() : le compte, les espaces dont il est membre,
+ * et son invitation à ouvrir un espace s'il en a une en attente (adresse
+ * confirmée) — un tel compte, sans espace, peut entrer pour créer le sien.
+ */
 export interface Identite {
   email: string;
   serveur: boolean;
   espaces: EspaceMembre[];
+  invitation: InvitationEspace | null;
 }
 
 /**
@@ -566,7 +571,7 @@ export async function lireIdentite(jeton: string, o: OptionsAuth = {}): Promise<
     throw new Error(`Base de l’ERP : erreur ${r.status} ${t.slice(0, 200)}`);
   }
   const d = (await r.json().catch(() => ({}))) as { email?: unknown; serveur?: unknown };
-  return { email: String(d.email ?? '').toLowerCase(), serveur: d.serveur === true, espaces: lireEspacesMembre(d) };
+  return { email: String(d.email ?? '').toLowerCase(), serveur: d.serveur === true, espaces: lireEspacesMembre(d), invitation: lireInvitationEspace(d) };
 }
 
 export type ResultatMembre = { ok: true; email: string; role: string; espace: string } | { ok: false; statut: number; erreur: string };

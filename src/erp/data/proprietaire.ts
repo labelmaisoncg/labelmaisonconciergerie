@@ -20,7 +20,7 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
-import { espaceOuvert, estLabelMaison } from './espaces.js';
+import { ID_LABEL_MAISON, espaceOuvert, estLabelMaison } from './espaces.js';
 import { facturePartagee, facturesVue } from './relances.js';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull.js';
 import type { CanalReservation, DateISO, Facture, Id, Logement, Mandat, Proprietaire, Reservation } from './types';
@@ -804,12 +804,12 @@ export interface OptionsVue {
    * ouvert dans l'ERP (aperçu du gérant), avec les contacts de Label Maison
    * pour Label Maison seulement.
    */
-  conciergerie?: { nom: string; contacts?: ContactsConciergerie };
+  conciergerie?: { nom: string; espace: string; contacts?: ContactsConciergerie };
 }
 
-function conciergerieOuverte(): { nom: string; contacts?: ContactsConciergerie } {
+function conciergerieOuverte(): { nom: string; espace: string; contacts?: ContactsConciergerie } {
   const e = espaceOuvert();
-  return estLabelMaison(e) ? { nom: 'Label Maison', contacts: CONTACTS_LABEL_MAISON } : { nom: e.nom };
+  return estLabelMaison(e) ? { nom: 'Label Maison', espace: ID_LABEL_MAISON, contacts: CONTACTS_LABEL_MAISON } : { nom: e.nom, espace: e.id };
 }
 
 const CATEGORIES = new Set<string>(CATEGORIES_DOCUMENT.map((c) => c.valeur));
@@ -890,7 +890,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     bilans,
     documents,
     factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement }),
-    conciergerie: { nom: conciergerie.nom },
+    conciergerie: { nom: conciergerie.nom, espace: conciergerie.espace },
     ...(conciergerie.contacts ? { contacts: conciergerie.contacts } : {}),
   };
 }

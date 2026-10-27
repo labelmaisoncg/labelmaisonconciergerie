@@ -52,6 +52,7 @@ import {
   gerantDeLEspace,
   lireAccesOps,
   lireMembre,
+  photosFermees,
   prefixePhotos,
   prevenirGerant,
   relireOps,
@@ -212,8 +213,8 @@ export default async function handler(req: any, res: any) {
     if (action === 'photo' && req.method === 'POST') {
       if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée : utilisez la page de l’espace opérations.' });
       if (tropDePhotos(adresseIp(req))) return repondre(res, 429, { ok: false, erreur: 'Trop de photos d’un coup : patientez quelques minutes.' });
-      // Le stockage des photos n'est ouvert que pour Label Maison : le dire, plutôt qu'un « réessayez » sans issue.
-      if (!estLabelMaison(s.espace)) return repondre(res, 409, { ok: false, erreur: 'L’envoi de photos n’est pas encore ouvert pour cet espace.' });
+      // Stockage impossible pour cet espace (compte serveur pas prêt) : le dire, plutôt qu'un « réessayez » sans issue.
+      if (await photosFermees(s.espace)) return repondre(res, 409, { ok: false, erreur: 'L’envoi de photos n’est pas encore ouvert pour cet espace.' });
       const photo = lirePhoto(corps.donnees, corps.type);
       if (!photo) return repondre(res, 400, { ok: false, erreur: 'Photo illisible : choisissez une image JPEG, PNG ou WebP de moins de 3 Mo.' });
       const url = await deposerPhoto(s.espace, membreId, photo.octets, photo.type, photo.extension);

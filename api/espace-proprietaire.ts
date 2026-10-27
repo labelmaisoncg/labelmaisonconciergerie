@@ -51,14 +51,14 @@ import {
   lireSessionAcces,
 } from './_acces-externe.js';
 import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
-import { ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
+import { documentsFermes, ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
 
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
 const tropDEssais = freinEnvois(20, 15 * 60_000);
 
 const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
-const DOCUMENTS_FERMES = 'Les documents ne sont pas encore ouverts pour cet espace.';
+const DOCUMENTS_FERMES = 'Les documents ne peuvent pas être ouverts pour l’instant. Contactez votre conciergerie.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace propriétaire, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
@@ -206,7 +206,7 @@ export default async function handler(req: any, res: any) {
         mois,
         photo: (l) => photos.get(l.id),
         // Fiche illisible : Label Maison seulement si c'est explicitement son espace.
-        conciergerie: { nom: fiche?.nom || (estLabelMaison(s.espace) ? 'Label Maison' : 'Votre conciergerie'), contacts: contactsEspace(fiche, s.espace) },
+        conciergerie: { nom: fiche?.nom || (estLabelMaison(s.espace) ? 'Label Maison' : 'Votre conciergerie'), espace: s.espace, contacts: contactsEspace(fiche, s.espace) },
       });
       if (!vue) return repondre(res, 404, { ok: false, erreur: 'Espace introuvable. Contactez votre conciergerie.' });
       // `espace` : la page le garde sur l'appareil (avec le nom), pour sa page de connexion.
@@ -222,8 +222,14 @@ export default async function handler(req: any, res: any) {
       // PDF d'une facture : seulement tant qu'elle est partagée avec lui.
       const factureVisible = !doc?.factureId || facturePartagee((await s.base.lire<Facture>('factures', [doc.factureId]))[0], s.acces.proprietaireId);
       const visible = !!doc && doc.proprietaireId === s.acces.proprietaireId && factureVisible;
-      // Fichier de l'équipe d'un autre espace que Label Maison : pas encore signé côté serveur (comme les photos des opérations).
-      if (visible && String(doc?.fichier ?? '').startsWith('stockage://') && !estLabelMaison(s.espace)) return res.status(409).end(DOCUMENTS_FERMES);
+      // Fichier de l'équipe que cet espace ne peut pas encore signer (compte serveur pas prêt) : le dire, plutôt qu'« introuvable ».
+      if (visible && String(doc?.fichier ?? '').startsWith('stockage://')) {
+        const ferme = await documentsFermes(s.espace);
+        if (ferme) {
+          console.warn('[espace-proprietaire] documents fermés pour l’espace', s.espace, ferme);
+          return res.status(409).end(DOCUMENTS_FERMES);
+        }
+      }
       const lien = visible ? await lienDocument(String(doc?.fichier ?? ''), s.espace) : null;
       if (!lien) return res.status(404).end('Document introuvable.');
       res.setHeader('Location', lien);

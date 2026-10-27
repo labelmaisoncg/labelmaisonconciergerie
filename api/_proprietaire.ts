@@ -7,16 +7,18 @@
 // route par Vercel.
 //
 // Variables d'environnement : voir api/_acces-externe.ts (PROPRIETAIRE_SECRET,
-// RESEND_API_KEY, CONTACT_FROM_EMAIL) et ERP_PASSWORD (compte d'équipe).
+// RESEND_API_KEY, CONTACT_FROM_EMAIL), ERP_PASSWORD (compte d'équipe, Label
+// Maison) et ERP_SERVEUR_MOT_DE_PASSE (compte serveur : un autre espace, ses
+// fichiers compris).
 // =============================================================================
 
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
-import { estLabelMaison } from '../src/erp/data/espaces.js';
+import { espaceDe } from '../src/erp/data/acces-externe.js';
 import { CONTENU_ESPACE, adresseWeb, donneesDuProprietaire, photoCouverture, proprietaireAutorise, type EntreesProprietaire } from '../src/erp/data/proprietaire.js';
 import { COLLECTION_RELANCES, facturePartagee } from '../src/erp/data/relances.js';
 import type { Facture, Logement, Mandat, Proprietaire, Reservation } from '../src/erp/data/types';
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire, RelancePaiement } from '../src/erp/data/types-proprietaire';
-import { configuration, signeurFichiersErp } from './_erp-repull.js';
+import { configuration, signeurFichiersErp, stockageFerme } from './_erp-repull.js';
 import { GENRES, envoyerEmailEspace, secretAcces } from './_acces-externe.js';
 import type { FicheEspace } from './_erp-espaces.js';
 import { echapperHtml } from './_garde-formulaire.js';
@@ -91,13 +93,16 @@ export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string):
   };
 }
 
+/** Signature des fichiers de l'espace de l'accès (jamais ceux d'un autre espace : signeurFichiersErp). */
+const signeurDeLEspace = (espace: string) => signeurFichiersErp({ ...configuration(), espace: espaceDe(espace) });
+
 /**
  * Photos de couverture affichables : adresse web telle quelle ; fichier de
- * l'équipe signé (Label Maison seulement pour l'instant : les fichiers des
- * autres espaces ne sont pas encore signés côté serveur).
+ * l'équipe signé dans l'espace de l'accès (un fichier d'un autre espace :
+ * rien).
  */
 export async function photosSignees(logements: readonly Logement[], espace: string): Promise<Map<string, string>> {
-  const signer = estLabelMaison(espace) ? signeurFichiersErp(configuration()) : undefined;
+  const signer = signeurDeLEspace(espace);
   const res = new Map<string, string>();
   await Promise.all(
     logements.map(async (l) => {
@@ -118,12 +123,16 @@ export async function lireDocument(b: BaseErp, id: string): Promise<DocumentProp
   return (await b.lire<DocumentProprietaire>('documentsProprietaire', [id]))[0];
 }
 
+/** Lien d'un document : adresse web telle quelle, fichier de l'espace de l'accès signé 2 minutes, sinon null. */
 export async function lienDocument(fichier: string, espace: string): Promise<string | null> {
   if (/^https:\/\//.test(fichier)) return fichier;
   if (!fichier.startsWith('stockage://')) return null;
-  const signer = estLabelMaison(espace) ? signeurFichiersErp(configuration()) : undefined;
+  const signer = signeurDeLEspace(espace);
   return signer ? signer(fichier, DUREE_DOCUMENT_S).catch(() => null) : null;
 }
+
+/** Documents déposés impossibles à ouvrir dans cet espace (compte serveur pas prêt…) : la raison, sinon null. */
+export const documentsFermes = (espace: string): Promise<string | null> => stockageFerme({ ...configuration(), espace: espaceDe(espace) });
 
 /**
  * Lien de connexion par e-mail, au nom de l'espace (« Label Maison »,

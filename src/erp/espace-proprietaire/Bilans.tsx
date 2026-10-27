@@ -3,9 +3,8 @@ import { dateCourte, euros, jourMois, nombre, pluriel, pourcentage } from '../da
 import { espaceOuvert } from '../data/espaces';
 import { logementsSansTaux } from '../data/proprietaire';
 import type { BilanVue, ChiffresBilan, VueProprietaire } from '../data/types-proprietaire';
-import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Button, Card, EmptyState, cn } from '../ui';
-import { bilanDuMois, CANAL, deNom, titreMois } from './commun';
+import { bilanDuMois, CANAL, deNom, enteteImprime, titreMois } from './commun';
 
 const moins = (c: number) => (c ? `− ${euros(c)}` : euros(0));
 
@@ -37,18 +36,19 @@ function tauxCommission(c: ChiffresBilan): string | undefined {
 export function BilanDetail({
   bilan,
   proprietaire,
-  conciergerie = espaceOuvert().nom,
+  conciergerie: espace = { nom: espaceOuvert().nom, espace: espaceOuvert().id },
   onImprimer,
   gerant = false,
 }: {
   bilan: Pick<BilanVue, 'mois' | 'commentaire' | 'chiffres'> & { publieLe?: string };
   proprietaire: string;
-  /** Nom de la conciergerie (espace) ; sans : l'espace ouvert dans l'ERP. */
-  conciergerie?: string;
+  /** Conciergerie (espace : nom et identifiant) ; sans : l'espace ouvert dans l'ERP. */
+  conciergerie?: VueProprietaire['conciergerie'];
   onImprimer?: () => void;
   /** Vu par le gérant (aperçu avant publication) : notes qui ne sont que pour lui. */
   gerant?: boolean;
 }) {
+  const conciergerie = espace.nom;
   const c = bilan.chiffres;
   const t = c.totaux;
   const sansTaux = logementsSansTaux(c);
@@ -59,7 +59,7 @@ export function BilanDetail({
     <article className="lm-bilan-imprimable" aria-label={bilanDuMois(c.mois)}>
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{conciergerie === 'Label Maison' ? ENTREPRISE_LIGNE : conciergerie}</p>
+          <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{enteteImprime(espace)}</p>
           <p className="hidden text-[13px] font-medium text-(--lm-encre) print:block">Bilan locatif · {proprietaire}</p>
           <h2 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">{titreMois(c.mois)}</h2>
           {bilan.publieLe && <p className="text-[13px] text-(--lm-encre-2)">Publié le {dateCourte(bilan.publieLe.slice(0, 10))}</p>}
@@ -197,7 +197,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
             </button>
           </div>
         </div>
-        <BilanDetail bilan={bilan} proprietaire={vue.proprietaire.nom} conciergerie={vue.conciergerie.nom} onImprimer={() => window.print()} />
+        <BilanDetail bilan={bilan} proprietaire={vue.proprietaire.nom} conciergerie={vue.conciergerie} onImprimer={() => window.print()} />
       </>
     );
   }

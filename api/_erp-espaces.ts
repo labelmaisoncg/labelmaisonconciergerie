@@ -3,10 +3,15 @@
 // actifs (passages planifiés, webhooks), espace demandé par un appel.
 // Modèle et règles : src/erp/data/espaces.ts et supabase/erp-espaces.sql.
 //
-// Label Maison garde ses ressources de Vercel (REPULL_API_KEY, secret du
-// webhook, Telegram, MCP). Un autre espace n'en reprend JAMAIS aucune :
-//   - Repull : son workspace (en-tête X-Workspace-Id) sur le compte de Label
-//     Maison, ou sa propre clé rangée dans le coffre de Supabase (Vault) ;
+// Label Maison garde ses ressources de Vercel (REPULL_API_KEY,
+// REPULL_WORKSPACE_LM, secret du webhook, Telegram, MCP). Un autre espace
+// n'en reprend JAMAIS aucune :
+//   - Repull : sa propre clé, que son gérant range dans le coffre de Supabase
+//     (Vault) depuis Paramètres → Plateformes (api/erp-espaces.ts), avec le
+//     workspace de SA clé s'il en a un (config.repull.workspace) ; ou, cas
+//     déclaré par Label Maison seulement (SQL), un workspace sur le compte de
+//     Label Maison (colonne repull_workspace, en-tête X-Workspace-Id), permis
+//     une fois REPULL_WORKSPACE_LM posé ;
 //     part mensuelle d'appels propre (config.repull.budgetMois, 150 par
 //     défaut : la part de Label Maison n'est jamais entamée par défaut) ;
 //   - webhook : par workspace, ses événements arrivent à l'adresse de Label
@@ -20,7 +25,7 @@
 
 import { CODE_LABEL_MAISON, ENTETE_ESPACE, ESPACE_LABEL_MAISON, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, idEspaceValide } from '../src/erp/data/espaces.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
-import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, repondre, type ConfigRepullErp } from './_erp-repull.js';
+import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, repondre, workspaceLabelMaison, type ConfigRepullErp } from './_erp-repull.js';
 
 /** Plafond mensuel des décisions de l'agent IA d'un autre espace que Label Maison. */
 export const PLAFOND_IA_DEFAUT = 300;
@@ -34,10 +39,20 @@ export interface FicheEspace {
   code: string;
   nom: string;
   repull_workspace: string | null;
-  config: { agent?: { plafondMois?: unknown }; repull?: { budgetMois?: unknown } } | null;
+  config: { agent?: { plafondMois?: unknown }; repull?: { budgetMois?: unknown; workspace?: unknown } } | null;
 }
 
 const FICHE_LABEL_MAISON: FicheEspace = { ...ESPACE_LABEL_MAISON, repull_workspace: null, config: {} };
+
+/**
+ * Fiche de Label Maison avec son workspace Repull : REPULL_WORKSPACE_LM fait
+ * foi (c'est lui que portent ses appels) ; sans la variable, celui de sa
+ * ligne dans erp.espaces s'il y en a un (reconnaissance du webhook, comme avant).
+ */
+const avecWorkspaceLabelMaison = (f: FicheEspace): FicheEspace => {
+  const ws = workspaceLabelMaison();
+  return estLabelMaison(f.id) && ws ? { ...f, repull_workspace: ws } : f;
+};
 
 const entierPositif = (v: unknown, defaut: number): number => {
   const n = Number(v);
@@ -50,10 +65,10 @@ const entierPositif = (v: unknown, defaut: number): number => {
  */
 export async function espacesActifs(c: ConfigRepullErp = configuration()): Promise<FicheEspace[]> {
   const e = await etatBase(c);
-  if (e.mode !== 'espaces' || !e.serveur) return [FICHE_LABEL_MAISON];
+  if (e.mode !== 'espaces' || !e.serveur) return [avecWorkspaceLabelMaison(FICHE_LABEL_MAISON)];
   const lignes = await baseErp(c, ID_LABEL_MAISON).rpc<FicheEspace[]>('espaces_actifs');
   const liste = (Array.isArray(lignes) ? lignes : []).filter((x) => idEspaceValide(x?.id)).map((x) => ({ ...x, id: x.id.toLowerCase() }));
-  return liste.some((x) => estLabelMaison(x.id)) ? liste : [FICHE_LABEL_MAISON, ...liste];
+  return (liste.some((x) => estLabelMaison(x.id)) ? liste : [FICHE_LABEL_MAISON, ...liste]).map(avecWorkspaceLabelMaison);
 }
 
 /**
@@ -76,14 +91,23 @@ export async function configurationEspace(espace: string = ID_LABEL_MAISON, fich
     base.rpc<string | null>('secret_espace', { p_espace: id, p_nom: 'repull_cle' }),
     base.rpc<string | null>('secret_espace', { p_espace: id, p_nom: 'repull_webhook' }),
   ]);
-  const workspace = (f.repull_workspace ?? '').trim();
   const propre = typeof clePropre === 'string' ? clePropre.trim() : '';
+  // Sa propre clé (rangée par son gérant, Paramètres → Plateformes), avec le workspace de SA clé s'il en a donné un.
+  const wsPropre = typeof f.config?.repull?.workspace === 'string' ? f.config.repull.workspace.trim() : '';
+  // Sinon, un workspace sur le compte de Label Maison, que seul Label Maison déclare (SQL Editor).
+  const wsCompteLM = (f.repull_workspace ?? '').trim();
+  if (!propre && wsCompteLM) {
+    // Label Maison doit d'abord limiter ses propres appels à son workspace : sans cela, sa clé lirait aussi celui-ci.
+    const lm = workspaceLabelMaison();
+    if (!lm) throw new Error('Workspace sur le compte Repull de Label Maison : ajoutez d’abord REPULL_WORKSPACE_LM dans Vercel (docs/erp/espaces-mise-en-service.md).');
+    if (wsCompteLM === lm) throw new Error('Cet espace a le même workspace Repull que Label Maison : corrigez repull_workspace (docs/erp/espaces-mise-en-service.md).');
+  }
   return {
     ...c,
     espace: id,
     nomEspace: f.nom,
-    cle: propre || (workspace ? c.cle : ''),
-    workspace: workspace || undefined,
+    cle: propre || (wsCompteLM ? c.cle : ''),
+    workspace: (propre ? wsPropre : wsCompteLM) || undefined,
     // Le secret du webhook de Label Maison ne vaut jamais pour un autre espace.
     secretWebhook: typeof secretWebhook === 'string' ? secretWebhook.trim() : '',
     budgetMois: entierPositif(f.config?.repull?.budgetMois, BUDGET_ESPACE_DEFAUT),
@@ -134,14 +158,15 @@ export function refuserHorsLabelMaison(res: any, espace: string, quoi: string): 
 
 /**
  * Espace d'un événement « tagué » workspaceId reçu à l'adresse de Label Maison :
- * l'espace qui a déclaré ce workspace (Label Maison compris) ; à défaut, Label
- * Maison tant qu'aucun autre espace n'a de workspace (comme avant les espaces) ;
- * sinon null : workspace inconnu, l'événement est ignoré.
+ * l'espace qui a déclaré ce workspace (Label Maison compris : REPULL_WORKSPACE_LM) ;
+ * à défaut, Label Maison tant qu'aucun espace n'a déclaré de workspace (comme
+ * avant les espaces) ; sinon null : workspace inconnu, l'événement est ignoré
+ * (par exemple celui d'un espace dont le workspace n'est pas encore déclaré).
  */
 export function espaceDuWorkspace(espaces: FicheEspace[], workspace: string): FicheEspace | null {
   const trouve = espaces.find((e) => (e.repull_workspace ?? '') === workspace);
   if (trouve) return trouve;
-  if (espaces.some((e) => !estLabelMaison(e.id) && e.repull_workspace)) return null;
+  if (espaces.some((e) => e.repull_workspace)) return null;
   return espaces.find((e) => estLabelMaison(e.id)) ?? FICHE_LABEL_MAISON;
 }
 

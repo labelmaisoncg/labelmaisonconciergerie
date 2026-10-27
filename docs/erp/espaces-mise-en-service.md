@@ -5,15 +5,20 @@ copier-coller dans Supabase et Vercel, dans l'ordre ci-dessous.
 
 ## Ce que ça change
 
-Le même ERP pourra servir plusieurs équipes, chacune dans son **espace** :
-Label Maison d'un côté, Sens de l'autre. Chaque espace a ses logements, ses
-réservations, ses messages, son Repull. Rien ne passe de l'un à l'autre.
+Le même ERP pourra servir plusieurs conciergeries, chacune dans son
+**espace** : Label Maison d'un côté, Sens (ou une autre) de l'autre. Chaque
+espace a ses logements, ses réservations, ses messages, son équipe, ses
+propriétaires, ses fichiers et son compte Repull. Rien ne passe de l'un à
+l'autre. Une conciergerie n'entre que **sur invitation de Label Maison**, puis
+crée et gère son espace seule.
 
 **Pour Label Maison, rien ne change** : même adresse, même mot de passe,
 personne n'est déconnecté, toutes les données restent où elles sont.
 
 Comptez 15 minutes aujourd'hui, puis 5 minutes au moins 24 heures plus tard
-(voir l'étape 4 pour le point de départ exact de ces 24 heures).
+(voir l'étape 4 pour le point de départ exact de ces 24 heures). Les étapes 1
+à 5 ne se font qu'une fois ; ensuite, chaque nouvelle conciergerie ne demande
+qu'une invitation (« Inviter une conciergerie »).
 
 ## Étape 1 — Créer le compte du serveur (5 min)
 
@@ -90,39 +95,124 @@ jusqu'à son rechargement). Toutes les apps se rechargent seules chaque nuit :
 Attendu : la même ligne qu'à l'étape 2, avec **passe = 2** et
 **cles_par_espace = 3**, **recette = ok**.
 
-## Plus tard — ouvrir l'espace de Sens
+## Étape 5 — Avant la première invitation (une fois, 5 min)
 
-**Seulement après la passe 2.** Avant, la base refuse de créer un autre espace
-(message « Passe 2 d'abord ») : c'est voulu, sinon les réglages techniques de
-Sens se mélangeraient à ceux de Label Maison.
+**Seulement après la passe 2.** Avant, « Inviter une conciergerie » répond
+« Passe 2 d'abord » : c'est voulu.
 
-Avec l'étape suivante (connexion personnelle et « Créer un compte »), l'espace
-de Sens s'ouvrira depuis l'ERP. D'ici là, voici ce qui se prépare dans le SQL
-Editor (une requête à la fois) :
+1. **Adresses confirmées.** Supabase → **Authentication** → **Sign In /
+   Providers** → **Email** : l'option **Confirm email** doit être activée.
+   C'est elle qui garantit qu'une invitation ne sert qu'à la personne qui lit
+   cette boîte mail.
+   Attendu : « Confirm email » est activé.
+2. **Workspace Repull de Label Maison (recommandé).** Demandez à Repull :
+   « Quel est l'identifiant du workspace de Label Maison, celui de l'en-tête
+   X-Workspace-Id, et est-ce le même que le champ workspaceId des
+   webhooks ? ». Puis Vercel → projet du site → **Settings** →
+   **Environment Variables** → **Add New** : nom `REPULL_WORKSPACE_LM`,
+   valeur : ce numéro seul, environnements **Production** et **Preview** →
+   **Save** ; **Deployments** → **⋯** → **Redeploy**.
+   Attendu : ERP de Label Maison → Paramètres → Plateformes → **Synchroniser
+   maintenant** répond « Synchronisé… », et le nombre de logements ne change
+   pas. Sinon : supprimez la variable, redéployez (tout redevient comme avant)
+   et écrivez à Repull.
+   Pourquoi : les appels de Label Maison ne lisent alors que son workspace, et
+   un événement venu d'un autre workspace de votre compte n'est jamais versé
+   chez Label Maison. **Obligatoire** avant d'ouvrir, sur votre propre compte
+   Repull, un workspace pour une autre conciergerie (voir « Cas particulier »).
 
-- Créer l'espace :
-  `insert into erp.espaces (code, nom) values ('sens', 'Sens');`
-- Repull, voie principale (le workspace que Repull ouvre pour Sens sur votre
-  compte, même facture) : quand Repull vous donne son numéro,
-  `update erp.espaces set repull_workspace = 'NUMÉRO' where code = 'sens';`
-  Demandez aussi à Repull si les événements de Label Maison portent un numéro
-  de workspace. Si oui, renseignez-le AVANT celui de Sens :
-  `update erp.espaces set repull_workspace = 'NUMÉRO' where code = 'label-maison';`
-  (sinon, une fois Sens relié, ces événements seraient ignorés ; la
-  synchronisation quotidienne et le bouton, eux, continuent).
-- Repull, autre voie (Sens a son propre compte Repull et sa propre clé) : la
-  clé se range dans le coffre chiffré de Supabase, jamais dans Vercel :
-  `select erp.ranger_secret('sens', 'repull_cle', 'LA_CLÉ');`
-- Appels Repull de Sens : 150 par mois par défaut (sa propre part, celle de
-  Label Maison n'est pas entamée). Pour la changer :
-  `update erp.espaces set config = jsonb_set(config, '{repull}', coalesce(config->'repull', '{}') || '{"budgetMois": 200}') where code = 'sens';`
-- Plafond de l'agent IA de Sens (il utilise la clé Claude de Label Maison) :
-  300 décisions par mois par défaut. Pour le changer :
-  `update erp.espaces set config = jsonb_set(config, '{agent}', coalesce(config->'agent', '{}') || '{"plafondMois": 150}') where code = 'sens';`
+## Inviter une conciergerie
 
-L'agent de Sens démarre **en pause** : il ne répond à personne tant que
-l'équipe de Sens ne l'a pas allumé. Les alertes Telegram restent celles de
-Label Maison uniquement.
+1. ERP de Label Maison → Paramètres → **Espaces** → « Inviter une
+   conciergerie » : son nom, l'adresse e-mail de la personne qui ouvrira
+   l'espace → **Inviter**.
+2. L'e-mail part au nom de Label Maison. Sans envoi d'e-mail configuré, le
+   lien s'affiche : **Copier le lien**, puis envoyez-le (SMS, WhatsApp).
+3. L'invitation vaut 14 jours, une seule fois, pour cette adresse seulement.
+   « Renvoyer » la prolonge, « Annuler » la retire. Une adresse qui a déjà
+   accès à un espace ne peut pas être invitée : il faut une adresse propre à
+   la conciergerie.
+
+## Ce que fait la conciergerie invitée
+
+Rien dans Supabase ni dans Vercel :
+
+1. Elle ouvre le lien, touche **Créer mon compte** avec l'adresse invitée,
+   choisit son mot de passe, puis confirme son adresse avec l'e-mail reçu.
+2. Elle se connecte : l'ERP affiche « Créez l'espace de votre conciergerie »,
+   le nom déjà rempli → **Créer l'espace**. Elle en devient la gérante ;
+   l'espace est vide.
+3. L'accueil lui montre « Démarrage », dans l'ordre :
+   - **Reliez votre compte Repull** : Paramètres → Plateformes → « Votre
+     compte Repull » → la clé API de son compte (Repull → Settings → API
+     keys) et, s'il en a plusieurs, son workspace → **Enregistrer**.
+     Attendu : « Clé enregistrée ». La clé va dans le coffre chiffré de
+     Supabase : personne ne peut la relire, on peut seulement la remplacer.
+   - **Connectez Airbnb, Booking…** : Logements → Connexions, puis le choix
+     des logements.
+   - **Renseignez les infos pour l'agent** sur chaque logement.
+   - **Invitez votre équipe** : Paramètres → Équipe → adresse et rôle →
+     **Envoyer l'invitation**.
+   - **Invitez propriétaires et responsables** : Paramètres → Accès.
+   - **Allumez l'agent quand vous êtes prêt** : Messagerie → Agent. Il
+     démarre en pause ; il répond avec la clé Claude de Label Maison, au plus
+     300 décisions par mois, signé « L'équipe <nom de la conciergerie> ».
+   - Facultatif, le temps réel : Plateformes → « Avancé : temps réel » →
+     l'adresse de son webhook à ajouter dans Repull, puis le secret donné par
+     Repull → **Enregistrer le secret**.
+
+## Suspendre ou rouvrir un espace
+
+Paramètres → Espaces → **Suspendre** : son équipe, ses propriétaires et ses
+responsables n'y entrent plus, l'agent et les mises à jour s'arrêtent. Rien
+n'est effacé : **Rouvrir** rend tout.
+
+## Réglages réservés à Label Maison (facultatif, SQL Editor)
+
+Le code de l'espace est affiché dans Paramètres → Espaces (« code … ») ;
+remplacez `CODE` ci-dessous. Une requête à la fois.
+
+- Part mensuelle d'appels Repull (150 par défaut) :
+  `update erp.espaces set config = jsonb_set(config, '{repull}', coalesce(config->'repull', '{}') || '{"budgetMois": 300}') where code = 'CODE';`
+- Plafond de l'agent (300 décisions par mois par défaut, clé Claude de Label
+  Maison) :
+  `update erp.espaces set config = jsonb_set(config, '{agent}', coalesce(config->'agent', '{}') || '{"plafondMois": 150}') where code = 'CODE';`
+- Contacts montrés à ses propriétaires :
+  `update erp.espaces set config = jsonb_set(config, '{contacts}', '{"email": "contact@DOMAINE", "telephone": "+33 6 00 00 00 00"}') where code = 'CODE';`
+- Expéditeur de ses e-mails : voir « E-mail au nom de Sens » plus bas.
+- Nom de l'espace :
+  `update erp.espaces set nom = 'Nouveau nom' where code = 'CODE';`
+- **Cas particulier** : un workspace sur le compte Repull **de Label Maison**
+  au lieu de sa propre clé (même facture). D'abord l'étape 5.2
+  (`REPULL_WORKSPACE_LM`), puis :
+  `update erp.espaces set repull_workspace = 'NUMÉRO' where code = 'CODE';`
+  Sans `REPULL_WORKSPACE_LM`, la synchronisation de cet espace refuse avec un
+  message clair ; le numéro de Label Maison est refusé pour un autre espace.
+
+## Limites à connaître
+
+- **Choix de l'espace à l'écran** : pas encore. Une adresse membre de
+  plusieurs espaces ouvre le dernier utilisé sur l'appareil (Label Maison
+  d'abord). D'où une adresse par conciergerie.
+- **Identité légale** : dans l'ERP d'une autre conciergerie, les documents
+  faits côté gérant (contrat de mandat, relevés et factures de Finance,
+  Paramètres → Société, Conformité) portent encore la raison sociale, le
+  SIRET et l'adresse de Label Maison. Ne les envoyez pas tels quels : la
+  conciergerie joint ses propres documents. L'espace propriétaire, lui,
+  imprime le nom de la conciergerie, jamais l'identité de Label Maison.
+- **Fichiers** (documents, photos, guides) d'un autre espace : signés et
+  déposés par le compte serveur, dans le dossier de cet espace seulement. À
+  vérifier une fois, avec la première conciergerie : un document déposé pour
+  un de ses propriétaires s'ouvre depuis l'espace propriétaire. S'il affiche
+  « Document introuvable », écrivez à l'équipe technique.
+- **Telegram** : alertes de l'agent pour Label Maison seulement.
+- **Notifications de l'app** : leurs clés (Paramètres → Application →
+  Avancé) sont créées par un gérant de Label Maison et servent à toute l'app ;
+  chaque espace abonne ses propres appareils.
+- **Part d'appels Repull** : 150 par mois par défaut, même avec sa propre clé
+  (réglable ci-dessus) ; « Avancé » affiche pour repère le quota du compte de
+  Label Maison.
+- **Site public** (formulaires, dossier propriétaire) : Label Maison seulement.
 
 ## Comptes de l'équipe et Claude, dans chaque espace
 
