@@ -53,6 +53,8 @@ interface Compte {
   id: string;
   email: string;
   membre: boolean;
+  /** Adresse telle qu'écrite dans erp.membres, si elle diffère (casse). */
+  stocke?: string;
 }
 const ABDEL: Compte = { id: '11111111-2222-4333-8444-555555555555', email: 'abdel@exemple.fr', membre: true };
 const INCONNU: Compte = { id: '99999999-2222-4333-8444-555555555555', email: 'inconnu@exemple.fr', membre: false };
@@ -97,8 +99,28 @@ const fauxFetch = async (entree: string | URL | Request, init?: RequestInit): Pr
   }
   if (url.pathname === '/rest/v1/membres') {
     if (entetes.get('accept-profile') !== 'erp') return json({ message: 'schéma' }, 400);
-    const email = (url.searchParams.get('email') ?? '').replace(/^eq\./, '');
-    return json(compte?.membre && email === compte.email ? [{ role: 'gerant' }] : []);
+    // erp.membres tel que saisi (casse comprise) ; RLS : toute la table pour
+    // un membre, sa seule ligne (même adresse, sans la casse) sinon.
+    const table = COMPTES.filter((c) => c.membre).map((c) => c.stocke ?? c.email);
+    const moi = compte?.email.toLowerCase() ?? '';
+    const visibles = table.some((e) => e.toLowerCase() === moi) ? table : table.filter((e) => e.toLowerCase() === moi);
+    const filtre = url.searchParams.get('email') ?? '';
+    const garde = (e: string) => {
+      if (filtre.startsWith('eq.')) return e === filtre.slice(3);
+      if (!filtre.startsWith('ilike.')) return false;
+      // Motif LIKE de PostgREST : « * » et « % » = n'importe quoi, « _ » = un caractère, « \ » échappe.
+      let re = '';
+      const m = filtre.slice(6);
+      for (let i = 0; i < m.length; i++) {
+        const c = m[i];
+        if (c === '\\' && i + 1 < m.length) re += m[++i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        else if (c === '%' || c === '*') re += '.*';
+        else if (c === '_') re += '.';
+        else re += c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      }
+      return new RegExp(`^${re}$`, 'i').test(e);
+    };
+    return json(visibles.filter(garde).map(() => ({ role: 'gerant' })));
   }
   return json({ message: 'inconnu' }, 404);
 };
@@ -309,6 +331,131 @@ async function principal() {
 
     const apres = appels.filter((a) => a.includes('grant_type=password')).length;
     verifier(avant === 0 && apres === 0, 'jamais de connexion au compte d’équipe par le serveur', { avant, apres });
+  }
+
+  section('Rien d’identifiant dans l’adresse (formulaire sans script)');
+  {
+    const r = await appeler('/erp');
+    const html = await r!.text();
+    for (const id of ['f-connexion', 'f-nouveau', 'f-confirmer']) {
+      const balise = new RegExp(`<form id="${id}"[^>]*>`).exec(html)?.[0] ?? '';
+      verifier(/method="post"/.test(balise) && /action="\/erp\/connexion"/.test(balise), `${id} : envoi en POST vers /erp/connexion`, balise);
+    }
+    const champs = [...html.matchAll(/<input[^>]*>/g)].map((m) => m[0]).filter((i) => /id="(email|mdp|nouveau)"/.test(i));
+    verifier(champs.length === 3 && champs.every((i) => !/\sname=/.test(i)), 'champs d’identifiants sans « name » : rien ne part sans le script', champs);
+    verifier(html.includes('<noscript>') && /JavaScript/.test(html), 'sans script : message clair');
+
+    const g = await appeler('/erp/logements?onglet=photos&email=a%40b.fr&motdepasse=SECRET123&Password=X9&access_token=JETON');
+    const h = await g!.text();
+    verifier(!h.includes('SECRET123') && !h.includes('a@b.fr') && !h.includes('a%40b.fr') && !h.includes('X9') && !h.includes('JETON'), 'adresse avec identifiants : jamais recopiée dans la page');
+    verifier(h.includes('"suite":"/erp/logements?onglet=photos"'), 'les autres paramètres restent dans l’adresse de retour', /"suite":"[^"]*"/.exec(h)?.[0]);
+
+    const sansScript = await appeler('/erp/connexion', {
+      corps: 'suite=%2Ferp',
+      entetes: { ...MEME_ORIGINE, 'content-type': 'application/x-www-form-urlencoded', accept: 'text/html,application/xhtml+xml' },
+    });
+    const page = await sansScript!.text();
+    verifier(sansScript!.status === 415 && page.includes('La connexion demande JavaScript') && !cookiesPoses(sansScript!).erp_session, 'formulaire envoyé sans script : page claire, aucune session');
+
+    const viaJson = await connexion(ABDEL, 'rafr-suite', '/erp/crm?motdepasse=SECRET&vue=liste');
+    verifier(((await viaJson!.json()) as { suite?: string }).suite === '/erp/crm?vue=liste', 'retour après connexion : identifiants retirés de l’adresse');
+  }
+
+  section('Lien reçu par e-mail : jamais de connexion sans geste');
+  {
+    const html = await (await appeler('/erp'))!.text();
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])[0] ?? '';
+    const jwt = (email: string) => `x.${Buffer.from(JSON.stringify({ email })).toString('base64url')}.y`;
+    const essai = (hash: string) => {
+      const ecouteurs: Record<string, (ev: { preventDefault(): void }) => void> = {};
+      const elements: Record<string, Record<string, unknown>> = {};
+      const el = (id: string) =>
+        (elements[id] ??= {
+          id,
+          hidden: id === 'f-nouveau' || id === 'f-confirmer',
+          textContent: '',
+          value: '',
+          disabled: false,
+          focus() {},
+          select() {},
+          addEventListener(type: string, f: (ev: { preventDefault(): void }) => void) {
+            ecouteurs[`${id}:${type}`] = f;
+          },
+          querySelectorAll: () => [],
+        });
+      const envois: string[] = [];
+      vm.runInNewContext(script, {
+        document: { getElementById: el },
+        location: { hash, pathname: '/erp', search: '', replace() {} },
+        history: { state: null, replaceState() {} },
+        URLSearchParams,
+        localStorage: { removeItem() {} },
+        atob: (b: string) => Buffer.from(b, 'base64').toString('binary'),
+        escape,
+        fetch: (u: string, o: { method?: string; body?: string } = {}) => {
+          envois.push(`${o.method ?? 'GET'} ${u} ${o.body ?? ''}`);
+          return new Promise(() => {});
+        },
+        Object,
+        String,
+        JSON,
+        Error,
+        decodeURIComponent,
+      });
+      return { ecouteurs, elements, envois };
+    };
+
+    const piege = essai(`#access_token=${jwt('attaquant@exemple.fr')}&refresh_token=rafr-attaquant&type=signup`);
+    verifier(!piege.envois.some((a) => a.startsWith('POST /erp/connexion')), 'type=signup : rien n’est envoyé sans geste', piege.envois);
+    verifier(piege.elements['f-confirmer']?.hidden === false && piege.elements['f-connexion']?.hidden === true, 'type=signup : confirmation affichée');
+    verifier(String(piege.elements['intro-confirmer']?.textContent).includes('attaquant@exemple.fr'), 'la confirmation nomme le compte', piege.elements['intro-confirmer']?.textContent);
+    piege.ecouteurs['f-confirmer:submit']?.({ preventDefault() {} });
+    verifier(piege.envois.some((a) => a.startsWith('POST /erp/connexion')), 'après « Ouvrir l’ERP » : connexion');
+
+    const nu = essai(`#access_token=${jwt('x@exemple.fr')}&refresh_token=r`);
+    verifier(!nu.envois.some((a) => a.startsWith('POST /erp/connexion')) && nu.elements['f-confirmer']?.hidden === false, 'jeton sans type : confirmation, rien d’envoyé');
+    const autre = essai(`#access_token=${jwt('x@exemple.fr')}&refresh_token=r&type=magiclink`);
+    verifier(!autre.envois.some((a) => a.startsWith('POST /erp/connexion')), 'type=magiclink : rien d’envoyé sans geste');
+    autre.ecouteurs['autre-compte:click']?.({ preventDefault() {} });
+    verifier(autre.elements['f-connexion']?.hidden === false && autre.elements['f-confirmer']?.hidden === true, '« Utiliser un autre compte » : retour au formulaire');
+
+    const recup = essai(`#access_token=${jwt('moi@exemple.fr')}&refresh_token=r&type=recovery`);
+    verifier(!recup.envois.length && recup.elements['f-nouveau']?.hidden === false, 'type=recovery : choix du mot de passe, rien d’envoyé');
+    verifier(String(recup.elements['intro-nouveau']?.textContent).includes('moi@exemple.fr'), 'type=recovery : le compte est nommé');
+  }
+
+  section('Robustesse');
+  {
+    let erreur = '';
+    let statut: number | undefined;
+    try {
+      statut = (await appeler('/erp', { cookies: { erp_session: '%E0%A4%A' } }))?.status;
+    } catch (e) {
+      erreur = (e as Error).message;
+    }
+    verifier(!erreur && statut === 401, 'cookie avec un « % » mal formé : page de connexion, pas d’erreur 500', erreur || statut);
+    let erreurLinge = '';
+    try {
+      statut = (await appeler('/linge', { cookies: { linge_session: '%' } }))?.status;
+    } catch (e) {
+      erreurLinge = (e as Error).message;
+    }
+    verifier(!erreurLinge && statut === 401, 'linge : même chose', erreurLinge || statut);
+
+    base = 'historique';
+    const MIXTE: Compte = { id: '44444444-2222-4333-8444-555555555555', email: 'mixte@exemple.fr', stocke: 'Mixte@Exemple.fr', membre: true };
+    COMPTES.push(MIXTE);
+    const m = await connexion(MIXTE);
+    verifier(m!.status === 200, 'base d’avant les espaces : adresse saisie avec des majuscules reconnue', m!.status);
+    const JOKER: Compte = { id: '55555555-2222-4333-8444-555555555555', email: 'a_b@exemple.fr', membre: true };
+    COMPTES.push(JOKER);
+    appels.length = 0;
+    const j = await connexion(JOKER);
+    verifier(j!.status === 200 && appels.some((a) => a.includes('email=ilike.a%5C_b%40exemple.fr')), '« _ » échappé dans la recherche de l’adresse', appels.filter((a) => a.includes('membres')));
+
+    const d = await appeler('/erp/deconnexion', { cookies: { erp_session: sessionAbdel, erp_relais: 'x' } });
+    const effaces = d!.headers.getSetCookie();
+    verifier(effaces.some((c) => /^erp_session=;.*Max-Age=0/.test(c)) && effaces.some((c) => /^erp_relais=;.*Path=\/erp\/session;.*Max-Age=0/.test(c)), 'déconnexion : session et relais effacés', effaces);
   }
 
   section('Zone du linge inchangée');
