@@ -61,7 +61,17 @@ import { dateParis, horodatageParis, instant } from './repull.js';
 import { BudgetEpuise, DelaiEcoule, ErreurRepull, lireEtat, releverConversations, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT } from './repull-synchro.js';
 import type { ContexteConnexion } from './repull-connexion.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi, nomPlateforme } from './messagerie-envoi.js';
-import { controlerReponse, type ResultatControle } from './controle-reponse.js';
+import {
+  ID_ALERTE_CONTROLE,
+  MESSAGE_ALERTE_CONTROLE,
+  apresControle,
+  controlerReponse,
+  notificationAlerteControle,
+  type AlerteControleAgent,
+  type EtatControle,
+  type ResultatControle,
+} from './controle-reponse.js';
+import type { GroupeNotification } from './notifications.js';
 import { REGLAGES_AGENT_DEFAUT, reglagesAgent } from './reglages.js';
 import { LIBELLE_TYPE_GUIDE, MAX_GUIDES_PAR_REPONSE, guideEnvoyable, guidesAJoindre, lienGuide, questionsValides, texteAvecGuides, type SignerFichier } from './guides.js';
 import {
@@ -71,6 +81,7 @@ import {
   analyseDepuisDecision,
   codeLangue,
   confianceLue,
+  consigneCachee,
   contientCodeAcces,
   estIntention,
   estSentiment,
@@ -144,6 +155,8 @@ export interface PassageAgent {
   transmis: number;
   /** Réponses préparées et gardées pour l'équipe (niveau d'autonomie, confiance trop basse). */
   aValider?: number;
+  /** Alerte levée pendant ce passage : le contrôle des réponses échoue en série. */
+  alerteControle?: string;
   /** Chaque décision du passage : demande lue, confiance, sort. */
   decisions?: { filId: string; intention?: IntentionMessage; confiance?: number; sort: 'envoyee' | 'a_valider' | 'transmise' }[];
   /** Conversations laissées pour le passage suivant (temps, plafond). */
@@ -170,6 +183,8 @@ export interface EtatAgent {
   dernierReleve?: string;
   /** Décisions de Claude du mois (AAAA-MM), pour le plafond de l'espace. */
   iaMois?: { mois: string; appels: number };
+  /** Second contrôle des réponses : échecs de suite et alerte en cours (controle-reponse.ts). */
+  controle?: EtatControle;
   verrou?: { jusqua: number; id: string };
 }
 
@@ -279,6 +294,10 @@ export interface OptionsAgent extends ContexteConnexion {
   plafondIAMois?: number;
   /** Décisions déjà prises ce mois-ci (agent/etat, lu par lancerAgent). */
   iaDejaCeMois?: number;
+  /** Suivi des contrôles avant ce passage (agent/etat, lu par lancerAgent). */
+  etatControle?: EtatControle;
+  /** Notification aux gérants (leurs appareils) quand le contrôle des réponses ne marche plus ; absent : aucune. */
+  alerter?: (g: GroupeNotification) => Promise<unknown>;
 }
 
 /** Plafond mensuel des décisions de Claude atteint pour cet espace. */
@@ -619,10 +638,15 @@ class Passage {
   private readonly maintenant: () => Date;
   private readonly compteur = { appels: 0 };
   private reglages: ReglagesAgent = REGLAGES_AGENT_DEFAUT;
+  /** Suivi des contrôles (échecs de suite), mis à jour à chaque contrôle fait. */
+  etatControle: EtatControle;
+  /** Au moins un contrôle fait pendant ce passage (agent/etat à mettre à jour). */
+  controleFait = false;
   private politique: PolitiqueEnvoi = politiqueEnvoi(REGLAGES_AGENT_DEFAUT, true);
 
   constructor(private readonly o: OptionsAgent) {
     this.maintenant = o.maintenant ?? (() => new Date());
+    this.etatControle = o.etatControle ?? { echecsSuite: 0 };
     this.bilan = {
       debut: horodatageParis(this.maintenant()),
       declencheur: o.declencheur,
@@ -823,7 +847,7 @@ class Passage {
         return;
       }
       // Texte gardé par une version d'avant (message d'attente écrit par l'IA, réponse non relue) : jamais renvoyé s'il est sensible.
-      if (reponseSensible(ec.texte)) {
+      if (reponseSensible(ec.texte) || consigneCachee(ec.texte)) {
         await this.transmettre(fil, dernier, 'autre', 'Une réponse de l’agent en attente d’envoi touchait un sujet sensible : elle n’est pas repartie. Vérifiez sur la plateforme si le voyageur l’a reçue.');
         return;
       }
@@ -924,7 +948,46 @@ class Passage {
     const r = await controlerReponse(this.o.ia!, texte, langue, this.o.modele ?? MODELE_AGENT_DEFAUT);
     this.bilan.jetons.entree += r.usage?.entree ?? 0;
     this.bilan.jetons.sortie += r.usage?.sortie ?? 0;
+    // Échecs en série : comptés ici, alerte levée ou retirée en fin de passage (suiteControle).
+    this.etatControle = apresControle(this.etatControle, !!r.echec, horodatageParis(this.maintenant()));
+    this.controleFait = true;
     return r;
+  }
+
+  /**
+   * Fin de passage : le contrôle des réponses échoue en série (alerte levée,
+   * une fois : état de l'agent, « À faire », journal, Telegram, notification
+   * aux gérants), ou remarche (alerte retirée). Ne lève jamais.
+   */
+  async suiteControle(avant: EtatControle | undefined): Promise<void> {
+    const apres = this.etatControle;
+    const le = horodatageParis(this.maintenant());
+    if (!avant?.alerte && apres.alerte && apres.alerteLe) {
+      this.bilan.alerteControle = apres.alerte;
+      const alerte: AlerteControleAgent = { id: ID_ALERTE_CONTROLE, active: true, message: MESSAGE_ALERTE_CONTROLE, echecs: apres.echecsSuite, depuis: apres.alerteLe };
+      await this.o.base.ecrire('reglages', [alerte]).catch(() => undefined);
+      await this.journalAgent(`${MESSAGE_ALERTE_CONTROLE} (${apres.echecsSuite} échecs de suite du contrôle des réponses.)`);
+      await this.telegram(`Label Maison — ${MESSAGE_ALERTE_CONTROLE}`);
+      await this.o.alerter?.(notificationAlerteControle(apres.alerteLe)).catch(() => undefined);
+    } else if (avant?.alerte && !apres.alerte) {
+      const levee: AlerteControleAgent = { id: ID_ALERTE_CONTROLE, active: false, message: MESSAGE_ALERTE_CONTROLE, echecs: 0, ...(avant.alerteLe ? { depuis: avant.alerteLe } : {}), leveeLe: le };
+      await this.o.base.ecrire('reglages', [levee]).catch(() => undefined);
+      await this.journalAgent('L’agent vérifie de nouveau ses réponses avant de les envoyer.');
+    }
+  }
+
+  /** Ligne de journal de l'agent sans conversation (alertes). */
+  private async journalAgent(details: string) {
+    const l: Journal = {
+      id: `agent-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+      horodatage: horodatageParis(this.maintenant()),
+      auteur: AUTEUR_AGENT,
+      action: ACTION_JOURNAL_AGENT,
+      entite: COLLECTION_AGENT,
+      entiteId: ID_ETAT_AGENT,
+      details,
+    };
+    await this.o.base.ecrire('journal', [l]).catch(() => undefined);
   }
 
   /** Guides choisis par l'agent, avec leur lien (signé pour un fichier déposé) ; guides d'accès retenus avant l'heure. */
@@ -1143,7 +1206,7 @@ export async function lancerAgent(o: OptionsAgent): Promise<PassageAgent> {
   const etat = await lireEtatAgent(o);
   const mois = horodatageParis(maintenant()).slice(0, 7);
   const iaDejaCeMois = etat.iaMois?.mois === mois ? etat.iaMois.appels : 0;
-  const p = new Passage({ ...o, dernierReleve: o.dernierReleve ?? etat.dernierReleve, iaDejaCeMois });
+  const p = new Passage({ ...o, dernierReleve: o.dernierReleve ?? etat.dernierReleve, iaDejaCeMois, etatControle: o.etatControle ?? etat.controle });
   if (etat.verrou && etat.verrou.jusqua > maintenant().getTime()) {
     return p.finir('occupe', 'Un passage de l’agent est déjà en cours : réessayez dans une minute.');
   }
@@ -1157,6 +1220,8 @@ export async function lancerAgent(o: OptionsAgent): Promise<PassageAgent> {
     bilan = p.finir('erreur', texteErreurIA(e));
     bilan.erreurs.push(bilan.message);
   }
+  // Contrôle des réponses en échec répété : alerte levée (une fois) ou retirée.
+  if (p.controleFait) await p.suiteControle(etat.controle).catch(() => undefined);
 
   const frais = await lireEtatAgent(o).catch(() => etat);
   const examine = bilan.statut === 'fait' || bilan.statut === 'budget' || bilan.statut === 'erreur';
@@ -1168,6 +1233,7 @@ export async function lancerAgent(o: OptionsAgent): Promise<PassageAgent> {
     ...(examine ? { derniereExecution: bilan.fin } : {}),
     ...(bilan.releve ? { dernierReleve: bilan.fin } : {}),
     ...(bilan.appelsIA ? { iaMois: { mois, appels: (frais.iaMois?.mois === mois ? frais.iaMois.appels : 0) + bilan.appelsIA } } : {}),
+    ...(p.controleFait ? { controle: p.etatControle } : {}),
   };
   if (!frais.verrou || frais.verrou.id === idPassage) delete suivant.verrou;
   await o.base.ecrire(COLLECTION_AGENT, [suivant]).catch(() => undefined);

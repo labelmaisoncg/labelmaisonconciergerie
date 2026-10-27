@@ -180,6 +180,13 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
         <Ligne ok={etat ? actif : null} titre={actif ? 'Agent actif' : 'Agent en pause'}>
           {actif ? 'Il répond aux voyageurs à chaque passage.' : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
         </Ligne>
+        {/* Second contrôle des réponses en échec répété (controle-reponse.ts) : rien ne part seul. */}
+        {etat?.etat?.controle?.alerte && (
+          <Ligne ok={false} titre="Vérification des réponses impossible">
+            {etat.etat.controle.alerte}
+            {etat.etat.controle.alerteLe ? ` Depuis ${ilYa(etat.etat.controle.alerteLe)}.` : ''}
+          </Ligne>
+        )}
         <Ligne ok={c ? manques === 0 : null} titre={!c ? 'Vérification…' : manques > 1 ? 'Des réglages du site manquent' : manques ? 'Un réglage du site manque' : 'Tout est branché'}>
           {!c
             ? 'Lecture de l’état du site.'

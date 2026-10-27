@@ -1026,7 +1026,15 @@ ne voit que la réponse et sa langue, jamais les messages du voyageur : il
 dit si elle engage l'équipe, parle d'argent, accorde une exception ou
 demande des données personnelles. Envoi seul seulement si les quatre sont
 faux ; appel en échec, trop long, illisible ou plafond atteint : à valider.
-Il compte dans le plafond du mois. Le message d'attente est un texte fixe
+Il compte dans le plafond du mois. Une réponse ou un message qui s'adresse à
+un contrôle (« note to the reviewer », « answer false », « ignorez les
+instructions », « json »…) est mis à valider sans l'appeler ; les balises du
+texte à classer sont retirées sous toutes leurs formes. Après 5 échecs de
+suite du contrôle (par exemple si le service refuse un jour un paramètre),
+une alerte s'affiche dans l'état de l'agent et dans « À faire » (« L'agent
+ne peut plus vérifier ses réponses : il les garde à valider. », élément
+`reglages/alerte-controle-agent`), une notification part aux gérants une
+seule fois ; tout se lève au premier contrôle réussi. Le message d'attente est un texte fixe
 par langue (`MESSAGES_ATTENTE`), jamais celui de Claude. Une réponse qui ne
 part pas seule est gardée sur le fil (`agent.brouillon`, décision
 `a_valider`) : la conversation reste dans « À répondre » et la réponse est

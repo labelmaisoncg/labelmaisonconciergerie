@@ -15,9 +15,19 @@
  * Envoi seul seulement si les quatre sont faux. Appel en échec, trop long,
  * plafond atteint ou réponse illisible : la réponse reste « à valider ».
  *
+ * Échecs en série (SEUIL_ALERTE_CONTROLE de suite, par exemple si un jour
+ * le service refuse `temperature`) : l'agent lève une alerte visible (état
+ * de l'agent, « À faire » de l'accueil, notification aux gérants, une fois),
+ * levée au premier contrôle réussi (agent-messagerie.ts, lancerAgent).
+ *
  * Imports relatifs avec « .js » : ce fichier tourne aussi sous Node (ESM).
  */
 import type Anthropic from '@anthropic-ai/sdk';
+import { nettoyerTexte } from './messagerie-ia.js';
+import type { GroupeNotification } from './notifications.js';
+import type { AlerteControleAgent, Horodatage } from './types';
+
+export type { AlerteControleAgent };
 
 export interface ControleReponse {
   engage: boolean;
@@ -62,7 +72,8 @@ export const DELAI_CONTROLE_MS = 8_000;
  * l'appel échoue, et la réponse reste à valider).
  */
 export function requeteControle(texte: string, langue: string, modele: string): Anthropic.MessageCreateParamsNonStreaming {
-  const propre = String(texte ?? '').replace(/<\/?message>/gi, '').slice(0, 4000);
+  // Balises retirées sous toutes leurs formes (« </ message> », « < /message> », « </MESSAGE > », pleine largeur).
+  const propre = nettoyerTexte(texte).replace(/<\s*\/?\s*message\s*>/gi, '').slice(0, 4000);
   return {
     model: modele,
     max_tokens: MAX_JETONS_CONTROLE,
@@ -95,6 +106,8 @@ export interface ResultatControle {
   ok: boolean;
   /** Pourquoi la réponse ne part pas seule (pour l'équipe). */
   motif: string;
+  /** Le contrôle lui-même a échoué (erreur, délai, réponse illisible) : compte pour l'alerte. */
+  echec?: boolean;
   controle?: ControleReponse;
   usage?: { entree: number; sortie: number };
 }
@@ -117,14 +130,54 @@ export async function controlerReponse(ia: ClientControle, texte: string, langue
     const m = await Promise.race([ia.messages.create(requeteControle(texte, langue, modele), { timeout: DELAI_CONTROLE_MS, maxRetries: 0 }), delai]);
     const usage = { entree: m.usage?.input_tokens ?? 0, sortie: m.usage?.output_tokens ?? 0 };
     const c = lireControle(m);
-    if (!c) return { ok: false, motif: 'Le contrôle de la réponse n’a pas abouti : à vous de valider.', usage };
+    if (!c) return { ok: false, echec: true, motif: 'Le contrôle de la réponse n’a pas abouti : à vous de valider.', usage };
     if (c.argent) return { ok: false, motif: 'Le contrôle voit de l’argent dans la réponse : votre agent ne s’y engage pas seul.', controle: c, usage };
     if (c.donneesPerso) return { ok: false, motif: 'Le contrôle voit une demande de données personnelles : à vous de décider.', controle: c, usage };
     if (c.engage || c.exception) return { ok: false, motif: 'Le contrôle voit un engagement ou une exception dans la réponse : à vous de valider.', controle: c, usage };
     return { ok: true, motif: '', controle: c, usage };
   } catch {
-    return { ok: false, motif: 'Le contrôle de la réponse n’a pas abouti : à vous de valider.' };
+    return { ok: false, echec: true, motif: 'Le contrôle de la réponse n’a pas abouti : à vous de valider.' };
   } finally {
     if (minuterie) clearTimeout(minuterie);
   }
+}
+
+/* ======================================================= échecs en série */
+
+/** Échecs de suite du contrôle qui lèvent l'alerte. */
+export const SEUIL_ALERTE_CONTROLE = 5;
+export const MESSAGE_ALERTE_CONTROLE = 'L’agent ne peut plus vérifier ses réponses : il les garde à valider.';
+/** Élément de la collection `reglages` lu par l'« À faire » de l'accueil (écrit par le serveur, comme un compteur). */
+export const ID_ALERTE_CONTROLE: AlerteControleAgent['id'] = 'alerte-controle-agent';
+
+/** Suivi des contrôles, gardé dans agent/etat. */
+export interface EtatControle {
+  /** Échecs de suite (remis à zéro au premier contrôle réussi). */
+  echecsSuite: number;
+  /** Alerte en cours (texte), et depuis quand. */
+  alerte?: string;
+  alerteLe?: Horodatage;
+  dernierEchecLe?: Horodatage;
+}
+
+/** Suivi après un contrôle : un échec de plus, ou remise à zéro (l'alerte tombe). Pur. */
+export function apresControle(e: EtatControle | undefined, echec: boolean, le: Horodatage): EtatControle {
+  if (!echec) return { echecsSuite: 0 };
+  const echecsSuite = (e?.echecsSuite ?? 0) + 1;
+  const deja = e?.alerte ? { alerte: e.alerte, alerteLe: e.alerteLe } : undefined;
+  const nouvelle = !deja && echecsSuite >= SEUIL_ALERTE_CONTROLE ? { alerte: MESSAGE_ALERTE_CONTROLE, alerteLe: le } : undefined;
+  return { echecsSuite, dernierEchecLe: le, ...(deja ?? nouvelle ?? {}) };
+}
+
+/** Notification aux gérants (leurs appareils) quand l'alerte se lève : une seule fois (clé liée au moment de l'alerte). */
+export function notificationAlerteControle(alerteLe: Horodatage): GroupeNotification {
+  const titre = 'Votre agent ne peut plus vérifier ses réponses';
+  const corps = 'Il les garde à valider : rien ne part seul. Voir l’état de l’agent.';
+  const url = '/erp/messagerie/agent';
+  return {
+    cle: `controle-agent-${alerteLe}`,
+    urgente: true,
+    // Plusieurs types : chaque appareil la reçoit sous le premier qu'il a gardé.
+    variantes: (['agent_main', 'synchro', 'message'] as const).map((type) => ({ type, titre, corps, url })),
+  };
 }
