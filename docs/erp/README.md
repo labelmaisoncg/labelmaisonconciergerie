@@ -995,16 +995,25 @@ dans Réglages de l'agent → « Ce qu'il envoie seul » : **Je valide tout**
 (arrivée, départ, questions pratiques, avis, confiance ≥ 0,85) ou
 **Autonome hors sujets sensibles** (confiance ≥ 0,7). Sans choix enregistré,
 Label Maison garde son fonctionnement d'avant (pas de seuil). Sujets
-sensibles, jamais envoyés seuls quel que soit le niveau : paiement,
-remboursement, caution, annulation (`annul|cancel|stornier|cancelar`),
-réclamation, problème sur place, données personnelles. Une réponse qui ne
+sensibles, jamais envoyés seuls quel que soit le niveau (Label Maison sans
+choix compris) : paiement, remboursement, caution, frais, prix, gratuité,
+devises, annulation (`annul|\banul|cancel|stornier|cancelar`), réclamation,
+problème sur place, données personnelles ; ils sont cherchés dans les 3
+derniers messages du voyageur (même déjà répondus) **et dans la réponse
+proposée elle-même** (texte et version française) : une consigne cachée dans
+un message peut faire écrire « nous vous remboursons » en notant « infos,
+confiance 0,99 ». L'envoi seul suppose aussi un voyageur qui écrit en
+français ou en anglais (langues que ces listes savent relire, langue devinée
+sans IA) ; sinon, à valider. Le message d'attente est un texte fixe par
+langue (`MESSAGES_ATTENTE`), jamais celui de Claude. Une réponse qui ne
 part pas seule est gardée sur le fil (`agent.brouillon`, décision
 `a_valider`) : la conversation reste dans « À répondre » et la réponse est
 déjà dans la zone de saisie, l'équipe l'envoie en un clic. Chaque décision
 va au journal (demande, confiance, envoyée / à valider / transmise) et dans le
 bilan du passage ; l'envoi d'une réponse de l'agent par un membre note qui
-l'a validée et si elle a été retouchée (`api/erp-repull-messages.ts`, champ
-`brouillon`). La lecture du message (`fil.analyse` : langue, demande, ton,
+l'a validée et si elle a été retouchée (`api/erp-repull-messages.ts` : le
+serveur compare le texte envoyé à `agent.brouillon` ou `fil.proposition`,
+le champ `brouillon` du navigateur n'est qu'un indice). La lecture du message (`fil.analyse` : langue, demande, ton,
 urgence) sert au tri de « À répondre » (urgent : problème pendant le séjour,
 puis arrivée sous 24 h ou voyageur sur place) et au libellé de la demande en
 tête de conversation ; aucun appel à l'IA juste pour trier.

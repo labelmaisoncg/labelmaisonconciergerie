@@ -38,7 +38,17 @@ import {
   type EtatAgent,
 } from './agent-messagerie.js';
 import { guidesAJoindre, lienGuide, texteAvecGuides, type SignerFichier } from './guides.js';
-import { analyseDepuisDecision, codeLangue, contientCodeAcces, dernierVoyageur, nomLangue, reserverAppelsIA, sujetSensible } from './messagerie-ia.js';
+import {
+  analyseDepuisDecision,
+  codeLangue,
+  contientCodeAcces,
+  derniersMessagesVoyageur,
+  dernierVoyageur,
+  nomLangue,
+  reponseSensible,
+  reserverAppelsIA,
+  sujetSensible,
+} from './messagerie-ia.js';
 import { reglagesAgent } from './reglages.js';
 import { dateParis, horodatageParis } from './repull.js';
 import type { BaseErp } from './repull-synchro.js';
@@ -67,7 +77,7 @@ export class ErreurAssistant extends Error {
   constructor(
     message: string,
     readonly statut = 400,
-    readonly code?: 'plafond' | 'indisponible' | 'introuvable' | 'texte' | 'code_acces' | 'vide',
+    readonly code?: 'plafond' | 'indisponible' | 'introuvable' | 'texte' | 'code_acces' | 'vide' | 'occupe',
   ) {
     super(message);
   }
@@ -112,7 +122,8 @@ function exigerIA(o: OptionsAssistant): ClientIA {
 /**
  * Réserve un appel dans le compte du mois de l'espace (agent/etat, iaMois),
  * avant l'appel : refus si le plafond serait dépassé. Écriture conditionnelle
- * (un passage de l'agent peut écrire au même moment) ; trois essais.
+ * (un passage de l'agent peut écrire au même moment) ; après trois essais en
+ * concurrence, refus (« réessayez ») : jamais d'appel à l'IA non compté.
  */
 export async function compterAppelIA(o: Pick<OptionsAssistant, 'base' | 'plafondIAMois' | 'maintenant'>): Promise<void> {
   const mois = horodatageParis((o.maintenant ?? (() => new Date()))()).slice(0, 7);
@@ -131,7 +142,7 @@ export async function compterAppelIA(o: Pick<OptionsAssistant, 'base' | 'plafond
     }
     if (await o.base.remplacerSi(COLLECTION_AGENT, suivant, lu.version, AUTEUR)) return;
   }
-  // Toujours en concurrence : l'appel passe, compté au mieux par l'écriture suivante.
+  throw new ErreurAssistant('Votre agent est très demandé : réessayez dans un instant.', 503, 'occupe');
 }
 
 async function lireFil(o: OptionsAssistant, filId: string): Promise<FilMessages> {
@@ -141,10 +152,25 @@ async function lireFil(o: OptionsAssistant, filId: string): Promise<FilMessages>
   return fil;
 }
 
-/** Relit le fil puis écrit la modification (une synchronisation a pu passer entre-temps). */
-async function majFil(o: OptionsAssistant, id: string, patch: (f: FilMessages) => FilMessages): Promise<void> {
-  const [f] = await o.base.lire<FilMessages>('filsMessages', [id]);
-  if (f) await o.base.ecrire('filsMessages', [patch(f)], AUTEUR);
+/**
+ * Modifie le fil par écriture conditionnelle (même version qu'à la lecture) :
+ * une synchronisation ou l'agent passés entre-temps ne sont jamais écrasés ;
+ * on relit et on recommence (trois essais). Faux : rien d'écrit (l'analyse
+ * ou la traduction gardée ne sont qu'un confort).
+ */
+export async function majFil(o: Pick<OptionsAssistant, 'base'>, id: string, patch: (f: FilMessages) => FilMessages): Promise<boolean> {
+  for (let essai = 0; essai < 3; essai++) {
+    const [lu] = await o.base.lireVersions<FilMessages>('filsMessages', [id]);
+    if (!lu) return false;
+    const suivant = patch(lu.element);
+    // Base sans repère de version : écriture simple (comme avant).
+    if (!lu.version) {
+      await o.base.ecrire('filsMessages', [suivant], AUTEUR);
+      return true;
+    }
+    if (await o.base.remplacerSi('filsMessages', suivant, lu.version, AUTEUR)) return true;
+  }
+  return false;
 }
 
 async function journal(o: OptionsAssistant, fil: FilMessages, details: string): Promise<void> {
@@ -230,8 +256,9 @@ export async function finirProposition(
     if (lien) liens.push({ titre: g.titre, lien });
   }
   const langue = codeLangue(d.langue);
-  const texteVoyageur = fil.messages.filter((x) => x.auteur === 'voyageur').slice(-3).map((x) => x.texte).join('\n');
-  const sensible = sujetSensible(texteVoyageur, d.intention);
+  const texteVoyageur = derniersMessagesVoyageur(fil, 3);
+  // Sujet sensible chez le voyageur, ou dans la réponse elle-même (consigne cachée dans un message) : à relire de près.
+  const sensible = sujetSensible(texteVoyageur, d.intention) ?? reponseSensible(`${d.texte}\n${d.texteFr ?? ''}`);
   const attention = sensible
     ? `Sujet sensible : ${sensible.motif.charAt(0).toLowerCase()}${sensible.motif.slice(1)}`
     : d.action === 'transmettre'
@@ -245,8 +272,10 @@ export async function finirProposition(
     ...(d.confiance !== undefined ? { confiance: d.confiance } : {}),
     ...(attention ? { attention } : {}),
   };
-  const analyse = analyseDepuisDecision(d, messageId, horodatageParis(maintenant));
-  await majFil(o, fil.id, (f) => ({ ...f, analyse })).catch(() => undefined);
+  const le = horodatageParis(maintenant);
+  const analyse = analyseDepuisDecision(d, messageId, le);
+  // Proposition gardée sur le fil : à l'envoi, le serveur la compare au texte envoyé (qui l'a validée, retouchée ou non).
+  await majFil(o, fil.id, (f) => ({ ...f, analyse, proposition: { messageId, texte: proposition.texte, le, par: o.par } })).catch(() => false);
   const confiance = d.confiance !== undefined ? ` (confiance ${Math.round(d.confiance * 100)} %)` : '';
   await journal(o, fil, `Réponse proposée pour ${fil.voyageur}, demandée par ${o.par}${confiance}. Rien n’est envoyé sans l’équipe.`);
   return proposition;
