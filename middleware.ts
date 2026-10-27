@@ -21,19 +21,34 @@
  * d'invitation ou de récupération reçus par e-mail sont traités sur la même
  * page (un lien d'un autre type demande une confirmation avant d'ouvrir).
  *
- * « Créer mon compte » (lien d'invitation « /erp#creer=<adresse> », envoyé
- * depuis Paramètres → Équipe, ou le lien sous le formulaire) : la page crée
- * le compte auprès de Supabase (POST /auth/v1/signup, clé publique) et ne
- * connecte personne ; Supabase envoie un lien de confirmation qui revient
- * ici (même confirmation par un geste que tout autre lien), puis
- * /erp/connexion vérifie l'appartenance comme pour tout le monde. Réponse
- * identique qu'un compte existe ou non. « Confirm email » doit rester activé
- * dans Supabase (docs/erp/README.md, « Connexion à l'ERP »).
+ * « Créer mon compte » (lien d'invitation « /erp#creer=<adresse>&code=<code> »,
+ * envoyé depuis Paramètres → Équipe ou Paramètres → Espaces) : la page garde
+ * l'adresse et le code à usage unique sur l'appareil (localStorage,
+ * lm-erp-invitation, 14 jours), crée le compte auprès de Supabase (POST
+ * /auth/v1/signup, clé publique) et ne connecte personne ; Supabase envoie un
+ * lien de confirmation qui revient ici (même confirmation par un geste que
+ * tout autre lien). Réponse identique qu'un compte existe ou non. Sans code
+ * sur l'appareil, pas de création : la page demande d'ouvrir le lien de
+ * l'invitation. Base d'avant les espaces : création fermée (un gérant crée
+ * le compte dans Supabase).
  *
- * Entrent : les membres d'un espace, et un compte invité à créer l'espace
- * de sa conciergerie (invitation en attente, rendue par erp.qui_suis_je :
- * l'application lui montre la création de son espace). Base d'avant les
- * espaces : erp.membres seulement, comme avant.
+ * Activation (/erp/connexion, avant le contrôle d'appartenance) : avec un
+ * code, le mot de passe saisi devient celui du compte (PUT /auth/v1/user),
+ * les autres sessions du compte sont fermées (logout?scope=others), puis
+ * erp.activer relie le compte à sa ligne de membre (ou à son invitation
+ * d'espace) et consomme le code ; la session est renouvelée, car la base
+ * ignore les jetons émis avant l'activation. Quelqu'un qui aurait créé le
+ * compte le premier, à l'adresse d'un invité (puis l'aurait fait confirmer
+ * par lui), perd mot de passe et sessions, et n'entre jamais. « Confirm
+ * email » et « Secure email change » restent activés dans Supabase
+ * (docs/erp/README.md, « Connexion à l'ERP »).
+ *
+ * Entrent : les membres d'un espace (compte lié), et un compte invité à créer
+ * l'espace de sa conciergerie (invitation activée, rendue par
+ * erp.qui_suis_je : l'application lui montre la création de son espace).
+ * Refus : un message neutre, ou la raison quand la base la donne (espace
+ * suspendu, invitation expirée ou annulée). Base d'avant les espaces :
+ * erp.membres seulement, comme avant.
  *
  * Passage aux comptes personnels :
  *   1. En attendant, le compte d'équipe (equipe@labelmaisoncg.fr, mot de passe =
@@ -321,6 +336,12 @@ const ICONE_CLE =
   '<circle cx="8.2" cy="15.8" r="3.6"/><path d="M10.9 13.2 20 4.1"/>' +
   '<path d="M17.2 6.9l2.1 2.1"/><path d="M14.6 9.5l2.1 2.1"/></svg>';
 
+const ICONE_AJOUT =
+  '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' +
+  '<path d="M19 8v6"/><path d="M22 11h-6"/></svg>';
+
 const ICONE_MAIL =
   '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -414,6 +435,10 @@ function page(
     outline:none; border-color:var(--gold); box-shadow:0 0 0 4px var(--gold-soft);
   }
   .champ:focus-within .ic{color:var(--gold)}
+  /* Adresse fixée par l'invitation : lisible, mais pas un champ à remplir. */
+  .champ input[readonly]{background:transparent; border-color:var(--line); color:var(--ink-2); cursor:default}
+  .champ input[readonly]:focus{box-shadow:none; border-color:var(--line)}
+  .champ:has(input[readonly]) .ic{color:var(--ink-3)}
 
   button{
     width:100%; margin-top:14px; padding:15px 18px;
@@ -530,6 +555,7 @@ function donneesPageErp(suite: string): string {
     connexion: ERP.connexion,
     retour: URL_RETOUR_ERP,
     stockage: STOCKAGE_SESSION_APP,
+    invitation: STOCKAGE_INVITATION,
   }).replace(/</g, '\\u003c');
 }
 
@@ -538,8 +564,10 @@ function donneesPageErp(suite: string): string {
  * Le script se connecte auprès de Supabase, envoie les jetons à
  * /erp/connexion (vérification du compte et de l'appartenance à l'ERP), puis
  * ouvre l'application. Il traite aussi « Mot de passe oublié ? », les liens
- * reçus par e-mail (#access_token=…&type=recovery | invite | signup) et
- * « Créer mon compte » (#creer=<adresse>, inscription sans connexion).
+ * reçus par e-mail (#access_token=…&type=recovery | invite | signup),
+ * « Créer mon compte » (#creer=<adresse>&code=<code>, inscription sans
+ * connexion) et la dernière étape d'une invitation (mot de passe, envoyé avec
+ * le code gardé sur l'appareil pour activer l'accès).
  */
 function pageConnexionErp(suite: string, erreur: string, statut: number, entetes: EntetesPage = {}): Response {
   return page(
@@ -581,8 +609,20 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        <button type="submit">${ICONE_CLE} Ouvrir l’ERP</button>
        <button type="button" class="lien" id="autre-compte">Utiliser un autre compte</button>
      </form>
+     <form id="f-finir" method="post" action="${ERP.connexion}" novalidate hidden>
+       <p class="intro" id="intro-finir">Dernière étape : saisissez le mot de passe de votre compte.</p>
+       <input id="finir-email" type="email" autocomplete="username" hidden>
+       <label for="finir-mdp">Mot de passe</label>
+       <div class="champ">
+         ${ICONE_CADENAS}
+         <input id="finir-mdp" type="password" placeholder="Votre mot de passe"
+                autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
+       </div>
+       <button type="submit">${ICONE_CLE} Ouvrir l’ERP</button>
+       <button type="button" class="lien" id="finir-autre">Utiliser un autre compte</button>
+     </form>
      <form id="f-creer" method="post" action="${ERP.connexion}" novalidate hidden>
-       <p class="intro">Utilisez l’adresse à laquelle vous avez été invité, puis choisissez votre mot de passe.</p>
+       <p class="intro">Choisissez votre mot de passe pour l’adresse qui a reçu l’invitation.</p>
        <label for="creer-email">Adresse e-mail</label>
        <div class="champ">
          ${ICONE_MAIL}
@@ -602,20 +642,21 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          <input id="creer-mdp2" type="password" placeholder="Le même, une seconde fois"
                 autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
        </div>
-       <button type="submit">${ICONE_CLE} Créer mon compte</button>
+       <button type="submit">${ICONE_AJOUT} Créer mon compte</button>
        <button type="button" class="lien" id="deja-compte">J’ai déjà un compte</button>
      </form>
      <hr class="separateur">
-     <p class="note note-lien" id="note-creer"><span>Invité dans l’équipe&nbsp;?</span> <button type="button" class="lien-texte" id="vers-creer">Créer mon compte</button></p>
-     <p class="note">Accès réservé à l'équipe Label Maison.</p>
+     <p class="note note-lien" id="note-creer"><span>Vous avez reçu une invitation&nbsp;?</span> <button type="button" class="lien-texte" id="vers-creer">Créer mon compte</button></p>
+     <p class="note">Accès réservé aux équipes invitées.</p>
      <script>
      (function () {
        var C = ${donneesPageErp(suite)};
        var $ = function (id) { return document.getElementById(id); };
        var boiteErreur = $('erreur'), boiteInfo = $('info');
-       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer'), fCreer = $('f-creer');
-       var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau');
+       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer'), fCreer = $('f-creer'), fFinir = $('f-finir');
+       var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau'), champFinir = $('finir-mdp');
        var champCreerEmail = $('creer-email'), champCreerMdp = $('creer-mdp'), champCreerMdp2 = $('creer-mdp2'), noteCreer = $('note-creer');
+       var formulaires = [fConnexion, fNouveau, fConfirmer, fCreer, fFinir];
 
        function dire(texte, ton) {
          boiteErreur.hidden = true; boiteInfo.hidden = true;
@@ -626,6 +667,11 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        function occuper(form, oui) {
          var b = form.querySelectorAll('button');
          for (var i = 0; i < b.length; i++) b[i].disabled = oui;
+       }
+       // Un seul formulaire à la fois ; « Créer mon compte » sous la connexion seulement.
+       function montrer(form) {
+         for (var i = 0; i < formulaires.length; i++) formulaires[i].hidden = formulaires[i] !== form;
+         noteCreer.hidden = form !== fConnexion;
        }
        // Mêmes traductions que l'application (src/erp/data/supabase.ts).
        function traduire(d, statut) {
@@ -644,17 +690,68 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
            return r.json().catch(function () { return {}; }).then(function (d) { return { ok: r.ok, statut: r.status, d: d }; });
          });
        }
+
+       // Invitation (« Créer mon compte ») : l'adresse et le code du lien, gardés
+       // sur l'appareil 14 jours au plus (le lien de confirmation s'ouvre souvent
+       // dans un autre onglet). Le code ne part qu'avec le compte de cette adresse.
+       var CODE = /^[A-Za-z0-9_-]{20,100}$/;
+       function lireInvitation() {
+         try {
+           var x = JSON.parse(localStorage.getItem(C.invitation) || 'null');
+           if (x && typeof x.email === 'string' && typeof x.code === 'string' && CODE.test(x.code) && typeof x.expire === 'number' && x.expire > Date.now()) return x;
+         } catch (e) {}
+         return null;
+       }
+       function garderInvitation(email, code) {
+         try { localStorage.setItem(C.invitation, JSON.stringify({ email: email, code: code, expire: Date.now() + 14 * 86400000 })); } catch (e) {}
+       }
+       function oublierInvitation() {
+         try { localStorage.removeItem(C.invitation); } catch (e) {}
+       }
+       function codePour(email) {
+         var i = lireInvitation();
+         return i && email && i.email === String(email).trim().toLowerCase() ? i.code : '';
+       }
+       // Base d'avant les espaces (erp.activer absente) : création de compte fermée. Gardé 5 minutes.
+       function baseHistorique() {
+         try {
+           var m = JSON.parse(sessionStorage.getItem('lm-erp-base') || 'null');
+           if (m && typeof m.t === 'number' && Date.now() - m.t < 300000) return Promise.resolve(m.h === true);
+         } catch (e) {}
+         return supabase('/rest/v1/rpc/activer', { method: 'POST', headers: { 'Content-Profile': 'erp', 'Accept-Profile': 'erp' }, body: JSON.stringify({ p_code: '' }) })
+           .then(function (r) {
+             var h = r.statut === 404 && String((r.d && r.d.code) || '') === 'PGRST202';
+             try { sessionStorage.setItem('lm-erp-base', JSON.stringify({ t: Date.now(), h: h })); } catch (e) {}
+             return h;
+           })
+           .catch(function () { return false; });
+       }
+       var MESSAGE_FERMEE = 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.';
+       var MESSAGE_SANS_CODE = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
+
        // Jetons Supabase → session de l'ERP (vérifiée par le serveur), puis l'application.
-       function ouvrir(acces, rafraichir) {
+       // Avec un code d'invitation gardé pour ce compte, il part avec le mot de passe saisi :
+       // le serveur pose ce mot de passe, ferme les autres sessions et active l'accès.
+       function ouvrir(acces, rafraichir, mdp) {
+         var compte = emailDuJeton(acces), code = codePour(compte);
+         var corps = { access_token: acces, refresh_token: rafraichir, suite: C.suite };
+         if (code) { corps.code = code; if (mdp) corps.mot_de_passe = mdp; }
          return fetch(C.connexion, {
            method: 'POST', credentials: 'same-origin',
            headers: { 'Content-Type': 'application/json' },
-           body: JSON.stringify({ access_token: acces, refresh_token: rafraichir, suite: C.suite })
+           body: JSON.stringify(corps)
          }).then(function (r) {
            return r.json().catch(function () { return {}; }).then(function (d) {
-             if (!r.ok || !d.ok) throw new Error(d.erreur || 'La connexion n’a pas abouti. Réessayez dans un instant.');
+             if (d.invitation === 'activee' || d.invitation === 'refusee') oublierInvitation();
+             if (r.status === 409 && d.code === 'mot_de_passe') return demanderMotDePasse(acces, rafraichir, compte);
+             if (!r.ok || !d.ok) {
+               var e = new Error(d.erreur || 'La connexion n’a pas abouti. Réessayez dans un instant.');
+               e.refus = r.status === 403;
+               e.compte = compte;
+               throw e;
+             }
              // L'application reprend la session de ce compte (pas une session restée sur l'appareil).
-             try { localStorage.removeItem(C.stockage); } catch (e) {}
+             try { localStorage.removeItem(C.stockage); } catch (x) {}
              location.replace(d.suite || '/erp');
            });
          });
@@ -664,27 +761,57 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          try {
            var b = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
            var e = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4))))).email;
-           return typeof e === 'string' && e.length < 200 ? e : '';
+           return typeof e === 'string' && e.length < 200 ? e.trim().toLowerCase() : '';
          } catch (x) { return ''; }
        }
        function echec(e) {
          dire(e && e.message && !/fetch|network|load failed/i.test(e.message) ? e.message : 'Connexion impossible. Vérifiez votre accès à internet.');
        }
-       // « Créer mon compte » : adresse plausible (le lien d'invitation la pré-remplit).
+       // Compte refusé (403) : retour au formulaire de connexion, jamais à « Ouvrir l’ERP avec… ».
+       function refuser(e) {
+         if (e && e.refus) { aFinir = null; montrerConnexion(e.compte || ''); }
+         echec(e);
+       }
+       // « Créer mon compte » : adresse plausible (le lien d'invitation la donne).
        function adresseValable(e) {
          return typeof e === 'string' && e.length <= 200 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(e);
        }
        function montrerCreation(email) {
-         fConnexion.hidden = true; fNouveau.hidden = true; fConfirmer.hidden = true;
-         fCreer.hidden = false; noteCreer.hidden = true;
-         if (email) champCreerEmail.value = email;
-         (champCreerEmail.value ? champCreerMdp : champCreerEmail).focus();
+         montrer(fCreer);
+         champCreerEmail.value = email;
+         champCreerEmail.readOnly = true;
+         champCreerMdp.focus();
        }
        function montrerConnexion(email) {
-         fCreer.hidden = true; fNouveau.hidden = true; fConfirmer.hidden = true;
-         fConnexion.hidden = false; noteCreer.hidden = false;
+         montrer(fConnexion);
          if (email) champEmail.value = email;
          (champEmail.value ? champMdp : champEmail).focus();
+       }
+       // Création possible avec une invitation gardée sur l'appareil (pour l'adresse du lien
+       // s'il en donne une) ; sinon, on dit d'ouvrir le lien. Base d'avant les espaces : fermée.
+       function ouvrirCreation(saisie, adresseDuLien) {
+         var inv = lireInvitation();
+         if (inv && adresseDuLien !== undefined && inv.email !== adresseDuLien) inv = null;
+         if (!inv) {
+           montrerConnexion(saisie);
+           dire(MESSAGE_SANS_CODE, 'info');
+           baseHistorique().then(function (h) { if (h && !fConnexion.hidden) dire(MESSAGE_FERMEE, 'info'); });
+           return;
+         }
+         montrerCreation(inv.email);
+         baseHistorique().then(function (h) {
+           if (h && !fCreer.hidden) { montrerConnexion(inv.email); dire(MESSAGE_FERMEE, 'info'); }
+         });
+       }
+       // Dernière étape d'une invitation : le mot de passe, envoyé avec le code.
+       var aFinir = null;
+       function demanderMotDePasse(acces, rafraichir, compte) {
+         aFinir = { acces: acces, rafraichir: rafraichir };
+         $('intro-finir').textContent = 'Dernière étape' + (compte ? ' pour ' + compte : '') + ' : saisissez votre mot de passe, celui choisi à la création ou un nouveau.';
+         $('finir-email').value = compte || '';
+         montrer(fFinir);
+         champFinir.value = '';
+         champFinir.focus();
        }
        // Réponses de l'inscription. Une adresse qui a déjà un compte reçoit la
        // même réponse qu'une nouvelle (aucune énumération des comptes).
@@ -704,7 +831,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        var MESSAGE_COMPTE = 'Ouvrez le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
 
        $('vers-creer').addEventListener('click', function () {
-         dire(''); montrerCreation(champEmail.value.trim());
+         dire(''); ouvrirCreation(champEmail.value.trim());
        });
        $('deja-compte').addEventListener('click', function () {
          dire(''); montrerConnexion(champCreerEmail.value.trim());
@@ -739,9 +866,24 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          supabase('/auth/v1/token?grant_type=password', { method: 'POST', body: JSON.stringify({ email: email, password: mdp }) })
            .then(function (r) {
              if (!r.ok || !r.d.access_token) throw new Error(traduire(r.d, r.statut));
-             return ouvrir(r.d.access_token, r.d.refresh_token);
+             return ouvrir(r.d.access_token, r.d.refresh_token, mdp);
            })
-           .catch(function (e) { echec(e); occuper(fConnexion, false); champMdp.value = ''; champMdp.focus(); });
+           .catch(function (e) { echec(e); champMdp.value = ''; champMdp.focus(); })
+           .then(function () { occuper(fConnexion, false); });
+       });
+
+       fFinir.addEventListener('submit', function (ev) {
+         ev.preventDefault();
+         if (!aFinir) return;
+         var mdp = champFinir.value;
+         if (mdp.length < 8) { dire('Mot de passe trop court : 8 caractères au moins.'); champFinir.focus(); return; }
+         dire(''); occuper(fFinir, true);
+         ouvrir(aFinir.acces, aFinir.rafraichir, mdp)
+           .catch(refuser)
+           .then(function () { occuper(fFinir, false); champFinir.value = ''; });
+       });
+       $('finir-autre').addEventListener('click', function () {
+         aFinir = null; dire(''); montrerConnexion('');
        });
 
        $('oubli').addEventListener('click', function () {
@@ -763,13 +905,13 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        var acces = h.get('access_token'), rafraichir = h.get('refresh_token'), type = h.get('type');
        if (h.get('error_code') || h.get('error')) {
          dire(/expired|otp/i.test((h.get('error_code') || '') + (h.get('error_description') || ''))
-           ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».'
-           : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? ».');
+           ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? », ou refaites « Créer mon compte ».'
+           : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? », ou refaites « Créer mon compte ».');
        } else if (acces && rafraichir && (type === 'recovery' || type === 'invite')) {
          // Le compte est nommé : un lien reçu d'un tiers se reconnaît avant d'agir.
          var compteNouveau = emailDuJeton(acces);
          if (compteNouveau) $('intro-nouveau').textContent = 'Choisissez le mot de passe du compte ' + compteNouveau + ' : 8 caractères au moins.';
-         fConnexion.hidden = true; noteCreer.hidden = true; fNouveau.hidden = false; champNouveau.focus();
+         montrer(fNouveau); champNouveau.focus();
          fNouveau.addEventListener('submit', function (ev) {
            ev.preventDefault();
            var mdp = champNouveau.value;
@@ -778,29 +920,36 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
            supabase('/auth/v1/user', { method: 'PUT', headers: { Authorization: 'Bearer ' + acces }, body: JSON.stringify({ password: mdp }) })
              .then(function (r) {
                if (!r.ok) throw new Error(traduire(r.d, r.statut));
-               return ouvrir(acces, rafraichir);
+               return ouvrir(acces, rafraichir, mdp);
              })
-             .catch(function (e) { echec(e); occuper(fNouveau, false); });
+             .catch(function (e) { refuser(e); occuper(fNouveau, false); });
          });
        } else if (acces && rafraichir) {
-         // Autre lien (adresse confirmée, lien magique…) : jamais de connexion sans
-         // un geste de la personne, qui voit le compte concerné (lien piégé).
          var compte = emailDuJeton(acces);
-         $('intro-confirmer').textContent = compte ? 'Ouvrir l’ERP avec le compte ' + compte + ' ?' : 'Ouvrir l’ERP avec ce lien ?';
-         fConnexion.hidden = true; noteCreer.hidden = true; fConfirmer.hidden = false;
-         fConfirmer.addEventListener('submit', function (ev) {
-           ev.preventDefault();
-           dire(''); occuper(fConfirmer, true);
-           ouvrir(acces, rafraichir).catch(function (e) { echec(e); occuper(fConfirmer, false); });
-         });
-         $('autre-compte').addEventListener('click', function () {
-           acces = rafraichir = null;
-           fConfirmer.hidden = true; fConnexion.hidden = false; noteCreer.hidden = false; dire(''); champEmail.focus();
-         });
+         if (codePour(compte)) {
+           // Adresse confirmée d'un compte invité : la dernière étape (mot de passe) vaut geste.
+           demanderMotDePasse(acces, rafraichir, compte);
+         } else {
+           // Autre lien (adresse confirmée, lien magique…) : jamais de connexion sans
+           // un geste de la personne, qui voit le compte concerné (lien piégé).
+           $('intro-confirmer').textContent = compte ? 'Ouvrir l’ERP avec le compte ' + compte + ' ?' : 'Ouvrir l’ERP avec ce lien ?';
+           montrer(fConfirmer);
+           fConfirmer.addEventListener('submit', function (ev) {
+             ev.preventDefault();
+             dire(''); occuper(fConfirmer, true);
+             ouvrir(acces, rafraichir).catch(function (e) { refuser(e); occuper(fConfirmer, false); });
+           });
+           $('autre-compte').addEventListener('click', function () {
+             acces = rafraichir = null;
+             dire(''); montrerConnexion('');
+           });
+         }
        } else if (h.has('creer')) {
-         // Lien d'invitation (« #creer=<adresse> ») : l'adresse seule, rien qui connecte.
-         var invite = String(h.get('creer') || '').trim().toLowerCase();
-         montrerCreation(adresseValable(invite) ? invite : '');
+         // Lien d'invitation (« #creer=<adresse>&code=<code> ») : gardé sur l'appareil, rien qui connecte.
+         var invite = String(h.get('creer') || '').trim().toLowerCase(), codeLien = h.get('code') || '';
+         var valable = adresseValable(invite);
+         if (valable && CODE.test(codeLien)) garderInvitation(invite, codeLien);
+         ouvrirCreation(valable ? invite : '', valable ? invite : '');
        } else if (!champEmail.value) {
          champEmail.focus();
        }
@@ -854,6 +1003,17 @@ const SUPABASE_ERP_ANON =
 const URL_RETOUR_ERP = 'https://www.labelmaisoncg.fr/erp';
 /** Clé de la session Supabase de l'application (storageKey, src/erp/data/supabase.ts). */
 const STOCKAGE_SESSION_APP = 'lm-erp-auth';
+/** Invitation gardée sur l'appareil (CLE_INVITATION, src/erp/data/invitation.ts). */
+const STOCKAGE_INVITATION = 'lm-erp-invitation';
+/** Code d'invitation (même forme que src/erp/data/invitation.ts et erp.activer). */
+const CODE_INVITATION = /^[A-Za-z0-9_-]{20,100}$/;
+/** Refus ordinaire : le même, qu'il manque l'invitation, son code ou la ligne de membre. */
+const MESSAGE_SANS_ACCES =
+  'Ce compte n’a pas accès à l’ERP. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil. Sinon, demandez à un gérant de vous ajouter.';
+const MESSAGE_MOT_DE_PASSE =
+  'Pour finir, saisissez le mot de passe de votre compte (celui choisi à la création, ou un nouveau : 8 caractères au moins).';
+/** Attente avant de renouveler la session après l'activation : les jetons sont datés à la seconde. */
+const DELAI_JETON_MS = 1100;
 
 const COOKIE_RELAIS = 'erp_relais';
 const DUREE_RELAIS = 300; // 5 minutes : le temps que l'application s'ouvre
@@ -949,23 +1109,49 @@ function invitationEspaceEnAttente(d: { invitations_espace?: unknown } | null): 
 }
 
 /**
- * Le compte peut-il entrer dans l'ERP ? erp.qui_suis_je (espaces) : membre
- * d'au moins un espace, OU invité à créer l'espace de sa conciergerie
- * (invitation en attente : l'application lui montre alors la création de son
- * espace). Sur la base d'avant les espaces (fonction absente), sa ligne dans
- * erp.membres (les règles RLS ne montrent que la sienne à un non-membre),
- * comme avant. null : la base n'a pas répondu comme prévu.
+ * Pourquoi un compte sans espace n'entre pas, quand la base le dit
+ * (erp.qui_suis_je, sans rien ouvrir) : espace suspendu, invitation expirée
+ * ou annulée. Mêmes messages que l'application (messageRefusAcces,
+ * src/erp/data/espaces.ts). undefined : refus ordinaire.
  */
-async function membreErp(jeton: string, email: string): Promise<boolean | null> {
+function motifRefus(d: { espaces_suspendus?: unknown; invitations_espace_closes?: unknown }): string | undefined {
+  const suspendus = (Array.isArray(d.espaces_suspendus) ? d.espaces_suspendus : [])
+    .map((e) => (e && typeof e === 'object' && typeof (e as { nom?: unknown }).nom === 'string' ? (e as { nom: string }).nom.trim() : ''))
+    .filter((n) => n.length > 0 && n.length <= 80);
+  if (suspendus.length === 1) return `L’espace ${suspendus[0]} est suspendu : contactez Label Maison. Rien n’est effacé.`;
+  if (suspendus.length > 1) {
+    return `Les espaces ${suspendus.slice(0, -1).join(', ')} et ${suspendus[suspendus.length - 1]} sont suspendus : contactez Label Maison. Rien n’est effacé.`;
+  }
+  const motifs = (Array.isArray(d.invitations_espace_closes) ? d.invitations_espace_closes : []).map((i) =>
+    i && typeof i === 'object' ? (i as { motif?: unknown }).motif : undefined,
+  );
+  if (motifs.includes('expiree')) return 'Votre invitation a expiré : demandez-en une nouvelle à Label Maison.';
+  if (motifs.includes('annulee')) return 'Votre invitation a été annulée : demandez-en une nouvelle à Label Maison.';
+  return undefined;
+}
+
+type AccesErp = { entre: true } | { entre: false; motif?: string };
+
+/**
+ * Le compte peut-il entrer dans l'ERP ? erp.qui_suis_je (espaces) : membre
+ * d'au moins un espace (compte lié), OU invité à créer l'espace de sa
+ * conciergerie (invitation activée : l'application lui montre alors la
+ * création de son espace). Sinon la raison, quand la base la donne. Sur la
+ * base d'avant les espaces (fonction absente), sa ligne dans erp.membres
+ * (les règles RLS ne montrent que la sienne à un non-membre), comme avant.
+ * null : la base n'a pas répondu comme prévu.
+ */
+async function membreErp(jeton: string, email: string): Promise<AccesErp | null> {
   const r = await fetch(`${SUPABASE_ERP_URL}/rest/v1/rpc/qui_suis_je`, {
     method: 'POST',
     headers: { ...entetesSupabase(jeton), 'Content-Type': 'application/json', 'Content-Profile': 'erp', 'Accept-Profile': 'erp' },
     body: '{}',
   });
   if (r.ok) {
-    const d = (await r.json().catch(() => null)) as { espaces?: unknown; invitations_espace?: unknown } | null;
-    if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
-    return (Array.isArray(d.espaces) && d.espaces.length > 0) || invitationEspaceEnAttente(d);
+    const d = (await r.json().catch(() => null)) as { espaces?: unknown; invitations_espace?: unknown; espaces_suspendus?: unknown; invitations_espace_closes?: unknown } | null;
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return { entre: false };
+    if ((Array.isArray(d.espaces) && d.espaces.length > 0) || invitationEspaceEnAttente(d)) return { entre: true };
+    return { entre: false, motif: motifRefus(d) };
   }
   const t = await r.text().catch(() => '');
   if (r.status !== 404 && !/PGRST202|42883|qui_suis_je/.test(t)) return null;
@@ -980,7 +1166,72 @@ async function membreErp(jeton: string, email: string): Promise<boolean | null> 
   });
   if (!m.ok) return null;
   const lignes = (await m.json().catch(() => null)) as unknown;
-  return Array.isArray(lignes) && lignes.length > 0;
+  return { entre: Array.isArray(lignes) && lignes.length > 0 };
+}
+
+type Activation =
+  | { etat: 'activee'; acces: string; rafraichir: string }
+  | { etat: 'refusee' }
+  | { etat: 'erreur'; statut: number; erreur: string; activee?: boolean };
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** Nouvelle session (après l'activation : seuls les jetons émis après elle valent). */
+async function renouveler(rafraichir: string, compte: string): Promise<Activation> {
+  await pause(DELAI_JETON_MS);
+  const r = await fetch(`${SUPABASE_ERP_URL}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ERP_ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: rafraichir }),
+  });
+  const d = (await r.json().catch(() => ({}))) as { access_token?: string; refresh_token?: string; user?: { id?: string } };
+  if (!r.ok || !d.access_token || !d.refresh_token || String(d.user?.id ?? '').toLowerCase() !== compte) {
+    return { etat: 'erreur', statut: 502, activee: true, erreur: 'Votre accès est activé : connectez-vous avec votre adresse et votre mot de passe.' };
+  }
+  return { etat: 'activee', acces: d.access_token, rafraichir: d.refresh_token };
+}
+
+/**
+ * Activation d'une invitation, dans cet ordre : le mot de passe saisi devient
+ * celui du compte, les autres sessions du compte sont fermées, puis
+ * erp.activer relie le compte et consomme le code, et la session est
+ * renouvelée. Ainsi, après l'activation, personne d'autre ne détient de
+ * moyen d'entrer (ni mot de passe, ni session). refusee : le code n'a pas
+ * servi (faux, expiré, déjà servi, autre adresse ; base d'avant les espaces).
+ */
+async function activerInvitation(acces: string, rafraichir: string, code: string, motDePasse: string, compte: string): Promise<Activation> {
+  const u = await fetch(`${SUPABASE_ERP_URL}/auth/v1/user`, {
+    method: 'PUT',
+    headers: { ...entetesSupabase(acces), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: motDePasse }),
+  });
+  if (!u.ok) {
+    const d = (await u.json().catch(() => ({}))) as { error_code?: unknown; code?: unknown; msg?: unknown; message?: unknown };
+    const texte = `${String(d.error_code ?? d.code ?? '')} ${String(d.msg ?? d.message ?? '')}`;
+    // Même mot de passe qu'avant : rien à changer, c'est le cas ordinaire.
+    if (!/same_password|same password|different from the old/i.test(texte)) {
+      if (u.status === 429) return { etat: 'erreur', statut: 429, erreur: 'Trop de tentatives. Patientez une minute avant de réessayer.' };
+      if (/weak_password|password should|at least/i.test(texte)) {
+        return { etat: 'erreur', statut: 400, erreur: 'Mot de passe trop simple : 8 caractères au moins, mélangez lettres, chiffres et signes.' };
+      }
+      if (u.status === 401 || u.status === 403) return { etat: 'erreur', statut: 401, erreur: 'Session refusée : reconnectez-vous.' };
+      return { etat: 'erreur', statut: 502, erreur: 'Le mot de passe n’a pas pu être enregistré. Réessayez dans un instant.' };
+    }
+  }
+  // Sans cette fermeture, qui aurait ouvert une session avant garderait la main : on n'active pas.
+  const l = await fetch(`${SUPABASE_ERP_URL}/auth/v1/logout?scope=others`, { method: 'POST', headers: entetesSupabase(acces) });
+  if (!l.ok) return { etat: 'erreur', statut: 502, erreur: 'Connexion impossible. Réessayez dans un instant.' };
+  const a = await fetch(`${SUPABASE_ERP_URL}/rest/v1/rpc/activer`, {
+    method: 'POST',
+    headers: { ...entetesSupabase(acces), 'Content-Type': 'application/json', 'Content-Profile': 'erp', 'Accept-Profile': 'erp' },
+    body: JSON.stringify({ p_code: code }),
+  });
+  if (!a.ok) {
+    const t = await a.text().catch(() => '');
+    if (a.status === 401 || a.status === 403 || a.status === 404 || /42501|PGRST202|42883/.test(t)) return { etat: 'refusee' };
+    return { etat: 'erreur', statut: 502, erreur: 'La base de l’ERP ne répond pas. Réessayez dans un instant.' };
+  }
+  return renouveler(rafraichir, compte);
 }
 
 /** POST /erp/connexion : jetons Supabase de la page → session de l'ERP et relais. */
@@ -996,7 +1247,7 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
   }
   const brut = await request.text().catch(() => '');
   if (brut.length > 16_384) return repondreJson({ ok: false, erreur: 'Demande refusée.' }, 413);
-  let corps: { access_token?: unknown; refresh_token?: unknown; suite?: unknown } = {};
+  let corps: { access_token?: unknown; refresh_token?: unknown; suite?: unknown; code?: unknown; mot_de_passe?: unknown } = {};
   try {
     corps = JSON.parse(brut) ?? {};
   } catch {
@@ -1006,6 +1257,10 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
   const rafraichir = typeof corps.refresh_token === 'string' && corps.refresh_token.length <= 2048 ? corps.refresh_token : '';
   if (!acces || !rafraichir) return repondreJson({ ok: false, erreur: 'Connexion incomplète : réessayez.' }, 400);
   const suite = sansIdentifiants(suiteSure(ERP, typeof corps.suite === 'string' ? corps.suite : ERP.racine));
+  // Invitation : son code (gardé sur l'appareil) et le mot de passe saisi, qui deviendra celui du compte.
+  const code = typeof corps.code === 'string' && CODE_INVITATION.test(corps.code) ? corps.code : '';
+  const motDePasse =
+    typeof corps.mot_de_passe === 'string' && corps.mot_de_passe.length >= 8 && corps.mot_de_passe.length <= 72 ? corps.mot_de_passe : '';
 
   try {
     const u = await fetch(`${SUPABASE_ERP_URL}/auth/v1/user`, { headers: entetesSupabase(acces) });
@@ -1015,15 +1270,37 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
     if (!u.ok || !ID_COMPTE.test(id) || !email) {
       return repondreJson({ ok: false, erreur: 'Session refusée : reconnectez-vous.' }, 401);
     }
-    const membre = await membreErp(acces, email);
-    if (membre === null) return repondreJson({ ok: false, erreur: 'La base de l’ERP ne répond pas. Réessayez dans un instant.' }, 502);
-    if (!membre) {
-      return repondreJson({ ok: false, erreur: 'Ce compte n’a pas accès à l’ERP. Demandez à un gérant de vous ajouter.' }, 403);
+    // Activation avant le contrôle d'appartenance : sans elle, un invité n'est pas encore lié à son compte.
+    let jeton = acces;
+    let jetonRafraichir = rafraichir;
+    let invitation: 'activee' | 'refusee' | undefined;
+    if (code) {
+      if (!motDePasse) return repondreJson({ ok: false, code: 'mot_de_passe', erreur: MESSAGE_MOT_DE_PASSE }, 409);
+      const a = await activerInvitation(acces, rafraichir, code, motDePasse, id);
+      if (a.etat === 'erreur') return repondreJson({ ok: false, erreur: a.erreur, ...(a.activee ? { invitation: 'activee' } : {}) }, a.statut);
+      if (a.etat === 'activee') {
+        jeton = a.acces;
+        jetonRafraichir = a.rafraichir;
+        invitation = 'activee';
+      } else invitation = 'refusee';
     }
+    let membre = await membreErp(jeton, email);
+    // Jetons datés à la seconde : si la base n'a pas encore reconnu le nouveau, un second renouvellement.
+    if (invitation === 'activee' && membre && !membre.entre) {
+      const b = await renouveler(jetonRafraichir, id);
+      if (b.etat === 'activee') {
+        jeton = b.acces;
+        jetonRafraichir = b.rafraichir;
+        membre = await membreErp(jeton, email);
+      }
+    }
+    const avecInvitation = invitation ? { invitation } : {};
+    if (membre === null) return repondreJson({ ok: false, erreur: 'La base de l’ERP ne répond pas. Réessayez dans un instant.', ...avecInvitation }, 502);
+    if (!membre.entre) return repondreJson({ ok: false, erreur: membre.motif ?? MESSAGE_SANS_ACCES, ...avecInvitation }, 403);
     const entetes = new Headers();
     entetes.append('Set-Cookie', cookieSessionErp(await fabriquerSessionErp(id, secret)));
-    entetes.append('Set-Cookie', cookieRelais(await fabriquerRelais(id, rafraichir, secret)));
-    return repondreJson({ ok: true, suite }, 200, entetes);
+    entetes.append('Set-Cookie', cookieRelais(await fabriquerRelais(id, jetonRafraichir, secret)));
+    return repondreJson({ ok: true, suite, ...avecInvitation }, 200, entetes);
   } catch {
     return repondreJson({ ok: false, erreur: 'Connexion impossible. Réessayez dans un instant.' }, 502);
   }

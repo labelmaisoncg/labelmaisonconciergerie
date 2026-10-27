@@ -50,7 +50,7 @@ export default async function handler(req: any, res: any) {
   const filId = String(corps.filId ?? '').trim();
   if (!filId) return repondre(res, 400, { ok: false, erreur: 'Conversation non précisée.' });
 
-  const ctx = { cle: c.cle, workspace: c.workspace, base: baseErp(c), echeance: debut + BUDGET_TEMPS_MS, budgetMois: c.budgetMois, quotaMois: c.quotaMois };
+  const ctx = { cle: c.cle, workspace: c.workspace, origineCle: c.origineCle, base: baseErp(c), echeance: debut + BUDGET_TEMPS_MS, budgetMois: c.budgetMois, quotaMois: c.quotaMois };
   try {
     const r = await envoyerMessage(ctx, { filId, texte: String(corps.texte ?? ''), auteur: 'hote', par: membre.email });
     return repondre(res, 200, r);

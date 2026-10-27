@@ -71,6 +71,7 @@ export default async function handler(req: any, res: any) {
   const ctx: ContexteConnexion = {
     cle: c.cle,
     workspace: c.workspace,
+    origineCle: c.origineCle,
     base: baseErp(c),
     echeance: debut + BUDGET_TEMPS_MS,
     budgetMois: c.budgetMois,
@@ -111,6 +112,6 @@ export default async function handler(req: any, res: any) {
   } catch (e) {
     if (e instanceof ErreurConnexion) return repondre(res, e.statut, { ok: false, erreur: e.message });
     console.error('[erp-repull-connexion]', action, e);
-    return repondre(res, e instanceof BudgetEpuise ? 429 : 502, { ok: false, erreur: messageErreur(e, { budgetMois: c.budgetMois }) });
+    return repondre(res, e instanceof BudgetEpuise ? 429 : 502, { ok: false, erreur: messageErreur(e, { budgetMois: c.budgetMois, origineCle: c.origineCle }) });
   }
 }

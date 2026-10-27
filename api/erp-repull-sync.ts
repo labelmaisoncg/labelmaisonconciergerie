@@ -120,6 +120,7 @@ async function passage(c: ConfigRepullErp, declencheur: DeclencheurRepull, echea
       const r: ResultatLancement = await lancer({
         cle: c.cle,
         workspace: c.workspace,
+        origineCle: c.origineCle,
         base,
         declencheur,
         echeance,

@@ -71,7 +71,7 @@ export function Demarrage() {
       ? [
           {
             titre: 'Reliez votre compte Repull',
-            detail: 'Repull relie vos comptes Airbnb, Booking… à l’ERP. Collez la clé API de votre compte : elle reste dans un coffre chiffré.',
+            detail: 'Repull relie vos comptes Airbnb, Booking… à l’ERP. Collez la clé de votre compte Repull : vérifiée, puis gardée dans un coffre chiffré.',
             fait: cleRepull === true || importes.length > 0,
             lien: '/erp/parametres/plateformes',
             action: 'Ajouter ma clé Repull',
@@ -99,7 +99,7 @@ export function Demarrage() {
       ? [
           {
             titre: 'Invitez votre équipe',
-            detail: 'Chacun crée son compte avec son adresse e-mail ; ajoutez-la ici avec son rôle.',
+            detail: 'Ajoutez son adresse et son rôle, puis envoyez l’invitation : chacun crée son compte avec le lien reçu.',
             fait: d.utilisateurs.length > 1,
             lien: '/erp/parametres',
             action: 'Inviter mon équipe',
@@ -114,7 +114,7 @@ export function Demarrage() {
             icone: <UserPlus />,
           },
           {
-            titre: 'Allumez l’agent quand vous êtes prêt',
+            titre: 'Allumez l’agent quand tout est prêt',
             detail: 'Il est en pause : il ne répond à aucun voyageur tant que vous ne l’allumez pas. Ses réponses sont limitées chaque mois.',
             fait: reglagesAgent(d).actif,
             lien: '/erp/messagerie/agent',
@@ -181,7 +181,7 @@ export function Demarrage() {
                 <p className={cn('text-[14px] font-medium', e.fait ? 'text-(--lm-encre-2) line-through decoration-(--lm-encre-3)' : 'text-(--lm-encre)')}>
                   {/* Les autres étapes restent accessibles par leur titre, sans bouton concurrent. */}
                   {!e.fait && i !== prochaine ? (
-                    <Link to={e.lien} className="hover:text-(--lm-or-texte) hover:underline">
+                    <Link to={e.lien} className="-my-1.5 inline-flex min-h-8 items-center hover:text-(--lm-or-texte) hover:underline">
                       {e.titre}
                     </Link>
                   ) : (
@@ -198,6 +198,7 @@ export function Demarrage() {
               <ButtonLink
                 to={e.lien}
                 variant="primary"
+                size="sm"
                 icone={e.icone ?? <Plus />}
                 className="self-start sm:self-center"
               >

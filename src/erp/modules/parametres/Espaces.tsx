@@ -6,15 +6,17 @@
  *
  * Tout passe par api/erp-espaces.ts avec la session du gérant ; la base
  * revérifie ses droits (supabase/erp-espaces.sql : erp.inviter_espace…).
- * L'invitation est liée à l'adresse, valable 14 jours, à usage unique ; la
- * conciergerie crée ensuite son espace elle-même (layout/CreerEspace.tsx).
+ * L'invitation est liée à l'adresse et à un code à usage unique (dans le
+ * lien), valable 14 jours ; la conciergerie crée ensuite son espace elle-même
+ * (layout/CreerEspace.tsx), au nom donné ici. Les gestes qui coupent l'accès
+ * (suspendre, annuler) demandent une confirmation.
  */
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Building2, Copy, Send } from 'lucide-react';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Ban, Building2, Copy, Send } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { ID_LABEL_MAISON } from '../../data/espaces';
 import { dateCourte } from '../../data/format';
-import { Alert, Badge, Button, Card, CardHeader, EmptyState, Field, Input } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal } from '../../ui';
 import { appelerRouteGerant } from '../crm/_composants/api-connecteur';
 
 const API = '/api/erp-espaces';
@@ -54,7 +56,55 @@ interface Retour {
   envoye?: boolean;
 }
 
+/** Résultat d'une invitation, montré là où on l'a envoyée (formulaire, ou ligne de l'invitation). */
+interface Resultat {
+  ou: string;
+  ton: 'succes' | 'info' | 'danger';
+  texte: string;
+  lien?: string;
+}
+
+/** Geste qui coupe un accès : confirmé dans une fenêtre, une seule action rouge. */
+interface AConfirmer {
+  titre: string;
+  description: string;
+  action: string;
+  corps: Record<string, unknown>;
+  cle: string;
+}
+
 const jour = (iso: string) => (iso ? dateCourte(iso.slice(0, 10)) : '');
+
+function LienACopier({ lien }: { lien: string }) {
+  const [copie, setCopie] = useState(false);
+  return (
+    <span className="mt-2 flex flex-wrap items-center gap-2">
+      <code className="text-[12.5px] text-(--lm-encre) [overflow-wrap:anywhere]">{lien}</code>
+      <Button
+        size="sm"
+        variant="secondary"
+        icone={<Copy />}
+        onClick={() =>
+          void navigator.clipboard
+            ?.writeText(lien)
+            .then(() => setCopie(true))
+            .catch(() => undefined)
+        }
+      >
+        {copie ? 'Lien copié' : 'Copier le lien'}
+      </Button>
+    </span>
+  );
+}
+
+function MessageResultat({ r, className }: { r: Resultat; className?: string }): ReactNode {
+  return (
+    <Alert tone={r.ton} className={className}>
+      {r.texte}
+      {r.lien && <LienACopier lien={r.lien} />}
+    </Alert>
+  );
+}
 
 export default function Espaces() {
   const d = useErp();
@@ -63,7 +113,8 @@ export default function Espaces() {
   const [nom, setNom] = useState('');
   const [email, setEmail] = useState('');
   const [enCours, setEnCours] = useState<string | null>(null);
-  const [retour, setRetour] = useState<{ ton: 'succes' | 'info' | 'danger'; texte: string; lien?: string } | null>(null);
+  const [resultat, setResultat] = useState<Resultat | null>(null);
+  const [aConfirmer, setAConfirmer] = useState<AConfirmer | null>(null);
 
   const relire = useCallback(async () => {
     if (d.mode !== 'reel') return;
@@ -81,15 +132,17 @@ export default function Espaces() {
 
   const inviter = async (cible: { nom: string; email: string }, cle: string) => {
     setEnCours(cle);
-    setRetour(null);
+    setResultat(null);
+    const adresse = cible.email.trim();
     try {
-      const r = await appelerRouteGerant<Retour>(API, { action: 'inviter', nom: cible.nom.trim(), email: cible.email.trim() }, INDISPONIBLE);
-      setRetour(
+      const r = await appelerRouteGerant<Retour>(API, { action: 'inviter', nom: cible.nom.trim(), email: adresse }, INDISPONIBLE);
+      setResultat(
         r.envoye
-          ? { ton: 'succes', texte: `Invitation envoyée à ${cible.email.trim()}. Elle est valable 14 jours.` }
+          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14 jours.` }
           : {
+              ou: cle,
               ton: 'info',
-              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${cible.email.trim()} : la personne crée son compte avec cette adresse, puis l’espace de sa conciergerie. Valable 14 jours.`,
+              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse} : il sert une seule fois, pendant 14 jours, pour créer son compte puis l’espace de sa conciergerie.`,
               lien: r.lien,
             },
       );
@@ -99,7 +152,7 @@ export default function Espaces() {
       }
       await relire();
     } catch (e) {
-      setRetour({ ton: 'danger', texte: e instanceof Error ? e.message : INDISPONIBLE });
+      setResultat({ ou: cle, ton: 'danger', texte: e instanceof Error ? e.message : INDISPONIBLE });
     } finally {
       setEnCours(null);
     }
@@ -107,27 +160,23 @@ export default function Espaces() {
 
   const envoyer = (e: FormEvent) => {
     e.preventDefault();
-    if (!nom.trim()) return setRetour({ ton: 'danger', texte: 'Donnez le nom de la conciergerie.' });
-    if (!EMAIL.test(email.trim())) return setRetour({ ton: 'danger', texte: 'Adresse e-mail invalide.' });
+    if (!nom.trim()) return setResultat({ ou: 'nouvelle', ton: 'danger', texte: 'Donnez le nom de la conciergerie.' });
+    if (!EMAIL.test(email.trim())) return setResultat({ ou: 'nouvelle', ton: 'danger', texte: 'Adresse e-mail invalide.' });
     void inviter({ nom, email }, 'nouvelle');
   };
 
-  const agir = async (corps: Record<string, unknown>, cle: string, confirmation?: string) => {
-    if (confirmation && !window.confirm(confirmation)) return;
+  const agir = async (corps: Record<string, unknown>, cle: string) => {
+    setAConfirmer(null);
     setEnCours(cle);
-    setRetour(null);
+    setResultat(null);
     try {
       await appelerRouteGerant<{ ok?: boolean; erreur?: string }>(API, corps, INDISPONIBLE);
       await relire();
     } catch (e) {
-      setRetour({ ton: 'danger', texte: e instanceof Error ? e.message : INDISPONIBLE });
+      setResultat({ ou: cle, ton: 'danger', texte: e instanceof Error ? e.message : INDISPONIBLE });
     } finally {
       setEnCours(null);
     }
-  };
-
-  const copier = (lien: string) => {
-    void navigator.clipboard?.writeText(lien).catch(() => undefined);
   };
 
   if (d.mode !== 'reel') {
@@ -139,16 +188,17 @@ export default function Espaces() {
   }
 
   const autres = (liste?.espaces ?? []).filter((e) => e.id !== ID_LABEL_MAISON);
+  const resultatDe = (cle: string, className = 'mt-3') => (resultat?.ou === cle ? <MessageResultat r={resultat} className={className} /> : null);
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <Card>
         <CardHeader
           titre="Inviter une conciergerie"
-          description="La personne crée son compte avec cette adresse, puis l’espace de sa conciergerie, qu’elle gère seule. Invitation valable 14 jours, une seule fois."
+          description="La personne crée son compte avec cette adresse, puis l’espace de sa conciergerie, à ce nom, qu’elle gère seule. Invitation valable 14 jours, une seule fois."
         />
         <form onSubmit={envoyer} noValidate className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nom de la conciergerie">
+          <Field label="Nom de la conciergerie" aide="Il ne se change plus ensuite.">
             <Input value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)} autoComplete="organization" />
           </Field>
           <Field label="E-mail de la personne qui ouvrira l’espace">
@@ -158,24 +208,9 @@ export default function Espaces() {
             <Button type="submit" variant="primary" icone={<Send />} chargement={enCours === 'nouvelle'} disabled={!!enCours}>
               Inviter
             </Button>
-            {liste && !liste.email && (
-              <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Sans envoi d’e-mail configuré, le lien s’affiche ici pour que vous le transmettiez.</p>
-            )}
           </div>
         </form>
-        {retour && (
-          <Alert tone={retour.ton} className="mt-3">
-            {retour.texte}
-            {retour.lien && (
-              <span className="mt-2 flex flex-wrap items-center gap-2">
-                <code className="break-all text-[12.5px] text-(--lm-encre)">{retour.lien}</code>
-                <Button size="sm" variant="secondary" icone={<Copy />} onClick={() => copier(retour.lien!)}>
-                  Copier le lien
-                </Button>
-              </span>
-            )}
-          </Alert>
-        )}
+        {resultatDe('nouvelle')}
       </Card>
 
       {erreur && <Alert tone="danger">{erreur}</Alert>}
@@ -185,27 +220,41 @@ export default function Espaces() {
           <CardHeader titre="Invitations en attente" description="La conciergerie n’a pas encore créé son espace." />
           <ul className="divide-y divide-(--lm-bord)">
             {liste.invitations.map((i) => (
-              <li key={i.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-medium text-(--lm-encre)">{i.nom}</p>
-                  <p className="text-[12.5px] break-all text-(--lm-encre-2)">
-                    {i.email} · {i.expiree ? <Badge tone="alerte">Expirée</Badge> : `valable jusqu’au ${jour(i.expire_le)}`}
-                  </p>
+              <li key={i.id} className="py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-medium text-(--lm-encre)">{i.nom}</p>
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-(--lm-encre-2)">
+                      <span className="[overflow-wrap:anywhere]">{i.email}</span>
+                      <span aria-hidden>·</span>
+                      {i.expiree ? <Badge tone="alerte">Expirée</Badge> : <span>valable jusqu’au {jour(i.expire_le)}</span>}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="secondary" chargement={enCours === `renvoyer-${i.id}`} disabled={!!enCours} onClick={() => void inviter(i, `renvoyer-${i.id}`)}>
+                      Renvoyer
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      chargement={enCours === `annuler-${i.id}`}
+                      disabled={!!enCours}
+                      onClick={() =>
+                        setAConfirmer({
+                          titre: `Annuler l’invitation de ${i.nom} ?`,
+                          description: `Le lien envoyé à ${i.email} ne servira plus. Vous pourrez inviter de nouveau.`,
+                          action: 'Annuler l’invitation',
+                          corps: { action: 'annuler', id: i.id },
+                          cle: `annuler-${i.id}`,
+                        })
+                      }
+                    >
+                      Annuler
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex shrink-0 gap-2">
-                  <Button size="sm" variant="secondary" chargement={enCours === `renvoyer-${i.id}`} disabled={!!enCours} onClick={() => void inviter(i, `renvoyer-${i.id}`)}>
-                    Renvoyer
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    chargement={enCours === `annuler-${i.id}`}
-                    disabled={!!enCours}
-                    onClick={() => void agir({ action: 'annuler', id: i.id }, `annuler-${i.id}`, `Annuler l’invitation de ${i.nom} (${i.email}) ?`)}
-                  >
-                    Annuler
-                  </Button>
-                </div>
+                {resultatDe(`renvoyer-${i.id}`)}
+                {resultatDe(`annuler-${i.id}`)}
               </li>
             ))}
           </ul>
@@ -221,40 +270,73 @@ export default function Espaces() {
         {autres.length > 0 && (
           <ul className="divide-y divide-(--lm-bord)">
             {autres.map((e) => (
-              <li key={e.id} className="flex flex-col gap-2 py-3 sm:flex-row sm:items-center sm:gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)">
-                    {e.nom}
-                    {e.actif ? <Badge tone="succes">Actif</Badge> : <Badge tone="alerte">Suspendu</Badge>}
-                  </p>
-                  <p className="text-[12.5px] break-all text-(--lm-encre-2)">
-                    Créé le {jour(e.cree_le)} · {e.membres} membre{e.membres > 1 ? 's' : ''}
-                    {e.contact ? ` · ${e.contact}` : ''} · code {e.code}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="self-start sm:self-center"
-                  chargement={enCours === `suspendre-${e.id}`}
-                  disabled={!!enCours}
-                  onClick={() =>
-                    void agir(
-                      { action: 'suspendre', espace: e.id, actif: !e.actif },
-                      `suspendre-${e.id}`,
+              <li key={e.id} className="py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    {/* Le code technique (adresse du webhook) reste au survol, hors de la lecture. */}
+                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)" title={`Code : ${e.code}`}>
+                      {e.nom}
+                      {!e.actif && <Badge tone="alerte">Suspendu</Badge>}
+                    </p>
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-(--lm-encre-2)">
+                      <span>Créé le {jour(e.cree_le)}</span>
+                      <span aria-hidden>·</span>
+                      <span>
+                        {e.membres} membre{e.membres > 1 ? 's' : ''}
+                      </span>
+                      {e.contact && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="[overflow-wrap:anywhere]">{e.contact}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="self-start sm:self-center"
+                    chargement={enCours === `suspendre-${e.id}`}
+                    disabled={!!enCours}
+                    onClick={() =>
                       e.actif
-                        ? `Suspendre l’espace de ${e.nom} ? Son équipe, ses propriétaires et ses responsables n’y entrent plus, l’agent et les mises à jour s’arrêtent. Rien n’est effacé.`
-                        : undefined,
-                    )
-                  }
-                >
-                  {e.actif ? 'Suspendre' : 'Rouvrir'}
-                </Button>
+                        ? setAConfirmer({
+                            titre: `Suspendre l’espace de ${e.nom} ?`,
+                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; l’agent et les mises à jour s’arrêtent. Rien n’est effacé : vous pourrez le rouvrir.',
+                            action: 'Suspendre l’espace',
+                            corps: { action: 'suspendre', espace: e.id, actif: false },
+                            cle: `suspendre-${e.id}`,
+                          })
+                        : void agir({ action: 'suspendre', espace: e.id, actif: true }, `suspendre-${e.id}`)
+                    }
+                  >
+                    {e.actif ? 'Suspendre' : 'Rouvrir'}
+                  </Button>
+                </div>
+                {resultatDe(`suspendre-${e.id}`)}
               </li>
             ))}
           </ul>
         )}
       </Card>
+
+      <Modal
+        ouvert={!!aConfirmer}
+        onFermer={() => setAConfirmer(null)}
+        titre={aConfirmer?.titre ?? ''}
+        description={aConfirmer?.description}
+        taille="sm"
+        pied={
+          <>
+            <Button variant="ghost" onClick={() => setAConfirmer(null)}>
+              Garder
+            </Button>
+            <Button variant="danger" icone={<Ban />} onClick={() => aConfirmer && void agir(aConfirmer.corps, aConfirmer.cle)}>
+              {aConfirmer?.action}
+            </Button>
+          </>
+        }
+      />
     </div>
   );
 }

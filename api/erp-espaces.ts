@@ -6,8 +6,10 @@
 //   GET  ?action=plateforme                     espaces (suspendus compris) et
 //                                               invitations en attente
 //   POST { action: 'inviter', nom, email }       invitation de 14 jours, liée à
-//                                               l'adresse ; e-mail avec l'expéditeur
-//                                               de Label Maison, sinon lien à copier
+//                                               l'adresse et à un code à usage unique
+//                                               (seule son empreinte va dans la base) ;
+//                                               e-mail avec l'expéditeur de Label
+//                                               Maison, sinon lien à copier
 //   POST { action: 'annuler', id }               invitation retirée
 //   POST { action: 'suspendre', espace, actif }  espace suspendu (false) ou rouvert
 //
@@ -16,7 +18,9 @@
 //                                               (oui / non, jamais leur valeur),
 //                                               workspace de sa clé, adresse du webhook
 //   POST { action: 'repull', cle?, secretWebhook?, workspace? }
-//                                               rangés dans le coffre de Supabase
+//                                               rangés dans le coffre de Supabase ; une
+//                                               nouvelle clé est d'abord essayée chez
+//                                               Repull (lecture seule : /v1/health/auth)
 //
 // Chaque appel à la base passe avec la session de la personne : la base
 // revérifie ses droits (erp.gerant_plateforme, erp.acces_gerant), le serveur
@@ -26,8 +30,8 @@
 
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from '../src/erp/data/config.js';
 import { ENTETE_ESPACE, ESPACE_LABEL_MAISON, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, idEspaceValide } from '../src/erp/data/espaces.js';
-import { emailValide, normaliserEmail } from '../src/erp/data/proprietaire-acces.js';
-import { verifierMembre } from '../src/erp/data/repull-synchro.js';
+import { emailValide, empreinteJeton, nouveauJeton, normaliserEmail } from '../src/erp/data/proprietaire-acces.js';
+import { ClientRepull, ErreurRepull, verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { lireCorps, repondre } from './_erp-repull.js';
 import { espaceDemande, type FicheEspace } from './_erp-espaces.js';
 import { adresseSite, envoyerEmailEspace } from './_acces-externe.js';
@@ -85,10 +89,10 @@ async function envoyerInvitation(o: { email: string; nom: string; lien: string; 
   const sujet = `Ouvrez l’espace de ${o.nom}`;
   const etapes = [
     `Créer mon compte : ${o.lien}`,
-    `Utilisez cette adresse (${o.email}), choisissez votre mot de passe, puis confirmez l’adresse avec le lien reçu.`,
-    'Donnez le nom de votre conciergerie : votre espace est prêt.',
+    `Sur l’appareil où vous utiliserez l’application, avec cette adresse (${o.email}) : choisissez votre mot de passe, puis confirmez l’adresse avec l’e-mail reçu.`,
+    `Touchez « Créer l’espace » : l’espace de ${o.nom} est prêt.`,
   ];
-  const validite = fin ? `Cette invitation est valable jusqu’au ${fin}.` : 'Cette invitation est valable 14 jours.';
+  const validite = `Ce lien est personnel : il sert une seule fois${fin ? ` et reste valable jusqu’au ${fin}` : ', pendant 14 jours'}.`;
   const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#fbfaf8;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1f1b16">
 <div style="max-width:520px;margin:0 auto;padding:32px 20px">
 <p style="font-family:Georgia,serif;font-size:22px;color:#4a3828;margin:0 0 20px">Label Maison</p>
@@ -96,8 +100,8 @@ async function envoyerInvitation(o: { email: string; nom: string; lien: string; 
 <p style="font-size:15px;line-height:1.6;margin:0 0 16px">Label Maison vous invite à ouvrir l’espace de ${echapperHtml(o.nom)} dans son application de gestion : logements, réservations, messages des voyageurs, équipe et propriétaires, rien qu’à vous.</p>
 <ol style="font-size:15px;line-height:1.6;margin:0 0 24px;padding-left:20px">
 <li>Touchez « Créer mon compte » ci-dessous.</li>
-<li>Utilisez cette adresse (${echapperHtml(o.email)}), choisissez votre mot de passe, puis confirmez l’adresse avec le lien reçu.</li>
-<li>Donnez le nom de votre conciergerie : votre espace est prêt.</li>
+<li>Sur l’appareil où vous utiliserez l’application, avec cette adresse (${echapperHtml(o.email)})&nbsp;: choisissez votre mot de passe, puis confirmez l’adresse avec l’e-mail reçu.</li>
+<li>Touchez « Créer l’espace »&nbsp;: l’espace de ${echapperHtml(o.nom)} est prêt.</li>
 </ol>
 <p style="margin:0 0 24px"><a href="${echapperHtml(o.lien)}" style="display:inline-block;background:#8a6a2f;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px">Créer mon compte</a></p>
 <p style="font-size:13px;line-height:1.6;color:#6b6258;margin:0 0 8px">${echapperHtml(validite)}</p>
@@ -108,6 +112,26 @@ async function envoyerInvitation(o: { email: string; nom: string; lien: string; 
 }
 
 const texte = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+
+/**
+ * Nouvelle clé Repull : un appel de lecture (GET /v1/health/auth, permis par
+ * ecritureRepullPermise comme toute lecture) avant de la ranger. null : la
+ * clé est acceptée ; sinon le refus à montrer.
+ */
+export async function essayerCleRepull(cle: string): Promise<{ statut: number; erreur: string } | null> {
+  const client = new ClientRepull({ cle, echeance: Date.now() + 12_000, budget: 2, origineCle: 'espace', attendre: () => Promise.resolve() });
+  try {
+    await client.get<unknown>('/v1/health/auth');
+    return null;
+  } catch (e) {
+    if (e instanceof ErreurRepull && (e.statut === 401 || e.statut === 403)) {
+      return { statut: 400, erreur: 'Repull refuse cette clé : copiez de nouveau la clé de votre compte Repull (repull.dev → API Keys), en entier, puis réessayez.' };
+    }
+    if (e instanceof ErreurRepull && e.statut === 429) return { statut: 503, erreur: 'Repull limite le nombre d’appels : réessayez dans une minute.' };
+    // Réseau, délai, panne de Repull : rien n'est rangé, la clé n'a pas pu être vérifiée.
+    return { statut: 503, erreur: 'Repull ne répond pas pour vérifier la clé : réessayez dans un instant.' };
+  }
+}
 /** Clé ou secret collé : sans espace, d'une longueur raisonnable. */
 const secretLisible = (v: string): boolean => v.length >= 8 && v.length <= 300 && !/\s/.test(v);
 
@@ -155,10 +179,16 @@ export default async function handler(req: any, res: any) {
         const email = normaliserEmail(corps.email);
         if (!nom || nom.length > 80) return repondre(res, 400, { ok: false, erreur: 'Nom de la conciergerie : entre 1 et 80 caractères.' });
         if (!emailValide(email)) return repondre(res, 400, { ok: false, erreur: 'Adresse e-mail invalide.' });
-        const r = await rpcDuCompte<{ id: string; email: string; nom: string; expire_le: string }>(jeton, ID_LABEL_MAISON, 'inviter_espace', { p_nom: nom, p_email: email });
+        // Code à usage unique : il part dans le lien, seule son empreinte (SHA-256) est gardée.
+        const code = await nouveauJeton();
+        const r = await rpcDuCompte<{ id: string; email: string; nom: string; expire_le: string }>(jeton, ID_LABEL_MAISON, 'inviter_espace', {
+          p_nom: nom,
+          p_email: email,
+          p_empreinte: await empreinteJeton(code),
+        });
         if (!r.ok) return echec(r);
-        // « Créer mon compte » sur le site fixe, adresse pré-remplie ; jamais l'adresse de la page qui appelle.
-        const lien = lienCreationCompte(email);
+        // « Créer mon compte » sur le site fixe, adresse et code ; jamais l'adresse de la page qui appelle.
+        const lien = lienCreationCompte(email, code);
         const envoye = await envoyerInvitation({ email, nom, lien, expireLe: String(r.donnees?.expire_le ?? '') });
         return repondre(res, 200, { ok: true, invitation: r.donnees, lien, envoye });
       }
@@ -200,6 +230,9 @@ export default async function handler(req: any, res: any) {
         if (cle && !secretLisible(cle)) return repondre(res, 400, { ok: false, erreur: 'Clé Repull illisible : collez-la telle que Repull la donne, sans espace.' });
         if (secretWebhook && !secretLisible(secretWebhook)) return repondre(res, 400, { ok: false, erreur: 'Secret du webhook illisible : collez-le tel que Repull le donne, sans espace.' });
         if (cle) {
+          // Une clé refusée par Repull n'est jamais rangée (sinon l'espace se croirait relié).
+          const refus = await essayerCleRepull(cle);
+          if (refus) return repondre(res, refus.statut, { ok: false, code: 'cle_refusee', erreur: refus.erreur });
           const r = await rpcDuCompte<boolean>(jeton, m.espace, 'enregistrer_secret_espace', { p_espace: m.espace, p_nom: 'repull_cle', p_valeur: cle });
           if (!r.ok) return echec(r);
         }

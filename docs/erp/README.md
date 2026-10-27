@@ -91,8 +91,12 @@ node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm
 # non-membre refusé, autre site refusé, anciens cookies (mot de passe commun)
 # refusés, relais remis une fois, le serveur ne remet jamais la session du
 # compte d'équipe, rien d'identifiant dans l'adresse, lien piégé confirmé,
-# « Créer mon compte » (même réponse qu'un compte existe ou non, jamais de
-# connexion depuis la création), invitation d'espace en attente laissée entrer.
+# « Créer mon compte » (code gardé sur l'appareil, même réponse qu'un compte
+# existe ou non, jamais de connexion depuis la création), activation par le
+# code (compte créé avant par un autre : rien ; faux code, expiré, déjà
+# servi : refus neutre ; mot de passe posé, autres sessions fermées),
+# raison d'un refus (espace suspendu, invitation expirée), invitation
+# d'espace activée laissée entrer.
 node_modules/.bin/esbuild scripts/verifier-connexion-erp.ts --bundle --format=esm \
   --platform=node --log-level=error --outfile=/tmp/verifier-connexion-erp.mjs \
   && node /tmp/verifier-connexion-erp.mjs
@@ -509,8 +513,8 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    aucune boîte mail n'est nécessaire), mot de passe = la valeur de `ERP_PASSWORD`, cocher
    **Auto Confirm User** → **Create user**. Dans **Authentication → Sign In
    / Providers → Email**, laisser **Allow new users to sign up** activé (c'est
-   « Créer mon compte ») et **Confirm email** activé (obligatoire : voir
-   « Connexion à l'ERP »).
+   « Créer mon compte »), **Confirm email** et **Secure email change**
+   activés (obligatoires : voir « Connexion à l'ERP »).
 3. **Lui donner l'accès à l'ERP.** Le script de l'étape 1 inscrit déjà
    `equipe@labelmaisoncg.fr` comme gérant dans `erp.membres` (bilan :
    `membres` = 1). Pour changer l'adresse du compte d'équipe : variable
@@ -519,7 +523,8 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    nouveau mot de passe (ou lien de récupération).
 4. **Adresses de retour des e-mails.** Supabase → **Authentication** →
    **URL Configuration** : **Site URL** = `https://www.labelmaisoncg.fr`, et
-   dans **Redirect URLs** ajouter `https://www.labelmaisoncg.fr/erp` → Save.
+   dans **Redirect URLs** ajouter `https://www.labelmaisoncg.fr/erp` (sans
+   joker) → Save.
    (Sans cela, un lien de récupération du mot de passe ne ramène pas dans
    l'ERP.)
 5. **Vercel (facultatif).** Les adresses du projet sont déjà dans le code
@@ -568,50 +573,96 @@ l'ERP est une application.
 
 - **Pour l'équipe :** connectez-vous avec votre compte personnel, dont
   l'adresse figure dans les membres de votre espace (Paramètres → Équipe).
-- **Créer mon compte** (plus de « Add user » dans Supabase) :
+- **Créer mon compte** (après `supabase/erp-espaces.sql` ; plus de « Add
+  user » dans Supabase) :
   1. le gérant ajoute la personne dans Paramètres → Équipe (adresse, nom,
      rôle), puis touche **Envoyer l'invitation** : un e-mail part avec le lien
-     `https://www.labelmaisoncg.fr/erp#creer=<adresse>` (expéditeur de
-     l'espace ; sans expéditeur, le lien s'affiche, à copier et envoyer par
-     SMS ou WhatsApp) ;
-  2. la personne ouvre le lien : la page d'accès s'ouvre sur « Créer mon
-     compte », l'adresse déjà remplie ; elle choisit son mot de passe (deux
-     fois, 8 caractères au moins) ;
+     `https://www.labelmaisoncg.fr/erp#creer=<adresse>&code=<code>`
+     (expéditeur de l'espace ; sans expéditeur, le lien s'affiche, à copier
+     et envoyer par SMS ou WhatsApp). Le code (32 octets au hasard) sert une
+     fois, 14 jours ; la base n'en garde que l'empreinte SHA-256
+     (`erp.inviter_membre`). Une nouvelle invitation remplace la précédente ;
+  2. la personne ouvre le lien **sur l'appareil où elle utilisera l'ERP** :
+     la page garde l'adresse et le code sur cet appareil, et s'ouvre sur
+     « Créer mon compte », l'adresse fixée ; elle choisit son mot de passe
+     (deux fois, 8 caractères au moins) ;
   3. elle reçoit un e-mail de confirmation de Supabase, ouvre son lien, puis
-     touche « Ouvrir l'ERP » : c'est fait.
-  Sans invitation, chacun peut aussi toucher « Créer mon compte » sous le
-  formulaire, avec l'adresse que le gérant a inscrite. Un compte créé avec
-  une adresse qui n'est dans aucune équipe n'ouvre rien : « Ce compte n'a
-  pas accès à l'ERP… » (sauf invitation à créer l'espace d'une conciergerie,
-  voir plus bas). La page répond la même chose qu'un compte existe ou non.
-  La route `/api/erp-invitation` est réservée aux gérants de l'espace ouvert
-  et n'invite qu'une adresse déjà dans ses membres ; le lien vise toujours
-  le site fixe, jamais l'adresse de la page qui l'a demandé.
+     saisit son mot de passe (« Dernière étape ») : l'accès est activé, c'est
+     fait. Elle avait déjà un compte ? Elle ouvre le lien de l'invitation,
+     touche « J'ai déjà un compte » et se connecte : même activation.
+  **Sans le code, rien ne s'ouvre** : un compte créé à l'adresse d'un membre
+  n'est jamais reconnu par la seule adresse. La ligne du membre est liée à
+  un compte (`erp.membres.uid`) seulement par l'activation : à la première
+  entrée avec le code, `/erp/connexion` pose le mot de passe saisi (PUT
+  `/auth/v1/user`), ferme les autres sessions du compte
+  (`/auth/v1/logout?scope=others`), puis appelle `erp.activer(code)` (code
+  valable, adresse confirmée du compte = adresse de l'invitation), et
+  renouvelle la session : la base ignore les jetons émis avant l'activation
+  (`erp.jeton_apres`). Quelqu'un qui aurait créé le compte le premier, à
+  l'adresse d'un futur membre (puis l'aurait fait confirmer par lui), perd
+  ainsi mot de passe et sessions, et n'entre jamais. Les membres
+  d'aujourd'hui sont liés une fois pour toutes, à la passe 1, au compte
+  confirmé de même adresse : ils entrent sans code. Un compte créé à la main
+  dans Supabase (sans invitation) se lie dans le SQL Editor :
+  `select erp.lier_compte('prenom@exemple.fr', 'label-maison');`.
+  Sans code sur l'appareil, « Créer mon compte » dit d'ouvrir le lien de
+  l'invitation. Un compte sans accès lit un refus neutre : « Ce compte n'a
+  pas accès à l'ERP. Vous avez reçu une invitation ? Ouvrez son lien sur cet
+  appareil. Sinon, demandez à un gérant de vous ajouter. » La page répond la
+  même chose qu'un compte existe ou non. La route `/api/erp-invitation` est
+  réservée aux gérants de l'espace ouvert et n'invite qu'une adresse déjà
+  dans ses membres, pas encore activée ; le lien vise toujours le site
+  fixe, jamais l'adresse de la page qui l'a demandé.
+  **Base d'avant les espaces** (`erp-espaces.sql` pas encore passé) :
+  « Créer mon compte » et « Envoyer l'invitation » sont fermés (« Disponible
+  après la mise en service des espaces ; en attendant, un gérant crée le
+  compte dans Supabase. ») ; les comptes existants entrent comme avant.
 - **Réglages Supabase à garder** (Authentication → Sign In / Providers →
-  Email) :
+  Email, puis URL Configuration et Attack Protection) :
   - **Allow new users to sign up** : activé (sinon « Créer mon compte »
     répond « La création de compte n'est pas ouverte… ») ;
-  - **Confirm email** : **activé, obligatoire**. L'accès à l'ERP se décide
-    par l'adresse (membres de l'espace). Sans confirmation, n'importe qui
-    pourrait créer d'avance un compte avec l'adresse d'un futur membre, avec
-    SON mot de passe, et entrer dans l'ERP dès que le gérant ajoute cette
-    adresse. La confirmation prouve que la personne lit bien cette boîte
-    mail. (C'est le réglage par défaut de Supabase : ne pas le couper.)
-  - **Emails → SMTP Settings** : si les e-mails de confirmation n'arrivent
-    pas, l'envoi par défaut de Supabase est limité (quelques messages par
-    heure, et parfois réservé aux adresses de l'équipe Supabase) : y mettre
-    le SMTP de Resend (hôte `smtp.resend.com`, port 465, utilisateur
-    `resend`, mot de passe = une clé API Resend, expéditeur sur le domaine
-    vérifié). Facultatif : traduire le modèle « Confirm signup ».
-- **Invitation à créer l'espace d'une conciergerie** (Sens…) : un compte
-  confirmé qui n'est encore membre d'aucun espace mais dont
-  `erp.qui_suis_je` rend une invitation en attente entre quand même ; la
-  session est posée et l'application lui montre la création de son espace.
+  - **Confirm email** : **activé, obligatoire**. L'activation exige une
+    adresse confirmée (la personne lit bien cette boîte mail). C'est le
+    réglage par défaut de Supabase : ne pas le couper ;
+  - **Secure email change** : **activé**. Changer l'adresse d'un compte
+    demande alors la confirmation des deux adresses ;
+  - **URL Configuration → Redirect URLs** : exactement
+    `https://www.labelmaisoncg.fr/erp`, **sans joker** (`*` ou `**`) : un
+    lien de confirmation ou de récupération ne peut renvoyer nulle part
+    ailleurs ;
+  - **Rate Limits** : garder les limites par défaut (inscriptions et e-mails
+    par heure) ; les baisser si des inscriptions en rafale apparaissent
+    (Authentication → Users) ;
+  - **Attack Protection → captcha** (hCaptcha ou Turnstile) : conseillé si
+    des inscriptions en masse arrivent. Attention : il faut alors ajouter le
+    jeton du captcha à « Créer mon compte » (page d'accès et
+    `src/erp/layout/Connexion.tsx`) avant de l'activer, sinon les
+    inscriptions sont refusées ;
+  - **Emails → SMTP Settings** : à faire **avant la première invitation**.
+    L'envoi par défaut de Supabase est limité (quelques messages par heure)
+    et refuse les adresses hors de l'équipe Supabase : y mettre le SMTP de
+    Resend (hôte `smtp.resend.com`, port 465, utilisateur `resend`, mot de
+    passe = une clé API Resend, expéditeur sur le domaine vérifié). Traduire
+    le modèle **Confirm signup** (Emails → Templates) : voir
+    `docs/erp/espaces-mise-en-service.md`, étape 5.
+- **Invitation à créer l'espace d'une conciergerie** (Sens…) : même lien,
+  même code (`erp.inviter_espace`). À la première entrée avec le code,
+  l'invitation est rattachée à CE compte (`erp.activer`) ; `erp.qui_suis_je`
+  la rend alors, la session est posée et l'application montre la création
+  de l'espace, au nom donné par Label Maison (il ne se change pas ensuite).
   Forme attendue de la réponse : `{ "espaces": [...], "invitations_espace":
   [{ "nom_espace": "Sens", "expire_le": "<date ISO>" }] }`. Une entrée compte
   si c'est un objet dont `expire_le`, quand il est donné, est lisible et à
-  venir ; toute autre forme vaut refus. Base d'avant les espaces : rien ne
-  change (`erp.membres` seulement).
+  venir ; toute autre forme vaut refus. Sans le code, l'invitation ne se
+  montre pas et `erp.creer_espace` refuse. Base d'avant les espaces : rien
+  ne change (`erp.membres` seulement).
+- **Refus avec une raison** : `erp.qui_suis_je` rend aussi, sans rien
+  ouvrir, `espaces_suspendus: [{ "nom" }]` et `invitations_espace_closes:
+  [{ "nom_espace", "motif": "expiree" | "annulee" }]` (adresse confirmée du
+  compte). La page d'accès et l'application disent alors « L'espace Sens est
+  suspendu : contactez Label Maison. Rien n'est effacé. » ou « Votre
+  invitation a expiré : demandez-en une nouvelle à Label Maison. » ; l'accès
+  reste refusé.
 - **En attendant les comptes personnels :** `equipe@labelmaisoncg.fr` et le
   mot de passe actuel de l'ERP marchent toujours.
 - **Une fois les comptes personnels créés, fermer le mot de passe commun :**
@@ -638,24 +689,35 @@ l'ERP est une application.
   (5 minutes) que l'application échange une seule fois contre sa session
   sur `/erp/session`. Le serveur ne remet jamais la session du compte
   d'équipe à un navigateur : seul celui qui se connecte lui-même avec ce
-  compte (pendant le passage) la reçoit. Un non-membre est refusé ; une
-  demande venue d'un autre site aussi. Un lien reçu par e-mail qui n'est ni
-  une récupération ni une invitation (dont la confirmation d'adresse après
-  « Créer mon compte ») demande de confirmer le compte avant d'ouvrir
-  l'ERP ; sans JavaScript, rien ne part dans l'adresse. « Créer mon compte »
-  appelle Supabase depuis la page (`POST /auth/v1/signup`, clé publique,
-  retour `redirect_to=https://www.labelmaisoncg.fr/erp`) et ne connecte
-  jamais personne, même si Supabase rendait une session.
+  compte (pendant le passage) la reçoit. Un non-membre est refusé, et la
+  page revient au formulaire de connexion ; une demande venue d'un autre
+  site aussi. Un lien reçu par e-mail qui n'est ni une récupération ni une
+  invitation demande de confirmer le compte avant d'ouvrir l'ERP (la
+  confirmation d'adresse d'un compte invité demande son mot de passe : c'est
+  la dernière étape) ; sans JavaScript, rien ne part dans l'adresse.
+  « Créer mon compte » appelle Supabase depuis la page (`POST
+  /auth/v1/signup`, clé publique, retour
+  `redirect_to=https://www.labelmaisoncg.fr/erp`) et ne connecte jamais
+  personne, même si Supabase rendait une session. Le code de l'invitation
+  reste sur l'appareil (`localStorage`, clé `lm-erp-invitation`, 14 jours au
+  plus), part seulement vers `/erp/connexion` avec le compte de la même
+  adresse, et s'efface une fois servi ou refusé.
 - **Page d'accès, finitions :** mêmes valeurs que l'ERP — bouton principal
   or assombri `#8A6424` (texte blanc, 5,3:1), brun `#403118` au survol et
   pour le badge, champs, boutons et messages arrondis à 10 px, carte et
   badge à 16 px ; tous les textes à 4,5:1 au moins. La zone du linge
   partage la même coquille.
 - **Écran de secours de l'application** (`src/erp/layout/Connexion.tsx`,
-  quand la page d'accès n'a pas pu passer la session) : même « Créer mon
-  compte » ; base pas installée : une phrase (« L'ERP n'est pas encore
-  prêt : prévenez la personne qui l'installe. »), le détail technique replié
-  sous « Détails techniques ».
+  quand la page d'accès n'a pas pu passer la session) : mêmes règles —
+  « Créer mon compte » avec le code gardé sur l'appareil, activation avant
+  le contrôle d'accès (mot de passe posé, autres sessions fermées,
+  `erp.activer`, session renouvelée), « Dernière étape » si un compte
+  connecté a un code en attente, refus neutre ou avec sa raison. Un lien
+  reçu par e-mail pour un autre compte que celui ouvert sur l'appareil
+  demande « Se déconnecter pour continuer ? » au lieu d'ouvrir l'un ou
+  l'autre en silence. Base pas installée : une phrase (« L'ERP n'est pas
+  encore prêt : prévenez la personne qui l'installe. »), le détail
+  technique replié sous « Détails techniques ».
 - **Anciens accès :** les sessions ouvertes avec l'ancien mot de passe commun
   ne valent plus rien ; chacun se reconnecte une fois. « Se déconnecter »
   (menu du compte) ferme aussi la page d'accès.
@@ -1120,26 +1182,43 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - Compte technique `serveur@labelmaisoncg.fr` (`app_metadata.erp_role =
   serveur`, posé par le script) : il ne voit **que** l'espace nommé par
   l'en-tête `x-erp-espace`, avec les droits d'un gérant ; sans en-tête, rien.
+- **Membres liés à leur compte** : `erp.membres.uid` (et `lie_le`). Un
+  membre n'est reconnu que par SON compte, jamais par la seule adresse :
+  `mes_espaces`, `qui_suis_je`, les règles RLS et `role_membre` ne comptent
+  que les lignes liées, avec un jeton émis après l'activation
+  (`erp.jeton_apres`, jeton `iat` > `lie_le`). À la passe 1 (une seule fois,
+  à l'ajout de la colonne), les membres d'aujourd'hui sont liés au compte
+  confirmé de même adresse. Ensuite, une ligne se lie par
+  `erp.activer(code)` (code de l'invitation, adresse confirmée du compte
+  connecté) ; l'adresse changée dans la fiche délie la ligne. L'ERP n'écrit
+  jamais `uid` (droits par colonne : `espace`, `email`, `nom`, `role`).
+  `erp.lier_compte(email, code_espace)` : SQL Editor seulement, pour un
+  compte créé à la main.
 - Fonctions : `erp.qui_suis_je()` (espaces et rôle du compte),
   `erp.espaces_actifs()`, `erp.secret_espace()` (coffre Vault, serveur
   seulement, pour l'espace de l'en-tête seulement, jamais pour Label Maison),
   `erp.ranger_secret()` (SQL Editor seulement), `erp.recette_espaces()`
   (essai des règles, annulé). Relancer le fichier après la passe 2 ne recrée
   rien en double (`erp.cle_par_espace`).
-- `erp.invitations` reste sans règle d'accès : « Créer mon compte » n'en a pas
-  besoin (l'accès se décide par les membres de l'espace et la confirmation
-  de l'adresse par Supabase, voir « Connexion à l'ERP »).
+- `erp.invitations` (invitations des membres : empreinte SHA-256 du code,
+  espace, adresse, échéance, usage) reste sans règle d'accès :
+  `erp.inviter_membre(espace, email, empreinte)` (gérant de l'espace, ligne
+  déjà dans l'équipe et pas encore liée ; une nouvelle invitation remplace
+  la précédente) et `erp.activer(code)` seulement.
 - **Espaces ouverts par invitation** (`erp.invitations_espace`, sans règle
   d'accès : seules les fonctions ci-dessous la lisent ou l'écrivent) :
-  `erp.inviter_espace(nom, email)` (gérant de Label Maison en personne, pas
-  le compte serveur ; après la passe 2 ; une invitation en attente par
-  adresse, 14 jours, refusée si l'adresse est déjà membre d'un espace),
-  `erp.espaces_plateforme()`, `erp.annuler_invitation_espace(id)`,
-  `erp.suspendre_espace(espace, actif)` (jamais Label Maison) ;
-  `erp.creer_espace(nom)` : avec l'invitation valable de SON adresse
-  **confirmée** (`auth.users.email_confirmed_at`), crée l'espace (code tiré
-  du nom), en fait la personne gérante, consomme l'invitation ; idempotent
-  (un nouvel appel rend le même espace, jamais un second).
+  `erp.inviter_espace(nom, email, empreinte)` (gérant de Label Maison en
+  personne, pas le compte serveur ; après la passe 2 ; une invitation en
+  attente par adresse, 14 jours, avec l'empreinte du code du lien, refusée
+  si l'adresse est déjà membre d'un espace ; nom d'une ligne, jamais
+  « Label Maison » ; renouveler remplace le code), `erp.espaces_plateforme()`,
+  `erp.annuler_invitation_espace(id)`, `erp.suspendre_espace(espace, actif)`
+  (jamais Label Maison) ; `erp.activer(code)` rattache l'invitation au
+  compte connecté (adresse **confirmée**) ; `erp.creer_espace()` : avec
+  l'invitation activée par CE compte (jeton émis après l'activation), crée
+  l'espace au nom de l'invitation (code tiré du nom), en fait la personne
+  gérante (ligne liée à son compte), consomme l'invitation ; idempotent (un
+  nouvel appel rend le même espace, jamais un second).
   `erp.qui_suis_je()` rend aussi `invitations_espace` : toujours une liste,
   `[{ "nom_espace": "Sens", "expire_le": "…" }]` pour une adresse confirmée
   invitée, `[]` sinon ; la page d'accès (`middleware.ts`) laisse entrer un
@@ -1215,10 +1294,14 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   encore signer (compte serveur pas prêt) le dit (`stockageFerme`).
 - **Plateforme** (`api/erp-espaces.ts`, Paramètres → Espaces, gérants de
   Label Maison) : inviter une conciergerie (e-mail avec l'expéditeur de Label
-  Maison, lien « Créer mon compte » du site fixe `…/erp#creer=<adresse>`,
-  sinon lien à copier), invitations en attente, suspendre ou rouvrir. Chaque
-  appel à la base passe avec la session du gérant (la base revérifie).
-  Dans un nouvel espace : carte « Votre compte Repull » (Plateformes) et
+  Maison, lien « Créer mon compte » du site fixe
+  `…/erp#creer=<adresse>&code=<code>`, sinon lien à copier), invitations en
+  attente, suspendre ou rouvrir (avec confirmation). Chaque appel à la base
+  passe avec la session du gérant (la base revérifie).
+  Dans un nouvel espace : carte « Votre compte Repull » (Plateformes ; la
+  clé est essayée chez Repull, en lecture seule, avant d'être rangée ; une
+  clé refusée plus tard renvoie vers Paramètres → Plateformes → « Remplacer
+  la clé », jamais vers Vercel) et
   « Démarrage » à l'accueil (Repull, plateformes, équipe, propriétaires et
   responsables, agent).
 - Nom de l'espace : signature par défaut de l'agent (« L'équipe Sens » ;

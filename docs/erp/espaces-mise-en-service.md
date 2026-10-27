@@ -15,6 +15,12 @@ crée et gère son espace seule.
 **Pour Label Maison, rien ne change** : même adresse, même mot de passe,
 personne n'est déconnecté, toutes les données restent où elles sont.
 
+Les nouveaux comptes, eux, s'ouvrent **avec le lien de leur invitation** :
+il porte un code à usage unique (14 jours) que l'ERP demande à la première
+entrée. Quelqu'un qui créerait d'avance un compte à l'adresse d'un futur
+membre n'obtient donc rien. Les membres d'aujourd'hui ne sont pas concernés :
+la passe 1 relie chacun à son compte, une fois pour toutes.
+
 Comptez 15 minutes aujourd'hui, puis 5 minutes au moins 24 heures plus tard
 (voir l'étape 4 pour le point de départ exact de ces 24 heures). Les étapes 1
 à 5 ne se font qu'une fois ; ensuite, chaque nouvelle conciergerie ne demande
@@ -59,6 +65,17 @@ En bas, l'onglet **Results** affiche une ligne. Attendu :
 | compte_serveur | prêt |
 | recette | ok |
 
+La passe 1 relie aussi chaque membre d'aujourd'hui à son compte (même
+adresse, adresse confirmée) : ils entrent comme avant, sans code. Un membre
+qui n'avait pas encore de compte confirmé recevra une invitation (Paramètres
+→ Équipe → **Envoyer l'invitation**).
+
+**Vous aviez déjà passé ce fichier (passe 1, ou passes 1 et 2) avec une
+version précédente ?** Relancez-le maintenant, avec la même ligne ▼▼▼ que la
+dernière passe faite (`'2'` si la passe 2 est faite) : il ajoute les
+nouveautés (liens des membres à leur compte, codes d'invitation, raison d'un
+refus) sans rien casser. Attendu : la même ligne de résultat, **recette = ok**.
+
 Si ce n'est pas le cas :
 
 - **compte_serveur = « à créer… »** : faites l'étape 1, puis relancez ce même
@@ -100,12 +117,42 @@ Attendu : la même ligne qu'à l'étape 2, avec **passe = 2** et
 **Seulement après la passe 2.** Avant, « Inviter une conciergerie » répond
 « Passe 2 d'abord » : c'est voulu.
 
-1. **Adresses confirmées.** Supabase → **Authentication** → **Sign In /
-   Providers** → **Email** : l'option **Confirm email** doit être activée.
-   C'est elle qui garantit qu'une invitation ne sert qu'à la personne qui lit
-   cette boîte mail.
-   Attendu : « Confirm email » est activé.
-2. **Workspace Repull de Label Maison (recommandé).** Demandez à Repull :
+1. **E-mails de Supabase par Resend (avant tout le reste).** Sans cela,
+   Supabase refuse d'envoyer l'e-mail de confirmation aux adresses
+   extérieures à son équipe, et la personne invitée reste bloquée.
+   Supabase → **Authentication** → **Emails** → **SMTP Settings** → activer
+   **Custom SMTP** : hôte `smtp.resend.com`, port `465`, utilisateur
+   `resend`, mot de passe = une clé API Resend, expéditeur = une adresse du
+   domaine vérifié dans Resend (par exemple `ERP <erp@labelmaisoncg.fr>`) →
+   **Save**.
+   Attendu : « Créer mon compte » avec une adresse de test extérieure reçoit
+   l'e-mail de confirmation en moins d'une minute.
+2. **E-mail de confirmation en français.** **Authentication** → **Emails** →
+   **Templates** → **Confirm signup** :
+   - Sujet : `Confirmez votre adresse pour l’ERP`
+   - Message :
+     ```html
+     <p>Bonjour,</p>
+     <p>Pour finir de créer votre compte, confirmez votre adresse :</p>
+     <p><a href="{{ .ConfirmationURL }}">Confirmer mon adresse</a></p>
+     <p>Ouvrez ce lien sur l’appareil où vous avez créé votre compte : l’ERP
+     vous demandera ensuite votre mot de passe.</p>
+     <p>Vous n’avez rien demandé ? Ignorez ce message.</p>
+     ```
+   → **Save**.
+3. **Réglages de sécurité des comptes.**
+   - **Sign In / Providers** → **Email** : **Confirm email** activé, et
+     **Secure email change** activé. Attendu : les deux sont activés.
+   - **URL Configuration** → **Redirect URLs** : exactement
+     `https://www.labelmaisoncg.fr/erp`, **sans joker** (`*` ou `**`) ;
+     retirez toute autre ligne en `*`. Attendu : une seule ligne, sans `*`.
+   - **Rate Limits** : gardez les valeurs par défaut. Si des inscriptions en
+     rafale apparaissent (Authentication → Users), baissez « Sign-ups and
+     sign-ins » et « Emails ».
+   - **Attack Protection** (captcha) : à n'activer qu'avec l'équipe
+     technique (la page « Créer mon compte » doit d'abord envoyer le jeton du
+     captcha, sinon les inscriptions sont refusées).
+4. **Workspace Repull de Label Maison (recommandé).** Demandez à Repull :
    « Quel est l'identifiant du workspace de Label Maison, celui de l'en-tête
    X-Workspace-Id, et est-ce le même que le champ workspaceId des
    webhooks ? ». Puis Vercel → projet du site → **Settings** →
@@ -127,50 +174,65 @@ Attendu : la même ligne qu'à l'étape 2, avec **passe = 2** et
    conciergerie » : son nom, l'adresse e-mail de la personne qui ouvrira
    l'espace → **Inviter**.
 2. L'e-mail part au nom de Label Maison. Sans envoi d'e-mail configuré, le
-   lien s'affiche : **Copier le lien**, puis envoyez-le (SMS, WhatsApp).
+   lien s'affiche : **Copier le lien** (« Lien copié »), puis envoyez-le
+   (SMS, WhatsApp). Le lien contient un code : ne le publiez nulle part.
 3. L'invitation vaut 14 jours, une seule fois, pour cette adresse seulement.
-   « Renvoyer » la prolonge, « Annuler » la retire. Une adresse qui a déjà
-   accès à un espace ne peut pas être invitée : il faut une adresse propre à
-   la conciergerie.
+   « Renvoyer » envoie un nouveau lien (l'ancien ne sert plus) et la
+   prolonge, « Annuler » la retire. Une adresse qui a déjà accès à un espace
+   ne peut pas être invitée : il faut une adresse propre à la conciergerie.
+   Le nom donné ici est celui de l'espace : il ne se change plus ensuite
+   (sauf par le SQL plus bas).
+4. Expirée ou annulée : la personne qui se connecte lit « Votre invitation a
+   expiré (ou a été annulée) : demandez-en une nouvelle à Label Maison. »
 
 ## Ce que fait la conciergerie invitée
 
 Rien dans Supabase ni dans Vercel :
 
-1. Elle ouvre le lien, touche **Créer mon compte** avec l'adresse invitée,
+1. Elle ouvre le lien **sur l'appareil où elle utilisera l'ERP** : la page
+   s'ouvre sur **Créer mon compte**, l'adresse invitée déjà fixée ; elle
    choisit son mot de passe, puis confirme son adresse avec l'e-mail reçu.
-2. Elle se connecte : l'ERP affiche « Créez l'espace de votre conciergerie »,
-   le nom déjà rempli → **Créer l'espace**. Elle en devient la gérante ;
-   l'espace est vide.
+2. En ouvrant le lien de confirmation, elle saisit son mot de passe
+   (« Dernière étape ») : l'invitation est activée. L'ERP affiche « Créez
+   l'espace de votre conciergerie », au nom de l'invitation → **Créer
+   l'espace**. Elle en devient la gérante ; l'espace est vide.
+   Elle avait déjà un compte ? Elle ouvre le lien de l'invitation, touche
+   « J'ai déjà un compte » et se connecte : même résultat.
 3. L'accueil lui montre « Démarrage », dans l'ordre :
    - **Reliez votre compte Repull** : Paramètres → Plateformes → « Votre
-     compte Repull » → la clé API de son compte (Repull → Settings → API
-     keys) et, s'il en a plusieurs, son workspace → **Enregistrer**.
-     Attendu : « Clé enregistrée ». La clé va dans le coffre chiffré de
-     Supabase : personne ne peut la relire, on peut seulement la remplacer.
+     compte Repull » → la clé de son compte Repull (Repull → Settings → API
+     keys) → **Enregistrer**. L'ERP l'essaie d'abord chez Repull (une simple
+     lecture) : une clé refusée n'est pas enregistrée. Attendu : « Clé
+     enregistrée ». La clé va dans le coffre chiffré de Supabase : personne
+     ne peut la relire, on peut seulement la remplacer (« Remplacer la
+     clé »). S'il a plusieurs espaces de travail Repull : « Avancé : mises à
+     jour en temps réel » → « Espace de travail Repull ».
    - **Connectez Airbnb, Booking…** : Logements → Connexions, puis le choix
      des logements.
    - **Renseignez les infos pour l'agent** sur chaque logement.
-   - **Invitez votre équipe** : Paramètres → Équipe → adresse et rôle →
-     **Envoyer l'invitation**.
+   - **Invitez votre équipe** : Paramètres → Équipe → ajoutez son adresse
+     et son rôle, puis **Envoyer l'invitation**.
    - **Invitez propriétaires et responsables** : Paramètres → Accès.
-   - **Allumez l'agent quand vous êtes prêt** : Messagerie → Agent. Il
+   - **Allumez l'agent quand tout est prêt** : Messagerie → Agent. Il
      démarre en pause ; il répond avec la clé Claude de Label Maison, au plus
      300 décisions par mois, signé « L'équipe <nom de la conciergerie> ».
-   - Facultatif, le temps réel : Plateformes → « Avancé : temps réel » →
+   - Facultatif, le temps réel : Plateformes → « Avancé : mises à jour en
+     temps réel » →
      l'adresse de son webhook à ajouter dans Repull, puis le secret donné par
      Repull → **Enregistrer le secret**.
 
 ## Suspendre ou rouvrir un espace
 
-Paramètres → Espaces → **Suspendre** : son équipe, ses propriétaires et ses
-responsables n'y entrent plus, l'agent et les mises à jour s'arrêtent. Rien
-n'est effacé : **Rouvrir** rend tout.
+Paramètres → Espaces → **Suspendre** (une confirmation est demandée) : son
+équipe, ses propriétaires et ses responsables n'y entrent plus, l'agent et
+les mises à jour s'arrêtent. Ses membres lisent « L'espace … est suspendu :
+contactez Label Maison. Rien n'est effacé. » **Rouvrir** rend tout.
 
 ## Réglages réservés à Label Maison (facultatif, SQL Editor)
 
-Le code de l'espace est affiché dans Paramètres → Espaces (« code … ») ;
-remplacez `CODE` ci-dessous. Une requête à la fois.
+Le code de l'espace s'affiche au survol de son nom dans Paramètres → Espaces
+(ou : `select code, nom from erp.espaces;`) ; remplacez `CODE` ci-dessous.
+Une requête à la fois.
 
 - Part mensuelle d'appels Repull (150 par défaut) :
   `update erp.espaces set config = jsonb_set(config, '{repull}', coalesce(config->'repull', '{}') || '{"budgetMois": 300}') where code = 'CODE';`
@@ -217,9 +279,17 @@ remplacez `CODE` ci-dessous. Une requête à la fois.
 ## Comptes de l'équipe et Claude, dans chaque espace
 
 - **Ajouter quelqu'un** : un gérant de l'espace, dans Paramètres → Équipe,
-  ajoute l'adresse, puis touche **Envoyer l'invitation**. La personne ouvre
-  le lien, choisit son mot de passe, confirme son adresse par l'e-mail reçu :
-  c'est tout (plus rien à faire dans Supabase).
+  ajoute l'adresse et le rôle, puis touche **Envoyer l'invitation**. La
+  personne ouvre le lien sur son appareil, choisit son mot de passe, confirme
+  son adresse par l'e-mail reçu, puis saisit son mot de passe : c'est tout
+  (plus rien à faire dans Supabase). Le lien sert une fois, 14 jours ; une
+  nouvelle invitation remplace la précédente.
+- **Compte créé à la main dans Supabase** (sans invitation) : reliez-le à sa
+  ligne de membre dans le SQL Editor :
+  `select erp.lier_compte('prenom@exemple.fr', 'CODE');`
+- **Avant la passe 1** (base d'avant les espaces) : « Créer mon compte » et
+  « Envoyer l'invitation » sont fermés (« Disponible après la mise en service
+  des espaces ; en attendant, un gérant crée le compte dans Supabase. »).
 - **E-mail au nom de Sens** : sans réglage, rien ne part et le gérant copie
   le lien (SMS, WhatsApp). Pour envoyer au nom de Sens (domaine vérifié dans
   Resend) :

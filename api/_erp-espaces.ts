@@ -108,6 +108,7 @@ export async function configurationEspace(espace: string = ID_LABEL_MAISON, fich
     nomEspace: f.nom,
     cle: propre || (wsCompteLM ? c.cle : ''),
     workspace: (propre ? wsPropre : wsCompteLM) || undefined,
+    origineCle: propre ? 'espace' : 'partagee',
     // Le secret du webhook de Label Maison ne vaut jamais pour un autre espace.
     secretWebhook: typeof secretWebhook === 'string' ? secretWebhook.trim() : '',
     budgetMois: entierPositif(f.config?.repull?.budgetMois, BUDGET_ESPACE_DEFAUT),

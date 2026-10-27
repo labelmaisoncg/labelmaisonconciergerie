@@ -97,6 +97,42 @@ export function lireInvitationEspace(brut: unknown, maintenant: number = Date.no
   return null;
 }
 
+/**
+ * Pourquoi un compte sans espace n'entre pas, d'après erp.qui_suis_je (rien
+ * n'y ouvre l'accès) : `espaces_suspendus: [{ nom }]` (espaces suspendus par
+ * Label Maison dont il est membre) et `invitations_espace_closes:
+ * [{ nom_espace, motif: 'expiree' | 'annulee' }]`.
+ */
+export interface RefusAcces {
+  suspendus: string[];
+  invitationClose: 'expiree' | 'annulee' | null;
+}
+
+export function lireRefusAcces(brut: unknown): RefusAcces {
+  const d = (brut ?? {}) as { espaces_suspendus?: unknown; invitations_espace_closes?: unknown };
+  const suspendus = Array.isArray(d.espaces_suspendus)
+    ? d.espaces_suspendus
+        .map((e) => (e && typeof e === 'object' && typeof (e as { nom?: unknown }).nom === 'string' ? (e as { nom: string }).nom.trim() : ''))
+        .filter((n) => n.length > 0 && n.length <= 80)
+    : [];
+  const closes = Array.isArray(d.invitations_espace_closes) ? d.invitations_espace_closes : [];
+  const motifs = closes.map((i) => (i && typeof i === 'object' ? (i as { motif?: unknown }).motif : undefined));
+  const invitationClose = motifs.includes('expiree') ? 'expiree' : motifs.includes('annulee') ? 'annulee' : null;
+  return { suspendus, invitationClose };
+}
+
+/** Message à montrer (page d'accès et application) ; null : refus ordinaire. */
+export function messageRefusAcces(r: RefusAcces): string | null {
+  if (r.suspendus.length === 1) return `L’espace ${r.suspendus[0]} est suspendu : contactez Label Maison. Rien n’est effacé.`;
+  if (r.suspendus.length > 1) {
+    const noms = `${r.suspendus.slice(0, -1).join(', ')} et ${r.suspendus[r.suspendus.length - 1]}`;
+    return `Les espaces ${noms} sont suspendus : contactez Label Maison. Rien n’est effacé.`;
+  }
+  if (r.invitationClose === 'expiree') return 'Votre invitation a expiré : demandez-en une nouvelle à Label Maison.';
+  if (r.invitationClose === 'annulee') return 'Votre invitation a été annulée : demandez-en une nouvelle à Label Maison.';
+  return null;
+}
+
 /** Espace à ouvrir : celui demandé s'il en est membre, sinon Label Maison, sinon le premier. */
 export function choisirEspace<T extends Pick<Espace, 'id'>>(espaces: T[], demande?: string | null): T | null {
   const voulu = demande?.toLowerCase();

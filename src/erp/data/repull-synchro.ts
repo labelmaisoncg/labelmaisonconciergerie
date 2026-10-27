@@ -138,8 +138,30 @@ interface EnveloppeErreur {
   error?: { code?: string; message?: string; fix?: string; retry_after?: number; scope?: string; resetsAt?: string; tier?: string } & Record<string, unknown>;
 }
 
-function messageRepull(statut: number, code: string | undefined, brut: string | undefined): string {
-  if (statut === 401) return 'Clé Repull refusée : vérifiez REPULL_API_KEY dans Vercel (Settings → Environment Variables), puis redéployez.';
+/**
+ * À qui est la clé Repull utilisée, pour dire quoi faire quand elle est
+ * refusée ou que la part du mois est épuisée :
+ *   - vercel : Label Maison (REPULL_API_KEY, REPULL_BUDGET_ERP dans Vercel) ;
+ *   - espace : la clé qu'un gérant de l'espace a rangée (Paramètres → Plateformes) ;
+ *   - partagee : le compte Repull de Label Maison prêté à un autre espace.
+ * Un autre espace n'est jamais renvoyé vers Vercel.
+ */
+export type OrigineCle = 'vercel' | 'espace' | 'partagee';
+
+/** Clé refusée par Repull (401) : la marche à suivre selon son origine. */
+export function messageCleRefusee(origine: OrigineCle = 'vercel'): string {
+  if (origine === 'espace') return 'Clé Repull refusée : un gérant la remplace dans Paramètres → Plateformes → « Remplacer la clé ».';
+  if (origine === 'partagee') return 'Clé Repull refusée : contactez Label Maison.';
+  return 'Clé Repull refusée : vérifiez REPULL_API_KEY dans Vercel (Settings → Environment Variables), puis redéployez.';
+}
+
+/** Pour aller plus vite quand la part mensuelle d'appels est épuisée. */
+export function conseilBudget(origine: OrigineCle = 'vercel'): string {
+  return origine === 'vercel' ? 'augmentez REPULL_BUDGET_ERP dans Vercel ou passez à l’offre Repull supérieure' : 'contactez Label Maison';
+}
+
+function messageRepull(statut: number, code: string | undefined, brut: string | undefined, origine?: OrigineCle): string {
+  if (statut === 401) return messageCleRefusee(origine);
   if (statut === 402) return 'Forfait Repull dépassé (nombre d’annonces actives) : passez à l’offre supérieure sur repull.dev ou désactivez des annonces.';
   if (statut === 429 && code === 'daily_limit_exceeded') return 'Quota quotidien du compte Repull atteint : la synchronisation reprendra demain.';
   if (statut === 429 && code === 'quota') return 'Quota mensuel du compte Repull atteint (offre gratuite : 1 000 appels) : la synchronisation reprendra le mois prochain, ou passez à l’offre supérieure sur repull.dev.';
@@ -201,6 +223,8 @@ export interface OptionsClientRepull {
   /** Nombre maximal d'appels pour ce passage (reste de la part mensuelle). */
   budget?: number;
   attendre?: (ms: number) => Promise<void>;
+  /** À qui est la clé (messages d'erreur) ; absent : Label Maison (Vercel). */
+  origineCle?: OrigineCle;
 }
 
 /**
@@ -291,7 +315,7 @@ export class ClientRepull {
           await this.patienter(1500);
           continue;
         }
-        throw new ErreurRepull(messageRepull(0, undefined, undefined), 0);
+        throw new ErreurRepull(messageRepull(0, undefined, undefined, this.o.origineCle), 0);
       }
       clearTimeout(minuterie);
       if (r.ok) return (r.status === 204 ? {} : await r.json().catch(() => ({}))) as T;
@@ -311,7 +335,7 @@ export class ClientRepull {
         continue;
       }
       const { code: _c, message: brut, fix, ...infos } = corps.error ?? {};
-      throw new ErreurRepull(messageRepull(r.status, code, brut), r.status, code, typeof fix === 'string' ? fix : undefined, infos);
+      throw new ErreurRepull(messageRepull(r.status, code, brut, this.o.origineCle), r.status, code, typeof fix === 'string' ? fix : undefined, infos);
     }
   }
 
@@ -1761,6 +1785,8 @@ export interface OptionsLancement {
   cle: string;
   /** Workspace Repull de l'espace (voir OptionsClientRepull). */
   workspace?: string;
+  /** À qui est la clé (voir OrigineCle) ; absent : Label Maison. */
+  origineCle?: OrigineCle;
   base: BaseErp;
   declencheur: DeclencheurRepull;
   /** Instant (ms) à ne pas dépasser. */
@@ -1838,10 +1864,10 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
 
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) {
-    const message = `Part mensuelle des appels Repull de l’ERP épuisée (${etat.appelsMois} / ${etat.budgetMois}) : plus aucune synchronisation avant le 1er du mois prochain. Augmentez REPULL_BUDGET_ERP ou passez à l’offre Repull supérieure.`;
+    const message = `Part mensuelle des appels Repull de l’ERP épuisée (${etat.appelsMois} / ${etat.budgetMois}) : plus aucune synchronisation avant le 1er du mois prochain. Pour aller plus vite, ${conseilBudget(o.origineCle)}.`;
     if (o.declencheur === 'cron') {
       try {
-        const s = new SessionRepull({ repull: new ClientRepull({ cle: o.cle, workspace: o.workspace, echeance: o.echeance, budget: 0 }), base: o.base, mode: 'incremental', declencheur: 'cron', maintenant });
+        const s = new SessionRepull({ repull: new ClientRepull({ cle: o.cle, workspace: o.workspace, echeance: o.echeance, budget: 0, origineCle: o.origineCle }), base: o.base, mode: 'incremental', declencheur: 'cron', maintenant });
         await s.journaliser(true, message);
       } catch {
         /* journal facultatif */
@@ -1850,7 +1876,7 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     return { ok: false, statut: 'budget', message, bilan: etat.dernierBilan, etat };
   }
 
-  const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
+  const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre, origineCle: o.origineCle });
   let bilan: BilanRepull;
   let evenement: string | undefined;
   if (o.evenement) {
@@ -1941,7 +1967,7 @@ export async function releverConversations(o: Omit<OptionsLancement, 'declencheu
   const etat = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) throw new BudgetEpuise();
-  const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre });
+  const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre, origineCle: o.origineCle });
   const s = new SessionRepull({ repull: client, base: o.base, mode: 'incremental', declencheur: 'agent', maintenant, selection: new Set(selection.annonces) });
   try {
     await s.phaseConversations();

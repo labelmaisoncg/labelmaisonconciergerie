@@ -34,8 +34,11 @@
  * REPULL_WORKSPACE_LM (appels et webhook de Label Maison, workspace inconnu
  * ignoré). Espaces ouverts par invitation (api/erp-espaces.ts) : plateforme
  * réservée aux gérants de Label Maison avec leur session, invitation (e-mail
- * de Label Maison, lien « Créer mon compte » du site fixe), suspension, clé
- * Repull propre rangée par le gérant de l'espace et jamais relue.
+ * de Label Maison, lien « Créer mon compte » du site fixe avec un code à
+ * usage unique dont seule l'empreinte va dans la base), suspension, clé
+ * Repull propre essayée chez Repull (lecture seule) avant d'être rangée par
+ * le gérant de l'espace, jamais relue ; messages d'une clé refusée ou d'une
+ * part épuisée : jamais Vercel pour un autre espace que Label Maison.
  * Connecteur Claude (OAuth + MCP) et agenda du CRM par espace : base d'avant
  * les espaces exactement comme avant (Label Maison, compte d'équipe, jetons
  * sans préfixe, anciens jetons acceptés, un jeton d'un autre espace refusé) ;
@@ -43,8 +46,10 @@
  * jeton de Sens ne lit jamais Label Maison et inversement, jetons modifiés
  * refusés sans rien lire, rotation et révocation par espace, non-membre et
  * non-gérant refusés, espace fermé refusé. Invitation « Créer mon compte » :
- * gérant de l'espace seulement, adresse membre de l'espace, lien sur le site
- * fixe, e-mail au nom de l'espace ou lien à copier.
+ * gérant de l'espace seulement, adresse membre de l'espace pas encore
+ * activée, code à usage unique (empreinte seule dans la base), lien sur le
+ * site fixe, e-mail au nom de l'espace ou lien à copier ; base d'avant les
+ * espaces : pas d'invitation, message prévu.
  * App « Opérations » (notifications Web Push, faux téléphones qui
  * déchiffrent) : abonnement par la session et rangé dans l'espace de la
  * personne, urgence à la seule personne concernée (ni l'auteur ni Sens),
@@ -60,7 +65,9 @@
  */
 import crypto from 'node:crypto';
 import { ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE } from '../src/erp/data/espaces';
-import { ID_SELECTION } from '../src/erp/data/repull-synchro';
+import { BudgetEpuise, ClientRepull, ID_SELECTION, messageCleRefusee } from '../src/erp/data/repull-synchro';
+import { messageErreur as messageConnexion } from '../src/erp/data/repull-connexion';
+import { MESSAGE_INVITATION_HISTORIQUE } from '../api/erp-invitation';
 import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, deposeurFichiersErp, etatBase, oublierEtatBase, signeurFichiersErp, stockageFerme, variableManquante } from '../api/_erp-repull';
 import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configurationEspace, espaceDemande, espaceDuWorkspace, espacesActifs, workspaceDeLEvenement } from '../api/_erp-espaces';
 import routeSynchro from '../api/erp-repull-sync';
@@ -137,8 +144,15 @@ class Monde {
     { id: SENS, code: 'sens', nom: 'Sens', actif: true, repull_workspace: '1204' as string | null, config: {} as Record<string, any> },
     { id: VIDE, code: 'vide', nom: 'Vide', actif: true, repull_workspace: null as string | null, config: {} as Record<string, any> },
   ];
-  /** Invitations à ouvrir un espace (erp.invitations_espace, imitées). */
-  invitations: { id: string; email: string; nom: string; expire_le: string; expiree: boolean }[] = [];
+  /** Invitations à ouvrir un espace (erp.invitations_espace, imitées, avec l'empreinte du code). */
+  invitations: { id: string; email: string; nom: string; expire_le: string; expiree: boolean; empreinte?: string }[] = [];
+  /** Invitations des membres (erp.invitations : empreinte du code, espace, adresse). */
+  invitationsMembres: { espace: string; email: string; empreinte: string }[] = [];
+  /** Lignes de membres liées à leur compte (« espace:adresse »), comme après la passe 1. */
+  lies = new Set<string>([`${LM}:equipe@labelmaisoncg.fr`, `${SENS}:gerant-b@exemple.invalid`, `${SENS}:ops-sens@exemple.invalid`]);
+  /** Clés Repull refusées (401) ; Repull en panne (503). */
+  clesRefusees = new Set<string>();
+  repullEnPanne = false;
   /** Appels au stockage des fichiers (signature, dépôt) : compte, espace de l'en-tête, chemin. */
   stockage: { action: 'signer' | 'deposer'; bucket: string; nom: string; jeton: string; espace: string | null }[] = [];
   coffre = new Map<string, string>();
@@ -201,6 +215,9 @@ class Monde {
     }
     if (url.hostname === 'api.repull.dev') {
       this.repull.push({ methode, chemin: url.pathname, workspace: h.get('x-workspace-id'), cle: jeton });
+      if (this.repullEnPanne) return json({ error: { code: 'unavailable', message: 'Service unavailable' } }, 503);
+      if (this.clesRefusees.has(jeton)) return json({ error: { code: 'unauthorized', message: 'Invalid API key' } }, 401);
+      if (url.pathname === '/v1/health/auth') return json({ ok: true });
       return json({ data: [], pagination: { hasMore: false, nextCursor: null } });
     }
     if (url.pathname === '/auth/v1/token') {
@@ -248,7 +265,8 @@ class Monde {
           if (this.membres.some((x) => x.email.toLowerCase() === String(a.p_email).trim().toLowerCase())) {
             return json({ code: '22023', message: 'Cette adresse a déjà accès à un espace de l’ERP : invitez une adresse propre à cette conciergerie.' }, 400);
           }
-          const i ={ id: crypto.randomUUID(), email: String(a.p_email).trim().toLowerCase(), nom: String(a.p_nom).trim(), expire_le: '2026-11-10T10:00:00+00:00', expiree: false };
+          if (!/^[0-9a-f]{64}$/.test(String(a.p_empreinte ?? ''))) return json({ code: '22023', message: 'Code d’invitation illisible.' }, 400);
+          const i = { id: crypto.randomUUID(), email: String(a.p_email).trim().toLowerCase(), nom: String(a.p_nom).trim(), expire_le: '2026-11-10T10:00:00+00:00', expiree: false, empreinte: String(a.p_empreinte) };
           this.invitations = [...this.invitations.filter((x) => x.email !== i.email), i];
           return json({ id: i.id, email: i.email, nom: i.nom, expire_le: i.expire_le });
         }
@@ -284,6 +302,17 @@ class Monde {
           return json(true);
         }
         return json({ code: e.code, workspace: e.config.repull?.workspace ?? null, cle: this.coffre.has(`${e.id}:repull_cle`), webhook: this.coffre.has(`${e.id}:repull_webhook`) });
+      }
+      if (chemin === 'rpc/inviter_membre') {
+        // erp.inviter_membre : gérant de l'espace (pas le serveur), ligne de l'équipe, pas encore liée.
+        if (serveur || !this.gerant(jeton, entete, a.p_espace)) return refus('Réservé aux gérants de cet espace.');
+        if (!/^[0-9a-f]{64}$/.test(String(a.p_empreinte ?? ''))) return json({ code: '22023', message: 'Code d’invitation illisible.' }, 400);
+        const e = String(a.p_email ?? '').trim().toLowerCase();
+        const ligne = this.membres.find((m) => m.espace === a.p_espace && m.email.toLowerCase() === e);
+        if (!ligne) return json({ code: '22023', message: 'Ajoutez d’abord cette adresse à l’équipe, puis envoyez l’invitation.' }, 400);
+        if (this.lies.has(`${a.p_espace}:${e}`)) return json({ deja: true });
+        this.invitationsMembres = [...this.invitationsMembres.filter((x) => !(x.espace === a.p_espace && x.email === e)), { espace: a.p_espace, email: e, empreinte: a.p_empreinte }];
+        return json({ deja: false, expire_le: '2026-11-10T10:00:00+00:00' });
       }
       if (chemin === 'rpc/secret_espace') {
         const { p_espace, p_nom } = corps as { p_espace: string; p_nom: string };
@@ -616,23 +645,19 @@ async function principal() {
     verifier(res.statut === 200 && (res.corps?.result?.structuredContent?.total ?? 0) === 2, 'clé fixée (MCP_CRM_TOKEN) : Label Maison', res.corps?.result?.structuredContent?.total);
     delete env.MCP_CRM_TOKEN;
 
-    // Invitation « Créer mon compte ».
+    // Invitation « Créer mon compte » : pas sur la base d'avant les espaces (rien ne relierait le compte à son invité).
     env.RESEND_API_KEY = 're_test';
     env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
     monde.emails = [];
-    const LIEN = 'https://www.labelmaisoncg.fr/erp#creer=nouvelle_recrue%40exemple.invalid';
+    monde.oublier();
     res = await inviter({ ...gerantLM, origin: 'https://pirate.example', host: 'pirate.example' }, ' Nouvelle_Recrue@Exemple.invalid ');
-    verifier(res.statut === 200 && res.corps?.envoye === true && res.corps?.lien === LIEN, 'invitation (Origin tierce) : lien sur le site fixe, adresse en minuscules', res.corps);
     verifier(
-      monde.emails.length === 1 && monde.emails[0].from === env.CONTACT_FROM_EMAIL && monde.emails[0].to[0] === 'nouvelle_recrue@exemple.invalid' && monde.emails[0].text.includes(LIEN) && /Label Maison/.test(monde.emails[0].subject),
-      'invitation : e-mail au nom de Label Maison, avec le lien',
-      monde.emails.map((m) => ({ from: m.from, to: m.to, subject: m.subject })),
+      res.statut === 409 && res.corps?.code === 'historique' && res.corps?.erreur === MESSAGE_INVITATION_HISTORIQUE && !res.corps?.lien && monde.emails.length === 0,
+      'base d’avant les espaces : pas d’invitation, « Disponible après la mise en service des espaces… », aucun e-mail',
+      res.corps,
     );
-    const lectureMembres = monde.base.filter((r) => r.chemin === 'membres' && r.url.searchParams.has('email')).at(-1);
-    verifier(!!lectureMembres && lectureMembres.jeton === 'jeton-equipe' && !lectureMembres.url.searchParams.has('espace'), 'appartenance lue avec la session du gérant, sans colonne espace (base d’avant)', lectureMembres?.url.search);
-    monde.emails = [];
-    res = await inviter(gerantLM, 'inconnu@exemple.invalid');
-    verifier(res.statut === 409 && res.corps?.code === 'membre' && monde.emails.length === 0, 'adresse absente de l’équipe : refusée, aucun e-mail', res.corps);
+    verifier(MESSAGE_INVITATION_HISTORIQUE === 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.', 'message de la base d’avant : le texte prévu');
+    verifier(!monde.base.some((r) => r.chemin === 'rpc/inviter_membre'), 'base d’avant : aucun code gardé');
     res = await inviter(gerantLM, 'pas une adresse');
     verifier(res.statut === 400, 'adresse invalide : refusée', res.statut);
     res = await inviter({ authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }, 'recrue-sens@exemple.invalid');
@@ -971,19 +996,38 @@ async function principal() {
     env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
     monde.emails = [];
     monde.oublier();
-    let res = await inviter(gerantSens, 'recrue-sens@exemple.invalid');
-    verifier(res.statut === 200 && res.corps?.envoye === false && res.corps?.lien === 'https://www.labelmaisoncg.fr/erp#creer=recrue-sens%40exemple.invalid' && monde.emails.length === 0, 'Sens sans expéditeur : lien à copier, jamais l’expéditeur de Label Maison', res.corps);
-    const lu = monde.base.filter((r) => r.chemin === 'membres' && r.url.searchParams.has('email')).at(-1);
-    verifier(lu?.jeton === 'jeton-sens' && lu.espace === SENS && lu.url.searchParams.get('espace') === `eq.${SENS}`, 'appartenance lue dans Sens (en-tête et filtre), avec la session du gérant', lu?.url.search);
+    const LIEN_SENS = /^https:\/\/www\.labelmaisoncg\.fr\/erp#creer=recrue-sens%40exemple\.invalid&code=([A-Za-z0-9_-]{43})$/;
+    const empreinte = (code: string) => crypto.createHash('sha256').update(code, 'utf8').digest('hex');
+    let res = await inviter({ ...gerantSens, origin: 'https://pirate.example', host: 'pirate.example' }, ' Recrue-Sens@Exemple.invalid ');
+    const code1 = LIEN_SENS.exec(String(res.corps?.lien ?? ''))?.[1] ?? '';
+    verifier(res.statut === 200 && res.corps?.envoye === false && !!code1 && monde.emails.length === 0, 'Sens sans expéditeur : lien du site fixe avec un code de 32 octets, à copier ; jamais l’expéditeur de Label Maison', res.corps);
+    const garde = monde.base.filter((r) => r.chemin === 'rpc/inviter_membre').at(-1);
+    verifier(
+      garde?.jeton === 'jeton-sens' && garde.espace === SENS && (garde.corps as Record<string, string>).p_espace === SENS && (garde.corps as Record<string, string>).p_empreinte === empreinte(code1),
+      'code gardé par erp.inviter_membre dans Sens, avec la session du gérant : son empreinte SHA-256 seulement',
+      garde?.corps,
+    );
+    verifier(!monde.base.some((r) => JSON.stringify(r.corps ?? '').includes(code1) || r.url.href.includes(code1)), 'le code lui-même ne va jamais dans la base');
     monde.espaces[1].config = { email: { expediteur: 'Sens <bonjour@sens.exemple.invalid>', repondreA: 'contact@sens.exemple.invalid' } };
     res = await inviter(gerantSens, 'recrue-sens@exemple.invalid');
+    const code2 = LIEN_SENS.exec(String(res.corps?.lien ?? ''))?.[1] ?? '';
     verifier(res.statut === 200 && res.corps?.envoye === true && monde.emails.length === 1 && monde.emails[0].from === 'Sens <bonjour@sens.exemple.invalid>' && monde.emails[0].subject === 'Votre accès à l’ERP Sens', 'Sens avec son expéditeur : e-mail au nom de Sens', monde.emails.map((m) => ({ from: m.from, subject: m.subject })));
+    verifier(monde.emails[0]?.text.includes(String(res.corps?.lien)) && /une seule fois/.test(monde.emails[0]?.text ?? ''), 'e-mail : le lien avec son code, « il sert une seule fois »', monde.emails[0]?.text);
+    verifier(
+      !!code2 && code2 !== code1 && monde.invitationsMembres.filter((x) => x.email === 'recrue-sens@exemple.invalid').map((x) => x.empreinte).join() === empreinte(code2),
+      'nouvelle invitation : un nouveau code, qui remplace le précédent',
+      monde.invitationsMembres,
+    );
     monde.espaces[1].config = {};
     monde.emails = [];
+    res = await inviter(gerantSens, 'ops-sens@exemple.invalid');
+    verifier(res.statut === 409 && res.corps?.code === 'deja' && monde.emails.length === 0, 'membre déjà activé : pas de code, il se connecte', res.corps);
     res = await inviter(gerantSens, 'nouvelle_recrue@exemple.invalid');
-    verifier(res.statut === 409 && monde.emails.length === 0, 'Sens : un membre de Label Maison n’est pas invité', res.corps);
+    verifier(res.statut === 409 && res.corps?.code === 'membre' && monde.emails.length === 0, 'Sens : un membre de Label Maison n’est pas invité', res.corps);
     res = await inviter(gerantLM, 'recrue-sens@exemple.invalid');
     verifier(res.statut === 409 && monde.emails.length === 0, 'Label Maison : un membre de Sens n’est pas invité', res.corps);
+    res = await inviter(gerantLM, 'inconnu@exemple.invalid');
+    verifier(res.statut === 409 && res.corps?.code === 'membre' && /Ajoutez d’abord/.test(res.corps?.erreur ?? ''), 'adresse absente de l’équipe : refusée, aucun e-mail', res.corps);
     res = await inviter({ authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS }, 'recrue-sens@exemple.invalid');
     verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.statut);
     res = await inviter({ authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS }, 'recrue-sens@exemple.invalid');
@@ -1650,14 +1694,16 @@ async function principal() {
     res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'inviter', nom: 'Déjà membre', email: 'gerant-b@exemple.invalid' } });
     verifier(res.statut === 400 && /déjà accès/.test(res.corps?.erreur ?? '') && monde.invitations.length === 0, 'invitation d’une adresse déjà membre : refusée avec le message de la base', res.corps);
     res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'inviter', nom: 'Côte & Mer', email: ' Gerant@Cote-Mer.example ' }, entetes: { origin: 'https://piege.vercel.app', host: 'piege.vercel.app' } });
+    const codeEspace = /^https:\/\/www\.labelmaisoncg\.fr\/erp#creer=gerant%40cote-mer\.example&code=([A-Za-z0-9_-]{43})$/.exec(String(res.corps?.lien ?? ''))?.[1] ?? '';
     verifier(
-      res.statut === 200 &&
-        res.corps?.envoye === false &&
-        res.corps?.lien === 'https://www.labelmaisoncg.fr/erp#creer=gerant%40cote-mer.example' &&
-        monde.invitations.length === 1 &&
-        monde.invitations[0].email === 'gerant@cote-mer.example',
-      'invitation sans e-mail : enregistrée, lien « Créer mon compte » du site fixe à copier (Origin forgée sans effet)',
+      res.statut === 200 && res.corps?.envoye === false && !!codeEspace && monde.invitations.length === 1 && monde.invitations[0].email === 'gerant@cote-mer.example',
+      'invitation sans e-mail : enregistrée, lien « Créer mon compte » du site fixe avec son code, à copier (Origin forgée sans effet)',
       res.corps,
+    );
+    verifier(
+      monde.invitations[0]?.empreinte === crypto.createHash('sha256').update(codeEspace, 'utf8').digest('hex') && !monde.base.some((r) => JSON.stringify(r.corps ?? '').includes(codeEspace)),
+      'invitation d’une conciergerie : seule l’empreinte du code va dans la base',
+      monde.invitations[0],
     );
     env.RESEND_API_KEY = 're_test';
     monde.emails = [];
@@ -1669,8 +1715,11 @@ async function principal() {
       mail,
     );
     verifier(
-      /Côte & Mer/.test(mail?.subject ?? '') && (mail?.text ?? '').includes('https://www.labelmaisoncg.fr/erp#creer=gerant%40cote-mer.example') && /gerant@cote-mer\.example/.test(mail?.text ?? ''),
-      'e-mail : nom de la conciergerie, lien « Créer mon compte », adresse à utiliser',
+      /Côte & Mer/.test(mail?.subject ?? '') &&
+        /https:\/\/www\.labelmaisoncg\.fr\/erp#creer=gerant%40cote-mer\.example&code=[A-Za-z0-9_-]{43}/.test(mail?.text ?? '') &&
+        /gerant@cote-mer\.example/.test(mail?.text ?? '') &&
+        /une seule fois/.test(mail?.text ?? ''),
+      'e-mail : nom de la conciergerie, lien « Créer mon compte » avec son code, adresse à utiliser, usage unique',
       mail?.text,
     );
     verifier(monde.invitations.length === 1, 'réinviter la même adresse : une seule invitation en attente');
@@ -1702,6 +1751,22 @@ async function principal() {
     );
     res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', cle: 'sk live avec espaces' } });
     verifier(res.statut === 400 && !monde.coffre.size, 'clé illisible : refusée, rien de rangé', res.corps);
+    // Clé essayée chez Repull avant d'être rangée : une lecture (GET /v1/health/auth), rien d'écrit.
+    monde.oublier();
+    monde.clesRefusees.add('sk_live_mauvaise_1234');
+    res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', cle: 'sk_live_mauvaise_1234' } });
+    verifier(res.statut === 400 && res.corps?.code === 'cle_refusee' && /Repull refuse cette clé/.test(res.corps?.erreur ?? '') && !monde.coffre.size, 'clé refusée par Repull : message clair, rien de rangé', res.corps);
+    verifier(!/Vercel|REPULL_API_KEY/.test(res.corps?.erreur ?? ''), 'clé refusée : jamais renvoyé vers Vercel', res.corps?.erreur);
+    verifier(
+      monde.repull.length >= 1 && monde.repull.every((a) => a.methode === 'GET' && a.chemin === '/v1/health/auth' && a.cle === 'sk_live_mauvaise_1234'),
+      'essai de la clé : lecture seule (GET /v1/health/auth)',
+      monde.repull,
+    );
+    verifier(!monde.base.some((r) => r.chemin === 'rpc/enregistrer_secret_espace'), 'clé refusée : le coffre n’est pas appelé');
+    monde.repullEnPanne = true;
+    res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', cle: 'sk_live_sens_propre_1234' } });
+    monde.repullEnPanne = false;
+    verifier(res.statut === 503 && !monde.coffre.size && /réessayez/.test(res.corps?.erreur ?? ''), 'Repull ne répond pas : rien de rangé, réessayer', res.corps);
     monde.oublier();
     res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', cle: 'sk_live_sens_propre_1234', workspace: ' ws-sens ' } });
     const ecrits = monde.base.filter((r) => r.chemin === 'rpc/enregistrer_secret_espace' || r.chemin === 'rpc/regler_repull_espace');
@@ -1735,6 +1800,22 @@ async function principal() {
     verifier(res.statut === 400 && !monde.coffre.has(`${LM}:repull_cle`), 'Label Maison : aucune clé rangée dans le coffre', res.corps);
     res = await appelEspaces('jeton-equipe', SENS, { corps: { action: 'repull', cle: 'sk_live_intrus_0000' } });
     verifier(res.statut === 403 && monde.coffre.get(`${SENS}:repull_cle`) === 'sk_live_sens_propre_1234', 'compte de Label Maison : ne range rien dans Sens', res.corps);
+    // Clé de Sens refusée plus tard par Repull : on dit où la remplacer, jamais Vercel.
+    verifier(ce.origineCle === 'espace' && configuration().origineCle === 'vercel', 'origine de la clé : Sens = la sienne, Label Maison = Vercel', [ce.origineCle, configuration().origineCle]);
+    monde.clesRefusees.add('sk_live_sens_propre_1234');
+    monde.lignes.delete(`${SENS}\u0000repull\u0000etat`);
+    const refusee = reponse();
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS } }), refusee);
+    const texteRefus = JSON.stringify(refusee.corps ?? {});
+    verifier(/Remplacer la clé/.test(texteRefus) && !/Vercel|REPULL_API_KEY/.test(texteRefus), 'bouton de Sens, clé refusée : « Paramètres → Plateformes → Remplacer la clé », jamais Vercel', texteRefus.slice(0, 400));
+    monde.clesRefusees.clear();
+    const client = new ClientRepull({ cle: 'k', echeance: Date.now() + 5000, origineCle: 'partagee', fetch: async () => json({ error: { code: 'unauthorized' } }, 401) });
+    const refusPartage = await client.get('/v1/listings').then(() => '', (e: Error) => e.message);
+    verifier(refusPartage === 'Clé Repull refusée : contactez Label Maison.', 'compte Repull de Label Maison prêté à un espace : « contactez Label Maison »', refusPartage);
+    verifier(/Vercel/.test(messageCleRefusee('vercel')) && !/Vercel/.test(messageCleRefusee('espace')), 'Label Maison garde le message Vercel');
+    const budget = messageConnexion(new BudgetEpuise(), { budgetMois: 400, appelsMois: 400, origineCle: 'espace' });
+    verifier(/contactez Label Maison/.test(budget) && !/Vercel|REPULL_BUDGET_ERP/.test(budget), 'part du mois épuisée dans un espace : « contactez Label Maison »', budget);
+    verifier(/REPULL_BUDGET_ERP/.test(messageConnexion(new BudgetEpuise(), { budgetMois: 400 })), 'part du mois épuisée chez Label Maison : comme avant');
     monde.coffre.clear();
     monde.espaces[1].config = {};
     monde.espaces[1].repull_workspace = '1204';

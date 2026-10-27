@@ -26,7 +26,7 @@
 // =============================================================================
 
 import crypto from 'node:crypto';
-import { BaseErp, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT, fabriqueJetonEquipe, lireIdentite } from '../src/erp/data/repull-synchro.js';
+import { BaseErp, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT, fabriqueJetonEquipe, lireIdentite, type OrigineCle } from '../src/erp/data/repull-synchro.js';
 import { signerFichierStockage, type SignerFichier } from '../src/erp/data/guides.js';
 import { deposerFichierStockage } from '../src/erp/data/operations-fichiers.js';
 import { BUCKET_FICHIERS_ERP, EMAIL_SERVEUR, ENTETE_ESPACE, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, fichierDeLEspace } from '../src/erp/data/espaces.js';
@@ -45,6 +45,8 @@ export interface ConfigRepullErp {
   cle: string;
   /** Workspace Repull de l'espace (X-Workspace-Id) ; absent : celui du compte. */
   workspace?: string;
+  /** À qui est la clé (messages : jamais Vercel pour un autre espace que Label Maison). */
+  origineCle: OrigineCle;
   motDePasse: string;
   motDePasseServeur: string;
   email: string;
@@ -81,6 +83,7 @@ export function configuration(): ConfigRepullErp {
     espace: ID_LABEL_MAISON,
     cle: (process.env.REPULL_API_KEY || '').trim(),
     workspace: workspaceLabelMaison(),
+    origineCle: 'vercel',
     motDePasse: (process.env.ERP_PASSWORD || '').trim(),
     motDePasseServeur: (process.env.ERP_SERVEUR_MOT_DE_PASSE || '').trim(),
     email: (process.env.VITE_ERP_EMAIL_EQUIPE || '').trim() || 'equipe@labelmaisoncg.fr',

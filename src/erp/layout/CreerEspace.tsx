@@ -1,10 +1,11 @@
 /**
  * Premier écran d'une conciergerie invitée par Label Maison : le compte est
- * connecté, adresse confirmée, sans espace encore, avec une invitation en
- * attente (erp.qui_suis_je → invitations_espace). Un seul champ, le nom,
- * prérempli ; « Créer l'espace » appelle erp.creer_espace : la personne en
- * devient gérante et l'ERP s'ouvre dans ce nouvel espace, vide, avec ses
- * premiers pas (Repull, équipe, propriétaires, agent).
+ * connecté, adresse confirmée, sans espace encore, avec une invitation
+ * activée par le code de son lien (erp.qui_suis_je → invitations_espace).
+ * Le nom est celui de l'invitation (Label Maison le choisit ; il ne se
+ * modifie pas ensuite) ; « Créer l'espace » appelle erp.creer_espace : la
+ * personne en devient gérante et l'ERP s'ouvre dans ce nouvel espace, vide,
+ * avec ses premiers pas (Repull, équipe, propriétaires, agent).
  *
  * Aucun accès au store ici : l'écran s'affiche avant que les données existent.
  */
@@ -13,7 +14,7 @@ import { LogOut, Sparkles } from 'lucide-react';
 import { creerEspace } from '../data/supabase';
 import type { Espace, InvitationEspace } from '../data/espaces';
 import { dateCourte } from '../data/format';
-import { Alert, Button, Field, Input } from '../ui';
+import { Alert, Button } from '../ui';
 
 interface Props {
   email: string;
@@ -24,17 +25,15 @@ interface Props {
 }
 
 export function CreerEspace({ email, invitation, onCree, onDeconnecter }: Props) {
-  const [nom, setNom] = useState(invitation.nom);
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
 
   const creer = async (e: FormEvent) => {
     e.preventDefault();
     if (enCours) return;
-    if (!nom.trim()) return setErreur('Donnez le nom de votre conciergerie.');
     setEnCours(true);
     setErreur(undefined);
-    const r = await creerEspace(nom);
+    const r = await creerEspace(invitation.nom);
     if (!r.ok) {
       setEnCours(false);
       return setErreur(r.erreur);
@@ -55,25 +54,28 @@ export function CreerEspace({ email, invitation, onCree, onDeconnecter }: Props)
             <div className="min-w-0">
               <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Créez l’espace de votre conciergerie</h1>
               <p className="mt-1 text-[13.5px] text-(--lm-encre-2)">
-                Vos logements, réservations, messages et équipes, rien qu’à vous. Vous en serez le gérant.
+                Vos logements, réservations, messages et équipes, rien qu’à vous. Vous gérerez cet espace.
               </p>
             </div>
           </div>
           <form onSubmit={creer} noValidate className="grid gap-4">
-            <Field label="Nom de votre conciergerie" aide="Il apparaît pour votre équipe, vos propriétaires et dans la signature de l’agent.">
-              <Input value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)} autoFocus autoComplete="organization" />
-            </Field>
+            {/* Nom de l'invitation, affiché tel quel : il ne se modifie pas (ni ici, ni dans Paramètres). */}
+            <div>
+              <p className="text-[13px] font-medium text-(--lm-encre-2)">Nom de votre conciergerie</p>
+              <p className="mt-1 text-[17px] font-semibold text-(--lm-encre) [overflow-wrap:anywhere]">{invitation.nom}</p>
+              <p className="mt-1 text-[12.5px] text-(--lm-encre-2)">Il apparaît pour votre équipe, vos propriétaires et dans la signature de l’agent.</p>
+            </div>
             {erreur && (
               <Alert tone="danger" className="py-2">
                 {erreur}
               </Alert>
             )}
-            <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<Sparkles />}>
+            <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<Sparkles />} autoFocus>
               Créer l’espace
             </Button>
           </form>
           <p className="mt-4 text-[12.5px] text-(--lm-encre-2)">
-            Invitation pour <strong className="break-all text-(--lm-encre)">{email}</strong>
+            Invitation pour <strong className="[overflow-wrap:anywhere] text-(--lm-encre)">{email}</strong>
             {fin ? `, valable jusqu’au ${fin}.` : '.'}
           </p>
           <button

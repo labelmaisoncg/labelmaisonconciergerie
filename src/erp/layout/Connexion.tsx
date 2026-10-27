@@ -1,16 +1,30 @@
 /**
  * Porte d'entrée de l'ERP (production) : chargement, connexion par compte
  * personnel (e-mail et mot de passe, en secours de la page d'accès du
- * middleware), nouveau mot de passe (lien de récupération), compte non
- * autorisé, base pas encore installée, base injoignable.
+ * middleware), nouveau mot de passe (lien de récupération), dernière étape
+ * d'une invitation (mot de passe, puis activation avec le code gardé sur
+ * l'appareil), lien d'un autre compte sur un appareil déjà connecté, compte
+ * non autorisé (avec la raison quand la base la donne : espace suspendu,
+ * invitation expirée), base pas encore installée, base injoignable.
  *
  * Aucun accès au store ici : ces écrans s'affichent avant que les données
  * existent.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, UserPlus, WifiOff } from 'lucide-react';
+import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, UserPlus, Users, WifiOff } from 'lucide-react';
 import { EMAIL_VALIDE } from '../data/invitation';
-import { RETOUR_LIEN, changerMotDePasse, creerCompte, envoyerLienMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
+import {
+  RETOUR_LIEN,
+  activerAvecCode,
+  baseInvitations,
+  changerMotDePasse,
+  codeInvitationDe,
+  creerCompte,
+  envoyerLienMotDePasse,
+  invitationGardee,
+  seConnecter,
+  type GenreErreur,
+} from '../data/supabase';
 import { Alert, Button, Field, Input, Repli } from '../ui';
 
 export type PhasePorte =
@@ -19,7 +33,11 @@ export type PhasePorte =
   | { nom: 'pret' }
   | { nom: 'connexion'; message?: string }
   | { nom: 'nouveau_mot_de_passe' }
-  | { nom: 'non_autorise'; email: string }
+  | { nom: 'non_autorise'; email: string; motif?: string }
+  /** Code d'invitation gardé pour ce compte : il reste à saisir le mot de passe. */
+  | { nom: 'activer'; email: string }
+  /** Lien reçu par e-mail pour un autre compte que celui de la session. */
+  | { nom: 'autre_compte'; actuel: string; autre: string }
   | { nom: 'base_absente' }
   | { nom: 'erreur'; genre: GenreErreur; message: string };
 
@@ -28,24 +46,50 @@ interface Props {
   onReessayer: () => void;
   onMotDePasseChange: () => void;
   onDeconnecter: () => void;
+  /** Lien d'un autre compte : se déconnecter et le suivre. */
+  onSuivreLien?: () => void;
+  /** Lien d'un autre compte : rester sur la session ouverte. */
+  onRester?: () => void;
 }
 
-export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnecter }: Props) {
+/** Refus neutre : le même, qu'il manque l'invitation, son code ou la ligne de membre. */
+export const MESSAGE_SANS_ACCES = 'Ce compte n’a pas accès à l’ERP.';
+
+export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnecter, onSuivreLien, onRester }: Props) {
   switch (phase.nom) {
     case 'connexion':
       return <FormulaireConnexion message={phase.message} />;
     case 'nouveau_mot_de_passe':
       return <NouveauMotDePasse onFini={onMotDePasseChange} />;
+    case 'activer':
+      return <ActiverCompte email={phase.email} onFini={onReessayer} onDeconnecter={onDeconnecter} />;
+    case 'autre_compte':
+      return (
+        <Cadre titre="Se déconnecter pour continuer ?" icone={<Users />}>
+          <p className="text-[14px] text-(--lm-encre)">
+            Vous êtes connecté avec <strong className="[overflow-wrap:anywhere]">{phase.actuel}</strong>. Ce lien est pour{' '}
+            {phase.autre ? <strong className="[overflow-wrap:anywhere]">{phase.autre}</strong> : 'un autre compte'}.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Button variant="primary" icone={<LogOut />} onClick={onSuivreLien}>
+              Se déconnecter et continuer
+            </Button>
+            <Button onClick={onRester}>Rester connecté</Button>
+          </div>
+        </Cadre>
+      );
     case 'non_autorise':
       return (
         <Cadre titre="Accès non autorisé" icone={<ShieldAlert />}>
-          <Alert tone="alerte" titre="Ce compte n’a pas accès à l’ERP. Demandez à un gérant de vous ajouter.">
-            Vous êtes connecté avec <strong className="break-all">{phase.email}</strong>, mais cette adresse ne figure pas dans la liste des membres
-            de l’ERP.
+          <Alert tone="alerte" titre={phase.motif ?? MESSAGE_SANS_ACCES}>
+            Vous êtes connecté avec <strong className="[overflow-wrap:anywhere]">{phase.email}</strong>.
           </Alert>
-          <p className="mt-4 text-[13px] text-(--lm-encre-2)">
-            Un gérant ajoute votre adresse depuis Paramètres → Équipe.
-          </p>
+          {!phase.motif && (
+            <p className="mt-4 text-[13px] text-(--lm-encre-2)">
+              Vous avez reçu une invitation&nbsp;? Ouvrez son lien sur cet appareil (il sert une fois, pendant 14 jours). Sinon, demandez à un gérant de
+              vous ajouter.
+            </p>
+          )}
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" icone={<RefreshCw />} onClick={onReessayer}>
               Réessayer
@@ -101,7 +145,7 @@ function Cadre({ titre, sousTitre, icone, children }: { titre: string; sousTitre
           </div>
           {children}
         </div>
-        <p className="mt-6 text-center text-[12px] text-(--lm-encre-3)">Accès réservé à l’équipe Label Maison.</p>
+        <p className="mt-6 text-center text-[12px] text-(--lm-encre-3)">Accès réservé aux équipes invitées.</p>
       </div>
     </main>
   );
@@ -125,19 +169,25 @@ function Chargement({ texte }: { texte: string }) {
 
 const LIEN_TEXTE = 'inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline';
 
+/** Sans code d'invitation sur l'appareil, « Créer mon compte » ne mène à rien : on le dit. */
+const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
+/** Base d'avant les espaces : pas de création de compte par l'ERP. */
+const MESSAGE_CREATION_FERMEE = 'Disponible après la mise en service des espaces ; en attendant, un gérant crée le compte dans Supabase.';
+
 function FormulaireConnexion({ message }: { message?: string }) {
-  // Lien d'invitation (#creer=<adresse>) : on commence par « Créer mon compte ».
-  const [creation, setCreation] = useState(RETOUR_LIEN.creer !== undefined);
-  const [email, setEmail] = useState(RETOUR_LIEN.creer ?? '');
+  // Lien d'invitation (#creer=<adresse>&code=…) : on commence par « Créer mon compte ».
+  const gardee = invitationGardee();
+  const [creation, setCreation] = useState(RETOUR_LIEN.creer !== undefined && !!gardee);
+  const [email, setEmail] = useState(RETOUR_LIEN.creer || gardee?.email || '');
   const [motDePasse, setMotDePasse] = useState('');
   const [erreur, setErreur] = useState<string>();
-  const [info, setInfo] = useState<string>();
+  const [info, setInfo] = useState<string | undefined>(() => (RETOUR_LIEN.creer !== undefined && !gardee ? MESSAGE_SANS_INVITATION : undefined));
   const [enCours, setEnCours] = useState(false);
 
-  if (creation) {
+  if (creation && gardee) {
     return (
       <CreerCompte
-        email={email}
+        email={gardee.email}
         onRetour={(adresse, envoye) => {
           setEmail(adresse);
           setErreur(undefined);
@@ -215,8 +265,13 @@ function FormulaireConnexion({ message }: { message?: string }) {
           type="button"
           onClick={() => {
             setErreur(undefined);
-            setInfo(undefined);
-            setCreation(true);
+            if (invitationGardee()) {
+              setInfo(undefined);
+              return setCreation(true);
+            }
+            // Le lien de l'invitation garde son code sur l'appareil ; sans lui, rien à créer ici
+            // (base d'avant les espaces : un gérant crée le compte dans Supabase).
+            void baseInvitations().then((prete) => setInfo(prete === false ? MESSAGE_CREATION_FERMEE : MESSAGE_SANS_INVITATION));
           }}
           className={LIEN_TEXTE}
         >
@@ -233,17 +288,28 @@ const MESSAGE_COMPTE_CREE =
   'Ouvrez le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
 
 /**
- * « Créer mon compte » (secours de la page d'accès, mêmes règles) : adresse,
- * mot de passe deux fois. Personne n'est connecté ici ; le lien de
- * confirmation reçu par e-mail ramène à la page d'accès, et seule une adresse
- * membre de l'équipe ouvre ensuite l'ERP.
+ * « Créer mon compte » (secours de la page d'accès, mêmes règles), avec le
+ * code d'invitation gardé sur l'appareil : l'adresse invitée (fixe), le mot
+ * de passe deux fois. Personne n'est connecté ici ; le lien de confirmation
+ * reçu par e-mail ramène à la page d'accès, qui active l'accès avec le code.
+ * Base d'avant les espaces : fermé, on dit pourquoi.
  */
-function CreerCompte({ email: initial, onRetour }: { email: string; onRetour: (email: string, envoye: boolean) => void }) {
-  const [email, setEmail] = useState(initial);
+function CreerCompte({ email, onRetour }: { email: string; onRetour: (email: string, envoye: boolean) => void }) {
   const [motDePasse, setMotDePasse] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
+  const [fermee, setFermee] = useState(false);
+
+  useEffect(() => {
+    let actif = true;
+    void baseInvitations().then((prete) => {
+      if (actif && prete === false) setFermee(true);
+    });
+    return () => {
+      actif = false;
+    };
+  }, []);
 
   const creer = async (e: FormEvent) => {
     e.preventDefault();
@@ -262,23 +328,28 @@ function CreerCompte({ email: initial, onRetour }: { email: string; onRetour: (e
     onRetour(adresse, true);
   };
 
+  if (fermee) {
+    return (
+      <Cadre titre="Créer mon compte" icone={<UserPlus />}>
+        <Alert tone="info">{MESSAGE_CREATION_FERMEE}</Alert>
+        <button type="button" onClick={() => onRetour(email, false)} className={`mt-4 ${LIEN_TEXTE}`}>
+          J’ai déjà un compte
+        </button>
+      </Cadre>
+    );
+  }
+
   return (
-    <Cadre titre="Créer mon compte" sousTitre="Utilisez l’adresse à laquelle vous avez été invité." icone={<UserPlus />}>
+    <Cadre titre="Créer mon compte" sousTitre="Utilisez l’adresse qui a reçu l’invitation." icone={<UserPlus />}>
       <form onSubmit={creer} noValidate className="grid gap-4">
-        <Field label="Adresse e-mail">
-          <Input
-            type="email"
-            autoComplete="username"
-            inputMode="email"
-            autoCapitalize="off"
-            spellCheck={false}
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoFocus={!initial}
-          />
-        </Field>
+        {/* Adresse de l'invitation, affichée telle quelle (le champ caché la donne aux gestionnaires de mots de passe). */}
+        <div>
+          <p className="text-[13px] font-medium text-(--lm-encre-2)">Adresse e-mail</p>
+          <p className="mt-1 text-[15px] font-medium text-(--lm-encre) [overflow-wrap:anywhere]">{email}</p>
+          <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
+        </div>
         <Field label="Mot de passe" aide="8 caractères au moins.">
-          <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus={!!initial} />
+          <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus />
         </Field>
         <Field label="Confirmer le mot de passe">
           <Input type="password" autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
@@ -292,8 +363,60 @@ function CreerCompte({ email: initial, onRetour }: { email: string; onRetour: (e
           Créer mon compte
         </Button>
       </form>
-      <button type="button" onClick={() => onRetour(email.trim(), false)} className={`mt-4 ${LIEN_TEXTE}`}>
+      <button type="button" onClick={() => onRetour(email, false)} className={`mt-4 ${LIEN_TEXTE}`}>
         J’ai déjà un compte
+      </button>
+    </Cadre>
+  );
+}
+
+/* ------------------------------------------- dernière étape d'une invitation */
+
+/**
+ * Compte connecté, code d'invitation gardé sur l'appareil pour son adresse :
+ * le mot de passe saisi ici devient celui du compte, puis l'accès est activé
+ * (activerAvecCode). Un compte créé avant, par quelqu'un d'autre, à cette
+ * adresse, perd ainsi son mot de passe et ses sessions.
+ */
+function ActiverCompte({ email, onFini, onDeconnecter }: { email: string; onFini: () => void; onDeconnecter: () => void }) {
+  const [motDePasse, setMotDePasse] = useState('');
+  const [erreur, setErreur] = useState<string>();
+  const [enCours, setEnCours] = useState(false);
+
+  const valider = async (e: FormEvent) => {
+    e.preventDefault();
+    if (motDePasse.length < 8) return setErreur('Mot de passe trop court : 8 caractères au moins.');
+    const code = codeInvitationDe(email);
+    if (!code) return onFini();
+    setEnCours(true);
+    setErreur(undefined);
+    const r = await activerAvecCode(code, motDePasse);
+    setEnCours(false);
+    setMotDePasse('');
+    if (!r.ok) return setErreur(r.erreur);
+    onFini();
+  };
+
+  return (
+    <Cadre titre="Dernière étape" sousTitre="Saisissez le mot de passe de votre compte." icone={<KeyRound />}>
+      <form onSubmit={valider} noValidate className="grid gap-4">
+        <Field label="Mot de passe" aide="Celui choisi à la création du compte, ou un nouveau : 8 caractères au moins.">
+          <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus />
+        </Field>
+        {erreur && (
+          <Alert tone="danger" className="py-2">
+            {erreur}
+          </Alert>
+        )}
+        <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<LogIn />}>
+          Ouvrir l’ERP
+        </Button>
+      </form>
+      <p className="mt-4 text-[12.5px] text-(--lm-encre-2)">
+        Compte <strong className="[overflow-wrap:anywhere] text-(--lm-encre)">{email}</strong>
+      </p>
+      <button type="button" onClick={onDeconnecter} className={`mt-1 ${LIEN_TEXTE}`}>
+        Ce n’est pas moi&nbsp;: se déconnecter
       </button>
     </Cadre>
   );

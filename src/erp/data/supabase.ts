@@ -15,12 +15,23 @@ import {
   idEspaceValide,
   lireEspacesMembre,
   lireInvitationEspace,
+  lireRefusAcces,
   prefixeFichiers,
   type Espace,
   type EspaceMembre,
   type InvitationEspace,
+  type RefusAcces,
 } from './espaces';
-import { EMAIL_VALIDE, normaliserEmailInvitation } from './invitation';
+import {
+  CLE_INVITATION,
+  EMAIL_VALIDE,
+  codeInvitationValide,
+  codePourCompte,
+  invitationAGarder,
+  lireInvitationGardee,
+  normaliserEmailInvitation,
+  type InvitationGardee,
+} from './invitation';
 import type { RoleUtilisateur, Utilisateur } from './types';
 
 /* ----------------------------------------------------------------- client */
@@ -31,20 +42,79 @@ export type ClientErp = SupabaseClient<any, any, any>;
 
 let client: ClientErp | null = null;
 
+/* ------------------------------------- code d'invitation gardé sur l'appareil */
+
+/** Invitation gardée sur cet appareil (lien « Créer mon compte » ouvert ici), null : aucune. */
+export function invitationGardee(): InvitationGardee | null {
+  try {
+    return lireInvitationGardee(window.localStorage.getItem(CLE_INVITATION));
+  } catch {
+    return null;
+  }
+}
+
+function garderInvitation(email: string, code: string) {
+  try {
+    window.localStorage.setItem(CLE_INVITATION, JSON.stringify(invitationAGarder(email, code)));
+  } catch {
+    /* navigation privée : le code ne vit que le temps de la page */
+  }
+}
+
+export function oublierInvitation() {
+  try {
+    window.localStorage.removeItem(CLE_INVITATION);
+  } catch {
+    /* rien à effacer */
+  }
+}
+
+/** Code d'invitation gardé pour ce compte (même adresse), sinon undefined. */
+export const codeInvitationDe = (email: string): string | undefined => codePourCompte(invitationGardee(), email);
+
+/** Adresse d'un jeton Supabase (affichage seulement : la base vérifie le jeton). */
+function emailDuJeton(jwt: string): string {
+  try {
+    const b = jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const e = (JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4))))) as { email?: unknown }).email;
+    return typeof e === 'string' && e.length < 200 ? e.trim().toLowerCase() : '';
+  } catch {
+    return '';
+  }
+}
+
+export interface RetourLien {
+  recuperation: boolean;
+  erreur?: string;
+  /** Lien « Créer mon compte » : l'adresse invitée ('' si illisible). */
+  creer?: string;
+  /**
+   * Lien reçu par e-mail qui concerne un compte (« Créer mon compte »,
+   * confirmation d'adresse…), retiré de l'adresse avant que le client ne le
+   * lise : jamais de changement de compte sans un geste. hash : le lien tel
+   * quel, pour le rejouer sur la page d'accès.
+   */
+  lien?: { hash: string; email: string; jetons: boolean };
+}
+
 /**
- * Lien de récupération de mot de passe : lu AVANT que le client Supabase ne
- * nettoie l'adresse (#access_token=...&type=recovery, ou #error=... si expiré).
+ * Lien reçu par e-mail : lu AVANT que le client Supabase ne nettoie l'adresse
+ * (#access_token=...&type=recovery, #creer=...&code=..., ou #error=... si expiré).
  */
-function lireRetourLien(): { recuperation: boolean; erreur?: string; creer?: string } {
+function lireRetourLien(): RetourLien {
   if (typeof window === 'undefined') return { recuperation: false };
   const hash = window.location.hash.replace(/^#/, '');
   if (!hash) return { recuperation: false };
   const p = new URLSearchParams(hash);
+  const effacer = () => window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
   if (p.has('creer')) {
-    // Lien d'invitation « Créer mon compte » : l'adresse seule, retirée de l'adresse aussitôt.
-    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    // Lien d'invitation « Créer mon compte » : l'adresse et le code, retirés de l'adresse aussitôt ; le code reste sur l'appareil.
+    effacer();
     const email = normaliserEmailInvitation(p.get('creer'));
-    return { recuperation: false, creer: EMAIL_VALIDE.test(email) && email.length <= 200 ? email : '' };
+    const valable = EMAIL_VALIDE.test(email) && email.length <= 200;
+    const code = p.get('code');
+    if (valable && codeInvitationValide(code)) garderInvitation(email, code);
+    return { recuperation: false, creer: valable ? email : '', ...(valable ? { lien: { hash: `#${hash}`, email, jetons: false } } : {}) };
   }
   const code = p.get('error_code') ?? p.get('error');
   if (code) {
@@ -52,9 +122,14 @@ function lireRetourLien(): { recuperation: boolean; erreur?: string; creer?: str
     return {
       recuperation: false,
       erreur: expire
-        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».'
-        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? ».',
+        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? », ou refaites « Créer mon compte ».'
+        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? », ou refaites « Créer mon compte ».',
     };
+  }
+  const acces = p.get('access_token');
+  if (acces && p.get('refresh_token') && p.get('type') !== 'recovery') {
+    effacer();
+    return { recuperation: false, lien: { hash: `#${hash}`, email: emailDuJeton(acces), jetons: true } };
   }
   return { recuperation: p.get('type') === 'recovery' };
 }
@@ -149,12 +224,85 @@ function traduireAuth(message: string | undefined): string {
 
 export type ResultatAuth = { ok: true } | { ok: false; erreur: string };
 
-export async function seConnecter(email: string, motDePasse: string): Promise<ResultatAuth> {
+async function connexionSimple(email: string, motDePasse: string): Promise<ResultatAuth> {
   try {
     const { error } = await obtenirClient().auth.signInWithPassword({ email: email.trim(), password: motDePasse });
     return error ? { ok: false, erreur: traduireAuth(error.message) } : { ok: true };
   } catch (e) {
     return { ok: false, erreur: traduireAuth((e as Error)?.message) };
+  }
+}
+
+/** Activation en cours : le chargement de l'ERP l'attend avant de vérifier l'accès. */
+let activationEnCours: Promise<unknown> | null = null;
+export const attendreActivation = (): Promise<unknown> => activationEnCours ?? Promise.resolve();
+
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Active l'accès du compte connecté avec le code de son invitation, comme
+ * /erp/connexion (middleware.ts) : le mot de passe saisi devient celui du
+ * compte (un mot de passe posé avant par quelqu'un d'autre ne vaut plus),
+ * les autres sessions du compte sont fermées, puis erp.activer relie le
+ * compte et consomme le code ; la session est renouvelée (les jetons d'avant
+ * l'activation ne valent rien). activee : faux si le code n'a pas servi
+ * (déjà servi, expiré, autre adresse : l'accès ordinaire décide ensuite).
+ */
+export async function activerAvecCode(code: string, motDePasse: string): Promise<{ ok: true; activee: boolean } | { ok: false; erreur: string }> {
+  const precedente = activationEnCours;
+  const travail = (async () => {
+    const c = obtenirClient();
+    try {
+      const u = await c.auth.updateUser({ password: motDePasse });
+      if (u.error && !/same.?password|different from the old/i.test(`${u.error.code ?? ''} ${u.error.message}`)) {
+        return { ok: false as const, erreur: traduireAuth(u.error.message) };
+      }
+      await c.auth.signOut({ scope: 'others' }).catch(() => undefined);
+      const { error } = await c.rpc('activer', { p_code: code });
+      if (error) {
+        // Base d'avant les espaces, ou code refusé : il ne servira plus ; l'accès ordinaire décide.
+        if (erreurBaseHistorique(error) || error.code === '42501') {
+          oublierInvitation();
+          return { ok: true as const, activee: false };
+        }
+        return { ok: false as const, erreur: messageErreur(error) };
+      }
+      oublierInvitation();
+      // Jeton émis après l'activation (à la seconde près) : la base ne reconnaît que lui.
+      await pause(1100);
+      await c.auth.refreshSession();
+      return { ok: true as const, activee: true };
+    } catch (e) {
+      return { ok: false as const, erreur: traduireAuth((e as Error)?.message) };
+    }
+  })();
+  if (!precedente) activationEnCours = travail;
+  try {
+    return await travail;
+  } finally {
+    if (activationEnCours === travail) activationEnCours = null;
+  }
+}
+
+/**
+ * Connexion par mot de passe ; avec un code d'invitation gardé pour cette
+ * adresse, l'accès est activé dans la foulée, avant tout chargement.
+ */
+export async function seConnecter(email: string, motDePasse: string): Promise<ResultatAuth> {
+  const code = codeInvitationDe(email);
+  if (!code) return connexionSimple(email, motDePasse);
+  let fin: () => void = () => undefined;
+  // Posée AVANT la connexion : le chargement déclenché par la session l'attend.
+  const garde = new Promise<void>((r) => (fin = r));
+  activationEnCours = garde;
+  try {
+    const r = await connexionSimple(email, motDePasse);
+    if (!r.ok) return r;
+    const a = await activerAvecCode(code, motDePasse);
+    return a.ok ? { ok: true } : a;
+  } finally {
+    fin();
+    if (activationEnCours === garde) activationEnCours = null;
   }
 }
 
@@ -207,10 +355,35 @@ export async function creerCompte(email: string, motDePasse: string): Promise<Re
 
 export async function changerMotDePasse(motDePasse: string): Promise<ResultatAuth> {
   try {
-    const { error } = await obtenirClient().auth.updateUser({ password: motDePasse });
-    return error ? { ok: false, erreur: traduireAuth(error.message) } : { ok: true };
+    const { data, error } = await obtenirClient().auth.updateUser({ password: motDePasse });
+    if (error) return { ok: false, erreur: traduireAuth(error.message) };
+    // Lien de récupération d'un compte invité : le même geste active son accès.
+    const code = data.user?.email ? codeInvitationDe(data.user.email) : undefined;
+    if (code) {
+      const a = await activerAvecCode(code, motDePasse);
+      if (!a.ok) return a;
+    }
+    return { ok: true };
   } catch (e) {
     return { ok: false, erreur: traduireAuth((e as Error)?.message) };
+  }
+}
+
+/**
+ * Base prête pour les invitations (erp.activer existe) ? false : base d'avant
+ * les espaces (« Créer mon compte » fermé) ; null : on ne sait pas.
+ */
+export async function baseInvitations(): Promise<boolean | null> {
+  try {
+    const r = await fetch(`${SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/rpc/activer`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json', 'Content-Profile': SCHEMA_ERP, 'Accept-Profile': SCHEMA_ERP },
+      body: '{}',
+    });
+    if (r.status !== 404) return true;
+    return !/PGRST202/.test(await r.text().catch(() => ''));
+  } catch {
+    return null;
   }
 }
 
@@ -225,7 +398,7 @@ export async function seDeconnecter(): Promise<void> {
 /* ---------------------------------------------------------------- espaces */
 
 export type Identite =
-  | { ok: true; mode: 'espaces'; espaces: EspaceMembre[]; invitation: InvitationEspace | null }
+  | { ok: true; mode: 'espaces'; espaces: EspaceMembre[]; invitation: InvitationEspace | null; refus: RefusAcces }
   | { ok: true; mode: 'historique' }
   | { ok: false; erreur: unknown; status?: number };
 
@@ -236,17 +409,18 @@ export type Identite =
 export async function quiSuisJe(): Promise<Identite> {
   const { data, error, status } = await obtenirClient().rpc('qui_suis_je');
   if (error) return erreurBaseHistorique(error) ? { ok: true, mode: 'historique' } : { ok: false, erreur: error, status };
-  return { ok: true, mode: 'espaces', espaces: lireEspacesMembre(data), invitation: lireInvitationEspace(data) };
+  return { ok: true, mode: 'espaces', espaces: lireEspacesMembre(data), invitation: lireInvitationEspace(data), refus: lireRefusAcces(data) };
 }
 
 /**
- * Crée l'espace de sa conciergerie avec l'invitation en attente de son
- * adresse (erp.creer_espace : la personne en devient gérante). Un nouvel
- * appel rend le même espace. Erreur : le message clair de la base.
+ * Crée l'espace de sa conciergerie avec l'invitation activée par ce compte
+ * (erp.creer_espace : au nom donné par Label Maison, la personne en devient
+ * gérante). Un nouvel appel rend le même espace. Erreur : le message clair
+ * de la base.
  */
 export async function creerEspace(nom: string): Promise<{ ok: true; espace: Espace } | { ok: false; erreur: string }> {
   try {
-    const { data, error } = await obtenirClient().rpc('creer_espace', { p_nom: nom.trim() || null });
+    const { data, error } = await obtenirClient().rpc('creer_espace');
     if (error) return { ok: false, erreur: error.message || 'Création impossible pour l’instant. Réessayez dans un instant.' };
     const e = (data ?? {}) as { id?: unknown; code?: unknown; nom?: unknown };
     if (!idEspaceValide(e.id)) return { ok: false, erreur: 'Réponse inattendue de la base. Réessayez dans un instant.' };
