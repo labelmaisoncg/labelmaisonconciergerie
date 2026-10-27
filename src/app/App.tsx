@@ -27,10 +27,13 @@ const ErpApp = lazy(() => import('../erp/ErpApp'));
 const DossierProprietaire = lazy(() => import('./pages/DossierProprietaire'));
 // Espace propriétaire (logements, calendrier, bilans, documents) : chargé à la demande, sans la navigation du site.
 const EspaceProprietaire = lazy(() => import('./pages/EspaceProprietaire'));
+// Espace opérations (responsables de pôle, agents de terrain) : chargé à la demande, sans la navigation du site.
+const EspaceOperations = lazy(() => import('./pages/EspaceOperations'));
 
 const estErp = () => typeof window !== 'undefined' && /^\/erp(\/|$)/.test(window.location.pathname);
 const estDossier = () => typeof window !== 'undefined' && /^\/dossier-proprietaire\/?$/.test(window.location.pathname);
 const estEspaceProprietaire = () => typeof window !== 'undefined' && /^\/espace-proprietaire\/?$/.test(window.location.pathname);
+const estEspaceOperations = () => typeof window !== 'undefined' && /^\/espace-operations\/?$/.test(window.location.pathname);
 
 /** Habillage du site public : navigation, pages, pied de page. */
 function SiteShell() {
@@ -64,7 +67,7 @@ export default function App() {
   return (
     <HelmetProvider>
       {/* L'intro animée est réservée au site : jamais sous /erp. */}
-      {!estErp() && !estDossier() && !estEspaceProprietaire() && <SplashIntro />}
+      {!estErp() && !estDossier() && !estEspaceProprietaire() && !estEspaceOperations() && <SplashIntro />}
       <BrowserRouter>
         <Routes>
           <Route
@@ -90,6 +93,14 @@ export default function App() {
             element={
               <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
                 <EspaceProprietaire />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/espace-operations"
+            element={
+              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
+                <EspaceOperations />
               </Suspense>
             }
           />

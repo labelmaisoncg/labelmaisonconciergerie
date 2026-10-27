@@ -4,12 +4,13 @@
  */
 import type { ComponentType, ReactNode } from 'react';
 import { Home } from 'lucide-react';
-import { moisAnnee } from '../data/format';
+import { dateCourte, moisAnnee } from '../data/format';
 import type { CanalReservation } from '../data/types';
+import type { VueProprietaire } from '../data/types-proprietaire';
 import { cn, useLienFichier } from '../ui';
 
-export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'documents';
-export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'documents'];
+export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'factures' | 'documents';
+export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'factures', 'documents'];
 
 /** Lien d'ouverture d'un document (API signée pour le propriétaire, fichier de l'ERP pour le gérant). */
 export type LienDocumentProps = { id: string; className?: string; children: ReactNode };
@@ -23,6 +24,12 @@ export const CANAL: Record<CanalReservation, string> = {
 };
 
 /** « Septembre 2026 ». */
+/** Plus aucun logement : cédés à un autre propriétaire (depuis quand), ou pas encore. */
+export function sansLogement(vue: Pick<VueProprietaire, 'logementsCedes'>): string {
+  const dernier = vue.logementsCedes[0];
+  return dernier ? `Plus de logement en gestion depuis le ${dateCourte(dernier.jusquAu)}. Vos chiffres et vos bilans de cette période restent ici.` : 'Aucun logement en gestion pour l’instant.';
+}
+
 export const titreMois = (mois: string) => {
   const t = moisAnnee(mois);
   return t.charAt(0).toLocaleUpperCase('fr') + t.slice(1);

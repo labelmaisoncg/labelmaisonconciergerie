@@ -16,6 +16,7 @@ import {
   UTILISATEURS,
 } from './seed-referentiel';
 import { genererOperations } from './seed-operations';
+import { genererEquipeOps } from './seed-equipe';
 import { creerRecommandations } from './seed-recommandations';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { creerVersionsAnnonce } from './seed-annonces';
@@ -629,6 +630,7 @@ export function creerSeed(): ErpDonnees {
   }));
 
   const recommandations = creerRecommandations();
+  const ops = genererEquipeOps(reservations, operations.incidents);
 
   const donnees = {
     proprietaires: structuredClone(PROPRIETAIRES),
@@ -639,7 +641,7 @@ export function creerSeed(): ErpDonnees {
     missions: toutesMissions,
     prestataires: structuredClone(prestataires),
     mouvementsLinge: linge.mouvements,
-    incidents: operations.incidents,
+    incidents: ops.incidents,
     factures: genererFactures(reservations),
     paiementsPrestataires: genererPaiements(missions),
     charges: operations.charges,
@@ -651,6 +653,12 @@ export function creerSeed(): ErpDonnees {
     recommandations,
     versionsAnnonce: creerVersionsAnnonce({ logements: LOGEMENTS, reservations, recommandations }),
     reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }],
+    equipe: ops.equipe,
+    accesOperations: ops.accesOperations,
+    affectations: ops.affectations,
+    absences: ops.absences,
+    controles: ops.controles,
+    signalementsLogement: ops.signalementsLogement,
   };
   return { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
 }

@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { analyserBien } from '../../../analyse';
 import { COMMISSION_CIBLE_MIN } from '../../../data/constantes';
 import { AUJOURDHUI, euros, nombre } from '../../../data/format';
-import { mandatDuLogement } from '../../../data/selectors';
+import { mandatAuJour, mandatDuLogement } from '../../../data/selectors';
 import type { Centimes, ErpDonnees, Id } from '../../../data/types';
 import { Badge } from '../../../ui';
 
@@ -23,7 +23,11 @@ export interface EconomieBien {
 }
 
 export function economieBien(d: ErpDonnees, logementId: Id): EconomieBien {
-  const mandat = mandatDuLogement(d.mandats.filter((m) => m.statut !== 'resilie'), logementId) ?? mandatDuLogement(d.mandats, logementId);
+  const l = d.logements.find((x) => x.id === logementId);
+  // Le mandat du propriétaire actuel (après un transfert, jamais celui de l'ancien).
+  const mandat = l
+    ? mandatAuJour(d.mandats.filter((m) => m.statut !== 'resilie'), l, AUJOURDHUI) ?? mandatAuJour(d.mandats, l, AUJOURDHUI)
+    : mandatDuLogement(d.mandats.filter((m) => m.statut !== 'resilie'), logementId) ?? mandatDuLogement(d.mandats, logementId);
   const commissionPct = mandat?.commissionPct;
   const sousCible = commissionPct !== undefined && commissionPct < COMMISSION_CIBLE_MIN;
   try {

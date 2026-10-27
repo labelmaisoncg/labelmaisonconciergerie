@@ -36,11 +36,39 @@ export interface AccesExterne {
   /** Espace qui a créé l'accès ; absent (accès d'avant les espaces) : Label Maison. */
   espace?: string;
   derniereConnexion?: string;
+  /** Adresse de la fiche (propriétaire, membre de l'équipe) relevée à l'invitation ('' : fiche sans adresse). */
+  emailFiche?: string;
 }
 
 /** Espace d'un accès, d'un lien ou d'une session : Label Maison si absent ou illisible. */
 export function espaceDe(espace: unknown): string {
   return idEspaceValide(espace) ? espace.toLowerCase() : ID_LABEL_MAISON;
+}
+
+const adresse = (v: unknown): string => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+
+/**
+ * L'accès vaut toujours pour la personne de la fiche : si le gérant a mis une
+ * autre adresse dans la fiche (personne partie) sans « Retirer », l'ancienne
+ * adresse ne reçoit plus de lien et sa session tombe.
+ * - fiche introuvable : non ;
+ * - adresse de la fiche = celle de l'accès : oui ;
+ * - sinon : oui seulement si c'est encore l'adresse relevée à l'invitation ;
+ * - accès d'avant ce relevé : oui seulement si la fiche n'a pas d'adresse.
+ */
+export function accesToujoursDeLaFiche(acces: AccesExterne, fiche: { email?: unknown } | undefined): boolean {
+  if (!fiche) return false;
+  const actuelle = adresse(fiche.email);
+  if (actuelle && actuelle === adresse(acces.email)) return true;
+  return typeof acces.emailFiche === 'string' ? actuelle === adresse(acces.emailFiche) : actuelle === '';
+}
+
+/** Délai entre deux liens de connexion demandés pour un même accès (« Recevoir mon lien »). */
+export const DELAI_ENTRE_LIENS_MS = 2 * 60_000;
+
+/** Un lien de connexion a déjà été envoyé à cet accès il y a moins de DELAI_ENTRE_LIENS_MS. */
+export function lienDeConnexionRecent(acces: AccesExterne, maintenantMs: number): boolean {
+  return (acces.liens ?? []).some((l) => l?.motif === 'connexion' && maintenantMs - Date.parse(l.creeLe) < DELAI_ENTRE_LIENS_MS);
 }
 
 /* ------------------------------------------------------------------ lien */
@@ -55,6 +83,44 @@ export function lireLienAcces(fragment: string): { jeton?: string; espace: strin
   const p = new URLSearchParams(String(fragment ?? '').replace(/^#/, ''));
   const jeton = p.get('jeton') ?? undefined;
   return { ...(jeton ? { jeton } : {}), espace: espaceDe(p.get('espace')) };
+}
+
+/* ---------------------------------------------- page de connexion */
+
+/** Espace retenu sur l'appareil pour la page de connexion : id et nom, rien d'autre. */
+export interface EspaceRetenu {
+  espace: string;
+  nom?: string;
+}
+
+/** Valeur gardée dans le navigateur, relue sans confiance (illisible : rien). */
+export function lireEspaceRetenu(valeur: unknown): EspaceRetenu | undefined {
+  try {
+    const x = (typeof valeur === 'string' ? JSON.parse(valeur) : null) as Partial<EspaceRetenu> | null;
+    if (!x || !idEspaceValide(x.espace)) return undefined;
+    const nom = typeof x.nom === 'string' ? x.nom.trim().slice(0, 80) : '';
+    return { espace: x.espace.toLowerCase(), ...(nom ? { nom } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** À retenir après un lien ou une session : même espace sans nom (lien pas encore ouvert), le nom connu est gardé. */
+export function espaceARetenir(nouveau: EspaceRetenu, avant: EspaceRetenu | undefined): EspaceRetenu {
+  const nom = nouveau.nom ?? (avant?.espace === nouveau.espace ? avant.nom : undefined);
+  return { espace: espaceDe(nouveau.espace), ...(nom ? { nom } : {}) };
+}
+
+/**
+ * Au nom de qui parle la page de connexion : l'espace du lien, sinon celui
+ * retenu sur l'appareil. Label Maison : sa marque et son numéro ; un autre :
+ * son nom s'il est connu ; inconnu : personne (« votre conciergerie »).
+ */
+export function marqueConnexion(espaceLien: string | undefined, retenu: EspaceRetenu | undefined): { nom?: string; labelMaison: boolean } {
+  const espace = idEspaceValide(espaceLien) ? espaceLien.toLowerCase() : retenu?.espace;
+  if (!espace) return { labelMaison: false };
+  if (espace === ID_LABEL_MAISON) return { nom: 'Label Maison', labelMaison: true };
+  return { ...(retenu?.espace === espace && retenu.nom ? { nom: retenu.nom } : {}), labelMaison: false };
 }
 
 /* -------------------------------------------------------------- session */

@@ -9,6 +9,10 @@
 //   GET  ?action=etat                                  espace ouvert ? e-mails ?
 //   POST { action: 'inviter', proprietaireId, email }  lien d'invitation (7 jours)
 //   POST { action: 'retirer', proprietaireId }         accès retiré, sessions fermées
+//   GET  ?action=relances                              relances de l'espace et réglages
+//   POST { action: 'relance-envoyer', id }             envoi d'une relance à valider
+//   POST { action: 'relance-annuler', id }
+//   POST { action: 'relances-reglages', reglages }     mode, étapes (jours), actif
 //
 // Propriétaire (sans compte) :
 //   POST { action: 'lien', email }            un lien par espace où l'adresse a
@@ -24,19 +28,37 @@
 // =============================================================================
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
-import { MESSAGE_BASE_PAS_PREPAREE } from '../src/erp/data/espaces.js';
+import { MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
 import { dateParisISO, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
 import { MESSAGES_REFUS, avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
+import { facturePartagee } from '../src/erp/data/relances.js';
+import type { Facture } from '../src/erp/data/types';
 import type { AccesProprietaire } from '../src/erp/data/types-proprietaire';
 import { MESSAGE_COMPTE_SERVEUR, continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
 import { espaceDemande } from './_erp-espaces.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
-import { accesParEmail, baseAcces, contactsEspace, cookieSessionEfface, entrerAvecLien, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
+import {
+  GENRES,
+  accesParEmail,
+  avecEmailFiche,
+  baseAcces,
+  contactsEspace,
+  cookieSessionEfface,
+  entrerAvecLien,
+  expediteurEspace,
+  ficheEspace,
+  lienDAcces,
+  lireSessionAcces,
+} from './_acces-externe.js';
+import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
 import { ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
 
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
 const tropDEssais = freinEnvois(20, 15 * 60_000);
+
+const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
+const DOCUMENTS_FERMES = 'Les documents ne sont pas encore ouverts pour cet espace.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace propriétaire, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
@@ -68,6 +90,25 @@ export default async function handler(req: any, res: any) {
   const etat = etatEspace();
 
   try {
+    /* ------------------------------------------------- gérant : relances */
+    if (action === 'relances' || action === 'relance-envoyer' || action === 'relance-annuler' || action === 'relances-reglages') {
+      const g = await membreGerant(req);
+      if (!g.ok) return repondre(res, g.statut, { ok: false, erreur: g.erreur });
+      const b = baseAcces(g.espace);
+      if (action === 'relances' && req.method === 'GET') {
+        const [relances, reglages, fiche] = await Promise.all([lireRelances(b), lireReglagesRelances(b), ficheEspace(g.espace)]);
+        return repondre(res, 200, { ok: true, relances, reglages, expediteur: !!expediteurEspace(fiche) && !!(process.env.RESEND_API_KEY || '').trim() });
+      }
+      if (req.method !== 'POST') return repondre(res, 405, { ok: false, erreur: 'Méthode non autorisée.' });
+      if (action === 'relances-reglages') {
+        const r = corps.reglages && typeof corps.reglages === 'object' ? (corps.reglages as Record<string, unknown>) : {};
+        return repondre(res, 200, { ok: true, reglages: await ecrireReglagesRelances(b, r, g.email) });
+      }
+      const id = String(corps.id ?? '');
+      const r = action === 'relance-envoyer' ? await envoyerRelance(await ficheEspace(g.espace), g.espace, id, g.email) : await annulerRelance(g.espace, id, g.email);
+      return repondre(res, r.ok ? 200 : 409, r.ok ? { ok: true, relance: r.relance } : { ok: false, erreur: r.erreur, relance: r.relance });
+    }
+
     /* ------------------------------------------------------------ gérant */
     if (action === 'etat' || action === 'inviter' || action === 'retirer') {
       const g = await membreGerant(req);
@@ -92,16 +133,22 @@ export default async function handler(req: any, res: any) {
 
       const email = normaliserEmail(corps.email);
       if (!emailValide(email)) return repondre(res, 400, { ok: false, erreur: 'Adresse e-mail du propriétaire invalide.' });
+      // Seulement l'adresse de la fiche : réinviter l'ancienne après un changement rouvrirait l'accès à qui est parti.
+      const deLaFiche = normaliserEmail(proprietaire.contact?.email ?? '');
+      if (deLaFiche && deLaFiche !== email) {
+        return repondre(res, 409, { ok: false, code: 'fiche', erreur: 'Cette adresse n’est pas celle de la fiche du propriétaire : enregistrez-la dans sa fiche, puis réessayez.' });
+      }
       const jeton = await nouveauJeton();
+      // L'adresse de la fiche est relevée : si elle change ensuite sans « Retirer », l'accès ne vaut plus.
       const acces = avecNouveauLien(
-        inviter(precedent, { proprietaireId, email, par: g.email, maintenantMs: maintenant, espace: g.espace }),
+        avecEmailFiche('proprietaire', inviter(precedent, { proprietaireId, email, par: g.email, maintenantMs: maintenant, espace: g.espace }), proprietaire),
         await empreinteJeton(jeton),
         'invitation',
         maintenant,
       );
       await ecrireAcces(b, acces);
       const lien = lienDAcces(req, 'proprietaire', g.espace, jeton);
-      const envoye = await envoyerLien({ fiche: await ficheEspace(g.espace), email, nom: proprietaire.nom, lien, motif: 'invitation' });
+      const envoye = await envoyerLien({ fiche: await ficheEspace(g.espace).catch(() => undefined), email, nom: proprietaire.nom, lien, motif: 'invitation' });
       return repondre(res, 200, { ok: true, lien, envoye, espace: g.espace, expireLe: acces.liens[acces.liens.length - 1].expireLe });
     }
 
@@ -116,12 +163,13 @@ export default async function handler(req: any, res: any) {
       // Un lien par espace où l'adresse a un accès ; chaque espace est un compte à part.
       // Écritures et envois après la réponse quand la plateforme le permet : même délai, que l'adresse ait un accès ou non.
       const envoi = (async () => {
-        for (const { fiche, acces, base } of await accesParEmail<AccesProprietaire>('proprietaire', email)) {
+        for (const { fiche, acces, base, version } of await accesParEmail<AccesProprietaire>('proprietaire', email)) {
           const proprietaire = await lireProprietaire(base, acces.proprietaireId);
           if (!proprietaire || !proprietaireAutorise(acces.proprietaireId)) continue;
           const maintenant = Date.now();
           const jeton = await nouveauJeton();
-          await ecrireAcces(base, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant));
+          // Conditionnelle : n'écrase pas un lien utilisé au même moment (il redeviendrait valable).
+          if (!(await base.remplacerSi(GENRES.proprietaire.collection, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant), version, 'espace-proprietaire'))) continue;
           await envoyerLien({ fiche, email, nom: proprietaire.nom, lien: lienDAcces(req, 'proprietaire', fiche.id, jeton), motif: 'connexion' });
         }
       })().catch((e) => console.error('[espace-proprietaire] lien', e instanceof Error ? e.message : e));
@@ -144,12 +192,12 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'vue' && req.method === 'GET') {
-      const s = await sessionAcces<AccesProprietaire>(req, 'proprietaire');
-      if (!s) {
+      const s = await lireSessionAcces<AccesProprietaire>(req, 'proprietaire');
+      if (!s.ok) {
         res.setHeader('Set-Cookie', cookieSessionEfface('proprietaire'));
-        return repondre(res, 401, { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
+        return repondre(res, 401, s.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
       }
-      const fiche = await ficheEspace(s.espace);
+      const fiche = await ficheEspace(s.espace).catch(() => undefined);
       const entrees = await entreesDuProprietaire(s.base, s.acces.proprietaireId);
       const photos = await photosSignees(entrees.logements, s.espace);
       const mois = moisValide(req.query?.mois) ? String(req.query.mois) : undefined;
@@ -157,19 +205,26 @@ export default async function handler(req: any, res: any) {
         aujourdhui: dateParisISO(),
         mois,
         photo: (l) => photos.get(l.id),
-        conciergerie: { nom: fiche?.nom || 'Label Maison', contacts: contactsEspace(fiche) },
+        // Fiche illisible : Label Maison seulement si c'est explicitement son espace.
+        conciergerie: { nom: fiche?.nom || (estLabelMaison(s.espace) ? 'Label Maison' : 'Votre conciergerie'), contacts: contactsEspace(fiche, s.espace) },
       });
       if (!vue) return repondre(res, 404, { ok: false, erreur: 'Espace introuvable. Contactez votre conciergerie.' });
-      return repondre(res, 200, { ok: true, vue });
+      // `espace` : la page le garde sur l'appareil (avec le nom), pour sa page de connexion.
+      return repondre(res, 200, { ok: true, vue, espace: s.espace });
     }
 
     if (action === 'document' && req.method === 'GET') {
-      const s = await sessionAcces<AccesProprietaire>(req, 'proprietaire');
+      const s = await lireSessionAcces<AccesProprietaire>(req, 'proprietaire');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      if (!s) return res.status(401).end('Session expirée : reconnectez-vous à votre espace propriétaire.');
+      if (!s.ok) return res.status(401).end(s.raison === 'retire' ? ACCES_RETIRE : 'Session expirée : reconnectez-vous à votre espace propriétaire.');
       const doc = await lireDocument(s.base, String(req.query?.id ?? ''));
-      const lien = doc && doc.proprietaireId === s.acces.proprietaireId ? await lienDocument(String(doc.fichier ?? ''), s.espace) : null;
+      // PDF d'une facture : seulement tant qu'elle est partagée avec lui.
+      const factureVisible = !doc?.factureId || facturePartagee((await s.base.lire<Facture>('factures', [doc.factureId]))[0], s.acces.proprietaireId);
+      const visible = !!doc && doc.proprietaireId === s.acces.proprietaireId && factureVisible;
+      // Fichier de l'équipe d'un autre espace que Label Maison : pas encore signé côté serveur (comme les photos des opérations).
+      if (visible && String(doc?.fichier ?? '').startsWith('stockage://') && !estLabelMaison(s.espace)) return res.status(409).end(DOCUMENTS_FERMES);
+      const lien = visible ? await lienDocument(String(doc?.fichier ?? ''), s.espace) : null;
       if (!lien) return res.status(404).end('Document introuvable.');
       res.setHeader('Location', lien);
       return res.status(302).end();

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa, X } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
+import { FormMandat } from '../../mandats/FormMandat';
 import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, IconButton, Input, Repli } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
@@ -16,6 +17,9 @@ import { Galerie } from '../_composants/Galerie';
 import { SansPhoto } from '../_composants/SansPhoto';
 import { AjouterPhotos, LienAirbnb, OrganiserPhotos } from '../_composants/PhotosEquipe';
 import { CarteEspaceProprietaire } from '../_composants/EspaceProprietaireGerant';
+import { ResponsablesLogement } from '../_composants/ResponsablesLogement';
+import { mandatDuProprietaire } from '../../../data/acces-gerant';
+import { IncidentsLogement } from '../_composants/IncidentsLogement';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 
@@ -100,6 +104,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
             ]}
           />
 
+          <IncidentsLogement logement={l} />
           <Card flush>
             <div className="p-4 pb-0 sm:p-5 sm:pb-0">
               <CardHeader
@@ -174,6 +179,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
         <div className="flex min-w-0 flex-col gap-5">
           <Proprietaire logement={l} />
+          <ResponsablesLogement logement={l} />
 
           <Card>
             <CardHeader titre="Le logement" />
@@ -292,9 +298,23 @@ function Relier({ logement: l }: { logement: Logement }) {
 function Proprietaire({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const [edition, setEdition] = useState(false);
+  const [nouveauMandat, setNouveauMandat] = useState(false);
   const prop = proprietaireById(d, l.proprietaireId);
   const dossier = d.donnees.dossiers.find((x) => x.logementId === l.id);
   const renseigne = prop && prop.id !== ID_PROPRIETAIRE_A_RENSEIGNER;
+  // Mandat de gestion du logement avec son propriétaire actuel (celui d'un ancien propriétaire ne compte pas).
+  const mandat = mandatDuProprietaire(d.mandats, l.id, prop?.id);
+  const ligneMandat = !mandat
+    ? renseigne && d.mandats.some((m) => m.logementId === l.id)
+      ? `Pas de mandat avec ${prop!.nom}`
+      : undefined
+    : mandat.statut === 'signe'
+      ? `Mandat signé le ${dateCourte(mandat.signeLe ?? mandat.dateDebut)} · ${String(mandat.commissionPct).replace('.', ',')} %`
+      : mandat.statut === 'envoye'
+        ? 'Mandat envoyé, pas encore signé'
+        : mandat.statut === 'resilie'
+          ? `Mandat résilié${mandat.resilieLe ? ` le ${dateCourte(mandat.resilieLe)}` : ''}`
+          : 'Mandat en préparation';
   return (
     <>
       <Card>
@@ -331,9 +351,28 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
                 <span className="truncate">{prop.contact.email}</span>
               </a>
             )}
+            {ligneMandat && <p className="pt-0.5 text-(--lm-encre-2)">{ligneMandat}</p>}
+            {/* Sans mandat avec le propriétaire actuel (après un transfert) : pas de taux de commission tant qu'il n'est pas saisi. */}
+            {!mandat && ligneMandat && d.utilisateur.role === 'gerant' && !d.lectureSeule && (
+              <button
+                type="button"
+                onClick={() => setNouveauMandat(true)}
+                className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+              >
+                Ajouter son mandat
+              </button>
+            )}
           </div>
         )}
-        {renseigne && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
+        {nouveauMandat && prop && (
+          <FormMandat
+            ouvert
+            onFermer={() => setNouveauMandat(false)}
+            preselection={{ proprietaireId: prop.id, logementId: l.id, dejaSigne: true, ...(l.proprietaireDepuis ? { dateDebut: l.proprietaireDepuis } : {}) }}
+          />
+        )}
+        {/* Espace propriétaire : le gérant seul (accès, bilans à publier, documents). */}
+        {renseigne && d.utilisateur.role === 'gerant' && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}
       </Card>
       {dossier && (
         <Repli titre="Dossier propriétaire" description={`Réponses reçues le ${dateCourte(dossier.recuLe.slice(0, 10))}`}>

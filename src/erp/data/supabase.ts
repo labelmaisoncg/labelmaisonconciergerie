@@ -35,8 +35,8 @@ function lireRetourLien(): { recuperation: boolean; erreur?: string } {
     return {
       recuperation: false,
       erreur: expire
-        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ».'
-        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ».',
+        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».'
+        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? ».',
     };
   }
   return { recuperation: p.get('type') === 'recovery' };
@@ -115,13 +115,13 @@ export function messageErreur(e: unknown, status?: number): string {
 /* ------------------------------------------------------ authentification */
 
 const TRADUCTIONS_AUTH: [RegExp, string][] = [
-  [/invalid login credentials/i, 'Mot de passe incorrect.'],
-  [/email not confirmed/i, 'Adresse e-mail non confirmée. Demandez à un gérant de confirmer le compte dans Supabase.'],
+  [/invalid login credentials/i, 'Adresse ou mot de passe incorrect.'],
+  [/email not confirmed/i, 'Adresse e-mail non confirmée : ouvrez le lien reçu par e-mail, ou demandez à un gérant.'],
   [/rate limit|too many/i, 'Trop de tentatives. Patientez une minute avant de réessayer.'],
-  [/password should be at least|weak password/i, 'Mot de passe trop court : 8 caractères au minimum.'],
+  [/password should be at least|weak password/i, 'Mot de passe trop court : 8 caractères au moins.'],
   [/same password|different from the old/i, 'Choisissez un mot de passe différent de l’ancien.'],
   [/user not found/i, 'Aucun compte avec cette adresse.'],
-  [/auth session missing|session.*(expired|missing)/i, 'Lien expiré. Demandez un nouveau lien à un gérant.'],
+  [/auth session missing|session.*(expired|missing)/i, 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».'],
   [/failed to fetch|network/i, 'Connexion impossible. Vérifiez votre accès à internet.'],
 ];
 

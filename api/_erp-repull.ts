@@ -21,6 +21,7 @@
 import crypto from 'node:crypto';
 import { BaseErp, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT, fabriqueJetonEquipe, lireIdentite } from '../src/erp/data/repull-synchro.js';
 import { signerFichierStockage, type SignerFichier } from '../src/erp/data/guides.js';
+import { deposerFichierStockage } from '../src/erp/data/operations-fichiers.js';
 import { EMAIL_SERVEUR, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
 
 /**
@@ -202,6 +203,16 @@ export function signeurFichiersErp(c: ConfigRepullErp): SignerFichier | undefine
   if (!estLabelMaison(c.espace) || !c.motDePasse) return undefined;
   const obtenir = sessionEquipe(c);
   return (fichier, secondes) => signerFichierStockage({ jeton: () => obtenir() }, fichier, secondes);
+}
+
+/**
+ * Dépôt d'un fichier dans l'espace privé (photos de l'espace opérations),
+ * avec la session du compte d'équipe : Label Maison seulement pour l'instant.
+ */
+export function deposeurFichiersErp(c: ConfigRepullErp): ((chemin: string, octets: Uint8Array, type: string) => Promise<string | null>) | undefined {
+  if (!estLabelMaison(c.espace) || !c.motDePasse) return undefined;
+  const obtenir = sessionEquipe(c);
+  return (chemin, octets, type) => deposerFichierStockage({ jeton: () => obtenir() }, chemin, octets, type);
 }
 
 /** Comparaison à temps constant (secrets). */

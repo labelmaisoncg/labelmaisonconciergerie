@@ -12,9 +12,10 @@
 
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
-import { adresseWeb, photoCouverture, proprietaireAutorise, type EntreesProprietaire } from '../src/erp/data/proprietaire.js';
-import type { Logement, Mandat, Proprietaire, Reservation } from '../src/erp/data/types';
-import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from '../src/erp/data/types-proprietaire';
+import { CONTENU_ESPACE, adresseWeb, donneesDuProprietaire, photoCouverture, proprietaireAutorise, type EntreesProprietaire } from '../src/erp/data/proprietaire.js';
+import { COLLECTION_RELANCES, facturePartagee } from '../src/erp/data/relances.js';
+import type { Facture, Logement, Mandat, Proprietaire, Reservation } from '../src/erp/data/types';
+import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire, RelancePaiement } from '../src/erp/data/types-proprietaire';
 import { configuration, signeurFichiersErp } from './_erp-repull.js';
 import { GENRES, envoyerEmailEspace, secretAcces } from './_acces-externe.js';
 import type { FicheEspace } from './_erp-espaces.js';
@@ -58,30 +59,35 @@ export async function lireProprietaire(b: BaseErp, id: string): Promise<Propriet
 
 /**
  * Données d'un propriétaire, dans la base de son espace, filtrées dès la
- * lecture : ses logements, leurs réservations et mandats, ses documents et
- * bilans. Rien d'autre ne sort d'ici.
+ * lecture : ses logements, leurs réservations et mandats (logement changé
+ * de propriétaire : ses périodes seulement, donneesDuProprietaire), ses
+ * documents, bilans, factures partagées et leurs relances. Rien d'autre ne
+ * sort d'ici.
  */
 export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string): Promise<EntreesProprietaire> {
   if (!proprietaireAutorise(proprietaireId)) {
-    return { proprietaires: [], logements: [], reservations: [], mandats: [], documentsProprietaire: [], bilansProprietaire: [] };
+    return { proprietaires: [], logements: [], reservations: [], mandats: [], documentsProprietaire: [], bilansProprietaire: [], factures: [], relancesPaiement: [] };
   }
-  const [proprietaires, logements, reservations, mandats, documents, bilans] = await Promise.all([
+  const [proprietaires, logements, reservations, mandats, documents, bilans, factures, relances] = await Promise.all([
     b.lire<Proprietaire>('proprietaires', [proprietaireId]),
     b.lire<Logement>('logements'),
     b.lire<Reservation>('reservations'),
     b.lire<Mandat>('mandats'),
     b.lire<DocumentProprietaire>('documentsProprietaire'),
     b.lire<BilanProprietaire>('bilansProprietaire'),
+    b.lire<Facture>('factures'),
+    b.lire<RelancePaiement>(COLLECTION_RELANCES).catch(() => []),
   ]);
-  const siens = logements.filter((l) => l?.proprietaireId === proprietaireId);
-  const ids = new Set(siens.map((l) => l.id));
+  const siens = donneesDuProprietaire({ logements, reservations, mandats }, proprietaireId);
   return {
     proprietaires: proprietaires.filter((p) => p?.id === proprietaireId),
-    logements: siens,
-    reservations: reservations.filter((r) => ids.has(r?.logementId)),
-    mandats: mandats.filter((m) => ids.has(m?.logementId)),
+    logements: siens.logements,
+    reservations: siens.reservations,
+    mandats: siens.mandats,
     documentsProprietaire: documents.filter((d) => d?.proprietaireId === proprietaireId),
     bilansProprietaire: bilans.filter((x) => x?.proprietaireId === proprietaireId),
+    factures: factures.filter((f) => facturePartagee(f, proprietaireId)),
+    relancesPaiement: relances.filter((r) => r?.proprietaireId === proprietaireId && r.statut === 'envoyee'),
   };
 }
 
@@ -125,11 +131,12 @@ export async function lienDocument(fichier: string, espace: string): Promise<str
  * le lien affiché.
  */
 export async function envoyerLien(o: { fiche: FicheEspace | undefined; email: string; nom: string; lien: string; motif: 'invitation' | 'connexion' }): Promise<boolean> {
-  const conciergerie = o.fiche?.nom || 'Label Maison';
+  // Sans fiche d'espace, rien ne part (envoyerEmailEspace) : jamais au nom de Label Maison par défaut.
+  const conciergerie = o.fiche?.nom || 'Votre conciergerie';
   const invitation = o.motif === 'invitation';
   const sujet = invitation ? `Votre espace propriétaire ${conciergerie}` : `Votre lien de connexion · ${conciergerie}`;
   const intro = invitation
-    ? `${conciergerie} vous ouvre votre espace propriétaire : vos logements, le calendrier des réservations, vos bilans mensuels et vos documents, au même endroit.`
+    ? `${conciergerie} vous ouvre votre espace propriétaire : ${CONTENU_ESPACE.vous}, au même endroit.`
     : 'Voici votre lien pour ouvrir votre espace propriétaire.';
   const validite = invitation ? 'Ce lien est valable 7 jours et ne sert qu’une fois.' : 'Ce lien est valable 1 heure et ne sert qu’une fois.';
   const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#fbfaf8;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1f1b16">

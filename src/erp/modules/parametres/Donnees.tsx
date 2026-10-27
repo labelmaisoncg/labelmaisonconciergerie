@@ -27,6 +27,12 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   accesProprietaires: 'Accès à l’espace propriétaire',
   documentsProprietaire: 'Documents partagés aux propriétaires',
   bilansProprietaire: 'Bilans mensuels des propriétaires',
+  equipe: 'Équipe de terrain',
+  accesOperations: 'Accès à l’espace opérations',
+  affectations: 'Qui suit chaque logement',
+  absences: 'Absences de l’équipe de terrain',
+  controles: 'Contrôles qualité',
+  signalementsLogement: 'Logements signalés par l’équipe de terrain',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

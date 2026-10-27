@@ -3,11 +3,12 @@
  * Routes relatives : chaque module gère ses sous-routes sous `<segment>/*`.
  */
 import { lazy, Suspense, useEffect, useRef } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Compass } from 'lucide-react';
 import './erp.css';
 import { demarrerApplication } from './data/application';
-import { ErpProvider } from './data/store';
+import { lienIncident } from './data/incidents-erp';
+import { ErpProvider, useErp } from './data/store';
 import { ErpLayout } from './layout';
 import { ModuleErrorBoundary } from './layout/ModuleErrorBoundary';
 import { ANCIENNES_ADRESSES, MODULES } from './modules/registry';
@@ -56,6 +57,15 @@ function Introuvable() {
   );
 }
 
+/** Anciens liens /erp/incidents?id=… (journal, recherche, linge) : la fiche du logement, sur l'incident. */
+function AncienIncident() {
+  const d = useErp();
+  const [p] = useSearchParams();
+  const id = p.get('id');
+  const i = id ? d.donnees.incidents.find((x) => x.id === id) : undefined;
+  return <Navigate to={i ? lienIncident(i) : '/erp/logements'} replace />;
+}
+
 function Contenu() {
   const { pathname } = useLocation();
   const segment = pathname.split('/')[2] ?? '';
@@ -66,6 +76,7 @@ function Contenu() {
           {MODULES.map(({ key, segment: seg, component: Module }) =>
             seg ? <Route key={key} path={`${seg}/*`} element={<Module />} /> : <Route key={key} index element={<Module />} />,
           )}
+          <Route path="incidents/*" element={<AncienIncident />} />
           {Object.entries(ANCIENNES_ADRESSES).map(([seg, vers]) => (
             <Route key={seg} path={`${seg}/*`} element={<Navigate to={vers} replace />} />
           ))}

@@ -6,7 +6,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Alert, Button, Field, Input, Modal, Select, Prerequis } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { AUJOURDHUI, ajouterJours, dateCourte, dateJour, ecartJours, euros, jourMois, pluriel, versCentimes } from '../../../data/format';
-import { mandatDuLogement } from '../../../data/selectors';
+import { mandatAuJour } from '../../../data/selectors';
 import type { Id, Reservation } from '../../../data/types';
 import { conflits, statutSelonDates } from './outils';
 
@@ -46,7 +46,7 @@ export function ModalNouvelleReservation({ ouvert, onFermer, onCree }: Props) {
 
   const reservables = d.logements.filter((l) => l.statut === 'actif');
   const logement = d.logements.find((l) => l.id === f.logementId);
-  const mandat = logement ? mandatDuLogement(d.mandats, logement.id) : undefined;
+  const mandat = logement ? mandatAuJour(d.mandats, logement, f.arrivee || AUJOURDHUI) : undefined;
   const menageDefaut = mandat?.fraisMenageCentimes;
 
   const datesValides = f.arrivee && f.depart && f.depart > f.arrivee;

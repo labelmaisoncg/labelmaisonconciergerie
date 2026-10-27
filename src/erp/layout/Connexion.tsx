@@ -1,15 +1,15 @@
 /**
- * Porte d'entrée de l'ERP (production) : chargement, connexion par le seul
- * mot de passe du compte d'équipe, nouveau mot de passe (lien de récupération),
- * compte non autorisé, base pas encore installée, base injoignable.
+ * Porte d'entrée de l'ERP (production) : chargement, connexion par compte
+ * personnel (e-mail et mot de passe, en secours de la page d'accès du
+ * middleware), nouveau mot de passe (lien de récupération), compte non
+ * autorisé, base pas encore installée, base injoignable.
  *
  * Aucun accès au store ici : ces écrans s'affichent avant que les données
  * existent.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
-import { EMAIL_EQUIPE } from '../data/config';
-import { changerMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
+import { changerMotDePasse, envoyerLienMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
 import { Alert, Button, Field, Input } from '../ui';
 
 export type PhasePorte =
@@ -38,12 +38,12 @@ export function EcranPorte({ phase, onReessayer, onMotDePasseChange, onDeconnect
     case 'non_autorise':
       return (
         <Cadre titre="Accès non autorisé" icone={<ShieldAlert />}>
-          <Alert tone="alerte" titre="Votre compte n’est pas autorisé. Demandez l’accès à un gérant.">
+          <Alert tone="alerte" titre="Ce compte n’a pas accès à l’ERP. Demandez à un gérant de vous ajouter.">
             Vous êtes connecté avec <strong className="break-all">{phase.email}</strong>, mais cette adresse ne figure pas dans la liste des membres
             de l’ERP.
           </Alert>
           <p className="mt-4 text-[13px] text-(--lm-encre-2)">
-            Un gérant ajoute votre adresse depuis Paramètres → Votre équipe.
+            Un gérant ajoute votre adresse depuis Paramètres → Équipe.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
             <Button variant="primary" icone={<RefreshCw />} onClick={onReessayer}>
@@ -123,60 +123,74 @@ function Chargement({ texte }: { texte: string }) {
 /* -------------------------------------------------------------- connexion */
 
 function FormulaireConnexion({ message }: { message?: string }) {
+  const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [erreur, setErreur] = useState<string>();
+  const [info, setInfo] = useState<string>();
   const [enCours, setEnCours] = useState(false);
-  const [aide, setAide] = useState(false);
 
   const connecter = async (e: FormEvent) => {
     e.preventDefault();
-    if (!motDePasse) return setErreur('Saisissez le mot de passe.');
+    if (!email.trim() || !motDePasse) return setErreur('Saisissez votre adresse e-mail et votre mot de passe.');
     setEnCours(true);
     setErreur(undefined);
-    const r = await seConnecter(EMAIL_EQUIPE, motDePasse);
+    setInfo(undefined);
+    const r = await seConnecter(email, motDePasse);
     setEnCours(false);
     if (!r.ok) setErreur(r.erreur);
     // Succès : la session ouverte déclenche le chargement (ErpProvider).
   };
 
+  const oublie = async () => {
+    if (!email.trim()) return setErreur('Saisissez d’abord votre adresse e-mail, puis touchez « Mot de passe oublié ? ».');
+    setErreur(undefined);
+    const r = await envoyerLienMotDePasse(email);
+    if (!r.ok && /trop de tentatives/i.test(r.erreur)) return setErreur(r.erreur);
+    // Même réponse que l'adresse ait un compte ou non.
+    setInfo('Si cette adresse a un compte, un lien pour choisir un mot de passe vient de lui être envoyé. Pensez à regarder dans les indésirables.');
+  };
+
   return (
-    <Cadre titre="Connexion" sousTitre="Saisissez le mot de passe de l’équipe Label Maison." icone={<LogIn />}>
+    <Cadre titre="ERP Label Maison" sousTitre="Outil interne de gestion" icone={<LogIn />}>
       {message && (
         <Alert tone="info" className="mb-4 py-2">
           {message}
         </Alert>
       )}
       <form onSubmit={connecter} noValidate className="grid gap-4">
-        {/* Identifiant caché : les gestionnaires de mots de passe l'associent au mot de passe. */}
-        <input type="hidden" name="username" autoComplete="username" value={EMAIL_EQUIPE} readOnly />
-        <Field label="Mot de passe">
+        <Field label="Adresse e-mail">
           <Input
-            type="password"
-            name="password"
-            autoComplete="current-password"
-            value={motDePasse}
-            onChange={(e) => setMotDePasse(e.target.value)}
+            type="email"
+            name="email"
+            autoComplete="username"
+            inputMode="email"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             autoFocus
           />
+        </Field>
+        <Field label="Mot de passe">
+          <Input type="password" name="password" autoComplete="current-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} />
         </Field>
         {erreur && (
           <Alert tone="danger" className="py-2">
             {erreur}
           </Alert>
         )}
+        {info && (
+          <Alert tone="info" className="py-2">
+            {info}
+          </Alert>
+        )}
         <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<LogIn />}>
-          Se connecter
+          Accéder à l’ERP
         </Button>
       </form>
-      {aide ? (
-        <p className="mt-5 text-[13px] text-(--lm-encre-2)">
-          Demandez-le à un gérant : c’est le même mot de passe pour toute l’équipe.
-        </p>
-      ) : (
-        <button type="button" onClick={() => setAide(true)} className="mt-5 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
-          Mot de passe oublié ?
-        </button>
-      )}
+      <button type="button" onClick={() => void oublie()} className="mt-4 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+        Mot de passe oublié ?
+      </button>
     </Cadre>
   );
 }
@@ -188,35 +202,25 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
   const [confirmation, setConfirmation] = useState('');
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
-  const [fait, setFait] = useState(false);
 
   const valider = async (e: FormEvent) => {
     e.preventDefault();
-    if (motDePasse.length < 8) return setErreur('8 caractères au minimum.');
+    if (motDePasse.length < 8) return setErreur('Mot de passe trop court : 8 caractères au moins.');
     if (motDePasse !== confirmation) return setErreur('Les deux saisies sont différentes.');
     setEnCours(true);
     setErreur(undefined);
     const r = await changerMotDePasse(motDePasse);
     setEnCours(false);
     if (!r.ok) return setErreur(r.erreur);
-    setFait(true);
+    // « Enregistrer et ouvrir l’ERP » : on ouvre directement, comme la page d'accès.
+    onFini();
   };
 
-  if (fait) {
-    return (
-      <Cadre titre="Mot de passe modifié" icone={<KeyRound />}>
-        <Alert tone="succes">Votre nouveau mot de passe est enregistré.</Alert>
-        <Button variant="primary" size="lg" className="mt-5 w-full" onClick={onFini}>
-          Ouvrir l’ERP
-        </Button>
-      </Cadre>
-    );
-  }
 
   return (
-    <Cadre titre="Nouveau mot de passe" sousTitre="Choisissez le mot de passe de votre compte." icone={<KeyRound />}>
+    <Cadre titre="Nouveau mot de passe" sousTitre="Choisissez votre mot de passe : 8 caractères au moins." icone={<KeyRound />}>
       <form onSubmit={valider} noValidate className="grid gap-4">
-        <Field label="Nouveau mot de passe" aide="8 caractères au minimum.">
+        <Field label="Nouveau mot de passe">
           <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus />
         </Field>
         <Field label="Confirmer le mot de passe">
@@ -228,7 +232,7 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
           </Alert>
         )}
         <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<KeyRound />}>
-          Enregistrer
+          Enregistrer et ouvrir l’ERP
         </Button>
       </form>
     </Cadre>

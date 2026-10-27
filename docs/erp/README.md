@@ -87,6 +87,14 @@ node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm
   --platform=node --define:import.meta.env='{}' \
   --log-level=error --outfile=/tmp/verifier-espaces.mjs && node /tmp/verifier-espaces.mjs
 
+# Connexion à l'ERP (middleware.ts) : e-mail et mot de passe d'un membre,
+# non-membre refusé, autre site refusé, anciens cookies (mot de passe commun)
+# refusés, relais remis une fois, le serveur ne remet jamais la session du
+# compte d'équipe, rien d'identifiant dans l'adresse, lien piégé confirmé.
+node_modules/.bin/esbuild scripts/verifier-connexion-erp.ts --bundle --format=esm \
+  --platform=node --log-level=error --outfile=/tmp/verifier-connexion-erp.mjs \
+  && node /tmp/verifier-connexion-erp.mjs
+
 # Même chose côté routes /api : compte serveur, réglages d'un espace, passage
 # quotidien sur chaque espace, bouton d'un membre, routage des webhooks.
 node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
@@ -99,6 +107,26 @@ node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=
 node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-proprietaire.mjs && node /tmp/verifier-proprietaire.mjs
+
+# Auto-contrôle de l'espace opérations : urgences d'abord, contrôles après un
+# départ, absences et remplaçants, périmètre (pôle / agent), « Prénom N. »,
+# consignes d'accès le jour même, droits par rôle, collections écrites,
+# « ce logement n'est pas à moi », invitation par espace, sessions par genre.
+node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platform=node \
+  --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-operations.cjs && node /tmp/verifier-operations.cjs
+
+# Auto-contrôle des factures partagées et des relances de paiement.
+node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-relances.mjs && node /tmp/verifier-relances.mjs
+
+# Incidents côté ERP : un signalement de l'espace opérations remonte dans le
+# « À faire » et sur la fiche du logement (lien de la notification « Urgence »),
+# actions du gérant, « pas à moi », remplaçant qui suit déjà les logements.
+node_modules/.bin/esbuild src/erp/data/verifier-incidents-erp.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-incidents-erp.mjs && node /tmp/verifier-incidents-erp.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -113,7 +141,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 
 | Variable | Où | Rôle |
 |---|---|---|
-| `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe de `/erp`. Absent : accès refusé (page 503), jamais ouvert. Redéployer après modification. |
+| `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe du compte d'équipe `equipe@labelmaisoncg.fr` (fonctions serveur) et clé de signature des sessions de `/erp`. On n'entre plus dans l'ERP avec ce seul mot de passe : chacun se connecte avec son adresse e-mail et son mot de passe. Absent : accès refusé (page 503), jamais ouvert. Le changer déconnecte tout le monde. Redéployer après modification. Une fois les comptes personnels créés, le remplacer par un nouveau mot de passe aléatoire (ici et sur le compte d'équipe dans Supabase) : voir « Connexion à l'ERP ». |
 | `ERP_SERVEUR_MOT_DE_PASSE` | Vercel (serveur), facultatif tant qu'il n'y a que Label Maison | Mot de passe du compte technique `serveur@labelmaisoncg.fr` (voir « Espaces »). Absent : le serveur écrit avec le compte d'équipe, dans Label Maison seulement. |
 | `LINGE_PASSWORD` | Vercel | Mot de passe du registre `/linge` (inchangé). |
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
@@ -131,8 +159,10 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
-| `OPERATIONS_SECRET`, `ACCES_SECRET` | Vercel (serveur), facultatives | Sessions de l'espace opérations ; `ACCES_SECRET` sert de secours aux deux genres d'accès (le genre est signé dans la session : un cookie propriétaire ne vaut pas pour les opérations). |
+| `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Redéployer après ajout. |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
+| `SITE_URL` | Vercel (serveur), facultative | Site des liens envoyés (invitations, « Recevoir mon lien », relances), origine `https://` seulement. Défaut `https://www.labelmaisoncg.fr`. Les liens ne prennent **jamais** l'adresse de la page qui appelle (en-tête Origin ou Host). |
+| `ORIGINES_APERCU` | Vercel (serveur), facultative | Aperçus Vercel autorisés à appeler les formulaires et les espaces extérieurs : origines **exactes**, séparées par des virgules (`https://mon-apercu.vercel.app`). Sans : seuls `labelmaisoncg.fr`, `labelmaisoncgexperience.fr` (avec ou sans `www`) et, hors Vercel en ligne, `localhost`. |
 
 ## Accès et déploiement
 
@@ -386,7 +416,7 @@ Catalogue (`REGLES`, dans l'ordre d'exécution) :
 | Opérations | Traçabilité du linge (`suivi-linge`) | quotidien | §2.6 | Ménage passé sans mouvement de linge : alerte ; envoi non revenu sous 5 jours : incident linge. |
 | Prestataires | Documents et suspension (`documents-prestataires`) | document | §2.3 | Document expiré ; contrat, RC Pro ou URSSAF expiré : prestataire suspendu, missions à venir remises en attribution ; relance 30 jours avant l'échéance. |
 | Finance | Paiement des missions validées (`paiement-prestataire`) | mission | §2.4 | Mission validée ajoutée au paiement du mois du prestataire. Pas de validation, pas de paiement. |
-| Finance | Relance des factures en retard (`relance-factures`) | quotidien | §2.7 | Facture émise échue : « en retard » et relance au propriétaire. |
+| Finance | Relance des factures en retard (`relance-factures`) | quotidien | §2.7 | Facture émise échue : « en retard » ; la relance part du passage quotidien du serveur si la facture est partagée (proposée par défaut). |
 | Finance | Facture de commission et relevé mensuel (`facturation-mensuelle`) | mensuel | §2.7 | Fin de mois : facture de commission par propriétaire (une ligne par logement) et relevé prêt. |
 | Pilotage | Compteur 120 nuits (`plafond-120-nuits`) | réservation | §2.10 | Résidence principale : alerte à 110 nuits, fermeture du calendrier demandée à 120. |
 | Pilotage | Rappels commerciaux (`rappels-commerciaux`) | quotidien | | Prochaine action d'un prospect échue : rappel à son responsable. |
@@ -459,14 +489,13 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    `politiques_photos` = 4. (Si `stockage_photos` ou `politiques_photos` ne
    sont pas bons, l'ERP marche mais l'envoi des photos échouera : Storage →
    New bucket `erp-fichiers`, privé, puis relancer le script.)
-2. **Créer le compte d'équipe.** L'ERP a un seul compte pour toute l'équipe
-   (même vue pour tous) et **un seul mot de passe : `ERP_PASSWORD` (Vercel)**.
-   Une fois ce mot de passe saisi sur la page d'accès, le serveur ouvre
-   lui-même la session Supabase (`POST /erp/session` dans `middleware.ts`) :
-   le compte d'équipe doit donc avoir **exactement le même mot de passe que
-   `ERP_PASSWORD`**. Si `ERP_PASSWORD` change, changer aussi celui du compte
-   (Authentication → Users). Sinon l'ERP affiche en secours un champ mot de
-   passe. Supabase → **Authentication** → **Users** → **Add user** →
+2. **Créer le compte d'équipe.** Les fonctions serveur (synchronisation,
+   agent, CRM…) écrivent avec le compte d'équipe, dont le mot de passe est
+   **exactement `ERP_PASSWORD`** (Vercel). Si `ERP_PASSWORD` change, changer
+   aussi celui du compte (Authentication → Users). Ce compte peut aussi se
+   connecter à l'ERP comme n'importe quel membre (page d'accès : adresse
+   `equipe@labelmaisoncg.fr` et ce mot de passe).
+   Supabase → **Authentication** → **Users** → **Add user** →
    **Create new user** : e-mail `equipe@labelmaisoncg.fr` (adresse technique,
    aucune boîte mail n'est nécessaire), mot de passe = la valeur de `ERP_PASSWORD`, cocher
    **Auto Confirm User** → **Create user**. Conseillé : fermer les
@@ -488,8 +517,9 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    Settings → Environment Variables → `VITE_SUPABASE_URL` et
    `VITE_SUPABASE_ANON_KEY` (les deux ensemble), puis redéployer. Ne jamais y
    mettre `VITE_ERP_DEMO`.
-6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp`, mot de passe du
-   site (`ERP_PASSWORD`) : l'ERP s'ouvre directement. Si l'écran « La base de données
+6. **Vérifier.** Ouvrir `https://www.labelmaisoncg.fr/erp` et se connecter
+   avec une adresse membre et son mot de passe : l'ERP s'ouvre directement.
+   Si l'écran « La base de données
    n'est pas encore installée » reste affiché après l'étape 1 : Supabase →
    **Project Settings** → **Data API** (parfois **Settings → API**) →
    **Exposed schemas** → ajouter `erp` → Save, puis « Réessayer ».
@@ -519,6 +549,49 @@ base à l'instant T. Les anciennes versions de chaque élément restent dans
    `synchro.ts`.
 4. **Accès prestataires** : règles RLS dédiées (leurs seules missions) avant
    de donner le rôle `prestataire` à qui que ce soit.
+
+## Connexion à l'ERP
+
+Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
+de `/erp`, servie par `middleware.ts`). Il n'y a plus de « Retour au site » :
+l'ERP est une application.
+
+- **Pour l'équipe :** connectez-vous avec votre compte personnel créé dans
+  Supabase → Authentication → Users (« Add user », « Auto Confirm User »),
+  dont l'adresse figure dans les membres (Paramètres → Équipe).
+- **En attendant les comptes personnels :** `equipe@labelmaisoncg.fr` et le
+  mot de passe actuel de l'ERP marchent toujours.
+- **Une fois les comptes personnels créés, fermer le mot de passe commun :**
+  1. choisir un **nouveau** mot de passe aléatoire (gestionnaire de mots de
+     passe, 24 caractères ou plus) ;
+  2. le mettre dans Vercel → Settings → Environment Variables →
+     `ERP_PASSWORD` (Production et Preview) **et** comme mot de passe du
+     compte `equipe@labelmaisoncg.fr` dans Supabase → Authentication → Users ;
+  3. **Redeploy** dans Vercel.
+  Cela ferme l'ancien mot de passe commun et change la clé de signature des
+  sessions : tout le monde se reconnecte une fois. Tant que ce n'est pas fait,
+  quiconque connaît l'ancien mot de passe peut entrer avec le compte d'équipe
+  (les données restent protégées par les règles de la base).
+- **Mot de passe oublié ?** sur la même page : Supabase envoie un lien qui
+  ramène sur `/erp`, où l'on choisit un nouveau mot de passe (8 caractères
+  au moins). Les liens d'invitation de Supabase (« Invite user ») marchent de
+  la même façon. Il faut que `https://www.labelmaisoncg.fr/erp` soit dans
+  Authentication → URL Configuration → Redirect URLs.
+- **Comment ça marche :** la page se connecte directement auprès de Supabase
+  (ses limites de tentatives jouent par personne), puis envoie les jetons à
+  `/erp/connexion`, qui vérifie le compte et son appartenance à l'ERP
+  (`erp.qui_suis_je`, ou `erp.membres` avant les espaces). Elle pose alors
+  `erp_session` (cookie signé, lié au compte, 30 jours) et `erp_relais`
+  (5 minutes) que l'application échange une seule fois contre sa session
+  sur `/erp/session`. Le serveur ne remet jamais la session du compte
+  d'équipe à un navigateur : seul celui qui se connecte lui-même avec ce
+  compte (pendant le passage) la reçoit. Un non-membre est refusé ; une
+  demande venue d'un autre site aussi. Un lien reçu par e-mail qui n'est ni
+  une récupération ni une invitation demande de confirmer le compte avant
+  d'ouvrir l'ERP ; sans JavaScript, rien ne part dans l'adresse.
+- **Anciens accès :** les sessions ouvertes avec l'ancien mot de passe commun
+  ne valent plus rien ; chacun se reconnecte une fois. « Se déconnecter »
+  (menu du compte) ferme aussi la page d'accès.
 
 ## Synchronisation Repull
 
@@ -842,8 +915,8 @@ Apple, Google ou Mozilla selon l'appareil (Web Push).
 **Le lien à envoyer à l'équipe : `https://www.labelmaisoncg.fr/erp/installer`**
 (aussi dans Paramètres → Application, avec « Copier » et « Partager »).
 
-1. On ouvre le lien et on se connecte (mot de passe de l'ERP) ; la page
-   reconnaît l'appareil.
+1. On ouvre le lien et on se connecte (son adresse e-mail et son mot de
+   passe) ; la page reconnaît l'appareil.
 2. **iPhone / iPad** (Safari) : Partager → « Sur l'écran d'accueil » →
    « Ajouter ». **Android** (Chrome) et **ordinateur** (Chrome, Edge) : bouton
    « Installer l'app » (sinon menu ⋮ → « Installer l'application », ou Safari
@@ -986,8 +1059,9 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   rien en double (`erp.cle_par_espace`).
 - `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
   aucune règle d'accès d'ici là.
-- `erp-installation.sql` et `erp-connecteurs-gerants.sql` refusent de tourner
-  une fois les espaces en place (ils remettraient les règles d'avant).
+- `erp-installation.sql`, `erp-connecteurs-gerants.sql` et
+  `erp-acces-gerants.sql` refusent de tourner une fois les espaces en place
+  (ils remettraient les règles d'avant).
 
 ### Dans le code
 
@@ -1034,8 +1108,9 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 
 ### Pas encore (étapes suivantes)
 
-- Connexion personnelle, « Créer un compte » et invitations (fin du mot de
-  passe commun `ERP_PASSWORD`), choix de l'espace à l'écran.
+- « Créer un compte » et invitations depuis l'ERP (la connexion personnelle,
+  elle, est en place : voir « Connexion à l'ERP »), choix de l'espace à
+  l'écran.
 - Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
 - Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
   qui n'est pas encore dans les dépendances de développement.
@@ -1054,7 +1129,8 @@ seule. Quatre onglets (barre du bas sur téléphone, en-tête sur ordinateur) :
 | Accueil | Ses logements (photo, nom), le net du mois en cours et du mois dernier (nuits, occupation ; « Bilan publié » ou « Provisoire »), les prochaines arrivées, les contacts de Label Maison, les derniers documents. |
 | Logements | « Mes logements » : une fiche par logement (photo, nom, ville) avec les 12 derniers mois terminés : revenu net par mois (graphique en barres, survol et clavier, tableau mois par mois), occupation, prix moyen par nuit, séjours et nuits, comparaison avec les mêmes mois de l'an dernier quand il y a des données ; note moyenne et derniers avis (partie publique seulement) ; séjour en cours et prochains séjours. L'accueil mène à chaque fiche. |
 | Calendrier | Un mois par logement : nuits réservées et libres, arrivées et départs (bande dorée du milieu du jour d'arrivée au milieu du jour de départ), navigation de mois en mois, séjours du mois. |
-| Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Finances → Bilans | Les mois **publiés** seulement : séjours, nuits, encaissé, frais des plateformes, ménage, commission Label Maison, net propriétaire, le mot de Label Maison ; « Télécharger en PDF » (impression du navigateur, en-tête légal de Label Maison). |
+| Finances → Factures | Les factures partagées : montant TTC, échéance, statut, PDF (voir « Phase 2 »). |
 | Documents | Rangés par catégorie (Contrat, Attestation, Bilan, Facture, Autre), ouverts par un lien signé de 2 minutes. |
 
 Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autre
@@ -1130,25 +1206,225 @@ d'août publié et deux documents ; son espace :
   lien glissé dans le texte, voyageur en « Prénom N. ». La fiche
   d'attente des logements importés (`repull-proprietaire-a-renseigner`)
   n'a jamais d'espace.
+- **Changement de propriétaire** (`changerProprietaire`, data/proprietaire.ts) :
+  le logement garde `proprietaireDepuis` (premier jour du nouveau
+  propriétaire) et `proprietairesPrecedents` (chacun jusqu'à la veille du
+  changement). Le nouveau ne voit rien d'avant (chiffres, avis, séjours,
+  calendrier) ; l'ancien garde ses mois d'avant, et ses bilans publiés
+  restent figés tels quels. Côté gérant, `etatBilan` ne propose jamais de
+  « Mettre à jour » un bilan publié dont un logement a changé de
+  propriétaire (« Logement transféré depuis le … »). Le premier vrai
+  propriétaire d'un logement importé (fiche d'attente) reçoit tout son
+  historique. Un séjour est à celui qui avait le logement le jour de
+  l'arrivée, toutes ses nuits comprises (chiffres, avis, calendrier,
+  séjours) ; un séjour arrivé avant le début du mandat n'est pas compté.
+  Taux de commission : le mandat du propriétaire, jamais celui d'un autre ;
+  sans mandat à lui, ni taux ni ligne « Commission » (le gérant voit
+  « Taux de commission à renseigner »). Le serveur ne lui remet que ses
+  mandats, ses séjours, et le séjour d'un autre qui déborde sur sa période
+  réduit à ses dates (pour l'occupation). Toutes ses périodes comptent
+  (avant et après un changement) ; un aller-retour le même jour efface la
+  période vide et rend l'état d'avant. Calendrier borné : un jour qui n'est
+  pas à lui est grisé (« Avant votre arrivée », « Après votre départ »), ni
+  libre ni réservé ; calendrier, bilan et « Ce mois-ci » comptent la même
+  occupation. Après un changement, l'ancien garde son calendrier sur sa
+  période et lit « Plus de logement en gestion depuis le … ».
+- **Documents d'un autre espace** que Label Maison : les fichiers de
+  l'équipe n'y sont pas encore signés côté serveur ; le propriétaire lit
+  « Les documents ne sont pas encore ouverts pour cet espace. ».
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
   `publie`, chiffres figés).
 
-### Phase 2 : factures et relances de paiement (modèle prévu, pas construit)
+### Phase 2 : factures partagées et relances de paiement
 
-- **Factures** : on reprend `Facture` (`types.ts`, destinataire
-  `proprietaire`, `proprietaireId`). Ajouts : `partageeLe?` (visible dans
-  l'espace seulement une fois partagée) et le PDF en `DocumentProprietaire`
-  de catégorie `facture` avec `factureId`. Onglet « Factures » : numéro,
-  date, échéance, montant TTC, statut (à payer, payée le…, en retard),
-  téléchargement ; même filtrage strict par propriétaire.
-- **Relances** : collection `relancesPaiement` `{ id, factureId,
-  proprietaireId, niveau (1, 2, 3), prevueLe, envoyeeLe?, statut (prevue,
-  envoyee, annulee, payee), canal: 'email' }`, calendrier dans `reglages`
-  (par défaut J+5, J+15 et J+30 après l'échéance), mode « proposer » (le
-  gérant valide chaque envoi, par défaut) ou « automatique ». Un passage
-  quotidien (cron existant) crée les relances dues et les envoie par Resend ;
-  tout s'arrête dès que la facture est payée. Le propriétaire voit les
-  rappels dans son espace, le gérant dans la carte Propriétaire.
+- **Factures** (onglet « Finances » → « Factures » ; bilans et factures sous
+  un même onglet pour garder cinq onglets dans la barre du bas) : le
+  propriétaire voit les factures dont il est le `proprietaireId` ET qui sont
+  partagées (`Facture.partageeLe`), ni brouillon ni annulée : numéro, date,
+  échéance, montant TTC, statut « À payer » (neutre), « En retard » (alerte,
+  jamais rouge), « Payée le… » (succès), dernier rappel envoyé. Le PDF est un
+  `DocumentProprietaire` de catégorie `facture` avec `factureId`, ouvert par
+  lien signé ; sans PDF, la facture s'imprime depuis l'espace. Une facture
+  qui n'est plus partagée disparaît, son PDF aussi (liste et lien signé).
+  L'accueil signale d'une ligne les factures à régler.
+- **Relances** (`src/erp/data/relances.ts`, `api/_relances.ts`) : pour les
+  factures partagées et à payer seulement. Calendrier par espace (J+5, J+15,
+  J+30 après l'échéance par défaut), une relance par étape et par facture
+  (`<factureId>-r<niveau>`) ; très en retard d'un coup : seule l'étape la
+  plus avancée ; une relance encore à valider est remplacée par l'étape
+  suivante ; tout s'arrête dès que la facture est payée, annulée ou plus
+  partagée (« sans objet »). Mode « proposer » (par défaut) : le passage
+  quotidien ne fait que proposer, un gérant valide chaque envoi. Mode
+  « automatique » : envoi par e-mail avec l'expéditeur de l'espace (jamais
+  celui de Label Maison pour un autre espace) ; sans expéditeur ou sans
+  adresse, la relance reste à valider avec le motif. Jamais deux fois : la
+  relance est notée envoyée avant l'envoi, remise à valider si l'envoi
+  échoue. Message poli et court, signé du nom de l'espace : montant TTC,
+  numéro, échéance, virement avec le numéro en référence ; aucune
+  coordonnée bancaire.
+- **Passage quotidien** : `api/erp-repull-sync.ts` (cron) appelle
+  `relancesDuJour()` pour chaque espace actif avant la synchronisation
+  Repull, sans jamais la bloquer (base d'avant les espaces : Label Maison).
+- **Données serveur** : collections `relancesPaiement` et
+  `reglagesRelances` (id `relances` : actif, mode, jours), lues et écrites
+  par le serveur seul, dans la base de chaque espace ; le navigateur ne les
+  synchronise pas. Gérant : `GET ?action=relances`, `POST relance-envoyer`,
+  `relance-annuler`, `relances-reglages` (api/espace-proprietaire.ts, gérant
+  de l'espace).
+- **Écrans du gérant** : `logements/_composants/FacturesProprietaire.tsx`
+  (partager ou non chaque facture, joindre son PDF, « Marquer payée » avec
+  la date du paiement, « Annuler le paiement » ; gérant seulement), dans le
+  panneau « Espace propriétaire » après « Bilans mensuels » ;
+  `RelancesPaiement.tsx` (réglages, relances à valider : « Échéance 20 août ·
+  Dernier rappel le 19 sept. », même nom d'étape que l'e-mail, aperçu du
+  message, « Envoyer » ou « Ne pas envoyer » après une relance par
+  téléphone ; historique : envoyées, annulées, sans objet ; une facture
+  marquée payée sort aussitôt de la file ; `useRelances()`) dans
+  Paramètres → Accès, section Propriétaires, et, limité au propriétaire,
+  dans son panneau. « Je valide chaque relance » (`proposer`) reste le
+  réglage par défaut.
+- **Contrôles** : `verifier-relances.ts` (calendrier, idempotence, arrêt au
+  paiement, message, ce que voit chaque propriétaire) et
+  `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
+  n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
 
+### Sécurité des accès extérieurs (audit d'octobre 2026)
+
+Pour les deux espaces extérieurs (propriétaires et opérations,
+`api/_acces-externe.ts`) :
+
+- **Liens sur le site fixe** : invitation, « Recevoir mon lien » et lien des
+  relances pointent toujours vers `SITE_URL` (défaut
+  `https://www.labelmaisoncg.fr`), jamais vers l'adresse de la page qui
+  appelle. Avant, une page publiée sur un projet Vercel au nom proche
+  (`labelmaisonconciergerie-….vercel.app`) pouvait faire envoyer par le vrai
+  site un lien vers chez elle et y lire le jeton. Les origines acceptées
+  (`api/_garde-formulaire.ts`) sont le site en production et, pour un aperçu,
+  la liste exacte `ORIGINES_APERCU` ; plus de motif `*.vercel.app`.
+- **L'adresse de la fiche fait foi** : à l'invitation, l'adresse de la fiche
+  (propriétaire : `contact.email` ; équipe : `email`) est relevée dans l'accès
+  (`emailFiche`). Si le gérant met une autre adresse dans la fiche sans
+  « Retirer », la session tombe au prochain appel, le lien ne s'ouvre plus et
+  l'ancienne adresse ne reçoit plus de lien de connexion. Un accès d'avant ce
+  relevé vaut tant que la fiche a la même adresse que l'accès (ou aucune).
+  Fiche supprimée : accès fermé. Réinviter remet le relevé à jour.
+- **Usage unique, vraiment** : le lien est marqué utilisé par une écriture
+  conditionnelle (`BaseErp.remplacerSi` : PATCH filtré sur `maj_le`, la
+  version lue) ; présenté deux fois en même temps, il n'ouvre qu'une session.
+  Même chose pour l'envoi d'une relance (deux validations simultanées : un
+  seul e-mail) et son annulation, et pour l'ajout d'un lien de connexion (il
+  n'écrase pas un lien utilisé au même instant).
+- **Un lien de connexion toutes les 2 minutes au plus** par accès, compté
+  dans l'accès lui-même (date du dernier lien), donc valable pour toutes les
+  instances du serveur ; le frein par instance (5 demandes par heure et par
+  adresse IP) reste en plus. Les liens gardés sont plafonnés **par sorte**
+  (3 invitations, 3 liens de connexion) : des demandes répétées ne chassent
+  jamais une invitation encore valable.
+- **Label Maison seulement si c'est Label Maison** : fiche d'espace illisible
+  (panne passagère, espace fermé) = pas d'e-mail (le gérant copie le lien),
+  pas de contacts, nom « Votre conciergerie » ; jamais l'expéditeur ou les
+  contacts de Label Maison par défaut.
+- **Factures** : seules celles adressées au propriétaire
+  (`destinataire = 'proprietaire'`) et à son nom sont partagées et relancées.
+- **Base réservée aux gérants** : `accesProprietaires`, `accesOperations`,
+  `relancesPaiement`, `reglagesRelances` ne sont lisibles et modifiables que
+  par un gérant (et le compte serveur, gérant de l'espace nommé). Sans cette
+  règle, un compte « opérations » pourrait écrire un accès avec l'empreinte
+  d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire. Leurs
+  anciennes versions dans `erp.historique` (et celles de `connecteurs`) sont
+  réservées aux gérants de la même façon.
+  **À faire une fois dans Supabase → SQL Editor** :
+  - base d'avant les espaces : lancer `supabase/erp-acces-gerants.sql`
+    (attendu dans « Results » : `regles = 2`, `recette = ok`) ;
+  - base passée aux espaces : relancer `supabase/erp-espaces.sql` (la règle y
+    est, par espace ; `recette = ok`).
+
+  Conséquence dans l'ERP : un compte « opérations » ou « lecture » ne voit
+  plus l'état des accès (Paramètres → Accès, fiche logement) ; le gérant, si.
+
+
+## Espace opérations (octobre 2026)
+
+Une page à part, **`https://www.labelmaisoncg.fr/espace-operations`**, pour
+les personnes de terrain : leur espace à elles, hors de l'ERP du gérant,
+avec leur propre connexion (lien à usage unique reçu par e-mail, session
+signée de 30 jours, mêmes mécanismes que l'espace propriétaire). Ménage,
+linge et consommables restent chez BNB Cleaning : rien ici n'y touche.
+
+| Rôle | Ce que voit la personne |
+|---|---|
+| Responsable de pôle | Ses logements (ceux que le gérant a cochés), les séjours, les urgences et incidents de ces logements, les contrôles qualité, son équipe, les absences et remplacements. Cinq onglets : Aujourd'hui, Logements, Incidents, Contrôles, Équipe. |
+| Agent de terrain | Ses logements, les incidents qu'il a signalés ou qui lui sont confiés, les contrôles à faire. Quatre onglets (pas d'Équipe). |
+
+Sur chaque logement : « Signaler un incident » (photo, urgent ou non) et
+« Ce logement n'est pas à moi » (le gérant est prévenu ; le logement reste
+affiché jusqu'à sa réponse). Voyageurs en « Prénom N. » et nombre de
+personnes (une adresse ou un numéro saisi comme nom devient « Voyageur »,
+comme dans l'espace propriétaire). Consignes d'accès : le jour même
+seulement (arrivée, départ, intervention ou contrôle prévu ce jour-là ;
+jamais pour un contrôle en retard), et seulement pour qui a la charge du
+logement ce jour-là (le responsable, ou son remplaçant pendant une absence)
+ou le responsable de pôle.
+
+Règles de l'audit (octobre 2026) :
+
+- **Absences** : un pôle ne note, ne change ni n'annule l'absence de
+  quelqu'un qui suit aussi des logements hors des siens (c'est au gérant),
+  ni une absence notée par le gérant (`parMembreId` absent : lui seul la
+  change ; l'écran la montre en lecture). Le motif n'est ni saisi ni montré
+  dans l'espace (« Absence du … au … »), il reste chez le gérant.
+- **Contrôle fait** : il ne se réécrit plus, sauf par le responsable de pôle
+  ou par son auteur le jour même ; chaque changement, « finir plus tard »
+  compris, est vérifié (toutes les réponses, une note) et ajoute une ligne
+  d'historique ; l'auteur et la date restent. Un champ absent de la demande
+  reste tel quel.
+- **Entrées** : une opération mal formée est refusée (400), jamais une
+  erreur serveur ; une valeur qui n'est pas du texte compte pour rien.
+- **Écriture** : avant d'écrire, le serveur relit les enregistrements
+  touchés et ne reprend que les champs changés par l'action (l'historique et
+  les photos s'ajoutent à la version relue) : une modification du gérant
+  faite entre-temps n'est pas écrasée. Si l'action change un statut que
+  quelqu'un d'autre vient de changer (incident réglé par le gérant puis
+  « Je m'en occupe »), rien n'est écrit et la personne voit pourquoi (409).
+
+### Côté gérant
+
+- **Paramètres → Accès** : « Propriétaires » (un propriétaire par logement ;
+  cocher le logement d'un autre propriétaire le lui reprend après
+  confirmation ; « Inviter un propriétaire ») et « Responsables
+  opérationnels » (nom, e-mail, rôle, logements cochés, plusieurs personnes
+  par logement, invitation, accès, « Voir son espace » en aperçu, et les
+  « ce logement n'est pas à moi » à traiter : « Le garder » / « Lui retirer »).
+- **Fiche logement** : sous la carte Propriétaire (avec la ligne du mandat :
+  « Mandat signé le … · 18 % » ou « Mandat envoyé, pas encore signé »), une
+  carte « Responsables opérationnels » : qui suit le logement, son accès,
+  « Ajouter un responsable » (quelqu'un de l'équipe ou une invitation).
+- Une invitation est rangée dans l'espace de l'ERP qui invite (Label Maison,
+  Sens…) et part au nom de cet espace ; la personne ne voit que la base de
+  cet espace.
+- Notification « Urgence » sur les appareils de l'ERP quand un incident
+  urgent est signalé ou confié (désactivable dans Paramètres → Application).
+
+### Fonctionnement
+
+- Données : collections `equipe`, `accesOperations`, `affectations`,
+  `absences`, `controles`, `signalementsLogement` (+ `incidents`) dans
+  `erp.enregistrements`, base de l'espace (`baseErp(c, espace)`).
+- `api/espace-operations.ts` : `lien`, `entrer`, `sortir`, `vue`, `agir`,
+  `photo` (personne connectée), `etat`, `inviter`, `retirer` (gérant).
+  Chaque appel relit l'accès dans la base de l'espace ; la vue et les
+  actions sont calculées par `src/erp/data/espace-operations.ts` sur le seul
+  périmètre de la personne. Écritures limitées à `incidents`, `controles`,
+  `absences`, `affectations`, `signalementsLogement` : jamais de réservation,
+  de logement, de prix, de calendrier ni d'appel à Repull.
+- Photos : réduites dans le navigateur (JPEG, 1600 px), déposées dans
+  `erp-fichiers/operations/<personne>/`, lues par liens signés (Label Maison
+  seulement pour l'instant). Une action n'accepte que les photos du dossier
+  de la personne connectée, dans son espace (`photoOperations`).
+- Variables : `ACCES_SECRET` (ou `OPERATIONS_SECRET`), `ERP_PASSWORD`
+  (lecture de la base), `RESEND_API_KEY` et `CONTACT_FROM_EMAIL` pour envoyer
+  les liens par e-mail (sans : le lien s'affiche au gérant, qui le transmet).
+- Démo : `/espace-operations?apercu=eq-ines` (responsable de pôle),
+  `/espace-operations?apercu=eq-yanis` (agent de terrain).

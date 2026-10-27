@@ -2,18 +2,22 @@
  * « À faire » de l'accueil : ce qui demande une action, trié par priorité.
  * Channel manager (octobre 2026) : seulement les voyageurs, les logements,
  * les contacts et la synchronisation ; plus de ménages, linge, factures ni
- * prestataires (sortis de l'ERP).
+ * prestataires (sortis de l'ERP). Les incidents signalés depuis l'espace
+ * opérations et les « Ce logement n’est pas à moi » y remontent aussi.
  */
 import { aTraiterLe } from '../../../data/crm';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours } from '../../../data/format';
+import { incidentsATraiter, lienIncident } from '../../../data/incidents-erp';
+import { logementsSansCharge } from '../../../data/operations';
+import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
 
-export type TypeATraiter = 'message' | 'avis' | 'agent' | 'crm' | 'synchro';
+export type TypeATraiter = 'message' | 'avis' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge';
 
 export interface ElementATraiter {
   id: string;
@@ -23,13 +27,16 @@ export interface ElementATraiter {
   ton: Ton;
   titre: string;
   details: string[];
+  /** Lien de chaque détail (même ordre), quand chacun mène ailleurs. */
+  liens?: string[];
   to: string;
 }
 
 /** Une note voyageur sous ce seuil (sur 5) mérite d'être lue : le même partout dans l'ERP. */
 const NOTE_A_LIRE = SEUIL_NOTE_CONTROLE;
 
-export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): ElementATraiter[] {
+/** `gerant` : lignes réservées au gérant (« pas à moi », logements sans personne en charge), qui mènent à Accès. */
+export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { gerant = true }: { gerant?: boolean } = {}): ElementATraiter[] {
   const liste: ElementATraiter[] = [];
   const nom = (id?: string) => logementById(d, id)?.nom ?? 'Logement';
 
@@ -42,6 +49,44 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI): Elem
       titre: messages.length > 1 ? `${messages.length} voyageurs attendent votre réponse` : 'Un voyageur attend votre réponse',
       details: messages.map((f) => `${f.voyageur} (${nom(f.logementId)})${f.statut === 'escalade' ? ', confié par votre agent' : ''}`),
     });
+
+  // Incidents : les urgences d'abord (le seul rouge), puis les autres ouverts.
+  const { urgences, autres } = incidentsATraiter(d);
+  const ligneIncident = (i: (typeof urgences)[number]) => `${nom(i.logementId)} : ${extrait(i.description, 80)}`;
+  if (urgences.length)
+    liste.push({
+      id: 'urgence', type: 'urgence', priorite: 1, ton: 'danger', to: lienIncident(urgences[0]),
+      titre: urgences.length > 1 ? `${urgences.length} urgences signalées` : 'Une urgence signalée',
+      details: urgences.map(ligneIncident),
+      ...(urgences.length > 1 ? { liens: urgences.map(lienIncident) } : {}),
+    });
+  if (autres.length)
+    liste.push({
+      id: 'incident', type: 'incident', priorite: 2, ton: 'alerte', to: lienIncident(autres[0]),
+      titre: autres.length > 1 ? `${autres.length} incidents ouverts` : 'Un incident ouvert',
+      details: autres.map(ligneIncident),
+      ...(autres.length > 1 ? { liens: autres.map(lienIncident) } : {}),
+    });
+
+  // Logements où personne n'a la charge au quotidien (ni choix, ni seul agent) : codes et incidents sans destinataire.
+  const sansCharge = gerant && d.equipe && d.affectations ? logementsSansCharge(d) : [];
+  if (sansCharge.length)
+    liste.push({
+      id: 'charge', type: 'charge', priorite: 2, ton: 'alerte', to: `/erp/logements/${encodeURIComponent(sansCharge[0])}`,
+      titre: sansCharge.length > 1 ? `${sansCharge.length} logements sans personne en charge` : `${nom(sansCharge[0])} : personne en charge`,
+      details: sansCharge.map((id) => `${nom(id)} : choisir qui s’en occupe au quotidien`),
+      liens: sansCharge.map((id) => `/erp/logements/${encodeURIComponent(id)}`),
+    });
+
+  const signalements = gerant ? (d.signalementsLogement ?? []).filter((s) => s.statut === 'ouvert') : [];
+  if (signalements.length) {
+    const personne = (id: string) => d.equipe?.find((m) => m.id === id)?.nom ?? 'Un membre';
+    liste.push({
+      id: 'signalement', type: 'signalement', priorite: 2, ton: 'or', to: '/erp/parametres/acces',
+      titre: signalements.length > 1 ? `${signalements.length} logements signalés « pas à moi »` : 'Un logement signalé « pas à moi »',
+      details: signalements.map((s) => `${personne(s.membreId)} : ${nom(s.logementId)}`),
+    });
+  }
 
   const journal = [...d.journal].filter((j) => j.action === ACTION_JOURNAL_REPULL).sort((a, b) => b.horodatage.localeCompare(a.horodatage));
   if (journal[0] && /erreur/i.test(journal[0].details))

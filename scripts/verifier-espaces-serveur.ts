@@ -16,7 +16,18 @@
  * base qui recule (retour en arrière du SQL) relue aussitôt, espace
  * propriétaire (accès créé, lu et revérifié dans l'espace qui invite, lien
  * sans espace = Label Maison, cookie dont on change l'espace refusé,
- * « Recevoir mon lien » cherché dans chaque espace).
+ * « Recevoir mon lien » cherché dans chaque espace), relances de paiement
+ * (passage quotidien de chaque espace, « proposer » n'envoie jamais seul,
+ * pas d'expéditeur = pas d'envoi, expéditeur de l'espace, jamais deux fois,
+ * arrêt au paiement).
+ * Espace opérations (mêmes règles que l’espace propriétaire, logements de
+ * la personne seulement, un cookie propriétaire ne vaut pas pour les
+ * opérations).
+ * Audit des accès extérieurs (octobre 2026) : liens toujours sur le site
+ * fixe (Origin forgée sans effet), origines acceptées, adresse de la fiche
+ * qui fait foi, usage unique et relance unique sous accès simultanés
+ * (écriture conditionnelle sur maj_le), un lien toutes les 2 minutes,
+ * jamais l'expéditeur de Label Maison faute de fiche, ids encodés.
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -33,6 +44,11 @@ import routeSynchro from '../api/erp-repull-sync';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
 import routeProprietaire from '../api/espace-proprietaire';
+import routeOperations from '../api/espace-operations';
+import { relancesDuJour } from '../api/_relances';
+import { SITE_PAR_DEFAUT, adresseSite, baseAcces, contactsEspace, expediteurEspace } from '../api/_acces-externe';
+import { origineAutorisee } from '../api/_garde-formulaire';
+import { accesToujoursDeLaFiche, type AccesExterne } from '../src/erp/data/acces-externe';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -61,6 +77,8 @@ interface Ligne {
   collection: string;
   id: string;
   donnees: unknown;
+  /** Version (colonne maj_le, changée à chaque écriture ; avec « + » comme un timestamptz). */
+  maj_le: string;
 }
 
 class Monde {
@@ -84,10 +102,17 @@ class Monde {
   lignes = new Map<string, Ligne>();
   base: { methode: string; chemin: string; url: URL; jeton: string; espace: string | null; corps: unknown }[] = [];
   repull: { methode: string; chemin: string; workspace: string | null; cle: string }[] = [];
+  /** E-mails envoyés par Resend (relances, liens). */
+  emails: { from: string; to: string[]; subject: string; text: string; replyTo?: unknown }[] = [];
+  /** Panne passagère de erp.espaces_actifs (fiche d'espace illisible). */
+  panneEspacesActifs = false;
+  horloge = 0;
 
   emailDe = (jeton: string) => Object.entries(this.comptes).find(([, c]) => c.jeton === jeton)?.[0];
   poser(espace: string, collection: string, e: { id: string }) {
-    this.lignes.set(`${espace}\u0000${collection}\u0000${e.id}`, { espace, collection, id: e.id, donnees: e });
+    this.horloge += 1;
+    const maj_le = `2026-10-26T10:00:00.${String(this.horloge).padStart(6, '0')}+00:00`;
+    this.lignes.set(`${espace}\u0000${collection}\u0000${e.id}`, { espace, collection, id: e.id, donnees: e, maj_le });
   }
   /** Lignes écrites (POST) dans un espace, toutes collections. */
   ecritures(espace: string) {
@@ -110,6 +135,11 @@ class Monde {
     const h = new Headers(init?.headers);
     const methode = (init?.method ?? 'GET').toUpperCase();
     const jeton = (h.get('authorization') ?? '').replace(/^Bearer\s+/i, '');
+    if (url.hostname === 'api.resend.com') {
+      const e = JSON.parse(String(init?.body)) as { from: string; to: string[]; subject: string; text: string; reply_to?: unknown };
+      this.emails.push({ from: e.from, to: e.to, subject: e.subject, text: e.text, replyTo: e.reply_to });
+      return json({ id: `email-${this.emails.length}` });
+    }
     if (url.hostname === 'api.repull.dev') {
       this.repull.push({ methode, chemin: url.pathname, workspace: h.get('x-workspace-id'), cle: jeton });
       return json({ data: [], pagination: { hasMore: false, nextCursor: null } });
@@ -136,6 +166,7 @@ class Monde {
         const espaces = serveur ? [] : this.membres.filter((m) => m.email === email).map((m) => ({ ...this.espaces.find((e) => e.id === m.espace)!, role: m.role }));
         return json({ email, serveur, espaces });
       }
+      if (chemin === 'rpc/espaces_actifs' && this.panneEspacesActifs) return json({ message: 'panne passagère' }, 503);
       if (chemin === 'rpc/espaces_actifs') return json(serveur ? this.espaces : this.espaces.filter((e) => this.permis(jeton, null).includes(e.id)));
       if (chemin === 'rpc/secret_espace') {
         const { p_espace, p_nom } = corps as { p_espace: string; p_nom: string };
@@ -154,8 +185,21 @@ class Monde {
       return json(
         [...this.lignes.values()]
           .filter((l) => permis.includes(l.espace) && (!egal('espace') || l.espace === egal('espace')) && l.collection === egal('collection') && (!ids || ids.has(l.id)))
-          .map((l) => ({ id: l.id, donnees: l.donnees })),
+          .map((l) => ({ id: l.id, donnees: l.donnees, maj_le: l.maj_le })),
       );
+    }
+    if (methode === 'PATCH') {
+      // Écriture conditionnelle (BaseErp.remplacerSi) : la ligne, si elle a encore la version lue.
+      const p = url.searchParams;
+      const egal = (k: string) => p.get(k)?.replace(/^eq\./, '');
+      const espace = egal('espace') ?? LM;
+      if (!permis.includes(espace) || !p.get('maj_le')) return json([]);
+      const cle = `${espace}\u0000${egal('collection')}\u0000${egal('id')}`;
+      const l = this.lignes.get(cle);
+      if (!l || l.maj_le !== egal('maj_le')) return json([]);
+      this.poser(espace, l.collection, (corps as { donnees: { id: string } }).donnees);
+      const n = this.lignes.get(cle)!;
+      return json([{ id: n.id, donnees: n.donnees, maj_le: n.maj_le }]);
     }
     for (const l of corps as Partial<Ligne>[]) {
       const espace = l.espace ?? LM;
@@ -173,6 +217,8 @@ function reponse() {
     statut: 0,
     corps: undefined as unknown as Record<string, any>,
     entetes: {} as Record<string, string>,
+    /** Réponse en texte (res.end), pour les documents. */
+    texte: '',
     setHeader(k: string, v: string) {
       r.entetes[k] = v;
     },
@@ -184,7 +230,8 @@ function reponse() {
       r.corps = c;
       return r;
     },
-    end() {
+    end(t?: unknown) {
+      if (typeof t === 'string') r.texte = t;
       return r;
     },
   };
@@ -276,6 +323,11 @@ async function principal() {
     return res;
   };
   const cookieDe = (res: { entetes: Record<string, string> }) => String(res.entetes['Set-Cookie'] ?? '').split(';')[0];
+  // Factures partagées, échéance il y a `jours` jours.
+  const ilYa = (jours: number) => new Date(Date.now() - jours * 86_400_000).toISOString().slice(0, 10);
+  const facture = (id: string, proprietaireId: string, joursDeRetard: number, o: Record<string, unknown> = {}) =>
+    ({ id, numero: `N-${id}`, type: 'commission', destinataire: 'proprietaire', proprietaireId, dateEmission: ilYa(joursDeRetard + 15), echeance: ilYa(joursDeRetard), montantHtCentimes: 10000, tvaPct: 20, statut: 'emise', lignes: [], partageeLe: '2026-01-01T00:00:00.000Z', ...o }) as { id: string };
+  const relance = (espace: string, id: string) => monde.lignes.get(`${espace}\u0000relancesPaiement\u0000${id}`)?.donnees as { statut?: string; motif?: string; envoyeePar?: string } | undefined;
   let cookieAlice = '';
   {
     env.PROPRIETAIRE_SECRET = 'secret-de-test-espace-proprietaire-0123456789';
@@ -292,6 +344,45 @@ async function principal() {
     verifier(res.statut === 200 && cookieAlice.startsWith('lm_proprio='), 'lien sans espace : ouvert dans Label Maison', res.corps);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
     verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Label Maison' && !!res.corps?.vue?.contacts && res.corps?.vue?.logements?.[0]?.id === 'log-a', 'vue de Label Maison, avec ses contacts', res.corps);
+    // Relances, base d'avant les espaces : Label Maison seul, mode « proposer » par défaut.
+    monde.poser(LM, 'factures', facture('fac-lm', 'pro-a', 6));
+    monde.oublier();
+    const bilan = await relancesDuJour();
+    verifier((bilan['label-maison'] as { creees?: number })?.creees === 1 && monde.emails.length === 0, 'relances (base d’avant les espaces) : proposée, rien d’envoyé', bilan);
+    verifier(relance(LM, 'fac-lm-r1')?.statut === 'proposee' && monde.base.every((r) => r.espace === null), 'relance rangée dans Label Maison, sans en-tête');
+  }
+
+  section('Espace opérations, base pas encore préparée : Label Maison comme avant');
+  const EMAIL_OPS = 'terrain@exemple.invalid';
+  const appelOps = async (o: { methode?: string; entetes?: Record<string, string>; corps?: unknown; query?: Record<string, string> }) => {
+    const res = reponse();
+    await routeOperations(requete({ ...o, entetes: { ...ORIGINE, ...(o.entetes ?? {}) } }), res);
+    return res;
+  };
+  let cookieAgathe = '';
+  {
+    // Un seul secret pour les deux espaces : le genre est signé dans la session.
+    env.ACCES_SECRET = 'secret-commun-des-espaces-exterieurs-0123456789';
+    monde.poser(LM, 'logements', { id: 'log-b', nom: 'Pas pour Agathe', ville: 'Massy', statut: 'actif', proprietaireId: 'pro-b', capacite: 2, chambres: 1 } as { id: string });
+    monde.poser(LM, 'equipe', { id: 'eq-a', nom: 'Agathe Terrain', role: 'pole', email: EMAIL_OPS, logementIds: ['log-a'], actif: true } as { id: string });
+    let res = await appelOps({ entetes: { authorization: 'Bearer jeton-equipe' }, corps: { action: 'inviter', membreId: 'eq-a', email: EMAIL_OPS } });
+    verifier(res.statut === 200 && String(res.corps?.lien).includes(`/espace-operations#espace=${LM}&jeton=`), 'opérations : invitation du gérant, lien de Label Maison', res.corps);
+    verifier((monde.lignes.get(`${LM}\u0000accesOperations\u0000eq-a`)?.donnees as { espace?: string } | undefined)?.espace === LM, 'opérations : accès rangé dans Label Maison');
+    res = await appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(res.corps?.lien) } });
+    cookieAgathe = cookieDe(res);
+    verifier(res.statut === 200 && cookieAgathe.startsWith('lm_operations='), 'opérations : lien sans espace ouvert dans Label Maison', res.corps);
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAgathe } });
+    verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-a' && res.corps?.vue?.conciergerie?.nom === 'Label Maison', 'opérations : seulement ses logements, au nom de Label Maison', res.corps?.vue?.logements);
+    res = await appelOps({ entetes: { cookie: cookieAgathe }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-b', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
+    verifier(res.statut === 403, 'opérations : incident sur un logement qui n’est pas le sien refusé', res.corps);
+    monde.oublier();
+    res = await appelOps({ entetes: { cookie: cookieAgathe }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-a', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
+    const ecrits = monde.base.filter((r) => r.methode === 'POST' && r.chemin === 'enregistrements');
+    verifier(res.statut === 200 && res.corps?.vue?.incidents?.some((i: { urgent: boolean }) => i.urgent), 'opérations : urgence signalée, vue à jour', res.corps?.message);
+    verifier(ecrits.length > 0 && ecrits.every((r) => (r.corps as { collection: string }[]).every((l) => l.collection === 'incidents')), 'opérations : seule la collection des incidents est écrite', ecrits.map((r) => r.corps));
+    // Un cookie propriétaire ne vaut pas pour les opérations (genre signé dans la session).
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice.replace(/^lm_proprio=/, 'lm_operations=') } });
+    verifier(res.statut === 401, 'opérations : cookie propriétaire refusé', res.statut);
   }
 
   section('Base préparée, compte serveur pas prêt');
@@ -416,6 +507,12 @@ async function principal() {
     const texte = JSON.stringify(res.corps?.vue ?? {});
     verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Sens' && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-s', 'propriétaire de Sens : son logement, au nom de Sens', res.corps);
     verifier(!/Alice|log-a|Bob|Label Maison|74954|labelmaisoncg/i.test(texte) && !res.corps?.vue?.contacts && /Zoé S\./.test(texte) && !/Sensible/.test(texte), 'rien de Label Maison (ni données, ni contacts), voyageur en « Prénom N. »', texte.slice(0, 300));
+    // Document déposé dans Sens : les fichiers d'un autre espace ne sont pas encore signés, et la page le dit.
+    monde.poser(SENS, 'documentsProprietaire', { id: 'doc-s', proprietaireId: 'pro-s', categorie: 'contrat', titre: 'Mandat', fichier: 'stockage://erp-fichiers/sens/proprietaires/pro-s/m.pdf', nomFichier: 'm.pdf', ajouteLe: '2026-09-01T10:00:00.000Z', ajoutePar: 'g' } as { id: string });
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-s' }, entetes: { cookie: cookieSophie } });
+    verifier(res.statut === 409 && res.texte === 'Les documents ne sont pas encore ouverts pour cet espace.', 'document de Sens : « pas encore ouverts pour cet espace », pas « introuvable »', { statut: res.statut, texte: res.texte });
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-inconnu' }, entetes: { cookie: cookieSophie } });
+    verifier(res.statut === 404 && res.texte === 'Document introuvable.', 'document inconnu : « introuvable »', res.texte);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
     verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-a' && !/Sophie|log-s|Zoé/.test(JSON.stringify(res.corps?.vue)), 'propriétaire de Label Maison : rien de Sens', res.corps?.vue?.logements);
     // Cookie dont on change l'espace : la signature ne correspond plus.
@@ -434,6 +531,334 @@ async function principal() {
     monde.oublier();
     res = await appelProprio({ corps: { action: 'lien', email: 'inconnu@exemple.invalid' } });
     verifier(res.statut === 200 && res.corps?.message === message && monde.base.every((r) => r.methode !== 'POST' || r.chemin !== 'enregistrements'), 'adresse inconnue : même réponse, rien d’écrit', res.corps);
+  }
+
+  section('Espace opérations : chaque accès dans l’espace qui invite');
+  {
+    monde.poser(SENS, 'equipe', { id: 'eq-s', nom: 'Samir Sens', role: 'agent', email: EMAIL_OPS, logementIds: ['log-s'], actif: true } as { id: string });
+    let res = await appelOps({ entetes: { authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS }, corps: { action: 'inviter', membreId: 'eq-s', email: EMAIL_OPS } });
+    verifier(res.statut === 403, 'opérations : compte de Label Maison avec l’en-tête de Sens, invitation refusée', res.corps);
+    res = await appelOps({ entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }, corps: { action: 'inviter', membreId: 'eq-s', email: EMAIL_OPS } });
+    verifier(res.statut === 200 && String(res.corps?.lien).includes(`/espace-operations#espace=${SENS}&jeton=`) && res.corps?.envoye === false, 'opérations : gérant de Sens, lien de Sens à copier', res.corps);
+    const lienSens = String(res.corps?.lien);
+    verifier(!monde.lignes.has(`${LM}\u0000accesOperations\u0000eq-s`) && (monde.lignes.get(`${SENS}\u0000accesOperations\u0000eq-s`)?.donnees as { espace?: string } | undefined)?.espace === SENS, 'opérations : accès écrit dans Sens seulement');
+    res = await appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(lienSens), espace: LM } });
+    verifier(res.statut === 401, 'opérations : lien de Sens présenté à Label Maison, refusé', res.corps);
+    res = await appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(lienSens), espace: SENS } });
+    const cookieSamir = cookieDe(res);
+    verifier(res.statut === 200 && !!cookieSamir, 'opérations : lien de Sens, session ouverte', res.corps);
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieSamir } });
+    const texte = JSON.stringify(res.corps?.vue ?? {});
+    verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-s' && res.corps?.vue?.conciergerie?.nom === 'Sens', 'opérations : son logement de Sens, au nom de Sens', res.corps?.vue?.logements);
+    verifier(!/Alice|log-a|Agathe|Label Maison/.test(texte), 'opérations : rien de Label Maison', texte.slice(0, 200));
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAgathe } });
+    verifier(res.statut === 200 && !/log-s|Samir|Sophie/.test(JSON.stringify(res.corps?.vue ?? {})), 'opérations : la personne de Label Maison ne voit rien de Sens');
+    const [nom, valeur] = cookieSamir.split('=');
+    const [corps, signature] = valeur.split('.');
+    const charge = JSON.parse(Buffer.from(corps, 'base64url').toString()) as Record<string, unknown>;
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: `${nom}=${Buffer.from(JSON.stringify({ ...charge, e: LM })).toString('base64url')}.${signature}` } });
+    verifier(res.statut === 401, 'opérations : cookie dont l’espace est changé, refusé', res.statut);
+    monde.oublier();
+    res = await appelOps({ corps: { action: 'lien', email: EMAIL_OPS } });
+    const liens = (e: string, id: string) => ((monde.lignes.get(`${e}\u0000accesOperations\u0000${id}`)?.donnees as { liens?: { motif: string }[] } | undefined)?.liens ?? []).filter((l) => l.motif === 'connexion').length;
+    verifier(res.statut === 200 && liens(LM, 'eq-a') === 1 && liens(SENS, 'eq-s') === 1, 'opérations : demande de lien, un lien dans chaque espace où l’adresse a un accès', res.corps);
+
+    // Agir : la photo d'un autre dossier refusée, l'incident écrit dans Sens seulement, relu avant d'écrire.
+    const signaler = (photos: string[]) =>
+      appelOps({ entetes: { cookie: cookieSamir }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-s', urgent: false, description: 'Volet cassé dans la chambre.', photos } } });
+    res = await signaler(['stockage://erp-fichiers/operations/eq-s/lqx1-abc123.jpg']);
+    verifier(res.statut === 400, 'opérations : photo hors du dossier de Sens, refusée', res.corps);
+    monde.oublier();
+    res = await signaler([]);
+    const idIncident = String(res.corps?.id ?? '');
+    verifier(
+      res.statut === 200 && !!idIncident && monde.lignes.has(`${SENS}\u0000incidents\u0000${idIncident}`) && !monde.lignes.has(`${LM}\u0000incidents\u0000${idIncident}`),
+      'opérations : incident signalé, écrit dans Sens seulement',
+      [...monde.lignes.keys()].filter((k) => k.includes('incidents')),
+    );
+    verifier(monde.base.some((r) => r.methode === 'GET' && r.chemin === 'enregistrements' && r.url.searchParams.get('collection') === 'eq.incidents' && !!r.url.searchParams.get('id')?.startsWith('in.')), 'opérations : l’incident est relu juste avant d’être écrit');
+  }
+
+  section('Relances de paiement : chaque espace, son calendrier, son expéditeur');
+  {
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    monde.poser(SENS, 'factures', facture('fac-s', 'pro-s', 6));
+    monde.poser(SENS, 'reglagesRelances', { id: 'relances', actif: true, mode: 'automatique', jours: [5, 15, 30] } as { id: string });
+    monde.oublier();
+    monde.emails = [];
+    let res = reponse();
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), res);
+    verifier(relance(SENS, 'fac-s-r1')?.statut === 'proposee' && relance(SENS, 'fac-s-r1')?.motif === 'sans_expediteur', 'Sens, automatique sans expéditeur : la relance attend une validation', relance(SENS, 'fac-s-r1'));
+    verifier(monde.emails.length === 0, 'passage quotidien : aucun e-mail (Label Maison « proposer », Sens sans expéditeur)', monde.emails);
+    verifier(!monde.lignes.has(`${LM}\u0000relancesPaiement\u0000fac-s-r1`) && !monde.lignes.has(`${SENS}\u0000relancesPaiement\u0000fac-lm-r1`), 'relances rangées chacune dans son espace');
+    const avant = [...monde.lignes.keys()].filter((k) => k.includes('relancesPaiement')).length;
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier([...monde.lignes.keys()].filter((k) => k.includes('relancesPaiement')).length === avant && monde.emails.length === 0, 'nouveau passage le même jour : rien de plus, rien d’envoyé');
+
+    // Validation par un gérant : expéditeur de l'espace, une seule fois.
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-lm-r1' } });
+    verifier(res.statut === 200 && monde.emails.length === 1 && monde.emails[0].from === env.CONTACT_FROM_EMAIL && monde.emails[0].to[0] === EMAIL_PROPRIO && /N-fac-lm/.test(monde.emails[0].subject), 'gérant de Label Maison : relance envoyée avec l’expéditeur de Label Maison', monde.emails);
+    verifier(relance(LM, 'fac-lm-r1')?.statut === 'envoyee', 'relance notée envoyée');
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-lm-r1' } });
+    verifier(res.statut === 409 && monde.emails.length === 1, 'deuxième envoi : refusé, jamais deux fois', res.corps);
+    res = await appelProprio({ entetes: { ...gerantLM, 'x-erp-espace': SENS }, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    verifier(res.statut === 403, 'compte de Label Maison sur une relance de Sens : refusé', res.corps);
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    verifier(res.statut === 409 && monde.emails.length === 1, 'relance de Sens demandée dans Label Maison : introuvable', res.corps);
+    res = await appelProprio({ entetes: gerantSens, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    verifier(res.statut === 409 && monde.emails.length === 1 && relance(SENS, 'fac-s-r1')?.statut === 'proposee', 'Sens sans expéditeur : rien ne part (jamais celui de Label Maison)', res.corps);
+    monde.espaces[1].config = { ...monde.espaces[1].config, email: { expediteur: 'Sens <bonjour@sens.invalid>' } };
+    res = await appelProprio({ entetes: gerantSens, corps: { action: 'relance-envoyer', id: 'fac-s-r1' } });
+    const mailSens = monde.emails[1];
+    verifier(res.statut === 200 && mailSens?.from === 'Sens <bonjour@sens.invalid>' && /Sens/.test(mailSens.text) && !/Label Maison/.test(mailSens.text), 'Sens avec son expéditeur : envoyée en son nom', mailSens);
+    res = await appelProprio({ methode: 'GET', query: { action: 'relances' }, entetes: gerantSens });
+    verifier(res.statut === 200 && res.corps?.relances?.every((r: { factureId: string }) => r.factureId === 'fac-s') && res.corps?.reglages?.mode === 'automatique', 'liste des relances : celles de l’espace seulement', res.corps);
+
+    // Automatique avec expéditeur : envoyée au passage, une seule fois.
+    monde.poser(LM, 'reglagesRelances', { id: 'relances', actif: true, mode: 'automatique', jours: [5, 15, 30] } as { id: string });
+    monde.poser(LM, 'factures', facture('fac-lm3', 'pro-a', 7));
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(relance(LM, 'fac-lm3-r1')?.statut === 'envoyee' && relance(LM, 'fac-lm3-r1')?.envoyeePar === 'automatique' && monde.emails.length === 3, 'Label Maison automatique : envoyée au passage', monde.emails.length);
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(monde.emails.length === 3, 'passage suivant : jamais renvoyée');
+
+    // Arrêt au paiement.
+    monde.poser(LM, 'reglagesRelances', { id: 'relances', actif: true, mode: 'proposer', jours: [5, 15, 30] } as { id: string });
+    monde.poser(LM, 'factures', facture('fac-lm2', 'pro-a', 20));
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(relance(LM, 'fac-lm2-r2')?.statut === 'proposee' && !relance(LM, 'fac-lm2-r1'), '20 jours de retard : seule l’étape J+15 est proposée');
+    monde.poser(LM, 'factures', facture('fac-lm2', 'pro-a', 20, { statut: 'payee', payeeLe: ilYa(1) }));
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    res = await appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-lm2-r2' } });
+    verifier(relance(LM, 'fac-lm2-r2')?.statut === 'sans_objet' && res.statut === 409 && monde.emails.length === 3, 'facture payée : relance sans objet, rien ne part', relance(LM, 'fac-lm2-r2'));
+
+    // Ce que voit le propriétaire : ses factures partagées, le dernier rappel.
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
+    const factures = (res.corps?.vue?.factures ?? []) as { id: string; dernierRappel?: string }[];
+    verifier(factures.some((f) => f.id === 'fac-lm' && !!f.dernierRappel) && !factures.some((f) => f.id === 'fac-s'), 'propriétaire de Label Maison : ses factures et leurs rappels, rien de Sens', factures);
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
+  }
+
+  section('Audit des accès extérieurs (octobre 2026)');
+  {
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    const PIRATE = 'https://labelmaisonconciergerie-pirate.vercel.app';
+    const APERCU = 'https://labelmaisonconciergerie-apercu-1.vercel.app';
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    const lienDuMail = (m?: { text: string }) => /Ouvrir mon espace : (\S+)/.exec(m?.text ?? '')?.[1] ?? '';
+    const depuis = (origin: string, ip: string) => ({ origin, 'x-forwarded-for': ip });
+
+    // B1 : origines acceptées, site des liens.
+    verifier(SITE_PAR_DEFAUT === 'https://www.labelmaisoncg.fr' && adresseSite() === SITE_PAR_DEFAUT, 'site des liens : https://www.labelmaisoncg.fr par défaut', adresseSite());
+    env.SITE_URL = 'https://site.exemple.invalid/chemin';
+    const avecVariable = adresseSite();
+    env.SITE_URL = 'http://site.exemple.invalid';
+    const enHttp = adresseSite();
+    delete env.SITE_URL;
+    verifier(avecVariable === 'https://site.exemple.invalid' && enHttp === SITE_PAR_DEFAUT, 'SITE_URL : origine https seulement', [avecVariable, enHttp]);
+    verifier(
+      !origineAutorisee(PIRATE) && !origineAutorisee('https://labelmaisoncg.fr.pirate.example') && !origineAutorisee('http://labelmaisoncg.fr') && !origineAutorisee('null') && !origineAutorisee(''),
+      'origines : plus de *.vercel.app, ni sous-domaine piégé, ni http, ni « null »',
+    );
+    verifier(['https://labelmaisoncg.fr', 'https://www.labelmaisoncg.fr', 'https://www.labelmaisoncgexperience.fr', 'https://www.labelmaisoncg.fr/espace-proprietaire?x=1'].every(origineAutorisee), 'origines : le site (avec ou sans www, ou une page)');
+    verifier(!origineAutorisee(APERCU), 'aperçu Vercel : refusé sans ORIGINES_APERCU');
+    env.ORIGINES_APERCU = `${APERCU}, https://autre-apercu.vercel.app`;
+    verifier(origineAutorisee(APERCU) && !origineAutorisee(`${APERCU}.pirate.example`) && !origineAutorisee(PIRATE), 'ORIGINES_APERCU : origines exactes seulement');
+    env.VERCEL_ENV = 'production';
+    const localEnLigne = origineAutorisee('http://localhost:5173');
+    delete env.VERCEL_ENV;
+    verifier(!localEnLigne && origineAutorisee('http://localhost:5173'), 'localhost : jamais sur Vercel en ligne, permis en local');
+
+    // B1 : l'invitation demandée depuis une page tierce garde le site fixe.
+    monde.poser(LM, 'proprietaires', { id: 'pro-c', nom: 'Carla Audit', contact: { email: 'carla@exemple.invalid', telephone: '' } } as { id: string });
+    monde.poser(LM, 'logements', { id: 'log-c', nom: 'Chez Carla', ville: 'Évry', statut: 'actif', proprietaireId: 'pro-c', capacite: 2, chambres: 1 } as { id: string });
+    monde.emails = [];
+    let res = await appelProprio({ entetes: { ...gerantLM, origin: PIRATE }, corps: { action: 'inviter', proprietaireId: 'pro-c', email: 'carla@exemple.invalid' } });
+    verifier(res.statut === 200 && String(res.corps?.lien).startsWith(`${SITE_PAR_DEFAUT}/espace-proprietaire#espace=${LM}&jeton=`) && lienDuMail(monde.emails[0]).startsWith(`${SITE_PAR_DEFAUT}/`), 'invitation appelée avec une Origin tierce : lien et e-mail sur le site fixe', { lien: String(res.corps?.lien).replace(/jeton=.*/, 'jeton=…'), mail: lienDuMail(monde.emails[0]).replace(/jeton=.*/, 'jeton=…') });
+    verifier((monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-c`)?.donnees as { emailFiche?: string } | undefined)?.emailFiche === 'carla@exemple.invalid', 'invitation : adresse de la fiche relevée dans l’accès');
+    verifier(/vos factures partagées/.test(monde.emails[0]?.text ?? ''), 'e-mail d’invitation : il parle aussi des factures', monde.emails[0]?.text);
+    const lienInvitation = String(res.corps?.lien);
+    res = await appelProprio({ entetes: depuis(PIRATE, '198.51.100.1'), corps: { action: 'entrer', jeton: jetonDuLien(lienInvitation), espace: LM } });
+    verifier(res.statut === 403 && !res.entetes['Set-Cookie'], 'entrer depuis une Origin tierce : refusé, pas de session', res.corps);
+    res = await appelProprio({ entetes: depuis(PIRATE, '198.51.100.2'), corps: { action: 'lien', email: 'carla@exemple.invalid' } });
+    verifier(res.statut === 403, '« Recevoir mon lien » depuis une Origin tierce : refusé', res.corps);
+    monde.emails = [];
+    res = await appelProprio({ entetes: depuis(APERCU, '198.51.100.3'), corps: { action: 'lien', email: 'carla@exemple.invalid' } });
+    verifier(res.statut === 200 && monde.emails.length === 1 && lienDuMail(monde.emails[0]).startsWith(`${SITE_PAR_DEFAUT}/espace-proprietaire#`), 'demande depuis un aperçu autorisé : le lien reste sur le site fixe', lienDuMail(monde.emails[0]).replace(/jeton=.*/, 'jeton=…'));
+    const lienCarla = lienDuMail(monde.emails[0]);
+
+    // Minor 4 : un lien de connexion toutes les 2 minutes au plus, gardé dans l'accès.
+    const nbConnexion = (e: string, c: string, id: string) => ((monde.lignes.get(`${e}\u0000${c}\u0000${id}`)?.donnees as { liens?: { motif: string }[] } | undefined)?.liens ?? []).filter((l) => l.motif === 'connexion').length;
+    monde.emails = [];
+    res = await appelProprio({ entetes: depuis('https://www.labelmaisoncg.fr', '198.51.100.4'), corps: { action: 'lien', email: 'carla@exemple.invalid' } });
+    verifier(res.statut === 200 && monde.emails.length === 0 && nbConnexion(LM, 'accesProprietaires', 'pro-c') === 1, 'deuxième demande dans les 2 minutes (autre adresse IP) : même réponse, aucun lien de plus', { emails: monde.emails.length, liens: nbConnexion(LM, 'accesProprietaires', 'pro-c') });
+
+    // A5 : le même lien présenté deux fois en même temps.
+    const [e1, e2] = await Promise.all([
+      appelProprio({ entetes: depuis('https://www.labelmaisoncg.fr', '198.51.100.5'), corps: { action: 'entrer', jeton: jetonDuLien(lienCarla), espace: LM } }),
+      appelProprio({ entetes: depuis('https://www.labelmaisoncg.fr', '198.51.100.6'), corps: { action: 'entrer', jeton: jetonDuLien(lienCarla), espace: LM } }),
+    ]);
+    verifier([e1.statut, e2.statut].sort().join() === '200,401' && [e1, e2].filter((r) => !!r.entetes['Set-Cookie']).length === 1, 'lien à usage unique présenté deux fois en même temps : une seule session', [e1.statut, e2.statut]);
+    const cookieCarla = cookieDe(e1.statut === 200 ? e1 : e2);
+    res = await appelProprio({ corps: { action: 'entrer', jeton: jetonDuLien(lienCarla), espace: LM } });
+    verifier(res.statut === 401 && res.corps?.code === 'utilise', 'troisième usage : refusé (déjà servi)', res.corps);
+    res = await appelProprio({ corps: { action: 'entrer', jeton: jetonDuLien(lienInvitation), espace: LM } });
+    verifier(res.statut === 200, 'l’invitation, autre lien, sert encore une fois (rien écrasé par la demande de lien)', res.corps);
+
+    // I3 : l'adresse de la fiche fait foi (propriétaire).
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 200, 'session de Carla ouverte', res.statut);
+    monde.poser(LM, 'proprietaires', { id: 'pro-c', nom: 'Carla Audit', contact: { email: 'nouvelle-gerance@exemple.invalid', telephone: '' } } as { id: string });
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 401, 'adresse changée dans la fiche du propriétaire sans « Retirer » : session refusée', res.statut);
+    monde.emails = [];
+    monde.poser(LM, 'accesProprietaires', { ...(monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-c`)!.donnees as object), liens: [] } as { id: string });
+    res = await appelProprio({ entetes: depuis('https://www.labelmaisoncg.fr', '198.51.100.7'), corps: { action: 'lien', email: 'carla@exemple.invalid' } });
+    verifier(res.statut === 200 && monde.emails.length === 0 && nbConnexion(LM, 'accesProprietaires', 'pro-c') === 0, 'l’ancienne adresse ne reçoit plus de lien de connexion', monde.emails.map((m) => m.to));
+    monde.poser(LM, 'proprietaires', { id: 'pro-c', nom: 'Carla Audit', contact: { email: 'Carla@Exemple.invalid ', telephone: '' } } as { id: string });
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 200, 'adresse remise dans la fiche (casse et espaces mis à part) : session valable', res.statut);
+    verifier(res.corps?.espace === LM, 'vue : l’espace est donné (la page de connexion le garde sur l’appareil)', res.corps?.espace);
+    // « Retirer » : la page le dit, au lieu de « session expirée ».
+    await appelProprio({ entetes: gerantLM, corps: { action: 'retirer', proprietaireId: 'pro-c' } });
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 401 && res.corps?.code === 'retire' && res.corps?.erreur === 'Votre accès a été retiré. Contactez votre conciergerie.' && /Max-Age=0/.test(res.entetes['Set-Cookie'] ?? ''), 'accès retiré : « Votre accès a été retiré », cookie effacé', res.corps);
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
+    verifier(res.statut === 401 && res.corps?.code === 'retire', 'accès retiré : toujours dit tant que le cookie revient', res.corps);
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' } });
+    verifier(res.statut === 401 && res.corps?.code === 'session', 'sans cookie : « Connectez-vous »', res.corps);
+
+    // I3 : règle pure, accès d'avant le relevé compris.
+    const a = (o: Partial<AccesExterne>): AccesExterne => ({ id: 'x', email: 'a@x.invalid', statut: 'actif', version: 1, liens: [], ...o });
+    verifier(
+      accesToujoursDeLaFiche(a({}), { email: 'a@x.invalid' }) &&
+        accesToujoursDeLaFiche(a({}), { email: '' }) &&
+        !accesToujoursDeLaFiche(a({}), { email: 'b@x.invalid' }) &&
+        !accesToujoursDeLaFiche(a({}), undefined) &&
+        accesToujoursDeLaFiche(a({ emailFiche: 'f@x.invalid' }), { email: 'f@x.invalid' }) &&
+        !accesToujoursDeLaFiche(a({ emailFiche: 'f@x.invalid' }), { email: '' }) &&
+        !accesToujoursDeLaFiche(a({ emailFiche: '' }), { email: 'b@x.invalid' }) &&
+        accesToujoursDeLaFiche(a({ emailFiche: '' }), { email: 'A@X.invalid' }),
+      'règle de la fiche : même adresse, adresse relevée, accès ancien sans adresse de fiche ; fiche absente = non',
+    );
+
+    // I3 : même chose pour l'espace opérations (A2 de l'audit).
+    monde.poser(LM, 'equipe', { id: 'eq-c', nom: 'Chloé Course', role: 'agent', email: 'chloe@exemple.invalid', logementIds: ['log-a'], actif: true } as { id: string });
+    res = await appelOps({ entetes: gerantLM, corps: { action: 'inviter', membreId: 'eq-c', email: 'chloe@exemple.invalid' } });
+    verifier(res.statut === 200 && String(res.corps?.lien).startsWith(`${SITE_PAR_DEFAUT}/espace-operations#`), 'opérations : lien d’invitation sur le site fixe', String(res.corps?.lien).replace(/jeton=.*/, 'jeton=…'));
+    const lienChloe = String(res.corps?.lien);
+    const [o1, o2] = await Promise.all([appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(lienChloe), espace: LM } }), appelOps({ corps: { action: 'entrer', jeton: jetonDuLien(lienChloe), espace: LM } })]);
+    verifier([o1.statut, o2.statut].sort().join() === '200,401', 'opérations : lien présenté deux fois en même temps, une seule session', [o1.statut, o2.statut]);
+    const cookieChloe = cookieDe(o1.statut === 200 ? o1 : o2);
+    monde.poser(LM, 'equipe', { id: 'eq-c', nom: 'Chloé Course', role: 'agent', email: 'remplacante@exemple.invalid', logementIds: ['log-a'], actif: true } as { id: string });
+    res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieChloe } });
+    verifier(res.statut === 401, 'opérations : adresse changée dans la fiche équipe, session refusée', res.statut);
+    monde.emails = [];
+    res = await appelOps({ entetes: depuis('https://www.labelmaisoncg.fr', '198.51.100.8'), corps: { action: 'lien', email: 'chloe@exemple.invalid' } });
+    verifier(res.statut === 200 && monde.emails.length === 0, 'opérations : l’ancienne adresse ne reçoit plus de lien', monde.emails.map((m) => m.to));
+    res = await appelOps({ entetes: depuis(PIRATE, '198.51.100.9'), corps: { action: 'lien', email: EMAIL_OPS } });
+    verifier(res.statut === 403, 'opérations : « Recevoir mon lien » depuis une Origin tierce, refusé', res.corps);
+
+    // A3 : fiche d'espace introuvable, jamais l'expéditeur ni les contacts de Label Maison.
+    verifier(expediteurEspace(undefined) === undefined && contactsEspace(undefined) === undefined, 'fiche d’espace absente : ni expéditeur ni contacts de Label Maison', expediteurEspace(undefined));
+    verifier(expediteurEspace(undefined, LM)?.from === env.CONTACT_FROM_EMAIL && !!contactsEspace(undefined, LM) && expediteurEspace(undefined, SENS) === undefined, 'fiche illisible mais espace explicitement Label Maison : Label Maison ; Sens : rien');
+    monde.poser(SENS, 'equipe', { id: 'eq-s2', nom: 'Sacha Sens', role: 'agent', email: 'sacha@exemple.invalid', logementIds: ['log-s'], actif: true } as { id: string });
+    monde.emails = [];
+    monde.panneEspacesActifs = true;
+    res = await appelOps({ entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }, corps: { action: 'inviter', membreId: 'eq-s2', email: 'sacha@exemple.invalid' } });
+    monde.panneEspacesActifs = false;
+    verifier(res.statut === 200 && res.corps?.envoye === false && monde.emails.length === 0, 'panne de la fiche de Sens pendant une invitation : aucun e-mail au nom de Label Maison (lien à copier)', { envoye: res.corps?.envoye, mails: monde.emails.map((m) => m.from) });
+
+    // A4 : deux validations simultanées d'une même relance.
+    monde.poser(LM, 'factures', facture('fac-x', 'pro-a', 6));
+    monde.poser(LM, 'relancesPaiement', { id: 'fac-x-r1', factureId: 'fac-x', proprietaireId: 'pro-a', numero: 'N-fac-x', niveau: 1, joursApresEcheance: 5, dueLe: ilYa(1), statut: 'proposee', creeLe: new Date().toISOString() } as { id: string });
+    monde.emails = [];
+    const [r1, r2] = await Promise.all([appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-x-r1' } }), appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-x-r1' } })]);
+    verifier(monde.emails.length === 1 && [r1.statut, r2.statut].sort().join() === '200,409' && relance(LM, 'fac-x-r1')?.statut === 'envoyee', 'relance validée deux fois en même temps : un seul e-mail', { statuts: [r1.statut, r2.statut], emails: monde.emails.length });
+    verifier(/https:\/\/www\.labelmaisoncg\.fr\/espace-proprietaire/.test(monde.emails[0]?.text ?? ''), 'lien des relances : site fixe', monde.emails[0]?.text);
+    monde.poser(LM, 'relancesPaiement', { id: 'fac-x-r2', factureId: 'fac-x', proprietaireId: 'pro-a', numero: 'N-fac-x', niveau: 2, joursApresEcheance: 15, dueLe: ilYa(1), statut: 'proposee', creeLe: new Date().toISOString() } as { id: string });
+    monde.emails = [];
+    const [r3, r4] = await Promise.all([appelProprio({ entetes: gerantLM, corps: { action: 'relance-annuler', id: 'fac-x-r2' } }), appelProprio({ entetes: gerantLM, corps: { action: 'relance-envoyer', id: 'fac-x-r2' } })]);
+    const fin = relance(LM, 'fac-x-r2')?.statut;
+    verifier([r3.statut, r4.statut].sort().join() === '200,409' && ((fin === 'annulee' && monde.emails.length === 0) || (fin === 'envoyee' && monde.emails.length === 1)), 'annuler et envoyer en même temps : l’un ou l’autre, jamais « annulée » avec un e-mail parti', { statuts: [r3.statut, r4.statut], fin, emails: monde.emails.length });
+
+    // Minor 6 : facture voyageur rattachée au propriétaire, jamais partagée ni relancée.
+    monde.poser(LM, 'factures', facture('fac-v', 'pro-a', 6, { destinataire: 'voyageur' }));
+    await relancesDuJour();
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
+    verifier(!relance(LM, 'fac-v-r1') && !((res.corps?.vue?.factures ?? []) as { id: string }[]).some((f) => f.id === 'fac-v'), 'facture voyageur : ni montrée au propriétaire ni relancée', res.corps?.vue?.factures);
+
+    // Minor 5 : ids encodés dans l'adresse de lecture.
+    monde.oublier();
+    await baseAcces(LM).lire('recette', ['a&b=c', 'd#e', 'f+g']);
+    const lecture = monde.base.find((r) => r.methode === 'GET' && r.url.searchParams.get('collection') === 'eq.recette');
+    verifier(lecture?.url.searchParams.get('id') === 'in.("a&b=c","d#e","f+g")' && !lecture?.url.searchParams.has('b'), 'lecture par ids : « & », « # », « + » encodés', lecture?.url.search);
+    delete env.ORIGINES_APERCU;
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
+  }
+
+  section('Adresse changée dans la fiche : seule la nouvelle est invitée (B2)');
+  {
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    const gerant = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    const site = (ip: string) => ({ origin: 'https://www.labelmaisoncg.fr', 'x-forwarded-for': ip });
+    const ANCIENNE = 'ancienne@exemple.invalid';
+    const NOUVELLE = 'nouvelle@exemple.invalid';
+    for (const genre of ['proprietaire', 'operations'] as const) {
+      const appel = genre === 'proprietaire' ? appelProprio : appelOps;
+      const collection = genre === 'proprietaire' ? 'accesProprietaires' : 'accesOperations';
+      const id = genre === 'proprietaire' ? 'pro-z' : 'eq-z';
+      const fiche = (email: string) =>
+        genre === 'proprietaire'
+          ? monde.poser(LM, 'proprietaires', { id, nom: 'Zoé Partie', contact: { email, telephone: '' } } as { id: string })
+          : monde.poser(LM, 'equipe', { id, nom: 'Zoé Partie', role: 'agent', email, logementIds: ['log-z'], actif: true } as { id: string });
+      const inviter = (email: string) => appel({ entetes: gerant, corps: { action: 'inviter', ...(genre === 'proprietaire' ? { proprietaireId: id } : { membreId: id }), email } });
+      const acces = () => monde.lignes.get(`${LM}\u0000${collection}\u0000${id}`)?.donnees as { email?: string; version?: number } | undefined;
+      monde.poser(LM, 'logements', { id: 'log-z', nom: 'Chez Zoé', ville: 'Évry', statut: 'actif', proprietaireId: 'pro-z', capacite: 2, chambres: 1 } as { id: string });
+      fiche(ANCIENNE);
+      let res = await inviter(ANCIENNE);
+      res = await appel({ entetes: site(genre === 'proprietaire' ? '198.51.100.61' : '198.51.100.62'), corps: { action: 'entrer', jeton: jetonDuLien(res.corps?.lien), espace: LM } });
+      const cookieAncien = cookieDe(res);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 200, `${genre} : session ouverte avec l’ancienne adresse`, res.corps);
+      const versionAvant = acces()?.version ?? 0;
+
+      fiche(NOUVELLE);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 401, `${genre} : adresse changée dans la fiche, l’ancienne session tombe`, res.statut);
+      monde.emails = [];
+      res = await inviter(ANCIENNE);
+      verifier(res.statut === 409 && res.corps?.code === 'fiche' && monde.emails.length === 0 && acces()?.email === ANCIENNE && acces()?.version === versionAvant, `${genre} : réinviter l’ancienne adresse est refusé, rien n’est envoyé`, res.corps);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 401, `${genre} : l’ancienne session reste fermée`, res.statut);
+      res = await inviter(NOUVELLE);
+      verifier(
+        res.statut === 200 && acces()?.email === NOUVELLE && (acces()?.version ?? 0) > versionAvant && monde.emails.length === 1 && monde.emails[0].to[0] === NOUVELLE,
+        `${genre} : la nouvelle adresse est invitée, version changée, lien envoyé à elle seule`,
+        { statut: res.statut, acces: acces(), to: monde.emails.map((m) => m.to) },
+      );
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 401, `${genre} : l’ancienne session ne revient pas après la nouvelle invitation`, res.statut);
+
+      // Accès retiré par le gérant : la personne le lit tel quel (pas « session expirée »).
+      const lienNouveau = /Ouvrir mon espace : (\S+)/.exec(monde.emails[0]?.text ?? '')?.[1] ?? '';
+      res = await appel({ entetes: site(genre === 'proprietaire' ? '198.51.100.63' : '198.51.100.64'), corps: { action: 'entrer', jeton: jetonDuLien(lienNouveau), espace: LM } });
+      const cookieNouveau = cookieDe(res);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieNouveau } });
+      verifier(res.statut === 200 && (genre === 'proprietaire' || res.corps?.espace === LM), `${genre} : la nouvelle adresse ouvre son espace (espace rendu pour la page de connexion)`, res.statut);
+      await appel({ entetes: gerant, corps: { action: 'retirer', ...(genre === 'proprietaire' ? { proprietaireId: id } : { membreId: id }) } });
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieNouveau } });
+      verifier(res.statut === 401 && res.corps?.code === 'retire' && res.corps?.erreur === 'Votre accès a été retiré. Contactez votre conciergerie.', `${genre} : accès retiré, dit tel quel`, res.corps);
+    }
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
   }
 
   section('Webhooks');

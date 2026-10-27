@@ -11,7 +11,7 @@ const TAILLES = { sm: 'size-6 text-[10px]', md: 'size-8 text-[12px]', lg: 'size-
 
 /** Pastille d'initiales, couleur stable dérivée du nom. */
 export function Avatar({ nom, taille = 'md', className }: AvatarProps) {
-  const teintes = ['bg-(--lm-or-lavis) text-(--lm-brun)', 'bg-(--lm-info-lavis) text-(--lm-info)', 'bg-(--lm-succes-lavis) text-(--lm-succes)', 'bg-(--lm-neutre-lavis) text-(--lm-encre)'];
+  const teintes = ['bg-(--lm-or-lavis) text-(--lm-brun)', 'bg-(--lm-info-lavis) text-(--lm-info)', 'bg-(--lm-succes-lavis) text-(--lm-succes-texte)', 'bg-(--lm-neutre-lavis) text-(--lm-encre)'];
   let h = 0;
   for (const c of nom) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return (

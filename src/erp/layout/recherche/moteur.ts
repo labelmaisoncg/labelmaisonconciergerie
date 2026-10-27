@@ -20,6 +20,7 @@ import { AUJOURDHUI, dateCourte, ecartJours, euros } from '../../data/format';
 import { montantTtc } from '../../data/selectors';
 import type { ErpDonnees, Logement } from '../../data/types';
 import { LIBELLE_STATUT_CRM, telephoneNormalise } from '../../data/crm';
+import { lienIncident } from '../../data/incidents-erp';
 
 export type TypeResultat =
   | 'logement'
@@ -287,7 +288,7 @@ export function construireIndex(d: ErpDonnees): ElementIndex[] {
       id: i.id,
       titre: i.description.length > 70 ? `${i.description.slice(0, 70)}…` : i.description,
       detail: `${nomLog(i.logementId)} · ${dateCourte(i.date)} · ${LIBELLES.statutIncident?.[i.statut] ?? i.statut}`,
-      to: `/erp/incidents?id=${i.id}`,
+      to: lienIncident(i),
       texte: haystack(i.description, lieuLog(i.logementId), variantesDate(i.date), i.responsable, variantesMontant(i.coutCentimes), LIBELLES.categorieIncident?.[i.categorie]),
       proximite: proximite(i.date),
     });

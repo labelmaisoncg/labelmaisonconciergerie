@@ -216,9 +216,23 @@ create policy "connecteurs reserves aux gerants" on erp.enregistrements
   using (collection <> 'connecteurs' or erp.acces_gerant())
   with check (collection <> 'connecteurs' or erp.acces_gerant());
 
+-- Accès des propriétaires et des opérations, relances de paiement et leurs
+-- réglages : gérants seulement (même raison ; voir erp-acces-gerants.sql).
+drop policy if exists "acces exterieurs reserves aux gerants" on erp.enregistrements;
+create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
+  as restrictive for all to authenticated
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant())
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant());
+
 -- historique : lecture seule pour l'équipe (écrit uniquement par le déclencheur).
 drop policy if exists "membres lisent" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated using (erp.acces_lecture());
+-- Anciennes versions des collections réservées aux gérants (accès extérieurs,
+-- relances, connecteurs) : gérants seulement, comme les enregistrements.
+drop policy if exists "versions reservees aux gerants" on erp.historique;
+create policy "versions reservees aux gerants" on erp.historique
+  as restrictive for select to authenticated
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs') or erp.acces_gerant());
 
 -- ------------------------------------------------------------------ droits
 

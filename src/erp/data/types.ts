@@ -6,6 +6,7 @@
  */
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
+import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -195,6 +196,14 @@ export interface Logement {
   lits: Lit[];
   statut: StatutLogement;
   proprietaireId: Id;
+  /**
+   * Premier jour (inclus) où le propriétaire actuel reçoit chiffres, avis et
+   * séjours de ce logement. Posé par changerProprietaire (data/proprietaire.ts)
+   * quand le logement change de propriétaire ; absent : depuis toujours.
+   */
+  proprietaireDepuis?: DateISO;
+  /** Propriétaires précédents, chacun jusqu'à `jusquAu` (exclu) : ce qui était à eux le reste. */
+  proprietairesPrecedents?: ProprietairePrecedent[];
   residencePrincipale: boolean;
   numeroEnregistrement?: string;
   dpe?: Dpe;
@@ -220,6 +229,13 @@ export interface Logement {
   descriptif?: DescriptifLogement;
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
+}
+
+/** Ancien propriétaire d'un logement, de `depuis` (absent : depuis toujours) à `jusquAu` (exclu). */
+export interface ProprietairePrecedent {
+  proprietaireId: Id;
+  depuis?: DateISO;
+  jusquAu: DateISO;
 }
 
 /** Calendrier des prix lu sur les plateformes : affiché, jamais modifié. */
@@ -501,6 +517,16 @@ export interface Incident {
   resoluLe?: DateISO;
   /** Date à laquelle la somme refacturable a été récupérée. */
   recupereLe?: DateISO;
+  /** Espace opérations (octobre 2026) : membre de l'équipe de terrain qui s'en occupe. */
+  assigneA?: Id;
+  /** Le gérant a dit « Je m’en occupe » depuis l'ERP (jusqu'à ce que l'incident soit confié à quelqu'un). */
+  parGerant?: boolean;
+  /** Membre de l'équipe de terrain qui l'a signalé. */
+  signalePar?: Id;
+  /** Contrôle qualité d'où vient l'incident (point « à revoir »). */
+  controleId?: Id;
+  /** Ce qui s'est passé, du plus ancien au plus récent. */
+  historique?: { le: Horodatage; par: string; texte: string }[];
 }
 
 /* ------------------------------------------------------------ prestataires */
@@ -563,6 +589,8 @@ export interface Facture {
   statut: StatutFacture;
   payeeLe?: DateISO;
   lignes: LigneFacture[];
+  /** Partagée dans l'espace propriétaire (visible et relancée) depuis cet instant ; absent : pas partagée. */
+  partageeLe?: Horodatage;
 }
 
 export type StatutPaiementPrestataire = 'a_payer' | 'paye' | 'bloque';
@@ -755,6 +783,14 @@ export interface ErpDonnees {
   documentsProprietaire: DocumentProprietaire[];
   /** Bilans mensuels préparés puis publiés dans l'espace propriétaire (ajoutée en octobre 2026). */
   bilansProprietaire: BilanProprietaire[];
+  /** Espace opérations (ajoutées en octobre 2026) : équipe de terrain et ses accès (écrits par le serveur), */
+  equipe: MembreEquipe[];
+  accesOperations: AccesOperations[];
+  /** qui suit chaque logement, absences, contrôles qualité, « ce logement n'est pas à moi ». */
+  affectations: AffectationLogement[];
+  absences: AbsenceMembre[];
+  controles: ControleQualite[];
+  signalementsLogement: SignalementLogement[];
 }
 
 export type NomCollection = keyof ErpDonnees;

@@ -5,7 +5,7 @@ export type Ton = 'neutre' | 'or' | 'succes' | 'alerte' | 'danger' | 'info';
 export const TON_LAVIS: Record<Ton, string> = {
   neutre: 'bg-(--lm-neutre-lavis) text-(--lm-encre-2)',
   or: 'bg-(--lm-or-lavis) text-(--lm-brun)',
-  succes: 'bg-(--lm-succes-lavis) text-(--lm-succes)',
+  succes: 'bg-(--lm-succes-lavis) text-(--lm-succes-texte)',
   alerte: 'bg-(--lm-alerte-lavis) text-(--lm-alerte)',
   danger: 'bg-(--lm-danger-lavis) text-(--lm-danger)',
   info: 'bg-(--lm-info-lavis) text-(--lm-info)',
