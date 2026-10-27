@@ -344,7 +344,7 @@ export default function Utilisateurs() {
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
           {d.mode === 'reel'
-            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Pour créer son compte, il ouvre le lien de son invitation (l’enveloppe sur sa ligne la lui envoie). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
+            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Pour créer son compte, il ouvre le lien de son invitation (« Envoyer l’invitation » sur sa ligne la lui envoie). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
             : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.'}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
