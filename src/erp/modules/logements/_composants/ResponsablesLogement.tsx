@@ -59,15 +59,17 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
           {rattaches.map((m) => {
             const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id), m);
             const tel = m.telephone?.replace(/[^\d+]/g, '');
-            const charge = m.id === responsableId ? ['Au quotidien', absence].filter(Boolean).join(' · ') : m.id === remplacantId ? 'Pendant une absence' : undefined;
+            const charge = m.id === responsableId ? 'Au quotidien' : m.id === remplacantId ? 'Pendant une absence' : undefined;
+            // L'absence du jour, sur sa propre ligne (jamais coupée : c'est l'information utile).
+            const enAbsence = m.id === responsableId ? absence : undefined;
             return (
               <li key={m.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                 <span className="min-w-0 flex-1">
                   {gerant ? (
                     <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
                       <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{m.nom}</span>
-                      {/* Le rôle sur le logement est dans les choix plus bas ; ici, seulement l'absence du jour. */}
-                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{[ROLES_OPERATIONS[m.role], m.id === responsableId ? absence : undefined].filter(Boolean).join(' · ')}</span>
+                      {/* Le rôle sur le logement est dans les choix plus bas. */}
+                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{ROLES_OPERATIONS[m.role]}</span>
                     </Link>
                   ) : (
                     <>
@@ -75,6 +77,7 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
                       <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{[ROLES_OPERATIONS[m.role], charge].filter(Boolean).join(' · ')}</span>
                     </>
                   )}
+                  {enAbsence && <span className="block text-[12.5px] text-(--lm-encre-2)">{enAbsence}</span>}
                   {gerant && (
                     <Badge tone={s.ton} point className="mt-1">
                       {s.texte}

@@ -138,7 +138,7 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
               </span>
               {[...hors].map((h) => (
                 <span key={h} className="inline-flex items-center gap-1.5">
-                  <span className="h-2.5 w-5 rounded-full bg-(--lm-surface-2)" aria-hidden />
+                  <span className="h-2.5 w-5 rounded-full border border-(--lm-bord) bg-(--lm-surface-2)" aria-hidden />
                   {HORS[h]}
                 </span>
               ))}

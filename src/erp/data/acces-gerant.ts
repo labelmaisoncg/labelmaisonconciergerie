@@ -91,13 +91,14 @@ export function ficheResponsableInvite(
 }
 
 /**
- * Ce que dit la fiche quand le titulaire est absent : « absent · Inès Morel le
- * remplace », ou « absent · personne ne le remplace ». Rien s'il est là.
+ * Ce que dit la fiche quand le titulaire est absent : « en absence · Inès Morel
+ * prend le relais », ou « en absence · personne ne prend le relais » (neutre,
+ * quel que soit le genre). Rien s'il est là.
  */
 export function phraseRemplacement(suivi: Suivi, nom: (id?: Id) => string | undefined): string | undefined {
   if (!suivi.remplace) return undefined;
   const qui = suivi.membreId ? nom(suivi.membreId) : undefined;
-  return qui ? `absent · ${qui} le remplace` : 'absent · personne ne le remplace';
+  return qui ? `en absence · ${qui} prend le relais` : 'en absence · personne ne prend le relais';
 }
 
 /** Mandat du logement avec son propriétaire actuel (le plus récent) ; un mandat d'un ancien propriétaire ne compte pas. */

@@ -633,10 +633,10 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
   // N3 : la fiche dit l'absence.
   const nomDe = (id?: string) => entrees().equipe.find((m) => m.id === id)?.nom;
   const absent = { ...sans, absences: [{ id: 'abs-b', membreId: 'B', du: J, au: J, remplacantId: 'A' }] };
-  verifier(phraseRemplacement(responsableLe(absent, 'L1', J), nomDe) === 'absent · Alice Martin le remplace', 'N3 : titulaire absent : « absent · Alice Martin le remplace »');
-  verifier(phraseRemplacement(assigneLe(absent, { assigneA: 'B', logementId: 'L1' }, J), nomDe) === 'absent · Alice Martin le remplace', 'N3 : incident confié à un absent : même phrase');
+  verifier(phraseRemplacement(responsableLe(absent, 'L1', J), nomDe) === 'en absence · Alice Martin prend le relais', 'N3 : titulaire absent : « en absence · Alice Martin prend le relais »');
+  verifier(phraseRemplacement(assigneLe(absent, { assigneA: 'B', logementId: 'L1' }, J), nomDe) === 'en absence · Alice Martin prend le relais', 'N3 : incident confié à un absent : même phrase');
   const seul = { ...sans, absences: [{ id: 'abs-c', membreId: 'C', du: J, au: J }] };
-  verifier(phraseRemplacement(responsableLe(seul, 'L3', J), nomDe) === 'absent · personne ne le remplace', 'N3 : absent sans remplaçant : « personne ne le remplace »');
+  verifier(phraseRemplacement(responsableLe(seul, 'L3', J), nomDe) === 'en absence · personne ne prend le relais', 'N3 : absent sans remplaçant : « personne ne prend le relais »');
   verifier(phraseRemplacement(responsableLe(sans, 'L1', J), nomDe) === undefined, 'N3 : présent : rien de plus');
 
   // N5 : mandat du propriétaire actuel seulement.

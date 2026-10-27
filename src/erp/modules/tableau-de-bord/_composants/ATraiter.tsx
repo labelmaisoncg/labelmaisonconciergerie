@@ -31,17 +31,20 @@ function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <Link to={e.to} className="text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
+          <Link to={e.to} className="inline-flex min-h-8 items-center text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
             {e.titre}
           </Link>
           {complet && <span className="text-[11.5px] text-(--lm-encre-3)">{PRIORITES[e.priorite]}</span>}
         </div>
         <ul className="mt-0.5 space-y-0.5 text-[12.5px] text-(--lm-encre-2)">
           {apercu.map((t, i) => (
-            <li key={i} className="truncate" title={t}>
-              {e.liens?.[i] ? (
-                <Link to={e.liens[i]} className="hover:text-(--lm-or-texte) hover:underline">
-                  {t}
+            // Dans la carte, des détails en texte simple (le titre mène déjà au premier) ;
+            // dans « Tout voir », une ligne touchable par détail, avec un chevron.
+            <li key={i} className={complet && e.liens?.[i] ? undefined : 'truncate'} title={t}>
+              {complet && e.liens?.[i] ? (
+                <Link to={e.liens[i]} className="flex min-h-8 items-center justify-between gap-2 rounded-md hover:text-(--lm-or-texte)">
+                  <span className="truncate">{t}</span>
+                  <ChevronRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 </Link>
               ) : (
                 t
@@ -54,7 +57,7 @@ function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
             type="button"
             onClick={() => setOuvert((o) => !o)}
             aria-expanded={ouvert}
-            className="mt-1 inline-flex items-center gap-0.5 text-[12px] font-medium text-(--lm-or-texte) hover:underline"
+            className="mt-1 inline-flex min-h-8 items-center gap-0.5 text-[12px] font-medium text-(--lm-or-texte) hover:underline"
           >
             {ouvert ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
             {ouvert ? 'Voir moins' : `Voir ${reste} de plus`}
