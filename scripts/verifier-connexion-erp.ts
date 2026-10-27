@@ -570,7 +570,7 @@ async function principal() {
       const el = (id: string) =>
         (elements[id] ??= {
           id,
-          hidden: ['f-nouveau', 'f-confirmer', 'f-creer', 'f-finir', 'info'].includes(id),
+          hidden: ['f-nouveau', 'f-confirmer', 'f-creer', 'f-finir', 'f-role', 'info'].includes(id),
           textContent: '',
           value: '',
           readOnly: false,
@@ -675,6 +675,7 @@ async function principal() {
     verifier(historique.elements['f-creer']?.hidden === true && historique.elements['f-connexion']?.hidden === false && historique.elements.info?.textContent === FERMEE, 'base d’avant les espaces : création fermée, « pas encore ouverte(s) »', historique.elements.info?.textContent);
     const historiqueNote = essai('', { base: 'historique' });
     historiqueNote.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
+    historiqueNote.ecouteurs['role-equipe:click']?.({ preventDefault() {} });
     await historiqueNote.attendre();
     verifier(historiqueNote.elements.info?.textContent === FERMEE, 'base d’avant les espaces : le lien « Créer mon compte » le dit aussi');
     verifier(historique.elements['note-creer']?.hidden === true && historiqueNote.elements['note-creer']?.hidden === true, 'base d’avant les espaces : « Vous avez reçu une invitation ? Créer mon compte » n’est plus proposé');
@@ -729,11 +730,27 @@ async function principal() {
     verifier(bascule.elements['f-creer']?.hidden === false && bascule.elements['creer-email']?.value === 'moi@exemple.fr', '« Créer mon compte » avec une invitation gardée : à l’adresse de l’invitation');
     bascule.ecouteurs['deja-compte:click']?.({ preventDefault() {} });
     verifier(bascule.elements['f-connexion']?.hidden === false && bascule.elements['f-creer']?.hidden === true && bascule.elements['note-creer']?.hidden === false, '« J’ai déjà un compte » : retour à la connexion');
+    // Sans invitation sur l'appareil : d'abord « Vous êtes : » (propriétaire, terrain, équipe d'une conciergerie).
     const sansInvitation = essai('');
     sansInvitation.elements.email.value = 'moi@exemple.fr';
     sansInvitation.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
     await sansInvitation.attendre();
-    verifier(sansInvitation.elements['f-creer']?.hidden === true && sansInvitation.elements.info?.textContent === SANS_CODE, '« Créer mon compte » sans invitation sur l’appareil : « ouvrez le lien de l’invitation… »');
+    verifier(
+      sansInvitation.elements['f-role']?.hidden === false && sansInvitation.elements['f-connexion']?.hidden === true && sansInvitation.elements['f-creer']?.hidden === true && sansInvitation.elements['note-creer']?.hidden === true,
+      '« Créer mon compte » sans invitation : le choix « Vous êtes : » d’abord',
+    );
+    const htmlRole = await (await appeler('/erp')).text();
+    verifier(
+      /id="role-proprietaire" href="\/espace-proprietaire"/.test(htmlRole) && /href="\/espace-operations"/.test(htmlRole) && htmlRole.includes('id="role-equipe"') && htmlRole.includes('Agent ou responsable de pôle') && htmlRole.includes('Équipe d’une conciergerie'),
+      'choix : Propriétaire → /espace-proprietaire, Agent ou responsable de pôle → /espace-operations, Équipe d’une conciergerie → la création',
+    );
+    sansInvitation.ecouteurs['role-equipe:click']?.({ preventDefault() {} });
+    await sansInvitation.attendre();
+    verifier(sansInvitation.elements['f-creer']?.hidden === true && sansInvitation.elements['f-role']?.hidden === true && sansInvitation.elements.info?.textContent === SANS_CODE, '« Équipe d’une conciergerie » sans invitation sur l’appareil : « ouvrez le lien de l’invitation… »');
+    const retourRole = essai('');
+    retourRole.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
+    retourRole.ecouteurs['role-retour:click']?.({ preventDefault() {} });
+    verifier(retourRole.elements['f-connexion']?.hidden === false && retourRole.elements['f-role']?.hidden === true && retourRole.elements['note-creer']?.hidden === false, '« J’ai déjà un compte » depuis le choix : retour à la connexion');
 
     // Lien de confirmation de l'adresse, invitation gardée pour ce compte : la dernière étape (mot de passe).
     const confirme = essai(`#access_token=${jwt('nouveau@exemple.fr')}&refresh_token=r&type=signup`, {

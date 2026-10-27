@@ -348,6 +348,10 @@ const ICONE_MAIL =
   '<rect x="3.2" y="5.6" width="17.6" height="12.8" rx="2.4"/>' +
   '<path d="m4 7.2 8 5.6 8-5.6"/></svg>';
 
+const ICONE_CHEVRON =
+  '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>';
+
 /** Coquille commune : badge, titre, sous-titre, panneau. */
 function page(
   titre: string,
@@ -474,6 +478,20 @@ function page(
     background:var(--field); border:1px solid var(--line-2); color:var(--ink);
   }
   .intro{margin:0 0 16px; font-size:15px; color:var(--ink)}
+  /* « Vous êtes : » : un choix par ligne, toute la ligne se touche. */
+  .choix{
+    width:100%; margin:0 0 10px; padding:13px 14px 13px 16px; min-height:56px;
+    display:flex; align-items:center; gap:12px; text-align:left; text-decoration:none;
+    font:inherit; font-weight:400; letter-spacing:0; color:var(--ink);
+    background:var(--surface); border:1px solid var(--line-2); border-radius:var(--r-champ);
+    cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .choix:hover{background:var(--field); border-color:var(--gold)}
+  .choix:focus-visible{outline:2px solid var(--gold); outline-offset:3px}
+  .choix-texte{flex:1; min-width:0}
+  .choix-titre{display:block; font-size:16px; font-weight:600; color:var(--ink)}
+  .choix-detail{display:block; margin-top:2px; font-size:13.5px; line-height:1.4; color:var(--ink-3)}
+  .choix .ic{width:18px; height:18px; flex:none; color:var(--ink-3)}
   button:disabled{opacity:.6; cursor:progress}
   [hidden]{display:none!important}
 
@@ -651,6 +669,27 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        <button type="submit">${ICONE_AJOUT} Créer mon compte</button>
        <button type="button" class="lien" id="deja-compte">J’ai déjà un compte</button>
      </form>
+     <!-- « Créer mon compte » : d'abord qui l'on est. Le choix n'ouvre rien : seule l'invitation
+          (le lien reçu par e-mail) donne un accès. -->
+     <div id="f-role" hidden>
+       <p class="intro">Vous êtes :</p>
+       <a class="choix" id="role-proprietaire" href="/espace-proprietaire">
+         <span class="choix-texte"><span class="choix-titre">Propriétaire</span>
+         <span class="choix-detail">Suivez vos logements. Connexion par un lien reçu par e‑mail.</span></span>
+         ${ICONE_CHEVRON}
+       </a>
+       <a class="choix" href="/espace-operations">
+         <span class="choix-texte"><span class="choix-titre">Agent ou responsable de pôle</span>
+         <span class="choix-detail">Vos missions sur le terrain. Connexion par un lien reçu par e‑mail.</span></span>
+         ${ICONE_CHEVRON}
+       </a>
+       <button type="button" class="choix" id="role-equipe">
+         <span class="choix-texte"><span class="choix-titre">Équipe d’une conciergerie</span>
+         <span class="choix-detail">Gérants et équipes, comme Label Maison, avec votre invitation.</span></span>
+         ${ICONE_CHEVRON}
+       </button>
+       <button type="button" class="lien" id="role-retour">J’ai déjà un compte</button>
+     </div>
      <hr class="separateur">
      <p class="note note-lien" id="note-creer"><span>Vous avez reçu une invitation&nbsp;?</span> <button type="button" class="lien-texte" id="vers-creer">Créer mon compte</button></p>
      <p class="note">Accès réservé aux équipes invitées.</p>
@@ -659,10 +698,10 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        var C = ${donneesPageErp(suite)};
        var $ = function (id) { return document.getElementById(id); };
        var boiteErreur = $('erreur'), boiteInfo = $('info');
-       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer'), fCreer = $('f-creer'), fFinir = $('f-finir');
+       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer'), fCreer = $('f-creer'), fFinir = $('f-finir'), fRole = $('f-role');
        var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau'), champFinir = $('finir-mdp'), champFinir2 = $('finir-mdp2');
        var champCreerEmail = $('creer-email'), champCreerMdp = $('creer-mdp'), champCreerMdp2 = $('creer-mdp2'), noteCreer = $('note-creer');
-       var formulaires = [fConnexion, fNouveau, fConfirmer, fCreer, fFinir];
+       var formulaires = [fConnexion, fNouveau, fConfirmer, fCreer, fFinir, fRole];
 
        function dire(texte, ton) {
          boiteErreur.hidden = true; boiteInfo.hidden = true;
@@ -843,8 +882,18 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        }
        var MESSAGE_COMPTE = 'Ouvrez sur cet appareil le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
 
+       // « Créer mon compte » : qui êtes-vous ? Une invitation déjà gardée sur l'appareil va droit à la création.
        $('vers-creer').addEventListener('click', function () {
+         dire('');
+         if (lireInvitation()) return ouvrirCreation(champEmail.value.trim());
+         montrer(fRole);
+         $('role-proprietaire').focus();
+       });
+       $('role-equipe').addEventListener('click', function () {
          dire(''); ouvrirCreation(champEmail.value.trim());
+       });
+       $('role-retour').addEventListener('click', function () {
+         dire(''); montrerConnexion('');
        });
        $('deja-compte').addEventListener('click', function () {
          dire(''); montrerConnexion(champCreerEmail.value.trim());
