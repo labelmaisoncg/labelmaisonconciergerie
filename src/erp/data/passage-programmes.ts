@@ -26,6 +26,7 @@
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
 import { MODELE_AGENT_DEFAUT, texteErreurIA, type ClientIA } from './agent-messagerie.js';
+import { attendEquipe } from './attente-equipe.js';
 import { ErreurAssistant, compterAppelIA } from './agent-assistant.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi.js';
 import { BUDGET_ERP_DEFAUT, BudgetEpuise, DelaiEcoule, ErreurRepull, QUOTA_MOIS_DEFAUT, lireEtat } from './repull-synchro.js';
@@ -49,6 +50,7 @@ import {
   contexteAvis,
   contientEloge,
   dateParisDe,
+  filDuSejour,
   guidePourMessage,
   idEnvoi,
   lireAvisIA,
@@ -60,9 +62,11 @@ import {
   rendreMessage,
   sejourAvecAvis,
   signatureProgrammes,
+  soucisDuSejour,
   texteAvisParDefaut,
   unMomentAllume,
   variablesDuTexte,
+  voyageurAttend,
   type DecisionPlanifiee,
   type ReservationsVues,
 } from './messages-programmes.js';
@@ -168,7 +172,9 @@ class Passage {
       try {
         if (x.genre === 'attendre') this.bilan.reportes++;
         else if (x.genre === 'ignorer') {
-          await this.ecrireEnvoi({ ...base, statut: 'ignore', raison: x.raison });
+          // La ligne de l'historique mène à la conversation du séjour quand il en a une.
+          const filId = filDuSejour(d.fils, p.reservation.id)?.id;
+          await this.ecrireEnvoi({ ...base, ...(filId ? { filId } : {}), statut: 'ignore', raison: x.raison });
           this.bilan.ignores++;
         } else if (x.genre === 'verifier') {
           // Le texte (qui peut contenir un code) ne reste que dans la conversation, comme après un envoi.
@@ -179,9 +185,16 @@ class Passage {
             this.bilan.reportes++;
             continue;
           }
-          if (x.genre === 'envoyer') await this.envoyer(p, x.fil, x.modele, signature, d.logements.get(p.reservation.logementId));
+          // Conversation relue juste avant l'envoi : le voyageur a pu écrire, ou l'agent passer la main, depuis le plan.
+          // Illisible, plus reliée au séjour ou à une plateforme, ou voyageur qui attend l'équipe : rien ne part (nouvel essai).
+          const fil = await this.relireFil(x.fil.id, p.reservation.id);
+          if (!fil || voyageurAttend(fil) || attendEquipe(fil)) {
+            this.bilan.reportes++;
+            continue;
+          }
+          if (x.genre === 'envoyer') await this.envoyer(p, fil, x.modele, signature, d.logements.get(p.reservation.logementId));
           // Reprise revérifiée par deciderEnvoi ; la clé est recalculée (jamais celle lue dans la ligne).
-          else await this.partir({ ...x.envoi, cle: cleEnvoiProgramme(p.reservation.id, p.declencheur), filId: x.fil.id }, x.fil);
+          else await this.partir({ ...x.envoi, cle: cleEnvoiProgramme(p.reservation.id, p.declencheur), filId: fil.id }, fil);
         }
       } catch (e) {
         // Écriture refusée par la base : rien n'est parti pour cette ligne (marque posée avant l'envoi).
@@ -190,6 +203,16 @@ class Passage {
     }
     if (this.repullEpuise) this.bilan.statut = 'budget';
     return vues.vues;
+  }
+
+  /** La conversation telle qu'en base maintenant ; null : illisible, absente, plus reliée à ce séjour ou à une plateforme. */
+  private async relireFil(filId: string, reservationId: string): Promise<FilMessages | null> {
+    try {
+      const [fil] = await this.o.base.lire<FilMessages>('filsMessages', [filId]);
+      return fil && fil.reservationId === reservationId && fil.repull?.id ? fil : null;
+    } catch {
+      return null;
+    }
   }
 
   private ligne(p: DecisionPlanifiee): EnvoiProgramme {
@@ -356,11 +379,12 @@ class Passage {
             source = 'ia';
             if (lu.aRelire) raisons.push(lu.raison || 'Votre agent signale un point à vérifier');
             // Séjour à relire : jamais d'éloge, même si l'IA en écrit un malgré les consignes. L'équipe l'écrira.
-            if (raisons.length && contientEloge(texte)) {
+            if (soucisDuSejour(raisons).length && contientEloge(texte)) {
               texte = '';
               source = 'modele';
             }
-            // Un avis public : jamais de lien, d'adresse, de chiffre ni d'e-mail sans relecture.
+            // Un avis public : jamais de lien, d'adresse, de chiffre ni d'e-mail sans relecture (alerte de forme,
+            // pas un souci du séjour : le texte, même élogieux, reste proposé, à relire).
             const alerte = alerteTexteAvis(texte);
             if (alerte) raisons.push(alerte);
           }

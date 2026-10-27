@@ -568,6 +568,8 @@ export function deciderEnvoi(e: EntreeDecision): DecisionEnvoi {
     if (!codesAutorises(r, filReprise.logementId, dateParisDe(maintenant)) && (!e.logement || contientCodeAcces(envoi.texte, e.logement))) {
       return { genre: 'verifier', envoi, raison: RAISONS.repriseCodes };
     }
+    // Le voyageur attend l'équipe depuis le premier essai : rien ne repart (nouvel essai tant que la reprise est possible).
+    if (voyageurAttend(filReprise) || attendEquipe(filReprise)) return { genre: 'attendre', raison: RAISONS.attend };
     if (!dansPlageEnvoi(maintenant)) return { genre: 'attendre', raison: RAISONS.horsHeures };
     return { genre: 'reprendre', envoi, fil: filReprise };
   }
@@ -748,12 +750,21 @@ export function raisonsARelire(
 const LIEN_AVIS = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:fr|com|net|org|eu|io|be|ch)\b/i;
 const ADRESSE_AVIS = /\b(?:rue|avenue|av\.|boulevard|bd|allée|allee|chemin|impasse|place|quai|route|cours|résidence|residence|bâtiment|batiment)\b/i;
 
+/**
+ * Alerte sur la FORME d'un avis (lien, adresse, chiffre, e-mail) : à relire,
+ * mais ce n'est pas un souci du séjour (le texte reste montré, éloge compris).
+ */
+export const ALERTE_FORME_AVIS = 'Le texte contient un lien, une adresse, un chiffre ou un e-mail : à vérifier avant de déposer';
+
 /** Raison de relire un avis rédigé par l'IA (lien, adresse, chiffre, e-mail) ; null : rien à signaler. */
 export function alerteTexteAvis(texte: string): string | null {
   const t = String(texte ?? '');
-  if (LIEN_AVIS.test(t) || /@/.test(t) || /\d/.test(t) || ADRESSE_AVIS.test(t)) return 'Le texte contient un lien, une adresse, un chiffre ou un e-mail : à vérifier avant de déposer';
+  if (LIEN_AVIS.test(t) || /@/.test(t) || /\d/.test(t) || ADRESSE_AVIS.test(t)) return ALERTE_FORME_AVIS;
   return null;
 }
+
+/** Les raisons qui disent un souci du séjour (incident, note basse…), sans l'alerte de forme du texte. */
+export const soucisDuSejour = (raisons: readonly string[]): string[] => raisons.filter((x) => x !== ALERTE_FORME_AVIS);
 
 /**
  * Texte simple quand l'IA n'est pas disponible. Seulement pour un séjour
@@ -793,11 +804,13 @@ export function aideAvisSansTexte(raisons: readonly string[]): string {
  */
 export function texteAvisMontre(avis: Pick<AvisADeposer, 'texte' | 'source' | 'raisons'> | undefined, raisons: readonly string[], prenom: string): string {
   const t = avis?.texte?.trim() ?? '';
-  if (!raisons.length) return t || texteAvisParDefaut(prenom);
+  // L'alerte de forme (lien, chiffre…) n'est pas un souci du séjour : le texte reste montré, à relire.
+  const soucis = soucisDuSejour(raisons);
+  if (!soucis.length) return t || texteAvisParDefaut(prenom);
   if (!t) return '';
   if (avis?.source === 'equipe') return t;
   const connues = new Set(avis?.raisons ?? []);
-  return avis?.source === 'ia' && raisons.every((x) => connues.has(x)) && !contientEloge(t) ? t : '';
+  return avis?.source === 'ia' && soucis.every((x) => connues.has(x)) && !contientEloge(t) ? t : '';
 }
 
 export interface AvisEnFile {
@@ -832,7 +845,7 @@ export function etatAvis(
     statut,
     raisons,
     texte,
-    ...(!traite && raisons.length && !texte ? { aide: aideAvisSansTexte(raisons) } : {}),
+    ...(!traite && soucisDuSejour(raisons).length && !texte ? { aide: aideAvisSansTexte(soucisDuSejour(raisons)) } : {}),
     joursRestants: joursRestantsAvis(r.depart, aujourdhui),
   };
 }

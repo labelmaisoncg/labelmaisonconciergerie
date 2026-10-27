@@ -375,7 +375,8 @@ export function preparerValidation(o: OptionsValidation): { ok: true; facture: F
   if (!frais || !frais.mensuelle) return { ok: false, erreur: 'Facture introuvable.' };
   if (frais.montantHtCentimes <= 0) return { ok: false, erreur: 'Rien à facturer ce mois-ci : le total n’est pas positif.' };
   const { mentions: _propres, ...identite } = normaliserIdentite(o.identite);
-  // Mentions du gérant ; à défaut, pour un propriétaire professionnel, pénalités et indemnité de 40 €.
+  // Propriétaire professionnel : toujours la mention légale (pénalités, indemnité de 40 €), puis les mentions
+  // du gérant ; particulier : celles du gérant seulement (mentionsFacture).
   const mentions = mentionsFacture(normaliserIdentite(o.identite), p);
   const emetteur: IdentiteSociete = { ...identite, ...(mentions ? { mentions } : {}) };
   const mention = mentionTva(emetteur);
