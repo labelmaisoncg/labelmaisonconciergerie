@@ -165,6 +165,8 @@ export interface IncidentOps {
   /** Titulaire (membre) et qui s'en occupe aujourd'hui. */
   assigneA?: Id;
   suiviPar?: Id;
+  /** Le gérant s'en occupe (« Je m’en occupe » depuis l'ERP). */
+  parGerant?: boolean;
   /** Le titulaire est absent : son remplaçant s'en occupe. */
   remplace?: Id;
   photos: string[];

@@ -10,9 +10,10 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ajouterMot, incidentsDuLogement, marquerRegle, prendreEnCharge } from '../../../data/incidents-erp';
 import { LIBELLES } from '../../../data/libelles';
-import { estUrgent } from '../../../data/operations';
+import { phraseRemplacement } from '../../../data/acces-gerant';
+import { assigneLe, estUrgent } from '../../../data/operations';
 import { useErp } from '../../../data/store';
-import { horodatageMaintenant, jourMois } from '../../../data/format';
+import { AUJOURDHUI, horodatageMaintenant, jourMois } from '../../../data/format';
 import type { Incident, Logement } from '../../../data/types';
 import { Badge, Button, Card, CardHeader, Textarea, cn } from '../../../ui';
 
@@ -21,7 +22,9 @@ function Ligne({ i, peutAgir, enVue }: { i: Incident; peutAgir: boolean; enVue: 
   const [mot, setMot] = useState<string | null>(null);
   const membre = (id?: string) => (id ? d.equipe?.find((m) => m.id === id)?.nom : undefined);
   const signalePar = membre(i.signalePar);
-  const confieA = membre(i.assigneA) ?? i.responsable;
+  // Le gérant s'en occupe, sinon la personne confiée (et, absente, qui la remplace aujourd'hui).
+  const absence = phraseRemplacement(assigneLe(d.donnees, i, AUJOURDHUI), membre);
+  const confieA = i.parGerant ? undefined : [membre(i.assigneA) ?? i.responsable, absence].filter(Boolean).join(', ') || undefined;
   const dernier = i.historique?.at(-1);
   const par = d.utilisateur.nom;
   const agir = (patch: (x: Incident) => Incident) => d.mettreAJour('incidents', i.id, patch);
@@ -38,7 +41,7 @@ function Ligne({ i, peutAgir, enVue }: { i: Incident; peutAgir: boolean; enVue: 
       <p className="mt-1 text-[12.5px] text-(--lm-encre-2)">
         {[
           signalePar ? `Signalé par ${signalePar} le ${jourMois(i.date)}` : `Noté le ${jourMois(i.date)}`,
-          regle ? (i.resoluLe ? `réglé le ${jourMois(i.resoluLe)}` : undefined) : confieA ? `confié à ${confieA}` : 'personne dessus pour l’instant',
+          regle ? (i.resoluLe ? `réglé le ${jourMois(i.resoluLe)}` : undefined) : i.parGerant ? 'le gérant s’en occupe' : confieA ? `confié à ${confieA}` : 'personne dessus pour l’instant',
         ]
           .filter(Boolean)
           .join(' · ')}

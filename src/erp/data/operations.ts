@@ -85,14 +85,41 @@ export const quiSuit = (equipe: readonly MembreEquipe[] | undefined, logementId:
 /**
  * Qui a la charge d'un logement au quotidien : la personne choisie par le
  * gérant ou le pôle (affectation), si elle suit toujours le logement ; sinon,
- * par défaut, la seule personne qui le suit. Plusieurs personnes et aucun
- * choix : personne (à choisir).
+ * par défaut, le seul agent de terrain qui le suit (le responsable de pôle
+ * voit déjà les codes de ses logements), ou la seule personne qui le suit.
+ * Plusieurs agents et aucun choix : personne (à choisir).
  */
 export function titulaireDe(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementId: Id): Id | undefined {
   const suivent = d.equipe ? quiSuit(d.equipe, logementId) : undefined;
   const choisi = affectationDe(d, logementId)?.responsableId;
   if (choisi && (!suivent || suivent.some((m) => m.id === choisi))) return choisi;
-  return suivent?.length === 1 ? suivent[0].id : undefined;
+  return titulaireParDefaut(suivent ?? []);
+}
+
+/** Le choix par défaut parmi ceux qui suivent un logement : le seul agent de terrain, sinon la seule personne. */
+function titulaireParDefaut(suivent: readonly MembreEquipe[]): Id | undefined {
+  const agents = suivent.filter((m) => m.role === 'agent');
+  if (agents.length === 1) return agents[0].id;
+  return !agents.length && suivent.length === 1 ? suivent[0].id : undefined;
+}
+
+/**
+ * Avant d'ajouter quelqu'un à des logements : le responsable par défaut de
+ * chacun devient un choix enregistré, pour que personne ne perde la charge
+ * sans le savoir. Rend les affectations à écrire (logements sans choix).
+ */
+export function affectationsAFiger(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementIds: readonly Id[]): AffectationLogement[] {
+  return [...new Set(logementIds)].flatMap((l) => {
+    const avant = affectationDe(d, l);
+    if (avant?.responsableId) return [];
+    const titulaire = titulaireDe(d, l);
+    return titulaire ? [{ ...(avant ?? { id: l }), id: l, responsableId: titulaire }] : [];
+  });
+}
+
+/** Logements gérés dont personne n'a la charge au quotidien (à choisir par le gérant). */
+export function logementsSansCharge(d: Pick<DonneesOps, 'logements' | 'affectations' | 'equipe'>): Id[] {
+  return d.logements.filter((l) => l.statut !== 'sorti' && quiSuit(d.equipe, l.id).length > 0 && !titulaireDe(d, l.id)).map((l) => l.id);
 }
 
 /** Remplaçant choisi pour un logement, s'il le suit toujours. */

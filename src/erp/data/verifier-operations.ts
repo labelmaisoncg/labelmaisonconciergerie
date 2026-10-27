@@ -24,8 +24,10 @@ import {
   POINTS_CONTROLE_DEFAUT,
   apercuAbsence,
   assigneLe,
+  affectationsAFiger,
   affectationsSans,
   affecter,
+  logementsSansCharge,
   controlesAFaire,
   court,
   remplacantDe,
@@ -49,11 +51,13 @@ import {
   type DonneesOps,
 } from './operations';
 import { creerSeed } from './seed';
-import type { Incident, Logement, Reservation } from './types';
+import { construireATraiter } from '../modules/tableau-de-bord/_composants/aTraiter.js';
+import { prendreEnCharge } from './incidents-erp';
+import type { Incident, Logement, Mandat, Reservation } from './types';
 import type { AbsenceMembre, ControleQualite } from './types-operations';
-import { COLLECTIONS_OPS, appliquerAction, avecEcritures, conflitEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
+import { COLLECTIONS_OPS, affectationsEffectives, remplacantsPossibles, appliquerAction, avecEcritures, conflitEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
 import { photoOperations } from './operations-fichiers';
-import { ficheResponsableInvite, logementsSansPersonne, phrasesTransferts, statutAccesExterne, transfertsProprietaire } from './acces-gerant';
+import { ficheResponsableInvite, logementsSansPersonne, mandatDuProprietaire, phraseRemplacement, phrasesTransferts, statutAccesExterne, transfertsProprietaire } from './acces-gerant';
 import { inviterMembre } from './operations-acces';
 import { lireSessionExterne, signerSessionExterne } from './acces-externe';
 import { ID_LABEL_MAISON } from './espaces';
@@ -584,15 +588,26 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
 {
   // B3 : sans aucune affectation (production), la seule personne qui suit un logement en a la charge.
   const sans = entrees({ affectations: [] });
-  verifier(titulaireDe(sans, 'L3') === undefined && titulaireDe(sans, 'L2') === 'A', 'sans affectation : L2 (suivi par A seule) à A ; L3 (A et C) à choisir');
-  verifier(responsableLe(sans, 'L2', J).membreId === 'A' && !responsableLe(sans, 'L1', J).membreId, 'responsable du jour : par défaut, et personne quand plusieurs suivent sans choix');
+  verifier(titulaireDe(sans, 'L1') === 'B' && titulaireDe(sans, 'L3') === 'C' && titulaireDe(sans, 'L2') === 'A', 'N1 : sans affectation, le seul agent du logement (L1 : B, L3 : C) ; sans agent, la seule personne (L2 : A, le pôle)');
+  verifier(responsableLe(sans, 'L2', J).membreId === 'A' && responsableLe(sans, 'L1', J).membreId === 'B', 'responsable du jour : le choix par défaut');
+  const deuxAgents = entrees({ affectations: [], equipe: [...entrees().equipe, { id: 'D', nom: 'Denis Roy', role: 'agent', logementIds: ['L1'], actif: true }] });
+  verifier(titulaireDe(deuxAgents, 'L1') === undefined && logementsSansCharge(deuxAgents).join() === 'L1', 'deux agents, aucun choix : personne, et le logement est signalé au gérant');
   const solo = entrees({ affectations: [], equipe: [{ id: 'S', nom: 'Sam Seul', role: 'agent', logementIds: ['L1'], actif: true }] });
   verifier(!!vueOperations(solo, 'S', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'sans affectation : la seule personne du logement a le code le jour de l’arrivée');
   let n = 0;
   const ctxG: ContexteAction = { aujourdhui: J, maintenant: `${J}T09:00:00.000Z`, nouvelId: (p) => `${p}-g${++n}`, photoAcceptee: () => false };
   const signale = appliquerAction(solo, 'S', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite d’eau sous l’évier.' }, ctxG);
   verifier(signale.ok && (signale.ecritures[0].element as Incident).assigneA === 'S', 'sans affectation : l’incident signalé lui est confié');
-  verifier(!vueOperations(sans, 'B', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'plusieurs personnes, aucun choix : pas de code tant que le gérant n’a pas choisi');
+  verifier(!!vueOperations(sans, 'B', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'N1 : pôle et agent sur le logement, sans choix : l’agent a le code le jour de l’arrivée');
+  const urgence = appliquerAction(sans, 'B', { type: 'signaler', logementId: 'L1', urgent: true, description: 'Fuite d’eau sous l’évier.' }, ctxG);
+  verifier(urgence.ok && (urgence.ecritures[0].element as Incident).assigneA === 'B', 'N1 : son urgence lui est confiée');
+  verifier(!vueOperations(deuxAgents, 'D', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'deux agents sans choix : pas de code tant que le gérant n’a pas choisi');
+  // Ajouter quelqu'un : le choix par défaut est d'abord enregistré.
+  const figees = affectationsAFiger(sans, ['L1', 'L2', 'L3']);
+  verifier(figees.map((a) => `${a.id}:${a.responsableId}`).join() === 'L1:B,L2:A,L3:C', 'N1 : avant d’ajouter quelqu’un, le responsable par défaut devient un choix enregistré');
+  const apresAjout = { ...deuxAgents, affectations: affectationsAFiger(sans, ['L1']) };
+  verifier(titulaireDe(apresAjout, 'L1') === 'B', 'N1 : après l’ajout d’un second agent, B garde la charge');
+  verifier(affectationsAFiger(entrees(), ['L1', 'L3']).length === 0, 'un choix déjà enregistré : rien à figer');
   const vuePole = vueOperations(sans, 'A', { aujourdhui: J })!;
   verifier(vuePole.affectations.find((a) => a.id === 'L2')?.responsableId === 'A', 'vue du pôle : affectations effectives (choix par défaut compris)');
 
@@ -607,7 +622,28 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
   verifier(roleSurLogement(apresA1, 'L1', 'B') === 'quotidien' && roleSurLogement(apresA1, 'L1', 'A') === 'renfort' && roleSurLogement(sans, 'L2', 'A') === 'quotidien', 'rôle affiché : choisi, en renfort, ou par défaut');
   verifier(affecter({ ...sans, affectations: [{ id: 'L3', pointsControle: ['Jacuzzi'] }] }, 'L3', 'C', 'quotidien').pointsControle?.[0] === 'Jacuzzi', 'les points de contrôle du logement restent');
   const parti = { ...sans, affectations: [{ id: 'L1', responsableId: 'Z', remplacantId: 'B' }] };
-  verifier(titulaireDe(parti, 'L1') === undefined && remplacantDe(parti, 'L1') === 'B', 'responsable choisi qui ne suit plus le logement : plus en charge');
+  verifier(titulaireDe(parti, 'L1') === 'B' && remplacantDe(parti, 'L1') === 'B', 'responsable choisi qui ne suit plus le logement : le choix par défaut reprend');
+
+  // N2 : remplaçants proposés au gérant : ceux qui suivent tous les logements qui lui reviendraient.
+  const poss = remplacantsPossibles({ ...sans, affectations: affectationsEffectives(sans) }, 'B');
+  verifier(poss.join() === 'A', `N2 : pour B (L1), seule A suit L1 (obtenu ${poss.join()})`);
+  const posC = remplacantsPossibles({ ...sans, affectations: affectationsEffectives(sans) }, 'C');
+  verifier(posC.join() === 'A' && !posC.includes('B'), 'N2 : pour C (L3), pas B qui ne suit pas L3');
+
+  // N3 : la fiche dit l'absence.
+  const nomDe = (id?: string) => entrees().equipe.find((m) => m.id === id)?.nom;
+  const absent = { ...sans, absences: [{ id: 'abs-b', membreId: 'B', du: J, au: J, remplacantId: 'A' }] };
+  verifier(phraseRemplacement(responsableLe(absent, 'L1', J), nomDe) === 'absent · Alice Martin le remplace', 'N3 : titulaire absent : « absent · Alice Martin le remplace »');
+  verifier(phraseRemplacement(assigneLe(absent, { assigneA: 'B', logementId: 'L1' }, J), nomDe) === 'absent · Alice Martin le remplace', 'N3 : incident confié à un absent : même phrase');
+  const seul = { ...sans, absences: [{ id: 'abs-c', membreId: 'C', du: J, au: J }] };
+  verifier(phraseRemplacement(responsableLe(seul, 'L3', J), nomDe) === 'absent · personne ne le remplace', 'N3 : absent sans remplaçant : « personne ne le remplace »');
+  verifier(phraseRemplacement(responsableLe(sans, 'L1', J), nomDe) === undefined, 'N3 : présent : rien de plus');
+
+  // N5 : mandat du propriétaire actuel seulement.
+  const mandat = (id: string, proprietaireId: string, dateDebut: string) => ({ id, proprietaireId, logementId: 'L1', statut: 'signe', commissionPct: 18, dateDebut }) as unknown as Mandat;
+  const mandats = [mandat('m-ancien', 'pro-ancien', '2025-11-20'), mandat('m-autre', 'pro-x', '2026-01-01')];
+  verifier(mandatDuProprietaire(mandats, 'L1', 'pro-ancien')?.id === 'm-ancien', 'N5 : le mandat de son propriétaire');
+  verifier(mandatDuProprietaire(mandats, 'L1', 'pro-nouveau') === undefined, 'N5 : après un transfert, le mandat de l’ancien propriétaire ne s’affiche plus');
 
   // 9 : retirer quelqu'un d'un logement.
   const nettoyees = affectationsSans([{ id: 'L1', responsableId: 'B', remplacantId: 'A' }, { id: 'L2', responsableId: 'A' }, { id: 'L3', remplacantId: 'B' }], 'B', ['L1']);
@@ -642,6 +678,24 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
   verifier(ficheResponsableInvite(equipe, { nom: 'x', email: 'b@exemple.fr', role: 'pole', logementIds: [] }, () => 'n').membre.role === 'pole', 'rôle choisi explicitement : appliqué');
   const nouvelle = ficheResponsableInvite(equipe, { nom: ' Nina ', email: 'nina@exemple.fr', logementIds: ['L1'] }, () => 'eq-nina');
   verifier(!nouvelle.reprise && nouvelle.membre.id === 'eq-nina' && nouvelle.membre.role === 'agent' && nouvelle.membre.nom === 'Nina', 'nouvelle personne : agent de terrain par défaut');
+}
+
+
+section('Accueil du gérant : logements sans personne en charge, « pas à moi », liens des incidents');
+{
+  const s0 = creerSeed();
+  const sansChoix = { ...s0, affectations: [] };
+  const vides = logementsSansCharge(sansChoix);
+  const ligne = construireATraiter(sansChoix, DATE_DEMO).find((x) => x.type === 'charge');
+  verifier(!vides.length || (ligne?.liens?.length === vides.length && ligne.to === `/erp/logements/${vides[0]}`), 'N1 : « N logements sans personne en charge », chaque ligne mène à sa fiche');
+  const deux = { ...s0, affectations: [], equipe: s0.equipe.map((m) => (m.role === 'agent' ? { ...m, logementIds: [...new Set([...m.logementIds, 'log-massy'])] } : m)) };
+  verifier(logementsSansCharge(deux).includes('log-massy') && construireATraiter(deux, DATE_DEMO).some((x) => x.type === 'charge'), 'N1 : deux agents sur Massy sans choix : ligne « sans personne en charge »');
+  verifier(!construireATraiter(deux, DATE_DEMO, { gerant: false }).some((x) => x.type === 'charge' || x.type === 'signalement'), 'N4 : pour un compte qui n’est pas gérant, ni « pas à moi » ni « sans personne en charge »');
+  verifier(construireATraiter(s0, DATE_DEMO).some((x) => x.type === 'signalement'), 'N4 : le gérant garde la ligne « pas à moi »');
+  const urg = construireATraiter(s0, DATE_DEMO).find((x) => x.type === 'urgence');
+  verifier(!urg || urg.details.length < 2 || urg.liens?.length === urg.details.length, 'S2 : plusieurs urgences : chaque ligne mène à son incident');
+  const pris = prendreEnCharge(s0.incidents.find((i) => i.statut === 'ouvert')!, 'Gérant', `${DATE_DEMO}T10:00:00Z`);
+  verifier(pris.parGerant === true && pris.statut === 'en_cours', 'S1 : « Je m’en occupe » du gérant : noté comme tel');
 }
 
 /* ---------------------------------------------------------- notifications */

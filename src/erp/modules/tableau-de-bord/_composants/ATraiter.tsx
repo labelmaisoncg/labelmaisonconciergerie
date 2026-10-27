@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BotMessageSquare, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, MessageSquareWarning, PhoneCall, RefreshCw, Siren, Star, type LucideIcon } from 'lucide-react';
+import { BotMessageSquare, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, MessageSquareWarning, PhoneCall, RefreshCw, Siren, Star, UserX, type LucideIcon } from 'lucide-react';
 import { Card, CardHeader, Drawer, EmptyState, TON_LAVIS, cn } from '../../../ui';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
@@ -13,6 +13,7 @@ const ICONES: Record<TypeATraiter, LucideIcon> = {
   urgence: Siren,
   incident: CircleAlert,
   signalement: Flag,
+  charge: UserX,
 };
 
 const PRIORITES = { 1: 'Aujourd’hui', 2: 'Cette semaine' } as const;
@@ -38,7 +39,13 @@ function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
         <ul className="mt-0.5 space-y-0.5 text-[12.5px] text-(--lm-encre-2)">
           {apercu.map((t, i) => (
             <li key={i} className="truncate" title={t}>
-              {t}
+              {e.liens?.[i] ? (
+                <Link to={e.liens[i]} className="hover:text-(--lm-or-texte) hover:underline">
+                  {t}
+                </Link>
+              ) : (
+                t
+              )}
             </li>
           ))}
         </ul>
