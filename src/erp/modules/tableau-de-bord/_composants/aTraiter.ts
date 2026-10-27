@@ -132,7 +132,8 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   if (avis.length)
     liste.push({
       id: 'avis', type: 'avis', priorite: 2, ton: 'alerte', to: `/erp/reservations/${avis[0].id}`,
-      titre: avis.length > 1 ? `${avis.length} avis sous ${String(NOTE_A_LIRE).replace('.', ',')} à lire` : `Un avis sous ${String(NOTE_A_LIRE).replace('.', ',')} à lire`,
+      // Notes LAISSÉES par les voyageurs (à lire), à ne pas confondre avec « N avis à déposer » (ceux que vous écrivez).
+      titre: avis.length > 1 ? `${avis.length} notes de voyageurs sous ${String(NOTE_A_LIRE).replace('.', ',')}` : `Une note de voyageur sous ${String(NOTE_A_LIRE).replace('.', ',')}`,
       details: avis.map((r) => `${r.voyageur.nom}, note ${String(r.noteVoyageur).replace('.', ',')} (${nom(r.logementId)})`),
     });
 

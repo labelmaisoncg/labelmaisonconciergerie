@@ -28,7 +28,7 @@ import {
 import { AUJOURDHUI, MAINTENANT, ajouterJours } from './format';
 import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
 import { creerSeed } from './seed';
-import { CODES_REFUS_BASE, ErreurSynchro, Synchro, differences, refusParLaBase, type ChangementDistant, type EtatSynchro, type RefusBase } from './synchro';
+import { CODES_REFUS_BASE, ErreurSynchro, Synchro, differences, erreurDeLigne, refusParLaBase, type ChangementDistant, type EtatSynchro, type RefusBase } from './synchro';
 import type { ClientErp } from './supabase';
 import type { ErpDonnees, Logement, Reservation } from './types';
 
@@ -59,7 +59,9 @@ class FausseBase {
    * Refus de la base pour une ligne (règle RLS, déclencheur) : toute la
    * requête échoue, comme une instruction Postgres. null : acceptée.
    */
-  refus: ((methode: 'POST' | 'DELETE', collection: string, id: string) => { status: number; corps: Record<string, unknown> } | null) | null = null;
+  refus: ((methode: 'POST' | 'DELETE', collection: string, id: string) => { status: number; corps: Record<string, unknown> | string } | null) | null = null;
+  /** Lecture d'une ligne en panne (503) : relecture impossible. */
+  lectureEnPanne = false;
 
   cle = (c: string, id: string) => `${c}\u0000${id}`;
 
@@ -89,6 +91,7 @@ class FausseBase {
 
     if (table === 'enregistrements') {
       if (methode === 'GET') {
+        if (this.lectureEnPanne) return json(503, { message: 'Service Unavailable' });
         let lignes = [...this.enregistrements.values()].sort((a, b) =>
           a.collection === b.collection ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.collection < b.collection ? -1 : 1,
         );
@@ -104,7 +107,7 @@ class FausseBase {
         if (!prefer.includes('resolution=merge-duplicates')) return json(400, { message: 'upsert attendu' });
         for (const l of corps as Ligne[]) {
           const r = this.refus?.('POST', l.collection, l.id);
-          if (r) return json(r.status, { details: null, hint: null, ...r.corps });
+          if (r) return reponseRefus(r);
         }
         for (const l of corps as Ligne[]) this.enregistrements.set(this.cle(l.collection, l.id), { ...l });
         return new Response(null, { status: 201 });
@@ -121,7 +124,7 @@ class FausseBase {
               .map((x) => x.replace(/^"|"$/g, ''));
         for (const id of ids) {
           const r = this.refus?.('DELETE', collection ?? '', id);
-          if (r) return json(r.status, { details: null, hint: null, ...r.corps });
+          if (r) return reponseRefus(r);
         }
         for (const id of ids) this.enregistrements.delete(this.cle(collection ?? '', id));
         return new Response(null, { status: 204 });
@@ -140,6 +143,13 @@ class FausseBase {
 
 function json(status: number, corps: unknown): Response {
   return new Response(JSON.stringify(corps), { status, headers: { 'Content-Type': 'application/json' } });
+}
+
+/** Refus simulé : erreur PostgREST (JSON), ou page HTML d'un pare-feu (texte). */
+function reponseRefus(r: { status: number; corps: Record<string, unknown> | string }): Response {
+  return typeof r.corps === 'string'
+    ? new Response(r.corps, { status: r.status, headers: { 'Content-Type': 'text/html' } })
+    : json(r.status, { details: null, hint: null, ...r.corps });
 }
 
 class FauxStockage {
@@ -433,8 +443,27 @@ async function principal() {
         !refusParLaBase({ code: 'PGRST301', message: 'JWT expired' }, 401) &&
         !refusParLaBase({ code: '42501', message: 'new row violates row-level security policy for table "enregistrements"' }, 401) &&
         !refusParLaBase({ code: '42501', message: 'permission denied for table enregistrements' }, 403) &&
+        !refusParLaBase({ message: '<html><body>403 Forbidden</body></html>' }, 403) &&
+        !refusParLaBase({ message: 'Forbidden' }, 403) &&
         !refusParLaBase(null),
-      'réessayés comme avant : réseau, 5xx, session expirée, droit manquant sur la table (réglage de la base)',
+      'réessayés comme avant : réseau, 5xx, session expirée, droit manquant sur la table, 403 sans code (pare-feu, proxy)',
+    );
+    verifier(
+      erreurDeLigne({ code: '22P05', message: 'unsupported Unicode escape sequence' }, 400) &&
+        erreurDeLigne({ code: '23505', message: 'duplicate key value' }, 409) &&
+        erreurDeLigne({ message: 'Payload Too Large' }, 413) &&
+        erreurDeLigne({ code: 'LMF01', message: 'Facture numérotée' }, 400),
+      'données refusées pour une ligne : caractère nul, doublon, trop gros, facture figée',
+    );
+    verifier(
+      !erreurDeLigne({ message: 'Forbidden' }, 403) &&
+        !erreurDeLigne({ code: 'PGRST204', message: 'Could not find the \'espace\' column of \'enregistrements\' in the schema cache' }, 400) &&
+        !erreurDeLigne({ code: '42703', message: 'column "espace" does not exist' }, 400) &&
+        !erreurDeLigne({ message: 'Too Many Requests' }, 429) &&
+        !erreurDeLigne({ message: 'Request Timeout' }, 408) &&
+        !erreurDeLigne({ code: 'PGRST301', message: 'JWT expired' }, 401) &&
+        !erreurDeLigne({ message: 'Bad Request' }, 400),
+      'jamais une erreur de ligne : 403 sans code, schéma (PGRST, 42703), 429, 408, 401, 400 sans code',
     );
 
     // Un lot de trois lignes : facture figée (LMF01), réglage réservé au gérant (RLS), logement accepté.
@@ -497,6 +526,85 @@ async function principal() {
       refus,
     );
     s.arreter();
+
+    // Pare-feu ou proxy : 403 en HTML, sans code Postgres, sur chaque ligne. Rien n'est retiré : nouvel essai.
+    {
+      const b = new FausseBase();
+      const r403: RefusBase[][] = [];
+      const { s: s4, etats: e4 } = nouvelleSynchro(b, { surRefus: (r) => r403.push(r), enLigne: () => true });
+      let pareFeu = true;
+      b.refus = () => (pareFeu ? { status: 403, corps: '<html><body><h1>403 Forbidden</h1>Request blocked.</body></html>' } : null);
+      const deux = { ...avant, logements: [logementTest('log-pf-1'), logementTest('log-pf-2')] } as unknown as ErpDonnees;
+      const ok4 = await s4.sauvegarderDifferences(avant, deux, 'Abdel');
+      verifier(
+        !ok4 && s4.enAttente === 2 && !r403.length && e4[e4.length - 1].statut === 'erreur' && b.compter('POST') === 1,
+        '403 sans code (page HTML d’un pare-feu) : rien retiré de la file, aucun « réservée au gérant », nouvel essai programmé',
+        { enAttente: s4.enAttente, refus: r403, etat: e4[e4.length - 1], requetes: b.requetes },
+      );
+      pareFeu = false;
+      await attendre(1300);
+      verifier(s4.enAttente === 0 && b.enregistrements.has(b.cle('logements', 'log-pf-1')) && b.enregistrements.has(b.cle('logements', 'log-pf-2')), 'pare-feu levé : les deux lignes enregistrées au nouvel essai');
+      s4.arreter();
+    }
+
+    // Données refusées pour une seule ligne (22P05) : elle seule est retirée, les autres partent ; PGRST204 : tout réessayé.
+    {
+      const b = new FausseBase();
+      const r22: RefusBase[][] = [];
+      const { s: s5, etats: e5 } = nouvelleSynchro(b, { surRefus: (r) => r22.push(r), enLigne: () => true });
+      b.refus = (_m, _c, id) => (id === 'log-nul' ? { status: 400, corps: { code: '22P05', message: 'unsupported Unicode escape sequence' } } : null);
+      const ok5 = await s5.sauvegarderDifferences(avant, { ...avant, logements: [logementTest('log-nul'), logementTest('log-sain')] } as unknown as ErpDonnees, 'Abdel');
+      await attendre(40);
+      verifier(
+        ok5 && s5.enAttente === 0 && b.enregistrements.has(b.cle('logements', 'log-sain')) && !b.enregistrements.has(b.cle('logements', 'log-nul')) && r22.length === 1 && r22[0][0].code === '22P05',
+        'ligne aux données refusées (22P05) : retirée seule, l’autre enregistrée, signalé une fois, file débloquée',
+        r22,
+      );
+      verifier(e5[e5.length - 1].statut === 'a_jour', 'puis statut « à jour »');
+      s5.arreter();
+
+      const b2 = new FausseBase();
+      const rSchema: RefusBase[][] = [];
+      const { s: s6 } = nouvelleSynchro(b2, { surRefus: (r) => rSchema.push(r), enLigne: () => true });
+      b2.refus = () => ({ status: 400, corps: { code: 'PGRST204', message: 'Could not find the \'espace\' column of \'enregistrements\' in the schema cache' } });
+      const ok6 = await s6.sauvegarderDifferences(avant, { ...avant, logements: [logementTest('log-schema')] } as unknown as ErpDonnees, 'Abdel');
+      verifier(!ok6 && s6.enAttente === 1 && !rSchema.length && b2.compter('POST') === 1, 'erreur de schéma (PGRST204) : rien retiré, nouvel essai (toutes les lignes y passeraient)');
+      s6.arreter();
+
+      const b3 = new FausseBase();
+      const r429: RefusBase[][] = [];
+      const { s: s7 } = nouvelleSynchro(b3, { surRefus: (r) => r429.push(r), enLigne: () => true });
+      b3.refus = () => ({ status: 429, corps: { message: 'Too Many Requests' } });
+      const ok7 = await s7.sauvegarderDifferences(avant, { ...avant, logements: [logementTest('log-429')] } as unknown as ErpDonnees, 'Abdel');
+      verifier(!ok7 && s7.enAttente === 1 && !r429.length, '429 (trop de requêtes) : rien retiré, nouvel essai');
+      s7.arreter();
+    }
+
+    // v1 acceptée puis v2 refusée sur la même ligne : une relecture complète lue avant v1 rejoue v1, pas v2.
+    {
+      const b = new FausseBase();
+      let resynchros = 0;
+      const { s: s8 } = nouvelleSynchro(b, { enLigne: () => true, surResynchro: () => (resynchros += 1) });
+      s8.activerDistant();
+      const repere = s8.repere();
+      const v1 = { ...logementTest('log-v'), nom: 'Version 1' };
+      const avecV1 = { ...avant, logements: [v1] } as unknown as ErpDonnees;
+      await s8.sauvegarderDifferences(avant, avecV1, 'Abdel');
+      b.refus = (_m, _c, id) => (id === 'log-v' ? { status: 403, corps: { code: '42501', message: 'new row violates row-level security policy for table "enregistrements"' } } : null);
+      b.lectureEnPanne = true;
+      await s8.sauvegarderDifferences(avecV1, { ...avant, logements: [{ ...v1, nom: 'Version 2' }] } as unknown as ErpDonnees, 'Abdel');
+      await attendre(40);
+      const rejoue = s8.appliquerFile(donneesVides(), repere);
+      verifier(
+        (b.enregistrements.get(b.cle('logements', 'log-v'))!.donnees as { nom: string }).nom === 'Version 1' && rejoue.logements.find((l) => l.id === 'log-v')?.nom === 'Version 1',
+        'relecture complète : la version acceptée (v1) est rejouée, jamais la version refusée (v2)',
+        rejoue.logements,
+      );
+      // Le client réessaie lui-même une lecture en 503 quelques fois avant de rendre l'erreur.
+      for (let i = 0; i < 100 && !resynchros; i++) await attendre(100);
+      verifier(resynchros >= 1, 'relecture de la ligne refusée impossible : relecture complète demandée', resynchros);
+      s8.arreter();
+    }
 
     // Panne du serveur (5xx) : comportement d'avant, gardé en file et réessayé.
     const base2 = new FausseBase();

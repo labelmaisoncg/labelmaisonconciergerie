@@ -4,6 +4,7 @@
  */
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { attendEquipe } from '../../../data/attente-equipe';
 import { AUJOURDHUI, ajouterJours, dateJour, ecartJours, heure, jourMois, pluriel } from '../../../data/format';
 import { PAR_MESSAGE_AUTO } from '../../../data/messages-programmes';
 import type { FilMessages, Logement, Message, RaisonEscalade, Reservation } from '../../../data/types';
@@ -103,13 +104,10 @@ export const FILTRES: { cle: FiltreFil; libelle: string }[] = [
 
 /**
  * Attend une réponse de l'équipe : transmise par l'agent, ou sans réponse de
- * personne. « Pas besoin de répondre » la termine ; elle revient d'elle-même
- * quand le voyageur réécrit (synchronisation). Même règle que le compteur du
- * menu et que « À faire » sur l'Accueil.
+ * personne. Même règle que le compteur du menu, « À faire » sur l'Accueil et
+ * les messages automatiques (une seule définition : data/attente-equipe.ts).
  */
-export function attendEquipe(fil: FilMessages): boolean {
-  return fil.statut !== 'clos' && (fil.statut === 'escalade' || fil.traitePar === 'en_attente');
-}
+export { attendEquipe };
 
 export function correspond(fil: FilMessages, filtre: FiltreFil): boolean {
   switch (filtre) {

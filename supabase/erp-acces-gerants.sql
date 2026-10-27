@@ -159,10 +159,9 @@ begin
     if old.collection = 'factures' and old.id = new.id then
       avant := btrim(coalesce(old.donnees ->> 'numero', ''));
     end if;
-  else
-    select btrim(coalesce(e.donnees ->> 'numero', '')) into avant from erp.enregistrements e
-      where e.collection = 'factures' and e.id = new.id;
-    avant := coalesce(avant, '');
+  elsif exists (select 1 from erp.enregistrements e where e.collection = 'factures' and e.id = new.id) then
+    -- Déjà enregistrée : « on conflict do nothing » reste silencieux, « do update » est vérifié plus bas.
+    return new;
   end if;
   if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
     raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'
@@ -308,6 +307,14 @@ begin
     exception when sqlstate 'LMF01' or sqlstate 'LMF02' then n := -1;
     end;
     if n <> 1 then resultat := 'le paiement d''une facture numérotée (même numéro) ne s''écrit plus'; raise exception 'stop'; end if;
+    -- Ajout si absente (« on conflict do nothing ») sur une facture déjà numérotée : silencieux.
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('factures', 'recette-acces', '{"id": "recette-acces", "numero": ""}')
+      on conflict do nothing;
+      get diagnostics n = row_count;
+    exception when sqlstate 'LMF01' or sqlstate 'LMF02' then n := -1;
+    end;
+    if n <> 0 then resultat := 'l''ajout d''une facture déjà là n''est plus silencieux'; raise exception 'stop'; end if;
     -- Deux factures ne partagent pas un numéro (index unique), même écrit par le propriétaire de la base.
     perform set_config('role', 'none', true);
     if to_regclass('erp.enregistrements_numero_facture') is not null then

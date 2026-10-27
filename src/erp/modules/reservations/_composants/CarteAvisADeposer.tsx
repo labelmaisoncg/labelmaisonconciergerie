@@ -3,7 +3,9 @@
  * (par l'IA du serveur, ou un texte simple), à copier puis coller sur
  * Airbnb. L'ERP ne publie rien : « Ouvrir Airbnb » est un simple lien.
  * Ensuite « C’est fait » ou « Passer ». Un séjour avec incident, note basse
- * ou message négatif est « à relire », jamais présenté comme prêt.
+ * ou message négatif est « à relire », jamais présenté comme prêt, et jamais
+ * prérempli d'un éloge : sans texte sûr, le champ est vide et une ligne dit
+ * pourquoi l'écrire soi-même (etatAvis, aide).
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -107,10 +109,19 @@ export function CarteAvisADeposer({ r }: { r: Reservation }) {
               </ul>
             </Alert>
           )}
-          <Textarea aria-label="Texte de l’avis" rows={4} value={texte} disabled={!modifiable} onChange={(e) => setTexte(e.target.value)} />
+          {/* À relire sans texte sûr : rien de prérempli (jamais d'éloge), une ligne dit pourquoi. */}
+          {etat.aide && <p className="mb-2 text-[13px] text-(--lm-encre)">{etat.aide}</p>}
+          <Textarea
+            aria-label="Texte de l’avis"
+            rows={4}
+            value={texte}
+            disabled={!modifiable}
+            placeholder={etat.aide ? 'Un avis neutre et factuel.' : undefined}
+            onChange={(e) => setTexte(e.target.value)}
+          />
           <p className="mt-1.5 text-[12.5px] text-(--lm-encre-3)">
             {etat.joursRestants > 0 ? `Encore ${pluriel(etat.joursRestants, 'jour')} pour le déposer sur Airbnb.` : 'Dernier jour pour le déposer sur Airbnb.'}
-            {etat.avis?.source === 'ia' ? ' Texte préparé par votre agent.' : ''}
+            {etat.avis?.source === 'ia' && etat.texte ? ' Texte préparé par votre agent.' : ''}
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Button icone={<Copy />} onClick={() => void copier()} disabled={!texte.trim()}>

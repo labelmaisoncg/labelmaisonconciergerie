@@ -1176,9 +1176,10 @@ begin
   end if;
   v_texte := v_compteur -> 'derniers' ->> v_annee;
   v_dernier := case when v_texte ~ '^\d{1,9}$' then v_texte::int else 0 end;
-  select coalesce(max((substring(e.donnees ->> 'numero' from '^\d{4}-(\d{4,9})$'))::int), 0) into v_max
+  -- Numéros lus sans espaces autour, comme l'index unique qui les compare.
+  select coalesce(max((substring(btrim(e.donnees ->> 'numero') from '^\d{4}-(\d{4,9})$'))::int), 0) into v_max
     from erp.enregistrements e
-    where e.espace = v_espace and e.collection = 'factures' and e.donnees ->> 'numero' ~ ('^' || v_annee || '-\d{4,9}$');
+    where e.espace = v_espace and e.collection = 'factures' and btrim(e.donnees ->> 'numero') ~ ('^' || v_annee || '-\d{4,9}$');
   v_suite := greatest(v_dernier, v_max) + 1;
   v_numero := v_annee || '-' || lpad(v_suite::text, 4, '0');
   -- Heure de Paris avec son décalage, au format de l'ERP (« 2026-11-02T10:30:00+01:00 »).
@@ -1243,8 +1244,10 @@ create trigger figer_facture_numerotee before update or delete on erp.enregistre
 -- l'annonce par set_config('erp.numerotation', 'on', true) le temps de son
 -- écriture). Toute autre écriture par l'API qui pose, change ou efface un
 -- numéro est refusée (LMF02), gérant compris : un navigateur ne donne jamais
--- un numéro, même déjà pris. Un ajout qui devient modification (upsert) est
--- comparé à la ligne déjà enregistrée.
+-- un numéro, même déjà pris. Ajout d'une facture déjà enregistrée : laissé
+-- passer ici (« on conflict do nothing » reste silencieux ; « on conflict do
+-- update » passe par la vérification de la modification) ; nouvelle facture :
+-- sans numéro.
 create or replace function erp.reserver_numero_facture() returns trigger
 language plpgsql set search_path = ''
 as $$
@@ -1259,10 +1262,9 @@ begin
     if old.collection = 'factures' and old.id = new.id and old.espace is not distinct from new.espace then
       avant := btrim(coalesce(old.donnees ->> 'numero', ''));
     end if;
-  else
-    select btrim(coalesce(e.donnees ->> 'numero', '')) into avant from erp.enregistrements e
-      where e.espace = new.espace and e.collection = 'factures' and e.id = new.id;
-    avant := coalesce(avant, '');
+  elsif exists (select 1 from erp.enregistrements e
+                where e.espace = new.espace and e.collection = 'factures' and e.id = new.id) then
+    return new;
   end if;
   if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
     raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'
@@ -1545,7 +1547,9 @@ begin
       (lm, 'conseilsPrix', 'reglages', '{"id": "reglages"}'),
       (lm, 'reglages', 'agent', '{"id": "agent"}'),
       (lm, 'factures', 'recette-fm-1', '{"id": "recette-fm-1", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-15", "montantHtCentimes": 100, "mensuelle": {"mois": "2098-12"}}'),
-      (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-16", "montantHtCentimes": 200, "mensuelle": {"mois": "2098-12"}}')
+      (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-16", "montantHtCentimes": 200, "mensuelle": {"mois": "2098-12"}}'),
+      -- Ancienne facture au numéro entouré d'espaces : la suite part après elle (2099-0002).
+      (lm, 'factures', 'recette-fm-0', '{"id": "recette-fm-0", "numero": " 2099-0001 ", "statut": "payee"}')
     on conflict do nothing;
     -- Deux factures d'un espace ne partagent pas un numéro (index unique), même
     -- écrites par le propriétaire de la base ; un autre espace a sa propre suite.
@@ -1673,19 +1677,19 @@ begin
     -- Le numéro ne s'écrit jamais directement, même par un gérant (LMF02) : ni
     -- sur un brouillon, ni sur une nouvelle facture, ni par un envoi groupé.
     begin
-      update erp.enregistrements set donnees = donnees || '{"numero": "2099-0001"}' where espace = lm and collection = 'factures' and id = 'recette-fm-2';
+      update erp.enregistrements set donnees = donnees || '{"numero": "2099-0051"}' where espace = lm and collection = 'factures' and id = 'recette-fm-2';
       resultat := 'factures : un gérant écrit lui-même le numéro d''un brouillon'; raise exception 'stop';
     exception when sqlstate 'LMF02' then null;
     end;
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values
-        (lm, 'factures', 'recette-fm-3', '{"id": "recette-fm-3", "numero": "2099-0003", "statut": "emise"}');
+        (lm, 'factures', 'recette-fm-3', '{"id": "recette-fm-3", "numero": "2099-0053", "statut": "emise"}');
       resultat := 'factures : un gérant crée une facture avec son numéro'; raise exception 'stop';
     exception when sqlstate 'LMF02' then null;
     end;
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values
-        (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "2099-0001", "statut": "emise"}')
+        (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "2099-0052", "statut": "emise"}')
       on conflict (espace, collection, id) do update set donnees = excluded.donnees;
       resultat := 'factures : un envoi du navigateur pose le numéro d''un brouillon'; raise exception 'stop';
     exception when sqlstate 'LMF02' then null;
@@ -1694,10 +1698,15 @@ begin
     update erp.enregistrements set donnees = donnees || '{"montantHtCentimes": 250}' where espace = lm and collection = 'factures' and id = 'recette-fm-2';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'factures : un gérant ne prépare plus un brouillon'; raise exception 'stop'; end if;
-    if erp.numeroter_facture('recette-fm-1') <> '2099-0001' or erp.numeroter_facture('recette-fm-2') <> '2099-0002' then
-      resultat := 'factures : numéros pas à la suite'; raise exception 'stop';
-    end if;
-    if erp.numeroter_facture('recette-fm-1') <> '2099-0001' then
+    -- Après l'ancienne facture « 2099-0001 » (entourée d'espaces) : 2099-0002 puis 2099-0003.
+    begin
+      if erp.numeroter_facture('recette-fm-1') <> '2099-0002' or erp.numeroter_facture('recette-fm-2') <> '2099-0003' then
+        resultat := 'factures : numéros pas à la suite'; raise exception 'stop';
+      end if;
+    exception when unique_violation then
+      resultat := 'factures : la numérotation redonne un numéro déjà pris (numéro entouré d''espaces)'; raise exception 'stop';
+    end;
+    if erp.numeroter_facture('recette-fm-1') <> '2099-0002' then
       resultat := 'factures : un second appel change le numéro'; raise exception 'stop';
     end if;
     select count(*) into n from erp.enregistrements
@@ -1705,7 +1714,7 @@ begin
         and donnees ->> 'statut' = 'emise' and donnees -> 'mensuelle' ->> 'valideeLe' is not null;
     if n <> 1 then resultat := 'factures : numérotée sans statut « émise » ni heure de validation'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements
-      where espace = lm and collection = 'reglages' and id = 'numerotation-factures' and donnees -> 'derniers' ->> '2099' = '2';
+      where espace = lm and collection = 'reglages' and id = 'numerotation-factures' and donnees -> 'derniers' ->> '2099' = '3';
     if n <> 1 then resultat := 'factures : compteur de l''année pas à jour'; raise exception 'stop'; end if;
     begin
       update erp.enregistrements set donnees = donnees || '{"montantHtCentimes": 1}' where espace = lm and collection = 'factures' and id = 'recette-fm-1';
@@ -1736,6 +1745,16 @@ begin
     exception when sqlstate 'LMF01' or sqlstate 'LMF02' then n := -1;
     end;
     if n <> 1 then resultat := 'factures : l''envoi du navigateur d''une facture numérotée (même numéro) est refusé'; raise exception 'stop'; end if;
+    -- Ajout si absente (passage des brouillons, « on conflict do nothing ») sur une facture déjà numérotée : silencieux.
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values
+        (lm, 'factures', 'recette-fm-1', '{"id": "recette-fm-1", "numero": "", "statut": "brouillon"}'),
+        (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "2099-0003", "statut": "emise"}')
+      on conflict do nothing;
+      get diagnostics n = row_count;
+    exception when sqlstate 'LMF01' or sqlstate 'LMF02' then n := -1;
+    end;
+    if n <> 0 then resultat := 'factures : l''ajout d''une facture déjà là n''est plus silencieux'; raise exception 'stop'; end if;
 
     -- 1 quinquies. Gérant d'un autre espace : pas de numéro dans Label Maison.
     perform set_config('request.jwt.claims', j_autre, true);

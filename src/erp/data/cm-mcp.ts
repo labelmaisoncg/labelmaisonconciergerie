@@ -12,6 +12,7 @@
  * écrits ici avec une date du jour explicite : ce module tourne côté serveur,
  * où « aujourd'hui » ne peut pas être figé au chargement.
  */
+import { attendEquipe } from './attente-equipe.js';
 import { aTraiterLe } from './crm.js';
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
 import { LIBELLES } from './libelles.js';
@@ -74,8 +75,8 @@ const RAISON: Record<RaisonEscalade, string> = {
 
 const AUTEUR = { voyageur: 'Voyageur', hote: 'Équipe', agent: 'Agent' } as const;
 
-/** Une conversation attend-elle l'équipe ? (même règle que « À répondre » de la Messagerie) */
-export const attendEquipe = (f: FilMessages) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente');
+/** Une conversation attend-elle l'équipe ? (même règle que « À répondre » de la Messagerie : attente-equipe.ts) */
+export { attendEquipe };
 
 /** Prix de la nuit de ce soir (sinon de la prochaine nuit connue, sinon prix de base) ; rien pour un logement qui n'est pas en location. */
 function prixNuit(l: Logement, j: string) {

@@ -7,6 +7,7 @@
 import {
   ID_REGLAGES_PROGRAMMES,
   ajouterJoursISO,
+  filDuSejour,
   idEnvoi,
   modeleParDefaut,
   prenomDe,
@@ -41,11 +42,19 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
   const tousReglages: Reglage[] = [...d.reglages, reglages];
 
   // Envois passés : la veille des dernières arrivées, la demande d'avis des derniers départs.
+  // Comme en production, chaque envoi garde sa conversation quand le séjour en a une (lien de l'historique).
+  const conversation = (r: Reservation) => {
+    const fil = filDuSejour(d.filsMessages, r.id);
+    return fil ? { filId: fil.id } : {};
+  };
   const envoi = (r: Reservation, k: DeclencheurMessage, jour: string, heure: string): EnvoiProgramme => {
     const le = `${jour}T${heure}:00+02:00`;
-    return { id: idEnvoi(r.id, k), reservationId: r.id, logementId: r.logementId, declencheur: k, voyageur: prenomDe(r.voyageur.nom), statut: 'envoye', le, envoyeLe: le, canal: r.canal };
+    return { id: idEnvoi(r.id, k), reservationId: r.id, logementId: r.logementId, ...conversation(r), declencheur: k, voyageur: prenomDe(r.voyageur.nom), statut: 'envoye', le, envoyeLe: le, canal: r.canal };
   };
-  const actives = d.reservations.filter((r) => r.statut !== 'annulee' && (r.canal === 'airbnb' || r.canal === 'booking'));
+  // Les séjours qui ont une conversation d'abord : leur ligne d'historique mène à la conversation.
+  const actives = d.reservations
+    .filter((r) => r.statut !== 'annulee' && (r.canal === 'airbnb' || r.canal === 'booking'))
+    .sort((a, b) => Number(!!filDuSejour(d.filsMessages, b.id)) - Number(!!filDuSejour(d.filsMessages, a.id)));
   const veilles = actives.filter((r) => r.arrivee <= DATE_DEMO && r.arrivee >= ajouterJoursISO(DATE_DEMO, -3)).slice(0, 4);
   const lendemains = actives.filter((r) => r.depart < DATE_DEMO && r.depart >= ajouterJoursISO(DATE_DEMO, -3)).slice(0, 3);
   const envoisProgrammes: EnvoiProgramme[] = [
@@ -58,6 +67,7 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
       id: idEnvoi(annulee.id, 'demande_avis'),
       reservationId: annulee.id,
       logementId: annulee.logementId,
+      ...conversation(annulee),
       declencheur: 'demande_avis',
       voyageur: prenomDe(annulee.voyageur.nom),
       statut: 'ignore',

@@ -416,14 +416,20 @@ l'espace et texte propre à un logement). Le passage planifié de l'agent
 `envoyerMessage`, entre 8 h et 21 h (Paris), avec une clé d'idempotence
 par séjour et par moment ; chaque envoi ou refus est une ligne de
 `envoisProgrammes` (historique de l'écran, garantie « jamais deux fois »).
-Règles pures : `src/erp/data/messages-programmes.ts`.
+Rien ne part à un voyageur qui attend l'équipe : dernier message de sa part,
+ou conversation transmise / en attente (`attendEquipe`,
+`src/erp/data/attente-equipe.ts`, la même règle que « À répondre » et
+l'Accueil). Règles pures : `src/erp/data/messages-programmes.ts`.
 
 Après chaque départ Airbnb, le même passage prépare l'avis à déposer sur le
 voyageur (`avisADeposer`) avec la clé et le modèle de l'agent (plafond
 mensuel partagé pour un autre espace), ou un texte simple sans IA. Il
 apparaît dans « À faire » et sur la réservation : « Copier le texte »,
 « Ouvrir Airbnb » (simple lien, rien n'est publié), « C’est fait » ou
-« Passer ». Incident, note sous 4 ou message négatif : « à relire ».
+« Passer ». Incident, note sous 4 ou message négatif : « à relire », et
+jamais d'éloge prérempli : l'IA en est informée (avis neutre), un éloge est
+écarté, le texte simple n'est jamais proposé ; sans texte sûr, le champ
+reste vide avec une ligne « Écrivez l’avis vous-même : … ».
 
 Garanties dans la base (`supabase/erp-espaces.sql`, à relancer en passe 1
 ou 2 ; même règle avant les espaces dans `erp-installation.sql` et

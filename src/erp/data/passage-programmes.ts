@@ -47,6 +47,7 @@ import {
   codesAutorises,
   consignesAvis,
   contexteAvis,
+  contientEloge,
   dateParisDe,
   guidePourMessage,
   idEnvoi,
@@ -313,7 +314,9 @@ class Passage {
       if (!r || !sejourAvecAvis(r, aujourdhui)) continue;
       const raisons = raisonsARelire(r, signaux);
       if (raisons.length) {
-        if (await this.ecrireAvis({ ...a, statut: 'a_relire', raisons: [...new Set([...(a.raisons ?? []), ...raisons])] }, ['pret'])) this.bilan.avisARelire++;
+        // Son texte a été écrit avant que le souci soit connu (souvent un éloge) : retiré, l'équipe écrit l'avis.
+        const ligne: AvisADeposer = { ...a, statut: 'a_relire', raisons: [...new Set([...(a.raisons ?? []), ...raisons])], texte: '', source: 'modele' };
+        if (await this.ecrireAvis(ligne, ['pret'])) this.bilan.avisARelire++;
       }
     }
     if (!aPreparer.length) return;
@@ -352,6 +355,11 @@ class Passage {
             texte = lu.texte;
             source = 'ia';
             if (lu.aRelire) raisons.push(lu.raison || 'Votre agent signale un point à vérifier');
+            // Séjour à relire : jamais d'éloge, même si l'IA en écrit un malgré les consignes. L'équipe l'écrira.
+            if (raisons.length && contientEloge(texte)) {
+              texte = '';
+              source = 'modele';
+            }
             // Un avis public : jamais de lien, d'adresse, de chiffre ni d'e-mail sans relecture.
             const alerte = alerteTexteAvis(texte);
             if (alerte) raisons.push(alerte);
@@ -371,7 +379,8 @@ class Passage {
         depart: r.depart,
         canal: r.canal,
         statut: finales.length ? 'a_relire' : 'pret',
-        texte: texte || texteAvisParDefaut(prenom),
+        // Le texte simple est un éloge : jamais pour un séjour à relire (l'équipe écrit l'avis elle-même).
+        texte: texte || (finales.length ? '' : texteAvisParDefaut(prenom)),
         source,
         ...(finales.length ? { raisons: finales } : {}),
         creeLe: this.le(),
