@@ -13,7 +13,7 @@ import { ArrowRight, Check, Lock } from 'lucide-react';
 import { Alert, Aide, Button, Card, Input, Interrupteur, Select, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LANGUES_AGENT, TONS_AGENT, nomPourSignature, reglagesAgent, signatureParDefaut } from '../../../data/reglages';
-import { espaceOuvert } from '../../../data/espaces';
+import { espaceOuvert, estLabelMaison } from '../../../data/espaces';
 import { dateCourte, heure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ReglagesAgent } from '../../../data/types';
 import { completudeFiche } from './logique';
@@ -288,15 +288,18 @@ export function Configurer() {
         </Aide>
       </Bloc>
 
-      <Bloc titre="Où vous prévenir">
-        <label className="flex cursor-pointer items-start gap-3">
-          <Interrupteur actif={f.telegram} onChange={(v) => maj({ telegram: v })} label="Prévenir sur Telegram" disabled={bloque} />
-          <span className="text-[13.5px]">
-            <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
-            <span className="block text-(--lm-encre-2)">Copie de ses réponses, alertes et rappels.</span>
-          </span>
-        </label>
-      </Bloc>
+      {/* Telegram : le groupe de l'équipe de Label Maison seulement (jamais d'envoi pour un autre espace). */}
+      {estLabelMaison(espaceOuvert()) && (
+        <Bloc titre="Où vous prévenir">
+          <label className="flex cursor-pointer items-start gap-3">
+            <Interrupteur actif={f.telegram} onChange={(v) => maj({ telegram: v })} label="Prévenir sur Telegram" disabled={bloque} />
+            <span className="text-[13.5px]">
+              <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
+              <span className="block text-(--lm-encre-2)">Copie de ses réponses, alertes et rappels.</span>
+            </span>
+          </label>
+        </Bloc>
+      )}
 
       <Bloc titre="Fiches des logements">
         {incompletes.length ? (

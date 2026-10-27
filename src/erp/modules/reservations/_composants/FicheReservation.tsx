@@ -9,6 +9,8 @@ import { Badge, Card, CardHeader } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
+import { espaceOuvert } from '../../../data/espaces';
+import { libellesPartProprietaire } from '../../../data/marque-espace';
 import { dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../data/format';
 import { commissionReservation, logementById, mandatAuJour, mandatDuLogement, netProprietaire } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
@@ -150,8 +152,8 @@ export function FicheReservation({ r }: { r: Reservation }) {
               <ChevronDown className="size-3.5 transition-transform [details[open]_&]:rotate-180" aria-hidden />
             </summary>
             <dl>
-              {r.fraisMenageCentimes > 0 && <Ligne libelle="Ménage (pour Label Maison)" valeur={r.fraisMenageCentimes} moins />}
-              <Ligne libelle={`Commission Label Maison (${mandat.commissionPct} %)`} valeur={commissionReservation(r, mandat)} moins />
+              {r.fraisMenageCentimes > 0 && <Ligne libelle={libellesPartProprietaire(espaceOuvert(), mandat.commissionPct).menage} valeur={r.fraisMenageCentimes} moins />}
+              <Ligne libelle={libellesPartProprietaire(espaceOuvert(), mandat.commissionPct).commission} valeur={commissionReservation(r, mandat)} moins />
               <Ligne libelle="Pour le propriétaire" valeur={netProprietaire(r, mandat)} fort separe />
             </dl>
           </details>

@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode } from 'react';
 import { Bell, Check, CheckCircle2, Download, EllipsisVertical, Share, SquarePlus } from 'lucide-react';
 import { demandeNotifications, type ContexteDemandeNotifications } from '../data/notifications';
+import { phraseNotificationsOps } from '../data/notifications-operations';
 import { b64url, deB64url } from '../data/web-push';
 import { Alert, Button, Modal } from '../ui';
 import {
@@ -364,8 +365,8 @@ const Fait = ({ children }: { children: ReactNode }) => (
 
 const TITRE_ETAPES: Record<AppareilOps, string> = { iphone: 'Sur votre iPhone', android: 'Sur votre téléphone Android', ordinateur: 'Sur votre ordinateur' };
 
-/** Ce que reçoit la personne (une phrase, partout la même). */
-export const CE_QUE_VOUS_RECEVEZ = 'Urgences, incidents confiés, remplacements et contrôles du jour : sur vos logements seulement.';
+/** Ce que reçoit la personne (une phrase, partout la même), tirée de NOTIFICATIONS_OPS : les cinq notifications. */
+export const CE_QUE_VOUS_RECEVEZ = phraseNotificationsOps();
 
 /**
  * L'app sur ce téléphone : l'installer (un toucher quand le navigateur le

@@ -49,8 +49,11 @@
  * déchiffrent) : abonnement par la session et rangé dans l'espace de la
  * personne, urgence à la seule personne concernée (ni l'auteur ni Sens),
  * accès retiré ou adresse changée = plus rien, contrôle du jour une fois par
- * jour au passage quotidien, réponse du gérant au « pas à moi », sans clés
- * rien d'envoyé.
+ * jour au passage quotidien (rien avant 7 h à Paris, même le réveil de
+ * minuit l'été), réponse du gérant au « pas à moi », sans clés rien
+ * d'envoyé ; « le gérant est prévenu » seulement avec un appareil de l'ERP
+ * qui reçoit l'urgence (avant et après l'envoi).
+ * Agenda du CRM : un autre espace ne choisit jamais Abdel ni Kamel.
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -77,6 +80,9 @@ import routeProprietaire from '../api/espace-proprietaire';
 import routeOperations from '../api/espace-operations';
 import routeEspaces from '../api/erp-espaces';
 import { relancesDuJour } from '../api/_relances';
+import { notificationsOpsDuJour } from '../api/_operations-notifications';
+import { idAppareil } from '../src/erp/data/notifications-envoi';
+import { heureParis } from '../src/erp/data/notifications-operations';
 import { SITE_PAR_DEFAUT, adresseSite, baseAcces, contactsEspace, expediteurEspace } from '../api/_acces-externe';
 import { origineAutorisee } from '../api/_garde-formulaire';
 import { accesToujoursDeLaFiche, type AccesExterne } from '../src/erp/data/acces-externe';
@@ -559,6 +565,7 @@ async function principal() {
     res = await appelOps({ entetes: { cookie: cookieAgathe }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-a', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
     const ecrits = monde.base.filter((r) => r.methode === 'POST' && r.chemin === 'enregistrements');
     verifier(res.statut === 200 && res.corps?.vue?.incidents?.some((i: { urgent: boolean }) => i.urgent), 'opérations : urgence signalée, vue à jour', res.corps?.message);
+    verifier(res.corps?.message === 'Urgence signalée. Le gérant le verra dans l’ERP.', 'opérations : sans notifications, jamais « l’équipe est prévenue »', res.corps?.message);
     verifier(ecrits.length > 0 && ecrits.every((r) => (r.corps as { collection: string }[]).every((l) => l.collection === 'incidents')), 'opérations : seule la collection des incidents est écrite', ecrits.map((r) => r.corps));
     // Un cookie propriétaire ne vaut pas pour les opérations (genre signé dans la session).
     res = await appelOps({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice.replace(/^lm_proprio=/, 'lm_operations=') } });
@@ -961,6 +968,12 @@ async function principal() {
     verifier(res.statut === 200 && (await lireAgenda(cleSens)).statut === 404 && (await lireAgenda(cleLM)).statut === 200, '« Couper » dans Sens : les liens de Sens seulement');
     res = await creerAgenda({ authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
     verifier(res.statut === 403, 'agenda : réservé aux gérants de l’espace', res.statut);
+    for (const filtre of ['abdel', 'kamel']) {
+      res = await appelRoute(routeAgenda, { entetes: gerantSens, corps: { action: 'creer', filtre } });
+      verifier(res.statut === 400, `agenda de Sens : « ${filtre} » refusé (associé de Label Maison)`, res.statut);
+    }
+    res = await appelRoute(routeAgenda, { entetes: gerantLM, corps: { action: 'creer', filtre: 'kamel' } });
+    verifier(res.statut === 200 && FORME_LM.test(cleAgenda(res)), 'agenda de Label Maison : « kamel » comme avant', res.statut);
   }
 
   section('Invitation « Créer mon compte » : chaque espace');
@@ -1501,12 +1514,14 @@ async function principal() {
     verifier(res.statut === 200 && res.corps?.abonne === false, 'le téléphone de Paula n’est pas celui de Gaspard', res.corps);
     res = await appelOps({ methode: 'GET', query: { action: 'prevenus', logement: 'log-n' }, entetes: { cookie: cGaspard } });
     verifier(res.statut === 200 && JSON.stringify(res.corps?.noms) === '["Paula P."]', '« Signaler » : Paula, abonnée, sera prévenue d’une urgence de Gaspard', res.corps);
+    verifier(res.corps?.gerant === false, '« Signaler » : aucun appareil de l’ERP, le gérant n’est pas dit prévenu', res.corps);
 
     // Gaspard signale une urgence sur son logement : Paula (pôle) seule ; ni l'auteur, ni Sens.
     monde.pushs = [];
     res = await appelOps({ entetes: { cookie: cGaspard }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-n', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
     let r = await recus();
     verifier(res.statut === 200 && r.length === 1 && r[0].qui === 'paula', 'urgence de Gaspard : seulement Paula', r.map((x) => x.qui));
+    verifier(res.corps?.message === 'Urgence signalée. Paula P. reçoit l’alerte tout de suite. Le gérant le verra dans l’ERP.', 'après l’envoi : qui est vraiment prévenu (Paula, pas le gérant)', res.corps?.message);
     verifier(
       r[0]?.titre === 'Urgence · Le Nid' && r[0].corps === 'Fuite sous l’évier de la cuisine. · Gaspard A. s’en occupe' && r[0].url === `/espace-operations?onglet=incidents&incident=${res.corps?.id}`,
       'contenu chiffré relu par le téléphone : titre, qui s’en occupe, écran de l’incident',
@@ -1531,15 +1546,52 @@ async function principal() {
     res = await appelOps({ methode: 'GET', query: { action: 'prevenus', logement: 'log-n' }, entetes: { cookie: cGaspard } });
     verifier(res.statut === 200 && JSON.stringify(res.corps?.noms) === '[]', '« Signaler » le dit : seul le gérant est prévenu', res.corps);
 
+    // Le gérant : « prévenu » seulement si un appareil de l'app de l'ERP recevra l'urgence.
+    const telErp = await telephone('erp-gerant');
+    const idErp = await idAppareil(telErp.endpoint);
+    const appareilErp = (preferences: Record<string, boolean>) =>
+      monde.poser(LM, 'connecteurs', { id: idErp, type: 'notifications-appareil', endpoint: telErp.endpoint, keys: telErp.keys, preferences, creeLe: new Date().toISOString(), majLe: new Date().toISOString() } as { id: string });
+    appareilErp({});
+    res = await appelOps({ methode: 'GET', query: { action: 'prevenus', logement: 'log-n' }, entetes: { cookie: cGaspard } });
+    verifier(res.statut === 200 && res.corps?.gerant === true && JSON.stringify(res.corps?.noms) === '[]', '« Signaler » : un appareil de l’ERP reçoit les urgences, le gérant est prévenu', res.corps);
+    monde.pushs = [];
+    res = await appelOps({ entetes: { cookie: cGaspard }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-n', urgent: true, description: 'Volet de la chambre bloqué en bas.' } } });
+    r = await recus();
+    verifier(
+      res.statut === 200 && res.corps?.message === 'Urgence signalée. Le gérant est prévenu tout de suite.' && r.length === 1 && r[0].qui === 'erp-gerant' && r[0].titre === 'Urgence · Le Nid',
+      'après l’envoi : « Le gérant est prévenu » et l’appareil de l’ERP la reçoit',
+      { message: res.corps?.message, recus: r.map((x) => x.qui) },
+    );
+    appareilErp({ urgence: false });
+    res = await appelOps({ methode: 'GET', query: { action: 'prevenus', logement: 'log-n' }, entetes: { cookie: cGaspard } });
+    verifier(res.statut === 200 && res.corps?.gerant === false, '« Signaler » : urgences coupées sur l’appareil de l’ERP, le gérant le verra dans l’ERP', res.corps);
+    monde.lignes.delete(`${LM}\u0000connecteurs\u0000${idErp}`);
+
     // Passage du matin : le contrôle du jour à Gaspard, une seule fois.
     monde.poser(LM, 'reservations', { id: 'res-n', logementId: 'log-n', canal: 'airbnb', voyageur: { nom: 'Zoé Martin', nbPersonnes: 2 }, arrivee: ajouterJours(aujourdhui, -3), depart: ajouterJours(aujourdhui, -1), nuits: 2, statut: 'terminee', montantBrutCentimes: 20000, commissionPlateformeCentimes: 3000, fraisMenageCentimes: 4000 } as { id: string });
     monde.pushs = [];
-    // Les notifications du matin partent avec le passage planifié de l'agent (pas avec la synchro de 4 h).
+    // Les notifications du matin partent avec le passage planifié de l'agent (pas avec la synchro de 4 h), à partir de 7 h à Paris.
+    const avantSept = heureParis(new Date()) < 7;
     await routeAgent(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse()).catch(() => undefined);
     r = await recus();
-    verifier(r.length === 1 && r[0].qui === 'gaspard' && r[0].titre === 'Aujourd’hui : 1 contrôle qualité' && r[0].corps === 'Le Nid.' && r[0].url === '/espace-operations?onglet=controles', 'passage du matin : « Aujourd’hui : 1 contrôle qualité » à qui a la charge du logement', r);
+    if (avantSept) verifier(r.length === 0, 'passage planifié de l’agent avant 7 h à Paris : rien', r);
+    else verifier(r.length === 1 && r[0].qui === 'gaspard' && r[0].titre === 'Aujourd’hui : 1 contrôle qualité', 'passage planifié de l’agent après 7 h : le contrôle du jour part', r);
+    // Heure fixée (même jour à Paris), journal remis à zéro : rien avant 7 h, puis une seule fois.
+    const aParis = (h: number, m = 0) => {
+      const [a, mo, j] = aujourdhui.split('-').map(Number);
+      return [1, 2].map((d) => new Date(Date.UTC(a, mo - 1, j, h - d, m))).find((x) => dateParisISO(x) === aujourdhui && heureParis(x) === h)!;
+    };
+    monde.lignes.delete(`${LM}\u0000connecteurs\u0000operations-notifications-journal`);
+    monde.pushs = [];
+    await notificationsOpsDuJour({ maintenant: aParis(0, 0) });
+    await notificationsOpsDuJour({ maintenant: aParis(6, 59) });
+    verifier(monde.pushs.length === 0, 'passage du matin : rien à minuit ni à 6 h 59 à Paris (réveil de 22 h UTC l’été)', monde.pushs.length);
+    await notificationsOpsDuJour({ maintenant: aParis(7, 0) });
+    r = await recus();
+    verifier(r.length === 1 && r[0].qui === 'gaspard' && r[0].titre === 'Aujourd’hui : 1 contrôle qualité' && r[0].corps === 'Le Nid.' && r[0].url === '/espace-operations?onglet=controles', 'passage du matin à 7 h : « Aujourd’hui : 1 contrôle qualité » à qui a la charge du logement', r);
     verifier(!JSON.stringify(r).includes('Zoé'), 'aucun nom de voyageur dans la notification');
     monde.pushs = [];
+    await notificationsOpsDuJour({ maintenant: aParis(9, 30) });
     await routeAgent(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse()).catch(() => undefined);
     verifier(monde.pushs.length === 0, 'deuxième passage le même jour : rien ne repart', monde.pushs.length);
 

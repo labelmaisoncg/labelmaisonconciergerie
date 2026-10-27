@@ -16,6 +16,7 @@ import { Check, Play, RefreshCw, X } from 'lucide-react';
 import { Alert, Button, Card, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { reglagesAgent } from '../../../data/reglages';
+import { espaceOuvert, estLabelMaison } from '../../../data/espaces';
 import type { EtatAgent, PassageAgent } from '../../../data/agent-messagerie';
 import { appelerServeur } from './serveur';
 
@@ -205,11 +206,14 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
               ? 'CRON_SECRET manque dans Vercel : pas de passage automatique.'
               : 'Passages automatiques toutes les 30 min de 8 h à 23 h (Supabase, supabase/erp-agent-cron.sql), et après chaque synchronisation.'}
           </Ligne>
-          <Ligne ok={c ? c.telegram : null} titre={c?.telegram ? 'Telegram : branché' : 'Telegram : pas branché'}>
-            {c?.telegram
-              ? 'Alertes et copies des réponses envoyées au groupe de l’équipe (si « Sur Telegram » est activé plus bas).'
-              : 'Facultatif : ajoutez TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID dans Vercel pour être prévenu.'}
-          </Ligne>
+          {/* Telegram : Label Maison seulement. */}
+          {estLabelMaison(espaceOuvert()) && (
+            <Ligne ok={c ? c.telegram : null} titre={c?.telegram ? 'Telegram : branché' : 'Telegram : pas branché'}>
+              {c?.telegram
+                ? 'Alertes et copies des réponses envoyées au groupe de l’équipe (si « Sur Telegram » est activé plus bas).'
+                : 'Facultatif : ajoutez TELEGRAM_BOT_TOKEN et TELEGRAM_CHAT_ID dans Vercel pour être prévenu.'}
+            </Ligne>
+          )}
         </ul>
       </details>
 

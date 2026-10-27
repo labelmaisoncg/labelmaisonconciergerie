@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { jourMois } from '../data/format';
-import { phrasePrevenus } from '../data/notifications-operations';
+import { phrasePrevenus, type Prevenus } from '../data/notifications-operations';
 import { Button, Field, Modal, Segmente, Select, Textarea } from '../ui';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { useOps } from './commun';
@@ -10,8 +10,8 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
   const { vue, agir, naviguer, apercu, actions } = useOps();
   const [logement, setLogement] = useState(logementId ?? '');
   const [urgent, setUrgent] = useState(false);
-  // Qui reçoit vraiment l'urgence sur son téléphone (notifications activées), en plus du gérant.
-  const [prevenus, setPrevenus] = useState<string[]>([]);
+  // Qui reçoit vraiment l'urgence : téléphones abonnés, et le gérant s'il a un appareil qui la recevra (null : pas encore su).
+  const [prevenus, setPrevenus] = useState<Prevenus | null>(null);
   const [description, setDescription] = useState('');
   const [sejour, setSejour] = useState('');
   const [photos, setPhotos] = useState<PhotoChoisie[]>([]);
@@ -19,12 +19,15 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
   const [enCours, setEnCours] = useState(false);
   useEffect(() => setSejour(''), [logement]);
   useEffect(() => {
-    setPrevenus([]);
-    if (!urgent || !logement || !actions.prevenus) return;
+    setPrevenus(null);
+    if (!urgent || !logement) return;
+    // Aperçu du gérant : rien ne part, la phrase d'avant.
+    if (!actions.prevenus) return setPrevenus({ noms: [], gerant: true });
     let actif = true;
     actions.prevenus(logement).then(
-      (noms) => actif && setPrevenus(noms),
-      () => undefined,
+      (p) => actif && setPrevenus(p),
+      // Réponse illisible : seulement ce qui est sûr.
+      () => actif && setPrevenus({ noms: [], gerant: false }),
     );
     return () => {
       actif = false;
@@ -78,7 +81,11 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
             ]}
             className="self-start"
           />
-          {urgent && <p className="text-[12.5px] text-(--lm-encre-2)">{phrasePrevenus(prevenus)}</p>}
+          {urgent && (
+            <p aria-live="polite" className="min-h-[1.25rem] text-[12.5px] text-(--lm-encre-2)">
+              {prevenus ? phrasePrevenus(prevenus.noms, prevenus.gerant) : ''}
+            </p>
+          )}
         </div>
         <Field label="Ce qui se passe" requis>
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ce que vous constatez, et ce qu’il faut faire." />

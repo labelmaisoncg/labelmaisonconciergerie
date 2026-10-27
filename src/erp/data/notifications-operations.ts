@@ -69,14 +69,40 @@ export interface NotificationOps {
   urgente?: boolean;
 }
 
-/** Ce que l'app annonce, pour la feuille « Recevoir les notifications ? » et la page de l'app. */
-export const NOTIFICATIONS_OPS: { motif: Exclude<MotifOps, 'test'>; libelle: string }[] = [
-  { motif: 'urgence', libelle: 'Une urgence sur un de vos logements' },
-  { motif: 'incident', libelle: 'Un incident qui vous est confié' },
-  { motif: 'remplacement', libelle: 'Un remplacement, le premier jour' },
-  { motif: 'controles', libelle: 'Les contrôles qualité du jour, le matin' },
-  { motif: 'logement', libelle: 'La réponse du gérant à « ce logement n’est pas à moi »' },
+/**
+ * Ce que l'app annonce, seule source de la feuille « L’app Opérations » et de
+ * « Recevoir les notifications ? » (phraseNotificationsOps). `court` : le mot
+ * de la phrase.
+ */
+export const NOTIFICATIONS_OPS: { motif: Exclude<MotifOps, 'test'>; libelle: string; court: string }[] = [
+  { motif: 'urgence', libelle: 'Une urgence sur un de vos logements', court: 'urgences' },
+  { motif: 'incident', libelle: 'Un incident qui vous est confié', court: 'incidents confiés' },
+  { motif: 'remplacement', libelle: 'Un remplacement, le premier jour', court: 'remplacements' },
+  { motif: 'controles', libelle: 'Les contrôles qualité du jour, le matin', court: 'contrôles du jour' },
+  { motif: 'logement', libelle: 'La réponse du gérant à « ce logement n’est pas à moi »', court: 'réponses du gérant à « Ce logement n’est pas à moi »' },
 ];
+
+/** « Urgences, incidents confiés, …, et réponses du gérant à … : sur vos logements seulement. » (toutes les notifications annoncées). */
+export function phraseNotificationsOps(): string {
+  const mots = NOTIFICATIONS_OPS.map((n) => n.court);
+  const liste = mots.length > 1 ? `${mots.slice(0, -1).join(', ')} et ${mots[mots.length - 1]}` : (mots[0] ?? '');
+  return `${liste.charAt(0).toLocaleUpperCase('fr')}${liste.slice(1)} : sur vos logements seulement.`;
+}
+
+/** Heure de Paris à partir de laquelle part le passage du matin. */
+export const HEURE_MATIN_OPS = 7;
+
+/** Heure (0–23) à Paris d'un instant. */
+export function heureParis(d: Date): number {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', hour: '2-digit', hourCycle: 'h23' }).format(d));
+}
+
+/**
+ * Le passage du matin peut-il partir maintenant ? Pas avant 7 h à Paris : le
+ * réveil planifié de l'agent passe aussi le soir (22 h UTC, minuit à Paris
+ * l'été), qui est déjà le jour suivant à Paris.
+ */
+export const matinOpsOuvert = (maintenant: Date): boolean => heureParis(maintenant) >= HEURE_MATIN_OPS;
 
 /* --------------------------------------------------------------- outils */
 
@@ -297,11 +323,31 @@ export function destinatairesUrgence(e: EntreesOperations, membreId: Id, logemen
   return [...new Set(notificationsIncidents(e, avecEcritures(e, r.ecritures), { aujourdhui, auteurId: membreId }).map((n) => n.membreId))];
 }
 
-/** « Le gérant et Clara D. sont prévenus tout de suite. » : les personnes qui recevront vraiment l'urgence. */
-export function phrasePrevenus(noms: readonly string[]): string {
+/** Qui recevra vraiment une urgence : les personnes de l'équipe (« Clara D. ») dont le téléphone la recevra, et le gérant (un appareil de l'ERP qui la recevra). */
+export interface Prevenus {
+  noms: string[];
+  gerant: boolean;
+}
+
+/**
+ * « Le gérant et Clara D. sont prévenus tout de suite. » : seulement qui
+ * recevra vraiment l'urgence. Sans appareil du gérant pour la recevoir :
+ * « Le gérant le verra dans l’ERP. » (l'incident y est, sans notification).
+ */
+export function phrasePrevenus(noms: readonly string[], gerant = true): string {
   const autres = noms.filter(Boolean);
-  if (!autres.length) return 'Le gérant est prévenu tout de suite.';
-  return `Le gérant${autres.length > 1 ? `, ${autres.slice(0, -1).join(', ')}` : ''} et ${autres[autres.length - 1]} sont prévenus tout de suite.`;
+  if (gerant) {
+    if (!autres.length) return 'Le gérant est prévenu tout de suite.';
+    return `Le gérant${autres.length > 1 ? `, ${autres.slice(0, -1).join(', ')}` : ''} et ${autres[autres.length - 1]} sont prévenus tout de suite.`;
+  }
+  if (!autres.length) return 'Le gérant le verra dans l’ERP.';
+  const qui = autres.length > 1 ? `${autres.slice(0, -1).join(', ')} et ${autres[autres.length - 1]} reçoivent` : `${autres[0]} reçoit`;
+  return `${qui} l’alerte tout de suite. Le gérant le verra dans l’ERP.`;
+}
+
+/** Message après une urgence signalée (ou un incident passé en urgent), d'après qui est vraiment prévenu. */
+export function messageUrgence(debut: 'Urgence signalée' | 'Passé en urgent', p: Prevenus): string {
+  return `${debut}. ${phrasePrevenus(p.noms, p.gerant)}`;
 }
 
 /** Notification d'essai (bouton « Envoyer une notification de test »). */

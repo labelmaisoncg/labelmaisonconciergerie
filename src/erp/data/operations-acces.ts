@@ -10,7 +10,7 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
-import { espaceDe } from './acces-externe.js';
+import { ACCES_RETIRE, espaceDe } from './acces-externe.js';
 import type { RefusLien } from './proprietaire-acces.js';
 import type { Id } from './types';
 import type { AccesOperations } from './types-operations';
@@ -52,5 +52,5 @@ export const MESSAGES_REFUS_OPS: Record<RefusLien, string> = {
   inconnu: 'Ce lien n’est pas valable. Demandez un nouveau lien avec votre adresse e-mail.',
   expire: 'Ce lien a expiré. Demandez un nouveau lien avec votre adresse e-mail.',
   utilise: 'Ce lien a déjà servi. Demandez un nouveau lien avec votre adresse e-mail.',
-  retire: 'Votre accès à l’espace opérations a été retiré. Contactez votre gérant.',
+  retire: ACCES_RETIRE,
 };

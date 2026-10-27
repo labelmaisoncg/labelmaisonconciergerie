@@ -187,7 +187,8 @@ export interface Gabarit {
   libelle: string;
   /** Contient un code d'accès ou wifi : soumis à l'éligibilité. */
   sensible: boolean;
-  texte: (l: Logement, prenom: string) => string;
+  /** `signature` : celle de l'agent de l'espace (signatureEspace : « L’équipe Label Maison », « L’équipe Sens »). */
+  texte: (l: Logement, prenom: string, signature: string) => string;
 }
 
 export const GABARITS: Gabarit[] = [
@@ -213,7 +214,7 @@ export const GABARITS: Gabarit[] = [
     cle: 'merci',
     libelle: 'Merci',
     sensible: false,
-    texte: (_l, p) => `Merci ${p} pour votre message. Nous restons à votre disposition pendant tout votre séjour. L’équipe Label Maison`,
+    texte: (_l, p, signature) => `Merci ${p} pour votre message. Nous restons à votre disposition pendant tout votre séjour.${signature.trim() ? ` ${signature.trim()}` : ''}`,
   },
 ];
 

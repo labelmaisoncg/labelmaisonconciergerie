@@ -8,7 +8,7 @@
  *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=/tmp/verifier-crm-mcp.cjs \
  *     && node /tmp/verifier-crm-mcp.cjs
  */
-import { INSTRUCTIONS_SERVEUR, OUTILS, instructionsServeur, traiterMcp, type ContexteMcp } from './crm-mcp';
+import { INSTRUCTIONS_SERVEUR, OUTILS, instructionsServeur, outilsDeLEspace, traiterMcp, type ContexteMcp } from './crm-mcp';
 import { ID_LABEL_MAISON } from './espaces';
 import { avecEspace, espaceDuJeton } from './oauth-regles';
 import { attendEquipe, prenomInitiale } from './cm-mcp';
@@ -325,6 +325,34 @@ async function parEspace() {
     { ...ctxSens, depot: { ...ctx.depot, tous: async () => Promise.reject(new Error('réseau')) } },
   )) as any;
   verifier(/données de l’espace Sens/.test(panne.corps.result.content[0].text) && !/Label Maison/.test(panne.corps.result.content[0].text), `erreur de base au nom de l’espace (${panne.corps.result.content[0].text})`);
+
+  // « Suivi par » : Abdel et Kamel à Label Maison seulement ; Claude ne le voit ni ne le règle ailleurs.
+  verifier(outilsDeLEspace() === OUTILS && outilsDeLEspace({ id: ID_LABEL_MAISON }) === OUTILS, 'outils de Label Maison : exactement ceux d’avant');
+  const listeSens = (await traiterMcp({ jsonrpc: '2.0', id: 9, method: 'tools/list' }, ctxSens)) as any;
+  const outilsSens = listeSens.corps.result.tools as { name: string; description: string; inputSchema: { properties?: Record<string, unknown> } }[];
+  verifier(
+    outilsSens.map((o) => o.name).join() === OUTILS.map((o) => o.name).join() && outilsSens.every((o) => !('suivi_par' in (o.inputSchema.properties ?? {})) && !/suivi_par|abdel|kamel/i.test(o.description)),
+    'outils de Sens : les mêmes, sans « suivi_par » ni Abdel ou Kamel',
+  );
+  verifier(OUTILS.filter((o) => 'suivi_par' in ((o.inputSchema as { properties?: object }).properties ?? {})).length === 3, 'Label Maison garde « suivi_par » (chercher, ajouter, modifier)');
+  verifier(!/le suivi/.test(sens) && /le suivi/.test(INSTRUCTIONS_SERVEUR), 'instructions de Sens : sans « le suivi »');
+  const appelSens = async (name: string, args: Record<string, unknown>) =>
+    ((await traiterMcp({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name, arguments: args } }, ctxSens)) as any).corps.result as { isError?: boolean; content: { text: string }[]; structuredContent?: any };
+  const avant = ecritures;
+  for (const [nom, args] of [
+    ['crm_modifier', { id: 'crm-demo-06', suivi_par: 'abdel' }],
+    ['crm_modifier', { id: 'crm-demo-06', suivi_par: '' }],
+    ['crm_ajouter', { nom: 'Prospect Sens', telephone: '0699887766', suivi_par: 'kamel' }],
+    ['crm_chercher', { suivi_par: 'abdel' }],
+  ] as [string, Record<string, unknown>][]) {
+    const r = await appelSens(nom, args);
+    verifier(r.isError === true && /suivi_par/.test(r.content[0].text), `Sens, ${nom} avec suivi_par : refusé (${r.content[0].text})`);
+  }
+  verifier(ecritures === avant, 'Sens : rien d’écrit avec suivi_par');
+  const ficheSens = await appelSens('crm_voir', { id: 'crm-demo-06' });
+  verifier(!ficheSens.isError && ficheSens.structuredContent?.nom === 'Pierre Dubois' && !('suivi_par' in ficheSens.structuredContent), 'Sens : fiche sans « suivi_par »');
+  const ficheLM = await outil('crm_voir', { id: 'crm-demo-06' });
+  verifier(ficheLM.donnees.suivi_par === 'abdel', 'Label Maison : fiche avec « suivi_par » comme avant');
 }
 
 void main();

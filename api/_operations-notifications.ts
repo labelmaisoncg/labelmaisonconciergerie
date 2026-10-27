@@ -4,8 +4,9 @@
 //     état, abonner, désabonner, tester, et qui serait prévenu d'une urgence ;
 //   - après une action de l'espace : incident confié, urgence, remplacement ;
 //   - « ce logement n'est pas à moi » traité par le gérant (appel de l'ERP) ;
-//   - passage du matin (api/erp-repull-sync.ts) : remplacements qui
-//     commencent, contrôles qualité du jour, réponses du gérant manquées.
+//   - passage du matin (avec le passage planifié de l'agent, api/erp-agent.ts,
+//     à partir de 7 h à Paris) : remplacements qui commencent, contrôles
+//     qualité du jour, réponses du gérant manquées.
 //
 // Tout se lit et s'écrit dans la base de l'espace de la personne (ou du
 // gérant) : un appareil abonné dans Label Maison ne reçoit jamais rien de
@@ -23,12 +24,15 @@ import {
   desabonnerAppareilOps,
   destinatairesUrgence,
   envoyerNotificationsOps,
+  matinOpsOuvert,
   notificationSignalementTraite,
   notificationTestOps,
   notificationsApresAction,
   notificationsDuJour,
   resumeBilan,
+  type Prevenus,
 } from '../src/erp/data/notifications-operations.js';
+import { notificationUrgence, type GroupeNotification } from '../src/erp/data/notifications.js';
 import { court } from '../src/erp/data/operations.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
@@ -38,7 +42,7 @@ import { espacesActifs } from './_erp-espaces.js';
 import { clesServeur } from './_erp-notifications.js';
 import { repondre } from './_erp-repull.js';
 import { freinEnvois, provenanceSite } from './_garde-formulaire.js';
-import { entreesOps, gerantDeLEspace } from './_operations.js';
+import { entreesOps, gerantDeLEspace, gerantRecevra, groupesGerant } from './_operations.js';
 
 /** Session de l'espace opérations, déjà revérifiée (lireSessionAcces). */
 interface SessionOps {
@@ -53,6 +57,31 @@ export const ACTIONS_NOTIFICATIONS_OPS: ReadonlySet<string> = new Set(['notifica
 const PLUS_ABONNE = 'Ce téléphone n’est plus abonné : réactivez les notifications.';
 /** Notifications de test : 10 par quart d'heure et par personne (par instance du serveur). */
 const tropDeTests = freinEnvois(10, 15 * 60_000);
+
+/**
+ * Qui recevra vraiment : les personnes `ids` dont un téléphone est abonné
+ * (« Clara D. »), et le gérant si un appareil de l'app de l'ERP accepte ces
+ * notifications. Sans clés : personne.
+ */
+async function quiRecevra(s: Pick<SessionOps, 'base' | 'espace'>, e: EntreesOperations, ids: readonly string[], groupes: readonly GroupeNotification[]): Promise<Prevenus> {
+  if (!clesServeur()) return { noms: [], gerant: false };
+  const [avec, gerant] = await Promise.all([appareilsValables(s.base, ids, s.espace), gerantRecevra(s.base, groupes)]);
+  const noms = ids
+    .filter((id) => avec.has(id))
+    .map((id) => court(e.equipe.find((m) => m.id === id)?.nom))
+    .filter(Boolean);
+  return { noms, gerant };
+}
+
+/**
+ * Après une urgence signalée (ou passée en urgent) : qui est vraiment
+ * prévenu, pour le dire tel quel (messageUrgence). Mêmes destinataires que
+ * notifierEquipe et prevenirGerant.
+ */
+export function prevenusApresAction(s: Pick<SessionOps, 'base' | 'espace'>, avant: EntreesOperations, apres: EntreesOperations, auteurId: string, aNotifier: readonly string[]): Promise<Prevenus> {
+  const ids = [...new Set(notificationsApresAction(avant, apres, { aujourdhui: dateParisISO(), auteurId }).map((n) => n.membreId))];
+  return quiRecevra(s, apres, ids, groupesGerant(apres, aNotifier));
+}
 
 /**
  * Actions de la personne connectée :
@@ -73,15 +102,13 @@ export async function actionNotificationsOps(req: any, res: any, s: SessionOps, 
       return repondre(res, 200, { ok: true, actif: !!cles, clePublique: cles?.publique ?? null, abonne });
     }
     if (action === 'prevenus') {
-      if (!cles) return repondre(res, 200, { ok: true, noms: [] });
+      // { noms, gerant } : « Le gérant est prévenu » seulement si un appareil de l'ERP recevra l'urgence.
+      if (!cles) return repondre(res, 200, { ok: true, noms: [], gerant: false });
       const e = await entreesOps(s.base);
-      const ids = destinatairesUrgence(e, membreId, String(req.query?.logement ?? ''), dateParisISO());
-      const avec = await appareilsValables(s.base, ids, s.espace);
-      const noms = ids
-        .filter((id) => avec.has(id))
-        .map((id) => court(e.equipe.find((m) => m.id === id)?.nom))
-        .filter(Boolean);
-      return repondre(res, 200, { ok: true, noms });
+      const logementId = String(req.query?.logement ?? '');
+      const ids = destinatairesUrgence(e, membreId, logementId, dateParisISO());
+      const urgence = notificationUrgence({ id: 'apercu', logementId, gravite: 'haute', statut: 'ouvert', description: '' }, '');
+      return repondre(res, 200, { ok: true, ...(await quiRecevra(s, e, ids, urgence ? [urgence] : [])) });
     }
     return repondre(res, 405, { ok: false, erreur: 'Méthode non autorisée.' });
   }
@@ -162,15 +189,19 @@ export async function signalementTraite(req: any, res: any, corps: Record<string
 /**
  * Passage du matin, chaque espace actif : remplacements qui commencent,
  * contrôles qualité du jour (une fois par jour et par personne), réponses
- * du gérant manquées. Borné dans le temps, ne lève jamais : la
- * synchronisation qui suit n'attend pas plus de `limite`.
+ * du gérant manquées. Rien avant 7 h à Paris (le réveil de 22 h UTC tombe à
+ * minuit l'été) : le premier passage planifié de l'agent après 7 h l'envoie.
+ * Borné dans le temps, ne lève jamais : l'agent qui suit n'attend pas plus
+ * de `limite`.
  */
-export async function notificationsOpsDuJour(o: { aujourdhui?: string; limite?: number } = {}): Promise<Record<string, string>> {
+export async function notificationsOpsDuJour(o: { aujourdhui?: string; limite?: number; maintenant?: Date } = {}): Promise<Record<string, string>> {
   const bilans: Record<string, string> = {};
+  const maintenant = o.maintenant ?? new Date();
+  if (!matinOpsOuvert(maintenant)) return bilans;
   const cles = clesServeur();
   if (!cles) return bilans;
   const limite = o.limite ?? Date.now() + 8_000;
-  const aujourdhui = o.aujourdhui ?? dateParisISO();
+  const aujourdhui = o.aujourdhui ?? dateParisISO(maintenant);
   const travail = (async () => {
     let espaces: Awaited<ReturnType<typeof espacesActifs>> = [];
     try {
