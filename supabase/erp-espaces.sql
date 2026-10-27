@@ -1048,7 +1048,8 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 --     état (envoisProgrammes, programmes), état de l'agent (agent : verrou,
 --     appels de l'IA du mois), état de la synchronisation (repull), passages
 --     des factures mensuelles (passagesFacturesMensuelles), état du passage
---     des prix (conseilsPrix/etat) ;
+--     des prix (conseilsPrix/etat), alerte « l'agent ne vérifie plus ses
+--     réponses » (reglages/alerte-controle-agent : l'équipe la lit) ;
 --   - ce que seul un gérant change dans l'ERP : factures (validation,
 --     numéro), réglages des prix (conseilsPrix/reglages), modèles des
 --     messages automatiques, identité de la société et numérotation des
@@ -1064,7 +1065,7 @@ language sql immutable set search_path = ''
 as $$
   select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
-      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures'))
+      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'))
 $$;
 revoke all on function erp.ecriture_gerant_seulement(text, text) from public, anon;
 grant execute on function erp.ecriture_gerant_seulement(text, text) to authenticated;
@@ -1182,6 +1183,8 @@ begin
   v_numero := v_annee || '-' || lpad(v_suite::text, 4, '0');
   -- Heure de Paris avec son décalage, au format de l'ERP (« 2026-11-02T10:30:00+01:00 »).
   v_le := to_char(v_local, 'YYYY-MM-DD"T"HH24:MI:SS') || '+' || to_char(v_local - (now() at time zone 'UTC'), 'HH24:MI');
+  -- Seule écriture qui pose un numéro (erp.reserver_numero_facture), le temps de cette mise à jour.
+  perform set_config('erp.numerotation', 'on', true);
   update erp.enregistrements e
     set donnees = v_facture || jsonb_build_object('numero', v_numero, 'statut', 'emise')
                   || case when jsonb_typeof(v_facture -> 'mensuelle') = 'object'
@@ -1190,6 +1193,7 @@ begin
         maj_le = now(),
         maj_par = coalesce(nullif(auth.jwt() ->> 'email', ''), 'gerant') || '#numerotation'
     where e.espace = v_espace and e.collection = 'factures' and e.id = p_id;
+  perform set_config('erp.numerotation', 'off', true);
   update erp.enregistrements e
     set donnees = coalesce(v_compteur, '{}'::jsonb)
                   || jsonb_build_object('id', 'numerotation-factures', 'majLe', v_le,
@@ -1219,13 +1223,13 @@ begin
     return case when tg_op = 'DELETE' then old else new end;
   end if;
   if tg_op = 'DELETE' then
-    raise exception 'Facture numérotée : elle ne se supprime pas (faites un avoir).' using errcode = '42501';
+    raise exception 'Facture numérotée : elle ne se supprime pas (faites un avoir).' using errcode = 'LMF01';
   end if;
   if (to_jsonb(new) - 'donnees' - 'maj_le' - 'maj_par') is distinct from (to_jsonb(old) - 'donnees' - 'maj_le' - 'maj_par')
      or (new.donnees - libres) is distinct from (old.donnees - libres)
      or (coalesce(new.donnees ->> 'statut', '') not in ('emise', 'payee', 'en_retard')
          and (new.donnees -> 'statut') is distinct from (old.donnees -> 'statut')) then
-    raise exception 'Facture numérotée : seuls le paiement et le partage changent encore.' using errcode = '42501';
+    raise exception 'Facture numérotée : seuls le paiement et le partage changent encore.' using errcode = 'LMF01';
   end if;
   return new;
 end;
@@ -1234,6 +1238,70 @@ revoke all on function erp.figer_facture_numerotee() from public, anon;
 drop trigger if exists figer_facture_numerotee on erp.enregistrements;
 create trigger figer_facture_numerotee before update or delete on erp.enregistrements
   for each row execute function erp.figer_facture_numerotee();
+
+-- Numéro d'une facture : posé par erp.numeroter_facture seulement (elle
+-- l'annonce par set_config('erp.numerotation', 'on', true) le temps de son
+-- écriture). Toute autre écriture par l'API qui pose, change ou efface un
+-- numéro est refusée (LMF02), gérant compris : un navigateur ne donne jamais
+-- un numéro, même déjà pris. Un ajout qui devient modification (upsert) est
+-- comparé à la ligne déjà enregistrée.
+create or replace function erp.reserver_numero_facture() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant text := '';
+begin
+  if current_user <> 'authenticated' or new.collection <> 'factures'
+     or coalesce(current_setting('erp.numerotation', true), '') = 'on' then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if old.collection = 'factures' and old.id = new.id and old.espace is not distinct from new.espace then
+      avant := btrim(coalesce(old.donnees ->> 'numero', ''));
+    end if;
+  else
+    select btrim(coalesce(e.donnees ->> 'numero', '')) into avant from erp.enregistrements e
+      where e.espace = new.espace and e.collection = 'factures' and e.id = new.id;
+    avant := coalesce(avant, '');
+  end if;
+  if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
+    raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'
+      using errcode = 'LMF02';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.reserver_numero_facture() from public, anon;
+drop trigger if exists reserver_numero_facture on erp.enregistrements;
+create trigger reserver_numero_facture before insert or update on erp.enregistrements
+  for each row execute function erp.reserver_numero_facture();
+
+-- Deux factures d'un même espace ne partagent jamais un numéro (index unique
+-- partiel). Créé seulement si les données le permettent : sinon un
+-- avertissement liste les numéros en double (colonne numeros_factures du
+-- bilan), à corriger avant de relancer ce fichier ; la passe continue.
+-- L'index d'avant les espaces (numéro seul) est retiré : chaque espace a sa
+-- propre suite.
+drop index if exists erp.enregistrements_numero_facture;
+do $$
+declare
+  v_doublons text;
+begin
+  if to_regclass('erp.enregistrements_numero_facture_espace') is not null then
+    return;
+  end if;
+  select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
+    from (select btrim(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
+          where e.collection = 'factures' and btrim(coalesce(e.donnees ->> 'numero', '')) <> ''
+          group by e.espace, btrim(e.donnees ->> 'numero') having count(*) > 1) d;
+  if v_doublons is not null then
+    raise warning 'Factures : numéros en double dans un même espace (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
+    return;
+  end if;
+  create unique index enregistrements_numero_facture_espace on erp.enregistrements (espace, (btrim(donnees ->> 'numero')))
+    where collection = 'factures' and btrim(coalesce(donnees ->> 'numero', '')) <> '';
+end;
+$$;
 -- Cloison : RESTRICTIVE, elle tient même si une règle plus large est ajoutée un jour.
 create policy "cloison des espaces" on erp.enregistrements
   as restrictive for all to authenticated
@@ -1479,6 +1547,20 @@ begin
       (lm, 'factures', 'recette-fm-1', '{"id": "recette-fm-1", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-15", "montantHtCentimes": 100, "mensuelle": {"mois": "2098-12"}}'),
       (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-16", "montantHtCentimes": 200, "mensuelle": {"mois": "2098-12"}}')
     on conflict do nothing;
+    -- Deux factures d'un espace ne partagent pas un numéro (index unique), même
+    -- écrites par le propriétaire de la base ; un autre espace a sa propre suite.
+    if to_regclass('erp.enregistrements_numero_facture_espace') is not null then
+      insert into erp.enregistrements (espace, collection, id, donnees) values
+        (lm, 'factures', 'recette-doublon-1', '{"id": "recette-doublon-1", "numero": "2099-9999"}'),
+        (essai, 'factures', 'recette-doublon-autre', '{"id": "recette-doublon-autre", "numero": "2099-9999"}');
+      begin
+        insert into erp.enregistrements (espace, collection, id, donnees) values
+          (lm, 'factures', 'recette-doublon-2', '{"id": "recette-doublon-2", "numero": " 2099-9999"}');
+        resultat := 'factures : deux factures d''un espace partagent un numéro'; raise exception 'stop';
+      exception when unique_violation then null;
+      end;
+      delete from erp.enregistrements where collection = 'factures' and id in ('recette-doublon-1', 'recette-doublon-autre');
+    end if;
 
     perform set_config('role', 'authenticated', true);
 
@@ -1547,7 +1629,7 @@ begin
     exception when insufficient_privilege then null;
     end;
     begin
-      insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'factures', 'recette-intrus', '{"numero": "2099-0099"}');
+      insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'factures', 'recette-intrus', '{"id": "recette-intrus", "statut": "brouillon"}');
       resultat := 'un compte « opérations » écrit une facture'; raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
@@ -1588,6 +1670,30 @@ begin
                              or (collection = 'envoisProgrammes' and id = 'recette-envoi'));
     get diagnostics n = row_count;
     if n <> 5 then resultat := format('un gérant modifie %s des 5 lignes réservées aux gérants', n); raise exception 'stop'; end if;
+    -- Le numéro ne s'écrit jamais directement, même par un gérant (LMF02) : ni
+    -- sur un brouillon, ni sur une nouvelle facture, ni par un envoi groupé.
+    begin
+      update erp.enregistrements set donnees = donnees || '{"numero": "2099-0001"}' where espace = lm and collection = 'factures' and id = 'recette-fm-2';
+      resultat := 'factures : un gérant écrit lui-même le numéro d''un brouillon'; raise exception 'stop';
+    exception when sqlstate 'LMF02' then null;
+    end;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values
+        (lm, 'factures', 'recette-fm-3', '{"id": "recette-fm-3", "numero": "2099-0003", "statut": "emise"}');
+      resultat := 'factures : un gérant crée une facture avec son numéro'; raise exception 'stop';
+    exception when sqlstate 'LMF02' then null;
+    end;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values
+        (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "2099-0001", "statut": "emise"}')
+      on conflict (espace, collection, id) do update set donnees = excluded.donnees;
+      resultat := 'factures : un envoi du navigateur pose le numéro d''un brouillon'; raise exception 'stop';
+    exception when sqlstate 'LMF02' then null;
+    end;
+    -- Validation comme dans l'ERP : contenu final enregistré sans numéro, puis numéro par la base.
+    update erp.enregistrements set donnees = donnees || '{"montantHtCentimes": 250}' where espace = lm and collection = 'factures' and id = 'recette-fm-2';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'factures : un gérant ne prépare plus un brouillon'; raise exception 'stop'; end if;
     if erp.numeroter_facture('recette-fm-1') <> '2099-0001' or erp.numeroter_facture('recette-fm-2') <> '2099-0002' then
       resultat := 'factures : numéros pas à la suite'; raise exception 'stop';
     end if;
@@ -1604,22 +1710,32 @@ begin
     begin
       update erp.enregistrements set donnees = donnees || '{"montantHtCentimes": 1}' where espace = lm and collection = 'factures' and id = 'recette-fm-1';
       resultat := 'factures : une facture numérotée change de montant'; raise exception 'stop';
-    exception when insufficient_privilege then null;
+    exception when sqlstate 'LMF01' then null;
     end;
     begin
       update erp.enregistrements set donnees = donnees || '{"numero": "2099-0007"}' where espace = lm and collection = 'factures' and id = 'recette-fm-1';
       resultat := 'factures : une facture numérotée change de numéro'; raise exception 'stop';
-    exception when insufficient_privilege then null;
+    exception when sqlstate 'LMF01' or sqlstate 'LMF02' then null;
     end;
     begin
       delete from erp.enregistrements where espace = lm and collection = 'factures' and id = 'recette-fm-1';
       resultat := 'factures : une facture numérotée se supprime'; raise exception 'stop';
-    exception when insufficient_privilege then null;
+    exception when sqlstate 'LMF01' then null;
     end;
     update erp.enregistrements set donnees = donnees || '{"statut": "payee", "payeeLe": "2099-02-01", "partageeLe": "2099-01-20T10:00:00+01:00"}'
       where espace = lm and collection = 'factures' and id = 'recette-fm-1';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'factures : le paiement et le partage d''une facture numérotée ne s''écrivent plus'; raise exception 'stop'; end if;
+    -- Envoi du navigateur (ajout qui devient modification) avec le même numéro : accepté.
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees)
+        select espace, collection, id, donnees || '{"partageeLe": "2099-01-21T10:00:00+01:00"}' from erp.enregistrements
+        where espace = lm and collection = 'factures' and id = 'recette-fm-2'
+      on conflict (espace, collection, id) do update set donnees = excluded.donnees;
+      get diagnostics n = row_count;
+    exception when sqlstate 'LMF01' or sqlstate 'LMF02' then n := -1;
+    end;
+    if n <> 1 then resultat := 'factures : l''envoi du navigateur d''une facture numérotée (même numéro) est refusé'; raise exception 'stop'; end if;
 
     -- 1 quinquies. Gérant d'un autre espace : pas de numéro dans Label Maison.
     perform set_config('request.jwt.claims', j_autre, true);
@@ -2102,7 +2218,8 @@ revoke all on function erp.recette_espaces() from public, anon, authenticated;
 -- ------------------------------------------------------------------- bilan
 -- Dernière instruction : son résultat s'affiche dans l'onglet « Results ».
 -- Attendu après la passe 1 : espaces >= 1, colonnes_espace = 4,
---   cles_par_espace = 0, compte_serveur = prêt, recette = ok.
+--   cles_par_espace = 0, compte_serveur = prêt, numeros_factures = uniques,
+--   recette = ok.
 -- Attendu après la passe 2 : pareil, avec cles_par_espace = 3.
 select
   current_setting('erp.passe', true) as passe,
@@ -2120,6 +2237,14 @@ select
        then 'prêt'
      else 'rôle absent : relancer ce script'
    end) as compte_serveur,
+  (select case
+     when to_regclass('erp.enregistrements_numero_facture_espace') is not null then 'uniques'
+     when exists (select 1 from erp.enregistrements e
+                  where e.collection = 'factures' and btrim(coalesce(e.donnees ->> 'numero', '')) <> ''
+                  group by e.espace, btrim(e.donnees ->> 'numero') having count(*) > 1)
+       then 'en double : corriger les numéros listés en avertissement, puis relancer'
+     else 'index absent : relancer ce fichier'
+   end) as numeros_factures,
   erp.recette_espaces() as recette;
 
 -- =============================================================================
@@ -2130,14 +2255,17 @@ select
 -- retirée) et chaque modification de l'ERP échoue.
 -- =============================================================================
 -- begin;
--- -- Si la passe 2 a été faite : anciennes clés primaires.
--- alter table erp.enregistrements      drop constraint if exists enregistrements_pkey;
--- alter table erp.etat_automatisations drop constraint if exists etat_automatisations_pkey;
--- alter table erp.membres              drop constraint if exists membres_pkey;
+-- -- Données des autres espaces d'abord, tant que les clés primaires sont là :
+-- -- les tables du temps réel (publication supabase_realtime) refusent une
+-- -- suppression sans clé (« does not have a replica identity »).
 -- delete from erp.enregistrements      where espace <> '4c4d0000-0000-4000-8000-000000000001';
 -- delete from erp.etat_automatisations where espace <> '4c4d0000-0000-4000-8000-000000000001';
 -- delete from erp.membres              where espace <> '4c4d0000-0000-4000-8000-000000000001';
 -- delete from erp.historique           where espace <> '4c4d0000-0000-4000-8000-000000000001';
+-- -- Si la passe 2 a été faite : anciennes clés primaires.
+-- alter table erp.enregistrements      drop constraint if exists enregistrements_pkey;
+-- alter table erp.etat_automatisations drop constraint if exists etat_automatisations_pkey;
+-- alter table erp.membres              drop constraint if exists membres_pkey;
 -- alter table erp.enregistrements      add primary key (collection, id);
 -- alter table erp.etat_automatisations add primary key (id);
 -- alter table erp.membres              add primary key (email);
@@ -2162,9 +2290,11 @@ select
 --   erp.role_membre(uuid), erp.acces_lecture(uuid), erp.acces_ecriture(uuid), erp.acces_gerant(uuid),
 --   erp.espace_du_chemin(text), erp.espaces_lecture(), erp.espaces_ecriture(), erp.espaces_gerant(),
 --   erp.garder_espaces(), erp.cle_par_espace(regclass) cascade;
--- -- Numérotation des factures et garde de l'autonomie de l'agent (lisent la colonne espace) ;
--- -- erp-installation.sql remet la garde de l'autonomie, version d'avant les espaces.
--- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent() cascade;
+-- -- Numérotation des factures, garde de l'autonomie de l'agent et du numéro des factures
+-- -- (lisent la colonne espace) ; erp-installation.sql remet les deux gardes et l'index
+-- -- des numéros, version d'avant les espaces.
+-- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent(),
+--   erp.reserver_numero_facture() cascade;
 -- drop table if exists erp.invitations_espace, erp.invitations, erp.espaces cascade;
 -- drop function if exists erp.mes_espaces(), erp.est_serveur(), erp.espace_entete(), erp.id_label_maison() cascade;
 -- commit;

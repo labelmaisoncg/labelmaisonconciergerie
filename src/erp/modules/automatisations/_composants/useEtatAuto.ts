@@ -3,7 +3,8 @@
  * journal), qui fait tourner le moteur au chargement et après chaque action.
  */
 import { useErp } from '../../../data/store';
-import { REGLES, type EvenementAuto } from '../../../automatisations';
+import { clesActives as clesQuiTournent } from '../../../data/regles-actives';
+import type { EvenementAuto } from '../../../automatisations';
 
 export interface EtatAuto {
   actives: Record<string, boolean>;
@@ -13,7 +14,8 @@ export interface EtatAuto {
 export function useEtatAuto() {
   const erp = useErp();
   const etat: EtatAuto = { actives: erp.reglesActives, evenements: erp.evenementsAuto };
-  const clesActives = REGLES.filter((r) => erp.estRegleActive(r.cle)).map((r) => r.cle);
+  // Les mêmes que le store : channel manager seulement, jamais les règles des finances.
+  const clesActives = clesQuiTournent(erp.reglesActives);
   return {
     etat,
     estActive: erp.estRegleActive,

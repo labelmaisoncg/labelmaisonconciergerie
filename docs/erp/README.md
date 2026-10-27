@@ -431,10 +431,19 @@ ou 2 ; même règle avant les espaces dans `erp-installation.sql` et
 compte serveur) pour `envoisProgrammes`, `programmes`, `agent`, `repull`,
 `factures`, `passagesFacturesMensuelles`, `conseilsPrix` (`reglages`,
 `etat`) et `reglages` (`messages-programmes`, `societe`,
-`numerotation-factures`) ; niveau d'autonomie de l'agent changé par un
-gérant seulement (déclencheur) ; numéro de facture attribué par
-`erp.numeroter_facture(p_id)` (à la suite, jamais deux fois) ; une facture
-numérotée ne change plus, sauf paiement et partage, et ne se supprime pas.
+`numerotation-factures`, `alerte-controle-agent`) ; niveau d'autonomie de
+l'agent changé par un gérant seulement (déclencheur) ; numéro de facture
+attribué par `erp.numeroter_facture(p_id)` seulement (à la suite, jamais
+deux fois ; toute autre écriture d'un numéro est refusée, code `LMF02`, et
+un index unique par espace l'interdit en double) ; une facture numérotée ne
+change plus, sauf paiement et partage, et ne se supprime pas (code
+`LMF01`). Copie des listes dans le navigateur : `ecritures-gerant.ts` (un
+compte qui n'est pas gérant ne met pas ces écritures en file ;
+`verifier-synchro.ts` compare les listes aux fichiers SQL). Toute écriture
+refusée par la base (droits, règle RLS, déclencheur) est renvoyée ligne par
+ligne : les acceptées sont gardées, les refusées retirées de la file sans
+nouvel essai, signalées une fois (message et ligne de journal) et relues ;
+réseau et 5xx : nouvel essai comme avant (`synchro.ts`, `refusParLaBase`).
 
 L'onglet « Activité » est calculé depuis `filsMessages` :
 messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :
@@ -1686,8 +1695,8 @@ d'août publié et deux documents ; son espace :
   factures sera disponible après la mise à jour de l’ERP. », aucun numéro.
   Écriture refusée par le déclencheur (onglet resté ouvert qui renverrait un
   ancien brouillon) : retirée de la file sans nouvel essai, avertissement,
-  version de la base relue (`synchro.ts`, `refusDefinitif` /
-  `refusEcritureFigee`). Après validation, seuls changent le partage
+  version de la base relue (`synchro.ts`, `refusParLaBase`, codes `LMF01`
+  et `LMF02`). Après validation, seuls changent le partage
   (`partageeLe`) et le paiement (`statut`, `payeeLe`). Puis
   « Partager au propriétaire » : la facture entre dans son espace et dans les
   relances (phase 2). Impression : une seule mise en page,
