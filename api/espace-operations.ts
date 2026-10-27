@@ -24,7 +24,7 @@
 // calendrier, disponibilité ni annonce. Règles : src/erp/data/espace-operations.ts.
 // =============================================================================
 
-import { appliquerAction, avecEcritures, fusionnerEcritures, vueOperations, type ActionOperations } from '../src/erp/data/espace-operations.js';
+import { appliquerAction, avecEcritures, conflitEcritures, fusionnerEcritures, vueOperations, type ActionOperations } from '../src/erp/data/espace-operations.js';
 import {
   MESSAGES_REFUS_OPS,
   avecNouveauLien,
@@ -188,7 +188,10 @@ export default async function handler(req: any, res: any) {
       });
       if (!r.ok) return repondre(res, r.statut, { ok: false, erreur: r.erreur });
       // Relu juste avant d'écrire : seuls les champs changés par l'action sont repris (rien d'écrasé de ce qui a changé entre-temps).
-      const ecritures = fusionnerEcritures(entrees, r.ecritures, await relireOps(s.base, r.ecritures));
+      const relus = await relireOps(s.base, r.ecritures);
+      const conflit = conflitEcritures(entrees, r.ecritures, relus);
+      if (conflit) return repondre(res, 409, { ok: false, erreur: conflit, vue: await vueSignee(s.espace, await entreesOps(s.base), membreId) });
+      const ecritures = fusionnerEcritures(entrees, r.ecritures, relus);
       await ecrireOps(s.base, ecritures);
       const apres = avecEcritures(entrees, ecritures);
       const notifier = prevenirGerant(s.base, apres, r.aNotifier);

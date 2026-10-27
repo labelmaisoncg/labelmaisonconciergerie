@@ -118,7 +118,7 @@ export function genererEquipeOps(reservations: Reservation[], incidents: Inciden
   const completes = incidents.map((i): Incident => (ASSIGNATIONS[i.id] ? { ...i, assigneA: ASSIGNATIONS[i.id] } : i));
 
   const absences: AbsenceMembre[] = [
-    { id: 'abs-01', membreId: CLARA, du: ajouterJours(AUJOURDHUI, -1), au: ajouterJours(AUJOURDHUI, 3), remplacantId: INES, motif: 'Congés', creeLe: le(-4, '10:00'), par: 'Inès Morel' },
+    { id: 'abs-01', membreId: CLARA, du: ajouterJours(AUJOURDHUI, -1), au: ajouterJours(AUJOURDHUI, 3), remplacantId: INES, motif: 'Congés', creeLe: le(-4, '10:00'), par: 'Inès Morel', parMembreId: INES },
   ];
 
   const signalementsLogement: SignalementLogement[] = [
