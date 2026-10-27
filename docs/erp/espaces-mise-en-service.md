@@ -48,6 +48,19 @@ un document, ni dans le code.
 
 ## Étape 2 — Préparer la base, passe 1 (5 min)
 
+**Avant de lancer (2 min) :**
+
+- Supabase → **Authentication** → **Sign In / Providers** → **Email** :
+  **Allow new users to sign up** **désactivé** → **Save**. Avant la passe 1,
+  la base reconnaît un membre à sa seule adresse : n'importe qui pourrait
+  créer le compte d'un membre qui n'en a pas encore. Vous le réactiverez
+  juste après la passe 1 (« Juste après » ci-dessous).
+- **Authentication** → **Users** : la passe 1 relie chaque membre au compte
+  confirmé de même adresse, pour de bon. Regardez la liste : un compte que
+  vous ne reconnaissez pas, à l'adresse d'un membre de l'équipe, se supprime
+  **avant** la passe (**⋯** → **Delete user**) ; la personne recevra ensuite
+  une invitation. Dans le doute, demandez à l'équipe technique.
+
 1. Supabase → **SQL Editor** → **New query**.
 2. Ouvrez le fichier `supabase/erp-espaces.sql`, copiez **tout** son contenu
    et collez-le dans la requête.
@@ -69,6 +82,11 @@ La passe 1 relie aussi chaque membre d'aujourd'hui à son compte (même
 adresse, adresse confirmée) : ils entrent comme avant, sans code. Un membre
 qui n'avait pas encore de compte confirmé recevra une invitation (Paramètres
 → Équipe → **Envoyer l'invitation**).
+
+**Juste après (recette = ok)** : Supabase → **Authentication** → **Sign In /
+Providers** → **Email** → **Allow new users to sign up** **activé** →
+**Save** (c'est « Créer mon compte » ; désormais, un compte ne s'ouvre
+qu'avec le code de son invitation).
 
 **Vous aviez déjà passé ce fichier (passe 1, ou passes 1 et 2) avec une
 version précédente ?** Relancez-le maintenant, avec la même ligne ▼▼▼ que la
@@ -143,6 +161,10 @@ Attendu : la même ligne qu'à l'étape 2, avec **passe = 2** et
 3. **Réglages de sécurité des comptes.**
    - **Sign In / Providers** → **Email** : **Confirm email** activé, et
      **Secure email change** activé. Attendu : les deux sont activés.
+   - **Sign In / Providers** : **Phone** désactivé, **Allow anonymous
+     sign-ins** désactivé, **Allow manual linking** désactivé, et aucun autre
+     fournisseur (Google, Apple…) activé. Ce sont les réglages par défaut :
+     vérifiez seulement qu'ils n'ont pas changé.
    - **URL Configuration** → **Redirect URLs** : exactement
      `https://www.labelmaisoncg.fr/erp`, **sans joker** (`*` ou `**`) ;
      retirez toute autre ligne en `*`. Attendu : une seule ligne, sans `*`.
@@ -292,12 +314,19 @@ Une requête à la fois.
   (plus rien à faire dans Supabase). Le lien sert une fois, 14 jours ; une
   nouvelle invitation remplace la précédente. Une personne qui a déjà activé
   son accès n'a pas besoin d'invitation : elle se connecte.
-- **Compte créé à la main dans Supabase** (sans invitation) : reliez-le à sa
-  ligne de membre dans le SQL Editor :
-  `select erp.lier_compte('prenom@exemple.fr', 'CODE');`
+- **Compte créé à la main dans Supabase** (**Add user**, **Auto Confirm
+  User**, sans invitation) : reliez-le à sa ligne de membre dans le SQL
+  Editor : `select erp.lier_compte('prenom@exemple.fr', 'CODE');`. Jamais
+  pour un compte venu de « Créer mon compte » : la liaison ne change ni son
+  mot de passe ni ses sessions ; envoyez plutôt une invitation.
 - **Avant la passe 1** (base d'avant les espaces) : « Créer mon compte » et
-  « Envoyer l'invitation » sont fermés (« Disponible après la mise en service
-  des espaces ; en attendant, un gérant crée le compte dans Supabase. »).
+  « Envoyer l'invitation » sont fermés (« La création de compte n'est pas
+  encore ouverte : demandez à un gérant de vous ajouter. »). Le gérant crée
+  alors le compte dans Supabase (**Add user**, **Auto Confirm User**).
+- **Lien refusé** (déjà servi, remplacé par « Envoyer l'invitation », ou
+  expiré) : la personne lit « Ce lien d'invitation n'est plus valable (déjà
+  utilisé, remplacé ou expiré) : demandez qu'on vous le renvoie. » ; renvoyez
+  l'invitation depuis sa ligne.
 - **E-mail au nom de Sens** : sans réglage, rien ne part et le gérant copie
   le lien (SMS, WhatsApp). Pour envoyer au nom de Sens (domaine vérifié dans
   Resend) :

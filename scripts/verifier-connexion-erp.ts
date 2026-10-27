@@ -32,6 +32,7 @@
 import crypto from 'node:crypto';
 import vm from 'node:vm';
 import middleware from '../middleware';
+import { MESSAGE_LIEN_PERIME as MESSAGE_LIEN_PERIME_APPLI } from '../src/erp/data/invitation';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -114,6 +115,8 @@ const appelsInvites: string[] = [];
 let panneDeconnexion = false;
 const MESSAGE_NEUTRE =
   'Ce compte n’a pas accès à l’ERP. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil. Sinon, demandez à un gérant de vous ajouter.';
+/** Code refusé (déjà servi, remplacé, expiré) et pas d'accès : on ne renvoie pas vers ce même lien. */
+const MESSAGE_LIEN_PERIME = 'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé ou expiré) : demandez qu’on vous le renvoie.';
 
 function compteInvite(email: string, motDePasse: string): CompteInvite {
   const c: CompteInvite = { id: `aaaaaaaa-0000-4000-8000-${String(++compteurInvites).padStart(12, '0')}`, email, motDePasse, lie: false, lieLe: null };
@@ -689,7 +692,7 @@ async function principal() {
     verifier(!differents.envois.some((e) => e.url.includes('/signup')) && /différents/.test(String(differents.elements.erreur?.textContent)), 'deux saisies différentes : refusé avant l’envoi', differents.elements.erreur?.textContent);
 
     // Envoi : même message qu'un compte existe ou non, jamais de connexion.
-    const MESSAGE = 'Ouvrez le lien reçu par e-mail pour confirmer votre adresse.';
+    const MESSAGE = 'Ouvrez sur cet appareil le lien reçu par e-mail pour confirmer votre adresse.';
     const creer = async (reponse: { statut: number; corps: unknown }) => {
       const t = essai(`#creer=nouveau%40exemple.fr&code=${CODE}`, { inscription: reponse });
       await t.attendre();
@@ -743,6 +746,10 @@ async function principal() {
     await confirme.soumettre('f-finir');
     verifier(!versConnexion(confirme).length && /trop court/.test(String(confirme.elements.erreur?.textContent)), 'dernière étape : mot de passe trop court refusé avant l’envoi');
     confirme.elements['finir-mdp'].value = 'un-bon-mot-de-passe';
+    confirme.elements['finir-mdp2'].value = 'un-bon-mot-de-pase';
+    await confirme.soumettre('f-finir');
+    verifier(!versConnexion(confirme).length && /différents/.test(String(confirme.elements.erreur?.textContent)), 'dernière étape : deux saisies différentes refusées avant l’envoi (une faute de frappe ne devient pas le mot de passe)');
+    confirme.elements['finir-mdp2'].value = 'un-bon-mot-de-passe';
     await confirme.soumettre('f-finir');
     const corpsFinir = JSON.parse(versConnexion(confirme)[0]?.corps ?? '{}') as Record<string, unknown>;
     verifier(corpsFinir.code === CODE && corpsFinir.mot_de_passe === 'un-bon-mot-de-passe' && corpsFinir.access_token === jwt('nouveau@exemple.fr'), 'dernière étape : jetons, code et mot de passe envoyés à /erp/connexion', corpsFinir);
@@ -852,11 +859,12 @@ async function principal() {
 
     r = await entrer(lienConfirmation, { code: CODE_EXPIRE, mot_de_passe: 'mdp-de-la-victime' });
     corps = (await r!.json()) as typeof corps;
-    verifier(r!.status === 403 && corps.erreur === MESSAGE_NEUTRE && corps.invitation === 'refusee', 'code expiré : refusé, message neutre, code à oublier', corps);
+    verifier(r!.status === 403 && corps.erreur === MESSAGE_LIEN_PERIME && corps.invitation === 'refusee', 'code expiré : refusé, « ce lien n’est plus valable », code à oublier', corps);
     const sessionApres = ouvrirSession(victime);
     r = await entrer(sessionApres, { code: 'Code-Faux_0123456789abcdefghijklmnopqrstuvw', mot_de_passe: 'mdp-de-la-victime' });
     corps = (await r!.json()) as typeof corps;
-    verifier(r!.status === 403 && corps.erreur === MESSAGE_NEUTRE && corps.invitation === 'refusee', 'faux code : refusé, message neutre', corps);
+    verifier(r!.status === 403 && corps.erreur === MESSAGE_LIEN_PERIME && corps.invitation === 'refusee' && !cookiesPoses(r!).erp_session, 'faux code : refusé, « ce lien n’est plus valable » (pas de boucle vers le même lien)', corps);
+    verifier(MESSAGE_LIEN_PERIME === MESSAGE_LIEN_PERIME_APPLI, 'même message dans l’application (src/erp/data/invitation.ts)');
 
     // La victime, avec le bon code : mot de passe posé, autres sessions fermées, compte lié, session renouvelée.
     const victimeSession = ouvrirSession(victime);
@@ -871,8 +879,8 @@ async function principal() {
     verifier(Date.now() - avant >= 1000, 'session renouvelée après l’activation (jetons datés à la seconde)');
     const ordre = appelsInvites.filter((a) => a.startsWith(victimeSession.acces)).map((a) => a.split(' ').slice(1).join(' '));
     verifier(
-      ordre.join(' | ') === 'GET /auth/v1/user | PUT /auth/v1/user | POST /auth/v1/logout?scope=others | POST /rest/v1/rpc/activer',
-      'ordre : vérifier le compte, poser le mot de passe, fermer les autres sessions, puis activer',
+      ordre.join(' | ') === 'GET /auth/v1/user | POST /rest/v1/rpc/qui_suis_je | PUT /auth/v1/user | POST /auth/v1/logout?scope=others | POST /rest/v1/rpc/activer',
+      'ordre : vérifier le compte (et qu’il n’est pas déjà membre), poser le mot de passe, fermer les autres sessions, puis activer',
       ordre,
     );
     const relais = c.erp_relais?.valeur ?? '';
@@ -889,6 +897,17 @@ async function principal() {
     ancien.lie = true;
     r = await entrer(ouvrirSession(ancien));
     verifier(r!.status === 200, 'membre lié à la passe 1 : entre sans code', r!.status);
+    // Déjà membre, avec un code resté sur l'appareil (ou reçu d'un autre espace) : il n'est pas utilisé.
+    const ancienSession = ouvrirSession(ancien);
+    const autreSession = ouvrirSession(ancien);
+    r = await entrer(ancienSession, { code: 'Code-Reste_0123456789abcdefghijklmnopqrstu', mot_de_passe: 'autre-mot-de-passe' });
+    corps = (await r!.json()) as typeof corps;
+    const appelsAncien = appelsInvites.filter((a) => a.startsWith(ancienSession.acces)).map((a) => a.split(' ').slice(1).join(' '));
+    verifier(
+      r!.status === 200 && corps.invitation === 'refusee' && ancien.motDePasse === 'mdp' && rafraichissementsInvites.has(autreSession.rafraichir) && !appelsAncien.some((a) => /PUT|logout|activer/.test(a)),
+      'déjà membre avec un code : il entre, mot de passe et autres sessions intacts, rien n’est lié, le code est à oublier',
+      { statut: r!.status, corps, appelsAncien },
+    );
 
     // Invitation d'une conciergerie : sans son code, rien ; avec, l'écran de création.
     const gerante = compteInvite('gerante@cote.exemple', 'mdp-gerante');

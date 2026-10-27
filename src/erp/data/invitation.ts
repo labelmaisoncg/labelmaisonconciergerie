@@ -28,6 +28,13 @@ export const CODE_INVITATION = /^[A-Za-z0-9_-]{20,100}$/;
 /** Durée d'une invitation (erp.inviter_membre, erp.inviter_espace). */
 export const DUREE_INVITATION_JOURS = 14;
 
+/**
+ * Code de l'invitation refusé (déjà servi, remplacé par un renvoi, expiré) et
+ * pas d'accès sans lui : on le dit, au lieu de renvoyer vers ce même lien
+ * (même texte que middleware.ts).
+ */
+export const MESSAGE_LIEN_PERIME = 'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé ou expiré) : demandez qu’on vous le renvoie.';
+
 export const normaliserEmailInvitation = (email: unknown): string => (typeof email === 'string' ? email.trim().toLowerCase() : '');
 
 export const codeInvitationValide = (code: unknown): code is string => typeof code === 'string' && CODE_INVITATION.test(code);

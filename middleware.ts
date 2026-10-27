@@ -479,7 +479,7 @@ function page(
 
   .separateur{margin:22px 0 0; border:0; border-top:1px solid var(--line)}
   .note{margin:16px 0 0; text-align:center; font-size:13.5px; color:var(--ink-3)}
-  .note + .note{margin-top:4px}
+  .note:not([hidden]) + .note{margin-top:4px}
   .note code{
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; color:var(--ink-2);
   }
@@ -618,6 +618,12 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          <input id="finir-mdp" type="password" placeholder="Votre mot de passe"
                 autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
        </div>
+       <label for="finir-mdp2">Confirmer le mot de passe</label>
+       <div class="champ">
+         ${ICONE_CADENAS}
+         <input id="finir-mdp2" type="password" placeholder="Le même, une seconde fois"
+                autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
+       </div>
        <button type="submit">${ICONE_CLE} Ouvrir l’ERP</button>
        <button type="button" class="lien" id="finir-autre">Utiliser un autre compte</button>
      </form>
@@ -654,7 +660,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        var $ = function (id) { return document.getElementById(id); };
        var boiteErreur = $('erreur'), boiteInfo = $('info');
        var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer'), fCreer = $('f-creer'), fFinir = $('f-finir');
-       var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau'), champFinir = $('finir-mdp');
+       var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau'), champFinir = $('finir-mdp'), champFinir2 = $('finir-mdp2');
        var champCreerEmail = $('creer-email'), champCreerMdp = $('creer-mdp'), champCreerMdp2 = $('creer-mdp2'), noteCreer = $('note-creer');
        var formulaires = [fConnexion, fNouveau, fConfirmer, fCreer, fFinir];
 
@@ -817,7 +823,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          $('intro-finir').textContent = 'Dernière étape' + (compte ? ' pour ' + compte : '') + ' : saisissez votre mot de passe, celui choisi à la création ou un nouveau.';
          $('finir-email').value = compte || '';
          montrer(fFinir);
-         champFinir.value = '';
+         champFinir.value = ''; champFinir2.value = '';
          champFinir.focus();
        }
        // Réponses de l'inscription. Une adresse qui a déjà un compte reçoit la
@@ -835,7 +841,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          if (/email_address_invalid|validation_failed|invalid format|unable to validate email/i.test(code + ' ' + m)) return 'Adresse e-mail invalide.';
          return 'La création du compte n’a pas abouti. Réessayez dans un instant.';
        }
-       var MESSAGE_COMPTE = 'Ouvrez le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
+       var MESSAGE_COMPTE = 'Ouvrez sur cet appareil le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
 
        $('vers-creer').addEventListener('click', function () {
          dire(''); ouvrirCreation(champEmail.value.trim());
@@ -884,10 +890,12 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          if (!aFinir) return;
          var mdp = champFinir.value;
          if (mdp.length < 8) { dire('Mot de passe trop court : 8 caractères au moins.'); champFinir.focus(); return; }
+         // Il devient le mot de passe du compte : saisi deux fois, comme à la création.
+         if (mdp !== champFinir2.value) { dire('Les deux mots de passe sont différents.'); champFinir2.focus(); return; }
          dire(''); occuper(fFinir, true);
          ouvrir(aFinir.acces, aFinir.rafraichir, mdp)
            .catch(refuser)
-           .then(function () { occuper(fFinir, false); champFinir.value = ''; });
+           .then(function () { occuper(fFinir, false); champFinir.value = ''; champFinir2.value = ''; });
        });
        $('finir-autre').addEventListener('click', function () {
          aFinir = null; dire(''); montrerConnexion('');
@@ -1017,6 +1025,8 @@ const CODE_INVITATION = /^[A-Za-z0-9_-]{20,100}$/;
 /** Refus ordinaire : le même, qu'il manque l'invitation, son code ou la ligne de membre. */
 const MESSAGE_SANS_ACCES =
   'Ce compte n’a pas accès à l’ERP. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil. Sinon, demandez à un gérant de vous ajouter.';
+/** Code refusé par erp.activer et pas d'accès sans lui (même texte que src/erp/data/invitation.ts). */
+const MESSAGE_LIEN_PERIME = 'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé ou expiré) : demandez qu’on vous le renvoie.';
 const MESSAGE_MOT_DE_PASSE =
   'Pour finir, saisissez le mot de passe de votre compte (celui choisi à la création, ou un nouveau : 8 caractères au moins).';
 /** Attente avant de renouveler la session après l'activation : les jetons sont datés à la seconde. */
@@ -1178,7 +1188,7 @@ async function membreErp(jeton: string, email: string): Promise<AccesErp | null>
 
 type Activation =
   | { etat: 'activee'; acces: string; rafraichir: string }
-  | { etat: 'refusee' }
+  | { etat: 'refusee'; perime: boolean }
   | { etat: 'erreur'; statut: number; erreur: string; activee?: boolean };
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -1204,7 +1214,7 @@ async function renouveler(rafraichir: string, compte: string): Promise<Activatio
  * erp.activer relie le compte et consomme le code, et la session est
  * renouvelée. Ainsi, après l'activation, personne d'autre ne détient de
  * moyen d'entrer (ni mot de passe, ni session). refusee : le code n'a pas
- * servi (faux, expiré, déjà servi, autre adresse ; base d'avant les espaces).
+ * servi (faux, expiré, déjà servi, autre adresse : perime ; base d'avant les espaces).
  */
 async function activerInvitation(acces: string, rafraichir: string, code: string, motDePasse: string, compte: string): Promise<Activation> {
   const u = await fetch(`${SUPABASE_ERP_URL}/auth/v1/user`, {
@@ -1235,7 +1245,7 @@ async function activerInvitation(acces: string, rafraichir: string, code: string
   });
   if (!a.ok) {
     const t = await a.text().catch(() => '');
-    if (a.status === 401 || a.status === 403 || a.status === 404 || /42501|PGRST202|42883/.test(t)) return { etat: 'refusee' };
+    if (a.status === 401 || a.status === 403 || a.status === 404 || /42501|PGRST202|42883/.test(t)) return { etat: 'refusee', perime: /42501/.test(t) };
     return { etat: 'erreur', statut: 502, erreur: 'La base de l’ERP ne répond pas. Réessayez dans un instant.' };
   }
   return renouveler(rafraichir, compte);
@@ -1281,7 +1291,12 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
     let jeton = acces;
     let jetonRafraichir = rafraichir;
     let invitation: 'activee' | 'refusee' | undefined;
-    if (code) {
+    let lienPerime = false;
+    // Déjà membre : un code resté sur l'appareil (ou reçu d'un autre espace) ne sert pas.
+    // Rien n'est fermé ni lié ; l'appareil l'oublie (refusee).
+    const dejaMembre = code ? await membreErp(acces, email) : null;
+    if (dejaMembre?.entre) invitation = 'refusee';
+    else if (code) {
       if (!motDePasse) return repondreJson({ ok: false, code: 'mot_de_passe', erreur: MESSAGE_MOT_DE_PASSE }, 409);
       const a = await activerInvitation(acces, rafraichir, code, motDePasse, id);
       if (a.etat === 'erreur') return repondreJson({ ok: false, erreur: a.erreur, ...(a.activee ? { invitation: 'activee' } : {}) }, a.statut);
@@ -1289,9 +1304,12 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
         jeton = a.acces;
         jetonRafraichir = a.rafraichir;
         invitation = 'activee';
-      } else invitation = 'refusee';
+      } else {
+        invitation = 'refusee';
+        lienPerime = a.perime;
+      }
     }
-    let membre = await membreErp(jeton, email);
+    let membre = dejaMembre?.entre ? dejaMembre : await membreErp(jeton, email);
     // Jetons datés à la seconde : si la base n'a pas encore reconnu le nouveau, un second renouvellement.
     if (invitation === 'activee' && membre && !membre.entre) {
       const b = await renouveler(jetonRafraichir, id);
@@ -1303,7 +1321,8 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
     }
     const avecInvitation = invitation ? { invitation } : {};
     if (membre === null) return repondreJson({ ok: false, erreur: 'La base de l’ERP ne répond pas. Réessayez dans un instant.', ...avecInvitation }, 502);
-    if (!membre.entre) return repondreJson({ ok: false, erreur: membre.motif ?? MESSAGE_SANS_ACCES, ...avecInvitation }, 403);
+    // Lien d'invitation refusé : le dire, plutôt que renvoyer vers ce même lien.
+    if (!membre.entre) return repondreJson({ ok: false, erreur: membre.motif ?? (lienPerime ? MESSAGE_LIEN_PERIME : MESSAGE_SANS_ACCES), ...avecInvitation }, 403);
     const entetes = new Headers();
     entetes.append('Set-Cookie', cookieSessionErp(await fabriquerSessionErp(id, secret)));
     entetes.append('Set-Cookie', cookieRelais(await fabriquerRelais(id, jetonRafraichir, secret)));

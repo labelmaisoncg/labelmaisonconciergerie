@@ -285,7 +285,7 @@ function FormulaireConnexion({ message }: { message?: string }) {
 /* ---------------------------------------------------------- créer un compte */
 
 const MESSAGE_COMPTE_CREE =
-  'Ouvrez le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
+  'Ouvrez sur cet appareil le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
 
 /**
  * « Créer mon compte » (secours de la page d'accès, mêmes règles), avec le
@@ -380,12 +380,15 @@ function CreerCompte({ email, onRetour }: { email: string; onRetour: (email: str
  */
 function ActiverCompte({ email, onFini, onDeconnecter }: { email: string; onFini: () => void; onDeconnecter: () => void }) {
   const [motDePasse, setMotDePasse] = useState('');
+  const [confirmation, setConfirmation] = useState('');
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
 
   const valider = async (e: FormEvent) => {
     e.preventDefault();
     if (motDePasse.length < 8) return setErreur('Mot de passe trop court : 8 caractères au moins.');
+    // Il devient le mot de passe du compte : saisi deux fois, comme à la création.
+    if (motDePasse !== confirmation) return setErreur('Les deux mots de passe sont différents.');
     const code = codeInvitationDe(email);
     if (!code) return onFini();
     setEnCours(true);
@@ -393,6 +396,7 @@ function ActiverCompte({ email, onFini, onDeconnecter }: { email: string; onFini
     const r = await activerAvecCode(code, motDePasse);
     setEnCours(false);
     setMotDePasse('');
+    setConfirmation('');
     if (!r.ok) return setErreur(r.erreur);
     onFini();
   };
@@ -402,6 +406,9 @@ function ActiverCompte({ email, onFini, onDeconnecter }: { email: string; onFini
       <form onSubmit={valider} noValidate className="grid gap-4">
         <Field label="Mot de passe" aide="Celui choisi à la création du compte, ou un nouveau : 8 caractères au moins.">
           <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus />
+        </Field>
+        <Field label="Confirmer le mot de passe">
+          <Input type="password" autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
         </Field>
         {erreur && (
           <Alert tone="danger" className="py-2">

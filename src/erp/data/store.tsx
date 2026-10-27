@@ -30,6 +30,7 @@ import {
   attendreActivation,
   codeInvitationDe,
   enregistrerMembre,
+  lienInvitationRefuse,
   genreErreur,
   lireMembres,
   messageErreur,
@@ -41,6 +42,7 @@ import {
   connexionAutomatique,
 } from './supabase';
 import { ESPACE_LABEL_MAISON, choisirEspace, messageRefusAcces, ouvrirEspace, type Espace, type InvitationEspace } from './espaces';
+import { MESSAGE_LIEN_PERIME } from './invitation';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
 import { CreerEspace } from '../layout/CreerEspace';
@@ -830,7 +832,9 @@ function FournisseurReel({ children }: { children: ReactNode }) {
             if (identite.invitation) setACreer({ email, invitation: identite.invitation });
             // Code d'invitation gardé sur l'appareil pour ce compte : dernière étape, le mot de passe.
             else if (codeInvitationDe(email)) return setPhase({ nom: 'activer', email });
-            return setPhase({ nom: 'non_autorise', email, motif: messageRefusAcces(identite.refus) ?? undefined });
+            // Code de l'invitation refusé (déjà servi, remplacé, expiré) : on le dit plutôt que « ouvrez son lien ».
+            const motif = messageRefusAcces(identite.refus) ?? (lienInvitationRefuse() ? MESSAGE_LIEN_PERIME : undefined);
+            return setPhase({ nom: 'non_autorise', email, motif });
           }
           espace = { id: choix.id, code: choix.code, nom: choix.nom };
         }
@@ -850,7 +854,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
         const moi = membres.membres.find((m) => m.email === cle);
         if (!moi || moi.role === 'prestataire') {
           emailCharge.current = null;
-          return setPhase({ nom: 'non_autorise', email });
+          return setPhase({ nom: 'non_autorise', email, motif: lienInvitationRefuse() ? MESSAGE_LIEN_PERIME : undefined });
         }
         if (espace) retenirEspace(espace.id);
         const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro, espace: espace?.id ?? null, compte: cle });

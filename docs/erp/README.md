@@ -512,8 +512,11 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    **Create new user** : e-mail `equipe@labelmaisoncg.fr` (adresse technique,
    aucune boîte mail n'est nécessaire), mot de passe = la valeur de `ERP_PASSWORD`, cocher
    **Auto Confirm User** → **Create user**. Dans **Authentication → Sign In
-   / Providers → Email**, laisser **Allow new users to sign up** activé (c'est
-   « Créer mon compte »), **Confirm email** et **Secure email change**
+   / Providers → Email** : **Allow new users to sign up** **désactivé tant
+   que la passe 1 de `erp-espaces.sql` n'est pas faite** (avant, la base
+   reconnaît un membre à sa seule adresse : n'importe qui pourrait créer le
+   compte d'un membre qui n'en a pas encore), puis activé juste après (c'est
+   « Créer mon compte ») ; **Confirm email** et **Secure email change**
    activés (obligatoires : voir « Connexion à l'ERP »).
 3. **Lui donner l'accès à l'ERP.** Le script de l'étape 1 inscrit déjà
    `equipe@labelmaisoncg.fr` comme gérant dans `erp.membres` (bilan :
@@ -608,7 +611,10 @@ l'ERP est une application.
   d'aujourd'hui sont liés une fois pour toutes, à la passe 1, au compte
   confirmé de même adresse : ils entrent sans code. Un compte créé à la main
   dans Supabase (sans invitation) se lie dans le SQL Editor :
-  `select erp.lier_compte('prenom@exemple.fr', 'label-maison');`.
+  `select erp.lier_compte('prenom@exemple.fr', 'label-maison');` —
+  seulement pour un compte créé par un gérant (**Add user**, **Auto Confirm
+  User**), jamais pour un compte venu de « Créer mon compte » : la liaison
+  ne change ni son mot de passe ni ses sessions.
   Sans code sur l'appareil, « Créer mon compte » dit d'ouvrir le lien de
   l'invitation. Un compte sans accès lit un refus neutre : « Ce compte n'a
   pas accès à l'ERP. Vous avez reçu une invitation ? Ouvrez son lien sur cet
@@ -618,13 +624,25 @@ l'ERP est une application.
   dans ses membres, pas encore activée ; le lien vise toujours le site
   fixe, jamais l'adresse de la page qui l'a demandé.
   **Base d'avant les espaces** (`erp-espaces.sql` pas encore passé) :
-  « Créer mon compte » et « Envoyer l'invitation » sont fermés (« Disponible
-  après la mise en service des espaces ; en attendant, un gérant crée le
-  compte dans Supabase. ») ; les comptes existants entrent comme avant.
+  « Créer mon compte » et « Envoyer l'invitation » sont fermés (« La
+  création de compte n'est pas encore ouverte : demandez à un gérant de vous
+  ajouter. » sur la page d'accès, « Les invitations ne sont pas encore
+  ouvertes… » pour le gérant) ; les comptes existants entrent comme avant.
+  Un lien d'invitation refusé (déjà servi, remplacé par un renvoi, expiré)
+  sans autre accès : « Ce lien d'invitation n'est plus valable (déjà utilisé,
+  remplacé ou expiré) : demandez qu'on vous le renvoie. » Un compte déjà
+  membre ignore un code resté sur l'appareil (rien n'est fermé ni lié).
 - **Réglages Supabase à garder** (Authentication → Sign In / Providers →
   Email, puis URL Configuration et Attack Protection) :
-  - **Allow new users to sign up** : activé (sinon « Créer mon compte »
-    répond « La création de compte n'est pas ouverte… ») ;
+  - **Allow new users to sign up** : **désactivé jusqu'à la passe 1**, puis
+    activé (sinon « Créer mon compte » répond « La création de compte n'est
+    pas ouverte… »). Fermer la page ne suffit pas : l'API d'inscription de
+    Supabase reste ouverte tant que ce réglage l'est ;
+  - **Phone**, **Anonymous sign-ins**, **Manual linking** et tout autre
+    fournisseur (Google, Apple…) : **désactivés** (réglages par défaut).
+    `erp.activer` refuse d'ailleurs un compte qui porte un téléphone ou une
+    autre identité que l'e-mail (ajoutés avant l'activation, ils
+    survivraient au nouveau mot de passe) ;
   - **Confirm email** : **activé, obligatoire**. L'activation exige une
     adresse confirmée (la personne lit bien cette boîte mail). C'est le
     réglage par défaut de Supabase : ne pas le couper ;
@@ -1197,7 +1215,8 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   connecté) ; l'adresse changée dans la fiche délie la ligne. L'ERP n'écrit
   jamais `uid` (droits par colonne : `espace`, `email`, `nom`, `role`).
   `erp.lier_compte(email, code_espace)` : SQL Editor seulement, pour un
-  compte créé à la main.
+  compte créé par un gérant (Add user, Auto Confirm), jamais pour un compte
+  venu de l'inscription publique.
 - Fonctions : `erp.qui_suis_je()` (espaces et rôle du compte),
   `erp.espaces_actifs()`, `erp.secret_espace()` (coffre Vault, serveur
   seulement, pour l'espace de l'en-tête seulement, jamais pour Label Maison),

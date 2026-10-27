@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from 'react';
-import { Check, Copy, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { Check, Copy, Ellipsis, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { pluriel } from '../../data/format';
+import { espaceDesDonnees } from '../../data/espaces';
 import { lienCreationCompte } from '../../data/invitation';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
-import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Input, Repli, Select, Table, type Colonne } from '../../ui';
-import { appelerServeur } from '../messagerie/_composants/serveur';
+import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Input, Modal, Repli, Select, Table, type Colonne } from '../../ui';
+import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
 
 /** Réponse de api/erp-invitation : envoyée par e-mail, sinon le lien à copier. */
 interface ResultatInvitation {
@@ -22,6 +23,8 @@ interface Invitation {
   enCours: boolean;
   resultat?: ResultatInvitation;
   erreur?: string;
+  /** Accès déjà activé entre-temps : une information, pas une erreur. */
+  deja?: boolean;
 }
 
 /**
@@ -30,7 +33,7 @@ interface Invitation {
  * lien porte l'adresse et un code à usage unique (14 jours). Juste après l'ajout d'un membre, puis à
  * tout moment depuis sa ligne (e-mail perdu, lien jamais ouvert).
  */
-function InvitationMembre({ invitation: i, demo, onEnvoyer }: { invitation: Invitation; demo: boolean; onEnvoyer: () => void }) {
+function InvitationMembre({ invitation: i, demo, ouvertes, onEnvoyer }: { invitation: Invitation; demo: boolean; ouvertes: boolean; onEnvoyer: () => void }) {
   const [copie, setCopie] = useState(false);
   const r = i.resultat;
   const ajout = i.origine === 'ajout';
@@ -50,7 +53,9 @@ function InvitationMembre({ invitation: i, demo, onEnvoyer }: { invitation: Invi
     <>
       {(ajout || r) && (
         <Alert tone="succes" className="mb-3" titre={ajout ? `${i.nom} fait partie de l’équipe.` : undefined}>
-          {!r ? (
+          {!r && !ouvertes ? (
+            <p>Les invitations s’ouvriront à la fin de la mise à jour de l’ERP.</p>
+          ) : !r ? (
             <>
               <p>Envoyez-lui l’invitation&nbsp;: le lien lui permet de créer son compte avec {i.email}.</p>
               <Button className="mt-2" icone={<Mail />} chargement={i.enCours} onClick={onEnvoyer}>
@@ -58,12 +63,12 @@ function InvitationMembre({ invitation: i, demo, onEnvoyer }: { invitation: Invi
               </Button>
             </>
           ) : r.envoye ? (
-            <p>Invitation envoyée à {i.email}.</p>
+            <p>Invitation envoyée à {i.email}. Un lien envoyé avant ne marche plus.</p>
           ) : r.lien ? (
             <>
               <p>
                 {demo ? 'Démonstration : aucun e-mail n’est envoyé.' : 'Nous ne pouvons pas envoyer l’e-mail pour l’instant.'} Copiez ce lien et envoyez-le à {i.nom}{' '}
-                (SMS, WhatsApp…).
+                (SMS, WhatsApp…). Un lien envoyé avant ne marche plus.
               </p>
               <div className="mt-2 flex gap-2">
                 <Input readOnly value={r.lien} onFocus={(e) => e.currentTarget.select()} aria-label={'Lien « Créer mon compte »'} className="text-[12.5px]" />
@@ -78,7 +83,7 @@ function InvitationMembre({ invitation: i, demo, onEnvoyer }: { invitation: Invi
         </Alert>
       )}
       {i.erreur && (
-        <Alert tone="danger" className="mb-3">
+        <Alert tone={i.deja ? 'info' : 'danger'} className="mb-3">
           {i.erreur}
         </Alert>
       )}
@@ -122,6 +127,8 @@ export default function Utilisateurs() {
 
   const [nouveau, setNouveau] = useState({ email: '', nom: '', role: 'operations' as RoleUtilisateur });
   const [invitation, setInvitation] = useState<Invitation>();
+  /** Membre dont la feuille d'actions est ouverte (téléphone). */
+  const [feuille, setFeuille] = useState<Utilisateur | null>(null);
   const demo = d.mode !== 'reel';
 
   // Même appel après l'ajout et depuis une ligne ; la réponse ({ envoye, lien? }) dit s'il faut copier le lien.
@@ -131,7 +138,8 @@ export default function Utilisateurs() {
       const resultat = demo ? { envoye: false, lien: lienCreationCompte(email) } : await appelerServeur<ResultatInvitation>('/api/erp-invitation', 'POST', { email });
       setInvitation({ nom, email, origine, enCours: false, resultat });
     } catch (e) {
-      setInvitation({ nom, email, origine, enCours: false, erreur: (e as Error).message });
+      const deja = e instanceof ErreurServeur && e.code === 'deja';
+      setInvitation({ nom, email, origine, enCours: false, erreur: (e as Error).message, deja });
     }
   };
 
@@ -163,15 +171,23 @@ export default function Utilisateurs() {
   };
 
   const envoiEnCours = (u: Utilisateur) => invitation?.email === u.email && invitation.enCours;
+  // Base d'avant les espaces : pas d'invitation (rien ne relierait le compte à sa fiche).
+  const invitationsOuvertes = demo || espaceDesDonnees() !== null;
 
   /**
    * « Envoyer l'invitation » sur la ligne : gérant, jamais pour soi-même ni
-   * pour le rôle prestataire (pas d'accès à l'ERP). La base ne dit pas qui a
-   * déjà créé son compte : proposé à chacun. Masqué pendant que l'encadré de
-   * l'ajout le propose déjà.
+   * pour le rôle prestataire (pas d'accès à l'ERP), ni pour qui a déjà
+   * activé son accès (compte relié). Masqué pendant que l'encadré de l'ajout
+   * le propose déjà, et tant que la base n'est pas passée aux espaces.
    */
   const invitable = (u: Utilisateur) =>
-    peutModifier && u.id !== d.utilisateur.id && u.role !== 'prestataire' && !(invitation?.origine === 'ajout' && invitation.email === u.email && !invitation.resultat);
+    invitationsOuvertes &&
+    peutModifier &&
+    u.compteActif !== true &&
+    !(invitation?.deja && invitation.email === u.email) &&
+    u.id !== d.utilisateur.id &&
+    u.role !== 'prestataire' &&
+    !(invitation?.origine === 'ajout' && invitation.email === u.email && !invitation.resultat);
 
   const colonnes: Colonne<Utilisateur>[] = [
     {
@@ -217,24 +233,29 @@ export default function Utilisateurs() {
             cle: 'retirer',
             titre: '',
             align: 'droite' as const,
-            // Les actions de la ligne côte à côte : la ligne reste nom + e-mail.
+            // Les actions de la ligne côte à côte (sur téléphone, « … » ouvre une feuille) : la ligne reste nom + e-mail.
             rendu: (u: Utilisateur) =>
               u.id === d.utilisateur.id ? null : (
-                <span className="inline-flex items-center">
-                  {invitable(u) && (
-                    <IconButton
-                      label={`Envoyer l’invitation à ${u.nom}`}
-                      size="sm"
-                      chargement={envoiEnCours(u)}
-                      onClick={() => void envoyerInvitation(u.nom, u.email, 'ligne')}
-                    >
-                      {!envoiEnCours(u) && <Mail />}
-                    </IconButton>
-                  )}
-                  <IconButton label={`Retirer l’accès de ${u.nom}`} size="sm" onClick={() => retirer(u)}>
-                    <Trash2 />
+                <>
+                  <IconButton label={`Actions pour ${u.nom}`} size="sm" className="sm:hidden" chargement={envoiEnCours(u)} onClick={() => setFeuille(u)}>
+                    {!envoiEnCours(u) && <Ellipsis />}
                   </IconButton>
-                </span>
+                  <span className="hidden items-center sm:inline-flex">
+                    {invitable(u) && (
+                      <IconButton
+                        label={`Envoyer l’invitation à ${u.nom}`}
+                        size="sm"
+                        chargement={envoiEnCours(u)}
+                        onClick={() => void envoyerInvitation(u.nom, u.email, 'ligne')}
+                      >
+                        {!envoiEnCours(u) && <Mail />}
+                      </IconButton>
+                    )}
+                    <IconButton label={`Retirer l’accès de ${u.nom}`} size="sm" onClick={() => retirer(u)}>
+                      <Trash2 />
+                    </IconButton>
+                  </span>
+                </>
               ),
           },
         ]
@@ -259,10 +280,38 @@ export default function Utilisateurs() {
             key={`${invitation.origine}:${invitation.email}`}
             invitation={invitation}
             demo={demo}
+            ouvertes={invitationsOuvertes}
             onEnvoyer={() => void envoyerInvitation(invitation.nom, invitation.email, invitation.origine)}
           />
         )}
         <Table legende="Utilisateurs" colonnes={colonnes} lignes={d.utilisateurs} cleLigne={(u) => u.id} vide="Personne dans l’équipe pour l’instant." />
+        <Modal ouvert={!!feuille} onFermer={() => setFeuille(null)} titre={feuille?.nom} description={feuille?.email} taille="sm">
+          {feuille && (
+            <div className="grid gap-2">
+              {invitable(feuille) && (
+                <Button
+                  icone={<Mail />}
+                  onClick={() => {
+                    setFeuille(null);
+                    void envoyerInvitation(feuille.nom, feuille.email, 'ligne');
+                  }}
+                >
+                  Envoyer l’invitation
+                </Button>
+              )}
+              <Button
+                variant="danger"
+                icone={<Trash2 />}
+                onClick={() => {
+                  setFeuille(null);
+                  retirer(feuille);
+                }}
+              >
+                Retirer l’accès
+              </Button>
+            </div>
+          )}
+        </Modal>
         {peutModifier && (
           <Card className="mt-4">
             <CardHeader titre="Ajouter quelqu’un" />

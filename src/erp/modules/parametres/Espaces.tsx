@@ -134,15 +134,17 @@ export default function Espaces() {
     setEnCours(cle);
     setResultat(null);
     const adresse = cible.email.trim();
+    // Renvoi : le nouveau lien remplace l'ancien (erp.inviter_espace change le code).
+    const remplace = cle.startsWith('renvoyer-') ? ' L’ancien lien ne marche plus.' : '';
     try {
       const r = await appelerRouteGerant<Retour>(API, { action: 'inviter', nom: cible.nom.trim(), email: adresse }, INDISPONIBLE);
       setResultat(
         r.envoye
-          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14 jours.` }
+          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14 jours.${remplace}` }
           : {
               ou: cle,
               ton: 'info',
-              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse} : il sert une seule fois, pendant 14 jours, pour créer son compte puis l’espace de sa conciergerie.`,
+              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse} : il sert une seule fois, pendant 14 jours, pour créer son compte puis l’espace de sa conciergerie.${remplace}`,
               lien: r.lien,
             },
       );

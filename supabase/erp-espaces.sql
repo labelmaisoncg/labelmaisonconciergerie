@@ -702,6 +702,13 @@ begin
   if e is null or auth.uid() is null or coalesce(p_code, '') !~ '^[A-Za-z0-9_-]{20,100}$' then
     raise exception 'Invitation introuvable ou plus valable.' using errcode = '42501';
   end if;
+  -- Un autre moyen d'entrer que l'adresse et le mot de passe (téléphone, autre
+  -- fournisseur), ajouté avant l'activation par qui aurait ouvert le compte,
+  -- survivrait au nouveau mot de passe et à la fermeture des sessions : refus.
+  if exists (select 1 from auth.users u where u.id = auth.uid() and coalesce(u.phone, '') <> '')
+     or exists (select 1 from auth.identities i where i.user_id = auth.uid() and i.provider <> 'email') then
+    raise exception 'Invitation introuvable ou plus valable.' using errcode = '42501';
+  end if;
   h := erp.empreinte_code(p_code);
   select * into im from erp.invitations
    where empreinte = h and lower(email) = e and utilise_le is null and expire_le > now()
@@ -1067,9 +1074,10 @@ drop policy if exists "gerant modifie" on erp.membres;
 drop policy if exists "gerant retire"  on erp.membres;
 drop policy if exists "cloison des espaces" on erp.membres;
 -- Sa ligne : celle liée à SON compte (pas une ligne à son adresse que
--- quelqu'un d'autre aurait activée, ni une ligne pas encore activée).
+-- quelqu'un d'autre aurait activée, ni une ligne pas encore activée), avec un
+-- jeton émis après l'activation (comme le reste des données).
 create policy "chacun lit sa ligne"    on erp.membres for select to authenticated
-  using (uid is not null and uid = auth.uid());
+  using (uid is not null and uid = auth.uid() and erp.jeton_apres(lie_le));
 create policy "equipe lit les membres" on erp.membres for select to authenticated
   using (espace = any ((select erp.espaces_lecture())::uuid[]));
 create policy "gerant ajoute"  on erp.membres for insert to authenticated

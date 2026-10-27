@@ -237,6 +237,10 @@ async function connexionSimple(email: string, motDePasse: string): Promise<Resul
 let activationEnCours: Promise<unknown> | null = null;
 export const attendreActivation = (): Promise<unknown> => activationEnCours ?? Promise.resolve();
 
+/** Dernière activation : code refusé (déjà servi, remplacé, expiré). Lu par l'écran « Accès non autorisé ». */
+let codeRefuse = false;
+export const lienInvitationRefuse = (): boolean => codeRefuse;
+
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
@@ -247,27 +251,38 @@ const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * compte et consomme le code ; la session est renouvelée (les jetons d'avant
  * l'activation ne valent rien). activee : faux si le code n'a pas servi
  * (déjà servi, expiré, autre adresse : l'accès ordinaire décide ensuite).
+ * Compte déjà membre : le code (resté sur l'appareil, ou reçu d'un autre
+ * espace) ne sert pas, rien n'est fermé ni lié (comme /erp/connexion).
  */
 export async function activerAvecCode(code: string, motDePasse: string): Promise<{ ok: true; activee: boolean } | { ok: false; erreur: string }> {
   const precedente = activationEnCours;
   const travail = (async () => {
     const c = obtenirClient();
     try {
+      const deja = await quiSuisJe();
+      if (deja.ok && deja.mode === 'espaces' && deja.espaces.some((e) => e.role !== 'prestataire')) {
+        oublierInvitation();
+        return { ok: true as const, activee: false };
+      }
       const u = await c.auth.updateUser({ password: motDePasse });
       if (u.error && !/same.?password|different from the old/i.test(`${u.error.code ?? ''} ${u.error.message}`)) {
         return { ok: false as const, erreur: traduireAuth(u.error.message) };
       }
-      await c.auth.signOut({ scope: 'others' }).catch(() => undefined);
+      // Sans cette fermeture, qui aurait ouvert une session avant garderait la main : on n'active pas.
+      const fermeture = await c.auth.signOut({ scope: 'others' }).catch((e: unknown) => ({ error: e }));
+      if (fermeture.error) return { ok: false as const, erreur: 'Connexion impossible. Réessayez dans un instant.' };
       const { error } = await c.rpc('activer', { p_code: code });
       if (error) {
         // Base d'avant les espaces, ou code refusé : il ne servira plus ; l'accès ordinaire décide.
         if (erreurBaseHistorique(error) || error.code === '42501') {
           oublierInvitation();
+          codeRefuse = error.code === '42501';
           return { ok: true as const, activee: false };
         }
         return { ok: false as const, erreur: messageErreur(error) };
       }
       oublierInvitation();
+      codeRefuse = false;
       // Jeton émis après l'activation (à la seconde près) : la base ne reconnaît que lui.
       await pause(1100);
       await c.auth.refreshSession();
@@ -289,6 +304,7 @@ export async function activerAvecCode(code: string, motDePasse: string): Promise
  * adresse, l'accès est activé dans la foulée, avant tout chargement.
  */
 export async function seConnecter(email: string, motDePasse: string): Promise<ResultatAuth> {
+  codeRefuse = false;
   const code = codeInvitationDe(email);
   if (!code) return connexionSimple(email, motDePasse);
   let fin: () => void = () => undefined;
@@ -388,6 +404,7 @@ export async function baseInvitations(): Promise<boolean | null> {
 }
 
 export async function seDeconnecter(): Promise<void> {
+  codeRefuse = false;
   try {
     await obtenirClient().auth.signOut();
   } catch {
@@ -436,6 +453,8 @@ export interface Membre {
   email: string;
   nom: string | null;
   role: RoleUtilisateur;
+  /** Compte relié (erp.membres.uid) ; lu pour savoir à qui l'invitation sert encore, jamais gardé. */
+  uid?: string | null;
 }
 
 export const ROLES_VALIDES: RoleUtilisateur[] = ['gerant', 'operations', 'prestataire', 'lecture'];
@@ -444,7 +463,9 @@ export const ROLES_VALIDES: RoleUtilisateur[] = ['gerant', 'operations', 'presta
 export function versUtilisateur(m: Membre): Utilisateur {
   const email = m.email.trim().toLowerCase();
   const nom = m.nom?.trim() || email.split('@')[0].replace(/[._-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
-  return { id: email, nom, email, role: ROLES_VALIDES.includes(m.role) ? m.role : 'lecture' };
+  const u: Utilisateur = { id: email, nom, email, role: ROLES_VALIDES.includes(m.role) ? m.role : 'lecture' };
+  if (m.uid !== undefined) u.compteActif = !!m.uid;
+  return u;
 }
 
 export type LectureMembres = { ok: true; membres: Utilisateur[] } | { ok: false; erreur: unknown; status?: number };
@@ -452,11 +473,12 @@ export type LectureMembres = { ok: true; membres: Utilisateur[] } | { ok: false;
 /** Membres visibles de l'espace ouvert : toute l'équipe pour un membre, sa seule ligne sinon (règles RLS). */
 export async function lireMembres(): Promise<LectureMembres> {
   const espace = espaceDesDonnees();
-  let requete = obtenirClient().from('membres').select('email,nom,role');
+  // Base des espaces : on lit aussi si le compte est relié (colonne absente sur la base d'avant).
+  let requete = obtenirClient().from('membres').select(espace ? 'email,nom,role,uid' : 'email,nom,role');
   if (espace) requete = requete.eq('espace', espace);
   const { data, error, status } = await requete.order('email');
   if (error) return { ok: false, erreur: error, status };
-  return { ok: true, membres: ((data ?? []) as Membre[]).map(versUtilisateur) };
+  return { ok: true, membres: ((data ?? []) as unknown as Membre[]).map(versUtilisateur) };
 }
 
 export async function enregistrerMembre(u: Pick<Utilisateur, 'email' | 'nom' | 'role'>): Promise<ErreurBase | null> {

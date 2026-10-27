@@ -727,6 +727,8 @@ export interface Utilisateur {
   role: RoleUtilisateur;
   /** Pour le rôle « prestataire » : la fiche prestataire liée (accès à ses seules missions). */
   prestataireId?: Id;
+  /** Compte relié à la fiche (invitation activée) ; absent : on ne sait pas (base d'avant les espaces, ajout du moment). */
+  compteActif?: boolean;
 }
 
 export interface Journal {
