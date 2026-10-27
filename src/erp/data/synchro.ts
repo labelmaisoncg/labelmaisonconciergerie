@@ -138,6 +138,8 @@ export interface RefusBase {
   message: string;
   /** SQLSTATE de la base (42501, LMF01, LMF02…). */
   code?: string;
+  /** Version refusée dans la file (absente : écartée avant l'envoi). */
+  version?: number;
 }
 
 /**
@@ -149,20 +151,45 @@ export const CODES_REFUS_BASE = ['LMF01', 'LMF02'] as const;
 
 /**
  * Refus définitif de la base pour CETTE ligne : la renvoyer ne changera rien.
- * Droits (42501, 403) : règle RLS (« new row violates row-level security
- * policy », écriture réservée aux gérants) ou déclencheur (niveau
- * d'autonomie de l'agent) ; codes des déclencheurs des factures. Restent
- * réessayés : réseau, 5xx, session expirée (401), base pas installée, et
- * un droit manquant sur la table ou le schéma (« permission denied for
- * table… » : réglage de la base, toutes les lignes y passeraient).
+ * Seulement ce que Postgres dit lui-même : code 42501 (règle RLS, écriture
+ * réservée aux gérants, déclencheur du niveau d'autonomie de l'agent) ou
+ * message « row-level security », et les codes des déclencheurs des
+ * factures. Restent réessayés : réseau, 5xx, session expirée (401), base pas
+ * installée, un 403 sans code (page d'un pare-feu ou d'un proxy : rien ne dit
+ * que la base a refusé) et un droit manquant sur la table ou le schéma
+ * (« permission denied for table… » : réglage de la base, toutes les lignes
+ * y passeraient).
  */
 export function refusParLaBase(e: ErreurBase | null | undefined, status?: number): boolean {
   if (!e) return false;
   const code = String(e.code ?? '');
   if ((CODES_REFUS_BASE as readonly string[]).includes(code)) return true;
+  const message = String(e.message ?? '');
+  if (code !== '42501' && !/row-level security/i.test(message)) return false;
+  // Session expirée (401), panne (5xx) : réessayés.
   if (genreErreur(e, status) !== 'droits') return false;
   if ((status ?? e.status ?? 0) >= 500) return false;
-  return !/permission denied for (schema|table|relation|sequence|function|view)/i.test(String(e.message ?? ''));
+  return !/permission denied for (schema|table|relation|sequence|function|view)/i.test(message);
+}
+
+/**
+ * Erreur propre aux données d'une ligne : la renvoyer ne changera rien
+ * (22P05 caractère nul dans un texte, 22P02 valeur illisible, 23505 doublon,
+ * 413 contenu trop gros…). Refus de la base (refusParLaBase), code Postgres
+ * des classes 22 (données) ou 23 (contraintes) sur un 4xx, ou 413. Jamais :
+ * 401 (session), 403 sans code (pare-feu, proxy), 404 et 406 (base absente),
+ * 408 (délai), 429 (trop de requêtes), ni une erreur de PostgREST (PGRST…)
+ * ou de schéma (42703 colonne inconnue…) : celles-là touchent toutes les
+ * lignes (cache du schéma pas à jour, retour en arrière du SQL) et sont
+ * réessayées.
+ */
+export function erreurDeLigne(e: ErreurBase | null | undefined, status?: number): boolean {
+  if (!e) return false;
+  if (refusParLaBase(e, status)) return true;
+  const s = status ?? e.status ?? 0;
+  if (s === 413) return true;
+  if (s < 400 || s >= 500 || [401, 403, 404, 406, 408, 429].includes(s)) return false;
+  return /^2[23][0-9A-Z]{3}$/.test(String(e.code ?? ''));
 }
 
 /** Message d'une écriture écartée avant l'envoi (ecritureInterdite). */
@@ -543,8 +570,8 @@ export class Synchro {
         }));
         const { error, status } = await this.client.from(TABLE).upsert(lignes, { onConflict: this.espace ? 'espace,collection,id' : 'collection,id' });
         if (error) {
-          // Refus définitif (droits, facture figée) : ligne par ligne, pour ne retirer que les refusées.
-          if (this.estRefus(error, status)) {
+          // Refus définitif (droits, facture figée, données refusées) : ligne par ligne, pour ne retirer que celles-là.
+          if (this.ligneRefusee(error, status)) {
             const echec = await this.envoyerUnParUn(lot, refus);
             if (echec) return echec;
             continue;
@@ -569,7 +596,7 @@ export class Synchro {
           if (this.espace) requete = requete.eq('espace', this.espace);
           const { error, status } = await requete;
           if (error) {
-            if (this.estRefus(error, status)) {
+            if (this.ligneRefusee(error, status)) {
               const echec = await this.envoyerUnParUn(lot, refus);
               if (echec) return echec;
               continue;
@@ -585,7 +612,7 @@ export class Synchro {
         for (const [champ, { valeur }] of envoyes) ligne[champ] = valeur;
         const { error, status } = await this.client.from(TABLE_AUTO).upsert(ligne, { onConflict: this.espace ? 'espace,id' : 'id' });
         // Refus définitif de l'état des automatisations : abandonné, jamais réessayé sans fin.
-        if (error && !this.estRefus(error, status)) return { erreur: error, status };
+        if (error && !this.ligneRefusee(error, status)) return { erreur: error, status };
         if (error) console.warn('[erp] état des automatisations refusé par la base, abandonné', error);
         for (const [champ, { version }] of envoyes) if (this.fileAuto.get(champ)?.version === version) this.fileAuto.delete(champ);
         this.persister();
@@ -599,8 +626,13 @@ export class Synchro {
     }
   }
 
-  private estRefus(e: ErreurBase, status?: number): boolean {
-    return refusParLaBase(e, status) || !!this.opts.refusDefinitif?.(e);
+  /**
+   * Ligne à retirer de la file sans nouvel essai : refus de la base, données
+   * refusées (erreurDeLigne), ou refus reconnu par le store (refusDefinitif,
+   * seulement avec un code Postgres : jamais sur une page d'erreur sans code).
+   */
+  private ligneRefusee(e: ErreurBase, status?: number): boolean {
+    return erreurDeLigne(e, status) || (!!e.code && !!this.opts.refusDefinitif?.(e));
   }
 
   /**
@@ -627,25 +659,29 @@ export class Synchro {
         reponse = await requete;
       }
       const { error, status } = reponse;
-      if (error && !this.estRefus(error, status)) return { erreur: error, status };
+      if (error && !this.ligneRefusee(error, status)) return { erreur: error, status };
       this.retirer([e]);
-      if (error) refus.push({ collection: e.op.collection, id: e.op.id, message: error.message ?? '', ...(error.code ? { code: String(error.code) } : {}) });
+      if (error) refus.push({ collection: e.op.collection, id: e.op.id, message: error.message ?? '', ...(error.code ? { code: String(error.code) } : {}), version: e.version });
     }
     return null;
   }
 
   /**
    * Refus définitifs : signalés au store (un appel par envoi), oubliés des
-   * relectures complètes (jamais rejoués), version de la base relue et
-   * reposée dans l'ERP.
+   * relectures complètes (seulement la version refusée : une version plus
+   * ancienne déjà acceptée reste rejouée), version de la base relue et
+   * reposée dans l'ERP ; relecture impossible : relecture complète.
    */
   private signalerRefus(refus: RefusBase[]) {
     if (!refus.length) return;
     console.warn('[erp] écritures refusées par la base, version de la base relue', refus);
-    const cles = new Map(refus.map((r) => [cle(r.collection, r.id), r] as const));
-    this.recents = this.recents.filter((r) => !('type' in r.ch) || !cles.has(cle(r.ch.collection, r.ch.id)) || this.file.has(cle(r.ch.collection, r.ch.id)));
+    const refusees = new Set(refus.filter((r) => r.version !== undefined).map((r) => r.version));
+    if (refusees.size) this.recents = this.recents.filter((r) => !('type' in r.ch) || !refusees.has(r.seq));
     this.opts.surRefus?.(refus.slice());
-    for (const r of cles.values()) void this.relireLigne(r.collection, r.id, true).catch(() => null);
+    const cles = new Map(refus.map((r) => [cle(r.collection, r.id), r] as const));
+    for (const r of cles.values()) {
+      void this.relireLigne(r.collection, r.id, true, () => this.demanderResynchro()).catch(() => this.demanderResynchro());
+    }
   }
 
   /**
@@ -839,10 +875,11 @@ export class Synchro {
   }
 
   /** `forcer` : livrée même si la dernière écriture vient de cet onglet (relecture demandée). */
-  private async relireLigne(collection: NomCollection, id: string, forcer = false): Promise<Element | null> {
+  private async relireLigne(collection: NomCollection, id: string, forcer = false, surEchec?: () => void): Promise<Element | null> {
     let requete = this.client.from(TABLE).select('collection,id,donnees,maj_par').eq('collection', collection).eq('id', id);
     if (this.espace) requete = requete.eq('espace', this.espace);
     const { data, error } = await requete.maybeSingle();
+    if (error) surEchec?.();
     if (error || this.file.has(cle(collection, id))) return null;
     const ligne = data as LigneBrute | null;
     if (!ligne) {

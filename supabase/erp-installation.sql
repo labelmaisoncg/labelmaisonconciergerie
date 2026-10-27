@@ -338,10 +338,9 @@ begin
     if old.collection = 'factures' and old.id = new.id then
       avant := btrim(coalesce(old.donnees ->> 'numero', ''));
     end if;
-  else
-    select btrim(coalesce(e.donnees ->> 'numero', '')) into avant from erp.enregistrements e
-      where e.collection = 'factures' and e.id = new.id;
-    avant := coalesce(avant, '');
+  elsif exists (select 1 from erp.enregistrements e where e.collection = 'factures' and e.id = new.id) then
+    -- Déjà enregistrée : « on conflict do nothing » reste silencieux, « do update » est vérifié plus bas.
+    return new;
   end if;
   if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
     raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'

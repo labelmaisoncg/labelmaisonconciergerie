@@ -18,7 +18,9 @@ import {
   codesAutorises,
   filDuSejour,
   guidePourMessage,
+  momentHorsFenetreCodes,
   rendreMessage,
+  secretEcritDansModele,
   sejoursPourApercu,
   texteAffiche,
   texteStocke,
@@ -68,7 +70,8 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
   const [propres, setPropres] = useState<Record<string, ModeleLogement>>(() => convertir(p.modele?.logements, texteAffiche));
   const zone = useRef<HTMLTextAreaElement>(null);
 
-  const sejours = useMemo(() => (k ? sejoursPourApercu(p.reservations, k, AUJOURDHUI).slice(0, 15) : []), [k, p.reservations]);
+  // Séjours qui recevront vraiment le message (Airbnb, Booking.com, conversation de plateforme).
+  const sejours = useMemo(() => (k ? sejoursPourApercu(p.reservations, k, AUJOURDHUI, p.fils).slice(0, 15) : []), [k, p.reservations, p.fils]);
   const [sejourId, setSejourId] = useState<string>(() => sejours[0]?.id ?? '');
   const sejour = sejours.find((r) => r.id === sejourId) ?? sejours[0];
   const logement = sejour ? p.logements.find((l) => l.id === sejour.logementId) : undefined;
@@ -92,6 +95,13 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
       demandeCodes: variables.includes('acces') || variables.includes('wifi'),
     };
   }, [sejour, k, p.fils, p.signature, logement, propres, texte]);
+
+  // Code ou wifi écrit en toutes lettres, pour un moment qui part souvent hors des 48 h (confirmation,
+  // départ, avis) : prévenu quel que soit le séjour de l'aperçu.
+  const secretEnClair = useMemo(
+    () => !!k && ((momentHorsFenetreCodes(k) && secretEcritDansModele(texteStocke(texte), convertir(propres, texteStocke), p.logements)) || (!!apercu?.codesEnClair && !apercu.coupe)),
+    [k, texte, propres, p.logements, apercu],
+  );
 
   if (!k || !p.modele) return null;
   const libelle = LIBELLES_DECLENCHEURS[k];
@@ -153,6 +163,15 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             <Textarea ref={zone} rows={10} value={texte} disabled={!p.modifiable} maxLength={3000} onChange={(e) => setTexte(e.target.value)} />
           </Field>
           {vide && <p className="mt-1.5 text-[12px] font-medium text-(--lm-danger)">Le message ne peut pas être vide.</p>}
+          {secretEnClair && (
+            <p role="alert" className="mt-2 flex items-start gap-1.5 text-[12.5px] font-medium text-(--lm-danger)">
+              <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>
+                Ce texte contient un code ou le wifi écrit en toutes lettres : ce message ne partira pas en dehors des 48 h avant l’arrivée et du séjour. Utilisez
+                plutôt «&nbsp;Accès et clés&nbsp;» et «&nbsp;Wifi&nbsp;».
+              </span>
+            </p>
+          )}
           {p.modifiable && (
             <div className="mt-2.5">
               <p className="mb-1.5 text-[12px] text-(--lm-encre-3)">Touchez pour ajouter :</p>
@@ -184,7 +203,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             )}
           </div>
           {!sejour || !apercu ? (
-            <p className="text-[13px] text-(--lm-encre-2)">Pas de séjour à venir pour l’aperçu.</p>
+            <p className="text-[13px] text-(--lm-encre-2)">Pas de séjour à venir sur Airbnb ou Booking.com pour l’aperçu.</p>
           ) : (
             <div>
               <p className="mb-2 text-[12px] text-(--lm-encre-3)">
@@ -197,23 +216,12 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
                   <div className="max-w-[92%] rounded-[18px] rounded-br-md bg-(--lm-brun) px-3.5 py-2 text-[14px] leading-snug whitespace-pre-line text-white">{apercu.texte}</div>
                 </div>
               )}
-              {apercu.codesEnClair && !apercu.coupe ? (
-                <p role="alert" className="mt-2 flex items-start gap-1.5 text-[12.5px] font-medium text-(--lm-danger)">
-                  <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-                  <span>
-                    Ce texte contient un code ou le wifi écrit en toutes lettres : ce message ne partira pas s’il est envoyé plus de 48 h avant l’arrivée. Utilisez
-                    plutôt «&nbsp;Accès et clés&nbsp;» et «&nbsp;Wifi&nbsp;».
-                  </span>
+              {/* Code écrit en toutes lettres : signalé sous le texte, quel que soit le séjour choisi. */}
+              {!secretEnClair && !apercu.codes && apercu.demandeCodes && !apercu.coupe && (
+                <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-2)">
+                  <Lock className="size-3 shrink-0" aria-hidden />
+                  Accès et wifi retirés : {joursAvant(apercu.jour, sejour.arrivee)}.
                 </p>
-              ) : (
-                !apercu.codes &&
-                apercu.demandeCodes &&
-                !apercu.coupe && (
-                  <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-2)">
-                    <Lock className="size-3 shrink-0" aria-hidden />
-                    Accès et wifi retirés : {joursAvant(apercu.jour, sejour.arrivee)}.
-                  </p>
-                )
               )}
             </div>
           )}

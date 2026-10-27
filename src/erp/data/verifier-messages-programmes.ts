@@ -30,11 +30,15 @@ import {
   SEUIL_IMPORT,
   TEXTES_DEFAUT,
   VARIABLES,
+  ajouterJoursISO,
   alerteTexteAvis,
   avisAPreparer,
   avisATraiter,
   cleEnvoiProgramme,
   codesAutorises,
+  consignesAvis,
+  contexteAvis,
+  contientEloge,
   dansPlageEnvoi,
   deciderEnvoi,
   etatAvis,
@@ -44,11 +48,15 @@ import {
   lireAvisIA,
   majReservationsVues,
   modeleEffectif,
+  momentHorsFenetreCodes,
   planifierEnvois,
   prochainEnvoi,
   raisonsARelire,
   reglagesProgrammes,
   rendreMessage,
+  secretEcritDansModele,
+  sejourJoignable,
+  sejoursPourApercu,
   sejourAvecAvis,
   signatureProgrammes,
   texteAffiche,
@@ -56,7 +64,9 @@ import {
   texteStocke,
   type ReservationsVues,
 } from './messages-programmes';
+import { attendEquipe } from './attente-equipe';
 import { lancerProgrammes, type OptionsProgrammes } from './passage-programmes';
+import { creerSeed } from './seed';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { BaseErp, ecritureRepullPermise } from './repull-synchro';
 import type { FilMessages, Incident, Logement, Message, Reglage, Reservation } from './types';
@@ -221,6 +231,34 @@ function decisions() {
   verifier(attend.genre === 'attendre' && attend.raison === RAISONS.attend, 'le voyageur attend une réponse : on ne lui coupe pas la parole');
   const close = decide(resa('r5'), [fil('fil-5', 'r5', { statut: 'clos', messages: [msg('m', 'voyageur', 'Merci !')] })]);
   verifier(close.genre === 'envoyer', 'conversation close (« pas besoin de répondre ») : le message part');
+  // Cas de la démonstration (Marta N.) : transmise à l'équipe, le dernier message vient de l'agent.
+  const transmise = fil('fil-6', 'r6', {
+    statut: 'escalade',
+    traitePar: 'en_attente',
+    messages: [
+      msg('m1', 'voyageur', 'Est-il possible d’arriver vers 13 h ? Notre train arrive tôt.', '2026-10-25T07:48:00+01:00'),
+      msg('m2', 'agent', 'Je vérifie avec l’équipe ménage si le logement peut être prêt plus tôt et je reviens vers vous.', '2026-10-25T07:49:00+01:00'),
+    ],
+  });
+  const marta = decide(resa('r6'), [transmise]);
+  verifier(
+    attendEquipe(transmise) && marta.genre === 'attendre' && marta.raison === RAISONS.attend,
+    'conversation transmise (dernier message de l’agent) : le voyageur attend l’équipe, rien ne part (même règle que « À répondre »)',
+  );
+  const enAttente = decide(resa('r6'), [fil('fil-6', 'r6', { statut: 'ouvert', traitePar: 'en_attente', messages: [msg('m2', 'agent', 'Je transmets à l’équipe.')] })]);
+  verifier(enAttente.genre === 'attendre' && enAttente.raison === RAISONS.attend, 'conversation sans réponse de l’équipe (« en attente ») : rien ne part');
+  const passeTransmise = decide(resa('r6'), [transmise], paris('2026-10-25T20:30:00Z'));
+  verifier(passeTransmise.genre === 'ignorer' && passeTransmise.raison === RAISONS.attend, 'moment passé pendant l’attente : noté « le voyageur attendait une réponse », rien n’est parti');
+  // Les conversations de la démonstration : celle de Marta (transmise, agent en dernier), reliée à une plateforme comme en production.
+  const demo = creerSeed();
+  const filMarta = demo.filsMessages.find((f) => f.messages.some((m) => m.texte.startsWith('Je vérifie avec l’équipe ménage')));
+  const resaMarta = demo.reservations.find((r) => r.id === filMarta?.reservationId);
+  if (filMarta && resaMarta) {
+    const veille = paris(`${ajouterJoursISO(resaMarta.arrivee, -1)}T17:30:00Z`);
+    const surPlateforme = { ...filMarta, repull: { id: 'conv-demo' } } as FilMessages;
+    const dMarta = deciderEnvoi({ declencheur: 'veille_arrivee', reservation: resaMarta, reglages: reglagesAllumes(['veille_arrivee'], '2026-01-01T09:00:00+01:00'), fils: [surPlateforme], maintenant: veille });
+    verifier(dMarta.genre === 'attendre' && dMarta.raison === RAISONS.attend, `démonstration : « Infos d’arrivée » de ${filMarta.voyageur} (transmise) ne part pas la veille à 18:30`);
+  } else verifier(false, 'démonstration : conversation transmise de Marta introuvable');
 
   // Jamais deux fois.
   const ligne = (statut: EnvoiProgramme['statut'], depuis = '2026-10-25T18:31:00+01:00'): EnvoiProgramme => ({
@@ -364,6 +402,27 @@ function fileAvis() {
   verifier(avisAPreparer({ ...d, avisADeposer: [fait] }, aujourdhui).length === 3, 'le serveur ne prépare que les séjours sans avis');
   verifier(file[0].reservation.depart <= file[file.length - 1].reservation.depart, 'le délai le plus court d’abord');
 
+  // À relire : jamais d'éloge prérempli (texte simple, ou éloge écrit avant que le souci soit connu).
+  const relireSansTexte = file.find((x) => x.reservation.id === 'q');
+  verifier(
+    relireSansTexte?.texte === '' && relireSansTexte.aide === 'Écrivez l’avis vous-même : il y a eu un incident pendant ce séjour.',
+    'incident, pas encore préparé : aucun texte proposé, une ligne dit d’écrire l’avis soi-même',
+  );
+  verifier(contientEloge(texteAvisParDefaut('Lucas')) && !contientEloge('Lucas a séjourné du 20 au 23 octobre.'), 'le texte simple est un éloge ; un texte factuel n’en est pas un');
+  const elogeModele: AvisADeposer = { ...pretMaisIncident, statut: 'a_relire', texte: texteAvisParDefaut('Marie'), source: 'modele', raisons: ['Un incident pendant le séjour'] };
+  verifier(etatAvis({ ...d, avisADeposer: [elogeModele] }, avecIncident, aujourdhui)?.texte === '', 'à relire avec le texte simple enregistré (IA indisponible) : texte retiré, jamais d’éloge');
+  const elogeAvant: AvisADeposer = { ...pretMaisIncident, texte: 'Marie a été une voyageuse respectueuse, logement rendu en bon état.', source: 'ia' };
+  verifier(etatAvis({ ...d, avisADeposer: [elogeAvant] }, avecIncident, aujourdhui)?.texte === '', 'avis de l’IA écrit avant l’incident : retiré');
+  const neutreIA: AvisADeposer = { ...pretMaisIncident, statut: 'a_relire', texte: 'Marie a séjourné trois nuits dans le logement.', source: 'ia', raisons: ['Un incident pendant le séjour'] };
+  verifier(etatAvis({ ...d, avisADeposer: [neutreIA] }, avecIncident, aujourdhui)?.texte === neutreIA.texte, 'avis neutre de l’IA rédigé en connaissant l’incident : gardé');
+  const equipe: AvisADeposer = { ...elogeModele, texte: 'Texte écrit par l’équipe.', source: 'equipe' };
+  verifier(etatAvis({ ...d, avisADeposer: [equipe] }, avecIncident, aujourdhui)?.texte === equipe.texte, 'texte écrit par l’équipe : toujours gardé');
+  verifier(etatAvis(d, noteBasse, aujourdhui)?.aide === 'Écrivez l’avis vous-même : le voyageur a laissé une note basse.', 'note basse : la ligne le dit');
+  verifier(/AUCUN éloge/.test(consignesAvis('Label Maison')), 'consignes de l’IA : aucun éloge quand un souci est signalé');
+  const ctx = contexteAvis(avecIncident, undefined, [], ['Un incident pendant le séjour']);
+  verifier(/Points signalés par l'équipe : Un incident pendant le séjour/.test(ctx) && /sans aucun éloge/.test(ctx), 'contexte donné à l’IA : l’incident, et « sans aucun éloge »');
+  verifier(!/sans aucun éloge/.test(contexteAvis(propre, undefined, [], [])), 'séjour sans souci : pas de consigne de neutralité');
+
   const lu = lireAvisIA({ content: [{ type: 'text', text: '{"texte":"Lucas a été parfait.","a_relire":false,"raison":""}' }], stop_reason: 'end_turn' });
   verifier(lu?.texte === 'Lucas a été parfait.' && lu.aRelire === false, 'réponse de l’IA lue');
   verifier(lireAvisIA({ content: [{ type: 'text', text: 'pas du JSON' }], stop_reason: 'end_turn' }) === null && lireAvisIA({ content: [], stop_reason: 'refusal' }) === null, 'réponse illisible ou refus : ignorée');
@@ -413,6 +472,29 @@ function codesEnDur() {
   verifier(tot.codesEnClair && !tot.codes, '15 jours avant, code en dur : refusé (codesEnClair)');
   verifier(!rendreMessage('Bonjour {prenom}, le code est 4821.', ctx(resa('r1'), '2026-10-25')).codesEnClair, 'la veille : permis');
   verifier(!rendreMessage('Bonjour {prenom}, à bientôt.', ctx(resa('r1', { arrivee: '2026-11-10', depart: '2026-11-12' }), '2026-10-25')).codesEnClair, 'sans code : rien à signaler');
+
+  // Éditeur : l'avertissement ne dépend pas du séjour choisi pour l'aperçu.
+  verifier(
+    momentHorsFenetreCodes('confirmation') && momentHorsFenetreCodes('jour_depart') && momentHorsFenetreCodes('demande_avis') && !momentHorsFenetreCodes('veille_arrivee'),
+    'moments qui partent hors de la fenêtre des codes : confirmation, départ, avis ; pas les infos d’arrivée',
+  );
+  verifier(secretEcritDansModele('Le code est 4821.', undefined, [LOGEMENT]) && secretEcritDansModele('Wifi : soleil2026', undefined, [LOGEMENT]), 'code ou wifi d’un logement écrit dans le modèle : repéré');
+  verifier(!secretEcritDansModele('Bonjour {prenom}, {acces}', undefined, [LOGEMENT]), 'variables « Accès et clés » et « Wifi » : rien à signaler');
+  verifier(
+    secretEcritDansModele('Bonjour.', { 'log-1': { texte: 'Code 4821' } }, [LOGEMENT]) &&
+      !secretEcritDansModele('Code 4821', { 'log-1': { actif: false } }, [LOGEMENT]) &&
+      !secretEcritDansModele('Code 4821', undefined, [{ ...LOGEMENT, statut: 'sorti' }]),
+    'texte propre au logement pris en compte ; logement sans message ou sorti : ignoré',
+  );
+  verifier(!/la veille/.test(TEXTES_DEFAUT.confirmation) && /informations d’arrivée avant votre séjour/.test(TEXTES_DEFAUT.confirmation), 'merci pour la réservation : ne promet pas un envoi la veille (infos d’arrivée peut-être éteint)');
+
+  // Aperçu : seulement les séjours qui recevront le message.
+  const direct = resa('d1', { canal: 'direct', arrivee: '2026-10-27', depart: '2026-10-29' });
+  const directAvecConversation = resa('d2', { canal: 'direct', arrivee: '2026-10-28', depart: '2026-10-30' });
+  const airbnb = resa('a1', { arrivee: '2026-10-29', depart: '2026-10-31' });
+  const proposes = sejoursPourApercu([direct, directAvecConversation, airbnb], 'confirmation', '2026-10-25', [fil('fil-d2', 'd2')]).map((r) => r.id);
+  verifier(proposes.join() === 'd2,a1', `aperçu : pas de réservation directe sans conversation de plateforme (${proposes.join()})`);
+  verifier(!sejourJoignable(direct, []) && sejourJoignable(resa('b', { canal: 'booking' })), 'Airbnb et Booking.com joignables, réservation directe saisie dans l’ERP non');
 }
 
 function libelles() {
@@ -762,6 +844,9 @@ async function passageSimule() {
   base.poser('incidents', { id: 'inc-3', logementId: 'log-1', reservationId: 'fin-4', date: '2026-10-21', categorie: 'voyageur', gravite: 'faible', description: 'Bruit', statut: 'ouvert', refacturable: 'aucun', preuves: [] } as Incident);
   await lancerProgrammes(options());
   verifier(base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-4')?.statut === 'a_relire', 'incident après coup : « prêt » repasse « à relire »');
+  verifier(base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-4')?.texte === '', 'incident après coup : le texte écrit avant (un éloge) est retiré');
+  const contexteEmma = String(ia.appels.find((x) => String(x.messages[0]?.content ?? '').includes('Emma'))?.messages[0]?.content ?? '');
+  verifier(/Un incident pendant le séjour/.test(contexteEmma) && /sans aucun éloge/.test(contexteEmma), 'séjour avec incident : l’IA en est informée et ne doit écrire aucun éloge');
 
   // Autre espace au plafond du mois : pas d'IA, texte simple.
   const base2 = new FausseBase();
@@ -794,6 +879,26 @@ async function passageSimule() {
   base3.poser('reservations', resa('t-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Léo', nbPersonnes: 1 } }));
   await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base3.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: null }));
   verifier(base3.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 't-1')?.statut === 'pret', 'sans IA : avis prêt avec un texte simple');
+
+  // IA indisponible et séjour à relire : jamais le texte simple (un éloge), rien de prérempli.
+  const base5 = new FausseBase();
+  base5.poser('reservations', resa('v-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Inès', nbPersonnes: 1 } }));
+  base5.poser('reservations', resa('v-2', { arrivee: '2026-10-19', depart: '2026-10-23', statut: 'terminee', voyageur: { nom: 'Paul', nbPersonnes: 1 }, noteVoyageur: 3 }));
+  base5.poser('incidents', { id: 'inc-v', logementId: 'log-1', reservationId: 'v-1', date: '2026-10-22', categorie: 'casse', gravite: 'moyenne', description: 'Porte abîmée', statut: 'ouvert', refacturable: 'voyageur', preuves: [] } as Incident);
+  await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base5.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: null }));
+  const v1 = base5.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'v-1');
+  const v2 = base5.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'v-2');
+  verifier(v1?.statut === 'a_relire' && v1.texte === '' && v2?.statut === 'a_relire' && v2.texte === '', 'sans IA, incident ou note basse : « à relire » sans texte, jamais d’éloge');
+
+  // L'IA fait l'éloge malgré l'incident : texte écarté.
+  const base6 = new FausseBase();
+  base6.poser('reservations', resa('w-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Jade', nbPersonnes: 1 } }));
+  base6.poser('incidents', { id: 'inc-w', logementId: 'log-1', reservationId: 'w-1', date: '2026-10-22', categorie: 'casse', gravite: 'moyenne', description: 'Lampe cassée', statut: 'ouvert', refacturable: 'voyageur', preuves: [] } as Incident);
+  const ia6 = new FausseIA();
+  ia6.reponses = [{ texte: 'Jade a été une voyageuse respectueuse et agréable, nous la recommandons.', a_relire: false, raison: '' }];
+  await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base6.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: ia6 }));
+  const w1 = base6.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'w-1');
+  verifier(w1?.statut === 'a_relire' && w1.texte === '', 'éloge de l’IA pour un séjour avec incident : écarté, l’équipe écrit l’avis');
 }
 
 const i = (id: string) => id.replace(/\D/g, '');
