@@ -27,7 +27,7 @@ interface Invitation {
 /**
  * « Envoyer l'invitation » (api/erp-invitation) : un e-mail avec le lien
  * « Créer mon compte » ; sans expéditeur pour l'espace, le lien à copier. Le
- * lien ne contient que l'adresse. Juste après l'ajout d'un membre, puis à
+ * lien porte l'adresse et un code à usage unique (14 jours). Juste après l'ajout d'un membre, puis à
  * tout moment depuis sa ligne (e-mail perdu, lien jamais ouvert).
  */
 function InvitationMembre({ invitation: i, demo, onEnvoyer }: { invitation: Invitation; demo: boolean; onEnvoyer: () => void }) {
