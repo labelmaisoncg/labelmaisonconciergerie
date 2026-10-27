@@ -113,7 +113,9 @@ export function affectationsAFiger(d: Pick<DonneesSuivi, 'affectations' | 'equip
     const avant = affectationDe(d, l);
     if (avant?.responsableId) return [];
     const titulaire = titulaireDe(d, l);
-    return titulaire ? [{ ...(avant ?? { id: l }), id: l, responsableId: titulaire }] : [];
+    // Un pôle seul n'est en charge qu'en attendant un agent : on ne fige que le défaut d'un agent.
+    if (!titulaire || (d.equipe ?? []).find((m) => m.id === titulaire)?.role !== 'agent') return [];
+    return [{ ...(avant ?? { id: l }), id: l, responsableId: titulaire }];
   });
 }
 

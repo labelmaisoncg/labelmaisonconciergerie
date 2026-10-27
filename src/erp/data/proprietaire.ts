@@ -618,7 +618,15 @@ export function calendrierMois(reservations: readonly Reservation[], logementId:
       veille: nuitReservee(ajouterJoursISO(date, -1)),
       arrivee: sejours.some((r) => r.arrivee === date),
       depart: sejours.some((r) => r.depart === date),
-      ...(aLui ? {} : { hors: bornes!.some((p) => !p.fin || p.fin > date) ? ('avant' as const) : ('apres' as const) }),
+      ...(aLui
+        ? {}
+        : {
+            hors: bornes!.some((p) => (!p.debut || p.debut <= date) && (!p.fin || date < p.fin))
+              ? ('autre' as const)
+              : bornes!.some((p) => !p.fin || p.fin > date)
+                ? ('avant' as const)
+                : ('apres' as const),
+          }),
     };
   });
   const nuitsReservees = jours.filter((j) => j.occupe).length;
@@ -807,7 +815,7 @@ function conciergerieOuverte(): { nom: string; contacts?: ContactsConciergerie }
 const CATEGORIES = new Set<string>(CATEGORIES_DOCUMENT.map((c) => c.valeur));
 
 function chiffresMois(c: ChiffresBilan, provisoire: boolean): ChiffresMoisVue {
-  return { mois: c.mois, net: c.totaux.net, nuits: c.totaux.nuits, occupation: c.occupation, sejours: c.totaux.sejours, provisoire };
+  return { mois: c.mois, net: c.totaux.net, nuits: c.totaux.nuits, occupation: c.occupation, sejours: c.totaux.sejours, provisoire, avecCommission: c.totaux.commission > 0 };
 }
 
 /**

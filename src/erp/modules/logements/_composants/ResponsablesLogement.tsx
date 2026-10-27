@@ -104,7 +104,15 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
         <div className="mt-3 grid grid-cols-1 gap-3 border-t border-(--lm-bord) pt-3 sm:grid-cols-2">
           <Field
             label="Au quotidien"
-            aide={explicite ? undefined : responsableId ? 'Par défaut : seul agent de terrain sur ce logement.' : 'À choisir : personne n’a les codes ni les incidents.'}
+            aide={
+              explicite
+                ? undefined
+                : responsableId
+                  ? rattaches.find((m) => m.id === responsableId)?.role === 'agent'
+                    ? 'Par défaut : seul agent de terrain sur ce logement.'
+                    : 'Par défaut : seule personne qui suit ce logement, en attendant un agent de terrain.'
+                  : 'À choisir : personne n’a les codes ni les incidents.'
+            }
           >
             <Select value={responsableId ?? ''} placeholder="Personne" onChange={(e) => affecter({ responsableId: e.target.value || undefined })} options={choix} />
           </Field>

@@ -604,7 +604,10 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
   verifier(!vueOperations(deuxAgents, 'D', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'deux agents sans choix : pas de code tant que le gérant n’a pas choisi');
   // Ajouter quelqu'un : le choix par défaut est d'abord enregistré.
   const figees = affectationsAFiger(sans, ['L1', 'L2', 'L3']);
-  verifier(figees.map((a) => `${a.id}:${a.responsableId}`).join() === 'L1:B,L2:A,L3:C', 'N1 : avant d’ajouter quelqu’un, le responsable par défaut devient un choix enregistré');
+  verifier(figees.map((a) => `${a.id}:${a.responsableId}`).join() === 'L1:B,L3:C', 'N1 : avant d’ajouter quelqu’un, l’agent en charge par défaut devient un choix enregistré (pas le pôle seul : L2)');
+  // A1 : le pôle invité avant l'agent ne garde pas la charge quand l'agent arrive.
+  const poleDAbord = { ...sans, affectations: affectationsAFiger(sans, ['L2']), equipe: [...sans.equipe, { id: 'E', nom: 'Éva Nouvelle', role: 'agent' as const, logementIds: ['L2'], actif: true }] };
+  verifier(titulaireDe(poleDAbord, 'L2') === 'E', 'A1 : pôle seul puis un agent ajouté : l’agent est en charge par défaut');
   const apresAjout = { ...deuxAgents, affectations: affectationsAFiger(sans, ['L1']) };
   verifier(titulaireDe(apresAjout, 'L1') === 'B', 'N1 : après l’ajout d’un second agent, B garde la charge');
   verifier(affectationsAFiger(entrees(), ['L1', 'L3']).length === 0, 'un choix déjà enregistré : rien à figer');

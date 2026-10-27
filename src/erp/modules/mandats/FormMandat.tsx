@@ -10,7 +10,7 @@ interface Props {
   onFermer: () => void;
   mandat?: Mandat;
   /** Valeurs initiales en création (ex. depuis une fiche propriétaire). */
-  preselection?: { proprietaireId?: string; logementId?: string };
+  preselection?: { proprietaireId?: string; logementId?: string; dateDebut?: string };
   onEnregistre?: (m: Mandat) => void;
 }
 
@@ -40,8 +40,8 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
     logementId: mandat?.logementId ?? preselection?.logementId ?? '',
     commissionPct: String(mandat?.commissionPct ?? COMMISSION_CIBLE_MIN),
     fraisMenage: mandat ? String(mandat.fraisMenageCentimes / 100).replace('.', ',') : '45',
-    dateDebut: mandat?.dateDebut ?? ajouterJours(AUJOURDHUI, 14),
-    periodeEssaiFin: mandat?.periodeEssaiFin ?? ajouterJours(AUJOURDHUI, 14 + 92),
+    dateDebut: mandat?.dateDebut ?? preselection?.dateDebut ?? ajouterJours(AUJOURDHUI, 14),
+    periodeEssaiFin: mandat?.periodeEssaiFin ?? ajouterJours(preselection?.dateDebut ?? ajouterJours(AUJOURDHUI, 14), 92),
     preavisJours: String(mandat?.preavisJours ?? 90),
   });
   const [s, setS] = useState<Saisie>(vierge);

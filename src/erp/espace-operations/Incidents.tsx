@@ -13,7 +13,7 @@ const statutCourt = (s: IncidentOps['statut']) => LIBELLES.statutIncident[s].toL
 export function LigneIncident({ incident: i }: { incident: IncidentOps }) {
   const { vue, naviguer, nomLogement, nomMembre } = useOps();
   const resolu = i.statut === 'resolu';
-  const qui = i.parGerant ? 'le gérant s’en occupe' : i.suiviPar === vue.moi.id ? 'vous' : nomMembre(i.suiviPar) || 'personne dessus';
+  const qui = i.parGerant ? 'le gérant' : i.suiviPar === vue.moi.id ? 'vous' : nomMembre(i.suiviPar) || 'personne dessus';
   return (
     <Ligne
       ton={resolu ? 'succes' : i.urgent ? 'danger' : 'alerte'}

@@ -40,7 +40,7 @@ function Jour({ j, aujourdhui }: { j: JourCalendrier; aujourdhui: string }) {
   );
 }
 
-const HORS = { avant: 'Avant votre arrivée', apres: 'Après votre départ' } as const;
+const HORS = { avant: 'Avant votre arrivée', apres: 'Après votre départ', autre: 'Séjour de l’ancien propriétaire' } as const;
 
 function libelleJour(j: JourCalendrier): string {
   if (j.hors) return `${jourMois(j.date)} : ${HORS[j.hors].toLowerCase()}`;
@@ -81,7 +81,7 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
   const mois = vue.calendrier.mois;
   const c = vue.calendrier.logements.find((x) => x.logementId === choix) ?? vue.calendrier.logements[0];
   const cede = vue.logementsCedes.find((l) => l.id === c?.logementId);
-  const hors = new Set(c?.jours.map((j) => j.hors).filter((x): x is 'avant' | 'apres' => !!x));
+  const hors = new Set(c?.jours.map((j) => j.hors).filter((x): x is 'avant' | 'apres' | 'autre' => !!x));
   const bouton =
     'grid size-9 place-items-center rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:opacity-50';
   return (

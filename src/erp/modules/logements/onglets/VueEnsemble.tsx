@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa, X } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
+import { FormMandat } from '../../mandats/FormMandat';
 import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, IconButton, Input, Repli } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
@@ -297,6 +298,7 @@ function Relier({ logement: l }: { logement: Logement }) {
 function Proprietaire({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const [edition, setEdition] = useState(false);
+  const [nouveauMandat, setNouveauMandat] = useState(false);
   const prop = proprietaireById(d, l.proprietaireId);
   const dossier = d.donnees.dossiers.find((x) => x.logementId === l.id);
   const renseigne = prop && prop.id !== ID_PROPRIETAIRE_A_RENSEIGNER;
@@ -350,7 +352,24 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
               </a>
             )}
             {ligneMandat && <p className="pt-0.5 text-(--lm-encre-2)">{ligneMandat}</p>}
+            {/* Sans mandat avec le propriétaire actuel (après un transfert) : pas de taux de commission tant qu'il n'est pas saisi. */}
+            {!mandat && ligneMandat && d.utilisateur.role === 'gerant' && !d.lectureSeule && (
+              <button
+                type="button"
+                onClick={() => setNouveauMandat(true)}
+                className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+              >
+                Ajouter son mandat
+              </button>
+            )}
           </div>
+        )}
+        {nouveauMandat && prop && (
+          <FormMandat
+            ouvert
+            onFermer={() => setNouveauMandat(false)}
+            preselection={{ proprietaireId: prop.id, logementId: l.id, ...(l.proprietaireDepuis ? { dateDebut: l.proprietaireDepuis } : {}) }}
+          />
         )}
         {/* Espace propriétaire : le gérant seul (accès, bilans à publier, documents). */}
         {renseigne && d.utilisateur.role === 'gerant' && !d.lectureSeule && <CarteEspaceProprietaire proprietaire={prop} logement={l} />}

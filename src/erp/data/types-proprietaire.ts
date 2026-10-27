@@ -142,6 +142,8 @@ export interface ChiffresMoisVue {
   sejours: number;
   /** Mois en cours ou bilan pas encore publié : chiffres provisoires. */
   provisoire: boolean;
+  /** Une commission a été déduite (sinon : pas de taux connu, « après frais » seulement). */
+  avecCommission?: boolean;
 }
 
 export interface JourCalendrier {
@@ -155,9 +157,10 @@ export interface JourCalendrier {
   /**
    * Jour qui n'est pas à ce propriétaire (changement de propriétaire, début
    * du mandat) : ni libre ni réservé pour lui. `avant` : avant son arrivée ;
-   * `apres` : après son départ.
+   * `apres` : après son départ ; `autre` : dans sa période, mais pris par le
+   * séjour de l'ancien propriétaire (arrivé avant le changement).
    */
-  hors?: 'avant' | 'apres';
+  hors?: 'avant' | 'apres' | 'autre';
 }
 
 export interface CalendrierLogement {

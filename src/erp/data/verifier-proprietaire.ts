@@ -409,7 +409,7 @@ async function main() {
     const vueB = vueProprietaire(entrees, B, { aujourdhui: '2026-09-25' })!;
     const calB = vueB.calendrier.logements[0];
     const bilanB = bilanMensuel(entrees, B, '2026-09');
-    verifier(calB.jours.slice(0, 21).every((j) => j.hors === 'avant' && !j.occupe) && calB.jours.slice(21).every((j) => !j.hors), 'nouveau : jours avant son arrivée grisés (1er-19, et 20-21 pris par le séjour de l’ancien), pas « Libre »');
+    verifier(calB.jours.slice(0, 19).every((j) => j.hors === 'avant' && !j.occupe) && calB.jours.slice(19, 21).every((j) => j.hors === 'autre' && !j.occupe) && calB.jours.slice(21).every((j) => !j.hors), 'nouveau : 1er-19 « Avant votre arrivée », 20-21 « Séjour de l’ancien propriétaire », pas « Libre »');
     verifier(calB.nuitsReservees === 4 && calB.nuitsLibres === 5 && Math.abs(calB.occupation - 4 / 9) < 1e-9, 'nouveau : 4 nuits réservées, 5 libres, occupation sur ses 9 jours');
     verifier(
       calB.nuitsReservees === bilanB.totaux.nuits && Math.abs(calB.occupation - bilanB.occupation) < 1e-9 && Math.abs(vueB.moisCourant.occupation - calB.occupation) < 1e-9 && vueB.moisCourant.nuits === calB.nuitsReservees,

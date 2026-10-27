@@ -996,7 +996,8 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
               ))}
             </ul>
           )}
-          {apercu.sansRemplacant > 0 && (
+          {/* Sans remplaçant possible, l'aide du champ dit déjà quoi faire : une seule consigne. */}
+          {apercu.sansRemplacant > 0 && relais.length > 0 && (
             <p className="mt-2 text-[12.5px] text-(--lm-danger)">
               Personne pour reprendre {apercu.sansRemplacant > 1 ? `${apercu.sansRemplacant} lignes` : 'une ligne'} : choisissez un remplaçant.
             </p>
