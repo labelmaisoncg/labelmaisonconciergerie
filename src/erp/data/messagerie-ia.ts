@@ -319,46 +319,69 @@ export const NIVEAUX_AUTONOMIE: { cle: NiveauAutonomie; libelle: string; descrip
  * le message d'attente (agent-messagerie.ts : seulement si politique.envoiAuto).
  */
 export interface ExplicationNiveau {
+  /** En-tête de l'écran quand l'agent est actif (la phrase sous le choix du niveau reste la seule explication). */
   titre: string;
-  sousTitre: string;
-  /** Au-dessus de la liste des sujets qu'il traite. */
+  /** Au-dessus de la liste des sujets. */
   sujets: string;
+  /** Sujets propres au niveau : à « Questions simples », seulement ceux qui partent seuls (INTENTIONS_SIMPLES). */
+  listeSujets: string[];
   regles: string[];
+  /** Carte « Votre agent en ce moment » quand il est actif (niveau enregistré). */
+  passage: string;
+  /** Après « N fiches sont incomplètes » : ce qu'il fait d'une information absente (case « hors fiche »). */
+  fichesIncompletes: string;
 }
 
 export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<ReglagesAgent['transmettre'], 'horsFiche'>): ExplicationNiveau {
   const fiche = 'Il n’invente rien : si l’information n’est pas dans la fiche du logement, ';
-  const communes = [
-    'Il ne promet jamais d’argent, même un petit geste.',
-    'Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.',
-    'Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
-  ];
+  const arriveeDepart = 'Les questions sur l’arrivée et le départ (horaires, accès, parking)';
+  const infos = 'Le wifi, les équipements, les règles de la maison';
+  const argent = 'Il ne promet jamais d’argent, même un petit geste.';
   if (niveau === 'valider') {
     return {
       titre: 'Votre agent prépare les réponses',
-      sousTitre: 'Vous les validez avant l’envoi : rien ne part sans vous.',
       sujets: 'Il prépare la réponse, vous l’envoyez :',
+      listeSujets: [
+        arriveeDepart,
+        infos,
+        'Les codes d’accès, seulement pour les voyageurs confirmés qui arrivent sous 48\u00a0h',
+        'Les remerciements et les petites questions du quotidien',
+      ],
       regles: [
         'Il n’envoie jamais rien seul, pas même un message d’attente : vous relisez sa réponse et l’envoyez en un clic.',
         'Dans le doute, il vous passe toujours la main.',
         fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'sa réponse le dit.'),
-        ...communes,
+        argent,
+        'Il rédige dans la langue du voyageur si elle est cochée, sinon en anglais.',
+        'Il ne prépare les codes d’accès que pour les voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
       ],
+      passage: 'Il prépare une réponse à chaque passage : vous l’envoyez.',
+      fichesIncompletes: transmettre.horsFiche ? 'ce qui n’y figure pas, il vous le passe.' : 'ce qui n’y figure pas, sa réponse dit qu’il n’a pas l’information.',
     };
   }
   const simples = niveau === 'simples';
+  const codes = 'Les codes d’accès, seulement aux voyageurs confirmés qui arrivent sous 48\u00a0h';
   return {
     titre: simples ? 'Votre agent répond aux questions simples' : 'Votre agent répond aux voyageurs',
-    sousTitre: simples ? 'Il prépare les autres réponses : vous les validez avant l’envoi.' : 'Argent, annulation et problèmes sur place restent pour vous.',
     sujets: simples ? 'Il répond seul, quand il est sûr de lui, à :' : 'Il répond seul, quand il est sûr de lui, par exemple à :',
+    // « Questions simples » : arrivée, départ, infos et avis seulement ; les petites questions du quotidien restent à valider.
+    listeSujets: simples
+      ? [arriveeDepart, infos, codes, 'Les remerciements et les avis après le séjour']
+      : [arriveeDepart, infos, codes, 'Les remerciements et les petites questions du quotidien'],
     regles: [
       'Dans le doute, il vous passe toujours la main.',
       'Ce qu’il n’envoie pas seul, il le prépare : vous relisez sa réponse et l’envoyez en un clic.',
       fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'il le dit au voyageur.'),
       'Quand il vous passe la main, il peut prévenir le voyageur par un court message, toujours le même : « l’équipe revient vers vous rapidement ».',
-      ...communes,
-      'Il n’envoie seul qu’en français ou en anglais : dans une autre langue, il prépare la réponse.',
+      argent,
+      'Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.',
+      'Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
+      'Il ne répond seul qu’en français ou en anglais ; dans une autre langue, il prépare la réponse.',
     ],
+    passage: simples
+      ? 'Il répond aux questions simples à chaque passage et prépare les autres réponses.'
+      : 'Il répond hors sujets sensibles à chaque passage et prépare les réponses dont il n’est pas sûr.',
+    fichesIncompletes: transmettre.horsFiche ? 'ce qui n’y figure pas, il vous le passe.' : 'ce qui n’y figure pas, il dit au voyageur qu’il n’a pas l’information.',
   };
 }
 
@@ -786,7 +809,8 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
   );
   const codes = [
     ...(acces.match(SUITE_CHIFFRES) ?? []),
-    ...[...acces.matchAll(/code\s*:?\s*([A-Za-z0-9#*]{3,})/gi)].map((m) => m[1]),
+    // Après « code » : un jeton avec un chiffre, # ou * (« code 4821 », « code : A12B ») ; jamais un mot (« code par séjour »).
+    ...[...acces.matchAll(/code\s*:?\s*([A-Za-z]*[0-9#*][A-Za-z0-9#*]{2,})/gi)].map((m) => m[1]),
     ...(autres.match(SUITE_CHIFFRES) ?? []),
   ];
   return [...new Set([fiche.wifiCode, fiche.wifiNom, ...codes].map((x) => String(x ?? '').trim()).filter((x) => x.length >= 3))];
@@ -804,9 +828,18 @@ export function contientCodeAcces(texte: string, source: SourceCodes, descriptif
   const serre = compact(t);
   return secretsAcces(source, descriptif).some((s) => {
     const c = compact(s);
-    // Un secret très court ne se compare que tel quel (pas de faux positif en collant des mots).
-    return c.length >= 4 ? serre.includes(c) : brut.includes(s.toLowerCase());
+    // Avec des chiffres et assez long : sans séparateurs (« 48-21 » = « 4821 »).
+    if (c.length >= 4 && /\d/.test(c)) return serre.includes(c);
+    // Court, ou sans chiffre (nom du wifi) : en mot entier, jamais au milieu d'un mot (« par » ≠ « départ »).
+    return enMotEntier(brut, nettoyerTexte(s).toLowerCase());
   });
+}
+
+/** `mot` présent dans `texte` entre deux bornes qui ne sont ni lettre ni chiffre ; espaces et tirets du mot souples. */
+function enMotEntier(texte: string, mot: string): boolean {
+  const morceaux = mot.split(/[\s\-–—._·/]+/).filter(Boolean).map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!morceaux.length) return false;
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(texte);
 }
 
 /** Texte de la fiche donné à l'IA avant l'heure : suites de chiffres (codes possibles) retirées. */

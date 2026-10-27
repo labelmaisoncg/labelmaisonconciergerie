@@ -47,6 +47,7 @@ import {
   messageAttente,
   niveauAutonomie,
   explicationNiveau,
+  INTENTIONS_SIMPLES,
   reglagesAEnregistrer,
   REGLAGES_AGENT_GERANT,
   reponseSensible,
@@ -73,11 +74,12 @@ import {
   type AlerteControleAgent,
   type ControleReponse,
 } from './controle-reponse';
-import { PAR_MESSAGE_AUTO, rendreMessage } from './messages-programmes';
+import { PAR_MESSAGE_AUTO, TEXTES_DEFAUT, rendreMessage, secretEcritDansModele } from './messages-programmes';
 import { creerSeed } from './seed';
+import { indicateurs } from './selectors';
 import { donneesVides } from './collections';
 import { construireATraiter } from '../modules/tableau-de-bord/_composants/aTraiter.js';
-import { attendEquipe, auteurAffiche } from '../modules/messagerie/_composants/logique';
+import { attendEquipe, auteurAffiche, memeSerie } from '../modules/messagerie/_composants/logique';
 import type { GroupeNotification } from './notifications';
 import { BaseErp } from './repull-synchro';
 import type { FilMessages, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
@@ -362,7 +364,7 @@ async function principal() {
   section('Écran « Votre agent » : ce qui est dit suit le niveau');
   for (const n of ['valider', 'simples', 'autonome'] as const) {
     const e = explicationNiveau(n, { horsFiche: true });
-    const tout = [e.titre, e.sousTitre, e.sujets, ...e.regles].join('\n');
+    const tout = [e.titre, e.sujets, ...e.listeSujets, ...e.regles].join('\n');
     const envoiSeul = politiqueEnvoi({ autonomie: n }, false).envoiAuto;
     verifier(/répond seul/.test(e.sujets) === envoiSeul && /répond/.test(e.titre) === envoiSeul, `« ${n} » : « il répond seul » affiché seulement s’il envoie seul (${e.titre} / ${e.sujets})`);
     verifier(/message d’attente|court message/.test(tout) && /court message/.test(tout) === envoiSeul, `« ${n} » : message d’attente annoncé seulement s’il peut partir`);
@@ -371,11 +373,30 @@ async function principal() {
   {
     const e = explicationNiveau('valider', { horsFiche: true });
     verifier(
-      e.titre === 'Votre agent prépare les réponses' && /validez avant l’envoi/.test(e.sousTitre) && /n’envoie jamais rien seul, pas même un message d’attente/.test(e.regles.join()),
+      e.titre === 'Votre agent prépare les réponses' && /n’envoie jamais rien seul, pas même un message d’attente/.test(e.regles.join()) && /rédige dans la langue/.test(e.regles.join()) && /ne prépare les codes d’accès que pour/.test(e.regles.join()),
       '« Je valide tout » : « Votre agent prépare les réponses », vous validez, rien ne part seul',
     );
     verifier(/fiche du logement, sa réponse le dit/.test(explicationNiveau('valider', { horsFiche: false }).regles.join()) && /il le dit au voyageur/.test(explicationNiveau('autonome', { horsFiche: false }).regles.join()), 'hors fiche décoché : la règle le suit');
     verifier(/qu’en français ou en anglais/.test(explicationNiveau('simples', { horsFiche: true }).regles.join()) && !/qu’en français ou en anglais/.test(e.regles.join()), 'envoi seul en français ou en anglais : dit aux niveaux qui envoient seuls');
+    // « Questions simples » : la liste n'annonce que ce qui part seul (arrivée, départ, infos, avis), pas les petites questions du quotidien.
+    const simplesListe = explicationNiveau('simples', { horsFiche: true }).listeSujets.join('\n');
+    verifier(
+      !/petites questions/.test(simplesListe) && /avis/.test(simplesListe) && INTENTIONS_SIMPLES.join() === 'arrivee,depart,infos,avis' && /petites questions/.test(explicationNiveau('autonome', { horsFiche: true }).listeSujets.join()),
+      '« Questions simples » : sujets envoyés seuls = arrivée, départ, infos, avis ; « Autonome » : aussi les petites questions',
+    );
+    // Carte « Votre agent en ce moment » et ligne des fiches incomplètes : elles suivent le niveau et la case « hors fiche ».
+    const passage = (n: 'valider' | 'simples' | 'autonome') => explicationNiveau(n, { horsFiche: true }).passage;
+    verifier(
+      passage('valider') === 'Il prépare une réponse à chaque passage : vous l’envoyez.' && !/répond/.test(passage('valider')) && /questions simples/.test(passage('simples')) && /hors sujets sensibles/.test(passage('autonome')),
+      `carte d’état : ce qu’il fait à chaque passage suit le niveau (${passage('valider')})`,
+    );
+    verifier(
+      /il vous le passe/.test(explicationNiveau('autonome', { horsFiche: true }).fichesIncompletes) &&
+        /il dit au voyageur qu’il n’a pas l’information/.test(explicationNiveau('autonome', { horsFiche: false }).fichesIncompletes) &&
+        !/passe/.test(explicationNiveau('valider', { horsFiche: false }).fichesIncompletes),
+      'fiches incomplètes : la phrase suit la case « hors fiche »',
+    );
+    verifier(/ne répond seul qu’en français ou en anglais ; dans une autre langue, il prépare la réponse/.test(explicationNiveau('autonome', { horsFiche: true }).regles.join()), 'langue : « il ne répond seul qu’en français ou en anglais »');
   }
   {
     // Marche, niveau, horaires, ce qu'il vous confie : gérant seulement ; ton, signature, langues : toute l'équipe.
@@ -497,6 +518,30 @@ async function principal() {
     contientCodeAcces('Le code est 7-3-5-1.', logement.fiche) && contientCodeAcces('code : 7 3 5 1', logement.fiche) && contientCodeAcces('7.351', logement.fiche) && contientCodeAcces('Box 201', logement.fiche),
     'codes comparés sans séparateurs ni espaces (« 7-3-5-1 » = « 7351 », « Box 201 » = « Box-201 »)',
   );
+  {
+    // « code par séjour » (serrure connectée) : aucun secret, « départ » et « à partir de » ne déclenchent rien.
+    const parSejour = { ...logement.fiche, acces: 'Serrure connectée, code par séjour.', wifiNom: '', wifiCode: '' };
+    verifier(secretsAcces(parSejour).length === 0, `« code par séjour » : aucun secret (${secretsAcces(parSejour).join(', ')})`);
+    verifier(
+      !contientCodeAcces('L’arrivée est possible à partir de 16 h. Le départ se fait avant 11 h.', parSejour) && !contientCodeAcces('Votre code par séjour arrive la veille.', { ...parSejour, acces: 'code PAR' }),
+      '« départ », « à partir de » : jamais pris pour un code',
+    );
+    const vrais = (acces: string) => secretsAcces({ acces, wifiNom: '', wifiCode: '' });
+    verifier(
+      vrais('Boîte à clés, code 4821.').includes('4821') && vrais('Digicode : code : A12B').includes('A12B') && vrais('Portillon code #12*').includes('#12*'),
+      `vrais codes après « code » toujours repérés (${[vrais('Digicode : code : A12B'), vrais('Portillon code #12*')].join(' | ')})`,
+    );
+    verifier(contientCodeAcces('Votre code est A12B.', { acces: 'code : A12B' }) && contientCodeAcces('le code 4 8 2 1', { acces: 'code 4821' }), 'vrai code écrit dans un message : repéré');
+    // Secret court ou sans chiffre : en mot entier seulement.
+    verifier(
+      contientCodeAcces('Réseau : Maison.', { wifiNom: 'Maison' }) && !contientCodeAcces('Les maisons voisines.', { wifiNom: 'Maison' }) && contientCodeAcces('Tapez 12A.', { acces: 'code 12A' }) && !contientCodeAcces('Réf. X12AY', { acces: 'code 12A' }),
+      'secret court ou sans chiffre : comparé en mot entier',
+    );
+    // Démonstration : aucun texte par défaut parti hors de la fenêtre des codes ne passe pour un code.
+    const demo = creerSeed().logements;
+    const alertes = (['confirmation', 'jour_depart', 'demande_avis'] as const).filter((k) => secretEcritDansModele(TEXTES_DEFAUT[k], undefined, demo));
+    verifier(!alertes.length, `démonstration : textes par défaut sans fausse alerte de code (${alertes.join(', ')})`);
+  }
   {
     const avecFaq: Logement = { ...logement, fiche: { ...logement.fiche, aSavoir: 'Local vélos : cadenas 1 9 7 3.', questions: [{ id: 'q', question: 'Et le portail ?', reponse: 'Le code du portail est 2580.' }] } };
     verifier(secretsAcces(avecFaq.fiche).includes('2580') && contientCodeAcces('Tapez 25-80 au portail.', avecFaq.fiche) && contientCodeAcces('cadenas 1973', avecFaq.fiche), 'codes des questions fréquentes et de « À savoir » comptés comme secrets');
@@ -1086,6 +1131,14 @@ async function principal() {
     verifier(auteurAffiche({ auteur: 'hote' }) === 'Équipe', 'message de l’équipe lu sur la plateforme (sans trace d’envoi) : « Équipe »');
     verifier(auteurAffiche({ auteur: 'agent', envoi: { par: 'Agent IA' } }) === 'Réponse de votre agent' && auteurAffiche({ auteur: 'agent' }, 'apercu') === 'Votre agent', 'réponse de l’agent : « votre agent »');
     verifier(auteurAffiche({ auteur: 'voyageur', envoi: { par: PAR_MESSAGE_AUTO } }) === null, 'message du voyageur : rien');
+    // Séries de bulles : un message automatique après l'équipe ouvre sa propre série (sa propre signature).
+    verifier(!memeSerie(equipe, auto) && memeSerie(equipe, { auteur: 'hote' }) && memeSerie(auto, { ...auto }) && !memeSerie({ auteur: 'voyageur' }, equipe) && !memeSerie(undefined, equipe), 'bulles : équipe puis message automatique = deux séries, deux signatures');
+
+    // Une seule règle « attend l'équipe » : Messagerie, Accueil, indicateurs.
+    const seed = creerSeed();
+    const attente = seed.filsMessages.filter(attendEquipe).length;
+    const accueilMessages = construireATraiter(seed).find((x) => x.id === 'message')?.details.length ?? 0;
+    verifier(attente > 0 && accueilMessages === attente && indicateurs(seed).messagesEnAttente === attente, `même nombre de voyageurs en attente partout (${attente}, Accueil ${accueilMessages}, indicateurs ${indicateurs(seed).messagesEnAttente})`);
 
     // Démonstration : une conversation où l'équipe a répondu en dernier n'est pas « À répondre ».
     const repondusEnAttente = creerSeed().filsMessages.filter((f) => f.messages[f.messages.length - 1]?.auteur === 'hote' && attendEquipe(f));

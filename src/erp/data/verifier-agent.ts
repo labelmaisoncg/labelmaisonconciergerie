@@ -343,7 +343,7 @@ async function principal() {
   const rep = f.messages[f.messages.length - 1];
   verifier(rep.auteur === 'agent' && rep.id === 'repull-800000' && rep.envoi?.canal === 'booking', 'réponse écrite dans le fil (auteur agent, id Repull)');
   verifier(f.agent?.dernierMessageTraite === 'repull-m1' && !f.agent?.enCours && f.traitePar === 'agent' && f.statut === 'ouvert', 'suivi : message traité, marqueur retiré, fil suivi par l’agent');
-  verifier(telegram.length === 1 && /Réponse de l’agent/.test(telegram[0]), 'copie de la réponse sur Telegram');
+  verifier(telegram.length === 1 && /Réponse de votre agent/.test(telegram[0]), 'copie de la réponse sur Telegram');
   verifier(base.get<EtatRepull>(COLLECTION_ETAT, ID_ETAT)?.appelsMois === 1 && p.appelsRepull === 1, 'appel Repull compté dans la part du mois');
   verifier(base.get<FilMessages>('filsMessages', 'fil-local')?.agent === undefined, 'fil sans Repull : ignoré');
 

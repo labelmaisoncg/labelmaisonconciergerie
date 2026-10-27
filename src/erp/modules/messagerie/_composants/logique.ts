@@ -133,6 +133,16 @@ export function auteurAffiche(m: Pick<Message, 'auteur' | 'envoi'>, forme: 'sign
   return forme === 'signature' ? 'Équipe' : 'Vous';
 }
 
+/**
+ * Série de bulles : des messages qui se suivent et sont signés pareil. Un
+ * message automatique après un message de l'équipe ouvre une nouvelle série
+ * (sinon il porterait la signature « Équipe »).
+ */
+export function memeSerie(a: Pick<Message, 'auteur' | 'envoi'> | undefined, b: Pick<Message, 'auteur' | 'envoi'> | undefined): boolean {
+  if (!a || !b) return false;
+  return (auteurAffiche(a) ?? a.auteur) === (auteurAffiche(b) ?? b.auteur);
+}
+
 /** Le dernier message vient du voyageur : une réponse est attendue. */
 export function attendReponse(fil: FilMessages): boolean {
   return fil.statut !== 'clos' && fil.messages[fil.messages.length - 1]?.auteur === 'voyageur';
