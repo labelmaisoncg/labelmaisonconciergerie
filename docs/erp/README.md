@@ -181,6 +181,22 @@ node_modules/.bin/esbuild src/erp/data/verifier-briefing.ts --bundle --format=es
 node_modules/.bin/esbuild src/erp/data/verifier-crm-assistant.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-crm-assistant.mjs && node /tmp/verifier-crm-assistant.mjs
+
+# Textes des annonces (A6) : limites d'Airbnb et de Booking.com, 3 titres et
+# 1 description pour chaque logement de la démo, garde-fous (rien d'inventé,
+# ni coordonnée, ni lien, ni code, ni adresse, ni nom), rédaction par l'IA
+# relue (faux Claude, plafond du mois), aucune écriture d'annonce.
+node_modules/.bin/esbuild src/erp/data/verifier-annonces.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-annonces.mjs && node /tmp/verifier-annonces.mjs
+
+# Suppléments (B7) : réglages du gérant (et SQL), disponibilité sur les
+# réservations et les ménages, textes, l'agent ne vend jamais seul un
+# supplément (verdict et passage simulé), message automatique « Proposer les
+# suppléments » (passage simulé), aucun paiement ni écriture vers les plateformes.
+node_modules/.bin/esbuild src/erp/data/verifier-supplements.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-supplements.mjs && node /tmp/verifier-supplements.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -328,7 +344,7 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 | Rubrique | Contenu | Routes |
 |---|---|---|
 | Accueil | « Votre journée » (briefing du matin : arrivées, départs, logements occupés ce soir, puis « À faire » : voyageurs qui attendent, synchronisation en échec, avis, infos manquantes pour l'agent, contacts à appeler, alertes, et pour le gérant prix à revoir et factures à valider), arrivées / départs / sur place (cette semaine, ou une période choisie au calendrier : `ChoixPeriode.tsx`), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
-| Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, l'annonce, couchage, prix des prochaines semaines et prix de base lus sur les plateformes, propriétaire, logement, conditions, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
+| Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, avis des voyageurs (thèmes, réponse proposée à copier), l'annonce et « Nouveaux textes » à copier, couchage, prix des prochaines semaines et prix de base lus sur les plateformes, propriétaire, logement, conditions, suppléments, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Avis (tout le parc) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/avis`, `/connexions`) |
 | Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
 | Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Votre agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
 | CRM | « Aujourd’hui » (file priorisée de l'assistant CRM, prochaine action, brouillon de relance) · « Tous les contacts » (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` (`?vue=tous`, `?contact=`, `?relance=`) |
@@ -436,9 +452,9 @@ appliqués, main passée selon `transmettre`, relance Telegram après
 
 ### Messages automatiques et avis à déposer
 
-« Messagerie > Messages automatiques » (gérant) : quatre messages
-(`confirmation`, `veille_arrivee`, `jour_depart`, `demande_avis`), **éteints
-par défaut**, enregistrés dans `reglages` (id `messages-programmes`, texte de
+« Messagerie > Messages automatiques » (gérant) : cinq messages
+(`confirmation`, `proposer_supplements`, `veille_arrivee`, `jour_depart`,
+`demande_avis`), **éteints par défaut**, enregistrés dans `reglages` (id `messages-programmes`, texte de
 l'espace et texte propre à un logement). Le passage planifié de l'agent
 (`api/erp-agent.ts` → `api/_erp-programmes.ts` →
 `src/erp/data/passage-programmes.ts`) envoie ce qui est dû par
@@ -466,7 +482,7 @@ ou 2 ; même règle avant les espaces dans `erp-installation.sql` et
 compte serveur) pour `envoisProgrammes`, `programmes`, `agent`, `repull`,
 `factures`, `passagesFacturesMensuelles`, `annoncesEquipe`, `conseilsPrix` (`reglages`,
 `etat`) et `reglages` (`messages-programmes`, `societe`,
-`numerotation-factures`, `alerte-controle-agent`) ; dans les réglages de
+`numerotation-factures`, `alerte-controle-agent`, `supplements`) ; dans les réglages de
 l'agent, marche, niveau d'autonomie, horaires, ce qu'il confie et délai
 changés par un gérant seulement (déclencheur `erp.garder_autonomie_agent`,
 liste `REGLAGES_AGENT_GERANT` ; ton, signature, langues et Telegram restent
@@ -1148,6 +1164,64 @@ le champ `brouillon` du navigateur n'est qu'un indice). La lecture du message (`
 urgence) sert au tri de « À répondre » (urgent : problème pendant le séjour,
 puis arrivée sous 24 h ou voyageur sur place) et au libellé de la demande en
 tête de conversation ; aucun appel à l'IA juste pour trier.
+
+**Suppléments (B7)** (`src/erp/data/supplements.ts`) : arrivée plus tôt,
+départ plus tard, ménage supplémentaire, navette.
+
+- **Réglages** : fiche du logement → carte « Suppléments » → « Régler » /
+  « Modifier » (gérant). Pour chacun : proposé ou non, prix indicatif (0 € :
+  sans supplément), heure possible (arrivée dès, départ jusqu'à, avant
+  l'arrivée / après le départ habituels), « Selon le planning » (coché par
+  défaut), précision montrée au voyageur. Élément `reglages/supplements` (un
+  bloc par logement), dans `erp.ecriture_gerant_seulement` (les trois
+  fichiers SQL et leurs recettes, `ecritures-gerant.ts`). Lecture tolérante :
+  jamais allumé sans prix lisible.
+- **Messagerie** : quand le voyageur demande une arrivée plus tôt ou un
+  départ plus tard (demande lue par l'IA, sinon ses mots ; ménage et navette :
+  ses mots) et attend une réponse, un bandeau au-dessus de la zone de réponse
+  donne le supplément, son prix, l'état (possible, à vérifier, pas possible
+  ce jour-là) et ce que dit le planning : un départ d'un autre voyageur le jour
+  de l'arrivée (ou une arrivée le jour du départ) le bloque « selon le
+  planning », sinon il est à vérifier ; un ménage prévu ce jour-là est dit
+  (et le met « à vérifier » s'il gêne l'heure). « Insérer » met la
+  proposition (ou, si ce n'est pas possible, une réponse polie sans prix) dans
+  la zone de réponse, en français ou en anglais selon le voyageur ; l'équipe
+  l'envoie comme une réponse normale. Les suppléments du logement sont aussi
+  dans la rangée des modèles.
+- **Message automatique** « Proposer les suppléments » : facultatif, éteint par
+  défaut, 3 jours avant l'arrivée (11:00, réglable), seulement pour les
+  logements qui proposent un supplément, avec ceux que le planning permet
+  (rien « à vérifier » ne part) ; rien de possible : pas envoyé, noté une fois.
+- **Aucun paiement ni changement de réservation par l'ERP** : ni offre
+  spéciale, ni modification sur la plateforme, ni lien de paiement.
+  L'encaissement se fait hors ERP (c'est écrit dans l'aide de la carte et des
+  messages automatiques).
+- **L'agent ne vend jamais seul un supplément** : demande d'arrivée plus tôt ou
+  de départ plus tard (lue par l'IA ou dans les mots du voyageur), ou réponse
+  qui en accorde un : « à valider » à tous les niveaux d'autonomie
+  (`supplementAValider`, dans `verdictEnvoi`) ; un prix ou le mot
+  « supplément » est une question d'argent (transmis, `sujetSensible`), et ses
+  consignes lui disent de n'accorder rien et de ne donner aucun prix.
+
+**Textes de l'annonce (A6)** (`src/erp/annonces/textes.ts`, limites dans
+`src/erp/annonces/limites.ts` avec leurs sources) : fiche du logement → carte
+« L'annonce » → « Nouveaux textes ». Trois titres (un par angle : le logement
+et son atout, le lieu d'abord, l'usage) et une description, tirés de la fiche
+(équipements, atouts, couchage, repères du quartier de
+`src/erp/annonces/ancrages.ts`), avec leur compteur et « Copier ». Limites :
+Airbnb 50 caractères pour le titre, 500 pour la description ; Booking.com 3 à
+255 pour le nom, sans plus de 5 chiffres de suite, ni emoji, ni symbole hors
+de ! # & ` ' " - , : les textes tiennent dans les deux. Garde-fous (pour tout
+texte proposé) : aucun équipement absent de la fiche (négations comprises),
+aucune promesse, ni coordonnée, ni lien, ni nom de plateforme, ni code d'accès
+ou wifi, ni adresse exacte, ni nom du propriétaire. « Rédiger avec votre
+agent » : `POST /api/erp-agent { action: 'textes_annonce', logementId }`
+(`api/_erp-annonces.ts`, `src/erp/data/annonce-ia.ts`, gérant ou
+opérations, plafond mensuel de l'IA) ; l'IA ne reçoit que des faits sûrs et
+publics, ce qu'elle rend repasse par les garde-fous et un texte refusé est
+remplacé par celui de la fiche. La dernière proposition est gardée dans
+`versionsAnnonce` (id `textes-<logement>`, champ `titres`). **L'ERP ne publie
+jamais l'annonce** : l'équipe copie et colle elle-même sur la plateforme.
 
 **Assistant de réponse** (`src/erp/data/agent-assistant.ts`, actions de
 `POST /api/erp-agent`, gérant ou opérations) : `brouillon` (« Proposer une

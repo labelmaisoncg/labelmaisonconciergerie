@@ -27,6 +27,7 @@ import { creerEspaceProprietaireDemo, prolongationDemo } from './seed-proprietai
 import { premiereAnnonce } from './annonces-equipe';
 import { ESPACE_LABEL_MAISON } from './espaces';
 import { nomConciergerie } from './marque-espace';
+import { ID_REGLAGES_SUPPLEMENTS, type ReglagesSupplements } from './supplements';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -764,6 +765,24 @@ function calendrierReserve(logements: Logement[], reservations: Reservation[]): 
   });
 }
 
+/**
+ * Suppléments de la démo (cahier B7) : arrivée plus tôt et départ plus tard
+ * sur les logements en location, ménage supplémentaire sur les grands
+ * logements, navette près des gares. Réglés par Abdel (gérant).
+ */
+function supplementsDemo(logements: readonly Logement[]): ReglagesSupplements {
+  const blocs: ReglagesSupplements['logements'] = {};
+  for (const l of logements.filter((x) => x.statut === 'actif')) {
+    blocs[l.id] = {
+      arrivee_anticipee: { actif: true, prixCentimes: 2000, heure: '12:00', selonPlanning: true },
+      depart_tardif: { actif: true, prixCentimes: 2000, heure: '14:00', selonPlanning: true },
+      ...(l.capacite >= 6 ? { menage_supplementaire: { actif: true, prixCentimes: 4500, conditions: 'À prévoir la veille' } } : {}),
+      ...(['log-juvisy', 'log-massy'].includes(l.id) ? { navette: { actif: true, prixCentimes: 3000, conditions: 'Depuis la gare ou l’aéroport d’Orly' } } : {}),
+    };
+  }
+  return { id: ID_REGLAGES_SUPPLEMENTS, logements: blocs, majLe: `${AUJOURDHUI}T08:30:00+02:00`, majPar: 'Abdel' };
+}
+
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
   const reservations = prolongationDemo(genererReservations(h));
@@ -801,7 +820,7 @@ export function creerSeed(): ErpDonnees {
     journal: operations.journal,
     recommandations,
     versionsAnnonce: creerVersionsAnnonce({ logements: LOGEMENTS, reservations, recommandations }),
-    reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }],
+    reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }, supplementsDemo(LOGEMENTS)],
     equipe: ops.equipe,
     accesOperations: ops.accesOperations,
     affectations: ops.affectations,

@@ -36,6 +36,8 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
     id: ID_REGLAGES_PROGRAMMES,
     modeles: {
       confirmation: modeleParDefaut('confirmation'),
+      // Facultatif et éteint, comme dans un nouvel espace.
+      proposer_supplements: modeleParDefaut('proposer_supplements'),
       veille_arrivee: { ...modeleParDefaut('veille_arrivee'), actif: true, activeLe: ALLUME_LE },
       jour_depart: modeleParDefaut('jour_depart'),
       demande_avis: { ...modeleParDefaut('demande_avis'), actif: true, activeLe: ALLUME_LE },

@@ -10,6 +10,7 @@ import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQuali
 import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
 import type { ElementPrix } from './prix-conseils';
 import type { AnnonceEquipe } from './annonces-equipe';
+import type { ReglagesSupplements } from './supplements';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -585,9 +586,10 @@ export interface CompteurFactures {
 /**
  * Tous les réglages stockés dans la collection `reglages` : l'agent (id
  * 'agent'), les messages automatiques ('messages-programmes'), l'identité de
- * la société ('societe') et la numérotation des factures.
+ * la société ('societe'), la numérotation des factures et les suppléments
+ * proposés aux voyageurs ('supplements', data/supplements.ts).
  */
-export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures | AlerteControleAgent;
+export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures | AlerteControleAgent | ReglagesSupplements;
 
 /**
  * Alerte « l'agent ne peut plus vérifier ses réponses » (collection
@@ -1085,6 +1087,11 @@ export interface VersionAnnonce {
   description: string;
   /** Accroche d'une ligne (premier paragraphe visible sur Airbnb). */
   accroche: string;
+  /**
+   * Textes de l'annonce (cahier A6) : les trois titres proposés (le premier
+   * est aussi `titre`). Absent : version mensuelle d'avant (un seul titre).
+   */
+  titres?: string[];
   /** Pourquoi cette version : saison, événement local, avis voyageurs. */
   raisons: string[];
   source: 'agent' | 'humain';

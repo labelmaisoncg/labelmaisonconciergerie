@@ -19,7 +19,8 @@
 import type { CanalReservation, DateISO, Horodatage, Id } from './types';
 
 /** Moment d'envoi d'un message automatique. */
-export type DeclencheurMessage = 'confirmation' | 'veille_arrivee' | 'jour_depart' | 'demande_avis';
+/** proposer_supplements : facultatif, quelques jours avant l'arrivée (cahier B7, suppléments réglés par logement). */
+export type DeclencheurMessage = 'confirmation' | 'proposer_supplements' | 'veille_arrivee' | 'jour_depart' | 'demande_avis';
 
 /** Texte propre à un logement (remplace celui de l'espace), ou message coupé pour ce logement. */
 export interface ModeleLogement {

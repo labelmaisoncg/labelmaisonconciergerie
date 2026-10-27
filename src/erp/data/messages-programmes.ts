@@ -19,6 +19,10 @@
  *   confirmée, arrivée sous 48 h ou séjour en cours) : sinon la ligne qui
  *   les contient est retirée, rien d'autre.
  *
+ * « Proposer les suppléments » (cahier B7) : facultatif, éteint par défaut,
+ * 3 jours avant l'arrivée ; seulement pour un logement qui propose au moins
+ * un supplément, avec ceux que le planning permet (data/supplements.ts).
+ *
  * Avis à déposer : chaque séjour Airbnb terminé depuis moins de 14 jours
  * (délai d'Airbnb) attend son avis ; un séjour avec un incident, une note
  * sous 4 ou un message négatif est « à relire », jamais présenté comme prêt.
@@ -28,6 +32,7 @@
 import { attendEquipe } from './attente-equipe.js';
 import { contientCodeAcces } from './messagerie-ia.js';
 import { reglagesAgent } from './reglages.js';
+import { aDesSupplements, type ReglagesSupplements } from './supplements.js';
 import type { DateISO, ErpDonnees, FilMessages, GuideLogement, Horodatage, Id, Incident, Logement, Reservation } from './types';
 import type { ControleQualite } from './types-operations';
 import type {
@@ -74,21 +79,27 @@ export const NOTE_A_RELIRE = 4;
 /** Page Airbnb de l'hôte (lien simple : l'ERP ne publie rien). */
 export const LIEN_AIRBNB_HOTE = 'https://www.airbnb.fr/hosting';
 
-export const DECLENCHEURS: DeclencheurMessage[] = ['confirmation', 'veille_arrivee', 'jour_depart', 'demande_avis'];
+export const DECLENCHEURS: DeclencheurMessage[] = ['confirmation', 'proposer_supplements', 'veille_arrivee', 'jour_depart', 'demande_avis'];
+
+/** « Proposer les suppléments » part ce nombre de jours avant l'arrivée. */
+export const JOURS_AVANT_SUPPLEMENTS = 3;
 
 /** Nom du message, et quand il part (« La veille de l’arrivée, 18:00 »). */
 export const LIBELLES_DECLENCHEURS: Record<DeclencheurMessage, { titre: string; quand: (heure?: string) => string }> = {
   confirmation: { titre: 'Merci pour la réservation', quand: () => 'Dès la réservation' },
+  proposer_supplements: { titre: 'Proposer les suppléments', quand: (h) => `${JOURS_AVANT_SUPPLEMENTS} jours avant l’arrivée, ${h ?? '11:00'}` },
   veille_arrivee: { titre: 'Infos d’arrivée', quand: (h) => `La veille de l’arrivée, ${h ?? '18:00'}` },
   jour_depart: { titre: 'Rappel du départ', quand: (h) => `Le matin du départ, ${h ?? '08:30'}` },
   demande_avis: { titre: 'Demande d’avis', quand: (h) => `Le lendemain du départ, ${h ?? '11:00'}` },
 };
 
-const HEURES_DEFAUT: Partial<Record<DeclencheurMessage, string>> = { veille_arrivee: '18:00', jour_depart: '08:30', demande_avis: '11:00' };
+const HEURES_DEFAUT: Partial<Record<DeclencheurMessage, string>> = { proposer_supplements: '11:00', veille_arrivee: '18:00', jour_depart: '08:30', demande_avis: '11:00' };
 
 export const TEXTES_DEFAUT: Record<DeclencheurMessage, string> = {
   confirmation:
     'Bonjour {prenom},\n\nMerci pour votre réservation « {logement} », du {date_arrivee} au {date_depart}. Nous avons hâte de vous accueillir.\n\nL’arrivée est possible à partir de {heure_arrivee}. Nous vous enverrons les informations d’arrivée avant votre séjour.\n\nÀ très bientôt,\n{signature}',
+  proposer_supplements:
+    'Bonjour {prenom},\n\nVotre séjour « {logement} » approche. Si cela vous est utile, nous pouvons vous proposer :\n{supplements}\n\nIl suffit de nous répondre ici : nous vérifions et vous confirmons.\n{signature}',
   veille_arrivee:
     'Bonjour {prenom},\n\nNous vous attendons demain à partir de {heure_arrivee} (« {logement} »).\n\n{acces}\nWifi : {wifi}\nVotre guide d’arrivée : {lien_guide}\n\nBonne route, et écrivez-nous si besoin.\n{signature}',
   jour_depart:
@@ -99,7 +110,7 @@ export const TEXTES_DEFAUT: Record<DeclencheurMessage, string> = {
 
 /* ============================================================ variables */
 
-export type CleVariable = 'prenom' | 'logement' | 'date_arrivee' | 'heure_arrivee' | 'date_depart' | 'heure_depart' | 'lien_guide' | 'signature' | 'acces' | 'wifi';
+export type CleVariable = 'prenom' | 'logement' | 'date_arrivee' | 'heure_arrivee' | 'date_depart' | 'heure_depart' | 'lien_guide' | 'signature' | 'acces' | 'wifi' | 'supplements';
 
 export interface VariableMessage {
   cle: CleVariable;
@@ -108,6 +119,8 @@ export interface VariableMessage {
   sensible?: boolean;
   /** Valeur vide : la ligne qui la contient est retirée (sinon : remplacée par rien). */
   retirerSiVide?: boolean;
+  /** Proposée à l'écran seulement pour ces moments (absent : tous). */
+  moments?: DeclencheurMessage[];
 }
 
 export const VARIABLES: VariableMessage[] = [
@@ -121,6 +134,7 @@ export const VARIABLES: VariableMessage[] = [
   { cle: 'signature', libelle: 'Signature' },
   { cle: 'acces', libelle: 'Accès et clés', sensible: true, retirerSiVide: true },
   { cle: 'wifi', libelle: 'Wifi', sensible: true, retirerSiVide: true },
+  { cle: 'supplements', libelle: 'Suppléments proposés', retirerSiVide: true, moments: ['proposer_supplements'] },
 ];
 
 const VARIABLES_PAR_CLE = new Map(VARIABLES.map((v) => [v.cle, v]));
@@ -302,7 +316,15 @@ export function momentHorsFenetreCodes(declencheur: DeclencheurMessage): boolean
   const arrivee = '2030-06-10';
   const depart = '2030-06-13';
   const jour =
-    declencheur === 'confirmation' ? '2030-05-10' : declencheur === 'veille_arrivee' ? ajouterJoursISO(arrivee, -1) : declencheur === 'jour_depart' ? depart : ajouterJoursISO(depart, 1);
+    declencheur === 'confirmation'
+      ? '2030-05-10'
+      : declencheur === 'proposer_supplements'
+        ? ajouterJoursISO(arrivee, -JOURS_AVANT_SUPPLEMENTS)
+        : declencheur === 'veille_arrivee'
+          ? ajouterJoursISO(arrivee, -1)
+          : declencheur === 'jour_depart'
+            ? depart
+            : ajouterJoursISO(depart, 1);
   return !codesAutorises({ logementId: 'type', statut: 'confirmee', arrivee, depart }, 'type', jour);
 }
 
@@ -341,6 +363,8 @@ export interface ContexteMessage {
   signature: string;
   /** Lien du guide, déjà résolu (lien signé pour un fichier déposé). */
   lienGuide?: string;
+  /** Suppléments possibles pour ce séjour, une ligne chacun (data/supplements.ts, texteSupplementsSejour). */
+  supplements?: string;
   aujourdhui: DateISO;
 }
 
@@ -372,6 +396,7 @@ export function valeursVariables(c: ContexteMessage): { valeurs: Record<CleVaria
       signature: c.signature.trim(),
       acces: codes ? (f?.acces?.trim() ?? '') : '',
       wifi: codes ? wifi : '',
+      supplements: c.supplements?.trim() ?? '',
     },
   };
 }
@@ -473,6 +498,10 @@ export function fenetreEnvoi(
       const t = instantDe(vue);
       return Number.isFinite(t) ? { debut: t, fin: t + FENETRE_CONFIRMATION_MS } : null;
     }
+    case 'proposer_supplements': {
+      const jour = ajouterJoursISO(r.arrivee, -JOURS_AVANT_SUPPLEMENTS);
+      return { debut: instantParis(jour, heure), fin: instantParis(jour, HEURE_FIN_ENVOIS) };
+    }
     case 'veille_arrivee': {
       const jour = ajouterJoursISO(r.arrivee, -1);
       return { debut: instantParis(jour, heure), fin: instantParis(jour, HEURE_FIN_ENVOIS) };
@@ -524,6 +553,7 @@ export const RAISONS = {
   repriseCodes: 'Les codes ne sont plus permis pour ce séjour (dates changées) : rien n’est reparti. Vérifiez sur la plateforme.',
   repriseConversation: 'La conversation ne correspond plus à ce séjour : rien n’est reparti. Vérifiez sur la plateforme.',
   codesEnClair: 'Le texte contient un code d’accès ou le wifi écrit en toutes lettres, trop tôt pour ce séjour : pas envoyé.',
+  sansSupplement: 'Aucun supplément possible pour ce séjour (planning) : rien à proposer.',
 } as const;
 
 /** Ce qui empêche l'envoi en ce moment, s'il y a quelque chose. `final` : ça ne changera plus. */
@@ -548,6 +578,8 @@ export interface EntreeDecision {
   maintenant: Date;
   /** Logement du séjour (codes et wifi de sa fiche : reprise d'un envoi). */
   logement?: Pick<Logement, 'fiche'>;
+  /** Suppléments réglés : « Proposer les suppléments » ne vise que les logements qui en proposent. */
+  supplements?: ReglagesSupplements;
 }
 
 /** Que faire pour ce séjour et ce moment, maintenant ? Pur : aucune écriture, aucun envoi. */
@@ -574,6 +606,8 @@ export function deciderEnvoi(e: EntreeDecision): DecisionEnvoi {
     return { genre: 'reprendre', envoi, fil: filReprise };
   }
   if (!m.actif) return { genre: 'rien' };
+  // Aucun supplément allumé pour ce logement : rien à proposer, rien de noté.
+  if (k === 'proposer_supplements' && !aDesSupplements(e.supplements, r.logementId)) return { genre: 'rien' };
   // Réservation déjà là quand la confirmation a été allumée, ou arrivée par importation : pas de confirmation.
   const vue = k === 'confirmation' ? e.vues?.vues[r.id] : undefined;
   const fenetre = fenetreEnvoi(k, r, m, vue);
@@ -611,6 +645,7 @@ export function planifierEnvois(o: {
   vues?: ReservationsVues;
   maintenant: Date;
   logements?: readonly Pick<Logement, 'id' | 'fiche'>[];
+  supplements?: ReglagesSupplements;
 }): DecisionPlanifiee[] {
   const parId = new Map(o.envois.map((x) => [x.id, x]));
   const logements = new Map((o.logements ?? []).map((l) => [l.id, l]));
@@ -627,6 +662,7 @@ export function planifierEnvois(o: {
         vues: o.vues,
         maintenant: o.maintenant,
         logement: logements.get(r.logementId),
+        supplements: o.supplements,
       });
       if (decision.genre !== 'rien') res.push({ declencheur: k, reservation: r, decision });
     }
@@ -671,7 +707,13 @@ export function sejourJoignable(r: Pick<Reservation, 'id' | 'canal'>, fils: read
  */
 export function sejoursPourApercu(reservations: readonly Reservation[], declencheur: DeclencheurMessage, aujourdhui: DateISO, fils: readonly FilMessages[] = []): Reservation[] {
   const repere = (r: Reservation) =>
-    declencheur === 'confirmation' || declencheur === 'veille_arrivee' ? r.arrivee : declencheur === 'jour_depart' ? r.depart : ajouterJoursISO(r.depart, 1);
+    declencheur === 'proposer_supplements'
+      ? ajouterJoursISO(r.arrivee, -JOURS_AVANT_SUPPLEMENTS)
+      : declencheur === 'confirmation' || declencheur === 'veille_arrivee'
+        ? r.arrivee
+        : declencheur === 'jour_depart'
+          ? r.depart
+          : ajouterJoursISO(r.depart, 1);
   const seuil = declencheur === 'veille_arrivee' ? ajouterJoursISO(aujourdhui, 1) : aujourdhui;
   return reservations
     .filter((r) => r.statut !== 'annulee' && repere(r) >= seuil && sejourJoignable(r, fils))
@@ -688,6 +730,7 @@ export function prochainEnvoi(
   reglages: ReglagesMessagesProgrammes,
   declencheur: DeclencheurMessage,
   maintenant: Date,
+  supplements?: ReglagesSupplements,
 ): { reservation: Reservation; quand: number } | null {
   if (declencheur === 'confirmation') return null;
   const deja = new Set((d.envoisProgrammes ?? []).filter((x) => x.declencheur === declencheur).map((x) => x.reservationId));
@@ -696,6 +739,7 @@ export function prochainEnvoi(
     if (r.statut === 'annulee' || deja.has(r.id)) continue;
     const m = modeleEffectif(reglages, declencheur, r.logementId);
     if (!m.actif) continue;
+    if (declencheur === 'proposer_supplements' && !aDesSupplements(supplements, r.logementId)) continue;
     const f = fenetreEnvoi(declencheur, r, m);
     if (!f || f.fin <= maintenant.getTime() || f.debut < (instantDe(m.activeLe) || Infinity)) continue;
     if (!filDuSejour(d.filsMessages, r.id)?.repull?.id) continue;

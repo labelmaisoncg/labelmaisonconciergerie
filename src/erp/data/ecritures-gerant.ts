@@ -22,7 +22,8 @@ export const COLLECTIONS_GERANT_SEULEMENT: readonly string[] = ['envoisProgramme
 export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[]>> = {
   conseilsPrix: ['reglages', 'etat'],
   // alerte-controle-agent : écrite par le serveur (agent de messagerie), l'équipe la lit seulement.
-  reglages: ['messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'],
+  // supplements : prix et conditions des suppléments proposés aux voyageurs, réglés par le gérant (data/supplements.ts).
+  reglages: ['messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'],
 };
 
 /**

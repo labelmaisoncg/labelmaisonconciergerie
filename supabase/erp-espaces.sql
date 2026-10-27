@@ -1053,7 +1053,8 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 --   - ce que seul un gérant change dans l'ERP : factures (validation,
 --     numéro), réglages des prix (conseilsPrix/reglages), modèles des
 --     messages automatiques, identité de la société et numérotation des
---     factures (reglages : messages-programmes, societe, numerotation-factures).
+--     factures, suppléments proposés aux voyageurs (reglages :
+--     messages-programmes, societe, numerotation-factures, supplements).
 -- Sans cette règle, un compte « opérations » pourrait, par l'API, réécrire un
 -- message automatique (il partirait à tous les voyageurs), glisser un envoi
 -- « en cours » avec le texte de son choix, poser un verrou sans fin, remettre
@@ -1065,7 +1066,7 @@ language sql immutable set search_path = ''
 as $$
   select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
-      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'))
+      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'))
 $$;
 revoke all on function erp.ecriture_gerant_seulement(text, text) from public, anon;
 grant execute on function erp.ecriture_gerant_seulement(text, text) to authenticated;
@@ -1598,6 +1599,7 @@ begin
       (lm, 'envoisProgrammes', 'recette-envoi', '{"id": "recette-envoi"}'),
       (lm, 'reglages', 'messages-programmes', '{"id": "messages-programmes"}'),
       (lm, 'reglages', 'societe', '{"id": "societe"}'),
+      (lm, 'reglages', 'supplements', '{"id": "supplements"}'),
       (lm, 'conseilsPrix', 'reglages', '{"id": "reglages"}'),
       (lm, 'reglages', 'agent', '{"id": "agent"}'),
       (lm, 'factures', 'recette-fm-1', '{"id": "recette-fm-1", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-15", "montantHtCentimes": 100, "mensuelle": {"mois": "2098-12"}}'),
@@ -1703,13 +1705,13 @@ begin
     exception when insufficient_privilege then null;
     end;
     update erp.enregistrements set donnees = donnees || '{"recette": 1}'
-      where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe'))
+      where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'supplements'))
                              or (collection = 'conseilsPrix' and id = 'reglages')
                              or (collection = 'envoisProgrammes' and id = 'recette-envoi'));
     get diagnostics n = row_count;
-    if n <> 0 then resultat := 'un compte « opérations » modifie un modèle de message, la société ou les réglages des prix'; raise exception 'stop'; end if;
+    if n <> 0 then resultat := 'un compte « opérations » modifie un modèle de message, la société, les suppléments ou les réglages des prix'; raise exception 'stop'; end if;
     delete from erp.enregistrements
-      where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent'))
+      where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent', 'supplements'))
                              or (collection = 'envoisProgrammes' and id = 'recette-envoi'));
     get diagnostics n = row_count;
     if n <> 0 then resultat := 'un compte « opérations » supprime des réglages réservés aux gérants'; raise exception 'stop'; end if;
@@ -1788,11 +1790,11 @@ begin
     -- 1 quater. Gérant de Label Maison : tout, et la numérotation des factures.
     perform set_config('request.jwt.claims', j_plateforme, true);
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
-      where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent'))
+      where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent', 'supplements'))
                              or (collection = 'conseilsPrix' and id = 'reglages')
                              or (collection = 'envoisProgrammes' and id = 'recette-envoi'));
     get diagnostics n = row_count;
-    if n <> 5 then resultat := format('un gérant modifie %s des 5 lignes réservées aux gérants', n); raise exception 'stop'; end if;
+    if n <> 6 then resultat := format('un gérant modifie %s des 6 lignes réservées aux gérants', n); raise exception 'stop'; end if;
     update erp.enregistrements
       set donnees = donnees || '{"actif": false, "horaires": {"mode": "toujours"}, "transmettre": {"horsFiche": true}, "delaiAlerteMinutes": 7}'
       where espace = lm and collection = 'reglages' and id = 'agent';
