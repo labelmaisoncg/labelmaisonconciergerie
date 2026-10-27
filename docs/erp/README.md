@@ -1265,7 +1265,9 @@ Pour les deux espaces extérieurs (propriétaires et opérations,
 - **Un lien de connexion toutes les 2 minutes au plus** par accès, compté
   dans l'accès lui-même (date du dernier lien), donc valable pour toutes les
   instances du serveur ; le frein par instance (5 demandes par heure et par
-  adresse IP) reste en plus.
+  adresse IP) reste en plus. Les liens gardés sont plafonnés **par sorte**
+  (3 invitations, 3 liens de connexion) : des demandes répétées ne chassent
+  jamais une invitation encore valable.
 - **Label Maison seulement si c'est Label Maison** : fiche d'espace illisible
   (panne passagère, espace fermé) = pas d'e-mail (le gérant copie le lien),
   pas de contacts, nom « Votre conciergerie » ; jamais l'expéditeur ou les
@@ -1276,10 +1278,12 @@ Pour les deux espaces extérieurs (propriétaires et opérations,
   `relancesPaiement`, `reglagesRelances` ne sont lisibles et modifiables que
   par un gérant (et le compte serveur, gérant de l'espace nommé). Sans cette
   règle, un compte « opérations » pourrait écrire un accès avec l'empreinte
-  d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire.
+  d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire. Leurs
+  anciennes versions dans `erp.historique` (et celles de `connecteurs`) sont
+  réservées aux gérants de la même façon.
   **À faire une fois dans Supabase → SQL Editor** :
   - base d'avant les espaces : lancer `supabase/erp-acces-gerants.sql`
-    (attendu dans « Results » : `regle = 1`, `recette = ok`) ;
+    (attendu dans « Results » : `regles = 2`, `recette = ok`) ;
   - base passée aux espaces : relancer `supabase/erp-espaces.sql` (la règle y
     est, par espace ; `recette = ok`).
 
