@@ -4,7 +4,7 @@ import { dateCourte, euros, jourMois, nombre, pluriel, pourcentage } from '../da
 import type { ComparaisonPerformance, FicheLogementVue, LogementVue, MoisPerformance, VueProprietaire } from '../data/types-proprietaire';
 import { Badge, Card, cn } from '../ui';
 import { BarresMensuelles } from './BarresMensuelles';
-import { CANAL, PhotoLogement, Rubrique, TitreEspace, titreMois } from './commun';
+import { CANAL, PhotoLogement, Rubrique, TitreEspace, sansLogement, titreMois } from './commun';
 
 /* ------------------------------------------------------------ évolution */
 
@@ -291,7 +291,7 @@ export function Logements({ vue, choisi, onChoisir }: { vue: VueProprietaire; ch
           })}
         </ul>
       ) : (
-        <p className="text-[14px] text-(--lm-encre-2)">Aucun logement en gestion pour l’instant.</p>
+        <p className="text-[14px] text-(--lm-encre-2)">{sansLogement(vue)}</p>
       )}
     </>
   );

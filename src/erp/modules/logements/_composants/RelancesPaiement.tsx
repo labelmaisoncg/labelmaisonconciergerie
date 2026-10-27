@@ -2,7 +2,7 @@
  * Relances de paiement, côté gérant : réglages de l'espace (actif, mode,
  * étapes), relances à valider (envoyer, ou « Ne pas envoyer » après une
  * relance par téléphone ; aperçu du message) et historique (envoyées,
- * annulées, sans objet). Une facture marquée payée sort aussitôt de la file
+ * non envoyées, sans objet). Une facture marquée payée sort aussitôt de la file
  * (« Sans objet ») ; le passage quotidien l'enregistre.
  *
  * Monté dans Paramètres → Accès, section Propriétaires (réglages et file à
@@ -258,7 +258,7 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
                           {r.envoyeePar === 'automatique' ? ' · automatique' : ''}
                         </>
                       ) : r.statut === 'annulee' ? (
-                        <Badge tone="neutre">Annulée{r.annuleeLe ? ` le ${dateCourte(r.annuleeLe.slice(0, 10))}` : ''}</Badge>
+                        <Badge tone="neutre">Non envoyée{r.annuleeLe ? ` le ${dateCourte(r.annuleeLe.slice(0, 10))}` : ''}</Badge>
                       ) : (
                         <Badge tone="neutre">{facture(r.factureId)?.statut === 'payee' ? 'Sans objet · payée' : 'Sans objet'}</Badge>
                       )}
