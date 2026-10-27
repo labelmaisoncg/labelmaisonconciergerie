@@ -42,12 +42,12 @@ import {
   analyseDepuisDecision,
   codeLangue,
   contientCodeAcces,
-  derniersMessagesVoyageur,
   dernierVoyageur,
+  messagesSujets,
   nomLangue,
   reponseSensible,
   reserverAppelsIA,
-  sujetSensible,
+  sujetSensibleMessages,
 } from './messagerie-ia.js';
 import { reglagesAgent } from './reglages.js';
 import { dateParis, horodatageParis } from './repull.js';
@@ -247,7 +247,7 @@ export async function finirProposition(
   maintenant: Date,
 ): Promise<PropositionReponse> {
   const codesOk = codesPermis(fil, reservation, dateParis(maintenant)).ok;
-  if (!codesOk && contientCodeAcces(`${d.texte}\n${d.texteFr ?? ''}`, logement?.fiche)) {
+  if (!codesOk && contientCodeAcces(`${d.texte}\n${d.texteFr ?? ''}`, logement?.fiche, logement?.descriptif)) {
     throw new ErreurAssistant('La proposition donnait un code d’accès alors que le voyageur n’y a pas encore droit : elle a été écartée. Écrivez votre réponse.', 422, 'code_acces');
   }
   const liens: { titre: string; lien: string }[] = [];
@@ -256,9 +256,8 @@ export async function finirProposition(
     if (lien) liens.push({ titre: g.titre, lien });
   }
   const langue = codeLangue(d.langue);
-  const texteVoyageur = derniersMessagesVoyageur(fil, 3);
-  // Sujet sensible chez le voyageur, ou dans la réponse elle-même (consigne cachée dans un message) : à relire de près.
-  const sensible = sujetSensible(texteVoyageur, d.intention) ?? reponseSensible(`${d.texte}\n${d.texteFr ?? ''}`);
+  // Sujet sensible chez le voyageur (messages du séjour), ou dans la réponse elle-même (consigne cachée dans un message) : à relire de près.
+  const sensible = sujetSensibleMessages(messagesSujets(fil, maintenant), d.intention) ?? reponseSensible(`${d.texte}\n${d.texteFr ?? ''}`);
   const attention = sensible
     ? `Sujet sensible : ${sensible.motif.charAt(0).toLowerCase()}${sensible.motif.slice(1)}`
     : d.action === 'transmettre'
