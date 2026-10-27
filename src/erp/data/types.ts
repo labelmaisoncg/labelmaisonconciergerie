@@ -516,11 +516,57 @@ export interface ReglagesAgent {
 
 export type NiveauAutonomie = 'valider' | 'simples' | 'autonome';
 
+/* ------------------------------------------- identité de la conciergerie */
+
+/** Régime de TVA de la conciergerie : franchise en base (art. 293 B du CGI) ou TVA facturée. */
+export type RegimeTva = 'franchise' | 'tva';
+
 /**
- * Tous les réglages stockés dans la collection `reglages` : l'agent
- * (id 'agent') et les messages automatiques (id 'messages-programmes').
+ * Identité légale de la conciergerie de l'espace (Paramètres → Société),
+ * imprimée sur ses factures et ses bilans (data/identite-conciergerie.ts).
  */
-export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes;
+export interface IdentiteSociete {
+  raisonSociale: string;
+  /** Forme juridique : SASU, SARL, EI… */
+  forme: string;
+  /** 14 chiffres, affiché « 993 428 200 00014 ». */
+  siret: string;
+  /** Adresse du siège, sur une ligne. */
+  adresse: string;
+  regimeTva: RegimeTva;
+  /** Taux de TVA facturé en régime « tva » (20 par défaut) ; sans objet en franchise. */
+  tvaPct: number;
+  /** Numéro de TVA intracommunautaire (régime « tva »). */
+  numeroTva?: string;
+  /** Mentions libres imprimées en bas des factures (conditions, pénalités…). */
+  mentions?: string;
+}
+
+/** Identité enregistrée par le gérant : élément 'societe' de la collection `reglages` de l'espace. */
+export interface ReglagesSociete extends IdentiteSociete {
+  id: 'societe';
+  majLe?: Horodatage;
+  majPar?: string;
+}
+
+/**
+ * Numérotation des factures de l'espace (élément 'numerotation-factures' de
+ * `reglages`) : dernier numéro attribué par année. Un numéro n'est jamais
+ * réutilisé, même si sa facture disparaît.
+ */
+export interface CompteurFactures {
+  id: 'numerotation-factures';
+  derniers: Record<string, number>;
+  majLe?: Horodatage;
+}
+
+
+/**
+ * Tous les réglages stockés dans la collection `reglages` : l'agent (id
+ * 'agent'), les messages automatiques ('messages-programmes'), l'identité de
+ * la société ('societe') et la numérotation des factures.
+ */
+export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures;
 
 /* -------------------------------------------------------------- opérations */
 
@@ -661,6 +707,44 @@ export interface LigneFacture {
   libelle: string;
   quantite: number;
   puCentimes: Centimes;
+  /** Facture mensuelle : nature de la ligne (commission, ménage d'un séjour, ajustement du gérant). */
+  code?: 'commission' | 'menage' | 'ajustement';
+  /** Précision imprimée sous le libellé (base et taux, séjour, raison d'un ajustement). */
+  detail?: string;
+}
+
+/** Ligne ajoutée à la main par le gérant sur un brouillon de facture mensuelle, toujours avec sa raison. */
+export interface AjustementFacture {
+  id: Id;
+  libelle: string;
+  /** Montant HT, positif ou négatif (remise). */
+  montantCentimes: Centimes;
+  motif: string;
+  ajouteLe: Horodatage;
+  ajoutePar: string;
+}
+
+/**
+ * Facture mensuelle d'un propriétaire (data/factures-mensuelles.ts) :
+ * commission de gestion et ménages du mois, calculés comme son bilan.
+ * Brouillon (sans numéro) tant qu'elle n'est pas validée ; à la validation,
+ * numéro, lignes, identités et mentions sont figés.
+ */
+export interface FactureMensuelle {
+  /** Mois facturé 'AAAA-MM'. */
+  mois: string;
+  ajustements: AjustementFacture[];
+  creeeLe: Horodatage;
+  /** « automatique » (passage planifié du 1er) ou l'adresse du gérant. */
+  creeePar: string;
+  valideeLe?: Horodatage;
+  valideePar?: string;
+  /** Figés à la validation. */
+  emetteur?: IdentiteSociete;
+  client?: { nom: string; adresse: string };
+  logements?: string[];
+  /** « TVA non applicable, art. 293 B du CGI » en franchise en base. */
+  mentionTva?: string;
 }
 
 export interface Facture {
@@ -678,6 +762,8 @@ export interface Facture {
   lignes: LigneFacture[];
   /** Partagée dans l'espace propriétaire (visible et relancée) depuis cet instant ; absent : pas partagée. */
   partageeLe?: Horodatage;
+  /** Facture mensuelle du propriétaire (id `fm-<propriétaire>-<mois>`). */
+  mensuelle?: FactureMensuelle;
 }
 
 export type StatutPaiementPrestataire = 'a_payer' | 'paye' | 'bloque';

@@ -12,6 +12,8 @@
 //     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour ;
 //     après l'agent : messages automatiques dus et avis à préparer
 //     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts)
+//     il prépare aussi, à partir du 1er, les brouillons des factures
+//     mensuelles des propriétaires (api/_factures-mensuelles.ts)
 //
 // Authentification des membres : Authorization: Bearer <jeton de session
 // Supabase>, gérant ou opérations de l'espace de l'en-tête x-erp-espace
@@ -28,6 +30,7 @@ import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { ACTIONS_ASSISTANT, repondreAssistant } from './_erp-agent-assistant.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
+import { facturesMensuellesDuJour } from './_factures-mensuelles.js';
 import { surveiller } from './_erp-notifications.js';
 import { notificationsOpsDuJour } from './_operations-notifications.js';
 import { programmesPlanifies } from './_erp-programmes.js';
@@ -62,6 +65,10 @@ export default async function handler(req: any, res: any) {
     // Lecture de la base seulement : aucun prix n'est jamais envoyé aux plateformes. Borné à 6 s.
     const prix = await passagePrixDuJour({ limite: Date.now() + 6_000 }).catch(() => ({}));
     if (Object.keys(prix).length) console.log('[erp-agent] prix', JSON.stringify(prix));
+    // Factures mensuelles des propriétaires : brouillons du mois terminé, à partir du 1er
+    // (une fois par mois et par espace ; ensuite une seule lecture) ; borné à 6 s, jamais bloquant.
+    const factures = await facturesMensuellesDuJour({ limite: Date.now() + 6_000 }).catch(() => ({}));
+    if (Object.keys(factures).length) console.log('[erp-agent] factures', JSON.stringify(factures));
   }
   if (!planifie) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });

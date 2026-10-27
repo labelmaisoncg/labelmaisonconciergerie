@@ -23,7 +23,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   dossiers: 'Dossiers propriétaires',
   recommandations: 'Recommandations propriétaires',
   versionsAnnonce: 'Versions d’annonces',
-  reglages: 'Réglages (agent, messages automatiques)',
+  reglages: 'Réglages (agent, messages automatiques, société, numérotation des factures)',
   accesProprietaires: 'Accès à l’espace propriétaire',
   documentsProprietaire: 'Documents partagés aux propriétaires',
   bilansProprietaire: 'Bilans mensuels des propriétaires',

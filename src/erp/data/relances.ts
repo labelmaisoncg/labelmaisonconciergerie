@@ -19,8 +19,8 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
-import type { Centimes, DateISO, Facture, Horodatage, Id, Proprietaire } from './types';
-import type { DocumentProprietaire, FactureVue, RelancePaiement, ReglagesRelances, StatutFactureVue } from './types-proprietaire';
+import type { Centimes, DateISO, Facture, Horodatage, Id, IdentiteSociete, LigneFacture, Proprietaire } from './types';
+import type { DocumentProprietaire, FactureMensuelleVue, FactureVue, RelancePaiement, ReglagesRelances, StatutFactureVue } from './types-proprietaire';
 
 /** « 2026-09-20 » + 5 jours (sans dépendre de proprietaire.ts, qui importe ce module). */
 function ajouterJoursISO(d: DateISO, n: number): DateISO {
@@ -96,6 +96,48 @@ export function retirerPartageFacture(f: Facture): Facture {
   return reste;
 }
 
+const texteVue = (v: unknown, max: number): string => (typeof v === 'string' ? v.slice(0, max) : '');
+const CODES_LIGNE = new Set(['commission', 'menage', 'ajustement']);
+
+/** Ligne vue par le propriétaire : libellé, quantité, prix, et la précision d'une facture mensuelle. */
+function ligneVue(l: LigneFacture): FactureVue['lignes'][number] {
+  const detail = texteVue(l.detail, 400);
+  return {
+    libelle: String(l.libelle ?? ''),
+    quantite: Number(l.quantite) || 0,
+    pu: Math.round(Number(l.puCentimes) || 0),
+    ...(detail ? { detail } : {}),
+    ...(l.code && CODES_LIGNE.has(l.code) ? { code: l.code } : {}),
+  };
+}
+
+/**
+ * Partie figée d'une facture mensuelle validée (identités, logements,
+ * mention de TVA), champs connus seulement ; rien pour un brouillon.
+ */
+function mensuelleVue(f: Facture): FactureMensuelleVue | undefined {
+  const m = f.mensuelle;
+  if (!m || !m.valideeLe || !m.emetteur || !m.client || !/^\d{4}-\d{2}$/.test(String(m.mois))) return undefined;
+  const e = m.emetteur;
+  const emetteur: IdentiteSociete = {
+    raisonSociale: texteVue(e.raisonSociale, 120),
+    forme: texteVue(e.forme, 60),
+    siret: texteVue(e.siret, 40),
+    adresse: texteVue(e.adresse, 200),
+    regimeTva: e.regimeTva === 'tva' ? 'tva' : 'franchise',
+    tvaPct: Number(e.tvaPct) || 0,
+    ...(e.numeroTva ? { numeroTva: texteVue(e.numeroTva, 20) } : {}),
+    ...(e.mentions ? { mentions: texteVue(e.mentions, 600) } : {}),
+  };
+  return {
+    mois: m.mois,
+    emetteur,
+    client: { nom: texteVue(m.client.nom, 160), adresse: texteVue(m.client.adresse, 240) },
+    logements: (m.logements ?? []).map((x) => texteVue(x, 120)).filter(Boolean),
+    ...(m.mentionTva ? { mentionTva: texteVue(m.mentionTva, 120) } : {}),
+  };
+}
+
 /** Factures vues par le propriétaire : les siennes, partagées, des plus récentes aux plus anciennes. */
 export function facturesVue(
   factures: readonly Facture[],
@@ -113,6 +155,7 @@ export function facturesVue(
         .sort()
         .pop();
       const statut = statutFactureVue(f, aujourdhui);
+      const mensuelle = mensuelleVue(f);
       return {
         id: f.id,
         numero: String(f.numero ?? ''),
@@ -123,7 +166,8 @@ export function facturesVue(
         montantTtc: montantTtcFacture(f),
         statut,
         ...(statut === 'payee' && f.payeeLe ? { payeeLe: f.payeeLe } : {}),
-        lignes: (f.lignes ?? []).map((l) => ({ libelle: String(l.libelle ?? ''), quantite: Number(l.quantite) || 0, pu: Math.round(Number(l.puCentimes) || 0) })),
+        lignes: (f.lignes ?? []).map(ligneVue),
+        ...(mensuelle ? { mensuelle } : {}),
         ...(pdf ? { pdf: pdf.id } : {}),
         ...(rappel && statut !== 'payee' ? { dernierRappel: rappel } : {}),
       };
