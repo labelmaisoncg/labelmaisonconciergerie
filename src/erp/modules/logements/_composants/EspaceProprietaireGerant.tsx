@@ -15,8 +15,10 @@ import { facturePartagee } from '../../../data/relances';
 import { nouvelId, useErp } from '../../../data/store';
 import {
   CATEGORIES_DOCUMENT,
+  CONTENU_ESPACE,
   LIBELLE_CATEGORIE,
   bilanMensuel,
+  etatBilan,
   memesChiffres,
   moisTermines,
   vueProprietaire,
@@ -59,7 +61,7 @@ export async function inviterAvecReessai(api: string, corps: Record<string, unkn
 }
 
 /** Ce que voit un propriétaire (même phrase ici et dans Paramètres → Accès). */
-export const CE_QUE_VOIT_LE_PROPRIETAIRE = 'Il voit ses logements, son calendrier, ses bilans publiés, ses factures partagées et ses documents, sans rien pouvoir modifier.';
+export const CE_QUE_VOIT_LE_PROPRIETAIRE = `Il voit ${CONTENU_ESPACE.lui}, sans rien pouvoir modifier.`;
 
 /**
  * État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour
@@ -263,7 +265,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
             </>
           }
         >
-          Le propriétaire est déconnecté tout de suite et ses liens ne marchent plus.
+          Ses liens ne marchent plus. Son espace se ferme dès qu’il recharge la page ou ouvre un document.
         </Alert>
       )}
       {erreur && (
@@ -311,17 +313,19 @@ function Bilans({ proprietaire: p }: { proprietaire: Proprietaire }) {
       <ul className={mois.length ? 'divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)' : 'hidden'}>
         {mois.map(({ m, calcule }) => {
           const b = publies.find((x) => x.mois === m);
-          const change = b?.statut === 'publie' && !memesChiffres(b.chiffres, calcule);
+          const etat = etatBilan(d.donnees, p.id, m, b);
           return (
             <li key={m} className="flex items-center gap-3 px-3 py-2.5">
               <div className="min-w-0 flex-1">
                 <p className="text-[14px] font-medium text-(--lm-encre)">{titreMois(m)}</p>
                 <p className="lm-chiffres text-[12.5px] text-(--lm-encre-2)">
-                  {euros(calcule.totaux.net, true)} pour lui · {calcule.totaux.nuits} nuits
+                  {euros(etat.chiffres.totaux.net, true)} pour lui · {etat.chiffres.totaux.nuits} nuits
                 </p>
               </div>
-              {b?.statut === 'publie' ? (
-                <Badge tone={change ? 'alerte' : 'succes'}>{change ? 'À mettre à jour' : 'Publié'}</Badge>
+              {etat.statut === 'transfere' ? (
+                <Badge tone="neutre">Logement transféré</Badge>
+              ) : b?.statut === 'publie' ? (
+                <Badge tone={etat.statut === 'a_mettre_a_jour' ? 'alerte' : 'succes'}>{etat.statut === 'a_mettre_a_jour' ? 'À mettre à jour' : 'Publié'}</Badge>
               ) : b ? (
                 <Badge tone="neutre">Brouillon</Badge>
               ) : null}
@@ -342,9 +346,12 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
   const id = `${p.id}-${mois}`;
   const existant = d.donnees.bilansProprietaire.find((b) => b.id === id);
   const [commentaire, setCommentaire] = useState(existant?.commentaire ?? '');
-  const chiffres = useMemo(() => bilanMensuel(d.donnees, p.id, mois), [d.donnees, p.id, mois]);
+  const etat = useMemo(() => etatBilan(d.donnees, p.id, mois, existant), [d.donnees, p.id, mois, existant]);
+  const transfere = etat.statut === 'transfere';
+  const chiffres = etat.chiffres;
   const publie = existant?.statut === 'publie';
-  const change = publie && (!memesChiffres(existant.chiffres, chiffres) || existant.commentaire !== commentaire);
+  // Transféré : les chiffres publiés restent figés (etat.chiffres) ; seul le mot peut changer.
+  const change = publie && ((!transfere && !memesChiffres(existant.chiffres, chiffres)) || existant.commentaire !== commentaire);
 
   const enregistrer = (statut: BilanProprietaire['statut']) => {
     const maintenant = horodatageMaintenant();
@@ -364,7 +371,13 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
       titre={bilanDuMois(mois)}
       description={
         publie
-          ? `Publié le ${dateCourte(existant.publieLe!.slice(0, 10))}.${change ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.' : ''}`
+          ? `Publié le ${dateCourte(existant.publieLe!.slice(0, 10))}.${
+              transfere
+                ? ` ${etat.transferts.map((t) => `${t.nom} a changé de propriétaire${t.depuis ? ` le ${dateCourte(t.depuis)}` : ''}`).join(' ; ')} : ce bilan reste tel quel.`
+                : change
+                  ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.'
+                  : ''
+            }`
           : 'Aperçu exact de ce que verra le propriétaire une fois publié.'
       }
       pied={

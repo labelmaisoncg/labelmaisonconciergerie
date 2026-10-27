@@ -23,6 +23,7 @@ import { MODE_DEMO } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, dateCourte, horodatageMaintenant, jourMois } from '../../data/format';
 import { vueOperations } from '../../data/espace-operations';
+import { changerProprietaire } from '../../data/proprietaire';
 import {
   ROLES_OPERATIONS,
   ROLES_SUR_LOGEMENT,
@@ -297,7 +298,7 @@ function LogementsProprietaire({ proprietaire: p, onFermer }: { proprietaire: Pr
   const logements = logementsGeres(d.logements);
   const nomProprietaire = (id: Id) => (id === ID_PROPRIETAIRE_A_RENSEIGNER ? 'à renseigner' : (d.proprietaires.find((x) => x.id === id)?.nom ?? 'inconnu'));
   const attribuer = () => {
-    for (const id of coches) d.mettreAJour('logements', id, (l) => ({ ...l, proprietaireId: p.id }));
+    for (const id of coches) d.mettreAJour('logements', id, (l) => changerProprietaire(l, p.id, AUJOURDHUI));
     onFermer();
   };
   // Un logement d'un autre propriétaire : on le dit avant (il ne le verra plus).
@@ -379,7 +380,7 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
       ? { ...existant, nom: existant.nom || nom.trim(), contact: { email: adresse, telephone: existant.contact.telephone || telephone.trim() } }
       : { id: nouvelId('pro'), type: 'particulier', nom: nom.trim(), contact: { email: adresse, telephone: telephone.trim() }, adresse: '', ibanMasque: '', notes: '', creeLe: horodatageMaintenant().slice(0, 10) };
     d.upsert('proprietaires', p);
-    for (const id of coches) d.mettreAJour('logements', id, (l) => ({ ...l, proprietaireId: p.id }));
+    for (const id of coches) d.mettreAJour('logements', id, (l) => changerProprietaire(l, p.id, AUJOURDHUI));
     try {
       if (MODE_DEMO) {
         const acces = d.donnees.accesProprietaires.find((a) => a.id === p.id);
