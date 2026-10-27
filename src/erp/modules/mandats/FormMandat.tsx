@@ -120,6 +120,13 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
       }
     >
       <form id="form-mandat" onSubmit={enregistrer} noValidate className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {/* En tête : il change le sens de l'enregistrement (signé tout de suite ou brouillon). */}
+        {proposerSigne && (
+          <div className="flex items-center justify-between gap-3 sm:col-span-2">
+            <span className="text-[13.5px] text-(--lm-encre)">Mandat déjà signé</span>
+            <Interrupteur actif={signe} label="Mandat déjà signé" onChange={setSigne} />
+          </div>
+        )}
         {!mandat && !proprietaires.length ? (
           <Prerequis className="sm:col-span-2" manque="Vous n’avez pas encore de propriétaire." detail="Un mandat lie un propriétaire à un logement." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
         ) : !mandat && !logements.length ? (
@@ -151,12 +158,6 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
         <Field label="Préavis (jours)" requis erreur={erreurs.preavisJours}>
           <Input value={s.preavisJours} onChange={(e) => maj('preavisJours', e.target.value)} inputMode="numeric" />
         </Field>
-        {proposerSigne && (
-          <div className="flex items-center justify-between gap-3 sm:col-span-2">
-            <span className="text-[13.5px] text-(--lm-encre)">Mandat déjà signé</span>
-            <Interrupteur actif={signe} label="Mandat déjà signé" onChange={setSigne} />
-          </div>
-        )}
         {pct > 0 && pct < COMMISSION_CIBLE_MIN && (
           <Alert tone="alerte" titre="Commission sous la cible" className="sm:col-span-2">
             Les nouveaux mandats se signent entre {COMMISSION_CIBLE_MIN} et {COMMISSION_CIBLE_MAX} %. Un taux inférieur doit rester exceptionnel.
