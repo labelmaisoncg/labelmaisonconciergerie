@@ -14,6 +14,8 @@ import { conseilsDuJour } from '../../logements/_composants/prix';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
 const pluriel = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+/** « Cosy F2, Paris 14 Alésia, Lisses Jardin et 4 autres ». */
+const nomsCourts = (noms: string[]) => (noms.length > 3 ? `${noms.slice(0, 3).join(', ')} et ${noms.length - 3} autre${noms.length > 4 ? 's' : ''}` : `${noms.slice(0, -1).join(', ')} et ${noms[noms.length - 1]}`);
 
 /** Présentation de chaque type d'anomalie dans « À faire ». */
 const LIGNES: Record<TypeAnomalie, { type: TypeATraiter; plusieurs: (n: number) => string; gerant: boolean }> = {
@@ -48,7 +50,7 @@ export function elementsPrixEtAnomalies(d: ErpDonnees, aujourdhui: DateISO, { ge
           nuits('hausse') && `monter ${pluriel(nuits('hausse'), 'nuit')}`,
           cs.some((c) => c.type === 'trou') && `combler ${pluriel(cs.filter((c) => c.type === 'trou').length, 'trou')}`,
         ].filter(Boolean);
-        return { id: cs[0].logementId, texte: `${cs[0].nom} : ${morceaux.join(', ')}` };
+        return { id: cs[0].logementId, nom: cs[0].nom, texte: `${cs[0].nom} : ${morceaux.join(', ')}` };
       });
       liste.push({
         id: 'prix',
@@ -56,7 +58,10 @@ export function elementsPrixEtAnomalies(d: ErpDonnees, aujourdhui: DateISO, { ge
         // Une nuit à changer d'ici après-demain : aujourd'hui.
         priorite: conseils.some((c) => ecartJours(aujourdhui, c.debut) <= 2) ? 1 : 2,
         ton: 'or',
-        titre: `Prix à revoir (${conseils.length})`,
+        // Comme les autres lignes : le nombre d'abord, ici des logements (pas des conseils).
+        titre: lignes.length > 1 ? `${lignes.length} logements : prix à revoir` : 'Un logement : prix à revoir',
+        // Dans la carte, les logements concernés ; dans « Tout voir », une ligne par logement.
+        apercu: lignes.length > 1 ? nomsCourts(lignes.map((x) => x.nom)) : lignes[0].texte,
         details: lignes.map((x) => x.texte),
         liens: lignes.map((x) => lien(x.id)),
         to: lien(lignes[0].id),

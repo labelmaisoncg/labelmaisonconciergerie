@@ -32,6 +32,8 @@ export interface ElementATraiter {
   ton: Ton;
   titre: string;
   details: string[];
+  /** Ligne montrée dans la carte à la place du premier détail (ex. les logements concernés). */
+  apercu?: string;
   /** Lien de chaque détail (même ordre), quand chacun mène ailleurs. */
   liens?: string[];
   to: string;

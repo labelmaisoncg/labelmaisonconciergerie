@@ -38,7 +38,7 @@ export const COLLECTION_PRIX = 'conseilsPrix';
 export const HORIZON_MAX_JOURS = 60;
 
 export type GenreConseil = 'baisse' | 'hausse' | 'trou';
-/** Pourquoi : nuit qui ne se vend pas, forte demande, sous notre prix habituel, trou entre deux séjours. */
+/** Pourquoi : peu de demande (nuits qui restent vides), forte demande, sous notre prix habituel, trou entre deux séjours. */
 export type MotifConseil = 'invendu' | 'demande' | 'niveau' | 'trou';
 
 /** Plancher et plafond d'un logement (centimes), facultatifs. */
@@ -107,6 +107,8 @@ export interface EtatPrix {
   historique?: { date: DateISO; conseils: number; logements: number; notifie: boolean }[];
   /** Anomalies graves déjà notifiées, et le jour de la notification. */
   anomaliesNotifiees?: Record<string, DateISO>;
+  /** Dernière recherche des anomalies (une par heure et par espace au plus). */
+  anomaliesVerifieesLe?: Horodatage;
   majLe?: Horodatage;
 }
 
@@ -560,7 +562,7 @@ export function conseilsParNuit(e: EntreesConseils): ConseilNuit[] {
     };
     /** Autour d'une nuit (forte demande). */
     const autour = (nuit: DateISO) => partReservee(nuit, plusJours(nuit, 1));
-    // « Ça ne se vend pas » se juge sur toute la suite de nuits libres : une plage cohérente, du premier au dernier soir.
+    // « Peu de demande » se juge sur toute la suite de nuits libres : une plage cohérente, du premier au dernier soir.
     const autourDeLaSuite = new Map<DateISO, number | undefined>();
     for (let d = e.aujourdhui; d < fin; d = plusJours(d, 1)) {
       if (etatNuit(l, d) !== 'libre' || autourDeLaSuite.has(d)) continue;
@@ -661,7 +663,7 @@ export function raisonConseil(p: Pick<PlagePrix, 'nom' | 'motif' | 'debut' | 'fi
   const prix = eurosRonds(p.prixConseille);
   switch (p.motif) {
     case 'invendu':
-      return phrase(`Ça ne se vend pas : ${p.nom} reste vide ${nuits}, baissez à ${prix}`);
+      return phrase(`Peu de demande : ${p.nom} reste vide ${nuits}, baissez à ${prix}`);
     case 'demande':
       return phrase(`Forte demande${p.fete ? ` (${p.fete})` : ''} : montez ${p.nom} à ${prix} ${nuits}`);
     case 'niveau':
@@ -681,7 +683,7 @@ export function conseilCourt(p: Pick<PlagePrix, 'motif' | 'variationPct' | 'rais
   const minimum = / et acceptez (\d+ nuits? minimum)/.exec(p.raison)?.[1];
   switch (p.motif) {
     case 'invendu':
-      return `Ça ne se vend pas : baissez de ${pct}`;
+      return `Peu de demande : baissez de ${pct}`;
     case 'demande':
       return `Forte demande${fete ? ` (${fete})` : ''} : montez de ${pct}`;
     case 'niveau':

@@ -23,7 +23,7 @@ import { IncidentsLogement } from '../_composants/IncidentsLogement';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 import { previsionLogement } from '../../../data/previsionnel';
-import { CartePrevisionnel } from '../_composants/Previsionnel';
+import { CartePrevisionnel, TITRE_PREVISIONNEL } from '../_composants/Previsionnel';
 import { PrixConseilles } from '../_composants/PrixConseilles';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
@@ -108,7 +108,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               { libelle: 'Note', valeur: s.note === undefined ? SANS_DONNEE : `${note(s.note)} / 5`, detail: s.note === undefined ? undefined : '12 mois' },
             ]}
           />
-          {prevision && <CartePrevisionnel prevision={prevision} titre="Prévisionnel" />}
+          {prevision && <CartePrevisionnel prevision={prevision} titre={TITRE_PREVISIONNEL} />}
           <PrixConseilles logement={l} />
 
           <IncidentsLogement logement={l} />
