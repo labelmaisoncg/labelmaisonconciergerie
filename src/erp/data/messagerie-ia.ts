@@ -361,6 +361,8 @@ export interface Urgence {
   niveau: 0 | 1 | 2 | 3;
   /** Phrase courte (infobulle du badge). */
   raison?: string;
+  /** Texte du badge : « Urgent » pour un problème, sinon le moment (« Arrive aujourd'hui », « Arrive demain », « Sur place »). */
+  libelle?: string;
 }
 
 /** Messages du voyageur depuis la dernière réponse de l'équipe (un message d'attente de l'agent n'en est pas une). */
@@ -394,9 +396,11 @@ export function urgenceFil(fil: Pick<FilMessages, 'messages' | 'analyse' | 'stat
     a?.sentiment === 'negatif' ||
     a?.intention === 'probleme_technique';
   const proche = !!r && r.statut !== 'annulee' && r.statut !== 'terminee' && r.arrivee <= jourSuivant(aujourdhui) && r.depart >= aujourdhui;
-  const surPlace = proche && r!.arrivee <= aujourdhui;
-  if (probleme && proche) return { niveau: 3, raison: surPlace ? 'Problème signalé pendant le séjour' : 'Problème signalé, arrivée sous 24 h' };
-  if (proche) return { niveau: 2, raison: surPlace ? 'Voyageur sur place' : 'Arrivée sous 24 h' };
+  // Le jour même, le voyageur n'est pas forcément arrivé : « Arrive aujourd'hui », pas « Sur place ».
+  const surPlace = proche && r!.arrivee < aujourdhui;
+  const quand = surPlace ? 'Sur place' : r?.arrivee === aujourdhui ? 'Arrive aujourd’hui' : 'Arrive demain';
+  if (probleme && proche) return { niveau: 3, raison: surPlace ? 'Problème signalé pendant le séjour' : 'Problème signalé, arrivée sous 24 h', libelle: 'Urgent' };
+  if (proche) return { niveau: 2, raison: quand, libelle: quand };
   if (probleme) return { niveau: 1, raison: 'Problème ou voyageur mécontent' };
   return { niveau: 0 };
 }

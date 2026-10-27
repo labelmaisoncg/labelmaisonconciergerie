@@ -348,6 +348,14 @@ async function principal() {
   verifier(niveau(repondu) === 0, 'l’équipe a répondu : plus urgent');
   const attente: FilMessages = { ...fils[1], messages: [...fils[1].messages, { id: 'a', auteur: 'agent', texte: 'Je préviens l’équipe.', envoyeLe: '2026-09-25T08:01:00+02:00' }] };
   verifier(niveau(attente) === 3, 'un message d’attente de l’agent ne compte pas comme une réponse');
+  // Badge : « Urgent » seulement pour un problème ; sinon le moment, lisible sans la couleur.
+  const libelle = (f: FilMessages, r?: Reservation) => urgenceFil(f, r ?? (f.reservationId ? reservations.get(f.reservationId) : undefined), aujourdhui).libelle;
+  const auj = resa('r-auj', aujourdhui, '2026-09-28');
+  verifier(
+    libelle(fils[1]) === 'Urgent' && libelle(fils[2]) === 'Arrive demain' && libelle(fils[2], auj) === 'Arrive aujourd’hui' && libelle({ ...fils[2], reservationId: 'r-sur-place' }) === 'Sur place',
+    'badge : « Urgent » pour un problème, sinon « Arrive aujourd’hui », « Arrive demain » ou « Sur place »',
+    [libelle(fils[1]), libelle(fils[2]), libelle(fils[2], auj)],
+  );
 
   /* ------------------------------------------------------------- langues */
   section('Langue devinée et demande probable');

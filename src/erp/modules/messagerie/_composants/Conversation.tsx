@@ -530,12 +530,13 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   {iaEnCours === 'proposition' ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Sparkles className="size-3 text-(--lm-or-texte)" aria-hidden />}
                   {iaEnCours === 'proposition' ? 'Préparation…' : 'Proposer une réponse'}
                 </button>
-                {nomLangueVoyageur && (
+                {/* Seulement quand l'équipe a écrit sa réponse (pas sur une proposition de l'agent, déjà dans la langue du voyageur). */}
+                {nomLangueVoyageur && (iaEnCours === 'traduction' || (!!brouillon.trim() && !(aide?.genre === 'proposition' && brouillon.trim() === aide.texte.trim()))) && (
                   <button
                     type="button"
-                    disabled={!!iaEnCours || !brouillon.trim() || (aide?.genre === 'proposition' && brouillon.trim() === aide.texte.trim())}
+                    disabled={!!iaEnCours}
                     onClick={() => void traduire()}
-                    title={brouillon.trim() ? `Traduire votre réponse en ${nomLangueVoyageur} avant de l’envoyer` : 'Écrivez d’abord votre réponse en français'}
+                    title={`Traduire votre réponse en ${nomLangueVoyageur} avant de l’envoyer`}
                     className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {iaEnCours === 'traduction' ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Languages className="size-3" aria-hidden />}

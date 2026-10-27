@@ -93,10 +93,10 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                         {dernier?.auteur === 'hote' && <span className="text-(--lm-encre-3)">Vous : </span>}
                         {dernier?.texte}
                       </p>
-                      {/* Urgent : arrivée sous 24 h ou voyageur sur place ; rouge seulement pour un problème pendant le séjour. */}
+                      {/* « Urgent » en rouge pour un problème pendant le séjour ; sinon le moment en gris (« Arrive aujourd'hui », « Sur place »). */}
                       {urgence >= 2 && (
                         <Badge tone={urgence === 3 ? 'danger' : 'neutre'} title={t?.urgence.raison} className="shrink-0 px-1.5 text-[11.5px]">
-                          Urgent
+                          {t?.urgence.libelle ?? (urgence === 3 ? 'Urgent' : t?.urgence.raison)}
                         </Badge>
                       )}
                       {/* Un seul repère : la pastille dorée « à répondre » (doublée d'un nom en gras et d'un texte lu par les lecteurs d'écran). */}
