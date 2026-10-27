@@ -63,6 +63,8 @@ export interface AbsenceMembre {
   motif?: string;
   creeLe?: Horodatage;
   par?: string;
+  /** Notée depuis l'espace opérations par ce responsable de pôle ; absent : notée par le gérant (lui seul la change). */
+  parMembreId?: Id;
   /** Annulée : gardée pour l'historique, sans effet. */
   annuleeLe?: Horodatage;
 }
@@ -192,6 +194,8 @@ export interface MembreOps {
   logementIds: Id[];
   /** Absence en cours ou prochaine. */
   absence?: { du: DateISO; au: DateISO };
+  /** Suit aussi des logements hors du pôle : son absence se note chez le gérant. */
+  absenceParGerant?: boolean;
 }
 
 export interface ElementProgrammeOps {

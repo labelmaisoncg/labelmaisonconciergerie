@@ -1312,18 +1312,24 @@ ou le responsable de pôle.
 
 Règles de l'audit (octobre 2026) :
 
-- **Absences** : un pôle ne note pas l'absence de quelqu'un qui suit aussi
-  des logements hors des siens (c'est au gérant) ; le motif n'est ni saisi ni
-  montré dans l'espace (« Absence du … au … »), il reste chez le gérant.
+- **Absences** : un pôle ne note, ne change ni n'annule l'absence de
+  quelqu'un qui suit aussi des logements hors des siens (c'est au gérant),
+  ni une absence notée par le gérant (`parMembreId` absent : lui seul la
+  change ; l'écran la montre en lecture). Le motif n'est ni saisi ni montré
+  dans l'espace (« Absence du … au … »), il reste chez le gérant.
 - **Contrôle fait** : il ne se réécrit plus, sauf par le responsable de pôle
-  ou par son auteur le jour même ; chaque changement ajoute une ligne
-  d'historique, l'auteur et la date restent.
+  ou par son auteur le jour même ; chaque changement, « finir plus tard »
+  compris, est vérifié (toutes les réponses, une note) et ajoute une ligne
+  d'historique ; l'auteur et la date restent. Un champ absent de la demande
+  reste tel quel.
 - **Entrées** : une opération mal formée est refusée (400), jamais une
-  erreur serveur.
+  erreur serveur ; une valeur qui n'est pas du texte compte pour rien.
 - **Écriture** : avant d'écrire, le serveur relit les enregistrements
   touchés et ne reprend que les champs changés par l'action (l'historique et
   les photos s'ajoutent à la version relue) : une modification du gérant
-  faite entre-temps n'est pas écrasée.
+  faite entre-temps n'est pas écrasée. Si l'action change un statut que
+  quelqu'un d'autre vient de changer (incident réglé par le gérant puis
+  « Je m'en occupe »), rien n'est écrit et la personne voit pourquoi (409).
 
 ### Côté gérant
 

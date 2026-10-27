@@ -79,6 +79,10 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState<string>();
   const membres = vue.equipe.map((m) => ({ valeur: m.id, libelle: m.nom }));
+  // Absence notée par le gérant : lui seul la change ; ici, en lecture.
+  const duGerant = !!existante && !existante.parMembreId;
+  const lecture = !!apercu || duGerant;
+  const absentsPossibles = vue.equipe.filter((m) => !m.absenceParGerant || m.id === existante?.membreId).map((m) => ({ valeur: m.id, libelle: m.nom }));
   const nom = (m?: string) => (m ? court(vue.equipe.find((x) => x.id === m)?.nom) : 'Personne');
 
   // Ce qui change : ses logements et ses incidents ouverts, repris le premier jour de l'absence.
@@ -113,7 +117,7 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
       onFermer={onFermer}
       titre={existante ? `Absence de ${nom(existante.membreId)}` : 'Noter une absence'}
       pied={
-        apercu ? undefined : (
+        lecture ? undefined : (
           <>
             {existante && (
               <Button variant="ghost" chargement={enCours === 'annuler'} onClick={() => void annuler()}>
@@ -129,19 +133,20 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
     >
       <div className="grid grid-cols-1 gap-4 text-[13px]">
         {erreur && <Alert tone="danger">{erreur}</Alert>}
-        <Field label="Personne absente" requis>
-          <Select value={a.membreId} disabled={apercu} placeholder="Choisir" onChange={(e) => setA({ ...a, membreId: e.target.value })} options={membres} />
+        {duGerant && <Alert tone="neutre">Absence notée par le gérant : lui seul peut la modifier.</Alert>}
+        <Field label="Personne absente" requis aide={existante ? undefined : 'Pour quelqu’un qui suit aussi d’autres logements, demandez au gérant.'}>
+          <Select value={a.membreId} disabled={lecture} placeholder="Choisir" onChange={(e) => setA({ ...a, membreId: e.target.value })} options={absentsPossibles} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Du" requis>
-            <Input type="date" value={a.du} disabled={apercu} onChange={(e) => setA({ ...a, du: e.target.value })} />
+            <Input type="date" value={a.du} disabled={lecture} onChange={(e) => setA({ ...a, du: e.target.value })} />
           </Field>
           <Field label="Au (inclus)" requis>
-            <Input type="date" value={a.au} min={a.du} disabled={apercu} onChange={(e) => setA({ ...a, au: e.target.value })} />
+            <Input type="date" value={a.au} min={a.du} disabled={lecture} onChange={(e) => setA({ ...a, au: e.target.value })} />
           </Field>
         </div>
         <Field label="Remplaçant si le logement n’en a pas">
-          <Select value={a.remplacantId ?? ''} disabled={apercu} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={membres.filter((m) => m.valeur !== a.membreId)} />
+          <Select value={a.remplacantId ?? ''} disabled={lecture} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={membres.filter((m) => m.valeur !== a.membreId)} />
         </Field>
 
         {a.membreId && (

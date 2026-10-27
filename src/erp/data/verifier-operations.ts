@@ -46,7 +46,7 @@ import {
 import { creerSeed } from './seed';
 import type { Incident, Logement, Reservation } from './types';
 import type { AbsenceMembre, ControleQualite } from './types-operations';
-import { COLLECTIONS_OPS, appliquerAction, avecEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
+import { COLLECTIONS_OPS, appliquerAction, avecEcritures, conflitEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
 import { photoOperations } from './operations-fichiers';
 import { inviterMembre } from './operations-acces';
 import { lireSessionExterne, signerSessionExterne } from './acces-externe';
@@ -452,7 +452,33 @@ section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, p
   const vueA = vueOperations(avecMotif, 'A', { aujourdhui: J })!;
   verifier(vueA.absences.length === 1 && !('motif' in vueA.absences[0]) && !JSON.stringify(vueA).includes('maladie'), 'absence : le pôle voit les dates, jamais le motif');
   r = appliquerAction(avecMotif, 'A', { type: 'absence', id: 'abs-m', membreId: 'B', du: J, au: '2026-10-22', remplacantId: 'A' }, ctx);
-  verifier(r.ok && (r.ecritures[0].element as AbsenceMembre).motif === 'Arrêt maladie' && (r.ecritures[0].element as AbsenceMembre).au === '2026-10-22', 'absence modifiée par le pôle : le motif du gérant est gardé tel quel');
+  verifier(!r.ok && r.statut === 403, 'absence notée par le gérant : le pôle ne la change pas');
+  r = appliquerAction(avecMotif, 'A', { type: 'absence-annuler', id: 'abs-m' }, ctx);
+  verifier(!r.ok && r.statut === 403, 'absence notée par le gérant : le pôle ne l’annule pas');
+
+  // Contre-audit : une absence du gérant pour quelqu'un qui a aussi un logement hors du pôle (D : L1 et L9).
+  const duGerant: AbsenceMembre = { id: 'abs-g', membreId: 'D', du: J, au: '2026-10-20', remplacantId: 'B', creeLe: J, par: 'Gérant' };
+  const avecDuGerant = { ...avecD, absences: [duGerant] };
+  r = appliquerAction(avecDuGerant, 'A', { type: 'absence', id: 'abs-g', membreId: 'B', du: '2026-11-10', au: '2026-11-11' }, ctx);
+  verifier(!r.ok && r.statut === 403, 'contre-audit : l’absence du gérant ne se réattribue pas à quelqu’un d’autre');
+  r = appliquerAction(avecDuGerant, 'A', { type: 'absence-annuler', id: 'abs-g' }, ctx);
+  verifier(!r.ok && r.statut === 403, 'contre-audit : l’absence du gérant ne s’annule pas depuis l’espace');
+  // Même notée par un pôle (données anciennes), elle ne se change pas si la personne suit des logements hors du pôle.
+  const parPoleHors: AbsenceMembre = { ...duGerant, id: 'abs-p', parMembreId: 'A' };
+  r = appliquerAction({ ...avecD, absences: [parPoleHors] }, 'A', { type: 'absence', id: 'abs-p', membreId: 'B', du: J, au: J }, ctx);
+  verifier(!r.ok && r.statut === 403, 'contre-audit : absence de quelqu’un qui suit des logements hors du pôle, non modifiable');
+  r = appliquerAction({ ...avecD, absences: [parPoleHors] }, 'A', { type: 'absence-annuler', id: 'abs-p' }, ctx);
+  verifier(!r.ok && r.statut === 403, 'contre-audit : ni annulable');
+  r = appliquerAction(e, 'A', { type: 'absence', membreId: 'C', du: J, au: '2026-10-18' }, ctx);
+  const absParPole = r.ok ? (r.ecritures[0].element as AbsenceMembre) : undefined;
+  verifier(absParPole?.parMembreId === 'A', 'absence notée par le pôle : marquée comme telle');
+  const apresPole = r.ok ? avecEcritures(e, r.ecritures) : e;
+  r = appliquerAction(apresPole, 'A', { type: 'absence', id: absParPole?.id, membreId: 'C', du: J, au: '2026-10-19' }, ctx);
+  verifier(r.ok && (r.ecritures[0].element as AbsenceMembre).parMembreId === 'A', 'le pôle change l’absence qu’il a notée');
+  r = appliquerAction(apresPole, 'A', { type: 'absence-annuler', id: absParPole?.id ?? '' }, ctx);
+  verifier(r.ok, 'et peut l’annuler');
+  const vueD = vueOperations(avecD, 'A', { aujourdhui: J })!;
+  verifier(vueD.equipe.find((m) => m.id === 'D')?.absenceParGerant === true && !vueD.equipe.find((m) => m.id === 'B')?.absenceParGerant, 'vue du pôle : qui se note chez le gérant (sans dire quels autres logements)');
 
   // Contrôle fait : ni réécrit par un autre agent, ni le lendemain ; le pôle peut, avec l'historique.
   const fait: ControleQualite = {
@@ -473,6 +499,12 @@ section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, p
   r = reecrire('B');
   const parAuteur = r.ok ? (r.ecritures[0].element as ControleQualite) : undefined;
   verifier(parAuteur?.note === 5 && parAuteur.historique?.length === 1, 'contrôle fait : son auteur, le jour même, avec une ligne d’historique');
+  // Contre-audit : « finir plus tard » sur un contrôle fait, vérifié et tracé comme le reste.
+  r = appliquerAction(avecFait, 'B', { type: 'controle', cle: 'ctl-f', points: [{ id: 'p1', commentaire: 'Propre en fait.', photo: '' }], terminer: false }, ctx);
+  const sansTerminer = r.ok ? (r.ecritures[0].element as ControleQualite) : undefined;
+  verifier(sansTerminer?.statut === 'fait' && sansTerminer.historique?.length === 1, 'contre-audit : contrôle fait, « finir plus tard » : une ligne d’historique, toujours fait');
+  r = appliquerAction(avecFait, 'B', { type: 'controle', cle: 'ctl-f', points: [{ id: 'p1', etat: undefined }], note: 0, terminer: false } as ActionOperations, ctx);
+  verifier(!r.ok, 'contre-audit : contrôle fait vidé (note retirée) sans « terminer » : refusé');
   r = reecrire('A', '2026-10-20');
   const parPole = r.ok ? (r.ecritures[0].element as ControleQualite) : undefined;
   verifier(parPole?.parId === 'B' && parPole.realiseLe === fait.realiseLe && parPole.historique?.[0]?.par === 'Alice Martin', 'contrôle fait : le pôle peut, l’auteur et la date restent, l’historique dit qui');
@@ -486,6 +518,22 @@ section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, p
     verifier(!r.ok && r.statut === 400, 'points qui ne sont pas une liste : refus 400');
     r = appliquerAction(avecFait, 'A', null as unknown as ActionOperations, ctx);
     verifier(!r.ok, 'opération absente : refusée');
+    // Contre-audit : valeurs qui ne sont pas du texte (dont { toString: null }).
+    const piege = { toString: null } as unknown as string;
+    for (const op of [
+      42,
+      'x',
+      { type: 'signaler', logementId: 'L1', description: piege, urgent: true },
+      { type: 'signaler', logementId: 'L1', description: 'Fuite d’eau sous l’évier.', urgent: true, photos: [piege] },
+      { type: 'noter', incidentId: { a: 1 } },
+      { type: 'absence', membreId: ['B'], du: piege, au: piege },
+      { type: 'controle', cle: piege, points: [{ id: piege, photo: piege }], note: piege, terminer: true },
+      { type: 'pas-a-moi', logementId: 'L1', motif: piege },
+    ]) {
+      r = appliquerAction(avecFait, 'A', op as unknown as ActionOperations, ctx);
+      // Refusée, ou acceptée sans la valeur piégée (un motif illisible est ignoré).
+      verifier(!r.ok || r.ecritures.every((w) => !Object.values(w.element).includes(piege)), `entrée piégée, sans exception : ${JSON.stringify(op)}`);
+    }
   } catch (x) {
     exception = (x as Error).message;
   }
@@ -509,6 +557,17 @@ section('Audit : codes d’accès, noms, absences, contrôles faits, entrées, p
     fusion.statut === 'en_cours' && fusion.description === 'Corrigé par le gérant.' && fusion.historique?.map((h) => h.le).join() === 'h0,h1,h2',
     'fusion : champ changé repris, champ du gérant gardé, historique complété',
   );
+  // Contre-audit : « prendre » un incident que le gérant vient de régler : refus, rien d'écrit.
+  const pris = appliquerAction(e, 'B', { type: 'prendre', incidentId: 'i-B' }, ctx);
+  const regleEntreTemps = new Map([['incidents/i-B', { ...e.incidents.find((i) => i.id === 'i-B')!, statut: 'resolu' as const, resoluLe: J }]]);
+  verifier(pris.ok && /vient d’être réglé/.test(conflitEcritures(e, pris.ecritures, regleEntreTemps) ?? ''), 'contre-audit : incident réglé entre-temps, « prendre » refusé avec un message clair');
+  verifier(pris.ok && conflitEcritures(e, pris.ecritures, new Map([['incidents/i-B', e.incidents.find((i) => i.id === 'i-B')!]])) === null, 'pas de conflit quand rien n’a changé entre-temps');
+  const note = appliquerAction(e, 'B', { type: 'noter', incidentId: 'i-B', texte: 'Passé voir.' }, ctx);
+  verifier(note.ok && conflitEcritures(e, note.ecritures, regleEntreTemps) === null, 'ajouter un mot sur un incident réglé entre-temps : pas un conflit (le statut ne change pas)');
+  if (pris.ok) {
+    const fusionRegle = fusionnerEcritures(e, pris.ecritures, regleEntreTemps)[0].element as Incident;
+    verifier(fusionRegle.statut === 'resolu' && fusionRegle.resoluLe === J, 'fusion seule : un statut changé entre-temps reste (défense en plus du refus)');
+  }
   const nouveaux = fusionnerEcritures(e, [{ collection: 'incidents', element: incident('i-neuf') }], new Map());
   verifier(nouveaux[0].element.id === 'i-neuf', 'fusion : un nouvel enregistrement s’écrit tel quel');
 }

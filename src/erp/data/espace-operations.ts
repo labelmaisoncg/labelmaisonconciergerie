@@ -83,7 +83,9 @@ const PHOTOS_MAX = 6;
 const SEJOURS_AVANT = 2;
 const SEJOURS_APRES = 14;
 
-const texte = (v: unknown, max: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+/** Texte saisi : une valeur qui n'est pas du texte compte pour rien (jamais d'exception). */
+const chaine = (v: unknown): string => (typeof v === 'string' ? v : '');
+const texte = (v: unknown, max: number) => chaine(v).replace(/\s+/g, ' ').trim().slice(0, max);
 const idValide = (v: unknown): v is Id => typeof v === 'string' && /^[\w-]{1,80}$/.test(v);
 
 /* --------------------------------------------------------------- périmètre */
@@ -126,6 +128,13 @@ export function restreindre(e: EntreesOperations, membreId: Id): EntreesOperatio
   };
 }
 
+/** Suit des logements (encore gérés) hors de ce périmètre : son absence se note chez le gérant. */
+function suitHorsPerimetre(brutes: Pick<EntreesOperations, 'equipe' | 'logements'>, membreId: Id, perimetreDuPole: ReadonlySet<Id>): boolean {
+  const m = brutes.equipe.find((x) => x?.id === membreId);
+  const logements = Array.isArray(m?.logementIds) ? m.logementIds : [];
+  return logements.some((l) => !perimetreDuPole.has(l) && brutes.logements.some((x) => x?.id === l && x.statut !== 'sorti'));
+}
+
 /* -------------------------------------------------------------------- vue */
 
 export interface OptionsVueOps {
@@ -163,11 +172,12 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
   const moi = membreConnecte(brutes, membreId);
   if (!moi) return null;
   const e = restreindre(brutes, membreId);
+  const perimetreMoi = new Set(e.logements.map((l) => l.id));
   const { aujourdhui } = o;
   const pole = moi.role === 'pole';
   const nomDe = (id?: Id) => e.equipe.find((m) => m.id === id)?.nom;
   const photo = (u: string) => (o.photo ? o.photo(u) : u);
-  const photos = (liste: unknown) => (Array.isArray(liste) ? liste : []).map((u) => photo(String(u))).filter((u): u is string => !!u);
+  const photos = (liste: unknown) => (Array.isArray(liste) ? liste : []).map((u) => (typeof u === 'string' ? photo(u) : undefined)).filter((u): u is string => !!u);
 
   const incidents = trierIncidents(incidentsVisibles(e, moi, aujourdhui));
   const aFaire = controlesAFaire(e, aujourdhui);
@@ -253,7 +263,15 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
     ? e.equipe
         .map((m) => {
           const a = e.absences.filter((x) => !x.annuleeLe && x.membreId === m.id && x.au >= aujourdhui).sort((x, y) => x.du.localeCompare(y.du))[0];
-          return { id: m.id, nom: m.nom, role: m.role, logementIds: m.logementIds, ...(m.telephone ? { telephone: m.telephone } : {}), ...(a ? { absence: { du: a.du, au: a.au } } : {}) };
+          return {
+            id: m.id,
+            nom: m.nom,
+            role: m.role,
+            logementIds: m.logementIds,
+            ...(m.telephone ? { telephone: m.telephone } : {}),
+            ...(a ? { absence: { du: a.du, au: a.au } } : {}),
+            ...(suitHorsPerimetre(brutes, m.id, perimetreMoi) ? { absenceParGerant: true } : {}),
+          };
         })
         .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'))
     : e.equipe.filter((m) => m.id === moi.id).map((m) => ({ id: m.id, nom: m.nom, role: m.role, logementIds: m.logementIds }));
@@ -344,6 +362,14 @@ const historiser = (i: Incident, le: Horodatage, par: string, t: string): Incide
  * enregistrements à écrire (collections opérations seulement) ou un refus.
  */
 export function appliquerAction(brutes: EntreesOperations, membreId: Id, action: ActionOperations, ctx: ContexteAction): ResultatAction {
+  try {
+    return appliquer(brutes, membreId, action && typeof action === 'object' ? action : ({} as ActionOperations), ctx);
+  } catch {
+    return refus('Demande illisible.');
+  }
+}
+
+function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperations, ctx: ContexteAction): ResultatAction {
   const moi = membreConnecte(brutes, membreId);
   if (!moi) return refus('Votre accès n’est plus actif. Contactez Label Maison.', 403);
   const e = restreindre(brutes, membreId);
@@ -351,11 +377,19 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
   const pole = moi.role === 'pole';
   const { aujourdhui, maintenant } = ctx;
   const photosAction = (liste: unknown): string[] | null => {
-    const l = (Array.isArray(liste) ? liste : []).map(String);
-    if (l.length > PHOTOS_MAX) return null;
+    if (liste !== undefined && !Array.isArray(liste)) return null;
+    const l: unknown[] = liste ?? [];
+    if (l.length > PHOTOS_MAX || !l.every((u): u is string => typeof u === 'string')) return null;
     return l.every((u) => ctx.photoAcceptee?.(u)) ? l : null;
   };
   const membreDuLogement = (id: Id | undefined, logementId: Id) => !!id && e.equipe.some((m) => m.id === id && m.logementIds.includes(logementId));
+  /** Ce qu'un pôle ne peut pas noter, changer ni annuler : l'absence notée par le gérant, ou celle de quelqu'un qui suit des logements hors des siens. */
+  const absenceInterdite = (a: Pick<AbsenceMembre, 'membreId' | 'parMembreId'> | undefined): string | undefined => {
+    if (!a) return undefined;
+    if (!a.parMembreId) return 'Absence notée par le gérant : lui seul peut la changer.';
+    if (suitHorsPerimetre(brutes, a.membreId, ids)) return 'Cette personne suit aussi des logements hors des vôtres : demandez au gérant de noter son absence.';
+    return undefined;
+  };
   const nomLogement = (id: Id) => e.logements.find((l) => l.id === id)?.nom ?? 'le logement';
   const titulaire = (logementId: Id) => {
     const r = responsableLe(e, logementId, aujourdhui).membreId ?? e.affectations.find((a) => a.id === logementId)?.responsableId;
@@ -465,7 +499,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
         return refus('Liste des points à reprendre illisible.');
       }
       if (action.points !== undefined && !Array.isArray(action.points)) return refus('Points du contrôle illisibles.');
-      const cle = String(action.cle ?? '');
+      const cle = chaine(action.cle);
       let base: ControleQualite | undefined;
       if (cle.startsWith('depart-')) {
         const r = e.reservations.find((x) => `depart-${x.id}` === cle);
@@ -479,7 +513,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
       if (!base) return refus('Contrôle introuvable.', 404);
       const dejaFait = base.statut === 'fait';
       if (dejaFait && !controleModifiable(base, moi, aujourdhui)) return refus('Ce contrôle est déjà fait : seul le responsable de pôle peut le modifier.', 403);
-      const saisis = new Map((Array.isArray(action.points) ? action.points : []).map((p) => [String(p?.id), p]));
+      const saisis = new Map((Array.isArray(action.points) ? action.points : []).filter((p) => p && typeof p === 'object').map((p) => [chaine(p.id), p]));
       let points: PointControle[] = [];
       for (const p of base.points) {
         const s = saisis.get(p.id);
@@ -488,19 +522,21 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
           continue;
         }
         // Absent : inchangé ; vide : retiré ; sinon une photo déposée par l'espace.
-        const photo = s.photo === undefined ? p.photo : s.photo === '' ? undefined : String(s.photo);
+        const photo = s.photo === undefined ? p.photo : s.photo === '' ? undefined : chaine(s.photo) || p.photo;
         if (photo && photo !== p.photo && !ctx.photoAcceptee?.(photo)) return refus('Photo refusée : ajoutez-la depuis cet écran.');
+        const etat = s.etat === 'ok' || s.etat === 'a_revoir' ? s.etat : s.etat === undefined ? p.etat : undefined;
         const commentaire = s.commentaire === undefined ? (p.commentaire ?? '') : texte(s.commentaire, 500);
         const { etat: _e, commentaire: _c, photo: _p, ...reste } = p;
         points.push({
           ...reste,
-          ...(s.etat === 'ok' || s.etat === 'a_revoir' ? { etat: s.etat } : {}),
+          ...(etat ? { etat } : {}),
           ...(commentaire ? { commentaire } : {}),
           ...(photo ? { photo } : {}),
         });
       }
-      const note = Number(action.note);
-      const commentaire = texte(action.commentaire, 1000);
+      // Comme pour les points : absent = inchangé.
+      const note = action.note === undefined ? (base.note ?? NaN) : typeof action.note === 'number' ? action.note : NaN;
+      const commentaire = action.commentaire === undefined ? (base.commentaire ?? '') : texte(action.commentaire, 1000);
       const { note: _n, commentaire: _c, ...resteBase } = base;
       let controle: ControleQualite = {
         ...resteBase,
@@ -510,13 +546,15 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
       };
       const ecritures: Ecriture[] = [];
       const aNotifier: Id[] = [];
-      if (action.terminer) {
+      // Un contrôle fait reste complet et chaque changement laisse une trace, « finir plus tard » compris.
+      if (action.terminer || dejaFait) {
         const manque = verifierControle(controle);
         if (manque) return refus(manque);
-        controle = dejaFait
-          ? { ...controle, historique: [...(base.historique ?? []), { le: maintenant, par: moi.nom, texte: 'Contrôle modifié après coup.' }] }
-          : { ...controle, statut: 'fait', parId: moi.id, realiseLe: maintenant };
-        const pour = new Set((action.incidentsPour ?? []).map(String));
+      }
+      if (dejaFait) controle = { ...controle, historique: [...(base.historique ?? []), { le: maintenant, par: moi.nom, texte: 'Contrôle modifié après coup.' }] };
+      if (action.terminer) {
+        if (!dejaFait) controle = { ...controle, statut: 'fait', parId: moi.id, realiseLe: maintenant };
+        const pour = new Set(action.incidentsPour ?? []);
         const assigneA = titulaire(controle.logementId);
         const nom = e.equipe.find((m) => m.id === assigneA)?.nom;
         points = controle.points.map((p) => {
@@ -542,7 +580,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
       const nb = ecritures.length;
       return ok(
         [{ collection: 'controles', element: controle }, ...ecritures],
-        action.terminer
+        action.terminer || dejaFait
           ? nb
             ? `Contrôle enregistré, ${nb > 1 ? `${nb} incidents créés` : 'un incident créé'}.`
             : 'Contrôle enregistré.'
@@ -553,26 +591,25 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
 
     case 'absence': {
       if (!pole) return refus(POLE_SEUL, 403);
-      if (!e.equipe.some((m) => m.id === action.membreId)) return refus('Cette personne ne fait pas partie de votre équipe.');
-      // Ses logements hors de votre périmètre passeraient à un remplaçant choisi ici : c'est au gérant de noter l'absence.
-      const complet = brutes.equipe.find((m) => m?.id === action.membreId);
-      if ((complet?.logementIds ?? []).some((l) => !ids.has(l) && brutes.logements.some((x) => x?.id === l && x.statut !== 'sorti'))) {
-        return refus('Cette personne suit aussi des logements hors des vôtres : demandez au gérant de noter son absence.', 403);
-      }
-      if (action.remplacantId && !e.equipe.some((m) => m.id === action.remplacantId)) return refus('Le remplaçant doit faire partie de votre équipe.');
-      const existante = idValide(action.id) ? e.absences.find((a) => a.id === action.id) : undefined;
-      if (action.id && !existante) return refus('Absence introuvable.', 404);
+      if (!idValide(action.membreId) || !e.equipe.some((m) => m.id === action.membreId)) return refus('Cette personne ne fait pas partie de votre équipe.');
+      const existante = action.id === undefined ? undefined : idValide(action.id) ? e.absences.find((a) => a.id === action.id) : undefined;
+      if (action.id !== undefined && !existante) return refus('Absence introuvable.', 404);
+      // Celle d'avant et celle d'après : ni l'une ni l'autre ne doit toucher un logement hors du pôle.
+      const refusAbsence = absenceInterdite(existante) ?? absenceInterdite({ membreId: action.membreId, parMembreId: moi.id });
+      if (refusAbsence) return refus(refusAbsence, 403);
+      if (action.remplacantId !== undefined && (!idValide(action.remplacantId) || !e.equipe.some((m) => m.id === action.remplacantId))) return refus('Le remplaçant doit faire partie de votre équipe.');
       // Le motif n'est ni montré ni saisi ici : celui noté par le gérant est gardé tel quel.
       const motif = existante?.motif;
       const absence: AbsenceMembre = {
         id: existante?.id ?? ctx.nouvelId('abs'),
         membreId: action.membreId,
-        du: String(action.du ?? ''),
-        au: String(action.au ?? ''),
+        du: chaine(action.du),
+        au: chaine(action.au),
         ...(action.remplacantId ? { remplacantId: action.remplacantId } : {}),
         ...(motif ? { motif } : {}),
         creeLe: existante?.creeLe ?? maintenant,
         par: existante?.par ?? moi.nom,
+        parMembreId: existante?.parMembreId ?? moi.id,
       };
       const probleme = verifierAbsence(absence, brutes.absences);
       if (probleme) return refus(probleme);
@@ -583,6 +620,8 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
       if (!pole) return refus(POLE_SEUL, 403);
       const a = idValide(action.id) ? e.absences.find((x) => x.id === action.id && !x.annuleeLe) : undefined;
       if (!a) return refus('Absence introuvable.', 404);
+      const refusAnnulation = absenceInterdite(a);
+      if (refusAnnulation) return refus(refusAnnulation, 403);
       const annulee: AbsenceMembre = { ...a, annuleeLe: maintenant };
       return ok([{ collection: 'absences', element: annulee }], 'Absence annulée : chacun retrouve ses logements.');
     }
@@ -629,8 +668,10 @@ export function fusionnerEcriture<T extends object>(avant: T, apres: T, relu: T)
   const a = avant as Record<string, unknown>;
   const n = apres as Record<string, unknown>;
   const r: Record<string, unknown> = { ...(relu as Record<string, unknown>) };
+  // Statut changé par quelqu'un d'autre entre-temps : il reste (le serveur refuse d'abord l'action, voir conflitEcritures).
+  const statutRelu = 'statut' in a && !pareil(a.statut, r.statut);
   for (const k of new Set([...Object.keys(a), ...Object.keys(n)])) {
-    if (pareil(a[k], n[k])) continue;
+    if (pareil(a[k], n[k]) || (statutRelu && k === 'statut')) continue;
     const ancienne = a[k];
     const nouvelle = n[k];
     const courante = r[k];
@@ -643,6 +684,23 @@ export function fusionnerEcriture<T extends object>(avant: T, apres: T, relu: T)
     }
   }
   return r as T;
+}
+
+/**
+ * Conflit à l'écriture : l'action change le statut d'un enregistrement dont le
+ * statut a changé entre-temps (par exemple un incident réglé par le gérant
+ * qu'on « prend en charge »). Rien n'est écrit ; message pour la personne.
+ */
+export function conflitEcritures(avant: EntreesOperations, ecritures: readonly Ecriture[], relus: ReadonlyMap<string, { id: Id } & object>): string | null {
+  for (const x of ecritures) {
+    const origine = (avant[x.collection] as ({ id: Id; statut?: unknown } & object)[]).find((y) => y?.id === x.element.id);
+    const relu = relus.get(`${x.collection}/${x.element.id}`) as { statut?: unknown } | undefined;
+    const nouveau = (x.element as { statut?: unknown }).statut;
+    if (!origine || !relu || pareil(origine.statut, nouveau) || pareil(origine.statut, relu.statut)) continue;
+    if (x.collection === 'incidents' && relu.statut === 'resolu') return 'Cet incident vient d’être réglé : rien n’a été changé. Rouvrez-le si besoin.';
+    return 'Cet élément vient d’être modifié par quelqu’un d’autre : rien n’a été changé, rechargez et réessayez.';
+  }
+  return null;
 }
 
 /** Les écritures d'une action, chacune fusionnée avec sa version relue (nouvel enregistrement : tel quel). */
