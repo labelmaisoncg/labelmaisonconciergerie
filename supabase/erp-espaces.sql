@@ -1106,7 +1106,7 @@ begin
     return new;
   end if;
   if tg_op = 'UPDATE' and old.collection = 'reglages' and old.id = 'agent'
-     and (new.collection <> 'reglages' or new.id <> 'agent') and not erp.acces_gerant(old.espace) then
+     and (new.collection <> 'reglages' or new.id <> 'agent' or new.espace is distinct from old.espace) and not erp.acces_gerant(old.espace) then
     raise exception 'Seul un gérant change ces réglages de l''agent.' using errcode = '42501';
   end if;
   if new.collection <> 'reglages' or new.id <> 'agent' or erp.acces_gerant(new.espace) then
@@ -1132,6 +1132,19 @@ revoke all on function erp.garder_autonomie_agent() from public, anon;
 drop trigger if exists garder_autonomie_agent on erp.enregistrements;
 create trigger garder_autonomie_agent before insert or update on erp.enregistrements
   for each row execute function erp.garder_autonomie_agent();
+
+-- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
+-- retours à la ligne, espaces insécables ou invisibles) ; vide si absent. Le
+-- même partout : index d'unicité, numérotation et gardes des factures.
+create or replace function erp.numero_normalise(p text) returns text
+language sql immutable parallel safe set search_path = ''
+as $$
+  select regexp_replace(coalesce(p, ''),
+    '^[[:space:]' || chr(160) || chr(8199) || chr(8203) || chr(8239) || chr(65279) || ']+|[[:space:]'
+      || chr(160) || chr(8199) || chr(8203) || chr(8239) || chr(65279) || ']+$', '', 'g')
+$$;
+revoke all on function erp.numero_normalise(text) from public, anon;
+grant execute on function erp.numero_normalise(text) to authenticated;
 
 -- Factures : numéro attribué par la base, à la suite, jamais deux fois
 -- (numérotation continue et unique exigée par la loi). Appel du navigateur :
@@ -1172,7 +1185,7 @@ begin
   if v_facture is null then
     raise exception 'Facture introuvable.' using errcode = 'P0002';
   end if;
-  v_numero := btrim(coalesce(v_facture ->> 'numero', ''));
+  v_numero := erp.numero_normalise(v_facture ->> 'numero');
   if v_numero <> '' then
     return v_numero;
   end if;
@@ -1187,9 +1200,9 @@ begin
   v_texte := v_compteur -> 'derniers' ->> v_annee;
   v_dernier := case when v_texte ~ '^\d{1,9}$' then v_texte::int else 0 end;
   -- Numéros lus sans espaces autour, comme l'index unique qui les compare.
-  select coalesce(max((substring(btrim(e.donnees ->> 'numero') from '^\d{4}-(\d{4,9})$'))::int), 0) into v_max
+  select coalesce(max((substring(erp.numero_normalise(e.donnees ->> 'numero') from '^\d{4}-(\d{4,9})$'))::int), 0) into v_max
     from erp.enregistrements e
-    where e.espace = v_espace and e.collection = 'factures' and btrim(e.donnees ->> 'numero') ~ ('^' || v_annee || '-\d{4,9}$');
+    where e.espace = v_espace and e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') ~ ('^' || v_annee || '-\d{4,9}$');
   v_suite := greatest(v_dernier, v_max) + 1;
   v_numero := v_annee || '-' || lpad(v_suite::text, 4, '0');
   -- Heure de Paris avec son décalage, au format de l'ERP (« 2026-11-02T10:30:00+01:00 »).
@@ -1230,7 +1243,7 @@ declare
   libres constant text[] := array['statut', 'payeeLe', 'partageeLe'];
 begin
   if current_user <> 'authenticated' or old.collection <> 'factures'
-     or btrim(coalesce(old.donnees ->> 'numero', '')) = '' then
+     or erp.numero_normalise(old.donnees ->> 'numero') = '' then
     return case when tg_op = 'DELETE' then old else new end;
   end if;
   if tg_op = 'DELETE' then
@@ -1270,13 +1283,17 @@ begin
   end if;
   if tg_op = 'UPDATE' then
     if old.collection = 'factures' and old.id = new.id and old.espace is not distinct from new.espace then
-      avant := btrim(coalesce(old.donnees ->> 'numero', ''));
+      avant := erp.numero_normalise(old.donnees ->> 'numero');
     end if;
-  elsif exists (select 1 from erp.enregistrements e
-                where e.espace = new.espace and e.collection = 'factures' and e.id = new.id) then
-    return new;
+  else
+    -- Ligne déjà là, verrouillée le temps de l'ajout (elle ne disparaît pas entre ce test et le conflit).
+    perform 1 from erp.enregistrements e
+      where e.espace = new.espace and e.collection = 'factures' and e.id = new.id for key share;
+    if found then
+      return new;
+    end if;
   end if;
-  if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
+  if erp.numero_normalise(new.donnees ->> 'numero') is distinct from avant then
     raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'
       using errcode = 'LMF02';
   end if;
@@ -1287,6 +1304,25 @@ revoke all on function erp.reserver_numero_facture() from public, anon;
 drop trigger if exists reserver_numero_facture on erp.enregistrements;
 create trigger reserver_numero_facture before insert or update on erp.enregistrements
   for each row execute function erp.reserver_numero_facture();
+
+-- Une donnée ne change jamais d'espace par l'API (aucun écran ne le fait :
+-- chaque écriture vise son espace, clé espace + collection + id). Sans cela,
+-- un membre de deux espaces pourrait vider l'un au profit de l'autre (ex. les
+-- réglages de l'agent, qui reviendraient aux valeurs par défaut). Refus 42501.
+create or replace function erp.garder_espace_enregistrement() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user = 'authenticated' and new.espace is distinct from old.espace then
+    raise exception 'Une donnée ne change pas d''espace.' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.garder_espace_enregistrement() from public, anon;
+drop trigger if exists garder_espace_enregistrement on erp.enregistrements;
+create trigger garder_espace_enregistrement before update on erp.enregistrements
+  for each row execute function erp.garder_espace_enregistrement();
 
 -- Deux factures d'un même espace ne partagent jamais un numéro (index unique
 -- partiel). Créé seulement si les données le permettent : sinon un
@@ -1300,18 +1336,22 @@ declare
   v_doublons text;
 begin
   if to_regclass('erp.enregistrements_numero_facture_espace') is not null then
-    return;
+    if pg_get_indexdef('erp.enregistrements_numero_facture_espace'::regclass) like '%numero_normalise%' then
+      return;
+    end if;
+    -- Index d'une version précédente (btrim seul) : recréé avec la normalisation de la numérotation.
+    drop index erp.enregistrements_numero_facture_espace;
   end if;
   select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
-    from (select btrim(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
-          where e.collection = 'factures' and btrim(coalesce(e.donnees ->> 'numero', '')) <> ''
-          group by e.espace, btrim(e.donnees ->> 'numero') having count(*) > 1) d;
+    from (select erp.numero_normalise(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
+          where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
+          group by e.espace, erp.numero_normalise(e.donnees ->> 'numero') having count(*) > 1) d;
   if v_doublons is not null then
     raise warning 'Factures : numéros en double dans un même espace (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
     return;
   end if;
-  create unique index enregistrements_numero_facture_espace on erp.enregistrements (espace, (btrim(donnees ->> 'numero')))
-    where collection = 'factures' and btrim(coalesce(donnees ->> 'numero', '')) <> '';
+  create unique index enregistrements_numero_facture_espace on erp.enregistrements (espace, (erp.numero_normalise(donnees ->> 'numero')))
+    where collection = 'factures' and erp.numero_normalise(donnees ->> 'numero') <> '';
 end;
 $$;
 -- Cloison : RESTRICTIVE, elle tient même si une règle plus large est ajoutée un jour.
@@ -1482,6 +1522,7 @@ declare
   resultat text := 'ok';
   n int;
   k text;
+  membres_par_espace boolean;
   j jsonb;
   cree uuid;
   -- Comptes fictifs (auth.users.id) et instants d'émission des jetons :
@@ -1559,8 +1600,8 @@ begin
       (lm, 'reglages', 'agent', '{"id": "agent"}'),
       (lm, 'factures', 'recette-fm-1', '{"id": "recette-fm-1", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-15", "montantHtCentimes": 100, "mensuelle": {"mois": "2098-12"}}'),
       (lm, 'factures', 'recette-fm-2', '{"id": "recette-fm-2", "numero": "", "statut": "brouillon", "dateEmission": "2099-01-16", "montantHtCentimes": 200, "mensuelle": {"mois": "2098-12"}}'),
-      -- Ancienne facture au numéro entouré d'espaces : la suite part après elle (2099-0002).
-      (lm, 'factures', 'recette-fm-0', '{"id": "recette-fm-0", "numero": " 2099-0001 ", "statut": "payee"}')
+      -- Ancienne facture au numéro entouré de blancs (tabulation, espace insécable) : la suite part après elle (2099-0002).
+      (lm, 'factures', 'recette-fm-0', jsonb_build_object('id', 'recette-fm-0', 'numero', chr(9) || '2099-0001' || chr(160), 'statut', 'payee'))
     on conflict do nothing;
     -- Deux factures d'un espace ne partagent pas un numéro (index unique), même
     -- écrites par le propriétaire de la base ; un autre espace a sa propre suite.
@@ -1574,8 +1615,17 @@ begin
         resultat := 'factures : deux factures d''un espace partagent un numéro'; raise exception 'stop';
       exception when unique_violation then null;
       end;
+      -- Tabulation, retour à la ligne ou espace insécable autour : le même numéro.
+      begin
+        insert into erp.enregistrements (espace, collection, id, donnees) values
+          (lm, 'factures', 'recette-doublon-3', jsonb_build_object('id', 'recette-doublon-3', 'numero', chr(9) || '2099-9999' || chr(10) || chr(160)));
+        resultat := 'factures : un numéro entouré de tabulations ou d''espaces insécables passe en double'; raise exception 'stop';
+      exception when unique_violation then null;
+      end;
       delete from erp.enregistrements where collection = 'factures' and id in ('recette-doublon-1', 'recette-doublon-autre');
     end if;
+    -- Après la passe 2, une adresse peut être membre de plusieurs espaces.
+    membres_par_espace := erp.cle_par_espace('erp.membres'::regclass);
 
     perform set_config('role', 'authenticated', true);
 
@@ -1664,6 +1714,30 @@ begin
       resultat := 'un compte « opérations » change le niveau d''autonomie de l''agent'; raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Membre « opérations » ici et gérant d'un autre espace (possible après la passe 2) : il ne déplace
+    -- rien de Label Maison vers l'autre (sous-bloc annulé : son second rôle disparaît ensuite).
+    if membres_par_espace then
+    begin
+      perform set_config('role', 'none', true);
+      insert into erp.membres (espace, email, nom, role, uid) values (essai, 'recette-lm@exemple.invalid', 'Recette LM', 'gerant', u_lm);
+      perform set_config('role', 'authenticated', true);
+      begin
+        update erp.enregistrements set espace = essai where espace = lm and collection = 'reglages' and id = 'agent';
+        resultat := 'un membre gérant d''un autre espace y déplace les réglages de l''agent'; raise exception 'stop';
+      exception when insufficient_privilege then null;
+      end;
+      begin
+        update erp.enregistrements set espace = essai where espace = lm and collection = 'recette' and id = 'ligne-lm';
+        resultat := 'un membre déplace une donnée de Label Maison vers un autre espace'; raise exception 'stop';
+      exception when insufficient_privilege then null;
+      end;
+      raise exception 'recette_sous_bloc';
+    exception when others then
+      if sqlerrm <> 'recette_sous_bloc' then
+        raise;
+      end if;
+    end;
+    end if;
     -- Les autres réglages de l'agent réservés au gérant : marche, horaires, ce qu'il confie, délai.
     foreach k in array array['actif', 'horaires', 'transmettre', 'delaiAlerteMinutes'] loop
       begin
@@ -2305,8 +2379,8 @@ select
   (select case
      when to_regclass('erp.enregistrements_numero_facture_espace') is not null then 'uniques'
      when exists (select 1 from erp.enregistrements e
-                  where e.collection = 'factures' and btrim(coalesce(e.donnees ->> 'numero', '')) <> ''
-                  group by e.espace, btrim(e.donnees ->> 'numero') having count(*) > 1)
+                  where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
+                  group by e.espace, erp.numero_normalise(e.donnees ->> 'numero') having count(*) > 1)
        then 'en double : corriger les numéros listés en avertissement, puis relancer'
      else 'index absent : relancer ce fichier'
    end) as numeros_factures,
@@ -2355,11 +2429,11 @@ select
 --   erp.role_membre(uuid), erp.acces_lecture(uuid), erp.acces_ecriture(uuid), erp.acces_gerant(uuid),
 --   erp.espace_du_chemin(text), erp.espaces_lecture(), erp.espaces_ecriture(), erp.espaces_gerant(),
 --   erp.garder_espaces(), erp.cle_par_espace(regclass) cascade;
--- -- Numérotation des factures, garde des réglages de l'agent et du numéro des factures
--- -- (lisent la colonne espace) ; erp-installation.sql remet les deux gardes et l'index
--- -- des numéros, version d'avant les espaces.
+-- -- Numérotation des factures, gardes des réglages de l'agent, du numéro des factures et
+-- -- de l'espace d'une donnée (lisent la colonne espace) ; erp-installation.sql remet les
+-- -- deux premières gardes et l'index des numéros, version d'avant les espaces.
 -- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent(),
---   erp.reserver_numero_facture() cascade;
+--   erp.reserver_numero_facture(), erp.garder_espace_enregistrement() cascade;
 -- drop table if exists erp.invitations_espace, erp.invitations, erp.espaces cascade;
 -- drop function if exists erp.mes_espaces(), erp.est_serveur(), erp.espace_entete(), erp.id_label_maison() cascade;
 -- commit;

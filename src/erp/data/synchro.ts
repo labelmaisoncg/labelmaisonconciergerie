@@ -133,7 +133,8 @@ const ONGLET_ABANDONNE_MS = 30_000;
 
 /** Écriture refusée pour de bon : jamais réessayée, signalée une fois au store. */
 export interface RefusBase {
-  collection: NomCollection;
+  /** Collection de la donnée, ou l'état des automatisations (etat_automatisations). */
+  collection: NomCollection | 'etat_automatisations';
   id: string;
   message: string;
   /** SQLSTATE de la base (42501, LMF01, LMF02…). */
@@ -571,7 +572,7 @@ export class Synchro {
         const { error, status } = await this.client.from(TABLE).upsert(lignes, { onConflict: this.espace ? 'espace,collection,id' : 'collection,id' });
         if (error) {
           // Refus définitif (droits, facture figée, données refusées) : ligne par ligne, pour ne retirer que celles-là.
-          if (this.ligneRefusee(error, status)) {
+          if (this.ligneRefusee(error, status, lot.map((e) => e.op.collection))) {
             const echec = await this.envoyerUnParUn(lot, refus);
             if (echec) return echec;
             continue;
@@ -596,7 +597,7 @@ export class Synchro {
           if (this.espace) requete = requete.eq('espace', this.espace);
           const { error, status } = await requete;
           if (error) {
-            if (this.ligneRefusee(error, status)) {
+            if (this.ligneRefusee(error, status, [collection])) {
               const echec = await this.envoyerUnParUn(lot, refus);
               if (echec) return echec;
               continue;
@@ -611,9 +612,13 @@ export class Synchro {
         const ligne: Record<string, unknown> = this.espace ? { espace: this.espace, id: 'global' } : { id: 'global' };
         for (const [champ, { valeur }] of envoyes) ligne[champ] = valeur;
         const { error, status } = await this.client.from(TABLE_AUTO).upsert(ligne, { onConflict: this.espace ? 'espace,id' : 'id' });
-        // Refus définitif de l'état des automatisations : abandonné, jamais réessayé sans fin.
-        if (error && !this.ligneRefusee(error, status)) return { erreur: error, status };
-        if (error) console.warn('[erp] état des automatisations refusé par la base, abandonné', error);
+        // Refus définitif de l'état des automatisations : abandonné (jamais réessayé sans fin), signalé
+        // comme les autres refus, et l'état enregistré relu (signalerRefus).
+        if (error && !this.ligneRefusee(error, status, [])) return { erreur: error, status };
+        if (error) {
+          console.warn('[erp] état des automatisations refusé par la base, abandonné', error);
+          refus.push({ collection: TABLE_AUTO, id: 'global', message: error.message ?? '', ...(error.code ? { code: String(error.code) } : {}) });
+        }
         for (const [champ, { version }] of envoyes) if (this.fileAuto.get(champ)?.version === version) this.fileAuto.delete(champ);
         this.persister();
         this.majEtat({});
@@ -631,8 +636,13 @@ export class Synchro {
    * refusées (erreurDeLigne), ou refus reconnu par le store (refusDefinitif,
    * seulement avec un code Postgres : jamais sur une page d'erreur sans code).
    */
-  private ligneRefusee(e: ErreurBase, status?: number): boolean {
-    return erreurDeLigne(e, status) || (!!e.code && !!this.opts.refusDefinitif?.(e));
+  private ligneRefusee(e: ErreurBase, status: number | undefined, collections: readonly string[]): boolean {
+    if (erreurDeLigne(e, status)) return true;
+    // Refus reconnu par le store (facture figée) : réponse 4xx de la base avec un code Postgres, jamais un 5xx,
+    // une session, un pare-feu, une base absente ou un délai ; et seulement pour une facture.
+    const s = status ?? e.status ?? 0;
+    if (s < 400 || s >= 500 || [401, 403, 404, 406, 408, 429].includes(s)) return false;
+    return !!e.code && collections.includes('factures') && !!this.opts.refusDefinitif?.(e);
   }
 
   /**
@@ -659,7 +669,7 @@ export class Synchro {
         reponse = await requete;
       }
       const { error, status } = reponse;
-      if (error && !this.ligneRefusee(error, status)) return { erreur: error, status };
+      if (error && !this.ligneRefusee(error, status, [e.op.collection])) return { erreur: error, status };
       this.retirer([e]);
       if (error) refus.push({ collection: e.op.collection, id: e.op.id, message: error.message ?? '', ...(error.code ? { code: String(error.code) } : {}), version: e.version });
     }
@@ -680,6 +690,13 @@ export class Synchro {
     this.opts.surRefus?.(refus.slice());
     const cles = new Map(refus.map((r) => [cle(r.collection, r.id), r] as const));
     for (const r of cles.values()) {
+      if (r.collection === TABLE_AUTO) {
+        // État des automatisations : celui de la base revient (interrupteurs, constats).
+        void this.lireEtatAuto()
+          .then((etat) => etat && !this.arrete && this.opts.surEtatAutoDistant?.(etat))
+          .catch(() => this.demanderResynchro());
+        continue;
+      }
       void this.relireLigne(r.collection, r.id, true, () => this.demanderResynchro()).catch(() => this.demanderResynchro());
     }
   }

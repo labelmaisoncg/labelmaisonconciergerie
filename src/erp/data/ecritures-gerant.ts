@@ -72,11 +72,23 @@ export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boo
 
 export const MESSAGE_REFUS_GERANT = 'Modification non enregistrée : elle est réservée au gérant. L’écran affiche de nouveau la version enregistrée.';
 export const MESSAGE_REFUS_FACTURE = 'Cette facture a été validée entre-temps : elle ne change plus. Sa version enregistrée vient d’être rechargée.';
+export const MESSAGE_REFUS_DONNEES = 'Modification non enregistrée : la base l’a refusée (données invalides). L’écran affiche de nouveau la version enregistrée.';
+
+/**
+ * Refus pour les données elles-mêmes (synchro.ts, erreurDeLigne) : code
+ * Postgres des classes 22 ou 23 (caractère interdit, doublon…), ou sans code
+ * (contenu trop gros, 413). Ni les droits, ni une facture validée.
+ */
+export function refusDeDonnees(r: Pick<RefusBase, 'code' | 'message'>): boolean {
+  return r.code ? /^2[23][0-9A-Z]{3}$/.test(r.code) : !/row-level security/i.test(r.message ?? '');
+}
 
 /** Message affiché une fois par envoi refusé (synchro.ts, surRefus). */
 export function messageRefus(refus: readonly RefusBase[]): string {
+  if (refus.length > 0 && refus.every(refusDeDonnees)) return MESSAGE_REFUS_DONNEES;
   // Tout refus portant sur des factures (code LMF, ou 42501 des anciennes installations) : le message de la facture.
-  const facturesFigees = refus.length > 0 && refus.every((r) => (CODES_REFUS_BASE as readonly string[]).includes(r.code ?? '') || r.collection === 'factures');
+  const facturesFigees =
+    refus.length > 0 && refus.every((r) => (CODES_REFUS_BASE as readonly string[]).includes(r.code ?? '') || (r.collection === 'factures' && !refusDeDonnees(r)));
   return facturesFigees ? MESSAGE_REFUS_FACTURE : MESSAGE_REFUS_GERANT;
 }
 
@@ -91,6 +103,8 @@ export function traceRefus(refus: readonly RefusBase[], o: { auteur: string; id:
     entite: premier?.collection ?? 'enregistrement',
     entiteId: premier?.id ?? '',
     // Lisible dans l'Historique : pas d'identifiants techniques (ils restent dans entite / entiteId).
-    details: `${refus.length > 1 ? `${refus.length} modifications refusées` : '1 modification refusée'} (réservée au gérant ou facture déjà validée). La version enregistrée a été rechargée.`,
+    details: `${refus.length > 1 ? `${refus.length} modifications refusées` : '1 modification refusée'} (${
+      refus.length > 0 && refus.every(refusDeDonnees) ? 'données refusées par la base' : 'réservée au gérant ou facture déjà validée'
+    }). La version enregistrée a été rechargée.`,
   };
 }
