@@ -16,8 +16,12 @@ import { logementById } from '../../../data/selectors';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
+import { elementsPrixEtAnomalies } from './aTraiterAnalyse';
 
-export type TypeATraiter = 'message' | 'avis' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge';
+export type TypeATraiter =
+  | 'message' | 'avis' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge'
+  // Prix conseillés et anomalies (aTraiterAnalyse.ts).
+  | 'prix' | 'double' | 'suspecte' | 'prix_anormal' | 'integrite';
 
 export interface ElementATraiter {
   id: string;
@@ -128,6 +132,9 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       titre: aAppeler.length > 1 ? `${aAppeler.length} personnes à appeler aujourd’hui` : 'Une personne à appeler aujourd’hui',
       details: aAppeler.map((c) => `${c.nom}${c.ville ? ` (${c.ville})` : ''}`),
     });
+
+  // Prix à revoir (une ligne groupée) et anomalies.
+  liste.push(...elementsPrixEtAnomalies(d, aujourdhui, { gerant }));
 
   return liste.sort((a, b) => a.priorite - b.priorite);
 }

@@ -33,6 +33,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   absences: 'Absences de l’équipe de terrain',
   controles: 'Contrôles qualité',
   signalementsLogement: 'Logements signalés par l’équipe de terrain',
+  conseilsPrix: 'Prix conseillés (réglages et décisions)',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

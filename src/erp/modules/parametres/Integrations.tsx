@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { espaceOuvert, estLabelMaison } from '../../data/espaces';
 import { CarteRepullEspace } from './RepullEspace';
 import { CarteSynchroRepull } from './SynchroRepull';
+import { ReglagesPrix } from './ReglagesPrix';
 
 /**
  * Plateformes : la mise à jour depuis Airbnb et Booking.com (état réel, bouton
@@ -18,6 +19,8 @@ export default function Integrations() {
     <div className="flex max-w-3xl flex-col gap-4">
       {!labelMaison && <CarteRepullEspace surCle={setCle} />}
       {(labelMaison || cle) && <CarteSynchroRepull />}
+      {/* Prix conseillés (gérant) : replié, sous la mise à jour des plateformes. */}
+      <ReglagesPrix />
     </div>
   );
 }
