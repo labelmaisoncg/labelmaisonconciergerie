@@ -934,7 +934,7 @@ async function principal() {
       const donnees = creerSeed();
       const aFaire = construireATraiter({ ...donnees, reglages: [...donnees.reglages, ficheAlerte!] }, '2026-09-25');
       const element = aFaire.find((x) => x.id === 'agent-controle');
-      verifier(element?.titre === 'L’agent ne peut plus vérifier ses réponses : il les garde à valider.' && element.to === '/erp/messagerie/agent', '« À faire » de l’accueil : « L’agent ne peut plus vérifier ses réponses : il les garde à valider. »');
+      verifier(element?.titre === 'Votre agent ne vérifie plus ses réponses' && element.to === '/erp/messagerie/agent', '« À faire » de l’accueil : « Votre agent ne vérifie plus ses réponses »');
       verifier(!construireATraiter({ ...donnees, reglages: [...donnees.reglages, { ...ficheAlerte!, active: false }] }, '2026-09-25').some((x) => x.id === 'agent-controle'), '« À faire » : rien quand l’alerte est retirée');
     }
     await echouer();
