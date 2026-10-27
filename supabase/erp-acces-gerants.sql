@@ -119,6 +119,19 @@ drop trigger if exists garder_autonomie_agent on erp.enregistrements;
 create trigger garder_autonomie_agent before insert or update on erp.enregistrements
   for each row execute function erp.garder_autonomie_agent();
 
+-- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
+-- retours à la ligne, espaces insécables ou invisibles). Même fonction que
+-- dans erp-espaces.sql.
+create or replace function erp.numero_normalise(p text) returns text
+language sql immutable parallel safe set search_path = ''
+as $$
+  select regexp_replace(coalesce(p, ''),
+    '^[[:space:]' || chr(160) || chr(8199) || chr(8203) || chr(8239) || chr(65279) || ']+|[[:space:]'
+      || chr(160) || chr(8199) || chr(8203) || chr(8239) || chr(65279) || ']+$', '', 'g')
+$$;
+revoke all on function erp.numero_normalise(text) from public, anon;
+grant execute on function erp.numero_normalise(text) to authenticated;
+
 -- Facture numérotée : plus rien ne change, sauf le paiement (statut émise,
 -- payée ou en retard, date de paiement) et le partage ; elle ne se supprime
 -- pas. Même déclencheur que dans erp-espaces.sql.
@@ -129,7 +142,7 @@ declare
   libres constant text[] := array['statut', 'payeeLe', 'partageeLe'];
 begin
   if current_user <> 'authenticated' or old.collection <> 'factures'
-     or btrim(coalesce(old.donnees ->> 'numero', '')) = '' then
+     or erp.numero_normalise(old.donnees ->> 'numero') = '' then
     return case when tg_op = 'DELETE' then old else new end;
   end if;
   if tg_op = 'DELETE' then
@@ -166,13 +179,17 @@ begin
   end if;
   if tg_op = 'UPDATE' then
     if old.collection = 'factures' and old.id = new.id then
-      avant := btrim(coalesce(old.donnees ->> 'numero', ''));
+      avant := erp.numero_normalise(old.donnees ->> 'numero');
     end if;
-  elsif exists (select 1 from erp.enregistrements e where e.collection = 'factures' and e.id = new.id) then
-    -- Déjà enregistrée : « on conflict do nothing » reste silencieux, « do update » est vérifié plus bas.
-    return new;
+  else
+    -- Déjà enregistrée (verrouillée le temps de l'ajout) : « on conflict do nothing » reste silencieux,
+    -- « do update » est vérifié par la branche de modification.
+    perform 1 from erp.enregistrements e where e.collection = 'factures' and e.id = new.id for key share;
+    if found then
+      return new;
+    end if;
   end if;
-  if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
+  if erp.numero_normalise(new.donnees ->> 'numero') is distinct from avant then
     raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'
       using errcode = 'LMF02';
   end if;
@@ -188,18 +205,21 @@ declare
   v_doublons text;
 begin
   if to_regclass('erp.enregistrements_numero_facture') is not null then
-    return;
+    if pg_get_indexdef('erp.enregistrements_numero_facture'::regclass) like '%numero_normalise%' then
+      return;
+    end if;
+    drop index erp.enregistrements_numero_facture;
   end if;
   select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
-    from (select btrim(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
-          where e.collection = 'factures' and btrim(coalesce(e.donnees ->> 'numero', '')) <> ''
-          group by btrim(e.donnees ->> 'numero') having count(*) > 1) d;
+    from (select erp.numero_normalise(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
+          where e.collection = 'factures' and erp.numero_normalise(e.donnees ->> 'numero') <> ''
+          group by erp.numero_normalise(e.donnees ->> 'numero') having count(*) > 1) d;
   if v_doublons is not null then
     raise warning 'Factures : numéros en double (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
     return;
   end if;
-  create unique index enregistrements_numero_facture on erp.enregistrements ((btrim(donnees ->> 'numero')))
-    where collection = 'factures' and btrim(coalesce(donnees ->> 'numero', '')) <> '';
+  create unique index enregistrements_numero_facture on erp.enregistrements ((erp.numero_normalise(donnees ->> 'numero')))
+    where collection = 'factures' and erp.numero_normalise(donnees ->> 'numero') <> '';
 end;
 $$;
 

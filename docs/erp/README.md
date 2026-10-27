@@ -451,9 +451,11 @@ liste `REGLAGES_AGENT_GERANT` ; ton, signature, langues et Telegram restent
 à l'équipe) ; numéro de facture
 attribué par `erp.numeroter_facture(p_id)` seulement (à la suite, jamais
 deux fois ; toute autre écriture d'un numéro est refusée, code `LMF02`, et
-un index unique par espace l'interdit en double) ; une facture numérotée ne
+un index unique par espace l'interdit en double, numéros comparés sans
+blancs autour : `erp.numero_normalise`) ; une facture numérotée ne
 change plus, sauf paiement et partage, et ne se supprime pas (code
-`LMF01`). Copie des listes dans le navigateur : `ecritures-gerant.ts` (un
+`LMF01`) ; une donnée ne change jamais d'espace par l'API
+(`erp.garder_espace_enregistrement`, 42501). Copie des listes dans le navigateur : `ecritures-gerant.ts` (un
 compte qui n'est pas gérant ne met pas ces écritures en file ;
 `verifier-synchro.ts` compare les listes aux fichiers SQL). Toute écriture
 refusée par la base (droits, règle RLS, déclencheur) est renvoyée ligne par

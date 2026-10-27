@@ -18,6 +18,7 @@ import {
   COLLECTIONS_GERANT_SEULEMENT,
   ELEMENTS_GERANT_SEULEMENT,
   ID_REGLAGES_AGENT,
+  MESSAGE_REFUS_DONNEES,
   MESSAGE_REFUS_FACTURE,
   MESSAGE_REFUS_GERANT,
   ecritureGerantSeulement,
@@ -25,6 +26,7 @@ import {
   operationReserveeAuGerant,
   traceRefus,
 } from './ecritures-gerant';
+import { refusEcritureFigee } from './factures-mensuelles';
 import { AUJOURDHUI, MAINTENANT, ajouterJours } from './format';
 import { REGLAGES_AGENT_GERANT } from './messagerie-ia';
 import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
@@ -63,6 +65,8 @@ class FausseBase {
   refus: ((methode: 'POST' | 'DELETE', collection: string, id: string) => { status: number; corps: Record<string, unknown> | string } | null) | null = null;
   /** Lecture d'une ligne en panne (503) : relecture impossible. */
   lectureEnPanne = false;
+  /** Refus de l'écriture de l'état des automatisations. */
+  refusAuto: (() => { status: number; corps: Record<string, unknown> | string } | null) | null = null;
 
   cle = (c: string, id: string) => `${c}\u0000${id}`;
 
@@ -134,6 +138,8 @@ class FausseBase {
     if (table === 'etat_automatisations') {
       if (methode === 'GET') return json(200, this.etatAuto ? [this.etatAuto] : []);
       if (methode === 'POST') {
+        const r = this.refusAuto?.();
+        if (r) return reponseRefus(r);
         this.etatAuto = { actives: {}, evenements: [], ...(this.etatAuto ?? {}), ...(corps as object) };
         return new Response(null, { status: 201 });
       }
@@ -606,6 +612,51 @@ async function principal() {
       verifier(resynchros >= 1, 'relecture de la ligne refusée impossible : relecture complète demandée', resynchros);
       s8.arreter();
     }
+
+    // Refus reconnu par le store (refusEcritureFigee) : jamais sur un 5xx, jamais hors des factures.
+    {
+      const b = new FausseBase();
+      const r5: RefusBase[][] = [];
+      const { s: s9 } = nouvelleSynchro(b, { surRefus: (r) => r5.push(r), enLigne: () => true, refusDefinitif: refusEcritureFigee });
+      let reponse: { status: number; corps: Record<string, unknown> } | null = { status: 500, corps: { code: 'XX000', message: 'Erreur interne : facture validée introuvable' } };
+      b.refus = () => reponse;
+      const trois = { ...avant, logements: [logementTest('log-a'), logementTest('log-b'), logementTest('log-c')] } as unknown as ErpDonnees;
+      const ok9 = await s9.sauvegarderDifferences(avant, trois, 'Abdel');
+      verifier(!ok9 && s9.enAttente === 3 && !r5.length, '500 dont le message parle d’une facture validée : rien retiré, nouvel essai (3 logements gardés)');
+      reponse = { status: 400, corps: { code: 'P0001', message: 'Facture validée : elle ne change plus.' } };
+      await s9.envoyer();
+      verifier(s9.enAttente === 3 && !r5.length, '4xx « facture validée » sur des logements : jamais retirés (refus du store réservé aux factures)');
+      reponse = null;
+      await s9.envoyer();
+      verifier(s9.enAttente === 0 && b.enregistrements.has(b.cle('logements', 'log-c')), 'puis enregistrés quand la base les accepte');
+      b.refus = (_m, c) => (c === 'factures' ? { status: 400, corps: { code: 'P0001', message: 'Facture validée : elle ne change plus.' } } : null);
+      await s9.sauvegarderDifferences(avant, { ...avant, factures: [{ id: 'fac-x', numero: '2026-0009' }] } as unknown as ErpDonnees, 'Abdel');
+      await attendre(40);
+      verifier(s9.enAttente === 0 && r5.length === 1 && r5[0][0].id === 'fac-x', '4xx « facture validée » sur une facture : retirée comme un refus');
+      s9.arreter();
+    }
+
+    // État des automatisations refusé pour ses données : signalé une fois, l'état de la base revient.
+    {
+      const b = new FausseBase();
+      b.etatAuto = { actives: { 'activation-logement': true }, evenements: [] };
+      const rAuto: RefusBase[][] = [];
+      const recus: unknown[] = [];
+      const { s: s10 } = nouvelleSynchro(b, { surRefus: (r) => rAuto.push(r), enLigne: () => true, surEtatAutoDistant: (e) => recus.push(e) });
+      b.refusAuto = () => ({ status: 400, corps: { code: '22P05', message: 'unsupported Unicode escape sequence' } });
+      const ok10 = await s10.enregistrerEtatAuto('evenements', [{ id: 'e1', message: 'texte\u0000' }]);
+      await attendre(40);
+      verifier(ok10 && s10.enAttente === 0 && rAuto.length === 1 && rAuto[0][0].collection === 'etat_automatisations', 'état des automatisations refusé : abandonné, signalé une fois');
+      verifier(recus.some((e) => JSON.stringify(e).includes('activation-logement')), 'état des automatisations de la base relu et reposé');
+      verifier(messageRefus(rAuto[0]) === MESSAGE_REFUS_DONNEES && /données refusées par la base/.test(traceRefus(rAuto[0], { auteur: 'A', id: 'j', horodatage: MAINTENANT }).details), 'données refusées : un message à part, pas « réservée au gérant »');
+      s10.arreter();
+    }
+    verifier(
+      messageRefus([{ collection: 'logements', id: 'l', message: 'Payload Too Large' }]) === MESSAGE_REFUS_DONNEES &&
+        messageRefus([{ collection: 'factures', id: 'f', message: 'duplicate key', code: '23505' }]) === MESSAGE_REFUS_DONNEES &&
+        messageRefus([{ collection: 'logements', id: 'l', message: 'x', code: '22P05' }, { collection: 'reglages', id: 'societe', message: 'rls', code: '42501' }]) === MESSAGE_REFUS_GERANT,
+      'message : données invalides (22xxx, 23xxx, 413) à part ; mélangé à un refus de droits, celui du gérant',
+    );
 
     // Panne du serveur (5xx) : comportement d'avant, gardé en file et réessayé.
     const base2 = new FausseBase();
