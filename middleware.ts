@@ -154,7 +154,7 @@ const ERP: Zone = {
   motDePasse: () => process.env.ERP_PASSWORD,
   variable: 'ERP_PASSWORD',
   titre: 'ERP Label Maison',
-  sousTitre: 'Outil interne de gestion · accès réservé',
+  sousTitre: 'Outil interne de gestion',
   bouton: 'Accéder à l’ERP',
   sousTitreIndisponible: 'Label Maison Conciergerie · ERP',
   objet: 'de l’ERP',
@@ -301,7 +301,7 @@ function page(
     /* Fond beige crème, carte en ivoire plus clair : le contraste des deux
        donne le relief sans avoir à charger en or. */
     --ground:#EAE1CF; --surface:#FDFBF6; --field:#F6F1E6;
-    --ink:#2C2418; --ink-2:#7A7264; --ink-3:#9C9484;
+    --ink:#2C2418; --ink-2:#7A7264; --ink-3:#676050;
     --line:rgba(40,34,22,.10); --line-2:rgba(40,34,22,.15);
     --gold:#A97C30; --gold-soft:rgba(169,124,48,.16);
     --brun:#2C2418; --brun-hover:#403118; --sur-brun:#F7F2E6;
@@ -534,7 +534,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          if (statut === 429 || /rate limit|too many/i.test(m)) return 'Trop de tentatives. Patientez une minute avant de réessayer.';
          if (/invalid login credentials|invalid_grant/i.test(m)) return 'Adresse ou mot de passe incorrect.';
          if (/email not confirmed/i.test(m)) return 'Adresse e-mail non confirmée : ouvrez le lien reçu par e-mail, ou demandez à un gérant.';
-         if (/password should be at least|weak password/i.test(m)) return 'Mot de passe trop court : 8 caractères au minimum.';
+         if (/password should be at least|weak password/i.test(m)) return 'Mot de passe trop court : 8 caractères au moins.';
          if (/same password|different from the old/i.test(m)) return 'Choisissez un mot de passe différent de l’ancien.';
          if (/session|jwt|token/i.test(m)) return 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».';
          return 'La connexion n’a pas abouti. Réessayez dans un instant.';
@@ -603,7 +603,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          fNouveau.addEventListener('submit', function (ev) {
            ev.preventDefault();
            var mdp = champNouveau.value;
-           if (mdp.length < 8) { dire('Mot de passe trop court : 8 caractères au minimum.'); champNouveau.focus(); return; }
+           if (mdp.length < 8) { dire('Mot de passe trop court : 8 caractères au moins.'); champNouveau.focus(); return; }
            dire(''); occuper(fNouveau, true);
            supabase('/auth/v1/user', { method: 'PUT', headers: { Authorization: 'Bearer ' + acces }, body: JSON.stringify({ password: mdp }) })
              .then(function (r) {

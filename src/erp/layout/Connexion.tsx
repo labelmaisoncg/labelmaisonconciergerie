@@ -185,7 +185,7 @@ function FormulaireConnexion({ message }: { message?: string }) {
           </Alert>
         )}
         <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<LogIn />}>
-          Se connecter
+          Accéder à l’ERP
         </Button>
       </form>
       <button type="button" onClick={() => void oublie()} className="mt-4 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
@@ -206,7 +206,7 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
 
   const valider = async (e: FormEvent) => {
     e.preventDefault();
-    if (motDePasse.length < 8) return setErreur('8 caractères au minimum.');
+    if (motDePasse.length < 8) return setErreur('Mot de passe trop court : 8 caractères au moins.');
     if (motDePasse !== confirmation) return setErreur('Les deux saisies sont différentes.');
     setEnCours(true);
     setErreur(undefined);
@@ -228,9 +228,9 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
   }
 
   return (
-    <Cadre titre="Nouveau mot de passe" sousTitre="Choisissez le mot de passe de votre compte." icone={<KeyRound />}>
+    <Cadre titre="Nouveau mot de passe" sousTitre="Choisissez votre mot de passe : 8 caractères au moins." icone={<KeyRound />}>
       <form onSubmit={valider} noValidate className="grid gap-4">
-        <Field label="Nouveau mot de passe" aide="8 caractères au minimum.">
+        <Field label="Nouveau mot de passe">
           <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus />
         </Field>
         <Field label="Confirmer le mot de passe">
@@ -242,7 +242,7 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
           </Alert>
         )}
         <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<KeyRound />}>
-          Enregistrer
+          Enregistrer et ouvrir l’ERP
         </Button>
       </form>
     </Cadre>
