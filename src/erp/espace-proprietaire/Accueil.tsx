@@ -3,7 +3,7 @@ import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/forma
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
 import { Badge, Card } from '../ui';
-import { CANAL, LienAction, PhotoLogement, Rubrique, TitreEspace, titreMois, type LienDocument, type OngletEspace } from './commun';
+import { CANAL, LienAction, PhotoLogement, Rubrique, TitreEspace, sansLogement, titreMois, type LienDocument, type OngletEspace } from './commun';
 
 /** Net du mois : le chiffre que le propriétaire vient chercher. */
 function CarteMois({ titre, c, onVoirBilan }: { titre: string; c: ChiffresMoisVue; onVoirBilan?: () => void }) {
@@ -118,7 +118,7 @@ export function Accueil({
             })}
           </ul>
         ) : (
-          <p className="text-[14px] text-(--lm-encre-2)">Aucun logement en gestion pour l’instant.</p>
+          <p className="text-[14px] text-(--lm-encre-2)">{sansLogement(vue)}</p>
         )}
       </Rubrique>
 

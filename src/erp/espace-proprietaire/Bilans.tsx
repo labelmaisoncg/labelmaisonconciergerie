@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, FileBarChart, Printer } from 'lucide-react';
 import { dateCourte, euros, jourMois, nombre, pluriel, pourcentage } from '../data/format';
 import { espaceOuvert } from '../data/espaces';
+import { logementsSansTaux } from '../data/proprietaire';
 import type { BilanVue, ChiffresBilan, VueProprietaire } from '../data/types-proprietaire';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Button, Card, EmptyState, cn } from '../ui';
@@ -28,22 +29,30 @@ function tauxCommission(c: ChiffresBilan): string | undefined {
 
 /**
  * Bilan d'un mois, tel que le propriétaire le voit (et l'imprime). Le
- * gérant voit exactement le même avant de publier.
+ * gérant voit exactement le même avant de publier, avec en plus
+ * (`gerant`) « Taux de commission à renseigner » pour un logement sans
+ * mandat à ce propriétaire. Sans taux ni commission : pas de ligne
+ * « Commission ».
  */
 export function BilanDetail({
   bilan,
   proprietaire,
   conciergerie = espaceOuvert().nom,
   onImprimer,
+  gerant = false,
 }: {
   bilan: Pick<BilanVue, 'mois' | 'commentaire' | 'chiffres'> & { publieLe?: string };
   proprietaire: string;
   /** Nom de la conciergerie (espace) ; sans : l'espace ouvert dans l'ERP. */
   conciergerie?: string;
   onImprimer?: () => void;
+  /** Vu par le gérant (aperçu avant publication) : notes qui ne sont que pour lui. */
+  gerant?: boolean;
 }) {
   const c = bilan.chiffres;
   const t = c.totaux;
+  const sansTaux = logementsSansTaux(c);
+  const commission = t.commission !== 0 || sansTaux.length < c.logements.length;
   const plusieurs = c.logements.length > 1;
   const nomLogement = (id: string) => c.logements.find((l) => l.logementId === id)?.nom ?? 'Logement';
   return (
@@ -77,9 +86,14 @@ export function BilanDetail({
             <Ligne libelle="Encaissé sur les séjours" valeur={euros(t.encaisse)} />
             <Ligne libelle="Frais des plateformes" valeur={moins(t.fraisPlateforme)} />
             <Ligne libelle="Ménage" valeur={moins(t.menage)} />
-            <Ligne libelle={`Commission ${conciergerie}`} detail={tauxCommission(c)} valeur={moins(t.commission)} />
+            {commission && <Ligne libelle={`Commission ${conciergerie}`} detail={tauxCommission(c)} valeur={moins(t.commission)} />}
             <Ligne libelle="Net propriétaire" valeur={euros(t.net)} fort />
           </dl>
+          {gerant && sansTaux.length > 0 && (
+            <p className="lm-sans-impression mt-3 text-[12.5px] text-(--lm-encre-2)">
+              Taux de commission à renseigner{plusieurs ? ` : ${sansTaux.join(', ')}` : ''} (pas de mandat à ce propriétaire).
+            </p>
+          )}
         </Card>
         <Card>
           <dl className="grid grid-cols-3 gap-3">

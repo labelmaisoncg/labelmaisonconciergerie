@@ -58,6 +58,7 @@ const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
 const tropDEssais = freinEnvois(20, 15 * 60_000);
 
 const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
+const DOCUMENTS_FERMES = 'Les documents ne sont pas encore ouverts pour cet espace.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace propriétaire, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
@@ -220,7 +221,10 @@ export default async function handler(req: any, res: any) {
       const doc = await lireDocument(s.base, String(req.query?.id ?? ''));
       // PDF d'une facture : seulement tant qu'elle est partagée avec lui.
       const factureVisible = !doc?.factureId || facturePartagee((await s.base.lire<Facture>('factures', [doc.factureId]))[0], s.acces.proprietaireId);
-      const lien = doc && doc.proprietaireId === s.acces.proprietaireId && factureVisible ? await lienDocument(String(doc.fichier ?? ''), s.espace) : null;
+      const visible = !!doc && doc.proprietaireId === s.acces.proprietaireId && factureVisible;
+      // Fichier de l'équipe d'un autre espace que Label Maison : pas encore signé côté serveur (comme les photos des opérations).
+      if (visible && String(doc?.fichier ?? '').startsWith('stockage://') && !estLabelMaison(s.espace)) return res.status(409).end(DOCUMENTS_FERMES);
+      const lien = visible ? await lienDocument(String(doc?.fichier ?? ''), s.espace) : null;
       if (!lien) return res.status(404).end('Document introuvable.');
       res.setHeader('Location', lien);
       return res.status(302).end();

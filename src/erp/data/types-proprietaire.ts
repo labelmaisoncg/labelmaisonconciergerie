@@ -152,6 +152,12 @@ export interface JourCalendrier {
   veille: boolean;
   arrivee: boolean;
   depart: boolean;
+  /**
+   * Jour qui n'est pas à ce propriétaire (changement de propriétaire, début
+   * du mandat) : ni libre ni réservé pour lui. `avant` : avant son arrivée ;
+   * `apres` : après son départ.
+   */
+  hors?: 'avant' | 'apres';
 }
 
 export interface CalendrierLogement {
@@ -327,6 +333,8 @@ export interface VueProprietaire {
   conciergerie: { nom: string };
   aujourdhui: DateISO;
   logements: LogementVue[];
+  /** Logements qu'il a cédés à un autre propriétaire (dernier jour exclu), du plus récent au plus ancien. */
+  logementsCedes: { id: Id; nom: string; jusquAu: DateISO }[];
   moisCourant: ChiffresMoisVue;
   moisPrecedent: ChiffresMoisVue;
   prochainesArrivees: ArriveeVue[];

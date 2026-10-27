@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { jourMois, pluriel, pourcentage } from '../data/format';
+import { dateCourte, jourMois, pluriel, pourcentage } from '../data/format';
 import { moisPrecedent, moisSuivant } from '../data/proprietaire';
 import type { CalendrierLogement, JourCalendrier, VueProprietaire } from '../data/types-proprietaire';
 import { Card, cn } from '../ui';
@@ -16,6 +16,14 @@ const BANDE = 'absolute inset-y-1.5 bg-(--lm-or)/40';
  */
 function Jour({ j, aujourdhui }: { j: JourCalendrier; aujourdhui: string }) {
   const changement = j.depart && j.arrivee;
+  // Jour qui n'est pas à lui (avant son arrivée, après son départ) : grisé, ni libre ni réservé.
+  if (j.hors) {
+    return (
+      <div className="relative h-11 sm:h-12">
+        <span className="lm-chiffres relative grid h-full place-items-center bg-(--lm-surface-2) text-[13.5px] text-(--lm-encre-3)">{Number(j.date.slice(8))}</span>
+      </div>
+    );
+  }
   return (
     <div className="relative h-11 sm:h-12">
       {j.veille && <span className={cn(BANDE, 'left-0', changement ? 'right-[calc(50%+2px)]' : 'right-1/2', j.depart && 'rounded-r-full')} aria-hidden />}
@@ -32,7 +40,10 @@ function Jour({ j, aujourdhui }: { j: JourCalendrier; aujourdhui: string }) {
   );
 }
 
+const HORS = { avant: 'Avant votre arrivée', apres: 'Après votre départ' } as const;
+
 function libelleJour(j: JourCalendrier): string {
+  if (j.hors) return `${jourMois(j.date)} : ${HORS[j.hors].toLowerCase()}`;
   const etat = j.arrivee && j.depart ? 'départ et arrivée' : j.arrivee ? 'arrivée' : j.depart ? 'départ' : j.occupe ? 'réservé' : 'libre';
   return `${jourMois(j.date)} : ${etat}`;
 }
@@ -64,18 +75,22 @@ function Mois({ c, aujourdhui }: { c: CalendrierLogement; aujourdhui: string }) 
 }
 
 export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onMois: (mois: string) => void; enCours?: boolean }) {
-  const [choix, setChoix] = useState(vue.logements[0]?.id);
+  // Ses logements, puis ceux qu'il a cédés (calendrier borné à sa période).
+  const choixPossibles = [...vue.logements.map((l) => ({ id: l.id, nom: l.nom })), ...vue.logementsCedes.map((l) => ({ id: l.id, nom: l.nom }))];
+  const [choix, setChoix] = useState(choixPossibles[0]?.id);
   const mois = vue.calendrier.mois;
   const c = vue.calendrier.logements.find((x) => x.logementId === choix) ?? vue.calendrier.logements[0];
+  const cede = vue.logementsCedes.find((l) => l.id === c?.logementId);
+  const hors = new Set(c?.jours.map((j) => j.hors).filter((x): x is 'avant' | 'apres' => !!x));
   const bouton =
     'grid size-9 place-items-center rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:opacity-50';
   return (
     <>
       <TitreEspace titre="Calendrier" description="Les nuits réservées et libres, avec les arrivées et les départs." />
 
-      {vue.logements.length > 1 && (
+      {choixPossibles.length > 1 && (
         <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Logement">
-          {vue.logements.map((l) => (
+          {choixPossibles.map((l) => (
             <button
               key={l.id}
               type="button"
@@ -92,6 +107,7 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
         </div>
       )}
 
+      {cede && <p className="mb-3 text-[13.5px] text-(--lm-encre-2)">{cede.nom} : plus en gestion pour vous depuis le {dateCourte(cede.jusquAu)}. Le calendrier montre votre période seulement.</p>}
       {!c ? (
         <p className="text-[14px] text-(--lm-encre-2)">Aucun logement en gestion pour l’instant.</p>
       ) : (
@@ -120,6 +136,12 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
                 <span className="h-2.5 w-5 rounded-full border border-(--lm-bord-fort)" aria-hidden />
                 Libre
               </span>
+              {[...hors].map((h) => (
+                <span key={h} className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-5 rounded-full bg-(--lm-surface-2)" aria-hidden />
+                  {HORS[h]}
+                </span>
+              ))}
               <span>La bande commence le jour d’arrivée et s’arrête le jour du départ.</span>
             </div>
           </Card>

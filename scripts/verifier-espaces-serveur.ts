@@ -217,6 +217,8 @@ function reponse() {
     statut: 0,
     corps: undefined as unknown as Record<string, any>,
     entetes: {} as Record<string, string>,
+    /** Réponse en texte (res.end), pour les documents. */
+    texte: '',
     setHeader(k: string, v: string) {
       r.entetes[k] = v;
     },
@@ -228,7 +230,8 @@ function reponse() {
       r.corps = c;
       return r;
     },
-    end() {
+    end(t?: unknown) {
+      if (typeof t === 'string') r.texte = t;
       return r;
     },
   };
@@ -504,6 +507,12 @@ async function principal() {
     const texte = JSON.stringify(res.corps?.vue ?? {});
     verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Sens' && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-s', 'propriétaire de Sens : son logement, au nom de Sens', res.corps);
     verifier(!/Alice|log-a|Bob|Label Maison|74954|labelmaisoncg/i.test(texte) && !res.corps?.vue?.contacts && /Zoé S\./.test(texte) && !/Sensible/.test(texte), 'rien de Label Maison (ni données, ni contacts), voyageur en « Prénom N. »', texte.slice(0, 300));
+    // Document déposé dans Sens : les fichiers d'un autre espace ne sont pas encore signés, et la page le dit.
+    monde.poser(SENS, 'documentsProprietaire', { id: 'doc-s', proprietaireId: 'pro-s', categorie: 'contrat', titre: 'Mandat', fichier: 'stockage://erp-fichiers/sens/proprietaires/pro-s/m.pdf', nomFichier: 'm.pdf', ajouteLe: '2026-09-01T10:00:00.000Z', ajoutePar: 'g' } as { id: string });
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-s' }, entetes: { cookie: cookieSophie } });
+    verifier(res.statut === 409 && res.texte === 'Les documents ne sont pas encore ouverts pour cet espace.', 'document de Sens : « pas encore ouverts pour cet espace », pas « introuvable »', { statut: res.statut, texte: res.texte });
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-inconnu' }, entetes: { cookie: cookieSophie } });
+    verifier(res.statut === 404 && res.texte === 'Document introuvable.', 'document inconnu : « introuvable »', res.texte);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
     verifier(res.statut === 200 && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-a' && !/Sophie|log-s|Zoé/.test(JSON.stringify(res.corps?.vue)), 'propriétaire de Label Maison : rien de Sens', res.corps?.vue?.logements);
     // Cookie dont on change l'espace : la signature ne correspond plus.
