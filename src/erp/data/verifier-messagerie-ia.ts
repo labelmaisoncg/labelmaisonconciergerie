@@ -399,6 +399,20 @@ async function principal() {
     verifier(membre.ton === 'professionnel' && membre.signature === 'Inès' && membre.langues.join() === 'fr', 'membre de l’équipe : ton, signature et langues enregistrés');
     verifier(reglagesAEnregistrer(formulaire, enregistres, true) === formulaire && reglagesAEnregistrer(formulaire, { ...enregistres, autonomie: 'simples' }, false).autonomie === 'simples', 'gérant : tout enregistré ; niveau choisi gardé pour l’équipe');
     verifier(REGLAGES_AGENT_GERANT.join() === 'actif,autonomie,horaires,transmettre,delaiAlerteMinutes', 'liste des réglages réservés au gérant');
+    // Pas encore de réglages enregistrés : le formulaire montre les valeurs par défaut, mais un membre ne les écrit pas
+    // (la base refuse un ajout qui contient la marche, les horaires…) ; il crée la ligne avec le ton et la signature.
+    const premier = reglagesAEnregistrer({ ...REGLAGES_AGENT_DEFAUT, ton: 'professionnel', signature: 'Inès' }, undefined, false) as unknown as Record<string, unknown>;
+    verifier(
+      REGLAGES_AGENT_GERANT.every((k) => !(k in premier)) && premier.ton === 'professionnel' && premier.signature === 'Inès',
+      'membre, aucun réglage enregistré : aucune des 5 clés réservées envoyée (pas les valeurs par défaut), ton et signature oui',
+    );
+    // Ligne enregistrée partielle (ancienne) : seules ses clés, telles qu'en base ; jamais les valeurs par défaut ajoutées à l'écran.
+    const brute = { id: 'agent', actif: true, horaires: { mode: 'toujours' } } as unknown as Partial<ReglagesAgent>;
+    const partiel = reglagesAEnregistrer({ ...REGLAGES_AGENT_DEFAUT, actif: false, horaires: { mode: 'plage', debut: '08:00', fin: '20:00' }, ton: 'chaleureux' }, brute, false) as unknown as Record<string, unknown>;
+    verifier(
+      partiel.actif === true && JSON.stringify(partiel.horaires) === '{"mode":"toujours"}' && !('transmettre' in partiel) && !('delaiAlerteMinutes' in partiel) && !('autonomie' in partiel) && partiel.ton === 'chaleureux',
+      'membre, ligne enregistrée partielle : les clés réservées exactement comme en base, les absentes restent absentes',
+    );
   }
 
   /* ------------------------------------------------------------- triage */

@@ -363,19 +363,28 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
 }
 
 /**
- * Réglages de l'agent que seul un gérant change à l'écran : marche ou pause,
- * ce qu'il envoie seul, ses horaires, ce qu'il vous confie et le délai avant
- * de vous prévenir. Le ton, la signature, les langues et Telegram restent à
- * l'équipe. (La base ne garde que le niveau d'autonomie : erp.garder_autonomie_agent.)
+ * Réglages de l'agent que seul un gérant change : marche ou pause, ce qu'il
+ * envoie seul, ses horaires, ce qu'il vous confie et le délai avant de vous
+ * prévenir. Le ton, la signature, les langues et Telegram restent à
+ * l'équipe. La base refuse aussi ces changements à un autre compte
+ * (déclencheur erp.garder_autonomie_agent, même liste : verifier-synchro.ts
+ * le contrôle).
  */
 export const REGLAGES_AGENT_GERANT = ['actif', 'autonomie', 'horaires', 'transmettre', 'delaiAlerteMinutes'] as const;
 
-/** Ce qu'un membre enregistre : hors gérant, les réglages réservés restent ceux enregistrés. */
-export function reglagesAEnregistrer(formulaire: ReglagesAgent, enregistres: ReglagesAgent, gerant: boolean): ReglagesAgent {
+/**
+ * Ce qu'un membre enregistre. Hors gérant, les réglages réservés restent
+ * EXACTEMENT ceux de la ligne enregistrée (`enregistres` : la ligne telle
+ * qu'en base, sans les valeurs par défaut) : une clé absente de la ligne
+ * reste absente, une ligne absente n'en reçoit aucune. La base compare ces
+ * clés à la ligne enregistrée et refuserait toute différence (y compris
+ * les valeurs par défaut ajoutées à l'écran).
+ */
+export function reglagesAEnregistrer(formulaire: ReglagesAgent, enregistres: Partial<ReglagesAgent> | undefined, gerant: boolean): ReglagesAgent {
   if (gerant) return formulaire;
   const r: Record<string, unknown> = { ...formulaire };
   for (const k of REGLAGES_AGENT_GERANT) {
-    if (enregistres[k] === undefined) delete r[k];
+    if (enregistres?.[k] === undefined) delete r[k];
     else r[k] = enregistres[k];
   }
   return r as unknown as ReglagesAgent;

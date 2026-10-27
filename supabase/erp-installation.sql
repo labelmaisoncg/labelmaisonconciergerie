@@ -254,33 +254,41 @@ create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrem
   as restrictive for delete to authenticated
   using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent')) or erp.acces_gerant());
 
--- Niveau d'autonomie de l'agent (reglages / agent) : un gérant seulement ; le
--- reste de ces réglages reste à l'équipe. Déclencheur (une règle RLS ne
--- compare pas l'avant et l'après).
+-- Réglages de l'agent réservés au gérant (reglages / agent) : marche ou pause,
+-- niveau d'autonomie, horaires, ce qu'il vous confie, délai avant de vous
+-- prévenir (REGLAGES_AGENT_GERANT, src/erp/data/messagerie-ia.ts) ; ton,
+-- signature, langues et Telegram restent à l'équipe. Déclencheur (une règle
+-- RLS ne compare pas l'avant et l'après) ; ajout sans ligne enregistrée :
+-- aucune de ces clés. Même déclencheur que dans erp-espaces.sql.
 create or replace function erp.garder_autonomie_agent() returns trigger
 language plpgsql set search_path = ''
 as $$
 declare
+  cles constant text[] := array['actif', 'autonomie', 'horaires', 'transmettre', 'delaiAlerteMinutes'];
   avant jsonb;
+  k text;
 begin
   if current_user <> 'authenticated' then
     return new;
   end if;
   if tg_op = 'UPDATE' and old.collection = 'reglages' and old.id = 'agent'
      and (new.collection <> 'reglages' or new.id <> 'agent') and not erp.acces_gerant() then
-    raise exception 'Seul un gérant change le niveau d''autonomie de l''agent.' using errcode = '42501';
+    raise exception 'Seul un gérant change ces réglages de l''agent.' using errcode = '42501';
   end if;
   if new.collection <> 'reglages' or new.id <> 'agent' or erp.acces_gerant() then
     return new;
   end if;
-  if tg_op = 'UPDATE' then
-    avant := old.donnees -> 'autonomie';
+  if tg_op = 'UPDATE' and old.collection = 'reglages' and old.id = 'agent' then
+    avant := old.donnees;
   else
-    select e.donnees -> 'autonomie' into avant from erp.enregistrements e where e.collection = 'reglages' and e.id = 'agent';
+    select e.donnees into avant from erp.enregistrements e where e.collection = 'reglages' and e.id = 'agent';
   end if;
-  if (new.donnees -> 'autonomie') is distinct from avant then
-    raise exception 'Seul un gérant change le niveau d''autonomie de l''agent.' using errcode = '42501';
-  end if;
+  avant := coalesce(avant, '{}'::jsonb);
+  foreach k in array cles loop
+    if (new.donnees -> k) is distinct from (avant -> k) then
+      raise exception 'Seul un gérant change ces réglages de l''agent.' using errcode = '42501';
+    end if;
+  end loop;
   return new;
 end;
 $$;

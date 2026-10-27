@@ -3,13 +3,15 @@
  * erp.ecriture_gerant_seulement(collection, id) (supabase/erp-espaces.sql,
  * erp-acces-gerants.sql, erp-installation.sql), avec les mêmes listes.
  *
- * La base refuse ces écritures à tout autre compte (règles RLS et
- * déclencheur du niveau d'autonomie de l'agent). Le store ne les met donc
+ * La base refuse ces écritures à tout autre compte (règles RLS, et
+ * déclencheur des réglages de l'agent réservés au gérant :
+ * REGLAGES_AGENT_GERANT). Le store ne les met donc
  * pas en file pour un compte qui n'est pas gérant : elles sont signalées
  * comme un refus de la base et la version enregistrée revient
  * (synchro.ts, ecritureInterdite). verifier-synchro.ts lit les fichiers SQL
  * et vérifie que ces listes restent identiques.
  */
+import { REGLAGES_AGENT_GERANT } from './messagerie-ia';
 import { CODES_REFUS_BASE, type Operation, type RefusBase } from './synchro';
 import type { ErpDonnees, Journal } from './types';
 
@@ -23,8 +25,27 @@ export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[
   reglages: ['messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'],
 };
 
-/** Réglages de l'agent : l'équipe les modifie (sauf le niveau d'autonomie), seul un gérant les supprime. */
+/**
+ * Réglages de l'agent : l'équipe change le ton, la signature, les langues et
+ * Telegram ; la marche, le niveau d'autonomie, les horaires, ce qu'il confie
+ * et le délai restent au gérant (REGLAGES_AGENT_GERANT) ; seul un gérant les
+ * supprime.
+ */
 export const ID_REGLAGES_AGENT = 'agent';
+
+/** JSON aux clés triées : deux valeurs égales en base (jsonb) donnent le même texte. */
+function stable(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stable).join(',')}]`;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stable(o[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(v ?? null);
+}
 
 /** Même réponse que erp.ecriture_gerant_seulement(collection, id). */
 export function ecritureGerantSeulement(collection: string, id: string): boolean {
@@ -34,15 +55,17 @@ export function ecritureGerantSeulement(collection: string, id: string): boolean
 /**
  * Opération qu'un compte qui n'est pas gérant ne peut pas faire (la base la
  * refuserait) : écriture réservée, suppression des réglages de l'agent,
- * changement de son niveau d'autonomie (comparé à `avant`, comme le
- * déclencheur erp.garder_autonomie_agent le compare à la ligne enregistrée).
+ * changement d'un de ses réglages réservés (REGLAGES_AGENT_GERANT, comparés
+ * à `avant` comme le déclencheur erp.garder_autonomie_agent les compare à la
+ * ligne enregistrée ; sans ligne : aucune de ces clés).
  */
 export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boolean {
   if (ecritureGerantSeulement(op.collection, op.id)) return true;
   if (op.collection !== 'reglages' || op.id !== ID_REGLAGES_AGENT) return false;
   if (op.type === 'supprimer') return true;
-  const ancien = ((avant.reglages ?? []) as unknown as { id: string; autonomie?: unknown }[]).find((r) => r?.id === ID_REGLAGES_AGENT);
-  return JSON.stringify(ancien?.autonomie ?? null) !== JSON.stringify((op.donnees as { autonomie?: unknown }).autonomie ?? null);
+  const ancien = ((avant.reglages ?? []) as unknown as ({ id: string } & Record<string, unknown>)[]).find((r) => r?.id === ID_REGLAGES_AGENT);
+  const nouveau = op.donnees as Record<string, unknown>;
+  return REGLAGES_AGENT_GERANT.some((k) => stable(ancien?.[k]) !== stable(nouveau[k]));
 }
 
 /* ------------------------------------------------- refus de la base (store) */
