@@ -150,7 +150,7 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
                       onChange={(e) => setPaiement({ id: f.id, date: e.target.value })}
                       className="h-9 w-auto"
                     />
-                    <Button size="sm" variant="primary" onClick={payer}>
+                    <Button size="sm" variant="secondary" onClick={payer}>
                       Enregistrer
                     </Button>
                     <Button size="sm" variant="ghost" onClick={() => setPaiement(undefined)}>
