@@ -10,6 +10,10 @@
 //   POST { action: 'cles' }               gérant : nouvelle paire de clés serveur,
 //                                         affichée une seule fois, à coller dans
 //                                         Vercel (jamais enregistrée ni journalisée)
+//   POST { action: 'annoncer', id }       gérant : envoie une fois l'annonce à
+//                                         l'équipe `id`, RELUE dans la base de
+//                                         l'espace (jamais un texte du navigateur),
+//                                         aux appareils qui acceptent ce type
 //
 // Authentification : Authorization: Bearer <jeton de session Supabase>,
 // membre gérant ou opérations. Les appareils sont rangés dans l'espace de
@@ -20,7 +24,8 @@
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { TYPES_NOTIFICATION, notificationTest } from '../src/erp/data/notifications.js';
 import { baseErp, configuration, lireCorps, repondre, variableManquante } from './_erp-repull.js';
-import { abonnementValide, enregistrerAppareil, envoyerNotifications, lireAppareil, oublierAppareil, reglerAppareil } from '../src/erp/data/notifications-envoi.js';
+import { abonnementValide, annoncerAEquipe, enregistrerAppareil, envoyerNotifications, lireAppareil, oublierAppareil, reglerAppareil } from '../src/erp/data/notifications-envoi.js';
+import { MESSAGE_ANNONCE_RESERVEE, peutAnnoncer } from '../src/erp/data/annonces-equipe.js';
 import { genererClesVapid } from '../src/erp/data/web-push.js';
 import { clesServeur } from './_erp-notifications.js';
 import { espaceDemande, espacesActifs, refuserHorsLabelMaison } from './_erp-espaces.js';
@@ -60,6 +65,8 @@ export default async function handler(req: any, res: any) {
   }
 
   if (req.method !== 'POST') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
+  // Annonce à l'équipe : refusée à tout autre compte que le gérant de l'espace de l'en-tête, avant toute lecture.
+  if (action === 'annoncer' && !peutAnnoncer(membre.role)) return repondre(res, 403, { ok: false, code: 'gerant', erreur: MESSAGE_ANNONCE_RESERVEE });
   if (!cles) return repondre(res, 503, { ok: false, code: 'inactif', erreur: 'Notifications pas encore activées sur le serveur.' });
   const c = configuration();
   const manque = variableManquante(c);
@@ -67,6 +74,10 @@ export default async function handler(req: any, res: any) {
   const base = baseErp(c, membre.espace);
 
   try {
+    if (action === 'annoncer') {
+      const r = await annoncerAEquipe(base, { role: membre.role, id: corps.id, cles });
+      return repondre(res, r.statut, r.corps);
+    }
     if (action === 'abonner') {
       const abonnement = abonnementValide(corps.abonnement);
       if (!abonnement) return repondre(res, 400, { ok: false, erreur: 'Abonnement du navigateur illisible.' });

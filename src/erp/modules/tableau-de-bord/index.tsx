@@ -10,12 +10,14 @@ import { Courbes } from './_composants/Courbes';
 import { Demarrage } from './_composants/Demarrage';
 import { Indicateurs } from './_composants/Indicateurs';
 import { AVenir } from './_composants/AVenir';
+import { AnnoncesEquipe } from './_composants/AnnoncesEquipe';
 import { construireATraiter } from './_composants/aTraiter';
 import { PropositionInstallation } from '../parametres/_application/PropositionInstallation';
 
 /**
- * Accueil du channel manager, dans l'ordre où l'on s'en sert : la mise en
- * service (et, sur téléphone, l'installation de l'app), ce qui attend une
+ * Accueil du channel manager, dans l'ordre où l'on s'en sert : les annonces
+ * du gérant à l'équipe (jusqu'à « J'ai lu »), la mise en service (et, sur
+ * téléphone, l'installation de l'app), ce qui attend une
  * action, les arrivées et départs, quatre repères sur 30 jours, puis deux
  * courbes. Le détail est à un clic (pages de rubrique, panneaux).
  */
@@ -35,6 +37,7 @@ export default function TableauDeBord() {
         sousTitre={date.charAt(0).toUpperCase() + date.slice(1)}
       />
 
+      <AnnoncesEquipe />
       <Demarrage />
       <PropositionInstallation />
 

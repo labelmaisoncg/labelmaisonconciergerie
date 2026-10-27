@@ -7,12 +7,14 @@ import Entreprise from './Entreprise';
 import Application from './Application';
 import Acces from './Acces';
 import Espaces from './Espaces';
+import AnnoncesEquipe from './AnnoncesEquipe';
 import { useErp } from '../../data/store';
 import { espaceOuvert, estLabelMaison } from '../../data/espaces';
 
 /**
- * Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation),
- * les accès des propriétaires et des responsables opérationnels à leur espace,
+ * Module Paramètres : l'équipe et ses rôles, les annonces à l'équipe (gérant),
+ * les plateformes (synchronisation), les accès des propriétaires et des
+ * responsables opérationnels à leur espace,
  * l'app et ses notifications, la société et sa sauvegarde ; pour les gérants
  * de Label Maison (la plateforme), les espaces des conciergeries invitées.
  */
@@ -27,6 +29,8 @@ export default function Module() {
         label="Sections des paramètres"
         onglets={[
           { cle: 'utilisateurs', libelle: 'Équipe', to: '/erp/parametres', end: true },
+          // Messages du gérant à l'équipe (Accueil de chacun) : pas l'annonce d'un logement.
+          ...(gerant ? [{ cle: 'annonces-equipe', libelle: 'Annonces à l’équipe', to: '/erp/parametres/annonces-equipe' }] : []),
           { cle: 'plateformes', libelle: 'Plateformes', to: '/erp/parametres/plateformes' },
           ...(gerant ? [{ cle: 'acces', libelle: 'Accès', to: '/erp/parametres/acces' }] : []),
           { cle: 'application', libelle: 'Application', to: '/erp/parametres/application' },
@@ -38,6 +42,7 @@ export default function Module() {
         <Route index element={<Utilisateurs />} />
         <Route path="plateformes" element={<Integrations />} />
         <Route path="acces" element={<Acces />} />
+        <Route path="annonces-equipe" element={gerant ? <AnnoncesEquipe /> : <Navigate to="/erp/parametres" replace />} />
         <Route path="espaces" element={plateforme ? <Espaces /> : <Navigate to="/erp/parametres" replace />} />
         <Route path="application" element={<Application />} />
         <Route

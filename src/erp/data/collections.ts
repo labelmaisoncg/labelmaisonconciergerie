@@ -14,6 +14,8 @@ export const COLLECTIONS: NomCollection[] = [
   'envoisProgrammes', 'avisADeposer',
   // Prix conseillés (octobre 2026) : réglages, décisions, état du passage du matin.
   'conseilsPrix',
+  // Annonces à l'équipe (octobre 2026) : complétée à vide dans les anciennes sauvegardes.
+  'annoncesEquipe',
 ];
 
 /**

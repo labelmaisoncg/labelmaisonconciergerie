@@ -13,7 +13,8 @@
  *   ce qui est nouveau (notifications.ts). Un échec d'envoi ne fait jamais
  *   échouer le travail surveillé.
  */
-import { nettoyerPreferences, notificationsEntre, varianteAEnvoyer, type GroupeNotification, type Instantane, type PreferencesNotifications } from './notifications.js';
+import { COLLECTION_ANNONCES_EQUIPE, deciderEnvoiAnnonce, idAnnonceValide, MESSAGE_ANNONCE_RESERVEE, peutAnnoncer } from './annonces-equipe.js';
+import { estActive, nettoyerPreferences, notificationsEntre, varianteAEnvoyer, type GroupeNotification, type Instantane, type PreferencesNotifications } from './notifications.js';
 import type { FilMessages, Logement, Reservation } from './types';
 import { deB64url, empreinte, endpointAccepte, envoyerPush, type AbonnementPush, type ClesVapid, type ResultatEnvoi } from './web-push.js';
 
@@ -195,6 +196,39 @@ export async function envoyerNotifications(
     console.warn('[notifications] envoi impossible', e instanceof Error ? e.message : e);
   }
   return bilan;
+}
+
+/* ------------------------------------------------ annonces à l'équipe */
+
+/** Réponse de l'action « annoncer » (api/erp-notifications.ts). */
+export interface ReponseAnnonce {
+  statut: number;
+  corps: { ok: boolean; erreur?: string; code?: string; envoyees?: number; dejaPartie?: boolean; appareils?: number };
+}
+
+/**
+ * « Prévenir aussi par notification » (Annonces à l'équipe) : le gérant de
+ * l'espace seulement. L'annonce est RELUE dans la base de l'espace (jamais le
+ * texte envoyé par le navigateur) ; une annonce retirée, absente ou abîmée ne
+ * part pas ; clé `annonce-<id>` dans le journal : jamais deux fois. Envoyée
+ * aux appareils de l'espace qui acceptent le type « annonce ».
+ */
+export async function annoncerAEquipe(
+  base: BaseNotifications,
+  o: { role: string | undefined; id: unknown; cles: ClesVapid | null; maintenant?: Date; envoyer?: Envoyeur },
+): Promise<ReponseAnnonce> {
+  if (!peutAnnoncer(o.role)) return { statut: 403, corps: { ok: false, code: 'gerant', erreur: MESSAGE_ANNONCE_RESERVEE } };
+  if (!idAnnonceValide(o.id)) return { statut: 400, corps: { ok: false, code: 'id', erreur: 'Annonce inconnue.' } };
+  if (!o.cles) return { statut: 503, corps: { ok: false, code: 'inactif', erreur: 'Notifications pas encore activées sur le serveur.' } };
+  const [enregistree] = await base.lire<unknown>(COLLECTION_ANNONCES_EQUIPE, [o.id]);
+  const decision = deciderEnvoiAnnonce({ role: o.role, id: o.id, enregistree });
+  if (!decision.ok) return { statut: decision.statut, corps: { ok: false, code: decision.code, erreur: decision.erreur } };
+  const appareils = (await lireAppareils(base)).filter((a) => estActive(a.preferences, 'annonce')).length;
+  const bilan = await envoyerNotifications(base, [decision.groupe], { cles: o.cles, maintenant: o.maintenant, envoyer: o.envoyer });
+  if (bilan.dejaParties) return { statut: 200, corps: { ok: true, dejaPartie: true, envoyees: 0, appareils } };
+  if (bilan.envoyees) return { statut: 200, corps: { ok: true, envoyees: bilan.envoyees, appareils } };
+  if (!appareils) return { statut: 200, corps: { ok: true, envoyees: 0, appareils: 0 } };
+  return { statut: 502, corps: { ok: false, code: 'envoi', erreur: 'Le service de notifications ne l’a pas acceptée.' } };
 }
 
 /** Rejette après `ms` (une lecture lente ne doit pas faire dépasser la durée de la fonction). */

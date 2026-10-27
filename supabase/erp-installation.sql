@@ -234,7 +234,7 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
-  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles')
+  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
       or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'))
 $$;
