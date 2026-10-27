@@ -616,6 +616,26 @@ function habiller(logements: Logement[]): Logement[] {
   });
 }
 
+/**
+ * Démo : les nuits réservées sont « prises » dans le calendrier lu sur les
+ * plateformes, comme chez Airbnb ; les autres restent libres, sauf une
+ * nuit fermée par le propriétaire de temps en temps (prix conseillés,
+ * calendrier des réservations).
+ */
+function calendrierReserve(logements: Logement[], reservations: Reservation[]): Logement[] {
+  return logements.map((l, i) => {
+    if (!l.tarifs) return l;
+    const siennes = reservations.filter((r) => r.logementId === l.id && r.statut !== 'annulee');
+    const jours = l.tarifs.jours.map((j, k) => ({
+      ...j,
+      libre: !siennes.some((r) => r.arrivee <= j.date && j.date < r.depart) && (k + i * 5) % 23 !== 7,
+      // Une nuit saisie à 19 € par erreur (anomalie « prix inhabituel »).
+      ...(l.id === 'log-lisses' && k === 17 ? { prixCentimes: 1900 } : {}),
+    }));
+    return { ...l, tarifs: { ...l.tarifs, jours } };
+  });
+}
+
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
   const reservations = genererReservations(h);
@@ -636,7 +656,7 @@ export function creerSeed(): ErpDonnees {
   const donnees = {
     proprietaires: structuredClone(PROPRIETAIRES),
     mandats: structuredClone(MANDATS),
-    logements: habiller(structuredClone(LOGEMENTS)),
+    logements: calendrierReserve(habiller(structuredClone(LOGEMENTS)), reservations),
     reservations,
     filsMessages: operations.filsMessages,
     missions: toutesMissions,
@@ -660,6 +680,7 @@ export function creerSeed(): ErpDonnees {
     absences: ops.absences,
     controles: ops.controles,
     signalementsLogement: ops.signalementsLogement,
+    conseilsPrix: [],
   };
   const complet = { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
   return { ...complet, ...creerProgrammesDemo(complet) };

@@ -8,6 +8,7 @@
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
 import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
+import type { ElementPrix } from './prix-conseils';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -37,6 +38,8 @@ export interface OrigineRepull {
   devise?: string;
   /** Voyageur chez Repull (pays lu dans sa fiche). */
   voyageurId?: string;
+  /** Réservation : quand le voyageur a réservé (bookedAt, à défaut createdAt), si la plateforme le dit. */
+  reserveeLe?: Horodatage;
   /** Annonces reliées sur chaque plateforme. */
   canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
   /** Logement retiré du choix (page Connexions) : en pause, plus synchronisé. */
@@ -887,6 +890,8 @@ export interface ErpDonnees {
   envoisProgrammes: EnvoiProgramme[];
   /** avis à déposer sur les voyageurs après leur départ (texte préparé, fait / passé). */
   avisADeposer: AvisADeposer[];
+  /** Prix conseillés (octobre 2026) : réglages, « C'est fait » / « Ignorer », état du passage du matin. */
+  conseilsPrix: ElementPrix[];
 }
 
 export type NomCollection = keyof ErpDonnees;

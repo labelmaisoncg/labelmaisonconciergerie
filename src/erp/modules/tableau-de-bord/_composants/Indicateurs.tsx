@@ -13,7 +13,8 @@ export function Indicateurs() {
     const f = fenetresHorizon('30j');
     return { cour: mesurer(d.donnees, f.courante), prec: mesurer(d.donnees, f.precedente) };
   }, [d.donnees]);
-  const actifs = d.logements.some((l) => l.statut === 'actif');
+  // Logements actifs, ou réservés sur la période (même règle que le connecteur Claude).
+  const actifs = cour.logements > 0;
   const lib = 'vs 30 j avant';
 
   return (
@@ -52,7 +53,7 @@ export function Indicateurs() {
       </div>
       <Aide titre="Comment ces chiffres sont calculés" className="mt-3 mb-0">
         <ul className="space-y-1">
-          <li>Occupation : nuits réservées ÷ nuits des logements actifs.</li>
+          <li>Occupation : nuits réservées ÷ nuits des logements actifs ou réservés sur la période.</li>
           <li>Revenu : payé par les voyageurs, moins la commission d’Airbnb ou de Booking.</li>
           <li>Prix moyen par nuit : hors frais de ménage.</li>
           <li>Annulations exclues. Une réservation à cheval sur deux périodes est partagée à la nuit.</li>

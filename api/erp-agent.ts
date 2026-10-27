@@ -31,6 +31,7 @@ import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espace
 import { surveiller } from './_erp-notifications.js';
 import { notificationsOpsDuJour } from './_operations-notifications.js';
 import { programmesPlanifies } from './_erp-programmes.js';
+import { passagePrixDuJour } from './_prix-conseils.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 52_000;
@@ -57,6 +58,10 @@ export default async function handler(req: any, res: any) {
     // le réveil de minuit l'été) ; borné à 8 s, jamais bloquant.
     const operations = await notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({}));
     if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
+    // Prix conseillés (un calcul et une notification par jour, à partir de 8 h) et anomalies graves.
+    // Lecture de la base seulement : aucun prix n'est jamais envoyé aux plateformes. Borné à 6 s.
+    const prix = await passagePrixDuJour({ limite: Date.now() + 6_000 }).catch(() => ({}));
+    if (Object.keys(prix).length) console.log('[erp-agent] prix', JSON.stringify(prix));
   }
   if (!planifie) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });

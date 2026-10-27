@@ -9,6 +9,7 @@ import { Aujourdhui } from './_composants/Aujourdhui';
 import { Courbes } from './_composants/Courbes';
 import { Demarrage } from './_composants/Demarrage';
 import { Indicateurs } from './_composants/Indicateurs';
+import { AVenir } from './_composants/AVenir';
 import { construireATraiter } from './_composants/aTraiter';
 import { PropositionInstallation } from '../parametres/_application/PropositionInstallation';
 
@@ -49,6 +50,7 @@ export default function TableauDeBord() {
         <>
           <Aujourdhui />
           <Indicateurs />
+          <AVenir />
           <Courbes />
         </>
       )}

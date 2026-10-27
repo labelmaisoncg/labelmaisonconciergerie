@@ -353,8 +353,7 @@ async function principal() {
   const auj = resa('r-auj', aujourdhui, '2026-09-28');
   verifier(
     libelle(fils[1]) === 'Urgent' && libelle(fils[2]) === 'Arrive demain' && libelle(fils[2], auj) === 'Arrive aujourd’hui' && libelle({ ...fils[2], reservationId: 'r-sur-place' }) === 'Sur place',
-    'badge : « Urgent » pour un problème, sinon « Arrive aujourd’hui », « Arrive demain » ou « Sur place »',
-    [libelle(fils[1]), libelle(fils[2]), libelle(fils[2], auj)],
+    `badge : « Urgent » pour un problème, sinon « Arrive aujourd’hui », « Arrive demain » ou « Sur place » (${[libelle(fils[1]), libelle(fils[2]), libelle(fils[2], auj)].join(' / ')})`,
   );
 
   /* ------------------------------------------------------------- langues */

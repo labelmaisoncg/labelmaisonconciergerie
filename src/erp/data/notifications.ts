@@ -27,7 +27,9 @@ export type TypeNotification =
   | 'avis'
   | 'synchro'
   | 'rappel'
-  | 'urgence';
+  | 'urgence'
+  | 'prix'
+  | 'anomalie';
 
 /** Les types, dans l'ordre des réglages, avec leur valeur par défaut. */
 export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; detail: string; defaut: boolean }[] = [
@@ -41,6 +43,8 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
   { type: 'synchro', libelle: 'Mise à jour des plateformes en échec', detail: 'Une fois par jour au plus.', defaut: true },
   { type: 'rappel', libelle: 'Rappel du matin', detail: 'Les arrivées et départs du jour.', defaut: false },
+  { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
+  { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
 ];
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;

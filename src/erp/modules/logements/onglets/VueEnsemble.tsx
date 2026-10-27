@@ -22,6 +22,9 @@ import { mandatDuProprietaire } from '../../../data/acces-gerant';
 import { IncidentsLogement } from '../_composants/IncidentsLogement';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
+import { previsionLogement } from '../../../data/previsionnel';
+import { CartePrevisionnel } from '../_composants/Previsionnel';
+import { PrixConseilles } from '../_composants/PrixConseilles';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
 
@@ -63,6 +66,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const s = statsLogement(d, l);
   const prix = prixAVenir(l);
+  const prevision = previsionLogement(l, d.reservations, AUJOURDHUI);
   const resas = d.reservations
     .filter((r) => r.logementId === l.id && estActive(r) && r.depart >= AUJOURDHUI)
     .sort((a, b) => a.arrivee.localeCompare(b.arrivee))
@@ -104,6 +108,8 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               { libelle: 'Note', valeur: s.note === undefined ? SANS_DONNEE : `${note(s.note)} / 5`, detail: s.note === undefined ? undefined : '12 mois' },
             ]}
           />
+          {prevision && <CartePrevisionnel prevision={prevision} titre="Prévisionnel" />}
+          <PrixConseilles logement={l} />
 
           <IncidentsLogement logement={l} />
           <Card flush>

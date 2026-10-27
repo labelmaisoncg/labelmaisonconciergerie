@@ -730,6 +730,8 @@ export function versReservation(r: RepullReservation, existant: Reservation | un
       code: texte(r.confirmationCode) || existant?.repull?.code,
       devise: texte(r.financials?.currency) || texte(r.currency) || existant?.repull?.devise,
       voyageurId: texte(r.primaryGuest?.id) || texte(r.guestId) || existant?.repull?.voyageurId,
+      // Lecture seule : sert à repérer une réservation faite le jour même de l'arrivée (anomalies.ts).
+      reserveeLe: texte(r.bookedAt) || texte(r.createdAt) || existant?.repull?.reserveeLe,
     },
   };
   return suivant;
