@@ -253,7 +253,6 @@ export function versProprietaire(v: Valeurs, o: { id: Id; aujourdhui: string; ex
     nom: nomProprietaire(v),
     contact: { email: texte(v, 'prop.email'), telephone: texte(v, 'prop.tel') },
     adresse: texte(v, 'prop.adresse') || [texte(v, 'bien.adresse'), texte(v, 'bien.complement'), `${texte(v, 'bien.cp')} ${texte(v, 'bien.ville')}`.trim()].filter(Boolean).join(', '),
-    ibanMasque: '',
     notes: note,
     creeLe: o.aujourdhui,
   };

@@ -12,16 +12,9 @@ interface Props {
   onCree?: (id: string) => void;
 }
 
-type Saisie = { type: TypeProprietaire; nom: string; email: string; telephone: string; adresse: string; iban: string; notes: string };
+type Saisie = { type: TypeProprietaire; nom: string; email: string; telephone: string; adresse: string; notes: string };
 
 const TYPES = Object.entries(LIBELLES.typeProprietaire).map(([valeur, libelle]) => ({ valeur, libelle }));
-
-/** Masque un IBAN saisi : « FR76 •••• •••• •••• 4821 ». Laisse intact un IBAN déjà masqué. */
-function masquerIban(saisie: string): string {
-  const brut = saisie.replace(/\s/g, '').toUpperCase();
-  if (!brut || saisie.includes('•')) return saisie.trim();
-  return `${brut.slice(0, 4)} •••• •••• •••• ${brut.slice(-4)}`;
-}
 
 export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: Props) {
   const { upsert } = useErp();
@@ -31,7 +24,6 @@ export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: 
     email: p?.contact.email ?? '',
     telephone: p?.contact.telephone ?? '',
     adresse: p?.adresse ?? '',
-    iban: p?.ibanMasque ?? '',
     notes: p?.notes ?? '',
   });
   const [s, setS] = useState<Saisie>(vierge);
@@ -54,8 +46,6 @@ export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim())) err.email = 'Adresse e-mail invalide.';
     if (s.telephone.replace(/\D/g, '').length < 10) err.telephone = 'Numéro à 10 chiffres minimum.';
     if (!s.adresse.trim()) err.adresse = 'L’adresse est obligatoire.';
-    const iban = s.iban.replace(/\s/g, '');
-    if (iban && !s.iban.includes('•') && !/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/i.test(iban)) err.iban = 'IBAN invalide.';
     setErreurs(err);
     if (Object.keys(err).length) return;
     const suivant: Proprietaire = {
@@ -65,7 +55,6 @@ export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: 
       nom: s.nom.trim(),
       contact: { email: s.email.trim(), telephone: s.telephone.trim() },
       adresse: s.adresse.trim(),
-      ibanMasque: masquerIban(s.iban),
       notes: s.notes.trim(),
     };
     upsert('proprietaires', suivant);
@@ -102,9 +91,6 @@ export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: 
         </Field>
         <Field label="Adresse postale" requis erreur={erreurs.adresse} className="sm:col-span-2">
           <Input value={s.adresse} onChange={(e) => maj('adresse', e.target.value)} />
-        </Field>
-        <Field label="IBAN" erreur={erreurs.iban} aide="Seuls les 4 premiers et 4 derniers caractères sont conservés." className="sm:col-span-2">
-          <Input value={s.iban} onChange={(e) => maj('iban', e.target.value)} placeholder="FR76 ..." autoComplete="off" />
         </Field>
         <Field label="Notes internes" className="sm:col-span-2">
           <Textarea value={s.notes} onChange={(e) => maj('notes', e.target.value)} rows={3} />

@@ -70,7 +70,8 @@ export interface Proprietaire {
   nom: string;
   contact: { email: string; telephone: string };
   adresse: string;
-  ibanMasque: string;
+  /** Ancien IBAN masqué : plus demandé ni affiché ; peut rester sur une ancienne fiche, effacé au prochain enregistrement. */
+  ibanMasque?: string;
   notes: string;
   creeLe: DateISO;
 }

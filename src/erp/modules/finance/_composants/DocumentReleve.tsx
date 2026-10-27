@@ -118,7 +118,7 @@ export function DocumentReleve({ proprietaire, periode, releve, logements, manda
         <div className="rounded-lg border border-(--lm-or-anneau) bg-(--lm-or-lavis) p-3">
           <p className="text-[12px] text-(--lm-brun)">Net versé au propriétaire</p>
           <p className="lm-chiffres text-[24px] font-semibold text-(--lm-encre)">{euros(totaux.net)}</p>
-          <p className="text-[11.5px] text-(--lm-encre-2)">Virement sur le compte {proprietaire.ibanMasque}</p>
+          <p className="text-[11.5px] text-(--lm-encre-2)">Versé par virement</p>
         </div>
       </div>
 

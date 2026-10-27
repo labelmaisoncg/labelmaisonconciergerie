@@ -444,7 +444,6 @@ export function proprietaireARenseigner(aujourdhui: DateISO): Proprietaire {
     nom: 'Propriétaire à renseigner',
     contact: { email: '', telephone: '' },
     adresse: '',
-    ibanMasque: '',
     notes:
       'Fiche créée par la synchronisation Repull : les logements importés y sont rattachés en attendant. ' +
       'Rattachez chaque logement à son vrai propriétaire (fiche du logement, onglet Vue d’ensemble).',

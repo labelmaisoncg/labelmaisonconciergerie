@@ -139,7 +139,6 @@ export function construire(b: BrouillonLancement, mandats: Mandat[], prospect?: 
           nom: b.propNom.trim(),
           contact: { email: b.email.trim(), telephone: b.telephone.trim() },
           adresse: b.propAdresse.trim(),
-          ibanMasque: '',
           notes: prospect ? `Issu du pipeline commercial (${prospect.nom}). ${prospect.notes}`.trim() : '',
           creeLe: AUJOURDHUI,
         }
