@@ -46,7 +46,7 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'rappel', libelle: 'Rappel du matin', detail: 'Les arrivées et départs du jour.', defaut: false },
   { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
-  { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les nouvelles publiées par le gérant.', defaut: true },
+  { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
 ];
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;

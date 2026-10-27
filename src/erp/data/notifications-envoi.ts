@@ -242,7 +242,8 @@ export async function annoncerAEquipe(
   const [enregistree] = await base.lire<unknown>(COLLECTION_ANNONCES_EQUIPE, [o.id]);
   const decision = deciderEnvoiAnnonce({ role: o.role, id: o.id, enregistree });
   if (!decision.ok) return { statut: decision.statut, corps: { ok: false, code: decision.code, erreur: decision.erreur } };
-  const appareils = (await lireAppareils(base)).filter((a) => estActive(a.preferences, 'annonce')).length;
+  // Comme à l'envoi : préférences de l'appareil selon le rôle de son compte.
+  const appareils = (await lireAppareils(base)).filter((a) => estActive(preferencesPourRole(a.preferences, a.role), 'annonce')).length;
   const bilan = await envoyerNotifications(base, [decision.groupe], { cles: o.cles, maintenant: o.maintenant, envoyer: o.envoyer });
   if (bilan.dejaParties) return { statut: 200, corps: { ok: true, dejaPartie: true, envoyees: 0, appareils } };
   if (bilan.envoyees) return { statut: 200, corps: { ok: true, envoyees: bilan.envoyees, appareils } };

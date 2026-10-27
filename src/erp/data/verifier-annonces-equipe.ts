@@ -29,6 +29,7 @@ import {
   FERMEES_MAX,
   fermerAnnonce,
   issueDeLaReponse,
+  issueDeLErreur,
   lireAnnonce,
   lireFermees,
   messagePublication,
@@ -51,6 +52,7 @@ import { annoncerAEquipe, enregistrerAppareil, lireAppareils, type BaseNotificat
 import { estActive, nettoyerPreferences, TYPES_NOTIFICATION, varianteAEnvoyer } from './notifications';
 import { ecritureRepullPermise } from './repull-synchro';
 import { creerSeed } from './seed';
+import { construireIndex } from '../layout/recherche/moteur';
 import { b64url, genererClesVapid, type AbonnementPush } from './web-push';
 import type { ErpDonnees } from './types';
 
@@ -190,11 +192,11 @@ async function principal() {
   section('4. Premier message : « Bonjour » au nom de la conciergerie');
   {
     const lm = premiereAnnonce(nomConciergerie(ESPACE_LABEL_MAISON));
-    verifier(lm.titre === 'Bonjour 👋' && lm.texte === 'Bienvenue dans l’ERP Label Maison. Les nouvelles de l’équipe s’afficheront ici.', 'Label Maison', lm);
+    verifier(lm.titre === 'Bonjour 👋' && lm.texte === 'Bienvenue dans l’app Label Maison. Les nouvelles de l’équipe s’afficheront ici.', 'Label Maison', lm);
     const sens = premiereAnnonce(nomConciergerie({ ...SENS }));
-    verifier(sens.texte.includes('l’ERP Sens.') && !sens.texte.includes('Label Maison'), 'autre espace : son nom, jamais « Label Maison »', sens);
+    verifier(sens.texte.includes('l’app Sens.') && !sens.texte.includes('Label Maison'), 'autre espace : son nom, jamais « Label Maison »', sens);
     const sansNom = premiereAnnonce(nomConciergerie({ id: SENS.id, nom: '  ' }));
-    verifier(sansNom.texte.startsWith('Bienvenue dans l’ERP. ') && !sansNom.texte.includes('  ') && !sansNom.texte.includes('Label Maison'), 'espace sans nom : phrase propre', sansNom);
+    verifier(sansNom.texte.startsWith('Bienvenue dans l’app. ') && !sansNom.texte.includes('  ') && !sansNom.texte.includes('Label Maison'), 'espace sans nom : phrase propre', sansNom);
     verifier(JSON.stringify(brouillonInitial([], 'Label Maison')) === JSON.stringify(lm), 'espace sans annonce : formulaire prérempli');
     verifier(JSON.stringify(brouillonInitial(undefined, 'Sens')) === JSON.stringify(premiereAnnonce('Sens')), 'collection absente : prérempli aussi');
     const retiree = retirerAnnonce(annonce('r1'), { maintenant: '2026-10-27T09:00:00+02:00', par: 'Gérant' });
@@ -329,13 +331,76 @@ async function principal() {
     verifier(messages[1].texte.includes('Démonstration') && messages[1].texte.includes('partirait'), 'démonstration : la notification partirait');
     verifier(messages[6].ton === 'alerte' && messages[6].texte.includes('n’est pas partie') && messages[6].texte.endsWith('serveur.'), 'échec : clair, avec la raison');
     verifier(messages[7].texte.endsWith('n’est pas partie.') && messages[2].ton === 'alerte', 'échec sans raison, ou pas encore enregistrée : alerte');
+    verifier(messages[0].texte === 'Annonce publiée.', 'sans notification : « Annonce publiée. »', messages[0]);
+    const connue = issueDeLErreur('inactif', 'Notifications pas encore activées sur le serveur.');
+    verifier(connue.genre === 'echec' && !connue.reessayable && messagePublication(connue).texte.endsWith('activées sur le serveur.'), 'refus connu : message du serveur relayé');
+    for (const code of ['gerant', 'introuvable', 'retiree', 'envoi']) {
+      const r = issueDeLErreur(code, `Message ${code}.`);
+      verifier(r.genre === 'echec' && messagePublication(r).texte.endsWith(`Message ${code}.`), `code ${code} : message relayé`);
+    }
+    const inconnue = issueDeLErreur(undefined, 'Base de l’ERP : erreur 500 {"code":"XX"}');
+    const autre = issueDeLErreur('autre', 'TypeError: Failed to fetch');
+    verifier(
+      inconnue.genre === 'echec' &&
+        inconnue.reessayable === true &&
+        !messagePublication(inconnue).texte.includes('500') &&
+        messagePublication(inconnue).texte.endsWith('Réessayez dans un instant.') &&
+        !messagePublication(autre).texte.includes('TypeError'),
+      'erreur inattendue : jamais le message technique, « Réessayez dans un instant. »',
+      messagePublication(inconnue),
+    );
+    const vide = issueDeLErreur('inactif', '  ');
+    verifier(vide.genre === 'echec' && vide.reessayable === true, 'refus connu sans message : phrase simple');
+
     const ecran = source('src/erp/modules/parametres/AnnoncesEquipe.tsx');
-    const iUpsert = ecran.indexOf("d.upsert('annoncesEquipe', r.annonce)");
-    const iEnregistrer = ecran.indexOf('d.enregistrerMaintenant()');
-    const iAppel = ecran.indexOf("action: 'annoncer', id: r.annonce.id }");
-    verifier(iUpsert > 0 && iEnregistrer > iUpsert && iAppel > iEnregistrer, 'enregistrée d’abord, puis l’action « annoncer »', { iUpsert, iEnregistrer, iAppel });
-    verifier(/else if \(d\.demo\) issue = \{ genre: 'demo' \}/.test(ecran) && ecran.indexOf('d.demo') < iAppel, 'démonstration : aucun appel au serveur');
+    const corpsAnnoncer = /const annoncer = async[\s\S]*?\n {2}\};/.exec(ecran)?.[0] ?? '';
+    const iDemo = corpsAnnoncer.indexOf("if (d.demo) return { genre: 'demo' }");
+    const iEnregistrer = corpsAnnoncer.indexOf('await d.enregistrerMaintenant()');
+    const iAppel = corpsAnnoncer.indexOf("{ action: 'annoncer', id }");
+    verifier(iDemo > 0 && iEnregistrer > iDemo && iAppel > iEnregistrer, 'démonstration : aucun appel ; sinon enregistrée d’abord, puis l’action « annoncer »', { iDemo, iEnregistrer, iAppel });
+    const corpsPublier = /const publier = async[\s\S]*?\n {2}\};/.exec(ecran)?.[0] ?? '';
+    const iPose = corpsPublier.indexOf("d.upsert('annoncesEquipe', r.annonce)");
+    verifier(iPose > 0 && corpsPublier.indexOf('await annoncer(r.annonce.id)') > iPose, '« Publier » : l’annonce est posée avant la notification');
     verifier(!/action: 'annoncer'[^}]*(titre|texte)/.test(ecran), 'le navigateur n’envoie que l’identifiant');
+    verifier(/issueDeLErreur\(err\.code, err\.message\)/.test(ecran), 'erreurs du serveur filtrées (codes connus seulement)');
+    verifier(
+      /const notificationsPossibles = d\.demo \|\| n\.serveurActif/.test(ecran) && /\{notificationsPossibles && \(/.test(ecran) && /notifier && notificationsPossibles \?/.test(ecran),
+      'case « Prévenir aussi par notification » seulement si les notifications marchent sur le serveur',
+    );
+  }
+
+  section('8 bis. Mots des écrans : jamais confondus avec l’annonce d’un logement');
+  {
+    const ecran = source('src/erp/modules/parametres/AnnoncesEquipe.tsx');
+    for (const attendu of ['titre="Nouvelle annonce à l’équipe"', 'titre="Sur l’Accueil de l’équipe"', 'titre="Retirer de l’Accueil ?"', 'Retirer de l’Accueil\n']) {
+      verifier(ecran.includes(attendu), `écran du gérant : ${attendu.trim()}`);
+    }
+    verifier(!/titre="(Publiées|Nouvelle annonce|Retirer cette annonce \?)"/.test(ecran), 'ni « Publiées », ni « Nouvelle annonce » seul, ni « Retirer cette annonce ? »');
+    const accueil = source('src/erp/modules/tableau-de-bord/_composants/AnnoncesEquipe.tsx');
+    verifier(/<Card role="region" aria-labelledby=\{titreId\}/.test(accueil) && /line-clamp-4/.test(accueil) && /Lire la suite/.test(accueil), 'Accueil : une seule carte (région), texte sur 4 lignes, « Lire la suite »');
+    verifier(accueil.includes('aria-label={`J’ai lu : ${a.titre}`}'), '« J’ai lu » nommé pour chaque annonce');
+    const ordre = "publieePar ? `${a.publieePar} · ` : ''";
+    verifier(accueil.includes(ordre) && ecran.includes(ordre), 'même ordre partout : auteur · date');
+    const parametres = source('src/erp/modules/parametres/index.tsx');
+    const iApplication = parametres.indexOf("cle: 'application'");
+    verifier(iApplication > 0 && parametres.indexOf("cle: 'annonces-equipe'") > iApplication, 'onglet après « Application »');
+    const type = TYPES_NOTIFICATION.find((t) => t.type === 'annonce');
+    verifier(type?.detail === 'Les messages du gérant à toute l’équipe.', 'réglage : « Les messages du gérant à toute l’équipe. »', type);
+  }
+
+  section('8 ter. Recherche : l’historique d’une annonce à l’équipe');
+  {
+    const d = creerSeed();
+    d.journal = [
+      { id: 'jrn-a', horodatage: '2026-09-24T09:00:00+02:00', auteur: 'Abdel', action: 'Création', entite: 'annoncesEquipe', entiteId: 'aeq-bonjour', details: '' },
+      { id: 'jrn-l', horodatage: '2026-09-24T09:00:00+02:00', auteur: 'Abdel', action: 'Création', entite: 'logements', entiteId: 'log-1', details: '' },
+      ...d.journal,
+    ];
+    const idx = construireIndex(d);
+    const a = idx.find((e) => e.type === 'journal' && e.id === 'jrn-a');
+    const l = idx.find((e) => e.type === 'journal' && e.id === 'jrn-l');
+    verifier(a?.titre === 'Annonce à l’équipe : création' && a.to === '/erp/parametres/annonces-equipe', 'ligne d’historique : nommée, mène à l’écran des annonces à l’équipe', a);
+    verifier(l?.titre === 'Création' && l.to === '/erp/logements/log-1', 'les autres lignes ne changent pas', l);
   }
 
   section('9. Route du serveur, plateformes, fonctions Vercel');

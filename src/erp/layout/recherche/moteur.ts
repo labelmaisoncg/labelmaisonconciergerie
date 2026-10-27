@@ -162,6 +162,9 @@ function lienJournal(entite: string, id: string): string {
       return '/erp/commercial';
     case 'crm':
       return `/erp/crm?contact=${i}`;
+    // Annonces à l'équipe (pas l'annonce d'un logement) : leur écran, réservé au gérant.
+    case 'annoncesequipe':
+      return '/erp/parametres/annonces-equipe';
     default:
       return '/erp/parametres/societe';
   }
@@ -348,7 +351,7 @@ export function construireIndex(d: ErpDonnees): ElementIndex[] {
     pousser({
       type: 'journal',
       id: j.id,
-      titre: j.action,
+      titre: j.entite === 'annoncesEquipe' ? `Annonce à l’équipe : ${j.action.toLowerCase()}` : j.action,
       detail: `${j.auteur} · ${dateCourte(j.horodatage)}${j.details ? ` · ${j.details}` : ''}`,
       to: lienJournal(j.entite, j.entiteId),
       texte: haystack(j.action, j.auteur, j.details, j.entite, variantesDate(j.horodatage)),
