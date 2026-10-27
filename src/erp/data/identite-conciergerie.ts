@@ -180,8 +180,11 @@ export function mentionsFacture(i: Pick<IdentiteSociete, 'mentions'>, p: Pick<Pr
   return [MENTIONS_PROFESSIONNEL, sansMentionLegale(propres)].filter(Boolean).join('\n');
 }
 
+/** Forme comparable : sans accents ni ponctuation, « 40 euros » comme « 40 € ». */
+const pourComparer = (s: string): string => sansAccents(s).replace(/\b(euros?|eur)\b/g, ' ').replace(/\s+/g, ' ').trim();
+
 /** Normalisée, la mention légale complète : une phrase du gérant qui y figure déjà est une copie. */
-const LEGALE_NORMALISEE = sansAccents(MENTIONS_PROFESSIONNEL);
+const LEGALE_NORMALISEE = pourComparer(MENTIONS_PROFESSIONNEL);
 
 /**
  * Texte du gérant sans les phrases de la mention légale qu'il a recopiées,
@@ -195,7 +198,7 @@ function sansMentionLegale(texte: string): string {
       ligne
         .split(/(?<=[.!?])\s+/)
         .filter((phrase) => {
-          const n = sansAccents(phrase);
+          const n = pourComparer(phrase);
           return n.length < 12 || !LEGALE_NORMALISEE.includes(n);
         })
         .join(' ')

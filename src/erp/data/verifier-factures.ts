@@ -620,6 +620,12 @@ async function main() {
       rLigne.ok && rLigne.facture.mensuelle?.emetteur?.mentions === `${MENTIONS_PROFESSIONNEL}\nPaiement à réception.`,
       'société : une phrase légale suivie d’une autre sur la même ligne, seule la seconde est gardée',
     );
+    const rEuros = validerFacture({
+      ...base,
+      proprietaire: sci,
+      identite: { ...IDENTITE_LABEL_MAISON, mentions: 'Indemnité forfaitaire pour frais de recouvrement : 40 euros.' },
+    });
+    verifier(rEuros.ok && rEuros.facture.mensuelle?.emetteur?.mentions === MENTIONS_PROFESSIONNEL, 'société : « 40 euros » recopié par le gérant compte comme la mention légale');
     const apercuSci = documentDeFacture(brouillon, { espace: LM, brouillon: { identite: IDENTITE_LABEL_MAISON, proprietaire: sci, logements: [] } })!;
     verifier(apercuSci.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'aperçu du brouillon : les mêmes mentions que la facture validée');
     const vueSci = rSci.ok ? facturesVue([partagerFacture(rSci.facture, maintenant)], P, '2026-10-05', { espace: LM.id })[0] : undefined;

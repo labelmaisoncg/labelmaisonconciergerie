@@ -44,7 +44,7 @@ import { partagerFacture } from '../../../data/relances';
 import { nouvelId, useErp } from '../../../data/store';
 import type { Facture, Proprietaire } from '../../../data/types';
 import { DocumentFacture, FactureImprimable } from '../../../espace-proprietaire/DocumentFacture';
-import { titreMois } from '../../../espace-proprietaire/commun';
+import { deNom, titreMois } from '../../../espace-proprietaire/commun';
 import { Alert, Button, ButtonLink, Field, IconButton, Input, MenuActions, Modal, Select } from '../../../ui';
 import { FormMandat } from '../../mandats/FormMandat';
 
@@ -322,8 +322,10 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
               actionsDessous
               actions={
                 gerant && (
-                  <Button variant="secondary" size="sm" onClick={() => setMandatPour(calcul.logementsSansTaux[0].logementId)}>
-                    {calcul.logementsSansTaux.length > 1 ? `Ajouter le mandat de ${calcul.logementsSansTaux[0].nom}` : 'Ajouter son mandat'}
+                  <Button variant="secondary" size="sm" className="max-w-full sm:max-w-64" onClick={() => setMandatPour(calcul.logementsSansTaux[0].logementId)}>
+                    <span className="min-w-0 truncate">
+                      {calcul.logementsSansTaux.length > 1 ? `Ajouter le mandat ${deNom(calcul.logementsSansTaux[0].nom)}` : 'Ajouter son mandat'}
+                    </span>
                   </Button>
                 )
               }
