@@ -1,10 +1,82 @@
 import { useState, type FormEvent } from 'react';
-import { ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { Check, Copy, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { pluriel } from '../../data/format';
+import { lienCreationCompte } from '../../data/invitation';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
 import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Input, Repli, Select, Table, type Colonne } from '../../ui';
+import { appelerServeur } from '../messagerie/_composants/serveur';
+
+/**
+ * Après l'ajout d'un membre : « Envoyer l'invitation » (api/erp-invitation),
+ * un e-mail avec le lien « Créer mon compte » ; sans expéditeur pour
+ * l'espace, le lien à copier. Le lien ne contient que l'adresse.
+ */
+function InvitationMembre({ nom, email, demo }: { nom: string; email: string; demo: boolean }) {
+  const [etat, setEtat] = useState<{ envoye: boolean; lien: string }>();
+  const [erreur, setErreur] = useState<string>();
+  const [enCours, setEnCours] = useState(false);
+  const [copie, setCopie] = useState(false);
+
+  const envoyer = async () => {
+    setEnCours(true);
+    setErreur(undefined);
+    try {
+      setEtat(demo ? { envoye: false, lien: lienCreationCompte(email) } : await appelerServeur<{ envoye: boolean; lien: string }>('/api/erp-invitation', 'POST', { email }));
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnCours(false);
+    }
+  };
+
+  const copier = async () => {
+    if (!etat) return;
+    try {
+      await navigator.clipboard.writeText(etat.lien);
+      setCopie(true);
+      window.setTimeout(() => setCopie(false), 2000);
+    } catch {
+      /* copie refusée : le lien reste sélectionnable */
+    }
+  };
+
+  return (
+    <>
+      <Alert tone="succes" className="mb-3" titre={`${nom} fait partie de l’équipe.`}>
+        {!etat ? (
+          <>
+            <p>Envoyez-lui l’invitation&nbsp;: le lien lui permet de créer son compte avec {email}.</p>
+            <Button className="mt-2" icone={<Mail />} chargement={enCours} onClick={() => void envoyer()}>
+              Envoyer l’invitation
+            </Button>
+          </>
+        ) : etat.envoye ? (
+          <p>Invitation envoyée à {email}.</p>
+        ) : (
+          <>
+            <p>
+              {demo ? 'Démonstration : aucun e-mail n’est envoyé.' : 'L’e-mail ne peut pas partir pour cet espace.'} Copiez ce lien et envoyez-le à {nom}{' '}
+              (SMS, WhatsApp…).
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Input readOnly value={etat.lien} onFocus={(e) => e.currentTarget.select()} aria-label={'Lien « Créer mon compte »'} className="text-[12.5px]" />
+              <Button icone={copie ? <Check /> : <Copy />} onClick={() => void copier()}>
+                {copie ? 'Copié' : 'Copier'}
+              </Button>
+            </div>
+          </>
+        )}
+      </Alert>
+      {erreur && (
+        <Alert tone="danger" className="mb-3">
+          {erreur}
+        </Alert>
+      )}
+    </>
+  );
+}
 
 const ROLES: { role: RoleUtilisateur; description: string; acces: string[] }[] = [
   {
@@ -41,7 +113,7 @@ export default function Utilisateurs() {
   const peutModifier = d.utilisateur.role === 'gerant';
 
   const [nouveau, setNouveau] = useState({ email: '', nom: '', role: 'operations' as RoleUtilisateur });
-  const [ajout, setAjout] = useState<string>();
+  const [ajout, setAjout] = useState<{ nom: string; email: string }>();
 
   const changerRole = (u: Utilisateur, role: RoleUtilisateur) => {
     if (u.id === d.utilisateur.id && role !== 'gerant' && d.utilisateurs.filter((x) => x.role === 'gerant').length === 1)
@@ -60,7 +132,7 @@ export default function Utilisateurs() {
     d.upsert('utilisateurs', { id, email, nom: nouveau.nom.trim(), role: nouveau.role });
     setNouveau({ email: '', nom: '', role: 'operations' });
     setMessage(undefined);
-    setAjout(`${nouveau.nom.trim()} ajouté. Créez aussi son compte de connexion dans Supabase (Authentication, Users, Add user) avec la même adresse.`);
+    setAjout({ nom: nouveau.nom.trim(), email });
   };
 
   const retirer = (u: Utilisateur) => {
@@ -138,11 +210,7 @@ export default function Utilisateurs() {
             Seul un gérant peut modifier les rôles.
           </Alert>
         )}
-        {ajout && (
-          <Alert tone="succes" className="mb-3">
-            {ajout}
-          </Alert>
-        )}
+        {ajout && <InvitationMembre key={ajout.email} nom={ajout.nom} email={ajout.email} demo={d.mode !== 'reel'} />}
         <Table legende="Utilisateurs" colonnes={colonnes} lignes={d.utilisateurs} cleLigne={(u) => u.id} vide="Personne dans l’équipe pour l’instant." />
         {peutModifier && (
           <Card className="mt-4">
@@ -172,7 +240,7 @@ export default function Utilisateurs() {
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
           {d.mode === 'reel'
-            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
+            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Sans compte, il le crée depuis la page de connexion (« Créer mon compte »), avec l’adresse inscrite ici. Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
             : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.'}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">

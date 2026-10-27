@@ -10,6 +10,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SCHEMA_ERP, SUPABASE_ANON_KEY, SUPABASE_URL, URL_RETOUR_MOT_DE_PASSE } from './config';
 import { erreurBaseHistorique, espaceDesDonnees, lireEspacesMembre, prefixeFichiers, type EspaceMembre } from './espaces';
+import { EMAIL_VALIDE, normaliserEmailInvitation } from './invitation';
 import type { RoleUtilisateur, Utilisateur } from './types';
 
 /* ----------------------------------------------------------------- client */
@@ -24,11 +25,17 @@ let client: ClientErp | null = null;
  * Lien de récupération de mot de passe : lu AVANT que le client Supabase ne
  * nettoie l'adresse (#access_token=...&type=recovery, ou #error=... si expiré).
  */
-function lireRetourLien(): { recuperation: boolean; erreur?: string } {
+function lireRetourLien(): { recuperation: boolean; erreur?: string; creer?: string } {
   if (typeof window === 'undefined') return { recuperation: false };
   const hash = window.location.hash.replace(/^#/, '');
   if (!hash) return { recuperation: false };
   const p = new URLSearchParams(hash);
+  if (p.has('creer')) {
+    // Lien d'invitation « Créer mon compte » : l'adresse seule, retirée de l'adresse aussitôt.
+    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+    const email = normaliserEmailInvitation(p.get('creer'));
+    return { recuperation: false, creer: EMAIL_VALIDE.test(email) && email.length <= 200 ? email : '' };
+  }
   const code = p.get('error_code') ?? p.get('error');
   if (code) {
     const expire = /expired|otp/i.test(code + (p.get('error_description') ?? ''));
@@ -163,6 +170,26 @@ export async function envoyerLienMotDePasse(email: string): Promise<ResultatAuth
   try {
     const { error } = await obtenirClient().auth.resetPasswordForEmail(email.trim(), { redirectTo: URL_RETOUR_MOT_DE_PASSE });
     return error ? { ok: false, erreur: traduireAuth(error.message) } : { ok: true };
+  } catch (e) {
+    return { ok: false, erreur: traduireAuth((e as Error)?.message) };
+  }
+}
+
+/**
+ * « Créer mon compte » (secours de la page d'accès) : inscription auprès de
+ * Supabase, lien de confirmation vers le site fixe. Personne n'est connecté
+ * ici, même si Supabase rendait une session (confirmation coupée) : l'adresse
+ * doit être confirmée par son lien. Même réponse qu'un compte existe ou non.
+ */
+export async function creerCompte(email: string, motDePasse: string): Promise<ResultatAuth> {
+  try {
+    const { data, error } = await obtenirClient().auth.signUp({ email: email.trim(), password: motDePasse, options: { emailRedirectTo: URL_RETOUR_MOT_DE_PASSE } });
+    if (data?.session) await obtenirClient().auth.signOut({ scope: 'local' });
+    if (!error || /already registered|already been registered|user_already_exists/i.test(`${error.code ?? ''} ${error.message}`)) return { ok: true };
+    if (/signup_disabled|signups? not allowed/i.test(`${error.code ?? ''} ${error.message}`)) return { ok: false, erreur: 'La création de compte n’est pas ouverte pour le moment. Prévenez un gérant.' };
+    if (/email_address_not_authorized|not authorized/i.test(`${error.code ?? ''} ${error.message}`)) return { ok: false, erreur: 'L’e-mail de confirmation ne peut pas partir pour le moment. Prévenez un gérant.' };
+    if (/email_address_invalid|invalid format|unable to validate email/i.test(`${error.code ?? ''} ${error.message}`)) return { ok: false, erreur: 'Adresse e-mail invalide.' };
+    return { ok: false, erreur: traduireAuth(error.message) };
   } catch (e) {
     return { ok: false, erreur: traduireAuth((e as Error)?.message) };
   }

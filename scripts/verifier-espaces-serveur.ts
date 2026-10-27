@@ -28,6 +28,15 @@
  * qui fait foi, usage unique et relance unique sous accès simultanés
  * (écriture conditionnelle sur maj_le), un lien toutes les 2 minutes,
  * jamais l'expéditeur de Label Maison faute de fiche, ids encodés.
+ * Connecteur Claude (OAuth + MCP) et agenda du CRM par espace : base d'avant
+ * les espaces exactement comme avant (Label Maison, compte d'équipe, jetons
+ * sans préfixe, anciens jetons acceptés, un jeton d'un autre espace refusé) ;
+ * ensuite, code et jetons rangés dans l'espace du gérant qui autorise, un
+ * jeton de Sens ne lit jamais Label Maison et inversement, jetons modifiés
+ * refusés sans rien lire, rotation et révocation par espace, non-membre et
+ * non-gérant refusés, espace fermé refusé. Invitation « Créer mon compte » :
+ * gérant de l'espace seulement, adresse membre de l'espace, lien sur le site
+ * fixe, e-mail au nom de l'espace ou lien à copier.
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -43,6 +52,12 @@ import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configura
 import routeSynchro from '../api/erp-repull-sync';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
+import routeAgendaIcs from '../api/crm-agenda/[cle]';
+import routeConnecteur from '../api/erp-connecteur-claude';
+import routeInvitation from '../api/erp-invitation';
+import routeMcp from '../api/crm-mcp/index';
+import routeMcpCle from '../api/crm-mcp/[cle]';
+import routeToken from '../api/oauth-token';
 import routeProprietaire from '../api/espace-proprietaire';
 import routeOperations from '../api/espace-operations';
 import { relancesDuJour } from '../api/_relances';
@@ -88,10 +103,15 @@ class Monde {
     'equipe@labelmaisoncg.fr': { mdp: 'mdp-equipe', jeton: 'jeton-equipe' },
     'serveur@labelmaisoncg.fr': { mdp: 'mdp-serveur', jeton: 'jeton-serveur' },
     'gerant-b@exemple.invalid': { mdp: 'x', jeton: 'jeton-sens' },
+    'ops-sens@exemple.invalid': { mdp: 'x', jeton: 'jeton-ops-sens' },
   };
   membres = [
     { espace: LM, email: 'equipe@labelmaisoncg.fr', role: 'gerant' },
     { espace: SENS, email: 'gerant-b@exemple.invalid', role: 'gerant' },
+    { espace: SENS, email: 'ops-sens@exemple.invalid', role: 'operations' },
+    // Ajoutés par un gérant, sans compte encore (« Créer mon compte »).
+    { espace: LM, email: 'Nouvelle_Recrue@exemple.invalid', role: 'operations' },
+    { espace: SENS, email: 'recrue-sens@exemple.invalid', role: 'lecture' },
   ];
   espaces = [
     { id: LM, code: 'label-maison', nom: 'Label Maison', repull_workspace: null as string | null, config: {} as Record<string, unknown> },
@@ -174,7 +194,18 @@ class Monde {
       }
       return json({ code: 'PGRST202' }, 404);
     }
-    if (chemin === 'membres') return json(this.membres.filter((m) => m.espace === LM && this.permis(jeton, null).includes(LM)).map(({ email: e, role }) => ({ email: e, role })));
+    if (chemin === 'membres') {
+      // erp.membres : base d'avant les espaces, ceux de Label Maison (sans colonne espace) ;
+      // ensuite, ceux des espaces du compte (en-tête compris). Filtres email (eq / ilike) et espace.
+      const p = url.searchParams;
+      if (this.historique && p.has('espace')) return json({ code: '42703', message: 'column membres.espace does not exist' }, 400);
+      const filtreEspace = p.get('espace')?.replace(/^eq\./, '');
+      const filtreEmail = p.get('email') ?? '';
+      const motif = filtreEmail.startsWith('ilike.') ? filtreEmail.slice(6).replace(/\\([\\%_])/g, '$1') : null;
+      const garde = (e: string) => (!filtreEmail ? true : filtreEmail.startsWith('eq.') ? e === filtreEmail.slice(3) : motif !== null && e.toLowerCase() === motif.toLowerCase());
+      const visibles = this.membres.filter((m) => (this.historique ? m.espace === LM && this.permis(jeton, null).includes(LM) : this.permis(jeton, entete).includes(m.espace)));
+      return json(visibles.filter((m) => (!filtreEspace || m.espace === filtreEspace) && garde(m.email)).map(({ email: e, role }) => ({ email: e, role })));
+    }
     const avecEspace = url.searchParams.has('espace') || (Array.isArray(corps) && corps.some((l) => 'espace' in l));
     if (this.historique && avecEspace) return json({ code: '42703', message: 'column enregistrements.espace does not exist' }, 400);
     const permis = this.permis(jeton, entete);
@@ -234,6 +265,10 @@ function reponse() {
       if (typeof t === 'string') r.texte = t;
       return r;
     },
+    send(t?: unknown) {
+      if (typeof t === 'string') r.texte = t;
+      return r;
+    },
   };
   return r;
 }
@@ -272,6 +307,40 @@ async function principal() {
   const selection = (espace: string) => monde.poser(espace, 'repull', { id: ID_SELECTION, annonces: ['1'], limite: null, majLe: '2026-10-01T10:00:00+02:00', majPar: 'test' } as { id: string });
   selection(LM);
   selection(SENS);
+
+  // Connecteur Claude (OAuth + MCP), agenda du CRM, invitation « Créer mon compte ».
+  const appelRoute = async (route: (req: any, res: any) => unknown, o: Parameters<typeof requete>[0]) => {
+    const res = reponse();
+    await route(requete(o), res);
+    return res;
+  };
+  const PKCE = crypto.randomBytes(40).toString('base64url');
+  const DEFI = crypto.createHash('sha256').update(PKCE).digest('base64url');
+  const RETOUR_CLAUDE = 'https://claude.ai/api/mcp/auth_callback';
+  const DEMANDE = { response_type: 'code', client_id: 'claude-test', redirect_uri: RETOUR_CLAUDE, code_challenge: DEFI, code_challenge_method: 'S256', state: 'etat-1' };
+  const autoriserClaude = (entetes: Record<string, string>) => appelRoute(routeConnecteur, { entetes, corps: { action: 'autoriser', ...DEMANDE } });
+  const codeDe = (res: { corps?: Record<string, any> }) => new URL(String(res.corps?.redirection || 'https://x.invalid/')).searchParams.get('code') ?? '';
+  const jetonsDe = (code: string) => appelRoute(routeToken, { corps: { grant_type: 'authorization_code', code, code_verifier: PKCE, redirect_uri: RETOUR_CLAUDE, client_id: 'claude-test' } });
+  const rafraichirJeton = (refresh_token: string) => appelRoute(routeToken, { corps: { grant_type: 'refresh_token', refresh_token, client_id: 'claude-test' } });
+  const mcp = (jeton: string, method: string, params?: Record<string, unknown>) =>
+    appelRoute(routeMcp, { entetes: { authorization: `Bearer ${jeton}` }, corps: { jsonrpc: '2.0', id: 1, method, ...(params ? { params } : {}) } });
+  /** Noms des contacts du CRM que Claude voit avec ce jeton (ou « refus <statut> »). */
+  const nomsCrm = async (jeton: string) => {
+    const r = await mcp(jeton, 'tools/call', { name: 'crm_chercher', arguments: {} });
+    const contacts = r.corps?.result?.structuredContent?.contacts as { nom: string }[] | undefined;
+    return r.statut === 200 && contacts ? contacts.map((c) => c.nom).sort().join() : `refus ${r.statut}`;
+  };
+  const lectureCrm = (espace?: string) => monde.base.some((r) => r.methode === 'GET' && r.url.searchParams.get('collection') === 'eq.crm' && (!espace || r.espace === espace));
+  const creerAgenda = (entetes: Record<string, string>) => appelRoute(routeAgenda, { entetes, corps: { action: 'creer', filtre: 'tous' } });
+  const cleAgenda = (res: { corps?: Record<string, any> }) => String(res.corps?.https ?? '').split('/api/crm-agenda/')[1] ?? '';
+  const lireAgenda = (cle: string) => appelRoute(routeAgendaIcs, { methode: 'GET', query: { cle } });
+  const inviter = (entetes: Record<string, string>, email: string) => appelRoute(routeInvitation, { entetes, corps: { email } });
+  const contactCrm = (id: string, nom: string) =>
+    ({ id, nom, source: 'contact', statut: 'a_appeler', notes: '', tentatives: 0, historique: [], creeLe: '2026-10-01T10:00:00+02:00' }) as { id: string };
+  monde.poser(LM, 'crm', contactCrm('crm-lm-1', 'Lucie Label'));
+  monde.poser(LM, 'crm', contactCrm('crm-lm-2', 'Louis Label'));
+  monde.poser(SENS, 'crm', contactCrm('crm-s-1', 'Simone Sens'));
+  const FORME_LM = /^[A-Za-z0-9_-]{43}$/;
 
   section('Outils');
   verifier(espaceDemande({ headers: { 'x-erp-espace': SENS.toUpperCase() } }) === SENS && espaceDemande({ headers: { 'x-erp-espace': 'sens' } }) === undefined && espaceDemande({ headers: {} }) === undefined, 'espace de l’appel : uuid de l’en-tête seulement');
@@ -385,6 +454,84 @@ async function principal() {
     verifier(res.statut === 401, 'opérations : cookie propriétaire refusé', res.statut);
   }
 
+  section('Connecteur Claude, agenda et invitation, base pas encore préparée : Label Maison comme avant');
+  {
+    const gerantLM = { authorization: 'Bearer jeton-equipe' };
+    monde.oublier();
+    let res = await autoriserClaude(gerantLM);
+    const code = codeDe(res);
+    verifier(res.statut === 200 && FORME_LM.test(code) && res.corps?.espace === 'Label Maison', 'gérant de Label Maison : code sans espace (forme d’avant)', res.corps);
+    verifier(monde.base.every((r) => r.espace === null) && monde.ecritures(LM).length === 1, 'code rangé dans Label Maison, sans en-tête');
+    res = await jetonsDe(code);
+    const acces = String(res.corps?.access_token ?? '');
+    verifier(res.statut === 200 && FORME_LM.test(acces) && FORME_LM.test(String(res.corps?.refresh_token)), 'jetons sans espace (forme d’avant)', res.corps);
+    monde.oublier();
+    verifier((await nomsCrm(acces)) === 'Louis Label,Lucie Label', 'Claude lit le CRM de Label Maison', await nomsCrm(acces));
+    verifier(monde.base.length > 0 && monde.base.every((r) => r.espace === null && r.jeton === 'jeton-equipe' && !r.url.searchParams.has('espace')), 'compte d’équipe, sans en-tête ni filtre (comme avant)');
+    const init = await mcp(acces, 'initialize', { protocolVersion: '2025-06-18' });
+    verifier(init.corps?.result?.serverInfo?.title === 'Label Maison' && /en Essonne/.test(init.corps?.result?.instructions ?? ''), 'instructions de Label Maison inchangées', init.corps?.result?.serverInfo);
+    monde.oublier();
+    res = await mcp(`${SENS}.${acces}`, 'tools/list');
+    verifier(res.statut === 401 && /invalid_token/.test(res.entetes['WWW-Authenticate'] ?? '') && !lectureCrm(), 'jeton préfixé par un autre espace, base d’avant : refusé, rien de lu', res.statut);
+    res = await autoriserClaude({ authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 403, 'gérant d’un autre espace, base d’avant : ne peut rien autoriser', res.corps);
+    res = await autoriserClaude({});
+    verifier(res.statut === 401, 'sans session : rien n’est autorisé', res.statut);
+    // Jeton émis avant cette version (rangé sans espace) : Label Maison.
+    const ancien = crypto.randomBytes(32).toString('base64url');
+    monde.poser(LM, 'connecteurs', {
+      id: `oauth-jeton-${crypto.createHash('sha256').update(ancien).digest('hex')}`,
+      type: 'acces',
+      famille: 'f-ancienne',
+      client: 'claude-test',
+      par: 'equipe@labelmaisoncg.fr',
+      creeLe: new Date().toISOString(),
+      expire: new Date(Date.now() + 3600_000).toISOString(),
+    } as { id: string });
+    verifier((await nomsCrm(ancien)) === 'Louis Label,Lucie Label', 'ancien jeton (sans espace) : Label Maison', await nomsCrm(ancien));
+
+    // Agenda du CRM.
+    res = await creerAgenda(gerantLM);
+    const cle = cleAgenda(res);
+    verifier(res.statut === 200 && FORME_LM.test(cle) && String(res.corps?.webcal).startsWith('webcal://www.labelmaisoncg.fr/api/crm-agenda/'), 'agenda : lien de Label Maison sans espace', res.corps);
+    res = await lireAgenda(cle);
+    verifier(res.statut === 200 && res.texte.includes('Lucie Label') && res.texte.includes('X-WR-CALNAME:Relances CRM · Label Maison') && res.texte.includes('UID:crm-crm-lm-1@') && !res.texte.includes('Simone'), 'agenda de Label Maison : son CRM, comme avant', res.texte.slice(0, 300));
+    res = await lireAgenda(`${SENS}.${cle}`);
+    verifier(res.statut === 404, 'agenda : clé préfixée par un autre espace, base d’avant : 404', res.statut);
+
+    // Clé fixée par l'administrateur (MCP_CRM_TOKEN) : Label Maison.
+    env.MCP_CRM_TOKEN = `cle-fixee-de-test-${'x'.repeat(24)}`;
+    res = await appelRoute(routeMcpCle, { query: { cle: env.MCP_CRM_TOKEN }, corps: { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'crm_chercher', arguments: {} } } });
+    verifier(res.statut === 200 && (res.corps?.result?.structuredContent?.total ?? 0) === 2, 'clé fixée (MCP_CRM_TOKEN) : Label Maison', res.corps?.result?.structuredContent?.total);
+    delete env.MCP_CRM_TOKEN;
+
+    // Invitation « Créer mon compte ».
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    monde.emails = [];
+    const LIEN = 'https://www.labelmaisoncg.fr/erp#creer=nouvelle_recrue%40exemple.invalid';
+    res = await inviter({ ...gerantLM, origin: 'https://pirate.example', host: 'pirate.example' }, ' Nouvelle_Recrue@Exemple.invalid ');
+    verifier(res.statut === 200 && res.corps?.envoye === true && res.corps?.lien === LIEN, 'invitation (Origin tierce) : lien sur le site fixe, adresse en minuscules', res.corps);
+    verifier(
+      monde.emails.length === 1 && monde.emails[0].from === env.CONTACT_FROM_EMAIL && monde.emails[0].to[0] === 'nouvelle_recrue@exemple.invalid' && monde.emails[0].text.includes(LIEN) && /Label Maison/.test(monde.emails[0].subject),
+      'invitation : e-mail au nom de Label Maison, avec le lien',
+      monde.emails.map((m) => ({ from: m.from, to: m.to, subject: m.subject })),
+    );
+    const lectureMembres = monde.base.filter((r) => r.chemin === 'membres' && r.url.searchParams.has('email')).at(-1);
+    verifier(!!lectureMembres && lectureMembres.jeton === 'jeton-equipe' && !lectureMembres.url.searchParams.has('espace'), 'appartenance lue avec la session du gérant, sans colonne espace (base d’avant)', lectureMembres?.url.search);
+    monde.emails = [];
+    res = await inviter(gerantLM, 'inconnu@exemple.invalid');
+    verifier(res.statut === 409 && res.corps?.code === 'membre' && monde.emails.length === 0, 'adresse absente de l’équipe : refusée, aucun e-mail', res.corps);
+    res = await inviter(gerantLM, 'pas une adresse');
+    verifier(res.statut === 400, 'adresse invalide : refusée', res.statut);
+    res = await inviter({ authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }, 'recrue-sens@exemple.invalid');
+    verifier(res.statut === 403 && monde.emails.length === 0, 'autre espace, base d’avant : refusé', res.statut);
+    res = await appelRoute(routeInvitation, { methode: 'GET', entetes: gerantLM });
+    verifier(res.statut === 405, 'invitation : POST seulement', res.statut);
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
+  }
+
   section('Base préparée, compte serveur pas prêt');
   monde.historique = false;
   env.ERP_SERVEUR_MOT_DE_PASSE = 'mdp-serveur';
@@ -403,6 +550,11 @@ async function principal() {
     m = '';
     await configurationEspace(SENS).catch((x: Error) => (m = x.message));
     verifier(m === MESSAGE_COMPTE_SERVEUR, 'réglages de Sens : compte serveur exigé', m);
+    monde.oublier();
+    const res = await autoriserClaude({ authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 503 && !monde.base.some((r) => r.methode === 'POST' && r.chemin === 'enregistrements'), 'connecteur de Sens sans compte serveur : indisponible, rien rangé nulle part', res.statut);
+    const forge = await mcp(`${SENS}.${crypto.randomBytes(32).toString('base64url')}`, 'tools/list');
+    verifier(forge.statut === 401 && !lectureCrm(), 'jeton de Sens sans compte serveur : refusé, rien de lu', forge.statut);
   }
   env.ERP_SERVEUR_MOT_DE_PASSE = 'mauvais';
   oublierEtatBase();
@@ -480,7 +632,172 @@ async function principal() {
     verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.corps);
     res = reponse();
     await routeAgenda(requete({ methode: 'GET', entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS } }), res);
-    verifier(res.statut === 403 && res.corps?.code === 'espace', 'agenda du CRM : Label Maison seulement pour l’instant', res.corps);
+    verifier(res.statut === 200 && res.corps?.liens === 0, 'agenda du CRM : le gérant de Sens voit les liens de Sens (aucun encore)', res.corps);
+  }
+
+  section('Connecteur Claude : chaque espace sa clé');
+  {
+    const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    monde.oublier();
+    let res = await autoriserClaude(gerantSens);
+    const codeSens = codeDe(res);
+    verifier(res.statut === 200 && codeSens.startsWith(`${SENS}.`) && res.corps?.espace === 'Sens', 'gérant de Sens : code de Sens', { statut: res.statut, espace: res.corps?.espace });
+    const ecritsCode = monde.base.filter((r) => r.methode === 'POST' && r.chemin === 'enregistrements');
+    verifier(monde.ecritures(SENS).length === 1 && ecritsCode.length === 1 && ecritsCode[0].espace === SENS, 'code rangé dans Sens seulement', ecritsCode.map((r) => r.espace));
+    res = await jetonsDe(codeSens.slice(37));
+    verifier(res.statut === 400 && res.corps?.error === 'invalid_grant', 'code de Sens sans son préfixe : inconnu de Label Maison', res.corps);
+    res = await jetonsDe(`${VIDE}.${codeSens.slice(37)}`);
+    verifier(res.statut === 400 && res.corps?.error === 'invalid_grant', 'code de Sens présenté pour un autre espace : refusé', res.corps);
+    res = await jetonsDe(codeSens);
+    const accesSens = String(res.corps?.access_token ?? '');
+    const rafraichSens = String(res.corps?.refresh_token ?? '');
+    verifier(res.statut === 200 && accesSens.startsWith(`${SENS}.`) && rafraichSens.startsWith(`${SENS}.`), 'jetons de Sens (préfixés par l’espace)', res.corps);
+    res = await jetonsDe(codeSens);
+    verifier(res.statut === 400, 'code de Sens : usage unique', res.corps);
+
+    monde.oublier();
+    verifier((await nomsCrm(accesSens)) === 'Simone Sens', 'jeton de Sens : Claude ne lit que le CRM de Sens', await nomsCrm(accesSens));
+    const lectures = monde.base.filter((r) => r.chemin === 'enregistrements');
+    verifier(lectures.length > 0 && lectures.every((r) => r.espace === SENS && r.jeton === 'jeton-serveur' && r.url.searchParams.get('espace') === `eq.${SENS}`), 'compte serveur, en-tête et filtre de Sens à chaque lecture', lectures.map((r) => r.espace));
+    const ecrit = await mcp(accesSens, 'tools/call', { name: 'crm_ajouter', arguments: { nom: 'Sacha Nouveau', telephone: '0600000000' } });
+    verifier(ecrit.statut === 200 && !ecrit.corps?.result?.isError && monde.ecritures(SENS).some((r) => (r.corps as { collection: string }[]).some((l) => l.collection === 'crm')) && monde.ecritures(LM).length === 0, 'écriture de Claude (CRM) : dans Sens seulement', ecrit.corps?.result);
+    const initS = await mcp(accesSens, 'initialize', { protocolVersion: '2025-06-18' });
+    const consignes = String(initS.corps?.result?.instructions ?? '');
+    verifier(initS.corps?.result?.serverInfo?.title === 'Sens' && consignes.startsWith('Sens ') && !/Essonne|Label Maison Conciergerie|formulaires/.test(consignes), 'instructions au nom de Sens, rien de Label Maison', consignes.slice(0, 120));
+
+    // Label Maison, sur la base des espaces : sa propre autorisation.
+    res = await autoriserClaude(gerantLM);
+    const codeLM = codeDe(res);
+    verifier(res.statut === 200 && FORME_LM.test(codeLM), 'gérant de Label Maison : code sans préfixe, comme avant', codeLM.slice(0, 40));
+    res = await jetonsDe(codeLM);
+    const accesLM = String(res.corps?.access_token ?? '');
+    monde.oublier();
+    verifier(FORME_LM.test(accesLM) && (await nomsCrm(accesLM)) === 'Louis Label,Lucie Label', 'jeton de Label Maison : le CRM de Label Maison', await nomsCrm(accesLM));
+    verifier(monde.base.filter((r) => r.chemin === 'enregistrements').every((r) => r.espace === LM), 'jeton de Label Maison : jamais la base de Sens');
+
+    // Jetons modifiés : jamais les données d'un autre espace.
+    for (const [quoi, jeton] of [
+      ['préfixe de Sens ajouté à un jeton de Label Maison', `${SENS}.${accesLM}`],
+      ['préfixe retiré d’un jeton de Sens', accesSens.slice(37)],
+      ['jeton de Sens passé à un autre espace', `${VIDE}.${accesSens.slice(37)}`],
+      ['préfixe Label Maison explicite', `${LM}.${accesLM}`],
+      ['préfixe en majuscules', `${SENS.toUpperCase()}.${accesSens.slice(37)}`],
+      ['espace inconnu', `9a9a0000-0000-4000-8000-000000000009.${accesSens.slice(37)}`],
+      ['valeur tronquée', accesSens.slice(0, -1)],
+    ] as [string, string][]) {
+      monde.oublier();
+      const r = await mcp(jeton, 'tools/call', { name: 'crm_chercher', arguments: {} });
+      verifier(r.statut === 401 && !lectureCrm(), `${quoi} : refusé, aucun CRM lu`, r.statut);
+    }
+
+    // Rotation du jeton de rafraîchissement, dans Sens.
+    res = await rafraichirJeton(`${VIDE}.${rafraichSens.slice(37)}`);
+    verifier(res.statut === 400 && res.corps?.error === 'invalid_grant', 'jeton de rafraîchissement passé à un autre espace : refusé', res.corps);
+    res = await rafraichirJeton(rafraichSens);
+    const accesSens2 = String(res.corps?.access_token ?? '');
+    verifier(res.statut === 200 && accesSens2.startsWith(`${SENS}.`) && String(res.corps?.refresh_token).startsWith(`${SENS}.`), 'rafraîchissement : nouveaux jetons de Sens', res.corps);
+    verifier((await nomsCrm(accesSens2)).startsWith('Sacha Nouveau,Simone Sens'), 'nouveau jeton : toujours Sens', await nomsCrm(accesSens2));
+
+    // État et révocation : chaque espace les siens.
+    res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantSens });
+    verifier(res.statut === 200 && res.corps?.connexions === 1 && res.corps?.espace === 'Sens', 'état de Sens : une connexion (celle de Sens)', res.corps);
+    res = await appelRoute(routeConnecteur, { entetes: gerantSens, corps: { action: 'deconnecter' } });
+    verifier(res.statut === 200, 'Sens : « Déconnecter Claude »', res.corps);
+    verifier((await nomsCrm(accesSens2)) === 'refus 401', 'jeton de Sens refusé après la déconnexion de Sens');
+    verifier((await nomsCrm(accesLM)) === 'Louis Label,Lucie Label', 'le jeton de Label Maison, lui, marche toujours');
+    res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantLM });
+    verifier(res.statut === 200 && res.corps?.connexions >= 1 && res.corps?.espace === 'Label Maison', 'état de Label Maison : ses connexions, pas celles de Sens', res.corps);
+
+    // Qui peut autoriser.
+    res = await autoriserClaude({ authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS });
+    verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.corps);
+    res = await autoriserClaude({ authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 403, 'membre de Sens sans le rôle gérant : refusé', res.corps);
+    res = await autoriserClaude({ authorization: 'Bearer jeton-inconnu', 'x-erp-espace': SENS });
+    verifier(res.statut === 403, 'compte inconnu : refusé', res.corps);
+
+    // Espace fermé : ses jetons ne valent plus.
+    res = await jetonsDe(codeDe(await autoriserClaude(gerantSens)));
+    const accesSens3 = String(res.corps?.access_token ?? '');
+    verifier((await nomsCrm(accesSens3)).includes('Simone Sens'), 'nouvelle autorisation de Sens : marche');
+    const [ficheSens] = monde.espaces.splice(1, 1);
+    monde.oublier();
+    verifier((await nomsCrm(accesSens3)) === 'refus 401' && !lectureCrm(), 'Sens fermé (plus dans les espaces actifs) : jeton refusé, rien de lu');
+    monde.espaces.splice(1, 0, ficheSens);
+    verifier((await nomsCrm(accesSens3)).includes('Simone Sens'), 'Sens rouvert : le jeton remarche');
+  }
+
+  section('Agenda du CRM : chaque espace son lien');
+  {
+    const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    let res = await creerAgenda(gerantSens);
+    const cleSens = cleAgenda(res);
+    verifier(res.statut === 200 && cleSens.startsWith(`${SENS}.`), 'lien de Sens (préfixé par l’espace)', cleSens.slice(0, 40));
+    monde.oublier();
+    res = await lireAgenda(cleSens);
+    verifier(
+      res.statut === 200 && res.texte.includes('Simone Sens') && !res.texte.includes('Lucie Label') && res.texte.includes('X-WR-CALNAME:Relances CRM · Sens') && res.texte.includes(`UID:crm-${SENS}-crm-s-1@`),
+      'agenda de Sens : son CRM, son nom, ses UID',
+      res.texte.slice(0, 400),
+    );
+    verifier(lectureCrm(SENS) && !lectureCrm(LM), 'agenda de Sens : jamais le CRM de Label Maison');
+    res = await lireAgenda(`${cleSens}.ics`);
+    verifier(res.statut === 200, 'lien de Sens avec « .ics » : servi', res.statut);
+    for (const [quoi, cle] of [
+      ['préfixe retiré', cleSens.slice(37)],
+      ['autre espace', `${VIDE}.${cleSens.slice(37)}`],
+      ['préfixe Label Maison', `${LM}.${cleSens.slice(37)}`],
+    ] as [string, string][]) {
+      monde.oublier();
+      res = await lireAgenda(cle);
+      verifier(res.statut === 404 && !lectureCrm(), `agenda, ${quoi} : 404, rien de lu`, res.statut);
+    }
+    res = await creerAgenda(gerantLM);
+    const cleLM = cleAgenda(res);
+    res = await lireAgenda(cleLM);
+    verifier(FORME_LM.test(cleLM) && res.statut === 200 && res.texte.includes('Lucie Label') && !res.texte.includes('Simone'), 'lien de Label Maison : son CRM seulement', res.statut);
+    res = await appelRoute(routeAgenda, { entetes: gerantSens, corps: { action: 'couper' } });
+    verifier(res.statut === 200 && (await lireAgenda(cleSens)).statut === 404 && (await lireAgenda(cleLM)).statut === 200, '« Couper » dans Sens : les liens de Sens seulement');
+    res = await creerAgenda({ authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 403, 'agenda : réservé aux gérants de l’espace', res.statut);
+  }
+
+  section('Invitation « Créer mon compte » : chaque espace');
+  {
+    const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    monde.emails = [];
+    monde.oublier();
+    let res = await inviter(gerantSens, 'recrue-sens@exemple.invalid');
+    verifier(res.statut === 200 && res.corps?.envoye === false && res.corps?.lien === 'https://www.labelmaisoncg.fr/erp#creer=recrue-sens%40exemple.invalid' && monde.emails.length === 0, 'Sens sans expéditeur : lien à copier, jamais l’expéditeur de Label Maison', res.corps);
+    const lu = monde.base.filter((r) => r.chemin === 'membres' && r.url.searchParams.has('email')).at(-1);
+    verifier(lu?.jeton === 'jeton-sens' && lu.espace === SENS && lu.url.searchParams.get('espace') === `eq.${SENS}`, 'appartenance lue dans Sens (en-tête et filtre), avec la session du gérant', lu?.url.search);
+    monde.espaces[1].config = { email: { expediteur: 'Sens <bonjour@sens.exemple.invalid>', repondreA: 'contact@sens.exemple.invalid' } };
+    res = await inviter(gerantSens, 'recrue-sens@exemple.invalid');
+    verifier(res.statut === 200 && res.corps?.envoye === true && monde.emails.length === 1 && monde.emails[0].from === 'Sens <bonjour@sens.exemple.invalid>' && monde.emails[0].subject === 'Votre accès à l’ERP Sens', 'Sens avec son expéditeur : e-mail au nom de Sens', monde.emails.map((m) => ({ from: m.from, subject: m.subject })));
+    monde.espaces[1].config = {};
+    monde.emails = [];
+    res = await inviter(gerantSens, 'nouvelle_recrue@exemple.invalid');
+    verifier(res.statut === 409 && monde.emails.length === 0, 'Sens : un membre de Label Maison n’est pas invité', res.corps);
+    res = await inviter(gerantLM, 'recrue-sens@exemple.invalid');
+    verifier(res.statut === 409 && monde.emails.length === 0, 'Label Maison : un membre de Sens n’est pas invité', res.corps);
+    res = await inviter({ authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS }, 'recrue-sens@exemple.invalid');
+    verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.statut);
+    res = await inviter({ authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS }, 'recrue-sens@exemple.invalid');
+    verifier(res.statut === 403, 'membre de Sens sans le rôle gérant : refusé', res.statut);
+    res = await inviter(gerantLM, 'NOUVELLE_RECRUE@exemple.invalid');
+    verifier(res.statut === 200 && res.corps?.envoye === true && monde.emails[0]?.from === env.CONTACT_FROM_EMAIL, 'Label Maison : son membre invité, e-mail de Label Maison', res.corps);
+    monde.panneEspacesActifs = true;
+    monde.emails = [];
+    res = await inviter(gerantSens, 'recrue-sens@exemple.invalid');
+    monde.panneEspacesActifs = false;
+    verifier(res.statut === 200 && res.corps?.envoye === false && monde.emails.length === 0, 'fiche de Sens illisible : lien à copier, aucun e-mail', res.corps);
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
   }
 
   section('Espace propriétaire : chaque accès dans l’espace qui invite');

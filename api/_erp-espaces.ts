@@ -19,6 +19,7 @@
 // =============================================================================
 
 import { CODE_LABEL_MAISON, ENTETE_ESPACE, ESPACE_LABEL_MAISON, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, idEspaceValide } from '../src/erp/data/espaces.js';
+import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, repondre, type ConfigRepullErp } from './_erp-repull.js';
 
 /** Plafond mensuel des décisions de l'agent IA d'un autre espace que Label Maison. */
@@ -97,9 +98,33 @@ export function espaceDemande(req: any): string | undefined {
   return idEspaceValide(v) ? v : undefined;
 }
 
+/** Espace ouvert à un accès par jeton : sa base et son nom. */
+export interface EspaceDuJeton {
+  id: string;
+  nom: string;
+  base: BaseErp;
+}
+
 /**
- * Fonctions encore propres à Label Maison (connecteur Claude, agenda du CRM,
- * clés des notifications) : refus clair ailleurs. true : la réponse est partie.
+ * Espace d'un accès par jeton (connecteur Claude, agenda du CRM), l'espace
+ * venant du jeton lui-même (espaceDuJeton) : Label Maison exactement comme
+ * avant (baseErp(c), compte d'équipe sur la base d'avant les espaces) ; un
+ * autre espace seulement si la base est passée aux espaces, le compte
+ * serveur prêt et l'espace actif. null : espace fermé, inconnu, ou base pas
+ * prête (jamais Label Maison à sa place).
+ */
+export async function espaceOuvertAuJeton(c: ConfigRepullErp, espace: string): Promise<EspaceDuJeton | null> {
+  if (estLabelMaison(espace)) return { id: ID_LABEL_MAISON, nom: ESPACE_LABEL_MAISON.nom, base: baseErp(c) };
+  const e = await etatBase(c);
+  if (e.mode !== 'espaces' || !e.serveur) return null;
+  const id = espace.toLowerCase();
+  const fiche = (await espacesActifs(c)).find((x) => x.id === id && !estLabelMaison(x.id));
+  return fiche ? { id: fiche.id, nom: fiche.nom, base: baseErp(c, fiche.id) } : null;
+}
+
+/**
+ * Fonctions encore propres à Label Maison (clés des notifications) : refus
+ * clair ailleurs. true : la réponse est partie.
  */
 export function refuserHorsLabelMaison(res: any, espace: string, quoi: string): boolean {
   if (estLabelMaison(espace)) return false;

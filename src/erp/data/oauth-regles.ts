@@ -6,9 +6,41 @@
  * Parcours : claude.ai découvre le serveur d'autorisation (middleware.ts,
  * /.well-known/…), s'enregistre (/api/oauth-register), envoie le gérant sur
  * /erp/autoriser-claude, puis échange le code contre un jeton (/api/oauth-token).
+ *
+ * Chaque autorisation appartient à l'ESPACE du gérant qui l'a donnée : le
+ * code, les jetons et les liens d'agenda d'un autre espace que Label Maison
+ * portent l'identifiant de cet espace (avecEspace), et ne sont cherchés que
+ * dans sa base. Label Maison garde la forme d'avant (valeur seule).
  */
+import { ID_LABEL_MAISON, estLabelMaison, idEspaceValide } from './espaces.js';
 
 export const ORIGINE_SITE = 'https://www.labelmaisoncg.fr';
+
+/** Valeur aléatoire d'un code, d'un jeton ou d'une clé d'agenda (256 bits en base64url). */
+const ALEATOIRE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * Code, jeton ou clé d'agenda d'un espace : « <identifiant de l'espace>.<valeur> » ;
+ * Label Maison : la valeur seule, comme avant les espaces.
+ */
+export function avecEspace(espace: string, valeur: string): string {
+  return estLabelMaison(espace) ? valeur : `${espace.toLowerCase()}.${valeur}`;
+}
+
+/**
+ * Espace d'un code, d'un jeton ou d'une clé d'agenda. Sans préfixe : Label
+ * Maison (forme d'avant). null : forme invalide, dont un préfixe Label Maison
+ * (jamais émis) ou en majuscules. Le préfixe seul ne prouve rien : seule
+ * l'empreinte de la valeur COMPLÈTE est gardée, dans la base de cet espace.
+ */
+export function espaceDuJeton(jeton: unknown): string | null {
+  if (typeof jeton !== 'string') return null;
+  if (ALEATOIRE.test(jeton)) return ID_LABEL_MAISON;
+  const espace = jeton.slice(0, 36);
+  if (jeton.charAt(36) !== '.' || !ALEATOIRE.test(jeton.slice(37))) return null;
+  if (!idEspaceValide(espace) || espace !== espace.toLowerCase() || estLabelMaison(espace)) return null;
+  return espace;
+}
 /** Adresse du connecteur à coller dans Claude (ne contient aucun secret). */
 export const ADRESSE_CONNECTEUR = `${ORIGINE_SITE}/api/crm-mcp`;
 /** Métadonnées de la ressource protégée (RFC 9728), servies par le middleware. */

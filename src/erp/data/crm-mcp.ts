@@ -23,6 +23,7 @@ import {
   trouverDoublon,
 } from './crm.js';
 import { OUTILS_CM } from './cm-mcp.js';
+import { estLabelMaison } from './espaces.js';
 import { choix, date, ECRITURE, ErreurOutil, LECTURE, texte, type Args, type ContexteMcp, type Outil } from './mcp-commun.js';
 import type { ContactCrm, Responsable, ResultatAppel } from './types';
 
@@ -34,16 +35,36 @@ const RESPONSABLES: Responsable[] = ['abdel', 'kamel'];
 
 export const VERSIONS_PROTOCOLE = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
 
-export const INSTRUCTIONS_SERVEUR = `Label Maison Conciergerie (gestion locative courte durée en Essonne) : channel manager et CRM d'appels.
-CHANNEL MANAGER (Airbnb, Booking.com, direct) — pour savoir quoi faire maintenant : cm_resume (voyageurs qui attendent une réponse, arrivées et départs du jour, avis à lire, appels du jour).
+/** Mode d'emploi commun à tous les espaces : channel manager. */
+const MODE_EMPLOI_CM = `CHANNEL MANAGER (Airbnb, Booking.com, direct) — pour savoir quoi faire maintenant : cm_resume (voyageurs qui attendent une réponse, arrivées et départs du jour, avis à lire, appels du jour).
 Logements : logements_lister, puis logement_voir (fiche, couchage, conditions, prix des 14 prochains jours). Réservations : reservations_periode (arrivées, départs, sur place entre deux dates), reservation_voir.
 Messagerie : conversations_a_repondre, conversation_voir ; conversation_pas_besoin_de_repondre la classe « terminée » dans l'ERP (elle se rouvre si le voyageur réécrit). Pour aider à répondre : reponse_preparer donne le contexte ; proposez la réponse, l'équipe l'envoie elle-même depuis l'ERP (ce connecteur n'envoie jamais rien aux voyageurs). Chiffres : indicateurs (occupation, revenu, prix moyen par nuit, note).
-Codes d'accès, wifi, e-mails et téléphones des voyageurs ne sont jamais transmis ; les voyageurs sont nommés « Prénom N. ».
-CRM D'APPELS — chaque demande envoyée depuis le site labelmaisoncg.fr (formulaires audit, accueil, contact, Cercle) arrive automatiquement dans le CRM à l'étape « À appeler ».
-Étapes : ${STATUTS_CRM.map((s) => `${s.cle} (${s.libelle} : ${s.aide})`).join(' ; ')}.
+Codes d'accès, wifi, e-mails et téléphones des voyageurs ne sont jamais transmis ; les voyageurs sont nommés « Prénom N. ».`;
+
+/** Mode d'emploi commun à tous les espaces : CRM d'appels. */
+const MODE_EMPLOI_CRM = `Étapes : ${STATUTS_CRM.map((s) => `${s.cle} (${s.libelle} : ${s.aide})`).join(' ; ')}.
 Pour savoir quoi faire aujourd'hui : crm_resume. Pour retrouver quelqu'un : crm_chercher (nom, téléphone, ville…), puis crm_voir pour sa fiche complète et son historique.
 Après un appel, utiliser crm_noter_appel (l'étape avance toute seule) ; pour changer l'étape, une relance, le suivi ou les notes : crm_modifier. Un nouveau contact : crm_ajouter (les doublons par e-mail ou téléphone sont détectés).
 Les modifications apparaissent en direct dans l'ERP (labelmaisoncg.fr/erp/crm). Répondre en français.`;
+
+/** Instructions du serveur pour l'espace de Label Maison (inchangées depuis la version 2.0.0). */
+export const INSTRUCTIONS_SERVEUR = `Label Maison Conciergerie (gestion locative courte durée en Essonne) : channel manager et CRM d'appels.
+${MODE_EMPLOI_CM}
+CRM D'APPELS — chaque demande envoyée depuis le site labelmaisoncg.fr (formulaires audit, accueil, contact, Cercle) arrive automatiquement dans le CRM à l'étape « À appeler ».
+${MODE_EMPLOI_CRM}`;
+
+/**
+ * Instructions pour l'espace du jeton : Label Maison, celles d'avant ; un
+ * autre espace, son nom, sans rien de Label Maison (ni son site, ni ses
+ * formulaires, qui n'alimentent que le CRM de Label Maison).
+ */
+export function instructionsServeur(espace?: { id: string; nom: string }): string {
+  if (!espace || estLabelMaison(espace.id)) return INSTRUCTIONS_SERVEUR;
+  return `${espace.nom} (espace de l'ERP) : channel manager et CRM d'appels de cet espace seulement.
+${MODE_EMPLOI_CM}
+CRM D'APPELS — les contacts de l'espace ${espace.nom}.
+${MODE_EMPLOI_CRM}`;
+}
 
 /* ----------------------------------------------------------- présentation */
 
@@ -360,8 +381,8 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
       return resultat(id, {
         protocolVersion: VERSIONS_PROTOCOLE.includes(demandee) ? demandee : '2025-06-18',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'label-maison', title: 'Label Maison', version: '2.0.0' },
-        instructions: INSTRUCTIONS_SERVEUR,
+        serverInfo: { name: 'label-maison', title: ctx.espace && !estLabelMaison(ctx.espace.id) ? ctx.espace.nom : 'Label Maison', version: '2.0.0' },
+        instructions: instructionsServeur(ctx.espace),
       });
     }
     case 'ping':
@@ -380,7 +401,8 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
         return resultat(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }], structuredContent: r });
       } catch (e) {
         // Erreur d'utilisation ou de base : renvoyée à Claude pour qu'il corrige ou explique.
-        const message = e instanceof ErreurOutil ? e.message : `Les données de Label Maison sont momentanément inaccessibles (${e instanceof Error ? e.message.slice(0, 200) : 'erreur'}). Réessayez dans un instant.`;
+        const nom = ctx.espace && !estLabelMaison(ctx.espace.id) ? `l’espace ${ctx.espace.nom}` : 'Label Maison';
+        const message = e instanceof ErreurOutil ? e.message : `Les données de ${nom} sont momentanément inaccessibles (${e instanceof Error ? e.message.slice(0, 200) : 'erreur'}). Réessayez dans un instant.`;
         return resultat(id, { content: [{ type: 'text', text: message }], isError: true });
       }
     }

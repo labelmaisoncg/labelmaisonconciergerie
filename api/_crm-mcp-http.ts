@@ -1,23 +1,30 @@
 // =============================================================================
-// Transport MCP « Streamable HTTP » sans état du connecteur Claude de Label
-// Maison (CRM + channel manager), partagé par :
+// Transport MCP « Streamable HTTP » sans état du connecteur Claude de l'ERP
+// (CRM + channel manager), partagé par :
 //   /api/crm-mcp         accès OAuth (jeton Bearer) — l'adresse donnée dans l'ERP
 //   /api/crm-mcp/<clé>   accès par clé fixée par l'administrateur (MCP_CRM_TOKEN)
 // Chaque POST porte un message JSON-RPC et reçoit sa réponse en JSON (pas de SSE).
-// Les données sont lues (et le CRM écrit) avec le compte d'équipe (ERP_PASSWORD).
+//
+// Chaque appel ne voit QUE l'espace de son accès : celui du jeton OAuth (le
+// gérant qui a autorisé Claude, voir api/_oauth.ts), Label Maison pour la clé
+// fixée. Les données sont lues (et le CRM écrit) avec le compte serveur dans
+// cet espace, ou avec le compte d'équipe pour Label Maison (baseErp).
 // Logique des outils : src/erp/data/crm-mcp.ts (CRM) et cm-mcp.ts (channel manager).
+// Rien n'est jamais envoyé aux voyageurs ni écrit vers les plateformes.
 // =============================================================================
 
 import { traiterMcp, VERSIONS_PROTOCOLE, type ContexteMcp } from '../src/erp/data/crm-mcp.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import type { ContactCrm, FilMessages, Logement, Reservation } from '../src/erp/data/types.js';
-import { baseErp, configuration, lireCorps } from './_erp-repull.js';
+import { configuration, lireCorps, type ConfigRepullErp } from './_erp-repull.js';
+import type { EspaceDuJeton } from './_erp-espaces.js';
 
 /** Appels venant d'un navigateur : seulement ces origines (protection « DNS rebinding » demandée par la spécification). */
 const ORIGINES = /^https:\/\/([a-z0-9-]+\.)*(claude\.ai|claude\.com|anthropic\.com|labelmaisoncg\.fr)$/i;
 
-export type Verification = (req: any, base: BaseErp) => Promise<boolean>;
+/** Contrôle d'accès d'une route : l'espace de l'accès (sa base, son nom), ou null (refusé). */
+export type Verification = (req: any, c: ConfigRepullErp) => Promise<EspaceDuJeton | null>;
 
 export async function servirCrmMcp(req: any, res: any, autorise: Verification, enteteRefus?: (req: any) => string) {
   res.setHeader('Cache-Control', 'no-store');
@@ -31,15 +38,14 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
     console.error('[crm-mcp] ERP_PASSWORD absent : CRM inaccessible.');
     return json(503, { error: 'Connecteur indisponible.' });
   }
-  const base = baseErp(c);
-  let ok = false;
+  let espace: EspaceDuJeton | null = null;
   try {
-    ok = await autorise(req, base);
+    espace = await autorise(req, c);
   } catch (e) {
     console.error('[crm-mcp] contrôle d’accès :', e);
     return json(503, { error: 'Connecteur indisponible.' });
   }
-  if (!ok) {
+  if (!espace) {
     if (enteteRefus) res.setHeader('WWW-Authenticate', enteteRefus(req));
     return json(401, { error: 'Accès refusé : connectez Claude depuis l’ERP (CRM → Plus → Connecter à Claude).' });
   }
@@ -55,9 +61,10 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
   if (version && !VERSIONS_PROTOCOLE.includes(version)) return json(400, { error: `Version de protocole non prise en charge : ${version.slice(0, 20)}` });
 
   const ctx: ContexteMcp = {
-    ...depotsMcp(base),
+    ...depotsMcp(espace.base),
     aujourdhui: () => horodatageParis().slice(0, 10),
     maintenant: () => horodatageParis(),
+    espace: { id: espace.id, nom: espace.nom },
   };
 
   const corps = typeof req.body === 'string' ? lireJson(req.body) : req.body ?? lireCorps(req);
@@ -69,9 +76,8 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
 }
 
 /**
- * Les données de l'utilisateur connecté, seul point d'entrée des outils :
- * quand les espaces séparés arriveront, `base` sera celle de l'espace porté
- * par le jeton (ou la clé), et rien d'autre n'aura à changer ici.
+ * Les données de l'accès, seul point d'entrée des outils : `base` est celle
+ * de l'espace du jeton (ou de la clé), et rien d'autre.
  */
 export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm'> {
   return {

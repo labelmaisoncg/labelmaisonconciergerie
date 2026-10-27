@@ -90,13 +90,17 @@ node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm
 # Connexion à l'ERP (middleware.ts) : e-mail et mot de passe d'un membre,
 # non-membre refusé, autre site refusé, anciens cookies (mot de passe commun)
 # refusés, relais remis une fois, le serveur ne remet jamais la session du
-# compte d'équipe, rien d'identifiant dans l'adresse, lien piégé confirmé.
+# compte d'équipe, rien d'identifiant dans l'adresse, lien piégé confirmé,
+# « Créer mon compte » (même réponse qu'un compte existe ou non, jamais de
+# connexion depuis la création), invitation d'espace en attente laissée entrer.
 node_modules/.bin/esbuild scripts/verifier-connexion-erp.ts --bundle --format=esm \
   --platform=node --log-level=error --outfile=/tmp/verifier-connexion-erp.mjs \
   && node /tmp/verifier-connexion-erp.mjs
 
 # Même chose côté routes /api : compte serveur, réglages d'un espace, passage
-# quotidien sur chaque espace, bouton d'un membre, routage des webhooks.
+# quotidien sur chaque espace, bouton d'un membre, routage des webhooks,
+# connecteur Claude et agenda par espace (un jeton de Sens ne lit jamais
+# Label Maison, et inversement), invitation « Créer mon compte ».
 node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{}' \
   --log-level=error --outfile=/tmp/verifier-espaces-serveur.mjs && node /tmp/verifier-espaces-serveur.mjs
@@ -160,7 +164,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
 | `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Redéployer après ajout. |
-| `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires (mêmes variables que le formulaire de contact). Sans : le gérant copie le lien d'invitation et l'envoie par SMS ou WhatsApp. |
+| `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires et des invitations « Créer mon compte » de l'équipe (mêmes variables que le formulaire de contact ; un autre espace envoie seulement avec son propre expéditeur). Sans : le gérant copie le lien et l'envoie par SMS ou WhatsApp. |
 | `SITE_URL` | Vercel (serveur), facultative | Site des liens envoyés (invitations, « Recevoir mon lien », relances), origine `https://` seulement. Défaut `https://www.labelmaisoncg.fr`. Les liens ne prennent **jamais** l'adresse de la page qui appelle (en-tête Origin ou Host). |
 | `ORIGINES_APERCU` | Vercel (serveur), facultative | Aperçus Vercel autorisés à appeler les formulaires et les espaces extérieurs : origines **exactes**, séparées par des virgules (`https://mon-apercu.vercel.app`). Sans : seuls `labelmaisoncg.fr`, `labelmaisoncgexperience.fr` (avec ou sans `www`) et, hors Vercel en ligne, `localhost`. |
 
@@ -219,7 +223,8 @@ src/erp/
     <module>/index.tsx
 api/erp-repull-sync.ts     synchronisation Repull (cron quotidien, bouton)
 api/erp-repull-webhook.ts  webhooks Repull de l'ERP (quand l'offre les inclut)
-api/_erp-espaces.ts        réglages d'un espace, espaces actifs, garde « Label Maison seulement »
+api/_erp-espaces.ts        réglages d'un espace, espaces actifs, espace d'un jeton (espaceOuvertAuJeton)
+api/erp-invitation.ts      « Envoyer l'invitation » (lien « Créer mon compte », src/erp/data/invitation.ts)
 supabase/erp-installation.sql  installation de la base (à coller dans le SQL Editor)
 supabase/erp-espaces.sql   espaces séparés, en deux passes (après l'installation)
 supabase/migrations/  schéma normalisé : cible future, NON appliquée (voir son README)
@@ -498,9 +503,10 @@ documents, réservations à venir) dont chaque bouton ouvre le bon formulaire
    Supabase → **Authentication** → **Users** → **Add user** →
    **Create new user** : e-mail `equipe@labelmaisoncg.fr` (adresse technique,
    aucune boîte mail n'est nécessaire), mot de passe = la valeur de `ERP_PASSWORD`, cocher
-   **Auto Confirm User** → **Create user**. Conseillé : fermer les
-   inscriptions publiques (**Authentication → Sign In / Providers → Allow new
-   users to sign up** désactivé).
+   **Auto Confirm User** → **Create user**. Dans **Authentication → Sign In
+   / Providers → Email**, laisser **Allow new users to sign up** activé (c'est
+   « Créer mon compte ») et **Confirm email** activé (obligatoire : voir
+   « Connexion à l'ERP »).
 3. **Lui donner l'accès à l'ERP.** Le script de l'étape 1 inscrit déjà
    `equipe@labelmaisoncg.fr` comme gérant dans `erp.membres` (bilan :
    `membres` = 1). Pour changer l'adresse du compte d'équipe : variable
@@ -556,9 +562,52 @@ Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
 de `/erp`, servie par `middleware.ts`). Il n'y a plus de « Retour au site » :
 l'ERP est une application.
 
-- **Pour l'équipe :** connectez-vous avec votre compte personnel créé dans
-  Supabase → Authentication → Users (« Add user », « Auto Confirm User »),
-  dont l'adresse figure dans les membres (Paramètres → Équipe).
+- **Pour l'équipe :** connectez-vous avec votre compte personnel, dont
+  l'adresse figure dans les membres de votre espace (Paramètres → Équipe).
+- **Créer mon compte** (plus de « Add user » dans Supabase) :
+  1. le gérant ajoute la personne dans Paramètres → Équipe (adresse, nom,
+     rôle), puis touche **Envoyer l'invitation** : un e-mail part avec le lien
+     `https://www.labelmaisoncg.fr/erp#creer=<adresse>` (expéditeur de
+     l'espace ; sans expéditeur, le lien s'affiche, à copier et envoyer par
+     SMS ou WhatsApp) ;
+  2. la personne ouvre le lien : la page d'accès s'ouvre sur « Créer mon
+     compte », l'adresse déjà remplie ; elle choisit son mot de passe (deux
+     fois, 8 caractères au moins) ;
+  3. elle reçoit un e-mail de confirmation de Supabase, ouvre son lien, puis
+     touche « Ouvrir l'ERP » : c'est fait.
+  Sans invitation, chacun peut aussi toucher « Créer mon compte » sous le
+  formulaire, avec l'adresse que le gérant a inscrite. Un compte créé avec
+  une adresse qui n'est dans aucune équipe n'ouvre rien : « Ce compte n'a
+  pas accès à l'ERP… » (sauf invitation à créer l'espace d'une conciergerie,
+  voir plus bas). La page répond la même chose qu'un compte existe ou non.
+  La route `/api/erp-invitation` est réservée aux gérants de l'espace ouvert
+  et n'invite qu'une adresse déjà dans ses membres ; le lien vise toujours
+  le site fixe, jamais l'adresse de la page qui l'a demandé.
+- **Réglages Supabase à garder** (Authentication → Sign In / Providers →
+  Email) :
+  - **Allow new users to sign up** : activé (sinon « Créer mon compte »
+    répond « La création de compte n'est pas ouverte… ») ;
+  - **Confirm email** : **activé, obligatoire**. L'accès à l'ERP se décide
+    par l'adresse (membres de l'espace). Sans confirmation, n'importe qui
+    pourrait créer d'avance un compte avec l'adresse d'un futur membre, avec
+    SON mot de passe, et entrer dans l'ERP dès que le gérant ajoute cette
+    adresse. La confirmation prouve que la personne lit bien cette boîte
+    mail. (C'est le réglage par défaut de Supabase : ne pas le couper.)
+  - **Emails → SMTP Settings** : si les e-mails de confirmation n'arrivent
+    pas, l'envoi par défaut de Supabase est limité (quelques messages par
+    heure, et parfois réservé aux adresses de l'équipe Supabase) : y mettre
+    le SMTP de Resend (hôte `smtp.resend.com`, port 465, utilisateur
+    `resend`, mot de passe = une clé API Resend, expéditeur sur le domaine
+    vérifié). Facultatif : traduire le modèle « Confirm signup ».
+- **Invitation à créer l'espace d'une conciergerie** (Sens…) : un compte
+  confirmé qui n'est encore membre d'aucun espace mais dont
+  `erp.qui_suis_je` rend une invitation en attente entre quand même ; la
+  session est posée et l'application lui montre la création de son espace.
+  Forme attendue de la réponse : `{ "espaces": [...], "invitations_espace":
+  [{ "nom_espace": "Sens", "expire_le": "<date ISO>" }] }`. Une entrée compte
+  si c'est un objet dont `expire_le`, quand il est donné, est lisible et à
+  venir ; toute autre forme vaut refus. Base d'avant les espaces : rien ne
+  change (`erp.membres` seulement).
 - **En attendant les comptes personnels :** `equipe@labelmaisoncg.fr` et le
   mot de passe actuel de l'ERP marchent toujours.
 - **Une fois les comptes personnels créés, fermer le mot de passe commun :**
@@ -587,8 +636,22 @@ l'ERP est une application.
   d'équipe à un navigateur : seul celui qui se connecte lui-même avec ce
   compte (pendant le passage) la reçoit. Un non-membre est refusé ; une
   demande venue d'un autre site aussi. Un lien reçu par e-mail qui n'est ni
-  une récupération ni une invitation demande de confirmer le compte avant
-  d'ouvrir l'ERP ; sans JavaScript, rien ne part dans l'adresse.
+  une récupération ni une invitation (dont la confirmation d'adresse après
+  « Créer mon compte ») demande de confirmer le compte avant d'ouvrir
+  l'ERP ; sans JavaScript, rien ne part dans l'adresse. « Créer mon compte »
+  appelle Supabase depuis la page (`POST /auth/v1/signup`, clé publique,
+  retour `redirect_to=https://www.labelmaisoncg.fr/erp`) et ne connecte
+  jamais personne, même si Supabase rendait une session.
+- **Page d'accès, finitions :** mêmes valeurs que l'ERP — bouton principal
+  or assombri `#8A6424` (texte blanc, 5,3:1), brun `#403118` au survol et
+  pour le badge, champs, boutons et messages arrondis à 10 px, carte et
+  badge à 16 px ; tous les textes à 4,5:1 au moins. La zone du linge
+  partage la même coquille.
+- **Écran de secours de l'application** (`src/erp/layout/Connexion.tsx`,
+  quand la page d'accès n'a pas pu passer la session) : même « Créer mon
+  compte » ; base pas installée : une phrase (« L'ERP n'est pas encore
+  prêt : prévenez la personne qui l'installe. »), le détail technique replié
+  sous « Détails techniques ».
 - **Anciens accès :** les sessions ouvertes avec l'ancien mot de passe commun
   ne valent plus rien ; chacun se reconnecte une fois. « Se déconnecter »
   (menu du compte) ferme aussi la page d'accès.
@@ -881,7 +944,7 @@ sans message en attente n'appelle pas Claude.
 ## CRM d'appels et connecteur Claude (octobre 2026)
 
 - **CRM** (`/erp/crm`) : chaque formulaire du site (`/api/contact`) crée une ligne « À appeler » dans la collection `crm` (sans doublon par e-mail ou téléphone), en parallèle de l'e-mail. Règles : `src/erp/data/crm.ts` ; contrôles : `verifier-crm.ts`.
-- **Connecteur MCP « Label Maison »** (`/api/crm-mcp`, serveur `label-maison` 2.0.0) : Claude (claude.ai, Claude Desktop, Claude Code) suit tout le channel manager et tient le CRM. Logique : `src/erp/data/crm-mcp.ts` (CRM et protocole), `cm-mcp.ts` (channel manager), `mcp-commun.ts` (contexte, forme d'un outil) ; transport : `api/_crm-mcp-http.ts` (`depotsMcp(base)`, seul point d'entrée vers les données : il deviendra celui de l'espace du jeton) ; contrôles : `verifier-crm-mcp.ts`.
+- **Connecteur MCP « Label Maison »** (`/api/crm-mcp`, serveur `label-maison` 2.0.0) : Claude (claude.ai, Claude Desktop, Claude Code) suit tout le channel manager et tient le CRM. Logique : `src/erp/data/crm-mcp.ts` (CRM et protocole), `cm-mcp.ts` (channel manager), `mcp-commun.ts` (contexte, forme d'un outil) ; transport : `api/_crm-mcp-http.ts` (`depotsMcp(base)`, seul point d'entrée vers les données : la base de l'espace du jeton) ; contrôles : `verifier-crm-mcp.ts` et `scripts/verifier-espaces-serveur.ts`.
   - **CRM** (six outils, inchangés) : `crm_resume`, `crm_chercher`, `crm_voir`, `crm_ajouter`, `crm_modifier`, `crm_noter_appel` (aucune suppression).
   - **Channel manager** (dix outils) :
     - **Le point du jour** : `cm_resume`, avec les conversations à répondre, les arrivées, départs et voyageurs sur place du jour, les avis sous 4,5 des 14 derniers jours et le nombre d'appels CRM.
@@ -894,8 +957,8 @@ sans message en attente n'appelle pas Claude.
     - aucun envoi aux voyageurs, aucune écriture vers les plateformes ;
     - jamais de wifi ni de code d'accès : les e-mails, téléphones et codes du logement présents dans les messages sont masqués ;
     - les voyageurs sont nommés « Prénom N. ».
-  - **Une clé par espace** : à faire avec les espaces séparés. `depotsMcp` recevra la base de l'espace porté par le jeton OAuth ou par la clé ; aucun outil n'a à changer.
-  1. **Connexion par OAuth 2.1** (ce qu'attend claude.ai) : CRM → Plus → « Connecter à Claude » donne l'adresse `https://www.labelmaisoncg.fr/api/crm-mcp` (aucun secret). Dans claude.ai → Paramètres → Connecteurs → « Ajouter un connecteur personnalisé » (nom « Label Maison », paramètres avancés vides ; un connecteur déjà ajouté sous l'ancien nom « CRM Label Maison » continue de marcher et reçoit les nouveaux outils sans rien refaire), puis se connecter : l'ERP ouvre `/erp/autoriser-claude`, un gérant clique « Autoriser ».
+  - **Une clé par espace (« chacun a sa clé »)** : une autorisation appartient à l'espace du gérant qui clique « Autoriser » (l'espace ouvert dans l'ERP ; le serveur revérifie qu'il en est gérant avec `verifierMembre(jeton, { espace })`). Le code et les jetons sont rangés dans la base de cet espace, avec cet espace ; ceux d'un autre espace que Label Maison portent son identifiant en tête (`<espace>.<valeur>`, `avecEspace` / `espaceDuJeton` dans `oauth-regles.ts`) pour que `/api/oauth-token` et `/api/crm-mcp` les cherchent dans la bonne base, et chaque appel d'outil lit avec `baseErp(c, <espace du jeton>)` (compte serveur et en-tête de l'espace). L'empreinte couvre la valeur complète : changer ou retirer le préfixe donne un jeton inconnu partout. Label Maison garde la forme d'avant (valeur seule) ; un ancien jeton (sans espace) vaut pour Label Maison. Base d'avant les espaces : Label Maison seul, exactement comme avant ; un jeton d'un autre espace y est refusé. Espace fermé, ou compte serveur pas prêt : ses jetons sont refusés (jamais Label Maison à sa place). « Déconnecter Claude » ne révoque que les jetons de l'espace ouvert. Le connecteur se présente au nom de l'espace (instructions de Label Maison inchangées ; un autre espace : son nom, rien de Label Maison). La clé fixe `MCP_CRM_TOKEN` reste celle de Label Maison.
+  1. **Connexion par OAuth 2.1** (ce qu'attend claude.ai) : CRM → Plus → « Connecter à Claude » donne l'adresse `https://www.labelmaisoncg.fr/api/crm-mcp` (aucun secret, la même pour tous les espaces). Dans claude.ai → Paramètres → Connecteurs → « Ajouter un connecteur personnalisé » (nom : celui de l'espace, « Label Maison » ou « Sens » ; paramètres avancés vides ; un connecteur déjà ajouté sous l'ancien nom « CRM Label Maison » continue de marcher et reçoit les nouveaux outils sans rien refaire), puis se connecter : l'ERP ouvre `/erp/autoriser-claude` (« Connecter Claude à l'espace Sens ? »), un gérant de cet espace clique « Autoriser ».
   2. Mécanique : découverte par `/.well-known/oauth-protected-resource[/api/crm-mcp]` et `/.well-known/oauth-authorization-server` (servis par `middleware.ts`, les rewrites de `vercel.json` étant ignorés avec `cleanUrls`), inscription dynamique `/api/oauth-register` (adresses de retour de Claude seulement : claude.ai, claude.com, localhost), code à usage unique de 10 min lié au défi PKCE S256 (route gérant `/api/erp-connecteur-claude`), jetons `/api/oauth-token` (accès 7 jours, rafraîchissement 90 jours avec rotation). Règles d'entrée : `src/erp/data/oauth-regles.ts` ; codes et jetons : `api/_oauth.ts`.
   3. La base (collection technique `connecteurs`) ne garde que des **empreintes** SHA-256 des codes et jetons. « Déconnecter Claude… » (même fenêtre) révoque tous les jetons (effet en 1 min au plus). Pour réserver cette collection aux gérants, lancer une fois `supabase/erp-connecteurs-gerants.sql` dans Supabase → SQL Editor (règle aussi incluse dans `erp-installation.sql`).
   4. Facultatif, pour un outil sans OAuth : `MCP_CRM_TOKEN` (32 caractères au moins) dans Vercel ouvre `/api/crm-mcp/<cette clé>`. Sans la variable, cette adresse est fermée.
@@ -903,7 +966,7 @@ sans message en attente n'appelle pas Claude.
 - **Relances dans Calendrier** (`/api/crm-agenda/<clé>`) : l'agenda des relances au format iCalendar, pour un abonnement dans Calendrier (iPhone, Mac), Google Agenda ou Outlook. Lecture seule : rien n'est écrit, ni dans le CRM ni ailleurs.
   1. CRM → Plus → « Relances dans Calendrier » (gérants) : choisir « Toute l'équipe », « Abdel » ou « Kamel » (ses contacts, plus ceux que personne ne suit encore), « Créer le lien », puis « Ouvrir dans Calendrier » (lien `webcal://`) → « S'abonner » (emplacement iCloud pour l'avoir sur tous les appareils). Ailleurs : coller le lien `https://` (Calendrier → Fichier → Nouvel abonnement, Google Agenda → Autres agendas → À partir de l'URL).
   2. Contenu (`src/erp/data/agenda-crm.ts`, contrôles `verifier-agenda.ts`) : un événement par contact, sur la journée, avec un rappel à 9 h. Aujourd'hui : chaque « À appeler » et chaque relance échue (« en retard ») ; à sa date : chaque relance prévue ; jamais : « Signé » et « Pas intéressé ». La date suit la relance (UID stable). Rafraîchissement demandé toutes les 15 min (Calendrier d'Apple décide du rythme réel ; Google Agenda relit en quelques heures).
-  3. Clés (`api/_agenda.ts`, route gérant `/api/erp-agenda`) : 256 bits, montrées une seule fois ; la collection `connecteurs` n'en garde que l'empreinte SHA-256. « Couper tous les liens… » les révoque (effet en 1 min au plus, l'agenda abonné garde sa dernière copie). Le lien donne noms et téléphones des contacts : à garder pour soi. RGPD : Apple (iCloud) et Google (Agenda) figurent parmi les sous-traitants de la politique de confidentialité.
+  3. Clés (`api/_agenda.ts`, route gérant `/api/erp-agenda`) : 256 bits, montrées une seule fois ; la collection `connecteurs` n'en garde que l'empreinte SHA-256. Un lien par espace, comme les jetons de Claude : rangé dans l'espace du gérant qui le crée, préfixé par l'espace hors Label Maison (liens de Label Maison inchangés), il ne donne que le CRM de cet espace (calendrier à son nom). « Couper tous les liens… » révoque ceux de l'espace ouvert (effet en 1 min au plus, l'agenda abonné garde sa dernière copie). Le lien donne noms et téléphones des contacts : à garder pour soi. RGPD : Apple (iCloud) et Google (Agenda) figurent parmi les sous-traitants de la politique de confidentialité.
 
 
 ## App installable et notifications (octobre 2026)
@@ -1057,8 +1120,9 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   `erp.ranger_secret()` (SQL Editor seulement), `erp.recette_espaces()`
   (essai des règles, annulé). Relancer le fichier après la passe 2 ne recrée
   rien en double (`erp.cle_par_espace`).
-- `erp.invitations` est préparée pour « Créer un compte » (étape suivante) :
-  aucune règle d'accès d'ici là.
+- `erp.invitations` reste sans règle d'accès : « Créer mon compte » n'en a pas
+  besoin (l'accès se décide par les membres de l'espace et la confirmation
+  de l'adresse par Supabase, voir « Connexion à l'ERP »).
 - `erp-installation.sql`, `erp-connecteurs-gerants.sql` et
   `erp-acces-gerants.sql` refusent de tourner une fois les espaces en place
   (ils remettraient les règles d'avant).
@@ -1079,8 +1143,11 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   l'espace ; sans compte serveur prêt, avec le compte d'équipe et **pour Label
   Maison seulement**. `verifierMembre(jeton, { espace })` vérifie le rôle dans
   l'espace de l'en-tête (Label Maison à défaut : anciennes versions de l'app).
-  Le site public (formulaires, dossier propriétaire), le connecteur Claude,
-  OAuth et l'agenda du CRM restent dans Label Maison.
+  Le site public (formulaires, dossier propriétaire) et la clé fixe
+  `MCP_CRM_TOKEN` restent dans Label Maison. Le connecteur Claude (OAuth,
+  MCP) et l'agenda du CRM suivent l'espace de leur jeton ou de leur lien
+  (`espaceOuvertAuJeton`, voir « CRM d'appels et connecteur Claude ») ;
+  l'invitation « Créer mon compte » part au nom de l'espace ouvert.
 - `configurationEspace(espace)` (`api/_erp-espaces.ts`) : Label Maison garde
   ses variables Vercel. Un autre espace n'en reprend **aucune** :
   Repull par son workspace (`repull_workspace`, en-tête `X-Workspace-Id` sur
@@ -1108,10 +1175,12 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 
 ### Pas encore (étapes suivantes)
 
-- « Créer un compte » et invitations depuis l'ERP (la connexion personnelle,
-  elle, est en place : voir « Connexion à l'ERP »), choix de l'espace à
-  l'écran.
-- Connecteur Claude (MCP, OAuth), clé MCP et agenda du CRM par espace.
+- Choix de l'espace à l'écran : un membre de deux espaces connecte Claude
+  (ou crée un lien d'agenda) pour l'espace ouvert, celui que l'ERP a choisi
+  (Label Maison d'abord, puis le dernier ouvert sur l'appareil).
+- Les autorisations de Claude survivent au retrait du gérant qui les a
+  données, jusqu'à « Déconnecter Claude » dans l'espace (à revérifier à
+  chaque appel plus tard).
 - Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
   qui n'est pas encore dans les dépendances de développement.
 - Liens signés des guides déposés en fichier pour un autre espace que Label

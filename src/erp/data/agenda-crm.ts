@@ -12,6 +12,7 @@
  * Module pur : partagé par l'API (/api/crm-agenda/<clé>) et les tests.
  */
 import { aTraiterLe, LIBELLE_STATUT_CRM, STATUTS_CLOS } from './crm.js';
+import { estLabelMaison } from './espaces.js';
 import type { ContactCrm, Responsable, StatutContactCrm } from './types.js';
 
 export const ERP_CRM = 'https://www.labelmaisoncg.fr/erp/crm';
@@ -119,13 +120,20 @@ function description(e: EvenementRelance): string {
 
 const SUIVI: Record<Responsable, string> = { abdel: 'Abdel', kamel: 'Kamel' };
 
-/** Le calendrier complet, prêt à servir en text/calendar. */
+/**
+ * Le calendrier complet, prêt à servir en text/calendar. `espace` : celui du
+ * lien, pour un autre espace que Label Maison (son nom ; ses UID à part, pour
+ * qu'un agenda abonné aux deux ne mélange jamais deux contacts).
+ */
 export function calendrierRelances(
   contacts: ContactCrm[],
-  o: { aujourdhui: string; maintenant: string; filtre?: FiltreAgenda },
+  o: { aujourdhui: string; maintenant: string; filtre?: FiltreAgenda; espace?: { id: string; nom: string } },
 ): string {
   const filtre = o.filtre ?? 'tous';
-  const nom = filtre === 'tous' ? 'Relances CRM · Label Maison' : `Relances CRM · ${SUIVI[filtre]}`;
+  const autre = o.espace && !estLabelMaison(o.espace.id) ? o.espace : undefined;
+  const nomEspace = autre?.nom ?? 'Label Maison';
+  const nom = filtre === 'tous' ? `Relances CRM · ${nomEspace}` : `Relances CRM · ${SUIVI[filtre]}`;
+  const prefixeUid = autre ? `crm-${autre.id.replace(/[^\w-]/g, '')}-` : 'crm-';
   const stamp = horodatageUtc(o.maintenant, o.maintenant);
   const lignes = [
     'BEGIN:VCALENDAR',
@@ -134,7 +142,7 @@ export function calendrierRelances(
     'CALSCALE:GREGORIAN',
     'METHOD:PUBLISH',
     `X-WR-CALNAME:${echapperTexte(nom)}`,
-    'X-WR-CALDESC:Appels et relances du CRM de l’ERP Label Maison.',
+    `X-WR-CALDESC:${echapperTexte(`Appels et relances du CRM de l’ERP ${nomEspace}.`)}`,
     'X-WR-TIMEZONE:Europe/Paris',
     'X-APPLE-CALENDAR-COLOR:#7C561D',
     'REFRESH-INTERVAL;VALUE=DURATION:PT15M',
@@ -145,7 +153,7 @@ export function calendrierRelances(
     const titre = `${VERBE[c.statut]} ${c.nom}${e.enRetard ? ' (en retard)' : ''}`;
     lignes.push(
       'BEGIN:VEVENT',
-      `UID:crm-${c.id.replace(/[^\w.-]/g, '')}@labelmaisoncg.fr`,
+      `UID:${prefixeUid}${c.id.replace(/[^\w.-]/g, '')}@labelmaisoncg.fr`,
       `DTSTAMP:${stamp}`,
       `LAST-MODIFIED:${horodatageUtc(c.majLe ?? c.creeLe, o.maintenant)}`,
       `DTSTART;VALUE=DATE:${jourIcs(e.jour)}`,
