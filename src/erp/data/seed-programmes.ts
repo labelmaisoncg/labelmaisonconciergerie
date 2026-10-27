@@ -2,20 +2,24 @@
  * Démonstration des messages automatiques et des avis à déposer : deux
  * moments allumés (la veille de l'arrivée, la demande d'avis), quelques
  * envois passés, et les avis des séjours Airbnb terminés (les plus anciens
- * déjà déposés, un séjour avec incident à relire).
+ * déjà déposés, des séjours avec incident à relire, dont un sans texte), et
+ * chaque message parti dans sa conversation.
  */
 import {
   ID_REGLAGES_PROGRAMMES,
+  PAR_MESSAGE_AUTO,
   ajouterJoursISO,
   filDuSejour,
   idEnvoi,
   modeleParDefaut,
   prenomDe,
   raisonsARelire,
+  rendreMessage,
   sejourAvecAvis,
+  signatureProgrammes,
 } from './messages-programmes';
 import { DATE_DEMO } from './format';
-import type { ErpDonnees, Reglage, Reservation } from './types';
+import type { ErpDonnees, Message, Reglage, Reservation } from './types';
 import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
 
 const ALLUME_LE = '2026-09-01T09:12:00+02:00';
@@ -27,7 +31,7 @@ const AVIS_DEMO = [
   (p: string) => `${p} a pris grand soin du logement et a suivi toutes les consignes. Échanges courtois et rapides : merci pour ce séjour, au plaisir de vous revoir.`,
 ];
 
-export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'avisADeposer'>): Pick<ErpDonnees, 'envoisProgrammes' | 'avisADeposer' | 'reglages'> {
+export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'avisADeposer'>): Pick<ErpDonnees, 'envoisProgrammes' | 'avisADeposer' | 'reglages' | 'filsMessages'> {
   const reglages: ReglagesMessagesProgrammes = {
     id: ID_REGLAGES_PROGRAMMES,
     modeles: {
@@ -76,8 +80,31 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
     });
   }
 
+  // Chaque message parti figure dans sa conversation, comme en production (envoyerMessage) :
+  // « Message automatique » sous la bulle (envoi.par = PAR_MESSAGE_AUTO), à son heure d'envoi.
+  const signature = signatureProgrammes({ reglages: tousReglages });
+  const ajouts = new Map<string, Message[]>();
+  for (const e of envoisProgrammes) {
+    const r = d.reservations.find((x) => x.id === e.reservationId);
+    const fil = d.filsMessages.find((f) => f.id === e.filId);
+    if (e.statut !== 'envoye' || !e.envoyeLe || !r || !fil) continue;
+    const logement = d.logements.find((l) => l.id === r.logementId);
+    const rendu = rendreMessage(reglages.modeles[e.declencheur].texte, { reservation: r, logement, fil, signature, aujourdhui: e.envoyeLe.slice(0, 10) });
+    if (!rendu.texte || rendu.codesEnClair) continue;
+    const message: Message = { id: `msg-auto-${e.id}`, auteur: 'hote', texte: rendu.texte, envoyeLe: e.envoyeLe, envoi: { canal: e.canal ?? r.canal, par: PAR_MESSAGE_AUTO } };
+    ajouts.set(fil.id, [...(ajouts.get(fil.id) ?? []), message]);
+  }
+  const filsMessages = d.filsMessages.map((f) => {
+    const ajout = ajouts.get(f.id);
+    if (!ajout) return f;
+    const messages = [...f.messages, ...ajout].sort((a, b) => a.envoyeLe.localeCompare(b.envoyeLe));
+    return { ...f, messages, dernierMessageLe: messages[messages.length - 1].envoyeLe };
+  });
+
   // Avis à déposer : séjours Airbnb terminés depuis moins de 14 jours ; ceux de plus de 3 jours déjà déposés (sauf à relire).
   const sejours = d.reservations.filter((r) => sejourAvecAvis(r, DATE_DEMO)).sort((a, b) => a.depart.localeCompare(b.depart));
+  // Le premier avis à relire n'a pas de texte (IA indisponible au passage) : l'équipe l'écrit elle-même, jamais d'éloge.
+  const sansTexte = sejours.find((r) => raisonsARelire(r, d).length)?.id;
   const avisADeposer: AvisADeposer[] = sejours.map((r, i) => {
     const prenom = prenomDe(r.voyageur.nom);
     const raisons = raisonsARelire(r, d);
@@ -90,10 +117,13 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
       depart: r.depart,
       canal: r.canal,
       statut: raisons.length ? 'a_relire' : 'pret',
-      texte: raisons.length
-        ? `${prenom} a séjourné dans notre logement. Le séjour a demandé quelques échanges avec l’équipe.`
-        : AVIS_DEMO[i % AVIS_DEMO.length](prenom),
-      source: 'ia',
+      texte:
+        r.id === sansTexte
+          ? ''
+          : raisons.length
+            ? `${prenom} a séjourné dans notre logement. Le séjour a demandé quelques échanges avec l’équipe.`
+            : AVIS_DEMO[i % AVIS_DEMO.length](prenom),
+      source: r.id === sansTexte ? 'modele' : 'ia',
       ...(raisons.length ? { raisons } : {}),
       creeLe: `${ajouterJoursISO(r.depart, 1)}T09:30:00+02:00`,
       redigeLe: `${ajouterJoursISO(r.depart, 1)}T09:30:00+02:00`,
@@ -101,5 +131,5 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
     return ancien && !raisons.length ? { ...base, statut: 'fait', traiteLe: `${ajouterJoursISO(r.depart, 2)}T10:05:00+02:00`, traitePar: 'Abdel' } : base;
   });
 
-  return { envoisProgrammes, avisADeposer, reglages: tousReglages };
+  return { envoisProgrammes, avisADeposer, reglages: tousReglages, filsMessages };
 }

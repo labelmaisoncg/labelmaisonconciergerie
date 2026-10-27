@@ -167,7 +167,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
             <p role="alert" className="mt-2 flex items-start gap-1.5 text-[12.5px] font-medium text-(--lm-danger)">
               <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
               <span>
-                Ce texte contient un code ou le wifi écrit en toutes lettres : ce message ne partira pas en dehors des 48 h avant l’arrivée et du séjour. Utilisez
+                Ce texte contient un code ou le wifi en toutes lettres : il ne partira que dans les 48&nbsp;h avant l’arrivée ou pendant le séjour. Utilisez
                 plutôt «&nbsp;Accès et clés&nbsp;» et «&nbsp;Wifi&nbsp;».
               </span>
             </p>

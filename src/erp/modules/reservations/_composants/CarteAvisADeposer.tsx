@@ -100,8 +100,9 @@ export function CarteAvisADeposer({ r }: { r: Reservation }) {
         </>
       ) : (
         <>
+          {/* À relire sans texte sûr : rien de prérempli (jamais d'éloge) ; le titre le dit, les raisons suivent. */}
           {etat.statut === 'a_relire' && (
-            <Alert tone="alerte" titre="À relire avant de déposer" className="mb-3">
+            <Alert tone="alerte" titre={etat.aide ? 'Écrivez l’avis vous-même' : 'À relire avant de déposer'} className="mb-3">
               <ul>
                 {etat.raisons.map((x) => (
                   <li key={x}>{x}</li>
@@ -109,8 +110,6 @@ export function CarteAvisADeposer({ r }: { r: Reservation }) {
               </ul>
             </Alert>
           )}
-          {/* À relire sans texte sûr : rien de prérempli (jamais d'éloge), une ligne dit pourquoi. */}
-          {etat.aide && <p className="mb-2 text-[13px] text-(--lm-encre)">{etat.aide}</p>}
           <Textarea
             aria-label="Texte de l’avis"
             rows={4}
