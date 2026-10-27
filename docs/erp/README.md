@@ -310,7 +310,7 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 | Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
 | Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Votre agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
 | CRM | Appels et relances (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
-| Paramètres | Équipe, Annonces à l'équipe (gérant), Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Société (identité et sauvegarde) | `/erp/parametres` (`/annonces-equipe`, `/plateformes`, `/application`, `/societe`) |
+| Paramètres | Équipe, Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Annonces à l'équipe (gérant), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/application`, `/annonces-equipe`, `/societe`) |
 
 Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
 (`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé
@@ -1310,13 +1310,19 @@ Un court message du gérant à toute l'équipe de l'espace (premier essai :
 « Bonjour 👋 »). Rien à voir avec l'annonce d'un logement sur Airbnb ou
 Booking (`versionsAnnonce`).
 
-- **Gérant** : Paramètres → Annonces à l'équipe (`/erp/parametres/annonces-equipe`) :
-  titre, texte, « Prévenir aussi par notification » (cochée), « Publier » ;
-  la liste des annonces publiées, « Retirer » (confirmation). Tant que
-  l'espace n'a aucune annonce, le formulaire propose « Bonjour 👋 » au nom
-  de la conciergerie (`nomConciergerie`), à publier en un clic.
+- **Gérant** : Paramètres → Annonces à l'équipe (`/erp/parametres/annonces-equipe`,
+  onglet après Application) : « Nouvelle annonce à l'équipe » (titre, texte,
+  « Prévenir aussi par notification », cochée, proposée seulement quand les
+  notifications marchent sur le serveur), « Publier » ; « Sur l'Accueil de
+  l'équipe » : les annonces publiées, « Retirer » puis « Retirer de
+  l'Accueil ». Tant que l'espace n'a aucune annonce, le formulaire propose
+  « Bonjour 👋 / Bienvenue dans l'app {nom} » au nom de la conciergerie
+  (`nomConciergerie`), à publier en un clic. Une erreur inattendue de la
+  notification propose « Réessayer » (même annonce, jamais deux envois).
 - **Chaque membre** (gérant, opérations, lecture) : une carte en haut de
-  l'Accueil par annonce publiée (3 au plus), jusqu'à « J'ai lu ». La
+  l'Accueil, une ligne par annonce publiée (3 au plus, texte sur 4 lignes
+  et « Lire la suite »), jusqu'à « J'ai lu ». La recherche nomme leur
+  historique « Annonce à l'équipe : … ». La
   fermeture reste sur l'appareil (localStorage, par espace et par
   personne) : un membre qui n'est pas gérant n'écrit rien. Un membre qui
   arrive plus tard voit les annonces encore publiées.

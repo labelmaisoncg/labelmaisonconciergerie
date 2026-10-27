@@ -107,7 +107,7 @@ export function premiereAnnonce(nomConciergerie: string): SaisieAnnonce {
   const nom = (nomConciergerie ?? '').trim();
   return {
     titre: 'Bonjour 👋',
-    texte: `Bienvenue dans l’ERP${nom ? ` ${nom}` : ''}. Les nouvelles de l’équipe s’afficheront ici.`,
+    texte: `Bienvenue dans l’app${nom ? ` ${nom}` : ''}. Les nouvelles de l’équipe s’afficheront ici.`,
   };
 }
 
@@ -232,7 +232,8 @@ export type IssueNotification =
   | { genre: 'envoyee' }
   | { genre: 'deja-partie' }
   | { genre: 'aucun-appareil' }
-  | { genre: 'echec'; raison?: string };
+  /** `reessayable` : erreur inattendue (réseau, serveur), l'action peut être relancée pour la même annonce. */
+  | { genre: 'echec'; raison?: string; reessayable?: boolean };
 
 /** Réponse de l'action « annoncer » (api/erp-notifications.ts) traduite pour l'écran. */
 export function issueDeLaReponse(r: { envoyees?: number; dejaPartie?: boolean; appareils?: number }): IssueNotification {
@@ -241,11 +242,24 @@ export function issueDeLaReponse(r: { envoyees?: number; dejaPartie?: boolean; a
   return { genre: 'aucun-appareil' };
 }
 
+/** Refus connus de l'action « annoncer » : leur message est relayé tel quel. */
+export const CODES_REFUS_ANNONCE: readonly string[] = ['gerant', 'introuvable', 'retiree', 'inactif', 'envoi'];
+
+/**
+ * Échec de l'action « annoncer » traduit pour l'écran : le message du
+ * serveur pour un refus connu, sinon une phrase simple (jamais une erreur
+ * technique) et la possibilité de réessayer.
+ */
+export function issueDeLErreur(code: string | undefined, message: string | undefined): IssueNotification {
+  if (code && CODES_REFUS_ANNONCE.includes(code) && (message ?? '').trim()) return { genre: 'echec', raison: (message ?? '').trim() };
+  return { genre: 'echec', reessayable: true };
+}
+
 /** Message affiché sous le formulaire : l'annonce est toujours publiée, la notification le dit en clair. */
 export function messagePublication(i: IssueNotification): { ton: 'succes' | 'alerte'; texte: string } {
   switch (i.genre) {
     case 'sans':
-      return { ton: 'succes', texte: 'Annonce publiée. Elle s’affiche en haut de l’Accueil de chaque membre.' };
+      return { ton: 'succes', texte: 'Annonce publiée.' };
     case 'demo':
       return { ton: 'succes', texte: 'Annonce publiée. Démonstration : la notification partirait vers les appareils de l’équipe.' };
     case 'envoyee':
@@ -257,7 +271,7 @@ export function messagePublication(i: IssueNotification): { ton: 'succes' | 'ale
     case 'non-enregistree':
       return { ton: 'alerte', texte: 'Annonce publiée, mais pas encore enregistrée : la notification n’est pas partie.' };
     case 'echec': {
-      const raison = (i.raison ?? '').trim();
+      const raison = (i.raison ?? '').trim() || (i.reessayable ? 'Réessayez dans un instant.' : '');
       return { ton: 'alerte', texte: `Annonce publiée, mais la notification n’est pas partie.${raison ? ` ${raison}` : ''}` };
     }
   }

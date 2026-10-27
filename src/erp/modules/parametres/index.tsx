@@ -29,11 +29,11 @@ export default function Module() {
         label="Sections des paramètres"
         onglets={[
           { cle: 'utilisateurs', libelle: 'Équipe', to: '/erp/parametres', end: true },
-          // Messages du gérant à l'équipe (Accueil de chacun) : pas l'annonce d'un logement.
-          ...(gerant ? [{ cle: 'annonces-equipe', libelle: 'Annonces à l’équipe', to: '/erp/parametres/annonces-equipe' }] : []),
           { cle: 'plateformes', libelle: 'Plateformes', to: '/erp/parametres/plateformes' },
           ...(gerant ? [{ cle: 'acces', libelle: 'Accès', to: '/erp/parametres/acces' }] : []),
           { cle: 'application', libelle: 'Application', to: '/erp/parametres/application' },
+          // Messages du gérant à l'équipe (Accueil de chacun) : pas l'annonce d'un logement.
+          ...(gerant ? [{ cle: 'annonces-equipe', libelle: 'Annonces à l’équipe', to: '/erp/parametres/annonces-equipe' }] : []),
           { cle: 'societe', libelle: 'Société', to: '/erp/parametres/societe' },
           ...(plateforme ? [{ cle: 'espaces', libelle: 'Espaces', to: '/erp/parametres/espaces' }] : []),
         ]}
