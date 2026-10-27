@@ -37,6 +37,7 @@ import {
 } from '../src/erp/data/operations-acces.js';
 import { lirePhoto, photoOperations } from '../src/erp/data/operations-fichiers.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
+import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { AccesOperations } from '../src/erp/data/types-operations';
 import { continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
@@ -67,7 +68,8 @@ const REPONSE_LIEN = 'Si cette adresse a accès à un espace opérations, un lie
 /** La vue de la personne, photos signées, au nom de la conciergerie de son espace. */
 async function vueSignee(espace: string, e: Awaited<ReturnType<typeof entreesOps>>, membreId: string) {
   const aujourdhui = dateParisISO();
-  const conciergerie = (await ficheEspace(espace).catch(() => undefined))?.nom;
+  // Le nom de l'espace ; Label Maison seulement s'il l'est vraiment (fiche illisible : « votre conciergerie »).
+  const conciergerie = (await ficheEspace(espace).catch(() => undefined))?.nom ?? (estLabelMaison(espace) ? 'Label Maison' : 'votre conciergerie');
   const brute = vueOperations(e, membreId, { aujourdhui, conciergerie });
   if (!brute) return null;
   const urls = [
@@ -207,6 +209,8 @@ export default async function handler(req: any, res: any) {
     if (action === 'photo' && req.method === 'POST') {
       if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée : utilisez la page de l’espace opérations.' });
       if (tropDePhotos(adresseIp(req))) return repondre(res, 429, { ok: false, erreur: 'Trop de photos d’un coup : patientez quelques minutes.' });
+      // Le stockage des photos n'est ouvert que pour Label Maison : le dire, plutôt qu'un « réessayez » sans issue.
+      if (!estLabelMaison(s.espace)) return repondre(res, 409, { ok: false, erreur: 'L’envoi de photos n’est pas encore ouvert pour cet espace.' });
       const photo = lirePhoto(corps.donnees, corps.type);
       if (!photo) return repondre(res, 400, { ok: false, erreur: 'Photo illisible : choisissez une image JPEG, PNG ou WebP de moins de 3 Mo.' });
       const url = await deposerPhoto(s.espace, membreId, photo.octets, photo.type, photo.extension);

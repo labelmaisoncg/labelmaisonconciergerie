@@ -14,6 +14,7 @@
  * signalé », et non trois.
  */
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
+import { lienIncident } from './incidents-erp.js';
 import type { FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
 
 export type TypeNotification =
@@ -346,7 +347,7 @@ export function notificationUrgence(
         type: 'urgence',
         titre: urgent ? `Urgence · ${logement || 'un logement'}` : `Incident confié à ${qui || 'l’équipe'} · ${logement || 'un logement'}`,
         corps: `${extrait(i.description, 120)}${urgent && qui ? ` (${qui})` : ''}`,
-        url: `/erp/logements/${encodeURIComponent(i.logementId)}?onglet=historique`,
+        url: lienIncident(i),
       },
     ],
   };

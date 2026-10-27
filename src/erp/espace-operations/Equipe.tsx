@@ -4,6 +4,7 @@ import { jourMois } from '../data/format';
 import { ROLES_OPERATIONS, ajouterJours, suiviPar, verifierAbsence } from '../data/operations';
 import type { AbsenceMembre } from '../data/types-operations';
 import { Alert, Avatar, Button, Drawer, Field, Input, Select } from '../ui';
+import { remplacantsPossibles } from '../data/espace-operations';
 import { Ligne, Liste, Rubrique, TitreEspace, court, useOps } from './commun';
 
 /** Responsable de pôle : les absences et leurs remplaçants, puis les personnes de ses logements. */
@@ -84,6 +85,9 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
   const lecture = !!apercu || duGerant;
   const absentsPossibles = vue.equipe.filter((m) => !m.absenceParGerant || m.id === existante?.membreId).map((m) => ({ valeur: m.id, libelle: m.nom }));
   const nom = (m?: string) => (m ? court(vue.equipe.find((x) => x.id === m)?.nom) : 'Personne');
+  // Seulement ceux qui suivent déjà ce qu'ils reprendraient (sinon ils ne le verraient pas) ; le choix déjà fait reste affiché.
+  const possibles = new Set(a.membreId ? remplacantsPossibles(vue, a.membreId) : []);
+  const remplacants = membres.filter((m) => m.valeur !== a.membreId && (possibles.has(m.valeur) || m.valeur === a.remplacantId));
 
   // Ce qui change : ses logements et ses incidents ouverts, repris le premier jour de l'absence.
   const date = a.du > vue.aujourdhui ? a.du : vue.aujourdhui;
@@ -134,19 +138,22 @@ export function PanneauAbsence({ id, onFermer }: { id: string; onFermer: () => v
       <div className="grid grid-cols-1 gap-4 text-[13px]">
         {erreur && <Alert tone="danger">{erreur}</Alert>}
         {duGerant && <Alert tone="neutre">Absence notée par le gérant : lui seul peut la modifier.</Alert>}
-        <Field label="Personne absente" requis aide={existante ? undefined : 'Pour quelqu’un qui suit aussi d’autres logements, demandez au gérant.'}>
+        <Field label="Personne absente" requis={!lecture} aide={existante ? undefined : 'Pour quelqu’un qui suit aussi d’autres logements, demandez au gérant.'}>
           <Select value={a.membreId} disabled={lecture} placeholder="Choisir" onChange={(e) => setA({ ...a, membreId: e.target.value })} options={absentsPossibles} />
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Du" requis>
+          <Field label="Du" requis={!lecture}>
             <Input type="date" value={a.du} disabled={lecture} onChange={(e) => setA({ ...a, du: e.target.value })} />
           </Field>
-          <Field label="Au (inclus)" requis>
+          <Field label="Au (inclus)" requis={!lecture}>
             <Input type="date" value={a.au} min={a.du} disabled={lecture} onChange={(e) => setA({ ...a, au: e.target.value })} />
           </Field>
         </div>
-        <Field label="Remplaçant si le logement n’en a pas">
-          <Select value={a.remplacantId ?? ''} disabled={lecture} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={membres.filter((m) => m.valeur !== a.membreId)} />
+        <Field
+          label="Remplaçant si le logement n’en a pas"
+          aide={!lecture && a.membreId && !remplacants.length ? 'Personne ne suit tous ses logements : choisissez un remplaçant dans chaque logement.' : undefined}
+        >
+          <Select value={a.remplacantId ?? ''} disabled={lecture || !remplacants.length} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={remplacants} />
         </Field>
 
         {a.membreId && (

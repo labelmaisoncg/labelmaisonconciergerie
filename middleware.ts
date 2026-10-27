@@ -628,7 +628,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
              if (!r.ok || !r.d.access_token) throw new Error(traduire(r.d, r.statut));
              return ouvrir(r.d.access_token, r.d.refresh_token);
            })
-           .catch(function (e) { echec(e); occuper(fConnexion, false); champMdp.select(); });
+           .catch(function (e) { echec(e); occuper(fConnexion, false); champMdp.value = ''; champMdp.focus(); });
        });
 
        $('oubli').addEventListener('click', function () {
@@ -850,7 +850,8 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
   if (!/^application\/json\b/i.test(request.headers.get('content-type') || '')) {
     // Formulaire envoyé sans script : on le dit, sans rien lire ni rien poser.
     if (/text\/html/i.test(request.headers.get('accept') || '')) {
-      return pageConnexionErp(ERP.racine, 'La connexion demande JavaScript : activez-le, puis réessayez.', 415);
+      // Pas de message ici : l'avis <noscript> de la page le dit déjà (un seul message).
+      return pageConnexionErp(ERP.racine, '', 415);
     }
     return repondreJson({ ok: false, erreur: 'Demande refusée.' }, 415);
   }

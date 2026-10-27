@@ -381,7 +381,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
 
 function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperations, ctx: ContexteAction): ResultatAction {
   const moi = membreConnecte(brutes, membreId);
-  if (!moi) return refus('Votre accès n’est plus actif. Contactez Label Maison.', 403);
+  if (!moi) return refus('Votre accès n’est plus actif. Contactez votre conciergerie.', 403);
   const e = restreindre(brutes, membreId);
   const ids = new Set(e.logements.map((l) => l.id));
   const pole = moi.role === 'pole';
@@ -396,7 +396,7 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
   /** Ce qu'un pôle ne peut pas noter, changer ni annuler : l'absence notée par le gérant, ou celle de quelqu'un qui suit des logements hors des siens. */
   const absenceInterdite = (a: Pick<AbsenceMembre, 'membreId' | 'parMembreId'> | undefined): string | undefined => {
     if (!a) return undefined;
-    if (!a.parMembreId) return 'Absence notée par le gérant : lui seul peut la changer.';
+    if (!a.parMembreId) return 'Absence notée par le gérant : lui seul peut la modifier.';
     if (suitHorsPerimetre(brutes, a.membreId, ids)) return 'Cette personne suit aussi des logements hors des vôtres : demandez au gérant de noter son absence.';
     return undefined;
   };
@@ -608,6 +608,9 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
       const refusAbsence = absenceInterdite(existante) ?? absenceInterdite({ membreId: action.membreId, parMembreId: moi.id });
       if (refusAbsence) return refus(refusAbsence, 403);
       if (action.remplacantId !== undefined && (!idValide(action.remplacantId) || !e.equipe.some((m) => m.id === action.remplacantId))) return refus('Le remplaçant doit faire partie de votre équipe.');
+      // Le remplaçant doit déjà suivre ce qu'il reprend, sinon il ne le verrait pas.
+      if (action.remplacantId && action.remplacantId !== existante?.remplacantId && !remplacantsPossibles(e, action.membreId).includes(action.remplacantId))
+        return refus('Choisissez un remplaçant qui suit déjà ses logements.');
       // Le motif n'est ni montré ni saisi ici : celui noté par le gérant est gardé tel quel.
       const motif = existante?.motif;
       const absence: AbsenceMembre = {
@@ -655,6 +658,33 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
     default:
       return refus('Action inconnue.');
   }
+}
+
+/**
+ * Remplaçants possibles pendant l'absence de `membreId` : ceux qui suivent déjà
+ * chacun des logements qui leur reviendraient (les siens sans remplaçant
+ * propre, et ceux de ses incidents ouverts). Sinon le remplaçant annoncé ne
+ * verrait pas le logement. Rien à reprendre : toute personne qui partage un
+ * de ses logements.
+ */
+export function remplacantsPossibles(
+  d: {
+    equipe: readonly { id: Id; logementIds: readonly Id[] }[];
+    affectations: readonly AffectationLogement[];
+    incidents: readonly { logementId: Id; assigneA?: Id; statut: Incident['statut'] }[];
+  },
+  membreId: Id,
+): Id[] {
+  const sansRemplacantPropre = (logementId: Id) => !d.affectations.find((x) => x.id === logementId)?.remplacantId;
+  const aReprendre = new Set([
+    ...d.affectations.filter((x) => x.responsableId === membreId && !x.remplacantId).map((x) => x.id),
+    ...d.incidents.filter((i) => i.statut !== 'resolu' && i.assigneA === membreId && sansRemplacantPropre(i.logementId)).map((i) => i.logementId),
+  ]);
+  const siens = new Set(d.equipe.find((m) => m.id === membreId)?.logementIds ?? []);
+  return d.equipe
+    .filter((m) => m.id !== membreId)
+    .filter((m) => (aReprendre.size ? [...aReprendre].every((id) => m.logementIds.includes(id)) : m.logementIds.some((id) => siens.has(id))))
+    .map((m) => m.id);
 }
 
 /**

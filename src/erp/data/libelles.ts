@@ -51,7 +51,7 @@ export const LIBELLES = {
   statutPrestataire: { actif: 'Actif', suspendu: 'Suspendu', sorti: 'Sorti' } satisfies Record<StatutPrestataire, string>,
   statutDocument: { valide: 'Valide', expire: 'Expiré', manquant: 'Manquant' } satisfies Record<StatutDocument, string>,
   statutIncident: { ouvert: 'Nouveau', en_cours: 'On s’en occupe', resolu: 'Réglé' } satisfies Record<StatutIncident, string>,
-  gravite: { faible: 'Faible', moyenne: 'Moyenne', haute: 'Haute' } satisfies Record<GraviteIncident, string>,
+  gravite: { faible: 'Faible', moyenne: 'Moyenne', haute: 'Urgent' } satisfies Record<GraviteIncident, string>,
   statutFacture: { brouillon: 'Brouillon', emise: 'Envoyée', payee: 'Payée', en_retard: 'En retard', annulee: 'Annulée' } satisfies Record<StatutFacture, string>,
   statutPaiement: { a_payer: 'À payer', paye: 'Payé', bloque: 'Bloqué' } satisfies Record<StatutPaiementPrestataire, string>,
   etapeProspect: {

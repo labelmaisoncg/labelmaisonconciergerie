@@ -63,7 +63,7 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
             ]}
             className="self-start"
           />
-          {urgent && <p className="text-[12.5px] text-(--lm-encre-2)">Le gérant et la personne qui suit le logement sont prévenus tout de suite.</p>}
+          {urgent && <p className="text-[12.5px] text-(--lm-encre-2)">Le gérant est prévenu tout de suite.</p>}
         </div>
         <Field label="Ce qui se passe" requis>
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ce que vous constatez, et ce qu’il faut faire." />

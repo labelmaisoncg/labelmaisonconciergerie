@@ -86,7 +86,6 @@ export const ANCIENNES_ADRESSES: Record<string, string> = {
   annonces: '/erp/logements',
   menages: '/erp/reservations',
   linge: '/erp/logements',
-  incidents: '/erp/logements',
   prestataires: '/erp/parametres',
   mandats: '/erp/logements',
   commercial: '/erp/crm',
