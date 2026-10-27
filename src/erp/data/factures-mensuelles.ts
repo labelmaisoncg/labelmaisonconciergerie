@@ -25,8 +25,17 @@
  *
  * Module pur (navigateur et serveur) : imports en « .js ».
  */
-import type { Espace } from './espaces.js';
-import { ID_REGLAGE_SOCIETE, erreursIdentite, identiteConciergerie, mentionTva, normaliserIdentite, tauxTva } from './identite-conciergerie.js';
+import { estLabelMaison, type Espace } from './espaces.js';
+import {
+  ID_REGLAGE_SOCIETE,
+  emetteurDeLabelMaison,
+  erreursIdentite,
+  identiteConciergerie,
+  mentionTva,
+  mentionsFacture,
+  normaliserIdentite,
+  tauxTva,
+} from './identite-conciergerie.js';
 import { ajouterJoursISO, bilanMensuel, moisDe, moisPrecedent, moisSuivant, moisValide, proprietaireAutorise } from './proprietaire.js';
 import { eurosTexte, montantTtcFacture } from './relances.js';
 import type {
@@ -100,8 +109,12 @@ export function periodeDuMois(mois: string): { du: DateISO; au: DateISO } {
 export const estFactureMensuelle = (f: Facture | undefined | null): f is Facture & { mensuelle: FactureMensuelle } =>
   !!f && !!f.mensuelle && moisValide(f.mensuelle.mois) && f.destinataire === 'proprietaire';
 
-/** Validée : elle a reçu un numéro, plus rien ne change dans son contenu. */
-export const factureFigee = (f: Facture | undefined | null): boolean => !!f && (!!String(f.numero ?? '').trim() || !!f.mensuelle?.valideeLe);
+/**
+ * Validée : elle a reçu un numéro (de la base, ou du navigateur en
+ * démonstration), plus rien ne change dans son contenu. Le contenu final est
+ * enregistré juste avant la numérotation : sans numéro, c'est encore un brouillon.
+ */
+export const factureFigee = (f: Facture | undefined | null): boolean => !!f && !!String(f.numero ?? '').trim();
 
 /* ---------------------------------------------------------------- calcul */
 
@@ -319,28 +332,36 @@ export function prochainNumero(factures: readonly Pick<Facture, 'numero'>[], com
 
 export type ResultatValidation = { ok: true; facture: Facture; compteur: CompteurFactures } | { ok: false; erreur: string };
 
-/**
- * Valide un brouillon : recalculé une dernière fois, numéroté, puis figé
- * (lignes, montants, émission, échéance, identités, logements, mention de
- * TVA). Renvoie la facture et le compteur à enregistrer ensemble.
- */
-export function validerFacture(o: {
+export interface OptionsValidation {
   facture: Facture;
   donnees: Donnees;
-  /** Toutes les factures de l'espace (numéros déjà attribués). */
-  factures: readonly Facture[];
-  compteur?: CompteurFactures;
-  proprietaire: Pick<Proprietaire, 'id' | 'nom' | 'adresse'> | undefined;
+  proprietaire: Pick<Proprietaire, 'id' | 'nom' | 'adresse' | 'type'> | undefined;
   identite: IdentiteSociete;
+  /** Espace de la facture : un autre que Label Maison ne valide jamais avec l'identité de Label Maison. */
+  espace: Pick<Espace, 'id'>;
   aujourdhui: DateISO;
   maintenant: Horodatage;
   par: string;
-}): ResultatValidation {
+}
+
+export const MESSAGE_VALIDATION_INDISPONIBLE = 'La validation des factures sera disponible après la mise à jour de l’ERP.';
+
+/**
+ * Contenu final d'une facture à valider, SANS numéro : recalculée une
+ * dernière fois ; émission, échéance, identités (conciergerie et
+ * propriétaire), logements, mentions et TVA figés. Le numéro vient ensuite :
+ * de la base (erp.numeroter_facture, validerAvecLaBase), ou du navigateur en
+ * démonstration seulement (validerFacture).
+ */
+export function preparerValidation(o: OptionsValidation): { ok: true; facture: Facture & { mensuelle: FactureMensuelle } } | { ok: false; erreur: string } {
   const f = o.facture;
   if (!estFactureMensuelle(f)) return { ok: false, erreur: 'Facture introuvable.' };
   if (factureFigee(f)) return { ok: false, erreur: 'Cette facture est déjà validée : elle ne change plus.' };
   if (f.statut === 'annulee') return { ok: false, erreur: 'Ce mois n’est plus à facturer : préparez de nouveau la facture.' };
-  if (Object.keys(erreursIdentite(o.identite)).length) return { ok: false, erreur: 'Complétez l’identité de votre société (Paramètres → Société) : raison sociale, SIRET et adresse.' };
+  if (!estLabelMaison(o.espace) && emetteurDeLabelMaison(o.identite)) {
+    return { ok: false, erreur: 'L’identité de la société est celle de Label Maison : indiquez la vôtre (Paramètres → Société).' };
+  }
+  if (Object.keys(erreursIdentite(o.identite, o.espace)).length) return { ok: false, erreur: 'Complétez l’identité de votre société (Paramètres → Société) : raison sociale, SIRET et adresse.' };
   const p = o.proprietaire;
   if (!p || p.id !== f.proprietaireId) return { ok: false, erreur: 'Propriétaire introuvable.' };
   const nom = String(p.nom ?? '').trim();
@@ -350,30 +371,122 @@ export function validerFacture(o: {
   const frais = preparerBrouillon({ donnees: o.donnees, proprietaireId: p.id, mois, existante: f, identite: o.identite, aujourdhui: o.aujourdhui, maintenant: o.maintenant, par: o.par });
   if (!frais || !frais.mensuelle) return { ok: false, erreur: 'Facture introuvable.' };
   if (frais.montantHtCentimes <= 0) return { ok: false, erreur: 'Rien à facturer ce mois-ci : le total n’est pas positif.' };
-  const annee = o.aujourdhui.slice(0, 4);
-  const { numero, sequence } = prochainNumero(o.factures, o.compteur, annee);
-  const emetteur = normaliserIdentite(o.identite);
+  const { mentions: _propres, ...identite } = normaliserIdentite(o.identite);
+  // Mentions du gérant ; à défaut, pour un propriétaire professionnel, pénalités et indemnité de 40 €.
+  const mentions = mentionsFacture(normaliserIdentite(o.identite), p);
+  const emetteur: IdentiteSociete = { ...identite, ...(mentions ? { mentions } : {}) };
   const mention = mentionTva(emetteur);
-  const facture: Facture = {
-    ...frais,
-    numero,
-    statut: 'emise',
-    dateEmission: o.aujourdhui,
-    echeance: ajouterJoursISO(o.aujourdhui, DELAI_PAIEMENT_JOURS),
-    tvaPct: tauxTva(emetteur),
-    montantHtCentimes: totauxLignes(frais.lignes, tauxTva(emetteur)).ht,
-    mensuelle: {
-      ...frais.mensuelle,
-      valideeLe: o.maintenant,
-      valideePar: o.par,
-      emetteur,
-      client: { nom: nom.slice(0, 160), adresse: adresse.slice(0, 240) },
-      logements: calculerFactureMois(o.donnees, p.id, mois).logements,
-      ...(mention ? { mentionTva: mention } : {}),
+  return {
+    ok: true,
+    facture: {
+      ...frais,
+      numero: '',
+      statut: 'brouillon',
+      dateEmission: o.aujourdhui,
+      echeance: ajouterJoursISO(o.aujourdhui, DELAI_PAIEMENT_JOURS),
+      tvaPct: tauxTva(emetteur),
+      montantHtCentimes: totauxLignes(frais.lignes, tauxTva(emetteur)).ht,
+      mensuelle: {
+        ...frais.mensuelle,
+        valideeLe: o.maintenant,
+        valideePar: o.par,
+        emetteur,
+        client: { nom: nom.slice(0, 160), adresse: adresse.slice(0, 240) },
+        logements: calculerFactureMois(o.donnees, p.id, mois).logements,
+        ...(mention ? { mentionTva: mention } : {}),
+      },
     },
   };
+}
+
+/**
+ * DÉMONSTRATION SEULEMENT : valide et numérote dans le navigateur (numéro
+ * suivant de l'espace, compteur par année). En production, le numéro vient
+ * toujours de la base (validerAvecLaBase) : deux appareils ou un onglet
+ * resté ouvert ne peuvent pas donner le même.
+ */
+export function validerFacture(
+  o: OptionsValidation & {
+    /** Toutes les factures de l'espace (numéros déjà attribués). */
+    factures: readonly Facture[];
+    compteur?: CompteurFactures;
+  },
+): ResultatValidation {
+  const prepa = preparerValidation(o);
+  if (!prepa.ok) return prepa;
+  const annee = o.aujourdhui.slice(0, 4);
+  const { numero, sequence } = prochainNumero(o.factures, o.compteur, annee);
+  const facture: Facture = { ...prepa.facture, numero, statut: 'emise' };
   const compteur: CompteurFactures = { id: ID_COMPTEUR_FACTURES, derniers: { ...(o.compteur?.derniers ?? {}), [annee]: sequence }, majLe: o.maintenant };
   return { ok: true, facture, compteur };
+}
+
+/** Erreur renvoyée par la base (PostgREST). */
+export interface ErreurBaseFacture {
+  message?: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}
+
+const texteErreur = (e: ErreurBaseFacture | null | undefined): string => [e?.message, e?.details, e?.hint].filter(Boolean).join(' ');
+
+/** La fonction de numérotation n'existe pas encore dans la base (SQL pas encore passé). */
+export function numerotationAbsente(e: ErreurBaseFacture | null | undefined, status?: number): boolean {
+  const code = String(e?.code ?? '');
+  return code === 'PGRST202' || code === '42883' || (status === 404 && /numeroter_facture|function/i.test(texteErreur(e)));
+}
+
+/**
+ * Écriture refusée par la base parce que la facture est numérotée (le
+ * déclencheur la fige, sauf paiement, partage et relances) : refus
+ * définitif, jamais réessayé ; la ligne est relue (synchro.ts).
+ */
+export function refusEcritureFigee(e: ErreurBaseFacture | null | undefined): boolean {
+  const t = texteErreur(e);
+  if (!/factur/i.test(t)) return false;
+  return String(e?.code ?? '') === 'LMF01' || /(valid|fig|num[ée]rot|ne change plus|immuable)/i.test(t);
+}
+
+/** Ce que validerAvecLaBase utilise de l'ERP (le store en production ; des doublures dans les vérifications). */
+export interface AccesValidation {
+  /** Écrit la facture et attend que la base l'ait reçue (faux : pas enregistrée). */
+  enregistrer: (f: Facture) => Promise<boolean>;
+  /** erp.numeroter_facture(p_id), avec l'en-tête de l'espace : renvoie le numéro attribué. */
+  numeroter: (id: Id) => Promise<{ data: unknown; error: ErreurBaseFacture | null; status?: number }>;
+  /** Relit la facture dans la base (et la pose dans l'ERP). */
+  relire: (id: Id) => Promise<Facture | null>;
+}
+
+/**
+ * Validation en production : le contenu final est d'abord enregistré (sans
+ * numéro), puis la base attribue le numéro (erp.numeroter_facture : gérant de
+ * l'espace, compteur verrouillé, idempotente, statut validé) ; la facture est
+ * ensuite relue telle que la base l'a figée. Le navigateur ne calcule JAMAIS
+ * le numéro ici. Fonction absente (base pas encore mise à jour) : refus,
+ * sans numéro.
+ */
+export async function validerAvecLaBase(o: OptionsValidation & AccesValidation): Promise<{ ok: true; facture: Facture; numero: string } | { ok: false; erreur: string }> {
+  const prepa = preparerValidation(o);
+  if (!prepa.ok) return prepa;
+  const id = prepa.facture.id;
+  if (!(await o.enregistrer(prepa.facture))) return { ok: false, erreur: 'La facture n’a pas pu être enregistrée avant sa validation : vérifiez la connexion et réessayez.' };
+  let r: Awaited<ReturnType<AccesValidation['numeroter']>>;
+  try {
+    r = await o.numeroter(id);
+  } catch {
+    return { ok: false, erreur: 'Serveur injoignable : la facture n’a pas été validée. Réessayez dans un instant.' };
+  }
+  if (r.error) {
+    if (numerotationAbsente(r.error, r.status)) return { ok: false, erreur: MESSAGE_VALIDATION_INDISPONIBLE };
+    if (r.status === 403 || r.error.code === '42501') return { ok: false, erreur: 'Seul un gérant de l’espace peut valider une facture.' };
+    return { ok: false, erreur: `Validation impossible pour l’instant${r.error.message ? ` : ${r.error.message}` : '.'}` };
+  }
+  const numero = typeof r.data === 'string' ? r.data.trim() : '';
+  if (!NUMERO.test(numero)) return { ok: false, erreur: 'Réponse inattendue de la base : rechargez la page avant de réessayer.' };
+  const relue = await o.relire(id).catch(() => null);
+  const facture: Facture = relue && String(relue.numero ?? '').trim() === numero ? relue : { ...prepa.facture, numero, statut: 'emise' };
+  return { ok: true, facture, numero };
 }
 
 /* --------------------------------------------------------------- document */
@@ -404,13 +517,19 @@ export interface DocumentFacture {
  */
 export function documentDeFacture(
   f: Facture,
-  brouillon?: { identite: IdentiteSociete; proprietaire?: Pick<Proprietaire, 'nom' | 'adresse'>; logements: string[] },
+  o: {
+    /** Espace de la facture : un émetteur portant le SIRET ou le nom de Label Maison n'y est jamais montré ailleurs. */
+    espace: Pick<Espace, 'id'>;
+    brouillon?: { identite: IdentiteSociete; proprietaire?: Pick<Proprietaire, 'nom' | 'adresse' | 'type'>; logements: string[] };
+  },
 ): DocumentFacture | null {
   if (!estFactureMensuelle(f)) return null;
   const m = f.mensuelle;
   const fige = factureFigee(f);
-  const emetteur = fige ? m.emetteur : brouillon?.identite;
-  if (!emetteur) return null;
+  const brouillon = o.brouillon;
+  const mentionsBrouillon = brouillon ? mentionsFacture(brouillon.identite, brouillon.proprietaire) : '';
+  const emetteur = fige ? m.emetteur : brouillon && { ...brouillon.identite, ...(mentionsBrouillon ? { mentions: mentionsBrouillon } : {}) };
+  if (!emetteur || (!estLabelMaison(o.espace) && emetteurDeLabelMaison(emetteur))) return null;
   const tvaPct = fige ? Number(f.tvaPct) || 0 : tauxTva(emetteur);
   const lignes = (f.lignes ?? []).map((l) => ({ code: l.code, libelle: l.libelle, ...(l.detail ? { detail: l.detail } : {}), quantite: l.quantite, pu: l.puCentimes, montant: montantLigne(l) }));
   const t = totauxLignes(f.lignes ?? [], tvaPct);
@@ -476,6 +595,27 @@ export function moisSansFacture(d: Donnees & { factures: readonly Facture[] }, p
     if (montant > 0) res.push({ mois: m, montant });
   }
   return res;
+}
+
+/**
+ * Ce que le panneau du gérant propose : le mois écoulé « à préparer » (s'il
+ * a quelque chose à facturer, aucune facture mensuelle, et n'a pas été
+ * écarté par « Ne pas facturer ce mois ») ; les autres mois sans facture,
+ * écartés compris, dans « Facturer un autre mois ».
+ */
+export function moisAPreparer(
+  d: Donnees & { factures: readonly Facture[] },
+  proprietaireId: Id,
+  aujourdhui: DateISO,
+  n = 12,
+): { aPreparer?: { mois: string; montant: Centimes }; autres: { mois: string; montant: Centimes }[] } {
+  const sansFacture = moisSansFacture(d, proprietaireId, aujourdhui, n);
+  const ecartes = new Set(
+    d.factures.filter((f) => f.proprietaireId === proprietaireId && estFactureMensuelle(f) && f.statut === 'annulee').map((f) => f.mensuelle!.mois),
+  );
+  const dernier = moisAFacturerAutomatiquement(aujourdhui);
+  const aPreparer = sansFacture.find((x) => x.mois === dernier && !ecartes.has(x.mois));
+  return { ...(aPreparer ? { aPreparer } : {}), autres: sansFacture.filter((x) => x !== aPreparer) };
 }
 
 /* ------------------------------------------------------ passage planifié */

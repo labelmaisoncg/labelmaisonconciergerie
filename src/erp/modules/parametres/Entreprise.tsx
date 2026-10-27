@@ -10,11 +10,13 @@
  */
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Check } from 'lucide-react';
-import { espaceOuvert } from '../../data/espaces';
+import { espaceOuvert, type Espace } from '../../data/espaces';
 import { horodatageMaintenant } from '../../data/format';
 import {
+  MENTIONS_PROFESSIONNEL,
   MENTION_FRANCHISE_TVA,
   REGIMES_TVA,
+  type ChampIdentite,
   erreursIdentite,
   formaterSiret,
   identiteConciergerie,
@@ -36,7 +38,7 @@ export default function Entreprise() {
   const espace = espaceOuvert();
   const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
   const identite = useMemo(() => identiteConciergerie({ reglages: d.donnees.reglages }, espace), [d.donnees.reglages, espace]);
-  return gerant ? <Formulaire identite={identite} /> : <Lecture identite={identite} nom={nomConciergerie(espace)} />;
+  return gerant ? <Formulaire identite={identite} espace={espace} /> : <Lecture identite={identite} nom={nomConciergerie(espace)} />;
 }
 
 function Lecture({ identite: i, nom }: { identite: IdentiteSociete & { enregistree: boolean }; nom: string }) {
@@ -64,7 +66,11 @@ function Lecture({ identite: i, nom }: { identite: IdentiteSociete & { enregistr
   );
 }
 
-function Formulaire({ identite }: { identite: IdentiteSociete & { enregistree: boolean } }) {
+/** Ordre des champs à l'écran : le premier en erreur reçoit le focus. */
+const ORDRE_CHAMPS: ChampIdentite[] = ['raisonSociale', 'siret', 'adresse', 'tvaPct', 'numeroTva'];
+const idChamp = (c: ChampIdentite) => `societe-${c}`;
+
+function Formulaire({ identite, espace }: { identite: IdentiteSociete & { enregistree: boolean }; espace: Pick<Espace, 'id'> }) {
   const d = useErp();
   const [s, setS] = useState<Saisie>(() => versSaisie(identite));
   const [tente, setTente] = useState(false);
@@ -72,7 +78,7 @@ function Formulaire({ identite }: { identite: IdentiteSociete & { enregistree: b
   // Enregistrée ailleurs (autre appareil) : la saisie repart de la nouvelle version.
   useEffect(() => setS(versSaisie(identite)), [identite]);
   const propre = depuisSaisie(s);
-  const erreurs = tente ? erreursIdentite({ ...s, tvaPct: Number(s.tvaPct.replace(',', '.')) }) : {};
+  const erreurs = tente ? erreursIdentite({ ...s, tvaPct: Number(s.tvaPct.replace(',', '.')) }, espace) : {};
   const change = !identite.enregistree || JSON.stringify(propre) !== JSON.stringify(normaliserIdentite(identite));
   const maj = (champ: keyof Saisie, v: string) => {
     setEnregistre(false);
@@ -82,7 +88,13 @@ function Formulaire({ identite }: { identite: IdentiteSociete & { enregistree: b
   const enregistrer = (e: FormEvent) => {
     e.preventDefault();
     setTente(true);
-    if (Object.keys(erreursIdentite({ ...s, tvaPct: Number(s.tvaPct.replace(',', '.')) })).length) return;
+    const manquent = erreursIdentite({ ...s, tvaPct: Number(s.tvaPct.replace(',', '.')) }, espace);
+    const premier = ORDRE_CHAMPS.find((c) => manquent[c]);
+    if (premier) {
+      // Le premier champ à corriger reçoit le focus (son erreur est annoncée).
+      document.getElementById(idChamp(premier))?.focus();
+      return;
+    }
     d.upsert('reglages', reglageSociete(propre, { maintenant: horodatageMaintenant(), par: d.utilisateur.email }));
     setTente(false);
     setEnregistre(true);
@@ -94,16 +106,16 @@ function Formulaire({ identite }: { identite: IdentiteSociete & { enregistree: b
       <form onSubmit={enregistrer} noValidate className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Raison sociale" requis erreur={erreurs.raisonSociale}>
-            <Input value={s.raisonSociale} onChange={(e) => maj('raisonSociale', e.target.value)} autoComplete="organization" maxLength={120} />
+            <Input id={idChamp('raisonSociale')} value={s.raisonSociale} onChange={(e) => maj('raisonSociale', e.target.value)} autoComplete="organization" maxLength={120} />
           </Field>
           <Field label="Forme juridique" aide="SASU, SARL, EI…">
             <Input value={s.forme} onChange={(e) => maj('forme', e.target.value)} maxLength={60} />
           </Field>
           <Field label="SIRET" requis erreur={erreurs.siret} aide="14 chiffres.">
-            <Input value={s.siret} onChange={(e) => maj('siret', e.target.value)} inputMode="numeric" maxLength={20} />
+            <Input id={idChamp('siret')} value={s.siret} onChange={(e) => maj('siret', e.target.value)} inputMode="numeric" maxLength={20} />
           </Field>
           <Field label="Adresse du siège" requis erreur={erreurs.adresse}>
-            <Input value={s.adresse} onChange={(e) => maj('adresse', e.target.value)} autoComplete="street-address" maxLength={200} placeholder="N°, rue, code postal, ville" />
+            <Input id={idChamp('adresse')} value={s.adresse} onChange={(e) => maj('adresse', e.target.value)} autoComplete="street-address" maxLength={200} placeholder="N°, rue, code postal, ville" />
           </Field>
         </div>
 
@@ -117,15 +129,18 @@ function Formulaire({ identite }: { identite: IdentiteSociete & { enregistree: b
         {s.regimeTva === 'tva' && (
           <div className="grid gap-4 sm:grid-cols-[8rem_minmax(0,1fr)]">
             <Field label="Taux (%)" erreur={erreurs.tvaPct}>
-              <Input value={s.tvaPct} onChange={(e) => maj('tvaPct', e.target.value)} inputMode="decimal" maxLength={6} />
+              <Input id={idChamp('tvaPct')} value={s.tvaPct} onChange={(e) => maj('tvaPct', e.target.value)} inputMode="decimal" maxLength={6} />
             </Field>
             <Field label="N° de TVA intracommunautaire" erreur={erreurs.numeroTva} aide="Facultatif.">
-              <Input value={s.numeroTva ?? ''} onChange={(e) => maj('numeroTva', e.target.value)} placeholder="FR12345678901" maxLength={20} />
+              <Input id={idChamp('numeroTva')} value={s.numeroTva ?? ''} onChange={(e) => maj('numeroTva', e.target.value)} placeholder="FR12345678901" maxLength={20} />
             </Field>
           </div>
         )}
 
-        <Field label="Mentions sur vos factures" aide="Facultatif : conditions de paiement, pénalités de retard…">
+        <Field
+          label="Mentions sur vos factures"
+          aide={`Facultatif. Sans mention de votre part, les factures d’un propriétaire société (SCI…) portent : « ${MENTIONS_PROFESSIONNEL} »`}
+        >
           <Textarea
             rows={3}
             value={s.mentions ?? ''}
@@ -136,12 +151,15 @@ function Formulaire({ identite }: { identite: IdentiteSociete & { enregistree: b
         </Field>
 
         <div className="flex items-center justify-end gap-3">
-          {enregistre && !change && (
-            <span className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-succes-texte)">
-              <Check className="size-4" aria-hidden />
-              Enregistré
-            </span>
-          )}
+          {/* Toujours présent : « Enregistré » est annoncé par les lecteurs d'écran dès qu'il apparaît. */}
+          <span role="status" className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-succes-texte)">
+            {enregistre && !change && (
+              <>
+                <Check className="size-4" aria-hidden />
+                Enregistré
+              </>
+            )}
+          </span>
           <Button type="submit" variant="primary" disabled={!change}>
             Enregistrer
           </Button>

@@ -57,6 +57,8 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
     };
     const touche = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        // Échap ferme le menu seulement, pas la fenêtre (Modal, Drawer) qui le contient.
+        e.stopPropagation();
         setOuvert(false);
         bouton.current?.focus();
       }
@@ -69,11 +71,12 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
       items[j].focus();
     };
     document.addEventListener('mousedown', clic);
-    document.addEventListener('keydown', touche);
+    // En capture : le menu traite Échap avant la fenêtre qui l'entoure (useFenetre écoute le même document).
+    document.addEventListener('keydown', touche, true);
     ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     return () => {
       document.removeEventListener('mousedown', clic);
-      document.removeEventListener('keydown', touche);
+      document.removeEventListener('keydown', touche, true);
     };
   }, [ouvert]);
 

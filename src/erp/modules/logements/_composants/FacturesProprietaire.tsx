@@ -188,6 +188,14 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
           })}
         </ul>
       )}
+      {/* Deux numérotations côte à côte (« 2026-0001 » et une ancienne « LM-2026-… ») : ce n'est pas une remise à zéro. */}
+      {factures.some(estFactureMensuelle) && factures.some((f) => !estFactureMensuelle(f)) && (
+        <p className="mt-2 text-[12px] text-(--lm-encre-2)">
+          Les factures mensuelles ont leur propre numérotation, continue : année puis numéro d’ordre (
+          <span className="whitespace-nowrap">{factures.find(estFactureMensuelle)!.numero.slice(0, 4)}-0001</span>,{' '}
+          <span className="whitespace-nowrap">{factures.find(estFactureMensuelle)!.numero.slice(0, 4)}-0002…</span>).
+        </p>
+      )}
       {ouverte && <FenetreFactureMensuelle proprietaire={p} factureId={ouverte} onFermer={() => setOuverte(undefined)} />}
     </section>
   );

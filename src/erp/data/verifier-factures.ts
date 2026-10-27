@@ -35,11 +35,18 @@ import {
   retirerAjustement,
   totalCode,
   validerFacture,
+  MESSAGE_VALIDATION_INDISPONIBLE,
+  moisAPreparer,
+  refusEcritureFigee,
+  validerAvecLaBase,
+  type AccesValidation,
   type BasePassageFactures,
 } from './factures-mensuelles';
 import {
   IDENTITE_LABEL_MAISON,
+  MENTIONS_PROFESSIONNEL,
   MENTION_FRANCHISE_TVA,
+  emetteurDeLabelMaison,
   erreursIdentite,
   identiteComplete,
   identiteConciergerie,
@@ -51,6 +58,10 @@ import {
 import { bilanMensuel, ficheLogement, vueProprietaire } from './proprietaire';
 import { facturesVue, partagerFacture, planifierRelances, REGLAGES_RELANCES_DEFAUT } from './relances';
 import { consoliderSejours, memeVoyageur } from './sejours-consolides';
+import { donneesVides } from './collections';
+import { Synchro } from './synchro';
+import type { ClientErp } from './supabase';
+import { createClient } from '@supabase/supabase-js';
 import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import type { CompteurFactures, Facture, IdentiteSociete, Logement, Mandat, Proprietaire, Reglage, Reservation } from './types';
 
@@ -247,9 +258,9 @@ async function main() {
   const brouillon = preparerBrouillon({ donnees, proprietaireId: P, mois: '2026-09', identite: IDENTITE_LABEL_MAISON, aujourdhui: auj, maintenant, par: 'automatique' })!;
   verifier(!!brouillon && brouillon.id === idFactureMensuelle(P, '2026-09') && brouillon.statut === 'brouillon' && brouillon.numero === '', 'brouillon : sans numéro, id du propriétaire et du mois');
   {
-    const doc = documentDeFacture(brouillon, { identite: IDENTITE_LABEL_MAISON, proprietaire: donnees.proprietaires[0], logements: c.logements })!;
+    const doc = documentDeFacture(brouillon, { espace: LM, brouillon: { identite: IDENTITE_LABEL_MAISON, proprietaire: donnees.proprietaires[0], logements: c.logements } })!;
     verifier(doc.brouillon && doc.tvaPct === 0 && doc.tva === 0 && doc.totalTtc === doc.totalHt && doc.mentionTva === MENTION_FRANCHISE_TVA, 'franchise en base : TVA 0 et « TVA non applicable, art. 293 B du CGI »');
-    const docTva = documentDeFacture(brouillon, { identite: identiteSens, proprietaire: donnees.proprietaires[0], logements: c.logements })!;
+    const docTva = documentDeFacture(brouillon, { espace: SENS, brouillon: { identite: identiteSens, proprietaire: donnees.proprietaires[0], logements: c.logements } })!;
     verifier(docTva.tvaPct === 20 && docTva.tva === Math.round(docTva.totalHt * 0.2) && docTva.totalTtc === docTva.totalHt + docTva.tva && !docTva.mentionTva, 'régime TVA : TVA 20 % calculée, sans mention 293 B');
     verifier(tauxTva({ regimeTva: 'tva', tvaPct: 10 }) === 10 && tauxTva({ regimeTva: 'franchise', tvaPct: 20 }) === 0, 'taux : celui du régime de l’espace, jamais écrit en dur');
     verifier(doc.periode.du === '2026-09-01' && doc.periode.au === '2026-09-30' && doc.client.nom === 'Camille Bernard' && doc.logements.join() === 'Bel Appartement,Studio Jardin', 'document : période du mois, propriétaire, logements');
@@ -270,7 +281,7 @@ async function main() {
     { id: 'old', numero: 'LM-2026-0041', type: 'commission', destinataire: 'proprietaire', proprietaireId: P, dateEmission: '2026-08-05', echeance: '2026-08-20', montantHtCentimes: 1, tvaPct: 20, statut: 'payee', lignes: [] },
     avecAj,
   ];
-  const v1 = validerFacture({ facture: avecAj, donnees, factures: espaceFactures, proprietaire: donnees.proprietaires[0], identite: IDENTITE_LABEL_MAISON, aujourdhui: auj, maintenant, par: 'gerant@exemple.invalid' });
+  const v1 = validerFacture({ facture: avecAj, donnees, factures: espaceFactures, proprietaire: donnees.proprietaires[0], identite: IDENTITE_LABEL_MAISON, espace: LM, aujourdhui: auj, maintenant, par: 'gerant@exemple.invalid' });
   verifier(v1.ok, 'validation du brouillon');
   if (!v1.ok) throw new Error(v1.erreur);
   const f1 = v1.facture;
@@ -279,12 +290,12 @@ async function main() {
   verifier(f1.mensuelle!.client!.nom === 'Camille Bernard' && f1.mensuelle!.client!.adresse === '3 rue des Lilas, 91000 Évry' && f1.mensuelle!.ajustements.length === 1, 'validation : propriétaire et ajustement figés');
   verifier(memesMontantsQueLeBilan(sept, f1), 'facture validée : même commission et mêmes ménages que le bilan du mois');
   verifier(factureFigee(f1) && !ajouterAjustement(f1, { libelle: 'x', montantCentimes: 100, motif: 'y' }, { id: 'z', maintenant, par: 'g' }).ok && !retirerAjustement(f1, 'aj-1').ok, 'facture validée : plus aucun ajustement');
-  const encore = validerFacture({ facture: f1, donnees, factures: [f1], proprietaire: donnees.proprietaires[0], identite: IDENTITE_LABEL_MAISON, aujourdhui: auj, maintenant, par: 'g' });
+  const encore = validerFacture({ facture: f1, donnees, factures: [f1], proprietaire: donnees.proprietaires[0], identite: IDENTITE_LABEL_MAISON, espace: LM, aujourdhui: auj, maintenant, par: 'g' });
   verifier(!encore.ok, 'facture validée : ne se valide pas deux fois');
   verifier(preparerBrouillon({ donnees, proprietaireId: P, mois: '2026-09', existante: f1, identite: IDENTITE_LABEL_MAISON, aujourdhui: auj, maintenant, par: 'automatique' }) === null && ecarterBrouillon(f1) === null, 'facture validée : jamais recalculée ni écartée');
   // Données changées après validation : la facture validée ne bouge pas.
   const plusTard = { ...donnees, reservations: [...donnees.reservations, resa('log-bel', '2026-09-20', '2026-09-22', { voyageur: { nom: 'Tard Venu', nbPersonnes: 1 } })] };
-  const docFige = documentDeFacture(f1)!;
+  const docFige = documentDeFacture(f1, { espace: LM })!;
   verifier(!docFige.brouillon && docFige.numero === '2026-0001' && docFige.totalHt === f1.montantHtCentimes && calculerFactureMois(plusTard, P, '2026-09').menage !== totalCode(f1.lignes, 'menage'), 'facture validée : figée, même si les séjours changent ensuite');
 
   /* ----------------------------------------------------------- numérotation */
@@ -292,7 +303,7 @@ async function main() {
     let compteur: CompteurFactures = v1.compteur;
     verifier(compteur.derniers['2026'] === 1, 'compteur : dernier numéro de l’année gardé');
     const bQ = preparerBrouillon({ donnees, proprietaireId: Q, mois: '2026-09', identite: IDENTITE_LABEL_MAISON, aujourdhui: auj, maintenant, par: 'g' })!;
-    const v2 = validerFacture({ facture: bQ, donnees, factures: [...espaceFactures, f1, bQ], compteur, proprietaire: donnees.proprietaires[1], identite: IDENTITE_LABEL_MAISON, aujourdhui: auj, maintenant, par: 'g' });
+    const v2 = validerFacture({ facture: bQ, donnees, factures: [...espaceFactures, f1, bQ], compteur, proprietaire: donnees.proprietaires[1], identite: IDENTITE_LABEL_MAISON, espace: LM, aujourdhui: auj, maintenant, par: 'g' });
     verifier(v2.ok && v2.facture.numero === '2026-0002', 'numéros à la suite : 2026-0002');
     if (v2.ok) compteur = v2.compteur;
     // 2026-0002 disparaît (supprimée par erreur) : son numéro n'est jamais redonné.
@@ -307,13 +318,13 @@ async function main() {
 
   /* ------------------------------------------ validation refusée (identité) */
   {
-    const sansIdentite = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: donnees.proprietaires[0], identite: identiteConciergerie({ reglages: [] }, SENS), aujourdhui: auj, maintenant, par: 'g' });
+    const sansIdentite = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: donnees.proprietaires[0], identite: identiteConciergerie({ reglages: [] }, SENS), espace: SENS, aujourdhui: auj, maintenant, par: 'g' });
     verifier(!sansIdentite.ok && /Paramètres → Société/.test(sansIdentite.erreur), 'autre espace sans identité : validation refusée (jamais l’identité de Label Maison)');
-    const sansAdresse = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: { ...donnees.proprietaires[0], adresse: ' ' }, identite: identiteSens, aujourdhui: auj, maintenant, par: 'g' });
+    const sansAdresse = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: { ...donnees.proprietaires[0], adresse: ' ' }, identite: identiteSens, espace: SENS, aujourdhui: auj, maintenant, par: 'g' });
     verifier(!sansAdresse.ok && /adresse du propriétaire/.test(sansAdresse.erreur), 'propriétaire sans adresse : validation refusée');
-    const autreP = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: donnees.proprietaires[1], identite: identiteSens, aujourdhui: auj, maintenant, par: 'g' });
+    const autreP = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: donnees.proprietaires[1], identite: identiteSens, espace: SENS, aujourdhui: auj, maintenant, par: 'g' });
     verifier(!autreP.ok, 'facture d’un propriétaire validée au nom d’un autre : refusée');
-    const vSens = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: donnees.proprietaires[0], identite: identiteSens, aujourdhui: auj, maintenant, par: 'g' });
+    const vSens = validerFacture({ facture: brouillon, donnees, factures: [], proprietaire: donnees.proprietaires[0], identite: identiteSens, espace: SENS, aujourdhui: auj, maintenant, par: 'g' });
     verifier(vSens.ok && vSens.facture.tvaPct === 20 && !vSens.facture.mensuelle!.mentionTva && vSens.facture.mensuelle!.emetteur!.raisonSociale === 'Sens Conciergerie' && !JSON.stringify(vSens.facture).includes('Label Maison'), 'autre espace : sa TVA et son identité, rien de Label Maison');
   }
 
@@ -394,6 +405,193 @@ async function main() {
     const plan = planifierRelances({ factures: [partagee], relances: [], reglages: REGLAGES_RELANCES_DEFAUT, aujourdhui: '2026-10-24', maintenant });
     verifier(plan.nouvelles.length === 1 && plan.nouvelles[0].numero === '2026-0001', 'partagée et en retard : les relances habituelles s’appliquent');
     verifier(planifierRelances({ factures: [brouillon], relances: [], reglages: REGLAGES_RELANCES_DEFAUT, aujourdhui: '2026-12-24', maintenant }).nouvelles.length === 0, 'brouillon : jamais relancé');
+  }
+
+
+  /* --------------------------------- mois écarté : plus proposé en tête */
+  {
+    const nov = '2026-11-05'; // mois écoulé : octobre
+    const bOct = preparerBrouillon({ donnees, proprietaireId: P, mois: '2026-10', identite: IDENTITE_LABEL_MAISON, aujourdhui: nov, maintenant, par: 'automatique' })!;
+    const avant = moisAPreparer({ ...donnees, factures: [] }, P, nov, 6);
+    verifier(avant.aPreparer?.mois === '2026-10' && !avant.autres.some((x) => x.mois === '2026-10'), 'mois écoulé sans facture : proposé « à préparer »');
+    const apres = moisAPreparer({ ...donnees, factures: [ecarterBrouillon(bOct)!] }, P, nov, 6);
+    verifier(!apres.aPreparer && apres.autres.some((x) => x.mois === '2026-10'), 'mois écarté (« Ne pas facturer ce mois ») : plus proposé en tête, toujours dans « Facturer un autre mois »');
+    const avecBrouillon = moisAPreparer({ ...donnees, factures: [bOct] }, P, nov, 6);
+    verifier(!avecBrouillon.aPreparer && !avecBrouillon.autres.some((x) => x.mois === '2026-10'), 'mois avec un brouillon : ni à préparer, ni dans les autres mois');
+  }
+
+  /* ------------------------------- validation : numéro donné par la base */
+  {
+    const appels: string[] = [];
+    const ecrites: Facture[] = [];
+    let serveur: Facture | undefined;
+    const acces = (reponse: { data: unknown; error: { code?: string; message?: string } | null; status?: number }, enregistre = true): AccesValidation => ({
+      enregistrer: async (f) => {
+        appels.push('enregistrer');
+        ecrites.push(f);
+        if (enregistre) serveur = f;
+        return enregistre;
+      },
+      numeroter: async (id) => {
+        appels.push(`numeroter:${id}`);
+        if (!reponse.error && serveur && typeof reponse.data === 'string') serveur = { ...serveur, numero: reponse.data, statut: 'emise' };
+        return reponse;
+      },
+      relire: async (id) => {
+        appels.push(`relire:${id}`);
+        return serveur ?? null;
+      },
+    });
+    const vider = () => {
+      appels.length = 0;
+      ecrites.length = 0;
+      serveur = undefined;
+    };
+    const commun = { facture: brouillon, donnees, proprietaire: donnees.proprietaires[0], identite: IDENTITE_LABEL_MAISON, espace: LM, aujourdhui: auj, maintenant, par: 'g' };
+    // Le navigateur prévoirait 2026-0008 (2026-0007 existe déjà) : la base répond 2026-0042, c'est lui qui compte.
+    const r = await validerAvecLaBase({ ...commun, ...acces({ data: '2026-0042', error: null }) });
+    verifier(prochainNumero([{ numero: '2026-0007' }], undefined, '2026').numero === '2026-0008' && r.ok && r.numero === '2026-0042' && r.facture.numero === '2026-0042', 'production : le numéro vient de la base (erp.numeroter_facture), jamais du navigateur');
+    verifier(appels.join() === `enregistrer,numeroter:${brouillon.id},relire:${brouillon.id}`, 'production : contenu final enregistré AVANT la numérotation, puis facture relue');
+    verifier(
+      ecrites.length === 1 && ecrites[0].numero === '' && ecrites[0].statut === 'brouillon' && !!ecrites[0].mensuelle?.emetteur && !!ecrites[0].mensuelle?.client && ecrites[0].montantHtCentimes > 0,
+      'production : la facture écrite avant la numérotation n’a pas de numéro (lignes, totaux, émetteur et client déjà figés)',
+    );
+    verifier(r.ok && r.facture.statut === 'emise' && factureFigee(r.facture), 'production : facture relue telle que la base l’a figée');
+    vider();
+    const absente = await validerAvecLaBase({ ...commun, ...acces({ data: null, error: { code: 'PGRST202', message: 'Could not find the function erp.numeroter_facture(p_id) in the schema cache' }, status: 404 }) });
+    verifier(!absente.ok && absente.erreur === MESSAGE_VALIDATION_INDISPONIBLE, 'base pas encore mise à jour (fonction absente) : validation refusée, message clair');
+    verifier(ecrites.every((f) => !f.numero) && !appels.some((a) => a.startsWith('relire')) && !(serveur?.numero ?? ''), 'fonction absente : aucun numéro, nulle part');
+    vider();
+    const ancienne = await validerAvecLaBase({ ...commun, ...acces({ data: null, error: { code: '42883', message: 'function erp.numeroter_facture(text) does not exist' } }) });
+    verifier(!ancienne.ok && ancienne.erreur === MESSAGE_VALIDATION_INDISPONIBLE, 'fonction inconnue de Postgres (42883) : même refus');
+    vider();
+    const pasGerant = await validerAvecLaBase({ ...commun, ...acces({ data: null, error: { code: '42501', message: 'Seul un gérant de l’espace numérote une facture.' }, status: 403 }) });
+    verifier(!pasGerant.ok && /gérant/.test(pasGerant.erreur), 'compte qui n’est pas gérant : refus de la base, dit tel quel');
+    vider();
+    const horsLigne = await validerAvecLaBase({ ...commun, ...acces({ data: '2026-0043', error: null }, false) });
+    verifier(!horsLigne.ok && !appels.some((a) => a.startsWith('numeroter')), 'contenu final pas enregistré : pas de numérotation');
+    vider();
+    const etrange = await validerAvecLaBase({ ...commun, ...acces({ data: null, error: null }) });
+    verifier(!etrange.ok && !appels.some((a) => a.startsWith('relire')), 'réponse sans numéro : refus, rien relu');
+    verifier(
+      refusEcritureFigee({ code: '42501', message: 'Facture numérotée : seuls le paiement et le partage changent encore.' }) &&
+        refusEcritureFigee({ code: '42501', message: 'Facture numérotée : elle ne se supprime pas (faites un avoir).' }) &&
+        !refusEcritureFigee({ code: '42501', message: 'new row violates row-level security policy for table "enregistrements"' }) &&
+        !refusEcritureFigee({ message: 'fetch failed' }),
+      'refus du déclencheur reconnu (définitif) ; autres erreurs réessayées',
+    );
+  }
+
+  /* ------------------------- écriture refusée par la base : retirée, relue */
+  {
+    type LigneBase = { collection: string; id: string; donnees: Record<string, unknown>; maj_par?: string };
+    const stock = new Map<string, LigneBase>();
+    const cle = (c: string, id: string) => `${c}|${id}`;
+    const json = (status: number, corps: unknown) => new Response(JSON.stringify(corps), { status, headers: { 'Content-Type': 'application/json' } });
+    const libres = (f: Record<string, unknown>) => JSON.stringify({ ...f, statut: 0, payeeLe: 0, partageeLe: 0 });
+    stock.set(cle('factures', f1.id), { collection: 'factures', id: f1.id, donnees: f1 as unknown as Record<string, unknown>, maj_par: 'g#numerotation' });
+    // Fausse base : le déclencheur refuse toute écriture d'une facture numérotée hors paiement et partage.
+    const fauxFetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
+      const methode = (init?.method ?? 'GET').toUpperCase();
+      if (!url.pathname.endsWith('/enregistrements')) return json(404, { code: 'PGRST205', message: 'table inconnue' });
+      if (methode === 'POST') {
+        const corps = JSON.parse(String(init?.body)) as LigneBase[];
+        for (const l of corps) {
+          const avant = stock.get(cle(l.collection, l.id))?.donnees;
+          if (l.collection === 'factures' && avant?.numero && libres(l.donnees) !== libres(avant)) {
+            return json(403, { code: '42501', message: 'Facture numérotée : seuls le paiement et le partage changent encore.', details: null, hint: null });
+          }
+        }
+        for (const l of corps) stock.set(cle(l.collection, l.id), { ...l });
+        return new Response(null, { status: 201 });
+      }
+      if (methode === 'GET') {
+        const l = stock.get(cle(url.searchParams.get('collection')?.replace(/^eq\./, '') ?? '', url.searchParams.get('id')?.replace(/^eq\./, '') ?? ''));
+        const objet = (new Headers(init?.headers).get('Accept') ?? '').includes('vnd.pgrst.object');
+        return objet ? (l ? json(200, l) : json(406, { code: 'PGRST116', message: '0 rows' })) : json(200, l ? [l] : []);
+      }
+      return json(405, { message: 'méthode' });
+    };
+    const client = createClient('https://exemple.supabase.co', 'cle-anon-de-test', {
+      db: { schema: 'erp' },
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      global: { fetch: fauxFetch as typeof fetch },
+    }) as ClientErp;
+    const refuses: string[] = [];
+    const recus: { id: string; numero?: unknown }[] = [];
+    const s = new Synchro({
+      client,
+      stockage: null,
+      ecouterNavigateur: false,
+      enLigne: () => true,
+      delaiRegroupement: 1,
+      refusDefinitif: refusEcritureFigee,
+      surRefus: (r) => refuses.push(...r.map((x) => x.id)),
+      surDistant: (c) => recus.push(...c.map((x) => ({ id: x.id, numero: x.donnees?.numero }))),
+    });
+    s.activerDistant();
+    const vide = donneesVides();
+    // Un onglet resté ouvert renvoie l'ancien brouillon de la facture déjà validée, avec un autre changement légitime.
+    const avant = { ...vide, factures: [f1], reglages: [] };
+    const perime = { ...brouillon, id: f1.id, numero: '', statut: 'brouillon' as const };
+    const apres = { ...vide, factures: [perime], reglages: [{ id: 'societe', ...identiteSens } as Reglage] };
+    const envoye = await s.sauvegarderDifferences(avant, apres, 'Abdel');
+    await new Promise((r) => setTimeout(r, 30));
+    verifier(envoye && s.enAttente === 0, 'écriture refusée par la base : retirée de la file (jamais réessayée sans fin)');
+    verifier(refuses.join() === f1.id && (stock.get(cle('factures', f1.id))!.donnees.numero as string) === '2026-0001', 'facture validée : jamais écrasée par un brouillon, refus signalé');
+    verifier(stock.has(cle('reglages', 'societe')), 'le reste du lot est enregistré');
+    verifier(recus.some((x) => x.id === f1.id && x.numero === '2026-0001'), 'facture refusée : sa version de la base est relue et reposée dans l’ERP');
+    const relue = await s.relire('factures', f1.id);
+    verifier((relue as unknown as Facture | null)?.numero === '2026-0001', 'relecture demandée : la version de la base, même écrite par cet onglet');
+    s.arreter();
+  }
+
+  /* --------------------- émetteur de Label Maison : refusé hors Label Maison */
+  {
+    const siretLM = { ...IDENTITE_LABEL_MAISON, raisonSociale: 'Autre Nom' };
+    const nomLM = { ...identiteSens, raisonSociale: 'Label Maison Conciergerie' };
+    verifier(emetteurDeLabelMaison(siretLM) && emetteurDeLabelMaison(nomLM) && !emetteurDeLabelMaison(identiteSens), 'émetteur de Label Maison : reconnu par son SIRET ou par son nom');
+    const base = { facture: brouillon, donnees, factures: [] as Facture[], proprietaire: donnees.proprietaires[0], aujourdhui: auj, maintenant, par: 'g' };
+    const r1 = validerFacture({ ...base, identite: siretLM, espace: SENS });
+    const r2 = validerFacture({ ...base, identite: nomLM, espace: SENS });
+    const r3 = await validerAvecLaBase({
+      ...base,
+      identite: IDENTITE_LABEL_MAISON,
+      espace: SENS,
+      enregistrer: async () => true,
+      numeroter: async () => ({ data: '2026-0001', error: null }),
+      relire: async () => null,
+    });
+    verifier(!r1.ok && !r2.ok && !r3.ok, 'autre espace : validation refusée avec le SIRET ou le nom de Label Maison (démonstration comme production)');
+    verifier(validerFacture({ ...base, identite: IDENTITE_LABEL_MAISON, espace: LM }).ok, 'Label Maison : son identité vaut pour ses propres factures');
+    verifier(documentDeFacture(f1, { espace: SENS }) === null && documentDeFacture(f1, { espace: LM }) !== null, 'document : émetteur de Label Maison jamais montré dans un autre espace');
+    const copie = partagerFacture(f1, maintenant);
+    const vueSens = facturesVue([copie], P, '2026-10-05', { espace: SENS.id })[0];
+    const vueLM = facturesVue([copie], P, '2026-10-05', { espace: LM.id })[0];
+    verifier(!!vueSens && !vueSens.mensuelle && !!vueLM?.mensuelle, 'propriétaire : la partie à l’identité de Label Maison jamais montrée dans un autre espace');
+    verifier(
+      Object.keys(erreursIdentite(siretLM, SENS)).includes('siret') && Object.keys(erreursIdentite(nomLM, SENS)).includes('raisonSociale') && !Object.keys(erreursIdentite(IDENTITE_LABEL_MAISON, LM)).length,
+      'Paramètres → Société : SIRET ou nom de Label Maison refusés dans un autre espace',
+    );
+    verifier(!identiteConciergerie({ reglages: [reglageSociete(nomLM, { maintenant, par: 'x' })] }, SENS).enregistree, 'autre espace : identité enregistrée au nom de Label Maison ignorée');
+  }
+
+  /* ------------------------- propriétaire société : mentions de retard */
+  {
+    const sci: Proprietaire = { ...donnees.proprietaires[0], type: 'sci' };
+    const base = { facture: brouillon, donnees, factures: [] as Facture[], espace: LM, aujourdhui: auj, maintenant, par: 'g' };
+    const rSci = validerFacture({ ...base, proprietaire: sci, identite: IDENTITE_LABEL_MAISON });
+    const rPart = validerFacture({ ...base, proprietaire: donnees.proprietaires[0], identite: IDENTITE_LABEL_MAISON });
+    const rPropres = validerFacture({ ...base, proprietaire: sci, identite: { ...IDENTITE_LABEL_MAISON, mentions: 'Paiement à réception.' } });
+    const mSci = rSci.ok ? (rSci.facture.mensuelle?.emetteur?.mentions ?? '') : '';
+    verifier(mSci === MENTIONS_PROFESSIONNEL && /trois fois le taux d’intérêt légal/.test(mSci) && /40 €/.test(mSci), 'propriétaire SCI : pénalités de retard et indemnité forfaitaire de 40 € mentionnées');
+    verifier(rPart.ok && !rPart.facture.mensuelle?.emetteur?.mentions, 'propriétaire particulier : pas de mention de pénalités');
+    verifier(rPropres.ok && rPropres.facture.mensuelle?.emetteur?.mentions === 'Paiement à réception.', 'mentions écrites par le gérant : elles remplacent celles par défaut');
+    const apercuSci = documentDeFacture(brouillon, { espace: LM, brouillon: { identite: IDENTITE_LABEL_MAISON, proprietaire: sci, logements: [] } })!;
+    verifier(apercuSci.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'aperçu du brouillon : les mêmes mentions que la facture validée');
+    const vueSci = rSci.ok ? facturesVue([partagerFacture(rSci.facture, maintenant)], P, '2026-10-05', { espace: LM.id })[0] : undefined;
+    verifier(vueSci?.mensuelle?.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'propriétaire SCI : la mention figure dans son espace');
   }
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);

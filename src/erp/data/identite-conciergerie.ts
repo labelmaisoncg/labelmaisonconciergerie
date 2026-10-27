@@ -11,16 +11,21 @@
  *   franchise en base de TVA par défaut, tant que rien n'est enregistré ;
  * - un autre espace n'a JAMAIS l'identité de Label Maison : sans
  *   enregistrement, son nom seul (identité incomplète : aucune facture ne
- *   se valide) ; une identité enregistrée qui porte le SIRET de Label Maison
- *   (sauvegarde de Label Maison rechargée ailleurs) est ignorée ;
+ *   se valide) ; une identité qui porte le SIRET ou le nom de Label Maison
+ *   (sauvegarde de Label Maison rechargée ailleurs) est ignorée, refusée à
+ *   l'enregistrement et à la validation d'une facture (emetteurDeLabelMaison) ;
  * - décidé par l'identifiant de l'espace, jamais par son nom ;
  * - aucun taux de TVA écrit en dur sur une facture : il vient du régime de
  *   l'espace (franchise : 0 et la mention « art. 293 B » ; TVA : son taux).
  *
+ * - propriétaire société (SCI, société : type autre que « particulier ») :
+ *   pénalités de retard et indemnité forfaitaire de 40 € mentionnées
+ *   d'office, sauf si le gérant a écrit ses propres mentions (mentionsFacture).
+ *
  * Module pur (navigateur et serveur) : imports en « .js ».
  */
 import { estLabelMaison, type Espace } from './espaces.js';
-import type { IdentiteSociete, Reglage, ReglagesSociete, RegimeTva } from './types';
+import type { IdentiteSociete, Proprietaire, Reglage, ReglagesSociete, RegimeTva } from './types';
 
 export const ID_REGLAGE_SOCIETE = 'societe';
 
@@ -45,6 +50,27 @@ export const IDENTITE_LABEL_MAISON: IdentiteSociete = {
 };
 
 type EspaceVu = Pick<Espace, 'id' | 'nom'>;
+
+/** Mentions d'office sur la facture d'un propriétaire professionnel (SCI, société) : art. L441-10 du Code de commerce. */
+export const MENTIONS_PROFESSIONNEL = 'Pénalités de retard : trois fois le taux d’intérêt légal. Indemnité forfaitaire pour frais de recouvrement : 40 €.';
+
+const sansAccents = (s: unknown): string =>
+  String(s ?? '')
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLocaleLowerCase('fr')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/**
+ * Identité de Label Maison (son SIRET ou son nom) : jamais l'émetteur d'une
+ * facture d'un autre espace.
+ */
+export function emetteurDeLabelMaison(i: Partial<Pick<IdentiteSociete, 'siret' | 'raisonSociale'>> | null | undefined): boolean {
+  if (!i) return false;
+  if (chiffresSiret(i.siret) && chiffresSiret(i.siret) === chiffresSiret(IDENTITE_LABEL_MAISON.siret)) return true;
+  return /(^| )label maison( |$)/.test(sansAccents(i.raisonSociale));
+}
 
 const ligne = (v: unknown, max: number): string => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const texteLibre = (v: unknown, max: number): string =>
@@ -104,9 +130,8 @@ export function identiteParDefaut(e: EspaceVu): IdentiteSociete {
  */
 export function identiteConciergerie(d: { reglages?: readonly Reglage[] | null }, e: EspaceVu): IdentiteSociete & { enregistree: boolean } {
   const stocke = (d.reglages ?? []).find((r): r is ReglagesSociete => r?.id === ID_REGLAGE_SOCIETE);
-  // Jamais l'identité de Label Maison pour un autre espace (sauvegarde rechargée, copie).
-  const deLabelMaison = !!stocke && chiffresSiret(stocke.siret) === chiffresSiret(IDENTITE_LABEL_MAISON.siret);
-  if (!stocke || (deLabelMaison && !estLabelMaison(e))) return { ...identiteParDefaut(e), enregistree: false };
+  // Jamais l'identité de Label Maison pour un autre espace (sauvegarde rechargée, copie) : ni son SIRET, ni son nom.
+  if (!stocke || (emetteurDeLabelMaison(stocke) && !estLabelMaison(e))) return { ...identiteParDefaut(e), enregistree: false };
   return { ...normaliserIdentite(stocke), enregistree: true };
 }
 
@@ -117,11 +142,18 @@ export function reglageSociete(i: Partial<IdentiteSociete>, o: { maintenant: str
 
 export type ChampIdentite = 'raisonSociale' | 'siret' | 'adresse' | 'numeroTva' | 'tvaPct';
 
-/** Ce qui manque ou ne va pas, champ par champ (vide : identité utilisable sur une facture). */
-export function erreursIdentite(i: Partial<IdentiteSociete>): Partial<Record<ChampIdentite, string>> {
+/**
+ * Ce qui manque ou ne va pas, champ par champ (vide : identité utilisable
+ * sur une facture). `espace` : celui de l'identité ; un autre que Label
+ * Maison ne peut pas prendre son SIRET ni son nom.
+ */
+export function erreursIdentite(i: Partial<IdentiteSociete>, espace?: Pick<Espace, 'id'>): Partial<Record<ChampIdentite, string>> {
   const e: Partial<Record<ChampIdentite, string>> = {};
+  const autreQueLM = !!espace && !estLabelMaison(espace);
   if (!ligne(i.raisonSociale, 120)) e.raisonSociale = 'Indiquez la raison sociale.';
+  else if (autreQueLM && emetteurDeLabelMaison({ raisonSociale: i.raisonSociale })) e.raisonSociale = 'C’est le nom de Label Maison : indiquez celui de votre société.';
   if (!siretValide(i.siret)) e.siret = 'Le SIRET compte 14 chiffres.';
+  else if (autreQueLM && emetteurDeLabelMaison({ siret: i.siret })) e.siret = 'C’est le SIRET de Label Maison : indiquez celui de votre société.';
   if (!ligne(i.adresse, 200)) e.adresse = 'Indiquez l’adresse du siège.';
   if (i.regimeTva === 'tva') {
     const n = ligne(i.numeroTva, 20).replace(/\s/g, '');
@@ -132,7 +164,19 @@ export function erreursIdentite(i: Partial<IdentiteSociete>): Partial<Record<Cha
   return e;
 }
 
-export const identiteComplete = (i: Partial<IdentiteSociete>): boolean => Object.keys(erreursIdentite(i)).length === 0;
+export const identiteComplete = (i: Partial<IdentiteSociete>, espace?: Pick<Espace, 'id'>): boolean => Object.keys(erreursIdentite(i, espace)).length === 0;
+
+/**
+ * Mentions imprimées sur la facture d'un propriétaire : celles écrites par
+ * le gérant (Paramètres → Société) ; à défaut, pour un propriétaire
+ * professionnel (SCI, société), les pénalités de retard et l'indemnité
+ * forfaitaire de 40 €.
+ */
+export function mentionsFacture(i: Pick<IdentiteSociete, 'mentions'>, p: Pick<Proprietaire, 'type'> | undefined): string {
+  const propres = String(i.mentions ?? '').trim();
+  if (propres) return propres;
+  return p && p.type !== 'particulier' ? MENTIONS_PROFESSIONNEL : '';
+}
 
 /** Taux de TVA facturé : 0 en franchise en base, le taux de l'espace sinon. */
 export const tauxTva = (i: Pick<IdentiteSociete, 'regimeTva' | 'tvaPct'>): number => (i.regimeTva === 'franchise' ? 0 : taux(i.tvaPct));

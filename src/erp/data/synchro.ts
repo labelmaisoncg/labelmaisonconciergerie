@@ -96,6 +96,13 @@ export interface OptionsSynchro {
   surEtatAutoDistant?: (etat: Partial<EtatAutoStocke>) => void;
   /** Reconnexion après une coupure : relire la base pour ne rien manquer. */
   surResynchro?: () => void;
+  /**
+   * Écriture que la base refuse pour de bon (facture numérotée, figée par son
+   * déclencheur) : jamais réessayée. Sans : toute erreur est réessayée.
+   */
+  refusDefinitif?: (e: ErreurBase) => boolean;
+  /** Écritures refusées pour de bon, retirées de la file ; la version de la base est relue. */
+  surRefus?: (refus: { collection: NomCollection; id: string; message: string }[]) => void;
   /** Regroupement des changements distants (ms). */
   delaiRegroupement?: number;
   /** Surveillance du réseau et battement de la file (désactivés en test). */
@@ -476,7 +483,15 @@ export class Synchro {
           maj_par: this.majParPour(e.auteur),
         }));
         const { error, status } = await this.client.from(TABLE).upsert(lignes, { onConflict: this.espace ? 'espace,collection,id' : 'collection,id' });
-        if (error) return { erreur: error, status };
+        if (error) {
+          // Refus définitif (facture figée) : ligne par ligne, pour ne retirer que les refusées.
+          if (this.opts.refusDefinitif?.(error)) {
+            const echec = await this.envoyerUnParUn(lot);
+            if (echec) return echec;
+            continue;
+          }
+          return { erreur: error, status };
+        }
         this.retirer(lot);
       }
       const suppressions = instantane.filter((e) => e.op.type === 'supprimer');
@@ -494,7 +509,14 @@ export class Synchro {
             );
           if (this.espace) requete = requete.eq('espace', this.espace);
           const { error, status } = await requete;
-          if (error) return { erreur: error, status };
+          if (error) {
+            if (this.opts.refusDefinitif?.(error)) {
+              const echec = await this.envoyerUnParUn(lot);
+              if (echec) return echec;
+              continue;
+            }
+            return { erreur: error, status };
+          }
           this.retirer(lot);
         }
       }
@@ -511,6 +533,51 @@ export class Synchro {
     } catch (e) {
       return { erreur: { message: (e as Error)?.message ?? String(e) }, status: 0 };
     }
+  }
+
+  /**
+   * Envoie un lot ligne par ligne : une ligne refusée pour de bon est retirée
+   * de la file (jamais réessayée), signalée au store, et sa version de la
+   * base relue ; toute autre erreur arrête le lot (nouvel essai plus tard).
+   */
+  private async envoyerUnParUn(lot: EntreeFile[]): Promise<{ erreur: ErreurBase; status?: number } | null> {
+    const refus: { collection: NomCollection; id: string; message: string }[] = [];
+    for (const e of lot) {
+      let reponse: { error: ErreurBase | null; status?: number };
+      if (e.op.type === 'ecrire') {
+        const ligne = {
+          ...(this.espace ? { espace: this.espace } : {}),
+          collection: e.op.collection,
+          id: e.op.id,
+          donnees: e.op.donnees,
+          maj_par: this.majParPour(e.auteur),
+        };
+        reponse = await this.client.from(TABLE).upsert([ligne], { onConflict: this.espace ? 'espace,collection,id' : 'collection,id' });
+      } else {
+        let requete = this.client.from(TABLE).delete().eq('collection', e.op.collection).eq('id', e.op.id);
+        if (this.espace) requete = requete.eq('espace', this.espace);
+        reponse = await requete;
+      }
+      const { error, status } = reponse;
+      if (error && !this.opts.refusDefinitif?.(error)) return { erreur: error, status };
+      this.retirer([e]);
+      if (error) refus.push({ collection: e.op.collection, id: e.op.id, message: error.message ?? '' });
+    }
+    if (refus.length) {
+      console.warn('[erp] écritures refusées par la base, version de la base relue', refus);
+      this.opts.surRefus?.(refus);
+      for (const r of refus) void this.relireLigne(r.collection, r.id, true);
+    }
+    return null;
+  }
+
+  /**
+   * Relit un élément dans la base et le livre comme un changement distant
+   * (même s'il vient de cet onglet) ; null : absent ou illisible. Une
+   * modification locale encore en attente l'emporte toujours.
+   */
+  relire(collection: NomCollection, id: string): Promise<Element | null> {
+    return this.relireLigne(collection, id, true);
   }
 
   /** Retire de la file les entrées envoyées, sauf si elles ont été modifiées entre-temps. */
@@ -646,7 +713,7 @@ export class Synchro {
   }
 
   /** Branche les rappels du store (changements distants, relecture). */
-  brancher(rappels: Pick<OptionsSynchro, 'surDistant' | 'surEtatAutoDistant' | 'surResynchro'>) {
+  brancher(rappels: Pick<OptionsSynchro, 'surDistant' | 'surEtatAutoDistant' | 'surResynchro' | 'surRefus'>) {
     Object.assign(this.opts, rappels);
     this.programmerLivraison();
   }
@@ -694,16 +761,23 @@ export class Synchro {
     void this.relireLigne(ligne.collection, ligne.id);
   }
 
-  private async relireLigne(collection: NomCollection, id: string) {
+  /** `forcer` : livrée même si la dernière écriture vient de cet onglet (relecture demandée). */
+  private async relireLigne(collection: NomCollection, id: string, forcer = false): Promise<Element | null> {
     let requete = this.client.from(TABLE).select('collection,id,donnees,maj_par').eq('collection', collection).eq('id', id);
     if (this.espace) requete = requete.eq('espace', this.espace);
     const { data, error } = await requete.maybeSingle();
-    if (error || this.file.has(cle(collection, id))) return;
+    if (error || this.file.has(cle(collection, id))) return null;
     const ligne = data as LigneBrute | null;
-    if (!ligne) return this.pousser({ collection, id, donnees: null });
-    if (this.estEcho(ligne.maj_par)) return;
+    if (!ligne) {
+      this.pousser({ collection, id, donnees: null });
+      return null;
+    }
+    if (!forcer && this.estEcho(ligne.maj_par)) return null;
     const e = ligne.donnees as Element;
-    if (e && typeof e === 'object') this.pousser({ collection, id, donnees: e.id === id ? e : { ...e, id } });
+    if (!e || typeof e !== 'object') return null;
+    const element = e.id === id ? e : { ...e, id };
+    this.pousser({ collection, id, donnees: element });
+    return element;
   }
 
   private pousser(ch: ChangementDistant) {
