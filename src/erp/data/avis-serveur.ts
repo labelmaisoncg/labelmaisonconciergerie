@@ -79,12 +79,39 @@ async function journal(o: OptionsAssistant, r: Reservation, details: string, mai
   await o.base.ecrire('journal', [l], AUTEUR).catch(() => undefined);
 }
 
+/* ------------------------------------------------- frein par membre */
+
+/** Demandes permises par membre et par quart d'heure (comme les brouillons du CRM). */
+export const DEMANDES_PAR_QUART_D_HEURE = 20;
+export const FENETRE_FREIN_MS = 15 * 60_000;
+export const MESSAGE_TROP_DE_DEMANDES = 'Trop de demandes d’un coup : réessayez dans quelques minutes.';
+
+/**
+ * Frein des demandes (par instance du serveur) : vrai quand la clé
+ * (espace et membre) dépasse `max` demandes sur la fenêtre. Chaque essai
+ * compte, même refusé. Horloge injectable pour l'auto-contrôle.
+ */
+export function freinDemandes(max = DEMANDES_PAR_QUART_D_HEURE, fenetreMs = FENETRE_FREIN_MS, horloge: () => number = Date.now): (cle: string) => boolean {
+  const demandes = new Map<string, number[]>();
+  return (cle) => {
+    const maintenant = horloge();
+    const recentes = (demandes.get(cle) ?? []).filter((t) => maintenant - t < fenetreMs);
+    recentes.push(maintenant);
+    demandes.set(cle, recentes);
+    if (demandes.size > 5000) demandes.clear();
+    return recentes.length > max;
+  };
+}
+
 /**
  * Réponse proposée pour l'avis du séjour `reservationId`. Lève
- * ErreurAssistant (message prêt à afficher) si l'avis n'existe pas ou n'a
- * pas de commentaire public ; sinon rend toujours un texte (IA ou simple).
+ * ErreurAssistant (message prêt à afficher) si le membre a fait trop de
+ * demandes d'un coup (`tropDeDemandes`, frein de la route : rien n'est lu
+ * ni appelé), si l'avis n'existe pas, n'a pas de commentaire public ou vient
+ * d'un séjour direct ; sinon rend toujours un texte (IA ou simple).
  */
-export async function preparerReponseAvis(o: OptionsAssistant, reservationId: string): Promise<ReponseAvisPreparee> {
+export async function preparerReponseAvis(o: OptionsAssistant, reservationId: string, frein: { tropDeDemandes?: () => boolean } = {}): Promise<ReponseAvisPreparee> {
+  if (frein.tropDeDemandes?.()) throw new ErreurAssistant(MESSAGE_TROP_DE_DEMANDES, 429, 'occupe');
   const id = String(reservationId ?? '').trim();
   const [r] = id ? await o.base.lire<Reservation>('reservations', [id]) : [];
   const avis = r ? lireAvis(r) : null;
