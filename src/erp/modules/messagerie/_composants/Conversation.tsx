@@ -5,10 +5,16 @@
  * « Pas besoin de répondre » termine la conversation sans écrire au voyageur :
  * elle quitte « À répondre » et « À faire », et revient d'elle-même quand il
  * réécrit (synchronisation des messages).
+ *
+ * Assistant (rien ne part sans l'équipe) : « Proposer une réponse » remplit
+ * la zone de réponse avec la proposition de l'agent ; une réponse préparée
+ * par l'agent (« à valider ») y est déjà ; « Traduire en … » passe le texte
+ * de l'équipe dans la langue du voyageur ; « Voir en français » sous un
+ * message étranger. L'envoi reste le bouton habituel.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Bot, CheckCheck, CheckCircle2, FileText, Hand, Image, Info, Link2, Loader2, Lock, RotateCcw, Send, Video, X } from 'lucide-react';
+import { ArrowLeft, Bot, CheckCheck, CheckCircle2, FileText, Hand, Image, Info, Languages, Link2, Loader2, Lock, RotateCcw, Send, Sparkles, Video, X } from 'lucide-react';
 import { Alert, Avatar, Button, Drawer, IconButton, MenuActions, Textarea, cn, type ActionMenu } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
@@ -19,9 +25,11 @@ import { lienPartage } from '../../../data/supabase';
 import { espaceOuvert } from '../../../data/espaces';
 import { signatureEspace } from '../../../data/marque-espace';
 import type { GuideLogement } from '../../../data/types';
+import { LIBELLE_INTENTION, dernierVoyageur, intentionFil, langueFil, langueMessage, marquerBrouillonValide, messagesSansReponse, nomLangue, type ValidationBrouillon } from '../../../data/messagerie-ia';
 import { GABARITS, LIBELLE_MOTIF, attendEquipe, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
 import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
+import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
 
 /** Réponse de /api/erp-repull-messages. */
 interface ReponseEnvoi {
@@ -46,15 +54,54 @@ interface Props {
   reservation?: Reservation;
 }
 
+/**
+ * Bandeau au-dessus de la zone de réponse : réponse de l'agent (préparée ou
+ * proposée à la demande), ou texte traduit dans la langue du voyageur.
+ */
+type Aide =
+  | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string }
+  | { genre: 'traduction'; nom: string };
+
+/** « Voir en français » d'un message : affiché ou non, texte, chargement. */
+interface Traduction {
+  voir: boolean;
+  texte?: string;
+  chargement?: boolean;
+}
+
+/** « de l’anglais », « du portugais ». */
+const deLangue = (nom: string) => (/^[aeiouéèh]/i.test(nom) ? `de l’${nom}` : `du ${nom}`);
+
+const messageErreur = (e: unknown) => (e instanceof ErreurServeur || e instanceof Error ? e.message : 'Votre agent ne répond pas pour l’instant : réessayez dans un instant.');
+
 /** Sur ordinateur (souris, pavé tactile), Entrée envoie ; sur téléphone, elle va à la ligne. */
 const ENTREE_ENVOIE = typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: fine)').matches;
 const HAUTEUR_MAX_SAISIE = 160;
 
 export function Conversation({ fil, logement, reservation }: Props) {
-  const { upsert, mode, lectureSeule, reglages } = useErp();
+  const { upsert, mode, lectureSeule, reglages, utilisateur } = useErp();
   // Réponses rapides signées comme l'agent de l'espace (Label Maison : « L’équipe Label Maison »).
   const signature = signatureEspace({ reglages }, espaceOuvert());
-  const [brouillon, setBrouillon] = useState('');
+  // Réponse préparée par l'agent pour le dernier message du voyageur, pas encore envoyée : déjà dans la zone de réponse.
+  const prepare = (() => {
+    const b = fil.agent?.brouillon;
+    return b && !b.valideePar && b.texte.trim() && messagesSansReponse(fil).some((m) => m.id === b.messageId) ? b : undefined;
+  })();
+  const aideDe = (b: NonNullable<typeof prepare>): Aide => ({
+    genre: 'proposition',
+    source: 'agent',
+    texte: b.texte,
+    texteFr: b.texteFr,
+    ...(fil.statut === 'escalade' ? { attention: 'Sujet sensible : relisez bien avant d’envoyer.' } : {}),
+  });
+  const [brouillon, setBrouillon] = useState(() => prepare?.texte ?? '');
+  const [aide, setAide] = useState<Aide | null>(() => (prepare ? aideDe(prepare) : null));
+  // Texte de l'équipe remplacé par une proposition ou une traduction : « Rétablir mon texte ».
+  const [precedent, setPrecedent] = useState<string | null>(null);
+  const [voirFr, setVoirFr] = useState(false);
+  const [iaEnCours, setIaEnCours] = useState<'proposition' | 'traduction' | null>(null);
+  const [traductions, setTraductions] = useState<Record<string, Traduction>>({});
+  const prerempli = useRef(prepare?.messageId);
   const [avis, setAvis] = useState<ReactNode>(null);
   // Vert pour une confirmation, ambre pour un point à surveiller (texte retouché, message à transmettre soi-même).
   const [avisAlerte, setAvisAlerte] = useState(false);
@@ -71,6 +118,22 @@ export function Conversation({ fil, logement, reservation }: Props) {
   const prenom = fil.voyageur.split(' ')[0];
   const attend = attendEquipe(fil);
   const suivieParAgent = fil.traitePar === 'agent' && fil.statut !== 'clos';
+  // Langue du voyageur, si ce n'est pas le français : « Traduire en anglais », « Voir en français ».
+  const langue = langueFil(fil);
+  const nomLangueVoyageur = langue && langue !== 'fr' ? nomLangue(langue) : undefined;
+  const intention = intentionFil(fil);
+  const libelleIntention = intention ? LIBELLE_INTENTION[intention] : '';
+  const assistant = !lectureSeule && !!dernierVoyageur(fil);
+
+  // Une réponse préparée par l'agent arrive pendant qu'on regarde : elle remplit la zone si elle est vide.
+  useEffect(() => {
+    if (!prepare || prerempli.current === prepare.messageId) return;
+    prerempli.current = prepare.messageId;
+    if (brouillon.trim()) return;
+    setBrouillon(prepare.texte);
+    setAide(aideDe(prepare));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepare?.messageId]);
 
   // Le message envoyé est arrivé dans la conversation (temps réel) : la bulle provisoire s'efface.
   const connus = new Set(fil.messages.map((m) => m.id));
@@ -104,14 +167,23 @@ export function Conversation({ fil, logement, reservation }: Props) {
     z.style.height = `${Math.min(z.scrollHeight + 2, HAUTEUR_MAX_SAISIE)}px`;
   }, [brouillon]);
 
+  /** La réponse vient-elle de l'agent, et a-t-elle été retouchée ? (journal : qui l'a validée) */
+  const validation = (texte: string): ValidationBrouillon | undefined =>
+    aide?.genre === 'proposition' ? { source: aide.source, modifiee: texte.trim() !== aide.texte.trim() } : undefined;
+
   const envoyerPlateforme = async (texte: string) => {
     const cle = `${Date.now()}`;
+    const valide = validation(texte);
+    const aideAvant = aide;
     setEnvois((l) => [...l, { cle, texte, etat: 'envoi' }]);
     setBrouillon('');
+    setAide(null);
+    setPrecedent(null);
+    setVoirFr(false);
     setErreur(null);
     setAvis(null);
     try {
-      const r = await appelerServeur<ReponseEnvoi>('/api/erp-repull-messages', 'POST', { action: 'envoyer', filId: fil.id, texte });
+      const r = await appelerServeur<ReponseEnvoi>('/api/erp-repull-messages', 'POST', { action: 'envoyer', filId: fil.id, texte, ...(valide ? { brouillon: valide } : {}) });
       setEnvois((l) => l.map((e) => (e.cle === cle ? { ...e, etat: 'envoye', message: r.message } : e)));
       // « Envoyé sur … » est déjà sous la bulle : on ne prévient que si la plateforme a modifié le texte.
       if (r.reecrit) {
@@ -122,6 +194,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
       setEnvois((l) => l.filter((x) => x.cle !== cle));
       // Rien n'est parti : le texte revient dans la zone de saisie.
       setBrouillon((b) => (b.trim() ? b : texte));
+      setAide((a) => a ?? aideAvant);
       setErreur(e instanceof ErreurServeur || e instanceof Error ? e.message : 'Le message n’est pas parti. Réessayez.');
     }
   };
@@ -134,15 +207,19 @@ export function Conversation({ fil, logement, reservation }: Props) {
       return;
     }
     const envoyeLe = horodatageMaintenant();
+    const valide = validation(texte);
     // Comme un envoi sur une plateforme : répondu, la conversation sort de « À répondre » et reste ouverte.
-    upsert('filsMessages', {
+    const repondu: FilMessages = {
       ...fil,
       statut: 'ouvert',
       traitePar: 'humain',
       dernierMessageLe: envoyeLe,
       messages: [...fil.messages, { id: nouvelId('msg'), auteur: 'hote', texte, envoyeLe }],
-    });
+    };
+    upsert('filsMessages', valide?.source === 'agent' ? marquerBrouillonValide(repondu, utilisateur.nom, valide.modifiee, envoyeLe) : repondu);
     setBrouillon('');
+    setAide(null);
+    setPrecedent(null);
     setAvis(`${prenom} n’est pas relié à une plateforme : pensez à lui transmettre ce message (téléphone, e-mail…).`);
     setAvisAlerte(true);
   };
@@ -178,6 +255,84 @@ export function Conversation({ fil, logement, reservation }: Props) {
     );
   };
 
+  /** « Proposer une réponse » : la proposition de l'agent remplit la zone de réponse (rien n'est envoyé). */
+  const proposer = async () => {
+    if (iaEnCours) return;
+    setIaEnCours('proposition');
+    setAvis(null);
+    try {
+      const p = mode === 'demo' ? propositionDemo(fil, logement, signature) : await demanderProposition(fil.id);
+      const actuel = brouillon.trim();
+      setPrecedent(actuel && !(aide?.genre === 'proposition' && actuel === aide.texte.trim()) ? brouillon : null);
+      setBrouillon(p.texte);
+      setAide({ genre: 'proposition', source: 'proposition', texte: p.texte, texteFr: p.texteFr, attention: p.attention });
+      setVoirFr(false);
+      zone.current?.focus();
+    } catch (e) {
+      setAvisAlerte(true);
+      setAvis(messageErreur(e));
+    } finally {
+      setIaEnCours(null);
+    }
+  };
+
+  /** « Traduire en … » : le texte de l'équipe, en français, passe dans la langue du voyageur (modifiable). */
+  const traduire = async () => {
+    const texte = brouillon.trim();
+    if (!texte || !langue || !nomLangueVoyageur || iaEnCours) return;
+    if (mode === 'demo') {
+      setAvisAlerte(true);
+      setAvis(AVIS_DEMO_TRADUCTION);
+      return;
+    }
+    setIaEnCours('traduction');
+    setAvis(null);
+    try {
+      const traduit = await demanderTraductionTexte(texte, langue);
+      setPrecedent(brouillon);
+      setBrouillon(traduit);
+      setAide({ genre: 'traduction', nom: nomLangueVoyageur });
+      zone.current?.focus();
+    } catch (e) {
+      setAvisAlerte(true);
+      setAvis(messageErreur(e));
+    } finally {
+      setIaEnCours(null);
+    }
+  };
+
+  const retablir = () => {
+    if (precedent === null) return;
+    setBrouillon(precedent);
+    setPrecedent(null);
+    setAide(null);
+    setVoirFr(false);
+    zone.current?.focus();
+  };
+
+  /** « Voir en français » sous un message du voyageur : traduction gardée sur le message après la première demande. */
+  const basculerTraduction = async (m: Message) => {
+    const t = traductions[m.id];
+    if (t?.chargement) return;
+    if (t?.voir) return setTraductions((x) => ({ ...x, [m.id]: { ...t, voir: false } }));
+    const connue = t?.texte ?? m.traductionFr;
+    if (connue) return setTraductions((x) => ({ ...x, [m.id]: { voir: true, texte: connue } }));
+    if (mode === 'demo') {
+      setAvisAlerte(true);
+      setAvis(AVIS_DEMO_TRADUCTION);
+      return;
+    }
+    setTraductions((x) => ({ ...x, [m.id]: { voir: false, chargement: true } }));
+    try {
+      const texte = await demanderTraductionMessage(fil.id, m.id);
+      setTraductions((x) => ({ ...x, [m.id]: { voir: true, texte } }));
+    } catch (e) {
+      setTraductions((x) => ({ ...x, [m.id]: { voir: false } }));
+      setAvisAlerte(true);
+      setAvis(messageErreur(e));
+    }
+  };
+
   const inserer = (texte: string) => {
     setBrouillon((b) => (b.trim() ? `${b.trimEnd()}\n${texte}` : texte));
     zone.current?.focus();
@@ -208,6 +363,16 @@ export function Conversation({ fil, logement, reservation }: Props) {
 
   const motif = fil.statut === 'escalade' ? motifEscalade(fil) : undefined;
 
+  /** Message du voyageur dans une autre langue que le français : de quoi afficher « Voir en français ». */
+  const traductionDe = (m: Message): (Traduction & { nom: string }) | undefined => {
+    if (m.auteur !== 'voyageur') return undefined;
+    const l = langueMessage(m, fil);
+    const nom = l && l !== 'fr' ? nomLangue(l) : undefined;
+    if (!nom) return undefined;
+    const t = traductions[m.id];
+    return { nom, voir: !!t?.voir, texte: t?.texte ?? m.traductionFr, chargement: t?.chargement };
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b border-(--lm-bord) px-2 sm:gap-3 sm:px-4">
@@ -221,7 +386,11 @@ export function Conversation({ fil, logement, reservation }: Props) {
         <Avatar nom={fil.voyageur} taille="lg" className="max-sm:hidden" />
         <div className="min-w-0 flex-1">
           <h2 className="truncate text-[15px] font-semibold text-(--lm-encre)">{fil.voyageur}</h2>
-          <p className="truncate text-[12.5px] text-(--lm-encre-3)">{infos.join(' · ')}</p>
+          <p className="truncate text-[12.5px] text-(--lm-encre-3)">
+            {/* Ce que demande le voyageur, lu par l'agent (ou deviné de son dernier message). */}
+            {libelleIntention && <span className="font-medium text-(--lm-encre-2)">{libelleIntention} · </span>}
+            {infos.join(' · ')}
+          </p>
         </div>
         {!suivieParAgent && (
           <Button variant="secondary" icone={<Bot />} onClick={confier} className="max-sm:hidden">
@@ -271,7 +440,14 @@ export function Conversation({ fil, logement, reservation }: Props) {
             return (
               <li key={m.id}>
                 {nouveauJour && <p className={cn('mb-1 text-center text-[12px] font-medium text-(--lm-encre-3) first-letter:uppercase', i > 0 && 'mt-6')}>{titreJour(jour)}</p>}
-                <Bulle message={m} canal={fil.canal} suite={suite} finSerie={finSerie} />
+                <Bulle
+                  message={m}
+                  canal={fil.canal}
+                  suite={suite}
+                  finSerie={finSerie}
+                  traduction={traductionDe(m)}
+                  onTraduction={() => void basculerTraduction(m)}
+                />
               </li>
             );
           })}
@@ -341,7 +517,34 @@ export function Conversation({ fil, logement, reservation }: Props) {
             </div>
           )}
 
-          <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Modèles de réponse et guides">
+          <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Aide à la réponse, modèles et guides">
+            {assistant && (
+              <>
+                <button
+                  type="button"
+                  disabled={!!iaEnCours}
+                  onClick={() => void proposer()}
+                  title="Votre agent prépare une réponse : vous la relisez, puis vous l’envoyez"
+                  className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-3 text-[12.5px] font-medium text-(--lm-brun) hover:border-(--lm-or) disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {iaEnCours === 'proposition' ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Sparkles className="size-3 text-(--lm-or-texte)" aria-hidden />}
+                  {iaEnCours === 'proposition' ? 'Préparation…' : 'Proposer une réponse'}
+                </button>
+                {nomLangueVoyageur && (
+                  <button
+                    type="button"
+                    disabled={!!iaEnCours || !brouillon.trim() || (aide?.genre === 'proposition' && brouillon.trim() === aide.texte.trim())}
+                    onClick={() => void traduire()}
+                    title={brouillon.trim() ? `Traduire votre réponse en ${nomLangueVoyageur} avant de l’envoyer` : 'Écrivez d’abord votre réponse en français'}
+                    className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre) disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {iaEnCours === 'traduction' ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Languages className="size-3" aria-hidden />}
+                    Traduire en {nomLangueVoyageur}
+                  </button>
+                )}
+                <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-(--lm-bord-fort)" />
+              </>
+            )}
             <span className="shrink-0 text-[12px] text-(--lm-encre-3)">Modèles</span>
             {GABARITS.map((g) => {
               const bloque = (g.sensible && !codes.autorise) || !logement;
@@ -389,6 +592,35 @@ export function Conversation({ fil, logement, reservation }: Props) {
               </>
             )}
           </div>
+
+          {aide && brouillon.trim() && (
+            <div role="status" className="rounded-lg bg-(--lm-or-lavis) px-3 py-1 text-[12.5px]">
+              <p className="flex flex-wrap items-center gap-x-2">
+                <Sparkles className="size-3.5 shrink-0 text-(--lm-or-texte)" aria-hidden />
+                <span className="py-1.5 text-(--lm-encre)">
+                  {aide.genre === 'traduction'
+                    ? `Traduit en ${aide.nom} : relisez, puis envoyez.`
+                    : aide.source === 'agent'
+                      ? 'Préparée par votre agent : relisez, puis envoyez.'
+                      : 'Proposée par votre agent : relisez, puis envoyez.'}
+                </span>
+                {aide.genre === 'proposition' && aide.texteFr && (
+                  <button type="button" onClick={() => setVoirFr((v) => !v)} aria-expanded={voirFr} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                    {voirFr ? 'Masquer le français' : 'Voir en français'}
+                  </button>
+                )}
+                {precedent !== null && (
+                  <button type="button" onClick={retablir} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                    Rétablir mon texte
+                  </button>
+                )}
+              </p>
+              {aide.genre === 'proposition' && aide.attention && <p className="pb-1.5 font-medium text-(--lm-alerte)">{aide.attention}</p>}
+              {aide.genre === 'proposition' && voirFr && aide.texteFr && (
+                <p className="lm-defilement mb-1.5 max-h-28 overflow-y-auto border-t border-(--lm-or-anneau) pt-1.5 whitespace-pre-line text-(--lm-encre-2)">{aide.texteFr}</p>
+              )}
+            </div>
+          )}
 
           <form
             onSubmit={(e) => {
@@ -459,10 +691,29 @@ function Fermer({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** Bulle sans contour : voyageur à gauche, agent (or) et équipe (brun) à droite ; auteur et heure dessous. */
-function Bulle({ message: m, canal, suite, finSerie }: { message: Message; canal: string; suite: boolean; finSerie: boolean }) {
+/**
+ * Bulle sans contour : voyageur à gauche, agent (or) et équipe (brun) à
+ * droite ; auteur et heure dessous. Message du voyageur dans une autre
+ * langue : « Voir en français » (la bulle montre alors la traduction).
+ */
+function Bulle({
+  message: m,
+  canal,
+  suite,
+  finSerie,
+  traduction,
+  onTraduction,
+}: {
+  message: Message;
+  canal: string;
+  suite: boolean;
+  finSerie: boolean;
+  traduction?: Traduction & { nom: string };
+  onTraduction: () => void;
+}) {
   const voyageur = m.auteur === 'voyageur';
   const envoye = !voyageur && (m.envoi || m.id.startsWith('repull-'));
+  const traduit = !!traduction?.voir && !!traduction.texte;
   return (
     <div className={cn('flex flex-col', voyageur ? 'items-start' : 'items-end', suite ? 'mt-1' : 'mt-3')}>
       <div
@@ -472,8 +723,33 @@ function Bulle({ message: m, canal, suite, finSerie }: { message: Message; canal
           finSerie && (voyageur ? 'rounded-bl-md' : 'rounded-br-md'),
         )}
       >
-        <p className="break-words whitespace-pre-line">{m.texte}</p>
+        <p className="break-words whitespace-pre-line" lang={traduit ? 'fr' : undefined}>
+          {traduit ? traduction!.texte : m.texte}
+        </p>
       </div>
+      {traduction && (
+        <button
+          type="button"
+          onClick={onTraduction}
+          disabled={traduction.chargement}
+          aria-pressed={traduit}
+          className="-my-1 inline-flex min-h-8 items-center gap-1 px-1 text-[12px] font-medium text-(--lm-or-texte) hover:underline disabled:opacity-70"
+        >
+          {traduction.chargement ? (
+            <>
+              <Loader2 className="size-3 animate-spin" aria-hidden /> Traduction…
+            </>
+          ) : traduit ? (
+            <>
+              <span className="font-normal text-(--lm-encre-3)">Traduit {deLangue(traduction.nom)} ·</span> Voir l’original
+            </>
+          ) : (
+            <>
+              <Languages className="size-3" aria-hidden /> Voir en français
+            </>
+          )}
+        </button>
+      )}
       {finSerie && (
         <p className="mt-1 flex flex-wrap items-center gap-x-1.5 px-1 text-[11.5px] text-(--lm-encre-3)">
           {m.auteur === 'agent' && (

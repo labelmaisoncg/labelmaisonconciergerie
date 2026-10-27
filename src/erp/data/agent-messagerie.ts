@@ -20,11 +20,21 @@
  * plafond de décisions par mois (plafondIAMois, compté dans agent/etat), et
  * jamais le Telegram de Label Maison.
  *
- * Garde-fous (en plus des consignes données à Claude) : argent et litiges
- * toujours transmis, réponse qui parle d'argent transmise au lieu d'être
- * envoyée, codes d'accès et wifi absents du contexte tant que le voyageur n'y
- * a pas droit (réservation confirmée, arrivée sous 48 h ou sur place),
- * signature ajoutée par le code, jamais deux réponses au même message.
+ * Garde-fous (en plus des consignes données à Claude) : argent, annulation
+ * et litiges toujours transmis, réponse qui parle d'argent transmise au lieu
+ * d'être envoyée, codes d'accès et wifi absents du contexte tant que le
+ * voyageur n'y a pas droit (réservation confirmée, arrivée sous 48 h ou sur
+ * place) et jamais dans une réponse avant l'heure, signature ajoutée par le
+ * code, jamais deux réponses au même message.
+ *
+ * Autonomie (réglage du gérant, messagerie-ia.ts) : Claude note aussi la
+ * demande du voyageur (intention), son ton et sa confiance (0 à 1). L'agent
+ * n'envoie seul que hors sujet sensible, si le niveau choisi le permet et si
+ * la confiance atteint le seuil ; sinon la réponse est gardée « à valider »
+ * sur le fil (agent.brouillon) et l'équipe l'envoie en un clic. Chaque
+ * décision est notée au journal (demande, confiance, envoyée / à valider /
+ * transmise) et dans le bilan du passage. Label Maison sans choix enregistré
+ * garde son fonctionnement d'avant (pas de seuil).
  *
  * Idempotent : avant d'envoyer, le fil garde un marqueur « envoi en cours »
  * (message du voyageur, texte, clé d'idempotence). Un passage coupé en plein
@@ -45,7 +55,35 @@ import type { ContexteConnexion } from './repull-connexion.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi, nomPlateforme } from './messagerie-envoi.js';
 import { REGLAGES_AGENT_DEFAUT, reglagesAgent } from './reglages.js';
 import { LIBELLE_TYPE_GUIDE, MAX_GUIDES_PAR_REPONSE, guideEnvoyable, guidesAJoindre, lienGuide, questionsValides, texteAvecGuides, type SignerFichier } from './guides.js';
-import type { DescriptifLogement, FilMessages, Journal, Logement, Message, RaisonEscalade, ReglagesAgent, Reservation, SuiviAgent } from './types';
+import {
+  INTENTIONS,
+  LIBELLE_INTENTION,
+  SENTIMENTS,
+  analyseDepuisDecision,
+  codeLangue,
+  confianceLue,
+  contientCodeAcces,
+  estIntention,
+  estSentiment,
+  politiqueEnvoi,
+  verdictEnvoi,
+  type PolitiqueEnvoi,
+} from './messagerie-ia.js';
+import type {
+  AnalyseFil,
+  BrouillonAgent,
+  DescriptifLogement,
+  FilMessages,
+  IntentionMessage,
+  Journal,
+  Logement,
+  Message,
+  RaisonEscalade,
+  ReglagesAgent,
+  Reservation,
+  SentimentMessage,
+  SuiviAgent,
+} from './types';
 
 type Fetch = typeof fetch;
 
@@ -90,6 +128,10 @@ export interface PassageAgent {
   examines: number;
   repondus: number;
   transmis: number;
+  /** Réponses préparées et gardées pour l'équipe (niveau d'autonomie, confiance trop basse). */
+  aValider?: number;
+  /** Chaque décision du passage : demande lue, confiance, sort. */
+  decisions?: { filId: string; intention?: IntentionMessage; confiance?: number; sort: 'envoyee' | 'a_valider' | 'transmise' }[];
   /** Conversations laissées pour le passage suivant (temps, plafond). */
   reportes: number;
   relances: number;
@@ -134,6 +176,13 @@ export interface DecisionAgent {
   resume: string;
   /** Guides du logement à joindre (ids de la fiche), 2 au plus. */
   guides?: string[];
+  /** Demande du voyageur (taxonomie de messagerie-ia.ts). */
+  intention?: IntentionMessage;
+  /** Confiance de Claude dans sa réponse, de 0 à 1 (absente : ancien format). */
+  confiance?: number;
+  sentiment?: SentimentMessage;
+  /** Traduction française de `texte` pour l'équipe (vide si déjà en français). */
+  texteFr?: string;
 }
 
 const RAISONS: DecisionAgent['raison'][] = ['argent', 'litige', 'hors_fiche', 'exception', 'autre', 'aucune'];
@@ -152,8 +201,12 @@ export const SCHEMA_DECISION = {
       items: { type: 'string' },
       description: 'Ids des GUIDES À JOINDRE qui répondent à la question (0 à 2). Uniquement des ids de la liste.',
     },
+    intention: { type: 'string', enum: INTENTIONS, description: 'Ce que demande le voyageur dans ses derniers messages.' },
+    sentiment: { type: 'string', enum: SENTIMENTS, description: 'Ton du voyageur : negatif s’il est mécontent ou inquiet.' },
+    confiance: { type: 'number', description: 'De 0 à 1 : certitude que le champ texte est exact, complet et sûr à envoyer sans relecture.' },
+    texte_fr: { type: 'string', description: 'Traduction française du champ texte s’il n’est pas en français, sinon vide.' },
   },
-  required: ['action', 'raison', 'langue', 'texte', 'resume', 'guides'],
+  required: ['action', 'raison', 'langue', 'texte', 'resume', 'guides', 'intention', 'sentiment', 'confiance', 'texte_fr'],
   additionalProperties: false,
 } as const;
 
@@ -177,7 +230,12 @@ Ta réponse (champ texte) :
 - sans signature (elle est ajoutée automatiquement), sans lien ni adresse web (les guides sont ajoutés automatiquement), sans adresse e-mail, sans numéro de téléphone.
 Quand tu transmets, le champ texte peut contenir un court message d'attente poli (« je vérifie avec l'équipe et je reviens vers vous »), sans rien promettre ; laisse-le vide si le voyageur n'attend rien.
 Le champ resume : une phrase en français pour l'équipe, qui dit ce que veut le voyageur et ce que tu as fait.
-Le champ raison : "aucune" quand tu réponds seul.`;
+Le champ raison : "aucune" quand tu réponds seul.
+Le champ intention : ce que demande le voyageur (arrivee, depart, arrivee_anticipee, depart_tardif, facture, prolongation, probleme_technique, infos, annulation, paiement, avis, autre).
+Le champ sentiment : positif, neutre, ou negatif s'il est mécontent ou inquiet.
+Le champ confiance : de 0 à 1, ta certitude que le champ texte est exact, complet et sûr à envoyer sans relecture. 0,9 ou plus seulement si toute la réponse vient de la fiche ou de la réservation ; 0,5 ou moins si tu supposes quelque chose.
+Le champ texte_fr : la traduction française du champ texte s'il n'est pas en français, sinon vide.
+Jamais d'emoji.`;
 
 export const CONSIGNES_AGENT = consignesAgent('Label Maison');
 
@@ -243,7 +301,7 @@ export function codesPermis(fil: FilMessages, r: Reservation | undefined, aujour
 }
 
 /** Mots qui font toujours transmettre (argent), côté voyageur comme côté réponse. */
-const ARGENT = /rembours|refund|dédommag|geste commercial|remise|réduction|discount|compensation|caution|€|\beuros?\b|\bEUR\b/i;
+const ARGENT = /rembours|refund|dédommag|geste commercial|remise|réduction|discount|compensation|caution|annul|cancel|stornier|cancelar|€|\beuros?\b|\bEUR\b/i;
 /** Litiges et urgences, côté voyageur. */
 const LITIGE = /inacceptable|plainte|porter plainte|avocat|litige|arnaque|scam|fuite d.eau|inond|incendie|fire\b|police/i;
 
@@ -485,6 +543,10 @@ export function lireDecision(m: Pick<Anthropic.Message, 'content' | 'stop_reason
     texte: typeof brut.texte === 'string' ? brut.texte.trim() : '',
     resume: typeof brut.resume === 'string' ? brut.resume.trim() : '',
     guides: Array.isArray(brut.guides) ? [...new Set(brut.guides.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()))].slice(0, MAX_GUIDES_PAR_REPONSE) : [],
+    ...(estIntention(brut.intention) ? { intention: brut.intention } : {}),
+    ...(confianceLue(brut.confiance) !== undefined ? { confiance: confianceLue(brut.confiance) } : {}),
+    ...(estSentiment(brut.sentiment) ? { sentiment: brut.sentiment } : {}),
+    ...(typeof brut.texte_fr === 'string' && brut.texte_fr.trim() ? { texteFr: brut.texte_fr.trim() } : {}),
   };
 }
 
@@ -516,11 +578,29 @@ export function appliquerGardeFous(d: DecisionAgent, fil: FilMessages): Decision
 
 /* ============================================================== passage */
 
+/** Ce que l'agent garde d'une décision : demande, confiance, analyse du message, réponse proposée. */
+interface NoteDecision {
+  intention?: IntentionMessage;
+  confiance?: number;
+  analyse?: AnalyseFil;
+  brouillon?: BrouillonAgent;
+}
+
+/** « (demande : arrivée plus tôt, confiance 62 %) » pour le journal. */
+function detailNote(n: NoteDecision | undefined): string {
+  const morceaux = [
+    n?.intention && LIBELLE_INTENTION[n.intention] ? `demande : ${LIBELLE_INTENTION[n.intention].toLowerCase()}` : '',
+    n?.confiance !== undefined ? `confiance ${Math.round(n.confiance * 100)} %` : '',
+  ].filter(Boolean);
+  return morceaux.length ? ` (${morceaux.join(', ')})` : '';
+}
+
 class Passage {
   readonly bilan: PassageAgent;
   private readonly maintenant: () => Date;
   private readonly compteur = { appels: 0 };
   private reglages: ReglagesAgent = REGLAGES_AGENT_DEFAUT;
+  private politique: PolitiqueEnvoi = politiqueEnvoi(REGLAGES_AGENT_DEFAUT, true);
 
   constructor(private readonly o: OptionsAgent) {
     this.maintenant = o.maintenant ?? (() => new Date());
@@ -596,50 +676,82 @@ class Passage {
 
   /* ------------------------------------------------------- décision */
 
-  private async decider(fil: FilMessages, logement: Logement | undefined, reservation: Reservation | undefined): Promise<DecisionAgent> {
+  /**
+   * Décision de Claude, passée par les garde-fous (`decision`), et telle que
+   * Claude l'a écrite (`brut`, null si illisible) : sa réponse peut rester
+   * proposée à l'équipe quand elle ne part pas seule.
+   */
+  private async decider(fil: FilMessages, logement: Logement | undefined, reservation: Reservation | undefined): Promise<{ decision: DecisionAgent; brut: DecisionAgent | null }> {
     const faits = (this.o.iaDejaCeMois ?? 0) + (this.bilan.appelsIA ?? 0);
     if (this.o.plafondIAMois !== undefined && faits >= this.o.plafondIAMois) throw new PlafondIA();
     this.bilan.appelsIA = (this.bilan.appelsIA ?? 0) + 1;
     const m = await this.o.ia!.messages.create({
       model: this.o.modele ?? MODELE_AGENT_DEFAUT,
-      max_tokens: 1024,
+      max_tokens: 1536,
       system: this.o.nomEspace ? consignesAgent(this.o.nomEspace) : CONSIGNES_AGENT,
       messages: [{ role: 'user', content: construireContexte(fil, logement, reservation, this.reglages, this.maintenant()) }],
       output_config: { format: { type: 'json_schema', schema: SCHEMA_DECISION as unknown as Record<string, unknown> } },
     });
     this.bilan.jetons.entree += m.usage?.input_tokens ?? 0;
     this.bilan.jetons.sortie += m.usage?.output_tokens ?? 0;
-    const d = lireDecision(m);
-    if (!d) return { action: 'transmettre', raison: 'autre', langue: '', texte: '', resume: 'L’agent n’a pas pu formuler de réponse sûre : à vous de répondre.' };
-    return appliquerGardeFous(d, fil);
+    const brut = lireDecision(m);
+    if (!brut) return { decision: { action: 'transmettre', raison: 'autre', langue: '', texte: '', resume: 'L’agent n’a pas pu formuler de réponse sûre : à vous de répondre.' }, brut: null };
+    const d = appliquerGardeFous(brut, fil);
+    // Codes et wifi : jamais avant l'heure, même trouvés ailleurs que dans la fiche (historique, questions fréquentes).
+    if (d.texte && !codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(d.texte, logement?.fiche)) {
+      return { decision: { ...d, action: 'transmettre', raison: 'autre', texte: '', resume: d.resume || 'La réponse contenait un code d’accès avant l’heure : à vous de répondre.' }, brut };
+    }
+    return { decision: d, brut };
   }
 
   /* ---------------------------------------------------------- actions */
 
-  private suivi(dernier: Message, decision: 'repondre' | 'transmettre', resume: string): SuiviAgent {
-    return { dernierMessageTraite: dernier.id, decision, resume, le: horodatageParis(this.maintenant()) };
+  private suivi(dernier: Message, decision: NonNullable<SuiviAgent['decision']>, resume: string, note?: NoteDecision): SuiviAgent {
+    return {
+      dernierMessageTraite: dernier.id,
+      decision,
+      resume,
+      le: horodatageParis(this.maintenant()),
+      ...(note?.intention ? { intention: note.intention } : {}),
+      ...(note?.confiance !== undefined ? { confiance: note.confiance } : {}),
+      ...(note?.brouillon ? { brouillon: note.brouillon } : {}),
+    };
   }
 
-  private escalade(f: FilMessages, dernier: Message, raison: RaisonEscalade, resume: string): FilMessages {
-    return { ...f, statut: 'escalade', traitePar: 'en_attente', raisonEscalade: raison, agent: this.suivi(dernier, 'transmettre', resume) };
+  /** Fil après une décision : analyse du message gardée (tri de « À répondre »). */
+  private avecAnalyse(f: FilMessages, note?: NoteDecision): FilMessages {
+    return note?.analyse ? { ...f, analyse: note.analyse } : f;
   }
 
-  /** Transmission à l'équipe (fil escaladé, journal, Telegram). */
-  private async transmettre(fil: FilMessages, dernier: Message, raison: RaisonEscalade, resume: string, attente?: string): Promise<void> {
+  private escalade(f: FilMessages, dernier: Message, raison: RaisonEscalade, resume: string, note?: NoteDecision): FilMessages {
+    return this.avecAnalyse({ ...f, statut: 'escalade', traitePar: 'en_attente', raisonEscalade: raison, agent: this.suivi(dernier, 'transmettre', resume, note) }, note);
+  }
+
+  /** Décision notée dans le bilan du passage. */
+  private noter(fil: FilMessages, sort: 'envoyee' | 'a_valider' | 'transmise', note?: NoteDecision) {
+    const b = this.bilan;
+    const d = { filId: fil.id, ...(note?.intention ? { intention: note.intention } : {}), ...(note?.confiance !== undefined ? { confiance: note.confiance } : {}), sort };
+    b.decisions = [...(b.decisions ?? []), d];
+  }
+
+  /** Transmission à l'équipe (fil escaladé, journal, Telegram). `note` : demande, confiance, réponse proposée gardée. */
+  private async transmettre(fil: FilMessages, dernier: Message, raison: RaisonEscalade, resume: string, attente?: string, note?: NoteDecision): Promise<void> {
     let ecrit: FilMessages | undefined;
     if (attente) {
       try {
-        ecrit = (await this.envoyer(fil, dernier, attente, { transmettre: true, raison, resume }, (f) => this.escalade(f, dernier, raison, resume)))?.fil;
+        ecrit = (await this.envoyer(fil, dernier, attente, { transmettre: true, raison, resume }, (f) => this.escalade(f, dernier, raison, resume, note)))?.fil;
       } catch (e) {
         if (e instanceof DelaiEcoule) throw e;
         if (e instanceof ErreurEnvoi && e.code === 'en_cours') return; // un autre passage s'en occupe
         /* message d'attente pas parti (part épuisée, refus) : la transmission compte quand même */
       }
     }
-    if (!ecrit) ecrit = await this.majFil(fil.id, (f) => this.escalade(f, dernier, raison, resume));
+    if (!ecrit) ecrit = await this.majFil(fil.id, (f) => this.escalade(f, dernier, raison, resume, note));
     this.bilan.transmis++;
+    if (note) this.noter(fil, 'transmise', note);
     const libelle = { argent: 'question d’argent', litige: 'souci à régler', hors_fiche: 'information absente de la fiche', exception: 'demande d’exception', autre: 'à vérifier' }[raison];
-    await this.journal(fil, `Conversation avec ${fil.voyageur} transmise à l’équipe (${libelle}) : ${resume}`);
+    const garde = note?.brouillon ? ' Réponse proposée gardée pour l’équipe.' : '';
+    await this.journal(fil, `Conversation avec ${fil.voyageur} transmise à l’équipe (${libelle}) : ${resume}${detailNote(note)}${garde}`);
     await this.telegram(`Label Maison — à vous de jouer\n${fil.voyageur} (${nomPlateforme(fil.canal)}) : ${libelle}.\n${resume}\n\n« ${dernier.texte.slice(0, 500)} »`);
   }
 
@@ -700,19 +812,32 @@ class Passage {
       return;
     }
 
-    const d = await this.decider(fil, logement, reservation);
-    if (d.action === 'transmettre') {
-      const raison = d.raison === 'aucune' ? 'autre' : d.raison;
-      await this.transmettre(fil, dernier, raison, d.resume || 'Transmis par l’agent.', d.texte ? signer(d.texte, this.reglages.signature) : undefined);
+    const { decision: d, brut } = await this.decider(fil, logement, reservation);
+    const texteVoyageur = enAttente(fil).map((m) => m.texte).join('\n');
+    const verdict = verdictEnvoi(d, this.politique, texteVoyageur);
+    const note: NoteDecision = {
+      ...(d.intention ? { intention: d.intention } : {}),
+      ...(d.confiance !== undefined ? { confiance: d.confiance } : {}),
+      analyse: analyseDepuisDecision(d, dernier.id, horodatageParis(this.maintenant())),
+    };
+    if (verdict.verdict !== 'envoyer') {
+      // Message d'attente : seulement s'il l'a choisi lui-même (transmettre) et si l'agent peut envoyer seul.
+      const attente = d.action === 'transmettre' && this.politique.envoiAuto && d.texte ? signer(d.texte, this.reglages.signature) : undefined;
+      // Rien d'autre ne part : la réponse de Claude reste proposée à l'équipe (jamais avec un code d'accès avant l'heure).
+      const motif = verdict.motif || d.resume;
+      const garde = brut?.texte && !attente ? await this.preparer(fil, dernier, brut, logement, reservation, motif) : undefined;
+      if (garde) note.brouillon = garde;
+      if (verdict.verdict === 'valider') {
+        if (garde) return this.aValider(fil, dernier, d.resume || 'Réponse préparée par l’agent.', verdict.motif, note);
+        await this.transmettre(fil, dernier, 'autre', d.resume || 'L’agent n’a pas pu préparer de réponse sûre : à vous de répondre.', undefined, note);
+        return;
+      }
+      const resume = d.action === 'transmettre' ? d.resume || 'Transmis par l’agent.' : [verdict.motif, d.resume].filter(Boolean).join(' ');
+      await this.transmettre(fil, dernier, verdict.raison, resume, attente, note);
       return;
     }
     // Guides choisis par l'agent : liens ajoutés ici (jamais écrits par Claude) ; guides d'accès retenus avant l'heure.
-    const choix = guidesAJoindre(d.guides, logement?.fiche?.guides, codesPermis(fil, reservation, dateParis(this.maintenant())).ok);
-    const liens: { titre: string; lien: string }[] = [];
-    for (const g of choix.joints) {
-      const lien = await lienGuide(g, this.o.signerFichier);
-      if (lien) liens.push({ titre: g.titre, lien });
-    }
+    const { choix, liens } = await this.liensGuides(d, fil, logement, reservation);
     const notes = [
       liens.length ? `${liens.length > 1 ? 'Guides joints' : 'Guide joint'} : ${liens.map((l) => `« ${l.titre} »`).join(', ')}.` : '',
       choix.retires.length ? `${choix.retires.map((g) => `« ${g.titre} »`).join(', ')} retenu${choix.retires.length > 1 ? 's' : ''} : accès pas encore communicable.` : '',
@@ -720,8 +845,10 @@ class Passage {
     const resume = [d.resume || 'Réponse envoyée.', ...notes].join(' ');
     const texte = signer(texteAvecGuides(d.texte, liens), this.reglages.signature);
     try {
-      const r = await this.envoyer(fil, dernier, texte, { resume }, (f) => ({ ...f, agent: this.suivi(dernier, 'repondre', resume) }));
+      const r = await this.envoyer(fil, dernier, texte, { resume }, (f) => this.avecAnalyse({ ...f, agent: this.suivi(dernier, 'repondre', resume, note) }, note));
       this.bilan.repondus++;
+      this.noter(fil, 'envoyee', note);
+      await this.journal(fil, `Réponse envoyée seule à ${fil.voyageur}.${detailNote(note)}`);
       await this.telegram(`Réponse de l’agent à ${fil.voyageur} (${nomPlateforme(r.canal)})\n« ${dernier.texte.slice(0, 300)} »\n→ ${r.message.texte.slice(0, 1500)}`);
     } catch (e) {
       if (e instanceof ErreurEnvoi && (e.code === 'en_cours' || e.code === 'deja_envoye')) return; // déjà envoyé, ou un autre passage s'en occupe
@@ -734,6 +861,59 @@ class Passage {
       }
       throw e;
     }
+  }
+
+  /** Guides choisis par l'agent, avec leur lien (signé pour un fichier déposé) ; guides d'accès retenus avant l'heure. */
+  private async liensGuides(d: Pick<DecisionAgent, 'guides'>, fil: FilMessages, logement: Logement | undefined, reservation: Reservation | undefined) {
+    const choix = guidesAJoindre(d.guides, logement?.fiche?.guides, codesPermis(fil, reservation, dateParis(this.maintenant())).ok);
+    const liens: { titre: string; lien: string }[] = [];
+    for (const g of choix.joints) {
+      const lien = await lienGuide(g, this.o.signerFichier);
+      if (lien) liens.push({ titre: g.titre, lien });
+    }
+    return { choix, liens };
+  }
+
+  /**
+   * Réponse proposée à l'équipe (pas envoyée) : guides et signature comme un
+   * envoi. undefined : rien d'utile, ou un code d'accès avant l'heure.
+   */
+  private async preparer(
+    fil: FilMessages,
+    dernier: Message,
+    d: DecisionAgent,
+    logement: Logement | undefined,
+    reservation: Reservation | undefined,
+    motif: string,
+  ): Promise<BrouillonAgent | undefined> {
+    const texte = d.texte.trim();
+    // Une réponse qui parle d'argent ne se valide pas d'un clic : l'équipe l'écrit elle-même.
+    if (!texte || ARGENT.test(texte)) return undefined;
+    if (!codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(`${texte}\n${d.texteFr ?? ''}`, logement?.fiche)) return undefined;
+    const { liens } = await this.liensGuides(d, fil, logement, reservation);
+    const langue = codeLangue(d.langue);
+    return {
+      messageId: dernier.id,
+      texte: signer(texteAvecGuides(texte, liens), this.reglages.signature),
+      ...(d.texteFr && langue !== 'fr' ? { texteFr: d.texteFr } : {}),
+      ...(langue ? { langue } : {}),
+      ...(d.intention ? { intention: d.intention } : {}),
+      ...(d.confiance !== undefined ? { confiance: d.confiance } : {}),
+      ...(motif ? { motif } : {}),
+      le: horodatageParis(this.maintenant()),
+    };
+  }
+
+  /** Réponse gardée « à valider » : le fil attend l'équipe, qui l'envoie en un clic. */
+  private async aValider(fil: FilMessages, dernier: Message, resume: string, motif: string, note: NoteDecision): Promise<void> {
+    await this.majFil(fil.id, (f) =>
+      this.avecAnalyse({ ...f, statut: f.statut === 'clos' ? 'ouvert' : f.statut, traitePar: 'en_attente', agent: this.suivi(dernier, 'a_valider', resume, note) }, note),
+    );
+    this.bilan.aValider = (this.bilan.aValider ?? 0) + 1;
+    this.noter(fil, 'a_valider', note);
+    await this.journal(fil, `Réponse préparée pour ${fil.voyageur}, à valider par l’équipe : ${motif}${detailNote(note)}`);
+    const proposee = (note.brouillon?.texte ?? '').slice(0, 1500);
+    await this.telegram(`Réponse à valider pour ${fil.voyageur} (${nomPlateforme(fil.canal)})\n${motif}\n« ${dernier.texte.slice(0, 300)} »\n→ ${proposee}`);
   }
 
   /** Relance Telegram des conversations transmises restées sans réponse humaine. */
@@ -788,6 +968,8 @@ class Passage {
     const [lu] = await this.o.base.lire<ReglagesAgent>('reglages', ['agent']);
     // Signature par défaut au nom de l'espace (« L’équipe Sens ») ; Label Maison inchangé.
     this.reglages = reglagesAgent({ reglages: lu ? [lu] : [] }, this.o.nomEspace);
+    // Sans nom d'espace : Label Maison (même convention que la signature).
+    this.politique = politiqueEnvoi(this.reglages, this.o.nomEspace === undefined);
     if (!this.reglages.actif) return this.finir('pause', 'Votre agent est en pause : il ne répond à personne. Tout arrive à l’équipe.');
     if (!dansLesHoraires(this.reglages, this.maintenant())) {
       return this.finir('hors_horaires', `En dehors des heures de réponse (${this.reglages.horaires.debut}–${this.reglages.horaires.fin}, heure de Paris) : les messages attendent l’équipe.`);
@@ -846,10 +1028,11 @@ class Passage {
     }
     const morceaux = [
       `${b.repondus} réponse${b.repondus > 1 ? 's' : ''} envoyée${b.repondus > 1 ? 's' : ''}`,
+      ...(b.aValider ? [`${b.aValider} réponse${b.aValider > 1 ? 's' : ''} à valider`] : []),
       `${b.transmis} conversation${b.transmis > 1 ? 's' : ''} transmise${b.transmis > 1 ? 's' : ''} à l’équipe`,
     ];
     if (b.reportes) morceaux.push(`${b.reportes} pour le prochain passage`);
-    return this.finir(b.erreurs.length && !b.repondus && !b.transmis ? 'erreur' : 'fait', `${morceaux.join(', ')}.${b.erreurs.length ? ` Erreurs : ${b.erreurs.join(' ; ')}` : ''}`);
+    return this.finir(b.erreurs.length && !b.repondus && !b.transmis && !b.aValider ? 'erreur' : 'fait', `${morceaux.join(', ')}.${b.erreurs.length ? ` Erreurs : ${b.erreurs.join(' ; ')}` : ''}`);
   }
 
   finir(statut: StatutPassage, message: string): PassageAgent {

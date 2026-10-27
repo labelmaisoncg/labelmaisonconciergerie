@@ -1,9 +1,21 @@
-/** Liste des conversations : recherche, trois filtres et une ligne par voyageur. */
+/**
+ * Liste des conversations : recherche, trois filtres et une ligne par
+ * voyageur. Tri de « À répondre » par urgence (index.tsx) : badge « Urgent »
+ * discret, rouge seulement pour un problème pendant le séjour ; langue du
+ * voyageur quand ce n'est pas le français (« EN »).
+ */
 import { Link } from 'react-router-dom';
 import { CheckCircle2, SearchX } from 'lucide-react';
-import { Avatar, Button, SearchInput, Segmente, cn } from '../../../ui';
+import { Avatar, Badge, Button, SearchInput, Segmente, cn } from '../../../ui';
 import type { FilMessages, Logement } from '../../../data/types';
+import { nomLangue, type Urgence } from '../../../data/messagerie-ia';
 import { FILTRES, attendEquipe, correspond, quandCourt, type FiltreFil } from './logique';
+
+/** Ce que la liste montre du tri : urgence (conversations qui attendent l'équipe) et langue du voyageur. */
+export interface TriFil {
+  urgence: Urgence;
+  langue?: string;
+}
 
 interface Props {
   fils: FilMessages[];
@@ -14,9 +26,10 @@ interface Props {
   onFiltre: (f: FiltreFil) => void;
   recherche: string;
   onRecherche: (q: string) => void;
+  tri?: Map<string, TriFil>;
 }
 
-export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, recherche, onRecherche }: Props) {
+export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, recherche, onRecherche, tri }: Props) {
   const q = recherche.trim();
   return (
     <div className="flex min-h-0 flex-col lg:h-full">
@@ -43,6 +56,9 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
             const dernier = f.messages[f.messages.length - 1];
             const actif = f.id === actifId;
             const attente = attendEquipe(f);
+            const t = tri?.get(f.id);
+            const urgence = attente ? (t?.urgence.niveau ?? 0) : 0;
+            const langue = t?.langue && t.langue !== 'fr' ? t.langue : undefined;
             return (
               <li key={f.id} className="border-b border-(--lm-bord) last:border-b-0 max-lg:last:border-b">
                 <Link
@@ -61,6 +77,12 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                         <span className={attente ? 'font-semibold' : 'font-medium'}>{f.voyageur}</span>
                         <span className="text-[12.5px] text-(--lm-encre-3)"> · {logements.get(f.logementId)?.nom ?? 'Logement'}</span>
                       </p>
+                      {langue && (
+                        <span className="shrink-0 text-[11px] font-semibold tracking-wide text-(--lm-encre-3)" title={`Écrit en ${nomLangue(langue) ?? langue}`}>
+                          <span aria-hidden>{langue.toUpperCase()}</span>
+                          <span className="sr-only">Écrit en {nomLangue(langue) ?? langue}</span>
+                        </span>
+                      )}
                       <time className="lm-chiffres shrink-0 text-[12px] text-(--lm-encre-3)" dateTime={f.dernierMessageLe}>
                         {quandCourt(f.dernierMessageLe)}
                       </time>
@@ -71,6 +93,12 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                         {dernier?.auteur === 'hote' && <span className="text-(--lm-encre-3)">Vous : </span>}
                         {dernier?.texte}
                       </p>
+                      {/* Urgent : arrivée sous 24 h ou voyageur sur place ; rouge seulement pour un problème pendant le séjour. */}
+                      {urgence >= 2 && (
+                        <Badge tone={urgence === 3 ? 'danger' : 'neutre'} title={t?.urgence.raison} className="shrink-0 px-1.5 text-[11.5px]">
+                          Urgent
+                        </Badge>
+                      )}
                       {/* Un seul repère : la pastille dorée « à répondre » (doublée d'un nom en gras et d'un texte lu par les lecteurs d'écran). */}
                       {attente && (
                         <span className="size-2.5 shrink-0 rounded-full bg-(--lm-or)" role="img" aria-label="À répondre" />

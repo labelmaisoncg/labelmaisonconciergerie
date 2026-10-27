@@ -259,7 +259,8 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
     const agent = nouveaux.filter((m) => m.auteur === 'agent');
     const passeLaMain =
       (f.statut === 'escalade' && p?.statut !== 'escalade' && !!p) ||
-      (f.agent?.decision === 'transmettre' && !!f.agent.le && f.agent.le !== p?.agent?.le && f.traitePar === 'en_attente');
+      // Transmise, ou réponse préparée par l'agent et gardée « à valider ».
+      ((f.agent?.decision === 'transmettre' || f.agent?.decision === 'a_valider') && !!f.agent.le && f.agent.le !== p?.agent?.le && f.traitePar === 'en_attente');
     const litige = f.raisonEscalade === 'litige' && p?.raisonEscalade !== 'litige' && passeLaMain;
     const probleme = litige || voyageur.some((m) => estProbleme(m.texte));
     if (!voyageur.length && !agent.length && !passeLaMain) continue;
@@ -273,7 +274,7 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
       variantes.push({ type: 'probleme', titre: `Problème signalé · ${logement}`, corps: `${qui} : ${extrait(dernierVoyageur?.texte ?? f.agent?.resume ?? 'voir la conversation')}`, url });
     }
     if (passeLaMain) {
-      const raison = f.raisonEscalade ? RAISONS[f.raisonEscalade] : 'à voir par l’équipe';
+      const raison = f.agent?.decision === 'a_valider' ? 'réponse préparée par l’agent, à valider' : f.raisonEscalade ? RAISONS[f.raisonEscalade] : 'à voir par l’équipe';
       variantes.push({
         type: 'agent_main',
         titre: `${qui} attend votre réponse`,
