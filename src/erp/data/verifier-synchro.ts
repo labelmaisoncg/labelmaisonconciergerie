@@ -26,6 +26,7 @@ import {
   traceRefus,
 } from './ecritures-gerant';
 import { AUJOURDHUI, MAINTENANT, ajouterJours } from './format';
+import { REGLAGES_AGENT_GERANT } from './messagerie-ia';
 import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
 import { creerSeed } from './seed';
 import { CODES_REFUS_BASE, ErreurSynchro, Synchro, differences, erreurDeLigne, refusParLaBase, type ChangementDistant, type EtatSynchro, type RefusBase } from './synchro';
@@ -434,7 +435,7 @@ async function principal() {
       refusParLaBase(RLS.corps, 403) &&
         refusParLaBase({ code: 'LMF01', message: 'Facture numérotée : seuls le paiement et le partage changent encore.' }, 400) &&
         refusParLaBase({ code: 'LMF02', message: 'Facture : son numéro est attribué par la base à la validation.' }, 400) &&
-        refusParLaBase({ code: '42501', message: 'Seul un gérant change le niveau d’autonomie de l’agent.' }, 403),
+        refusParLaBase({ code: '42501', message: 'Seul un gérant change ces réglages de l’agent.' }, 403),
       'refus définitifs reconnus : règle RLS, déclencheurs (42501, LMF01, LMF02)',
     );
     verifier(
@@ -649,6 +650,20 @@ async function principal() {
       differences(av, ap).filter((op) => operationReserveeAuGerant(op, av)).length === 3 && !operationReserveeAuGerant({ type: 'ecrire', collection: 'reglages', id: 'agent', donnees: { ...agent, ton: 'b' } }, av),
       'opérations écartées : autonomie changée, société, facture ; le ton de l’agent reste permis',
     );
+    const ecrireAgent = (donnees: Record<string, unknown>) => ({ type: 'ecrire' as const, collection: 'reglages' as const, id: 'agent', donnees: { id: 'agent', ...donnees } });
+    verifier(
+      ['actif', 'horaires', 'transmettre', 'delaiAlerteMinutes'].every((k) => operationReserveeAuGerant(ecrireAgent({ ...agent, [k]: 'autre' }), av)),
+      'marche, horaires, ce qu’il confie, délai : écartés comme le niveau d’autonomie (même liste que la base)',
+    );
+    const sansLigne = { ...donneesVides() } as unknown as ErpDonnees;
+    verifier(
+      operationReserveeAuGerant(ecrireAgent({ ton: 'a', horaires: { mode: 'toujours' } }), sansLigne) && !operationReserveeAuGerant(ecrireAgent({ ton: 'a', signature: 'Inès' }), sansLigne),
+      'pas encore de réglages de l’agent : l’équipe les crée avec le ton et la signature, jamais avec les horaires',
+    );
+    verifier(
+      !operationReserveeAuGerant(ecrireAgent({ ...agent, horaires: { fin: '22:00', debut: '08:00', mode: 'plage' } }), { ...av, reglages: [{ ...agent, horaires: { mode: 'plage', debut: '08:00', fin: '22:00' } }] } as unknown as ErpDonnees),
+      'mêmes horaires dans un autre ordre de clés : pas un changement (comme en base)',
+    );
     base3.reinitialiserCompteurs();
     await s3.sauvegarderDifferences(av, ap, 'Ops');
     await attendre(40);
@@ -713,6 +728,13 @@ async function principal() {
       verifier(JSON.stringify(elements) === JSON.stringify(tsElements), `${fichier} : mêmes éléments réservés que ecritures-gerant.ts`, elements);
       verifier(sql.includes(`not (collection = 'reglages' and id = '${ID_REGLAGES_AGENT}')`), `${fichier} : suppression des réglages de l’agent réservée, comme dans le navigateur`);
       verifier(CODES_REFUS_BASE.every((code) => sql.includes(`errcode = '${code}'`)), `${fichier} : codes ${CODES_REFUS_BASE.join(', ')} posés par les déclencheurs`);
+      const garde = /create or replace function erp\.garder_autonomie_agent[\s\S]*?\$\$([\s\S]*?)\$\$/.exec(sql)?.[1] ?? '';
+      const clesAgent = valeurs(/cles constant text\[\] := array\[([^\]]*)\]/.exec(garde)?.[1] ?? '');
+      verifier(
+        JSON.stringify(clesAgent) === JSON.stringify([...REGLAGES_AGENT_GERANT].sort()),
+        `${fichier} : réglages de l’agent gardés par la base = REGLAGES_AGENT_GERANT (messagerie-ia.ts)`,
+        clesAgent,
+      );
     }
   }
 

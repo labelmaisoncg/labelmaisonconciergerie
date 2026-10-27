@@ -437,8 +437,11 @@ ou 2 ; même règle avant les espaces dans `erp-installation.sql` et
 compte serveur) pour `envoisProgrammes`, `programmes`, `agent`, `repull`,
 `factures`, `passagesFacturesMensuelles`, `conseilsPrix` (`reglages`,
 `etat`) et `reglages` (`messages-programmes`, `societe`,
-`numerotation-factures`, `alerte-controle-agent`) ; niveau d'autonomie de
-l'agent changé par un gérant seulement (déclencheur) ; numéro de facture
+`numerotation-factures`, `alerte-controle-agent`) ; dans les réglages de
+l'agent, marche, niveau d'autonomie, horaires, ce qu'il confie et délai
+changés par un gérant seulement (déclencheur `erp.garder_autonomie_agent`,
+liste `REGLAGES_AGENT_GERANT` ; ton, signature, langues et Telegram restent
+à l'équipe) ; numéro de facture
 attribué par `erp.numeroter_facture(p_id)` seulement (à la suite, jamais
 deux fois ; toute autre écriture d'un numéro est refusée, code `LMF02`, et
 un index unique par espace l'interdit en double) ; une facture numérotée ne

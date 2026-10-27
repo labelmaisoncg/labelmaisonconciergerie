@@ -1059,7 +1059,7 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 -- « en cours » avec le texte de son choix, poser un verrou sans fin, remettre
 -- à zéro le compteur de l'IA ou numéroter une facture. Restent à l'équipe :
 -- avis à déposer (« fait », « passé »), décisions sur les prix conseillés et
--- réglages de l'agent (sauf son niveau d'autonomie : voir le déclencheur plus bas).
+-- réglages de l'agent (ton, signature, langues, Telegram ; le reste : déclencheur plus bas).
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
@@ -1085,36 +1085,46 @@ create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrem
   using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent'))
          or espace = any ((select erp.espaces_gerant())::uuid[]));
 
--- Niveau d'autonomie de l'agent (reglages, élément « agent » : ce que l'agent
--- envoie seul) : un gérant seulement. Le reste de ces réglages (ton, horaires,
--- signature…) reste à l'équipe. Une règle RLS ne compare pas l'avant et
--- l'après d'une ligne : c'est ce déclencheur qui refuse (42501).
+-- Réglages de l'agent réservés au gérant (reglages, élément « agent ») : marche
+-- ou pause (actif), ce qu'il envoie seul (autonomie), ses horaires, ce qu'il
+-- vous confie (transmettre) et le délai avant de vous prévenir
+-- (delaiAlerteMinutes) ; même liste que REGLAGES_AGENT_GERANT
+-- (src/erp/data/messagerie-ia.ts). Le reste (ton, signature, langues,
+-- Telegram) reste à l'équipe. Une règle RLS ne compare pas l'avant et l'après
+-- d'une ligne : c'est ce déclencheur qui refuse (42501). Ajout sans ligne
+-- enregistrée : aucune de ces clés. Nom gardé (garder_autonomie_agent) pour
+-- les installations existantes.
 create or replace function erp.garder_autonomie_agent() returns trigger
 language plpgsql set search_path = ''
 as $$
 declare
+  cles constant text[] := array['actif', 'autonomie', 'horaires', 'transmettre', 'delaiAlerteMinutes'];
   avant jsonb;
+  k text;
 begin
   if current_user <> 'authenticated' then
     return new;
   end if;
   if tg_op = 'UPDATE' and old.collection = 'reglages' and old.id = 'agent'
      and (new.collection <> 'reglages' or new.id <> 'agent') and not erp.acces_gerant(old.espace) then
-    raise exception 'Seul un gérant change le niveau d''autonomie de l''agent.' using errcode = '42501';
+    raise exception 'Seul un gérant change ces réglages de l''agent.' using errcode = '42501';
   end if;
   if new.collection <> 'reglages' or new.id <> 'agent' or erp.acces_gerant(new.espace) then
     return new;
   end if;
-  if tg_op = 'UPDATE' then
-    avant := old.donnees -> 'autonomie';
+  if tg_op = 'UPDATE' and old.collection = 'reglages' and old.id = 'agent' and old.espace is not distinct from new.espace then
+    avant := old.donnees;
   else
-    -- Ajout (ou ajout qui devient modification) : la ligne déjà là fait foi.
-    select e.donnees -> 'autonomie' into avant from erp.enregistrements e
+    -- Ajout (ou ajout qui devient modification) : la ligne déjà là fait foi ; aucune : rien.
+    select e.donnees into avant from erp.enregistrements e
       where e.espace = new.espace and e.collection = 'reglages' and e.id = 'agent';
   end if;
-  if (new.donnees -> 'autonomie') is distinct from avant then
-    raise exception 'Seul un gérant change le niveau d''autonomie de l''agent.' using errcode = '42501';
-  end if;
+  avant := coalesce(avant, '{}'::jsonb);
+  foreach k in array cles loop
+    if (new.donnees -> k) is distinct from (avant -> k) then
+      raise exception 'Seul un gérant change ces réglages de l''agent.' using errcode = '42501';
+    end if;
+  end loop;
   return new;
 end;
 $$;
@@ -1471,6 +1481,7 @@ declare
   essai constant uuid := 'e55a1000-0000-4000-8000-0000000000e5';
   resultat text := 'ok';
   n int;
+  k text;
   j jsonb;
   cree uuid;
   -- Comptes fictifs (auth.users.id) et instants d'émission des jetons :
@@ -1653,18 +1664,48 @@ begin
       resultat := 'un compte « opérations » change le niveau d''autonomie de l''agent'; raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Les autres réglages de l'agent réservés au gérant : marche, horaires, ce qu'il confie, délai.
+    foreach k in array array['actif', 'horaires', 'transmettre', 'delaiAlerteMinutes'] loop
+      begin
+        update erp.enregistrements set donnees = donnees || jsonb_build_object(k, 'recette') where espace = lm and collection = 'reglages' and id = 'agent';
+        resultat := format('un compte « opérations » change le réglage « %s » de l''agent', k); raise exception 'stop';
+      exception when insufficient_privilege then null;
+      end;
+    end loop;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees)
+        select espace, collection, id, donnees || '{"actif": "recette"}' from erp.enregistrements
+        where espace = lm and collection = 'reglages' and id = 'agent'
+      on conflict (espace, collection, id) do update set donnees = excluded.donnees;
+      resultat := 'un compte « opérations » met l''agent en marche par un envoi groupé'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
     begin
       perform erp.numeroter_facture('recette-fm-1');
       resultat := 'un compte « opérations » numérote une facture'; raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
-    -- Ce qui reste à l'équipe : avis à déposer, décisions de prix, réglages de l'agent (sans l'autonomie).
+    -- Ce qui reste à l'équipe : avis à déposer, décisions de prix, réglages de l'agent (ton et signature).
     insert into erp.enregistrements (espace, collection, id, donnees) values
       (lm, 'avisADeposer', 'recette-avis', '{"statut": "fait"}'),
       (lm, 'conseilsPrix', 'recette-decision', '{"decision": "fait"}');
-    update erp.enregistrements set donnees = donnees || '{"recette": 1}' where espace = lm and collection = 'reglages' and id = 'agent';
+    update erp.enregistrements set donnees = donnees || '{"recette": 1, "ton": "recette", "signature": "Recette"}' where espace = lm and collection = 'reglages' and id = 'agent';
     get diagnostics n = row_count;
-    if n <> 1 then resultat := 'un compte « opérations » ne modifie plus les réglages de l''agent'; raise exception 'stop'; end if;
+    if n <> 1 then resultat := 'un compte « opérations » ne modifie plus le ton ou la signature de l''agent'; raise exception 'stop'; end if;
+    -- Pas encore de réglages de l'agent : l'équipe les crée avec le ton et la signature, jamais avec la marche ou les horaires.
+    perform set_config('role', 'none', true);
+    delete from erp.enregistrements where espace = lm and collection = 'reglages' and id = 'agent';
+    perform set_config('role', 'authenticated', true);
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values
+        (lm, 'reglages', 'agent', '{"id": "agent", "ton": "recette", "horaires": {"mode": "toujours"}}');
+      resultat := 'un compte « opérations » crée les réglages de l''agent avec ses horaires'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    insert into erp.enregistrements (espace, collection, id, donnees) values
+      (lm, 'reglages', 'agent', '{"id": "agent", "ton": "recette", "signature": "Recette"}');
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un compte « opérations » ne crée plus les réglages de l''agent (ton, signature)'; raise exception 'stop'; end if;
 
     -- 1 quater. Gérant de Label Maison : tout, et la numérotation des factures.
     perform set_config('request.jwt.claims', j_plateforme, true);
@@ -1674,6 +1715,11 @@ begin
                              or (collection = 'envoisProgrammes' and id = 'recette-envoi'));
     get diagnostics n = row_count;
     if n <> 5 then resultat := format('un gérant modifie %s des 5 lignes réservées aux gérants', n); raise exception 'stop'; end if;
+    update erp.enregistrements
+      set donnees = donnees || '{"actif": false, "horaires": {"mode": "toujours"}, "transmettre": {"horsFiche": true}, "delaiAlerteMinutes": 7}'
+      where espace = lm and collection = 'reglages' and id = 'agent';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne change plus la marche, les horaires ou le délai de l''agent'; raise exception 'stop'; end if;
     -- Le numéro ne s'écrit jamais directement, même par un gérant (LMF02) : ni
     -- sur un brouillon, ni sur une nouvelle facture, ni par un envoi groupé.
     begin
@@ -2309,7 +2355,7 @@ select
 --   erp.role_membre(uuid), erp.acces_lecture(uuid), erp.acces_ecriture(uuid), erp.acces_gerant(uuid),
 --   erp.espace_du_chemin(text), erp.espaces_lecture(), erp.espaces_ecriture(), erp.espaces_gerant(),
 --   erp.garder_espaces(), erp.cle_par_espace(regclass) cascade;
--- -- Numérotation des factures, garde de l'autonomie de l'agent et du numéro des factures
+-- -- Numérotation des factures, garde des réglages de l'agent et du numéro des factures
 -- -- (lisent la colonne espace) ; erp-installation.sql remet les deux gardes et l'index
 -- -- des numéros, version d'avant les espaces.
 -- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent(),

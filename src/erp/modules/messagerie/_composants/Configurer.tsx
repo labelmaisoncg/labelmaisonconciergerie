@@ -119,7 +119,9 @@ export function Configurer() {
 
   const enregistrer = () => {
     if (horairesInvalides || bloque) return;
-    d.upsert('reglages', { ...reglagesAEnregistrer(f, enregistre, gerant), signature: f.signature.trim(), majLe: horodatageMaintenant(), majPar: d.utilisateur.nom });
+    // Hors gérant : les réglages réservés tels qu'en base (sans les valeurs par défaut), sinon la base refuse.
+    const ligne = (d.reglages ?? []).find((r): r is ReglagesAgent => r?.id === 'agent');
+    d.upsert('reglages', { ...reglagesAEnregistrer(f, ligne, gerant), signature: f.signature.trim(), majLe: horodatageMaintenant(), majPar: d.utilisateur.nom });
     setOk(true);
   };
 
