@@ -760,7 +760,7 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
           <section>
             <p className="mb-1 text-[15px] font-semibold text-(--lm-encre)">Ce dont il s’occupe</p>
             <p className="mb-2 text-(--lm-encre-2)">Au quotidien, il reçoit les incidents et les consignes d’accès du jour.</p>
-            <ul className="divide-y divide-(--lm-bord) rounded-lg border border-(--lm-bord)">
+            <ul className="divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
               {suivis.map((l) => (
                 <li key={l.id} className="flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
                   <span className="min-w-40 flex-1 truncate text-[13.5px] font-medium text-(--lm-encre)">{l.nom}</span>
@@ -867,7 +867,7 @@ function AbsencesGerant({ membre: m }: { membre: MembreEquipe }) {
         </Button>
       </div>
       {absences.length ? (
-        <ul className="divide-y divide-(--lm-bord) rounded-lg border border-(--lm-bord)">
+        <ul className="divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
           {absences.map((a) => (
             <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
               <span className="min-w-40 flex-1">
@@ -912,6 +912,8 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
       ...(a.motif?.trim() ? { motif: a.motif.trim() } : { motif: undefined }),
       creeLe: a.creeLe ?? horodatageMaintenant(),
       par: a.par ?? d.utilisateur.nom,
+      // Enregistrée par le gérant : elle devient la sienne, un pôle ne peut plus la défaire.
+      parMembreId: undefined,
     };
     const probleme = verifierAbsence(propre, d.donnees.absences);
     if (probleme) return setErreur(probleme);
