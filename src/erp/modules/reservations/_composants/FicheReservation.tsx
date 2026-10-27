@@ -4,7 +4,7 @@
  * tiroir du planning et la page dédiée.
  */
 import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, MessageSquare, Star } from 'lucide-react';
+import { ChevronDown, ChevronRight, Lock, MessageSquare, Star } from 'lucide-react';
 import { Badge, Card, CardHeader } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
@@ -15,6 +15,8 @@ import { dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../dat
 import { commissionReservation, logementById, mandatAuJour, mandatDuLogement, netProprietaire } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
+import { ReponseAvis } from '../../logements/_composants/Avis';
+import { lireAvis, separerAvis } from '../../../data/avis';
 import { TEINTE_CANAL, recu } from './outils';
 import { CarteAvisADeposer } from './CarteAvisADeposer';
 
@@ -47,6 +49,8 @@ export function FicheReservation({ r }: { r: Reservation }) {
   const fils = d.filsMessages.filter((f) => f.reservationId === r.id);
   const annulee = r.statut === 'annulee';
   const reference = r.repull?.code ?? r.channexBookingId;
+  const avis = lireAvis(r);
+  const parties = separerAvis(r.commentaireVoyageur);
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
@@ -178,10 +182,21 @@ export function FicheReservation({ r }: { r: Reservation }) {
               )
             }
           />
-          {r.commentaireVoyageur && <blockquote className="border-l-2 border-(--lm-or) pl-3 text-[13.5px] text-(--lm-encre-2) italic">« {r.commentaireVoyageur} »</blockquote>}
+          {/* L'avis public, puis le message privé à part : il n'est jamais repris dans une réponse publique. */}
+          {parties.public && <blockquote className="border-l-2 border-(--lm-or) pl-3 text-[13.5px] text-(--lm-encre-2) italic">« {parties.public} »</blockquote>}
+          {parties.prive && (
+            <p className="mt-2 flex gap-1.5 text-[13px] text-(--lm-encre-2)">
+              <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+              <span>
+                <span className="font-medium text-(--lm-encre)">Message privé : </span>
+                {parties.prive}
+              </span>
+            </p>
+          )}
           {r.noteVoyageur !== undefined && r.noteVoyageur < SEUIL_NOTE_CONTROLE && (
             <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Note sous {note(SEUIL_NOTE_CONTROLE)} : à lire et, si besoin, à traiter avec l’équipe.</p>
           )}
+          {avis && <ReponseAvis avis={avis} discret />}
         </Card>
       )}
     </div>

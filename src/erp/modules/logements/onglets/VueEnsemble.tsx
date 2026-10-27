@@ -25,6 +25,7 @@ import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats'
 import { previsionLogement } from '../../../data/previsionnel';
 import { CartePrevisionnel, TITRE_PREVISIONNEL } from '../_composants/Previsionnel';
 import { PrixConseilles } from '../_composants/PrixConseilles';
+import { CarteAvisLogement } from '../_composants/Avis';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
 
@@ -153,6 +154,8 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               </ul>
             )}
           </Card>
+
+          <CarteAvisLogement logement={l} />
 
           {desc && <Annonce descriptif={desc} />}
 

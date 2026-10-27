@@ -28,6 +28,7 @@ import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { ReglagesAgent } from '../src/erp/data/types';
 import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { ACTIONS_ASSISTANT, repondreAssistant } from './_erp-agent-assistant.js';
+import { ACTIONS_AVIS, repondreAvis } from './_erp-avis.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { facturesMensuellesDuJour } from './_factures-mensuelles.js';
@@ -113,6 +114,8 @@ export default async function handler(req: any, res: any) {
     if (planifie || req.method !== 'POST') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
     return repondreAssistant(res, action, corps, espace, email);
   }
+  // Réponse à un avis (api/_erp-avis.ts) : membres seulement, rien n'est publié sur la plateforme.
+  if (ACTIONS_AVIS.has(action)) return planifie || req.method !== 'POST' ? repondre(res, 400, { ok: false, erreur: 'Action inconnue.' }) : repondreAvis(res, corps, espace, email);
 
   if (action !== 'lancer' || (!planifie && req.method !== 'POST')) return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
   const manque = variableManquante(c);
