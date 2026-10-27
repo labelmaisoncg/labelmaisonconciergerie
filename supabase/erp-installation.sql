@@ -227,6 +227,12 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 -- historique : lecture seule pour l'équipe (écrit uniquement par le déclencheur).
 drop policy if exists "membres lisent" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated using (erp.acces_lecture());
+-- Anciennes versions des collections réservées aux gérants (accès extérieurs,
+-- relances, connecteurs) : gérants seulement, comme les enregistrements.
+drop policy if exists "versions reservees aux gerants" on erp.historique;
+create policy "versions reservees aux gerants" on erp.historique
+  as restrictive for select to authenticated
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs') or erp.acces_gerant());
 
 -- ------------------------------------------------------------------ droits
 

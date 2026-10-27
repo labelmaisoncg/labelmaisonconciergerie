@@ -10,7 +10,8 @@
 --   relancesPaiement     relances de paiement des propriétaires
 --   reglagesRelances     leurs réglages (mode automatique ou non)
 -- ne sont plus lisibles ni modifiables que par un gérant (le serveur passe
--- par le compte d'équipe, gérant). Sans cette règle, un compte « opérations »
+-- par le compte d'équipe, gérant), pas plus que leurs anciennes versions
+-- dans erp.historique (ni celles de la collection « connecteurs »). Sans cette règle, un compte « opérations »
 -- ou « lecture » lirait ces adresses, et un compte « opérations » pourrait
 -- écrire un accès avec l'empreinte d'un jeton qu'il connaît, puis entrer dans
 -- l'espace d'un propriétaire. Rien d'autre ne change.
@@ -34,10 +35,16 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant())
   with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant());
 
+-- Leurs anciennes versions (copiées par erp.archiver_version) : gérants seulement.
+drop policy if exists "versions reservees aux gerants" on erp.historique;
+create policy "versions reservees aux gerants" on erp.historique
+  as restrictive for select to authenticated
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs') or erp.acces_gerant());
+
 -- ----------------------------------------------------------------- recette
 -- Essai dans une transaction annulée à la fin : rien n'est gardé. Un compte
--- « opérations » lit l'ERP mais pas les accès, et ne peut pas en écrire ; un
--- gérant les lit.
+-- « opérations » lit l'ERP et son historique, mais ni les accès ni leurs
+-- anciennes versions, et ne peut pas en écrire ; un gérant lit tout.
 create or replace function erp.recette_acces_gerants() returns text
 language plpgsql set search_path = ''
 as $$
@@ -52,6 +59,9 @@ begin
     insert into erp.enregistrements (collection, id, donnees) values
       ('recette', 'recette-acces', '{"id": "recette-acces"}'),
       ('accesProprietaires', 'recette-acces', '{"id": "recette-acces"}');
+    -- Une ancienne version de chacun (erp.archiver_version).
+    update erp.enregistrements set donnees = donnees || '{"v": 2}'
+      where id = 'recette-acces' and collection in ('recette', 'accesProprietaires');
 
     perform set_config('role', 'authenticated', true);
 
@@ -61,6 +71,10 @@ begin
     if n <> 1 then resultat := 'un compte « opérations » ne lit plus l''ERP'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements where collection = 'accesProprietaires' and id = 'recette-acces';
     if n <> 0 then resultat := 'un compte « opérations » lit les accès des propriétaires'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'recette' and id = 'recette-acces';
+    if n <> 1 then resultat := 'un compte « opérations » ne lit plus l''historique de l''ERP'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'accesProprietaires' and id = 'recette-acces';
+    if n <> 0 then resultat := 'un compte « opérations » lit les anciennes versions des accès'; raise exception 'stop'; end if;
     begin
       insert into erp.enregistrements (collection, id, donnees) values ('accesProprietaires', 'recette-intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
@@ -78,6 +92,8 @@ begin
     perform set_config('request.jwt.claims', '{"role": "authenticated", "email": "recette-gerant@exemple.invalid"}', true);
     select count(*) into n from erp.enregistrements where collection = 'accesProprietaires' and id = 'recette-acces';
     if n <> 1 then resultat := 'un gérant ne lit pas les accès des propriétaires'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'accesProprietaires' and id = 'recette-acces';
+    if n <> 1 then resultat := 'un gérant ne lit pas les anciennes versions des accès'; raise exception 'stop'; end if;
 
     raise exception 'recette_terminee';
   exception when others then
@@ -91,9 +107,10 @@ $$;
 revoke all on function erp.recette_acces_gerants() from public, anon, authenticated;
 
 -- Vérification (dernière instruction, affichée dans « Results ») :
--- attendu regle = 1, recette = ok.
+-- attendu regles = 2, recette = ok.
 select
   (select count(*) from pg_policies
-    where schemaname = 'erp' and tablename = 'enregistrements'
-      and policyname = 'acces exterieurs reserves aux gerants' and permissive = 'RESTRICTIVE') as regle,
+    where schemaname = 'erp' and permissive = 'RESTRICTIVE'
+      and ((tablename = 'enregistrements' and policyname = 'acces exterieurs reserves aux gerants')
+        or (tablename = 'historique' and policyname = 'versions reservees aux gerants'))) as regles,
   erp.recette_acces_gerants() as recette;
