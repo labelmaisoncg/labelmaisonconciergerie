@@ -371,7 +371,7 @@ export function rendreMessage(modele: string, c: ContexteMessage): MessageRendu 
     lignes.push(remplacee.replace(/[ \t]+([,.!?;:])/g, (m, p: string) => (p === ':' || p === ';' || p === '!' || p === '?' ? ` ${p}` : p)).replace(/[ \t]{2,}/g, ' ').trimEnd());
   }
   const texte = lignes.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return { texte, codes, retirees: [...retirees], codesEnClair: !codes && contientCodeAcces(texte, c.logement?.fiche) };
+  return { texte, codes, retirees: [...retirees], codesEnClair: !codes && contientCodeAcces(texte, c.logement) };
 }
 
 /** Variables utilisées dans un texte, dans l'ordre (pour l'aperçu). */
@@ -527,7 +527,7 @@ export function deciderEnvoi(e: EntreeDecision): DecisionEnvoi {
     const filReprise = e.fils.find((f) => f.id === envoi.filId && f.reservationId === r.id && !!f.repull?.id);
     if (!filReprise) return { genre: 'verifier', envoi, raison: RAISONS.repriseConversation };
     // Codes plus permis (séjour annulé, dates déplacées) : un texte qui en contient ne repart pas ; logement inconnu, on ne peut pas le savoir.
-    if (!codesAutorises(r, filReprise.logementId, dateParisDe(maintenant)) && (!e.logement || contientCodeAcces(envoi.texte, e.logement.fiche))) {
+    if (!codesAutorises(r, filReprise.logementId, dateParisDe(maintenant)) && (!e.logement || contientCodeAcces(envoi.texte, e.logement))) {
       return { genre: 'verifier', envoi, raison: RAISONS.repriseCodes };
     }
     if (!dansPlageEnvoi(maintenant)) return { genre: 'attendre', raison: RAISONS.horsHeures };

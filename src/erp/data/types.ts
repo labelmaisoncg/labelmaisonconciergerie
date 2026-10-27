@@ -571,7 +571,23 @@ export interface CompteurFactures {
  * 'agent'), les messages automatiques ('messages-programmes'), l'identité de
  * la société ('societe') et la numérotation des factures.
  */
-export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures;
+export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures | AlerteControleAgent;
+
+/**
+ * Alerte « l'agent ne peut plus vérifier ses réponses » (collection
+ * `reglages`, id 'alerte-controle-agent'), écrite par le serveur après des
+ * échecs en série du second contrôle (controle-reponse.ts) et lue par
+ * l'« À faire » de l'accueil.
+ */
+export interface AlerteControleAgent {
+  id: 'alerte-controle-agent';
+  active: boolean;
+  message: string;
+  /** Échecs de suite au moment de l'écriture. */
+  echecs: number;
+  depuis?: Horodatage;
+  leveeLe?: Horodatage;
+}
 
 /* -------------------------------------------------------------- opérations */
 

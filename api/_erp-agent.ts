@@ -14,7 +14,9 @@ import Anthropic from '@anthropic-ai/sdk';
 import { MODELE_AGENT_DEFAUT, lancerAgent, type ClientIA, type DeclencheurAgent, type OptionsAgent, type PassageAgent } from '../src/erp/data/agent-messagerie.js';
 import type { OptionsAssistant } from '../src/erp/data/agent-assistant.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
+import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
 import { baseErp, signeurFichiersErp, type ConfigRepullErp } from './_erp-repull.js';
+import { clesServeur } from './_erp-notifications.js';
 
 export interface ConfigAgent {
   cleIA: string;
@@ -64,6 +66,8 @@ export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, 
     modele: a.modele,
     telegram: labelMaison ? a.telegram : null,
     signerFichier: signeurFichiersErp(c),
+    // Contrôle des réponses en échec répété : notification aux appareils des gérants de l'espace (une fois).
+    alerter: (g) => envoyerNotifications(baseErp(c), [g], { cles: clesServeur() }),
     ...(labelMaison ? {} : { nomEspace: c.nomEspace, plafondIAMois: c.plafondIAMois }),
   };
 }

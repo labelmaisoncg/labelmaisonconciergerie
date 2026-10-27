@@ -14,6 +14,7 @@ import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
 import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
+import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
@@ -138,6 +139,15 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       id: 'agent', type: 'agent', priorite: 2, ton: 'or', to: `/erp/logements/${incompletes[0].l.id}?onglet=fiche`,
       titre: incompletes.length > 1 ? `L’agent manque d’informations sur ${incompletes.length} logements` : `L’agent manque d’informations sur ${incompletes[0].l.nom}`,
       details: incompletes.map((x) => `${x.l.nom} : ${x.manquants.slice(0, 3).join(', ').toLowerCase()}${x.manquants.length > 3 ? '…' : ''}`),
+    });
+
+  // L'agent ne peut plus faire contrôler ses réponses (échecs en série) : il les garde toutes à valider.
+  const alerteControle = (d.reglages ?? []).find((r): r is AlerteControleAgent => r?.id === ID_ALERTE_CONTROLE);
+  if (alerteControle?.active)
+    liste.push({
+      id: 'agent-controle', type: 'agent', priorite: 1, ton: 'alerte', to: '/erp/messagerie/agent',
+      titre: alerteControle.message,
+      details: ['Rien ne part seul : ses réponses vous attendent dans la Messagerie, à relire et envoyer.'],
     });
 
   const aAppeler = d.crm.filter((c) => aTraiterLe(c, aujourdhui));
