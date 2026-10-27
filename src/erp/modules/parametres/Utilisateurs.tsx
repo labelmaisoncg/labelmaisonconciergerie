@@ -37,6 +37,8 @@ function InvitationMembre({ invitation: i, demo, ouvertes, onEnvoyer }: { invita
   const [copie, setCopie] = useState(false);
   const r = i.resultat;
   const ajout = i.origine === 'ajout';
+  // Renvoi depuis la ligne : le nouveau lien remplace l'ancien (juste après l'ajout, aucun n'est encore parti).
+  const remplace = ajout ? '' : ' Un lien envoyé avant ne marche plus.';
 
   const copier = async () => {
     if (!r?.lien) return;
@@ -63,12 +65,14 @@ function InvitationMembre({ invitation: i, demo, ouvertes, onEnvoyer }: { invita
               </Button>
             </>
           ) : r.envoye ? (
-            <p>Invitation envoyée à {i.email}. Un lien envoyé avant ne marche plus.</p>
+            <p>
+              Invitation envoyée à {i.email}.{remplace}
+            </p>
           ) : r.lien ? (
             <>
               <p>
                 {demo ? 'Démonstration : aucun e-mail n’est envoyé.' : 'Nous ne pouvons pas envoyer l’e-mail pour l’instant.'} Copiez ce lien et envoyez-le à {i.nom}{' '}
-                (SMS, WhatsApp…). Un lien envoyé avant ne marche plus.
+                (SMS, WhatsApp…).{remplace}
               </p>
               <div className="mt-2 flex gap-2">
                 <Input readOnly value={r.lien} onFocus={(e) => e.currentTarget.select()} aria-label={'Lien « Créer mon compte »'} className="text-[12.5px]" />
