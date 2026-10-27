@@ -9,7 +9,11 @@
  *   personnes, rien d'autre (ni contact, ni pays, ni avis, ni codes d'accès) ;
  * - bilan d'un mois au prorata des nuits : un séjour du 29 août au 3 septembre
  *   compte 3 nuits en août et 2 en septembre, montants partagés de même ;
- * - le propriétaire ne voit que les bilans publiés, tels que publiés.
+ * - le propriétaire ne voit que les bilans publiés, tels que publiés (un
+ *   bilan publié est figé : jamais recalculé) ;
+ * - logement passé à un autre propriétaire (changerProprietaire) : chacun
+ *   n'a que sa période, l'ancien jusqu'à la veille, le nouveau à partir du
+ *   jour du changement (et du début de son mandat).
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
@@ -65,6 +69,17 @@ export const CONTACTS_LABEL_MAISON: ContactsConciergerie = {
 };
 
 /** Prochaines arrivées montrées sur l'accueil. */
+/**
+ * Ce que contient l'espace propriétaire, en une phrase : la même partout
+ * (page de connexion, e-mail d'invitation, écrans du gérant).
+ */
+export const CONTENU_ESPACE = {
+  /** « Vos logements, … » : au propriétaire. */
+  vous: 'vos logements, votre calendrier, vos bilans publiés, vos factures partagées et vos documents',
+  /** « Il voit ses logements, … » : au gérant. */
+  lui: 'ses logements, son calendrier, ses bilans publiés, ses factures partagées et ses documents',
+} as const;
+
 export const NB_PROCHAINES_ARRIVEES = 5;
 /** Fiche d'un logement : mois de performance, derniers avis, prochains séjours. */
 export const NB_MOIS_PERFORMANCE = 12;
@@ -157,6 +172,113 @@ export function logementsDe(logements: readonly Logement[], proprietaireId: Id):
   return logements.filter((l) => l?.proprietaireId === proprietaireId);
 }
 
+/** Période où un propriétaire a un logement : [debut, fin), bornes absentes = ouvertes. */
+export interface PeriodeProprietaire {
+  debut?: DateISO;
+  fin?: DateISO;
+}
+
+const plusTard = (a: DateISO | undefined, b: DateISO | undefined): DateISO | undefined => (!a ? b : !b ? a : a > b ? a : b);
+const plusTot = (a: DateISO | undefined, b: DateISO | undefined): DateISO | undefined => (!a ? b : !b ? a : a < b ? a : b);
+
+/**
+ * Le logement passe à un autre propriétaire à partir de `jour` (inclus) :
+ * l'ancien garde ce qui était à lui jusqu'à la veille, le nouveau ne voit
+ * rien d'avant. Premier vrai propriétaire (logement créé sans propriétaire,
+ * ou importé avec la fiche d'attente) : tout l'historique est à lui.
+ * Même propriétaire : rien ne change.
+ */
+export function changerProprietaire<T extends Pick<Logement, 'proprietaireId' | 'proprietaireDepuis' | 'proprietairesPrecedents'>>(
+  l: T,
+  proprietaireId: Id,
+  jour: DateISO,
+): T {
+  if (l.proprietaireId === proprietaireId) return l;
+  const le = dateValide(jour) ? jour : dateParisISO();
+  const precedents = [...(l.proprietairesPrecedents ?? [])];
+  const avaitUnProprietaire = proprietaireAutorise(l.proprietaireId);
+  if (avaitUnProprietaire) precedents.push({ proprietaireId: l.proprietaireId, ...(dateValide(l.proprietaireDepuis) ? { depuis: l.proprietaireDepuis } : {}), jusquAu: le });
+  const depuis = avaitUnProprietaire ? le : precedents[precedents.length - 1]?.jusquAu;
+  const { proprietaireDepuis: _depuis, proprietairesPrecedents: _precedents, ...reste } = l;
+  return { ...reste, proprietaireId, ...(depuis ? { proprietaireDepuis: depuis } : {}), ...(precedents.length ? { proprietairesPrecedents: precedents } : {}) } as T;
+}
+
+/** Périodes où ce propriétaire a eu, ou a, ce logement. */
+export function periodesDuProprietaire(l: Logement | undefined, proprietaireId: Id): PeriodeProprietaire[] {
+  if (!l || !proprietaireAutorise(proprietaireId)) return [];
+  const res: PeriodeProprietaire[] = [];
+  for (const x of l.proprietairesPrecedents ?? []) {
+    if (x?.proprietaireId === proprietaireId && dateValide(x.jusquAu)) res.push({ ...(dateValide(x.depuis) ? { debut: x.depuis } : {}), fin: x.jusquAu });
+  }
+  if (l.proprietaireId === proprietaireId) res.push(dateValide(l.proprietaireDepuis) ? { debut: l.proprietaireDepuis } : {});
+  return res;
+}
+
+/** Logements que ce propriétaire a, ou a eus avant un changement de propriétaire, avec ses périodes. */
+export function logementsEtPeriodes(logements: readonly Logement[], proprietaireId: Id): { logement: Logement; periodes: PeriodeProprietaire[] }[] {
+  return logements.map((logement) => ({ logement, periodes: periodesDuProprietaire(logement, proprietaireId) })).filter((x) => x.periodes.length > 0);
+}
+
+/** Le séjour touche-t-il cette période ? */
+const dansPeriode = (r: Reservation, p: PeriodeProprietaire) => (!p.debut || r.depart > p.debut) && (!p.fin || r.arrivee < p.fin);
+
+/**
+ * Mandat d'un logement pour ce propriétaire : le sien d'abord. Sans mandat à
+ * lui : celui du logement, pour le taux seulement (`propre` faux : ses dates
+ * ne bornent rien), sauf logement qui n'a jamais changé de propriétaire.
+ */
+export function mandatDuProprietaire(mandats: readonly Mandat[], l: Logement, proprietaireId: Id): { mandat?: Mandat; propre: boolean } {
+  const sien = mandatEnVigueur(
+    mandats.filter((m) => m?.proprietaireId === proprietaireId),
+    l.id,
+  );
+  if (sien) return { mandat: sien, propre: true };
+  return { mandat: mandatEnVigueur(mandats, l.id), propre: !(l.proprietairesPrecedents ?? []).length };
+}
+
+/** Début de la gestion pour ce propriétaire sur cette période : la période, et son mandat. */
+function debutGestion(p: PeriodeProprietaire, m: { mandat?: Mandat; propre: boolean }): DateISO | undefined {
+  return plusTard(p.debut, m.propre && dateValide(m.mandat?.dateDebut) ? m.mandat!.dateDebut : undefined);
+}
+
+/** Jours de [debut, fin) compris dans la période. */
+function joursDansPeriode(debut: DateISO, fin: DateISO, p: PeriodeProprietaire): number {
+  const de = plusTard(debut, p.debut)!;
+  const a = plusTot(fin, p.fin)!;
+  return de < a ? ecartJoursISO(de, a) : 0;
+}
+
+/**
+ * Ce qui sort de la base pour ce propriétaire (le serveur filtre avant tout
+ * calcul) : ses logements ; ceux qu'il a cédés, réduits au nom et à ses
+ * périodes ; leurs réservations sur ses périodes seulement (jamais les
+ * séjours d'un autre propriétaire) ; leurs mandats (taux de commission).
+ */
+export function donneesDuProprietaire(
+  d: { logements: readonly Logement[]; reservations: readonly Reservation[]; mandats: readonly Mandat[] },
+  proprietaireId: Id,
+): { logements: Logement[]; reservations: Reservation[]; mandats: Mandat[] } {
+  const siens = logementsEtPeriodes(d.logements, proprietaireId);
+  const periodes = new Map(siens.map((x) => [x.logement.id, x.periodes]));
+  const logements = siens.map(({ logement: l }) =>
+    l.proprietaireId === proprietaireId
+      ? l
+      : ({
+          id: l.id,
+          nom: l.nom,
+          ville: l.ville,
+          statut: l.statut,
+          proprietaireId: '',
+          proprietairesPrecedents: (l.proprietairesPrecedents ?? []).filter((x) => x?.proprietaireId === proprietaireId),
+        } as unknown as Logement),
+  );
+  return {
+    logements,
+    reservations: d.reservations.filter((r) => (periodes.get(r?.logementId) ?? []).some((p) => dansPeriode(r, p))),
+    mandats: d.mandats.filter((m) => periodes.has(m?.logementId)),
+  };
+}
+
 /** Séjours non annulés de ces logements, dates lisibles. */
 function sejoursDe(reservations: readonly Reservation[], logementIds: ReadonlySet<Id>): Reservation[] {
   return reservations.filter(
@@ -212,11 +334,13 @@ function nuitsEntre(r: Reservation, debut: DateISO, fin: DateISO): number {
  * Séjour du mois vu par le propriétaire. Chaque montant est proratisé, puis
  * le net est déduit des autres : les lignes s'additionnent au centime près.
  * Commission Label Maison = (encaissé − frais de plateforme − ménage) × taux du mandat.
+ * `borne` : seulement les nuits de cette période (changement de propriétaire,
+ * début du mandat).
  */
-export function sejourDuMois(r: Reservation, mandat: Mandat | undefined, mois: string): SejourBilan | null {
-  const debut = `${mois}-01`;
-  const fin = `${moisSuivant(mois)}-01`;
-  const nuits = nuitsEntre(r, debut, fin);
+export function sejourDuMois(r: Reservation, mandat: Mandat | undefined, mois: string, borne: PeriodeProprietaire = {}): SejourBilan | null {
+  const debut = plusTard(`${mois}-01`, borne.debut)!;
+  const fin = plusTot(`${moisSuivant(mois)}-01`, borne.fin)!;
+  const nuits = debut < fin ? nuitsEntre(r, debut, fin) : 0;
   if (!nuits) return null;
   const nuitsSejour = Math.max(1, ecartJoursISO(r.arrivee, r.depart));
   const brut = entier(r.montantBrutCentimes);
@@ -248,27 +372,35 @@ export function sejourDuMois(r: Reservation, mandat: Mandat | undefined, mois: s
 
 /**
  * Bilan locatif d'un mois pour un propriétaire. Logements comptés : ceux
- * encore gérés, plus un logement sorti s'il a eu des nuits dans le mois.
+ * encore gérés, plus un logement sorti ou cédé (changement de propriétaire)
+ * s'il a eu des nuits à lui dans le mois. Seules comptent ses nuits : celles
+ * de sa période, à partir du début de son mandat ; l'occupation se compte
+ * sur ces mêmes jours.
  */
 export function bilanMensuel(
   d: { logements: readonly Logement[]; reservations: readonly Reservation[]; mandats: readonly Mandat[] },
   proprietaireId: Id,
   mois: string,
 ): ChiffresBilan {
-  const joursMois = moisValide(mois) ? joursDuMois(mois) : 0;
-  const siens = logementsDe(d.logements, proprietaireId);
-  const ids = new Set(siens.map((l) => l.id));
-  const actifs = moisValide(mois) ? sejoursDe(d.reservations, ids) : [];
+  const valide = moisValide(mois);
+  const joursMois = valide ? joursDuMois(mois) : 0;
+  const siens = logementsEtPeriodes(d.logements, proprietaireId);
+  const ids = new Set(siens.map((x) => x.logement.id));
+  const actifs = valide ? sejoursDe(d.reservations, ids) : [];
   const sejours: SejourBilan[] = [];
   const logements: LogementBilan[] = [];
-  for (const l of siens) {
-    const mandat = mandatEnVigueur(d.mandats, l.id);
+  let joursGeres = 0;
+  for (const { logement: l, periodes } of siens) {
+    const m = mandatDuProprietaire(d.mandats, l, proprietaireId);
+    const bornes = periodes.map((p) => ({ ...p, debut: debutGestion(p, m) }));
     const lignes = actifs
       .filter((r) => r.logementId === l.id)
-      .map((r) => sejourDuMois(r, mandat, mois))
+      .flatMap((r) => bornes.map((b) => sejourDuMois(r, m.mandat, mois, b)))
       .filter((s): s is SejourBilan => !!s)
       .sort((a, b) => a.arrivee.localeCompare(b.arrivee));
-    if (l.statut === 'sorti' && !lignes.length) continue;
+    if ((l.statut === 'sorti' || l.proprietaireId !== proprietaireId) && !lignes.length) continue;
+    const jours = valide ? bornes.reduce((x, b) => x + joursDansPeriode(`${mois}-01`, `${moisSuivant(mois)}-01`, b), 0) : 0;
+    joursGeres += jours;
     const t = totauxVides();
     for (const s of lignes) ajouter(t, s);
     sejours.push(...lignes);
@@ -276,8 +408,8 @@ export function bilanMensuel(
       logementId: l.id,
       nom: l.nom,
       ...t,
-      occupation: joursMois ? t.nuits / joursMois : 0,
-      ...(mandat ? { commissionPct: mandat.commissionPct } : {}),
+      occupation: jours ? Math.min(1, t.nuits / jours) : 0,
+      ...(m.mandat ? { commissionPct: m.mandat.commissionPct } : {}),
     });
   }
   const totaux = totauxVides();
@@ -289,8 +421,42 @@ export function bilanMensuel(
     logements,
     sejours,
     totaux,
-    occupation: joursMois && logements.length ? totaux.nuits / (joursMois * logements.length) : 0,
+    occupation: joursGeres ? Math.min(1, totaux.nuits / joursGeres) : 0,
   };
+}
+
+/** Logement d'un bilan publié passé depuis à un autre propriétaire. */
+export interface LogementTransfere {
+  logementId: Id;
+  nom: string;
+  /** Premier jour du nouveau propriétaire (absent : inconnu, changement d'avant cette date). */
+  depuis?: DateISO;
+}
+
+/**
+ * État d'un bilan côté gérant. Publié : figé ; s'il contient un logement
+ * passé depuis à un autre propriétaire, jamais recalculé ni proposé à la mise
+ * à jour (« Logement transféré depuis le … ») ; sinon « À mettre à jour »
+ * quand les chiffres ont changé. `chiffres` : ceux à montrer (ceux du bilan
+ * publié s'il est transféré).
+ */
+export function etatBilan(
+  d: { logements: readonly Logement[]; reservations: readonly Reservation[]; mandats: readonly Mandat[] },
+  proprietaireId: Id,
+  mois: string,
+  existant?: BilanProprietaire,
+): { statut: 'aucun' | 'brouillon' | 'publie' | 'a_mettre_a_jour' | 'transfere'; chiffres: ChiffresBilan; transferts: LogementTransfere[] } {
+  const calcule = bilanMensuel(d, proprietaireId, mois);
+  if (!existant) return { statut: 'aucun', chiffres: calcule, transferts: [] };
+  if (existant.statut !== 'publie') return { statut: 'brouillon', chiffres: calcule, transferts: [] };
+  const transferts: LogementTransfere[] = (existant.chiffres?.logements ?? [])
+    .filter((x) => d.logements.find((l) => l.id === x.logementId)?.proprietaireId !== proprietaireId)
+    .map((x) => {
+      const l = d.logements.find((y) => y.id === x.logementId);
+      return { logementId: x.logementId, nom: String(x.nom ?? l?.nom ?? ''), ...(l && dateValide(l.proprietaireDepuis) ? { depuis: l.proprietaireDepuis } : {}) };
+    });
+  if (transferts.length) return { statut: 'transfere', chiffres: existant.chiffres, transferts };
+  return { statut: memesChiffres(existant.chiffres, calcule) ? 'publie' : 'a_mettre_a_jour', chiffres: calcule, transferts: [] };
 }
 
 /** Mêmes chiffres (pour signaler au gérant qu'un bilan publié a changé depuis). */
@@ -347,12 +513,22 @@ export function chiffresPublics(c: ChiffresBilan, logementIds: ReadonlySet<Id>):
   };
 }
 
-/** Bilans publiés du propriétaire, du plus récent au plus ancien. */
-export function bilansPublies(bilans: readonly BilanProprietaire[], proprietaireId: Id, logementIds: ReadonlySet<Id>): BilanVue[] {
+/**
+ * Bilans publiés du propriétaire, du plus récent au plus ancien. Un bilan
+ * publié est figé : tels que publiés, même si un de ses logements a changé
+ * de propriétaire depuis (seules ses lignes propres sont gardées : un séjour
+ * d'un logement absent du bilan est retiré).
+ */
+export function bilansPublies(bilans: readonly BilanProprietaire[], proprietaireId: Id): BilanVue[] {
   if (!proprietaireAutorise(proprietaireId)) return [];
   return bilans
     .filter((b) => b?.proprietaireId === proprietaireId && b.statut === 'publie' && !!b.publieLe && moisValide(b.mois) && b.chiffres)
-    .map((b) => ({ mois: b.mois, commentaire: String(b.commentaire ?? ''), publieLe: b.publieLe!, chiffres: chiffresPublics(b.chiffres, logementIds) }))
+    .map((b) => ({
+      mois: b.mois,
+      commentaire: String(b.commentaire ?? ''),
+      publieLe: b.publieLe!,
+      chiffres: chiffresPublics(b.chiffres, new Set((b.chiffres.logements ?? []).map((l) => l?.logementId))),
+    }))
     .sort((a, b) => b.mois.localeCompare(a.mois));
 }
 
@@ -445,17 +621,22 @@ function totauxPerformance(mois: readonly MoisPerformance[], sejoursParMois: Rea
  * mois un an plus tôt, avec les seules données de l'ERP. Un mois n'est
  * « suivi » qu'à partir du premier séjour connu (et du début du mandat) :
  * avant, l'ERP n'a pas de données, ce n'est pas un mois vide.
+ * `pour` : le propriétaire actuel ; logement reçu d'un autre propriétaire,
+ * rien d'avant son premier jour (chiffres, avis, séjours).
  */
 export function ficheLogement(
   d: { reservations: readonly Reservation[]; mandats: readonly Mandat[] },
   logementId: Id,
   aujourdhui: DateISO,
+  pour?: { proprietaireId: Id; logement: Logement },
 ): FicheLogementVue {
-  const actifs = sejoursDe(d.reservations, new Set([logementId]));
-  const mandat = mandatEnVigueur(d.mandats, logementId);
-  const debutMandat = dateValide(mandat?.dateDebut) ? mandat!.dateDebut : undefined;
-  const premier = actifs.reduce<DateISO | undefined>((m, r) => (!m || r.arrivee < m ? r.arrivee : m), undefined);
-  const debutSuivi = premier && debutMandat && debutMandat > premier ? debutMandat : premier;
+  const depuis = pour && pour.logement.proprietaireId === pour.proprietaireId && dateValide(pour.logement.proprietaireDepuis) ? pour.logement.proprietaireDepuis : undefined;
+  const actifs = sejoursDe(d.reservations, new Set([logementId])).filter((r) => !depuis || r.depart > depuis);
+  const gestion = pour ? mandatDuProprietaire(d.mandats, pour.logement, pour.proprietaireId) : { mandat: mandatEnVigueur(d.mandats, logementId), propre: true };
+  const mandat = gestion.mandat;
+  const debutMandat = debutGestion(depuis ? { debut: depuis } : {}, gestion);
+  const premier = actifs.reduce<DateISO | undefined>((x, r) => (!x || r.arrivee < x ? r.arrivee : x), undefined);
+  const debutSuivi = premier ? plusTard(premier, debutMandat) : undefined;
 
   // 24 mois : les 12 derniers mois terminés et les 12 d'avant.
   const fin = moisPrecedent(moisDe(aujourdhui));
@@ -464,7 +645,7 @@ export function ficheLogement(
   const sejoursParMois = new Map<string, Set<string>>();
   const mois: MoisPerformance[] = liste.map((m) => {
     const suivi = !!debutSuivi && m >= moisDe(debutSuivi);
-    const lignes = suivi ? actifs.map((r) => ({ r, s: sejourDuMois(r, mandat, m) })).filter((x): x is { r: Reservation; s: SejourBilan } => !!x.s) : [];
+    const lignes = suivi ? actifs.map((r) => ({ r, s: sejourDuMois(r, mandat, m, depuis ? { debut: depuis } : {}) })).filter((x): x is { r: Reservation; s: SejourBilan } => !!x.s) : [];
     sejoursParMois.set(m, new Set(lignes.map((x) => x.r.id)));
     const debut = `${m}-01`;
     const jours = !suivi ? 0 : debutMandat && debutMandat > debut ? Math.max(0, ecartJoursISO(debutMandat, `${moisSuivant(m)}-01`)) : joursDuMois(m);
@@ -579,13 +760,18 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
   const tousIds = new Set(tous.map((l) => l.id));
   const geres = tous.filter((l) => l.statut !== 'sorti');
   const donnees = { logements: e.logements, reservations: e.reservations, mandats: e.mandats };
-  const bilans = bilansPublies(e.bilansProprietaire, proprietaireId, tousIds);
+  const bilans = bilansPublies(e.bilansProprietaire, proprietaireId);
 
   const courant = moisDe(aujourdhui);
   const precedent = moisPrecedent(courant);
   const publiePrecedent = bilans.find((b) => b.mois === precedent);
   const moisCalendrier = moisValide(o.mois) ? o.mois : courant;
-  const actifs = sejoursDe(e.reservations, new Set(geres.map((l) => l.id)));
+  // Logement reçu d'un autre propriétaire : rien de ses séjours d'avant.
+  const depuisDe = new Map(geres.map((l) => [l.id, dateValide(l.proprietaireDepuis) ? l.proprietaireDepuis : undefined]));
+  const actifs = sejoursDe(e.reservations, new Set(geres.map((l) => l.id))).filter((r) => {
+    const depuis = depuisDe.get(r.logementId);
+    return !depuis || r.depart > depuis;
+  });
 
   const prochainesArrivees: ArriveeVue[] = actifs
     .filter((r) => r.arrivee >= aujourdhui)
@@ -620,7 +806,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     moisPrecedent: publiePrecedent ? chiffresMois(publiePrecedent.chiffres, false) : chiffresMois(bilanMensuel(donnees, proprietaireId, precedent), true),
     prochainesArrivees,
     calendrier: { mois: moisCalendrier, logements: geres.map((l) => calendrierMois(actifs, l.id, moisCalendrier)) },
-    fiches: geres.map((l) => ficheLogement({ reservations: actifs, mandats: e.mandats }, l.id, aujourdhui)),
+    fiches: geres.map((l) => ficheLogement({ reservations: actifs, mandats: e.mandats }, l.id, aujourdhui, { proprietaireId, logement: l })),
     bilans,
     documents,
     factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement }),

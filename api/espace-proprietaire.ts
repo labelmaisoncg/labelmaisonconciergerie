@@ -48,7 +48,7 @@ import {
   expediteurEspace,
   ficheEspace,
   lienDAcces,
-  sessionAcces,
+  lireSessionAcces,
 } from './_acces-externe.js';
 import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
 import { ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
@@ -56,6 +56,8 @@ import { ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocume
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
 const tropDEssais = freinEnvois(20, 15 * 60_000);
+
+const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace propriétaire, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
@@ -184,10 +186,10 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'vue' && req.method === 'GET') {
-      const s = await sessionAcces<AccesProprietaire>(req, 'proprietaire');
-      if (!s) {
+      const s = await lireSessionAcces<AccesProprietaire>(req, 'proprietaire');
+      if (!s.ok) {
         res.setHeader('Set-Cookie', cookieSessionEfface('proprietaire'));
-        return repondre(res, 401, { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
+        return repondre(res, 401, s.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
       }
       const fiche = await ficheEspace(s.espace).catch(() => undefined);
       const entrees = await entreesDuProprietaire(s.base, s.acces.proprietaireId);
@@ -201,14 +203,15 @@ export default async function handler(req: any, res: any) {
         conciergerie: { nom: fiche?.nom || (estLabelMaison(s.espace) ? 'Label Maison' : 'Votre conciergerie'), contacts: contactsEspace(fiche, s.espace) },
       });
       if (!vue) return repondre(res, 404, { ok: false, erreur: 'Espace introuvable. Contactez votre conciergerie.' });
-      return repondre(res, 200, { ok: true, vue });
+      // `espace` : la page le garde sur l'appareil (avec le nom), pour sa page de connexion.
+      return repondre(res, 200, { ok: true, vue, espace: s.espace });
     }
 
     if (action === 'document' && req.method === 'GET') {
-      const s = await sessionAcces<AccesProprietaire>(req, 'proprietaire');
+      const s = await lireSessionAcces<AccesProprietaire>(req, 'proprietaire');
       res.setHeader('Cache-Control', 'no-store');
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      if (!s) return res.status(401).end('Session expirée : reconnectez-vous à votre espace propriétaire.');
+      if (!s.ok) return res.status(401).end(s.raison === 'retire' ? ACCES_RETIRE : 'Session expirée : reconnectez-vous à votre espace propriétaire.');
       const doc = await lireDocument(s.base, String(req.query?.id ?? ''));
       // PDF d'une facture : seulement tant qu'elle est partagée avec lui.
       const factureVisible = !doc?.factureId || facturePartagee((await s.base.lire<Facture>('factures', [doc.factureId]))[0], s.acces.proprietaireId);

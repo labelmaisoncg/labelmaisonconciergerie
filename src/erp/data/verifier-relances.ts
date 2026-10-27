@@ -12,12 +12,15 @@
  */
 import {
   REGLAGES_RELANCES_DEFAUT,
+  annulerPaiementFacture,
+  datePaiementValide,
   factureAPayer,
   facturePartagee,
   facturesVue,
   idRelance,
   messageRelance,
   montantTtcFacture,
+  nomRappel,
   partagerFacture,
   planifierRelances,
   reglagesRelances,
@@ -113,6 +116,10 @@ function main() {
   verifier(passe([f], [], '2026-10-12', { ...REGLAGES_RELANCES_DEFAUT, actif: false }).nouvelles.length === 0, 'relances coupées : rien de créé');
   verifier(!relanceEnvoyable({ ...relances[2], statut: 'envoyee' }, f) && !relanceEnvoyable({ ...relances[2], statut: 'annulee' }, f), 'déjà envoyée ou annulée : jamais renvoyée');
   verifier(!relanceEnvoyable({ ...relances[2], proprietaireId: B }, f), 'relance d’un autre propriétaire : refusée');
+  // Paiement saisi par le gérant (fiche logement), puis annulé (saisi par erreur).
+  verifier(datePaiementValide('2026-10-11', '2026-10-12') && datePaiementValide('2026-10-12', '2026-10-12') && !datePaiementValide('2026-10-13', '2026-10-12') && !datePaiementValide('11/10/2026', '2026-10-12') && !datePaiementValide('2026-02-30x', '2026-10-12'), 'date de paiement : une vraie date, pas dans le futur');
+  const annule = annulerPaiementFacture(payee);
+  verifier(annule.statut === 'emise' && !('payeeLe' in annule) && factureAPayer(annule) && statutFactureVue(annule, '2026-10-12') === 'en_retard', 'paiement annulé : de nouveau à payer (en retard), donc relancée');
   const deux = passe([f, facture('0004', { proprietaireId: B })], [], '2026-09-15');
   verifier(deux.nouvelles.map((r) => r.proprietaireId).sort().join() === `${A},${B}` && deux.nouvelles.every((r) => r.statut === 'proposee'), 'le passage ne fait que proposer (aucun envoi dans le calcul)');
 
@@ -123,6 +130,11 @@ function main() {
   verifier(/virement/.test(m.texte) && !/IBAN|FR76|BIC|RIB/i.test(m.texte + m.html), 'message : comment payer, sans coordonnées bancaires');
   verifier(!/Label Maison/.test(m.texte + m.html), 'message d’un autre espace : jamais « Label Maison »');
   verifier(messageRelance({ relance: { niveau: 3 }, dernier: true, facture: f, proprietaire: { nom: 'A' }, conciergerie: 'X' }).sujet.startsWith('Dernier rappel'), 'dernière étape : « Dernier rappel »');
+  verifier(
+    [1, 2, 3].every((n) => messageRelance({ relance: { niveau: n }, dernier: n === 3, facture: f, proprietaire: { nom: 'A' }, conciergerie: 'X' }).sujet.startsWith(nomRappel(n, n === 3))) &&
+      nomRappel(1) === 'Petit rappel' && nomRappel(2) === 'Deuxième rappel' && nomRappel(3) === 'Nouveau rappel' && nomRappel(3, true) === 'Dernier rappel',
+    'nom de l’étape : le même à l’écran et dans l’e-mail',
+  );
   verifier(!/<script/.test(messageRelance({ relance: { niveau: 1 }, facture: f, proprietaire: { nom: '<script>x</script>' }, conciergerie: 'X' }).html), 'message : HTML échappé');
 
   /* ce que voit le propriétaire */

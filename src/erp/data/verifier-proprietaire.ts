@@ -2,7 +2,8 @@
  * Vérification de l'espace propriétaire (pur, sans réseau) : filtrage strict
  * par propriétaire, aucune donnée personnelle de voyageur, prorata d'un séjour
  * à cheval sur deux mois, bilans non publiés invisibles, liens à usage unique
- * et sessions signées, rattachées à l'espace qui a invité (Label Maison, Sens…).
+ * et sessions signées, rattachées à l'espace qui a invité (Label Maison, Sens…),
+ * logement passé à un autre propriétaire (chacun sa période, bilan publié figé).
  *
  * Lancement :
  *   node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --platform=node --format=esm \
@@ -14,7 +15,10 @@ import {
   bilanMensuel,
   bilansPublies,
   calendrierMois,
+  changerProprietaire,
   chiffresPublics,
+  donneesDuProprietaire,
+  etatBilan,
   ficheLogement,
   joursDuMois,
   logementsDe,
@@ -49,7 +53,7 @@ import {
 import { avecNouveauLien as avecNouveauLienOps } from './operations-acces';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull';
 import { ID_LABEL_MAISON } from './espaces';
-import { lienAcces, lireLienAcces, lireSessionExterne, signerSessionExterne } from './acces-externe';
+import { espaceARetenir, lienAcces, lireEspaceRetenu, lireLienAcces, lireSessionExterne, marqueConnexion, signerSessionExterne } from './acces-externe';
 import { creerSeed } from './seed';
 import { b64url } from './web-push';
 import type { Logement, Mandat, Proprietaire, Reservation } from './types';
@@ -233,9 +237,109 @@ async function main() {
   verifier(!v2.moisPrecedent.provisoire && v2.moisPrecedent.net === aout.totaux.net, 'mois précédent : chiffres du bilan publié');
   verifier(!/Zo[ée]|999999/.test(JSON.stringify(v2)), 'bilan publié de B jamais dans la vue de A');
   const truque: BilanProprietaire = { ...publie, chiffres: { ...aout, sejours: [...aout.sejours, { ...aout.sejours[0], logementId: 'log-b', voyageur: 'Zoé Interdite' }] } };
-  verifier(bilansPublies([truque], A, new Set(['log-a1', 'log-a2']))[0].chiffres.sejours.every((s) => s.logementId !== 'log-b'), 'bilan publié relu : ligne d’un autre logement retirée');
+  verifier(bilansPublies([truque], A)[0].chiffres.sejours.every((s) => s.logementId !== 'log-b'), 'bilan publié relu : ligne d’un autre logement retirée');
   verifier(chiffresPublics({ ...aout, sejours: [{ ...aout.sejours[0], voyageur: 'Camille Martin' }] }, new Set(['log-a1', 'log-a2'])).sejours[0].voyageur === 'Camille M.', 'bilan publié relu : voyageur réanonymisé');
   verifier(memesChiffres(aout, bilanMensuel(e, A, '2026-08')) && !memesChiffres(aout, sept), 'changement des chiffres depuis la publication détecté');
+
+  /* page de connexion : au nom de l'espace connu sur l'appareil */
+  {
+    const SENS = '5e5e0000-0000-4000-8000-000000000002';
+    verifier(marqueConnexion(undefined, undefined).labelMaison === false && marqueConnexion(undefined, undefined).nom === undefined, 'connexion, rien de connu : « votre conciergerie », ni marque ni numéro de Label Maison');
+    verifier(marqueConnexion(undefined, { espace: SENS, nom: 'Sens' }).nom === 'Sens' && !marqueConnexion(undefined, { espace: SENS, nom: 'Sens' }).labelMaison, 'après déconnexion d’un propriétaire de Sens : au nom de Sens, sans Label Maison');
+    verifier(marqueConnexion(ID_LABEL_MAISON, { espace: SENS, nom: 'Sens' }).labelMaison && marqueConnexion(undefined, { espace: ID_LABEL_MAISON }).labelMaison, 'Label Maison : par son lien, ou retenu sur l’appareil');
+    verifier(marqueConnexion(SENS, undefined).nom === undefined && !marqueConnexion(SENS, { espace: ID_LABEL_MAISON, nom: 'Label Maison' }).labelMaison, 'lien d’un autre espace : jamais Label Maison, même retenu');
+    verifier(
+      lireEspaceRetenu(JSON.stringify({ espace: SENS.toUpperCase(), nom: '  Sens  ', email: 'x@y.fr' }))?.nom === 'Sens' &&
+        !('email' in (lireEspaceRetenu(JSON.stringify({ espace: SENS, email: 'x@y.fr' })) ?? {})) &&
+        lireEspaceRetenu('{pas du json') === undefined &&
+        lireEspaceRetenu(JSON.stringify({ espace: 'sens' })) === undefined,
+      'espace retenu relu sans confiance : id et nom seulement',
+    );
+    verifier(espaceARetenir({ espace: SENS }, { espace: SENS, nom: 'Sens' }).nom === 'Sens' && espaceARetenir({ espace: SENS }, { espace: ID_LABEL_MAISON, nom: 'Label Maison' }).nom === undefined, 'lien reçu du même espace : le nom connu est gardé, d’un autre espace : oublié');
+  }
+
+  /* logement passé à un autre propriétaire */
+  {
+    const AUJ = '2026-11-05';
+    const T = 'log-t';
+    const avant = logement(T, A);
+    const sejours = [
+      resa(T, '2026-08-03', '2026-08-08', { voyageur: { nom: 'Ancien Voyageur', nbPersonnes: 2 }, noteVoyageur: 2, commentaireVoyageur: 'AVIS-ANCIEN' }),
+      resa(T, '2026-10-08', '2026-10-12', { voyageur: { nom: 'Mixte Cheval', nbPersonnes: 2 } }),
+      resa(T, '2026-10-20', '2026-10-23', { voyageur: { nom: 'Nouveau Venu', nbPersonnes: 2 }, noteVoyageur: 5, commentaireVoyageur: 'AVIS-NOUVEAU' }),
+      resa(T, '2026-11-20', '2026-11-22', { voyageur: { nom: 'Futur Hôte', nbPersonnes: 2 }, statut: 'confirmee' }),
+    ];
+    const mandatsT = [mandat('m-ta', A, T, 20), { ...mandat('m-tb', B, T, 25), dateDebut: '2026-10-10' }];
+    const apres = changerProprietaire(avant, B, '2026-10-10');
+    verifier(
+      apres.proprietaireId === B && apres.proprietaireDepuis === '2026-10-10' && JSON.stringify(apres.proprietairesPrecedents) === JSON.stringify([{ proprietaireId: A, jusquAu: '2026-10-10' }]),
+      'changement de propriétaire : nouveau depuis le jour du changement, l’ancien jusqu’à la veille',
+    );
+    verifier(changerProprietaire(apres, B, '2026-10-20') === apres, 'même propriétaire : rien ne change');
+    const importe = changerProprietaire({ ...avant, proprietaireId: ID_PROPRIETAIRE_A_RENSEIGNER }, A, '2026-10-10');
+    verifier(importe.proprietaireDepuis === undefined && !importe.proprietairesPrecedents, 'logement importé (fiche d’attente) : son premier propriétaire reçoit tout l’historique');
+    const retour = changerProprietaire(apres, A, '2026-11-01');
+    verifier(
+      retour.proprietaireDepuis === '2026-11-01' && retour.proprietairesPrecedents?.length === 2 && retour.proprietairesPrecedents[1].proprietaireId === B && retour.proprietairesPrecedents[1].depuis === '2026-10-10',
+      'retour à l’ancien propriétaire : chaque période gardée',
+    );
+
+    const base = { logements: [avant], reservations: sejours, mandats: mandatsT };
+    const d = { logements: [apres], reservations: sejours, mandats: mandatsT };
+    const aoutA = bilanMensuel(base, A, '2026-08');
+    verifier(memesChiffres(aoutA, bilanMensuel(d, A, '2026-08')) && aoutA.totaux.nuits === 5, 'ancien propriétaire : ses mois d’avant restent les mêmes (le gérant peut encore les publier)');
+    verifier(bilanMensuel(d, B, '2026-08').totaux.nuits === 0 && bilanMensuel(d, B, '2026-09').totaux.net === 0, 'nouveau propriétaire : rien d’avant son premier jour');
+    const octA = bilanMensuel(d, A, '2026-10');
+    const octB = bilanMensuel(d, B, '2026-10');
+    verifier(octA.totaux.nuits === 2 && octB.totaux.nuits === 2 + 3, 'mois du changement : nuits partagées au jour près (8-12 oct. : 2 et 2)');
+    verifier(octB.logements[0]?.commissionPct === 25 && octA.logements[0]?.commissionPct === 20, 'chacun son mandat (taux)');
+    verifier(Math.abs(octA.logements[0].occupation - 2 / 9) < 1e-9 && Math.abs(octB.logements[0].occupation - 5 / 22) < 1e-9, 'occupation comptée sur les jours de chacun');
+    verifier(octA.logements[0].nom === avant.nom && octA.logements.length === 1, 'ancien propriétaire : le logement cédé apparaît dans le mois où il a eu des nuits');
+    verifier(bilanMensuel(d, A, '2026-11').logements.length === 0, 'ancien propriétaire : plus rien après le changement');
+
+    // Ce que voit le nouveau propriétaire : rien d'avant (chiffres, avis, séjours).
+    const entreesB = { ...e, proprietaires: [...e.proprietaires], logements: [apres], reservations: sejours, mandats: mandatsT, bilansProprietaire: [] };
+    const vueB = vueProprietaire(entreesB, B, { aujourdhui: AUJ, mois: '2026-08' })!;
+    const ficheB = vueB.fiches[0];
+    const texteB = JSON.stringify(vueB);
+    verifier(ficheB.totaux.nuits === 5 && ficheB.mois.filter((m) => m.suivi).every((m) => m.mois >= '2026-10'), 'fiche du nouveau : 12 mois à partir de son premier jour');
+    verifier(ficheB.avis?.nombre === 2 && ficheB.avis.moyenne === 5 && !/AVIS-ANCIEN|Ancien V/.test(texteB), 'fiche du nouveau : avis des séjours finis chez lui seulement, ni avis ni voyageurs d’avant');
+    verifier(vueB.calendrier.logements[0].sejours.length === 0 && vueB.calendrier.logements[0].nuitsReservees === 0, 'calendrier du nouveau : rien d’avant son premier jour');
+    verifier(vueB.prochainesArrivees.length === 1 && vueB.prochainesArrivees[0].voyageur === 'Futur H.', 'prochaines arrivées : les siennes');
+
+    // Ce que voit l'ancien : son bilan publié, figé, tel quel.
+    const publieA: BilanProprietaire = { id: `${A}-2026-08`, proprietaireId: A, mois: '2026-08', statut: 'publie', commentaire: '', chiffres: aoutA, publieLe: '2026-09-02T08:00:00.000Z', majLe: '2026-09-02T08:00:00.000Z' };
+    const vueA = vueProprietaire({ ...e, logements: [...e.logements, apres], reservations: [...e.reservations, ...sejours], mandats: [...e.mandats, ...mandatsT], bilansProprietaire: [publieA] }, A, { aujourdhui: AUJ })!;
+    const bilanA = vueA.bilans.find((b) => b.mois === '2026-08')!;
+    verifier(
+      bilanA.chiffres.totaux.sejours === aoutA.totaux.sejours && bilanA.chiffres.sejours.length === aoutA.sejours.length && bilanA.chiffres.logements.some((l) => l.logementId === T),
+      'ancien propriétaire : bilan publié figé, séjours et totaux d’accord (jamais « Aucun séjour » à côté de « Séjours 1 »)',
+    );
+    verifier(!vueA.logements.some((l) => l.id === T) && !vueA.fiches.some((f) => f.logementId === T), 'ancien propriétaire : le logement cédé n’est plus dans « Mes logements »');
+
+    // Côté gérant : jamais « Mettre à jour » un bilan publié dont un logement a changé de propriétaire.
+    const etat = etatBilan(d, A, '2026-08', publieA);
+    verifier(etat.statut === 'transfere' && etat.transferts[0]?.logementId === T && etat.transferts[0].depuis === '2026-10-10' && etat.chiffres === aoutA, 'gérant : bilan publié « Logement transféré depuis le 10 oct. », chiffres figés');
+    const sansHistorique = { ...d, logements: [{ ...avant, proprietaireId: B }] };
+    verifier(etatBilan(sansHistorique, A, '2026-08', publieA).statut === 'transfere', 'gérant : même un changement fait sans historique n’est pas proposé à la mise à jour (0 €)');
+    verifier(etatBilan(base, A, '2026-08', publieA).statut === 'publie' && etatBilan(base, A, '2026-08', { ...publieA, chiffres: bilanMensuel(base, A, '2026-07') }).statut === 'a_mettre_a_jour', 'gérant : sinon « Publié » ou « À mettre à jour »');
+    verifier(etatBilan(d, A, '2026-09').statut === 'aucun' && etatBilan(d, A, '2026-08', { ...publieA, statut: 'brouillon' }).statut === 'brouillon', 'gérant : pas encore de bilan, brouillon');
+
+    // Ce que le serveur laisse sortir pour chacun.
+    const pourB = donneesDuProprietaire(d, B);
+    const pourA = donneesDuProprietaire(d, A);
+    verifier(pourB.reservations.every((r) => r.depart > '2026-10-10') && pourB.reservations.length === 3, 'serveur : au nouveau, les séjours de sa période seulement');
+    verifier(
+      pourA.reservations.every((r) => r.arrivee < '2026-10-10') && pourA.reservations.length === 2 && !JSON.stringify(pourA.logements).includes('CODE-PORTE') && pourA.logements[0].proprietaireId !== A,
+      'serveur : à l’ancien, ses séjours d’avant et le logement réduit (ni codes ni fiche)',
+    );
+    verifier(bilanMensuel(pourA, A, '2026-10').totaux.nuits === 2 && memesChiffres(bilanMensuel(pourA, A, '2026-08'), aoutA), 'serveur : les chiffres de l’ancien, calculés sur ce qui sort, sont les mêmes');
+
+    // Début du mandat en cours de mois : les nuits d'avant ne comptent pas.
+    const enCours = { logements: [logement('log-m', A)], reservations: [resa('log-m', '2026-06-08', '2026-06-18')], mandats: [{ ...mandat('m-m', A, 'log-m', 20), dateDebut: '2026-06-15' }] };
+    const juin = bilanMensuel(enCours, A, '2026-06');
+    verifier(juin.totaux.nuits === 3 && Math.abs(juin.occupation - 3 / 16) < 1e-9, 'mandat commencé le 15 : seules les nuits à partir du 15, occupation sur 16 jours');
+  }
 
   /* démo */
   const seed = creerSeed();

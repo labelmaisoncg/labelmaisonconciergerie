@@ -77,6 +77,16 @@ export function statutFactureVue(f: Facture, aujourdhui: DateISO): StatutFacture
   return f.statut === 'en_retard' || f.echeance < aujourdhui ? 'en_retard' : 'a_payer';
 }
 
+/** Date de paiement acceptée : une vraie date, pas dans le futur. */
+export const datePaiementValide = (d: unknown, aujourdhui: DateISO): d is DateISO =>
+  typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T12:00:00Z`)) && d <= aujourdhui;
+
+/** Paiement annulé (saisi par erreur) : la facture redevient à payer, et entre de nouveau dans les relances. */
+export function annulerPaiementFacture(f: Facture): Facture {
+  const { payeeLe: _payee, ...reste } = f;
+  return { ...reste, statut: 'emise' };
+}
+
 /** Partager une facture dans l'espace propriétaire (ou ne plus la partager). */
 export function partagerFacture(f: Facture, maintenant: Horodatage): Facture {
   return f.partageeLe ? f : { ...f, partageeLe: maintenant };
@@ -201,6 +211,12 @@ export const dateTexte = (d: DateISO): string => DATE_LONGUE.format(new Date(`${
 const echapper = (s: unknown): string =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
+/** Nom d'une étape, le même dans l'e-mail et à l'écran : « Petit rappel », « Deuxième rappel », « Nouveau rappel », « Dernier rappel ». */
+export function nomRappel(niveau: number, dernier?: boolean): string {
+  if (dernier && niveau > 1) return 'Dernier rappel';
+  return niveau <= 1 ? 'Petit rappel' : niveau === 2 ? 'Deuxième rappel' : 'Nouveau rappel';
+}
+
 /**
  * E-mail de relance : poli, court, signé du nom de l'espace ; montant TTC,
  * numéro, échéance et comment payer (virement avec le numéro en référence).
@@ -219,8 +235,7 @@ export function messageRelance(o: {
   const { facture: f } = o;
   const montant = eurosTexte(montantTtcFacture(f));
   const echeance = dateTexte(f.echeance);
-  const rappel = o.dernier && o.relance.niveau > 1 ? 'Dernier rappel' : o.relance.niveau <= 1 ? 'Petit rappel' : o.relance.niveau === 2 ? 'Deuxième rappel' : 'Nouveau rappel';
-  const sujet = `${rappel} : facture ${f.numero} à régler`;
+  const sujet = `${nomRappel(o.relance.niveau, o.dernier)} : facture ${f.numero} à régler`;
   const paragraphes = [
     `Bonjour ${o.proprietaire.nom},`,
     `Sauf erreur de notre part, la facture ${f.numero} de ${montant}, arrivée à échéance le ${echeance}, n’est pas encore réglée.`,

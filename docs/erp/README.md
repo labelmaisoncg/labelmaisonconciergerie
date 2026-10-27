@@ -1199,6 +1199,17 @@ d'août publié et deux documents ; son espace :
   lien glissé dans le texte, voyageur en « Prénom N. ». La fiche
   d'attente des logements importés (`repull-proprietaire-a-renseigner`)
   n'a jamais d'espace.
+- **Changement de propriétaire** (`changerProprietaire`, data/proprietaire.ts) :
+  le logement garde `proprietaireDepuis` (premier jour du nouveau
+  propriétaire) et `proprietairesPrecedents` (chacun jusqu'à la veille du
+  changement). Le nouveau ne voit rien d'avant (chiffres, avis, séjours,
+  calendrier) ; l'ancien garde ses mois d'avant, et ses bilans publiés
+  restent figés tels quels. Côté gérant, `etatBilan` ne propose jamais de
+  « Mettre à jour » un bilan publié dont un logement a changé de
+  propriétaire (« Logement transféré depuis le … »). Le premier vrai
+  propriétaire d'un logement importé (fiche d'attente) reçoit tout son
+  historique. Les chiffres comptent aussi à partir du début du mandat du
+  propriétaire.
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
@@ -1241,12 +1252,17 @@ d'août publié et deux documents ; son espace :
   `relance-annuler`, `relances-reglages` (api/espace-proprietaire.ts, gérant
   de l'espace).
 - **Écrans du gérant** : `logements/_composants/FacturesProprietaire.tsx`
-  (partager ou non chaque facture, joindre son PDF), dans le panneau
-  « Espace propriétaire » après « Bilans mensuels » ; `RelancesPaiement.tsx`
-  (réglages, relances à valider avec l'aperçu du message, relances
-  envoyées ; `useRelances()`) dans Paramètres → Accès, section
-  Propriétaires, et, limité au propriétaire, dans son panneau. « Je valide
-  chaque relance » (`proposer`) reste le réglage par défaut.
+  (partager ou non chaque facture, joindre son PDF, « Marquer payée » avec
+  la date du paiement, « Annuler le paiement » ; gérant seulement), dans le
+  panneau « Espace propriétaire » après « Bilans mensuels » ;
+  `RelancesPaiement.tsx` (réglages, relances à valider : « Échéance 20 août ·
+  Dernier rappel le 19 sept. », même nom d'étape que l'e-mail, aperçu du
+  message, « Envoyer » ou « Ne pas envoyer » après une relance par
+  téléphone ; historique : envoyées, annulées, sans objet ; une facture
+  marquée payée sort aussitôt de la file ; `useRelances()`) dans
+  Paramètres → Accès, section Propriétaires, et, limité au propriétaire,
+  dans son panneau. « Je valide chaque relance » (`proposer`) reste le
+  réglage par défaut.
 - **Contrôles** : `verifier-relances.ts` (calendrier, idempotence, arrêt au
   paiement, message, ce que voit chaque propriétaire) et
   `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »

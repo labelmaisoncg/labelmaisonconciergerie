@@ -85,6 +85,44 @@ export function lireLienAcces(fragment: string): { jeton?: string; espace: strin
   return { ...(jeton ? { jeton } : {}), espace: espaceDe(p.get('espace')) };
 }
 
+/* ---------------------------------------------- page de connexion */
+
+/** Espace retenu sur l'appareil pour la page de connexion : id et nom, rien d'autre. */
+export interface EspaceRetenu {
+  espace: string;
+  nom?: string;
+}
+
+/** Valeur gardée dans le navigateur, relue sans confiance (illisible : rien). */
+export function lireEspaceRetenu(valeur: unknown): EspaceRetenu | undefined {
+  try {
+    const x = (typeof valeur === 'string' ? JSON.parse(valeur) : null) as Partial<EspaceRetenu> | null;
+    if (!x || !idEspaceValide(x.espace)) return undefined;
+    const nom = typeof x.nom === 'string' ? x.nom.trim().slice(0, 80) : '';
+    return { espace: x.espace.toLowerCase(), ...(nom ? { nom } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** À retenir après un lien ou une session : même espace sans nom (lien pas encore ouvert), le nom connu est gardé. */
+export function espaceARetenir(nouveau: EspaceRetenu, avant: EspaceRetenu | undefined): EspaceRetenu {
+  const nom = nouveau.nom ?? (avant?.espace === nouveau.espace ? avant.nom : undefined);
+  return { espace: espaceDe(nouveau.espace), ...(nom ? { nom } : {}) };
+}
+
+/**
+ * Au nom de qui parle la page de connexion : l'espace du lien, sinon celui
+ * retenu sur l'appareil. Label Maison : sa marque et son numéro ; un autre :
+ * son nom s'il est connu ; inconnu : personne (« votre conciergerie »).
+ */
+export function marqueConnexion(espaceLien: string | undefined, retenu: EspaceRetenu | undefined): { nom?: string; labelMaison: boolean } {
+  const espace = idEspaceValide(espaceLien) ? espaceLien.toLowerCase() : retenu?.espace;
+  if (!espace) return { labelMaison: false };
+  if (espace === ID_LABEL_MAISON) return { nom: 'Label Maison', labelMaison: true };
+  return { ...(retenu?.espace === espace && retenu.nom ? { nom: retenu.nom } : {}), labelMaison: false };
+}
+
 /* -------------------------------------------------------------- session */
 
 export interface SessionExterne {

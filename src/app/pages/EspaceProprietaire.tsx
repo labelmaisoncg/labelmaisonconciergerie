@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import '../../erp/erp.css';
-import { lireLienAcces } from '../../erp/data/acces-externe';
+import { espaceARetenir, lireEspaceRetenu, lireLienAcces, marqueConnexion, type EspaceRetenu } from '../../erp/data/acces-externe';
 import { MODE_DEMO } from '../../erp/data/config';
-import { estLabelMaison } from '../../erp/data/espaces';
+import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
-import { CONTACTS_LABEL_MAISON, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
+import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { VueProprietaire } from '../../erp/data/types-proprietaire';
 import { EspaceVue } from '../../erp/espace-proprietaire/EspaceVue';
 import { ONGLETS_ESPACE, type LienDocumentProps, type OngletEspace } from '../../erp/espace-proprietaire/commun';
@@ -14,15 +14,41 @@ import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
 
 /**
  * /espace-proprietaire : l'espace en ligne des propriétaires (logements,
- * calendrier, bilans publiés, documents). Connexion par lien à usage unique
- * reçu par e-mail ; toutes les données viennent de api/espace-proprietaire.ts,
- * déjà filtrées pour ce propriétaire.
+ * calendrier, bilans publiés, factures partagées, documents). Connexion par
+ * lien à usage unique reçu par e-mail ; toutes les données viennent de
+ * api/espace-proprietaire.ts, déjà filtrées pour ce propriétaire.
+ *
+ * Page de connexion : au nom de l'espace du dernier lien ou de la dernière
+ * session sur cet appareil (gardé dans le navigateur : id et nom de l'espace,
+ * rien d'autre) ; espace inconnu : « votre conciergerie », sans le numéro de
+ * Label Maison.
  *
  * Démo (VITE_ERP_DEMO=1) : ?apercu=pro-sci-tilleuls, calculé sur le jeu de démo.
  */
 
 const API = '/api/espace-proprietaire';
 const PROPRIETAIRE_DEMO = 'pro-sci-tilleuls';
+
+/** Espace retenu sur cet appareil pour la page de connexion (id et nom, rien d'autre). */
+const CLE_ESPACE = 'lm_espace_proprietaire';
+
+function espaceRetenu(): EspaceRetenu | undefined {
+  try {
+    return lireEspaceRetenu(window.localStorage.getItem(CLE_ESPACE));
+  } catch {
+    return undefined;
+  }
+}
+
+function retenirEspace(e: EspaceRetenu) {
+  try {
+    window.localStorage.setItem(CLE_ESPACE, JSON.stringify(espaceARetenir(e, espaceRetenu())));
+  } catch {
+    // Stockage indisponible (navigation privée) : la page reste neutre.
+  }
+}
+
+type MarqueConnexion = ReturnType<typeof marqueConnexion>;
 
 type Etat =
   | { nom: 'chargement' }
@@ -66,10 +92,11 @@ function LienDocumentDemo({ className, children }: LienDocumentProps) {
 }
 
 /**
- * Connexion. Sans espace connu (ou Label Maison) : la marque et le numéro de
- * Label Maison ; arrivé par le lien d'un autre espace : rien de Label Maison.
+ * Connexion, au nom de l'espace connu sur cet appareil : Label Maison (sa
+ * marque et son numéro), un autre espace (son nom), ou personne (« votre
+ * conciergerie », rien de Label Maison).
  */
-function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; labelMaison: boolean }) {
+function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; marque: MarqueConnexion }) {
   const [email, setEmail] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' }>();
@@ -92,11 +119,12 @@ function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'dan
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
-        {labelMaison && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">Label Maison</p>}
+        {marque.nom && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
         <Card className="mt-6 p-6">
           <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Votre espace propriétaire</h1>
           <p className="mt-2 text-[14px] text-(--lm-encre-2)">
-            Vos logements, le calendrier des réservations, vos bilans et vos documents. Recevez un lien de connexion par e-mail : aucun mot de passe à retenir.
+            {CONTENU_ESPACE.vous.charAt(0).toUpperCase()}
+            {CONTENU_ESPACE.vous.slice(1)}. Recevez un lien de connexion par e-mail : aucun mot de passe à retenir.
           </p>
           {message && (
             <Alert tone={ton ?? 'neutre'} className="mt-4">
@@ -127,7 +155,7 @@ function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'dan
           )}
         </Card>
         <p className="mt-5 text-center text-[13px] text-(--lm-encre-2)">
-          {labelMaison ? (
+          {marque.labelMaison ? (
             <>
               Besoin d’aide ?{' '}
               <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
@@ -135,7 +163,7 @@ function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'dan
               </a>
             </>
           ) : (
-            'Besoin d’aide ? Contactez votre conciergerie.'
+            `Besoin d’aide ? Contactez ${marque.nom ?? 'votre conciergerie'}.`
           )}
         </p>
         {MODE_DEMO && (
@@ -187,8 +215,13 @@ export default function EspaceProprietaire() {
       return vue ? { nom: 'pret', vue, demo: true } : { nom: 'erreur', message: 'Propriétaire de démonstration introuvable.' };
     }
     const r = await appeler('GET', mois ? { action: 'vue', mois } : { action: 'vue' });
-    if (r.statut === 200 && r.json.vue) return { nom: 'pret', vue: r.json.vue as VueProprietaire };
-    if (r.statut === 401) return { nom: 'connexion' };
+    if (r.statut === 200 && r.json.vue) {
+      const vue = r.json.vue as VueProprietaire;
+      if (idEspaceValide(r.json.espace)) retenirEspace({ espace: r.json.espace.toLowerCase(), nom: vue.conciergerie.nom });
+      return { nom: 'pret', vue };
+    }
+    // Accès retiré par le gérant : le dire, plutôt que « session expirée ».
+    if (r.statut === 401) return r.json.code === 'retire' ? { nom: 'connexion', ton: 'neutre', message: String(r.json.erreur ?? '') } : { nom: 'connexion' };
     if (r.statut === 503) return { nom: 'ferme', message: String(r.json.erreur ?? 'L’espace propriétaire n’est pas encore ouvert.') };
     return { nom: 'erreur', message: String(r.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.') };
   }, [apercu]);
@@ -198,7 +231,10 @@ export default function EspaceProprietaire() {
     void (async () => {
       // Lien reçu par e-mail : « #espace=…&jeton=… », retiré de l'adresse aussitôt (historique, partage d'écran).
       const { jeton, espace } = lireLienAcces(window.location.hash);
-      if (jeton) setEspaceLien(espace);
+      if (jeton) {
+        setEspaceLien(espace);
+        if (!MODE_DEMO) retenirEspace({ espace });
+      }
       if (jeton && !MODE_DEMO) {
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
         const r = await appeler('POST', { action: 'entrer', jeton, espace });
@@ -221,7 +257,7 @@ export default function EspaceProprietaire() {
     const e = await charger(mois);
     setCalendrierEnCours(false);
     if (e.nom === 'pret') setEtat(e);
-    else if (e.nom === 'connexion') setEtat({ nom: 'connexion', ton: 'neutre', message: 'Votre session a expiré : demandez un nouveau lien.' });
+    else if (e.nom === 'connexion') setEtat({ nom: 'connexion', ton: 'neutre', message: e.message || 'Votre session a expiré : demandez un nouveau lien.' });
   };
 
   const sortir = async () => {
@@ -242,7 +278,7 @@ export default function EspaceProprietaire() {
           <PageSkeleton />
         </div>
       )}
-      {etat.nom === 'connexion' && <Connexion message={etat.message} ton={etat.ton} labelMaison={!espaceLien || estLabelMaison(espaceLien)} />}
+      {etat.nom === 'connexion' && <Connexion message={etat.message} ton={etat.ton} marque={MODE_DEMO ? { nom: 'Label Maison', labelMaison: true } : marqueConnexion(espaceLien, espaceRetenu())} />}
       {(etat.nom === 'ferme' || etat.nom === 'erreur') && (
         <div className="grid min-h-screen place-items-center px-4">
           <Card className="w-full max-w-sm p-6 text-center">
