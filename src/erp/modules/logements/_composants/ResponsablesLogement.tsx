@@ -66,7 +66,8 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
                   {gerant ? (
                     <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
                       <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{m.nom}</span>
-                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{ROLES_OPERATIONS[m.role]}</span>
+                      {/* Le rôle sur le logement est dans les choix plus bas ; ici, seulement l'absence du jour. */}
+                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{[ROLES_OPERATIONS[m.role], m.id === responsableId ? absence : undefined].filter(Boolean).join(' · ')}</span>
                     </Link>
                   ) : (
                     <>
