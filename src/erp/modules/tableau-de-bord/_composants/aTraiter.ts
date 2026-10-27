@@ -17,13 +17,14 @@ import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
 import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
 import { trierParUrgence, urgenceFil } from '../../../data/messagerie-ia';
 import { attendEquipe } from '../../../data/attente-equipe';
+import { facturesAValider, lienFacture, moisLong } from '../../../data/briefing';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
 import { elementsPrixEtAnomalies } from './aTraiterAnalyse';
 
 export type TypeATraiter =
-  | 'message' | 'avis' | 'avisHote' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge'
+  | 'message' | 'avis' | 'avisHote' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge' | 'facture'
   // Prix conseillés et anomalies (aTraiterAnalyse.ts).
   | 'prix' | 'double' | 'suspecte' | 'prix_anormal' | 'integrite';
 
@@ -165,6 +166,19 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       titre: aAppeler.length > 1 ? `${aAppeler.length} personnes à appeler aujourd’hui` : 'Une personne à appeler aujourd’hui',
       details: aAppeler.map((c) => `${c.nom}${c.ville ? ` (${c.ville})` : ''}`),
     });
+
+  // Factures mensuelles en brouillon (préparées à partir du 1er) : le gérant les relit et les valide.
+  const factures = gerant ? facturesAValider(d) : [];
+  if (factures.length) {
+    const proprietaire = (id?: string) => d.proprietaires.find((p) => p.id === id)?.nom ?? 'Propriétaire';
+    const lien = (f: (typeof factures)[number]) => lienFacture(d, f);
+    liste.push({
+      id: 'factures', type: 'facture', priorite: 2, ton: 'or', to: lien(factures[0]),
+      titre: factures.length > 1 ? `${factures.length} factures mensuelles à valider` : 'Une facture mensuelle à valider',
+      details: factures.map((f) => `${proprietaire(f.proprietaireId)} : ${moisLong(f.mensuelle!.mois)}`),
+      ...(factures.length > 1 ? { liens: factures.map(lien) } : {}),
+    });
+  }
 
   // Prix à revoir (une ligne groupée) et anomalies.
   liste.push(...elementsPrixEtAnomalies(d, aujourdhui, { gerant }));

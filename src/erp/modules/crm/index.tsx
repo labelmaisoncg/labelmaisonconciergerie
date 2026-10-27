@@ -1,29 +1,34 @@
 /**
- * CRM d'appels (/erp/crm) : toutes les personnes à rappeler, ligne par ligne,
- * façon Airtable. Chaque formulaire du site crée automatiquement une ligne
- * « À appeler » (api/contact.ts → api/_erp-crm.ts) ; l'équipe la fait avancer
- * d'étape en étape. Mise à jour en direct (Supabase Realtime).
+ * CRM d'appels (/erp/crm) : deux vues. « Aujourd’hui » : la file de
+ * l'assistant CRM (à appeler ou relancer, la plus prioritaire en premier,
+ * prochaine action et brouillon de relance en un clic). « Tous les
+ * contacts » : toutes les personnes, ligne par ligne, façon Airtable. Chaque
+ * formulaire du site crée automatiquement une ligne « À appeler »
+ * (api/contact.ts → api/_erp-crm.ts) ; l'équipe la fait avancer d'étape en
+ * étape. Mise à jour en direct (Supabase Realtime). Rien n'est envoyé aux
+ * contacts depuis l'ERP.
  */
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, CalendarPlus, FileText, PhoneCall, Plus } from 'lucide-react';
-import { aTraiterLe, idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
+import { idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
+import { fileDuJour } from '../../data/crm-assistant';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { aideCrmVide, dossierProprietaireDisponible } from '../../data/marque-espace';
 import { useErp } from '../../data/store';
 import type { ContactCrm } from '../../data/types';
-import { Alert, Button, EmptyState, Field, FilterChips, Input, MenuActions, Modal, PageHeader, SearchInput, Textarea, Toolbar, useRechercheUrl } from '../../ui';
+import { Alert, Button, EmptyState, Field, FilterChips, Input, MenuActions, Modal, PageHeader, SearchInput, Segmente, Textarea, Toolbar, useRechercheUrl } from '../../ui';
 import { AgendaCrm } from './_composants/AgendaCrm';
 import { ConnecterClaude } from './_composants/ConnecterClaude';
 import { EnvoyerDossier } from './_composants/EnvoyerDossier';
 import { FicheContact } from './_composants/FicheContact';
+import { FileDuJour } from './_composants/FileDuJour';
 import { Grille } from './_composants/Grille';
 import { ListeMobile } from './_composants/ListeMobile';
+import { PreparerRelance } from './_composants/PreparerRelance';
 
-const FILTRE_JOUR = 'aujourdhui';
-
-const aTraiterAujourdhui = (c: ContactCrm) => aTraiterLe(c, AUJOURDHUI);
+type Vue = 'jour' | 'tous';
 
 function NouveauContact({ ouvert, onFermer, contacts, onOuvrir }: { ouvert: boolean; onFermer: () => void; contacts: ContactCrm[]; onOuvrir: (id: string) => void }) {
   const { upsert, utilisateur } = useErp();
@@ -145,28 +150,40 @@ export default function Crm() {
   const [nouveau, setNouveau] = useState(false);
 
   const ouvert = params.get('contact');
-  const ouvrir = (id: string | null) =>
+  const relance = params.get('relance');
+  // Changer des paramètres de l'adresse (fiche, relance, vue) en une fois, sans toucher aux autres.
+  const regler = (changements: Record<string, string | null>) =>
     setParams(
       (p) => {
         const n = new URLSearchParams(p);
-        if (id) n.set('contact', id);
-        else n.delete('contact');
+        for (const [cle, valeur] of Object.entries(changements)) {
+          if (valeur) n.set(cle, valeur);
+          else n.delete(cle);
+        }
         return n;
       },
       { replace: true },
     );
+  const ouvrir = (id: string | null) => regler({ contact: id, ...(id ? { relance: null } : {}) });
+  // « Préparer la relance » : le brouillon est demandé dès l'ouverture (un clic).
+  const [relanceAuto, setRelanceAuto] = useState(false);
+  const preparerRelance = (id: string | null, auto = true) => {
+    setRelanceAuto(auto);
+    regler({ relance: id, ...(id ? { contact: null } : {}) });
+  };
 
   const modifier = (c: ContactCrm) => upsert('crm', { ...c, majLe: horodatageMaintenant() });
 
-  const aujourdhui = crm.filter(aTraiterAujourdhui).length;
+  // La file du jour (assistant CRM) : même règle que « À faire » de l'Accueil et l'agenda.
+  const file = useMemo(() => fileDuJour(crm, AUJOURDHUI), [crm]);
+  const aujourdhui = file.length;
+  const vue: Vue = params.get('vue') === 'tous' || (params.get('vue') !== 'jour' && !aujourdhui) ? 'tous' : 'jour';
 
   const visibles = useMemo(() => {
     const t = q.trim().toLowerCase();
     const chiffres = telephoneNormalise(t);
     return crm.filter((c) => {
-      if (filtres.includes(FILTRE_JOUR) && !aTraiterAujourdhui(c)) return false;
-      const etapes = filtres.filter((x) => x !== FILTRE_JOUR);
-      if (etapes.length && !etapes.includes(c.statut)) return false;
+      if (filtres.length && !filtres.includes(c.statut)) return false;
       if (!t) return true;
       return (
         [c.nom, c.email, c.ville, c.typeBien, c.notes].some((v) => (v ?? '').toLowerCase().includes(t)) ||
@@ -192,7 +209,26 @@ export default function Crm() {
         }
       />
 
-      {crm.length === 0 ? (
+      {crm.length > 0 && (
+        <Segmente
+          className="mb-4"
+          label="Vue du CRM"
+          valeur={vue}
+          onChange={(v) => regler({ vue: v })}
+          options={[
+            { valeur: 'jour', libelle: 'Aujourd’hui' },
+            { valeur: 'tous', libelle: 'Tous les contacts' },
+          ]}
+        />
+      )}
+
+      {crm.length > 0 && vue === 'jour' ? (
+        file.length ? (
+          <FileDuJour entrees={file} onOuvrir={ouvrir} onRelance={(id) => preparerRelance(id)} lectureSeule={lectureSeule} />
+        ) : (
+          <EmptyState icone={<PhoneCall />} titre="Personne à appeler aujourd’hui." action={<Button variant="ghost" onClick={() => regler({ vue: 'tous' })}>Voir tous les contacts</Button>} />
+        )
+      ) : crm.length === 0 ? (
         <EmptyState
           icone={<PhoneCall />}
           titre="Aucun contact pour l’instant"
@@ -214,10 +250,7 @@ export default function Crm() {
               label="Filtrer par étape"
               actifs={filtres}
               onChange={setFiltres}
-              filtres={[
-                { cle: FILTRE_JOUR, libelle: 'Aujourd’hui' },
-                ...STATUTS_CRM.map((s) => ({ cle: s.cle, libelle: s.libelle })),
-              ]}
+              filtres={STATUTS_CRM.map((s) => ({ cle: s.cle, libelle: s.libelle }))}
             />
           </Toolbar>
           {visibles.length ? (
@@ -246,6 +279,16 @@ export default function Crm() {
         auteur={utilisateur.nom}
         lectureSeule={lectureSeule}
         dossier={dossier}
+        onRelance={(id) => preparerRelance(id, false)}
+      />
+      <PreparerRelance
+        contact={relance ? crm.find((c) => c.id === relance) : undefined}
+        auto={relanceAuto}
+        onFermer={() => preparerRelance(null, false)}
+        onModifier={modifier}
+        onOuvrirFiche={(id) => ouvrir(id)}
+        auteur={utilisateur.nom}
+        lectureSeule={lectureSeule}
       />
       {gerant && <ConnecterClaude ouvert={claude} onFermer={() => setClaude(false)} demo={mode !== 'reel'} />}
       {gerant && <AgendaCrm ouvert={agenda} onFermer={() => setAgenda(false)} demo={mode !== 'reel'} />}

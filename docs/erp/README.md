@@ -159,6 +159,19 @@ node_modules/.bin/esbuild src/erp/data/verifier-messages-programmes.ts --bundle 
 node_modules/.bin/esbuild src/erp/data/verifier-annonces-equipe.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-annonces-equipe.mjs && node /tmp/verifier-annonces-equipe.mjs
+
+# Briefing du matin : texte exact, aucun chiffre inventé, aucun nom dans la
+# notification, mêmes nombres que « À faire », prix et factures au gérant
+# seulement, fenêtre 7 h – midi à Paris, une fois par jour même à deux passages.
+node_modules/.bin/esbuild src/erp/data/verifier-briefing.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-briefing.mjs && node /tmp/verifier-briefing.mjs
+
+# Assistant CRM : propriétaire ou apporteur, score expliqué, file du jour,
+# prochaine action, garde-fous des relances, fausse IA (plafond, rien d'envoyé).
+node_modules/.bin/esbuild src/erp/data/verifier-crm-assistant.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-crm-assistant.mjs && node /tmp/verifier-crm-assistant.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -305,11 +318,11 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 
 | Rubrique | Contenu | Routes |
 |---|---|---|
-| Accueil | « À faire » (voyageurs qui attendent, synchronisation en échec, avis sous 4,5, infos manquantes pour l'agent, contacts à appeler), arrivées / départs / sur place (aujourd'hui, ou une période choisie au calendrier : `ChoixPeriode.tsx`), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
+| Accueil | « Votre journée » (briefing du matin : arrivées, départs, logements occupés ce soir, puis « À faire » : voyageurs qui attendent, synchronisation en échec, avis, infos manquantes pour l'agent, contacts à appeler, alertes, et pour le gérant prix à revoir et factures à valider), arrivées / départs / sur place (cette semaine, ou une période choisie au calendrier : `ChoixPeriode.tsx`), 4 repères sur 30 jours (occupation, revenu versé par les plateformes, prix moyen par nuit, note), 2 courbes (revenu par mois sur 12 mois, occupation par semaine) | `/erp` |
 | Logements | Cartes (photo, prochain événement, prix par nuit ou occupation, note) ; fiche en 3 onglets : Aperçu (galerie, 3 repères, prochains séjours, l'annonce, couchage, prix des prochaines semaines et prix de base lus sur les plateformes, propriétaire, logement, conditions, plateformes, Administratif), Infos pour l'agent (ce que lit l'agent IA), Historique (séjours et journal) ; Connexions | `/erp/logements` (`/:id?onglet=fiche\|historique`, `/connexions`) |
 | Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
 | Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Votre agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
-| CRM | Appels et relances (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
+| CRM | « Aujourd’hui » (file priorisée de l'assistant CRM, prochaine action, brouillon de relance) · « Tous les contacts » (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` (`?vue=tous`, `?contact=`, `?relance=`) |
 | Paramètres | Équipe, Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Annonces à l'équipe (gérant), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/application`, `/annonces-equipe`, `/societe`) |
 
 Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
@@ -1191,6 +1204,75 @@ sans message en attente n'appelle pas Claude.
   3. Clés (`api/_agenda.ts`, route gérant `/api/erp-agenda`) : 256 bits, montrées une seule fois ; la collection `connecteurs` n'en garde que l'empreinte SHA-256. Un lien par espace, comme les jetons de Claude : rangé dans l'espace du gérant qui le crée, préfixé par l'espace hors Label Maison (liens de Label Maison inchangés), il ne donne que le CRM de cet espace (calendrier à son nom). « Couper tous les liens… » révoque ceux de l'espace ouvert (effet en 1 min au plus, l'agenda abonné garde sa dernière copie). Le lien donne noms et téléphones des contacts : à garder pour soi. RGPD : Apple (iCloud) et Google (Agenda) figurent parmi les sous-traitants de la politique de confidentialité.
 
 
+## Briefing du matin et assistant CRM (octobre 2026)
+
+**Briefing du matin (A12)** : la journée en quelques phrases, calculée
+**sans IA** sur les vraies données (`src/erp/data/briefing.ts`, contrôles
+`verifier-briefing.ts`) : arrivées, départs et logements occupés ce soir,
+urgences, voyageurs qui attendent l'équipe (`attendEquipe`), incidents,
+avis à déposer, notes sous 4,5, personnes à appeler (file de l'assistant
+CRM), alertes (anomalies, mise à jour des plateformes en échec) et, pour le
+gérant seulement, prix à revoir et factures mensuelles à valider. Chaque
+sujet reprend la définition déjà utilisée par « À faire » (mêmes nombres,
+vérifiés sur la démonstration) ; un membre non gérant n'y voit ni prix ni
+facture.
+
+- **À l'écran** : un seul bloc en haut de l'Accueil, « Votre journée »
+  (`tableau-de-bord/_composants/Briefing.tsx`). Il remplace la carte
+  « À faire » et les tuiles du jour au lieu de s'y ajouter : première ligne,
+  la journée (arrivées, départs, logements occupés, prénoms et logements) ;
+  ensuite les sujets de « À faire », une phrase chacun, « Tout voir » pour le
+  détail, et « … » → « Copier le briefing ». Les tuiles « Arrivées et
+  départs » plus bas montrent désormais la semaine (ou la période choisie,
+  « Aujourd’hui » compris). Base encore vide : « À faire » seul, comme avant.
+- **Notification « Briefing du matin »** (type `rappel` gardé : les
+  préférences des appareils restent valables ; éteinte par défaut comme
+  l'ancien rappel) : le passage planifié de l'agent (`api/erp-agent.ts` →
+  `api/_briefing.ts` → `src/erp/data/briefing-passage.ts`) l'envoie de 7 h à
+  midi (Paris), une fois par jour et par espace (état
+  `connecteurs/briefing-etat`, écrit sous condition avant l'envoi). Corps
+  sans aucun nom (écran verrouillé), le plus pressant d'abord ; version du
+  gérant (prix, factures) pour ses appareils (`VarianteNotification.gerant`),
+  celle de l'équipe pour les autres. Le 1er, il attend jusqu'à 10 h que les
+  brouillons des factures du mois soient prêts. L'ancien rappel de la
+  synchronisation de 4 h 17 UTC est retiré (trop tôt).
+- Pas de version reformulée par l'IA : le texte calculé est déjà en
+  français courant, juste sans clé IA, et ne peut pas inventer un chiffre.
+
+**Assistant CRM (A11)** (`src/erp/data/crm-assistant.ts`, contrôles
+`verifier-crm-assistant.ts`) : CRM → « Aujourd’hui ».
+
+- **File « à appeler / à relancer aujourd’hui »** : la règle du CRM
+  (`aTraiterLe` : nouvelles demandes et relances échues, comme « À faire »
+  et l'agenda), triée par un **score expliqué** (« Pourquoi en tête de la
+  file ? ») : étape (nouvelle demande 40, à rappeler 30, rendez-vous 25,
+  échange en cours 20, en attente 10), relance du jour 15 ou en retard 15 +
+  1 par jour (10 au plus), demande du jour 15 / de la veille 10 / de la
+  semaine 5, sans nouvelles depuis 14 jours 5, source (dossier 15, audit 10,
+  accueil 5, contact 3), propriétaire 10 ou apporteur 5, 3 appels sans
+  réponse −10, ni téléphone ni e-mail −20.
+- **Propriétaire ou apporteur** : champ `profil` du contact (fiche →
+  « Profil ») ; absent, déduit de la source (candidature au Cercle =
+  apporteur). Aucune migration : le champ vit dans le JSON du contact.
+- **Prochaine action** en une phrase (appeler, écrire après deux appels sans
+  réponse, confirmer un rendez-vous, prendre des nouvelles…).
+- **« Préparer la relance »** (un clic) : brouillon SMS ou e-mail rédigé par
+  l'IA au ton de la maison, vouvoiement (`POST /api/erp-agent { action:
+  'crm_relance', contactId, canal }` → `api/_crm-assistant.ts` →
+  `src/erp/data/crm-relance.ts`), éditable, « Copier ». **Rien n'est
+  envoyé** : l'ERP n'envoie ni e-mail ni SMS ; « C’est envoyé » note la
+  relance dans l'historique et fixe la suivante (3 jours, 7 après un premier
+  échange). Le contact est relu dans la base ; ni son téléphone ni son
+  e-mail ne partent à l'IA ; plafond mensuel de l'IA de l'espace
+  (`compterAppelIA`), 20 brouillons par quart d'heure et par membre.
+  Brouillon écarté s'il contient un lien, une adresse, un numéro, un
+  montant, du tutoiement ou un chiffre absent de la fiche ; IA absente,
+  plafond atteint ou brouillon écarté : un modèle sans IA à compléter (aussi
+  en démonstration).
+- **Connecteur Claude** : `crm_resume` rend la même file, dans le même ordre,
+  avec priorité, pourquoi, prochaine action et profil. Lecture seule, aucun
+  outil d'écriture ajouté.
+
 ## App installable et notifications (octobre 2026)
 
 L'ERP s'installe comme une app (sans App Store) : icône sur l'écran d'accueil
@@ -1251,7 +1333,7 @@ réactiver ses notifications.
 ### Les notifications
 
 Un interrupteur par type, réglé par appareil (Paramètres → Application). Tout
-est activé par défaut, sauf le rappel du matin. Un toucher ouvre le bon écran.
+est activé par défaut, sauf le briefing du matin. Un toucher ouvre le bon écran.
 
 | Type | Quand | Ouvre |
 |---|---|---|
@@ -1263,7 +1345,7 @@ est activé par défaut, sauf le rappel du matin. Un toucher ouvre le bon écran
 | Problème signalé dans un logement | Raison « litige » de l'agent, ou mots d'un problème en français ou en anglais (panne, fuite, clé, bruit, ménage…) | la conversation |
 | Nouvel avis | Avec la note ; « Avis à lire » sous 4,5 | la réservation |
 | Mise à jour des plateformes en échec | Une fois par jour au plus | Paramètres → Plateformes |
-| Rappel du matin | Arrivées et départs du jour (cron du matin) | l'Accueil |
+| Briefing du matin | Le point de la journée, une fois par jour à partir de 7 h (passage planifié de l'agent ; version du gérant avec prix et factures). Ancien « Rappel du matin » : même réglage, préférences gardées | l'Accueil |
 | Annonce à l'équipe | Le gérant publie une annonce avec « Prévenir aussi par notification » (une seule fois par annonce, jamais une annonce retirée) | l'Accueil |
 
 Un même message ne donne qu'**une** notification, la plus importante pour

@@ -25,8 +25,8 @@ import {
   notificationsEntre,
   preferencesPourRole,
   prenomInitiale,
-  rappelDuMatin,
   synchroEnEchec,
+  TYPES_NOTIFICATION,
   typePourRole,
   varianteAEnvoyer,
   type ContexteDemandeNotifications,
@@ -294,10 +294,17 @@ async function principal() {
 
   section('Notifications planifiées et préférences');
   {
-    const r = rappelDuMatin([resa('a', { arrivee: '2026-10-26', depart: '2026-10-28' }), resa('b', { arrivee: '2026-10-20', depart: '2026-10-26', logementId: 'l2' }), resa('c', { arrivee: '2026-10-26', statut: 'annulee' })], LOGEMENTS, '2026-10-26');
-    verifier(r?.cle === 'rappel-2026-10-26' && r.variantes[0].titre === 'Aujourd’hui : 1 arrivée, 1 départ' && r.variantes[0].type === 'rappel', `rappel du matin (${JSON.stringify(r?.variantes[0])})`);
-    verifier(rappelDuMatin([], LOGEMENTS, '2026-10-26') === null, 'rien aujourd’hui : pas de rappel');
-    verifier(varianteAEnvoyer(r!, {}) === undefined && varianteAEnvoyer(r!, { rappel: true })?.type === 'rappel', 'rappel désactivé par défaut');
+    // Briefing du matin (type « rappel », détaillé dans verifier-briefing.ts) : une version gérant, une version équipe.
+    const r: GroupeNotification = {
+      cle: 'briefing-2026-10-26',
+      variantes: [
+        { type: 'rappel', titre: 'Briefing du matin', corps: 'Avec les prix.', url: '/erp', gerant: true },
+        { type: 'rappel', titre: 'Briefing du matin', corps: 'Sans les prix.', url: '/erp' },
+      ],
+    };
+    verifier(varianteAEnvoyer(r, {}) === undefined && varianteAEnvoyer(r, { rappel: true })?.corps === 'Sans les prix.', 'briefing du matin désactivé par défaut ; activé : la version de l’équipe');
+    verifier(varianteAEnvoyer(r, { rappel: true }, 'gerant')?.corps === 'Avec les prix.' && varianteAEnvoyer(r, { rappel: true }, 'operations')?.corps === 'Sans les prix.', 'variante « gérant » : seulement l’appareil d’un gérant');
+    verifier(TYPES_NOTIFICATION.find((t) => t.type === 'rappel')?.libelle === 'Briefing du matin', 'réglage : « Briefing du matin » (même clé « rappel », préférences gardées)');
     const s = synchroEnEchec('2026-10-26', 'Repull ne répond pas');
     verifier(s.cle === 'synchro-2026-10-26' && s.variantes[0].url === '/erp/parametres/plateformes', 'synchronisation en échec : une par jour, vers Plateformes');
     verifier(JSON.stringify(nettoyerPreferences({ message: false, inconnu: true, avis: 'oui' })) === '{"message":false}', 'préférences nettoyées (types connus, booléens)');

@@ -7,13 +7,16 @@
 //   POST { action: 'brouillon' | 'traduire' | 'traduire_texte', ... }
 //                              assistant de réponse : réponse proposée (rien
 //                              n'est envoyé), traductions (api/_erp-agent-assistant.ts)
+//   POST { action: 'crm_relance', ... } brouillon de relance du CRM (rien
+//                              n'est envoyé : api/_crm-assistant.ts)
 //   GET|POST avec Authorization: Bearer CRON_SECRET → passage planifié
 //     (cron Vercel quotidien, et pg_cron de Supabase toutes les 30 min :
 //     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour ;
 //     après l'agent : messages automatiques dus et avis à préparer
 //     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts) ;
 //     il prépare aussi, à partir du 1er, les brouillons des factures
-//     mensuelles des propriétaires (api/_factures-mensuelles.ts)
+//     mensuelles des propriétaires (api/_factures-mensuelles.ts) et envoie, à
+//     partir de 7 h, le briefing du matin (api/_briefing.ts)
 //
 // Authentification des membres : Authorization: Bearer <jeton de session
 // Supabase>, gérant ou opérations de l'espace de l'en-tête x-erp-espace
@@ -28,6 +31,8 @@ import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { ReglagesAgent } from '../src/erp/data/types';
 import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { ACTIONS_ASSISTANT, repondreAssistant } from './_erp-agent-assistant.js';
+import { briefingDuJour } from './_briefing.js';
+import { ACTIONS_CRM, repondreCrm } from './_crm-assistant.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { facturesMensuellesDuJour } from './_factures-mensuelles.js';
@@ -56,22 +61,26 @@ export default async function handler(req: any, res: any) {
   let espace: string | undefined;
   let email = '';
   if (planifie) {
-    // Trois travaux indépendants, lancés ensemble (8 s au plus en tout, jamais bloquants),
+    // Quatre travaux indépendants, lancés ensemble (8 s au plus en tout, jamais bloquants),
     // pour laisser à l'agent des voyageurs l'essentiel du temps du passage :
     // - app « Opérations » : remplacements qui commencent, contrôles qualité du jour, au
     //   premier passage à partir de 7 h à Paris (rien avant, même le réveil de minuit l'été) ;
     // - prix conseillés (un calcul et une notification par jour, à partir de 8 h) et anomalies
     //   graves : lecture de la base seulement, aucun prix n'est jamais envoyé aux plateformes ;
     // - factures mensuelles des propriétaires : brouillons du mois terminé, à partir du 1er
-    //   (une fois par mois et par espace ; ensuite une seule lecture).
-    const [operations, prix, factures] = await Promise.all([
+    //   (une fois par mois et par espace ; ensuite une seule lecture) ;
+    // - briefing du matin : une notification par jour et par espace, de 7 h à midi, aux
+    //   appareils qui l'ont activée (texte calculé sans IA).
+    const [operations, prix, factures, briefing] = await Promise.all([
       notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({})),
       passagePrixDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
       facturesMensuellesDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
+      briefingDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
     ]);
     if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
     if (Object.keys(prix).length) console.log('[erp-agent] prix', JSON.stringify(prix));
     if (Object.keys(factures).length) console.log('[erp-agent] factures', JSON.stringify(factures));
+    if (Object.keys(briefing).length) console.log('[erp-agent] briefing', JSON.stringify(briefing));
   }
   if (!planifie) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
@@ -113,6 +122,8 @@ export default async function handler(req: any, res: any) {
     if (planifie || req.method !== 'POST') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
     return repondreAssistant(res, action, corps, espace, email);
   }
+  // Assistant CRM : brouillon de relance, membres seulement, rien n'est envoyé.
+  if (ACTIONS_CRM.has(action)) return planifie || req.method !== 'POST' ? repondre(res, 400, { ok: false, erreur: 'Action inconnue.' }) : repondreCrm(res, action, corps, espace, email);
 
   if (action !== 'lancer' || (!planifie && req.method !== 'POST')) return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
   const manque = variableManquante(c);

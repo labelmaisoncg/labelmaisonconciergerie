@@ -27,7 +27,7 @@
 
 import { lancer, texteErreur, verifierMembre, type DeclencheurRepull, type ResultatLancement } from '../src/erp/data/repull-synchro.js';
 import { dateParis } from '../src/erp/data/repull.js';
-import { rappelDuMatin, synchroEnEchec } from '../src/erp/data/notifications.js';
+import { synchroEnEchec } from '../src/erp/data/notifications.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
 import { baseErp, configuration, egalConstant, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { agentApresSynchro } from './_erp-agent.js';
@@ -113,7 +113,8 @@ async function passage(c: ConfigRepullErp, declencheur: DeclencheurRepull, echea
   const base = baseErp(c);
   const aujourdhui = dateParis(new Date());
   // Notifications de ce que le passage apporte (réservations, messages, réponses de l'agent),
-  // rappel du matin au passage quotidien, échec signalé une fois par jour.
+  // échec signalé une fois par jour. Le briefing du matin part du passage planifié de l'agent
+  // (à partir de 7 h à Paris, api/_briefing.ts), plus de celui-ci (4 h 17 UTC, trop tôt).
   return surveiller(
     base,
     async () => {
@@ -135,13 +136,7 @@ async function passage(c: ConfigRepullErp, declencheur: DeclencheurRepull, echea
     },
     {
       limite: Math.min(echeance + 8_000, debut + 58_000),
-      apres: ({ r }, photo) => {
-        const plus = [];
-        if (r.bilan?.erreurs?.length) plus.push(synchroEnEchec(aujourdhui, r.bilan.erreurs[0]));
-        const rappel = declencheur === 'cron' && photo ? rappelDuMatin(photo.reservations, photo.logements, aujourdhui) : null;
-        if (rappel) plus.push(rappel);
-        return plus;
-      },
+      apres: ({ r }) => (r.bilan?.erreurs?.length ? [synchroEnEchec(aujourdhui, r.bilan.erreurs[0])] : []),
       enEchec: (e) => [synchroEnEchec(aujourdhui, texteErreur(e))],
     },
   );

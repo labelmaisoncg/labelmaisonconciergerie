@@ -37,7 +37,8 @@ const ligne = (
 export function creerContactsCrm(): ContactCrm[] {
   return [
     ligne(1, 'Sophie Martin', 'a_appeler', 'audit', 'Massy', 'T2 meublé', 0, { message: 'T2 près de la gare, libre en novembre.' }),
-    ligne(2, 'Karim Benali', 'a_appeler', 'accueil', 'Évry-Courcouronnes', 'Studio', 0, { message: 'Studio rénové, je veux savoir combien ça peut rapporter.' }),
+    // Candidature au Cercle : un apporteur (il recommande des propriétaires), pas un propriétaire.
+    ligne(2, 'Karim Benali', 'a_appeler', 'cercle', 'Évry-Courcouronnes', 'Studio', 0, { message: 'Un voisin cherche une conciergerie pour son studio rénové.' }),
     ligne(3, 'Julie Moreau', 'a_rappeler', 'audit', 'Juvisy-sur-Orge', 'T3', 2, {
       tentatives: 2,
       relanceLe: AUJOURDHUI,
