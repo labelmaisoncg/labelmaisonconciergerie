@@ -40,7 +40,7 @@ import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import type { AccesOperations } from '../src/erp/data/types-operations';
 import { continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
-import { accesParEmail, baseAcces, cookieSessionEfface, entrerAvecLien, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
+import { GENRES, accesParEmail, avecEmailFiche, baseAcces, cookieSessionEfface, entrerAvecLien, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
 import {
   deposerPhoto,
   ecrireAccesOps,
@@ -115,7 +115,9 @@ export default async function handler(req: any, res: any) {
       const email = normaliserEmail(corps.email);
       if (!emailValide(email)) return repondre(res, 400, { ok: false, erreur: 'Adresse e-mail invalide.' });
       const jeton = await nouveauJeton();
-      const acces = avecNouveauLien(inviterMembre(precedent, { membreId, espace: g.espace, email, par: g.email, maintenantMs: maintenant }), await empreinteJeton(jeton), 'invitation', maintenant);
+      // L'adresse de la fiche est relevée : si elle change ensuite sans « Retirer », l'accès ne vaut plus.
+      const invite = avecEmailFiche('operations', inviterMembre(precedent, { membreId, espace: g.espace, email, par: g.email, maintenantMs: maintenant }), membre);
+      const acces = avecNouveauLien(invite, await empreinteJeton(jeton), 'invitation', maintenant);
       await ecrireAccesOps(b, acces);
       const lien = lienDAcces(req, 'operations', g.espace, jeton);
       const envoye = await envoyerLienOps(await ficheEspace(g.espace).catch(() => undefined), { email, nom: membre.nom, lien, motif: 'invitation' });
@@ -132,12 +134,13 @@ export default async function handler(req: any, res: any) {
       if (tropDeDemandes(adresseIp(req)) || tropPourCetteAdresse(email)) return repondre(res, 200, { ok: true, message: REPONSE_LIEN });
       // Écriture et envoi après la réponse quand la plateforme le permet : même délai de réponse, que l'adresse ait un accès ou non.
       const envoi = (async () => {
-        for (const { fiche, acces, base } of await accesParEmail<AccesOperations>('operations', email)) {
+        for (const { fiche, acces, base, version } of await accesParEmail<AccesOperations>('operations', email)) {
           const membre = await lireMembre(base, acces.membreId);
           if (!membre?.actif) continue;
           const maintenant = Date.now();
           const jeton = await nouveauJeton();
-          await ecrireAccesOps(base, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant));
+          // Conditionnelle : n'écrase pas un lien utilisé au même moment (il redeviendrait valable).
+          if (!(await base.remplacerSi(GENRES.operations.collection, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant), version, 'espace-operations'))) continue;
           await envoyerLienOps(fiche, { email, nom: membre.nom, lien: lienDAcces(req, 'operations', fiche.id, jeton), motif: 'connexion' });
         }
       })().catch((e) => console.error('[espace-operations] lien', e instanceof Error ? e.message : e));

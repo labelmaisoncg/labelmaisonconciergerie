@@ -1,6 +1,7 @@
 /**
  * Factures d'un propriétaire, côté gérant : partager (ou ne plus partager)
- * chaque facture dans son espace propriétaire, joindre son PDF.
+ * chaque facture dans son espace propriétaire, joindre son PDF. Gérant
+ * seulement (comme les accès et les relances) ; les autres voient la liste.
  *
  * Monté dans le panneau « Espace propriétaire » (fiche logement et
  * Paramètres → Accès), après « Bilans mensuels ». Les factures passent par le
@@ -23,8 +24,10 @@ const STATUT: Record<StatutFactureVue, { libelle: string; ton: Ton }> = {
 
 export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Proprietaire }) {
   const d = useErp();
+  const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
+  // Factures adressées au propriétaire seulement (une facture voyageur ne se partage pas).
   const factures = d.donnees.factures
-    .filter((f) => f.proprietaireId === p.id && f.statut !== 'brouillon' && f.statut !== 'annulee')
+    .filter((f) => f.destinataire === 'proprietaire' && f.proprietaireId === p.id && f.statut !== 'brouillon' && f.statut !== 'annulee')
     .sort((a, b) => b.dateEmission.localeCompare(a.dateEmission));
   const pdfDe = (f: Facture) => d.donnees.documentsProprietaire.find((x) => x.factureId === f.id && x.proprietaireId === p.id);
   const maintenant = () => new Date().toISOString();
@@ -76,29 +79,35 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
                         <FileText className="size-3.5" aria-hidden />
                         PDF
                       </LienFichier>
-                      <IconButton label={`Retirer le PDF de ${f.numero}`} size="sm" onClick={() => d.remove('documentsProprietaire', pdf.id)} disabled={d.lectureSeule}>
-                        <X />
-                      </IconButton>
+                      {gerant && (
+                        <IconButton label={`Retirer le PDF de ${f.numero}`} size="sm" onClick={() => d.remove('documentsProprietaire', pdf.id)}>
+                          <X />
+                        </IconButton>
+                      )}
                     </>
                   ) : (
-                    <EnvoiFichier
-                      dossier={`proprietaires/${p.id}`}
-                      accept="application/pdf"
-                      libelle="Joindre le PDF"
-                      variant="ghost"
-                      disabled={d.lectureSeule}
-                      onEnvoye={(urls, fichiers) => joindre(f, urls, fichiers)}
-                    />
+                    gerant && (
+                      <EnvoiFichier
+                        dossier={`proprietaires/${p.id}`}
+                        accept="application/pdf"
+                        libelle="Joindre le PDF"
+                        variant="ghost"
+                        onEnvoye={(urls, fichiers) => joindre(f, urls, fichiers)}
+                      />
+                    )
                   )}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icone={f.partageeLe ? undefined : <Share2 />}
-                    disabled={d.lectureSeule}
-                    onClick={() => d.upsert('factures', f.partageeLe ? retirerPartageFacture(f) : partagerFacture(f, maintenant()))}
-                  >
-                    {f.partageeLe ? 'Ne plus partager' : 'Partager'}
-                  </Button>
+                  {gerant ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icone={f.partageeLe ? undefined : <Share2 />}
+                      onClick={() => d.upsert('factures', f.partageeLe ? retirerPartageFacture(f) : partagerFacture(f, maintenant()))}
+                    >
+                      {f.partageeLe ? 'Ne plus partager' : 'Partager'}
+                    </Button>
+                  ) : (
+                    <span className="text-[13px] text-(--lm-encre-2)">{f.partageeLe ? 'Partagée' : 'Pas partagée'}</span>
+                  )}
                 </div>
               </li>
             );

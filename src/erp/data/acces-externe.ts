@@ -36,11 +36,39 @@ export interface AccesExterne {
   /** Espace qui a créé l'accès ; absent (accès d'avant les espaces) : Label Maison. */
   espace?: string;
   derniereConnexion?: string;
+  /** Adresse de la fiche (propriétaire, membre de l'équipe) relevée à l'invitation ('' : fiche sans adresse). */
+  emailFiche?: string;
 }
 
 /** Espace d'un accès, d'un lien ou d'une session : Label Maison si absent ou illisible. */
 export function espaceDe(espace: unknown): string {
   return idEspaceValide(espace) ? espace.toLowerCase() : ID_LABEL_MAISON;
+}
+
+const adresse = (v: unknown): string => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+
+/**
+ * L'accès vaut toujours pour la personne de la fiche : si le gérant a mis une
+ * autre adresse dans la fiche (personne partie) sans « Retirer », l'ancienne
+ * adresse ne reçoit plus de lien et sa session tombe.
+ * - fiche introuvable : non ;
+ * - adresse de la fiche = celle de l'accès : oui ;
+ * - sinon : oui seulement si c'est encore l'adresse relevée à l'invitation ;
+ * - accès d'avant ce relevé : oui seulement si la fiche n'a pas d'adresse.
+ */
+export function accesToujoursDeLaFiche(acces: AccesExterne, fiche: { email?: unknown } | undefined): boolean {
+  if (!fiche) return false;
+  const actuelle = adresse(fiche.email);
+  if (actuelle && actuelle === adresse(acces.email)) return true;
+  return typeof acces.emailFiche === 'string' ? actuelle === adresse(acces.emailFiche) : actuelle === '';
+}
+
+/** Délai entre deux liens de connexion demandés pour un même accès (« Recevoir mon lien »). */
+export const DELAI_ENTRE_LIENS_MS = 2 * 60_000;
+
+/** Un lien de connexion a déjà été envoyé à cet accès il y a moins de DELAI_ENTRE_LIENS_MS. */
+export function lienDeConnexionRecent(acces: AccesExterne, maintenantMs: number): boolean {
+  return (acces.liens ?? []).some((l) => l?.motif === 'connexion' && maintenantMs - Date.parse(l.creeLe) < DELAI_ENTRE_LIENS_MS);
 }
 
 /* ------------------------------------------------------------------ lien */

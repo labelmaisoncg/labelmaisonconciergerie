@@ -5,8 +5,43 @@
 // Un fichier préfixé par « _ » n'est pas exposé comme route par Vercel.
 // =============================================================================
 
-/** Pages autorisées à envoyer : le site, les aperçus Vercel de CE projet, le poste de développement. */
-export const ORIGINES_SITE = /^https?:\/\/((www\.)?labelmaisoncg\.fr|(www\.)?labelmaisoncgexperience\.fr|labelmaisonconciergerie-[a-z0-9-]+\.vercel\.app|localhost(:\d+)?)(\/|$)/i;
+/**
+ * Le site en production, et rien d'autre : pas de motif sur *.vercel.app
+ * (n'importe qui peut y publier une page dont le nom commence pareil).
+ */
+export const ORIGINES_SITE = /^https:\/\/(www\.)?(labelmaisoncg|labelmaisoncgexperience)\.fr(\/|$)/i;
+
+const POSTE_LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+
+/** Origine d'une adresse (« https://hote[:port] », minuscules) ; '' si illisible. */
+export function origineDe(adresse: unknown): string {
+  try {
+    const u = new URL(String(adresse ?? ''));
+    return /^https?:$/.test(u.protocol) ? u.origin.toLowerCase() : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Aperçus autorisés : variable ORIGINES_APERCU du projet Vercel, origines
+ * EXACTES séparées par des virgules (« https://mon-apercu.vercel.app »).
+ */
+export function originesApercu(): string[] {
+  return String(process.env.ORIGINES_APERCU || '')
+    .split(',')
+    .map((o) => origineDe(o.trim()))
+    .filter((o) => o.startsWith('https://'));
+}
+
+/** Page du site, aperçu déclaré, ou poste de développement (jamais sur Vercel en ligne). */
+export function origineAutorisee(adresse: unknown): boolean {
+  const o = origineDe(adresse);
+  if (!o) return false;
+  if (ORIGINES_SITE.test(o) || originesApercu().includes(o)) return true;
+  const env = process.env.VERCEL_ENV;
+  return (!env || env === 'development') && POSTE_LOCAL.test(o);
+}
 
 /**
  * Frein, pas un mur : un navigateur envoie toujours Origin sur un POST, ce qui
@@ -14,7 +49,7 @@ export const ORIGINES_SITE = /^https?:\/\/((www\.)?labelmaisoncg\.fr|(www\.)?lab
  * pour plus, Turnstile ou une règle du pare-feu Vercel).
  */
 export function provenanceSite(req: any): boolean {
-  return ORIGINES_SITE.test(String(req.headers?.origin || req.headers?.referer || ''));
+  return origineAutorisee(req.headers?.origin || req.headers?.referer || '');
 }
 
 export const adresseIp = (req: any): string => String(req.headers?.['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();

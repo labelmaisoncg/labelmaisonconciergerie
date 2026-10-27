@@ -57,14 +57,18 @@ export function montantTtcFacture(f: Pick<Facture, 'montantHtCentimes' | 'tvaPct
   return Math.round((Number(f.montantHtCentimes) || 0) * (1 + (Number(f.tvaPct) || 0) / 100));
 }
 
-/** Facture partagée avec ce propriétaire (émise, pas un brouillon ni une facture annulée). */
+/**
+ * Facture partagée avec ce propriétaire : adressée AU propriétaire (pas une
+ * facture voyageur rattachée à son logement), la sienne, émise (pas un
+ * brouillon ni une facture annulée).
+ */
 export function facturePartagee(f: Facture, proprietaireId: Id): boolean {
-  return !!f && f.proprietaireId === proprietaireId && !!f.partageeLe && f.statut !== 'brouillon' && f.statut !== 'annulee';
+  return !!f && f.destinataire === 'proprietaire' && !!proprietaireId && f.proprietaireId === proprietaireId && !!f.partageeLe && f.statut !== 'brouillon' && f.statut !== 'annulee';
 }
 
-/** Reste à payer : partagée, émise ou en retard, jamais payée. */
+/** Reste à payer : adressée à un propriétaire, partagée, émise ou en retard, jamais payée. */
 export function factureAPayer(f: Facture): boolean {
-  return !!f?.proprietaireId && !!f.partageeLe && (f.statut === 'emise' || f.statut === 'en_retard') && !f.payeeLe;
+  return !!f?.proprietaireId && f.destinataire === 'proprietaire' && !!f.partageeLe && (f.statut === 'emise' || f.statut === 'en_retard') && !f.payeeLe;
 }
 
 /** Statut vu par le propriétaire : payée, en retard (échéance passée), à payer. */
