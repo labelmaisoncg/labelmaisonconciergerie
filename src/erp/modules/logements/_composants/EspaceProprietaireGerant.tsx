@@ -406,7 +406,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
         <Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} maxLength={1200} />
       </Field>
       <div className="mt-5 border-t border-(--lm-bord) pt-5">
-        <BilanDetail bilan={{ mois, commentaire, chiffres, publieLe: publie ? existant.publieLe : undefined }} proprietaire={p.nom} />
+        <BilanDetail bilan={{ mois, commentaire, chiffres, publieLe: publie ? existant.publieLe : undefined }} proprietaire={p.nom} gerant />
       </div>
     </Modal>
   );
