@@ -24,7 +24,7 @@
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { TYPES_NOTIFICATION, notificationTest } from '../src/erp/data/notifications.js';
 import { baseErp, configuration, lireCorps, repondre, variableManquante } from './_erp-repull.js';
-import { abonnementValide, annoncerAEquipe, enregistrerAppareil, envoyerNotifications, lireAppareil, oublierAppareil, reglerAppareil } from '../src/erp/data/notifications-envoi.js';
+import { abonnementValide, annoncerAEquipe, enregistrerAppareil, envoyerNotifications, lireAppareil, majRoleAppareil, oublierAppareil, reglerAppareil } from '../src/erp/data/notifications-envoi.js';
 import { MESSAGE_ANNONCE_RESERVEE, peutAnnoncer } from '../src/erp/data/annonces-equipe.js';
 import { genererClesVapid } from '../src/erp/data/web-push.js';
 import { clesServeur } from './_erp-notifications.js';
@@ -58,8 +58,13 @@ export default async function handler(req: any, res: any) {
   if (action === 'etat' && req.method === 'GET') {
     let appareil: { preferences: unknown; nom?: string } | null = null;
     if (cles && endpoint && !variableManquante(configuration())) {
-      const a = await lireAppareil(baseErp(configuration(), membre.espace), endpoint).catch(() => undefined);
-      if (a && !a.expire) appareil = { preferences: a.preferences ?? {}, ...(a.nom ? { nom: a.nom } : {}) };
+      const base = baseErp(configuration(), membre.espace);
+      const a = await lireAppareil(base, endpoint).catch(() => undefined);
+      if (a && !a.expire) {
+        appareil = { preferences: a.preferences ?? {}, ...(a.nom ? { nom: a.nom } : {}) };
+        // Prix réservés au gérant : le rôle de qui ouvre les réglages suit l'appareil (jamais bloquant).
+        await majRoleAppareil(base, a, membre.role).catch(() => undefined);
+      }
     }
     return repondre(res, 200, { ok: true, actif: !!cles, clePublique: cles?.publique ?? null, appareil, types: TYPES_NOTIFICATION });
   }
@@ -81,12 +86,12 @@ export default async function handler(req: any, res: any) {
     if (action === 'abonner') {
       const abonnement = abonnementValide(corps.abonnement);
       if (!abonnement) return repondre(res, 400, { ok: false, erreur: 'Abonnement du navigateur illisible.' });
-      const a = await enregistrerAppareil(base, { abonnement, preferences: corps.preferences, nom: typeof corps.nom === 'string' ? corps.nom : undefined, par: membre.email });
+      const a = await enregistrerAppareil(base, { abonnement, preferences: corps.preferences, nom: typeof corps.nom === 'string' ? corps.nom : undefined, par: membre.email, role: membre.role });
       return repondre(res, 200, { ok: true, preferences: a.preferences });
     }
     if (!endpoint) return repondre(res, 400, { ok: false, erreur: 'Appareil inconnu.' });
     if (action === 'regler') {
-      const a = await reglerAppareil(base, endpoint, corps.preferences);
+      const a = await reglerAppareil(base, endpoint, corps.preferences, membre.role);
       if (!a) return repondre(res, 404, { ok: false, code: 'inconnu', erreur: 'Cet appareil n’est plus abonné : réactivez les notifications.' });
       return repondre(res, 200, { ok: true, preferences: a.preferences });
     }

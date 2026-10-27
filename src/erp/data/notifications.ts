@@ -51,6 +51,27 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;
 
+/**
+ * Types réservés au gérant : les prix conseillés ne partent jamais vers
+ * l'appareil d'un autre rôle (comme leur carte et leur ligne de l'Accueil).
+ */
+export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix'];
+
+/** Ce type se règle-t-il (et part-il) pour ce rôle ? */
+export const typePourRole = (t: TypeNotification, role: string | undefined): boolean => role === 'gerant' || !TYPES_RESERVES_GERANT.includes(t);
+
+/**
+ * Préférences d'un appareil telles qu'appliquées à l'envoi : hors gérant
+ * (rôle inconnu compris : appareil abonné avant ce réglage), les types
+ * réservés sont coupés, quel que soit le réglage enregistré.
+ */
+export function preferencesPourRole(p: PreferencesNotifications | undefined, role: string | undefined): PreferencesNotifications {
+  if (role === 'gerant') return p ?? {};
+  const r: PreferencesNotifications = { ...(p ?? {}) };
+  for (const t of TYPES_RESERVES_GERANT) r[t] = false;
+  return r;
+}
+
 const DEFAUTS = Object.fromEntries(TYPES_NOTIFICATION.map((t) => [t.type, t.defaut])) as Record<TypeNotification, boolean>;
 
 /** Ce type est-il activé sur cet appareil ? (réglage absent : valeur par défaut) */

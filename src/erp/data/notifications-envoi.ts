@@ -14,7 +14,7 @@
  *   échouer le travail surveillé.
  */
 import { COLLECTION_ANNONCES_EQUIPE, deciderEnvoiAnnonce, idAnnonceValide, MESSAGE_ANNONCE_RESERVEE, peutAnnoncer } from './annonces-equipe.js';
-import { estActive, nettoyerPreferences, notificationsEntre, varianteAEnvoyer, type GroupeNotification, type Instantane, type PreferencesNotifications } from './notifications.js';
+import { estActive, nettoyerPreferences, notificationsEntre, preferencesPourRole, varianteAEnvoyer, type GroupeNotification, type Instantane, type PreferencesNotifications } from './notifications.js';
 import type { FilMessages, Logement, Reservation } from './types';
 import { deB64url, empreinte, endpointAccepte, envoyerPush, type AbonnementPush, type ClesVapid, type ResultatEnvoi } from './web-push.js';
 
@@ -41,6 +41,12 @@ export interface Appareil {
   nom?: string;
   /** Compte qui a activé les notifications sur cet appareil. */
   par?: string;
+  /**
+   * Rôle de ce compte dans l'espace, posé par le serveur (abonnement, réglage,
+   * état) : hors gérant, les types réservés (prix) ne partent pas. Absent
+   * (appareil abonné avant) : traité comme non gérant jusqu'à sa mise à jour.
+   */
+  role?: string;
   creeLe: string;
   majLe: string;
   /** Abonnement disparu (404/410) ou désactivé : plus aucun envoi. */
@@ -82,12 +88,13 @@ export function abonnementValide(x: unknown): AbonnementPush | null {
 /** Enregistre (ou met à jour) l'appareil qui vient d'autoriser les notifications. */
 export async function enregistrerAppareil(
   base: BaseNotifications,
-  o: { abonnement: AbonnementPush; preferences?: unknown; nom?: string; par?: string; maintenant?: Date },
+  o: { abonnement: AbonnementPush; preferences?: unknown; nom?: string; par?: string; role?: string; maintenant?: Date },
 ): Promise<Appareil> {
   const le = (o.maintenant ?? new Date()).toISOString();
   const avant = await lireAppareil(base, o.abonnement.endpoint);
   const nom = o.nom ? String(o.nom).slice(0, 40) : avant?.nom;
   const par = o.par ?? avant?.par;
+  const role = o.par ? o.role : (o.role ?? avant?.role);
   const appareil: Appareil = {
     id: await idAppareil(o.abonnement.endpoint),
     type: 'notifications-appareil',
@@ -96,6 +103,7 @@ export async function enregistrerAppareil(
     preferences: o.preferences !== undefined ? nettoyerPreferences(o.preferences) : (avant?.preferences ?? {}),
     ...(nom ? { nom } : {}),
     ...(par ? { par } : {}),
+    ...(role ? { role } : {}),
     creeLe: avant?.creeLe ?? le,
     majLe: le,
   };
@@ -104,12 +112,23 @@ export async function enregistrerAppareil(
 }
 
 /** Préférences d'un appareil déjà abonné (null : inconnu ou désactivé). */
-export async function reglerAppareil(base: BaseNotifications, endpoint: string, preferences: unknown): Promise<Appareil | null> {
+export async function reglerAppareil(base: BaseNotifications, endpoint: string, preferences: unknown, role?: string): Promise<Appareil | null> {
   const a = await lireAppareil(base, endpoint);
   if (!a || a.expire) return null;
-  const suivant: Appareil = { ...a, preferences: nettoyerPreferences(preferences), majLe: new Date().toISOString() };
+  const suivant: Appareil = { ...a, preferences: nettoyerPreferences(preferences), ...(role ? { role } : {}), majLe: new Date().toISOString() };
   await base.ecrire(COLLECTION, [suivant], AUTEUR);
   return suivant;
+}
+
+/**
+ * Rôle du compte qui utilise cet appareil, tenu à jour à l'ouverture des
+ * réglages (appareil abonné avant que le rôle soit gardé, ou rôle changé).
+ * N'écrit que s'il change.
+ */
+export async function majRoleAppareil(base: BaseNotifications, a: Appareil, role: string | undefined): Promise<void> {
+  if (!role || a.expire || a.role === role) return;
+  const suivant: Appareil = { ...a, role, majLe: new Date().toISOString() };
+  await base.ecrire(COLLECTION, [suivant], AUTEUR);
 }
 
 /** Cet appareil ne reçoit plus rien (désactivation, ou abonnement disparu). */
@@ -170,7 +189,7 @@ export async function envoyerNotifications(
       let partie = false;
       for (const a of cibles) {
         if (expires.has(a.id)) continue;
-        const v = o.essai ? g.variantes[0] : varianteAEnvoyer(g, a.preferences);
+        const v = o.essai ? g.variantes[0] : varianteAEnvoyer(g, preferencesPourRole(a.preferences, a.role));
         if (!v) continue;
         const r = await envoyer({ endpoint: a.endpoint, keys: a.keys }, { titre: v.titre, corps: v.corps, url: v.url, tag: g.cle, type: v.type }, cles, { urgente: g.urgente });
         if (r.ok) partie = true;
