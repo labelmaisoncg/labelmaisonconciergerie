@@ -138,7 +138,7 @@ function Formulaire({ identite, espace }: { identite: IdentiteSociete & { enregi
 
         <Field
           label="Mentions sur vos factures"
-          aide="Facultatif. Sans texte de votre part, les factures d’une société (SCI…) portent les pénalités de retard et l’indemnité de 40 €."
+          aide="Facultatif. Ajouté en bas de vos factures ; pour une société (SCI…), les pénalités de retard et l’indemnité de 40 € sont toujours indiquées."
         >
           <Textarea
             rows={3}

@@ -3,10 +3,12 @@ import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import '../../erp/erp.css';
 import { espaceARetenir, lireEspaceRetenu, lireLienAcces, marqueConnexion, type EspaceRetenu } from '../../erp/data/acces-externe';
-import { MODE_DEMO } from '../../erp/data/config';
+import { completer } from '../../erp/data/collections';
+import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
 import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
+import type { ErpDonnees } from '../../erp/data/types';
 import type { VueProprietaire } from '../../erp/data/types-proprietaire';
 import { EspaceVue } from '../../erp/espace-proprietaire/EspaceVue';
 import { ONGLETS_ESPACE, type LienDocumentProps, type OngletEspace } from '../../erp/espace-proprietaire/commun';
@@ -69,10 +71,25 @@ async function appeler(methode: 'GET' | 'POST', parametres: Record<string, strin
   }
 }
 
-/** Vue de démonstration, calculée dans le navigateur sur le jeu de démo. */
+/**
+ * Jeu de l'ERP de démonstration tel que modifié sur cet appareil (factures
+ * validées et partagées, bilans publiés…) ; null : pas encore ouvert ici.
+ */
+function donneesDemoLocales(): ErpDonnees | null {
+  try {
+    const brut = window.localStorage.getItem(CLE_DEMO);
+    const d = brut ? (JSON.parse(brut) as Partial<ErpDonnees>) : null;
+    return d && typeof d === 'object' && Array.isArray(d.logements) ? completer(d) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Vue de démonstration, calculée dans le navigateur sur le même jeu que l'ERP de démonstration. */
 async function vueDemo(proprietaireId: string, mois?: string): Promise<VueProprietaire | null> {
-  const { creerSeed } = await import('../../erp/data/seed');
-  return vueProprietaire(creerSeed(), proprietaireId, { aujourdhui: AUJOURDHUI, mois });
+  const locales = donneesDemoLocales();
+  const donnees = locales ?? (await import('../../erp/data/seed')).creerSeed();
+  return vueProprietaire(donnees, proprietaireId, { aujourdhui: AUJOURDHUI, mois });
 }
 
 function LienDocumentServeur({ id, className, children }: LienDocumentProps) {

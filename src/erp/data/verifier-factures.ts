@@ -229,6 +229,7 @@ async function main() {
     const sans = { ...donnees, mandats: donnees.mandats.filter((m) => m.id !== 'm-jardin') };
     const x = calculerFactureMois(sans, P, '2026-09');
     verifier(x.sansTaux.join() === 'Studio Jardin' && !x.lignes.some((l) => l.code === 'commission' && l.libelle.includes('Studio Jardin')), 'logement sans mandat : pas de commission, signalé au gérant');
+    verifier(x.logementsSansTaux.length === 1 && x.logementsSansTaux[0].logementId === 'log-jardin', 'logement sans mandat : son identifiant, pour ouvrir le mandat à saisir');
   }
 
   /* ---------------------------------------------------- identité par espace */
@@ -587,7 +588,17 @@ async function main() {
     const mSci = rSci.ok ? (rSci.facture.mensuelle?.emetteur?.mentions ?? '') : '';
     verifier(mSci === MENTIONS_PROFESSIONNEL && /trois fois le taux d’intérêt légal/.test(mSci) && /40 €/.test(mSci), 'propriétaire SCI : pénalités de retard et indemnité forfaitaire de 40 € mentionnées');
     verifier(rPart.ok && !rPart.facture.mensuelle?.emetteur?.mentions, 'propriétaire particulier : pas de mention de pénalités');
-    verifier(rPropres.ok && rPropres.facture.mensuelle?.emetteur?.mentions === 'Paiement à réception.', 'mentions écrites par le gérant : elles remplacent celles par défaut');
+    verifier(
+      rPropres.ok && rPropres.facture.mensuelle?.emetteur?.mentions === `${MENTIONS_PROFESSIONNEL}\nPaiement à réception.`,
+      'société avec mentions du gérant : pénalités et indemnité de 40 € TOUJOURS, puis le texte du gérant',
+    );
+    const rPartPropres = validerFacture({ ...base, proprietaire: donnees.proprietaires[0], identite: { ...IDENTITE_LABEL_MAISON, mentions: 'Paiement à réception.' } });
+    verifier(rPartPropres.ok && rPartPropres.facture.mensuelle?.emetteur?.mentions === 'Paiement à réception.', 'particulier : les mentions du gérant seulement');
+    const rDouble = validerFacture({ ...base, proprietaire: sci, identite: { ...IDENTITE_LABEL_MAISON, mentions: `${MENTIONS_PROFESSIONNEL}\nPas d’escompte.` } });
+    verifier(
+      rDouble.ok && rDouble.facture.mensuelle?.emetteur?.mentions === `${MENTIONS_PROFESSIONNEL}\nPas d’escompte.`,
+      'société : la mention légale déjà écrite par le gérant n’apparaît qu’une fois',
+    );
     const apercuSci = documentDeFacture(brouillon, { espace: LM, brouillon: { identite: IDENTITE_LABEL_MAISON, proprietaire: sci, logements: [] } })!;
     verifier(apercuSci.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'aperçu du brouillon : les mêmes mentions que la facture validée');
     const vueSci = rSci.ok ? facturesVue([partagerFacture(rSci.facture, maintenant)], P, '2026-10-05', { espace: LM.id })[0] : undefined;

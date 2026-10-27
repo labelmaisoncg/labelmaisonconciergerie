@@ -24,7 +24,7 @@ import {
   type ResultatMoteur,
 } from '../automatisations';
 import { COLLECTIONS, completer, trierJournal } from './collections';
-import { MODE, MODE_DEMO } from './config';
+import { CLE_DEMO, MODE, MODE_DEMO } from './config';
 import { logementActivable, missionValidable, prestataireConforme } from './selectors';
 import {
   attendreActivation,
@@ -64,7 +64,7 @@ import type {
 } from './types';
 
 export { COLLECTIONS };
-export const CLE_STOCKAGE = 'lm-erp-demo-v1';
+export const CLE_STOCKAGE = CLE_DEMO;
 
 export type Resultat = { ok: true } | { ok: false; erreur: string };
 

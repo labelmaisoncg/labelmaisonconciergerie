@@ -1711,10 +1711,12 @@ d'août publié et deux documents ; son espace :
   ignorés à la lecture, refusés à l'enregistrement et à la validation, et
   jamais montrés au propriétaire (`emetteurDeLabelMaison`) ; sans identité
   complète, aucune facture ne se valide. Elle donne aussi la ligne légale
-  imprimée en tête des bilans. Propriétaire société (SCI, société) : sans
-  mentions écrites par le gérant, la facture porte « Pénalités de retard :
-  trois fois le taux d’intérêt légal. Indemnité forfaitaire pour frais de
-  recouvrement : 40 €. » (`mentionsFacture`).
+  imprimée en tête des bilans. Propriétaire société (SCI, société) : la
+  facture porte toujours « Pénalités de retard : trois fois le taux
+  d’intérêt légal. Indemnité forfaitaire pour frais de recouvrement : 40 €. »,
+  puis les mentions écrites par le gérant (`mentionsFacture`). Règlement :
+  par virement sur le compte indiqué dans le mandat de gestion (jamais de
+  coordonnées bancaires sur la facture).
 - **Contrôles** : `verifier-factures.ts`.
 
 ### Sécurité des accès extérieurs (audit d'octobre 2026)

@@ -48,3 +48,6 @@ export const URL_RETOUR_MOT_DE_PASSE = 'https://www.labelmaisoncg.fr/erp';
 
 /** File d'attente des écritures non confirmées (survit à un rechargement). */
 export const CLE_FILE_ATTENTE = 'lm-erp-file-attente';
+
+/** Démo : jeu de données de l'ERP gardé sur l'appareil (lu aussi par l'aperçu de l'espace propriétaire). */
+export const CLE_DEMO = 'lm-erp-demo-v1';

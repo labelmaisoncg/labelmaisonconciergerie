@@ -150,7 +150,7 @@ export function DocumentFacture({ doc, className }: { doc: Doc; className?: stri
 
       <section className="lm-facture-bloc mt-6 space-y-2 text-[12px] text-(--lm-encre-2)">
         <p>
-          Règlement par virement{doc.brouillon ? '' : `, au plus tard le ${dateTexte(doc.echeance)}`}, en indiquant {doc.brouillon ? 'le numéro de la facture' : `« ${doc.numero} »`} en référence.
+          Règlement par virement sur le compte indiqué dans votre mandat de gestion{doc.brouillon ? '' : `, au plus tard le ${dateTexte(doc.echeance)}`}, en indiquant {doc.brouillon ? 'le numéro de la facture' : `« ${doc.numero} »`} en référence.
         </p>
         {e.mentions && <p className="whitespace-pre-line">{e.mentions}</p>}
       </section>
