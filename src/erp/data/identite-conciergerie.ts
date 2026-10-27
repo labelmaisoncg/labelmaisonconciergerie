@@ -177,8 +177,33 @@ export const identiteComplete = (i: Partial<IdentiteSociete>, espace?: Pick<Espa
 export function mentionsFacture(i: Pick<IdentiteSociete, 'mentions'>, p: Pick<Proprietaire, 'type'> | undefined): string {
   const propres = String(i.mentions ?? '').trim();
   if (!p || p.type === 'particulier') return propres;
-  const sansLegale = propres.replace(MENTIONS_PROFESSIONNEL, '').trim();
-  return [MENTIONS_PROFESSIONNEL, sansLegale].filter(Boolean).join('\n');
+  return [MENTIONS_PROFESSIONNEL, sansMentionLegale(propres)].filter(Boolean).join('\n');
+}
+
+/** Normalisée, la mention légale complète : une phrase du gérant qui y figure déjà est une copie. */
+const LEGALE_NORMALISEE = sansAccents(MENTIONS_PROFESSIONNEL);
+
+/**
+ * Texte du gérant sans les phrases de la mention légale qu'il a recopiées,
+ * quelle que soit leur saisie (apostrophe droite, une phrase par ligne,
+ * majuscules) : elle est déjà imprimée d'office.
+ */
+function sansMentionLegale(texte: string): string {
+  return texte
+    .split('\n')
+    .map((ligne) =>
+      ligne
+        .split(/(?<=[.!?])\s+/)
+        .filter((phrase) => {
+          const n = sansAccents(phrase);
+          return n.length < 12 || !LEGALE_NORMALISEE.includes(n);
+        })
+        .join(' ')
+        .trim(),
+    )
+    .filter(Boolean)
+    .join('\n')
+    .trim();
 }
 
 /** Taux de TVA facturé : 0 en franchise en base, le taux de l'espace sinon. */

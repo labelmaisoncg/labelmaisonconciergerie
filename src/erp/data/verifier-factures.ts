@@ -599,6 +599,27 @@ async function main() {
       rDouble.ok && rDouble.facture.mensuelle?.emetteur?.mentions === `${MENTIONS_PROFESSIONNEL}\nPas d’escompte.`,
       'société : la mention légale déjà écrite par le gérant n’apparaît qu’une fois',
     );
+    const rTape = validerFacture({
+      ...base,
+      proprietaire: sci,
+      identite: {
+        ...IDENTITE_LABEL_MAISON,
+        mentions: "Pénalités de retard : trois fois le taux d'intérêt légal.\nIndemnité forfaitaire pour frais de recouvrement : 40 €.\nPas d'escompte pour paiement anticipé.",
+      },
+    });
+    verifier(
+      rTape.ok && rTape.facture.mensuelle?.emetteur?.mentions === `${MENTIONS_PROFESSIONNEL}\nPas d'escompte pour paiement anticipé.`,
+      'société : la mention légale recopiée au clavier (apostrophe droite, une phrase par ligne) n’apparaît qu’une fois',
+    );
+    const rLigne = validerFacture({
+      ...base,
+      proprietaire: sci,
+      identite: { ...IDENTITE_LABEL_MAISON, mentions: "pénalités de retard : trois fois le taux d'intérêt légal. Paiement à réception." },
+    });
+    verifier(
+      rLigne.ok && rLigne.facture.mensuelle?.emetteur?.mentions === `${MENTIONS_PROFESSIONNEL}\nPaiement à réception.`,
+      'société : une phrase légale suivie d’une autre sur la même ligne, seule la seconde est gardée',
+    );
     const apercuSci = documentDeFacture(brouillon, { espace: LM, brouillon: { identite: IDENTITE_LABEL_MAISON, proprietaire: sci, logements: [] } })!;
     verifier(apercuSci.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'aperçu du brouillon : les mêmes mentions que la facture validée');
     const vueSci = rSci.ok ? facturesVue([partagerFacture(rSci.facture, maintenant)], P, '2026-10-05', { espace: LM.id })[0] : undefined;

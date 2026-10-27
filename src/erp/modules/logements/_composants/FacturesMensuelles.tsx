@@ -305,6 +305,7 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
           {!figee && !identiteOk && (
             <Alert
               tone="alerte"
+              actionsDessous
               actions={
                 <ButtonLink to="/erp/parametres/societe" size="sm">
                   Compléter
@@ -318,10 +319,11 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
           {!figee && calcul.logementsSansTaux.length > 0 && (
             <Alert
               tone="neutre"
+              actionsDessous
               actions={
                 gerant && (
                   <Button variant="secondary" size="sm" onClick={() => setMandatPour(calcul.logementsSansTaux[0].logementId)}>
-                    Ajouter son mandat
+                    {calcul.logementsSansTaux.length > 1 ? `Ajouter le mandat de ${calcul.logementsSansTaux[0].nom}` : 'Ajouter son mandat'}
                   </Button>
                 )
               }

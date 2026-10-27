@@ -369,8 +369,8 @@ Principes d'écran : 3 ou 4 blocs visibles au plus, une action principale, les
 actions secondaires dans un menu « … » (`ui/MenuActions.tsx`), les règles et
 explications repliées (« Comment ça marche ? », `ui/Aide.tsx`), le détail au
 clic (panneau, fenêtre). Langage : phrases courtes, vouvoiement, pas de jargon
-(« transmise à l'équipe » plutôt qu'« escaladée », « contrat de gestion »
-plutôt que « mandat »...).
+(« transmise à l'équipe » plutôt qu'« escaladée », « mandat de gestion »
+plutôt que « contrat de gestion »...).
 
 **Recherche globale** (`layout/GlobalSearch.tsx`, moteur pur dans
 `layout/recherche/moteur.ts`) : barre de l'en-tête, Ctrl/Cmd + K ou « / ».
