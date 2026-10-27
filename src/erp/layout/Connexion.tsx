@@ -8,9 +8,10 @@
  * existent.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, WifiOff } from 'lucide-react';
-import { changerMotDePasse, envoyerLienMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
-import { Alert, Button, Field, Input } from '../ui';
+import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, UserPlus, WifiOff } from 'lucide-react';
+import { EMAIL_VALIDE } from '../data/invitation';
+import { RETOUR_LIEN, changerMotDePasse, creerCompte, envoyerLienMotDePasse, seConnecter, type GenreErreur } from '../data/supabase';
+import { Alert, Button, Field, Input, Repli } from '../ui';
 
 export type PhasePorte =
   | { nom: 'demarrage' }
@@ -122,12 +123,30 @@ function Chargement({ texte }: { texte: string }) {
 
 /* -------------------------------------------------------------- connexion */
 
+const LIEN_TEXTE = 'inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline';
+
 function FormulaireConnexion({ message }: { message?: string }) {
-  const [email, setEmail] = useState('');
+  // Lien d'invitation (#creer=<adresse>) : on commence par « Créer mon compte ».
+  const [creation, setCreation] = useState(RETOUR_LIEN.creer !== undefined);
+  const [email, setEmail] = useState(RETOUR_LIEN.creer ?? '');
   const [motDePasse, setMotDePasse] = useState('');
   const [erreur, setErreur] = useState<string>();
   const [info, setInfo] = useState<string>();
   const [enCours, setEnCours] = useState(false);
+
+  if (creation) {
+    return (
+      <CreerCompte
+        email={email}
+        onRetour={(adresse, envoye) => {
+          setEmail(adresse);
+          setErreur(undefined);
+          setInfo(envoye ? MESSAGE_COMPTE_CREE : undefined);
+          setCreation(false);
+        }}
+      />
+    );
+  }
 
   const connecter = async (e: FormEvent) => {
     e.preventDefault();
@@ -188,8 +207,93 @@ function FormulaireConnexion({ message }: { message?: string }) {
           Accéder à l’ERP
         </Button>
       </form>
-      <button type="button" onClick={() => void oublie()} className="mt-4 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
-        Mot de passe oublié ?
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4">
+        <button type="button" onClick={() => void oublie()} className={LIEN_TEXTE}>
+          Mot de passe oublié&nbsp;?
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setErreur(undefined);
+            setInfo(undefined);
+            setCreation(true);
+          }}
+          className={LIEN_TEXTE}
+        >
+          Créer mon compte
+        </button>
+      </div>
+    </Cadre>
+  );
+}
+
+/* ---------------------------------------------------------- créer un compte */
+
+const MESSAGE_COMPTE_CREE =
+  'Ouvrez le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
+
+/**
+ * « Créer mon compte » (secours de la page d'accès, mêmes règles) : adresse,
+ * mot de passe deux fois. Personne n'est connecté ici ; le lien de
+ * confirmation reçu par e-mail ramène à la page d'accès, et seule une adresse
+ * membre de l'équipe ouvre ensuite l'ERP.
+ */
+function CreerCompte({ email: initial, onRetour }: { email: string; onRetour: (email: string, envoye: boolean) => void }) {
+  const [email, setEmail] = useState(initial);
+  const [motDePasse, setMotDePasse] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [erreur, setErreur] = useState<string>();
+  const [enCours, setEnCours] = useState(false);
+
+  const creer = async (e: FormEvent) => {
+    e.preventDefault();
+    const adresse = email.trim();
+    if (!adresse) return setErreur('Saisissez votre adresse e-mail.');
+    if (!EMAIL_VALIDE.test(adresse)) return setErreur('Adresse e-mail invalide.');
+    if (motDePasse.length < 8) return setErreur('Mot de passe trop court : 8 caractères au moins.');
+    if (motDePasse !== confirmation) return setErreur('Les deux mots de passe sont différents.');
+    setEnCours(true);
+    setErreur(undefined);
+    const r = await creerCompte(adresse, motDePasse);
+    setEnCours(false);
+    setMotDePasse('');
+    setConfirmation('');
+    if (!r.ok) return setErreur(r.erreur);
+    onRetour(adresse, true);
+  };
+
+  return (
+    <Cadre titre="Créer mon compte" sousTitre="Utilisez l’adresse à laquelle vous avez été invité." icone={<UserPlus />}>
+      <form onSubmit={creer} noValidate className="grid gap-4">
+        <Field label="Adresse e-mail">
+          <Input
+            type="email"
+            autoComplete="username"
+            inputMode="email"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            autoFocus={!initial}
+          />
+        </Field>
+        <Field label="Mot de passe" aide="8 caractères au moins.">
+          <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus={!!initial} />
+        </Field>
+        <Field label="Confirmer le mot de passe">
+          <Input type="password" autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
+        </Field>
+        {erreur && (
+          <Alert tone="danger" className="py-2">
+            {erreur}
+          </Alert>
+        )}
+        <Button type="submit" variant="primary" size="lg" chargement={enCours} icone={<UserPlus />}>
+          Créer mon compte
+        </Button>
+      </form>
+      <button type="button" onClick={() => onRetour(email.trim(), false)} className={`mt-4 ${LIEN_TEXTE}`}>
+        J’ai déjà un compte
       </button>
     </Cadre>
   );
@@ -243,24 +347,28 @@ function NouveauMotDePasse({ onFini }: { onFini: () => void }) {
 
 function BaseAbsente({ onReessayer, onDeconnecter }: { onReessayer: () => void; onDeconnecter: () => void }) {
   return (
-    <Cadre titre="La base de données n’est pas encore installée" icone={<Database />}>
-      <p className="text-[13.5px] text-(--lm-encre-2)">
-        La connexion fonctionne, mais les tables de l’ERP n’existent pas encore (ou ne sont pas visibles par l’application). À faire une seule fois
-        dans Supabase :
-      </p>
-      <ol className="mt-4 list-decimal space-y-2 pl-5 text-[13.5px] text-(--lm-encre)">
-        <li>
-          Ouvrir <strong>SQL Editor</strong>, coller tout le fichier <code>supabase/erp-installation.sql</code>, cliquer sur <strong>Run</strong>.
-        </li>
-        <li>
-          Ajouter l’e-mail de chaque membre dans <code>erp.membres</code> (bloc prévu en fin de fichier).
-        </li>
-        <li>
-          Si ce message reste affiché : <strong>Project Settings</strong>, <strong>Data API</strong>, <strong>Exposed schemas</strong>, ajouter{' '}
-          <code>erp</code>, enregistrer.
-        </li>
-      </ol>
-      <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">Le détail pas à pas est dans docs/erp/README.md, partie « Mise en production réelle ».</p>
+    <Cadre titre="Installation en cours" icone={<Database />}>
+      <p className="text-[14px] text-(--lm-encre)">L’ERP n’est pas encore prêt&nbsp;: prévenez la personne qui l’installe.</p>
+      {/* Pour la personne qui installe : replié, rien de technique à l'écran par défaut. */}
+      <Repli className="mt-4 shadow-none" titre="Détails techniques">
+        <p className="text-[13px] text-(--lm-encre-2)">
+          La connexion fonctionne, mais les tables de l’ERP n’existent pas encore (ou ne sont pas visibles par l’application). À faire une seule fois
+          dans Supabase&nbsp;:
+        </p>
+        <ol className="mt-3 list-decimal space-y-2 pl-5 text-[13px] text-(--lm-encre)">
+          <li>
+            Ouvrir <strong>SQL Editor</strong>, coller tout le fichier <code>supabase/erp-installation.sql</code>, cliquer sur <strong>Run</strong>.
+          </li>
+          <li>
+            Ajouter l’e-mail de chaque membre dans <code>erp.membres</code> (bloc prévu en fin de fichier).
+          </li>
+          <li>
+            Si ce message reste affiché&nbsp;: <strong>Project Settings</strong>, <strong>Data API</strong>, <strong>Exposed schemas</strong>, ajouter{' '}
+            <code>erp</code>, enregistrer.
+          </li>
+        </ol>
+        <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">Le détail pas à pas est dans docs/erp/README.md, partie «&nbsp;Mise en production réelle&nbsp;».</p>
+      </Repli>
       <div className="mt-5 flex flex-wrap gap-2">
         <Button variant="primary" icone={<RefreshCw />} onClick={onReessayer}>
           Réessayer

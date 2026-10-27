@@ -21,6 +21,20 @@
  * d'invitation ou de récupération reçus par e-mail sont traités sur la même
  * page (un lien d'un autre type demande une confirmation avant d'ouvrir).
  *
+ * « Créer mon compte » (lien d'invitation « /erp#creer=<adresse> », envoyé
+ * depuis Paramètres → Équipe, ou le lien sous le formulaire) : la page crée
+ * le compte auprès de Supabase (POST /auth/v1/signup, clé publique) et ne
+ * connecte personne ; Supabase envoie un lien de confirmation qui revient
+ * ici (même confirmation par un geste que tout autre lien), puis
+ * /erp/connexion vérifie l'appartenance comme pour tout le monde. Réponse
+ * identique qu'un compte existe ou non. « Confirm email » doit rester activé
+ * dans Supabase (docs/erp/README.md, « Connexion à l'ERP »).
+ *
+ * Entrent : les membres d'un espace, et un compte invité à créer l'espace
+ * de sa conciergerie (invitation en attente, rendue par erp.qui_suis_je :
+ * l'application lui montre la création de son espace). Base d'avant les
+ * espaces : erp.membres seulement, comme avant.
+ *
  * Passage aux comptes personnels :
  *   1. En attendant, le compte d'équipe (equipe@labelmaisoncg.fr, mot de passe =
  *      ERP_PASSWORD actuel) se connecte comme n'importe quel membre. Celui qui
@@ -343,7 +357,11 @@ function page(
     --ink:#2C2418; --ink-2:#7A7264; --ink-3:#676050;
     --line:rgba(40,34,22,.10); --line-2:rgba(40,34,22,.15);
     --gold:#A97C30; --gold-soft:rgba(169,124,48,.16);
-    --brun:#2C2418; --brun-hover:#403118; --sur-brun:#F7F2E6;
+    /* Mêmes valeurs que l'ERP (src/erp/erp.css) : bouton principal en or
+       assombri (--lm-or-texte, texte blanc 5,3:1), survol et badge en brun
+       (--lm-brun). Arrondis : champs, boutons et messages 10 px, carte 16 px. */
+    --or-texte:#8A6424; --brun:#403118; --sur-or:#FFFFFF;
+    --r-champ:10px; --r-carte:16px;
     --crit:#B0322F; --crit-wash:#FBEEED;
     --f-sans:"Figtree",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     --f-serif:"Playfair Display",Georgia,serif;
@@ -362,7 +380,7 @@ function page(
   .carte{width:100%; max-width:420px; text-align:center}
 
   .badge{
-    width:76px; height:76px; margin:0 auto 22px; border-radius:20px;
+    width:76px; height:76px; margin:0 auto 22px; border-radius:var(--r-carte);
     background:var(--brun); display:flex; align-items:center; justify-content:center;
     box-shadow:var(--ombre);
   }
@@ -376,7 +394,7 @@ function page(
 
   .panneau{
     background:var(--surface); border:1px solid var(--line-2);
-    border-radius:16px; padding:28px 26px 24px; text-align:left; box-shadow:var(--ombre);
+    border-radius:var(--r-carte); padding:28px 26px 24px; text-align:left; box-shadow:var(--ombre);
   }
 
   label{display:block; font-size:14.5px; font-weight:500; color:var(--ink-2); margin-bottom:9px}
@@ -388,7 +406,7 @@ function page(
   }
   .champ input{
     width:100%; padding:15px 16px 15px 46px; font:inherit; font-size:16px; color:var(--ink);
-    background:var(--field); border:1px solid var(--line-2); border-radius:11px;
+    background:var(--field); border:1px solid var(--line-2); border-radius:var(--r-champ);
     transition:border-color .15s, box-shadow .15s;
   }
   .champ input::placeholder{color:var(--ink-3)}
@@ -401,15 +419,15 @@ function page(
     width:100%; margin-top:14px; padding:15px 18px;
     display:inline-flex; align-items:center; justify-content:center; gap:10px;
     font:inherit; font-size:16px; font-weight:600; letter-spacing:.01em;
-    color:var(--sur-brun); background:var(--brun);
-    border:0; border-radius:11px; cursor:pointer; transition:background .15s;
+    color:var(--sur-or); background:var(--or-texte);
+    border:0; border-radius:var(--r-champ); cursor:pointer; transition:background .15s;
   }
   button .ic{width:19px; height:19px}
-  button:hover{background:var(--brun-hover)}
+  button:hover{background:var(--brun)}
   button:focus-visible{outline:2px solid var(--gold); outline-offset:3px}
 
   .erreur{
-    margin:0 0 18px; padding:11px 14px; border-radius:11px; font-size:14px;
+    margin:0 0 18px; padding:11px 14px; border-radius:var(--r-champ); font-size:14px;
     background:var(--crit-wash); border:1px solid var(--crit); color:var(--crit);
   }
 
@@ -418,9 +436,16 @@ function page(
     width:auto; margin:12px auto 0; padding:8px 10px; min-height:32px; display:flex;
     background:none; color:var(--ink-2); font-size:14.5px; font-weight:500;
   }
-  .lien:hover{background:none; color:var(--gold); text-decoration:underline}
+  /* Survol : or assombri (5:1 sur la carte), jamais l'or clair (3,6:1). */
+  .lien:hover{background:none; color:var(--or-texte); text-decoration:underline}
+  .note-lien{display:flex; flex-wrap:wrap; align-items:center; justify-content:center; column-gap:2px}
+  .lien-texte{
+    width:auto; margin:0; padding:0 4px; min-height:32px; display:inline-flex;
+    background:none; color:var(--or-texte); font-size:inherit; font-weight:600; letter-spacing:0;
+  }
+  .lien-texte:hover{background:none; text-decoration:underline}
   .info{
-    margin:0 0 18px; padding:11px 14px; border-radius:11px; font-size:14px;
+    margin:0 0 18px; padding:11px 14px; border-radius:var(--r-champ); font-size:14px;
     background:var(--field); border:1px solid var(--line-2); color:var(--ink);
   }
   .intro{margin:0 0 16px; font-size:15px; color:var(--ink)}
@@ -429,12 +454,13 @@ function page(
 
   .separateur{margin:22px 0 0; border:0; border-top:1px solid var(--line)}
   .note{margin:16px 0 0; text-align:center; font-size:13.5px; color:var(--ink-3)}
+  .note + .note{margin-top:4px}
   .note code{
     font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12.5px; color:var(--ink-2);
   }
   .pied{margin:22px 0 0; font-size:13px; color:var(--ink-3)}
   .pied a{color:var(--ink-3); text-decoration:none}
-  .pied a:hover{color:var(--gold); text-decoration:underline}
+  .pied a:hover{color:var(--ink); text-decoration:underline}
 
   @media (max-width:420px){ h1{font-size:32px} .panneau{padding:24px 20px 20px} }
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
@@ -511,8 +537,9 @@ function donneesPageErp(suite: string): string {
  * Connexion à l'ERP : adresse e-mail et mot de passe d'un compte personnel.
  * Le script se connecte auprès de Supabase, envoie les jetons à
  * /erp/connexion (vérification du compte et de l'appartenance à l'ERP), puis
- * ouvre l'application. Il traite aussi « Mot de passe oublié ? » et les liens
- * reçus par e-mail (#access_token=…&type=recovery | invite | signup).
+ * ouvre l'application. Il traite aussi « Mot de passe oublié ? », les liens
+ * reçus par e-mail (#access_token=…&type=recovery | invite | signup) et
+ * « Créer mon compte » (#creer=<adresse>, inscription sans connexion).
  */
 function pageConnexionErp(suite: string, erreur: string, statut: number, entetes: EntetesPage = {}): Response {
   return page(
@@ -554,15 +581,41 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        <button type="submit">${ICONE_CLE} Ouvrir l’ERP</button>
        <button type="button" class="lien" id="autre-compte">Utiliser un autre compte</button>
      </form>
+     <form id="f-creer" method="post" action="${ERP.connexion}" novalidate hidden>
+       <p class="intro">Utilisez l’adresse à laquelle vous avez été invité, puis choisissez votre mot de passe.</p>
+       <label for="creer-email">Adresse e-mail</label>
+       <div class="champ">
+         ${ICONE_MAIL}
+         <input id="creer-email" type="email" placeholder="vous@exemple.fr"
+                autocomplete="username" inputmode="email" autocapitalize="off"
+                spellcheck="false" required>
+       </div>
+       <label for="creer-mdp">Mot de passe</label>
+       <div class="champ">
+         ${ICONE_CADENAS}
+         <input id="creer-mdp" type="password" placeholder="8 caractères au moins"
+                autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
+       </div>
+       <label for="creer-mdp2">Confirmer le mot de passe</label>
+       <div class="champ">
+         ${ICONE_CADENAS}
+         <input id="creer-mdp2" type="password" placeholder="Le même, une seconde fois"
+                autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
+       </div>
+       <button type="submit">${ICONE_CLE} Créer mon compte</button>
+       <button type="button" class="lien" id="deja-compte">J’ai déjà un compte</button>
+     </form>
      <hr class="separateur">
+     <p class="note note-lien" id="note-creer"><span>Invité dans l’équipe&nbsp;?</span> <button type="button" class="lien-texte" id="vers-creer">Créer mon compte</button></p>
      <p class="note">Accès réservé à l'équipe Label Maison.</p>
      <script>
      (function () {
        var C = ${donneesPageErp(suite)};
        var $ = function (id) { return document.getElementById(id); };
        var boiteErreur = $('erreur'), boiteInfo = $('info');
-       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer');
+       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer'), fCreer = $('f-creer');
        var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau');
+       var champCreerEmail = $('creer-email'), champCreerMdp = $('creer-mdp'), champCreerMdp2 = $('creer-mdp2'), noteCreer = $('note-creer');
 
        function dire(texte, ton) {
          boiteErreur.hidden = true; boiteInfo.hidden = true;
@@ -617,6 +670,66 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        function echec(e) {
          dire(e && e.message && !/fetch|network|load failed/i.test(e.message) ? e.message : 'Connexion impossible. Vérifiez votre accès à internet.');
        }
+       // « Créer mon compte » : adresse plausible (le lien d'invitation la pré-remplit).
+       function adresseValable(e) {
+         return typeof e === 'string' && e.length <= 200 && /^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(e);
+       }
+       function montrerCreation(email) {
+         fConnexion.hidden = true; fNouveau.hidden = true; fConfirmer.hidden = true;
+         fCreer.hidden = false; noteCreer.hidden = true;
+         if (email) champCreerEmail.value = email;
+         (champCreerEmail.value ? champCreerMdp : champCreerEmail).focus();
+       }
+       function montrerConnexion(email) {
+         fCreer.hidden = true; fNouveau.hidden = true; fConfirmer.hidden = true;
+         fConnexion.hidden = false; noteCreer.hidden = false;
+         if (email) champEmail.value = email;
+         (champEmail.value ? champMdp : champEmail).focus();
+       }
+       // Réponses de l'inscription. Une adresse qui a déjà un compte reçoit la
+       // même réponse qu'une nouvelle (aucune énumération des comptes).
+       function traduireCreation(d, statut) {
+         var code = String((d && (d.error_code || d.code)) || '');
+         var m = String((d && (d.error_description || d.msg || d.message || d.error)) || '');
+         if (statut === 429 || /rate.?limit|too many/i.test(code + ' ' + m)) return 'Trop de tentatives. Patientez une minute avant de réessayer.';
+         if (/user_already_exists|already registered|already been registered/i.test(code + ' ' + m)) return '';
+         if (/signup_disabled|signups? not allowed/i.test(code + ' ' + m)) return 'La création de compte n’est pas ouverte pour le moment. Prévenez un gérant.';
+         if (/email_address_not_authorized|not authorized/i.test(code + ' ' + m)) return 'L’e-mail de confirmation ne peut pas partir pour le moment. Prévenez un gérant.';
+         if (/weak_password|password should|password is/i.test(code + ' ' + m)) {
+           return /at least \\d+ characters/i.test(m) ? 'Mot de passe trop court : 8 caractères au moins.' : 'Mot de passe trop simple : mélangez lettres, chiffres et signes.';
+         }
+         if (/email_address_invalid|validation_failed|invalid format|unable to validate email/i.test(code + ' ' + m)) return 'Adresse e-mail invalide.';
+         return 'La création du compte n’a pas abouti. Réessayez dans un instant.';
+       }
+       var MESSAGE_COMPTE = 'Ouvrez le lien reçu par e-mail pour confirmer votre adresse. Rien reçu d’ici quelques minutes ? Regardez dans les indésirables ; si vous aviez déjà un compte, connectez-vous ci-dessous.';
+
+       $('vers-creer').addEventListener('click', function () {
+         dire(''); montrerCreation(champEmail.value.trim());
+       });
+       $('deja-compte').addEventListener('click', function () {
+         dire(''); montrerConnexion(champCreerEmail.value.trim());
+       });
+       fCreer.addEventListener('submit', function (ev) {
+         ev.preventDefault();
+         var email = champCreerEmail.value.trim(), mdp = champCreerMdp.value, mdp2 = champCreerMdp2.value;
+         if (!email) { dire('Saisissez votre adresse e-mail.'); champCreerEmail.focus(); return; }
+         if (!adresseValable(email)) { dire('Adresse e-mail invalide.'); champCreerEmail.focus(); return; }
+         if (mdp.length < 8) { dire('Mot de passe trop court : 8 caractères au moins.'); champCreerMdp.focus(); return; }
+         if (mdp !== mdp2) { dire('Les deux mots de passe sont différents.'); champCreerMdp2.value = ''; champCreerMdp2.focus(); return; }
+         dire(''); occuper(fCreer, true);
+         // Le lien de confirmation ramène sur cette page (site fixe), qui demande un geste avant d'ouvrir l'ERP.
+         supabase('/auth/v1/signup?redirect_to=' + encodeURIComponent(C.retour), { method: 'POST', body: JSON.stringify({ email: email, password: mdp }) })
+           .then(function (r) {
+             if (!r.ok) { var m = traduireCreation(r.d, r.statut); if (m) throw new Error(m); }
+             // Jamais de connexion ici, même si une session revenait (confirmation désactivée) :
+             // l'adresse doit être confirmée par son lien.
+             champCreerMdp.value = ''; champCreerMdp2.value = '';
+             montrerConnexion(email);
+             dire(MESSAGE_COMPTE, 'info');
+           })
+           .catch(function (e) { echec(e); champCreerMdp.value = ''; champCreerMdp2.value = ''; champCreerMdp.focus(); })
+           .then(function () { occuper(fCreer, false); });
+       });
 
        fConnexion.addEventListener('submit', function (ev) {
          ev.preventDefault();
@@ -656,7 +769,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          // Le compte est nommé : un lien reçu d'un tiers se reconnaît avant d'agir.
          var compteNouveau = emailDuJeton(acces);
          if (compteNouveau) $('intro-nouveau').textContent = 'Choisissez le mot de passe du compte ' + compteNouveau + ' : 8 caractères au moins.';
-         fConnexion.hidden = true; fNouveau.hidden = false; champNouveau.focus();
+         fConnexion.hidden = true; noteCreer.hidden = true; fNouveau.hidden = false; champNouveau.focus();
          fNouveau.addEventListener('submit', function (ev) {
            ev.preventDefault();
            var mdp = champNouveau.value;
@@ -674,7 +787,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          // un geste de la personne, qui voit le compte concerné (lien piégé).
          var compte = emailDuJeton(acces);
          $('intro-confirmer').textContent = compte ? 'Ouvrir l’ERP avec le compte ' + compte + ' ?' : 'Ouvrir l’ERP avec ce lien ?';
-         fConnexion.hidden = true; fConfirmer.hidden = false;
+         fConnexion.hidden = true; noteCreer.hidden = true; fConfirmer.hidden = false;
          fConfirmer.addEventListener('submit', function (ev) {
            ev.preventDefault();
            dire(''); occuper(fConfirmer, true);
@@ -682,8 +795,12 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
          });
          $('autre-compte').addEventListener('click', function () {
            acces = rafraichir = null;
-           fConfirmer.hidden = true; fConnexion.hidden = false; dire(''); champEmail.focus();
+           fConfirmer.hidden = true; fConnexion.hidden = false; noteCreer.hidden = false; dire(''); champEmail.focus();
          });
+       } else if (h.has('creer')) {
+         // Lien d'invitation (« #creer=<adresse> ») : l'adresse seule, rien qui connecte.
+         var invite = String(h.get('creer') || '').trim().toLowerCase();
+         montrerCreation(adresseValable(invite) ? invite : '');
        } else if (!champEmail.value) {
          champEmail.focus();
        }
@@ -813,10 +930,31 @@ const entetesSupabase = (jeton: string): Record<string, string> => ({
 });
 
 /**
- * Le compte est-il membre de l'ERP ? erp.qui_suis_je (espaces) ; sur la base
- * d'avant les espaces (fonction absente), sa ligne dans erp.membres (les
- * règles RLS ne montrent que la sienne à un non-membre). null : la base n'a
- * pas répondu comme prévu.
+ * Invitation à créer l'espace d'une conciergerie encore en attente, telle que
+ * la rend erp.qui_suis_je : { "invitations_espace": [{ "nom_espace": "Sens",
+ * "expire_le": "2026-11-03T10:00:00Z" }] }. Retenue seulement si c'est un
+ * objet dont l'échéance, quand elle est donnée, est lisible et à venir ;
+ * toute autre forme ne vaut rien (refus, comme un non-membre).
+ */
+function invitationEspaceEnAttente(d: { invitations_espace?: unknown } | null): boolean {
+  const liste = d?.invitations_espace;
+  if (!Array.isArray(liste)) return false;
+  return liste.some((i) => {
+    if (!i || typeof i !== 'object' || Array.isArray(i)) return false;
+    const expire = (i as { expire_le?: unknown }).expire_le;
+    if (expire === undefined || expire === null) return true;
+    const t = typeof expire === 'string' ? Date.parse(expire) : NaN;
+    return Number.isFinite(t) && t > Date.now();
+  });
+}
+
+/**
+ * Le compte peut-il entrer dans l'ERP ? erp.qui_suis_je (espaces) : membre
+ * d'au moins un espace, OU invité à créer l'espace de sa conciergerie
+ * (invitation en attente : l'application lui montre alors la création de son
+ * espace). Sur la base d'avant les espaces (fonction absente), sa ligne dans
+ * erp.membres (les règles RLS ne montrent que la sienne à un non-membre),
+ * comme avant. null : la base n'a pas répondu comme prévu.
  */
 async function membreErp(jeton: string, email: string): Promise<boolean | null> {
   const r = await fetch(`${SUPABASE_ERP_URL}/rest/v1/rpc/qui_suis_je`, {
@@ -825,8 +963,9 @@ async function membreErp(jeton: string, email: string): Promise<boolean | null> 
     body: '{}',
   });
   if (r.ok) {
-    const d = (await r.json().catch(() => null)) as { espaces?: unknown } | null;
-    return Array.isArray(d?.espaces) && d!.espaces.length > 0;
+    const d = (await r.json().catch(() => null)) as { espaces?: unknown; invitations_espace?: unknown } | null;
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return false;
+    return (Array.isArray(d.espaces) && d.espaces.length > 0) || invitationEspaceEnAttente(d);
   }
   const t = await r.text().catch(() => '');
   if (r.status !== 404 && !/PGRST202|42883|qui_suis_je/.test(t)) return null;

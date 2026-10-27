@@ -124,6 +124,22 @@ L'agent de Sens démarre **en pause** : il ne répond à personne tant que
 l'équipe de Sens ne l'a pas allumé. Les alertes Telegram restent celles de
 Label Maison uniquement.
 
+## Comptes de l'équipe et Claude, dans chaque espace
+
+- **Ajouter quelqu'un** : un gérant de l'espace, dans Paramètres → Équipe,
+  ajoute l'adresse, puis touche **Envoyer l'invitation**. La personne ouvre
+  le lien, choisit son mot de passe, confirme son adresse par l'e-mail reçu :
+  c'est tout (plus rien à faire dans Supabase).
+- **E-mail au nom de Sens** : sans réglage, rien ne part et le gérant copie
+  le lien (SMS, WhatsApp). Pour envoyer au nom de Sens (domaine vérifié dans
+  Resend) :
+  `update erp.espaces set config = jsonb_set(config, '{email}', coalesce(config->'email', '{}') || '{"expediteur": "Sens <bonjour@DOMAINE>"}') where code = 'sens';`
+- **Claude** : chaque espace a sa propre connexion. Un gérant de Sens, dans
+  l'espace de Sens, ouvre CRM → Plus → Connecter à Claude et suit les
+  étapes : Claude ne verra que Sens. « Déconnecter Claude » dans Sens ne
+  touche pas à la connexion de Label Maison, et inversement. Même chose pour
+  « Relances dans Calendrier ».
+
 ## En cas de problème
 
 L'ERP continue de fonctionner : tant que la base n'est pas prête, il se

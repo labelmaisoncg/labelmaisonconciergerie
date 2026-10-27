@@ -8,7 +8,9 @@
  *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=/tmp/verifier-crm-mcp.cjs \
  *     && node /tmp/verifier-crm-mcp.cjs
  */
-import { OUTILS, traiterMcp, type ContexteMcp } from './crm-mcp';
+import { INSTRUCTIONS_SERVEUR, OUTILS, instructionsServeur, traiterMcp, type ContexteMcp } from './crm-mcp';
+import { ID_LABEL_MAISON } from './espaces';
+import { avecEspace, espaceDuJeton } from './oauth-regles';
 import { attendEquipe, prenomInitiale } from './cm-mcp';
 import { creerContactsCrm } from './seed-crm';
 import { creerSeed } from './seed';
@@ -167,6 +169,7 @@ async function main() {
   verifier(panne.corps.result.isError === true && /momentanément inaccessible/.test(panne.corps.result.content[0].text), 'base injoignable : erreur lisible, pas de plantage');
 
   await channelManager();
+  await parEspace();
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
@@ -287,6 +290,41 @@ async function channelManager() {
   verifier((await outil('indicateurs', { du: '2026-09-10', au: '2026-09-01' })).erreur, 'indicateurs : période à l’envers refusée');
 
   verifier(prenomInitiale('Daniel A.') === 'Daniel A.' && prenomInitiale('Alex Morgan') === 'Alex M.' && prenomInitiale('') === 'Voyageur', 'noms « Prénom N. »');
+}
+
+/* ------------------------------------------------------- un espace par jeton */
+
+async function parEspace() {
+  const SENS = '5e5e0000-0000-4000-8000-000000000002';
+  const valeur = 'A'.repeat(21) + '_-' + 'z9'.repeat(10); // 43 caractères base64url
+  verifier(avecEspace(ID_LABEL_MAISON, valeur) === valeur && avecEspace(SENS, valeur) === `${SENS}.${valeur}` && avecEspace(SENS.toUpperCase(), valeur) === `${SENS}.${valeur}`, 'jeton : Label Maison sans préfixe, un autre espace préfixé');
+  verifier(espaceDuJeton(valeur) === ID_LABEL_MAISON && espaceDuJeton(`${SENS}.${valeur}`) === SENS, 'espace du jeton : sans préfixe Label Maison, sinon celui du préfixe');
+  for (const [quoi, jeton] of [
+    ['préfixe Label Maison explicite (jamais émis)', `${ID_LABEL_MAISON}.${valeur}`],
+    ['préfixe en majuscules', `${SENS.toUpperCase()}.${valeur}`],
+    ['préfixe qui n’est pas un identifiant', `sens.${valeur}`],
+    ['valeur trop courte', `${SENS}.${valeur.slice(1)}`],
+    ['valeur trop longue', `${valeur}x`],
+    ['caractère interdit', `${SENS}.${valeur.slice(1)}+`],
+    ['deux préfixes', `${SENS}.${SENS}.${valeur}`],
+    ['vide', ''],
+    ['pas un texte', 42],
+  ] as [string, unknown][]) {
+    verifier(espaceDuJeton(jeton) === null, `espace du jeton : ${quoi} → refusé`);
+  }
+
+  // Instructions : Label Maison inchangées, un autre espace à son nom, sans rien de Label Maison.
+  verifier(instructionsServeur() === INSTRUCTIONS_SERVEUR && instructionsServeur({ id: ID_LABEL_MAISON, nom: 'Label Maison' }) === INSTRUCTIONS_SERVEUR, 'instructions de Label Maison : inchangées');
+  const sens = instructionsServeur({ id: SENS, nom: 'Sens' });
+  verifier(sens.startsWith('Sens ') && /cm_resume/.test(sens) && /crm_noter_appel/.test(sens) && !/Essonne|Label Maison|formulaires audit/.test(sens), `instructions de Sens : son nom, mêmes outils, rien de Label Maison (${sens.slice(0, 80)})`);
+  const ctxSens: ContexteMcp = { ...ctx, espace: { id: SENS, nom: 'Sens' } };
+  const init = (await traiterMcp({ jsonrpc: '2.0', id: 7, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, ctxSens)) as any;
+  verifier(init.corps.result.serverInfo.title === 'Sens' && init.corps.result.serverInfo.name === 'label-maison' && init.corps.result.instructions === sens, 'initialize avec le jeton de Sens : « Sens », mêmes outils');
+  const panne = (await traiterMcp(
+    { jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'crm_resume', arguments: {} } },
+    { ...ctxSens, depot: { ...ctx.depot, tous: async () => Promise.reject(new Error('réseau')) } },
+  )) as any;
+  verifier(/données de l’espace Sens/.test(panne.corps.result.content[0].text) && !/Label Maison/.test(panne.corps.result.content[0].text), `erreur de base au nom de l’espace (${panne.corps.result.content[0].text})`);
 }
 
 void main();

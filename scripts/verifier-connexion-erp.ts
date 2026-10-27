@@ -10,7 +10,12 @@
  * refusé, cookie modifié refusé, relais : session remise une fois puis
  * effacée, lié au compte, jamais la session du compte d'équipe, page des
  * liens « mot de passe oublié » (script valide, rien de dangereux injecté),
- * zone du linge inchangée.
+ * « Créer mon compte » (lien #creer= pré-rempli sans rien envoyer, deux
+ * saisies, 8 caractères, inscription vers le site fixe, même réponse qu'un
+ * compte existe ou non, jamais de connexion depuis la création), invitation
+ * à créer l'espace d'une conciergerie (en attente : entre ; échue ou de
+ * forme inconnue : refusée ; base d'avant les espaces : inchangée), zone du
+ * linge inchangée.
  *
  * Fichier hors de l'ERP (middleware) : pas dans tsc.
  * Lancement (Node 20+) :
@@ -63,6 +68,8 @@ const COMPTES = [ABDEL, INCONNU, EQUIPE];
 const jetonDe = (c: Compte) => `acces-${c.id}`;
 
 let base: 'historique' | 'espaces' | 'en-panne' = 'historique';
+/** Invitations à créer l'espace d'une conciergerie (champ invitations_espace de erp.qui_suis_je), par compte. */
+const invitationsEspace = new Map<string, unknown>();
 const appels: string[] = [];
 const rafraichissements: string[] = [];
 /** Rafraîchissement : jeton → compte qu'il ouvre (un autre compte pour éprouver le contrôle). */
@@ -95,7 +102,8 @@ const fauxFetch = async (entree: string | URL | Request, init?: RequestInit): Pr
     if (base === 'en-panne') return json({ message: 'boom' }, 500);
     if (base === 'historique') return json({ code: 'PGRST202', message: 'Could not find the function erp.qui_suis_je' }, 404);
     if (entetes.get('content-profile') !== 'erp') return json({ message: 'schéma' }, 400);
-    return json({ espaces: compte?.membre ? [{ id: '4c4d0000-0000-4000-8000-000000000001', code: 'lm', nom: 'Label Maison', role: 'gerant' }] : [] });
+    const invitations = compte && invitationsEspace.has(compte.id) ? { invitations_espace: invitationsEspace.get(compte.id) } : {};
+    return json({ espaces: compte?.membre ? [{ id: '4c4d0000-0000-4000-8000-000000000001', code: 'lm', nom: 'Label Maison', role: 'gerant' }] : [], ...invitations });
   }
   if (url.pathname === '/rest/v1/membres') {
     if (entetes.get('accept-profile') !== 'erp') return json({ message: 'schéma' }, 400);
@@ -422,6 +430,169 @@ async function principal() {
     const recup = essai(`#access_token=${jwt('moi@exemple.fr')}&refresh_token=r&type=recovery`);
     verifier(!recup.envois.length && recup.elements['f-nouveau']?.hidden === false, 'type=recovery : choix du mot de passe, rien d’envoyé');
     verifier(String(recup.elements['intro-nouveau']?.textContent).includes('moi@exemple.fr'), 'type=recovery : le compte est nommé');
+  }
+
+  section('« Créer mon compte » (page d’accès)');
+  {
+    const html = await (await appeler('/erp'))!.text();
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])[0] ?? '';
+    const balise = /<form id="f-creer"[^>]*>/.exec(html)?.[0] ?? '';
+    verifier(/method="post"/.test(balise) && /action="\/erp\/connexion"/.test(balise) && /\shidden/.test(balise), 'formulaire de création : caché d’abord, en POST vers /erp/connexion', balise);
+    const champs = [...html.matchAll(/<input[^>]*>/g)].map((m) => m[0]).filter((i) => /id="creer-(email|mdp|mdp2)"/.test(i));
+    verifier(champs.length === 3 && champs.every((i) => !/\sname=/.test(i)), 'champs de création sans « name » : rien ne part dans l’adresse sans le script', champs);
+    verifier(champs.filter((i) => /type="password"/.test(i) && /autocomplete="new-password"/.test(i) && /minlength="8"/.test(i)).length === 2, 'mot de passe deux fois, nouveau, 8 caractères au moins');
+    verifier(html.includes('id="vers-creer"') && html.includes('Créer mon compte') && html.includes('J’ai déjà un compte'), 'lien « Créer mon compte » et retour « J’ai déjà un compte »');
+    verifier(script.includes("'/auth/v1/signup?redirect_to=' + encodeURIComponent(C.retour)") && html.includes('"retour":"https://www.labelmaisoncg.fr/erp"'), 'inscription auprès de Supabase, retour sur le site fixe /erp');
+
+    type Reponse = { ok: boolean; status: number; json: () => Promise<unknown> };
+    const essai = (hash: string, reponseInscription?: { statut: number; corps: unknown }) => {
+      const ecouteurs: Record<string, (ev: { preventDefault(): void }) => void> = {};
+      const elements: Record<string, Record<string, unknown>> = {};
+      const el = (id: string) =>
+        (elements[id] ??= {
+          id,
+          hidden: ['f-nouveau', 'f-confirmer', 'f-creer', 'info'].includes(id),
+          textContent: '',
+          value: '',
+          disabled: false,
+          focus() {
+            focus.push(id);
+          },
+          select() {},
+          addEventListener(type: string, f: (ev: { preventDefault(): void }) => void) {
+            ecouteurs[`${id}:${type}`] = f;
+          },
+          querySelectorAll: () => [],
+        });
+      const focus: string[] = [];
+      const envois: { methode: string; url: string; corps: string }[] = [];
+      vm.runInNewContext(script, {
+        document: { getElementById: el },
+        location: { hash, pathname: '/erp', search: '', replace() {} },
+        history: { state: null, replaceState() {} },
+        URLSearchParams,
+        localStorage: { removeItem() {} },
+        atob: (b: string) => Buffer.from(b, 'base64').toString('binary'),
+        escape,
+        fetch: (u: string, o: { method?: string; body?: string } = {}): Promise<Reponse> => {
+          envois.push({ methode: o.method ?? 'GET', url: u, corps: o.body ?? '' });
+          if (!u.includes('/auth/v1/signup') || !reponseInscription) return new Promise(() => {});
+          const { statut, corps } = reponseInscription;
+          return Promise.resolve({ ok: statut < 300, status: statut, json: () => Promise.resolve(corps) });
+        },
+        Object,
+        String,
+        JSON,
+        Error,
+        decodeURIComponent,
+        encodeURIComponent,
+      });
+      const soumettre = async () => {
+        ecouteurs['f-creer:submit']?.({ preventDefault() {} });
+        for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+      };
+      return { ecouteurs, elements, envois, focus, soumettre };
+    };
+
+    // Lien d'invitation : l'adresse pré-remplie, rien d'envoyé.
+    const lien = essai(`#creer=${encodeURIComponent('Marie.Durand+erp@exemple.fr')}`);
+    verifier(lien.elements['f-creer']?.hidden === false && lien.elements['f-connexion']?.hidden === true && lien.elements['note-creer']?.hidden === true, 'lien #creer= : écran « Créer mon compte »');
+    verifier(lien.elements['creer-email']?.value === 'marie.durand+erp@exemple.fr' && lien.focus.at(-1) === 'creer-mdp', 'adresse pré-remplie (« + » compris), curseur sur le mot de passe', lien.elements['creer-email']?.value);
+    verifier(!lien.envois.length, 'lien #creer= : rien n’est envoyé sans geste', lien.envois);
+    const piege = essai('#creer=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E');
+    verifier(piege.elements['creer-email']?.value === '' && piege.elements['f-creer']?.hidden === false, 'adresse piégée dans le lien : ignorée (champ vide)', piege.elements['creer-email']?.value);
+
+    // Contrôles avant l'envoi.
+    const court = essai('#creer=a%40exemple.fr');
+    court.elements['creer-mdp'].value = 'court';
+    court.elements['creer-mdp2'].value = 'court';
+    await court.soumettre();
+    verifier(!court.envois.length && /trop court/.test(String(court.elements.erreur?.textContent)), 'mot de passe de moins de 8 caractères : refusé avant l’envoi', court.elements.erreur?.textContent);
+    const differents = essai('#creer=a%40exemple.fr');
+    differents.elements['creer-mdp'].value = 'un-bon-mot-de-passe';
+    differents.elements['creer-mdp2'].value = 'un-autre-mot-de-passe';
+    await differents.soumettre();
+    verifier(!differents.envois.length && /différents/.test(String(differents.elements.erreur?.textContent)), 'deux saisies différentes : refusé avant l’envoi', differents.elements.erreur?.textContent);
+    const sansAdresse = essai('#creer=');
+    sansAdresse.elements['creer-mdp'].value = 'un-bon-mot-de-passe';
+    sansAdresse.elements['creer-mdp2'].value = 'un-bon-mot-de-passe';
+    await sansAdresse.soumettre();
+    verifier(!sansAdresse.envois.length && /adresse e-mail/i.test(String(sansAdresse.elements.erreur?.textContent)), 'sans adresse : demandée avant l’envoi');
+
+    // Envoi : même message qu'un compte existe ou non, jamais de connexion.
+    const MESSAGE = 'Ouvrez le lien reçu par e-mail pour confirmer votre adresse.';
+    const creer = async (reponse: { statut: number; corps: unknown }) => {
+      const t = essai('#creer=nouveau%40exemple.fr', reponse);
+      t.elements['creer-mdp'].value = 'un-bon-mot-de-passe';
+      t.elements['creer-mdp2'].value = 'un-bon-mot-de-passe';
+      await t.soumettre();
+      return t;
+    };
+    const nouveau = await creer({ statut: 200, corps: { id: 'u1', email: 'nouveau@exemple.fr', identities: [{ id: 'i' }] } });
+    const envoi = nouveau.envois.find((e) => e.url.includes('/auth/v1/signup'));
+    verifier(!!envoi && envoi.methode === 'POST' && envoi.url === `${SUPA}/auth/v1/signup?redirect_to=${encodeURIComponent('https://www.labelmaisoncg.fr/erp')}`, 'inscription : POST /auth/v1/signup, retour vers https://www.labelmaisoncg.fr/erp', envoi?.url);
+    verifier(JSON.parse(envoi?.corps ?? '{}').email === 'nouveau@exemple.fr' && !envoi!.url.includes('un-bon-mot-de-passe'), 'mot de passe dans le corps, jamais dans l’adresse');
+    verifier(String(nouveau.elements.info?.textContent).startsWith(MESSAGE) && nouveau.elements.info?.hidden === false, 'nouveau compte : « Ouvrez le lien reçu par e-mail… »', nouveau.elements.info?.textContent);
+    verifier(nouveau.elements['f-connexion']?.hidden === false && nouveau.elements['f-creer']?.hidden === true && nouveau.elements.email?.value === 'nouveau@exemple.fr', 'ensuite : formulaire de connexion avec l’adresse');
+    verifier(nouveau.elements['creer-mdp']?.value === '' && nouveau.elements['creer-mdp2']?.value === '', 'mots de passe effacés des champs');
+    const existant = await creer({ statut: 200, corps: { id: 'u2', email: 'nouveau@exemple.fr', identities: [] } });
+    const deja = await creer({ statut: 422, corps: { code: 422, error_code: 'user_already_exists', msg: 'User already registered' } });
+    verifier(existant.elements.info?.textContent === nouveau.elements.info?.textContent && deja.elements.info?.textContent === nouveau.elements.info?.textContent && deja.elements.erreur?.hidden !== false, 'compte déjà existant (réponse masquée ou « already registered ») : exactement le même message', [existant.elements.info?.textContent, deja.elements.erreur?.textContent]);
+    const session = await creer({ statut: 200, corps: { access_token: 'jeton-direct', refresh_token: 'r', user: { id: 'u3' } } });
+    verifier(!session.envois.some((e) => e.url === '/erp/connexion') && String(session.elements.info?.textContent).startsWith(MESSAGE), 'session rendue par Supabase (confirmation coupée) : jamais de connexion depuis la création', session.envois.map((e) => e.url));
+    const limite = await creer({ statut: 429, corps: { error_code: 'over_email_send_rate_limit', msg: 'email rate limit exceeded' } });
+    verifier(/Trop de tentatives/.test(String(limite.elements.erreur?.textContent)) && limite.elements['f-creer']?.hidden === false, 'trop de demandes : message clair, on reste sur la création');
+    const fermee = await creer({ statut: 422, corps: { error_code: 'signup_disabled', msg: 'Signups not allowed for this instance' } });
+    verifier(/pas ouverte/.test(String(fermee.elements.erreur?.textContent)), 'inscriptions fermées dans Supabase : message clair', fermee.elements.erreur?.textContent);
+    const faible = await creer({ statut: 422, corps: { error_code: 'weak_password', msg: 'Password should be at least 10 characters.' } });
+    verifier(/trop court/.test(String(faible.elements.erreur?.textContent)), 'mot de passe refusé par Supabase : traduit', faible.elements.erreur?.textContent);
+
+    // « Créer mon compte » ⇄ connexion.
+    const bascule = essai('');
+    bascule.elements.email.value = 'moi@exemple.fr';
+    bascule.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
+    verifier(bascule.elements['f-creer']?.hidden === false && bascule.elements['creer-email']?.value === 'moi@exemple.fr', '« Créer mon compte » : l’adresse saisie suit');
+    bascule.ecouteurs['deja-compte:click']?.({ preventDefault() {} });
+    verifier(bascule.elements['f-connexion']?.hidden === false && bascule.elements['f-creer']?.hidden === true && bascule.elements['note-creer']?.hidden === false, '« J’ai déjà un compte » : retour à la connexion');
+
+    // Le lien de confirmation (type=signup) demande toujours un geste : vérifié plus haut.
+    const confirme = essai(`#access_token=x.${Buffer.from(JSON.stringify({ email: 'nouveau@exemple.fr' })).toString('base64url')}.y&refresh_token=r&type=signup`);
+    verifier(!confirme.envois.length && confirme.elements['f-confirmer']?.hidden === false && confirme.elements['note-creer']?.hidden === true, 'lien de confirmation de l’adresse : « Ouvrir l’ERP avec le compte… », rien d’envoyé');
+  }
+
+  section('Invitation à créer l’espace d’une conciergerie');
+  {
+    const SENS_INVITE: Compte = { id: '66666666-2222-4333-8444-555555555555', email: 'gerante@sens.exemple', membre: false };
+    COMPTES.push(SENS_INVITE);
+    const dans = (jours: number) => new Date(Date.now() + jours * 86_400_000).toISOString();
+    base = 'espaces';
+    invitationsEspace.set(SENS_INVITE.id, [{ nom_espace: 'Sens', expire_le: dans(6) }]);
+    let r = await connexion(SENS_INVITE);
+    verifier(r!.status === 200 && cookiesPoses(r!).erp_session?.valeur.startsWith(`v2.${SENS_INVITE.id}.`), 'invitation en attente : session posée (l’application montre la création de l’espace)', r!.status);
+    invitationsEspace.set(SENS_INVITE.id, [{ nom_espace: 'Sens' }]);
+    r = await connexion(SENS_INVITE);
+    verifier(r!.status === 200, 'invitation sans échéance donnée : acceptée', r!.status);
+    for (const [forme, valeur] of [
+      ['échue', [{ nom_espace: 'Sens', expire_le: dans(-1) }]],
+      ['échéance illisible', [{ nom_espace: 'Sens', expire_le: 'bientôt' }]],
+      ['liste vide', []],
+      ['objet au lieu d’une liste', { nom_espace: 'Sens' }],
+      ['liste de textes', ['Sens']],
+      ['valeur nulle', null],
+    ] as [string, unknown][]) {
+      invitationsEspace.set(SENS_INVITE.id, valeur);
+      r = await connexion(SENS_INVITE);
+      verifier(r!.status === 403 && !cookiesPoses(r!).erp_session, `invitation ${forme} : refusé comme un non-membre`, r!.status);
+    }
+    invitationsEspace.delete(SENS_INVITE.id);
+    r = await connexion(SENS_INVITE);
+    const corps = (await r!.json()) as { erreur?: string };
+    verifier(r!.status === 403 && /n’a pas accès à l’ERP/.test(corps.erreur ?? ''), 'sans invitation : refusé, même message qu’avant', corps);
+    base = 'historique';
+    invitationsEspace.set(SENS_INVITE.id, [{ nom_espace: 'Sens', expire_le: dans(6) }]);
+    r = await connexion(SENS_INVITE);
+    verifier(r!.status === 403, 'base d’avant les espaces : rien ne change (erp.membres seulement)', r!.status);
+    invitationsEspace.delete(SENS_INVITE.id);
   }
 
   section('Robustesse');

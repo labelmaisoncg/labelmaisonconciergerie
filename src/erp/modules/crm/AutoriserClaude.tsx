@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, Check, Link2Off } from 'lucide-react';
+import { espaceOuvert } from '../../data/espaces';
 import { adresseRetour, demandeur, lireDemande } from '../../data/oauth-regles';
 import { useErp } from '../../data/store';
 import { Alert, Button, ButtonLink, Card, EmptyState } from '../../ui';
@@ -8,9 +9,9 @@ import { appelerConnecteur } from './_composants/api-connecteur';
 
 const DROITS = [
   'Consulter logements, réservations, messages et chiffres (sans codes d’accès ni wifi)',
-  'CRM : ajouter un contact, modifier une fiche, noter un appel',
-  'Préparer une réponse à un voyageur, sans jamais l’envoyer',
-  'Rien ne peut être supprimé, rien n’est modifié sur Airbnb ou Booking',
+  'CRM : ajouter un contact, modifier une fiche, noter un appel',
+  'Préparer une réponse à un voyageur, sans jamais l’envoyer, et classer une conversation « terminée »',
+  'Rien n’est supprimé, et rien n’est jamais envoyé ni modifié sur les plateformes de réservation',
 ];
 
 /** Écran plein, sans menu : tous les états sont centrés dans la même colonne. */
@@ -28,10 +29,15 @@ const OUVRIR_CRM = (
  * /erp/autoriser-claude : page d'autorisation OAuth ouverte par Claude quand
  * on connecte « Label Maison ». Le gérant accepte ou refuse ; Claude
  * reçoit alors un code (ou un refus) sur son adresse de retour.
+ *
+ * L'accès donné vaut pour l'espace ouvert, et lui seul : son nom est dans le
+ * titre, et le serveur revérifie que la personne en est gérante (en-tête
+ * x-erp-espace) avant de créer le code, rangé dans cet espace.
  */
 export default function AutoriserClaude() {
   const [params] = useSearchParams();
   const { utilisateur, mode } = useErp();
+  const nomEspace = espaceOuvert().nom;
   const lu = useMemo(() => lireDemande(Object.fromEntries(params)), [params]);
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -50,7 +56,7 @@ export default function AutoriserClaude() {
         <EmptyState
           icone={<Link2Off />}
           titre="Lien de connexion invalide"
-          description="Relancez la connexion depuis Claude : Paramètres → Connecteurs → Label Maison."
+          description={'Relancez la connexion depuis Claude : Paramètres → Connecteurs.'}
           action={OUVRIR_CRM}
         />
       </Colonne>
@@ -62,7 +68,7 @@ export default function AutoriserClaude() {
         <EmptyState
           icone={<Bot />}
           titre="Connexion impossible ici"
-          description={mode !== 'reel' ? 'Disponible avec vos données réelles.' : 'Seul un gérant peut connecter Claude à l’ERP.'}
+          description={mode !== 'reel' ? 'Disponible avec vos données réelles.' : `Seul un gérant de l’espace ${nomEspace} peut connecter Claude.`}
           action={OUVRIR_CRM}
         />
       </Colonne>
@@ -93,9 +99,10 @@ export default function AutoriserClaude() {
             <Bot className="size-6" aria-hidden />
           </div>
           <div>
-            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Connecter Claude à Label Maison ?</h1>
+            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Connecter Claude à l’espace {nomEspace}&nbsp;?</h1>
             <p className="mt-1 text-[14px] text-(--lm-encre-2)">
-              Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>, pour l’ERP de Label Maison : logements, réservations, messages et CRM.
+              Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>. Claude ne verra que cet espace&nbsp;: ses logements,
+              réservations, messages et son CRM.
             </p>
           </div>
           <ul className="space-y-2 text-[14px] text-(--lm-encre)">
@@ -106,7 +113,7 @@ export default function AutoriserClaude() {
               </li>
             ))}
           </ul>
-          <p className="text-[12.5px] text-(--lm-encre-2)">Pour retirer l’accès : CRM → Plus → Connecter à Claude → Déconnecter.</p>
+          <p className="text-[12.5px] text-(--lm-encre-2)">Pour retirer l’accès&nbsp;: CRM → Plus → Connecter à Claude → Déconnecter.</p>
           {origine.local && (
             <Alert tone="alerte" titre="Demande venue d’une application de cet ordinateur. N’autorisez que si vous venez de lancer la connexion depuis Claude Code." />
           )}
