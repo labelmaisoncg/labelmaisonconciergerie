@@ -224,6 +224,101 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant())
   with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant());
 
+-- Écritures réservées aux gérants (le serveur passe par le compte d'équipe,
+-- gérant) ; la lecture ne change pas. Ce que seul le serveur écrit (envois
+-- et état des messages automatiques, état de l'agent et de la
+-- synchronisation, passages des factures mensuelles, état des prix) et ce
+-- que seul un gérant change (factures, réglages des prix, modèles des
+-- messages automatiques, identité de la société, numérotation des factures).
+-- Même règle que dans erp-espaces.sql (par espace).
+create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
+language sql immutable set search_path = ''
+as $$
+  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles')
+      or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
+      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures'))
+$$;
+revoke all on function erp.ecriture_gerant_seulement(text, text) from public, anon;
+grant execute on function erp.ecriture_gerant_seulement(text, text) to authenticated;
+drop policy if exists "ecritures reservees aux gerants (ajout)" on erp.enregistrements;
+drop policy if exists "ecritures reservees aux gerants (modification)" on erp.enregistrements;
+drop policy if exists "ecritures reservees aux gerants (suppression)" on erp.enregistrements;
+create policy "ecritures reservees aux gerants (ajout)" on erp.enregistrements
+  as restrictive for insert to authenticated
+  with check (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant());
+create policy "ecritures reservees aux gerants (modification)" on erp.enregistrements
+  as restrictive for update to authenticated
+  using (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant())
+  with check (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant());
+create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrements
+  as restrictive for delete to authenticated
+  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent')) or erp.acces_gerant());
+
+-- Niveau d'autonomie de l'agent (reglages / agent) : un gérant seulement ; le
+-- reste de ces réglages reste à l'équipe. Déclencheur (une règle RLS ne
+-- compare pas l'avant et l'après).
+create or replace function erp.garder_autonomie_agent() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant jsonb;
+begin
+  if current_user <> 'authenticated' then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.collection = 'reglages' and old.id = 'agent'
+     and (new.collection <> 'reglages' or new.id <> 'agent') and not erp.acces_gerant() then
+    raise exception 'Seul un gérant change le niveau d''autonomie de l''agent.' using errcode = '42501';
+  end if;
+  if new.collection <> 'reglages' or new.id <> 'agent' or erp.acces_gerant() then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    avant := old.donnees -> 'autonomie';
+  else
+    select e.donnees -> 'autonomie' into avant from erp.enregistrements e where e.collection = 'reglages' and e.id = 'agent';
+  end if;
+  if (new.donnees -> 'autonomie') is distinct from avant then
+    raise exception 'Seul un gérant change le niveau d''autonomie de l''agent.' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.garder_autonomie_agent() from public, anon;
+drop trigger if exists garder_autonomie_agent on erp.enregistrements;
+create trigger garder_autonomie_agent before insert or update on erp.enregistrements
+  for each row execute function erp.garder_autonomie_agent();
+
+-- Facture numérotée : plus rien ne change, sauf le paiement (statut émise,
+-- payée ou en retard, date de paiement) et le partage ; elle ne se supprime
+-- pas. Même déclencheur que dans erp-espaces.sql.
+create or replace function erp.figer_facture_numerotee() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  libres constant text[] := array['statut', 'payeeLe', 'partageeLe'];
+begin
+  if current_user <> 'authenticated' or old.collection <> 'factures'
+     or btrim(coalesce(old.donnees ->> 'numero', '')) = '' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+  if tg_op = 'DELETE' then
+    raise exception 'Facture numérotée : elle ne se supprime pas (faites un avoir).' using errcode = '42501';
+  end if;
+  if (to_jsonb(new) - 'donnees' - 'maj_le' - 'maj_par') is distinct from (to_jsonb(old) - 'donnees' - 'maj_le' - 'maj_par')
+     or (new.donnees - libres) is distinct from (old.donnees - libres)
+     or (coalesce(new.donnees ->> 'statut', '') not in ('emise', 'payee', 'en_retard')
+         and (new.donnees -> 'statut') is distinct from (old.donnees -> 'statut')) then
+    raise exception 'Facture numérotée : seuls le paiement et le partage changent encore.' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.figer_facture_numerotee() from public, anon;
+drop trigger if exists figer_facture_numerotee on erp.enregistrements;
+create trigger figer_facture_numerotee before update or delete on erp.enregistrements
+  for each row execute function erp.figer_facture_numerotee();
+
 -- historique : lecture seule pour l'équipe (écrit uniquement par le déclencheur).
 drop policy if exists "membres lisent" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated using (erp.acces_lecture());
