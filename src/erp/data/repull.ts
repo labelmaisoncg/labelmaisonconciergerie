@@ -826,8 +826,11 @@ export function versFil(conv: RepullConversation, messages: RepullMessage[], exi
     // L'équipe a répondu directement sur la plateforme à une conversation transmise :
     // répondue, comme une réponse envoyée depuis l'ERP (messagerie-envoi.ts). Jamais le
     // retour d'un message parti de l'ERP (message d'attente de l'agent sans identifiant Repull).
-    const renvoiErp = (m: Message) => (existant?.messages ?? []).some((x) => !!x.envoi && x.texte.trim() === m.texte.trim());
-    if (statut === 'escalade' && dernier?.auteur === 'hote' && nouveaux.some((m) => m.id === dernier.id) && instant(dernier.envoyeLe) > avant && !renvoiErp(dernier)) {
+    const norme = (t: string) => t.normalize('NFKC').replace(/[’‘]/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+    const renvoiErp = (m: Message) => (existant?.messages ?? []).some((x) => !!x.envoi && norme(x.texte) === norme(m.texte));
+    // Seulement un vrai envoi de l'hôte sur la plateforme (ni message système, ni automatique, ni IA).
+    const reponsesHote = new Set(messages.filter((b) => b?.id && b.direction === 'outbound' && !b.aiGenerated && !b.isAutomated).map((b) => idRepull(b.id)));
+    if (statut === 'escalade' && dernier && reponsesHote.has(dernier.id) && nouveaux.some((m) => m.id === dernier.id) && instant(dernier.envoyeLe) > avant && !renvoiErp(dernier)) {
       statut = 'ouvert';
       traitePar = 'humain';
     }

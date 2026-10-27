@@ -535,7 +535,10 @@ async function principal() {
       ['code AB12', 'code A12', 'code BX7', 'code ABC12', 'Boîte à clés : code : ab12'].every((a) => vrais(a).length === 1) &&
         vrais('code SOLEIL').includes('SOLEIL') &&
         vrais('Code WIFI affiché dans l’entrée, code PORTE au dos.').length === 0 &&
-        vrais('Code envoyé la veille.').length === 0,
+        vrais('Code envoyé la veille.').length === 0 &&
+        vrais('BOÎTE À CLÉS - CODE SOLEIL').includes('SOLEIL') &&
+        ['Code ALARME', 'Code VOYAGEUR envoyé la veille', 'Code ENTRÉE', 'Code AIRBNB'].every((a) => vrais(a).length === 0) &&
+        !contientCodeAcces('Bonjour cher voyageur', { acces: 'Code VOYAGEUR envoyé la veille' }),
       `codes courts avec un chiffre et codes en majuscules repérés, mots de la fiche non (${['code AB12', 'code A12', 'code BX7', 'code ABC12', 'code SOLEIL', 'Code WIFI'].map((a) => vrais(a).join('/')).join(' | ')})`,
     );
     verifier(contientCodeAcces('Votre code est A12B.', { acces: 'code : A12B' }) && contientCodeAcces('le code 4 8 2 1', { acces: 'code 4821' }), 'vrai code écrit dans un message : repéré');

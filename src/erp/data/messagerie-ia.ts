@@ -791,7 +791,13 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 }
 
 /** Mots en majuscules qui suivent « code » sans en être un. */
-const MOTS_PAS_CODE = new Set(['WIFI', 'PORTE', 'PORTAIL', 'ENTREE', 'IMMEUBLE', 'PARKING', 'ACCES', 'BOITE', 'GARAGE', 'CADENAS', 'POSTAL']);
+const MOTS_PAS_CODE = new Set([
+  'WIFI', 'PORTE', 'PORTAIL', 'ENTREE', 'IMMEUBLE', 'PARKING', 'ACCES', 'BOITE', 'GARAGE', 'CADENAS', 'POSTAL',
+  'ALARME', 'DIGICODE', 'VOYAGEUR', 'VOYAGEURS', 'AIRBNB', 'BOOKING', 'OUVERTURE', 'CLES', 'CLEF', 'CLEFS', 'MAIL', 'EMAIL',
+  'ENVOYE', 'TRANSMIS', 'PERSONNEL', 'UNIQUE', 'VALABLE', 'SEJOUR', 'ARRIVEE',
+]);
+/** Majuscules sans accents, pour comparer à MOTS_PAS_CODE (« ENTRÉE » = « ENTREE »). */
+const sansAccentsMaj = (m: string) => m.normalize('NFD').replace(/\p{M}/gu, '');
 
 /**
  * Codes, wifi et numéros d'accès : jamais dans un texte avant que le
@@ -816,7 +822,7 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
     // jamais un mot (« code par séjour »).
     ...[...acces.matchAll(/code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi)].map((m) => m[1]),
     // Ou un mot tout en majuscules d'au moins 4 lettres (« code SOLEIL »), sauf les mots de la fiche (« code WIFI », « code PORTE »).
-    ...[...acces.matchAll(/[Cc]ode\s*:?\s*([A-Z]{4,})(?![A-Za-z0-9])/g)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(m)),
+    ...[...acces.matchAll(/[Cc][Oo][Dd][Ee]\s*:?\s*([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(sansAccentsMaj(m))),
     ...(autres.match(SUITE_CHIFFRES) ?? []),
   ];
   return [...new Set([fiche.wifiCode, fiche.wifiNom, ...codes].map((x) => String(x ?? '').trim()).filter((x) => x.length >= 3))];

@@ -934,10 +934,13 @@ async function principal() {
     ];
     const repondue = versFil(conv, bruts([{ id: 'h2', direction: 'outbound', body: 'Un plombier passe à 14 h.', sentAt: '2026-09-20T09:30:00.000Z' }]), transmise, ctx);
     verifier(repondue.statut === 'ouvert' && repondue.traitePar === 'humain' && !attendEquipe(repondue), 'réponse de l’équipe sur Airbnb : conversation répondue, plus « en attente de l’équipe »');
-    const retour = versFil(conv, bruts([{ id: 'a2', direction: 'outbound', body: 'Merci, l’équipe revient vers vous rapidement.', sentAt: '2026-09-20T08:01:00.000Z' }]), transmise, ctx);
+    const retour = versFil(conv, bruts([{ id: 'a2', direction: 'outbound', body: "Merci, l'équipe revient\r\nvers vous  rapidement.", sentAt: '2026-09-20T08:05:00.000Z' }]), transmise, ctx);
     verifier(retour.statut === 'escalade' && attendEquipe(retour), 'retour du message d’attente parti de l’ERP : toujours transmise');
     const relance = versFil(conv, bruts([{ id: 'v3', direction: 'inbound', body: 'Toujours rien ?', sentAt: '2026-09-20T09:30:00.000Z' }]), transmise, ctx);
     verifier(relance.statut === 'escalade' && attendEquipe(relance), 'nouveau message du voyageur : toujours transmise');
+    const systeme = versFil(conv, bruts([{ id: 's2', direction: 'system', body: 'Réservation modifiée.', sentAt: '2026-09-20T09:30:00.000Z' }]), transmise, ctx);
+    const auto = versFil(conv, [...bruts([]), { id: 'p2', direction: 'outbound', isAutomated: true, body: 'Rappel : arrivée demain.', sentAt: '2026-09-20T09:30:00.000Z' }], transmise, ctx);
+    verifier(systeme.statut === 'escalade' && auto.statut === 'escalade', 'message système ou automatique de la plateforme : toujours transmise');
   }
 
   section('Changements chez Repull');
