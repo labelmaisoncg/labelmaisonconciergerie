@@ -146,7 +146,7 @@ export async function controlerReponse(ia: ClientControle, texte: string, langue
 
 /** Échecs de suite du contrôle qui lèvent l'alerte. */
 export const SEUIL_ALERTE_CONTROLE = 5;
-export const MESSAGE_ALERTE_CONTROLE = 'L’agent ne peut plus vérifier ses réponses : il les garde à valider.';
+export const MESSAGE_ALERTE_CONTROLE = 'Votre agent ne peut plus vérifier ses réponses : il les garde à valider.';
 /** Élément de la collection `reglages` lu par l'« À faire » de l'accueil (écrit par le serveur, comme un compteur). */
 export const ID_ALERTE_CONTROLE: AlerteControleAgent['id'] = 'alerte-controle-agent';
 

@@ -146,8 +146,8 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   if (alerteControle?.active)
     liste.push({
       id: 'agent-controle', type: 'agent', priorite: 1, ton: 'alerte', to: '/erp/messagerie/agent',
-      titre: alerteControle.message,
-      details: ['Rien ne part seul : ses réponses vous attendent dans la Messagerie, à relire et envoyer.'],
+      titre: 'Votre agent ne vérifie plus ses réponses',
+      details: ['Rien ne part seul : ses réponses restent à valider dans la Messagerie.'],
     });
 
   const aAppeler = d.crm.filter((c) => aTraiterLe(c, aujourdhui));
