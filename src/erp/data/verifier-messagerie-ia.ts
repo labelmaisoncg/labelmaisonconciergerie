@@ -1,0 +1,599 @@
+/**
+ * Auto-contrôle de la messagerie IA (messagerie-ia.ts, agent-assistant.ts et
+ * la partie « autonomie » d'agent-messagerie.ts), sans réseau : faux Claude
+ * (réponses JSON écrites à l'avance), fausse base et fausse API Repull en
+ * mémoire.
+ *
+ * Vérifie : lecture de la décision (confiance, intention, ton, traduction),
+ * sujets sensibles jamais envoyés seuls (annulation comprise), niveaux
+ * d'autonomie et seuils, réponse « à valider » gardée sur le fil (rien
+ * d'envoyé), ordre de « À répondre », langue devinée, codes d'accès jamais
+ * dans une proposition avant l'heure, plafond mensuel compté (propositions
+ * et traductions), journal des décisions et de la validation.
+ *
+ * Lancement (Node 18+) :
+ *   node_modules/.bin/esbuild src/erp/data/verifier-messagerie-ia.ts --bundle --platform=node --format=esm \
+ *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --outfile=/tmp/verifier-messagerie-ia.mjs && node /tmp/verifier-messagerie-ia.mjs
+ */
+import type Anthropic from '@anthropic-ai/sdk';
+import { COLLECTION_AGENT, ID_ETAT_AGENT, SCHEMA_DECISION, lancerAgent, lireDecision, type ClientIA, type EtatAgent, type OptionsAgent } from './agent-messagerie';
+import { ErreurAssistant, compterAppelIA, proposerReponse, traduireMessage, traduireTexte, type BaseAssistant, type OptionsAssistant } from './agent-assistant';
+import {
+  INTENTIONS,
+  confianceLue,
+  contientCodeAcces,
+  detailValidation,
+  intentionProbable,
+  langueProbable,
+  lireValidation,
+  marquerBrouillonValide,
+  niveauAutonomie,
+  politiqueEnvoi,
+  reserverAppelsIA,
+  sujetSensible,
+  trierParUrgence,
+  urgenceFil,
+  verdictEnvoi,
+  SEUIL_AUTONOME,
+  SEUIL_SIMPLES,
+} from './messagerie-ia';
+import { notificationsEntre } from './notifications';
+import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { BaseErp } from './repull-synchro';
+import type { FilMessages, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
+
+/* ------------------------------------------------------------ assertions */
+
+let echecs = 0;
+let reussis = 0;
+function verifier(condition: unknown, message: string) {
+  if (condition) reussis++;
+  else {
+    echecs++;
+    console.error(`  ✗ ${message}`);
+  }
+}
+function section(titre: string) {
+  console.log(`\n${titre}`);
+}
+const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'Content-Type': 'application/json' } });
+
+/* ---------------------------------------------------------- faux Claude */
+
+class FausseIA implements ClientIA {
+  appels: Anthropic.MessageCreateParamsNonStreaming[] = [];
+  reponses: (Record<string, unknown> | Error)[] = [];
+  messages = {
+    create: async (p: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
+      this.appels.push(p);
+      const r = this.reponses.shift() ?? { action: 'transmettre', raison: 'autre', langue: 'fr', texte: '', resume: 'Rien de prévu.' };
+      if (r instanceof Error) throw r;
+      return {
+        id: 'msg_test',
+        type: 'message',
+        role: 'assistant',
+        model: p.model,
+        content: [{ type: 'text', text: JSON.stringify(r), citations: null }],
+        stop_reason: 'end_turn',
+        stop_sequence: null,
+        usage: { input_tokens: 900, output_tokens: 90 },
+      } as unknown as Anthropic.Message;
+    },
+  };
+  get dernierContexte(): string {
+    const m = this.appels[this.appels.length - 1]?.messages[0];
+    return typeof m?.content === 'string' ? m.content : '';
+  }
+}
+
+/** Décision complète au format de SCHEMA_DECISION. */
+const decision = (x: Partial<Record<string, unknown>> = {}) => ({
+  action: 'repondre',
+  raison: 'aucune',
+  langue: 'fr',
+  texte: '',
+  resume: '',
+  guides: [],
+  intention: 'infos',
+  sentiment: 'neutre',
+  confiance: 0.9,
+  texte_fr: '',
+  ...x,
+});
+
+/* ------------------------------------------------- fausse base (PostgREST) */
+
+class FausseBase {
+  lignes = new Map<string, { collection: string; id: string; donnees: unknown; version: number }>();
+  private cle = (c: string, id: string) => `${c}\u0000${id}`;
+
+  fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
+    const methode = (init?.method ?? 'GET').toUpperCase();
+    if (methode === 'GET') {
+      const collection = (url.searchParams.get('collection') ?? '').replace(/^eq\./, '');
+      const filtre = url.searchParams.get('id');
+      const ids = filtre ? new Set(filtre.replace(/^in\.\(|\)$/g, '').split(',').map((x) => x.replace(/^"|"$/g, ''))) : null;
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      return json(
+        [...this.lignes.values()]
+          .filter((l) => l.collection === collection && (!ids || ids.has(l.id)))
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .slice(offset, offset + 1000)
+          .map((l) => ({ id: l.id, donnees: JSON.parse(JSON.stringify(l.donnees)), maj_le: `v${l.version}` })),
+      );
+    }
+    if (methode === 'PATCH') {
+      const collection = (url.searchParams.get('collection') ?? '').replace(/^eq\./, '');
+      const id = (url.searchParams.get('id') ?? '').replace(/^eq\./, '');
+      const version = (url.searchParams.get('maj_le') ?? '').replace(/^eq\./, '');
+      const l = this.lignes.get(this.cle(collection, id));
+      if (!l || `v${l.version}` !== version) return json([]);
+      const corps = JSON.parse(String(init?.body)) as { donnees: unknown };
+      l.donnees = JSON.parse(JSON.stringify(corps.donnees));
+      l.version++;
+      return json([{ id }]);
+    }
+    for (const l of JSON.parse(String(init?.body)) as { collection: string; id: string; donnees: unknown }[]) {
+      const avant = this.lignes.get(this.cle(l.collection, l.id));
+      this.lignes.set(this.cle(l.collection, l.id), { collection: l.collection, id: l.id, donnees: JSON.parse(JSON.stringify(l.donnees)), version: (avant?.version ?? 0) + 1 });
+    }
+    return new Response(null, { status: 201 });
+  };
+
+  get<T>(c: string, id: string): T | undefined {
+    return this.lignes.get(this.cle(c, id))?.donnees as T | undefined;
+  }
+  collection<T>(c: string): T[] {
+    return [...this.lignes.values()].filter((l) => l.collection === c).map((l) => l.donnees as T);
+  }
+  poser<T extends { id: string }>(c: string, e: T) {
+    const avant = this.lignes.get(this.cle(c, e.id));
+    this.lignes.set(this.cle(c, e.id), { collection: c, id: e.id, donnees: JSON.parse(JSON.stringify(e)), version: (avant?.version ?? 0) + 1 });
+  }
+}
+
+/** Fausse API Repull : seulement l'envoi de messages (compté). */
+class FauxRepull {
+  envois: { conversation: string; message: string }[] = [];
+  fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
+    const m = /^\/v1\/conversations\/([^/]+)\/messages$/.exec(url.pathname);
+    if (m && (init?.method ?? 'GET').toUpperCase() === 'POST') {
+      const corps = JSON.parse(String(init?.body)) as { message: string };
+      this.envois.push({ conversation: m[1], message: corps.message });
+      return json({ id: String(900000 + this.envois.length), conversationId: Number(m[1]), channel: 'airbnb', status: 'sent', contentRewritten: false, deliveredContent: corps.message });
+    }
+    return json({ data: [], pagination: { hasMore: false, nextCursor: null } });
+  };
+}
+
+/* ------------------------------------------------------------- données */
+
+const MAINTENANT = new Date('2026-09-25T10:00:00.000Z'); // 12:00 à Paris
+const iso = (min: number) => new Date(MAINTENANT.getTime() + min * 60_000).toISOString().replace('Z', '+00:00');
+
+const logement: Logement = {
+  id: 'repull-201',
+  nom: 'Studio Cœur de Ville',
+  adresse: '12 rue Pasteur',
+  ville: 'Évry-Courcouronnes',
+  codePostal: '91000',
+  type: 'studio',
+  surfaceM2: 24,
+  capacite: 2,
+  chambres: 0,
+  lits: [],
+  statut: 'actif',
+  proprietaireId: 'p1',
+  residencePrincipale: false,
+  serrure: 'boite_a_cles',
+  fiche: {
+    wifiNom: 'Box-201',
+    wifiCode: 'motdepasse201',
+    heureArrivee: '16:00',
+    heureDepart: '11:00',
+    acces: 'Boîte à clés à gauche de la porte, code 7351.',
+    parking: 'Place 12 au sous-sol.',
+    regles: 'Pas de fête. Non-fumeur.',
+    equipements: ['wifi', 'lave-linge'],
+  },
+  dotationLinge: [],
+  annonces: [],
+  checklistLancement: [],
+  repull: { id: '201' },
+};
+const reservation = (arrivee: string, depart: string): Reservation => ({
+  id: 'repull-6001',
+  logementId: 'repull-201',
+  canal: 'airbnb',
+  voyageur: { nom: 'Emily Carter', nbPersonnes: 2 },
+  arrivee,
+  depart,
+  nuits: 3,
+  statut: 'confirmee',
+  montantBrutCentimes: 30000,
+  commissionPlateformeCentimes: 4500,
+  fraisMenageCentimes: 4000,
+  repull: { id: '6001' },
+});
+const filDe = (texte: string, id = 'repull-m1'): FilMessages => ({
+  id: 'repull-8001',
+  reservationId: 'repull-6001',
+  logementId: 'repull-201',
+  canal: 'airbnb',
+  voyageur: 'Emily Carter',
+  statut: 'ouvert',
+  messages: [{ id, auteur: 'voyageur', texte, envoyeLe: iso(-5) }],
+  dernierMessageLe: iso(-5),
+  traitePar: 'en_attente',
+  repull: { id: '8001', majLe: iso(-5) },
+});
+
+/** Base de l'assistant en mémoire (lecture, écriture, écriture conditionnelle). */
+function baseAssistant(b: FausseBase): BaseAssistant {
+  return new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: b.fetch as typeof fetch, jeton: async () => 'jeton-equipe' });
+}
+
+/* ================================================================ scénario */
+
+async function principal() {
+  /* --------------------------------------------- décision : nouveaux champs */
+  section('Lecture de la décision : confiance, intention, ton, traduction');
+  const lire = (x: unknown) => lireDecision({ content: [{ type: 'text', text: JSON.stringify(x), citations: null }], stop_reason: 'end_turn' } as never);
+  let d = lire(decision({ texte: 'Hi Emily', langue: 'en', confiance: 0.92, intention: 'arrivee_anticipee', sentiment: 'positif', texte_fr: 'Bonjour Emily' }));
+  verifier(d?.confiance === 0.92 && d.intention === 'arrivee_anticipee' && d.sentiment === 'positif' && d.texteFr === 'Bonjour Emily', 'confiance, intention, ton et version française lus');
+  d = lire(decision({ confiance: '85', intention: 'inventee', sentiment: 'furieux' }));
+  verifier(d?.confiance === 0.85 && d.intention === undefined && d.sentiment === undefined, 'confiance « 85 » lue 0,85 ; intention et ton inconnus ignorés');
+  d = lire(decision({ confiance: 7000 }));
+  verifier(d !== null && d.confiance === undefined, 'confiance illisible : absente (jamais inventée)');
+  d = lire({ action: 'repondre', raison: 'aucune', langue: 'fr', texte: 'Ancien format', resume: '' });
+  verifier(d?.action === 'repondre' && d.confiance === undefined && d.intention === undefined, 'ancien format sans les nouveaux champs : toujours lisible');
+  verifier(confianceLue(-0.2) === undefined && confianceLue(1) === 1 && confianceLue('0,7') === 0.7, 'confiance : négative refusée, « 0,7 » accepté');
+  const schema = SCHEMA_DECISION as unknown as { properties: Record<string, { enum?: string[] }>; required: string[] };
+  verifier(
+    ['intention', 'sentiment', 'confiance', 'texte_fr'].every((k) => schema.required.includes(k) && schema.properties[k]) && schema.properties.intention.enum?.length === INTENTIONS.length,
+    'schéma imposé à Claude : intention (12 demandes), ton, confiance, version française obligatoires',
+  );
+  verifier(!/minimum|maximum/.test(JSON.stringify(SCHEMA_DECISION)), 'schéma sans contrainte numérique (non prise en charge par les sorties structurées)');
+
+  /* ------------------------------------------------- sujets sensibles */
+  section('Sujets sensibles : jamais d’envoi seul');
+  const sensibles = [
+    'Je voudrais annuler ma réservation.',
+    'Can I cancel my booking?',
+    'Ich möchte stornieren.',
+    'Quiero cancelar la reserva.',
+    'Pouvez-vous me rembourser une nuit ?',
+    'When will you return the security deposit?',
+    'Où en est la caution ?',
+    'Je vais porter plainte, c’est inacceptable.',
+    'The heating is not working.',
+    'Il y a une fuite d’eau dans la salle de bain.',
+    'Do you need a copy of my passport?',
+  ];
+  const niveaux = (['valider', 'simples', 'autonome'] as const).map((n) => politiqueEnvoi({ autonomie: n }, false));
+  niveaux.push(politiqueEnvoi({}, true));
+  for (const t of sensibles) {
+    const ok = niveaux.every((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 1, intention: 'infos' }, p, t).verdict === 'transmettre');
+    verifier(ok, `« ${t} » : transmis à tous les niveaux, même avec une confiance de 1`);
+  }
+  for (const i of ['annulation', 'paiement', 'probleme_technique'] as const) {
+    verifier(
+      niveaux.every((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 1, intention: i }, p, 'Bonjour').verdict === 'transmettre'),
+      `demande « ${i} » lue par l’IA : jamais envoyée seule`,
+    );
+  }
+  verifier(sujetSensible('On peut déposer nos valises ?') === null && sujetSensible('À quelle heure la remise des clés ?') === null, 'pas de faux sujet sensible : bagages, remise des clés');
+  verifier(sujetSensible('Je voudrais annuler')?.raison === 'argent' && sujetSensible('Le chauffage ne marche pas')?.raison === 'litige', 'raisons : annulation → argent, problème sur place → litige');
+
+  /* --------------------------------------------- niveaux et seuils */
+  section('Niveaux d’autonomie et seuils');
+  const valider = politiqueEnvoi({ autonomie: 'valider' }, true);
+  const simples = politiqueEnvoi({ autonomie: 'simples' }, false);
+  const autonome = politiqueEnvoi({ autonomie: 'autonome' }, false);
+  const historique = politiqueEnvoi({}, true);
+  verifier(!valider.envoiAuto && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 1, intention: 'infos' }, valider, 'Le parking ?').verdict === 'valider', '« Je valide tout » : rien ne part seul, même sûr de lui');
+  verifier(simples.seuil === SEUIL_SIMPLES && SEUIL_SIMPLES === 0.85 && autonome.seuil === SEUIL_AUTONOME && SEUIL_AUTONOME === 0.7, 'seuils : questions simples 0,85, autonome 0,7');
+  const v = (p: typeof simples, confiance: number | undefined, intention: (typeof INTENTIONS)[number]) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance, intention }, p, 'Bonjour').verdict;
+  verifier(v(simples, 0.9, 'infos') === 'envoyer' && v(simples, 0.84, 'infos') === 'valider', 'questions simples : 0,90 envoyé, 0,84 à valider');
+  verifier(v(simples, 0.99, 'prolongation') === 'valider' && v(simples, 0.99, 'arrivee_anticipee') === 'valider', 'questions simples : prolongation, arrivée plus tôt → à valider');
+  verifier(v(autonome, 0.7, 'prolongation') === 'envoyer' && v(autonome, 0.69, 'infos') === 'valider', 'autonome : 0,70 envoyé (hors sensible), 0,69 à valider');
+  verifier(v(autonome, undefined, 'infos') === 'valider' && v(historique, undefined, 'infos') === 'envoyer', 'sans confiance : à valider, sauf l’agent d’avant de Label Maison');
+  verifier(politiqueEnvoi({}, false).niveau === 'valider' && historique.niveau === 'historique' && historique.seuil === 0, 'sans choix : nouvel espace « Je valide tout », Label Maison inchangé');
+  verifier(niveauAutonomie({}, true) === 'autonome' && niveauAutonomie({}, false) === 'valider' && niveauAutonomie({ autonomie: 'simples' }, true) === 'simples', 'niveau affiché dans les réglages');
+  verifier(verdictEnvoi({ action: 'transmettre', raison: 'hors_fiche' }, autonome, 'Une piscine ?').verdict === 'transmettre', 'choix de l’agent de transmettre : respecté');
+
+  /* ------------------------------------------------------------- triage */
+  section('Ordre de « À répondre »');
+  const aujourdhui = '2026-09-25';
+  const msg = (id: string, texte: string, quand: string): Message => ({ id, auteur: 'voyageur', texte, envoyeLe: quand });
+  const fil = (id: string, texte: string, quand: string, reservationId?: string, extra: Partial<FilMessages> = {}): FilMessages => ({
+    id,
+    reservationId,
+    logementId: 'l',
+    canal: 'airbnb',
+    voyageur: id,
+    statut: 'ouvert',
+    messages: [msg(`${id}-m`, texte, quand)],
+    dernierMessageLe: quand,
+    traitePar: 'en_attente',
+    ...extra,
+  });
+  const resa = (id: string, arrivee: string, depart: string, statut: Reservation['statut'] = 'confirmee'): Reservation => ({ ...reservation(arrivee, depart), id, statut });
+  const reservations = new Map<string, Reservation>([
+    ['r-sur-place', resa('r-sur-place', '2026-09-23', '2026-09-27', 'en_cours')],
+    ['r-demain', resa('r-demain', '2026-09-26', '2026-09-29')],
+    ['r-loin', resa('r-loin', '2026-10-20', '2026-10-23')],
+    ['r-fini', resa('r-fini', '2026-09-10', '2026-09-13', 'terminee')],
+  ]);
+  const fils = [
+    fil('banal-recent', 'Y a-t-il un sèche-cheveux ?', '2026-09-25T11:00:00+02:00', 'r-loin'),
+    fil('panne-sur-place', 'Le chauffage ne marche plus.', '2026-09-25T08:00:00+02:00', 'r-sur-place'),
+    fil('arrive-demain', 'À quelle heure peut-on arriver ?', '2026-09-25T09:00:00+02:00', 'r-demain'),
+    fil('plainte-apres', 'La salle de bain était sale.', '2026-09-24T09:00:00+02:00', 'r-fini'),
+    fil('banal-ancien', 'Merci pour les infos.', '2026-09-24T08:00:00+02:00', 'r-loin'),
+    fil('mecontent-demain', 'Hmm.', '2026-09-25T07:00:00+02:00', 'r-demain', {
+      analyse: { messageId: 'mecontent-demain-m', sentiment: 'negatif', le: '2026-09-25T07:01:00+02:00' },
+    }),
+  ];
+  const niveau = (f: FilMessages) => urgenceFil(f, f.reservationId ? reservations.get(f.reservationId) : undefined, aujourdhui).niveau;
+  const ordre = trierParUrgence(fils, niveau).map((f) => f.id);
+  verifier(
+    ordre.join() === 'panne-sur-place,mecontent-demain,arrive-demain,plainte-apres,banal-recent,banal-ancien',
+    `problème pendant le séjour, puis arrivée sous 24 h, puis problème hors séjour, puis le plus récent (${ordre.join()})`,
+  );
+  verifier(niveau(fils[1]) === 3 && niveau(fils[2]) === 2 && niveau(fils[3]) === 1 && niveau(fils[0]) === 0, 'niveaux : 3 rouge, 2 urgent discret, 1, 0');
+  const repondu: FilMessages = { ...fils[1], messages: [...fils[1].messages, { id: 'h', auteur: 'hote', texte: 'On arrive.', envoyeLe: '2026-09-25T08:10:00+02:00' }] };
+  verifier(niveau(repondu) === 0, 'l’équipe a répondu : plus urgent');
+  const attente: FilMessages = { ...fils[1], messages: [...fils[1].messages, { id: 'a', auteur: 'agent', texte: 'Je préviens l’équipe.', envoyeLe: '2026-09-25T08:01:00+02:00' }] };
+  verifier(niveau(attente) === 3, 'un message d’attente de l’agent ne compte pas comme une réponse');
+
+  /* ------------------------------------------------------------- langues */
+  section('Langue devinée et demande probable');
+  verifier(langueProbable('Hello! Our flight lands at 10am. Would it be possible to check in earlier?') === 'en', 'anglais');
+  verifier(langueProbable('Bonjour, à quelle heure recevrons-nous le code pour entrer ?') === 'fr', 'français');
+  verifier(langueProbable('Hola, ¿a qué hora podemos llegar?') === 'es' && langueProbable('Guten Tag, wann können wir einchecken?') === 'de', 'espagnol, allemand');
+  verifier(langueProbable('Merci !') === 'fr' && langueProbable('Thanks!') === 'en' && langueProbable('Ok') === undefined && langueProbable('12:30') === undefined, 'textes courts : tranché seulement si net');
+  verifier(intentionProbable('Est-il possible d’arriver vers 13 h ? Notre train arrive tôt.') === 'arrivee_anticipee' && intentionProbable('Could we have a late check-out?') === 'depart_tardif', 'demande devinée : arrivée plus tôt, départ plus tard');
+  verifier(intentionProbable('Je dois annuler') === 'annulation' && intentionProbable('Le wifi ne fonctionne plus') === 'probleme_technique' && intentionProbable('Nous aimerions revenir en novembre') === undefined, 'demande devinée : annulation, problème ; rien de net → rien');
+
+  /* ---------------------------------------------------------- codes */
+  section('Codes d’accès et wifi');
+  verifier(contientCodeAcces('Le code est 7351.', logement.fiche) && contientCodeAcces('wifi : MOTDEPASSE201', logement.fiche) && !contientCodeAcces('Arrivée dès 16:00.', logement.fiche), 'codes repérés (même en majuscules), heure d’arrivée non');
+
+  {
+    const b = new FausseBase();
+    const ia = new FausseIA();
+    b.poser('logements', logement);
+    b.poser('reservations', reservation('2026-10-10', '2026-10-13')); // dans 15 jours : pas encore de codes
+    b.poser<FilMessages>('filsMessages', filDe('Hi! What is the wifi password and the door code?'));
+    b.poser<ReglagesAgent>('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true });
+    const o: OptionsAssistant = { base: baseAssistant(b), ia, maintenant: () => MAINTENANT, par: 'gerant@exemple.fr' };
+    ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, the wifi password is motdepasse201 and the code is 7351.', texte_fr: 'Bonjour Emily, le mot de passe wifi est motdepasse201 et le code 7351.' }));
+    let erreur: unknown;
+    try {
+      await proposerReponse(o, 'repull-8001');
+    } catch (e) {
+      erreur = e;
+    }
+    verifier(erreur instanceof ErreurAssistant && erreur.code === 'code_acces', 'proposition avec un code avant l’heure : écartée, message clair');
+    verifier(!/motdepasse201|7351|Box-201/.test(ia.dernierContexte) && /pas encore communicables/.test(ia.dernierContexte), 'contexte de la proposition : ni wifi ni code avant 48 h');
+
+    section('Proposer une réponse');
+    ia.reponses.push(
+      decision({
+        langue: 'en',
+        texte: 'Hi Emily, the access details and the wifi are sent within 48 hours before your arrival.',
+        texte_fr: 'Bonjour Emily, les accès et le wifi sont envoyés dans les 48 heures avant votre arrivée.',
+        intention: 'arrivee',
+        confiance: 0.88,
+      }),
+    );
+    const p = await proposerReponse(o, 'repull-8001');
+    verifier(p.texte.startsWith('Hi Emily') && p.texte.endsWith('\n\nL’équipe Label Maison') && p.texteFr?.startsWith('Bonjour Emily') && p.langue === 'en', 'réponse dans la langue du voyageur, signée, avec sa version française');
+    verifier(/MODE PROPOSITION/.test(String(ia.appels[ia.appels.length - 1].system)) && ia.appels[ia.appels.length - 1].output_config?.format?.type === 'json_schema', 'même décision que l’agent (sortie JSON), consignes de proposition');
+    const f = b.get<FilMessages>('filsMessages', 'repull-8001')!;
+    verifier(f.analyse?.langue === 'en' && f.analyse.intention === 'arrivee' && f.analyse.messageId === 'repull-m1' && f.messages.length === 1 && !f.agent, 'analyse gardée sur le fil, rien d’envoyé ni de marqué traité');
+    verifier(b.collection<Journal>('journal').some((j) => /Réponse proposée pour Emily Carter, demandée par gerant@exemple\.fr \(confiance 88 %\)/.test(j.details)), 'journal : qui a demandé la proposition');
+
+    // Arrivée demain : codes permis, une proposition qui les donne passe.
+    b.poser('reservations', reservation('2026-09-26', '2026-09-29'));
+    ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, the wifi password is motdepasse201.', intention: 'infos', confiance: 0.95 }));
+    const permis = await proposerReponse(o, 'repull-8001');
+    verifier(/motdepasse201/.test(permis.texte) && /motdepasse201/.test(ia.dernierContexte), 'arrivée sous 48 h : wifi dans le contexte et dans la proposition');
+
+    // Sujet sensible : proposition rendue avec un avertissement.
+    b.poser<FilMessages>('filsMessages', filDe('Can I cancel and get a refund?', 'repull-m2'));
+    ia.reponses.push(decision({ action: 'transmettre', raison: 'argent', langue: 'en', texte: 'Hi Emily, I am passing your request to our team, who will get back to you today.', intention: 'annulation', confiance: 0.6 }));
+    const sensible = await proposerReponse(o, 'repull-8001');
+    verifier(/^Sujet sensible/.test(sensible.attention ?? ''), 'annulation : proposition avec « Sujet sensible » (relire avant d’envoyer)');
+
+    section('Traductions');
+    ia.reponses.push({ texte: 'Puis-je annuler et être remboursé ?' });
+    const t1 = await traduireMessage(o, 'repull-8001', 'repull-m2');
+    const appelsAvant = ia.appels.length;
+    const t2 = await traduireMessage(o, 'repull-8001', 'repull-m2');
+    verifier(t1.texte === 'Puis-je annuler et être remboursé ?' && t2.texte === t1.texte && ia.appels.length === appelsAvant, 'message traduit une fois, gardé : la seconde demande ne rappelle pas l’IA');
+    verifier(b.get<FilMessages>('filsMessages', 'repull-8001')!.messages[0].traductionFr === t1.texte, 'traduction gardée sur le message');
+    ia.reponses.push({ texte: 'Hello Emily, see you tomorrow!' });
+    const t3 = await traduireTexte(o, 'Bonjour Emily, à demain !', 'en');
+    verifier(t3.texte === 'Hello Emily, see you tomorrow!' && /anglais \(code en\)/.test(String(ia.appels[ia.appels.length - 1].system)), 'réponse de l’équipe traduite en anglais avant l’envoi');
+    let refus: unknown;
+    try {
+      await traduireTexte(o, 'Bonjour', 'fr');
+    } catch (e) {
+      refus = e;
+    }
+    verifier(refus instanceof ErreurAssistant, 'traduire vers le français : refusé');
+
+    section('Plafond mensuel des appels à l’IA');
+    const compte = () => b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois;
+    verifier(compte()?.mois === '2026-09' && compte()?.appels === 6, `chaque proposition et traduction compte (${compte()?.appels} / 6)`);
+    const plafonne: OptionsAssistant = { ...o, plafondIAMois: 7 };
+    ia.reponses.push(decision({ texte: 'Bonjour Emily, à bientôt.', intention: 'autre', confiance: 0.9 }));
+    await proposerReponse(plafonne, 'repull-8001');
+    const avant = ia.appels.length;
+    let plafond: unknown;
+    try {
+      await proposerReponse(plafonne, 'repull-8001');
+    } catch (e) {
+      plafond = e;
+    }
+    verifier(plafond instanceof ErreurAssistant && plafond.code === 'plafond' && ia.appels.length === avant && compte()?.appels === 7, 'plafond atteint : refus clair, l’IA n’est pas appelée, le compte ne bouge plus');
+    verifier(reserverAppelsIA({ mois: '2026-08', appels: 300 }, '2026-09', 300).permis && reserverAppelsIA({ mois: '2026-09', appels: 299 }, '2026-09', 300).iaMois.appels === 300, 'nouveau mois : compteur remis à zéro ; 300e appel permis');
+    verifier(!reserverAppelsIA({ mois: '2026-09', appels: 300 }, '2026-09', 300).permis && reserverAppelsIA({ mois: '2026-09', appels: 5000 }, '2026-09', undefined).permis, '301e refusé ; sans plafond (Label Maison) : toujours permis');
+    // Écriture conditionnelle : un passage de l'agent écrit l'état entre la lecture et l'écriture.
+    const bc = new FausseBase();
+    bc.poser<EtatAgent>(COLLECTION_AGENT, { id: ID_ETAT_AGENT, iaMois: { mois: '2026-09', appels: 10 } });
+    const vraie = baseAssistant(bc);
+    let interrompu = false;
+    const concurrente: BaseAssistant = {
+      lire: vraie.lire.bind(vraie),
+      ecrire: vraie.ecrire.bind(vraie),
+      lireVersions: async <T,>(c: string, ids?: string[]) => {
+        const r = await vraie.lireVersions<T>(c, ids);
+        if (!interrompu) {
+          interrompu = true;
+          bc.poser<EtatAgent>(COLLECTION_AGENT, { id: ID_ETAT_AGENT, iaMois: { mois: '2026-09', appels: 12 } });
+        }
+        return r;
+      },
+      remplacerSi: vraie.remplacerSi.bind(vraie),
+    };
+    await compterAppelIA({ base: concurrente, maintenant: () => MAINTENANT });
+    verifier(bc.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === 13, 'écriture concurrente : relu puis compté (12 + 1), rien de perdu');
+  }
+
+  /* ------------------------------------------------- agent : autonomie */
+  section('Agent : réponse « à valider » (rien d’envoyé)');
+  {
+    const b = new FausseBase();
+    const repull = new FauxRepull();
+    const ia = new FausseIA();
+    const options = (extra: Partial<OptionsAgent> = {}): OptionsAgent => ({
+      cle: 'sk_test',
+      base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: b.fetch as typeof fetch, jeton: async () => 'jeton-equipe' }),
+      echeance: Date.now() + 50_000,
+      budgetMois: 400,
+      fetch: repull.fetch as typeof fetch,
+      attendre: async () => undefined,
+      maintenant: () => MAINTENANT,
+      declencheur: 'planifie',
+      releve: 'non',
+      ia,
+      telegram: null,
+      nomEspace: 'Sens',
+      ...extra,
+    });
+    const reglages = (patch: Partial<ReglagesAgent> = {}) => b.poser<ReglagesAgent>('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true, signature: 'L’équipe Sens', ...patch });
+    b.poser('logements', logement);
+    b.poser('reservations', reservation('2026-10-10', '2026-10-13'));
+    const filA = () => b.get<FilMessages>('filsMessages', 'repull-8001')!;
+    let n = 1;
+    const nouveau = (texte: string) => {
+      n++;
+      b.poser<FilMessages>('filsMessages', filDe(texte, `repull-q${n}`));
+    };
+
+    // Nouvel espace, aucun choix : « Je valide tout ».
+    reglages();
+    nouveau('Is there a hair dryer?');
+    ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, yes, there is a hair dryer in the bathroom.', texte_fr: 'Bonjour Emily, oui, il y a un sèche-cheveux dans la salle de bain.', intention: 'infos', confiance: 0.97, sentiment: 'positif' }));
+    let p = await lancerAgent(options());
+    let f = filA();
+    verifier(repull.envois.length === 0 && p.repondus === 0 && p.aValider === 1, 'nouvel espace sans choix : rien envoyé, réponse à valider');
+    verifier(
+      f.agent?.decision === 'a_valider' && f.traitePar === 'en_attente' && f.statut === 'ouvert' && f.agent.dernierMessageTraite === `repull-q${n}`,
+      'fil : à valider, attend l’équipe (« À répondre »), message marqué traité (pas de seconde décision)',
+    );
+    verifier(f.agent?.brouillon?.texte === 'Hi Emily, yes, there is a hair dryer in the bathroom.\n\nL’équipe Sens' && f.agent.brouillon.texteFr?.startsWith('Bonjour Emily') && f.agent.brouillon.confiance === 0.97, 'réponse gardée, signée, avec sa version française');
+    verifier(f.analyse?.langue === 'en' && f.analyse.intention === 'infos' && f.analyse.sentiment === 'positif' && f.analyse.urgence === false, 'analyse gardée (langue, demande, ton, urgence)');
+    verifier(p.decisions?.length === 1 && p.decisions[0].sort === 'a_valider' && p.decisions[0].intention === 'infos' && p.decisions[0].confiance === 0.97, 'bilan du passage : décision notée (demande, confiance, sort)');
+    verifier(b.collection<Journal>('journal').some((j) => /à valider par l’équipe : Vous validez chaque réponse\. \(demande : question pratique, confiance 97 %\)/.test(j.details)), 'journal : à valider, demande et confiance');
+    verifier(/1 réponse à valider/.test(p.message), `message du passage (${p.message})`);
+    const iaAvant = ia.appels.length;
+    p = await lancerAgent(options());
+    verifier(p.examines === 0 && ia.appels.length === iaAvant, 'second passage : pas de nouvelle décision pour le même message');
+
+    section('Agent : niveaux et sujets sensibles');
+    reglages({ autonomie: 'autonome' });
+    nouveau('Is there a hair dryer?');
+    ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, yes, in the bathroom.', intention: 'infos', confiance: 0.9 }));
+    p = await lancerAgent(options());
+    f = filA();
+    verifier(repull.envois.length === 1 && p.repondus === 1 && f.agent?.decision === 'repondre' && f.agent.confiance === 0.9 && f.analyse?.intention === 'infos', 'autonome, confiance 0,90 : réponse envoyée seule');
+    verifier(b.collection<Journal>('journal').some((j) => /Réponse envoyée seule à Emily Carter\. \(demande : question pratique, confiance 90 %\)/.test(j.details)), 'journal : envoyée seule, demande et confiance');
+
+    nouveau('Could we stay one more night?');
+    ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, I think it should be fine.', intention: 'prolongation', confiance: 0.55 }));
+    p = await lancerAgent(options());
+    verifier(repull.envois.length === 1 && p.aValider === 1 && filA().agent?.brouillon?.motif === 'Votre agent n’est pas assez sûr de sa réponse : à vous de valider.', 'autonome, confiance 0,55 : à valider');
+
+    for (const [texte, intention] of [
+      ['I need to cancel my stay, sorry.', 'autre'],
+      ['Hallo, ich möchte die Buchung stornieren.', 'autre'],
+      ['Bonjour, une question rapide.', 'annulation'],
+      ['The shower is broken.', 'infos'],
+    ] as const) {
+      nouveau(texte);
+      ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, no problem at all.', intention, confiance: 1 }));
+      const envois = repull.envois.length;
+      p = await lancerAgent(options());
+      f = filA();
+      verifier(repull.envois.length === envois && p.transmis === 1 && f.statut === 'escalade', `autonome, confiance 1 : « ${texte} » (${intention}) jamais envoyé, transmis`);
+    }
+    verifier(filA().agent?.brouillon?.texte.startsWith('Hi Emily'), 'sujet sensible : réponse proposée gardée pour l’équipe');
+
+    // Une réponse qui donne un code avant l'heure ne part pas et n'est pas gardée.
+    reglages({ autonomie: 'autonome' });
+    nouveau('What is the door code?');
+    ia.reponses.push(decision({ texte: 'Bonjour Emily, le code est 7351.', intention: 'arrivee', confiance: 0.99 }));
+    const envoisCode = repull.envois.length;
+    p = await lancerAgent(options());
+    f = filA();
+    verifier(repull.envois.length === envoisCode && p.transmis === 1 && !f.agent?.brouillon, 'code d’accès avant l’heure : ni envoyé, ni gardé comme proposition');
+
+    // « Je valide tout » : pas même un message d'attente.
+    reglages({ autonomie: 'valider' });
+    nouveau('Is there a pool nearby?');
+    ia.reponses.push(decision({ action: 'transmettre', raison: 'hors_fiche', langue: 'en', texte: 'Hi Emily, I am checking with the team and will get back to you.', intention: 'infos', confiance: 0.4 }));
+    const envoisAttente = repull.envois.length;
+    p = await lancerAgent(options());
+    f = filA();
+    verifier(repull.envois.length === envoisAttente && f.statut === 'escalade' && f.agent?.brouillon?.texte.startsWith('Hi Emily, I am checking'), '« Je valide tout » : aucun message d’attente envoyé, gardé en proposition');
+
+    // Plafond de l'espace : compté avec les décisions de l'agent.
+    const etat = b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)!;
+    verifier((etat.iaMois?.appels ?? 0) >= 9, `décisions de l’agent comptées dans le mois (${etat.iaMois?.appels})`);
+    nouveau('Merci !');
+    const avantPlafond = ia.appels.length;
+    p = await lancerAgent(options({ plafondIAMois: etat.iaMois?.appels }));
+    verifier(p.statut === 'budget' && ia.appels.length === avantPlafond, 'plafond atteint : l’agent ne rappelle pas l’IA');
+
+    section('Validation par l’équipe');
+    const brouillonFil: FilMessages = {
+      ...filDe('Is there a hair dryer?'),
+      agent: { decision: 'a_valider', brouillon: { messageId: 'repull-m1', texte: 'Hi', le: iso(0) } },
+    };
+    const valide = marquerBrouillonValide(brouillonFil, 'gerant@exemple.fr', true, iso(1));
+    verifier(valide.agent?.brouillon?.valideePar === 'gerant@exemple.fr' && valide.agent.brouillon.modifiee === true && marquerBrouillonValide(valide, 'autre', false, iso(2)) === valide, 'qui a validé, retouchée ou non ; une seule fois');
+    verifier(lireValidation({ source: 'agent', modifiee: true })?.modifiee === true && lireValidation({ source: 'pirate' }) === undefined && lireValidation(undefined) === undefined, 'champ brouillon de l’envoi : lu avec prudence');
+    verifier(/préparée par l’agent envoyée à Emily Carter par gerant@exemple\.fr, après retouche/.test(detailValidation({ source: 'agent', modifiee: true }, 'gerant@exemple.fr', 'Emily Carter')), 'journal de la validation');
+
+    // Notification : une réponse à valider prévient l'équipe comme une transmission.
+    const avantN = { ...filDe('Is there a hair dryer?'), traitePar: 'en_attente' as const };
+    const apresN: FilMessages = { ...avantN, agent: { decision: 'a_valider', le: iso(1), dernierMessageTraite: 'repull-m1' } };
+    const groupes = notificationsEntre({ reservations: [], fils: [avantN], logements: [logement] }, { reservations: [], fils: [apresN], logements: [logement] }, MAINTENANT);
+    verifier(groupes.some((g) => g.variantes.some((x) => x.type === 'agent_main' && /à valider/.test(x.corps))), 'notification « attend votre réponse » : réponse à valider');
+  }
+
+  console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+}
+
+principal().catch((e) => {
+  console.error(e);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = 1;
+});
+

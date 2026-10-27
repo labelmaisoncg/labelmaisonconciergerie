@@ -4,6 +4,9 @@
 //   GET  ?action=etat          état : agent actif, clés présentes (oui/non,
 //                              jamais leur valeur), dernier passage
 //   POST { action: 'lancer' }  « Lancer l'agent maintenant » (bouton)
+//   POST { action: 'brouillon' | 'traduire' | 'traduire_texte', ... }
+//                              assistant de réponse : réponse proposée (rien
+//                              n'est envoyé), traductions (api/_erp-agent-assistant.ts)
 //   GET|POST avec Authorization: Bearer CRON_SECRET → passage planifié
 //     (cron Vercel quotidien, et pg_cron de Supabase toutes les 30 min :
 //     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour
@@ -20,6 +23,7 @@ import { REGLAGES_AGENT_DEFAUT } from '../src/erp/data/reglages.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { ReglagesAgent } from '../src/erp/data/types';
 import { configurationAgent, optionsAgent } from './_erp-agent.js';
+import { ACTIONS_ASSISTANT, repondreAssistant } from './_erp-agent-assistant.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
@@ -41,6 +45,7 @@ export default async function handler(req: any, res: any) {
   if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Authentification requise.' });
   const planifie = !!c.secretCron && egalConstant(jeton, c.secretCron);
   let espace: string | undefined;
+  let email = '';
   if (planifie) {
     // App « Opérations » : remplacements qui commencent, contrôles qualité du jour.
     // Au premier passage de l'agent à partir de 7 h à Paris (rien avant, même
@@ -52,6 +57,7 @@ export default async function handler(req: any, res: any) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
     if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.erreur });
     espace = membre.espace;
+    email = membre.email;
   }
 
   const corps = req.method === 'POST' ? lireCorps(req) : {};
@@ -80,6 +86,12 @@ export default async function handler(req: any, res: any) {
     } catch (e) {
       return repondre(res, 200, { ok: true, cles, modele: a.modele, etat: null, avertissement: e instanceof Error ? e.message : String(e) });
     }
+  }
+
+  // Assistant de réponse : membres seulement (jamais le passage planifié), rien n'est envoyé au voyageur.
+  if (ACTIONS_ASSISTANT.has(action)) {
+    if (planifie || req.method !== 'POST') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
+    return repondreAssistant(res, action, corps, espace, email);
   }
 
   if (action !== 'lancer' || (!planifie && req.method !== 'POST')) return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });

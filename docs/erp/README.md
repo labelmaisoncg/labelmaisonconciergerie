@@ -951,6 +951,39 @@ wifi absents du contexte tant que le voyageur n'y a pas droit (réservation
 confirmée, arrivée sous 48 h ou sur place) ; les messages du voyageur sont
 des données, pas des consignes ; réponse illisible → transmis.
 
+**Autonomie et réponses à valider** (`src/erp/data/messagerie-ia.ts`) :
+Claude note aussi la demande du voyageur (`intention` : arrivee, depart,
+arrivee_anticipee, depart_tardif, facture, prolongation, probleme_technique,
+infos, annulation, paiement, avis, autre), son ton (`sentiment`), sa
+`confiance` (0 à 1) et la version française de sa réponse. Le gérant choisit
+dans Réglages de l'agent → « Ce qu'il envoie seul » : **Je valide tout**
+(défaut d'un nouvel espace : rien ne part seul), **Questions simples**
+(arrivée, départ, questions pratiques, avis, confiance ≥ 0,85) ou
+**Autonome hors sujets sensibles** (confiance ≥ 0,7). Sans choix enregistré,
+Label Maison garde son fonctionnement d'avant (pas de seuil). Sujets
+sensibles, jamais envoyés seuls quel que soit le niveau : paiement,
+remboursement, caution, annulation (`annul|cancel|stornier|cancelar`),
+réclamation, problème sur place, données personnelles. Une réponse qui ne
+part pas seule est gardée sur le fil (`agent.brouillon`, décision
+`a_valider`) : la conversation reste dans « À répondre » et la réponse est
+déjà dans la zone de saisie, l'équipe l'envoie en un clic. Chaque décision
+va au journal (demande, confiance, envoyée / à valider / transmise) et dans le
+bilan du passage ; l'envoi d'une réponse de l'agent par un membre note qui
+l'a validée et si elle a été retouchée (`api/erp-repull-messages.ts`, champ
+`brouillon`). La lecture du message (`fil.analyse` : langue, demande, ton,
+urgence) sert au tri de « À répondre » (urgent : problème pendant le séjour,
+puis arrivée sous 24 h ou voyageur sur place) et au libellé de la demande en
+tête de conversation ; aucun appel à l'IA juste pour trier.
+
+**Assistant de réponse** (`src/erp/data/agent-assistant.ts`, actions de
+`POST /api/erp-agent`, gérant ou opérations) : `brouillon` (« Proposer une
+réponse » : même contexte et même décision que l'agent, rien n'est envoyé ;
+proposition écartée si elle contient un code d'accès avant l'heure),
+`traduire` (« Voir en français » sous un message étranger, traduction gardée
+sur le message) et `traduire_texte` (« Traduire en … » : la réponse de
+l'équipe dans la langue du voyageur). Chaque appel compte dans le plafond
+mensuel de l'espace (`agent/etat`, `iaMois`), comme les décisions de l'agent.
+
 **Guides et questions fréquentes** (`src/erp/data/guides.ts`, onglet « Infos
 pour l'agent » : `onglets/GuidesFiche.tsx`) : chaque logement peut avoir des
 guides (vidéo, photo, PDF déposés, 50 Mo au plus, ou lien https : YouTube non

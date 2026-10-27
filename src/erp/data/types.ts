@@ -343,6 +343,67 @@ export interface Message {
   envoyeLe: Horodatage;
   /** Message réellement parti chez le voyageur par Repull (Airbnb, Booking.com...). */
   envoi?: EnvoiMessage;
+  /** Traduction française d'un message du voyageur (« Voir en français »), gardée après la première demande. */
+  traductionFr?: string;
+}
+
+/** Ce que demande le voyageur (dernier message), lu par l'IA : src/erp/data/messagerie-ia.ts. */
+export type IntentionMessage =
+  | 'arrivee'
+  | 'depart'
+  | 'arrivee_anticipee'
+  | 'depart_tardif'
+  | 'facture'
+  | 'prolongation'
+  | 'probleme_technique'
+  | 'infos'
+  | 'annulation'
+  | 'paiement'
+  | 'avis'
+  | 'autre';
+
+export type SentimentMessage = 'positif' | 'neutre' | 'negatif';
+
+/**
+ * Lecture du dernier message du voyageur par l'IA (passage de l'agent ou
+ * « Proposer une réponse ») : tri de « À répondre », langue et demande
+ * affichées dans la messagerie. Aucun appel à l'IA juste pour la remplir.
+ */
+export interface AnalyseFil {
+  /** Message du voyageur lu. */
+  messageId: Id;
+  /** Code ISO de sa langue (fr, en, es...). */
+  langue?: string;
+  intention?: IntentionMessage;
+  sentiment?: SentimentMessage;
+  /** À traiter vite selon l'IA (problème sur place, voyageur très mécontent). */
+  urgence?: boolean;
+  le: Horodatage;
+}
+
+/**
+ * Réponse préparée par l'agent et pas envoyée (« à valider ») : l'équipe la
+ * relit dans la zone de réponse et l'envoie en un clic.
+ */
+export interface BrouillonAgent {
+  /** Message du voyageur auquel elle répond. */
+  messageId: Id;
+  /** Texte au voyageur, dans sa langue, signé. */
+  texte: string;
+  /** Version française pour l'équipe (absente si la réponse est en français). */
+  texteFr?: string;
+  langue?: string;
+  intention?: IntentionMessage;
+  /** Confiance de l'agent dans sa réponse (0 à 1). */
+  confiance?: number;
+  /** Pourquoi elle n'est pas partie seule. */
+  motif?: string;
+  le: Horodatage;
+  /** Envoyée par ce membre de l'équipe (api/erp-repull-messages.ts). */
+  valideePar?: string;
+  valideeLe?: Horodatage;
+  /** Retouchée avant l'envoi. */
+  modifiee?: boolean;
 }
 
 /** Trace d'un envoi par Repull (api/erp-repull-messages.ts ou l'agent IA). */
@@ -363,7 +424,13 @@ export interface EnvoiMessage {
 export interface SuiviAgent {
   /** Dernier message du voyageur traité par l'agent. */
   dernierMessageTraite?: Id;
-  decision?: 'repondre' | 'transmettre';
+  /** a_valider : réponse préparée, pas envoyée (niveau d'autonomie, confiance trop basse). */
+  decision?: 'repondre' | 'transmettre' | 'a_valider';
+  /** Demande du voyageur et confiance de l'agent, notées à chaque décision. */
+  intention?: IntentionMessage;
+  confiance?: number;
+  /** Réponse préparée par l'agent, à relire et envoyer par l'équipe. */
+  brouillon?: BrouillonAgent;
   /** Résumé de la situation pour l'équipe (transmis) ou de la réponse. */
   resume?: string;
   le?: Horodatage;
@@ -389,6 +456,8 @@ export interface FilMessages {
   repull?: OrigineRepull;
   /** Suivi de l'agent IA (serveur). */
   agent?: SuiviAgent;
+  /** Dernier message du voyageur lu par l'IA : langue, demande, ton (tri de « À répondre »). */
+  analyse?: AnalyseFil;
 }
 
 export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche' | 'exception' | 'autre';
@@ -429,9 +498,19 @@ export interface ReglagesAgent {
   delaiAlerteMinutes: number;
   /** Copie de chaque réponse et alertes sur Telegram. */
   telegram: boolean;
+  /**
+   * Ce que l'agent envoie seul (choisi par un gérant) : valider (il prépare,
+   * l'équipe envoie), simples (questions pratiques quand il est sûr de lui),
+   * autonome (tout sauf les sujets sensibles quand il est sûr de lui).
+   * Absent : « valider » pour un nouvel espace ; Label Maison garde son
+   * fonctionnement d'avant (messagerie-ia.ts, politiqueEnvoi).
+   */
+  autonomie?: NiveauAutonomie;
   majLe?: Horodatage;
   majPar?: string;
 }
+
+export type NiveauAutonomie = 'valider' | 'simples' | 'autonome';
 
 /** Tous les réglages stockés dans la collection `reglages` (un seul type pour l'instant). */
 export type Reglage = ReglagesAgent;

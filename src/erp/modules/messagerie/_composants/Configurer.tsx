@@ -1,5 +1,6 @@
 /**
- * Onglet « Réglages de l'agent » : marche / pause, ton, langues, signature,
+ * Onglet « Réglages de l'agent » : marche / pause, ce qu'il envoie seul
+ * (niveau d'autonomie, gérant seulement), ton, langues, signature,
  * horaires, ce qu'il vous transmet, où vous prévenir.
  *
  * Enregistré dans la collection `reglages` (élément 'agent'), synchronisée
@@ -16,6 +17,7 @@ import { LANGUES_AGENT, TONS_AGENT, nomPourSignature, reglagesAgent, signaturePa
 import { espaceOuvert, estLabelMaison } from '../../../data/espaces';
 import { dateCourte, heure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ReglagesAgent } from '../../../data/types';
+import { NIVEAUX_AUTONOMIE, niveauAutonomie } from '../../../data/messagerie-ia';
 import { completudeFiche } from './logique';
 import { EtatAgentServeur } from './EtatAgent';
 
@@ -89,6 +91,10 @@ export function Configurer() {
   const majTransmettre = (patch: Partial<ReglagesAgent['transmettre']>) => maj({ transmettre: { ...f.transmettre, ...patch } });
 
   const ton = TONS_AGENT.find((t) => t.cle === f.ton) ?? TONS_AGENT[0];
+  // Ce qu'il envoie seul : choix du gérant. Sans choix, Label Maison garde son fonctionnement d'avant, un nouvel espace valide tout.
+  const gerant = d.utilisateur.role === 'gerant';
+  const autonomie = niveauAutonomie(f, estLabelMaison(espaceOuvert()));
+  const niveau = NIVEAUX_AUTONOMIE.find((n) => n.cle === autonomie) ?? NIVEAUX_AUTONOMIE[0];
   const incompletes = useMemo(
     () => d.logements.filter((l) => l.statut !== 'sorti' && !completudeFiche(l).complete),
     [d.logements],
@@ -119,6 +125,35 @@ export function Configurer() {
       </Card>
 
       <EtatAgentServeur actifReglage={enregistre.actif} />
+
+      <Bloc titre="Ce qu’il envoie seul">
+        <div role="radiogroup" aria-label="Ce que votre agent envoie seul" className="grid gap-2 sm:grid-cols-3">
+          {NIVEAUX_AUTONOMIE.map((n) => (
+            <button
+              key={n.cle}
+              type="button"
+              role="radio"
+              aria-checked={autonomie === n.cle}
+              disabled={bloque || !gerant}
+              onClick={() => maj({ autonomie: n.cle })}
+              className={cn(
+                'min-h-11 rounded-lg border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
+                autonomie === n.cle ? 'border-(--lm-or) bg-(--lm-or-lavis)' : 'border-(--lm-bord) hover:border-(--lm-bord-fort)',
+              )}
+            >
+              <span className="flex items-center gap-1.5 text-[14px] font-semibold text-(--lm-encre)">
+                {autonomie === n.cle && <Check className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />}
+                {n.libelle}
+              </span>
+              <span className="sr-only">{n.description}</span>
+            </button>
+          ))}
+        </div>
+        <p className="mt-3 text-[13px] text-(--lm-encre-2)" aria-live="polite">
+          {niveau.description}
+          {!gerant && !bloque && <span className="text-(--lm-encre-3)"> Seul un gérant peut changer ce choix.</span>}
+        </p>
+      </Bloc>
 
       <Bloc titre="Sa façon de parler">
         <div role="radiogroup" aria-label="Ton de l’agent" className="grid gap-2 sm:grid-cols-3">
@@ -230,10 +265,10 @@ export function Configurer() {
       <Bloc titre="Ce qu’il vous confie">
         <div className="grid gap-x-5 md:grid-cols-2">
             <Case coche verrou>
-              Tout ce qui touche à l’argent : remboursement, remise, supplément
+              Tout ce qui touche à l’argent : remboursement, remise, supplément, annulation
             </Case>
             <Case coche verrou>
-              Les plaintes et les litiges
+              Les plaintes, les litiges et les problèmes sur place
             </Case>
             <Case coche={f.transmettre.horsFiche} disabled={bloque} onChange={(v) => majTransmettre({ horsFiche: v })}>
               Les questions dont la réponse n’est pas dans la fiche du logement
@@ -279,6 +314,7 @@ export function Configurer() {
           <p className="font-medium text-(--lm-encre)">Ses règles :</p>
           <ul className="mt-1 list-disc space-y-1 pl-5">
             <li>Dans le doute, il vous passe toujours la main.</li>
+            <li>Ce qu’il n’envoie pas seul, il le prépare : vous relisez sa réponse et l’envoyez en un clic.</li>
             <li>Il n’invente rien : si l’information n’est pas dans la fiche du logement, il dit qu’il vérifie et vous passe la main.</li>
             <li>Il ne promet jamais d’argent, même un petit geste.</li>
             <li>Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.</li>
