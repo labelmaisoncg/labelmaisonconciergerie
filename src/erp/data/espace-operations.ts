@@ -137,6 +137,16 @@ function suitHorsPerimetre(brutes: Pick<EntreesOperations, 'equipe' | 'logements
   return logements.some((l) => !perimetreDuPole.has(l) && brutes.logements.some((x) => x?.id === l && x.statut !== 'sorti'));
 }
 
+/** Affectations telles qu'elles s'appliquent : le choix du gérant ou du pôle, sinon la seule personne qui suit le logement. */
+export function affectationsEffectives(e: Pick<EntreesOperations, 'logements' | 'affectations' | 'equipe'>): AffectationLogement[] {
+  return e.logements.map((l): AffectationLogement => {
+    const responsableId = titulaireDe(e, l.id);
+    const remplacantId = remplacantDe(e, l.id);
+    const points = e.affectations.find((a) => a.id === l.id)?.pointsControle;
+    return { id: l.id, ...(responsableId ? { responsableId } : {}), ...(remplacantId ? { remplacantId } : {}), ...(points?.length ? { pointsControle: points } : {}) };
+  });
+}
+
 /* -------------------------------------------------------------------- vue */
 
 export interface OptionsVueOps {
@@ -303,15 +313,7 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
           .sort((a, b) => a.du.localeCompare(b.du))
           .map(({ motif: _motif, ...a }) => a)
       : [],
-    // Effectives : le choix du gérant ou du pôle, sinon la seule personne qui suit le logement.
-    affectations: pole
-      ? e.logements.map((l): AffectationLogement => {
-          const responsableId = titulaireDe(e, l.id);
-          const remplacantId = remplacantDe(e, l.id);
-          const points = e.affectations.find((a) => a.id === l.id)?.pointsControle;
-          return { id: l.id, ...(responsableId ? { responsableId } : {}), ...(remplacantId ? { remplacantId } : {}), ...(points?.length ? { pointsControle: points } : {}) };
-        })
-      : [],
+    affectations: pole ? affectationsEffectives(e) : [],
   };
 }
 
@@ -609,7 +611,7 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
       if (refusAbsence) return refus(refusAbsence, 403);
       if (action.remplacantId !== undefined && (!idValide(action.remplacantId) || !e.equipe.some((m) => m.id === action.remplacantId))) return refus('Le remplaçant doit faire partie de votre équipe.');
       // Le remplaçant doit déjà suivre ce qu'il reprend, sinon il ne le verrait pas.
-      if (action.remplacantId && action.remplacantId !== existante?.remplacantId && !remplacantsPossibles(e, action.membreId).includes(action.remplacantId))
+      if (action.remplacantId && action.remplacantId !== existante?.remplacantId && !remplacantsPossibles({ ...e, affectations: affectationsEffectives(e) }, action.membreId).includes(action.remplacantId))
         return refus('Choisissez un remplaçant qui suit déjà ses logements.');
       // Le motif n'est ni montré ni saisi ici : celui noté par le gérant est gardé tel quel.
       const motif = existante?.motif;
