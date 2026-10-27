@@ -40,7 +40,9 @@ import {
   incidentDepuisPoint,
   pointsDuLogement,
   programmeDuJour,
+  remplacantDe,
   responsableLe,
+  titulaireDe,
   trierIncidents,
   verifierAbsence,
   verifierControle,
@@ -301,7 +303,15 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
           .sort((a, b) => a.du.localeCompare(b.du))
           .map(({ motif: _motif, ...a }) => a)
       : [],
-    affectations: pole ? e.affectations : [],
+    // Effectives : le choix du gérant ou du pôle, sinon la seule personne qui suit le logement.
+    affectations: pole
+      ? e.logements.map((l): AffectationLogement => {
+          const responsableId = titulaireDe(e, l.id);
+          const remplacantId = remplacantDe(e, l.id);
+          const points = e.affectations.find((a) => a.id === l.id)?.pointsControle;
+          return { id: l.id, ...(responsableId ? { responsableId } : {}), ...(remplacantId ? { remplacantId } : {}), ...(points?.length ? { pointsControle: points } : {}) };
+        })
+      : [],
   };
 }
 
@@ -392,7 +402,7 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
   };
   const nomLogement = (id: Id) => e.logements.find((l) => l.id === id)?.nom ?? 'le logement';
   const titulaire = (logementId: Id) => {
-    const r = responsableLe(e, logementId, aujourdhui).membreId ?? e.affectations.find((a) => a.id === logementId)?.responsableId;
+    const r = responsableLe(e, logementId, aujourdhui).membreId ?? titulaireDe(e, logementId);
     return r && membreDuLogement(r, logementId) ? r : undefined;
   };
   const incidentVu = (id: unknown): Incident | undefined => {

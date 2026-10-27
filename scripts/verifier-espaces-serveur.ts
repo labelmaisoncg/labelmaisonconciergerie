@@ -784,6 +784,54 @@ async function principal() {
     delete env.CONTACT_FROM_EMAIL;
   }
 
+  section('Adresse changée dans la fiche : seule la nouvelle est invitée (B2)');
+  {
+    env.RESEND_API_KEY = 're_test';
+    env.CONTACT_FROM_EMAIL = 'Label Maison <bonjour@exemple.invalid>';
+    const gerant = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    const site = (ip: string) => ({ origin: 'https://www.labelmaisoncg.fr', 'x-forwarded-for': ip });
+    const ANCIENNE = 'ancienne@exemple.invalid';
+    const NOUVELLE = 'nouvelle@exemple.invalid';
+    for (const genre of ['proprietaire', 'operations'] as const) {
+      const appel = genre === 'proprietaire' ? appelProprio : appelOps;
+      const collection = genre === 'proprietaire' ? 'accesProprietaires' : 'accesOperations';
+      const id = genre === 'proprietaire' ? 'pro-z' : 'eq-z';
+      const fiche = (email: string) =>
+        genre === 'proprietaire'
+          ? monde.poser(LM, 'proprietaires', { id, nom: 'Zoé Partie', contact: { email, telephone: '' } } as { id: string })
+          : monde.poser(LM, 'equipe', { id, nom: 'Zoé Partie', role: 'agent', email, logementIds: ['log-z'], actif: true } as { id: string });
+      const inviter = (email: string) => appel({ entetes: gerant, corps: { action: 'inviter', ...(genre === 'proprietaire' ? { proprietaireId: id } : { membreId: id }), email } });
+      const acces = () => monde.lignes.get(`${LM}\u0000${collection}\u0000${id}`)?.donnees as { email?: string; version?: number } | undefined;
+      monde.poser(LM, 'logements', { id: 'log-z', nom: 'Chez Zoé', ville: 'Évry', statut: 'actif', proprietaireId: 'pro-z', capacite: 2, chambres: 1 } as { id: string });
+      fiche(ANCIENNE);
+      let res = await inviter(ANCIENNE);
+      res = await appel({ entetes: site(genre === 'proprietaire' ? '198.51.100.61' : '198.51.100.62'), corps: { action: 'entrer', jeton: jetonDuLien(res.corps?.lien), espace: LM } });
+      const cookieAncien = cookieDe(res);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 200, `${genre} : session ouverte avec l’ancienne adresse`, res.corps);
+      const versionAvant = acces()?.version ?? 0;
+
+      fiche(NOUVELLE);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 401, `${genre} : adresse changée dans la fiche, l’ancienne session tombe`, res.statut);
+      monde.emails = [];
+      res = await inviter(ANCIENNE);
+      verifier(res.statut === 409 && res.corps?.code === 'fiche' && monde.emails.length === 0 && acces()?.email === ANCIENNE && acces()?.version === versionAvant, `${genre} : réinviter l’ancienne adresse est refusé, rien n’est envoyé`, res.corps);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 401, `${genre} : l’ancienne session reste fermée`, res.statut);
+      res = await inviter(NOUVELLE);
+      verifier(
+        res.statut === 200 && acces()?.email === NOUVELLE && (acces()?.version ?? 0) > versionAvant && monde.emails.length === 1 && monde.emails[0].to[0] === NOUVELLE,
+        `${genre} : la nouvelle adresse est invitée, version changée, lien envoyé à elle seule`,
+        { statut: res.statut, acces: acces(), to: monde.emails.map((m) => m.to) },
+      );
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
+      verifier(res.statut === 401, `${genre} : l’ancienne session ne revient pas après la nouvelle invitation`, res.statut);
+    }
+    delete env.RESEND_API_KEY;
+    delete env.CONTACT_FROM_EMAIL;
+  }
+
   section('Webhooks');
   {
     const message = { event: 'reservation.message.received', data: { object: { conversationId: 1 } } };

@@ -6,6 +6,7 @@ import Donnees from './Donnees';
 import Entreprise from './Entreprise';
 import Application from './Application';
 import Acces from './Acces';
+import { useErp } from '../../data/store';
 
 /**
  * Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation),
@@ -13,6 +14,8 @@ import Acces from './Acces';
  * l'app et ses notifications, la société et sa sauvegarde.
  */
 export default function Module() {
+  // Accès (invitations, absences) : le gérant seul.
+  const gerant = useErp().utilisateur.role === 'gerant';
   return (
     <>
       <PageHeader titre="Paramètres" />
@@ -21,7 +24,7 @@ export default function Module() {
         onglets={[
           { cle: 'utilisateurs', libelle: 'Équipe', to: '/erp/parametres', end: true },
           { cle: 'plateformes', libelle: 'Plateformes', to: '/erp/parametres/plateformes' },
-          { cle: 'acces', libelle: 'Accès', to: '/erp/parametres/acces' },
+          ...(gerant ? [{ cle: 'acces', libelle: 'Accès', to: '/erp/parametres/acces' }] : []),
           { cle: 'application', libelle: 'Application', to: '/erp/parametres/application' },
           { cle: 'societe', libelle: 'Société', to: '/erp/parametres/societe' },
         ]}

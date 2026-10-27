@@ -75,6 +75,87 @@ export const urgencesOuvertes = (incidents: Incident[]) => trierIncidents(incide
 export const affectationDe = (d: Pick<DonneesOps, 'affectations'>, logementId: Id): AffectationLogement | undefined =>
   d.affectations.find((a) => a.id === logementId);
 
+/** Données pour savoir qui suit un logement (l'équipe sert au choix par défaut). */
+export type DonneesSuivi = Pick<DonneesOps, 'affectations' | 'absences'> & Partial<Pick<DonneesOps, 'equipe'>>;
+
+/** Personnes de l'équipe (actives) qui suivent un logement. */
+export const quiSuit = (equipe: readonly MembreEquipe[] | undefined, logementId: Id): MembreEquipe[] =>
+  (equipe ?? []).filter((m) => m?.actif && Array.isArray(m.logementIds) && m.logementIds.includes(logementId));
+
+/**
+ * Qui a la charge d'un logement au quotidien : la personne choisie par le
+ * gérant ou le pôle (affectation), si elle suit toujours le logement ; sinon,
+ * par défaut, la seule personne qui le suit. Plusieurs personnes et aucun
+ * choix : personne (à choisir).
+ */
+export function titulaireDe(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementId: Id): Id | undefined {
+  const suivent = d.equipe ? quiSuit(d.equipe, logementId) : undefined;
+  const choisi = affectationDe(d, logementId)?.responsableId;
+  if (choisi && (!suivent || suivent.some((m) => m.id === choisi))) return choisi;
+  return suivent?.length === 1 ? suivent[0].id : undefined;
+}
+
+/** Remplaçant choisi pour un logement, s'il le suit toujours. */
+export function remplacantDe(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementId: Id): Id | undefined {
+  const choisi = affectationDe(d, logementId)?.remplacantId;
+  if (!choisi) return undefined;
+  return !d.equipe || quiSuit(d.equipe, logementId).some((m) => m.id === choisi) ? choisi : undefined;
+}
+
+/** Ce qu'une personne fait sur un logement : au quotidien, pendant une absence, ou en renfort. */
+export type RoleSurLogement = 'quotidien' | 'absence' | 'renfort';
+export const ROLES_SUR_LOGEMENT: Record<RoleSurLogement, string> = { quotidien: 'Au quotidien', absence: 'Pendant une absence', renfort: 'En renfort' };
+
+export function roleSurLogement(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementId: Id, membreId: Id): RoleSurLogement {
+  if (titulaireDe(d, logementId) === membreId) return 'quotidien';
+  if (remplacantDe(d, logementId) === membreId) return 'absence';
+  return 'renfort';
+}
+
+/**
+ * Affectation d'un logement après avoir donné un rôle à une personne : « au
+ * quotidien » la met responsable (et plus remplaçante), « pendant une
+ * absence » remplaçante (et plus responsable), « en renfort » ni l'un ni
+ * l'autre. Le responsable par défaut est figé dès qu'on choisit un remplaçant.
+ */
+export function affecter(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementId: Id, membreId: Id, role: RoleSurLogement): AffectationLogement {
+  const avant = affectationDe(d, logementId);
+  let responsableId = titulaireDe(d, logementId);
+  let remplacantId = remplacantDe(d, logementId);
+  if (role === 'quotidien') {
+    responsableId = membreId;
+    if (remplacantId === membreId) remplacantId = undefined;
+  } else if (role === 'absence') {
+    remplacantId = membreId;
+    if (responsableId === membreId) responsableId = undefined;
+  } else {
+    if (responsableId === membreId) responsableId = undefined;
+    if (remplacantId === membreId) remplacantId = undefined;
+  }
+  return {
+    id: logementId,
+    ...(responsableId ? { responsableId } : {}),
+    ...(remplacantId ? { remplacantId } : {}),
+    ...(avant?.pointsControle?.length ? { pointsControle: avant.pointsControle } : {}),
+  };
+}
+
+/**
+ * Affectations à corriger quand une personne ne suit plus ces logements (retirée
+ * du logement, ou hors de l'équipe) : elle n'y est plus ni responsable ni
+ * remplaçante. Rend seulement celles qui changent.
+ */
+export function affectationsSans(affectations: readonly AffectationLogement[], membreId: Id, logementIds: readonly Id[]): AffectationLogement[] {
+  const ids = new Set(logementIds);
+  return affectations
+    .filter((a) => ids.has(a.id) && (a.responsableId === membreId || a.remplacantId === membreId))
+    .map(({ responsableId, remplacantId, ...reste }) => ({
+      ...reste,
+      ...(responsableId && responsableId !== membreId ? { responsableId } : {}),
+      ...(remplacantId && remplacantId !== membreId ? { remplacantId } : {}),
+    }));
+}
+
 /** Absences qui comptent (les annulées sont gardées pour l'historique, sans effet). */
 export const absencesValables = (absences: AbsenceMembre[]) => absences.filter((a) => a && !a.annuleeLe);
 
@@ -96,10 +177,10 @@ export interface Suivi {
  * absent le remplaçant du logement, sinon celui de l'absence ; et ainsi de
  * suite si le remplaçant est absent lui aussi (sans boucle).
  */
-export function suiviPar(d: Pick<DonneesOps, 'affectations' | 'absences'>, titulaire: Id | undefined, logementId: Id | undefined, date: DateISO): Suivi {
+export function suiviPar(d: DonneesSuivi, titulaire: Id | undefined, logementId: Id | undefined, date: DateISO): Suivi {
   if (!titulaire) return {};
   const vus = new Set<Id>();
-  const remplacantLogement = logementId ? affectationDe(d, logementId)?.remplacantId : undefined;
+  const remplacantLogement = logementId ? remplacantDe(d, logementId) : undefined;
   let courant: Id | undefined = titulaire;
   while (courant) {
     const absence = absenceLe(d.absences, courant, date);
@@ -111,10 +192,9 @@ export function suiviPar(d: Pick<DonneesOps, 'affectations' | 'absences'>, titul
   return { remplace: titulaire };
 }
 
-export const responsableLe = (d: Pick<DonneesOps, 'affectations' | 'absences'>, logementId: Id, date: DateISO): Suivi =>
-  suiviPar(d, affectationDe(d, logementId)?.responsableId, logementId, date);
+export const responsableLe = (d: DonneesSuivi, logementId: Id, date: DateISO): Suivi => suiviPar(d, titulaireDe(d, logementId), logementId, date);
 
-export const assigneLe = (d: Pick<DonneesOps, 'affectations' | 'absences'>, i: Pick<Incident, 'assigneA' | 'logementId'>, date: DateISO): Suivi =>
+export const assigneLe = (d: DonneesSuivi, i: Pick<Incident, 'assigneA' | 'logementId'>, date: DateISO): Suivi =>
   suiviPar(d, i.assigneA, i.logementId, date);
 
 export interface ApercuAbsence {
@@ -132,12 +212,12 @@ export interface ApercuAbsence {
  */
 export function apercuAbsence(d: DonneesOps, absence: AbsenceMembre, aujourdhui: DateISO, logementIds?: ReadonlySet<Id>): ApercuAbsence {
   const date = absence.du > aujourdhui ? absence.du : aujourdhui;
-  const avec = { affectations: d.affectations, absences: [...d.absences.filter((a) => a.id !== absence.id), absence] };
+  const avec = { affectations: d.affectations, equipe: d.equipe, absences: [...d.absences.filter((a) => a.id !== absence.id), absence] };
   const dans = (id: Id) => !logementIds || logementIds.has(id);
-  const actifs = new Set(d.logements.filter((l) => l.statut !== 'sorti' && dans(l.id)).map((l) => l.id));
-  const logements = d.affectations
-    .filter((a) => a.responsableId === absence.membreId && actifs.has(a.id))
-    .map((a) => ({ logementId: a.id, vers: responsableLe(avec, a.id, date).membreId }));
+  // Ses logements : ceux dont il a la charge au quotidien (choisi, ou seul à les suivre).
+  const logements = d.logements
+    .filter((l) => l.statut !== 'sorti' && dans(l.id) && titulaireDe(d, l.id) === absence.membreId)
+    .map((l) => ({ logementId: l.id, vers: responsableLe(avec, l.id, date).membreId }));
   const incidents = trierIncidents(incidentsOuverts(d.incidents).filter((i) => i.assigneA === absence.membreId && dans(i.logementId))).map((i) => ({
     incidentId: i.id,
     logementId: i.logementId,
