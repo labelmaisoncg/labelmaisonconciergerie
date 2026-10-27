@@ -127,7 +127,7 @@ export function Configurer() {
               disabled={bloque}
               onClick={() => maj({ ton: t.cle })}
               className={cn(
-                'rounded-xl border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
+                'rounded-lg border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
                 f.ton === t.cle ? 'border-(--lm-or) bg-(--lm-or-lavis)' : 'border-(--lm-bord) hover:border-(--lm-bord-fort)',
               )}
             >
@@ -245,7 +245,7 @@ export function Configurer() {
                   min={2}
                   max={365}
                   aria-label="Nombre de nuits à partir duquel un séjour est long"
-                  className="h-7 w-16 px-2 text-[13px]"
+                  className="h-8 w-16 px-2 text-[13px]"
                   value={f.transmettre.sejoursLongsNuits}
                   disabled={bloque || !f.transmettre.sejoursLongs}
                   onChange={(e) => majTransmettre({ sejoursLongsNuits: Math.max(2, Math.min(365, Number(e.target.value) || 2)) })}
@@ -303,7 +303,7 @@ export function Configurer() {
         ) : (
           <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
         )}
-        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-0.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </Bloc>

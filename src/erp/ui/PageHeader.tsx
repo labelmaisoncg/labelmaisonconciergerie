@@ -32,7 +32,8 @@ export function PageHeader({ titre, sousTitre, actions, fil: filBrut, className 
                 <li key={`${m.libelle}-${i}`} className="flex items-center gap-1">
                   {i > 0 && <ChevronRight className="size-3.5" aria-hidden />}
                   {m.to ? (
-                    <Link to={m.to} className="hover:text-(--lm-or-texte) hover:underline">
+                    // Zone de toucher de 32 px ; les marges négatives gardent la hauteur de la ligne.
+                    <Link to={m.to} className="-my-1.5 inline-flex min-h-8 items-center hover:text-(--lm-or-texte) hover:underline">
                       {m.libelle}
                     </Link>
                   ) : (

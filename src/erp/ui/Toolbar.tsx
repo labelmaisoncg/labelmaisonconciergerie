@@ -20,14 +20,14 @@ export function SearchInput({ valeur, onChange, placeholder = 'Rechercher', labe
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={label}
-        className="h-9 w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) pr-8 pl-8 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-3) focus:border-(--lm-or) focus:ring-4 focus:ring-(--lm-or-lavis) focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+        className="h-9 w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) pr-9 pl-8 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-3) focus:border-(--lm-or) focus:ring-4 focus:ring-(--lm-or-lavis) focus:outline-none [&::-webkit-search-cancel-button]:hidden"
       />
       {valeur && (
         <button
           type="button"
           onClick={() => onChange('')}
           aria-label="Effacer la recherche"
-          className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
+          className="absolute top-1/2 right-0.5 grid size-8 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
         >
           <X className="size-3.5" />
         </button>
@@ -76,7 +76,7 @@ export function FilterChips({ filtres, actifs, onChange, unique, label = 'Filtre
             )}
           >
             {f.libelle}
-            {f.compteur !== undefined && <span className="lm-chiffres text-[12px] opacity-70">{f.compteur}</span>}
+            {f.compteur !== undefined && <span className="lm-chiffres text-[12px] font-normal text-(--lm-encre-2)">{f.compteur}</span>}
           </button>
         );
       })}

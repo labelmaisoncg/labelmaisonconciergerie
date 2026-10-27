@@ -30,12 +30,16 @@ const ICONES: Record<Ton, ReactNode> = {
   info: <Info />,
 };
 
-/** Encadré d'information ou d'alerte, toujours doublé d'une icône. */
+/**
+ * Encadré d'information ou d'alerte, toujours doublé d'une icône. Seul sur la
+ * page, il a l'arrondi d'une carte ; posé dans une carte, celui d'un bloc
+ * (arrondis concentriques).
+ */
 export function Alert({ tone = 'info', titre, children, actions, icone, className }: AlertProps) {
   return (
     <div
       role={tone === 'danger' || tone === 'alerte' ? 'alert' : 'status'}
-      className={cn('flex items-start gap-3 rounded-xl border px-4 py-3 [&>svg]:mt-0.5 [&>svg]:size-[18px] [&>svg]:shrink-0', STYLES[tone], className)}
+      className={cn('flex items-start gap-3 rounded-xl border px-4 py-3 [.rounded-xl_&]:rounded-lg [&>svg]:mt-0.5 [&>svg]:size-[18px] [&>svg]:shrink-0', STYLES[tone], className)}
     >
       {icone ?? ICONES[tone]}
       <div className="min-w-0 flex-1 text-[13.5px] text-(--lm-encre)">

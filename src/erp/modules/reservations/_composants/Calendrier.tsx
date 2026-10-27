@@ -219,7 +219,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
                   style={{ width: w }}
                   className={cn('lm-chiffres flex h-12 shrink-0 flex-col items-center justify-center gap-0.5 leading-none', estWeekEnd(j) && 'bg-(--lm-surface-2)')}
                 >
-                  <span className={cn('text-[10.5px]', premier ? 'font-semibold text-(--lm-or-texte)' : 'text-(--lm-encre-3)')}>
+                  <span className={cn('text-[11px]', premier ? 'font-semibold text-(--lm-or-texte)' : 'text-(--lm-encre-3)')}>
                     {premier ? MOIS_COURTS[Number(j.slice(5, 7)) - 1] : w >= 40 ? JOURS_COURTS[js] : JOURS_INITIALE[js]}
                   </span>
                   <span
@@ -263,7 +263,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
                       {prixVisible(c) && c.prix !== undefined && (
                         <span
                           className={cn(
-                            'lm-chiffres absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-[10.5px] whitespace-nowrap text-(--lm-encre-3)',
+                            'lm-chiffres absolute top-1/2 -translate-x-1/2 -translate-y-1/2 text-[11px] whitespace-nowrap text-(--lm-encre-3)',
                             c.apresDepart ? 'left-3/4' : 'left-1/2',
                           )}
                         >
@@ -384,7 +384,7 @@ function Barre({
       style={{ left: x0, width: largeur, ...style }}
     >
       {largeur >= 96 && !annulee && (
-        <span aria-hidden className="grid size-4 shrink-0 place-items-center rounded-full border border-current text-[9px] leading-none font-bold opacity-80">
+        <span aria-hidden className="grid size-[18px] shrink-0 place-items-center rounded-full border border-current text-[11px] leading-none font-bold">
           {t.lettre}
         </span>
       )}

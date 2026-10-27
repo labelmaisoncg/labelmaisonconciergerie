@@ -33,7 +33,7 @@ function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) =>
 /**
  * « Infos pour l'agent » : tout ce que l'agent IA peut dire aux voyageurs de
  * ce logement. Ce qui n'y est pas, il le transmet à l'équipe. Code wifi et
- * accès ne partent qu'aux voyageurs confirmés, dans les 48 h avant l'arrivée.
+ * accès ne partent qu'aux voyageurs confirmés, dans les 48 h avant l'arrivée ou pendant le séjour.
  */
 export function OngletFiche({ logement: l }: { logement: Logement }) {
   const { upsert } = useErp();
@@ -69,7 +69,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
       <Callout tone={c.manquants.length ? 'alerte' : 'or'} icone={<BotMessageSquare />} titre="L’agent répond aux voyageurs avec ces informations.">
         {c.manquants.length
           ? `Il manque : ${c.manquants.join(', ').toLowerCase()}. Sur ces sujets, il vous transmet la question.`
-          : 'Tout est renseigné. Wifi et accès ne sont donnés qu’aux voyageurs confirmés, 48 h avant l’arrivée.'}
+          : 'Tout est renseigné. Wifi et accès ne sont donnés qu’aux voyageurs confirmés, dans les 48 h avant l’arrivée ou pendant le séjour.'}
       </Callout>
 
       <Card>
