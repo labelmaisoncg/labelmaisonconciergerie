@@ -27,6 +27,7 @@ import {
   HEURES_ENVOI,
   PAR_MESSAGE_AUTO,
   RAISONS,
+  ALERTE_FORME_AVIS,
   SEUIL_IMPORT,
   TEXTES_DEFAUT,
   VARIABLES,
@@ -59,6 +60,7 @@ import {
   sejoursPourApercu,
   sejourAvecAvis,
   signatureProgrammes,
+  soucisDuSejour,
   texteAffiche,
   texteAvisParDefaut,
   texteStocke,
@@ -418,6 +420,14 @@ function fileAvis() {
   const equipe: AvisADeposer = { ...elogeModele, texte: 'Texte écrit par l’équipe.', source: 'equipe' };
   verifier(etatAvis({ ...d, avisADeposer: [equipe] }, avecIncident, aujourdhui)?.texte === equipe.texte, 'texte écrit par l’équipe : toujours gardé');
   verifier(etatAvis(d, noteBasse, aujourdhui)?.aide === 'Écrivez l’avis vous-même : le voyageur a laissé une note basse.', 'note basse : la ligne le dit');
+  // Séjour sans souci, avis de l'IA avec un chiffre : alerte de forme seulement, le texte (même élogieux) reste montré, à relire.
+  const forme: AvisADeposer = { id: 'p', reservationId: 'p', logementId: 'log-1', voyageur: 'Lucas', depart: '2026-10-24', canal: 'airbnb', statut: 'a_relire', texte: 'Lucas a été parfait pendant ses 4 nuits.', source: 'ia', raisons: [ALERTE_FORME_AVIS], creeLe: '2026-10-25T09:00:00+02:00' };
+  const etatForme = etatAvis({ ...d, avisADeposer: [forme] }, propre, aujourdhui);
+  verifier(
+    etatForme?.statut === 'a_relire' && etatForme.texte === forme.texte && !etatForme.aide && etatForme.raisons.join() === ALERTE_FORME_AVIS,
+    'séjour sans souci, chiffre dans l’avis : texte gardé avec l’alerte de forme, jamais « écrivez l’avis vous-même »',
+  );
+  verifier(soucisDuSejour([ALERTE_FORME_AVIS, 'Un incident pendant le séjour']).join() === 'Un incident pendant le séjour', 'l’alerte de forme n’est pas un souci du séjour');
   verifier(/AUCUN éloge/.test(consignesAvis('Label Maison')), 'consignes de l’IA : aucun éloge quand un souci est signalé');
   const ctx = contexteAvis(avecIncident, undefined, [], ['Un incident pendant le séjour']);
   verifier(/Points signalés par l'équipe : Un incident pendant le séjour/.test(ctx) && /sans aucun éloge/.test(ctx), 'contexte donné à l’IA : l’incident, et « sans aucun éloge »');
@@ -463,6 +473,11 @@ function repriseReverifiee() {
   const autreFil = d(resa('r1'), '2026-10-25T18:00:00Z', { filId: 'fil-9' }, [fil('fil-1', 'r1'), fil('fil-9', 'r9')]);
   verifier(autreFil.genre === 'verifier' && autreFil.raison === RAISONS.repriseConversation, 'ligne qui vise la conversation d’un autre séjour : « à vérifier »');
   verifier(d(resa('r1'), '2026-10-25T18:00:00Z', { texte: '' }).genre === 'verifier', 'ligne « en cours » sans texte : « à vérifier »');
+  // Le voyageur attend l'équipe depuis le premier essai : rien ne repart.
+  const transmise = d(resa('r1'), '2026-10-25T18:00:00Z', {}, [fil('fil-1', 'r1', { statut: 'escalade', traitePar: 'en_attente', messages: [msg('m1', 'voyageur', 'Le chauffage ne marche pas.'), msg('m2', 'agent', 'Je transmets à l’équipe.')] })]);
+  verifier(transmise.genre === 'attendre' && transmise.raison === RAISONS.attend, 'reprise : conversation transmise à l’équipe, rien ne repart');
+  const aEcrit = d(resa('r1'), '2026-10-25T18:00:00Z', {}, [fil('fil-1', 'r1', { messages: [msg('m1', 'voyageur', 'On arrive vers 20 h, c’est possible ?')] })]);
+  verifier(aEcrit.genre === 'attendre' && aEcrit.raison === RAISONS.attend, 'reprise : le voyageur a écrit en dernier, rien ne repart');
 }
 
 function codesEnDur() {
@@ -526,6 +541,10 @@ class FausseBase {
   private n = 0;
   cle = (c: string, id: string) => `${c}\u0000${id}`;
   echoue?: (collection: string) => boolean;
+  /** Juste avant de répondre à une lecture (pour changer une ligne entre deux lectures). */
+  avantLecture?: (collection: string, ids: Set<string> | null) => void;
+  /** Lecture en panne (500). */
+  lectureEchoue?: (collection: string, ids: Set<string> | null) => boolean;
 
   fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
@@ -535,6 +554,8 @@ class FausseBase {
       const collection = eq('collection');
       const filtre = url.searchParams.get('id');
       const ids = filtre ? new Set(filtre.replace(/^in\.\(|\)$/g, '').split(',').map((x) => x.replace(/^"|"$/g, ''))) : null;
+      if (this.lectureEchoue?.(collection, ids)) return new Response('panne', { status: 500 });
+      this.avantLecture?.(collection, ids);
       const offset = Number(url.searchParams.get('offset') ?? 0);
       return json(
         [...this.lignes.values()]
@@ -672,12 +693,33 @@ async function passageSimule() {
   verifier(envoi('r2', 'veille_arrivee')?.statut === 'ignore' && envoi('r2', 'veille_arrivee')?.raison === RAISONS.annulee, 'annulée : notée « pas envoyé »');
   verifier(!envoi('r3', 'veille_arrivee') && !envoi('r5', 'veille_arrivee'), 'sans conversation ou voyageur qui attend : rien d’écrit, nouvel essai plus tard');
   verifier(envoi('r4', 'veille_arrivee')?.statut === 'ignore' && envoi('r4', 'veille_arrivee')?.raison === RAISONS.horsPlateforme, 'hors plateforme : noté');
+  verifier(envoi('r4', 'veille_arrivee')?.filId === 'fil-4' && envoi('r2', 'veille_arrivee')?.filId === undefined, 'ligne « pas envoyé » : mène à la conversation du séjour quand il en a une');
   verifier(base.collection<{ action: string; auteur: string }>('journal').some((j) => j.auteur === PAR_MESSAGE_AUTO && j.action === 'Message envoyé au voyageur'), 'journal : l’envoi est tracé');
 
   // Jamais deux fois.
   horloge = paris('2026-10-25T18:00:00Z');
   b = await lancerProgrammes(options());
   verifier(repull.envois.length === 1 && b.envoyes === 0, 'second passage : rien ne repart');
+
+  // Course : la conversation change entre le plan et l'envoi (relue juste avant) ; illisible : rien ne part non plus.
+  base.poser('reservations', resa('r20', { voyageur: { nom: 'Rose Martin', nbPersonnes: 2 } }));
+  base.poser('filsMessages', fil('fil-20', 'r20'));
+  base.avantLecture = (collection, ids) => {
+    if (collection === 'filsMessages' && ids?.has('fil-20')) {
+      base.poser('filsMessages', fil('fil-20', 'r20', { statut: 'escalade', traitePar: 'en_attente', messages: [msg('c1', 'voyageur', 'La porte ne s’ouvre pas !'), msg('c2', 'agent', 'Je préviens l’équipe tout de suite.')] }));
+    }
+  };
+  b = await lancerProgrammes(options());
+  base.avantLecture = undefined;
+  verifier(repull.envois.length === 1 && !envoi('r20', 'veille_arrivee') && b.reportes >= 1, 'transmise à l’équipe entre le plan et l’envoi : rien ne part, nouvel essai plus tard');
+  base.poser('reservations', resa('r21', { voyageur: { nom: 'Yann Le Gall', nbPersonnes: 1 } }));
+  base.poser('filsMessages', fil('fil-21', 'r21'));
+  base.lectureEchoue = (collection, ids) => collection === 'filsMessages' && !!ids?.has('fil-21');
+  b = await lancerProgrammes(options());
+  base.lectureEchoue = undefined;
+  verifier(repull.envois.length === 1 && !envoi('r21', 'veille_arrivee'), 'conversation illisible juste avant l’envoi : rien ne part');
+  b = await lancerProgrammes(options());
+  verifier(repull.envois.length === 2 && envoi('r21', 'veille_arrivee')?.statut === 'envoye' && !envoi('r20', 'veille_arrivee'), 'relisible ensuite : le message part ; la conversation transmise attend toujours');
 
   // Coupure : le message part mais la réponse se perd ; repris avec la même clé, jamais doublé.
   base.poser('reservations', resa('r6', { voyageur: { nom: 'Paul Leroy', nbPersonnes: 1 } }));
@@ -871,6 +913,7 @@ async function passageSimule() {
   await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base4.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: ia4, nomEspace: 'Sens', plafondIAMois: 10 }));
   const u1 = base4.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'u-1');
   verifier(u1?.statut === 'a_relire' && !!u1.raisons?.some((x) => x.includes('chiffre')), 'avis de l’IA avec chiffre ou adresse : « à relire », jamais « prêt »');
+  verifier(u1?.texte === 'Ana, 4 étoiles, à revoir au 12 rue des Lilas.' && soucisDuSejour(u1.raisons ?? []).length === 0, 'séjour sans souci : le texte de l’IA est gardé (l’alerte de forme n’est pas un souci du séjour)');
   verifier(base4.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === 2, 'appels comptés avant l’appel : l’appel en panne compte aussi');
   verifier(base4.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'u-2')?.source === 'modele', 'appel en panne : texte simple');
 

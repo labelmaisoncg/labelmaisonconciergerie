@@ -20,7 +20,7 @@
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
 import { estLabelMaison } from './espaces.js';
-import { emetteurDeLabelMaison } from './identite-conciergerie.js';
+import { MENTIONS_PROFESSIONNEL, emetteurDeLabelMaison } from './identite-conciergerie.js';
 import type { Centimes, DateISO, Facture, Horodatage, Id, IdentiteSociete, LigneFacture, Proprietaire } from './types';
 import type { DocumentProprietaire, FactureMensuelleVue, FactureVue, RelancePaiement, ReglagesRelances, StatutFactureVue } from './types-proprietaire';
 
@@ -114,6 +114,13 @@ function ligneVue(l: LigneFacture): FactureVue['lignes'][number] {
 }
 
 /**
+ * Mentions d'une facture figée, telles qu'imprimées : la mention légale
+ * (propriétaire professionnel) sur sa ligne, puis celles du gérant (600
+ * caractères au plus) ; jamais coupées dans l'espace du propriétaire.
+ */
+const MAX_MENTIONS_VUE = 600 + MENTIONS_PROFESSIONNEL.length + 1;
+
+/**
  * Partie figée d'une facture mensuelle numérotée (identités, logements,
  * mention de TVA), champs connus seulement ; rien pour un brouillon. Hors de
  * Label Maison, un émetteur au SIRET ou au nom de Label Maison n'est jamais
@@ -132,7 +139,7 @@ function mensuelleVue(f: Facture, espace: string | undefined): FactureMensuelleV
     regimeTva: e.regimeTva === 'tva' ? 'tva' : 'franchise',
     tvaPct: Number(e.tvaPct) || 0,
     ...(e.numeroTva ? { numeroTva: texteVue(e.numeroTva, 20) } : {}),
-    ...(e.mentions ? { mentions: texteVue(e.mentions, 600) } : {}),
+    ...(e.mentions ? { mentions: texteVue(e.mentions, MAX_MENTIONS_VUE) } : {}),
   };
   return {
     mois: m.mois,

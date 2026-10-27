@@ -630,6 +630,14 @@ async function main() {
     verifier(apercuSci.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'aperçu du brouillon : les mêmes mentions que la facture validée');
     const vueSci = rSci.ok ? facturesVue([partagerFacture(rSci.facture, maintenant)], P, '2026-10-05', { espace: LM.id })[0] : undefined;
     verifier(vueSci?.mensuelle?.emetteur.mentions === MENTIONS_PROFESSIONNEL, 'propriétaire SCI : la mention figure dans son espace');
+    // Mention légale + 600 caractères du gérant : rien de coupé dans l'espace du propriétaire.
+    const longues = 'Paiement par virement à réception de facture. '.repeat(20).slice(0, 600).trim();
+    const rLongue = validerFacture({ ...base, proprietaire: sci, identite: { ...IDENTITE_LABEL_MAISON, mentions: longues } });
+    const vueLongue = rLongue.ok ? facturesVue([partagerFacture(rLongue.facture, maintenant)], P, '2026-10-05', { espace: LM.id })[0] : undefined;
+    verifier(
+      rLongue.ok && vueLongue?.mensuelle?.emetteur.mentions === rLongue.facture.mensuelle?.emetteur?.mentions && (vueLongue?.mensuelle?.emetteur.mentions ?? '').length > 700,
+      'propriétaire SCI : mention légale et 600 caractères du gérant, en entier dans son espace',
+    );
   }
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
