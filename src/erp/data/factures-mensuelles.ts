@@ -130,6 +130,8 @@ export interface CalculFacture {
   logements: string[];
   /** Logements sans mandat à ce propriétaire : pas de taux, pas de commission. */
   sansTaux: string[];
+  /** Les mêmes, avec leur identifiant (pour ouvrir le mandat à saisir). */
+  logementsSansTaux: { logementId: Id; nom: string }[];
 }
 
 function detailMenage(s: SejourBilan): string {
@@ -172,6 +174,7 @@ export function calculerFactureMois(d: Donnees, proprietaireId: Id, mois: string
     menage: c.totaux.menage,
     logements: actifs.map((l) => l.nom),
     sansTaux: actifs.filter((l) => typeof l.commissionPct !== 'number').map((l) => l.nom),
+    logementsSansTaux: actifs.filter((l) => typeof l.commissionPct !== 'number').map((l) => ({ logementId: l.logementId, nom: l.nom })),
   };
 }
 

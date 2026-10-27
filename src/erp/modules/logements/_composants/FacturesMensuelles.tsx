@@ -46,6 +46,7 @@ import type { Facture, Proprietaire } from '../../../data/types';
 import { DocumentFacture, FactureImprimable } from '../../../espace-proprietaire/DocumentFacture';
 import { titreMois } from '../../../espace-proprietaire/commun';
 import { Alert, Button, ButtonLink, Field, IconButton, Input, MenuActions, Modal, Select } from '../../../ui';
+import { FormMandat } from '../../mandats/FormMandat';
 
 /** « Facture de septembre 2026 », « Facture d’août 2026 ». */
 const factureDuMois = (mois: string) => {
@@ -150,6 +151,8 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
   const [erreur, setErreur] = useState<string>();
   const [ajout, setAjout] = useState<{ libelle: string; montant: string; motif: string; erreur?: string }>();
   const [enCours, setEnCours] = useState(false);
+  /** Logement dont on saisit le mandat de gestion (taux de commission manquant). */
+  const [mandatPour, setMandatPour] = useState<string>();
   const espace = espaceOuvert();
   const figee = factureFigee(f);
   const mois = f?.mensuelle?.mois ?? '';
@@ -269,100 +272,135 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
     </>
   );
 
+  /**
+   * Début du mandat proposé : l'arrivée du propriétaire dans le logement,
+   * sinon son premier séjour connu (aucun séjour passé n'en sort), sinon le
+   * mois facturé. Le gérant le corrige dans le formulaire.
+   */
+  const debutMandat = (logementId: string): string => {
+    const l = d.donnees.logements.find((x) => x.id === logementId);
+    const premier = d.donnees.reservations
+      .filter((r) => r.logementId === logementId && r.statut !== 'annulee')
+      .map((r) => r.arrivee)
+      .sort()[0];
+    return l?.proprietaireDepuis ?? premier ?? `${mois}-01`;
+  };
+
   return (
-    <Modal
-      ouvert
-      onFermer={onFermer}
-      taille="lg"
-      titre={<span className="lining-nums">{figee ? `Facture ${f.numero}` : factureDuMois(mois)}</span>}
-      description={
-        figee
-          ? `Validée le ${dateCourte((f.mensuelle?.valideeLe ?? f.dateEmission).slice(0, 10))} : elle ne change plus. ${f.partageeLe ? `Partagée le ${dateCourte(f.partageeLe.slice(0, 10))}.` : 'Pas encore partagée.'}`
-          : 'Brouillon : relisez, ajoutez un ajustement si besoin, puis validez.'
-      }
-      pied={pied}
-    >
-      <FactureImprimable doc={doc} />
-      <div className="space-y-3">
-        {!figee && !identiteOk && (
-          <Alert
-            tone="alerte"
-            actions={
-              <ButtonLink to="/erp/parametres/societe" size="sm">
-                Compléter
-              </ButtonLink>
-            }
-          >
-            Complétez l’identité de votre société (raison sociale, SIRET, adresse) pour valider.
-          </Alert>
-        )}
-        {!figee && !adresseOk && <Alert tone="alerte">Ajoutez l’adresse de {p.nom || 'ce propriétaire'} sur sa fiche : elle figure sur la facture.</Alert>}
-        {!figee && calcul.sansTaux.length > 0 && (
-          <Alert tone="neutre">Taux de commission à renseigner : {calcul.sansTaux.join(', ')} (pas de contrat de gestion pour ce propriétaire).</Alert>
-        )}
-        {!figee && vue.bilanDifferent && <Alert tone="neutre">Le bilan publié de ce mois a d’autres montants : mettez-le à jour dans « Bilans mensuels ».</Alert>}
-        {confirmer && (
-          <Alert tone="or">
-            Numéro prévu : <span className="whitespace-nowrap">{prevu}</span>. Il est attribué à la validation ; la facture ne change plus ensuite.
-          </Alert>
-        )}
-        {erreur && (
-          <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">
-            {erreur}
-          </p>
-        )}
-
-        {!figee && gerant && (
-          <section aria-label="Ajustements">
-            {ajustements.length > 0 && (
-              <ul className="mb-2 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
-                {ajustements.map((a) => (
-                  <li key={a.id} className="flex items-center gap-3 px-3 py-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[13.5px] font-medium text-(--lm-encre)">
-                        {a.libelle} · <span className="lm-chiffres">{euros(a.montantCentimes)}</span>
-                      </p>
-                      <p className="truncate text-[12px] text-(--lm-encre-2)">Raison : {a.motif}</p>
-                    </div>
-                    <IconButton label={`Retirer ${a.libelle}`} size="sm" onClick={() => retirer(a.id)}>
-                      <Trash2 />
-                    </IconButton>
-                  </li>
-                ))}
-              </ul>
-            )}
-            {ajout ? (
-              <div className="rounded-xl border border-(--lm-bord) p-3">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
-                  <Field label="Libellé">
-                    <Input value={ajout.libelle} onChange={(e) => setAjout({ ...ajout, libelle: e.target.value })} placeholder="Ex. Remplacement d’une ampoule" maxLength={120} />
-                  </Field>
-                  <Field label="Montant HT (€)" aide="Négatif pour une remise.">
-                    <Input inputMode="decimal" value={ajout.montant} onChange={(e) => setAjout({ ...ajout, montant: e.target.value })} placeholder="12,50" />
-                  </Field>
-                </div>
-                <Field label="Raison" className="mt-3" erreur={ajout.erreur}>
-                  <Input value={ajout.motif} onChange={(e) => setAjout({ ...ajout, motif: e.target.value })} placeholder="Ce qui justifie cette ligne" maxLength={300} />
-                </Field>
-                <div className="mt-3 flex justify-end gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setAjout(undefined)}>
-                    Annuler
+    <>
+      <Modal
+        ouvert
+        onFermer={onFermer}
+        taille="lg"
+        titre={<span className="lining-nums">{figee ? `Facture ${f.numero}` : factureDuMois(mois)}</span>}
+        description={
+          figee
+            ? `Validée le ${dateCourte((f.mensuelle?.valideeLe ?? f.dateEmission).slice(0, 10))} : elle ne change plus. ${f.partageeLe ? `Partagée le ${dateCourte(f.partageeLe.slice(0, 10))}.` : 'Pas encore partagée.'}`
+            : 'Brouillon : relisez, ajoutez un ajustement si besoin, puis validez.'
+        }
+        pied={pied}
+      >
+        <FactureImprimable doc={doc} />
+        <div className="space-y-3">
+          {!figee && !identiteOk && (
+            <Alert
+              tone="alerte"
+              actions={
+                <ButtonLink to="/erp/parametres/societe" size="sm">
+                  Compléter
+                </ButtonLink>
+              }
+            >
+              Complétez l’identité de votre société (raison sociale, SIRET, adresse) pour valider.
+            </Alert>
+          )}
+          {!figee && !adresseOk && <Alert tone="alerte">Ajoutez l’adresse de {p.nom || 'ce propriétaire'} sur sa fiche : elle figure sur la facture.</Alert>}
+          {!figee && calcul.logementsSansTaux.length > 0 && (
+            <Alert
+              tone="neutre"
+              actions={
+                gerant && (
+                  <Button variant="secondary" size="sm" onClick={() => setMandatPour(calcul.logementsSansTaux[0].logementId)}>
+                    Ajouter son mandat
                   </Button>
-                  <Button variant="secondary" size="sm" onClick={ajouter}>
-                    Ajouter la ligne
-                  </Button>
-                </div>
-              </div>
-            ) : (
-              <Button variant="ghost" size="sm" icone={<Plus />} onClick={() => setAjout({ libelle: '', montant: '', motif: '' })}>
-                Ajouter un ajustement
-              </Button>
-            )}
-          </section>
-        )}
+                )
+              }
+            >
+              Pas de mandat de gestion avec ce propriétaire pour {calcul.sansTaux.join(', ')} : sans taux, pas de commission sur cette facture.
+            </Alert>
+          )}
+          {!figee && vue.bilanDifferent && <Alert tone="neutre">Le bilan publié de ce mois a d’autres montants : mettez-le à jour dans « Bilans mensuels ».</Alert>}
+          {confirmer && (
+            <Alert tone="or">
+              Numéro prévu : <span className="whitespace-nowrap">{prevu}</span>. Il est attribué à la validation ; la facture ne change plus ensuite.
+            </Alert>
+          )}
+          {erreur && (
+            <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">
+              {erreur}
+            </p>
+          )}
 
-        <DocumentFacture doc={doc} />
-      </div>
-    </Modal>
+          {!figee && gerant && (
+            <section aria-label="Ajustements">
+              {ajustements.length > 0 && (
+                <ul className="mb-2 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
+                  {ajustements.map((a) => (
+                    <li key={a.id} className="flex items-center gap-3 px-3 py-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[13.5px] font-medium text-(--lm-encre)">
+                          {a.libelle} · <span className="lm-chiffres">{euros(a.montantCentimes)}</span>
+                        </p>
+                        <p className="truncate text-[12px] text-(--lm-encre-2)">Raison : {a.motif}</p>
+                      </div>
+                      <IconButton label={`Retirer ${a.libelle}`} size="sm" onClick={() => retirer(a.id)}>
+                        <Trash2 />
+                      </IconButton>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {ajout ? (
+                <div className="rounded-xl border border-(--lm-bord) p-3">
+                  <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem]">
+                    <Field label="Libellé">
+                      <Input value={ajout.libelle} onChange={(e) => setAjout({ ...ajout, libelle: e.target.value })} placeholder="Ex. Remplacement d’une ampoule" maxLength={120} />
+                    </Field>
+                    <Field label="Montant HT (€)" aide="Négatif pour une remise.">
+                      <Input inputMode="decimal" value={ajout.montant} onChange={(e) => setAjout({ ...ajout, montant: e.target.value })} placeholder="12,50" />
+                    </Field>
+                  </div>
+                  <Field label="Raison" className="mt-3" aide="Visible sur la facture du propriétaire." erreur={ajout.erreur}>
+                    <Input value={ajout.motif} onChange={(e) => setAjout({ ...ajout, motif: e.target.value })} placeholder="Ce qui justifie cette ligne" maxLength={300} />
+                  </Field>
+                  <div className="mt-3 flex justify-end gap-2">
+                    <Button variant="ghost" size="sm" onClick={() => setAjout(undefined)}>
+                      Annuler
+                    </Button>
+                    <Button variant="secondary" size="sm" onClick={ajouter}>
+                      Ajouter la ligne
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="ghost" size="sm" icone={<Plus />} onClick={() => setAjout({ libelle: '', montant: '', motif: '' })}>
+                  Ajouter un ajustement
+                </Button>
+              )}
+            </section>
+          )}
+
+          <DocumentFacture doc={doc} />
+        </div>
+      </Modal>
+      {/* Mandat de gestion à saisir (taux de commission) : la même fenêtre que sur la fiche du logement. */}
+      {mandatPour && (
+        <FormMandat
+          ouvert
+          onFermer={() => setMandatPour(undefined)}
+          preselection={{ proprietaireId: p.id, logementId: mandatPour, dejaSigne: true, dateDebut: debutMandat(mandatPour) }}
+        />
+      )}
+    </>
   );
 }

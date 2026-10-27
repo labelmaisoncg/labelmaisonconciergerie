@@ -19,8 +19,9 @@
  *   l'espace (franchise : 0 et la mention « art. 293 B » ; TVA : son taux).
  *
  * - propriétaire société (SCI, société : type autre que « particulier ») :
- *   pénalités de retard et indemnité forfaitaire de 40 € mentionnées
- *   d'office, sauf si le gérant a écrit ses propres mentions (mentionsFacture).
+ *   pénalités de retard et indemnité forfaitaire de 40 € TOUJOURS
+ *   mentionnées (art. L441-10 du Code de commerce), les mentions du gérant
+ *   ajoutées après (mentionsFacture).
  *
  * Module pur (navigateur et serveur) : imports en « .js ».
  */
@@ -167,15 +168,17 @@ export function erreursIdentite(i: Partial<IdentiteSociete>, espace?: Pick<Espac
 export const identiteComplete = (i: Partial<IdentiteSociete>, espace?: Pick<Espace, 'id'>): boolean => Object.keys(erreursIdentite(i, espace)).length === 0;
 
 /**
- * Mentions imprimées sur la facture d'un propriétaire : celles écrites par
- * le gérant (Paramètres → Société) ; à défaut, pour un propriétaire
- * professionnel (SCI, société), les pénalités de retard et l'indemnité
- * forfaitaire de 40 €.
+ * Mentions imprimées sur la facture d'un propriétaire. Propriétaire
+ * professionnel (SCI, société) : toujours les pénalités de retard et
+ * l'indemnité forfaitaire de 40 € (obligatoires), puis les mentions écrites
+ * par le gérant (Paramètres → Société). Particulier : celles du gérant
+ * seulement. La mention légale n'est jamais écrite deux fois.
  */
 export function mentionsFacture(i: Pick<IdentiteSociete, 'mentions'>, p: Pick<Proprietaire, 'type'> | undefined): string {
   const propres = String(i.mentions ?? '').trim();
-  if (propres) return propres;
-  return p && p.type !== 'particulier' ? MENTIONS_PROFESSIONNEL : '';
+  if (!p || p.type === 'particulier') return propres;
+  const sansLegale = propres.replace(MENTIONS_PROFESSIONNEL, '').trim();
+  return [MENTIONS_PROFESSIONNEL, sansLegale].filter(Boolean).join('\n');
 }
 
 /** Taux de TVA facturé : 0 en franchise en base, le taux de l'espace sinon. */
