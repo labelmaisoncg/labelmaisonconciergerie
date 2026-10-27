@@ -1,5 +1,5 @@
 /**
- * « Préparer une réponse » à un avis, côté serveur (api/_erp-avis.ts, action
+ * « Proposer une réponse » à un avis, côté serveur (api/_erp-avis.ts, action
  * « reponse_avis » de /api/erp-agent) : rien n'est publié sur la plateforme,
  * l'équipe relit, retouche et copie la réponse.
  *
@@ -30,6 +30,7 @@ import {
   prenomPublic,
   problemesReponse,
   reponseModele,
+  sansReponse,
   signatureSure,
   type ContexteControle,
 } from './avis.js';
@@ -88,7 +89,8 @@ export async function preparerReponseAvis(o: OptionsAssistant, reservationId: st
   const [r] = id ? await o.base.lire<Reservation>('reservations', [id]) : [];
   const avis = r ? lireAvis(r) : null;
   if (!r || !avis) throw new ErreurAssistant('Avis introuvable : rechargez la page.', 404, 'introuvable');
-  if (!avis.textePublic) throw new ErreurAssistant('Cet avis n’a pas de commentaire public : il n’y a rien à répondre.', 400, 'vide');
+  const refus = sansReponse(avis);
+  if (refus) throw new ErreurAssistant(refus, 400, 'vide');
   const [logements, reglagesLus] = await Promise.all([
     r.logementId ? o.base.lire<Logement>('logements', [r.logementId]) : Promise.resolve([] as Logement[]),
     o.base.lire<ReglagesAgent>('reglages', ['agent']),

@@ -171,7 +171,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
       {(r.noteVoyageur !== undefined || r.commentaireVoyageur) && (
         <Card>
           <CardHeader
-            titre="Avis du voyageur"
+            titre="Avis laissé par le voyageur"
             actions={
               r.noteVoyageur !== undefined && (
                 <Badge tone={r.noteVoyageur < SEUIL_NOTE_CONTROLE ? 'alerte' : 'succes'} icone={<Star />}>

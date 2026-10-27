@@ -6,7 +6,7 @@ export function OngletsLogements() {
     <Tabs
       label="Vues des logements"
       onglets={[
-        { cle: 'liste', libelle: 'Logements', to: '/erp/logements', end: true },
+        { cle: 'liste', libelle: 'Tous', to: '/erp/logements', end: true },
         { cle: 'avis', libelle: 'Avis', to: '/erp/logements/avis' },
       ]}
     />
