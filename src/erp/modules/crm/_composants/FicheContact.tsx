@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { FileText, Mail, MessageSquareText, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
+import { FileText, Mail, MessageSquareText, PenLine, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
 import { EMAIL_SUR, LIBELLE_RESULTAT, LIBELLE_SOURCE_CRM, noterAppel, STATUTS_CRM } from '../../../data/crm';
+import { LIBELLE_PROFIL, profilContact } from '../../../data/crm-assistant';
 import { espaceOuvert } from '../../../data/espaces';
 import { dateHeure, horodatageMaintenant, pluriel } from '../../../data/format';
 import { optionsSuiviCrm } from '../../../data/marque-espace';
 import { useErp } from '../../../data/store';
-import type { ContactCrm, ResultatAppel, StatutContactCrm, SuiviCrm } from '../../../data/types';
+import type { ContactCrm, ProfilContactCrm, ResultatAppel, StatutContactCrm, SuiviCrm } from '../../../data/types';
 import { Button, classesBouton, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
 import { EnvoyerDossier } from './EnvoyerDossier';
 import { relanceEnRetard } from './Grille';
@@ -39,10 +40,12 @@ export interface FicheContactProps {
   lectureSeule: boolean;
   /** « Envoyer le dossier » (dossier propriétaire du site) : Label Maison seulement. */
   dossier: boolean;
+  /** « Préparer une relance » (assistant CRM : brouillon rédigé par l'IA, rien n'est envoyé). */
+  onRelance?: (id: string) => void;
 }
 
 /** Fiche d'un contact : coordonnées, appel en un geste, notes et historique. */
-export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteur, lectureSeule, dossier: dossierPropose }: FicheContactProps) {
+export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteur, lectureSeule, dossier: dossierPropose, onRelance }: FicheContactProps) {
   const { utilisateurs } = useErp();
   const [brouillon, setBrouillon] = useState<ContactCrm | undefined>(contact);
   const [note, setNote] = useState('');
@@ -79,7 +82,17 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
         !lectureSeule && (
           <MenuActions
             label="Autres actions"
-            actions={[{ libelle: 'Supprimer le contact', icone: <Trash2 />, onClick: () => setConfirmer(true) }]}
+            actions={[
+              !!onRelance && !!(contact.telephone || contact.email) && {
+                libelle: 'Préparer une relance',
+                icone: <PenLine />,
+                onClick: () => {
+                  enregistrerChamp();
+                  onRelance?.(contact.id);
+                },
+              },
+              { libelle: 'Supprimer le contact', icone: <Trash2 />, onClick: () => setConfirmer(true) },
+            ]}
           />
         )
       }
@@ -134,16 +147,22 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Field label="Étape">
-              <Select
-                value={contact.statut}
-                disabled={lectureSeule}
-                onChange={(e) => onModifier({ ...contact, statut: e.target.value as StatutContactCrm })}
-                options={STATUTS_CRM.map((x) => ({ valeur: x.cle, libelle: x.libelle }))}
-              />
-            </Field>
-          </div>
+          <Field label="Étape">
+            <Select
+              value={contact.statut}
+              disabled={lectureSeule}
+              onChange={(e) => onModifier({ ...contact, statut: e.target.value as StatutContactCrm })}
+              options={STATUTS_CRM.map((x) => ({ valeur: x.cle, libelle: x.libelle }))}
+            />
+          </Field>
+          <Field label="Profil">
+            <Select
+              value={profilContact(contact)}
+              disabled={lectureSeule}
+              onChange={(e) => onModifier({ ...contact, profil: e.target.value as ProfilContactCrm })}
+              options={(['proprietaire', 'apporteur'] as const).map((x) => ({ valeur: x, libelle: LIBELLE_PROFIL[x] }))}
+            />
+          </Field>
           <Field label="Nom">
             <Input value={brouillon.nom} disabled={lectureSeule} onChange={(e) => champ('nom', e.target.value)} onBlur={enregistrerChamp} />
           </Field>

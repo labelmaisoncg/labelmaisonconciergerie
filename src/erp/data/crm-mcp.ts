@@ -23,6 +23,7 @@ import {
   trouverDoublon,
 } from './crm.js';
 import { OUTILS_CM } from './cm-mcp.js';
+import { fileDuJour, LIBELLE_PROFIL, profilContact } from './crm-assistant.js';
 import { estLabelMaison } from './espaces.js';
 import { choix, date, ECRITURE, ErreurOutil, LECTURE, texte, type Args, type ContexteMcp, type Outil } from './mcp-commun.js';
 import type { ContactCrm, Responsable, ResultatAppel } from './types';
@@ -83,6 +84,7 @@ function resume(c: ContactCrm, aujourdhui: string, suivi = true) {
     nom: c.nom,
     etape: LIBELLE_STATUT_CRM[c.statut],
     statut: c.statut,
+    profil: LIBELLE_PROFIL[profilContact(c)],
     ...(c.telephone ? { telephone: c.telephone } : {}),
     ...(c.ville ? { ville: c.ville } : {}),
     ...(c.typeBien ? { bien: c.typeBien } : {}),
@@ -132,19 +134,25 @@ const OUTILS_CRM: Outil[] = [
     name: 'crm_resume',
     title: 'Résumé du CRM',
     description:
-      "Point du jour : nombre de contacts par étape, personnes à appeler aujourd'hui (nouvelles demandes et relances échues) et relances en retard. À appeler en premier pour savoir où on en est.",
+      "Point du jour : nombre de contacts par étape, personnes à appeler aujourd'hui (nouvelles demandes et relances échues), classées comme dans l'ERP (la plus prioritaire d'abord, avec ses points, le pourquoi et la prochaine action proposée ; propriétaire ou apporteur), et relances en retard. À appeler en premier pour savoir où on en est. Lecture seule : rien n'est envoyé aux contacts.",
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     annotations: LECTURE,
     executer: async (_a, ctx) => {
       const tous = await ctx.depot.tous();
       const j = ctx.aujourdhui();
-      const aFaire = tous.filter((c) => aTraiterLe(c, j)).sort((a, b) => (a.relanceLe ?? '0').localeCompare(b.relanceLe ?? '0'));
+      // La file de l'assistant CRM (crm-assistant.ts) : même règle (aTraiterLe), même ordre que l'écran « Aujourd’hui ».
+      const aFaire = fileDuJour(tous, j);
       return {
         date: j,
         total: tous.length,
         par_etape: Object.fromEntries(STATUTS_CRM.map((s) => [s.libelle, tous.filter((c) => c.statut === s.cle).length])),
         a_appeler_aujourdhui: aFaire.length,
-        liste_du_jour: aFaire.slice(0, 15).map((c) => resume(c, j, suiviPermis(ctx))),
+        liste_du_jour: aFaire.slice(0, 15).map((e) => ({
+          ...resume(e.contact, j, suiviPermis(ctx)),
+          priorite: e.score.points,
+          pourquoi: e.score.raisons.map((r) => `${r.libelle} (${r.points > 0 ? '+' : ''}${r.points})`).join(', '),
+          prochaine_action: e.action.phrase,
+        })),
         relances_en_retard: tous.filter((c) => c.relanceLe && c.relanceLe < j && !STATUTS_CLOS.includes(c.statut)).length,
       };
     },

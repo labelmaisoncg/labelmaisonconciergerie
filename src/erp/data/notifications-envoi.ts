@@ -189,7 +189,7 @@ export async function envoyerNotifications(
       let partie = false;
       for (const a of cibles) {
         if (expires.has(a.id)) continue;
-        const v = o.essai ? g.variantes[0] : varianteAEnvoyer(g, preferencesPourRole(a.preferences, a.role));
+        const v = o.essai ? g.variantes[0] : varianteAEnvoyer(g, preferencesPourRole(a.preferences, a.role), a.role);
         if (!v) continue;
         const r = await envoyer({ endpoint: a.endpoint, keys: a.keys }, { titre: v.titre, corps: v.corps, url: v.url, tag: g.cle, type: v.type }, cles, { urgente: g.urgente });
         if (r.ok) partie = true;
@@ -290,7 +290,7 @@ export async function surveiller<T>(
   o: {
     cles: ClesVapid | null;
     maintenant?: () => Date;
-    /** Notifications en plus, d'après le résultat (rappel du matin, synchronisation en échec…). */
+    /** Notifications en plus, d'après le résultat (synchronisation en échec…). */
     apres?: (resultat: T, instantane: Instantane | null) => GroupeNotification[];
     enEchec?: (erreur: unknown) => GroupeNotification[];
     envoyer?: Envoyeur;

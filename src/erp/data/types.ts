@@ -891,6 +891,13 @@ export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'dos
 
 export type ResultatAppel = 'joint' | 'pas_de_reponse' | 'messagerie' | 'note' | 'formulaire';
 
+/**
+ * Qui est le contact : un propriétaire (il peut confier son logement) ou un
+ * apporteur d'affaires (il recommande des propriétaires, Cercle). Absent :
+ * déduit de la source (crm-assistant.ts, profilContact).
+ */
+export type ProfilContactCrm = 'proprietaire' | 'apporteur';
+
 /** Une trace dans l'historique d'un contact (appel, note, nouvelle demande). */
 export interface TraceContactCrm {
   le: Horodatage;
@@ -913,6 +920,8 @@ export interface ContactCrm {
   page?: string;
   source: SourceContactCrm;
   statut: StatutContactCrm;
+  /** Propriétaire ou apporteur, choisi dans la fiche ; absent : d'après la source (Cercle = apporteur). */
+  profil?: ProfilContactCrm;
   /** Pour « En attente » : la raison (travaux, achat en cours, décision à deux…). */
   motifAttente?: string;
   /** Date de la prochaine relance prévue. */
