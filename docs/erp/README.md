@@ -132,6 +132,12 @@ node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=es
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-relances.mjs && node /tmp/verifier-relances.mjs
 
+# Auto-contrôle des factures mensuelles (prolongations, commission, prorata,
+# numérotation, TVA, identité de chaque espace, brouillon unique par mois).
+node_modules/.bin/esbuild src/erp/data/verifier-factures.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-factures.mjs && node /tmp/verifier-factures.mjs
+
 # Incidents côté ERP : un signalement de l'espace opérations remonte dans le
 # « À faire » et sur la fiche du logement (lien de la notification « Urgence »),
 # actions du gérant, « pas à moi », remplaçant qui suit déjà les logements.
@@ -1546,6 +1552,44 @@ d'août publié et deux documents ; son espace :
   paiement, message, ce que voit chaque propriétaire) et
   `scripts/verifier-espaces-serveur.ts` (chaque espace chez lui, « proposer »
   n'envoie jamais seul, pas d'expéditeur = pas d'envoi, jamais deux fois).
+
+### Phase 3 : factures mensuelles et identité de la société
+
+- **Calcul** (`src/erp/data/factures-mensuelles.ts`) : une facture par
+  propriétaire et par mois (id `fm-<proprietaireId>-<AAAA-MM>`), tirée de
+  son bilan (`bilanMensuel`) : commission de gestion de chaque logement (taux
+  du mandat de ce propriétaire, base nette = encaissé − commissions des
+  plateformes − ménage), puis un ménage par séjour. Prolongations
+  (`src/erp/data/sejours-consolides.ts`, `consoliderSejours`) : des
+  réservations qui se suivent, même voyageur, même logement = un séjour =
+  un ménage, dans le bilan comme dans la facture. Prorata des nuits d'un
+  mois à l'autre, comme le bilan : commission et ménages de la facture sont
+  ceux du bilan, au centime.
+- **Brouillon** : préparé à partir du 1er pour le mois terminé par le
+  passage planifié de l'agent (`api/erp-agent.ts` →
+  `api/_factures-mensuelles.ts`, une fois par mois et par espace, trace
+  `passagesFacturesMensuelles`, n'ajoute que les factures absentes :
+  `BaseErp.ajouterSiAbsent`), ou à la demande dans le panneau « Espace
+  propriétaire » → Factures (« Préparer », « Facturer un autre mois »).
+  Les lignes calculées ne se modifient pas ; un ajustement s'ajoute avec sa
+  raison. « Ne pas facturer ce mois » écarte le brouillon (gardé, pas recréé).
+- **Validation** : numéro `AAAA-NNNN` à la suite dans l'espace (compteur par
+  année, élément `numerotation-factures` de `reglages`, jamais réutilisé),
+  émise le jour, échéance à 15 jours ; lignes, montants, identités de la
+  conciergerie et du propriétaire, logements et mention de TVA figés. Puis
+  « Partager au propriétaire » : la facture entre dans son espace et dans les
+  relances (phase 2). Impression : une seule mise en page,
+  `src/erp/espace-proprietaire/DocumentFacture.tsx`, charte « Ivoire & or »,
+  fond ivoire bord à bord (`.lm-facture`, `erp.css`).
+- **Identité** (Paramètres → Société, `src/erp/data/identite-conciergerie.ts`,
+  élément `societe` de `reglages`) : raison sociale, forme, SIRET, adresse,
+  régime de TVA (franchise en base : « TVA non applicable, art. 293 B du
+  CGI » ; TVA facturée : taux de l'espace, 20 % proposé), n° de TVA, mentions.
+  Label Maison : son identité d'avant, en franchise, par défaut. Un autre
+  espace n'a jamais celle de Label Maison (une copie portant son SIRET est
+  ignorée) ; sans identité complète, aucune facture ne se valide. Elle donne
+  aussi la ligne légale imprimée en tête des bilans.
+- **Contrôles** : `verifier-factures.ts`.
 
 ### Sécurité des accès extérieurs (audit d'octobre 2026)
 

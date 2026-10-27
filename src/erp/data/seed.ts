@@ -22,7 +22,7 @@ import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { creerVersionsAnnonce } from './seed-annonces';
 import { creerContactsCrm } from './seed-crm';
 import { creerDossiersDemo } from './seed-dossiers';
-import { creerEspaceProprietaireDemo } from './seed-proprietaire';
+import { creerEspaceProprietaireDemo, prolongationDemo } from './seed-proprietaire';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -617,7 +617,7 @@ function habiller(logements: Logement[]): Logement[] {
 
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
-  const reservations = genererReservations(h);
+  const reservations = prolongationDemo(genererReservations(h));
   const missions = genererMissions(h, reservations);
   typerAvis(reservations);
   const linge = genererLinge(missions);

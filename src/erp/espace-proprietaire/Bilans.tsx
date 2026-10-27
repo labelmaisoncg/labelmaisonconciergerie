@@ -144,7 +144,8 @@ export function BilanDetail({
                     {s.voyageur} · {pluriel(s.nbPersonnes, 'voyageur')} · {CANAL[s.canal]}
                   </p>
                   <p className="text-(--lm-encre-2)">
-                    {s.nuits === s.nuitsSejour ? pluriel(s.nuits, 'nuit') : `${s.nuits} nuits sur ${s.nuitsSejour} ce mois-ci`} · encaissé {euros(s.encaisse)}
+                    {s.nuits === s.nuitsSejour ? pluriel(s.nuits, 'nuit') : `${s.nuits} nuits sur ${s.nuitsSejour} ce mois-ci`}
+                    {s.prolongations ? ' · prolongation comprise, un seul ménage' : ''} · encaissé {euros(s.encaisse)}
                   </p>
                 </div>
                 <div className="text-right">

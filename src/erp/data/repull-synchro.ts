@@ -506,6 +506,33 @@ export class BaseErp {
     }
   }
 
+  /**
+   * Ajoute seulement les éléments ABSENTS (espace + collection + id), sans
+   * jamais remplacer celui qu'un autre a écrit entre-temps (brouillons de
+   * factures du passage planifié : une facture validée par le gérant reste
+   * telle quelle). Renvoie le nombre d'éléments réellement ajoutés.
+   */
+  async ajouterSiAbsent(collection: string, elements: { id: string }[], auteur: string = AUTEUR_REPULL): Promise<number> {
+    const espace = await this.espace();
+    let ajoutes = 0;
+    for (const lot of decouper(elements, LOT_ECRITURE)) {
+      const r = await this.requete(`enregistrements?on_conflict=${espace ? 'espace,collection,id' : 'collection,id'}&select=id`, {
+        method: 'POST',
+        entetes: {
+          'Content-Type': 'application/json',
+          'Content-Profile': 'erp',
+          'Accept-Profile': 'erp',
+          Prefer: 'resolution=ignore-duplicates,return=representation',
+        },
+        body: JSON.stringify(lot.map((e) => ({ ...(espace ? { espace } : {}), collection, id: e.id, donnees: e, maj_par: `${auteur}#serveur` }))),
+      });
+      const lignes = (await r.json().catch(() => [])) as unknown[];
+      ajoutes += Array.isArray(lignes) ? lignes.length : 0;
+    }
+    this.ecritures += ajoutes;
+    return ajoutes;
+  }
+
   /** Fonction de la base (schéma erp), avec l'espace en en-tête. */
   async rpc<T>(nom: string, args: Record<string, unknown> = {}): Promise<T> {
     const r = await this.requete(`rpc/${nom}`, {

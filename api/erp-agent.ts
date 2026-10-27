@@ -6,7 +6,9 @@
 //   POST { action: 'lancer' }  « Lancer l'agent maintenant » (bouton)
 //   GET|POST avec Authorization: Bearer CRON_SECRET → passage planifié
 //     (cron Vercel quotidien, et pg_cron de Supabase toutes les 30 min :
-//     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour
+//     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour ;
+//     il prépare aussi, à partir du 1er, les brouillons des factures
+//     mensuelles des propriétaires (api/_factures-mensuelles.ts)
 //
 // Authentification des membres : Authorization: Bearer <jeton de session
 // Supabase>, gérant ou opérations de l'espace de l'en-tête x-erp-espace
@@ -22,6 +24,7 @@ import type { ReglagesAgent } from '../src/erp/data/types';
 import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
+import { facturesMensuellesDuJour } from './_factures-mensuelles.js';
 import { surveiller } from './_erp-notifications.js';
 import { notificationsOpsDuJour } from './_operations-notifications.js';
 
@@ -47,6 +50,10 @@ export default async function handler(req: any, res: any) {
     // le réveil de minuit l'été) ; borné à 8 s, jamais bloquant.
     const operations = await notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({}));
     if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
+    // Factures mensuelles des propriétaires : brouillons du mois terminé, à partir du 1er
+    // (une fois par mois et par espace ; ensuite une seule lecture) ; borné à 6 s, jamais bloquant.
+    const factures = await facturesMensuellesDuJour({ limite: Date.now() + 6_000 }).catch(() => ({}));
+    if (Object.keys(factures).length) console.log('[erp-agent] factures', JSON.stringify(factures));
   }
   if (!planifie) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });

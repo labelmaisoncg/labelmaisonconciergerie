@@ -44,6 +44,9 @@
   --lm-succes-texte: #2b724d;
   /* Bulle du voyageur (messagerie) : gris chaud, sans contour. */
   --lm-bulle: #efebe4;
+  /* Factures imprimées (charte « Ivoire & or ») : fond ivoire clair, filets champagne. */
+  --lm-ivoire: #f8f3e7;
+  --lm-champagne: #d5c69f;
 
   /*
    * Échelle des arrondis (règles Apple : cohérence + arrondis concentriques,
@@ -134,6 +137,46 @@
 
 @media print {
   .erp-root .lm-sans-impression { display: none !important; }
+}
+
+/*
+ * Facture mensuelle (espace-proprietaire/DocumentFacture.tsx), charte
+ * « Ivoire & or » : fond ivoire, filets or et champagne, titres en serif.
+ * À l'impression (Imprimable), le fond ivoire va jusqu'au bord de la feuille.
+ */
+.erp-root .lm-facture {
+  background: var(--lm-ivoire);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+@media print {
+  /* Même valeur que --lm-ivoire (la page n'est pas dans .erp-root). */
+  html:has(.lm-impression .lm-facture),
+  html:has(.lm-impression .lm-facture) body {
+    /* Le site coupe le débordement de html et body : sans cela, la page nommée (sans marge) ne s'applique pas. */
+    overflow: visible !important;
+    background: #f8f3e7 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .erp-root.lm-impression:has(.lm-facture) { background: transparent !important; }
+  /*
+   * Feuille sans marge (fond ivoire bord à bord) : la marge est dans la
+   * facture, répétée sur chaque page. La règle « @page facture { margin: 0 } »
+   * est posée par FactureImprimable, après celle d'Imprimable.
+   */
+  .erp-root.lm-impression .lm-facture {
+    page: facture;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 14mm 16mm !important;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+    font-size: 12px;
+  }
+  .erp-root .lm-facture tr,
+  .erp-root .lm-facture .lm-facture-bloc { break-inside: avoid; }
 }
 
 /*

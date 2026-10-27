@@ -13,10 +13,12 @@ import { cn, useLienFichier } from '../ui';
 
 /**
  * Ligne imprimée en tête d'un bilan ou d'une facture : l'identité légale de
- * Label Maison pour l'espace de Label Maison seulement (décidé par son
- * identifiant, jamais par le nom affiché) ; sinon le nom de la conciergerie.
+ * l'espace enregistrée dans Paramètres → Société (`ligneLegale`) ; à défaut,
+ * celle de Label Maison pour l'espace de Label Maison seulement (décidé par
+ * son identifiant, jamais par le nom affiché) ; sinon le nom de la conciergerie.
  */
-export const enteteImprime = (c: VueProprietaire['conciergerie']): string => (c.espace && estLabelMaison(c.espace) ? ENTREPRISE_LIGNE : c.nom);
+export const enteteImprime = (c: VueProprietaire['conciergerie']): string =>
+  c.ligneLegale || (c.espace && estLabelMaison(c.espace) ? ENTREPRISE_LIGNE : c.nom);
 
 export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'factures' | 'documents';
 export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'factures', 'documents'];

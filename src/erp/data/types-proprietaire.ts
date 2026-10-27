@@ -6,7 +6,7 @@
  * par propriétaire et ne renvoie que les champs de VueProprietaire.
  */
 import type { AccesExterne, LienAccesExterne } from './acces-externe';
-import type { CanalReservation, Centimes, DateISO, Horodatage, Id } from './types';
+import type { CanalReservation, Centimes, DateISO, Horodatage, Id, IdentiteSociete } from './types';
 
 /* ------------------------------------------------------------------ accès */
 
@@ -75,6 +75,8 @@ export interface SejourBilan {
   menage: Centimes;
   commission: Centimes;
   net: Centimes;
+  /** Prolongations regroupées dans ce séjour (réservations qui se suivent, même voyageur) : un seul ménage. */
+  prolongations?: number;
 }
 
 export interface TotauxBilan {
@@ -280,11 +282,22 @@ export interface FactureVue {
   montantTtc: Centimes;
   statut: StatutFactureVue;
   payeeLe?: DateISO;
-  lignes: { libelle: string; quantite: number; pu: Centimes }[];
+  lignes: { libelle: string; quantite: number; pu: Centimes; detail?: string; code?: 'commission' | 'menage' | 'ajustement' }[];
+  /** Facture mensuelle : mois, identités et mentions figées à sa validation (mise en page complète). */
+  mensuelle?: FactureMensuelleVue;
   /** Document PDF partagé (ouvert par lien signé) ; absent : version imprimable. */
   pdf?: Id;
   /** Dernier rappel envoyé. */
   dernierRappel?: DateISO;
+}
+
+/** Partie figée d'une facture mensuelle, telle que l'imprime le propriétaire. */
+export interface FactureMensuelleVue {
+  mois: string;
+  emetteur: IdentiteSociete;
+  client: { nom: string; adresse: string };
+  logements: string[];
+  mentionTva?: string;
 }
 
 export type StatutRelance = 'proposee' | 'envoyee' | 'annulee' | 'sans_objet';
@@ -337,7 +350,7 @@ export interface VueProprietaire {
    * `espace` : son identifiant (pas secret, il est dans le lien) ; c'est lui,
    * jamais le nom, qui décide de l'en-tête légal de Label Maison à l'impression.
    */
-  conciergerie: { nom: string; espace: string };
+  conciergerie: { nom: string; espace: string; ligneLegale?: string };
   aujourdhui: DateISO;
   logements: LogementVue[];
   /** Logements qu'il a cédés à un autre propriétaire (dernier jour exclu), du plus récent au plus ancien. */
