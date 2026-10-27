@@ -244,6 +244,7 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
       description: i.description,
       statut: i.statut,
       ...(i.assigneA ? { assigneA: i.assigneA } : {}),
+      ...(i.parGerant ? { parGerant: true } : {}),
       ...(s.membreId ? { suiviPar: s.membreId } : {}),
       ...(s.remplace ? { remplace: s.remplace } : {}),
       photos: photos(i.preuves),
@@ -383,7 +384,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
 
 function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperations, ctx: ContexteAction): ResultatAction {
   const moi = membreConnecte(brutes, membreId);
-  if (!moi) return refus('Votre accès n’est plus actif. Contactez votre conciergerie.', 403);
+  if (!moi) return refus('Votre accès a été retiré. Contactez votre conciergerie.', 403);
   const e = restreindre(brutes, membreId);
   const ids = new Set(e.logements.map((l) => l.id));
   const pole = moi.role === 'pole';
@@ -469,7 +470,8 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
       const aNotifier: Id[] = [];
       if (action.type === 'prendre') {
         if (i.statut !== 'ouvert') return refus('Cet incident est déjà pris en charge.');
-        suivant = historiser({ ...i, statut: 'en_cours', ...(i.assigneA ? {} : { assigneA: moi.id, responsable: moi.nom }) }, maintenant, moi.nom, 'Pris en charge.');
+        const { parGerant: _g, ...sansGerant } = i;
+        suivant = historiser({ ...sansGerant, statut: 'en_cours', ...(i.assigneA ? {} : { assigneA: moi.id, responsable: moi.nom }) }, maintenant, moi.nom, 'Pris en charge.');
         message = 'Incident pris en charge.';
       } else if (action.type === 'noter') {
         const t = texte(action.texte, 1000);
@@ -483,7 +485,7 @@ function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperat
       } else if (action.type === 'assigner') {
         if (action.membreId && !membreDuLogement(action.membreId, i.logementId)) return refus('Cette personne ne suit pas ce logement.');
         const nom = e.equipe.find((m) => m.id === action.membreId)?.nom;
-        const { assigneA: _a, responsable: _r, ...reste } = i;
+        const { assigneA: _a, responsable: _r, parGerant: _g, ...reste } = i;
         suivant = historiser(action.membreId ? { ...reste, assigneA: action.membreId, responsable: nom } : reste, maintenant, moi.nom, action.membreId ? `Confié à ${court(nom)}.` : 'Plus personne dessus.');
         message = action.membreId ? `Confié à ${court(nom)}.` : 'Personne ne s’en occupe pour l’instant.';
         if (action.membreId) aNotifier.push(i.id);

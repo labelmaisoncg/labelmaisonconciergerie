@@ -10,7 +10,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Phone, UserPlus } from 'lucide-react';
-import { ROLES_OPERATIONS, quiSuit, remplacantDe, titulaireDe } from '../../../data/operations';
+import { phraseRemplacement } from '../../../data/acces-gerant';
+import { AUJOURDHUI } from '../../../data/format';
+import { ROLES_OPERATIONS, affectationsAFiger, quiSuit, remplacantDe, responsableLe, titulaireDe } from '../../../data/operations';
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
 import type { AffectationLogement } from '../../../data/types-operations';
@@ -26,6 +28,9 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
   const signalements = d.donnees.signalementsLogement.filter((s) => s.statut === 'ouvert' && s.logementId === l.id);
   const responsableId = titulaireDe(d.donnees, l.id);
   const remplacantId = remplacantDe(d.donnees, l.id);
+  const explicite = !!d.donnees.affectations.find((a) => a.id === l.id)?.responsableId;
+  // Aujourd'hui : le titulaire absent est remplacé (même règle que l'espace opérations).
+  const absence = phraseRemplacement(responsableLe(d.donnees, l.id, AUJOURDHUI), (id) => d.donnees.equipe.find((m) => m.id === id)?.nom);
   const choix = rattaches.map((m) => ({ valeur: m.id, libelle: m.nom }));
   const affecter = (patch: { responsableId?: string; remplacantId?: string }) => {
     const avant = d.donnees.affectations.find((a) => a.id === l.id);
@@ -54,7 +59,7 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
           {rattaches.map((m) => {
             const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id), m);
             const tel = m.telephone?.replace(/[^\d+]/g, '');
-            const charge = m.id === responsableId ? 'Au quotidien' : m.id === remplacantId ? 'Pendant une absence' : undefined;
+            const charge = m.id === responsableId ? ['Au quotidien', absence].filter(Boolean).join(' · ') : m.id === remplacantId ? 'Pendant une absence' : undefined;
             return (
               <li key={m.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                 <span className="min-w-0 flex-1">
@@ -93,7 +98,10 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
       )}
       {gerant && rattaches.length > 0 && (
         <div className="mt-3 grid grid-cols-1 gap-3 border-t border-(--lm-bord) pt-3 sm:grid-cols-2">
-          <Field label="Au quotidien" aide={rattaches.length === 1 ? 'Seule personne qui suit ce logement.' : responsableId ? undefined : 'À choisir : personne n’a les codes ni les incidents.'}>
+          <Field
+            label="Au quotidien"
+            aide={explicite ? undefined : responsableId ? 'Par défaut : seul agent de terrain sur ce logement.' : 'À choisir : personne n’a les codes ni les incidents.'}
+          >
             <Select value={responsableId ?? ''} placeholder="Personne" onChange={(e) => affecter({ responsableId: e.target.value || undefined })} options={choix} />
           </Field>
           <Field label="Pendant une absence">
@@ -130,6 +138,8 @@ function Rattacher({ logement: l, onFermer, onInviter }: { logement: Logement; o
   const [choisi, setChoisi] = useState('');
   const rattacher = () => {
     if (!choisi) return;
+    // Le responsable par défaut d'avant devient un choix enregistré : il garde la charge.
+    for (const a of affectationsAFiger(d.donnees, [l.id])) d.upsert('affectations', a);
     d.mettreAJour('equipe', choisi, (m) => ({ ...m, logementIds: [...new Set([...m.logementIds, l.id])] }));
     onFermer();
   };

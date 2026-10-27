@@ -31,9 +31,9 @@ const historiser = (i: Incident, le: Horodatage, par: string, texte: string): In
   historique: [...(i.historique ?? []), { le, par, texte }],
 });
 
-/** « Je m’en occupe » du gérant : l'incident passe « On s’en occupe ». */
+/** « Je m’en occupe » du gérant : l'incident passe « On s’en occupe », et c'est le gérant qui s'en occupe (dit aussi dans l'espace opérations). */
 export const prendreEnCharge = (i: Incident, par: string, le: Horodatage): Incident =>
-  i.statut === 'ouvert' ? historiser({ ...i, statut: 'en_cours' }, le, par, 'Pris en charge.') : i;
+  i.statut === 'ouvert' ? historiser({ ...i, statut: 'en_cours', parGerant: true }, le, par, 'Pris en charge.') : i;
 
 /** « Marquer réglé » du gérant. */
 export const marquerRegle = (i: Incident, par: string, le: Horodatage): Incident =>

@@ -17,6 +17,7 @@ import { SansPhoto } from '../_composants/SansPhoto';
 import { AjouterPhotos, LienAirbnb, OrganiserPhotos } from '../_composants/PhotosEquipe';
 import { CarteEspaceProprietaire } from '../_composants/EspaceProprietaireGerant';
 import { ResponsablesLogement } from '../_composants/ResponsablesLogement';
+import { mandatDuProprietaire } from '../../../data/acces-gerant';
 import { IncidentsLogement } from '../_composants/IncidentsLogement';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
@@ -299,10 +300,12 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
   const prop = proprietaireById(d, l.proprietaireId);
   const dossier = d.donnees.dossiers.find((x) => x.logementId === l.id);
   const renseigne = prop && prop.id !== ID_PROPRIETAIRE_A_RENSEIGNER;
-  // Mandat de gestion du logement : le plus récent.
-  const mandat = d.mandats.filter((m) => m.logementId === l.id).sort((a, b) => (b.signeLe ?? b.dateDebut).localeCompare(a.signeLe ?? a.dateDebut))[0];
+  // Mandat de gestion du logement avec son propriétaire actuel (celui d'un ancien propriétaire ne compte pas).
+  const mandat = mandatDuProprietaire(d.mandats, l.id, prop?.id);
   const ligneMandat = !mandat
-    ? undefined
+    ? renseigne && d.mandats.some((m) => m.logementId === l.id)
+      ? `Pas de mandat avec ${prop!.nom}`
+      : undefined
     : mandat.statut === 'signe'
       ? `Mandat signé le ${dateCourte(mandat.signeLe ?? mandat.dateDebut)} · ${String(mandat.commissionPct).replace('.', ',')} %`
       : mandat.statut === 'envoye'

@@ -6,7 +6,8 @@
  */
 import { accesToujoursDeLaFiche, type AccesExterne } from './acces-externe';
 import { dateCourte } from './format';
-import type { Id, Logement, Proprietaire } from './types';
+import type { Suivi } from './operations';
+import type { Id, Logement, Mandat, Proprietaire } from './types';
 import type { MembreEquipe, RoleOperations } from './types-operations';
 
 export type TonAcces = 'neutre' | 'succes' | 'alerte';
@@ -87,6 +88,23 @@ export function ficheResponsableInvite(
     reprise: false,
     membre: { id: nouvelId(), nom: saisie.nom.trim(), role: saisie.role ?? 'agent', email, ...(telephone ? { telephone } : {}), logementIds: [...saisie.logementIds], actif: true },
   };
+}
+
+/**
+ * Ce que dit la fiche quand le titulaire est absent : « absent · Inès Morel le
+ * remplace », ou « absent · personne ne le remplace ». Rien s'il est là.
+ */
+export function phraseRemplacement(suivi: Suivi, nom: (id?: Id) => string | undefined): string | undefined {
+  if (!suivi.remplace) return undefined;
+  const qui = suivi.membreId ? nom(suivi.membreId) : undefined;
+  return qui ? `absent · ${qui} le remplace` : 'absent · personne ne le remplace';
+}
+
+/** Mandat du logement avec son propriétaire actuel (le plus récent) ; un mandat d'un ancien propriétaire ne compte pas. */
+export function mandatDuProprietaire(mandats: readonly Mandat[], logementId: Id, proprietaireId: Id | undefined): Mandat | undefined {
+  return mandats
+    .filter((m) => m.logementId === logementId && !!proprietaireId && m.proprietaireId === proprietaireId)
+    .sort((a, b) => (b.signeLe ?? b.dateDebut).localeCompare(a.signeLe ?? a.dateDebut))[0];
 }
 
 /** Logements que plus personne ne suivrait si cette personne les quittait (pour prévenir le gérant). */

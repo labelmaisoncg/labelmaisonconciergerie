@@ -22,12 +22,13 @@ import { ficheResponsableInvite, logementsSansPersonne, phrasesTransferts, statu
 import { MODE_DEMO } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, dateCourte, horodatageMaintenant, jourMois } from '../../data/format';
-import { vueOperations } from '../../data/espace-operations';
+import { affectationsEffectives, remplacantsPossibles, vueOperations } from '../../data/espace-operations';
 import { changerProprietaire } from '../../data/proprietaire';
 import {
   ROLES_OPERATIONS,
   ROLES_SUR_LOGEMENT,
   absencesValables,
+  affectationsAFiger,
   affectationsSans,
   affecter,
   apercuAbsence,
@@ -347,6 +348,7 @@ function ConfirmationTransferts({ transferts }: { transferts: Transfert[] }) {
           {t}
         </span>
       ))}
+      <span className="block">Les chiffres d’avant restent à {[...new Set(transferts.map((t) => t.ancien))].join(', ')}.</span>
       <span className="block">Confirmez pour attribuer.</span>
     </Alert>
   );
@@ -627,13 +629,16 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
   const enregistrer = () => {
     if (fiche.nom.trim().length < 2) return setErreur('Indiquez le nom.');
     const propre: MembreEquipe = { ...fiche, nom: fiche.nom.trim(), email: fiche.email?.trim().toLowerCase() || undefined, telephone: fiche.telephone?.trim() || undefined };
-    d.upsert('equipe', propre);
-    // Plus responsable ni remplaçante là où elle n'est plus ; puis les rôles choisis.
     let affectations = d.donnees.affectations;
     const ecrire = (a: AffectationLogement) => {
       affectations = [...affectations.filter((x) => x.id !== a.id), a];
       d.upsert('affectations', a);
     };
+    // Logements qu'elle rejoint : le responsable par défaut d'avant devient un choix enregistré (personne ne perd la charge sans le savoir).
+    const rejoints = propre.actif ? propre.logementIds.filter((l) => !m.actif || !m.logementIds.includes(l)) : [];
+    for (const a of affectationsAFiger(d.donnees, rejoints)) ecrire(a);
+    d.upsert('equipe', propre);
+    // Plus responsable ni remplaçante là où elle n'est plus ; puis les rôles choisis.
     for (const a of affectationsSans(affectations, id, quittes)) ecrire(a);
     for (const [l, role] of Object.entries(roles)) if (propre.actif && propre.logementIds.includes(l)) ecrire(affecter({ affectations, equipe: equipeApres }, l, id, role));
     setRoles({});
@@ -816,7 +821,7 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
                 </>
               }
             >
-              La personne est déconnectée tout de suite et ses liens ne marchent plus.
+              Ses liens ne marchent plus. Son espace se ferme dès qu’elle recharge la page ou ouvre un document.
             </Alert>
           )}
           {invitation && (
@@ -873,7 +878,7 @@ function AbsencesGerant({ membre: m }: { membre: MembreEquipe }) {
               <span className="min-w-40 flex-1">
                 <span className="block text-[13.5px] font-medium text-(--lm-encre)">{a.du === a.au ? `Le ${jourMois(a.du)}` : `Du ${jourMois(a.du)} au ${jourMois(a.au)}`}</span>
                 <span className="block text-[12.5px] text-(--lm-encre-2)">
-                  {[a.remplacantId ? `Relais : ${nom(a.remplacantId)}` : 'Sans relais choisi', a.parMembreId ? `notée par ${nom(a.parMembreId)}` : undefined, a.motif].filter(Boolean).join(' · ')}
+                  {[a.remplacantId ? `Remplaçant : ${nom(a.remplacantId)}` : 'Sans remplaçant choisi', a.parMembreId ? `notée par ${nom(a.parMembreId)}` : undefined, a.motif].filter(Boolean).join(' · ')}
                 </span>
               </span>
               <Button size="sm" variant="ghost" onClick={() => setEdition(a)}>
@@ -895,9 +900,10 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
   const [a, setA] = useState<AbsenceMembre>(absence);
   const [erreur, setErreur] = useState<string>();
   const existante = !!absence.id;
-  // Relais possibles : les personnes de l'équipe qui suivent au moins un de ses logements.
+  // Remplaçants possibles : même règle que dans l'espace opérations (ceux qui suivent déjà tout ce qui leur reviendrait).
+  const possibles = new Set(remplacantsPossibles({ ...d.donnees, affectations: affectationsEffectives(d.donnees) }, m.id));
   const relais = d.donnees.equipe
-    .filter((x) => x.actif && x.id !== m.id && x.logementIds.some((l) => m.logementIds.includes(l)))
+    .filter((x) => x.actif && x.id !== m.id && (possibles.has(x.id) || x.id === absence.remplacantId))
     .sort((x, y) => x.nom.localeCompare(y.nom, 'fr'))
     .map((x) => ({ valeur: x.id, libelle: x.nom }));
   const apercu = useMemo(() => apercuAbsence(d.donnees, { ...a, id: a.id || 'nouvelle' }, AUJOURDHUI), [d.donnees, a]);
@@ -930,7 +936,7 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
       ouvert
       onFermer={onFermer}
       titre={existante ? `Absence de ${m.nom}` : 'Noter une absence'}
-      description="Pendant l’absence, ses logements et ses incidents passent au relais."
+      description="Pendant l’absence, ses logements et ses incidents passent au remplaçant."
       pied={
         <>
           {existante && (
@@ -956,10 +962,14 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
         <Field label="Au (inclus)" requis>
           <Input type="date" value={a.au} min={a.du} onChange={(e) => setA({ ...a, au: e.target.value })} />
         </Field>
-        <Field label="Relais si le logement n’en a pas" className="sm:col-span-2">
+        <Field
+          label="Remplaçant si le logement n’en a pas"
+          aide={relais.length ? 'Seulement quelqu’un qui suit déjà ses logements.' : 'Personne ne suit tous ses logements : ajoutez-les d’abord à quelqu’un.'}
+          className="sm:col-span-2"
+        >
           <Select value={a.remplacantId ?? ''} placeholder="Personne" onChange={(e) => setA({ ...a, remplacantId: e.target.value || undefined })} options={relais} />
         </Field>
-        <Field label="Motif" aide="Facultatif, visible par vous seul." className="sm:col-span-2">
+        <Field label="Motif" aide="Facultatif, jamais montré à l’équipe de terrain." className="sm:col-span-2">
           <Input value={a.motif ?? ''} onChange={(e) => setA({ ...a, motif: e.target.value })} maxLength={200} />
         </Field>
         <section aria-label="Ce qui change" className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 sm:col-span-2">
@@ -988,7 +998,7 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
           )}
           {apercu.sansRemplacant > 0 && (
             <p className="mt-2 text-[12.5px] text-(--lm-danger)">
-              Personne pour reprendre {apercu.sansRemplacant > 1 ? `${apercu.sansRemplacant} lignes` : 'une ligne'} : choisissez un relais.
+              Personne pour reprendre {apercu.sansRemplacant > 1 ? `${apercu.sansRemplacant} lignes` : 'une ligne'} : choisissez un remplaçant.
             </p>
           )}
           <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">Au retour, tout revient à la personne.</p>
@@ -1022,6 +1032,9 @@ export function InviterResponsable({ onFermer, logementsInitiaux = [] }: { onFer
     setErreur(undefined);
     setEnCours(true);
     const { membre: m } = ficheResponsableInvite(d.donnees.equipe, { nom, email: adresse, telephone, role: roleChoisi, logementIds: coches }, () => nouvelId('eq'));
+    // Logements qu'elle rejoint : le responsable par défaut d'avant devient un choix enregistré.
+    const avant = d.donnees.equipe.find((x) => x.id === m.id);
+    for (const a of affectationsAFiger(d.donnees, m.logementIds.filter((l) => !avant?.actif || !avant.logementIds.includes(l)))) d.upsert('affectations', a);
     d.upsert('equipe', m);
     try {
       if (MODE_DEMO) {

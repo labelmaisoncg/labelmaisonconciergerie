@@ -20,7 +20,8 @@ import { PropositionInstallation } from '../parametres/_application/PropositionI
  */
 export default function TableauDeBord() {
   const d = useErp();
-  const elements = useMemo(() => construireATraiter(d.donnees), [d.donnees]);
+  const gerant = d.utilisateur.role === 'gerant';
+  const elements = useMemo(() => construireATraiter(d.donnees, undefined, { gerant }), [d.donnees, gerant]);
   const vide = d.reservations.length === 0;
   const date = format(parseISO(AUJOURDHUI), 'EEEE d MMMM', { locale: fr });
   const heure = new Date().getHours();

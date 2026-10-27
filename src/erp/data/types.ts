@@ -519,6 +519,8 @@ export interface Incident {
   recupereLe?: DateISO;
   /** Espace opérations (octobre 2026) : membre de l'équipe de terrain qui s'en occupe. */
   assigneA?: Id;
+  /** Le gérant a dit « Je m’en occupe » depuis l'ERP (jusqu'à ce que l'incident soit confié à quelqu'un). */
+  parGerant?: boolean;
   /** Membre de l'équipe de terrain qui l'a signalé. */
   signalePar?: Id;
   /** Contrôle qualité d'où vient l'incident (point « à revoir »). */
