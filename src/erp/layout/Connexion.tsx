@@ -201,13 +201,14 @@ function ChoixRole({ onEquipe, onRetour }: { onEquipe: () => void; onRetour: () 
   return (
     <Cadre titre="Créer mon compte" sousTitre="Vous êtes :" icone={<UserPlus />}>
       <div className="grid gap-2.5">
-        {ROLES_COMPTE.map((r) =>
+        {/* Focus sur la première ligne, comme la page d'accès. */}
+        {ROLES_COMPTE.map((r, i) =>
           'href' in r ? (
-            <a key={r.titre} href={r.href} className={CLASSE_CHOIX}>
+            <a key={r.titre} href={r.href} className={CLASSE_CHOIX} autoFocus={i === 0}>
               {contenu(r)}
             </a>
           ) : (
-            <button key={r.titre} type="button" onClick={onEquipe} className={CLASSE_CHOIX} autoFocus>
+            <button key={r.titre} type="button" onClick={onEquipe} className={CLASSE_CHOIX}>
               {contenu(r)}
             </button>
           ),
