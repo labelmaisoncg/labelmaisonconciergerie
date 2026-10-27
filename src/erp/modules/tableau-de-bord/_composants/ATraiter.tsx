@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BotMessageSquare, CheckCircle2, ChevronDown, ChevronRight, MessageSquareWarning, PhoneCall, RefreshCw, Star, type LucideIcon } from 'lucide-react';
+import { BotMessageSquare, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, MessageSquareWarning, PhoneCall, RefreshCw, Siren, Star, type LucideIcon } from 'lucide-react';
 import { Card, CardHeader, Drawer, EmptyState, TON_LAVIS, cn } from '../../../ui';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
@@ -10,6 +10,9 @@ const ICONES: Record<TypeATraiter, LucideIcon> = {
   avis: Star,
   agent: BotMessageSquare,
   crm: PhoneCall,
+  urgence: Siren,
+  incident: CircleAlert,
+  signalement: Flag,
 };
 
 const PRIORITES = { 1: 'Aujourd’hui', 2: 'Cette semaine' } as const;

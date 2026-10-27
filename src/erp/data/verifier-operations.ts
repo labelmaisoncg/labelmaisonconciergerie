@@ -582,7 +582,7 @@ section('Notification « Urgence »');
   verifier(notificationUrgence(incident('r', { gravite: 'haute', statut: 'resolu' }), 'Studio') === null, 'incident résolu : rien');
   const u = notificationUrgence(incident('u', { gravite: 'haute' }), 'Studio Évry');
   verifier(u?.cle === 'urgence-u-personne' && u.urgente && u.variantes[0].type === 'urgence' && u.variantes[0].titre === 'Urgence · Studio Évry', 'urgent : notification immédiate « Urgence · logement »');
-  verifier(u?.variantes[0].url === '/erp/logements/L1?onglet=historique', 'le toucher ouvre l’historique du logement (ses incidents)');
+  verifier(u?.variantes[0].url === '/erp/logements/L1?incident=u', 'le toucher ouvre la fiche du logement, l’incident en vue');
   const a = notificationUrgence(incident('a', { assigneA: 'B' }), 'T2', 'Bruno Petit');
   verifier(a?.cle === 'urgence-a-B' && !a.urgente && a.variantes[0].titre === 'Incident confié à Bruno P. · T2', 'confié : une notification par personne, nom abrégé');
   verifier(notificationUrgence(incident('a', { assigneA: 'C' }), 'T2', 'Chloé Roux')?.cle === 'urgence-a-C', 'confié à quelqu’un d’autre : nouvelle clé, nouvelle notification');

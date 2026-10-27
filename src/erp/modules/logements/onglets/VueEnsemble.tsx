@@ -17,6 +17,7 @@ import { SansPhoto } from '../_composants/SansPhoto';
 import { AjouterPhotos, LienAirbnb, OrganiserPhotos } from '../_composants/PhotosEquipe';
 import { CarteEspaceProprietaire } from '../_composants/EspaceProprietaireGerant';
 import { ResponsablesLogement } from '../_composants/ResponsablesLogement';
+import { IncidentsLogement } from '../_composants/IncidentsLogement';
 import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats';
 
@@ -101,6 +102,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
             ]}
           />
 
+          <IncidentsLogement logement={l} />
           <Card flush>
             <div className="p-4 pb-0 sm:p-5 sm:pb-0">
               <CardHeader

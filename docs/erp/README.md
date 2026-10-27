@@ -120,6 +120,13 @@ node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platfor
 node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-relances.mjs && node /tmp/verifier-relances.mjs
+
+# Incidents côté ERP : un signalement de l'espace opérations remonte dans le
+# « À faire » et sur la fiche du logement (lien de la notification « Urgence »),
+# actions du gérant, « pas à moi », remplaçant qui suit déjà les logements.
+node_modules/.bin/esbuild src/erp/data/verifier-incidents-erp.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-incidents-erp.mjs && node /tmp/verifier-incidents-erp.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)

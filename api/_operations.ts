@@ -146,7 +146,7 @@ export async function prevenirGerant(b: BaseErp, e: EntreesOperations, ids: read
 
 /** Lien de connexion par e-mail, au nom de l'espace. Faux : le gérant copie le lien affiché. */
 export function envoyerLienOps(fiche: FicheEspace | undefined, o: { email: string; nom: string; lien: string; motif: 'invitation' | 'connexion' }): Promise<boolean> {
-  const conciergerie = fiche?.nom || 'Label Maison';
+  const conciergerie = fiche?.nom || 'votre conciergerie';
   const invitation = o.motif === 'invitation';
   const sujet = invitation ? `Votre espace opérations · ${conciergerie}` : `Votre lien de connexion · ${conciergerie}`;
   const intro = invitation

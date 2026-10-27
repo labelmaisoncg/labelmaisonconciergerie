@@ -100,7 +100,7 @@ export function Aujourdhui() {
                   key={a.id}
                   icone={<UserX />}
                   titre={m?.nom ?? 'Membre'}
-                  sousTitre={[a.du <= vue.aujourdhui ? `Absence jusqu’au ${jourMois(a.au)}` : `Absence du ${jourMois(a.du)} au ${jourMois(a.au)}`, repris.length ? `relais : ${repris.join(', ')}` : undefined]
+                  sousTitre={[a.du <= vue.aujourdhui ? `Absence jusqu’au ${jourMois(a.au)}` : `Absence du ${jourMois(a.du)} au ${jourMois(a.au)}`, repris.length ? `${repris.length > 1 ? 'remplaçants' : 'remplaçant'} : ${repris.join(', ')}` : undefined]
                     .filter(Boolean)
                     .join(' · ')}
                   onClick={() => naviguer({ onglet: 'equipe', absence: a.id })}
