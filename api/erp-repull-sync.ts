@@ -20,6 +20,8 @@
 //
 // Quand le passage apporte des messages, l'agent IA de la messagerie passe
 // juste après (api/_erp-agent.ts), si ANTHROPIC_API_KEY est présente.
+// Au passage quotidien, avant Repull : relances de paiement, puis les
+// notifications du matin de l'app « Opérations » (api/_operations-notifications.ts).
 // =============================================================================
 
 import { lancer, texteErreur, verifierMembre, type DeclencheurRepull, type ResultatLancement } from '../src/erp/data/repull-synchro.js';
@@ -31,6 +33,7 @@ import { agentApresSynchro } from './_erp-agent.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
 import { relancesDuJour } from './_relances.js';
+import { notificationsOpsDuJour } from './_operations-notifications.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 50_000;
@@ -52,6 +55,9 @@ export default async function handler(req: any, res: any) {
     // Relances de paiement des factures partagées (chaque espace) : sans Repull, sans jamais bloquer la suite.
     const relances = await relancesDuJour();
     if (Object.keys(relances).length) console.log('[erp-repull-sync] relances', JSON.stringify(relances));
+    // App « Opérations » : remplacements qui commencent, contrôles qualité du jour. Borné à 8 s, jamais bloquant.
+    const operations = await notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({}));
+    if (Object.keys(operations).length) console.log('[erp-repull-sync] operations', JSON.stringify(operations));
     const manque = variableManquante(c);
     if (manque) return repondre(res, 503, { ok: false, erreur: manque });
     let espaces;

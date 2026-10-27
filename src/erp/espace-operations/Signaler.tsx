@@ -1,20 +1,35 @@
 import { useEffect, useState } from 'react';
 import { jourMois } from '../data/format';
+import { phrasePrevenus } from '../data/notifications-operations';
 import { Button, Field, Modal, Segmente, Select, Textarea } from '../ui';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { useOps } from './commun';
 
 /** Signaler un incident : le logement, urgent ou non, ce qui se passe, des photos. */
 export function Signaler({ logementId, onFermer }: { logementId?: string; onFermer: () => void }) {
-  const { vue, agir, naviguer, apercu } = useOps();
+  const { vue, agir, naviguer, apercu, actions } = useOps();
   const [logement, setLogement] = useState(logementId ?? '');
   const [urgent, setUrgent] = useState(false);
+  // Qui reçoit vraiment l'urgence sur son téléphone (notifications activées), en plus du gérant.
+  const [prevenus, setPrevenus] = useState<string[]>([]);
   const [description, setDescription] = useState('');
   const [sejour, setSejour] = useState('');
   const [photos, setPhotos] = useState<PhotoChoisie[]>([]);
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
   useEffect(() => setSejour(''), [logement]);
+  useEffect(() => {
+    setPrevenus([]);
+    if (!urgent || !logement || !actions.prevenus) return;
+    let actif = true;
+    actions.prevenus(logement).then(
+      (noms) => actif && setPrevenus(noms),
+      () => undefined,
+    );
+    return () => {
+      actif = false;
+    };
+  }, [urgent, logement, actions]);
 
   // Séjours du logement dans la fenêtre de l'espace (en cours, tout juste partis, à venir).
   const sejours = vue.sejours.filter((s) => s.logementId === logement);
@@ -63,7 +78,7 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
             ]}
             className="self-start"
           />
-          {urgent && <p className="text-[12.5px] text-(--lm-encre-2)">Le gérant est prévenu tout de suite.</p>}
+          {urgent && <p className="text-[12.5px] text-(--lm-encre-2)">{phrasePrevenus(prevenus)}</p>}
         </div>
         <Field label="Ce qui se passe" requis>
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ce que vous constatez, et ce qu’il faut faire." />

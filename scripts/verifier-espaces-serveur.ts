@@ -37,6 +37,12 @@
  * non-gérant refusés, espace fermé refusé. Invitation « Créer mon compte » :
  * gérant de l'espace seulement, adresse membre de l'espace, lien sur le site
  * fixe, e-mail au nom de l'espace ou lien à copier.
+ * App « Opérations » (notifications Web Push, faux téléphones qui
+ * déchiffrent) : abonnement par la session et rangé dans l'espace de la
+ * personne, urgence à la seule personne concernée (ni l'auteur ni Sens),
+ * accès retiré ou adresse changée = plus rien, contrôle du jour une fois par
+ * jour au passage quotidien, réponse du gérant au « pas à moi », sans clés
+ * rien d'envoyé.
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -64,6 +70,9 @@ import { relancesDuJour } from '../api/_relances';
 import { SITE_PAR_DEFAUT, adresseSite, baseAcces, contactsEspace, expediteurEspace } from '../api/_acces-externe';
 import { origineAutorisee } from '../api/_garde-formulaire';
 import { accesToujoursDeLaFiche, type AccesExterne } from '../src/erp/data/acces-externe';
+import { ajouterJours } from '../src/erp/data/operations';
+import { dateParisISO } from '../src/erp/data/proprietaire';
+import { genererClesVapid } from '../src/erp/data/web-push';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -124,6 +133,8 @@ class Monde {
   repull: { methode: string; chemin: string; workspace: string | null; cle: string }[] = [];
   /** E-mails envoyés par Resend (relances, liens). */
   emails: { from: string; to: string[]; subject: string; text: string; replyTo?: unknown }[] = [];
+  /** Notifications Web Push reçues par le service (contenu chiffré, en-têtes Urgency et VAPID). */
+  pushs: { endpoint: string; corps: Uint8Array; urgence: string | null; vapid: string }[] = [];
   /** Panne passagère de erp.espaces_actifs (fiche d'espace illisible). */
   panneEspacesActifs = false;
   horloge = 0;
@@ -159,6 +170,11 @@ class Monde {
       const e = JSON.parse(String(init?.body)) as { from: string; to: string[]; subject: string; text: string; reply_to?: unknown };
       this.emails.push({ from: e.from, to: e.to, subject: e.subject, text: e.text, replyTo: e.reply_to });
       return json({ id: `email-${this.emails.length}` });
+    }
+    if (url.hostname === 'fcm.googleapis.com') {
+      const corps = new Uint8Array(await new Response(init?.body as BodyInit).arrayBuffer());
+      this.pushs.push({ endpoint: url.href, corps, urgence: h.get('urgency'), vapid: /k=([^,\s]+)/.exec(h.get('authorization') ?? '')?.[1] ?? '' });
+      return new Response(null, { status: 201 });
     }
     if (url.hostname === 'api.repull.dev') {
       this.repull.push({ methode, chemin: url.pathname, workspace: h.get('x-workspace-id'), cle: jeton });
@@ -1176,6 +1192,170 @@ async function principal() {
     }
     delete env.RESEND_API_KEY;
     delete env.CONTACT_FROM_EMAIL;
+  }
+
+  section('App « Opérations » : notifications de l’équipe (Web Push)');
+  {
+    const vapid = await genererClesVapid();
+    env.VAPID_PUBLIC_KEY = vapid.publique;
+    env.VAPID_PRIVATE_KEY = vapid.privee;
+    const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
+    const aujourdhui = dateParisISO();
+    monde.poser(LM, 'logements', { id: 'log-n', nom: 'Le Nid', ville: 'Évry', statut: 'actif', proprietaireId: 'pro-a', capacite: 2, chambres: 1 } as { id: string });
+    monde.poser(LM, 'equipe', { id: 'eq-p', nom: 'Paula Pôle', role: 'pole', email: 'paula@exemple.invalid', logementIds: ['log-n'], actif: true } as { id: string });
+    monde.poser(LM, 'equipe', { id: 'eq-g', nom: 'Gaspard Agent', role: 'agent', email: 'gaspard@exemple.invalid', logementIds: ['log-n'], actif: true } as { id: string });
+    monde.poser(LM, 'affectations', { id: 'log-n', responsableId: 'eq-g' } as { id: string });
+    monde.poser(SENS, 'logements', { id: 'log-n2', nom: 'Chez Sens', ville: 'Sens', statut: 'actif', proprietaireId: 'pro-s', capacite: 2, chambres: 1 } as { id: string });
+    monde.poser(SENS, 'equipe', { id: 'eq-t', nom: 'Théo Sens', role: 'pole', email: 'theo@exemple.invalid', logementIds: ['log-n2'], actif: true } as { id: string });
+    const connecter = async (gerant: Record<string, string>, membreId: string, email: string, ip: string) => {
+      const inv = await appelOps({ entetes: gerant, corps: { action: 'inviter', membreId, email } });
+      return cookieDe(await appelOps({ entetes: { 'x-forwarded-for': ip }, corps: { action: 'entrer', jeton: jetonDuLien(inv.corps?.lien), espace: gerant['x-erp-espace'] } }));
+    };
+    const cPaula = await connecter(gerantLM, 'eq-p', 'paula@exemple.invalid', '198.51.100.81');
+    const cGaspard = await connecter(gerantLM, 'eq-g', 'gaspard@exemple.invalid', '198.51.100.82');
+    const cTheo = await connecter(gerantSens, 'eq-t', 'theo@exemple.invalid', '198.51.100.83');
+    verifier([cPaula, cGaspard, cTheo].every((c) => c.startsWith('lm_operations=')), 'trois personnes connectées (deux à Label Maison, une à Sens)');
+
+    // Faux téléphones : une paire ECDH chacun, pour relire ce qui arrive (RFC 8291).
+    const subtle = globalThis.crypto.subtle;
+    const T = (o: Uint8Array) => o as unknown as BufferSource;
+    const enc = (t: string) => new TextEncoder().encode(t);
+    const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const;
+    const telephones = new Map<string, (c: Uint8Array) => Promise<{ titre: string; corps: string; url: string; tag: string }>>();
+    const telephone = async (nom: string) => {
+      const paire = (await subtle.generateKey(ECDH, true, ['deriveBits'])) as CryptoKeyPair;
+      const pub = new Uint8Array(await subtle.exportKey('raw', paire.publicKey));
+      const auth = globalThis.crypto.getRandomValues(new Uint8Array(16));
+      const endpoint = `https://fcm.googleapis.com/fcm/send/${nom}`;
+      const h = async (ikm: Uint8Array, salt: Uint8Array, info: Uint8Array, n: number) =>
+        new Uint8Array(await subtle.deriveBits({ name: 'HKDF', hash: 'SHA-256', salt: T(salt), info: T(info) }, await subtle.importKey('raw', T(ikm), 'HKDF', false, ['deriveBits']), n * 8));
+      telephones.set(endpoint, async (c) => {
+        const sel = c.slice(0, 16);
+        const as = c.slice(21, 86);
+        const secret = new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: await subtle.importKey('raw', T(as), ECDH, false, []) }, paire.privateKey, 256));
+        const ikm = await h(secret, auth, new Uint8Array([...enc('WebPush: info\0'), ...pub, ...as]), 32);
+        const cek = await subtle.importKey('raw', T(await h(ikm, sel, enc('Content-Encoding: aes128gcm\0'), 16)), 'AES-GCM', false, ['decrypt']);
+        const clair = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv: T(await h(ikm, sel, enc('Content-Encoding: nonce\0'), 12)) }, cek, T(c.slice(86))));
+        return JSON.parse(new TextDecoder().decode(clair.slice(0, -1)));
+      });
+      return { endpoint, keys: { p256dh: Buffer.from(pub).toString('base64url'), auth: Buffer.from(auth).toString('base64url') } };
+    };
+    const recus = () =>
+      Promise.all(monde.pushs.map(async (p) => ({ qui: p.endpoint.split('/').pop() ?? '', urgence: p.urgence, vapid: p.vapid, ...(await telephones.get(p.endpoint)!(p.corps)) })));
+    const telPaula = await telephone('paula');
+    const telGaspard = await telephone('gaspard');
+    const telTheo = await telephone('theo');
+
+    // Abonnement : session de l'espace, même site seulement, rangé dans l'espace de la personne.
+    let res = reponse();
+    await routeOperations(requete({ entetes: { cookie: cPaula }, corps: { action: 'notifications-abonner', abonnement: telPaula } }), res);
+    verifier(res.statut === 403, 'abonner sans venir du site : refusé', res.corps);
+    res = await appelOps({ corps: { action: 'notifications-abonner', abonnement: telPaula } });
+    verifier(res.statut === 401, 'abonner sans session : refusé', res.statut);
+    res = await appelOps({ entetes: { cookie: cPaula }, corps: { action: 'notifications-abonner', abonnement: { endpoint: 'https://evil.example.com/x', keys: telPaula.keys } } });
+    verifier(res.statut === 400, 'service de notifications inconnu : refusé', res.corps);
+    for (const [cookie, abonnement] of [
+      [cPaula, telPaula],
+      [cGaspard, telGaspard],
+      [cTheo, telTheo],
+    ] as const) {
+      res = await appelOps({ entetes: { cookie }, corps: { action: 'notifications-abonner', abonnement, nom: 'iPhone' } });
+      verifier(res.statut === 200, `abonnement de ${abonnement.endpoint.split('/').pop()} enregistré`, res.corps);
+    }
+    const appareils = (espace: string, membre: string) =>
+      ((monde.lignes.get(`${espace}\u0000connecteurs\u0000operations-appareils-${membre}`)?.donnees as { appareils?: { endpoint: string; email: string; version: number }[] } | undefined)?.appareils ?? []).map((a) => a.endpoint.split('/').pop());
+    verifier(
+      appareils(LM, 'eq-p').join() === 'paula' && appareils(SENS, 'eq-t').join() === 'theo' && !monde.lignes.has(`${LM}\u0000connecteurs\u0000operations-appareils-eq-t`) && !monde.lignes.has(`${SENS}\u0000connecteurs\u0000operations-appareils-eq-p`),
+      'téléphones rangés dans l’espace de la personne (collection réservée aux gérants)',
+    );
+    res = await appelOps({ methode: 'GET', query: { action: 'notifications-etat', endpoint: telPaula.endpoint }, entetes: { cookie: cPaula } });
+    verifier(res.statut === 200 && res.corps?.actif === true && res.corps?.clePublique === vapid.publique && res.corps?.abonne === true, 'état : serveur prêt, clé publique, ce téléphone abonné', res.corps);
+    res = await appelOps({ methode: 'GET', query: { action: 'notifications-etat', endpoint: telPaula.endpoint }, entetes: { cookie: cGaspard } });
+    verifier(res.statut === 200 && res.corps?.abonne === false, 'le téléphone de Paula n’est pas celui de Gaspard', res.corps);
+    res = await appelOps({ methode: 'GET', query: { action: 'prevenus', logement: 'log-n' }, entetes: { cookie: cGaspard } });
+    verifier(res.statut === 200 && JSON.stringify(res.corps?.noms) === '["Paula P."]', '« Signaler » : Paula, abonnée, sera prévenue d’une urgence de Gaspard', res.corps);
+
+    // Gaspard signale une urgence sur son logement : Paula (pôle) seule ; ni l'auteur, ni Sens.
+    monde.pushs = [];
+    res = await appelOps({ entetes: { cookie: cGaspard }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-n', urgent: true, description: 'Fuite sous l’évier de la cuisine.' } } });
+    let r = await recus();
+    verifier(res.statut === 200 && r.length === 1 && r[0].qui === 'paula', 'urgence de Gaspard : seulement Paula', r.map((x) => x.qui));
+    verifier(
+      r[0]?.titre === 'Urgence · Le Nid' && r[0].corps === 'Fuite sous l’évier de la cuisine. · Gaspard A. s’en occupe' && r[0].url === `/espace-operations?onglet=incidents&incident=${res.corps?.id}`,
+      'contenu chiffré relu par le téléphone : titre, qui s’en occupe, écran de l’incident',
+      r[0],
+    );
+    verifier(r[0]?.urgence === 'high' && r[0].vapid === vapid.publique, 'urgence livrée tout de suite, signée avec la clé du serveur', r[0]);
+
+    // Essai : ce téléphone seulement.
+    monde.pushs = [];
+    res = await appelOps({ entetes: { cookie: cTheo }, corps: { action: 'notifications-tester', endpoint: telTheo.endpoint } });
+    r = await recus();
+    verifier(res.statut === 200 && r.length === 1 && r[0].qui === 'theo' && r[0].titre === 'Opérations', 'notification de test : sur ce téléphone seulement', r);
+    res = await appelOps({ entetes: { cookie: cTheo }, corps: { action: 'notifications-tester', endpoint: telPaula.endpoint } });
+    verifier(res.statut === 404 && res.corps?.code === 'inconnu', 'essai vers le téléphone d’un autre : refusé', res.corps);
+
+    // Accès retiré : téléphones oubliés, plus rien.
+    await appelOps({ entetes: gerantLM, corps: { action: 'retirer', membreId: 'eq-p' } });
+    verifier(appareils(LM, 'eq-p').length === 0, 'accès retiré : ses téléphones sont oubliés');
+    monde.pushs = [];
+    res = await appelOps({ entetes: { cookie: cGaspard }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-n', urgent: true, description: 'Plus d’eau chaude dans la salle de bain.' } } });
+    verifier(res.statut === 200 && monde.pushs.length === 0, 'urgence suivante : Paula (retirée) ne reçoit plus rien', monde.pushs.length);
+    res = await appelOps({ methode: 'GET', query: { action: 'prevenus', logement: 'log-n' }, entetes: { cookie: cGaspard } });
+    verifier(res.statut === 200 && JSON.stringify(res.corps?.noms) === '[]', '« Signaler » le dit : seul le gérant est prévenu', res.corps);
+
+    // Passage du matin : le contrôle du jour à Gaspard, une seule fois.
+    monde.poser(LM, 'reservations', { id: 'res-n', logementId: 'log-n', canal: 'airbnb', voyageur: { nom: 'Zoé Martin', nbPersonnes: 2 }, arrivee: ajouterJours(aujourdhui, -3), depart: ajouterJours(aujourdhui, -1), nuits: 2, statut: 'terminee', montantBrutCentimes: 20000, commissionPlateformeCentimes: 3000, fraisMenageCentimes: 4000 } as { id: string });
+    monde.pushs = [];
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    r = await recus();
+    verifier(r.length === 1 && r[0].qui === 'gaspard' && r[0].titre === 'Aujourd’hui : 1 contrôle qualité' && r[0].corps === 'Le Nid.' && r[0].url === '/espace-operations?onglet=controles', 'passage du matin : « Aujourd’hui : 1 contrôle qualité » à qui a la charge du logement', r);
+    verifier(!JSON.stringify(r).includes('Zoé'), 'aucun nom de voyageur dans la notification');
+    monde.pushs = [];
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    verifier(monde.pushs.length === 0, 'deuxième passage le même jour : rien ne repart', monde.pushs.length);
+
+    // « Ce logement n'est pas à moi » : la réponse du gérant.
+    monde.poser(LM, 'signalementsLogement', { id: 'sig-n', logementId: 'log-n', membreId: 'eq-g', le: `${aujourdhui}T08:00:00.000Z`, statut: 'ouvert' } as { id: string });
+    res = await appelOps({ entetes: gerantLM, corps: { action: 'signalement-traite', id: 'sig-n' } });
+    verifier(res.statut === 409 && res.corps?.code === 'pas_encore', 'réponse pas encore dans la base : « pas_encore », l’ERP réessaie', res.corps);
+    monde.poser(LM, 'signalementsLogement', { id: 'sig-n', logementId: 'log-n', membreId: 'eq-g', le: `${aujourdhui}T08:00:00.000Z`, statut: 'traite', decision: 'confirme', traiteLe: new Date().toISOString(), traitePar: 'Gérant' } as { id: string });
+    res = await appelOps({ entetes: { ...gerantLM, 'x-erp-espace': SENS }, corps: { action: 'signalement-traite', id: 'sig-n' } });
+    verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.corps);
+    res = await appelOps({ entetes: gerantSens, corps: { action: 'signalement-traite', id: 'sig-n' } });
+    verifier(res.statut === 409, 'gérant de Sens : le signalement de Label Maison n’existe pas chez lui', res.corps);
+    res = await appelOps({ entetes: { cookie: cGaspard }, corps: { action: 'signalement-traite', id: 'sig-n' } });
+    verifier(res.statut === 401, 'une personne de terrain ne peut pas l’envoyer', res.statut);
+    monde.pushs = [];
+    res = await appelOps({ entetes: gerantLM, corps: { action: 'signalement-traite', id: 'sig-n' } });
+    r = await recus();
+    verifier(res.statut === 200 && res.corps?.envoye === true && r.length === 1 && r[0].qui === 'gaspard' && r[0].titre === 'Logement confirmé · Le Nid', 'gardé : Gaspard reçoit « Logement confirmé »', r);
+    res = await appelOps({ entetes: gerantLM, corps: { action: 'signalement-traite', id: 'sig-n' } });
+    verifier(res.statut === 200 && res.corps?.envoye === false && monde.pushs.length === 1, 'deuxième appel : jamais deux fois', res.corps);
+
+    // Adresse changée dans la fiche : la session tombe et le téléphone ne reçoit plus rien.
+    monde.poser(LM, 'equipe', { id: 'eq-g', nom: 'Gaspard Agent', role: 'agent', email: 'successeur@exemple.invalid', logementIds: ['log-n'], actif: true } as { id: string });
+    monde.poser(LM, 'signalementsLogement', { id: 'sig-n2', logementId: 'log-n', membreId: 'eq-g', le: `${aujourdhui}T08:00:00.000Z`, statut: 'traite', decision: 'confirme', traiteLe: new Date().toISOString(), traitePar: 'Gérant' } as { id: string });
+    monde.pushs = [];
+    res = await appelOps({ entetes: gerantLM, corps: { action: 'signalement-traite', id: 'sig-n2' } });
+    verifier(res.statut === 200 && res.corps?.envoye === false && monde.pushs.length === 0, 'adresse changée dans la fiche : rien ne part', res.corps);
+    monde.poser(LM, 'equipe', { id: 'eq-g', nom: 'Gaspard Agent', role: 'agent', email: 'gaspard@exemple.invalid', logementIds: ['log-n'], actif: true } as { id: string });
+
+    // Déconnexion : le serveur oublie ce téléphone.
+    res = await appelOps({ entetes: { cookie: cGaspard }, corps: { action: 'notifications-desabonner', endpoint: telGaspard.endpoint } });
+    verifier(res.statut === 200 && appareils(LM, 'eq-g').length === 0, 'désabonner : téléphone oublié', appareils(LM, 'eq-g'));
+
+    // Sans clés : rien n'est proposé ni envoyé.
+    delete env.VAPID_PUBLIC_KEY;
+    delete env.VAPID_PRIVATE_KEY;
+    res = await appelOps({ methode: 'GET', query: { action: 'notifications-etat' }, entetes: { cookie: cTheo } });
+    verifier(res.statut === 200 && res.corps?.actif === false && res.corps?.clePublique === null, 'sans clés : notifications pas encore ouvertes', res.corps);
+    res = await appelOps({ entetes: { cookie: cTheo }, corps: { action: 'notifications-abonner', abonnement: telTheo } });
+    verifier(res.statut === 503 && res.corps?.code === 'inactif', 'sans clés : abonnement refusé', res.corps);
+    monde.pushs = [];
+    res = await appelOps({ entetes: { cookie: cTheo }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-n2', urgent: true, description: 'Volet roulant bloqué en bas.' } } });
+    verifier(res.statut === 200 && monde.pushs.length === 0, 'sans clés : l’action passe, rien n’est envoyé', monde.pushs.length);
   }
 
   section('Webhooks');

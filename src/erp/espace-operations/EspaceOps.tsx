@@ -30,6 +30,8 @@ export interface EspaceOpsProps {
   apercu?: boolean;
   /** Nom de la conciergerie (en-tête). */
   conciergerie?: string;
+  /** Entrée de l'app installable (« Installer l'app », « Notifications »), à côté de la déconnexion. */
+  entreeApp?: ReactNode;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface EspaceOpsProps {
  * pôle (quatre pour l'agent), barre du bas sur téléphone comme une app,
  * onglets dans l'en-tête sur ordinateur.
  */
-export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, apercu, conciergerie = vue.conciergerie?.nom ?? 'Label Maison' }: EspaceOpsProps) {
+export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, apercu, conciergerie = vue.conciergerie?.nom ?? 'Label Maison', entreeApp }: EspaceOpsProps) {
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' } | null>(null);
   const pole = vue.moi.role === 'pole';
   const onglets = ONGLETS.filter((o) => !o.pole || pole);
@@ -75,7 +77,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                   aria-current={o.cle === onglet ? 'page' : undefined}
                   onClick={() => naviguer({ onglet: o.cle, controle: undefined })}
                   className={cn(
-                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
+                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-[13.5px] lg:px-3 font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
                     o.cle === onglet ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
                   )}
                 >
@@ -84,18 +86,22 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                 </button>
               ))}
             </nav>
-            {onSortir ? (
-              <button
-                type="button"
-                onClick={onSortir}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
-              >
-                <LogOut className="size-4" aria-hidden />
-                <span className="max-sm:sr-only">Se déconnecter</span>
-              </button>
-            ) : (
-              <span className="w-9 sm:hidden" aria-hidden />
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              {entreeApp}
+              {onSortir ? (
+                <button
+                  type="button"
+                  onClick={onSortir}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                >
+                  <LogOut className="size-4" aria-hidden />
+                  {/* Libellés à partir de 1024 px : avec les onglets, l'en-tête tient sur une ligne. */}
+                  <span className={entreeApp ? 'max-lg:sr-only' : 'max-sm:sr-only'}>Se déconnecter</span>
+                </button>
+              ) : (
+                <span className="w-9 sm:hidden" aria-hidden />
+              )}
+            </div>
           </div>
         </header>
 
