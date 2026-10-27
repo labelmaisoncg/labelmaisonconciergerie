@@ -94,6 +94,26 @@ export function mandatDuLogement(mandats: Mandat[], logementId: Id): Mandat | un
   );
 }
 
+/** Propriétaire d'un logement à une date, changements de propriétaire compris (`jusquAu` exclu). */
+export function proprietaireLe(l: Pick<Logement, 'proprietaireId' | 'proprietaireDepuis' | 'proprietairesPrecedents'>, date: DateISO): Id {
+  if (!l.proprietaireDepuis || date >= l.proprietaireDepuis) return l.proprietaireId;
+  return (l.proprietairesPrecedents ?? []).find((x) => (!x.depuis || x.depuis <= date) && date < x.jusquAu)?.proprietaireId ?? l.proprietaireId;
+}
+
+/**
+ * Mandat qui s'applique à une date : après un changement de propriétaire,
+ * celui du propriétaire de ce jour-là (jamais celui de l'autre) ; sinon le
+ * mandat en vigueur du logement.
+ */
+export function mandatAuJour(mandats: Mandat[], l: Pick<Logement, 'id' | 'proprietaireId' | 'proprietaireDepuis' | 'proprietairesPrecedents'>, date: DateISO): Mandat | undefined {
+  if (!l.proprietairesPrecedents?.length) return mandatDuLogement(mandats, l.id);
+  const qui = proprietaireLe(l, date);
+  return mandatDuLogement(
+    mandats.filter((m) => m.proprietaireId === qui),
+    l.id,
+  );
+}
+
 export function logementsActifs(logements: Logement[]): Logement[] {
   return logements.filter((l) => l.statut === 'actif');
 }

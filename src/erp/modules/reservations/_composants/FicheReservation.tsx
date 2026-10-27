@@ -10,7 +10,7 @@ import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../data/format';
-import { commissionReservation, logementById, mandatDuLogement, netProprietaire } from '../../../data/selectors';
+import { commissionReservation, logementById, mandatAuJour, mandatDuLogement, netProprietaire } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
 import { TEINTE_CANAL, recu } from './outils';
@@ -39,7 +39,8 @@ export function PastilleCanal({ canal }: { canal: Reservation['canal'] }) {
 export function FicheReservation({ r }: { r: Reservation }) {
   const d = useErp();
   const logement = logementById(d, r.logementId);
-  const mandat = mandatDuLogement(d.mandats, r.logementId);
+  // Après un changement de propriétaire : le mandat de celui qui avait le logement le jour de l'arrivée.
+  const mandat = logement ? mandatAuJour(d.mandats, logement, r.arrivee) : mandatDuLogement(d.mandats, r.logementId);
   const fils = d.filsMessages.filter((f) => f.reservationId === r.id);
   const annulee = r.statut === 'annulee';
   const reference = r.repull?.code ?? r.channexBookingId;

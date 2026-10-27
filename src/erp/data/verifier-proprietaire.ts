@@ -57,6 +57,7 @@ import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull';
 import { ID_LABEL_MAISON } from './espaces';
 import { espaceARetenir, lienAcces, lireEspaceRetenu, lireLienAcces, lireSessionExterne, marqueConnexion, signerSessionExterne } from './acces-externe';
 import { creerSeed } from './seed';
+import { mandatAuJour, proprietaireLe } from './selectors';
 import { b64url } from './web-push';
 import type { Logement, Mandat, Proprietaire, Reservation } from './types';
 import type { BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
@@ -632,6 +633,16 @@ async function main() {
   const vueSens = vueProprietaire(e, A, { aujourdhui: '2026-09-24', conciergerie: { nom: 'Sens' } })!;
   verifier(vueSens.conciergerie.nom === 'Sens' && !vueSens.contacts && !/labelmaison|74954/i.test(JSON.stringify(vueSens)), 'vue d’un autre espace : son nom, aucun contact de Label Maison');
   verifier(vue.conciergerie.nom === 'Label Maison' && vue.contacts?.telephone === '+33 7 49 54 83 55', 'vue de Label Maison : ses contacts');
+
+  // Fiche réservation : le mandat du propriétaire du jour d'arrivée, jamais le premier signé du logement.
+  {
+    const lt = changerProprietaire({ id: 'L-t', proprietaireId: 'P-ancien', proprietaireDepuis: '2025-01-01' } as Logement, 'P-nouveau', '2026-09-24');
+    const m = (id: string, proprietaireId: string, pct: number) => ({ id, proprietaireId, logementId: 'L-t', reference: id, statut: 'signe', commissionPct: pct, fraisMenageCentimes: 0, dateDebut: '2025-01-01' }) as Mandat;
+    const mandats = [m('m-ancien', 'P-ancien', 18), m('m-nouveau', 'P-nouveau', 20)];
+    verifier(proprietaireLe(lt, '2026-09-23') === 'P-ancien' && proprietaireLe(lt, '2026-09-24') === 'P-nouveau', 'propriétaire du jour : la veille l’ancien, le jour du changement le nouveau');
+    verifier(mandatAuJour(mandats, lt, '2026-09-29')?.commissionPct === 20 && mandatAuJour(mandats, lt, '2026-09-20')?.commissionPct === 18, 'mandat du jour d’arrivée : 20 % après le changement, 18 % avant');
+    verifier(mandatAuJour([mandats[0]], lt, '2026-09-29') === undefined, 'nouveau propriétaire sans mandat : pas celui de l’ancien');
+  }
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
