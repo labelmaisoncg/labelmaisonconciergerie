@@ -56,6 +56,7 @@ import { ID_SELECTION } from '../src/erp/data/repull-synchro';
 import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, oublierEtatBase, variableManquante } from '../api/_erp-repull';
 import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configurationEspace, espaceDemande, espaceDuWorkspace, espacesActifs, workspaceDeLEvenement } from '../api/_erp-espaces';
 import routeSynchro from '../api/erp-repull-sync';
+import routeAgent from '../api/erp-agent';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
 import routeAgendaIcs from '../api/crm-agenda/[cle]';
@@ -1308,12 +1309,13 @@ async function principal() {
     // Passage du matin : le contrôle du jour à Gaspard, une seule fois.
     monde.poser(LM, 'reservations', { id: 'res-n', logementId: 'log-n', canal: 'airbnb', voyageur: { nom: 'Zoé Martin', nbPersonnes: 2 }, arrivee: ajouterJours(aujourdhui, -3), depart: ajouterJours(aujourdhui, -1), nuits: 2, statut: 'terminee', montantBrutCentimes: 20000, commissionPlateformeCentimes: 3000, fraisMenageCentimes: 4000 } as { id: string });
     monde.pushs = [];
-    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    // Les notifications du matin partent avec le passage planifié de l'agent (pas avec la synchro de 4 h).
+    await routeAgent(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse()).catch(() => undefined);
     r = await recus();
     verifier(r.length === 1 && r[0].qui === 'gaspard' && r[0].titre === 'Aujourd’hui : 1 contrôle qualité' && r[0].corps === 'Le Nid.' && r[0].url === '/espace-operations?onglet=controles', 'passage du matin : « Aujourd’hui : 1 contrôle qualité » à qui a la charge du logement', r);
     verifier(!JSON.stringify(r).includes('Zoé'), 'aucun nom de voyageur dans la notification');
     monde.pushs = [];
-    await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse());
+    await routeAgent(requete({ entetes: { authorization: 'Bearer secret-cron' } }), reponse()).catch(() => undefined);
     verifier(monde.pushs.length === 0, 'deuxième passage le même jour : rien ne repart', monde.pushs.length);
 
     // « Ce logement n'est pas à moi » : la réponse du gérant.
