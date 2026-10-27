@@ -37,8 +37,8 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'reservation', libelle: 'Nouvelle réservation', detail: 'Logement, voyageur, dates et montant.', defaut: true },
   { type: 'reservation_modifiee', libelle: 'Réservation annulée ou modifiée', detail: 'Annulation, nouvelles dates ou nombre de voyageurs.', defaut: true },
   { type: 'message', libelle: 'Nouveau message d’un voyageur', detail: 'Le début du message.', defaut: true },
-  { type: 'agent_repondu', libelle: 'L’agent a répondu', detail: 'Quand l’agent a répondu à votre place.', defaut: true },
-  { type: 'agent_main', libelle: 'L’agent vous passe la main', detail: 'Un voyageur attend votre réponse, avec la raison.', defaut: true },
+  { type: 'agent_repondu', libelle: 'Votre agent a répondu', detail: 'Quand votre agent a répondu à votre place.', defaut: true },
+  { type: 'agent_main', libelle: 'Votre agent vous passe la main', detail: 'Un voyageur attend votre réponse, avec la raison.', defaut: true },
   { type: 'probleme', libelle: 'Problème signalé dans un logement', detail: 'Panne, fuite, clé, bruit, ménage…', defaut: true },
   { type: 'urgence', libelle: 'Urgence dans un logement', detail: 'Nouvel incident urgent, ou incident confié à un membre de l’équipe.', defaut: true },
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
@@ -310,7 +310,7 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
       });
     }
     if (agent.length) {
-      variantes.push({ type: 'agent_repondu', titre: `L’agent a répondu à ${qui}`, corps: `${logement} · « ${extrait(agent[agent.length - 1].texte, 110)} »`, url });
+      variantes.push({ type: 'agent_repondu', titre: `Votre agent a répondu à ${qui}`, corps: `${logement} · « ${extrait(agent[agent.length - 1].texte, 110)} »`, url });
     }
     if (dernierVoyageur) {
       variantes.push({ type: 'message', titre: `${qui} · ${logement}`, corps: extrait(dernierVoyageur.texte), url });
