@@ -11,7 +11,7 @@
 //     (cron Vercel quotidien, et pg_cron de Supabase toutes les 30 min :
 //     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour ;
 //     après l'agent : messages automatiques dus et avis à préparer
-//     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts)
+//     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts) ;
 //     il prépare aussi, à partir du 1er, les brouillons des factures
 //     mensuelles des propriétaires (api/_factures-mensuelles.ts)
 //
