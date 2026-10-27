@@ -107,7 +107,18 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
         </div>
       )}
 
-      {cede && <p className="mb-3 text-[13.5px] text-(--lm-encre-2)">{cede.nom} : plus en gestion pour vous depuis le {dateCourte(cede.jusquAu)}. Le calendrier montre votre période seulement.</p>}
+      {(cede || hors.size > 0) && (
+        <p className="mb-3 text-[13.5px] text-(--lm-encre-2)">
+          {[
+            cede && `${cede.nom} : plus en gestion pour vous depuis le ${dateCourte(cede.jusquAu)}.`,
+            'Le calendrier montre votre période seulement.',
+            // Jours grisés dans sa période : le séjour de l'ancien propriétaire, arrivé avant le changement.
+            hors.has('autre') && 'Le séjour en cours au changement reste à l’ancien propriétaire.',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        </p>
+      )}
       {!c ? (
         <p className="text-[14px] text-(--lm-encre-2)">Aucun logement en gestion pour l’instant.</p>
       ) : (

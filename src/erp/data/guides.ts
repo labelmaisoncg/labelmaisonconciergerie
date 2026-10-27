@@ -92,11 +92,12 @@ export function questionsValides(q: readonly QuestionFrequente[] | undefined): Q
 }
 
 /**
- * Lien signé d'un fichier de l'espace privé, côté serveur (Supabase Storage,
- * avec la session du compte d'équipe) : `stockage://<espace>/<chemin>`.
+ * Lien signé d'un fichier de l'espace privé, côté serveur (Supabase Storage) :
+ * `stockage://<bucket>/<chemin>`. Le compte et l'espace (en-tête x-erp-espace
+ * dans `entetes`) sont choisis par api/_erp-repull.ts (signeurFichiersErp).
  */
 export async function signerFichierStockage(
-  o: { jeton: () => Promise<string>; url?: string; cleAnon?: string; fetch?: typeof fetch },
+  o: { jeton: () => Promise<string>; entetes?: Record<string, string>; url?: string; cleAnon?: string; fetch?: typeof fetch },
   fichier: string,
   secondes: number,
 ): Promise<string | null> {
@@ -111,7 +112,7 @@ export async function signerFichierStockage(
   try {
     const r = await (o.fetch ?? fetch)(`${url}/storage/v1/object/sign/${encodeURIComponent(espace)}/${chemin.split('/').map(encodeURIComponent).join('/')}`, {
       method: 'POST',
-      headers: { apikey: o.cleAnon ?? SUPABASE_ANON_KEY, Authorization: `Bearer ${await o.jeton()}`, 'Content-Type': 'application/json' },
+      headers: { ...o.entetes, apikey: o.cleAnon ?? SUPABASE_ANON_KEY, Authorization: `Bearer ${await o.jeton()}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ expiresIn: secondes }),
     });
     if (!r.ok) return null;

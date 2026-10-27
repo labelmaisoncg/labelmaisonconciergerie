@@ -1,9 +1,8 @@
 import { ChevronLeft, ChevronRight, Download, Printer, ReceiptText } from 'lucide-react';
 import { dateCourte, euros, jourMois, nombre } from '../data/format';
 import type { FactureVue, StatutFactureVue, VueProprietaire } from '../data/types-proprietaire';
-import { ENTREPRISE_LIGNE } from '../modules/finance/_composants/entreprise';
 import { Badge, Button, Card, classesBouton, EmptyState, type Ton } from '../ui';
-import { deNom, type LienDocument } from './commun';
+import { deNom, enteteImprime, type LienDocument } from './commun';
 
 /** Statuts : à payer (neutre), en retard (alerte, jamais rouge), payée (succès). */
 const STATUT: Record<StatutFactureVue, { libelle: string; ton: Ton }> = {
@@ -18,7 +17,8 @@ function BadgeStatut({ f, court }: { f: FactureVue; court?: boolean }) {
 }
 
 /** Une facture, telle qu'imprimée : lignes, totaux, comment la régler. */
-function DetailFacture({ f, conciergerie, LienDocument, onRetour }: { f: FactureVue; conciergerie: string; LienDocument: LienDocument; onRetour: () => void }) {
+function DetailFacture({ f, espace, LienDocument, onRetour }: { f: FactureVue; espace: VueProprietaire['conciergerie']; LienDocument: LienDocument; onRetour: () => void }) {
+  const conciergerie = espace.nom;
   const tva = f.montantTtc - f.montantHt;
   return (
     <>
@@ -33,7 +33,7 @@ function DetailFacture({ f, conciergerie, LienDocument, onRetour }: { f: Facture
       <article className="lm-bilan-imprimable" aria-label={`Facture ${f.numero}`}>
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{conciergerie === 'Label Maison' ? ENTREPRISE_LIGNE : conciergerie}</p>
+            <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{enteteImprime(espace)}</p>
             <h1 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">Facture {f.numero}</h1>
             <p className="text-[13px] text-(--lm-encre-2)">
               Émise le {dateCourte(f.dateEmission)} · échéance le {dateCourte(f.echeance)}
@@ -103,7 +103,7 @@ function DetailFacture({ f, conciergerie, LienDocument, onRetour }: { f: Facture
 /** Factures partagées par la conciergerie : à payer, en retard, payées. */
 export function Factures({ vue, choisie, onChoisir, LienDocument }: { vue: VueProprietaire; choisie?: string; onChoisir: (id?: string) => void; LienDocument: LienDocument }) {
   const f = vue.factures.find((x) => x.id === choisie);
-  if (f) return <DetailFacture f={f} conciergerie={vue.conciergerie.nom} LienDocument={LienDocument} onRetour={() => onChoisir(undefined)} />;
+  if (f) return <DetailFacture f={f} espace={vue.conciergerie} LienDocument={LienDocument} onRetour={() => onChoisir(undefined)} />;
   const aRegler = vue.factures.filter((x) => x.statut !== 'payee');
   const total = aRegler.reduce((s, x) => s + x.montantTtc, 0);
   return (

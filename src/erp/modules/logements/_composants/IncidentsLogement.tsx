@@ -33,7 +33,7 @@ function Ligne({ i, peutAgir, enVue }: { i: Incident; peutAgir: boolean; enVue: 
   return (
     <li id={`incident-${i.id}`} className={cn('scroll-mt-24 px-4 py-3 transition-colors duration-700 sm:px-5', enVue && 'bg-(--lm-or-lavis)')}>
       <div className="flex flex-wrap items-center gap-2">
-        {estUrgent(i) && !regle && <Badge tone="danger">Urgent</Badge>}
+        {estUrgent(i) && !regle && <Badge tone="danger">{LIBELLES.gravite.haute}</Badge>}
         <Badge tone={regle ? 'succes' : 'neutre'}>{LIBELLES.statutIncident[i.statut]}</Badge>
         <span className="text-[12px] text-(--lm-encre-2)">{LIBELLES.categorieIncident[i.categorie] ?? 'Incident'}</span>
       </div>
@@ -68,7 +68,7 @@ function Ligne({ i, peutAgir, enVue }: { i: Incident; peutAgir: boolean; enVue: 
         </div>
       )}
       {peutAgir && mot !== null && (
-        <div className="mt-2 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
+        <div className="mt-2">
           <Textarea rows={2} value={mot} autoFocus aria-label="Votre mot" maxLength={1000} onChange={(e) => setMot(e.target.value)} placeholder="Ce qui a été fait, ce qu’il reste à faire." />
           <div className="mt-2 flex flex-wrap justify-end gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setMot(null)}>

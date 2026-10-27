@@ -45,7 +45,7 @@ import { EspaceOps } from '../../espace-operations/EspaceOps';
 import type { ActionsOps, Ecran } from '../../espace-operations/commun';
 import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, inviterAvecReessai, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
 import { RelancesPaiement } from '../logements/_composants/RelancesPaiement';
-import { appelerServeur } from '../messagerie/_composants/serveur';
+import { ErreurServeur, appelerServeur } from '../messagerie/_composants/serveur';
 
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
 const API_OPERATIONS = '/api/espace-operations';
@@ -517,7 +517,7 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
             const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id), m);
             return (
               <li key={m.id}>
-                <Card className={cn('flex h-full flex-col gap-2', !m.actif && 'opacity-70')}>
+                <Card className={cn('flex h-full flex-col gap-2', !m.actif && 'bg-(--lm-surface-2) shadow-none')}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-(--lm-encre)">{m.nom}</p>
@@ -548,6 +548,24 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
   );
 }
 
+/**
+ * La réponse part sur le téléphone de la personne (app « Opérations »). La
+ * base reçoit l'écriture juste après : le serveur répond « pas_encore » tant
+ * qu'il ne la voit pas, on réessaie un peu ; le passage du matin rattrape le
+ * reste. Rien à montrer : sans notifications activées, rien ne part.
+ */
+async function prevenirDeLaReponse(id: Id): Promise<void> {
+  for (const attente of [1500, 3000, 6000]) {
+    await new Promise((r) => window.setTimeout(r, attente));
+    try {
+      await appelerServeur(API_OPERATIONS, 'POST', { action: 'signalement-traite', id });
+      return;
+    } catch (e) {
+      if (!(e instanceof ErreurServeur) || e.code !== 'pas_encore') return;
+    }
+  }
+}
+
 /** « Ce logement n'est pas à moi » : retirer le logement à la personne, ou confirmer qu'il est bien à elle. */
 /** `imbrique` : posé dans une carte (coins plus petits que ceux de la carte). */
 export function Signalements({ liste, gerant, imbrique }: { liste: SignalementLogement[]; gerant: boolean; imbrique?: boolean }) {
@@ -559,6 +577,7 @@ export function Signalements({ liste, gerant, imbrique }: { liste: SignalementLo
       for (const a of affectationsSans(d.donnees.affectations, s.membreId, [s.logementId])) d.upsert('affectations', a);
     }
     d.upsert('signalementsLogement', { ...s, statut: 'traite', decision, traiteLe: horodatageMaintenant(), traitePar: d.utilisateur.nom });
+    if (!MODE_DEMO) void prevenirDeLaReponse(s.id);
     setAConfirmer(undefined);
   };
   // Dernière personne sur ce logement : on le dit avant de lui retirer.

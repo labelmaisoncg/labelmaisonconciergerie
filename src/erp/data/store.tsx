@@ -27,7 +27,10 @@ import { COLLECTIONS, completer, trierJournal } from './collections';
 import { MODE, MODE_DEMO } from './config';
 import { logementActivable, missionValidable, prestataireConforme } from './selectors';
 import {
+  attendreActivation,
+  codeInvitationDe,
   enregistrerMembre,
+  lienInvitationRefuse,
   genreErreur,
   lireMembres,
   messageErreur,
@@ -38,9 +41,11 @@ import {
   seDeconnecter as deconnexionSupabase,
   connexionAutomatique,
 } from './supabase';
-import { ESPACE_LABEL_MAISON, choisirEspace, ouvrirEspace, type Espace } from './espaces';
+import { ESPACE_LABEL_MAISON, choisirEspace, messageRefusAcces, ouvrirEspace, type Espace, type InvitationEspace } from './espaces';
+import { MESSAGE_LIEN_PERIME } from './invitation';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
+import { CreerEspace } from '../layout/CreerEspace';
 import type {
   CleChecklistLancement,
   DateISO,
@@ -779,7 +784,15 @@ function FournisseurReel({ children }: { children: ReactNode }) {
   );
   const [session, setSession] = useState<Session | null>(null);
   const [etatSynchro, setEtatSynchro] = useState<EtatSynchro | null>(null);
+  /** Compte sans espace, invité par Label Maison à créer celui de sa conciergerie. */
+  const [aCreer, setACreer] = useState<{ email: string; invitation: InvitationEspace } | null>(null);
   const enRecuperation = useRef(RETOUR_LIEN.recuperation);
+  /**
+   * Lien reçu par e-mail (« Créer mon compte », confirmation d'adresse) ouvert
+   * sur un appareil déjà connecté : jamais suivi en silence. Autre compte que
+   * celui de la session : on demande (phase autre_compte).
+   */
+  const lienEnAttente = useRef(RETOUR_LIEN.lien);
   const autoTentee = useRef(false);
   const emailCharge = useRef<string | null>(null);
   const synchroRef = useRef<Synchro | null>(null);
@@ -802,7 +815,11 @@ function FournisseurReel({ children }: { children: ReactNode }) {
       const numero = ++essai.current;
       const encore = () => numero === essai.current;
       setPhase({ nom: 'chargement' });
+      setACreer(null);
       try {
+        // Activation d'une invitation en cours (connexion avec son code) : l'accès se lit après.
+        await attendreActivation();
+        if (!encore()) return;
         // Espaces du compte ; base pas encore passée aux espaces : Label Maison, comme avant.
         const identite = await quiSuisJe();
         if (!encore()) return;
@@ -811,7 +828,13 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           const choix = choisirEspace(identite.espaces.filter((e) => e.role !== 'prestataire'), espaceRetenu());
           if (!choix) {
             emailCharge.current = null;
-            return setPhase({ nom: 'non_autorise', email });
+            // Pas encore d'espace, mais une invitation de Label Maison : créer celui de sa conciergerie.
+            if (identite.invitation) setACreer({ email, invitation: identite.invitation });
+            // Code d'invitation gardé sur l'appareil pour ce compte : dernière étape, le mot de passe.
+            else if (codeInvitationDe(email)) return setPhase({ nom: 'activer', email });
+            // Code de l'invitation refusé (déjà servi, remplacé, expiré) : on le dit plutôt que « ouvrez son lien ».
+            const motif = messageRefusAcces(identite.refus) ?? (lienInvitationRefuse() ? MESSAGE_LIEN_PERIME : undefined);
+            return setPhase({ nom: 'non_autorise', email, motif });
           }
           espace = { id: choix.id, code: choix.code, nom: choix.nom };
         }
@@ -831,7 +854,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
         const moi = membres.membres.find((m) => m.email === cle);
         if (!moi || moi.role === 'prestataire') {
           emailCharge.current = null;
-          return setPhase({ nom: 'non_autorise', email });
+          return setPhase({ nom: 'non_autorise', email, motif: lienInvitationRefuse() ? MESSAGE_LIEN_PERIME : undefined });
         }
         if (espace) retenirEspace(espace.id);
         const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro, espace: espace?.id ?? null, compte: cle });
@@ -892,15 +915,29 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           if (evenement === 'INITIAL_SESSION' && !autoTentee.current) {
             autoTentee.current = true;
             void connexionAutomatique().then((ok) => {
-              if (!ok && actif) setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
+              if (ok || !actif) return;
+              const lien = lienEnAttente.current;
+              lienEnAttente.current = undefined;
+              // Lien de confirmation sans session à reprendre : la page d'accès le traite (avec un geste).
+              if (lien?.jetons) return window.location.replace(`/erp/deconnexion${lien.hash}`);
+              setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
             });
             return;
           }
+          lienEnAttente.current = undefined;
           setPhase((p) => (p.nom === 'connexion' ? p : { nom: 'connexion', message: RETOUR_LIEN.erreur }));
           return;
         }
         if (enRecuperation.current) return;
         if (evenement === 'INITIAL_SESSION' || evenement === 'SIGNED_IN' || evenement === 'USER_UPDATED') {
+          const email = (s.user.email ?? '').toLowerCase();
+          const lien = lienEnAttente.current;
+          if (lien && lien.email !== email) {
+            // Lien d'un autre compte sur un appareil déjà connecté : on demande avant de changer de compte.
+            setPhase({ nom: 'autre_compte', actuel: email, autre: lien.email });
+            return;
+          }
+          lienEnAttente.current = undefined;
           void demarrer(s.user.email ?? '');
         }
       }, 0);
@@ -960,6 +997,23 @@ function FournisseurReel({ children }: { children: ReactNode }) {
     reessayer();
   }, [reessayer]);
 
+  /** Lien d'un autre compte : se déconnecter, puis la page d'accès reprend le lien tel quel. */
+  const suivreLien = useCallback(() => {
+    const lien = lienEnAttente.current;
+    void (async () => {
+      setPhase({ nom: 'demarrage' });
+      arreterSynchro();
+      await deconnexionSupabase();
+      window.location.assign(`/erp/deconnexion${lien?.hash ?? ''}`);
+    })();
+  }, [arreterSynchro]);
+
+  /** Lien d'un autre compte : rester sur le compte ouvert. */
+  const resterConnecte = useCallback(() => {
+    lienEnAttente.current = undefined;
+    reessayer();
+  }, [reessayer]);
+
   const persistance = useMemo<Persistance | null>(() => {
     if (!session) return null;
     const lecture = session.utilisateur.role === 'lecture';
@@ -983,8 +1037,33 @@ function FournisseurReel({ children }: { children: ReactNode }) {
     };
   }, [session]);
 
+  if (aCreer && phase.nom === 'non_autorise') {
+    return (
+      <CreerEspace
+        email={aCreer.email}
+        invitation={aCreer.invitation}
+        onCree={(espace) => {
+          // L'ERP s'ouvre dans le nouvel espace (choisi d'office au chargement).
+          retenirEspace(espace.id);
+          setACreer(null);
+          reessayer();
+        }}
+        onDeconnecter={seDeconnecter}
+      />
+    );
+  }
+
   if (phase.nom !== 'pret' || !session || !persistance) {
-    return <EcranPorte phase={phase} onReessayer={reessayer} onMotDePasseChange={apresNouveauMotDePasse} onDeconnecter={seDeconnecter} />;
+    return (
+      <EcranPorte
+        phase={phase}
+        onReessayer={reessayer}
+        onMotDePasseChange={apresNouveauMotDePasse}
+        onDeconnecter={seDeconnecter}
+        onSuivreLien={suivreLien}
+        onRester={resterConnecte}
+      />
+    );
   }
 
   return (

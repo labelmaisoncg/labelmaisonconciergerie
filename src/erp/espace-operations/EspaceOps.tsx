@@ -30,6 +30,8 @@ export interface EspaceOpsProps {
   apercu?: boolean;
   /** Nom de la conciergerie (en-tête). */
   conciergerie?: string;
+  /** Entrée de l'app installable (« Installer l'app », « Notifications »), à côté de la déconnexion. */
+  entreeApp?: ReactNode;
 }
 
 /**
@@ -37,7 +39,7 @@ export interface EspaceOpsProps {
  * pôle (quatre pour l'agent), barre du bas sur téléphone comme une app,
  * onglets dans l'en-tête sur ordinateur.
  */
-export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, apercu, conciergerie = vue.conciergerie?.nom ?? 'Label Maison' }: EspaceOpsProps) {
+export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, apercu, conciergerie = vue.conciergerie?.nom ?? 'Label Maison', entreeApp }: EspaceOpsProps) {
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' } | null>(null);
   const pole = vue.moi.role === 'pole';
   const onglets = ONGLETS.filter((o) => !o.pole || pole);
@@ -63,11 +65,11 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
         {bandeau}
         <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4">
-            <div className="min-w-0">
+            <div className="min-w-0 shrink-0">
               <p className="lm-serif truncate text-[18px] leading-tight text-(--lm-brun)">{conciergerie}</p>
               <p className="truncate text-[11.5px] text-(--lm-encre-2)">Espace opérations</p>
             </div>
-            <nav aria-label="Rubriques" className="hidden items-center gap-1 sm:flex">
+            <nav aria-label="Rubriques" className="hidden items-center gap-1 md:flex">
               {onglets.map((o) => (
                 <button
                   key={o.cle}
@@ -75,7 +77,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                   aria-current={o.cle === onglet ? 'page' : undefined}
                   onClick={() => naviguer({ onglet: o.cle, controle: undefined })}
                   className={cn(
-                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
+                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-[13.5px] lg:px-3 font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
                     o.cle === onglet ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
                   )}
                 >
@@ -84,22 +86,26 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                 </button>
               ))}
             </nav>
-            {onSortir ? (
-              <button
-                type="button"
-                onClick={onSortir}
-                className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
-              >
-                <LogOut className="size-4" aria-hidden />
-                <span className="max-sm:sr-only">Se déconnecter</span>
-              </button>
-            ) : (
-              <span className="w-9 sm:hidden" aria-hidden />
-            )}
+            <div className="flex shrink-0 items-center gap-1">
+              {entreeApp}
+              {onSortir ? (
+                <button
+                  type="button"
+                  onClick={onSortir}
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                >
+                  <LogOut className="size-4" aria-hidden />
+                  {/* Libellés à partir de 1024 px : avec les onglets, l'en-tête tient sur une ligne. */}
+                  <span className={entreeApp ? 'max-lg:sr-only' : 'max-sm:sr-only'}>Se déconnecter</span>
+                </button>
+              ) : (
+                <span className="w-9 md:hidden" aria-hidden />
+              )}
+            </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-14">
+        <main className="mx-auto max-w-5xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-14">
           {retour && (
             <Alert
               tone={retour.ton}
@@ -127,7 +133,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
         </main>
 
         {!ecran.controle && (
-          <nav aria-label="Rubriques" className="fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
+          <nav aria-label="Rubriques" className="fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
             <ul className={cn('grid', onglets.length === 5 ? 'grid-cols-5' : 'grid-cols-4')}>
               {onglets.map((o) => (
                 <li key={o.cle}>

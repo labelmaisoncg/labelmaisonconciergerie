@@ -6,7 +6,10 @@
 // nommé par l'en-tête x-erp-espace) :
 //   GET  ?action=etat                        espace ouvert ? e-mails envoyés ?
 //   POST { action: 'inviter', membreId, email }  lien d'invitation (7 jours)
-//   POST { action: 'retirer', membreId }         accès retiré, sessions fermées
+//   POST { action: 'retirer', membreId }         accès retiré, sessions fermées,
+//                                                téléphones oubliés
+//   POST { action: 'signalement-traite', id }    « pas à moi » traité : la
+//                                                personne est prévenue
 //
 // Personne de terrain (sans compte) :
 //   POST { action: 'lien', email }          lien de connexion par e-mail, dans
@@ -17,6 +20,9 @@
 //   POST { action: 'agir', operation: {…} } signaler, contrôle, confier, absence…
 //   POST { action: 'photo', donnees, type } photo déposée → « stockage://… »
 //   POST { action: 'sortir' }
+//   notifications-etat, notifications-abonner, notifications-desabonner,
+//   notifications-tester, prevenus : notifications de l'app « Opérations »
+//                                           (api/_operations-notifications.ts)
 //
 // Tout se lit et s'écrit dans la base de l'espace qui a invité. Écritures
 // limitées aux collections opérations (incidents, contrôles, absences,
@@ -36,6 +42,8 @@ import {
   retirer,
 } from '../src/erp/data/operations-acces.js';
 import { lirePhoto, photoOperations } from '../src/erp/data/operations-fichiers.js';
+import { messageUrgence, oublierAppareilsOps } from '../src/erp/data/notifications-operations.js';
+import { ACCES_RETIRE } from '../src/erp/data/acces-externe.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { AccesOperations } from '../src/erp/data/types-operations';
@@ -52,18 +60,18 @@ import {
   gerantDeLEspace,
   lireAccesOps,
   lireMembre,
+  photosFermees,
   prefixePhotos,
   prevenirGerant,
   relireOps,
   signeurPhotos,
 } from './_operations.js';
+import { ACTIONS_NOTIFICATIONS_OPS, actionNotificationsOps, notifierEquipe, prevenusApresAction, signalementTraite } from './_operations-notifications.js';
 
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
 const tropDEssais = freinEnvois(20, 15 * 60_000);
 const tropDePhotos = freinEnvois(60, 15 * 60_000);
-
-const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace opérations, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
@@ -95,6 +103,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     /* ------------------------------------------------------------ gérant */
+    if (action === 'signalement-traite') return await signalementTraite(req, res, corps);
     if (action === 'etat' || action === 'inviter' || action === 'retirer') {
       const g = await gerantDeLEspace(req);
       if (!g.ok) return repondre(res, g.statut, { ok: false, erreur: g.erreur });
@@ -112,6 +121,8 @@ export default async function handler(req: any, res: any) {
       if (action === 'retirer') {
         if (!precedent || precedent.statut === 'retire') return repondre(res, 200, { ok: true });
         await ecrireAccesOps(b, retirer(precedent, maintenant));
+        // Ses téléphones ne reçoivent plus rien (l'envoi les ignorerait de toute façon).
+        await oublierAppareilsOps(b, membreId).catch(() => undefined);
         return repondre(res, 200, { ok: true });
       }
 
@@ -179,6 +190,8 @@ export default async function handler(req: any, res: any) {
     }
     const membreId = s.acces.membreId;
 
+    if (ACTIONS_NOTIFICATIONS_OPS.has(action)) return await actionNotificationsOps(req, res, s, action, corps);
+
     if (action === 'vue' && req.method === 'GET') {
       const vue = await vueSignee(s.espace, await entreesOps(s.base), membreId);
       // Plus dans l'équipe : même message que pour un accès retiré.
@@ -190,7 +203,8 @@ export default async function handler(req: any, res: any) {
       if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée : utilisez la page de l’espace opérations.' });
       const entrees = await entreesOps(s.base);
       const prefixe = prefixePhotos(s.espace);
-      const r = appliquerAction(entrees, membreId, (corps.operation ?? {}) as ActionOperations, {
+      const operation = (corps.operation ?? {}) as ActionOperations;
+      const r = appliquerAction(entrees, membreId, operation, {
         aujourdhui: dateParisISO(),
         maintenant: new Date().toISOString(),
         nouvelId: (p) => `${p}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
@@ -204,16 +218,25 @@ export default async function handler(req: any, res: any) {
       const ecritures = fusionnerEcritures(entrees, r.ecritures, relus);
       await ecrireOps(s.base, ecritures);
       const apres = avecEcritures(entrees, ecritures);
-      const notifier = prevenirGerant(s.base, apres, r.aNotifier);
+      // Urgence : dire qui est vraiment prévenu (téléphones abonnés, appareil de l'ERP du gérant), jamais « l'équipe » d'office.
+      const urgence = (operation.type === 'signaler' || operation.type === 'priorite') && operation.urgent === true && r.aNotifier.length > 0;
+      const message = urgence
+        ? messageUrgence(
+            operation.type === 'signaler' ? 'Urgence signalée' : 'Passé en urgent',
+            await prevenusApresAction(s, entrees, apres, membreId, r.aNotifier).catch(() => ({ noms: [], gerant: false })),
+          )
+        : r.message;
+      // Le gérant (app de l'ERP) et les personnes concernées (app « Opérations »).
+      const notifier = Promise.all([prevenirGerant(s.base, apres, r.aNotifier), notifierEquipe(s, entrees, apres, membreId)]);
       if (!continuerApresReponse(notifier)) await notifier;
-      return repondre(res, 200, { ok: true, message: r.message, ...(r.id ? { id: r.id } : {}), vue: await vueSignee(s.espace, apres, membreId) });
+      return repondre(res, 200, { ok: true, message, ...(r.id ? { id: r.id } : {}), vue: await vueSignee(s.espace, apres, membreId) });
     }
 
     if (action === 'photo' && req.method === 'POST') {
       if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée : utilisez la page de l’espace opérations.' });
       if (tropDePhotos(adresseIp(req))) return repondre(res, 429, { ok: false, erreur: 'Trop de photos d’un coup : patientez quelques minutes.' });
-      // Le stockage des photos n'est ouvert que pour Label Maison : le dire, plutôt qu'un « réessayez » sans issue.
-      if (!estLabelMaison(s.espace)) return repondre(res, 409, { ok: false, erreur: 'L’envoi de photos n’est pas encore ouvert pour cet espace.' });
+      // Stockage impossible pour cet espace (compte serveur pas prêt) : le dire, plutôt qu'un « réessayez » sans issue.
+      if (await photosFermees(s.espace)) return repondre(res, 409, { ok: false, erreur: 'L’envoi de photos n’est pas encore ouvert pour cet espace.' });
       const photo = lirePhoto(corps.donnees, corps.type);
       if (!photo) return repondre(res, 400, { ok: false, erreur: 'Photo illisible : choisissez une image JPEG, PNG ou WebP de moins de 3 Mo.' });
       const url = await deposerPhoto(s.espace, membreId, photo.octets, photo.type, photo.extension);

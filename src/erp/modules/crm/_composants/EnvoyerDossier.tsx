@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Check, Copy, Mail, MessageCircle, MessageSquare } from 'lucide-react';
 import { EMAIL_SUR, telephoneNormalise } from '../../../data/crm';
 import { ADRESSE_DOSSIER } from '../../../data/dossier-proprietaire';
+import { espaceOuvert } from '../../../data/espaces';
+import { dossierProprietaireDisponible } from '../../../data/marque-espace';
 import type { ContactCrm } from '../../../data/types';
 import { Alert, Button, classesBouton, Modal } from '../../../ui';
 
@@ -17,6 +19,7 @@ export type CanalEnvoi = 'WhatsApp' | 'SMS' | 'e-mail';
 /**
  * « Envoyer le dossier » : le lien du dossier propriétaire (le même pour
  * tous), avec un message prêt à partir par WhatsApp, SMS ou e-mail.
+ * Label Maison seulement : les réponses arrivent dans son CRM et sa boîte.
  */
 export function EnvoyerDossier({
   ouvert,
@@ -38,6 +41,7 @@ export function EnvoyerDossier({
   const whatsapp = numeroWhatsapp(contact?.telephone);
   const sms = contact?.telephone?.replace(/[^\d+]/g, '');
   const email = contact?.email && EMAIL_SUR.test(contact.email) ? contact.email : undefined;
+  if (!dossierProprietaireDisponible(espaceOuvert())) return null;
 
   const copier = async () => {
     try {

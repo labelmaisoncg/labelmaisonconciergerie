@@ -34,7 +34,8 @@ function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) 
   );
 }
 
-const lien = 'inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline';
+// Zone de toucher de 32 px ; les marges négatives gardent la hauteur de la ligne.
+const lien = '-my-1.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline';
 
 /** Trois repères dans une seule carte, côte à côte même sur téléphone. */
 function Chiffres({ elements }: { elements: { libelle: string; valeur: string; detail?: string }[] }) {

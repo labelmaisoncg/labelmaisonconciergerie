@@ -18,6 +18,8 @@
   --lm-or-lavis: rgba(169, 124, 48, 0.1);
   --lm-or-anneau: rgba(169, 124, 48, 0.35);
   --lm-brun: #403118;
+  /* Texte posé sur le brun (monogramme). */
+  --lm-sur-brun: #f7f2e6;
   /* Or assombri pour le texte et les liens (5,3:1) ; --lm-or reste la couleur des aplats. */
   --lm-or-texte: #8a6424;
 

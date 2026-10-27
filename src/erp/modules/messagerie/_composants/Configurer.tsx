@@ -12,7 +12,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Lock } from 'lucide-react';
 import { Alert, Aide, Button, Card, Input, Interrupteur, Select, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
-import { LANGUES_AGENT, TONS_AGENT, reglagesAgent } from '../../../data/reglages';
+import { LANGUES_AGENT, TONS_AGENT, nomPourSignature, reglagesAgent, signatureParDefaut } from '../../../data/reglages';
+import { espaceOuvert, estLabelMaison } from '../../../data/espaces';
 import { dateCourte, heure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ReglagesAgent } from '../../../data/types';
 import { completudeFiche } from './logique';
@@ -65,7 +66,10 @@ function Case({ coche, onChange, verrou, children, disabled }: { coche: boolean;
 
 export function Configurer() {
   const d = useErp();
-  const enregistre = reglagesAgent(d);
+  // Signature par défaut au nom de l'espace ouvert (« L’équipe Sens ») ; Label Maison inchangé.
+  const nomEspace = nomPourSignature(espaceOuvert());
+  const signatureDefaut = signatureParDefaut(nomEspace);
+  const enregistre = reglagesAgent(d, nomEspace);
   const [f, setF] = useState<ReglagesAgent>(enregistre);
   const [ok, setOk] = useState(false);
   const modifie = JSON.stringify({ ...f, majLe: 0, majPar: 0 }) !== JSON.stringify({ ...enregistre, majLe: 0, majPar: 0 });
@@ -127,7 +131,7 @@ export function Configurer() {
               disabled={bloque}
               onClick={() => maj({ ton: t.cle })}
               className={cn(
-                'rounded-xl border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
+                'rounded-lg border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
                 f.ton === t.cle ? 'border-(--lm-or) bg-(--lm-or-lavis)' : 'border-(--lm-bord) hover:border-(--lm-bord-fort)',
               )}
             >
@@ -139,9 +143,9 @@ export function Configurer() {
             </button>
           ))}
         </div>
-        <figure className="mt-4 rounded-2xl rounded-br-md border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3" aria-live="polite">
+        <figure className="mt-4 rounded-lg rounded-br-sm border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3" aria-live="polite">
           <figcaption className="mb-1 text-[11.5px] font-semibold tracking-wide text-(--lm-encre-3) uppercase">Exemple de réponse</figcaption>
-          <p className="text-[13.5px] leading-relaxed text-(--lm-encre)">{ton.exemple(f.signature.trim() || 'L’équipe Label Maison')}</p>
+          <p className="text-[13.5px] leading-relaxed text-(--lm-encre)">{ton.exemple(f.signature.trim() || signatureDefaut)}</p>
         </figure>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -156,7 +160,7 @@ export function Configurer() {
               maxLength={80}
               disabled={bloque}
               onChange={(e) => maj({ signature: e.target.value })}
-              placeholder="L’équipe Label Maison"
+              placeholder={signatureDefaut}
             />
           </div>
           <fieldset>
@@ -245,7 +249,7 @@ export function Configurer() {
                   min={2}
                   max={365}
                   aria-label="Nombre de nuits à partir duquel un séjour est long"
-                  className="h-7 w-16 px-2 text-[13px]"
+                  className="h-8 w-16 px-2 text-[13px]"
                   value={f.transmettre.sejoursLongsNuits}
                   disabled={bloque || !f.transmettre.sejoursLongs}
                   onChange={(e) => majTransmettre({ sejoursLongsNuits: Math.max(2, Math.min(365, Number(e.target.value) || 2)) })}
@@ -284,15 +288,18 @@ export function Configurer() {
         </Aide>
       </Bloc>
 
-      <Bloc titre="Où vous prévenir">
-        <label className="flex cursor-pointer items-start gap-3">
-          <Interrupteur actif={f.telegram} onChange={(v) => maj({ telegram: v })} label="Prévenir sur Telegram" disabled={bloque} />
-          <span className="text-[13.5px]">
-            <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
-            <span className="block text-(--lm-encre-2)">Copie de ses réponses, alertes et rappels.</span>
-          </span>
-        </label>
-      </Bloc>
+      {/* Telegram : le groupe de l'équipe de Label Maison seulement (jamais d'envoi pour un autre espace). */}
+      {estLabelMaison(espaceOuvert()) && (
+        <Bloc titre="Où vous prévenir">
+          <label className="flex cursor-pointer items-start gap-3">
+            <Interrupteur actif={f.telegram} onChange={(v) => maj({ telegram: v })} label="Prévenir sur Telegram" disabled={bloque} />
+            <span className="text-[13.5px]">
+              <span className="font-medium text-(--lm-encre)">Sur Telegram</span>
+              <span className="block text-(--lm-encre-2)">Copie de ses réponses, alertes et rappels.</span>
+            </span>
+          </label>
+        </Bloc>
+      )}
 
       <Bloc titre="Fiches des logements">
         {incompletes.length ? (
@@ -301,9 +308,13 @@ export function Configurer() {
             <span className="text-(--lm-encre-2)"> : votre agent vous passe la main pour ces logements.</span>
           </p>
         ) : (
-          <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
+          d.logements.some((l) => l.statut !== 'sorti') ? (
+            <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
+          ) : (
+            <p className="text-[13.5px] text-(--lm-encre-2)">Aucun logement pour l’instant : ils arrivent avec la connexion des plateformes.</p>
+          )
         )}
-        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-0.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </Bloc>

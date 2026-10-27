@@ -68,10 +68,41 @@ function coquilleErp(page) {
   );
 }
 
+/**
+ * Coquille de l'espace opérations : l'app « Opérations » s'installe depuis
+ * cette page (manifeste et service worker à part, portée /espace-operations,
+ * servis hors de toute zone protégée : public/operations-app,
+ * public/operations-sw.js). Le zoom reste permis.
+ */
+function coquilleOperations(page) {
+  const remplacer = (texte, motif, par) => {
+    if (!motif.test(texte)) console.warn(`[spa-shells] /espace-operations : motif introuvable ${motif}`);
+    return texte.replace(motif, par);
+  };
+  let p = remplacer(page, /<html lang="fr">/, '<html lang="fr" translate="no" class="notranslate">');
+  p = remplacer(p, /<meta name="viewport" content="[^"]*"\s*\/?>/, '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />');
+  p = remplacer(p, /<meta name="theme-color" content="[^"]*"\s*\/?>/, '<meta name="theme-color" content="#fbfaf8" />');
+  p = remplacer(p, /<link rel="apple-touch-icon" href="[^"]*"\s*\/?>/, '<link rel="apple-touch-icon" href="/erp-app/apple-touch-icon.png" />');
+  return p.replace(
+    '<head>',
+    [
+      '<head>',
+      '    <meta name="google" content="notranslate" />',
+      '    <link rel="manifest" href="/operations-app/manifest.webmanifest" />',
+      '    <meta name="mobile-web-app-capable" content="yes" />',
+      '    <meta name="apple-mobile-web-app-capable" content="yes" />',
+      '    <meta name="apple-mobile-web-app-title" content="Opérations" />',
+      '    <meta name="apple-mobile-web-app-status-bar-style" content="default" />',
+    ].join('\n'),
+  );
+}
+
+const COQUILLES = { '/erp': coquilleErp, '/espace-operations': coquilleOperations };
+
 for (const route of routes) {
   const dir = join(dist, route);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'index.html'), route === '/erp' ? coquilleErp(html) : html);
+  writeFileSync(join(dir, 'index.html'), COQUILLES[route] ? COQUILLES[route](html) : html);
 }
 
 console.log(`[spa-shells] ${routes.length} routes générées : ${routes.join(', ')}`);

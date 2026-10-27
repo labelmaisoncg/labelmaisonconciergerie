@@ -47,6 +47,7 @@ export function optionsAgent(c: ConfigRepullErp, declencheur: DeclencheurAgent, 
   return {
     cle: c.cle,
     workspace: c.workspace,
+    origineCle: c.origineCle,
     base: baseErp(c),
     echeance,
     budgetMois: c.budgetMois,

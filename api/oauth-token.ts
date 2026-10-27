@@ -2,10 +2,14 @@
 // /api/oauth-token — point de jeton OAuth 2.1 du connecteur Claude :
 //   grant_type=authorization_code (+ code_verifier PKCE)
 //   grant_type=refresh_token      (rotation)
-// Logique : api/_oauth.ts.
+// Logique : api/_oauth.ts. Le code et le jeton de rafraîchissement sont
+// cherchés dans la base de l'espace qu'ils portent (Label Maison sans préfixe).
 // =============================================================================
 
+import { ID_LABEL_MAISON } from '../src/erp/data/espaces.js';
+import { espaceDuJeton } from '../src/erp/data/oauth-regles.js';
 import { baseErp, configuration, lireCorps } from './_erp-repull.js';
+import { espaceOuvertAuJeton } from './_erp-espaces.js';
 import { echangerCode, ErreurOAuth, rafraichir } from './_oauth.js';
 
 /** Corps en application/x-www-form-urlencoded (norme) ou en JSON. */
@@ -33,7 +37,14 @@ export default async function handler(req: any, res: any) {
   }
   const p = parametres(req);
   try {
-    const base = baseErp(c);
+    // Base de l'espace du code ou du jeton (préfixe) ; sans préfixe : Label Maison, comme avant.
+    const valeur = p.grant_type === 'refresh_token' ? p.refresh_token : p.code;
+    const espace = valeur ? espaceDuJeton(valeur) : ID_LABEL_MAISON;
+    const ouvert = espace ? await espaceOuvertAuJeton(c, espace) : null;
+    if (valeur && !ouvert && (p.grant_type === 'authorization_code' || p.grant_type === 'refresh_token')) {
+      throw new ErreurOAuth('invalid_grant', p.grant_type === 'refresh_token' ? 'Jeton de rafraîchissement inconnu, expiré ou révoqué.' : 'Code inconnu, expiré ou déjà utilisé.');
+    }
+    const base = ouvert?.base ?? baseErp(c);
     if (p.grant_type === 'authorization_code') {
       return res.status(200).json(await echangerCode(base, { code: p.code, code_verifier: p.code_verifier, redirect_uri: p.redirect_uri, client_id: p.client_id }));
     }

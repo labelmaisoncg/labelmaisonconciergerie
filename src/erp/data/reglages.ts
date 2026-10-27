@@ -11,7 +11,26 @@
  * horaires, ton, langues, signature, ce qu'il transmet, Telegram. Détail :
  * docs/erp/README.md, « Messagerie et agent IA ».
  */
+import { estLabelMaison, type Espace } from './espaces.js';
 import type { ErpDonnees, ReglagesAgent, TonAgent } from './types';
+
+/** Signature de l'agent de Label Maison (celle d'avant les espaces, inchangée). */
+export const SIGNATURE_LABEL_MAISON = 'L’équipe Label Maison';
+
+/**
+ * Signature par défaut de l'agent : « L’équipe <nom de l'espace> » (Sens :
+ * « L’équipe Sens »). Sans nom d'espace (Label Maison, base d'avant les
+ * espaces) : celle de Label Maison. Jamais le nom de Label Maison pour un
+ * autre espace, même sans nom lisible.
+ */
+export function signatureParDefaut(nomEspace?: string): string {
+  if (nomEspace === undefined) return SIGNATURE_LABEL_MAISON;
+  const nom = nomEspace.trim();
+  return nom ? `L’équipe ${nom}` : 'L’équipe';
+}
+
+/** Nom à passer à signatureParDefaut pour l'espace ouvert : rien pour Label Maison. */
+export const nomPourSignature = (e: Pick<Espace, 'id' | 'nom'>): string | undefined => (estLabelMaison(e) ? undefined : e.nom);
 
 export const REGLAGES_AGENT_DEFAUT: ReglagesAgent = {
   id: 'agent',
@@ -19,7 +38,7 @@ export const REGLAGES_AGENT_DEFAUT: ReglagesAgent = {
   actif: false,
   ton: 'chaleureux',
   langues: ['fr', 'en'],
-  signature: 'L’équipe Label Maison',
+  signature: SIGNATURE_LABEL_MAISON,
   horaires: { mode: 'toujours', debut: '08:00', fin: '22:00' },
   transmettre: { horsFiche: true, derogations: true, sejoursLongs: true, sejoursLongsNuits: 28 },
   delaiAlerteMinutes: 30,
@@ -61,15 +80,21 @@ export const TONS_AGENT: { cle: TonAgent; libelle: string; description: string; 
   },
 ];
 
-/** Réglages de l'agent, complétés par les valeurs par défaut. */
-export function reglagesAgent(d: Pick<ErpDonnees, 'reglages'>): ReglagesAgent {
+/**
+ * Réglages de l'agent, complétés par les valeurs par défaut. `nomEspace` :
+ * nom de l'espace pour la signature par défaut (absent : Label Maison).
+ */
+export function reglagesAgent(d: Pick<ErpDonnees, 'reglages'>, nomEspace?: string): ReglagesAgent {
+  const defaut = nomEspace === undefined ? REGLAGES_AGENT_DEFAUT : { ...REGLAGES_AGENT_DEFAUT, signature: signatureParDefaut(nomEspace) };
   const stocke = (d.reglages ?? []).find((r) => r.id === 'agent');
-  if (!stocke) return REGLAGES_AGENT_DEFAUT;
+  if (!stocke) return defaut;
   return {
-    ...REGLAGES_AGENT_DEFAUT,
+    ...defaut,
     ...stocke,
-    horaires: { ...REGLAGES_AGENT_DEFAUT.horaires, ...(stocke.horaires ?? {}) },
-    transmettre: { ...REGLAGES_AGENT_DEFAUT.transmettre, ...(stocke.transmettre ?? {}) },
-    langues: Array.isArray(stocke.langues) && stocke.langues.length ? stocke.langues : REGLAGES_AGENT_DEFAUT.langues,
+    // Signature absente ou illisible : celle de l'espace (jamais celle d'un autre).
+    signature: typeof stocke.signature === 'string' ? stocke.signature : defaut.signature,
+    horaires: { ...defaut.horaires, ...(stocke.horaires ?? {}) },
+    transmettre: { ...defaut.transmettre, ...(stocke.transmettre ?? {}) },
+    langues: Array.isArray(stocke.langues) && stocke.langues.length ? stocke.langues : defaut.langues,
   };
 }

@@ -20,6 +20,9 @@
 //
 // Quand le passage apporte des messages, l'agent IA de la messagerie passe
 // juste après (api/_erp-agent.ts), si ANTHROPIC_API_KEY est présente.
+// Au passage quotidien, avant Repull : relances de paiement. (Les notifications
+// du matin de l'app « Opérations » partent avec le passage de l'agent, à une
+// heure décente : api/erp-agent.ts.)
 // =============================================================================
 
 import { lancer, texteErreur, verifierMembre, type DeclencheurRepull, type ResultatLancement } from '../src/erp/data/repull-synchro.js';
@@ -117,6 +120,7 @@ async function passage(c: ConfigRepullErp, declencheur: DeclencheurRepull, echea
       const r: ResultatLancement = await lancer({
         cle: c.cle,
         workspace: c.workspace,
+        origineCle: c.origineCle,
         base,
         declencheur,
         echeance,

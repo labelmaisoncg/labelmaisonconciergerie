@@ -7,6 +7,8 @@ import { Navigate, Route, Routes, useLocation, useNavigate, useSearchParams } fr
 import { Compass } from 'lucide-react';
 import './erp.css';
 import { demarrerApplication } from './data/application';
+import { espaceOuvert } from './data/espaces';
+import { titreDocument } from './data/marque-espace';
 import { lienIncident } from './data/incidents-erp';
 import { ErpProvider, useErp } from './data/store';
 import { ErpLayout } from './layout';
@@ -20,11 +22,15 @@ const AutoriserClaude = lazy(() => import('./modules/crm/AutoriserClaude'));
 // Page du lien d'installation de l'app (téléphone, ordinateur), hors mise en page.
 const Installer = lazy(() => import('./modules/parametres/_application/Installer'));
 
-/** Titre d'onglet et noindex tant que l'ERP est affiché ; état du site rétabli ensuite. */
+/**
+ * Titre d'onglet et noindex tant que l'ERP est affiché ; état du site rétabli
+ * ensuite. Avant la connexion : « ERP · Label Maison » ; l'espace ouvert
+ * donne ensuite le sien (Coquille).
+ */
 function useEnteteDocument() {
   useEffect(() => {
     const titre = document.title;
-    document.title = 'ERP · Label Maison';
+    document.title = titreDocument(espaceOuvert());
     let meta = document.head.querySelector<HTMLMetaElement>('meta[name="robots"]');
     const cree = !meta;
     if (!meta) {
@@ -110,6 +116,10 @@ function useApplication() {
 function Coquille() {
   const { pathname } = useLocation();
   useApplication();
+  // Monté une fois par espace (le contenu de l'ERP est remonté à chaque changement d'espace).
+  useEffect(() => {
+    document.title = titreDocument(espaceOuvert());
+  }, []);
   if (/^\/erp\/autoriser-claude\/?$/.test(pathname)) {
     return (
       <main className="min-h-screen px-4 pb-12">

@@ -7,8 +7,10 @@
  */
 import { Link } from 'react-router-dom';
 import { Bell, Check, Download } from 'lucide-react';
+import { espaceOuvert } from '../../../data/espaces';
+import { titrePageInstallation } from '../../../data/marque-espace';
 import { Badge, Button, ButtonLink, Card } from '../../../ui';
-import { EtapesInstallation, LienInstallation, useInstallation } from './installation';
+import { EtapesInstallation, LienInstallation, OuvrezLApp, useInstallation } from './installation';
 
 const TITRE_ETAPES = { iphone: 'Sur votre iPhone', android: 'Sur votre téléphone Android', ordinateur: 'Sur votre ordinateur' } as const;
 
@@ -19,7 +21,7 @@ export default function Installer() {
     <main className="min-h-screen px-4 pt-10 pb-[max(3rem,env(safe-area-inset-bottom))] sm:pt-16">
       <div className="mx-auto flex max-w-md flex-col">
         <img src="/erp-app/icone-192.png" alt="" width={72} height={72} className="size-18 rounded-2xl shadow-(--lm-ombre)" />
-        <h1 className="lm-serif mt-5 text-[28px] leading-tight text-(--lm-encre)">Installer l’app Label Maison</h1>
+        <h1 className="lm-serif mt-5 text-[28px] leading-tight text-(--lm-encre)">{titrePageInstallation(espaceOuvert())}</h1>
         <p className="mt-2 text-[15px] leading-relaxed text-(--lm-encre-2)">
           Réservations, messages des voyageurs, problèmes signalés : une notification sur votre téléphone, comme une vraie app.
         </p>
@@ -41,7 +43,7 @@ export default function Installer() {
                 Déjà installée
               </Badge>
               <p className="mt-3 text-[14px] text-(--lm-encre)">
-                Ouvrez l’app <strong className="font-semibold">Label Maison</strong> depuis l’écran d’accueil ou vos applications, puis activez les notifications.
+                <OuvrezLApp suite=" depuis l’écran d’accueil ou vos applications, puis activez les notifications." />
               </p>
             </>
           ) : inst.directe ? (

@@ -43,11 +43,13 @@ import {
   ErreurRepull,
   ID_SELECTION,
   QUOTA_MOIS_DEFAUT,
+  conseilBudget,
   imputerAppels,
   lancer,
   lireEtat,
   lireSelection,
   type BilanRepull,
+  type OrigineCle,
   type PhaseRepull,
   type SelectionRepull,
 } from './repull-synchro.js';
@@ -185,6 +187,8 @@ export interface ContexteConnexion {
   cle: string;
   /** Workspace Repull de l'espace (X-Workspace-Id sur chaque appel). */
   workspace?: string;
+  /** À qui est la clé (messages d'erreur, OrigineCle) ; absent : Label Maison. */
+  origineCle?: OrigineCle;
   base: BaseErp;
   /** Instant (ms) à ne pas dépasser. */
   echeance: number;
@@ -268,10 +272,10 @@ function versConnexion(c: Record<string, unknown>): ConnexionPlateforme | null {
 }
 
 /** Message français d'une erreur, avec la marche à suivre de Repull quand elle existe. */
-export function messageErreur(e: unknown, o: { budgetMois?: number; appelsMois?: number } = {}): string {
+export function messageErreur(e: unknown, o: { budgetMois?: number; appelsMois?: number; origineCle?: OrigineCle } = {}): string {
   if (e instanceof ErreurConnexion) return e.message;
   if (e instanceof BudgetEpuise) {
-    return `Les appels Repull de ce mois sont épuisés${o.budgetMois ? ` (${o.appelsMois ?? o.budgetMois} / ${o.budgetMois})` : ''}. Tout reprend le 1er du mois prochain. Pour aller plus vite, augmentez REPULL_BUDGET_ERP dans Vercel ou passez à l’offre Repull supérieure.`;
+    return `Les appels Repull de ce mois sont épuisés${o.budgetMois ? ` (${o.appelsMois ?? o.budgetMois} / ${o.budgetMois})` : ''}. Tout reprend le 1er du mois prochain. Pour aller plus vite, ${conseilBudget(o.origineCle)}.`;
   }
   if (e instanceof ErreurRepull) {
     if (e.statut === 402 && e.code === 'listings_limit_exceeded') return messageDepassement(e).message;
@@ -315,7 +319,7 @@ export async function avecClient<T>(ctx: ContexteConnexion, travail: (c: ClientR
   const etat = await lireEtat(ctx.base, maintenant(), budgetMois, quotaMois);
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) throw new BudgetEpuise();
-  const client = new ClientRepull({ cle: ctx.cle, workspace: ctx.workspace, fetch: ctx.fetch, base: ctx.baseRepull, echeance: ctx.echeance, budget: restant, attendre: ctx.attendre });
+  const client = new ClientRepull({ cle: ctx.cle, workspace: ctx.workspace, fetch: ctx.fetch, base: ctx.baseRepull, echeance: ctx.echeance, budget: restant, attendre: ctx.attendre, origineCle: ctx.origineCle });
   try {
     return await travail(client);
   } finally {
@@ -442,7 +446,7 @@ export async function lireEtatConnexions(ctx: ContexteConnexion, o: { forcer?: b
     } catch (e) {
       if (e instanceof BudgetEpuise) {
         const etat = await lireEtat(ctx.base, maintenant, ctx.budgetMois ?? BUDGET_ERP_DEFAUT, ctx.quotaMois ?? QUOTA_MOIS_DEFAUT);
-        avertissements.push(messageErreur(e, { budgetMois: etat.budgetMois, appelsMois: etat.appelsMois }) + ' Les informations affichées datent de la dernière lecture.');
+        avertissements.push(messageErreur(e, { budgetMois: etat.budgetMois, appelsMois: etat.appelsMois, origineCle: ctx.origineCle }) + ' Les informations affichées datent de la dernière lecture.');
       } else if (cache.luLe) {
         avertissements.push(`${messageErreur(e)} Les informations affichées datent de la dernière lecture.`);
       } else {
@@ -629,6 +633,7 @@ export async function enregistrerSelection(ctx: ContexteConnexion, idsBruts: unk
   const r = await lancer({
     cle: ctx.cle,
     workspace: ctx.workspace,
+    origineCle: ctx.origineCle,
     base: ctx.base,
     declencheur: 'manuel',
     echeance: ctx.echeance,
@@ -772,7 +777,7 @@ export async function diagnostiquer(ctx: ContexteConnexion): Promise<ResultatDia
         return undefined;
       }
     };
-    await essai('La clé Repull est-elle acceptée ?', '/v1/health/auth', () => 'Oui, la clé Repull de Vercel est valide.');
+    await essai('La clé Repull est-elle acceptée ?', '/v1/health/auth', () => (ctx.origineCle === 'espace' ? 'Oui, la clé Repull de cet espace est valide.' : ctx.origineCle === 'partagee' ? 'Oui, la clé Repull est valide.' : 'Oui, la clé Repull de Vercel est valide.'));
     await essai('Quelles connexions Repull voit-il ?', '/v1/connect', (r) => {
       const l = liste(r);
       return l.length ? `${l.length} connexion(s) : ${l.map((c) => `${texte(c.provider)} (${texte(c.status) || '?'})`).join(', ')}.` : 'Aucune connexion enregistrée chez Repull.';

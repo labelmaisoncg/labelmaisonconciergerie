@@ -8,7 +8,9 @@
  *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=/tmp/verifier-crm-mcp.cjs \
  *     && node /tmp/verifier-crm-mcp.cjs
  */
-import { OUTILS, traiterMcp, type ContexteMcp } from './crm-mcp';
+import { INSTRUCTIONS_SERVEUR, OUTILS, instructionsServeur, outilsDeLEspace, traiterMcp, type ContexteMcp } from './crm-mcp';
+import { ID_LABEL_MAISON } from './espaces';
+import { avecEspace, espaceDuJeton } from './oauth-regles';
 import { attendEquipe, prenomInitiale } from './cm-mcp';
 import { creerContactsCrm } from './seed-crm';
 import { creerSeed } from './seed';
@@ -167,6 +169,7 @@ async function main() {
   verifier(panne.corps.result.isError === true && /momentanément inaccessible/.test(panne.corps.result.content[0].text), 'base injoignable : erreur lisible, pas de plantage');
 
   await channelManager();
+  await parEspace();
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
@@ -287,6 +290,69 @@ async function channelManager() {
   verifier((await outil('indicateurs', { du: '2026-09-10', au: '2026-09-01' })).erreur, 'indicateurs : période à l’envers refusée');
 
   verifier(prenomInitiale('Daniel A.') === 'Daniel A.' && prenomInitiale('Alex Morgan') === 'Alex M.' && prenomInitiale('') === 'Voyageur', 'noms « Prénom N. »');
+}
+
+/* ------------------------------------------------------- un espace par jeton */
+
+async function parEspace() {
+  const SENS = '5e5e0000-0000-4000-8000-000000000002';
+  const valeur = 'A'.repeat(21) + '_-' + 'z9'.repeat(10); // 43 caractères base64url
+  verifier(avecEspace(ID_LABEL_MAISON, valeur) === valeur && avecEspace(SENS, valeur) === `${SENS}.${valeur}` && avecEspace(SENS.toUpperCase(), valeur) === `${SENS}.${valeur}`, 'jeton : Label Maison sans préfixe, un autre espace préfixé');
+  verifier(espaceDuJeton(valeur) === ID_LABEL_MAISON && espaceDuJeton(`${SENS}.${valeur}`) === SENS, 'espace du jeton : sans préfixe Label Maison, sinon celui du préfixe');
+  for (const [quoi, jeton] of [
+    ['préfixe Label Maison explicite (jamais émis)', `${ID_LABEL_MAISON}.${valeur}`],
+    ['préfixe en majuscules', `${SENS.toUpperCase()}.${valeur}`],
+    ['préfixe qui n’est pas un identifiant', `sens.${valeur}`],
+    ['valeur trop courte', `${SENS}.${valeur.slice(1)}`],
+    ['valeur trop longue', `${valeur}x`],
+    ['caractère interdit', `${SENS}.${valeur.slice(1)}+`],
+    ['deux préfixes', `${SENS}.${SENS}.${valeur}`],
+    ['vide', ''],
+    ['pas un texte', 42],
+  ] as [string, unknown][]) {
+    verifier(espaceDuJeton(jeton) === null, `espace du jeton : ${quoi} → refusé`);
+  }
+
+  // Instructions : Label Maison inchangées, un autre espace à son nom, sans rien de Label Maison.
+  verifier(instructionsServeur() === INSTRUCTIONS_SERVEUR && instructionsServeur({ id: ID_LABEL_MAISON, nom: 'Label Maison' }) === INSTRUCTIONS_SERVEUR, 'instructions de Label Maison : inchangées');
+  const sens = instructionsServeur({ id: SENS, nom: 'Sens' });
+  verifier(sens.startsWith('Sens ') && /cm_resume/.test(sens) && /crm_noter_appel/.test(sens) && !/Essonne|Label Maison|formulaires audit/.test(sens), `instructions de Sens : son nom, mêmes outils, rien de Label Maison (${sens.slice(0, 80)})`);
+  const ctxSens: ContexteMcp = { ...ctx, espace: { id: SENS, nom: 'Sens' } };
+  const init = (await traiterMcp({ jsonrpc: '2.0', id: 7, method: 'initialize', params: { protocolVersion: '2025-06-18' } }, ctxSens)) as any;
+  verifier(init.corps.result.serverInfo.title === 'Sens' && init.corps.result.serverInfo.name === 'label-maison' && init.corps.result.instructions === sens, 'initialize avec le jeton de Sens : « Sens », mêmes outils');
+  const panne = (await traiterMcp(
+    { jsonrpc: '2.0', id: 8, method: 'tools/call', params: { name: 'crm_resume', arguments: {} } },
+    { ...ctxSens, depot: { ...ctx.depot, tous: async () => Promise.reject(new Error('réseau')) } },
+  )) as any;
+  verifier(/données de l’espace Sens/.test(panne.corps.result.content[0].text) && !/Label Maison/.test(panne.corps.result.content[0].text), `erreur de base au nom de l’espace (${panne.corps.result.content[0].text})`);
+
+  // « Suivi par » : Abdel et Kamel à Label Maison seulement ; Claude ne le voit ni ne le règle ailleurs.
+  verifier(outilsDeLEspace() === OUTILS && outilsDeLEspace({ id: ID_LABEL_MAISON }) === OUTILS, 'outils de Label Maison : exactement ceux d’avant');
+  const listeSens = (await traiterMcp({ jsonrpc: '2.0', id: 9, method: 'tools/list' }, ctxSens)) as any;
+  const outilsSens = listeSens.corps.result.tools as { name: string; description: string; inputSchema: { properties?: Record<string, unknown> } }[];
+  verifier(
+    outilsSens.map((o) => o.name).join() === OUTILS.map((o) => o.name).join() && outilsSens.every((o) => !('suivi_par' in (o.inputSchema.properties ?? {})) && !/suivi_par|abdel|kamel/i.test(o.description)),
+    'outils de Sens : les mêmes, sans « suivi_par » ni Abdel ou Kamel',
+  );
+  verifier(OUTILS.filter((o) => 'suivi_par' in ((o.inputSchema as { properties?: object }).properties ?? {})).length === 3, 'Label Maison garde « suivi_par » (chercher, ajouter, modifier)');
+  verifier(!/le suivi/.test(sens) && /le suivi/.test(INSTRUCTIONS_SERVEUR), 'instructions de Sens : sans « le suivi »');
+  const appelSens = async (name: string, args: Record<string, unknown>) =>
+    ((await traiterMcp({ jsonrpc: '2.0', id: 10, method: 'tools/call', params: { name, arguments: args } }, ctxSens)) as any).corps.result as { isError?: boolean; content: { text: string }[]; structuredContent?: any };
+  const avant = ecritures;
+  for (const [nom, args] of [
+    ['crm_modifier', { id: 'crm-demo-06', suivi_par: 'abdel' }],
+    ['crm_modifier', { id: 'crm-demo-06', suivi_par: '' }],
+    ['crm_ajouter', { nom: 'Prospect Sens', telephone: '0699887766', suivi_par: 'kamel' }],
+    ['crm_chercher', { suivi_par: 'abdel' }],
+  ] as [string, Record<string, unknown>][]) {
+    const r = await appelSens(nom, args);
+    verifier(r.isError === true && /suivi_par/.test(r.content[0].text), `Sens, ${nom} avec suivi_par : refusé (${r.content[0].text})`);
+  }
+  verifier(ecritures === avant, 'Sens : rien d’écrit avec suivi_par');
+  const ficheSens = await appelSens('crm_voir', { id: 'crm-demo-06' });
+  verifier(!ficheSens.isError && ficheSens.structuredContent?.nom === 'Pierre Dubois' && !('suivi_par' in ficheSens.structuredContent), 'Sens : fiche sans « suivi_par »');
+  const ficheLM = await outil('crm_voir', { id: 'crm-demo-06' });
+  verifier(ficheLM.donnees.suivi_par === 'abdel', 'Label Maison : fiche avec « suivi_par » comme avant');
 }
 
 void main();

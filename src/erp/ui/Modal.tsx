@@ -36,7 +36,8 @@ export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md
           TAILLES[taille],
         )}
       >
-        <div className="flex items-start gap-3 px-5 pt-4">
+        {/* Sans contenu, l'en-tête garde son souffle au-dessus du pied. */}
+        <div className={cn('flex items-start gap-3 px-5 pt-4', !children && 'pb-4')}>
           <div className="min-w-0 flex-1">
             <h2 id={titreId} className="lm-serif text-[20px] text-(--lm-encre)">
               {titre}

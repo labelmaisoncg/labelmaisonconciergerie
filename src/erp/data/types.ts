@@ -638,6 +638,12 @@ export type EtapeProspect =
   | 'signe'
   | 'perdu';
 export type Responsable = 'abdel' | 'kamel';
+/**
+ * « Suivi par » d'un contact du CRM : Abdel ou Kamel dans l'espace de Label
+ * Maison (valeurs d'avant, toujours valables) ; dans un autre espace,
+ * l'identifiant d'un de ses membres (son adresse, voir marque-espace.ts).
+ */
+export type SuiviCrm = Responsable | (string & {});
 
 export interface Prospect {
   id: Id;
@@ -701,7 +707,7 @@ export interface ContactCrm {
   motifAttente?: string;
   /** Date de la prochaine relance prévue. */
   relanceLe?: DateISO;
-  responsable?: Responsable;
+  responsable?: SuiviCrm;
   notes: string;
   /** Appels passés sans joindre la personne. */
   tentatives: number;
@@ -721,6 +727,8 @@ export interface Utilisateur {
   role: RoleUtilisateur;
   /** Pour le rôle « prestataire » : la fiche prestataire liée (accès à ses seules missions). */
   prestataireId?: Id;
+  /** Compte relié à la fiche (invitation activée) ; absent : on ne sait pas (base d'avant les espaces, ajout du moment). */
+  compteActif?: boolean;
 }
 
 export interface Journal {

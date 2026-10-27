@@ -91,7 +91,7 @@ export function Table<T>({
                     <button
                       type="button"
                       onClick={() => basculer(c.cle)}
-                      className={cn('inline-flex items-center gap-1 hover:text-(--lm-encre)', actif && 'text-(--lm-encre)')}
+                      className={cn('-my-1.5 inline-flex min-h-8 items-center gap-1 hover:text-(--lm-encre)', actif && 'text-(--lm-encre)')}
                     >
                       {c.titre}
                       {actif ? (

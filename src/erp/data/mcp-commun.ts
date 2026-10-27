@@ -32,6 +32,8 @@ export interface ContexteMcp {
   /** Date du jour à Paris (AAAA-MM-JJ). */
   aujourdhui: () => string;
   maintenant: () => Horodatage;
+  /** Espace des données (celui du jeton) ; absent : Label Maison. */
+  espace?: { id: string; nom: string };
 }
 
 export type Args = Record<string, unknown>;

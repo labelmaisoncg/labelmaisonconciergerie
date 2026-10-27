@@ -195,7 +195,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
               <input type="checkbox" checked={b.acces} onChange={(e) => maj({ acces: e.target.checked })} className="mt-0.5 size-4 accent-(--lm-or)" />
               <span>
                 <span className="font-medium text-(--lm-encre)">Contient l’accès au logement (clé, code)</span>
-                <span className="block text-[12.5px] text-(--lm-encre-2)">Envoyé seulement aux voyageurs confirmés, dans les 48 h avant l’arrivée.</span>
+                <span className="block text-[12.5px] text-(--lm-encre-2)">Envoyé seulement aux voyageurs confirmés, dans les 48 h avant l’arrivée ou pendant le séjour.</span>
               </span>
             </label>
           </div>

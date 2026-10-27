@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
+import { espaceOuvert } from '../../../data/espaces';
 import { ADRESSE_CONNECTEUR } from '../../../data/oauth-regles';
 import { dateHeure, pluriel } from '../../../data/format';
 import { Alert, Button, Modal } from '../../../ui';
@@ -12,6 +13,8 @@ import { appelerConnecteur } from './api-connecteur';
  * ensuite l'autorisation d'un gérant dans l'ERP (OAuth, /erp/autoriser-claude).
  */
 export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; onFermer: () => void; demo: boolean }) {
+  // Une connexion par espace : celle de l'espace ouvert (le connecteur s'y nomme comme lui).
+  const nomEspace = espaceOuvert().nom;
   const [etat, setEtat] = useState<{ connexions: number; derniere?: string }>();
   const [erreur, setErreur] = useState('');
   const [copie, setCopie] = useState(false);
@@ -64,7 +67,7 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
       ouvert={ouvert}
       onFermer={fermer}
       titre="Connecter à Claude"
-      description="Une seule fois : ensuite, demandez à Claude « Fais-moi le point du jour » dans n’importe quelle conversation."
+      description={`Une seule fois : ensuite, Claude peut consulter l’espace ${nomEspace} depuis vos conversations.`}
       pied={
         <Button variant="ghost" onClick={fermer}>
           Fermer
@@ -87,7 +90,7 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
               </p>
               {confirmer ? (
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px]">
-                  <span className="text-(--lm-encre-2)">Claude perdra l’accès à l’ERP partout.</span>
+                  <span className="text-(--lm-encre-2)">Claude perdra l’accès à l’espace {nomEspace} partout.</span>
                   <Button size="sm" variant="danger" chargement={enCours} onClick={() => void deconnecter()}>
                     Déconnecter
                   </Button>
@@ -122,17 +125,22 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
             <li>
               <p className="font-medium">2. Ajoutez-la dans Claude</p>
               <p className="text-(--lm-encre-2)">
-                Sur claude.ai : Paramètres → Connecteurs → « Ajouter un connecteur personnalisé ». Nom : Label Maison, URL : l’adresse copiée. Laissez les
-                paramètres avancés vides.
+                Sur claude.ai&nbsp;: Paramètres → Connecteurs → «&nbsp;Ajouter un connecteur personnalisé&nbsp;». Nom&nbsp;: {nomEspace}, URL&nbsp;: l’adresse
+                copiée. Laissez les paramètres avancés vides.
               </p>
             </li>
             <li>
               <p className="font-medium">3. Autorisez l’accès</p>
-              <p className="text-(--lm-encre-2)">Claude vous demande de vous connecter : l’ERP s’ouvre, cliquez « Autoriser ».</p>
+              <p className="text-(--lm-encre-2)">
+                Claude vous demande de vous connecter&nbsp;: l’ERP s’ouvre sur l’espace {nomEspace}, cliquez «&nbsp;Autoriser&nbsp;».
+              </p>
             </li>
             <li>
               <p className="font-medium">4. Essayez</p>
-              <p className="text-(--lm-encre-2)">Dans une conversation, activez « Label Maison » et demandez : « Fais-moi le point du jour » ou « Qui arrive demain ? ».</p>
+              <p className="text-(--lm-encre-2)">
+                Dans une conversation, activez «&nbsp;{nomEspace}&nbsp;» et demandez&nbsp;: «&nbsp;Fais-moi le point du jour&nbsp;» ou «&nbsp;Qui arrive
+                demain&nbsp;?&nbsp;».
+              </p>
             </li>
           </ol>
         </div>

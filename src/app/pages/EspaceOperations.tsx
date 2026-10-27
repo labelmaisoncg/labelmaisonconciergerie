@@ -7,7 +7,11 @@ import { MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../erp/data/format';
 import { appliquerAction, avecEcritures, vueOperations, type EntreesOperations } from '../../erp/data/espace-operations';
+import { destinatairesUrgence, messageUrgence, notificationsApresAction } from '../../erp/data/notifications-operations';
+import { court } from '../../erp/data/operations';
 import type { VueOperations } from '../../erp/data/types-operations';
+import { DemandeNotificationsOps, EntreeApp, ErreurOps, FeuilleApp, useAppOps, type ServeurNotificationsOps } from '../../erp/espace-operations/AppOperations';
+import { demarrerAppOps, lienColle, ouverteEnApp } from '../../erp/espace-operations/app-operations';
 import { EspaceOps } from '../../erp/espace-operations/EspaceOps';
 import { ONGLETS_OPS, reduirePhoto, type ActionsOps, type Ecran, type OngletOps } from '../../erp/espace-operations/commun';
 import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
@@ -21,6 +25,10 @@ import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
  *
  * Démo (VITE_ERP_DEMO=1) : ?apercu=eq-ines (responsable de pôle) ou
  * ?apercu=eq-yanis (agent de terrain), calculé sur le jeu de démo.
+ *
+ * S'installe comme une app, « Opérations » (manifeste et service worker à
+ * part de l'ERP, portée /espace-operations), avec ses notifications :
+ * src/erp/espace-operations/AppOperations.tsx et app-operations.ts.
  */
 
 const API = '/api/espace-operations';
@@ -47,6 +55,27 @@ async function appeler(methode: 'GET' | 'POST', corps: Record<string, unknown>):
     return { statut: 0, json: { erreur: 'Pas de connexion. Vérifiez votre réseau, puis réessayez.' } };
   }
 }
+
+/** Notifications de l'app : la session de l'espace suffit (cookie). */
+const SERVEUR_NOTIFICATIONS: ServeurNotificationsOps = {
+  etat: async (endpoint) => {
+    const r = await appeler('GET', { action: 'notifications-etat', ...(endpoint ? { endpoint } : {}) });
+    if (r.statut !== 200) throw new ErreurOps(String(r.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.'), r.json.code ? String(r.json.code) : undefined);
+    return { actif: !!r.json.actif, clePublique: typeof r.json.clePublique === 'string' ? r.json.clePublique : null, abonne: !!r.json.abonne };
+  },
+  abonner: async (abonnement, nom) => {
+    const r = await appeler('POST', { action: 'notifications-abonner', abonnement, nom });
+    if (r.statut !== 200) throw new ErreurOps(String(r.json.erreur ?? 'L’activation n’a pas abouti. Réessayez dans un instant.'), r.json.code ? String(r.json.code) : undefined);
+  },
+  desabonner: async (endpoint) => {
+    const r = await appeler('POST', { action: 'notifications-desabonner', endpoint });
+    if (r.statut !== 200) throw new ErreurOps(String(r.json.erreur ?? 'L’action n’a pas abouti. Réessayez dans un instant.'));
+  },
+  tester: async (endpoint) => {
+    const r = await appeler('POST', { action: 'notifications-tester', endpoint });
+    if (r.statut !== 200) throw new ErreurOps(String(r.json.erreur ?? 'L’envoi n’a pas abouti. Réessayez dans un instant.'), r.json.code ? String(r.json.code) : undefined);
+  },
+};
 
 /* --------------------------------------------------------------- adresse */
 
@@ -98,11 +127,41 @@ function retenirEspace(e: EspaceRetenu) {
   }
 }
 
+/**
+ * Dans l'app installée : coller le lien reçu par e-mail (sur iPhone, l'app de
+ * l'écran d'accueil ne partage pas la session de Safari, et le lien du mail
+ * s'ouvre dans Safari).
+ */
+function LienDansLApp() {
+  const [lien, setLien] = useState('');
+  const [erreur, setErreur] = useState<string>();
+  const ouvrir = (e: FormEvent) => {
+    e.preventDefault();
+    const cible = lienColle(lien);
+    if (!cible) return setErreur('Ce n’est pas le lien reçu par e-mail.');
+    // Même adresse, nouveau fragment : on recharge pour que la page l'ouvre comme un lien reçu.
+    window.history.replaceState(null, '', cible);
+    window.location.reload();
+  };
+  return (
+    <form onSubmit={ouvrir} className="mt-5 space-y-3 border-t border-(--lm-bord) pt-5">
+      <Field label="Lien reçu par e-mail" aide="Appui long sur « Ouvrir mon espace » dans l’e-mail, puis « Copier ».">
+        <Input type="url" inputMode="url" autoComplete="off" value={lien} onChange={(e) => setLien(e.target.value)} placeholder="Collez le lien ici" className="h-11 text-[16px]" />
+      </Field>
+      {erreur && <Alert tone="danger">{erreur}</Alert>}
+      <Button type="submit" variant="secondary" size="lg" className="w-full">
+        Ouvrir avec ce lien
+      </Button>
+    </form>
+  );
+}
+
 /** Page de connexion, au nom de l'espace du lien ou retenu sur l'appareil ; inconnu : neutre. */
 function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; marque: { nom?: string; labelMaison: boolean } }) {
   const [email, setEmail] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' }>();
+  const dansLApp = ouverteEnApp();
 
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
@@ -145,6 +204,7 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
               {retour.texte}
             </Alert>
           )}
+          {dansLApp && <LienDansLApp />}
         </Card>
         {MODE_DEMO && (
           <div className="mt-4 flex flex-col items-center">
@@ -183,12 +243,23 @@ function useDemo(membreId: string) {
           photoAcceptee: (u) => u.startsWith(`demo://operations/${membreId}/`),
         });
         if (!r.ok) return { ok: false, erreur: r.erreur };
-        const suivant = avecEcritures(ref.current, r.ecritures);
+        const avant = ref.current;
+        const suivant = avecEcritures(avant, r.ecritures);
         ref.current = suivant;
         setEntrees(suivant);
-        return { ok: true, message: r.message, ...(r.id ? { id: r.id } : {}) };
+        // Urgence : comme si chacun avait activé les notifications (rien ne part en démonstration).
+        const urgence = (operation.type === 'signaler' || operation.type === 'priorite') && operation.urgent && r.aNotifier.length > 0;
+        const ids = urgence ? [...new Set(notificationsApresAction(avant, suivant, { aujourdhui: AUJOURDHUI, auteurId: membreId }).map((n) => n.membreId))] : [];
+        const noms = ids.map((id) => court(suivant.equipe.find((m) => m.id === id)?.nom)).filter(Boolean);
+        const message = urgence ? messageUrgence(operation.type === 'signaler' ? 'Urgence signalée' : 'Passé en urgent', { noms, gerant: true }) : r.message;
+        return { ok: true, message, ...(r.id ? { id: r.id } : {}) };
       },
       photo: async (f) => ({ url: `demo://operations/${membreId}/${Date.now().toString(36)}-${encodeURIComponent(f.name)}` }),
+      // Comme si chacun avait activé les notifications (rien ne part en démonstration).
+      prevenus: async (logementId) => {
+        const e = ref.current;
+        return { noms: e ? destinatairesUrgence(e, membreId, logementId, AUJOURDHUI).map((id) => court(e.equipe.find((m) => m.id === id)?.nom)).filter(Boolean) : [], gerant: true };
+      },
     }),
     [membreId],
   );
@@ -204,6 +275,11 @@ export default function EspaceOperations() {
   const apercu = MODE_DEMO ? (parametres.get('apercu') ?? '') : '';
   const demo = useDemo(apercu);
   const ecran = ecranDe(parametres);
+  const app = useAppOps(MODE_DEMO ? null : SERVEUR_NOTIFICATIONS, etat.nom === 'pret');
+  const [feuilleApp, setFeuilleApp] = useState(false);
+
+  // Manifeste, service worker, et l'écran d'une notification touchée pendant que l'app est ouverte.
+  useEffect(() => demarrerAppOps((recherche) => setParametres(new URLSearchParams(recherche))), [setParametres]);
 
   // Plusieurs changements d'écran de suite (fermer puis ouvrir) : toujours à partir du dernier.
   const courant = useRef(parametres);
@@ -238,6 +314,12 @@ export default function EspaceOperations() {
         } catch {
           return { erreur: 'Photo illisible : choisissez une autre image.' };
         }
+      },
+      // Seulement les personnes dont le téléphone recevra vraiment l'urgence, et le gérant s'il la recevra.
+      prevenus: async (logementId) => {
+        const r = await appeler('GET', { action: 'prevenus', logement: logementId });
+        if (r.statut !== 200) throw new Error('prevenus');
+        return { noms: Array.isArray(r.json.noms) ? r.json.noms.map(String) : [], gerant: r.json.gerant === true };
       },
     }),
     [],
@@ -281,6 +363,8 @@ export default function EspaceOperations() {
   }, [apercu]);
 
   const sortir = async () => {
+    // Ce téléphone ne reçoit plus rien pour cette personne.
+    await app.oublierAvantDeSortir();
     if (!MODE_DEMO) await appeler('POST', { action: 'sortir' });
     setParametres(new URLSearchParams(), { replace: true });
     setEtat({ nom: 'connexion', ton: 'succes', message: 'Vous êtes déconnecté.' });
@@ -305,6 +389,7 @@ export default function EspaceOperations() {
           naviguer={naviguer}
           actions={MODE_DEMO ? demo.actions : actionsServeur}
           onSortir={() => void sortir()}
+          entreeApp={<EntreeApp app={app} onOuvrir={() => setFeuilleApp(true)} />}
           bandeau={
             MODE_DEMO ? (
               <p className="bg-(--lm-or-lavis) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-brun)">Démonstration · espace de {vue.moi.nom}</p>
@@ -330,6 +415,12 @@ export default function EspaceOperations() {
         <div className="mx-auto max-w-5xl px-4 pt-6">
           <PageSkeleton />
         </div>
+      )}
+      {vue && (
+        <>
+          <FeuilleApp ouvert={feuilleApp} onFermer={() => setFeuilleApp(false)} app={app} />
+          <DemandeNotificationsOps app={app} pret />
+        </>
       )}
     </div>
   );

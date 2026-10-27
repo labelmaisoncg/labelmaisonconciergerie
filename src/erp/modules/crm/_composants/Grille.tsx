@@ -1,8 +1,11 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Phone } from 'lucide-react';
 import { LIBELLE_SOURCE_CRM, LIBELLE_STATUT_CRM, STATUTS_CLOS, STATUTS_CRM } from '../../../data/crm';
+import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, jourMois } from '../../../data/format';
-import type { ContactCrm, Responsable, StatutContactCrm } from '../../../data/types';
+import { optionsSuiviCrm } from '../../../data/marque-espace';
+import { useErp } from '../../../data/store';
+import type { ContactCrm, StatutContactCrm, SuiviCrm } from '../../../data/types';
 import { cn } from '../../../ui';
 import { PASTILLE, POINT } from './statuts';
 
@@ -12,12 +15,6 @@ export interface GrilleProps {
   onModifier: (c: ContactCrm) => void;
   lectureSeule: boolean;
 }
-
-export const RESPONSABLES: { valeur: '' | Responsable; libelle: string }[] = [
-  { valeur: '', libelle: '—' },
-  { valeur: 'abdel', libelle: 'Abdel' },
-  { valeur: 'kamel', libelle: 'Kamel' },
-];
 
 /**
  * Colonnes, largeurs fixes (table-fixed) : la grille défile, jamais la page.
@@ -124,7 +121,10 @@ function CelluleRelance({ c, onModifier, lectureSeule }: { c: ContactCrm; onModi
 }
 
 function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n: number } & Omit<GrilleProps, 'contacts'>) {
+  const { utilisateurs } = useErp();
   const derniere = c.notes || c.motifAttente || c.message || '';
+  // Label Maison : Abdel et Kamel ; un autre espace : ses membres.
+  const suivis = [{ valeur: '', libelle: '—' }, ...optionsSuiviCrm(espaceOuvert(), utilisateurs, c.responsable, true)];
   return (
     <tr className="group bg-(--lm-surface) hover:bg-(--lm-surface-2)">
       <td className={cn(CELLULE, 'lm-chiffres hidden text-center text-[12px] text-(--lm-encre-3) sm:table-cell')}>{n}</td>
@@ -161,10 +161,10 @@ function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n:
           aria-label={`Suivi de ${c.nom}`}
           value={c.responsable ?? ''}
           disabled={lectureSeule}
-          onChange={(e) => onModifier({ ...c, responsable: (e.target.value || undefined) as Responsable | undefined })}
+          onChange={(e) => onModifier({ ...c, responsable: (e.target.value || undefined) as SuiviCrm | undefined })}
           className={cn(CHAMP, 'w-full cursor-pointer text-(--lm-encre)')}
         >
-          {RESPONSABLES.map((r) => (
+          {suivis.map((r) => (
             <option key={r.valeur} value={r.valeur}>
               {r.libelle}
             </option>

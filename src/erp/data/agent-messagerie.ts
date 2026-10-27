@@ -786,7 +786,8 @@ class Passage {
   async executer(): Promise<PassageAgent> {
     const b = this.bilan;
     const [lu] = await this.o.base.lire<ReglagesAgent>('reglages', ['agent']);
-    this.reglages = reglagesAgent({ reglages: lu ? [lu] : [] });
+    // Signature par défaut au nom de l'espace (« L’équipe Sens ») ; Label Maison inchangé.
+    this.reglages = reglagesAgent({ reglages: lu ? [lu] : [] }, this.o.nomEspace);
     if (!this.reglages.actif) return this.finir('pause', 'Votre agent est en pause : il ne répond à personne. Tout arrive à l’équipe.');
     if (!dansLesHoraires(this.reglages, this.maintenant())) {
       return this.finir('hors_horaires', `En dehors des heures de réponse (${this.reglages.horaires.debut}–${this.reglages.horaires.fin}, heure de Paris) : les messages attendent l’équipe.`);

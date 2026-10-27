@@ -1,20 +1,38 @@
 import { useEffect, useState } from 'react';
 import { jourMois } from '../data/format';
+import { phrasePrevenus, type Prevenus } from '../data/notifications-operations';
 import { Button, Field, Modal, Segmente, Select, Textarea } from '../ui';
 import { ChoixPhotos, type PhotoChoisie } from './Photos';
 import { useOps } from './commun';
 
 /** Signaler un incident : le logement, urgent ou non, ce qui se passe, des photos. */
 export function Signaler({ logementId, onFermer }: { logementId?: string; onFermer: () => void }) {
-  const { vue, agir, naviguer, apercu } = useOps();
+  const { vue, agir, naviguer, apercu, actions } = useOps();
   const [logement, setLogement] = useState(logementId ?? '');
   const [urgent, setUrgent] = useState(false);
+  // Qui reçoit vraiment l'urgence : téléphones abonnés, et le gérant s'il a un appareil qui la recevra (null : pas encore su).
+  const [prevenus, setPrevenus] = useState<Prevenus | null>(null);
   const [description, setDescription] = useState('');
   const [sejour, setSejour] = useState('');
   const [photos, setPhotos] = useState<PhotoChoisie[]>([]);
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
   useEffect(() => setSejour(''), [logement]);
+  useEffect(() => {
+    setPrevenus(null);
+    if (!urgent || !logement) return;
+    // Aperçu du gérant : rien ne part, la phrase d'avant.
+    if (!actions.prevenus) return setPrevenus({ noms: [], gerant: true });
+    let actif = true;
+    actions.prevenus(logement).then(
+      (p) => actif && setPrevenus(p),
+      // Réponse illisible : seulement ce qui est sûr.
+      () => actif && setPrevenus({ noms: [], gerant: false }),
+    );
+    return () => {
+      actif = false;
+    };
+  }, [urgent, logement, actions]);
 
   // Séjours du logement dans la fenêtre de l'espace (en cours, tout juste partis, à venir).
   const sejours = vue.sejours.filter((s) => s.logementId === logement);
@@ -63,7 +81,11 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
             ]}
             className="self-start"
           />
-          {urgent && <p className="text-[12.5px] text-(--lm-encre-2)">Le gérant est prévenu tout de suite.</p>}
+          {urgent && (
+            <p aria-live="polite" className="min-h-[1.25rem] text-[12.5px] text-(--lm-encre-2)">
+              {prevenus ? phrasePrevenus(prevenus.noms, prevenus.gerant) : ''}
+            </p>
+          )}
         </div>
         <Field label="Ce qui se passe" requis>
           <Textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Ce que vous constatez, et ce qu’il faut faire." />

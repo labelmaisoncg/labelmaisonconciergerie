@@ -10,7 +10,19 @@
  * refusé, cookie modifié refusé, relais : session remise une fois puis
  * effacée, lié au compte, jamais la session du compte d'équipe, page des
  * liens « mot de passe oublié » (script valide, rien de dangereux injecté),
- * zone du linge inchangée.
+ * « Créer mon compte » (lien #creer=…&code=… : code gardé sur l'appareil,
+ * adresse fixe, rien d'envoyé ; sans code ou base d'avant les espaces : pas
+ * de création, message prévu ; deux saisies, 8 caractères, inscription vers
+ * le site fixe, même réponse qu'un compte existe ou non, jamais de connexion
+ * depuis la création ; dernière étape : mot de passe envoyé avec le code ;
+ * compte refusé : retour au formulaire), activation par le code (compte créé
+ * avant par un autre : rien sans code ; faux code, code expiré ou déjà
+ * servi : refus neutre ; mot de passe posé, autres sessions fermées, puis
+ * activation et session renouvelée ; membre lié à la passe 1 sans code ;
+ * invitation de conciergerie sans code : rien), raison du refus (espace
+ * suspendu, invitation expirée ou annulée), invitation à créer l'espace
+ * d'une conciergerie (en attente : entre ; échue ou de forme inconnue :
+ * refusée ; base d'avant les espaces : inchangée), zone du linge inchangée.
  *
  * Fichier hors de l'ERP (middleware) : pas dans tsc.
  * Lancement (Node 20+) :
@@ -20,6 +32,7 @@
 import crypto from 'node:crypto';
 import vm from 'node:vm';
 import middleware from '../middleware';
+import { MESSAGE_LIEN_PERIME as MESSAGE_LIEN_PERIME_APPLI } from '../src/erp/data/invitation';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -63,12 +76,110 @@ const COMPTES = [ABDEL, INCONNU, EQUIPE];
 const jetonDe = (c: Compte) => `acces-${c.id}`;
 
 let base: 'historique' | 'espaces' | 'en-panne' = 'historique';
+/** Invitations à créer l'espace d'une conciergerie (champ invitations_espace de erp.qui_suis_je), par compte. */
+const invitationsEspace = new Map<string, unknown>();
 const appels: string[] = [];
 const rafraichissements: string[] = [];
 /** Rafraîchissement : jeton → compte qu'il ouvre (un autre compte pour éprouver le contrôle). */
 const proprietaireRafraichir = new Map<string, Compte>();
 
 const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'Content-Type': 'application/json' } });
+
+/* ---------------------------------- comptes invités (activation par le code) */
+// GoTrue (sessions, mot de passe, fermeture des autres sessions) et erp.activer
+// / erp.qui_suis_je simulés : un jeton porte son instant d'émission (iat) et sa
+// session ; la base ne reconnaît un compte lié qu'avec un jeton émis après
+// l'activation (lieLe), comme erp.jeton_apres.
+
+interface CompteInvite {
+  id: string;
+  email: string;
+  motDePasse: string;
+  lie: boolean;
+  /** Instant de l'activation ; null : lié d'office (passe 1). */
+  lieLe: number | null;
+  genre?: 'membre' | 'espace';
+  /** Champs de refus rendus par erp.qui_suis_je (espaces_suspendus, invitations_espace_closes). */
+  refus?: Record<string, unknown>;
+}
+interface SessionInvite {
+  acces: string;
+  rafraichir: string;
+}
+let horloge = 1000;
+let compteurInvites = 0;
+const jetonsInvites = new Map<string, { compte: CompteInvite; iat: number; session: string }>();
+const rafraichissementsInvites = new Map<string, { compte: CompteInvite; session: string }>();
+const codesInvitation = new Map<string, { email: string; genre: 'membre' | 'espace'; utilise: boolean; expire: boolean }>();
+const appelsInvites: string[] = [];
+let panneDeconnexion = false;
+const MESSAGE_NEUTRE =
+  'Ce compte n’a pas accès à l’ERP. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil. Sinon, demandez à un gérant de vous ajouter.';
+/** Code refusé (déjà servi, remplacé, expiré) et pas d'accès : on ne renvoie pas vers ce même lien. */
+const MESSAGE_LIEN_PERIME = 'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé ou expiré) : demandez qu’on vous le renvoie.';
+
+function compteInvite(email: string, motDePasse: string): CompteInvite {
+  const c: CompteInvite = { id: `aaaaaaaa-0000-4000-8000-${String(++compteurInvites).padStart(12, '0')}`, email, motDePasse, lie: false, lieLe: null };
+  return c;
+}
+function emettre(compte: CompteInvite, session: string): SessionInvite {
+  const iat = ++horloge;
+  const s = { acces: `jeton:${compte.id}:${iat}:${session}`, rafraichir: `rafr:${compte.id}:${iat}:${session}` };
+  jetonsInvites.set(s.acces, { compte, iat, session });
+  rafraichissementsInvites.set(s.rafraichir, { compte, session });
+  return s;
+}
+const ouvrirSession = (compte: CompteInvite): SessionInvite => emettre(compte, `s${++horloge}`);
+
+function fauxInvites(url: URL, methode: string, init: RequestInit | undefined, jeton: string): Response {
+  const j = jetonsInvites.get(jeton);
+  if (j) appelsInvites.push(`${jeton} ${methode} ${url.pathname}${url.search}`);
+  const corps = JSON.parse(String(init?.body ?? '') || '{}') as Record<string, unknown>;
+  if (url.pathname === '/auth/v1/token' && url.searchParams.get('grant_type') === 'refresh_token') {
+    const r = String(corps.refresh_token ?? '');
+    const s = rafraichissementsInvites.get(r);
+    if (!s) return json({ error: 'invalid_grant', error_description: 'Invalid Refresh Token: Refresh Token Not Found' }, 400);
+    rafraichissementsInvites.delete(r);
+    const n = emettre(s.compte, s.session);
+    return json({ access_token: n.acces, refresh_token: n.rafraichir, user: { id: s.compte.id } });
+  }
+  if (!j) return json({ msg: 'invalid JWT' }, 401);
+  const c = j.compte;
+  // GoTrue refuse le jeton d'une session fermée ; PostgREST ne regarde que le jeton.
+  const ouverte = [...rafraichissementsInvites.values()].some((x) => x.session === j.session);
+  if (url.pathname === '/auth/v1/user' && methode === 'GET') return ouverte ? json({ id: c.id, email: c.email }) : json({ msg: 'Session not found' }, 403);
+  if (url.pathname === '/auth/v1/user' && methode === 'PUT') {
+    if (!ouverte) return json({ msg: 'Session not found' }, 403);
+    if (corps.password === c.motDePasse) return json({ code: 422, error_code: 'same_password', msg: 'New password should be different from the old password.' }, 422);
+    c.motDePasse = String(corps.password);
+    return json({ id: c.id, email: c.email });
+  }
+  if (url.pathname === '/auth/v1/logout' && url.searchParams.get('scope') === 'others') {
+    if (panneDeconnexion) return json({ msg: 'boom' }, 500);
+    if (!ouverte) return json({ msg: 'Session not found' }, 403);
+    for (const [k, v] of rafraichissementsInvites) if (v.compte === c && v.session !== j.session) rafraichissementsInvites.delete(k);
+    return new Response(null, { status: 204 });
+  }
+  if (url.pathname === '/rest/v1/rpc/activer') {
+    const code = codesInvitation.get(String(corps.p_code ?? ''));
+    if (!code || code.utilise || code.expire || code.email !== c.email) return json({ code: '42501', message: 'Invitation introuvable ou plus valable.' }, 403);
+    code.utilise = true;
+    c.lie = true;
+    c.lieLe = horloge;
+    c.genre = code.genre;
+    return json({ genre: code.genre });
+  }
+  if (url.pathname === '/rest/v1/rpc/qui_suis_je') {
+    const vaut = c.lie && (c.lieLe === null || j.iat > c.lieLe);
+    return json({
+      espaces: vaut && c.genre !== 'espace' ? [{ id: '4c4d0000-0000-4000-8000-000000000001', code: 'lm', nom: 'Label Maison', role: 'gerant' }] : [],
+      invitations_espace: vaut && c.genre === 'espace' ? [{ nom_espace: 'Côte', expire_le: new Date(Date.now() + 86_400_000).toISOString() }] : [],
+      ...(c.refus ?? {}),
+    });
+  }
+  return json({ message: 'inconnu' }, 404);
+}
+
 
 const fauxFetch = async (entree: string | URL | Request, init?: RequestInit): Promise<Response> => {
   const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
@@ -78,6 +189,9 @@ const fauxFetch = async (entree: string | URL | Request, init?: RequestInit): Pr
   if (url.origin !== SUPA) throw new Error(`réseau interdit : ${url.href}`);
   const jeton = (entetes.get('authorization') ?? '').replace(/^Bearer /, '');
   const compte = COMPTES.find((c) => jetonDe(c) === jeton);
+  if (jetonsInvites.has(jeton) || (url.pathname === '/auth/v1/token' && /"refresh_token":"rafr:/.test(String(init?.body ?? '')))) {
+    return fauxInvites(url, methode, init, jeton);
+  }
 
   if (url.pathname === '/auth/v1/user' && methode === 'GET') {
     return compte ? json({ id: compte.id, email: compte.email.toUpperCase() }) : json({ msg: 'invalid JWT' }, 401);
@@ -95,7 +209,8 @@ const fauxFetch = async (entree: string | URL | Request, init?: RequestInit): Pr
     if (base === 'en-panne') return json({ message: 'boom' }, 500);
     if (base === 'historique') return json({ code: 'PGRST202', message: 'Could not find the function erp.qui_suis_je' }, 404);
     if (entetes.get('content-profile') !== 'erp') return json({ message: 'schéma' }, 400);
-    return json({ espaces: compte?.membre ? [{ id: '4c4d0000-0000-4000-8000-000000000001', code: 'lm', nom: 'Label Maison', role: 'gerant' }] : [] });
+    const invitations = compte && invitationsEspace.has(compte.id) ? { invitations_espace: invitationsEspace.get(compte.id) } : {};
+    return json({ espaces: compte?.membre ? [{ id: '4c4d0000-0000-4000-8000-000000000001', code: 'lm', nom: 'Label Maison', role: 'gerant' }] : [], ...invitations });
   }
   if (url.pathname === '/rest/v1/membres') {
     if (entetes.get('accept-profile') !== 'erp') return json({ message: 'schéma' }, 400);
@@ -422,6 +537,415 @@ async function principal() {
     const recup = essai(`#access_token=${jwt('moi@exemple.fr')}&refresh_token=r&type=recovery`);
     verifier(!recup.envois.length && recup.elements['f-nouveau']?.hidden === false, 'type=recovery : choix du mot de passe, rien d’envoyé');
     verifier(String(recup.elements['intro-nouveau']?.textContent).includes('moi@exemple.fr'), 'type=recovery : le compte est nommé');
+  }
+
+  section('« Créer mon compte » (page d’accès)');
+  {
+    const html = await (await appeler('/erp'))!.text();
+    const script = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1])[0] ?? '';
+    const balise = /<form id="f-creer"[^>]*>/.exec(html)?.[0] ?? '';
+    verifier(/method="post"/.test(balise) && /action="\/erp\/connexion"/.test(balise) && /\shidden/.test(balise), 'formulaire de création : caché d’abord, en POST vers /erp/connexion', balise);
+    const champs = [...html.matchAll(/<input[^>]*>/g)].map((m) => m[0]).filter((i) => /id="creer-(email|mdp|mdp2)"/.test(i));
+    verifier(champs.length === 3 && champs.every((i) => !/\sname=/.test(i)), 'champs de création sans « name » : rien ne part dans l’adresse sans le script', champs);
+    verifier(champs.filter((i) => /type="password"/.test(i) && /autocomplete="new-password"/.test(i) && /minlength="8"/.test(i)).length === 2, 'mot de passe deux fois, nouveau, 8 caractères au moins');
+    verifier(html.includes('id="vers-creer"') && html.includes('Vous avez reçu une invitation&nbsp;?') && html.includes('J’ai déjà un compte'), 'lien « Vous avez reçu une invitation ? Créer mon compte » et retour « J’ai déjà un compte »');
+    verifier(/<button type="submit"><svg[^>]*>(?:(?!<\/svg>)[\s\S])*<circle cx="9" cy="7" r="4"\/>[\s\S]*?<\/svg> Créer mon compte<\/button>/.test(html), '« Créer mon compte » : icône d’ajout de personne, pas la clé');
+    verifier(html.includes('Accès réservé aux équipes invitées.') && !html.includes('Accès réservé à l\'équipe Label Maison.'), 'pied : « Accès réservé aux équipes invitées. »');
+    verifier(script.includes("'/auth/v1/signup?redirect_to=' + encodeURIComponent(C.retour)") && html.includes('"retour":"https://www.labelmaisoncg.fr/erp"'), 'inscription auprès de Supabase, retour sur le site fixe /erp');
+    verifier(html.includes('"invitation":"lm-erp-invitation"'), 'code d’invitation gardé sous la même clé que l’application (lm-erp-invitation)');
+
+    type Reponse = { ok: boolean; status: number; json: () => Promise<unknown> };
+    const CODE = 'Code-Invitation_0123456789abcdefghijklmnopq';
+    const essai = (
+      hash: string,
+      o: {
+        inscription?: { statut: number; corps: unknown };
+        connexion?: { statut: number; corps: unknown };
+        base?: 'espaces' | 'historique';
+        stockage?: Record<string, string>;
+      } = {},
+    ) => {
+      const ecouteurs: Record<string, (ev: { preventDefault(): void }) => void> = {};
+      const elements: Record<string, Record<string, unknown>> = {};
+      const el = (id: string) =>
+        (elements[id] ??= {
+          id,
+          hidden: ['f-nouveau', 'f-confirmer', 'f-creer', 'f-finir', 'info'].includes(id),
+          textContent: '',
+          value: '',
+          readOnly: false,
+          disabled: false,
+          focus() {
+            focus.push(id);
+          },
+          select() {},
+          addEventListener(type: string, f: (ev: { preventDefault(): void }) => void) {
+            ecouteurs[`${id}:${type}`] = f;
+          },
+          querySelectorAll: () => [],
+        });
+      const focus: string[] = [];
+      const envois: { methode: string; url: string; corps: string }[] = [];
+      const stockage = new Map<string, string>(Object.entries(o.stockage ?? {}));
+      const remplace: string[] = [];
+      const repondre = (statut: number, corps: unknown): Promise<Reponse> =>
+        Promise.resolve({ ok: statut < 300, status: statut, json: () => Promise.resolve(corps) });
+      vm.runInNewContext(script, {
+        document: { getElementById: el },
+        location: {
+          hash,
+          pathname: '/erp',
+          search: '',
+          replace(u: string) {
+            remplace.push(u);
+          },
+        },
+        history: { state: null, replaceState() {} },
+        URLSearchParams,
+        localStorage: {
+          getItem: (k: string) => stockage.get(k) ?? null,
+          setItem: (k: string, v: string) => void stockage.set(k, v),
+          removeItem: (k: string) => void stockage.delete(k),
+        },
+        atob: (b: string) => Buffer.from(b, 'base64').toString('binary'),
+        escape,
+        fetch: (u: string, f: { method?: string; body?: string } = {}): Promise<Reponse> => {
+          envois.push({ methode: f.method ?? 'GET', url: u, corps: f.body ?? '' });
+          if (u.endsWith('/rest/v1/rpc/activer')) {
+            return o.base === 'historique'
+              ? repondre(404, { code: 'PGRST202', message: 'Could not find the function erp.activer(p_code)' })
+              : repondre(401, { code: '42501', message: 'permission denied for function activer' });
+          }
+          if (u.includes('/auth/v1/signup') && o.inscription) return repondre(o.inscription.statut, o.inscription.corps);
+          if (u === '/erp/connexion' && o.connexion) return repondre(o.connexion.statut, o.connexion.corps);
+          if (u.includes('/auth/v1/token?grant_type=password')) return repondre(200, { access_token: jwt('moi@exemple.fr'), refresh_token: 'r' });
+          return new Promise(() => {});
+        },
+        Object,
+        String,
+        JSON,
+        Error,
+        Date,
+        Promise,
+        decodeURIComponent,
+        encodeURIComponent,
+      });
+      const attendre = async () => {
+        for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
+      };
+      const soumettre = async (form = 'f-creer') => {
+        ecouteurs[`${form}:submit`]?.({ preventDefault() {} });
+        await attendre();
+      };
+      return { ecouteurs, elements, envois, focus, soumettre, attendre, stockage, remplace };
+    };
+    const jwt = (email: string) => `x.${Buffer.from(JSON.stringify({ email })).toString('base64url')}.y`;
+    const gardee = (email: string, code = CODE, expire = Date.now() + 86_400_000) => ({ 'lm-erp-invitation': JSON.stringify({ email, code, expire }) });
+    const versConnexion = (t: ReturnType<typeof essai>) => t.envois.filter((e) => e.url === '/erp/connexion');
+    const SANS_CODE = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
+    const FERMEE = 'La création de compte n’est pas encore ouverte : demandez à un gérant de vous ajouter.';
+
+    // Lien d'invitation avec son code : création, adresse fixe, code gardé sur l'appareil, rien qui connecte.
+    const lien = essai(`#creer=${encodeURIComponent('Marie.Durand+erp@exemple.fr')}&code=${CODE}`);
+    await lien.attendre();
+    verifier(lien.elements['f-creer']?.hidden === false && lien.elements['f-connexion']?.hidden === true && lien.elements['note-creer']?.hidden === true, 'lien #creer=…&code=… : écran « Créer mon compte »');
+    verifier(lien.elements['creer-email']?.value === 'marie.durand+erp@exemple.fr' && lien.elements['creer-email']?.readOnly === true && lien.focus.at(-1) === 'creer-mdp', 'adresse de l’invitation (« + » compris), fixe ; curseur sur le mot de passe', lien.elements['creer-email']);
+    const garde = JSON.parse(lien.stockage.get('lm-erp-invitation') ?? '{}') as { email?: string; code?: string; expire?: number };
+    verifier(garde.email === 'marie.durand+erp@exemple.fr' && garde.code === CODE && (garde.expire ?? 0) > Date.now() + 13 * 86_400_000, 'code gardé sur l’appareil (adresse, code, 14 jours)', garde);
+    verifier(!versConnexion(lien).length && lien.envois.every((e) => e.url.endsWith('/rest/v1/rpc/activer') && !e.corps.includes(CODE)), 'lien #creer= : rien n’est envoyé sans geste (seul l’état de la base est demandé, sans le code)', lien.envois);
+
+    // Sans code (ancien lien, lien recopié à la main) : pas de création, on dit d'ouvrir le lien.
+    const sansCode = essai(`#creer=${encodeURIComponent('marie@exemple.fr')}`);
+    await sansCode.attendre();
+    verifier(sansCode.elements['f-creer']?.hidden === true && sansCode.elements['f-connexion']?.hidden === false && sansCode.elements.info?.textContent === SANS_CODE, 'lien sans code : pas de création, « ouvrez le lien de l’invitation… »', sansCode.elements.info?.textContent);
+    verifier(!sansCode.stockage.size, 'lien sans code : rien de gardé');
+    const codeFaux = essai(`#creer=${encodeURIComponent('marie@exemple.fr')}&code=court`);
+    await codeFaux.attendre();
+    verifier(codeFaux.elements['f-creer']?.hidden === true && !codeFaux.stockage.size, 'code de forme invalide : ignoré');
+    const autreAdresse = essai(`#creer=${encodeURIComponent('marie@exemple.fr')}`, { stockage: gardee('paul@exemple.fr') });
+    await autreAdresse.attendre();
+    verifier(autreAdresse.elements['f-creer']?.hidden === true, 'lien d’une autre adresse que l’invitation gardée : pas de création à son nom');
+    const piege = essai(`#creer=%3Cimg%20src%3Dx%20onerror%3Dalert(1)%3E&code=${CODE}`);
+    await piege.attendre();
+    verifier(piege.elements['f-creer']?.hidden === true && !piege.stockage.size && piege.elements['creer-email']?.value === '', 'adresse piégée dans le lien : ignorée, rien de gardé', piege.elements['creer-email']?.value);
+
+    // Base d'avant les espaces : « Créer mon compte » fermé, avec le message prévu.
+    const historique = essai(`#creer=${encodeURIComponent('marie@exemple.fr')}&code=${CODE}`, { base: 'historique' });
+    await historique.attendre();
+    verifier(historique.elements['f-creer']?.hidden === true && historique.elements['f-connexion']?.hidden === false && historique.elements.info?.textContent === FERMEE, 'base d’avant les espaces : création fermée, « pas encore ouverte(s) »', historique.elements.info?.textContent);
+    const historiqueNote = essai('', { base: 'historique' });
+    historiqueNote.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
+    await historiqueNote.attendre();
+    verifier(historiqueNote.elements.info?.textContent === FERMEE, 'base d’avant les espaces : le lien « Créer mon compte » le dit aussi');
+    verifier(historique.elements['note-creer']?.hidden === true && historiqueNote.elements['note-creer']?.hidden === true, 'base d’avant les espaces : « Vous avez reçu une invitation ? Créer mon compte » n’est plus proposé');
+
+    // Contrôles avant l'envoi.
+    const court = essai(`#creer=a%40exemple.fr&code=${CODE}`);
+    court.elements['creer-mdp'].value = 'court';
+    court.elements['creer-mdp2'].value = 'court';
+    await court.soumettre();
+    verifier(!court.envois.some((e) => e.url.includes('/signup')) && /trop court/.test(String(court.elements.erreur?.textContent)), 'mot de passe de moins de 8 caractères : refusé avant l’envoi', court.elements.erreur?.textContent);
+    const differents = essai(`#creer=a%40exemple.fr&code=${CODE}`);
+    differents.elements['creer-mdp'].value = 'un-bon-mot-de-passe';
+    differents.elements['creer-mdp2'].value = 'un-autre-mot-de-passe';
+    await differents.soumettre();
+    verifier(!differents.envois.some((e) => e.url.includes('/signup')) && /différents/.test(String(differents.elements.erreur?.textContent)), 'deux saisies différentes : refusé avant l’envoi', differents.elements.erreur?.textContent);
+
+    // Envoi : même message qu'un compte existe ou non, jamais de connexion.
+    const MESSAGE = 'Ouvrez sur cet appareil le lien reçu par e-mail pour confirmer votre adresse.';
+    const creer = async (reponse: { statut: number; corps: unknown }) => {
+      const t = essai(`#creer=nouveau%40exemple.fr&code=${CODE}`, { inscription: reponse });
+      await t.attendre();
+      t.elements['creer-mdp'].value = 'un-bon-mot-de-passe';
+      t.elements['creer-mdp2'].value = 'un-bon-mot-de-passe';
+      await t.soumettre();
+      return t;
+    };
+    const nouveau = await creer({ statut: 200, corps: { id: 'u1', email: 'nouveau@exemple.fr', identities: [{ id: 'i' }] } });
+    const envoi = nouveau.envois.find((e) => e.url.includes('/auth/v1/signup'));
+    verifier(!!envoi && envoi.methode === 'POST' && envoi.url === `${SUPA}/auth/v1/signup?redirect_to=${encodeURIComponent('https://www.labelmaisoncg.fr/erp')}`, 'inscription : POST /auth/v1/signup, retour vers https://www.labelmaisoncg.fr/erp', envoi?.url);
+    verifier(JSON.parse(envoi?.corps ?? '{}').email === 'nouveau@exemple.fr' && !envoi!.url.includes('un-bon-mot-de-passe') && !envoi!.corps.includes(CODE), 'mot de passe dans le corps, jamais dans l’adresse ; le code ne part pas chez Supabase');
+    verifier(String(nouveau.elements.info?.textContent).startsWith(MESSAGE) && nouveau.elements.info?.hidden === false, 'nouveau compte : « Ouvrez le lien reçu par e-mail… »', nouveau.elements.info?.textContent);
+    verifier(nouveau.elements['f-connexion']?.hidden === false && nouveau.elements['f-creer']?.hidden === true && nouveau.elements.email?.value === 'nouveau@exemple.fr', 'ensuite : formulaire de connexion avec l’adresse');
+    verifier(nouveau.elements['creer-mdp']?.value === '' && nouveau.elements['creer-mdp2']?.value === '', 'mots de passe effacés des champs');
+    verifier(!!nouveau.stockage.get('lm-erp-invitation'), 'le code reste gardé jusqu’à la confirmation de l’adresse');
+    const existant = await creer({ statut: 200, corps: { id: 'u2', email: 'nouveau@exemple.fr', identities: [] } });
+    const deja = await creer({ statut: 422, corps: { code: 422, error_code: 'user_already_exists', msg: 'User already registered' } });
+    verifier(existant.elements.info?.textContent === nouveau.elements.info?.textContent && deja.elements.info?.textContent === nouveau.elements.info?.textContent && deja.elements.erreur?.hidden !== false, 'compte déjà existant (réponse masquée ou « already registered ») : exactement le même message', [existant.elements.info?.textContent, deja.elements.erreur?.textContent]);
+    const session = await creer({ statut: 200, corps: { access_token: 'jeton-direct', refresh_token: 'r', user: { id: 'u3' } } });
+    verifier(!versConnexion(session).length && String(session.elements.info?.textContent).startsWith(MESSAGE), 'session rendue par Supabase (confirmation coupée) : jamais de connexion depuis la création', session.envois.map((e) => e.url));
+    const limite = await creer({ statut: 429, corps: { error_code: 'over_email_send_rate_limit', msg: 'email rate limit exceeded' } });
+    verifier(/Trop de tentatives/.test(String(limite.elements.erreur?.textContent)) && limite.elements['f-creer']?.hidden === false, 'trop de demandes : message clair, on reste sur la création');
+    const fermee = await creer({ statut: 422, corps: { error_code: 'signup_disabled', msg: 'Signups not allowed for this instance' } });
+    verifier(/pas ouverte/.test(String(fermee.elements.erreur?.textContent)), 'inscriptions fermées dans Supabase : message clair', fermee.elements.erreur?.textContent);
+    const faible = await creer({ statut: 422, corps: { error_code: 'weak_password', msg: 'Password should be at least 10 characters.' } });
+    verifier(/trop court/.test(String(faible.elements.erreur?.textContent)), 'mot de passe refusé par Supabase : traduit', faible.elements.erreur?.textContent);
+
+    // « Créer mon compte » ⇄ connexion.
+    const bascule = essai('', { stockage: gardee('moi@exemple.fr') });
+    bascule.elements.email.value = 'autre@exemple.fr';
+    bascule.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
+    await bascule.attendre();
+    verifier(bascule.elements['f-creer']?.hidden === false && bascule.elements['creer-email']?.value === 'moi@exemple.fr', '« Créer mon compte » avec une invitation gardée : à l’adresse de l’invitation');
+    bascule.ecouteurs['deja-compte:click']?.({ preventDefault() {} });
+    verifier(bascule.elements['f-connexion']?.hidden === false && bascule.elements['f-creer']?.hidden === true && bascule.elements['note-creer']?.hidden === false, '« J’ai déjà un compte » : retour à la connexion');
+    const sansInvitation = essai('');
+    sansInvitation.elements.email.value = 'moi@exemple.fr';
+    sansInvitation.ecouteurs['vers-creer:click']?.({ preventDefault() {} });
+    await sansInvitation.attendre();
+    verifier(sansInvitation.elements['f-creer']?.hidden === true && sansInvitation.elements.info?.textContent === SANS_CODE, '« Créer mon compte » sans invitation sur l’appareil : « ouvrez le lien de l’invitation… »');
+
+    // Lien de confirmation de l'adresse, invitation gardée pour ce compte : la dernière étape (mot de passe).
+    const confirme = essai(`#access_token=${jwt('nouveau@exemple.fr')}&refresh_token=r&type=signup`, {
+      stockage: gardee('nouveau@exemple.fr'),
+      connexion: { statut: 200, corps: { ok: true, suite: '/erp', invitation: 'activee' } },
+    });
+    verifier(!confirme.envois.length && confirme.elements['f-finir']?.hidden === false && confirme.elements['f-confirmer']?.hidden === true && confirme.elements['note-creer']?.hidden === true, 'confirmation d’un compte invité : « Dernière étape », rien d’envoyé');
+    verifier(String(confirme.elements['intro-finir']?.textContent).includes('nouveau@exemple.fr'), 'la dernière étape nomme le compte', confirme.elements['intro-finir']?.textContent);
+    confirme.elements['finir-mdp'].value = 'court';
+    await confirme.soumettre('f-finir');
+    verifier(!versConnexion(confirme).length && /trop court/.test(String(confirme.elements.erreur?.textContent)), 'dernière étape : mot de passe trop court refusé avant l’envoi');
+    confirme.elements['finir-mdp'].value = 'un-bon-mot-de-passe';
+    confirme.elements['finir-mdp2'].value = 'un-bon-mot-de-pase';
+    await confirme.soumettre('f-finir');
+    verifier(!versConnexion(confirme).length && /différents/.test(String(confirme.elements.erreur?.textContent)), 'dernière étape : deux saisies différentes refusées avant l’envoi (une faute de frappe ne devient pas le mot de passe)');
+    confirme.elements['finir-mdp2'].value = 'un-bon-mot-de-passe';
+    await confirme.soumettre('f-finir');
+    const corpsFinir = JSON.parse(versConnexion(confirme)[0]?.corps ?? '{}') as Record<string, unknown>;
+    verifier(corpsFinir.code === CODE && corpsFinir.mot_de_passe === 'un-bon-mot-de-passe' && corpsFinir.access_token === jwt('nouveau@exemple.fr'), 'dernière étape : jetons, code et mot de passe envoyés à /erp/connexion', corpsFinir);
+    verifier(!confirme.stockage.has('lm-erp-invitation') && confirme.remplace.at(-1) === '/erp', 'invitation activée : code effacé de l’appareil, l’ERP s’ouvre', [...confirme.stockage.keys()]);
+
+    // Confirmation d'un autre compte que l'invitation gardée : le code ne part pas.
+    const autreCompte = essai(`#access_token=${jwt('pirate@exemple.fr')}&refresh_token=r&type=signup`, { stockage: gardee('nouveau@exemple.fr') });
+    verifier(autreCompte.elements['f-confirmer']?.hidden === false && autreCompte.elements['f-finir']?.hidden === true, 'confirmation d’un autre compte : la confirmation ordinaire');
+    autreCompte.ecouteurs['f-confirmer:submit']?.({ preventDefault() {} });
+    await autreCompte.attendre();
+    verifier(!versConnexion(autreCompte)[0]?.corps.includes(CODE), 'confirmation d’un autre compte : le code n’est jamais envoyé', versConnexion(autreCompte)[0]?.corps);
+
+    // Connexion par mot de passe avec une invitation gardée pour cette adresse : code et mot de passe partent ensemble.
+    const parMdp = essai('', { stockage: gardee('moi@exemple.fr'), connexion: { statut: 200, corps: { ok: true, suite: '/erp', invitation: 'refusee' } } });
+    parMdp.elements.email.value = 'moi@exemple.fr';
+    parMdp.elements.mdp.value = 'mon-mot-de-passe';
+    await parMdp.soumettre('f-connexion');
+    const corpsMdp = JSON.parse(versConnexion(parMdp)[0]?.corps ?? '{}') as Record<string, unknown>;
+    verifier(corpsMdp.code === CODE && corpsMdp.mot_de_passe === 'mon-mot-de-passe', 'connexion avec invitation gardée : code et mot de passe envoyés', corpsMdp);
+    verifier(!parMdp.stockage.has('lm-erp-invitation'), 'code refusé par la base : effacé de l’appareil');
+
+    // Serveur : « il manque le mot de passe » → la dernière étape.
+    const manque = essai(`#access_token=${jwt('moi@exemple.fr')}&refresh_token=r&type=magiclink`, {
+      connexion: { statut: 409, corps: { ok: false, code: 'mot_de_passe', erreur: 'Pour finir…' } },
+    });
+    manque.ecouteurs['f-confirmer:submit']?.({ preventDefault() {} });
+    await manque.attendre();
+    verifier(manque.elements['f-finir']?.hidden === false && manque.elements['f-confirmer']?.hidden === true, 'serveur : mot de passe demandé → « Dernière étape »');
+
+    // S1 : compte refusé après « Ouvrir l’ERP avec le compte… » : retour au formulaire de connexion.
+    const refuse = essai(`#access_token=${jwt('inconnu@exemple.fr')}&refresh_token=r&type=signup`, {
+      connexion: { statut: 403, corps: { ok: false, erreur: 'Ce compte n’a pas accès à l’ERP.' } },
+    });
+    refuse.ecouteurs['f-confirmer:submit']?.({ preventDefault() {} });
+    await refuse.attendre();
+    verifier(refuse.elements['f-connexion']?.hidden === false && refuse.elements['f-confirmer']?.hidden === true && refuse.elements.email?.value === 'inconnu@exemple.fr', 'compte refusé : retour au formulaire de connexion (adresse reprise)');
+    verifier(/n’a pas accès/.test(String(refuse.elements.erreur?.textContent)) && refuse.elements.erreur?.hidden === false, 'compte refusé : le message reste affiché', refuse.elements.erreur?.textContent);
+
+    // S2 : lien expiré.
+    const expire = essai('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired');
+    verifier(/ou refaites « Créer mon compte »/.test(String(expire.elements.erreur?.textContent)), 'lien expiré : « … ou refaites « Créer mon compte » »', expire.elements.erreur?.textContent);
+  }
+
+  section('Invitation à créer l’espace d’une conciergerie');
+  {
+    const SENS_INVITE: Compte = { id: '66666666-2222-4333-8444-555555555555', email: 'gerante@sens.exemple', membre: false };
+    COMPTES.push(SENS_INVITE);
+    const dans = (jours: number) => new Date(Date.now() + jours * 86_400_000).toISOString();
+    base = 'espaces';
+    invitationsEspace.set(SENS_INVITE.id, [{ nom_espace: 'Sens', expire_le: dans(6) }]);
+    let r = await connexion(SENS_INVITE);
+    verifier(r!.status === 200 && cookiesPoses(r!).erp_session?.valeur.startsWith(`v2.${SENS_INVITE.id}.`), 'invitation en attente : session posée (l’application montre la création de l’espace)', r!.status);
+    invitationsEspace.set(SENS_INVITE.id, [{ nom_espace: 'Sens' }]);
+    r = await connexion(SENS_INVITE);
+    verifier(r!.status === 200, 'invitation sans échéance donnée : acceptée', r!.status);
+    for (const [forme, valeur] of [
+      ['échue', [{ nom_espace: 'Sens', expire_le: dans(-1) }]],
+      ['échéance illisible', [{ nom_espace: 'Sens', expire_le: 'bientôt' }]],
+      ['liste vide', []],
+      ['objet au lieu d’une liste', { nom_espace: 'Sens' }],
+      ['liste de textes', ['Sens']],
+      ['valeur nulle', null],
+    ] as [string, unknown][]) {
+      invitationsEspace.set(SENS_INVITE.id, valeur);
+      r = await connexion(SENS_INVITE);
+      verifier(r!.status === 403 && !cookiesPoses(r!).erp_session, `invitation ${forme} : refusé comme un non-membre`, r!.status);
+    }
+    invitationsEspace.delete(SENS_INVITE.id);
+    r = await connexion(SENS_INVITE);
+    const corps = (await r!.json()) as { erreur?: string };
+    verifier(r!.status === 403 && /n’a pas accès à l’ERP/.test(corps.erreur ?? ''), 'sans invitation : refusé, même message qu’avant', corps);
+    base = 'historique';
+    invitationsEspace.set(SENS_INVITE.id, [{ nom_espace: 'Sens', expire_le: dans(6) }]);
+    r = await connexion(SENS_INVITE);
+    verifier(r!.status === 403, 'base d’avant les espaces : rien ne change (erp.membres seulement)', r!.status);
+    invitationsEspace.delete(SENS_INVITE.id);
+  }
+
+  section('Activation par le code de l’invitation (/erp/connexion)');
+  {
+    base = 'espaces';
+    const CODE_MEMBRE = 'Code-Membre_0123456789abcdefghijklmnopqrstu';
+    const CODE_ESPACE = 'Code-Espace_0123456789abcdefghijklmnopqrstu';
+    const CODE_EXPIRE = 'Code-Expire_0123456789abcdefghijklmnopqrstu';
+    // Le futur membre : quelqu'un a créé le compte à son adresse AVANT lui (mot de passe connu de lui
+    // seul), puis la victime a confirmé l'adresse (elle attendait justement un e-mail).
+    const victime = compteInvite('victime@exemple.fr', 'mdp-de-l-attaquant');
+    codesInvitation.set(CODE_MEMBRE, { email: 'victime@exemple.fr', genre: 'membre', utilise: false, expire: false });
+    codesInvitation.set(CODE_EXPIRE, { email: 'victime@exemple.fr', genre: 'membre', utilise: false, expire: true });
+    const attaquant = ouvrirSession(victime);
+    const lienConfirmation = ouvrirSession(victime);
+    const entrer = (s: SessionInvite, extra: Record<string, unknown> = {}) =>
+      appeler('/erp/connexion', { corps: { access_token: s.acces, refresh_token: s.rafraichir, suite: '/erp', ...extra }, entetes: MEME_ORIGINE });
+
+    let r = await entrer(attaquant);
+    let corps = (await r!.json()) as { erreur?: string; code?: string; invitation?: string };
+    verifier(r!.status === 403 && corps.erreur === MESSAGE_NEUTRE && !cookiesPoses(r!).erp_session, 'compte créé avant le membre, sans code : refusé (message neutre)', corps);
+    r = await entrer(lienConfirmation);
+    verifier(r!.status === 403, 'même compte confirmé par la victime, sans code : refusé', r!.status);
+
+    r = await entrer(lienConfirmation, { code: CODE_MEMBRE });
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 409 && corps.code === 'mot_de_passe' && !cookiesPoses(r!).erp_session, 'code sans mot de passe : 409, le mot de passe est demandé', corps);
+    verifier(!codesInvitation.get(CODE_MEMBRE)!.utilise && victime.motDePasse === 'mdp-de-l-attaquant', '… et rien n’a changé');
+    r = await entrer(lienConfirmation, { code: CODE_MEMBRE, mot_de_passe: 'court' });
+    verifier(r!.status === 409, 'mot de passe de moins de 8 caractères : redemandé', r!.status);
+
+    r = await entrer(lienConfirmation, { code: CODE_EXPIRE, mot_de_passe: 'mdp-de-la-victime' });
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 403 && corps.erreur === MESSAGE_LIEN_PERIME && corps.invitation === 'refusee', 'code expiré : refusé, « ce lien n’est plus valable », code à oublier', corps);
+    const sessionApres = ouvrirSession(victime);
+    r = await entrer(sessionApres, { code: 'Code-Faux_0123456789abcdefghijklmnopqrstuvw', mot_de_passe: 'mdp-de-la-victime' });
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 403 && corps.erreur === MESSAGE_LIEN_PERIME && corps.invitation === 'refusee' && !cookiesPoses(r!).erp_session, 'faux code : refusé, « ce lien n’est plus valable » (pas de boucle vers le même lien)', corps);
+    verifier(MESSAGE_LIEN_PERIME === MESSAGE_LIEN_PERIME_APPLI, 'même message dans l’application (src/erp/data/invitation.ts)');
+
+    // La victime, avec le bon code : mot de passe posé, autres sessions fermées, compte lié, session renouvelée.
+    const victimeSession = ouvrirSession(victime);
+    const avant = Date.now();
+    r = await entrer(victimeSession, { code: CODE_MEMBRE, mot_de_passe: 'mdp-de-la-victime' });
+    corps = (await r!.json()) as typeof corps;
+    const c = cookiesPoses(r!);
+    verifier(r!.status === 200 && corps.invitation === 'activee' && c.erp_session?.valeur.startsWith(`v2.${victime.id}.`), 'bon code et mot de passe : accès activé, session posée', corps);
+    verifier(victime.motDePasse === 'mdp-de-la-victime', 'le mot de passe de l’attaquant ne vaut plus');
+    verifier(codesInvitation.get(CODE_MEMBRE)!.utilise, 'code consommé');
+    verifier(!rafraichissementsInvites.has(attaquant.rafraichir) && !rafraichissementsInvites.has(lienConfirmation.rafraichir), 'autres sessions du compte fermées (logout scope=others)');
+    verifier(Date.now() - avant >= 1000, 'session renouvelée après l’activation (jetons datés à la seconde)');
+    const ordre = appelsInvites.filter((a) => a.startsWith(victimeSession.acces)).map((a) => a.split(' ').slice(1).join(' '));
+    verifier(
+      ordre.join(' | ') === 'GET /auth/v1/user | POST /rest/v1/rpc/qui_suis_je | PUT /auth/v1/user | POST /auth/v1/logout?scope=others | POST /rest/v1/rpc/activer',
+      'ordre : vérifier le compte (et qu’il n’est pas déjà membre), poser le mot de passe, fermer les autres sessions, puis activer',
+      ordre,
+    );
+    const relais = c.erp_relais?.valeur ?? '';
+    verifier(!relais.includes(Buffer.from(victimeSession.rafraichir).toString('base64url')), 'le relais porte la session renouvelée, pas celle d’avant l’activation');
+
+    // L'attaquant, avec son ancien jeton (émis avant l'activation) ou en se rafraîchissant : rien.
+    r = await entrer(attaquant);
+    verifier((r!.status === 401 || r!.status === 403) && !cookiesPoses(r!).erp_session, 'jeton émis avant l’activation (session fermée) : refusé', r!.status);
+    r = await appeler('/erp/connexion', { corps: { access_token: attaquant.acces, refresh_token: attaquant.rafraichir, suite: '/erp', code: CODE_MEMBRE, mot_de_passe: 'mdp-de-l-attaquant-2' }, entetes: MEME_ORIGINE });
+    verifier(r!.status !== 200 && victime.motDePasse === 'mdp-de-la-victime', 'code déjà servi, depuis la session de l’attaquant : rien', r!.status);
+
+    // Un membre lié à la passe 1 (sans date d'activation) entre sans code.
+    const ancien = compteInvite('ancien@exemple.fr', 'mdp');
+    ancien.lie = true;
+    r = await entrer(ouvrirSession(ancien));
+    verifier(r!.status === 200, 'membre lié à la passe 1 : entre sans code', r!.status);
+    // Déjà membre, avec un code resté sur l'appareil (ou reçu d'un autre espace) : il n'est pas utilisé.
+    const ancienSession = ouvrirSession(ancien);
+    const autreSession = ouvrirSession(ancien);
+    r = await entrer(ancienSession, { code: 'Code-Reste_0123456789abcdefghijklmnopqrstu', mot_de_passe: 'autre-mot-de-passe' });
+    corps = (await r!.json()) as typeof corps;
+    const appelsAncien = appelsInvites.filter((a) => a.startsWith(ancienSession.acces)).map((a) => a.split(' ').slice(1).join(' '));
+    verifier(
+      r!.status === 200 && corps.invitation === 'refusee' && ancien.motDePasse === 'mdp' && rafraichissementsInvites.has(autreSession.rafraichir) && !appelsAncien.some((a) => /PUT|logout|activer/.test(a)),
+      'déjà membre avec un code : il entre, mot de passe et autres sessions intacts, rien n’est lié, le code est à oublier',
+      { statut: r!.status, corps, appelsAncien },
+    );
+
+    // Invitation d'une conciergerie : sans son code, rien ; avec, l'écran de création.
+    const gerante = compteInvite('gerante@cote.exemple', 'mdp-gerante');
+    codesInvitation.set(CODE_ESPACE, { email: 'gerante@cote.exemple', genre: 'espace', utilise: false, expire: false });
+    r = await entrer(ouvrirSession(gerante));
+    verifier(r!.status === 403, 'invitation de conciergerie sans son code : refusée', r!.status);
+    r = await entrer(ouvrirSession(gerante), { code: CODE_ESPACE, mot_de_passe: 'mdp-gerante' });
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 200 && corps.invitation === 'activee', 'invitation de conciergerie avec son code (même mot de passe) : entre pour créer son espace', corps);
+
+    // Panne en fermant les autres sessions : on n'active pas.
+    const prudent = compteInvite('prudent@exemple.fr', 'mdp');
+    codesInvitation.set('Code-Prudent_0123456789abcdefghijklmnopqrst', { email: 'prudent@exemple.fr', genre: 'membre', utilise: false, expire: false });
+    panneDeconnexion = true;
+    r = await entrer(ouvrirSession(prudent), { code: 'Code-Prudent_0123456789abcdefghijklmnopqrst', mot_de_passe: 'mdp-prudent' });
+    panneDeconnexion = false;
+    verifier(r!.status === 502 && !codesInvitation.get('Code-Prudent_0123456789abcdefghijklmnopqrst')!.utilise && !cookiesPoses(r!).erp_session, 'autres sessions pas fermées : rien n’est activé, le code reste', r!.status);
+
+    // C2 : la raison du refus, quand la base la donne.
+    const suspendu = compteInvite('suspendu@sens.exemple', 'mdp');
+    suspendu.refus = { espaces_suspendus: [{ nom: 'Sens' }] };
+    r = await entrer(ouvrirSession(suspendu));
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 403 && corps.erreur === 'L’espace Sens est suspendu : contactez Label Maison. Rien n’est effacé.' && !cookiesPoses(r!).erp_session, 'espace suspendu : refus, avec la raison', corps);
+    const echue = compteInvite('echue@cote.exemple', 'mdp');
+    echue.refus = { invitations_espace_closes: [{ nom_espace: 'Côte', motif: 'expiree' }] };
+    r = await entrer(ouvrirSession(echue));
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 403 && corps.erreur === 'Votre invitation a expiré : demandez-en une nouvelle à Label Maison.', 'invitation expirée : refus, avec la raison', corps);
+    echue.refus = { invitations_espace_closes: [{ nom_espace: 'Côte', motif: 'annulee' }] };
+    r = await entrer(ouvrirSession(echue));
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 403 && /a été annulée/.test(corps.erreur ?? ''), 'invitation annulée : refus, avec la raison', corps);
+    echue.refus = { espaces_suspendus: 'Sens', invitations_espace_closes: [{ motif: 'autre' }] };
+    r = await entrer(ouvrirSession(echue));
+    corps = (await r!.json()) as typeof corps;
+    verifier(r!.status === 403 && corps.erreur === MESSAGE_NEUTRE, 'raison illisible : message neutre', corps);
+    base = 'historique';
   }
 
   section('Robustesse');

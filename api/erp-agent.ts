@@ -23,6 +23,7 @@ import { configurationAgent, optionsAgent } from './_erp-agent.js';
 import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
+import { notificationsOpsDuJour } from './_operations-notifications.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 52_000;
@@ -40,6 +41,13 @@ export default async function handler(req: any, res: any) {
   if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Authentification requise.' });
   const planifie = !!c.secretCron && egalConstant(jeton, c.secretCron);
   let espace: string | undefined;
+  if (planifie) {
+    // App « Opérations » : remplacements qui commencent, contrôles qualité du jour.
+    // Au premier passage de l'agent à partir de 7 h à Paris (rien avant, même
+    // le réveil de minuit l'été) ; borné à 8 s, jamais bloquant.
+    const operations = await notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({}));
+    if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
+  }
   if (!planifie) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
     if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.erreur });

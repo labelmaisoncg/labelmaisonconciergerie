@@ -5,6 +5,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import type { ActionOperations } from '../data/espace-operations';
+import type { Prevenus } from '../data/notifications-operations';
 import type { Id } from '../data/types';
 import type { VueOperations } from '../data/types-operations';
 import { Badge, cn } from '../ui';
@@ -30,6 +31,8 @@ export interface ActionsOps {
   agir: (operation: ActionOperations) => Promise<ResultatOps>;
   /** Dépose une photo (réduite dans le navigateur) ; rend l'adresse à joindre et un aperçu. */
   photo: (fichier: File) => Promise<{ url: string; apercu?: string } | { erreur: string }>;
+  /** Qui serait vraiment prévenu d'une urgence sur ce logement : téléphones (« Clara D. ») et gérant ; absent : le gérant seul. */
+  prevenus?: (logementId: string) => Promise<Prevenus>;
 }
 
 export interface ContexteOps {

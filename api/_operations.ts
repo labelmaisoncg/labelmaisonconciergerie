@@ -20,11 +20,11 @@ import { espaceDe } from '../src/erp/data/acces-externe.js';
 import { prefixeFichiers } from '../src/erp/data/espaces.js';
 import { COLLECTIONS_OPS, type EntreesOperations, type Ecriture } from '../src/erp/data/espace-operations.js';
 import { DOSSIER_OPERATIONS } from '../src/erp/data/operations-fichiers.js';
-import { notificationUrgence, type GroupeNotification } from '../src/erp/data/notifications.js';
-import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
+import { notificationUrgence, varianteAEnvoyer, type GroupeNotification } from '../src/erp/data/notifications.js';
+import { envoyerNotifications, lireAppareils, type BaseNotifications } from '../src/erp/data/notifications-envoi.js';
 import type { Id, Incident, Logement, Mission, Reservation } from '../src/erp/data/types';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from '../src/erp/data/types-operations';
-import { configuration, deposeurFichiersErp, signeurFichiersErp } from './_erp-repull.js';
+import { configuration, deposeurFichiersErp, signeurFichiersErp, stockageFerme } from './_erp-repull.js';
 import { espaceDemande, type FicheEspace } from './_erp-espaces.js';
 import { clesServeur } from './_erp-notifications.js';
 import { GENRES, envoyerEmailEspace, secretAcces } from './_acces-externe.js';
@@ -108,9 +108,9 @@ export async function ecrireOps(b: BaseErp, ecritures: readonly Ecriture[]): Pro
   }
 }
 
-/** Photos affichables : adresse web telle quelle, fichier de l'équipe signé (Label Maison pour l'instant), sinon rien. */
+/** Photos affichables : adresse web telle quelle, fichier de cet espace signé (jamais celui d'un autre espace), sinon rien. */
 export async function signeurPhotos(espace: string, urls: readonly string[]): Promise<(u: string) => string | undefined> {
-  const signer = signeurFichiersErp({ ...configuration(), espace });
+  const signer = signeurFichiersErp({ ...configuration(), espace: espaceDe(espace) });
   const liens = new Map<string, string>();
   await Promise.all(
     [...new Set(urls)].filter((u) => u.startsWith('stockage://')).map(async (u) => {
@@ -124,23 +124,42 @@ export async function signeurPhotos(espace: string, urls: readonly string[]): Pr
 /** Dossier de stockage des photos d'un espace (« operations/… », sous le dossier de l'espace hors Label Maison). */
 export const prefixePhotos = (espace: string): string => prefixeFichiers(espace);
 
-/** Dépose une photo prise dans l'espace ; null si impossible (autre espace que Label Maison pour l'instant). */
+/** Envoi de photos impossible dans cet espace (compte serveur pas prêt…) : la raison, sinon null. */
+export const photosFermees = (espace: string): Promise<string | null> => stockageFerme({ ...configuration(), espace: espaceDe(espace) });
+
+/** Dépose une photo prise dans l'espace, dans le dossier de cet espace ; null si impossible. */
 export async function deposerPhoto(espace: string, membreId: Id, octets: Uint8Array, type: string, extension: string): Promise<string | null> {
-  const deposer = deposeurFichiersErp({ ...configuration(), espace });
+  const deposer = deposeurFichiersErp({ ...configuration(), espace: espaceDe(espace) });
   if (!deposer) return null;
   const nom = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}.${extension}`;
   return deposer(`${prefixePhotos(espace)}${DOSSIER_OPERATIONS}/${membreId}/${nom}`, octets, type);
+}
+
+/** Notifications de l'app de l'ERP pour ces incidents (« Urgence », « Incident confié »). */
+export function groupesGerant(e: Pick<EntreesOperations, 'incidents' | 'logements' | 'equipe'>, ids: readonly Id[]): GroupeNotification[] {
+  return ids
+    .map((id) => e.incidents.find((i) => i.id === id))
+    .filter((i): i is Incident => !!i)
+    .map((i) => notificationUrgence(i, e.logements.find((l) => l.id === i.logementId)?.nom ?? '', e.equipe.find((m) => m.id === i.assigneA)?.nom))
+    .filter((g): g is GroupeNotification => !!g);
+}
+
+/**
+ * Le gérant recevra-t-il vraiment ces notifications ? Clés du serveur, et un
+ * appareil de l'app de l'ERP abonné dans l'espace qui les accepte (ses
+ * réglages). Sinon il le verra dans l'ERP, sans notification.
+ */
+export async function gerantRecevra(b: BaseNotifications, groupes: readonly GroupeNotification[]): Promise<boolean> {
+  if (!clesServeur() || !groupes.length) return false;
+  const appareils = await lireAppareils(b);
+  return appareils.some((a) => groupes.some((g) => !!varianteAEnvoyer(g, a.preferences)));
 }
 
 /** Prévient le gérant (notification « Urgence » de l'app de l'ERP) ; sans clés, rien. */
 export async function prevenirGerant(b: BaseErp, e: EntreesOperations, ids: readonly Id[]): Promise<void> {
   const cles = clesServeur();
   if (!cles || !ids.length) return;
-  const groupes = ids
-    .map((id) => e.incidents.find((i) => i.id === id))
-    .filter((i): i is Incident => !!i)
-    .map((i) => notificationUrgence(i, e.logements.find((l) => l.id === i.logementId)?.nom ?? '', e.equipe.find((m) => m.id === i.assigneA)?.nom))
-    .filter((g): g is GroupeNotification => !!g);
+  const groupes = groupesGerant(e, ids);
   if (groupes.length) await envoyerNotifications(b, groupes, { cles }).catch((err) => console.error('[espace-operations] notification', err instanceof Error ? err.message : err));
 }
 

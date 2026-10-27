@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useReducer, useState, type ReactNode } from 'react';
 import { Check, Copy, EllipsisVertical, Share, SquarePlus } from 'lucide-react';
 import { appareil, dejaInstallee, estInstallee, installationDirecte, installer, surChangementInstallation, type Appareil } from '../../../data/application';
+import { espaceOuvert } from '../../../data/espaces';
+import { nomAppAffiche, partageInstallation } from '../../../data/marque-espace';
 import { Button, cn } from '../../../ui';
 
 /** Le lien à envoyer à l'équipe (connexion d'abord, puis la page d'installation). */
@@ -80,7 +82,7 @@ export function etapesInstallation(a: Appareil): Etape[] {
           </>
         ),
       },
-      { texte: <>Ouvrez l’app <strong className="font-semibold">Label Maison</strong> depuis l’écran d’accueil, connectez-vous, puis activez les notifications.</> },
+      { texte: <OuvrezLApp suite=" depuis l’écran d’accueil, connectez-vous, puis activez les notifications." /> },
     ];
   }
   if (a === 'android') {
@@ -93,14 +95,27 @@ export function etapesInstallation(a: Appareil): Etape[] {
           </>
         ),
       },
-      { texte: <>Ouvrez l’app <strong className="font-semibold">Label Maison</strong>, puis activez les notifications.</> },
+      { texte: <OuvrezLApp suite=", puis activez les notifications." /> },
     ];
   }
   return [
     { texte: <>Dans <strong className="font-semibold">Chrome</strong> ou <strong className="font-semibold">Edge</strong> : cliquez sur l’icône d’installation, à droite de la barre d’adresse.</> },
     { texte: <>Sur Mac avec <strong className="font-semibold">Safari</strong> : menu Fichier, puis <strong className="font-semibold">Ajouter au Dock</strong>.</> },
-    { texte: <>Ouvrez l’app <strong className="font-semibold">Label Maison</strong>, puis activez les notifications.</> },
+    { texte: <OuvrezLApp suite=", puis activez les notifications." /> },
   ];
+}
+
+/** « Ouvrez l’app Label Maison… » ; dans un autre espace, sans nom (l'app installée garde le nom de son manifeste). */
+export function OuvrezLApp({ suite }: { suite: string }) {
+  const nom = nomAppAffiche(espaceOuvert());
+  return nom ? (
+    <>
+      Ouvrez l’app <strong className="font-semibold">{nom}</strong>
+      {suite}
+    </>
+  ) : (
+    <>Ouvrez l’app{suite}</>
+  );
 }
 
 /** Liste numérotée des étapes. */
@@ -135,7 +150,7 @@ export function LienInstallation({ className }: { className?: string }) {
   };
   const partager = async () => {
     try {
-      await navigator.share({ title: 'App Label Maison', text: 'Installez l’app Label Maison :', url: LIEN_INSTALLATION });
+      await navigator.share({ ...partageInstallation(espaceOuvert()), url: LIEN_INSTALLATION });
     } catch {
       /* partage annulé */
     }

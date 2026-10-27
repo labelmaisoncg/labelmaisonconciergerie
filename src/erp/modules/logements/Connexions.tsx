@@ -228,6 +228,9 @@ export default function Connexions() {
   const fournisseurs = etat?.fournisseurs ?? [];
   const connexions = etat?.connexions ?? [];
   const autresConnectes = connexions.filter((c) => !PRINCIPALES.some((p) => p.id === c.fournisseur));
+  // Un seul bouton principal : « Enregistrer mon choix » quand des annonces sont à choisir,
+  // sinon la première plateforme à connecter ; les autres boutons restent secondaires.
+  const principale = etat && etat.annonces.length > 0 ? undefined : PRINCIPALES.find((p) => !connexions.some((c) => c.fournisseur === p.id && c.statut === 'active'))?.id;
   const nomFournisseur = (id: string) => NOMS[id] ?? fournisseurs.find((f) => f.id === id)?.nom ?? id.charAt(0).toUpperCase() + id.slice(1);
 
   return (
@@ -311,13 +314,13 @@ export default function Connexions() {
                 ) : (
                   // Les consignes restent à un clic (celle de Booking.com évite de céder vos prix et calendriers).
                   <details className="text-[12.5px] text-(--lm-encre-2)">
-                    <summary className="cursor-pointer font-medium text-(--lm-or-texte) hover:underline">Comment ça marche ?</summary>
+                    <summary className="-my-[7px] cursor-pointer py-[7px] font-medium text-(--lm-or-texte) hover:underline">Comment ça marche ?</summary>
                     <p className="mt-1.5">{p.aide}</p>
                   </details>
                 )}
                 <Button
                   className="mt-auto"
-                  variant={actif ? 'secondary' : 'primary'}
+                  variant={p.id === principale ? 'primary' : 'secondary'}
                   icone={<Plug />}
                   chargement={connexionEnCours === p.id}
                   disabled={!reel || !gerant || !!connexionEnCours}

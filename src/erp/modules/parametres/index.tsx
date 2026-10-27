@@ -6,16 +6,20 @@ import Donnees from './Donnees';
 import Entreprise from './Entreprise';
 import Application from './Application';
 import Acces from './Acces';
+import Espaces from './Espaces';
 import { useErp } from '../../data/store';
+import { espaceOuvert, estLabelMaison } from '../../data/espaces';
 
 /**
  * Module Paramètres : l'équipe et ses rôles, les plateformes (synchronisation),
  * les accès des propriétaires et des responsables opérationnels à leur espace,
- * l'app et ses notifications, la société et sa sauvegarde.
+ * l'app et ses notifications, la société et sa sauvegarde ; pour les gérants
+ * de Label Maison (la plateforme), les espaces des conciergeries invitées.
  */
 export default function Module() {
   // Accès (invitations, absences) : le gérant seul.
   const gerant = useErp().utilisateur.role === 'gerant';
+  const plateforme = gerant && estLabelMaison(espaceOuvert());
   return (
     <>
       <PageHeader titre="Paramètres" />
@@ -27,12 +31,14 @@ export default function Module() {
           ...(gerant ? [{ cle: 'acces', libelle: 'Accès', to: '/erp/parametres/acces' }] : []),
           { cle: 'application', libelle: 'Application', to: '/erp/parametres/application' },
           { cle: 'societe', libelle: 'Société', to: '/erp/parametres/societe' },
+          ...(plateforme ? [{ cle: 'espaces', libelle: 'Espaces', to: '/erp/parametres/espaces' }] : []),
         ]}
       />
       <Routes>
         <Route index element={<Utilisateurs />} />
         <Route path="plateformes" element={<Integrations />} />
         <Route path="acces" element={<Acces />} />
+        <Route path="espaces" element={plateforme ? <Espaces /> : <Navigate to="/erp/parametres" replace />} />
         <Route path="application" element={<Application />} />
         <Route
           path="societe"

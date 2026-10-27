@@ -332,8 +332,12 @@ export interface ReglagesRelances {
 /** Tout ce que le propriétaire voit, et rien d'autre. */
 export interface VueProprietaire {
   proprietaire: { id: Id; nom: string };
-  /** Conciergerie (espace) qui gère ses logements : « Label Maison », « Sens »… */
-  conciergerie: { nom: string };
+  /**
+   * Conciergerie (espace) qui gère ses logements : « Label Maison », « Sens »…
+   * `espace` : son identifiant (pas secret, il est dans le lien) ; c'est lui,
+   * jamais le nom, qui décide de l'en-tête légal de Label Maison à l'impression.
+   */
+  conciergerie: { nom: string; espace: string };
   aujourdhui: DateISO;
   logements: LogementVue[];
   /** Logements qu'il a cédés à un autre propriétaire (dernier jour exclu), du plus récent au plus ancien. */

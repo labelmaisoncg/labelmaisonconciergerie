@@ -8,7 +8,9 @@
  * espace (en-tête, filtre, clé), base pas encore préparée, identité et
  * vérification d'un membre (espace demandé, rôle), synchronisation du
  * navigateur (filtres, clés, temps réel, file locale par espace et par
- * compte), plafond mensuel de l'agent IA d'un autre espace.
+ * compte), plafond mensuel de l'agent IA d'un autre espace, lien et code
+ * d'invitation (« Créer mon compte »), raison d'un refus (espace suspendu,
+ * invitation expirée ou annulée).
  * Le côté serveur (routes /api) : scripts/verifier-espaces-serveur.ts.
  *
  * Lancement (Node 18+) :
@@ -30,11 +32,18 @@ import {
   espaceDesDonnees,
   espaceOuvert,
   estLabelMaison,
+  fichierDeLEspace,
   idEspaceValide,
   lireEspacesMembre,
+  lireInvitationEspace,
+  lireRefusAcces,
+  messageRefusAcces,
   ouvrirEspace,
   prefixeFichiers,
 } from './espaces';
+import { CLE_INVITATION, codeInvitationValide, codePourCompte, invitationAGarder, lienCreationCompte, lireInvitationGardee } from './invitation';
+import { SIGNATURE_LABEL_MAISON, nomPourSignature, reglagesAgent, signatureParDefaut } from './reglages';
+import { notificationTest } from './notifications';
 import { BaseErp, ClientRepull, lireIdentite, verifierMembre } from './repull-synchro';
 import { avecClient } from './repull-connexion';
 import { COLLECTION_AGENT, ID_ETAT_AGENT, lancerAgent, type ClientIA, type EtatAgent } from './agent-messagerie';
@@ -220,6 +229,97 @@ async function principal() {
   ouvrirEspace({ id: SENS, code: 'sens', nom: 'Sens' });
   verifier(prefixeFichiers() === `${SENS}/` && cleLocale('cle') === `cle@${SENS}` && entetesServeur('j', false)[ENTETE_ESPACE] === SENS && !('Content-Type' in entetesServeur('j', false)), 'autre espace : dossier, clés locales et en-tête propres');
   ouvrirEspace(null);
+
+  section('Fichiers d’un espace (signature et dépôt côté serveur)');
+  {
+    const AUTRE = '7a7a0000-0000-4000-8000-000000000003';
+    const lm = 'stockage://erp-fichiers/proprietaires/pro-a/x.pdf';
+    const sens = `stockage://erp-fichiers/${SENS}/proprietaires/pro-s/m.pdf`;
+    verifier(fichierDeLEspace(lm, LM) && fichierDeLEspace(lm, null) && !fichierDeLEspace(lm, SENS), 'chemin d’avant : à Label Maison seulement');
+    verifier(fichierDeLEspace(sens, SENS) && fichierDeLEspace(sens.replace(SENS, SENS.toUpperCase()), SENS) && !fichierDeLEspace(sens, LM) && !fichierDeLEspace(sens, AUTRE), 'dossier de Sens : à Sens seulement (jamais à Label Maison ni à un autre)');
+    verifier(!fichierDeLEspace(`stockage://erp-fichiers/${AUTRE}/x.pdf`, LM), 'Label Maison : jamais un fichier rangé sous le dossier d’un espace');
+    verifier(
+      !fichierDeLEspace(`stockage://erp-fichiers/${SENS}`, SENS) &&
+        !fichierDeLEspace(`stockage://erp-fichiers/${SENS}/../proprietaires/x.pdf`, SENS) &&
+        !fichierDeLEspace('stockage://erp-fichiers/proprietaires//x.pdf', LM) &&
+        !fichierDeLEspace('stockage://erp-fichiers/./x.pdf', LM) &&
+        !fichierDeLEspace(`stockage://autre/${SENS}/x.pdf`, SENS) &&
+        !fichierDeLEspace('https://exemple.fr/x.pdf', LM) &&
+        !fichierDeLEspace(42, LM) &&
+        !fichierDeLEspace(sens, 'sens'),
+      'dossier vide, « .. », « . », autre bucket, adresse web, espace illisible : refusés',
+    );
+  }
+
+  section('Invitation à ouvrir un espace (erp.qui_suis_je)');
+  {
+    const maintenant = Date.parse('2026-10-27T10:00:00Z');
+    const lire = (v: unknown) => lireInvitationEspace({ invitations_espace: v }, maintenant);
+    verifier(lire([{ nom_espace: 'Sens', expire_le: '2026-11-03T10:00:00.123456+00:00' }])?.nom === 'Sens', 'invitation valable : retenue (échéance à la microseconde)');
+    verifier(lire([{ nom_espace: 'Sens' }])?.nom === 'Sens' && lire([{}])?.nom === '', 'sans échéance : retenue (nom vide permis, prérempli plus tard)');
+    verifier(
+      lire([]) === null &&
+        lire(null) === null &&
+        lire({ nom_espace: 'Sens' }) === null &&
+        lire(['Sens']) === null &&
+        lire([{ nom_espace: 'Sens', expire_le: '2026-10-01T10:00:00Z' }]) === null &&
+        lire([{ nom_espace: 'Sens', expire_le: 'demain' }]) === null &&
+        lireInvitationEspace({ invitation_espace: { nom: 'Sens' } }, maintenant) === null,
+      'liste vide, null, objet au lieu d’une liste, texte, échéance passée ou illisible, ancienne forme : rien (mêmes règles que la page d’accès)',
+    );
+    verifier(lire([{ nom_espace: 'Vieux', expire_le: '2026-10-01T10:00:00Z' }, { nom_espace: 'Neuf', expire_le: '2026-11-01T10:00:00Z' }])?.nom === 'Neuf', 'la première invitation encore valable');
+  }
+
+  section('Lien et code d’invitation (« Créer mon compte »)');
+  {
+    const code = 'Abc_def-0123456789abcdefghijklmnopqrstuvwxy';
+    verifier(
+      lienCreationCompte(' Marie+ERP@Exemple.fr ', code) === `https://www.labelmaisoncg.fr/erp#creer=marie%2Berp%40exemple.fr&code=${code}`,
+      'lien : site fixe, adresse en minuscules, code après « # »',
+      lienCreationCompte(' Marie+ERP@Exemple.fr ', code),
+    );
+    verifier(lienCreationCompte('a@b.fr', 'court') === 'https://www.labelmaisoncg.fr/erp#creer=a%40b.fr' && lienCreationCompte('a@b.fr') === 'https://www.labelmaisoncg.fr/erp#creer=a%40b.fr', 'code absent ou de forme invalide : jamais dans le lien');
+    verifier(codeInvitationValide(code) && !codeInvitationValide('court') && !codeInvitationValide(`${code}<`) && !codeInvitationValide(undefined), 'forme du code : 20 à 100 caractères base64url');
+    const t0 = Date.parse('2026-10-27T10:00:00Z');
+    const garde = invitationAGarder('Marie@Exemple.fr', code, t0);
+    verifier(garde.email === 'marie@exemple.fr' && garde.expire === t0 + 14 * 86_400_000 && CLE_INVITATION === 'lm-erp-invitation', 'gardé sur l’appareil 14 jours, sous la clé partagée avec la page d’accès');
+    const brut = JSON.stringify(garde);
+    verifier(lireInvitationGardee(brut, t0)?.code === code && lireInvitationGardee(brut, t0 + 15 * 86_400_000) === null, 'invitation gardée : lue, puis plus rien après l’échéance');
+    verifier(
+      lireInvitationGardee('pas du json', t0) === null &&
+        lireInvitationGardee(JSON.stringify({ ...garde, code: 'court' }), t0) === null &&
+        lireInvitationGardee(JSON.stringify({ ...garde, email: 'pas une adresse' }), t0) === null &&
+        lireInvitationGardee(null, t0) === null,
+      'invitation gardée illisible : rien',
+    );
+    verifier(codePourCompte(garde, ' MARIE@exemple.fr') === code && codePourCompte(garde, 'paul@exemple.fr') === undefined && codePourCompte(null, 'marie@exemple.fr') === undefined, 'le code ne sert qu’au compte de la même adresse');
+  }
+
+  section('Raison d’un refus (erp.qui_suis_je)');
+  {
+    verifier(messageRefusAcces(lireRefusAcces({ espaces_suspendus: [{ nom: 'Sens' }] })) === 'L’espace Sens est suspendu : contactez Label Maison. Rien n’est effacé.', 'espace suspendu');
+    verifier(messageRefusAcces(lireRefusAcces({ espaces_suspendus: [{ nom: 'Sens' }, { nom: 'Côte' }, { nom: 'Mer' }] })) === 'Les espaces Sens, Côte et Mer sont suspendus : contactez Label Maison. Rien n’est effacé.', 'plusieurs espaces suspendus');
+    verifier(messageRefusAcces(lireRefusAcces({ invitations_espace_closes: [{ nom_espace: 'Sens', motif: 'expiree' }] })) === 'Votre invitation a expiré : demandez-en une nouvelle à Label Maison.', 'invitation expirée');
+    verifier(messageRefusAcces(lireRefusAcces({ invitations_espace_closes: [{ nom_espace: 'Sens', motif: 'annulee' }] })) === 'Votre invitation a été annulée : demandez-en une nouvelle à Label Maison.', 'invitation annulée');
+    verifier(
+      messageRefusAcces(lireRefusAcces({})) === null &&
+        messageRefusAcces(lireRefusAcces(null)) === null &&
+        messageRefusAcces(lireRefusAcces({ espaces_suspendus: 'Sens', invitations_espace_closes: [{ motif: 'autre' }] })) === null &&
+        messageRefusAcces(lireRefusAcces({ espaces_suspendus: [{ nom: 'x'.repeat(81) }] })) === null,
+      'forme inconnue : refus ordinaire (mêmes règles que la page d’accès)',
+    );
+  }
+
+  section('Nom de l’espace : signature de l’agent, notification d’essai');
+  {
+    verifier(signatureParDefaut() === SIGNATURE_LABEL_MAISON && SIGNATURE_LABEL_MAISON === 'L’équipe Label Maison', 'Label Maison : signature inchangée');
+    verifier(signatureParDefaut('Sens') === 'L’équipe Sens' && signatureParDefaut('  ') === 'L’équipe', 'autre espace : « L’équipe Sens », jamais le nom de Label Maison');
+    verifier(nomPourSignature(ESPACE_LABEL_MAISON) === undefined && nomPourSignature({ id: LM, nom: 'Label Maison Conciergerie' }) === undefined && nomPourSignature({ id: SENS, nom: 'Sens' }) === 'Sens', 'nom pour la signature : décidé par l’identifiant de l’espace');
+    verifier(reglagesAgent({ reglages: [] }).signature === SIGNATURE_LABEL_MAISON && reglagesAgent({ reglages: [] }, 'Sens').signature === 'L’équipe Sens', 'réglages par défaut : signature de l’espace');
+    const stocke = { ...REGLAGES_AGENT_DEFAUT, signature: 'Marie, de Sens' };
+    verifier(reglagesAgent({ reglages: [stocke] }, 'Sens').signature === 'Marie, de Sens' && reglagesAgent({ reglages: [{ ...stocke, signature: undefined as unknown as string }] }, 'Sens').signature === 'L’équipe Sens', 'signature enregistrée gardée ; absente : celle de l’espace');
+    verifier(notificationTest('t').variantes[0].titre === 'Label Maison' && notificationTest('t', 'Sens').variantes[0].titre === 'Sens', 'notification d’essai au nom de l’espace');
+  }
 
   section('Repull : workspace de l’espace sur chaque appel');
   {

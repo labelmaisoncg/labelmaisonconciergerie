@@ -9,14 +9,14 @@
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ExternalLink, RefreshCw } from 'lucide-react';
+import { ChevronDown, ExternalLink, RefreshCw } from 'lucide-react';
 import { ACTION_JOURNAL_REPULL, ecartsBilan } from '../../data/repull';
 import type { EtatRepull, ResultatLancement } from '../../data/repull-synchro';
 import { useErp } from '../../data/store';
 import { entetesServeur } from '../../data/espaces';
 import { lireEnregistrement, obtenirClient } from '../../data/supabase';
 import { dateHeure, nombre } from '../../data/format';
-import { Alert, Badge, Button, Card, CardHeader, ProgressBar, Repli, type Ton } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, ProgressBar, type Ton } from '../../ui';
 
 /** Tableau de bord Repull, où les propriétaires connectent leurs comptes. */
 export const URL_TABLEAU_REPULL = 'https://repull.dev/dashboard';
@@ -82,7 +82,7 @@ export function useSynchroRepull() {
       }
       if (corps.statut === 'selection') setRetour({ ton: 'info', texte: 'Choisissez vos logements (Logements → Connexions) : rien n’est importé tant que vous ne les avez pas choisis.' });
       else if (corps.statut === 'limite') setRetour({ ton: 'info', texte: corps.message ?? 'Synchronisation faite il y a moins de 10 minutes.' });
-      else if (corps.statut === 'budget') setRetour({ ton: 'danger', texte: corps.message ?? 'Part mensuelle des appels Repull épuisée.' });
+      else if (corps.statut === 'budget') setRetour({ ton: 'danger', texte: corps.message ?? 'Part mensuelle des appels à notre service de connexion épuisée.' });
       else if (!corps.ok) setRetour({ ton: 'alerte', texte: corps.message ?? 'Synchronisation terminée avec des erreurs.' });
       else {
         const b = corps.bilan;
@@ -166,11 +166,17 @@ export function CarteSynchroRepull() {
         </div>
       </dl>
       <p className="mt-3 text-[12.5px]">
-        <Link to="/erp/logements/connexions" className="font-medium text-(--lm-or-texte) hover:underline">
+        <Link to="/erp/logements/connexions" className="-my-1.5 inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
           Gérer vos connexions
         </Link>
       </p>
-      <Repli className="mt-3 rounded-lg shadow-none [&>summary]:rounded-lg" titre="Avancé">
+      {/* Repli sans cadre : ses champs et boutons ne sont pas dans un second cadre aussi arrondi que la carte. */}
+      <details className="group mt-3">
+        <summary className="-my-1.5 inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+          Avancé
+          <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <div className="mt-2 border-t border-(--lm-bord) pt-3">
         <dl className="text-[13.5px]">
           <div>
             <dt className="text-[12px] text-(--lm-encre-3)">Appels Repull ce mois</dt>
@@ -186,11 +192,12 @@ export function CarteSynchroRepull() {
         </dl>
         <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
           Pas plus d’une mise à jour manuelle toutes les 10 minutes, pour ménager le forfait.{' '}
-          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or-texte) hover:underline">
+          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="-my-1.5 inline-flex min-h-8 items-center gap-1 text-(--lm-or-texte) hover:underline">
             Tableau de bord Repull <ExternalLink className="size-3.5" aria-hidden />
           </a>
         </p>
-      </Repli>
+        </div>
+      </details>
     </Card>
   );
 }

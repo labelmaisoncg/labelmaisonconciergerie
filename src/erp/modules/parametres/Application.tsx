@@ -6,6 +6,8 @@
  */
 import { useState } from 'react';
 import { Bell, Check, Copy, Download, KeyRound, Send } from 'lucide-react';
+import { espaceOuvert } from '../../data/espaces';
+import { notificationsIphone, titreCarteApp } from '../../data/marque-espace';
 import { useErp } from '../../data/store';
 import { TYPES_NOTIFICATION } from '../../data/notifications';
 import { Alert, Badge, Button, Card, CardHeader, Interrupteur, Repli, Skeleton, cn } from '../../ui';
@@ -38,7 +40,7 @@ function CarteInstallation({ inst, principal }: { inst: ReturnType<typeof useIns
         <img src="/erp-app/icone-192.png" alt="" width={44} height={44} className="size-11 shrink-0 rounded-lg" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-[15px] font-semibold text-(--lm-encre)">L’app Label Maison</h3>
+            <h3 className="text-[15px] font-semibold text-(--lm-encre)">{titreCarteApp(espaceOuvert())}</h3>
             {inst.installee && (
               <Badge tone="succes" icone={<Check />}>
                 Installée
@@ -142,7 +144,7 @@ function CarteNotifications({ n, gerant, principal }: { n: ReturnType<typeof use
             </Button>
           }
         >
-          Autorisez-les dans les réglages : sur iPhone, Réglages → Notifications → Label Maison ; dans un navigateur, le cadenas à gauche de l’adresse → Notifications.
+          Autorisez-les dans les réglages : sur iPhone, Réglages → {notificationsIphone(espaceOuvert())} ; dans un navigateur, le cadenas à gauche de l’adresse → Notifications.
         </Alert>
       )}
       {n.etape === 'erreur' && !n.retour && (

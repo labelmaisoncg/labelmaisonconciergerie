@@ -23,14 +23,14 @@ export function Aide({ titre = 'Comment ça marche ?', children, className }: Ai
         aria-expanded={ouvert}
         aria-controls={id}
         onClick={() => setOuvert((o) => !o)}
-        className="inline-flex items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)"
+        className="-my-1.5 inline-flex min-h-8 items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)"
       >
         <CircleHelp className="size-4 text-(--lm-or-texte)" aria-hidden />
         {titre}
         <ChevronDown className={cn('size-3.5 transition-transform', ouvert && 'rotate-180')} aria-hidden />
       </button>
       {ouvert && (
-        <div id={id} className="lm-apparition mt-2 max-w-3xl rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) px-4 py-3 text-[13.5px] leading-relaxed text-(--lm-encre-2)">
+        <div id={id} className="lm-apparition mt-2 max-w-3xl rounded-xl border [.rounded-xl_&]:rounded-lg border-(--lm-bord) bg-(--lm-surface-2) px-4 py-3 text-[13.5px] leading-relaxed text-(--lm-encre-2)">
           {children}
         </div>
       )}

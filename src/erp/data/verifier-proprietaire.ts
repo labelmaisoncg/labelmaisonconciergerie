@@ -630,9 +630,13 @@ async function main() {
   verifier(ancienne?.e === LM && ancienne.p === A && ancienne.v === 2, 'ancien cookie sans espace : Label Maison');
   const operations = await signerSessionExterne(secret, { k: 'operations', p: A, e: LM, v: 1, exp: s0 + 3600 });
   verifier((await lireSession(secret, operations, s0)) === null && (await lireSessionExterne(secret, operations, 'operations', s0))?.k === 'operations', 'session des opérations : jamais valable comme propriétaire');
-  const vueSens = vueProprietaire(e, A, { aujourdhui: '2026-09-24', conciergerie: { nom: 'Sens' } })!;
+  const vueSens =vueProprietaire(e, A, { aujourdhui: '2026-09-24', conciergerie: { nom: 'Sens', espace: SENS } })!;
   verifier(vueSens.conciergerie.nom === 'Sens' && !vueSens.contacts && !/labelmaison|74954/i.test(JSON.stringify(vueSens)), 'vue d’un autre espace : son nom, aucun contact de Label Maison');
   verifier(vue.conciergerie.nom === 'Label Maison' && vue.contacts?.telephone === '+33 7 49 54 83 55', 'vue de Label Maison : ses contacts');
+  // L'en-tête légal imprimé se décide sur l'identifiant de l'espace, jamais sur le nom affiché.
+  verifier(vueSens.conciergerie.espace === SENS && vue.conciergerie.espace === ID_LABEL_MAISON, 'vue : l’identifiant de l’espace accompagne son nom');
+  const homonyme = vueProprietaire(e, A, { aujourdhui: '2026-09-24', conciergerie: { nom: 'Label Maison', espace: SENS } })!;
+  verifier(homonyme.conciergerie.espace === SENS && !homonyme.contacts, 'espace nommé « Label Maison » : reste un autre espace (ni contacts, ni identité de Label Maison)');
 
   // Fiche réservation : le mandat du propriétaire du jour d'arrivée, jamais le premier signé du logement.
   {
