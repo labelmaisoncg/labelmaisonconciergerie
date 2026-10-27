@@ -14,7 +14,9 @@
  * L'IA peut affiner la lecture d'un avis (« Proposer une réponse »,
  * avis-serveur.ts) : son sentiment et le sentiment des thèmes DÉJÀ repérés
  * (Reservation.lectureAvis). Elle n'ajoute jamais de thème, d'avis ni de
- * chiffre : les nombres sont toujours comptés ici.
+ * chiffre : les nombres sont toujours comptés ici. Elle a lu le texte du
+ * voyageur : elle peut rendre la lecture plus sévère, jamais plus indulgente
+ * (un avis ne sort pas seul de « à lire », un point négatif reste).
  *
  * Réponse proposée (« Proposer une réponse ») : texte simple sans IA
  * (reponseModele) ou rédigé par l'IA, toujours contrôlé (problemesReponse) :
@@ -399,7 +401,10 @@ export function sentimentAvis(note: number | undefined, positifs: number, negati
   return 'neutre';
 }
 
-/** Lecture de l'IA encore valable pour cet avis (même texte public), bornée par la note. */
+/** Du plus sévère au plus indulgent. */
+const RANG_SENTIMENT: Record<SentimentMessage, number> = { negatif: 0, neutre: 1, positif: 2 };
+
+/** Lecture de l'IA encore valable pour cet avis (même texte public). */
 export function lectureValable(l: LectureAvis | undefined, textePublic: string): LectureAvis | undefined {
   if (!l || typeof l !== 'object' || !textePublic || l.empreinte !== empreinteTexte(textePublic)) return undefined;
   if (!estSentiment(l.sentiment)) return undefined;
@@ -423,11 +428,16 @@ export function lireAvis(r: Reservation): AvisLu | null {
   const ia = lectureValable(r.lectureAvis, textePublic);
   if (ia) {
     source = 'ia';
-    // L'IA ne garde ou n'écarte que des thèmes déjà repérés, et ne contredit pas la note.
+    // L'IA a lu un texte écrit par le voyageur, qui peut chercher à l'influencer : elle peut
+    // rendre la lecture plus sévère, jamais plus indulgente que les mots-clés.
+    // - Thèmes : seulement ceux déjà repérés ; un point négatif ne s'efface ni ne s'adoucit jamais.
     const sens = new Map<CleTheme, SentimentMessage>();
     for (const t of Array.isArray(ia.themes) ? ia.themes : []) if (estCleTheme(t?.theme) && estSentiment(t?.sentiment)) sens.set(t.theme, t.sentiment);
-    if (sens.size) publics = publics.filter((t) => sens.has(t.cle)).map((t) => ({ cle: t.cle, sentiment: sens.get(t.cle)! }));
-    if (!((note !== undefined && note < 4 && ia.sentiment === 'positif') || (note !== undefined && note >= 4.6 && ia.sentiment === 'negatif'))) sentiment = ia.sentiment;
+    if (sens.size) publics = publics.flatMap((t): ThemeLu[] => (t.sentiment === 'negatif' ? [t] : sens.has(t.cle) ? [{ cle: t.cle, sentiment: sens.get(t.cle)! }] : []));
+    // - Sentiment de l'avis : jamais plus positif que les mots-clés (un avis ne sort pas seul de
+    //   « à lire ») ; et pas « négatif » contre une note de 4,6 ou plus (au plus « mitigé »).
+    const plusSevere = RANG_SENTIMENT[ia.sentiment] < RANG_SENTIMENT[sentiment] ? ia.sentiment : sentiment;
+    sentiment = note !== undefined && note >= 4.6 && plusSevere === 'negatif' ? 'neutre' : plusSevere;
   }
   // Message privé : ses thèmes à part (jamais repris dans la réponse), sauf s'il redit la même chose que l'avis public.
   const sensPublic = new Map(publics.map((t) => [t.cle, t.sentiment]));
