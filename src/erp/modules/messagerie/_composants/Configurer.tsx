@@ -305,7 +305,11 @@ export function Configurer() {
             <span className="text-(--lm-encre-2)"> : votre agent vous passe la main pour ces logements.</span>
           </p>
         ) : (
-          <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
+          d.logements.some((l) => l.statut !== 'sorti') ? (
+            <p className="text-[13.5px] text-(--lm-succes)">Toutes les fiches sont complètes.</p>
+          ) : (
+            <p className="text-[13.5px] text-(--lm-encre-2)">Aucun logement pour l’instant : ils arrivent avec la connexion des plateformes.</p>
+          )
         )}
         <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-0.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />

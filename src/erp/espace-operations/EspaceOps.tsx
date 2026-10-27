@@ -65,11 +65,11 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
         {bandeau}
         <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
           <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4">
-            <div className="min-w-0">
+            <div className="min-w-0 shrink-0">
               <p className="lm-serif truncate text-[18px] leading-tight text-(--lm-brun)">{conciergerie}</p>
               <p className="truncate text-[11.5px] text-(--lm-encre-2)">Espace opérations</p>
             </div>
-            <nav aria-label="Rubriques" className="hidden items-center gap-1 sm:flex">
+            <nav aria-label="Rubriques" className="hidden items-center gap-1 md:flex">
               {onglets.map((o) => (
                 <button
                   key={o.cle}
@@ -99,13 +99,13 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                   <span className={entreeApp ? 'max-lg:sr-only' : 'max-sm:sr-only'}>Se déconnecter</span>
                 </button>
               ) : (
-                <span className="w-9 sm:hidden" aria-hidden />
+                <span className="w-9 md:hidden" aria-hidden />
               )}
             </div>
           </div>
         </header>
 
-        <main className="mx-auto max-w-5xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-14">
+        <main className="mx-auto max-w-5xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-14">
           {retour && (
             <Alert
               tone={retour.ton}
@@ -133,7 +133,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
         </main>
 
         {!ecran.controle && (
-          <nav aria-label="Rubriques" className="fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden">
+          <nav aria-label="Rubriques" className="fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
             <ul className={cn('grid', onglets.length === 5 ? 'grid-cols-5' : 'grid-cols-4')}>
               {onglets.map((o) => (
                 <li key={o.cle}>

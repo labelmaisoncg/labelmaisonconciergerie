@@ -57,7 +57,7 @@ function InvitationMembre({ nom, email, demo }: { nom: string; email: string; de
         ) : (
           <>
             <p>
-              {demo ? 'Démonstration : aucun e-mail n’est envoyé.' : 'L’e-mail ne peut pas partir pour cet espace.'} Copiez ce lien et envoyez-le à {nom}{' '}
+              {demo ? 'Démonstration : aucun e-mail n’est envoyé.' : 'Nous ne pouvons pas envoyer l’e-mail pour l’instant.'} Copiez ce lien et envoyez-le à {nom}{' '}
               (SMS, WhatsApp…).
             </p>
             <div className="mt-2 flex gap-2">

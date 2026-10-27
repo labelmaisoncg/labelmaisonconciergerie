@@ -138,7 +138,7 @@ function LienDansLApp() {
   const ouvrir = (e: FormEvent) => {
     e.preventDefault();
     const cible = lienColle(lien);
-    if (!cible) return setErreur('Ce n’est pas le lien de l’e-mail : appui long sur « Ouvrir mon espace », puis « Copier ».');
+    if (!cible) return setErreur('Ce n’est pas le lien reçu par e-mail.');
     // Même adresse, nouveau fragment : on recharge pour que la page l'ouvre comme un lien reçu.
     window.history.replaceState(null, '', cible);
     window.location.reload();
@@ -148,11 +148,7 @@ function LienDansLApp() {
       <Field label="Lien reçu par e-mail" aide="Appui long sur « Ouvrir mon espace » dans l’e-mail, puis « Copier ».">
         <Input type="url" inputMode="url" autoComplete="off" value={lien} onChange={(e) => setLien(e.target.value)} placeholder="Collez le lien ici" className="h-11 text-[16px]" />
       </Field>
-      {erreur && (
-        <p role="alert" className="text-[13px] font-medium text-(--lm-danger)">
-          {erreur}
-        </p>
-      )}
+      {erreur && <Alert tone="danger">{erreur}</Alert>}
       <Button type="submit" variant="secondary" size="lg" className="w-full">
         Ouvrir avec ce lien
       </Button>

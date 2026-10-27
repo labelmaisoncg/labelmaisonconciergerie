@@ -67,7 +67,7 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
       ouvert={ouvert}
       onFermer={fermer}
       titre="Connecter à Claude"
-      description={`Une seule fois : ensuite, Claude suit l’espace ${nomEspace} dans toutes vos conversations.`}
+      description={`Une seule fois : ensuite, Claude peut consulter l’espace ${nomEspace} depuis vos conversations.`}
       pied={
         <Button variant="ghost" onClick={fermer}>
           Fermer

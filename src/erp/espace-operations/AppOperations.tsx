@@ -183,7 +183,7 @@ export function useAppOps(serveur: ServeurNotificationsOps | null, connecte: boo
       setEtape('actives');
       return 'activee';
     } catch (e) {
-      setRetour({ ton: 'danger', texte: message(e, 'L’activation n’a pas abouti sur ce téléphone. Réessayez dans un instant.') });
+      setRetour({ ton: 'danger', texte: message(e, 'L’activation n’a pas abouti sur cet appareil. Réessayez dans un instant.') });
       throw e;
     } finally {
       setOccupe(null);
@@ -215,7 +215,7 @@ export function useAppOps(serveur: ServeurNotificationsOps | null, connecte: boo
       if (serveur && ep) await serveur.desabonner(ep);
       setEndpoint(null);
       setEtape('a-activer');
-      setRetour({ ton: 'neutre', texte: 'Notifications coupées sur ce téléphone.' });
+      setRetour({ ton: 'neutre', texte: 'Notifications désactivées sur cet appareil.' });
     } catch (e) {
       setRetour({ ton: 'danger', texte: message(e, 'L’action n’a pas abouti. Réessayez dans un instant.') });
     } finally {
@@ -400,7 +400,7 @@ export function FeuilleApp({ ouvert, onFermer, app }: { ouvert: boolean; onFerme
     case 'refusee':
       notifications = (
         <p className="text-[14px] text-(--lm-encre-2)">
-          Refusées sur ce téléphone. Pour les activer :{' '}
+          Refusées sur cet appareil. Pour les activer :{' '}
           {app.appareil === 'iphone' ? `Réglages de l’iPhone → Notifications → ${NOM_APP_OPS}.` : 'réglages du navigateur (cadenas à gauche de l’adresse → Notifications).'}
         </p>
       );
@@ -418,13 +418,13 @@ export function FeuilleApp({ ouvert, onFermer, app }: { ouvert: boolean; onFerme
     case 'actives':
       notifications = (
         <div className="flex flex-col gap-3">
-          <Fait>Activées sur ce téléphone.</Fait>
+          <Fait>Activées sur cet appareil.</Fait>
           <div className="flex flex-wrap gap-2">
             <Button chargement={app.occupe === 'tester'} disabled={!!app.occupe && app.occupe !== 'tester'} onClick={() => void app.tester()}>
               Envoyer une notification de test
             </Button>
             <Button variant="ghost" chargement={app.occupe === 'couper'} disabled={!!app.occupe && app.occupe !== 'couper'} onClick={() => void app.couper()}>
-              Couper
+              Désactiver
             </Button>
           </div>
         </div>
@@ -453,7 +453,7 @@ export function FeuilleApp({ ouvert, onFermer, app }: { ouvert: boolean; onFerme
             {installee ? 'Installation' : TITRE_ETAPES[app.appareil]}
           </h3>
           {app.dansLApp ? (
-            <Fait>L’app est installée sur ce téléphone.</Fait>
+            <Fait>L’app est installée sur cet appareil.</Fait>
           ) : app.installee ? (
             <Fait>Déjà installée : ouvrez l’app {NOM_APP_OPS} depuis l’écran d’accueil.</Fait>
           ) : app.directe ? (
@@ -548,7 +548,7 @@ export function DemandeNotificationsOps({ app, pret }: { app: AppOps; pret: bool
         setPhase('refusee');
       } else plusTard();
     } catch (e) {
-      setErreur(message(e, 'L’activation n’a pas abouti sur ce téléphone. Réessayez dans un instant.'));
+      setErreur(message(e, 'L’activation n’a pas abouti sur cet appareil. Réessayez dans un instant.'));
     } finally {
       setEnCours(false);
       app.effacerRetour();

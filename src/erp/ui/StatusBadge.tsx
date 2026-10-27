@@ -19,7 +19,7 @@ const TONS = {
   statutPrestataire: { actif: 'succes', suspendu: 'danger', sorti: 'neutre' },
   statutDocument: { valide: 'succes', expire: 'danger', manquant: 'alerte' },
   statutIncident: { ouvert: 'neutre', en_cours: 'neutre', resolu: 'succes' },
-  gravite: { faible: 'neutre', moyenne: 'alerte', haute: 'danger' },
+  gravite: { faible: 'neutre', moyenne: 'neutre', haute: 'danger' },
   statutFacture: { brouillon: 'neutre', emise: 'info', payee: 'succes', en_retard: 'danger', annulee: 'neutre' },
   statutPaiement: { a_payer: 'alerte', paye: 'succes', bloque: 'danger' },
   etapeProspect: {

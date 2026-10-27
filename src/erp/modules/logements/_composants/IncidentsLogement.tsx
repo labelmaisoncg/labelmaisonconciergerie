@@ -68,7 +68,7 @@ function Ligne({ i, peutAgir, enVue }: { i: Incident; peutAgir: boolean; enVue: 
         </div>
       )}
       {peutAgir && mot !== null && (
-        <div className="mt-2 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3">
+        <div className="mt-2">
           <Textarea rows={2} value={mot} autoFocus aria-label="Votre mot" maxLength={1000} onChange={(e) => setMot(e.target.value)} placeholder="Ce qui a été fait, ce qu’il reste à faire." />
           <div className="mt-2 flex flex-wrap justify-end gap-1.5">
             <Button size="sm" variant="ghost" onClick={() => setMot(null)}>
