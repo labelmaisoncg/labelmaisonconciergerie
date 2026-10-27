@@ -6,6 +6,7 @@
  * - /erp/messagerie/:filId     une conversation (mobile : plein écran)
  * - /erp/messagerie/activite   Activité de l'agent
  * - /erp/messagerie/agent      Réglages de l'agent
+ * - /erp/messagerie/automatiques  Messages automatiques et leur historique
  */
 import { useMemo, useState, type CSSProperties } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -20,17 +21,18 @@ import { Configurer } from './_composants/Configurer';
 import { Conversation } from './_composants/Conversation';
 import { PastilleAgent } from './_composants/EtatAgent';
 import { ListeFils, type TriFil } from './_composants/ListeFils';
+import { MessagesAutomatiques } from './_composants/MessagesAutomatiques';
 import { PanneauContexte } from './_composants/PanneauContexte';
 import { attendEquipe, correspond, type FiltreFil } from './_composants/logique';
 import { useHauteurDisponible } from './_composants/useHauteurDisponible';
 
-type Onglet = 'conversations' | 'activite' | 'agent';
+type Onglet = 'conversations' | 'activite' | 'agent' | 'automatiques';
 
 export default function ModuleMessagerie() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const segment = pathname.replace(/^\/erp\/messagerie\/?/, '').split('/')[0] ?? '';
-  const onglet: Onglet = segment === 'activite' ? 'activite' : segment === 'agent' ? 'agent' : 'conversations';
+  const onglet: Onglet = segment === 'activite' || segment === 'agent' || segment === 'automatiques' ? segment : 'conversations';
   // Sur mobile, une conversation ouverte prend tout l'écran.
   const filOuvert = onglet === 'conversations' && !!segment;
 
@@ -47,6 +49,7 @@ export default function ModuleMessagerie() {
             { cle: 'conversations', libelle: 'Conversations' },
             { cle: 'activite', libelle: 'Activité' },
             { cle: 'agent', libelle: 'Réglages de l’agent' },
+            { cle: 'automatiques', libelle: 'Messages automatiques' },
           ]}
         />
       </div>
@@ -54,6 +57,7 @@ export default function ModuleMessagerie() {
         <Route index element={<Boite />} />
         <Route path="activite" element={<Activite />} />
         <Route path="agent" element={<Configurer />} />
+        <Route path="automatiques" element={<MessagesAutomatiques />} />
         <Route path=":filId" element={<Boite />} />
       </Routes>
     </>

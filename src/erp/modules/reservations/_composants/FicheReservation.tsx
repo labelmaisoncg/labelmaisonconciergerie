@@ -16,6 +16,7 @@ import { commissionReservation, logementById, mandatAuJour, mandatDuLogement, ne
 import type { Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
 import { TEINTE_CANAL, recu } from './outils';
+import { CarteAvisADeposer } from './CarteAvisADeposer';
 
 function Ligne({ libelle, valeur, fort, moins, separe }: { libelle: string; valeur: number; fort?: boolean; moins?: boolean; separe?: boolean }) {
   return (
@@ -48,7 +49,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
   const reference = r.repull?.code ?? r.channexBookingId;
 
   return (
-    <div className="grid gap-4">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-4">
       <Card>
         {logement ? (
           <Link to={`/erp/logements/${logement.id}`} className="group -m-1 mb-3 flex items-center gap-3 rounded-lg p-1 hover:bg-(--lm-surface-2)">
@@ -103,10 +104,13 @@ export function FicheReservation({ r }: { r: Reservation }) {
         )}
       </Card>
 
+      {/* Séjour Airbnb terminé : l'avis à déposer sur le voyageur (rien si aucun n'est attendu). */}
+      <CarteAvisADeposer r={r} />
+
       {fils.length > 0 && (
         <Card>
           <CardHeader titre="Conversation" />
-          <ul className="-mx-2 grid gap-1">
+          <ul className="-mx-2 grid grid-cols-[minmax(0,1fr)] gap-1">
             {fils.map((f) => {
               const dernier = f.messages[f.messages.length - 1];
               return (

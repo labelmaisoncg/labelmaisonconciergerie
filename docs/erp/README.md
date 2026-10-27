@@ -138,6 +138,14 @@ node_modules/.bin/esbuild src/erp/data/verifier-relances.ts --bundle --format=es
 node_modules/.bin/esbuild src/erp/data/verifier-incidents-erp.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-incidents-erp.mjs && node /tmp/verifier-incidents-erp.mjs
+
+# Messages automatiques et avis à déposer (fausses base, plateforme et IA) :
+# heures de Paris et changement d'heure, éteints par défaut, jamais avant 8 h
+# ni après 21 h, jamais deux fois (même après une coupure), annulée / sans
+# conversation écartées, codes seulement 48 h avant, plafond de l'IA.
+node_modules/.bin/esbuild src/erp/data/verifier-messages-programmes.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-messages-programmes.mjs && node /tmp/verifier-messages-programmes.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -390,6 +398,26 @@ agent IA ») relit ce réglage à chaque passage : pas de réponse si
 appliqués, main passée selon `transmettre`, relance Telegram après
 `delaiAlerteMinutes` sans réponse humaine. Absent : valeurs par défaut de
 `data/reglages.ts`. (L'ancien service `agent-ia/` n'est pas déployé.)
+
+### Messages automatiques et avis à déposer
+
+« Messagerie > Messages automatiques » (gérant) : quatre messages
+(`confirmation`, `veille_arrivee`, `jour_depart`, `demande_avis`), **éteints
+par défaut**, enregistrés dans `reglages` (id `messages-programmes`, texte de
+l'espace et texte propre à un logement). Le passage planifié de l'agent
+(`api/erp-agent.ts` → `api/_erp-programmes.ts` →
+`src/erp/data/passage-programmes.ts`) envoie ce qui est dû par
+`envoyerMessage`, entre 8 h et 21 h (Paris), avec une clé d'idempotence
+par séjour et par moment ; chaque envoi ou refus est une ligne de
+`envoisProgrammes` (historique de l'écran, garantie « jamais deux fois »).
+Règles pures : `src/erp/data/messages-programmes.ts`.
+
+Après chaque départ Airbnb, le même passage prépare l'avis à déposer sur le
+voyageur (`avisADeposer`) avec la clé et le modèle de l'agent (plafond
+mensuel partagé pour un autre espace), ou un texte simple sans IA. Il
+apparaît dans « À faire » et sur la réservation : « Copier le texte »,
+« Ouvrir Airbnb » (simple lien, rien n'est publié), « C’est fait » ou
+« Passer ». Incident, note sous 4 ou message négatif : « à relire ».
 
 L'onglet « Activité » est calculé depuis `filsMessages` :
 messages `auteur = 'agent'`, conversations `statut = 'escalade'` (raison :

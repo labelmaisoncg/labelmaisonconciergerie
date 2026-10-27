@@ -1,0 +1,690 @@
+/**
+ * Auto-contrôle des messages automatiques (B1) et des avis à déposer (B5),
+ * sans réseau : règles pures (messages-programmes.ts), puis un passage
+ * serveur complet (passage-programmes.ts) avec une fausse base, une fausse
+ * plateforme (envoi avec clé d'idempotence) et un faux Claude, en mémoire.
+ *
+ * Vérifie : heures de Paris (changement d'heure), éteint par défaut, rien de
+ * prévu avant l'allumage, jamais avant 8 h ni après 21 h, jamais deux fois
+ * (même après une coupure), réservation annulée et sans conversation
+ * écartées, conversation hors plateforme, voyageur qui attend une réponse,
+ * codes et wifi seulement dans la fenêtre des 48 h (même règle que l'agent),
+ * confirmation seulement pour les nouvelles réservations (pas d'importation),
+ * signature par espace, aucune écriture sur la plateforme autre qu'un
+ * message, file des avis (incident, note basse, message négatif → à relire),
+ * plafond mensuel de l'IA, décision de l'équipe jamais écrasée.
+ *
+ * Lancement :
+ *   node_modules/.bin/esbuild src/erp/data/verifier-messages-programmes.ts --bundle --platform=node --format=esm \
+ *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=/tmp/vmp.mjs && node /tmp/vmp.mjs
+ */
+import type Anthropic from '@anthropic-ai/sdk';
+import { COLLECTION_AGENT, ID_ETAT_AGENT, MODELE_AGENT_DEFAUT, codesPermis, type ClientIA, type EtatAgent } from './agent-messagerie';
+import {
+  COLLECTION_AVIS_A_DEPOSER,
+  COLLECTION_ENVOIS_PROGRAMMES,
+  DECLENCHEURS,
+  HEURES_ENVOI,
+  PAR_MESSAGE_AUTO,
+  RAISONS,
+  SEUIL_IMPORT,
+  avisAPreparer,
+  avisATraiter,
+  cleEnvoiProgramme,
+  codesAutorises,
+  dansPlageEnvoi,
+  deciderEnvoi,
+  etatAvis,
+  fenetreEnvoi,
+  idEnvoi,
+  instantParis,
+  lireAvisIA,
+  majReservationsVues,
+  modeleEffectif,
+  planifierEnvois,
+  prochainEnvoi,
+  raisonsARelire,
+  reglagesProgrammes,
+  rendreMessage,
+  sejourAvecAvis,
+  signatureProgrammes,
+  texteAvisParDefaut,
+  type ReservationsVues,
+} from './messages-programmes';
+import { lancerProgrammes, type OptionsProgrammes } from './passage-programmes';
+import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { BaseErp, ecritureRepullPermise } from './repull-synchro';
+import type { FilMessages, Incident, Logement, Message, Reglage, Reservation } from './types';
+import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
+
+/* ------------------------------------------------------------ assertions */
+
+let echecs = 0;
+let reussis = 0;
+function verifier(condition: unknown, message: string) {
+  if (condition) reussis++;
+  else {
+    echecs++;
+    console.error(`  ✗ ${message}`);
+  }
+}
+function section(titre: string) {
+  console.log(`\n${titre}`);
+}
+const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps), { status, headers: { 'Content-Type': 'application/json' } });
+const paris = (iso: string) => new Date(iso);
+
+/* -------------------------------------------------------------- données */
+
+const LOGEMENT: Logement = {
+  id: 'log-1',
+  nom: 'Corbeil Rives de Seine',
+  adresse: '',
+  ville: 'Corbeil-Essonnes',
+  codePostal: '91100',
+  type: 'T2',
+  surfaceM2: 40,
+  capacite: 4,
+  chambres: 1,
+  lits: [],
+  statut: 'actif',
+  proprietaireId: 'p1',
+  residencePrincipale: false,
+  serrure: 'boite_a_cles',
+  fiche: {
+    wifiNom: 'LM-Corbeil',
+    wifiCode: 'soleil2026',
+    heureArrivee: '16:00',
+    heureDepart: '11:00',
+    acces: 'Boîte à clés 4821, à droite de la porte.',
+    parking: 'Place 12',
+    regles: 'Pas de fête.',
+    equipements: ['Lave-linge'],
+    guides: [
+      { id: 'g-acces', titre: 'Comment entrer', media: { type: 'video', url: 'https://youtu.be/entree' }, acces: true, ajouteLe: '2026-09-01T10:00:00+02:00', ajoutePar: 'Abdel' },
+      { id: 'g-quartier', titre: 'Le quartier', media: { type: 'lien', url: 'https://exemple.fr/quartier' }, ajouteLe: '2026-09-01T10:00:00+02:00', ajoutePar: 'Abdel' },
+    ],
+  },
+  dotationLinge: [],
+  annonces: [],
+  checklistLancement: [],
+};
+
+function resa(id: string, p: Partial<Reservation> = {}): Reservation {
+  return {
+    id,
+    logementId: 'log-1',
+    canal: 'airbnb',
+    voyageur: { nom: 'Marie Dupont', nbPersonnes: 2 },
+    arrivee: '2026-10-26',
+    depart: '2026-10-29',
+    nuits: 3,
+    statut: 'confirmee',
+    montantBrutCentimes: 30000,
+    commissionPlateformeCentimes: 3000,
+    fraisMenageCentimes: 4000,
+    ...p,
+  };
+}
+
+function msg(id: string, auteur: Message['auteur'], texte: string, envoyeLe = '2026-10-20T10:00:00+02:00'): Message {
+  return { id, auteur, texte, envoyeLe };
+}
+
+function fil(id: string, reservationId: string, p: Partial<FilMessages> = {}): FilMessages {
+  return {
+    id,
+    reservationId,
+    logementId: 'log-1',
+    canal: 'airbnb',
+    voyageur: 'Marie',
+    statut: 'ouvert',
+    messages: [msg(`${id}-m1`, 'voyageur', 'Bonjour, nous arrivons lundi.'), msg(`${id}-m2`, 'agent', 'Avec plaisir, à lundi !', '2026-10-20T10:05:00+02:00')],
+    dernierMessageLe: '2026-10-20T10:05:00+02:00',
+    traitePar: 'agent',
+    repull: { id: id.replace('fil-', '') },
+    ...p,
+  };
+}
+
+const ALLUME_LE = '2026-10-01T10:00:00+02:00';
+function reglagesAllumes(moments: DeclencheurMessage[], activeLe = ALLUME_LE, patch: (r: ReglagesMessagesProgrammes) => void = () => undefined): ReglagesMessagesProgrammes {
+  const r = reglagesProgrammes({ reglages: [] });
+  for (const k of moments) r.modeles[k] = { ...r.modeles[k], actif: true, activeLe };
+  patch(r);
+  return r;
+}
+
+/* ================================================================ règles */
+
+function heures() {
+  section('Heures de Paris et changement d’heure');
+  // Passage à l'heure d'hiver le dimanche 25 octobre 2026 à 3 h.
+  verifier(instantParis('2026-10-24', '18:00') === Date.parse('2026-10-24T16:00:00Z'), '24 oct. 18:00 à Paris = 16:00 UTC (heure d’été)');
+  verifier(instantParis('2026-10-25', '18:00') === Date.parse('2026-10-25T17:00:00Z'), '25 oct. 18:00 à Paris = 17:00 UTC (heure d’hiver, jour du changement)');
+  verifier(instantParis('2026-10-25', '08:30') === Date.parse('2026-10-25T07:30:00Z'), '25 oct. 08:30 à Paris = 07:30 UTC');
+  // Passage à l'heure d'été le dimanche 28 mars 2027 à 2 h.
+  verifier(instantParis('2027-03-27', '08:00') === Date.parse('2027-03-27T07:00:00Z'), '27 mars 2027 08:00 = 07:00 UTC');
+  verifier(instantParis('2027-03-28', '08:00') === Date.parse('2027-03-28T06:00:00Z'), '28 mars 2027 08:00 = 06:00 UTC (heure d’été)');
+
+  const veille = fenetreEnvoi('veille_arrivee', resa('r'), { heure: '18:00' });
+  verifier(veille?.debut === Date.parse('2026-10-25T17:00:00Z') && veille?.fin === Date.parse('2026-10-25T20:00:00Z'), 'veille de l’arrivée : de 18:00 à 21:00 la veille, heure de Paris');
+  const depart = fenetreEnvoi('jour_depart', resa('r'), { heure: '08:30' });
+  verifier(depart?.debut === Date.parse('2026-10-29T07:30:00Z') && depart?.fin === Date.parse('2026-10-29T11:00:00Z'), 'matin du départ : de 08:30 à midi');
+  const avis = fenetreEnvoi('demande_avis', resa('r'), { heure: '11:00' });
+  verifier(avis?.debut === Date.parse('2026-10-30T10:00:00Z'), 'demande d’avis : le lendemain du départ à 11:00');
+  verifier(fenetreEnvoi('confirmation', resa('r'), {}, undefined) === null && fenetreEnvoi('confirmation', resa('r'), {}, '') === null, 'confirmation : rien sans « première vue »');
+
+  verifier(!dansPlageEnvoi(paris('2026-10-25T06:59:00Z')), '07:59 à Paris (hiver) : hors des heures d’envoi');
+  verifier(dansPlageEnvoi(paris('2026-10-25T07:00:00Z')), '08:00 à Paris (hiver) : dans les heures');
+  verifier(dansPlageEnvoi(paris('2026-10-25T19:59:00Z')) && !dansPlageEnvoi(paris('2026-10-25T20:00:00Z')), '20:59 oui, 21:00 non (hiver)');
+  verifier(!dansPlageEnvoi(paris('2026-07-01T05:59:00Z')) && dansPlageEnvoi(paris('2026-07-01T06:00:00Z')), '07:59 non, 08:00 oui (été)');
+  verifier(HEURES_ENVOI[0] === '08:00' && HEURES_ENVOI[HEURES_ENVOI.length - 1] === '20:30', 'heures proposées de 08:00 à 20:30');
+  const r = reglagesProgrammes({ reglages: [{ id: 'messages-programmes', modeles: { veille_arrivee: { actif: false, texte: 'x', heure: '23:00' } } } as unknown as Reglage] });
+  verifier(r.modeles.veille_arrivee.heure === '18:00', 'une heure hors de 8 h – 21 h n’est jamais retenue');
+}
+
+function eteintParDefaut() {
+  section('Éteint par défaut');
+  const r = reglagesProgrammes({ reglages: [] });
+  verifier(DECLENCHEURS.every((k) => !r.modeles[k].actif), 'les quatre moments sont éteints sans réglage');
+  const sansDate = reglagesProgrammes({ reglages: [{ id: 'messages-programmes', modeles: { veille_arrivee: { actif: true, texte: 'Bonjour' } } } as unknown as Reglage] });
+  verifier(!sansDate.modeles.veille_arrivee.actif, 'allumé sans date d’allumage : reste éteint');
+  const d = deciderEnvoi({ declencheur: 'veille_arrivee', reservation: resa('r1'), reglages: r, fils: [fil('fil-1', 'r1')], maintenant: paris('2026-10-25T17:30:00Z') });
+  verifier(d.genre === 'rien', 'éteint : rien ne part, même au bon moment');
+}
+
+function decisions() {
+  section('Décisions d’envoi');
+  const reglages = reglagesAllumes(['veille_arrivee']);
+  const a1830 = paris('2026-10-25T17:30:00Z'); // 18:30 à Paris, la veille de l'arrivée
+  const decide = (r: Reservation, fils: FilMessages[], maintenant = a1830, envoi?: EnvoiProgramme, rg = reglages) =>
+    deciderEnvoi({ declencheur: 'veille_arrivee', reservation: r, reglages: rg, fils, envoi, maintenant });
+
+  verifier(decide(resa('r1'), [fil('fil-1', 'r1')]).genre === 'envoyer', 'la veille à 18:30 : le message part');
+  verifier(decide(resa('r1'), [fil('fil-1', 'r1')], paris('2026-10-25T16:30:00Z')).genre === 'rien', 'la veille à 17:30 : pas encore');
+  const annulee = decide(resa('r2', { statut: 'annulee' }), [fil('fil-2', 'r2')]);
+  verifier(annulee.genre === 'ignorer' && annulee.raison === RAISONS.annulee, 'réservation annulée : écartée et notée');
+  const sansFil = decide(resa('r3'), []);
+  verifier(sansFil.genre === 'attendre' && sansFil.raison === RAISONS.sansConversation, 'sans conversation : on attend (elle peut arriver avec la synchronisation)');
+  const apres = decide(resa('r3'), [], paris('2026-10-25T20:30:00Z'));
+  verifier(apres.genre === 'ignorer' && apres.raison === RAISONS.sansConversation, 'moment passé sans conversation : noté « pas de conversation »');
+  verifier(decide(resa('r3'), [], paris('2026-10-27T10:00:00Z')).genre === 'rien', 'longtemps après : rien (pas d’historique pour un vieux séjour)');
+  const hors = decide(resa('r4', { canal: 'booking' }), [fil('fil-4', 'r4', { repull: undefined, canal: 'booking' })]);
+  verifier(hors.genre === 'ignorer' && hors.raison === RAISONS.horsPlateforme, 'conversation hors plateforme : envoi impossible, noté');
+  const attend = decide(resa('r5'), [fil('fil-5', 'r5', { messages: [msg('m', 'voyageur', 'Il y a un parking ?', '2026-10-25T19:20:00+01:00')], traitePar: 'en_attente' })]);
+  verifier(attend.genre === 'attendre' && attend.raison === RAISONS.attend, 'le voyageur attend une réponse : on ne lui coupe pas la parole');
+  const close = decide(resa('r5'), [fil('fil-5', 'r5', { statut: 'clos', messages: [msg('m', 'voyageur', 'Merci !')] })]);
+  verifier(close.genre === 'envoyer', 'conversation close (« pas besoin de répondre ») : le message part');
+
+  // Jamais deux fois.
+  const ligne = (statut: EnvoiProgramme['statut'], depuis = '2026-10-25T18:31:00+01:00'): EnvoiProgramme => ({
+    id: idEnvoi('r1', 'veille_arrivee'), reservationId: 'r1', logementId: 'log-1', declencheur: 'veille_arrivee', voyageur: 'Marie', statut, le: depuis, depuis, texte: 'Bonjour', cle: cleEnvoiProgramme('r1', 'veille_arrivee'), filId: 'fil-1',
+  });
+  for (const s of ['envoye', 'ignore', 'echec', 'a_verifier'] as const) verifier(decide(resa('r1'), [fil('fil-1', 'r1')], a1830, ligne(s)).genre === 'rien', `déjà « ${s} » : rien ne repart`);
+  verifier(decide(resa('r1'), [fil('fil-1', 'r1')], a1830, ligne('reporte')).genre === 'envoyer', '« reporté » (rien n’est parti) : réessayé');
+  const reprise = decide(resa('r1'), [fil('fil-1', 'r1')], a1830, ligne('en_cours'));
+  verifier(reprise.genre === 'reprendre' && reprise.envoi.cle === 'lm-auto-r1-veille_arrivee', 'envoi coupé : repris avec la même clé');
+  const vieux = decide(resa('r1'), [fil('fil-1', 'r1')], paris('2026-10-26T18:00:00Z'), ligne('en_cours', '2026-10-25T18:31:00+01:00'));
+  verifier(vieux.genre === 'verifier' && vieux.raison === RAISONS.pasConfirme, 'envoi coupé depuis plus de 23 h : « à vérifier », rien n’est renvoyé');
+  verifier(cleEnvoiProgramme('r1', 'veille_arrivee') !== cleEnvoiProgramme('r1', 'demande_avis'), 'une clé par séjour et par moment');
+
+  // Rien de ce qui était prévu avant l'allumage.
+  const tard = reglagesAllumes(['veille_arrivee'], '2026-10-25T19:00:00+01:00');
+  verifier(decide(resa('r1'), [fil('fil-1', 'r1')], paris('2026-10-25T18:30:00Z'), undefined, tard).genre === 'rien', 'allumé à 19:00 pour un envoi prévu à 18:00 : rien ne part');
+
+  // Logement : texte propre, ou coupé.
+  const parLogement = reglagesAllumes(['veille_arrivee'], ALLUME_LE, (r) => (r.modeles.veille_arrivee.logements = { 'log-1': { texte: 'Texte du logement {prenom}' }, 'log-2': { actif: false } }));
+  verifier(modeleEffectif(parLogement, 'veille_arrivee', 'log-1').texte === 'Texte du logement {prenom}', 'texte propre à un logement');
+  verifier(modeleEffectif(parLogement, 'veille_arrivee', 'log-3').texte === parLogement.modeles.veille_arrivee.texte, 'autres logements : texte de l’espace');
+  verifier(decide(resa('r9', { logementId: 'log-2' }), [fil('fil-9', 'r9', { logementId: 'log-2' })], a1830, undefined, parLogement).genre === 'rien', 'logement coupé : rien ne part');
+
+  // Plan d'un passage : reprises d'abord.
+  const plan = planifierEnvois({ reservations: [resa('r1'), resa('r2', { statut: 'annulee' }), resa('r6')], fils: [fil('fil-1', 'r1'), fil('fil-6', 'r6')], reglages, envois: [ligne('en_cours')], maintenant: a1830 });
+  verifier(plan[0]?.decision.genre === 'reprendre' && plan.some((p) => p.decision.genre === 'envoyer' && p.reservation.id === 'r6'), 'plan : la reprise d’abord, puis les nouveaux envois');
+  verifier(!plan.some((p) => p.reservation.id === 'r1' && p.decision.genre === 'envoyer'), 'plan : jamais un second envoi pour le même séjour');
+}
+
+function heuresCalmes() {
+  section('Jamais avant 8 h ni après 21 h');
+  const reglages = reglagesAllumes(['confirmation']);
+  const vues: ReservationsVues = { activeLe: ALLUME_LE, vues: { r7: '2026-10-25T21:30:00.000Z' } }; // vue à 22:30 à Paris
+  const r7 = resa('r7', { arrivee: '2026-11-10', depart: '2026-11-12' });
+  const d = (iso: string) => deciderEnvoi({ declencheur: 'confirmation', reservation: r7, reglages, fils: [fil('fil-7', 'r7')], vues, maintenant: paris(iso) });
+  const nuit = d('2026-10-25T21:40:00Z');
+  verifier(nuit.genre === 'attendre' && nuit.raison === RAISONS.horsHeures, 'nouvelle réservation à 22:30 : attend le matin');
+  verifier(d('2026-10-26T06:30:00Z').genre === 'attendre', '07:30 : attend encore');
+  verifier(d('2026-10-26T07:05:00Z').genre === 'envoyer', '08:05 : la confirmation part');
+  verifier(d('2026-10-28T08:00:00Z').genre === 'ignorer', 'plus de 48 h après : ne part plus (noté une fois)');
+  const avant: ReservationsVues = { activeLe: ALLUME_LE, vues: { r7: '' } };
+  verifier(deciderEnvoi({ declencheur: 'confirmation', reservation: r7, reglages, fils: [fil('fil-7', 'r7')], vues: avant, maintenant: paris('2026-10-26T09:00:00Z') }).genre === 'rien', 'réservation connue avant l’allumage : jamais de confirmation');
+}
+
+function reservationsVues() {
+  section('Confirmation : seulement les nouvelles réservations');
+  const conf = { actif: true, activeLe: ALLUME_LE };
+  const t0 = paris('2026-10-25T10:00:00Z');
+  const existantes = [resa('a'), resa('b')];
+  const init = majReservationsVues(undefined, existantes, conf, t0);
+  verifier(init.vues.vues.a === '' && init.vues.vues.b === '' && !init.nouvelles.length, 'à l’allumage : les réservations présentes sont « connues avant »');
+  const suite = majReservationsVues(init.vues, [...existantes, resa('c')], conf, paris('2026-10-25T10:30:00Z'));
+  verifier(suite.nouvelles.join() === 'c' && suite.vues.vues.c === '2026-10-25T10:30:00.000Z' && suite.vues.vues.a === '', 'une nouvelle réservation est notée avec l’instant où elle est vue');
+  const lot = Array.from({ length: SEUIL_IMPORT + 1 }, (_, i) => resa(`imp-${i}`));
+  const imp = majReservationsVues(suite.vues, [...existantes, resa('c'), ...lot], conf, paris('2026-10-25T11:00:00Z'));
+  verifier(imp.importation === SEUIL_IMPORT + 1 && !imp.nouvelles.length && imp.vues.vues['imp-0'] === '', 'beaucoup d’un coup (connexion d’une plateforme) : pas de confirmation');
+  const rallume = majReservationsVues(suite.vues, [...existantes, resa('c'), resa('d')], { actif: true, activeLe: '2026-10-25T12:00:00+02:00' }, paris('2026-10-25T11:00:00Z'));
+  verifier(rallume.vues.vues.d === '' && rallume.vues.vues.c === '', 'éteinte puis rallumée : on repart de zéro, rien pour les réservations déjà là');
+  verifier(!Object.keys(majReservationsVues(suite.vues, existantes, { actif: false }, t0).vues.vues).length, 'éteinte : la liste est vidée');
+  const parties = majReservationsVues(suite.vues, [resa('a', { depart: '2026-10-20' }), resa('c')], conf, paris('2026-10-25T10:45:00Z'));
+  verifier(!('a' in parties.vues.vues) && 'c' in parties.vues.vues, 'séjours terminés retirés de la liste');
+}
+
+function rendu() {
+  section('Texte : variables, codes seulement dans la fenêtre des 48 h');
+  const veille = reglagesProgrammes({ reglages: [] }).modeles.veille_arrivee.texte;
+  const ctx = (r: Reservation, aujourdhui: string, lienGuide?: string) => ({ reservation: r, logement: LOGEMENT, fil: fil('fil-1', r.id), signature: 'L’équipe Label Maison', lienGuide, aujourdhui });
+  const dedans = rendreMessage(veille, ctx(resa('r1'), '2026-10-25', 'https://youtu.be/entree'));
+  verifier(dedans.codes && dedans.texte.includes('Boîte à clés 4821') && dedans.texte.includes('soleil2026'), 'la veille : accès et wifi dans le message');
+  verifier(dedans.texte.startsWith('Bonjour Marie,') && dedans.texte.includes('16:00') && dedans.texte.endsWith('L’équipe Label Maison'), 'prénom, heure d’arrivée et signature remplacés');
+  verifier(dedans.texte.includes('https://youtu.be/entree'), 'lien du guide');
+  verifier(!/\{[a-z_]+\}/.test(dedans.texte), 'aucune variable laissée telle quelle');
+
+  const tot = rendreMessage(veille, ctx(resa('r1', { arrivee: '2026-10-31', depart: '2026-11-02' }), '2026-10-25'));
+  verifier(!tot.codes && !tot.texte.includes('4821') && !tot.texte.includes('soleil2026') && !tot.texte.includes('LM-Corbeil'), '6 jours avant : ni code ni wifi');
+  verifier(!/Wifi/.test(tot.texte) && tot.retirees.includes('acces') && tot.retirees.includes('wifi'), 'la ligne qui contient un code est retirée entière');
+  verifier(!tot.texte.includes('guide d’arrivée'), 'pas de guide : la ligne est retirée');
+  verifier(tot.texte.includes('Bonjour Marie') && tot.texte.includes('L’équipe Label Maison'), 'le reste du message est gardé');
+  const annule = rendreMessage(veille, ctx(resa('r1', { statut: 'annulee' }), '2026-10-25'));
+  verifier(!annule.codes && !annule.texte.includes('4821'), 'réservation annulée : jamais de code');
+  const parti = rendreMessage('Code : {acces}', ctx(resa('r1'), '2026-10-29'));
+  verifier(parti.texte === '', 'jour du départ : plus de code');
+  const sansPrenom = rendreMessage('Bonjour {prenom},\nÀ bientôt', { ...ctx(resa('r1', { voyageur: { nom: '', nbPersonnes: 1 } }), '2026-10-25'), fil: { ...fil('fil-1', 'r1'), voyageur: '' } });
+  verifier(sansPrenom.texte === 'Bonjour,\nÀ bientôt', 'sans prénom : « Bonjour, »');
+  verifier(rendreMessage('Ligne {inconnue}\nReste', ctx(resa('r1'), '2026-10-25')).texte === 'Reste', 'variable inconnue : ligne retirée');
+  verifier(rendreMessage('Du {date_arrivee} au {date_depart}', ctx(resa('r1'), '2026-10-25')).texte === 'Du lundi 26 octobre au jeudi 29 octobre', 'dates en toutes lettres');
+
+  // Même règle que l'agent (codesPermis).
+  const cas: [Partial<Reservation>, string][] = [
+    [{}, '2026-10-25'], [{}, '2026-10-23'], [{}, '2026-10-24'], [{}, '2026-10-26'], [{}, '2026-10-29'], [{ statut: 'annulee' }, '2026-10-25'],
+    [{ statut: 'en_cours' }, '2026-10-27'], [{ statut: 'terminee' }, '2026-10-27'], [{ logementId: 'log-2' }, '2026-10-25'], [{ arrivee: '2026-10-27' }, '2026-10-25'],
+  ];
+  verifier(cas.every(([p, jour]) => codesAutorises(resa('r1', p), 'log-1', jour) === codesPermis(fil('fil-1', 'r1'), resa('r1', p), jour).ok), 'codes : même décision que l’agent dans 10 cas');
+}
+
+function signatures() {
+  section('Signature par espace');
+  const vide = { reglages: [] as Reglage[] };
+  verifier(signatureProgrammes(vide) === 'L’équipe Label Maison', 'Label Maison : « L’équipe Label Maison »');
+  verifier(signatureProgrammes(vide, 'Sens') === 'L’équipe Sens', 'autre espace : « L’équipe Sens »');
+  verifier(signatureProgrammes({ reglages: [{ ...REGLAGES_AGENT_DEFAUT, signature: 'Abdel et Kamel' }] }, 'Sens') === 'Abdel et Kamel', 'signature réglée par l’espace : la sienne');
+  const texte = rendreMessage('Merci,\n{signature}', { reservation: resa('r1'), logement: LOGEMENT, signature: signatureProgrammes(vide, 'Sens'), aujourdhui: '2026-10-25' }).texte;
+  verifier(texte.endsWith('L’équipe Sens') && !texte.includes('Label Maison'), 'jamais le nom de Label Maison dans un autre espace');
+}
+
+function fileAvis() {
+  section('Avis à déposer : file et relecture');
+  const aujourdhui = '2026-10-25';
+  verifier(sejourAvecAvis(resa('a', { depart: '2026-10-24' }), aujourdhui), 'Airbnb parti hier : avis attendu');
+  verifier(!sejourAvecAvis(resa('a', { depart: '2026-10-25' }), aujourdhui), 'part aujourd’hui : pas encore');
+  verifier(!sejourAvecAvis(resa('a', { depart: '2026-10-10' }), aujourdhui), 'parti il y a 15 jours : délai d’Airbnb passé');
+  verifier(!sejourAvecAvis(resa('a', { depart: '2026-10-24', canal: 'booking' }), aujourdhui), 'Booking.com : pas d’avis sur le voyageur ici');
+  verifier(!sejourAvecAvis(resa('a', { depart: '2026-10-24', statut: 'annulee' }), aujourdhui), 'annulé : pas d’avis');
+
+  const propre = resa('p', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Lucas Martin', nbPersonnes: 2 } });
+  const incident: Incident = { id: 'i1', logementId: 'log-1', reservationId: 'q', date: '2026-10-22', categorie: 'casse', gravite: 'moyenne', description: 'Vase cassé', statut: 'ouvert', refacturable: 'voyageur', preuves: [] };
+  const avecIncident = resa('q', { arrivee: '2026-10-20', depart: '2026-10-23', statut: 'terminee' });
+  const noteBasse = resa('n', { arrivee: '2026-10-19', depart: '2026-10-22', statut: 'terminee', noteVoyageur: 3.5 });
+  const negatif = resa('g', { arrivee: '2026-10-19', depart: '2026-10-21', statut: 'terminee' });
+  const fils = [fil('fil-g', 'g', { messages: [msg('x', 'voyageur', 'Les voisins se plaignent du bruit, désolé pour la fête.')] }), fil('fil-p', 'p')];
+  const d = { reservations: [propre, avecIncident, noteBasse, negatif], avisADeposer: [] as AvisADeposer[], incidents: [incident], controles: [], filsMessages: fils };
+
+  verifier(raisonsARelire(propre, d).length === 0, 'séjour sans souci : rien à relire');
+  verifier(raisonsARelire(avecIncident, d)[0] === 'Un incident pendant le séjour', 'incident du séjour → à relire');
+  verifier(raisonsARelire(noteBasse, d).some((x) => x.includes('3,5/5')), 'note sous 4 → à relire');
+  verifier(raisonsARelire(negatif, d).includes('Un message signale un souci'), 'message négatif → à relire');
+  const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
+  verifier(raisonsARelire(propre, { ...d, incidents: [sansReservation] }).length === 1, 'incident du logement pendant le séjour → à relire');
+  verifier(raisonsARelire(propre, { ...d, incidents: [{ ...sansReservation, date: '2026-10-10' }] }).length === 0, 'incident d’avant le séjour : sans effet');
+  verifier(raisonsARelire(propre, { ...d, filsMessages: [fil('fil-p', 'p', { raisonEscalade: 'litige' })] }).length === 1, 'conversation transmise pour un litige → à relire');
+
+  const file = avisATraiter(d, aujourdhui);
+  verifier(file.length === 4, '4 séjours à traiter');
+  verifier(file.find((x) => x.reservation.id === 'q')?.statut === 'a_relire', 'incident : « à relire », jamais « prêt »');
+  verifier(file.find((x) => x.reservation.id === 'p')?.statut === 'a_rediger' && file.find((x) => x.reservation.id === 'p')?.texte === texteAvisParDefaut('Lucas'), 'pas encore préparé : texte simple proposé');
+  const pretMaisIncident: AvisADeposer = { id: 'q', reservationId: 'q', logementId: 'log-1', voyageur: 'Marie', depart: '2026-10-23', canal: 'airbnb', statut: 'pret', texte: 'Parfait', creeLe: '2026-10-24T09:00:00+02:00' };
+  verifier(etatAvis({ ...d, avisADeposer: [pretMaisIncident] }, avecIncident, aujourdhui)?.statut === 'a_relire', 'enregistré « prêt » mais incident depuis : présenté « à relire »');
+  const fait: AvisADeposer = { ...pretMaisIncident, id: 'p', reservationId: 'p', statut: 'fait' };
+  verifier(avisATraiter({ ...d, avisADeposer: [fait] }, aujourdhui).length === 3, 'un avis fait sort de la file');
+  verifier(etatAvis({ ...d, avisADeposer: [fait] }, propre, '2026-11-20')?.statut === 'fait', 'après le délai, un avis fait reste visible sur le séjour');
+  verifier(avisAPreparer({ ...d, avisADeposer: [fait] }, aujourdhui).length === 3, 'le serveur ne prépare que les séjours sans avis');
+  verifier(file[0].reservation.depart <= file[file.length - 1].reservation.depart, 'le délai le plus court d’abord');
+
+  const lu = lireAvisIA({ content: [{ type: 'text', text: '{"texte":"Lucas a été parfait.","a_relire":false,"raison":""}' }], stop_reason: 'end_turn' });
+  verifier(lu?.texte === 'Lucas a été parfait.' && lu.aRelire === false, 'réponse de l’IA lue');
+  verifier(lireAvisIA({ content: [{ type: 'text', text: 'pas du JSON' }], stop_reason: 'end_turn' }) === null && lireAvisIA({ content: [], stop_reason: 'refusal' }) === null, 'réponse illisible ou refus : ignorée');
+}
+
+function apercu() {
+  section('Écran : prochain envoi');
+  const reglages = reglagesAllumes(['veille_arrivee']);
+  const d = { reservations: [resa('r1'), resa('r2', { arrivee: '2026-10-27', depart: '2026-10-30' })], filsMessages: [fil('fil-1', 'r1'), fil('fil-2', 'r2')], envoisProgrammes: [] as EnvoiProgramme[] };
+  const p = prochainEnvoi(d, reglages, 'veille_arrivee', paris('2026-10-25T10:00:00Z'));
+  verifier(p?.reservation.id === 'r1' && p.quand === Date.parse('2026-10-25T17:00:00Z'), 'prochain envoi : la veille de la prochaine arrivée, 18:00');
+  const deja = prochainEnvoi({ ...d, envoisProgrammes: [{ id: idEnvoi('r1', 'veille_arrivee'), reservationId: 'r1', logementId: 'log-1', declencheur: 'veille_arrivee', voyageur: 'Marie', statut: 'envoye', le: '' }] }, reglages, 'veille_arrivee', paris('2026-10-25T10:00:00Z'));
+  verifier(deja?.reservation.id === 'r2', 'déjà envoyé : le suivant');
+  verifier(prochainEnvoi(d, reglagesProgrammes({ reglages: [] }), 'veille_arrivee', paris('2026-10-25T10:00:00Z')) === null, 'éteint : pas de prochain envoi');
+}
+
+/* ==================================================== passage simulé */
+
+class FausseBase {
+  lignes = new Map<string, { collection: string; id: string; donnees: unknown; maj: number }>();
+  private n = 0;
+  cle = (c: string, id: string) => `${c}\u0000${id}`;
+  echoue?: (collection: string) => boolean;
+
+  fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
+    const methode = (init?.method ?? 'GET').toUpperCase();
+    const eq = (k: string) => (url.searchParams.get(k) ?? '').replace(/^eq\./, '');
+    if (methode === 'GET') {
+      const collection = eq('collection');
+      const filtre = url.searchParams.get('id');
+      const ids = filtre ? new Set(filtre.replace(/^in\.\(|\)$/g, '').split(',').map((x) => x.replace(/^"|"$/g, ''))) : null;
+      const offset = Number(url.searchParams.get('offset') ?? 0);
+      return json(
+        [...this.lignes.values()]
+          .filter((l) => l.collection === collection && (!ids || ids.has(l.id)))
+          .sort((a, b) => a.id.localeCompare(b.id))
+          .slice(offset, offset + 1000)
+          .map((l) => ({ id: l.id, donnees: JSON.parse(JSON.stringify(l.donnees)), maj_le: String(l.maj) })),
+      );
+    }
+    if (methode === 'PATCH') {
+      const l = this.lignes.get(this.cle(eq('collection'), eq('id')));
+      if (!l || String(l.maj) !== eq('maj_le')) return json([]);
+      l.donnees = JSON.parse(JSON.stringify((JSON.parse(String(init?.body)) as { donnees: unknown }).donnees));
+      l.maj = ++this.n;
+      return json([{ id: l.id }]);
+    }
+    const lot = JSON.parse(String(init?.body)) as { collection: string; id: string; donnees: unknown }[];
+    if (lot.some((l) => this.echoue?.(l.collection))) return new Response('panne', { status: 500 });
+    for (const l of lot) this.lignes.set(this.cle(l.collection, l.id), { collection: l.collection, id: l.id, donnees: JSON.parse(JSON.stringify(l.donnees)), maj: ++this.n });
+    return new Response(null, { status: 201 });
+  };
+
+  get<T>(c: string, id: string): T | undefined {
+    return this.lignes.get(this.cle(c, id))?.donnees as T | undefined;
+  }
+  collection<T>(c: string): T[] {
+    return [...this.lignes.values()].filter((l) => l.collection === c).map((l) => l.donnees as T);
+  }
+  poser<T extends { id: string }>(c: string, e: T) {
+    this.lignes.set(this.cle(c, e.id), { collection: c, id: e.id, donnees: JSON.parse(JSON.stringify(e)), maj: ++this.n });
+  }
+}
+
+class FauxRepull {
+  appels: { chemin: string; methode: string; cle: string | null; corps?: unknown }[] = [];
+  envois: { conversation: string; message: string; cle: string }[] = [];
+  idempotence = new Map<string, { charge: string; reponse: Record<string, unknown> }>();
+  coupure = false;
+  refus = false;
+
+  fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
+    const h = new Headers(init?.headers);
+    if (h.get('authorization') !== 'Bearer sk_test_auto') return json({ error: { code: 'unauthorized' } }, 401);
+    const methode = (init?.method ?? 'GET').toUpperCase();
+    const cle = h.get('idempotency-key');
+    const corps = init?.body ? JSON.parse(String(init.body)) : undefined;
+    this.appels.push({ chemin: url.pathname, methode, cle, corps });
+    const m = /^\/v1\/conversations\/([^/]+)\/messages$/.exec(url.pathname);
+    if (m && methode === 'POST') {
+      if (this.refus) return json({ error: { code: 'message_not_sent', message: 'blocked' } }, 422);
+      const charge = JSON.stringify(corps);
+      const deja = cle ? this.idempotence.get(cle) : undefined;
+      if (deja && this.coupure) throw new TypeError('fetch failed');
+      if (deja) return deja.charge === charge ? json(deja.reponse) : json({ error: { code: 'idempotency_key_reused', message: 'reused' } }, 422);
+      const id = String(700000 + this.envois.length);
+      const reponse = { id, conversationId: Number(m[1]), channel: 'airbnb', status: 'sent', contentRewritten: false, deliveredContent: (corps as { message: string }).message };
+      this.envois.push({ conversation: m[1], message: (corps as { message: string }).message, cle: cle ?? '' });
+      if (cle) this.idempotence.set(cle, { charge, reponse });
+      if (this.coupure) throw new TypeError('fetch failed');
+      return json(reponse);
+    }
+    return json({ error: { code: 'not_found', message: url.pathname } }, 404);
+  };
+}
+
+class FausseIA implements ClientIA {
+  appels: Anthropic.MessageCreateParamsNonStreaming[] = [];
+  reponses: ({ texte: string; a_relire: boolean; raison: string } | Error)[] = [];
+  messages = {
+    create: async (p: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
+      this.appels.push(p);
+      const r = this.reponses.shift() ?? { texte: 'Voyageur agréable et respectueux.', a_relire: false, raison: '' };
+      if (r instanceof Error) throw r;
+      return {
+        id: 'msg_test', type: 'message', role: 'assistant', model: p.model,
+        content: [{ type: 'text', text: JSON.stringify(r), citations: null }],
+        stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 800, output_tokens: 80 },
+      } as unknown as Anthropic.Message;
+    },
+  };
+}
+
+async function passageSimule() {
+  section('Passage serveur simulé (fausse base, fausse plateforme, faux Claude)');
+  const base = new FausseBase();
+  const repull = new FauxRepull();
+  const ia = new FausseIA();
+  let horloge = paris('2026-10-25T17:30:00Z'); // 18:30 à Paris, la veille de l'arrivée
+  const options = (extra: Partial<OptionsProgrammes> = {}): OptionsProgrammes => ({
+    cle: 'sk_test_auto',
+    base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base.fetch as typeof fetch, jeton: async () => 'jeton' }),
+    echeance: Date.now() + 50_000,
+    budgetMois: 400,
+    fetch: repull.fetch as typeof fetch,
+    attendre: async () => undefined,
+    maintenant: () => horloge,
+    ia,
+    ...extra,
+  });
+  const reglages = (r: ReglagesMessagesProgrammes) => base.poser('reglages', r);
+  const envoi = (rid: string, k: DeclencheurMessage) => base.get<EnvoiProgramme>(COLLECTION_ENVOIS_PROGRAMMES, idEnvoi(rid, k));
+  const postsMessages = () => repull.appels.filter((a) => a.methode === 'POST').length;
+
+  base.poser('logements', LOGEMENT);
+  base.poser('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true });
+  for (const r of [resa('r1'), resa('r2', { statut: 'annulee' }), resa('r3'), resa('r4', { canal: 'booking' }), resa('r5')]) base.poser('reservations', r);
+  base.poser('filsMessages', fil('fil-1', 'r1'));
+  base.poser('filsMessages', fil('fil-4', 'r4', { repull: undefined, canal: 'booking' }));
+  base.poser('filsMessages', fil('fil-5', 'r5', { messages: [msg('q', 'voyageur', 'Il y a un parking ?', '2026-10-25T18:20:00+01:00')], traitePar: 'en_attente', dernierMessageLe: '2026-10-25T18:20:00+01:00' }));
+
+  // Éteint : rien du tout.
+  let b = await lancerProgrammes(options());
+  verifier(b.statut === 'fait' && b.envoyes === 0 && postsMessages() === 0, 'tout éteint : aucun envoi');
+  verifier(!base.collection(COLLECTION_ENVOIS_PROGRAMMES).length, 'tout éteint : aucune ligne écrite');
+
+  reglages(reglagesAllumes(['veille_arrivee']));
+  b = await lancerProgrammes(options());
+  verifier(b.envoyes === 1 && repull.envois.length === 1, 'la veille à 18:30 : un message part');
+  verifier(repull.envois[0]?.conversation === '1' && repull.envois[0]?.cle === 'lm-auto-r1-veille_arrivee', 'par la conversation du séjour, avec la clé du séjour et du moment');
+  const parti = repull.envois[0]?.message ?? '';
+  verifier(parti.startsWith('Bonjour Marie,') && parti.includes('4821') && parti.includes('soleil2026') && parti.includes('https://youtu.be/entree') && parti.endsWith('L’équipe Label Maison'), 'texte complet : prénom, accès, wifi, guide d’accès, signature');
+  verifier(envoi('r1', 'veille_arrivee')?.statut === 'envoye' && !!envoi('r1', 'veille_arrivee')?.envoyeLe, 'ligne « envoyé » dans l’historique');
+  verifier(!envoi('r1', 'veille_arrivee')?.texte, 'une fois envoyé, le texte (codes compris) n’est gardé que dans la conversation');
+  const f1 = base.get<FilMessages>('filsMessages', 'fil-1')!;
+  const dernier = f1.messages[f1.messages.length - 1];
+  verifier(dernier?.auteur === 'hote' && dernier.envoi?.par === PAR_MESSAGE_AUTO, 'le message est dans la conversation, « par Message automatique »');
+  verifier(f1.traitePar === 'agent' && f1.statut === 'ouvert', 'la conversation reste à l’agent (rien ne change de main)');
+  verifier(envoi('r2', 'veille_arrivee')?.statut === 'ignore' && envoi('r2', 'veille_arrivee')?.raison === RAISONS.annulee, 'annulée : notée « pas envoyé »');
+  verifier(!envoi('r3', 'veille_arrivee') && !envoi('r5', 'veille_arrivee'), 'sans conversation ou voyageur qui attend : rien d’écrit, nouvel essai plus tard');
+  verifier(envoi('r4', 'veille_arrivee')?.statut === 'ignore' && envoi('r4', 'veille_arrivee')?.raison === RAISONS.horsPlateforme, 'hors plateforme : noté');
+  verifier(base.collection<{ action: string; auteur: string }>('journal').some((j) => j.auteur === PAR_MESSAGE_AUTO && j.action === 'Message envoyé au voyageur'), 'journal : l’envoi est tracé');
+
+  // Jamais deux fois.
+  horloge = paris('2026-10-25T18:00:00Z');
+  b = await lancerProgrammes(options());
+  verifier(repull.envois.length === 1 && b.envoyes === 0, 'second passage : rien ne repart');
+
+  // Coupure : le message part mais la réponse se perd ; repris avec la même clé, jamais doublé.
+  base.poser('reservations', resa('r6', { voyageur: { nom: 'Paul Leroy', nbPersonnes: 1 } }));
+  base.poser('filsMessages', fil('fil-6', 'r6'));
+  repull.coupure = true;
+  b = await lancerProgrammes(options());
+  verifier(envoi('r6', 'veille_arrivee')?.statut === 'en_cours', 'coupure : ligne laissée « en cours »');
+  repull.coupure = false;
+  horloge = paris('2026-10-25T18:30:00Z');
+  b = await lancerProgrammes(options());
+  verifier(repull.envois.filter((e) => e.conversation === '6').length === 1, 'reprise : la plateforme rejoue, un seul message pour le voyageur');
+  verifier(envoi('r6', 'veille_arrivee')?.statut === 'envoye', 'reprise : ligne « envoyé »');
+
+  // La marque ne s'écrit pas : rien ne part.
+  base.poser('reservations', resa('r8', { voyageur: { nom: 'Zoé', nbPersonnes: 1 } }));
+  base.poser('filsMessages', fil('fil-8', 'r8'));
+  base.echoue = (c) => c === COLLECTION_ENVOIS_PROGRAMMES;
+  const avant = repull.envois.length;
+  b = await lancerProgrammes(options());
+  verifier(repull.envois.length === avant && b.erreurs.length > 0, 'base en panne avant l’envoi : rien ne part');
+  base.echoue = undefined;
+
+  // Refus net de la plateforme : échec noté, pas de nouvel essai.
+  repull.refus = true;
+  b = await lancerProgrammes(options());
+  verifier(envoi('r8', 'veille_arrivee')?.statut === 'echec' && b.echecs === 1, 'refus de la plateforme : « échec » noté');
+  repull.refus = false;
+  const appelsAvant = repull.appels.length;
+  await lancerProgrammes(options());
+  verifier(repull.appels.length === appelsAvant, 'après un échec : pas de nouvel essai');
+
+  // Après 21 h : plus rien (et noté « moment passé » pour le voyageur qui attendait).
+  horloge = paris('2026-10-25T20:30:00Z');
+  b = await lancerProgrammes(options());
+  verifier(envoi('r5', 'veille_arrivee')?.statut === 'ignore' && envoi('r5', 'veille_arrivee')?.raison === RAISONS.attend, 'moment passé : le voyageur qui attendait est noté, rien n’est parti');
+  verifier(envoi('r3', 'veille_arrivee')?.raison === RAISONS.sansConversation, 'moment passé : sans conversation, noté');
+
+  // Confirmation : allumée maintenant ; seules les nouvelles réservations la reçoivent, de 8 h à 21 h.
+  horloge = paris('2026-10-25T21:30:00Z'); // 22:30
+  const conf = reglagesAllumes(['veille_arrivee', 'confirmation'], ALLUME_LE, (r) => (r.modeles.confirmation.activeLe = '2026-10-25T22:00:00+01:00'));
+  reglages(conf);
+  b = await lancerProgrammes(options());
+  verifier(!base.collection<EnvoiProgramme>(COLLECTION_ENVOIS_PROGRAMMES).some((x) => x.declencheur === 'confirmation'), 'à l’allumage : aucune confirmation pour les réservations déjà là');
+  base.poser('reservations', resa('r7', { arrivee: '2026-11-10', depart: '2026-11-12', voyageur: { nom: 'Inès Garcia', nbPersonnes: 2 } }));
+  base.poser('filsMessages', fil('fil-7', 'r7'));
+  horloge = paris('2026-10-25T21:45:00Z');
+  b = await lancerProgrammes(options());
+  verifier(!envoi('r7', 'confirmation') && b.reportes >= 1, 'nouvelle réservation à 22:45 : attend le matin');
+  horloge = paris('2026-10-26T06:45:00Z');
+  await lancerProgrammes(options());
+  verifier(!envoi('r7', 'confirmation'), '07:45 : toujours rien');
+  horloge = paris('2026-10-26T07:10:00Z');
+  await lancerProgrammes(options());
+  const c7 = repull.envois.find((e) => e.conversation === '7');
+  verifier(envoi('r7', 'confirmation')?.statut === 'envoye' && !!c7, '08:10 : la confirmation part');
+  verifier(!!c7 && c7.message.includes('Inès') && !c7.message.includes('4821') && !c7.message.includes('soleil2026') && !/Wifi/.test(c7.message), 'confirmation 15 jours avant : ni code ni wifi');
+  const lot = Array.from({ length: SEUIL_IMPORT + 1 }, (_, i) => resa(`imp-${i}`, { arrivee: '2026-12-01', depart: '2026-12-03' }));
+  for (const r of lot) {
+    base.poser('reservations', r);
+    base.poser('filsMessages', fil(`fil-imp${i(r.id)}`, r.id));
+  }
+  horloge = paris('2026-10-26T08:00:00Z');
+  b = await lancerProgrammes(options());
+  verifier(b.importation === SEUIL_IMPORT + 1 && !lot.some((r) => envoi(r.id, 'confirmation')), 'importation d’un coup : pas de confirmation');
+
+  // Écritures sur la plateforme : uniquement des messages aux voyageurs.
+  const ecritures = repull.appels.filter((a) => a.methode !== 'GET');
+  verifier(ecritures.length > 0 && ecritures.every((a) => a.methode === 'POST' && /^\/v1\/conversations\/[^/]+\/messages$/.test(a.chemin) && ecritureRepullPermise(a.methode, a.chemin, a.corps)), 'plateforme : rien d’autre que des messages (ni prix, ni calendrier, ni annonce, ni avis)');
+  verifier(ecritures.every((a) => a.cle?.startsWith('lm-auto-')), 'chaque envoi porte une clé d’idempotence');
+
+  // Envoi coupé depuis plus de 23 h : à vérifier, rien ne repart.
+  base.poser(COLLECTION_ENVOIS_PROGRAMMES, { id: idEnvoi('r1', 'jour_depart'), reservationId: 'r1', logementId: 'log-1', declencheur: 'jour_depart', voyageur: 'Marie', statut: 'en_cours', texte: 'Bonjour', cle: cleEnvoiProgramme('r1', 'jour_depart'), filId: 'fil-1', depuis: '2026-10-24T09:00:00+02:00', le: '2026-10-24T09:00:00+02:00' } as EnvoiProgramme);
+  const nb = repull.envois.length;
+  await lancerProgrammes(options());
+  verifier(envoi('r1', 'jour_depart')?.statut === 'a_verifier' && repull.envois.length === nb, 'envoi coupé trop ancien : « à vérifier », rien ne repart');
+
+  // Verrou : un seul passage à la fois.
+  base.poser('programmes', { id: 'etat', verrou: { jusqua: Date.now() + 3_600_000 * 24 * 365, id: 'autre' } });
+  verifier((await lancerProgrammes(options())).statut === 'occupe', 'un autre passage en cours : rien');
+  base.poser('programmes', { id: 'etat' });
+
+  /* ------------------------------------------------ avis à déposer */
+  section('Passage simulé : avis à déposer');
+  horloge = paris('2026-10-25T17:30:00Z');
+  base.poser('reservations', resa('fin-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Lucas Martin', nbPersonnes: 2 } }));
+  base.poser('reservations', resa('fin-2', { arrivee: '2026-10-18', depart: '2026-10-23', statut: 'terminee', voyageur: { nom: 'Emma Petit', nbPersonnes: 3 } }));
+  base.poser('reservations', resa('fin-3', { canal: 'booking', arrivee: '2026-10-18', depart: '2026-10-23', statut: 'terminee' }));
+  base.poser('incidents', { id: 'inc-1', logementId: 'log-1', reservationId: 'fin-2', date: '2026-10-21', categorie: 'casse', gravite: 'moyenne', description: 'Table abîmée', statut: 'ouvert', refacturable: 'voyageur', preuves: [] } as Incident);
+  // Le délai le plus court d'abord : Emma (partie le 23), puis Lucas (le 24).
+  ia.reponses = [{ texte: 'Emma a séjourné chez nous.', a_relire: true, raison: 'Incident signalé' }, { texte: 'Lucas a été un voyageur parfait.', a_relire: false, raison: '' }];
+  b = await lancerProgrammes(options());
+  const a1 = base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-1');
+  const a2 = base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-2');
+  verifier(a1?.statut === 'pret' && a1.source === 'ia' && a1.texte === 'Lucas a été un voyageur parfait.', 'séjour sans souci : avis préparé par l’IA, « prêt »');
+  verifier(a2?.statut === 'a_relire' && !!a2.raisons?.includes('Un incident pendant le séjour'), 'séjour avec incident : « à relire »');
+  verifier(!base.get(COLLECTION_AVIS_A_DEPOSER, 'fin-3'), 'Booking.com : pas d’avis à déposer');
+  const appel = ia.appels.find((x) => String(x.messages[0]?.content ?? '').includes('Lucas'));
+  verifier(appel?.model === MODELE_AGENT_DEFAUT && JSON.stringify(appel?.output_config ?? {}).includes('json_schema'), 'même modèle que l’agent, sortie JSON imposée');
+  verifier(String(appel?.system ?? '').includes('Label Maison') && String(appel?.messages[0]?.content ?? '').includes('Lucas') && !String(appel?.messages[0]?.content ?? '').includes('Martin'), 'consignes au nom de l’espace ; prénom seul, jamais le nom de famille');
+  verifier(base.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === 2, 'appels de l’IA comptés avec ceux de l’agent');
+  const appelsIA = ia.appels.length;
+  await lancerProgrammes(options());
+  verifier(ia.appels.length === appelsIA, 'avis déjà préparés : pas de nouvel appel');
+
+  // L'équipe a dit « C'est fait » : jamais écrasé, même si un souci apparaît ensuite.
+  base.poser(COLLECTION_AVIS_A_DEPOSER, { ...a1!, statut: 'fait', traitePar: 'Abdel' });
+  base.poser('incidents', { id: 'inc-2', logementId: 'log-1', reservationId: 'fin-1', date: '2026-10-23', categorie: 'casse', gravite: 'faible', description: 'Verre cassé', statut: 'ouvert', refacturable: 'aucun', preuves: [] } as Incident);
+  await lancerProgrammes(options());
+  verifier(base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-1')?.statut === 'fait', 'avis marqué fait par l’équipe : jamais écrasé');
+
+  // Un avis prêt dont le séjour a depuis un incident repasse « à relire ».
+  base.poser('reservations', resa('fin-4', { arrivee: '2026-10-19', depart: '2026-10-22', statut: 'terminee', voyageur: { nom: 'Hugo', nbPersonnes: 1 } }));
+  await lancerProgrammes(options());
+  verifier(base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-4')?.statut === 'pret', 'nouveau séjour sans souci : prêt');
+  base.poser('incidents', { id: 'inc-3', logementId: 'log-1', reservationId: 'fin-4', date: '2026-10-21', categorie: 'voyageur', gravite: 'faible', description: 'Bruit', statut: 'ouvert', refacturable: 'aucun', preuves: [] } as Incident);
+  await lancerProgrammes(options());
+  verifier(base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'fin-4')?.statut === 'a_relire', 'incident après coup : « prêt » repasse « à relire »');
+
+  // Autre espace au plafond du mois : pas d'IA, texte simple.
+  const base2 = new FausseBase();
+  base2.poser('logements', LOGEMENT);
+  base2.poser('reservations', resa('s-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Nina Roux', nbPersonnes: 2 } }));
+  base2.poser(COLLECTION_AGENT, { id: ID_ETAT_AGENT, iaMois: { mois: '2026-10', appels: 2 } });
+  const ia2 = new FausseIA();
+  await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base2.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: ia2, nomEspace: 'Sens', plafondIAMois: 2 }));
+  const s1 = base2.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 's-1');
+  verifier(ia2.appels.length === 0 && s1?.source === 'modele' && s1.texte === texteAvisParDefaut('Nina'), 'plafond du mois atteint : aucun appel à l’IA, texte simple');
+  base2.poser('reservations', resa('s-2', { arrivee: '2026-10-21', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Omar', nbPersonnes: 2 } }));
+  await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base2.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: ia2, nomEspace: 'Sens', plafondIAMois: 5 }));
+  verifier(ia2.appels.length === 1 && String(ia2.appels[0]?.system).includes('Sens') && !String(ia2.appels[0]?.system).includes('Label Maison'), 'sous le plafond : l’IA rédige au nom de l’espace, jamais de Label Maison');
+  verifier(base2.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === 3, 'l’appel compte dans le plafond de l’espace');
+
+  // Sans clé IA : texte simple, jamais bloqué.
+  const base3 = new FausseBase();
+  base3.poser('reservations', resa('t-1', { arrivee: '2026-10-20', depart: '2026-10-24', statut: 'terminee', voyageur: { nom: 'Léo', nbPersonnes: 1 } }));
+  await lancerProgrammes(options({ base: new BaseErp({ url: 'https://base.test', cleAnon: 'anon', fetch: base3.fetch as typeof fetch, jeton: async () => 'jeton' }), ia: null }));
+  verifier(base3.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 't-1')?.statut === 'pret', 'sans IA : avis prêt avec un texte simple');
+}
+
+const i = (id: string) => id.replace(/\D/g, '');
+
+async function principal() {
+  heures();
+  eteintParDefaut();
+  decisions();
+  heuresCalmes();
+  reservationsVues();
+  rendu();
+  signatures();
+  fileAvis();
+  apercu();
+  await passageSimule();
+  console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+}
+
+principal().catch((e) => {
+  console.error(e);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = 1;
+});

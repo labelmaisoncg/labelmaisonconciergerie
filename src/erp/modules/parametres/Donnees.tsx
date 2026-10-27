@@ -23,7 +23,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   dossiers: 'Dossiers propriétaires',
   recommandations: 'Recommandations propriétaires',
   versionsAnnonce: 'Versions d’annonces',
-  reglages: 'Réglages (agent de messagerie)',
+  reglages: 'Réglages (agent, messages automatiques)',
   accesProprietaires: 'Accès à l’espace propriétaire',
   documentsProprietaire: 'Documents partagés aux propriétaires',
   bilansProprietaire: 'Bilans mensuels des propriétaires',
@@ -33,6 +33,8 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   absences: 'Absences de l’équipe de terrain',
   controles: 'Contrôles qualité',
   signalementsLogement: 'Logements signalés par l’équipe de terrain',
+  envoisProgrammes: 'Messages automatiques envoyés',
+  avisADeposer: 'Avis à déposer sur les voyageurs',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

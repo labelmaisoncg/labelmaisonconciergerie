@@ -19,6 +19,7 @@ import { genererOperations } from './seed-operations';
 import { genererEquipeOps } from './seed-equipe';
 import { creerRecommandations } from './seed-recommandations';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { creerProgrammesDemo } from './seed-programmes';
 import { creerVersionsAnnonce } from './seed-annonces';
 import { creerContactsCrm } from './seed-crm';
 import { creerDossiersDemo } from './seed-dossiers';
@@ -660,5 +661,6 @@ export function creerSeed(): ErpDonnees {
     controles: ops.controles,
     signalementsLogement: ops.signalementsLogement,
   };
-  return { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
+  const complet = { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
+  return { ...complet, ...creerProgrammesDemo(complet) };
 }

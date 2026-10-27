@@ -13,11 +13,12 @@ import { sansChargeLe } from '../../../data/operations';
 import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
+import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
 
-export type TypeATraiter = 'message' | 'avis' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge';
+export type TypeATraiter = 'message' | 'avis' | 'avisHote' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge';
 
 export interface ElementATraiter {
   id: string;
@@ -67,6 +68,18 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       details: autres.map(ligneIncident),
       ...(autres.length > 1 ? { liens: autres.map(lienIncident) } : {}),
     });
+
+  // Avis à déposer sur Airbnb après chaque départ : aucun séjour terminé sans son avis traité.
+  const aDeposer = avisATraiter(d, aujourdhui);
+  if (aDeposer.length) {
+    const lien = (id: string) => `/erp/reservations/${encodeURIComponent(id)}`;
+    liste.push({
+      id: 'avisHote', type: 'avisHote', priorite: aDeposer.some((a) => a.joursRestants <= 2) ? 1 : 2, ton: 'or', to: lien(aDeposer[0].reservation.id),
+      titre: aDeposer.length > 1 ? `${aDeposer.length} avis à déposer` : 'Un avis à déposer',
+      details: aDeposer.map((a) => `${prenomDe(a.reservation.voyageur.nom)} (${nom(a.reservation.logementId)})${a.statut === 'a_relire' ? ', à relire' : ''} · encore ${a.joursRestants} j`),
+      liens: aDeposer.map((a) => lien(a.reservation.id)),
+    });
+  }
 
   // Logements où personne n'a la charge aujourd'hui (ni choix ni seul agent, ou absent sans relais) :
   // codes et incidents sans destinataire. Une absence sans relais compte pour aujourd'hui.

@@ -9,7 +9,9 @@
 //                              n'est envoyé), traductions (api/_erp-agent-assistant.ts)
 //   GET|POST avec Authorization: Bearer CRON_SECRET → passage planifié
 //     (cron Vercel quotidien, et pg_cron de Supabase toutes les 30 min :
-//     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour
+//     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour ;
+//     après l'agent : messages automatiques dus et avis à préparer
+//     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts)
 //
 // Authentification des membres : Authorization: Bearer <jeton de session
 // Supabase>, gérant ou opérations de l'espace de l'en-tête x-erp-espace
@@ -28,9 +30,12 @@ import { baseErp, configuration, egalConstant, lireCorps, repondre, variableManq
 import { configurationEspace, espaceDemande, espacesActifs } from './_erp-espaces.js';
 import { surveiller } from './_erp-notifications.js';
 import { notificationsOpsDuJour } from './_operations-notifications.js';
+import { programmesPlanifies } from './_erp-programmes.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 52_000;
+/** Part du temps gardée, dans chaque espace, pour les messages automatiques et les avis (après l'agent). */
+const RESERVE_PROGRAMMES_MS = 10_000;
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET' && req.method !== 'POST') {
@@ -110,8 +115,9 @@ export default async function handler(req: any, res: any) {
     // Label Maison seul (avant les espaces) : même passage et même réponse qu'avant.
     if (espaces.length === 1 && estLabelMaison(espaces[0].id)) {
       try {
-        const passage = await passer(c, 'planifie', debut + BUDGET_TEMPS_MS, debut);
-        return repondre(res, 200, { ok: passage.statut !== 'erreur', passage });
+        const passage = await passer(c, 'planifie', debut + BUDGET_TEMPS_MS - RESERVE_PROGRAMMES_MS, debut);
+        const programmes = await programmesPlanifies(c, debut + BUDGET_TEMPS_MS);
+        return repondre(res, 200, { ok: passage.statut !== 'erreur', passage, ...(programmes ? { programmes: programmes.statut } : {}) });
       } catch (e) {
         console.error('[erp-agent] échec', e);
         return repondre(res, 500, { ok: false, erreur: e instanceof Error ? e.message : String(e) });
@@ -124,7 +130,10 @@ export default async function handler(req: any, res: any) {
       try {
         const ce = estLabelMaison(fiche.id) ? c : await configurationEspace(fiche.id, fiche);
         if (variableManquante(ce)) continue;
-        passages[fiche.code] = (await passer(ce, 'planifie', Date.now() + Math.floor(reste / (espaces.length - i)), debut)).statut;
+        const part = Math.floor(reste / (espaces.length - i));
+        const fin = Date.now() + part;
+        passages[fiche.code] = (await passer(ce, 'planifie', fin - Math.min(RESERVE_PROGRAMMES_MS, Math.floor(part / 3)), debut)).statut;
+        await programmesPlanifies(ce, fin);
       } catch (e) {
         console.error('[erp-agent] espace', fiche.code, e);
         passages[fiche.code] = 'erreur';
