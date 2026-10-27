@@ -1215,8 +1215,14 @@ d'août publié et deux documents ; son espace :
   « Mettre à jour » un bilan publié dont un logement a changé de
   propriétaire (« Logement transféré depuis le … »). Le premier vrai
   propriétaire d'un logement importé (fiche d'attente) reçoit tout son
-  historique. Les chiffres comptent aussi à partir du début du mandat du
-  propriétaire.
+  historique. Un séjour est à celui qui avait le logement le jour de
+  l'arrivée, toutes ses nuits comprises (chiffres, avis, calendrier,
+  séjours) ; un séjour arrivé avant le début du mandat n'est pas compté.
+  Taux de commission : le mandat du propriétaire, jamais celui d'un autre ;
+  sans mandat à lui, ni taux ni ligne « Commission » (le gérant voit
+  « Taux de commission à renseigner »). Le serveur ne lui remet que ses
+  mandats, ses séjours, et le séjour d'un autre qui déborde sur sa période
+  réduit à ses dates (pour l'occupation).
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
