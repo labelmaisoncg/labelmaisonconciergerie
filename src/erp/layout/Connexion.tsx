@@ -11,7 +11,7 @@
  * existent.
  */
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, UserPlus, Users, WifiOff } from 'lucide-react';
+import { ChevronRight, Database, KeyRound, Loader2, LogIn, LogOut, RefreshCw, ShieldAlert, UserPlus, Users, WifiOff } from 'lucide-react';
 import { EMAIL_VALIDE } from '../data/invitation';
 import {
   RETOUR_LIEN,
@@ -174,6 +174,53 @@ const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l�
 /** Base d'avant les espaces : pas de création de compte par l'ERP. */
 const MESSAGE_CREATION_FERMEE = 'La création de compte n’est pas encore ouverte : demandez à un gérant de vous ajouter.';
 
+/**
+ * « Créer mon compte » : d'abord qui l'on est (comme la page d'accès). Le
+ * choix n'ouvre rien : propriétaires et équipes de terrain reçoivent un lien
+ * de connexion par e-mail dans leur espace ; l'équipe d'une conciergerie crée
+ * son compte avec le lien de son invitation.
+ */
+const ROLES_COMPTE = [
+  { titre: 'Propriétaire', detail: 'Suivez vos logements. Connexion par un lien reçu par e‑mail.', href: '/espace-proprietaire' },
+  { titre: 'Agent ou responsable de pôle', detail: 'Vos missions sur le terrain. Connexion par un lien reçu par e‑mail.', href: '/espace-operations' },
+  { titre: 'Équipe d’une conciergerie', detail: 'Gérants et équipes, comme Label Maison, avec votre invitation.' },
+] as const;
+const CLASSE_CHOIX =
+  'flex min-h-14 w-full items-center gap-3 rounded-lg border border-(--lm-bord-fort) px-4 py-3 text-left hover:border-(--lm-or) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none';
+
+function ChoixRole({ onEquipe, onRetour }: { onEquipe: () => void; onRetour: () => void }) {
+  const contenu = (r: (typeof ROLES_COMPTE)[number]) => (
+    <>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-semibold text-(--lm-encre)">{r.titre}</span>
+        <span className="mt-0.5 block text-[13px] text-(--lm-encre-2)">{r.detail}</span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
+    </>
+  );
+  return (
+    <Cadre titre="Créer mon compte" sousTitre="Vous êtes :" icone={<UserPlus />}>
+      <div className="grid gap-2.5">
+        {/* Focus sur la première ligne, comme la page d'accès. */}
+        {ROLES_COMPTE.map((r, i) =>
+          'href' in r ? (
+            <a key={r.titre} href={r.href} className={CLASSE_CHOIX} autoFocus={i === 0}>
+              {contenu(r)}
+            </a>
+          ) : (
+            <button key={r.titre} type="button" onClick={onEquipe} className={CLASSE_CHOIX}>
+              {contenu(r)}
+            </button>
+          ),
+        )}
+      </div>
+      <button type="button" onClick={onRetour} className={`mt-4 ${LIEN_TEXTE}`}>
+        J’ai déjà un compte
+      </button>
+    </Cadre>
+  );
+}
+
 function FormulaireConnexion({ message }: { message?: string }) {
   // Lien d'invitation (#creer=<adresse>&code=…) : on commence par « Créer mon compte ».
   const gardee = invitationGardee();
@@ -183,6 +230,21 @@ function FormulaireConnexion({ message }: { message?: string }) {
   const [erreur, setErreur] = useState<string>();
   const [info, setInfo] = useState<string | undefined>(() => (RETOUR_LIEN.creer !== undefined && !gardee ? MESSAGE_SANS_INVITATION : undefined));
   const [enCours, setEnCours] = useState(false);
+  const [choix, setChoix] = useState(false);
+
+  if (choix) {
+    return (
+      <ChoixRole
+        onRetour={() => setChoix(false)}
+        onEquipe={() => {
+          setChoix(false);
+          // Le lien de l'invitation garde son code sur l'appareil ; sans lui, rien à créer ici
+          // (base d'avant les espaces : un gérant crée le compte dans Supabase).
+          void baseInvitations().then((prete) => setInfo(prete === false ? MESSAGE_CREATION_FERMEE : MESSAGE_SANS_INVITATION));
+        }}
+      />
+    );
+  }
 
   if (creation && gardee) {
     return (
@@ -265,13 +327,10 @@ function FormulaireConnexion({ message }: { message?: string }) {
           type="button"
           onClick={() => {
             setErreur(undefined);
-            if (invitationGardee()) {
-              setInfo(undefined);
-              return setCreation(true);
-            }
-            // Le lien de l'invitation garde son code sur l'appareil ; sans lui, rien à créer ici
-            // (base d'avant les espaces : un gérant crée le compte dans Supabase).
-            void baseInvitations().then((prete) => setInfo(prete === false ? MESSAGE_CREATION_FERMEE : MESSAGE_SANS_INVITATION));
+            setInfo(undefined);
+            // Invitation déjà gardée sur l'appareil : droit à la création ; sinon, qui êtes-vous ?
+            if (invitationGardee()) return setCreation(true);
+            setChoix(true);
           }}
           className={LIEN_TEXTE}
         >
