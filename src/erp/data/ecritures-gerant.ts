@@ -15,8 +15,8 @@ import { REGLAGES_AGENT_GERANT } from './messagerie-ia';
 import { CODES_REFUS_BASE, type Operation, type RefusBase } from './synchro';
 import type { ErpDonnees, Journal } from './types';
 
-/** Collections entières : ce que seul le serveur écrit, et les factures. */
-export const COLLECTIONS_GERANT_SEULEMENT: readonly string[] = ['envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles'];
+/** Collections entières : ce que seul le serveur écrit, les factures et les annonces à l'équipe. */
+export const COLLECTIONS_GERANT_SEULEMENT: readonly string[] = ['envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe'];
 
 /** Éléments précis d'une collection partagée avec l'équipe. */
 export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[]>> = {

@@ -152,6 +152,13 @@ node_modules/.bin/esbuild src/erp/data/verifier-incidents-erp.ts --bundle --form
 node_modules/.bin/esbuild src/erp/data/verifier-messages-programmes.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-messages-programmes.mjs && node /tmp/verifier-messages-programmes.mjs
+
+# Annonces à l'équipe : ce que chacun voit sur l'Accueil, « J'ai lu » sur
+# l'appareil, « Bonjour » au nom de l'espace, écriture réservée au gérant,
+# notification relue dans la base, jamais deux fois, refusée à un non-gérant.
+node_modules/.bin/esbuild src/erp/data/verifier-annonces-equipe.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-annonces-equipe.mjs && node /tmp/verifier-annonces-equipe.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -303,7 +310,7 @@ seules `activation-logement`, `plafond-120-nuits` et `messages-en-attente`).
 | Réservations | Planning (2 semaines ou 30 jours, prix des nuits libres), Séjours (À venir · En cours · Passés · Annulés), fiche d'un séjour, réservation directe | `/erp/reservations` (`?vue=liste`, `?q=`, `/:id`) |
 | Messagerie | Conversations (filtres À répondre · Toutes · Terminées, « Pas besoin de répondre ») · Activité · Votre agent | `/erp/messagerie` (`/:filId`, `?q=`), `/activite`, `/agent` |
 | CRM | Appels et relances (grille sur ordinateur, cartes par étape sur téléphone), dossier propriétaire, agenda, connecteur Claude | `/erp/crm` |
-| Paramètres | Équipe, Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Société (identité et sauvegarde) | `/erp/parametres` (`/plateformes`, `/application`, `/societe`) |
+| Paramètres | Équipe, Annonces à l'équipe (gérant), Plateformes (synchronisation), Application (installer l'app, lien pour l'équipe, notifications de l'appareil), Société (identité et sauvegarde) | `/erp/parametres` (`/annonces-equipe`, `/plateformes`, `/application`, `/societe`) |
 
 Hors menu mais ouverte depuis la fiche logement : la fiche d'un propriétaire
 (`/erp/proprietaires/:id`). Graphiques : `ui/Graphiques.tsx` (recharts, importé
@@ -435,7 +442,7 @@ Garanties dans la base (`supabase/erp-espaces.sql`, à relancer en passe 1
 ou 2 ; même règle avant les espaces dans `erp-installation.sql` et
 `erp-acces-gerants.sql`) : écriture réservée aux gérants de l'espace (et au
 compte serveur) pour `envoisProgrammes`, `programmes`, `agent`, `repull`,
-`factures`, `passagesFacturesMensuelles`, `conseilsPrix` (`reglages`,
+`factures`, `passagesFacturesMensuelles`, `annoncesEquipe`, `conseilsPrix` (`reglages`,
 `etat`) et `reglages` (`messages-programmes`, `societe`,
 `numerotation-factures`, `alerte-controle-agent`) ; dans les réglages de
 l'agent, marche, niveau d'autonomie, horaires, ce qu'il confie et délai
@@ -1255,6 +1262,7 @@ est activé par défaut, sauf le rappel du matin. Un toucher ouvre le bon écran
 | Nouvel avis | Avec la note ; « Avis à lire » sous 4,5 | la réservation |
 | Mise à jour des plateformes en échec | Une fois par jour au plus | Paramètres → Plateformes |
 | Rappel du matin | Arrivées et départs du jour (cron du matin) | l'Accueil |
+| Annonce à l'équipe | Le gérant publie une annonce avec « Prévenir aussi par notification » (une seule fois par annonce, jamais une annonce retirée) | l'Accueil |
 
 Un même message ne donne qu'**une** notification, la plus importante pour
 l'appareil (problème, puis l'agent passe la main, l'agent a répondu, nouveau
@@ -1287,12 +1295,43 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
 - **Appareils** : collection technique `connecteurs` (réservée aux gérants),
   un enregistrement par appareil (`notifications-appareil-…`) et le journal
   des envois (`notifications-journal`, 800 dernières clés). Route :
-  `/api/erp-notifications` (membres gérant ou opérations ; clés : gérant).
+  `/api/erp-notifications` (membres gérant ou opérations ; clés et annonces à l’équipe : gérant).
 - **Limites** : iPhone et iPad avec iOS / iPadOS 16.4 ou plus récent, app
   ajoutée à l'écran d'accueil (Safari seul ne reçoit pas de notifications).
   Les notifications partent quand l'ERP apprend la nouveauté : webhook Repull
   (quasi immédiat, offre Starter), passage de l'agent, ou synchronisation
   (quotidienne, ou « Synchroniser maintenant »).
+
+### Annonces à l'équipe
+
+Un court message du gérant à toute l'équipe de l'espace (premier essai :
+« Bonjour 👋 »). Rien à voir avec l'annonce d'un logement sur Airbnb ou
+Booking (`versionsAnnonce`).
+
+- **Gérant** : Paramètres → Annonces à l'équipe (`/erp/parametres/annonces-equipe`) :
+  titre, texte, « Prévenir aussi par notification » (cochée), « Publier » ;
+  la liste des annonces publiées, « Retirer » (confirmation). Tant que
+  l'espace n'a aucune annonce, le formulaire propose « Bonjour 👋 » au nom
+  de la conciergerie (`nomConciergerie`), à publier en un clic.
+- **Chaque membre** (gérant, opérations, lecture) : une carte en haut de
+  l'Accueil par annonce publiée (3 au plus), jusqu'à « J'ai lu ». La
+  fermeture reste sur l'appareil (localStorage, par espace et par
+  personne) : un membre qui n'est pas gérant n'écrit rien. Un membre qui
+  arrive plus tard voit les annonces encore publiées.
+- **Données** : collection `annoncesEquipe` (`erp.enregistrements`), dans
+  `erp.ecriture_gerant_seulement` : la base refuse toute écriture d'un autre
+  compte. Règles pures : `src/erp/data/annonces-equipe.ts`.
+- **Notification** : « Publier » enregistre l'annonce, puis appelle
+  `POST /api/erp-notifications { action: 'annoncer', id }` (gérant de
+  l'espace de l'en-tête seulement). Le serveur relit l'annonce dans la base,
+  l'envoie aux appareils de l'espace qui acceptent le type « Annonce à
+  l'équipe », clé `annonce-<id>` au journal des envois. Un envoi raté laisse
+  l'annonce publiée et le dit. En démonstration, aucun appel au serveur.
+- **Mise en service** (Supabase → SQL Editor, une fois) : relancer
+  `supabase/erp-espaces.sql` dans sa passe actuelle (`recette = ok`) ; base
+  d'avant les espaces : `supabase/erp-acces-gerants.sql`. Une ligne y est
+  ajoutée (`annoncesEquipe` dans `erp.ecriture_gerant_seulement`). Le code
+  marche sans : seule la garantie de la base manque jusque-là.
 
 ## Espaces (octobre 2026)
 

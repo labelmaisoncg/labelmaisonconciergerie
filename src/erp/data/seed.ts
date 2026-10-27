@@ -24,6 +24,9 @@ import { creerVersionsAnnonce } from './seed-annonces';
 import { creerContactsCrm } from './seed-crm';
 import { creerDossiersDemo } from './seed-dossiers';
 import { creerEspaceProprietaireDemo, prolongationDemo } from './seed-proprietaire';
+import { premiereAnnonce } from './annonces-equipe';
+import { ESPACE_LABEL_MAISON } from './espaces';
+import { nomConciergerie } from './marque-espace';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -681,6 +684,8 @@ export function creerSeed(): ErpDonnees {
     controles: ops.controles,
     signalementsLogement: ops.signalementsLogement,
     conseilsPrix: [],
+    // Le premier message du gérant, comme on le publierait en un clic (Paramètres → Annonces à l'équipe).
+    annoncesEquipe: [{ id: 'aeq-bonjour', ...premiereAnnonce(nomConciergerie(ESPACE_LABEL_MAISON)), publieeLe: `${AUJOURDHUI}T08:45:00+02:00`, publieePar: 'Abdel' }],
   };
   const complet = { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
   return { ...complet, ...creerProgrammesDemo(complet) };

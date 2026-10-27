@@ -36,6 +36,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   envoisProgrammes: 'Messages automatiques envoyés',
   avisADeposer: 'Avis à déposer sur les voyageurs',
   conseilsPrix: 'Prix conseillés (réglages et décisions)',
+  annoncesEquipe: 'Annonces à l’équipe',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

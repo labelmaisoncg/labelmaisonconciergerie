@@ -9,6 +9,7 @@ import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from 
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
 import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
 import type { ElementPrix } from './prix-conseils';
+import type { AnnonceEquipe } from './annonces-equipe';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -999,6 +1000,11 @@ export interface ErpDonnees {
   avisADeposer: AvisADeposer[];
   /** Prix conseillés (octobre 2026) : réglages, « C'est fait » / « Ignorer », état du passage du matin. */
   conseilsPrix: ElementPrix[];
+  /**
+   * Annonces à l'équipe (octobre 2026) : messages du gérant affichés en haut de l'Accueil de chaque
+   * membre (rien à voir avec l'annonce d'un logement, versionsAnnonce). Écrites par le gérant seul.
+   */
+  annoncesEquipe: AnnonceEquipe[];
 }
 
 export type NomCollection = keyof ErpDonnees;
