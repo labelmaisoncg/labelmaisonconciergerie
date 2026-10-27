@@ -172,7 +172,7 @@ export function apresControle(e: EtatControle | undefined, echec: boolean, le: H
 /** Notification aux gérants (leurs appareils) quand l'alerte se lève : une seule fois (clé liée au moment de l'alerte). */
 export function notificationAlerteControle(alerteLe: Horodatage): GroupeNotification {
   const titre = 'Votre agent ne peut plus vérifier ses réponses';
-  const corps = 'Il les garde à valider : rien ne part seul. Voir l’état de l’agent.';
+  const corps = 'Il les garde à valider : rien ne part seul. Voir l’état de votre agent.';
   const url = '/erp/messagerie/agent';
   return {
     cle: `controle-agent-${alerteLe}`,

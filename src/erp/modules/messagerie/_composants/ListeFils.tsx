@@ -9,7 +9,7 @@ import { CheckCircle2, SearchX } from 'lucide-react';
 import { Avatar, Badge, Button, SearchInput, Segmente, cn } from '../../../ui';
 import type { FilMessages, Logement } from '../../../data/types';
 import { nomLangue, type Urgence } from '../../../data/messagerie-ia';
-import { FILTRES, attendEquipe, correspond, quandCourt, type FiltreFil } from './logique';
+import { FILTRES, attendEquipe, auteurAffiche, correspond, quandCourt, type FiltreFil } from './logique';
 
 /** Ce que la liste montre du tri : urgence (conversations qui attendent l'équipe) et langue du voyageur. */
 export interface TriFil {
@@ -54,6 +54,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
         <ul className="lm-defilement max-lg:-mx-4 max-lg:border-t max-lg:border-(--lm-bord) max-lg:bg-(--lm-surface) lg:min-h-0 lg:flex-1 lg:overflow-y-auto" aria-label="Conversations">
           {fils.map((f) => {
             const dernier = f.messages[f.messages.length - 1];
+            const qui = dernier ? auteurAffiche(dernier, 'apercu') : null;
             const actif = f.id === actifId;
             const attente = attendEquipe(f);
             const t = tri?.get(f.id);
@@ -89,8 +90,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                     </div>
                     <div className="mt-0.5 flex items-center gap-2">
                       <p className={cn('min-w-0 flex-1 truncate text-[13px]', attente ? 'text-(--lm-encre)' : 'text-(--lm-encre-2)')}>
-                        {dernier?.auteur === 'agent' && <span className="text-(--lm-encre-3)">Agent : </span>}
-                        {dernier?.auteur === 'hote' && <span className="text-(--lm-encre-3)">Vous : </span>}
+                        {qui && <span className="text-(--lm-encre-3)">{qui} : </span>}
                         {dernier?.texte}
                       </p>
                       {/* « Urgent » en rouge pour un problème pendant le séjour ; sinon le moment en gris (« Arrive aujourd'hui », « Sur place »). */}

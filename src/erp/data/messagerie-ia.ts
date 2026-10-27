@@ -313,6 +313,74 @@ export const NIVEAUX_AUTONOMIE: { cle: NiveauAutonomie; libelle: string; descrip
   },
 ];
 
+/**
+ * Ce que l'écran « Votre agent » dit du niveau choisi (en-tête, aide, règles),
+ * fidèle à ce qu'il fait : à « Je valide tout », rien ne part seul, pas même
+ * le message d'attente (agent-messagerie.ts : seulement si politique.envoiAuto).
+ */
+export interface ExplicationNiveau {
+  titre: string;
+  sousTitre: string;
+  /** Au-dessus de la liste des sujets qu'il traite. */
+  sujets: string;
+  regles: string[];
+}
+
+export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<ReglagesAgent['transmettre'], 'horsFiche'>): ExplicationNiveau {
+  const fiche = 'Il n’invente rien : si l’information n’est pas dans la fiche du logement, ';
+  const communes = [
+    'Il ne promet jamais d’argent, même un petit geste.',
+    'Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.',
+    'Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
+  ];
+  if (niveau === 'valider') {
+    return {
+      titre: 'Votre agent prépare les réponses',
+      sousTitre: 'Vous les validez avant l’envoi : rien ne part sans vous.',
+      sujets: 'Il prépare la réponse, vous l’envoyez :',
+      regles: [
+        'Il n’envoie jamais rien seul, pas même un message d’attente : vous relisez sa réponse et l’envoyez en un clic.',
+        'Dans le doute, il vous passe toujours la main.',
+        fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'sa réponse le dit.'),
+        ...communes,
+      ],
+    };
+  }
+  const simples = niveau === 'simples';
+  return {
+    titre: simples ? 'Votre agent répond aux questions simples' : 'Votre agent répond aux voyageurs',
+    sousTitre: simples ? 'Il prépare les autres réponses : vous les validez avant l’envoi.' : 'Argent, annulation et problèmes sur place restent pour vous.',
+    sujets: simples ? 'Il répond seul, quand il est sûr de lui, à :' : 'Il répond seul, quand il est sûr de lui, par exemple à :',
+    regles: [
+      'Dans le doute, il vous passe toujours la main.',
+      'Ce qu’il n’envoie pas seul, il le prépare : vous relisez sa réponse et l’envoyez en un clic.',
+      fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'il le dit au voyageur.'),
+      'Quand il vous passe la main, il peut prévenir le voyageur par un court message, toujours le même : « l’équipe revient vers vous rapidement ».',
+      ...communes,
+      'Il n’envoie seul qu’en français ou en anglais : dans une autre langue, il prépare la réponse.',
+    ],
+  };
+}
+
+/**
+ * Réglages de l'agent que seul un gérant change à l'écran : marche ou pause,
+ * ce qu'il envoie seul, ses horaires, ce qu'il vous confie et le délai avant
+ * de vous prévenir. Le ton, la signature, les langues et Telegram restent à
+ * l'équipe. (La base ne garde que le niveau d'autonomie : erp.garder_autonomie_agent.)
+ */
+export const REGLAGES_AGENT_GERANT = ['actif', 'autonomie', 'horaires', 'transmettre', 'delaiAlerteMinutes'] as const;
+
+/** Ce qu'un membre enregistre : hors gérant, les réglages réservés restent ceux enregistrés. */
+export function reglagesAEnregistrer(formulaire: ReglagesAgent, enregistres: ReglagesAgent, gerant: boolean): ReglagesAgent {
+  if (gerant) return formulaire;
+  const r: Record<string, unknown> = { ...formulaire };
+  for (const k of REGLAGES_AGENT_GERANT) {
+    if (enregistres[k] === undefined) delete r[k];
+    else r[k] = enregistres[k];
+  }
+  return r as unknown as ReglagesAgent;
+}
+
 /** Confiance minimale pour un envoi seul. */
 export const SEUIL_SIMPLES = 0.85;
 export const SEUIL_AUTONOME = 0.7;
@@ -320,8 +388,7 @@ export const SEUIL_AUTONOME = 0.7;
 export const INTENTIONS_SIMPLES: IntentionMessage[] = ['arrivee', 'depart', 'infos', 'avis'];
 
 export interface PolitiqueEnvoi {
-  /** historique : Label Maison sans choix enregistré, fonctionnement d'avant (aucun seuil). */
-  niveau: NiveauAutonomie | 'historique';
+  niveau: NiveauAutonomie;
   /** Faux : rien ne part seul, ni réponse ni message d'attente. */
   envoiAuto: boolean;
   /** Confiance minimale pour envoyer seul (0 à 1). */
@@ -333,27 +400,25 @@ export interface PolitiqueEnvoi {
 const estNiveau = (v: unknown): v is NiveauAutonomie => v === 'valider' || v === 'simples' || v === 'autonome';
 
 /**
- * Politique d'envoi d'un espace. Choix du gérant d'abord. Sans choix : un
- * nouvel espace valide tout ; Label Maison garde son agent d'avant (il
- * répond seul hors sujets sensibles, sans seuil de confiance).
+ * Niveau appliqué : choix du gérant d'abord. Sans choix : un nouvel espace
+ * valide tout ; Label Maison est « Autonome hors sujets sensibles »
+ * (exactement ce niveau : même seuil, mêmes garde-fous), et l'écran le montre.
  */
+export function niveauAutonomie(r: Pick<ReglagesAgent, 'autonomie'>, labelMaison: boolean): NiveauAutonomie {
+  return estNiveau(r.autonomie) ? r.autonomie : labelMaison ? 'autonome' : 'valider';
+}
+
+/** Politique d'envoi d'un espace : celle du niveau appliqué (niveauAutonomie). */
 export function politiqueEnvoi(r: Pick<ReglagesAgent, 'autonomie'>, labelMaison: boolean): PolitiqueEnvoi {
-  const niveau = estNiveau(r.autonomie) ? r.autonomie : labelMaison ? 'historique' : 'valider';
+  const niveau = niveauAutonomie(r, labelMaison);
   switch (niveau) {
     case 'valider':
       return { niveau, envoiAuto: false, seuil: Number.POSITIVE_INFINITY };
     case 'simples':
       return { niveau, envoiAuto: true, seuil: SEUIL_SIMPLES, intentions: INTENTIONS_SIMPLES };
-    case 'autonome':
-      return { niveau, envoiAuto: true, seuil: SEUIL_AUTONOME };
     default:
-      return { niveau: 'historique', envoiAuto: true, seuil: 0 };
+      return { niveau: 'autonome', envoiAuto: true, seuil: SEUIL_AUTONOME };
   }
-}
-
-/** Niveau coché dans les réglages (Label Maison sans choix : « autonome », son fonctionnement d'avant). */
-export function niveauAutonomie(r: Pick<ReglagesAgent, 'autonomie'>, labelMaison: boolean): NiveauAutonomie {
-  return estNiveau(r.autonomie) ? r.autonomie : labelMaison ? 'autonome' : 'valider';
 }
 
 export type Verdict =
@@ -434,8 +499,8 @@ export function verdictEnvoi(d: DecisionNotee, p: PolitiqueEnvoi, voyageur: stri
   if (p.intentions && !p.intentions.includes(d.intention ?? 'autre')) {
     return { verdict: 'valider', motif: 'Ce n’est pas une question simple : à vous de valider.' };
   }
-  // Ancien format sans confiance : seul l'agent d'avant (Label Maison) l'accepte.
-  const confiance = d.confiance ?? (p.niveau === 'historique' ? 1 : 0);
+  // Sans confiance (ancien format, réponse illisible) : jamais d'envoi seul.
+  const confiance = d.confiance ?? 0;
   if (confiance < p.seuil) return { verdict: 'valider', motif: 'Votre agent n’est pas assez sûr de sa réponse : à vous de valider.' };
   return { verdict: 'envoyer' };
 }

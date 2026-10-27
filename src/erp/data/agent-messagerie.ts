@@ -42,7 +42,8 @@
  * données personnelles, ou s'il échoue, rien ne part seul. Chaque
  * décision est notée au journal (demande, confiance, envoyée / à valider /
  * transmise) et dans le bilan du passage. Label Maison sans choix enregistré
- * garde son fonctionnement d'avant (pas de seuil).
+ * est au niveau « Autonome hors sujets sensibles » (même seuil, mêmes
+ * garde-fous).
  *
  * Idempotent : avant d'envoyer, le fil garde un marqueur « envoi en cours »
  * (message du voyageur, texte, clé d'idempotence). Un passage coupé en plein

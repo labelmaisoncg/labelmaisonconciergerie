@@ -15,6 +15,7 @@ import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
 import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
 import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
+import { trierParUrgence, urgenceFil } from '../../../data/messagerie-ia';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
@@ -50,7 +51,12 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
 
   // Même règle que « À répondre » dans la Messagerie : une conversation terminée
   // (« Pas besoin de répondre ») n'attend plus rien, jusqu'au prochain message du voyageur.
-  const messages = d.filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente'));
+  // Même ordre aussi : les plus urgentes d'abord (séjour en cours, arrivée, problème), puis les plus récentes.
+  const reservations = new Map(d.reservations.map((r) => [r.id, r]));
+  const messages = trierParUrgence(
+    d.filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente')),
+    (f) => urgenceFil(f, f.reservationId ? reservations.get(f.reservationId) : undefined, aujourdhui).niveau,
+  );
   if (messages.length)
     liste.push({
       id: 'message', type: 'message', priorite: 1, ton: 'alerte', to: '/erp/messagerie',
@@ -137,7 +143,7 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   if (incompletes.length)
     liste.push({
       id: 'agent', type: 'agent', priorite: 2, ton: 'or', to: `/erp/logements/${incompletes[0].l.id}?onglet=fiche`,
-      titre: incompletes.length > 1 ? `L’agent manque d’informations sur ${incompletes.length} logements` : `L’agent manque d’informations sur ${incompletes[0].l.nom}`,
+      titre: incompletes.length > 1 ? `Votre agent manque d’informations sur ${incompletes.length} logements` : `Votre agent manque d’informations sur ${incompletes[0].l.nom}`,
       details: incompletes.map((x) => `${x.l.nom} : ${x.manquants.slice(0, 3).join(', ').toLowerCase()}${x.manquants.length > 3 ? '…' : ''}`),
     });
 

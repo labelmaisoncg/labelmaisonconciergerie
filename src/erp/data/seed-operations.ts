@@ -131,8 +131,9 @@ const GABARITS: Gabarit[] = [
     ],
   },
   {
+    // L'équipe a répondu en dernier : la conversation reste ouverte, hors de « À répondre ».
     critere: enCours,
-    statut: 'escalade',
+    statut: 'ouvert',
     traitePar: 'humain',
     echanges: [
       ['voyageur', 'Un voisin est venu se plaindre du bruit alors que nous étions calmes à 21 h.', -1, '21:48'],

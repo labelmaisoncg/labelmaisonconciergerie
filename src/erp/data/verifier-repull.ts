@@ -24,6 +24,8 @@ import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELEC
 import { ErreurConnexion, deconnecter, demarrerConnexion, enregistrerSelection, lireEtatConnexions, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb } from './page-airbnb';
+import { PAR_MESSAGE_AUTO } from './messages-programmes';
+import { auteurAffiche } from '../modules/messagerie/_composants/logique';
 import type { ErpDonnees, FilMessages, Journal, Logement, Proprietaire, Reservation } from './types';
 
 /* ------------------------------------------------------------ assertions */
@@ -1227,12 +1229,23 @@ async function principal() {
     // Réponse de l'agent, puis synchronisation : pas de doublon, auteur « agent » gardé.
     avancer(1);
     await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: 'Réponse de l’agent', auteur: 'agent', par: 'Agent IA' });
+    // Message automatique (passage-programmes.ts) : même envoi, signé « Message automatique ».
+    avancer(1);
+    await envoyerMessage(ctxEnvoi(), { filId: 'repull-7001', texte: 'Bonjour Alex, à bientôt !', auteur: 'hote', par: PAR_MESSAGE_AUTO });
     avancer(15);
     const rSync = await lancer(options('manuel'));
     const filSync = base.get<FilMessages>('filsMessages', 'repull-7001')!;
     verifier(rSync.statut === 'fait', 'synchronisation après envoi');
     verifier(filSync.messages.filter((m) => m.id === 'repull-900000').length === 1 && filSync.messages.filter((m) => m.id === 'repull-900001').length === 1, 'synchronisation : messages envoyés reconnus, sans doublon');
     verifier(filSync.messages.find((m) => m.id === 'repull-900001')?.auteur === 'agent' && !!filSync.messages.find((m) => m.id === 'repull-900001')?.envoi, 'synchronisation : auteur « agent » et trace d’envoi gardés');
+    const signature = (id: string) => {
+      const m = filSync.messages.find((x) => x.id === id);
+      return m ? auteurAffiche(m) : undefined;
+    };
+    verifier(
+      signature('repull-900000') === 'Équipe' && signature('repull-900001') === 'Réponse de votre agent' && signature('repull-900002') === 'Message automatique',
+      `après synchronisation, sous chaque bulle : équipe, agent, message automatique (${['repull-900000', 'repull-900001', 'repull-900002'].map(signature).join(' | ')})`,
+    );
     verifierFil(filSync);
   }
 

@@ -5,7 +5,8 @@
 import { format, parseISO } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { AUJOURDHUI, ajouterJours, dateJour, ecartJours, heure, jourMois, pluriel } from '../../../data/format';
-import type { FilMessages, Logement, RaisonEscalade, Reservation } from '../../../data/types';
+import { PAR_MESSAGE_AUTO } from '../../../data/messages-programmes';
+import type { FilMessages, Logement, Message, RaisonEscalade, Reservation } from '../../../data/types';
 
 /* ----------------------------------------------------------- codes d'accès */
 
@@ -119,6 +120,19 @@ export function correspond(fil: FilMessages, filtre: FiltreFil): boolean {
     default:
       return true;
   }
+}
+
+/**
+ * Qui a écrit un message de notre côté, en clair : sous la bulle
+ * (« signature ») ou devant l'aperçu de la liste (« apercu »). Un message
+ * automatique (passage-programmes.ts, envoi.par = PAR_MESSAGE_AUTO) n'est pas
+ * signé « Équipe ». Rien pour un message du voyageur.
+ */
+export function auteurAffiche(m: Pick<Message, 'auteur' | 'envoi'>, forme: 'signature' | 'apercu' = 'signature'): string | null {
+  if (m.auteur === 'agent') return forme === 'signature' ? 'Réponse de votre agent' : 'Votre agent';
+  if (m.auteur !== 'hote') return null;
+  if (m.envoi?.par === PAR_MESSAGE_AUTO) return 'Message automatique';
+  return forme === 'signature' ? 'Équipe' : 'Vous';
 }
 
 /** Le dernier message vient du voyageur : une réponse est attendue. */

@@ -5,7 +5,7 @@
  * - /erp/messagerie            Conversations (bureau : liste + conversation ; séjour à droite sur grand écran)
  * - /erp/messagerie/:filId     une conversation (mobile : plein écran)
  * - /erp/messagerie/activite   Activité de l'agent
- * - /erp/messagerie/agent      Réglages de l'agent
+ * - /erp/messagerie/agent      Votre agent (état et réglages)
  * - /erp/messagerie/automatiques  Messages automatiques et leur historique
  */
 import { useMemo, useState, type CSSProperties } from 'react';
@@ -48,7 +48,7 @@ export default function ModuleMessagerie() {
             // Le nombre de voyageurs en attente est sur le menu latéral et sur le filtre « À répondre ».
             { cle: 'conversations', libelle: 'Conversations' },
             { cle: 'activite', libelle: 'Activité' },
-            { cle: 'agent', libelle: 'Réglages de l’agent' },
+            { cle: 'agent', libelle: 'Votre agent' },
             { cle: 'automatiques', libelle: 'Messages automatiques' },
           ]}
         />

@@ -1,7 +1,10 @@
 /**
- * Onglet « Réglages de l'agent » : marche / pause, ce qu'il envoie seul
- * (niveau d'autonomie, gérant seulement), ton, langues, signature,
- * horaires, ce qu'il vous transmet, où vous prévenir.
+ * Onglet « Votre agent » : marche / pause, ce qu'il envoie seul
+ * (niveau d'autonomie), ton, langues, signature, horaires, ce qu'il vous
+ * transmet, où vous prévenir. Marche, niveau, horaires et ce qu'il vous
+ * confie : gérant seulement (REGLAGES_AGENT_GERANT) ; ton, signature,
+ * langues et Telegram : toute l'équipe. En-tête et aide suivent le niveau
+ * choisi (explicationNiveau).
  *
  * Enregistré dans la collection `reglages` (élément 'agent'), synchronisée
  * avec la base comme le reste. L'agent du site (api/erp-agent.ts) relit ces
@@ -17,7 +20,7 @@ import { LANGUES_AGENT, TONS_AGENT, nomPourSignature, reglagesAgent, signaturePa
 import { espaceOuvert, estLabelMaison } from '../../../data/espaces';
 import { dateCourte, heure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ReglagesAgent } from '../../../data/types';
-import { NIVEAUX_AUTONOMIE, niveauAutonomie } from '../../../data/messagerie-ia';
+import { NIVEAUX_AUTONOMIE, explicationNiveau, niveauAutonomie, reglagesAEnregistrer } from '../../../data/messagerie-ia';
 import { completudeFiche } from './logique';
 import { EtatAgentServeur } from './EtatAgent';
 
@@ -32,7 +35,7 @@ const DELAIS = [
 const SEUL = [
   'Les questions sur l’arrivée et le départ (horaires, accès, parking)',
   'Le wifi, les équipements, les règles de la maison',
-  'Les codes d’accès, seulement aux voyageurs confirmés qui arrivent sous 48 h',
+  'Les codes d’accès, seulement aux voyageurs confirmés qui arrivent sous 48\u00a0h',
   'Les remerciements et les petites questions du quotidien',
 ];
 
@@ -43,6 +46,15 @@ function Bloc({ titre, description, children }: { titre: string; description?: R
       {description && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{description}</p>}
       <div className="mt-4">{children}</div>
     </Card>
+  );
+}
+
+/** Mention d'un réglage réservé au gérant (même phrase partout). */
+function ReserveGerant() {
+  return (
+    <span className="inline-flex items-start gap-1 text-(--lm-encre-3)">
+      <Lock className="mt-[0.25em] size-3 shrink-0" aria-hidden /> Seul un gérant peut changer ce choix.
+    </span>
   );
 }
 
@@ -91,10 +103,14 @@ export function Configurer() {
   const majTransmettre = (patch: Partial<ReglagesAgent['transmettre']>) => maj({ transmettre: { ...f.transmettre, ...patch } });
 
   const ton = TONS_AGENT.find((t) => t.cle === f.ton) ?? TONS_AGENT[0];
-  // Ce qu'il envoie seul : choix du gérant. Sans choix, Label Maison garde son fonctionnement d'avant, un nouvel espace valide tout.
+  // Ce qu'il envoie seul : choix du gérant. Sans choix : « Autonome hors sujets sensibles » pour Label Maison, « Je valide tout » pour un nouvel espace.
   const gerant = d.utilisateur.role === 'gerant';
   const autonomie = niveauAutonomie(f, estLabelMaison(espaceOuvert()));
   const niveau = NIVEAUX_AUTONOMIE.find((n) => n.cle === autonomie) ?? NIVEAUX_AUTONOMIE[0];
+  const explication = explicationNiveau(autonomie, f.transmettre);
+  // Marche, niveau, horaires et ce qu'il vous confie : gérant seulement. Ton, signature et langues : toute l'équipe.
+  const reserve = bloque || !gerant;
+  const mention = !gerant && !bloque;
   const incompletes = useMemo(
     () => d.logements.filter((l) => l.statut !== 'sorti' && !completudeFiche(l).complete),
     [d.logements],
@@ -103,7 +119,7 @@ export function Configurer() {
 
   const enregistrer = () => {
     if (horairesInvalides || bloque) return;
-    d.upsert('reglages', { ...f, signature: f.signature.trim(), majLe: horodatageMaintenant(), majPar: d.utilisateur.nom });
+    d.upsert('reglages', { ...reglagesAEnregistrer(f, enregistre, gerant), signature: f.signature.trim(), majLe: horodatageMaintenant(), majPar: d.utilisateur.nom });
     setOk(true);
   };
 
@@ -115,12 +131,17 @@ export function Configurer() {
 
       <Card className={cn('flex flex-wrap items-center gap-4', f.actif ? 'border-(--lm-succes)/40' : 'border-(--lm-alerte)/40')}>
         <div className="min-w-0 flex-1">
-          <p className="text-[16px] font-semibold text-(--lm-encre)">{f.actif ? 'Votre agent répond aux voyageurs' : 'Votre agent est en pause'}</p>
-          {!f.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.</p>}
+          <p className="text-[16px] font-semibold text-(--lm-encre)">{f.actif ? explication.titre : 'Votre agent est en pause'}</p>
+          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{f.actif ? explication.sousTitre : 'Tous les messages arrivent à l’équipe.'}</p>
+          {mention && (
+            <p className="mt-1 text-[12.5px]">
+              <ReserveGerant />
+            </p>
+          )}
         </div>
         <label className="flex items-center gap-3 text-[13.5px] font-medium text-(--lm-encre)">
           {f.actif ? 'Actif' : 'En pause'}
-          <Interrupteur actif={f.actif} onChange={(v) => maj({ actif: v })} label="Activer l’agent" disabled={bloque} />
+          <Interrupteur actif={f.actif} onChange={(v) => maj({ actif: v })} label="Activer votre agent" disabled={reserve} />
         </label>
       </Card>
 
@@ -134,7 +155,7 @@ export function Configurer() {
               type="button"
               role="radio"
               aria-checked={autonomie === n.cle}
-              disabled={bloque || !gerant}
+              disabled={reserve}
               onClick={() => maj({ autonomie: n.cle })}
               className={cn(
                 'min-h-11 rounded-lg border px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed',
@@ -151,12 +172,12 @@ export function Configurer() {
         </div>
         <p className="mt-3 text-[13px] text-(--lm-encre-2)" aria-live="polite">
           {niveau.description}
-          {!gerant && !bloque && <span className="text-(--lm-encre-3)"> Seul un gérant peut changer ce choix.</span>}
+          {mention && <span className="text-(--lm-encre-3)"> Seul un gérant peut changer ce choix.</span>}
         </p>
       </Bloc>
 
       <Bloc titre="Sa façon de parler">
-        <div role="radiogroup" aria-label="Ton de l’agent" className="grid gap-2 sm:grid-cols-3">
+        <div role="radiogroup" aria-label="Ton de votre agent" className="grid gap-2 sm:grid-cols-3">
           {TONS_AGENT.map((t) => (
             <button
               key={t.cle}
@@ -225,7 +246,7 @@ export function Configurer() {
         </div>
       </Bloc>
 
-      <Bloc titre="Quand répond-il ?">
+      <Bloc titre="Quand répond-il ?" description={mention ? <ReserveGerant /> : undefined}>
         <div role="radiogroup" aria-label="Horaires de réponse" className="flex flex-wrap gap-2">
           {(
             [
@@ -238,10 +259,10 @@ export function Configurer() {
               type="button"
               role="radio"
               aria-checked={f.horaires.mode === mode}
-              disabled={bloque}
+              disabled={reserve}
               onClick={() => maj({ horaires: { ...f.horaires, mode } })}
               className={cn(
-                'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3.5 text-[13.5px] font-medium',
+                'inline-flex h-9 items-center gap-1.5 rounded-lg border px-3.5 text-[13.5px] font-medium disabled:cursor-not-allowed',
                 f.horaires.mode === mode ? 'border-(--lm-or) bg-(--lm-or-lavis) text-(--lm-brun)' : 'border-(--lm-bord-fort) text-(--lm-encre-2)',
               )}
             >
@@ -253,16 +274,16 @@ export function Configurer() {
         {f.horaires.mode === 'plage' && (
           <div className="mt-3 flex flex-wrap items-center gap-2 text-[13.5px] text-(--lm-encre)">
             <label htmlFor="agent-debut">De</label>
-            <Input id="agent-debut" type="time" className="w-32" value={f.horaires.debut} disabled={bloque} onChange={(e) => maj({ horaires: { ...f.horaires, debut: e.target.value } })} />
+            <Input id="agent-debut" type="time" className="w-32" value={f.horaires.debut} disabled={reserve} onChange={(e) => maj({ horaires: { ...f.horaires, debut: e.target.value } })} />
             <label htmlFor="agent-fin">à</label>
-            <Input id="agent-fin" type="time" className="w-32" value={f.horaires.fin} disabled={bloque} onChange={(e) => maj({ horaires: { ...f.horaires, fin: e.target.value } })} />
+            <Input id="agent-fin" type="time" className="w-32" value={f.horaires.fin} disabled={reserve} onChange={(e) => maj({ horaires: { ...f.horaires, fin: e.target.value } })} />
             <span className="text-(--lm-encre-3)">(heure de Paris)</span>
           </div>
         )}
         {horairesInvalides && <p className="mt-2 text-[12.5px] font-medium text-(--lm-danger)">L’heure de fin doit être après l’heure de début.</p>}
       </Bloc>
 
-      <Bloc titre="Ce qu’il vous confie">
+      <Bloc titre="Ce qu’il vous confie" description={mention ? <ReserveGerant /> : undefined}>
         <div className="grid gap-x-5 md:grid-cols-2">
             <Case coche verrou>
               Tout ce qui touche à l’argent : remboursement, remise, supplément, annulation
@@ -270,13 +291,13 @@ export function Configurer() {
             <Case coche verrou>
               Les plaintes, les litiges et les problèmes sur place
             </Case>
-            <Case coche={f.transmettre.horsFiche} disabled={bloque} onChange={(v) => majTransmettre({ horsFiche: v })}>
+            <Case coche={f.transmettre.horsFiche} disabled={reserve} onChange={(v) => majTransmettre({ horsFiche: v })}>
               Les questions dont la réponse n’est pas dans la fiche du logement
             </Case>
-            <Case coche={f.transmettre.derogations} disabled={bloque} onChange={(v) => majTransmettre({ derogations: v })}>
+            <Case coche={f.transmettre.derogations} disabled={reserve} onChange={(v) => majTransmettre({ derogations: v })}>
               Les demandes d’exception (arriver plus tôt, partir plus tard…)
             </Case>
-            <Case coche={f.transmettre.sejoursLongs} disabled={bloque} onChange={(v) => majTransmettre({ sejoursLongs: v })}>
+            <Case coche={f.transmettre.sejoursLongs} disabled={reserve} onChange={(v) => majTransmettre({ sejoursLongs: v })}>
               <span className="inline-flex flex-wrap items-center gap-1.5">
                 Les demandes de séjour de
                 <Input
@@ -286,7 +307,7 @@ export function Configurer() {
                   aria-label="Nombre de nuits à partir duquel un séjour est long"
                   className="h-8 w-16 px-2 text-[13px]"
                   value={f.transmettre.sejoursLongsNuits}
-                  disabled={bloque || !f.transmettre.sejoursLongs}
+                  disabled={reserve || !f.transmettre.sejoursLongs}
                   onChange={(e) => majTransmettre({ sejoursLongsNuits: Math.max(2, Math.min(365, Number(e.target.value) || 2)) })}
                 />
                 nuits ou plus
@@ -299,13 +320,13 @@ export function Configurer() {
             id="agent-delai"
             className="w-40"
             value={String(f.delaiAlerteMinutes)}
-            disabled={bloque}
+            disabled={reserve}
             onChange={(e) => maj({ delaiAlerteMinutes: Number(e.target.value) })}
             options={DELAIS}
           />
         </div>
-        <Aide titre="Ce qu’il fait seul et les règles qu’il respecte" className="mt-4 mb-0">
-          <p className="font-medium text-(--lm-encre)">Il répond seul à :</p>
+        <Aide titre={autonomie === 'valider' ? 'Ce qu’il prépare et les règles qu’il respecte' : 'Ce qu’il fait seul et les règles qu’il respecte'} className="mt-4 mb-0">
+          <p className="font-medium text-(--lm-encre)">{explication.sujets}</p>
           <ul className="mt-1 mb-3 list-disc space-y-1 pl-5">
             {SEUL.map((s) => (
               <li key={s}>{s}</li>
@@ -313,12 +334,9 @@ export function Configurer() {
           </ul>
           <p className="font-medium text-(--lm-encre)">Ses règles :</p>
           <ul className="mt-1 list-disc space-y-1 pl-5">
-            <li>Dans le doute, il vous passe toujours la main.</li>
-            <li>Ce qu’il n’envoie pas seul, il le prépare : vous relisez sa réponse et l’envoyez en un clic.</li>
-            <li>Il n’invente rien : si l’information n’est pas dans la fiche du logement, il dit qu’il vérifie et vous passe la main.</li>
-            <li>Il ne promet jamais d’argent, même un petit geste.</li>
-            <li>Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.</li>
-            <li>Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48 h ou sont déjà sur place.</li>
+            {explication.regles.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
           </ul>
           <p className="mt-2">Ces règles valent aussi pour l’équipe.</p>
         </Aide>
