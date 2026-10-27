@@ -38,9 +38,10 @@ import {
   seDeconnecter as deconnexionSupabase,
   connexionAutomatique,
 } from './supabase';
-import { ESPACE_LABEL_MAISON, choisirEspace, ouvrirEspace, type Espace } from './espaces';
+import { ESPACE_LABEL_MAISON, choisirEspace, ouvrirEspace, type Espace, type InvitationEspace } from './espaces';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
+import { CreerEspace } from '../layout/CreerEspace';
 import type {
   CleChecklistLancement,
   DateISO,
@@ -779,6 +780,8 @@ function FournisseurReel({ children }: { children: ReactNode }) {
   );
   const [session, setSession] = useState<Session | null>(null);
   const [etatSynchro, setEtatSynchro] = useState<EtatSynchro | null>(null);
+  /** Compte sans espace, invité par Label Maison à créer celui de sa conciergerie. */
+  const [aCreer, setACreer] = useState<{ email: string; invitation: InvitationEspace } | null>(null);
   const enRecuperation = useRef(RETOUR_LIEN.recuperation);
   const autoTentee = useRef(false);
   const emailCharge = useRef<string | null>(null);
@@ -802,6 +805,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
       const numero = ++essai.current;
       const encore = () => numero === essai.current;
       setPhase({ nom: 'chargement' });
+      setACreer(null);
       try {
         // Espaces du compte ; base pas encore passée aux espaces : Label Maison, comme avant.
         const identite = await quiSuisJe();
@@ -811,6 +815,8 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           const choix = choisirEspace(identite.espaces.filter((e) => e.role !== 'prestataire'), espaceRetenu());
           if (!choix) {
             emailCharge.current = null;
+            // Pas encore d'espace, mais une invitation de Label Maison : créer celui de sa conciergerie.
+            if (identite.invitation) setACreer({ email, invitation: identite.invitation });
             return setPhase({ nom: 'non_autorise', email });
           }
           espace = { id: choix.id, code: choix.code, nom: choix.nom };
@@ -982,6 +988,22 @@ function FournisseurReel({ children }: { children: ReactNode }) {
       },
     };
   }, [session]);
+
+  if (aCreer && phase.nom === 'non_autorise') {
+    return (
+      <CreerEspace
+        email={aCreer.email}
+        invitation={aCreer.invitation}
+        onCree={(espace) => {
+          // L'ERP s'ouvre dans le nouvel espace (choisi d'office au chargement).
+          retenirEspace(espace.id);
+          setACreer(null);
+          reessayer();
+        }}
+        onDeconnecter={seDeconnecter}
+      />
+    );
+  }
 
   if (phase.nom !== 'pret' || !session || !persistance) {
     return <EcranPorte phase={phase} onReessayer={reessayer} onMotDePasseChange={apresNouveauMotDePasse} onDeconnecter={seDeconnecter} />;

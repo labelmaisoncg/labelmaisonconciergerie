@@ -156,6 +156,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VITE_ERP_DEMO` | local uniquement | `1` : jeu de démonstration en mémoire. **Jamais en production.** |
 | `VITE_ERP_APERCU_NOTIFICATIONS` | local uniquement | `1` (avec la démo) : affiche la demande « Recevoir les notifications ? » pour les captures d'écran. **Jamais en production.** |
 | `REPULL_API_KEY` | Vercel (serveur), obligatoire pour la synchronisation | Clé API Repull (`sk_live_...`). Voir « Synchronisation Repull ». |
+| `REPULL_WORKSPACE_LM` | Vercel (serveur), facultative (recommandée dès qu'il y a plusieurs espaces) | Workspace Repull de Label Maison : envoyé en `X-Workspace-Id` sur chacun de ses appels (lecture et réponses aux voyageurs, rien de plus), et ses événements de webhook reconnus ; un workspace inconnu est alors ignoré. Obligatoire avant de déclarer un workspace du compte de Label Maison pour un autre espace. Absente : comme avant. Voir `espaces-mise-en-service.md`, étape 5. |
 | `CRON_SECRET` | Vercel (serveur) | Secret du cron quotidien de synchronisation (Vercel l'envoie en `Authorization: Bearer`). |
 | `REPULL_WEBHOOK_SECRET_ERP` | Vercel (serveur), facultatif | Secret de signature (`whsec_...`) de l'abonnement webhook **de l'ERP** (distinct de celui de l'agent IA). |
 | `REPULL_BUDGET_ERP` | Vercel (serveur), facultatif | Part mensuelle des appels Repull réservée à l'ERP (défaut 400). |
@@ -1128,6 +1129,30 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
 - `erp.invitations` reste sans règle d'accès : « Créer mon compte » n'en a pas
   besoin (l'accès se décide par les membres de l'espace et la confirmation
   de l'adresse par Supabase, voir « Connexion à l'ERP »).
+- **Espaces ouverts par invitation** (`erp.invitations_espace`, sans règle
+  d'accès : seules les fonctions ci-dessous la lisent ou l'écrivent) :
+  `erp.inviter_espace(nom, email)` (gérant de Label Maison en personne, pas
+  le compte serveur ; après la passe 2 ; une invitation en attente par
+  adresse, 14 jours, refusée si l'adresse est déjà membre d'un espace),
+  `erp.espaces_plateforme()`, `erp.annuler_invitation_espace(id)`,
+  `erp.suspendre_espace(espace, actif)` (jamais Label Maison) ;
+  `erp.creer_espace(nom)` : avec l'invitation valable de SON adresse
+  **confirmée** (`auth.users.email_confirmed_at`), crée l'espace (code tiré
+  du nom), en fait la personne gérante, consomme l'invitation ; idempotent
+  (un nouvel appel rend le même espace, jamais un second).
+  `erp.qui_suis_je()` rend aussi `invitations_espace` : toujours une liste,
+  `[{ "nom_espace": "Sens", "expire_le": "…" }]` pour une adresse confirmée
+  invitée, `[]` sinon ; la page d'accès (`middleware.ts`) laisse entrer un
+  compte sans espace qui a une telle invitation, l'ERP lui montre alors
+  « Créez l'espace de votre conciergerie » (`layout/CreerEspace.tsx`).
+- **Secrets d'un espace** rangés par SON gérant (ou le compte serveur avec
+  l'en-tête de l'espace) : `erp.enregistrer_secret_espace(espace, nom,
+  valeur)` (`repull_cle`, `repull_webhook`, coffre Vault, jamais pour Label
+  Maison), `erp.regler_repull_espace(espace, workspace)` (workspace de SA
+  clé, `config.repull.workspace`), `erp.reglages_repull_espace(espace)`
+  (enregistrés oui / non, jamais leur valeur). La recette essaie chaque refus
+  (sans invitation, adresse non confirmée, invitation d'une autre adresse ou
+  expirée, second espace, secrets d'un autre espace, espace suspendu).
 - `erp-installation.sql`, `erp-connecteurs-gerants.sql` et
   `erp-acces-gerants.sql` refusent de tourner une fois les espaces en place
   (ils remettraient les règles d'avant).
@@ -1154,9 +1179,14 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   (`espaceOuvertAuJeton`, voir « CRM d'appels et connecteur Claude ») ;
   l'invitation « Créer mon compte » part au nom de l'espace ouvert.
 - `configurationEspace(espace)` (`api/_erp-espaces.ts`) : Label Maison garde
-  ses variables Vercel. Un autre espace n'en reprend **aucune** :
-  Repull par son workspace (`repull_workspace`, en-tête `X-Workspace-Id` sur
-  chaque appel, même clé de compte) ou par sa propre clé (coffre) ; sa part
+  ses variables Vercel (`REPULL_WORKSPACE_LM` facultatif : en-tête
+  `X-Workspace-Id` sur chacun de ses appels, et ses événements reconnus).
+  Un autre espace n'en reprend **aucune** : Repull par sa propre clé (coffre,
+  rangée par son gérant dans Paramètres → Plateformes via
+  `api/erp-espaces.ts`, avec le workspace de SA clé s'il en a donné un) ou,
+  cas déclaré par Label Maison seulement, par un workspace sur le compte de
+  Label Maison (`repull_workspace`, même clé de compte, permis seulement une
+  fois `REPULL_WORKSPACE_LM` posé et jamais égal à lui) ; sa part
   d'appels Repull (`config.repull.budgetMois`, 150 par défaut, 0 permis : la
   part de Label Maison n'est pas entamée) ; secret de webhook propre (coffre)
   pour une adresse propre ; agent IA avec la clé Claude commune, un plafond de
@@ -1167,12 +1197,35 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   espace actif à son tour, Label Maison d'abord ; Label Maison seul : même
   passage et même réponse qu'avant. Webhook (`espaceDuWorkspace`) : un
   événement « tagué » `workspaceId` va à l'espace qui a déclaré ce workspace
-  (Label Maison compris, s'il a déclaré le sien) ; tant qu'aucun autre espace
+  (Label Maison compris, par `REPULL_WORKSPACE_LM`) ; tant qu'aucun espace
   n'en a déclaré, tout reste à Label Maison comme avant ; ensuite, un
   workspace inconnu est ignoré — jamais versé dans Label Maison. Un espace
   avec son propre compte Repull a son adresse :
   `/api/erp-repull-webhook?espace=<code>`, signée avec SON secret ; un espace
   inconnu, fermé ou sans secret y reçoit la réponse d'une signature fausse.
+- **Fichiers** (`signeurFichiersErp`, `deposeurFichiersErp`,
+  `api/_erp-repull.ts`) : chaque espace signe et dépose dans SON dossier du
+  stockage (`<espace>/…` ; chemins d'avant pour Label Maison), règle
+  `fichierDeLEspace` (`data/espaces.ts`) vérifiée avant tout appel au
+  stockage : jamais un chemin d'un autre espace, même connu. Label Maison :
+  compte d'équipe, comme avant ; un autre espace : compte serveur avec son
+  en-tête (règles du stockage de `erp-espaces.sql`), jamais le compte
+  d'équipe. Documents et photos de l'espace propriétaire, photos de l'espace
+  opérations et guides de l'agent en profitent ; un espace qui ne peut pas
+  encore signer (compte serveur pas prêt) le dit (`stockageFerme`).
+- **Plateforme** (`api/erp-espaces.ts`, Paramètres → Espaces, gérants de
+  Label Maison) : inviter une conciergerie (e-mail avec l'expéditeur de Label
+  Maison, lien « Créer mon compte » du site fixe `…/erp#creer=<adresse>`,
+  sinon lien à copier), invitations en attente, suspendre ou rouvrir. Chaque
+  appel à la base passe avec la session du gérant (la base revérifie).
+  Dans un nouvel espace : carte « Votre compte Repull » (Plateformes) et
+  « Démarrage » à l'accueil (Repull, plateformes, équipe, propriétaires et
+  responsables, agent).
+- Nom de l'espace : signature par défaut de l'agent (« L'équipe Sens » ;
+  Label Maison inchangé), notification d'essai, en-tête imprimé des bilans
+  et factures de l'espace propriétaire (identité légale de Label Maison
+  décidée par l'identifiant de l'espace, `VueProprietaire.conciergerie.espace`,
+  jamais par le nom).
 - Retour en arrière du SQL : la première écriture refusée (colonne `espace`
   inconnue) fait oublier l'état gardé de la base, relue au prochain appel.
 - Toujours en lecture seule sur les plateformes : `ecritureRepullPermise` et le
@@ -1188,8 +1241,10 @@ les gérants : [`espaces-mise-en-service.md`](./espaces-mise-en-service.md).
   chaque appel plus tard).
 - Vérification de types de `api/` : elle passe sans erreur avec `@types/node`,
   qui n'est pas encore dans les dépendances de développement.
-- Liens signés des guides déposés en fichier pour un autre espace que Label
-  Maison (ses guides en lien https partent déjà).
+- Identité légale par espace : dans un autre espace, contrat de mandat,
+  relevés et factures de Finance, Paramètres → Société et Conformité portent
+  encore celle de Label Maison (voir les limites dans
+  `espaces-mise-en-service.md`).
 
 ## Espace propriétaire (octobre 2026)
 
@@ -1256,8 +1311,9 @@ d'août publié et deux documents ; son espace :
   espace que Label Maison n'utilise ni l'expéditeur ni les contacts de Label
   Maison (sa fiche : `config.email.expediteur`, `config.contacts` ; sans
   expéditeur, le gérant copie le lien). Base d'avant les espaces : Label
-  Maison seul, comme avant. Pour l'instant, photos déposées et documents
-  (`stockage://`) ne sont signés que pour Label Maison.
+  Maison seul, comme avant. Photos déposées et documents (`stockage://`) sont
+  signés dans l'espace de l'accès seulement (`signeurFichiersErp`, voir
+  « Espaces ») : jamais le fichier d'un autre espace.
 - **Lecture seule** : le propriétaire ne lit jamais la base.
   `api/espace-proprietaire.ts` (via `api/_proprietaire.ts`, session du compte
   d'équipe) lit puis filtre par propriétaire avant tout calcul, et ne renvoie
@@ -1303,9 +1359,11 @@ d'août publié et deux documents ; son espace :
   libre ni réservé ; calendrier, bilan et « Ce mois-ci » comptent la même
   occupation. Après un changement, l'ancien garde son calendrier sur sa
   période et lit « Plus de logement en gestion depuis le … ».
-- **Documents d'un autre espace** que Label Maison : les fichiers de
-  l'équipe n'y sont pas encore signés côté serveur ; le propriétaire lit
-  « Les documents ne sont pas encore ouverts pour cet espace. ».
+- **Documents d'un autre espace** que Label Maison : signés dans son dossier
+  avec le compte serveur. Si l'espace ne peut pas encore signer (compte
+  serveur pas prêt), le propriétaire lit « Les documents ne peuvent pas être
+  ouverts pour l'instant. Contactez votre conciergerie. » (409) ; un document
+  dont le fichier n'est pas de son espace reste « introuvable ».
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
@@ -1499,9 +1557,10 @@ Règles de l'audit (octobre 2026) :
   `absences`, `affectations`, `signalementsLogement` : jamais de réservation,
   de logement, de prix, de calendrier ni d'appel à Repull.
 - Photos : réduites dans le navigateur (JPEG, 1600 px), déposées dans
-  `erp-fichiers/operations/<personne>/`, lues par liens signés (Label Maison
-  seulement pour l'instant). Une action n'accepte que les photos du dossier
-  de la personne connectée, dans son espace (`photoOperations`).
+  `erp-fichiers/[<espace>/]operations/<personne>/` (compte d'équipe pour
+  Label Maison, compte serveur avec l'en-tête de l'espace sinon), lues par
+  liens signés dans le même espace. Une action n'accepte que les photos du
+  dossier de la personne connectée, dans son espace (`photoOperations`).
 - Variables : `ACCES_SECRET` (ou `OPERATIONS_SECRET`), `ERP_PASSWORD`
   (lecture de la base), `RESEND_API_KEY` et `CONTACT_FROM_EMAIL` pour envoyer
   les liens par e-mail (sans : le lien s'affiche au gérant, qui le transmet).

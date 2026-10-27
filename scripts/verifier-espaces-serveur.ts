@@ -28,6 +28,14 @@
  * qui fait foi, usage unique et relance unique sous accès simultanés
  * (écriture conditionnelle sur maj_le), un lien toutes les 2 minutes,
  * jamais l'expéditeur de Label Maison faute de fiche, ids encodés.
+ * Fichiers par espace : chaque espace signe et dépose dans son dossier (compte
+ * d'équipe pour Label Maison, compte serveur et en-tête sinon), jamais un
+ * chemin d'un autre espace (documents, photos du logement et des opérations).
+ * REPULL_WORKSPACE_LM (appels et webhook de Label Maison, workspace inconnu
+ * ignoré). Espaces ouverts par invitation (api/erp-espaces.ts) : plateforme
+ * réservée aux gérants de Label Maison avec leur session, invitation (e-mail
+ * de Label Maison, lien « Créer mon compte » du site fixe), suspension, clé
+ * Repull propre rangée par le gérant de l'espace et jamais relue.
  * Connecteur Claude (OAuth + MCP) et agenda du CRM par espace : base d'avant
  * les espaces exactement comme avant (Label Maison, compte d'équipe, jetons
  * sans préfixe, anciens jetons acceptés, un jeton d'un autre espace refusé) ;
@@ -53,7 +61,7 @@
 import crypto from 'node:crypto';
 import { ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE } from '../src/erp/data/espaces';
 import { ID_SELECTION } from '../src/erp/data/repull-synchro';
-import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, etatBase, oublierEtatBase, variableManquante } from '../api/_erp-repull';
+import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, deposeurFichiersErp, etatBase, oublierEtatBase, signeurFichiersErp, stockageFerme, variableManquante } from '../api/_erp-repull';
 import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configurationEspace, espaceDemande, espaceDuWorkspace, espacesActifs, workspaceDeLEvenement } from '../api/_erp-espaces';
 import routeSynchro from '../api/erp-repull-sync';
 import routeAgent from '../api/erp-agent';
@@ -67,6 +75,7 @@ import routeMcpCle from '../api/crm-mcp/[cle]';
 import routeToken from '../api/oauth-token';
 import routeProprietaire from '../api/espace-proprietaire';
 import routeOperations from '../api/espace-operations';
+import routeEspaces from '../api/erp-espaces';
 import { relancesDuJour } from '../api/_relances';
 import { SITE_PAR_DEFAUT, adresseSite, baseAcces, contactsEspace, expediteurEspace } from '../api/_acces-externe';
 import { origineAutorisee } from '../api/_garde-formulaire';
@@ -124,10 +133,14 @@ class Monde {
     { espace: SENS, email: 'recrue-sens@exemple.invalid', role: 'lecture' },
   ];
   espaces = [
-    { id: LM, code: 'label-maison', nom: 'Label Maison', repull_workspace: null as string | null, config: {} as Record<string, unknown> },
-    { id: SENS, code: 'sens', nom: 'Sens', repull_workspace: '1204' as string | null, config: {} as Record<string, unknown> },
-    { id: VIDE, code: 'vide', nom: 'Vide', repull_workspace: null as string | null, config: {} as Record<string, unknown> },
+    { id: LM, code: 'label-maison', nom: 'Label Maison', actif: true, repull_workspace: null as string | null, config: {} as Record<string, any> },
+    { id: SENS, code: 'sens', nom: 'Sens', actif: true, repull_workspace: '1204' as string | null, config: {} as Record<string, any> },
+    { id: VIDE, code: 'vide', nom: 'Vide', actif: true, repull_workspace: null as string | null, config: {} as Record<string, any> },
   ];
+  /** Invitations à ouvrir un espace (erp.invitations_espace, imitées). */
+  invitations: { id: string; email: string; nom: string; expire_le: string; expiree: boolean }[] = [];
+  /** Appels au stockage des fichiers (signature, dépôt) : compte, espace de l'en-tête, chemin. */
+  stockage: { action: 'signer' | 'deposer'; bucket: string; nom: string; jeton: string; espace: string | null }[] = [];
   coffre = new Map<string, string>();
   lignes = new Map<string, Ligne>();
   base: { methode: string; chemin: string; url: URL; jeton: string; espace: string | null; corps: unknown }[] = [];
@@ -153,13 +166,22 @@ class Monde {
   oublier() {
     this.base = [];
     this.repull = [];
+    this.stockage = [];
   }
+  actif = (espace: string) => !!this.espaces.find((e) => e.id === espace)?.actif;
   permis(jeton: string, entete: string | null): string[] {
     const email = this.emailDe(jeton);
     if (!email) return [];
     if (this.historique) return email === 'equipe@labelmaisoncg.fr' ? [LM] : [];
-    if (email === 'serveur@labelmaisoncg.fr') return this.serveurPret && entete ? [entete] : [];
-    return this.membres.filter((m) => m.email === email && (!entete || m.espace === entete)).map((m) => m.espace);
+    if (email === 'serveur@labelmaisoncg.fr') return this.serveurPret && entete && this.actif(entete) ? [entete] : [];
+    return this.membres.filter((m) => m.email === email && (!entete || m.espace === entete) && this.actif(m.espace)).map((m) => m.espace);
+  }
+  /** Gérant de cet espace (erp.acces_gerant) : membre gérant, ou compte serveur avec l'en-tête de l'espace. */
+  gerant(jeton: string, entete: string | null, espace: string): boolean {
+    const email = this.emailDe(jeton);
+    if (!email || this.historique || !this.actif(espace)) return false;
+    if (email === 'serveur@labelmaisoncg.fr') return this.serveurPret && entete === espace;
+    return this.membres.some((m) => m.email === email && m.espace === espace && m.role === 'gerant' && (!entete || entete === espace));
   }
 
   fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
@@ -190,6 +212,17 @@ class Monde {
       const email = this.emailDe(jeton);
       return email ? json({ email }) : json({}, 401);
     }
+    if (url.pathname.startsWith('/storage/v1/object/')) {
+      // Règles du stockage (supabase/erp-espaces.sql) : l'espace d'un fichier est son premier dossier s'il nomme un espace, Label Maison sinon.
+      const entete = h.get('x-erp-espace');
+      const signer = url.pathname.startsWith('/storage/v1/object/sign/');
+      const [bucket, ...dossiers] = decodeURIComponent(url.pathname.slice(signer ? '/storage/v1/object/sign/'.length : '/storage/v1/object/'.length)).split('/');
+      const nom = dossiers.join('/');
+      const espace = this.espaces.some((e) => e.id === (dossiers[0] ?? '').toLowerCase()) ? dossiers[0].toLowerCase() : LM;
+      this.stockage.push({ action: signer ? 'signer' : 'deposer', bucket, nom, jeton, espace: entete });
+      if (bucket !== 'erp-fichiers' || !this.permis(jeton, entete).includes(espace)) return json({ statusCode: '403', error: 'Unauthorized', message: 'new row violates row-level security policy' }, 400);
+      return signer ? json({ signedURL: `/object/sign/${bucket}/${nom}?token=jeton-signe` }) : json({ Key: `${bucket}/${nom}` });
+    }
     const chemin = url.pathname.replace(/^\/rest\/v1\//, '');
     const corps = init?.body ? JSON.parse(String(init.body)) : undefined;
     const entete = h.get('x-erp-espace');
@@ -200,11 +233,58 @@ class Monde {
       if (this.historique) return json({ code: 'PGRST202', message: `Could not find the function erp.${chemin.slice(4)}` }, 404);
       const serveur = email === 'serveur@labelmaisoncg.fr' && this.serveurPret;
       if (chemin === 'rpc/qui_suis_je') {
-        const espaces = serveur ? [] : this.membres.filter((m) => m.email === email).map((m) => ({ ...this.espaces.find((e) => e.id === m.espace)!, role: m.role }));
-        return json({ email, serveur, espaces });
+        const espaces = serveur ? [] : this.membres.filter((m) => m.email === email && this.actif(m.espace)).map((m) => ({ ...this.espaces.find((e) => e.id === m.espace)!, role: m.role }));
+        return json({ email, serveur, espaces, invitations_espace: [] });
       }
       if (chemin === 'rpc/espaces_actifs' && this.panneEspacesActifs) return json({ message: 'panne passagère' }, 503);
-      if (chemin === 'rpc/espaces_actifs') return json(serveur ? this.espaces : this.espaces.filter((e) => this.permis(jeton, null).includes(e.id)));
+      if (chemin === 'rpc/espaces_actifs') return json(serveur ? this.espaces.filter((e) => e.actif) : this.espaces.filter((e) => this.permis(jeton, null).includes(e.id)));
+      // Espaces ouverts par invitation : mêmes refus que la base (42501), avec ses messages.
+      const refus = (message: string) => json({ code: '42501', message }, 403);
+      const a = (corps ?? {}) as Record<string, any>;
+      const plateforme = !serveur && this.gerant(jeton, entete, LM);
+      if (chemin === 'rpc/inviter_espace' || chemin === 'rpc/espaces_plateforme' || chemin === 'rpc/annuler_invitation_espace' || chemin === 'rpc/suspendre_espace') {
+        if (!plateforme) return refus('Réservé aux gérants de Label Maison.');
+        if (chemin === 'rpc/inviter_espace') {
+          if (this.membres.some((x) => x.email.toLowerCase() === String(a.p_email).trim().toLowerCase())) {
+            return json({ code: '22023', message: 'Cette adresse a déjà accès à un espace de l’ERP : invitez une adresse propre à cette conciergerie.' }, 400);
+          }
+          const i ={ id: crypto.randomUUID(), email: String(a.p_email).trim().toLowerCase(), nom: String(a.p_nom).trim(), expire_le: '2026-11-10T10:00:00+00:00', expiree: false };
+          this.invitations = [...this.invitations.filter((x) => x.email !== i.email), i];
+          return json({ id: i.id, email: i.email, nom: i.nom, expire_le: i.expire_le });
+        }
+        if (chemin === 'rpc/espaces_plateforme') {
+          return json({
+            espaces: this.espaces.map((e) => ({ id: e.id, code: e.code, nom: e.nom, actif: e.actif, cree_le: '2026-10-01T10:00:00+00:00', contact: null, membres: this.membres.filter((m) => m.espace === e.id).length })),
+            invitations: this.invitations,
+          });
+        }
+        if (chemin === 'rpc/annuler_invitation_espace') {
+          const avant = this.invitations.length;
+          this.invitations = this.invitations.filter((x) => x.id !== a.p_id);
+          return json(avant !== this.invitations.length);
+        }
+        if (a.p_espace === LM) return refus('L’espace de Label Maison ne se suspend pas.');
+        const e = this.espaces.find((x) => x.id === a.p_espace);
+        if (e) e.actif = a.p_actif === true;
+        return json(!!e);
+      }
+      if (chemin === 'rpc/enregistrer_secret_espace' || chemin === 'rpc/regler_repull_espace' || chemin === 'rpc/reglages_repull_espace') {
+        if (a.p_espace === LM) return refus('Label Maison garde ses clés dans Vercel.');
+        if (!this.gerant(jeton, entete, a.p_espace)) return refus('Réservé aux gérants de cet espace.');
+        const e = this.espaces.find((x) => x.id === a.p_espace)!;
+        if (chemin === 'rpc/enregistrer_secret_espace') {
+          this.coffre.set(`${a.p_espace}:${a.p_nom}`, a.p_valeur);
+          return json(true);
+        }
+        if (chemin === 'rpc/regler_repull_espace') {
+          const repull = { ...(e.config.repull ?? {}) };
+          if (a.p_workspace) repull.workspace = a.p_workspace;
+          else delete repull.workspace;
+          e.config = { ...e.config, repull };
+          return json(true);
+        }
+        return json({ code: e.code, workspace: e.config.repull?.workspace ?? null, cle: this.coffre.has(`${e.id}:repull_cle`), webhook: this.coffre.has(`${e.id}:repull_webhook`) });
+      }
       if (chemin === 'rpc/secret_espace') {
         const { p_espace, p_nom } = corps as { p_espace: string; p_nom: string };
         return json(serveur && p_espace !== LM && entete === p_espace ? (this.coffre.get(`${p_espace}:${p_nom}`) ?? null) : null);
@@ -397,6 +477,20 @@ async function principal() {
     const w = reponse();
     await routeWebhook(webhook({ event: 'reservation.message.received', data: { object: {} }, workspaceId: 555 }, 'whsec_lm'), w);
     verifier(w.statut === 200 && !w.corps?.ignore && monde.repull.length > 0 && monde.ecritures(LM).length > 0, 'webhook tagué d’un workspace, base d’avant : traité pour Label Maison', w.corps);
+    // Fichiers : Label Maison comme avant (compte d'équipe, sans en-tête) ; un autre espace ne signe rien.
+    monde.oublier();
+    const lienLM = await signeurFichiersErp(c)!('stockage://erp-fichiers/proprietaires/pro-a/x.pdf', 60);
+    verifier(
+      /token=jeton-signe/.test(lienLM ?? '') && monde.stockage.length === 1 && monde.stockage[0].jeton === 'jeton-equipe' && monde.stockage[0].espace === null,
+      'fichier de Label Maison, base d’avant : signé avec le compte d’équipe, sans en-tête (comme avant)',
+      monde.stockage,
+    );
+    verifier(signeurFichiersErp({ ...c, espace: SENS }) === undefined && deposeurFichiersErp({ ...c, espace: SENS }) === undefined, 'autre espace sans compte serveur : ni signature ni dépôt');
+    // Espaces ouverts par invitation : rien avant le SQL des espaces (message clair).
+    const plateforme = reponse();
+    await routeEspaces(requete({ methode: 'GET', query: { action: 'plateforme' }, entetes: { authorization: 'Bearer jeton-equipe' } }), plateforme);
+    verifier(plateforme.statut === 503 && plateforme.corps?.erreur === MESSAGE_BASE_PAS_PREPAREE, 'espaces par invitation, base d’avant : « Base pas encore préparée »', plateforme.corps);
+    verifier((await stockageFerme(c, SENS)) === MESSAGE_COMPTE_SERVEUR && (await stockageFerme(c, LM)) === null, 'fichiers fermés pour un autre espace, ouverts pour Label Maison (message clair)');
   }
 
   section('Espace propriétaire, base pas encore préparée : Label Maison comme avant');
@@ -567,6 +661,16 @@ async function principal() {
     m = '';
     await configurationEspace(SENS).catch((x: Error) => (m = x.message));
     verifier(m === MESSAGE_COMPTE_SERVEUR, 'réglages de Sens : compte serveur exigé', m);
+    // Fichiers : Label Maison avec le compte d'équipe (et l'en-tête de Label Maison) ; Sens jamais avec le compte d'équipe.
+    monde.oublier();
+    const lienLM = await signeurFichiersErp(c)!('stockage://erp-fichiers/logements/log-a/photos/a.jpg', 60);
+    verifier(!!lienLM && monde.stockage[0]?.jeton === 'jeton-equipe' && monde.stockage[0]?.espace === LM, 'fichier de Label Maison : compte d’équipe, en-tête de Label Maison', monde.stockage);
+    monde.oublier();
+    m = '';
+    await signeurFichiersErp({ ...c, espace: SENS })!(`stockage://erp-fichiers/${SENS}/proprietaires/pro-s/m.pdf`, 60).catch((x: Error) => (m = x.message));
+    verifier(m === MESSAGE_COMPTE_SERVEUR && monde.stockage.length === 0, 'fichier de Sens : jamais avec le compte d’équipe (compte serveur exigé)', { m, stockage: monde.stockage });
+    verifier((await deposeurFichiersErp({ ...c, espace: SENS })!(`${SENS}/operations/eq-s/a.jpg`, new Uint8Array([1]), 'image/jpeg')) === null && monde.stockage.length === 0, 'dépôt dans Sens : refusé sans compte serveur');
+    verifier((await stockageFerme(c, SENS)) === MESSAGE_COMPTE_SERVEUR, 'fichiers de Sens fermés tant que le compte serveur n’est pas prêt');
     monde.oublier();
     const res = await autoriserClaude({ authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS });
     verifier(res.statut === 503 && !monde.base.some((r) => r.methode === 'POST' && r.chemin === 'enregistrements'), 'connecteur de Sens sans compte serveur : indisponible, rien rangé nulle part', res.statut);
@@ -590,8 +694,21 @@ async function principal() {
     const [a, b] = monde.base.filter((r) => r.chemin === 'enregistrements');
     verifier(a.jeton === 'jeton-serveur' && a.espace === LM && b.jeton === 'jeton-serveur' && b.espace === SENS && b.url.searchParams.get('espace') === `eq.${SENS}`, 'compte serveur : l’espace nommé par l’en-tête', [a.espace, b.espace]);
     verifier((await espacesActifs(c)).map((e) => e.code).join() === 'label-maison,sens,vide', 'espaces actifs : tous, Label Maison d’abord');
-    const lm = await configurationEspace(LM);
-    verifier(lm.cle === 'sk_test_lm' && !lm.workspace && lm.secretWebhook === 'whsec_lm' && lm.plafondIAMois === undefined, 'Label Maison : variables de Vercel, sans plafond', lm);
+    let lm = await configurationEspace(LM);
+    verifier(lm.cle === 'sk_test_lm' && !lm.workspace && lm.secretWebhook === 'whsec_lm' && lm.plafondIAMois === undefined, 'Label Maison : variables de Vercel, sans plafond ni workspace (comme avant)', lm);
+    // Un workspace sur le compte de Label Maison n'est permis qu'une fois celui de Label Maison posé (sinon sa clé lirait aussi celui-là).
+    let m = '';
+    await configurationEspace(SENS).catch((x: Error) => (m = x.message));
+    verifier(/REPULL_WORKSPACE_LM/.test(m), 'workspace de Sens sur le compte de Label Maison : refusé tant que REPULL_WORKSPACE_LM manque', m);
+    env.REPULL_WORKSPACE_LM = ' lm-ws\n';
+    lm = await configurationEspace(LM);
+    verifier(lm.workspace === 'lm-ws' && lm.cle === 'sk_test_lm' && !variableManquante(lm), 'REPULL_WORKSPACE_LM : le workspace de Label Maison sur ses appels', lm.workspace);
+    verifier(/REPULL_WORKSPACE_LM illisible/.test(variableManquante({ ...lm, workspace: 'lm ws' }) ?? ''), 'REPULL_WORKSPACE_LM illisible : message clair');
+    monde.espaces[1].repull_workspace = 'lm-ws';
+    m = '';
+    await configurationEspace(SENS).catch((x: Error) => (m = x.message));
+    verifier(/même workspace/.test(m), 'le workspace de Label Maison déclaré pour un autre espace : refusé', m);
+    monde.espaces[1].repull_workspace = '1204';
     const sens = await configurationEspace(SENS);
     verifier(sens.espace === SENS && sens.cle === 'sk_test_lm' && sens.workspace === '1204' && sens.secretWebhook === '' && sens.plafondIAMois === PLAFOND_IA_DEFAUT && sens.nomEspace === 'Sens', 'Sens : clé du compte dans SON workspace, aucun secret de Label Maison', sens);
     verifier(sens.budgetMois === BUDGET_ESPACE_DEFAUT && BUDGET_ESPACE_DEFAUT < lm.budgetMois, 'Sens : sa propre part d’appels, plus petite que celle de Label Maison', sens.budgetMois);
@@ -604,23 +721,88 @@ async function principal() {
     monde.coffre.set(`${SENS}:repull_cle`, 'sk_test_sens');
     monde.espaces[1].config = { agent: { plafondMois: 50 } };
     const propre = await configurationEspace(SENS);
-    verifier(propre.cle === 'sk_test_sens' && propre.workspace === '1204' && propre.plafondIAMois === 50, 'Sens : sa propre clé (coffre) et son plafond', propre);
+    verifier(propre.cle === 'sk_test_sens' && propre.workspace === undefined && propre.plafondIAMois === 50, 'Sens : sa propre clé (coffre), sans le workspace du compte de Label Maison, et son plafond', propre);
+    monde.espaces[1].config = { repull: { workspace: 'ws-sens' } };
+    verifier((await configurationEspace(SENS)).workspace === 'ws-sens', 'Sens : le workspace de SA clé (réglé par son gérant)');
+    monde.espaces[1].config = {};
     monde.coffre.delete(`${SENS}:repull_cle`);
     const vide = await configurationEspace(VIDE);
     verifier(vide.cle === '' && /pas encore relié/.test(variableManquante(vide) ?? ''), 'espace sans workspace ni clé : Repull coupé, jamais la clé de Label Maison', vide);
-    let m = '';
+    monde.espaces[2].config = { repull: { workspace: 'ws-vide' } };
+    verifier((await configurationEspace(VIDE)).cle === '', 'workspace sans clé propre : jamais la clé de Label Maison');
+    monde.espaces[2].config = {};
+    m = '';
     await configurationEspace('9a9a0000-0000-4000-8000-000000000009').catch((x: Error) => (m = x.message));
     verifier(/inconnu/.test(m), 'espace inconnu : refusé', m);
+
+    // Fichiers : chaque espace signe et dépose chez lui, jamais un chemin d'un autre espace.
+    const signerLM = signeurFichiersErp(c)!;
+    const signerSens = signeurFichiersErp({ ...c, espace: SENS })!;
+    monde.oublier();
+    const lienSens = await signerSens(`stockage://erp-fichiers/${SENS}/proprietaires/pro-s/m.pdf`, 120);
+    verifier(
+      /token=jeton-signe/.test(lienSens ?? '') && monde.stockage.length === 1 && monde.stockage[0].jeton === 'jeton-serveur' && monde.stockage[0].espace === SENS,
+      'fichier de Sens : signé avec le compte serveur et l’en-tête de Sens',
+      monde.stockage,
+    );
+    monde.oublier();
+    const lienLM = await signerLM('stockage://erp-fichiers/proprietaires/pro-a/x.pdf', 120);
+    verifier(!!lienLM && monde.stockage[0]?.jeton === 'jeton-equipe' && monde.stockage[0]?.espace === LM, 'fichier de Label Maison : compte d’équipe, comme avant (en-tête de Label Maison)', monde.stockage);
+    monde.oublier();
+    const croises = await Promise.all([
+      signerSens('stockage://erp-fichiers/proprietaires/pro-a/x.pdf', 120),
+      signerSens(`stockage://erp-fichiers/${VIDE}/proprietaires/x.pdf`, 120),
+      signerSens(`stockage://erp-fichiers/${SENS}/../proprietaires/pro-a/x.pdf`, 120),
+      signerSens(`stockage://autre-bucket/${SENS}/x.pdf`, 120),
+      signerLM(`stockage://erp-fichiers/${SENS}/proprietaires/pro-s/m.pdf`, 120),
+      signerLM(`stockage://erp-fichiers/${SENS.toUpperCase()}/proprietaires/pro-s/m.pdf`, 120),
+    ]);
+    verifier(croises.every((x) => x === null) && monde.stockage.length === 0, 'chemin d’un autre espace (ou hors du dossier, ou autre bucket) : jamais signé, rien demandé au stockage', { croises, stockage: monde.stockage });
+    const deposerSens = deposeurFichiersErp({ ...c, espace: SENS })!;
+    monde.oublier();
+    const depot = await deposerSens(`${SENS}/operations/eq-s/a.jpg`, new Uint8Array([0xff, 0xd8]), 'image/jpeg');
+    verifier(
+      depot === `stockage://erp-fichiers/${SENS}/operations/eq-s/a.jpg` && monde.stockage[0]?.jeton === 'jeton-serveur' && monde.stockage[0]?.espace === SENS,
+      'dépôt dans Sens : compte serveur, en-tête et dossier de Sens',
+      monde.stockage,
+    );
+    monde.oublier();
+    const depotsCroises = await Promise.all([
+      deposerSens('operations/eq-s/a.jpg', new Uint8Array([1]), 'image/jpeg'),
+      deposeurFichiersErp(c)!(`${SENS}/operations/eq-a/a.jpg`, new Uint8Array([1]), 'image/jpeg'),
+    ]);
+    verifier(depotsCroises.every((x) => x === null) && monde.stockage.length === 0, 'dépôt hors du dossier de son espace : refusé avant le stockage', monde.stockage);
+    verifier((await stockageFerme(c, SENS)) === null, 'fichiers de Sens ouverts une fois le compte serveur prêt');
   }
 
   section('Webhook tagué, seul Label Maison configuré');
   {
+    // Sans REPULL_WORKSPACE_LM ni workspace d'un autre espace : comme avant.
+    delete env.REPULL_WORKSPACE_LM;
     monde.espaces[1].repull_workspace = null;
     monde.oublier();
     const w = reponse();
     await routeWebhook(webhook({ event: 'reservation.message.received', data: { object: {} }, workspaceId: 555 }, 'whsec_lm'), w);
     verifier(w.statut === 200 && !w.corps?.ignore && monde.ecritures(LM).length > 0 && monde.repull.every((a) => a.workspace === null), 'aucun autre espace avec un workspace : traité pour Label Maison', w.corps);
     monde.espaces[1].repull_workspace = '1204';
+    env.REPULL_WORKSPACE_LM = 'lm-ws';
+  }
+
+  section('Workspace Repull de Label Maison (REPULL_WORKSPACE_LM)');
+  {
+    verifier(espaceDuWorkspace([{ id: LM, code: 'label-maison', nom: 'Label Maison', repull_workspace: 'lm-ws', config: {} }], '555') === null, 'Label Maison a déclaré son workspace : un workspace inconnu est ignoré');
+    monde.oublier();
+    let w = reponse();
+    await routeWebhook(webhook({ event: 'reservation.message.received', data: { object: {} }, workspaceId: 'lm-ws' }, 'whsec_lm'), w);
+    verifier(
+      w.statut === 200 && !w.corps?.ignore && monde.ecritures(LM).length > 0 && monde.repull.length > 0 && monde.repull.every((a) => a.workspace === 'lm-ws'),
+      'événement du workspace de Label Maison : traité chez lui, relu dans son workspace',
+      w.corps,
+    );
+    monde.oublier();
+    w = reponse();
+    await routeWebhook(webhook({ event: 'reservation.message.received', data: { object: {} }, workspaceId: 777 }, 'whsec_lm'), w);
+    verifier(w.statut === 200 && w.corps?.ignore === 'workspace' && monde.repull.length === 0 && monde.ecritures(LM).length === 0, 'workspace pas encore déclaré (un nouvel espace) : ignoré, jamais versé dans Label Maison', w.corps);
   }
 
   section('Passage quotidien sur chaque espace');
@@ -630,7 +812,7 @@ async function principal() {
     await routeSynchro(requete({ entetes: { authorization: 'Bearer secret-cron' } }), res);
     verifier(res.statut === 200 && res.corps?.espaces?.['label-maison'] && res.corps?.espaces?.sens && !('vide' in res.corps.espaces), 'Label Maison puis Sens ; l’espace sans Repull est sauté', res.corps);
     const premierSens = monde.repull.findIndex((a) => a.workspace === '1204');
-    verifier(premierSens > 0 && monde.repull.slice(0, premierSens).every((a) => a.workspace === null) && monde.repull.slice(premierSens).every((a) => a.workspace === '1204'), 'Repull : Label Maison sans workspace, puis Sens toujours avec le sien');
+    verifier(premierSens > 0 && monde.repull.slice(0, premierSens).every((a) => a.workspace === 'lm-ws') && monde.repull.slice(premierSens).every((a) => a.workspace === '1204'), 'Repull : Label Maison dans le sien, puis Sens toujours dans le sien');
     verifier(monde.ecritures(SENS).length > 0 && monde.ecritures(SENS).every((r) => r.espace === SENS) && monde.ecritures(LM).every((r) => r.espace === LM), 'chaque espace écrit chez lui');
   }
 
@@ -841,10 +1023,38 @@ async function principal() {
     const texte = JSON.stringify(res.corps?.vue ?? {});
     verifier(res.statut === 200 && res.corps?.vue?.conciergerie?.nom === 'Sens' && res.corps?.vue?.logements?.map((l: { id: string }) => l.id).join() === 'log-s', 'propriétaire de Sens : son logement, au nom de Sens', res.corps);
     verifier(!/Alice|log-a|Bob|Label Maison|74954|labelmaisoncg/i.test(texte) && !res.corps?.vue?.contacts && /Zoé S\./.test(texte) && !/Sensible/.test(texte), 'rien de Label Maison (ni données, ni contacts), voyageur en « Prénom N. »', texte.slice(0, 300));
-    // Document déposé dans Sens : les fichiers d'un autre espace ne sont pas encore signés, et la page le dit.
-    monde.poser(SENS, 'documentsProprietaire', { id: 'doc-s', proprietaireId: 'pro-s', categorie: 'contrat', titre: 'Mandat', fichier: 'stockage://erp-fichiers/sens/proprietaires/pro-s/m.pdf', nomFichier: 'm.pdf', ajouteLe: '2026-09-01T10:00:00.000Z', ajoutePar: 'g' } as { id: string });
+    // Document déposé dans Sens (dossier de Sens) : ouvert par un lien signé dans Sens, avec le compte serveur.
+    const doc = (id: string, proprietaireId: string, fichier: string) =>
+      ({ id, proprietaireId, categorie: 'contrat', titre: 'Mandat', fichier, nomFichier: 'm.pdf', ajouteLe: '2026-09-01T10:00:00.000Z', ajoutePar: 'g' }) as { id: string };
+    monde.poser(SENS, 'documentsProprietaire', doc('doc-s', 'pro-s', `stockage://erp-fichiers/${SENS}/proprietaires/pro-s/m.pdf`));
+    monde.oublier();
     res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-s' }, entetes: { cookie: cookieSophie } });
-    verifier(res.statut === 409 && res.texte === 'Les documents ne sont pas encore ouverts pour cet espace.', 'document de Sens : « pas encore ouverts pour cet espace », pas « introuvable »', { statut: res.statut, texte: res.texte });
+    verifier(
+      res.statut === 302 && /token=jeton-signe/.test(res.entetes.Location ?? '') && monde.stockage.length === 1 && monde.stockage[0].jeton === 'jeton-serveur' && monde.stockage[0].espace === SENS,
+      'document de Sens : lien signé dans Sens (compte serveur, en-tête de Sens)',
+      { statut: res.statut, texte: res.texte, stockage: monde.stockage },
+    );
+    // Un enregistrement de Sens qui pointe vers un fichier de Label Maison (et l'inverse) : jamais signé.
+    monde.poser(SENS, 'documentsProprietaire', doc('doc-s-lm', 'pro-s', 'stockage://erp-fichiers/proprietaires/pro-a/x.pdf'));
+    monde.poser(LM, 'documentsProprietaire', doc('doc-a-sens', 'pro-a', `stockage://erp-fichiers/${SENS}/proprietaires/pro-s/m.pdf`));
+    monde.poser(LM, 'documentsProprietaire', doc('doc-a', 'pro-a', 'stockage://erp-fichiers/proprietaires/pro-a/x.pdf'));
+    monde.oublier();
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-s-lm' }, entetes: { cookie: cookieSophie } });
+    const croiseSens = res.statut;
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-a-sens' }, entetes: { cookie: cookieAlice } });
+    verifier(croiseSens === 404 && res.statut === 404 && monde.stockage.length === 0, 'fichier d’un autre espace dans un document : « introuvable », jamais signé', { croiseSens, statut: res.statut, stockage: monde.stockage });
+    res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-a' }, entetes: { cookie: cookieAlice } });
+    verifier(res.statut === 302 && monde.stockage.length === 1 && monde.stockage[0].jeton === 'jeton-equipe' && monde.stockage[0].espace === LM, 'document de Label Maison : compte d’équipe, comme avant', monde.stockage);
+    // Logement de Sens avec sa photo déposée : signée dans Sens dans la vue du propriétaire.
+    monde.poser(SENS, 'logements', { id: 'log-s', nom: 'Chez Sophie', ville: 'Sens', statut: 'actif', proprietaireId: 'pro-s', capacite: 2, chambres: 1, photoUrl: `stockage://erp-fichiers/${SENS}/logements/log-s/photos/a.jpg` } as { id: string });
+    monde.oublier();
+    res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieSophie } });
+    verifier(
+      /token=jeton-signe/.test(res.corps?.vue?.logements?.[0]?.photo ?? '') && monde.stockage.every((x) => x.espace === SENS && x.jeton === 'jeton-serveur'),
+      'photo du logement de Sens : signée dans Sens',
+      { photo: res.corps?.vue?.logements?.[0]?.photo, stockage: monde.stockage },
+    );
+    verifier(res.corps?.vue?.conciergerie?.espace === SENS, 'vue : l’identifiant de l’espace (en-tête imprimé décidé par lui, pas par le nom)', res.corps?.vue?.conciergerie);
     res = await appelProprio({ methode: 'GET', query: { action: 'document', id: 'doc-inconnu' }, entetes: { cookie: cookieSophie } });
     verifier(res.statut === 404 && res.texte === 'Document introuvable.', 'document inconnu : « introuvable »', res.texte);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAlice } });
@@ -911,6 +1121,21 @@ async function principal() {
       [...monde.lignes.keys()].filter((k) => k.includes('incidents')),
     );
     verifier(monde.base.some((r) => r.methode === 'GET' && r.chemin === 'enregistrements' && r.url.searchParams.get('collection') === 'eq.incidents' && !!r.url.searchParams.get('id')?.startsWith('in.')), 'opérations : l’incident est relu juste avant d’être écrit');
+
+    // Photo prise dans Sens : déposée dans le dossier de Sens (compte serveur), puis acceptée avec l'incident.
+    monde.oublier();
+    res = await appelOps({ entetes: { cookie: cookieSamir }, corps: { action: 'photo', donnees: '/9j/4AAQSkZJRgABAQ==', type: 'image/jpeg' } });
+    const photo = String(res.corps?.url ?? '');
+    verifier(
+      res.statut === 200 && photo.startsWith(`stockage://erp-fichiers/${SENS}/operations/eq-s/`) && /token=jeton-signe/.test(res.corps?.apercu ?? ''),
+      'opérations : photo de Sens déposée dans le dossier de Sens, aperçu signé',
+      res.corps,
+    );
+    verifier(monde.stockage.length === 2 && monde.stockage.every((x) => x.jeton === 'jeton-serveur' && x.espace === SENS), 'opérations : dépôt et aperçu avec le compte serveur et l’en-tête de Sens', monde.stockage);
+    res = await signaler([photo]);
+    verifier(res.statut === 200, 'opérations : la photo de Sens accompagne l’incident', res.corps?.erreur);
+    res = await appelOps({ entetes: { cookie: cookieAgathe }, corps: { action: 'agir', operation: { type: 'signaler', logementId: 'log-a', urgent: false, description: 'Volet cassé dans la chambre.', photos: [photo] } } });
+    verifier(res.statut === 400, 'opérations : la photo de Sens refusée dans Label Maison', res.corps);
   }
 
   section('Relances de paiement : chaque espace, son calendrier, son expéditeur');
@@ -1375,7 +1600,7 @@ async function principal() {
     monde.oublier();
     res = reponse();
     await routeWebhook(webhook(message, 'whsec_lm'), res);
-    verifier(res.statut === 200 && monde.repull.every((a) => a.workspace === null) && monde.ecritures(LM).length > 0 && monde.ecritures(SENS).length === 0, 'sans workspace : Label Maison, comme avant');
+    verifier(res.statut === 200 && monde.repull.every((a) => a.workspace === 'lm-ws') && monde.ecritures(LM).length > 0 && monde.ecritures(SENS).length === 0, 'sans workspace : Label Maison, relu dans son workspace');
     res = reponse();
     await routeWebhook(webhook(message, 'whsec_lm', { espace: 'sens' }), res);
     verifier(res.statut === 401 && JSON.stringify(res.corps) === '{"ok":false}', 'adresse de Sens sans secret rangé : refusée comme une signature fausse', res.corps);
@@ -1393,6 +1618,126 @@ async function principal() {
     res = reponse();
     await routeWebhook(webhook(message, 'whsec_faux', { espace: 'sens' }), res);
     verifier(res.statut === 401 && JSON.stringify(res.corps) === '{"ok":false}', 'signature fausse : la même réponse', res.statut);
+  }
+
+  section('Espaces ouverts par invitation (api/erp-espaces)');
+  {
+    const appelEspaces = async (jeton: string, espace: string | undefined, o: { methode?: string; corps?: unknown; query?: Record<string, string>; entetes?: Record<string, string> }) => {
+      const res = reponse();
+      await routeEspaces(requete({ methode: o.methode, corps: o.corps, query: o.query, entetes: { authorization: `Bearer ${jeton}`, ...(espace ? { 'x-erp-espace': espace } : {}), ...(o.entetes ?? {}) } }), res);
+      return res;
+    };
+    const c = configuration();
+    // La plateforme : gérants de Label Maison seulement, avec leur propre session (la base revérifie).
+    let res = await appelEspaces('jeton-sens', SENS, { methode: 'GET', query: { action: 'plateforme' } });
+    verifier(res.statut === 403, 'gérant de Sens : ni liste des espaces ni invitation', res.corps);
+    res = await appelEspaces('jeton-ops-sens', SENS, { corps: { action: 'repull', cle: 'sk_live_intrus_0000' } });
+    verifier(res.statut === 403 && !monde.coffre.has(`${SENS}:repull_cle`), 'compte « opérations » : refusé', res.corps);
+    res = await appelEspaces('jeton-equipe', SENS, { methode: 'GET', query: { action: 'plateforme' } });
+    verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.corps);
+    monde.oublier();
+    res = await appelEspaces('jeton-equipe', LM, { methode: 'GET', query: { action: 'plateforme' } });
+    const lu = monde.base.filter((r) => r.chemin === 'rpc/espaces_plateforme');
+    verifier(
+      res.statut === 200 && res.corps?.espaces?.length === 3 && lu.length === 1 && lu[0].jeton === 'jeton-equipe' && lu[0].espace === LM,
+      'gérant de Label Maison : espaces lus avec SA session (jamais le compte serveur)',
+      { corps: res.corps, lu: lu.map((r) => [r.jeton, r.espace]) },
+    );
+
+    // Inviter : adresse vérifiée ; sans e-mail, le lien à copier, toujours sur le site fixe.
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'inviter', nom: 'Côte & Mer', email: 'pas-une-adresse' } });
+    verifier(res.statut === 400 && monde.invitations.length === 0, 'invitation : adresse invalide refusée', res.corps);
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'inviter', nom: 'Déjà membre', email: 'gerant-b@exemple.invalid' } });
+    verifier(res.statut === 400 && /déjà accès/.test(res.corps?.erreur ?? '') && monde.invitations.length === 0, 'invitation d’une adresse déjà membre : refusée avec le message de la base', res.corps);
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'inviter', nom: 'Côte & Mer', email: ' Gerant@Cote-Mer.example ' }, entetes: { origin: 'https://piege.vercel.app', host: 'piege.vercel.app' } });
+    verifier(
+      res.statut === 200 &&
+        res.corps?.envoye === false &&
+        res.corps?.lien === 'https://www.labelmaisoncg.fr/erp#creer=gerant%40cote-mer.example' &&
+        monde.invitations.length === 1 &&
+        monde.invitations[0].email === 'gerant@cote-mer.example',
+      'invitation sans e-mail : enregistrée, lien « Créer mon compte » du site fixe à copier (Origin forgée sans effet)',
+      res.corps,
+    );
+    env.RESEND_API_KEY = 're_test';
+    monde.emails = [];
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'inviter', nom: 'Côte & Mer', email: 'gerant@cote-mer.example' } });
+    const mail = monde.emails[0];
+    verifier(
+      res.statut === 200 && res.corps?.envoye === true && monde.emails.length === 1 && /Label Maison/.test(mail?.from ?? '') && mail?.to?.[0] === 'gerant@cote-mer.example',
+      'invitation par e-mail : expéditeur de Label Maison, à l’adresse invitée',
+      mail,
+    );
+    verifier(
+      /Côte & Mer/.test(mail?.subject ?? '') && (mail?.text ?? '').includes('https://www.labelmaisoncg.fr/erp#creer=gerant%40cote-mer.example') && /gerant@cote-mer\.example/.test(mail?.text ?? ''),
+      'e-mail : nom de la conciergerie, lien « Créer mon compte », adresse à utiliser',
+      mail?.text,
+    );
+    verifier(monde.invitations.length === 1, 'réinviter la même adresse : une seule invitation en attente');
+    delete env.RESEND_API_KEY;
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'annuler', id: 'pas-un-id' } });
+    verifier(res.statut === 400, 'annuler : invitation inconnue refusée', res.corps);
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'annuler', id: monde.invitations[0].id } });
+    verifier(res.statut === 200 && res.corps?.annulee === true && monde.invitations.length === 0, 'annuler : invitation retirée', res.corps);
+
+    // Suspendre : jamais Label Maison ; un espace suspendu n'ouvre plus rien et sort des passages planifiés.
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'suspendre', espace: LM, actif: false } });
+    verifier(res.statut === 400 && monde.espaces[0].actif, 'Label Maison ne se suspend pas', res.corps);
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'suspendre', espace: SENS, actif: false } });
+    verifier(res.statut === 200 && !monde.espaces[1].actif, 'Sens suspendu', res.corps);
+    verifier(!(await espacesActifs(c)).some((e) => e.id === SENS), 'espace suspendu : hors des passages planifiés');
+    res = await appelEspaces('jeton-sens', SENS, { methode: 'GET', query: { action: 'repull' } });
+    verifier(res.statut === 403, 'espace suspendu : son gérant n’y entre plus', res.corps);
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'suspendre', espace: SENS, actif: true } });
+    verifier(res.statut === 200 && monde.espaces[1].actif, 'Sens rouvert', res.corps);
+
+    // Repull d'un espace : sa propre clé, rangée par SON gérant, jamais relue par le navigateur.
+    monde.coffre.clear();
+    monde.espaces[1].repull_workspace = null;
+    res = await appelEspaces('jeton-sens', SENS, { methode: 'GET', query: { action: 'repull' } });
+    verifier(
+      res.statut === 200 && res.corps?.cle === false && res.corps?.webhook === false && res.corps?.adresseWebhook === 'https://www.labelmaisoncg.fr/api/erp-repull-webhook?espace=sens',
+      'Repull de Sens : pas encore de clé, adresse de son webhook',
+      res.corps,
+    );
+    res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', cle: 'sk live avec espaces' } });
+    verifier(res.statut === 400 && !monde.coffre.size, 'clé illisible : refusée, rien de rangé', res.corps);
+    monde.oublier();
+    res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', cle: 'sk_live_sens_propre_1234', workspace: ' ws-sens ' } });
+    const ecrits = monde.base.filter((r) => r.chemin === 'rpc/enregistrer_secret_espace' || r.chemin === 'rpc/regler_repull_espace');
+    verifier(
+      res.statut === 200 && res.corps?.cle === true && res.corps?.workspace === 'ws-sens' && monde.coffre.get(`${SENS}:repull_cle`) === 'sk_live_sens_propre_1234',
+      'clé de Sens rangée dans le coffre de Sens, workspace de sa clé réglé',
+      res.corps,
+    );
+    verifier(!JSON.stringify(res.corps).includes('sk_live_sens_propre_1234'), 'la clé ne revient jamais dans la réponse');
+    verifier(ecrits.length === 2 && ecrits.every((r) => r.jeton === 'jeton-sens' && r.espace === SENS), 'clé rangée avec la session du gérant de Sens et l’en-tête de Sens', ecrits.map((r) => [r.jeton, r.espace]));
+    const ce = await configurationEspace(SENS);
+    verifier(ce.cle === 'sk_live_sens_propre_1234' && ce.workspace === 'ws-sens', 'Sens : synchronisé avec SA clé et son workspace', { cle: ce.cle, workspace: ce.workspace });
+    monde.lignes.delete(`${SENS}\u0000repull\u0000etat`);
+    monde.oublier();
+    const sync = reponse();
+    await routeSynchro(requete({ entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS } }), sync);
+    verifier(sync.statut === 200 && monde.repull.length > 0 && monde.repull.every((a) => a.cle === 'sk_live_sens_propre_1234' && a.workspace === 'ws-sens'), 'bouton de Sens : chaque appel Repull avec sa clé, jamais celle de Label Maison', monde.repull.slice(0, 2));
+    verifier(monde.ecritures(LM).length === 0, 'rien écrit dans Label Maison');
+    res = await appelEspaces('jeton-sens', SENS, { corps: { action: 'repull', secretWebhook: 'whsec_sens_propre_1234' } });
+    verifier(res.statut === 200 && res.corps?.webhook === true && res.corps?.cle === true, 'secret du webhook de Sens rangé (la clé reste)', res.corps);
+    const message = { event: 'reservation.message.received', data: { object: { conversationId: 2 } } };
+    let w = reponse();
+    await routeWebhook(webhook(message, 'whsec_sens_propre_1234', { espace: 'sens' }), w);
+    verifier(w.statut === 200 && monde.ecritures(SENS).length > 0, 'adresse du webhook de Sens, son secret : traité dans Sens', w.corps);
+    w = reponse();
+    await routeWebhook(webhook(message, 'whsec_lm', { espace: 'sens' }), w);
+    verifier(w.statut === 401, 'adresse de Sens signée avec le secret de Label Maison : refusée', w.statut);
+    res = await appelEspaces('jeton-equipe', LM, { methode: 'GET', query: { action: 'repull' } });
+    verifier(res.statut === 200 && res.corps?.labelMaison === true && res.corps?.cle === undefined, 'Label Maison : ses clés restent dans Vercel (rien à régler ici)', res.corps);
+    res = await appelEspaces('jeton-equipe', LM, { corps: { action: 'repull', cle: 'sk_live_intrus_0000' } });
+    verifier(res.statut === 400 && !monde.coffre.has(`${LM}:repull_cle`), 'Label Maison : aucune clé rangée dans le coffre', res.corps);
+    res = await appelEspaces('jeton-equipe', SENS, { corps: { action: 'repull', cle: 'sk_live_intrus_0000' } });
+    verifier(res.statut === 403 && monde.coffre.get(`${SENS}:repull_cle`) === 'sk_live_sens_propre_1234', 'compte de Label Maison : ne range rien dans Sens', res.corps);
+    monde.coffre.clear();
+    monde.espaces[1].config = {};
+    monde.espaces[1].repull_workspace = '1204';
   }
 
   section('Retour en arrière du SQL');

@@ -9,7 +9,17 @@
  */
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { SCHEMA_ERP, SUPABASE_ANON_KEY, SUPABASE_URL, URL_RETOUR_MOT_DE_PASSE } from './config';
-import { erreurBaseHistorique, espaceDesDonnees, lireEspacesMembre, prefixeFichiers, type EspaceMembre } from './espaces';
+import {
+  erreurBaseHistorique,
+  espaceDesDonnees,
+  idEspaceValide,
+  lireEspacesMembre,
+  lireInvitationEspace,
+  prefixeFichiers,
+  type Espace,
+  type EspaceMembre,
+  type InvitationEspace,
+} from './espaces';
 import { EMAIL_VALIDE, normaliserEmailInvitation } from './invitation';
 import type { RoleUtilisateur, Utilisateur } from './types';
 
@@ -215,7 +225,7 @@ export async function seDeconnecter(): Promise<void> {
 /* ---------------------------------------------------------------- espaces */
 
 export type Identite =
-  | { ok: true; mode: 'espaces'; espaces: EspaceMembre[] }
+  | { ok: true; mode: 'espaces'; espaces: EspaceMembre[]; invitation: InvitationEspace | null }
   | { ok: true; mode: 'historique' }
   | { ok: false; erreur: unknown; status?: number };
 
@@ -226,7 +236,24 @@ export type Identite =
 export async function quiSuisJe(): Promise<Identite> {
   const { data, error, status } = await obtenirClient().rpc('qui_suis_je');
   if (error) return erreurBaseHistorique(error) ? { ok: true, mode: 'historique' } : { ok: false, erreur: error, status };
-  return { ok: true, mode: 'espaces', espaces: lireEspacesMembre(data) };
+  return { ok: true, mode: 'espaces', espaces: lireEspacesMembre(data), invitation: lireInvitationEspace(data) };
+}
+
+/**
+ * Crée l'espace de sa conciergerie avec l'invitation en attente de son
+ * adresse (erp.creer_espace : la personne en devient gérante). Un nouvel
+ * appel rend le même espace. Erreur : le message clair de la base.
+ */
+export async function creerEspace(nom: string): Promise<{ ok: true; espace: Espace } | { ok: false; erreur: string }> {
+  try {
+    const { data, error } = await obtenirClient().rpc('creer_espace', { p_nom: nom.trim() || null });
+    if (error) return { ok: false, erreur: error.message || 'Création impossible pour l’instant. Réessayez dans un instant.' };
+    const e = (data ?? {}) as { id?: unknown; code?: unknown; nom?: unknown };
+    if (!idEspaceValide(e.id)) return { ok: false, erreur: 'Réponse inattendue de la base. Réessayez dans un instant.' };
+    return { ok: true, espace: { id: e.id.toLowerCase(), code: String(e.code ?? ''), nom: String(e.nom ?? nom) } };
+  } catch {
+    return { ok: false, erreur: 'Serveur injoignable : vérifiez la connexion et réessayez.' };
+  }
 }
 
 /* ---------------------------------------------------------------- membres */

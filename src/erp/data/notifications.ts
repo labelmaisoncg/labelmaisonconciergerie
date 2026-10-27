@@ -353,11 +353,11 @@ export function notificationUrgence(
   };
 }
 
-/** Notification d'essai (bouton « Envoyer une notification de test »). */
-export function notificationTest(cle: string): GroupeNotification {
+/** Notification d'essai (bouton « Envoyer une notification de test »), au nom de l'espace (Label Maison par défaut). */
+export function notificationTest(cle: string, nomEspace = 'Label Maison'): GroupeNotification {
   return {
     cle,
-    variantes: [{ type: 'message', titre: 'Label Maison', corps: 'Les notifications fonctionnent sur cet appareil.', url: '/erp/parametres/application' }],
+    variantes: [{ type: 'message', titre: nomEspace, corps: 'Les notifications fonctionnent sur cet appareil.', url: '/erp/parametres/application' }],
   };
 }
 

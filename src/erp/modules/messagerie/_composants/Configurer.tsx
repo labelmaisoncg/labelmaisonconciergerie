@@ -12,7 +12,8 @@ import { Link } from 'react-router-dom';
 import { ArrowRight, Check, Lock } from 'lucide-react';
 import { Alert, Aide, Button, Card, Input, Interrupteur, Select, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
-import { LANGUES_AGENT, TONS_AGENT, reglagesAgent } from '../../../data/reglages';
+import { LANGUES_AGENT, TONS_AGENT, nomPourSignature, reglagesAgent, signatureParDefaut } from '../../../data/reglages';
+import { espaceOuvert } from '../../../data/espaces';
 import { dateCourte, heure, horodatageMaintenant, pluriel } from '../../../data/format';
 import type { ReglagesAgent } from '../../../data/types';
 import { completudeFiche } from './logique';
@@ -65,7 +66,10 @@ function Case({ coche, onChange, verrou, children, disabled }: { coche: boolean;
 
 export function Configurer() {
   const d = useErp();
-  const enregistre = reglagesAgent(d);
+  // Signature par défaut au nom de l'espace ouvert (« L’équipe Sens ») ; Label Maison inchangé.
+  const nomEspace = nomPourSignature(espaceOuvert());
+  const signatureDefaut = signatureParDefaut(nomEspace);
+  const enregistre = reglagesAgent(d, nomEspace);
   const [f, setF] = useState<ReglagesAgent>(enregistre);
   const [ok, setOk] = useState(false);
   const modifie = JSON.stringify({ ...f, majLe: 0, majPar: 0 }) !== JSON.stringify({ ...enregistre, majLe: 0, majPar: 0 });
@@ -141,7 +145,7 @@ export function Configurer() {
         </div>
         <figure className="mt-4 rounded-2xl rounded-br-md border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3" aria-live="polite">
           <figcaption className="mb-1 text-[11.5px] font-semibold tracking-wide text-(--lm-encre-3) uppercase">Exemple de réponse</figcaption>
-          <p className="text-[13.5px] leading-relaxed text-(--lm-encre)">{ton.exemple(f.signature.trim() || 'L’équipe Label Maison')}</p>
+          <p className="text-[13.5px] leading-relaxed text-(--lm-encre)">{ton.exemple(f.signature.trim() || signatureDefaut)}</p>
         </figure>
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -156,7 +160,7 @@ export function Configurer() {
               maxLength={80}
               disabled={bloque}
               onChange={(e) => maj({ signature: e.target.value })}
-              placeholder="L’équipe Label Maison"
+              placeholder={signatureDefaut}
             />
           </div>
           <fieldset>

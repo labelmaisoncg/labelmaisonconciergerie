@@ -1,14 +1,17 @@
 /**
  * Photos de l'espace opérations (incident signalé, point de contrôle) : la
  * personne n'a pas de session sur la base, le serveur dépose la photo dans
- * l'espace privé des fichiers de l'ERP avec le compte d'équipe et ne rend
- * que l'adresse « stockage://… » à enregistrer.
+ * l'espace privé des fichiers de l'ERP, dans le dossier de son espace
+ * (api/_erp-repull.ts : compte d'équipe pour Label Maison, compte serveur
+ * avec l'en-tête de l'espace sinon) et ne rend que l'adresse « stockage://… »
+ * à enregistrer.
  *
  * Imports en « .js » : ce module tourne sous Node (fonctions Vercel).
  */
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from './config.js';
+import { BUCKET_FICHIERS_ERP } from './espaces.js';
 
-export const BUCKET = 'erp-fichiers';
+export const BUCKET = BUCKET_FICHIERS_ERP;
 /** Dossier des photos déposées par l'espace opérations. */
 export const DOSSIER_OPERATIONS = 'operations';
 /** 3 Mo après réduction dans le navigateur (une photo de téléphone réduite en fait 300 à 600 Ko). */
@@ -45,9 +48,12 @@ export function lirePhoto(donnees: unknown, type: unknown): { octets: Uint8Array
   return ok ? { octets, type: t, extension } : null;
 }
 
-/** Dépose un fichier dans l'espace privé ; rend « stockage://… » ou null. */
+/**
+ * Dépose un fichier dans l'espace privé ; rend « stockage://… » ou null.
+ * `entetes` : en-têtes en plus (x-erp-espace : l'espace du compte serveur).
+ */
 export async function deposerFichierStockage(
-  o: { jeton: () => Promise<string>; url?: string; cleAnon?: string; fetch?: typeof fetch },
+  o: { jeton: () => Promise<string>; entetes?: Record<string, string>; url?: string; cleAnon?: string; fetch?: typeof fetch },
   chemin: string,
   octets: Uint8Array,
   type: string,
@@ -57,7 +63,7 @@ export async function deposerFichierStockage(
   try {
     const r = await (o.fetch ?? fetch)(`${url}/storage/v1/object/${BUCKET}/${chemin.split('/').map(encodeURIComponent).join('/')}`, {
       method: 'POST',
-      headers: { apikey: o.cleAnon ?? SUPABASE_ANON_KEY, Authorization: `Bearer ${await o.jeton()}`, 'Content-Type': type, 'x-upsert': 'false' },
+      headers: { ...o.entetes, apikey: o.cleAnon ?? SUPABASE_ANON_KEY, Authorization: `Bearer ${await o.jeton()}`, 'Content-Type': type, 'x-upsert': 'false' },
       body: octets as unknown as BodyInit,
     });
     return r.ok ? `stockage://${BUCKET}/${chemin}` : null;

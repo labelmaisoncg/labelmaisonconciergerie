@@ -5,7 +5,14 @@
 //
 // Variables d'environnement (projet Vercel du site) :
 //   REPULL_API_KEY             clé API Repull (sk_live_...) — obligatoire
-//   ERP_PASSWORD               mot de passe de l'ERP = mot de passe du compte
+//   REPULL_WORKSPACE_LM        facultatif : workspace Repull de Label Maison.
+//                              Présent : chaque appel de Label Maison l'envoie
+//                              (X-Workspace-Id ; lecture et réponses aux
+//                              voyageurs seulement, rien de plus n'est permis)
+//                              et le webhook reconnaît ses événements. À mettre
+//                              AVANT de déclarer le workspace d'un autre espace
+//                              (docs/erp/espaces-mise-en-service.md)
+//   ERP_PASSWORD            mot de passe de l'ERP = mot de passe du compte
 //                              Supabase d'équipe, qui écrit dans la base
 //   ERP_SERVEUR_MOT_DE_PASSE   mot de passe du compte technique
 //                              serveur@labelmaisoncg.fr (supabase/erp-espaces.sql) :
@@ -22,7 +29,7 @@ import crypto from 'node:crypto';
 import { BaseErp, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT, fabriqueJetonEquipe, lireIdentite } from '../src/erp/data/repull-synchro.js';
 import { signerFichierStockage, type SignerFichier } from '../src/erp/data/guides.js';
 import { deposerFichierStockage } from '../src/erp/data/operations-fichiers.js';
-import { EMAIL_SERVEUR, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
+import { BUCKET_FICHIERS_ERP, EMAIL_SERVEUR, ENTETE_ESPACE, ID_LABEL_MAISON, MESSAGE_BASE_PAS_PREPAREE, estLabelMaison, fichierDeLEspace } from '../src/erp/data/espaces.js';
 
 /**
  * Réglages d'un espace côté serveur. configuration() : Label Maison, depuis
@@ -57,11 +64,23 @@ const entier = (v: string | undefined, defaut: number): number => {
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : defaut;
 };
 
+/**
+ * Workspace Repull de Label Maison (REPULL_WORKSPACE_LM) ; absent : aucun
+ * en-tête, exactement comme avant.
+ */
+export function workspaceLabelMaison(): string | undefined {
+  return (process.env.REPULL_WORKSPACE_LM || '').trim() || undefined;
+}
+
+/** Forme d'un numéro de workspace (la même que erp.espaces.repull_workspace). */
+const FORME_WORKSPACE = /^[A-Za-z0-9_-]{1,64}$/;
+
 /** Lecture des variables (trim : un copier-coller Vercel embarque souvent un retour à la ligne). */
 export function configuration(): ConfigRepullErp {
   return {
     espace: ID_LABEL_MAISON,
     cle: (process.env.REPULL_API_KEY || '').trim(),
+    workspace: workspaceLabelMaison(),
     motDePasse: (process.env.ERP_PASSWORD || '').trim(),
     motDePasseServeur: (process.env.ERP_SERVEUR_MOT_DE_PASSE || '').trim(),
     email: (process.env.VITE_ERP_EMAIL_EQUIPE || '').trim() || 'equipe@labelmaisoncg.fr',
@@ -75,13 +94,18 @@ export function configuration(): ConfigRepullErp {
 /** Message clair quand une variable manque (null : tout est là). */
 export function variableManquante(c: ConfigRepullErp): string | null {
   if (!c.cle && !estLabelMaison(c.espace)) {
-    return 'Repull n’est pas encore relié à cet espace : voir docs/erp/espaces-mise-en-service.md.';
+    return 'Repull n’est pas encore relié à cet espace : un gérant ajoute votre clé Repull dans Paramètres → Plateformes.';
   }
   if (!c.cle) {
     return 'REPULL_API_KEY manquante : ajoutez la clé API Repull dans Vercel (Settings → Environment Variables, Production et Preview), puis redéployez.';
   }
   if (!c.motDePasse) {
     return 'ERP_PASSWORD manquant dans Vercel : la synchronisation écrit dans la base avec le compte d’équipe, dont c’est le mot de passe.';
+  }
+  if (c.workspace && !FORME_WORKSPACE.test(c.workspace)) {
+    return estLabelMaison(c.espace)
+      ? 'REPULL_WORKSPACE_LM illisible dans Vercel : collez seulement le numéro du workspace donné par Repull (lettres, chiffres, « - » ou « _ »), puis redéployez.'
+      : 'Numéro de workspace Repull de cet espace illisible : voir docs/erp/espaces-mise-en-service.md.';
   }
   return null;
 }
@@ -194,25 +218,81 @@ export function baseErp(c: ConfigRepullErp, espace: string = c.espace): BaseErp 
   });
 }
 
+/* ------------------------------------------------------ fichiers (stockage) */
+
+/** Un compte peut-il servir aux fichiers de cet espace (variables présentes) ? */
+const stockagePossible = (c: ConfigRepullErp): boolean => (estLabelMaison(c.espace) ? !!c.motDePasse || !!c.motDePasseServeur : !!c.motDePasseServeur);
+
 /**
- * Liens signés des fichiers de l'espace privé (guides envoyés aux voyageurs),
- * avec la session du compte d'équipe : Label Maison seulement pour l'instant
- * (un autre espace n'envoie que les guides en lien https).
+ * Compte qui signe et dépose les fichiers d'un espace :
+ *   - Label Maison : le compte d'équipe, comme avant (avec l'en-tête de Label
+ *     Maison une fois la base passée aux espaces, comme pour la base) ; sans
+ *     ERP_PASSWORD, le compte serveur prêt ;
+ *   - un autre espace : le compte serveur prêt, avec l'en-tête de l'espace
+ *     (les règles du stockage, supabase/erp-espaces.sql, ne lui ouvrent que
+ *     le dossier de cet espace) ; jamais le compte d'équipe. Base d'avant les
+ *     espaces ou compte serveur pas prêt : erreur au message clair.
  */
-export function signeurFichiersErp(c: ConfigRepullErp): SignerFichier | undefined {
-  if (!estLabelMaison(c.espace) || !c.motDePasse) return undefined;
-  const obtenir = sessionEquipe(c);
-  return (fichier, secondes) => signerFichierStockage({ jeton: () => obtenir() }, fichier, secondes);
+async function accesStockage(c: ConfigRepullErp, espace: string): Promise<{ jeton: () => Promise<string>; entetes: Record<string, string> }> {
+  const labelMaison = estLabelMaison(espace);
+  const id = labelMaison ? ID_LABEL_MAISON : espace.toLowerCase();
+  const e = await etatBase(c);
+  const entetes: Record<string, string> = e.mode === 'espaces' ? { [ENTETE_ESPACE]: id } : {};
+  if (labelMaison && c.motDePasse) {
+    const equipe = sessionEquipe(c);
+    return { jeton: () => equipe(), entetes };
+  }
+  const jeton = await jetonPour(c, id);
+  return { jeton: async () => jeton, entetes };
 }
 
 /**
- * Dépôt d'un fichier dans l'espace privé (photos de l'espace opérations),
- * avec la session du compte d'équipe : Label Maison seulement pour l'instant.
+ * Pourquoi les fichiers de l'espace ne peuvent être ni signés ni déposés
+ * (message clair pour le gérant), null s'ils le peuvent.
+ */
+export async function stockageFerme(c: ConfigRepullErp, espace: string = c.espace): Promise<string | null> {
+  const labelMaison = estLabelMaison(espace);
+  if (labelMaison && c.motDePasse) return null;
+  const sansCompte = labelMaison ? 'ERP_PASSWORD manquant dans Vercel : les fichiers de l’équipe ne peuvent pas être ouverts.' : MESSAGE_COMPTE_SERVEUR;
+  if (!c.motDePasseServeur) return sansCompte;
+  try {
+    const e = await etatBase(c);
+    if (e.mode !== 'espaces') return labelMaison ? sansCompte : MESSAGE_BASE_PAS_PREPAREE;
+    return e.serveur ? null : sansCompte;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+/**
+ * Liens signés des fichiers de l'espace de `c` : guides envoyés aux
+ * voyageurs, documents et photos des espaces propriétaire et opérations.
+ * Seulement les fichiers de CET espace (fichierDeLEspace) : jamais un chemin
+ * d'un autre espace, même connu (null, sans rien demander au stockage).
+ * undefined : aucun compte possible pour cet espace (variables absentes).
+ */
+export function signeurFichiersErp(c: ConfigRepullErp): SignerFichier | undefined {
+  if (!stockagePossible(c)) return undefined;
+  const espace = c.espace;
+  return async (fichier, secondes) => {
+    if (!fichierDeLEspace(fichier, espace)) return null;
+    return signerFichierStockage(await accesStockage(c, espace), fichier, secondes);
+  };
+}
+
+/**
+ * Dépôt d'un fichier dans l'espace de `c` (photos de l'espace opérations),
+ * dans le dossier de cet espace seulement (prefixeFichiers) : rend
+ * « stockage://… », ou null (chemin d'un autre espace, dépôt refusé).
  */
 export function deposeurFichiersErp(c: ConfigRepullErp): ((chemin: string, octets: Uint8Array, type: string) => Promise<string | null>) | undefined {
-  if (!estLabelMaison(c.espace) || !c.motDePasse) return undefined;
-  const obtenir = sessionEquipe(c);
-  return (chemin, octets, type) => deposerFichierStockage({ jeton: () => obtenir() }, chemin, octets, type);
+  if (!stockagePossible(c)) return undefined;
+  const espace = c.espace;
+  return async (chemin, octets, type) => {
+    if (!fichierDeLEspace(`stockage://${BUCKET_FICHIERS_ERP}/${chemin}`, espace)) return null;
+    const acces = await accesStockage(c, espace).catch(() => null);
+    return acces ? deposerFichierStockage(acces, chemin, octets, type) : null;
+  };
 }
 
 /** Comparaison à temps constant (secrets). */

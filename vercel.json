@@ -65,6 +65,9 @@
     },
     "api/espace-operations.ts": {
       "maxDuration": 20
+    },
+    "api/erp-espaces.ts": {
+      "maxDuration": 15
     }
   },
   "crons": [
