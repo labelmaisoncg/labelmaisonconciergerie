@@ -97,12 +97,23 @@ export interface OptionsSynchro {
   /** Reconnexion après une coupure : relire la base pour ne rien manquer. */
   surResynchro?: () => void;
   /**
-   * Écriture que la base refuse pour de bon (facture numérotée, figée par son
-   * déclencheur) : jamais réessayée. Sans : toute erreur est réessayée.
+   * Refus définitif en plus de ceux que la synchronisation reconnaît déjà
+   * (refusParLaBase : droits, règles RLS, déclencheurs de la base). Jamais
+   * réessayé.
    */
   refusDefinitif?: (e: ErreurBase) => boolean;
-  /** Écritures refusées pour de bon, retirées de la file ; la version de la base est relue. */
-  surRefus?: (refus: { collection: NomCollection; id: string; message: string }[]) => void;
+  /**
+   * Opération que la base refuserait à ce compte (écritures réservées aux
+   * gérants, ecritures-gerant.ts) : jamais mise en file, signalée comme un
+   * refus de la base et la version de la base relue.
+   */
+  ecritureInterdite?: (op: Operation, avant: ErpDonnees) => boolean;
+  /**
+   * Écritures refusées pour de bon (par la base, ou écartées avant l'envoi),
+   * retirées de la file ; la version de la base est relue. Un seul appel par
+   * envoi, quel que soit le nombre de lignes refusées.
+   */
+  surRefus?: (refus: RefusBase[]) => void;
   /** Regroupement des changements distants (ms). */
   delaiRegroupement?: number;
   /** Surveillance du réseau et battement de la file (désactivés en test). */
@@ -119,6 +130,43 @@ const LOT_SUPPRESSION = 100;
 const DELAI_MAX = 60_000;
 /** Un onglet silencieux depuis plus longtemps est considéré fermé : sa file est reprise. */
 const ONGLET_ABANDONNE_MS = 30_000;
+
+/** Écriture refusée pour de bon : jamais réessayée, signalée une fois au store. */
+export interface RefusBase {
+  collection: NomCollection;
+  id: string;
+  message: string;
+  /** SQLSTATE de la base (42501, LMF01, LMF02…). */
+  code?: string;
+}
+
+/**
+ * Codes posés par les déclencheurs de la base (supabase/erp-espaces.sql) :
+ * LMF01 facture numérotée figée, LMF02 numéro posé ailleurs que par
+ * erp.numeroter_facture.
+ */
+export const CODES_REFUS_BASE = ['LMF01', 'LMF02'] as const;
+
+/**
+ * Refus définitif de la base pour CETTE ligne : la renvoyer ne changera rien.
+ * Droits (42501, 403) : règle RLS (« new row violates row-level security
+ * policy », écriture réservée aux gérants) ou déclencheur (niveau
+ * d'autonomie de l'agent) ; codes des déclencheurs des factures. Restent
+ * réessayés : réseau, 5xx, session expirée (401), base pas installée, et
+ * un droit manquant sur la table ou le schéma (« permission denied for
+ * table… » : réglage de la base, toutes les lignes y passeraient).
+ */
+export function refusParLaBase(e: ErreurBase | null | undefined, status?: number): boolean {
+  if (!e) return false;
+  const code = String(e.code ?? '');
+  if ((CODES_REFUS_BASE as readonly string[]).includes(code)) return true;
+  if (genreErreur(e, status) !== 'droits') return false;
+  if ((status ?? e.status ?? 0) >= 500) return false;
+  return !/permission denied for (schema|table|relation|sequence|function|view)/i.test(String(e.message ?? ''));
+}
+
+/** Message d'une écriture écartée avant l'envoi (ecritureInterdite). */
+const MESSAGE_RESERVE_GERANT = 'Réservé au gérant de l’espace.';
 
 const cle = (collection: string, id: string) => `${collection}\u0000${id}`;
 const estCollection = (c: unknown): c is NomCollection =>
@@ -408,7 +456,16 @@ export class Synchro {
    * en arrière-plan (état visible par surEtat) et rien n'est perdu.
    */
   sauvegarderDifferences(avant: ErpDonnees, apres: ErpDonnees, auteur: string): Promise<boolean> {
-    const ops = differences(avant, apres);
+    let ops = differences(avant, apres);
+    // Ce que la base refuserait à ce compte n'entre pas dans la file : signalé, version de la base relue.
+    const interdite = this.opts.ecritureInterdite;
+    if (interdite && ops.length) {
+      const ecartees = ops.filter((op) => interdite(op, avant));
+      if (ecartees.length) {
+        ops = ops.filter((op) => !ecartees.includes(op));
+        this.signalerRefus(ecartees.map((op) => ({ collection: op.collection, id: op.id, message: MESSAGE_RESERVE_GERANT, code: '42501' })));
+      }
+    }
     if (!ops.length) return Promise.resolve(true);
     for (const op of ops) {
       const version = ++this.version;
@@ -471,6 +528,8 @@ export class Synchro {
   }
 
   private async envoyerLot(): Promise<{ erreur: ErreurBase; status?: number } | null> {
+    // Refus de tout l'envoi, signalés en une fois à la fin (un message, une ligne de journal).
+    const refus: RefusBase[] = [];
     try {
       const instantane = [...this.file.values()];
       const ecritures = instantane.filter((e) => e.op.type === 'ecrire');
@@ -484,9 +543,9 @@ export class Synchro {
         }));
         const { error, status } = await this.client.from(TABLE).upsert(lignes, { onConflict: this.espace ? 'espace,collection,id' : 'collection,id' });
         if (error) {
-          // Refus définitif (facture figée) : ligne par ligne, pour ne retirer que les refusées.
-          if (this.opts.refusDefinitif?.(error)) {
-            const echec = await this.envoyerUnParUn(lot);
+          // Refus définitif (droits, facture figée) : ligne par ligne, pour ne retirer que les refusées.
+          if (this.estRefus(error, status)) {
+            const echec = await this.envoyerUnParUn(lot, refus);
             if (echec) return echec;
             continue;
           }
@@ -510,8 +569,8 @@ export class Synchro {
           if (this.espace) requete = requete.eq('espace', this.espace);
           const { error, status } = await requete;
           if (error) {
-            if (this.opts.refusDefinitif?.(error)) {
-              const echec = await this.envoyerUnParUn(lot);
+            if (this.estRefus(error, status)) {
+              const echec = await this.envoyerUnParUn(lot, refus);
               if (echec) return echec;
               continue;
             }
@@ -525,23 +584,32 @@ export class Synchro {
         const ligne: Record<string, unknown> = this.espace ? { espace: this.espace, id: 'global' } : { id: 'global' };
         for (const [champ, { valeur }] of envoyes) ligne[champ] = valeur;
         const { error, status } = await this.client.from(TABLE_AUTO).upsert(ligne, { onConflict: this.espace ? 'espace,id' : 'id' });
-        if (error) return { erreur: error, status };
+        // Refus définitif de l'état des automatisations : abandonné, jamais réessayé sans fin.
+        if (error && !this.estRefus(error, status)) return { erreur: error, status };
+        if (error) console.warn('[erp] état des automatisations refusé par la base, abandonné', error);
         for (const [champ, { version }] of envoyes) if (this.fileAuto.get(champ)?.version === version) this.fileAuto.delete(champ);
         this.persister();
+        this.majEtat({});
       }
       return null;
     } catch (e) {
       return { erreur: { message: (e as Error)?.message ?? String(e) }, status: 0 };
+    } finally {
+      this.signalerRefus(refus);
     }
+  }
+
+  private estRefus(e: ErreurBase, status?: number): boolean {
+    return refusParLaBase(e, status) || !!this.opts.refusDefinitif?.(e);
   }
 
   /**
    * Envoie un lot ligne par ligne : une ligne refusée pour de bon est retirée
-   * de la file (jamais réessayée), signalée au store, et sa version de la
-   * base relue ; toute autre erreur arrête le lot (nouvel essai plus tard).
+   * de la file (jamais réessayée) et ajoutée à `refus` ; les acceptées sont
+   * enregistrées ; toute autre erreur (réseau, 5xx) arrête le lot : nouvel
+   * essai plus tard, comme avant.
    */
-  private async envoyerUnParUn(lot: EntreeFile[]): Promise<{ erreur: ErreurBase; status?: number } | null> {
-    const refus: { collection: NomCollection; id: string; message: string }[] = [];
+  private async envoyerUnParUn(lot: EntreeFile[], refus: RefusBase[]): Promise<{ erreur: ErreurBase; status?: number } | null> {
     for (const e of lot) {
       let reponse: { error: ErreurBase | null; status?: number };
       if (e.op.type === 'ecrire') {
@@ -559,16 +627,25 @@ export class Synchro {
         reponse = await requete;
       }
       const { error, status } = reponse;
-      if (error && !this.opts.refusDefinitif?.(error)) return { erreur: error, status };
+      if (error && !this.estRefus(error, status)) return { erreur: error, status };
       this.retirer([e]);
-      if (error) refus.push({ collection: e.op.collection, id: e.op.id, message: error.message ?? '' });
-    }
-    if (refus.length) {
-      console.warn('[erp] écritures refusées par la base, version de la base relue', refus);
-      this.opts.surRefus?.(refus);
-      for (const r of refus) void this.relireLigne(r.collection, r.id, true);
+      if (error) refus.push({ collection: e.op.collection, id: e.op.id, message: error.message ?? '', ...(error.code ? { code: String(error.code) } : {}) });
     }
     return null;
+  }
+
+  /**
+   * Refus définitifs : signalés au store (un appel par envoi), oubliés des
+   * relectures complètes (jamais rejoués), version de la base relue et
+   * reposée dans l'ERP.
+   */
+  private signalerRefus(refus: RefusBase[]) {
+    if (!refus.length) return;
+    console.warn('[erp] écritures refusées par la base, version de la base relue', refus);
+    const cles = new Map(refus.map((r) => [cle(r.collection, r.id), r] as const));
+    this.recents = this.recents.filter((r) => !('type' in r.ch) || !cles.has(cle(r.ch.collection, r.ch.id)) || this.file.has(cle(r.ch.collection, r.ch.id)));
+    this.opts.surRefus?.(refus.slice());
+    for (const r of cles.values()) void this.relireLigne(r.collection, r.id, true).catch(() => null);
   }
 
   /**

@@ -236,7 +236,7 @@ language sql immutable set search_path = ''
 as $$
   select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
-      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures'))
+      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'))
 $$;
 revoke all on function erp.ecriture_gerant_seulement(text, text) from public, anon;
 grant execute on function erp.ecriture_gerant_seulement(text, text) to authenticated;
@@ -303,13 +303,13 @@ begin
     return case when tg_op = 'DELETE' then old else new end;
   end if;
   if tg_op = 'DELETE' then
-    raise exception 'Facture numérotée : elle ne se supprime pas (faites un avoir).' using errcode = '42501';
+    raise exception 'Facture numérotée : elle ne se supprime pas (faites un avoir).' using errcode = 'LMF01';
   end if;
   if (to_jsonb(new) - 'donnees' - 'maj_le' - 'maj_par') is distinct from (to_jsonb(old) - 'donnees' - 'maj_le' - 'maj_par')
      or (new.donnees - libres) is distinct from (old.donnees - libres)
      or (coalesce(new.donnees ->> 'statut', '') not in ('emise', 'payee', 'en_retard')
          and (new.donnees -> 'statut') is distinct from (old.donnees -> 'statut')) then
-    raise exception 'Facture numérotée : seuls le paiement et le partage changent encore.' using errcode = '42501';
+    raise exception 'Facture numérotée : seuls le paiement et le partage changent encore.' using errcode = 'LMF01';
   end if;
   return new;
 end;
@@ -318,6 +318,61 @@ revoke all on function erp.figer_facture_numerotee() from public, anon;
 drop trigger if exists figer_facture_numerotee on erp.enregistrements;
 create trigger figer_facture_numerotee before update or delete on erp.enregistrements
   for each row execute function erp.figer_facture_numerotee();
+
+-- Numéro d'une facture : jamais écrit par l'API, gérant compris (LMF02) ; il
+-- est attribué par la base (erp.numeroter_facture, après erp-espaces.sql).
+-- Deux factures ne partagent pas un numéro (index créé seulement sans
+-- doublons ; sinon un avertissement les liste). Même déclencheur que dans
+-- erp-espaces.sql.
+create or replace function erp.reserver_numero_facture() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant text := '';
+begin
+  if current_user <> 'authenticated' or new.collection <> 'factures'
+     or coalesce(current_setting('erp.numerotation', true), '') = 'on' then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' then
+    if old.collection = 'factures' and old.id = new.id then
+      avant := btrim(coalesce(old.donnees ->> 'numero', ''));
+    end if;
+  else
+    select btrim(coalesce(e.donnees ->> 'numero', '')) into avant from erp.enregistrements e
+      where e.collection = 'factures' and e.id = new.id;
+    avant := coalesce(avant, '');
+  end if;
+  if btrim(coalesce(new.donnees ->> 'numero', '')) is distinct from avant then
+    raise exception 'Facture : son numéro est attribué par la base à la validation (erp.numeroter_facture), jamais écrit directement.'
+      using errcode = 'LMF02';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.reserver_numero_facture() from public, anon;
+drop trigger if exists reserver_numero_facture on erp.enregistrements;
+create trigger reserver_numero_facture before insert or update on erp.enregistrements
+  for each row execute function erp.reserver_numero_facture();
+do $$
+declare
+  v_doublons text;
+begin
+  if to_regclass('erp.enregistrements_numero_facture') is not null then
+    return;
+  end if;
+  select string_agg(format('%s (%s fois)', d.numero, d.n), ', ' order by d.numero) into v_doublons
+    from (select btrim(e.donnees ->> 'numero') as numero, count(*) as n from erp.enregistrements e
+          where e.collection = 'factures' and btrim(coalesce(e.donnees ->> 'numero', '')) <> ''
+          group by btrim(e.donnees ->> 'numero') having count(*) > 1) d;
+  if v_doublons is not null then
+    raise warning 'Factures : numéros en double (%) ; index d''unicité pas créé. Corrigez-les, puis relancez ce fichier.', v_doublons;
+    return;
+  end if;
+  create unique index enregistrements_numero_facture on erp.enregistrements ((btrim(donnees ->> 'numero')))
+    where collection = 'factures' and btrim(coalesce(donnees ->> 'numero', '')) <> '';
+end;
+$$;
 
 -- historique : lecture seule pour l'équipe (écrit uniquement par le déclencheur).
 drop policy if exists "membres lisent" on erp.historique;

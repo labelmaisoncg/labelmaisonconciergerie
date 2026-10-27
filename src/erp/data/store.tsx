@@ -43,8 +43,10 @@ import {
 } from './supabase';
 import { ESPACE_LABEL_MAISON, choisirEspace, messageRefusAcces, ouvrirEspace, type Espace, type InvitationEspace } from './espaces';
 import { refusEcritureFigee } from './factures-mensuelles';
+import { messageRefus, operationReserveeAuGerant, traceRefus } from './ecritures-gerant';
 import { MESSAGE_LIEN_PERIME } from './invitation';
-import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
+import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
+import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro, type RefusBase } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
 import { CreerEspace } from '../layout/CreerEspace';
 import type {
@@ -140,18 +142,8 @@ interface EtatAuto {
 
 const MAX_EVENEMENTS = 500;
 
-/**
- * Channel manager (octobre 2026) : ménages, linge, prestataires, finance et
- * annonces sortent de l'ERP (BNB Cleaning reprendra ménages et linge). Leurs
- * règles ne tournent plus, sinon elles créeraient missions et alertes que
- * plus aucun écran n'affiche. Restent celles qui servent les logements et
- * les voyageurs.
- */
-export const REGLES_CHANNEL_MANAGER = new Set(['activation-logement', 'plafond-120-nuits', 'messages-en-attente']);
-
-function clesActives(actives: Record<string, boolean>): string[] {
-  return REGLES.filter((r) => REGLES_CHANNEL_MANAGER.has(r.cle) && (actives[r.cle] ?? r.actifParDefaut)).map((r) => r.cle);
-}
+// Règles qui tournent : channel manager seulement, jamais celles des finances (regles-actives.ts).
+export { REGLES_CHANNEL_MANAGER };
 
 /** Nouveaux événements en tête, dédoublonnés par id (un constat connu ne s'empile pas). */
 function fusionner(existants: EvenementAuto[], nouveaux: EvenementAuto[]): EvenementAuto[] {
@@ -297,13 +289,20 @@ function CoeurErp({
     let relectureEnCours = false;
     let derniereRelecture = 0;
     synchro.brancher({
-      // Écriture refusée pour de bon (facture validée entre-temps, figée par la base) : on le dit, la version de la base revient.
-      surRefus: (refus) => {
-        setAvertissement(
-          refus.some((r) => r.collection === 'factures')
-            ? 'Cette facture a été validée entre-temps : elle ne change plus. Sa version enregistrée vient d’être rechargée.'
-            : 'Une modification a été refusée par la base : la version enregistrée vient d’être rechargée.',
-        );
+      // Écriture refusée pour de bon (réservée au gérant, facture validée entre-temps) : la
+      // synchronisation l'a retirée de la file et relit la version de la base ; on le dit une
+      // fois (un message, une ligne de journal), jamais de nouvel essai.
+      surRefus: (refus: RefusBase[]) => {
+        setAvertissement(messageRefus(refus));
+        // Une ligne de journal refusée elle aussi ne relance pas une nouvelle ligne.
+        if (refus.every((r) => r.collection === 'journal')) return;
+        // Après l'action en cours (le refus peut être signalé pendant son enregistrement).
+        setTimeout(() => {
+          const avant = ref.current;
+          const auteur = utilisateurRef.current.nom;
+          const trace = traceRefus(refus, { auteur, id: nouvelId('jrn'), horodatage: horodatageMaintenant() });
+          poserRef.current({ ...avant, journal: [trace, ...avant.journal] }, avant, auteur);
+        }, 0);
       },
       surDistant: (changements: ChangementDistant[]) => {
         const suivant = appliquerOperations(ref.current, changements);
@@ -376,6 +375,8 @@ function CoeurErp({
     },
     [ajouterEvenementsAuto],
   );
+  const poserRef = useRef(poser);
+  poserRef.current = poser;
 
   /** Applique une transformation et journalise l'action. */
   const appliquer = useCallback(
@@ -887,7 +888,15 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           return setPhase({ nom: 'non_autorise', email, motif: lienInvitationRefuse() ? MESSAGE_LIEN_PERIME : undefined });
         }
         if (espace) retenirEspace(espace.id);
-        const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro, espace: espace?.id ?? null, compte: cle, refusDefinitif: refusEcritureFigee });
+        const synchro = new Synchro({
+          client: obtenirClient(),
+          surEtat: setEtatSynchro,
+          espace: espace?.id ?? null,
+          compte: cle,
+          refusDefinitif: refusEcritureFigee,
+          // Pas gérant : ce que la base lui refuserait n'entre pas dans la file (ecritures-gerant.ts).
+          ecritureInterdite: moi.role === 'gerant' ? undefined : operationReserveeAuGerant,
+        });
         synchro.demarrerTempsReel();
         const [lu, auto] = await Promise.all([synchro.chargerTout(), synchro.lireEtatAuto()]);
         if (!encore()) return synchro.arreter();
