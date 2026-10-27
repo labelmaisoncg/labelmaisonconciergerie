@@ -36,7 +36,10 @@
  * message peut faire écrire « nous vous remboursons » en notant « infos,
  * confiance 0,99 »), et l'envoi seul suppose un voyageur qui écrit en
  * français ou en anglais. Le message d'attente est un texte fixe par
- * langue, jamais celui de Claude. Chaque
+ * langue, jamais celui de Claude. Avant tout envoi seul, un second contrôle
+ * par l'IA (controle-reponse.ts) ne voit QUE la réponse et sa langue : s'il
+ * y voit un engagement, de l'argent, une exception ou une demande de
+ * données personnelles, ou s'il échoue, rien ne part seul. Chaque
  * décision est notée au journal (demande, confiance, envoyée / à valider /
  * transmise) et dans le bilan du passage. Label Maison sans choix enregistré
  * garde son fonctionnement d'avant (pas de seuil).
@@ -58,6 +61,7 @@ import { dateParis, horodatageParis, instant } from './repull.js';
 import { BudgetEpuise, DelaiEcoule, ErreurRepull, lireEtat, releverConversations, BUDGET_ERP_DEFAUT, QUOTA_MOIS_DEFAUT } from './repull-synchro.js';
 import type { ContexteConnexion } from './repull-connexion.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi, nomPlateforme } from './messagerie-envoi.js';
+import { controlerReponse, type ResultatControle } from './controle-reponse.js';
 import { REGLAGES_AGENT_DEFAUT, reglagesAgent } from './reglages.js';
 import { LIBELLE_TYPE_GUIDE, MAX_GUIDES_PAR_REPONSE, guideEnvoyable, guidesAJoindre, lienGuide, questionsValides, texteAvecGuides, type SignerFichier } from './guides.js';
 import {
@@ -68,11 +72,11 @@ import {
   codeLangue,
   confianceLue,
   contientCodeAcces,
-  derniersMessagesVoyageur,
   estIntention,
   estSentiment,
   masquerCodes,
   messageAttente,
+  messagesSujets,
   politiqueEnvoi,
   reponseAEcarter,
   reponseSensible,
@@ -173,7 +177,7 @@ export interface EtatAgent {
 
 /** Ce que l'agent utilise du client Anthropic (le vrai client convient tel quel). */
 export interface ClientIA {
-  messages: { create(p: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> };
+  messages: { create(p: Anthropic.MessageCreateParamsNonStreaming, o?: { timeout?: number; maxRetries?: number }): Promise<Anthropic.Message> };
 }
 
 export interface DecisionAgent {
@@ -408,12 +412,16 @@ const court = (v: string | undefined, max: number) => {
 const permis = (v: boolean | undefined, oui: string, non: string) => (v === undefined ? '' : v ? oui : non);
 
 /** Ce que dit l'annonce sur les plateformes (couchage, conditions, textes), sans prix : ils varient. */
-function lignesAnnonce(d: DescriptifLogement | undefined): string[] {
+function lignesAnnonce(d: DescriptifLogement | undefined, masquer = false): string[] {
   if (!d) return [];
   const c = d.conditions ?? {};
   const s = d.sejour ?? {};
   const t = d.textes ?? {};
-  const court = (v: string | undefined, max = 900) => (v && v.length > max ? `${v.slice(0, max - 1).trimEnd()}…` : v ?? '');
+  // Avant l'heure des codes, les suites de chiffres des textes de l'annonce (« Digicode immeuble 2468 ») sont retirées.
+  const court = (v: string | undefined, max = 900) => {
+    const x = masquer && v ? masquerCodes(v) : v;
+    return x && x.length > max ? `${x.slice(0, max - 1).trimEnd()}…` : x ?? '';
+  };
   return [
     ligne('Couchage', (d.couchage ?? []).map((x) => `${x.piece} : ${x.lits}`).join(' ; ')),
     ligne('Salles de bain', d.sallesDeBain ? String(d.sallesDeBain).replace('.', ',') : ''),
@@ -463,15 +471,15 @@ export function construireContexte(
         ),
         ligne('Heure d’arrivée (à partir de)', f.heureArrivee),
         ligne('Heure de départ (avant)', f.heureDepart),
-        ligne('Parking', f.parking),
-        ligne('Règles de la maison', f.regles),
+        ligne('Parking', codes.ok ? f.parking : masquerCodes(f.parking ?? '')),
+        ligne('Règles de la maison', codes.ok ? f.regles : masquerCodes(f.regles ?? '')),
         ligne('Équipements', f.equipements),
         // Avant l'heure des codes, les suites de chiffres (un code du portail glissé dans une réponse) sont retirées.
         ligne('À savoir', codes.ok ? (f.aSavoir ?? '') : masquerCodes(f.aSavoir ?? '')),
         ...questionsValides(f.questions)
           .slice(0, 30)
           .map((q) => `- Question fréquente : ${court(q.question, 200)} → Réponse : ${court(codes.ok ? q.reponse : masquerCodes(q.reponse), 600)}`),
-        ...lignesAnnonce(logement?.descriptif),
+        ...lignesAnnonce(logement?.descriptif, !codes.ok),
         ...(codes.ok
           ? [ligne('Accès et remise des clés', f.acces), ligne('Réseau wifi', f.wifiNom), ligne('Mot de passe wifi', f.wifiCode)]
           : [`- Accès, codes et wifi : pas encore communicables (${codes.raison}).`]),
@@ -709,7 +717,7 @@ class Passage {
     if (!brut) return { decision: { action: 'transmettre', raison: 'autre', langue: '', texte: '', resume: 'L’agent n’a pas pu formuler de réponse sûre : à vous de répondre.' }, brut: null };
     const d = appliquerGardeFous(brut, fil);
     // Codes et wifi : jamais avant l'heure, même trouvés ailleurs que dans la fiche (historique, questions fréquentes).
-    if (d.texte && !codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(d.texte, logement?.fiche)) {
+    if (d.texte && !codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(d.texte, logement?.fiche, logement?.descriptif)) {
       return { decision: { ...d, action: 'transmettre', raison: 'autre', texte: '', resume: d.resume || 'La réponse contenait un code d’accès avant l’heure : à vous de répondre.' }, brut };
     }
     return { decision: d, brut };
@@ -823,15 +831,22 @@ class Passage {
         await this.transmettre(fil, dernier, ec.raison ?? 'autre', ec.resume || 'Reprise d’une transmission interrompue.', ec.texte);
         return;
       }
+      const controleReprise = await this.controler(ec.texte, '');
+      if (!controleReprise.ok) {
+        await this.transmettre(fil, dernier, 'autre', `${controleReprise.motif} Une réponse de l’agent en attente d’envoi n’est pas repartie : vérifiez sur la plateforme si le voyageur l’a reçue.`);
+        return;
+      }
       await this.envoyer(fil, dernier, ec.texte, {}, (f) => ({ ...f, agent: this.suivi(dernier, 'repondre', ec.resume || 'Réponse envoyée (reprise).') }));
       this.bilan.repondus++;
       return;
     }
 
     const { decision: d, brut } = await this.decider(fil, logement, reservation);
-    // Les 3 derniers messages du voyageur, même déjà répondus (« comme convenu, confirmez par écrit »).
-    const texteVoyageur = derniersMessagesVoyageur(fil, 3);
-    const verdict = verdictEnvoi(d, this.politique, texteVoyageur);
+    // Sujets sensibles : tous les messages du voyageur du séjour (sinon des 7 derniers jours), même déjà répondus
+    // (« comme convenu, confirmez par écrit ») ; langue : ses 3 derniers messages.
+    const recents = fil.messages.filter((m) => m.auteur === 'voyageur').slice(-3).map((m) => m.texte);
+    const texteVoyageur = recents.join('\n');
+    const verdict = verdictEnvoi(d, this.politique, { sujets: messagesSujets(fil, this.maintenant()), recents });
     const note: NoteDecision = {
       ...(d.intention ? { intention: d.intention } : {}),
       ...(d.confiance !== undefined ? { confiance: d.confiance } : {}),
@@ -853,6 +868,19 @@ class Passage {
       }
       const resume = d.action === 'transmettre' ? d.resume || 'Transmis par l’agent.' : [verdict.motif, d.resume].filter(Boolean).join(' ');
       await this.transmettre(fil, dernier, verdict.raison, resume, attente, note);
+      return;
+    }
+    // Second contrôle par l'IA, sur la réponse seule (jamais les messages du voyageur) : sinon rien ne part seul.
+    const controle = await this.controler(d.texte, codeLangue(d.langue) ?? '');
+    if (!controle.ok) {
+      const argent = !!controle.controle?.argent || !!controle.controle?.donneesPerso;
+      // Argent ou données personnelles : pas même proposée à l'envoi en un clic.
+      const garde = !argent && brut?.texte ? await this.preparer(fil, dernier, brut, logement, reservation, controle.motif) : undefined;
+      if (garde) {
+        note.brouillon = garde;
+        return this.aValider(fil, dernier, d.resume || 'Réponse préparée par l’agent.', controle.motif, note);
+      }
+      await this.transmettre(fil, dernier, controle.controle?.argent ? 'argent' : 'autre', [controle.motif, d.resume].filter(Boolean).join(' '), undefined, note);
       return;
     }
     // Guides choisis par l'agent : liens ajoutés ici (jamais écrits par Claude) ; guides d'accès retenus avant l'heure.
@@ -882,6 +910,23 @@ class Passage {
     }
   }
 
+  /**
+   * Second contrôle d'une réponse avant un envoi seul (controle-reponse.ts),
+   * compté dans le plafond du mois. Plafond atteint ou appel en échec : pas
+   * d'envoi seul.
+   */
+  private async controler(texte: string, langue: string): Promise<ResultatControle> {
+    const faits = (this.o.iaDejaCeMois ?? 0) + (this.bilan.appelsIA ?? 0);
+    if (this.o.plafondIAMois !== undefined && faits >= this.o.plafondIAMois) {
+      return { ok: false, motif: 'Plafond du mois atteint : la réponse n’a pas pu être contrôlée, à vous de valider.' };
+    }
+    this.bilan.appelsIA = (this.bilan.appelsIA ?? 0) + 1;
+    const r = await controlerReponse(this.o.ia!, texte, langue, this.o.modele ?? MODELE_AGENT_DEFAUT);
+    this.bilan.jetons.entree += r.usage?.entree ?? 0;
+    this.bilan.jetons.sortie += r.usage?.sortie ?? 0;
+    return r;
+  }
+
   /** Guides choisis par l'agent, avec leur lien (signé pour un fichier déposé) ; guides d'accès retenus avant l'heure. */
   private async liensGuides(d: Pick<DecisionAgent, 'guides'>, fil: FilMessages, logement: Logement | undefined, reservation: Reservation | undefined) {
     const choix = guidesAJoindre(d.guides, logement?.fiche?.guides, codesPermis(fil, reservation, dateParis(this.maintenant())).ok);
@@ -908,7 +953,7 @@ class Passage {
     const texte = d.texte.trim();
     // Une réponse qui parle d'argent (ou demande des données personnelles) ne se valide pas d'un clic : l'équipe l'écrit elle-même.
     if (!texte || ARGENT.test(texte) || reponseAEcarter(`${texte}\n${d.texteFr ?? ''}`)) return undefined;
-    if (!codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(`${texte}\n${d.texteFr ?? ''}`, logement?.fiche)) return undefined;
+    if (!codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(`${texte}\n${d.texteFr ?? ''}`, logement?.fiche, logement?.descriptif)) return undefined;
     const { liens } = await this.liensGuides(d, fil, logement, reservation);
     const langue = codeLangue(d.langue);
     return {

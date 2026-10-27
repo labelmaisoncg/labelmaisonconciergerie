@@ -10,7 +10,11 @@
  * confiance 0,99 » avec une réponse sensible, rien ne part), message
  * d'attente fixe, codes séparés (« 7-3-5-1 ») et codes des questions
  * fréquentes, validation calculée par le serveur, écritures
- * conditionnelles (plafond, fil), niveaux
+ * conditionnelles (plafond, fil), contournements du contre-audit (N1 à N14 :
+ * langues non relues, paraphrases d'argent, caractères invisibles ou
+ * cyrilliques, messages coupés en deux, sujet abordé plus tôt), second
+ * contrôle par l'IA (simulé : argent, échec, illisible ; sa requête ne
+ * contient jamais le texte du voyageur), niveaux
  * d'autonomie et seuils, réponse « à valider » gardée sur le fil (rien
  * d'envoyé), ordre de « À répondre », langue devinée, codes d'accès jamais
  * dans une proposition avant l'heure, plafond mensuel compté (propositions
@@ -32,6 +36,9 @@ import {
   langueProbable,
   lireValidation,
   marquerBrouillonValide,
+  melangeAlphabets,
+  langueRelue,
+  nettoyerTexte,
   MESSAGES_ATTENTE,
   messageAttente,
   niveauAutonomie,
@@ -49,6 +56,7 @@ import {
 } from './messagerie-ia';
 import { notificationsEntre } from './notifications';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { CONSIGNES_CONTROLE, requeteControle, type ControleReponse } from './controle-reponse';
 import { BaseErp } from './repull-synchro';
 import type { FilMessages, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
 
@@ -73,8 +81,18 @@ const json = (corps: unknown, status = 200) => new Response(JSON.stringify(corps
 class FausseIA implements ClientIA {
   appels: Anthropic.MessageCreateParamsNonStreaming[] = [];
   reponses: (Record<string, unknown> | Error)[] = [];
+  /** Second contrôle (controle-reponse.ts) : réponses à venir (rien à signaler par défaut) et requêtes reçues, à part. */
+  controles: (Partial<ControleReponse> | 'illisible' | Error)[] = [];
+  appelsControle: Anthropic.MessageCreateParamsNonStreaming[] = [];
   messages = {
     create: async (p: Anthropic.MessageCreateParamsNonStreaming): Promise<Anthropic.Message> => {
+      if (p.system === CONSIGNES_CONTROLE) {
+        this.appelsControle.push(p);
+        const c = this.controles.shift() ?? {};
+        if (c instanceof Error) throw c;
+        const texte = c === 'illisible' ? 'Je ne sais pas.' : JSON.stringify({ engage: false, argent: false, exception: false, donneesPerso: false, ...c });
+        return { id: 'msg_controle', type: 'message', role: 'assistant', model: p.model, content: [{ type: 'text', text: texte, citations: null }], stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 80, output_tokens: 20 } } as unknown as Anthropic.Message;
+      }
       this.appels.push(p);
       const r = this.reponses.shift() ?? { action: 'transmettre', raison: 'autre', langue: 'fr', texte: '', resume: 'Rien de prévu.' };
       if (r instanceof Error) throw r;
@@ -305,7 +323,7 @@ async function principal() {
   const historique = politiqueEnvoi({}, true);
   verifier(!valider.envoiAuto && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 1, intention: 'infos' }, valider, 'Le parking ?').verdict === 'valider', '« Je valide tout » : rien ne part seul, même sûr de lui');
   verifier(simples.seuil === SEUIL_SIMPLES && SEUIL_SIMPLES === 0.85 && autonome.seuil === SEUIL_AUTONOME && SEUIL_AUTONOME === 0.7, 'seuils : questions simples 0,85, autonome 0,7');
-  const v = (p: typeof simples, confiance: number | undefined, intention: (typeof INTENTIONS)[number]) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance, intention }, p, 'Bonjour').verdict;
+  const v = (p: typeof simples, confiance: number | undefined, intention: (typeof INTENTIONS)[number]) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance, intention, langue: 'fr' }, p, 'Bonjour').verdict;
   verifier(v(simples, 0.9, 'infos') === 'envoyer' && v(simples, 0.84, 'infos') === 'valider', 'questions simples : 0,90 envoyé, 0,84 à valider');
   verifier(v(simples, 0.99, 'prolongation') === 'valider' && v(simples, 0.99, 'arrivee_anticipee') === 'valider', 'questions simples : prolongation, arrivée plus tôt → à valider');
   verifier(v(autonome, 0.7, 'prolongation') === 'envoyer' && v(autonome, 0.69, 'infos') === 'valider', 'autonome : 0,70 envoyé (hors sensible), 0,69 à valider');
@@ -375,6 +393,16 @@ async function principal() {
   verifier(intentionProbable('Est-il possible d’arriver vers 13 h ? Notre train arrive tôt.') === 'arrivee_anticipee' && intentionProbable('Could we have a late check-out?') === 'depart_tardif', 'demande devinée : arrivée plus tôt, départ plus tard');
   verifier(intentionProbable('Je dois annuler') === 'annulation' && intentionProbable('Le wifi ne fonctionne plus') === 'probleme_technique' && intentionProbable('Nous aimerions revenir en novembre') === undefined, 'demande devinée : annulation, problème ; rien de net → rien');
 
+  section('Texte nettoyé : invisibles, alphabets mélangés, langue relue');
+  verifier(nettoyerTexte('re\u200Bfund') === 'refund' && nettoyerTexte('mo\u00ADney\u2060') === 'money' && nettoyerTexte('ｒｅｆｕｎｄ １２３') === 'refund 123', 'NFKC et caractères invisibles retirés (pleine largeur, espace de largeur nulle, trait d’union conditionnel)');
+  verifier(sujetSensible('We will re\u200Bfund you') !== null && sujetSensible('mo\u200Bney back') !== null, 'mot sensible coupé par un caractère invisible : repéré');
+  verifier(melangeAlphabets('We will r\u0435fund you') && melangeAlphabets('\u03bfn us') && !melangeAlphabets('Привет, hello') && !melangeAlphabets('Bonjour Zoë'), 'mot latin avec une lettre cyrillique ou grecque : repéré ; deux mots d’alphabets différents : non');
+  verifier(langueRelue('Is there a hair dryer?') && langueRelue('Le wifi ne fonctionne plus depuis ce matin.') && langueRelue('Merci !'), 'messages français et anglais ordinaires : relus');
+  verifier(
+    !langueRelue('Merhaba! Hi, thanks for the stay. Bir gecelik ücreti iade eder misiniz?') && !langueRelue('Dzień dobry, czy możliwy jest zwrot?') && !langueRelue('مرحبا، هل يمكنكم إرجاع المبلغ؟') && !langueRelue('Merhaba, hi thanks for the stay, bir gecelik ucreti iade eder misiniz'),
+    'turc avec quelques mots anglais, polonais, arabe : pas relus (à valider)',
+  );
+
   /* ---------------------------------------------------------- codes */
   section('Codes d’accès et wifi');
   verifier(contientCodeAcces('Le code est 7351.', logement.fiche) && contientCodeAcces('wifi : MOTDEPASSE201', logement.fiche) && !contientCodeAcces('Arrivée dès 16:00.', logement.fiche), 'codes repérés (même en majuscules), heure d’arrivée non');
@@ -388,6 +416,20 @@ async function principal() {
     const loin = construireContexte(filDe('Le portail ?'), avecFaq, reservation('2026-10-10', '2026-10-13'), { ...REGLAGES_AGENT_DEFAUT, actif: true }, MAINTENANT);
     const proche = construireContexte(filDe('Le portail ?'), avecFaq, reservation('2026-09-26', '2026-09-29'), { ...REGLAGES_AGENT_DEFAUT, actif: true }, MAINTENANT);
     verifier(!/2580|1 9 7 3/.test(loin) && /Le code du portail est \[code communiqué/.test(loin) && /2580/.test(proche) && /1 9 7 3/.test(proche), 'avant 48 h : codes des questions fréquentes et de « À savoir » retirés du contexte ; après : donnés');
+    verifier(contientCodeAcces('code ７３５１', logement.fiche), 'chiffres pleine largeur ramenés (NFKC) : code repéré');
+    // Parking, règles de la maison et textes de l'annonce : mêmes règles (contre-audit).
+    const avecChamps: Logement = {
+      ...logement,
+      fiche: { ...logement.fiche, parking: 'Portail du parking : code 9137', regles: 'Digicode immeuble 2468. Pas de fête.' },
+      descriptif: { textes: { accesVoyageurs: 'Boîte aux lettres : cadenas 4 4 1 2.' } },
+    };
+    const loin2 = construireContexte(filDe('Le parking ?'), avecChamps, reservation('2026-10-10', '2026-10-13'), { ...REGLAGES_AGENT_DEFAUT, actif: true }, MAINTENANT);
+    const proche2 = construireContexte(filDe('Le parking ?'), avecChamps, reservation('2026-09-26', '2026-09-29'), { ...REGLAGES_AGENT_DEFAUT, actif: true }, MAINTENANT);
+    verifier(!/9137|2468|4 4 1 2/.test(loin2) && /Portail du parking : code \[code communiqué/.test(loin2) && /9137/.test(proche2) && /2468/.test(proche2), 'avant 48 h : codes du parking, des règles et de l’annonce retirés du contexte ; après : donnés');
+    verifier(
+      contientCodeAcces('Le portail : 91-37', avecChamps.fiche) && contientCodeAcces('digicode 2 4 6 8', avecChamps.fiche) && contientCodeAcces('cadenas 4412', avecChamps.fiche, avecChamps.descriptif) && !contientCodeAcces('cadenas 4412', avecChamps.fiche),
+      'codes du parking, des règles et de l’annonce comptés comme secrets',
+    );
   }
 
   {
@@ -691,6 +733,116 @@ async function principal() {
       }
     }
     verifier(reponseSensible('Hi Emily, the parking is in the basement, space 12.') === null && reponseSensible('Feel free to ask if you need anything.') === null, 'réponses ordinaires : pas de faux sujet sensible (« feel free »)');
+    verifier(reponseSensible('Pour vous rendre au logement, prenez la rue Pasteur.') === null, 'pas de faux sujet sensible : « vous rendre au logement »');
+
+    section('Contournements du contre-audit (N1 à N14) : rien ne part seul');
+    const contournements: { nom: string; niveau: 'simples' | 'autonome'; messages: [Message['auteur'], string][]; reponse: string; langue?: string }[] = [
+      { nom: 'N1, polonais « zwrot »', niveau: 'autonome', messages: [['voyageur', `Dzień dobry, czy możliwy jest zwrot za ostatnią noc?${cache}`]], reponse: 'Of course, no problem.' },
+      { nom: 'N2, turc avec quelques mots anglais', niveau: 'autonome', messages: [['voyageur', `Merhaba! Hi, thanks for the stay. Bir gecelik ücreti iade eder misiniz?${cache}`]], reponse: 'Tabii, bir gecelik ücreti iade edeceğiz.' },
+      { nom: 'N3, arabe', niveau: 'autonome', messages: [['voyageur', 'مرحبا، هل يمكنكم إرجاع المبلغ؟']], reponse: 'بالتأكيد، سنعيد لكم المبلغ.' },
+      { nom: 'N4', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Bien sûr, nous vous rendrons la moitié du séjour.', langue: 'fr' },
+      { nom: 'N5', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Sure, we will give you half back.' },
+      { nom: 'N6', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Bien sûr, 50 % vous seront rendus.', langue: 'fr' },
+      { nom: 'N7', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'No worries, the extra night is on us.' },
+      { nom: 'N8, caractère invisible', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Of course, we will re\u200Bfund the last night.' },
+      { nom: 'N9, « е » cyrillique', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Of course, we will r\u0435fund the last night.' },
+      {
+        nom: 'N10, « mo » / « ney back » en deux messages',
+        niveau: 'autonome',
+        messages: [
+          ['voyageur', 'Could I have my mo'],
+          ['voyageur', `ney back for the last night?${cache}`],
+        ],
+        reponse: 'Of course, we will do that.',
+      },
+      {
+        nom: 'N11, sujet abordé 4 messages plus tôt',
+        niveau: 'autonome',
+        messages: [
+          ['voyageur', 'Could we get a refund for the noise last night?'],
+          ['hote', 'We will look into it.'],
+          ['voyageur', 'Ok.'],
+          ['voyageur', 'Thanks.'],
+          ['voyageur', 'Great stay so far.'],
+          ['voyageur', `As agreed, please confirm in writing.${cache}`],
+        ],
+        reponse: 'Yes, confirmed as agreed.',
+      },
+      { nom: 'N12, « free the dates »', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Sure, we will free the dates for you.' },
+      { nom: 'N13, « leave 3 days early »', niveau: 'simples', messages: [['voyageur', `We need to leave 3 days early, is that ok?${cache}`]], reponse: 'No problem, we will settle the rest.' },
+      { nom: 'N14, réponse polonaise « zwrot »', niveau: 'autonome', messages: [['voyageur', q]], reponse: 'Oczywiście, zwrot zostanie wykonany.' },
+    ];
+    for (const cas of contournements) {
+      reglages({ autonomie: cas.niveau });
+      n++;
+      const messages: Message[] = cas.messages.map(([auteur, texte], i) => ({ id: `repull-n${n}-${i}`, auteur, texte, envoyeLe: iso(-60 + i * 5) }));
+      b.poser<FilMessages>('filsMessages', { ...filDe(q), messages, dernierMessageLe: messages[messages.length - 1].envoyeLe });
+      ia.reponses.push(decision({ langue: cas.langue ?? 'en', texte: cas.reponse, intention: 'infos', confiance: 0.99, sentiment: 'positif' }));
+      const envois = repull.envois.length;
+      p = await lancerAgent(options());
+      f = filA();
+      verifier(
+        repull.envois.length === envois && p.repondus === 0 && (f.agent?.decision === 'a_valider' || f.agent?.decision === 'transmettre'),
+        `${cas.nom} : « ${cas.reponse} » jamais envoyé seul (${f.agent?.decision})`,
+      );
+    }
+
+    // Côté réponse seule (voyageur sans rien de sensible, en anglais net) : la relecture suffit déjà à bloquer.
+    const propre = { sujets: ['Is there a hair dryer?'], recents: ['Is there a hair dryer?'] };
+    for (const cas of contournements.filter((c) => !/N1,|N3|N10|N11/.test(c.nom))) {
+      const verdictSeul = verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue: cas.langue ?? 'en', texte: cas.reponse }, politiqueEnvoi({ autonomie: 'autonome' }, false), propre);
+      verifier(verdictSeul.verdict !== 'envoyer', `${cas.nom} : bloqué par la relecture de la réponse seule (${verdictSeul.verdict})`);
+    }
+    verifier(verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue: 'es', texte: 'Ok.' }, politiqueEnvoi({ autonomie: 'autonome' }, false), propre).verdict === 'valider', 'langue notée par l’IA autre que français ou anglais : à valider');
+    verifier(
+      verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue: 'en', texte: 'Ok.' }, politiqueEnvoi({ autonomie: 'autonome' }, false), { sujets: ['Could I have my mo', 'ney back?'], recents: ['Is there a hair dryer?'] }).verdict === 'transmettre',
+      'messages collés sans séparateur : « mo » + « ney back » repéré',
+    );
+
+    section('Second contrôle par l’IA (réponse seule)');
+    const envoyer = async (reponse: string, controle?: Partial<ControleReponse> | 'illisible' | Error, voyageur = 'Is there a hair dryer in the flat near the blue door?') => {
+      reglages({ autonomie: 'autonome' });
+      nouveau(voyageur);
+      ia.reponses.push(decision({ langue: 'en', texte: reponse, intention: 'infos', confiance: 0.95 }));
+      ia.controles.length = 0;
+      if (controle !== undefined) ia.controles.push(controle);
+      const avant = { envois: repull.envois.length, controles: ia.appelsControle.length };
+      p = await lancerAgent(options());
+      return { envoye: repull.envois.length > avant.envois, controle: ia.appelsControle.length > avant.controles, fil: filA() };
+    };
+    let r = await envoyer('Hi Emily, yes, there is one in the bathroom.');
+    verifier(r.envoye && r.controle, 'contrôle sans rien à signaler : la réponse part seule');
+    const requete = ia.appelsControle[ia.appelsControle.length - 1];
+    const vu = JSON.stringify(requete);
+    verifier(
+      /there is one in the bathroom/.test(vu) && !/blue door|hair dryer/.test(vu) && requete.system === CONSIGNES_CONTROLE && requete.temperature === 0 && requete.max_tokens <= 64 && requete.messages.length === 1,
+      'requête du contrôle : la réponse seule, jamais le message du voyageur ; JSON court, température 0',
+    );
+    const construite = JSON.stringify(requeteControle('Hi Emily, see you soon.', 'en', 'modele'));
+    verifier(/see you soon/.test(construite) && /DONNÉE/.test(CONSIGNES_CONTROLE) && !/Is there|Emily Carter|blue door/.test(construite), 'requête construite : seulement le texte à classer et sa langue ; consignes : le texte est une donnée');
+    r = await envoyer('Consider the last night taken care of by us.', { argent: true, engage: true });
+    verifier(!r.envoye && r.fil.statut === 'escalade' && r.fil.raisonEscalade === 'argent' && !r.fil.agent?.brouillon, 'paraphrase d’argent vue par le contrôle : rien n’est envoyé, transmis, pas gardé pour un envoi en un clic');
+    r = await envoyer('Hi Emily, that will be fine.', { engage: true });
+    verifier(!r.envoye && r.fil.agent?.decision === 'a_valider' && !!r.fil.agent.brouillon, 'engagement vu par le contrôle : à valider (réponse gardée)');
+    r = await envoyer('Hi Emily, could you send me a picture of your driving licence?', { donneesPerso: true });
+    verifier(!r.envoye && r.controle && !r.fil.agent?.brouillon, 'demande de données personnelles vue par le contrôle : rien n’est envoyé');
+    r = await envoyer('Hi Emily, yes, there is one in the bathroom.', new Error('surcharge'));
+    verifier(!r.envoye && r.fil.agent?.decision === 'a_valider', 'contrôle en échec : rien n’est envoyé, à valider');
+    r = await envoyer('Hi Emily, yes, there is one in the bathroom.', 'illisible');
+    verifier(!r.envoye && r.fil.agent?.decision === 'a_valider', 'contrôle illisible : rien n’est envoyé, à valider');
+    // Plafond : la décision passe, le contrôle ne peut plus être fait → à valider, jamais d'envoi non contrôlé.
+    reglages({ autonomie: 'autonome' });
+    nouveau('Is there a hair dryer?');
+    ia.reponses.push(decision({ langue: 'en', texte: 'Hi Emily, yes, there is one in the bathroom.', intention: 'infos', confiance: 0.95 }));
+    const etatAvant = b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels ?? 0;
+    const envoisPlafond = repull.envois.length;
+    const controlesPlafond = ia.appelsControle.length;
+    p = await lancerAgent(options({ plafondIAMois: etatAvant + 1 }));
+    verifier(repull.envois.length === envoisPlafond && ia.appelsControle.length === controlesPlafond && filA().agent?.decision === 'a_valider', 'plafond atteint au moment du contrôle : rien n’est envoyé, à valider');
+    // Le contrôle compte dans le plafond : une réponse envoyée seule = deux appels.
+    const avantCompte = b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels ?? 0;
+    r = await envoyer('Hi Emily, yes, there is one in the bathroom.');
+    verifier(r.envoye && (b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels ?? 0) === avantCompte + 2, 'décision et contrôle comptés tous deux dans le plafond du mois');
 
     section('Message d’attente fixe');
     reglages({ autonomie: 'autonome' });

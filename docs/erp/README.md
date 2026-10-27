@@ -998,14 +998,25 @@ Label Maison garde son fonctionnement d'avant (pas de seuil). Sujets
 sensibles, jamais envoyés seuls quel que soit le niveau (Label Maison sans
 choix compris) : paiement, remboursement, caution, frais, prix, gratuité,
 devises, annulation (`annul|\banul|cancel|stornier|cancelar`), réclamation,
-problème sur place, données personnelles ; ils sont cherchés dans les 3
-derniers messages du voyageur (même déjà répondus) **et dans la réponse
-proposée elle-même** (texte et version française) : une consigne cachée dans
-un message peut faire écrire « nous vous remboursons » en notant « infos,
-confiance 0,99 ». L'envoi seul suppose aussi un voyageur qui écrit en
-français ou en anglais (langues que ces listes savent relire, langue devinée
-sans IA) ; sinon, à valider. Le message d'attente est un texte fixe par
-langue (`MESSAGES_ATTENTE`), jamais celui de Claude. Une réponse qui ne
+problème sur place, données personnelles (avec leurs paraphrases courantes :
+moitié, %, « on us », « give … back », settle…) ; ils sont cherchés dans tous
+les messages du voyageur du séjour (sinon des 7 derniers jours), lus un par
+un et collés sans séparateur, **et dans la réponse proposée elle-même**
+(texte et version française) : une consigne cachée dans un message peut
+faire écrire « nous vous remboursons » en notant « infos, confiance 0,99 ».
+Les textes sont nettoyés avant toute recherche (NFKC, caractères invisibles
+retirés) ; un mot latin qui contient une lettre cyrillique ou grecque met la
+réponse à valider. L'envoi seul suppose aussi un voyageur qui écrit
+nettement en français ou en anglais (langue devinée sans IA, aucune lettre
+d'un autre alphabet, la moitié au moins des mots reconnus) et une réponse en
+français ou en anglais (langue notée par l'IA et langue devinée) ; sinon, à
+valider. Enfin, **un second contrôle par l'IA** (`src/erp/data/controle-reponse.ts`)
+ne voit que la réponse et sa langue, jamais les messages du voyageur : il
+dit si elle engage l'équipe, parle d'argent, accorde une exception ou
+demande des données personnelles. Envoi seul seulement si les quatre sont
+faux ; appel en échec, trop long, illisible ou plafond atteint : à valider.
+Il compte dans le plafond du mois. Le message d'attente est un texte fixe
+par langue (`MESSAGES_ATTENTE`), jamais celui de Claude. Une réponse qui ne
 part pas seule est gardée sur le fil (`agent.brouillon`, décision
 `a_valider`) : la conversation reste dans « À répondre » et la réponse est
 déjà dans la zone de saisie, l'équipe l'envoie en un clic. Chaque décision
