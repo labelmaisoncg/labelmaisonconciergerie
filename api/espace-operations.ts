@@ -6,7 +6,10 @@
 // nommé par l'en-tête x-erp-espace) :
 //   GET  ?action=etat                        espace ouvert ? e-mails envoyés ?
 //   POST { action: 'inviter', membreId, email }  lien d'invitation (7 jours)
-//   POST { action: 'retirer', membreId }         accès retiré, sessions fermées
+//   POST { action: 'retirer', membreId }         accès retiré, sessions fermées,
+//                                                téléphones oubliés
+//   POST { action: 'signalement-traite', id }    « pas à moi » traité : la
+//                                                personne est prévenue
 //
 // Personne de terrain (sans compte) :
 //   POST { action: 'lien', email }          lien de connexion par e-mail, dans
@@ -17,6 +20,9 @@
 //   POST { action: 'agir', operation: {…} } signaler, contrôle, confier, absence…
 //   POST { action: 'photo', donnees, type } photo déposée → « stockage://… »
 //   POST { action: 'sortir' }
+//   notifications-etat, notifications-abonner, notifications-desabonner,
+//   notifications-tester, prevenus : notifications de l'app « Opérations »
+//                                           (api/_operations-notifications.ts)
 //
 // Tout se lit et s'écrit dans la base de l'espace qui a invité. Écritures
 // limitées aux collections opérations (incidents, contrôles, absences,
@@ -36,6 +42,7 @@ import {
   retirer,
 } from '../src/erp/data/operations-acces.js';
 import { lirePhoto, photoOperations } from '../src/erp/data/operations-fichiers.js';
+import { oublierAppareilsOps } from '../src/erp/data/notifications-operations.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { AccesOperations } from '../src/erp/data/types-operations';
@@ -57,6 +64,7 @@ import {
   relireOps,
   signeurPhotos,
 } from './_operations.js';
+import { ACTIONS_NOTIFICATIONS_OPS, actionNotificationsOps, notifierEquipe, signalementTraite } from './_operations-notifications.js';
 
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
@@ -95,6 +103,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     /* ------------------------------------------------------------ gérant */
+    if (action === 'signalement-traite') return await signalementTraite(req, res, corps);
     if (action === 'etat' || action === 'inviter' || action === 'retirer') {
       const g = await gerantDeLEspace(req);
       if (!g.ok) return repondre(res, g.statut, { ok: false, erreur: g.erreur });
@@ -112,6 +121,8 @@ export default async function handler(req: any, res: any) {
       if (action === 'retirer') {
         if (!precedent || precedent.statut === 'retire') return repondre(res, 200, { ok: true });
         await ecrireAccesOps(b, retirer(precedent, maintenant));
+        // Ses téléphones ne reçoivent plus rien (l'envoi les ignorerait de toute façon).
+        await oublierAppareilsOps(b, membreId).catch(() => undefined);
         return repondre(res, 200, { ok: true });
       }
 
@@ -179,6 +190,8 @@ export default async function handler(req: any, res: any) {
     }
     const membreId = s.acces.membreId;
 
+    if (ACTIONS_NOTIFICATIONS_OPS.has(action)) return await actionNotificationsOps(req, res, s, action, corps);
+
     if (action === 'vue' && req.method === 'GET') {
       const vue = await vueSignee(s.espace, await entreesOps(s.base), membreId);
       // Plus dans l'équipe : même message que pour un accès retiré.
@@ -204,7 +217,8 @@ export default async function handler(req: any, res: any) {
       const ecritures = fusionnerEcritures(entrees, r.ecritures, relus);
       await ecrireOps(s.base, ecritures);
       const apres = avecEcritures(entrees, ecritures);
-      const notifier = prevenirGerant(s.base, apres, r.aNotifier);
+      // Le gérant (app de l'ERP) et les personnes concernées (app « Opérations »).
+      const notifier = Promise.all([prevenirGerant(s.base, apres, r.aNotifier), notifierEquipe(s, entrees, apres, membreId)]);
       if (!continuerApresReponse(notifier)) await notifier;
       return repondre(res, 200, { ok: true, message: r.message, ...(r.id ? { id: r.id } : {}), vue: await vueSignee(s.espace, apres, membreId) });
     }

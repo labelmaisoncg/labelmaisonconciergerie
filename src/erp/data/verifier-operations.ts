@@ -10,7 +10,12 @@
  *   - actions : périmètre, droits par rôle, collections écrites, photos,
  *     « ce logement n'est pas à moi », contrôle et ses incidents ;
  *   - invitation dans l'espace qui invite, session d'un genre refusée pour l'autre ;
- *   - notification « Urgence », jeu de démo.
+ *   - notification « Urgence », jeu de démo ;
+ *   - app « Opérations » : qui reçoit quoi (urgence, incident confié,
+ *     remplacement, contrôles du jour, réponse du gérant), jamais l'auteur ni
+ *     hors de ses logements, téléphones liés à l'accès (retiré, autre
+ *     version, autre espace, adresse changée), une seule fois, rien sans clés
+ *     ni en démonstration.
  *
  * Lancement (Node 18+) :
  *   node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platform=node \
@@ -19,7 +24,31 @@
  */
 import { completer } from './collections';
 import { DATE_DEMO } from './format';
-import { TYPES_NOTIFICATION, estActive, notificationUrgence } from './notifications';
+import { TYPES_NOTIFICATION, demandeNotifications, estActive, notificationUrgence, type ContexteDemandeNotifications } from './notifications';
+import type { BaseNotifications, Envoyeur } from './notifications-envoi';
+import {
+  NOTIFICATIONS_OPS,
+  abonnerAppareilOps,
+  appareilsValables,
+  desabonnerAppareilOps,
+  destinatairesUrgence,
+  envoyerNotificationsOps,
+  idAppareilsOps,
+  lienOps,
+  notificationSignalementTraite,
+  notificationTestOps,
+  notificationsApresAction,
+  notificationsControlesDuJour,
+  notificationsDuJour,
+  notificationsIncidents,
+  oublierAppareilsOps,
+  phrasePrevenus,
+  sansCoordonnees,
+  type AppareilsOps,
+  type NotificationOps,
+} from './notifications-operations';
+import { b64url, genererClesVapid, type AbonnementPush } from './web-push';
+import { lienColle } from '../espace-operations/app-operations';
 import {
   POINTS_CONTROLE_DEFAUT,
   apercuAbsence,
@@ -54,7 +83,7 @@ import { creerSeed } from './seed';
 import { construireATraiter } from '../modules/tableau-de-bord/_composants/aTraiter.js';
 import { prendreEnCharge } from './incidents-erp';
 import type { Incident, Logement, Mandat, Reservation } from './types';
-import type { AbsenceMembre, ControleQualite } from './types-operations';
+import type { AbsenceMembre, AccesOperations, ControleQualite, MembreEquipe } from './types-operations';
 import { COLLECTIONS_OPS, affectationsEffectives, remplacantsPossibles, appliquerAction, avecEcritures, conflitEcritures, fusionnerEcriture, fusionnerEcritures, perimetre, vueOperations, type ActionOperations, type ContexteAction, type EntreesOperations } from './espace-operations';
 import { photoOperations } from './operations-fichiers';
 import { ficheResponsableInvite, logementsSansPersonne, mandatDuProprietaire, phraseRemplacement, phrasesTransferts, statutAccesExterne, transfertsProprietaire } from './acces-gerant';
@@ -750,6 +779,231 @@ section('Jeu de démo et intégration');
   verifier(urgencesOuvertes(s.incidents).length >= 1 && controlesEnRetard(s, DATE_DEMO).length >= 1, 'Accueil « À faire » : au moins une urgence et un contrôle en retard dans la démo');
 }
 
+/* ----------------------------------------- notifications de l'app Opérations */
+
+/** Fausse base (collections en mémoire), comme verifier-notifications.ts. */
+class FausseBaseOps implements BaseNotifications {
+  lignes = new Map<string, { id: string }>();
+  lectures = 0;
+  async lire<T>(collection: string, ids?: string[]): Promise<T[]> {
+    this.lectures++;
+    return [...this.lignes.entries()]
+      .filter(([k]) => k.startsWith(`${collection}/`) && (!ids || ids.includes(k.slice(collection.length + 1))))
+      .map(([, v]) => JSON.parse(JSON.stringify(v)) as T);
+  }
+  async ecrire(collection: string, elements: { id: string }[]): Promise<void> {
+    for (const e of elements) this.lignes.set(`${collection}/${e.id}`, JSON.parse(JSON.stringify(e)));
+  }
+}
+
+async function notificationsAppOperations() {
+  section('App « Opérations » : qui reçoit quoi');
+  let n = 0;
+  const ctx: ContexteAction = { aujourdhui: J, maintenant: `${J}T09:00:00.000Z`, nouvelId: (p) => `${p}-n${++n}`, photoAcceptee: () => false };
+  // A : pôle (L1, L2, L3) ; B : agent (L1, L3) ; C : agent titulaire de L3 ; D : agent d'un autre logement (L5).
+  const e = (o: Partial<EntreesOperations> = {}): EntreesOperations => ({
+    ...base({
+      logements: [logement('L1'), logement('L2'), logement('L3'), logement('L5')],
+      equipe: [
+        { id: 'A', nom: 'Alice Martin', role: 'pole', email: 'a@exemple.fr', logementIds: ['L1', 'L2', 'L3'], actif: true },
+        { id: 'B', nom: 'Bruno Petit', role: 'agent', email: 'b@exemple.fr', logementIds: ['L1', 'L3'], actif: true },
+        { id: 'C', nom: 'Chloé Roux', role: 'agent', email: 'c@exemple.fr', logementIds: ['L3'], actif: true },
+        { id: 'D', nom: 'Dina Loin', role: 'agent', email: 'd@exemple.fr', logementIds: ['L5'], actif: true },
+      ],
+      affectations: [
+        { id: 'L1', responsableId: 'A', remplacantId: 'B' },
+        { id: 'L2', responsableId: 'A' },
+        { id: 'L3', responsableId: 'C' },
+        { id: 'L5', responsableId: 'D' },
+      ],
+    }),
+    signalementsLogement: [],
+    ...o,
+  });
+  const apres = (x: EntreesOperations, membre: string, a: ActionOperations, c = ctx) => {
+    const r = appliquerAction(x, membre, a, c);
+    if (!r.ok) throw new Error(r.erreur);
+    return { suite: avecEcritures(x, r.ecritures), id: r.id ?? '' };
+  };
+  const pour = (liste: NotificationOps[], m: string) => liste.filter((x) => x.membreId === m);
+
+  // Urgence signalée par le titulaire : le pôle est prévenu, ni l'auteur ni quelqu'un d'un autre logement.
+  const e0 = e();
+  let r = apres(e0, 'C', { type: 'signaler', logementId: 'L3', urgent: true, description: 'Fuite sous l’évier, appeler le 06 12 34 56 78 ou jp@exemple.invalid.' });
+  let liste = notificationsApresAction(e0, r.suite, { aujourdhui: J, auteurId: 'C' });
+  verifier(liste.length === 1 && liste[0].membreId === 'A', `urgence de C sur L3 : seulement le pôle (obtenu ${liste.map((x) => x.membreId).join(',')})`);
+  verifier(
+    liste[0]?.titre === 'Urgence · Logement L3' && liste[0].urgente === true && liste[0].motif === 'urgence' && /Chloé R\. s’en occupe$/.test(liste[0].corps),
+    `urgence : « Urgence · logement », qui s’en occupe (${liste[0]?.titre} | ${liste[0]?.corps})`,
+  );
+  verifier(!/06 12|jp@|@exemple/.test(liste[0]?.corps ?? '') && /Fuite sous l’évier/.test(liste[0]?.corps ?? ''), 'numéro et adresse tapés dans l’incident masqués sur l’écran verrouillé');
+  verifier(liste[0]?.url === `/espace-operations?onglet=incidents&incident=${r.id}`, 'le toucher ouvre l’incident dans l’espace');
+  verifier(!pour(liste, 'B').length && !pour(liste, 'D').length, 'B (pas en charge) et D (autre logement) : rien');
+
+  // Incident normal signalé par l'agent : confié au responsable du logement, prévenu ; personne d'autre.
+  r = apres(e0, 'B', { type: 'signaler', logementId: 'L1', urgent: false, description: 'Ampoule du couloir grillée.' });
+  liste = notificationsApresAction(e0, r.suite, { aujourdhui: J, auteurId: 'B' });
+  verifier(liste.length === 1 && liste[0].membreId === 'A' && liste[0].titre === 'Incident confié · Logement L1' && liste[0].motif === 'incident' && !liste[0].urgente, 'incident normal : seulement la personne à qui il est confié');
+
+  // Le pôle confie un incident à B : B seul ; puis le passe en urgent : B (« Urgence confiée »), pas l'auteur.
+  const e1 = e({ incidents: [incident('i1', { logementId: 'L1', assigneA: 'A' })] });
+  r = apres(e1, 'A', { type: 'assigner', incidentId: 'i1', membreId: 'B' });
+  liste = notificationsApresAction(e1, r.suite, { aujourdhui: J, auteurId: 'A' });
+  verifier(liste.length === 1 && liste[0].membreId === 'B' && liste[0].cle === 'ops-incident-i1-confie-B-B', 'confié à B : B seul, une clé par personne et par incident');
+  const e2 = r.suite;
+  r = apres(e2, 'A', { type: 'priorite', incidentId: 'i1', urgent: true });
+  liste = notificationsApresAction(e2, r.suite, { aujourdhui: J, auteurId: 'A' });
+  verifier(liste.length === 1 && liste[0].membreId === 'B' && liste[0].titre === 'Urgence confiée · Logement L1' && liste[0].corps === 'Incident i1', 'passé en urgent : la personne qui s’en occupe, « Urgence confiée »');
+  verifier(!notificationsApresAction(r.suite, r.suite, { aujourdhui: J, auteurId: 'A' }).length, 'rien de changé : rien');
+  const regle = { ...r.suite, incidents: r.suite.incidents.map((i) => ({ ...i, statut: 'resolu' as const, assigneA: 'C' })) };
+  verifier(!notificationsIncidents(r.suite, regle, { aujourdhui: J }).length, 'incident réglé : jamais annoncé');
+
+  // Absence de la titulaire de L3 notée par le pôle aujourd'hui, B remplace : prévenu tout de suite.
+  const e3 = e({ incidents: [incident('i3', { logementId: 'L3', assigneA: 'C' })] });
+  r = apres(e3, 'A', { type: 'absence', membreId: 'C', du: J, au: '2026-10-17', remplacantId: 'B' });
+  liste = notificationsApresAction(e3, r.suite, { aujourdhui: J, auteurId: 'A' });
+  verifier(
+    liste.length === 1 && liste[0].membreId === 'B' && liste[0].titre === 'Vous remplacez Chloé R.' && liste[0].corps === 'Jusqu’au 17 oct. : Logement L3.' && liste[0].url === '/espace-operations?onglet=logements&logement=L3',
+    `remplacement en cours : B prévenu tout de suite, sans motif (${liste[0]?.titre} | ${liste[0]?.corps})`,
+  );
+  // Absence à venir : rien maintenant, le matin du premier jour (une fois), plus rien le lendemain.
+  r = apres(e3, 'A', { type: 'absence', membreId: 'C', du: '2026-10-16', au: '2026-10-16', remplacantId: 'B' });
+  verifier(!notificationsApresAction(e3, r.suite, { aujourdhui: J, auteurId: 'A' }).length, 'absence à venir : personne prévenu à l’avance');
+  const matin = notificationsDuJour(r.suite, '2026-10-16').filter((x) => x.motif === 'remplacement');
+  verifier(matin.length === 1 && matin[0].membreId === 'B' && matin[0].corps === 'Aujourd’hui : Logement L3.', 'le matin du premier jour : « Vous remplacez … », une fois');
+  verifier(!notificationsDuJour(r.suite, '2026-10-17').some((x) => x.motif === 'remplacement'), 'le lendemain : plus rien');
+  const annulee = { ...r.suite, absences: r.suite.absences.map((a) => ({ ...a, annuleeLe: `${J}T10:00:00.000Z` })) };
+  verifier(!notificationsDuJour(annulee, '2026-10-16').length, 'absence annulée : rien');
+
+  // Contrôles du jour : une notification par personne en charge, une clé par jour.
+  const e4 = e({
+    reservations: [resa('d1', 'L2', '2026-10-11', '2026-10-14'), resa('d2', 'L3', '2026-10-12', J), resa('d2b', 'L3', J, '2026-10-19', 'confirmee'), resa('d5', 'L5', '2026-10-12', '2026-10-14')],
+  });
+  liste = notificationsDuJour(e4, J);
+  const ctl = (m: string) => pour(liste, m).find((x) => x.motif === 'controles');
+  verifier(ctl('A')?.titre === 'Aujourd’hui : 1 contrôle qualité' && ctl('A')?.corps === 'Logement L2.' && ctl('A')?.url === '/espace-operations?onglet=controles', 'contrôle du jour sur L2 : son responsable, le matin');
+  verifier(ctl('C')?.corps === 'Logement L3.' && ctl('D')?.corps === 'Logement L5.' && !ctl('B'), 'chacun ses logements (C pour L3, D pour L5), rien pour B');
+  verifier(ctl('A')?.cle === `ops-controles-${J}-A` && notificationsDuJour(e4, J).every((x, k) => x.cle === liste[k].cle), 'une clé par personne et par jour : le même passage ne repart pas');
+  const deux = notificationsControlesDuJour({ ...e4, affectations: e4.affectations.map((a) => (a.id === 'L3' ? { ...a, responsableId: 'A' } : a)) }, J);
+  verifier(pour(deux, 'A')[0]?.titre === 'Aujourd’hui : 2 contrôles qualité' && pour(deux, 'A')[0]?.corps === 'Logement L2 et Logement L3.', 'deux contrôles : une seule notification, les deux logements');
+
+  // « Ce logement n'est pas à moi » : la réponse du gérant.
+  const sig = (id: string, decision: 'retire' | 'confirme', membreId = 'B', logementId = 'L1') =>
+    ({ id, logementId, membreId, le: `${J}T08:00:00.000Z`, statut: 'traite', decision, traiteLe: `${J}T09:00:00.000Z`, traitePar: 'Gérant' }) as const;
+  const garde = notificationSignalementTraite(e(), sig('s1', 'confirme'));
+  verifier(garde?.membreId === 'B' && garde.titre === 'Logement confirmé · Logement L1' && garde.url === '/espace-operations?onglet=logements&logement=L1', 'gardé : « Logement confirmé », le logement s’ouvre');
+  const retire = notificationSignalementTraite(e(), sig('s2', 'retire', 'C', 'L1'));
+  verifier(retire?.titre === 'Logement retiré · Logement L1' && retire.url === '/espace-operations?onglet=logements', 'retiré : « Logement retiré », la liste de ses logements');
+  verifier(notificationSignalementTraite(e(), { ...sig('s3', 'confirme'), statut: 'ouvert' }) === null && notificationSignalementTraite(e(), sig('s4', 'confirme', 'D')) === null, 'pas encore traité, ou gardé hors de son espace : rien');
+  verifier(
+    notificationsDuJour(e({ signalementsLogement: [sig('s5', 'confirme'), { ...sig('s6', 'confirme'), traiteLe: '2026-10-01T09:00:00.000Z' }] }), J).filter((x) => x.motif === 'logement').length === 1,
+    'passage du matin : réponses des 2 derniers jours seulement',
+  );
+
+  // Qui le dit avant l'envoi : mêmes règles que « Signaler ».
+  verifier(destinatairesUrgence(e(), 'B', 'L1', J).join() === 'A' && destinatairesUrgence(e(), 'C', 'L3', J).join() === 'A' && !destinatairesUrgence(e(), 'D', 'L1', J).length, 'qui recevrait une urgence : le pôle en charge ; rien hors de ses logements');
+  verifier(
+    phrasePrevenus([]) === 'Le gérant est prévenu tout de suite.' &&
+      phrasePrevenus(['Alice M.']) === 'Le gérant et Alice M. sont prévenus tout de suite.' &&
+      phrasePrevenus(['Alice M.', 'Chloé R.']) === 'Le gérant, Alice M. et Chloé R. sont prévenus tout de suite.',
+    '« Signaler » dit qui est prévenu',
+  );
+  verifier(lienOps() === '/espace-operations' && NOTIFICATIONS_OPS.length === 5 && sansCoordonnees('Appeler +33 6 12 34 56 78') === 'Appeler …', 'adresses de l’espace, liste des notifications, coordonnées masquées');
+
+  section('App « Opérations » : téléphones, accès, envoi');
+  const cles = { ...(await genererClesVapid()), sujet: 'https://www.labelmaisoncg.fr' };
+  const p256dh = b64url(new Uint8Array(await globalThis.crypto.subtle.exportKey('raw', ((await globalThis.crypto.subtle.generateKey({ name: 'ECDH', namedCurve: 'P-256' }, true, ['deriveBits'])) as CryptoKeyPair).publicKey)));
+  const abonnement = (nom: string): AbonnementPush => ({ endpoint: `https://fcm.googleapis.com/fcm/send/${nom}`, keys: { p256dh, auth: b64url(globalThis.crypto.getRandomValues(new Uint8Array(16))) } });
+  const bdd = new FausseBaseOps();
+  const accesDe = (id: string, o: Partial<AccesOperations> = {}): AccesOperations => ({ id, membreId: id, email: `${id.toLowerCase()}@exemple.fr`, statut: 'actif', version: 1, liens: [], inviteLe: `${J}T08:00:00.000Z`, invitePar: 'g', espace: ID_LABEL_MAISON, ...o });
+  await bdd.ecrire('accesOperations', [accesDe('A'), accesDe('B'), accesDe('C')]);
+  await bdd.ecrire('equipe', e().equipe);
+  await abonnerAppareilOps(bdd, { membreId: 'A', email: 'A@exemple.fr ', version: 1, abonnement: abonnement('a-tel'), nom: 'iPhone' });
+  await abonnerAppareilOps(bdd, { membreId: 'B', email: 'b@exemple.fr', version: 1, abonnement: abonnement('b-tel') });
+  await abonnerAppareilOps(bdd, { membreId: 'B', email: 'b@exemple.fr', version: 1, abonnement: abonnement('b-vieux') });
+  await abonnerAppareilOps(bdd, { membreId: 'C', email: 'c@exemple.fr', version: 1, abonnement: abonnement('c-tel') });
+  const appareils = (m: string) => ((bdd.lignes.get(`connecteurs/${idAppareilsOps(m)}`) as AppareilsOps | undefined)?.appareils ?? []).map((a) => a.endpoint.split('/').pop());
+  verifier(appareils('A').join() === 'a-tel' && appareils('B').join() === 'b-tel,b-vieux' && [...bdd.lignes.keys()].every((k) => !k.startsWith('connecteurs/') || k.includes('operations-')), 'un enregistrement par personne, dans la collection réservée aux gérants');
+
+  const envois: { endpoint: string; contenu: { titre: string; url: string; tag: string } }[] = [];
+  const envoyer: Envoyeur = async (a, c) => {
+    envois.push({ endpoint: a.endpoint.split('/').pop()!, contenu: c as { titre: string; url: string; tag: string } });
+    return a.endpoint.endsWith('b-vieux') ? { ok: false, statut: 410, expire: true } : { ok: true, statut: 201, expire: false };
+  };
+  const notif = (membreId: string, cle: string): NotificationOps => ({ membreId, cle, motif: 'incident', titre: `Pour ${membreId}`, corps: 'x', url: '/espace-operations?onglet=incidents' });
+  let b = await envoyerNotificationsOps(bdd, [notif('A', 'k1'), notif('B', 'k2')], { cles, espace: ID_LABEL_MAISON, envoyer });
+  verifier(envois.map((x) => x.endpoint).sort().join() === 'a-tel,b-tel,b-vieux' && envois.every((x) => x.contenu.url.startsWith('/espace-operations') && x.contenu.tag), 'chaque personne sur ses téléphones, avec l’écran à ouvrir');
+  verifier(b.envoyees === 2 && b.expires === 1 && appareils('B').join() === 'b-tel', 'abonnement disparu (410) : oublié');
+  envois.length = 0;
+  b = await envoyerNotificationsOps(bdd, [notif('A', 'k1')], { cles, espace: ID_LABEL_MAISON, envoyer });
+  verifier(!envois.length && b.dejaParties === 1, 'même notification : jamais deux fois (journal)');
+
+  // Accès retiré (nouvelle version) : plus rien, téléphone oublié.
+  await bdd.ecrire('accesOperations', [accesDe('A', { statut: 'retire', version: 2 })]);
+  b = await envoyerNotificationsOps(bdd, [notif('A', 'k3')], { cles, espace: ID_LABEL_MAISON, envoyer });
+  verifier(!envois.length && b.oublies === 1 && b.sansAppareil === 1 && !appareils('A').length, 'accès retiré : rien ne part, téléphone oublié');
+  // Réinvitée et reconnectée : l'ancien abonnement (version 1) ne revient pas tout seul.
+  await bdd.ecrire('accesOperations', [accesDe('A', { version: 2 })]);
+  verifier(!(await appareilsValables(bdd, ['A'], ID_LABEL_MAISON)).size, 'nouvelle version de l’accès : l’ancien abonnement ne reçoit rien tant qu’il n’est pas relié de nouveau');
+
+  // Adresse changée dans la fiche sans « Retirer » : ignoré (réversible), pas oublié.
+  const brunoAutreAdresse: MembreEquipe = { ...e().equipe[1], email: 'remplacant@exemple.fr' };
+  await bdd.ecrire('equipe', [brunoAutreAdresse]);
+  b = await envoyerNotificationsOps(bdd, [notif('B', 'k4')], { cles, espace: ID_LABEL_MAISON, envoyer });
+  verifier(!envois.length && !b.oublies && appareils('B').join() === 'b-tel', 'adresse changée dans la fiche : rien ne part, le téléphone reste lié à l’accès');
+  await bdd.ecrire('equipe', [e().equipe[1]]);
+  b = await envoyerNotificationsOps(bdd, [notif('B', 'k5')], { cles, espace: ID_LABEL_MAISON, envoyer });
+  verifier(envois.length === 1 && b.envoyees === 1, 'adresse remise : de nouveau prévenu');
+  envois.length = 0;
+
+  // Hors de l'équipe, ou accès d'un autre espace : oublié.
+  await bdd.ecrire('accesOperations', [accesDe('C', { espace: '5e5e0000-0000-4000-8000-000000000002' })]);
+  b = await envoyerNotificationsOps(bdd, [notif('C', 'k6')], { cles, espace: ID_LABEL_MAISON, envoyer });
+  verifier(!envois.length && b.oublies === 1, 'accès d’un autre espace : jamais prévenu ici');
+
+  // Téléphone passé à un collègue : il ne reçoit plus ce qui concernait l'autre.
+  await bdd.ecrire('accesOperations', [accesDe('C')]);
+  await abonnerAppareilOps(bdd, { membreId: 'C', email: 'c@exemple.fr', version: 1, abonnement: abonnement('b-tel') });
+  verifier(!appareils('B').length && appareils('C').join() === 'b-tel', 'même téléphone abonné par C : retiré de chez B');
+  verifier(await desabonnerAppareilOps(bdd, 'C', 'https://fcm.googleapis.com/fcm/send/b-tel'), 'désabonner : retiré');
+  verifier(!(await desabonnerAppareilOps(bdd, 'C', 'https://fcm.googleapis.com/fcm/send/b-tel')), 'désabonner deux fois : sans effet');
+
+  // Essai : ce téléphone seulement, sans journal.
+  await abonnerAppareilOps(bdd, { membreId: 'C', email: 'c@exemple.fr', version: 1, abonnement: abonnement('c-2') });
+  b = await envoyerNotificationsOps(bdd, [notificationTestOps('C', 't1')], { cles, espace: ID_LABEL_MAISON, envoyer, essai: true, seulement: 'https://fcm.googleapis.com/fcm/send/c-2' });
+  verifier(b.envoyees === 1 && envois.length === 1 && envois[0].endpoint === 'c-2' && envois[0].contenu.titre === 'Opérations', 'essai : ce téléphone seulement');
+  envois.length = 0;
+  await oublierAppareilsOps(bdd, 'C');
+  verifier(!appareils('C').length, '« Retirer » : plus aucun téléphone');
+
+  // Sans clés (comme en démonstration) : rien n'est lu ni envoyé.
+  bdd.lectures = 0;
+  b = await envoyerNotificationsOps(bdd, [notif('B', 'k7')], { cles: null, espace: ID_LABEL_MAISON, envoyer });
+  verifier(!envois.length && !b.envoyees && bdd.lectures === 0, 'sans clés serveur : aucune lecture, aucun envoi');
+  const casse = new FausseBaseOps();
+  casse.lire = async () => {
+    throw new Error('base indisponible');
+  };
+  verifier((await envoyerNotificationsOps(casse, [notif('B', 'k8')], { cles, espace: ID_LABEL_MAISON, envoyer })).envoyees === 0, 'base indisponible : aucune erreur levée');
+
+  // Connexion dans l'app installée (iPhone) : le lien de l'e-mail collé.
+  verifier(
+    lienColle(` https://www.labelmaisoncg.fr/espace-operations#espace=${ID_LABEL_MAISON}&jeton=abc-123 `) === `/espace-operations#espace=${ID_LABEL_MAISON}&jeton=abc-123` &&
+      lienColle('https://www.labelmaisoncg.fr/espace-operations#jeton=x')?.endsWith(`espace=${ID_LABEL_MAISON}&jeton=x`) &&
+      lienColle('https://www.labelmaisoncg.fr/espace-proprietaire#jeton=x') === null &&
+      lienColle('https://www.labelmaisoncg.fr/espace-operations') === null &&
+      lienColle('javascript:alert(1)//espace-operations#jeton=x') === null &&
+      lienColle('pas un lien') === null,
+    'lien collé dans l’app : seulement celui de l’espace opérations, avec son jeton',
+  );
+
+  // Demande à l'ouverture : mêmes règles que l'ERP, jamais en démonstration.
+  const ouverture = (o: Partial<ContexteDemandeNotifications>) =>
+    demandeNotifications({ demo: false, serveurActif: true, permission: 'default', navigateurCapable: true, iphone: true, dansLApp: true, abonne: false, plusTardLe: null, refusee: false, propositionInstallation: false, autreFenetre: false, maintenant: 1_000_000_000_000, ...o });
+  verifier(ouverture({}) === 'proposer' && ouverture({ demo: true }) === 'demo' && ouverture({ dansLApp: false }) === 'iphone-hors-app', 'demande à l’ouverture : dans l’app, jamais en démonstration');
+  verifier(ouverture({ permission: 'denied' }) === 'deja-decide' && ouverture({ refusee: true }) === 'refusee' && ouverture({ plusTardLe: 1_000_000_000_000 - 86_400_000 }) === 'plus-tard', 'refusée : plus jamais ; « Plus tard » retenu');
+}
+
 /* --------------------------------------------------- invitation et session */
 
 async function invitationEtSession() {
@@ -769,7 +1023,9 @@ async function invitationEtSession() {
   verifier((await lireSessionExterne(secret, proprio, 'operations', 1_000)) === null, 'session propriétaire refusée côté opérations');
 }
 
-invitationEtSession().then(() => {
-  console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
-  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
-});
+invitationEtSession()
+  .then(notificationsAppOperations)
+  .then(() => {
+    console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
+    (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+  });

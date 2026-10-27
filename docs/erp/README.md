@@ -96,7 +96,8 @@ node_modules/.bin/esbuild scripts/verifier-connexion-erp.ts --bundle --format=es
   && node /tmp/verifier-connexion-erp.mjs
 
 # Même chose côté routes /api : compte serveur, réglages d'un espace, passage
-# quotidien sur chaque espace, bouton d'un membre, routage des webhooks.
+# quotidien sur chaque espace, bouton d'un membre, routage des webhooks, et
+# les notifications de l'app « Opérations » (faux téléphones qui déchiffrent).
 node_modules/.bin/esbuild scripts/verifier-espaces-serveur.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{}' \
   --log-level=error --outfile=/tmp/verifier-espaces-serveur.mjs && node /tmp/verifier-espaces-serveur.mjs
@@ -111,7 +112,9 @@ node_modules/.bin/esbuild src/erp/data/verifier-proprietaire.ts --bundle --forma
 # Auto-contrôle de l'espace opérations : urgences d'abord, contrôles après un
 # départ, absences et remplaçants, périmètre (pôle / agent), « Prénom N. »,
 # consignes d'accès le jour même, droits par rôle, collections écrites,
-# « ce logement n'est pas à moi », invitation par espace, sessions par genre.
+# « ce logement n'est pas à moi », invitation par espace, sessions par genre,
+# notifications de l'app « Opérations » (qui reçoit quoi, téléphones liés à
+# l'accès, une seule fois, rien sans clés ni en démonstration).
 node_modules/.bin/esbuild src/erp/data/verifier-operations.ts --bundle --platform=node \
   --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-operations.cjs && node /tmp/verifier-operations.cjs
@@ -914,6 +917,8 @@ Apple, Google ou Mozilla selon l'appareil (Web Push).
 
 **Le lien à envoyer à l'équipe : `https://www.labelmaisoncg.fr/erp/installer`**
 (aussi dans Paramètres → Application, avec « Copier » et « Partager »).
+Les personnes de terrain ont leur propre app, « Opérations », depuis leur
+espace (voir « App « Opérations » et notifications » plus bas).
 
 1. On ouvre le lien et on se connecte (son adresse e-mail et son mot de
    passe) ; la page reconnaît l'appareil.
@@ -1406,6 +1411,8 @@ Règles de l'audit (octobre 2026) :
   cet espace.
 - Notification « Urgence » sur les appareils de l'ERP quand un incident
   urgent est signalé ou confié (désactivable dans Paramètres → Application).
+- « Le garder » / « Lui retirer » sur un « ce logement n'est pas à moi » :
+  la personne reçoit la réponse sur son téléphone (app « Opérations »).
 
 ### Fonctionnement
 
@@ -1413,7 +1420,10 @@ Règles de l'audit (octobre 2026) :
   `absences`, `controles`, `signalementsLogement` (+ `incidents`) dans
   `erp.enregistrements`, base de l'espace (`baseErp(c, espace)`).
 - `api/espace-operations.ts` : `lien`, `entrer`, `sortir`, `vue`, `agir`,
-  `photo` (personne connectée), `etat`, `inviter`, `retirer` (gérant).
+  `photo` (personne connectée), `etat`, `inviter`, `retirer`,
+  `signalement-traite` (gérant) ; notifications de l'app :
+  `notifications-etat`, `notifications-abonner`, `notifications-desabonner`,
+  `notifications-tester`, `prevenus` (`api/_operations-notifications.ts`).
   Chaque appel relit l'accès dans la base de l'espace ; la vue et les
   actions sont calculées par `src/erp/data/espace-operations.ts` sur le seul
   périmètre de la personne. Écritures limitées à `incidents`, `controles`,
@@ -1428,3 +1438,75 @@ Règles de l'audit (octobre 2026) :
   les liens par e-mail (sans : le lien s'affiche au gérant, qui le transmet).
 - Démo : `/espace-operations?apercu=eq-ines` (responsable de pôle),
   `/espace-operations?apercu=eq-yanis` (agent de terrain).
+
+### App « Opérations » et notifications (octobre 2026)
+
+L'espace opérations s'installe comme une app, **« Opérations »**, à part de
+celle de l'ERP : icône sur l'écran d'accueil, plein écran, et notifications
+sur le téléphone des responsables de pôle et des agents de terrain. **Rien à
+faire de plus côté Vercel** : mêmes clés que l'app de l'ERP
+(`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, déjà en place). Sans elles, l'espace
+marche comme avant et dit « Pas encore ouvertes par votre conciergerie ».
+
+Pour la personne (en haut de son espace : « Installer l'app », puis
+« Notifications » une fois l'app installée) :
+
+1. **iPhone** (Safari) : Partager → « Sur l'écran d'accueil » → « Ajouter ».
+   L'app de l'écran d'accueil ne partage pas la session de Safari et le lien
+   du mail s'ouvre dans Safari : dans l'app, on demande son lien, puis on le
+   colle (appui long sur « Ouvrir mon espace » dans l'e-mail → Copier →
+   champ « Lien reçu par e-mail » → « Ouvrir avec ce lien »).
+   **Android** (Chrome) et **ordinateur** : bouton « Installer l'app »
+   (fenêtre du navigateur), sinon menu ⋮ → « Installer l'application ».
+2. À la première ouverture, « Recevoir les notifications ? » : « Activer »
+   demande l'autorisation dans le même toucher (obligatoire sur iPhone).
+   Mêmes règles que l'ERP (`demandeNotifications`) : jamais en
+   démonstration, plus jamais après un refus, « Plus tard » retenu 7 jours,
+   sur iPhone seulement dans l'app installée. Ensuite : « Notifications »
+   en haut de l'espace (test, couper).
+
+| Notification | Qui | Quand | Ouvre |
+|---|---|---|---|
+| Urgence · logement | La personne qui s'en occupe aujourd'hui (« Urgence confiée »), qui a la charge du logement, les responsables de pôle du logement | Urgence signalée ou passée en urgent | l'incident |
+| Incident confié · logement | La personne qui s'en occupe aujourd'hui (le titulaire, ou son remplaçant pendant une absence) | Incident confié (signalé, depuis un contrôle, « Confier ») | l'incident |
+| Vous remplacez Clara D. | Le remplaçant, sur ses logements seulement (jamais le motif) | Le matin du premier jour, ou tout de suite si le pôle note une absence déjà commencée | ses logements |
+| Aujourd'hui : N contrôles qualité | Qui a la charge du logement (sinon les responsables de pôle) | Passage du matin, une fois par jour | Contrôles |
+| Logement confirmé / retiré | La personne qui a dit « ce logement n'est pas à moi » | Réponse du gérant (rattrapée au passage du matin) | ses logements |
+
+Jamais l'auteur de l'action, jamais un logement hors de son espace, jamais
+un autre espace (une personne de Label Maison ne reçoit rien de Sens). Pas
+de nom de voyageur ; un numéro ou une adresse tapés dans un incident sont
+masqués. « Signaler » dit qui sera vraiment prévenu (« Le gérant et Inès M.
+sont prévenus tout de suite. ») : les personnes dont le téléphone recevra
+l'urgence.
+
+Fonctionnement :
+
+- **App** : manifeste `public/operations-app/manifest.webmanifest` (portée
+  et départ `/espace-operations`, icônes de l'ERP), service worker
+  `public/operations-sw.js` (même règles que celui de l'ERP : cache des
+  seuls `/assets/`, son propre cache `lm-ops-…`), balises de l'écran
+  d'accueil ajoutées à la coquille `/espace-operations` par
+  `scripts/spa-shells.mjs`. Servis hors de toute zone protégée. Côté
+  navigateur : `src/erp/espace-operations/app-operations.ts` et
+  `AppOperations.tsx` (indépendants de l'app de l'ERP, qui ne change pas).
+- **Téléphones** : collection `connecteurs` (réservée aux gérants, jamais lue
+  par la synchronisation du navigateur), un enregistrement par personne
+  (`operations-appareils-<membre>`) dans la base de son espace, chaque
+  téléphone lié à l'adresse et à la version de l'accès. Accès retiré,
+  nouvelle invitation à une autre adresse, personne hors de l'équipe :
+  oublié ; adresse changée dans la fiche sans « Retirer » : plus rien ne
+  part. Un téléphone repris par un collègue n'appartient plus qu'à lui ;
+  « Se déconnecter » le fait oublier. À la connexion suivante (même
+  personne après une nouvelle invitation, ou un collègue), un téléphone qui
+  a déjà l'autorisation est relié à la personne connectée sans rien
+  redemander ; « Couper » l'arrête pour de bon.
+- **Envoi** : règles dans `src/erp/data/notifications-operations.ts`
+  (pur, contrôlé par `verifier-operations.ts`), journal d'idempotence
+  `connecteurs/operations-notifications-journal` (une notification ne part
+  qu'une fois). Après une action de l'espace (`agir`), avec la notification
+  « Urgence » de l'ERP ; le matin dans le passage quotidien
+  (`api/erp-repull-sync.ts`, après les relances, 8 s au plus, jamais
+  bloquant : 4 h 17 UTC, soit 5 h 17 en hiver et 6 h 17 en été) ; à la
+  réponse du gérant (l'ERP appelle `signalement-traite` juste après avoir
+  enregistré, et réessaie tant que la base ne l'a pas).

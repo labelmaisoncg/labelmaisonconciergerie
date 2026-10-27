@@ -30,6 +30,8 @@ export interface ActionsOps {
   agir: (operation: ActionOperations) => Promise<ResultatOps>;
   /** Dépose une photo (réduite dans le navigateur) ; rend l'adresse à joindre et un aperçu. */
   photo: (fichier: File) => Promise<{ url: string; apercu?: string } | { erreur: string }>;
+  /** Qui serait prévenu sur son téléphone d'une urgence sur ce logement (« Clara D. ») ; absent : personne d'autre que le gérant. */
+  prevenus?: (logementId: string) => Promise<string[]>;
 }
 
 export interface ContexteOps {
