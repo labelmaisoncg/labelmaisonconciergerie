@@ -501,8 +501,17 @@ create policy "cloison des espaces" on erp.membres
 
 -- historique : lecture seule, espace par espace.
 drop policy if exists "membres lisent" on erp.historique;
+drop policy if exists "versions reservees aux gerants" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated
   using (espace = any ((select erp.espaces_lecture())::uuid[]));
+-- Anciennes versions des collections réservées aux gérants (accès extérieurs,
+-- relances, connecteurs) : gérants de l'espace seulement, comme les
+-- enregistrements (sinon un compte « lecture » ou « opérations » y lirait
+-- adresses et empreintes des liens).
+create policy "versions reservees aux gerants" on erp.historique
+  as restrictive for select to authenticated
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs')
+         or espace = any ((select erp.espaces_gerant())::uuid[]));
 
 -- ------------------------------------------------------------------ droits
 
@@ -616,7 +625,12 @@ begin
     insert into erp.enregistrements (espace, collection, id, donnees) values
       (lm, 'recette', 'ligne-lm', '{"id": "ligne-lm"}'),
       (lm, 'accesProprietaires', 'recette', '{"id": "recette"}'),
-      (essai, 'recette', 'ligne-autre', '{"id": "ligne-autre"}');
+      (essai, 'recette', 'ligne-autre', '{"id": "ligne-autre"}'),
+      (essai, 'accesProprietaires', 'recette-version', '{"id": "recette-version"}');
+    -- Anciennes versions d'accès : une dans chaque espace (l'enregistrement de
+    -- l'autre espace est retiré, seule sa version reste).
+    update erp.enregistrements set donnees = '{"id": "recette", "v": 2}' where espace = lm and collection = 'accesProprietaires' and id = 'recette';
+    delete from erp.enregistrements where espace = essai and collection = 'accesProprietaires' and id = 'recette-version';
 
     perform set_config('role', 'authenticated', true);
 
@@ -642,6 +656,8 @@ begin
     end;
     select count(*) into n from erp.enregistrements where collection = 'accesProprietaires';
     if n <> 0 then resultat := 'un compte « opérations » lit les accès des propriétaires'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'accesProprietaires';
+    if n <> 0 then resultat := 'un compte « opérations » lit les anciennes versions des accès'; raise exception 'stop'; end if;
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'accesProprietaires', 'intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
@@ -668,6 +684,8 @@ begin
     if n <> 1 then resultat := 'le gérant de l''autre espace ne peut pas modifier sa ligne'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'recette';
     if n <> 1 then resultat := format('historique : %s version(s) visibles au lieu de 1', n); raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'accesProprietaires';
+    if n <> 1 then resultat := format('le gérant voit %s ancienne(s) version(s) d''accès au lieu de 1 (la sienne)', n); raise exception 'stop'; end if;
     perform set_config('request.headers', json_build_object('x-erp-espace', lm)::text, true);
     select count(*) into n from erp.enregistrements;
     if n <> 0 then resultat := 'l''en-tête d''un espace étranger ouvre des données'; raise exception 'stop'; end if;
@@ -692,7 +710,8 @@ begin
     select count(*) into n from erp.enregistrements;
     if n <> 1 then resultat := format('le compte serveur voit %s lignes de l''espace nommé au lieu de 1', n); raise exception 'stop'; end if;
     insert into erp.enregistrements (espace, collection, id, donnees) values (essai, 'connecteurs', 'recette', '{}');
-    insert into erp.enregistrements (espace, collection, id, donnees) values (essai, 'accesProprietaires', 'recette', '{}');
+    -- Id à part : avant la passe 2, la clé est encore (collection, id), sans l'espace.
+    insert into erp.enregistrements (espace, collection, id, donnees) values (essai, 'accesProprietaires', 'recette-serveur', '{}');
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'recette', 'intrus', '{}');
       resultat := 'le compte serveur écrit hors de l''espace nommé';

@@ -89,7 +89,8 @@ node_modules/.bin/esbuild src/erp/data/verifier-espaces.ts --bundle --format=esm
 
 # Connexion à l'ERP (middleware.ts) : e-mail et mot de passe d'un membre,
 # non-membre refusé, autre site refusé, anciens cookies (mot de passe commun)
-# refusés, relais remis une fois, jamais la session du compte d'équipe.
+# refusés, relais remis une fois, le serveur ne remet jamais la session du
+# compte d'équipe, rien d'identifiant dans l'adresse, lien piégé confirmé.
 node_modules/.bin/esbuild scripts/verifier-connexion-erp.ts --bundle --format=esm \
   --platform=node --log-level=error --outfile=/tmp/verifier-connexion-erp.mjs \
   && node /tmp/verifier-connexion-erp.mjs
@@ -133,7 +134,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 
 | Variable | Où | Rôle |
 |---|---|---|
-| `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe du compte d'équipe `equipe@labelmaisoncg.fr` (fonctions serveur) et clé de signature des sessions de `/erp`. On n'entre plus dans l'ERP avec ce seul mot de passe : chacun se connecte avec son adresse e-mail et son mot de passe. Absent : accès refusé (page 503), jamais ouvert. Le changer déconnecte tout le monde. Redéployer après modification. |
+| `ERP_PASSWORD` | Vercel, **Production ET Preview** (obligatoire) | Mot de passe du compte d'équipe `equipe@labelmaisoncg.fr` (fonctions serveur) et clé de signature des sessions de `/erp`. On n'entre plus dans l'ERP avec ce seul mot de passe : chacun se connecte avec son adresse e-mail et son mot de passe. Absent : accès refusé (page 503), jamais ouvert. Le changer déconnecte tout le monde. Redéployer après modification. Une fois les comptes personnels créés, le remplacer par un nouveau mot de passe aléatoire (ici et sur le compte d'équipe dans Supabase) : voir « Connexion à l'ERP ». |
 | `ERP_SERVEUR_MOT_DE_PASSE` | Vercel (serveur), facultatif tant qu'il n'y a que Label Maison | Mot de passe du compte technique `serveur@labelmaisoncg.fr` (voir « Espaces »). Absent : le serveur écrit avec le compte d'équipe, dans Label Maison seulement. |
 | `LINGE_PASSWORD` | Vercel | Mot de passe du registre `/linge` (inchangé). |
 | `VITE_SUPABASE_URL` | build (Vercel), facultatif | Adresse du projet Supabase. Absente : celle de Label Maison, inscrite dans `src/erp/data/config.ts`. |
@@ -548,10 +549,22 @@ Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
 de `/erp`, servie par `middleware.ts`). Il n'y a plus de « Retour au site » :
 l'ERP est une application.
 
-- **Pour l'équipe :** connectez-vous avec `equipe@labelmaisoncg.fr` et le mot
-  de passe actuel de l'ERP, ou avec votre compte personnel créé dans
+- **Pour l'équipe :** connectez-vous avec votre compte personnel créé dans
   Supabase → Authentication → Users (« Add user », « Auto Confirm User »),
   dont l'adresse figure dans les membres (Paramètres → Équipe).
+- **En attendant les comptes personnels :** `equipe@labelmaisoncg.fr` et le
+  mot de passe actuel de l'ERP marchent toujours.
+- **Une fois les comptes personnels créés, fermer le mot de passe commun :**
+  1. choisir un **nouveau** mot de passe aléatoire (gestionnaire de mots de
+     passe, 24 caractères ou plus) ;
+  2. le mettre dans Vercel → Settings → Environment Variables →
+     `ERP_PASSWORD` (Production et Preview) **et** comme mot de passe du
+     compte `equipe@labelmaisoncg.fr` dans Supabase → Authentication → Users ;
+  3. **Redeploy** dans Vercel.
+  Cela ferme l'ancien mot de passe commun et change la clé de signature des
+  sessions : tout le monde se reconnecte une fois. Tant que ce n'est pas fait,
+  quiconque connaît l'ancien mot de passe peut entrer avec le compte d'équipe
+  (les données restent protégées par les règles de la base).
 - **Mot de passe oublié ?** sur la même page : Supabase envoie un lien qui
   ramène sur `/erp`, où l'on choisit un nouveau mot de passe (8 caractères
   au moins). Les liens d'invitation de Supabase (« Invite user ») marchent de
@@ -563,9 +576,12 @@ l'ERP est une application.
   (`erp.qui_suis_je`, ou `erp.membres` avant les espaces). Elle pose alors
   `erp_session` (cookie signé, lié au compte, 30 jours) et `erp_relais`
   (5 minutes) que l'application échange une seule fois contre sa session
-  sur `/erp/session`. Le navigateur ne reçoit jamais la session du compte
-  d'équipe. Un non-membre est refusé ; une demande venue d'un autre site
-  aussi.
+  sur `/erp/session`. Le serveur ne remet jamais la session du compte
+  d'équipe à un navigateur : seul celui qui se connecte lui-même avec ce
+  compte (pendant le passage) la reçoit. Un non-membre est refusé ; une
+  demande venue d'un autre site aussi. Un lien reçu par e-mail qui n'est ni
+  une récupération ni une invitation demande de confirmer le compte avant
+  d'ouvrir l'ERP ; sans JavaScript, rien ne part dans l'adresse.
 - **Anciens accès :** les sessions ouvertes avec l'ancien mot de passe commun
   ne valent plus rien ; chacun se reconnecte une fois. « Se déconnecter »
   (menu du compte) ferme aussi la page d'accès.
@@ -1265,7 +1281,9 @@ Pour les deux espaces extérieurs (propriétaires et opérations,
 - **Un lien de connexion toutes les 2 minutes au plus** par accès, compté
   dans l'accès lui-même (date du dernier lien), donc valable pour toutes les
   instances du serveur ; le frein par instance (5 demandes par heure et par
-  adresse IP) reste en plus.
+  adresse IP) reste en plus. Les liens gardés sont plafonnés **par sorte**
+  (3 invitations, 3 liens de connexion) : des demandes répétées ne chassent
+  jamais une invitation encore valable.
 - **Label Maison seulement si c'est Label Maison** : fiche d'espace illisible
   (panne passagère, espace fermé) = pas d'e-mail (le gérant copie le lien),
   pas de contacts, nom « Votre conciergerie » ; jamais l'expéditeur ou les
@@ -1276,10 +1294,12 @@ Pour les deux espaces extérieurs (propriétaires et opérations,
   `relancesPaiement`, `reglagesRelances` ne sont lisibles et modifiables que
   par un gérant (et le compte serveur, gérant de l'espace nommé). Sans cette
   règle, un compte « opérations » pourrait écrire un accès avec l'empreinte
-  d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire.
+  d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire. Leurs
+  anciennes versions dans `erp.historique` (et celles de `connecteurs`) sont
+  réservées aux gérants de la même façon.
   **À faire une fois dans Supabase → SQL Editor** :
   - base d'avant les espaces : lancer `supabase/erp-acces-gerants.sql`
-    (attendu dans « Results » : `regle = 1`, `recette = ok`) ;
+    (attendu dans « Results » : `regles = 2`, `recette = ok`) ;
   - base passée aux espaces : relancer `supabase/erp-espaces.sql` (la règle y
     est, par espace ; `recette = ok`).
 

@@ -37,7 +37,7 @@ export const CHEMIN_COOKIE = '/api/espace-proprietaire';
 export const DUREE_SESSION_S = 30 * 24 * 3600;
 export const DUREE_INVITATION_MS = 7 * 24 * 3600_000;
 export const DUREE_CONNEXION_MS = 3600_000;
-/** Liens en cours gardés par propriétaire (une demande ne chasse pas l'invitation). */
+/** Liens en cours gardés par accès, pour chaque sorte (invitations, connexions) : une demande ne chasse pas l'invitation. */
 export const LIENS_MAX = 3;
 export const LONGUEUR_SECRET_MIN = 32;
 
@@ -66,7 +66,13 @@ export const empreinteJeton = (jeton: string): Promise<string> => empreinte(jeto
 const iso = (ms: number) => new Date(ms).toISOString();
 const valable = (l: LienAccesExterne, maintenantMs: number) => !l.utiliseLe && Date.parse(l.expireLe) > maintenantMs;
 
-/** Ajoute un lien (les liens utilisés ou expirés tombent, 3 au plus). */
+/**
+ * Ajoute un lien. Les liens utilisés ou expirés tombent, et chaque sorte est
+ * plafonnée à part (LIENS_MAX invitations, LIENS_MAX liens de connexion) :
+ * « Recevoir mon lien », que peut demander quiconque connaît l'adresse, ne
+ * chasse jamais une invitation encore valable, seulement d'anciens liens de
+ * connexion.
+ */
 export function avecNouveauLien<T extends AccesExterne = AccesProprietaire>(acces: T, empreinteLien: string, motif: LienAccesExterne['motif'], maintenantMs: number): T {
   const lien: LienAccesExterne = {
     empreinte: empreinteLien,
@@ -74,7 +80,10 @@ export function avecNouveauLien<T extends AccesExterne = AccesProprietaire>(acce
     creeLe: iso(maintenantMs),
     expireLe: iso(maintenantMs + (motif === 'invitation' ? DUREE_INVITATION_MS : DUREE_CONNEXION_MS)),
   };
-  return { ...acces, liens: [...(acces.liens ?? []).filter((l) => valable(l, maintenantMs)), lien].slice(-LIENS_MAX) };
+  const liens = [...(acces.liens ?? []).filter((l) => valable(l, maintenantMs)), lien];
+  const invitation = (l: LienAccesExterne) => l.motif === 'invitation';
+  const gardes = new Set([...liens.filter(invitation).slice(-LIENS_MAX), ...liens.filter((l) => !invitation(l)).slice(-LIENS_MAX)]);
+  return { ...acces, liens: liens.filter((l) => gardes.has(l)) };
 }
 
 /**

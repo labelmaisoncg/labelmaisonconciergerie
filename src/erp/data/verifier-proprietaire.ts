@@ -46,6 +46,7 @@ import {
   signerSession,
   utiliserLien,
 } from './proprietaire-acces';
+import { avecNouveauLien as avecNouveauLienOps } from './operations-acces';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull';
 import { ID_LABEL_MAISON } from './espaces';
 import { lienAcces, lireLienAcces, lireSessionExterne, signerSessionExterne } from './acces-externe';
@@ -267,6 +268,16 @@ async function main() {
   let plein = apres;
   for (let i = 0; i < 5; i++) plein = avecNouveauLien(plein, await empreinteJeton(await nouveauJeton()), 'connexion', t0);
   verifier(plein.liens.length === LIENS_MAX, `${LIENS_MAX} liens en cours au plus`);
+  // Invitation pas encore ouverte : les demandes « Recevoir mon lien » (2 minutes d'écart) ne la chassent jamais.
+  for (const [nom, ajouter] of [['propriétaire', avecNouveauLien], ['opérations', avecNouveauLienOps]] as const) {
+    let enAttente = invite;
+    for (let i = 1; i <= 6; i++) enAttente = ajouter(enAttente, await empreinteJeton(await nouveauJeton()), 'connexion', t0 + i * 2 * 60_000);
+    const connexions = enAttente.liens.filter((l) => l.motif === 'connexion').length;
+    verifier(
+      connexions === LIENS_MAX && enAttente.liens.some((l) => l.motif === 'invitation') && (await utiliserLien([enAttente], jeton, t0 + 13 * 60_000)).ok,
+      `${nom} : six demandes de lien en 12 minutes, l’invitation reste valable (seuls les liens de connexion sont plafonnés)`,
+    );
+  }
   const retire = retirer(demande, t0 + 1000);
   verifier(retire.statut === 'retire' && retire.liens.length === 0 && retire.version === demande.version + 1, 'retrait : liens effacés, version augmentée');
   verifier(!(await utiliserLien([{ ...retire, liens: demande.liens }], j2, t0 + 10_000)).ok, 'accès retiré : lien refusé');

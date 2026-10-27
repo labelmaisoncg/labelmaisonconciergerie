@@ -17,10 +17,22 @@
  *   - erp_relais : cookie de 5 minutes réservé à /erp/session, qui remet la
  *     session Supabase à l'application (connexionAutomatique) une seule fois.
  * Les anciens cookies (mot de passe partagé) ne valent plus rien : chacun se
- * reconnecte une fois avec son adresse. Le compte d'équipe
- * (equipe@labelmaisoncg.fr, mot de passe = ERP_PASSWORD) reste un compte comme
- * les autres. « Mot de passe oublié ? » et les liens d'invitation ou de
- * récupération reçus par e-mail sont traités sur la même page.
+ * reconnecte une fois avec son adresse. « Mot de passe oublié ? » et les liens
+ * d'invitation ou de récupération reçus par e-mail sont traités sur la même
+ * page (un lien d'un autre type demande une confirmation avant d'ouvrir).
+ *
+ * Passage aux comptes personnels :
+ *   1. En attendant, le compte d'équipe (equipe@labelmaisoncg.fr, mot de passe =
+ *      ERP_PASSWORD actuel) se connecte comme n'importe quel membre. Celui qui
+ *      se connecte AVEC ce compte reçoit bien sûr sa session dans le navigateur.
+ *   2. Une fois les comptes personnels créés : choisir un NOUVEAU mot de passe
+ *      aléatoire, le mettre dans Vercel (ERP_PASSWORD) ET comme mot de passe du
+ *      compte d'équipe dans Supabase (Authentication → Users), puis Redeploy.
+ *      Cela ferme le mot de passe commun et change la clé de signature des
+ *      sessions : tout le monde se reconnecte une fois. Tant que ce n'est pas
+ *      fait, quiconque connaît l'ancien mot de passe commun peut se connecter
+ *      au compte d'équipe et fabriquer une session de la page d'accès (les
+ *      données restent protégées par les règles de la base).
  *
  * Pas de `WWW-Authenticate` / Basic auth ici : le navigateur affiche alors sa
  * propre fenêtre grise, hors charte, sans libellé exploitable et impossible à
@@ -32,8 +44,9 @@
  *   LINGE_PASSWORD  mot de passe du registre du linge (obligatoire)
  *   ERP_PASSWORD    clé de signature des sessions de l'ERP (obligatoire) ; c'est
  *                   aussi le mot de passe du compte Supabase d'équipe, dont se
- *                   servent les fonctions serveur (api/). Le navigateur ne
- *                   reçoit plus jamais la session de ce compte.
+ *                   servent les fonctions serveur (api/). Le serveur ne remet
+ *                   jamais la session de ce compte à un navigateur ; seul celui
+ *                   qui se connecte lui-même avec ce compte la reçoit.
  *
  * Après ajout ou modification, il faut REDÉPLOYER : la valeur est injectée au
  * build, un simple enregistrement dans l'interface Vercel ne suffit pas.
@@ -220,10 +233,27 @@ function lireCookie(request: Request, nom: string): string {
   for (const morceau of brut.split(';')) {
     const sep = morceau.indexOf('=');
     if (sep !== -1 && morceau.slice(0, sep).trim() === nom) {
-      return decodeURIComponent(morceau.slice(sep + 1).trim());
+      try {
+        return decodeURIComponent(morceau.slice(sep + 1).trim());
+      } catch {
+        return ''; // « % » mal formé : cookie ignoré, pas d'erreur 500
+      }
     }
   }
   return '';
+}
+
+/** Paramètres qui ne doivent jamais revenir dans une adresse de retour (identifiants). */
+const PARAMETRE_SENSIBLE = /^(e-?mail|courriel|identifiant|login|user(name)?|mot-?de-?passe|motdepasse|mdp|pass(word|wd)?|pwd|secret|(access|refresh|id)_?token|token)$/i;
+
+/** Adresse de retour sans paramètre d'identifiant (formulaire envoyé sans script, lien piégé). */
+function sansIdentifiants(chemin: string): string {
+  const q = chemin.indexOf('?');
+  if (q === -1) return chemin;
+  const params = new URLSearchParams(chemin.slice(q + 1));
+  for (const cle of [...params.keys()]) if (PARAMETRE_SENSIBLE.test(cle.trim())) params.delete(cle);
+  const reste = params.toString();
+  return chemin.slice(0, q) + (reste ? `?${reste}` : '');
 }
 
 const echapper = (s: string): string =>
@@ -256,6 +286,15 @@ const ENTETES_HTML = {
   ...ANTI_CADRE,
 };
 
+/** En-têtes d'une page, plusieurs Set-Cookie possibles (liste de paires). */
+type EntetesPage = Record<string, string> | [string, string][];
+
+function entetesHtml(entetes: EntetesPage): Headers {
+  const h = new Headers(ENTETES_HTML);
+  for (const [k, v] of Array.isArray(entetes) ? entetes : Object.entries(entetes)) h.append(k, v);
+  return h;
+}
+
 const ICONE_CADENAS =
   '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" ' +
   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
@@ -280,7 +319,7 @@ function page(
   sousTitre: string,
   panneau: string,
   statut: number,
-  entetes: HeadersInit = {},
+  entetes: EntetesPage = {},
   separateurTitre = ' — ',
   retourSite = true,
 ): Response {
@@ -411,7 +450,7 @@ function page(
 </div>
 </body>
 </html>`,
-    { status: statut, headers: { ...ENTETES_HTML, ...entetes } },
+    { status: statut, headers: entetesHtml(entetes) },
   );
 }
 
@@ -420,7 +459,7 @@ function pageConnexion(
   suite: string,
   erreur: string,
   statut: number,
-  entetes: HeadersInit = {},
+  entetes: EntetesPage = {},
 ): Response {
   if (zone === ERP) return pageConnexionErp(suite, erreur, statut, entetes);
   return page(
@@ -475,38 +514,45 @@ function donneesPageErp(suite: string): string {
  * ouvre l'application. Il traite aussi « Mot de passe oublié ? » et les liens
  * reçus par e-mail (#access_token=…&type=recovery | invite | signup).
  */
-function pageConnexionErp(suite: string, erreur: string, statut: number, entetes: HeadersInit = {}): Response {
+function pageConnexionErp(suite: string, erreur: string, statut: number, entetes: EntetesPage = {}): Response {
   return page(
     ERP.titre,
     ERP.sousTitre,
     `<p id="erreur" class="erreur" role="alert"${erreur ? '' : ' hidden'}>${echapper(erreur)}</p>
      <p id="info" class="info" role="status" hidden></p>
-     <form id="f-connexion" novalidate>
+     <noscript><p class="erreur">La connexion demande JavaScript : activez-le, puis rechargez la page.</p></noscript>
+     <!-- Champs sans « name » et envoi en POST : sans script, rien d'identifiant ne part dans l'adresse. -->
+     <form id="f-connexion" method="post" action="${ERP.connexion}" novalidate>
        <label for="email">Adresse e-mail</label>
        <div class="champ">
          ${ICONE_MAIL}
-         <input id="email" type="email" name="email" placeholder="vous@exemple.fr"
+         <input id="email" type="email" placeholder="vous@exemple.fr"
                 autocomplete="username" inputmode="email" autocapitalize="off"
                 spellcheck="false" required>
        </div>
        <label for="mdp">Mot de passe</label>
        <div class="champ">
          ${ICONE_CADENAS}
-         <input id="mdp" type="password" name="motdepasse" placeholder="Votre mot de passe"
+         <input id="mdp" type="password" placeholder="Votre mot de passe"
                 autocomplete="current-password" spellcheck="false" autocapitalize="off" required>
        </div>
        <button type="submit">${ICONE_CLE} ${echapper(ERP.bouton)}</button>
        <button type="button" class="lien" id="oubli">Mot de passe oublié ?</button>
      </form>
-     <form id="f-nouveau" novalidate hidden>
-       <p class="intro">Choisissez votre mot de passe : 8 caractères au moins.</p>
+     <form id="f-nouveau" method="post" action="${ERP.connexion}" novalidate hidden>
+       <p class="intro" id="intro-nouveau">Choisissez votre mot de passe : 8 caractères au moins.</p>
        <label for="nouveau">Nouveau mot de passe</label>
        <div class="champ">
          ${ICONE_CADENAS}
-         <input id="nouveau" type="password" name="nouveau" placeholder="8 caractères au moins"
+         <input id="nouveau" type="password" placeholder="8 caractères au moins"
                 autocomplete="new-password" minlength="8" spellcheck="false" autocapitalize="off" required>
        </div>
        <button type="submit">${ICONE_CLE} Enregistrer et ouvrir l’ERP</button>
+     </form>
+     <form id="f-confirmer" method="post" action="${ERP.connexion}" novalidate hidden>
+       <p class="intro" id="intro-confirmer">Ouvrir l’ERP avec ce compte ?</p>
+       <button type="submit">${ICONE_CLE} Ouvrir l’ERP</button>
+       <button type="button" class="lien" id="autre-compte">Utiliser un autre compte</button>
      </form>
      <hr class="separateur">
      <p class="note">Accès réservé à l'équipe Label Maison.</p>
@@ -515,7 +561,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        var C = ${donneesPageErp(suite)};
        var $ = function (id) { return document.getElementById(id); };
        var boiteErreur = $('erreur'), boiteInfo = $('info');
-       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau');
+       var fConnexion = $('f-connexion'), fNouveau = $('f-nouveau'), fConfirmer = $('f-confirmer');
        var champEmail = $('email'), champMdp = $('mdp'), champNouveau = $('nouveau');
 
        function dire(texte, ton) {
@@ -560,6 +606,14 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
            });
          });
        }
+       // Adresse du compte d'un jeton Supabase (affichage seulement : le serveur le vérifie).
+       function emailDuJeton(jwt) {
+         try {
+           var b = String(jwt).split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+           var e = JSON.parse(decodeURIComponent(escape(atob(b + '==='.slice((b.length + 3) % 4))))).email;
+           return typeof e === 'string' && e.length < 200 ? e : '';
+         } catch (x) { return ''; }
+       }
        function echec(e) {
          dire(e && e.message && !/fetch|network|load failed/i.test(e.message) ? e.message : 'Connexion impossible. Vérifiez votre accès à internet.');
        }
@@ -599,6 +653,9 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
            ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».'
            : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? ».');
        } else if (acces && rafraichir && (type === 'recovery' || type === 'invite')) {
+         // Le compte est nommé : un lien reçu d'un tiers se reconnaît avant d'agir.
+         var compteNouveau = emailDuJeton(acces);
+         if (compteNouveau) $('intro-nouveau').textContent = 'Choisissez le mot de passe du compte ' + compteNouveau + ' : 8 caractères au moins.';
          fConnexion.hidden = true; fNouveau.hidden = false; champNouveau.focus();
          fNouveau.addEventListener('submit', function (ev) {
            ev.preventDefault();
@@ -613,9 +670,20 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
              .catch(function (e) { echec(e); occuper(fNouveau, false); });
          });
        } else if (acces && rafraichir) {
-         // Adresse confirmée (type=signup, magiclink…) : la session est déjà ouverte.
-         dire('Connexion…', 'info');
-         ouvrir(acces, rafraichir).catch(echec);
+         // Autre lien (adresse confirmée, lien magique…) : jamais de connexion sans
+         // un geste de la personne, qui voit le compte concerné (lien piégé).
+         var compte = emailDuJeton(acces);
+         $('intro-confirmer').textContent = compte ? 'Ouvrir l’ERP avec le compte ' + compte + ' ?' : 'Ouvrir l’ERP avec ce lien ?';
+         fConnexion.hidden = true; fConfirmer.hidden = false;
+         fConfirmer.addEventListener('submit', function (ev) {
+           ev.preventDefault();
+           dire(''); occuper(fConfirmer, true);
+           ouvrir(acces, rafraichir).catch(function (e) { echec(e); occuper(fConfirmer, false); });
+         });
+         $('autre-compte').addEventListener('click', function () {
+           acces = rafraichir = null;
+           fConfirmer.hidden = true; fConnexion.hidden = false; dire(''); champEmail.focus();
+         });
        } else if (!champEmail.value) {
          champEmail.focus();
        }
@@ -657,8 +725,10 @@ function pageMalConfiguree(zone: Zone): Response {
  * vérifie le compte (GET /auth/v1/user) et son appartenance à l'ERP, puis pose
  * la session (erp_session, liée à l'identifiant du compte) et le relais
  * (erp_relais) que l'application échange une fois contre sa propre session
- * Supabase sur /erp/session. Le navigateur ne reçoit jamais la session du
- * compte d'équipe. Adresse et clé « anon » : valeurs publiques du projet.
+ * Supabase sur /erp/session. Le serveur ne remet jamais à un navigateur la
+ * session du compte d'équipe ; seul celui qui se connecte lui-même avec ce
+ * compte (pendant le passage aux comptes personnels) la reçoit. Adresse et clé
+ * « anon » : valeurs publiques du projet.
  */
 const SUPABASE_ERP_URL = 'https://ftfwnomkbjtlpijdevgx.supabase.co';
 const SUPABASE_ERP_ANON =
@@ -760,7 +830,13 @@ async function membreErp(jeton: string, email: string): Promise<boolean | null> 
   }
   const t = await r.text().catch(() => '');
   if (r.status !== 404 && !/PGRST202|42883|qui_suis_je/.test(t)) return null;
-  const m = await fetch(`${SUPABASE_ERP_URL}/rest/v1/membres?select=role&email=eq.${encodeURIComponent(email)}&limit=1`, {
+  // Adresse comparée sans tenir compte de la casse (une ligne saisie à la main
+  // peut avoir des majuscules) ; « % » et « _ » échappés, « * » (joker de
+  // PostgREST) ramène à une comparaison exacte.
+  const filtre = email.includes('*')
+    ? `eq.${encodeURIComponent(email)}`
+    : `ilike.${encodeURIComponent(email.replace(/[\\%_]/g, (c) => `\\${c}`))}`;
+  const m = await fetch(`${SUPABASE_ERP_URL}/rest/v1/membres?select=role&email=${filtre}&limit=1`, {
     headers: { ...entetesSupabase(jeton), 'Accept-Profile': 'erp' },
   });
   if (!m.ok) return null;
@@ -772,6 +848,10 @@ async function membreErp(jeton: string, email: string): Promise<boolean | null> 
 async function connexionErp(request: Request, url: URL, secret: string): Promise<Response> {
   if (!memeOrigine(request, url)) return repondreJson({ ok: false, erreur: 'Demande refusée : utilisez la page de connexion de l’ERP.' }, 403);
   if (!/^application\/json\b/i.test(request.headers.get('content-type') || '')) {
+    // Formulaire envoyé sans script : on le dit, sans rien lire ni rien poser.
+    if (/text\/html/i.test(request.headers.get('accept') || '')) {
+      return pageConnexionErp(ERP.racine, 'La connexion demande JavaScript : activez-le, puis réessayez.', 415);
+    }
     return repondreJson({ ok: false, erreur: 'Demande refusée.' }, 415);
   }
   const brut = await request.text().catch(() => '');
@@ -785,7 +865,7 @@ async function connexionErp(request: Request, url: URL, secret: string): Promise
   const acces = typeof corps.access_token === 'string' && corps.access_token.length <= 8192 ? corps.access_token : '';
   const rafraichir = typeof corps.refresh_token === 'string' && corps.refresh_token.length <= 2048 ? corps.refresh_token : '';
   if (!acces || !rafraichir) return repondreJson({ ok: false, erreur: 'Connexion incomplète : réessayez.' }, 400);
-  const suite = suiteSure(ERP, typeof corps.suite === 'string' ? corps.suite : ERP.racine);
+  const suite = sansIdentifiants(suiteSure(ERP, typeof corps.suite === 'string' ? corps.suite : ERP.racine));
 
   try {
     const u = await fetch(`${SUPABASE_ERP_URL}/auth/v1/user`, { headers: entetesSupabase(acces) });
@@ -861,7 +941,10 @@ export default async function middleware(request: Request): Promise<Response | u
     `${zone.cookie}=; Path=${zone.racine}; Max-Age=0; HttpOnly; Secure; SameSite=Lax`;
 
   if (chemin === zone.deconnexion) {
-    return pageConnexion(zone, zone.racine, '', 200, { 'Set-Cookie': cookieVide });
+    // ERP : le relais (5 minutes) part avec la session.
+    const effacer: [string, string][] = [['Set-Cookie', cookieVide]];
+    if (zone === ERP) effacer.push(['Set-Cookie', cookieRelais('', 0)]);
+    return pageConnexion(zone, zone.racine, '', 200, effacer);
   }
 
   if (chemin === zone.connexion) {
@@ -915,5 +998,5 @@ export default async function middleware(request: Request): Promise<Response | u
     });
   }
 
-  return pageConnexion(zone, chemin + url.search, '', 401, { 'Set-Cookie': cookieVide });
+  return pageConnexion(zone, sansIdentifiants(chemin + url.search), '', 401, { 'Set-Cookie': cookieVide });
 }
