@@ -4,7 +4,10 @@
  * (agent-assistant.ts, api/erp-agent.ts) et la boîte de réception.
  *
  * - demandes du voyageur (intentions) et leurs libellés courts ;
- * - sujets sensibles : jamais d'envoi automatique ;
+ * - sujets sensibles (message du voyageur ET réponse proposée) : jamais
+ *   d'envoi automatique ; envoi seul seulement pour un voyageur qui écrit en
+ *   français ou en anglais (langues que ces garde-fous savent relire) ;
+ * - message d'attente : un texte fixe par langue, jamais celui de l'IA ;
  * - niveaux d'autonomie de l'agent (seuils de confiance) et verdict d'envoi :
  *   envoyer, à valider (réponse préparée, l'équipe l'envoie en un clic),
  *   transmettre ;
@@ -80,12 +83,30 @@ export function confianceLue(v: unknown): number | undefined {
 /** Demandes jamais envoyées seules : argent, annulation, problème sur place. */
 export const INTENTIONS_SENSIBLES: IntentionMessage[] = ['paiement', 'annulation', 'probleme_technique'];
 
-/** Annulation, dans les langues des voyageurs (annuler, cancel, stornieren, cancelar, annullare). */
-export const ANNULATION = /annul|cancel|stornier|cancelar/i;
+/** Annulation, dans les langues des voyageurs (annuler, cancel, stornieren, cancelar, anular, annullare). */
+export const ANNULATION = /annul|\banul|cancel|stornier|cancelar/i;
 
-/** Argent : paiement, remboursement, caution, geste commercial, prix. */
-const ARGENT =
-  /rembours|refund|d[ée]dommag|geste commercial|remise(?! (des|de la|du) cl)|r[ée]duction|discount|compensation|caution|d[ée]p[ôo]t de garantie|(security|damage) deposit|kaution|fianza|paiement|payer|payment|\bpay\b|\bpaid\b|€|\beuros?\b|\bEUR\b/i;
+/**
+ * Argent : paiement, remboursement (fr, en, es, it, de, nl, pl), caution,
+ * geste, gratuité, frais et prix, devises. Large exprès : un faux positif
+ * fait seulement relire l'équipe.
+ */
+const ARGENT = new RegExp(
+  [
+    'rembours', 'refund', 'reembols', 'devoluc', 'devolv', 'rimbors', 'erstatt', 'terugbetal', 'zwrot',
+    'd[ée]dommag', 'geste commercial', 'remise(?! (des|de la|du) cl)', 'r[ée]duction', 'discount', 'compensation',
+    'caution', 'cauzione', 'd[ée]p[ôo]t de garantie', '(security|damage) deposit', 'kaution', 'fianza',
+    'paiement', 'payer', 'payment', '\\bpay\\b', '\\bpaid\\b',
+    '\\bargent\\b', '\\bmoney\\b', '\\bdinero\\b', '\\bgeld\\b', '\\bsoldi\\b', '\\bdinheiro\\b',
+    '\\bfrais\\b', '\\bfees?\\b', '\\bcharges?\\b', '\\bprix\\b', '\\bprices?\\b', '\\btarifs?\\b',
+    '\\bco[ûu]ts?\\b', '\\bcosts?\\b', '\\bcoste\\b', '\\bcosto\\b', '\\bkosten\\b', '\\bbetrag\\b',
+    'gratuit', '\\bfree\\b', 'offert', 'kostenlos', '\\bgratis\\b',
+    '€', '\\$', '£', '\\bCHF\\b', 'dollar', '\\beuros?\\b', '\\bEUR\\b',
+  ].join('|'),
+  'i',
+);
+/** Tournures courantes sans rapport avec l'argent, retirées avant la recherche (« feel free », « prise en charge »). */
+const SANS_ARGENT = /feel free|prise? en charge|in charge of/gi;
 
 /** Réclamation et litige. */
 const RECLAMATION = /r[ée]clamation|litige|plainte|inacceptable|arnaque|avocat|scam|complain|unacceptable|lawyer|police/i;
@@ -108,11 +129,72 @@ export interface SujetSensible {
 export function sujetSensible(texteVoyageur: string, intention?: IntentionMessage): SujetSensible | null {
   const t = String(texteVoyageur ?? '');
   if (intention === 'annulation' || ANNULATION.test(t)) return { raison: 'argent', motif: 'Le voyageur parle d’annulation : à vous de décider.' };
-  if (intention === 'paiement' || ARGENT.test(t)) return { raison: 'argent', motif: 'Question d’argent (paiement, remboursement, caution) : à vous de décider.' };
+  if (intention === 'paiement' || ARGENT.test(t.replace(SANS_ARGENT, ' '))) return { raison: 'argent', motif: 'Question d’argent (paiement, remboursement, caution) : à vous de décider.' };
   if (RECLAMATION.test(t)) return { raison: 'litige', motif: 'Réclamation : une réponse de l’équipe s’impose.' };
   if (intention === 'probleme_technique' || estProbleme(t)) return { raison: 'litige', motif: 'Problème sur place : une réponse de l’équipe s’impose.' };
   if (DONNEES_PERSONNELLES.test(t)) return { raison: 'autre', motif: 'Données personnelles : à vous de répondre.' };
   return null;
+}
+
+/**
+ * La réponse proposée elle-même (et sa version française) touche-t-elle un
+ * sujet sensible ? Un message du voyageur peut contenir une consigne cachée
+ * qui fait écrire à l'IA « nous vous remboursons » en notant « infos,
+ * confiance 0,99 » : la réponse est relue par les mêmes garde-fous avant
+ * tout envoi seul.
+ */
+export function reponseSensible(texteReponse: string): SujetSensible | null {
+  const s = sujetSensible(texteReponse);
+  if (!s) return null;
+  const motifs: Partial<Record<RaisonEscalade, string>> = {
+    argent: 'La réponse proposée parle d’argent ou d’annulation : votre agent ne s’y engage pas seul.',
+    litige: 'La réponse proposée parle d’un problème ou d’une réclamation : à vous de répondre.',
+    autre: 'La réponse proposée touche à des données personnelles : à vous de décider.',
+  };
+  return { raison: s.raison, motif: motifs[s.raison] ?? s.motif };
+}
+
+/** Une réponse sensible pour l'argent ou les données personnelles ne reste pas proposée à l'envoi en un clic. */
+export const reponseAEcarter = (texteReponse: string): boolean => {
+  const s = reponseSensible(texteReponse);
+  return !!s && s.raison !== 'litige';
+};
+
+/** Langues que ces garde-fous savent relire : seules elles permettent un envoi seul. */
+export const LANGUES_RELUES = ['fr', 'en'];
+
+/** Derniers messages du voyageur (3 par défaut), même déjà répondus : un sujet abordé plus tôt compte. */
+export function derniersMessagesVoyageur(fil: Pick<FilMessages, 'messages'>, n = 3): string {
+  return fil.messages
+    .filter((m) => m.auteur === 'voyageur')
+    .slice(-n)
+    .map((m) => m.texte)
+    .join('\n');
+}
+
+/* ===================================================== message d'attente */
+
+/** Message d'attente fixe, par langue : jamais un texte écrit par l'IA. */
+export const MESSAGES_ATTENTE: Record<string, string> = {
+  fr: 'Merci pour votre message, l’équipe revient vers vous rapidement.',
+  en: 'Thank you for your message, our team will get back to you shortly.',
+  es: 'Gracias por su mensaje, nuestro equipo le responderá en breve.',
+  de: 'Vielen Dank für Ihre Nachricht, unser Team meldet sich in Kürze bei Ihnen.',
+  it: 'Grazie per il suo messaggio, il nostro team le risponderà a breve.',
+  pt: 'Obrigado pela sua mensagem, a nossa equipa responderá em breve.',
+  nl: 'Bedankt voor uw bericht, ons team neemt binnenkort contact met u op.',
+};
+
+/**
+ * Message d'attente dans la langue du voyageur : celle de ses messages
+ * (devinée sans IA), sinon celle notée par l'IA (elle ne choisit qu'entre ces
+ * textes fixes), sinon l'anglais.
+ */
+export function messageAttente(texteVoyageur: string, langueIA?: string): { langue: string; texte: string } {
+  const lue = langueProbable(texteVoyageur);
+  const ia = codeLangue(langueIA);
+  const langue = lue && MESSAGES_ATTENTE[lue] ? lue : ia && MESSAGES_ATTENTE[ia] ? ia : 'en';
+  return { langue, texte: MESSAGES_ATTENTE[langue] };
 }
 
 /* =================================================== niveaux d'autonomie */
@@ -189,19 +271,35 @@ export interface DecisionNotee {
   raison: RaisonEscalade | 'aucune';
   confiance?: number;
   intention?: IntentionMessage;
+  /** Réponse proposée au voyageur, et sa version française : relues avant tout envoi seul. */
+  texte?: string;
+  texteFr?: string;
 }
 
 /**
  * Sort d'une décision (déjà passée par les garde-fous) : l'agent n'envoie
- * seul que s'il veut répondre, hors sujet sensible, si le niveau le permet
- * et si sa confiance atteint le seuil. Sinon : à valider (réponse gardée),
- * ou transmise (sujet sensible, choix de l'agent).
+ * seul que s'il veut répondre, si ni les derniers messages du voyageur
+ * (`texteVoyageur` : les 3 derniers) ni la réponse proposée ne touchent un
+ * sujet sensible, si le voyageur écrit en français ou en anglais, si le
+ * niveau le permet et si sa confiance atteint le seuil. Sinon : à valider
+ * (réponse gardée), ou transmise (sujet sensible, choix de l'agent).
+ * Vaut aussi pour Label Maison sans choix enregistré.
  */
 export function verdictEnvoi(d: DecisionNotee, p: PolitiqueEnvoi, texteVoyageur: string): Verdict {
   if (d.action === 'transmettre') return { verdict: 'transmettre', raison: d.raison === 'aucune' ? 'autre' : d.raison, motif: '' };
   const sensible = sujetSensible(texteVoyageur, d.intention);
   if (sensible) return { verdict: 'transmettre', ...sensible };
+  const reponse = reponseSensible([d.texte, d.texteFr].filter(Boolean).join('\n'));
+  if (reponse) return { verdict: 'transmettre', ...reponse };
   if (!p.envoiAuto) return { verdict: 'valider', motif: 'Vous validez chaque réponse.' };
+  const langueVoyageur = langueProbable(texteVoyageur);
+  if (!langueVoyageur || !LANGUES_RELUES.includes(langueVoyageur)) {
+    return { verdict: 'valider', motif: 'Message dans une langue que votre agent ne sait pas relire seul : à vous de valider.' };
+  }
+  const langueReponse = d.texte ? langueProbable(d.texte) : undefined;
+  if (langueReponse && !LANGUES_RELUES.includes(langueReponse)) {
+    return { verdict: 'valider', motif: 'Réponse dans une langue que votre agent ne sait pas relire seul : à vous de valider.' };
+  }
   if (p.intentions && !p.intentions.includes(d.intention ?? 'autre')) {
     return { verdict: 'valider', motif: 'Ce n’est pas une question simple : à vous de valider.' };
   }
@@ -252,13 +350,13 @@ export const nomLangue = (code: string | undefined): string | undefined => (code
 // Mots très courants par langue (minuscules, sans ponctuation). Les mots
 // partagés par plusieurs langues comptent pour chacune : le contexte tranche.
 const MOTS: Record<string, string[]> = {
-  fr: ['le', 'les', 'des', 'du', 'est', 'et', 'je', 'vous', 'nous', 'pour', 'pas', 'une', 'merci', 'bonjour', 'bonsoir', 'avec', 'dans', 'sur', 'très', 'bien', 'oui', 'ça', 'c', 'j', 'qu', 'quel', 'quelle', 'avons', 'sommes', 'pouvez', 'peut', 'heure', 'arrivée', 'logement', 'clé', 'clés', 'votre', 'notre', 'mais', 'où', 'comment', 'ai', 'au', 'aux', 'cette', 'à', 'été', 'était', 'serait', 'svp', 'parfait', 'reparti'],
-  en: ['the', 'and', 'is', 'are', 'you', 'we', 'i', 'to', 'for', 'of', 'it', 'hi', 'hello', 'thanks', 'thank', 'please', 'can', 'could', 'would', 'what', 'when', 'where', 'there', 'our', 'my', 'with', 'have', 'do', 'does', 'check', 'will', 'be', 'get', 'at', 'this', 'that', 'just', 'any', 'how', 'was', 'your', 'us', 'an', 'arrive', 'flight', 'key', 'great', 'stay'],
-  es: ['el', 'los', 'las', 'que', 'y', 'es', 'por', 'para', 'gracias', 'hola', 'con', 'nosotros', 'podemos', 'puedo', 'llegar', 'buenos', 'buenas', 'días', 'está', 'muy', 'pero', 'tenemos', 'hay', 'dónde', 'cómo', 'llave', 'mañana', 'usted', 'queremos', 'qué', 'hora'],
-  de: ['der', 'die', 'das', 'und', 'ist', 'ich', 'wir', 'sie', 'nicht', 'ein', 'eine', 'danke', 'hallo', 'mit', 'für', 'auf', 'können', 'bitte', 'guten', 'tag', 'wann', 'wo', 'zu', 'uns', 'haben', 'sind', 'gibt', 'schlüssel', 'ankunft', 'morgen', 'wie', 'vielen', 'noch', 'auch', 'möchten', 'kann', 'den', 'dem'],
-  it: ['il', 'di', 'che', 'è', 'per', 'grazie', 'ciao', 'buongiorno', 'buonasera', 'con', 'siamo', 'possiamo', 'arrivare', 'sono', 'non', 'alle', 'della', 'chiave', 'abbiamo', 'vorremmo', 'posso', 'anche', 'molto', 'gli', 'ci', 'dove', 'quando'],
-  pt: ['o', 'os', 'não', 'nós', 'obrigado', 'obrigada', 'olá', 'com', 'podemos', 'chegar', 'muito', 'bom', 'dia', 'você', 'vocês', 'temos', 'chave', 'quarto', 'estamos', 'gostaríamos', 'gostaria', 'onde', 'também', 'um', 'é'],
-  nl: ['het', 'een', 'ik', 'wij', 'we', 'niet', 'dank', 'bedankt', 'hallo', 'met', 'voor', 'op', 'kunnen', 'graag', 'wanneer', 'hoe', 'waar', 'sleutel', 'zijn', 'hebben', 'van', 'jullie', 'goedemorgen', 'alvast'],
+  fr: ['le', 'la', 'les', 'de', 'des', 'du', 'un', 'une', 'en', 'est', 'et', 'je', 'il', 'on', 'ne', 'se', 'ce', 'qui', 'que', 'vous', 'nous', 'pour', 'pas', 'plus', 'merci', 'bonjour', 'bonsoir', 'avec', 'dans', 'sur', 'très', 'bien', 'oui', 'ça', 'c', 'j', 'qu', 'y', 'quel', 'quelle', 'avons', 'avez', 'sommes', 'êtes', 'sont', 'pouvez', 'peut', 'peux', 'possible', 'heure', 'arriver', 'arrivée', 'partir', 'départ', 'demain', 'soir', 'matin', 'logement', 'clé', 'clés', 'votre', 'notre', 'vos', 'nos', 'mon', 'ma', 'mes', 'mais', 'où', 'comment', 'ai', 'au', 'aux', 'cette', 'à', 'été', 'était', 'serait', 'sera', 'svp', 'parfait', 'reparti', 'aussi', 'encore', 'tout'],
+  en: ['the', 'and', 'is', 'are', 'you', 'we', 'i', 'to', 'for', 'of', 'it', 'in', 'on', 'hi', 'hello', 'thanks', 'thank', 'please', 'can', 'could', 'would', 'what', 'when', 'where', 'there', 'our', 'my', 'with', 'have', 'do', 'does', 'check', 'will', 'be', 'get', 'at', 'this', 'that', 'just', 'any', 'how', 'was', 'your', 'us', 'an', 'arrive', 'leave', 'later', 'early', 'tomorrow', 'tonight', 'morning', 'flight', 'key', 'great', 'stay', 'room'],
+  es: ['el', 'la', 'los', 'las', 'de', 'del', 'al', 'en', 'un', 'una', 'que', 'y', 'es', 'por', 'para', 'gracias', 'hola', 'con', 'nosotros', 'podemos', 'puedo', 'quiero', 'tengo', 'llegar', 'llegada', 'salida', 'buenos', 'buenas', 'días', 'está', 'muy', 'pero', 'tenemos', 'hay', 'dónde', 'cómo', 'llave', 'mañana', 'usted', 'queremos', 'qué', 'hora', 'mi', 'su', 'lo'],
+  de: ['der', 'die', 'das', 'und', 'ist', 'ich', 'wir', 'sie', 'nicht', 'ein', 'eine', 'danke', 'hallo', 'mit', 'für', 'auf', 'können', 'bitte', 'guten', 'tag', 'wann', 'wo', 'zu', 'uns', 'haben', 'sind', 'gibt', 'schlüssel', 'ankunft', 'abreise', 'anreise', 'zimmer', 'frage', 'morgen', 'wie', 'vielen', 'noch', 'auch', 'möchten', 'kann', 'den', 'dem'],
+  it: ['il', 'la', 'di', 'del', 'che', 'è', 'per', 'un', 'una', 'in', 'grazie', 'ciao', 'buongiorno', 'buonasera', 'con', 'siamo', 'possiamo', 'arrivare', 'arrivo', 'partenza', 'sono', 'non', 'alle', 'della', 'chiave', 'abbiamo', 'vorremmo', 'vorrei', 'posso', 'anche', 'molto', 'gli', 'ci', 'mi', 'dove', 'quando'],
+  pt: ['o', 'os', 'de', 'da', 'do', 'em', 'que', 'não', 'nós', 'eu', 'obrigado', 'obrigada', 'olá', 'com', 'podemos', 'chegar', 'chegada', 'saída', 'muito', 'bom', 'dia', 'você', 'vocês', 'temos', 'chave', 'quarto', 'estamos', 'gostaríamos', 'gostaria', 'onde', 'também', 'um', 'uma', 'para', 'é'],
+  nl: ['de', 'het', 'een', 'en', 'ik', 'wij', 'we', 'ons', 'niet', 'dank', 'bedankt', 'hallo', 'met', 'voor', 'op', 'om', 'te', 'kunnen', 'graag', 'wanneer', 'hoe', 'waar', 'sleutel', 'aankomst', 'zijn', 'hebben', 'van', 'jullie', 'goedemorgen', 'alvast'],
 };
 const INDEX_MOTS = new Map<string, Set<string>>(Object.entries(MOTS).map(([l, mots]) => [l, new Set(mots)]));
 
@@ -416,18 +514,45 @@ export function trierParUrgence<F extends Pick<FilMessages, 'id' | 'dernierMessa
 
 /* ======================================================== codes d'accès */
 
-/** Codes, wifi et numéros d'accès de la fiche : jamais dans un texte avant que le voyageur y ait droit. */
+/** Suite de 4 chiffres ou plus, séparés ou non (« 4821 », « 4 8 2 1 », « 48-21 ») : un code possible. */
+const SUITE_CHIFFRES = /\d(?:[\s\-–—.·/]?\d){3,}/g;
+
+/** Texte sans espaces ni séparateurs (« 1-2-3-4 » = « 1234 »), en minuscules. */
+const compact = (t: string) => t.toLowerCase().replace(/[\s\-–—._·/]+/g, '');
+
+/**
+ * Codes, wifi et numéros d'accès de la fiche : jamais dans un texte avant
+ * que le voyageur y ait droit. Comptent aussi les suites de chiffres des
+ * questions fréquentes et de « À savoir » (un code du portail s'y glisse).
+ */
 export function secretsAcces(fiche: Partial<Logement['fiche']> | undefined): string[] {
   if (!fiche) return [];
   const acces = String(fiche.acces ?? '');
-  const codes = [...(acces.match(/\d{4,}/g) ?? []), ...[...acces.matchAll(/code\s*:?\s*([A-Za-z0-9#*]{3,})/gi)].map((m) => m[1])];
+  const autres = [fiche.aSavoir ?? '', ...(fiche.questions ?? []).map((q) => q?.reponse ?? '')].join('\n');
+  const codes = [
+    ...(acces.match(SUITE_CHIFFRES) ?? []),
+    ...[...acces.matchAll(/code\s*:?\s*([A-Za-z0-9#*]{3,})/gi)].map((m) => m[1]),
+    ...(autres.match(SUITE_CHIFFRES) ?? []),
+  ];
   return [...new Set([fiche.wifiCode, fiche.wifiNom, ...codes].map((x) => String(x ?? '').trim()).filter((x) => x.length >= 3))];
 }
 
-/** Le texte contient-il un code d'accès ou le wifi du logement ? */
+/** Le texte contient-il un code d'accès ou le wifi du logement ? Comparé sans espaces ni séparateurs. */
 export function contientCodeAcces(texte: string, fiche: Partial<Logement['fiche']> | undefined): boolean {
-  const t = String(texte ?? '').toLowerCase();
-  return !!t && secretsAcces(fiche).some((s) => t.includes(s.toLowerCase()));
+  const t = String(texte ?? '');
+  if (!t.trim()) return false;
+  const brut = t.toLowerCase();
+  const serre = compact(t);
+  return secretsAcces(fiche).some((s) => {
+    const c = compact(s);
+    // Un secret très court ne se compare que tel quel (pas de faux positif en collant des mots).
+    return c.length >= 4 ? serre.includes(c) : brut.includes(s.toLowerCase());
+  });
+}
+
+/** Texte de la fiche donné à l'IA avant l'heure : suites de chiffres (codes possibles) retirées. */
+export function masquerCodes(texte: string): string {
+  return String(texte ?? '').replace(SUITE_CHIFFRES, '[code communiqué dans les 48 heures avant l’arrivée]');
 }
 
 /* ======================================================== plafond de l'IA */
@@ -461,6 +586,30 @@ export function lireValidation(v: unknown): ValidationBrouillon | undefined {
   const x = (v ?? {}) as { source?: unknown; modifiee?: unknown };
   if (x.source !== 'agent' && x.source !== 'proposition') return undefined;
   return { source: x.source, modifiee: x.modifiee === true };
+}
+
+/** Texte comparable : retours à la ligne et espaces normalisés. */
+const normaliser = (t: string) => String(t ?? '').replace(/\r\n/g, '\n').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n').trim();
+
+/**
+ * Validation calculée par le serveur à l'envoi : le texte envoyé est-il la
+ * réponse préparée par l'agent (fil.agent.brouillon) ou la dernière
+ * proposition (fil.proposition), telle quelle ou retouchée ? Le navigateur
+ * ne fait qu'indiquer d'où il pense que le texte vient (`indice`) ; sans
+ * réponse de l'agent en attente sur le fil, rien n'est noté.
+ */
+export function validationServeur(f: FilMessages, texte: string, indice?: ValidationBrouillon['source']): ValidationBrouillon | undefined {
+  const envoye = normaliser(texte);
+  if (!envoye) return undefined;
+  const attente = new Set(messagesSansReponse(f).map((m) => m.id));
+  const b = f.agent?.brouillon;
+  const agent = b && !b.valideePar && attente.has(b.messageId) ? normaliser(b.texte) : undefined;
+  const proposee = f.proposition && attente.has(f.proposition.messageId) ? normaliser(f.proposition.texte) : undefined;
+  if (agent && agent === envoye) return { source: 'agent', modifiee: false };
+  if (proposee && proposee === envoye) return { source: 'proposition', modifiee: false };
+  if (indice === 'agent' && agent) return { source: 'agent', modifiee: true };
+  if (indice === 'proposition' && proposee) return { source: 'proposition', modifiee: true };
+  return undefined;
 }
 
 /** Fil après l'envoi d'une réponse préparée par l'agent : qui l'a validée, quand, retouchée ou non. */

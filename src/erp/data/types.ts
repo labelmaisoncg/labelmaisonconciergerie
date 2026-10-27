@@ -462,6 +462,11 @@ export interface FilMessages {
   agent?: SuiviAgent;
   /** Dernier message du voyageur lu par l'IA : langue, demande, ton (tri de « À répondre »). */
   analyse?: AnalyseFil;
+  /**
+   * Dernière réponse proposée avec « Proposer une réponse » (rien d'envoyé) :
+   * le serveur la compare au texte envoyé pour noter qui l'a validée.
+   */
+  proposition?: { messageId: Id; texte: string; le: Horodatage; par: string };
 }
 
 export type RaisonEscalade = 'argent' | 'litige' | 'hors_fiche' | 'exception' | 'autre';

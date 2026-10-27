@@ -31,7 +31,12 @@
  * demande du voyageur (intention), son ton et sa confiance (0 à 1). L'agent
  * n'envoie seul que hors sujet sensible, si le niveau choisi le permet et si
  * la confiance atteint le seuil ; sinon la réponse est gardée « à valider »
- * sur le fil (agent.brouillon) et l'équipe l'envoie en un clic. Chaque
+ * sur le fil (agent.brouillon) et l'équipe l'envoie en un clic. La réponse
+ * elle-même est relue par les mêmes garde-fous (une consigne cachée dans un
+ * message peut faire écrire « nous vous remboursons » en notant « infos,
+ * confiance 0,99 »), et l'envoi seul suppose un voyageur qui écrit en
+ * français ou en anglais. Le message d'attente est un texte fixe par
+ * langue, jamais celui de Claude. Chaque
  * décision est notée au journal (demande, confiance, envoyée / à valider /
  * transmise) et dans le bilan du passage. Label Maison sans choix enregistré
  * garde son fonctionnement d'avant (pas de seuil).
@@ -63,9 +68,14 @@ import {
   codeLangue,
   confianceLue,
   contientCodeAcces,
+  derniersMessagesVoyageur,
   estIntention,
   estSentiment,
+  masquerCodes,
+  messageAttente,
   politiqueEnvoi,
+  reponseAEcarter,
+  reponseSensible,
   verdictEnvoi,
   type PolitiqueEnvoi,
 } from './messagerie-ia.js';
@@ -456,10 +466,11 @@ export function construireContexte(
         ligne('Parking', f.parking),
         ligne('Règles de la maison', f.regles),
         ligne('Équipements', f.equipements),
-        ligne('À savoir', f.aSavoir ?? ''),
+        // Avant l'heure des codes, les suites de chiffres (un code du portail glissé dans une réponse) sont retirées.
+        ligne('À savoir', codes.ok ? (f.aSavoir ?? '') : masquerCodes(f.aSavoir ?? '')),
         ...questionsValides(f.questions)
           .slice(0, 30)
-          .map((q) => `- Question fréquente : ${court(q.question, 200)} → Réponse : ${court(q.reponse, 600)}`),
+          .map((q) => `- Question fréquente : ${court(q.question, 200)} → Réponse : ${court(codes.ok ? q.reponse : masquerCodes(q.reponse), 600)}`),
         ...lignesAnnonce(logement?.descriptif),
         ...(codes.ok
           ? [ligne('Accès et remise des clés', f.acces), ligne('Réseau wifi', f.wifiNom), ligne('Mot de passe wifi', f.wifiCode)]
@@ -803,6 +814,11 @@ class Passage {
         await this.transmettre(fil, dernier, 'autre', 'Une réponse de l’agent n’a pas pu être confirmée : vérifiez sur la plateforme si le voyageur l’a reçue.');
         return;
       }
+      // Texte gardé par une version d'avant (message d'attente écrit par l'IA, réponse non relue) : jamais renvoyé s'il est sensible.
+      if (reponseSensible(ec.texte)) {
+        await this.transmettre(fil, dernier, 'autre', 'Une réponse de l’agent en attente d’envoi touchait un sujet sensible : elle n’est pas repartie. Vérifiez sur la plateforme si le voyageur l’a reçue.');
+        return;
+      }
       if (ec.transmettre) {
         await this.transmettre(fil, dernier, ec.raison ?? 'autre', ec.resume || 'Reprise d’une transmission interrompue.', ec.texte);
         return;
@@ -813,7 +829,8 @@ class Passage {
     }
 
     const { decision: d, brut } = await this.decider(fil, logement, reservation);
-    const texteVoyageur = enAttente(fil).map((m) => m.texte).join('\n');
+    // Les 3 derniers messages du voyageur, même déjà répondus (« comme convenu, confirmez par écrit »).
+    const texteVoyageur = derniersMessagesVoyageur(fil, 3);
     const verdict = verdictEnvoi(d, this.politique, texteVoyageur);
     const note: NoteDecision = {
       ...(d.intention ? { intention: d.intention } : {}),
@@ -821,8 +838,10 @@ class Passage {
       analyse: analyseDepuisDecision(d, dernier.id, horodatageParis(this.maintenant())),
     };
     if (verdict.verdict !== 'envoyer') {
-      // Message d'attente : seulement s'il l'a choisi lui-même (transmettre) et si l'agent peut envoyer seul.
-      const attente = d.action === 'transmettre' && this.politique.envoiAuto && d.texte ? signer(d.texte, this.reglages.signature) : undefined;
+      // Message d'attente : seulement s'il l'a choisi lui-même (transmettre) et si l'agent peut envoyer seul,
+      // et toujours un texte fixe dans la langue du voyageur, jamais celui de Claude.
+      const fixe = d.action === 'transmettre' && this.politique.envoiAuto && d.texte ? messageAttente(texteVoyageur, d.langue).texte : undefined;
+      const attente = fixe && !reponseSensible(fixe) ? signer(fixe, this.reglages.signature) : undefined;
       // Rien d'autre ne part : la réponse de Claude reste proposée à l'équipe (jamais avec un code d'accès avant l'heure).
       const motif = verdict.motif || d.resume;
       const garde = brut?.texte && !attente ? await this.preparer(fil, dernier, brut, logement, reservation, motif) : undefined;
@@ -887,8 +906,8 @@ class Passage {
     motif: string,
   ): Promise<BrouillonAgent | undefined> {
     const texte = d.texte.trim();
-    // Une réponse qui parle d'argent ne se valide pas d'un clic : l'équipe l'écrit elle-même.
-    if (!texte || ARGENT.test(texte)) return undefined;
+    // Une réponse qui parle d'argent (ou demande des données personnelles) ne se valide pas d'un clic : l'équipe l'écrit elle-même.
+    if (!texte || ARGENT.test(texte) || reponseAEcarter(`${texte}\n${d.texteFr ?? ''}`)) return undefined;
     if (!codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(`${texte}\n${d.texteFr ?? ''}`, logement?.fiche)) return undefined;
     const { liens } = await this.liensGuides(d, fil, logement, reservation);
     const langue = codeLangue(d.langue);
