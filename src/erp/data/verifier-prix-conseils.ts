@@ -21,7 +21,8 @@ import { conseillerPrix, conseilsParNuit, decider, lireElementsPrix, plusJours, 
 import { INTERVALLE_ANOMALIES_MS, passerDansEspace, planifierPassage, travauxDus, type BasePassagePrix } from './prix-passage';
 import type { GroupeNotification } from './notifications';
 import { DATE_DEMO } from './format';
-import { conseilsDuJour } from '../modules/logements/_composants/prix';
+import { conseilsDuJour, voitPrixConseilles } from '../modules/logements/_composants/prix';
+import { construireATraiter } from '../modules/tableau-de-bord/_composants/aTraiter.js';
 import { elementsPrixEtAnomalies } from '../modules/tableau-de-bord/_composants/aTraiterAnalyse';
 import { ecritureRepullPermise } from './repull-synchro';
 import { indicateurs } from './selectors';
@@ -40,6 +41,22 @@ function verifier(condition: unknown, message: string) {
   }
 }
 const section = (titre: string) => console.log(`\n${titre}`);
+
+// Modules de Node chargés à l'exécution (l'ERP n'a pas les types de Node).
+const nomFs = 'node:fs';
+const nomChemins = 'node:path';
+const fs = (await import(/* @vite-ignore */ nomFs)) as { existsSync(p: string): boolean; readFileSync(p: string, e: 'utf8'): string };
+const chemins = (await import(/* @vite-ignore */ nomChemins)) as { join(...p: string[]): string; dirname(p: string): string; resolve(...p: string[]): string };
+/** Source d'un fichier du dépôt, cherché depuis le dossier courant et ses parents. */
+function source(chemin: string): string | undefined {
+  let dossier = (globalThis as { process?: { cwd(): string } }).process!.cwd();
+  for (let i = 0; i < 6; i++) {
+    const f = chemins.join(dossier, chemin);
+    if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8');
+    dossier = chemins.dirname(chemins.resolve(dossier));
+  }
+  return undefined;
+}
 
 /* ------------------------------------------------------------ jeu d'essai */
 
@@ -402,6 +419,27 @@ section('Accueil : « N logements : prix à revoir »');
   verifier(!elementsPrixEtAnomalies(seed, DATE_DEMO, { gerant: false }).some((x) => x.type === 'prix'), 'pas de ligne de prix pour un compte qui n’est pas gérant');
 }
 
+section('Prix : le gérant seul, sur l’Accueil comme sur la page du logement');
+{
+  const seed = creerSeed();
+  // Comme l'Accueil (tableau-de-bord/index.tsx) : « gerant » vient du rôle ; comme la carte : voitPrixConseilles.
+  const accueil = (role: string) => construireATraiter(seed, DATE_DEMO, { gerant: role === 'gerant' }).some((x) => x.type === 'prix');
+  for (const [role, lecture] of [['operations', false], ['lecture', true], ['prestataire', false]] as const) {
+    verifier(!accueil(role) && !voitPrixConseilles({ role }, lecture), `${role} : ni la ligne « prix à revoir » de l’Accueil, ni la carte « Prix conseillés »`);
+  }
+  verifier(accueil('gerant') && voitPrixConseilles({ role: 'gerant' }, false), 'gérant : la ligne de l’Accueil et la carte');
+  verifier(!voitPrixConseilles({ role: 'gerant' }, true), 'gérant en lecture seule : pas de carte');
+  // La carte s'appuie sur cette règle, et ne s'affiche pas quand elle dit non.
+  const carte = source('src/erp/modules/logements/_composants/PrixConseilles.tsx') ?? '';
+  verifier(
+    /const gerant = voitPrixConseilles\(d\.utilisateur, d\.lectureSeule\);/.test(carte) && /if \(!gerant \|\|[^\n]*\) return null;/.test(carte) && !/!d\.lectureSeule &&/.test(carte),
+    'la carte « Prix conseillés » ne s’affiche que pour le gérant (C’est fait, Ignorer, Annuler compris)',
+  );
+  // Le prévisionnel, lui, reste visible de tous : il ne dépend d'aucun rôle.
+  const page = source('src/erp/modules/logements/onglets/VueEnsemble.tsx') ?? '';
+  verifier(/\{prevision && <CartePrevisionnel/.test(page), 'le prévisionnel reste visible de tous les membres');
+}
+
 section('Occupation : jamais 0 % avec des séjours (logement « en pause »)');
 {
   // Annonce « inactive » chez le service de connexion → logement « en pause », mais réservée.
@@ -443,21 +481,7 @@ section('Prévisionnel 30 / 60 / 90 jours');
 
 section('Lecture seule : aucune écriture vers les plateformes');
 {
-  // Modules de Node chargés à l'exécution (l'ERP n'a pas les types de Node).
-  const nomFs = 'node:fs';
-  const nomChemins = 'node:path';
-  const fs = (await import(/* @vite-ignore */ nomFs)) as { existsSync(p: string): boolean; readFileSync(p: string, e: 'utf8'): string };
-  const chemins = (await import(/* @vite-ignore */ nomChemins)) as { join(...p: string[]): string; dirname(p: string): string; resolve(...p: string[]): string };
-  /** Source d'un fichier du dépôt, cherché depuis le dossier courant et ses parents. */
-  function source(chemin: string): string | undefined {
-    let dossier = (globalThis as { process?: { cwd(): string } }).process!.cwd();
-    for (let i = 0; i < 6; i++) {
-      const f = chemins.join(dossier, chemin);
-      if (fs.existsSync(f)) return fs.readFileSync(f, 'utf8');
-      dossier = chemins.dirname(chemins.resolve(dossier));
-    }
-    return undefined;
-  }
+
   const imports = (s: string) => [...s.matchAll(/^\s*import\s[^;]*?from\s+['"]([^'"]+)['"]/gms)].map((m) => m[1]);
   for (const f of ['prix-conseils.ts', 'prix-passage.ts', 'anomalies.ts', 'previsionnel.ts', 'occupation.ts', 'calendrier-fr.ts']) {
     const s = source(`src/erp/data/${f}`);

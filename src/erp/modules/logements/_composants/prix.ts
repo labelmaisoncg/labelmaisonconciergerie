@@ -9,6 +9,15 @@ import { idAirbnbDuLogement } from '../../../data/page-airbnb';
 import { conseillerPrix, lireElementsPrix, type PlagePrix } from '../../../data/prix-conseils';
 import type { ErpDonnees, Logement } from '../../../data/types';
 
+/**
+ * Les prix sont l'affaire du gérant (c'est lui qui les change sur Airbnb
+ * et Booking) : la ligne « prix à revoir » de l'Accueil (construireATraiter,
+ * `gerant`) et la carte « Prix conseillés » du logement sont pour lui seul,
+ * jamais pour les opérations ni la lecture seule. Le prévisionnel reste
+ * visible de tous les membres.
+ */
+export const voitPrixConseilles = (u: { role: string }, lectureSeule = false): boolean => u.role === 'gerant' && !lectureSeule;
+
 /** Les conseils du jour (tous les logements, ou un seul), avec les réglages et décisions de l'espace. */
 export function conseilsDuJour(d: Pick<ErpDonnees, 'logements' | 'reservations' | 'conseilsPrix'>, logementId?: string): PlagePrix[] {
   const { reglages, decisions } = lireElementsPrix(d.conseilsPrix);
