@@ -86,7 +86,7 @@ export const TONS_AGENT: { cle: TonAgent; libelle: string; description: string; 
  */
 export function reglagesAgent(d: Pick<ErpDonnees, 'reglages'>, nomEspace?: string): ReglagesAgent {
   const defaut = nomEspace === undefined ? REGLAGES_AGENT_DEFAUT : { ...REGLAGES_AGENT_DEFAUT, signature: signatureParDefaut(nomEspace) };
-  const stocke = (d.reglages ?? []).find((r) => r.id === 'agent');
+  const stocke = (d.reglages ?? []).find((r): r is ReglagesAgent => r.id === 'agent');
   if (!stocke) return defaut;
   return {
     ...defaut,

@@ -7,6 +7,7 @@
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
+import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -433,8 +434,11 @@ export interface ReglagesAgent {
   majPar?: string;
 }
 
-/** Tous les réglages stockés dans la collection `reglages` (un seul type pour l'instant). */
-export type Reglage = ReglagesAgent;
+/**
+ * Tous les réglages stockés dans la collection `reglages` : l'agent
+ * (id 'agent') et les messages automatiques (id 'messages-programmes').
+ */
+export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes;
 
 /* -------------------------------------------------------------- opérations */
 
@@ -800,6 +804,10 @@ export interface ErpDonnees {
   absences: AbsenceMembre[];
   controles: ControleQualite[];
   signalementsLogement: SignalementLogement[];
+  /** Messages automatiques (ajoutées en octobre 2026) : envois et refus, écrits par le serveur, */
+  envoisProgrammes: EnvoiProgramme[];
+  /** avis à déposer sur les voyageurs après leur départ (texte préparé, fait / passé). */
+  avisADeposer: AvisADeposer[];
 }
 
 export type NomCollection = keyof ErpDonnees;
