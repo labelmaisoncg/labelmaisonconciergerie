@@ -16,6 +16,7 @@ import {
 } from './constantes';
 import { AUJOURDHUI, ajouterJours, debutMois, debutMoisSuivant, ecartJours } from './format';
 import { logementsEnLocation } from './occupation';
+import { attendEquipe } from './attente-equipe';
 import type {
   Centimes,
   DateISO,
@@ -537,6 +538,7 @@ export function indicateurs(d: ErpDonnees, date: DateISO = AUJOURDHUI) {
     signaturesMois: signaturesDuMois(d.mandats, date).length,
     facturesEnRetard: facturesEnRetard(d.factures, date).length,
     paiementsAFaire: paiementsAFaire(d).length,
-    messagesEnAttente: d.filsMessages.filter((f) => f.traitePar === 'en_attente').length,
+    // Même règle que « À répondre » et le compteur du menu (attente-equipe.ts).
+    messagesEnAttente: d.filsMessages.filter(attendEquipe).length,
   };
 }

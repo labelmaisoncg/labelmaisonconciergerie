@@ -32,13 +32,6 @@ const DELAIS = [
   { valeur: '240', libelle: '4 heures' },
 ];
 
-const SEUL = [
-  'Les questions sur l’arrivée et le départ (horaires, accès, parking)',
-  'Le wifi, les équipements, les règles de la maison',
-  'Les codes d’accès, seulement aux voyageurs confirmés qui arrivent sous 48\u00a0h',
-  'Les remerciements et les petites questions du quotidien',
-];
-
 function Bloc({ titre, description, children }: { titre: string; description?: ReactNode; children: ReactNode }) {
   return (
     <Card>
@@ -134,7 +127,8 @@ export function Configurer() {
       <Card className={cn('flex flex-wrap items-center gap-4', f.actif ? 'border-(--lm-succes)/40' : 'border-(--lm-alerte)/40')}>
         <div className="min-w-0 flex-1">
           <p className="text-[16px] font-semibold text-(--lm-encre)">{f.actif ? explication.titre : 'Votre agent est en pause'}</p>
-          <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{f.actif ? explication.sousTitre : 'Tous les messages arrivent à l’équipe.'}</p>
+          {/* Actif : le titre suffit, la phrase sous le choix du niveau explique le reste. */}
+          {!f.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.</p>}
           {mention && (
             <p className="mt-1 text-[12.5px]">
               <ReserveGerant />
@@ -147,9 +141,10 @@ export function Configurer() {
         </label>
       </Card>
 
-      <EtatAgentServeur actifReglage={enregistre.actif} />
+      {/* La carte d'état suit le niveau enregistré, pas celui en cours de choix. */}
+      <EtatAgentServeur actifReglage={enregistre.actif} passage={explicationNiveau(niveauAutonomie(enregistre, estLabelMaison(espaceOuvert())), enregistre.transmettre).passage} />
 
-      <Bloc titre="Ce qu’il envoie seul">
+      <Bloc titre="Ce qu’il envoie seul" description={mention ? <ReserveGerant /> : undefined}>
         <div role="radiogroup" aria-label="Ce que votre agent envoie seul" className="grid gap-2 sm:grid-cols-3">
           {NIVEAUX_AUTONOMIE.map((n) => (
             <button
@@ -174,7 +169,6 @@ export function Configurer() {
         </div>
         <p className="mt-3 text-[13px] text-(--lm-encre-2)" aria-live="polite">
           {niveau.description}
-          {mention && <span className="text-(--lm-encre-3)"> Seul un gérant peut changer ce choix.</span>}
         </p>
       </Bloc>
 
@@ -330,7 +324,7 @@ export function Configurer() {
         <Aide titre={autonomie === 'valider' ? 'Ce qu’il prépare et les règles qu’il respecte' : 'Ce qu’il fait seul et les règles qu’il respecte'} className="mt-4 mb-0">
           <p className="font-medium text-(--lm-encre)">{explication.sujets}</p>
           <ul className="mt-1 mb-3 list-disc space-y-1 pl-5">
-            {SEUL.map((s) => (
+            {explication.listeSujets.map((s) => (
               <li key={s}>{s}</li>
             ))}
           </ul>
@@ -361,7 +355,7 @@ export function Configurer() {
         {incompletes.length ? (
           <p className="text-[13.5px] text-(--lm-encre)">
             <strong>{pluriel(incompletes.length, 'fiche est incomplète', 'fiches sont incomplètes')}</strong>
-            <span className="text-(--lm-encre-2)"> : votre agent vous passe la main pour ces logements.</span>
+            <span className="text-(--lm-encre-2)"> : {explication.fichesIncompletes}</span>
           </p>
         ) : (
           d.logements.some((l) => l.statut !== 'sorti') ? (

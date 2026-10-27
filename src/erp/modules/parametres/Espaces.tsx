@@ -304,7 +304,7 @@ export default function Espaces() {
                       e.actif
                         ? setAConfirmer({
                             titre: `Suspendre l’espace de ${e.nom} ?`,
-                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; l’agent et les mises à jour s’arrêtent. Rien n’est effacé : vous pourrez le rouvrir.',
+                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; son agent et les mises à jour s’arrêtent. Rien n’est effacé : vous pourrez le rouvrir.',
                             action: 'Suspendre l’espace',
                             corps: { action: 'suspendre', espace: e.id, actif: false },
                             cle: `suspendre-${e.id}`,

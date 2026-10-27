@@ -609,9 +609,9 @@ export function appliquerGardeFous(d: DecisionAgent, fil: FilMessages): Decision
   }
   if (ARGENT.test(voyageur)) return transmettre('argent', 'Le voyageur parle d’argent : à vous de décider.');
   if (LITIGE.test(voyageur)) return transmettre('litige', 'Le voyageur signale un problème : une réponse humaine s’impose.');
-  if (d.raison === 'argent' || d.raison === 'litige') return transmettre(d.raison, 'Transmis par l’agent.');
-  if (!d.texte) return transmettre('autre', 'L’agent n’a pas su quoi répondre.');
-  if (ARGENT.test(d.texte)) return transmettre('argent', 'La réponse proposée parlait d’argent : l’agent ne s’y engage pas.');
+  if (d.raison === 'argent' || d.raison === 'litige') return transmettre(d.raison, 'Transmis par votre agent.');
+  if (!d.texte) return transmettre('autre', 'Votre agent n’a pas su quoi répondre.');
+  if (ARGENT.test(d.texte)) return transmettre('argent', 'La réponse proposée parlait d’argent : votre agent ne s’y engage pas.');
   return { ...d, raison: 'aucune' };
 }
 
@@ -739,7 +739,7 @@ class Passage {
     this.bilan.jetons.entree += m.usage?.input_tokens ?? 0;
     this.bilan.jetons.sortie += m.usage?.output_tokens ?? 0;
     const brut = lireDecision(m);
-    if (!brut) return { decision: { action: 'transmettre', raison: 'autre', langue: '', texte: '', resume: 'L’agent n’a pas pu formuler de réponse sûre : à vous de répondre.' }, brut: null };
+    if (!brut) return { decision: { action: 'transmettre', raison: 'autre', langue: '', texte: '', resume: 'Votre agent n’a pas pu formuler de réponse sûre : à vous de répondre.' }, brut: null };
     const d = appliquerGardeFous(brut, fil);
     // Codes et wifi : jamais avant l'heure, même trouvés ailleurs que dans la fiche (historique, questions fréquentes).
     if (d.texte && !codesPermis(fil, reservation, dateParis(this.maintenant())).ok && contientCodeAcces(d.texte, logement?.fiche, logement?.descriptif)) {
@@ -844,12 +844,12 @@ class Passage {
     const ec = fil.agent?.enCours?.messageId === dernier.id ? fil.agent.enCours : undefined;
     if (ec) {
       if (this.maintenant().getTime() - instant(ec.depuis) > REPRISE_MAX_MS) {
-        await this.transmettre(fil, dernier, 'autre', 'Une réponse de l’agent n’a pas pu être confirmée : vérifiez sur la plateforme si le voyageur l’a reçue.');
+        await this.transmettre(fil, dernier, 'autre', 'Une réponse de votre agent n’a pas pu être confirmée : vérifiez sur la plateforme si le voyageur l’a reçue.');
         return;
       }
       // Texte gardé par une version d'avant (message d'attente écrit par l'IA, réponse non relue) : jamais renvoyé s'il est sensible.
       if (reponseSensible(ec.texte) || consigneCachee(ec.texte)) {
-        await this.transmettre(fil, dernier, 'autre', 'Une réponse de l’agent en attente d’envoi touchait un sujet sensible : elle n’est pas repartie. Vérifiez sur la plateforme si le voyageur l’a reçue.');
+        await this.transmettre(fil, dernier, 'autre', 'Une réponse de votre agent en attente d’envoi touchait un sujet sensible : elle n’est pas repartie. Vérifiez sur la plateforme si le voyageur l’a reçue.');
         return;
       }
       if (ec.transmettre) {
@@ -858,7 +858,7 @@ class Passage {
       }
       const controleReprise = await this.controler(ec.texte, '');
       if (!controleReprise.ok) {
-        await this.transmettre(fil, dernier, 'autre', `${controleReprise.motif} Une réponse de l’agent en attente d’envoi n’est pas repartie : vérifiez sur la plateforme si le voyageur l’a reçue.`);
+        await this.transmettre(fil, dernier, 'autre', `${controleReprise.motif} Une réponse de votre agent en attente d’envoi n’est pas repartie : vérifiez sur la plateforme si le voyageur l’a reçue.`);
         return;
       }
       await this.envoyer(fil, dernier, ec.texte, {}, (f) => ({ ...f, agent: this.suivi(dernier, 'repondre', ec.resume || 'Réponse envoyée (reprise).') }));
@@ -887,11 +887,11 @@ class Passage {
       const garde = brut?.texte && !attente ? await this.preparer(fil, dernier, brut, logement, reservation, motif) : undefined;
       if (garde) note.brouillon = garde;
       if (verdict.verdict === 'valider') {
-        if (garde) return this.aValider(fil, dernier, d.resume || 'Réponse préparée par l’agent.', verdict.motif, note);
-        await this.transmettre(fil, dernier, 'autre', d.resume || 'L’agent n’a pas pu préparer de réponse sûre : à vous de répondre.', undefined, note);
+        if (garde) return this.aValider(fil, dernier, d.resume || 'Réponse préparée par votre agent.', verdict.motif, note);
+        await this.transmettre(fil, dernier, 'autre', d.resume || 'Votre agent n’a pas pu préparer de réponse sûre : à vous de répondre.', undefined, note);
         return;
       }
-      const resume = d.action === 'transmettre' ? d.resume || 'Transmis par l’agent.' : [verdict.motif, d.resume].filter(Boolean).join(' ');
+      const resume = d.action === 'transmettre' ? d.resume || 'Transmis par votre agent.' : [verdict.motif, d.resume].filter(Boolean).join(' ');
       await this.transmettre(fil, dernier, verdict.raison, resume, attente, note);
       return;
     }
@@ -903,7 +903,7 @@ class Passage {
       const garde = !argent && brut?.texte ? await this.preparer(fil, dernier, brut, logement, reservation, controle.motif) : undefined;
       if (garde) {
         note.brouillon = garde;
-        return this.aValider(fil, dernier, d.resume || 'Réponse préparée par l’agent.', controle.motif, note);
+        return this.aValider(fil, dernier, d.resume || 'Réponse préparée par votre agent.', controle.motif, note);
       }
       await this.transmettre(fil, dernier, controle.controle?.argent ? 'argent' : 'autre', [controle.motif, d.resume].filter(Boolean).join(' '), undefined, note);
       return;
@@ -921,14 +921,14 @@ class Passage {
       this.bilan.repondus++;
       this.noter(fil, 'envoyee', note);
       await this.journal(fil, `Réponse envoyée seule à ${fil.voyageur}.${detailNote(note)}`);
-      await this.telegram(`Réponse de l’agent à ${fil.voyageur} (${nomPlateforme(r.canal)})\n« ${dernier.texte.slice(0, 300)} »\n→ ${r.message.texte.slice(0, 1500)}`);
+      await this.telegram(`Réponse de votre agent à ${fil.voyageur} (${nomPlateforme(r.canal)})\n« ${dernier.texte.slice(0, 300)} »\n→ ${r.message.texte.slice(0, 1500)}`);
     } catch (e) {
       if (e instanceof ErreurEnvoi && (e.code === 'en_cours' || e.code === 'deja_envoye')) return; // déjà envoyé, ou un autre passage s'en occupe
       if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
       if (e instanceof ErreurRepull && e.statut >= 400 && e.statut < 500 && e.statut !== 408 && e.statut !== 429) {
         // La plateforme a refusé (un lien de guide, parfois) : l'équipe reprend la main.
         const guide = liens.length ? ` Elle contenait ${liens.length > 1 ? 'des guides' : 'un guide'} (${liens.map((l) => `« ${l.titre} »`).join(', ')}) : envoyez-${liens.length > 1 ? 'les' : 'le'} autrement si la plateforme refuse les liens.` : '';
-        await this.transmettre(fil, dernier, 'autre', `La réponse de l’agent n’est pas partie (${messageEchecEnvoi(e)}).${guide}`);
+        await this.transmettre(fil, dernier, 'autre', `La réponse de votre agent n’est pas partie (${messageEchecEnvoi(e)}).${guide}`);
         return;
       }
       throw e;
@@ -1113,7 +1113,7 @@ class Passage {
 
     const etatRepull = await lireEtat(this.o.base, this.maintenant(), this.o.budgetMois ?? BUDGET_ERP_DEFAUT, this.o.quotaMois ?? QUOTA_MOIS_DEFAUT);
     if (etatRepull.budgetMois - etatRepull.appelsMois <= 0) {
-      return this.finir('budget', `Les appels Repull du mois sont épuisés (${etatRepull.appelsMois} / ${etatRepull.budgetMois}) : l’agent ne peut plus envoyer de réponse. ${b.examines} conversation(s) attendent l’équipe.`);
+      return this.finir('budget', `Les échanges du mois avec les plateformes sont épuisés (${etatRepull.appelsMois} / ${etatRepull.budgetMois}) : votre agent ne peut plus envoyer de réponse. ${b.examines} conversation(s) attendent l’équipe.`);
     }
 
     const max = this.o.maxFils ?? MAX_FILS_PAR_PASSAGE;
@@ -1134,12 +1134,12 @@ class Passage {
       } catch (e) {
         if (e instanceof BudgetEpuise) {
           b.reportes = aFaire.length - traites + 1;
-          return this.finir('budget', 'Les appels Repull du mois sont épuisés : l’agent s’arrête, les conversations restantes attendent l’équipe.');
+          return this.finir('budget', 'Les échanges du mois avec les plateformes sont épuisés : votre agent s’arrête, les conversations restantes attendent l’équipe.');
         }
         if (e instanceof PlafondIA) {
           b.reportes = aFaire.length - traites + 1;
           const n = this.o.plafondIAMois ?? 0;
-          return this.finir('budget', `Plafond du mois atteint pour cet espace (${n} décision${n > 1 ? 's' : ''} de l’agent) : les conversations restantes attendent l’équipe.`);
+          return this.finir('budget', `Plafond du mois atteint pour cet espace (${n} décision${n > 1 ? 's' : ''} de votre agent) : les conversations restantes attendent l’équipe.`);
         }
         if (e instanceof DelaiEcoule) {
           b.reportes = aFaire.length - traites + 1;
@@ -1209,7 +1209,7 @@ export async function lancerAgent(o: OptionsAgent): Promise<PassageAgent> {
   const iaDejaCeMois = etat.iaMois?.mois === mois ? etat.iaMois.appels : 0;
   const p = new Passage({ ...o, dernierReleve: o.dernierReleve ?? etat.dernierReleve, iaDejaCeMois, etatControle: o.etatControle ?? etat.controle });
   if (etat.verrou && etat.verrou.jusqua > maintenant().getTime()) {
-    return p.finir('occupe', 'Un passage de l’agent est déjà en cours : réessayez dans une minute.');
+    return p.finir('occupe', 'Un passage de votre agent est déjà en cours : réessayez dans une minute.');
   }
   const verrouille: EtatAgent = { ...etat, verrou: { jusqua: maintenant().getTime() + VERROU_MS, id: idPassage } };
   await o.base.ecrire(COLLECTION_AGENT, [verrouille]);

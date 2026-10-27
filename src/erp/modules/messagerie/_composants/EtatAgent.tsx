@@ -130,7 +130,8 @@ function Ligne({ ok, titre, children }: { ok: boolean | null; titre: string; chi
   );
 }
 
-export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
+/** `passage` : ce qu'il fait à chaque passage, selon le niveau enregistré (explicationNiveau). */
+export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: boolean; passage: string }) {
   const { mode, lectureSeule } = useErp();
   const { etat, chargement, erreur, relire } = useEtatAgent();
   const [lancement, setLancement] = useState(false);
@@ -178,7 +179,7 @@ export function EtatAgentServeur({ actifReglage }: { actifReglage: boolean }) {
 
       <ul className="mt-2 divide-y divide-(--lm-bord)" aria-busy={chargement}>
         <Ligne ok={etat ? actif : null} titre={actif ? 'Agent actif' : 'Agent en pause'}>
-          {actif ? 'Il répond aux voyageurs à chaque passage.' : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
+          {actif ? passage : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
         </Ligne>
         {/* Second contrôle des réponses en échec répété (controle-reponse.ts) : rien ne part seul. */}
         {etat?.etat?.controle?.alerte && (

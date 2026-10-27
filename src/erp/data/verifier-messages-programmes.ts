@@ -480,6 +480,15 @@ function codesEnDur() {
   );
   verifier(secretEcritDansModele('Le code est 4821.', undefined, [LOGEMENT]) && secretEcritDansModele('Wifi : soleil2026', undefined, [LOGEMENT]), 'code ou wifi d’un logement écrit dans le modèle : repéré');
   verifier(!secretEcritDansModele('Bonjour {prenom}, {acces}', undefined, [LOGEMENT]), 'variables « Accès et clés » et « Wifi » : rien à signaler');
+  {
+    // Serrure connectée, « code par séjour » : les textes par défaut ne portent aucun secret (« départ », « à partir de »).
+    const parSejour = { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, acces: 'Serrure connectée, code par séjour.' } };
+    verifier(
+      !secretEcritDansModele(TEXTES_DEFAUT.confirmation, undefined, [parSejour]) && !secretEcritDansModele(TEXTES_DEFAUT.jour_depart, undefined, [parSejour]),
+      '« code par séjour » : « Merci pour la réservation » et « Rappel du départ » sans alerte',
+    );
+    verifier(secretEcritDansModele('Le code est 4821.', undefined, [{ ...LOGEMENT, fiche: { ...LOGEMENT.fiche, acces: 'Boîte à clés, code 4821.' } }]), 'un vrai code reste repéré');
+  }
   verifier(
     secretEcritDansModele('Bonjour.', { 'log-1': { texte: 'Code 4821' } }, [LOGEMENT]) &&
       !secretEcritDansModele('Code 4821', { 'log-1': { actif: false } }, [LOGEMENT]) &&

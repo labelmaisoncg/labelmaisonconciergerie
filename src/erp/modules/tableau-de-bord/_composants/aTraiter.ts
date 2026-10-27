@@ -16,6 +16,7 @@ import { logementById } from '../../../data/selectors';
 import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
 import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
 import { trierParUrgence, urgenceFil } from '../../../data/messagerie-ia';
+import { attendEquipe } from '../../../data/attente-equipe';
 import type { ErpDonnees } from '../../../data/types';
 import type { Ton } from '../../../ui';
 import { completudeFiche } from '../../logements/_composants/stats';
@@ -54,7 +55,7 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   // Même ordre aussi : les plus urgentes d'abord (séjour en cours, arrivée, problème), puis les plus récentes.
   const reservations = new Map(d.reservations.map((r) => [r.id, r]));
   const messages = trierParUrgence(
-    d.filsMessages.filter((f) => f.statut !== 'clos' && (f.statut === 'escalade' || f.traitePar === 'en_attente')),
+    d.filsMessages.filter(attendEquipe),
     (f) => urgenceFil(f, f.reservationId ? reservations.get(f.reservationId) : undefined, aujourdhui).niveau,
   );
   if (messages.length)

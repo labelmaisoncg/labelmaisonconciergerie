@@ -84,7 +84,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
     <Card>
       <CardHeader
         titre="Guides"
-        description="Vidéos, photos ou documents que l’agent envoie au voyageur quand sa question y correspond."
+        description="Vidéos, photos ou documents que votre agent envoie au voyageur quand sa question y correspond."
         actions={
           <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, b: vide })}>
             Ajouter
@@ -148,7 +148,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
             <Field label="Titre" requis>
               <Input value={b.titre} onChange={(e) => maj({ titre: e.target.value })} placeholder="Comment récupérer la clé" autoFocus />
             </Field>
-            <Field label="Quand l’envoyer" aide="L’agent s’en sert pour choisir le bon guide.">
+            <Field label="Quand l’envoyer" aide="Votre agent s’en sert pour choisir le bon guide.">
               <Textarea rows={2} value={b.quand} onChange={(e) => maj({ quand: e.target.value })} placeholder="Quand le voyageur demande comment entrer dans le logement" />
             </Field>
             <div>
@@ -223,7 +223,7 @@ export function SectionQuestions({ questions, onChange }: { questions: QuestionF
     <Card>
       <CardHeader
         titre="Questions fréquentes"
-        description="Les réponses que l’agent peut donner telles quelles."
+        description="Les réponses que votre agent peut donner telles quelles."
         actions={
           <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, question: '', reponse: '' })}>
             Ajouter

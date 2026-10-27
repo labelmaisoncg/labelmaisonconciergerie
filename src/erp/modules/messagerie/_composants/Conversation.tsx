@@ -26,7 +26,7 @@ import { espaceOuvert } from '../../../data/espaces';
 import { signatureEspace } from '../../../data/marque-espace';
 import type { GuideLogement } from '../../../data/types';
 import { LIBELLE_INTENTION, dernierVoyageur, intentionFil, langueFil, langueMessage, marquerBrouillonValide, messagesSansReponse, nomLangue, type ValidationBrouillon } from '../../../data/messagerie-ia';
-import { GABARITS, LIBELLE_MOTIF, attendEquipe, auteurAffiche, completudeFiche, eligibiliteCodes, motifEscalade, titreJour } from './logique';
+import { GABARITS, LIBELLE_MOTIF, attendEquipe, auteurAffiche, completudeFiche, eligibiliteCodes, memeSerie, motifEscalade, titreJour } from './logique';
 import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
@@ -434,9 +434,10 @@ export function Conversation({ fil, logement, reservation }: Props) {
             const suiv = fil.messages[i + 1];
             const jour = m.envoyeLe.slice(0, 10);
             const nouveauJour = !prec || prec.envoyeLe.slice(0, 10) !== jour;
-            const suite = !nouveauJour && prec?.auteur === m.auteur;
+            // Une série = même signature (« Équipe », « Message automatique », « Réponse de votre agent ») le même jour.
+            const suite = !nouveauJour && memeSerie(prec, m);
             // Auteur et heure sous la dernière bulle d'une série.
-            const finSerie = !suiv || suiv.auteur !== m.auteur || suiv.envoyeLe.slice(0, 10) !== jour;
+            const finSerie = !suiv || !memeSerie(suiv, m) || suiv.envoyeLe.slice(0, 10) !== jour;
             return (
               <li key={m.id}>
                 {nouveauJour && <p className={cn('mb-1 text-center text-[12px] font-medium text-(--lm-encre-3) first-letter:uppercase', i > 0 && 'mt-6')}>{titreJour(jour)}</p>}
