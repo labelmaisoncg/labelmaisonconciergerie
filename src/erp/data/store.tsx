@@ -42,6 +42,7 @@ import {
   connexionAutomatique,
 } from './supabase';
 import { ESPACE_LABEL_MAISON, choisirEspace, messageRefusAcces, ouvrirEspace, type Espace, type InvitationEspace } from './espaces';
+import { refusEcritureFigee } from './factures-mensuelles';
 import { MESSAGE_LIEN_PERIME } from './invitation';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
@@ -83,6 +84,14 @@ export interface ErpContexte extends ErpDonnees {
   synchro: EtatSynchro | null;
   /** Relance tout de suite les écritures en attente. */
   relancerEnregistrement: () => void;
+  /** Envoie tout de suite les écritures en attente et dit si la base les a reçues (démo : toujours vrai). */
+  enregistrerMaintenant: () => Promise<boolean>;
+  /**
+   * Relit un élément dans la base et le pose dans l'ERP sans le réécrire
+   * (après une opération faite par la base, ex. numérotation d'une facture).
+   * Démo : l'élément local.
+   */
+  relire: <C extends NomCollection>(collection: C, id: Id) => Promise<ElementDe<C> | null>;
   /** Message à afficher (échec d'une opération hors données, ex. gestion des membres). */
   avertissement: string | null;
   fermerAvertissement: () => void;
@@ -288,6 +297,14 @@ function CoeurErp({
     let relectureEnCours = false;
     let derniereRelecture = 0;
     synchro.brancher({
+      // Écriture refusée pour de bon (facture validée entre-temps, figée par la base) : on le dit, la version de la base revient.
+      surRefus: (refus) => {
+        setAvertissement(
+          refus.some((r) => r.collection === 'factures')
+            ? 'Cette facture a été validée entre-temps : elle ne change plus. Sa version enregistrée vient d’être rechargée.'
+            : 'Une modification a été refusée par la base : la version enregistrée vient d’être rechargée.',
+        );
+      },
       surDistant: (changements: ChangementDistant[]) => {
         const suivant = appliquerOperations(ref.current, changements);
         if (suivant === ref.current) return;
@@ -634,6 +651,17 @@ function CoeurErp({
   const relancerEnregistrement = useCallback(() => {
     void synchro?.envoyer();
   }, [synchro]);
+  const enregistrerMaintenant = useCallback(() => (synchro ? synchro.envoyer() : Promise.resolve(true)), [synchro]);
+  const relire = useCallback(
+    async <C extends NomCollection>(collection: C, id: Id): Promise<ElementDe<C> | null> => {
+      if (!synchro) return ((ref.current[collection] as ElementDe<C>[]).find((e) => e.id === id) ?? null) as ElementDe<C> | null;
+      const lu = await synchro.relire(collection, id).catch(() => null);
+      // Illisible (réseau) : relecture complète dès que possible.
+      if (!lu) synchro.demanderResynchro();
+      return (lu as ElementDe<C> | null) ?? null;
+    },
+    [synchro],
+  );
   const fermerAvertissement = useCallback(() => setAvertissement(null), []);
 
   const valeur = useMemo<ErpContexte>(
@@ -646,6 +674,8 @@ function CoeurErp({
       lectureSeule,
       synchro: etatSynchro,
       relancerEnregistrement,
+      enregistrerMaintenant,
+      relire,
       avertissement,
       fermerAvertissement,
       seDeconnecter,
@@ -655,7 +685,7 @@ function CoeurErp({
       ajouterEvenementsAuto,
       ...automatisations,
     }),
-    [donnees, mode, utilisateur, lectureSeule, etatSynchro, relancerEnregistrement, avertissement, fermerAvertissement, seDeconnecter,
+    [donnees, mode, utilisateur, lectureSeule, etatSynchro, relancerEnregistrement, enregistrerMaintenant, relire, avertissement, fermerAvertissement, seDeconnecter,
       actions, etatAuto, ajouterEvenementsAuto, automatisations],
   );
 
@@ -857,7 +887,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           return setPhase({ nom: 'non_autorise', email, motif: lienInvitationRefuse() ? MESSAGE_LIEN_PERIME : undefined });
         }
         if (espace) retenirEspace(espace.id);
-        const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro, espace: espace?.id ?? null, compte: cle });
+        const synchro = new Synchro({ client: obtenirClient(), surEtat: setEtatSynchro, espace: espace?.id ?? null, compte: cle, refusDefinitif: refusEcritureFigee });
         synchro.demarrerTempsReel();
         const [lu, auto] = await Promise.all([synchro.chargerTout(), synchro.lireEtatAuto()]);
         if (!encore()) return synchro.arreter();

@@ -19,6 +19,8 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
+import { estLabelMaison } from './espaces.js';
+import { emetteurDeLabelMaison } from './identite-conciergerie.js';
 import type { Centimes, DateISO, Facture, Horodatage, Id, IdentiteSociete, LigneFacture, Proprietaire } from './types';
 import type { DocumentProprietaire, FactureMensuelleVue, FactureVue, RelancePaiement, ReglagesRelances, StatutFactureVue } from './types-proprietaire';
 
@@ -112,13 +114,16 @@ function ligneVue(l: LigneFacture): FactureVue['lignes'][number] {
 }
 
 /**
- * Partie figée d'une facture mensuelle validée (identités, logements,
- * mention de TVA), champs connus seulement ; rien pour un brouillon.
+ * Partie figée d'une facture mensuelle numérotée (identités, logements,
+ * mention de TVA), champs connus seulement ; rien pour un brouillon. Hors de
+ * Label Maison, un émetteur au SIRET ou au nom de Label Maison n'est jamais
+ * montré (même règle que identiteConciergerie).
  */
-function mensuelleVue(f: Facture): FactureMensuelleVue | undefined {
+function mensuelleVue(f: Facture, espace: string | undefined): FactureMensuelleVue | undefined {
   const m = f.mensuelle;
-  if (!m || !m.valideeLe || !m.emetteur || !m.client || !/^\d{4}-\d{2}$/.test(String(m.mois))) return undefined;
+  if (!m || !String(f.numero ?? '').trim() || !m.emetteur || !m.client || !/^\d{4}-\d{2}$/.test(String(m.mois))) return undefined;
   const e = m.emetteur;
+  if (!estLabelMaison(espace) && emetteurDeLabelMaison(e)) return undefined;
   const emetteur: IdentiteSociete = {
     raisonSociale: texteVue(e.raisonSociale, 120),
     forme: texteVue(e.forme, 60),
@@ -143,7 +148,12 @@ export function facturesVue(
   factures: readonly Facture[],
   proprietaireId: Id,
   aujourdhui: DateISO,
-  o: { documents?: readonly DocumentProprietaire[]; relances?: readonly RelancePaiement[] } = {},
+  o: {
+    documents?: readonly DocumentProprietaire[];
+    relances?: readonly RelancePaiement[];
+    /** Espace des factures (absent : Label Maison, comme avant les espaces). */
+    espace?: string;
+  } = {},
 ): FactureVue[] {
   return factures
     .filter((f) => facturePartagee(f, proprietaireId))
@@ -155,7 +165,7 @@ export function facturesVue(
         .sort()
         .pop();
       const statut = statutFactureVue(f, aujourdhui);
-      const mensuelle = mensuelleVue(f);
+      const mensuelle = mensuelleVue(f, o.espace);
       return {
         id: f.id,
         numero: String(f.numero ?? ''),

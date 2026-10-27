@@ -1653,11 +1653,23 @@ d'août publié et deux documents ; son espace :
   `BaseErp.ajouterSiAbsent`), ou à la demande dans le panneau « Espace
   propriétaire » → Factures (« Préparer », « Facturer un autre mois »).
   Les lignes calculées ne se modifient pas ; un ajustement s'ajoute avec sa
-  raison. « Ne pas facturer ce mois » écarte le brouillon (gardé, pas recréé).
-- **Validation** : numéro `AAAA-NNNN` à la suite dans l'espace (compteur par
-  année, élément `numerotation-factures` de `reglages`, jamais réutilisé),
-  émise le jour, échéance à 15 jours ; lignes, montants, identités de la
-  conciergerie et du propriétaire, logements et mention de TVA figés. Puis
+  raison. « Ne pas facturer ce mois » écarte le brouillon (gardé, pas recréé,
+  plus proposé en tête : il reste dans « Facturer un autre mois »).
+- **Validation** (`validerAvecLaBase`) : le contenu final est d'abord
+  enregistré sans numéro (émise le jour, échéance à 15 jours ; lignes,
+  montants, identités de la conciergerie et du propriétaire, logements,
+  mentions et TVA figés), puis la BASE attribue le numéro `AAAA-NNNN`
+  (`rpc('numeroter_facture', { p_id })` avec l'en-tête de l'espace : gérant
+  seulement, compteur verrouillé, idempotente), puis la facture est relue.
+  Le navigateur ne numérote jamais en production (démonstration seulement :
+  `validerFacture`) ; la fenêtre montre le « numéro prévu » avant de
+  confirmer. Fonction absente (base pas mise à jour) : « La validation des
+  factures sera disponible après la mise à jour de l’ERP. », aucun numéro.
+  Écriture refusée par le déclencheur (onglet resté ouvert qui renverrait un
+  ancien brouillon) : retirée de la file sans nouvel essai, avertissement,
+  version de la base relue (`synchro.ts`, `refusDefinitif` /
+  `refusEcritureFigee`). Après validation, seuls changent le partage
+  (`partageeLe`) et le paiement (`statut`, `payeeLe`). Puis
   « Partager au propriétaire » : la facture entre dans son espace et dans les
   relances (phase 2). Impression : une seule mise en page,
   `src/erp/espace-proprietaire/DocumentFacture.tsx`, charte « Ivoire & or »,
@@ -1667,9 +1679,14 @@ d'août publié et deux documents ; son espace :
   régime de TVA (franchise en base : « TVA non applicable, art. 293 B du
   CGI » ; TVA facturée : taux de l'espace, 20 % proposé), n° de TVA, mentions.
   Label Maison : son identité d'avant, en franchise, par défaut. Un autre
-  espace n'a jamais celle de Label Maison (une copie portant son SIRET est
-  ignorée) ; sans identité complète, aucune facture ne se valide. Elle donne
-  aussi la ligne légale imprimée en tête des bilans.
+  espace n'a jamais celle de Label Maison : son SIRET ou son nom sont
+  ignorés à la lecture, refusés à l'enregistrement et à la validation, et
+  jamais montrés au propriétaire (`emetteurDeLabelMaison`) ; sans identité
+  complète, aucune facture ne se valide. Elle donne aussi la ligne légale
+  imprimée en tête des bilans. Propriétaire société (SCI, société) : sans
+  mentions écrites par le gérant, la facture porte « Pénalités de retard :
+  trois fois le taux d’intérêt légal. Indemnité forfaitaire pour frais de
+  recouvrement : 40 €. » (`mentionsFacture`).
 - **Contrôles** : `verifier-factures.ts`.
 
 ### Sécurité des accès extérieurs (audit d'octobre 2026)

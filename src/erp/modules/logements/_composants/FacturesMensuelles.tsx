@@ -7,7 +7,11 @@
  *   mois terminé.
  * - Le gérant relit l'aperçu exact (même mise en page qu'à l'impression), ne
  *   touche pas aux lignes calculées, ajoute au besoin un ajustement avec sa
- *   raison, puis valide : le numéro est attribué et tout est figé.
+ *   raison, puis valide : le contenu final est enregistré, la BASE attribue le
+ *   numéro (erp.numeroter_facture), puis la facture est relue, figée. Le
+ *   navigateur ne numérote qu'en démonstration.
+ * - « Ne pas facturer ce mois » écarte le brouillon : le mois n'est plus
+ *   proposé en tête, il reste dans « Facturer un autre mois ».
  * - Validée : « Partager au propriétaire » (la facture entre dans son espace
  *   et dans les relances), impression ou PDF dans la charte « Ivoire & or ».
  *
@@ -17,6 +21,7 @@ import { useMemo, useState } from 'react';
 import { Plus, Printer, Share2, Trash2 } from 'lucide-react';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros, horodatageMaintenant, versCentimes } from '../../../data/format';
+import { numeroterFactureBase } from '../../../data/factures-base';
 import {
   ajouterAjustement,
   calculerFactureMois,
@@ -27,11 +32,11 @@ import {
   factureFigee,
   idFactureMensuelle,
   memesMontantsQueLeBilan,
-  moisAFacturerAutomatiquement,
-  moisSansFacture,
+  moisAPreparer,
   preparerBrouillon,
   prochainNumero,
   retirerAjustement,
+  validerAvecLaBase,
   validerFacture,
 } from '../../../data/factures-mensuelles';
 import { identiteComplete, identiteConciergerie } from '../../../data/identite-conciergerie';
@@ -56,10 +61,8 @@ export function FacturesMensuellesAPreparer({ proprietaire: p, onOuvrir }: { pro
   const brouillons = d.donnees.factures
     .filter((f) => f.proprietaireId === p.id && estFactureMensuelle(f) && f.statut === 'brouillon' && !factureFigee(f))
     .sort((a, b) => b.mensuelle!.mois.localeCompare(a.mensuelle!.mois));
-  const aFacturer = useMemo(() => moisSansFacture(d.donnees, p.id, AUJOURDHUI, 12), [d.donnees, p.id]);
-  const dernierMois = moisAFacturerAutomatiquement(AUJOURDHUI);
-  const aPreparer = aFacturer.find((x) => x.mois === dernierMois);
-  const autres = aFacturer.filter((x) => x.mois !== dernierMois);
+  // Le mois écoulé à préparer, sauf s'il a été écarté (« Ne pas facturer ce mois ») : il reste alors dans « Facturer un autre mois ».
+  const { aPreparer, autres } = useMemo(() => moisAPreparer(d.donnees, p.id, AUJOURDHUI, 12), [d.donnees, p.id]);
   if (!brouillons.length && !aPreparer && !autres.length) return null;
 
   const preparer = (mois: string) => {
@@ -143,6 +146,10 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
   const [confirmer, setConfirmer] = useState(false);
   const [erreur, setErreur] = useState<string>();
   const [ajout, setAjout] = useState<{ libelle: string; montant: string; motif: string; erreur?: string }>();
+  const [enCours, setEnCours] = useState(false);
+  /** Numéro rendu par la base à la validation (affiché aussitôt, avant la relecture). */
+  const [attribue, setAttribue] = useState<string>();
+  const espace = espaceOuvert();
   const figee = factureFigee(f);
   const mois = f?.mensuelle?.mois ?? '';
 
@@ -152,34 +159,51 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
     const apercu = figee
       ? f
       : (preparerBrouillon({ donnees: d.donnees, proprietaireId: p.id, mois: f.mensuelle.mois, existante: f, identite, aujourdhui: AUJOURDHUI, maintenant: horodatageMaintenant(), par: d.utilisateur.email }) ?? f);
-    const doc = documentDeFacture(apercu, { identite, proprietaire: p, logements: calcul.logements });
+    const doc = documentDeFacture(apercu, { espace, brouillon: { identite, proprietaire: p, logements: calcul.logements } });
     const bilan = d.donnees.bilansProprietaire.find((b) => b.id === `${p.id}-${f.mensuelle.mois}` && b.statut === 'publie');
     return { calcul, apercu, doc, bilanDifferent: !!bilan && !memesMontantsQueLeBilan(bilan.chiffres, apercu) };
-  }, [d.donnees, f, figee, identite, p, d.utilisateur.email]);
+  }, [d.donnees, f, figee, identite, p, d.utilisateur.email, espace]);
 
-  if (!f || !vue?.doc) return null;
+  if (!f) return null;
+  if (!vue?.doc) {
+    // Facture d'un autre espace portant l'identité de Label Maison (copie, sauvegarde rechargée) : jamais montrée.
+    return (
+      <Modal ouvert onFermer={onFermer} titre="Facture" description="Cette facture porte l’identité de Label Maison : elle ne s’affiche pas dans cet espace." />
+    );
+  }
   const { apercu, doc, calcul } = vue;
-  const prochain = prochainNumero(d.donnees.factures, compteurFactures(d.donnees), AUJOURDHUI.slice(0, 4)).numero;
-  const identiteOk = identiteComplete(identite);
+  // Numéro prévu seulement : c'est la base qui l'attribue à la validation (un autre appareil peut passer avant).
+  const prevu = prochainNumero(d.donnees.factures, compteurFactures(d.donnees), AUJOURDHUI.slice(0, 4)).numero;
+  const identiteOk = identiteComplete(identite, espace);
   const adresseOk = !!p.adresse?.trim() && !!p.nom?.trim();
 
-  const valider = () => {
+  const valider = async () => {
     setErreur(undefined);
-    const r = validerFacture({
-      facture: f,
-      donnees: d.donnees,
-      factures: d.donnees.factures,
-      compteur: compteurFactures(d.donnees),
-      proprietaire: p,
-      identite,
-      aujourdhui: AUJOURDHUI,
-      maintenant: horodatageMaintenant(),
-      par: d.utilisateur.email,
+    const commun = { facture: f, donnees: d.donnees, proprietaire: p, identite, espace, aujourdhui: AUJOURDHUI, maintenant: horodatageMaintenant(), par: d.utilisateur.email };
+    if (d.mode === 'demo') {
+      // Démonstration seulement : numérotée dans le navigateur.
+      const r = validerFacture({ ...commun, factures: d.donnees.factures, compteur: compteurFactures(d.donnees) });
+      setConfirmer(false);
+      if (!r.ok) return setErreur(r.erreur);
+      d.upsert('reglages', r.compteur);
+      d.upsert('factures', r.facture);
+      setAttribue(r.facture.numero);
+      return;
+    }
+    setEnCours(true);
+    const r = await validerAvecLaBase({
+      ...commun,
+      enregistrer: async (x) => {
+        d.upsert('factures', x);
+        return d.enregistrerMaintenant();
+      },
+      numeroter: numeroterFactureBase,
+      relire: (id) => d.relire('factures', id),
     });
+    setEnCours(false);
     setConfirmer(false);
     if (!r.ok) return setErreur(r.erreur);
-    d.upsert('reglages', r.compteur);
-    d.upsert('factures', r.facture);
+    setAttribue(r.numero);
   };
 
   const ajouter = () => {
@@ -229,11 +253,11 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
     </Button>
   ) : confirmer ? (
     <>
-      <Button variant="ghost" onClick={() => setConfirmer(false)}>
+      <Button variant="ghost" onClick={() => setConfirmer(false)} disabled={enCours}>
         Annuler
       </Button>
-      <Button variant="primary" onClick={valider}>
-        Valider la facture {prochain}
+      <Button variant="primary" onClick={() => void valider()} chargement={enCours}>
+        Confirmer la validation
       </Button>
     </>
   ) : (
@@ -250,7 +274,7 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
       ouvert
       onFermer={onFermer}
       taille="lg"
-      titre={figee ? `Facture ${f.numero}` : factureDuMois(mois)}
+      titre={<span className="lining-nums">{figee ? `Facture ${f.numero}` : factureDuMois(mois)}</span>}
       description={
         figee
           ? `Validée le ${dateCourte((f.mensuelle?.valideeLe ?? f.dateEmission).slice(0, 10))} : elle ne change plus. ${f.partageeLe ? `Partagée le ${dateCourte(f.partageeLe.slice(0, 10))}.` : 'Pas encore partagée.'}`
@@ -274,10 +298,19 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
         )}
         {!figee && !adresseOk && <Alert tone="alerte">Ajoutez l’adresse de {p.nom || 'ce propriétaire'} sur sa fiche : elle figure sur la facture.</Alert>}
         {!figee && calcul.sansTaux.length > 0 && (
-          <Alert tone="neutre">Taux de commission à renseigner : {calcul.sansTaux.join(', ')} (pas de mandat à ce propriétaire).</Alert>
+          <Alert tone="neutre">Taux de commission à renseigner : {calcul.sansTaux.join(', ')} (pas de contrat de gestion pour ce propriétaire).</Alert>
         )}
         {!figee && vue.bilanDifferent && <Alert tone="neutre">Le bilan publié de ce mois a d’autres montants : mettez-le à jour dans « Bilans mensuels ».</Alert>}
-        {confirmer && <Alert tone="or">Validée, la facture reçoit le numéro {prochain} et ne change plus.</Alert>}
+        {confirmer && (
+          <Alert tone="or">
+            Numéro prévu : <span className="whitespace-nowrap">{prevu}</span>. Il est attribué à la validation ; la facture ne change plus ensuite.
+          </Alert>
+        )}
+        {attribue && (
+          <Alert tone="succes">
+            Facture validée sous le numéro <span className="whitespace-nowrap">{attribue}</span>.
+          </Alert>
+        )}
         {erreur && (
           <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">
             {erreur}

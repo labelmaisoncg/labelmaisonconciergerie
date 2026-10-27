@@ -910,7 +910,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     fiches: geres.map((l) => ficheLogement({ reservations: e.reservations, mandats: e.mandats }, l.id, aujourdhui, { proprietaireId, logement: l })),
     bilans,
     documents,
-    factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement }),
+    factures: facturesVue(e.factures ?? [], proprietaireId, aujourdhui, { documents: e.documentsProprietaire, relances: e.relancesPaiement, espace: conciergerie.espace }),
     conciergerie: { nom: conciergerie.nom, espace: conciergerie.espace, ...(legale ? { ligneLegale: legale } : {}) },
     ...(conciergerie.contacts ? { contacts: conciergerie.contacts } : {}),
   };
