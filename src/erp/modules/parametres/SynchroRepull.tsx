@@ -82,7 +82,7 @@ export function useSynchroRepull() {
       }
       if (corps.statut === 'selection') setRetour({ ton: 'info', texte: 'Choisissez vos logements (Logements → Connexions) : rien n’est importé tant que vous ne les avez pas choisis.' });
       else if (corps.statut === 'limite') setRetour({ ton: 'info', texte: corps.message ?? 'Synchronisation faite il y a moins de 10 minutes.' });
-      else if (corps.statut === 'budget') setRetour({ ton: 'danger', texte: corps.message ?? 'Part mensuelle des appels Repull épuisée.' });
+      else if (corps.statut === 'budget') setRetour({ ton: 'danger', texte: corps.message ?? 'Part mensuelle des appels à notre service de connexion épuisée.' });
       else if (!corps.ok) setRetour({ ton: 'alerte', texte: corps.message ?? 'Synchronisation terminée avec des erreurs.' });
       else {
         const b = corps.bilan;
@@ -166,7 +166,7 @@ export function CarteSynchroRepull() {
         </div>
       </dl>
       <p className="mt-3 text-[12.5px]">
-        <Link to="/erp/logements/connexions" className="font-medium text-(--lm-or-texte) hover:underline">
+        <Link to="/erp/logements/connexions" className="-my-1.5 inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
           Gérer vos connexions
         </Link>
       </p>
@@ -186,7 +186,7 @@ export function CarteSynchroRepull() {
         </dl>
         <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
           Pas plus d’une mise à jour manuelle toutes les 10 minutes, pour ménager le forfait.{' '}
-          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-(--lm-or-texte) hover:underline">
+          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="-my-1.5 inline-flex min-h-8 items-center gap-1 text-(--lm-or-texte) hover:underline">
             Tableau de bord Repull <ExternalLink className="size-3.5" aria-hidden />
           </a>
         </p>

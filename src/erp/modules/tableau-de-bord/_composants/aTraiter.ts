@@ -9,7 +9,7 @@ import { aTraiterLe } from '../../../data/crm';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours } from '../../../data/format';
 import { incidentsATraiter, lienIncident } from '../../../data/incidents-erp';
-import { logementsSansCharge } from '../../../data/operations';
+import { sansChargeLe } from '../../../data/operations';
 import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
@@ -68,15 +68,18 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       ...(autres.length > 1 ? { liens: autres.map(lienIncident) } : {}),
     });
 
-  // Logements où personne n'a la charge au quotidien (ni choix, ni seul agent) : codes et incidents sans destinataire.
-  const sansCharge = gerant && d.equipe && d.affectations ? logementsSansCharge(d) : [];
-  if (sansCharge.length)
+  // Logements où personne n'a la charge aujourd'hui (ni choix ni seul agent, ou absent sans relais) :
+  // codes et incidents sans destinataire. Une absence sans relais compte pour aujourd'hui.
+  const sansCharge = gerant && d.equipe && d.affectations ? sansChargeLe({ ...d, absences: d.absences ?? [] }, aujourdhui) : [];
+  if (sansCharge.length) {
+    const membre = (id: string) => d.equipe?.find((m) => m.id === id)?.nom ?? 'La personne en charge';
     liste.push({
-      id: 'charge', type: 'charge', priorite: 2, ton: 'alerte', to: `/erp/logements/${encodeURIComponent(sansCharge[0])}`,
-      titre: sansCharge.length > 1 ? `${sansCharge.length} logements sans personne en charge` : `${nom(sansCharge[0])} : personne en charge`,
-      details: sansCharge.map((id) => `${nom(id)} : choisir qui s’en occupe au quotidien`),
-      liens: sansCharge.map((id) => `/erp/logements/${encodeURIComponent(id)}`),
+      id: 'charge', type: 'charge', priorite: sansCharge.some((x) => x.absent) ? 1 : 2, ton: 'alerte', to: `/erp/logements/${encodeURIComponent(sansCharge[0].logementId)}`,
+      titre: sansCharge.length > 1 ? `${sansCharge.length} logements sans personne en charge aujourd’hui` : `${nom(sansCharge[0].logementId)} : sans personne en charge aujourd’hui`,
+      details: sansCharge.map((x) => (x.absent ? `${nom(x.logementId)} : ${membre(x.absent)} en absence, personne ne prend le relais` : `${nom(x.logementId)} : choisir qui s’en occupe au quotidien`)),
+      liens: sansCharge.map((x) => `/erp/logements/${encodeURIComponent(x.logementId)}`),
     });
+  }
 
   const signalements = gerant ? (d.signalementsLogement ?? []).filter((s) => s.statut === 'ouvert') : [];
   if (signalements.length) {

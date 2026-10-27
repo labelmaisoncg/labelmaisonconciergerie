@@ -119,10 +119,32 @@ export function affectationsAFiger(d: Pick<DonneesSuivi, 'affectations' | 'equip
   });
 }
 
-/** Logements gérés dont personne n'a la charge au quotidien (à choisir par le gérant). */
-export function logementsSansCharge(d: Pick<DonneesOps, 'logements' | 'affectations' | 'equipe'>): Id[] {
-  return d.logements.filter((l) => l.statut !== 'sorti' && quiSuit(d.equipe, l.id).length > 0 && !titulaireDe(d, l.id)).map((l) => l.id);
+/** Un logement sans personne en charge ce jour-là. */
+export interface SansCharge {
+  logementId: Id;
+  /** La personne en charge, absente ce jour-là, que personne ne remplace (sans : personne n'est choisi). */
+  absent?: Id;
 }
+
+/**
+ * Logements gérés dont personne n'a la charge ce jour-là (à régler par le
+ * gérant) : personne n'est choisi au quotidien (plusieurs agents, aucun
+ * choix), ou la personne en charge est absente et personne ne prend le relais
+ * (ni le remplaçant du logement, ni celui de l'absence). Même règle que la
+ * fiche du logement (« en absence · personne ne prend le relais »).
+ */
+export function sansChargeLe(d: Pick<DonneesOps, 'logements' | 'affectations' | 'equipe' | 'absences'>, date: DateISO): SansCharge[] {
+  return d.logements.flatMap((l): SansCharge[] => {
+    if (l.statut === 'sorti' || !quiSuit(d.equipe, l.id).length) return [];
+    const titulaire = titulaireDe(d, l.id);
+    if (!titulaire) return [{ logementId: l.id }];
+    return suiviPar(d, titulaire, l.id, date).membreId ? [] : [{ logementId: l.id, absent: titulaire }];
+  });
+}
+
+/** Les logements sans personne en charge ce jour-là (voir sansChargeLe). */
+export const logementsSansCharge = (d: Pick<DonneesOps, 'logements' | 'affectations' | 'equipe' | 'absences'>, date: DateISO): Id[] =>
+  sansChargeLe(d, date).map((x) => x.logementId);
 
 /** Remplaçant choisi pour un logement, s'il le suit toujours. */
 export function remplacantDe(d: Pick<DonneesSuivi, 'affectations' | 'equipe'>, logementId: Id): Id | undefined {

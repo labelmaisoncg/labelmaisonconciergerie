@@ -44,7 +44,7 @@ export function BarreOnglets() {
                 <span className="relative">
                   <Icone className="size-6" strokeWidth={actif ? 2.1 : 1.8} aria-hidden />
                   {n > 0 && (
-                    <span className="lm-chiffres absolute -top-1.5 left-[15px] min-w-[18px] rounded-full bg-(--lm-or-texte) px-1 py-0.5 text-center text-[10.5px] leading-none font-semibold text-white ring-2 ring-(--lm-surface)">
+                    <span className="lm-chiffres absolute -top-1.5 left-[15px] min-w-[18px] rounded-full bg-(--lm-or-texte) px-1 py-0.5 text-center text-[11px] leading-none font-semibold text-white ring-2 ring-(--lm-surface)">
                       {n > 99 ? '99+' : n}
                       <span className="sr-only"> à regarder</span>
                     </span>

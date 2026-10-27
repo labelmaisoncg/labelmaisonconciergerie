@@ -186,24 +186,46 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
 
       <section aria-label="Note d’ensemble" className="mt-5 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 shadow-(--lm-ombre)">
         <p className="text-[14px] font-medium text-(--lm-encre)">Note d’ensemble</p>
-        <div role="group" aria-label="Note sur 5" className="mt-2 flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              type="button"
-              disabled={lecture}
-              aria-label={`${n} sur 5`}
-              aria-pressed={note === n}
-              onClick={() => setNote(n)}
-              className="grid size-11 place-items-center rounded-lg text-(--lm-or-texte) hover:bg-(--lm-or-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:hover:bg-transparent"
-            >
-              <Star className={cn('size-7', (note ?? 0) >= n ? 'fill-current' : 'text-(--lm-encre-3)')} aria-hidden />
-            </button>
-          ))}
-        </div>
-        <Field label="Commentaire" className="mt-4">
-          <Textarea rows={2} value={commentaire} disabled={lecture} onChange={(e) => setCommentaire(e.target.value)} placeholder="Ce qu’il faut retenir pour la suite." maxLength={1000} />
-        </Field>
+        {lecture ? (
+          // Contrôle en lecture : la note est un résultat, pas des boutons grisés.
+          <p className="mt-2 flex items-center gap-1 text-(--lm-or-texte)">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Star key={n} className={cn('size-6', (note ?? 0) >= n ? 'fill-current' : 'text-(--lm-encre-3)')} aria-hidden />
+            ))}
+            <span className="lm-chiffres ml-1.5 text-[13.5px] text-(--lm-encre-2)">
+              {note ? (
+                <>
+                  <span aria-hidden>{note}/5</span>
+                  <span className="sr-only">{note} sur 5</span>
+                </>
+              ) : (
+                'Pas de note'
+              )}
+            </span>
+          </p>
+        ) : (
+          <div role="group" aria-label="Note sur 5" className="mt-2 flex gap-1">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                type="button"
+                aria-label={`${n} sur 5`}
+                aria-pressed={note === n}
+                onClick={() => setNote(n)}
+                className="grid size-11 place-items-center rounded-lg text-(--lm-or-texte) hover:bg-(--lm-or-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+              >
+                <Star className={cn('size-7', (note ?? 0) >= n ? 'fill-current' : 'text-(--lm-encre-3)')} aria-hidden />
+              </button>
+            ))}
+          </div>
+        )}
+        {lecture ? (
+          commentaire.trim() && <p className="mt-3 text-[13.5px] whitespace-pre-line text-(--lm-encre-2)">{commentaire.trim()}</p>
+        ) : (
+          <Field label="Commentaire" className="mt-4">
+            <Textarea rows={2} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} placeholder="Ce qu’il faut retenir pour la suite." maxLength={1000} />
+          </Field>
+        )}
       </section>
 
       {!lecture && (
@@ -260,7 +282,6 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
   const choix = (etat: 'ok' | 'a_revoir', libelle: string) => (
     <button
       type="button"
-      disabled={lecture}
       aria-pressed={p.etat === etat}
       onClick={() => onChange({ etat: p.etat === etat ? undefined : etat })}
       className={cn(
@@ -280,28 +301,46 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
     <div className={cn('rounded-xl border bg-(--lm-surface) p-3 shadow-(--lm-ombre) sm:p-4', aRevoir ? 'border-(--lm-alerte)/40' : 'border-(--lm-bord)')}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[15px] font-medium text-(--lm-encre)">{p.libelle}</p>
-        <div role="group" aria-label={`${p.libelle} : état`} className="grid grid-cols-2 gap-1.5">
-          {choix('ok', 'OK')}
-          {choix('a_revoir', 'À revoir')}
-        </div>
-      </div>
-      {(aRevoir || note) && (
-        <Field label="Commentaire" className="mt-3">
-          <Textarea rows={2} value={p.commentaire} disabled={lecture} onChange={(e) => onChange({ commentaire: e.target.value })} placeholder={aRevoir ? 'Ce qui ne va pas.' : 'Une précision.'} maxLength={500} />
-        </Field>
-      )}
-      <div className="mt-2 flex flex-wrap items-start gap-1.5 [&>div:has(ul)]:basis-full">
         {lecture ? (
-          p.photo && <ChoixPhotos photos={[p.photo]} onChange={() => undefined} max={1} lecture />
+          // Contrôle en lecture : le résultat du point, en étiquette fixe (pas de boutons grisés).
+          <Badge
+            tone={p.etat === 'ok' ? 'succes' : aRevoir ? 'alerte' : 'neutre'}
+            icone={p.etat === 'ok' ? <Check aria-hidden /> : aRevoir ? <RotateCcw aria-hidden /> : undefined}
+            className="text-[13px]"
+          >
+            {p.etat === 'ok' ? 'OK' : aRevoir ? 'À revoir' : 'Sans réponse'}
+          </Badge>
         ) : (
-          <ChoixPhotos photos={p.photo ? [p.photo] : []} onChange={(l) => onChange({ photo: l[0], photoChangee: true })} max={1} libelle="Photo" variante="ghost" />
-        )}
-        {!lecture && !aRevoir && !note && (
-          <Button variant="ghost" size="sm" onClick={() => setNote(true)}>
-            Commentaire
-          </Button>
+          <div role="group" aria-label={`${p.libelle} : état`} className="grid grid-cols-2 gap-1.5">
+            {choix('ok', 'OK')}
+            {choix('a_revoir', 'À revoir')}
+          </div>
         )}
       </div>
+      {lecture
+        ? p.commentaire.trim() && <p className="mt-2 text-[13.5px] whitespace-pre-line text-(--lm-encre-2)">{p.commentaire.trim()}</p>
+        : (aRevoir || note) && (
+            <Field label="Commentaire" className="mt-3">
+              <Textarea rows={2} value={p.commentaire} onChange={(e) => onChange({ commentaire: e.target.value })} placeholder={aRevoir ? 'Ce qui ne va pas.' : 'Une précision.'} maxLength={500} />
+            </Field>
+          )}
+      {lecture ? (
+        // En lecture : la photo seulement s'il y en a une.
+        p.photo && (
+          <div className="mt-2">
+            <ChoixPhotos photos={[p.photo]} onChange={() => undefined} max={1} lecture />
+          </div>
+        )
+      ) : (
+        <div className="mt-2 flex flex-wrap items-start gap-1.5 [&>div:has(ul)]:basis-full">
+          <ChoixPhotos photos={p.photo ? [p.photo] : []} onChange={(l) => onChange({ photo: l[0], photoChangee: true })} max={1} libelle="Photo" variante="ghost" />
+          {!aRevoir && !note && (
+            <Button variant="ghost" size="sm" onClick={() => setNote(true)}>
+              Commentaire
+            </Button>
+          )}
+        </div>
+      )}
       {p.incidentId && <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Incident créé pour ce point.</p>}
       {aRevoir && !p.incidentId && !lecture && <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Un incident vous sera proposé à l’enregistrement.</p>}
     </div>

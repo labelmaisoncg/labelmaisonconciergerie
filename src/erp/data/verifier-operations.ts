@@ -28,6 +28,7 @@ import {
   affectationsSans,
   affecter,
   logementsSansCharge,
+  sansChargeLe,
   controlesAFaire,
   court,
   remplacantDe,
@@ -591,7 +592,7 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
   verifier(titulaireDe(sans, 'L1') === 'B' && titulaireDe(sans, 'L3') === 'C' && titulaireDe(sans, 'L2') === 'A', 'N1 : sans affectation, le seul agent du logement (L1 : B, L3 : C) ; sans agent, la seule personne (L2 : A, le pôle)');
   verifier(responsableLe(sans, 'L2', J).membreId === 'A' && responsableLe(sans, 'L1', J).membreId === 'B', 'responsable du jour : le choix par défaut');
   const deuxAgents = entrees({ affectations: [], equipe: [...entrees().equipe, { id: 'D', nom: 'Denis Roy', role: 'agent', logementIds: ['L1'], actif: true }] });
-  verifier(titulaireDe(deuxAgents, 'L1') === undefined && logementsSansCharge(deuxAgents).join() === 'L1', 'deux agents, aucun choix : personne, et le logement est signalé au gérant');
+  verifier(titulaireDe(deuxAgents, 'L1') === undefined && logementsSansCharge(deuxAgents, J).join() === 'L1', 'deux agents, aucun choix : personne, et le logement est signalé au gérant');
   const solo = entrees({ affectations: [], equipe: [{ id: 'S', nom: 'Sam Seul', role: 'agent', logementIds: ['L1'], actif: true }] });
   verifier(!!vueOperations(solo, 'S', { aujourdhui: J })!.logements.find((l) => l.id === 'L1')?.acces, 'sans affectation : la seule personne du logement a le code le jour de l’arrivée');
   let n = 0;
@@ -642,6 +643,17 @@ section('Gérant : en charge par défaut, rôles par logement, adresse changée,
   verifier(phraseRemplacement(responsableLe(seul, 'L3', J), nomDe) === 'en absence · personne ne prend le relais', 'N3 : absent sans remplaçant : « personne ne prend le relais »');
   verifier(phraseRemplacement(responsableLe(sans, 'L1', J), nomDe) === undefined, 'N3 : présent : rien de plus');
 
+  // Accueil : la personne en charge absente sans relais compte aussi (même règle que la fiche).
+  const sansRelais = sansChargeLe(seul, J);
+  verifier(sansRelais.length === 1 && sansRelais[0].logementId === 'L3' && sansRelais[0].absent === 'C', 'absente sans remplaçant : L3 sans personne en charge aujourd’hui (Chloé absente)');
+  verifier(!logementsSansCharge(seul, '2026-10-16').length, 'le lendemain de l’absence : plus rien à signaler');
+  verifier(!logementsSansCharge(absent, J).length, 'absent avec un remplaçant (celui de l’absence) : rien à signaler');
+  const relaisLogement = { ...sans, affectations: [{ id: 'L3', responsableId: 'C', remplacantId: 'A' }], absences: seul.absences };
+  verifier(!logementsSansCharge(relaisLogement, J).length, 'absent, le remplaçant du logement prend le relais : rien à signaler');
+  const deuxAbsents = { ...relaisLogement, absences: [...seul.absences, { id: 'abs-a', membreId: 'A', du: J, au: J }] };
+  verifier(sansChargeLe(deuxAbsents, J).map((x) => `${x.logementId}:${x.absent}`).join() === 'L2:A,L3:C', 'remplaçant absent lui aussi : signalé (L3, Chloé) ; L2 (Alice seule, absente) aussi');
+  verifier(sansChargeLe(deuxAgents, J)[0]?.absent === undefined, 'personne de choisi : pas d’absent nommé');
+
   // N5 : mandat du propriétaire actuel seulement.
   const mandat = (id: string, proprietaireId: string, dateDebut: string) => ({ id, proprietaireId, logementId: 'L1', statut: 'signe', commissionPct: 18, dateDebut }) as unknown as Mandat;
   const mandats = [mandat('m-ancien', 'pro-ancien', '2025-11-20'), mandat('m-autre', 'pro-x', '2026-01-01')];
@@ -688,12 +700,21 @@ section('Accueil du gérant : logements sans personne en charge, « pas à moi �
 {
   const s0 = creerSeed();
   const sansChoix = { ...s0, affectations: [] };
-  const vides = logementsSansCharge(sansChoix);
+  const vides = logementsSansCharge(sansChoix, DATE_DEMO);
   const ligne = construireATraiter(sansChoix, DATE_DEMO).find((x) => x.type === 'charge');
   verifier(!vides.length || (ligne?.liens?.length === vides.length && ligne.to === `/erp/logements/${vides[0]}`), 'N1 : « N logements sans personne en charge », chaque ligne mène à sa fiche');
   const deux = { ...s0, affectations: [], equipe: s0.equipe.map((m) => (m.role === 'agent' ? { ...m, logementIds: [...new Set([...m.logementIds, 'log-massy'])] } : m)) };
-  verifier(logementsSansCharge(deux).includes('log-massy') && construireATraiter(deux, DATE_DEMO).some((x) => x.type === 'charge'), 'N1 : deux agents sur Massy sans choix : ligne « sans personne en charge »');
+  verifier(logementsSansCharge(deux, DATE_DEMO).includes('log-massy') && construireATraiter(deux, DATE_DEMO).some((x) => x.type === 'charge'), 'N1 : deux agents sur Massy sans choix : ligne « sans personne en charge »');
   verifier(!construireATraiter(deux, DATE_DEMO, { gerant: false }).some((x) => x.type === 'charge' || x.type === 'signalement'), 'N4 : pour un compte qui n’est pas gérant, ni « pas à moi » ni « sans personne en charge »');
+  // La personne en charge absente aujourd'hui, personne pour la remplacer : la ligne le dit, pour aujourd'hui.
+  const titulaire = titulaireDe(s0, 'log-massy');
+  const absentSeul = { ...s0, affectations: s0.affectations.map((a) => (a.id === 'log-massy' ? { ...a, remplacantId: undefined } : a)), absences: [{ id: 'abs-t', membreId: titulaire!, du: DATE_DEMO, au: DATE_DEMO }] };
+  const charge = construireATraiter(absentSeul, DATE_DEMO).find((x) => x.type === 'charge');
+  const nomTitulaire = s0.equipe.find((m) => m.id === titulaire)?.nom;
+  verifier(!!titulaire && !!charge && charge.priorite === 1, `N1 : ${nomTitulaire ?? 'la personne en charge'} absente sans relais : ligne « sans personne en charge », pour aujourd’hui`);
+  verifier(!!charge && /aujourd’hui$/.test(charge.titre), `titre : « … sans personne en charge aujourd’hui » (obtenu : ${charge?.titre})`);
+  verifier(!!charge && charge.details.includes(`${s0.logements.find((l) => l.id === 'log-massy')?.nom} : ${nomTitulaire} en absence, personne ne prend le relais`), `détail : « Logement : Nom en absence, personne ne prend le relais » (obtenu : ${charge?.details.join(' | ')})`);
+  verifier(!construireATraiter({ ...absentSeul, absences: [{ ...absentSeul.absences[0], annuleeLe: `${DATE_DEMO}T08:00:00Z` }] }, DATE_DEMO).find((x) => x.type === 'charge')?.details.some((t) => t.includes('en absence')), 'absence annulée : plus de ligne d’absence');
   verifier(construireATraiter(s0, DATE_DEMO).some((x) => x.type === 'signalement'), 'N4 : le gérant garde la ligne « pas à moi »');
   const urg = construireATraiter(s0, DATE_DEMO).find((x) => x.type === 'urgence');
   verifier(!urg || urg.details.length < 2 || urg.liens?.length === urg.details.length, 'S2 : plusieurs urgences : chaque ligne mène à son incident');

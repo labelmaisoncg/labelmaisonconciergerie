@@ -44,9 +44,15 @@ function Miniature({ url }: { url: string }) {
 export function OrganiserPhotos({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const [ouvert, setOuvert] = useState(false);
+  // Photo à retirer, en attente de confirmation (adresse et rang affiché).
+  const [aRetirer, setARetirer] = useState<{ url: string; rang: number } | null>(null);
   const equipe = l.photosEquipe ?? [];
   if (d.lectureSeule || !equipe.length) return null;
   const enregistrer = (photosEquipe: string[]) => d.upsert('logements', { ...l, photosEquipe });
+  const retirer = () => {
+    if (aRetirer) enregistrer(equipe.filter((x) => x !== aRetirer.url));
+    setARetirer(null);
+  };
   return (
     <>
       <Button size="sm" onClick={() => setOuvert(true)}>
@@ -65,13 +71,7 @@ export function OrganiserPhotos({ logement: l }: { logement: Logement }) {
                     <Star />
                   </IconButton>
                 )}
-                <IconButton
-                  label={`Retirer la photo ${i + 1}`}
-                  size="sm"
-                  onClick={() => {
-                    if (window.confirm('Retirer cette photo du logement ?')) enregistrer(equipe.filter((x) => x !== u));
-                  }}
-                >
+                <IconButton label={`Retirer la photo ${i + 1}`} size="sm" onClick={() => setARetirer({ url: u, rang: i + 1 })}>
                   <Trash2 />
                 </IconButton>
               </div>
@@ -79,6 +79,24 @@ export function OrganiserPhotos({ logement: l }: { logement: Logement }) {
           ))}
         </ul>
       </Modal>
+      {/* Confirmation posée sur « Vos photos » (hors de son contenu, pour passer au-dessus). */}
+      <Modal
+        ouvert={!!aRetirer}
+        onFermer={() => setARetirer(null)}
+        titre="Retirer cette photo du logement ?"
+        description={aRetirer?.rang === 1 && equipe.length > 1 ? 'La photo suivante devient la couverture.' : undefined}
+        taille="sm"
+        pied={
+          <>
+            <Button variant="ghost" onClick={() => setARetirer(null)}>
+              Annuler
+            </Button>
+            <Button variant="danger" icone={<Trash2 />} onClick={retirer}>
+              Retirer la photo
+            </Button>
+          </>
+        }
+      />
     </>
   );
 }

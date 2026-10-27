@@ -517,7 +517,7 @@ function Responsables({ logementFiltre, personne, gerant, onInviter }: { logemen
             const s = statutAccesOps(d.donnees.accesOperations.find((a) => a.id === m.id), m);
             return (
               <li key={m.id}>
-                <Card className={cn('flex h-full flex-col gap-2', !m.actif && 'opacity-70')}>
+                <Card className={cn('flex h-full flex-col gap-2', !m.actif && 'bg-(--lm-surface-2) shadow-none')}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <p className="truncate text-[15px] font-semibold text-(--lm-encre)">{m.nom}</p>

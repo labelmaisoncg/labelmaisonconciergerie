@@ -17,7 +17,7 @@ import { DATE_DEMO } from './format';
 import { ajouterMot, incidentsATraiter, incidentsDuLogement, lienIncident, marquerRegle, prendreEnCharge } from './incidents-erp';
 import { LIBELLES } from './libelles';
 import { notificationUrgence } from './notifications';
-import type { DonneesOps } from './operations';
+import { PRIORITES, type DonneesOps } from './operations';
 import { appliquerAction, avecEcritures, remplacantsPossibles, type ContexteAction, type EntreesOperations } from './espace-operations';
 import { creerSeed } from './seed';
 import type { ErpDonnees, Incident, Logement } from './types';
@@ -90,6 +90,8 @@ section('Incident signalé depuis l’espace opérations → visible dans l’ER
 section('Mots et couleurs alignés sur l’espace opérations');
 {
   verifier(LIBELLES.gravite.haute === 'Urgent', 'gravité haute : « Urgent », comme l’espace opérations');
+  verifier(LIBELLES.gravite.moyenne === PRIORITES.normale && LIBELLES.gravite.haute === PRIORITES.urgente, 'gravités : « Normal » et « Urgent », les mots de l’espace opérations');
+  verifier(Object.values(LIBELLES.gravite).join(' / ') === 'Mineur / Normal / Urgent', 'gravités au masculin, comme « incident » : Mineur / Normal / Urgent');
   verifier(LIBELLES.statutIncident.ouvert === 'Nouveau', 'statut : « Nouveau »');
 }
 
