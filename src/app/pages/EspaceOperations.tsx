@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import '../../erp/erp.css';
-import { lireLienAcces } from '../../erp/data/acces-externe';
+import { espaceARetenir, lireEspaceRetenu, lireLienAcces, marqueConnexion, type EspaceRetenu } from '../../erp/data/acces-externe';
 import { MODE_DEMO } from '../../erp/data/config';
-import { estLabelMaison } from '../../erp/data/espaces';
+import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../erp/data/format';
 import { appliquerAction, avecEcritures, vueOperations, type EntreesOperations } from '../../erp/data/espace-operations';
 import type { VueOperations } from '../../erp/data/types-operations';
@@ -79,7 +79,27 @@ function avecEcran(p: URLSearchParams, e: Partial<Ecran>): URLSearchParams {
 
 /* --------------------------------------------------------------- connexion */
 
-function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; labelMaison: boolean }) {
+/** Espace retenu sur cet appareil pour la page de connexion (id et nom, rien d'autre). */
+const CLE_ESPACE = 'lm_espace_operations';
+
+function espaceRetenu(): EspaceRetenu | undefined {
+  try {
+    return lireEspaceRetenu(window.localStorage.getItem(CLE_ESPACE));
+  } catch {
+    return undefined;
+  }
+}
+
+function retenirEspace(e: EspaceRetenu) {
+  try {
+    window.localStorage.setItem(CLE_ESPACE, JSON.stringify(espaceARetenir(e, espaceRetenu())));
+  } catch {
+    // Stockage indisponible (navigation privée) : la page reste neutre.
+  }
+}
+
+/** Page de connexion, au nom de l'espace du lien ou retenu sur l'appareil ; inconnu : neutre. */
+function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; marque: { nom?: string; labelMaison: boolean } }) {
   const [email, setEmail] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' }>();
@@ -101,7 +121,7 @@ function Connexion({ message, ton, labelMaison }: { message?: string; ton?: 'dan
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
-        {labelMaison && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">Label Maison</p>}
+        {marque.nom && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
         <Card className="mt-6 p-6">
           <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Votre espace opérations</h1>
           <p className="mt-2 text-[14px] text-(--lm-encre-2)">
@@ -205,7 +225,8 @@ export default function EspaceOperations() {
           if (r.json.vue) setEtat({ nom: 'pret', vue: r.json.vue as VueOperations });
           return { ok: true, message: String(r.json.message ?? 'Enregistré.'), ...(r.json.id ? { id: String(r.json.id) } : {}) };
         }
-        if (r.statut === 401) setEtat({ nom: 'connexion', ton: 'neutre', message: 'Votre session a expiré : demandez un nouveau lien.' });
+        if (r.statut === 401 || (r.statut === 403 && r.json.code === 'retire'))
+          setEtat({ nom: 'connexion', ton: 'neutre', message: r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : demandez un nouveau lien.' });
         return { ok: false, erreur: String(r.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.') };
       },
       photo: async (f) => {
@@ -233,6 +254,7 @@ export default function EspaceOperations() {
       const { jeton, espace } = lireLienAcces(window.location.hash);
       if (jeton) {
         setEspaceLien(espace);
+        retenirEspace({ espace });
         window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
         const r = await appeler('POST', { action: 'entrer', jeton, espace });
         if (!actif) return;
@@ -243,8 +265,13 @@ export default function EspaceOperations() {
       }
       const r = await appeler('GET', { action: 'vue' });
       if (!actif) return;
-      if (r.statut === 200 && r.json.vue) setEtat({ nom: 'pret', vue: r.json.vue as VueOperations });
-      else if (r.statut === 401 || r.statut === 403) setEtat({ nom: 'connexion', ...(r.statut === 403 ? { ton: 'danger' as const, message: String(r.json.erreur ?? '') } : {}) });
+      if (r.statut === 200 && r.json.vue) {
+        const vue = r.json.vue as VueOperations;
+        if (idEspaceValide(r.json.espace)) retenirEspace({ espace: String(r.json.espace).toLowerCase(), ...(vue.conciergerie?.nom ? { nom: vue.conciergerie.nom } : {}) });
+        setEtat({ nom: 'pret', vue });
+      }
+      // Accès retiré par le gérant : le dire, plutôt que « session expirée ».
+      else if (r.statut === 401 || r.statut === 403) setEtat({ nom: 'connexion', ...(r.json.code === 'retire' ? { ton: 'neutre' as const, message: String(r.json.erreur ?? '') } : {}) });
       else if (r.statut === 503) setEtat({ nom: 'ferme', message: String(r.json.erreur ?? 'L’espace opérations n’est pas encore ouvert.') });
       else setEtat({ nom: 'erreur', message: String(r.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.') });
     })();
@@ -261,8 +288,8 @@ export default function EspaceOperations() {
 
   const vue = MODE_DEMO ? demo.vue : etat.nom === 'pret' ? etat.vue : null;
   const demoIntrouvable = MODE_DEMO && apercu && demo.charge && !demo.vue;
-  // Nom de la conciergerie qui a invité ; avant la vue, Label Maison seulement si le lien est le sien.
-  const conciergerie = vue?.conciergerie?.nom ?? (!espaceLien || estLabelMaison(espaceLien) ? 'Label Maison' : '');
+  // Nom de la conciergerie qui a invité ; avant la vue, celui du lien ou retenu sur l'appareil, sinon rien.
+  const conciergerie = vue?.conciergerie?.nom ?? (MODE_DEMO ? 'Label Maison' : (marqueConnexion(espaceLien, espaceRetenu()).nom ?? ''));
 
   return (
     <div className="erp-root">
@@ -285,9 +312,9 @@ export default function EspaceOperations() {
           }
         />
       ) : demoIntrouvable ? (
-        <Connexion message="Personne de démonstration introuvable." ton="danger" labelMaison />
+        <Connexion message="Personne de démonstration introuvable." ton="danger" marque={{ nom: 'Label Maison', labelMaison: true }} />
       ) : etat.nom === 'connexion' ? (
-        <Connexion message={etat.message} ton={etat.ton} labelMaison={!espaceLien || estLabelMaison(espaceLien)} />
+        <Connexion message={etat.message} ton={etat.ton} marque={MODE_DEMO ? { nom: 'Label Maison', labelMaison: true } : marqueConnexion(espaceLien, espaceRetenu())} />
       ) : etat.nom === 'ferme' || etat.nom === 'erreur' ? (
         <div className="grid min-h-screen place-items-center px-4">
           <Card className="w-full max-w-sm p-6 text-center">

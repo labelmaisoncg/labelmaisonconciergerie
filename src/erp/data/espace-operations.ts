@@ -384,7 +384,7 @@ export function appliquerAction(brutes: EntreesOperations, membreId: Id, action:
 
 function appliquer(brutes: EntreesOperations, membreId: Id, action: ActionOperations, ctx: ContexteAction): ResultatAction {
   const moi = membreConnecte(brutes, membreId);
-  if (!moi) return refus('Votre accès n’est plus actif. Contactez votre conciergerie.', 403);
+  if (!moi) return refus('Votre accès a été retiré. Contactez votre conciergerie.', 403);
   const e = restreindre(brutes, membreId);
   const ids = new Set(e.logements.map((l) => l.id));
   const pole = moi.role === 'pole';

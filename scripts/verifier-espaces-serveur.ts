@@ -837,6 +837,16 @@ async function principal() {
       );
       res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
       verifier(res.statut === 401, `${genre} : l’ancienne session ne revient pas après la nouvelle invitation`, res.statut);
+
+      // Accès retiré par le gérant : la personne le lit tel quel (pas « session expirée »).
+      const lienNouveau = /Ouvrir mon espace : (\S+)/.exec(monde.emails[0]?.text ?? '')?.[1] ?? '';
+      res = await appel({ entetes: site(genre === 'proprietaire' ? '198.51.100.63' : '198.51.100.64'), corps: { action: 'entrer', jeton: jetonDuLien(lienNouveau), espace: LM } });
+      const cookieNouveau = cookieDe(res);
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieNouveau } });
+      verifier(res.statut === 200 && (genre === 'proprietaire' || res.corps?.espace === LM), `${genre} : la nouvelle adresse ouvre son espace (espace rendu pour la page de connexion)`, res.statut);
+      await appel({ entetes: gerant, corps: { action: 'retirer', ...(genre === 'proprietaire' ? { proprietaireId: id } : { membreId: id }) } });
+      res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieNouveau } });
+      verifier(res.statut === 401 && res.corps?.code === 'retire' && res.corps?.erreur === 'Votre accès a été retiré. Contactez votre conciergerie.', `${genre} : accès retiré, dit tel quel`, res.corps);
     }
     delete env.RESEND_API_KEY;
     delete env.CONTACT_FROM_EMAIL;

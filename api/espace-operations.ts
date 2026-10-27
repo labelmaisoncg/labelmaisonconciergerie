@@ -41,7 +41,7 @@ import { estLabelMaison } from '../src/erp/data/espaces.js';
 import type { AccesOperations } from '../src/erp/data/types-operations';
 import { continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
-import { GENRES, accesParEmail, avecEmailFiche, baseAcces, cookieSessionEfface, entrerAvecLien, ficheEspace, lienDAcces, sessionAcces } from './_acces-externe.js';
+import { GENRES, accesParEmail, avecEmailFiche, baseAcces, cookieSessionEfface, entrerAvecLien, ficheEspace, lienDAcces, lireSessionAcces } from './_acces-externe.js';
 import {
   deposerPhoto,
   ecrireAccesOps,
@@ -62,6 +62,8 @@ const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
 const tropDEssais = freinEnvois(20, 15 * 60_000);
 const tropDePhotos = freinEnvois(60, 15 * 60_000);
+
+const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace opérations, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 
@@ -169,18 +171,19 @@ export default async function handler(req: any, res: any) {
       return repondre(res, 200, { ok: true });
     }
 
-    // Tout le reste : la session, revérifiée dans la base de son espace.
-    const s = await sessionAcces<AccesOperations>(req, 'operations');
-    if (!s) {
+    // Tout le reste : la session, revérifiée dans la base de son espace ; un accès retiré est dit tel quel.
+    const s = await lireSessionAcces<AccesOperations>(req, 'operations');
+    if (!s.ok) {
       res.setHeader('Set-Cookie', cookieSessionEfface('operations'));
-      return repondre(res, 401, { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
+      return repondre(res, 401, s.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
     }
     const membreId = s.acces.membreId;
 
     if (action === 'vue' && req.method === 'GET') {
       const vue = await vueSignee(s.espace, await entreesOps(s.base), membreId);
-      if (!vue) return repondre(res, 403, { ok: false, code: 'session', erreur: 'Votre accès n’est plus actif. Contactez votre gérant.' });
-      return repondre(res, 200, { ok: true, vue });
+      // Plus dans l'équipe : même message que pour un accès retiré.
+      if (!vue) return repondre(res, 403, { ok: false, code: 'retire', erreur: ACCES_RETIRE });
+      return repondre(res, 200, { ok: true, vue, espace: s.espace });
     }
 
     if (action === 'agir' && req.method === 'POST') {

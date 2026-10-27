@@ -237,7 +237,14 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
         </Badge>
         {acces && acces.statut !== 'retire' && <span className="truncate text-[12.5px] text-(--lm-encre-2)">{acces.email}</span>}
       </div>
-      <Field label="Adresse e-mail du propriétaire" aide="Le lien de connexion part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.">
+      <Field
+        label="Adresse e-mail du propriétaire"
+        aide={
+          email.trim().toLowerCase() !== (p.contact.email ?? '').trim().toLowerCase() && email.trim()
+            ? 'L’adresse de sa fiche sera remplacée par celle-ci.'
+            : 'Le lien de connexion part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.'
+        }
+      >
         <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
       </Field>
       <div className="mt-3 flex flex-wrap gap-2">
