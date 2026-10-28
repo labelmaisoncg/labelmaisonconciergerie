@@ -53,6 +53,7 @@ import {
   lireJetonSejour,
   lireSaisieCheckin,
   majeurLe,
+  masquerCodesLivret,
   nouveauCheckin,
   purgerCheckins,
   signerJetonSejour,
@@ -569,6 +570,63 @@ async function principal() {
     const sansTitre = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, descriptif: { ...LOGEMENT.descriptif, titre: '' } }, aujourdhui: AUJ, checkinOuvert: true });
     verifier(sansTitre.logement.nom === '' && sansTitre.logement.ville === 'Corbeil-Essonnes' && !/M\. Exemple|propri/.test(JSON.stringify(sansTitre)), 'sans titre d’annonce : pas de nom (la ville), jamais le nom interne', sansTitre.logement);
     if (racine) verifier(/l\.nom \|\| l\.ville \|\| t\.votreLogement/.test(code('src/erp/sejour/LivretSejour.tsx')), 'livret : titre, sinon la ville, sinon « Votre logement »');
+  }
+
+  section('12. Clarté avant les 48 h : code postal, année, distance, numéro de bus lisibles ; codes toujours cachés');
+  {
+    const lisibles = [
+      'Supermarché rue de la Gare, 91100 Corbeil-Essonnes.',
+      'RER D à 1200 m, bus 4021 direction Évry.',
+      'Appartement rénové en 2019, merci d’en prendre soin.',
+      'Code postal : 91100.',
+      'Ligne 4021 puis tram T1, arrêt n° 1234. Built in 1998, since 2005.',
+      'Plage à 2500 m, 1500 € de caution, 1200 mètres de la gare.',
+    ];
+    const changes = lisibles.filter((t) => masquerCodesLivret(t) !== t);
+    verifier(changes.length === 0, 'masquerCodesLivret : code postal, année, distance, montant, numéro de bus, de ligne et n° restent lisibles', changes.map((t) => masquerCodesLivret(t)));
+    verifier(masquerCodesLivret('Supermarché à 300 m. Code 4821 du local, boîte 7319.') === `Supermarché à 300 m. Code ${CODE_MASQUE} du local, boîte ${CODE_MASQUE}.`, 'une suite inconnue reste masquée (filet de sécurité)');
+    verifier(masquerCodesLivret('Né en 1890 ? Non : en 2019. 48210 sans ville.').includes(CODE_MASQUE), 'année hors de 1900 à 2099, 5 chiffres sans ville : masqués');
+
+    const clair: Logement = {
+      ...LOGEMENT,
+      fiche: {
+        ...LOGEMENT.fiche,
+        parking: 'Parking public à 150 m, rue de la Gare, 91100 Corbeil-Essonnes.',
+        regles: 'Appartement rénové en 2019, merci d’en prendre soin.',
+        aSavoir: 'Boulangerie au 91100 Corbeil-Essonnes. Code postal : 91100.',
+        consignesDepart: 'Bus 4021 pour la gare, départ à 300 m.',
+        questions: [],
+      },
+      descriptif: { ...LOGEMENT.descriptif, textes: { transports: 'RER D à 1200 m, bus 4021.' } },
+    };
+    const vClair = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: clair, aujourdhui: AUJ, checkinOuvert: true });
+    verifier(
+      vClair.logement.parking === clair.fiche.parking &&
+        vClair.logement.regles === clair.fiche.regles &&
+        vClair.logement.aSavoir === clair.fiche.aSavoir &&
+        vClair.logement.consignesDepart === clair.fiche.consignesDepart &&
+        vClair.logement.transports === 'RER D à 1200 m, bus 4021.',
+      'avant 48 h : code postal, année, distance et bus montrés tels quels (et « 91100 » ne se compte pas lui-même comme un secret)',
+      vClair.logement,
+    );
+
+    // Toujours cachés : le code n'apparaît jamais (texte masqué ou retiré).
+    const cache = (champ: Partial<Logement['fiche']>) => {
+      const v = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, aSavoir: '', parking: '', regles: '', consignesDepart: '', questions: [], ...champ } }, aujourdhui: AUJ, checkinOuvert: true });
+      return JSON.stringify(v);
+    };
+    const fuites = [
+      ['Boîte 4821 à gauche.', /4821/],
+      ['Local vélos : code 4821.', /4821/],
+      ['Portail : 4 8 2.', /4 8 2/],
+      ['Tapez 4821 au portail.', /4821/],
+      ['Le wifi soleil2026 marche partout.', /soleil/],
+      ['Bus 4821 jusqu’à la gare.', /4821/],
+    ].filter(([t, motif]) => (motif as RegExp).test(cache({ aSavoir: t as string })));
+    verifier(fuites.length === 0, '« Boîte 4821 », « code 4821 », « Portail : 4 8 2 », « tapez 4821 au portail », wifi, code de l’accès derrière « bus » : jamais montrés', fuites.map(([t]) => t));
+    const croise = cache({ parking: 'Portail du parking : code 482.', aSavoir: 'Tapez 482 en bas.' });
+    verifier(!/482/.test(croise), 'code cité après « code » dans un champ, écrit nu dans un autre : le texte attend les 48 h');
+    verifier(/Corbeil-Essonnes/.test(cache({ aSavoir: 'Code postal 91100 Corbeil-Essonnes.' })) && /91100/.test(cache({ aSavoir: 'Code postal 91100 Corbeil-Essonnes.' })), '« code postal 91100 » : ni masqué ni pris pour un code');
   }
 
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

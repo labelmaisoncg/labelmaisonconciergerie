@@ -1128,6 +1128,11 @@ function codesApresMotCode(texte: string): string[] {
   ];
 }
 
+/** Codes cités après un mot d'accès dans un texte libre (« Portail du parking : code 482 » → 482), sans les suites de chiffres nues. */
+export function codesCitesApresMot(texte: string): string[] {
+  return codesApresMotCode(nettoyerTexte(texte));
+}
+
 /** Jetons qui suivent « code », « cadenas »… sans en être un : heure (« 16h00 »), distance, durée, débit, montant. */
 const PAS_UN_CODE = /^(\d{1,3}h\d{0,2}|\d{1,3}(er|re|e|[èe]me|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))$/i;
 
