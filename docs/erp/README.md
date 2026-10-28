@@ -1041,6 +1041,21 @@ ligne dans le journal (« Synchronisation Repull ») ; l'état (appels du mois,
 dernier bilan) est dans la ligne `repull / etat` de `erp.enregistrements`,
 ignorée par l'application.
 
+**Supprimer un logement** (repli Administratif, gérant seulement, jamais en
+lecture seule ; la base refuse la suppression d'un logement à tout autre
+compte : règle « ecritures reservees aux gerants (suppression) ») : seulement
+un logement sans historique (créé par erreur, doublon, essai). Réservations,
+conversations, factures qui le nomment, bilans publiés, documents partagés,
+mandat envoyé ou signé, dossier propriétaire, ménages et missions, linge,
+incidents, contrôles, charges, avis à déposer, messages automatiques,
+améliorations proposées, textes d'annonce validés, prix conseillés traités ou
+actions de l'IA : refus expliqué, et « Passer en Sorti » à la place. Annonce
+encore suivie : refus tant qu'elle n'est pas décochée dans Connexions (sinon
+le passage suivant le recréerait). Ce qui n'appartient qu'à lui part avec lui
+(qui le suit, ses réglages de suppléments, de messages automatiques et de prix,
+améliorations « à proposer », textes proposés, mandat en préparation).
+Règles : `src/erp/data/suppression-logement.ts`.
+
 ### Budget d'appels (offre gratuite Repull)
 
 L'offre gratuite compte **1 000 appels par mois pour tout le compte** (agent IA

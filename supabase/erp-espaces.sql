@@ -1175,10 +1175,13 @@ create policy "ecritures reservees aux gerants (modification)" on erp.enregistre
   as restrictive for update to authenticated
   using (not erp.ecriture_gerant_seulement(collection, id) or espace = any ((select erp.espaces_gerant())::uuid[]))
   with check (not erp.ecriture_gerant_seulement(collection, id) or espace = any ((select erp.espaces_gerant())::uuid[]));
--- Supprimer : les mêmes, et les réglages de l'agent (les retirer rendrait son niveau d'autonomie par défaut).
+-- Supprimer : les mêmes, les réglages de l'agent (les retirer rendrait son niveau d'autonomie par
+-- défaut) et un logement (src/erp/data/suppression-logement.ts : seulement sans historique, décidé
+-- par un gérant ; l'équipe modifie la fiche, elle ne la supprime pas). Même liste que
+-- SUPPRESSIONS_GERANT_SEULEMENT (src/erp/data/ecritures-gerant.ts).
 create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrements
   as restrictive for delete to authenticated
-  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent'))
+  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements'))
          or espace = any ((select erp.espaces_gerant())::uuid[]));
 
 -- Réglages de l'agent réservés au gérant (reglages, élément « agent ») : marche
@@ -1775,6 +1778,10 @@ begin
     -- Check-in en ligne (fiches de police) : jamais archivé, ni modifié ni effacé.
     insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'checkinsEnLigne', 'recette-checkin', '{"id": "recette-checkin"}');
     insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'logements', 'recette-lien', '{"id": "recette-lien", "nom": "Recette"}');
+    -- Logements à supprimer : un dans chaque espace (ids distincts : avant la passe 2, la clé est (collection, id)).
+    insert into erp.enregistrements (espace, collection, id, donnees) values
+      (lm, 'logements', 'recette-suppr', '{"id": "recette-suppr", "nom": "Recette à supprimer"}'),
+      (essai, 'logements', 'recette-suppr-autre', '{"id": "recette-suppr-autre", "nom": "Recette autre à supprimer"}');
     update erp.enregistrements set donnees = donnees || '{"v": 2}' where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
@@ -1876,6 +1883,13 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Supprimer un logement : un gérant seulement (l'équipe modifie la fiche, elle ne la supprime pas).
+    delete from erp.enregistrements where espace = lm and collection = 'logements' and id = 'recette-suppr';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » supprime un logement'; raise exception 'stop'; end if;
+    update erp.enregistrements set donnees = donnees || '{"nom": "Recette à supprimer (vue)"}' where espace = lm and collection = 'logements' and id = 'recette-suppr';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un compte « opérations » ne modifie plus le logement qu''il ne peut pas supprimer'; raise exception 'stop'; end if;
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'reglagesRelances', 'relances', '{}');
       resultat := 'un compte « opérations » écrit les réglages des relances';
@@ -2019,6 +2033,13 @@ begin
     update erp.enregistrements set donnees = donnees || '{"repull": {"id": "999"}}' where espace = lm and collection = 'logements' and id = 'recette-lien';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'un gérant (le serveur) ne relie pas un logement à son annonce'; raise exception 'stop'; end if;
+    -- Supprimer un logement : le gérant de l'espace, oui ; sa dernière version reste dans l'historique.
+    delete from erp.enregistrements where espace = lm and collection = 'logements' and id = 'recette-suppr';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne supprime pas un logement'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique
+      where collection = 'logements' and id = 'recette-suppr' and operation = 'suppression' and donnees ->> 'nom' = 'Recette à supprimer (vue)';
+    if n <> 1 then resultat := 'un logement supprimé ne reste pas dans l''historique'; raise exception 'stop'; end if;
     -- Check-in en ligne : le gérant (et le serveur) le lit et l'efface ; rien ne reste dans l'historique.
     select count(*) into n from erp.enregistrements where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
     if n <> 1 then resultat := 'un gérant (le serveur) ne lit pas les check-ins en ligne'; raise exception 'stop'; end if;
@@ -2144,6 +2165,18 @@ begin
     perform set_config('request.jwt.claims', j_autre, true);
     select count(*) into n from erp.enregistrements where collection = 'recette' and espace = essai;
     if n <> 1 then resultat := format('le membre de l''autre espace voit %s de ses lignes au lieu de 1', n); raise exception 'stop'; end if;
+    -- Supprimer un logement : jamais celui d'un autre espace (même avec son en-tête) ; le sien, oui.
+    delete from erp.enregistrements where collection = 'logements' and id = 'recette-lien';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'le gérant d''un autre espace supprime un logement de Label Maison'; raise exception 'stop'; end if;
+    perform set_config('request.headers', json_build_object('x-erp-espace', lm)::text, true);
+    delete from erp.enregistrements where collection = 'logements' and id = 'recette-lien';
+    get diagnostics n = row_count;
+    perform set_config('request.headers', '{}', true);
+    if n <> 0 then resultat := 'le gérant d''un autre espace supprime un logement de Label Maison avec son en-tête'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where espace = essai and collection = 'logements' and id = 'recette-suppr-autre';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'le gérant de l''autre espace ne supprime pas son logement'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements where espace = lm;
     if n <> 0 then resultat := 'le membre de l''autre espace voit Label Maison'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = '{"id": "ligne-autre", "v": 2}' where espace = essai and collection = 'recette' and id = 'ligne-autre';

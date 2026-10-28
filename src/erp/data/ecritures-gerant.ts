@@ -6,7 +6,8 @@
  * La base refuse ces écritures à tout autre compte (règles RLS, et
  * déclencheur des réglages de l'agent réservés au gérant :
  * REGLAGES_AGENT_GERANT ; déclencheur du lien d'un logement à son annonce :
- * lienAnnonceChange). Le store ne les met donc
+ * lienAnnonceChange ; suppression d'un logement :
+ * SUPPRESSIONS_GERANT_SEULEMENT). Le store ne les met donc
  * pas en file pour un compte qui n'est pas gérant : elles sont signalées
  * comme un refus de la base et la version enregistrée revient
  * (synchro.ts, ecritureInterdite). verifier-synchro.ts lit les fichiers SQL
@@ -26,6 +27,13 @@ export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[
   // supplements : prix et conditions des suppléments proposés aux voyageurs, réglés par le gérant (data/supplements.ts).
   reglages: ['messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'],
 };
+
+/**
+ * Suppressions réservées au gérant, dans des collections que l'équipe
+ * modifie : un logement (data/suppression-logement.ts). Même liste que la
+ * règle « ecritures reservees aux gerants (suppression) » de la base.
+ */
+export const SUPPRESSIONS_GERANT_SEULEMENT: readonly string[] = ['logements'];
 
 /**
  * Réglages de l'agent : l'équipe change le ton, la signature, les langues et
@@ -72,13 +80,14 @@ export function lienAnnonceChange(op: Operation, avant: ErpDonnees): boolean {
 
 /**
  * Opération qu'un compte qui n'est pas gérant ne peut pas faire (la base la
- * refuserait) : écriture réservée, suppression des réglages de l'agent,
+ * refuserait) : écriture réservée, suppression d'un logement ou des réglages de l'agent,
  * changement d'un de ses réglages réservés (REGLAGES_AGENT_GERANT, comparés
  * à `avant` comme le déclencheur erp.garder_autonomie_agent les compare à la
  * ligne enregistrée ; sans ligne : aucune de ces clés).
  */
 export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boolean {
   if (ecritureGerantSeulement(op.collection, op.id)) return true;
+  if (op.type === 'supprimer' && SUPPRESSIONS_GERANT_SEULEMENT.includes(op.collection)) return true;
   if (lienAnnonceChange(op, avant)) return true;
   if (op.collection !== 'reglages' || op.id !== ID_REGLAGES_AGENT) return false;
   if (op.type === 'supprimer') return true;

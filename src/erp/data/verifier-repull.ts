@@ -1552,8 +1552,9 @@ async function principal() {
           operationReserveeAuGerant(ecrire('repull-9', { ...linas, id: 'repull-9' }), d0) &&
           !operationReserveeAuGerant(ecrire('log-linas', { ...linas, nom: 'Nouveau nom' }), d0) &&
           !operationReserveeAuGerant(ecrire('log-neuf', { ...linas, id: 'log-neuf' }), d0) &&
-          !operationReserveeAuGerant({ type: 'supprimer', collection: 'logements', id: 'log-linas' } as never, d0),
-        'compte « opérations » : poser, changer ou créer un lien refusé ; modifier le reste ou créer un logement, permis',
+          // Supprimer un logement : réservé au gérant (suppression-logement.ts, règle de la base).
+          operationReserveeAuGerant({ type: 'supprimer', collection: 'logements', id: 'log-linas' } as never, d0),
+        'compte « opérations » : poser, changer ou créer un lien refusé, supprimer un logement aussi ; modifier le reste ou créer un logement, permis',
       );
     }
 

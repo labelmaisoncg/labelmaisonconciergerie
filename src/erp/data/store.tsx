@@ -45,6 +45,7 @@ import { ESPACE_LABEL_MAISON, choisirEspace, messageRefusAcces, ouvrirEspace, ty
 import { refusEcritureFigee } from './factures-mensuelles';
 import { messageRefus, operationReserveeAuGerant, traceRefus } from './ecritures-gerant';
 import { MESSAGE_LIEN_PERIME } from './invitation';
+import { supprimerLogementDe, verdictSuppression } from './suppression-logement';
 import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro, type RefusBase } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
@@ -114,6 +115,12 @@ export interface ErpContexte extends ErpDonnees {
   avancerProspect: (id: Id, etape?: EtapeProspect) => Resultat;
   cocherChecklistLancement: (logementId: Id, cle: CleChecklistLancement, fait?: boolean, preuve?: string) => Resultat;
   activerLogement: (id: Id) => Resultat;
+  /**
+   * Supprime pour de bon un logement sans historique (gérant, hors lecture
+   * seule ; annonce décochée dans Connexions), avec ce qui n'appartient qu'à
+   * lui : data/suppression-logement.ts. Sinon, refus expliqué.
+   */
+  supprimerLogement: (id: Id) => Resultat;
   ajouterMouvementLinge: (mouvement: Omit<MouvementLinge, 'id'>) => MouvementLinge;
   creerIncident: (incident: NouvelIncident) => Incident;
   resoudreIncident: (id: Id, options?: { coutCentimes?: number; date?: DateISO }) => Resultat;
@@ -569,6 +576,14 @@ function CoeurErp({
       return OK;
     };
 
+    const supprimerLogement = (id: Id): Resultat => {
+      const verdict = verdictSuppression({ role: utilisateurRef.current.role, lectureSeule, logementId: id, donnees: ref.current });
+      if (!verdict.ok) return echec(verdict.message);
+      const nom = trouver('logements', id)?.nom ?? '';
+      appliquer((d) => supprimerLogementDe(d, id), 'Logement supprimé', 'logement', id, nom);
+      return OK;
+    };
+
     const ajouterMouvementLinge = (mouvement: Omit<MouvementLinge, 'id'>): MouvementLinge => {
       const complet = { ...mouvement, id: nouvelId('lin') };
       const total = mouvement.articles.reduce((s, a) => s + a.quantite, 0);
@@ -640,6 +655,7 @@ function CoeurErp({
       avancerProspect,
       cocherChecklistLancement,
       activerLogement,
+      supprimerLogement,
       ajouterMouvementLinge,
       creerIncident,
       resoudreIncident,

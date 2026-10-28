@@ -284,9 +284,13 @@ create policy "ecritures reservees aux gerants (modification)" on erp.enregistre
   as restrictive for update to authenticated
   using (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant())
   with check (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant());
+-- Supprimer : les mêmes, les réglages de l'agent et un logement (seulement sans historique, décidé
+-- par un gérant : src/erp/data/suppression-logement.ts). Même liste que
+-- SUPPRESSIONS_GERANT_SEULEMENT (src/erp/data/ecritures-gerant.ts).
 create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrements
   as restrictive for delete to authenticated
-  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent')) or erp.acces_gerant());
+  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements'))
+         or erp.acces_gerant());
 
 -- Réglages de l'agent réservés au gérant (reglages / agent) : marche ou pause,
 -- niveau d'autonomie, horaires, ce qu'il vous confie, délai avant de vous
