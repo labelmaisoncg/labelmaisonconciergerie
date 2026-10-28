@@ -319,7 +319,7 @@ export function LienAnnonce({ logement: l }: { logement: Logement }) {
         onFermer={() => !envoi && setConfirmer(false)}
         taille="sm"
         titre="Délier ce logement ?"
-        description="Il reprend son nom et ses photos d’avant le lien ; vos changements depuis restent. L’annonce n’est plus suivie : cochez-la dans Connexions pour l’ajouter comme un logement à part."
+        description="Il reprend son nom, ses photos et ses infos d’avant le lien ; vos changements depuis restent. L’annonce n’est plus suivie : cochez-la dans Connexions pour l’ajouter comme un logement à part."
         pied={
           <>
             <Button variant="ghost" onClick={() => setConfirmer(false)} disabled={envoi}>

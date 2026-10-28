@@ -1033,8 +1033,9 @@ jusque dans la base (déclencheur `erp.garder_lien_annonce()`). Décocher
 l'annonce dans Connexions met le logement en pause ; son statut d'avant
 revient quand elle est recochée, ou au « Délier ». « Délier » (repli
 Administratif) n'existe que tant qu'aucune réservation ni conversation de
-l'annonce n'est arrivée ; il rend les seuls champs que l'import remplace
-(nom, photos, description, capacité…). Règles :
+l'annonce n'est arrivée ; il rend les champs que l'import remplace (nom,
+photos, description, capacité…) et revide ceux qu'il a remplis parce qu'ils
+étaient vides (wifi, accès, règles, adresse…). Règles :
 `src/erp/data/liaison-annonce.ts`. Chaque passage laisse une
 ligne dans le journal (« Synchronisation Repull ») ; l'état (appels du mois,
 dernier bilan) est dans la ligne `repull / etat` de `erp.enregistrements`,
