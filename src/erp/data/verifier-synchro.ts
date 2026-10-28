@@ -101,7 +101,7 @@ class FausseBase {
           a.collection === b.collection ? (a.id < b.id ? -1 : a.id > b.id ? 1 : 0) : a.collection < b.collection ? -1 : 1,
         );
         for (const [k, v] of filtres) {
-          if (k === 'collection' || k === 'id') lignes = lignes.filter((l) => `eq.${l[k]}` === v);
+          if (k === 'collection' || k === 'id') lignes = lignes.filter((l) => (v.startsWith('neq.') ? `neq.${l[k]}` !== v : `eq.${l[k]}` === v));
         }
         const offset = Number(url.searchParams.get('offset') ?? 0);
         const limit = Number(url.searchParams.get('limit') ?? 1000);

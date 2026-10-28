@@ -329,6 +329,12 @@ begin
   if coalesce(old.collection, '') = 'actionsAgent' then
     return case when tg_op = 'DELETE' then old else new end;
   end if;
+  -- Check-ins en ligne (fiches de police des voyageurs étrangers, cahier B2) :
+  -- jamais archivés, pour que la purge à 6 mois les efface vraiment
+  -- (src/erp/data/sejour.ts, api/_sejour.ts).
+  if old.collection = 'checkinsEnLigne' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
   if tg_op = 'DELETE' then
     insert into erp.historique (espace, collection, id, operation, donnees, maj_par)
     values (old.espace, old.collection, old.id, 'suppression', old.donnees, old.maj_par);
@@ -1037,15 +1043,16 @@ create policy "connecteurs reserves aux gerants" on erp.enregistrements
   using (collection <> 'connecteurs' or espace = any ((select erp.espaces_gerant())::uuid[]))
   with check (collection <> 'connecteurs' or espace = any ((select erp.espaces_gerant())::uuid[]));
 -- Accès des propriétaires et des opérations (adresses, empreintes des liens),
--- relances de paiement et leurs réglages : gérants de l'espace (et le compte
--- serveur, gérant de l'espace nommé) seulement, en lecture comme en écriture.
+-- relances de paiement et leurs réglages, check-ins en ligne des voyageurs
+-- (fiches de police) : gérants de l'espace (et le compte serveur, gérant de
+-- l'espace nommé) seulement, en lecture comme en écriture.
 -- Sans cette règle, un compte « opérations » pourrait écrire un accès avec
 -- l'empreinte d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire.
 create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances')
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne')
          or espace = any ((select erp.espaces_gerant())::uuid[]))
-  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances')
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne')
               or espace = any ((select erp.espaces_gerant())::uuid[]));
 -- Actions de l'IA (copilote, collection actionsAgent) : ce que Claude et
 -- l'agent de la messagerie ont fait, avec de quoi l'annuler (valeurs d'avant
@@ -1053,6 +1060,18 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 -- d'équipe de Label Maison) ; lues et annulées par les gérants de l'espace
 -- seulement, comme les accès extérieurs. Un compte « opérations » ou
 -- « lecture » n'y voit rien et n'y écrit rien.
+-- Première pose de la règle : une trace déjà là a été écrite sans elle (le
+-- serveur n'en écrit aucune tant qu'erp.actions_ia_protegees() manque), donc
+-- par n'importe quel membre. Retirée : « Annuler » ne rejoue jamais une trace
+-- forgée avant la mise à jour de la base.
+do $$
+begin
+  if not exists (select 1 from pg_catalog.pg_policies
+                  where schemaname = 'erp' and tablename = 'enregistrements'
+                    and policyname = 'actions ia reservees aux gerants') then
+    delete from erp.enregistrements where collection = 'actionsAgent';
+  end if;
+end $$;
 drop policy if exists "actions ia reservees aux gerants" on erp.enregistrements;
 create policy "actions ia reservees aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
@@ -1068,6 +1087,56 @@ as $$ select exists (select 1 from pg_catalog.pg_policies
                         and policyname = 'actions ia reservees aux gerants') $$;
 revoke all on function erp.actions_ia_protegees() from public, anon;
 grant execute on function erp.actions_ia_protegees() to authenticated;
+
+-- Check-in en ligne (livret du séjour, cahier B2) : la collection
+-- « checkinsEnLigne » (heure d'arrivée, nombre de voyageurs, fiches de police
+-- des voyageurs étrangers) est lue et écrite par les gérants de l'espace
+-- seulement, dont le compte serveur (règle ci-dessus) ; elle n'est jamais
+-- archivée (erp.archiver_version) et ses anciennes versions éventuelles sont
+-- effacées ici. Le serveur n'enregistre aucun check-in tant que cette
+-- fonction n'existe pas (api/_sejour.ts, checkinPret) : jamais de fiche de
+-- police sans ces règles.
+-- Vrai seulement si les deux protections sont EN PLACE (règle restrictive qui
+-- nomme la collection, archive qui l'écarte) : un ancien SQL relancé par-dessus
+-- referme le check-in au lieu de laisser le serveur écrire des fiches lisibles
+-- par tous.
+create or replace function erp.checkin_en_ligne_pret() returns boolean
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%checkinsEnLigne%' and p.with_check like '%checkinsEnLigne%')
+     and exists (select 1 from pg_catalog.pg_proc f join pg_catalog.pg_namespace n on n.oid = f.pronamespace
+                  where n.nspname = 'erp' and f.proname = 'archiver_version' and f.prosrc like '%checkinsEnLigne%')
+$$;
+revoke all on function erp.checkin_en_ligne_pret() from public, anon;
+grant execute on function erp.checkin_en_ligne_pret() to authenticated;
+delete from erp.historique where collection = 'checkinsEnLigne';
+-- Espaces fermés : le compte serveur n'y entre plus (erp.mes_espaces), la
+-- purge de api/_sejour.ts ne les voit donc pas. Leurs check-ins échus
+-- (conserverJusquAu passé, ou illisible) sont effacés ici, pour le serveur
+-- seulement ; jamais archivés (erp.archiver_version).
+create or replace function erp.purger_checkins_espaces_fermes() returns integer
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  n integer;
+begin
+  if not erp.est_serveur() then
+    return 0;
+  end if;
+  delete from erp.enregistrements e
+   using erp.espaces s
+   where e.collection = 'checkinsEnLigne' and s.id = e.espace and not s.actif
+     and (coalesce(e.donnees ->> 'conserverJusquAu', '') !~ '^\d{4}-\d{2}-\d{2}$'
+          or (e.donnees ->> 'conserverJusquAu') < to_char((now() at time zone 'Europe/Paris')::date, 'YYYY-MM-DD'));
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function erp.purger_checkins_espaces_fermes() from public, anon;
+grant execute on function erp.purger_checkins_espaces_fermes() to authenticated;
 -- Écritures réservées aux gérants de l'espace (et au compte serveur, gérant de
 -- l'espace nommé) ; la lecture ne change pas. Ce sont :
 --   - ce que seul le serveur écrit : envois des messages automatiques et leur
@@ -1472,7 +1541,7 @@ create policy "membres lisent" on erp.historique for select to authenticated
 -- adresses et empreintes des liens).
 create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs')
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne')
          or espace = any ((select erp.espaces_gerant())::uuid[]));
 -- Anciennes versions des actions de l'IA : gérants de l'espace seulement, comme elles.
 drop policy if exists "versions des actions ia reservees aux gerants" on erp.historique;
@@ -1652,6 +1721,11 @@ begin
     -- Anciennes versions d'accès : une dans chaque espace (l'enregistrement de
     -- l'autre espace est retiré, seule sa version reste).
     update erp.enregistrements set donnees = '{"id": "recette", "v": 2}' where espace = lm and collection = 'accesProprietaires' and id = 'recette';
+    -- Check-in en ligne (fiches de police) : jamais archivé, ni modifié ni effacé.
+    insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'checkinsEnLigne', 'recette-checkin', '{"id": "recette-checkin"}');
+    update erp.enregistrements set donnees = donnees || '{"v": 2}' where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
+    select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
+    if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
     delete from erp.enregistrements where espace = essai and collection = 'accesProprietaires' and id = 'recette-version';
     -- Écritures réservées aux gérants : une ligne de chaque. Les ids des
     -- réglages sont les vrais : une ligne déjà là est gardée telle quelle
@@ -1720,6 +1794,14 @@ begin
     if n <> 0 then resultat := 'un compte « opérations » lit les accès des propriétaires'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'accesProprietaires';
     if n <> 0 then resultat := 'un compte « opérations » lit les anciennes versions des accès'; raise exception 'stop'; end if;
+    select count(*) into n from erp.enregistrements where collection = 'checkinsEnLigne';
+    if n <> 0 then resultat := 'un compte « opérations » lit les check-ins en ligne'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'checkinsEnLigne', 'recette-intrus', '{}');
+      resultat := 'un compte « opérations » écrit un check-in en ligne';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'accesProprietaires', 'intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
@@ -1865,6 +1947,14 @@ begin
     update erp.enregistrements set donnees = donnees || '{"etat": "annulee"}' where espace = lm and collection = 'actionsAgent' and id = 'recette-action';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'un gérant ne peut pas annuler une action de l''IA'; raise exception 'stop'; end if;
+    -- Check-in en ligne : le gérant (et le serveur) le lit et l'efface ; rien ne reste dans l'historique.
+    select count(*) into n from erp.enregistrements where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
+    if n <> 1 then resultat := 'un gérant (le serveur) ne lit pas les check-ins en ligne'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant (le serveur) n''efface pas un check-in en ligne'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
+    if n <> 0 or not erp.checkin_en_ligne_pret() then resultat := 'un check-in en ligne effacé reste dans l''historique'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
       where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent', 'supplements'))
                              or (collection = 'conseilsPrix' and id = 'reglages')

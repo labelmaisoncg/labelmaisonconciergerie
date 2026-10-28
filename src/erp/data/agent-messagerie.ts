@@ -502,6 +502,7 @@ export function construireContexte(
         ligne('Équipements', f.equipements),
         // Avant l'heure des codes, les suites de chiffres (un code du portail glissé dans une réponse) sont retirées.
         ligne('À savoir', codes.ok ? (f.aSavoir ?? '') : masquerCodes(f.aSavoir ?? '')),
+        ligne('Consignes de départ', codes.ok ? (f.consignesDepart ?? '') : masquerCodes(f.consignesDepart ?? '')),
         ...questionsValides(f.questions)
           .slice(0, 30)
           .map((q) => `- Question fréquente : ${court(q.question, 200)} → Réponse : ${court(codes.ok ? q.reponse : masquerCodes(q.reponse), 600)}`),

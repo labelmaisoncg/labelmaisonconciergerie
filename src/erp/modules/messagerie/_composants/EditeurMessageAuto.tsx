@@ -47,6 +47,9 @@ export interface EditeurMessageAutoProps {
   onEnregistrer: (k: DeclencheurMessage, m: Pick<ModeleProgramme, 'texte' | 'heure' | 'logements'>) => void;
 }
 
+/** Aperçu de {Lien du livret} : le serveur signe le vrai lien de chaque séjour à l'envoi. */
+const LIEN_SEJOUR_EXEMPLE = 'https://www.labelmaisoncg.fr/sejour#…';
+
 /** Pastille d'une variable : la touche l'insère là où se trouve le curseur. */
 function Pastille({ libelle, sensible, onClick, disabled }: { libelle: string; sensible?: boolean; onClick: () => void; disabled?: boolean }) {
   return (
@@ -113,7 +116,8 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
     const variables = variablesDuTexte(modele);
     const supplements = variables.includes('supplements') || k === 'proposer_supplements' ? texteSupplementsSejour(p.supplements, sejour, { reservations: p.reservations, missions: p.missions }, logement?.fiche, jour) : undefined;
     return {
-      ...rendreMessage(modele, { reservation: sejour, logement, fil, signature: p.signature, lienGuide: lien, aujourdhui: jour, supplements }),
+      // Le vrai lien du séjour est signé par le serveur à l'envoi : un exemple ici.
+      ...rendreMessage(modele, { reservation: sejour, logement, fil, signature: p.signature, lienGuide: lien, lienSejour: LIEN_SEJOUR_EXEMPLE, aujourdhui: jour, supplements }),
       jour,
       coupe: propre?.actif === false,
       demandeCodes: variables.includes('acces') || variables.includes('wifi'),

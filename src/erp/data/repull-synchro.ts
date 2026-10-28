@@ -549,6 +549,31 @@ export class BaseErp {
     return voulu && m && typeof m.role === 'string' ? m.role : null;
   }
 
+  /**
+   * Supprime ces éléments d'une collection, dans l'espace de la base
+   * seulement (purge des check-ins en ligne, data/sejour.ts). Renvoie le
+   * nombre de lignes réellement supprimées.
+   */
+  async supprimer(collection: string, ids: string[]): Promise<number> {
+    const espace = await this.espace();
+    let n = 0;
+    for (const lot of decouper([...new Set(ids)], 80)) {
+      const filtres = [
+        `collection=eq.${encodeURIComponent(collection)}`,
+        `id=in.(${lot.map((i) => encodeURIComponent(`"${i.replace(/"/g, '')}"`)).join(',')})`,
+        ...(espace ? [`espace=eq.${espace}`] : []),
+      ].join('&');
+      const r = await this.requete(`enregistrements?${filtres}&select=id`, {
+        method: 'DELETE',
+        entetes: { 'Content-Profile': 'erp', 'Accept-Profile': 'erp', Prefer: 'return=representation' },
+      });
+      const lignes = (await r.json().catch(() => [])) as unknown[];
+      n += Array.isArray(lignes) ? lignes.length : 0;
+    }
+    this.ecritures += n;
+    return n;
+  }
+
   /** Fonction de la base (schéma erp), avec l'espace en en-tête. */
   async rpc<T>(nom: string, args: Record<string, unknown> = {}): Promise<T> {
     const r = await this.requete(`rpc/${nom}`, {

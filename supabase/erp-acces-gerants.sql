@@ -9,6 +9,8 @@
 --   accesOperations      accès à l'espace opérations
 --   relancesPaiement     relances de paiement des propriétaires
 --   reglagesRelances     leurs réglages (mode automatique ou non)
+--   checkinsEnLigne      check-ins en ligne des voyageurs (fiches de police),
+--                        jamais archivés : la purge à 6 mois les efface vraiment
 -- ne sont plus lisibles ni modifiables que par un gérant (le serveur passe
 -- par le compte d'équipe, gérant), pas plus que leurs anciennes versions
 -- dans erp.historique (ni celles de la collection « connecteurs »). Sans cette règle, un compte « opérations »
@@ -43,8 +45,60 @@ $$;
 drop policy if exists "acces exterieurs reserves aux gerants" on erp.enregistrements;
 create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant())
-  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant())
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant());
+
+-- Archive des anciennes versions : la même que dans erp-installation.sql
+-- (base d'avant les espaces), sans les check-ins en ligne.
+create or replace function erp.archiver_version() returns trigger
+language plpgsql security definer set search_path = ''
+as $$
+begin
+  -- Check-ins en ligne (fiches de police des voyageurs étrangers, cahier B2) :
+  -- jamais archivés, pour que la purge à 6 mois les efface vraiment
+  -- (src/erp/data/sejour.ts, api/_sejour.ts).
+  if old.collection = 'checkinsEnLigne' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+  if tg_op = 'DELETE' then
+    insert into erp.historique (collection, id, operation, donnees, maj_par)
+    values (old.collection, old.id, 'suppression', old.donnees, old.maj_par);
+    return old;
+  end if;
+  if new.donnees is distinct from old.donnees then
+    insert into erp.historique (collection, id, operation, donnees, maj_par)
+    values (old.collection, old.id, 'modification', old.donnees, old.maj_par);
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.archiver_version() from public, anon, authenticated;
+
+-- Check-in en ligne (livret du séjour, cahier B2) : la collection
+-- « checkinsEnLigne » (heure d'arrivée, nombre de voyageurs, fiches de police
+-- des voyageurs étrangers) est lue et écrite par les gérants seulement, dont
+-- le compte d'équipe qui sert au serveur (règle ci-dessus) ; elle n'est
+-- jamais archivée (erp.archiver_version) et ses anciennes versions
+-- éventuelles sont effacées ici. Le serveur n'enregistre aucun check-in tant
+-- que cette fonction n'existe pas (api/_sejour.ts, checkinPret) : jamais de
+-- fiche de police sans ces règles.
+-- Vrai seulement si les deux protections sont EN PLACE (règle restrictive qui
+-- nomme la collection, archive qui l'écarte) : un ancien SQL relancé par-dessus
+-- referme le check-in au lieu de laisser le serveur écrire des fiches lisibles
+-- par tous.
+create or replace function erp.checkin_en_ligne_pret() returns boolean
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%checkinsEnLigne%' and p.with_check like '%checkinsEnLigne%')
+     and exists (select 1 from pg_catalog.pg_proc f join pg_catalog.pg_namespace n on n.oid = f.pronamespace
+                  where n.nspname = 'erp' and f.proname = 'archiver_version' and f.prosrc like '%checkinsEnLigne%')
+$$;
+revoke all on function erp.checkin_en_ligne_pret() from public, anon;
+grant execute on function erp.checkin_en_ligne_pret() to authenticated;
+delete from erp.historique where collection = 'checkinsEnLigne';
 
 -- Écritures réservées aux gérants (le serveur passe par le compte d'équipe,
 -- gérant) ; la lecture ne change pas. Ce que seul le serveur écrit (envois
@@ -231,7 +285,7 @@ $$;
 drop policy if exists "versions reservees aux gerants" on erp.historique;
 create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne') or erp.acces_gerant());
 
 -- ----------------------------------------------------------------- recette
 -- Essai dans une transaction annulée à la fin : rien n'est gardé. Un compte
@@ -255,6 +309,11 @@ begin
     -- Une ancienne version de chacun (erp.archiver_version).
     update erp.enregistrements set donnees = donnees || '{"v": 2}'
       where id = 'recette-acces' and collection in ('recette', 'accesProprietaires');
+    -- Check-in en ligne : jamais archivé, ni modifié ni effacé.
+    insert into erp.enregistrements (collection, id, donnees) values ('checkinsEnLigne', 'recette-checkin', '{"id": "recette-checkin"}');
+    update erp.enregistrements set donnees = donnees || '{"v": 2}' where collection = 'checkinsEnLigne' and id = 'recette-checkin';
+    select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
+    if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
     -- Écritures réservées aux gérants : vrais ids des réglages (une ligne déjà là
     -- est gardée telle quelle), facture d'essai numérotée en 2099.
     insert into erp.enregistrements (collection, id, donnees) values
@@ -277,6 +336,14 @@ begin
     if n <> 1 then resultat := 'un compte « opérations » ne lit plus l''historique de l''ERP'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'accesProprietaires' and id = 'recette-acces';
     if n <> 0 then resultat := 'un compte « opérations » lit les anciennes versions des accès'; raise exception 'stop'; end if;
+    select count(*) into n from erp.enregistrements where collection = 'checkinsEnLigne';
+    if n <> 0 then resultat := 'un compte « opérations » lit les check-ins en ligne'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('checkinsEnLigne', 'recette-intrus', '{}');
+      resultat := 'un compte « opérations » écrit un check-in en ligne';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
     begin
       insert into erp.enregistrements (collection, id, donnees) values ('accesProprietaires', 'recette-intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
@@ -338,6 +405,13 @@ begin
     if n <> 1 then resultat := 'un gérant ne lit pas les accès des propriétaires'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'accesProprietaires' and id = 'recette-acces';
     if n <> 1 then resultat := 'un gérant ne lit pas les anciennes versions des accès'; raise exception 'stop'; end if;
+    select count(*) into n from erp.enregistrements where collection = 'checkinsEnLigne' and id = 'recette-checkin';
+    if n <> 1 then resultat := 'un gérant (le serveur) ne lit pas les check-ins en ligne'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where collection = 'checkinsEnLigne' and id = 'recette-checkin';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant (le serveur) n''efface pas un check-in en ligne'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
+    if n <> 0 or not erp.checkin_en_ligne_pret() then resultat := 'un check-in en ligne effacé reste dans l''historique'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
       where (collection = 'reglages' and id in ('messages-programmes', 'agent', 'supplements')) or (collection = 'envoisProgrammes' and id = 'recette-acces');
     get diagnostics n = row_count;
