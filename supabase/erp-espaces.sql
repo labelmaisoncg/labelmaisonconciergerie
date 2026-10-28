@@ -1058,12 +1058,47 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 -- effacées ici. Le serveur n'enregistre aucun check-in tant que cette
 -- fonction n'existe pas (api/_sejour.ts, checkinPret) : jamais de fiche de
 -- police sans ces règles.
+-- Vrai seulement si les deux protections sont EN PLACE (règle restrictive qui
+-- nomme la collection, archive qui l'écarte) : un ancien SQL relancé par-dessus
+-- referme le check-in au lieu de laisser le serveur écrire des fiches lisibles
+-- par tous.
 create or replace function erp.checkin_en_ligne_pret() returns boolean
-language sql immutable set search_path = ''
-as $$ select true $$;
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%checkinsEnLigne%' and p.with_check like '%checkinsEnLigne%')
+     and exists (select 1 from pg_catalog.pg_proc f join pg_catalog.pg_namespace n on n.oid = f.pronamespace
+                  where n.nspname = 'erp' and f.proname = 'archiver_version' and f.prosrc like '%checkinsEnLigne%')
+$$;
 revoke all on function erp.checkin_en_ligne_pret() from public, anon;
 grant execute on function erp.checkin_en_ligne_pret() to authenticated;
 delete from erp.historique where collection = 'checkinsEnLigne';
+-- Espaces fermés : le compte serveur n'y entre plus (erp.mes_espaces), la
+-- purge de api/_sejour.ts ne les voit donc pas. Leurs check-ins échus
+-- (conserverJusquAu passé, ou illisible) sont effacés ici, pour le serveur
+-- seulement ; jamais archivés (erp.archiver_version).
+create or replace function erp.purger_checkins_espaces_fermes() returns integer
+language plpgsql security definer set search_path = ''
+as $$
+declare
+  n integer;
+begin
+  if not erp.est_serveur() then
+    return 0;
+  end if;
+  delete from erp.enregistrements e
+   using erp.espaces s
+   where e.collection = 'checkinsEnLigne' and s.id = e.espace and not s.actif
+     and (coalesce(e.donnees ->> 'conserverJusquAu', '') !~ '^\d{4}-\d{2}-\d{2}$'
+          or (e.donnees ->> 'conserverJusquAu') < to_char((now() at time zone 'Europe/Paris')::date, 'YYYY-MM-DD'));
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke all on function erp.purger_checkins_espaces_fermes() from public, anon;
+grant execute on function erp.purger_checkins_espaces_fermes() to authenticated;
 -- Écritures réservées aux gérants de l'espace (et au compte serveur, gérant de
 -- l'espace nommé) ; la lecture ne change pas. Ce sont :
 --   - ce que seul le serveur écrit : envois des messages automatiques et leur

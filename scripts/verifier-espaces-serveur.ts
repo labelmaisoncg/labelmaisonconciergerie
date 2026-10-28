@@ -1994,6 +1994,12 @@ async function principal() {
     verifier(res.statut === 200 && (monde.lignes.get(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`)?.donnees as Record<string, any>)?.envois === 2, 'modification avant l’arrivée : même ligne, deuxième envoi', res.corps?.erreur);
     res = await equipe('res-sj-loin');
     verifier(res.statut === 200 && res.corps?.suivi?.checkin?.arriveeEstimee === '20:00' && res.corps?.suivi?.checkin?.fiches?.[0]?.nom === 'Exemple', 'équipe de Sens : le check-in et la fiche de police', res.corps?.suivi?.checkin);
+    res = await equipe('res-sj-loin', { authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 200 && res.corps?.suivi?.checkin?.arriveeEstimee === '20:00' && res.corps?.suivi?.checkin?.fiches?.length === 0 && res.corps?.suivi?.fichesReservees === 1 && !JSON.stringify(res.corps).includes('Exemple'), 'opérations de Sens : heure et voyageurs, jamais la fiche de police (gérants seulement)', res.corps?.suivi);
+    res = await vue(jetonDe(lien));
+    verifier(res.statut === 200 && res.corps?.vue?.checkin?.fichesEnvoyees?.fiches === 1 && !JSON.stringify(res.corps).includes('Exemple'), 'porteur du lien : la fiche de police n’en ressort jamais', res.corps?.vue?.checkin);
+    res = await checkin({ checkin: { ...saisie, arriveeEstimee: '21:00', fiches: [], garderFiches: true } });
+    verifier(res.statut === 200 && (monde.lignes.get(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`)?.donnees as Record<string, any>)?.fiches?.[0]?.nom === 'Exemple', 'modification « garder les fiches » : la fiche gardée reste', res.corps?.erreur);
     res = await equipe('res-sj-loin', { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM });
     verifier(res.statut === 404, 'équipe de Label Maison : rien du check-in de Sens', res.statut);
     res = await appelSejour({ corps: { action: 'checkin', jeton: await signerJetonSejour(env.ACCES_SECRET!, { espace: SENS, reservationId: 'res-sj-fini' }), checkin: saisie } });

@@ -21,8 +21,17 @@ type Etat = { nom: 'chargement' } | { nom: 'cache' } | { nom: 'erreur'; message:
 
 const dateNaissance = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : d);
 
-function Fiches({ c }: { c: CheckinEnLigne }) {
+function Fiches({ c, reservees }: { c: CheckinEnLigne; reservees?: number }) {
   if (c.tousFrancais) return <p className="text-[13px] text-(--lm-encre-2)">Tous de nationalité française : pas de fiche de police.</p>;
+  // Compte « opérations » : le nombre seulement, le contenu reste aux gérants (règle de la base).
+  if (reservees) {
+    return (
+      <p className="inline-flex items-center gap-1.5 text-[13px] text-(--lm-encre-2)">
+        <Lock className="size-3.5" aria-hidden />
+        {pluriel(reservees, 'fiche de police', 'fiches de police')} : visibles par les gérants seulement.
+      </p>
+    );
+  }
   return (
     <details className="text-[13px]">
       <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
@@ -132,7 +141,7 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
               <dd className="font-medium text-(--lm-encre)">Accepté</dd>
             </div>
           </dl>
-          <Fiches c={c} />
+          <Fiches c={c} reservees={suivi.fichesReservees} />
         </div>
       )}
       {suivi.etat === 'annule' && <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">Réservation annulée : le lien n’affiche plus rien.</p>}

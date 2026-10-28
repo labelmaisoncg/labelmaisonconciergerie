@@ -24,7 +24,7 @@
 // =============================================================================
 
 import { espaceDe } from '../src/erp/data/acces-externe.js';
-import { estLabelMaison } from '../src/erp/data/espaces.js';
+import { ID_LABEL_MAISON, estLabelMaison } from '../src/erp/data/espaces.js';
 import { secretValide } from '../src/erp/data/proprietaire-acces.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
@@ -164,6 +164,13 @@ export async function purgeCheckinsDuJour(o: { limite?: number; maintenant?: Dat
         bilans[fiche.code] = e instanceof Error ? e.message : String(e);
         console.warn('[sejour] purge', fiche.code, bilans[fiche.code]);
       }
+    }
+    // Espaces fermés : le compte serveur n'y entre plus ; la base efface leurs check-ins échus
+    // (erp.purger_checkins_espaces_fermes, supabase/erp-espaces.sql). Base d'avant les espaces, ou SQL
+    // pas encore passé : la fonction manque, rien n'est fait.
+    if (Date.now() <= limite) {
+      const n = await baseAcces(ID_LABEL_MAISON).rpc<number>('purger_checkins_espaces_fermes').catch(() => 0);
+      if (typeof n === 'number' && n > 0) bilans['espaces-fermes'] = `${n} check-in(s) effacé(s)`;
     }
   })();
   let minuteur: ReturnType<typeof setTimeout> | undefined;

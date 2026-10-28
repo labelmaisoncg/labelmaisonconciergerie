@@ -116,6 +116,12 @@ export interface SaisieCheckin {
   tousFrancais: boolean;
   /** Une par voyageur étranger de 15 ans et plus (vide si tousFrancais). */
   fiches: FichePolice[];
+  /**
+   * Modification seulement : garder les fiches déjà envoyées. Le lien ne les
+   * renvoie jamais au navigateur ; le serveur les reprend de la ligne gardée
+   * (lireSaisieCheckin, fichesPrecedentes). Jamais enregistré.
+   */
+  garderFiches?: true;
 }
 
 /** Check-in enregistré (collection COLLECTION_CHECKINS, id = réservation). */
@@ -355,7 +361,7 @@ const entier = (v: unknown): number | null => {
  */
 export function lireSaisieCheckin(
   brut: unknown,
-  o: { maxPersonnes: number; aujourdhui: DateISO },
+  o: { maxPersonnes: number; aujourdhui: DateISO; fichesPrecedentes?: readonly FichePolice[] },
 ): { ok: true; saisie: SaisieCheckin } | { ok: false; erreurs: ErreurCheckin[] } {
   const x = (brut && typeof brut === 'object' && !Array.isArray(brut) ? brut : {}) as Record<string, unknown>;
   const erreurs: ErreurCheckin[] = [];
@@ -369,7 +375,11 @@ export function lireSaisieCheckin(
   if (typeof x.tousFrancais !== 'boolean') erreurs.push({ champ: 'tousFrancais' });
 
   const fiches: FichePolice[] = [];
-  if (x.tousFrancais === false) {
+  if (x.tousFrancais === false && x.garderFiches === true) {
+    // Modification : les fiches déjà envoyées restent telles quelles (jamais renvoyées par le lien).
+    if (!o.fichesPrecedentes?.length) erreurs.push({ champ: 'fiches' });
+    else fiches.push(...o.fichesPrecedentes.slice(0, MAX_VOYAGEURS).map((f) => ({ ...f })));
+  } else if (x.tousFrancais === false) {
     const liste = Array.isArray(x.fiches) ? x.fiches : [];
     if (liste.length < 1 || liste.length > MAX_VOYAGEURS) erreurs.push({ champ: 'fiches' });
     liste.slice(0, MAX_VOYAGEURS).forEach((f, i) => {
@@ -394,8 +404,10 @@ export function lireSaisieCheckin(
       else fiche.enfants = enfants;
       fiches.push(fiche);
     });
+  }
+  if (x.tousFrancais === false) {
     // Chaque fiche est un voyageur, chaque enfant inscrit aussi : jamais plus que le séjour n'en compte.
-    const comptes = fiches.length + fiches.reduce((n, f) => n + f.enfants, 0);
+    const comptes = fiches.length + fiches.reduce((n, f) => n + (f.enfants ?? 0), 0);
     if (nb !== null && comptes > nb && !erreurs.some((e) => e.champ === 'fiches')) erreurs.push({ champ: 'fiches' });
   }
   if (erreurs.length) return { ok: false, erreurs };
@@ -415,10 +427,12 @@ export function nouveauCheckin(
   const etat = etatFormulaire(o.reservation, precedent, o.aujourdhui);
   if (!etat.modifiable) return { ok: false, raison: etat.raison ?? 'ferme' };
   const r = o.reservation;
+  const { garderFiches: _garder, ...propre } = saisie;
+  void _garder;
   return {
     ok: true,
     checkin: {
-      ...saisie,
+      ...propre,
       id: r.id,
       reservationId: r.id,
       logementId: r.logementId,
@@ -522,8 +536,10 @@ export interface VueSejour {
     envoyeLe?: Horodatage;
     modifiable: boolean;
     raison?: 'annule' | 'ferme' | 'limite';
-    /** Ce qui a été envoyé, seulement tant qu'il est modifiable (pour le corriger). */
+    /** Ce qui a été envoyé, seulement tant qu'il est modifiable (pour le corriger), SANS les fiches de police. */
     saisie?: SaisieCheckin;
+    /** Fiches de police déjà envoyées : leur nombre (et les personnes qu'elles comptent), jamais leur contenu. */
+    fichesEnvoyees?: { fiches: number; personnes: number };
   };
   contact: { plateforme?: 'Airbnb' | 'Booking.com'; lien?: string; email?: string; telephone?: string };
 }
@@ -555,10 +571,17 @@ function photoDuLogement(l: Logement | undefined): string | undefined {
   return [...(l.photos ?? []), l.photoUrl].find((p): p is string => typeof p === 'string' && /^https:\/\/[^\s"'<>]+$/.test(p));
 }
 
-/** Guides que la page peut montrer, selon les codes. */
+/** Texte court montré tel quel (titre d'un guide, adresse) : cite-t-il un code d'accès ou le wifi de ce logement ? */
+const citeUnCode = (t: string | undefined, l: Logement | undefined): boolean => !!t?.trim() && contientCodeAcces(t, l);
+
+/**
+ * Guides que la page peut montrer, selon les codes. Avant l'heure, un guide
+ * « sans accès » dont le titre cite un code du logement est un guide d'accès
+ * mal rangé : il attend comme eux.
+ */
 function guidesPermis(l: Logement | undefined, codes: boolean): { libres: GuideLogement[]; acces: GuideLogement[] } {
   const tous = (l?.fiche?.guides ?? []).filter(guideEnvoyable);
-  return { libres: tous.filter((g) => !g.acces), acces: codes ? tous.filter((g) => g.acces) : [] };
+  return { libres: tous.filter((g) => !g.acces && (codes || !citeUnCode(g.titre, l))), acces: codes ? tous.filter((g) => g.acces) : [] };
 }
 
 /**
@@ -607,7 +630,9 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
     : undefined;
   const formulaire = etatFormulaire(r, e.checkin, e.aujourdhui);
   const wifiNom = f?.wifiNom?.trim();
-  const adresse = l ? [l.adresse?.trim(), [l.codePostal?.trim(), l.ville?.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
+  // Avant l'heure, une rue qui cite un code du logement (« digicode 4821 ») : seulement le code postal et la ville.
+  const rue = l?.adresse?.trim();
+  const adresse = l ? [rue && (codes || !citeUnCode(rue, l)) ? rue : undefined, [l.codePostal?.trim(), l.ville?.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
   const plateforme = PLATEFORMES[r.canal];
   return {
     conciergerie: e.conciergerie,
@@ -624,8 +649,9 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
       adresse,
       ...(photo ? (photo.startsWith('stockage://') ? (lien(photo) ? { photo: lien(photo) } : {}) : { photo }) : {}),
       capacite: l?.capacite && l.capacite > 0 ? Math.min(l.capacite, MAX_VOYAGEURS) : MAX_VOYAGEURS,
-      ...(f?.heureArrivee?.trim() ? { heureArrivee: f.heureArrivee.trim() } : {}),
-      ...(f?.heureDepart?.trim() ? { heureDepart: f.heureDepart.trim() } : {}),
+      // Champs libres eux aussi : même règle que les autres textes (« 16:00, boîte 4821 »).
+      ...(sur(f?.heureArrivee) ? { heureArrivee: sur(f?.heureArrivee) } : {}),
+      ...(sur(f?.heureDepart) ? { heureDepart: sur(f?.heureDepart) } : {}),
       ...(sur(f?.parking) ? { parking: sur(f?.parking) } : {}),
       ...(sur(l?.descriptif?.textes?.transports) ? { transports: sur(l?.descriptif?.textes?.transports) } : {}),
       ...(sur(f?.regles) ? { regles: sur(f?.regles) } : {}),
@@ -653,6 +679,7 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
       ...(e.checkin?.envoyeLe ? { envoyeLe: e.checkin.envoyeLe } : {}),
       modifiable: e.checkinOuvert && formulaire.modifiable,
       ...(formulaire.raison ? { raison: formulaire.raison } : {}),
+      // Le lien est un porteur (messagerie, équipe, plateforme) : les fiches de police n'en ressortent jamais.
       ...(e.checkin && formulaire.modifiable
         ? {
             saisie: {
@@ -660,8 +687,11 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
               nbPersonnes: e.checkin.nbPersonnes,
               reglesAcceptees: true,
               tousFrancais: e.checkin.tousFrancais,
-              fiches: e.checkin.fiches ?? [],
+              fiches: [],
             },
+            ...(e.checkin.fiches?.length
+              ? { fichesEnvoyees: { fiches: e.checkin.fiches.length, personnes: e.checkin.fiches.reduce((n, f) => n + 1 + (f.enfants ?? 0), 0) } }
+              : {}),
           }
         : {}),
     },
@@ -682,7 +712,22 @@ export interface SuiviSejour {
   lienJusquAu?: DateISO;
   /** Pourquoi il n'y a pas de lien alors que le séjour est ouvert. */
   raison?: string;
+  /** Check-in ; pour un compte qui n'est pas gérant, sans les fiches de police (fichesReservees). */
   checkin?: CheckinEnLigne;
+  /** Compte « opérations » : nombre de fiches de police, leur contenu reste aux gérants (règle de la base). */
+  fichesReservees?: number;
+}
+
+/**
+ * Check-in montré par la fiche d'une réservation : complet pour un gérant ;
+ * pour un compte « opérations », sans les fiches de police (comme la règle
+ * « acces exterieurs reserves aux gerants » de la base), leur nombre seulement.
+ */
+export function suiviCheckin(c: CheckinEnLigne | undefined, gerant: boolean): Pick<SuiviSejour, 'checkin' | 'fichesReservees'> {
+  if (!c) return {};
+  if (gerant) return { checkin: c };
+  const n = c.fiches?.length ?? 0;
+  return { checkin: { ...c, fiches: [] }, ...(n ? { fichesReservees: n } : {}) };
 }
 
 /** Démo : check-ins gardés dans ce navigateur, jamais ailleurs. */

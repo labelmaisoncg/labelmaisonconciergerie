@@ -46,6 +46,9 @@ const FR = {
   enfants: 'Enfants de moins de 15 ans avec cette personne',
   ajouterVoyageur: 'Ajouter un voyageur',
   retirer: 'Retirer',
+  fichesGardees: (n: number) => `${pluriel(n, 'fiche déjà envoyée', 'fiches déjà envoyées')}. Pour votre confidentialité, elles ne sont pas réaffichées ici.`,
+  remplirDeNouveau: 'Les remplir de nouveau',
+  garderFiches: 'Garder les fiches déjà envoyées',
   accepte: 'J’ai lu le règlement intérieur et je l’accepte.',
   voirReglement: 'Voir le règlement',
   confidentialite:
@@ -138,6 +141,9 @@ const EN: typeof FR = {
   enfants: 'Children under 15 with this guest',
   ajouterVoyageur: 'Add a guest',
   retirer: 'Remove',
+  fichesGardees: (n: number) => `${pluriel(n, 'form already sent', 'forms already sent')}. For your privacy, they are not shown again here.`,
+  remplirDeNouveau: 'Fill them in again',
+  garderFiches: 'Keep the forms already sent',
   accepte: 'I have read and accept the house rules.',
   voirReglement: 'See the house rules',
   confidentialite:

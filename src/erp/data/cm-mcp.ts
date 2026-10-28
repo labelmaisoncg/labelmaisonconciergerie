@@ -59,7 +59,8 @@ const TELEPHONE = /(?:\+|00)\d{1,3}[\s.-]?\d(?:[\s.-]?\d{2,3}){3,5}|\b0[1-9](?:[
 
 /** Retire d'un message les e-mails, téléphones et codes du logement (wifi, accès). */
 export function masquer(t: string, l: Logement | undefined): string {
-  let s = t.replace(EMAIL, '[e-mail masqué]').replace(TELEPHONE, '[téléphone masqué]');
+  // Lien du livret (/sejour#<jeton>) : un porteur qui montre les codes dans les 48 h, jamais transmis au connecteur.
+  let s = t.replace(/\/sejour#[A-Za-z0-9_.=-]+/g, '/sejour#[lien du séjour masqué]').replace(EMAIL, '[e-mail masqué]').replace(TELEPHONE, '[téléphone masqué]');
   const codes = [l?.fiche?.wifiCode ?? '', ...((l?.fiche?.acces ?? '').match(/\d{4,}/g) ?? [])].map((c) => c.trim()).filter((c) => c.length >= 4);
   for (const c of codes) s = s.split(c).join('••••');
   return s;

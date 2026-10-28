@@ -33,6 +33,7 @@ import {
   lireJetonSejour,
   lireSaisieCheckin,
   nouveauCheckin,
+  suiviCheckin,
   type CheckinEnLigne,
   type LangueSejour,
   type SuiviSejour,
@@ -83,7 +84,7 @@ export default async function handler(req: any, res: any) {
       const jeton = /^Bearer\s+/i.test(entete) ? entete.replace(/^Bearer\s+/i, '').trim() : '';
       if (!jeton) return repondre(res, 401, { ok: false, erreur: 'Authentification requise.' });
       const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });
-      // Compte « lecture » ou d'un autre espace : rien (les fiches de police ne sont qu'aux gérants et aux opérations).
+      // Compte « lecture » ou d'un autre espace : rien. Les fiches de police : gérants seulement (règle de la base).
       if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.statut === 403 ? 'Réservé aux gérants et aux opérations de cet espace.' : membre.erreur });
       const reservationId = String(req.query?.reservationId ?? '');
       if (!reservationId || reservationId.length > 120) return repondre(res, 400, { ok: false, erreur: 'Réservation illisible.' });
@@ -93,7 +94,8 @@ export default async function handler(req: any, res: any) {
       if (!reservation) return repondre(res, 404, { ok: false, erreur: 'Réservation introuvable.' });
       const checkin = (await base.lire<CheckinEnLigne>(COLLECTION_CHECKINS, [reservationId]))[0];
       const etat = etatLienSejour(reservation, dateParisISO());
-      const suivi: SuiviSejour = { etat, ...(checkin ? { checkin } : {}) };
+      // Compte « opérations » : heure d'arrivée et voyageurs, pas les fiches de police (gérants seulement, comme la base).
+      const suivi: SuiviSejour = { etat, ...suiviCheckin(checkin, membre.role === 'gerant') };
       if (etat === 'ouvert') {
         const lien = await lienSejourServeur(membre.espace, reservation.id);
         if (lien) Object.assign(suivi, { lien, lienJusquAu: lienValableJusquAu(reservation.depart) });
@@ -134,7 +136,8 @@ export default async function handler(req: any, res: any) {
     if (tropDEnvois(ip)) return repondre(res, 429, { ok: false, code: 'trop', erreur: MESSAGES.trop[langue] });
     if (!pret) return repondre(res, 503, { ok: false, code: 'pas_pret', erreur: MESSAGES.pas_pret[langue] });
     const capacite = s.logement?.capacite && s.logement.capacite > 0 ? s.logement.capacite : 0;
-    const saisie = lireSaisieCheckin(corps.checkin, { maxPersonnes: capacite, aujourdhui });
+    // « Garder les fiches » (modification) : reprises de la ligne gardée, jamais renvoyées par le lien.
+    const saisie = lireSaisieCheckin(corps.checkin, { maxPersonnes: capacite, aujourdhui, ...(s.checkin?.fiches?.length ? { fichesPrecedentes: s.checkin.fiches } : {}) });
     if (!saisie.ok) return repondre(res, 400, { ok: false, code: 'champs', erreurs: saisie.erreurs, erreur: langue === 'en' ? 'Please check the highlighted fields.' : 'Vérifiez les champs signalés.' });
     const r = nouveauCheckin(s.checkin, saisie.saisie, { reservation: s.reservation, langue, maintenant: new Date().toISOString(), aujourdhui });
     if (!r.ok) return repondre(res, 409, { ok: false, code: r.raison, erreur: MESSAGES_REFUS_CHECKIN[r.raison][langue] });

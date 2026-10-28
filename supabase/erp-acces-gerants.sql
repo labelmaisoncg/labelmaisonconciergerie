@@ -82,9 +82,20 @@ revoke all on function erp.archiver_version() from public, anon, authenticated;
 -- éventuelles sont effacées ici. Le serveur n'enregistre aucun check-in tant
 -- que cette fonction n'existe pas (api/_sejour.ts, checkinPret) : jamais de
 -- fiche de police sans ces règles.
+-- Vrai seulement si les deux protections sont EN PLACE (règle restrictive qui
+-- nomme la collection, archive qui l'écarte) : un ancien SQL relancé par-dessus
+-- referme le check-in au lieu de laisser le serveur écrire des fiches lisibles
+-- par tous.
 create or replace function erp.checkin_en_ligne_pret() returns boolean
-language sql immutable set search_path = ''
-as $$ select true $$;
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%checkinsEnLigne%' and p.with_check like '%checkinsEnLigne%')
+     and exists (select 1 from pg_catalog.pg_proc f join pg_catalog.pg_namespace n on n.oid = f.pronamespace
+                  where n.nspname = 'erp' and f.proname = 'archiver_version' and f.prosrc like '%checkinsEnLigne%')
+$$;
 revoke all on function erp.checkin_en_ligne_pret() from public, anon;
 grant execute on function erp.checkin_en_ligne_pret() to authenticated;
 delete from erp.historique where collection = 'checkinsEnLigne';

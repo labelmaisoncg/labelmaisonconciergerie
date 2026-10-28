@@ -6,9 +6,11 @@ import { completer } from '../../erp/data/collections';
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
 import { AUJOURDHUI, horodatageMaintenant } from '../../erp/data/format';
 import {
+  MAX_VOYAGEURS,
   MESSAGES_REFUS_CHECKIN,
   etatLienSejour,
   jetonDuFragment,
+  lireSaisieCheckin,
   nouveauCheckin,
   vueSejour,
   type ErreurCheckin,
@@ -144,7 +146,11 @@ export default function Sejour() {
     if (MODE_DEMO) {
       if (!demo) return { message: t.erreur };
       const tous = checkinsDemo();
-      const r = nouveauCheckin(tous[demo.reservation.id], saisie, { reservation: demo.reservation, langue, maintenant: horodatageMaintenant(), aujourdhui: AUJOURDHUI });
+      const precedent = tous[demo.reservation.id];
+      // Comme le serveur : « garder les fiches » les reprend du check-in gardé.
+      const relu = lireSaisieCheckin(saisie, { maxPersonnes: MAX_VOYAGEURS, aujourdhui: AUJOURDHUI, ...(precedent?.fiches?.length ? { fichesPrecedentes: precedent.fiches } : {}) });
+      if (!relu.ok) return { erreurs: relu.erreurs, message: t.verifier };
+      const r = nouveauCheckin(precedent, relu.saisie, { reservation: demo.reservation, langue, maintenant: horodatageMaintenant(), aujourdhui: AUJOURDHUI });
       if (!r.ok) return { message: MESSAGES_REFUS_CHECKIN[r.raison][langue] };
       if (!garderCheckinDemo(r.checkin)) return { message: t.erreur };
       setEtat({ nom: 'pret', vue: vueDemo(demo) });

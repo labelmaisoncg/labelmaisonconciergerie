@@ -54,6 +54,7 @@ import {
   nouveauCheckin,
   purgerCheckins,
   signerJetonSejour,
+  suiviCheckin,
   texteSaisi,
   vueSejour,
   type BasePurge,
@@ -255,6 +256,23 @@ async function principal() {
     verifier(avant.prenom === 'Alix' && !/Testeur/.test(texte), 'prénom seul, jamais le nom de famille');
     verifier(!/31400|4700|4000|montant|commission|pro-exemple|propri[ée]taire|M\. Exemple|GB/.test(texte), 'ni montant, ni frais, ni propriétaire, ni pays du voyageur', texte.slice(0, 300));
     verifier(avant.logement.nom === 'Studio lumineux au bord de l’eau', 'nom du logement : le titre vu sur la plateforme (pas le nom interne)');
+    // Champs montrés tels quels : un code du logement n'y passe pas non plus avant l'heure.
+    const glisse = vueSejour({
+      conciergerie: 'Label Maison',
+      reservation: resa(),
+      logement: {
+        ...LOGEMENT,
+        adresse: '12 quai des Essais, digicode 4821',
+        fiche: {
+          ...LOGEMENT.fiche,
+          heureArrivee: '16:00, boîte à clés 4821',
+          guides: [...(LOGEMENT.fiche.guides ?? []), { id: 'g-mal-range', titre: 'Boîte à clés : 4821', media: { type: 'lien', url: 'https://exemple.invalid/g' }, ajouteLe: '2026-10-01T10:00:00.000Z', ajoutePar: 'Equipe' }],
+        },
+      },
+      aujourdhui: AUJ,
+      checkinOuvert: true,
+    });
+    verifier(!/4821/.test(JSON.stringify(glisse)) && glisse.logement.adresse === '91100 Corbeil-Essonnes' && !glisse.guides.some((g) => g.id === 'g-mal-range'), 'avant l’heure : ni l’heure d’arrivée, ni la rue, ni le titre d’un guide ne citent un code', glisse.logement);
     verifier(avant.guides.length === 1 && avant.guides[0].id === 'g-libre' && avant.guides[0].lien.startsWith('https://stockage.exemple.invalid/'), 'guide libre montré, en lien signé');
     verifier(avant.logement.photo?.startsWith('https://stockage.exemple.invalid/') === true, 'photo de l’équipe en lien signé');
     verifier(fichiersDeLaVue({ reservation: resa(), logement: LOGEMENT, aujourdhui: AUJ }).join() === 'stockage://erp-fichiers/logements/log-1/photos/a.jpg,stockage://erp-fichiers/logements/log-1/quartier.pdf', 'fichiers à signer : la photo et le guide libre seulement');
@@ -314,7 +332,23 @@ async function principal() {
       const limite = nouveauCheckin({ ...premier.checkin, envois: MAX_ENVOIS_CHECKIN }, SAISIE, { reservation: r, langue: 'fr', maintenant: 'x', aujourdhui: AUJ });
       verifier(!limite.ok && limite.raison === 'limite', `au-delà de ${MAX_ENVOIS_CHECKIN} envois : refusé`);
       const vue = vueSejour({ conciergerie: 'Label Maison', reservation: r, logement: LOGEMENT, checkin: premier.checkin, aujourdhui: AUJ, checkinOuvert: true });
-      verifier(vue.checkin.fait && vue.checkin.saisie?.fiches[0].nom === 'Exemple', 'avant l’arrivée : la saisie revient pour être corrigée');
+      verifier(
+        vue.checkin.fait && vue.checkin.saisie?.arriveeEstimee === SAISIE.arriveeEstimee && vue.checkin.saisie.fiches.length === 0 && vue.checkin.fichesEnvoyees?.fiches === 1 && vue.checkin.fichesEnvoyees.personnes === 2 && !/Exemple|1990-04-12|avenue/.test(JSON.stringify(vue)),
+        'avant l’arrivée : la saisie revient pour être corrigée, SANS les fiches de police (leur nombre seulement)',
+        vue.checkin,
+      );
+      // Modification « garder les fiches » : reprises de la ligne gardée, jamais du navigateur.
+      const garde = lireSaisieCheckin({ ...SAISIE, arriveeEstimee: '21:00', fiches: [], garderFiches: true }, { maxPersonnes: 4, aujourdhui: AUJ, fichesPrecedentes: premier.checkin.fiches });
+      verifier(garde.ok && garde.saisie.fiches[0].nom === 'Exemple' && !('garderFiches' in garde.saisie), 'garder les fiches : reprises de la ligne gardée', garde);
+      const sansPrecedent = lireSaisieCheckin({ ...SAISIE, fiches: [], garderFiches: true }, { maxPersonnes: 4, aujourdhui: AUJ });
+      verifier(!sansPrecedent.ok, 'garder les fiches sans fiche gardée : refusé');
+      const tropPeu = lireSaisieCheckin({ ...SAISIE, nbPersonnes: 1, fiches: [], garderFiches: true }, { maxPersonnes: 4, aujourdhui: AUJ, fichesPrecedentes: premier.checkin.fiches });
+      verifier(!tropPeu.ok, 'fiches gardées plus nombreuses que les voyageurs : refusé');
+      const ligne = nouveauCheckin(premier.checkin, { ...SAISIE, garderFiches: true }, { reservation: r, langue: 'fr', maintenant: 'x', aujourdhui: AUJ });
+      verifier(ligne.ok && !('garderFiches' in ligne.checkin), 'garderFiches : jamais enregistré');
+      // Fiche de la réservation : les fiches de police aux gérants seulement.
+      const ops = suiviCheckin(premier.checkin, false);
+      verifier(suiviCheckin(premier.checkin, true).checkin?.fiches[0]?.nom === 'Exemple' && ops.checkin?.fiches.length === 0 && ops.fichesReservees === 1 && !JSON.stringify(ops).includes('Exemple'), 'compte « opérations » : check-in sans les fiches de police, leur nombre seulement', ops);
       const plusTard = vueSejour({ conciergerie: 'Label Maison', reservation: r, logement: LOGEMENT, checkin: premier.checkin, aujourdhui: '2026-11-12', checkinOuvert: true });
       verifier(plusTard.checkin.fait && !plusTard.checkin.saisie && !plusTard.checkin.modifiable && !JSON.stringify(plusTard).includes('Exemple'), 'après l’arrivée : « fait », la fiche de police ne ressort plus par le lien');
     }

@@ -61,6 +61,9 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
   const t = TEXTES[langue];
   const id = useId();
   const avant = vue.checkin.saisie;
+  // Fiches déjà envoyées : jamais renvoyées par le lien, seulement leur nombre. Gardées telles quelles, ou remplies de nouveau.
+  const envoyees = vue.checkin.fichesEnvoyees;
+  const [garder, setGarder] = useState(!!envoyees?.fiches);
   const [heure, setHeure] = useState(avant?.arriveeEstimee ?? '');
   const [nb, setNb] = useState(avant?.nbPersonnes ?? Math.min(Math.max(1, vue.voyageurs), vue.logement.capacite));
   const [tousFrancais, setTousFrancais] = useState<boolean | null>(avant ? avant.tousFrancais : null);
@@ -88,8 +91,11 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
     setMessage(undefined);
-    const brut = { arriveeEstimee: heure, nbPersonnes: nb, reglesAcceptees: regles, tousFrancais, fiches: tousFrancais === false ? fiches : [] };
-    const lu = lireSaisieCheckin(brut, { maxPersonnes: max, aujourdhui });
+    const garde = tousFrancais === false && garder && !!envoyees?.fiches;
+    const brut = { arriveeEstimee: heure, nbPersonnes: nb, reglesAcceptees: regles, tousFrancais, fiches: tousFrancais === false && !garde ? fiches : [], ...(garde ? { garderFiches: true } : {}) };
+    // Fiches gardées : comptées ici (nombre de personnes), reprises et contrôlées par le serveur.
+    const comptees = garde ? Array.from({ length: envoyees!.fiches }, (_, i) => ({ ...ficheVide(), enfants: i === 0 ? envoyees!.personnes - envoyees!.fiches : 0 })) : undefined;
+    const lu = lireSaisieCheckin(brut, { maxPersonnes: max, aujourdhui, ...(comptees ? { fichesPrecedentes: comptees } : {}) });
     if (!lu.ok) {
       setErreurs(lu.erreurs);
       setMessage(t.verifier);
@@ -97,7 +103,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
     }
     setErreurs([]);
     setEnCours(true);
-    const r = await onEnvoyer(lu.saisie);
+    const r = await onEnvoyer(garde ? { ...lu.saisie, fiches: [], garderFiches: true } : lu.saisie);
     setEnCours(false);
     if (r) {
       setErreurs(r.erreurs ?? []);
@@ -151,8 +157,23 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
         erreur={erreur('tousFrancais')}
       />
 
-      {tousFrancais === false && (
+      {tousFrancais === false && garder && !!envoyees?.fiches && (
+        <div className="flex flex-col items-start gap-2 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 sm:p-4">
+          <p className="text-[13.5px] text-(--lm-encre-2)">{t.fichesGardees(envoyees.fiches)}</p>
+          {erreur('fiches') && <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">{erreur('fiches')}</p>}
+          <Button variant="secondary" size="sm" onClick={() => setGarder(false)}>
+            {t.remplirDeNouveau}
+          </Button>
+        </div>
+      )}
+
+      {tousFrancais === false && !(garder && !!envoyees?.fiches) && (
         <div className="flex flex-col gap-4">
+          {!!envoyees?.fiches && (
+            <Button variant="ghost" size="sm" className="self-start" onClick={() => setGarder(true)}>
+              {t.garderFiches}
+            </Button>
+          )}
           <p className="text-[13.5px] text-(--lm-encre-2)">{t.ficheExplication}</p>
           {erreur('fiches') && <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">{erreur('fiches')}</p>}
           {fiches.map((_, i) => (
