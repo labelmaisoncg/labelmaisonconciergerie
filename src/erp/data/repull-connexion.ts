@@ -33,6 +33,7 @@
  */
 import { dateParis, horodatageParis, photosDepuisContenu, tarifsDepuisBooking } from './repull.js';
 import type { RepullListing } from './repull.js';
+import { arriveesDeLAnnonce, delierLogement, delierPossible, depasseLimite, lierLogement, peutRelier, verifierLiaison } from './liaison-annonce.js';
 import {
   BUDGET_ERP_DEFAUT,
   BaseErp,
@@ -53,7 +54,7 @@ import {
   type PhaseRepull,
   type SelectionRepull,
 } from './repull-synchro.js';
-import type { FilMessages, Logement, Reservation } from './types';
+import type { FilMessages, Journal, Logement, Reservation } from './types';
 
 type Fetch = typeof fetch;
 
@@ -223,6 +224,11 @@ export function limiteLogements(offre: string | undefined, variable?: number): {
   if (t && t in LIMITES_OFFRE) return { limite: LIMITES_OFFRE[t], source: 'repull' };
   if (variable !== undefined && Number.isFinite(variable) && variable > 0) return { limite: Math.floor(variable), source: 'variable' };
   return { limite: LIMITE_DEFAUT, source: 'defaut' };
+}
+
+/** Logements suivis permis par l'offre, d'après la dernière lecture (null : illimité). */
+function maxLogements(cache: Pick<CacheConnexions, 'offre' | 'depassement'>, variable?: number): number | null {
+  return cache.depassement?.limite ?? limiteLogements(cache.offre, variable).limite;
 }
 
 /** Texte de la limite, pour les messages (« l’offre gratuite (3 logements) »). */
@@ -564,8 +570,7 @@ export async function enregistrerSelection(ctx: ContexteConnexion, idsBruts: unk
 
   // Limite de l'offre (vérifiée avant tout appel quand l'offre est connue).
   const verifierLimite = () => {
-    const { limite } = limiteLogements(cache.offre, ctx.limiteVariable);
-    const max = cache.depassement?.limite ?? limite;
+    const max = maxLogements(cache, ctx.limiteVariable);
     if (max !== null && ids.length > max) {
       const trop = ids.length - max;
       throw new ErreurConnexion(
@@ -665,6 +670,150 @@ export async function enregistrerSelection(ctx: ContexteConnexion, idsBruts: unk
     ...(r.message ? { message: r.message } : {}),
     ...(bilan ? { bilan } : {}),
   };
+}
+
+/* ===================================================== relier un logement */
+
+/** Lien fait (ok toujours vrai : un échec est une erreur) ; l'import, lui, peut rester partiel. */
+export interface ResultatLiaison {
+  ok: true;
+  logementId: string;
+  annonce: string;
+  /** Arrivés de l'annonce sur CE logement (réservations hors annulées, conversations). */
+  reservations: number;
+  conversations: number;
+  /** Import interrompu ou remis (temps, appels) : la suite viendra au prochain passage. */
+  partiel: boolean;
+  message?: string;
+}
+
+export interface ResultatDeliaison {
+  ok: true;
+  logementId: string;
+  annonce: string;
+}
+
+/** Qui agit : compte vérifié par le serveur (verifierMembre). */
+export interface Gerant {
+  email: string;
+  role: string;
+}
+
+async function journaliserLiaison(ctx: ContexteConnexion, qui: Gerant, action: string, logementId: string, details: string, maintenant: Date) {
+  const ligne: Journal = {
+    id: `liaison-${maintenant.getTime().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    horodatage: horodatageParis(maintenant),
+    auteur: qui.email,
+    action,
+    entite: 'logement',
+    entiteId: logementId,
+    details,
+  };
+  await ctx.base.ecrire('journal', [ligne], qui.email).catch(() => undefined);
+}
+
+/**
+ * Relie un logement créé à la main à une annonce trouvée sur les
+ * plateformes de l'espace, puis l'annonce entre dans les logements suivis
+ * (enregistrerSelection : limite de l'offre, import immédiat). L'import met
+ * alors à jour CE logement (repull-synchro.ts, indexer) au lieu d'en créer
+ * un second. Rien n'est écrit sur les plateformes.
+ *
+ * Ordre voulu : le lien d'abord, puis le choix. Dans l'autre ordre, un
+ * passage tombé entre les deux créerait le logement en double. Si le choix
+ * échoue avant d'être enregistré (offre, annonce disparue, service
+ * injoignable), le lien est retiré : rien ne change.
+ */
+export async function relierAnnonce(ctx: ContexteConnexion, logementIdBrut: unknown, annonceBrute: unknown, qui: Gerant): Promise<ResultatLiaison> {
+  const logementId = texte(logementIdBrut);
+  const annonce = texte(annonceBrute);
+  const maintenant = ctx.maintenant ?? (() => new Date());
+  const [cache, selection, versions] = await Promise.all([lireCache(ctx.base), lireSelection(ctx.base), ctx.base.lireVersions<Logement>('logements')]);
+  const logements = versions.map((v) => v.element);
+  const verdict = verifierLiaison({ role: qui.role, logementId, annonceId: annonce, logements, annonces: cache.annonces ?? [] });
+  if (!verdict.ok) throw new ErreurConnexion(verdict.erreur, verdict.statut);
+  const choix = selection?.annonces ?? [];
+  const max = maxLogements(cache, ctx.limiteVariable);
+  if (depasseLimite(choix, annonce, max)) {
+    throw new ErreurConnexion(
+      `${libelleOffre(cache.offre, max).replace(/^./, (c) => c.toUpperCase())} est atteinte : retirez un logement dans Connexions, ou passez à l’offre Starter, pour relier celui-ci.`,
+    );
+  }
+
+  const lu = versions.find((v) => v.element.id === logementId)!;
+  const lie = lierLogement(lu.element, annonce, { le: horodatageParis(maintenant()), par: qui.email });
+  if (!(await ctx.base.remplacerSi('logements', lie, lu.version, qui.email))) {
+    throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
+  }
+
+  let r: Pick<ResultatSelection, 'ok' | 'partiel' | 'message'>;
+  try {
+    r = await enregistrerSelection(ctx, [...new Set([...choix, annonce])], qui.email);
+  } catch (e) {
+    // Choix enregistré, import interrompu : le lien reste, l'import viendra au prochain passage.
+    const enregistre = (await lireSelection(ctx.base).catch(() => null))?.annonces.includes(annonce);
+    if (enregistre) {
+      r = { ok: false, partiel: true, message: `L’import n’a pas pu se faire tout de suite (${messageErreur(e)}) : il viendra au prochain passage.` };
+    } else {
+      // Choix pas enregistré : le lien est retiré, si personne n'a touché au logement entre-temps.
+      const [actuel] = await ctx.base.lireVersions<Logement>('logements', [logementId]).catch(() => []);
+      if (actuel?.element.repull?.id === annonce && actuel.element.liaison?.annonce === annonce) {
+        await ctx.base.remplacerSi('logements', delierLogement(actuel.element), actuel.version, qui.email).catch(() => false);
+      }
+      if (e instanceof ErreurConnexion && /plus disponible/.test(e.message)) throw new ErreurConnexion('Cette annonce n’est plus sur vos plateformes : rechargez la liste.', 404);
+      throw e;
+    }
+  }
+
+  const [reservations, fils] = await Promise.all([ctx.base.lire<Reservation>('reservations'), ctx.base.lire<FilMessages>('filsMessages')]);
+  const arrivees = arriveesDeLAnnonce(
+    logementId,
+    reservations.filter((x) => x.statut !== 'annulee'),
+    fils,
+  );
+  const nomAnnonce = cache.annonces?.find((a) => a.id === annonce)?.nom;
+  await journaliserLiaison(ctx, qui, 'Logement relié à son annonce', logementId, `Annonce ${nomAnnonce ? `« ${nomAnnonce} »` : annonce}.`, maintenant());
+  return {
+    ok: true,
+    logementId,
+    annonce,
+    reservations: arrivees.reservations,
+    conversations: arrivees.conversations,
+    partiel: r.partiel || !r.ok,
+    ...(r.message ? { message: r.message } : {}),
+  };
+}
+
+/**
+ * Délie un logement relié par erreur, tant que rien de l'annonce n'y est
+ * arrivé : le logement reprend ce qu'il était avant le lien, et l'annonce
+ * sort des logements suivis (aucun appel au service de connexion : elle ne
+ * revient pas en double au passage suivant).
+ */
+export async function delierAnnonce(ctx: ContexteConnexion, logementIdBrut: unknown, qui: Gerant): Promise<ResultatDeliaison> {
+  if (!peutRelier(qui.role)) throw new ErreurConnexion('Seul un gérant peut délier un logement.', 403);
+  const logementId = texte(logementIdBrut);
+  const maintenant = ctx.maintenant ?? (() => new Date());
+  const [versions, reservations, fils, selection] = await Promise.all([
+    logementId ? ctx.base.lireVersions<Logement>('logements', [logementId]) : Promise.resolve([]),
+    ctx.base.lire<Reservation>('reservations'),
+    ctx.base.lire<FilMessages>('filsMessages'),
+    lireSelection(ctx.base),
+  ]);
+  const lu = versions[0];
+  if (!lu) throw new ErreurConnexion('Logement introuvable dans cet espace.', 404);
+  const verdict = delierPossible(lu.element, reservations, fils);
+  if (!verdict.ok) throw new ErreurConnexion(verdict.erreur, verdict.statut);
+  const annonce = lu.element.repull!.id;
+  if (!(await ctx.base.remplacerSi('logements', delierLogement(lu.element), lu.version, qui.email))) {
+    throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
+  }
+  if (selection?.annonces.includes(annonce)) {
+    const suivant: SelectionRepull = { ...selection, annonces: selection.annonces.filter((id) => id !== annonce), majLe: horodatageParis(maintenant()), majPar: qui.email };
+    await ctx.base.ecrire(COLLECTION_ETAT, [suivant], qui.email);
+  }
+  await journaliserLiaison(ctx, qui, 'Logement délié de son annonce', logementId, 'Le logement a repris ce qu’il était avant le lien.', maintenant());
+  return { ok: true, logementId, annonce };
 }
 
 /**

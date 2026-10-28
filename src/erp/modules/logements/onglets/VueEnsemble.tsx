@@ -1,14 +1,15 @@
-import { useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
-import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa, Sparkles, X } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ArrowRight, BedDouble, ExternalLink, Link2, Mail, Phone, Sofa, Sparkles, X } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
 import { FormMandat } from '../../mandats/FormMandat';
-import { Badge, Button, Card, CardHeader, EmptyState, FicheEtapes, Field, IconButton, Input, Repli } from '../../../ui';
+import { Badge, Card, CardHeader, EmptyState, FicheEtapes, IconButton, Repli } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
+import { aRelier, peutRelier } from '../../../data/liaison-annonce';
 import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, note, pluriel, pourcentage } from '../../../data/format';
 import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors';
 import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
@@ -27,6 +28,7 @@ import { CartePrevisionnel, TITRE_PREVISIONNEL } from '../_composants/Previsionn
 import { PrixConseilles } from '../_composants/PrixConseilles';
 import { CarteAvisLogement } from '../_composants/Avis';
 import { TextesAnnonce } from '../_composants/TextesAnnonce';
+import { LienAnnonce, RelierAnnonce } from '../_composants/RelierAnnonce';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
 
@@ -77,12 +79,12 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   // Le couchage de l'annonce (pièce par pièce) remplace la ligne saisie à la main.
   const lits = desc?.couchage?.length ? '' : l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
   const jours = (l.tarifs?.jours ?? []).filter((j) => j.date >= AUJOURDHUI).slice(0, 60);
-  const importe = !!l.repull?.majLe || l.id.startsWith('repull-');
   const bas = jours.length ? Math.min(...jours.map((j) => j.prixCentimes)) : 0;
   const haut = jours.length ? Math.max(...jours.map((j) => j.prixCentimes)) : 0;
 
   return (
     <>
+      <LigneRelier logement={l} />
       {photosLogement(l).length ? (
         <>
           <Galerie photos={photosLogement(l)} nom={l.nom} />
@@ -219,7 +221,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               <ul className="space-y-2">
                 {l.annonces.map((a) => {
                   // Lien Airbnb saisi par l'équipe (pas une annonce reliée) : on peut le retirer.
-                  const saisi = a.canal === 'airbnb' && !a.connecte && !(l.repull?.canaux ?? []).some((c) => /airbnb/i.test(c.plateforme));
+                  const saisi = a.canal === 'airbnb' && !a.connecte && !!a.url && !(l.repull?.canaux ?? []).some((c) => /airbnb/i.test(c.plateforme));
                   return (
                     <li key={a.canal} className="flex items-center justify-between gap-3 text-[13.5px]">
                       <span className="flex items-center gap-2">
@@ -267,7 +269,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               <Ligne libelle="DPE">{l.dpe || <span className="text-(--lm-encre-3)">Non renseigné</span>}</Ligne>
               <Ligne libelle="Résidence principale">{l.residencePrincipale ? 'Oui (120 nuits par an)' : 'Non'}</Ligne>
             </dl>
-            {!importe && d.utilisateur.role === 'gerant' && <Relier logement={l} />}
+            <LienAnnonce logement={l} />
           </Repli>
         </div>
       </div>
@@ -276,29 +278,43 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 }
 
 /**
- * Logement créé à la main (ou par le dossier propriétaire) dont l'annonce est
- * déjà connectée : le relier évite un logement en double à la prochaine
- * mise à jour. Réservé au gérant.
+ * Logement créé à la main, pas encore relié : une ligne discrète en haut de
+ * la fiche, pour le gérant. « Relier à une annonce » ouvre la liste des
+ * annonces de l'espace ; l'adresse « ?relier=1 » (page Connexions) l'ouvre
+ * directement.
  */
-function Relier({ logement: l }: { logement: Logement }) {
-  const { upsert } = useErp();
-  const [numero, setNumero] = useState(l.repull?.id ?? '');
-  const actuel = l.repull?.id ?? '';
+function LigneRelier({ logement: l }: { logement: Logement }) {
+  const d = useErp();
+  const [params, setParams] = useSearchParams();
+  const [ouvert, setOuvert] = useState(false);
+  const visible = aRelier(l) && peutRelier(d.utilisateur.role, d.lectureSeule);
+  const demande = params.get('relier') === '1';
+
+  useEffect(() => {
+    if (!demande) return;
+    if (visible) setOuvert(true);
+    const p = new URLSearchParams(params);
+    p.delete('relier');
+    setParams(p, { replace: true });
+  }, [demande, visible, params, setParams]);
+
+  // Le panneau reste ouvert après le lien, le temps de lire le résultat.
+  if (!visible && !ouvert) return null;
   return (
-    <div className="mt-4 border-t border-(--lm-bord) pt-4">
-      <p className="mb-2 text-[13px] text-(--lm-encre-2)">Son annonce est déjà connectée ? Reliez-la pour éviter un logement en double.</p>
-      <div className="flex items-end gap-2">
-        <Field label="Numéro de l’annonce" className="min-w-0 flex-1">
-          <Input value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="ex. 5668" inputMode="numeric" />
-        </Field>
-        <Button
-          disabled={actuel === numero.trim()}
-          onClick={() => upsert('logements', { ...l, repull: numero.trim() ? { ...(l.repull ?? {}), id: numero.trim() } : undefined })}
-        >
-          Relier
-        </Button>
-      </div>
-    </div>
+    <>
+      {visible && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2">
+          <span className="flex min-h-8 min-w-0 items-center gap-2 text-[13.5px] text-(--lm-encre-2)">
+            <Link2 className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
+            Pas encore relié à une annonce
+          </span>
+          <button type="button" onClick={() => setOuvert(true)} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline sm:ml-auto">
+            Relier à une annonce <ArrowRight className="size-3.5" aria-hidden />
+          </button>
+        </div>
+      )}
+      <RelierAnnonce logement={l} ouvert={ouvert} onFermer={() => setOuvert(false)} />
+    </>
   );
 }
 

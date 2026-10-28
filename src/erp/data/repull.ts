@@ -17,7 +17,8 @@
  *
  * Identifiants déterministes : `repull-<id Repull>`. Un logement créé à la
  * main peut être relié à son annonce en renseignant `repull.id` : il est alors
- * mis à jour au lieu d'être dupliqué.
+ * mis à jour au lieu d'être dupliqué (« Relier à une annonce », fiche du
+ * logement : liaison-annonce.ts). Son adresse reste celle de l'équipe.
  *
  * Ce module ne doit importer que des types et des constantes (il tourne aussi
  * côté serveur, hors de Vite).
@@ -529,7 +530,8 @@ function logementVierge(l: RepullListing, ctx: ContexteLogement): Logement {
  * connexion), photo (sauf photo déposée par l'équipe), et le statut quand
  * l'annonce change d'état chez Repull (archivée → sorti, désactivée → pause,
  * réactivée → actif). Règles de la maison, accès et équipements ne sont
- * remplis que s'ils sont vides. Tout le reste appartient à l'ERP.
+ * remplis que s'ils sont vides, comme l'adresse et la ville d'un logement
+ * créé à la main puis relié. Tout le reste appartient à l'ERP.
  */
 export function versLogement(l: RepullListing, existant: Logement | undefined, ctx: ContexteLogement): Logement {
   const base = existant ?? logementVierge(l, ctx);
@@ -539,8 +541,11 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
 
   const nom = texte(l.name) || texte(c?.name);
   if (nom) suivant.nom = nom;
-  if (texte(l.address?.street)) suivant.adresse = texte(l.address?.street);
-  if (texte(l.address?.city)) suivant.ville = texte(l.address?.city);
+  // Logement créé à la main puis relié : l'adresse saisie par l'équipe (avec son code postal, et
+  // la position sur la carte calculée d'après elle) reste ; l'annonce ne la remplit que si elle est vide.
+  const aLaMain = !!existant && existant.id !== idRepull(l.id);
+  if (texte(l.address?.street) && !(aLaMain && texte(base.adresse))) suivant.adresse = texte(l.address?.street);
+  if (texte(l.address?.city) && !(aLaMain && texte(base.ville))) suivant.ville = texte(l.address?.city);
   const capacite = nombre(d?.personCapacity);
   if (capacite !== undefined && capacite > 0) suivant.capacite = capacite;
   const chambres = nombre(d?.bedrooms);

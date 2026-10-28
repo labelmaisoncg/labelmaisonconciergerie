@@ -12,7 +12,12 @@ import { OngletsLogements } from './_composants/OngletsLogements';
 
 const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 
-/** Logements en cartes, comme des annonces : photo, note, ville, prochain événement, prix de la nuit. */
+/**
+ * Logements en cartes, comme des annonces : photo, note, ville, prochain
+ * événement, prix de la nuit. Dans tout espace, même sans plateforme
+ * connectée, un logement s'ajoute à la main (« Plus », ou l'écran vide) ;
+ * il se relie ensuite à son annonce depuis sa fiche.
+ */
 export default function ListeLogements() {
   const d = useErp();
   const naviguer = useNavigate();
@@ -31,6 +36,8 @@ export default function ListeLogements() {
     // Actifs d'abord, puis par nom.
     .sort((a, b) => STATUTS.indexOf(a.l.statut) - STATUTS.indexOf(b.l.statut) || a.l.nom.localeCompare(b.l.nom, 'fr'));
   const connecte = d.logements.some((l) => l.repull?.id);
+  // Lecture seule : rien ne s'enregistre, pas de création.
+  const creer = d.lectureSeule ? undefined : () => setCreation(true);
 
   return (
     <>
@@ -43,7 +50,7 @@ export default function ListeLogements() {
               label="Plus"
               actions={[
                 { libelle: connecte ? 'Plateformes et logements suivis' : 'Connecter Airbnb, Booking…', icone: <Plug />, to: '/erp/logements/connexions' },
-                { libelle: 'Ajouter un logement à la main', icone: <Plus />, onClick: () => setCreation(true) },
+                ...(creer ? [{ libelle: 'Ajouter un logement à la main', icone: <Plus />, onClick: creer }] : []),
               ]}
             />
           )
@@ -71,9 +78,16 @@ export default function ListeLogements() {
           titre="Pas encore de logement"
           description="Connectez Airbnb ou Booking : vos logements arrivent avec leurs photos, réservations et messages."
           action={
-            <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
-              Connecter Airbnb, Booking…
-            </ButtonLink>
+            <div className="flex flex-wrap justify-center gap-2">
+              <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>
+                Connecter Airbnb, Booking…
+              </ButtonLink>
+              {creer && (
+                <Button icone={<Plus />} onClick={creer}>
+                  Ajouter à la main
+                </Button>
+              )}
+            </div>
           }
         />
       ) : filtrees.length === 0 ? (
@@ -100,7 +114,7 @@ export default function ListeLogements() {
         </div>
       )}
 
-      <EditionLogement ouvert={creation} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />
+      <EditionLogement ouvert={creation && !d.lectureSeule} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />
     </>
   );
 }
