@@ -25,7 +25,7 @@ import {
 } from '../automatisations';
 import { COLLECTIONS, completer, trierJournal } from './collections';
 import { CLE_DEMO, MODE, MODE_DEMO } from './config';
-import { logementActivable, missionValidable, prestataireConforme } from './selectors';
+import { logementActivable, menageInterneFait, missionValidable, prestataireConforme } from './selectors';
 import {
   attendreActivation,
   codeInvitationDe,
@@ -106,6 +106,8 @@ export interface ErpContexte extends ErpDonnees {
 
   changerStatutMission: (id: Id, statut: StatutMission) => Resultat;
   validerMission: (id: Id) => Resultat;
+  /** Ménage interne (prévu par Claude) : « Fait », sans prestataire ni paiement. */
+  marquerMenageInterneFait: (id: Id) => Resultat;
   /** Refus d'une mission : commentaire obligatoire, la mission ne sera pas payée. */
   refuserMission: (id: Id, commentaire: string) => Resultat;
   attribuerMission: (id: Id, prestataireId: Id) => Resultat;
@@ -477,6 +479,18 @@ function CoeurErp({
       return OK;
     };
 
+    const marquerMenageInterneFait = (id: Id): Resultat => {
+      // Gérant seulement (le bouton n'apparaît que pour lui) ; jamais en lecture seule.
+      if (utilisateurRef.current.role !== 'gerant' || lectureSeule) return echec('Réservé au gérant.');
+      const m = trouver('missions', id);
+      if (!m) return echec('Mission introuvable.');
+      const r = menageInterneFait(m);
+      if (!r.ok) return echec(r.erreur);
+      // Revérifié sur la version écrite : jamais un ménage de prestataire, même changé entre-temps.
+      appliquer((d) => modifier(d, 'missions', id, (x) => (menageInterneFait(x).ok ? { ...x, statut: 'validee' } : x)), 'Ménage interne fait', 'mission', id);
+      return OK;
+    };
+
     const changerStatutMission = (id: Id, statut: StatutMission): Resultat => {
       if (statut === 'validee') return validerMission(id);
       const m = trouver('missions', id);
@@ -620,6 +634,7 @@ function CoeurErp({
       mettreAJour,
       changerStatutMission,
       validerMission,
+      marquerMenageInterneFait,
       refuserMission,
       attribuerMission,
       avancerProspect,

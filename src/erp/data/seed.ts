@@ -25,6 +25,7 @@ import { creerContactsCrm } from './seed-crm';
 import { creerActionsAgentDemo } from './seed-copilote';
 import { creerDossiersDemo } from './seed-dossiers';
 import { creerEspaceProprietaireDemo, prolongationDemo } from './seed-proprietaire';
+import { menageInterneDemo, positionDemo } from './seed-carte';
 import { premiereAnnonce } from './annonces-equipe';
 import { ESPACE_LABEL_MAISON } from './espaces';
 import { nomConciergerie } from './marque-espace';
@@ -746,6 +747,14 @@ function habiller(logements: Logement[]): Logement[] {
   });
 }
 
+/** Démo : chaque logement près du centre de sa commune (seed-carte.ts), jamais sur une adresse réelle. */
+function placer(logements: Logement[]): Logement[] {
+  return logements.map((l) => {
+    const position = positionDemo(l);
+    return position ? { ...l, position } : l;
+  });
+}
+
 /**
  * Démo : les nuits réservées sont « prises » dans le calendrier lu sur les
  * plateformes, comme chez Airbnb ; les autres restent libres, sauf une
@@ -791,7 +800,7 @@ export function creerSeed(): ErpDonnees {
   typerAvis(reservations);
   const linge = genererLinge(missions);
   const operations = genererOperations(reservations, missions, linge.ecart);
-  const toutesMissions = [...missions, ...operations.missions];
+  const toutesMissions = [...missions, ...operations.missions, menageInterneDemo()];
 
   const prestataires = PRESTATAIRES.map((p) => ({
     ...p,
@@ -804,7 +813,7 @@ export function creerSeed(): ErpDonnees {
   const donnees = {
     proprietaires: structuredClone(PROPRIETAIRES),
     mandats: structuredClone(MANDATS),
-    logements: calendrierReserve(habiller(structuredClone(LOGEMENTS)), reservations),
+    logements: placer(calendrierReserve(habiller(structuredClone(LOGEMENTS)), reservations)),
     reservations,
     filsMessages: operations.filsMessages,
     missions: toutesMissions,
