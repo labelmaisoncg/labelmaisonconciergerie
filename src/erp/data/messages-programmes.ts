@@ -795,11 +795,22 @@ export function prochainEnvoi(
 
 /**
  * Mots d'un message DU VOYAGEUR qui doivent faire relire l'avis (plainte,
- * dégât, bruit…). « a party of 4 » (un groupe de 4) et « non-smokers » (non-
- * fumeurs) ne disent aucun souci.
+ * dégât, bruit, fête…). « a party of 4 », « a party of four » (un groupe, de
+ * un à neuf) et « non-smokers » (non-fumeurs) ne disent aucun souci ; « a
+ * party of twenty people » en dit un. Quels messages : signalNegatifDansLesMessages.
  */
 const SIGNAL_NEGATIF =
-  /plainte|inacceptable|d[ée]cevant|d[ée]çu|sale\b|salet[ée]|cass[ée]|abîm|ab[iî]m[ée]|d[ée]g[aâ]t|d[ée]gradation|bruit|f[êe]te\b|tapage|odeur|cafard|punaise|rembours|litige|avocat|police|voisins? (se )?plai|complain|dirty|broken|damage|noise|party\b(?!\s+of\b)|refund|(?<!non[-\s]?)smok|fum[ée] dans|cigarette/i;
+  /plainte|inacceptable|d[ée]cevant|d[ée]çu|sale\b|salet[ée]|cass[ée]|abîm|ab[iî]m[ée]|d[ée]g[aâ]t|d[ée]gradation|bruit|f[êe]te\b|tapage|odeur|cafard|punaise|rembours|litige|avocat|police|voisins? (se )?plai|complain|dirty|broken|damage|noise|party\b(?!\s+of\s+(?:\d|one|two|three|four|five|six|seven|eight|nine)\b)|refund|(?<!non[-\s]?)smok|fum[ée] dans|cigarette/i;
+
+/**
+ * Mots d'un message DE L'ÉQUIPE (l'hôte) qui CONSTATENT un souci : dégât,
+ * cassé, plainte, police, remboursement, saleté, odeur de tabac, nuisibles…
+ * Pas les rappels du règlement (« pas de fête », « non-fumeur »), ni la « fiche
+ * de police » du check-in en ligne. (Correctif d'audit 03, avec en plus les
+ * constats de saleté, d'odeur de tabac et de nuisibles.)
+ */
+const SOUCI_CONSTATE =
+  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass[ée]|ab[iî]m|plainte|se plaign|plaint\b|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
 
 /** Séjours dont l'avis est attendu : Airbnb, terminés depuis moins de 14 jours, pas annulés. */
 export function sejourAvecAvis(r: Pick<Reservation, 'canal' | 'statut' | 'depart'>, aujourdhui: DateISO): boolean {
@@ -813,9 +824,7 @@ export const joursRestantsAvis = (depart: DateISO, aujourdhui: DateISO): number 
  * Pourquoi relire l'avis avant de le déposer : incident pendant le séjour,
  * note du voyageur sous 4, contrôle après départ avec des points à revoir,
  * conversation transmise pour un litige ou de l'argent, mot négatif dans les
- * messages du voyageur à partir de la veille de son arrivée (comme
- * sujetSensibleMessages : ni les rappels de l'hôte, « pas de fête », ni les
- * questions d'avant la réservation). Vide : rien ne s'y oppose.
+ * messages (signalNegatifDansLesMessages). Vide : rien ne s'y oppose.
  */
 export function raisonsARelire(
   r: Pick<Reservation, 'id' | 'logementId' | 'arrivee' | 'depart' | 'noteVoyageur'>,
@@ -832,14 +841,33 @@ export function raisonsARelire(
   if (controles.length) raisons.push('Contrôle après départ : points à revoir');
   const fils = (d.filsMessages ?? []).filter((f) => f.reservationId === r.id);
   if (fils.some((f) => f.raisonEscalade === 'litige' || f.raisonEscalade === 'argent')) raisons.push('Conversation transmise à l’équipe (litige ou argent)');
-  else if (
-    fils.some((f) =>
-      f.messages.some((m) => m.auteur === 'voyageur' && m.envoi?.par !== PAR_MESSAGE_AUTO && String(m.envoyeLe ?? '').slice(0, 10) >= ajouterJoursISO(r.arrivee, -1) && SIGNAL_NEGATIF.test(m.texte)),
-    )
-  ) {
-    raisons.push('Un message signale un souci');
-  }
+  else if (signalNegatifDansLesMessages(r, fils)) raisons.push('Un message signale un souci');
   return raisons;
+}
+
+/**
+ * Un souci dans les messages de ce séjour (hors messages automatiques et
+ * réponses de l'agent). Une seule règle par auteur :
+ *   - le voyageur : tout mot négatif (SIGNAL_NEGATIF), dans tous ses messages,
+ *     avant l'arrivée compris (« birthday party, about 15 friends ») ;
+ *   - l'équipe (l'hôte) : un souci constaté (SOUCI_CONSTATE : « les voisins se
+ *     plaignent du bruit », « verre cassé » après le départ), de la veille de
+ *     l'arrivée à la fin du délai d'Airbnb. Un rappel du règlement ne compte
+ *     jamais (« pas de fête après 22 h »), et rien d'envoyé plus tôt.
+ */
+function signalNegatifDansLesMessages(r: Pick<Reservation, 'arrivee' | 'depart'>, fils: readonly FilMessages[]): boolean {
+  const debutEquipe = ajouterJoursISO(r.arrivee, -1);
+  const finEquipe = ajouterJoursISO(r.depart, JOURS_AVIS);
+  return fils.some((f) =>
+    f.messages.some((m) => {
+      if (m.envoi?.par === PAR_MESSAGE_AUTO) return false;
+      const texte = String(m.texte ?? '');
+      if (m.auteur === 'voyageur') return SIGNAL_NEGATIF.test(texte);
+      if (m.auteur !== 'hote') return false;
+      const jour = String(m.envoyeLe ?? '').slice(0, 10);
+      return jour >= debutEquipe && jour <= finEquipe && SOUCI_CONSTATE.test(texte);
+    }),
+  );
 }
 
 /** Ce qu'un avis public ne doit pas contenir : lien, adresse e-mail, chiffre (code, numéro, prix) ou adresse postale. */
@@ -857,6 +885,8 @@ const ADRESSE_AVIS = /\b\d{1,4}\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.?|boulevard
  */
 const NOMBRE_AVEC_UNITE =
   /(?<![\p{L}\p{N}])\d{1,2}\s*(?:nuits?|jours?|semaines?|[ée]toiles?|personnes?|voyageurs?|nights?|days?|weeks?|stars?|guests?|people)(?![\p{L}\p{N}])/giu;
+/** Mot de code ou d'accès : avec lui, aucun chiffre n'est permis, même suivi d'une unité (correctif d'audit 03). */
+const MOT_ACCES = /(?<![\p{L}\p{N}])(?:code|digicode|cadenas|bo[iî]te|wifi|wi-fi|mot de passe|password|passcode|lockbox|key ?box|keypad|pin)(?![\p{L}\p{N}])/iu;
 /** Mots d'un texte, minuscules, sans accents ni ponctuation. */
 const motsSansAccents = (t: string) =>
   ` ${String(t ?? '')
@@ -882,7 +912,9 @@ export function alerteTexteAvis(texte: string, logement?: Partial<Pick<Logement,
   const t = String(texte ?? '');
   const rue = motsSansAccents(String(logement?.adresse ?? '').replace(/^\s*\d+\s*(?:bis|ter)?,?\s*/i, '').split(',')[0]).trim();
   const rueCitee = rue.length >= 6 && motsSansAccents(t).includes(` ${rue} `);
-  if (LIEN_AVIS.test(t) || /@/.test(t) || /\d/.test(t.replace(NOMBRE_AVEC_UNITE, '')) || ADRESSE_AVIS.test(t) || rueCitee) return ALERTE_FORME_AVIS;
+  // « 3 nuits » est permis, mais pas un chiffre dans un texte qui parle de code ou d'accès (« digicode 12 personnes »).
+  const chiffre = MOT_ACCES.test(t) ? /\d/.test(t) : /\d/.test(t.replace(NOMBRE_AVEC_UNITE, ''));
+  if (LIEN_AVIS.test(t) || /@/.test(t) || chiffre || ADRESSE_AVIS.test(t) || rueCitee) return ALERTE_FORME_AVIS;
   return null;
 }
 

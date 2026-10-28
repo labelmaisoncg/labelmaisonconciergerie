@@ -134,9 +134,16 @@ export function ReponsePubliee({ ligne, discret }: { ligne: ReponseAvisAuto; dis
                   Modifier
                 </Button>
               )}
-              <Button variant="ghost" onClick={() => refuserAvis(d, 'reponse', ligne.id)}>
-                Ne pas répondre
-              </Button>
+              {discret ? (
+                // Fiche du séjour : un lien texte, comme « Annuler », pour tenir sur une ligne à 390 px.
+                <button type="button" onClick={() => refuserAvis(d, 'reponse', ligne.id)} className="inline-flex min-h-8 items-center text-[13px] text-(--lm-encre-2) hover:text-(--lm-encre) hover:underline">
+                  Ne pas répondre
+                </button>
+              ) : (
+                <Button variant="ghost" onClick={() => refuserAvis(d, 'reponse', ligne.id)}>
+                  Ne pas répondre
+                </Button>
+              )}
             </div>
           ) : (
             <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Le gérant valide cette réponse avant sa publication.</p>

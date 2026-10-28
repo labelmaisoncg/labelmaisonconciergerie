@@ -394,12 +394,24 @@ function fileAvis() {
   verifier(raisonsARelire(avecIncident, d)[0] === 'Un incident pendant le séjour', 'incident du séjour → à relire');
   verifier(raisonsARelire(noteBasse, d).some((x) => x.includes('3,5/5')), 'note sous 4 → à relire');
   verifier(raisonsARelire(negatif, d).includes('Un message signale un souci'), 'message négatif → à relire');
-  // Seulement les messages du voyageur, à partir de la veille de l'arrivée (octobre 2026).
+  // Voyageur : tous ses messages, avant l'arrivée compris. Équipe : de la veille de l'arrivée à la fin du délai d'Airbnb.
+  // (séjour « g » : arrivée le 19, départ le 21 octobre.)
   const avecFils = (messages: Message[]) => ({ ...d, filsMessages: [fil('fil-g', 'g', { messages })] });
-  verifier(raisonsARelire(negatif, avecFils([msg('h', 'hote', 'Rappel : pas de fête dans le logement, merci.')])).length === 0, 'rappel de l’hôte « pas de fête » : rien à relire');
-  verifier(raisonsARelire(negatif, avecFils([msg('v', 'voyageur', 'Hello, we are a party of 4 non-smokers.')])).length === 0, '« a party of 4 », « non-smokers » : rien à relire');
-  verifier(raisonsARelire(negatif, avecFils([msg('v', 'voyageur', 'Is there much noise from the street?', '2026-10-10T10:00:00+02:00')])).length === 0, 'question sur le bruit avant la réservation : rien à relire');
-  verifier(raisonsARelire(negatif, avecFils([msg('v', 'voyageur', 'There is a lot of noise tonight.', '2026-10-18T21:00:00+02:00')])).includes('Un message signale un souci'), 'la veille de l’arrivée : compte');
+  const souci = (messages: Message[]) => raisonsARelire(negatif, avecFils(messages)).includes('Un message signale un souci');
+  verifier(souci([msg('h', 'hote', 'Les voisins se plaignent du bruit depuis hier soir.', '2026-10-20T09:00:00+02:00')]), 'plainte des voisins écrite par l’équipe pendant le séjour : à relire');
+  verifier(souci([msg('h', 'hote', 'Verre cassé et odeur de cigarette dans le salon après le départ.', '2026-10-22T11:00:00+02:00')]), 'verre cassé écrit par l’équipe après le départ : à relire');
+  verifier(souci([msg('v', 'voyageur', 'Hi! Birthday party on Saturday, about 15 friends.', '2026-10-05T10:00:00+02:00')]), 'fête annoncée par le voyageur avant l’arrivée : à relire');
+  verifier(!souci([msg('h', 'hote', 'Rappel : pas de fête après 22 h, merci.', '2026-10-15T10:00:00+02:00')]), 'rappel « pas de fête après 22 h » envoyé par l’équipe avant l’arrivée : ne bloque pas');
+  verifier(!souci([msg('v', 'voyageur', 'Hello, we are a party of 4 non-smokers.', '2026-10-05T10:00:00+02:00')]), '« a party of 4 », « non-smokers » : rien à relire');
+  verifier(souci([msg('v', 'voyageur', 'There is a lot of noise tonight.', '2026-10-18T21:00:00+02:00')]), 'bruit signalé par le voyageur : à relire');
+  verifier(!souci([msg('a', 'agent', 'Pas de fête ni de bruit après 22 h, merci.', '2026-10-20T09:00:00+02:00')]), 'réponse de l’agent (règlement rappelé) : ne bloque pas');
+  // Correctif d'audit 03 : l'équipe, un souci CONSTATÉ seulement ; « party of » suivi d'un nombre jusqu'à neuf.
+  verifier(!souci([msg('h', 'hote', 'Rappel : pas de fête ni de bruit après 22 h, merci.', '2026-10-20T09:00:00+02:00')]), 'rappel du règlement par l’équipe pendant le séjour : ne bloque pas (pas un souci constaté)');
+  verifier(!souci([msg('h', 'hote', 'Merci, la fiche de police est bien remplie.', '2026-10-19T09:00:00+02:00')]), '« fiche de police » du check-in en ligne : ne bloque pas');
+  verifier(souci([msg('h', 'hote', 'La police est venue pour tapage cette nuit.', '2026-10-20T08:00:00+02:00')]), 'police venue pendant le séjour, écrit par l’équipe : à relire');
+  verifier(souci([msg('h', 'hote', 'Forte odeur de cigarette dans la chambre.', '2026-10-21T12:00:00+02:00')]), 'odeur de cigarette constatée par l’équipe : à relire');
+  verifier(souci([msg('v', 'voyageur', 'We will be a party of twenty people.', '2026-10-05T10:00:00+02:00')]), '« a party of twenty people » : à relire');
+  verifier(!souci([msg('v', 'voyageur', 'We are a party of four, very quiet.', '2026-10-05T10:00:00+02:00')]), '« a party of four » : rien à relire');
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
   verifier(raisonsARelire(propre, { ...d, incidents: [sansReservation] }).length === 1, 'incident du logement pendant le séjour → à relire');
   verifier(raisonsARelire(propre, { ...d, incidents: [{ ...sansReservation, date: '2026-10-10' }] }).length === 0, 'incident d’avant le séjour : sans effet');
@@ -562,6 +574,10 @@ function alertesAvis() {
   // Faux positifs d'avant (octobre 2026) : « place », « sur place », « au cours de », « 3 nuits ».
   const sansSouci = ['Lucas left the place spotless.', 'He took great care of our place.', 'Tout était parfait sur place.', 'Au cours de son séjour, tout s’est bien passé.', 'Merci pour ces 3 nuits.', 'A party of 4 guests, 5 stars.', 'Un séjour de 2 semaines, 12 voyageurs.'];
   verifier(sansSouci.every((t) => alerteTexteAvis(t) === null), `« place », « sur place », « au cours de », « 3 nuits », « 4 guests » : rien à signaler ${JSON.stringify(sansSouci.filter((t) => alerteTexteAvis(t) !== null))}`);
+  verifier(
+    ['Digicode 12 personnes', 'Le code 99 nuits', 'Boîte à clés : 3 nuits', 'Wifi 12 personnes'].every((t) => alerteTexteAvis(t) !== null) && alerteTexteAvis('Merci pour ces 3 nuits.') === null,
+    'mot de code ou d’accès dans le texte : aucun chiffre permis, même suivi d’une unité (« digicode 12 personnes », « code 99 nuits »)',
+  );
   verifier(alerteTexteAvis('Logement rue de la Gare, très calme.', { adresse: '12 rue de la Gare, 91100 Corbeil-Essonnes' }) !== null && alerteTexteAvis('Logement rue de la Paix, très calme.', { adresse: '12 rue de la Gare, 91100 Corbeil-Essonnes' }) === null, 'la rue du logement (sans numéro) : à relire ; une autre rue sans numéro : non');
 }
 

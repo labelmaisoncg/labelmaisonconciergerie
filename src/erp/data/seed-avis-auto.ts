@@ -32,8 +32,8 @@ const PUBLIES_PAR_ABDEL = new Map([
 ]);
 /** Réponses : publiées seules si l'avis le permet (raisonsReponseAValider vide), sinon à valider ; une écartée par le gérant. */
 const REPONSES_PUBLIEES = ['res-0150', 'res-0024', 'res-0256', 'res-0199', 'res-0060'];
-const REPONSES_A_VALIDER = ['res-0179', 'res-0258', 'res-0091'];
-const REPONSE_ECARTEE = 'res-0151';
+const REPONSES_A_VALIDER = ['res-0179', 'res-0258', 'res-0151'];
+const REPONSE_ECARTEE = 'res-0123';
 
 const heure = (jour: string, hm: string) => `${jour}T${hm}:00+02:00`;
 

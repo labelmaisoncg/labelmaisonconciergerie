@@ -13,7 +13,7 @@
  * Réglage éteint : rien de tout cela (avisAValider est vide). Règles :
  * src/erp/data/avis-auto.ts.
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { ChevronRight, Send, Star } from 'lucide-react';
 import { Alert, Badge, Button, Card, CardHeader, Drawer, Interrupteur, Modal, Textarea, cn } from '../../../ui';
 import { useErp, type ErpContexte } from '../../../data/store';
@@ -137,9 +137,32 @@ export function phraseRefus(genre: ElementAValider['genre'], par: string | undef
 
 /* --------------------------------------------- note avant « Publier » */
 
+/** Les notes possibles, de 1 à 5 étoiles. */
+const NOTES = [1, 2, 3, 4, 5] as const;
+
 /**
- * Note du voyageur (5 étoiles touchables) et « Je recommande ». `note` nulle :
- * rien de choisi (séjour à problème), « Publier » attend.
+ * Clavier des étoiles, comme clavierChoix (AssistantLogement.tsx) : un seul
+ * arrêt de tabulation, les flèches changent la note, focus compris (droite et
+ * haut : une étoile de plus ; gauche et bas : une de moins ; on fait le tour).
+ * Rien de choisi : on part de l'étoile qui a le focus.
+ */
+function clavierNote(actuelle: number | null, choisir: (n: number) => void) {
+  return (e: KeyboardEvent<HTMLElement>) => {
+    const pas = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -1 : 0;
+    if (!pas) return;
+    e.preventDefault();
+    const boutons = [...e.currentTarget.querySelectorAll<HTMLElement>('[role=radio]')];
+    const i = actuelle !== null ? actuelle - 1 : boutons.indexOf(document.activeElement as HTMLElement);
+    const suivante = i < 0 ? 0 : (i + pas + NOTES.length) % NOTES.length;
+    choisir(NOTES[suivante]);
+    boutons[suivante]?.focus();
+  };
+}
+
+/**
+ * Note du voyageur (5 étoiles touchables, un seul arrêt de tabulation et les
+ * flèches) et « Je recommande ». `note` nulle : rien de choisi (raison qui
+ * touche au séjour), « Publier » attend.
  */
 export function ChoixNote({
   note,
@@ -157,8 +180,8 @@ export function ChoixNote({
   return (
     <div className="mt-2 rounded-lg border border-(--lm-bord) px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <div role="radiogroup" aria-label="Note du voyageur" className="-ml-1 flex">
-          {[1, 2, 3, 4, 5].map((n) => {
+        <div role="radiogroup" aria-label="Note du voyageur" onKeyDown={disabled ? undefined : clavierNote(note, onNote)} className="-ml-1 flex">
+          {NOTES.map((n) => {
             const plein = note !== null && n <= note;
             return (
               <button
@@ -167,6 +190,8 @@ export function ChoixNote({
                 role="radio"
                 aria-checked={note === n}
                 aria-label={etoiles(n)}
+                // Un seul arrêt de tabulation : l'étoile choisie, sinon la première.
+                tabIndex={note === n || (note === null && n === 1) ? 0 : -1}
                 disabled={disabled}
                 onClick={() => onNote(n)}
                 className="grid size-9 place-items-center rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:cursor-not-allowed"
@@ -217,7 +242,8 @@ export function ReglagesAvisAutoCarte({ className }: { className?: string }) {
   return (
     <Card flush className={className}>
       <div className="p-4 pb-0 sm:p-5 sm:pb-0">
-        <CardHeader titre="Publication automatique" description="Rien n’est publié tant que vous ne l’allumez pas." />
+        {/* La phrase ne dit vrai que si les deux sont éteints. */}
+        <CardHeader titre="Publication automatique" description={!reglages.voyageurs.actif && !reglages.reponses.actif ? 'Rien n’est publié tant que vous ne l’allumez pas.' : undefined} />
       </div>
       <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
         {cles.map((cle) => (

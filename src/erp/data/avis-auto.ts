@@ -242,12 +242,19 @@ export function deciderAvisVoyageur(
 }
 
 /**
- * Note pré-choisie dans « Publier » (5 étoiles, « Je recommande ») : oui,
- * sauf pour un incident, un contrôle à revoir, une note du voyageur sous 4 ou
- * un litige. Alors rien n'est pré-choisi : le gérant choisit la note.
+ * Raisons techniques (rien sur le séjour) : rédaction en panne ou pas sûre,
+ * proposition écartée, texte à vérifier (chiffre, lien…), envoi coupé.
  */
-export const notePreReglee = (raisons: readonly string[]): boolean =>
-  !raisons.some((x) => /incident|Contrôle après départ|Note du voyageur|litige/i.test(x));
+const RAISON_TECHNIQUE = /^(Votre agent n’a pas (pu rédiger|rédigé)|La proposition de votre agent a été écartée|Le texte contient|L’envoi a été coupé)/;
+
+/**
+ * Note pré-choisie dans « Publier » (5 étoiles, « Je recommande ») : seulement
+ * quand toutes les raisons sont techniques. Une raison qui touche au séjour
+ * (incident, contrôle, note sous 4, litige, message qui signale un souci,
+ * échange sensible, séjour du propriétaire, consignes inhabituelles, point
+ * signalé par l'agent…) : rien n'est pré-choisi, le gérant choisit la note.
+ */
+export const notePreReglee = (raisons: readonly string[]): boolean => raisons.every((x) => RAISON_TECHNIQUE.test(x));
 
 /** Note donnée au voyageur, valide pour Airbnb : entier de 1 à 5. */
 export const noteVoyageurValide = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 5;
@@ -407,12 +414,18 @@ export function signatureSociete(reglages: readonly Reglage[] | undefined): stri
   return signatureSure(typeof societe?.raisonSociale === 'string' ? societe.raisonSociale.replace(/\s+/g, ' ').trim().slice(0, 80) : '');
 }
 
-/** Note d'un avis telle que la plateforme l'affiche : « 4,8 sur 5 », « 9 sur 10 » (Booking.com). */
+/** Une note sur l'échelle de la plateforme, une décimale : « 4,0 », « 8,9 ». */
+const uneDecimale = (n: number): string => (Math.round(n * 10) / 10).toFixed(1).replace('.', ',');
+
+/**
+ * Note d'un avis, un seul format partout où elle s'affiche, sur l'échelle de
+ * la plateforme : « 4,0 sur 5 », « 4,8 sur 5 », « 8,0 sur 10 » (Booking.com).
+ * Les moyennes (« Note 4,7 / 5 ») restent sur 5.
+ */
 export function noteDeLAvis(note: number | undefined, plateforme: unknown): string {
-  if (note === undefined) return '';
+  if (note === undefined || !Number.isFinite(note)) return '';
   const sur10 = plateformeAvis(plateforme) === 'booking';
-  const v = Math.round((sur10 ? note * 2 : note) * 10) / 10;
-  return `${String(v).replace('.', ',')} sur ${sur10 ? 10 : 5}`;
+  return `${uneDecimale(sur10 ? note * 2 : note)} sur ${sur10 ? 10 : 5}`;
 }
 
 /**
@@ -429,7 +442,7 @@ export function raisonsReponseAValider(a: AvisLu, o: { plateforme?: unknown; not
   const seuil = SEUILS_REPONSE_AUTO[sur10 ? 'booking' : 'airbnb'];
   const natif = typeof o.noteNative === 'number' && Number.isFinite(o.noteNative) ? o.noteNative : a.note === undefined ? undefined : sur10 ? a.note * 2 : a.note;
   if (natif === undefined) raisons.push('Avis sans note');
-  else if (natif < seuil.note) raisons.push(`Note de ${String(Math.round(natif * 10) / 10).replace('.', ',')} sur ${seuil.sur}`);
+  else if (natif < seuil.note) raisons.push(`Note de ${uneDecimale(natif)} sur ${seuil.sur}`);
   if (a.sentiment === 'negatif') raisons.push('Avis négatif');
   else if (a.sentiment === 'neutre') raisons.push('Avis mitigé');
   const publics = a.themes.filter((t) => !t.prive && t.sentiment === 'negatif');

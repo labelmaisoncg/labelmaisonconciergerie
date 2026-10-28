@@ -31,7 +31,7 @@ import {
   type SyntheseAvis,
 } from '../../../data/avis';
 import type { ReponseAvisPreparee } from '../../../data/avis-serveur';
-import { reglagesAvisAuto, reponseDuSejour, reponseGeree } from '../../../data/avis-auto';
+import { noteDeLAvis, reglagesAvisAuto, reponseDuSejour, reponseGeree } from '../../../data/avis-auto';
 import { ReponsePubliee } from './ReponsePubliee';
 import type { CanalReservation, Logement, SentimentMessage } from '../../../data/types';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
@@ -112,7 +112,7 @@ export function BarresThemes({ synthese, max = 6, suite }: { synthese: SyntheseA
 
 /* --------------------------------------------------------- un avis en ligne */
 
-/** Une ligne : le texte de l'avis, puis « ☆ 4,0 · Négatif · 21 sept. · Laura J. · Massy » sur une seule ligne. */
+/** Une ligne : le texte de l'avis, puis « ☆ 4,0 sur 5 · Négatif · 21 sept. · Laura J. · Massy » sur une seule ligne (note : noteDeLAvis). */
 export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logement?: string; onOuvrir: () => void }) {
   const s = LIBELLE_SENTIMENT[a.sentiment];
   const parties: ReactNode[] = [
@@ -120,7 +120,7 @@ export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logem
       <span className="font-medium text-(--lm-encre)">
         <Star className="mr-0.5 inline size-3 align-[-1px]" aria-hidden />
         <span className="sr-only">Note </span>
-        {noteFr(a.note)}
+        {noteDeLAvis(a.note, a.canal)}
       </span>
     ),
     a.sentiment !== 'positif' && <span className={s.ton === 'danger' ? 'text-(--lm-danger)' : 'text-(--lm-alerte)'}>{s.libelle}</span>,
@@ -384,7 +384,8 @@ export function PanneauAvis({ avis: a, ouvert, onFermer }: { avis: AvisLu; ouver
       <div className="flex flex-wrap items-center gap-2">
         {a.note !== undefined && (
           <Badge tone="neutre" icone={<Star />}>
-            {noteFr(a.note)} sur 5
+            <span className="sr-only">Note </span>
+            {noteDeLAvis(a.note, a.canal)}
           </Badge>
         )}
         <Badge tone={s.ton}>{s.libelle}</Badge>

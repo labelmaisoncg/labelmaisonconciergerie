@@ -849,18 +849,22 @@ function reglesRelecture() {
     const sejour = resa('res-b', 5, { canal: 'booking' });
     verifier(appliquerAvis(sejour, { id: '1', reviewerRole: 'guest', platform: 'booking', rating: 5, publicReview: 'Correct.' }).noteVoyageur === 2.5, 'un 5/10 de Booking.com devient 2,5/5, jamais 5/5');
     verifier(appliquerAvis(sejour, { id: '1', reviewerRole: 'guest', rating: 5, publicReview: 'Correct.' }).noteVoyageur === 2.5, 'sans plateforme dans l’avis : le canal du séjour (Booking.com)');
-    verifier(noteDeLAvis(4.5, 'booking') === '9 sur 10' && noteDeLAvis(2.5, 'booking') === '5 sur 10' && noteDeLAvis(4.8, 'airbnb') === '4,8 sur 5', 'note affichée sur l’échelle de la plateforme');
+    verifier(
+      noteDeLAvis(4.5, 'booking') === '9,0 sur 10' && noteDeLAvis(2.5, 'booking') === '5,0 sur 10' && noteDeLAvis(4.45, 'booking') === '8,9 sur 10' && noteDeLAvis(4.8, 'airbnb') === '4,8 sur 5' && noteDeLAvis(4, 'airbnb') === '4,0 sur 5',
+      'un seul format, une décimale, sur l’échelle de la plateforme : « 9,0 sur 10 », « 4,0 sur 5 »',
+      [noteDeLAvis(4.5, 'booking'), noteDeLAvis(4, 'airbnb')],
+    );
   }
 
   section('18. Réponses publiées seules : 5/5 sur Airbnb, 9/10 et plus sur Booking.com (B8)');
   {
     const lu = (canal: Reservation['canal'], note: number) => lireAvis(resa('res-s', 5, { canal, noteVoyageur: note, commentaireVoyageur: 'Logement très propre, calme et parfaitement situé. Merci !' }))!;
     const cas: [string, AvisLu, boolean, RegExp | null][] = [
-      ['Booking.com 5/10', lu('booking', 2.5), false, /Note de 5 sur 10/],
-      ['Booking.com 8/10', lu('booking', 4), false, /Note de 8 sur 10/],
+      ['Booking.com 5/10', lu('booking', 2.5), false, /Note de 5,0 sur 10/],
+      ['Booking.com 8/10', lu('booking', 4), false, /Note de 8,0 sur 10/],
       ['Booking.com 9/10', lu('booking', 4.5), true, null],
       ['Booking.com 10/10', lu('booking', 5), true, null],
-      ['Airbnb 4/5', lu('airbnb', 4), false, /Note de 4 sur 5/],
+      ['Airbnb 4/5', lu('airbnb', 4), false, /Note de 4,0 sur 5/],
       ['Airbnb 5/5', lu('airbnb', 5), true, null],
     ];
     const rates = cas.filter(([, a, seul, re]) => {
@@ -875,10 +879,32 @@ function reglesRelecture() {
   section('19. Note choisie avant « Publier » (B9)');
   {
     verifier(
-      ['Un incident pendant le séjour', '2 incidents pendant le séjour', 'Contrôle après départ : points à revoir', 'Note du voyageur : 3/5', 'Litige ou remboursement signalé par la plateforme', 'Conversation transmise à l’équipe (litige ou argent)'].every((x) => !notePreReglee([x])),
-      'incident, contrôle à revoir, note du voyageur sous 4, litige : rien de pré-choisi',
+      [
+        'Un incident pendant le séjour',
+        '2 incidents pendant le séjour',
+        'Contrôle après départ : points à revoir',
+        'Note du voyageur : 3/5',
+        'Litige ou remboursement signalé par la plateforme',
+        'Conversation transmise à l’équipe (litige ou argent)',
+        'Un message signale un souci',
+        'Échange sensible avec le voyageur (argent, remboursement ou annulation)',
+        'Séjour du propriétaire',
+        'Messages du voyageur avec des consignes inhabituelles',
+        'Conversation confiée à l’équipe',
+        'Votre agent signale un point à vérifier',
+      ].every((x) => !notePreReglee([x])),
+      'toute raison qui touche au séjour (incident, contrôle, note, litige, message, échange sensible, propriétaire, consignes…) : rien de pré-choisi',
     );
-    verifier(notePreReglee(['Séjour du propriétaire']) && notePreReglee([RAISON_ENVOI_COUPE]) && notePreReglee([]), 'autres raisons : 5 étoiles et « Je recommande » pré-choisis');
+    verifier(
+      notePreReglee([]) &&
+        notePreReglee(['Votre agent n’a pas pu rédiger l’avis : relisez le texte simple']) &&
+        notePreReglee(['Votre agent n’a pas rédigé d’avis sûr : relisez le texte simple']) &&
+        notePreReglee(['La proposition de votre agent a été écartée : relisez le texte simple']) &&
+        notePreReglee(['Le texte contient un lien, une adresse, un chiffre ou un e-mail : à vérifier']) &&
+        notePreReglee([RAISON_ENVOI_COUPE]),
+      'raisons seulement techniques (panne, proposition écartée, texte à vérifier, envoi coupé) : 5 étoiles et « Je recommande » pré-choisis',
+    );
+    verifier(!notePreReglee(['Votre agent n’a pas pu rédiger l’avis : relisez le texte simple', 'Séjour du propriétaire']), 'une raison technique et une raison du séjour : rien de pré-choisi');
     verifier(JSON.stringify(choixInitial([])) === '{"note":5,"recommande":true}' && JSON.stringify(choixInitial(['Un incident pendant le séjour'])) === '{"note":null,"recommande":false}', 'choix initial : 5 et recommandé, ou rien (Publier grisé)');
     verifier(JSON.stringify(choixInitial(['Un incident pendant le séjour'], { note: 3, recommande: false })) === '{"note":3,"recommande":false}', 'envoi coupé : la note déjà choisie revient');
   }
@@ -890,13 +916,18 @@ function reglesRelecture() {
       '« 3 nuits », « the place », « sur place » : rien à retirer',
       problemesTexteAvis('Merci pour ces 3 nuits : Marie left the place spotless, tout était parfait sur place.', { nomVoyageur: 'Marie Dupont', logement: LOGEMENT }),
     );
+    verifier(
+      problemesTexteAvis('Digicode 12 personnes.', { logement: LOGEMENT }).length > 0 && problemesTexteAvis('Le code 99 nuits.', { logement: LOGEMENT }).length > 0,
+      'mot de code ou d’accès : aucun chiffre dans un avis public, même suivi d’une unité (correctif d’audit 03)',
+    );
     verifier(problemesTexteAvis('Le code 482 a bien marché.', { logement: LOGEMENT }).length > 0 && problemesTexteAvis('Logement rue de la Gare.', { logement: LOGEMENT }).length > 0, '« code 482 » et la rue du logement : toujours signalés');
     const r = resa('res-1', 3);
     const signaux = { incidents: [] as Incident[], controles: [], logements: [LOGEMENT], proprietaires: [PROPRIETAIRE] };
     const avec = (messages: Message[]) => raisonsAvisSensible(r, { ...signaux, filsMessages: [fil('f', r, messages)] });
-    verifier(avec([msg('h', 'hote', 'Petit rappel : pas de fête dans le logement.', `${r.arrivee}T10:00:00+01:00`)]).length === 0, 'rappel de l’hôte « pas de fête » : séjour sans souci');
+    verifier(avec([msg('h', 'hote', 'Petit rappel : pas de fête après 22 h.', `${jourMoins(10)}T10:00:00+01:00`)]).length === 0, 'rappel de l’hôte « pas de fête » avant l’arrivée : séjour sans souci');
+    verifier(avec([msg('h', 'hote', 'Les voisins se plaignent du bruit.', `${r.arrivee}T22:00:00+01:00`)]).includes('Un message signale un souci'), 'plainte des voisins écrite par l’équipe pendant le séjour : à valider');
     verifier(avec([msg('v', 'voyageur', 'We are a party of 4, all non-smokers.', `${r.arrivee}T10:00:00+01:00`)]).length === 0, '« party of 4 », « non-smokers » : séjour sans souci');
-    verifier(avec([msg('v', 'voyageur', 'Is it noisy at night?', `${jourMoins(40)}T10:00:00+01:00`)]).length === 0, 'question d’avant la réservation : séjour sans souci');
+    verifier(avec([msg('v', 'voyageur', 'Birthday party on Saturday, about 15 friends.', `${jourMoins(40)}T10:00:00+01:00`)]).includes('Un message signale un souci'), 'fête annoncée par le voyageur avant la réservation : à valider');
     verifier(avec([msg('v', 'voyageur', 'There is a lot of noise from the neighbours.', `${r.arrivee}T23:00:00+01:00`)]).length > 0, 'bruit signalé par le voyageur pendant le séjour : à valider');
   }
 
@@ -955,6 +986,19 @@ function reglesRelecture() {
 async function passagesRelecture() {
   const depuisLongtemps = '2026-10-28T10:00:00+01:00'; // une heure avant MAINTENANT : bail passé
   const ilYaDeuxMinutes = '2026-10-28T10:58:00+01:00';
+
+  section('22 bis. Sans IA, un séjour signalé par l’équipe ne part jamais à 5 étoiles');
+  {
+    const m = monde();
+    m.base.poser('reglages', reglagesAllumes(true, false));
+    const r = resa('res-140', 3);
+    m.base.poser('reservations', r);
+    m.base.poser('filsMessages', fil('f140', r, [msg('h', 'hote', 'Verre cassé et odeur de cigarette dans le salon.', `${jourMoins(2)}T11:00:00+01:00`)]));
+    m.repull.avisHote.set('140', avisHote('140', '140'));
+    await passerAvisAuto(m.options({ ia: null }), donnees(m));
+    const l = m.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'res-140');
+    verifier(!m.repull.publications().length && l?.publication?.statut === 'a_valider' && l.publication.raisons?.includes('Un message signale un souci'), 'verre cassé écrit par l’équipe après le départ, IA absente : « à valider », rien de publié', l?.publication);
+  }
 
   section('23. Envoi coupé d’un avis sur le voyageur : relu, jamais redemandé à l’IA (A2)');
   {
@@ -1057,7 +1101,7 @@ async function passagesRelecture() {
     const rates = cas.filter(([id, , , seul]) => pubs.includes(id.slice(4)) !== seul);
     verifier(!rates.length, 'Booking.com 5/10 et 8/10, Airbnb 4/5 : à valider ; Booking.com 9/10 et 10/10, Airbnb 5/5 : publiés seuls', { pubs, rates });
     const l = (id: string) => m.base.get<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS, id)!;
-    verifier(l('res-130').note === 2.5 && l('res-130').publication.raisons?.some((x) => /Note de 5 sur 10/.test(x)), 'un 5/10 de Booking.com : noté 2,5/5, « Note de 5 sur 10 »', l('res-130'));
+    verifier(l('res-130').note === 2.5 && l('res-130').publication.raisons?.some((x) => /Note de 5,0 sur 10/.test(x)), 'un 5/10 de Booking.com : noté 2,5/5, « Note de 5,0 sur 10 »', l('res-130'));
     const textes = m.repull.publications().map((x) => (x.corps as { message: string }).message);
     verifier(textes.length > 0 && textes.every((t) => t.endsWith('Conciergerie Test') && !t.includes('Signature de l’agent')), 'réponses signées du nom de la société, jamais de la signature de l’agent', textes);
     const sansSociete = monde();
