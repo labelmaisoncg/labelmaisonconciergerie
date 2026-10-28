@@ -12,6 +12,8 @@ export const COLLECTIONS: NomCollection[] = [
   'equipe', 'accesOperations', 'affectations', 'absences', 'controles', 'signalementsLogement',
   // Messages automatiques et avis à déposer (octobre 2026) : complétées à vide dans les anciennes sauvegardes.
   'envoisProgrammes', 'avisADeposer',
+  // Réponses aux avis publiées par l'ERP (octobre 2026) : complétée à vide dans les anciennes sauvegardes.
+  'reponsesAvis',
   // Prix conseillés (octobre 2026) : réglages, décisions, état du passage du matin.
   'conseilsPrix',
   // Annonces à l'équipe (octobre 2026) : complétée à vide dans les anciennes sauvegardes.

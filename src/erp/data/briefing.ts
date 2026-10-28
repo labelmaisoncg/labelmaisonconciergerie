@@ -10,7 +10,9 @@
  *   (briefing-passage.ts).
  *
  * Chaque sujet reprend LA définition déjà utilisée ailleurs : voyageurs qui
- * attendent l'équipe (attendEquipe), avis à déposer (avisATraiter), notes
+ * attendent l'équipe (attendEquipe), avis à déposer (avisADeposerEquipe :
+ * ceux qui ne partent pas seuls), avis à valider avant publication (gérant,
+ * avisAValider), notes
  * sous 4,5 des 14 derniers jours, contacts du jour (aTraiterLe, triés par
  * l'assistant CRM), incidents (incidentsATraiter), anomalies
  * (detecterAnomalies), contrôle des réponses de l'agent en panne, fiches
@@ -30,7 +32,7 @@ import { fileDuJour } from './crm-assistant.js';
 import { estFactureMensuelle, factureFigee } from './factures-mensuelles.js';
 import { completudeFiche } from './fiche-agent.js';
 import { incidentsATraiter, lienIncident } from './incidents-erp.js';
-import { avisATraiter } from './messages-programmes.js';
+import { avisADeposerEquipe, avisAValider, libelleAValider } from './avis-auto.js';
 import type { GroupeNotification, VarianteNotification } from './notifications.js';
 import { sansChargeLe } from './operations.js';
 import { conseillerPrix, lireElementsPrix } from './prix-conseils.js';
@@ -39,7 +41,7 @@ import type { DateISO, ErpDonnees, Facture, Horodatage, Id, Reservation } from '
 /** Ce que le briefing lit (le store de l'ERP, ou les collections lues par le serveur). */
 export type EntreesBriefing = Pick<ErpDonnees, 'logements' | 'reservations' | 'filsMessages' | 'crm' | 'incidents'> &
   Partial<
-    Pick<ErpDonnees, 'avisADeposer' | 'controles' | 'equipe' | 'affectations' | 'absences' | 'conseilsPrix' | 'factures' | 'proprietaires' | 'reglages' | 'signalementsLogement'>
+    Pick<ErpDonnees, 'avisADeposer' | 'reponsesAvis' | 'controles' | 'equipe' | 'affectations' | 'absences' | 'conseilsPrix' | 'factures' | 'proprietaires' | 'reglages' | 'signalementsLogement'>
   > & {
     aujourdhui: DateISO;
     /** Instant du calcul (fraîcheur des prix lus, anomalies). */
@@ -53,7 +55,7 @@ export type EntreesBriefing = Pick<ErpDonnees, 'logements' | 'reservations' | 'f
   };
 
 export type CleSujet =
-  | 'journee' | 'urgences' | 'messages' | 'incidents' | 'avis_deposer' | 'notes' | 'crm' | 'alertes'
+  | 'journee' | 'urgences' | 'messages' | 'incidents' | 'avis_deposer' | 'avis_valider' | 'notes' | 'crm' | 'alertes'
   | 'controle_agent' | 'fiches_agent' | 'prix' | 'factures' | 'signalements';
 
 export interface SujetBriefing {
@@ -220,9 +222,9 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
       lien: lienIncident(autres[0]),
     });
 
-  /* avis à déposer, notes à lire */
-  const aDeposer = avisATraiter(
-    { reservations: e.reservations, avisADeposer: e.avisADeposer ?? [], incidents: e.incidents ?? [], controles: e.controles ?? [], filsMessages: e.filsMessages ?? [] },
+  /* avis à déposer (ceux qui ne partent pas seuls), avis à valider (gérant), notes à lire */
+  const aDeposer = avisADeposerEquipe(
+    { reservations: e.reservations, avisADeposer: e.avisADeposer ?? [], incidents: e.incidents ?? [], controles: e.controles ?? [], filsMessages: e.filsMessages ?? [], reglages: e.reglages ?? [] },
     j,
   );
   if (aDeposer.length)
@@ -232,6 +234,18 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
       phrase: `${aDeposer.length > 1 ? `${aDeposer.length} avis à déposer` : 'Un avis à déposer'} sur Airbnb : ${liste(aDeposer.map((a) => prenom(a.reservation.voyageur?.nom) || 'un voyageur'))}.`,
       court: nb(aDeposer.length, 'avis à déposer', 'avis à déposer'),
       lien: `/erp/reservations/${encodeURIComponent(aDeposer[0].reservation.id)}`,
+    });
+  // Publication automatique des avis : ce qui attend l'accord du gérant avant de partir (Logements → Avis).
+  const aValider = e.gerant ? avisAValider({ reservations: e.reservations, avisADeposer: e.avisADeposer ?? [], reponsesAvis: e.reponsesAvis ?? [], reglages: e.reglages ?? [] }, j) : [];
+  if (aValider.length)
+    sujets.push({
+      cle: 'avis_valider',
+      n: aValider.length,
+      // « 2 avis et 1 réponse à valider » : les avis sur les voyageurs, puis les réponses.
+      phrase: `${libelleAValider(aValider)} avant publication : ${liste(aValider.map((x) => x.voyageur || 'un voyageur'))}.`,
+      court: libelleAValider(aValider),
+      lien: '/erp/logements/avis',
+      gerant: true,
     });
   const depuis = plusJours(j, -14);
   const notes = e.reservations
@@ -380,7 +394,7 @@ export function texteDuBriefing(sujets: readonly SujetBriefing[], ordre?: readon
 }
 
 /** Ce qui attend, dans la notification : le plus pressant d'abord (on coupe par la fin s'il le faut). */
-const ORDRE_COURT: readonly CleSujet[] = ['urgences', 'messages', 'alertes', 'controle_agent', 'crm', 'factures', 'prix', 'avis_deposer', 'notes', 'incidents', 'signalements', 'fiches_agent'];
+const ORDRE_COURT: readonly CleSujet[] = ['urgences', 'messages', 'alertes', 'controle_agent', 'crm', 'factures', 'prix', 'avis_valider', 'avis_deposer', 'notes', 'incidents', 'signalements', 'fiches_agent'];
 
 /**
  * Corps de notification : la journée, puis ce qui attend, du plus pressant

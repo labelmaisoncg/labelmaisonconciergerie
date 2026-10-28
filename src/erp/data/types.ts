@@ -7,7 +7,7 @@
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
-import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
+import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessagesProgrammes, ReponseAvisAuto } from './types-programmes';
 import type { ElementPrix } from './prix-conseils';
 import type { AnnonceEquipe } from './annonces-equipe';
 import type { ReglagesSupplements } from './supplements';
@@ -1092,8 +1092,13 @@ export interface ErpDonnees {
   signalementsLogement: SignalementLogement[];
   /** Messages automatiques (ajoutées en octobre 2026) : envois et refus, écrits par le serveur, */
   envoisProgrammes: EnvoiProgramme[];
-  /** avis à déposer sur les voyageurs après leur départ (texte préparé, fait / passé). */
+  /** avis à déposer sur les voyageurs après leur départ (texte préparé, fait / passé, publié par l'ERP). */
   avisADeposer: AvisADeposer[];
+  /**
+   * Réponses publiques aux avis des voyageurs publiées par l'ERP, ou qui attendent le gérant
+   * (octobre 2026, « Réponses aux avis : publication automatique »). Écrites par le serveur et le gérant.
+   */
+  reponsesAvis: ReponseAvisAuto[];
   /** Prix conseillés (octobre 2026) : réglages, « C'est fait » / « Ignorer », état du passage du matin. */
   conseilsPrix: ElementPrix[];
   /**

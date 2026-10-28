@@ -35,6 +35,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   signalementsLogement: 'Logements signalés par l’équipe de terrain',
   envoisProgrammes: 'Messages automatiques envoyés',
   avisADeposer: 'Avis à déposer sur les voyageurs',
+  reponsesAvis: 'Réponses aux avis des voyageurs',
   conseilsPrix: 'Prix conseillés (réglages et décisions)',
   annoncesEquipe: 'Annonces à l’équipe',
   actionsAgent: 'Actions de l’IA (Claude et votre agent)',

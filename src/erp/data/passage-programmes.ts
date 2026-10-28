@@ -17,16 +17,23 @@
  *
  * Avis à déposer : pour chaque séjour Airbnb terminé, un texte préparé par
  * l'IA de l'agent (même clé, même modèle, même plafond mensuel pour un autre
- * espace que Label Maison, compté dans agent/etat), ou un texte simple sans
- * IA. Rien n'est publié : l'équipe copie le texte sur Airbnb.
+ * espace que Label Maison, compté dans agent/etat ; redaction-avis.ts), dans
+ * la langue du voyageur, ou un texte simple sans IA. L'équipe le copie sur
+ * Airbnb — sauf si un gérant a allumé la publication automatique des avis
+ * (Logements → Avis) : le passage des avis (avis-auto-passage.ts), une fois
+ * par jour sous le même verrou, rédige et publie l'avis sur le voyageur deux
+ * jours après le départ et les réponses aux avis positifs, et garde le reste
+ * « à valider ».
  *
  * Réseau injecté (client IA, fetch) : verifier-messages-programmes.ts
  * simule la plateforme, la base et l'IA en mémoire.
  *
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
-import { MODELE_AGENT_DEFAUT, texteErreurIA, type ClientIA } from './agent-messagerie.js';
-import { ErreurAssistant, compterAppelIA } from './agent-assistant.js';
+import type { ClientIA } from './agent-messagerie.js';
+import { COLLECTION_REPONSES_AVIS, allume, langueVoyageur, reglagesAvisAuto } from './avis-auto.js';
+import { passerAvisAuto, type BilanAvisAuto } from './avis-auto-passage.js';
+import { redigerAvisVoyageur } from './redaction-avis.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi.js';
 import { BUDGET_ERP_DEFAUT, BudgetEpuise, DelaiEcoule, ErreurRepull, QUOTA_MOIS_DEFAUT, lireEtat } from './repull-synchro.js';
 import type { ContexteConnexion } from './repull-connexion.js';
@@ -41,19 +48,13 @@ import {
   ID_REGLAGES_PROGRAMMES,
   PAR_MESSAGE_AUTO,
   RAISONS,
-  SCHEMA_AVIS,
-  alerteTexteAvis,
   avisAPreparer,
   cleEnvoiProgramme,
   codesAutorises,
-  consignesAvis,
-  contexteAvis,
-  contientEloge,
   dateParisDe,
   filDuSejour,
   guidePourMessage,
   idEnvoi,
-  lireAvisIA,
   majReservationsVues,
   planifierEnvois,
   prenomDe,
@@ -62,7 +63,6 @@ import {
   rendreMessage,
   sejourAvecAvis,
   signatureProgrammes,
-  soucisDuSejour,
   texteAvisParDefaut,
   unMomentAllume,
   variablesDuTexte,
@@ -70,9 +70,9 @@ import {
   type ReservationsVues,
 } from './messages-programmes.js';
 import { ID_REGLAGES_SUPPLEMENTS, reglagesSupplements, texteSupplementsSejour, type ReglagesSupplements } from './supplements.js';
-import type { FilMessages, Incident, Journal, Logement, Mission, Reglage, Reservation } from './types';
+import type { FilMessages, Incident, Journal, Logement, Mission, Proprietaire, Reglage, Reservation } from './types';
 import type { ControleQualite } from './types-operations';
-import type { AvisADeposer, EnvoiProgramme } from './types-programmes';
+import type { AvisADeposer, EnvoiProgramme, ReponseAvisAuto } from './types-programmes';
 
 /** Messages envoyés au plus par passage. */
 export const MAX_ENVOIS_PAR_PASSAGE = 10;
@@ -118,6 +118,8 @@ export interface BilanProgrammes {
   avisARelire: number;
   appelsIA: number;
   erreurs: string[];
+  /** Publication automatique des avis (avis-auto-passage.ts), quand elle a tourné. */
+  avisAuto?: Omit<BilanAvisAuto, 'erreurs'>;
 }
 
 export interface EtatProgrammes {
@@ -370,7 +372,9 @@ class Passage {
       const raisons = raisonsARelire(r, signaux);
       if (raisons.length) {
         // Son texte a été écrit avant que le souci soit connu (souvent un éloge) : retiré, l'équipe écrit l'avis.
-        const ligne: AvisADeposer = { ...a, statut: 'a_relire', raisons: [...new Set([...(a.raisons ?? []), ...raisons])], texte: '', source: 'modele' };
+        // Un texte retouché par l'équipe reste le sien (à relire).
+        const garde = a.source === 'equipe';
+        const ligne: AvisADeposer = { ...a, statut: 'a_relire', raisons: [...new Set([...(a.raisons ?? []), ...raisons])], ...(garde ? {} : { texte: '', source: 'modele' as const }) };
         if (await this.ecrireAvis(ligne, ['pret'])) this.bilan.avisARelire++;
       }
     }
@@ -380,50 +384,31 @@ class Passage {
     // Plus d'IA pour ce passage : clé refusée, service indisponible, ou plafond du mois de l'espace atteint.
     let iaEnPanne = false;
     for (const r of aPreparer) {
-      const raisons = raisonsARelire(r, signaux);
+      let raisons = raisonsARelire(r, signaux);
       const prenom = prenomDe(r.voyageur?.nom);
+      // Dans la langue du voyageur (sa conversation), le français par défaut.
+      const langue = langueVoyageur(r, fils);
       let texte = '';
       let source: AvisADeposer['source'] = 'modele';
       if (this.o.ia && !iaEnPanne) {
         // Pas le temps, ou assez d'appels pour ce passage : l'IA s'en chargera au suivant.
         if (this.bilan.appelsIA >= maxIA || this.o.echeance - Date.now() < TEMPS_PAR_AVIS_IA_MS) break;
-        try {
-          // Compté AVANT l'appel, dans le compteur du mois de l'espace (agent/etat) : refusé au plafond.
-          await compterAppelIA({ base: this.o.base, plafondIAMois: this.o.plafondIAMois, maintenant: this.o.maintenant });
-          this.bilan.appelsIA++;
-          // Borné au temps qui reste (le client commun attend jusqu'à 25 s, deux fois) : jamais au-delà du passage.
-          const creer = this.o.ia!.messages.create as (p: Parameters<ClientIA['messages']['create']>[0], o?: { timeout?: number; maxRetries?: number }) => ReturnType<ClientIA['messages']['create']>;
-          const m = await creer.call(
-            this.o.ia!.messages,
-            {
-              model: this.o.modele ?? MODELE_AGENT_DEFAUT,
-              max_tokens: 600,
-              // Label Maison sans nom d'espace ; un autre espace, jamais sous le nom de Label Maison.
-              system: consignesAvis(this.o.nomEspace === undefined ? 'Label Maison' : this.o.nomEspace.trim() || 'la conciergerie'),
-              messages: [{ role: 'user', content: contexteAvis(r, d.logements.get(r.logementId), fils, raisons) }],
-              output_config: { format: { type: 'json_schema', schema: SCHEMA_AVIS as unknown as Record<string, unknown> } },
-            },
-            { timeout: Math.max(5_000, Math.min(20_000, this.o.echeance - Date.now() - 3_000)), maxRetries: 0 },
-          );
-          const lu = lireAvisIA(m);
-          if (lu) {
-            texte = lu.texte;
-            source = 'ia';
-            if (lu.aRelire) raisons.push(lu.raison || 'Votre agent signale un point à vérifier');
-            // Séjour à relire : jamais d'éloge, même si l'IA en écrit un malgré les consignes. L'équipe l'écrira.
-            if (soucisDuSejour(raisons).length && contientEloge(texte)) {
-              texte = '';
-              source = 'modele';
-            }
-            // Un avis public : jamais de lien, d'adresse, de chiffre ni d'e-mail sans relecture (alerte de forme,
-            // pas un souci du séjour : le texte, même élogieux, reste proposé, à relire).
-            const alerte = alerteTexteAvis(texte);
-            if (alerte) raisons.push(alerte);
-          }
-        } catch (e) {
+        const redige = await redigerAvisVoyageur(
+          { base: this.o.base, ia: this.o.ia, modele: this.o.modele, nomEspace: this.o.nomEspace, plafondIAMois: this.o.plafondIAMois, maintenant: this.o.maintenant, echeance: this.o.echeance },
+          r,
+          d.logements.get(r.logementId),
+          fils,
+          raisons,
+          langue,
+        );
+        if (redige.appelIA) this.bilan.appelsIA++;
+        texte = redige.texte;
+        source = redige.source;
+        raisons = redige.raisons;
+        if (redige.echec) {
           // Plafond atteint, clé refusée, service indisponible : texte simple pour ce séjour, plus d'IA pour ce passage.
           iaEnPanne = true;
-          if (!(e instanceof ErreurAssistant && e.code === 'plafond')) this.bilan.erreurs.push(`Avis de ${prenom || 'voyageur'} : ${texteErreurIA(e)}`);
+          if (!redige.echec.plafond) this.bilan.erreurs.push(`Avis de ${prenom || 'voyageur'} : ${redige.echec.message}`);
         }
       }
       const finales = [...new Set(raisons)];
@@ -436,7 +421,7 @@ class Passage {
         canal: r.canal,
         statut: finales.length ? 'a_relire' : 'pret',
         // Le texte simple est un éloge : jamais pour un séjour à relire (l'équipe écrit l'avis elle-même).
-        texte: texte || (finales.length ? '' : texteAvisParDefaut(prenom)),
+        texte: texte || (finales.length ? '' : texteAvisParDefaut(prenom, langue)),
         source,
         ...(finales.length ? { raisons: finales } : {}),
         creeLe: this.le(),
@@ -525,7 +510,8 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
 
   let vues = etat.vues;
   try {
-    const reglagesLus = await o.base.lire<Reglage>('reglages', ['agent', ID_REGLAGES_PROGRAMMES, ID_REGLAGES_SUPPLEMENTS]);
+    // 'societe' : nom de la société, signature des réponses publiées par l'ERP (avis-auto.ts, signatureSociete).
+    const reglagesLus = await o.base.lire<Reglage>('reglages', ['agent', ID_REGLAGES_PROGRAMMES, ID_REGLAGES_SUPPLEMENTS, 'societe']);
     const [reservations, envois, avis] = await Promise.all([
       o.base.lire<Reservation>('reservations'),
       o.base.lire<EnvoiProgramme>(COLLECTION_ENVOIS_PROGRAMMES),
@@ -542,9 +528,37 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
       vues = await p.messages({ reservations, fils: await lireFils(), logements, envois, reglagesLus }, etat.vues);
     }
     const aujourdhui = dateParisDe(maintenant());
-    if (reservations.some((r) => sejourAvecAvis(r, aujourdhui))) {
-      const [incidents, controles] = await Promise.all([o.base.lire<Incident>('incidents'), o.base.lire<ControleQualite>('controles')]);
-      await p.avis({ reservations, fils: lireFils, logements, avis, incidents, controles });
+    // Publication automatique des avis (avis-auto.ts), réglée par un gérant dans Logements → Avis.
+    const auto = reglagesAvisAuto({ reglages: reglagesLus });
+    const autoAllume = allume(auto.voyageurs) || allume(auto.reponses);
+    let signaux: { incidents: Incident[]; controles: ControleQualite[] } | null = null;
+    const lireSignaux = async () => (signaux ??= { incidents: await o.base.lire<Incident>('incidents'), controles: await o.base.lire<ControleQualite>('controles') });
+    // Avis sur les voyageurs publiés automatiquement : la publication les rédige elle-même (une seule rédaction par séjour).
+    if (!allume(auto.voyageurs) && reservations.some((r) => sejourAvecAvis(r, aujourdhui))) {
+      await p.avis({ reservations, fils: lireFils, logements, avis, ...(await lireSignaux()) });
+    }
+    // Un envoi coupé (marque « en cours ») se vérifie même réglage éteint depuis : relu chez la plateforme, jamais renvoyé.
+    const reponses = await o.base.lire<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS).catch(() => [] as ReponseAvisAuto[]);
+    const enCours = avis.some((a) => a?.publication?.statut === 'en_cours') || reponses.some((x) => x?.publication?.statut === 'en_cours');
+    if (autoAllume || enCours) {
+      const s = await lireSignaux();
+      let proprietaires: Proprietaire[] | null = null;
+      const b = await passerAvisAuto(o, {
+        reglagesLus,
+        reservations,
+        logements,
+        avis,
+        reponses,
+        incidents: s.incidents,
+        controles: s.controles,
+        fils: lireFils,
+        proprietaires: async () => (proprietaires ??= await o.base.lire<Proprietaire>('proprietaires').catch(() => [] as Proprietaire[])),
+      });
+      if (b.lance) {
+        const { erreurs, ...reste } = b;
+        p.bilan.avisAuto = reste;
+        p.bilan.erreurs.push(...erreurs.map((x) => `Avis : ${x}`));
+      }
     }
   } catch (e) {
     p.bilan.erreurs.push(e instanceof Error ? e.message : String(e));

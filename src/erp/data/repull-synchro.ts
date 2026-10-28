@@ -176,6 +176,34 @@ function messageRepull(statut: number, code: string | undefined, brut: string | 
 /** Seuls modes de connexion permis : lecture + messagerie, jamais la gestion. */
 export const CONNEXIONS_PERMISES = ['booking-extranet-login'] as const;
 
+/** Avis : POST /v1/reviews/{id}/guest-review (avis sur un voyageur, Airbnb) et POST /v1/reviews/{id}/reply (réponse publique). */
+const CHEMIN_AVIS = /^\/v1\/reviews\/(\d{1,18})\/(guest-review|reply)$/;
+/** Longueur maximale d'un avis ou d'une réponse publique (OpenAPI Repull : 1 000 caractères pour l'avis). */
+export const LONGUEUR_MAX_AVIS = 1000;
+
+/**
+ * Corps permis pour un avis (exception décidée par le gérant de Label Maison,
+ * octobre 2026, limitée aux avis) : exactement ce que l'ERP envoie, rien de plus.
+ *   - guest-review : { publicReview, rating, isRevieweeRecommended } (note
+ *     entière de 1 à 5, texte non vide de 1 000 caractères au plus) ;
+ *   - reply : { message } (texte non vide de 1 000 caractères au plus).
+ */
+function corpsAvisPermis(genre: string, corps: unknown): boolean {
+  if (!corps || typeof corps !== 'object' || Array.isArray(corps)) return false;
+  const x = corps as Record<string, unknown>;
+  const cles = Object.keys(x).sort().join(',');
+  const texteOk = (t: unknown) => typeof t === 'string' && t.trim().length > 0 && t.length <= LONGUEUR_MAX_AVIS;
+  if (genre === 'reply') return cles === 'message' && texteOk(x.message);
+  return (
+    cles === 'isRevieweeRecommended,publicReview,rating' &&
+    texteOk(x.publicReview) &&
+    typeof x.isRevieweeRecommended === 'boolean' &&
+    Number.isInteger(x.rating) &&
+    (x.rating as number) >= 1 &&
+    (x.rating as number) <= 5
+  );
+}
+
 /**
  * L'ERP extrait les données et ne répond qu'aux conversations : tout reste
  * comme à l'origine sur les plateformes. Seules ces écritures sont permises :
@@ -184,10 +212,18 @@ export const CONNEXIONS_PERMISES = ['booking-extranet-login'] as const;
  *     Booking.com en « Extranet login » (jamais comme fournisseur de
  *     connectivité, qui reprend prix et calendrier) ; retirer une connexion ;
  *   - choisir les logements suivis (/v1/listings/status : compteur interne à
- *     Repull, la plateforme n'est jamais touchée).
+ *     Repull, la plateforme n'est jamais touchée) ;
+ *   - les avis, et seulement eux (exception décidée en octobre 2026, comme
+ *     Smoobu) : publier l'avis de l'hôte sur un voyageur (POST
+ *     /v1/reviews/{id}/guest-review, Airbnb) et la réponse publique à l'avis
+ *     d'un voyageur (POST /v1/reviews/{id}/reply), {id} numérique, corps
+ *     exact (corpsAvisPermis). Aucune autre route d'avis (PUT
+ *     /v1/channels/airbnb/reviews/{id}, POST /v1/channels/airbnb/reviews,
+ *     /respond, /v1/channels/booking/reviews...).
  * Calendriers, prix, disponibilités, annonces : aucune écriture, jamais.
  * Le contrôle porte sur le chemin tel qu'il sera envoyé (pas de « .. », « \ »,
- * « # » ni séparateur encodé) et, pour les connexions, sur le corps.
+ * « # » ni séparateur encodé), sans paramètre de requête pour un avis, et,
+ * pour les connexions et les avis, sur le corps.
  */
 export function ecritureRepullPermise(methode: string, chemin: string, corps?: unknown): boolean {
   const m = methode.toUpperCase();
@@ -197,6 +233,8 @@ export function ecritureRepullPermise(methode: string, chemin: string, corps?: u
   if (m === 'GET') return true;
   const x = (corps && typeof corps === 'object' ? corps : {}) as { accessType?: unknown; allowedProviders?: unknown };
   if (m === 'POST') {
+    const avis = CHEMIN_AVIS.exec(chemin);
+    if (avis) return corpsAvisPermis(avis[2], corps);
     if (/^\/v1\/conversations\/[^/]+\/messages$/.test(c) || c === '/v1/listings/status') return true;
     if (c === '/v1/connect/airbnb') return x.accessType === 'messaging';
     if (c === '/v1/connect') {
@@ -284,11 +322,23 @@ export class ClientRepull {
     envoi?: unknown,
     entetes: Record<string, string> = {},
   ): Promise<T> {
-    if (!ecritureRepullPermise(methode, chemin, envoi)) {
-      throw new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
-    }
+    // Contrôle sur ce qui part vraiment : le corps tel qu'il sera sérialisé (jamais un toJSON
+    // ou un accesseur qui enverrait autre chose), et, pour une écriture, l'URL construite : le
+    // chemin inchangé par l'analyse de l'URL (tabulations, retours à la ligne, « . » retirés),
+    // et aucun paramètre de requête pour un POST (avis, message, connexion). Un DELETE de
+    // connexion garde son paramètre (accountId).
+    const corpsEnvoye = envoi === undefined ? undefined : JSON.stringify(envoi);
+    const corpsVu: unknown = corpsEnvoye === undefined ? undefined : JSON.parse(corpsEnvoye);
+    const refus = () => new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
+    if (!ecritureRepullPermise(methode, chemin, corpsVu)) throw refus();
     const url = new URL(this.base + chemin);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+    if (methode.toUpperCase() !== 'GET') {
+      const prefixe = new URL(this.base).pathname.replace(/\/+$/, '');
+      if (url.pathname !== prefixe + chemin.split('?')[0] || (methode.toUpperCase() === 'POST' && url.search)) throw refus();
+    }
+    const enTetes: Record<string, string> = {};
+    for (const [k, v] of Object.entries(entetes)) if (!/^(authorization|x-workspace-id|x-http-method-override|x-method-override|x-http-method)$/i.test(k)) enTetes[k] = v;
     for (let essai = 1; ; essai++) {
       if (Date.now() > this.o.echeance) throw new DelaiEcoule();
       if (this.restant <= 0) throw new BudgetEpuise();
@@ -302,11 +352,11 @@ export class ClientRepull {
           headers: {
             Authorization: `Bearer ${this.o.cle}`,
             Accept: 'application/json',
-            ...(envoi !== undefined ? { 'Content-Type': 'application/json' } : {}),
-            ...entetes,
+            ...(corpsEnvoye !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...enTetes,
             ...(this.o.workspace ? { 'X-Workspace-Id': this.o.workspace } : {}),
           },
-          ...(envoi !== undefined ? { body: JSON.stringify(envoi) } : {}),
+          ...(corpsEnvoye !== undefined ? { body: corpsEnvoye } : {}),
           signal: abandon.signal,
         });
       } catch {

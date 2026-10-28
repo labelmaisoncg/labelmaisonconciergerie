@@ -310,10 +310,16 @@ export interface RepullReview {
   guestName?: string;
   reviewerRole?: 'guest' | 'host' | string;
   rating?: number | null;
-  publicReview?: string;
-  privateFeedback?: string;
-  submittedAt?: string;
-  updatedAt?: string;
+  publicReview?: string | null;
+  privateFeedback?: string | null;
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+  /** Fin du délai pour l'avis de l'hôte sur le voyageur (Airbnb : 14 jours après le départ). */
+  expiresAt?: string | null;
+  /** Réponse publique de l'hôte, quand il y en a une (ReviewResponse). */
+  response?: { body?: string | null; submittedAt?: string | null } | null;
+  /** Langue de l'avis (ISO 639-1). */
+  language?: string | null;
 }
 
 /* ------------------------------------------------------------------ outils */
@@ -749,18 +755,27 @@ export function versReservation(r: RepullReservation, existant: Reservation | un
 /* -------------------------------------------------------------------- avis */
 
 /** Note sur 5 (Booking.com note sur 10), à une décimale. */
-export function noteSur5(note: unknown): number | undefined {
+/** Plateforme dont les notes sont sur 10 (Booking.com), quelle que soit la note. */
+export const noteSur10 = (plateforme: unknown): boolean => /^booking/i.test(String(plateforme ?? '').trim());
+
+/**
+ * Note d'un avis ramenée sur 5. Booking.com note TOUJOURS sur 10 (un 5/10
+ * est un 2,5/5, jamais un 5/5) : divisée par deux, au centième (un 8,9/10
+ * reste sous 4,5). Airbnb et Vrbo notent sur 5. Plateforme inconnue : sur 10
+ * au-dessus de 5.
+ */
+export function noteSur5(note: unknown, plateforme?: unknown): number | undefined {
   const n = nombre(note);
   if (n === undefined || n < 0) return undefined;
-  // Booking.com note sur 10 ; Airbnb et Vrbo sur 5.
+  if (noteSur10(plateforme)) return Math.round(Math.min(10, n) * 50) / 100;
   const sur5 = n > 5 ? n / 2 : n;
   return Math.round(Math.min(5, sur5) * 10) / 10;
 }
 
-/** Avis d'un voyageur → note et commentaire de la réservation. */
+/** Avis d'un voyageur → note et commentaire de la réservation (note sur 5, selon la plateforme de l'avis, sinon du séjour). */
 export function appliquerAvis(res: Reservation, avis: RepullReview): Reservation {
   if (avis.reviewerRole && avis.reviewerRole !== 'guest') return res;
-  const note = noteSur5(avis.rating);
+  const note = noteSur5(avis.rating, avis.platform ?? res.canal);
   const public_ = texte(avis.publicReview);
   const prive = texte(avis.privateFeedback);
   const commentaire = [public_, prive ? `Message privé : ${prive}` : ''].filter(Boolean).join('\n\n');

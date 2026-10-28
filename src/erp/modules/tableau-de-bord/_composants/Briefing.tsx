@@ -25,6 +25,7 @@ const SUJET_DE: Partial<Record<TypeATraiter, CleSujet>> = {
   urgence: 'urgences',
   incident: 'incidents',
   avisHote: 'avis_deposer',
+  avisValider: 'avis_valider',
   avis: 'notes',
   crm: 'crm',
   facture: 'factures',

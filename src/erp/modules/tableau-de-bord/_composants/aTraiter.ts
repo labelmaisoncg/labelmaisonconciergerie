@@ -13,7 +13,8 @@ import { sansChargeLe } from '../../../data/operations';
 import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
-import { avisATraiter, prenomDe } from '../../../data/messages-programmes';
+import { prenomDe } from '../../../data/messages-programmes';
+import { avisADeposerEquipe, avisAValider, libelleAValider } from '../../../data/avis-auto';
 import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
 import { trierParUrgence, urgenceFil } from '../../../data/messagerie-ia';
 import { attendEquipe } from '../../../data/attente-equipe';
@@ -24,7 +25,7 @@ import { completudeFiche } from '../../logements/_composants/stats';
 import { elementsPrixEtAnomalies } from './aTraiterAnalyse';
 
 export type TypeATraiter =
-  | 'message' | 'avis' | 'avisHote' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge' | 'facture'
+  | 'message' | 'avis' | 'avisHote' | 'avisValider' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge' | 'facture'
   // Prix conseillés et anomalies (aTraiterAnalyse.ts).
   | 'prix' | 'double' | 'suspecte' | 'prix_anormal' | 'integrite';
 
@@ -84,8 +85,9 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       ...(autres.length > 1 ? { liens: autres.map(lienIncident) } : {}),
     });
 
-  // Avis à déposer sur Airbnb après chaque départ : aucun séjour terminé sans son avis traité.
-  const aDeposer = avisATraiter(d, aujourdhui);
+  // Avis à déposer sur Airbnb après chaque départ : aucun séjour terminé sans son avis traité
+  // (sauf ceux que la publication automatique publie seule, avis-auto.ts).
+  const aDeposer = avisADeposerEquipe(d, aujourdhui);
   if (aDeposer.length) {
     const lien = (id: string) => `/erp/reservations/${encodeURIComponent(id)}`;
     liste.push({
@@ -95,6 +97,15 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       liens: aDeposer.map((a) => lien(a.reservation.id)),
     });
   }
+
+  // Publication automatique des avis : avis sur les voyageurs et réponses gardés pour l'accord du gérant.
+  const aValider = gerant ? avisAValider(d, aujourdhui) : [];
+  if (aValider.length)
+    liste.push({
+      id: 'avisValider', type: 'avisValider', priorite: aValider.some((x) => x.joursRestants !== undefined && x.joursRestants <= 2) ? 1 : 2, ton: 'alerte', to: '/erp/logements/avis',
+      titre: libelleAValider(aValider),
+      details: aValider.map((x) => `${x.genre === 'voyageur' ? `Avis sur ${x.voyageur}` : `Réponse à ${x.voyageur}`} (${nom(x.logementId)})`),
+    });
 
   // Logements où personne n'a la charge aujourd'hui (ni choix ni seul agent, ou absent sans relais) :
   // codes et incidents sans destinataire. Une absence sans relais compte pour aujourd'hui.

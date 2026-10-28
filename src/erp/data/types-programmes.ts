@@ -44,8 +44,84 @@ export interface ModeleProgramme {
 export interface ReglagesMessagesProgrammes {
   id: 'messages-programmes';
   modeles: Record<DeclencheurMessage, ModeleProgramme>;
+  /**
+   * Publication automatique des avis (octobre 2026, comme Smoobu), réglée par
+   * un gérant dans Logements → Avis. Gardée dans ce même élément, déjà
+   * réservé aux gérants par la base (erp.ecriture_gerant_seulement).
+   */
+  avisAuto?: ReglagesAvisAuto;
   majLe?: Horodatage;
   majPar?: string;
+}
+
+/** Un réglage de publication automatique : éteint par défaut. */
+export interface ReglageAvisAuto {
+  actif: boolean;
+  /** Allumé depuis cet instant (sans lui, le réglage reste éteint). */
+  activeLe?: Horodatage;
+  majPar?: string;
+}
+
+export interface ReglagesAvisAuto {
+  /** « Avis sur les voyageurs : publication automatique » (Airbnb). */
+  voyageurs: ReglageAvisAuto;
+  /** « Réponses aux avis : publication automatique » (Airbnb, Booking.com). */
+  reponses: ReglageAvisAuto;
+}
+
+/**
+ * Publication d'un avis ou d'une réponse par l'ERP :
+ * a_valider : attend le gérant (séjour ou avis sensible) ; en_cours : marqué
+ * juste avant l'envoi (jamais deux envois) ; publie : en ligne ; refuse :
+ * « Ne pas publier » ou « Ne pas répondre » ; expire : délai de la plateforme
+ * passé ; echec : refusé par la plateforme (l'équipe reprend à la main) ;
+ * sans_objet : rien à publier (avis sans commentaire public…).
+ */
+export type StatutPublication = 'a_valider' | 'en_cours' | 'publie' | 'refuse' | 'expire' | 'echec' | 'sans_objet';
+
+export interface PublicationAvis {
+  statut: StatutPublication;
+  /** Avis chez notre service de connexion (identifiant interne, jamais montré). */
+  avisId?: string;
+  /** Texte proposé (à valider) ou publié. */
+  texte?: string;
+  /** Pourquoi il attend le gérant, en clair. */
+  raisons?: string[];
+  /** Dernier changement. */
+  le: Horodatage;
+  /** Envoi commencé (en_cours). */
+  depuis?: Horodatage;
+  publieLe?: Horodatage;
+  /** PAR_PUBLICATION_AUTO, ou le nom du gérant qui a publié ou refusé. */
+  par?: string;
+  /** Pourquoi la plateforme a refusé (echec, expire), en clair. */
+  erreur?: string;
+  /** Déjà en ligne avant l'ERP (déposé à la main sur la plateforme). */
+  deja?: true;
+  /** Texte retouché par le gérant avant de publier. */
+  modifie?: true;
+  /** Avis sur le voyageur : note donnée (1 à 5 étoiles) et « Je recommande ». La publication automatique donne 5 et recommande. */
+  note?: number;
+  recommande?: boolean;
+}
+
+/**
+ * Réponse publique à l'avis d'un voyageur (collection `reponsesAvis`, id =
+ * celui de la réservation) : écrite par le serveur et le gérant seulement.
+ */
+export interface ReponseAvisAuto {
+  id: Id;
+  reservationId: Id;
+  logementId: Id;
+  /** Prénom du voyageur. */
+  voyageur: string;
+  canal: CanalReservation;
+  /** Note de l'avis, sur 5. */
+  note?: number;
+  /** Texte public de l'avis (sans coordonnées), pour l'écran « À valider ». */
+  avis?: string;
+  publication: PublicationAvis;
+  creeLe: Horodatage;
 }
 
 /**
@@ -103,4 +179,6 @@ export interface AvisADeposer {
   redigeLe?: Horodatage;
   traiteLe?: Horodatage;
   traitePar?: string;
+  /** Publication sur Airbnb par l'ERP (« Avis sur les voyageurs : publication automatique »). */
+  publication?: PublicationAvis;
 }

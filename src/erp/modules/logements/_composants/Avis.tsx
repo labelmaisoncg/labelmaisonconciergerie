@@ -1,10 +1,12 @@
 /**
  * Avis des voyageurs (A8) : thèmes et fréquence en barres sobres, liste des
  * avis (les négatifs d'abord), et le panneau d'un avis avec « Proposer une
- * réponse » (gérant et opérations, même verbe que la Messagerie). L'ERP ne
- * publie rien : la réponse se relit, se retouche et se copie ; « Ouvrir
- * Airbnb » est un simple lien. Un séjour direct n'a pas de page d'avis
- * publique : pas de réponse. Analyse et garde-fous : src/erp/data/avis.ts.
+ * réponse » (gérant et opérations, même verbe que la Messagerie) : la
+ * réponse se relit, se retouche et se copie ; « Ouvrir Airbnb » est un
+ * simple lien. Publication automatique des réponses allumée par le gérant
+ * (avis-auto.ts) : la réponse publiée, ou à valider, prend sa place
+ * (ReponsePubliee.tsx). Un séjour direct n'a pas de page d'avis publique :
+ * pas de réponse. Analyse et garde-fous : src/erp/data/avis.ts.
  */
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -29,6 +31,8 @@ import {
   type SyntheseAvis,
 } from '../../../data/avis';
 import type { ReponseAvisPreparee } from '../../../data/avis-serveur';
+import { noteDeLAvis, reglagesAvisAuto, reponseDuSejour, reponseGeree } from '../../../data/avis-auto';
+import { ReponsePubliee } from './ReponsePubliee';
 import type { CanalReservation, Logement, SentimentMessage } from '../../../data/types';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 
@@ -108,7 +112,7 @@ export function BarresThemes({ synthese, max = 6, suite }: { synthese: SyntheseA
 
 /* --------------------------------------------------------- un avis en ligne */
 
-/** Une ligne : le texte de l'avis, puis « ☆ 4,0 · Négatif · 21 sept. · Laura J. · Massy » sur une seule ligne. */
+/** Une ligne : le texte de l'avis, puis « ☆ 4,0 sur 5 · Négatif · 21 sept. · Laura J. · Massy » sur une seule ligne (note : noteDeLAvis). */
 export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logement?: string; onOuvrir: () => void }) {
   const s = LIBELLE_SENTIMENT[a.sentiment];
   const parties: ReactNode[] = [
@@ -116,7 +120,7 @@ export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logem
       <span className="font-medium text-(--lm-encre)">
         <Star className="mr-0.5 inline size-3 align-[-1px]" aria-hidden />
         <span className="sr-only">Note </span>
-        {noteFr(a.note)}
+        {noteDeLAvis(a.note, a.canal)}
       </span>
     ),
     a.sentiment !== 'positif' && <span className={s.ton === 'danger' ? 'text-(--lm-danger)' : 'text-(--lm-alerte)'}>{s.libelle}</span>,
@@ -250,7 +254,13 @@ export function ReponseAvis({ avis: a, discret }: { avis: AvisLu; discret?: bool
   const peut = peutPreparerReponse(d.utilisateur.role) && !d.lectureSeule;
   const plateforme = plateformeAvis(a.canal);
   const problemes = texte.trim() ? problemesReponse(texte, { nomVoyageur: r?.voyageur.nom, textePrive: a.textePrive, ...(logement ? { logement } : {}) }) : [];
+  // Publication automatique des réponses : publiée, en cours, écartée ou à valider (ReponsePubliee).
+  const ligne = reponseDuSejour(d, a.reservationId);
+  // Réglage éteint : seule une réponse déjà publiée s'affiche ainsi ; le reste revient à « Proposer une réponse ».
+  if (reponseGeree(ligne, reglagesAvisAuto(d))) return <ReponsePubliee ligne={ligne!} discret={discret} />;
   if (sansReponse(a) || (discret && !peut)) return null;
+  // La plateforme a refusé la réponse publiée par l'ERP : l'équipe reprend à la main.
+  const refusPlateforme = ligne?.publication.statut === 'echec' ? ligne.publication.erreur : undefined;
 
   const proposer = async () => {
     if (enCours) return;
@@ -308,6 +318,11 @@ export function ReponseAvis({ avis: a, discret }: { avis: AvisLu; discret?: bool
   return (
     <section className="mt-4 border-t border-(--lm-bord) pt-4" aria-label="Votre réponse">
       <h3 className="text-[14px] font-semibold text-(--lm-encre)">Votre réponse</h3>
+      {refusPlateforme && (
+        <Alert tone="alerte" className="mt-2">
+          {refusPlateforme}
+        </Alert>
+      )}
       {!peut ? (
         <p className="mt-1 text-[13.5px] text-(--lm-encre-2)">Seuls le gérant et l’équipe des opérations proposent les réponses.</p>
       ) : !reponse ? (
@@ -369,7 +384,8 @@ export function PanneauAvis({ avis: a, ouvert, onFermer }: { avis: AvisLu; ouver
       <div className="flex flex-wrap items-center gap-2">
         {a.note !== undefined && (
           <Badge tone="neutre" icone={<Star />}>
-            {noteFr(a.note)} sur 5
+            <span className="sr-only">Note </span>
+            {noteDeLAvis(a.note, a.canal)}
           </Badge>
         )}
         <Badge tone={s.ton}>{s.libelle}</Badge>

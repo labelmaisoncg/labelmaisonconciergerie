@@ -24,8 +24,12 @@ export type EffetAction = 'interne' | 'externe';
  */
 export type EtatAction = 'faite' | 'a_confirmer' | 'annulee' | 'echec' | 'sans_effet';
 
-/** Collections que l'IA peut changer (jamais un prix, un calendrier, une annonce, un paiement). */
-export type CollectionTracee = 'crm' | 'filsMessages' | 'missions' | 'factures';
+/**
+ * Collections que l'IA peut changer (jamais un prix, un calendrier, une
+ * annonce, un paiement). avisADeposer et reponsesAvis : avis publiés sur la
+ * plateforme (octobre 2026, exception limitée aux avis), jamais annulables.
+ */
+export type CollectionTracee = 'crm' | 'filsMessages' | 'missions' | 'factures' | 'avisADeposer' | 'reponsesAvis';
 
 /** Un changement, en clair et masqué (« Étape : À appeler → Contacté »). */
 export interface ChangementAction {
@@ -67,7 +71,11 @@ export interface ActionAgent {
   espace: string;
   source: SourceAction;
   client?: ClientAction;
-  /** Outil du connecteur (crm_noter_appel…) ou décision de l'agent (agent_envoi, agent_a_valider, agent_transmission). */
+  /**
+   * Outil du connecteur (crm_noter_appel…), décision de l'agent (agent_envoi,
+   * agent_a_valider, agent_transmission) ou publication d'un avis
+   * (avis_voyageur_publie, reponse_avis_publiee).
+   */
   outil: string;
   collection: CollectionTracee;
   cibleId: Id;

@@ -3,7 +3,10 @@
  * de la liste des logements : trois repères (note, nombre d'avis, tendance),
  * les avis à lire en premier, ce qui revient (thèmes et fréquence) et le
  * tableau par logement. Logements sortis à part ; 12 derniers mois.
- * Sur téléphone : repères, avis à lire, ce qui revient, puis le tableau.
+ * Pour le gérant : « À valider » en premier (avis et réponses gardés par la
+ * publication automatique), et ses deux réglages à côté de « Ce qui revient ».
+ * Sur téléphone : à valider, repères, avis à lire, ce qui revient, le
+ * tableau, puis les réglages.
  */
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -13,6 +16,7 @@ import { AUJOURDHUI, note, pluriel } from '../../data/format';
 import { analyseParc, themesDominants, type SyntheseAvis } from '../../data/avis';
 import type { Logement } from '../../data/types';
 import { BarresThemes, LigneAvis, PanneauAvis, SansAvis } from './_composants/Avis';
+import { CarteAValider, ReglagesAvisAutoCarte } from './_composants/AvisAuto';
 import { OngletsLogements } from './_composants/OngletsLogements';
 
 const TENDANCE = { hausse: 'En hausse', baisse: 'En baisse', stable: 'Stable' } as const;
@@ -95,11 +99,16 @@ export default function AvisParc() {
       <OngletsLogements />
 
       {!p.nombre ? (
-        <SansAvis connecte={d.logements.some((l) => l.repull?.id)} />
+        <div className="flex flex-col gap-5">
+          <SansAvis connecte={d.logements.some((l) => l.repull?.id)} />
+          <CarteAValider />
+          <ReglagesAvisAutoCarte />
+        </div>
       ) : (
         // Téléphone : les deux colonnes s'effacent (contents) et l'ordre suit order-* ; ordinateur : deux colonnes.
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="contents lg:col-span-2 lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
+            <CarteAValider className="order-0 min-w-0" />
             <Card flush className="order-1 min-w-0">
               <dl className="grid grid-cols-3 divide-x divide-(--lm-bord)">
                 {reperes.map((e) => (
@@ -156,6 +165,7 @@ export default function AvisParc() {
               <CardHeader titre="Ce qui revient" description={`Part des ${pluriel(p.nombreCommentes, 'avis commenté', 'avis commentés')} qui en parlent`} />
               <BarresThemes synthese={p} max={6} />
             </Card>
+            <ReglagesAvisAutoCarte className="order-5 min-w-0" />
           </div>
         </div>
       )}

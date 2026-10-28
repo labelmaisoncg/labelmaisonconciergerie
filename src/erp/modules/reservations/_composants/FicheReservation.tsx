@@ -11,7 +11,7 @@ import { LIBELLES } from '../../../data/libelles';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { espaceOuvert } from '../../../data/espaces';
 import { libellesPartProprietaire } from '../../../data/marque-espace';
-import { dateHeure, dateJour, euros, note, pluriel, relatif } from '../../../data/format';
+import { dateHeure, dateJour, euros, pluriel, relatif } from '../../../data/format';
 import { commissionReservation, logementById, mandatAuJour, mandatDuLogement, netProprietaire } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
@@ -19,6 +19,7 @@ import { ReponseAvis } from '../../logements/_composants/Avis';
 import { lireAvis, separerAvis } from '../../../data/avis';
 import { TEINTE_CANAL, recu } from './outils';
 import { CarteAvisADeposer } from './CarteAvisADeposer';
+import { noteDeLAvis } from '../../../data/avis-auto';
 import { CarteSejourEnLigne } from './CarteSejourEnLigne';
 
 function Ligne({ libelle, valeur, fort, moins, separe }: { libelle: string; valeur: number; fort?: boolean; moins?: boolean; separe?: boolean }) {
@@ -179,9 +180,9 @@ export function FicheReservation({ r }: { r: Reservation }) {
             actions={
               r.noteVoyageur !== undefined && (
                 <Badge tone={r.noteVoyageur < SEUIL_NOTE_CONTROLE ? 'alerte' : 'succes'} icone={<Star />}>
+                  {/* Même format que partout (noteDeLAvis) : « 4,0 sur 5 », « 8,0 sur 10 » sur Booking.com. */}
                   <span className="sr-only">Note </span>
-                  {note(r.noteVoyageur)}
-                  <span className="sr-only"> sur 5</span>
+                  {noteDeLAvis(r.noteVoyageur, r.canal)}
                 </Badge>
               )
             }
@@ -198,7 +199,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
             </p>
           )}
           {r.noteVoyageur !== undefined && r.noteVoyageur < SEUIL_NOTE_CONTROLE && (
-            <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Note sous {note(SEUIL_NOTE_CONTROLE)} : à lire et, si besoin, à traiter avec l’équipe.</p>
+            <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">Note sous {noteDeLAvis(SEUIL_NOTE_CONTROLE, r.canal)} : à lire et, si besoin, à traiter avec l’équipe.</p>
           )}
           {avis && <ReponseAvis avis={avis} discret />}
         </Card>

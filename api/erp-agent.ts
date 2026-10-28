@@ -10,13 +10,17 @@
 //   POST { action: 'crm_relance', ... } brouillon de relance du CRM (rien
 //                              n'est envoyé : api/_crm-assistant.ts)
 //   POST { action: 'reponse_avis', ... } réponse proposée à un avis de
-//                              voyageur (copiée par l'équipe, jamais publiée :
+//                              voyageur (copiée par l'équipe : api/_erp-avis.ts)
+//   POST { action: 'avis_publier', ... } « Publier » un avis gardé « à valider »
+//                              (gérant : publication automatique des avis,
 //                              api/_erp-avis.ts)
 //   GET|POST avec Authorization: Bearer CRON_SECRET → passage planifié
 //     (cron Vercel quotidien, et pg_cron de Supabase toutes les 30 min :
 //     supabase/erp-agent-cron.sql), dans chaque espace actif à son tour ;
-//     après l'agent : messages automatiques dus et avis à préparer
-//     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts) ;
+//     après l'agent : messages automatiques dus et avis à préparer, et, si un
+//     gérant l'a allumée, la publication des avis une fois par jour
+//     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts,
+//     src/erp/data/avis-auto-passage.ts) ;
 //     il prépare aussi, à partir du 1er, les brouillons des factures
 //     mensuelles des propriétaires (api/_factures-mensuelles.ts) et envoie, à
 //     partir de 7 h, le briefing du matin (api/_briefing.ts) ; il efface les
@@ -67,6 +71,7 @@ export default async function handler(req: any, res: any) {
   const planifie = !!c.secretCron && egalConstant(jeton, c.secretCron);
   let espace: string | undefined;
   let email = '';
+  let role: string | undefined;
   if (planifie) {
     // Quatre travaux indépendants, lancés ensemble (8 s au plus en tout, jamais bloquants),
     // pour laisser à l'agent des voyageurs l'essentiel du temps du passage :
@@ -98,6 +103,7 @@ export default async function handler(req: any, res: any) {
     if (!membre.ok) return repondre(res, membre.statut, { ok: false, erreur: membre.erreur });
     espace = membre.espace;
     email = membre.email;
+    role = membre.role;
   }
 
   const corps = req.method === 'POST' ? lireCorps(req) : {};
@@ -133,8 +139,9 @@ export default async function handler(req: any, res: any) {
     if (planifie || req.method !== 'POST') return repondre(res, 400, { ok: false, erreur: 'Action inconnue.' });
     return repondreAssistant(res, action, corps, espace, email);
   }
-  // Réponse à un avis (api/_erp-avis.ts) : membres seulement, rien n'est publié sur la plateforme.
-  if (ACTIONS_AVIS.has(action)) return planifie || req.method !== 'POST' ? repondre(res, 400, { ok: false, erreur: 'Action inconnue.' }) : repondreAvis(res, corps, espace, email);
+  // Avis (api/_erp-avis.ts) : membres seulement. « Proposer une réponse » ne publie rien ;
+  // « Publier » (avis gardé « à valider ») : gérant seulement, réglage allumé.
+  if (ACTIONS_AVIS.has(action)) return planifie || req.method !== 'POST' ? repondre(res, 400, { ok: false, erreur: 'Action inconnue.' }) : repondreAvis(res, corps, espace, email, role);
   // Assistant CRM : brouillon de relance, membres seulement, rien n'est envoyé.
   if (ACTIONS_CRM.has(action)) return planifie || req.method !== 'POST' ? repondre(res, 400, { ok: false, erreur: 'Action inconnue.' }) : repondreCrm(res, action, corps, espace, email);
 

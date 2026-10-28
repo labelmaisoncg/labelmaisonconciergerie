@@ -1805,6 +1805,69 @@ async function principal() {
       && !ecritureRepullPermise('GET', '/v1/x/../../availability'),
     'chemins détournés (.., \\, #, séparateurs encodés) refusés',
   );
+
+  // Avis (exception d'octobre 2026, limitée aux avis) : exactement deux routes, un {id} numérique, le corps exact.
+  const avisVoyageur = { publicReview: 'Lucas a été un voyageur respectueux.', rating: 5, isRevieweeRecommended: true };
+  verifier(
+    ecritureRepullPermise('POST', '/v1/reviews/123/guest-review', avisVoyageur) && ecritureRepullPermise('POST', '/v1/reviews/98765/reply', { message: 'Merci pour votre avis.' }),
+    'avis : avis sur le voyageur et réponse publique permis (POST /v1/reviews/{id}/guest-review, /reply)',
+  );
+  verifier(
+    [
+      ['PUT', '/v1/channels/airbnb/reviews/123', avisVoyageur],
+      ['POST', '/v1/channels/airbnb/reviews', avisVoyageur],
+      ['POST', '/v1/channels/airbnb/reviews/123/respond', { response: 'Merci' }],
+      ['POST', '/v1/channels/booking/reviews', { review_id: '1', property_id: '2', response: 'Merci' }],
+      ['PUT', '/v1/reviews/123/guest-review', avisVoyageur],
+      ['PATCH', '/v1/reviews/123/reply', { message: 'Merci' }],
+      ['DELETE', '/v1/reviews/123/reply', undefined],
+      ['POST', '/v1/reviews/123', { message: 'Merci' }],
+      ['POST', '/v1/reviews/123/response', { message: 'Merci' }],
+      ['POST', '/v1/reviews/abc/reply', { message: 'Merci' }],
+      ['POST', '/v1/reviews/12a/guest-review', avisVoyageur],
+      ['POST', '/v1/reviews//reply', { message: 'Merci' }],
+      ['POST', '/v1/reviews/123/reply/x', { message: 'Merci' }],
+      ['POST', '/v1/reviews/123/reply?force=1', { message: 'Merci' }],
+      ['POST', '/v1/reviews/123/../../listings/1/reply', { message: 'Merci' }],
+      ['POST', '/v1/reviews/%31%32/reply', { message: 'Merci' }],
+      ['POST', '/v1/reviews/123%2freply', { message: 'Merci' }],
+      ['POST', '/v1/reviews/123/reply#', { message: 'Merci' }],
+    ].every(([m, c, corps]) => !ecritureRepullPermise(m as string, c as string, corps)),
+    'avis : toute autre route d’avis refusée (PUT /v1/channels/airbnb/reviews/{id}, POST hérité, /respond, Booking, autre méthode, {id} non numérique, chemin détourné)',
+  );
+  verifier(
+    [
+      { ...avisVoyageur, rating: 0 },
+      { ...avisVoyageur, rating: 6 },
+      { ...avisVoyageur, rating: 4.5 },
+      { ...avisVoyageur, rating: '5' },
+      { ...avisVoyageur, isRevieweeRecommended: 'true' },
+      { ...avisVoyageur, publicReview: '' },
+      { ...avisVoyageur, publicReview: 'x'.repeat(1001) },
+      { ...avisVoyageur, privateFeedback: 'note' },
+      { ...avisVoyageur, categoryRatings: [{ category: 'cleanliness', rating: 1 }] },
+      { publicReview: 'Bien.', rating: 5 },
+      undefined,
+      [avisVoyageur],
+    ].every((corps) => !ecritureRepullPermise('POST', '/v1/reviews/123/guest-review', corps)) && ecritureRepullPermise('POST', '/v1/reviews/123/guest-review', { ...avisVoyageur, rating: 4 }),
+    'avis sur le voyageur : seulement { publicReview, rating 1 à 5, isRevieweeRecommended } (rien d’autre, rien de vide)',
+  );
+  verifier(
+    [{ response: 'Merci' }, { message: '' }, { message: 'Merci', name: 'Abdel' }, { message: 'x'.repeat(1001) }, { message: 3 }, {}, undefined].every((corps) => !ecritureRepullPermise('POST', '/v1/reviews/123/reply', corps)),
+    'réponse à un avis : seulement { message } (ni alias, ni signature, ni texte vide ou trop long)',
+  );
+  verifier(
+    [
+      ['PUT', '/v1/availability/104'], ['POST', '/v1/availability/104'], ['PATCH', '/v1/listings/104'], ['PUT', '/v1/listings/104/content'], ['POST', '/v1/listings'],
+      ['POST', '/v1/listings/104/pricing'], ['PUT', '/v1/channels/airbnb/listings/101/availability'], ['POST', '/v1/channels/booking/listings/1/pricing'], ['PUT', '/v1/calendar/104'],
+      ['POST', '/v1/reservations'], ['PATCH', '/v1/reservations/1'], ['POST', '/v1/conversations/1/special-offers'], ['POST', '/v1/connect/airbnb/write-policy'], ['PATCH', '/v1/connect/hostaway/write-policy'],
+    ].every(([m, c]) => !ecritureRepullPermise(m, c, { price: 90, message: 'x', publicReview: 'x', rating: 5, isRevieweeRecommended: true })),
+    'prix, calendrier, disponibilités, annonces, réservations : toujours refusés, même avec un corps d’avis',
+  );
+  const avantAvis = repull.appels.length;
+  let refusAvis = '';
+  await clientLecture.requete('PUT', '/v1/channels/airbnb/reviews/123', {}, avisVoyageur).catch((e) => (refusAvis = e instanceof ErreurRepull ? String(e.code) : ''));
+  verifier(refusAvis === 'lecture_seule' && repull.appels.length === avantAvis, 'client : PUT /v1/channels/airbnb/reviews/{id} refusé avant tout envoi');
   await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions?retour=booking');
   const appelBooking = repull.appels[repull.appels.length - 1];
   verifier(

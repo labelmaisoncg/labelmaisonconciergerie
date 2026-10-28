@@ -263,12 +263,13 @@ delete from erp.historique where collection = 'checkinsEnLigne';
 -- synchronisation, passages des factures mensuelles, état des prix) et ce
 -- que seul un gérant change (factures, réglages des prix, modèles des
 -- messages automatiques, identité de la société, numérotation des factures,
--- suppléments proposés aux voyageurs).
+-- suppléments proposés aux voyageurs, réponses publiques aux avis des
+-- voyageurs : reponsesAvis, publiées par le serveur, refusées par le gérant).
 -- Même règle que dans erp-espaces.sql (par espace).
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
-  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
+  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe', 'reponsesAvis')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
       or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'))
 $$;
@@ -385,6 +386,59 @@ revoke all on function erp.garder_lien_annonce() from public, anon;
 drop trigger if exists garder_lien_annonce on erp.enregistrements;
 create trigger garder_lien_annonce before insert or update on erp.enregistrements
   for each row execute function erp.garder_lien_annonce();
+
+-- Publication des avis sur les voyageurs (avisADeposer.publication : « à valider »,
+-- « en cours », « publié », « Ne pas publier »…) : écrite par le serveur et le gérant
+-- seulement (src/erp/data/avis-auto-passage.ts, AvisAuto.tsx). Sans cette règle, un
+-- compte « opérations » effacerait le « Ne pas publier » du gérant (le passage suivant
+-- publierait l'avis 5 étoiles) ou glisserait un avis « à valider » au texte de son
+-- choix. L'équipe garde « C'est fait », « Passer » et le texte à copier (le reste de la
+-- ligne). Ajout qui devient modification (upsert de l'ERP) : la ligne déjà là fait foi.
+-- Même déclencheur dans erp-installation.sql et erp-acces-gerants.sql (et, par
+-- espace, erp-espaces.sql).
+create or replace function erp.garder_publication_avis() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant jsonb;
+begin
+  if current_user <> 'authenticated' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+  if tg_op = 'DELETE' then
+    if old.collection <> 'avisADeposer' or not (old.donnees ? 'publication') or erp.acces_gerant() then
+      return old;
+    end if;
+    raise exception 'Seul un gérant décide de la publication d''un avis.' using errcode = '42501';
+  end if;
+  if new.collection <> 'avisADeposer' and not (tg_op = 'UPDATE' and old.collection = 'avisADeposer') then
+    return new;
+  end if;
+  if erp.acces_gerant() then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.collection = 'avisADeposer' then
+    if new.collection <> 'avisADeposer' or new.id <> old.id then
+      if not (old.donnees ? 'publication') and not (new.donnees ? 'publication') then
+        return new;
+      end if;
+      raise exception 'Seul un gérant décide de la publication d''un avis.' using errcode = '42501';
+    end if;
+    avant := old.donnees;
+  else
+    select e.donnees into avant from erp.enregistrements e
+      where e.collection = 'avisADeposer' and e.id = new.id;
+  end if;
+  if (new.donnees -> 'publication') is not distinct from (avant -> 'publication') then
+    return new;
+  end if;
+  raise exception 'Seul un gérant décide de la publication d''un avis.' using errcode = '42501';
+end;
+$$;
+revoke all on function erp.garder_publication_avis() from public, anon;
+drop trigger if exists garder_publication_avis on erp.enregistrements;
+create trigger garder_publication_avis before insert or update or delete on erp.enregistrements
+  for each row execute function erp.garder_publication_avis();
 
 -- Un logement qui a vécu ne se supprime pas (src/erp/data/suppression-logement.ts) :
 -- la base le refuse aussi, pour une suppression envoyée hors de l'ERP ou depuis des

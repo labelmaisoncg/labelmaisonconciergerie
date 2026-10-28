@@ -23,8 +23,10 @@
  * (dont l'état de la dernière synchronisation), seul l'état du briefing y
  * est écrit. Imports en « .js » : tourne sous Node.
  */
+import { COLLECTION_REPONSES_AVIS } from './avis-auto.js';
 import { construireBriefing, notificationBriefing, type EntreesBriefing } from './briefing.js';
 import { ID_ALERTE_CONTROLE } from './controle-reponse.js';
+import { ID_REGLAGES_PROGRAMMES } from './messages-programmes.js';
 import { COLLECTION_PASSAGES_FACTURES, moisAFacturerAutomatiquement } from './factures-mensuelles.js';
 import { estActive, preferencesPourRole, type GroupeNotification } from './notifications.js';
 import { lireAppareils, type BaseNotifications } from './notifications-envoi.js';
@@ -107,11 +109,12 @@ export async function passerBriefingDansEspace(
 
   const vide = Promise.resolve([] as never[]);
   const mois = moisAFacturerAutomatiquement(jour);
-  const [traceFactures, etatPlateformes, reglages, signalementsLogement, logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures] = await Promise.all([
+  const [traceFactures, etatPlateformes, reglages, signalementsLogement, logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures, reponsesAvis] = await Promise.all([
     gerant ? base.lire<{ id: string }>(COLLECTION_PASSAGES_FACTURES, [mois]) : vide,
     // Dernière mise à jour des plateformes (état de la synchronisation, une ligne) : en échec, ou son heure.
     base.lire<EtatSynchroLu>(COLLECTION_ETAT_REPULL, [ID_ETAT_REPULL]),
-    base.lire<NonNullable<EntreesBriefing['reglages']>[number]>('reglages', [ID_ALERTE_CONTROLE]),
+    // Alerte du contrôle de l'agent ; réglages des messages automatiques (publication automatique des avis).
+    base.lire<NonNullable<EntreesBriefing['reglages']>[number]>('reglages', [ID_ALERTE_CONTROLE, ID_REGLAGES_PROGRAMMES]),
     gerant ? base.lire<NonNullable<EntreesBriefing['signalementsLogement']>[number]>('signalementsLogement') : vide,
     base.lire<EntreesBriefing['logements'][number]>('logements'),
     base.lire<EntreesBriefing['reservations'][number]>('reservations'),
@@ -125,13 +128,15 @@ export async function passerBriefingDansEspace(
     base.lire<NonNullable<EntreesBriefing['absences']>[number]>('absences'),
     gerant ? base.lire<NonNullable<EntreesBriefing['conseilsPrix']>[number]>('conseilsPrix') : vide,
     gerant ? base.lire<NonNullable<EntreesBriefing['factures']>[number]>('factures') : vide,
+    // Réponses aux avis à valider (gérant).
+    gerant ? base.lire<NonNullable<EntreesBriefing['reponsesAvis']>[number]>(COLLECTION_REPONSES_AVIS).catch(() => [] as never[]) : vide,
   ]);
   // Factures du mois terminé pas encore préparées (le 1er, même passage) : on attend le suivant.
   if (gerant && !traceFactures.length && heure < HEURE_ATTENTE_FACTURES) return { statut: 'attente-factures' };
 
   const synchro = etatPlateformes[0];
   const entrees = {
-    logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures, reglages, signalementsLogement,
+    logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures, reglages, signalementsLogement, reponsesAvis,
     aujourdhui: jour,
     maintenant: o.maintenant.toISOString(),
     // Même lecture que l'écran (dernière ligne de synchronisation du journal) : en échec, ou réussie à telle heure.

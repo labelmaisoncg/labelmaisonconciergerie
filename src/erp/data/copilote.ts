@@ -67,14 +67,19 @@ export const LIBELLE_OUTIL: Record<string, string> = {
   agent_envoi: 'Réponse envoyée',
   agent_a_valider: 'Réponse à valider',
   agent_transmission: 'Transmise à l’équipe',
+  avis_voyageur_publie: 'Avis publié',
+  reponse_avis_publiee: 'Réponse à un avis publiée',
 };
+
+/** Publications d'avis (octobre 2026) : jamais annulables, la plateforme ne retire pas un avis publié. */
+export const OUTILS_PUBLICATION_AVIS: ReadonlySet<string> = new Set(['avis_voyageur_publie', 'reponse_avis_publiee']);
 
 /**
  * Les actions que l'IA peut faire, formalisées (cahier A15) : l'effet, la
  * confirmation, l'annulation. Montrées dans « Actions de l'IA ».
  */
 export interface ActionPossible {
-  cle: 'repondre' | 'prix' | 'facture' | 'appel' | 'crm' | 'conversation' | 'menage' | 'paiement';
+  cle: 'repondre' | 'avis' | 'prix' | 'facture' | 'appel' | 'crm' | 'conversation' | 'menage' | 'paiement';
   libelle: string;
   /** Une phrase : qui fait quoi, ce qui ne se fait jamais. */
   regle: string;
@@ -85,6 +90,12 @@ export const ACTIONS_POSSIBLES: readonly ActionPossible[] = [
     cle: 'repondre',
     libelle: 'Répondre à un voyageur',
     regle: 'Claude propose une réponse : l’équipe la relit et l’envoie depuis la Messagerie. Votre agent n’envoie seul que selon le niveau choisi dans Messagerie → Votre agent.',
+  },
+  {
+    cle: 'avis',
+    libelle: 'Publier un avis',
+    regle:
+      'Seulement si le gérant l’a allumé dans Logements → Avis : l’avis 5 étoiles sur un voyageur Airbnb sans souci, la réponse à un avis positif. Le reste attend votre accord ; un avis publié ne se retire pas.',
   },
   { cle: 'prix', libelle: 'Ajuster un prix', regle: 'Jamais : Claude lit le prix conseillé, l’équipe change le prix elle-même sur Airbnb ou Booking.' },
   { cle: 'facture', libelle: 'Préparer une facture', regle: 'Un brouillon seulement : le gérant la relit, la valide (numéro) et la partage.' },
@@ -539,6 +550,71 @@ export function actionAgentMessagerie(o: EntreeActionAgent): ActionAgent {
   });
 }
 
+/* ------------------------------------------------ avis publiés */
+
+export interface EntreePublicationAvis {
+  /** voyageur : avis de l'hôte sur le voyageur (Airbnb) ; reponse : réponse publique à l'avis du voyageur. */
+  genre: 'voyageur' | 'reponse';
+  reservation: { id: string; voyageur?: { nom?: string } };
+  /** Plateforme en clair (« Airbnb », « Booking.com »). */
+  plateforme: string;
+  /** Texte publié (masqué dans la trace). */
+  texte: string;
+  le: Horodatage;
+  espace?: string | null;
+  /** Gérant qui a publié depuis « À valider » (son adresse) ; absent : publication automatique. */
+  par?: string;
+  /** Texte retouché par le gérant avant de publier. */
+  modifie?: boolean;
+  logement?: Pick<Logement, 'fiche'>;
+  /** Note donnée au voyageur (avis sur le voyageur) et « Je recommande » (oui, sans précision). */
+  note?: number;
+  recommande?: boolean;
+  id?: string;
+}
+
+/** « de Laura J. », « d’Antoine G. » : élision devant une voyelle. */
+const de = (nom: string) => (/^[aeiouyàâéèêîôûAEIOUYÀÂÉÈÊÎÔÛ]/.test(nom) ? `d’${nom}` : `de ${nom}`);
+
+/**
+ * Trace d'un avis publié sur la plateforme (« Actions de l'IA ») : action
+ * externe, jamais annulable (un avis publié ne se retire pas), avec le texte
+ * publié (masqué). Rédigé par votre agent ; publié seul, ou par le gérant
+ * depuis « À valider » (`envoyee`).
+ */
+export function actionPublicationAvis(o: EntreePublicationAvis): ActionAgent {
+  const cible = prenomInitiale(o.reservation.voyageur?.nom);
+  const texte = texteMasque(o.texte, EXTRAIT, o.logement);
+  const voyageur = o.genre === 'voyageur';
+  // Qui l'a publié (seul, ou le gérant) est dit par l'état affiché (etatAffiche), pas dans la phrase.
+  const etoiles = o.note ? `${o.note} étoile${o.note > 1 ? 's' : ''}` : '';
+  const resume = voyageur ? `Avis sur ${cible} publié sur ${o.plateforme}${etoiles ? ` (${etoiles})` : ''}.` : `Réponse à l’avis ${de(cible)} publiée sur ${o.plateforme}.`;
+  return borner({
+    id: o.id ?? idAction(),
+    le: o.le,
+    espace: espaceDe(o.espace ?? undefined),
+    source: 'agent',
+    client: { genre: 'agent' },
+    outil: voyageur ? 'avis_voyageur_publie' : 'reponse_avis_publiee',
+    collection: voyageur ? 'avisADeposer' : 'reponsesAvis',
+    cibleId: o.reservation.id,
+    cible,
+    lien: `/erp/reservations/${encodeURIComponent(o.reservation.id)}`,
+    resume: phrase(resume),
+    changements: [
+      { champ: voyageur ? 'Avis publié' : 'Réponse publiée', apres: texte || 'publié' },
+      ...(voyageur && o.note ? [{ champ: 'Note', apres: `${etoiles}${o.recommande === false ? ', pas recommandé' : ', recommandé'}` }] : []),
+    ],
+    effet: 'externe',
+    etat: 'faite',
+    annulable: false,
+    pasAnnulable: voyageur
+      ? `Publié sur ${o.plateforme} : un avis publié ne se modifie ni ne se retire.`
+      : `Publiée sur ${o.plateforme} : une réponse publiée ne se reprend pas depuis l’ERP.`,
+    ...(o.par ? { envoyee: { par: o.par, le: o.le, ...(o.modifie ? { modifiee: true } : {}) } } : {}),
+  });
+}
+
 /* ------------------------------------------- mise en service (SQL) */
 
 const protections = new WeakMap<object, Promise<boolean>>();
@@ -668,6 +744,14 @@ export interface EtatAffiche {
 
 /** Où en est l'action, lue sur la conversation pour une réponse proposée. `nom` : nom d'un membre d'après son adresse. */
 export function etatAffiche(a: ActionAgent, fils: readonly FilMessages[], nom: (email: string) => string = (e) => e): EtatAffiche {
+  // Avis publié : seul, ou par le gérant depuis « À valider » ; jamais annulable.
+  if (OUTILS_PUBLICATION_AVIS.has(a.outil)) {
+    // « Publié » (un avis), « Publiée » (une réponse).
+    const e = a.outil === 'reponse_avis_publiee' ? 'e' : '';
+    return a.envoyee
+      ? { libelle: `Publié${e} par ${nom(a.envoyee.par)}${a.envoyee.modifiee ? ', après retouche' : ''}`, ton: 'succes', annulable: false }
+      : { libelle: `Publié${e} seul${e}`, ton: 'info', annulable: false };
+  }
   // Envoyée par l'équipe : noté sur la trace à l'envoi (la conversation a pu changer depuis).
   if (a.envoyee) return { libelle: `Envoyée par ${nom(a.envoyee.par)}${a.envoyee.modifiee ? ', après retouche' : ''}`, ton: 'succes', annulable: false };
   if (a.etat === 'annulee') {
