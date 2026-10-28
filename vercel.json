@@ -68,6 +68,9 @@
     },
     "api/erp-espaces.ts": {
       "maxDuration": 15
+    },
+    "api/sejour.ts": {
+      "maxDuration": 15
     }
   },
   "crons": [

@@ -1143,7 +1143,7 @@ const sansAccentsMaj = (m: string) => m.normalize('NFD').replace(/\p{M}/gu, '');
 /**
  * Codes, wifi et numéros d'accès : jamais dans un texte avant que le
  * voyageur y ait droit. Comptent aussi les suites de chiffres de « À
- * savoir », du parking, des règles, des questions fréquentes et des textes
+ * savoir », des consignes de départ, du parking, des règles, des questions fréquentes et des textes
  * de l'annonce (un code du portail s'y glisse).
  */
 export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLogement): string[] {
@@ -1153,7 +1153,7 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
   const t = descriptif?.textes ?? {};
   // Champs donnés à l'IA qui peuvent cacher un code : « Portail du parking : code 9137 », « Digicode immeuble 2468 ».
   const autres = nettoyerTexte(
-    [fiche.aSavoir, fiche.parking, fiche.regles, t.resume, t.description, t.espace, t.accesVoyageurs, t.quartier, t.transports, ...(fiche.questions ?? []).map((q) => q?.reponse)]
+    [fiche.aSavoir, fiche.consignesDepart, fiche.parking, fiche.regles, t.resume, t.description, t.espace, t.accesVoyageurs, t.quartier, t.transports, ...(fiche.questions ?? []).map((q) => q?.reponse)]
       .filter(Boolean)
       .join('\n'),
   );
@@ -1195,9 +1195,12 @@ function enMotEntier(texte: string, mot: string): boolean {
   return new RegExp(`(?:^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(texte);
 }
 
+/** Ce qui remplace un code retiré (masquerCodes) ; le livret du séjour le traduit pour un voyageur anglais. */
+export const CODE_MASQUE = '[code communiqué dans les 48 heures avant l’arrivée]';
+
 /** Texte de la fiche donné à l'IA avant l'heure : suites de chiffres (codes possibles) retirées. */
 export function masquerCodes(texte: string): string {
-  const cache = '[code communiqué dans les 48 heures avant l’arrivée]';
+  const cache = CODE_MASQUE;
   // D'abord les codes courts écrits après « code » (« code 482 », « code A12 »), puis toute suite de 4 chiffres ou plus.
   return nettoyerTexte(texte)
     .replace(CODE_APRES_MOT, (tout, jeton: string) => (PAS_UN_CODE.test(jeton) ? tout : tout.slice(0, tout.length - jeton.length) + cache))

@@ -61,7 +61,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
   const enregistrer = (e: FormEvent) => {
     e.preventDefault();
-    upsert('logements', { ...l, fiche: { ...f, aSavoir: f.aSavoir?.trim() || undefined } });
+    upsert('logements', { ...l, fiche: { ...f, aSavoir: f.aSavoir?.trim() || undefined, consignesDepart: f.consignesDepart?.trim() || undefined } });
     setEnregistre(true);
   };
 
@@ -87,6 +87,9 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
           </Field>
           <Field label="Parking" className="sm:col-span-2">
             <Input value={f.parking} onChange={(e) => maj('parking', e.target.value)} placeholder="Ex. place 12 au sous-sol, ou « pas de parking »" />
+          </Field>
+          <Field label="Consignes de départ" className="sm:col-span-2" aide="Clés, poubelles, linge… Montrées dans le livret du séjour. Facultatif.">
+            <Textarea value={f.consignesDepart ?? ''} onChange={(e) => maj('consignesDepart', e.target.value)} rows={2} />
           </Field>
         </div>
       </Card>

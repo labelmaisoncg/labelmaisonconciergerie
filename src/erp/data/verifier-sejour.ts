@@ -1,0 +1,448 @@
+/**
+ * Auto-contrôle du livret d'accueil et du check-in en ligne (cahier B2),
+ * sans réseau :
+ *   - jeton : signé, lié à une réservation ET à un espace, même lien partout
+ *     (fiche de la réservation, message automatique), toute retouche refusée,
+ *     jamais confondu avec une session des espaces (même secret possible) ;
+ *   - lien : après « # » (jamais dans une adresse lue par un serveur), expiré
+ *     quelques jours après le départ, rien pour un séjour annulé ;
+ *   - codes, wifi et guides d'accès : la règle de l'agent et des messages
+ *     automatiques, à l'identique (48 h avant l'arrivée, séjour en cours),
+ *     calculée par le serveur ; avant, textes masqués et aucun secret dans la
+ *     vue ; la vue ne porte ni nom de famille, ni montant, ni propriétaire ;
+ *   - formulaire : chaque champ contrôlé et borné, champs inconnus jetés,
+ *     fiche de police seulement pour les voyageurs étrangers, modifiable
+ *     jusqu'au jour de l'arrivée, nombre d'envois plafonné ;
+ *   - purge : 6 mois après le départ, tout de suite pour un séjour annulé,
+ *     dans la collection du check-in seulement ;
+ *   - variable {lien_sejour} des messages automatiques ;
+ *   - jamais pour l'IA, jamais dans les données chargées par le navigateur
+ *     (ni dans une sauvegarde), règles SQL dans les trois fichiers, aucune
+ *     écriture vers les plateformes ; démonstration (jeu de démo).
+ *
+ * Lancement (Node 18+, depuis la racine du dépôt) :
+ *   node_modules/.bin/esbuild src/erp/data/verifier-sejour.ts --bundle --platform=node --format=esm \
+ *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=/tmp/verifier-sejour.mjs \
+ *     && node /tmp/verifier-sejour.mjs
+ */
+import { lireSessionExterne, signerSessionExterne } from './acces-externe';
+import { COLLECTIONS } from './collections';
+import { ID_LABEL_MAISON } from './espaces';
+import { codesPermis } from './agent-messagerie';
+import { CODE_MASQUE, contientCodeAcces } from './messagerie-ia';
+import { TEXTES_DEFAUT, VARIABLES, codesAutorises, rendreMessage, texteAffiche, texteStocke } from './messages-programmes';
+import { ecritureRepullPermise } from './repull-synchro';
+import {
+  COLLECTION_CHECKINS,
+  JOURS_LIEN_APRES_DEPART,
+  MAX_ENVOIS_CHECKIN,
+  MESSAGES_ERREURS,
+  MESSAGES_REFUS_CHECKIN,
+  ajouterMoisISO,
+  checkinsAPurger,
+  codesVisibles,
+  codesVisiblesLe,
+  conservationJusquAu,
+  dateValide,
+  etatFormulaire,
+  etatLienSejour,
+  fichiersDeLaVue,
+  jetonDuFragment,
+  lienSejour,
+  lireJetonSejour,
+  lireSaisieCheckin,
+  nouveauCheckin,
+  purgerCheckins,
+  signerJetonSejour,
+  texteSaisi,
+  vueSejour,
+  type BasePurge,
+  type CheckinEnLigne,
+  type SaisieCheckin,
+} from './sejour';
+import { creerSeed } from './seed';
+import type { FilMessages, Logement, Reservation, StatutReservation } from './types';
+
+let echecs = 0;
+let reussis = 0;
+function verifier(condition: unknown, message: string, detail?: unknown) {
+  if (condition) reussis++;
+  else {
+    echecs++;
+    console.error(`  ✗ ${message}${detail === undefined ? '' : ` : ${JSON.stringify(detail).slice(0, 500)}`}`);
+  }
+}
+function section(titre: string) {
+  console.log(`\n${titre}`);
+}
+
+type Fs = { readFileSync: (p: string, e: string) => string; existsSync: (p: string) => boolean; readdirSync: (p: string) => string[] };
+type Chemins = { join: (...p: string[]) => string; dirname: (p: string) => string };
+let fs: Fs;
+let chemins: Chemins;
+let racine = '';
+const source = (f: string) => (racine ? fs.readFileSync(chemins.join(racine, f), 'utf8') : '');
+/** Le code seul, sans les commentaires (« jamais l'IA » écrit dans un commentaire ne compte pas). */
+const code = (f: string) => source(f).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+/* -------------------------------------------------------------- données */
+
+const SECRET = 'secret-de-test-des-sejours-0123456789abcdef';
+const SENS = '5e5e0000-0000-4000-8000-000000000002';
+const AUJ = '2026-10-28';
+
+const LOGEMENT: Logement = {
+  id: 'log-1',
+  nom: 'Studio M. Exemple (propriétaire)',
+  adresse: '12 quai des Essais',
+  ville: 'Corbeil-Essonnes',
+  codePostal: '91100',
+  type: 'T2',
+  surfaceM2: 40,
+  capacite: 4,
+  chambres: 1,
+  lits: [],
+  statut: 'actif',
+  proprietaireId: 'pro-exemple',
+  residencePrincipale: false,
+  serrure: 'boite_a_cles',
+  fiche: {
+    wifiNom: 'Livebox-Essai',
+    wifiCode: 'soleil2026',
+    heureArrivee: '16:00',
+    heureDepart: '11:00',
+    acces: 'Boîte à clés à gauche de la porte, code 4821.',
+    parking: 'Portail du parking : code 7319, place 12.',
+    regles: 'Pas de fête. Calme après 22 h.',
+    equipements: ['Lave-linge'],
+    aSavoir: 'Poubelles le mardi. Digicode immeuble 2468.',
+    consignesDepart: 'Laissez les clés dans la boîte, code 4821.',
+    questions: [
+      { id: 'q1', question: 'Où est le sèche-cheveux ?', reponse: 'Dans la salle de bain.' },
+      { id: 'q2', question: 'Le wifi ?', reponse: 'Réseau Livebox-Essai.' },
+    ],
+    guides: [
+      { id: 'g-acces', titre: 'Récupérer la clé', media: { type: 'video', url: 'https://videos.exemple.invalid/cle' }, acces: true, ajouteLe: '2026-10-01T10:00:00+02:00', ajoutePar: 'Test' },
+      { id: 'g-libre', titre: 'Le quartier', media: { type: 'document', fichier: 'stockage://erp-fichiers/logements/log-1/quartier.pdf' }, ajouteLe: '2026-10-01T10:00:00+02:00', ajoutePar: 'Test' },
+    ],
+  },
+  descriptif: { titre: 'Studio lumineux au bord de l’eau', textes: { transports: 'RER D à 5 minutes.' }, conditions: { fetes: false, fumeur: false, animaux: true, calme: { debut: '22:00', fin: '07:00' } } },
+  dotationLinge: [],
+  annonces: [],
+  checklistLancement: [],
+  photosEquipe: ['stockage://erp-fichiers/logements/log-1/photos/a.jpg'],
+};
+
+function resa(p: Partial<Reservation> = {}): Reservation {
+  return {
+    id: 'res-1',
+    logementId: 'log-1',
+    canal: 'airbnb',
+    voyageur: { nom: 'Alix Testeur', pays: 'GB', nbPersonnes: 2 },
+    arrivee: '2026-11-10',
+    depart: '2026-11-13',
+    nuits: 3,
+    statut: 'confirmee',
+    montantBrutCentimes: 31400,
+    commissionPlateformeCentimes: 4700,
+    fraisMenageCentimes: 4000,
+    ...p,
+  };
+}
+
+const SAISIE: SaisieCheckin = {
+  arriveeEstimee: '18:30',
+  nbPersonnes: 2,
+  reglesAcceptees: true,
+  tousFrancais: false,
+  fiches: [{ nom: 'Exemple', prenoms: 'Alex', naissanceLe: '1990-04-12', naissanceLieu: 'Exempleville, Pays d’essai', nationalite: 'Essai', domicile: '1 avenue de l’Exemple, Exempleville', enfants: 1 }],
+};
+const lire = (x: unknown, max = 4) => lireSaisieCheckin(x, { maxPersonnes: max, aujourdhui: AUJ });
+const champs = (x: unknown, max = 4) => {
+  const r = lire(x, max);
+  return r.ok ? [] : r.erreurs.map((e) => (e.fiche === undefined ? e.champ : `${e.champ}#${e.fiche}`));
+};
+
+/* ================================================================ contrôles */
+
+async function principal() {
+  const proc = (globalThis as { process?: { versions?: { node?: string }; cwd(): string } }).process;
+  if (proc?.versions?.node) {
+    const nomFs = 'node:fs';
+    const nomChemins = 'node:path';
+    fs = (await import(/* @vite-ignore */ nomFs)) as unknown as Fs;
+    chemins = (await import(/* @vite-ignore */ nomChemins)) as unknown as Chemins;
+    let dossier = proc.cwd();
+    for (let i = 0; i < 6 && !fs.existsSync(chemins.join(dossier, 'package.json')); i++) dossier = chemins.dirname(dossier);
+    racine = fs.existsSync(chemins.join(dossier, 'src/erp/data/sejour.ts')) ? dossier : '';
+  }
+
+  section('1. Jeton : signé, lié à un séjour et à un espace');
+  {
+    const j = await signerJetonSejour(SECRET, { espace: SENS, reservationId: 'res-1' });
+    const lu = await lireJetonSejour(SECRET, j);
+    verifier(lu?.espace === SENS && lu.reservationId === 'res-1', 'jeton relu : son espace et sa réservation', lu);
+    verifier(j === (await signerJetonSejour(SECRET, { espace: SENS.toUpperCase(), reservationId: 'res-1' })), 'même séjour, même jeton (lien copié = lien du message)');
+    const autres = await Promise.all([
+      signerJetonSejour(SECRET, { espace: SENS, reservationId: 'res-2' }),
+      signerJetonSejour(SECRET, { espace: ID_LABEL_MAISON, reservationId: 'res-1' }),
+      signerJetonSejour('un-autre-secret-de-trente-deux-caracteres', { espace: SENS, reservationId: 'res-1' }),
+    ]);
+    verifier(new Set([j, ...autres]).size === 4, 'autre réservation, autre espace ou autre secret : autre jeton');
+    verifier((await lireJetonSejour('un-autre-secret-de-trente-deux-caracteres', j)) === null && (await lireJetonSejour('', j)) === null, 'autre secret (ou aucun) : refusé');
+    const [corps, sig] = j.split('.');
+    // Retouche du corps (autre espace, autre réservation) ou de la signature : refusée.
+    const octets = Uint8Array.from(atob(corps.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice(0, (4 - (corps.length % 4)) % 4)), (c) => c.charCodeAt(0));
+    const b64 = (o: Uint8Array) => btoa(String.fromCharCode(...o)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const espaceChange = Uint8Array.from(octets);
+    espaceChange.set([0x4c, 0x4d, 0x00, 0x00], 1);
+    const idChange = Uint8Array.from(octets);
+    idChange[idChange.length - 1] = '2'.charCodeAt(0);
+    const sigChangee = `${sig.slice(0, -1)}${sig.endsWith('A') ? 'B' : 'A'}`;
+    const refus = await Promise.all([`${b64(espaceChange)}.${sig}`, `${b64(idChange)}.${sig}`, `${corps}.${sigChangee}`].map((x) => lireJetonSejour(SECRET, x)));
+    verifier(refus.every((x) => x === null), 'jeton retouché (espace, réservation ou signature) : refusé');
+    const formes = ['', 'x', `${corps}.${sig}.x`, `${corps}`, `${corps}.${sig.slice(0, 40)}`, ' ' + j, `${'A'.repeat(300)}.${sig}`, 42, null, { jeton: j }];
+    verifier((await Promise.all(formes.map((x) => lireJetonSejour(SECRET, x)))).every((x) => x === null), 'formes inattendues (vide, trop long, en trop, pas une chaîne) : refusées');
+    // Même secret qu'une session des espaces (ACCES_SECRET) : jamais l'un pour l'autre.
+    const session = await signerSessionExterne(SECRET, { k: 'operations', p: 'res-1', e: SENS, v: 1, exp: 4_000_000_000 });
+    verifier((await lireJetonSejour(SECRET, session)) === null, 'une session des espaces ne vaut pas jeton de séjour');
+    verifier((await lireSessionExterne(SECRET, j, 'operations', 1)) === null && (await lireSessionExterne(SECRET, j, 'proprietaire', 1)) === null, 'un jeton de séjour ne vaut pas session');
+    let refuse = false;
+    await signerJetonSejour(SECRET, { espace: 'sens', reservationId: 'res-1' }).catch(() => (refuse = true));
+    verifier(refuse, 'espace illisible : aucun jeton signé');
+    // Lien : sur le site, après « # » ; l'id de la réservation n'y est pas en clair.
+    const lien = lienSejour('https://www.labelmaisoncg.fr/', j);
+    verifier(lien === `https://www.labelmaisoncg.fr/sejour#${j}` && !lien.includes('?') && !lien.includes('res-1'), 'lien : /sejour#<jeton>, sans paramètre ni id en clair', lien);
+    verifier(jetonDuFragment(`#${j}`) === j && jetonDuFragment(`#jeton=${j}`) === j && jetonDuFragment('#autre') === '' && jetonDuFragment('') === '', 'jeton lu dans le fragment, rien d’autre');
+  }
+
+  section('2. Lien : ouvert, annulé, expiré');
+  {
+    const r = resa();
+    verifier(etatLienSejour(undefined, AUJ) === 'inconnu', 'réservation introuvable : inconnu');
+    verifier(etatLienSejour({ ...r, statut: 'annulee' }, AUJ) === 'annule', 'réservation annulée : rien');
+    verifier(etatLienSejour(r, AUJ) === 'ouvert' && etatLienSejour(r, '2026-11-13') === 'ouvert', 'avant et le jour du départ : ouvert');
+    verifier(JOURS_LIEN_APRES_DEPART === 3 && etatLienSejour(r, '2026-11-16') === 'ouvert' && etatLienSejour(r, '2026-11-17') === 'expire', `ouvert jusqu’à ${JOURS_LIEN_APRES_DEPART} jours après le départ, puis expiré`);
+    verifier(etatLienSejour({ ...r, depart: 'demain' }, AUJ) === 'expire' && etatLienSejour({ ...r, depart: '2026-02-30' }, AUJ) === 'expire', 'départ illisible : expiré (rien de montré)');
+  }
+
+  section('3. Codes : la règle de l’agent et des messages automatiques, à l’identique');
+  {
+    const statuts: StatutReservation[] = ['confirmee', 'en_cours', 'terminee', 'annulee'];
+    const jours = Array.from({ length: 12 }, (_, i) => `2026-11-${String(5 + i).padStart(2, '0')}`);
+    let identiques = true;
+    for (const statut of statuts) {
+      for (const jour of jours) {
+        const r = resa({ statut });
+        const fil = { logementId: 'log-1' } as FilMessages;
+        if (codesVisibles(r, jour) !== codesAutorises(r, 'log-1', jour) || codesVisibles(r, jour) !== codesPermis(fil, r, jour).ok) identiques = false;
+      }
+    }
+    verifier(identiques, 'codesVisibles = codesAutorises (messages) = codesPermis (agent), pour chaque statut et chaque jour');
+    verifier(!codesVisibles(resa(), '2026-11-07') && codesVisibles(resa(), '2026-11-08') && codesVisibles(resa(), '2026-11-12') && !codesVisibles(resa(), '2026-11-13'), 'visibles de J-2 à la veille du départ, pas avant, pas le jour du départ');
+    verifier(codesVisiblesLe('2026-11-10') === '2026-11-08', 'premier jour des codes : J-2');
+    verifier(!codesVisibles(resa({ statut: 'annulee' }), '2026-11-11'), 'séjour annulé : jamais de code');
+  }
+
+  section('4. La vue du voyageur : ce qu’il faut, rien d’autre');
+  {
+    const avant = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: LOGEMENT, aujourdhui: AUJ, checkinOuvert: true }, (f) => `https://stockage.exemple.invalid/signe?f=${encodeURIComponent(f)}`);
+    const texte = JSON.stringify(avant);
+    verifier(avant.acces.visible === false && avant.acces.aPartirDu === '2026-11-08', '13 jours avant : pas d’accès, « à partir du » J-2', avant.acces);
+    verifier(!contientCodeAcces(texte, LOGEMENT) && !/soleil2026|Livebox-Essai|4821|7319|2468|Récupérer la clé|videos\.exemple/.test(texte), 'avant l’heure : ni code, ni wifi, ni guide d’accès dans toute la vue', texte.slice(0, 300));
+    verifier(avant.logement.aSavoir?.includes(CODE_MASQUE) && avant.logement.parking?.includes(CODE_MASQUE) && avant.logement.consignesDepart?.includes(CODE_MASQUE), 'à savoir, parking, consignes de départ : codes retirés, le reste montré', avant.logement);
+    verifier(avant.logement.questions.length === 1 && avant.logement.questions[0].question.includes('sèche-cheveux'), 'question fréquente qui cite le wifi : pas montrée avant l’heure', avant.logement.questions);
+    verifier(avant.prenom === 'Alix' && !/Testeur/.test(texte), 'prénom seul, jamais le nom de famille');
+    verifier(!/31400|4700|4000|montant|commission|pro-exemple|propri[ée]taire|M\. Exemple|GB/.test(texte), 'ni montant, ni frais, ni propriétaire, ni pays du voyageur', texte.slice(0, 300));
+    verifier(avant.logement.nom === 'Studio lumineux au bord de l’eau', 'nom du logement : le titre vu sur la plateforme (pas le nom interne)');
+    verifier(avant.guides.length === 1 && avant.guides[0].id === 'g-libre' && avant.guides[0].lien.startsWith('https://stockage.exemple.invalid/'), 'guide libre montré, en lien signé');
+    verifier(avant.logement.photo?.startsWith('https://stockage.exemple.invalid/') === true, 'photo de l’équipe en lien signé');
+    verifier(fichiersDeLaVue({ reservation: resa(), logement: LOGEMENT, aujourdhui: AUJ }).join() === 'stockage://erp-fichiers/logements/log-1/photos/a.jpg,stockage://erp-fichiers/logements/log-1/quartier.pdf', 'fichiers à signer : la photo et le guide libre seulement');
+    verifier(!avant.logement.conditions && avant.logement.regles?.startsWith('Pas de fête') && avant.logement.transports === 'RER D à 5 minutes.' && avant.logement.adresse === '12 quai des Essais, 91100 Corbeil-Essonnes', 'règlement de l’équipe (pas un second règlement de l’annonce), transports, adresse');
+    const sansRegles = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, regles: '' } }, aujourdhui: AUJ, checkinOuvert: true });
+    verifier(sansRegles.logement.conditions?.fetes === false && sansRegles.logement.conditions?.calme?.debut === '22:00' && !sansRegles.logement.regles, 'sans règlement de l’équipe : les règles de l’annonce');
+    verifier(avant.contact.plateforme === 'Airbnb' && /^https:\/\/www\.airbnb\./.test(avant.contact.lien ?? '') && !avant.contact.email && !avant.contact.telephone, 'contact : la messagerie Airbnb, rien d’autre');
+    verifier(avant.checkin.ouvert && !avant.checkin.fait && avant.checkin.modifiable && !avant.checkin.saisie, 'check-in à faire, modifiable');
+
+    const veille = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: LOGEMENT, aujourdhui: '2026-11-09', checkinOuvert: true }, () => undefined);
+    verifier(veille.acces.visible && veille.acces.wifi?.code === 'soleil2026' && veille.acces.texte?.includes('4821') && veille.acces.guides.map((g) => g.id).join() === 'g-acces', 'la veille : accès, wifi et guide d’accès');
+    verifier(veille.logement.questions.length === 2 && veille.logement.aSavoir?.includes('2468') && !veille.logement.photo, 'la veille : textes entiers ; fichier non signé : pas montré');
+    verifier(fichiersDeLaVue({ reservation: resa(), logement: LOGEMENT, aujourdhui: '2026-11-09' }).length === 2, 'guide d’accès en lien https : rien de plus à signer');
+    const direct = vueSejour({ conciergerie: 'Sens', reservation: resa({ canal: 'direct' }), logement: LOGEMENT, aujourdhui: AUJ, checkinOuvert: false, contacts: { email: 'bonjour@exemple.invalid', telephone: '01 23 45 67 89' } });
+    verifier(!direct.contact.plateforme && direct.contact.email === 'bonjour@exemple.invalid' && !direct.checkin.modifiable && !direct.checkin.ouvert, 'séjour direct : contacts de la conciergerie ; base pas prête : check-in fermé');
+    const sansFiche = vueSejour({ conciergerie: 'Sens', reservation: resa({ voyageur: { nom: '', nbPersonnes: 1 } }), aujourdhui: AUJ, checkinOuvert: true });
+    verifier(sansFiche.prenom === '' && sansFiche.logement.capacite === 16 && sansFiche.acces.visible === false, 'logement inconnu : vue minimale, sans erreur');
+  }
+
+  section('5. Formulaire : chaque champ contrôlé et borné');
+  {
+    const ok = lire(SAISIE);
+    verifier(ok.ok && ok.saisie.fiches[0].enfants === 1 && ok.saisie.fiches[0].nom === 'Exemple', 'voyageur étranger : saisie complète acceptée');
+    const fr = lire({ arriveeEstimee: '09:05', nbPersonnes: '3', reglesAcceptees: true, tousFrancais: true, fiches: SAISIE.fiches });
+    verifier(fr.ok && fr.saisie.fiches.length === 0 && fr.saisie.nbPersonnes === 3, 'tous français : aucune fiche gardée, même envoyée');
+    verifier(champs({}).join() === 'arriveeEstimee,nbPersonnes,reglesAcceptees,tousFrancais', 'formulaire vide : chaque champ signalé', champs({}));
+    verifier(['24:00', '9:30', '12:60', '12h30', ''].every((h) => champs({ ...SAISIE, arriveeEstimee: h }).join() === 'arriveeEstimee'), 'heure : HH:MM de 00:00 à 23:59 seulement');
+    verifier([0, 5, -1, 2.5, '2a'].every((n) => champs({ ...SAISIE, nbPersonnes: n }).includes('nbPersonnes')), 'voyageurs : de 1 à la capacité du logement');
+    verifier(champs({ ...SAISIE, nbPersonnes: 12 }, 0).length === 0 && champs({ ...SAISIE, nbPersonnes: 17 }, 0).includes('nbPersonnes'), 'capacité inconnue : 16 au plus');
+    verifier(champs({ ...SAISIE, reglesAcceptees: 'true' }).join() === 'reglesAcceptees', 'règlement : accepté explicitement (true), rien d’autre');
+    verifier(champs({ ...SAISIE, fiches: [] }).join() === 'fiches', 'voyageur étranger sans fiche : refusé');
+    verifier(champs({ ...SAISIE, nbPersonnes: 1 }).join() === 'fiches', 'fiche et enfants plus nombreux que les voyageurs : refusé');
+    const f0 = SAISIE.fiches[0];
+    verifier(champs({ ...SAISIE, fiches: [{ ...f0, nom: '' }] }).join() === 'nom#0' && champs({ ...SAISIE, fiches: [{ ...f0, nom: 'A'.repeat(81) }] }).join() === 'nom#0' && champs({ ...SAISIE, fiches: [{ ...f0, nom: 'A'.repeat(80) }] }).length === 0, 'nom : obligatoire, 80 signes au plus');
+    verifier(champs({ ...SAISIE, fiches: [{ ...f0, domicile: 'x'.repeat(201) }] }).join() === 'domicile#0' && champs({ ...SAISIE, fiches: [{ ...f0, nationalite: 'x'.repeat(61) }] }).join() === 'nationalite#0', 'domicile 200 signes, nationalité 60 signes au plus');
+    verifier(['2026-02-30', '1899-12-31', '2026-10-29', '12/04/1990', ''].every((d) => champs({ ...SAISIE, fiches: [{ ...f0, naissanceLe: d }] }).join() === 'naissanceLe#0'), 'date de naissance : réelle, entre 1900 et aujourd’hui');
+    verifier(champs({ ...SAISIE, nbPersonnes: 4, fiches: [{ ...f0, enfants: 11 }] }).join() === 'enfants#0' && champs({ ...SAISIE, fiches: [{ ...f0, enfants: undefined }] }).length === 0, 'enfants : 0 à 10, 0 par défaut');
+    verifier(champs({ ...SAISIE, nbPersonnes: 4, fiches: [f0, { ...f0, prenoms: ' ' }, f0] }).join() === 'prenoms#1,fiches', 'plusieurs fiches : l’erreur dit laquelle', champs({ ...SAISIE, nbPersonnes: 4, fiches: [f0, { ...f0, prenoms: ' ' }, f0] }));
+    const sale = lire({ ...SAISIE, passeport: 'X1234567', photo: 'data:image/png;base64,AAAA', fiches: [{ ...f0, nom: `  Ex${String.fromCharCode(0)}em${String.fromCharCode(0x200b)}ple \n `, numeroPiece: 'AB123', photo: 'data:x' }] });
+    const texteSale = JSON.stringify(sale);
+    verifier(sale.ok && sale.saisie.fiches[0].nom === 'Ex em ple' && !/X1234567|data:|AB123|passeport|numeroPiece|photo/.test(texteSale), 'champs inconnus jetés (pièce, photo), caractères invisibles retirés', texteSale);
+    verifier(texteSaisi('a'.repeat(1000), 80) === null && texteSaisi(42, 80) === null && texteSaisi('  ', 80) === null && texteSaisi('Élise', 80) === 'Élise', 'texte : chaîne, non vide, bornée');
+    verifier(lire({ ...SAISIE, fiches: Array.from({ length: 40 }, () => f0) }, 16).ok === false, 'fiches en masse : refusées');
+    verifier(Object.values(MESSAGES_ERREURS).every((m) => m.fr && m.en) && Object.values(MESSAGES_REFUS_CHECKIN).every((m) => m.fr && m.en), 'chaque message en français et en anglais');
+  }
+
+  section('6. Enregistrement : modifiable jusqu’au jour de l’arrivée, envois plafonnés');
+  {
+    const r = resa();
+    const premier = nouveauCheckin(undefined, SAISIE, { reservation: r, langue: 'en', maintenant: '2026-10-28T10:00:00.000Z', aujourdhui: AUJ });
+    verifier(premier.ok && premier.checkin.id === 'res-1' && premier.checkin.envois === 1 && premier.checkin.langue === 'en' && !premier.checkin.modifieLe && premier.checkin.conserverJusquAu === '2027-05-13', 'premier envoi : une ligne par séjour, conservation au départ + 6 mois', premier);
+    if (premier.ok) {
+      const second = nouveauCheckin(premier.checkin, { ...SAISIE, arriveeEstimee: '20:00' }, { reservation: r, langue: 'fr', maintenant: '2026-11-10T09:00:00.000Z', aujourdhui: '2026-11-10' });
+      verifier(second.ok && second.checkin.envois === 2 && second.checkin.envoyeLe === premier.checkin.envoyeLe && second.checkin.modifieLe === '2026-11-10T09:00:00.000Z', 'modifié le jour de l’arrivée : même ligne, deuxième envoi');
+      const apres = nouveauCheckin(premier.checkin, SAISIE, { reservation: r, langue: 'fr', maintenant: 'x', aujourdhui: '2026-11-11' });
+      verifier(!apres.ok && apres.raison === 'ferme', 'le lendemain de l’arrivée : plus modifiable');
+      const limite = nouveauCheckin({ ...premier.checkin, envois: MAX_ENVOIS_CHECKIN }, SAISIE, { reservation: r, langue: 'fr', maintenant: 'x', aujourdhui: AUJ });
+      verifier(!limite.ok && limite.raison === 'limite', `au-delà de ${MAX_ENVOIS_CHECKIN} envois : refusé`);
+      const vue = vueSejour({ conciergerie: 'Label Maison', reservation: r, logement: LOGEMENT, checkin: premier.checkin, aujourdhui: AUJ, checkinOuvert: true });
+      verifier(vue.checkin.fait && vue.checkin.saisie?.fiches[0].nom === 'Exemple', 'avant l’arrivée : la saisie revient pour être corrigée');
+      const plusTard = vueSejour({ conciergerie: 'Label Maison', reservation: r, logement: LOGEMENT, checkin: premier.checkin, aujourdhui: '2026-11-12', checkinOuvert: true });
+      verifier(plusTard.checkin.fait && !plusTard.checkin.saisie && !plusTard.checkin.modifiable && !JSON.stringify(plusTard).includes('Exemple'), 'après l’arrivée : « fait », la fiche de police ne ressort plus par le lien');
+    }
+    verifier(nouveauCheckin(undefined, SAISIE, { reservation: r, langue: 'fr', maintenant: 'x', aujourdhui: '2026-11-12' }).ok, 'premier envoi pendant le séjour : permis (fiche à remplir dès l’arrivée)');
+    verifier(!etatFormulaire(r, undefined, '2026-11-13').modifiable && etatFormulaire({ ...r, statut: 'annulee' }, undefined, AUJ).raison === 'annule', 'le jour du départ, ou séjour annulé : rien');
+  }
+
+  section('7. Purge : 6 mois après le départ, tout de suite pour un séjour annulé');
+  {
+    verifier(ajouterMoisISO('2026-08-31', 6) === '2027-02-28' && ajouterMoisISO('2027-08-31', 6) === '2028-02-29' && ajouterMoisISO('2026-11-13', 6) === '2027-05-13' && conservationJusquAu('2026-12-15') === '2027-06-15', 'six mois : fin de mois ramenée, années bissextiles');
+    verifier(dateValide('2028-02-29') && !dateValide('2027-02-29') && !dateValide('2026-13-01'), 'dates réelles seulement');
+    const c = (id: string, conserverJusquAu: string) => ({ id, reservationId: id, conserverJusquAu });
+    const lignes = [c('garde', '2027-05-13'), c('fini', '2027-05-13'), c('annule', '2027-05-13'), c('orphelin-vieux', '2026-01-01'), c('orphelin-recent', '2027-01-01'), c('illisible', 'jamais'), c('dates-deplacees', '2026-01-01')];
+    const reservations = [
+      resa({ id: 'garde' }),
+      resa({ id: 'fini', depart: '2026-04-27' }),
+      resa({ id: 'annule', statut: 'annulee' }),
+      resa({ id: 'dates-deplacees', depart: '2026-11-20' }),
+    ];
+    verifier(checkinsAPurger(lignes, reservations, '2026-10-27').join() === 'annule,orphelin-vieux,illisible', 'le dernier jour (départ + 6 mois) : gardé ; annulé, sans date, réservation partie et date passée : effacés', checkinsAPurger(lignes, reservations, '2026-10-27'));
+    verifier(checkinsAPurger(lignes, reservations, '2026-10-28').join() === 'fini,annule,orphelin-vieux,illisible', 'le lendemain : effacé ; dates déplacées : la nouvelle date fait foi', checkinsAPurger(lignes, reservations, '2026-10-28'));
+    const supprimes: { collection: string; ids: string[] }[] = [];
+    const base: BasePurge = {
+      lire: async <T,>(collection: string, ids?: string[]) => (collection === COLLECTION_CHECKINS ? lignes : reservations.filter((r) => !ids || ids.includes(r.id))) as T[],
+      supprimer: async (collection, ids) => {
+        supprimes.push({ collection, ids });
+        return ids.length;
+      },
+    };
+    const n = await purgerCheckins(base, '2026-10-28');
+    verifier(n === 4 && supprimes.length === 1 && supprimes[0].collection === COLLECTION_CHECKINS && supprimes[0].ids.join() === 'fini,annule,orphelin-vieux,illisible', 'purge d’un espace : une suppression, dans la collection des check-ins seulement', supprimes);
+    const vide: BasePurge = { lire: async <T,>() => [] as T[], supprimer: async () => { throw new Error('rien à effacer'); } };
+    verifier((await purgerCheckins(vide, AUJ)) === 0, 'aucun check-in : rien de lu en plus, rien d’effacé');
+  }
+
+  section('8. Variable {lien_sejour} des messages automatiques');
+  {
+    const v = VARIABLES.find((x) => x.cle === 'lien_sejour');
+    verifier(v?.libelle === 'Lien du séjour' && v.retirerSiVide && !v.sensible && !v.moments, 'variable « Lien du séjour » : tous les moments, ligne retirée sans lien');
+    verifier(texteAffiche('{lien_sejour}') === '{Lien du séjour}' && texteStocke('{Lien du séjour}') === '{lien_sejour}', 'écran ↔ base');
+    verifier(TEXTES_DEFAUT.confirmation.includes('{lien_sejour}') && TEXTES_DEFAUT.veille_arrivee.includes('{lien_sejour}') && TEXTES_DEFAUT.veille_arrivee.includes('{lien_guide}'), 'confirmation et infos d’arrivée : le livret ; {lien_guide} garde son sens');
+    const modele = 'Bonjour {prenom},\nVotre livret : {lien_sejour}\nÀ bientôt';
+    const base = { reservation: resa(), logement: LOGEMENT, signature: 'L’équipe', aujourdhui: AUJ };
+    const lien = 'https://www.labelmaisoncg.fr/sejour#abc.def';
+    verifier(rendreMessage(modele, { ...base, lienSejour: lien }).texte.includes(`Votre livret : ${lien}`), 'avec le lien : la ligne part');
+    verifier(!rendreMessage(modele, base).texte.includes('livret') && rendreMessage(modele, base).retirees.includes('lien_sejour'), 'sans lien (secret absent) : la ligne est retirée');
+    verifier(!rendreMessage(modele, { ...base, reservation: resa({ statut: 'annulee' }), lienSejour: lien }).texte.includes(lien), 'séjour annulé : jamais le lien');
+    verifier(!rendreMessage(TEXTES_DEFAUT.confirmation, { ...base, lienSejour: lien }).codesEnClair, 'le lien ne porte aucun code (message de confirmation permis hors des 48 h)');
+    if (racine) {
+      verifier(/variables\.includes\('lien_sejour'\) && this\.o\.lienSejour/.test(code('src/erp/data/passage-programmes.ts')) && /lienSejour,\s*aujourdhui/.test(code('src/erp/data/passage-programmes.ts')), 'passage des messages : le lien demandé au serveur seulement si le texte le cite');
+      verifier(/lienSejour: \(r\) => lienSejourServeur\(c\.espace, r\.id\)/.test(code('api/_erp-programmes.ts')), 'serveur : le lien signé dans l’espace du passage');
+    }
+  }
+
+  section('9. Jamais pour l’IA, jamais chargé par le navigateur, règles SQL, plateformes en lecture seule');
+  {
+    verifier(!(COLLECTIONS as string[]).includes(COLLECTION_CHECKINS), 'collection hors des données de l’ERP (store, export « Télécharger une sauvegarde »)');
+    verifier(!ecritureRepullPermise('PUT', '/v1/availability/1', { available: false }) && !ecritureRepullPermise('PATCH', '/v1/listings/1', { name: 'x' }), 'verrou des plateformes inchangé');
+    if (racine) {
+      // Fichiers qui donnent quelque chose à l'IA (agent, assistant, connecteurs, agent externe) : rien du check-in.
+      const ia = [
+        'src/erp/data/agent-messagerie.ts',
+        'src/erp/data/agent-assistant.ts',
+        'src/erp/data/messagerie-ia.ts',
+        'src/erp/data/cm-mcp.ts',
+        'src/erp/data/crm-mcp.ts',
+        'src/erp/data/crm-assistant.ts',
+        'src/erp/data/briefing.ts',
+        'api/_erp-agent.ts',
+        'api/_erp-agent-assistant.ts',
+        'api/_erp-mcp.ts',
+        'api/_crm-mcp-http.ts',
+        'api/erp-agent.ts',
+        ...fs.readdirSync(chemins.join(racine, 'agent-ia/src')).filter((f) => f.endsWith('.ts')).map((f) => `agent-ia/src/${f}`),
+      ];
+      const fautifs = ia.filter((f) => /checkinsEnLigne|COLLECTION_CHECKINS|FichePolice|naissanceLe|data\/sejour|_sejour\.js/.test(code(f).replace(/purgeCheckinsDuJour[^\n]*|import \{ purgeCheckinsDuJour \} from '\.\/_sejour\.js';/g, '')));
+      verifier(fautifs.length === 0, 'agent, assistant, connecteurs MCP, agent IA externe : rien du check-in', fautifs);
+      verifier(/purgeCheckinsDuJour\(\{ limite: Date\.now\(\) \+ 5_000 \}\)/.test(code('api/erp-agent.ts')), 'passage planifié : la purge, avec les autres travaux du matin');
+      for (const f of ['supabase/erp-espaces.sql', 'supabase/erp-installation.sql', 'supabase/erp-acces-gerants.sql']) {
+        const s = source(f);
+        verifier(
+          /'reglagesRelances', 'checkinsEnLigne'\)/.test(s) &&
+            /'connecteurs', 'checkinsEnLigne'\)/.test(s) &&
+            /if old\.collection = 'checkinsEnLigne' then\s+return case when tg_op = 'DELETE' then old else new end;/.test(s) &&
+            /create or replace function erp\.checkin_en_ligne_pret\(\)/.test(s) &&
+            /delete from erp\.historique where collection = 'checkinsEnLigne';/.test(s),
+          `${f} : gérants seulement (et leurs anciennes versions), jamais archivé, fonction « prêt »`,
+        );
+      }
+      verifier(/un compte « opérations » lit les check-ins en ligne/.test(source('supabase/erp-espaces.sql')) && /un check-in en ligne est archivé/.test(source('supabase/erp-acces-gerants.sql')), 'recettes SQL : lecture par l’équipe et archive refusées');
+      for (const f of ['api/sejour.ts', 'api/_sejour.ts', 'src/erp/data/sejour.ts']) {
+        const s = code(f);
+        verifier(!/ClientRepull|repull\.dev|\/v1\/|envoyerMessage|anthropic|Anthropic/.test(s), `${f} : ni plateforme, ni envoi au voyageur, ni IA`);
+        const relatifs = [...s.matchAll(/^import (?!type )[^;]*?from '(\.[^']+)'/gm)].map((m) => m[1]);
+        verifier(relatifs.length > 0 && relatifs.every((i) => i.endsWith('.js')), `${f} : imports relatifs en .js (Node)`, relatifs);
+      }
+      const route = code('api/sejour.ts');
+      verifier(/provenanceSite\(req\)/.test(route) && /TAILLE_MAX_ENVOI/.test(route) && /tropDEnvois\(ip\)/.test(route) && /remplacerSi\(COLLECTION_CHECKINS/.test(route) && /ajouterSiAbsent\(COLLECTION_CHECKINS/.test(route), 'route : provenance du site, taille, frein, écriture conditionnelle');
+      verifier(/verifierMembre\(jeton, \{ espace: espaceDemande\(req\) \}\)/.test(route) && /baseAcces\(membre\.espace\)/.test(route), 'équipe : session et espace du membre');
+      verifier(!/\.query\?\.jeton|searchParams\.get\('jeton'\)/.test(route), 'le jeton n’est jamais lu dans l’adresse de l’appel');
+      const page = code('src/app/pages/Sejour.tsx');
+      verifier(/jetonDuFragment\(window\.location\.hash\)/.test(page) && /method: 'POST'/.test(page) && !/\?jeton=/.test(page), 'page : jeton lu après « # », envoyé dans le corps');
+      verifier(!/codesVisibles|codesAutorises|masquerCodes/.test(code('src/erp/sejour/LivretSejour.tsx')), 'page : n’applique pas la règle des codes elle-même (le serveur le fait)');
+    }
+  }
+
+  section('10. Démonstration : le livret du jeu de démo');
+  {
+    const d = creerSeed();
+    const prochaines = d.reservations.filter((r) => r.statut === 'confirmee').sort((a, b) => a.arrivee.localeCompare(b.arrivee));
+    verifier(prochaines.length > 0, 'jeu de démo : des séjours à venir');
+    let propres = true;
+    for (const r of prochaines.slice(0, 20)) {
+      const l = d.logements.find((x) => x.id === r.logementId);
+      const aujourdhui = '2026-01-01' < r.arrivee ? r.arrivee.slice(0, 8) + '01' : r.arrivee;
+      const vue = vueSejour({ conciergerie: 'Label Maison', reservation: r, logement: l, aujourdhui, checkinOuvert: true });
+      if (!vue.acces.visible && contientCodeAcces(JSON.stringify(vue), l)) propres = false;
+    }
+    verifier(propres, 'jeu de démo : aucun code avant l’heure, séjour par séjour');
+    const c: CheckinEnLigne | undefined = (() => {
+      const r = nouveauCheckin(undefined, SAISIE, { reservation: prochaines[0], langue: 'fr', maintenant: '2026-10-28T10:00:00.000Z', aujourdhui: prochaines[0].arrivee });
+      return r.ok ? r.checkin : undefined;
+    })();
+    verifier(!!c && c.reservationId === prochaines[0].id, 'jeu de démo : check-in possible');
+  }
+
+  console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+}
+
+void principal();

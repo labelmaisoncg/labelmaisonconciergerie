@@ -126,6 +126,8 @@ export interface FicheLogement {
   equipements: string[];
   /** Ce qu'il faut savoir d'autre (poubelles, voisinage, chauffage…), lu par l'agent. */
   aSavoir?: string;
+  /** Consignes de départ (clés, poubelles, linge…) : livret du séjour et agent. */
+  consignesDepart?: string;
   /** Guides du logement (vidéo, photo, document, lien) que l'agent joint à sa réponse. */
   guides?: GuideLogement[];
   /** Questions fréquentes et leur réponse, sûres pour l'agent. */

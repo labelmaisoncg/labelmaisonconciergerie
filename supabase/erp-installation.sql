@@ -148,6 +148,12 @@ create or replace function erp.archiver_version() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
+  -- Check-ins en ligne (fiches de police des voyageurs étrangers, cahier B2) :
+  -- jamais archivés, pour que la purge à 6 mois les efface vraiment
+  -- (src/erp/data/sejour.ts, api/_sejour.ts).
+  if old.collection = 'checkinsEnLigne' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
   if tg_op = 'DELETE' then
     insert into erp.historique (collection, id, operation, donnees, maj_par)
     values (old.collection, old.id, 'suppression', old.donnees, old.maj_par);
@@ -217,12 +223,28 @@ create policy "connecteurs reserves aux gerants" on erp.enregistrements
   with check (collection <> 'connecteurs' or erp.acces_gerant());
 
 -- Accès des propriétaires et des opérations, relances de paiement et leurs
--- réglages : gérants seulement (même raison ; voir erp-acces-gerants.sql).
+-- réglages, check-ins en ligne des voyageurs : gérants seulement (même raison ;
+-- voir erp-acces-gerants.sql).
 drop policy if exists "acces exterieurs reserves aux gerants" on erp.enregistrements;
 create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant())
-  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant())
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant());
+
+-- Check-in en ligne (livret du séjour, cahier B2) : la collection
+-- « checkinsEnLigne » (heure d'arrivée, nombre de voyageurs, fiches de police
+-- des voyageurs étrangers) est lue et écrite par les gérants seulement, dont
+-- le compte d'équipe qui sert au serveur (règle ci-dessus) ; elle n'est
+-- jamais archivée (erp.archiver_version) et ses anciennes versions
+-- éventuelles sont effacées ici. Le serveur n'enregistre aucun check-in tant
+-- que cette fonction n'existe pas (api/_sejour.ts, checkinPret) : jamais de
+-- fiche de police sans ces règles.
+create or replace function erp.checkin_en_ligne_pret() returns boolean
+language sql immutable set search_path = ''
+as $$ select true $$;
+revoke all on function erp.checkin_en_ligne_pret() from public, anon;
+grant execute on function erp.checkin_en_ligne_pret() to authenticated;
+delete from erp.historique where collection = 'checkinsEnLigne';
 
 -- Écritures réservées aux gérants (le serveur passe par le compte d'équipe,
 -- gérant) ; la lecture ne change pas. Ce que seul le serveur écrit (envois
@@ -413,7 +435,7 @@ create policy "membres lisent" on erp.historique for select to authenticated usi
 drop policy if exists "versions reservees aux gerants" on erp.historique;
 create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne') or erp.acces_gerant());
 
 -- ------------------------------------------------------------------ droits
 

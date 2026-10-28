@@ -93,6 +93,8 @@ export interface OptionsProgrammes extends ContexteConnexion {
   /** Décisions de l'IA permises par mois pour cet espace (partagées avec l'agent) ; absent : sans plafond. */
   plafondIAMois?: number;
   signerFichier?: SignerFichier;
+  /** Lien du livret et du check-in en ligne d'un séjour (api/_sejour.ts) ; absent ou null : la ligne {lien_sejour} est retirée. */
+  lienSejour?: (r: Reservation) => Promise<string | null>;
   maxEnvois?: number;
   maxAvisIA?: number;
 }
@@ -253,12 +255,13 @@ class Passage {
       const g = guidePourMessage(logement?.fiche?.guides, codesAutorises(r, fil.logementId, aujourdhui));
       if (g) lien = (await lienGuide(g, this.o.signerFichier)) ?? undefined;
     }
+    const lienSejour = variables.includes('lien_sejour') && this.o.lienSejour ? ((await this.o.lienSejour(r).catch(() => null)) ?? undefined) : undefined;
     // Suppléments allumés ET possibles d'après le planning (réservations et ménages du logement) ; rien « à vérifier ».
     // « Proposer les suppléments » : calculés même si le texte ne cite pas la liste (rien de possible, rien ne part).
     const supplements = variables.includes('supplements') || p.declencheur === 'proposer_supplements'
       ? texteSupplementsSejour(planning.supplements, r, { reservations: planning.reservations, missions: await this.lireMissions() }, logement?.fiche, aujourdhui)
       : undefined;
-    const rendu = rendreMessage(modele, { reservation: r, logement, fil, signature, lienGuide: lien, aujourdhui, supplements });
+    const rendu = rendreMessage(modele, { reservation: r, logement, fil, signature, lienGuide: lien, lienSejour, aujourdhui, supplements });
     const base = { ...this.ligne(p), filId: fil.id };
     if (p.declencheur === 'proposer_supplements' && !supplements) {
       // Le planning ne laisse rien à proposer pour ce séjour : rien ne part.

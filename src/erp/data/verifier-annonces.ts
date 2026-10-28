@@ -386,7 +386,8 @@ async function principal() {
       verifier(!/variableManquante/.test(codeApi) && /c\.motDePasse/.test(codeApi), 'api/_erp-annonces.ts : la clé Repull n’est pas exigée pour rédiger (seule la base est lue)');
       verifier(!/['`"][^'`"]*(REPULL_API_KEY|Vercel)[^'`"]*['`"]/.test(codeApi) && (codeApi.match(/MESSAGE_REDACTION_INDISPONIBLE/g) ?? []).length >= 3, 'api/_erp-annonces.ts : 503 avec le message simple, jamais « REPULL_API_KEY » ni « Vercel » à l’écran');
       verifier(/freinTextesAnnonce\(\)/.test(codeApi) && /tropDeDemandes\(cle\)/.test(codeApi) && /\$\{c\.espace \?\? ''\}:\$\{par\}/.test(codeApi), 'api/_erp-annonces.ts : frein par membre (espace et e-mail)');
-      const fonctions = fs.readdirSync(chemins.join(racine, 'api')).filter((f) => /\.ts$/.test(f) && !f.startsWith('_'));
+      // Le livret du séjour (cahier B2) a sa propre route, api/sejour.ts : hors de ce compte.
+      const fonctions = fs.readdirSync(chemins.join(racine, 'api')).filter((f) => /\.ts$/.test(f) && !f.startsWith('_') && f !== 'sejour.ts');
       verifier(fonctions.length === 20 && !fonctions.some((f) => /annonce|supplement/i.test(f)), 'aucune nouvelle fonction Vercel (20 fichiers à la racine de api/, comme avant)', fonctions.length);
       const ecran = source('src/erp/modules/logements/_composants/TextesAnnonce.tsx');
       verifier(/Copier/.test(ecran) && !/Publier|Marquer comme publiée|appelerServeur<[^>]*>\('\/api\/erp-repull/.test(ecran), 'écran : « Copier », jamais « Publier »');
