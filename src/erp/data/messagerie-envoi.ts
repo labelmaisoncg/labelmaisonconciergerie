@@ -19,7 +19,7 @@
 import { horodatageParis, idRepull } from './repull.js';
 import { BudgetEpuise, ErreurRepull } from './repull-synchro.js';
 import { avecClient, messageErreur, type ContexteConnexion } from './repull-connexion.js';
-import type { AuteurMessage, FilMessages, Journal, Message } from './types';
+import type { AuteurMessage, EnvoiMessage, FilMessages, Journal, Message } from './types';
 
 /** Longueur maximale d'un message (OpenAPI Repull : 4 000 caractères). */
 export const LONGUEUR_MAX_MESSAGE = 4000;
@@ -75,6 +75,8 @@ export interface DemandeEnvoi {
   cleIdempotence?: string;
   /** Changements du fil à écrire avec le message (suivi de l'agent...). */
   completer?: (fil: FilMessages) => FilMessages;
+  /** Message automatique : son moment, gardé sur le message (envoi.moment). */
+  moment?: EnvoiMessage['moment'];
 }
 
 export interface ResultatEnvoi {
@@ -178,7 +180,7 @@ export async function envoyerMessage(ctx: ContexteConnexion, d: DemandeEnvoi): P
     auteur: d.auteur,
     texte: (reecrit && reponse.deliveredContent ? reponse.deliveredContent : texte).trim() || texte,
     envoyeLe,
-    envoi: { canal, ...(reecrit ? { reecrit: true } : {}), par: d.par },
+    envoi: { canal, ...(reecrit ? { reecrit: true } : {}), par: d.par, ...(d.moment ? { moment: d.moment } : {}) },
   };
 
   // Relu juste avant d'écrire : une synchronisation a pu passer pendant l'envoi.

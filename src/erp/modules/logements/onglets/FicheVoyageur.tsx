@@ -5,6 +5,7 @@ import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import type { FicheLogement, Logement } from '../../../data/types';
 import { completudeFiche } from '../_composants/stats';
+import { SupplementsLogement } from '../_composants/SupplementsLogement';
 import { SectionGuides, SectionQuestions } from './GuidesFiche';
 
 function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) => void }) {
@@ -89,6 +90,9 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
           </Field>
         </div>
       </Card>
+
+      {/* Suppléments (arrivée plus tôt, départ plus tard…) : à côté des horaires qu'ils prolongent. Pas pour un logement sorti. */}
+      {l.statut !== 'sorti' && <SupplementsLogement logement={l} />}
 
       <Card>
         <CardHeader titre="Wifi" />

@@ -1,14 +1,19 @@
 /**
- * Carte « Suppléments » de la fiche logement (cahier B7) : arrivée plus tôt,
+ * Carte « Suppléments » de la fiche logement (cahier B7), dans l'onglet
+ * « Infos pour votre agent », après « Arrivée et départ » : arrivée plus tôt,
  * départ plus tard, ménage supplémentaire, navette. Le gérant règle pour ce
  * logement ce qui est proposé, le prix indicatif et les conditions ; la
  * Messagerie s'en sert pour préparer la proposition, l'équipe l'envoie.
+ * `?supplements=regler` (lien « Régler les suppléments » de la Messagerie)
+ * ouvre directement le panneau. Rien de réglé et pas gérant : pas de carte.
  *
  * L'ERP n'encaisse rien et ne change aucune réservation (ni offre spéciale,
  * ni lien de paiement) : l'encaissement se fait hors ERP. Réglages : `reglages`,
  * élément 'supplements', écrit par un gérant seulement (data/supplements.ts).
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useSearchParams } from 'react-router-dom';
 import { Aide, Alert, Button, Card, CardHeader, Drawer, Field, Input, Interrupteur, Select } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { horodatageMaintenant, versCentimes } from '../../../data/format';
@@ -31,16 +36,43 @@ import {
 /** Saisie d'un prix en euros (« 20 », « 22,50 ») ; texte gardé tel quel pendant la frappe. */
 const enEuros = (c: number) => (c % 100 === 0 ? String(c / 100) : (c / 100).toFixed(2).replace('.', ','));
 
+/** Paramètre d'adresse qui ouvre directement le panneau (lien « Régler les suppléments »). */
+export const PARAM_REGLER_SUPPLEMENTS = 'supplements';
+
+/** « Seulement si personne ne part ce jour-là » : ce que dit la case, selon le supplément. */
+const SELON_PLANNING: Partial<Record<CleSupplement, string>> = {
+  arrivee_anticipee: 'Seulement si personne ne part ce jour-là',
+  depart_tardif: 'Seulement si personne n’arrive ce jour-là',
+};
+
 export function SupplementsLogement({ logement: l }: { logement: Logement }) {
   const d = useErp();
+  const [params, setParams] = useSearchParams();
   const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
   const tous = supplementsDuLogement(reglagesSupplements(d), l.id);
   const actifs = CLES_SUPPLEMENTS.filter((k) => tous[k].actif);
   const [edition, setEdition] = useState(false);
+  // « Régler les suppléments » (Messagerie) : le panneau s'ouvre dès que le gérant est connu.
+  const demande = gerant && params.get(PARAM_REGLER_SUPPLEMENTS) === 'regler';
+  useEffect(() => {
+    if (demande) setEdition(true);
+  }, [demande]);
+  const fermer = () => {
+    setEdition(false);
+    // Un rechargement ne rouvre pas le panneau.
+    if (params.has(PARAM_REGLER_SUPPLEMENTS)) {
+      const suivants = new URLSearchParams(params);
+      suivants.delete(PARAM_REGLER_SUPPLEMENTS);
+      setParams(suivants, { replace: true });
+    }
+  };
+
+  // Rien de proposé, et personne pour le régler : pas de carte vide.
+  if (!actifs.length && !gerant) return null;
 
   return (
     <>
-      <Card>
+      <Card id="supplements">
         <CardHeader
           titre="Suppléments"
           actions={
@@ -64,7 +96,8 @@ export function SupplementsLogement({ logement: l }: { logement: Logement }) {
           <p className="text-[13.5px] text-(--lm-encre-2)">Aucun supplément proposé aux voyageurs.</p>
         )}
       </Card>
-      {edition && <EditionSupplements logement={l} onFermer={() => setEdition(false)} />}
+      {/* Hors du formulaire de la fiche (Entrée dans un champ du panneau n'enregistre pas la fiche), dans l'ERP (ses couleurs). */}
+      {edition && createPortal(<EditionSupplements logement={l} onFermer={fermer} />, document.querySelector('.erp-root') ?? document.body)}
     </>
   );
 }
@@ -123,7 +156,7 @@ function EditionSupplements({ logement: l, onFermer }: { logement: Logement; onF
                 réservation sur Airbnb ou Booking.com. L’encaissement se fait en dehors de l’ERP, par l’équipe.
               </li>
               <li>Votre agent ne vend jamais seul un supplément : il prépare la réponse, vous la validez.</li>
-              <li>« Selon le planning » : pas d’arrivée plus tôt si un voyageur part ce jour-là, pas de départ plus tard si un voyageur arrive.</li>
+              <li>Case cochée : pas d’arrivée plus tôt si un voyageur part ce jour-là, pas de départ plus tard si un voyageur arrive. Décochée : la Messagerie le dit « à vérifier ».</li>
               <li>Le message automatique « Proposer les suppléments » (Messagerie) les propose 3 jours avant l’arrivée, s’il est allumé.</li>
             </ul>
           </Aide>
@@ -140,7 +173,7 @@ function EditionSupplements({ logement: l, onFermer }: { logement: Logement; onF
                     <p className="text-[14.5px] font-semibold text-(--lm-encre)">{libelle.titre}</p>
                     <p className="text-[12.5px] text-(--lm-encre-2)">{libelle.aide}</p>
                   </div>
-                  <Interrupteur actif={r.actif} label={`${r.actif ? 'Ne plus proposer' : 'Proposer'} « ${libelle.titre} »`} onChange={(v) => maj(k, { actif: v })} />
+                  <Interrupteur actif={r.actif} label={`Proposer « ${libelle.titre} »`} onChange={(v) => maj(k, { actif: v })} />
                 </div>
                 {r.actif && (
                   <div className="mt-3 grid grid-cols-2 gap-3">
@@ -155,7 +188,7 @@ function EditionSupplements({ logement: l, onFermer }: { logement: Logement; onF
                     {avecHeure(k) && (
                       <label className="col-span-2 flex min-h-8 cursor-pointer items-center gap-2 text-[13px] text-(--lm-encre)">
                         <input type="checkbox" className="size-4 accent-(--lm-or)" checked={r.selonPlanning !== false} onChange={(e) => maj(k, { selonPlanning: e.target.checked })} />
-                        Selon le planning
+                        {SELON_PLANNING[k]}
                       </label>
                     )}
                     <Field label="Précision (facultatif)" className="col-span-2" aide="Montrée au voyageur avec la proposition.">

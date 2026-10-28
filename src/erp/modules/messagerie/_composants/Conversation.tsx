@@ -35,8 +35,8 @@ import { GABARITS, LIBELLE_MOTIF, attendEquipe, auteurAffiche, completudeFiche, 
 import { PanneauContexte } from './PanneauContexte';
 import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
-import { PropositionSupplement, usePropositionsSupplements } from './PropositionSupplement';
-import { LIBELLES_SUPPLEMENTS } from '../../../data/supplements';
+import { ICONES_SUPPLEMENTS, PropositionSupplement, usePropositionsSupplements, type PropositionPrete } from './PropositionSupplement';
+import { LIBELLES_SUPPLEMENTS, type CleSupplement } from '../../../data/supplements';
 
 /** Réponse de /api/erp-repull-messages. */
 interface ReponseEnvoi {
@@ -68,7 +68,7 @@ interface Props {
 type Aide =
   | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string }
   | { genre: 'traduction'; nom: string }
-  | { genre: 'supplement' };
+  | { genre: 'supplement'; cle: CleSupplement; statut: PropositionPrete['disponibilite']['statut'] };
 
 /** « Voir en français » d'un message : affiché ou non, texte, chargement. */
 interface Traduction {
@@ -135,7 +135,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
   // Suppléments : la demande du voyageur (s'il attend une réponse) et les propositions prêtes du logement.
   const { demande, propositions } = usePropositionsSupplements(fil, logement, reservation, prenom, signature);
   const propositionDemandee = demande ? propositions.find((x) => x.cle === demande) : undefined;
-  const supplementsProposes = propositions.filter((x) => x.reglage.actif && x.texte && x.disponibilite.statut !== 'impossible');
+  // Le supplément demandé a déjà son bandeau : il n'est pas répété dans la rangée des modèles.
+  const supplementsProposes = propositions.filter((x) => x.reglage.actif && x.texte && x.disponibilite.statut !== 'impossible' && x.cle !== propositionDemandee?.cle);
 
   // Une réponse préparée par l'agent arrive pendant qu'on regarde : elle remplit la zone si elle est vide.
   useEffect(() => {
@@ -178,6 +179,13 @@ export function Conversation({ fil, logement, reservation }: Props) {
     z.style.height = 'auto';
     z.style.height = `${Math.min(z.scrollHeight + 2, HAUTEUR_MAX_SAISIE)}px`;
   }, [brouillon]);
+  // Après chaque rendu (texte inséré, bandeau qui apparaît ou disparaît, avis) : si l'on était en bas, on y reste.
+  // Fait avant l'affichage : l'événement de défilement qui suit voit la liste en bas (sinon elle restait décalée
+  // de la hauteur gagnée par la zone de réponse).
+  useLayoutEffect(() => {
+    const el = defile.current;
+    if (el && enBas.current) el.scrollTop = el.scrollHeight;
+  });
 
   /** La réponse vient-elle de l'agent, et a-t-elle été retouchée ? (journal : qui l'a validée) */
   const validation = (texte: string): ValidationBrouillon | undefined =>
@@ -351,11 +359,13 @@ export function Conversation({ fil, logement, reservation }: Props) {
   };
 
   /** Proposition de supplément : elle remplace le texte en cours (« Rétablir mon texte »), l'équipe relit et envoie. */
-  const insererSupplement = (texte: string) => {
+  const insererSupplement = (p: PropositionPrete) => {
+    if (!p.texte) return;
+    const texte = p.texte;
     const actuel = brouillon.trim();
     setPrecedent(actuel && actuel !== texte.trim() ? brouillon : null);
     setBrouillon(texte);
-    setAide({ genre: 'supplement' });
+    setAide({ genre: 'supplement', cle: p.cle, statut: p.disponibilite.statut });
     setVoirFr(false);
     zone.current?.focus();
   };
@@ -540,8 +550,9 @@ export function Conversation({ fil, logement, reservation }: Props) {
             </div>
           )}
 
-          {propositionDemandee && !lectureSeule && logement && (
-            <PropositionSupplement proposition={propositionDemandee} logementId={logement.id} onInserer={insererSupplement} />
+          {/* Une fois la proposition insérée, le bandeau de la zone de réponse prend le relais : jamais deux bandeaux. */}
+          {propositionDemandee && !lectureSeule && logement && aide?.genre !== 'supplement' && (
+            <PropositionSupplement proposition={propositionDemandee} logementId={logement.id} onInserer={() => insererSupplement(propositionDemandee)} />
           )}
 
           <div className="lm-defilement -mx-3 flex items-center gap-1.5 overflow-x-auto px-3 sm:mx-0 sm:px-0" role="group" aria-label="Aide à la réponse, modèles et guides">
@@ -629,7 +640,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   <button
                     key={x.cle}
                     type="button"
-                    onClick={() => insererSupplement(x.texte!)}
+                    onClick={() => insererSupplement(x)}
                     title={`Proposer « ${LIBELLES_SUPPLEMENTS[x.cle].titre} » : ${x.disponibilite.constats.join(' ') || 'prix réglé pour ce logement'}`}
                     className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre)"
                   >
@@ -643,15 +654,24 @@ export function Conversation({ fil, logement, reservation }: Props) {
           {aide && brouillon.trim() && (
             <div role="status" className="rounded-lg bg-(--lm-or-lavis) px-3 py-1 text-[12.5px]">
               <p className="flex flex-wrap items-center gap-x-2">
-                <Sparkles className="size-3.5 shrink-0 text-(--lm-or-texte)" aria-hidden />
-                <span className="py-1.5 text-(--lm-encre)">
-                  {aide.genre === 'traduction'
-                    ? `Traduit en ${aide.nom} : relisez, puis envoyez.`
-                    : aide.genre === 'supplement'
-                      ? 'Proposition de supplément : relisez, puis envoyez. L’ERP n’encaisse rien.'
-                      : aide.source === 'agent'
-                        ? 'Préparée par votre agent : relisez, puis envoyez.'
-                        : 'Proposée par votre agent : relisez, puis envoyez.'}
+                {/* Icône et texte ensemble : à 390 px, l'icône ne reste jamais seule sur sa ligne. */}
+                <span className="flex min-w-0 flex-1 items-start gap-2">
+                  {(() => {
+                    // Sparkles pour ce qui vient de l'IA ; l'icône du supplément pour une proposition de l'équipe.
+                    const Icone = aide.genre === 'supplement' ? ICONES_SUPPLEMENTS[aide.cle] : Sparkles;
+                    return <Icone className="mt-1.5 size-3.5 shrink-0 text-(--lm-or-texte)" aria-hidden />;
+                  })()}
+                  <span className="py-1 text-(--lm-encre)">
+                    {aide.genre === 'traduction'
+                      ? `Traduit en ${aide.nom} : relisez, puis envoyez.`
+                      : aide.genre === 'supplement'
+                        ? aide.statut === 'impossible'
+                          ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
+                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier avec l’équipe ménage' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
+                        : aide.source === 'agent'
+                          ? 'Préparée par votre agent : relisez, puis envoyez.'
+                          : 'Proposée par votre agent : relisez, puis envoyez.'}
+                  </span>
                 </span>
                 {aide.genre === 'proposition' && aide.texteFr && (
                   <button type="button" onClick={() => setVoirFr((v) => !v)} aria-expanded={voirFr} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">

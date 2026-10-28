@@ -10,13 +10,17 @@
  *     anglais, jamais de lien de paiement ; message automatique : seulement
  *     les suppléments possibles ;
  *   - l'agent IA ne vend jamais seul un supplément : verdict « à valider » à
- *     tous les niveaux d'autonomie (demande lue par l'IA, mots du voyageur,
- *     réponse qui en offre un), argent transmis ; passage complet simulé
- *     (faux Claude, fausse base, fausse plateforme) : rien ne part ;
+ *     tous les niveaux d'autonomie (demande lue par l'IA, mots du voyageur
+ *     sous la forme d'une demande et encore sans réponse, réponse qui accorde
+ *     un supplément ou une heure hors des horaires, réponse à « Proposer les
+ *     suppléments »), argent transmis ; les questions simples partent
+ *     seules ; passage complet simulé (faux Claude, fausse base, fausse
+ *     plateforme) : rien ne part ;
  *   - message automatique « Proposer les suppléments » : éteint par défaut,
  *     3 jours avant l'arrivée, seulement les logements qui en proposent,
  *     passage simulé (le supplément bloqué par le planning n'est pas cité,
- *     rien de possible : pas envoyé) ;
+ *     rien de possible : pas envoyé, moment gardé sur le message) ; un « Non
+ *     merci » ne retient pas les infos d'arrivée, une vraie demande oui ;
  *   - aucun paiement, aucune écriture vers les plateformes.
  *
  * Lancement (Node 18+, depuis la racine du dépôt) :
@@ -28,12 +32,27 @@ import type Anthropic from '@anthropic-ai/sdk';
 import { lancerAgent, type ClientIA, type OptionsAgent } from './agent-messagerie';
 import { CONSIGNES_CONTROLE } from './controle-reponse';
 import { ecritureGerantSeulement, operationReserveeAuGerant } from './ecritures-gerant';
-import { explicationNiveau, politiqueEnvoi, sujetSensible, supplementDansTexte, verdictEnvoi, type DecisionNotee } from './messagerie-ia';
+import { attendEquipe } from './attente-equipe';
+import {
+  MOTIF_REPONSE_PROPOSITION,
+  MOTIF_SUPPLEMENT,
+  apresPropositionSupplements,
+  explicationNiveau,
+  messagesVerdict,
+  offreSupplement,
+  politiqueEnvoi,
+  reponseSansDemandeAuxSupplements,
+  sujetSensible,
+  supplementDansTexte,
+  verdictEnvoi,
+  type DecisionNotee,
+} from './messagerie-ia';
 import {
   COLLECTION_ENVOIS_PROGRAMMES,
   DECLENCHEURS,
   JOURS_AVANT_SUPPLEMENTS,
   LIBELLES_DECLENCHEURS,
+  PAR_MESSAGE_AUTO,
   RAISONS,
   TEXTES_DEFAUT,
   VARIABLES,
@@ -332,8 +351,15 @@ async function principal() {
     verifier(dispo('arrivee_anticipee', libre, regle(), '2026-10-30').statut === 'impossible', 'voyageur déjà arrivé : impossible');
     const arrive = { reservations: [r, resa('n', { arrivee: '2026-11-01', depart: '2026-11-04' })] };
     verifier(dispo('depart_tardif', libre).statut === 'possible' && dispo('depart_tardif', arrive).statut === 'impossible' && /Un voyageur arrive ce jour-là \(dès 16:00\)/.test(dispo('depart_tardif', arrive).constats.join()), 'départ plus tard : bloqué par une arrivée le même jour');
-    const menageMatin = { reservations: [r], missions: [mission('2026-11-01', { heureDebut: '11:00' })] };
-    verifier(dispo('depart_tardif', menageMatin).statut === 'a_verifier' && /à décaler|décaler/.test(dispo('depart_tardif', menageMatin).constats.join()), 'ménage prévu à 11:00, départ jusqu’à 14:00 : à vérifier (à décaler)');
+    // Personne n'arrive : le ménage de ce départ se décale après l'heure tardive, tant qu'il tient avant sa fin au plus tard.
+    const menageMatin = { reservations: [r], missions: [mission('2026-11-01', { heureDebut: '11:00', heureFinMax: '16:00' })] };
+    const decale = dispo('depart_tardif', menageMatin);
+    verifier(decale.statut === 'possible' && decale.constats.includes('Ménage décalé après 14:00.'), 'ménage prévu à 11:00, départ jusqu’à 14:00, personne n’arrive : possible, « Ménage décalé après 14:00 »', decale);
+    const serre = dispo('depart_tardif', { reservations: [r], missions: [mission('2026-11-01', { heureDebut: '11:00', heureFinMax: '15:00' })] });
+    verifier(serre.statut === 'a_verifier' && /il finirait après 15:00/.test(serre.constats.join()), 'ménage décalé qui ne tient plus avant sa fin au plus tard (15:00) : à vérifier', serre);
+    const arriveMenage = { reservations: [r, resa('n', { arrivee: '2026-11-01', depart: '2026-11-04' })], missions: [mission('2026-11-01', { heureDebut: '11:00', heureFinMax: '16:00' })] };
+    verifier(dispo('depart_tardif', arriveMenage).statut === 'impossible' && dispo('depart_tardif', arriveMenage, regle({ heure: '14:00', selonPlanning: false })).statut === 'a_verifier', 'arrivée le même jour : pas possible (selon le planning), sinon à vérifier');
+    verifier(dispo('depart_tardif', { reservations: [r], missions: [mission('2026-11-01', { heureDebut: '15:00' })] }).statut === 'possible', 'ménage prévu après l’heure tardive : rien à décaler, possible');
     verifier(dispo('menage_supplementaire', libre).statut === 'possible' && dispo('menage_supplementaire', { reservations: [r], missions: [mission('2026-10-30')] }).statut === 'a_verifier', 'ménage supplémentaire : un ménage déjà prévu pendant le séjour est signalé');
     verifier(dispo('menage_supplementaire', libre, regle(), '2026-10-27', resa('r9', { nuits: 1, depart: '2026-10-30' })).statut === 'impossible', 'séjour d’une nuit : pas de ménage pendant le séjour');
     verifier(dispo('navette', libre).statut === 'possible' && dispo('navette', libre, regle(), '2026-10-27', resa('rx', { statut: 'annulee' })).statut === 'impossible', 'navette : possible ; séjour annulé : rien');
@@ -342,7 +368,7 @@ async function principal() {
   section('3. Proposition prête et message automatique');
   {
     const r = resa('r1');
-    const ctx = (cle: 'arrivee_anticipee' | 'depart_tardif' | 'menage_supplementaire' | 'navette', langue: 'fr' | 'en', statut: 'possible' | 'impossible' = 'possible', reglage = regle(cle === 'depart_tardif' ? { heure: '14:00' } : {})) =>
+    const ctx = (cle: 'arrivee_anticipee' | 'depart_tardif' | 'menage_supplementaire' | 'navette', langue: 'fr' | 'en', statut: 'possible' | 'a_verifier' | 'impossible' = 'possible', reglage = regle(cle === 'depart_tardif' ? { heure: '14:00' } : {})) =>
       texteProposition(cle, { reservation: r, fiche: LOGEMENT.fiche, reglage, disponibilite: { statut, constats: [] }, prenom: 'Emily', signature: 'L’équipe Label Maison', langue });
     const fr = ctx('arrivee_anticipee', 'fr');
     verifier(/^Bonjour Emily,/.test(fr) && /jeudi 29 octobre/.test(fr) && /dès 12 h au lieu de 16 h/.test(fr) && fr.includes(prixLisible(2000)) && fr.endsWith('L’équipe Label Maison'), 'arrivée plus tôt : prénom, date, heure, prix réglé, signature', fr);
@@ -354,6 +380,20 @@ async function principal() {
     verifier(tous.every((t) => !/https?:|www\.|paiement|payment link|lien/i.test(t)), 'jamais de lien ni de paiement dans une proposition');
     verifier(/sans supplément/.test(ctx('navette', 'fr', 'possible', regle({ prixCentimes: 0, heure: undefined }))) && prixLisible(2250) === '22,50 €', 'offert : « sans supplément » ; centimes affichés seulement s’il y en a');
     verifier(/Précision/.test('Précision') && ctx('navette', 'fr', 'possible', regle({ heure: undefined, conditions: 'depuis la gare d’Évry' })).includes('Depuis la gare d’Évry.'), 'précision du gérant ajoutée en une phrase');
+    // À vérifier : au conditionnel, jamais « Bonne nouvelle », l'équipe confirme ensuite.
+    const v20 = prixLisible(2000);
+    const vfr = ctx('arrivee_anticipee', 'fr', 'a_verifier');
+    verifier(vfr.includes(`Le jeudi 29 octobre, une arrivée dès 12 h devrait être possible, pour ${v20} : nous vérifions avec l’équipe ménage et vous confirmons très vite.`), 'à vérifier (fr) : « devrait être possible », « nous vérifions avec l’équipe ménage »', vfr);
+    const ven = ctx('arrivee_anticipee', 'en', 'a_verifier');
+    verifier(ven.includes(`On Thursday 29 October, an early check-in from 12:00 should be possible, for ${prixLisible(2000, 'en')}: we are checking with our housekeeping team and will confirm shortly.`), 'à vérifier (en) : « should be possible », « we are checking with our housekeeping team »', ven);
+    const vdep = ctx('depart_tardif', 'fr', 'a_verifier');
+    const vmen = ctx('menage_supplementaire', 'en', 'a_verifier');
+    verifier(/le dimanche 1 novembre, un départ jusqu’à 14 h devrait être possible/i.test(vdep) && /cleaning during your stay should be possible/.test(vmen), 'à vérifier : départ plus tard et ménage aussi au conditionnel', [vdep, vmen]);
+    verifier(
+      [vfr, ven, vdep, vmen, ctx('depart_tardif', 'en', 'a_verifier'), ctx('menage_supplementaire', 'fr', 'a_verifier')].every((t) => !/Bonne nouvelle|Good news|vous pouvez arriver|you can check|répondez-nous simplement|just reply here/i.test(t)),
+      'à vérifier : jamais « Bonne nouvelle », rien d’affirmé, pas de « répondez-nous » (l’équipe confirme)',
+    );
+    verifier(/^Bonne nouvelle/m.test(ctx('arrivee_anticipee', 'fr')) && /^Good news/m.test(ctx('depart_tardif', 'en')), 'possible : « Bonne nouvelle » seulement quand c’est sûr');
     verifier(ligneSupplement('arrivee_anticipee', regle()) === `• Arrivée plus tôt, dès 12 h : ${prixLisible(2000)}`, 'ligne du message automatique', ligneSupplement('arrivee_anticipee', regle()));
     const reglages = avecReglagesLogement(reglagesSupplements({ reglages: [] }), 'log-1', { arrivee_anticipee: regle(), depart_tardif: regle({ heure: '14:00' }), menage_supplementaire: regle({ actif: false, heure: undefined }), navette: regle({ actif: false, heure: undefined }) }, { le: 'x', nom: 'Abdel' });
     const bloque = { reservations: [r, resa('p', { arrivee: '2026-10-26', depart: '2026-10-29' })] };
@@ -377,9 +417,22 @@ async function principal() {
       ['Où est le parking ?', undefined],
       ['Il nous faudrait un lit supplémentaire pour le bébé.', undefined],
     ];
+    // Une heure dite n'est pas une demande : il faut la forme d'une demande (« possible », « peut-on », « could we… earlier »).
+    cas.push(
+      ['We will arrive early evening, where is the key box?', undefined],
+      ['Nous arriverons vers 15 h, est-ce trop tôt ?', undefined],
+      ['Nous arriverons peut-être plus tôt que prévu.', undefined],
+      ['Hello! Our flight lands at 10am. Would it be possible to check in a bit earlier, around 1pm?', 'arrivee_anticipee'],
+      ['Pourrions-nous partir plus tard dimanche ?', 'depart_tardif'],
+      ['Early check-in please!', 'arrivee_anticipee'],
+    );
     for (const [t, attendu] of cas) verifier(supplementDansTexte(t) === attendu, `« ${t} » → ${attendu ?? 'rien'}`, supplementDansTexte(t));
     const f = fil('fil-7', 'r1', { messages: [msg('a', 'voyageur', 'Hello!')], analyse: { messageId: 'a', intention: 'arrivee_anticipee', le: 'x' } });
     verifier(supplementDemande(f) === 'arrivee_anticipee', 'demande lue par l’IA (arrivée plus tôt) : reprise telle quelle');
+    const traitee = fil('fil-8', 'r1', {
+      messages: [msg('a', 'voyageur', 'Could we check in earlier, around 1pm?'), msg('b', 'hote', 'Hi Emily, yes, from 1pm for €20.'), msg('c', 'voyageur', 'What is the wifi name?')],
+    });
+    verifier(supplementDemande(traitee) === undefined && supplementDemande(fil('fil-9', 'r1', { messages: [msg('a', 'voyageur', 'We will arrive early evening, where is the key box?')] })) === undefined, 'demande déjà traitée, ou heure seulement dite : pas de bandeau de supplément');
   }
 
   section('5. L’agent ne vend jamais seul un supplément (verdict)');
@@ -401,6 +454,73 @@ async function principal() {
     verifier(sujetSensible('Il nous faudrait une couverture supplémentaire.') === null, '« supplémentaire » n’est pas un supplément payant');
     const simple = verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.95, intention: 'infos', langue: 'en', texte: 'Hi Emily, the hair dryer is in the bathroom.' }, politiqueEnvoi({ autonomie: 'autonome' }, false), 'Is there a hair dryer?');
     verifier(simple.verdict === 'envoyer', 'question simple : l’agent répond toujours seul (le garde-fou ne bloque que les suppléments)');
+
+    // Questions simples qui repartent seules (autonome), avec les horaires du logement (16:00, 11:00).
+    const autonome = politiqueEnvoi({ autonomie: 'autonome' }, false);
+    const simples = politiqueEnvoi({ autonomie: 'simples' }, false);
+    const fiche = LOGEMENT.fiche;
+    const seul = (texte: string, voyageur: string[], langue: 'fr' | 'en', intention: DecisionNotee['intention'] = 'arrivee', sansReponse = voyageur.slice(-1)) =>
+      [autonome, simples].map((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.95, intention, langue, texte }, p, { sujets: voyageur, recents: voyageur, sansReponse, fiche }).verdict);
+    const simplesCas: [string, string[], 'fr' | 'en', DecisionNotee['intention']][] = [
+      ['Hi Tom, the key box is on the left of the door, the code is sent 48h before.', ['We will arrive early evening, where is the key box?'], 'en', 'arrivee'],
+      ['Bonjour Claire, l’arrivée est possible à partir de 16 h ; la boîte à clés est à droite de la porte.', ['Nous arriverons vers 15 h, est-ce trop tôt ?'], 'fr', 'arrivee'],
+      ['Hi Tom, the wifi is LM-Corbeil, the password is on the fridge.', ['Could we check in earlier, around 1pm?', 'Great, thanks a lot!', 'What is the wifi name?'], 'en', 'infos'],
+      ['Bonjour Claire, l’arrivée se fait à partir de 16 h. Si vous souhaitez arriver plus tôt, dites-le-nous.', ['À quelle heure peut-on arriver ?'], 'fr', 'arrivee'],
+      ['Hi Tom, check-out is at 11am. If you need a late check-out, just let us know.', ['What time is check-out?'], 'en', 'depart'],
+      ['Hi Tom, you can check in from 4pm and check out by 11am.', ['What are the check-in and check-out times?'], 'en', 'arrivee'],
+    ];
+    for (const [texte, voyageur, langue, intention] of simplesCas) {
+      const v = seul(texte, voyageur, langue, intention);
+      verifier(v.every((x) => x === 'envoyer'), `question simple, part seule : « ${voyageur[voyageur.length - 1]} » → « ${texte.slice(0, 50)}… »`, v);
+    }
+    // Wifi après une demande déjà traitée, lu sur la vraie conversation (messages sans réponse).
+    const filTraite = fil('fil-60', 'r1', {
+      messages: [msg('a', 'voyageur', 'Could we check in earlier, around 1pm?'), msg('b', 'hote', 'Hi Emily, we will confirm with our team.'), msg('c', 'voyageur', 'Great, thanks!'), msg('d', 'voyageur', 'What is the wifi name?')],
+    });
+    const lus = messagesVerdict(filTraite, new Date('2026-10-27T10:00:00Z'), fiche);
+    verifier(lus.sansReponse?.join('|') === 'Great, thanks!|What is the wifi name?' && !lus.apresProposition && lus.fiche?.heureArrivee === '16:00', 'conversation : messages sans réponse et horaires du logement lus', lus);
+    verifier(verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.95, intention: 'infos', langue: 'en', texte: 'Hi Emily, the wifi is LM-Corbeil.' }, autonome, lus).verdict === 'envoyer', 'wifi après une demande déjà traitée : part seul');
+
+    // Vraies demandes, ou réponse qui accorde : à valider.
+    const aValider: [string, string[], 'fr' | 'en', DecisionNotee['intention']][] = [
+      ['Hi Emily, I am checking with our team and will get back to you.', ['Could we check in a bit earlier, around 1pm?'], 'en', 'infos'],
+      ['Bonjour Claire, je vérifie avec l’équipe et je reviens vers vous.', ['Est-il possible d’arriver plus tôt ?'], 'fr', 'arrivee'],
+      ['Bonjour Claire, vous pourrez arriver dès 12 h jeudi.', ['À quelle heure peut-on arriver ?'], 'fr', 'arrivee'],
+      ['Great, Tom! You can check in from 12:00 on Thursday.', ['What time can we arrive?'], 'en', 'arrivee'],
+      ['Hi Tom, no problem, you can stay until 2pm on Sunday.', ['What time is check-out?'], 'en', 'depart'],
+      ['Bonjour, le logement sera prêt dès 13 h, vous pouvez venir.', ['Le logement sera prêt à quelle heure ?'], 'fr', 'arrivee'],
+    ];
+    for (const [texte, voyageur, langue, intention] of aValider) {
+      const v = seul(texte, voyageur, langue, intention);
+      verifier(v.every((x) => x === 'valider'), `demande ou heure accordée : à valider (« ${texte.slice(0, 50)}… »)`, v);
+    }
+    verifier(offreSupplement('Hi Tom, you can check in from 4pm.', fiche) === false && offreSupplement('Hi Tom, you can check in from 1pm.', fiche) === true, 'une heure accordée compte comme offre seulement hors des horaires du logement (16:00)');
+    verifier(offreSupplement('Bonjour, nous pouvons vérifier si une arrivée plus tôt est possible.') === false && offreSupplement('Très bien, nous organisons le ménage mercredi.') === true && offreSupplement('C’est noté, nous viendrons vous chercher à la gare à 15 h.') === true, 'offre : accorder (ménage, navette), pas « nous pouvons vérifier »');
+
+    // Réponse à « Proposer les suppléments » : jamais envoyée seule, à aucun niveau, en français comme en anglais.
+    const auto = (texte: string, langue: 'fr' | 'en') =>
+      fil('fil-61', 'r1', {
+        messages: [
+          { ...msg('p', 'hote', langue === 'fr' ? 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €' : 'Hello Emily, we can offer: early check-in from 12:00, €20'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+          msg('v', 'voyageur', texte),
+        ],
+      });
+    const reponses: [string, string, 'fr' | 'en'][] = [
+      ['Oui pour la première option, merci !', 'Parfait Emily, c’est noté : vous pourrez arriver dès 12 h jeudi. À très vite !', 'fr'],
+      ['Yes please, the first one!', 'Great, Emily! You can check in from 12:00 on Thursday. See you soon!', 'en'],
+      ['Non merci, à jeudi !', 'Très bien Emily, à jeudi !', 'fr'],
+      ['No thanks, see you Thursday', 'Perfect, see you on Thursday!', 'en'],
+    ];
+    for (const [voyageur, texte, langue] of reponses) {
+      const f = auto(voyageur, langue);
+      const v = niveaux.map((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'arrivee', langue, texte }, p, messagesVerdict(f, new Date('2026-10-27T10:00:00Z'), fiche)));
+      verifier(apresPropositionSupplements(f) && v.every((x) => x.verdict === 'valider' && x.motif === MOTIF_REPONSE_PROPOSITION), `réponse à « Proposer les suppléments » (« ${voyageur} ») : à valider à tous les niveaux`, v);
+    }
+    // Proposition envoyée par l'équipe (« Insérer », un prix) : même règle pour la réponse du voyageur.
+    const propEquipe = fil('fil-62', 'r1', { messages: [msg('p', 'hote', 'Bonne nouvelle : le jeudi 29 octobre, vous pouvez arriver dès 12 h, pour 20 €.'), msg('v', 'voyageur', 'Oui merci !')] });
+    verifier(apresPropositionSupplements(propEquipe) && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'Merci Emily, à jeudi !' }, autonome, messagesVerdict(propEquipe, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider', 'réponse à une proposition de l’équipe avec un prix : à valider');
+    verifier(!apresPropositionSupplements(fil('fil-63', 'r1', { messages: [msg('p', 'hote', 'Bonjour Emily, le parking est devant la résidence.'), msg('v', 'voyageur', 'Merci !')] })), 'réponse à un autre message de l’équipe : règle ordinaire');
+    verifier(/proposition de suppléments/.test(MOTIF_REPONSE_PROPOSITION) && /question d’argent/.test(MOTIF_SUPPLEMENT), 'motif propre à une réponse à une proposition');
     verifier(['simples', 'autonome'].every((n) => /ne vend jamais seul un supplément/.test(explicationNiveau(n as 'simples', { horsFiche: true }).regles.join())) && /ne vend jamais seul un supplément/.test(explicationNiveau('valider', { horsFiche: true }).regles.join()), 'écran « Votre agent » : la règle est dite à chaque niveau');
   }
 
@@ -459,6 +579,32 @@ async function principal() {
     ia.reponses.push(decision({ texte: 'Hi Emily, yes, we can arrange a cleaning during your stay.', intention: 'autre' }));
     p = await lancerAgent(options());
     verifier(repull.envois.length === 0 && filActuel().agent?.decision === 'a_valider', 'Label Maison sans choix : ménage en plus jamais promis seul');
+
+    // Réponse du voyageur au message automatique « Proposer les suppléments » : l'agent ne confirme rien seul (fr et en).
+    b.poser<ReglagesAgent>('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true, autonomie: 'autonome' });
+    const apresAuto = (texte: string, proposition: string) => {
+      n++;
+      b.poser<FilMessages>(
+        'filsMessages',
+        fil('fil-80', 'r1', {
+          messages: [
+            { ...msg(`auto${n}`, 'hote', proposition, '2026-10-26T11:00:00+01:00'), envoi: { canal: 'airbnb', par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+            msg(`q${n}`, 'voyageur', texte, '2026-10-27T10:55:00+01:00'),
+          ],
+          dernierMessageLe: '2026-10-27T10:55:00+01:00',
+          traitePar: 'agent',
+        }),
+      );
+    };
+    apresAuto('Oui pour la première option, merci !', 'Bonjour Emily, nous pouvons vous proposer :\n• Arrivée plus tôt, dès 12 h : 20 €');
+    ia.reponses.push(decision({ texte: 'Parfait Emily, c’est noté : vous pourrez arriver dès 12 h jeudi. À très vite !', langue: 'fr', intention: 'arrivee', confiance: 0.99 }));
+    p = await lancerAgent(options());
+    f = filActuel();
+    verifier(repull.envois.length === 0 && p.repondus === 0 && f.agent?.decision === 'a_valider' && f.agent.brouillon?.motif === MOTIF_REPONSE_PROPOSITION, 'autonome : « Oui pour la première option » → réponse gardée à valider, rien n’est envoyé', f.agent);
+    apresAuto('Yes please, the first one!', 'Hello Emily, we can offer: early check-in from 12:00, €20');
+    ia.reponses.push(decision({ texte: 'Great, Emily! You can check in from 12:00 on Thursday. See you soon!', intention: 'arrivee', confiance: 0.99 }));
+    p = await lancerAgent(options());
+    verifier(repull.envois.length === 0 && filActuel().agent?.decision === 'a_valider', 'autonome, en anglais : « Yes please, the first one! » → à valider, rien n’est envoyé');
 
     // Témoin : une question simple part toujours seule (le passage simulé envoie bien).
     b.poser<ReglagesAgent>('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true, autonomie: 'autonome' });
@@ -523,6 +669,8 @@ async function principal() {
     const parti = repull.envois.find((e) => e.conversation === '1')?.message ?? '';
     verifier(bilan.envoyes === 1 && repull.envois.length === 1 && /Départ plus tard, jusqu’à 14 h/.test(parti) && !/Arrivée plus tôt/.test(parti), 'un seul message : le départ plus tard, pas l’arrivée bloquée par le planning', { bilan, parti });
     verifier(/^Bonjour Emily,/.test(parti) && parti.endsWith('L’équipe Label Maison') && !/4821|soleil2026|https?:/.test(parti), 'texte : prénom, signature, ni code, ni wifi, ni lien');
+    const dansLeFil = b.get<FilMessages>('filsMessages', 'fil-1')?.messages.at(-1);
+    verifier(dansLeFil?.envoi?.par === PAR_MESSAGE_AUTO && dansLeFil.envoi.moment === 'proposer_supplements', 'le message garde son moment (envoi.moment) : une réponse du voyageur se reconnaît', dansLeFil?.envoi);
     verifier(!b.get(COLLECTION_ENVOIS_PROGRAMMES, idEnvoi('r2', 'proposer_supplements')), 'logement sans supplément : aucune ligne');
     // Tout bloqué : pas envoyé, noté.
     b.poser('reservations', resa('r3', { arrivee: '2026-10-29', depart: '2026-11-01' }));
@@ -533,6 +681,35 @@ async function principal() {
     const e3 = b.get<EnvoiProgramme>(COLLECTION_ENVOIS_PROGRAMMES, idEnvoi('r3', 'proposer_supplements'));
     verifier(e3?.statut === 'ignore' && e3.raison === RAISONS.sansSupplement && repull.envois.length === 1, 'rien de possible pour ce séjour : pas envoyé, noté une fois', e3);
     verifier(repull.ecritures.length === 0, 'aucune écriture vers la plateforme (ni offre, ni réservation, ni calendrier)', repull.ecritures);
+
+    // Une réponse à « Proposer les suppléments » ne retient les infos d'arrivée que si elle demande vraiment quelque chose.
+    const veille = (): ReglagesMessagesProgrammes => {
+      const r = reglagesProgrammes({ reglages: [] });
+      r.modeles.veille_arrivee = { ...r.modeles.veille_arrivee, actif: true, activeLe: '2026-10-01T10:00:00+02:00' };
+      return r;
+    };
+    const soir = new Date('2026-10-28T17:30:00Z'); // 18:30 à Paris, la veille de l'arrivée du 29
+    const reponseA = (texte: string, p: Partial<FilMessages> = {}) =>
+      fil('fil-90', 'r1', {
+        messages: [
+          { ...msg('auto', 'hote', 'Bonjour Emily, nous pouvons vous proposer : …', '2026-10-26T11:00:00+01:00'), envoi: { canal: 'airbnb', par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+          msg('v', 'voyageur', texte, '2026-10-26T12:00:00+01:00'),
+        ],
+        dernierMessageLe: '2026-10-26T12:00:00+01:00',
+        traitePar: 'en_attente',
+        ...p,
+      });
+    const infos = (f: FilMessages) => deciderEnvoi({ declencheur: 'veille_arrivee', reservation: resa('r1'), reglages: veille(), fils: [f], maintenant: soir, logement: LOGEMENT }).genre;
+    const nonMerci = reponseA('Non merci, à jeudi !');
+    verifier(infos(nonMerci) === 'envoyer' && infos(reponseA('No thanks, see you Thursday')) === 'envoyer', '« Non merci, à jeudi » : les infos d’arrivée de la veille partent quand même');
+    verifier(attendEquipe(nonMerci) && reponseSansDemandeAuxSupplements(nonMerci), 'la conversation reste dans « À répondre » (règle unique inchangée)');
+    for (const t of ['Pourrions-nous partir plus tard dimanche ?', 'Oui pour la première option, merci !', 'Yes please, the first one!', 'Non merci. Où peut-on se garer ?']) {
+      verifier(infos(reponseA(t)) === 'attendre', `« ${t} » : vraie demande, les infos d’arrivée attendent l’équipe`);
+    }
+    verifier(infos(reponseA('Non merci, à jeudi !', { statut: 'escalade' })) === 'attendre', 'conversation transmise par l’agent : les infos d’arrivée attendent');
+    const ordinaire = fil('fil-91', 'r1', { messages: [msg('h', 'hote', 'Bonjour Emily, à jeudi !'), msg('v', 'voyageur', 'Non merci, à jeudi !')], traitePar: 'en_attente' });
+    verifier(infos(ordinaire) === 'attendre', 'après un autre message de l’équipe : la règle reste la même (le voyageur attend)');
+    verifier(!VARIABLES.some((v) => v.sensible && (!v.moments || v.moments.includes('proposer_supplements'))) && VARIABLES.filter((v) => v.sensible).every((v) => v.moments?.includes('veille_arrivee')), 'éditeur : ni « Accès et clés » ni « Wifi » pour « Proposer les suppléments »');
   }
 
   section('8. Aucun paiement, aucune écriture vers les plateformes');
@@ -553,6 +730,8 @@ async function principal() {
       verifier(relatifs.every((i) => i.endsWith('.js')), 'supplements.ts : imports relatifs en .js (serveur)', relatifs);
       verifier(/L’ERP n’encaisse rien\./.test(source('src/erp/modules/logements/_composants/SupplementsLogement.tsx')) && /encaisse en dehors de l’ERP/.test(source('src/erp/modules/messagerie/_composants/MessagesAutomatiques.tsx')), 'l’aide le dit : l’ERP n’encaisse rien, l’encaissement se fait hors ERP');
       verifier(/n’accorde rien, ne donne aucun prix/.test(source('src/erp/data/agent-messagerie.ts')), 'consigne de l’agent : n’accorde rien, aucun prix');
+      verifier(/Ne propose jamais de toi-même une arrivée plus tôt ni un départ plus tard/.test(source('src/erp/data/agent-messagerie.ts')), 'consigne de l’agent : ne propose jamais de lui-même une arrivée plus tôt ni un départ plus tard');
+      verifier(/Non merci/.test(source('src/erp/modules/messagerie/_composants/EditeurMessageAuto.tsx')), 'aide de l’éditeur : un « Non merci » ne retient pas les infos d’arrivée');
     }
   }
 

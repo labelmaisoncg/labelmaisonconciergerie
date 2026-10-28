@@ -27,7 +27,6 @@ import { CartePrevisionnel, TITRE_PREVISIONNEL } from '../_composants/Previsionn
 import { PrixConseilles } from '../_composants/PrixConseilles';
 import { CarteAvisLogement } from '../_composants/Avis';
 import { TextesAnnonce } from '../_composants/TextesAnnonce';
-import { SupplementsLogement } from '../_composants/SupplementsLogement';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
 
@@ -159,7 +158,8 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
           <CarteAvisLogement logement={l} />
 
-          <Annonce logement={l} descriptif={desc} />
+          {/* Logement sorti : plus d'annonce à rédiger. */}
+          {l.statut !== 'sorti' && <Annonce logement={l} descriptif={desc} />}
 
           {!!desc?.couchage?.length && <Couchage pieces={desc.couchage} />}
 
@@ -210,8 +210,6 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
           </Card>
 
           {desc && <Conditions descriptif={desc} />}
-
-          <SupplementsLogement logement={l} />
 
           <Card>
             <CardHeader titre="Plateformes" />
@@ -430,7 +428,7 @@ function Annonce({ logement: l, descriptif }: { logement: Logement; descriptif?:
       <Card>
         <CardHeader
           titre="L’annonce"
-          description={vide ? 'Pas encore lue sur les plateformes' : 'Telle que les voyageurs la lisent sur les plateformes'}
+          description={vide ? undefined : 'Telle que les voyageurs la lisent sur les plateformes'}
           actions={
             <button type="button" onClick={() => setTextes(true)} className={lien}>
               <Sparkles className="size-3.5" aria-hidden /> Nouveaux textes
@@ -461,7 +459,7 @@ function Annonce({ logement: l, descriptif }: { logement: Logement; descriptif?:
             {ouvert ? 'Réduire' : 'Lire la suite'}
           </button>
         )}
-        {vide && <p className="text-[13.5px] text-(--lm-encre-2)">Trois titres et une description tirés de la fiche du logement, à copier sur la plateforme.</p>}
+        {vide && <p className="text-[13.5px] text-(--lm-encre-2)">Pas encore reçue des plateformes : proposez des textes tirés de la fiche, à copier.</p>}
       </Card>
       {/* Hors de la carte : le panneau n'hérite pas de ses arrondis. */}
       <TextesAnnonce logement={l} ouvert={textes} onFermer={() => setTextes(false)} />

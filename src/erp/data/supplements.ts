@@ -22,7 +22,7 @@
  *
  * Imports relatifs avec « .js » : ce fichier tourne aussi sous Node (serveur).
  */
-import { dernierVoyageur, intentionFil, supplementDansTexte } from './messagerie-ia.js';
+import { messagesSansReponse, supplementDansTexte } from './messagerie-ia.js';
 import type { Centimes, DateISO, ErpDonnees, FilMessages, Horodatage, Id, Logement, Mission, Reservation } from './types';
 
 /* ============================================================ constantes */
@@ -171,6 +171,17 @@ export interface PlanningLogement {
   missions?: readonly Pick<Mission, 'logementId' | 'type' | 'date' | 'statut' | 'heureDebut' | 'heureFinMax'>[];
 }
 
+/**
+ * Durée prudente d'un ménage (minutes) : un ménage décalé après un départ
+ * plus tard doit encore tenir avant sa fin au plus tard (heureFinMax).
+ */
+export const DUREE_MENAGE_MINUTES = 120;
+const ajouterMinutes = (hm: string, n: number) => {
+  const [h, m] = hm.split(':').map(Number);
+  const t = Math.min(23 * 60 + 59, h * 60 + m + n);
+  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
+};
+
 const MISSION_VIVANTE = (m: Pick<Mission, 'statut'>) => m.statut !== 'annulee' && m.statut !== 'refusee';
 const jourCourt = (date: DateISO) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${date}T12:00:00Z`));
 
@@ -226,13 +237,16 @@ export function disponibiliteSupplement(
         baisser(bloque);
       } else constats.push('Personne n’arrive ce jour-là.');
       const menage = menages.find((m) => m.date === r.depart);
-      if (menage) {
-        constats.push(`Ménage prévu ce jour-là à ${menage.heureDebut}.`);
-        if (reglage.heure && menage.heureDebut < reglage.heure) {
-          constats.push('Il faudra le décaler.');
+      if (menage && reglage.heure && menage.heureDebut < reglage.heure && !arrive) {
+        // Personne n'arrive : le ménage de ce même départ se décale après l'heure tardive,
+        // tant qu'il tient avant sa fin au plus tard.
+        const fin = ajouterMinutes(reglage.heure, DUREE_MENAGE_MINUTES);
+        if (fin <= menage.heureFinMax) constats.push(`Ménage décalé après ${reglage.heure}.`);
+        else {
+          constats.push(`Ménage décalé après ${reglage.heure} : il finirait après ${menage.heureFinMax}.`);
           baisser('a_verifier');
         }
-      }
+      } else if (menage) constats.push(`Ménage prévu ce jour-là à ${menage.heureDebut}.`);
       break;
     }
     case 'menage_supplementaire': {
@@ -282,6 +296,8 @@ export interface ContexteProposition {
  */
 export function texteProposition(cle: CleSupplement, c: ContexteProposition): string {
   const possible = c.disponibilite.statut !== 'impossible';
+  // À vérifier : au conditionnel, jamais « Bonne nouvelle » ; l'équipe confirme ensuite.
+  const aVerifier = c.disponibilite.statut === 'a_verifier';
   const r = c.reglage;
   const fr = c.langue !== 'en';
   const bonjour = fr ? `Bonjour${c.prenom ? ` ${c.prenom}` : ''},` : `Hello${c.prenom ? ` ${c.prenom}` : ''},`;
@@ -289,11 +305,18 @@ export function texteProposition(cle: CleSupplement, c: ContexteProposition): st
   const prixEn = r.prixCentimes > 0 ? `for ${prixLisible(r.prixCentimes, 'en')}` : 'at no extra cost';
   const conditions = phrase(r.conditions);
   const confirmer = fr ? 'Si cela vous convient, répondez-nous simplement : nous vous confirmons tout.' : 'If that suits you, just reply here and we will confirm everything.';
+  const sousReserve = fr ? 'nous vérifions avec l’équipe ménage et vous confirmons très vite.' : 'we are checking with our housekeeping team and will confirm shortly.';
   const corps: string[] = [];
   switch (cle) {
     case 'arrivee_anticipee': {
       const habituelle = fr ? heureFr(c.fiche?.heureArrivee) : c.fiche?.heureArrivee;
-      if (possible) {
+      if (aVerifier) {
+        corps.push(
+          fr
+            ? `Le ${dateFr(c.reservation.arrivee)}, une arrivée dès ${heureFr(r.heure)} devrait être possible, ${prixFr} : ${sousReserve}`
+            : `On ${dateEn(c.reservation.arrivee)}, an early check-in from ${r.heure} should be possible, ${prixEn}: ${sousReserve}`,
+        );
+      } else if (possible) {
         corps.push(
           fr
             ? `Bonne nouvelle : le ${dateFr(c.reservation.arrivee)}, vous pouvez arriver dès ${heureFr(r.heure)}${habituelle ? ` au lieu de ${habituelle}` : ''}, ${prixFr}.`
@@ -310,7 +333,13 @@ export function texteProposition(cle: CleSupplement, c: ContexteProposition): st
     }
     case 'depart_tardif': {
       const habituelle = fr ? heureFr(c.fiche?.heureDepart) : c.fiche?.heureDepart;
-      if (possible) {
+      if (aVerifier) {
+        corps.push(
+          fr
+            ? `Le ${dateFr(c.reservation.depart)}, un départ jusqu’à ${heureFr(r.heure)} devrait être possible, ${prixFr} : ${sousReserve}`
+            : `On ${dateEn(c.reservation.depart)}, a late check-out until ${r.heure} should be possible, ${prixEn}: ${sousReserve}`,
+        );
+      } else if (possible) {
         corps.push(
           fr
             ? `Bonne nouvelle : le ${dateFr(c.reservation.depart)}, vous pouvez partir jusqu’à ${heureFr(r.heure)}${habituelle ? ` au lieu de ${habituelle}` : ''}, ${prixFr}.`
@@ -327,13 +356,17 @@ export function texteProposition(cle: CleSupplement, c: ContexteProposition): st
     }
     case 'menage_supplementaire':
       corps.push(
-        possible
+        aVerifier
           ? fr
-            ? `Nous pouvons organiser un ménage pendant votre séjour, ${prixFr}.`
-            : `We can arrange a cleaning during your stay, ${prixEn}.`
-          : fr
-            ? 'Merci pour votre message. Nous ne pouvons pas organiser de ménage pendant ce séjour.'
-            : 'Thank you for your message. We cannot arrange a cleaning during this stay.',
+            ? `Un ménage pendant votre séjour devrait être possible, ${prixFr} : ${sousReserve}`
+            : `A cleaning during your stay should be possible, ${prixEn}: ${sousReserve}`
+          : possible
+            ? fr
+              ? `Nous pouvons organiser un ménage pendant votre séjour, ${prixFr}.`
+              : `We can arrange a cleaning during your stay, ${prixEn}.`
+            : fr
+              ? 'Merci pour votre message. Nous ne pouvons pas organiser de ménage pendant ce séjour.'
+              : 'Thank you for your message. We cannot arrange a cleaning during this stay.',
       );
       break;
     case 'navette':
@@ -341,14 +374,14 @@ export function texteProposition(cle: CleSupplement, c: ContexteProposition): st
       break;
   }
   if (possible && conditions) corps.push(conditions);
-  if (possible) corps.push(confirmer);
+  if (possible && !aVerifier) corps.push(confirmer);
   const fin = fr ? (possible ? 'À très bientôt,' : 'Au plaisir de vous accueillir,') : possible ? 'See you soon,' : 'We look forward to welcoming you,';
   return [bonjour, '', corps.join(' '), '', fin, c.signature.trim()].join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
-/** Résumé d'un réglage pour l'équipe : « dès 12 h · 20 € », « 45 € », « sans supplément ». */
+/** Résumé d'un réglage pour l'équipe (heures de l'interface) : « dès 12:00 · 20 € », « 45 € », « sans supplément ». */
 export function resumeSupplement(cle: CleSupplement, r: ReglageSupplement): string {
-  const quand = cle === 'arrivee_anticipee' ? `dès ${heureFr(r.heure)}` : cle === 'depart_tardif' ? `jusqu’à ${heureFr(r.heure)}` : '';
+  const quand = cle === 'arrivee_anticipee' ? `dès ${r.heure ?? ''}` : cle === 'depart_tardif' ? `jusqu’à ${r.heure ?? ''}` : '';
   return [quand, r.prixCentimes > 0 ? prixLisible(r.prixCentimes, 'fr') : 'sans supplément'].filter(Boolean).join(' · ');
 }
 
@@ -383,13 +416,21 @@ export function texteSupplementsSejour(
 /* ============================================================== messagerie */
 
 /**
- * Supplément demandé par le voyageur dans une conversation : la demande lue
- * par l'IA (arrivée plus tôt, départ plus tard), sinon les mots de son
- * dernier message (ménage pendant le séjour, navette).
+ * Supplément demandé par le voyageur dans ses messages encore sans réponse :
+ * la demande lue par l'IA sur son dernier message (arrivée plus tôt, départ
+ * plus tard), sinon ses mots, sous la forme d'une demande (« possible »,
+ * « could we… earlier » ; ménage pendant le séjour, navette). « Nous
+ * arriverons tôt le soir » ne demande rien.
  */
 export function supplementDemande(fil: Pick<FilMessages, 'messages' | 'analyse'>): CleSupplement | undefined {
-  const intention = intentionFil(fil);
-  if (intention === 'arrivee_anticipee' || intention === 'depart_tardif') return intention;
-  const dernier = dernierVoyageur(fil);
-  return dernier ? supplementDansTexte(dernier.texte) : undefined;
+  const sans = messagesSansReponse(fil);
+  const dernier = sans[sans.length - 1];
+  if (!dernier) return undefined;
+  const lue = fil.analyse?.messageId === dernier.id ? fil.analyse.intention : undefined;
+  if (lue === 'arrivee_anticipee' || lue === 'depart_tardif') return lue;
+  for (let i = sans.length - 1; i >= 0; i--) {
+    const cle = supplementDansTexte(sans[i].texte);
+    if (cle) return cle;
+  }
+  return undefined;
 }
