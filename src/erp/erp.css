@@ -158,31 +158,6 @@
 .erp-root .maplibregl-map {
   font-family: var(--lm-sans);
 }
-.erp-root .maplibregl-ctrl-attrib {
-  font-size: 11px;
-}
-/*
- * Crédits repliés (téléphone) : le bouton « i » de la bibliothèque, en zone
- * de toucher de 32 px et à l'arrondi des blocs (8 px) ; dépliés, le texte
- * exigé par OpenFreeMap et OpenStreetMap, tel quel.
- */
-.erp-root .maplibregl-ctrl-attrib.maplibregl-compact {
-  min-height: 32px;
-  padding: 0 0 0 32px;
-  border-radius: 8px;
-}
-.erp-root .maplibregl-ctrl-attrib.maplibregl-compact-show {
-  padding: 7px 10px 7px 36px;
-  border-radius: 8px;
-}
-.erp-root .maplibregl-ctrl-attrib.maplibregl-compact .maplibregl-ctrl-attrib-button {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  left: 0;
-  right: auto;
-  background-position: center;
-}
 
 /* Zoom : boutons de 36 px (zone de toucher d'au moins 32 px), arrondi des blocs (8 px). */
 .erp-root .maplibregl-ctrl-group {

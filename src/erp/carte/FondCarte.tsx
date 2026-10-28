@@ -64,7 +64,6 @@ const ZOOM_UN_LOGEMENT = 12.5;
 /** Largeur de la fiche ouverte sur ordinateur (côté droit de la carte), marge comprise. */
 const LARGEUR_FICHE = 356;
 /** Carte étroite (téléphone) : crédits repliés derrière le bouton « i ». */
-const LARGEUR_TELEPHONE = 640;
 
 export interface FondCarteProps {
   /** Logements placés (avec position). */
@@ -139,8 +138,8 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
         touchPitch: false,
         renderWorldCopies: false,
         cooperativeGestures: true,
-        // Crédits toujours là : en entier sur ordinateur, derrière le bouton « i » sur téléphone.
-        attributionControl: { compact: el.clientWidth < LARGEUR_TELEPHONE },
+        // Crédits sous la carte (CreditsCarte) : toujours visibles, sans jamais cacher un logement.
+        attributionControl: false,
         locale: TEXTES,
         // Style d'OpenFreeMap tel quel : pas de validation (plus rapide, sans avertissements sur ses filtres).
         validateStyle: false,

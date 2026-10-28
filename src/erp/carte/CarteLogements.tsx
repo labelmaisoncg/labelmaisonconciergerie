@@ -313,6 +313,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
           />
         )}
       </div>
+      {avecCarte && <CreditsCarte />}
 
       <div className="mt-2.5 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
         <div className="min-w-0 text-[13px] text-(--lm-encre-2)">
@@ -355,5 +356,30 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
         </ul>
       )}
     </div>
+  );
+}
+
+const LIEN_CREDIT = 'inline-flex min-h-8 items-center underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none';
+
+/**
+ * Crédits du fond de carte, exigés par OpenFreeMap et OpenStreetMap : sous la
+ * carte, toujours visibles (dans la carte, ils cachaient des logements sur
+ * téléphone).
+ */
+function CreditsCarte() {
+  return (
+    <p className="mt-1 text-right text-[11.5px] text-(--lm-encre-3)">
+      <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
+        OpenFreeMap
+      </a>
+      {' · '}
+      <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
+        © OpenMapTiles
+      </a>
+      {' · Données '}
+      <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
+        © contributeurs OpenStreetMap
+      </a>
+    </p>
   );
 }
