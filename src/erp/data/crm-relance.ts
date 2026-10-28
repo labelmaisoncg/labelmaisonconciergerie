@@ -63,7 +63,7 @@ export async function preparerRelance(o: OptionsAssistant, contactId: unknown, c
   if (!lu) throw new ErreurAssistant('Votre agent n’a pas pu écrire cette relance : voici un modèle à compléter.', 502, 'vide');
   const brouillon = { objet: nettoyerRelance(lu.objet).slice(0, 80), texte: nettoyerRelance(lu.texte) };
   const refus = refusRelance(brouillon, canal, faits);
-  if (refus) throw new ErreurAssistant(`Brouillon écarté (${refus}) : voici un modèle à compléter.`, 422, 'vide');
+  if (refus) throw new ErreurAssistant(`Brouillon écarté : ${refus === 'vide' ? 'il était vide' : refus === 'trop long' ? 'il était trop long' : `il contenait ${refus}`}. Voici un modèle à compléter.`, 422, 'vide');
 
   const journal: Journal = {
     id: `crm-relance-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,

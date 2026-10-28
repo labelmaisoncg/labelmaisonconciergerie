@@ -84,10 +84,15 @@ export interface ATraiterProps {
   premiere?: ReactNode;
   /** Actions de l'en-tête, après « Tout voir ». */
   actions?: ReactNode;
+  /**
+   * Confirmation passagère (« Copié ») : montrée à la place de « Tout voir »,
+   * dans une zone annoncée aux lecteurs d'écran. `null` : rien à dire, la zone reste en place.
+   */
+  statut?: ReactNode;
 }
 
 /** « À faire » : les 5 sujets les plus pressants, le reste dans un panneau. */
-export function ATraiter({ elements, titre = 'À faire', max = 5, premiere, actions }: ATraiterProps) {
+export function ATraiter({ elements, titre = 'À faire', max = 5, premiere, actions, statut }: ATraiterProps) {
   const [tout, setTout] = useState(false);
   const liste = (els: ElementATraiter[], complet?: boolean) => (
     <ul className="divide-y divide-(--lm-bord)">
@@ -102,9 +107,14 @@ export function ATraiter({ elements, titre = 'À faire', max = 5, premiere, acti
         className="mb-0 border-b border-(--lm-bord) px-4 pt-4 pb-3"
         titre={titre}
         actions={
-          (elements.length > max || actions) && (
+          (elements.length > max || actions || statut !== undefined) && (
             <>
-              {elements.length > max && (
+              {statut !== undefined && (
+                <span role="status" aria-live="polite" className="inline-flex min-h-8 items-center gap-1 text-[12.5px] font-medium text-(--lm-encre-2) [&_svg]:size-3.5">
+                  {statut}
+                </span>
+              )}
+              {!statut && elements.length > max && (
                 <button type="button" onClick={() => setTout(true)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
                   Tout voir ({elements.length})
                 </button>

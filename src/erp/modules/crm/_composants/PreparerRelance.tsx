@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, PenLine, RotateCcw } from 'lucide-react';
+import { Check, ChevronDown, Copy, PenLine, Phone, RotateCcw } from 'lucide-react';
+import { aTraiterLe } from '../../../data/crm';
 import {
   canalParDefaut,
+  jourMoisCrm,
   LIBELLE_PROFIL,
   noterRelanceEnvoyee,
   prochaineAction,
@@ -12,19 +14,20 @@ import {
 } from '../../../data/crm-assistant';
 import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
-import { AUJOURDHUI, horodatageMaintenant } from '../../../data/format';
+import { AUJOURDHUI, horodatageMaintenant, insecables } from '../../../data/format';
 import { signatureEspace } from '../../../data/marque-espace';
 import { useErp } from '../../../data/store';
 import type { ContactCrm } from '../../../data/types';
-import { Alert, Button, Drawer, Field, Input, Segmente, Skeleton, Textarea } from '../../../ui';
+import { Alert, Button, classesBouton, Drawer, Field, Input, Segmente, Skeleton, Textarea } from '../../../ui';
 import { demanderRelance } from './relance';
 
 export interface PreparerRelanceProps {
   contact: ContactCrm | undefined;
-  /** Ouverte depuis « Préparer la relance » : le brouillon est demandé tout de suite (un clic). */
+  /** Le brouillon est demandé dès l'ouverture (un clic), si la prochaine action est d'écrire. */
   auto: boolean;
   onFermer: () => void;
-  onModifier: (c: ContactCrm) => void;
+  /** « C’est envoyé » : le contact mis à jour (trace, relance suivante). */
+  onEnvoye: (c: ContactCrm) => void;
   onOuvrirFiche: (id: string) => void;
   auteur: string;
   lectureSeule: boolean;
@@ -35,12 +38,13 @@ type Etat = { etape: 'vide' } | { etape: 'chargement' } | { etape: 'pret'; relan
 const NOM_CANAL: Record<CanalRelance, string> = { sms: 'SMS', email: 'E-mail' };
 
 /**
- * Relance d'un contact : la prochaine action, pourquoi il est en tête de la
- * file (points), puis le brouillon rédigé par l'IA (SMS ou e-mail), à
- * relire, retoucher et copier. Rien n'est envoyé par l'ERP : « C’est
- * envoyé » note seulement la relance dans l'historique et fixe la suivante.
+ * Un contact du CRM : la prochaine action, pourquoi cette priorité (points),
+ * puis la relance rédigée par l'IA (SMS ou e-mail), à relire, retoucher et
+ * copier. Rien n'est envoyé par l'ERP : l'équipe l'envoie elle-même, puis
+ * « C’est envoyé » note la relance dans l'historique et fixe la suivante.
+ * Si la prochaine action est d'appeler, « Appeler » passe avant l'écrit.
  */
-export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirFiche, auteur, lectureSeule }: PreparerRelanceProps) {
+export function PreparerRelance({ contact, auto, onFermer, onEnvoye, onOuvrirFiche, auteur, lectureSeule }: PreparerRelanceProps) {
   const d = useErp();
   const [canal, setCanal] = useState<CanalRelance | null>(null);
   const [etats, setEtats] = useState<Partial<Record<CanalRelance, Etat>>>({});
@@ -52,22 +56,25 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
 
   const action = contact ? prochaineAction(contact, AUJOURDHUI) : undefined;
   const defaut = contact ? canalParDefaut(contact, action) : null;
+  const ecrireDabord = action?.canal === 'sms' || action?.canal === 'email';
 
-  // Nouveau contact ouvert : on repart de zéro (et on demande le brouillon si l'ouverture vient du bouton).
+  // Nouveau contact ouvert : on repart de zéro (et on demande le brouillon si la prochaine action est d'écrire).
   useEffect(() => {
     demande.current++;
     setEtats({});
     setCopie(null);
     setCanal(defaut);
-    if (contact && auto && defaut) void preparer(defaut);
+    if (contact && auto && defaut && ecrireDabord) void preparer(defaut);
   }, [id]);
 
   if (!contact) return <Drawer ouvert={false} onFermer={onFermer} titre="">{null}</Drawer>;
 
   const profil = profilContact(contact);
   const score = scoreContact(contact, AUJOURDHUI);
+  const dansLaFile = aTraiterLe(contact, AUJOURDHUI);
   const etat: Etat = (canal && etats[canal]) || { etape: 'vide' };
   const possibles = (['sms', 'email'] as const).filter((x) => (x === 'sms' ? !!contact.telephone?.trim() : !!contact.email?.trim()));
+  const tel = contact.telephone?.replace(/[^\d+]/g, '');
 
   async function preparer(c: CanalRelance) {
     if (!contact) return;
@@ -106,27 +113,39 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
   };
 
   const envoye = () => {
-    if (!canal) return;
-    onModifier(noterRelanceEnvoyee(contact, canal, auteur, horodatageMaintenant(), AUJOURDHUI));
-    onFermer();
+    if (canal) onEnvoye(noterRelanceEnvoyee(contact, canal, auteur, horodatageMaintenant(), AUJOURDHUI));
   };
 
   const pret = etat.etape === 'pret';
-  const pied = !canal ? undefined : pret ? (
+  const appeler = !pret && action?.canal === 'appel' && !!tel;
+  // Lecture seule : rien à rédiger (ni brouillon, ni « C’est envoyé ») ; l'appel reste.
+  const pied = !canal ? undefined : lectureSeule ? (
+    tel ? (
+      <a href={`tel:${tel}`} aria-label={`Appeler ${contact.nom}`} className={classesBouton('primary')}>
+        <Phone aria-hidden /> Appeler
+      </a>
+    ) : undefined
+  ) : pret ? (
     <>
-      {!lectureSeule && (
-        <Button variant="secondary" icone={<Check />} onClick={envoye} disabled={!texte.trim()}>
-          C’est envoyé
-        </Button>
-      )}
+      <Button variant="secondary" icone={<Check />} onClick={envoye} disabled={!texte.trim()}>
+        C’est envoyé
+      </Button>
       <Button variant="primary" icone={copie === 'ok' ? <Check /> : <Copy />} onClick={copier} disabled={!texte.trim()}>
         {copie === 'ok' ? 'Copié' : 'Copier'}
       </Button>
     </>
   ) : (
-    <Button variant="primary" icone={<PenLine />} chargement={etat.etape === 'chargement'} onClick={() => void preparer(canal)}>
-      {etat.etape === 'erreur' ? 'Réessayer' : 'Préparer la relance'}
-    </Button>
+    <>
+      {/* La prochaine action est d'appeler : l'appel d'abord, l'écrit en second. */}
+      <Button variant={appeler ? 'secondary' : 'primary'} icone={<PenLine />} chargement={etat.etape === 'chargement'} onClick={() => void preparer(canal)}>
+        {etat.etape === 'erreur' ? 'Réessayer' : 'Préparer la relance'}
+      </Button>
+      {appeler && (
+        <a href={`tel:${tel}`} aria-label={`Appeler ${contact.nom}`} className={classesBouton('primary')}>
+          <Phone aria-hidden /> Appeler
+        </a>
+      )}
+    </>
   );
 
   return (
@@ -135,6 +154,11 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
       onFermer={onFermer}
       titre={contact.nom}
       sousTitre={[LIBELLE_PROFIL[profil], contact.ville].filter(Boolean).join(' · ')}
+      actions={
+        <Button size="sm" variant="ghost" onClick={() => onOuvrirFiche(contact.id)}>
+          Voir la fiche
+        </Button>
+      }
       pied={pied}
     >
       <div className="space-y-5">
@@ -142,24 +166,34 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
           <h3 id="relance-action" className="text-[12.5px] font-medium text-(--lm-encre-3)">
             Prochaine action
           </h3>
-          <p className="mt-1 text-[15px] text-(--lm-encre)">{action?.phrase}</p>
-          <details className="group mt-2">
-            <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
-              Pourquoi en tête de la file ? {score.points} points
-              <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
-            </summary>
-            <ul className="mt-1 space-y-1 rounded-lg bg-(--lm-surface-2) px-3 py-2 text-[13px] text-(--lm-encre-2)">
-              {score.raisons.map((r) => (
-                <li key={r.libelle} className="flex justify-between gap-3">
-                  <span>{r.libelle}</span>
-                  <span className="lm-chiffres shrink-0">{r.points > 0 ? `+${r.points}` : r.points}</span>
+          <p className="mt-1 text-[15px] text-(--lm-encre)">{insecables(action?.phrase ?? '')}</p>
+          {dansLaFile ? (
+            <details className="group mt-2">
+              <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+                Pourquoi cette priorité ?
+                <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <ul className="mt-1 space-y-1 rounded-lg bg-(--lm-surface-2) px-3 py-2 text-[13px] text-(--lm-encre-2)">
+                {score.raisons.map((r) => (
+                  <li key={r.libelle} className="flex justify-between gap-3">
+                    <span>{r.libelle}</span>
+                    <span className="lm-chiffres shrink-0">{r.points > 0 ? `+${r.points}` : r.points}</span>
+                  </li>
+                ))}
+                <li className="flex justify-between gap-3 text-(--lm-encre-3)">
+                  <span>Total</span>
+                  <span className="lm-chiffres shrink-0">{score.points} points</span>
                 </li>
-              ))}
-            </ul>
-          </details>
+              </ul>
+            </details>
+          ) : (
+            <p className="mt-2 text-[13px] text-(--lm-encre-2)">
+              {`Pas dans la file d’aujourd’hui${contact.relanceLe && contact.relanceLe > AUJOURDHUI ? ` : relance prévue le ${jourMoisCrm(contact.relanceLe)}` : ''}`.replace(/\.?$/, '.')}
+            </p>
+          )}
         </section>
 
-        {possibles.length === 0 ? (
+        {lectureSeule ? null : possibles.length === 0 ? (
           <Alert tone="alerte" titre="Ni téléphone ni e-mail dans la fiche.">
             <Button size="sm" variant="secondary" onClick={() => onOuvrirFiche(contact.id)}>
               Ouvrir la fiche
@@ -172,10 +206,10 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
                 Relance
               </h3>
               {possibles.length > 1 && canal && (
-                <Segmente label="Envoyer par" valeur={canal} onChange={choisirCanal} options={possibles.map((x) => ({ valeur: x, libelle: NOM_CANAL[x] }))} />
+                <Segmente label="Type de message" valeur={canal} onChange={choisirCanal} options={possibles.map((x) => ({ valeur: x, libelle: NOM_CANAL[x] }))} />
               )}
             </div>
-            {etat.etape === 'vide' && <p className="text-[13.5px] text-(--lm-encre-2)">Votre agent rédige un {canal === 'email' ? 'e-mail' : 'SMS'} au ton de la maison. Vous le relisez avant de l’envoyer.</p>}
+            <p className="text-[13px] text-(--lm-encre-2)">Envoyez-le vous-même depuis votre téléphone ou votre messagerie, puis « C’est envoyé ». L’ERP n’envoie rien.</p>
             {etat.etape === 'chargement' && (
               <div className="space-y-2" aria-live="polite" aria-busy>
                 <p className="text-[13.5px] text-(--lm-encre-2)">Votre agent rédige…</p>
@@ -190,7 +224,7 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
                     <Input value={objet} onChange={(e) => setObjet(e.target.value)} />
                   </Field>
                 )}
-                <Field label={canal === 'email' ? 'Message' : 'SMS'}>
+                <Field label="Message">
                   <Textarea
                     rows={canal === 'email' ? 10 : 6}
                     value={texte}
@@ -203,9 +237,7 @@ export function PreparerRelance({ contact, auto, onFermer, onModifier, onOuvrirF
                 {etat.avis && <p className="text-[12.5px] text-(--lm-encre-2)">{etat.avis}</p>}
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-[12.5px] text-(--lm-encre-3)" role="status" aria-live="polite">
-                    {copie === 'echec'
-                      ? 'Copie impossible : sélectionnez le texte.'
-                      : `${canal === 'sms' ? `${texte.length} caractères · ` : ''}Rien n’est envoyé par l’ERP.`}
+                    {copie === 'echec' ? 'Copie impossible : sélectionnez le texte.' : canal === 'sms' ? `${texte.length} caractères` : ''}
                   </p>
                   <Button size="sm" variant="ghost" icone={<RotateCcw />} onClick={() => canal && void preparer(canal)}>
                     Réécrire

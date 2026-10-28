@@ -194,7 +194,7 @@ export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: bool
             : manques
               ? `${manques > 1 ? `${manques} réglages manquent` : 'Un réglage manque'} côté site : transmettez le détail ci-dessous à la personne qui gère le site.`
               : derniere
-                ? `Dernier passage ${ilYa(derniere)}. Il repasse toutes les 30 minutes, de 8 h à 23 h.`
+                ? `Dernier passage ${ilYa(derniere)}. Il repasse toutes les 30 minutes, de 7 h à 23 h.`
                 : 'Pas encore de passage : le premier aura lieu dans les 30 minutes.'}
         </Ligne>
       </ul>
@@ -212,7 +212,7 @@ export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: bool
             {derniere ? `Dernier passage ${ilYa(derniere)}.` : 'Pas encore de passage.'}{' '}
             {c && !c.planification
               ? 'CRON_SECRET manque dans Vercel : pas de passage automatique.'
-              : 'Passages automatiques toutes les 30 min de 8 h à 23 h (Supabase, supabase/erp-agent-cron.sql), et après chaque synchronisation.'}
+              : 'Passages automatiques toutes les 30 min de 7 h à 23 h (Supabase, supabase/erp-agent-cron.sql), et après chaque synchronisation.'}
           </Ligne>
           {/* Telegram : Label Maison seulement. */}
           {estLabelMaison(espaceOuvert()) && (

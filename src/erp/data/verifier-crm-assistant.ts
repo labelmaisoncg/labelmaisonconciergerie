@@ -3,7 +3,8 @@
  * apporteur, score expliqué, file « à appeler / à relancer aujourd’hui »
  * (même règle que le CRM), prochaine action, « C’est envoyé », modèle sans
  * IA, garde-fous du brouillon, puis la rédaction par une fausse IA :
- * vouvoiement demandé, ni téléphone ni e-mail du contact transmis, plafond
+ * vouvoiement demandé, ni téléphone ni e-mail du contact transmis (champs,
+ * nom et textes libres : coordonnées masquées, prénom seul), plafond
  * mensuel, brouillon dangereux écarté, rien d'écrit sur le contact et rien
  * d'envoyé. Le connecteur Claude expose la même file, en lecture.
  *
@@ -75,9 +76,9 @@ section('Score simple et expliqué');
   const s = scoreContact(contact('a'), J);
   verifier(s.points === 75 && s.raisons.map((r) => `${r.libelle}:${r.points}`).join('|') === 'Nouvelle demande:40|Demande reçue aujourd’hui:15|Demande d’audit:10|Propriétaire : mandat possible:10', 'nouvelle demande d’audit du jour, propriétaire : 40 + 15 + 10 + 10', s);
   const retard = scoreContact(contact('b', { statut: 'a_rappeler', relanceLe: '2026-10-24', tentatives: 1, creeLe: '2026-10-20T08:00:00+01:00', source: 'contact' }), J);
-  verifier(retard.points === 30 + 18 + 3 + 10 && retard.raisons.some((r) => r.libelle === 'Relance en retard de 3 jours' && r.points === 18), 'relance en retard de 3 jours : 15 + 3', retard);
+  verifier(retard.points === 30 + 8 + 3 + 10 && retard.raisons.some((r) => r.libelle === 'Relance en retard de 3 jours' && r.points === 8), 'relance en retard de 3 jours : 5 + 3', retard);
   const plafond = scoreContact(contact('c', { statut: 'a_rappeler', relanceLe: '2026-09-01' }), J);
-  verifier(plafond.raisons.find((r) => r.libelle.startsWith('Relance en retard'))?.points === 25, 'retard plafonné (15 + 10 au plus)');
+  verifier(plafond.raisons.find((r) => r.libelle.startsWith('Relance en retard'))?.points === 15, 'retard plafonné (5 + 10 au plus) : jamais devant une relance prévue aujourd’hui (15)');
   const apporteur = scoreContact(contact('d', { source: 'cercle' }), J);
   verifier(apporteur.points === 40 + 15 + 0 + 5, 'apporteur : 5 points, candidature au Cercle sans bonus de source', apporteur);
   const injoignable = scoreContact(contact('e', { telephone: undefined, email: undefined, statut: 'a_rappeler', tentatives: 3, relanceLe: J, creeLe: '2026-10-01T08:00:00+01:00' }), J);
@@ -98,8 +99,8 @@ section('File du jour : la règle du CRM, triée par score');
     contact('perdu', { statut: 'pas_interesse' }),
   ];
   const file = fileDuJour(contacts, J);
-  // fraîche 75 (40 + 15 + 10 + 10) ; relance échue d'un échange en cours 57 (20 + 17 + 10 + 10) ; demande de 17 jours 53 (40 + 3 + 10).
-  verifier(file.map((e) => e.contact.id).join() === 'fraiche,retard,ancienne', 'nouvelles demandes et relances échues ; ni relance future, ni signé, ni pas intéressé ; la plus prioritaire d’abord', file.map((e) => `${e.contact.id}:${e.score.points}`));
+  // fraîche 75 (40 + 15 + 10 + 10) ; demande de 17 jours 53 (40 + 3 + 10) ; relance échue d'un échange en cours 47 (20 + 7 + 10 + 10).
+  verifier(file.map((e) => e.contact.id).join() === 'fraiche,ancienne,retard', 'nouvelles demandes et relances échues ; ni relance future, ni signé, ni pas intéressé ; la plus prioritaire d’abord', file.map((e) => `${e.contact.id}:${e.score.points}`));
   verifier(file.length === contacts.filter((c) => aTraiterLe(c, J)).length, 'exactement les contacts de aTraiterLe (même règle que « À faire » et l’agenda)');
   const seed = creerSeed();
   const demo = fileDuJour(seed.crm, DATE_DEMO);
@@ -155,6 +156,13 @@ section('Garde-fous du brouillon');
     ['x'.repeat(500), 'trop long'],
   ];
   for (const [texte, raison] of cas) verifier(refusRelance({ texte }, 'sms', faits) === raison, `écarté : ${raison}`, refusRelance({ texte }, 'sms', faits));
+  // Vouvoiement accepté, même avec des lettres accentuées autour (« êtes » contient « tes »).
+  for (const texte of ['Bonjour Sophie, si vous êtes disponible, je vous propose un court appel.', 'Bonjour Sophie, où en êtes-vous de votre projet ?', 'Bonjour, quel moment vous arrange ? Bientôt, peut-être ?', 'Bonjour, voici notre tâche : vous rappeler. Tenez-nous au courant.']) {
+    verifier(refusRelance({ texte }, 'sms', faits) === null, `vouvoiement accepté : « ${texte} »`, refusRelance({ texte }, 'sms', faits));
+  }
+  for (const texte of ['Bonjour Sophie, tu peux m’appeler ?', 'Bonjour, je t’appelle demain.', 'Bonjour, ton logement nous intéresse.', 'Bonjour, et toi ?', 'Merci pour tes réponses.', 'TU es disponible ?']) {
+    verifier(refusRelance({ texte }, 'sms', faits) === 'du tutoiement', `tutoiement repéré : « ${texte} »`, refusRelance({ texte }, 'sms', faits));
+  }
   for (const canal of ['sms', 'email'] as const) {
     for (const x of [contact('m1'), contact('m2', { source: 'cercle' }), contact('m3', { statut: 'a_rappeler', tentatives: 1 }), contact('m4', { statut: 'rendez_vous' }), contact('m5', { statut: 'en_attente' }), contact('m6', { statut: 'contacte' }), contact('m7', { nom: 'anonyme@exemple.invalid' })]) {
       const m = relanceModele(x, canal, { signature: 'L’équipe Label Maison', aujourdhui: J });
@@ -169,6 +177,38 @@ section('Garde-fous du brouillon');
   verifier(relanceModele(contact('m7', { nom: 'anonyme@exemple.invalid' }), 'sms', { signature: '', aujourdhui: J }).texte.startsWith('Bonjour, '), 'sans prénom connu : « Bonjour, » seul');
   verifier(/apporteur/.test(consignesRelance({ nom: 'Label Maison', canal: 'sms', profil: 'apporteur' })) && /vouvoiement/.test(consignesRelance({ nom: 'Label Maison', canal: 'email', profil: 'proprietaire' })), 'consignes : profil et vouvoiement');
   verifier(canalValide('sms') === 'sms' && canalValide('whatsapp') === null, 'canal : SMS ou e-mail seulement');
+}
+
+section('Coordonnées jamais transmises à l’IA, même dans les textes libres');
+{
+  // Cas de l'audit : nom = adresse e-mail, numéros et adresses dans le message, les notes et l'historique.
+  const audit = contact('c-audit', {
+    nom: 'jean.dupont@exemple.invalid',
+    telephone: '06 12 34 56 78',
+    email: 'jean.dupont@exemple.invalid',
+    statut: 'a_rappeler',
+    message: 'Rappelez-moi au 06 12 34 56 78 ou jean.dupont@exemple.invalid',
+    notes: 'Son autre mail : jd@exemple.invalid, tel 0611223344',
+    motifAttente: 'Attend le notaire, joindre au 01.23.45.67.89',
+    ville: 'Massy (voir www.exemple.fr)',
+    historique: [{ le: '2026-10-02T10:00:00+02:00', par: 'Kamel', resultat: 'pas_de_reponse', texte: 'Laissé message au +33 6 12 34 56 78' }],
+  });
+  const t = contexteRelance(audit, J);
+  verifier(!/@/.test(t), 'aucune adresse e-mail (nom, message, notes)', t);
+  verifier(!/0?6[\s.]?12[\s.]?34|\+33|0611223344|01\.23\.45/.test(t), 'aucun numéro de téléphone (message, notes, motif, historique)', t);
+  verifier(!/www\.|exemple\.fr/.test(t), 'aucun lien (ville)', t);
+  verifier(t.includes('Contact : (nom non communiqué)') && !t.includes('jean.dupont'), 'nom qui est une adresse : « (nom non communiqué) »', t);
+  verifier(t.includes('Rappelez-moi au … ou …') && t.includes('tel …') && t.includes('Laissé message au …'), 'les phrases restent, seules les coordonnées deviennent « … »', t);
+  const chiffres = contexteRelance(contact('c-chiffres', { nom: 'Martin 0611223344' }), J);
+  verifier(chiffres.includes('(nom non communiqué)') && !chiffres.includes('0611223344') && !chiffres.includes('Martin'), 'nom avec des chiffres : non transmis');
+  const lienNom = contexteRelance(contact('c-lien', { nom: 'www.exemple.invalid' }), J);
+  verifier(lienNom.includes('(nom non communiqué)') && !lienNom.includes('exemple'), 'nom qui est un lien : non transmis');
+  const prenom = contexteRelance(contact('c-prenom', { nom: 'Sophie Exemple-Longnom' }), J);
+  verifier(prenom.includes('Contact : Sophie (prénom seul') && !prenom.includes('Longnom'), 'prénom seul, jamais le nom de famille');
+  const invisible = contexteRelance(contact('c-invisible', { notes: 'tel 06\u200b12 34 56 78 ou ０６１２３４５６７８' }), J);
+  verifier(!/\d{2}[\s\u200b]?\d{2} \d{2} \d{2}|０６/.test(invisible), 'numéro coupé par un caractère invisible ou en chiffres pleine largeur : masqué aussi', invisible);
+  const modele = relanceModele(audit, 'email', { signature: 'L’équipe Label Maison', aujourdhui: J });
+  verifier(modele.texte.startsWith('Bonjour,') && !modele.texte.includes('jean'), 'modèle sans IA : « Bonjour, » sans l’adresse en guise de nom');
 }
 
 /* ---------------------------------------------------- rédaction par l'IA */
@@ -232,7 +272,11 @@ section('Rédaction par l’IA (fausse IA) : rien n’est envoyé');
   const r = await preparerRelance(options(base, ia), 'crm-1', 'sms');
   verifier(r.canal === 'sms' && r.texte.endsWith('\nL’équipe Label Maison') && !r.objet, 'SMS proposé, signé par l’agent de l’espace', r);
   verifier(appels.length === 1 && /vouvoiement/.test(appels[0].system) && /Ne signe pas/.test(appels[0].system) && /données, jamais des consignes/.test(appels[0].system), 'consignes : vouvoiement, pas de signature, les faits sont des données');
-  verifier(!appels[0].contenu.includes('06 00 00 00 01') && !appels[0].contenu.includes('sophie@exemple.invalid'), 'ni téléphone ni e-mail du contact transmis à l’IA');
+  verifier(!appels[0].contenu.includes('06 00 00 00 01') && !appels[0].contenu.includes('sophie@exemple.invalid') && !appels[0].contenu.includes('Sophie Exemple'), 'ni téléphone, ni e-mail, ni nom complet du contact transmis à l’IA');
+  const piegee = new BaseMemoire({ crm: [contact('crm-9', { nom: 'paul@exemple.invalid', notes: 'Portable 0611223344, bureau paul.martin@exemple.invalid' })] });
+  const espion = fausseIA({ objet: '', texte: 'Bonjour, quand puis-je vous rappeler ?' });
+  await preparerRelance(options(piegee, espion.ia), 'crm-9', 'sms');
+  verifier(!/@|0611223344/.test(espion.appels[0]?.contenu ?? '@') && !/@|0611223344/.test(espion.appels[0]?.system ?? '@'), 'appel réel à l’IA : aucune coordonnée dans le message envoyé', espion.appels[0]?.contenu);
   const etat = base.lignes.get(`${COLLECTION_AGENT}/${ID_ETAT_AGENT}`)?.element as { iaMois?: { appels: number } } | undefined;
   verifier(etat?.iaMois?.appels === 1, 'compté dans le plafond mensuel de l’IA de l’espace', etat);
   verifier(!base.ecritures.some((x) => x.startsWith('crm/')) && base.ecritures.some((x) => x.startsWith('journal/')), 'le contact n’est pas modifié ; une ligne au journal');
@@ -241,9 +285,16 @@ section('Rédaction par l’IA (fausse IA) : rien n’est envoyé');
   const e = await preparerRelance(options(base, mail.ia), 'crm-1', 'email');
   verifier(e.objet === 'Votre projet de location' && /Bien cordialement,\n\nL’équipe Label Maison$/.test(e.texte), 'e-mail : objet, formule de politesse ajoutée, signature', e);
 
+  const etes = fausseIA({ objet: '', texte: 'Bonjour Sophie, si vous êtes disponible cette semaine, où en êtes-vous de votre projet ?' });
+  const v = await preparerRelance(options(base, etes.ia), 'crm-1', 'sms').catch((x: { message?: string }) => x);
+  verifier('texte' in v && /vous êtes disponible/.test((v as { texte: string }).texte), 'brouillon au vouvoiement (« vous êtes », « êtes-vous ») : accepté, pas pris pour du tutoiement', v);
   const lien = fausseIA({ objet: '', texte: 'Bonjour, tout est sur www.exemple.fr.' });
   const refus = await preparerRelance(options(base, lien.ia), 'crm-1', 'sms').catch((x: { statut?: number; code?: string; message?: string }) => x);
-  verifier((refus as { statut?: number; code?: string }).statut === 422 && (refus as { code?: string }).code === 'vide', 'brouillon avec un lien : écarté (l’écran propose le modèle)', refus);
+  verifier(
+    (refus as { statut?: number; code?: string }).statut === 422 && (refus as { code?: string }).code === 'vide' && (refus as { message?: string }).message === 'Brouillon écarté : il contenait un lien. Voici un modèle à compléter.',
+    'brouillon avec un lien : écarté, raison en clair (l’écran propose le modèle)',
+    (refus as { message?: string }).message,
+  );
   const illisible = await preparerRelance(options(base, fausseIA('pas du JSON').ia), 'crm-1', 'sms').catch((x: { statut?: number }) => x);
   verifier((illisible as { statut?: number }).statut === 502, 'réponse illisible : refus clair');
 

@@ -41,7 +41,11 @@ const J = '2026-10-27'; // mardi (heure d'hiver à Paris : UTC+1)
 const MAINTENANT = '2026-10-27T07:30:00+01:00';
 
 const logement = (id: string, nom: string): Logement =>
-  ({ id, nom, ville: 'Évry', codePostal: '91000', statut: 'actif', proprietaireId: 'p1', annonces: [], lits: [], fiche: {}, checklistLancement: [], dotationLinge: [] }) as unknown as Logement;
+  ({
+    id, nom, ville: 'Évry', codePostal: '91000', statut: 'actif', proprietaireId: 'p1', annonces: [], lits: [], checklistLancement: [], dotationLinge: [],
+    // Fiche complète : l'agent ne manque de rien (sinon « Votre agent manque d'informations »).
+    fiche: { wifiNom: 'Box', wifiCode: 'code', heureArrivee: '16:00', heureDepart: '11:00', acces: 'Boîte à clés', parking: 'Rue', regles: 'Calme', equipements: ['Lave-linge'] },
+  }) as unknown as Logement;
 
 const resa = (id: string, logementId: string, nom: string, arrivee: string, depart: string, x: Partial<Reservation> = {}): Reservation =>
   ({
@@ -114,7 +118,8 @@ function chiffresInventes(b: Briefing, d: EntreesBriefing): string[] {
   // Alertes : le compte de chaque genre d'anomalie (« 2 risques de double réservation »).
   const alertes = b.sujets.find((s) => s.cle === 'alertes');
   for (const x of alertes?.phrase.match(/\d+(?= (?:risques?|départs?|réservations?|logements?) )/g) ?? []) permis.add(x);
-  return (b.texte.match(/\d+/g) ?? []).filter((x) => !permis.has(x));
+  // Comptes des listes de noms (« Paris 14 Alésia (2) », « et 3 autres ») : calculés sur les éléments, voir liste().
+  return (b.texte.replace(/\((\d+)\)|\b\d+ autres?\b/g, '').match(/\d+/g) ?? []).filter((x) => !permis.has(x));
 }
 
 /* ------------------------------------------------------------- le texte */
@@ -175,7 +180,7 @@ section('Avis, notes, incidents et alertes');
   const cles = b.sujets.map((s) => s.cle).join();
   verifier(cles === 'journee,urgences,incidents,avis_deposer,notes,alertes', 'urgence, incident, avis à déposer, note sous 4,5, double réservation', cles);
   verifier(b.texte.includes('Une urgence signalée : Paris 14 Alésia.') && b.texte.includes('Un incident ouvert : Lisses Jardin.'), 'incidents : urgence à part, résolu ignoré', b.texte);
-  verifier(b.texte.includes('Un avis à déposer sur Airbnb (Zoé).') && b.texte.includes('Une note de voyageur sous 4,5 à lire (4,2 à Lisses Jardin).'), 'avis à déposer (Airbnb) et note à lire', b.texte);
+  verifier(b.texte.includes('Un avis à déposer sur Airbnb : Zoé.') && b.texte.includes('Une note de voyageur sous 4,5 à lire : 4,2 à Lisses Jardin.'), 'avis à déposer (Airbnb) et note à lire', b.texte);
   verifier(b.texte.includes('À vérifier : 1 risque de double réservation.'), 'alerte : double réservation', b.texte);
   verifier(b.court === 'Ni arrivée ni départ, aucun logement occupé ce soir. 1 urgence, 1 point à vérifier, 1 avis à déposer, 1 note à lire et 1 incident ouvert.', 'notification : le plus pressant d’abord (urgence, alerte)', b.court);
   verifier(chiffresInventes(b, e).length === 0, 'aucun chiffre inventé (avis, notes, alertes)', chiffresInventes(b, e));
@@ -202,11 +207,24 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
   verifier(n(g, 'urgences') === lignes('urgence') && n(g, 'incidents') === lignes('incident'), 'urgences et incidents : mêmes nombres', [n(g, 'urgences'), lignes('urgence'), n(g, 'incidents'), lignes('incident')]);
   verifier(n(g, 'prix') === lignes('prix') && n(g, 'prix') > 0, 'prix à revoir (gérant) : même nombre de logements', [n(g, 'prix'), lignes('prix')]);
   verifier(n(g, 'factures') === lignes('factures') && n(g, 'factures') > 0, 'factures mensuelles à valider (gérant) : même nombre', [n(g, 'factures'), lignes('factures')]);
+  verifier(n(g, 'fiches_agent') === lignes('agent'), 'fiches incomplètes pour l’agent : même nombre', [n(g, 'fiches_agent'), lignes('agent')]);
+  const sansFiche = { ...seed, logements: seed.logements.map((l, i) => (i === 0 && l.statut === 'actif' ? { ...l, fiche: { ...l.fiche, wifiCode: '' } } : l)) };
+  const nFiches = construireBriefing({ ...sansFiche, aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: false }).sujets.find((s) => s.cle === 'fiches_agent')?.n ?? 0;
+  verifier(nFiches === (construireATraiter(sansFiche, DATE_DEMO).find((x) => x.id === 'agent')?.details.length ?? 0) && nFiches > 0, 'une fiche incomplète : la même ligne au briefing et dans « À faire »', nFiches);
+  verifier(n(g, 'signalements') === lignes('signalement'), 'logements signalés « pas à moi » (gérant) : même nombre', [n(g, 'signalements'), lignes('signalement')]);
+  // Chaque ligne de « À faire » a sa phrase dans le briefing (même contenu à l'écran, dans le texte copié et la notification).
+  const couverts: Record<string, string> = { message: 'messages', urgence: 'urgences', incident: 'incidents', avisHote: 'avis_deposer', avis: 'notes', crm: 'crm', agent: 'fiches_agent', 'agent-controle': 'controle_agent', signalement: 'signalements', factures: 'factures', prix: 'prix', charge: 'alertes', synchro: 'alertes' };
+  const sansPhrase = aFaire.filter((x) => !(x.id.startsWith('anomalie-') ? g.sujets.some((s) => s.cle === 'alertes') : g.sujets.some((s) => s.cle === couverts[x.id])));
+  verifier(sansPhrase.length === 0, 'chaque ligne de « À faire » est dans le texte du briefing', sansPhrase.map((x) => x.id));
+  const alerte = construireBriefing({ ...seed, reglages: [...seed.reglages, { id: 'alerte-controle-agent', active: true } as never], aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: false });
+  verifier(alerte.texte.includes('Votre agent ne vérifie plus ses réponses') && alerte.court.includes('votre agent ne vérifie plus ses réponses'), 'contrôle des réponses de l’agent en panne : dans le texte et la notification', alerte.court);
+  verifier(!/\([^()]*\(/.test(g.texte), 'démonstration : pas de parenthèses imbriquées (« (Daniel (2), …) »)', g.texte);
   verifier(chiffresInventes(g, { ...seed, aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: true }).length === 0, 'démonstration : aucun chiffre inventé', chiffresInventes(g, { ...seed, aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: true }));
 
   section('Rôles : prix et factures pour le gérant seulement');
   verifier(!o.sujets.some((s) => s.cle === 'prix' || s.cle === 'factures') && !/Prix à revoir|facture/i.test(o.texte) && !/prix|facture/i.test(o.court), 'membre non gérant : ni prix conseillés ni factures (texte et notification)', o.texte);
-  verifier(g.sujets.filter((s) => s.gerant).every((s) => s.cle === 'prix' || s.cle === 'factures'), 'seuls prix et factures sont marqués « gérant »');
+  verifier(g.sujets.filter((s) => s.gerant).every((s) => s.cle === 'prix' || s.cle === 'factures' || s.cle === 'signalements'), 'seuls prix, factures et « pas à moi » sont marqués « gérant »');
+  verifier(!o.sujets.some((s) => s.cle === 'signalements'), 'membre non gérant : pas de « pas à moi » (comme « À faire »)');
   const aFaireOps = construireATraiter(seed, DATE_DEMO, { gerant: false });
   verifier(!aFaireOps.some((x) => x.type === 'facture' || x.type === 'prix'), '« À faire » d’un non-gérant : ni facture ni prix');
   const notif = notificationBriefing(g, o)!;
@@ -223,7 +241,8 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
 section('Petites règles d’écriture');
 {
   verifier(liste(['a']) === 'a' && liste(['a', 'b']) === 'a et b' && liste(['a', 'b', 'c']) === 'a, b et c' && liste(['a', 'b', 'c', 'd', 'e']) === 'a, b, c et 2 autres', 'listes de noms (« et 2 autres »)');
-  verifier(liste(['a', 'a', 'b']) === 'a et b', 'pas de nom en double');
+  verifier(liste(['a', 'a', 'b']) === 'a (2) et b', 'un nom qui revient : cité une fois avec son nombre');
+  verifier(liste(['a', 'a', 'b', 'c', 'd', 'd', 'e', 'f']) === 'a (2), b, c et 4 autres', '« et N autres » compte les éléments (8 = 2 + 1 + 1 + 4)', liste(['a', 'a', 'b', 'c', 'd', 'd', 'e', 'f']));
 }
 
 /* ------------------------------------------------------- passage planifié */
@@ -356,6 +375,16 @@ section('Passage planifié : fenêtre, une fois par jour, qui le reçoit');
   verifier([a.statut, b.statut].sort().join() === 'deja-pris,fait' && recus.length === 1, 'deux passages en même temps : une seule notification', { a: a.statut, b: b.statut, recus: recus.length });
 }
 
+section('Passage planifié : mise à jour des plateformes en échec');
+{
+  const base = baseEspace([appareil('ops', 'operations', { rappel: true })]);
+  await base.ecrire('repull', [{ id: 'etat', derniereSynchro: '2026-10-27T05:17:00+01:00', dernierBilan: { erreurs: ['Repull ne répond pas'] } } as { id: string }]);
+  recus.length = 0;
+  const r = await passer(base, '2026-10-27T06:30:00Z');
+  verifier(r.statut === 'fait' && /1 point à vérifier/.test(recus[0]?.corps ?? ''), 'serveur : la synchronisation en échec compte dans « à vérifier » (comme à l’écran)', recus[0]?.corps);
+  verifier(base.lectures.includes('repull/etat') && !base.lectures.includes('journal'), 'lue dans l’état de la synchronisation (une ligne), pas dans tout le journal', base.lectures);
+}
+
 section('Le 1er du mois : le briefing attend les factures du mois terminé');
 {
   const base = baseEspace([appareil('gerant', 'gerant', { rappel: true })], { traceFactures: null });
@@ -380,7 +409,7 @@ section('Lecture seule vis-à-vis des plateformes');
   const lire = (p: string) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
   const sources = ['src/erp/data/briefing.ts', 'src/erp/data/briefing-passage.ts', 'api/_briefing.ts'].map(lire);
   verifier(sources.every(Boolean), 'sources du briefing lisibles (lancer depuis la racine du dépôt)');
-  verifier(sources.every((s) => !/repull|fetch\(|anthropic|messages\.create/i.test(s.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ''))), 'le briefing n’appelle ni les plateformes, ni l’IA : texte calculé sur la base seule');
+  verifier(sources.every((s) => !/repull-synchro|ClientRepull|fetch\(|https?:\/\/|anthropic|messages\.create/i.test(s.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, ''))), 'le briefing n’appelle ni les plateformes, ni l’IA : texte calculé sur la base seule');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
