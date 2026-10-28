@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plug, Plus } from 'lucide-react';
-import { Button, ButtonLink, EmptyState, FilterChips, MenuActions, PageHeader, SearchInput, useCreationParUrl } from '../../ui';
+import { Button, ButtonLink, EmptyState, FilterChips, IconButton, PageHeader, SearchInput, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import type { StatutLogement } from '../../data/types';
@@ -15,7 +15,7 @@ const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 /**
  * Logements en cartes, comme des annonces : photo, note, ville, prochain
  * événement, prix de la nuit. Dans tout espace, même sans plateforme
- * connectée, un logement s'ajoute à la main (« Plus », ou l'écran vide) ;
+ * connectée, un logement s'ajoute à la main (« + » de l'en-tête, ou l'écran vide) ;
  * il se relie ensuite à son annonce depuis sa fiche.
  */
 export default function ListeLogements() {
@@ -45,14 +45,21 @@ export default function ListeLogements() {
         titre="Logements"
         actions={
           d.logements.length > 0 && (
-            <MenuActions
-              texte
-              label="Plus"
-              actions={[
-                { libelle: connecte ? 'Plateformes et logements suivis' : 'Connecter Airbnb, Booking…', icone: <Plug />, to: '/erp/logements/connexions' },
-                ...(creer ? [{ libelle: 'Ajouter un logement à la main', icone: <Plus />, onClick: creer }] : []),
-              ]}
-            />
+            // Deux icônes, comme une app : la prise (plateformes et synchronisation), puis « + » (nouveau logement).
+            <div className="flex items-center gap-2">
+              <ButtonLink
+                to="/erp/logements/connexions"
+                aria-label={connecte ? 'Plateformes et synchronisation' : 'Connecter Airbnb, Booking…'}
+                title={connecte ? 'Plateformes et synchronisation' : 'Connecter Airbnb, Booking…'}
+                icone={<Plug />}
+                className="w-9 px-0"
+              />
+              {creer && (
+                <IconButton label="Ajouter un logement" variant="secondary" onClick={creer}>
+                  <Plus />
+                </IconButton>
+              )}
+            </div>
           )
         }
       />
