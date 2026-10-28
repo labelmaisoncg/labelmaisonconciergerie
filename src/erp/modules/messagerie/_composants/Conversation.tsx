@@ -37,6 +37,7 @@ import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
 import { ICONES_SUPPLEMENTS, PropositionSupplement, usePropositionsSupplements, type PropositionPrete } from './PropositionSupplement';
 import { LIBELLES_SUPPLEMENTS, type CleSupplement } from '../../../data/supplements';
+import { tracesEnvoyees } from '../../../data/copilote';
 
 /** Réponse de /api/erp-repull-messages. */
 interface ReponseEnvoi {
@@ -87,7 +88,7 @@ const ENTREE_ENVOIE = typeof window !== 'undefined' && !!window.matchMedia?.('(p
 const HAUTEUR_MAX_SAISIE = 160;
 
 export function Conversation({ fil, logement, reservation }: Props) {
-  const { upsert, mode, lectureSeule, reglages, utilisateur } = useErp();
+  const { upsert, mode, lectureSeule, reglages, utilisateur, actionsAgent } = useErp();
   // Réponses rapides signées comme l'agent de l'espace (Label Maison : « L’équipe Label Maison »).
   const signature = signatureEspace({ reglages }, espaceOuvert());
   // Réponse préparée par l'agent pour le dernier message du voyageur, pas encore envoyée : déjà dans la zone de réponse.
@@ -239,6 +240,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
       messages: [...fil.messages, { id: nouvelId('msg'), auteur: 'hote', texte, envoyeLe }],
     };
     upsert('filsMessages', valide?.source === 'agent' ? marquerBrouillonValide(repondu, utilisateur.nom, valide.modifiee, envoyeLe) : repondu);
+    // Réponse proposée par Claude ou l'agent : sa trace passe « envoyée par … » (Actions de l'IA, chargées pour le gérant seul).
+    if (valide?.source === 'agent') for (const t of tracesEnvoyees(actionsAgent, fil, { par: utilisateur.email || utilisateur.nom, le: envoyeLe })) upsert('actionsAgent', t);
     setBrouillon('');
     setAide(null);
     setPrecedent(null);

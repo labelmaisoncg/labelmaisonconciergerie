@@ -78,7 +78,7 @@ import {
   type ResultatControle,
 } from './controle-reponse.js';
 import type { GroupeNotification } from './notifications.js';
-import { COLLECTION_ACTIONS_AGENT, actionAgentMessagerie, type SortAgent } from './copilote.js';
+import { COLLECTION_ACTIONS_AGENT, actionAgentMessagerie, actionsIaProtegees, type SortAgent } from './copilote.js';
 import { REGLAGES_AGENT_DEFAUT, reglagesAgent } from './reglages.js';
 import { LIBELLE_TYPE_GUIDE, MAX_GUIDES_PAR_REPONSE, guideEnvoyable, guidesAJoindre, lienGuide, questionsValides, texteAvecGuides, type SignerFichier } from './guides.js';
 import {
@@ -715,11 +715,13 @@ class Passage {
   private async tracer(sort: SortAgent, avant: FilMessages, apres: FilMessages | undefined, o: { texte?: string; motif?: string } = {}) {
     if (!apres) return;
     try {
+      if (!(await actionsIaProtegees(this.o.base))) return;
       const espace = await this.o.base.espace();
       const a = actionAgentMessagerie({ sort, avant, apres, le: horodatageParis(this.maintenant()), espace, ...o, ...(this.logementEnCours ? { logement: this.logementEnCours } : {}) });
       await this.o.base.ecrire(COLLECTION_ACTIONS_AGENT, [a], AUTEUR_AGENT);
-    } catch {
-      /* trace facultative pour l'agent : la décision est déjà prise et notée au journal */
+    } catch (e) {
+      // Trace facultative pour l'agent : la décision est déjà prise et notée au journal.
+      console.warn('[agent] trace des actions de l’IA non écrite', e instanceof Error ? e.message : e);
     }
   }
 

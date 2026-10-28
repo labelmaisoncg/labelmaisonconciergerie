@@ -8,7 +8,7 @@
  * CRM garde les anciennes valeurs exactes de ses champs (`retour`), pour la
  * remettre telle qu'elle était ; la collection est réservée aux gérants.
  */
-import type { Horodatage, Id } from './types';
+import type { BrouillonAgent, Horodatage, Id } from './types';
 
 /** Qui a agi : Claude (connecteur) ou l'agent de la messagerie. */
 export type SourceAction = 'claude' | 'agent';
@@ -32,6 +32,8 @@ export interface ChangementAction {
   champ: string;
   avant?: string;
   apres?: string;
+  /** « Suivi par » : valeurs brutes (membre de l'espace), que l'écran nomme avec l'équipe de l'espace. */
+  suivi?: { avant?: string; apres?: string };
 }
 
 /**
@@ -47,7 +49,7 @@ export interface ChangementAction {
 export type RetourAction =
   | { genre: 'supprimer' }
   | { genre: 'champs'; avant: Record<string, unknown>; absents: string[]; tetes?: Record<string, { ajoutes: number; perdus: unknown[] }> }
-  | { genre: 'proposition'; avant?: { dernierMessageTraite?: Id; decision?: string; traitePar?: string; statut?: string } };
+  | { genre: 'proposition'; avant?: { dernierMessageTraite?: Id; decision?: string; traitePar?: string; statut?: string; brouillon?: BrouillonAgent } };
 
 /** Accès qui a agi : jeton OAuth (gérant qui a connecté Claude), clé fixée par l'administrateur, ou l'agent. */
 export interface ClientAction {
@@ -86,5 +88,7 @@ export interface ActionAgent {
   empreinte?: string;
   /** Réponse proposée : le message du voyageur et l'heure de la proposition (son sort se lit sur la conversation). */
   proposition?: { messageId: Id; le: Horodatage };
+  /** Réponse proposée envoyée par l'équipe (api/erp-repull-messages.ts, Messagerie) : qui, quand. */
+  envoyee?: { par: string; le: Horodatage };
   annulation?: { le: Horodatage; par: string };
 }

@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useErp } from '../data/store';
-import { incidentsOuverts } from '../data/selectors';
+import { incidentsOuverts, missionPrestataire } from '../data/selectors';
 import type { CleCompteur } from '../modules/registry';
 import { AUJOURDHUI } from '../data/format';
 import { aTraiterLe } from '../data/crm';
@@ -11,7 +11,7 @@ export function useCompteurs(): Record<CleCompteur, number> {
   const { missions, filsMessages, incidents, crm } = useErp();
   return useMemo(
     () => ({
-      missionsAAttribuer: missions.filter((m) => m.statut === 'a_attribuer' && m.date >= AUJOURDHUI).length,
+      missionsAAttribuer: missions.filter((m) => m.statut === 'a_attribuer' && missionPrestataire(m) && m.date >= AUJOURDHUI).length,
       // Même définition que « À répondre » dans la messagerie : confiées par l'agent ou sans réponse.
       messagesEnAttente: filsMessages.filter(attendEquipe).length,
       incidentsOuverts: incidentsOuverts(incidents).length,

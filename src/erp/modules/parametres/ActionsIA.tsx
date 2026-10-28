@@ -5,6 +5,7 @@
  *
  * - En haut, les réponses proposées qui attendent l'équipe : rien n'est parti,
  *   elles s'envoient depuis la Messagerie (la confirmation), ou se retirent.
+ *   Elles reviennent dans la liste du jour une fois envoyées ou retirées.
  * - « Annuler » relit la cible dans la base : si elle a changé depuis
  *   l'action, rien n'est écrasé et la raison s'affiche.
  * - Un message envoyé ne se reprend pas ; aucun prix, aucun paiement.
@@ -15,7 +16,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Bot, MessageSquareText, Sparkles } from 'lucide-react';
-import { ACTIONS_POSSIBLES, LIBELLE_SOURCE, actionsVisibles, annulerAction, etatAffiche, type ActionAgent, type EtatAffiche } from '../../data/copilote';
+import { ACTIONS_POSSIBLES, LIBELLE_SOURCE, actionsIaProtegees, actionsVisibles, annulerAction, etatAffiche, type ActionAgent, type EtatAffiche } from '../../data/copilote';
+import type { ChangementAction } from '../../data/types-copilote';
+import { optionsSuiviCrm } from '../../data/marque-espace';
+import { obtenirClient } from '../../data/supabase';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, heure, horodatageMaintenant, pluriel } from '../../data/format';
 import { useErp } from '../../data/store';
@@ -27,18 +31,12 @@ type Source = 'tout' | 'claude' | 'agent';
 /** Lien d'une trace : une page de l'ERP seulement (la trace vient de la base). */
 const lienSur = (l: string | undefined): string | undefined => (l && /^\/erp\/[\w\-/?=%.&]*$/.test(l) ? l : undefined);
 
-/** Ce qui reviendra comme avant, dit simplement (fenêtre de confirmation). */
-function ceQuiRevient(a: ActionAgent): string[] {
-  const r = a.retour;
-  if (!r) return [];
-  if (r.genre === 'proposition') return ['La réponse proposée est retirée de la conversation. Rien n’avait été envoyé au voyageur.'];
-  if (r.genre === 'supprimer') {
-    if (a.collection === 'missions') return ['Le ménage est retiré du planning.'];
-    if (a.collection === 'factures') return ['Le brouillon de facture est retiré (il n’avait pas de numéro).'];
-    return [`${a.cible} est retiré du CRM.`];
-  }
-  return a.changements.map((c) => `${c.champ} : ${c.avant ?? (c.champ === 'Historique' ? 'ligne retirée' : 'vide')}`);
-}
+/** Libellé du lien vers la cible. */
+const libelleLien = (a: ActionAgent) => (a.collection === 'filsMessages' ? 'Ouvrir la conversation' : a.collection === 'crm' ? 'Ouvrir la fiche' : 'Ouvrir le logement');
+
+/** Champ vide avant l'action, dit simplement (« Relance : aucune », « Suivi par : personne »). */
+const FEMININS = new Set(['Relance', 'Étape', 'Ville', 'Adresse', 'Notes']);
+const aucun = (champ: string) => (champ === 'Suivi par' ? 'personne' : champ === 'Historique' ? 'ligne retirée' : FEMININS.has(champ) ? 'aucune' : 'aucun');
 
 export default function ActionsIA() {
   const d = useErp();
@@ -52,22 +50,29 @@ export default function ActionsIA() {
     const parEmail = new Map(d.utilisateurs.map((u) => [u.email.toLowerCase(), u.nom]));
     return (email: string) => parEmail.get(email.toLowerCase()) ?? email.split('@')[0];
   }, [d.utilisateurs]);
+  /** « Suivi par » : le nom du membre d'après l'équipe de l'espace (Abdel et Kamel à Label Maison). */
+  const nomSuivi = (brut: string | undefined, affiche: string | undefined) =>
+    brut ? (optionsSuiviCrm(espaceOuvert(), d.utilisateurs, brut).find((o) => o.valeur === brut)?.libelle ?? affiche) : affiche;
+  const avantDe = (c: ChangementAction) => (c.suivi ? nomSuivi(c.suivi.avant, c.avant) : c.avant);
+  const apresDe = (c: ChangementAction) => (c.suivi ? nomSuivi(c.suivi.apres, c.apres) : c.apres);
+
   const toutes = useMemo(() => actionsVisibles(d.actionsAgent, AUJOURDHUI), [d.actionsAgent]);
   const etats = useMemo(() => new Map<string, EtatAffiche>(toutes.map((a) => [a.id, etatAffiche(a, d.filsMessages, nom)])), [toutes, d.filsMessages, nom]);
-  const aEnvoyer = toutes.filter((a) => etats.get(a.id)?.aEnvoyer);
-  const liste = toutes.filter((a) => source === 'tout' || a.source === source);
+  const filtrees = useMemo(() => toutes.filter((a) => source === 'tout' || a.source === source), [toutes, source]);
+  // Réponses à envoyer : dans la carte du haut seulement ; elles reviennent dans la liste une fois envoyées ou retirées.
+  const aEnvoyer = filtrees.filter((a) => etats.get(a.id)?.aEnvoyer);
   const jours = useMemo(() => {
     const m = new Map<string, ActionAgent[]>();
-    for (const a of liste) m.set(a.le.slice(0, 10), [...(m.get(a.le.slice(0, 10)) ?? []), a]);
+    for (const a of filtrees) if (!etats.get(a.id)?.aEnvoyer) m.set(a.le.slice(0, 10), [...(m.get(a.le.slice(0, 10)) ?? []), a]);
     return [...m.entries()];
-  }, [liste]);
+  }, [filtrees, etats]);
 
-  const qui = (a: ActionAgent) =>
-    a.client?.genre === 'cle'
-      ? 'Fait par Claude, avec la clé du connecteur'
-      : a.client?.genre === 'oauth'
-        ? `Fait par Claude${a.client.autorisePar ? `, connecté par ${nom(a.client.autorisePar)}` : ''}`
-        : 'Fait par votre agent de messagerie';
+  /** Qui a ouvert l'accès à Claude (jamais sur une action pas faite). */
+  const acces = (a: ActionAgent): string | null => {
+    if (a.etat === 'echec') return null;
+    if (a.client?.genre === 'oauth' && a.client.autorisePar) return `Connecté par ${nom(a.client.autorisePar)}`;
+    return a.client?.genre === 'cle' ? 'Accès réservé de Label Maison' : null;
+  };
 
   /** Relit la cible dans la base, puis annule si elle n'a pas changé depuis l'action. */
   const annuler = async () => {
@@ -75,7 +80,19 @@ export default function ActionsIA() {
     if (!a || enCours) return;
     setEnCours(true);
     setRetour(null);
-    const enStore = (d.donnees[a.collection] as { id: string }[]).find((x) => x.id === a.cibleId);
+    // Sans la règle SQL, une trace a pu être écrite par n'importe quel membre : on n'annule rien.
+    const rpc = async (fonction: string) => {
+      const r = await obtenirClient().rpc(fonction);
+      if (r.error) throw r.error;
+      return r.data;
+    };
+    if (!d.demo && !(await actionsIaProtegees({ rpc }))) {
+      setRetour({ ton: 'danger', texte: 'La mise en service n’est pas terminée : rien n’a été annulé.' });
+      setAAnnuler(null);
+      setEnCours(false);
+      return;
+    }
+    const enStore = ((d.donnees[a.collection] ?? []) as { id: string }[]).find((x) => x.id === a.cibleId);
     const lu = d.demo ? enStore : await d.relire(a.collection, a.cibleId);
     if (!lu && enStore && !d.demo) {
       // Une modification en attente d'enregistrement, ou la base injoignable : on ne décide pas à l'aveugle.
@@ -93,6 +110,19 @@ export default function ActionsIA() {
     setEnCours(false);
   };
 
+  /** Ce qui reviendra comme avant, dit simplement (fenêtre de confirmation). */
+  const ceQuiRevient = (a: ActionAgent): string[] => {
+    const r = a.retour;
+    if (!r) return [];
+    if (r.genre === 'proposition') return ['La réponse proposée est retirée de la conversation. Rien n’avait été envoyé au voyageur.'];
+    if (r.genre === 'supprimer') {
+      if (a.collection === 'missions') return ['Le ménage est retiré du planning.'];
+      if (a.collection === 'factures') return ['Le brouillon de facture est retiré (il n’avait pas de numéro).'];
+      return [`${a.cible} est retiré du CRM.`];
+    }
+    return a.changements.map((c) => `${c.champ} : ${avantDe(c) ?? aucun(c.champ)}`);
+  };
+
   const boutonAnnuler = (a: ActionAgent) => (
     <Button size="sm" variant="ghost" onClick={() => setAAnnuler(a)} aria-label={`${a.retour?.genre === 'proposition' ? 'Retirer' : 'Annuler'} : ${a.resume}`}>
       {a.retour?.genre === 'proposition' ? 'Retirer' : 'Annuler'}
@@ -102,19 +132,19 @@ export default function ActionsIA() {
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="min-w-0 flex-1 text-[14px] text-(--lm-encre-2)">
-          Ce que Claude et votre agent ont fait dans l’ERP. Aucun prix n’est changé, aucun paiement n’est fait.
-        </p>
-        <Segmente
-          label="Qui"
-          valeur={source}
-          onChange={setSource}
-          options={[
-            { valeur: 'tout', libelle: 'Tout' },
-            { valeur: 'claude', libelle: 'Claude' },
-            { valeur: 'agent', libelle: 'Votre agent' },
-          ]}
-        />
+        <p className="min-w-0 flex-1 text-[14px] text-(--lm-encre-2)">Ce que Claude et votre agent ont fait dans l’ERP.</p>
+        {toutes.length > 0 && (
+          <Segmente
+            label="Qui"
+            valeur={source}
+            onChange={setSource}
+            options={[
+              { valeur: 'tout', libelle: 'Tout' },
+              { valeur: 'claude', libelle: 'Claude' },
+              { valeur: 'agent', libelle: 'Votre agent' },
+            ]}
+          />
+        )}
       </div>
 
       {retour && (
@@ -125,10 +155,7 @@ export default function ActionsIA() {
 
       {aEnvoyer.length > 0 && (
         <Card>
-          <CardHeader
-            titre={pluriel(aEnvoyer.length, 'réponse à envoyer', 'réponses à envoyer')}
-            description="Préparées par l’IA, rien n’est parti. Relisez-les et envoyez-les depuis la Messagerie."
-          />
+          <CardHeader titre={pluriel(aEnvoyer.length, 'réponse à envoyer', 'réponses à envoyer')} description="Rien n’est parti : relisez et envoyez depuis la Messagerie." />
           <ul className="-mb-2 divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
             {aEnvoyer.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
@@ -141,7 +168,7 @@ export default function ActionsIA() {
                 <div className="flex shrink-0 items-center gap-1">
                   {!d.lectureSeule && boutonAnnuler(a)}
                   {lienSur(a.lien) && (
-                    <ButtonLink to={lienSur(a.lien)!} size="sm" variant="primary" icone={<MessageSquareText />}>
+                    <ButtonLink to={lienSur(a.lien)!} size="sm" variant="secondary" icone={<MessageSquareText />}>
                       Ouvrir
                     </ButtonLink>
                   )}
@@ -152,7 +179,7 @@ export default function ActionsIA() {
         </Card>
       )}
 
-      {jours.length === 0 ? (
+      {jours.length === 0 && aEnvoyer.length === 0 ? (
         <EmptyState
           icone={<Sparkles />}
           titre={source === 'tout' ? 'Rien pour l’instant' : `Rien de ${source === 'claude' ? 'Claude' : 'votre agent'} pour l’instant`}
@@ -167,6 +194,8 @@ export default function ActionsIA() {
                 {actions.map((a) => {
                   const etat = etats.get(a.id) ?? { libelle: '', ton: 'neutre' as const, annulable: false };
                   const deplie = ouverte === a.id;
+                  const idDetail = `action-ia-${a.id}`;
+                  const qui = acces(a);
                   return (
                     <li key={a.id} className="flex items-start gap-3 px-4 py-3">
                       <span
@@ -179,46 +208,51 @@ export default function ActionsIA() {
                         {a.source === 'claude' ? <Sparkles /> : <Bot />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <button type="button" onClick={() => setOuverte(deplie ? null : a.id)} aria-expanded={deplie} className="block w-full rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
-                          <span className="flex items-baseline gap-2">
-                            <span className={cn('min-w-0 flex-1 text-[13.5px] text-(--lm-encre)', a.etat === 'annulee' && 'text-(--lm-encre-3) line-through decoration-(--lm-bord-fort)')}>{a.resume}</span>
-                            <time dateTime={a.le} className="lm-chiffres shrink-0 text-[12px] text-(--lm-encre-3)">
-                              {heure(a.le)}
-                            </time>
-                          </span>
-                          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[12px] text-(--lm-encre-3)">
-                            <span>{LIBELLE_SOURCE[a.source]}</span>
-                            {/* La phrase dit déjà ce qui est fait : un badge seulement pour ce qui reste à faire ou a changé depuis. */}
-                            {a.etat !== 'faite' && etat.libelle && <Badge tone={etat.ton}>{etat.libelle}</Badge>}
-                          </span>
+                        <button
+                          type="button"
+                          onClick={() => setOuverte(deplie ? null : a.id)}
+                          aria-expanded={deplie}
+                          aria-controls={idDetail}
+                          className="flex w-full items-baseline gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                        >
+                          <span className={cn('min-w-0 flex-1 text-[13.5px] text-(--lm-encre)', a.etat === 'annulee' && 'text-(--lm-encre-3) line-through decoration-(--lm-bord-fort)')}>{a.resume}</span>
+                          <time dateTime={a.le} className="lm-chiffres shrink-0 text-[12px] text-(--lm-encre-3)">
+                            {heure(a.le)}
+                          </time>
                         </button>
+                        {/* Pas faite : la raison d'abord. */}
+                        {a.etat === 'echec' && <p className="mt-0.5 text-[12.5px] text-(--lm-danger)">Pas fait : l’enregistrement n’a pas abouti, rien n’a changé.</p>}
+                        <div className="mt-1 flex min-h-8 flex-wrap items-center gap-1.5 text-[12px] text-(--lm-encre-3)">
+                          <span>{LIBELLE_SOURCE[a.source]}</span>
+                          {/* La phrase dit ce qui est fait : un badge seulement pour un état (envoyée, annulée, pas faite…). */}
+                          {(a.etat !== 'faite' || a.envoyee) && etat.libelle && <Badge tone={etat.ton}>{etat.libelle}</Badge>}
+                          {etat.annulable && !d.lectureSeule && <span className="-my-1 -mr-2 ml-auto">{boutonAnnuler(a)}</span>}
+                        </div>
                         {deplie && (
-                          <div className="mt-2 space-y-2 rounded-lg bg-(--lm-surface-2) px-3 py-2 text-[12.5px]">
+                          <div id={idDetail} className="mt-1 space-y-2 rounded-lg bg-(--lm-surface-2) px-3 py-2 text-[12.5px]">
                             {a.changements.length > 0 && (
                               <dl className="space-y-1">
                                 {a.changements.map((c, i) => (
                                   <div key={i} className="flex flex-wrap gap-x-2">
                                     <dt className="text-(--lm-encre-3)">{c.champ}</dt>
                                     <dd className="min-w-0 text-(--lm-encre)">
-                                      {c.avant !== undefined && <span className="text-(--lm-encre-2)">{c.avant} → </span>}
-                                      {c.apres}
+                                      {avantDe(c) !== undefined && <span className="text-(--lm-encre-2)">{avantDe(c)} → </span>}
+                                      {apresDe(c)}
                                     </dd>
                                   </div>
                                 ))}
                               </dl>
                             )}
-                            <p className="text-(--lm-encre-2)">{qui(a)}.</p>
-                            {!etat.annulable && a.etat !== 'annulee' && a.pasAnnulable && <p className="text-(--lm-encre-2)">{a.pasAnnulable}</p>}
+                            {qui && <p className="text-(--lm-encre-2)">{qui}</p>}
+                            {!etat.annulable && a.etat !== 'annulee' && a.etat !== 'echec' && a.pasAnnulable && <p className="text-(--lm-encre-2)">{a.pasAnnulable}</p>}
                             {lienSur(a.lien) && (
                               <Link to={lienSur(a.lien)!} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
-                                Voir dans l’ERP
+                                {libelleLien(a)}
                               </Link>
                             )}
                           </div>
                         )}
                       </div>
-                      {/* Une réponse à envoyer se retire depuis la carte du haut. */}
-                      {etat.annulable && !etat.aEnvoyer && !d.lectureSeule && <div className="shrink-0">{boutonAnnuler(a)}</div>}
                     </li>
                   );
                 })}
@@ -229,10 +263,11 @@ export default function ActionsIA() {
       )}
 
       <Aide titre="Ce que l’IA peut faire" className="mb-0">
-        <ul className="mt-2 space-y-1.5 text-[13px] text-(--lm-encre-2)">
+        <ul className="mt-2 space-y-2 text-[13px] text-(--lm-encre-2)">
           {ACTIONS_POSSIBLES.map((x) => (
             <li key={x.cle}>
-              <span className="font-medium text-(--lm-encre)">{x.libelle}</span> : {x.regle}
+              <span className="block font-medium text-(--lm-encre)">{x.libelle}</span>
+              {x.regle}
             </li>
           ))}
         </ul>

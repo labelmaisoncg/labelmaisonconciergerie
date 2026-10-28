@@ -3,7 +3,7 @@ import { CheckCircle2, Clock, UserPlus } from 'lucide-react';
 import { dateJour } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { useErp } from '../../../data/store';
-import { missionValidable } from '../../../data/selectors';
+import { missionPrestataire, missionValidable } from '../../../data/selectors';
 import type { Mission } from '../../../data/types';
 import { Badge, Button, Card, CardHeader, EmptyState } from '../../../ui';
 import { urgence } from './outils';
@@ -20,7 +20,7 @@ export function ATraiter({ onAttribuer, onValider, onRefuser }: Props) {
   const nom = (id?: string) => d.logements.find((l) => l.id === id)?.nom ?? 'Logement inconnu';
 
   const aAttribuer = d.missions
-    .filter((m) => m.statut === 'a_attribuer')
+    .filter((m) => m.statut === 'a_attribuer' && missionPrestataire(m))
     .map((m) => ({ m, u: urgence(m, d) }))
     .sort((a, b) => (a.u.heures ?? Infinity) - (b.u.heures ?? Infinity) || a.m.date.localeCompare(b.m.date));
   const aValider = d.missions.filter((m) => m.statut === 'a_valider').sort((a, b) => a.date.localeCompare(b.date));

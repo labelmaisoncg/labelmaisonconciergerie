@@ -67,6 +67,8 @@ class FausseBase {
   fetch = async (entree: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(typeof entree === 'string' ? entree : entree instanceof URL ? entree.href : entree.url);
     if (url.pathname === '/auth/v1/token') return json({ access_token: 'jeton-equipe', expires_in: 3600 });
+    // Règle SQL des actions de l'IA en place (erp.actions_ia_protegees).
+    if (url.pathname.endsWith('/rpc/actions_ia_protegees')) return json(true);
     const methode = (init?.method ?? 'GET').toUpperCase();
     if (methode === 'GET') {
       const collection = (url.searchParams.get('collection') ?? '').replace(/^eq\./, '');

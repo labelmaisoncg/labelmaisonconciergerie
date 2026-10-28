@@ -324,6 +324,11 @@ create or replace function erp.archiver_version() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
+  -- Actions de l'IA : pas d'ancienne version (elles sont bornées à 90 jours et
+  -- gardent les anciennes valeurs d'une fiche du CRM).
+  if coalesce(old.collection, '') = 'actionsAgent' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
   if tg_op = 'DELETE' then
     insert into erp.historique (espace, collection, id, operation, donnees, maj_par)
     values (old.espace, old.collection, old.id, 'suppression', old.donnees, old.maj_par);
@@ -1053,6 +1058,16 @@ create policy "actions ia reservees aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
   using (collection <> 'actionsAgent' or espace = any ((select erp.espaces_gerant())::uuid[]))
   with check (collection <> 'actionsAgent' or espace = any ((select erp.espaces_gerant())::uuid[]));
+-- Témoin lu par le serveur et l'écran avant d'écrire ou d'annuler une action de
+-- l'IA : tant que ce fichier n'est pas relancé, la fonction n'existe pas et rien
+-- n'est tracé (la collection serait lisible et modifiable par tous les membres).
+create or replace function erp.actions_ia_protegees() returns boolean
+language sql stable security definer set search_path = ''
+as $$ select exists (select 1 from pg_catalog.pg_policies
+                      where schemaname = 'erp' and tablename = 'enregistrements'
+                        and policyname = 'actions ia reservees aux gerants') $$;
+revoke all on function erp.actions_ia_protegees() from public, anon;
+grant execute on function erp.actions_ia_protegees() to authenticated;
 -- Écritures réservées aux gérants de l'espace (et au compte serveur, gérant de
 -- l'espace nommé) ; la lecture ne change pas. Ce sont :
 --   - ce que seul le serveur écrit : envois des messages automatiques et leur
@@ -1338,9 +1353,11 @@ create trigger garder_espace_enregistrement before update on erp.enregistrements
 
 -- Actions de l'IA (actionsAgent) : bornées. À chaque action ajoutée, celles
 -- de l'espace écrites il y a plus de 90 jours, et au-delà des 500 plus
--- récentes, sont retirées (leur ancienne version va dans erp.historique,
--- comme toute suppression). Avec les droits de celui qui écrit : il ne
--- retire que ce qu'il pourrait retirer lui-même (gérant de l'espace).
+-- récentes de chaque source (Claude, l'agent), sont retirées : les décisions
+-- de l'agent ne poussent jamais dehors les actions de Claude, annulables 90
+-- jours. Pas d'ancienne version gardée (erp.archiver_version). Avec les
+-- droits de celui qui écrit : il ne retire que ce qu'il pourrait retirer
+-- lui-même (gérant de l'espace).
 create or replace function erp.borner_actions_ia() returns trigger
 language plpgsql set search_path = ''
 as $$
@@ -1348,10 +1365,13 @@ begin
   delete from erp.enregistrements e
    where e.espace = new.espace and e.collection = 'actionsAgent' and e.id <> new.id
      and (e.maj_le < now() - interval '90 days'
-          or e.id in (select x.id from erp.enregistrements x
-                       where x.espace = new.espace and x.collection = 'actionsAgent'
-                       order by coalesce(x.donnees ->> 'le', '') desc, x.id desc
-                       offset 500));
+          or e.id in (select x.id from (
+                        select y.id, row_number() over (
+                                 partition by coalesce(y.donnees ->> 'source', '')
+                                 order by coalesce(y.donnees ->> 'le', '') desc, y.id desc) as rang
+                          from erp.enregistrements y
+                         where y.espace = new.espace and y.collection = 'actionsAgent') x
+                       where x.rang > 500));
   return null;
 end;
 $$;

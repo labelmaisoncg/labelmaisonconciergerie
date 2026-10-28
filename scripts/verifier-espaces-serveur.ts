@@ -87,6 +87,7 @@ import routeProprietaire from '../api/espace-proprietaire';
 import routeOperations from '../api/espace-operations';
 import routeEspaces from '../api/erp-espaces';
 import { relancesDuJour } from '../api/_relances';
+import { oublierJetonsGardes } from '../api/_oauth';
 import { notificationsOpsDuJour } from '../api/_operations-notifications';
 import { idAppareil } from '../src/erp/data/notifications-envoi';
 import { heureParis } from '../src/erp/data/notifications-operations';
@@ -255,6 +256,8 @@ class Monde {
     if (chemin.startsWith('rpc/')) {
       if (this.historique) return json({ code: 'PGRST202', message: `Could not find the function erp.${chemin.slice(4)}` }, 404);
       const serveur = email === 'serveur@labelmaisoncg.fr' && this.serveurPret;
+      // Règle SQL des actions de l'IA en place (une base d'avant les espaces n'a pas la fonction : 404 ci-dessus).
+      if (chemin === 'rpc/actions_ia_protegees') return json(true);
       if (chemin === 'rpc/qui_suis_je') {
         const espaces = serveur ? [] : this.membres.filter((m) => m.email === email && this.actif(m.espace)).map((m) => ({ ...this.espaces.find((e) => e.id === m.espace)!, role: m.role }));
         return json({ email, serveur, espaces, invitations_espace: [] });
@@ -929,6 +932,32 @@ async function principal() {
     const accesSens2 = String(res.corps?.access_token ?? '');
     verifier(res.statut === 200 && accesSens2.startsWith(`${SENS}.`) && String(res.corps?.refresh_token).startsWith(`${SENS}.`), 'rafraîchissement : nouveaux jetons de Sens', res.corps);
     verifier((await nomsCrm(accesSens2)).startsWith('Sacha Nouveau,Simone Sens'), 'nouveau jeton : toujours Sens', await nomsCrm(accesSens2));
+
+    // Le membre qui a autorisé Claude n'est plus gérant : ses jetons ne valent plus rien (au plus 1 min après).
+    {
+      const gerantB = monde.membres.find((m) => m.espace === SENS && m.email === 'gerant-b@exemple.invalid')!;
+      const j = await jetonsDe(codeDe(await autoriserClaude(gerantSens)));
+      const acces = String(j.corps?.access_token ?? '');
+      const rafraich = String(j.corps?.refresh_token ?? '');
+      verifier((await nomsCrm(acces)).includes('Simone Sens'), 'second jeton de Sens : valable tant que son gérant l’est', await nomsCrm(acces));
+      gerantB.role = 'operations';
+      verifier((await nomsCrm(acces)).includes('Simone Sens'), 'gérant passé « opérations » : jeton gardé 1 min au plus (cache)');
+      oublierJetonsGardes();
+      verifier((await nomsCrm(acces)) === 'refus 401', 'gérant passé « opérations » : jeton d’accès refusé', await nomsCrm(acces));
+      const r = await rafraichirJeton(rafraich);
+      verifier(r.statut === 400 && r.corps?.error === 'invalid_grant', 'gérant passé « opérations » : rafraîchissement refusé', r.corps);
+      gerantB.role = 'gerant';
+      oublierJetonsGardes();
+      verifier((await nomsCrm(acces)) === 'refus 401' && (await rafraichirJeton(rafraich)).statut === 400, 'redevenu gérant : l’autorisation tombée le reste (à reconnecter)');
+      // Code donné, puis gérant retiré de l'équipe avant l'échange : refusé.
+      const code = codeDe(await autoriserClaude(gerantSens));
+      monde.membres = monde.membres.filter((m) => m !== gerantB);
+      const echange = await jetonsDe(code);
+      verifier(echange.statut === 400 && echange.corps?.error === 'invalid_grant', 'gérant retiré avant l’échange du code : aucun jeton', echange.corps);
+      monde.membres.push(gerantB);
+      oublierJetonsGardes();
+      verifier((await nomsCrm(accesSens2)).startsWith('Sacha Nouveau,Simone Sens'), 'la première autorisation de Sens, toujours valable, n’est pas touchée');
+    }
 
     // État et révocation : chaque espace les siens.
     res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantSens });

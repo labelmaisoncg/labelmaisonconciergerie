@@ -18,7 +18,7 @@
 // =============================================================================
 
 import { traiterMcp, VERSIONS_PROTOCOLE, type ContexteMcp } from '../src/erp/data/crm-mcp.js';
-import { COLLECTION_ACTIONS_AGENT } from '../src/erp/data/copilote.js';
+import { COLLECTION_ACTIONS_AGENT, actionsIaProtegees } from '../src/erp/data/copilote.js';
 import { ID_REGLAGE_SOCIETE } from '../src/erp/data/identite-conciergerie.js';
 import { COLLECTION_PRIX, type ElementPrix } from '../src/erp/data/prix-conseils.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
@@ -120,7 +120,13 @@ export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm' | 'co
       ajouterFacture: async (f) => (await base.ajouterSiAbsent('factures', [f], 'Claude')) > 0,
       prix: () => base.lire<ElementPrix>(COLLECTION_PRIX),
     },
-    actions: { enregistrer: (a) => base.ecrire(COLLECTION_ACTIONS_AGENT, [a], 'Claude') },
+    actions: {
+      // Sans la règle SQL des actions de l'IA, la trace serait lisible par tous les membres : rien n'est écrit.
+      enregistrer: async (a) => {
+        if (!(await actionsIaProtegees(base))) throw new Error('Mise en service pas terminée (supabase/erp-espaces.sql à relancer) : rien n’a été modifié.');
+        await base.ecrire(COLLECTION_ACTIONS_AGENT, [a], 'Claude');
+      },
+    },
   };
 }
 

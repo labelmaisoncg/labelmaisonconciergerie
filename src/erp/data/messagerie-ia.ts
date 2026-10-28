@@ -1269,9 +1269,9 @@ export function marquerBrouillonValide(f: FilMessages, par: string, modifiee: bo
   return { ...f, agent: { ...f.agent, brouillon: { ...b, valideePar: par, valideeLe: le, modifiee } } };
 }
 
-/** Phrase du journal pour une réponse de l'agent envoyée par l'équipe. */
-export function detailValidation(v: ValidationBrouillon, par: string, voyageur: string): string {
-  const origine = v.source === 'agent' ? 'préparée par l’agent' : 'proposée par l’agent';
+/** Phrase du journal pour une réponse de l'agent (ou de Claude, `proposePar`) envoyée par l'équipe. */
+export function detailValidation(v: ValidationBrouillon, par: string, voyageur: string, proposePar?: 'claude'): string {
+  const origine = v.source === 'agent' ? (proposePar === 'claude' ? 'proposée par Claude' : 'préparée par l’agent') : 'proposée par l’agent';
   return `Réponse ${origine} envoyée à ${voyageur} par ${par}${v.modifiee ? ', après retouche' : ', telle quelle'}.`;
 }
 

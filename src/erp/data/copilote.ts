@@ -22,7 +22,7 @@
  * - Rien de sensible : textes passés par masquer (codes et wifi du
  *   logement), masquerCoordonnees et masquerCodes. Seule l'annulation d'une
  *   fiche du CRM garde les valeurs exactes des champs changés.
- * - Bornée : 90 jours et 500 actions par espace au plus (déclencheur
+ * - Bornée : 90 jours et 500 actions par source et par espace au plus (déclencheur
  *   erp.borner_actions_ia, supabase/erp-espaces.sql) ; une trace trop
  *   grosse perd son retour (elle ne s'annule plus d'un clic).
  *
@@ -31,10 +31,11 @@
 import { masquer, prenomInitiale } from './cm-mcp.js';
 import { LIBELLE_RESULTAT, LIBELLE_STATUT_CRM } from './crm.js';
 import { ID_LABEL_MAISON } from './espaces.js';
+import { SUIVIS_LABEL_MAISON } from './marque-espace.js';
 import { masquerCoordonnees } from './masquage.js';
 import { ErreurOutil, type ContexteMcp } from './mcp-commun.js';
-import { masquerCodes, messagesSansReponse, secretsAcces, type SourceCodes } from './messagerie-ia.js';
-import type { ContactCrm, Facture, FilMessages, Horodatage, Logement, Mission, StatutContactCrm, TraceContactCrm } from './types';
+import { contientCodeAcces, masquerCodes, messagesSansReponse, nettoyerTexte, secretsAcces, type SourceCodes } from './messagerie-ia.js';
+import type { BrouillonAgent, ContactCrm, Facture, FilMessages, Horodatage, Logement, Mission, StatutContactCrm, TraceContactCrm } from './types';
 import type { ActionAgent, ChangementAction, ClientAction, CollectionTracee, EffetAction, RetourAction, SourceAction } from './types-copilote';
 
 export type { ActionAgent } from './types-copilote';
@@ -43,7 +44,7 @@ export type { ActionAgent } from './types-copilote';
 export const COLLECTION_ACTIONS_AGENT = 'actionsAgent';
 /** Conservation (et affichage) : 90 jours. */
 export const CONSERVATION_JOURS = 90;
-/** Au plus 500 actions gardées par espace. */
+/** Au plus 500 actions gardées par source (Claude, l’agent) et par espace. */
 export const MAX_ACTIONS = 500;
 /** Une trace plus grosse perd son retour (texte JSON, en caractères). */
 export const TAILLE_MAX_TRACE = 16_000;
@@ -188,13 +189,14 @@ interface Champ {
 }
 
 const texteCourt = (v: unknown) => texteMasque(v, 80);
-const SUIVI: Record<string, string> = { abdel: 'Abdel', kamel: 'Kamel' };
+/** « Suivi par » : Abdel ou Kamel à Label Maison ; ailleurs, l'écran nomme le membre avec l'équipe de l'espace (`suivi`). */
+const nomSuivi = (v: unknown) => SUIVIS_LABEL_MAISON.find((s) => s.valeur === v)?.libelle ?? 'un membre';
 
 const CHAMPS_CRM: Record<string, Champ> = {
   statut: { libelle: 'Étape', valeur: (v) => LIBELLE_STATUT_CRM[v as StatutContactCrm] ?? String(v) },
   relanceLe: { libelle: 'Relance', valeur: (v) => jourTexte(String(v)) },
-  responsable: { libelle: 'Suivi par', valeur: (v) => SUIVI[String(v)] ?? 'un membre' },
-  motifAttente: { libelle: 'En attente de', valeur: texteCourt },
+  responsable: { libelle: 'Suivi par', valeur: nomSuivi },
+  motifAttente: { libelle: 'Motif d’attente', valeur: texteCourt },
   notes: { libelle: 'Notes', valeur: texteCourt },
   nom: { libelle: 'Nom', valeur: (v) => prenomInitiale(String(v)) },
   telephone: { libelle: 'Téléphone' },
@@ -225,7 +227,12 @@ function changementsChamps(champs: Record<string, Champ>, avant: Record<string, 
       res.push({ champ: c.libelle, apres: vide(b) ? 'effacé' : avant && !vide(a) ? 'modifié' : 'ajouté' });
       continue;
     }
-    res.push({ champ: c.libelle, ...(vide(a) ? {} : { avant: c.valeur(a) }), ...(vide(b) ? { apres: 'effacé' } : { apres: c.valeur(b) }) });
+    res.push({
+      champ: c.libelle,
+      ...(vide(a) ? {} : { avant: c.valeur(a) }),
+      ...(vide(b) ? { apres: 'effacé' } : { apres: c.valeur(b) }),
+      ...(cle === 'responsable' ? { suivi: { ...(vide(a) ? {} : { avant: String(a) }), ...(vide(b) ? {} : { apres: String(b) }) } } : {}),
+    });
   }
   return res;
 }
@@ -313,13 +320,26 @@ function appliquerRetour(actuel: Record<string, unknown>, r: Extract<RetourActio
   return e;
 }
 
+/**
+ * Réponse remplacée par une proposition de Claude, gardée dans la trace pour
+ * « Retirer » : jamais si elle contient un code, le wifi, une adresse, un
+ * numéro ou un lien (elle est alors seulement retirée, comme avant).
+ */
+function brouillonGardable(b: BrouillonAgent | undefined, logement?: Pick<Logement, 'fiche'>): b is BrouillonAgent {
+  if (!b || typeof b.texte !== 'string') return false;
+  const textes = `${b.texte}\n${b.texteFr ?? ''}`;
+  if (logement && contientCodeAcces(textes, logement as SourceCodes)) return false;
+  // Rien à masquer (coordonnées, liens, codes) : le texte reste le même une fois passé par les masques.
+  return masquerCodes(masquerCoordonnees(textes)) === nettoyerTexte(textes);
+}
+
 /** Conversation sans la réponse proposée (et avec le suivi d'avant, pour une proposition de Claude). */
 function sansProposition(f: FilMessages, r: Extract<RetourAction, { genre: 'proposition' }>): FilMessages {
   const agent: Record<string, unknown> = { ...(f.agent ?? {}) };
   delete agent.brouillon;
   const suivant: FilMessages = { ...f };
   if (r.avant) {
-    for (const cle of ['dernierMessageTraite', 'decision'] as const) {
+    for (const cle of ['dernierMessageTraite', 'decision', 'brouillon'] as const) {
       if (r.avant[cle] === undefined) delete agent[cle];
       else agent[cle] = r.avant[cle];
     }
@@ -369,7 +389,7 @@ function resumeClaude(outil: string, avant: unknown, apres: unknown, cible: stri
     case 'conversation_pas_besoin_de_repondre':
       return `Conversation avec ${cible} classée « terminée » (pas besoin de répondre).`;
     case 'reponse_proposer':
-      return `Réponse proposée à ${cible}, à envoyer par l’équipe depuis la Messagerie.`;
+      return `Réponse proposée à ${cible}.`;
     case 'menage_creer': {
       const m = apres as Mission;
       return `Ménage prévu : ${cible}, ${jourTexte(m.date)} de ${m.heureDebut} à ${m.heureFinMax}.`;
@@ -413,7 +433,14 @@ export function actionClaude(o: EntreeActionClaude): ActionAgent {
   const retour: RetourAction | null = proposition
     ? {
         genre: 'proposition',
-        avant: { dernierMessageTraite: f?.agent?.dernierMessageTraite, decision: f?.agent?.decision, traitePar: f?.traitePar, statut: f?.statut },
+        avant: {
+          dernierMessageTraite: f?.agent?.dernierMessageTraite,
+          decision: f?.agent?.decision,
+          traitePar: f?.traitePar,
+          statut: f?.statut,
+          // Réponse que la proposition remplace (une proposition de Claude, ou une réponse déjà envoyée) : remise par « Retirer ».
+          ...(brouillonGardable(f?.agent?.brouillon, o.logement) ? { brouillon: f?.agent?.brouillon } : {}),
+        },
       }
     : avant
       ? retourChamps(o.collection, avant, apres)
@@ -479,7 +506,7 @@ export function actionAgentMessagerie(o: EntreeActionAgent): ActionAgent {
           ];
   const resume = {
     envoyee: `Réponse envoyée seule à ${cible}.`,
-    a_valider: `Réponse préparée pour ${cible}, à valider par l’équipe.`,
+    a_valider: `Réponse préparée pour ${cible}.`,
     transmise: `Conversation avec ${cible} transmise à l’équipe${texte ? ', avec un message d’attente' : ''}.`,
   }[o.sort];
   const effet: EffetAction = o.sort === 'transmise' && !texte ? 'interne' : 'externe';
@@ -510,7 +537,62 @@ export function actionAgentMessagerie(o: EntreeActionAgent): ActionAgent {
   });
 }
 
+/* ------------------------------------------- mise en service (SQL) */
+
+const protections = new WeakMap<object, Promise<boolean>>();
+/**
+ * La règle « actions de l'IA réservées aux gérants » est-elle en place dans la
+ * base (erp.actions_ia_protegees, supabase/erp-espaces.sql) ? Sans elle, la
+ * collection serait lisible et modifiable par tous les membres : rien n'est
+ * tracé ni annulé. Une base sans `rpc` (doublure de test) est tenue pour prête.
+ */
+export function actionsIaProtegees(base: object & { rpc?: (nom: string) => PromiseLike<unknown> }): Promise<boolean> {
+  if (typeof base.rpc !== 'function') return Promise.resolve(true);
+  let p = protections.get(base);
+  if (!p) {
+    p = Promise.resolve(base.rpc('actions_ia_protegees')).then((v) => v === true, () => false);
+    protections.set(base, p);
+    // Un refus n'est pas gardé : le passage suivant relit (le SQL a pu être relancé entre-temps).
+    p.then((ok) => (ok ? undefined : protections.delete(base)));
+  }
+  return p;
+}
+
 /* --------------------------------------------------------- annulation */
+
+/** Ce que chaque outil (ou décision de l'agent) peut défaire, et où. */
+const RETOURS_PERMIS: Record<string, { collection: CollectionTracee; genres: RetourAction['genre'][] }> = {
+  crm_ajouter: { collection: 'crm', genres: ['supprimer', 'champs'] },
+  crm_modifier: { collection: 'crm', genres: ['champs'] },
+  crm_noter_appel: { collection: 'crm', genres: ['champs'] },
+  conversation_pas_besoin_de_repondre: { collection: 'filsMessages', genres: ['champs'] },
+  reponse_proposer: { collection: 'filsMessages', genres: ['proposition'] },
+  agent_a_valider: { collection: 'filsMessages', genres: ['proposition'] },
+  menage_creer: { collection: 'missions', genres: ['supprimer'] },
+  facture_preparer: { collection: 'factures', genres: ['supprimer'] },
+};
+
+/**
+ * La trace est-elle de celles que le serveur écrit ? Collection et genre de
+ * retour cohérents avec l'outil, champs d'une conversation limités à son état,
+ * et une suppression seulement pour ce que l'IA crée (ménage interne,
+ * brouillon sans numéro). Une trace qui ne colle pas n'est jamais rejouée.
+ */
+function retourPermis(a: ActionAgent, actuel: { id: string } | undefined): boolean {
+  const p = RETOURS_PERMIS[a.outil];
+  const r = a.retour;
+  if (!p || !r || p.collection !== a.collection || !p.genres.includes(r.genre)) return false;
+  if (r.genre === 'champs') {
+    const cles = [...Object.keys(r.avant ?? {}), ...(r.absents ?? []), ...Object.keys(r.tetes ?? {})];
+    if (cles.some((k) => k === 'id' || k === 'espace')) return false;
+    if (a.collection === 'filsMessages' && cles.some((k) => !CHAMPS_FIL_REMIS.includes(k))) return false;
+  }
+  if (r.genre === 'supprimer' && actuel) {
+    if (a.collection === 'missions' && (actuel as Mission).interne !== true) return false;
+    if (a.collection === 'factures' && ((actuel as Facture).statut !== 'brouillon' || !!(actuel as Facture).numero)) return false;
+  }
+  return true;
+}
 
 export type EcritureAnnulation =
   | { genre: 'ecrire'; collection: CollectionTracee; element: { id: string } }
@@ -529,6 +611,7 @@ export function annulerAction(a: ActionAgent, actuel: { id: string } | undefined
   if (espaceDe(a.espace) !== espaceDe(o.espace ?? undefined)) return { ok: false, raison: 'Cette action appartient à un autre espace : rien n’a été annulé.' };
   if (a.etat === 'annulee') return { ok: false, raison: `Déjà annulée${a.annulation ? ` par ${a.annulation.par}` : ''}.` };
   if (!a.annulable || !a.retour || (a.etat !== 'faite' && a.etat !== 'a_confirmer')) return { ok: false, raison: a.pasAnnulable ?? 'Cette action ne s’annule pas.' };
+  if (!retourPermis(a, actuel)) return { ok: false, raison: 'Cette trace ne correspond à aucune action de l’IA : rien n’a été annulé.' };
   const r = a.retour;
   if (r.genre === 'proposition') {
     const b = (actuel as FilMessages | undefined)?.agent?.brouillon;
@@ -570,6 +653,8 @@ export interface EtatAffiche {
 
 /** Où en est l'action, lue sur la conversation pour une réponse proposée. `nom` : nom d'un membre d'après son adresse. */
 export function etatAffiche(a: ActionAgent, fils: readonly FilMessages[], nom: (email: string) => string = (e) => e): EtatAffiche {
+  // Envoyée par l'équipe : noté sur la trace à l'envoi (la conversation a pu changer depuis).
+  if (a.envoyee) return { libelle: `Envoyée par ${nom(a.envoyee.par)}`, ton: 'succes', annulable: false };
   if (a.etat === 'annulee') return { libelle: a.annulation ? `Annulée par ${a.annulation.par}` : 'Annulée', ton: 'neutre', annulable: false };
   if (a.etat === 'echec') return { libelle: 'Pas faite', ton: 'danger', annulable: false };
   if (a.etat === 'sans_effet') return { libelle: 'Rien à faire', ton: 'neutre', annulable: false };
@@ -586,14 +671,38 @@ export function etatAffiche(a: ActionAgent, fils: readonly FilMessages[], nom: (
   return { libelle: 'Fait', ton: 'neutre', annulable: a.annulable };
 }
 
-/** Actions à montrer : les 90 derniers jours, sans celles qui n'ont rien fait, de la plus récente à la plus ancienne. */
+/**
+ * Actions à montrer : les 90 derniers jours, sans celles qui n'ont rien
+ * fait, de la plus récente à la plus ancienne ; 500 au plus par source (les
+ * décisions de l'agent ne poussent jamais dehors celles de Claude), comme
+ * dans la base (erp.borner_actions_ia).
+ */
 export function actionsVisibles(actions: readonly ActionAgent[], aujourdhui: string): ActionAgent[] {
   const t = Date.parse(`${aujourdhui}T12:00:00Z`) - CONSERVATION_JOURS * 86_400_000;
   const depuis = Number.isFinite(t) ? new Date(t).toISOString().slice(0, 10) : '';
+  const parSource = new Map<string, number>();
   return actions
     .filter((a) => a && typeof a.le === 'string' && a.etat !== 'sans_effet' && a.le.slice(0, 10) >= depuis)
     .sort((x, y) => y.le.localeCompare(x.le) || y.id.localeCompare(x.id))
-    .slice(0, MAX_ACTIONS);
+    .filter((a) => {
+      const n = (parSource.get(String(a.source)) ?? 0) + 1;
+      parSource.set(String(a.source), n);
+      return n <= MAX_ACTIONS;
+    });
+}
+
+/**
+ * Réponse proposée (par Claude ou l'agent) envoyée par l'équipe : la ou les
+ * traces « à confirmer » de cette réponse passent « faite », envoyée par qui
+ * et quand. `fil` : la conversation AVANT l'envoi (avec la réponse proposée).
+ * Renvoie les traces à écrire (aucune si rien ne correspond).
+ */
+export function tracesEnvoyees(actions: readonly ActionAgent[], fil: Pick<FilMessages, 'id' | 'agent'>, o: { par: string; le: Horodatage }): ActionAgent[] {
+  const b = fil.agent?.brouillon;
+  if (!b || b.valideePar) return [];
+  return actions
+    .filter((a) => a?.etat === 'a_confirmer' && a.collection === 'filsMessages' && a.cibleId === fil.id && a.proposition?.messageId === b.messageId && a.proposition?.le === b.le)
+    .map((a) => ({ ...a, etat: 'faite' as const, annulable: false, pasAnnulable: 'Envoyée au voyageur : un message parti ne se reprend pas.', envoyee: { par: o.par, le: o.le } }));
 }
 
 /* ------------------------------------------------ connecteur : contexte */

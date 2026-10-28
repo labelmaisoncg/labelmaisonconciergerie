@@ -15,6 +15,11 @@
 // le préfixe donne un jeton inconnu partout. Anciens jetons, sans espace :
 // Label Maison.
 //
+// Le membre qui a autorisé Claude doit rester gérant de l'espace : retiré, ou
+// passé « opérations » ou « lecture », ses codes et jetons ne valent plus rien
+// (revérifié à l'échange du code, à chaque rafraîchissement, et à chaque
+// appel, au plus tard 1 min après, comme une déconnexion).
+//
 // Un fichier préfixé par « _ » n'est pas exposé comme route par Vercel.
 // =============================================================================
 
@@ -81,6 +86,11 @@ export interface Jetons {
   expires_in: number;
   refresh_token: string;
   scope: 'crm';
+}
+
+/** Le membre qui a autorisé Claude est-il toujours gérant de l'espace de `base` ? */
+async function toujoursGerant(base: BaseErp, par: string | undefined): Promise<boolean> {
+  return !!par && (await base.roleMembre(par)) === 'gerant';
 }
 
 function egales(a: string, b: string): boolean {
@@ -155,6 +165,7 @@ export async function echangerCode(
   const defi = crypto.createHash('sha256').update(p.code_verifier).digest('base64url');
   if (!egales(defi, c.defi)) throw new ErreurOAuth('invalid_grant', 'Vérification PKCE échouée.');
   await base.ecrire(COLLECTION, [{ ...c, utilise: true } as Code], AUTEUR);
+  if (!(await toujoursGerant(base, c.par))) throw new ErreurOAuth('invalid_grant', 'Le membre qui a autorisé Claude n’est plus gérant de cet espace.');
   return emettre(base, c.client, c.par, crypto.randomBytes(12).toString('hex'), espaceDe(c));
 }
 
@@ -171,6 +182,11 @@ export async function rafraichir(base: BaseErp, p: { refresh_token: string; clie
     throw new ErreurOAuth('invalid_grant', 'Jeton de rafraîchissement inconnu, expiré ou révoqué.');
   }
   if (p.client_id && p.client_id !== j.client) throw new ErreurOAuth('invalid_grant', 'Jeton émis pour un autre client.');
+  // Plus gérant (retiré, ou passé « opérations ») : toute l'autorisation tombe, Claude doit être reconnecté par un gérant.
+  if (!(await toujoursGerant(base, j.par))) {
+    if (j.famille) await revoquerFamille(base, j.famille);
+    throw new ErreurOAuth('invalid_grant', 'Le membre qui a autorisé Claude n’est plus gérant de cet espace : reconnectez Claude depuis l’ERP.');
+  }
   await base.ecrire(COLLECTION, [{ ...j, revoque: true } as Jeton], AUTEUR);
   return emettre(base, j.client, j.par, j.famille ?? crypto.randomBytes(12).toString('hex'), espaceDe(j));
 }
@@ -191,7 +207,8 @@ const cache = new Map<string, { par: string | null; client?: string; jusqua: num
 /**
  * Jeton d'accès valide ? Renvoie le membre qui a autorisé Claude et le client
  * OAuth (trace des actions de Claude). `base` : celle de l'espace du jeton
- * (espaceDuJeton) ; un jeton rangé pour un autre espace est refusé.
+ * (espaceDuJeton) ; un jeton rangé pour un autre espace est refusé, comme
+ * celui d'un membre qui n'est plus gérant de l'espace (relu au plus 1 min après).
  */
 export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: string; client?: string } | null> {
   const espace = espaceDuJeton(jeton);
@@ -201,7 +218,8 @@ export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: 
   if (enCache && enCache.jusqua > Date.now()) return enCache.par ? { par: enCache.par, ...(enCache.client ? { client: enCache.client } : {}) } : null;
   const { element: j, revoqueAvant } = await lireAvecRevocation<Jeton>(base, id);
   const expire = j ? Date.parse(j.expire) : 0;
-  const valide = !!j && j.type === 'acces' && !j.revoque && espaceDe(j) === espace && expire >= Date.now() && Date.parse(j.creeLe) >= revoqueAvant;
+  const valide =
+    !!j && j.type === 'acces' && !j.revoque && espaceDe(j) === espace && expire >= Date.now() && Date.parse(j.creeLe) >= revoqueAvant && (await toujoursGerant(base, j.par));
   if (cache.size > 1000) cache.clear();
   cache.set(id, { par: valide ? j!.par : null, ...(valide && j!.client ? { client: j!.client } : {}), jusqua: valide ? Math.min(Date.now() + DUREE_CACHE_MS, expire) : Date.now() + DUREE_CACHE_MS });
   return valide ? { par: j!.par, ...(j!.client ? { client: j!.client } : {}) } : null;
