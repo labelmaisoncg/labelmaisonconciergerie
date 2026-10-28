@@ -163,7 +163,7 @@ node_modules/.bin/esbuild src/erp/data/verifier-annonces-equipe.ts --bundle --fo
 # Avis des voyageurs : thèmes (français, anglais, négations), sentiment par la
 # note, synthèse et tendance, lecture de l'IA qui n'invente rien, réponse
 # simple, garde-fous (nom, téléphone, e-mail, adresse, code, lien, message
-# privé, geste commercial), « Préparer une réponse » (IA absente, plafond,
+# privé, geste commercial), « Proposer une réponse » (IA absente, plafond,
 # réponse écartée), compte en lecture refusé, rien publié sur la plateforme.
 node_modules/.bin/esbuild src/erp/data/verifier-avis.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
@@ -540,32 +540,46 @@ séjours annulés exclus.
   moins ; hausse ou baisse à partir de 0,2), thèmes et fréquence (un avis
   compte une fois par thème), avis à lire en premier (négatifs, puis mitigés,
   les plus récents d'abord). Logements sortis hors du parc.
-- **Où** : bloc « Avis » dans l'Aperçu de la fiche logement (la note moyenne
-  est déjà dans les repères du haut) ; vue d'ensemble dans **Logements →
-  Avis** (`/erp/logements/avis`, onglets « Logements · Avis » de la
-  rubrique, sans entrée de menu de plus) : repères, avis à lire, ce qui
-  revient, tableau par logement (note, à revoir, points forts, tendance) ;
-  « Votre réponse » aussi sous l'avis d'un séjour. Tout membre voit
-  l'analyse.
+- **Où** : carte « Avis des voyageurs » dans l'Aperçu de la fiche logement
+  (3 thèmes, les autres à la demande ; la note moyenne est déjà dans les
+  repères du haut) ; vue d'ensemble dans **Logements → Avis**
+  (`/erp/logements/avis`, onglets « Tous · Avis » de la rubrique, sans
+  entrée de menu de plus) : repères, avis à lire, ce qui revient, tableau
+  par logement (note, à revoir, points forts, tendance) ; « Votre réponse »
+  aussi sous l'avis d'un séjour (« Avis laissé par le voyageur », à côté de
+  « Votre avis sur le voyageur » de B5). Tout membre voit l'analyse.
 - **Réponse proposée** (gérant et opérations ; un compte en lecture ne la
-  génère pas, et la route le refuse) : « Préparer une réponse » →
+  génère pas, et la route le refuse ; rien pour un séjour direct, qui n'a
+  pas de page d'avis publique : `sansReponse`) : « Proposer une réponse »
+  (même verbe que la Messagerie) →
   `POST /api/erp-agent` `{ action: 'reponse_avis', reservationId }`
-  (`api/_erp-avis.ts` → `src/erp/data/avis-serveur.ts`). L'IA ne reçoit que
-  l'avis public (sans e-mail, téléphone ni lien), le prénom, la note et les
-  thèmes repérés ; consignes : vouvoiement, chaleureux, remercier, répondre
-  au point négatif sans se justifier longuement, aucune promesse. Sa réponse
+  (`api/_erp-avis.ts` → `src/erp/data/avis-serveur.ts`, sans appel à Repull
+  ni clé Repull exigée ; erreurs en français simple). L'IA ne reçoit que
+  l'avis public (sans e-mail, téléphone ni lien : `textePourIA`, même règle
+  de masquage que les relances du CRM, `data/masquage.ts`), le prénom, la
+  note et les thèmes repérés ; consignes : vouvoiement, chaleureux,
+  remercier, répondre au point négatif sans se justifier longuement, aucune
+  promesse. Sa réponse
   est contrôlée (`problemesReponse`) : nom de famille, téléphone, e-mail,
   adresse, code ou wifi, lien, message privé, geste commercial ou
   remboursement → écartée, remplacée par le texte simple (`reponseModele`),
   qui sert aussi sans clé, au plafond du mois et en démonstration. Chaque
-  appel compte dans le plafond mensuel de l'espace. La réponse se modifie,
-  puis **« Copier »** ; « Ouvrir Airbnb » / « Ouvrir Booking.com » sont de
+  appel compte dans le plafond mensuel de l'espace, et chaque membre a au
+  plus 20 demandes par quart d'heure (« Trop de demandes d’un coup :
+  réessayez dans quelques minutes. », 429). La réponse se modifie,
+  puis **« Copier le texte »** (« Nouvelle proposition » demande
+  confirmation si le texte a été retouché) ; « Ouvrir Airbnb » / « Ouvrir
+  Booking.com » sont de
   simples liens : **l'ERP ne publie jamais une réponse d'avis**.
 - **L'IA affine sans inventer** : sa lecture (sentiment, sens des thèmes
   déjà repérés) est gardée sur la réservation (`lectureAvis`, écriture
   conditionnelle) et ne vaut que pour le texte lu (empreinte) ; elle n'ajoute
-  jamais de thème et ne contredit pas la note. Les chiffres sont toujours
-  comptés par le code.
+  jamais de thème et ne contredit pas la note. Comme elle a lu le texte du
+  voyageur, elle peut rendre la lecture plus sévère, jamais plus indulgente
+  que les mots-clés : un avis ne sort pas seul de « à lire », un point
+  négatif ne s'efface ni ne s'adoucit, et pas « négatif » contre une note de
+  4,6 ou plus (au plus « mitigé »). Les chiffres sont toujours comptés par
+  le code.
 
 ## Automatisations
 

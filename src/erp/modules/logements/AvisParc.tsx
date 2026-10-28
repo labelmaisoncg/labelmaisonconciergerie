@@ -1,12 +1,13 @@
 /**
- * Avis des voyageurs sur tout le portefeuille (/erp/logements/avis), à côté
+ * Avis des voyageurs sur tous les logements (/erp/logements/avis), à côté
  * de la liste des logements : trois repères (note, nombre d'avis, tendance),
  * les avis à lire en premier, ce qui revient (thèmes et fréquence) et le
  * tableau par logement. Logements sortis à part ; 12 derniers mois.
+ * Sur téléphone : repères, avis à lire, ce qui revient, puis le tableau.
  */
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardHeader, PageHeader, Table, type Colonne } from '../../ui';
+import { Card, CardHeader, PageHeader, Section, Table, type Colonne } from '../../ui';
 import { useErp } from '../../data/store';
 import { AUJOURDHUI, note, pluriel } from '../../data/format';
 import { analyseParc, themesDominants, type SyntheseAvis } from '../../data/avis';
@@ -77,41 +78,45 @@ export default function AvisParc() {
     },
   ];
 
+  const reperes: { libelle: string; valeur: string; detail?: string }[] = [
+    // La période une seule fois : tout l'écran porte sur les 12 derniers mois.
+    { libelle: 'Note', valeur: p.noteMoyenne === undefined ? '-' : `${note(p.noteMoyenne)} / 5`, detail: '12 mois' },
+    { libelle: 'Avis', valeur: String(p.nombre) },
+    {
+      libelle: 'Tendance',
+      valeur: p.tendance ? TENDANCE[p.tendance.sens] : '-',
+      detail: p.tendance ? `${p.tendance.nbRecents} derniers avis : ${note(p.tendance.recente)}` : 'Pas assez d’avis',
+    },
+  ];
+
   return (
     <>
       <PageHeader titre="Logements" />
       <OngletsLogements />
 
       {!p.nombre ? (
-        <SansAvis />
+        <SansAvis connecte={d.logements.some((l) => l.repull?.id)} />
       ) : (
+        // Téléphone : les deux colonnes s'effacent (contents) et l'ordre suit order-* ; ordinateur : deux colonnes.
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
-            <Card flush>
+          <div className="contents lg:col-span-2 lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
+            <Card flush className="order-1 min-w-0">
               <dl className="grid grid-cols-3 divide-x divide-(--lm-bord)">
-                {[
-                  { libelle: 'Note', valeur: p.noteMoyenne === undefined ? '-' : `${note(p.noteMoyenne)} / 5`, detail: '12 mois' },
-                  { libelle: 'Avis', valeur: String(p.nombre), detail: '12 mois' },
-                  {
-                    libelle: 'Tendance',
-                    valeur: p.tendance ? TENDANCE[p.tendance.sens] : '-',
-                    detail: p.tendance ? `${p.tendance.nbRecents} derniers : ${note(p.tendance.recente)}` : 'Pas assez d’avis',
-                  },
-                ].map((e) => (
+                {reperes.map((e) => (
                   <div key={e.libelle} className="min-w-0 px-3 py-3.5 sm:px-5 sm:py-4">
                     <dt className="truncate text-[12px] font-medium text-(--lm-encre-2) sm:text-[12.5px]">{e.libelle}</dt>
                     <dd className="lm-chiffres mt-1 truncate text-[19px] leading-tight font-semibold text-(--lm-encre) sm:text-[22px]">{e.valeur}</dd>
-                    <dd className="mt-0.5 truncate text-[11.5px] text-(--lm-encre-3)">{e.detail}</dd>
+                    {e.detail && <dd className="mt-0.5 text-[11.5px] leading-snug text-(--lm-encre-3)">{e.detail}</dd>}
                   </div>
                 ))}
               </dl>
             </Card>
 
-            <Card flush>
+            <Card flush className="order-2 min-w-0">
               <div className="p-4 pb-0 sm:p-5 sm:pb-0">
                 <CardHeader
                   titre="À lire en premier"
-                  description={p.aLire.length ? `${pluriel(p.aLire.length, 'avis négatif ou mitigé', 'avis négatifs ou mitigés')}, les plus récents d’abord` : 'Aucun avis négatif sur 12 mois.'}
+                  description={p.aLire.length ? `${pluriel(p.aLire.length, 'avis négatif ou mitigé', 'avis négatifs ou mitigés')}, les plus récents d’abord` : 'Aucun avis négatif.'}
                 />
               </div>
               {aLire.length > 0 && (
@@ -123,15 +128,19 @@ export default function AvisParc() {
               )}
               {p.aLire.length > PAR_PAGE && (
                 <div className="border-t border-(--lm-bord) px-4 py-2.5 sm:px-5">
-                  <button type="button" onClick={() => setTous((t) => !t)} className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+                  <button
+                    type="button"
+                    aria-expanded={tous}
+                    onClick={() => setTous((t) => !t)}
+                    className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+                  >
                     {tous ? 'Réduire' : `Voir les ${p.aLire.length - PAR_PAGE} autres`}
                   </button>
                 </div>
               )}
             </Card>
 
-            <section aria-label="Par logement">
-              <h2 className="mb-2 text-[15px] font-semibold text-(--lm-encre)">Par logement</h2>
+            <Section titre="Par logement" className="order-4 mb-0 min-w-0 sm:mb-0">
               <Table
                 legende="Avis par logement : note, thèmes à revoir, points forts, tendance"
                 colonnes={colonnes}
@@ -139,13 +148,13 @@ export default function AvisParc() {
                 cleLigne={(x) => x.logement.id}
                 onLigneClick={(x) => naviguer(`/erp/logements/${x.logement.id}#avis`)}
               />
-            </section>
+            </Section>
           </div>
 
-          <div className="flex min-w-0 flex-col gap-5">
-            <Card>
+          <div className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-5">
+            <Card className="order-3 min-w-0">
               <CardHeader titre="Ce qui revient" description={`Part des ${pluriel(p.nombreCommentes, 'avis commenté', 'avis commentés')} qui en parlent`} />
-              <BarresThemes synthese={p} max={9} />
+              <BarresThemes synthese={p} max={6} />
             </Card>
           </div>
         </div>

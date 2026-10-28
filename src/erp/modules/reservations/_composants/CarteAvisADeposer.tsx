@@ -1,5 +1,5 @@
 /**
- * « Avis sur le voyageur » d'un séjour Airbnb terminé : le texte préparé
+ * « Votre avis sur le voyageur » d'un séjour Airbnb terminé : le texte préparé
  * (par l'IA du serveur, ou un texte simple), à copier puis coller sur
  * Airbnb. L'ERP ne publie rien : « Ouvrir Airbnb » est un simple lien.
  * Ensuite « C’est fait » ou « Passer ». Un séjour avec incident, note basse
@@ -76,7 +76,7 @@ export function CarteAvisADeposer({ r }: { r: Reservation }) {
 
   return (
     <Card id="avis">
-      <CardHeader titre="Avis sur le voyageur" actions={<Badge tone={badge.ton}>{badge.libelle}</Badge>} />
+      <CardHeader titre="Votre avis sur le voyageur" actions={<Badge tone={badge.ton}>{badge.libelle}</Badge>} />
 
       {traite ? (
         <>
