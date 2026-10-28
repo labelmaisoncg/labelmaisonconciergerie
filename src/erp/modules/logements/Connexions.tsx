@@ -255,14 +255,15 @@ export default function Connexions() {
         <h2 id="titre-plateformes" className="mb-3 text-[16px] font-semibold text-(--lm-encre)">
           1. Vos plateformes
         </h2>
-        <div className="grid gap-3 md:grid-cols-3">
+        {/* Colonnes bornées (grid-cols-1) : un nom de compte long ne fait jamais déborder la carte. */}
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {PRINCIPALES.map((p) => {
             const comptes = connexions.filter((c) => c.fournisseur === p.id);
             const actif = comptes.some((c) => c.statut === 'active');
             const aFinir = !actif && comptes.some((c) => c.statut === 'chambres');
             const logo = fournisseurs.find((f) => f.id === p.id)?.logo;
             return (
-              <Card key={p.id} className="flex flex-col gap-3">
+              <Card key={p.id} className="flex min-w-0 flex-col gap-3">
                 <div className="flex items-center gap-3">
                   <LogoPlateforme nom={p.nom} logo={logo} />
                   <div className="min-w-0 flex-1">
@@ -279,8 +280,8 @@ export default function Connexions() {
                 {comptes.length > 0 ? (
                   <ul className="space-y-1.5">
                     {comptes.map((c) => (
-                      <li key={c.id} className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
-                        <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
+                      <li key={c.id} className="flex min-w-0 items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
+                        <span className="min-w-0 truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
                         <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant || !reel} onClick={() => setADeconnecter(c)}>
                           Déconnecter
                         </Button>
@@ -378,7 +379,7 @@ export default function Connexions() {
         )}
 
         {chargement && !etat ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-24 rounded-xl" />
             ))}
