@@ -46,6 +46,12 @@ export interface DepotCopilote {
 /** Traces des actions de l'IA (collection actionsAgent de l'espace). */
 export interface DepotActions {
   enregistrer(a: ActionAgent): Promise<void>;
+  /**
+   * La règle SQL des actions de l'IA est-elle en place (erp.actions_ia_protegees) ?
+   * Absent : oui. Non : les outils d'avant le copilote écrivent sans trace,
+   * les nouveaux refusent (copilote.ts, contexteTrace).
+   */
+  pret?(): Promise<boolean>;
 }
 
 export interface ContexteMcp {

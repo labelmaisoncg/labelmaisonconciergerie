@@ -26,6 +26,7 @@
 import {
   CONSERVATION_JOURS,
   MAX_ACTIONS,
+  REGLE_A_RELANCER,
   actionAgentMessagerie,
   actionClaude,
   actionsVisibles,
@@ -41,7 +42,7 @@ import { OUTILS, traiterMcp, type ContexteMcp } from './crm-mcp';
 import { attendEquipe } from './cm-mcp';
 import { ID_LABEL_MAISON } from './espaces';
 import { idFactureMensuelle, preparerBrouillon } from './factures-mensuelles';
-import { detailValidation, marquerBrouillonValide } from './messagerie-ia';
+import { CHIFFRES_EPELES, detailValidation, marquerBrouillonValide, nettoyerTexte } from './messagerie-ia';
 import { ecritureRepullPermise } from './repull-synchro';
 import { creerSeed } from './seed';
 import type { ContactCrm, ErpDonnees, Facture, FilMessages, Logement, Mission } from './types';
@@ -319,6 +320,7 @@ async function principal() {
     await outil(ctx, 'conversation_pas_besoin_de_repondre', { id: fil.id });
     const t = monde.derniere('conversation_pas_besoin_de_repondre');
     verifier(t?.collection === 'filsMessages' && t.retour?.genre === 'champs' && t.changements.some((c) => c.champ === 'Conversation' && c.apres === 'Terminée'), 'trace : « Conversation : Ouverte → Terminée »', t?.changements);
+    verifier(t?.resume.includes('«\u00a0terminée\u00a0»'), `résumé : espaces insécables dans les guillemets (${t?.resume})`);
     verifier(annuler(monde, t).ok && stable(monde.un('filsMessages', fil.id)) === stable(avant), 'Annuler : la conversation revient dans « À répondre », comme avant');
     await outil(ctx, 'conversation_pas_besoin_de_repondre', { id: fil.id });
     const t2 = monde.derniere('conversation_pas_besoin_de_repondre');
@@ -343,11 +345,21 @@ async function principal() {
       ['Bonjour, écrivez-nous à resa (at) exemple point fr.', 'e-mail déguisé'],
       ['Bonjour, tout est expliqué ici : https://exemple.invalid/guide', 'lien'],
       ['Bonjour, oui, vous pourrez arriver dès 10 h, c’est noté !', 'supplément accordé'],
+      ['Bonjour, tapez 4 8 2 sur le boîtier.', 'chiffres épelés (espaces)'],
+      ['Bonjour, tapez 4.8.2 sur le boîtier.', 'chiffres épelés (points)'],
+      ['Bonjour, tapez 4-8-2-1 sur le boîtier.', 'chiffres épelés (tirets)'],
+      ['Bonjour, tapez ４ ８ ２ sur le boîtier.', 'chiffres épelés (pleine largeur)'],
     ] as const) {
       const ev = monde.evenements.length;
       const r = await outil(ctx, 'reponse_proposer', { id: 'fil-piege', texte });
       verifier(r.erreur && /rien n’a été proposé/i.test(r.texte) && monde.evenements.length === ev, `${quoi} : refusée, ni trace ni écriture (${r.texte.slice(0, 70)}…)`);
     }
+    const epeles = (t: string) => CHIFFRES_EPELES.test(nettoyerTexte(t));
+    verifier(
+      ['4 8 2', '4.8.2', '4-8-2', '4 – 8 – 2', 'code 1 2 3 4'].every(epeles) &&
+        !['arrivée à 14 h', '2 lits et 3 serviettes', 'le 24-09-2026', '4 8', 'chambre 12, étage 3', 'au 06 12 34 56 78'].some(epeles),
+      'chiffres épelés : « 4 8 2 » repéré ; une heure, une date, deux chiffres ou un nombre ne le sont pas',
+    );
     const aValider = monde.tous<FilMessages>('filsMessages').find((f) => f.agent?.decision === 'a_valider' && f.agent.brouillon && !f.agent.brouillon.valideePar)!;
     const rAgent = await outil(ctx, 'reponse_proposer', { id: aValider.id, texte: 'Hello, see you soon!' });
     verifier(rAgent.erreur && /agent a déjà préparé/.test(rAgent.texte), 'réponse de l’agent déjà à valider : pas remplacée');
@@ -368,6 +380,7 @@ async function principal() {
     const e = etatAffiche(t, monde.tous('filsMessages'), nom);
     verifier(e.libelle === 'À envoyer' && e.aEnvoyer && e.annulable, `écran : « À envoyer », retirable (${e.libelle})`);
     verifier(annuler(monde, t).ok && stable(monde.un('filsMessages', 'fil-piege')) === stable(avant), 'Retirer : la conversation revient exactement comme avant (l’agent peut de nouveau répondre)');
+    verifier(etatAffiche(monde.un<ActionAgent>('actionsAgent', t.id)!, monde.tous('filsMessages'), nom).libelle === 'Retirée par Abdel', 'écran après « Retirer » : « Retirée par Abdel »');
 
     await outil(ctx, 'reponse_proposer', { id: 'fil-piege', texte: 'Bonjour, arrivée à 14 h possible.' });
     const t2 = monde.derniere('reponse_proposer');
@@ -386,6 +399,12 @@ async function principal() {
       'à l’envoi : la trace passe « faite », envoyée par qui et quand',
       notees,
     );
+    const retouchee = tracesEnvoyees(monde.traces(), avantEnvoi, { par: 'abdel@labelmaisoncg.fr', le: '2026-09-24T15:10:00+02:00', modifiee: true });
+    verifier(
+      retouchee[0]?.envoyee?.modifiee === true && etatAffiche(retouchee[0], [], nom).libelle === 'Envoyée par Abdel, après retouche' && !notees[0].envoyee?.modifiee,
+      'retouchée avant l’envoi : « Envoyée par Abdel, après retouche » (telle quelle : sans)',
+    );
+    verifier(tracesEnvoyees(monde.traces(), avantEnvoi, { par: 'x', le: MAINTENANT, espace: SENS }).length === 0, 'jamais la trace d’un autre espace');
     for (const x of notees) monde.poser('actionsAgent', x);
     const ensuite = monde.un<FilMessages>('filsMessages', 'fil-piege')!;
     monde.poser('filsMessages', { ...ensuite, agent: { dernierMessageTraite: 'p9', decision: 'repondre' } });
@@ -456,6 +475,10 @@ async function principal() {
     verifier(!moteur.donnees.paiementsPrestataires.some((x) => x.missions.includes(m.id)), 'jamais dans un paiement de prestataire');
     const temoinApres = moteur.donnees.missions.find((x) => x.id === 'mis-temoin');
     verifier(temoinApres?.statut === 'attribuee' || moteur.evenements.some((e) => e.entiteId === 'mis-temoin'), 'le même ménage, non interne, part bien en attribution (témoin)', temoinApres?.statut);
+    // Le ménage n'est plus interne (confié depuis, à la main) : l'empreinte dit qu'il a changé.
+    monde.poser('missions', { ...apresMoteur, interne: undefined, prestataireId: 'pre-x', statut: 'attribuee' });
+    const confie = annuler(monde, t);
+    verifier(!confie.ok && /a changé depuis/.test(confie.ok ? '' : confie.raison) && monde.un('missions', m.id), `ménage plus interne : « a changé depuis », rien retiré (${confie.ok ? '' : confie.raison})`);
     monde.poser('missions', apresMoteur);
     verifier(annuler(monde, t).ok && monde.col('missions').size === nb, 'Annuler : le ménage est retiré du planning');
   }
@@ -486,7 +509,11 @@ async function principal() {
       verifier(!encore.erreur && encore.donnees.prepare === false && monde.evenements.length === ev, 'déjà préparée : rien remplacé, ni trace ni écriture');
       // Le gérant la valide (numéro) : l'annulation ne la retire plus.
       monde.poser('factures', { ...f, numero: '2026-0042', statut: 'emise' });
-      verifier(!annuler(monde, t).ok && monde.un('factures', f.id), 'facture validée depuis : annulation refusée, rien retiré');
+      const validee = annuler(monde, t);
+      verifier(
+        !validee.ok && validee.raison === 'La facture a été validée depuis : elle ne s’annule plus.' && monde.un('factures', f.id),
+        `facture validée depuis : annulation refusée, message clair, rien retiré (${validee.ok ? '' : validee.raison})`,
+      );
       monde.poser('factures', f);
       verifier(annuler(monde, t).ok && !monde.un('factures', f.id), 'brouillon encore intact : Annuler le retire');
     }
@@ -530,7 +557,7 @@ async function principal() {
     verifier(/create policy "actions ia reservees aux gerants" on erp\.enregistrements\s+as restrictive for all to authenticated\s+using \(collection <> 'actionsAgent' or espace = any \(\(select erp\.espaces_gerant\(\)\)::uuid\[\]\)\)\s+with check \(collection <> 'actionsAgent' or espace = any/.test(sql), 'règle RLS : lecture et écriture des gérants de l’espace seulement');
     verifier(/create policy "versions des actions ia reservees aux gerants" on erp\.historique\s+as restrictive for select/.test(sql), 'anciennes versions : gérants seulement');
     verifier(
-      sql.includes("interval '90 days'") && /partition by coalesce\(y\.donnees ->> 'source', ''\)/.test(sql) && sql.includes('x.rang > 500') && /create trigger borner_actions_ia after insert on erp\.enregistrements\s+for each row when \(new\.collection = 'actionsAgent'\)/.test(sql),
+      sql.includes("interval '90 days'") && /partition by coalesce\(y\.donnees ->> 'source', ''\)/.test(sql) && sql.includes("x.rang > case when x.source = 'claude' then 5000 else 500 end") && /create trigger borner_actions_ia after insert on erp\.enregistrements\s+for each row when \(new\.collection = 'actionsAgent'\)/.test(sql),
       'déclencheur : 90 jours, 500 actions par source',
     );
     verifier(/if coalesce\(old\.collection, ''\) = 'actionsAgent' then/.test(sql) && /create or replace function erp\.actions_ia_protegees\(\)/.test(sql), 'aucune ancienne version des actions de l’IA ; témoin de la règle');
@@ -608,11 +635,58 @@ async function principal() {
     const actions = demo.actionsAgent;
     verifier(actions.length >= 6 && actions.some((a) => a.source === 'claude') && actions.some((a) => a.source === 'agent'), `actions de Claude et de l’agent (${actions.length})`);
     verifier(actions.some((a) => etatAffiche(a, demo.filsMessages).aEnvoyer), 'une réponse « À envoyer »');
-    verifier(actions.some((a) => a.etat === 'annulee') && actions.some((a) => !a.annulable), 'une action annulée, une qui ne s’annule pas');
+    verifier(actions.some((a) => a.etat === 'annulee') && actions.some((a) => !a.annulable) && actions.some((a) => a.etat === 'echec' && etatAffiche(a, demo.filsMessages).libelle === 'Pas faite'), 'une action annulée, une qui ne s’annule pas, une « Pas faite »');
     const m = new Monde(demo);
     const annulables = actions.filter((a) => etatAffiche(a, demo.filsMessages).annulable);
     verifier(annulables.length >= 3 && annulables.every((a) => annuler(m, a).ok), `chaque action annulable de la démo s’annule sur les données de la démo (${annulables.length})`);
     verifier(actions.every((a) => a.espace === ID_LABEL_MAISON && !/@|\b0\d(?:[ .]?\d{2}){4}\b/.test(JSON.stringify({ ...a, retour: undefined }))), 'démo : Label Maison, ni e-mail ni téléphone affichés');
+  }
+
+  /* ------------------------------------------------ règle SQL absente */
+  section('13. Avant la mise à jour de la base : les outils d’avant écrivent sans trace, les nouveaux refusent');
+  {
+    const m = new Monde(creerSeed());
+    const base = m.contexte();
+    const nbTraces = m.col('actionsAgent').size;
+    for (const [libelle, pret] of [
+      ['règle absente', async () => false],
+      ['témoin injoignable', async () => Promise.reject(new Error('réseau'))],
+    ] as const) {
+      const sans: ContexteMcp = { ...base, actions: { ...base.actions, pret } };
+      const avantCrm = m.un<ContactCrm>('crm', 'crm-demo-03')!;
+      const appel = await outil(sans, 'crm_noter_appel', { id: 'crm-demo-03', resultat: 'joint' });
+      const modif = await outil(sans, 'crm_modifier', { id: 'crm-demo-03', ville: 'Évry' });
+      const ajout = await outil(sans, 'crm_ajouter', { nom: `Sans Trace ${libelle}`, telephone: libelle === 'règle absente' ? '0611000001' : '0611000002' });
+      const fil = m.tous<FilMessages>('filsMessages').find((f) => attendEquipe(f) && !f.agent?.brouillon)!;
+      const terminee = await outil(sans, 'conversation_pas_besoin_de_repondre', { id: fil.id });
+      verifier(
+        !appel.erreur && !modif.erreur && !ajout.erreur && !terminee.erreur && m.un<ContactCrm>('crm', 'crm-demo-03')?.ville === 'Évry' && stable(m.un('crm', 'crm-demo-03')) !== stable(avantCrm) && m.un<FilMessages>('filsMessages', fil.id)?.statut !== fil.statut,
+        `${libelle} : appel, fiche, contact et conversation terminée écrits comme avant`,
+        [appel.texte, modif.texte, ajout.texte, terminee.texte],
+      );
+      verifier(m.col('actionsAgent').size === nbTraces && !m.evenements.some((e) => e.startsWith('trace:')), `${libelle} : aucune trace écrite (elle serait lisible par tous les membres)`);
+      const ev = m.evenements.length;
+      const logement = m.tous<Logement>('logements').find((l) => l.statut === 'actif')!;
+      const filRep = m.tous<FilMessages>('filsMessages').find((f) => attendEquipe(f) && !f.agent?.brouillon)!;
+      const nouveaux = [
+        await outil(sans, 'reponse_proposer', { id: filRep.id, texte: 'Bonjour, avec plaisir. À très vite !' }),
+        await outil(sans, 'menage_creer', { logement_id: logement.id, date: '2026-10-05' }),
+        await outil(sans, 'facture_preparer', { recherche: m.tous<{ nom: string }>('proprietaires')[0].nom, mois: '2026-08' }),
+      ];
+      verifier(
+        nouveaux.every((r) => r.erreur && r.texte.includes(REGLE_A_RELANCER) && /relancer la mise à jour de la base/.test(r.texte)) && m.evenements.length === ev,
+        `${libelle} : réponse proposée, ménage et facture refusés, rien d’écrit (${nouveaux.map((r) => r.texte.slice(0, 50)).join(' | ')})`,
+      );
+    }
+    const avec: ContexteMcp = { ...base, actions: { ...base.actions, pret: async () => true } };
+    const ev0 = m.evenements.length;
+    await outil(avec, 'crm_modifier', { id: 'crm-demo-03', ville: 'Lisses' });
+    const suite = m.evenements.slice(ev0);
+    verifier(
+      m.derniere('crm_modifier')?.cibleId === 'crm-demo-03' && suite.length === 2 && /^trace:.*:faite$/.test(suite[0]) && suite[1] === 'ecriture:crm:crm-demo-03',
+      'règle en place : de nouveau tracé avant d’écrire',
+      suite,
+    );
   }
 
   console.log(`\n${ok} contrôles réussis, ${ko} en échec.`);

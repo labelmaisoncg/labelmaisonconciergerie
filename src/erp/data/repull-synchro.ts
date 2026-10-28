@@ -541,10 +541,11 @@ export class BaseErp {
    */
   async roleMembre(email: string): Promise<string | null> {
     const espace = await this.espace();
-    const r = await this.requete(`membres?select=email,role${espace ? `&espace=eq.${espace}` : ''}`, { method: 'GET', entetes: { 'Accept-Profile': 'erp' } });
-    const lignes = (await r.json().catch(() => [])) as { email?: unknown; role?: unknown }[];
+    const r = await this.requete(`membres?select=email,role${espace ? `,uid&espace=eq.${espace}` : ''}`, { method: 'GET', entetes: { 'Accept-Profile': 'erp' } });
+    const lignes = (await r.json().catch(() => [])) as { email?: unknown; role?: unknown; uid?: unknown }[];
     const voulu = email.trim().toLowerCase();
-    const m = Array.isArray(lignes) ? lignes.find((l) => String(l?.email ?? '').trim().toLowerCase() === voulu) : undefined;
+    // Une ligne pas encore activée (invitation, réinvitation après un retrait) ne compte pas : comme erp.mes_espaces.
+    const m = Array.isArray(lignes) ? lignes.find((l) => String(l?.email ?? '').trim().toLowerCase() === voulu && (!espace || !!l?.uid)) : undefined;
     return voulu && m && typeof m.role === 'string' ? m.role : null;
   }
 

@@ -339,7 +339,13 @@ class Monde {
       const motif = filtreEmail.startsWith('ilike.') ? filtreEmail.slice(6).replace(/\\([\\%_])/g, '$1') : null;
       const garde = (e: string) => (!filtreEmail ? true : filtreEmail.startsWith('eq.') ? e === filtreEmail.slice(3) : motif !== null && e.toLowerCase() === motif.toLowerCase());
       const visibles = this.membres.filter((m) => (this.historique ? m.espace === LM && this.permis(jeton, null).includes(LM) : this.permis(jeton, entete).includes(m.espace)));
-      return json(visibles.filter((m) => (!filtreEspace || m.espace === filtreEspace) && garde(m.email)).map(({ email: e, role }) => ({ email: e, role })));
+      // uid demandé (select=…,uid) : renseigné pour une ligne liée à son compte, null sinon (comme erp.membres).
+      const avecUid = (p.get('select') ?? '').split(',').includes('uid');
+      return json(
+        visibles
+          .filter((m) => (!filtreEspace || m.espace === filtreEspace) && garde(m.email))
+          .map(({ espace: es, email: e, role }) => ({ email: e, role, ...(avecUid ? { uid: this.lies.has(`${es}:${e}`) ? `uid-${e}` : null } : {}) })),
+      );
     }
     const avecEspace = url.searchParams.has('espace') || (Array.isArray(corps) && corps.some((l) => 'espace' in l));
     if (this.historique && avecEspace) return json({ code: '42703', message: 'column enregistrements.espace does not exist' }, 400);
@@ -954,7 +960,12 @@ async function principal() {
       monde.membres = monde.membres.filter((m) => m !== gerantB);
       const echange = await jetonsDe(code);
       verifier(echange.statut === 400 && echange.corps?.error === 'invalid_grant', 'gérant retiré avant l’échange du code : aucun jeton', echange.corps);
+      // Réinvité gérant mais pas encore réactivé (ligne sans compte lié) : ses anciens jetons ne reviennent pas.
       monde.membres.push(gerantB);
+      monde.lies.delete(`${SENS}:gerant-b@exemple.invalid`);
+      oublierJetonsGardes();
+      verifier((await nomsCrm(accesSens2)) === 'refus 401', 'gérant réinvité, ligne pas encore activée : ses jetons restent refusés', await nomsCrm(accesSens2));
+      monde.lies.add(`${SENS}:gerant-b@exemple.invalid`);
       oublierJetonsGardes();
       verifier((await nomsCrm(accesSens2)).startsWith('Sacha Nouveau,Simone Sens'), 'la première autorisation de Sens, toujours valable, n’est pas touchée');
     }

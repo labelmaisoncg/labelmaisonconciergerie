@@ -29,7 +29,7 @@ import {
   trouverDoublon,
 } from './crm.js';
 import { OUTILS_CM } from './cm-mcp.js';
-import { contexteLecture, contexteTrace } from './copilote.js';
+import { contexteLecture, contexteTrace, verifierRegle } from './copilote.js';
 import { OUTILS_COPILOTE } from './copilote-mcp.js';
 import { fileDuJour, LIBELLE_PROFIL, profilContact } from './crm-assistant.js';
 import { estLabelMaison } from './espaces.js';
@@ -444,6 +444,8 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
       if (!outil) return erreur(id, -32602, `Outil inconnu : ${String(nom)}`);
       const args = (m.params?.arguments && typeof m.params.arguments === 'object' ? m.params.arguments : {}) as Args;
       try {
+        // Nouvel outil du copilote avant la mise à jour de la base : refusé d'emblée.
+        if (!outil.annotations.readOnlyHint) await verifierRegle(ctx, outil.name);
         // Écriture : tracée avant d'être faite (et annulable) ; lecture : aucune écriture possible.
         const r = await outil.executer(args, outil.annotations.readOnlyHint ? contexteLecture(ctx) : contexteTrace(ctx, outil.name));
         return resultat(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }], structuredContent: r });

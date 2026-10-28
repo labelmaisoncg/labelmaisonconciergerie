@@ -121,6 +121,8 @@ export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm' | 'co
       prix: () => base.lire<ElementPrix>(COLLECTION_PRIX),
     },
     actions: {
+      // Règle SQL absente : les outils d'avant écrivent sans trace, les nouveaux refusent (copilote.ts, contexteTrace).
+      pret: () => actionsIaProtegees(base),
       // Sans la règle SQL des actions de l'IA, la trace serait lisible par tous les membres : rien n'est écrit.
       enregistrer: async (a) => {
         if (!(await actionsIaProtegees(base))) throw new Error('Mise en service pas terminée (supabase/erp-espaces.sql à relancer) : rien n’a été modifié.');

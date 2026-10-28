@@ -1352,8 +1352,8 @@ create trigger garder_espace_enregistrement before update on erp.enregistrements
   for each row execute function erp.garder_espace_enregistrement();
 
 -- Actions de l'IA (actionsAgent) : bornées. À chaque action ajoutée, celles
--- de l'espace écrites il y a plus de 90 jours, et au-delà des 500 plus
--- récentes de chaque source (Claude, l'agent), sont retirées : les décisions
+-- de l'espace écrites il y a plus de 90 jours, et au-delà des plus récentes
+-- de chaque source (5 000 de Claude, 500 de l'agent), sont retirées : les décisions
 -- de l'agent ne poussent jamais dehors les actions de Claude, annulables 90
 -- jours. Pas d'ancienne version gardée (erp.archiver_version). Avec les
 -- droits de celui qui écrit : il ne retire que ce qu'il pourrait retirer
@@ -1366,12 +1366,12 @@ begin
    where e.espace = new.espace and e.collection = 'actionsAgent' and e.id <> new.id
      and (e.maj_le < now() - interval '90 days'
           or e.id in (select x.id from (
-                        select y.id, row_number() over (
+                        select y.id, coalesce(y.donnees ->> 'source', '') as source, row_number() over (
                                  partition by coalesce(y.donnees ->> 'source', '')
                                  order by coalesce(y.donnees ->> 'le', '') desc, y.id desc) as rang
                           from erp.enregistrements y
                          where y.espace = new.espace and y.collection = 'actionsAgent') x
-                       where x.rang > 500));
+                       where x.rang > case when x.source = 'claude' then 5000 else 500 end));
   return null;
 end;
 $$;

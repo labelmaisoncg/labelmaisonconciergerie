@@ -241,7 +241,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
     };
     upsert('filsMessages', valide?.source === 'agent' ? marquerBrouillonValide(repondu, utilisateur.nom, valide.modifiee, envoyeLe) : repondu);
     // Réponse proposée par Claude ou l'agent : sa trace passe « envoyée par … » (Actions de l'IA, chargées pour le gérant seul).
-    if (valide?.source === 'agent') for (const t of tracesEnvoyees(actionsAgent, fil, { par: utilisateur.email || utilisateur.nom, le: envoyeLe })) upsert('actionsAgent', t);
+    if (valide?.source === 'agent') for (const t of tracesEnvoyees(actionsAgent, fil, { par: utilisateur.email || utilisateur.nom, le: envoyeLe, modifiee: valide.modifiee })) upsert('actionsAgent', t);
     setBrouillon('');
     setAide(null);
     setPrecedent(null);

@@ -80,6 +80,14 @@ export function creerActionsAgentDemo(d: Pick<ErpDonnees, 'crm' | 'filsMessages'
     res.push(actionClaude({ id: 'act-demo-claude-relance', outil: 'crm_modifier', collection: 'crm', avant, apres: leroy, cible: leroy.nom, le: h(-1, '18:20'), espace: ID_LABEL_MAISON, client: CLAUDE }));
   }
 
+  // Claude : une relance qui n'a pas pu être enregistrée (base injoignable) : « Pas faite », rien n'a changé.
+  const sans = d.crm.find((c) => c.id === 'crm-demo-03');
+  if (sans) {
+    const apres: ContactCrm = { ...sans, relanceLe: ajouterJours(AUJOURDHUI, 2) };
+    const a = actionClaude({ id: 'act-demo-claude-echec', outil: 'crm_modifier', collection: 'crm', avant: sans, apres, cible: sans.nom, le: h(0, '07:45'), espace: ID_LABEL_MAISON, client: CLAUDE });
+    res.push({ ...a, etat: 'echec', annulable: false, pasAnnulable: 'L’écriture n’a pas abouti : rien n’a changé.' });
+  }
+
   // Claude : contact passé « En attente » (travaux), relance dans un mois.
   const haddad = d.crm.find((c) => c.id === 'crm-demo-05');
   if (haddad) {

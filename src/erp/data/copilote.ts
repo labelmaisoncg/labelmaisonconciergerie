@@ -22,7 +22,7 @@
  * - Rien de sensible : textes passés par masquer (codes et wifi du
  *   logement), masquerCoordonnees et masquerCodes. Seule l'annulation d'une
  *   fiche du CRM garde les valeurs exactes des champs changés.
- * - Bornée : 90 jours et 500 actions par source et par espace au plus (déclencheur
+ * - Bornée : 90 jours, et par espace 5 000 actions de Claude et 500 de l'agent au plus (déclencheur
  *   erp.borner_actions_ia, supabase/erp-espaces.sql) ; une trace trop
  *   grosse perd son retour (elle ne s'annule plus d'un clic).
  *
@@ -44,8 +44,10 @@ export type { ActionAgent } from './types-copilote';
 export const COLLECTION_ACTIONS_AGENT = 'actionsAgent';
 /** Conservation (et affichage) : 90 jours. */
 export const CONSERVATION_JOURS = 90;
-/** Au plus 500 actions gardées par source (Claude, l’agent) et par espace. */
+/** Au plus 500 actions de l’agent gardées par espace (Claude : MAX_ACTIONS_CLAUDE). */
 export const MAX_ACTIONS = 500;
+/** Actions de Claude : gardées 90 jours, 5 000 au plus (une rafale ne pousse pas dehors ses traces récentes). */
+export const MAX_ACTIONS_CLAUDE = 5000;
 /** Une trace plus grosse perd son retour (texte JSON, en caractères). */
 export const TAILLE_MAX_TRACE = 16_000;
 const EXTRAIT = 160;
@@ -387,7 +389,7 @@ function resumeClaude(outil: string, avant: unknown, apres: unknown, cible: stri
       return `Fiche de ${cible} modifiée${champs.length ? ` : ${champs.join(', ')}` : ''}.`;
     }
     case 'conversation_pas_besoin_de_repondre':
-      return `Conversation avec ${cible} classée « terminée » (pas besoin de répondre).`;
+      return `Conversation avec ${cible} classée «\u00a0terminée\u00a0» (pas besoin de répondre).`;
     case 'reponse_proposer':
       return `Réponse proposée à ${cible}.`;
     case 'menage_creer': {
@@ -573,12 +575,11 @@ const RETOURS_PERMIS: Record<string, { collection: CollectionTracee; genres: Ret
 };
 
 /**
- * La trace est-elle de celles que le serveur écrit ? Collection et genre de
- * retour cohérents avec l'outil, champs d'une conversation limités à son état,
- * et une suppression seulement pour ce que l'IA crée (ménage interne,
- * brouillon sans numéro). Une trace qui ne colle pas n'est jamais rejouée.
+ * La trace a-t-elle la forme de celles que le serveur écrit ? Collection et
+ * genre de retour cohérents avec l'outil, champs d'une conversation limités à
+ * son état. Une trace qui ne colle pas n'est jamais rejouée.
  */
-function retourPermis(a: ActionAgent, actuel: { id: string } | undefined): boolean {
+function retourPermis(a: ActionAgent): boolean {
   const p = RETOURS_PERMIS[a.outil];
   const r = a.retour;
   if (!p || !r || p.collection !== a.collection || !p.genres.includes(r.genre)) return false;
@@ -587,12 +588,22 @@ function retourPermis(a: ActionAgent, actuel: { id: string } | undefined): boole
     if (cles.some((k) => k === 'id' || k === 'espace')) return false;
     if (a.collection === 'filsMessages' && cles.some((k) => !CHAMPS_FIL_REMIS.includes(k))) return false;
   }
-  if (r.genre === 'supprimer' && actuel) {
-    if (a.collection === 'missions' && (actuel as Mission).interne !== true) return false;
-    if (a.collection === 'factures' && ((actuel as Facture).statut !== 'brouillon' || !!(actuel as Facture).numero)) return false;
-  }
   return true;
 }
+
+/**
+ * La cible est-elle encore de celles que l'IA peut retirer ? Une suppression
+ * ne vaut que pour ce que l'IA crée : ménage interne, brouillon de facture
+ * sans numéro. Renvoie ce qui l'empêche (rien : la suppression est permise).
+ */
+function suppressionBloquee(a: ActionAgent, actuel: { id: string } | undefined): 'facture_validee' | 'menage_confie' | null {
+  if (a.retour?.genre !== 'supprimer' || !actuel) return null;
+  if (a.collection === 'factures' && ((actuel as Facture).statut !== 'brouillon' || !!(actuel as Facture).numero)) return 'facture_validee';
+  if (a.collection === 'missions' && (actuel as Mission).interne !== true) return 'menage_confie';
+  return null;
+}
+
+const TRACE_INCONNUE = 'Cette trace ne correspond à aucune action de l’IA : rien n’a été annulé.';
 
 export type EcritureAnnulation =
   | { genre: 'ecrire'; collection: CollectionTracee; element: { id: string } }
@@ -611,7 +622,9 @@ export function annulerAction(a: ActionAgent, actuel: { id: string } | undefined
   if (espaceDe(a.espace) !== espaceDe(o.espace ?? undefined)) return { ok: false, raison: 'Cette action appartient à un autre espace : rien n’a été annulé.' };
   if (a.etat === 'annulee') return { ok: false, raison: `Déjà annulée${a.annulation ? ` par ${a.annulation.par}` : ''}.` };
   if (!a.annulable || !a.retour || (a.etat !== 'faite' && a.etat !== 'a_confirmer')) return { ok: false, raison: a.pasAnnulable ?? 'Cette action ne s’annule pas.' };
-  if (!retourPermis(a, actuel)) return { ok: false, raison: 'Cette trace ne correspond à aucune action de l’IA : rien n’a été annulé.' };
+  if (!retourPermis(a)) return { ok: false, raison: TRACE_INCONNUE };
+  const bloquee = suppressionBloquee(a, actuel);
+  if (bloquee === 'facture_validee') return { ok: false, raison: 'La facture a été validée depuis : elle ne s’annule plus.' };
   const r = a.retour;
   if (r.genre === 'proposition') {
     const b = (actuel as FilMessages | undefined)?.agent?.brouillon;
@@ -626,6 +639,8 @@ export function annulerAction(a: ActionAgent, actuel: { id: string } | undefined
       raison: `${a.cible} a changé depuis l’action de ${LIBELLE_SOURCE[a.source]} (${heureTexte(a.le)}) : rien n’a été annulé, pour ne rien écraser. Corrigez à la main si besoin.`,
     };
   }
+  // Ménage qui n'est pas interne, inchangé depuis la trace : elle n'a pas été écrite par le serveur.
+  if (bloquee) return { ok: false, raison: TRACE_INCONNUE };
   const ecriture: EcritureAnnulation =
     r.genre === 'supprimer'
       ? { genre: 'supprimer', collection: a.collection, id: actuel.id }
@@ -654,8 +669,12 @@ export interface EtatAffiche {
 /** Où en est l'action, lue sur la conversation pour une réponse proposée. `nom` : nom d'un membre d'après son adresse. */
 export function etatAffiche(a: ActionAgent, fils: readonly FilMessages[], nom: (email: string) => string = (e) => e): EtatAffiche {
   // Envoyée par l'équipe : noté sur la trace à l'envoi (la conversation a pu changer depuis).
-  if (a.envoyee) return { libelle: `Envoyée par ${nom(a.envoyee.par)}`, ton: 'succes', annulable: false };
-  if (a.etat === 'annulee') return { libelle: a.annulation ? `Annulée par ${a.annulation.par}` : 'Annulée', ton: 'neutre', annulable: false };
+  if (a.envoyee) return { libelle: `Envoyée par ${nom(a.envoyee.par)}${a.envoyee.modifiee ? ', après retouche' : ''}`, ton: 'succes', annulable: false };
+  if (a.etat === 'annulee') {
+    // Réponse proposée retirée (« Retirer ») ; toute autre action, annulée.
+    const verbe = a.retour?.genre === 'proposition' ? 'Retirée' : 'Annulée';
+    return { libelle: a.annulation ? `${verbe} par ${a.annulation.par}` : verbe, ton: 'neutre', annulable: false };
+  }
   if (a.etat === 'echec') return { libelle: 'Pas faite', ton: 'danger', annulable: false };
   if (a.etat === 'sans_effet') return { libelle: 'Rien à faire', ton: 'neutre', annulable: false };
   if (a.etat === 'a_confirmer') {
@@ -673,7 +692,7 @@ export function etatAffiche(a: ActionAgent, fils: readonly FilMessages[], nom: (
 
 /**
  * Actions à montrer : les 90 derniers jours, sans celles qui n'ont rien
- * fait, de la plus récente à la plus ancienne ; 500 au plus par source (les
+ * fait, de la plus récente à la plus ancienne ; 5 000 de Claude et 500 de l'agent au plus (les
  * décisions de l'agent ne poussent jamais dehors celles de Claude), comme
  * dans la base (erp.borner_actions_ia).
  */
@@ -687,7 +706,7 @@ export function actionsVisibles(actions: readonly ActionAgent[], aujourdhui: str
     .filter((a) => {
       const n = (parSource.get(String(a.source)) ?? 0) + 1;
       parSource.set(String(a.source), n);
-      return n <= MAX_ACTIONS;
+      return n <= (a.source === 'claude' ? MAX_ACTIONS_CLAUDE : MAX_ACTIONS);
     });
 }
 
@@ -697,12 +716,25 @@ export function actionsVisibles(actions: readonly ActionAgent[], aujourdhui: str
  * et quand. `fil` : la conversation AVANT l'envoi (avec la réponse proposée).
  * Renvoie les traces à écrire (aucune si rien ne correspond).
  */
-export function tracesEnvoyees(actions: readonly ActionAgent[], fil: Pick<FilMessages, 'id' | 'agent'>, o: { par: string; le: Horodatage }): ActionAgent[] {
+export function tracesEnvoyees(
+  actions: readonly ActionAgent[],
+  fil: Pick<FilMessages, 'id' | 'agent'>,
+  o: { par: string; le: Horodatage; modifiee?: boolean; espace?: string | null },
+): ActionAgent[] {
   const b = fil.agent?.brouillon;
   if (!b || b.valideePar) return [];
   return actions
     .filter((a) => a?.etat === 'a_confirmer' && a.collection === 'filsMessages' && a.cibleId === fil.id && a.proposition?.messageId === b.messageId && a.proposition?.le === b.le)
-    .map((a) => ({ ...a, etat: 'faite' as const, annulable: false, pasAnnulable: 'Envoyée au voyageur : un message parti ne se reprend pas.', envoyee: { par: o.par, le: o.le } }));
+    // Jamais la trace d'un autre espace (la liste vient déjà de la base de l'espace : défense en plus).
+    .filter((a) => o.espace === undefined || espaceDe(a.espace) === espaceDe(o.espace ?? undefined))
+    .map((a) => ({
+      ...a,
+      etat: 'faite' as const,
+      annulable: false,
+      pasAnnulable: 'Envoyée au voyageur : un message parti ne se reprend pas.',
+      // Retouchée : ce n'est pas la réponse proposée qui est partie, la trace le dit.
+      envoyee: { par: o.par, le: o.le, ...(o.modifiee ? { modifiee: true } : {}) },
+    }));
 }
 
 /* ------------------------------------------------ connecteur : contexte */
@@ -723,15 +755,37 @@ export function contexteLecture(ctx: ContexteMcp): ContexteMcp {
   };
 }
 
+/** Outils arrivés avec le copilote : sans la règle SQL des actions de l'IA, ils refusent. */
+export const OUTILS_APRES_REGLE: ReadonlySet<string> = new Set(['reponse_proposer', 'menage_creer', 'facture_preparer']);
+export const REGLE_A_RELANCER = 'Le gérant doit d’abord relancer la mise à jour de la base : rien n’a été modifié.';
+
+/** Règle SQL en place ? Absente du contexte (doublure de test) : oui ; témoin injoignable : non. */
+const reglePrete = (ctx: ContexteMcp): Promise<boolean> => (ctx.actions.pret ? Promise.resolve(ctx.actions.pret()).catch(() => false) : Promise.resolve(true));
+
+/** Un nouvel outil du copilote, appelé avant la mise à jour de la base : refusé d'emblée, rien n'est lu ni écrit. */
+export async function verifierRegle(ctx: ContexteMcp, outil: string): Promise<void> {
+  if (OUTILS_APRES_REGLE.has(outil) && !(await reglePrete(ctx))) throw new ErreurOutil(REGLE_A_RELANCER);
+}
+
 /**
  * Contexte d'un outil d'écriture : chaque écriture est tracée AVANT d'être
  * faite (la trace d'abord ; sans trace, rien). Si l'écriture échoue, la
  * trace passe « pas faite » ; si elle n'a rien fait (facture déjà là),
  * « rien à faire ».
+ *
+ * Tant que la règle SQL manque (supabase/erp-espaces.sql pas relancé), une
+ * trace serait lisible par tous les membres : on n'en écrit pas. Les outils
+ * d'avant le copilote (CRM, conversation terminée) écrivent alors comme
+ * avant, sans trace ; les nouveaux (OUTILS_APRES_REGLE) refusent.
  */
 export function contexteTrace(ctx: ContexteMcp, outil: string): ContexteMcp {
   const espace = ctx.espace?.id;
+  let regle: Promise<boolean> | undefined;
   const tracer = async (entree: Omit<EntreeActionClaude, 'outil' | 'le' | 'espace' | 'client'>, ecrire: () => Promise<boolean | void>): Promise<boolean> => {
+    if (!(await (regle ??= reglePrete(ctx)))) {
+      if (OUTILS_APRES_REGLE.has(outil)) throw new ErreurOutil(REGLE_A_RELANCER);
+      return (await ecrire()) !== false;
+    }
     const a = actionClaude({ ...entree, outil, le: ctx.maintenant(), espace, client: ctx.client });
     await ctx.actions.enregistrer(a);
     let fait: boolean | void;

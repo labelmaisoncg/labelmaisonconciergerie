@@ -15,7 +15,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bot, MessageSquareText, Sparkles } from 'lucide-react';
+import { Bot, ChevronDown, MessageSquareText, Sparkles } from 'lucide-react';
 import { ACTIONS_POSSIBLES, LIBELLE_SOURCE, actionsIaProtegees, actionsVisibles, annulerAction, etatAffiche, type ActionAgent, type EtatAffiche } from '../../data/copilote';
 import type { ChangementAction } from '../../data/types-copilote';
 import { optionsSuiviCrm } from '../../data/marque-espace';
@@ -70,7 +70,7 @@ export default function ActionsIA() {
   /** Qui a ouvert l'accès à Claude (jamais sur une action pas faite). */
   const acces = (a: ActionAgent): string | null => {
     if (a.etat === 'echec') return null;
-    if (a.client?.genre === 'oauth' && a.client.autorisePar) return `Connecté par ${nom(a.client.autorisePar)}`;
+    if (a.client?.genre === 'oauth' && a.client.autorisePar) return `Claude connecté par ${nom(a.client.autorisePar)}`;
     return a.client?.genre === 'cle' ? 'Accès réservé de Label Maison' : null;
   };
 
@@ -196,6 +196,29 @@ export default function ActionsIA() {
                   const deplie = ouverte === a.id;
                   const idDetail = `action-ia-${a.id}`;
                   const qui = acces(a);
+                  const raisonVisible = !etat.annulable && a.etat !== 'annulee' && a.etat !== 'echec' && !!a.pasAnnulable;
+                  const aDetail = a.changements.length > 0 || !!qui || raisonVisible || !!lienSur(a.lien);
+                  const annulable = etat.annulable && !d.lectureSeule;
+                  // Toute la ligne (phrase, source, état) déplie le détail ; « Annuler » reste à part.
+                  const contenu = (
+                    <>
+                      <span className="flex items-baseline gap-2">
+                        <span className={cn('min-w-0 flex-1 text-[13.5px] text-(--lm-encre)', a.etat === 'annulee' && 'text-(--lm-encre-3) line-through decoration-(--lm-bord-fort)')}>{a.resume}</span>
+                        <span className="flex shrink-0 items-center gap-1 text-[12px] text-(--lm-encre-3)">
+                          <time dateTime={a.le} className="lm-chiffres">
+                            {heure(a.le)}
+                          </time>
+                          {aDetail && <ChevronDown aria-hidden className={cn('size-3.5 transition-transform', deplie && 'rotate-180')} />}
+                        </span>
+                      </span>
+                      {a.etat === 'echec' && <span className="mt-0.5 block text-[12.5px] text-(--lm-encre-2)">L’enregistrement n’a pas abouti : rien n’a changé.</span>}
+                      <span className={cn('mt-1 flex min-h-8 flex-wrap items-center gap-1.5 text-[12px] text-(--lm-encre-3)', annulable && 'pr-20')}>
+                        <span>{LIBELLE_SOURCE[a.source]}</span>
+                        {/* La phrase dit ce qui est fait : un badge seulement pour un état (envoyée, annulée, pas faite…). */}
+                        {(a.etat !== 'faite' || a.envoyee) && etat.libelle && <Badge tone={etat.ton}>{etat.libelle}</Badge>}
+                      </span>
+                    </>
+                  );
                   return (
                     <li key={a.id} className="flex items-start gap-3 px-4 py-3">
                       <span
@@ -208,27 +231,23 @@ export default function ActionsIA() {
                         {a.source === 'claude' ? <Sparkles /> : <Bot />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <button
-                          type="button"
-                          onClick={() => setOuverte(deplie ? null : a.id)}
-                          aria-expanded={deplie}
-                          aria-controls={idDetail}
-                          className="flex w-full items-baseline gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
-                        >
-                          <span className={cn('min-w-0 flex-1 text-[13.5px] text-(--lm-encre)', a.etat === 'annulee' && 'text-(--lm-encre-3) line-through decoration-(--lm-bord-fort)')}>{a.resume}</span>
-                          <time dateTime={a.le} className="lm-chiffres shrink-0 text-[12px] text-(--lm-encre-3)">
-                            {heure(a.le)}
-                          </time>
-                        </button>
-                        {/* Pas faite : la raison d'abord. */}
-                        {a.etat === 'echec' && <p className="mt-0.5 text-[12.5px] text-(--lm-danger)">Pas fait : l’enregistrement n’a pas abouti, rien n’a changé.</p>}
-                        <div className="mt-1 flex min-h-8 flex-wrap items-center gap-1.5 text-[12px] text-(--lm-encre-3)">
-                          <span>{LIBELLE_SOURCE[a.source]}</span>
-                          {/* La phrase dit ce qui est fait : un badge seulement pour un état (envoyée, annulée, pas faite…). */}
-                          {(a.etat !== 'faite' || a.envoyee) && etat.libelle && <Badge tone={etat.ton}>{etat.libelle}</Badge>}
-                          {etat.annulable && !d.lectureSeule && <span className="-my-1 -mr-2 ml-auto">{boutonAnnuler(a)}</span>}
+                        <div className="relative">
+                          {aDetail ? (
+                            <button
+                              type="button"
+                              onClick={() => setOuverte(deplie ? null : a.id)}
+                              aria-expanded={deplie}
+                              aria-controls={idDetail}
+                              className="block w-full rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                            >
+                              {contenu}
+                            </button>
+                          ) : (
+                            <div>{contenu}</div>
+                          )}
+                          {annulable && <span className="absolute right-0 bottom-0 -mr-2">{boutonAnnuler(a)}</span>}
                         </div>
-                        {deplie && (
+                        {deplie && aDetail && (
                           <div id={idDetail} className="mt-1 space-y-2 rounded-lg bg-(--lm-surface-2) px-3 py-2 text-[12.5px]">
                             {a.changements.length > 0 && (
                               <dl className="space-y-1">
@@ -244,7 +263,7 @@ export default function ActionsIA() {
                               </dl>
                             )}
                             {qui && <p className="text-(--lm-encre-2)">{qui}</p>}
-                            {!etat.annulable && a.etat !== 'annulee' && a.etat !== 'echec' && a.pasAnnulable && <p className="text-(--lm-encre-2)">{a.pasAnnulable}</p>}
+                            {raisonVisible && <p className="text-(--lm-encre-2)">{a.pasAnnulable}</p>}
                             {lienSur(a.lien) && (
                               <Link to={lienSur(a.lien)!} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
                                 {libelleLien(a)}
@@ -272,7 +291,7 @@ export default function ActionsIA() {
           ))}
         </ul>
         <p className="mt-2 text-[13px] text-(--lm-encre-2)">
-          « Annuler » remet la fiche comme avant, tant que personne ne l’a changée depuis. Les actions sont gardées 90 jours, sans code d’accès ni coordonnées de voyageur.
+          «&nbsp;Annuler&nbsp;» remet la fiche comme avant, tant que personne ne l’a changée depuis. Les actions sont gardées 90 jours, sans code d’accès ni coordonnées de voyageur.
         </p>
       </Aide>
 

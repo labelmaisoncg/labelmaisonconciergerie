@@ -89,6 +89,6 @@ export interface ActionAgent {
   /** Réponse proposée : le message du voyageur et l'heure de la proposition (son sort se lit sur la conversation). */
   proposition?: { messageId: Id; le: Horodatage };
   /** Réponse proposée envoyée par l'équipe (api/erp-repull-messages.ts, Messagerie) : qui, quand. */
-  envoyee?: { par: string; le: Horodatage };
+  envoyee?: { par: string; le: Horodatage; modifiee?: boolean };
   annulation?: { le: Horodatage; par: string };
 }

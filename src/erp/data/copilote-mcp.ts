@@ -25,7 +25,7 @@ import { calculerFactureMois, factureFigee, idFactureMensuelle, moisAFacturerAut
 import { identiteConciergerie } from './identite-conciergerie.js';
 import { MOTIF_EMAIL, MOTIF_LIEN, MOTIF_EMAIL_DEGUISE, MOTIF_TELEPHONE, masquerCoordonnees } from './masquage.js';
 import { date, ECRITURE, ErreurOutil, LECTURE, texte, type Args, type ContexteMcp, type DepotCopilote, type Outil } from './mcp-commun.js';
-import { consigneCachee, contientCodeAcces, langueProbable, masquerCodes, messagesSansReponse, offreSupplement, reponseAEcarter } from './messagerie-ia.js';
+import { CHIFFRES_EPELES, consigneCachee, contientCodeAcces, langueProbable, masquerCodes, messagesSansReponse, nettoyerTexte, offreSupplement, reponseAEcarter } from './messagerie-ia.js';
 import { conseillerPrix, eurosRonds, lireElementsPrix, plusJours, texteNuits } from './prix-conseils.js';
 import { logementsDe, moisDe, moisValide } from './proprietaire.js';
 import { eurosTexte, moisTexte } from './copilote.js';
@@ -145,7 +145,8 @@ export const OUTILS_COPILOTE: Outil[] = [
       if (offreSupplement(tout, logement?.fiche)) {
         throw new ErreurOutil('Cette réponse accorde un supplément (arrivée plus tôt, départ plus tard, ménage, navette) : l’équipe le propose avec le prix réglé. Rien n’a été proposé.');
       }
-      if (contientCodeAcces(tout, logement)) {
+      // Le code de la fiche, même déguisé, ou des chiffres épelés un à un (« 4 8 2 »).
+      if (contientCodeAcces(tout, logement) || CHIFFRES_EPELES.test(nettoyerTexte(tout))) {
         throw new ErreurOutil('Pas de code d’accès ni de wifi dans une réponse proposée : l’équipe les envoie depuis l’ERP au bon moment. Rien n’a été proposé.');
       }
       const langue = langueProbable(reponse);

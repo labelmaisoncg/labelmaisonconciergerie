@@ -18,6 +18,7 @@ import { fenetreJours } from './selectors';
 import { mesurer as mesurerAccueil } from '../modules/tableau-de-bord/_composants/calculs';
 import type { ContactCrm, FilMessages } from './types';
 import type { ActionAgent } from './types-copilote';
+import { REGLE_A_RELANCER } from './copilote';
 
 let ok = 0;
 let ko = 0;
@@ -184,8 +185,59 @@ async function main() {
   const faites = [...traces.values()].filter((t) => t.etat === 'faite' || t.etat === 'a_confirmer');
   verifier(faites.length === ecritures + ecrituresFils && faites.every((t) => t.source === 'claude' && !!t.outil && !!t.empreinte), `chaque écriture tracée (${faites.length} traces, ${ecritures + ecrituresFils} écritures)`);
 
+  await regleAbsente();
+
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
+}
+
+/* ------------------------------------------- base pas encore mise à jour */
+
+/**
+ * Tant que supabase/erp-espaces.sql n'est pas relancé (erp.actions_ia_protegees
+ * absente) : les outils d'avant le copilote écrivent comme avant, sans trace ;
+ * les nouveaux refusent avec un message clair.
+ */
+async function regleAbsente() {
+  const nbTraces = traces.size;
+  const sansRegle: ContexteMcp = {
+    ...ctx,
+    actions: {
+      pret: async () => false,
+      enregistrer: async () => {
+        throw new Error('trace écrite sans la règle');
+      },
+    },
+  };
+  const appel = async (c: ContexteMcp, name: string, args: Record<string, unknown>) =>
+    ((await traiterMcp({ jsonrpc: '2.0', id: 77, method: 'tools/call', params: { name, arguments: args } }, c)) as any).corps.result as { isError?: boolean; content: { text: string }[] };
+  const avant = ecritures;
+  const avantFils = ecrituresFils;
+  const fil = [...fils.values()].find((f) => attendEquipe(f) && f.id !== 'fil-piege')!;
+  const anciens = [
+    await appel(sansRegle, 'crm_noter_appel', { id: 'crm-demo-05', resultat: 'joint' }),
+    await appel(sansRegle, 'crm_modifier', { id: 'crm-demo-05', ville: 'Évry' }),
+    await appel(sansRegle, 'crm_ajouter', { nom: 'Avant La Règle', telephone: '0611000009' }),
+    await appel(sansRegle, 'conversation_pas_besoin_de_repondre', { id: fil.id }),
+  ];
+  verifier(
+    anciens.every((r) => !r.isError) && ecritures === avant + 3 && ecrituresFils === avantFils + 1 && base.get('crm-demo-05')?.ville === 'Évry' && fils.get(fil.id)?.statut === 'clos',
+    `base pas encore mise à jour : crm_noter_appel, crm_modifier, crm_ajouter et conversation_pas_besoin_de_repondre marchent comme avant (${anciens.filter((r) => r.isError).map((r) => r.content[0].text).join(' | ')})`,
+  );
+  verifier(traces.size === nbTraces, 'base pas encore mise à jour : aucune trace écrite');
+  const autre = [...fils.values()].find((f) => attendEquipe(f) && f.id !== 'fil-piege' && !f.agent?.brouillon)!;
+  const nouveaux = [
+    await appel(sansRegle, 'reponse_proposer', { id: autre.id, texte: 'Bonjour, avec plaisir !' }),
+    await appel(sansRegle, 'menage_creer', { logement_id: seed.logements[0].id, date: '2026-10-05' }),
+    await appel(sansRegle, 'facture_preparer', { recherche: 'x', mois: '2026-08' }),
+  ];
+  verifier(
+    nouveaux.every((r) => r.isError && r.content[0].text === REGLE_A_RELANCER) && ecritures === avant + 3 && ecrituresFils === avantFils + 1,
+    `base pas encore mise à jour : reponse_proposer, menage_creer et facture_preparer refusés (${nouveaux[0].content[0].text})`,
+  );
+  const avecRegle: ContexteMcp = { ...ctx, actions: { ...ctx.actions, pret: async () => true } };
+  const r = await appel(avecRegle, 'crm_modifier', { id: 'crm-demo-05', ville: 'Lisses' });
+  verifier(!r.isError && traces.size === nbTraces + 1, 'base à jour : l’écriture est de nouveau tracée');
 }
 
 /* --------------------------------------------------------- channel manager */

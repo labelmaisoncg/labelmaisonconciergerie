@@ -38,10 +38,10 @@ import { configurationEspace, espaceDemande } from './_erp-espaces.js';
 const BUDGET_TEMPS_MS = 50_000;
 
 /** Réponse proposée envoyée : sa trace passe « envoyée par … » (Actions de l'IA). Ne bloque jamais l'envoi. */
-async function noterEnvoi(base: BaseErp, fil: FilMessages, par: string): Promise<void> {
+async function noterEnvoi(base: BaseErp, fil: FilMessages, par: string, modifiee: boolean): Promise<void> {
   try {
     if (!(await actionsIaProtegees(base))) return;
-    const traces = tracesEnvoyees(await base.lire<ActionAgent>(COLLECTION_ACTIONS_AGENT), fil, { par, le: horodatageParis() });
+    const traces = tracesEnvoyees(await base.lire<ActionAgent>(COLLECTION_ACTIONS_AGENT), fil, { par, le: horodatageParis(), modifiee, espace: await base.espace() });
     if (traces.length) await base.ecrire(COLLECTION_ACTIONS_AGENT, traces, par);
   } catch (e) {
     console.warn('[erp-repull-messages] trace de l’envoi non écrite', e instanceof Error ? e.message : e);
@@ -100,7 +100,7 @@ export default async function handler(req: any, res: any) {
         details: detailValidation(validation, membre.email, r.fil.voyageur, proposePar),
       };
       await ctx.base.ecrire('journal', [ligne]).catch(() => undefined);
-      if (validation.source === 'agent' && avant) await noterEnvoi(ctx.base, avant, membre.email);
+      if (validation.source === 'agent' && avant) await noterEnvoi(ctx.base, avant, membre.email, validation.modifiee);
     }
     return repondre(res, 200, r);
   } catch (e) {
