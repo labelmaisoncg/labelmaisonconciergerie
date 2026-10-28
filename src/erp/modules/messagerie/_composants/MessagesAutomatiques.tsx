@@ -1,8 +1,9 @@
 /**
- * Onglet « Messages automatiques » de la Messagerie : quatre messages qui
- * partent tout seuls (merci pour la réservation, infos d'arrivée la veille,
- * rappel du départ, demande d'avis), chacun avec son interrupteur, son texte,
- * un aperçu et son dernier envoi ; puis l'historique (envoyés et pas envoyés).
+ * Onglet « Messages automatiques » de la Messagerie : cinq messages qui
+ * partent tout seuls (merci pour la réservation, suppléments 3 jours avant,
+ * infos d'arrivée la veille, rappel du départ, demande d'avis), chacun avec
+ * son interrupteur, son texte, un aperçu et son dernier envoi ; puis
+ * l'historique (envoyés et pas envoyés).
  *
  * Éteints par défaut. Seul un gérant les allume ou les modifie. Les envois
  * sont faits par le serveur (passage planifié : src/erp/data/passage-programmes.ts),
@@ -10,7 +11,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Check, ChevronRight, CircleAlert, KeyRound, LogOut, Minus, Star, type LucideIcon } from 'lucide-react';
+import { CalendarCheck, Check, ChevronRight, CircleAlert, CirclePlus, KeyRound, LogOut, Minus, Star, type LucideIcon } from 'lucide-react';
 import { Aide, Alert, Button, Card, CardHeader, Interrupteur, Modal, TON_LAVIS, cn, type Ton } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { MAINTENANT, dateCourte, dateHeure, horodatageMaintenant, jourMois } from '../../../data/format';
@@ -26,10 +27,13 @@ import {
   signatureProgrammes,
 } from '../../../data/messages-programmes';
 import type { DeclencheurMessage, EnvoiProgramme, ModeleProgramme, ReglagesMessagesProgrammes } from '../../../data/types-programmes';
+import { aDesSupplements, reglagesSupplements } from '../../../data/supplements';
 import { EditeurMessageAuto } from './EditeurMessageAuto';
 
 const ICONES: Record<DeclencheurMessage, LucideIcon> = {
   confirmation: CalendarCheck,
+  // Un « plus » : un cadeau laisserait croire que c'est offert.
+  proposer_supplements: CirclePlus,
   veille_arrivee: KeyRound,
   jour_depart: LogOut,
   demande_avis: Star,
@@ -61,6 +65,9 @@ export function MessagesAutomatiques() {
   const [allumer, setAllumer] = useState<DeclencheurMessage | null>(null);
   const [tout, setTout] = useState(false);
   const historique = useMemo(() => historiqueEnvois(d.envoisProgrammes ?? []), [d.envoisProgrammes]);
+  const supplements = useMemo(() => reglagesSupplements(d), [d]);
+  // « Proposer les suppléments » ne part que pour les logements qui en proposent (fiche du logement).
+  const sansSupplement = !d.logements.some((l) => l.statut !== 'sorti' && aDesSupplements(supplements, l.id));
   const nomLogement = (id: string) => d.logements.find((l) => l.id === id)?.nom ?? 'Logement';
 
   const enregistrer = (k: DeclencheurMessage, patch: Partial<ModeleProgramme>) => {
@@ -80,18 +87,27 @@ export function MessagesAutomatiques() {
     enregistrer(k, { actif: false, activeLe: undefined });
   };
 
-  const prochainAllume = allumer ? prochainEnvoi(d, { ...reglages, modeles: { ...reglages.modeles, [allumer]: { ...reglages.modeles[allumer], actif: true, activeLe: new Date(maintenant.getTime() - 1).toISOString() } } }, allumer, maintenant) : null;
+  const prochainAllume = allumer
+    ? prochainEnvoi(d, { ...reglages, modeles: { ...reglages.modeles, [allumer]: { ...reglages.modeles[allumer], actif: true, activeLe: new Date(maintenant.getTime() - 1).toISOString() } } }, allumer, maintenant, supplements)
+    : null;
 
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[13.5px] text-(--lm-encre-2)">Ils partent tout seuls sur la plateforme du voyageur, entre 8 h et 21 h.</p>
+        <p className="text-[13.5px] text-(--lm-encre-2)">Ils partent tout seuls sur la plateforme du voyageur, entre 08:00 et 21:00.</p>
         <Aide className="mt-2 mb-0">
           <ul className="list-disc space-y-1 pl-5">
             <li>Chaque message part une seule fois par séjour.</li>
-            <li>Rien pour une réservation annulée, ni quand le voyageur attend une réponse de l’équipe.</li>
+            <li>
+              Rien pour une réservation annulée, ni quand le voyageur attend une réponse de l’équipe. Un simple « Non merci » à « Proposer les suppléments » ne retient
+              pas les infos d’arrivée ; toute autre réponse vous attend, et votre agent n’y répond jamais seul.
+            </li>
             <li>L’accès et le wifi n’apparaissent que dans les 48 h avant l’arrivée : sinon, la ligne est retirée.</li>
             <li>« Merci pour la réservation » part seulement pour les réservations faites après l’allumage.</li>
+            <li>
+              « Proposer les suppléments » ne part que pour les logements qui en proposent (fiche du logement), avec ceux que le planning permet. L’ERP n’encaisse rien
+              et ne change pas la réservation : l’équipe confirme au voyageur et encaisse en dehors de l’ERP.
+            </li>
             <li>Tout est noté dans l’historique, envoyé ou non.</li>
           </ul>
         </Aide>
@@ -105,9 +121,11 @@ export function MessagesAutomatiques() {
             const m = reglages.modeles[k];
             const Icone = ICONES[k];
             const dernier = dernierEnvoi(d.envoisProgrammes ?? [], k);
-            const prochain = m.actif ? prochainEnvoi(d, reglages, k, maintenant) : null;
+            const prochain = m.actif ? prochainEnvoi(d, reglages, k, maintenant, supplements) : null;
             const suite = !m.actif
-              ? 'Éteint'
+              ? k === 'proposer_supplements' && sansSupplement
+                ? 'Éteint · aucun logement ne propose de supplément'
+                : 'Éteint'
               : prochain
                 ? `Prochain : ${quand(prochain.quand)}`
                 : dernier
@@ -190,6 +208,8 @@ export function MessagesAutomatiques() {
           reservations={d.reservations}
           logements={d.logements}
           fils={d.filsMessages}
+          missions={d.missions}
+          supplements={supplements}
           signature={signature}
           modifiable={gerant}
           onFermer={() => setOuvert(null)}

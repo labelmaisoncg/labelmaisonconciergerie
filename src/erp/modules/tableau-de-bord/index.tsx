@@ -11,15 +11,18 @@ import { Demarrage } from './_composants/Demarrage';
 import { Indicateurs } from './_composants/Indicateurs';
 import { AVenir } from './_composants/AVenir';
 import { AnnoncesEquipe } from './_composants/AnnoncesEquipe';
+import { Briefing } from './_composants/Briefing';
 import { construireATraiter } from './_composants/aTraiter';
 import { PropositionInstallation } from '../parametres/_application/PropositionInstallation';
 
 /**
  * Accueil du channel manager, dans l'ordre où l'on s'en sert : les annonces
  * du gérant à l'équipe (jusqu'à « J'ai lu »), la mise en service (et, sur
- * téléphone, l'installation de l'app), ce qui attend une
- * action, les arrivées et départs, quatre repères sur 30 jours, puis deux
- * courbes. Le détail est à un clic (pages de rubrique, panneaux).
+ * téléphone, l'installation de l'app), « Votre journée » (le briefing du
+ * matin : la journée, puis ce qui attend une action, en un seul bloc), les
+ * arrivées et départs de la semaine (ou d'une période choisie), quatre
+ * repères sur 30 jours, puis deux courbes. Le détail est à un clic (pages
+ * de rubrique, panneaux).
  */
 export default function TableauDeBord() {
   const d = useErp();
@@ -41,14 +44,17 @@ export default function TableauDeBord() {
       <Demarrage />
       <PropositionInstallation />
 
-      {/* Rien à faire : pas de carte « tout est à jour », la page commence par les arrivées. */}
-      {elements.length > 0 && (
+      {/*
+        Votre journée : la journée et ce qui attend, en un seul bloc (il remplace « À faire »
+        et les tuiles du jour). Base encore vide : seule la carte Démarrage parle, avec
+        « À faire » s'il y a déjà quelque chose (un contact à appeler…).
+      */}
+      {(!vide || elements.length > 0) && (
         <div id="a-faire" className="mb-6 scroll-mt-20">
-          <ATraiter elements={elements} />
+          {vide ? <ATraiter elements={elements} /> : <Briefing elements={elements} />}
         </div>
       )}
 
-      {/* Base encore vide : seule la carte Démarrage parle (un seul état vide, une seule action). */}
       {!vide && (
         <>
           <Aujourdhui />

@@ -27,6 +27,7 @@ import { creerEspaceProprietaireDemo, prolongationDemo } from './seed-proprietai
 import { premiereAnnonce } from './annonces-equipe';
 import { ESPACE_LABEL_MAISON } from './espaces';
 import { nomConciergerie } from './marque-espace';
+import { ID_REGLAGES_SUPPLEMENTS, type ReglagesSupplements } from './supplements';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -504,6 +505,131 @@ function typerAvis(reservations: Reservation[]) {
       r.commentaireVoyageur = 'Appartement superbe et impeccable, à deux pas du métro. Communication parfaite.';
     }
   }
+  varierAvis(reservations);
+}
+
+/**
+ * Textes d'avis propres à chaque logement (notes inchangées), en français et
+ * en anglais, avec quelques messages privés : l'analyse des avis (thèmes,
+ * sentiment, avis à lire en premier) montre un parc contrasté. Aucun tirage
+ * aléatoire : la suite du jeu de démonstration reste la même.
+ */
+const AVIS_VARIES: Record<string, { bons: string[]; moyens: string[] }> = {
+  'log-corbeil-t2': {
+    bons: [
+      'Vue superbe sur la Seine et appartement très calme. Literie confortable.',
+      'Très bien situé, à deux pas de la gare. Hôte réactif et arrivée autonome facile.',
+      'Lovely flat by the river, very quiet and clean. Great location.',
+      'Appartement propre et lumineux, cuisine bien équipée. Nous reviendrons.',
+    ],
+    moyens: [
+      'Emplacement idéal mais la salle de bain n’était pas très propre, traces de calcaire.',
+      'Poussière sous les lits et vaisselle à relaver. Dommage, le quartier est agréable.',
+      'Difficile de se garer le soir, et quelques cheveux dans la douche.',
+    ],
+  },
+  'log-corbeil-t3': {
+    bons: [
+      'Parfait pour une famille : cuisine très bien équipée, lit bébé et jeux pour les enfants.',
+      'Logement spacieux, literie confortable et propre. Communication parfaite.',
+      'Great family apartment, well equipped kitchen and comfortable beds. The host was very helpful.',
+      'Tout était conforme aux photos, rien à redire.',
+    ],
+    moyens: [
+      'Un peu bruyant côté rue le samedi soir, sinon logement agréable.',
+      'Instructions d’arrivée peu claires : une demi-heure d’attente devant la porte.',
+      'Wifi très lent et chauffage difficile à régler.',
+      'Bon séjour mais un peu cher pour la prestation.',
+    ],
+  },
+  'log-evry-t2': {
+    bons: [
+      'Hôte très réactif, réponses rapides à chaque message. Proche du RER et des commerces.',
+      'Ideal for a business trip: quiet, close to the station and great wifi.',
+      'Très bon rapport qualité-prix, logement propre et pratique.',
+      'Accueil chaleureux et guide du logement très clair.',
+    ],
+    moyens: [
+      'Le wifi ne fonctionnait pas pendant deux jours, gênant pour le télétravail.',
+      'Logement correct mais on entend tout chez les voisins.',
+      'Wifi unstable and the shower had no hot water one morning.',
+    ],
+  },
+  'log-evry-cosy': {
+    bons: [
+      'Appartement cosy et impeccable, très bien décoré. Arrivée autonome sans souci.',
+      'Very clean and cosy, the check-in was easy. We loved our stay.',
+      'Super séjour, propre et calme. Merci pour l’accueil.',
+    ],
+    moyens: [
+      'Boîte à clés difficile à ouvrir, il a fallu appeler l’hôte.',
+      'Canapé-lit inconfortable pour le troisième voyageur.',
+      'Matelas trop mou, mal dormi. Le reste était correct.',
+    ],
+  },
+  'log-lisses': {
+    bons: [
+      'Maison très calme avec un beau jardin, parfait pour se reposer.',
+      'Peaceful house with a lovely garden, spotless and well equipped.',
+      'Propre, spacieux et calme. Les enfants ont adoré le jardin.',
+      'Accueil adorable et logement conforme à l’annonce.',
+    ],
+    moyens: ['Un peu loin des transports, la voiture est indispensable.', 'Joli jardin mais logement un peu cher pour la saison.'],
+  },
+  'log-soisy': {
+    bons: [
+      'Cadre magnifique au bord de la Seine, très calme. Lits très confortables.',
+      'Beautiful spot by the river, comfortable beds and a very responsive host.',
+      'Logement fidèle à l’annonce, propre et bien équipé.',
+    ],
+    moyens: [
+      'Il manquait du papier toilette et du café à notre arrivée.',
+      'Vaisselle insuffisante et four en panne.',
+      'Ménage pas fait correctement, des traces sur le sol.',
+    ],
+  },
+  'log-massy': {
+    bons: [
+      'Perfect location near the TGV station, modern and well equipped flat.',
+      'Idéal pour un déplacement pro, à deux pas du RER B. Arrivée très simple.',
+      'Clean, quiet and great value for money.',
+      'Appartement moderne et propre, tout fonctionne.',
+    ],
+    moyens: ['Bruit de l’autoroute la nuit, fenêtres à changer.', 'A bit expensive for the size, and the walls are thin.', 'Climatisation en panne pendant la canicule.'],
+  },
+  'log-paris14': {
+    bons: [
+      'Appartement superbe et impeccable, à deux pas du métro. Communication parfaite.',
+      'Charmant, très propre et parfaitement situé. Hôte aux petits soins.',
+      'Wonderful stay, spotless flat in a lovely neighbourhood. Highly recommend.',
+      'Tout était parfait : literie confortable, cuisine bien équipée, quartier calme.',
+    ],
+    moyens: [],
+  },
+};
+
+/** Retours privés (jamais repris dans une réponse publique) ajoutés à quelques avis. */
+const MESSAGES_PRIVES = [
+  'La douche fuit un peu, à vérifier.',
+  'Merci encore, le petit mot d’accueil nous a beaucoup touchés.',
+  'Le détecteur de fumée bipe, la pile est sans doute à changer.',
+  'Les voisins du dessus étaient bruyants vers minuit.',
+];
+
+function varierAvis(reservations: Reservation[]) {
+  let prive = 0;
+  for (const [logementId, pool] of Object.entries(AVIS_VARIES)) {
+    let bon = 0;
+    let moyen = 0;
+    reservations
+      .filter((r) => r.logementId === logementId && r.noteVoyageur !== undefined)
+      .forEach((r, i) => {
+        const note = r.noteVoyageur!;
+        const texte = note >= 4.6 ? pool.bons[bon++ % pool.bons.length] : pool.moyens.length ? pool.moyens[moyen++ % pool.moyens.length] : undefined;
+        if (texte) r.commentaireVoyageur = texte;
+        if (i % 5 === 2 && r.commentaireVoyageur) r.commentaireVoyageur = `${r.commentaireVoyageur}\n\nMessage privé : ${MESSAGES_PRIVES[prive++ % MESSAGES_PRIVES.length]}`;
+      });
+  }
 }
 
 /* ------------------------------------------------------------- assemblage */
@@ -639,6 +765,24 @@ function calendrierReserve(logements: Logement[], reservations: Reservation[]): 
   });
 }
 
+/**
+ * Suppléments de la démo (cahier B7) : arrivée plus tôt et départ plus tard
+ * sur les logements en location, ménage supplémentaire sur les grands
+ * logements, navette près des gares. Réglés par Abdel (gérant).
+ */
+function supplementsDemo(logements: readonly Logement[]): ReglagesSupplements {
+  const blocs: ReglagesSupplements['logements'] = {};
+  for (const l of logements.filter((x) => x.statut === 'actif')) {
+    blocs[l.id] = {
+      arrivee_anticipee: { actif: true, prixCentimes: 2000, heure: '12:00', selonPlanning: true },
+      depart_tardif: { actif: true, prixCentimes: 2000, heure: '14:00', selonPlanning: true },
+      ...(l.capacite >= 6 ? { menage_supplementaire: { actif: true, prixCentimes: 4500, conditions: 'À prévoir la veille' } } : {}),
+      ...(['log-juvisy', 'log-massy'].includes(l.id) ? { navette: { actif: true, prixCentimes: 3000, conditions: 'Depuis la gare ou l’aéroport d’Orly' } } : {}),
+    };
+  }
+  return { id: ID_REGLAGES_SUPPLEMENTS, logements: blocs, majLe: `${AUJOURDHUI}T08:30:00+02:00`, majPar: 'Abdel' };
+}
+
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
   const reservations = prolongationDemo(genererReservations(h));
@@ -676,7 +820,7 @@ export function creerSeed(): ErpDonnees {
     journal: operations.journal,
     recommandations,
     versionsAnnonce: creerVersionsAnnonce({ logements: LOGEMENTS, reservations, recommandations }),
-    reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }],
+    reglages: [{ ...REGLAGES_AGENT_DEFAUT, actif: true }, supplementsDemo(LOGEMENTS)],
     equipe: ops.equipe,
     accesOperations: ops.accesOperations,
     affectations: ops.affectations,

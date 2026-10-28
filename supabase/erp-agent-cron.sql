@@ -4,13 +4,15 @@
 --
 -- Pourquoi : l'offre gratuite de Vercel ne lance un cron qu'une fois par
 -- jour. Supabase (pg_cron + pg_net, inclus dans l'offre gratuite) appelle
--- donc /api/erp-agent toutes les 30 minutes, de 8 h à 23 h (heure de Paris).
+-- donc /api/erp-agent toutes les 30 minutes, de 7 h à 23 h (heure de Paris).
 -- L'agent relit ses réglages à chaque passage (pause, horaires) : ce réveil
 -- ne coûte rien quand il n'a rien à faire.
 --
 -- À faire UNE fois : Supabase → SQL Editor → New query, coller ce fichier,
 -- remplacer les deux valeurs ci-dessous, puis Run. Le script est idempotent :
--- le relancer remplace le réveil et le secret, sans doublon.
+-- le relancer remplace le réveil et le secret, sans doublon. À RELANCER après
+-- chaque changement de ce fichier (octobre 2026 : premier réveil avancé à
+-- 5 h UTC pour que le briefing du matin parte à 7 h à Paris, l'été aussi).
 --
 --   1. REMPLACER_PAR_CRON_SECRET : la valeur de CRON_SECRET dans Vercel
 --      (Settings → Environment Variables). Elle est rangée dans le coffre
@@ -42,12 +44,15 @@ end $$;
 -- Ancien réveil retiré (relance sans doublon).
 select cron.unschedule(jobid) from cron.job where jobname = 'erp-agent';
 
--- pg_cron compte en heure UTC : 6 h–22 h UTC couvre 8 h–23 h à Paris toute
--- l'année (heure d'été et d'hiver). Les heures de réponse fines se règlent
--- dans l'ERP (Messagerie agentique → Configurer mon agent).
+-- pg_cron compte en heure UTC : 5 h–22 h UTC couvre 7 h–23 h à Paris toute
+-- l'année (l'été 7 h – 0 h 30 ; l'hiver 6 h – 23 h 30). Chaque travail du
+-- matin garde sa propre heure de Paris : briefing et app « Opérations » à
+-- partir de 7 h, prix conseillés à 8 h, messages automatiques jamais avant
+-- 8 h. Les heures de réponse fines se règlent dans l'ERP (Messagerie
+-- agentique → Configurer mon agent).
 select cron.schedule(
   'erp-agent',
-  '*/30 6-22 * * *',
+  '*/30 5-22 * * *',
   $$
   select net.http_post(
     url := 'https://www.labelmaisoncg.fr/api/erp-agent',

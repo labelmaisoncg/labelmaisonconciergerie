@@ -36,6 +36,8 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
     id: ID_REGLAGES_PROGRAMMES,
     modeles: {
       confirmation: modeleParDefaut('confirmation'),
+      // Facultatif et éteint, comme dans un nouvel espace.
+      proposer_supplements: modeleParDefaut('proposer_supplements'),
       veille_arrivee: { ...modeleParDefaut('veille_arrivee'), actif: true, activeLe: ALLUME_LE },
       jour_depart: modeleParDefaut('jour_depart'),
       demande_avis: { ...modeleParDefaut('demande_avis'), actif: true, activeLe: ALLUME_LE },
@@ -91,7 +93,7 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
     const logement = d.logements.find((l) => l.id === r.logementId);
     const rendu = rendreMessage(reglages.modeles[e.declencheur].texte, { reservation: r, logement, fil, signature, aujourdhui: e.envoyeLe.slice(0, 10) });
     if (!rendu.texte || rendu.codesEnClair) continue;
-    const message: Message = { id: `msg-auto-${e.id}`, auteur: 'hote', texte: rendu.texte, envoyeLe: e.envoyeLe, envoi: { canal: e.canal ?? r.canal, par: PAR_MESSAGE_AUTO } };
+    const message: Message = { id: `msg-auto-${e.id}`, auteur: 'hote', texte: rendu.texte, envoyeLe: e.envoyeLe, envoi: { canal: e.canal ?? r.canal, par: PAR_MESSAGE_AUTO, moment: e.declencheur } };
     ajouts.set(fil.id, [...(ajouts.get(fil.id) ?? []), message]);
   }
   const filsMessages = d.filsMessages.map((f) => {

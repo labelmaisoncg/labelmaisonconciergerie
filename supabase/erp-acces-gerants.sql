@@ -20,7 +20,7 @@
 -- serveur écrit (envoisProgrammes, programmes, agent, repull,
 -- passagesFacturesMensuelles, conseilsPrix/etat, reglages/alerte-controle-agent)
 -- et ce que seul un gérant change (factures, conseilsPrix/reglages,
--- reglages : messages-programmes, societe, numerotation-factures) ; dans les
+-- reglages : messages-programmes, societe, numerotation-factures, supplements) ; dans les
 -- réglages de l'agent (reglages/agent), la marche, le niveau d'autonomie, les
 -- horaires, ce qu'il confie et le délai : un gérant seulement ; une facture
 -- numérotée ne change plus, sauf son paiement et son partage, et ne se
@@ -51,14 +51,15 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
 -- et état des messages automatiques, état de l'agent et de la
 -- synchronisation, passages des factures mensuelles, état des prix) et ce
 -- que seul un gérant change (factures, réglages des prix, modèles des
--- messages automatiques, identité de la société, numérotation des factures).
+-- messages automatiques, identité de la société, numérotation des factures,
+-- suppléments proposés aux voyageurs).
 -- Même règle que dans erp-espaces.sql (par espace).
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
   select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
-      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent'))
+      or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'))
 $$;
 revoke all on function erp.ecriture_gerant_seulement(text, text) from public, anon;
 grant execute on function erp.ecriture_gerant_seulement(text, text) to authenticated;
@@ -258,6 +259,7 @@ begin
     -- est gardée telle quelle), facture d'essai numérotée en 2099.
     insert into erp.enregistrements (collection, id, donnees) values
       ('reglages', 'messages-programmes', '{"id": "messages-programmes"}'),
+      ('reglages', 'supplements', '{"id": "supplements"}'),
       ('reglages', 'agent', '{"id": "agent"}'),
       ('envoisProgrammes', 'recette-acces', '{"id": "recette-acces"}'),
       ('factures', 'recette-acces', '{"id": "recette-acces", "numero": "2099-0001", "statut": "emise", "montantHtCentimes": 100}')
@@ -294,9 +296,9 @@ begin
     exception when insufficient_privilege then null;
     end;
     update erp.enregistrements set donnees = donnees || '{"recette": 1}'
-      where (collection = 'reglages' and id = 'messages-programmes') or (collection = 'envoisProgrammes' and id = 'recette-acces');
+      where (collection = 'reglages' and id in ('messages-programmes', 'supplements')) or (collection = 'envoisProgrammes' and id = 'recette-acces');
     get diagnostics n = row_count;
-    if n <> 0 then resultat := 'un compte « opérations » modifie un modèle de message automatique'; raise exception 'stop'; end if;
+    if n <> 0 then resultat := 'un compte « opérations » modifie un modèle de message automatique ou les suppléments'; raise exception 'stop'; end if;
     begin
       update erp.enregistrements set donnees = donnees || '{"autonomie": "recette"}' where collection = 'reglages' and id = 'agent';
       resultat := 'un compte « opérations » change le niveau d''autonomie de l''agent';
@@ -337,9 +339,9 @@ begin
     select count(*) into n from erp.historique where collection = 'accesProprietaires' and id = 'recette-acces';
     if n <> 1 then resultat := 'un gérant ne lit pas les anciennes versions des accès'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
-      where (collection = 'reglages' and id in ('messages-programmes', 'agent')) or (collection = 'envoisProgrammes' and id = 'recette-acces');
+      where (collection = 'reglages' and id in ('messages-programmes', 'agent', 'supplements')) or (collection = 'envoisProgrammes' and id = 'recette-acces');
     get diagnostics n = row_count;
-    if n <> 3 then resultat := format('un gérant modifie %s des 3 lignes réservées aux gérants', n); raise exception 'stop'; end if;
+    if n <> 4 then resultat := format('un gérant modifie %s des 4 lignes réservées aux gérants', n); raise exception 'stop'; end if;
     update erp.enregistrements
       set donnees = donnees || '{"actif": false, "horaires": {"mode": "toujours"}, "transmettre": {"horsFiche": true}, "delaiAlerteMinutes": 7}'
       where collection = 'reglages' and id = 'agent';

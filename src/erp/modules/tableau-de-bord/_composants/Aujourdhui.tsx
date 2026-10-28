@@ -5,7 +5,7 @@ import { useErp } from '../../../data/store';
 import { AUJOURDHUI } from '../../../data/format';
 import { estActive, logementById } from '../../../data/selectors';
 import type { Reservation } from '../../../data/types';
-import { ChoixPeriode, type Periode } from './ChoixPeriode';
+import { ChoixPeriode, RACCOURCIS, type Periode } from './ChoixPeriode';
 
 function Tuile({ titre, icone, n, texte }: { titre: string; icone: ReactNode; n: number; texte: string }) {
   return (
@@ -31,21 +31,26 @@ function Tuile({ titre, icone, n, texte }: { titre: string; icone: ReactNode; n:
 
 const noms = (liste: string[]) => (liste.length > 2 ? `${liste.slice(0, 2).join(', ')} et ${liste.length - 2} autre${liste.length > 3 ? 's' : ''}` : liste.join(' et '));
 
+/** Période montrée d'abord : la semaine (aujourd'hui est déjà dans « Votre journée », en haut de l'Accueil). */
+const PERIODE_PAR_DEFAUT = RACCOURCIS.find((r) => r.libelle === 'Cette semaine') ?? RACCOURCIS[0];
+
 /**
- * Arrivées, départs et voyageurs sur place : aujourd'hui par défaut, ou sur la
- * période choisie au calendrier (bornes comprises).
+ * Arrivées, départs et logements occupés : cette semaine par défaut, ou
+ * sur la période choisie au calendrier (bornes comprises, « Aujourd’hui »
+ * compris).
  */
 export function Aujourdhui() {
   const d = useErp();
-  const [periode, setPeriode] = useState<Periode>({ debut: AUJOURDHUI, fin: AUJOURDHUI });
+  const [periode, setPeriode] = useState<Periode>(() => PERIODE_PAR_DEFAUT.periode());
   const { debut, fin } = periode;
   const unJour = debut === fin;
   const actives = d.reservations.filter(estActive);
   const dans = (date: string) => date >= debut && date <= fin;
   const arrivees = actives.filter((r) => dans(r.arrivee));
   const departs = actives.filter((r) => dans(r.depart));
-  // Sur place : au moins une nuit dans la période (un jour : les logements occupés ce soir-là).
-  const surPlace = actives.filter((r) => r.arrivee <= fin && r.depart > debut);
+  // Logements occupés : au moins une nuit dans la période (un jour : ceux occupés ce soir-là) ;
+  // même mot que « Votre journée » (« logements occupés ce soir »).
+  const occupes = [...new Set(actives.filter((r) => r.arrivee <= fin && r.depart > debut).map((r) => r.logementId))];
   const prenom = (r: Reservation) => r.voyageur.nom.split(' ')[0];
   const logement = (r: Reservation) => logementById(d, r.logementId)?.nom ?? 'un logement';
   const quand = !unJour ? 'sur la période' : debut === AUJOURDHUI ? 'aujourd’hui' : 'ce jour-là';
@@ -72,10 +77,10 @@ export function Aujourdhui() {
           texte={departs.length ? noms(departs.map(logement)) : `Aucun départ ${quand}.`}
         />
         <Tuile
-          titre="sur place"
+          titre={occupes.length > 1 ? 'occupés' : 'occupé'}
           icone={<BedDouble />}
-          n={surPlace.length}
-          texte={surPlace.length ? noms(surPlace.map(logement)) : `Personne sur place ${quand}.`}
+          n={occupes.length}
+          texte={occupes.length ? noms(occupes.map((id) => logementById(d, id)?.nom ?? 'un logement')) : `Aucun logement occupé ${quand}.`}
         />
       </div>
     </section>

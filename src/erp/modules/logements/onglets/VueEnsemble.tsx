@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa, X } from 'lucide-react';
+import { ArrowRight, BedDouble, ExternalLink, Mail, Phone, Sofa, Sparkles, X } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
 import { FormMandat } from '../../mandats/FormMandat';
@@ -25,6 +25,8 @@ import { photosLogement, prixAVenir, statsLogement } from '../_composants/stats'
 import { previsionLogement } from '../../../data/previsionnel';
 import { CartePrevisionnel, TITRE_PREVISIONNEL } from '../_composants/Previsionnel';
 import { PrixConseilles } from '../_composants/PrixConseilles';
+import { CarteAvisLogement } from '../_composants/Avis';
+import { TextesAnnonce } from '../_composants/TextesAnnonce';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
 
@@ -154,7 +156,10 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
             )}
           </Card>
 
-          {desc && <Annonce descriptif={desc} />}
+          <CarteAvisLogement logement={l} />
+
+          {/* Logement sorti : plus d'annonce à rédiger. */}
+          {l.statut !== 'sorti' && <Annonce logement={l} descriptif={desc} />}
 
           {!!desc?.couchage?.length && <Couchage pieces={desc.couchage} />}
 
@@ -324,7 +329,8 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
           : 'Mandat en préparation';
   return (
     <>
-      <Card>
+      {/* « #factures » (ligne « facture mensuelle à valider » de l'Accueil) : la fiche défile jusqu'ici et ouvre les factures. */}
+      <Card id="factures" className="scroll-mt-20">
         <CardHeader
           titre="Propriétaire"
           actions={
@@ -398,9 +404,15 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
 
 /* ------------------------------------------------------- l'annonce */
 
-/** Titre et textes de l'annonce, repliés au-delà de quelques lignes. */
-function Annonce({ descriptif: d }: { descriptif: DescriptifLogement }) {
+/**
+ * Titre et textes de l'annonce, repliés au-delà de quelques lignes, et
+ * « Nouveaux textes » : trois titres et une description à copier sur la
+ * plateforme (l'ERP ne publie jamais l'annonce).
+ */
+function Annonce({ logement: l, descriptif }: { logement: Logement; descriptif?: DescriptifLogement }) {
   const [ouvert, setOuvert] = useState(false);
+  const [textes, setTextes] = useState(false);
+  const d: DescriptifLogement = descriptif ?? {};
   const t = d.textes ?? {};
   const principal = [t.resume, t.description].filter(Boolean).join('\n\n');
   const autres = [
@@ -409,36 +421,49 @@ function Annonce({ descriptif: d }: { descriptif: DescriptifLogement }) {
     { titre: 'Le quartier', texte: t.quartier },
     { titre: 'Se déplacer', texte: t.transports },
   ].filter((x): x is { titre: string; texte: string } => !!x.texte);
-  if (!d.titre && !principal && !autres.length) return null;
+  const vide = !d.titre && !principal && !autres.length;
   const long = principal.length > 320 || autres.length > 0;
   return (
-    <Card>
-      <CardHeader titre="L’annonce" description="Telle que les voyageurs la lisent sur les plateformes" />
-      {d.titre && <p className="text-[15px] font-semibold text-(--lm-encre)">{d.titre}</p>}
-      {principal && (
-        // Replié : le premier paragraphe seulement, sur trois lignes au plus.
-        <p className={`mt-1.5 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2) ${!ouvert && long ? 'line-clamp-3' : ''}`}>
-          {!ouvert && long ? principal.split(/\n\n/)[0] : principal}
-        </p>
-      )}
-      {ouvert &&
-        autres.map((x) => (
-          <div key={x.titre} className="mt-4">
-            <h3 className="text-[13.5px] font-semibold text-(--lm-encre)">{x.titre}</h3>
-            <p className="mt-1 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2)">{x.texte}</p>
-          </div>
-        ))}
-      {long && (
-        <button
-          type="button"
-          aria-expanded={ouvert}
-          onClick={() => setOuvert((o) => !o)}
-          className="mt-2 inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
-        >
-          {ouvert ? 'Réduire' : 'Lire la suite'}
-        </button>
-      )}
-    </Card>
+    <>
+      <Card>
+        <CardHeader
+          titre="L’annonce"
+          description={vide ? undefined : 'Telle que les voyageurs la lisent sur les plateformes'}
+          actions={
+            <button type="button" onClick={() => setTextes(true)} className={lien}>
+              <Sparkles className="size-3.5" aria-hidden /> Nouveaux textes
+            </button>
+          }
+        />
+        {d.titre && <p className="text-[15px] font-semibold text-(--lm-encre)">{d.titre}</p>}
+        {principal && (
+          // Replié : le premier paragraphe seulement, sur trois lignes au plus.
+          <p className={`mt-1.5 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2) ${!ouvert && long ? 'line-clamp-3' : ''}`}>
+            {!ouvert && long ? principal.split(/\n\n/)[0] : principal}
+          </p>
+        )}
+        {ouvert &&
+          autres.map((x) => (
+            <div key={x.titre} className="mt-4">
+              <h3 className="text-[13.5px] font-semibold text-(--lm-encre)">{x.titre}</h3>
+              <p className="mt-1 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2)">{x.texte}</p>
+            </div>
+          ))}
+        {long && (
+          <button
+            type="button"
+            aria-expanded={ouvert}
+            onClick={() => setOuvert((o) => !o)}
+            className="mt-2 inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+          >
+            {ouvert ? 'Réduire' : 'Lire la suite'}
+          </button>
+        )}
+        {vide && <p className="text-[13.5px] text-(--lm-encre-2)">Pas encore reçue des plateformes : proposez des textes tirés de la fiche, à copier.</p>}
+      </Card>
+      {/* Hors de la carte : le panneau n'hérite pas de ses arrondis. */}
+      <TextesAnnonce logement={l} ouvert={textes} onFermer={() => setTextes(false)} />
+    </>
   );
 }
 

@@ -23,7 +23,7 @@ export interface TabsProps {
 
 const BASE =
   'relative inline-flex h-10 shrink-0 items-center gap-1.5 px-3 text-[13.5px] font-medium whitespace-nowrap text-(--lm-encre-2) transition-colors hover:text-(--lm-encre)';
-const ACTIF = 'text-(--lm-encre) after:absolute after:inset-x-2 after:-bottom-px after:h-0.5 after:rounded-full after:bg-(--lm-or)';
+const ACTIF = 'text-(--lm-encre) after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-(--lm-or)';
 
 function Compteur({ n }: { n?: number }) {
   if (n === undefined) return null;
@@ -63,7 +63,7 @@ export function Tabs({ onglets, actif, onChange, label = 'Onglets', className }:
     <div
       role={onglets.some((o) => o.to) ? undefined : 'tablist'}
       aria-label={label}
-      className={cn('lm-defilement mb-5 flex overflow-x-auto border-b border-(--lm-bord)', className)}
+      className={cn('lm-defilement mb-5 flex overflow-x-auto overflow-y-hidden border-b border-(--lm-bord)', className)}
     >
       {onglets.map((o, i) =>
         o.to ? (

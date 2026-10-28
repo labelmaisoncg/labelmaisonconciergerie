@@ -141,6 +141,8 @@ const ARGENT = new RegExp(
     '\\bon us\\b', 'on the house', '[àa] nos frais',
     '%', 'moiti[ée]', '\\bhalf\\b', '\\bmitad\\b', '\\bmet[àa]\\b', 'h[äa]lfte',
     '\\brendr(e|ons|ez|ai|a|ont)\\b', '\\brendu(e|s|es)?\\b', '\\bgive\\b.{0,40}\\bback\\b', '\\bsettle',
+    // Suppléments payants (cahier B7) : jamais vendus par l'agent seul (« supplémentaire » n'en est pas un).
+    'suppl[ée]ments?(?!aires?|ary)', 'surco[ûu]t', 'surcharge', '\\bupsell', '\\ben sus\\b', 'zuschlag', 'aufpreis', 'suplemento', 'supplemento', 'toeslag',
     '€', '\\$', '£', '\\bCHF\\b', 'dollar', '\\beuros?\\b', '\\bEUR\\b',
   ].join('|'),
   'i',
@@ -227,6 +229,285 @@ export const reponseAEcarter = (texteReponse: string): boolean => {
   return !!s && s.raison !== 'litige';
 };
 
+/* ========================================================= suppléments */
+
+/**
+ * Suppléments (cahier B7) : arrivée plus tôt, départ plus tard, ménage en
+ * cours de séjour, navette. Ce sont des questions d'argent : l'agent ne les
+ * vend jamais seul, il prépare la réponse et l'équipe la valide (verdictEnvoi).
+ */
+export const INTENTIONS_SUPPLEMENTS: IntentionMessage[] = ['arrivee_anticipee', 'depart_tardif'];
+export type SupplementDemande = 'arrivee_anticipee' | 'depart_tardif' | 'menage_supplementaire' | 'navette';
+
+/** Ménage pendant le séjour, demandé par le voyageur. */
+const DEMANDE_MENAGE =
+  /m[ée]nage (en cours|pendant|suppl[ée]mentaire|en plus|de plus|au milieu)|nettoyage (en cours|pendant)|extra clean|mid.?stay clean|clean(ing)? during|changer (les )?draps|draps propres|change (the )?(sheets|towels)|fresh (sheets|towels)/i;
+/** Navette (gare, aéroport), demandée par le voyageur. */
+const DEMANDE_NAVETTE = /navette|shuttle|transfert (depuis|vers|de|du|à|a)|pick (us|me) up|pick-?up (from|at|service)|venir (nous|me) chercher|(chercher|r[ée]cup[ée]rer) (nous|me)?.{0,25}(gare|a[ée]roport)|airport (transfer|pick)/i;
+
+/**
+ * Forme d'une demande (« possible », « peut-on », « pourriez-vous »,
+ * « could we », « is it possible », « please ») : « Nous arriverons tôt le
+ * soir, où est la boîte à clés ? » dit une heure, il ne demande rien.
+ */
+const FORME_DEMANDE =
+  /\bpossib|\bpeut[- ]?(on|il)\b|\bpeux[- ]?(je|tu)\b|\bpouv(ez|ons|ons[- ]nous)\b|\bpourr(ai|ait|ions|iez|ez|ons)\w*|\bserait[- ]?(il|ce)\b|\best[- ]ce qu.{0,12}\b(on|nous|je) (peu|pourr)|\baim\w*(?: bien)? (arriver|partir|rester|entrer|un|une|le|la)|\bvoudr\w*|\bvoul(ons|ez) bien\b|\bveut bien\b|\bsouhait\w*|\bbesoin d|\bfaudrait\b|\bdemand\w*|\bs'il (vous|te) pla|\bsvp\b|\bstp\b|\b(could|can|may|might) (we|i|you|it)\b|\bwould (it|you|that) be\b|\bwould (like|love)\b|\b(we|i)'d (like|love)\b|\bis (it|that|there) (ok|okay|fine|an option|a chance)|\bany chance\b|\boption\b|\bplease\b|\b(do|did) you (offer|allow|have)\b|\bpropos\w* (un|une|le|la|des)\b|\b(need|want) to\b|\brequest/i;
+
+/**
+ * Supplément demandé dans un message du voyageur, sans IA (undefined :
+ * aucun). Arrivée plus tôt et départ plus tard : seulement sous la forme
+ * d'une demande (FORME_DEMANDE) ; ménage pendant le séjour et navette : ses
+ * mots suffisent.
+ */
+export function supplementDansTexte(texte: string): SupplementDemande | undefined {
+  const t = nettoyerTexte(texte).replace(/[’`´]/g, "'");
+  if (!t.trim()) return undefined;
+  const demande = FORME_DEMANDE.test(t);
+  for (const [cle, r] of DEMANDES) if ((cle === 'arrivee_anticipee' || cle === 'depart_tardif') && demande && r.test(t)) return cle;
+  if (DEMANDE_MENAGE.test(t)) return 'menage_supplementaire';
+  if (DEMANDE_NAVETTE.test(t)) return 'navette';
+  return undefined;
+}
+
+/**
+ * Ce dont parle une réponse qui offrirait un supplément : heure en plus,
+ * ménage pendant le séjour, navette, « supplément ». Seul, ce n'est pas une
+ * offre : « Si vous souhaitez arriver plus tôt, dites-le-nous » n'accorde rien.
+ */
+const SUJET_SUPPLEMENT =
+  /suppl[ée]ments?(?!aires?|ary)|early check.?in|late check.?out|arriv\w* (plus t[ôo]t|en avance)|part\w* plus tard|d[ée]part (plus )?tardif|rester plus longtemps|check.?in (earlier|early)|check.?out (later|late)|(arrive|check in) earlier|(leave|stay) later|(be|is) ready (early|earlier)|pr[eê]t plus t[ôo]t|navette|shuttle|(viendr\w*|venir|passer|passerons) (vous |te )?chercher|pick (you|them) up|organis\w* (un |le |votre )?m[ée]nage|m[ée]nage (suppl[ée]mentaire|en plus|en cours|pendant|au milieu)|(extra|mid.?stay) clean|clean(ing)? during|arrange (a |the )?(cleaning|transfer|pick.?up)/i;
+/**
+ * Une réponse qui accorde : « vous pourrez », « c'est noté », « pas de
+ * souci », « you can », « is fine », « we will arrange »… Sans « vérifier » ni
+ * « check » juste après (« nous pouvons vérifier » n'accorde rien).
+ */
+const ACCORD =
+  /\b(vous pou(vez|rrez|rriez)|tu (peux|pourras)|nous pou(vons|rrons)|on (peut|pourra)|c'est (possible|d'accord|bon|not[ée]|ok|parfait|entendu|r[ée]serv[ée]|confirm[ée])|ce sera (possible|bon|ok|parfait)|(est|sera|devrait [êe]tre) (tout [àa] fait )?possible|pas de (souci|soucis|probl[eè]me)|aucun (souci|probl[eè]me)|avec plaisir|bien s[uû]r|volontiers|d'accord|entendu|nous (organisons|organiserons|pr[ée]voyons|viendrons|passerons|r[ée]servons|confirmons|accordons|offrons)|you (can|could|may|will be able)|you'?re (welcome|all set)|you are (welcome|all set)|(is|are|will be|should be) (fine|possible|ok|okay|confirmed|arranged|ready)|no (problem|worries)|of course|sure\b|we (can|could|will|'ll|have)\b|we'll\b|happy to|absolutely|that works|works for us|confirmed|noted|booked|arranged)\b(?!\s*(v[ée]rifier|regarder|demander|voir si|check(?![- ]?(in|out))|ask|see if|look into|get back|revenir|confirm(er)? (with|avec|aupr)))/i;
+
+/** « 12 h », « 12h30 », « 12:00 », « 1pm », « 11 a.m. », « midi », « noon » → « HH:MM » (heures de 5 h à 23 h). */
+function heuresDe(texte: string): string[] {
+  const t = texte.replace(/\b([ap])\.\s?m\.?/gi, '$1m');
+  const h: string[] = [];
+  const ajouter = (x: number, m = 0) => {
+    if (x >= 5 && x <= 23 && m >= 0 && m < 60) h.push(`${String(x).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+  };
+  for (const m of t.matchAll(/\b(1[0-2]|0?[1-9])(?::([0-5]\d))?\s*([ap])m\b/gi)) ajouter((Number(m[1]) % 12) + (m[3].toLowerCase() === 'p' ? 12 : 0), Number(m[2] ?? 0));
+  for (const m of t.matchAll(/\b([01]?\d|2[0-3])\s*(?:h|:)\s*([0-5]\d)?(?![\d:]|\s*[ap]m\b)/gi)) ajouter(Number(m[1]), Number(m[2] ?? 0));
+  if (/\bmidi\b|\bnoon\b/i.test(t)) ajouter(12);
+  return h;
+}
+
+/** Heures habituelles du logement (fiche) ; sans fiche, des heures prudentes. */
+export type HorairesLogement = Partial<Pick<Logement['fiche'], 'heureArrivee' | 'heureDepart'>>;
+const HORAIRES_PRUDENTS = { heureArrivee: '15:00', heureDepart: '12:00' };
+const heureFiche = (h: string | undefined, defaut: string) => (h && /^\d{2}:\d{2}$/.test(h) ? h : defaut);
+const MOT_ARRIVEE = /arriv|check.?in|\bentr(er|ez|erez|ée)\b|install|\bpr[eê]t\b|disponible|\bready\b|available|get in|come in/i;
+// « à partir de 16 h » dit une heure d'arrivée, pas un départ.
+const MOT_DEPART = /(?<![àa] )\bpart(ir|ez|irez|ira)\b|d[ée]part|check.?out|\bleave|quitt|rendre (les |vos )?cl|lib[ée]r|\brest(er|ez)\b|\bstay\b/i;
+
+/**
+ * La réponse accorde-t-elle une heure hors des horaires du logement ? Une
+ * arrivée avant `heureArrivee` (« vous pourrez arriver dès 12 h ») ou un
+ * départ après `heureDepart` (« check-out until 2pm is fine »), lus
+ * proposition par proposition.
+ */
+/** Heures d'un texte hors des horaires du logement (arrivée avant, départ après), proposition par proposition. */
+function heuresHors(texte: string, fiche?: HorairesLogement): string[] {
+  const arrivee = heureFiche(fiche?.heureArrivee, HORAIRES_PRUDENTS.heureArrivee);
+  const depart = heureFiche(fiche?.heureDepart, HORAIRES_PRUDENTS.heureDepart);
+  return texte.replace(/\b([ap])\.\s?m\.?/gi, '$1m').split(/[;!?\n]|\.(?!\d)|,(?!\d)|:(?!\d)|\s(?:et|and|mais|but|puis|then|ou|or)\s/i).flatMap((p) =>
+    heuresDe(p).filter((h) => (MOT_ARRIVEE.test(p) && h < arrivee) || (MOT_DEPART.test(p) && h > depart)),
+  );
+}
+
+function heureHorsHoraires(texte: string, fiche?: HorairesLogement): boolean {
+  if (!ACCORD.test(texte)) return false;
+  const arrivee = heureFiche(fiche?.heureArrivee, HORAIRES_PRUDENTS.heureArrivee);
+  const depart = heureFiche(fiche?.heureDepart, HORAIRES_PRUDENTS.heureDepart);
+  const propositions = texte.replace(/\b([ap])\.\s?m\.?/gi, '$1m').split(/[;!?\n]|\.(?!\d)|,(?!\d)|:(?!\d)|\s(?:et|and|mais|but|puis|then|ou|or)\s/i);
+  return propositions.some((p) => {
+    const heures = heuresDe(p);
+    return (MOT_ARRIVEE.test(p) && heures.some((h) => h < arrivee)) || (MOT_DEPART.test(p) && heures.some((h) => h > depart));
+  });
+}
+
+/**
+ * La réponse proposée offre-t-elle un supplément ? Seulement si elle accorde
+ * quelque chose (ACCORD) sur un supplément (SUJET_SUPPLEMENT), ou une heure
+ * hors des horaires du logement. Un prix est déjà une question d'argent
+ * (reponseSensible : transmise).
+ */
+export function offreSupplement(texte: string, fiche?: HorairesLogement): boolean {
+  const t = nettoyerTexte(texte).replace(/[’`´]/g, "'");
+  if (!t.trim()) return false;
+  return (SUJET_SUPPLEMENT.test(t) && ACCORD.test(t)) || heureHorsHoraires(t, fiche);
+}
+
+/** Ce que le garde-fou des suppléments lit de la conversation. */
+export interface ContexteSupplement {
+  /** Messages du voyageur depuis la dernière réponse de l'équipe (messagesSansReponse) : seuls eux peuvent contenir la demande. */
+  sansReponse: readonly string[];
+  /** Ils répondent à une proposition de suppléments (message automatique « Proposer les suppléments », ou proposition de l'équipe avec un prix). */
+  apresProposition?: boolean;
+  /** Une proposition de suppléments est en cours (aucune réponse de l'équipe depuis), quel que soit le délai. */
+  propositionEnCours?: boolean;
+  /** La proposition en cours a moins de 72 h (au premier message sans réponse). */
+  propositionRecente?: boolean;
+  /** Heures habituelles du logement : une heure accordée en dehors est une offre. */
+  fiche?: HorairesLogement;
+}
+
+export const MOTIF_SUPPLEMENT = 'Arrivée plus tôt, départ plus tard ou autre supplément : c’est une question d’argent, à vous de valider.';
+export const MOTIF_REPONSE_PROPOSITION = 'Réponse à une proposition de suppléments : à vous de confirmer ce que le voyageur choisit.';
+
+/**
+ * Motif « à valider » d'un supplément : réponse à une proposition de
+ * suppléments, demande du voyageur (lue par l'IA, ou ses mots dans les
+ * messages sans réponse) ou réponse proposée qui en accorde un. null : aucun.
+ */
+export function supplementAValider(d: Pick<DecisionNotee, 'intention' | 'texte' | 'texteFr'>, c: ContexteSupplement): string | null {
+  if (c.apresProposition) return MOTIF_REPONSE_PROPOSITION;
+  // Proposition en cours : une réponse qui s'engage (« c'est noté », « réservé », « booked ») n'est jamais envoyée seule.
+  if (c.propositionEnCours) {
+    // Dans les 72 h, ou si le voyageur répond à la proposition : aussi « Done! », « ça marche », « c'est bon », « noted »…
+    const large = c.propositionRecente || c.sansReponse.some((m) => repondALaProposition(nettoyerTexte(m).replace(/[’`´]/g, "'"), c.fiche));
+    const motif = large ? ENGAGEMENT_LARGE : ENGAGEMENT;
+    if ([d.texte, d.texteFr].some((t) => !!t && motif.test(nettoyerTexte(t).replace(/[’`´]/g, "'")))) return MOTIF_REPONSE_PROPOSITION;
+  }
+  const demande = (d.intention && INTENTIONS_SUPPLEMENTS.includes(d.intention)) || c.sansReponse.some((m) => !!supplementDansTexte(m));
+  // Heures demandées par le voyageur hors des horaires (« Can we arrive at 1pm? ») : une réponse qui les reprend les accorde.
+  const horsHoraires = new Set(c.sansReponse.flatMap((m) => heuresHors(nettoyerTexte(m).replace(/[’`´]/g, "'"), c.fiche)));
+  // Toute heure du voyageur entre le départ et l'arrivée habituels (logement libre, ménage) : hors horaires, quels que soient les mots.
+  const depart = heureFiche(c.fiche?.heureDepart, HORAIRES_PRUDENTS.heureDepart);
+  const arrivee = heureFiche(c.fiche?.heureArrivee, HORAIRES_PRUDENTS.heureArrivee);
+  for (const m of c.sansReponse) for (const h of heuresDe(nettoyerTexte(m))) if (h > depart && h < arrivee) horsHoraires.add(h);
+  const reprend = (t?: string) => !!t && heuresDe(nettoyerTexte(t)).some((h) => horsHoraires.has(h));
+  const offre = offreSupplement(d.texte ?? '', c.fiche) || offreSupplement(d.texteFr ?? '', c.fiche) || reprend(d.texte) || reprend(d.texteFr);
+  return demande || offre ? MOTIF_SUPPLEMENT : null;
+}
+
+/** Le moment des messages automatiques qui propose les suppléments (messages-programmes.ts). */
+export const MOMENT_PROPOSER_SUPPLEMENTS = 'proposer_supplements';
+
+/** Dernier message de l'équipe (un message automatique en est un ; l'agent non). */
+function dernierMessageEquipe(fil: Pick<FilMessages, 'messages'>): Message | undefined {
+  for (let i = fil.messages.length - 1; i >= 0; i--) if (fil.messages[i].auteur === 'hote') return fil.messages[i];
+  return undefined;
+}
+
+/**
+ * Les messages du voyageur encore sans réponse suivent-ils une proposition de
+ * suppléments ? Le message automatique « Proposer les suppléments »
+ * (envoi.moment), ou une proposition de l'équipe qui cite un supplément et un
+ * prix (« Insérer » dans la Messagerie).
+ */
+export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
+  const sans = messagesSansReponse(fil);
+  // Seule une simple question (« Où peut-on se garer ? »), qui ne répond pas à la proposition, suit la règle
+  // ordinaire. Tout le reste (« Parfait, merci ! », « Je confirme », « Sounds great! ») reste à valider.
+  const questionSimple = (m: Message) => {
+    const t = nettoyerTexte(m.texte).replace(/[’`´]/g, "'");
+    return /\?/.test(t) && !repondALaProposition(t, fiche);
+  };
+  if (!sans.length || sans.every(questionSimple)) return false;
+  // La proposition ne vaut que pour une réponse arrivée dans les 72 h : au-delà, la règle ordinaire.
+  const recente = (proposition: Message) => {
+    const debut = Math.min(...sans.map((m) => Date.parse(m.envoyeLe)).filter(Number.isFinite));
+    const envoi = Date.parse(proposition.envoyeLe);
+    return !Number.isFinite(debut) || !Number.isFinite(envoi) || debut - envoi <= DUREE_PROPOSITION_MS;
+  };
+  for (let i = fil.messages.length - 1; i >= 0; i--) {
+    const equipe = fil.messages[i];
+    if (equipe.auteur !== 'hote') continue;
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return recente(equipe);
+    const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
+    if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return recente(equipe);
+    // Un autre message automatique (infos d'arrivée…) ne clôt pas la proposition : on remonte.
+    if (!equipe.envoi?.moment) return false;
+  }
+  return false;
+}
+
+/** Une réponse qui s'engage : « c'est noté », « réservé », « confirmé », « booked », « all set »… */
+// Engagements explicites seulement : « done », « ça marche », « c'est bon » sont trop courants pour garder la main tout le séjour.
+const ENGAGEMENT =
+  /c'est (?:bien )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|bien (?:not[ée]|r[ée]serv[ée]|pris en compte|enregistr[ée])|not[ée] pour|nous (?:avons )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|\b(?:je|nous) (?:r[ée]serve|r[ée]servons|confirme|confirmons|organise|organisons|pr[ée]vois|pr[ée]voyons)\b|d'accord pour|ok pour|\b(?:booked|confirmed|arranged|reserved)\b|it'?s yours|we(?:'ll| will) (?:arrange|book|reserve|organi[sz]e|prepare)/i;
+
+/** Engagements, y compris les formules courtes, pour une réponse qui suit de près la proposition ou y répond. */
+const ENGAGEMENT_LARGE = new RegExp(
+  `${ENGAGEMENT.source}|c'est (?:bien )?(?:fait|bon|ok|d'accord|entendu|parfait)|\\b(?:je|nous) (?:note|notons)\\b|[çc]a marche|\\bentendu\\b|\\b(?:noted|all set|sorted|done)\\b`,
+  'i',
+);
+
+/** Âge (ms) de la proposition en cours au premier message sans réponse ; null : aucune. */
+export function agePropositionEnCours(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): number | null {
+  const sans = messagesSansReponse(fil);
+  if (!sans.length) return null;
+  const debut = Math.min(...sans.map((m) => Date.parse(m.envoyeLe)).filter(Number.isFinite));
+  for (let i = fil.messages.length - 1; i >= 0; i--) {
+    const equipe = fil.messages[i];
+    if (equipe.auteur !== 'hote') continue;
+    const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS || ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' ')))) {
+      const envoi = Date.parse(equipe.envoyeLe);
+      return Number.isFinite(debut) && Number.isFinite(envoi) ? debut - envoi : 0;
+    }
+    if (!equipe.envoi?.moment) return null;
+  }
+  return null;
+}
+
+/** Une proposition de suppléments attend-elle encore l'équipe (aucune vraie réponse de l'équipe depuis) ? */
+export function propositionEnCours(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
+  if (!messagesSansReponse(fil).length) return false;
+  for (let i = fil.messages.length - 1; i >= 0; i--) {
+    const equipe = fil.messages[i];
+    if (equipe.auteur !== 'hote') continue;
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return true;
+    const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
+    if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return true;
+    if (!equipe.envoi?.moment) return false;
+  }
+  return false;
+}
+
+/** Une proposition de suppléments compte pour les réponses arrivées dans les 72 h. */
+const DUREE_PROPOSITION_MS = 72 * 3600_000;
+
+/** Le voyageur refuse la proposition, sans rien demander (« Non merci », « No thanks », « Pas besoin »). */
+const REFUSE = /\b(non|no|nope)\b|pas besoin|rien pour nous|[çc]a ira|not needed|we(?:'re| are) (?:fine|good)|no thanks?/i;
+/** Un supplément, une option ou une heure cités dans la réponse du voyageur. */
+const OPTION =
+  /(?<![\p{L}\p{N}])(options?|(?:la |the )?(?:premi[eè]re|deuxi[eè]me|seconde?|troisi[eè]me|first|second|third|last|derni[eè]re) (?:option|one|proposition|choice|choix)|celle-ci|celle-l[àa]|navette|shuttle|m[ée]nage (?:en plus|suppl[ée]mentaire)|extra clean\w*|late check.?out|early check.?in|arriv\p{L}* plus t[ôo]t|part\p{L}* plus tard|anticip[ée]e?s?|tardifs?)(?![\p{L}\p{N}])/iu;
+/** Message du voyageur qui répond à une proposition de suppléments. */
+function repondALaProposition(t: string, fiche?: HorairesLogement): boolean {
+  // Sans « please » ni « ok » (formules de politesse d'une question ordinaire), et seulement une heure hors des horaires.
+  return ACCEPTE_SANS_POLITESSE.test(t) || REFUSE.test(t) || !!supplementDansTexte(t) || heuresHors(t, fiche).length > 0 || OPTION.test(t);
+}
+
+/** Le voyageur accepte (« Oui pour la première option »), sans les formules de politesse (« please », « ok ») d'une question ordinaire. */
+const ACCEPTE_SANS_POLITESSE = /\b(oui|ouais|yes|yep|yeah|d'accord|volontiers|je veux bien|on veut bien|nous voulons bien|je prends|nous prenons|on prend|go for|sounds good|we'll take|we will take)\b/i;
+
+/**
+ * Réponse du voyageur au message automatique « Proposer les suppléments »
+ * qui ne demande rien (« Non merci, à jeudi ») : elle ne retient pas les
+ * autres messages automatiques (infos d'arrivée). Elle les retient si elle
+ * demande un supplément (supplementDansTexte), en accepte un (« oui »,
+ * « yes ») ou pose une question, et toujours si l'agent a passé la main
+ * (sujet sensible). Pour tout autre message, la règle reste celle de
+ * attendEquipe et voyageurAttend.
+ */
+export function reponseSansDemandeAuxSupplements(fil: Pick<FilMessages, 'messages' | 'statut'>): boolean {
+  if (fil.statut === 'escalade') return false;
+  const sans = messagesSansReponse(fil);
+  if (!sans.length || dernierMessageEquipe(fil)?.envoi?.moment !== MOMENT_PROPOSER_SUPPLEMENTS) return false;
+  // Seulement un refus explicite, sans question, heure, option ni sujet sensible : tout le reste attend l'équipe.
+  return sans.every((m) => {
+    const t = nettoyerTexte(m.texte).replace(/[’`´]/g, "'");
+    return REFUSE.test(t) && !ACCEPTE_SANS_POLITESSE.test(t) && !supplementDansTexte(t) && !/\?/.test(t) && !heuresDe(t).length && !OPTION.test(t) && !sujetSensibleMessages([t]);
+  });
+}
+
 /** Langues que ces garde-fous savent relire : seules elles permettent un envoi seul. */
 export const LANGUES_RELUES = ['fr', 'en'];
 
@@ -254,10 +535,36 @@ export function messagesSujets(fil: Pick<FilMessages, 'messages' | 'reservationI
   return retenus.slice(-50).map((m) => m.texte);
 }
 
-/** Messages du voyageur lus par le verdict : sujets sensibles (`sujets`) et langue (`recents`). */
+/**
+ * Messages du voyageur lus par le verdict : sujets sensibles (`sujets`) et
+ * langue (`recents`) ; pour les suppléments, ceux encore sans réponse
+ * (`sansReponse`, absent : le dernier de `recents`), s'ils répondent à une
+ * proposition de suppléments, et les heures habituelles du logement.
+ */
 export interface MessagesVerdict {
   sujets: string[];
   recents: string[];
+  sansReponse?: string[];
+  apresProposition?: boolean;
+  propositionEnCours?: boolean;
+  propositionRecente?: boolean;
+  fiche?: HorairesLogement;
+}
+
+/** Ce que le verdict lit d'une conversation (agent-messagerie.ts) : les messages du voyageur et les horaires du logement. */
+export function messagesVerdict(fil: Pick<FilMessages, 'messages' | 'reservationId'>, maintenant: Date, fiche?: HorairesLogement): MessagesVerdict {
+  return {
+    sujets: messagesSujets(fil, maintenant),
+    recents: fil.messages
+      .filter((m) => m.auteur === 'voyageur')
+      .slice(-3)
+      .map((m) => m.texte),
+    sansReponse: messagesSansReponse(fil).map((m) => m.texte),
+    apresProposition: apresPropositionSupplements(fil, fiche),
+    propositionEnCours: propositionEnCours(fil, fiche),
+    propositionRecente: ((a) => a !== null && a <= DUREE_PROPOSITION_MS)(agePropositionEnCours(fil, fiche)),
+    ...(fiche ? { fiche: { heureArrivee: fiche.heureArrivee, heureDepart: fiche.heureDepart } } : {}),
+  };
 }
 
 /**
@@ -265,8 +572,14 @@ export interface MessagesVerdict {
  * sans séparateur (« mo » puis « ney back » donnent « money back »).
  */
 export function sujetSensibleMessages(messages: string[], intention?: IntentionMessage): SujetSensible | null {
-  return sujetSensible(messages.join('\n'), intention) ?? sujetSensible(messages.join(''));
+  // Le mot « supplément » du voyageur ne suffit pas (« Non merci pour les suppléments ») : une vraie demande
+  // de supplément est relevée par supplementAValider, sur les seuls messages sans réponse et la réponse proposée.
+  const sans = messages.map((m) => m.replace(MOT_SUPPLEMENT, ' '));
+  return sujetSensible(sans.join('\n'), intention) ?? sujetSensible(sans.join(''));
 }
+
+/** Le mot « supplément » seul (sans « supplémentaire »), en plusieurs langues. */
+const MOT_SUPPLEMENT = /suppl[ée]ments?(?!aires?|ary)|suplementos?|supplement[io]/gi;
 
 /* ===================================================== message d'attente */
 
@@ -337,6 +650,7 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
   const arriveeDepart = 'Les questions sur l’arrivée et le départ (horaires, accès, parking)';
   const infos = 'Le wifi, les équipements, les règles de la maison';
   const argent = 'Il ne promet jamais d’argent, même un petit geste.';
+  const supplements = 'Il ne vend jamais seul un supplément (arrivée plus tôt, départ plus tard, ménage, navette) et n’en propose jamais de lui-même : il prépare la réponse, vous la validez. De même pour toute réponse au message « Proposer les suppléments ».';
   if (niveau === 'valider') {
     return {
       titre: 'Votre agent prépare les réponses',
@@ -352,6 +666,7 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
         'Dans le doute, il vous passe toujours la main.',
         fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'sa réponse le dit.'),
         argent,
+        supplements,
         'Il rédige dans la langue du voyageur si elle est cochée, sinon en anglais.',
         'Il ne prépare les codes d’accès que pour les voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
       ],
@@ -374,6 +689,7 @@ export function explicationNiveau(niveau: NiveauAutonomie, transmettre: Pick<Reg
       fiche + (transmettre.horsFiche ? 'il vous passe la main.' : 'il le dit au voyageur.'),
       'Quand il vous passe la main, il peut prévenir le voyageur par un court message, toujours le même : « l’équipe revient vers vous rapidement ».',
       argent,
+      supplements,
       'Il répond dans la langue du voyageur si elle est cochée, sinon en anglais.',
       'Il ne donne les codes d’accès qu’aux voyageurs dont la réservation est confirmée, qui arrivent sous 48\u00a0h ou sont déjà sur place.',
       'Il ne répond seul qu’en français ou en anglais ; dans une autre langue, il prépare la réponse.',
@@ -498,12 +814,17 @@ export interface DecisionNotee {
  * Vaut aussi pour Label Maison sans choix enregistré.
  */
 export function verdictEnvoi(d: DecisionNotee, p: PolitiqueEnvoi, voyageur: string | MessagesVerdict): Verdict {
-  const { sujets, recents } = typeof voyageur === 'string' ? { sujets: [voyageur], recents: [voyageur] } : voyageur;
+  const v: MessagesVerdict = typeof voyageur === 'string' ? { sujets: [voyageur], recents: [voyageur] } : voyageur;
+  const { sujets, recents } = v;
   if (d.action === 'transmettre') return { verdict: 'transmettre', raison: d.raison === 'aucune' ? 'autre' : d.raison, motif: '' };
   const sensible = sujetSensibleMessages(sujets, d.intention);
   if (sensible) return { verdict: 'transmettre', ...sensible };
   const reponse = reponseSensible([d.texte, d.texteFr].filter(Boolean).join('\n'));
   if (reponse) return { verdict: 'transmettre', ...reponse };
+  // Supplément (arrivée plus tôt, départ plus tard, ménage, navette) : jamais vendu seul, quel que soit le niveau.
+  // La demande se cherche dans les messages encore sans réponse (une demande déjà traitée ne bloque plus).
+  const supplement = supplementAValider(d, { sansReponse: v.sansReponse ?? recents.slice(-1), apresProposition: v.apresProposition, propositionEnCours: v.propositionEnCours, propositionRecente: v.propositionRecente, fiche: v.fiche });
+  if (supplement) return { verdict: 'valider', motif: supplement };
   if (!p.envoiAuto) return { verdict: 'valider', motif: 'Vous validez chaque réponse.' };
   const texteRecent = recents.join('\n');
   const texte = d.texte ?? '';
@@ -790,6 +1111,26 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
   return { fiche: source as Partial<Logement['fiche']> | undefined, descriptif };
 }
 
+/** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
+// Une heure, une distance ou un ordinal avant le code (« actif de 7h à 22h : 482 ») ne l'arrête pas : la recherche continue.
+const CODE_APRES_MOT =
+  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?<!(?<![\p{L}])(?:place|rue|avenue|boulevard|bd|all[ée]e|b[âa]timent|b[âa]t|porte du|porte au|porte n°|au n°)\s?)(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?=\s|$|[.,;:!?)]))/giu;
+
+/**
+ * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un
+ * mot tout en majuscules d'au moins 4 lettres (« code SOLEIL »), sauf les mots
+ * de la fiche (« code WIFI », « code PORTE »).
+ */
+function codesApresMotCode(texte: string): string[] {
+  return [
+    ...[...texte.matchAll(CODE_APRES_MOT)].map((m) => m[1]).filter((j) => !PAS_UN_CODE.test(j)),
+    ...[...texte.matchAll(/[Cc][Oo][Dd][Ee]\s*:?\s*([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(sansAccentsMaj(m))),
+  ];
+}
+
+/** Jetons qui suivent « code », « cadenas »… sans en être un : heure (« 16h00 »), distance, durée, débit, montant. */
+const PAS_UN_CODE = /^(\d{1,3}h\d{0,2}|\d{1,3}(er|re|e|[èe]me|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))$/i;
+
 /** Mots en majuscules qui suivent « code » sans en être un. */
 const MOTS_PAS_CODE = new Set([
   'WIFI', 'PORTE', 'PORTAIL', 'ENTREE', 'IMMEUBLE', 'PARKING', 'ACCES', 'BOITE', 'GARAGE', 'CADENAS', 'POSTAL',
@@ -820,10 +1161,10 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
     ...(acces.match(SUITE_CHIFFRES) ?? []),
     // Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 ») ;
     // jamais un mot (« code par séjour »).
-    ...[...acces.matchAll(/code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi)].map((m) => m[1]),
-    // Ou un mot tout en majuscules d'au moins 4 lettres (« code SOLEIL »), sauf les mots de la fiche (« code WIFI », « code PORTE »).
-    ...[...acces.matchAll(/[Cc][Oo][Dd][Ee]\s*:?\s*([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(sansAccentsMaj(m))),
+    ...codesApresMotCode(acces),
     ...(autres.match(SUITE_CHIFFRES) ?? []),
+    // Aussi dans le parking, les règles, « À savoir »… : « Portail du parking : code 482 ».
+    ...codesApresMotCode(autres),
   ];
   return [...new Set([fiche.wifiCode, fiche.wifiNom, ...codes].map((x) => String(x ?? '').trim()).filter((x) => x.length >= 3))];
 }
@@ -856,7 +1197,12 @@ function enMotEntier(texte: string, mot: string): boolean {
 
 /** Texte de la fiche donné à l'IA avant l'heure : suites de chiffres (codes possibles) retirées. */
 export function masquerCodes(texte: string): string {
-  return nettoyerTexte(texte).replace(SUITE_CHIFFRES, '[code communiqué dans les 48 heures avant l’arrivée]');
+  const cache = '[code communiqué dans les 48 heures avant l’arrivée]';
+  // D'abord les codes courts écrits après « code » (« code 482 », « code A12 »), puis toute suite de 4 chiffres ou plus.
+  return nettoyerTexte(texte)
+    .replace(CODE_APRES_MOT, (tout, jeton: string) => (PAS_UN_CODE.test(jeton) ? tout : tout.slice(0, tout.length - jeton.length) + cache))
+    .replace(/([Cc][Oo][Dd][Ee]\s*:?\s*)([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu, (tout, avant: string, mot: string) => (MOTS_PAS_CODE.has(sansAccentsMaj(mot)) ? tout : avant + cache))
+    .replace(SUITE_CHIFFRES, cache);
 }
 
 /* ======================================================== plafond de l'IA */

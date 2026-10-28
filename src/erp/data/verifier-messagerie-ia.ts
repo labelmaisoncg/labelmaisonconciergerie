@@ -51,6 +51,7 @@ import {
   reglagesAEnregistrer,
   REGLAGES_AGENT_GERANT,
   reponseSensible,
+  masquerCodes,
   secretsAcces,
   validationServeur,
   politiqueEnvoi,
@@ -541,6 +542,37 @@ async function principal() {
         !contientCodeAcces('Bonjour cher voyageur', { acces: 'Code VOYAGEUR envoyé la veille' }),
       `codes courts avec un chiffre et codes en majuscules repérés, mots de la fiche non (${['code AB12', 'code A12', 'code BX7', 'code ABC12', 'code SOLEIL', 'Code WIFI'].map((a) => vrais(a).join('/')).join(' | ')})`,
     );
+    {
+      // Code court ailleurs que dans « Accès » (parking, règles, À savoir) : repéré et masqué avant l'heure.
+      const parking = { acces: 'Boîte à clés à droite.', parking: 'Portail du parking : code 482.', aSavoir: 'Local vélos : CODE SOLEIL.', wifiNom: '', wifiCode: '' };
+      verifier(secretsAcces(parking).includes('482') && secretsAcces(parking).includes('SOLEIL'), `code court du parking et code en majuscules d'« À savoir » repérés (${secretsAcces(parking).join(', ')})`);
+      verifier(contientCodeAcces('Le portail s’ouvre avec le 482.', parking) && contientCodeAcces('Pour les vélos : soleil', parking), 'code court du parking écrit dans une réponse : repéré');
+      const m = masquerCodes('Portail du parking : code 482. Local vélos : CODE SOLEIL. Code WIFI au dos de la porte. Arrivée dès 16:00, parking à 300 m.');
+      verifier(!/482|SOLEIL/.test(m) && /Code WIFI/.test(m) && /16:00/.test(m) && /300 m/.test(m), `masquage avant l'heure : codes courts et en majuscules cachés, le reste intact (${m})`);
+      verifier(secretsAcces({ acces: '', parking: 'Serrure connectée, code par séjour.', wifiNom: '', wifiCode: '' }).length === 0, '« code par séjour » dans le parking : aucun secret');
+      // Code écrit après d'autres mots (« Code portail : 482 », « Le code est 731 », « Cadenas vélo 315 »), jamais une heure ni une distance.
+      const loin = { acces: 'Boîte à clés à droite.', parking: 'Code portail : 482', regles: 'Le code est 731. Arrivée avant 16h00, code par séjour.', aSavoir: 'Code d’entrée immeuble : B2C4. Cadenas vélo 315. Parking à 300m.', wifiNom: '', wifiCode: '' };
+      const s = secretsAcces(loin);
+      verifier(['482', '731', 'B2C4', '315'].every((c) => s.includes(c)) && !s.includes('16h00') && !s.includes('300m'), `codes après d'autres mots repérés, ni heure ni distance (${s.join(', ')})`);
+      verifier(
+        ['The parking gate code is 482.', 'It is 731.', 'Use B2C4 downstairs.'].every((t) => contientCodeAcces(t, loin)) && !contientCodeAcces('Arrival from 16h00, the parking is 300m away.', loin),
+        'réponse qui cite ces codes : repérée ; heure et distance : non',
+      );
+      const ml = masquerCodes(`${loin.parking}\n${loin.regles}\n${loin.aSavoir}`);
+      verifier(!/482|731|B2C4|315/.test(ml) && /16h00/.test(ml) && /300m/.test(ml), `masquage avant l'heure : codes cachés, heure et distance intactes (${ml})`);
+      verifier(secretsAcces({ acces: 'Le code 482 m’a été donné par le syndic.', wifiNom: '', wifiCode: '' }).includes('482'), '« code 482 m’a été donné » : 482 reste un code (pas une distance)');
+      const portes = ['Code porte 482', 'Code de la porte 731', 'Code n° 482', 'code au 482', 'Digicode porte A12', 'Code du réseau 482', 'Boîte à clés : code de la porte 482.'];
+      verifier(portes.every((a) => secretsAcces({ acces: a, wifiNom: '', wifiCode: '' }).length === 1), `« Code porte 482 », « code au 482 »… : de vrais codes (${portes.map((a) => secretsAcces({ acces: a, wifiNom: '', wifiCode: '' }).join('/')).join(' | ')})`);
+      const adresse = { acces: 'Boîte à clés fixée à gauche de la porte du 145, place 112, allée B12.', wifiNom: '', wifiCode: '' };
+      verifier(!['145', '112', 'B12'].some((x) => secretsAcces(adresse).includes(x)) && !contientCodeAcces('Le logement est au 145 avenue de Paris.', adresse), `numéro d'adresse ou de place : jamais un code (${secretsAcces(adresse).join(', ')})`);
+      const apresHeure = { acces: '', parking: 'Code portail actif de 7h à 22h : 482', aSavoir: 'Cadenas du local vélo (accès 24h/24) : 731', wifiNom: '', wifiCode: '' };
+      verifier(['482', '731'].every((c) => secretsAcces(apresHeure).includes(c)) && !/482|731/.test(masquerCodes(`${apresHeure.parking}\n${apresHeure.aSavoir}`)), `code placé après une heure : repéré et masqué (${secretsAcces(apresHeure).join(', ')})`);
+      const ordinaires = { acces: 'Accès par code 24h/24, code 48h avant. Boîte à clés au 1er étage, 2eme porte.', parking: 'Digicode 1er portail. Badge pour la barrière, parking à 300 m.', wifiNom: '', wifiCode: '' };
+      verifier(
+        secretsAcces(ordinaires).length === 0 && !contientCodeAcces('Le parking est accessible 24h/24, au 1er étage ; le code arrive 48h avant votre arrivée.', ordinaires),
+        `« 24h/24 », « 48h avant », « 1er portail » : jamais pris pour un code (${secretsAcces(ordinaires).join(', ')})`,
+      );
+    }
     verifier(contientCodeAcces('Votre code est A12B.', { acces: 'code : A12B' }) && contientCodeAcces('le code 4 8 2 1', { acces: 'code 4821' }), 'vrai code écrit dans un message : repéré');
     // Secret court ou sans chiffre : en mot entier seulement.
     verifier(

@@ -26,7 +26,6 @@
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
 import { MODELE_AGENT_DEFAUT, texteErreurIA, type ClientIA } from './agent-messagerie.js';
-import { attendEquipe } from './attente-equipe.js';
 import { ErreurAssistant, compterAppelIA } from './agent-assistant.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi.js';
 import { BUDGET_ERP_DEFAUT, BudgetEpuise, DelaiEcoule, ErreurRepull, QUOTA_MOIS_DEFAUT, lireEtat } from './repull-synchro.js';
@@ -34,6 +33,7 @@ import type { ContexteConnexion } from './repull-connexion.js';
 import { horodatageParis } from './repull.js';
 import { lienGuide, type SignerFichier } from './guides.js';
 import {
+  attendReponse,
   COLLECTION_AVIS_A_DEPOSER,
   COLLECTION_ENVOIS_PROGRAMMES,
   COLLECTION_ETAT_PROGRAMMES,
@@ -66,11 +66,11 @@ import {
   texteAvisParDefaut,
   unMomentAllume,
   variablesDuTexte,
-  voyageurAttend,
   type DecisionPlanifiee,
   type ReservationsVues,
 } from './messages-programmes.js';
-import type { FilMessages, Incident, Journal, Logement, Reglage, Reservation } from './types';
+import { ID_REGLAGES_SUPPLEMENTS, reglagesSupplements, texteSupplementsSejour, type ReglagesSupplements } from './supplements.js';
+import type { FilMessages, Incident, Journal, Logement, Mission, Reglage, Reservation } from './types';
 import type { ControleQualite } from './types-operations';
 import type { AvisADeposer, EnvoiProgramme } from './types-programmes';
 
@@ -159,7 +159,9 @@ class Passage {
     }
     if (!unMomentAllume(reglages) && !d.envois.some((x) => x.statut === 'en_cours')) return vues.vues;
 
-    const plan = planifierEnvois({ reservations: d.reservations, fils: d.fils, reglages, envois: d.envois, vues: vues.vues, maintenant, logements: [...d.logements.values()] });
+    // Suppléments réglés par logement : « Proposer les suppléments » ne vise que ceux qui en proposent.
+    const supplements = reglagesSupplements({ reglages: d.reglagesLus });
+    const plan = planifierEnvois({ reservations: d.reservations, fils: d.fils, reglages, envois: d.envois, vues: vues.vues, maintenant, logements: [...d.logements.values()], supplements });
     if (plan.some((p) => p.decision.genre === 'envoyer' || p.decision.genre === 'reprendre')) {
       const etat = await lireEtat(this.o.base, maintenant, this.o.budgetMois ?? BUDGET_ERP_DEFAUT, this.o.quotaMois ?? QUOTA_MOIS_DEFAUT);
       if (etat.budgetMois - etat.appelsMois <= 0) this.repullEpuise = true;
@@ -188,11 +190,11 @@ class Passage {
           // Conversation relue juste avant l'envoi : le voyageur a pu écrire, ou l'agent passer la main, depuis le plan.
           // Illisible, plus reliée au séjour ou à une plateforme, ou voyageur qui attend l'équipe : rien ne part (nouvel essai).
           const fil = await this.relireFil(x.fil.id, p.reservation.id);
-          if (!fil || voyageurAttend(fil) || attendEquipe(fil)) {
+          if (!fil || attendReponse(fil)) {
             this.bilan.reportes++;
             continue;
           }
-          if (x.genre === 'envoyer') await this.envoyer(p, fil, x.modele, signature, d.logements.get(p.reservation.logementId));
+          if (x.genre === 'envoyer') await this.envoyer(p, fil, x.modele, signature, d.logements.get(p.reservation.logementId), { supplements, reservations: d.reservations });
           // Reprise revérifiée par deciderEnvoi ; la clé est recalculée (jamais celle lue dans la ligne).
           else await this.partir({ ...x.envoi, cle: cleEnvoiProgramme(p.reservation.id, p.declencheur), filId: fil.id }, fil);
         }
@@ -228,17 +230,42 @@ class Passage {
     };
   }
 
+  /** Ménages du planning, lus une fois par passage et seulement s'il faut proposer des suppléments. */
+  private missions?: Promise<Mission[]>;
+  private lireMissions(): Promise<Mission[]> {
+    return (this.missions ??= this.o.base.lire<Mission>('missions').catch(() => [] as Mission[]));
+  }
+
   /** Premier envoi : texte rendu, ligne « en cours » écrite, puis envoi. */
-  private async envoyer(p: DecisionPlanifiee, fil: FilMessages, modele: string, signature: string, logement: Logement | undefined) {
+  private async envoyer(
+    p: DecisionPlanifiee,
+    fil: FilMessages,
+    modele: string,
+    signature: string,
+    logement: Logement | undefined,
+    planning: { supplements: ReglagesSupplements; reservations: Reservation[] },
+  ) {
     const r = p.reservation;
     const aujourdhui = dateParisDe(this.maintenant());
+    const variables = variablesDuTexte(modele);
     let lien: string | undefined;
-    if (variablesDuTexte(modele).includes('lien_guide')) {
+    if (variables.includes('lien_guide')) {
       const g = guidePourMessage(logement?.fiche?.guides, codesAutorises(r, fil.logementId, aujourdhui));
       if (g) lien = (await lienGuide(g, this.o.signerFichier)) ?? undefined;
     }
-    const rendu = rendreMessage(modele, { reservation: r, logement, fil, signature, lienGuide: lien, aujourdhui });
+    // Suppléments allumés ET possibles d'après le planning (réservations et ménages du logement) ; rien « à vérifier ».
+    // « Proposer les suppléments » : calculés même si le texte ne cite pas la liste (rien de possible, rien ne part).
+    const supplements = variables.includes('supplements') || p.declencheur === 'proposer_supplements'
+      ? texteSupplementsSejour(planning.supplements, r, { reservations: planning.reservations, missions: await this.lireMissions() }, logement?.fiche, aujourdhui)
+      : undefined;
+    const rendu = rendreMessage(modele, { reservation: r, logement, fil, signature, lienGuide: lien, aujourdhui, supplements });
     const base = { ...this.ligne(p), filId: fil.id };
+    if (p.declencheur === 'proposer_supplements' && !supplements) {
+      // Le planning ne laisse rien à proposer pour ce séjour : rien ne part.
+      await this.ecrireEnvoi({ ...base, statut: 'ignore', raison: RAISONS.sansSupplement });
+      this.bilan.ignores++;
+      return;
+    }
     if (!rendu.texte || rendu.codesEnClair) {
       // Vide, ou un code d'accès écrit en dur dans le modèle, trop tôt pour ce séjour : rien ne part.
       await this.ecrireEnvoi({ ...base, statut: 'ignore', raison: rendu.texte ? RAISONS.codesEnClair : RAISONS.vide });
@@ -263,6 +290,8 @@ class Passage {
         texte: e.texte!,
         auteur: 'hote',
         par: PAR_MESSAGE_AUTO,
+        // Le moment reste sur le message : une réponse à « Proposer les suppléments » n'est jamais envoyée seule par l'agent.
+        moment: e.declencheur,
         cleIdempotence: e.cle,
         // Un message automatique ne change pas qui s'occupe de la conversation (l'agent garde la main).
         completer: (f) => ({ ...f, statut: avant.statut, traitePar: avant.traitePar }),
@@ -493,7 +522,7 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
 
   let vues = etat.vues;
   try {
-    const reglagesLus = await o.base.lire<Reglage>('reglages', ['agent', ID_REGLAGES_PROGRAMMES]);
+    const reglagesLus = await o.base.lire<Reglage>('reglages', ['agent', ID_REGLAGES_PROGRAMMES, ID_REGLAGES_SUPPLEMENTS]);
     const [reservations, envois, avis] = await Promise.all([
       o.base.lire<Reservation>('reservations'),
       o.base.lire<EnvoiProgramme>(COLLECTION_ENVOIS_PROGRAMMES),

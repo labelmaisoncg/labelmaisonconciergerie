@@ -51,6 +51,9 @@ export const AUJOURDHUI: DateISO = MODE_DEMO ? DATE_DEMO : dateParis();
 /** Heure de référence au chargement (figée en démo). */
 export const MAINTENANT = MODE_DEMO ? `${AUJOURDHUI}T10:30:00+02:00` : horodatageParis();
 
+/** Espaces insécables avant « : ; ? ! » et à l'intérieur des guillemets : la ponctuation ne passe jamais seule à la ligne. */
+export const insecables = (t: string): string => t.replace(/ ([:;?!»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
+
 /* ------------------------------------------------------------------ argent */
 
 const EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });

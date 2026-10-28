@@ -88,7 +88,7 @@ import {
   estSentiment,
   masquerCodes,
   messageAttente,
-  messagesSujets,
+  messagesVerdict,
   politiqueEnvoi,
   reponseAEcarter,
   reponseSensible,
@@ -370,8 +370,8 @@ export function filsAEtudier(fils: FilMessages[], maintenant: Date): { fil: FilM
   return res.sort((a, b) => instant(a.dernier.envoyeLe) - instant(b.dernier.envoyeLe));
 }
 
-/** Heures couvertes chaque jour par le réveil planifié (supabase/erp-agent-cron.sql : 8 h–23 h à Paris, avec marge). */
-const HEURES_REVEIL = 16;
+/** Heures couvertes chaque jour par le réveil planifié (supabase/erp-agent-cron.sql : 5 h–22 h UTC, 17,5 h par jour à Paris, avec marge). */
+const HEURES_REVEIL = 17;
 
 /** Heures par jour pendant lesquelles l'agent passe et répond (plage des réglages, dans celle du réveil). */
 export function fenetreHeures(r: Pick<ReglagesAgent, 'horaires'>): number {
@@ -523,6 +523,9 @@ export function construireContexte(
     `- Hors fiche (réponse absente de la fiche) : ${t.horsFiche ? 'action "transmettre", raison "hors_fiche", avec un court message d’attente' : 'réponds poliment que tu n’as pas cette information, sans rien inventer'}`,
     `- Exceptions : ${t.derogations ? 'action "transmettre", raison "exception", avec un court message d’attente' : 'réponds selon la fiche (horaires et règles), sans accorder d’exception'}`,
     t.sejoursLongs ? `- Demande de séjour de ${t.sejoursLongsNuits} nuits ou plus : action "transmettre", raison "exception".` : '',
+    // Suppléments (cahier B7) : l'équipe les propose avec le prix réglé ; l'agent ne vend rien.
+    '- Arrivée plus tôt, départ plus tard, ménage pendant le séjour, navette : n’accorde rien, ne donne aucun prix, n’écris jamais « supplément » ; dis que l’équipe vérifie le planning et revient vers le voyageur.',
+    '- Ne propose jamais de toi-même une arrivée plus tôt ni un départ plus tard : donne les horaires de la fiche, sans rien offrir de plus.',
     '',
     `LOGEMENT : ${logement?.nom ?? 'inconnu'}${logement?.ville ? ` (${logement.ville})` : ''}`,
     'FICHE DU LOGEMENT (seules informations sûres)',
@@ -868,10 +871,11 @@ class Passage {
 
     const { decision: d, brut } = await this.decider(fil, logement, reservation);
     // Sujets sensibles : tous les messages du voyageur du séjour (sinon des 7 derniers jours), même déjà répondus
-    // (« comme convenu, confirmez par écrit ») ; langue : ses 3 derniers messages.
-    const recents = fil.messages.filter((m) => m.auteur === 'voyageur').slice(-3).map((m) => m.texte);
-    const texteVoyageur = recents.join('\n');
-    const verdict = verdictEnvoi(d, this.politique, { sujets: messagesSujets(fil, this.maintenant()), recents });
+    // (« comme convenu, confirmez par écrit ») ; langue : ses 3 derniers messages ; suppléments : ses messages sans
+    // réponse, une réponse à « Proposer les suppléments », une heure accordée hors des horaires du logement.
+    const lus = messagesVerdict(fil, this.maintenant(), logement?.fiche);
+    const texteVoyageur = lus.recents.join('\n');
+    const verdict = verdictEnvoi(d, this.politique, lus);
     const note: NoteDecision = {
       ...(d.intention ? { intention: d.intention } : {}),
       ...(d.confiance !== undefined ? { confiance: d.confiance } : {}),

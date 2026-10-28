@@ -7,9 +7,10 @@
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
-import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
+import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
 import type { ElementPrix } from './prix-conseils';
 import type { AnnonceEquipe } from './annonces-equipe';
+import type { ReglagesSupplements } from './supplements';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -329,6 +330,8 @@ export interface Reservation {
   fraisMenageCentimes: Centimes;
   noteVoyageur?: number;
   commentaireVoyageur?: string;
+  /** Lecture de l'avis par l'IA (« Préparer une réponse ») : affine l'analyse, src/erp/data/avis.ts. */
+  lectureAvis?: LectureAvis;
   /** @deprecated Ancienne référence Channex (avant Repull) : lue en secours pour les anciennes lignes. */
   channexBookingId?: string;
   /** Réservation importée de Repull (synchronisation automatique). */
@@ -368,6 +371,19 @@ export type IntentionMessage =
   | 'autre';
 
 export type SentimentMessage = 'positif' | 'neutre' | 'negatif';
+
+/**
+ * Lecture d'un avis par l'IA, gardée sur la réservation : son sentiment, et
+ * le sens des thèmes que l'analyse par mots-clés avait déjà repérés (jamais
+ * un thème de plus). Ne vaut que pour le texte public lu (`empreinte`).
+ */
+export interface LectureAvis {
+  empreinte: string;
+  sentiment: SentimentMessage;
+  /** Clés de THEMES_AVIS (src/erp/data/avis.ts). */
+  themes: { theme: string; sentiment: SentimentMessage }[];
+  le: Horodatage;
+}
 
 /**
  * Lecture du dernier message du voyageur par l'IA (passage de l'agent ou
@@ -419,6 +435,12 @@ export interface EnvoiMessage {
   reecrit?: boolean;
   /** Qui l'a envoyé (nom du membre, ou « Agent IA »). */
   par?: string;
+  /**
+   * Message automatique : son moment (« proposer_supplements »…). Une réponse
+   * du voyageur à « Proposer les suppléments » n'est jamais envoyée seule par
+   * l'agent (messagerie-ia.ts, apresPropositionSupplements).
+   */
+  moment?: DeclencheurMessage;
 }
 
 /**
@@ -570,9 +592,10 @@ export interface CompteurFactures {
 /**
  * Tous les réglages stockés dans la collection `reglages` : l'agent (id
  * 'agent'), les messages automatiques ('messages-programmes'), l'identité de
- * la société ('societe') et la numérotation des factures.
+ * la société ('societe'), la numérotation des factures et les suppléments
+ * proposés aux voyageurs ('supplements', data/supplements.ts).
  */
-export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures | AlerteControleAgent;
+export type Reglage = ReglagesAgent | ReglagesMessagesProgrammes | ReglagesSociete | CompteurFactures | AlerteControleAgent | ReglagesSupplements;
 
 /**
  * Alerte « l'agent ne peut plus vérifier ses réponses » (collection
@@ -876,6 +899,13 @@ export type SourceContactCrm = 'audit' | 'accueil' | 'contact' | 'cercle' | 'dos
 
 export type ResultatAppel = 'joint' | 'pas_de_reponse' | 'messagerie' | 'note' | 'formulaire';
 
+/**
+ * Qui est le contact : un propriétaire (il peut confier son logement) ou un
+ * apporteur d'affaires (il recommande des propriétaires, Cercle). Absent :
+ * déduit de la source (crm-assistant.ts, profilContact).
+ */
+export type ProfilContactCrm = 'proprietaire' | 'apporteur';
+
 /** Une trace dans l'historique d'un contact (appel, note, nouvelle demande). */
 export interface TraceContactCrm {
   le: Horodatage;
@@ -898,6 +928,8 @@ export interface ContactCrm {
   page?: string;
   source: SourceContactCrm;
   statut: StatutContactCrm;
+  /** Propriétaire ou apporteur, choisi dans la fiche ; absent : d'après la source (Cercle = apporteur). */
+  profil?: ProfilContactCrm;
   /** Pour « En attente » : la raison (travaux, achat en cours, décision à deux…). */
   motifAttente?: string;
   /** Date de la prochaine relance prévue. */
@@ -1061,6 +1093,11 @@ export interface VersionAnnonce {
   description: string;
   /** Accroche d'une ligne (premier paragraphe visible sur Airbnb). */
   accroche: string;
+  /**
+   * Textes de l'annonce (cahier A6) : les trois titres proposés (le premier
+   * est aussi `titre`). Absent : version mensuelle d'avant (un seul titre).
+   */
+  titres?: string[];
   /** Pourquoi cette version : saison, événement local, avis voyageurs. */
   raisons: string[];
   source: 'agent' | 'humain';

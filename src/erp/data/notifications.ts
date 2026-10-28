@@ -43,7 +43,8 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'urgence', libelle: 'Urgence dans un logement', detail: 'Nouvel incident urgent, ou incident confié à un membre de l’équipe.', defaut: true },
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
   { type: 'synchro', libelle: 'Mise à jour des plateformes en échec', detail: 'Une fois par jour au plus.', defaut: true },
-  { type: 'rappel', libelle: 'Rappel du matin', detail: 'Les arrivées et départs du jour.', defaut: false },
+  // Clé « rappel » gardée (préférences déjà enregistrées) : c'est désormais le briefing du matin (briefing.ts).
+  { type: 'rappel', libelle: 'Briefing du matin', detail: 'Le contenu de « Votre journée », chaque matin à partir de 7 h.', defaut: false },
   { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
   { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
@@ -97,6 +98,11 @@ export interface VarianteNotification {
   corps: string;
   /** Écran ouvert au toucher (toujours sous /erp). */
   url: string;
+  /**
+   * Pour les appareils d'un gérant seulement (ex. briefing avec prix et
+   * factures) : les autres reçoivent la variante suivante.
+   */
+  gerant?: boolean;
 }
 
 export interface GroupeNotification {
@@ -108,9 +114,9 @@ export interface GroupeNotification {
   urgente?: boolean;
 }
 
-/** La variante à envoyer à un appareil (undefined : rien pour lui). */
-export function varianteAEnvoyer(g: GroupeNotification, p: PreferencesNotifications | undefined): VarianteNotification | undefined {
-  return g.variantes.find((v) => estActive(p, v.type));
+/** La variante à envoyer à un appareil (undefined : rien pour lui). `role` : celui du compte de l'appareil. */
+export function varianteAEnvoyer(g: GroupeNotification, p: PreferencesNotifications | undefined, role?: string): VarianteNotification | undefined {
+  return g.variantes.find((v) => (!v.gerant || role === 'gerant') && estActive(p, v.type));
 }
 
 /* --------------------------------------------------------------- outils */
@@ -323,28 +329,10 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
 
 /* -------------------------------------------- notifications planifiées */
 
-/** Rappel du matin : arrivées et départs du jour (rien s'il n'y en a pas). */
-export function rappelDuMatin(reservations: Reservation[], logements: Logement[], aujourdhui: string): GroupeNotification | null {
-  const actives = reservations.filter((r) => r.statut !== 'annulee');
-  const arrivees = actives.filter((r) => r.arrivee === aujourdhui);
-  const departs = actives.filter((r) => r.depart === aujourdhui);
-  if (!arrivees.length && !departs.length) return null;
-  const nom = (id: string) => logements.find((l) => l.id === id)?.nom ?? 'un logement';
-  const nb = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
-  const parties = [arrivees.length ? nb(arrivees.length, 'arrivée') : '', departs.length ? nb(departs.length, 'départ') : ''].filter(Boolean);
-  const lieux = [...new Set([...arrivees, ...departs].map((r) => nom(r.logementId)))];
-  return {
-    cle: `rappel-${aujourdhui}`,
-    variantes: [
-      {
-        type: 'rappel',
-        titre: `Aujourd’hui : ${parties.join(', ')}`,
-        corps: lieux.length > 3 ? `${lieux.slice(0, 3).join(', ')} et ${lieux.length - 3} autre${lieux.length > 4 ? 's' : ''}` : lieux.join(', '),
-        url: '/erp',
-      },
-    ],
-  };
-}
+/*
+ * Le briefing du matin (type « rappel ») est calculé par briefing.ts et
+ * envoyé par le passage planifié de l'agent (briefing-passage.ts).
+ */
 
 /** Mise à jour des plateformes en échec : une notification par jour au plus. */
 export function synchroEnEchec(aujourdhui: string, raison: string): GroupeNotification {

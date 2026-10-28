@@ -10,7 +10,7 @@ import {
   sejourEnCours,
   tauxOccupation,
 } from '../../../data/selectors';
-import type { ErpDonnees, FicheLogement, Logement, Reservation } from '../../../data/types';
+import type { ErpDonnees, Logement, Reservation } from '../../../data/types';
 
 export interface StatsLogement {
   occupation30: number;
@@ -47,26 +47,8 @@ export function statsLogement(d: Pick<ErpDonnees, 'reservations' | 'mandats'>, l
   };
 }
 
-/** Champs de la fiche voyageur utilisés par l'agent IA, avec leur libellé. */
-export const CHAMPS_FICHE: { cle: keyof FicheLogement; libelle: string }[] = [
-  { cle: 'wifiNom', libelle: 'Nom du wifi' },
-  { cle: 'wifiCode', libelle: 'Code wifi' },
-  { cle: 'heureArrivee', libelle: 'Heure d’arrivée' },
-  { cle: 'heureDepart', libelle: 'Heure de départ' },
-  { cle: 'acces', libelle: 'Accès' },
-  { cle: 'parking', libelle: 'Parking' },
-  { cle: 'regles', libelle: 'Règles' },
-  { cle: 'equipements', libelle: 'Équipements' },
-];
-
-/** Complétude de la fiche voyageur (0..1) et champs manquants. */
-export function completudeFiche(f: FicheLogement): { ratio: number; manquants: string[] } {
-  const manquants = CHAMPS_FICHE.filter(({ cle }) => {
-    const v = f[cle] ?? '';
-    return Array.isArray(v) ? v.length === 0 : !v.trim();
-  }).map((c) => c.libelle);
-  return { ratio: (CHAMPS_FICHE.length - manquants.length) / CHAMPS_FICHE.length, manquants };
-}
+// Fiche voyageur lue par l'agent IA : règle partagée avec le serveur (briefing du matin).
+export { CHAMPS_FICHE, completudeFiche } from '../../../data/fiche-agent';
 
 /** Prix par nuit des `jours` prochains jours, lus sur les plateformes (undefined sans lecture). */
 export function prixAVenir(l: Logement, jours = 30, aujourdhui = AUJOURDHUI): { moyen: number; min: number; max: number; luLe: string } | undefined {

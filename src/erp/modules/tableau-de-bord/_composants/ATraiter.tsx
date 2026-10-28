@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import { BotMessageSquare, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, Gauge, MessageSquareWarning, PenLine, PhoneCall, RefreshCw, ShieldAlert, Siren, Star, Tag, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
+import { BotMessageSquare, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, CircleAlert, Flag, Gauge, MessageSquareWarning, PenLine, PhoneCall, Receipt, RefreshCw, ShieldAlert, Siren, Star, Tag, TriangleAlert, UserX, type LucideIcon } from 'lucide-react';
 import { Card, CardHeader, Drawer, EmptyState, TON_LAVIS, cn } from '../../../ui';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
@@ -15,6 +15,7 @@ const ICONES: Record<TypeATraiter, LucideIcon> = {
   incident: CircleAlert,
   signalement: Flag,
   charge: UserX,
+  facture: Receipt,
   prix: Tag,
   double: CalendarX2,
   suspecte: ShieldAlert,
@@ -75,8 +76,23 @@ function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
   );
 }
 
+export interface ATraiterProps {
+  elements: ElementATraiter[];
+  titre?: string;
+  max?: number;
+  /** Ligne posée avant les sujets (la journée du briefing) ; avec elle, pas d'état « Tout est à jour ». */
+  premiere?: ReactNode;
+  /** Actions de l'en-tête, après « Tout voir ». */
+  actions?: ReactNode;
+  /**
+   * Confirmation passagère (« Copié ») : montrée à la place de « Tout voir »,
+   * dans une zone annoncée aux lecteurs d'écran. `null` : rien à dire, la zone reste en place.
+   */
+  statut?: ReactNode;
+}
+
 /** « À faire » : les 5 sujets les plus pressants, le reste dans un panneau. */
-export function ATraiter({ elements, titre = 'À faire', max = 5 }: { elements: ElementATraiter[]; titre?: string; max?: number }) {
+export function ATraiter({ elements, titre = 'À faire', max = 5, premiere, actions, statut }: ATraiterProps) {
   const [tout, setTout] = useState(false);
   const liste = (els: ElementATraiter[], complet?: boolean) => (
     <ul className="divide-y divide-(--lm-bord)">
@@ -91,14 +107,31 @@ export function ATraiter({ elements, titre = 'À faire', max = 5 }: { elements: 
         className="mb-0 border-b border-(--lm-bord) px-4 pt-4 pb-3"
         titre={titre}
         actions={
-          elements.length > max && (
-            <button type="button" onClick={() => setTout(true)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
-              Tout voir ({elements.length})
-            </button>
+          (elements.length > max || actions || statut !== undefined) && (
+            <>
+              {statut !== undefined && (
+                <span role="status" aria-live="polite" className="inline-flex min-h-8 items-center gap-1 text-[12.5px] font-medium text-(--lm-encre-2) [&_svg]:size-3.5">
+                  {statut}
+                </span>
+              )}
+              {!statut && elements.length > max && (
+                <button type="button" onClick={() => setTout(true)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+                  Tout voir ({elements.length})
+                </button>
+              )}
+              {actions}
+            </>
           )
         }
       />
-      {elements.length ? (
+      {premiere ? (
+        <ul className="divide-y divide-(--lm-bord)">
+          {premiere}
+          {elements.slice(0, max).map((e) => (
+            <Ligne key={e.id} e={e} />
+          ))}
+        </ul>
+      ) : elements.length ? (
         liste(elements.slice(0, max))
       ) : (
         <EmptyState className="m-4" icone={<CheckCircle2 />} titre="Tout est à jour." />
