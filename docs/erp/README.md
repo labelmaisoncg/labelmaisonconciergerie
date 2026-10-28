@@ -197,6 +197,15 @@ node_modules/.bin/esbuild src/erp/data/verifier-annonces.ts --bundle --format=es
 node_modules/.bin/esbuild src/erp/data/verifier-supplements.ts --bundle --format=esm \
   --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
   --outfile=/tmp/verifier-supplements.mjs && node /tmp/verifier-supplements.mjs
+
+# Livret d'accueil et check-in en ligne (B2) : jeton signé lié au séjour et à
+# l'espace, lien expiré ou séjour annulé, codes à l'identique de l'agent (48 h),
+# codes courts sans le mot « code », jour du départ, rien de privé dans la vue,
+# champs contrôlés, enfants sur la fiche d'un adulte, purge à 6 mois,
+# {lien_sejour}, jamais pour l'IA, règles SQL. Côté routes : scripts/verifier-espaces-serveur.ts.
+node_modules/.bin/esbuild src/erp/data/verifier-sejour.ts --bundle --format=esm \
+  --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error \
+  --outfile=/tmp/verifier-sejour.mjs && node /tmp/verifier-sejour.mjs
 ```
 
 La base elle-même (règles RLS des deux passes de `supabase/erp-espaces.sql`)
@@ -230,7 +239,8 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Vercel (serveur), facultatives | Clés des notifications de l'app (Web Push). Générées par le gérant dans Paramètres → Application → Avancé, montrées une seule fois. Absentes : tout marche, sans notifications. Redéployer après ajout. |
 | `VAPID_SUBJECT` | Vercel (serveur), facultative | Contact des services de notifications (`https://` ou `mailto:`). Défaut `https://www.labelmaisoncg.fr`. |
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
-| `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Redéployer après ajout. |
+| `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Sans `SEJOUR_SECRET`, `ACCES_SECRET` signe aussi les liens du livret d'accueil des séjours (`/sejour`, signature à part) : sans l'une ni l'autre, pas de lien (la ligne `{Lien du livret}` des messages est retirée). La changer coupe alors aussi les liens de séjour déjà envoyés. Redéployer après ajout. |
+| `SEJOUR_SECRET` (facultative) | Vercel (serveur), **Production et Preview** | Secret propre aux liens du livret d'accueil (`/sejour`), 32 caractères au moins (`openssl rand -base64 48`). **Rien à faire si elle est absente** : `ACCES_SECRET` signe les liens. La poser (ou la changer) coupe tous les liens de séjour déjà envoyés, sans toucher aux sessions des espaces propriétaire et opérations. Posée mais trop courte : aucun lien (jamais de repli discret sur `ACCES_SECRET`), la carte de la réservation le dit. Redéployer après ajout. |
 | `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires et des invitations « Créer mon compte » de l'équipe (mêmes variables que le formulaire de contact ; un autre espace envoie seulement avec son propre expéditeur). Sans : le gérant copie le lien et l'envoie par SMS ou WhatsApp. |
 | `SITE_URL` | Vercel (serveur), facultative | Site des liens envoyés (invitations, « Recevoir mon lien », relances), origine `https://` seulement. Défaut `https://www.labelmaisoncg.fr`. Les liens ne prennent **jamais** l'adresse de la page qui appelle (en-tête Origin ou Host). |
 | `ORIGINES_APERCU` | Vercel (serveur), facultative | Aperçus Vercel autorisés à appeler les formulaires et les espaces extérieurs : origines **exactes**, séparées par des virgules (`https://mon-apercu.vercel.app`). Sans : seuls `labelmaisoncg.fr`, `labelmaisoncgexperience.fr` (avec ou sans `www`) et, hors Vercel en ligne, `localhost`. |
@@ -1374,7 +1384,7 @@ sans message en attente n'appelle pas Claude.
 ## CRM d'appels et connecteur Claude (octobre 2026)
 
 - **CRM** (`/erp/crm`) : chaque formulaire du site (`/api/contact`) crée une ligne « À appeler » dans la collection `crm` (sans doublon par e-mail ou téléphone), en parallèle de l'e-mail. Règles : `src/erp/data/crm.ts` ; contrôles : `verifier-crm.ts`.
-- **Connecteur MCP « Label Maison »** (`/api/crm-mcp`, serveur `label-maison` 2.0.0) : Claude (claude.ai, Claude Desktop, Claude Code) suit tout le channel manager et tient le CRM. Logique : `src/erp/data/crm-mcp.ts` (CRM et protocole), `cm-mcp.ts` (channel manager), `mcp-commun.ts` (contexte, forme d'un outil) ; transport : `api/_crm-mcp-http.ts` (`depotsMcp(base)`, seul point d'entrée vers les données : la base de l'espace du jeton) ; contrôles : `verifier-crm-mcp.ts` et `scripts/verifier-espaces-serveur.ts`.
+- **Connecteur MCP « Label Maison »** (`/api/crm-mcp`, serveur `label-maison` 2.1.0) : Claude (claude.ai, Claude Desktop, Claude Code) suit tout le channel manager et tient le CRM. Logique : `src/erp/data/crm-mcp.ts` (CRM et protocole), `cm-mcp.ts` (channel manager), `mcp-commun.ts` (contexte, forme d'un outil) ; transport : `api/_crm-mcp-http.ts` (`depotsMcp(base)`, seul point d'entrée vers les données : la base de l'espace du jeton) ; contrôles : `verifier-crm-mcp.ts` et `scripts/verifier-espaces-serveur.ts`.
   - **CRM** (six outils, inchangés) : `crm_resume`, `crm_chercher`, `crm_voir`, `crm_ajouter`, `crm_modifier`, `crm_noter_appel` (aucune suppression).
   - **Channel manager** (dix outils) :
     - **Le point du jour** : `cm_resume`, avec les conversations à répondre, les arrivées, départs et voyageurs sur place du jour, les avis sous 4,5 des 14 derniers jours et le nombre d'appels CRM.
@@ -1382,7 +1392,16 @@ sans message en attente n'appelle pas Claude.
     - **Réservations** : `reservations_periode` (du / au compris, 92 jours au plus ; arrivées, départs, sur place ; annulées exclues) et `reservation_voir` (montants, dont « vous recevez » = total − frais de la plateforme ; avis).
     - **Conversations** : `conversations_a_repondre` (même règle que « À répondre » de la Messagerie), `conversation_voir` et `reponse_preparer` (contexte et consignes pour rédiger une réponse, qui n'est **jamais envoyée** par le connecteur : l'équipe la relit et l'envoie depuis la Messagerie).
     - **Chiffres** : `indicateurs`, sur 30 jours ou une période choisie, comparés à la période précédente, avec les mêmes définitions que l'Accueil (`data/selectors`), vérifiées par le test.
-  - **Seule écriture du channel manager** : `conversation_pas_besoin_de_repondre`, qui classe la conversation « terminée » dans l'ERP, comme le bouton de la Messagerie. Elle se rouvre si le voyageur réécrit.
+  - **Écritures du channel manager** : `conversation_pas_besoin_de_repondre`, qui classe la conversation « terminée » dans l'ERP, comme le bouton de la Messagerie (elle se rouvre si le voyageur réécrit), et `reponse_proposer` (copilote, ci-dessous).
+  - **Copilote** (cahier A15, `src/erp/data/copilote-mcp.ts`, règles `copilote.ts`, contrôles `verifier-copilote.ts`) : ce que Claude peut faire, formalisé, tracé et réversible.
+    - `reponse_proposer` range une réponse dans la conversation (« Proposée par Claude », déjà écrite dans la Messagerie) : **l'équipe la relit et l'envoie** (la confirmation), rien ne part du connecteur ; refusée si elle parle d'argent ou de données personnelles, accorde un supplément, contient un code (même épelé, « 4 8 2 »), le wifi, un lien, un e-mail ou un téléphone, ou une consigne cachée ; l'agent ne répond pas au même message tant qu'elle attend. Envoyée, sa trace passe « Envoyée par … » (« …, après retouche » si l'équipe l'a modifiée ; le journal dit « proposée par Claude ») ; retirée, « Retirée par … ».
+    - `menage_creer` prévoit un ménage au planning **interne** de l'ERP (« à attribuer », `interne: true`), jamais transmis à un prestataire ni à une plateforme de ménage ; jamais doublé le même jour. Les règles et écrans des prestataires l'écartent (`missionPrestataire`, `selectors.ts`) : ni attribution, ni paiement, ni contrôle, ni alerte « personne ».
+    - `facture_preparer` prépare le **brouillon** de la facture mensuelle d'un propriétaire s'il n'existe pas (jamais remplacé, validé, numéroté, envoyé ni encaissé : le gérant le fait dans l'ERP).
+    - `prix_conseils` lit les prix conseillés : **lecture seule**, « ajuster un prix » reste un conseil, aucun prix n'est écrit nulle part. Aucun paiement.
+    - **Trace** : chaque outil d'écriture passe par `contexteTrace`, qui écrit la trace dans la collection `actionsAgent` de l'espace **avant** l'écriture (sans trace, rien n'est écrit ; une écriture en échec laisse une trace « pas faite ») : qui (Claude et le gérant qui l'a connecté, ou la clé fixe), quand, quel outil, la cible, avant → après (textes masqués : ni code, ni wifi, ni e-mail ou téléphone de voyageur). Un outil de lecture ne peut rien écrire (`contexteLecture`). L'agent de la messagerie trace aussi ses décisions (réponse envoyée seule, à valider, transmise).
+    - **Paramètres → Actions de l'IA** (gérant) : les actions des 90 derniers jours, les réponses proposées « à envoyer » en tête, et « Annuler » (fiche du CRM, appel noté, conversation terminée, ménage, brouillon de facture, réponse proposée) tant que la cible n'a pas changé depuis (empreinte ; sinon refusé, rien d'écrasé). Une facture validée depuis ne s'annule plus (« La facture a été validée depuis »). Un message parti ne se reprend pas.
+    - **Base** : `supabase/erp-espaces.sql` (à relancer) réserve `actionsAgent` aux gérants de l'espace (lecture et écriture), n'en garde aucune ancienne version dans `erp.historique`, et la borne à 90 jours et, par espace, 5 000 actions de Claude et 500 de l'agent (déclencheur `erp.borner_actions_ia`). Tant que la règle manque (témoin `erp.actions_ia_protegees()`), aucune trace n'est écrite (elle serait lisible par tous les membres) : les outils d'avant le copilote (`crm_ajouter`, `crm_modifier`, `crm_noter_appel`, `conversation_pas_besoin_de_repondre`) écrivent comme avant, sans trace ; `reponse_proposer`, `menage_creer` et `facture_preparer` refusent (« Le gérant doit d'abord relancer la mise à jour de la base ») ; l'agent ne trace rien ; rien n'est annulé.
+    - **Accès** : le gérant qui a connecté Claude doit le rester. Retiré de l'équipe, passé « opérations » ou réinvité sans avoir réactivé son compte, ses jetons sont refusés (au plus 1 min après), le rafraîchissement aussi (l'autorisation tombe) : `api/_oauth.ts`, `BaseErp.roleMembre`.
   - **Ce qui ne passe jamais par le connecteur** :
     - aucun envoi aux voyageurs, aucune écriture vers les plateformes ;
     - jamais de wifi ni de code d'accès : les e-mails, téléphones et codes du logement présents dans les messages sont masqués ;
@@ -2298,3 +2317,120 @@ Fonctionnement :
   (`matinOpsOuvert`) ; à la réponse du gérant (l'ERP appelle
   `signalement-traite` juste après avoir enregistré, et réessaie tant que la
   base ne l'a pas).
+
+## Livret d'accueil et check-in en ligne (B2, octobre 2026)
+
+Une page par séjour, pour le voyageur, sans compte : **`/sejour#<jeton>`**.
+Pensée pour le téléphone, en français ou en anglais (bouton FR / EN ; les
+textes de la fiche restent tels que l'équipe les a écrits).
+
+**Ce que voit le voyageur** : « Bonjour Marie », le logement (titre de
+l'annonce, sinon la ville, sinon rien : jamais le nom interne,
+qui peut citer le propriétaire ; photo), arrivée et départ avec leurs
+heures, nuits et voyageurs ; le **check-in en ligne** ; **Accès et wifi** —
+seulement pour une réservation confirmée, de 48 h avant l'arrivée à la
+veille du départ (même règle que l'agent et les messages automatiques),
+sinon « Code communiqué dans les 48 heures avant l'arrivée » et la date où
+il s'affichera. Pendant le séjour, l'accès passe avant le check-in. Le jour
+du départ, le séjour dure jusqu'à l'heure de départ de la fiche (11:00 par
+défaut) : les codes restent cachés (« le code reste celui de votre
+arrivée ») ; après le départ, plus de carte d'accès du tout. Puis l'adresse
+(« Itinéraire »), le parking, les transports ; le règlement intérieur
+(celui de la fiche, sinon les règles de l'annonce) ; « À savoir » et les
+questions fréquentes ; les guides (liens signés de 6 h) ; les « Consignes
+de départ » (nouveau champ de la fiche voyageur ; un code masqué y devient
+« code : le même qu’à votre arrivée », sans crochets) ; « Une question ? » renvoie à la
+messagerie de la plateforme (Airbnb, Booking.com), ou aux boutons
+« Appeler » et « Écrire un e-mail » de la conciergerie pour un séjour
+direct. Avant les 48 h, un texte qui cite le wifi (cherché dans le texte
+brut) n'est pas montré ; les autres passent par `masquerCodesLivret` : code
+postal, année (« rénové en 2019 »), distance, durée, montant, numéro de bus,
+de ligne ou « n° » restent lisibles, toute autre suite de chiffres est
+masquée comme pour l'IA, et montrée sans crochets (« Digicode (code
+communiqué 48 h avant l'arrivée) ») ; après le séjour, plus
+d'« Itinéraire ». Un texte n'est pas montré s'il cite encore un code
+du champ Accès, le wifi ou un code écrit après « code » dans un autre champ
+(jamais les nombres nus des autres champs : « 91100 » n'est pas un secret),
+ni si un court jeton avec un chiffre (même espacé : « 4 8 2 ») suit ou
+précède portail, porte, boîte, cadenas, badge, digicode, interphone,
+grille, barrière, garage, coffre à clés, bip, télécommande, gate, keybox…
+(« Portail du parking : 482. », « Dans la boîte B7Z » : `codeProbable`).
+La fiche voyageur le signale sous le champ.
+
+**Check-in** (2 minutes) : heure d'arrivée prévue, nombre de voyageurs,
+« J'ai lu le règlement intérieur et je l'accepte », nationalité des
+voyageurs ; pour les voyageurs étrangers seulement, la **fiche individuelle
+de police** (une par voyageur de 15 ans et plus : nom, prénoms, date et lieu
+de naissance, nationalité, domicile habituel, enfants de moins de 15 ans
+inscrits sur sa fiche, seulement celle d'un adulte de 18 ans le jour de
+l'arrivée). Aucune photo ni numéro de pièce d'identité. Modifiable jusqu'au
+jour de l'arrivée compris (un premier envoi reste possible pendant le
+séjour, « Il reste votre check-in : deux minutes. »), 12 envois au plus.
+Les fiches envoyées ne reviennent jamais vers la page : en modifiant, le
+voyageur les garde telles quelles ou les remplit de nouveau.
+
+> Base légale : CESEDA, art. R. 814-1 et suivants (ancien art. R. 611-42,
+> étendu aux loueurs de meublés de tourisme par le décret n° 2015-1002 du
+> 18 août 2015) ; fiches conservées 6 mois, remises seulement à la police ou
+> à la gendarmerie sur leur demande (CNIL). **Question ouverte** : le décret
+> de 2015 cite aussi le téléphone mobile et l'adresse e-mail du voyageur ;
+> ils ne sont pas demandés (minimisation, la plateforme les a). À trancher
+> par Label Maison : un champ facultatif s'ajoute en quelques lignes
+> (`src/erp/data/sejour.ts`, `FICHE_POLICE`).
+
+**Côté équipe** (fiche d'une réservation, carte « Livret d'accueil et
+check-in ») : « Check-in : Fait le 24 sept. / Pas encore » (rien
+pour une réservation annulée ou un lien expiré), l'heure d'arrivée prévue,
+le nombre de voyageurs seulement s'il change (« 3 personnes (2 à la
+réservation) »), les fiches de police (repliées) et la date de leur
+effacement, **« Copier le lien »**. Gérants et opérations de l'espace,
+réservation de cet espace seulement ; les fiches de police restent aux
+gérants (un compte opérations n'en voit que le nombre).
+Messages automatiques : variable **`{Lien du livret}`** (`{lien_sejour}`,
+la clé ne change pas), ajoutée aux textes par défaut de « Merci pour la
+réservation » et « Infos d'arrivée » ; ce dernier ne cite plus
+`{Lien du guide}` (le livret montre les guides). Les textes déjà enregistrés
+ne changent pas ; `{Lien du guide}` reste disponible et garde son sens.
+
+Fonctionnement :
+
+- **Lien** : jeton signé HMAC-SHA256 avec `SEJOUR_SECRET` si elle est posée,
+  sinon `ACCES_SECRET` (signature à part de celle des sessions : l'une ne
+  vaut jamais pour l'autre), qui porte
+  l'espace et la réservation. Même séjour, même lien (copié ou envoyé par
+  message). Après « # » : jamais dans les journaux ni l'en-tête Referer ;
+  la page l'envoie dans le corps d'un POST à `api/sejour.ts`. Rien n'est
+  gardé pour lui : la réservation est relue à chaque ouverture, dans la base
+  de SON espace. Annulée : rien ; 3 jours après le départ : expiré.
+  Changer le secret qui signe (ou poser `SEJOUR_SECRET`) coupe tous les liens
+  déjà envoyés.
+- **Route** `api/sejour.ts` : `vue` et `checkin` (voyageur : provenance du
+  site, 16 Ko au plus, freins par adresse IP, écriture conditionnelle),
+  `equipe` (session d'un membre). Réponse limitée à `VueSejour` : prénom,
+  dates, logement ; jamais d'autre réservation, d'e-mail ou de téléphone du
+  voyageur, de montant ni rien du propriétaire.
+- **Données** : collection `checkinsEnLigne` (une ligne par réservation),
+  lue et écrite par les gérants et le serveur seulement (règle « acces
+  exterieurs reserves aux gerants »), **jamais archivée** dans
+  `erp.historique`, jamais chargée par le navigateur avec le reste de l'ERP
+  (ni dans « Télécharger une sauvegarde »), jamais donnée à l'IA ni aux
+  connecteurs. Le serveur n'enregistre rien tant que
+  `erp.checkin_en_ligne_pret()` n'existe pas (SQL pas encore passé).
+- **Purge** : au passage planifié (`api/erp-agent.ts`,
+  `purgeCheckinsDuJour`, `api/_sejour.ts`), dans chaque espace : 6 mois
+  après le départ, tout de suite pour une réservation annulée ; les espaces
+  fermés aussi (`erp.purger_checkins_espaces_fermes()`, serveur seulement).
+- **À faire** : relancer `supabase/erp-espaces.sql` (passe en cours ; base
+  d'avant les espaces : `erp-installation.sql`, ou `erp-acces-gerants.sql`),
+  bilan `recette = ok`. `ACCES_SECRET` déjà en place pour l'espace
+  opérations : rien de plus dans Vercel (`OPERATIONS_SECRET` seule ne
+  suffit pas : la carte de la réservation le dit). `SEJOUR_SECRET` est
+  facultative : à poser seulement pour séparer les liens des séjours des
+  sessions des espaces.
+- **Démo** (10:30 le 24 septembre 2026) : `/sejour?apercu=res-0030` (8 jours avant : pas de code),
+  `/sejour?apercu=res-0094` (48 h : accès et wifi) ; le check-in de démo
+  reste dans le navigateur et apparaît sur la fiche de la réservation.
+- **Pas fait** : pas de serrure connectée (les codes viennent de la fiche,
+  comme avant) ; pas de traduction des textes de la fiche ; pas de lien
+  révocable un par un (il s'éteint avec la réservation) ; pas de
+  transmission automatique aux autorités.

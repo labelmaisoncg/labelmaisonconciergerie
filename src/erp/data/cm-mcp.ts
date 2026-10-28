@@ -59,7 +59,8 @@ const TELEPHONE = /(?:\+|00)\d{1,3}[\s.-]?\d(?:[\s.-]?\d{2,3}){3,5}|\b0[1-9](?:[
 
 /** Retire d'un message les e-mails, téléphones et codes du logement (wifi, accès). */
 export function masquer(t: string, l: Logement | undefined): string {
-  let s = t.replace(EMAIL, '[e-mail masqué]').replace(TELEPHONE, '[téléphone masqué]');
+  // Lien du livret (/sejour#<jeton>) : un porteur qui montre les codes dans les 48 h, jamais transmis au connecteur.
+  let s = t.replace(/\/sejour#[A-Za-z0-9_.=-]+/g, '/sejour#[lien du séjour masqué]').replace(EMAIL, '[e-mail masqué]').replace(TELEPHONE, '[téléphone masqué]');
   const codes = [l?.fiche?.wifiCode ?? '', ...((l?.fiche?.acces ?? '').match(/\d{4,}/g) ?? [])].map((c) => c.trim()).filter((c) => c.length >= 4);
   for (const c of codes) s = s.split(c).join('••••');
   return s;
@@ -128,14 +129,15 @@ function filCourt(f: FilMessages, logements: Logement[]) {
 
 /* ---------------------------------------------------------- recherches */
 
-const idValide = (v: unknown, nom: string, aide: string): string => {
+export const idValide = (v: unknown, nom: string, aide: string): string => {
   const id = texte(v, nom, 100);
   if (!id) throw new ErreurOutil(`« ${nom} » est obligatoire (${aide}).`);
   if (!ID.test(id)) throw new ErreurOutil(`Identifiant invalide « ${id.slice(0, 40)} » (${aide}).`);
   return id;
 };
 
-async function logementVise(a: Args, ctx: ContexteMcp): Promise<Logement> {
+/** Logement désigné par `id` ou par `recherche` (un seul doit correspondre). Aussi pour copilote-mcp.ts. */
+export async function logementVise(a: Args, ctx: ContexteMcp): Promise<Logement> {
   const logements = await ctx.cm.logements();
   if (a.id !== undefined && a.id !== null && a.id !== '') {
     const id = idValide(a.id, 'id', 'voir logements_lister');
@@ -151,7 +153,8 @@ async function logementVise(a: Args, ctx: ContexteMcp): Promise<Logement> {
   throw new ErreurOutil(`${trouves.length} logements correspondent : ${trouves.slice(0, 8).map((l) => `${l.nom} (id ${l.id})`).join(' ; ')}. Précisez l’id.`);
 }
 
-async function filVise(a: Args, ctx: ContexteMcp): Promise<FilMessages> {
+/** Conversation désignée par `id`. Aussi pour copilote-mcp.ts. */
+export async function filVise(a: Args, ctx: ContexteMcp): Promise<FilMessages> {
   const id = idValide(a.id, 'id', 'voir conversations_a_repondre');
   const f = await ctx.cm.fil(id);
   if (!f) throw new ErreurOutil(`Aucune conversation avec l’id « ${id} ». Utilisez conversations_a_repondre.`);

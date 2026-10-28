@@ -3,7 +3,9 @@
  * données de l'utilisateur connecté), forme d'un outil, erreurs et contrôles
  * de saisie. Utilisé par crm-mcp.ts (CRM) et cm-mcp.ts (channel manager).
  */
-import type { ContactCrm, FilMessages, Horodatage, Logement, Reservation } from './types';
+import type { ElementPrix } from './prix-conseils';
+import type { ContactCrm, Facture, FilMessages, Horodatage, Logement, Mandat, Mission, Proprietaire, Reglage, Reservation } from './types';
+import type { ActionAgent, ClientAction } from './types-copilote';
 
 /** CRM d'appels. */
 export interface DepotCrm {
@@ -25,10 +27,43 @@ export interface DepotChannelManager {
   enregistrerFil(f: FilMessages): Promise<void>;
 }
 
+/**
+ * Copilote (copilote-mcp.ts) : ménages prévus, brouillons de factures et prix
+ * conseillés de l'espace. Les ménages restent internes à l'ERP ; une facture
+ * n'est qu'ajoutée en brouillon, jamais remplacée, validée ni envoyée ; les
+ * prix conseillés se lisent seulement (aucun prix n'est écrit, nulle part).
+ * `cible` : nom court de ce qui est créé, pour la trace ; `logementId` : où le voir dans l'ERP.
+ */
+export interface DepotCopilote {
+  missions(): Promise<Mission[]>;
+  enregistrerMission(m: Mission, cible: string): Promise<void>;
+  facturation(): Promise<{ proprietaires: Proprietaire[]; mandats: Mandat[]; factures: Facture[]; reglages: Reglage[] }>;
+  /** Ajoute la facture seulement si elle est absente (jamais de remplacement) ; vrai si elle a été ajoutée. */
+  ajouterFacture(f: Facture, cible: string, logementId?: string): Promise<boolean>;
+  prix(): Promise<ElementPrix[]>;
+}
+
+/** Traces des actions de l'IA (collection actionsAgent de l'espace). */
+export interface DepotActions {
+  enregistrer(a: ActionAgent): Promise<void>;
+  /**
+   * La règle SQL des actions de l'IA est-elle en place (erp.actions_ia_protegees) ?
+   * Absent : oui. Non : les outils d'avant le copilote écrivent sans trace,
+   * les nouveaux refusent (copilote.ts, contexteTrace).
+   */
+  pret?(): Promise<boolean>;
+}
+
 export interface ContexteMcp {
   depot: DepotCrm;
   /** Données du channel manager de l'utilisateur connecté (un seul point d'entrée, cloisonnable par espace). */
   cm: DepotChannelManager;
+  /** Copilote : ménages, factures en brouillon, prix conseillés ; absent : ces outils répondent « indisponible ». */
+  copilote?: DepotCopilote;
+  /** Chaque écriture d'un outil est tracée ici AVANT d'être faite (copilote.ts, contexteTrace). */
+  actions: DepotActions;
+  /** Qui appelle : jeton OAuth (et le gérant qui l'a autorisé) ou clé fixée. */
+  client?: ClientAction;
   /** Date du jour à Paris (AAAA-MM-JJ). */
   aujourdhui: () => string;
   maintenant: () => Horodatage;

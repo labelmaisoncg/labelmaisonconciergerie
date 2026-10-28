@@ -17,6 +17,8 @@ import { creerSeed } from './seed';
 import { fenetreJours } from './selectors';
 import { mesurer as mesurerAccueil } from '../modules/tableau-de-bord/_composants/calculs';
 import type { ContactCrm, FilMessages } from './types';
+import type { ActionAgent } from './types-copilote';
+import { REGLE_A_RELANCER } from './copilote';
 
 let ok = 0;
 let ko = 0;
@@ -50,6 +52,8 @@ const filPiege: FilMessages = {
 };
 const fils = new Map<string, FilMessages>([...seed.filsMessages, filPiege].map((f) => [f.id, f]));
 let ecrituresFils = 0;
+// Traces des actions de Claude (copilote.ts) : chaque écriture doit en avoir une.
+const traces = new Map<string, ActionAgent>();
 const ctx: ContexteMcp = {
   depot: {
     tous: async () => [...base.values()].map((c) => structuredClone(c)),
@@ -67,6 +71,11 @@ const ctx: ContexteMcp = {
     enregistrerFil: async (f) => {
       ecrituresFils++;
       fils.set(f.id, structuredClone(f));
+    },
+  },
+  actions: {
+    enregistrer: async (a) => {
+      traces.set(a.id, structuredClone(a));
     },
   },
   aujourdhui: () => '2026-09-24',
@@ -89,7 +98,7 @@ async function main() {
   const init = await appel('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1' } });
   verifier((init as any).result?.protocolVersion === '2025-06-18' && !!(init as any).result?.capabilities?.tools, 'initialize : version reprise, outils annoncés');
   verifier(/CRM d'appels/.test((init as any).result?.instructions ?? '') && /cm_resume/.test((init as any).result?.instructions ?? ''), 'initialize : instructions en français pour Claude (CRM et channel manager)');
-  verifier((init as any).result?.serverInfo?.name === 'label-maison' && (init as any).result?.serverInfo?.title === 'Label Maison' && (init as any).result?.serverInfo?.version === '2.0.0', 'serveur « Label Maison » 2.0.0');
+  verifier((init as any).result?.serverInfo?.name === 'label-maison' && (init as any).result?.serverInfo?.title === 'Label Maison' && (init as any).result?.serverInfo?.version === '2.1.0', 'serveur « Label Maison » 2.1.0 (copilote)');
   const inconnue = await appel('initialize', { protocolVersion: '2099-01-01' });
   verifier((inconnue as any).result?.protocolVersion === '2025-06-18', 'version inconnue : le serveur propose la sienne');
   const notif = await traiterMcp({ jsonrpc: '2.0', method: 'notifications/initialized' }, ctx);
@@ -103,13 +112,14 @@ async function main() {
   const liste = (await appel('tools/list')) as any;
   const noms = liste.result.tools.map((t: { name: string }) => t.name);
   const NOUVEAUX = 'cm_resume,logements_lister,logement_voir,reservations_periode,reservation_voir,conversations_a_repondre,conversation_voir,conversation_pas_besoin_de_repondre,reponse_preparer,indicateurs';
-  verifier(noms.join() === `crm_resume,crm_chercher,crm_voir,crm_ajouter,crm_modifier,crm_noter_appel,${NOUVEAUX}`, `6 outils du CRM gardés, puis 10 du channel manager (${noms.join(', ')})`);
+  const COPILOTE = 'reponse_proposer,menage_creer,facture_preparer,prix_conseils';
+  verifier(noms.join() === `crm_resume,crm_chercher,crm_voir,crm_ajouter,crm_modifier,crm_noter_appel,${NOUVEAUX},${COPILOTE}`, `6 outils du CRM gardés, puis 10 du channel manager, puis 4 du copilote (${noms.join(', ')})`);
   verifier(!noms.some((x: string) => /envoy|send|message_envoyer/.test(x)), 'aucun outil d’envoi aux voyageurs');
   verifier(liste.result.tools.every((t: any) => t.inputSchema?.type === 'object' && t.description && typeof t.annotations?.readOnlyHint === 'boolean'), 'chaque outil : schéma, description, annotations');
   verifier(!noms.some((x: string) => /suppr|delete/.test(x)), 'aucun outil de suppression');
   verifier(
-    OUTILS.filter((o) => !o.annotations.readOnlyHint).map((o) => o.name).join() === 'crm_ajouter,crm_modifier,crm_noter_appel,conversation_pas_besoin_de_repondre',
-    'lecture seule bien signalée (seules écritures : CRM et « pas besoin de répondre »)',
+    OUTILS.filter((o) => !o.annotations.readOnlyHint).map((o) => o.name).join() === 'crm_ajouter,crm_modifier,crm_noter_appel,conversation_pas_besoin_de_repondre,reponse_proposer,menage_creer,facture_preparer',
+    'lecture seule bien signalée (écritures : CRM, « pas besoin de répondre », réponse proposée, ménage interne, brouillon de facture ; prix conseillés en lecture)',
   );
 
   // Lecture
@@ -171,8 +181,63 @@ async function main() {
   await channelManager();
   await parEspace();
 
+  // Copilote : chaque écriture faite par un outil a sa trace, posée avant elle.
+  const faites = [...traces.values()].filter((t) => t.etat === 'faite' || t.etat === 'a_confirmer');
+  verifier(faites.length === ecritures + ecrituresFils && faites.every((t) => t.source === 'claude' && !!t.outil && !!t.empreinte), `chaque écriture tracée (${faites.length} traces, ${ecritures + ecrituresFils} écritures)`);
+
+  await regleAbsente();
+
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;
+}
+
+/* ------------------------------------------- base pas encore mise à jour */
+
+/**
+ * Tant que supabase/erp-espaces.sql n'est pas relancé (erp.actions_ia_protegees
+ * absente) : les outils d'avant le copilote écrivent comme avant, sans trace ;
+ * les nouveaux refusent avec un message clair.
+ */
+async function regleAbsente() {
+  const nbTraces = traces.size;
+  const sansRegle: ContexteMcp = {
+    ...ctx,
+    actions: {
+      pret: async () => false,
+      enregistrer: async () => {
+        throw new Error('trace écrite sans la règle');
+      },
+    },
+  };
+  const appel = async (c: ContexteMcp, name: string, args: Record<string, unknown>) =>
+    ((await traiterMcp({ jsonrpc: '2.0', id: 77, method: 'tools/call', params: { name, arguments: args } }, c)) as any).corps.result as { isError?: boolean; content: { text: string }[] };
+  const avant = ecritures;
+  const avantFils = ecrituresFils;
+  const fil = [...fils.values()].find((f) => attendEquipe(f) && f.id !== 'fil-piege')!;
+  const anciens = [
+    await appel(sansRegle, 'crm_noter_appel', { id: 'crm-demo-05', resultat: 'joint' }),
+    await appel(sansRegle, 'crm_modifier', { id: 'crm-demo-05', ville: 'Évry' }),
+    await appel(sansRegle, 'crm_ajouter', { nom: 'Avant La Règle', telephone: '0611000009' }),
+    await appel(sansRegle, 'conversation_pas_besoin_de_repondre', { id: fil.id }),
+  ];
+  verifier(
+    anciens.every((r) => !r.isError) && ecritures === avant + 3 && ecrituresFils === avantFils + 1 && base.get('crm-demo-05')?.ville === 'Évry' && fils.get(fil.id)?.statut === 'clos',
+    `base pas encore mise à jour : crm_noter_appel, crm_modifier, crm_ajouter et conversation_pas_besoin_de_repondre marchent comme avant (${anciens.filter((r) => r.isError).map((r) => r.content[0].text).join(' | ')})`,
+  );
+  verifier(traces.size === nbTraces, 'base pas encore mise à jour : aucune trace écrite');
+  const autre = [...fils.values()].find((f) => attendEquipe(f) && f.id !== 'fil-piege' && !f.agent?.brouillon)!;
+  const nouveaux = [
+    await appel(sansRegle, 'reponse_proposer', { id: autre.id, texte: 'Bonjour, avec plaisir !' }),
+    await appel(sansRegle, 'menage_creer', { logement_id: seed.logements[0].id, date: '2026-10-05' }),
+    await appel(sansRegle, 'facture_preparer', { recherche: 'x', mois: '2026-08' }),
+  ];
+  verifier(
+    nouveaux.every((r) => r.isError && r.content[0].text === REGLE_A_RELANCER) && ecritures === avant + 3 && ecrituresFils === avantFils + 1,
+    `base pas encore mise à jour : reponse_proposer, menage_creer et facture_preparer refusés (${nouveaux[0].content[0].text})`,
+  );
+  const avecRegle: ContexteMcp = { ...ctx, actions: { ...ctx.actions, pret: async () => true } };
+  const r = await appel(avecRegle, 'crm_modifier', { id: 'crm-demo-05', ville: 'Lisses' });
+  verifier(!r.isError && traces.size === nbTraces + 1, 'base à jour : l’écriture est de nouveau tracée');
 }
 
 /* --------------------------------------------------------- channel manager */

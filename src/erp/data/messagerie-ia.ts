@@ -1096,8 +1096,14 @@ export function trierParUrgence<F extends Pick<FilMessages, 'id' | 'dernierMessa
 /** Suite de 4 chiffres ou plus, séparés ou non (« 4821 », « 4 8 2 1 », « 48-21 ») : un code possible. */
 const SUITE_CHIFFRES = /\d(?:[\s\-–—.·/]?\d){3,}/g;
 
+/**
+ * Au moins 3 chiffres isolés, séparés par des espaces, des points ou des tirets
+ * (« 4 8 2 », « 4.8.2 », « 4-8-2 ») : un code épelé. Lire sur nettoyerTexte(t).
+ */
+export const CHIFFRES_EPELES = /(?<![\p{L}\p{N}])\p{Nd}(?:[\s.\-‐‑‒–—―·]+\p{Nd}){2,}(?![\p{L}\p{N}])/u;
+
 /** Texte sans espaces ni séparateurs (« 1-2-3-4 » = « 1234 »), en minuscules, chiffres pleine largeur ramenés (NFKC). */
-const compact = (t: string) => nettoyerTexte(t).toLowerCase().replace(/[\s\-–—._·/]+/g, '');
+const compact = (t: string) => nettoyerTexte(t).toLowerCase().replace(/[\s\-\u2010-\u2012\u2212–—._·/]+/g, '');
 
 /** Ce que les fonctions de codes acceptent : la fiche seule, ou le logement (fiche et textes de l'annonce). */
 export type SourceCodes = Partial<Logement['fiche']> | { fiche?: Partial<Logement['fiche']>; descriptif?: DescriptifLogement } | undefined;
@@ -1128,6 +1134,11 @@ function codesApresMotCode(texte: string): string[] {
   ];
 }
 
+/** Codes cités après un mot d'accès dans un texte libre (« Portail du parking : code 482 » → 482), sans les suites de chiffres nues. */
+export function codesCitesApresMot(texte: string): string[] {
+  return codesApresMotCode(nettoyerTexte(texte));
+}
+
 /** Jetons qui suivent « code », « cadenas »… sans en être un : heure (« 16h00 »), distance, durée, débit, montant. */
 const PAS_UN_CODE = /^(\d{1,3}h\d{0,2}|\d{1,3}(er|re|e|[èe]me|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))$/i;
 
@@ -1143,7 +1154,7 @@ const sansAccentsMaj = (m: string) => m.normalize('NFD').replace(/\p{M}/gu, '');
 /**
  * Codes, wifi et numéros d'accès : jamais dans un texte avant que le
  * voyageur y ait droit. Comptent aussi les suites de chiffres de « À
- * savoir », du parking, des règles, des questions fréquentes et des textes
+ * savoir », des consignes de départ, du parking, des règles, des questions fréquentes et des textes
  * de l'annonce (un code du portail s'y glisse).
  */
 export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLogement): string[] {
@@ -1153,7 +1164,7 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
   const t = descriptif?.textes ?? {};
   // Champs donnés à l'IA qui peuvent cacher un code : « Portail du parking : code 9137 », « Digicode immeuble 2468 ».
   const autres = nettoyerTexte(
-    [fiche.aSavoir, fiche.parking, fiche.regles, t.resume, t.description, t.espace, t.accesVoyageurs, t.quartier, t.transports, ...(fiche.questions ?? []).map((q) => q?.reponse)]
+    [fiche.aSavoir, fiche.consignesDepart, fiche.parking, fiche.regles, t.resume, t.description, t.espace, t.accesVoyageurs, t.quartier, t.transports, ...(fiche.questions ?? []).map((q) => q?.reponse)]
       .filter(Boolean)
       .join('\n'),
   );
@@ -1190,19 +1201,51 @@ export function contientCodeAcces(texte: string, source: SourceCodes, descriptif
 
 /** `mot` présent dans `texte` entre deux bornes qui ne sont ni lettre ni chiffre ; espaces et tirets du mot souples. */
 function enMotEntier(texte: string, mot: string): boolean {
-  const morceaux = mot.split(/[\s\-–—._·/]+/).filter(Boolean).map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const morceaux = mot.split(/[\s\-\u2010-\u2012\u2212–—._·/]+/).filter(Boolean).map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   if (!morceaux.length) return false;
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(texte);
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-\\u2010-\\u2012\\u2212–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(texte);
 }
+
+/** Ce qui remplace un code retiré (masquerCodes) ; le livret du séjour le traduit pour un voyageur anglais. */
+export const CODE_MASQUE = '[code communiqué dans les 48 heures avant l’arrivée]';
 
 /** Texte de la fiche donné à l'IA avant l'heure : suites de chiffres (codes possibles) retirées. */
 export function masquerCodes(texte: string): string {
-  const cache = '[code communiqué dans les 48 heures avant l’arrivée]';
+  const cache = CODE_MASQUE;
   // D'abord les codes courts écrits après « code » (« code 482 », « code A12 »), puis toute suite de 4 chiffres ou plus.
   return nettoyerTexte(texte)
     .replace(CODE_APRES_MOT, (tout, jeton: string) => (PAS_UN_CODE.test(jeton) ? tout : tout.slice(0, tout.length - jeton.length) + cache))
     .replace(/([Cc][Oo][Dd][Ee]\s*:?\s*)([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu, (tout, avant: string, mot: string) => (MOTS_PAS_CODE.has(sansAccentsMaj(mot)) ? tout : avant + cache))
     .replace(SUITE_CHIFFRES, cache);
+}
+
+/** `mot` remplacé en entier dans `texte` (bornes ni lettre ni chiffre, espaces et tirets du mot souples, sans casse). */
+function remplacerMotEntier(texte: string, mot: string, par: string): string {
+  const morceaux = nettoyerTexte(mot)
+    .split(/[\s\-\u2010-\u2012\u2212–—._·/]+/)
+    .filter(Boolean)
+    .map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!morceaux.length) return texte;
+  return texte.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-\\u2010-\\u2012\\u2212–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'giu'), (_tout, avant: string) => avant + par);
+}
+
+/**
+ * Texte de la fiche donné à l'IA avant l'heure. Le wifi (nom du réseau et mot
+ * de passe) est cherché dans le texte BRUT et remplacé en entier, avant
+ * masquerCodes : celui-ci ne retire que les suites de chiffres
+ * (« soleil2026 » → « soleil[code…] ») et un mot de passe court
+ * (« motdepasse201 ») passerait tel quel. Un wifi encore lisible après coup
+ * (écrit en morceaux, collé à un autre mot) : le texte entier est retiré ('').
+ */
+export function masquerCodesEtWifi(texte: string, fiche: { wifiCode?: string; wifiNom?: string } | undefined): string {
+  const wifi = { wifiCode: fiche?.wifiCode ?? '', wifiNom: fiche?.wifiNom ?? '' };
+  let t = nettoyerTexte(texte);
+  // Le plus long d'abord : un nom de réseau contenu dans le mot de passe ne le coupe pas en deux.
+  for (const s of [wifi.wifiCode, wifi.wifiNom].map((x) => x.trim()).filter((x) => x.length >= 3).sort((a, b) => b.length - a.length)) {
+    t = remplacerMotEntier(t, s, CODE_MASQUE);
+  }
+  if (contientCodeAcces(t, wifi)) return '';
+  return masquerCodes(t);
 }
 
 /* ======================================================== plafond de l'IA */
@@ -1269,9 +1312,9 @@ export function marquerBrouillonValide(f: FilMessages, par: string, modifiee: bo
   return { ...f, agent: { ...f.agent, brouillon: { ...b, valideePar: par, valideeLe: le, modifiee } } };
 }
 
-/** Phrase du journal pour une réponse de l'agent envoyée par l'équipe. */
-export function detailValidation(v: ValidationBrouillon, par: string, voyageur: string): string {
-  const origine = v.source === 'agent' ? 'préparée par l’agent' : 'proposée par l’agent';
+/** Phrase du journal pour une réponse de l'agent (ou de Claude, `proposePar`) envoyée par l'équipe. */
+export function detailValidation(v: ValidationBrouillon, par: string, voyageur: string, proposePar?: 'claude'): string {
+  const origine = v.source === 'agent' ? (proposePar === 'claude' ? 'proposée par Claude' : 'préparée par l’agent') : 'proposée par l’agent';
   return `Réponse ${origine} envoyée à ${voyageur} par ${par}${v.modifiee ? ', après retouche' : ', telle quelle'}.`;
 }
 

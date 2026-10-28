@@ -37,6 +37,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   avisADeposer: 'Avis à déposer sur les voyageurs',
   conseilsPrix: 'Prix conseillés (réglages et décisions)',
   annoncesEquipe: 'Annonces à l’équipe',
+  actionsAgent: 'Actions de l’IA (Claude et votre agent)',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

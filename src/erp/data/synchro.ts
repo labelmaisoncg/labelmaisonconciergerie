@@ -419,7 +419,8 @@ export class Synchro {
   async chargerTout(): Promise<ErpDonnees> {
     const lignes: { collection: string; id: string; donnees: unknown }[] = [];
     for (let debut = 0; ; debut += TAILLE_PAGE) {
-      let requete = this.client.from(TABLE).select('collection,id,donnees');
+      // Check-ins en ligne (fiches de police) : jamais téléchargés avec le reste de l'ERP (lus un par un, api/sejour.ts).
+      let requete = this.client.from(TABLE).select('collection,id,donnees').neq('collection', 'checkinsEnLigne');
       if (this.espace) requete = requete.eq('espace', this.espace);
       const { data, error, status } = await requete
         .order('collection')

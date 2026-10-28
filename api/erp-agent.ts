@@ -19,7 +19,8 @@
 //     (api/_erp-programmes.ts, src/erp/data/passage-programmes.ts) ;
 //     il prépare aussi, à partir du 1er, les brouillons des factures
 //     mensuelles des propriétaires (api/_factures-mensuelles.ts) et envoie, à
-//     partir de 7 h, le briefing du matin (api/_briefing.ts)
+//     partir de 7 h, le briefing du matin (api/_briefing.ts) ; il efface les
+//     check-ins en ligne arrivés au bout de leur conservation (api/_sejour.ts)
 //
 // Authentification des membres : Authorization: Bearer <jeton de session
 // Supabase>, gérant ou opérations de l'espace de l'en-tête x-erp-espace
@@ -45,6 +46,7 @@ import { surveiller } from './_erp-notifications.js';
 import { notificationsOpsDuJour } from './_operations-notifications.js';
 import { programmesPlanifies } from './_erp-programmes.js';
 import { passagePrixDuJour } from './_prix-conseils.js';
+import { purgeCheckinsDuJour } from './_sejour.js';
 
 /** Durée maximale de la fonction (vercel.json) moins une marge pour écrire et répondre. */
 const BUDGET_TEMPS_MS = 52_000;
@@ -75,17 +77,21 @@ export default async function handler(req: any, res: any) {
     // - factures mensuelles des propriétaires : brouillons du mois terminé, à partir du 1er
     //   (une fois par mois et par espace ; ensuite une seule lecture) ;
     // - briefing du matin : une notification par jour et par espace, de 7 h à midi, aux
-    //   appareils qui l'ont activée (texte calculé sans IA).
-    const [operations, prix, factures, briefing] = await Promise.all([
+    //   appareils qui l'ont activée (texte calculé sans IA) ;
+    // - check-in en ligne : efface les check-ins (fiches de police comprises) 6 mois après
+    //   le départ, tout de suite pour une réservation annulée (api/_sejour.ts).
+    const [operations, prix, factures, briefing, checkins] = await Promise.all([
       notificationsOpsDuJour({ limite: Date.now() + 8_000 }).catch(() => ({})),
       passagePrixDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
       facturesMensuellesDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
       briefingDuJour({ limite: Date.now() + 6_000 }).catch(() => ({})),
+      purgeCheckinsDuJour({ limite: Date.now() + 5_000 }).catch(() => ({})),
     ]);
     if (Object.keys(operations).length) console.log('[erp-agent] operations', JSON.stringify(operations));
     if (Object.keys(prix).length) console.log('[erp-agent] prix', JSON.stringify(prix));
     if (Object.keys(factures).length) console.log('[erp-agent] factures', JSON.stringify(factures));
     if (Object.keys(briefing).length) console.log('[erp-agent] briefing', JSON.stringify(briefing));
+    if (Object.keys(checkins).length) console.log('[erp-agent] check-ins effacés', JSON.stringify(checkins));
   }
   if (!planifie) {
     const membre = await verifierMembre(jeton, { espace: espaceDemande(req) });

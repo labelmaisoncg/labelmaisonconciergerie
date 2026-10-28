@@ -51,7 +51,9 @@ import {
   reglagesAEnregistrer,
   REGLAGES_AGENT_GERANT,
   reponseSensible,
+  CODE_MASQUE,
   masquerCodes,
+  masquerCodesEtWifi,
   secretsAcces,
   validationServeur,
   politiqueEnvoi,
@@ -604,6 +606,33 @@ async function principal() {
       contientCodeAcces('Le portail : 91-37', avecChamps.fiche) && contientCodeAcces('digicode 2 4 6 8', avecChamps.fiche) && contientCodeAcces('cadenas 4412', avecChamps.fiche, avecChamps.descriptif) && !contientCodeAcces('cadenas 4412', avecChamps.fiche),
       'codes du parking, des règles et de l’annonce comptés comme secrets',
     );
+
+    // Wifi écrit hors de la case wifi : cherché dans le texte BRUT et retiré en entier avant 48 h.
+    // masquerCodes seul laissait « soleil[code…] » (et un mot de passe court comme « motdepasse201 » entier).
+    verifier(/soleil\[code/.test(masquerCodes('Le wifi soleil2026')) && !/soleil|2026/.test(masquerCodesEtWifi('Le wifi soleil2026', { wifiCode: 'soleil2026', wifiNom: 'Livebox-Essai' })), 'masquerCodesEtWifi : le mot de passe entier retiré, jamais « soleil[code…] »');
+    verifier(masquerCodesEtWifi('Wifi : motdepasse201, au dos de la box.', logement.fiche) === `Wifi : ${CODE_MASQUE}, au dos de la box.` && masquerCodesEtWifi('Réseau Box 201.', logement.fiche) === `Réseau ${CODE_MASQUE}.`, 'mot de passe court et nom du réseau (séparateurs souples) remplacés en entier');
+    verifier(masquerCodesEtWifi('Mot de passe : soleil 2026.', { wifiCode: 'soleil2026' }) === '' && masquerCodesEtWifi('Code xsoleil2026x.', { wifiCode: 'soleil2026' }) === '', 'wifi écrit en morceaux ou collé : le texte entier est retiré');
+    verifier(masquerCodesEtWifi('Poubelles le mardi, code 4821 du local.', { wifiCode: 'soleil2026' }) === masquerCodes('Poubelles le mardi, code 4821 du local.'), 'sans wifi dans le texte : comme masquerCodes');
+    verifier(!/livebox|essai|soleil/i.test(masquerCodesEtWifi('Réseau Livebox\u2011Essai, mot de passe soleil\u20112026.', { wifiCode: 'soleil2026', wifiNom: 'Livebox-Essai' })), 'tiret insécable dans le wifi : retiré quand même');
+    const avecWifi: Logement = {
+      ...logement,
+      fiche: {
+        ...logement.fiche,
+        wifiNom: 'Livebox-Essai',
+        wifiCode: 'soleil2026',
+        aSavoir: 'Le wifi soleil2026 marche partout.',
+        parking: 'Place 3, réseau Livebox Essai capté.',
+        regles: 'Pas de fête. Wifi motdepasse : soleil 2026.',
+        consignesDepart: 'Laissez la box allumée.',
+        questions: [{ id: 'w', question: 'Le wifi ?', reponse: 'Réseau Livebox-Essai, mot de passe soleil2026.' }],
+      },
+      descriptif: { textes: { espace: 'Wifi rapide (soleil2026) dans tout le logement.' } },
+    };
+    const loin3 = construireContexte(filDe('Le wifi ?'), avecWifi, reservation('2026-10-10', '2026-10-13'), { ...REGLAGES_AGENT_DEFAUT, actif: true }, MAINTENANT);
+    const proche3 = construireContexte(filDe('Le wifi ?'), avecWifi, reservation('2026-09-26', '2026-09-29'), { ...REGLAGES_AGENT_DEFAUT, actif: true }, MAINTENANT);
+    verifier(!/soleil|livebox/i.test(loin3) && !/2026\b/.test(loin3.replace(/\d{4}-\d{2}-\d{2}/g, '')), 'avant 48 h : ni le mot de passe ni le nom du réseau, même en partie, dans tout le contexte de l’IA');
+    verifier(/À savoir : Le wifi \[code communiqué/.test(loin3) && /Parking : Place 3, réseau \[code communiqué/.test(loin3) && !/Pas de fête\. Wifi motdepasse/.test(loin3) && /Consignes de départ : Laissez la box allumée\./.test(loin3), 'avant 48 h : le wifi remplacé dans le texte ; écrit en morceaux, le texte retiré ; le reste gardé');
+    verifier(/soleil2026/.test(proche3) && /Livebox-Essai/.test(proche3), 'dans les 48 h : wifi donné comme avant');
   }
 
   {

@@ -166,7 +166,7 @@ class FausseSupabase {
     if (methode === 'GET') {
       const ids = p.get('id')?.startsWith('in.') ? new Set(p.get('id')!.replace(/^in\.\(|\)$/g, '').split(',').map((x) => x.replace(/^"|"$/g, ''))) : null;
       const lignes = [...this.lignes.values()]
-        .filter((l) => lisibles.includes(l.espace) && (!egal('espace') || l.espace === egal('espace')) && (!egal('collection') || l.collection === egal('collection')))
+        .filter((l) => lisibles.includes(l.espace) && (!egal('espace') || l.espace === egal('espace')) && (!egal('collection') || (p.get('collection')!.startsWith('neq.') ? `neq.${l.collection}` !== p.get('collection') : l.collection === egal('collection'))))
         .filter((l) => (!ids || ids.has(l.id)) && (!p.get('id')?.startsWith('eq.') || l.id === egal('id')))
         .sort((a, b) => (a.collection + a.id).localeCompare(b.collection + b.id));
       return json(lignes.map((l) => ({ collection: l.collection, id: l.id, donnees: l.donnees })));
@@ -439,6 +439,7 @@ async function principal() {
     const d = await s.chargerTout();
     const lecture = sb.requetes.find((r) => r.chemin === 'enregistrements' && r.methode === 'GET')!;
     verifier(d.logements.length === 1 && lecture.url.searchParams.get('espace') === `eq.${SENS}`, 'lecture filtrée sur l’espace', lecture.url.search);
+    verifier(lecture.url.searchParams.get('collection') === 'neq.checkinsEnLigne', 'chargement de l’ERP : jamais les check-ins en ligne (fiches de police)', lecture.url.search);
     await s.sauvegarderDifferences(d, { ...d, logements: [...d.logements, { ...d.logements[0], id: 'l2' }] }, 'Test');
     const upsert = sb.requetes.filter((r) => r.chemin === 'enregistrements' && r.methode === 'POST').pop()!;
     verifier(upsert.url.searchParams.get('on_conflict') === 'espace,collection,id' && (upsert.corps as Ligne[]).every((l) => l.espace === SENS), 'écriture : clé et colonne espace', upsert.url.search);

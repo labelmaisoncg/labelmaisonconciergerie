@@ -533,6 +533,47 @@ export class BaseErp {
     return ajoutes;
   }
 
+  /**
+   * Rôle d'une adresse parmi les membres de l'espace de cette base
+   * (erp.membres ; base d'avant les espaces : l'équipe de Label Maison) ;
+   * null : pas membre. Lecture seule : revérifie qu'un gérant l'est encore
+   * (jetons du connecteur Claude, api/_oauth.ts).
+   */
+  async roleMembre(email: string): Promise<string | null> {
+    const espace = await this.espace();
+    const r = await this.requete(`membres?select=email,role${espace ? `,uid&espace=eq.${espace}` : ''}`, { method: 'GET', entetes: { 'Accept-Profile': 'erp' } });
+    const lignes = (await r.json().catch(() => [])) as { email?: unknown; role?: unknown; uid?: unknown }[];
+    const voulu = email.trim().toLowerCase();
+    // Une ligne pas encore activée (invitation, réinvitation après un retrait) ne compte pas : comme erp.mes_espaces.
+    const m = Array.isArray(lignes) ? lignes.find((l) => String(l?.email ?? '').trim().toLowerCase() === voulu && (!espace || !!l?.uid)) : undefined;
+    return voulu && m && typeof m.role === 'string' ? m.role : null;
+  }
+
+  /**
+   * Supprime ces éléments d'une collection, dans l'espace de la base
+   * seulement (purge des check-ins en ligne, data/sejour.ts). Renvoie le
+   * nombre de lignes réellement supprimées.
+   */
+  async supprimer(collection: string, ids: string[]): Promise<number> {
+    const espace = await this.espace();
+    let n = 0;
+    for (const lot of decouper([...new Set(ids)], 80)) {
+      const filtres = [
+        `collection=eq.${encodeURIComponent(collection)}`,
+        `id=in.(${lot.map((i) => encodeURIComponent(`"${i.replace(/"/g, '')}"`)).join(',')})`,
+        ...(espace ? [`espace=eq.${espace}`] : []),
+      ].join('&');
+      const r = await this.requete(`enregistrements?${filtres}&select=id`, {
+        method: 'DELETE',
+        entetes: { 'Content-Profile': 'erp', 'Accept-Profile': 'erp', Prefer: 'return=representation' },
+      });
+      const lignes = (await r.json().catch(() => [])) as unknown[];
+      n += Array.isArray(lignes) ? lignes.length : 0;
+    }
+    this.ecritures += n;
+    return n;
+  }
+
   /** Fonction de la base (schéma erp), avec l'espace en en-tête. */
   async rpc<T>(nom: string, args: Record<string, unknown> = {}): Promise<T> {
     const r = await this.requete(`rpc/${nom}`, {

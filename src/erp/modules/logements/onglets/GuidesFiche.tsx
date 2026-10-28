@@ -4,7 +4,8 @@ import { Badge, Button, Card, CardHeader, EnvoiFichier, Field, IconButton, Input
 import { nouvelId, useErp } from '../../../data/store';
 import { horodatageMaintenant } from '../../../data/format';
 import { LIBELLE_TYPE_GUIDE, TAILLE_MAX_GUIDE_MO, estLienGuide, typeFichier } from '../../../data/guides';
-import type { GuideLogement, QuestionFrequente } from '../../../data/types';
+import type { GuideLogement, Logement, QuestionFrequente } from '../../../data/types';
+import { aideOuCode } from '../_composants/avertissementCode';
 
 const ICONE: Record<GuideLogement['media']['type'], ReactNode> = {
   video: <Video />,
@@ -208,7 +209,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
 /* ------------------------------------------------- questions fréquentes */
 
 /** Questions fréquentes du logement : l'agent reprend ces réponses telles quelles. */
-export function SectionQuestions({ questions, onChange }: { questions: QuestionFrequente[]; onChange: (q: QuestionFrequente[]) => void }) {
+export function SectionQuestions({ questions, logement, onChange }: { questions: QuestionFrequente[]; logement?: Logement; onChange: (q: QuestionFrequente[]) => void }) {
   const [edition, setEdition] = useState<{ id: string | null; question: string; reponse: string } | null>(null);
   const valide = !!edition?.question.trim() && !!edition.reponse.trim();
 
@@ -270,7 +271,7 @@ export function SectionQuestions({ questions, onChange }: { questions: QuestionF
             <Field label="Question" requis>
               <Input value={edition.question} onChange={(e) => setEdition({ ...edition, question: e.target.value })} placeholder="Où jeter les poubelles ?" autoFocus />
             </Field>
-            <Field label="Réponse" requis>
+            <Field label="Réponse" requis aide={aideOuCode(edition.reponse, logement)}>
               <Textarea rows={4} value={edition.reponse} onChange={(e) => setEdition({ ...edition, reponse: e.target.value })} placeholder="Local au rez-de-chaussée, à droite de l’entrée. Sortie le mardi soir." />
             </Field>
           </div>

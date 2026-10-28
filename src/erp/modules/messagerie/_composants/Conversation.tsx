@@ -37,6 +37,7 @@ import { ErreurServeur, appelerServeur, nomPlateformeEnvoi } from './serveur';
 import { AVIS_DEMO_TRADUCTION, demanderProposition, demanderTraductionMessage, demanderTraductionTexte, propositionDemo } from './assistant';
 import { ICONES_SUPPLEMENTS, PropositionSupplement, usePropositionsSupplements, type PropositionPrete } from './PropositionSupplement';
 import { LIBELLES_SUPPLEMENTS, type CleSupplement } from '../../../data/supplements';
+import { tracesEnvoyees } from '../../../data/copilote';
 
 /** Réponse de /api/erp-repull-messages. */
 interface ReponseEnvoi {
@@ -66,7 +67,7 @@ interface Props {
  * proposée à la demande), ou texte traduit dans la langue du voyageur.
  */
 type Aide =
-  | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string }
+  | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string; parClaude?: boolean }
   | { genre: 'traduction'; nom: string }
   | { genre: 'supplement'; cle: CleSupplement; statut: PropositionPrete['disponibilite']['statut'] };
 
@@ -87,7 +88,7 @@ const ENTREE_ENVOIE = typeof window !== 'undefined' && !!window.matchMedia?.('(p
 const HAUTEUR_MAX_SAISIE = 160;
 
 export function Conversation({ fil, logement, reservation }: Props) {
-  const { upsert, mode, lectureSeule, reglages, utilisateur } = useErp();
+  const { upsert, mode, lectureSeule, reglages, utilisateur, actionsAgent } = useErp();
   // Réponses rapides signées comme l'agent de l'espace (Label Maison : « L’équipe Label Maison »).
   const signature = signatureEspace({ reglages }, espaceOuvert());
   // Réponse préparée par l'agent pour le dernier message du voyageur, pas encore envoyée : déjà dans la zone de réponse.
@@ -101,6 +102,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
     texte: b.texte,
     texteFr: b.texteFr,
     ...(fil.statut === 'escalade' ? { attention: 'Sujet sensible : relisez bien avant d’envoyer.' } : {}),
+    // Rangée par Claude depuis le connecteur (reponse_proposer) : même relecture, même envoi par l'équipe.
+    ...(b.proposePar === 'claude' ? { parClaude: true } : {}),
   });
   const [brouillon, setBrouillon] = useState(() => prepare?.texte ?? '');
   const [aide, setAide] = useState<Aide | null>(() => (prepare ? aideDe(prepare) : null));
@@ -237,6 +240,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
       messages: [...fil.messages, { id: nouvelId('msg'), auteur: 'hote', texte, envoyeLe }],
     };
     upsert('filsMessages', valide?.source === 'agent' ? marquerBrouillonValide(repondu, utilisateur.nom, valide.modifiee, envoyeLe) : repondu);
+    // Réponse proposée par Claude ou l'agent : sa trace passe « envoyée par … » (Actions de l'IA, chargées pour le gérant seul).
+    if (valide?.source === 'agent') for (const t of tracesEnvoyees(actionsAgent, fil, { par: utilisateur.email || utilisateur.nom, le: envoyeLe, modifiee: valide.modifiee })) upsert('actionsAgent', t);
     setBrouillon('');
     setAide(null);
     setPrecedent(null);
@@ -668,9 +673,11 @@ export function Conversation({ fil, logement, reservation }: Props) {
                         ? aide.statut === 'impossible'
                           ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
                           : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
-                        : aide.source === 'agent'
-                          ? 'Préparée par votre agent : relisez, puis envoyez.'
-                          : 'Proposée par votre agent : relisez, puis envoyez.'}
+                        : aide.parClaude
+                          ? 'Proposée par Claude : relisez, puis envoyez.'
+                          : aide.source === 'agent'
+                            ? 'Préparée par votre agent : relisez, puis envoyez.'
+                            : 'Proposée par votre agent : relisez, puis envoyez.'}
                   </span>
                 </span>
                 {aide.genre === 'proposition' && aide.texteFr && (

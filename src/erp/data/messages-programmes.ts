@@ -17,7 +17,12 @@
  *   voyageur attend une réponse (on ne lui coupe pas la parole) ;
  * - codes d'accès et wifi seulement dans la fenêtre de l'agent (réservation
  *   confirmée, arrivée sous 48 h ou séjour en cours) : sinon la ligne qui
- *   les contient est retirée, rien d'autre.
+ *   les contient est retirée, rien d'autre ;
+ * - {lien_sejour} : le livret d'accueil et le check-in en ligne du séjour
+ *   (data/sejour.ts), lien signé par le serveur. Il ne porte aucun code :
+ *   c'est la page qui applique la règle des 48 h, à chaque ouverture. Une
+ *   variable à part de {lien_guide} (un guide précis, déjà dans des textes
+ *   enregistrés) : leur sens ne change pas.
  *
  * « Proposer les suppléments » (cahier B7) : facultatif, éteint par défaut,
  * 3 jours avant l'arrivée ; seulement pour un logement qui propose au moins
@@ -97,11 +102,11 @@ const HEURES_DEFAUT: Partial<Record<DeclencheurMessage, string>> = { proposer_su
 
 export const TEXTES_DEFAUT: Record<DeclencheurMessage, string> = {
   confirmation:
-    'Bonjour {prenom},\n\nMerci pour votre réservation « {logement} », du {date_arrivee} au {date_depart}. Nous avons hâte de vous accueillir.\n\nL’arrivée est possible à partir de {heure_arrivee}. Nous vous enverrons les informations d’arrivée avant votre séjour.\n\nÀ très bientôt,\n{signature}',
+    'Bonjour {prenom},\n\nMerci pour votre réservation « {logement} », du {date_arrivee} au {date_depart}. Nous avons hâte de vous accueillir.\n\nL’arrivée est possible à partir de {heure_arrivee}. Nous vous enverrons les informations d’arrivée avant votre séjour.\n\nVotre livret d’accueil, avec le check-in en ligne : {lien_sejour}\n\nÀ très bientôt,\n{signature}',
   proposer_supplements:
     'Bonjour {prenom},\n\nVotre séjour « {logement} » approche. Si cela vous est utile, nous pouvons vous proposer :\n{supplements}\n\nIl suffit de nous répondre ici : nous vérifions et vous confirmons.\n{signature}',
   veille_arrivee:
-    'Bonjour {prenom},\n\nNous vous attendons demain à partir de {heure_arrivee} (« {logement} »).\n\n{acces}\nWifi : {wifi}\nVotre guide d’arrivée : {lien_guide}\n\nBonne route, et écrivez-nous si besoin.\n{signature}',
+    'Bonjour {prenom},\n\nNous vous attendons demain à partir de {heure_arrivee} (« {logement} »).\n\n{acces}\nWifi : {wifi}\nVotre livret d’accueil : {lien_sejour}\n\nBonne route, et écrivez-nous si besoin.\n{signature}',
   jour_depart:
     'Bonjour {prenom},\n\nNous espérons que votre séjour « {logement} » s’est bien passé. Le départ se fait avant {heure_depart} : il suffit de laisser les clés comme à votre arrivée.\n\nMerci et bon retour,\n{signature}',
   demande_avis:
@@ -110,7 +115,19 @@ export const TEXTES_DEFAUT: Record<DeclencheurMessage, string> = {
 
 /* ============================================================ variables */
 
-export type CleVariable = 'prenom' | 'logement' | 'date_arrivee' | 'heure_arrivee' | 'date_depart' | 'heure_depart' | 'lien_guide' | 'signature' | 'acces' | 'wifi' | 'supplements';
+export type CleVariable =
+  | 'prenom'
+  | 'logement'
+  | 'date_arrivee'
+  | 'heure_arrivee'
+  | 'date_depart'
+  | 'heure_depart'
+  | 'lien_guide'
+  | 'lien_sejour'
+  | 'signature'
+  | 'acces'
+  | 'wifi'
+  | 'supplements';
 
 export interface VariableMessage {
   cle: CleVariable;
@@ -131,6 +148,8 @@ export const VARIABLES: VariableMessage[] = [
   { cle: 'date_depart', libelle: 'Date de départ', retirerSiVide: true },
   { cle: 'heure_depart', libelle: 'Heure de départ', retirerSiVide: true },
   { cle: 'lien_guide', libelle: 'Lien du guide', retirerSiVide: true },
+  // Livret d'accueil et check-in en ligne (data/sejour.ts) : le lien ne contient aucun code, la page applique la règle des 48 h.
+  { cle: 'lien_sejour', libelle: 'Lien du livret', retirerSiVide: true },
   { cle: 'signature', libelle: 'Signature' },
   // Ni accès ni wifi pour « Proposer les suppléments » (3 jours avant l'arrivée : toujours hors des 48 h).
   { cle: 'acces', libelle: 'Accès et clés', sensible: true, retirerSiVide: true, moments: DECLENCHEURS.filter((k) => k !== 'proposer_supplements') },
@@ -364,6 +383,8 @@ export interface ContexteMessage {
   signature: string;
   /** Lien du guide, déjà résolu (lien signé pour un fichier déposé). */
   lienGuide?: string;
+  /** Lien du livret et du check-in en ligne (data/sejour.ts), signé par le serveur ; absent : ligne retirée. */
+  lienSejour?: string;
   /** Suppléments possibles pour ce séjour, une ligne chacun (data/supplements.ts, texteSupplementsSejour). */
   supplements?: string;
   aujourdhui: DateISO;
@@ -394,6 +415,8 @@ export function valeursVariables(c: ContexteMessage): { valeurs: Record<CleVaria
       date_depart: dateLongue(c.reservation.depart),
       heure_depart: f?.heureDepart?.trim() ?? '',
       lien_guide: c.lienGuide?.trim() ?? '',
+      // Réservation annulée : le lien ne montre rien, il ne part pas.
+      lien_sejour: c.reservation.statut === 'annulee' ? '' : (c.lienSejour?.trim() ?? ''),
       signature: c.signature.trim(),
       acces: codes ? (f?.acces?.trim() ?? '') : '',
       wifi: codes ? wifi : '',

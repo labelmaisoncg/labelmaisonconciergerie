@@ -19,6 +19,7 @@ import { ReponseAvis } from '../../logements/_composants/Avis';
 import { lireAvis, separerAvis } from '../../../data/avis';
 import { TEINTE_CANAL, recu } from './outils';
 import { CarteAvisADeposer } from './CarteAvisADeposer';
+import { CarteSejourEnLigne } from './CarteSejourEnLigne';
 
 function Ligne({ libelle, valeur, fort, moins, separe }: { libelle: string; valeur: number; fort?: boolean; moins?: boolean; separe?: boolean }) {
   return (
@@ -107,6 +108,9 @@ export function FicheReservation({ r }: { r: Reservation }) {
           </p>
         )}
       </Card>
+
+      {/* Livret d'accueil et check-in en ligne : où en est le voyageur, et le lien à copier. */}
+      <CarteSejourEnLigne r={r} />
 
       {/* Séjour Airbnb terminé : l'avis à déposer sur le voyageur (rien si aucun n'est attendu). */}
       <CarteAvisADeposer r={r} />

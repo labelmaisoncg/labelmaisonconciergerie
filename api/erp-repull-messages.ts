@@ -14,6 +14,10 @@
 // dans le fil de l'ERP. Un fil sans conversation Repull répond 409 (code
 // hors_plateforme) : l'ERP garde alors le message chez lui.
 //
+// Réponse proposée par Claude ou préparée par l'agent, envoyée telle quelle
+// ou retouchée : sa trace (Actions de l'IA, copilote.ts) passe « envoyée par
+// … », sans jamais bloquer l'envoi.
+//
 // Authentification : Authorization: Bearer <jeton de session Supabase>,
 // membre gérant ou opérations (la lecture seule ne peut pas écrire aux
 // voyageurs), dans l'espace de l'en-tête x-erp-espace (Label Maison à
@@ -21,15 +25,28 @@
 // Détail : src/erp/data/messagerie-envoi.ts.
 // =============================================================================
 
+import { COLLECTION_ACTIONS_AGENT, actionsIaProtegees, tracesEnvoyees } from '../src/erp/data/copilote.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from '../src/erp/data/messagerie-envoi.js';
 import { detailValidation, lireValidation, marquerBrouillonValide, validationServeur } from '../src/erp/data/messagerie-ia.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { FilMessages, Journal } from '../src/erp/data/types';
-import { BudgetEpuise, ErreurRepull, verifierMembre } from '../src/erp/data/repull-synchro.js';
+import type { ActionAgent } from '../src/erp/data/types-copilote.js';
+import { BudgetEpuise, ErreurRepull, verifierMembre, type BaseErp } from '../src/erp/data/repull-synchro.js';
 import { baseErp, lireCorps, repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace, espaceDemande } from './_erp-espaces.js';
 
 const BUDGET_TEMPS_MS = 50_000;
+
+/** Réponse proposée envoyée : sa trace passe « envoyée par … » (Actions de l'IA). Ne bloque jamais l'envoi. */
+async function noterEnvoi(base: BaseErp, fil: FilMessages, par: string, modifiee: boolean): Promise<void> {
+  try {
+    if (!(await actionsIaProtegees(base))) return;
+    const traces = tracesEnvoyees(await base.lire<ActionAgent>(COLLECTION_ACTIONS_AGENT), fil, { par, le: horodatageParis(), modifiee, espace: await base.espace() });
+    if (traces.length) await base.ecrire(COLLECTION_ACTIONS_AGENT, traces, par);
+  } catch (e) {
+    console.warn('[erp-repull-messages] trace de l’envoi non écrite', e instanceof Error ? e.message : e);
+  }
+}
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -72,16 +89,18 @@ export default async function handler(req: any, res: any) {
       ...(validation?.source === 'agent' ? { completer: (f: FilMessages) => marquerBrouillonValide(f, membre.email, validation.modifiee, horodatageParis()) } : {}),
     });
     if (validation) {
+      const proposePar = validation.source === 'agent' ? avant?.agent?.brouillon?.proposePar : undefined;
       const ligne: Journal = {
         id: `valide-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
         horodatage: horodatageParis(),
         auteur: membre.email,
-        action: 'Réponse de l’agent validée',
+        action: proposePar === 'claude' ? 'Réponse de Claude validée' : 'Réponse de l’agent validée',
         entite: 'filsMessages',
         entiteId: filId,
-        details: detailValidation(validation, membre.email, r.fil.voyageur),
+        details: detailValidation(validation, membre.email, r.fil.voyageur, proposePar),
       };
       await ctx.base.ecrire('journal', [ligne]).catch(() => undefined);
+      if (validation.source === 'agent' && avant) await noterEnvoi(ctx.base, avant, membre.email, validation.modifiee);
     }
     return repondre(res, 200, r);
   } catch (e) {

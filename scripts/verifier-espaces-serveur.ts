@@ -59,6 +59,11 @@
  * d'envoyé ; « le gérant est prévenu » seulement avec un appareil de l'ERP
  * qui reçoit l'urgence (avant et après l'envoi).
  * Agenda du CRM : un autre espace ne choisit jamais Abdel ni Kamel.
+ * Livret et check-in en ligne (B2, api/sejour.ts) : lien signé sur le site
+ * fixe, lu et écrit dans l'espace du séjour seulement, codes et wifi
+ * seulement dans les 48 h (réponse du serveur), séjour annulé ou jeton
+ * forgé : rien, check-in refusé tant que le SQL n'est pas passé, puis rangé
+ * dans l'espace du séjour, purge à 6 mois.
  *
  * Fichier hors de l'ERP (api/ demande les types de Node) : pas dans tsc.
  * Lancement (Node 18+) :
@@ -86,7 +91,11 @@ import routeToken from '../api/oauth-token';
 import routeProprietaire from '../api/espace-proprietaire';
 import routeOperations from '../api/espace-operations';
 import routeEspaces from '../api/erp-espaces';
+import routeSejour from '../api/sejour';
+import { lienSejourServeur, oublierCheckinPret, purgeCheckinsDuJour } from '../api/_sejour';
+import { COLLECTION_CHECKINS, signerJetonSejour } from '../src/erp/data/sejour';
 import { relancesDuJour } from '../api/_relances';
+import { oublierJetonsGardes } from '../api/_oauth';
 import { notificationsOpsDuJour } from '../api/_operations-notifications';
 import { idAppareil } from '../src/erp/data/notifications-envoi';
 import { heureParis } from '../src/erp/data/notifications-operations';
@@ -171,6 +180,8 @@ class Monde {
   pushs: { endpoint: string; corps: Uint8Array; urgence: string | null; vapid: string }[] = [];
   /** Panne passagère de erp.espaces_actifs (fiche d'espace illisible). */
   panneEspacesActifs = false;
+  /** erp.checkin_en_ligne_pret présente (SQL du check-in en ligne passé). */
+  checkinPret = false;
   horloge = 0;
 
   emailDe = (jeton: string) => Object.entries(this.comptes).find(([, c]) => c.jeton === jeton)?.[0];
@@ -255,6 +266,8 @@ class Monde {
     if (chemin.startsWith('rpc/')) {
       if (this.historique) return json({ code: 'PGRST202', message: `Could not find the function erp.${chemin.slice(4)}` }, 404);
       const serveur = email === 'serveur@labelmaisoncg.fr' && this.serveurPret;
+      // Règle SQL des actions de l'IA en place (une base d'avant les espaces n'a pas la fonction : 404 ci-dessus).
+      if (chemin === 'rpc/actions_ia_protegees') return json(true);
       if (chemin === 'rpc/qui_suis_je') {
         const espaces = serveur ? [] : this.membres.filter((m) => m.email === email && this.actif(m.espace)).map((m) => ({ ...this.espaces.find((e) => e.id === m.espace)!, role: m.role }));
         return json({ email, serveur, espaces, invitations_espace: [] });
@@ -320,6 +333,9 @@ class Monde {
         this.invitationsMembres = [...this.invitationsMembres.filter((x) => !(x.espace === a.p_espace && x.email === e)), { espace: a.p_espace, email: e, empreinte: a.p_empreinte }];
         return json({ deja: false, expire_le: '2026-11-10T10:00:00+00:00' });
       }
+      if (chemin === 'rpc/checkin_en_ligne_pret') {
+        return this.checkinPret ? json(true) : json({ code: 'PGRST202', message: 'Could not find the function erp.checkin_en_ligne_pret' }, 404);
+      }
       if (chemin === 'rpc/secret_espace') {
         const { p_espace, p_nom } = corps as { p_espace: string; p_nom: string };
         return json(serveur && p_espace !== LM && entete === p_espace ? (this.coffre.get(`${p_espace}:${p_nom}`) ?? null) : null);
@@ -336,7 +352,13 @@ class Monde {
       const motif = filtreEmail.startsWith('ilike.') ? filtreEmail.slice(6).replace(/\\([\\%_])/g, '$1') : null;
       const garde = (e: string) => (!filtreEmail ? true : filtreEmail.startsWith('eq.') ? e === filtreEmail.slice(3) : motif !== null && e.toLowerCase() === motif.toLowerCase());
       const visibles = this.membres.filter((m) => (this.historique ? m.espace === LM && this.permis(jeton, null).includes(LM) : this.permis(jeton, entete).includes(m.espace)));
-      return json(visibles.filter((m) => (!filtreEspace || m.espace === filtreEspace) && garde(m.email)).map(({ email: e, role }) => ({ email: e, role })));
+      // uid demandé (select=…,uid) : renseigné pour une ligne liée à son compte, null sinon (comme erp.membres).
+      const avecUid = (p.get('select') ?? '').split(',').includes('uid');
+      return json(
+        visibles
+          .filter((m) => (!filtreEspace || m.espace === filtreEspace) && garde(m.email))
+          .map(({ espace: es, email: e, role }) => ({ email: e, role, ...(avecUid ? { uid: this.lies.has(`${es}:${e}`) ? `uid-${e}` : null } : {}) })),
+      );
     }
     const avecEspace = url.searchParams.has('espace') || (Array.isArray(corps) && corps.some((l) => 'espace' in l));
     if (this.historique && avecEspace) return json({ code: '42703', message: 'column enregistrements.espace does not exist' }, 400);
@@ -364,12 +386,28 @@ class Monde {
       const n = this.lignes.get(cle)!;
       return json([{ id: n.id, donnees: n.donnees, maj_le: n.maj_le }]);
     }
+    if (methode === 'DELETE') {
+      // Suppression (BaseErp.supprimer) : les ids nommés, dans l'espace du filtre, si le compte y a droit.
+      const p = url.searchParams;
+      const egal = (k: string) => p.get(k)?.replace(/^eq\./, '');
+      const espace = egal('espace') ?? LM;
+      const ids = new Set((p.get('id') ?? '').replace(/^in\.\(|\)$/g, '').split(',').map((x) => x.replace(/^"|"$/g, '')));
+      if (!permis.includes(espace)) return json([]);
+      const supprimees = [...this.lignes.values()].filter((l) => l.espace === espace && l.collection === egal('collection') && ids.has(l.id));
+      for (const l of supprimees) this.lignes.delete(`${l.espace}\u0000${l.collection}\u0000${l.id}`);
+      return json(supprimees.map((l) => ({ id: l.id })));
+    }
+    // « resolution=ignore-duplicates » (BaseErp.ajouterSiAbsent) : une ligne déjà là reste telle quelle.
+    const sansRemplacer = /ignore-duplicates/.test(h.get('prefer') ?? '');
+    const ajoutees: { id: string }[] = [];
     for (const l of corps as Partial<Ligne>[]) {
       const espace = l.espace ?? LM;
       if (!permis.includes(espace)) return json({ code: '42501', message: 'new row violates row-level security policy' }, 403);
+      if (sansRemplacer && this.lignes.has(`${espace}\u0000${l.collection}\u0000${(l.donnees as { id: string }).id}`)) continue;
       this.poser(espace, l.collection!, l.donnees as { id: string });
+      ajoutees.push({ id: (l.donnees as { id: string }).id });
     }
-    return new Response(null, { status: 201 });
+    return sansRemplacer ? json(ajoutees, 201) : new Response(null, { status: 201 });
   };
 }
 
@@ -929,6 +967,37 @@ async function principal() {
     const accesSens2 = String(res.corps?.access_token ?? '');
     verifier(res.statut === 200 && accesSens2.startsWith(`${SENS}.`) && String(res.corps?.refresh_token).startsWith(`${SENS}.`), 'rafraîchissement : nouveaux jetons de Sens', res.corps);
     verifier((await nomsCrm(accesSens2)).startsWith('Sacha Nouveau,Simone Sens'), 'nouveau jeton : toujours Sens', await nomsCrm(accesSens2));
+
+    // Le membre qui a autorisé Claude n'est plus gérant : ses jetons ne valent plus rien (au plus 1 min après).
+    {
+      const gerantB = monde.membres.find((m) => m.espace === SENS && m.email === 'gerant-b@exemple.invalid')!;
+      const j = await jetonsDe(codeDe(await autoriserClaude(gerantSens)));
+      const acces = String(j.corps?.access_token ?? '');
+      const rafraich = String(j.corps?.refresh_token ?? '');
+      verifier((await nomsCrm(acces)).includes('Simone Sens'), 'second jeton de Sens : valable tant que son gérant l’est', await nomsCrm(acces));
+      gerantB.role = 'operations';
+      verifier((await nomsCrm(acces)).includes('Simone Sens'), 'gérant passé « opérations » : jeton gardé 1 min au plus (cache)');
+      oublierJetonsGardes();
+      verifier((await nomsCrm(acces)) === 'refus 401', 'gérant passé « opérations » : jeton d’accès refusé', await nomsCrm(acces));
+      const r = await rafraichirJeton(rafraich);
+      verifier(r.statut === 400 && r.corps?.error === 'invalid_grant', 'gérant passé « opérations » : rafraîchissement refusé', r.corps);
+      gerantB.role = 'gerant';
+      oublierJetonsGardes();
+      verifier((await nomsCrm(acces)) === 'refus 401' && (await rafraichirJeton(rafraich)).statut === 400, 'redevenu gérant : l’autorisation tombée le reste (à reconnecter)');
+      // Code donné, puis gérant retiré de l'équipe avant l'échange : refusé.
+      const code = codeDe(await autoriserClaude(gerantSens));
+      monde.membres = monde.membres.filter((m) => m !== gerantB);
+      const echange = await jetonsDe(code);
+      verifier(echange.statut === 400 && echange.corps?.error === 'invalid_grant', 'gérant retiré avant l’échange du code : aucun jeton', echange.corps);
+      // Réinvité gérant mais pas encore réactivé (ligne sans compte lié) : ses anciens jetons ne reviennent pas.
+      monde.membres.push(gerantB);
+      monde.lies.delete(`${SENS}:gerant-b@exemple.invalid`);
+      oublierJetonsGardes();
+      verifier((await nomsCrm(accesSens2)) === 'refus 401', 'gérant réinvité, ligne pas encore activée : ses jetons restent refusés', await nomsCrm(accesSens2));
+      monde.lies.add(`${SENS}:gerant-b@exemple.invalid`);
+      oublierJetonsGardes();
+      verifier((await nomsCrm(accesSens2)).startsWith('Sacha Nouveau,Simone Sens'), 'la première autorisation de Sens, toujours valable, n’est pas touchée');
+    }
 
     // État et révocation : chaque espace les siens.
     res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantSens });
@@ -1871,6 +1940,150 @@ async function principal() {
     monde.coffre.clear();
     monde.espaces[1].config = {};
     monde.espaces[1].repull_workspace = '1204';
+  }
+
+  section('Livret et check-in en ligne (B2) : un séjour, son espace, la règle des 48 h');
+  {
+    env.ACCES_SECRET = 'secret-commun-des-espaces-exterieurs-0123456789';
+    oublierCheckinPret();
+    monde.checkinPret = false;
+    const jour = (n: number) => ajouterJours(dateParisISO(), n);
+    const IP = { 'x-forwarded-for': '203.0.113.10' };
+    const appelSejour = async (o: { methode?: string; entetes?: Record<string, string>; corps?: unknown; query?: Record<string, string> }) => {
+      const res = reponse();
+      await routeSejour(requete({ ...o, entetes: { origin: 'https://www.labelmaisoncg.fr', ...IP, ...(o.entetes ?? {}) } }), res);
+      return res;
+    };
+    const equipe = (reservationId: string, entetes: Record<string, string> = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS }) =>
+      appelSejour({ methode: 'GET', query: { action: 'equipe', reservationId }, entetes });
+    const vue = (jeton: string, entetes?: Record<string, string>) => appelSejour({ corps: { action: 'vue', jeton }, ...(entetes ? { entetes } : {}) });
+    const jetonDe = (lien: unknown) => String(lien ?? '').split('#')[1] ?? '';
+    const fiche = { wifiNom: 'Wifi-Essai-Sens', wifiCode: 'motdepasse-9137', heureArrivee: '16:00', heureDepart: '11:00', acces: 'Boîte à clés, code 4821.', parking: 'Portail du parking : code 7319.', regles: 'Pas de fête.', equipements: [], aSavoir: 'Poubelles le mardi.' };
+    monde.poser(SENS, 'logements', { id: 'log-sj', nom: 'Studio Essai Sens', adresse: '3 rue des Essais', codePostal: '89100', ville: 'Sens', capacite: 4, statut: 'actif', proprietaireId: 'pro-sj', fiche } as { id: string });
+    const resa = (id: string, arrivee: number, depart: number, statut = 'confirmee') =>
+      ({ id, logementId: 'log-sj', canal: 'airbnb', voyageur: { nom: 'Alix Testeur', nbPersonnes: 2 }, arrivee: jour(arrivee), depart: jour(depart), nuits: depart - arrivee, statut, montantBrutCentimes: 31400, commissionPlateformeCentimes: 4700, fraisMenageCentimes: 4000 }) as { id: string };
+    monde.poser(SENS, 'reservations', resa('res-sj-loin', 10, 13));
+    monde.poser(SENS, 'reservations', resa('res-sj-demain', 1, 3));
+    monde.poser(SENS, 'reservations', resa('res-sj-annulee', 5, 7, 'annulee'));
+    monde.poser(SENS, 'reservations', resa('res-sj-fini', -9, -5, 'terminee'));
+
+    // Équipe : le lien du séjour, signé dans l'espace du membre ; jamais celui d'un autre espace.
+    let res = await equipe('res-sj-loin');
+    const lien = String(res.corps?.suivi?.lien ?? '');
+    verifier(res.statut === 200 && lien.startsWith('https://www.labelmaisoncg.fr/sejour#') && !lien.includes('res-sj-loin') && !res.corps?.suivi?.checkin, 'équipe de Sens : lien du séjour sur le site fixe, sans l’id en clair, check-in pas encore', res.corps);
+    verifier((await lienSejourServeur(SENS, 'res-sj-loin')) === lien, 'le message automatique {lien_sejour} porte le même lien que « Copier le lien »');
+    res = await equipe('res-sj-loin', { authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 200 && res.corps?.suivi?.lien === lien, 'équipe de Sens (opérations) : même lien');
+    res = await equipe('res-a', { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 404, 'équipe de Sens : une réservation de Label Maison est introuvable', res.statut);
+    res = await equipe('res-sj-loin', { authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS });
+    verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.statut);
+    res = await equipe('res-sj-loin', {});
+    verifier(res.statut === 401, 'équipe : sans session, refusé', res.statut);
+    res = await equipe('res-sj-annulee');
+    verifier(res.statut === 200 && res.corps?.suivi?.etat === 'annule' && !res.corps?.suivi?.lien, 'séjour annulé : aucun lien à copier', res.corps);
+    res = await equipe('res-sj-fini');
+    verifier(res.statut === 200 && res.corps?.suivi?.etat === 'expire' && !res.corps?.suivi?.lien, 'séjour fini depuis 5 jours : lien expiré, rien à copier', res.corps);
+
+    // Voyageur : 10 jours avant l'arrivée, rien de secret ni de privé ; lu dans Sens seulement.
+    monde.oublier();
+    res = await vue(jetonDe(lien));
+    const v = res.corps?.vue;
+    const texteVue = JSON.stringify(v ?? {});
+    verifier(res.statut === 200 && v?.prenom === 'Alix' && v?.conciergerie === 'Sens' && v?.acces?.visible === false && v?.acces?.aPartirDu === jour(8), 'voyageur, 10 jours avant : livret de Sens, codes pas encore (à partir de J-2)', v?.acces);
+    verifier(!/Wifi-Essai-Sens|motdepasse-9137|4821|7319|Testeur|31400|4700|pro-sj|montant|commission|Bo[iî]te à clés/i.test(texteVue), 'voyageur, 10 jours avant : ni code, ni wifi, ni nom de famille, ni montant, ni propriétaire', texteVue.slice(0, 400));
+    verifier(v?.logement?.regles === 'Pas de fête.' && v?.logement?.aSavoir === 'Poubelles le mardi.' && v?.logement?.adresse === '3 rue des Essais, 89100 Sens', 'voyageur : règles, à savoir et adresse montrés', v?.logement);
+    verifier(v?.logement?.nom === '' && v?.logement?.ville === 'Sens' && !texteVue.includes('Studio Essai Sens'), 'sans titre d’annonce : jamais le nom interne du logement (la ville)', v?.logement);
+    const lectures = monde.base.filter((r) => r.chemin === 'enregistrements' || r.chemin.startsWith('enregistrements?'));
+    verifier(lectures.length > 0 && lectures.every((r) => r.espace === SENS && r.jeton === 'jeton-serveur'), 'voyageur : tout est lu dans Sens, avec le compte serveur', lectures.map((r) => r.espace));
+    res = await vue(jetonDe(await lienSejourServeur(SENS, 'res-sj-demain')));
+    verifier(res.statut === 200 && res.corps?.vue?.acces?.visible === true && res.corps?.vue?.acces?.wifi?.code === 'motdepasse-9137' && /4821/.test(res.corps?.vue?.acces?.texte ?? ''), 'voyageur, la veille : accès et wifi donnés par le serveur', res.corps?.vue?.acces);
+
+    // Annulé, jeton d'un autre espace, autre secret, jeton retouché, sans provenance du site : rien.
+    res = await vue(await signerJetonSejour(env.ACCES_SECRET!, { espace: SENS, reservationId: 'res-sj-annulee' }));
+    verifier(res.statut === 410 && res.corps?.code === 'annule' && !res.corps?.vue && Object.keys(res.corps ?? {}).sort().join() === 'code,conciergerie,erreur,ok' && res.corps?.conciergerie === 'Sens', 'séjour annulé : rien d’autre que « annulé » et le nom de la conciergerie (en-tête)', res.corps);
+    res = await vue(await signerJetonSejour(env.ACCES_SECRET!, { espace: LM, reservationId: 'res-sj-loin' }));
+    verifier(res.statut === 404 && !res.corps?.vue, 'jeton de Label Maison pour une réservation de Sens : introuvable', res.statut);
+    res = await vue(await signerJetonSejour('un-autre-secret-de-trente-deux-caracteres-au-moins', { espace: SENS, reservationId: 'res-sj-loin' }));
+    verifier(res.statut === 404 && !res.corps?.vue, 'jeton signé avec un autre secret : refusé', res.statut);
+    const [corpsJ, sigJ] = jetonDe(lien).split('.');
+    res = await vue(`${corpsJ.slice(0, -2)}${corpsJ.slice(-2) === 'AA' ? 'AB' : 'AA'}.${sigJ}`);
+    verifier(res.statut === 404, 'jeton retouché : refusé', res.statut);
+    res = await vue(jetonDe(lien), { origin: 'https://site-tiers.example' });
+    verifier(res.statut === 403, 'appel d’un autre site : refusé', res.statut);
+    // Jetons au hasard depuis une même adresse : au-delà de 10 refus, plus rien n'est vérifié pour elle.
+    const bruit = { 'x-forwarded-for': '198.51.100.7' };
+    for (let i = 0; i < 11; i++) await vue(`${'A'.repeat(30)}${i}.${'B'.repeat(43)}`, bruit);
+    res = await vue(jetonDe(lien), bruit);
+    verifier(res.statut === 429, 'jetons au hasard en série : l’adresse attend, même avec un bon lien', res.statut);
+
+    // Check-in : refusé tant que le SQL n'est pas passé, puis rangé dans Sens seulement.
+    const saisie = { arriveeEstimee: '18:30', nbPersonnes: 2, reglesAcceptees: true, tousFrancais: false, fiches: [{ nom: 'Exemple', prenoms: 'Alex', naissanceLe: '1990-04-12', naissanceLieu: 'Exempleville, Pays d’essai', nationalite: 'Essai', domicile: '1 avenue de l’Exemple, Exempleville', enfants: 0 }] };
+    const checkin = (corps: Record<string, unknown>) => appelSejour({ corps: { action: 'checkin', jeton: jetonDe(lien), langue: 'en', ...corps } });
+    res = await checkin({ checkin: saisie });
+    verifier(res.statut === 503 && res.corps?.code === 'pas_pret' && !monde.lignes.has(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`), 'SQL pas encore passé : aucun check-in enregistré', res.corps);
+    monde.checkinPret = true;
+    oublierCheckinPret();
+    res = await checkin({ checkin: { ...saisie, fiches: [{ ...saisie.fiches[0], naissanceLe: '2099-01-01' }] } });
+    verifier(res.statut === 400 && res.corps?.erreurs?.some((e: { champ: string }) => e.champ === 'naissanceLe'), 'date de naissance impossible : refusée, champ signalé', res.corps);
+    // 17 ans le jour de l'arrivée (dans 10 jours), un enfant sur sa fiche : refusé par le serveur aussi.
+    res = await checkin({ checkin: { ...saisie, nbPersonnes: 3, fiches: [{ ...saisie.fiches[0], naissanceLe: ajouterJours(jour(10), -17 * 366), enfants: 1 }] } });
+    verifier(res.statut === 400 && res.corps?.erreurs?.some((e: { champ: string }) => e.champ === 'enfantsMineur') && !monde.lignes.has(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`), 'enfants sur la fiche d’un voyageur de moins de 18 ans : refusé, rien enregistré', res.corps);
+    res = await checkin({ checkin: { ...saisie, passeport: 'X1234567', fiches: saisie.fiches.map((f) => ({ ...f, photo: 'data:image/png;base64,AAAA' })) } });
+    const ligne = monde.lignes.get(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`)?.donnees as Record<string, any> | undefined;
+    verifier(res.statut === 200 && res.corps?.vue?.checkin?.fait === true && ligne?.envois === 1 && ligne?.langue === 'en' && ligne?.conserverJusquAu > jour(150), 'check-in envoyé : rangé dans Sens, conservation au départ + 6 mois', ligne);
+    verifier(!JSON.stringify(ligne).includes('X1234567') && !JSON.stringify(ligne).includes('data:image'), 'champs inconnus (pièce d’identité, photo) : jamais gardés');
+    verifier(![...monde.lignes.keys()].some((k) => k.startsWith(`${LM}\u0000${COLLECTION_CHECKINS}`)), 'rien dans Label Maison');
+    res = await checkin({ checkin: { ...saisie, arriveeEstimee: '20:00' } });
+    verifier(res.statut === 200 && (monde.lignes.get(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`)?.donnees as Record<string, any>)?.envois === 2, 'modification avant l’arrivée : même ligne, deuxième envoi', res.corps?.erreur);
+    res = await equipe('res-sj-loin');
+    verifier(res.statut === 200 && res.corps?.suivi?.checkin?.arriveeEstimee === '20:00' && res.corps?.suivi?.checkin?.fiches?.[0]?.nom === 'Exemple', 'équipe de Sens : le check-in et la fiche de police', res.corps?.suivi?.checkin);
+    res = await equipe('res-sj-loin', { authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
+    verifier(res.statut === 200 && res.corps?.suivi?.checkin?.arriveeEstimee === '20:00' && res.corps?.suivi?.checkin?.fiches?.length === 0 && res.corps?.suivi?.fichesReservees === 1 && !JSON.stringify(res.corps).includes('Exemple'), 'opérations de Sens : heure et voyageurs, jamais la fiche de police (gérants seulement)', res.corps?.suivi);
+    res = await vue(jetonDe(lien));
+    verifier(res.statut === 200 && res.corps?.vue?.checkin?.fichesEnvoyees?.fiches === 1 && !JSON.stringify(res.corps).includes('Exemple'), 'porteur du lien : la fiche de police n’en ressort jamais', res.corps?.vue?.checkin);
+    res = await checkin({ checkin: { ...saisie, arriveeEstimee: '21:00', fiches: [], garderFiches: true } });
+    verifier(res.statut === 200 && (monde.lignes.get(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`)?.donnees as Record<string, any>)?.fiches?.[0]?.nom === 'Exemple', 'modification « garder les fiches » : la fiche gardée reste', res.corps?.erreur);
+    res = await equipe('res-sj-loin', { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM });
+    verifier(res.statut === 404, 'équipe de Label Maison : rien du check-in de Sens', res.statut);
+    res = await appelSejour({ corps: { action: 'checkin', jeton: await signerJetonSejour(env.ACCES_SECRET!, { espace: SENS, reservationId: 'res-sj-fini' }), checkin: saisie } });
+    verifier(res.statut === 410, 'séjour terminé depuis 5 jours : plus de check-in', res.statut);
+
+    // SEJOUR_SECRET (facultative) : signe seule les liens ; les anciens (ACCES_SECRET) ne valent plus. Trop courte : aucun lien.
+    {
+      const ailleurs = { 'x-forwarded-for': '203.0.113.20' };
+      env.SEJOUR_SECRET = 'secret-propre-aux-liens-des-sejours-0123456789';
+      res = await equipe('res-sj-loin');
+      const lienPropre = String(res.corps?.suivi?.lien ?? '');
+      verifier(res.statut === 200 && lienPropre.startsWith('https://www.labelmaisoncg.fr/sejour#') && lienPropre !== lien && (await lienSejourServeur(SENS, 'res-sj-loin')) === lienPropre, 'SEJOUR_SECRET posée : un autre lien, le même pour les messages automatiques', res.corps?.suivi);
+      res = await vue(jetonDe(lienPropre), ailleurs);
+      verifier(res.statut === 200 && res.corps?.vue?.conciergerie === 'Sens', 'SEJOUR_SECRET : le nouveau lien ouvre le livret', res.statut);
+      res = await vue(jetonDe(lien), ailleurs);
+      verifier(res.statut === 404 && !res.corps?.vue, 'SEJOUR_SECRET : l’ancien lien (ACCES_SECRET) est refusé', res.statut);
+      env.SEJOUR_SECRET = 'trop-court';
+      res = await equipe('res-sj-loin');
+      verifier(res.statut === 200 && !res.corps?.suivi?.lien && /SEJOUR_SECRET est trop courte/.test(res.corps?.suivi?.raison ?? ''), 'SEJOUR_SECRET trop courte : aucun lien (pas de retour discret à ACCES_SECRET), la carte le dit', res.corps?.suivi);
+      res = await vue(jetonDe(lien), ailleurs);
+      verifier(res.statut === 503 && !res.corps?.vue, 'SEJOUR_SECRET trop courte : aucun livret ouvert', res.statut);
+      delete env.SEJOUR_SECRET;
+      res = await vue(jetonDe(lien), ailleurs);
+      verifier(res.statut === 200 && (await lienSejourServeur(SENS, 'res-sj-loin')) === lien, 'sans SEJOUR_SECRET : ACCES_SECRET signe de nouveau, les liens envoyés reviennent', res.statut);
+      const acces = env.ACCES_SECRET;
+      delete env.ACCES_SECRET;
+      res = await equipe('res-sj-loin');
+      verifier(res.statut === 200 && !res.corps?.suivi?.lien && /ajoutez ACCES_SECRET \(ou SEJOUR_SECRET\)/.test(res.corps?.suivi?.raison ?? ''), 'ni l’une ni l’autre : aucun lien, la carte dit quoi ajouter', res.corps?.suivi);
+      env.ACCES_SECRET = acces;
+    }
+
+    // Purge : 6 mois après le départ (et tout de suite pour un séjour annulé), dans chaque espace.
+    monde.poser(SENS, 'reservations', resa('res-sj-vieux', -200, -190, 'terminee'));
+    monde.poser(SENS, COLLECTION_CHECKINS, { id: 'res-sj-vieux', reservationId: 'res-sj-vieux', conserverJusquAu: jour(-10) } as { id: string });
+    monde.poser(SENS, COLLECTION_CHECKINS, { id: 'res-sj-annulee', reservationId: 'res-sj-annulee', conserverJusquAu: jour(180) } as { id: string });
+    const bilan = await purgeCheckinsDuJour();
+    const restants = [...monde.lignes.keys()].filter((k) => k.includes(`\u0000${COLLECTION_CHECKINS}\u0000`)).map((k) => k.split('\u0000')[2]);
+    verifier(restants.join() === 'res-sj-loin' && /2 check-in/.test(bilan.sens ?? ''), 'purge : vieux séjour et séjour annulé effacés, le séjour à venir gardé', { restants, bilan });
+    monde.checkinPret = false;
+    oublierCheckinPret();
   }
 
   section('Retour en arrière du SQL');

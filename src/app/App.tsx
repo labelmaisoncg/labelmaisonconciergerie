@@ -29,11 +29,14 @@ const DossierProprietaire = lazy(() => import('./pages/DossierProprietaire'));
 const EspaceProprietaire = lazy(() => import('./pages/EspaceProprietaire'));
 // Espace opérations (responsables de pôle, agents de terrain) : chargé à la demande, sans la navigation du site.
 const EspaceOperations = lazy(() => import('./pages/EspaceOperations'));
+// Livret d'accueil et check-in en ligne d'un séjour (lien envoyé au voyageur) : chargé à la demande, sans la navigation du site.
+const Sejour = lazy(() => import('./pages/Sejour'));
 
 const estErp = () => typeof window !== 'undefined' && /^\/erp(\/|$)/.test(window.location.pathname);
 const estDossier = () => typeof window !== 'undefined' && /^\/dossier-proprietaire\/?$/.test(window.location.pathname);
 const estEspaceProprietaire = () => typeof window !== 'undefined' && /^\/espace-proprietaire\/?$/.test(window.location.pathname);
 const estEspaceOperations = () => typeof window !== 'undefined' && /^\/espace-operations\/?$/.test(window.location.pathname);
+const estSejour = () => typeof window !== 'undefined' && /^\/sejour\/?$/.test(window.location.pathname);
 
 /** Habillage du site public : navigation, pages, pied de page. */
 function SiteShell() {
@@ -67,7 +70,7 @@ export default function App() {
   return (
     <HelmetProvider>
       {/* L'intro animée est réservée au site : jamais sous /erp. */}
-      {!estErp() && !estDossier() && !estEspaceProprietaire() && !estEspaceOperations() && <SplashIntro />}
+      {!estErp() && !estDossier() && !estEspaceProprietaire() && !estEspaceOperations() && !estSejour() && <SplashIntro />}
       <BrowserRouter>
         <Routes>
           <Route
@@ -101,6 +104,14 @@ export default function App() {
             element={
               <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
                 <EspaceOperations />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/sejour"
+            element={
+              <Suspense fallback={<div style={{ minHeight: '100vh', background: '#FBFAF8' }} />}>
+                <Sejour />
               </Suspense>
             }
           />

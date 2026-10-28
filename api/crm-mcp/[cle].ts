@@ -20,5 +20,10 @@ function cleFournie(req: any): string {
 }
 
 export default function handler(req: any, res: any) {
-  return servirCrmMcp(req, res, async (r, c) => (cleValide(cleFournie(r)) ? espaceOuvertAuJeton(c, ID_LABEL_MAISON) : null));
+  return servirCrmMcp(req, res, async (r, c) => {
+    if (!cleValide(cleFournie(r))) return null;
+    const ouvert = await espaceOuvertAuJeton(c, ID_LABEL_MAISON);
+    // Trace des actions de Claude : accès par la clé fixée par l'administrateur.
+    return ouvert ? { ...ouvert, client: { genre: 'cle' as const } } : null;
+  });
 }

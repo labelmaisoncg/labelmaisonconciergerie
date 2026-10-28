@@ -3,7 +3,7 @@
  */
 import { checklistMenageVierge } from '../data/constantes';
 import { jourMois } from '../data/format';
-import { logementById, prestataireConforme } from '../data/selectors';
+import { logementById, missionPrestataire, prestataireConforme } from '../data/selectors';
 import type { ErpDonnees, Logement } from '../data/types';
 import { collecteur } from './outils';
 import type { Regle } from './types';
@@ -36,7 +36,8 @@ export const creerMenageAuDepart: Regle = {
   actifParDefaut: true,
   executer(d, ctx) {
     const c = collecteur(this.cle, ctx);
-    const couvertes = new Set(d.missions.filter((m) => m.type === 'menage' && m.reservationId).map((m) => m.reservationId));
+    // Un ménage interne (prévu par Claude) ne remplace pas celui du prestataire au départ.
+    const couvertes = new Set(d.missions.filter((m) => m.type === 'menage' && m.reservationId && missionPrestataire(m)).map((m) => m.reservationId));
     for (const r of d.reservations) {
       if ((r.statut !== 'confirmee' && r.statut !== 'en_cours') || r.depart < ctx.date || couvertes.has(r.id)) continue;
       const l = logementById(d, r.logementId);

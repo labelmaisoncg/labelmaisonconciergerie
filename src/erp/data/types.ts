@@ -11,6 +11,7 @@ import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessages
 import type { ElementPrix } from './prix-conseils';
 import type { AnnonceEquipe } from './annonces-equipe';
 import type { ReglagesSupplements } from './supplements';
+import type { ActionAgent } from './types-copilote';
 
 export type Id = string;
 /** Date calendaire 'YYYY-MM-DD'. */
@@ -126,6 +127,8 @@ export interface FicheLogement {
   equipements: string[];
   /** Ce qu'il faut savoir d'autre (poubelles, voisinage, chauffage…), lu par l'agent. */
   aSavoir?: string;
+  /** Consignes de départ (clés, poubelles, linge…) : livret du séjour et agent. */
+  consignesDepart?: string;
   /** Guides du logement (vidéo, photo, document, lien) que l'agent joint à sa réponse. */
   guides?: GuideLogement[];
   /** Questions fréquentes et leur réponse, sûres pour l'agent. */
@@ -425,6 +428,8 @@ export interface BrouillonAgent {
   valideeLe?: Horodatage;
   /** Retouchée avant l'envoi. */
   modifiee?: boolean;
+  /** Proposée par Claude depuis le connecteur (outil reponse_proposer), pas par l'agent. */
+  proposePar?: 'claude';
 }
 
 /** Trace d'un envoi par Repull (api/erp-repull-messages.ts ou l'agent IA). */
@@ -653,6 +658,12 @@ export interface Mission {
   controleQualite: boolean;
   noteControle?: number;
   commentaire?: string;
+  /**
+   * Mission prévue par Claude depuis le connecteur (copilote) : interne à
+   * l'ERP (planning, suppléments), jamais transmise à un prestataire ni à une
+   * plateforme de ménage.
+   */
+  interne?: true;
 }
 
 export type TypeMouvementLinge =
@@ -1037,6 +1048,11 @@ export interface ErpDonnees {
    * membre (rien à voir avec l'annonce d'un logement, versionsAnnonce). Écrites par le gérant seul.
    */
   annoncesEquipe: AnnonceEquipe[];
+  /**
+   * Actions de l'IA (octobre 2026, copilote) : ce que Claude et l'agent de la messagerie ont fait,
+   * avec de quoi l'annuler. Écrites par le serveur ; lues et annulées par le gérant seul.
+   */
+  actionsAgent: ActionAgent[];
 }
 
 export type NomCollection = keyof ErpDonnees;
