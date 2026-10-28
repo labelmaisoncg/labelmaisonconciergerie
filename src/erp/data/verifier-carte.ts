@@ -139,6 +139,10 @@ section('État du jour : réservé, libre, ménage');
   verifier(etat({ reservations: [depart] }).menage?.statut === 'a_faire', 'départ du jour sans mission : statut « à faire »');
   const controleFait: ControleQualite = { id: 'c1', logementId: L, reservationId: 'r0', echeance: J, statut: 'fait', points: [] };
   verifier(etat({ reservations: [depart], controles: [controleFait] }).etat === 'libre', 'départ du jour, contrôle qualité fait : ménage fait, libre');
+  // Le contrôle rattrapé aujourd'hui d'un autre départ, ou un contrôle sans séjour du matin, ne termine pas le ménage de ce départ.
+  const autreDepart: ControleQualite = { id: 'c9', logementId: L, reservationId: 'r-avant', echeance: '2026-09-18', statut: 'fait', points: [], realiseLe: `${J}T09:00:00+02:00` };
+  const sansSejour: ControleQualite = { id: 'c8', logementId: L, echeance: J, statut: 'fait', points: [], realiseLe: `${J}T08:00:00+02:00` };
+  verifier(etat({ reservations: [depart], controles: [autreDepart] }).etat === 'menage' && etat({ reservations: [depart], controles: [sansSejour] }).etat === 'menage', 'départ du jour : un contrôle d’un autre séjour, ou sans séjour, ne fait pas le ménage');
   verifier(etat({ reservations: [depart], missions: [mission('m0', 'attribuee', { reservationId: 'r0', date: DEMAIN })] }).etat === 'libre', 'ménage de ce départ prévu demain : pas de ménage aujourd’hui');
 
   // Rotation : départ et arrivée le même jour.

@@ -160,12 +160,6 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
     m.getCanvas().addEventListener('webglcontextlost', () => rappels.current.onErreur());
     m.on('zoom', ecarter);
     m.on('resize', ecarter);
-    // Téléphone : les crédits commencent repliés (le bouton « i » les montre), sans cacher un nom de ville.
-    m.once('idle', () => {
-      const credits = m.getContainer().querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
-      credits?.classList.remove('maplibregl-compact-show');
-      credits?.removeAttribute('open');
-    });
     carte.current = m;
     const liste = reperes.current;
     return () => {

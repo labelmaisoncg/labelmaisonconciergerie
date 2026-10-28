@@ -9,7 +9,7 @@
  * liste « Pas encore sur la carte » et le bouton du gérant. « Soisy Bords de
  * Seine » est placé au centre de sa commune (position approximative).
  * « Juvisy Gare » a un ménage interne prévu par Claude aujourd'hui (orange,
- * « Fait » dans la fiche du ménage).
+ * « Marquer le ménage fait » sur la fiche de la carte, côté gérant).
  */
 import { nouvellePosition, texteAdresse } from './carte';
 import { checklistMenageVierge } from './constantes';

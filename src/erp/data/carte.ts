@@ -116,10 +116,14 @@ export function etatDuJour(logementId: Id, e: EntreesCarte, date: DateISO): Etat
   const present = !!ceSoir && ceSoir.arrivee < date;
 
   const missions = (e.missions ?? []).filter((m) => estMenage(m) && m.logementId === logementId);
-  // Contrôle qualité fait : pour ce séjour, ou ce jour-là dans ce logement.
-  const controleFait = (reservationId?: Id) =>
+  // Contrôle qualité fait pour ce séjour. Un contrôle sans séjour fait ce jour-là ne compte que pour
+  // un ménage interne (`duJour`) : le contrôle rattrapé d'un autre départ ne termine pas celui d'aujourd'hui.
+  const controleFait = (reservationId?: Id, duJour = false) =>
     (e.controles ?? []).some(
-      (c) => c?.logementId === logementId && c.statut === 'fait' && ((!!reservationId && c.reservationId === reservationId) || String(c.realiseLe ?? '').slice(0, 10) === date),
+      (c) =>
+        c?.logementId === logementId &&
+        c.statut === 'fait' &&
+        (c.reservationId ? !!reservationId && c.reservationId === reservationId : duJour && String(c.realiseLe ?? '').slice(0, 10) === date),
     );
   const duJour = missions.filter((m) => m.date === date);
   // Un ménage interne s'efface devant celui d'un prestataire le même jour.
@@ -130,7 +134,7 @@ export function etatDuJour(logementId: Id, e: EntreesCarte, date: DateISO): Etat
     const m = retenues[0];
     const statut = statutMenage(m);
     // Ménage interne pas encore marqué « Fait » : comme un départ sans mission, fait au contrôle qualité.
-    menage = { statut: m.interne === true && statut !== 'fait' && controleFait(m.reservationId ?? depart?.id) ? 'fait' : statut, mission: m };
+    menage = { statut: m.interne === true && statut !== 'fait' && controleFait(m.reservationId ?? depart?.id, true) ? 'fait' : statut, mission: m };
   } else if (depart && !missions.some((m) => m.reservationId === depart.id)) {
     // Ménage hors de l'ERP : fait quand le contrôle qualité de ce départ est fait.
     menage = { statut: controleFait(depart.id) ? 'fait' : 'a_faire' };
