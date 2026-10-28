@@ -613,6 +613,7 @@ async function principal() {
     verifier(masquerCodesEtWifi('Wifi : motdepasse201, au dos de la box.', logement.fiche) === `Wifi : ${CODE_MASQUE}, au dos de la box.` && masquerCodesEtWifi('Réseau Box 201.', logement.fiche) === `Réseau ${CODE_MASQUE}.`, 'mot de passe court et nom du réseau (séparateurs souples) remplacés en entier');
     verifier(masquerCodesEtWifi('Mot de passe : soleil 2026.', { wifiCode: 'soleil2026' }) === '' && masquerCodesEtWifi('Code xsoleil2026x.', { wifiCode: 'soleil2026' }) === '', 'wifi écrit en morceaux ou collé : le texte entier est retiré');
     verifier(masquerCodesEtWifi('Poubelles le mardi, code 4821 du local.', { wifiCode: 'soleil2026' }) === masquerCodes('Poubelles le mardi, code 4821 du local.'), 'sans wifi dans le texte : comme masquerCodes');
+    verifier(!/livebox|essai|soleil/i.test(masquerCodesEtWifi('Réseau Livebox\u2011Essai, mot de passe soleil\u20112026.', { wifiCode: 'soleil2026', wifiNom: 'Livebox-Essai' })), 'tiret insécable dans le wifi : retiré quand même');
     const avecWifi: Logement = {
       ...logement,
       fiche: {

@@ -1103,7 +1103,7 @@ const SUITE_CHIFFRES = /\d(?:[\s\-–—.·/]?\d){3,}/g;
 export const CHIFFRES_EPELES = /(?<![\p{L}\p{N}])\p{Nd}(?:[\s.\-‐‑‒–—―·]+\p{Nd}){2,}(?![\p{L}\p{N}])/u;
 
 /** Texte sans espaces ni séparateurs (« 1-2-3-4 » = « 1234 »), en minuscules, chiffres pleine largeur ramenés (NFKC). */
-const compact = (t: string) => nettoyerTexte(t).toLowerCase().replace(/[\s\-–—._·/]+/g, '');
+const compact = (t: string) => nettoyerTexte(t).toLowerCase().replace(/[\s\-\u2010-\u2012\u2212–—._·/]+/g, '');
 
 /** Ce que les fonctions de codes acceptent : la fiche seule, ou le logement (fiche et textes de l'annonce). */
 export type SourceCodes = Partial<Logement['fiche']> | { fiche?: Partial<Logement['fiche']>; descriptif?: DescriptifLogement } | undefined;
@@ -1201,9 +1201,9 @@ export function contientCodeAcces(texte: string, source: SourceCodes, descriptif
 
 /** `mot` présent dans `texte` entre deux bornes qui ne sont ni lettre ni chiffre ; espaces et tirets du mot souples. */
 function enMotEntier(texte: string, mot: string): boolean {
-  const morceaux = mot.split(/[\s\-–—._·/]+/).filter(Boolean).map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const morceaux = mot.split(/[\s\-\u2010-\u2012\u2212–—._·/]+/).filter(Boolean).map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   if (!morceaux.length) return false;
-  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(texte);
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-\\u2010-\\u2012\\u2212–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'u').test(texte);
 }
 
 /** Ce qui remplace un code retiré (masquerCodes) ; le livret du séjour le traduit pour un voyageur anglais. */
@@ -1222,11 +1222,11 @@ export function masquerCodes(texte: string): string {
 /** `mot` remplacé en entier dans `texte` (bornes ni lettre ni chiffre, espaces et tirets du mot souples, sans casse). */
 function remplacerMotEntier(texte: string, mot: string, par: string): string {
   const morceaux = nettoyerTexte(mot)
-    .split(/[\s\-–—._·/]+/)
+    .split(/[\s\-\u2010-\u2012\u2212–—._·/]+/)
     .filter(Boolean)
     .map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
   if (!morceaux.length) return texte;
-  return texte.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'giu'), (_tout, avant: string) => avant + par);
+  return texte.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-\\u2010-\\u2012\\u2212–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'giu'), (_tout, avant: string) => avant + par);
 }
 
 /**

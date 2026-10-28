@@ -37,7 +37,7 @@
 import { ID_LABEL_MAISON, idEspaceValide } from './espaces.js';
 import { estFichierGuide, estLienGuide, guideEnvoyable } from './guides.js';
 import { ajouterJoursISO, codesAutorises, prenomDe } from './messages-programmes.js';
-import { codesCitesApresMot, contientCodeAcces, masquerCodes, nettoyerTexte } from './messagerie-ia.js';
+import { CODE_MASQUE, codesCitesApresMot, contientCodeAcces, masquerCodes, nettoyerTexte } from './messagerie-ia.js';
 import { b64url, deB64url } from './web-push.js';
 import type { CanalReservation, DateISO, GuideLogement, Horodatage, Id, Logement, Reservation } from './types';
 
@@ -590,7 +590,7 @@ function photoDuLogement(l: Logement | undefined): string | undefined {
 
 /** Mots d'accès près desquels un court jeton avec un chiffre est un code probable (« code postal » n'en est pas un). */
 const MOT_D_ACCES =
-  /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|grilles?|barri[eè]res?|garages?|coffres?|bips?|t[ée]l[ée]commandes?|claviers?|gates?|doors?|keybox(?:es)?|lockbox(?:es)?|key\s?safes?|keypads?|padlocks?|intercoms?|codes?(?!\s+postal))(?![\p{L}])/giu;
+  /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|grilles?|barri[eè]res?|garages?|coffres?|bips?|t[ée]l[ée]commandes?|claviers?|entr[ée]es?|acc[èe]s|halls?|cl[ée]s?|clefs?|serrures?|sonnettes?|tape[rz]|compose[rz]|sonne[rz]|gates?|doors?|entrances?|entry|keys?|locks?|buzzers?|keybox(?:es)?|lockbox(?:es)?|key\s?safes?|keypads?|padlocks?|intercoms?|codes?(?!\s+postal))(?![\p{L}])/giu;
 /** Jeton d'au moins 3 signes dont un chiffre (« 482 », « B7Z », « 12#4 »). */
 const JETON_CHIFFRE = /(?<![\p{L}\p{N}#*])(?:\d(?:[ \-.·/]\d){2,}|(?=[\p{L}\p{N}#*]*\d)[\p{L}\p{N}#*]{3,})(?![\p{L}\p{N}#*])/gu;
 /** Jetons qui ressemblent à un code sans en être un : heure, ordinal, distance, durée, montant, débit. */
@@ -620,7 +620,9 @@ export function codeProbable(texte: string | undefined): boolean {
     ] as const) {
       for (const j of morceau.matchAll(JETON_CHIFFRE)) {
         const fin = origine + (j.index ?? 0) + j[0].length;
-        if (!PAS_UN_CODE_COURT.test(j[0]) && !UNITE_APRES.test(t.slice(fin, fin + 12))) return true;
+        // Près d'un mot d'accès, une unité ne blanchit qu'un nombre court (« portail à 200 m ») : « keybox 1200 m », « 4821M » restent des codes.
+        const long = /\d{4,}/.test(j[0]);
+        if (long || (!PAS_UN_CODE_COURT.test(j[0]) && !UNITE_APRES.test(t.slice(fin, fin + 12)))) return true;
       }
     }
   }
@@ -639,20 +641,29 @@ export function codeProbable(texte: string | undefined): boolean {
 const NOMBRES_EVIDENTS = new RegExp(
   [
     String.raw`(?<=(?<![\p{L}])codes?\s+postal\s*:?\s*)\d{5}(?![\p{L}\p{N}])`,
-    String.raw`(?<![\p{L}\p{N}])\d{5}(?=\s+\p{Lu})`,
+    // « …, 91100 Corbeil », « au 75012 Paris » : jamais « Entrée 48213 Bât A » ni « Immeuble : 48213 Bonne arrivée ».
+    String.raw`(?<=(?:,\s*|(?<![\p{L}])(?:au|à|de|du|vers|pr[èe]s\s+de)\s+))\d{5}(?=\s+\p{Lu})`,
     String.raw`(?<=(?<![\p{L}])(?:en|depuis|ann[ée]e|in|since|built(?:\s+in)?)\s+)(?:19|20)\d{2}(?![\p{L}\p{N}])`,
-    String.raw`(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?\s?(?:m|km|m[èe]tres?|mn|mins?|minutes?|h|heures?|j|jours?|€|eur|euros?)(?![\p{L}\p{N}])`,
+    // Sans « h » ni « j » (« 1530 h » n'est pas une heure) ; la casse est contrôlée plus bas (« 4821M » reste masqué).
+    String.raw`(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?\s?(?:m|km|m[èe]tres?|mn|mins?|minutes?|heures?|jours?|€|eur|euros?)(?![\p{L}\p{N}])`,
     String.raw`(?<=(?<![\p{L}])(?:bus|lignes?|lines?|rer|tram|n°|num[ée]ro|no\.)\s*)\d+(?![\p{L}\p{N}])`,
   ].join('|'),
   'giu',
 );
 
-/** masquerCodes pour le livret : les nombres évidents (NOMBRES_EVIDENTS) restent lisibles, le reste est masqué comme pour l'IA. */
-export function masquerCodesLivret(texte: string): string {
+/**
+ * masquerCodes pour le livret : les nombres évidents (NOMBRES_EVIDENTS, et le
+ * code postal du logement) restent lisibles, le reste est masqué comme pour l'IA.
+ */
+export function masquerCodesLivret(texte: string, codePostal?: string): string {
   const t = nettoyerTexte(texte);
+  const cp = /^\d{5}$/.test(codePostal?.trim() ?? '') ? codePostal!.trim() : '';
+  const evidents = cp ? new RegExp(`${NOMBRES_EVIDENTS.source}|(?<![\\p{L}\\p{N}])${cp}(?![\\p{L}\\p{N}])`, 'giu') : NOMBRES_EVIDENTS;
   let sortie = '';
   let debut = 0;
-  for (const m of t.matchAll(NOMBRES_EVIDENTS)) {
+  for (const m of t.matchAll(evidents)) {
+    // Unité en majuscules (« 4821M », « 2580 KM ») : un code, pas une distance.
+    if (/\p{Lu}/u.test(m[0])) continue;
     const i = m.index ?? 0;
     sortie += masquerCodes(t.slice(debut, i)) + m[0];
     debut = i + m[0].length;
@@ -687,9 +698,10 @@ function texteAvant48h(brut: string, l: Logement | undefined, secrets = secretsD
   // (« soleil2026 » → « soleil[code…] ») et le reste du mot de passe passerait.
   if (contientCodeAcces(brut, { wifiCode: l?.fiche?.wifiCode ?? '', wifiNom: l?.fiche?.wifiNom ?? '' })) return undefined;
   // Code postal, année, distance, numéro de bus : lisibles ; toute autre suite de chiffres masquée.
-  const masque = masquerCodesLivret(brut).trim();
+  const masque = masquerCodesLivret(brut, l?.codePostal).trim();
   // Un code de l'accès ou cité ailleurs, ou un code court sans le mot « code » (« Portail : 482 ») : le texte attend les 48 h.
-  return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque) ? masque : undefined;
+  // codeProbable lit le texte sans les codes déjà masqués : le mot « code » du remplacement n'est pas un mot d'accès.
+  return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque.split(CODE_MASQUE).join(' ')) ? masque : undefined;
 }
 
 /**
