@@ -9,7 +9,8 @@ const DUREE_MS = 5000;
  * (« « Studio » a été supprimé. ») : passé dans l'état de la navigation,
  * navigate(page, { state: { message } }), montré quelques secondes en bas de
  * l'écran, puis retiré de l'historique du navigateur (un retour en arrière
- * ou un rechargement ne le remontre pas).
+ * ou un rechargement ne le remontre pas). Dès 1024 px, centré sur la zone de
+ * contenu, à droite de la barre latérale (w-64 à partir de lg, ErpLayout.tsx).
  */
 export function MessageRetour() {
   const { pathname, search, hash, state } = useLocation();
@@ -35,7 +36,7 @@ export function MessageRetour() {
       role="status"
       className={
         message
-          ? 'lm-sans-impression lm-apparition fixed inset-x-3 bottom-[calc(var(--lm-barre-onglets)+0.75rem)] z-50 mx-auto flex max-w-sm items-center gap-2.5 rounded-xl border border-(--lm-bord) bg-(--lm-surface) py-2 pr-2 pl-3.5 text-[13.5px] shadow-(--lm-ombre-haute) sm:bottom-[calc(var(--lm-barre-onglets)+1.25rem)]'
+          ? 'lm-sans-impression lm-apparition fixed inset-x-3 bottom-[calc(var(--lm-barre-onglets)+0.75rem)] z-50 mx-auto lg:left-[calc(16rem+0.75rem)] flex max-w-sm items-center gap-2.5 rounded-xl border border-(--lm-bord) bg-(--lm-surface) py-2 pr-2 pl-3.5 text-[13.5px] shadow-(--lm-ombre-haute) sm:bottom-[calc(var(--lm-barre-onglets)+1.25rem)]'
           : 'sr-only'
       }
     >

@@ -6,8 +6,10 @@
  * Seulement un logement SANS HISTORIQUE : créé par erreur, en double d'un
  * logement importé, ou pour un essai. Dès qu'il a vécu, la suppression est
  * refusée en disant ce qu'il contient (« 12 réservations, 3 factures… »),
- * et l'écran propose « Passer en Sorti » (statut existant : il quitte les
- * listes, rien n'est perdu ; les factures se gardent 10 ans).
+ * et l'écran propose « Passer en Sorti » (statut existant : il n'est plus
+ * géré et reste en fin de liste avec son historique, rien n'est perdu ; les
+ * factures se gardent 10 ans). Séjours encore à venir : dits avant ce
+ * bouton (sejoursAVenir), qui reste disponible.
  *
  * Ce qui fait un historique (historiqueDuLogement), tout statut compris :
  *   réservations (avis des voyageurs, check-ins en ligne et leurs fiches de
@@ -59,7 +61,7 @@ import { PREFIXE_REPULL } from './repull.js';
 import type { ElementPrix, ReglagesPrix } from './prix-conseils';
 import type { ReglagesSupplements } from './supplements';
 import type { ReglagesMessagesProgrammes } from './types-programmes';
-import type { ErpDonnees, Id, Logement, Reglage } from './types';
+import type { DateISO, ErpDonnees, Id, Logement, Reglage, Reservation } from './types';
 
 /** Ce qui fait l'historique d'un logement, dans l'ordre où on le dit. */
 export type CleHistorique =
@@ -205,6 +207,18 @@ export function resumeHistorique(traces: readonly Pick<TraceHistorique, 'libelle
   return l.length < 2 ? (l[0] ?? '') : `${l.slice(0, -1).join(', ')} et ${l[l.length - 1]}`;
 }
 
+/**
+ * Séjours encore à venir dans ce logement : réservations ni annulées ni
+ * terminées dont le départ est après aujourd'hui (séjour en cours compris).
+ * Dits avant « Passer en Sorti », qui reste possible.
+ */
+export function sejoursAVenir(logementId: Id, reservations: readonly Pick<Reservation, 'logementId' | 'statut' | 'depart'>[] | undefined, aujourdhui: DateISO): number {
+  return (reservations ?? []).filter((r) => r?.logementId === logementId && r.statut !== 'annulee' && r.statut !== 'terminee' && String(r.depart ?? '') > aujourdhui).length;
+}
+
+/** « Il a encore 2 séjours à venir. » ; vide sans séjour à venir. */
+export const phraseSejoursAVenir = (n: number): string => (n > 0 ? `Il a encore ${n} ${n >= 2 ? 'séjours' : 'séjour'} à venir.` : '');
+
 export type VerdictSuppression =
   | {
       ok: true;
@@ -229,7 +243,7 @@ export function verdictSuppression(o: { role: string | undefined; lectureSeule?:
       ok: false,
       motif: 'historique',
       historique,
-      message: `« ${l.nom} » a ${resumeHistorique(historique)} : il ne peut pas être supprimé. Passez-le en « Sorti » : il quitte les listes, rien n’est perdu.`,
+      message: `« ${l.nom} » a ${resumeHistorique(historique)} : il ne peut pas être supprimé. Passez-le en « Sorti » : il n’est plus géré, son historique reste.`,
     };
   }
   if (annonceSuivie(l)) {

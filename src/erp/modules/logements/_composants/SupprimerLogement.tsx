@@ -7,8 +7,9 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Archive, Plug, Trash2 } from 'lucide-react';
-import { peutSupprimerLogement, resumeHistorique, verdictSuppression } from '../../../data/suppression-logement';
+import { AlertTriangle, Archive, Plug, Trash2 } from 'lucide-react';
+import { AUJOURDHUI } from '../../../data/format';
+import { peutSupprimerLogement, phraseSejoursAVenir, resumeHistorique, sejoursAVenir, verdictSuppression } from '../../../data/suppression-logement';
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
 import { Alert, Button, ButtonLink, Modal } from '../../../ui';
@@ -62,11 +63,11 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
   let pied: ReactNode = null;
   if (sorti) {
     titre = `« ${l.nom} » est sorti`;
-    description = 'Il n’apparaît plus dans les listes ; son historique reste.';
+    description = 'Il n’est plus géré. Il reste en fin de liste, avec son historique.';
     pied = fermerSeul;
   } else if (verdict?.ok) {
     titre = `Supprimer « ${l.nom} » ?`;
-    description = `Il disparaît de l’ERP${verdict.avecLui.length ? `, avec ${verdict.avecLui.join(' et ')}` : ''}.`;
+    description = `Il disparaît de l’ERP${verdict.avecLui.length ? `, avec ${verdict.avecLui.join(' et ')}` : ''}. C’est définitif.`;
     pied = (
       <>
         {annuler}
@@ -79,12 +80,20 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
     const dejaSorti = l.statut === 'sorti';
     titre = `Impossible de supprimer « ${l.nom} »`;
     description = `Il a ${resumeHistorique(verdict.historique)}. ${
-      dejaSorti ? 'Il est déjà « Sorti » : il n’apparaît plus dans les listes, rien n’est perdu.' : 'Passez-le en « Sorti » : il quitte les listes, rien n’est perdu.'
+      dejaSorti ? 'Il est déjà « Sorti » : il n’est plus géré, rien n’est perdu.' : 'Passez-le en « Sorti » : il n’est plus géré, son historique reste.'
     }`;
+    // Séjours encore prévus : dits avant le bouton, qui reste disponible.
+    const aVenir = dejaSorti ? '' : phraseSejoursAVenir(sejoursAVenir(l.id, d.reservations, AUJOURDHUI));
     pied = dejaSorti ? (
       fermerSeul
     ) : (
       <>
+        {aVenir && (
+          <p role="note" className="mb-1 flex w-full items-start gap-2 text-[13px] text-(--lm-encre)">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
+            <span>{aVenir}</span>
+          </p>
+        )}
         {annuler}
         <Button variant="primary" icone={<Archive />} onClick={passerEnSorti}>
           Passer en Sorti

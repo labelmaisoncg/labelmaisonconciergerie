@@ -17,6 +17,8 @@ import {
   annonceSuivie,
   historiqueDuLogement,
   peutSupprimerLogement,
+  phraseSejoursAVenir,
+  sejoursAVenir,
   resumeHistorique,
   supprimerLogementDe,
   verdictSuppression,
@@ -191,6 +193,8 @@ section('Historique : chaque trace refuse la suppression');
     const v = gerant(d);
     verifier(!v.ok && v.motif === 'historique' && v.historique.length === 1 && v.historique[0].cle === c.cle, `${c.nom} : refusé (${c.cle})`, v);
     verifier(!v.ok && /Sorti/.test(v.message), `${c.nom} : le refus propose « Sorti »`);
+    // « Sorti » ne retire pas le logement de la liste (il y reste, en fin de liste) : jamais dit autrement.
+    verifier(!v.ok && /n’est plus géré/.test(v.message) && !/listes|dispara|cach/i.test(v.message), `${c.nom} : « Sorti » = plus géré, jamais « retiré des listes »`, !v.ok && v.message);
   }
   // Ce qui ne compte pas : brouillons, autre propriétaire, autre logement, homonyme.
   const neutres: { nom: string; ajout: Partial<ErpDonnees> }[] = [
@@ -230,6 +234,28 @@ section('Historique : chaque trace refuse la suppression');
   const cinq = ['36 réservations', '1 conversation', '1 mandat', '35 ménages', '2 avis à déposer'].map((libelle) => ({ libelle }));
   verifier(resumeHistorique(cinq) === '36 réservations, 1 conversation, 1 mandat et d’autres éléments', 'résumé : au-delà de quatre sortes, les trois premières et « d’autres éléments »', resumeHistorique(cinq));
   verifier(resumeHistorique(cinq.slice(0, 4)) === '36 réservations, 1 conversation, 1 mandat et 35 ménages', 'résumé : quatre sortes, toutes dites');
+}
+
+section('Séjours encore à venir : dits avant « Passer en Sorti »');
+{
+  const AUJ = '2026-10-28';
+  const r = (id: string, x: Record<string, unknown>) => ({ id, logementId: ID, statut: 'confirmee', arrivee: '2026-11-02', depart: '2026-11-05', ...x }) as never;
+  const reservations = [
+    r('a-venir', {}),
+    r('en-cours', { statut: 'en_cours', arrivee: '2026-10-26', depart: '2026-10-30' }),
+    r('annulee', { statut: 'annulee' }),
+    r('terminee', { statut: 'terminee', arrivee: '2026-10-20', depart: '2026-10-25' }),
+    r('part-aujourdhui', { arrivee: '2026-10-25', depart: AUJ }),
+    r('passee', { arrivee: '2026-09-01', depart: '2026-09-04' }),
+    { id: 'autre', logementId: 'log-autre', statut: 'confirmee', arrivee: '2026-11-02', depart: '2026-11-05' } as never,
+  ];
+  verifier(sejoursAVenir(ID, reservations, AUJ) === 2, 'à venir : confirmée et en cours (départ après aujourd’hui) ; ni annulée, ni terminée, ni départ aujourd’hui, ni passée, ni autre logement', sejoursAVenir(ID, reservations, AUJ));
+  verifier(phraseSejoursAVenir(2) === 'Il a encore 2 séjours à venir.', 'phrase au pluriel', phraseSejoursAVenir(2));
+  verifier(phraseSejoursAVenir(1) === 'Il a encore 1 séjour à venir.', 'phrase au singulier', phraseSejoursAVenir(1));
+  verifier(phraseSejoursAVenir(0) === '' && sejoursAVenir(ID, undefined, AUJ) === 0, 'aucun séjour à venir : rien n’est dit');
+  // Avec des séjours à venir, le logement a un historique : le refus et « Passer en Sorti » restent proposés.
+  const v = gerant({ ...jeu(), reservations: [r('a-venir', {})] });
+  verifier(!v.ok && v.motif === 'historique', 'séjour à venir : suppression refusée, « Passer en Sorti » reste possible', v);
 }
 
 section('Droits : un gérant, jamais en lecture seule');
@@ -321,6 +347,16 @@ async function fichiersSql() {
   }
   const acces = lire('supabase/erp-acces-gerants.sql');
   verifier(acces.includes('un compte « opérations » supprime un logement') && acces.includes('un gérant ne supprime pas un logement'), 'erp-acces-gerants.sql : la recette vérifie gérant et opérations');
+  const ecran = lire('src/erp/modules/logements/_composants/SupprimerLogement.tsx');
+  verifier(!/n’apparaît plus dans les listes|quitte les listes/.test(ecran), 'écran : « Sorti » n’est jamais présenté comme retiré des listes');
+  verifier(
+    ecran.includes('Il n’est plus géré. Il reste en fin de liste, avec son historique.') &&
+      ecran.includes('Passez-le en « Sorti » : il n’est plus géré, son historique reste.') &&
+      ecran.includes('Il est déjà « Sorti » : il n’est plus géré, rien n’est perdu.') &&
+      ecran.includes('C’est définitif.'),
+    'écran : textes de « Sorti » et de la suppression définitive',
+  );
+  verifier(/phraseSejoursAVenir\(sejoursAVenir\(l\.id, d\.reservations, AUJOURDHUI\)\)/.test(ecran) && /Passer en Sorti/.test(ecran), 'écran : séjours à venir dits avant « Passer en Sorti », bouton gardé');
   const store = lire('src/erp/data/store.tsx');
   verifier(/const supprimerLogement = [\s\S]*?verdictSuppression\([\s\S]*?if \(!verdict\.ok\) return echec[\s\S]*?supprimerLogementDe/.test(store), 'store : le verdict (droits, lecture seule, historique, annonce) passe avant toute suppression');
 }
