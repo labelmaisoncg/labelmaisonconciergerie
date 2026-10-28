@@ -58,6 +58,7 @@ import {
   purgerCheckins,
   signerJetonSejour,
   suiviCheckin,
+  texteCacheAvant48h,
   texteSaisi,
   vueSejour,
   type BasePurge,
@@ -65,7 +66,7 @@ import {
   type SaisieCheckin,
 } from './sejour';
 import { creerSeed } from './seed';
-import { TEXTES, texteConsignes } from '../sejour/textes';
+import { TEXTES, texteConsignes, texteFiche } from '../sejour/textes';
 import type { FilMessages, Logement, Reservation, StatutReservation } from './types';
 
 let echecs = 0;
@@ -523,8 +524,8 @@ async function principal() {
     verifier(dedans.logement.parking === 'Portail du parking : 482.' && dedans.logement.regles?.includes('B7Z'), 'dans les 48 h : montrés');
     if (racine) {
       const fiche = code('src/erp/modules/logements/onglets/FicheVoyageur.tsx');
-      verifier(['f.parking', 'f.consignesDepart', 'f.regles', 'f.aSavoir'].every((c) => fiche.includes(`aideOuCode(${c}`)) && /aideOuCode\(edition\.reponse\)/.test(code('src/erp/modules/logements/onglets/GuidesFiche.tsx')), 'fiche voyageur : l’avertissement sous parking, consignes, règles, à savoir, réponses');
-      verifier(/Un code semble écrit ici : ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée\./.test(source('src/erp/modules/logements/_composants/avertissementCode.tsx')) && /codeProbable\(texte\)/.test(code('src/erp/modules/logements/_composants/avertissementCode.tsx')), 'avertissement : la conséquence (« ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée »), même règle que le livret');
+      verifier(['f.parking', 'f.consignesDepart', 'f.regles', 'f.aSavoir'].every((c) => fiche.includes(`aideOuCode(${c}, enCours`)) && /aideOuCode\(edition\.reponse, logement\)/.test(code('src/erp/modules/logements/onglets/GuidesFiche.tsx')) && /logement=\{enCours\}/.test(fiche), 'fiche voyageur : l’avertissement sous parking, consignes, règles, à savoir, réponses (logement en cours d’édition)');
+      verifier(/Un code semble écrit ici : ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée\./.test(source('src/erp/modules/logements/_composants/avertissementCode.tsx')) && /texteCacheAvant48h\(texte, logement\)/.test(code('src/erp/modules/logements/_composants/avertissementCode.tsx')), 'avertissement : la conséquence (« ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée »), même règle que le livret');
     }
 
     // Le jour du départ : « pendant » jusqu'à l'heure de départ, codes cachés, plus de date « à partir du ».
@@ -579,7 +580,27 @@ async function principal() {
     // Nom du logement : le titre de l'annonce, jamais le nom interne.
     const sansTitre = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, descriptif: { ...LOGEMENT.descriptif, titre: '' } }, aujourdhui: AUJ, checkinOuvert: true });
     verifier(sansTitre.logement.nom === '' && sansTitre.logement.ville === 'Corbeil-Essonnes' && !/M\. Exemple|propri/.test(JSON.stringify(sansTitre)), 'sans titre d’annonce : pas de nom (la ville), jamais le nom interne', sansTitre.logement);
-    if (racine) verifier(/l\.nom \|\| l\.ville \|\| t\.votreLogement/.test(code('src/erp/sejour/LivretSejour.tsx')), 'livret : titre, sinon la ville, sinon « Votre logement »');
+    if (racine) {
+      const livret = code('src/erp/sejour/LivretSejour.tsx');
+      verifier(/const nomLogement = l\.nom \|\| l\.ville;/.test(livret) && /\{nomLogement && </.test(livret) && !('votreLogement' in TEXTES.fr), 'livret : titre, sinon la ville, sinon aucune ligne (plus de « Votre logement »)');
+      verifier(/vue\.moment !== 'apres' && \(\s*<a href=\{`https:\/\/www\.google\.com\/maps/.test(livret), 'livret : pas d’« Itinéraire » après le séjour');
+    }
+
+    // Code retiré montré sans crochets au voyageur (CODE_MASQUE de l'agent inchangé).
+    const vus = [
+      texteFiche(`Digicode immeuble ${CODE_MASQUE}.`, 'fr'),
+      texteFiche(`Portail du parking : code ${CODE_MASQUE}.`, 'fr'),
+      texteFiche(`Digicode immeuble ${CODE_MASQUE}.`, 'en'),
+      texteFiche(`Portail du parking : code ${CODE_MASQUE}.`, 'en'),
+    ];
+    verifier(
+      vus.join('|') ===
+        ['Digicode immeuble (code communiqué 48 h avant l’arrivée).', 'Portail du parking : code (communiqué 48 h avant l’arrivée).', 'Digicode immeuble (code shared 48 h before arrival).', 'Portail du parking : code (shared 48 h before arrival).'].join('|'),
+      'livret : « (code communiqué 48 h avant l’arrivée) », sans crochets ni « code » doublé, FR et EN',
+      vus,
+    );
+    verifier(CODE_MASQUE === '[code communiqué dans les 48 heures avant l’arrivée]', 'CODE_MASQUE de l’agent inchangé');
+    verifier(TEXTES.fr.vosDonnees === 'Vos données' && TEXTES.en.vosDonnees === 'Your data' && TEXTES.fr.fichesARemplir === 'Vous remplissez de nouveau les fiches.' && TEXTES.fr.garderFiches === 'Garder celles déjà envoyées', 'formulaire : repli « Vos données », « Vous remplissez de nouveau les fiches. » puis « Garder celles déjà envoyées »');
   }
 
   section('12. Clarté avant les 48 h : code postal, année, distance, numéro de bus lisibles ; codes toujours cachés');
@@ -634,6 +655,13 @@ async function principal() {
       ['Bus 4821 jusqu’à la gare.', /4821/],
     ].filter(([t, motif]) => (motif as RegExp).test(cache({ aSavoir: t as string })));
     verifier(fuites.length === 0, '« Boîte 4821 », « code 4821 », « Portail : 4 8 2 », « tapez 4821 au portail », wifi, code de l’accès derrière « bus » : jamais montrés', fuites.map(([t]) => t));
+    // Avertissement de la fiche : exactement les textes que le livret cache en entier (pas ceux dont le code est seulement masqué).
+    const essais = ['Portail du parking : 482.', 'Laissez les clés dans la boîte, code 4821.', 'Le wifi soleil2026 marche partout.', 'Boulangerie, 91100 Corbeil-Essonnes.', 'Bus 4821 jusqu’à la gare.', 'Poubelles le mardi.'];
+    const ecarts = essais.filter((t) => {
+      const v = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, aSavoir: t } }, aujourdhui: AUJ, checkinOuvert: true });
+      return texteCacheAvant48h(t, { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, aSavoir: t } }) !== (v.logement.aSavoir === undefined);
+    });
+    verifier(ecarts.length === 0 && texteCacheAvant48h('Portail du parking : 482.', LOGEMENT) && !texteCacheAvant48h('Laissez les clés dans la boîte, code 4821.', LOGEMENT) && texteCacheAvant48h('Le wifi soleil2026', LOGEMENT), 'avertissement de la fiche : même règle que le livret (code court, wifi, code de l’accès : caché ; code masqué : montré)', ecarts);
     const croise = cache({ parking: 'Portail du parking : code 482.', aSavoir: 'Tapez 482 en bas.' });
     verifier(!/482/.test(croise), 'code cité après « code » dans un champ, écrit nu dans un autre : le texte attend les 48 h');
     verifier(/Corbeil-Essonnes/.test(cache({ aSavoir: 'Code postal 91100 Corbeil-Essonnes.' })) && /91100/.test(cache({ aSavoir: 'Code postal 91100 Corbeil-Essonnes.' })), '« code postal 91100 » : ni masqué ni pris pour un code');

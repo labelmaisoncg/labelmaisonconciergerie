@@ -49,11 +49,12 @@ const FR = {
   retirer: 'Retirer',
   fichesGardees: (n: number) => `${pluriel(n, 'fiche déjà envoyée', 'fiches déjà envoyées')}. Pour votre confidentialité, elles ne sont pas réaffichées ici.`,
   remplirDeNouveau: 'Les remplir de nouveau',
-  garderFiches: 'Garder les fiches déjà envoyées',
+  fichesARemplir: 'Vous remplissez de nouveau les fiches.',
+  garderFiches: 'Garder celles déjà envoyées',
   accepte: 'J’ai lu le règlement intérieur et je l’accepte.',
   voirReglement: 'Voir le règlement',
   confidentialiteCourte: 'Gardées 6 mois, transmises seulement à la police si elle le demande.',
-  enSavoirPlus: 'En savoir plus',
+  vosDonnees: 'Vos données',
   confidentialite:
     'Ces informations servent seulement à préparer votre arrivée. Les fiches de police sont gardées 6 mois, comme la loi le demande, puis effacées. Elles ne sont transmises qu’à la police ou à la gendarmerie, si elles le demandent.',
   signature: 'En envoyant, vous certifiez ces informations exactes.',
@@ -108,8 +109,9 @@ const FR = {
   reessayer: 'Réessayer',
   lienIncomplet: 'Ce lien est incomplet. Ouvrez le lien reçu dans votre messagerie de réservation.',
   lienExpire: 'Ce lien a expiré.',
-  votreLogement: 'Votre logement',
-  codeMasque: CODE_MASQUE,
+  // Le code retiré, montré sans crochets (CODE_MASQUE, celui de l'agent, ne change pas).
+  codeMasque: '(code communiqué 48 h avant l’arrivée)',
+  codeMasqueApresMot: '(communiqué 48 h avant l’arrivée)',
 };
 
 const EN: typeof FR = {
@@ -153,11 +155,12 @@ const EN: typeof FR = {
   retirer: 'Remove',
   fichesGardees: (n: number) => `${pluriel(n, 'form already sent', 'forms already sent')}. For your privacy, they are not shown again here.`,
   remplirDeNouveau: 'Fill them in again',
-  garderFiches: 'Keep the forms already sent',
+  fichesARemplir: 'You are filling in the forms again.',
+  garderFiches: 'Keep the ones already sent',
   accepte: 'I have read and accept the house rules.',
   voirReglement: 'See the house rules',
   confidentialiteCourte: 'Kept for 6 months, only shared with the police if they ask.',
-  enSavoirPlus: 'Learn more',
+  vosDonnees: 'Your data',
   confidentialite:
     'This information is only used to prepare your arrival. Police forms are kept for 6 months, as French law requires, then deleted. They are only shared with the police, if they ask for them.',
   signature: 'By sending, you confirm this information is correct.',
@@ -211,8 +214,8 @@ const EN: typeof FR = {
   reessayer: 'Try again',
   lienIncomplet: 'This link is incomplete. Open the link from your booking messages.',
   lienExpire: 'This link has expired.',
-  votreLogement: 'Your accommodation',
-  codeMasque: '[code shared within 48 hours before arrival]',
+  codeMasque: '(code shared 48 h before arrival)',
+  codeMasqueApresMot: '(shared 48 h before arrival)',
 };
 
 export const TEXTES: Record<LangueSejour, typeof FR> = { fr: FR, en: EN };
@@ -238,8 +241,16 @@ export function jourHorodatage(h: string, langue: LangueSejour): string {
   return new Intl.DateTimeFormat(langue === 'fr' ? 'fr-FR' : 'en-GB', { day: 'numeric', month: 'long', timeZone: 'Europe/Paris' }).format(new Date(t));
 }
 
-/** Texte de la fiche affiché : le code retiré (« [code communiqué…] ») dit dans la langue du voyageur. */
-export const texteFiche = (t: string, langue: LangueSejour): string => (langue === 'fr' ? t : t.split(CODE_MASQUE).join(TEXTES.en.codeMasque));
+/** Le code retiré tel que la vue le donne, avec le mot « code » qui le précède s'il y en a un. */
+const CODE_MASQUE_VU = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
+
+/**
+ * Texte de la fiche affiché : le code retiré dit sans crochets, dans la
+ * langue du voyageur (« Digicode (code communiqué 48 h avant l’arrivée) »,
+ * « Portail : code (communiqué 48 h avant l’arrivée) »).
+ */
+export const texteFiche = (t: string, langue: LangueSejour): string =>
+  t.replace(CODE_MASQUE_VU, (_tout: string, mot: string | undefined) => (mot ? `${mot}${TEXTES[langue].codeMasqueApresMot}` : TEXTES[langue].codeMasque));
 
 /** Le code retiré, avec ce qui le précède : le mot « code » (« code : [code communiqué…] »), deux-points ou espace. */
 const CODE_RETIRE = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*|\\s*:\\s*|\\s+)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');

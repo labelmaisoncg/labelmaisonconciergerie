@@ -188,9 +188,12 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
       {tousFrancais === false && !fichesGardees && (
         <div className="flex flex-col gap-4">
           {!!envoyees?.fiches && (
-            <Button variant="ghost" size="sm" className="self-start" onClick={() => setGarder(true)}>
-              {t.garderFiches}
-            </Button>
+            <div className="flex flex-col items-start gap-2">
+              <p className="text-[14px] text-(--lm-encre-2)">{t.fichesARemplir}</p>
+              <Button variant="secondary" size="sm" onClick={() => setGarder(true)}>
+                {t.garderFiches}
+              </Button>
+            </div>
           )}
           <p className="text-[14px] text-(--lm-encre-2)">{t.ficheExplication}</p>
           {erreur('fiches') && <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">{erreur('fiches')}</p>}
@@ -297,8 +300,8 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
         )}
         <details className="group">
           <summary className="inline-flex min-h-8 cursor-pointer list-none items-center font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
-            {/* Sans fiche de police, pas de phrase avant : le repli dit de quoi il parle. */}
-            {tousFrancais === false ? t.enSavoirPlus : t.confidentialiteLien}
+            {/* « Vos données » : le lien « Confidentialité » du bas de page reste seul de son nom. */}
+            {t.vosDonnees}
           </summary>
           <p>{t.confidentialite}</p>
         </details>

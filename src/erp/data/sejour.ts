@@ -678,6 +678,30 @@ function secretsDuLivret(l: Logement | undefined): { acces: string; wifiCode: st
   return { acces: [f?.acces ?? '', ...codesCitesApresMot(autres).map((c) => `code ${c}.`)].join('\n'), wifiCode: f?.wifiCode ?? '', wifiNom: f?.wifiNom ?? '' };
 }
 
+/**
+ * Un texte libre de la fiche tel que le livret le montre avant les 48 h, ou
+ * undefined s'il attend les 48 h en entier.
+ */
+function texteAvant48h(brut: string, l: Logement | undefined, secrets = secretsDuLivret(l)): string | undefined {
+  // Le wifi (nom ou mot de passe) cherché AVANT le masquage : masquerCodes en couperait les chiffres
+  // (« soleil2026 » → « soleil[code…] ») et le reste du mot de passe passerait.
+  if (contientCodeAcces(brut, { wifiCode: l?.fiche?.wifiCode ?? '', wifiNom: l?.fiche?.wifiNom ?? '' })) return undefined;
+  // Code postal, année, distance, numéro de bus : lisibles ; toute autre suite de chiffres masquée.
+  const masque = masquerCodesLivret(brut).trim();
+  // Un code de l'accès ou cité ailleurs, ou un code court sans le mot « code » (« Portail : 482 ») : le texte attend les 48 h.
+  return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque) ? masque : undefined;
+}
+
+/**
+ * Le livret cachera-t-il ce texte en entier jusqu'aux 48 h avant l'arrivée ?
+ * Même règle que la vue du voyageur : sert à l'avertissement de la fiche du
+ * logement (un code seulement masqué ne cache pas le texte).
+ */
+export function texteCacheAvant48h(texte: string | undefined, l: Logement | undefined): boolean {
+  const brut = texte?.trim();
+  return !!brut && texteAvant48h(brut, l) === undefined;
+}
+
 /** Texte court montré tel quel (titre d'un guide, adresse) : cite-t-il un code d'accès ou le wifi de ce logement ? */
 const citeUnCode = (t: string | undefined, l: Logement | undefined): boolean => !!t?.trim() && contientCodeAcces(t, secretsDuLivret(l));
 
@@ -716,14 +740,7 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
   const sur = (t: string | undefined): string | undefined => {
     const brut = t?.trim();
     if (!brut) return undefined;
-    if (codes) return brut;
-    // Le wifi (nom ou mot de passe) cherché AVANT le masquage : masquerCodes en couperait les chiffres
-    // (« soleil2026 » → « soleil[code…] ») et le reste du mot de passe passerait.
-    if (contientCodeAcces(brut, { wifiCode: f?.wifiCode ?? '', wifiNom: f?.wifiNom ?? '' })) return undefined;
-    // Code postal, année, distance, numéro de bus : lisibles ; toute autre suite de chiffres masquée.
-    const masque = masquerCodesLivret(brut).trim();
-    // Un code de l'accès ou cité ailleurs, ou un code court sans le mot « code » (« Portail : 482 ») : le texte attend les 48 h.
-    return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque) ? masque : undefined;
+    return codes ? brut : texteAvant48h(brut, l, secrets);
   };
   const versGuide = (g: GuideLogement): GuideSejour | null => {
     const adresse = estLienGuide(g.media?.url) ? g.media.url!.trim() : estFichierGuide(g.media?.fichier) ? lien(g.media.fichier!) : undefined;

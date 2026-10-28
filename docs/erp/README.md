@@ -2316,7 +2316,7 @@ Pensée pour le téléphone, en français ou en anglais (bouton FR / EN ; les
 textes de la fiche restent tels que l'équipe les a écrits).
 
 **Ce que voit le voyageur** : « Bonjour Marie », le logement (titre de
-l'annonce, sinon la ville, sinon « Votre logement » : jamais le nom interne,
+l'annonce, sinon la ville, sinon rien : jamais le nom interne,
 qui peut citer le propriétaire ; photo), arrivée et départ avec leurs
 heures, nuits et voyageurs ; le **check-in en ligne** ; **Accès et wifi** —
 seulement pour une réservation confirmée, de 48 h avant l'arrivée à la
@@ -2337,7 +2337,9 @@ direct. Avant les 48 h, un texte qui cite le wifi (cherché dans le texte
 brut) n'est pas montré ; les autres passent par `masquerCodesLivret` : code
 postal, année (« rénové en 2019 »), distance, durée, montant, numéro de bus,
 de ligne ou « n° » restent lisibles, toute autre suite de chiffres est
-masquée comme pour l'IA. Un texte n'est pas montré s'il cite encore un code
+masquée comme pour l'IA, et montrée sans crochets (« Digicode (code
+communiqué 48 h avant l'arrivée) ») ; après le séjour, plus
+d'« Itinéraire ». Un texte n'est pas montré s'il cite encore un code
 du champ Accès, le wifi ou un code écrit après « code » dans un autre champ
 (jamais les nombres nus des autres champs : « 91100 » n'est pas un secret),
 ni si un court jeton avec un chiffre (même espacé : « 4 8 2 ») suit ou
@@ -2368,7 +2370,7 @@ voyageur les garde telles quelles ou les remplit de nouveau.
 > (`src/erp/data/sejour.ts`, `FICHE_POLICE`).
 
 **Côté équipe** (fiche d'une réservation, carte « Livret d'accueil et
-check-in ») : « Check-in en ligne : Fait le 24 sept. / Pas encore » (rien
+check-in ») : « Check-in : Fait le 24 sept. / Pas encore » (rien
 pour une réservation annulée ou un lien expiré), l'heure d'arrivée prévue,
 le nombre de voyageurs seulement s'il change (« 3 personnes (2 à la
 réservation) »), les fiches de police (repliées) et la date de leur

@@ -53,6 +53,8 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
   };
   const modifie = JSON.stringify(f) !== JSON.stringify(l.fiche);
   const c = completudeFiche(f);
+  // Le logement tel qu'il sera enregistré : l'avertissement suit la même règle que le livret.
+  const enCours = { ...l, fiche: f };
 
   const ajouterEquipement = () => {
     const v = equipement.trim();
@@ -86,10 +88,10 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
           <Field label="Accès au logement" className="sm:col-span-2" aide={`${LIBELLES.serrure[l.serrure]}. Jamais le code lui-même : il change à chaque séjour.`}>
             <Textarea value={f.acces} onChange={(e) => maj('acces', e.target.value)} rows={3} />
           </Field>
-          <Field label="Parking" className="sm:col-span-2" aide={aideOuCode(f.parking)}>
+          <Field label="Parking" className="sm:col-span-2" aide={aideOuCode(f.parking, enCours)}>
             <Input value={f.parking} onChange={(e) => maj('parking', e.target.value)} placeholder="Ex. place 12 au sous-sol, ou « pas de parking »" />
           </Field>
-          <Field label="Consignes de départ" className="sm:col-span-2" aide={aideOuCode(f.consignesDepart, 'Clés, poubelles, linge… Montrées dans le livret d’accueil. Facultatif.')}>
+          <Field label="Consignes de départ" className="sm:col-span-2" aide={aideOuCode(f.consignesDepart, enCours, 'Clés, poubelles, linge… Montrées dans le livret d’accueil. Facultatif.')}>
             <Textarea value={f.consignesDepart ?? ''} onChange={(e) => maj('consignesDepart', e.target.value)} rows={2} />
           </Field>
         </div>
@@ -112,7 +114,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
       <Card>
         <CardHeader titre="Règles et équipements" />
-        <Field label="Règles de la maison" aide={aideOuCode(f.regles)}>
+        <Field label="Règles de la maison" aide={aideOuCode(f.regles, enCours)}>
           <Textarea value={f.regles} onChange={(e) => maj('regles', e.target.value)} rows={3} />
         </Field>
         <div className="mt-4">
@@ -154,12 +156,12 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
       <Card>
         <CardHeader titre="À savoir" />
-        <Field label="Ce que votre agent doit savoir d’autre" aide={aideOuCode(f.aSavoir, 'Poubelles, chauffage, voisinage, commerces proches… Facultatif.')}>
+        <Field label="Ce que votre agent doit savoir d’autre" aide={aideOuCode(f.aSavoir, enCours, 'Poubelles, chauffage, voisinage, commerces proches… Facultatif.')}>
           <Textarea value={f.aSavoir ?? ''} onChange={(e) => maj('aSavoir', e.target.value)} rows={4} />
         </Field>
       </Card>
 
-      <SectionQuestions questions={f.questions ?? []} onChange={(q) => maj('questions', q.length ? q : undefined)} />
+      <SectionQuestions questions={f.questions ?? []} logement={enCours} onChange={(q) => maj('questions', q.length ? q : undefined)} />
 
       <SectionGuides logementId={l.id} guides={f.guides ?? []} onChange={(g) => maj('guides', g.length ? g : undefined)} />
 

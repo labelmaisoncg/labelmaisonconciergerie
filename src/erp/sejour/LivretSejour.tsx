@@ -152,7 +152,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
   const voirReglement = reglement ? () => document.getElementById('reglement')?.scrollIntoView({ block: 'start', behavior: 'smooth' }) : undefined;
   const montrerCheckin = c.ouvert && (c.fait || c.modifiable);
   // Le titre de l'annonce ; sans titre, la ville (jamais le nom interne du logement).
-  const nomLogement = l.nom || l.ville || t.votreLogement;
+  const nomLogement = l.nom || l.ville;
 
   const carteCheckinEl = montrerCheckin && (
     <div ref={carteCheckin} className="scroll-mt-20">
@@ -262,7 +262,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
         <section className="px-1 pt-1">
           <p className="text-[13px] font-medium tracking-wide text-(--lm-or-texte) uppercase">{t.titrePage}</p>
           <h1 className="lm-serif mt-1 text-[30px] leading-tight text-(--lm-encre)">{t.bonjour(vue.prenom)}</h1>
-          <p className="mt-1 text-[16px] text-(--lm-encre-2)">{nomLogement}</p>
+          {nomLogement && <p className="mt-1 text-[16px] text-(--lm-encre-2)">{nomLogement}</p>}
           {vue.moment === 'apres' && <p className="mt-2 text-[15px] text-(--lm-encre-2)">{t.apres}</p>}
         </section>
 
@@ -304,10 +304,13 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
               {l.adresse && (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="min-w-0 text-[15px] text-(--lm-encre)">{l.adresse}</p>
-                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.adresse)}`} target="_blank" rel="noopener noreferrer" className={classesBouton('secondary', 'md')}>
-                    <MapPin aria-hidden />
-                    {t.itineraire}
-                  </a>
+                  {/* Après le départ, plus d'itinéraire à proposer. */}
+                  {vue.moment !== 'apres' && (
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.adresse)}`} target="_blank" rel="noopener noreferrer" className={classesBouton('secondary', 'md')}>
+                      <MapPin aria-hidden />
+                      {t.itineraire}
+                    </a>
+                  )}
                 </div>
               )}
               {l.parking && (
