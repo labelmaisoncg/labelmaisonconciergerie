@@ -401,13 +401,14 @@ export default function Connexions() {
             }
           />
         ) : (
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          // grid-cols-1 (minmax(0, 1fr)) : un nom d'annonce très long ne fait jamais déborder la carte.
+          <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {etat.annonces.map((a) => {
               const coche = choix.has(a.id);
               const bloque = !coche && atteinte;
               const inactif = !gerant || enregistrement || !reel;
               return (
-                <li key={a.id}>
+                <li key={a.id} className="min-w-0">
                   <label
                     title={bloque ? infoLimite : undefined}
                     className={cn(
@@ -432,7 +433,9 @@ export default function Connexions() {
                       </span>
                     )}
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-medium text-(--lm-encre)">{a.nom}</span>
+                      <span className="line-clamp-2 text-[14px] font-medium break-words text-(--lm-encre)" title={a.nom}>
+                        {a.nom}
+                      </span>
                       {a.ville && <span className="block truncate text-[12.5px] text-(--lm-encre-3)">{a.ville}</span>}
                       <span className="mt-1 flex flex-wrap gap-1">
                         {a.plateformes.map((p) => (
