@@ -91,7 +91,8 @@ export function saisieInitiale(l?: Logement): SaisieLogement {
     codePostal: l?.codePostal ?? '',
     ville: l?.ville ?? '',
     type: l?.type ?? 'T2',
-    surfaceM2: l ? String(l.surfaceM2) : '',
+    // Inconnue (0 : importé ou créé sans surface) : champ vide, jamais « 0 ».
+    surfaceM2: l && l.surfaceM2 > 0 ? String(l.surfaceM2) : '',
     capacite: l ? String(l.capacite) : '',
     chambres: l ? String(l.chambres) : '1',
     lits: { double: lits('double'), simple: lits('simple'), canape: lits('canape') },
@@ -106,12 +107,12 @@ export function saisieInitiale(l?: Logement): SaisieLogement {
 
 /**
  * Erreurs de la saisie, par champ, en une phrase chacune.
- * - `surfaceFacultative` : l'assistant laisse la surface vide (0, à compléter
- *   dans la fiche) ; le formulaire la demande toujours.
+ * La surface est facultative (vide : 0, à compléter plus tard), dans
+ * l'assistant comme dans le formulaire ; tapée, c'est un entier positif.
  * - `nomsPris` : noms que ce logement ne peut pas prendre (nomsInterdits) ;
  *   comparés sans casse, accents ni espaces en trop.
  */
-export function erreursSaisieLogement(s: SaisieLogement, o: { surfaceFacultative?: boolean; nomsPris?: readonly string[] } = {}): ErreursLogement {
+export function erreursSaisieLogement(s: SaisieLogement, o: { nomsPris?: readonly string[] } = {}): ErreursLogement {
   const e: ErreursLogement = {};
   const pris = o.nomsPris ? nomDejaPris(s.nom, o.nomsPris) : undefined;
   if (!s.nom.trim()) e.nom = 'Le nom est obligatoire.';
@@ -119,7 +120,7 @@ export function erreursSaisieLogement(s: SaisieLogement, o: { surfaceFacultative
   if (!s.adresse.trim()) e.adresse = 'L’adresse est obligatoire.';
   if (!/^\d{5}$/.test(s.codePostal.trim())) e.codePostal = 'Code postal à 5 chiffres.';
   if (!s.ville.trim()) e.ville = 'La ville est obligatoire.';
-  if (!(entier(s.surfaceM2) > 0) && !(o.surfaceFacultative && !s.surfaceM2.trim())) e.surfaceM2 = 'Surface en m², nombre entier.';
+  if (s.surfaceM2.trim() && !(entier(s.surfaceM2) > 0)) e.surfaceM2 = 'Surface en m², nombre entier supérieur à 0, ou laissez vide.';
   if (!(entier(s.capacite) > 0)) e.capacite = 'Au moins 1 voyageur.';
   if (Number.isNaN(entier(s.chambres))) e.chambres = 'Nombre entier.';
   if (Object.values(s.lits).some((n) => Number.isNaN(entier(n)))) e.lits = 'Nombres entiers.';
@@ -445,7 +446,7 @@ export function erreursEtape(etape: EtapeAssistant, b: BrouillonLogement, ctx: C
   }
   // Mêmes règles que le formulaire, sur les champs de cet écran (surface facultative ici, nom jamais en double).
   const saisie = saisieDepuisBrouillon(b, b.proprietaireId);
-  const e = erreursSaisieLogement(saisie, { surfaceFacultative: true, nomsPris: ctx.nomsPris });
+  const e = erreursSaisieLogement(saisie, { nomsPris: ctx.nomsPris });
   for (const k of CHAMPS_ETAPE[etape]) {
     if (!e[k]) continue;
     const vide = typeof saisie[k] === 'string' && !(saisie[k] as string).trim();
@@ -477,7 +478,7 @@ export function creationDepuisAssistant(
   if (erreurs.length) return { ok: false, etape: etapeDuChamp(erreurs[0][0]), erreur: erreurs[0][1] };
   const proprietaire = b.modeProprietaire === 'nouveau' ? proprietaireDepuisSaisie(b.nouveauProprietaire, o.idProprietaire, o.aujourdhui) : undefined;
   const saisie = saisieDepuisBrouillon(b, proprietaire?.id ?? b.proprietaireId);
-  const reste = Object.entries(erreursSaisieLogement(saisie, { surfaceFacultative: true, nomsPris: o.nomsPris }));
+  const reste = Object.entries(erreursSaisieLogement(saisie, { nomsPris: o.nomsPris }));
   if (reste.length) return { ok: false, etape: etapeDuChamp(reste[0][0]), erreur: reste[0][1] };
   return { ok: true, logement: logementDepuisSaisie(saisie, o.idLogement, o.aujourdhui), ...(proprietaire ? { proprietaire } : {}) };
 }

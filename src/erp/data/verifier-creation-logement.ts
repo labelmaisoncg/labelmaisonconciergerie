@@ -105,8 +105,8 @@ section('Formulaire : règles de saisie');
 {
   const e = erreursSaisieLogement(saisieInitiale());
   verifier(
-    empreinte(Object.keys(e).sort()) === empreinte(['adresse', 'capacite', 'codePostal', 'nom', 'proprietaireId', 'surfaceM2', 'ville']),
-    `saisie vide : nom, adresse, code postal, ville, surface, capacité, propriétaire (${Object.keys(e).join(', ')})`,
+    empreinte(Object.keys(e).sort()) === empreinte(['adresse', 'capacite', 'codePostal', 'nom', 'proprietaireId', 'ville']),
+    `saisie vide : nom, adresse, code postal, ville, capacité, propriétaire ; la surface est facultative (${Object.keys(e).join(', ')})`,
   );
   const ok: SaisieLogement = { ...saisieInitiale(), nom: 'X', adresse: '1 rue', codePostal: '91100', ville: 'Évry', surfaceM2: '30', capacite: '2', proprietaireId: A };
   verifier(Object.keys(erreursSaisieLogement(ok)).length === 0, 'saisie complète : aucune erreur');
@@ -192,7 +192,7 @@ section('Assistant : six écrans, une question chacun');
   );
   verifier(erreursEtape('adresse', { ...b, adresse: '1 rue', codePostal: '911', ville: 'Évry' }, ctx).codePostal === 'Code postal à 5 chiffres.', 'code postal incomplet : la règle du formulaire');
   verifier(Object.keys(erreursEtape('capacite', b, ctx)).length === 0, 'capacité : on continue sans surface (facultative, à compléter dans la fiche)');
-  verifier(erreursEtape('capacite', { ...b, surfaceM2: '0' }, ctx).surfaceM2 === 'Surface en m², nombre entier.', 'surface à 0 refusée');
+  verifier(erreursEtape('capacite', { ...b, surfaceM2: '0' }, ctx).surfaceM2 === 'Surface en m², nombre entier supérieur à 0, ou laissez vide.', 'surface à 0 refusée');
   verifier(erreursEtape('capacite', { ...b, surfaceM2: '30', capacite: 0 }, ctx).capacite === 'Au moins 1 voyageur.', 'zéro voyageur refusé');
   verifier(erreursEtape('nom', b, ctx).nom === 'Donnez un nom au logement.' && !erreursEtape('nom', { ...b, nom: 'X' }, ctx).nom, 'nom : obligatoire');
   verifier(erreursEtape('proprietaire', b, ctx).proprietaireId === 'Choisissez le propriétaire.', 'propriétaire : à choisir dans la liste');
@@ -259,14 +259,19 @@ section('Assistant : lits (un compteur, détail replié)');
   verifier(texteLits({ double: 2, simple: 0, canape: 1 }) === '2 lits doubles, 1 canapé-lit' && texteLits({ double: 0, simple: 0, canape: 0 }) === '', 'détail des lits en une ligne');
 }
 
-section('Assistant : surface facultative, le formulaire la demande toujours');
+section('Surface facultative, dans l’assistant comme dans le formulaire');
 {
   const ctx = { proprietaires, nomsPris: NOMS_PRIS };
   const r = creationDepuisAssistant(brouillon({ surfaceM2: '' }), { ...ctx, idLogement: 'log-s', idProprietaire: 'pro-s', aujourdhui: JOUR });
   verifier(r.ok && r.logement.surfaceM2 === 0, 'sans surface : 0, à compléter dans la fiche');
-  verifier(erreursSaisieLogement(saisieInitiale()).surfaceM2 !== undefined, 'formulaire : surface toujours obligatoire');
-  verifier(erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: '' }, { surfaceFacultative: true }).surfaceM2 === undefined, 'assistant : surface vide acceptée');
-  verifier(erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: '0' }, { surfaceFacultative: true }).surfaceM2 !== undefined, 'assistant : surface à 0 refusée');
+  verifier(erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: '' }).surfaceM2 === undefined, 'surface vide acceptée');
+  verifier(['0', '-3', 'abc', '12,5'].every((v) => erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: v }).surfaceM2 !== undefined), 'surface tapée : 0, négative ou pas un entier, refusée');
+  verifier(erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: '45' }).surfaceM2 === undefined, 'surface tapée : 45 acceptée');
+  if (r.ok) {
+    const modif = saisieInitiale(r.logement);
+    verifier(modif.surfaceM2 === '', 'modifier un logement sans surface : champ vide, jamais « 0 »');
+    verifier(erreursSaisieLogement(modif).surfaceM2 === undefined, 'modifier un logement sans surface : l’enregistrement n’est pas bloqué');
+  }
 }
 
 section('Assistant : suggestions');

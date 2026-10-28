@@ -115,7 +115,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <Field label="Type">
           <Select value={s.type} onChange={(e) => maj('type', e.target.value as TypeLogement)} options={TYPES} />
         </Field>
-        <Field label="Surface (m²)" requis erreur={erreurs.surfaceM2}>
+        <Field label="Surface (m²)" erreur={erreurs.surfaceM2}>
           <Input value={s.surfaceM2} onChange={(e) => maj('surfaceM2', e.target.value)} inputMode="numeric" />
         </Field>
         <Field label="Capacité (voyageurs)" requis erreur={erreurs.capacite}>

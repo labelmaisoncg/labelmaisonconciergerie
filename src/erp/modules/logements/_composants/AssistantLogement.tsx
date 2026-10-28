@@ -474,6 +474,8 @@ function EtapeAdresse({ b, maj, erreur, quitter }: PropsChamps) {
 function EtapeCapacite({ b, maj, erreur, quitter }: Omit<PropsChamps, 'erreur'> & { erreur?: string }) {
   const erreurId = useId();
   const detail = texteLits(b.lits);
+  // Lu au premier affichage seulement : le repli ne se referme pas sous la main quand un compteur revient à 0.
+  const [detailOuvert] = useState(() => b.lits.simple + b.lits.canape > 0);
   return (
     <ul className="divide-y divide-(--lm-bord) border-b border-(--lm-bord)">
       <Compteur libelle="Voyageurs" valeur={b.capacite} bornes={BORNES.capacite} retirer="Retirer un voyageur" ajouter="Ajouter un voyageur" onChange={(capacite) => maj({ capacite })} />
@@ -481,7 +483,7 @@ function EtapeCapacite({ b, maj, erreur, quitter }: Omit<PropsChamps, 'erreur'> 
       <Compteur libelle="Lits" valeur={totalLits(b.lits)} bornes={BORNES.lits} retirer="Retirer un lit" ajouter="Ajouter un lit" onChange={(n) => maj({ lits: changerTotalLits(b.lits, n) })} />
       {/* Le détail par type est replié : déplié d'office s'il y a déjà autre chose que des lits doubles. */}
       <li className="pb-3">
-        <Repli titre="Préciser les lits" description={detail || 'Aucun lit'} ouvert={b.lits.simple + b.lits.canape > 0} className="shadow-none">
+        <Repli titre="Préciser les lits" description={detail || 'Aucun lit'} ouvert={detailOuvert} className="shadow-none">
           <ul className="-my-2.5 divide-y divide-(--lm-bord)">
             {TYPES_LIT.map((t) => (
               <Compteur key={t} {...LITS[t]} valeur={b.lits[t]} bornes={BORNES.lits} onChange={(n) => maj({ lits: { ...b.lits, [t]: n } })} />
@@ -738,7 +740,7 @@ function ResidencePrincipale({ valeur, choisir, continuer }: { valeur?: boolean;
   return (
     <div id={ID_QUESTION_RESIDENCE} className="mt-6 border-t border-(--lm-bord) pt-5">
       <p id={questionId} className="text-[15px] font-medium text-(--lm-encre)">
-        C’est la résidence principale du propriétaire{NBSP}?
+        Est-ce la résidence principale du propriétaire{NBSP}?
       </p>
       <div
         role="radiogroup"
