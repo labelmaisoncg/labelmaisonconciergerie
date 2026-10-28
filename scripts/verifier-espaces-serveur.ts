@@ -1953,6 +1953,7 @@ async function principal() {
     verifier(res.statut === 200 && v?.prenom === 'Alix' && v?.conciergerie === 'Sens' && v?.acces?.visible === false && v?.acces?.aPartirDu === jour(8), 'voyageur, 10 jours avant : livret de Sens, codes pas encore (à partir de J-2)', v?.acces);
     verifier(!/Wifi-Essai-Sens|motdepasse-9137|4821|7319|Testeur|31400|4700|pro-sj|montant|commission|Bo[iî]te à clés/i.test(texteVue), 'voyageur, 10 jours avant : ni code, ni wifi, ni nom de famille, ni montant, ni propriétaire', texteVue.slice(0, 400));
     verifier(v?.logement?.regles === 'Pas de fête.' && v?.logement?.aSavoir === 'Poubelles le mardi.' && v?.logement?.adresse === '3 rue des Essais, 89100 Sens', 'voyageur : règles, à savoir et adresse montrés', v?.logement);
+    verifier(v?.logement?.nom === '' && v?.logement?.ville === 'Sens' && !texteVue.includes('Studio Essai Sens'), 'sans titre d’annonce : jamais le nom interne du logement (la ville)', v?.logement);
     const lectures = monde.base.filter((r) => r.chemin === 'enregistrements' || r.chemin.startsWith('enregistrements?'));
     verifier(lectures.length > 0 && lectures.every((r) => r.espace === SENS && r.jeton === 'jeton-serveur'), 'voyageur : tout est lu dans Sens, avec le compte serveur', lectures.map((r) => r.espace));
     res = await vue(jetonDe(await lienSejourServeur(SENS, 'res-sj-demain')));
@@ -1960,7 +1961,7 @@ async function principal() {
 
     // Annulé, jeton d'un autre espace, autre secret, jeton retouché, sans provenance du site : rien.
     res = await vue(await signerJetonSejour(env.ACCES_SECRET!, { espace: SENS, reservationId: 'res-sj-annulee' }));
-    verifier(res.statut === 410 && res.corps?.code === 'annule' && !res.corps?.vue, 'séjour annulé : rien d’autre que « annulé »', res.corps);
+    verifier(res.statut === 410 && res.corps?.code === 'annule' && !res.corps?.vue && Object.keys(res.corps ?? {}).sort().join() === 'code,conciergerie,erreur,ok' && res.corps?.conciergerie === 'Sens', 'séjour annulé : rien d’autre que « annulé » et le nom de la conciergerie (en-tête)', res.corps);
     res = await vue(await signerJetonSejour(env.ACCES_SECRET!, { espace: LM, reservationId: 'res-sj-loin' }));
     verifier(res.statut === 404 && !res.corps?.vue, 'jeton de Label Maison pour une réservation de Sens : introuvable', res.statut);
     res = await vue(await signerJetonSejour('un-autre-secret-de-trente-deux-caracteres-au-moins', { espace: SENS, reservationId: 'res-sj-loin' }));
@@ -1985,6 +1986,9 @@ async function principal() {
     oublierCheckinPret();
     res = await checkin({ checkin: { ...saisie, fiches: [{ ...saisie.fiches[0], naissanceLe: '2099-01-01' }] } });
     verifier(res.statut === 400 && res.corps?.erreurs?.some((e: { champ: string }) => e.champ === 'naissanceLe'), 'date de naissance impossible : refusée, champ signalé', res.corps);
+    // 17 ans le jour de l'arrivée (dans 10 jours), un enfant sur sa fiche : refusé par le serveur aussi.
+    res = await checkin({ checkin: { ...saisie, nbPersonnes: 3, fiches: [{ ...saisie.fiches[0], naissanceLe: ajouterJours(jour(10), -17 * 366), enfants: 1 }] } });
+    verifier(res.statut === 400 && res.corps?.erreurs?.some((e: { champ: string }) => e.champ === 'enfantsMineur') && !monde.lignes.has(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`), 'enfants sur la fiche d’un voyageur de moins de 18 ans : refusé, rien enregistré', res.corps);
     res = await checkin({ checkin: { ...saisie, passeport: 'X1234567', fiches: saisie.fiches.map((f) => ({ ...f, photo: 'data:image/png;base64,AAAA' })) } });
     const ligne = monde.lignes.get(`${SENS}\u0000${COLLECTION_CHECKINS}\u0000res-sj-loin`)?.donnees as Record<string, any> | undefined;
     verifier(res.statut === 200 && res.corps?.vue?.checkin?.fait === true && ligne?.envois === 1 && ligne?.langue === 'en' && ligne?.conserverJusquAu > jour(150), 'check-in envoyé : rangé dans Sens, conservation au départ + 6 mois', ligne);
@@ -2004,6 +2008,32 @@ async function principal() {
     verifier(res.statut === 404, 'équipe de Label Maison : rien du check-in de Sens', res.statut);
     res = await appelSejour({ corps: { action: 'checkin', jeton: await signerJetonSejour(env.ACCES_SECRET!, { espace: SENS, reservationId: 'res-sj-fini' }), checkin: saisie } });
     verifier(res.statut === 410, 'séjour terminé depuis 5 jours : plus de check-in', res.statut);
+
+    // SEJOUR_SECRET (facultative) : signe seule les liens ; les anciens (ACCES_SECRET) ne valent plus. Trop courte : aucun lien.
+    {
+      const ailleurs = { 'x-forwarded-for': '203.0.113.20' };
+      env.SEJOUR_SECRET = 'secret-propre-aux-liens-des-sejours-0123456789';
+      res = await equipe('res-sj-loin');
+      const lienPropre = String(res.corps?.suivi?.lien ?? '');
+      verifier(res.statut === 200 && lienPropre.startsWith('https://www.labelmaisoncg.fr/sejour#') && lienPropre !== lien && (await lienSejourServeur(SENS, 'res-sj-loin')) === lienPropre, 'SEJOUR_SECRET posée : un autre lien, le même pour les messages automatiques', res.corps?.suivi);
+      res = await vue(jetonDe(lienPropre), ailleurs);
+      verifier(res.statut === 200 && res.corps?.vue?.conciergerie === 'Sens', 'SEJOUR_SECRET : le nouveau lien ouvre le livret', res.statut);
+      res = await vue(jetonDe(lien), ailleurs);
+      verifier(res.statut === 404 && !res.corps?.vue, 'SEJOUR_SECRET : l’ancien lien (ACCES_SECRET) est refusé', res.statut);
+      env.SEJOUR_SECRET = 'trop-court';
+      res = await equipe('res-sj-loin');
+      verifier(res.statut === 200 && !res.corps?.suivi?.lien && /SEJOUR_SECRET est trop courte/.test(res.corps?.suivi?.raison ?? ''), 'SEJOUR_SECRET trop courte : aucun lien (pas de retour discret à ACCES_SECRET), la carte le dit', res.corps?.suivi);
+      res = await vue(jetonDe(lien), ailleurs);
+      verifier(res.statut === 503 && !res.corps?.vue, 'SEJOUR_SECRET trop courte : aucun livret ouvert', res.statut);
+      delete env.SEJOUR_SECRET;
+      res = await vue(jetonDe(lien), ailleurs);
+      verifier(res.statut === 200 && (await lienSejourServeur(SENS, 'res-sj-loin')) === lien, 'sans SEJOUR_SECRET : ACCES_SECRET signe de nouveau, les liens envoyés reviennent', res.statut);
+      const acces = env.ACCES_SECRET;
+      delete env.ACCES_SECRET;
+      res = await equipe('res-sj-loin');
+      verifier(res.statut === 200 && !res.corps?.suivi?.lien && /ajoutez ACCES_SECRET \(ou SEJOUR_SECRET\)/.test(res.corps?.suivi?.raison ?? ''), 'ni l’une ni l’autre : aucun lien, la carte dit quoi ajouter', res.corps?.suivi);
+      env.ACCES_SECRET = acces;
+    }
 
     // Purge : 6 mois après le départ (et tout de suite pour un séjour annulé), dans chaque espace.
     monde.poser(SENS, 'reservations', resa('res-sj-vieux', -200, -190, 'terminee'));

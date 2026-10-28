@@ -2,9 +2,10 @@
  * Formulaire du check-in en ligne : heure d'arrivée, voyageurs, nationalité
  * et, pour les voyageurs étrangers seulement, la fiche de police (une par
  * voyageur de 15 ans et plus). Contrôlé ici avec la même règle que le
- * serveur (lireSaisieCheckin), qui contrôle de nouveau à l'envoi.
+ * serveur (lireSaisieCheckin), qui contrôle de nouveau à l'envoi. Après un
+ * envoi refusé, le premier champ à corriger reçoit le focus.
  */
-import { useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Alert, Button, Field, Input, Select, cn } from '../ui';
 import { MAX_ENFANTS_PAR_FICHE, MESSAGES_ERREURS, lireSaisieCheckin, type ChampCheckin, type ErreurCheckin, type FichePolice, type LangueSejour, type SaisieCheckin, type VueSejour } from '../data/sejour';
@@ -23,6 +24,7 @@ export interface FormulaireCheckinProps {
   /** Envoi : null si c'est enregistré, sinon les champs refusés par le serveur ou un message. */
   onEnvoyer: (saisie: SaisieCheckin) => Promise<{ erreurs?: ErreurCheckin[]; message?: string } | null>;
   onAnnuler?: () => void;
+  /** Absent : la page n'a pas de règlement à montrer. */
   onVoirReglement?: () => void;
 }
 
@@ -39,10 +41,10 @@ function Choix({ nom, valeur, options, onChange, legende, erreur }: { nom: strin
               key={libelle}
               className={cn(
                 'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[15px] transition-colors focus-within:ring-4 focus-within:ring-(--lm-or-lavis)',
-                valeur === v ? 'border-(--lm-or) bg-(--lm-or-lavis) text-(--lm-brun)' : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre)',
+                valeur === v ? 'border-(--lm-or) bg-(--lm-or-lavis) text-(--lm-brun)' : erreur ? 'border-(--lm-danger) bg-(--lm-surface) text-(--lm-encre)' : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre)',
               )}
             >
-              <input type="radio" name={nom} className="size-4 accent-(--lm-or-texte)" checked={valeur === v} onChange={() => onChange(v)} />
+              <input type="radio" name={nom} className="size-4 accent-(--lm-or-texte)" checked={valeur === v} onChange={() => onChange(v)} aria-invalid={erreur ? true : undefined} />
               {libelle}
             </label>
           );
@@ -60,6 +62,7 @@ function Choix({ nom, valeur, options, onChange, legende, erreur }: { nom: strin
 export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnuler, onVoirReglement }: FormulaireCheckinProps) {
   const t = TEXTES[langue];
   const id = useId();
+  const formulaire = useRef<HTMLFormElement>(null);
   const avant = vue.checkin.saisie;
   // Fiches déjà envoyées : jamais renvoyées par le lien, seulement leur nombre. Gardées telles quelles, ou remplies de nouveau.
   const envoyees = vue.checkin.fichesEnvoyees;
@@ -72,21 +75,42 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
   const [erreurs, setErreurs] = useState<ErreurCheckin[]>([]);
   const [message, setMessage] = useState<string>();
   const [enCours, setEnCours] = useState(false);
+  /** Envois refusés : chacun amène le focus sur le premier champ à corriger (une fois l'écran à jour). */
+  const [refus, setRefus] = useState(0);
+
+  useEffect(() => {
+    if (!refus) return;
+    const image = requestAnimationFrame(() => {
+      const champ = formulaire.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (!champ) return;
+      champ.focus({ preventScroll: true });
+      champ.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(image);
+  }, [refus]);
 
   const erreur = (champ: ChampCheckin, fiche?: number): string | undefined =>
     erreurs.some((e) => e.champ === champ && e.fiche === fiche) ? MESSAGES_ERREURS[champ][langue] : undefined;
   /** Un champ corrigé n'est plus signalé (le message général tombe quand plus rien ne l'est). */
-  const corrige = (champ: ChampCheckin, fiche?: number) =>
+  const corrige = (champs: ChampCheckin[], fiche?: number) =>
     setErreurs((l) => {
-      const reste = l.filter((e) => !(e.champ === champ && e.fiche === fiche) && !(champ === 'nbPersonnes' && e.champ === 'fiches'));
+      const reste = l.filter((e) => !(champs.includes(e.champ) && e.fiche === fiche) && !(champs.includes('nbPersonnes') && e.champ === 'fiches'));
       if (l.length && !reste.length) setMessage(undefined);
       return reste;
     });
   const majFiche = (i: number, k: keyof FicheBrouillon, v: string | number) => {
     setFiches((l) => l.map((f, j) => (j === i ? { ...f, [k]: v } : f)));
-    corrige(k, i);
+    // La date de naissance et les enfants vont ensemble (enfants sur la fiche d'un adulte seulement).
+    corrige(k === 'enfants' || k === 'naissanceLe' ? [k, 'enfantsMineur'] : [k], i);
   };
   const max = vue.logement.capacite;
+  const surPlace = vue.moment === 'pendant';
+
+  const refuser = (e: ErreurCheckin[], m: string) => {
+    setErreurs(e);
+    setMessage(m);
+    setRefus((n) => n + 1);
+  };
 
   const envoyer = async (e: FormEvent) => {
     e.preventDefault();
@@ -95,20 +119,13 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
     const brut = { arriveeEstimee: heure, nbPersonnes: nb, reglesAcceptees: regles, tousFrancais, fiches: tousFrancais === false && !garde ? fiches : [], ...(garde ? { garderFiches: true } : {}) };
     // Fiches gardées : comptées ici (nombre de personnes), reprises et contrôlées par le serveur.
     const comptees = garde ? Array.from({ length: envoyees!.fiches }, (_, i) => ({ ...ficheVide(), enfants: i === 0 ? envoyees!.personnes - envoyees!.fiches : 0 })) : undefined;
-    const lu = lireSaisieCheckin(brut, { maxPersonnes: max, aujourdhui, ...(comptees ? { fichesPrecedentes: comptees } : {}) });
-    if (!lu.ok) {
-      setErreurs(lu.erreurs);
-      setMessage(t.verifier);
-      return;
-    }
+    const lu = lireSaisieCheckin(brut, { maxPersonnes: max, aujourdhui, arrivee: vue.arrivee, ...(comptees ? { fichesPrecedentes: comptees } : {}) });
+    if (!lu.ok) return refuser(lu.erreurs, t.verifier);
     setErreurs([]);
     setEnCours(true);
     const r = await onEnvoyer(garde ? { ...lu.saisie, fiches: [], garderFiches: true } : lu.saisie);
     setEnCours(false);
-    if (r) {
-      setErreurs(r.erreurs ?? []);
-      setMessage(r.message ?? t.verifier);
-    }
+    if (r) refuser(r.erreurs ?? [], r.message ?? t.verifier);
   };
 
   const champFiche = (i: number, k: 'nom' | 'prenoms' | 'naissanceLieu' | 'nationalite' | 'domicile', libelle: ReactNode, o: { auto?: string; aide?: string; max: number }) => (
@@ -116,11 +133,12 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
       <Input className={CHAMP} value={fiches[i][k]} maxLength={o.max} autoComplete={i === 0 && o.auto ? o.auto : 'off'} onChange={(e) => majFiche(i, k, e.target.value)} />
     </Field>
   );
+  const fichesGardees = tousFrancais === false && garder && !!envoyees?.fiches;
 
   return (
-    <form onSubmit={envoyer} noValidate className="flex flex-col gap-5">
+    <form ref={formulaire} onSubmit={envoyer} noValidate className="flex flex-col gap-5">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label={t.heureArrivee} requis erreur={erreur('arriveeEstimee')} aide={t.heureArriveeAide(vue.logement.heureArrivee) || undefined}>
+        <Field label={surPlace ? t.heureArriveeSurPlace : t.heureArrivee} requis erreur={erreur('arriveeEstimee')}>
           <Input
             type="time"
             step={300}
@@ -128,7 +146,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
             value={heure}
             onChange={(e) => {
               setHeure(e.target.value);
-              corrige('arriveeEstimee');
+              corrige(['arriveeEstimee']);
             }}
           />
         </Field>
@@ -138,7 +156,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
             value={String(nb)}
             onChange={(e) => {
               setNb(Number(e.target.value));
-              corrige('nbPersonnes');
+              corrige(['nbPersonnes']);
             }}
             options={Array.from({ length: max }, (_, i) => ({ valeur: String(i + 1), libelle: String(i + 1) }))}
           />
@@ -152,14 +170,14 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
         options={[t.tousFrancais, t.etrangers]}
         onChange={(v) => {
           setTousFrancais(v);
-          corrige('tousFrancais');
+          corrige(['tousFrancais']);
         }}
         erreur={erreur('tousFrancais')}
       />
 
-      {tousFrancais === false && garder && !!envoyees?.fiches && (
-        <div className="flex flex-col items-start gap-2 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 sm:p-4">
-          <p className="text-[13.5px] text-(--lm-encre-2)">{t.fichesGardees(envoyees.fiches)}</p>
+      {fichesGardees && (
+        <div className="flex flex-col items-start gap-2">
+          <p className="text-[14px] text-(--lm-encre-2)">{t.fichesGardees(envoyees?.fiches ?? 0)}</p>
           {erreur('fiches') && <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">{erreur('fiches')}</p>}
           <Button variant="secondary" size="sm" onClick={() => setGarder(false)}>
             {t.remplirDeNouveau}
@@ -167,19 +185,19 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
         </div>
       )}
 
-      {tousFrancais === false && !(garder && !!envoyees?.fiches) && (
+      {tousFrancais === false && !fichesGardees && (
         <div className="flex flex-col gap-4">
           {!!envoyees?.fiches && (
             <Button variant="ghost" size="sm" className="self-start" onClick={() => setGarder(true)}>
               {t.garderFiches}
             </Button>
           )}
-          <p className="text-[13.5px] text-(--lm-encre-2)">{t.ficheExplication}</p>
+          <p className="text-[14px] text-(--lm-encre-2)">{t.ficheExplication}</p>
           {erreur('fiches') && <p role="alert" className="text-[12.5px] font-medium text-(--lm-danger)">{erreur('fiches')}</p>}
           {fiches.map((_, i) => (
-            <div key={i} role="group" aria-labelledby={`${id}-fiche-${i}`} className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 sm:p-4">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <h3 id={`${id}-fiche-${i}`} className="text-[14px] font-semibold text-(--lm-encre)">
+            <div key={i} role="group" aria-labelledby={`${id}-fiche-${i}`} className="border-t border-(--lm-bord) pt-4">
+              <div className="mb-3 flex min-h-8 items-center justify-between gap-2">
+                <h3 id={`${id}-fiche-${i}`} className="text-[15px] font-semibold text-(--lm-encre)">
                   {t.voyageurN(i + 1)}
                 </h3>
                 {fiches.length > 1 && (
@@ -213,7 +231,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
                 </Field>
                 {champFiche(i, 'naissanceLieu', t.naissanceLieu, { aide: t.naissanceLieuAide, max: 80 })}
                 {champFiche(i, 'nationalite', t.nationalite, { max: 60 })}
-                <Field label={t.enfants} erreur={erreur('enfants', i)}>
+                <Field label={t.enfants} aide={t.enfantsAide} erreur={erreur('enfants', i) ?? erreur('enfantsMineur', i)}>
                   <Select
                     className={CHAMP}
                     value={String(fiches[i].enfants)}
@@ -232,7 +250,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
               className="self-start"
               onClick={() => {
                 setFiches((l) => [...l, ficheVide()]);
-                corrige('fiches');
+                corrige(['fiches']);
               }}
             >
               {t.ajouterVoyageur}
@@ -241,7 +259,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
         </div>
       )}
 
-      <div>
+      <div className="flex flex-col items-start gap-1">
         <label className="flex cursor-pointer items-start gap-3 text-[15px] text-(--lm-encre)">
           <input
             type="checkbox"
@@ -249,33 +267,42 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
             checked={regles}
             onChange={(e) => {
               setRegles(e.target.checked);
-              corrige('reglesAcceptees');
+              corrige(['reglesAcceptees']);
             }}
             aria-invalid={erreur('reglesAcceptees') ? true : undefined}
           />
-          <span>
-            {t.accepte}
-            {onVoirReglement && (
-              <>
-                {' '}
-                <button type="button" onClick={onVoirReglement} className="font-medium text-(--lm-or-texte) underline-offset-2 hover:underline">
-                  {t.voirReglement}
-                </button>
-              </>
-            )}
-          </span>
+          <span>{t.accepte}</span>
         </label>
         {erreur('reglesAcceptees') && (
-          <p role="alert" className="mt-1.5 text-[12px] font-medium text-(--lm-danger)">
+          <p role="alert" className="text-[12px] font-medium text-(--lm-danger)">
             {erreur('reglesAcceptees')}
           </p>
         )}
+        {onVoirReglement && (
+          <button
+            type="button"
+            onClick={onVoirReglement}
+            className="ml-8 inline-flex min-h-8 items-center text-[14px] font-medium text-(--lm-or-texte) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          >
+            {t.voirReglement}
+          </button>
+        )}
       </div>
 
-      <p className="text-[12.5px] leading-relaxed text-(--lm-encre-3)">
-        {t.confidentialite}
-        {tousFrancais === false ? ` ${t.signature}` : ''}
-      </p>
+      <div className="text-[12.5px] leading-relaxed text-(--lm-encre-3)">
+        {tousFrancais === false && (
+          <p>
+            {t.confidentialiteCourte} {t.signature}
+          </p>
+        )}
+        <details className="group">
+          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+            {/* Sans fiche de police, pas de phrase avant : le repli dit de quoi il parle. */}
+            {tousFrancais === false ? t.enSavoirPlus : t.confidentialiteLien}
+          </summary>
+          <p>{t.confidentialite}</p>
+        </details>
+      </div>
 
       {message && <Alert tone="danger">{message}</Alert>}
 

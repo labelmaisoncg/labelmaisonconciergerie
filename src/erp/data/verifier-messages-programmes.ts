@@ -172,6 +172,12 @@ function reglagesAllumes(moments: DeclencheurMessage[], activeLe = ALLUME_LE, pa
   return r;
 }
 
+/** Le texte par défaut des infos d'arrivée ne cite plus que le livret : la ligne {lien_guide} qu'une équipe peut ajouter. */
+const LIGNE_GUIDE = 'Votre guide d’arrivée : {lien_guide}\n{signature}';
+const avecLienGuide = (r: ReglagesMessagesProgrammes) => {
+  r.modeles.veille_arrivee = { ...r.modeles.veille_arrivee, texte: r.modeles.veille_arrivee.texte.replace('{signature}', LIGNE_GUIDE) };
+};
+
 /* ================================================================ règles */
 
 function heures() {
@@ -326,7 +332,8 @@ function reservationsVues() {
 
 function rendu() {
   section('Texte : variables, codes seulement dans la fenêtre des 48 h');
-  const veille = reglagesProgrammes({ reglages: [] }).modeles.veille_arrivee.texte;
+  // Le texte par défaut ne cite plus que le livret (qui montre les guides) : une ligne {lien_guide} ajoutée comme le ferait l'équipe.
+  const veille = reglagesProgrammes({ reglages: [] }).modeles.veille_arrivee.texte.replace('{signature}', LIGNE_GUIDE);
   const ctx = (r: Reservation, aujourdhui: string, lienGuide?: string) => ({ reservation: r, logement: LOGEMENT, fil: fil('fil-1', r.id), signature: 'L’équipe Label Maison', lienGuide, aujourdhui });
   const dedans = rendreMessage(veille, ctx(resa('r1'), '2026-10-25', 'https://youtu.be/entree'));
   verifier(dedans.codes && dedans.texte.includes('Boîte à clés 4821') && dedans.texte.includes('soleil2026'), 'la veille : accès et wifi dans le message');
@@ -526,7 +533,8 @@ function libelles() {
   const affiches = DECLENCHEURS.map((k) => texteAffiche(TEXTES_DEFAUT[k]));
   verifier(affiches.every((t) => !/\{[a-z_]+\}/.test(t)), 'textes par défaut : aucun nom technique à l’écran');
   const veille = affiches[DECLENCHEURS.indexOf('veille_arrivee')];
-  verifier(veille.includes('{Heure d’arrivée}') && veille.includes('{Prénom}') && veille.includes('{Lien du guide}'), 'libellés des pastilles (« {Prénom} », « {Heure d’arrivée} »)');
+  verifier(veille.includes('{Heure d’arrivée}') && veille.includes('{Prénom}') && veille.includes('{Lien du livret}') && !veille.includes('{Lien du guide}'), 'libellés des pastilles (« {Prénom} », « {Heure d’arrivée} », « {Lien du livret} »)');
+  verifier(texteStocke('Guide : {Lien du guide}') === 'Guide : {lien_guide}', '« {Lien du guide} » reste une variable, à ajouter à la main');
   verifier(DECLENCHEURS.every((k) => texteStocke(texteAffiche(TEXTES_DEFAUT[k])) === TEXTES_DEFAUT[k]), 'aller-retour écran → base sans perte');
   verifier(VARIABLES.every((v) => texteStocke(texteAffiche(`{${v.cle}}`)) === `{${v.cle}}`), 'aller-retour pour chaque variable');
   verifier(texteStocke('{Date d\'arrivée} et {DATE D’ARRIVEE} et {prenom}') === '{date_arrivee} et {date_arrivee} et {prenom}', 'apostrophe droite, majuscules, ancienne clé : acceptés');
@@ -688,7 +696,7 @@ async function passageSimule() {
   verifier(b.statut === 'fait' && b.envoyes === 0 && postsMessages() === 0, 'tout éteint : aucun envoi');
   verifier(!base.collection(COLLECTION_ENVOIS_PROGRAMMES).length, 'tout éteint : aucune ligne écrite');
 
-  reglages(reglagesAllumes(['veille_arrivee']));
+  reglages(reglagesAllumes(['veille_arrivee'], ALLUME_LE, avecLienGuide));
   b = await lancerProgrammes(options());
   verifier(b.envoyes === 1 && repull.envois.length === 1, 'la veille à 18:30 : un message part');
   verifier(repull.envois[0]?.conversation === '1' && repull.envois[0]?.cle === 'lm-auto-r1-veille_arrivee', 'par la conversation du séjour, avec la clé du séjour et du moment');

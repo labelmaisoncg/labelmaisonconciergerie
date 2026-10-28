@@ -2,9 +2,10 @@
  * Livret d'accueil du voyageur (/sejour) : une seule colonne, pensée pour le
  * téléphone. Bienvenue et dates, check-in en ligne, accès et wifi (ou
  * « Code communiqué dans les 48 heures avant l'arrivée »), adresse,
- * règlement, à savoir, guides, départ, et comment nous écrire. Tout vient
- * de la vue du serveur (data/sejour.ts, vueSejour) : la page ne décide
- * jamais seule d'afficher un code.
+ * règlement, à savoir, guides, départ, et comment nous écrire. Pendant le
+ * séjour, l'accès passe avant le check-in ; après, il n'est plus montré.
+ * Tout vient de la vue du serveur (data/sejour.ts, vueSejour) : la page ne
+ * décide jamais seule d'afficher un code.
  */
 import { useRef, useState, type ReactNode } from 'react';
 import {
@@ -14,7 +15,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   Copy,
-  DoorOpen,
   ExternalLink,
   FileText,
   Image,
@@ -23,17 +23,19 @@ import {
   Link2,
   Lock,
   LogOut,
+  Mail,
   MapPin,
   MessageCircle,
+  Phone,
   PlayCircle,
   ScrollText,
   TrainFront,
   Wifi,
 } from 'lucide-react';
-import { Alert, Button, Card, cn } from '../ui';
+import { Button, Card, classesBouton, cn } from '../ui';
 import { MESSAGES_REFUS_CHECKIN, type ErreurCheckin, type GuideSejour, type LangueSejour, type SaisieCheckin, type VueSejour } from '../data/sejour';
 import { FormulaireCheckin } from './FormulaireCheckin';
-import { TEXTES, dateCourteSejour, dateLongueSejour, jourHorodatage, texteFiche } from './textes';
+import { TEXTES, dateCourteSejour, dateLongueSejour, jourHorodatage, texteConsignes, texteFiche } from './textes';
 
 export interface LivretSejourProps {
   vue: VueSejour;
@@ -65,23 +67,29 @@ function BoutonCopier({ valeur, libelle, langue }: { valeur: string; libelle: st
   const t = TEXTES[langue];
   const [copie, setCopie] = useState(false);
   return (
-    <Button
-      variant="secondary"
-      size="sm"
-      icone={copie ? <CheckCircle2 /> : <Copy />}
-      aria-label={`${t.copier} : ${libelle}`}
-      onClick={() => {
-        void navigator.clipboard?.writeText(valeur).then(
-          () => {
-            setCopie(true);
-            setTimeout(() => setCopie(false), 2000);
-          },
-          () => undefined,
-        );
-      }}
-    >
-      {copie ? t.copie : t.copier}
-    </Button>
+    <>
+      <Button
+        variant="secondary"
+        size="sm"
+        icone={copie ? <CheckCircle2 /> : <Copy />}
+        aria-label={`${t.copier} : ${libelle}`}
+        onClick={() => {
+          void navigator.clipboard?.writeText(valeur).then(
+            () => {
+              setCopie(true);
+              setTimeout(() => setCopie(false), 2000);
+            },
+            () => undefined,
+          );
+        }}
+      >
+        {copie ? t.copie : t.copier}
+      </Button>
+      {/* Annoncé aux lecteurs d'écran : le libellé du bouton change, sans focus déplacé. */}
+      <span role="status" aria-live="polite" className="sr-only">
+        {copie ? `${libelle} : ${t.copie}` : ''}
+      </span>
+    </>
   );
 }
 
@@ -132,7 +140,6 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
     }
     return r;
   };
-  const voirReglement = () => document.getElementById('reglement')?.scrollIntoView({ block: 'start', behavior: 'smooth' });
 
   const conditions = l.conditions;
   const lignesConditions = [
@@ -141,7 +148,101 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
     conditions?.animaux !== undefined ? t.animaux(conditions.animaux) : '',
     conditions?.calme ? t.calme(conditions.calme.debut, conditions.calme.fin) : '',
   ].filter(Boolean);
+  const reglement = !!l.regles || lignesConditions.length > 0;
+  const voirReglement = reglement ? () => document.getElementById('reglement')?.scrollIntoView({ block: 'start', behavior: 'smooth' }) : undefined;
   const montrerCheckin = c.ouvert && (c.fait || c.modifiable);
+  // Le titre de l'annonce ; sans titre, la ville (jamais le nom interne du logement).
+  const nomLogement = l.nom || l.ville || t.votreLogement;
+
+  const carteCheckinEl = montrerCheckin && (
+    <div ref={carteCheckin} className="scroll-mt-20">
+      <Card className={cn(!c.fait && !edition && 'border-(--lm-or-anneau)')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-[16px] font-semibold text-(--lm-encre)">
+              <ClipboardCheck className="size-[18px] text-(--lm-or-texte)" aria-hidden />
+              {t.checkinTitre}
+            </h2>
+            {c.fait ? (
+              <p role="status" className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[14px] text-(--lm-encre-2)">
+                <span className="inline-flex items-center gap-1 font-medium text-(--lm-succes-texte)">
+                  <CheckCircle2 className="size-4" aria-hidden />
+                  {t.checkinFait}
+                </span>
+                {envoye ? <span>{t.merci}</span> : c.envoyeLe && <span>{t.checkinEnvoye(jourHorodatage(c.envoyeLe, langue))}</span>}
+              </p>
+            ) : (
+              !edition && <p className="mt-1 text-[14px] text-(--lm-encre-2)">{vue.moment === 'pendant' ? t.checkinEnCours : t.checkinAFaire}</p>
+            )}
+            {c.fait && c.raison === 'limite' && <p className="mt-1 text-[13.5px] text-(--lm-encre-2)">{MESSAGES_REFUS_CHECKIN.limite[langue]}</p>}
+          </div>
+          {c.fait && c.modifiable && !edition && (
+            <Button variant="secondary" size="sm" onClick={() => setEdition(true)}>
+              {t.modifier}
+            </Button>
+          )}
+        </div>
+        {!c.fait && c.modifiable && !edition && (
+          <Button variant="primary" size="lg" className="mt-4 w-full sm:w-auto" onClick={() => setEdition(true)}>
+            {t.faireCheckin}
+          </Button>
+        )}
+        {edition && (
+          <div className="mt-4 border-t border-(--lm-bord) pt-4">
+            <FormulaireCheckin vue={vue} langue={langue} aujourdhui={aujourdhui} onEnvoyer={envoyer} onAnnuler={() => setEdition(false)} onVoirReglement={voirReglement} />
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+
+  // Après le départ, plus d'accès du tout ; le jour du départ, le code reste celui de l'arrivée.
+  const carteAcces = vue.moment !== 'apres' && (
+    <Rubrique icone={<KeyRound />} titre={t.accesTitre}>
+      {vue.acces.visible ? (
+        <div className="flex flex-col gap-4">
+          {vue.acces.texte && <Texte>{vue.acces.texte}</Texte>}
+          {vue.acces.wifi && (
+            <div className="rounded-lg bg-(--lm-surface-2) p-3">
+              <p className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2)">
+                <Wifi className="size-4" aria-hidden />
+                {t.wifi}
+              </p>
+              <dl className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <dt className="text-[12px] text-(--lm-encre-3)">{t.reseau}</dt>
+                    <dd className="truncate font-mono text-[15px] text-(--lm-encre)">{vue.acces.wifi.nom}</dd>
+                  </div>
+                  <BoutonCopier valeur={vue.acces.wifi.nom} libelle={t.reseau} langue={langue} />
+                </div>
+                {vue.acces.wifi.code && (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <dt className="text-[12px] text-(--lm-encre-3)">{t.motDePasse}</dt>
+                      <dd className="font-mono text-[15px] break-all text-(--lm-encre)">{vue.acces.wifi.code}</dd>
+                    </div>
+                    <BoutonCopier valeur={vue.acces.wifi.code} libelle={t.motDePasse} langue={langue} />
+                  </div>
+                )}
+              </dl>
+            </div>
+          )}
+          {vue.acces.guides.length > 0 && <ListeGuides guides={vue.acces.guides} langue={langue} />}
+        </div>
+      ) : vue.acces.aPartirDu ? (
+        <div className="flex items-start gap-3 rounded-lg bg-(--lm-surface-2) p-3">
+          <Lock className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
+          <div>
+            <p className="text-[15px] font-medium text-(--lm-encre)">{t.codeAttente}</p>
+            <p className="mt-0.5 text-[13.5px] text-(--lm-encre-2)">{t.codeAttenteDate(dateLongueSejour(vue.acces.aPartirDu, langue))}</p>
+          </div>
+        </div>
+      ) : (
+        <p className="text-[15px] text-(--lm-encre-2)">{t.accesJourDepart}</p>
+      )}
+    </Rubrique>
+  );
 
   return (
     <div className="min-h-screen bg-(--lm-fond)">
@@ -149,25 +250,19 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
       <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between gap-3 px-4">
           <p className="lm-serif min-w-0 truncate text-[18px] leading-tight text-(--lm-brun)">{vue.conciergerie}</p>
-          <button
-            type="button"
-            onClick={onLangue}
-            lang={langue === 'fr' ? 'en' : 'fr'}
-            aria-label={t.langue}
-            className="inline-flex h-9 shrink-0 items-center rounded-lg border border-(--lm-bord-fort) px-3 text-[13px] font-semibold text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
-          >
+          <Button variant="secondary" size="sm" onClick={onLangue} lang={langue === 'fr' ? 'en' : 'fr'} aria-label={t.langue} className="font-semibold">
             {t.langueCode}
-          </button>
+          </Button>
         </div>
       </header>
 
       <main className="mx-auto flex max-w-xl flex-col gap-4 px-4 pt-4 pb-12">
-        {l.photo && <img src={l.photo} alt="" className="aspect-[16/10] w-full rounded-2xl bg-(--lm-surface-2) object-cover" />}
+        {l.photo && <img src={l.photo} alt="" className="aspect-[16/10] w-full rounded-xl bg-(--lm-surface-2) object-cover" />}
 
         <section className="px-1 pt-1">
           <p className="text-[13px] font-medium tracking-wide text-(--lm-or-texte) uppercase">{t.titrePage}</p>
           <h1 className="lm-serif mt-1 text-[30px] leading-tight text-(--lm-encre)">{t.bonjour(vue.prenom)}</h1>
-          {l.nom && <p className="mt-1 text-[16px] text-(--lm-encre-2)">{l.nom}</p>}
+          <p className="mt-1 text-[16px] text-(--lm-encre-2)">{nomLogement}</p>
           {vue.moment === 'apres' && <p className="mt-2 text-[15px] text-(--lm-encre-2)">{t.apres}</p>}
         </section>
 
@@ -190,95 +285,18 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
           </p>
         </Card>
 
-        {montrerCheckin && (
-          <div ref={carteCheckin} className="scroll-mt-20">
-            <Card className={cn(!c.fait && !edition && 'border-(--lm-or-anneau)')}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="flex items-center gap-2 text-[16px] font-semibold text-(--lm-encre)">
-                    <ClipboardCheck className="size-[18px] text-(--lm-or-texte)" aria-hidden />
-                    {t.checkinTitre}
-                  </h2>
-                  {c.fait ? (
-                    <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-[14px] text-(--lm-encre-2)">
-                      <span className="inline-flex items-center gap-1 font-medium text-(--lm-succes-texte)">
-                        <CheckCircle2 className="size-4" aria-hidden />
-                        {t.checkinFait}
-                      </span>
-                      {c.envoyeLe && <span>{t.checkinEnvoye(jourHorodatage(c.envoyeLe, langue))}</span>}
-                    </p>
-                  ) : (
-                    !edition && <p className="mt-1 text-[14px] text-(--lm-encre-2)">{t.checkinAFaire}</p>
-                  )}
-                </div>
-                {c.fait && c.modifiable && !edition && (
-                  <Button variant="secondary" size="sm" onClick={() => setEdition(true)}>
-                    {t.modifier}
-                  </Button>
-                )}
-              </div>
-              {envoye && !edition && (
-                <Alert tone="succes" className="mt-3">
-                  {t.merci}
-                </Alert>
-              )}
-              {!c.fait && c.modifiable && !edition && (
-                <Button variant="primary" size="lg" className="mt-4 w-full sm:w-auto" onClick={() => setEdition(true)}>
-                  {t.faireCheckin}
-                </Button>
-              )}
-              {!c.modifiable && !c.fait && c.raison && <p className="mt-2 text-[14px] text-(--lm-encre-2)">{MESSAGES_REFUS_CHECKIN[c.raison][langue]}</p>}
-              {edition && (
-                <div className="mt-4 border-t border-(--lm-bord) pt-4">
-                  <FormulaireCheckin vue={vue} langue={langue} aujourdhui={aujourdhui} onEnvoyer={envoyer} onAnnuler={() => setEdition(false)} onVoirReglement={voirReglement} />
-                </div>
-              )}
-            </Card>
-          </div>
+        {/* Sur place, l'accès compte le plus : il passe avant le check-in. */}
+        {vue.moment === 'pendant' ? (
+          <>
+            {carteAcces}
+            {carteCheckinEl}
+          </>
+        ) : (
+          <>
+            {carteCheckinEl}
+            {carteAcces}
+          </>
         )}
-
-        <Rubrique icone={<KeyRound />} titre={t.accesTitre}>
-          {vue.acces.visible ? (
-            <div className="flex flex-col gap-4">
-              {vue.acces.texte && <Texte>{vue.acces.texte}</Texte>}
-              {vue.acces.wifi && (
-                <div className="rounded-lg bg-(--lm-surface-2) p-3">
-                  <p className="mb-2 flex items-center gap-1.5 text-[13px] font-medium text-(--lm-encre-2)">
-                    <Wifi className="size-4" aria-hidden />
-                    {t.wifi}
-                  </p>
-                  <dl className="flex flex-col gap-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <dt className="text-[12px] text-(--lm-encre-3)">{t.reseau}</dt>
-                        <dd className="truncate font-mono text-[15px] text-(--lm-encre)">{vue.acces.wifi.nom}</dd>
-                      </div>
-                      <BoutonCopier valeur={vue.acces.wifi.nom} libelle={t.reseau} langue={langue} />
-                    </div>
-                    {vue.acces.wifi.code && (
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <dt className="text-[12px] text-(--lm-encre-3)">{t.motDePasse}</dt>
-                          <dd className="font-mono text-[15px] break-all text-(--lm-encre)">{vue.acces.wifi.code}</dd>
-                        </div>
-                        <BoutonCopier valeur={vue.acces.wifi.code} libelle={t.motDePasse} langue={langue} />
-                      </div>
-                    )}
-                  </dl>
-                </div>
-              )}
-              {vue.acces.guides.length > 0 && <ListeGuides guides={vue.acces.guides} langue={langue} />}
-            </div>
-          ) : (
-            <div className="flex items-start gap-3 rounded-lg bg-(--lm-surface-2) p-3">
-              <Lock className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
-              <div>
-                <p className="text-[15px] font-medium text-(--lm-encre)">{t.codeAttente}</p>
-                <p className="mt-0.5 text-[13.5px] text-(--lm-encre-2)">{t.codeAttenteDate(dateLongueSejour(vue.acces.aPartirDu, langue))}</p>
-              </div>
-            </div>
-          )}
-        </Rubrique>
 
         {(l.adresse || l.parking || l.transports) && (
           <Rubrique icone={<MapPin />} titre={t.adresseTitre}>
@@ -286,13 +304,8 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
               {l.adresse && (
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="min-w-0 text-[15px] text-(--lm-encre)">{l.adresse}</p>
-                  <a
-                    href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.adresse)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3 text-[13.5px] font-medium text-(--lm-encre) hover:bg-(--lm-surface-2)"
-                  >
-                    <MapPin className="size-4" aria-hidden />
+                  <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(l.adresse)}`} target="_blank" rel="noopener noreferrer" className={classesBouton('secondary', 'md')}>
+                    <MapPin aria-hidden />
                     {t.itineraire}
                   </a>
                 </div>
@@ -319,7 +332,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
           </Rubrique>
         )}
 
-        {(l.regles || lignesConditions.length > 0) && (
+        {reglement && (
           <Rubrique icone={<ScrollText />} titre={t.reglesTitre} id="reglement">
             <div className="flex flex-col gap-3">
               {l.regles && <Texte>{tx(l.regles)}</Texte>}
@@ -373,11 +386,9 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
           </Rubrique>
         )}
 
+        {/* L'heure de départ est déjà dans la carte des dates : ici, seulement les consignes. */}
         <Rubrique icone={<LogOut />} titre={t.departTitre}>
-          <div className="flex flex-col gap-2">
-            {l.heureDepart && <p className="text-[15px] font-medium text-(--lm-encre)">{t.departAvant(l.heureDepart)}</p>}
-            <Texte>{l.consignesDepart ? tx(l.consignesDepart) : t.departDefaut}</Texte>
-          </div>
+          <Texte>{l.consignesDepart ? texteConsignes(l.consignesDepart, langue) : t.departDefaut}</Texte>
         </Rubrique>
 
         {(vue.contact.plateforme || vue.contact.email || vue.contact.telephone) && (
@@ -386,38 +397,37 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
               <div className="flex flex-col items-start gap-3">
                 <p className="text-[15px] text-(--lm-encre-2)">{t.aidePlateforme(vue.contact.plateforme)}</p>
                 {vue.contact.lien && (
-                  <a
-                    href={vue.contact.lien}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex h-11 items-center gap-2 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-4 text-[15px] font-medium text-(--lm-encre) hover:bg-(--lm-surface-2)"
-                  >
-                    <DoorOpen className="size-4" aria-hidden />
+                  <a href={vue.contact.lien} target="_blank" rel="noopener noreferrer" className={classesBouton('secondary', 'lg')}>
+                    <MessageCircle aria-hidden />
                     {t.ouvrir(vue.contact.plateforme)}
                   </a>
                 )}
               </div>
-            ) : vue.contact.email || vue.contact.telephone ? (
-              <div className="flex flex-col items-start gap-2">
+            ) : (
+              <div className="flex flex-col items-start gap-3">
                 <p className="text-[15px] text-(--lm-encre-2)">{t.aideDirect}</p>
-                {vue.contact.telephone && (
-                  <a href={`tel:${vue.contact.telephone.replace(/[^\d+]/g, '')}`} className="text-[15px] font-medium text-(--lm-or-texte) hover:underline">
-                    {vue.contact.telephone}
-                  </a>
-                )}
-                {vue.contact.email && (
-                  <a href={`mailto:${vue.contact.email}`} className="text-[15px] font-medium text-(--lm-or-texte) hover:underline">
-                    {vue.contact.email}
-                  </a>
-                )}
+                <div className="flex flex-wrap gap-2">
+                  {vue.contact.telephone && (
+                    <a href={`tel:${vue.contact.telephone.replace(/[^\d+]/g, '')}`} className={classesBouton('secondary', 'lg')}>
+                      <Phone aria-hidden />
+                      {t.appeler}
+                    </a>
+                  )}
+                  {vue.contact.email && (
+                    <a href={`mailto:${vue.contact.email}`} className={classesBouton('secondary', 'lg')}>
+                      <Mail aria-hidden />
+                      {t.ecrireEmail}
+                    </a>
+                  )}
+                </div>
               </div>
-            ) : null}
+            )}
           </Rubrique>
         )}
 
         <footer className="flex flex-col items-center gap-1 px-2 pt-2 text-center text-[12.5px] text-(--lm-encre-3)">
           <p>{t.lienPerso}</p>
-          <a href="/politique-de-confidentialite" className="underline-offset-2 hover:underline">
+          <a href="/politique-de-confidentialite" className="inline-flex min-h-8 items-center underline-offset-2 hover:underline">
             {t.confidentialiteLien}
           </a>
         </footer>

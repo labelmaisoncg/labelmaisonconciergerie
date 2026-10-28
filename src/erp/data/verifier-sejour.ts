@@ -40,6 +40,7 @@ import {
   MESSAGES_REFUS_CHECKIN,
   ajouterMoisISO,
   checkinsAPurger,
+  codeProbable,
   codesVisibles,
   codesVisiblesLe,
   conservationJusquAu,
@@ -51,6 +52,7 @@ import {
   lienSejour,
   lireJetonSejour,
   lireSaisieCheckin,
+  majeurLe,
   nouveauCheckin,
   purgerCheckins,
   signerJetonSejour,
@@ -62,6 +64,7 @@ import {
   type SaisieCheckin,
 } from './sejour';
 import { creerSeed } from './seed';
+import { TEXTES, texteConsignes } from '../sejour/textes';
 import type { FilMessages, Logement, Reservation, StatutReservation } from './types';
 
 let echecs = 0;
@@ -387,9 +390,10 @@ async function principal() {
   section('8. Variable {lien_sejour} des messages automatiques');
   {
     const v = VARIABLES.find((x) => x.cle === 'lien_sejour');
-    verifier(v?.libelle === 'Lien du séjour' && v.retirerSiVide && !v.sensible && !v.moments, 'variable « Lien du séjour » : tous les moments, ligne retirée sans lien');
-    verifier(texteAffiche('{lien_sejour}') === '{Lien du séjour}' && texteStocke('{Lien du séjour}') === '{lien_sejour}', 'écran ↔ base');
-    verifier(TEXTES_DEFAUT.confirmation.includes('{lien_sejour}') && TEXTES_DEFAUT.veille_arrivee.includes('{lien_sejour}') && TEXTES_DEFAUT.veille_arrivee.includes('{lien_guide}'), 'confirmation et infos d’arrivée : le livret ; {lien_guide} garde son sens');
+    verifier(v?.libelle === 'Lien du livret' && v.retirerSiVide && !v.sensible && !v.moments, 'variable « Lien du livret » : tous les moments, ligne retirée sans lien');
+    verifier(texteAffiche('{lien_sejour}') === '{Lien du livret}' && texteStocke('{Lien du livret}') === '{lien_sejour}', 'écran ↔ base (la clé {lien_sejour} ne change pas)');
+    verifier(TEXTES_DEFAUT.confirmation.includes('{lien_sejour}') && TEXTES_DEFAUT.veille_arrivee.includes('{lien_sejour}') && !TEXTES_DEFAUT.veille_arrivee.includes('{lien_guide}'), 'confirmation et infos d’arrivée : le livret seulement (il montre les guides)');
+    verifier(VARIABLES.some((x) => x.cle === 'lien_guide') && texteStocke('{Lien du guide}') === '{lien_guide}', '{lien_guide} reste une variable et garde son sens');
     const modele = 'Bonjour {prenom},\nVotre livret : {lien_sejour}\nÀ bientôt';
     const base = { reservation: resa(), logement: LOGEMENT, signature: 'L’équipe', aujourdhui: AUJ };
     const lien = 'https://www.labelmaisoncg.fr/sejour#abc.def';
@@ -473,6 +477,89 @@ async function principal() {
       return r.ok ? r.checkin : undefined;
     })();
     verifier(!!c && c.reservationId === prochaines[0].id, 'jeu de démo : check-in possible');
+  }
+
+  section('11. Relecture : codes courts, jour du départ, enfants, nom du logement');
+  {
+    // Codes écrits sans le mot « code », à côté d'un mot d'accès.
+    const codes = ['Portail du parking : 482.', 'Dans la boîte B7Z', '482 au portail', 'Cadenas du local vélo 1234', 'Badge A12 sur le trousseau', 'Interphone 12B', 'Boîte aux lettres, code 0042', 'Digicode : 12#4'];
+    const pasCodes = [
+      'Code postal 91100',
+      'Le portail ferme à 22h',
+      'Portail ouvert de 8h à 20h',
+      'Porte au 3e étage',
+      'Porte gauche, 3ème étage',
+      'Boîte aux lettres au rez-de-chaussée',
+      'Portail à 200 m de la gare',
+      'Porte 12',
+      'Le parking est à 300 m, la porte bleue',
+      'Badge pour la salle de sport (20 € la semaine)',
+      'RER D à 5 minutes',
+      '',
+      undefined,
+    ];
+    const ratesCodes = codes.filter((t) => !codeProbable(t));
+    const fauxCodes = pasCodes.filter((t) => codeProbable(t));
+    verifier(ratesCodes.length === 0, 'code court près de portail, boîte, cadenas, badge, interphone, digicode : vu', ratesCodes);
+    verifier(fauxCodes.length === 0, 'code postal, heures, étages, distance, montant, durée : pas un code', fauxCodes);
+    verifier(!codeProbable(`Clés dans la boîte, ${CODE_MASQUE}.`) && !codeProbable(CODE_MASQUE), 'le code déjà masqué ne compte pas (« 48 heures »)');
+
+    // Livret : un texte qui cite un tel code attend les 48 h, entier.
+    const court: Logement = { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, parking: 'Portail du parking : 482.', regles: 'Dans la boîte B7Z, les clés du local.', aSavoir: 'Poubelles le mardi.' } };
+    const tot = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: court, aujourdhui: AUJ, checkinOuvert: true });
+    verifier(!tot.logement.parking && !tot.logement.regles && !/482|B7Z/.test(JSON.stringify(tot)), 'avant les 48 h : parking et règlement avec un code court pas montrés', tot.logement);
+    verifier(tot.logement.aSavoir === 'Poubelles le mardi.' && tot.logement.conditions?.fetes === false, 'le reste est montré ; sans règlement montrable, les règles de l’annonce');
+    const dedans = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: court, aujourdhui: '2026-11-09', checkinOuvert: true });
+    verifier(dedans.logement.parking === 'Portail du parking : 482.' && dedans.logement.regles?.includes('B7Z'), 'dans les 48 h : montrés');
+    if (racine) {
+      const fiche = code('src/erp/modules/logements/onglets/FicheVoyageur.tsx');
+      verifier(['f.parking', 'f.consignesDepart', 'f.regles', 'f.aSavoir'].every((c) => fiche.includes(`aideOuCode(${c}`)) && /aideOuCode\(edition\.reponse\)/.test(code('src/erp/modules/logements/onglets/GuidesFiche.tsx')), 'fiche voyageur : l’avertissement sous parking, consignes, règles, à savoir, réponses');
+      verifier(/Un code semble écrit ici : mettez-le dans Accès\./.test(source('src/erp/modules/logements/_composants/avertissementCode.tsx')) && /codeProbable\(texte\)/.test(code('src/erp/modules/logements/_composants/avertissementCode.tsx')), 'avertissement : « Un code semble écrit ici : mettez-le dans Accès. », même règle que le livret');
+    }
+
+    // Le jour du départ : « pendant » jusqu'à l'heure de départ, codes cachés, plus de date « à partir du ».
+    const jour = (aujourdhui: string, heure?: string, l: Logement = LOGEMENT) => vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: l, aujourdhui, ...(heure ? { heure } : {}), checkinOuvert: true });
+    const matin = jour('2026-11-13', '10:30');
+    verifier(matin.moment === 'pendant' && matin.acces.visible === false && !('aPartirDu' in matin.acces) && !/4821|soleil2026/.test(JSON.stringify(matin)), 'départ à 10:30 (avant 11:00) : pendant, codes cachés, pas de « à partir du »', matin.acces);
+    verifier(jour('2026-11-13', '11:00').moment === 'apres' && jour('2026-11-13', '12:15').moment === 'apres', 'à 11:00 et après : après le séjour');
+    verifier(jour('2026-11-13').moment === 'pendant', 'heure inconnue : la journée du départ reste « pendant »');
+    verifier(jour('2026-11-13', '10:30', { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, heureDepart: '10:00' } }).moment === 'apres', 'heure de départ de la fiche (10:00) : après dès 10:30');
+    verifier(jour('2026-11-13', '10:30', { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, heureDepart: '' } }).moment === 'pendant', 'sans heure de départ : 11:00');
+    verifier(jour('2026-11-12', '23:00').moment === 'pendant' && jour('2026-11-12', '23:00').acces.visible, 'la veille du départ : pendant, codes visibles');
+    verifier(jour('2026-11-14', '09:00').moment === 'apres' && !('aPartirDu' in jour('2026-11-14', '09:00').acces), 'le lendemain : après, pas d’accès');
+    verifier(jour(AUJ).acces.visible === false && (jour(AUJ).acces as { aPartirDu?: string }).aPartirDu === '2026-11-08', 'avant la fenêtre : la date « à partir du » reste');
+    const consignes = matin.logement.consignesDepart ?? '';
+    verifier(consignes.includes(CODE_MASQUE) && !consignes.includes('4821'), 'consignes de départ du dernier jour : code masqué', consignes);
+    const fr = texteConsignes(consignes, 'fr');
+    const en = texteConsignes(consignes, 'en');
+    verifier(fr === 'Laissez les clés dans la boîte, [le code de votre arrivée].' && en.includes('[the code from your arrival]') && !en.includes(CODE_MASQUE), 'consignes : « [le code de votre arrivée] » / « [the code from your arrival] »', [fr, en]);
+    verifier(TEXTES.fr.accesJourDepart.includes('arrivée') && TEXTES.en.codeAttente === 'Your access code will appear here 48 hours before arrival' && TEXTES.en.questionsTitre === 'FAQs', 'textes du jour du départ et anglais revus');
+    verifier(!('departAvant' in TEXTES.fr) && !('heureArriveeAide' in TEXTES.fr) && TEXTES.fr.checkinEnCours === 'Il reste votre check-in : deux minutes.' && TEXTES.en.checkinEnCours === 'Your check-in is still missing: two minutes.', '« Départ avant » et l’aide de l’heure retirés ; check-in pendant le séjour');
+    if (racine) {
+      const livret = code('src/erp/sejour/LivretSejour.tsx');
+      verifier(/vue\.moment !== 'apres' &&/.test(livret) && /vue\.moment === 'pendant' \?[\s\S]{0,80}\{carteAcces\}[\s\S]{0,40}\{carteCheckinEl\}/.test(livret), 'livret : pas d’accès après le séjour ; pendant, l’accès avant le check-in');
+      verifier(/texteConsignes\(l\.consignesDepart, langue\)/.test(livret) && !/departAvant/.test(livret), 'livret : consignes avec le code de l’arrivée, plus de « Départ avant »');
+    }
+
+    // Enfants : seulement sur la fiche d'un adulte (18 ans le jour de l'arrivée).
+    const avecEnfant = (naissanceLe: string, enfants = 1) => ({ ...SAISIE, nbPersonnes: 3, fiches: [{ ...SAISIE.fiches[0], naissanceLe, enfants }] });
+    const lireA = (x: unknown) => {
+      const res = lireSaisieCheckin(x, { maxPersonnes: 4, aujourdhui: AUJ, arrivee: '2026-11-10' });
+      return res.ok ? [] : res.erreurs.map((e) => (e.fiche === undefined ? e.champ : `${e.champ}#${e.fiche}`));
+    };
+    verifier(lireA(avecEnfant('2010-05-01')).join() === 'enfantsMineur#0', '16 ans avec un enfant sur sa fiche : refusé', lireA(avecEnfant('2010-05-01')));
+    verifier(lireA(avecEnfant('2010-05-01', 0)).length === 0, '16 ans sans enfant : accepté');
+    verifier(lireA(avecEnfant('2008-11-10')).length === 0 && lireA(avecEnfant('2008-11-11')).join() === 'enfantsMineur#0', '18 ans le jour de l’arrivée : accepté ; la veille de ses 18 ans : refusé');
+    verifier(champs(avecEnfant('2008-10-28')).length === 0 && champs(avecEnfant('2008-10-29')).join() === 'enfantsMineur#0', 'sans date d’arrivée : l’âge du jour');
+    verifier(lireA(avecEnfant('2027-01-01')).join() === 'naissanceLe#0', 'date de naissance fausse : une seule erreur, la date');
+    verifier(majeurLe('2008-02-29', '2026-02-28') && !majeurLe('2008-02-29', '2026-02-27'), 'né un 29 février : majeur le 28 février');
+    verifier(/18/.test(MESSAGES_ERREURS.enfantsMineur.fr) && /18/.test(MESSAGES_ERREURS.enfantsMineur.en), 'message : « sur la fiche d’un adulte (18 ans ou plus) », FR et EN');
+    if (racine) verifier(/arrivee: s\.reservation\.arrivee/.test(code('api/sejour.ts')) && /arrivee: vue\.arrivee/.test(code('src/erp/sejour/FormulaireCheckin.tsx')), 'serveur et page : l’âge au jour de l’arrivée');
+
+    // Nom du logement : le titre de l'annonce, jamais le nom interne.
+    const sansTitre = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, descriptif: { ...LOGEMENT.descriptif, titre: '' } }, aujourdhui: AUJ, checkinOuvert: true });
+    verifier(sansTitre.logement.nom === '' && sansTitre.logement.ville === 'Corbeil-Essonnes' && !/M\. Exemple|propri/.test(JSON.stringify(sansTitre)), 'sans titre d’annonce : pas de nom (la ville), jamais le nom interne', sansTitre.logement);
+    if (racine) verifier(/l\.nom \|\| l\.ville \|\| t\.votreLogement/.test(code('src/erp/sejour/LivretSejour.tsx')), 'livret : titre, sinon la ville, sinon « Votre logement »');
   }
 
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

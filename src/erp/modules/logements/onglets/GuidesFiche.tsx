@@ -5,6 +5,7 @@ import { nouvelId, useErp } from '../../../data/store';
 import { horodatageMaintenant } from '../../../data/format';
 import { LIBELLE_TYPE_GUIDE, TAILLE_MAX_GUIDE_MO, estLienGuide, typeFichier } from '../../../data/guides';
 import type { GuideLogement, QuestionFrequente } from '../../../data/types';
+import { aideOuCode } from '../_composants/avertissementCode';
 
 const ICONE: Record<GuideLogement['media']['type'], ReactNode> = {
   video: <Video />,
@@ -270,7 +271,7 @@ export function SectionQuestions({ questions, onChange }: { questions: QuestionF
             <Field label="Question" requis>
               <Input value={edition.question} onChange={(e) => setEdition({ ...edition, question: e.target.value })} placeholder="Où jeter les poubelles ?" autoFocus />
             </Field>
-            <Field label="Réponse" requis>
+            <Field label="Réponse" requis aide={aideOuCode(edition.reponse)}>
               <Textarea rows={4} value={edition.reponse} onChange={(e) => setEdition({ ...edition, reponse: e.target.value })} placeholder="Local au rez-de-chaussée, à droite de l’entrée. Sortie le mardi soir." />
             </Field>
           </div>

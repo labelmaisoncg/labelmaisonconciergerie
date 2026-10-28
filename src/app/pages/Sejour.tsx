@@ -3,8 +3,9 @@ import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import '../../erp/erp.css';
 import { completer } from '../../erp/data/collections';
+import { CONTACTS_LABEL_MAISON } from '../../erp/data/proprietaire';
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
-import { AUJOURDHUI, horodatageMaintenant } from '../../erp/data/format';
+import { AUJOURDHUI, MAINTENANT, horodatageMaintenant } from '../../erp/data/format';
 import {
   MAX_VOYAGEURS,
   MESSAGES_REFUS_CHECKIN,
@@ -50,7 +51,21 @@ function langueInitiale(): LangueSejour {
   return /^fr\b/i.test(navigator.language || 'fr') ? 'fr' : 'en';
 }
 
-type Etat = { nom: 'chargement' } | { nom: 'message'; texte: string; reessayer?: boolean } | { nom: 'pret'; vue: VueSejour };
+type Etat = { nom: 'chargement' } | { nom: 'message'; texte: string; reessayer?: boolean; conciergerie?: string } | { nom: 'pret'; vue: VueSejour };
+
+/** En-tête des écrans de message : le nom de la conciergerie, avec le monogramme LM pour Label Maison seulement. */
+function EnteteMarque({ nom }: { nom: string }) {
+  return (
+    <div className="mb-5 flex flex-col items-center gap-2 text-center">
+      {nom === 'Label Maison' && (
+        <span aria-hidden className="grid size-11 place-items-center rounded-xl bg-(--lm-brun) text-[15px] font-semibold text-(--lm-sur-brun)">
+          LM
+        </span>
+      )}
+      <p className="lm-serif text-[22px] leading-tight text-(--lm-brun)">{nom}</p>
+    </div>
+  );
+}
 
 async function appeler(corps: Record<string, unknown>): Promise<{ statut: number; json: Record<string, unknown> }> {
   try {
@@ -89,7 +104,11 @@ function vueDemo(s: { reservation: Reservation; donnees: ErpDonnees }): VueSejou
     logement: s.donnees.logements.find((l) => l.id === s.reservation.logementId),
     checkin: checkinsDemo()[s.reservation.id],
     aujourdhui: AUJOURDHUI,
+    // L'heure de la démo (10:30) : le jour du départ, le séjour dure jusqu'à l'heure de départ.
+    heure: MAINTENANT.slice(11, 16),
     checkinOuvert: true,
+    // Comme le serveur pour Label Maison (séjour direct : « Appeler », « Écrire un e-mail »).
+    contacts: { email: CONTACTS_LABEL_MAISON.email, telephone: CONTACTS_LABEL_MAISON.telephone },
   });
 }
 
@@ -127,14 +146,17 @@ export default function Sejour() {
       setDemo(s);
       if (!s) return setEtat({ nom: 'message', texte: 'Démonstration : séjour introuvable.' });
       const e = etatLienSejour(s.reservation, AUJOURDHUI);
-      if (e !== 'ouvert') return setEtat({ nom: 'message', texte: e === 'annule' ? MESSAGES_REFUS_CHECKIN.annule[langue] : TEXTES[langue].lienIncomplet });
+      if (e !== 'ouvert') return setEtat({ nom: 'message', texte: e === 'annule' ? MESSAGES_REFUS_CHECKIN.annule[langue] : TEXTES[langue].lienExpire, conciergerie: 'Label Maison' });
       return setEtat({ nom: 'pret', vue: vueDemo(s) });
     }
     if (!jeton) return setEtat({ nom: 'message', texte: TEXTES[langue].lienIncomplet });
     const r = await appeler({ action: 'vue', jeton, langue });
     if (r.statut === 200 && r.json.vue) return setEtat({ nom: 'pret', vue: r.json.vue as VueSejour });
     if (r.statut === 0) return setEtat({ nom: 'message', texte: TEXTES[langue].erreurReseau, reessayer: true });
-    setEtat({ nom: 'message', texte: String(r.json.erreur ?? TEXTES[langue].erreur), reessayer: r.statut >= 500 || r.statut === 429 });
+    // Séjour annulé ou lien expiré (410) : le serveur donne aussi le nom de la conciergerie, pour l'en-tête.
+    const conciergerie = r.statut === 410 && typeof r.json.conciergerie === 'string' ? r.json.conciergerie.slice(0, 80) : '';
+    const texte = r.statut === 410 && r.json.code === 'expire' ? TEXTES[langue].lienExpire : String(r.json.erreur ?? TEXTES[langue].erreur);
+    setEtat({ nom: 'message', texte, reessayer: r.statut >= 500 || r.statut === 429, ...(conciergerie ? { conciergerie } : {}) });
     // Changer de langue ne recharge pas la vue : les textes de la fiche ne changent pas.
   }, [apercu, jeton]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -148,7 +170,7 @@ export default function Sejour() {
       const tous = checkinsDemo();
       const precedent = tous[demo.reservation.id];
       // Comme le serveur : « garder les fiches » les reprend du check-in gardé.
-      const relu = lireSaisieCheckin(saisie, { maxPersonnes: MAX_VOYAGEURS, aujourdhui: AUJOURDHUI, ...(precedent?.fiches?.length ? { fichesPrecedentes: precedent.fiches } : {}) });
+      const relu = lireSaisieCheckin(saisie, { maxPersonnes: MAX_VOYAGEURS, aujourdhui: AUJOURDHUI, arrivee: demo.reservation.arrivee, ...(precedent?.fiches?.length ? { fichesPrecedentes: precedent.fiches } : {}) });
       if (!relu.ok) return { erreurs: relu.erreurs, message: t.verifier };
       const r = nouveauCheckin(precedent, relu.saisie, { reservation: demo.reservation, langue, maintenant: horodatageMaintenant(), aujourdhui: AUJOURDHUI });
       if (!r.ok) return { message: MESSAGES_REFUS_CHECKIN[r.raison][langue] };
@@ -178,15 +200,18 @@ export default function Sejour() {
       {etat.nom === 'pret' ? (
         <LivretSejour vue={etat.vue} langue={langue} onLangue={changerLangue} aujourdhui={AUJOURDHUI} onEnvoyer={envoyer} bandeau={bandeau} />
       ) : etat.nom === 'message' ? (
-        <div className="grid min-h-screen place-items-center px-4">
-          <Card className="w-full max-w-sm p-6 text-center">
-            <p className="text-[15px] text-(--lm-encre-2)">{etat.texte}</p>
-            {etat.reessayer && (
-              <Button variant="secondary" className="mt-4" onClick={() => void charger()}>
-                {t.reessayer}
-              </Button>
-            )}
-          </Card>
+        <div className="grid min-h-screen place-items-center bg-(--lm-fond) px-4 py-10">
+          <div className="w-full max-w-sm">
+            {etat.conciergerie && <EnteteMarque nom={etat.conciergerie} />}
+            <Card className="w-full p-6 text-center">
+              <p className="text-[15px] text-(--lm-encre-2)">{etat.texte}</p>
+              {etat.reessayer && (
+                <Button variant="secondary" className="mt-4" onClick={() => void charger()}>
+                  {t.reessayer}
+                </Button>
+              )}
+            </Card>
+          </div>
         </div>
       ) : (
         <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pt-20" aria-busy="true" aria-label={t.chargement}>

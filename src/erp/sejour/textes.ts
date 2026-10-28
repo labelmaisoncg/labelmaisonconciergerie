@@ -23,18 +23,18 @@ const FR = {
 
   checkinTitre: 'Check-in en ligne',
   checkinAFaire: 'Deux minutes pour préparer votre arrivée.',
+  checkinEnCours: 'Il reste votre check-in : deux minutes.',
   checkinFait: 'Check-in fait',
   checkinEnvoye: (d: string) => `Envoyé le ${d}.`,
   faireCheckin: 'Faire mon check-in',
   modifier: 'Modifier',
   heureArrivee: 'Heure d’arrivée prévue',
-  heureArriveeAide: (h?: string) => (h ? `Arrivée possible dès ${h}.` : ''),
+  heureArriveeSurPlace: 'Heure d’arrivée',
   nbVoyageurs: 'Nombre de voyageurs',
   nationaliteQuestion: 'Nationalité des voyageurs',
   tousFrancais: 'Tous français',
   etrangers: 'Au moins un voyageur étranger',
-  ficheExplication:
-    'La loi française demande une fiche à chaque voyageur étranger de 15 ans et plus. Les enfants de moins de 15 ans peuvent être inscrits sur la fiche d’un adulte. Aucune pièce d’identité n’est demandée.',
+  ficheExplication: 'Une fiche par voyageur étranger de 15 ans et plus, sans pièce d’identité.',
   voyageurN: (n: number) => `Voyageur ${n}`,
   nom: 'Nom',
   prenoms: 'Prénom(s)',
@@ -43,7 +43,8 @@ const FR = {
   naissanceLieuAide: 'Ville et pays.',
   nationalite: 'Nationalité',
   domicile: 'Adresse du domicile habituel',
-  enfants: 'Enfants de moins de 15 ans avec cette personne',
+  enfants: 'Enfants de moins de 15 ans',
+  enfantsAide: 'Sur la fiche de cette personne.',
   ajouterVoyageur: 'Ajouter un voyageur',
   retirer: 'Retirer',
   fichesGardees: (n: number) => `${pluriel(n, 'fiche déjà envoyée', 'fiches déjà envoyées')}. Pour votre confidentialité, elles ne sont pas réaffichées ici.`,
@@ -51,6 +52,8 @@ const FR = {
   garderFiches: 'Garder les fiches déjà envoyées',
   accepte: 'J’ai lu le règlement intérieur et je l’accepte.',
   voirReglement: 'Voir le règlement',
+  confidentialiteCourte: 'Gardées 6 mois, transmises seulement à la police si elle le demande.',
+  enSavoirPlus: 'En savoir plus',
   confidentialite:
     'Ces informations servent seulement à préparer votre arrivée. Les fiches de police sont gardées 6 mois, comme la loi le demande, puis effacées. Elles ne sont transmises qu’à la police ou à la gendarmerie, si elles le demandent.',
   signature: 'En envoyant, vous certifiez ces informations exactes.',
@@ -62,6 +65,8 @@ const FR = {
   accesTitre: 'Accès et wifi',
   codeAttente: 'Code communiqué dans les 48 heures avant l’arrivée',
   codeAttenteDate: (d: string) => `Il s’affichera ici à partir du ${d}.`,
+  accesJourDepart: 'Jour du départ : le code reste celui de votre arrivée.',
+  codeArrivee: '[le code de votre arrivée]',
   wifi: 'Wifi',
   reseau: 'Réseau',
   motDePasse: 'Mot de passe',
@@ -85,13 +90,14 @@ const FR = {
   typesGuide: { video: 'Vidéo', photo: 'Photo', document: 'Document', lien: 'Lien' } as Record<GuideSejour['type'], string>,
 
   departTitre: 'Départ',
-  departAvant: (h: string) => `Départ avant ${h}.`,
   departDefaut: 'Laissez les clés comme à votre arrivée.',
 
   aideTitre: 'Une question ?',
   aidePlateforme: (p: string) => `Écrivez-nous dans la messagerie ${p} : nous répondons vite.`,
   ouvrir: (p: string) => `Ouvrir ${p}`,
   aideDirect: 'Écrivez-nous ou appelez-nous.',
+  appeler: 'Appeler',
+  ecrireEmail: 'Écrire un e-mail',
   lienPerso: 'Ce lien est personnel : ne le partagez pas.',
   confidentialiteLien: 'Confidentialité',
 
@@ -100,6 +106,8 @@ const FR = {
   erreur: 'Une erreur est survenue. Réessayez dans un instant.',
   reessayer: 'Réessayer',
   lienIncomplet: 'Ce lien est incomplet. Ouvrez le lien reçu dans votre messagerie de réservation.',
+  lienExpire: 'Ce lien a expiré.',
+  votreLogement: 'Votre logement',
   codeMasque: CODE_MASQUE,
 };
 
@@ -118,18 +126,18 @@ const EN: typeof FR = {
 
   checkinTitre: 'Online check-in',
   checkinAFaire: 'Two minutes to get your arrival ready.',
+  checkinEnCours: 'Your check-in is still missing: two minutes.',
   checkinFait: 'Check-in done',
   checkinEnvoye: (d: string) => `Sent on ${d}.`,
   faireCheckin: 'Start check-in',
   modifier: 'Edit',
   heureArrivee: 'Estimated arrival time',
-  heureArriveeAide: (h?: string) => (h ? `Arrival possible from ${h}.` : ''),
+  heureArriveeSurPlace: 'Arrival time',
   nbVoyageurs: 'Number of guests',
   nationaliteQuestion: 'Guests’ nationality',
   tousFrancais: 'All French',
   etrangers: 'At least one non-French guest',
-  ficheExplication:
-    'French law requires a form for each non-French guest aged 15 or over. Children under 15 can be listed on an adult’s form. No ID document is needed.',
+  ficheExplication: 'One form per non-French guest aged 15 or over, no ID document needed.',
   voyageurN: (n: number) => `Guest ${n}`,
   nom: 'Last name',
   prenoms: 'First name(s)',
@@ -138,7 +146,8 @@ const EN: typeof FR = {
   naissanceLieuAide: 'City and country.',
   nationalite: 'Nationality',
   domicile: 'Home address',
-  enfants: 'Children under 15 with this guest',
+  enfants: 'Children under 15',
+  enfantsAide: 'On this guest’s form.',
   ajouterVoyageur: 'Add a guest',
   retirer: 'Remove',
   fichesGardees: (n: number) => `${pluriel(n, 'form already sent', 'forms already sent')}. For your privacy, they are not shown again here.`,
@@ -146,6 +155,8 @@ const EN: typeof FR = {
   garderFiches: 'Keep the forms already sent',
   accepte: 'I have read and accept the house rules.',
   voirReglement: 'See the house rules',
+  confidentialiteCourte: 'Kept for 6 months, only shared with the police if they ask.',
+  enSavoirPlus: 'Learn more',
   confidentialite:
     'This information is only used to prepare your arrival. Police forms are kept for 6 months, as French law requires, then deleted. They are only shared with the police, if they ask for them.',
   signature: 'By sending, you confirm this information is correct.',
@@ -155,8 +166,10 @@ const EN: typeof FR = {
   verifier: 'Please check the highlighted fields.',
 
   accesTitre: 'Access and wifi',
-  codeAttente: 'Code shared within 48 hours before arrival',
-  codeAttenteDate: (d: string) => `It will show here from ${d}.`,
+  codeAttente: 'Your access code will appear here 48 hours before arrival',
+  codeAttenteDate: (d: string) => `From ${d}.`,
+  accesJourDepart: 'Check-out day: use the same code as on arrival.',
+  codeArrivee: '[the code from your arrival]',
   wifi: 'Wifi',
   reseau: 'Network',
   motDePasse: 'Password',
@@ -175,18 +188,19 @@ const EN: typeof FR = {
   calme: (debut: string, fin: string) => `Quiet hours ${debut}–${fin}`,
 
   aSavoirTitre: 'Good to know',
-  questionsTitre: 'Frequent questions',
+  questionsTitre: 'FAQs',
   guidesTitre: 'Guides',
   typesGuide: { video: 'Video', photo: 'Photo', document: 'Document', lien: 'Link' } as Record<GuideSejour['type'], string>,
 
   departTitre: 'Check-out',
-  departAvant: (h: string) => `Check-out before ${h}.`,
   departDefaut: 'Leave the keys as you found them on arrival.',
 
   aideTitre: 'Any question?',
   aidePlateforme: (p: string) => `Message us in the ${p} app: we reply fast.`,
   ouvrir: (p: string) => `Open ${p}`,
   aideDirect: 'Write to us or call us.',
+  appeler: 'Call',
+  ecrireEmail: 'Send an email',
   lienPerso: 'This link is personal: please do not share it.',
   confidentialiteLien: 'Privacy',
 
@@ -195,6 +209,8 @@ const EN: typeof FR = {
   erreur: 'Something went wrong. Please try again in a moment.',
   reessayer: 'Try again',
   lienIncomplet: 'This link is incomplete. Open the link from your booking messages.',
+  lienExpire: 'This link has expired.',
+  votreLogement: 'Your accommodation',
   codeMasque: '[code shared within 48 hours before arrival]',
 };
 
@@ -223,3 +239,13 @@ export function jourHorodatage(h: string, langue: LangueSejour): string {
 
 /** Texte de la fiche affiché : le code retiré (« [code communiqué…] ») dit dans la langue du voyageur. */
 export const texteFiche = (t: string, langue: LangueSejour): string => (langue === 'fr' ? t : t.split(CODE_MASQUE).join(TEXTES.en.codeMasque));
+
+/** Le code retiré, avec le mot « code » qui le précède (« code : [code communiqué…] »). */
+const CODE_RETIRE = new RegExp(`(?:(?<![\\p{L}])codes?\\s*:?\\s*)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
+
+/**
+ * Consignes de départ : le code retiré est celui de l'arrivée.
+ * « Laissez les clés dans la boîte, code 4821. » devient « Laissez les clés
+ * dans la boîte, [le code de votre arrivée]. »
+ */
+export const texteConsignes = (t: string, langue: LangueSejour): string => t.replace(CODE_RETIRE, () => TEXTES[langue].codeArrivee);

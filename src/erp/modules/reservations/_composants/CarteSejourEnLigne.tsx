@@ -1,10 +1,11 @@
 /**
- * « Livret et check-in » d'un séjour, dans la fiche de la réservation : où
- * en est le check-in en ligne (fait / pas encore), ce que le voyageur a
- * envoyé (heure d'arrivée, voyageurs, fiches de police), et « Copier le
- * lien » du livret. Le lien est signé par le serveur (api/sejour.ts, action
- * « equipe », gérant ou opérations de l'espace) ; le check-in n'est jamais
- * chargé avec le reste de l'ERP : il est lu ici, pour ce séjour seulement.
+ * « Livret d'accueil et check-in » d'un séjour, dans la fiche de la
+ * réservation : où en est le check-in en ligne, ce que le voyageur a envoyé
+ * (heure d'arrivée, voyageurs s'ils changent, fiches de police), et « Copier
+ * le lien » du livret. Le lien est signé par le serveur (api/sejour.ts,
+ * action « equipe », gérant ou opérations de l'espace) ; le check-in n'est
+ * jamais chargé avec le reste de l'ERP : il est lu ici, pour ce séjour
+ * seulement, et les fiches de police restent aux gérants.
  * Démo : lien et check-in de ce navigateur (sejour/demo.ts).
  */
 import { useEffect, useState } from 'react';
@@ -12,12 +13,14 @@ import { Check, Copy, Lock } from 'lucide-react';
 import { Alert, Badge, Button, Card, CardHeader } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { AUJOURDHUI, dateCourte, jourMois, pluriel } from '../../../data/format';
-import { etatLienSejour, lienValableJusquAu, type CheckinEnLigne, type SuiviSejour } from '../../../data/sejour';
+import { etatLienSejour, lienValableJusquAu, suiviCheckin, type CheckinEnLigne, type SuiviSejour } from '../../../data/sejour';
 import type { Reservation } from '../../../data/types';
 import { checkinsDemo, lienSejourDemo } from '../../../sejour/demo';
 import { ErreurServeur, appelerServeur } from '../../messagerie/_composants/serveur';
 
 type Etat = { nom: 'chargement' } | { nom: 'cache' } | { nom: 'erreur'; message: string } | { nom: 'pret'; suivi: SuiviSejour };
+
+const TITRE = 'Livret d’accueil et check-in';
 
 const dateNaissance = (d: string) => (/^\d{4}-\d{2}-\d{2}$/.test(d) ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : d);
 
@@ -32,6 +35,7 @@ function Fiches({ c, reservees }: { c: CheckinEnLigne; reservees?: number }) {
       </p>
     );
   }
+  if (c.fiches.length === 0) return null;
   return (
     <details className="text-[13px]">
       <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
@@ -62,6 +66,7 @@ function Fiches({ c, reservees }: { c: CheckinEnLigne; reservees?: number }) {
 export function CarteSejourEnLigne({ r }: { r: Reservation }) {
   const d = useErp();
   const demo = d.mode === 'demo';
+  const gerant = d.utilisateur.role === 'gerant';
   const [etat, setEtat] = useState<Etat>({ nom: 'chargement' });
   const [copie, setCopie] = useState<'ok' | 'echec' | null>(null);
 
@@ -70,8 +75,10 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
     setCopie(null);
     if (demo) {
       const e = etatLienSejour(r, AUJOURDHUI);
-      const checkin = checkinsDemo()[r.id];
-      setEtat({ nom: 'pret', suivi: { etat: e, ...(checkin ? { checkin } : {}), ...(e === 'ouvert' ? { lien: lienSejourDemo(r.id), lienJusquAu: lienValableJusquAu(r.depart) } : {}) } });
+      setEtat({
+        nom: 'pret',
+        suivi: { etat: e, ...suiviCheckin(checkinsDemo()[r.id], gerant), ...(e === 'ouvert' ? { lien: lienSejourDemo(r.id), lienJusquAu: lienValableJusquAu(r.depart) } : {}) },
+      });
       return;
     }
     setEtat({ nom: 'chargement' });
@@ -84,19 +91,29 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
       actif = false;
     };
     // Relu quand le séjour change (dates, statut) : le lien et son échéance suivent.
-  }, [demo, r]);
+  }, [demo, gerant, r]);
+
+  // « Lien copié » revient à « Copier le lien » après 2 secondes.
+  useEffect(() => {
+    if (copie !== 'ok') return;
+    const t = setTimeout(() => setCopie(null), 2000);
+    return () => clearTimeout(t);
+  }, [copie]);
 
   if (etat.nom === 'chargement' || etat.nom === 'cache') return null;
   if (etat.nom === 'erreur') {
     return (
       <Card>
-        <CardHeader titre="Livret et check-in en ligne" />
+        <CardHeader titre={TITRE} />
         <p className="text-[13px] text-(--lm-encre-2)">{etat.message}</p>
       </Card>
     );
   }
   const { suivi } = etat;
   const c = suivi.checkin;
+  const ouvert = suivi.etat === 'ouvert';
+  const reserves = r.voyageur?.nbPersonnes;
+  const autresVoyageurs = !!c && typeof reserves === 'number' && c.nbPersonnes !== reserves;
 
   const copier = async () => {
     if (!suivi.lien) return;
@@ -111,7 +128,7 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
   return (
     <Card>
       <CardHeader
-        titre="Livret et check-in en ligne"
+        titre={TITRE}
         actions={
           suivi.lien && (
             <Button size="sm" variant="secondary" icone={copie === 'ok' ? <Check /> : <Copy />} onClick={() => void copier()}>
@@ -120,11 +137,12 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
           )
         }
       />
-      <p className="flex flex-wrap items-center gap-2 text-[13.5px] text-(--lm-encre-2)">
-        Check-in en ligne :
-        {c ? <Badge tone="succes">Fait</Badge> : <Badge tone="neutre">Pas encore</Badge>}
-        {c && <span className="text-[12.5px] text-(--lm-encre-3)">le {jourMois(c.envoyeLe.slice(0, 10))}</span>}
-      </p>
+      {/* Annulée ou lien expiré sans check-in : pas de « Pas encore », seulement la ligne d'état plus bas. */}
+      {(c || ouvert) && (
+        <p className="flex flex-wrap items-center gap-2 text-[13.5px] text-(--lm-encre-2)">
+          Check-in en ligne :{c ? <Badge tone="succes">Fait le {jourMois(c.envoyeLe.slice(0, 10))}</Badge> : <Badge tone="neutre">Pas encore</Badge>}
+        </p>
+      )}
       {c && (
         <div className="mt-3 flex flex-col gap-2 border-t border-(--lm-bord) pt-3">
           <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-[13.5px]">
@@ -132,14 +150,15 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
               <dt className="text-[12px] text-(--lm-encre-3)">Arrivée prévue</dt>
               <dd className="lm-chiffres font-medium text-(--lm-encre)">vers {c.arriveeEstimee}</dd>
             </div>
-            <div>
-              <dt className="text-[12px] text-(--lm-encre-3)">Voyageurs</dt>
-              <dd className="lm-chiffres font-medium text-(--lm-encre)">{pluriel(c.nbPersonnes, 'personne')}</dd>
-            </div>
-            <div className="col-span-2">
-              <dt className="text-[12px] text-(--lm-encre-3)">Règlement intérieur</dt>
-              <dd className="font-medium text-(--lm-encre)">Accepté</dd>
-            </div>
+            {/* Les voyageurs seulement s'ils diffèrent de la réservation. */}
+            {autresVoyageurs && (
+              <div>
+                <dt className="text-[12px] text-(--lm-encre-3)">Voyageurs</dt>
+                <dd className="lm-chiffres font-medium text-(--lm-encre)">
+                  {pluriel(c.nbPersonnes, 'personne')} <span className="font-normal text-(--lm-encre-2)">({reserves} à la réservation)</span>
+                </dd>
+              </div>
+            )}
           </dl>
           <Fiches c={c} reservees={suivi.fichesReservees} />
         </div>
@@ -148,7 +167,7 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
       {suivi.etat === 'expire' && <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">Lien expiré (quelques jours après le départ).</p>}
       {suivi.lien && suivi.lienJusquAu && (
         <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">
-          Codes visibles seulement 48 h avant l’arrivée. Lien valable jusqu’au {dateCourte(suivi.lienJusquAu)}.
+          {AUJOURDHUI < r.arrivee && 'Codes visibles seulement 48 h avant l’arrivée. '}Lien valable jusqu’au {dateCourte(suivi.lienJusquAu)}.
         </p>
       )}
       {suivi.raison && (

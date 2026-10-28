@@ -47,7 +47,7 @@ export interface EditeurMessageAutoProps {
   onEnregistrer: (k: DeclencheurMessage, m: Pick<ModeleProgramme, 'texte' | 'heure' | 'logements'>) => void;
 }
 
-/** Aperçu de {Lien du séjour} : le serveur signe le vrai lien de chaque séjour à l'envoi. */
+/** Aperçu de {Lien du livret} : le serveur signe le vrai lien de chaque séjour à l'envoi. */
 const LIEN_SEJOUR_EXEMPLE = 'https://www.labelmaisoncg.fr/sejour#…';
 
 /** Pastille d'une variable : la touche l'insère là où se trouve le curseur. */

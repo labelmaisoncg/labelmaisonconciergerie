@@ -7,12 +7,19 @@
 // Un fichier préfixé par « _ » n'est pas exposé comme route par Vercel.
 //
 // Variables d'environnement (projet Vercel du site) :
-//   ACCES_SECRET   déjà là pour l'espace opérations (32 caractères au moins) :
-//                  signe aussi les liens des séjours (signature séparée, voir
-//                  sejour.ts). Absente : aucun lien (la ligne {lien_sejour}
-//                  des messages automatiques est retirée, la fiche de la
-//                  réservation dit ce qu'il manque). La changer coupe tous les
-//                  liens de séjour déjà envoyés, comme les sessions des espaces.
+//   SEJOUR_SECRET  (facultative) secret propre aux liens des séjours, 32
+//                  caractères au moins (ex. `openssl rand -base64 48`). La
+//                  poser, ou la changer, coupe tous les liens de séjour déjà
+//                  envoyés SANS toucher aux sessions des propriétaires et des
+//                  opérations. Posée mais trop courte : aucun lien (jamais de
+//                  retour discret à ACCES_SECRET), la fiche de la réservation
+//                  le dit.
+//   ACCES_SECRET   sans SEJOUR_SECRET : celle de l'espace opérations (déjà en
+//                  place, 32 caractères au moins) signe aussi les liens des
+//                  séjours (signature séparée, voir sejour.ts). Aucune des
+//                  deux : aucun lien (la ligne {lien_sejour} des messages
+//                  automatiques est retirée, la fiche de la réservation dit
+//                  ce qu'il manque). La changer coupe aussi les liens de séjour.
 //   SITE_URL       (facultative) site des liens, comme pour les autres liens
 //                  (api/_acces-externe.ts, adresseSite).
 //   ERP_PASSWORD, ERP_SERVEUR_MOT_DE_PASSE : lecture de la base, comme partout.
@@ -26,6 +33,7 @@
 import { espaceDe } from '../src/erp/data/acces-externe.js';
 import { ID_LABEL_MAISON, estLabelMaison } from '../src/erp/data/espaces.js';
 import { secretValide } from '../src/erp/data/proprietaire-acces.js';
+import { heureParisDe } from '../src/erp/data/messages-programmes.js';
 import { dateParisISO } from '../src/erp/data/proprietaire.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import {
@@ -44,14 +52,23 @@ import { adresseSite, baseAcces, contactsEspace, ficheEspace } from './_acces-ex
 import { espacesActifs } from './_erp-espaces.js';
 import { configuration, signeurFichiersErp } from './_erp-repull.js';
 
-/** Secret des liens de séjour ('' : aucun valable, pas de lien). */
+/**
+ * Secret des liens de séjour ('' : aucun valable, pas de lien) : SEJOUR_SECRET
+ * si elle est posée (elle seule fait foi, même trop courte), sinon ACCES_SECRET.
+ */
 export function secretSejour(): string {
-  const s = (process.env.ACCES_SECRET || '').trim();
-  return secretValide(s) ? s : '';
+  const propre = (process.env.SEJOUR_SECRET || '').trim();
+  if (propre) return secretValide(propre) ? propre : '';
+  const commun = (process.env.ACCES_SECRET || '').trim();
+  return secretValide(commun) ? commun : '';
 }
 
-export const MESSAGE_SANS_SECRET =
-  'Lien du séjour pas encore disponible : ajoutez ACCES_SECRET dans Vercel (Settings → Environment Variables, 32 caractères au moins, Production et Preview), puis redéployez.';
+/** Pourquoi il n'y a pas de lien de séjour (message montré au gérant sur la fiche de la réservation). */
+export function raisonSansSecret(): string {
+  return (process.env.SEJOUR_SECRET || '').trim()
+    ? 'Lien du livret indisponible : SEJOUR_SECRET est trop courte dans Vercel (32 caractères au moins). Corrigez-la ou retirez-la, puis redéployez.'
+    : 'Lien du livret pas encore disponible : ajoutez ACCES_SECRET (ou SEJOUR_SECRET) dans Vercel (Settings → Environment Variables, 32 caractères au moins, Production et Preview), puis redéployez.';
+}
 
 /** Lien du livret d'un séjour, sur le site fixe ; null sans secret. */
 export async function lienSejourServeur(espace: string, reservationId: string): Promise<string | null> {
@@ -113,16 +130,16 @@ export async function lireSejour(espace: string, reservationId: string): Promise
 }
 
 /** Nom de la conciergerie du séjour : celui de l'espace ; Label Maison seulement s'il l'est vraiment. */
-async function nomConciergerie(espace: string): Promise<{ nom: string; contacts?: { email?: string; telephone?: string } }> {
+export async function nomConciergerie(espace: string): Promise<{ nom: string; contacts?: { email?: string; telephone?: string } }> {
   const fiche = await ficheEspace(espace).catch(() => undefined);
   const c = contactsEspace(fiche, espace);
   return { nom: fiche?.nom ?? (estLabelMaison(espace) ? 'Label Maison' : 'Votre conciergerie'), ...(c ? { contacts: { email: c.email, telephone: c.telephone } } : {}) };
 }
 
 /** La vue du voyageur, photo et guides déposés signés (liens courts) dans l'espace du séjour. */
-export async function vueDuSejour(s: SejourLu, pret: boolean, aujourdhui: string = dateParisISO()): Promise<VueSejour> {
+export async function vueDuSejour(s: SejourLu, pret: boolean, aujourdhui: string = dateParisISO(), heure: string = heureParisDe(new Date())): Promise<VueSejour> {
   const { nom, contacts } = await nomConciergerie(s.espace);
-  const entrees = { conciergerie: nom, reservation: s.reservation, logement: s.logement, checkin: s.checkin, aujourdhui, checkinOuvert: pret, ...(contacts ? { contacts } : {}) };
+  const entrees = { conciergerie: nom, reservation: s.reservation, logement: s.logement, checkin: s.checkin, aujourdhui, heure, checkinOuvert: pret, ...(contacts ? { contacts } : {}) };
   const fichiers = fichiersDeLaVue(entrees);
   const signer = fichiers.length ? signeurFichiersErp({ ...configuration(), espace: s.espace }) : undefined;
   const liens = new Map<string, string>();

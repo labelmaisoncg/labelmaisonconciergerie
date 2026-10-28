@@ -159,6 +159,9 @@ export function ajouterMoisISO(date: DateISO, n: number): DateISO {
   return `${String(annee).padStart(4, '0')}-${String(mois + 1).padStart(2, '0')}-${String(Math.min(j, fin)).padStart(2, '0')}`;
 }
 
+/** A-t-on 18 ans ce jour-là (né le 29 février : le 28 février) ? */
+export const majeurLe = (naissance: DateISO, jour: DateISO): boolean => ajouterMoisISO(naissance, 18 * 12) <= jour;
+
 /** Dernier jour où le check-in d'un séjour est gardé. */
 export const conservationJusquAu = (depart: DateISO): DateISO => ajouterMoisISO(depart, MOIS_CONSERVATION);
 
@@ -313,7 +316,9 @@ export type ChampCheckin =
   | 'naissanceLieu'
   | 'nationalite'
   | 'domicile'
-  | 'enfants';
+  | 'enfants'
+  /** Enfants inscrits sur la fiche d'un voyageur de moins de 18 ans le jour de l'arrivée. */
+  | 'enfantsMineur';
 
 export interface ErreurCheckin {
   champ: ChampCheckin;
@@ -335,6 +340,7 @@ export const MESSAGES_ERREURS: Record<ChampCheckin, Record<LangueSejour, string>
   nationalite: { fr: 'Indiquez la nationalité.', en: 'Enter the nationality.' },
   domicile: { fr: 'Indiquez l’adresse du domicile habituel.', en: 'Enter the home address.' },
   enfants: { fr: 'Nombre d’enfants entre 0 et 10.', en: 'Number of children between 0 and 10.' },
+  enfantsMineur: { fr: 'Les enfants s’inscrivent sur la fiche d’un adulte (18 ans ou plus).', en: 'Children go on an adult’s form (18 or over).' },
 };
 
 /** Caractères de contrôle, invisibles et de sens d'écriture : retirés de tout texte saisi. */
@@ -361,7 +367,7 @@ const entier = (v: unknown): number | null => {
  */
 export function lireSaisieCheckin(
   brut: unknown,
-  o: { maxPersonnes: number; aujourdhui: DateISO; fichesPrecedentes?: readonly FichePolice[] },
+  o: { maxPersonnes: number; aujourdhui: DateISO; fichesPrecedentes?: readonly FichePolice[]; /** Jour d'arrivée (âge du titulaire) ; absent : aujourd'hui. */ arrivee?: DateISO },
 ): { ok: true; saisie: SaisieCheckin } | { ok: false; erreurs: ErreurCheckin[] } {
   const x = (brut && typeof brut === 'object' && !Array.isArray(brut) ? brut : {}) as Record<string, unknown>;
   const erreurs: ErreurCheckin[] = [];
@@ -398,9 +404,12 @@ export function lireSaisieCheckin(
         domicile: champ('domicile'),
         enfants: 0,
       };
-      if (!dateValide(fiche.naissanceLe) || fiche.naissanceLe < '1900-01-01' || fiche.naissanceLe > o.aujourdhui) erreurs.push({ champ: 'naissanceLe', fiche: i });
+      const naissanceOk = dateValide(fiche.naissanceLe) && fiche.naissanceLe >= '1900-01-01' && fiche.naissanceLe <= o.aujourdhui;
+      if (!naissanceOk) erreurs.push({ champ: 'naissanceLe', fiche: i });
       const enfants = y.enfants === undefined || y.enfants === '' ? 0 : entier(y.enfants);
       if (enfants === null || enfants < 0 || enfants > MAX_ENFANTS_PAR_FICHE) erreurs.push({ champ: 'enfants', fiche: i });
+      // Des enfants sur sa fiche : seulement un adulte (18 ans le jour de l'arrivée). Date fausse : une seule erreur, la date.
+      else if (enfants > 0 && naissanceOk && !majeurLe(fiche.naissanceLe, dateValide(o.arrivee) ? o.arrivee : o.aujourdhui)) erreurs.push({ champ: 'enfantsMineur', fiche: i });
       else fiche.enfants = enfants;
       fiches.push(fiche);
     });
@@ -509,10 +518,15 @@ export interface VueSejour {
   depart: DateISO;
   nuits: number;
   voyageurs: number;
-  /** avant l'arrivée, pendant le séjour, après le départ (lien encore ouvert quelques jours). */
+  /**
+   * avant l'arrivée, pendant le séjour (le jour du départ compris, jusqu'à
+   * l'heure de départ), après le départ (lien encore ouvert quelques jours).
+   */
   moment: 'avant' | 'pendant' | 'apres';
   logement: {
+    /** Titre de l'annonce ('' sans titre : jamais le nom interne, qui peut citer le propriétaire). */
     nom: string;
+    ville: string;
     adresse: string;
     photo?: string;
     capacite: number;
@@ -528,7 +542,8 @@ export interface VueSejour {
   };
   /** Guides sans accès au logement (vidéos, documents, liens). */
   guides: GuideSejour[];
-  acces: { visible: true; texte?: string; wifi?: { nom: string; code?: string }; guides: GuideSejour[] } | { visible: false; aPartirDu: DateISO };
+  /** Pas visibles : `aPartirDu` avant la fenêtre des codes ; absent le jour du départ et après (le code reste celui de l'arrivée). */
+  acces: { visible: true; texte?: string; wifi?: { nom: string; code?: string }; guides: GuideSejour[] } | { visible: false; aPartirDu?: DateISO };
   checkin: {
     /** Le formulaire peut être enregistré (base prête). */
     ouvert: boolean;
@@ -550,6 +565,8 @@ export interface EntreesSejour {
   logement?: Logement;
   checkin?: CheckinEnLigne;
   aujourdhui: DateISO;
+  /** Heure à Paris (« HH:MM ») : le jour du départ, le séjour dure jusqu'à l'heure de départ. Absente : toute la journée. */
+  heure?: string;
   /** Le check-in peut être enregistré (SQL passé : règles et purge en place). */
   checkinOuvert: boolean;
   /** Contacts de la conciergerie : seulement pour un séjour hors plateforme. */
@@ -569,6 +586,43 @@ function photoDuLogement(l: Logement | undefined): string | undefined {
   if (equipe) return equipe;
   if (l.photoUrl?.startsWith('stockage://')) return l.photoUrl;
   return [...(l.photos ?? []), l.photoUrl].find((p): p is string => typeof p === 'string' && /^https:\/\/[^\s"'<>]+$/.test(p));
+}
+
+/** Mots d'accès près desquels un court jeton avec un chiffre est un code probable (« code postal » n'en est pas un). */
+const MOT_D_ACCES = /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|codes?(?!\s+postal))(?![\p{L}])/giu;
+/** Jeton d'au moins 3 signes dont un chiffre (« 482 », « B7Z », « 12#4 »). */
+const JETON_CHIFFRE = /(?<![\p{L}\p{N}#*])(?=[\p{L}\p{N}#*]*\d)[\p{L}\p{N}#*]{3,}(?![\p{L}\p{N}#*])/gu;
+/** Jetons qui ressemblent à un code sans en être un : heure, ordinal, distance, durée, montant, débit. */
+const PAS_UN_CODE_COURT = /^(\d{1,2}h\d{0,2}|\d{1,3}(er|re|e|ème|eme|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|€|eur|euros?|mb|mbps|go|gb))$/iu;
+/** Unité écrite après le nombre, séparée par une espace (« à 200 m », « 150 € ») : une distance, une durée, un montant. */
+const UNITE_APRES = /^\s{1,2}(?:m|km|mètres?|metres?|mn|min|minutes?|h|heures?|€|eur|euros?)(?![\p{L}\p{N}])/iu;
+
+/**
+ * Un code écrit sans le mot « code » à côté d'un mot d'accès : « Portail du
+ * parking : 482. », « Dans la boîte B7Z », « 482 au portail ». Un jeton d'au
+ * moins 3 signes avec un chiffre, dans la même phrase, juste après le mot
+ * (30 signes) ou juste avant lui (même membre de phrase). Prudent : un
+ * numéro d'appartement près de « porte » compte aussi (le texte attend
+ * alors les 48 h). Sert au livret et à l'avertissement de la fiche voyageur.
+ */
+export function codeProbable(texte: string | undefined): boolean {
+  const t = String(texte ?? '').normalize('NFKC');
+  for (const m of t.matchAll(MOT_D_ACCES)) {
+    const debut = m.index ?? 0;
+    const finMot = debut + m[0].length;
+    const apres = t.slice(finMot, finMot + 30).split(/[.\n;!?]/)[0];
+    const avant = t.slice(Math.max(0, debut - 30), debut).split(/[.,:\n;!?]/).pop() ?? '';
+    for (const [morceau, origine] of [
+      [apres, finMot],
+      [avant, debut - avant.length],
+    ] as const) {
+      for (const j of morceau.matchAll(JETON_CHIFFRE)) {
+        const fin = origine + (j.index ?? 0) + j[0].length;
+        if (!PAS_UN_CODE_COURT.test(j[0]) && !UNITE_APRES.test(t.slice(fin, fin + 12))) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** Texte court montré tel quel (titre d'un guide, adresse) : cite-t-il un code d'accès ou le wifi de ce logement ? */
@@ -610,7 +664,8 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
     if (!brut) return undefined;
     if (codes) return brut;
     const masque = masquerCodes(brut).trim();
-    return masque && !contientCodeAcces(masque, l) ? masque : undefined;
+    // Un code court sans le mot « code » (« Portail : 482 ») : le texte attend aussi les 48 h.
+    return masque && !contientCodeAcces(masque, l) && !codeProbable(masque) ? masque : undefined;
   };
   const versGuide = (g: GuideLogement): GuideSejour | null => {
     const adresse = estLienGuide(g.media?.url) ? g.media.url!.trim() : estFichierGuide(g.media?.fichier) ? lien(g.media.fichier!) : undefined;
@@ -634,6 +689,8 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
   const rue = l?.adresse?.trim();
   const adresse = l ? [rue && (codes || !citeUnCode(rue, l)) ? rue : undefined, [l.codePostal?.trim(), l.ville?.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
   const plateforme = PLATEFORMES[r.canal];
+  const heureDepart = /^([01]\d|2[0-3]):[0-5]\d/.exec(f?.heureDepart?.trim() ?? '')?.[0] ?? '11:00';
+  const pendant = e.aujourdhui < r.depart || (e.aujourdhui === r.depart && (e.heure ?? '00:00') < heureDepart);
   return {
     conciergerie: e.conciergerie,
     prenom: prenomDe(r.voyageur?.nom),
@@ -642,10 +699,11 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
     depart: r.depart,
     nuits: r.nuits,
     voyageurs: r.voyageur?.nbPersonnes ?? 1,
-    moment: e.aujourdhui < r.arrivee ? 'avant' : e.aujourdhui < r.depart ? 'pendant' : 'apres',
+    moment: e.aujourdhui < r.arrivee ? 'avant' : pendant ? 'pendant' : 'apres',
     logement: {
-      // Le titre vu par les voyageurs sur la plateforme d'abord (le nom interne peut citer le propriétaire).
-      nom: (l?.descriptif?.titre?.trim() || l?.nom?.trim() || '').slice(0, 120),
+      // Le titre vu par les voyageurs sur la plateforme ; jamais le nom interne (il peut citer le propriétaire).
+      nom: (l?.descriptif?.titre?.trim() || '').slice(0, 120),
+      ville: (l?.ville?.trim() || '').slice(0, 80),
       adresse,
       ...(photo ? (photo.startsWith('stockage://') ? (lien(photo) ? { photo: lien(photo) } : {}) : { photo }) : {}),
       capacite: l?.capacite && l.capacite > 0 ? Math.min(l.capacite, MAX_VOYAGEURS) : MAX_VOYAGEURS,
@@ -672,7 +730,7 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
           ...(wifiNom ? { wifi: { nom: wifiNom, ...(f?.wifiCode?.trim() ? { code: f.wifiCode.trim() } : {}) } } : {}),
           guides: g.acces.map(versGuide).filter((x): x is GuideSejour => !!x),
         }
-      : { visible: false, aPartirDu: codesVisiblesLe(r.arrivee) },
+      : { visible: false, ...(e.aujourdhui < codesVisiblesLe(r.arrivee) ? { aPartirDu: codesVisiblesLe(r.arrivee) } : {}) },
     checkin: {
       ouvert: e.checkinOuvert,
       fait: !!e.checkin,
