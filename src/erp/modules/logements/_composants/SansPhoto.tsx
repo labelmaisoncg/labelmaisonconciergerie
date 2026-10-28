@@ -20,7 +20,7 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
   const n = l.repull?.lecture;
   const enPause = !!l.repull?.horsSelection;
   const idAirbnb = idAirbnbDuLogement(l);
-  const surBooking = (l.repull?.canaux ?? []).some((c) => /booking/i.test(c.plateforme)) || l.annonces.some((a) => a.canal === 'booking');
+  const surBooking = (l.repull?.canaux ?? []).some((c) => /booking/i.test(c.plateforme)) || l.annonces.some((a) => a.canal === 'booking' && a.connecte);
   const raison = n?.photos === 'aucune' ? `${phrase(n.raisonPhotos ?? 'aucune photo transmise par les plateformes')} (lu le ${dateCourte(n.le)}).` : undefined;
 
   let texte: string;
@@ -31,7 +31,10 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
       ? 'Booking.com ne transmet pas les photos à votre connexion. Ajoutez vos photos ou le lien de l’annonce Airbnb.'
       : enPause
         ? 'Ce logement est en pause (hors de votre forfait). Ajoutez vos photos ou le lien de l’annonce Airbnb.'
-        : 'Aucune plateforme ne transmet de photos pour ce logement. Ajoutez vos photos ou le lien de l’annonce Airbnb.';
+        : !l.repull
+          ? // Créé à la main, relié à aucune annonce : le titre et les deux boutons suffisent.
+            ''
+          : 'Aucune plateforme ne transmet de photos pour ce logement. Ajoutez vos photos ou le lien de l’annonce Airbnb.';
     details = raison;
   } else {
     // Lien Airbnb connu : seule une lecture de sa page explique un manque ; sinon (lien tout juste
@@ -48,7 +51,7 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
         <h2 id="sans-photo-titre" className="text-[14px] font-semibold text-(--lm-encre)">
           Pas encore de photo
         </h2>
-        <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{texte}</p>
+        {texte && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{texte}</p>}
         {details && (
           <details className="mt-1 text-[12.5px] text-(--lm-encre-2)">
             <summary className="inline-flex h-8 cursor-pointer items-center font-medium text-(--lm-or-texte) hover:underline">Détails</summary>

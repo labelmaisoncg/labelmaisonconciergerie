@@ -59,7 +59,8 @@ export function DocumentContrat({ mandat: m, proprietaire: p, logement: l }: Par
       <Article n={1} titre="Objet">
         <p>
           Le Mandant confie au Gestionnaire la gestion en location meublée de courte durée du logement
-          {l ? ` « ${l.nom} », ${l.adresse}, ${l.codePostal} ${l.ville} (${LIBELLES.typeLogement[l.type]}, ${l.surfaceM2} m², ${l.capacite} voyageurs)` : ' désigné en annexe'}.
+          {/* Surface inconnue (0 : logement importé ou créé sans surface) : rien plutôt que « 0 m² ». */}
+          {l ? ` « ${l.nom} », ${l.adresse}, ${l.codePostal} ${l.ville} (${LIBELLES.typeLogement[l.type]}${l.surfaceM2 > 0 ? `, ${l.surfaceM2} m²` : ''}, ${l.capacite} voyageurs)` : ' désigné en annexe'}.
           {l?.numeroEnregistrement && ` Numéro d’enregistrement meublé de tourisme : ${l.numeroEnregistrement}.`}
         </p>
         <p>

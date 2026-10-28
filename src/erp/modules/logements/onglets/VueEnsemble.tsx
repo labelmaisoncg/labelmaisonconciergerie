@@ -76,6 +76,10 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
     .filter((r) => r.logementId === l.id && estActive(r) && r.depart >= AUJOURDHUI)
     .sort((a, b) => a.arrivee.localeCompare(b.arrivee))
     .slice(0, 5);
+  // Jamais réservé (logement neuf, ou seulement des annulations) : pas de taux d'occupation, plutôt qu'un « 0 % » sans données.
+  const dejaReserve = d.reservations.some((r) => r.logementId === l.id && estActive(r));
+  // Aucun des trois chiffres connus : pas de rangée de cartes vides (la fiche a déjà son état vide).
+  const chiffresConnus = !!prix || !!s.adr90 || dejaReserve || s.note !== undefined;
   const desc = l.descriptif;
   // Le couchage de l'annonce (pièce par pièce) remplace la ligne saisie à la main.
   const lits = desc?.couchage?.length ? '' : l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
@@ -105,17 +109,19 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="flex min-w-0 flex-col gap-5 lg:col-span-2">
-          <Chiffres
-            elements={[
-              {
-                libelle: 'Prix par nuit',
-                valeur: prix ? euros(prix.moyen, true) : s.adr90 ? euros(s.adr90, true) : SANS_DONNEE,
-                detail: prix ? '30 j à venir' : s.adr90 ? 'constaté, 90 j' : undefined,
-              },
-              { libelle: 'Occupation', valeur: pourcentage(s.occupation30), detail: '30 derniers j' },
-              { libelle: 'Note', valeur: s.note === undefined ? SANS_DONNEE : `${note(s.note)} / 5`, detail: s.note === undefined ? undefined : '12 mois' },
-            ]}
-          />
+          {chiffresConnus && (
+            <Chiffres
+              elements={[
+                {
+                  libelle: 'Prix par nuit',
+                  valeur: prix ? euros(prix.moyen, true) : s.adr90 ? euros(s.adr90, true) : SANS_DONNEE,
+                  detail: prix ? '30 j à venir' : s.adr90 ? 'constaté, 90 j' : undefined,
+                },
+                { libelle: 'Occupation', valeur: dejaReserve ? pourcentage(s.occupation30) : SANS_DONNEE, detail: dejaReserve ? '30 derniers j' : undefined },
+                { libelle: 'Note', valeur: s.note === undefined ? SANS_DONNEE : `${note(s.note)} / 5`, detail: s.note === undefined ? undefined : '12 mois' },
+              ]}
+            />
+          )}
           {prevision && <CartePrevisionnel prevision={prevision} titre={TITRE_PREVISIONNEL} />}
           <PrixConseilles logement={l} />
 

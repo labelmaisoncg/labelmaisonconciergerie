@@ -7,7 +7,7 @@ import { LIBELLES } from '../../data/libelles';
 import type { StatutLogement } from '../../data/types';
 import { CarteLogement } from './_composants/CarteLogement';
 import { statsLogement } from './_composants/stats';
-import { EditionLogement } from './EditionLogement';
+import { AssistantLogement } from './_composants/AssistantLogement';
 import { OngletsLogements } from './_composants/OngletsLogements';
 
 const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
@@ -15,8 +15,8 @@ const STATUTS: StatutLogement[] = ['actif', 'lancement', 'pause', 'sorti'];
 /**
  * Logements en cartes, comme des annonces : photo, note, ville, prochain
  * événement, prix de la nuit. Dans tout espace, même sans plateforme
- * connectée, un logement s'ajoute à la main (« + » de l'en-tête, ou l'écran vide) ;
- * il se relie ensuite à son annonce depuis sa fiche.
+ * connectée, un logement s'ajoute à la main (« + » de l'en-tête, ou l'écran vide),
+ * avec l'assistant pas à pas ; il se relie ensuite à son annonce depuis sa fiche.
  */
 export default function ListeLogements() {
   const d = useErp();
@@ -121,7 +121,8 @@ export default function ListeLogements() {
         </div>
       )}
 
-      <EditionLogement ouvert={creation && !d.lectureSeule} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />
+      {/* Création pas à pas ; la modification d'un logement garde le formulaire (fiche du logement). */}
+      <AssistantLogement ouvert={creation && !d.lectureSeule} onFermer={() => setCreation(false)} onCree={(id) => naviguer(id)} />
     </>
   );
 }

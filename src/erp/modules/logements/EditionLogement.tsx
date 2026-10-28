@@ -4,37 +4,18 @@ import { Button, Drawer, Field, Input, Select } from '../../ui';
 import { FormProprietaire } from '../proprietaires/FormProprietaire';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
-import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
+import { PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
 import { AUJOURDHUI } from '../../data/format';
-import { changerProprietaire } from '../../data/proprietaire';
-import { positionAJour, texteAdresse } from '../../data/carte';
-import { placerLogement } from '../../carte/placer';
-import type { Dpe, Logement, Serrure, StatutLogement, TypeLit, TypeLogement } from '../../data/types';
+import { TYPES_LIT, erreursSaisieLogement, logementDepuisSaisie, nomsInterdits, saisieInitiale, type ErreursLogement, type SaisieLogement } from '../../data/creation-logement';
+import { enregistrerLogement } from './_composants/enregistrerLogement';
+import type { Logement, Serrure, StatutLogement, TypeLogement } from '../../data/types';
 
 interface Props {
   ouvert: boolean;
   onFermer: () => void;
-  /** Absent : création d'un nouveau logement (statut « En préparation »). */
+  /** Absent : création d'un nouveau logement (statut « En préparation »). La liste passe par l'assistant pas à pas. */
   logement?: Logement;
   onCree?: (id: string) => void;
-}
-
-interface Saisie {
-  nom: string;
-  adresse: string;
-  codePostal: string;
-  ville: string;
-  type: TypeLogement;
-  surfaceM2: string;
-  capacite: string;
-  chambres: string;
-  lits: Record<TypeLit, string>;
-  dpe: string;
-  numeroEnregistrement: string;
-  residencePrincipale: boolean;
-  serrure: Serrure;
-  proprietaireId: string;
-  statut: StatutLogement;
 }
 
 const TYPES = Object.entries(LIBELLES.typeLogement).map(([valeur, libelle]) => ({ valeur, libelle }));
@@ -48,119 +29,37 @@ const STATUTS: { valeur: StatutLogement; libelle: string }[] = [
   { valeur: 'sorti', libelle: 'Sorti (plus géré)' },
 ];
 
-function initial(l?: Logement): Saisie {
-  const lits = (t: TypeLit) => String(l?.lits.find((x) => x.type === t)?.nombre ?? 0);
-  return {
-    nom: l?.nom ?? '',
-    adresse: l?.adresse ?? '',
-    codePostal: l?.codePostal ?? '',
-    ville: l?.ville ?? '',
-    type: l?.type ?? 'T2',
-    surfaceM2: l ? String(l.surfaceM2) : '',
-    capacite: l ? String(l.capacite) : '',
-    chambres: l ? String(l.chambres) : '1',
-    lits: { double: lits('double'), simple: lits('simple'), canape: lits('canape') },
-    dpe: l?.dpe ?? '',
-    numeroEnregistrement: l?.numeroEnregistrement ?? '',
-    residencePrincipale: l?.residencePrincipale ?? false,
-    serrure: l?.serrure ?? 'boite_a_cles',
-    proprietaireId: l?.proprietaireId ?? '',
-    statut: l?.statut ?? 'lancement',
-  };
-}
-
-const entier = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : NaN);
-
+/**
+ * Formulaire d'un logement (modification, et création hors liste). Saisie,
+ * contrôles et logement enregistré viennent de data/creation-logement.ts,
+ * comme pour l'assistant de création : les deux ne peuvent pas diverger.
+ */
 export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
-  const { proprietaires, upsert, mettreAJour, lectureSeule, utilisateur } = useErp();
+  const d = useErp();
+  const { proprietaires } = d;
   const [nouveauProprietaire, setNouveauProprietaire] = useState(false);
-  const [s, setS] = useState<Saisie>(() => initial(logement));
-  const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
+  const [s, setS] = useState<SaisieLogement>(() => saisieInitiale(logement));
+  const [erreurs, setErreurs] = useState<ErreursLogement>({});
 
   useEffect(() => {
     if (ouvert) {
-      setS(initial(logement));
+      setS(saisieInitiale(logement));
       setErreurs({});
     }
   }, [ouvert, logement]);
 
-  const maj = <K extends keyof Saisie>(k: K, v: Saisie[K]) => setS((x) => ({ ...x, [k]: v }));
-
-  const valider = (): boolean => {
-    const e: Partial<Record<keyof Saisie, string>> = {};
-    if (!s.nom.trim()) e.nom = 'Le nom est obligatoire.';
-    if (!s.adresse.trim()) e.adresse = 'L’adresse est obligatoire.';
-    if (!/^\d{5}$/.test(s.codePostal.trim())) e.codePostal = 'Code postal à 5 chiffres.';
-    if (!s.ville.trim()) e.ville = 'La ville est obligatoire.';
-    if (!(entier(s.surfaceM2) > 0)) e.surfaceM2 = 'Surface en m², nombre entier.';
-    if (!(entier(s.capacite) > 0)) e.capacite = 'Au moins 1 voyageur.';
-    if (Number.isNaN(entier(s.chambres))) e.chambres = 'Nombre entier.';
-    if (Object.values(s.lits).some((n) => Number.isNaN(entier(n)))) e.lits = 'Nombres entiers.';
-    if (!s.proprietaireId) e.proprietaireId = 'Choisissez le propriétaire.';
-    if (s.numeroEnregistrement && !/^[0-9A-Z]{13}$/i.test(s.numeroEnregistrement.trim()))
-      e.numeroEnregistrement = 'Format attendu : 13 caractères (ex. 91174000125RX).';
-    setErreurs(e);
-    return Object.keys(e).length === 0;
-  };
+  const maj = <K extends keyof SaisieLogement>(k: K, v: SaisieLogement[K]) => setS((x) => ({ ...x, [k]: v }));
 
   const enregistrer = (ev: FormEvent) => {
     ev.preventDefault();
-    if (!valider()) return;
-    const lits = (Object.entries(s.lits) as [TypeLit, string][])
-      .map(([type, n]) => ({ type, nombre: entier(n) }))
-      .filter((x) => x.nombre > 0);
-    const base: Logement = logement ?? {
-      id: nouvelId('log'),
-      nom: '',
-      adresse: '',
-      ville: '',
-      codePostal: '',
-      type: 'T2',
-      surfaceM2: 0,
-      capacite: 0,
-      chambres: 0,
-      lits: [],
-      statut: 'lancement',
-      proprietaireId: '',
-      residencePrincipale: false,
-      serrure: 'boite_a_cles',
-      fiche: { wifiNom: '', wifiCode: '', heureArrivee: '16:00', heureDepart: '11:00', acces: '', parking: '', regles: '', equipements: [] },
-      dotationLinge: [],
-      annonces: [
-        { canal: 'airbnb', connecte: false },
-        { canal: 'booking', connecte: false },
-        { canal: 'direct', connecte: false },
-      ],
-      checklistLancement: CHECKLIST_LANCEMENT.map((c) => ({ ...c, fait: false })),
-    };
-    const suivant: Logement = {
-      ...base,
-      nom: s.nom.trim(),
-      adresse: s.adresse.trim(),
-      codePostal: s.codePostal.trim(),
-      ville: s.ville.trim(),
-      type: s.type,
-      surfaceM2: entier(s.surfaceM2),
-      capacite: entier(s.capacite),
-      chambres: entier(s.chambres),
-      lits,
-      dpe: (s.dpe || undefined) as Dpe | undefined,
-      numeroEnregistrement: s.numeroEnregistrement.trim().toUpperCase() || undefined,
-      residencePrincipale: s.residencePrincipale,
-      serrure: s.serrure,
-      statut: logement ? s.statut : base.statut,
-    };
-    // Carte de l'accueil : une adresse changée retire l'ancienne position (elle ne vaut plus) ;
-    // le logement est ensuite placé d'après sa nouvelle adresse (ou pour la première fois).
-    const adresseChangee = !logement || texteAdresse(suivant) !== texteAdresse(logement);
-    const { position: _ancienne, ...sansPosition } = suivant;
-    const aEnregistrer: Logement = adresseChangee ? sansPosition : suivant;
-    // Autre propriétaire : l'ancien garde ses chiffres jusqu'à hier, le nouveau commence aujourd'hui.
-    upsert('logements', changerProprietaire(aEnregistrer, s.proprietaireId, AUJOURDHUI));
+    // Pas deux logements du même nom (sans casse, accents ni espaces) ; garder le sien reste possible.
+    const e = erreursSaisieLogement(s, { nomsPris: nomsInterdits(d.logements, logement, s.nom) });
+    setErreurs(e);
+    if (Object.keys(e).length) return;
+    const aEnregistrer = logementDepuisSaisie(s, logement ?? nouvelId('log'), AUJOURDHUI);
+    enregistrerLogement(d, aEnregistrer);
     onFermer();
-    if (!logement) onCree?.(suivant.id);
-    // Géocodage : gérant seulement (data/geocodage.ts) ; un compte « opérations » laisse le logement « à placer ».
-    if (utilisateur.role === 'gerant' && !lectureSeule && aEnregistrer.statut !== 'sorti' && !positionAJour(aEnregistrer)) void placerLogement(aEnregistrer, mettreAJour);
+    if (!logement) onCree?.(aEnregistrer.id);
   };
 
   return (
@@ -216,7 +115,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <Field label="Type">
           <Select value={s.type} onChange={(e) => maj('type', e.target.value as TypeLogement)} options={TYPES} />
         </Field>
-        <Field label="Surface (m²)" requis erreur={erreurs.surfaceM2}>
+        <Field label="Surface (m²)" erreur={erreurs.surfaceM2}>
           <Input value={s.surfaceM2} onChange={(e) => maj('surfaceM2', e.target.value)} inputMode="numeric" />
         </Field>
         <Field label="Capacité (voyageurs)" requis erreur={erreurs.capacite}>
@@ -228,7 +127,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <fieldset className="sm:col-span-2">
           <legend className="mb-1.5 text-[13px] font-medium text-(--lm-encre)">Lits</legend>
           <div className="grid grid-cols-3 gap-3">
-            {(['double', 'simple', 'canape'] as TypeLit[]).map((t) => (
+            {TYPES_LIT.map((t) => (
               <Field key={t} label={LIBELLES.typeLit[t]}>
                 <Input value={s.lits[t]} onChange={(e) => maj('lits', { ...s.lits, [t]: e.target.value })} inputMode="numeric" />
               </Field>

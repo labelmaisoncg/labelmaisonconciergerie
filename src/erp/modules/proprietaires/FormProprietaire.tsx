@@ -3,7 +3,8 @@ import { Button, Field, Input, Modal, Select, Textarea } from '../../ui';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { AUJOURDHUI } from '../../data/format';
-import type { Proprietaire, TypeProprietaire } from '../../data/types';
+import { erreursProprietaire, proprietaireDepuisSaisie, saisieProprietaireInitiale, type ErreursProprietaire, type SaisieProprietaire } from '../../data/creation-logement';
+import type { Proprietaire } from '../../data/types';
 
 interface Props {
   ouvert: boolean;
@@ -12,22 +13,16 @@ interface Props {
   onCree?: (id: string) => void;
 }
 
-type Saisie = { type: TypeProprietaire; nom: string; email: string; telephone: string; adresse: string; notes: string };
+/** Saisie, contrôles et fiche : data/creation-logement.ts (comme l'assistant de création d'un logement). */
+type Saisie = SaisieProprietaire;
 
 const TYPES = Object.entries(LIBELLES.typeProprietaire).map(([valeur, libelle]) => ({ valeur, libelle }));
 
 export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: Props) {
   const { upsert } = useErp();
-  const vierge = (): Saisie => ({
-    type: p?.type ?? 'particulier',
-    nom: p?.nom ?? '',
-    email: p?.contact.email ?? '',
-    telephone: p?.contact.telephone ?? '',
-    adresse: p?.adresse ?? '',
-    notes: p?.notes ?? '',
-  });
+  const vierge = (): Saisie => saisieProprietaireInitiale(p);
   const [s, setS] = useState<Saisie>(vierge);
-  const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
+  const [erreurs, setErreurs] = useState<ErreursProprietaire>({});
 
   useEffect(() => {
     if (ouvert) {
@@ -41,22 +36,10 @@ export function FormProprietaire({ ouvert, onFermer, proprietaire: p, onCree }: 
 
   const enregistrer = (e: FormEvent) => {
     e.preventDefault();
-    const err: Partial<Record<keyof Saisie, string>> = {};
-    if (s.nom.trim().length < 2) err.nom = 'Le nom est obligatoire.';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email.trim())) err.email = 'Adresse e-mail invalide.';
-    if (s.telephone.replace(/\D/g, '').length < 10) err.telephone = 'Numéro à 10 chiffres minimum.';
-    if (!s.adresse.trim()) err.adresse = 'L’adresse est obligatoire.';
+    const err = erreursProprietaire(s);
     setErreurs(err);
     if (Object.keys(err).length) return;
-    const suivant: Proprietaire = {
-      id: p?.id ?? nouvelId('pro'),
-      creeLe: p?.creeLe ?? AUJOURDHUI,
-      type: s.type,
-      nom: s.nom.trim(),
-      contact: { email: s.email.trim(), telephone: s.telephone.trim() },
-      adresse: s.adresse.trim(),
-      notes: s.notes.trim(),
-    };
+    const suivant = proprietaireDepuisSaisie(s, p ?? nouvelId('pro'), AUJOURDHUI);
     upsert('proprietaires', suivant);
     onFermer();
     if (!p) onCree?.(suivant.id);
