@@ -998,6 +998,21 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
   return { fiche: source as Partial<Logement['fiche']> | undefined, descriptif };
 }
 
+/** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
+const CODE_APRES_MOT = /code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi;
+
+/**
+ * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un
+ * mot tout en majuscules d'au moins 4 lettres (« code SOLEIL »), sauf les mots
+ * de la fiche (« code WIFI », « code PORTE »).
+ */
+function codesApresMotCode(texte: string): string[] {
+  return [
+    ...[...texte.matchAll(CODE_APRES_MOT)].map((m) => m[1]),
+    ...[...texte.matchAll(/[Cc][Oo][Dd][Ee]\s*:?\s*([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(sansAccentsMaj(m))),
+  ];
+}
+
 /** Mots en majuscules qui suivent « code » sans en être un. */
 const MOTS_PAS_CODE = new Set([
   'WIFI', 'PORTE', 'PORTAIL', 'ENTREE', 'IMMEUBLE', 'PARKING', 'ACCES', 'BOITE', 'GARAGE', 'CADENAS', 'POSTAL',
@@ -1028,10 +1043,10 @@ export function secretsAcces(source: SourceCodes, descriptifDonne?: DescriptifLo
     ...(acces.match(SUITE_CHIFFRES) ?? []),
     // Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 ») ;
     // jamais un mot (« code par séjour »).
-    ...[...acces.matchAll(/code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi)].map((m) => m[1]),
-    // Ou un mot tout en majuscules d'au moins 4 lettres (« code SOLEIL »), sauf les mots de la fiche (« code WIFI », « code PORTE »).
-    ...[...acces.matchAll(/[Cc][Oo][Dd][Ee]\s*:?\s*([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(sansAccentsMaj(m))),
+    ...codesApresMotCode(acces),
     ...(autres.match(SUITE_CHIFFRES) ?? []),
+    // Aussi dans le parking, les règles, « À savoir »… : « Portail du parking : code 482 ».
+    ...codesApresMotCode(autres),
   ];
   return [...new Set([fiche.wifiCode, fiche.wifiNom, ...codes].map((x) => String(x ?? '').trim()).filter((x) => x.length >= 3))];
 }
@@ -1064,7 +1079,12 @@ function enMotEntier(texte: string, mot: string): boolean {
 
 /** Texte de la fiche donné à l'IA avant l'heure : suites de chiffres (codes possibles) retirées. */
 export function masquerCodes(texte: string): string {
-  return nettoyerTexte(texte).replace(SUITE_CHIFFRES, '[code communiqué dans les 48 heures avant l’arrivée]');
+  const cache = '[code communiqué dans les 48 heures avant l’arrivée]';
+  // D'abord les codes courts écrits après « code » (« code 482 », « code A12 »), puis toute suite de 4 chiffres ou plus.
+  return nettoyerTexte(texte)
+    .replace(CODE_APRES_MOT, (tout, jeton: string) => tout.slice(0, tout.length - jeton.length) + cache)
+    .replace(/([Cc][Oo][Dd][Ee]\s*:?\s*)([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu, (tout, avant: string, mot: string) => (MOTS_PAS_CODE.has(sansAccentsMaj(mot)) ? tout : avant + cache))
+    .replace(SUITE_CHIFFRES, cache);
 }
 
 /* ======================================================== plafond de l'IA */

@@ -114,7 +114,7 @@ section('File du jour : la règle du CRM, triée par score');
 section('Prochaine action, en une phrase');
 {
   verifier(
-    sonBien('Maison') === 'sa maison' && sonBien('Appartement') === 'son appartement' && sonBien('T2') === 'son T2' && sonBien('Villa') === 'sa villa' && sonBien(undefined) === 'son bien',
+    sonBien('Maison') === 'sa maison' && sonBien('Appartement') === 'son appartement' && sonBien('T2') === 'son T2' && sonBien('Villa') === 'sa villa' && sonBien('Propriété') === 'sa propriété' && sonBien('Propriété de campagne') === 'sa propriété de campagne' && sonBien(undefined) === 'son bien',
     'bien accordé et en minuscule : « sa maison », « son appartement », « son T2 »',
     [sonBien('Maison'), sonBien('Appartement'), sonBien('T2')],
   );

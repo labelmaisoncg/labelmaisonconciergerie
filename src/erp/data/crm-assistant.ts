@@ -158,7 +158,7 @@ export interface ProchaineAction {
 }
 
 /** Biens au féminin (saisie libre) : « sa maison », « son appartement ». */
-const BIENS_FEMININS = /^(maison|villa|chambre|propri[ée]t[ée]|r[ée]sidence|long[èe]re|ferme|p[ée]niche|cabane|grange|demeure|bastide)\b/i;
+const BIENS_FEMININS = /^(maison|villa|chambre|propri[ée]t[ée]|r[ée]sidence|long[èe]re|ferme|p[ée]niche|cabane|grange|demeure|bastide)(?![\p{L}\p{N}])/iu;
 
 /** « son appartement », « sa maison », « son T2 » : déterminant accordé, nom commun en minuscule. */
 export function sonBien(typeBien: string | undefined): string {

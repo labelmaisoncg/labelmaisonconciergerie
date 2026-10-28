@@ -51,6 +51,7 @@ import {
   reglagesAEnregistrer,
   REGLAGES_AGENT_GERANT,
   reponseSensible,
+  masquerCodes,
   secretsAcces,
   validationServeur,
   politiqueEnvoi,
@@ -541,6 +542,15 @@ async function principal() {
         !contientCodeAcces('Bonjour cher voyageur', { acces: 'Code VOYAGEUR envoyé la veille' }),
       `codes courts avec un chiffre et codes en majuscules repérés, mots de la fiche non (${['code AB12', 'code A12', 'code BX7', 'code ABC12', 'code SOLEIL', 'Code WIFI'].map((a) => vrais(a).join('/')).join(' | ')})`,
     );
+    {
+      // Code court ailleurs que dans « Accès » (parking, règles, À savoir) : repéré et masqué avant l'heure.
+      const parking = { acces: 'Boîte à clés à droite.', parking: 'Portail du parking : code 482.', aSavoir: 'Local vélos : CODE SOLEIL.', wifiNom: '', wifiCode: '' };
+      verifier(secretsAcces(parking).includes('482') && secretsAcces(parking).includes('SOLEIL'), `code court du parking et code en majuscules d'« À savoir » repérés (${secretsAcces(parking).join(', ')})`);
+      verifier(contientCodeAcces('Le portail s’ouvre avec le 482.', parking) && contientCodeAcces('Pour les vélos : soleil', parking), 'code court du parking écrit dans une réponse : repéré');
+      const m = masquerCodes('Portail du parking : code 482. Local vélos : CODE SOLEIL. Code WIFI au dos de la porte. Arrivée dès 16:00, parking à 300 m.');
+      verifier(!/482|SOLEIL/.test(m) && /Code WIFI/.test(m) && /16:00/.test(m) && /300 m/.test(m), `masquage avant l'heure : codes courts et en majuscules cachés, le reste intact (${m})`);
+      verifier(secretsAcces({ acces: '', parking: 'Serrure connectée, code par séjour.', wifiNom: '', wifiCode: '' }).length === 0, '« code par séjour » dans le parking : aucun secret');
+    }
     verifier(contientCodeAcces('Votre code est A12B.', { acces: 'code : A12B' }) && contientCodeAcces('le code 4 8 2 1', { acces: 'code 4821' }), 'vrai code écrit dans un message : repéré');
     // Secret court ou sans chiffre : en mot entier seulement.
     verifier(
