@@ -66,7 +66,7 @@ interface Props {
  * proposée à la demande), ou texte traduit dans la langue du voyageur.
  */
 type Aide =
-  | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string }
+  | { genre: 'proposition'; source: ValidationBrouillon['source']; texte: string; texteFr?: string; attention?: string; parClaude?: boolean }
   | { genre: 'traduction'; nom: string }
   | { genre: 'supplement'; cle: CleSupplement; statut: PropositionPrete['disponibilite']['statut'] };
 
@@ -101,6 +101,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
     texte: b.texte,
     texteFr: b.texteFr,
     ...(fil.statut === 'escalade' ? { attention: 'Sujet sensible : relisez bien avant d’envoyer.' } : {}),
+    // Rangée par Claude depuis le connecteur (reponse_proposer) : même relecture, même envoi par l'équipe.
+    ...(b.proposePar === 'claude' ? { parClaude: true } : {}),
   });
   const [brouillon, setBrouillon] = useState(() => prepare?.texte ?? '');
   const [aide, setAide] = useState<Aide | null>(() => (prepare ? aideDe(prepare) : null));
@@ -668,9 +670,11 @@ export function Conversation({ fil, logement, reservation }: Props) {
                         ? aide.statut === 'impossible'
                           ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
                           : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
-                        : aide.source === 'agent'
-                          ? 'Préparée par votre agent : relisez, puis envoyez.'
-                          : 'Proposée par votre agent : relisez, puis envoyez.'}
+                        : aide.parClaude
+                          ? 'Proposée par Claude : relisez, puis envoyez.'
+                          : aide.source === 'agent'
+                            ? 'Préparée par votre agent : relisez, puis envoyez.'
+                            : 'Proposée par votre agent : relisez, puis envoyez.'}
                   </span>
                 </span>
                 {aide.genre === 'proposition' && aide.texteFr && (

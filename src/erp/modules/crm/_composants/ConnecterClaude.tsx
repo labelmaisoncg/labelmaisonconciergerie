@@ -3,7 +3,7 @@ import { Check, Copy } from 'lucide-react';
 import { espaceOuvert } from '../../../data/espaces';
 import { ADRESSE_CONNECTEUR } from '../../../data/oauth-regles';
 import { dateHeure, pluriel } from '../../../data/format';
-import { Alert, Button, Modal } from '../../../ui';
+import { Alert, Button, ButtonLink, Modal } from '../../../ui';
 import { appelerConnecteur } from './api-connecteur';
 
 /**
@@ -69,9 +69,15 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
       titre="Connecter à Claude"
       description={`Une seule fois : ensuite, Claude peut consulter l’espace ${nomEspace} depuis vos conversations.`}
       pied={
-        <Button variant="ghost" onClick={fermer}>
-          Fermer
-        </Button>
+        <>
+          {/* Ce que Claude a fait dans l'ERP, avec « Annuler » (Paramètres, gérant). */}
+          <ButtonLink to="/erp/parametres/actions-ia" variant="ghost" onClick={fermer}>
+            Voir ce que Claude a fait
+          </ButtonLink>
+          <Button variant="ghost" onClick={fermer}>
+            Fermer
+          </Button>
+        </>
       }
     >
       {demo ? (
