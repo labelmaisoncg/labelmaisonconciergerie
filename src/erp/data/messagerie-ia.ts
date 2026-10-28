@@ -422,8 +422,9 @@ export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, 
 }
 
 /** Une réponse qui s'engage : « c'est noté », « réservé », « confirmé », « booked », « all set »… */
+// Engagements explicites seulement : « done », « ça marche », « c'est bon » sont trop courants pour garder la main tout le séjour.
 const ENGAGEMENT =
-  /c'est (?:bien )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|fait|bon|ok|d'accord|entendu|parfait|pr[ée]vu|organis[ée])|bien (?:not[ée]|r[ée]serv[ée]|pris en compte|enregistr[ée])|not[ée] pour|nous (?:avons )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|\b(?:je|nous) (?:note|notons|r[ée]serve|r[ée]servons|confirme|confirmons|organise|organisons|pr[ée]vois|pr[ée]voyons)\b|[çc]a marche|d'accord pour|ok pour|\b(?:booked|confirmed|arranged|reserved|noted|all set|sorted|done)\b|it'?s yours|we(?:'ll| will) (?:arrange|book|reserve|organi[sz]e|prepare)/i;
+  /c'est (?:bien )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|bien (?:not[ée]|r[ée]serv[ée]|pris en compte|enregistr[ée])|not[ée] pour|nous (?:avons )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|\b(?:je|nous) (?:r[ée]serve|r[ée]servons|confirme|confirmons|organise|organisons|pr[ée]vois|pr[ée]voyons)\b|d'accord pour|ok pour|\b(?:booked|confirmed|arranged|reserved)\b|it'?s yours|we(?:'ll| will) (?:arrange|book|reserve|organi[sz]e|prepare)/i;
 
 /** Une proposition de suppléments attend-elle encore l'équipe (aucune vraie réponse de l'équipe depuis) ? */
 export function propositionEnCours(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
@@ -1080,7 +1081,7 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 /** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
 // Une heure, une distance ou un ordinal avant le code (« actif de 7h à 22h : 482 ») ne l'arrête pas : la recherche continue.
 const CODE_APRES_MOT =
-  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?<!(?:place|rue|avenue|boulevard|bd|all[ée]e|b[âa]timent|b[âa]t|porte du|porte au|porte n°|au n°)\s?)(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?=\s|$|[.,;:!?)]))/giu;
+  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?<!(?<![\p{L}])(?:place|rue|avenue|boulevard|bd|all[ée]e|b[âa]timent|b[âa]t|porte du|porte au|porte n°|au n°)\s?)(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?=\s|$|[.,;:!?)]))/giu;
 
 /**
  * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un

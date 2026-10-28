@@ -559,6 +559,16 @@ async function principal() {
       verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'arrivee', langue: 'fr', texte: 'Oui, c’est noté pour 12 h.' }, autonome, messagesVerdict(relance, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider',
       '« c’est bon pour 12 h ? » puis « c’est noté pour 12 h » : à valider (12 h est hors des horaires)',
     );
+    // Pendant le séjour, une réponse neutre de l'agent repart seule, même si la proposition attend toujours.
+    const sejour = fil('fil-69', 'r1', {
+      messages: [
+        { ...msg('p', 'hote', 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €', '2026-10-20T11:00:00+02:00'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+        msg('v', 'voyageur', 'Where can we leave the bags when we check out?', '2026-10-26T10:00:00+01:00'),
+      ],
+    });
+    for (const texte of ['Once you are done, leave the bags in the hallway.', 'Done! The guide link is in your app.', 'Déposez-les dans l’entrée, et c’est bon !']) {
+      verifier(verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'depart', langue: 'en', texte }, autonome, messagesVerdict(sejour, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'envoyer', `réponse neutre pendant le séjour (« ${texte} ») : part seule`);
+    }
     // Au-delà de 72 h, la proposition ne compte plus.
     const tard = fil('fil-67', 'r1', {
       messages: [

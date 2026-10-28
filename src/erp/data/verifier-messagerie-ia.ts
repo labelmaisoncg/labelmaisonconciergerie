@@ -561,7 +561,7 @@ async function principal() {
       const ml = masquerCodes(`${loin.parking}\n${loin.regles}\n${loin.aSavoir}`);
       verifier(!/482|731|B2C4|315/.test(ml) && /16h00/.test(ml) && /300m/.test(ml), `masquage avant l'heure : codes cachés, heure et distance intactes (${ml})`);
       verifier(secretsAcces({ acces: 'Le code 482 m’a été donné par le syndic.', wifiNom: '', wifiCode: '' }).includes('482'), '« code 482 m’a été donné » : 482 reste un code (pas une distance)');
-      const portes = ['Code porte 482', 'Code de la porte 731', 'Code n° 482', 'code au 482', 'Digicode porte A12'];
+      const portes = ['Code porte 482', 'Code de la porte 731', 'Code n° 482', 'code au 482', 'Digicode porte A12', 'Code du réseau 482', 'Boîte à clés : code de la porte 482.'];
       verifier(portes.every((a) => secretsAcces({ acces: a, wifiNom: '', wifiCode: '' }).length === 1), `« Code porte 482 », « code au 482 »… : de vrais codes (${portes.map((a) => secretsAcces({ acces: a, wifiNom: '', wifiCode: '' }).join('/')).join(' | ')})`);
       const adresse = { acces: 'Boîte à clés fixée à gauche de la porte du 145, place 112, allée B12.', wifiNom: '', wifiCode: '' };
       verifier(!['145', '112', 'B12'].some((x) => secretsAcces(adresse).includes(x)) && !contientCodeAcces('Le logement est au 145 avenue de Paris.', adresse), `numéro d'adresse ou de place : jamais un code (${secretsAcces(adresse).join(', ')})`);
