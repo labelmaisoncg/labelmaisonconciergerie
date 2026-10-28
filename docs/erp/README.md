@@ -2325,7 +2325,7 @@ Pensée pour le téléphone, en français ou en anglais (bouton FR / EN ; les
 textes de la fiche restent tels que l'équipe les a écrits).
 
 **Ce que voit le voyageur** : « Bonjour Marie », le logement (titre de
-l'annonce, sinon la ville, sinon « Votre logement » : jamais le nom interne,
+l'annonce, sinon la ville, sinon rien : jamais le nom interne,
 qui peut citer le propriétaire ; photo), arrivée et départ avec leurs
 heures, nuits et voyageurs ; le **check-in en ligne** ; **Accès et wifi** —
 seulement pour une réservation confirmée, de 48 h avant l'arrivée à la
@@ -2339,15 +2339,23 @@ arrivée ») ; après le départ, plus de carte d'accès du tout. Puis l'adresse
 (celui de la fiche, sinon les règles de l'annonce) ; « À savoir » et les
 questions fréquentes ; les guides (liens signés de 6 h) ; les « Consignes
 de départ » (nouveau champ de la fiche voyageur ; un code masqué y devient
-« [le code de votre arrivée] ») ; « Une question ? » renvoie à la
+« code : le même qu’à votre arrivée », sans crochets) ; « Une question ? » renvoie à la
 messagerie de la plateforme (Airbnb, Booking.com), ou aux boutons
 « Appeler » et « Écrire un e-mail » de la conciergerie pour un séjour
-direct. Avant les 48 h, chaque texte passe par `masquerCodes`, et un texte
-qui contiendrait encore un code ou le wifi n'est pas montré, ni un texte
-où un court jeton avec un chiffre suit ou précède portail, porte, boîte,
-cadenas, badge, digicode ou interphone (« Portail du parking : 482. »,
-« Dans la boîte B7Z » : `codeProbable`). La fiche voyageur le signale sous
-le champ : « Un code semble écrit ici : mettez-le dans Accès. »
+direct. Avant les 48 h, un texte qui cite le wifi (cherché dans le texte
+brut) n'est pas montré ; les autres passent par `masquerCodesLivret` : code
+postal, année (« rénové en 2019 »), distance, durée, montant, numéro de bus,
+de ligne ou « n° » restent lisibles, toute autre suite de chiffres est
+masquée comme pour l'IA, et montrée sans crochets (« Digicode (code
+communiqué 48 h avant l'arrivée) ») ; après le séjour, plus
+d'« Itinéraire ». Un texte n'est pas montré s'il cite encore un code
+du champ Accès, le wifi ou un code écrit après « code » dans un autre champ
+(jamais les nombres nus des autres champs : « 91100 » n'est pas un secret),
+ni si un court jeton avec un chiffre (même espacé : « 4 8 2 ») suit ou
+précède portail, porte, boîte, cadenas, badge, digicode, interphone,
+grille, barrière, garage, coffre à clés, bip, télécommande, gate, keybox…
+(« Portail du parking : 482. », « Dans la boîte B7Z » : `codeProbable`).
+La fiche voyageur le signale sous le champ.
 
 **Check-in** (2 minutes) : heure d'arrivée prévue, nombre de voyageurs,
 « J'ai lu le règlement intérieur et je l'accepte », nationalité des
@@ -2371,7 +2379,7 @@ voyageur les garde telles quelles ou les remplit de nouveau.
 > (`src/erp/data/sejour.ts`, `FICHE_POLICE`).
 
 **Côté équipe** (fiche d'une réservation, carte « Livret d'accueil et
-check-in ») : « Check-in en ligne : Fait le 24 sept. / Pas encore » (rien
+check-in ») : « Check-in : Fait le 24 sept. / Pas encore » (rien
 pour une réservation annulée ou un lien expiré), l'heure d'arrivée prévue,
 le nombre de voyageurs seulement s'il change (« 3 personnes (2 à la
 réservation) »), les fiches de police (repliées) et la date de leur

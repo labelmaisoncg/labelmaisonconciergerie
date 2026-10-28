@@ -140,7 +140,7 @@ export function CarteSejourEnLigne({ r }: { r: Reservation }) {
       {/* Annulée ou lien expiré sans check-in : pas de « Pas encore », seulement la ligne d'état plus bas. */}
       {(c || ouvert) && (
         <p className="flex flex-wrap items-center gap-2 text-[13.5px] text-(--lm-encre-2)">
-          Check-in en ligne :{c ? <Badge tone="succes">Fait le {jourMois(c.envoyeLe.slice(0, 10))}</Badge> : <Badge tone="neutre">Pas encore</Badge>}
+          Check-in :{c ? <Badge tone="succes">Fait le {jourMois(c.envoyeLe.slice(0, 10))}</Badge> : <Badge tone="neutre">Pas encore</Badge>}
         </p>
       )}
       {c && (

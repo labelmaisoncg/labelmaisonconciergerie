@@ -1134,6 +1134,11 @@ function codesApresMotCode(texte: string): string[] {
   ];
 }
 
+/** Codes cités après un mot d'accès dans un texte libre (« Portail du parking : code 482 » → 482), sans les suites de chiffres nues. */
+export function codesCitesApresMot(texte: string): string[] {
+  return codesApresMotCode(nettoyerTexte(texte));
+}
+
 /** Jetons qui suivent « code », « cadenas »… sans en être un : heure (« 16h00 »), distance, durée, débit, montant. */
 const PAS_UN_CODE = /^(\d{1,3}h\d{0,2}|\d{1,3}(er|re|e|[èe]me|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))$/i;
 
@@ -1212,6 +1217,35 @@ export function masquerCodes(texte: string): string {
     .replace(CODE_APRES_MOT, (tout, jeton: string) => (PAS_UN_CODE.test(jeton) ? tout : tout.slice(0, tout.length - jeton.length) + cache))
     .replace(/([Cc][Oo][Dd][Ee]\s*:?\s*)([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu, (tout, avant: string, mot: string) => (MOTS_PAS_CODE.has(sansAccentsMaj(mot)) ? tout : avant + cache))
     .replace(SUITE_CHIFFRES, cache);
+}
+
+/** `mot` remplacé en entier dans `texte` (bornes ni lettre ni chiffre, espaces et tirets du mot souples, sans casse). */
+function remplacerMotEntier(texte: string, mot: string, par: string): string {
+  const morceaux = nettoyerTexte(mot)
+    .split(/[\s\-–—._·/]+/)
+    .filter(Boolean)
+    .map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!morceaux.length) return texte;
+  return texte.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'giu'), (_tout, avant: string) => avant + par);
+}
+
+/**
+ * Texte de la fiche donné à l'IA avant l'heure. Le wifi (nom du réseau et mot
+ * de passe) est cherché dans le texte BRUT et remplacé en entier, avant
+ * masquerCodes : celui-ci ne retire que les suites de chiffres
+ * (« soleil2026 » → « soleil[code…] ») et un mot de passe court
+ * (« motdepasse201 ») passerait tel quel. Un wifi encore lisible après coup
+ * (écrit en morceaux, collé à un autre mot) : le texte entier est retiré ('').
+ */
+export function masquerCodesEtWifi(texte: string, fiche: { wifiCode?: string; wifiNom?: string } | undefined): string {
+  const wifi = { wifiCode: fiche?.wifiCode ?? '', wifiNom: fiche?.wifiNom ?? '' };
+  let t = nettoyerTexte(texte);
+  // Le plus long d'abord : un nom de réseau contenu dans le mot de passe ne le coupe pas en deux.
+  for (const s of [wifi.wifiCode, wifi.wifiNom].map((x) => x.trim()).filter((x) => x.length >= 3).sort((a, b) => b.length - a.length)) {
+    t = remplacerMotEntier(t, s, CODE_MASQUE);
+  }
+  if (contientCodeAcces(t, wifi)) return '';
+  return masquerCodes(t);
 }
 
 /* ======================================================== plafond de l'IA */

@@ -37,7 +37,7 @@
 import { ID_LABEL_MAISON, idEspaceValide } from './espaces.js';
 import { estFichierGuide, estLienGuide, guideEnvoyable } from './guides.js';
 import { ajouterJoursISO, codesAutorises, prenomDe } from './messages-programmes.js';
-import { contientCodeAcces, masquerCodes } from './messagerie-ia.js';
+import { codesCitesApresMot, contientCodeAcces, masquerCodes, nettoyerTexte } from './messagerie-ia.js';
 import { b64url, deB64url } from './web-push.js';
 import type { CanalReservation, DateISO, GuideLogement, Horodatage, Id, Logement, Reservation } from './types';
 
@@ -589,9 +589,10 @@ function photoDuLogement(l: Logement | undefined): string | undefined {
 }
 
 /** Mots d'accès près desquels un court jeton avec un chiffre est un code probable (« code postal » n'en est pas un). */
-const MOT_D_ACCES = /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|codes?(?!\s+postal))(?![\p{L}])/giu;
+const MOT_D_ACCES =
+  /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|grilles?|barri[eè]res?|garages?|coffres?|bips?|t[ée]l[ée]commandes?|claviers?|gates?|doors?|keybox(?:es)?|lockbox(?:es)?|key\s?safes?|keypads?|padlocks?|intercoms?|codes?(?!\s+postal))(?![\p{L}])/giu;
 /** Jeton d'au moins 3 signes dont un chiffre (« 482 », « B7Z », « 12#4 »). */
-const JETON_CHIFFRE = /(?<![\p{L}\p{N}#*])(?=[\p{L}\p{N}#*]*\d)[\p{L}\p{N}#*]{3,}(?![\p{L}\p{N}#*])/gu;
+const JETON_CHIFFRE = /(?<![\p{L}\p{N}#*])(?:\d(?:[ \-.·/]\d){2,}|(?=[\p{L}\p{N}#*]*\d)[\p{L}\p{N}#*]{3,})(?![\p{L}\p{N}#*])/gu;
 /** Jetons qui ressemblent à un code sans en être un : heure, ordinal, distance, durée, montant, débit. */
 const PAS_UN_CODE_COURT = /^(\d{1,2}h\d{0,2}|\d{1,3}(er|re|e|ème|eme|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|€|eur|euros?|mb|mbps|go|gb))$/iu;
 /** Unité écrite après le nombre, séparée par une espace (« à 200 m », « 150 € ») : une distance, une durée, un montant. */
@@ -610,7 +611,8 @@ export function codeProbable(texte: string | undefined): boolean {
   for (const m of t.matchAll(MOT_D_ACCES)) {
     const debut = m.index ?? 0;
     const finMot = debut + m[0].length;
-    const apres = t.slice(finMot, finMot + 30).split(/[.\n;!?]/)[0];
+    // « 4.8.2 » ou « 4 8 2 » : le point ne coupe pas la phrase entre deux chiffres.
+    const apres = t.slice(finMot, finMot + 60).split(/(?<!\d)[.]|[.](?!\d)|[\n;!?]/)[0];
     const avant = t.slice(Math.max(0, debut - 30), debut).split(/[.,:\n;!?]/).pop() ?? '';
     for (const [morceau, origine] of [
       [apres, finMot],
@@ -625,8 +627,83 @@ export function codeProbable(texte: string | undefined): boolean {
   return false;
 }
 
+/**
+ * Nombres qu'un voyageur doit lire tels quels avant les 48 h : code postal
+ * (après « code postal », ou 5 chiffres suivis d'une ville en majuscule),
+ * année après « en », « depuis », « in », « since »…, nombre suivi d'une
+ * unité (distance, durée, montant), numéro de bus, de ligne, de RER, de
+ * tram, « n° ». Tout le reste passe par masquerCodes : une suite inconnue
+ * reste masquée (filet de sécurité), et codeProbable retire encore le texte
+ * entier si l'un de ces nombres est près d'un mot d'accès.
+ */
+const NOMBRES_EVIDENTS = new RegExp(
+  [
+    String.raw`(?<=(?<![\p{L}])codes?\s+postal\s*:?\s*)\d{5}(?![\p{L}\p{N}])`,
+    String.raw`(?<![\p{L}\p{N}])\d{5}(?=\s+\p{Lu})`,
+    String.raw`(?<=(?<![\p{L}])(?:en|depuis|ann[ée]e|in|since|built(?:\s+in)?)\s+)(?:19|20)\d{2}(?![\p{L}\p{N}])`,
+    String.raw`(?<![\p{L}\p{N}])\d+(?:[.,]\d+)?\s?(?:m|km|m[èe]tres?|mn|mins?|minutes?|h|heures?|j|jours?|€|eur|euros?)(?![\p{L}\p{N}])`,
+    String.raw`(?<=(?<![\p{L}])(?:bus|lignes?|lines?|rer|tram|n°|num[ée]ro|no\.)\s*)\d+(?![\p{L}\p{N}])`,
+  ].join('|'),
+  'giu',
+);
+
+/** masquerCodes pour le livret : les nombres évidents (NOMBRES_EVIDENTS) restent lisibles, le reste est masqué comme pour l'IA. */
+export function masquerCodesLivret(texte: string): string {
+  const t = nettoyerTexte(texte);
+  let sortie = '';
+  let debut = 0;
+  for (const m of t.matchAll(NOMBRES_EVIDENTS)) {
+    const i = m.index ?? 0;
+    sortie += masquerCodes(t.slice(debut, i)) + m[0];
+    debut = i + m[0].length;
+  }
+  return sortie + masquerCodes(t.slice(debut));
+}
+
+/**
+ * Secrets qui font retirer un texte entier du livret avant les 48 h : ceux du
+ * champ Accès, le wifi, et les codes cités après un mot d'accès dans les
+ * autres champs (« Portail du parking : code 482 »). Jamais les nombres nus
+ * des autres champs : « 91100 » ou « 2019 » ne sont pas des secrets.
+ */
+function secretsDuLivret(l: Logement | undefined): { acces: string; wifiCode: string; wifiNom: string } {
+  const f = l?.fiche;
+  const t = l?.descriptif?.textes ?? {};
+  const autres = [f?.aSavoir, f?.consignesDepart, f?.parking, f?.regles, ...(f?.questions ?? []).map((q) => q?.reponse), t.resume, t.description, t.espace, t.accesVoyageurs, t.quartier, t.transports]
+    .filter(Boolean)
+    .join('\n')
+    // « code postal 91100 » n'est pas un code d'accès.
+    .replace(/(?<![\p{L}])codes?\s+postal\s*:?\s*\d{5}/giu, '');
+  // Chaque code cité redevient « code X » : secretsAcces le reconnaît comme dans le champ Accès, même court (« 482 »).
+  return { acces: [f?.acces ?? '', ...codesCitesApresMot(autres).map((c) => `code ${c}.`)].join('\n'), wifiCode: f?.wifiCode ?? '', wifiNom: f?.wifiNom ?? '' };
+}
+
+/**
+ * Un texte libre de la fiche tel que le livret le montre avant les 48 h, ou
+ * undefined s'il attend les 48 h en entier.
+ */
+function texteAvant48h(brut: string, l: Logement | undefined, secrets = secretsDuLivret(l)): string | undefined {
+  // Le wifi (nom ou mot de passe) cherché AVANT le masquage : masquerCodes en couperait les chiffres
+  // (« soleil2026 » → « soleil[code…] ») et le reste du mot de passe passerait.
+  if (contientCodeAcces(brut, { wifiCode: l?.fiche?.wifiCode ?? '', wifiNom: l?.fiche?.wifiNom ?? '' })) return undefined;
+  // Code postal, année, distance, numéro de bus : lisibles ; toute autre suite de chiffres masquée.
+  const masque = masquerCodesLivret(brut).trim();
+  // Un code de l'accès ou cité ailleurs, ou un code court sans le mot « code » (« Portail : 482 ») : le texte attend les 48 h.
+  return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque) ? masque : undefined;
+}
+
+/**
+ * Le livret cachera-t-il ce texte en entier jusqu'aux 48 h avant l'arrivée ?
+ * Même règle que la vue du voyageur : sert à l'avertissement de la fiche du
+ * logement (un code seulement masqué ne cache pas le texte).
+ */
+export function texteCacheAvant48h(texte: string | undefined, l: Logement | undefined): boolean {
+  const brut = texte?.trim();
+  return !!brut && texteAvant48h(brut, l) === undefined;
+}
+
 /** Texte court montré tel quel (titre d'un guide, adresse) : cite-t-il un code d'accès ou le wifi de ce logement ? */
-const citeUnCode = (t: string | undefined, l: Logement | undefined): boolean => !!t?.trim() && contientCodeAcces(t, l);
+const citeUnCode = (t: string | undefined, l: Logement | undefined): boolean => !!t?.trim() && contientCodeAcces(t, secretsDuLivret(l));
 
 /**
  * Guides que la page peut montrer, selon les codes. Avant l'heure, un guide
@@ -659,13 +736,11 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
   const l = e.logement;
   const f = l?.fiche;
   const codes = codesVisibles(r, e.aujourdhui);
+  const secrets = secretsDuLivret(l);
   const sur = (t: string | undefined): string | undefined => {
     const brut = t?.trim();
     if (!brut) return undefined;
-    if (codes) return brut;
-    const masque = masquerCodes(brut).trim();
-    // Un code court sans le mot « code » (« Portail : 482 ») : le texte attend aussi les 48 h.
-    return masque && !contientCodeAcces(masque, l) && !codeProbable(masque) ? masque : undefined;
+    return codes ? brut : texteAvant48h(brut, l, secrets);
   };
   const versGuide = (g: GuideLogement): GuideSejour | null => {
     const adresse = estLienGuide(g.media?.url) ? g.media.url!.trim() : estFichierGuide(g.media?.fichier) ? lien(g.media.fichier!) : undefined;

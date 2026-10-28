@@ -215,7 +215,7 @@ export default function Sejour() {
         </div>
       ) : (
         <div className="mx-auto flex max-w-xl flex-col gap-4 px-4 pt-20" aria-busy="true" aria-label={t.chargement}>
-          <Skeleton className="aspect-[16/10] w-full rounded-2xl" />
+          <Skeleton className="aspect-[16/10] w-full rounded-xl" />
           <Skeleton className="h-8 w-2/3" />
           <Skeleton className="h-24 w-full rounded-xl" />
         </div>
