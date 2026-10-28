@@ -66,7 +66,8 @@ const FR = {
   codeAttente: 'Code communiqué dans les 48 heures avant l’arrivée',
   codeAttenteDate: (d: string) => `Il s’affichera ici à partir du ${d}.`,
   accesJourDepart: 'Jour du départ : le code reste celui de votre arrivée.',
-  codeArrivee: '[le code de votre arrivée]',
+  // Remplace « code 4821 » en entier (CODE_RETIRE mange le mot « code ») : aucun crochet pour le voyageur.
+  codeArrivee: 'code : le même qu’à votre arrivée',
   wifi: 'Wifi',
   reseau: 'Réseau',
   motDePasse: 'Mot de passe',
@@ -169,7 +170,7 @@ const EN: typeof FR = {
   codeAttente: 'Your access code will appear here 48 hours before arrival',
   codeAttenteDate: (d: string) => `From ${d}.`,
   accesJourDepart: 'Check-out day: use the same code as on arrival.',
-  codeArrivee: '[the code from your arrival]',
+  codeArrivee: 'code: the same as on arrival',
   wifi: 'Wifi',
   reseau: 'Network',
   motDePasse: 'Password',
@@ -240,12 +241,19 @@ export function jourHorodatage(h: string, langue: LangueSejour): string {
 /** Texte de la fiche affiché : le code retiré (« [code communiqué…] ») dit dans la langue du voyageur. */
 export const texteFiche = (t: string, langue: LangueSejour): string => (langue === 'fr' ? t : t.split(CODE_MASQUE).join(TEXTES.en.codeMasque));
 
-/** Le code retiré, avec le mot « code » qui le précède (« code : [code communiqué…] »). */
-const CODE_RETIRE = new RegExp(`(?:(?<![\\p{L}])codes?\\s*:?\\s*)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
+/** Le code retiré, avec ce qui le précède : le mot « code » (« code : [code communiqué…] »), deux-points ou espace. */
+const CODE_RETIRE = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*|\\s*:\\s*|\\s+)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
 
 /**
  * Consignes de départ : le code retiré est celui de l'arrivée.
  * « Laissez les clés dans la boîte, code 4821. » devient « Laissez les clés
- * dans la boîte, [le code de votre arrivée]. »
+ * dans la boîte, code : le même qu’à votre arrivée. » ; « Boîte à clés :
+ * 4821 » devient « Boîte à clés, code : le même qu’à votre arrivée ».
  */
-export const texteConsignes = (t: string, langue: LangueSejour): string => t.replace(CODE_RETIRE, () => TEXTES[langue].codeArrivee);
+export const texteConsignes = (t: string, langue: LangueSejour): string =>
+  t.replace(CODE_RETIRE, (_tout: string, avant: string | undefined, position: number, entier: string) => {
+    const c = TEXTES[langue].codeArrivee;
+    if (avant && /code/i.test(avant)) return c;
+    // Juste après un mot : une virgule (« la boîte, code : … ») ; sinon l'espace d'avant est gardé.
+    return /[\p{L}\p{N}]/u.test(entier.slice(0, position).slice(-1)) ? `, ${c}` : `${avant && /^\s/.test(avant) ? ' ' : ''}${c}`;
+  });

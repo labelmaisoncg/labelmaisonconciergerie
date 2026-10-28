@@ -2330,7 +2330,7 @@ arrivée ») ; après le départ, plus de carte d'accès du tout. Puis l'adresse
 (celui de la fiche, sinon les règles de l'annonce) ; « À savoir » et les
 questions fréquentes ; les guides (liens signés de 6 h) ; les « Consignes
 de départ » (nouveau champ de la fiche voyageur ; un code masqué y devient
-« [le code de votre arrivée] ») ; « Une question ? » renvoie à la
+« code : le même qu’à votre arrivée », sans crochets) ; « Une question ? » renvoie à la
 messagerie de la plateforme (Airbnb, Booking.com), ou aux boutons
 « Appeler » et « Écrire un e-mail » de la conciergerie pour un séjour
 direct. Avant les 48 h, un texte qui cite le wifi (cherché dans le texte

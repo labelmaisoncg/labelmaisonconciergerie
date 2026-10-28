@@ -524,7 +524,7 @@ async function principal() {
     if (racine) {
       const fiche = code('src/erp/modules/logements/onglets/FicheVoyageur.tsx');
       verifier(['f.parking', 'f.consignesDepart', 'f.regles', 'f.aSavoir'].every((c) => fiche.includes(`aideOuCode(${c}`)) && /aideOuCode\(edition\.reponse\)/.test(code('src/erp/modules/logements/onglets/GuidesFiche.tsx')), 'fiche voyageur : l’avertissement sous parking, consignes, règles, à savoir, réponses');
-      verifier(/Un code semble écrit ici : mettez-le dans Accès\./.test(source('src/erp/modules/logements/_composants/avertissementCode.tsx')) && /codeProbable\(texte\)/.test(code('src/erp/modules/logements/_composants/avertissementCode.tsx')), 'avertissement : « Un code semble écrit ici : mettez-le dans Accès. », même règle que le livret');
+      verifier(/Un code semble écrit ici : ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée\./.test(source('src/erp/modules/logements/_composants/avertissementCode.tsx')) && /codeProbable\(texte\)/.test(code('src/erp/modules/logements/_composants/avertissementCode.tsx')), 'avertissement : la conséquence (« ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée »), même règle que le livret');
     }
 
     // Le jour du départ : « pendant » jusqu'à l'heure de départ, codes cachés, plus de date « à partir du ».
@@ -542,7 +542,17 @@ async function principal() {
     verifier(consignes.includes(CODE_MASQUE) && !consignes.includes('4821'), 'consignes de départ du dernier jour : code masqué', consignes);
     const fr = texteConsignes(consignes, 'fr');
     const en = texteConsignes(consignes, 'en');
-    verifier(fr === 'Laissez les clés dans la boîte, [le code de votre arrivée].' && en.includes('[the code from your arrival]') && !en.includes(CODE_MASQUE), 'consignes : « [le code de votre arrivée] » / « [the code from your arrival] »', [fr, en]);
+    verifier(fr === 'Laissez les clés dans la boîte, code : le même qu’à votre arrivée.' && en === 'Laissez les clés dans la boîte, code: the same as on arrival.' && ![fr, en].some((x) => /[[\]]/.test(x)), 'consignes : « code : le même qu’à votre arrivée » / « code: the same as on arrival », sans crochets', [fr, en]);
+    const formes: [string, string][] = [
+      [`Clés dans la boîte, code : ${CODE_MASQUE}.`, 'Clés dans la boîte, code : le même qu’à votre arrivée.'],
+      [`Boîte à clés : ${CODE_MASQUE}.`, 'Boîte à clés, code : le même qu’à votre arrivée.'],
+      [`Clés dans la boîte ${CODE_MASQUE} à gauche.`, 'Clés dans la boîte, code : le même qu’à votre arrivée à gauche.'],
+      [`Clés dans la boîte, ${CODE_MASQUE}.`, 'Clés dans la boîte, code : le même qu’à votre arrivée.'],
+      [`Digicode ${CODE_MASQUE} pour sortir.`, 'Digicode, code : le même qu’à votre arrivée pour sortir.'],
+      [`(${CODE_MASQUE})`, '(code : le même qu’à votre arrivée)'],
+    ];
+    const mal = formes.filter(([t, attendu]) => texteConsignes(t, 'fr') !== attendu).map(([t]) => texteConsignes(t, 'fr'));
+    verifier(mal.length === 0, 'consignes : « code : » jamais doublé, ni crochet, ni espace avant la virgule', mal);
     verifier(TEXTES.fr.accesJourDepart.includes('arrivée') && TEXTES.en.codeAttente === 'Your access code will appear here 48 hours before arrival' && TEXTES.en.questionsTitre === 'FAQs', 'textes du jour du départ et anglais revus');
     verifier(!('departAvant' in TEXTES.fr) && !('heureArriveeAide' in TEXTES.fr) && TEXTES.fr.checkinEnCours === 'Il reste votre check-in : deux minutes.' && TEXTES.en.checkinEnCours === 'Your check-in is still missing: two minutes.', '« Départ avant » et l’aide de l’heure retirés ; check-in pendant le séjour');
     if (racine) {

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { codeProbable } from '../../../data/sejour';
 
 /** Message montré quand un champ du livret semble contenir un code d'accès. */
-export const AVERTISSEMENT_CODE = 'Un code semble écrit ici : mettez-le dans Accès.';
+export const AVERTISSEMENT_CODE = 'Un code semble écrit ici : ce texte restera caché au voyageur jusqu’à 48 h avant l’arrivée.';
 
 /**
  * Aide d'un champ montré dans le livret d'accueil : si un code y semble écrit
