@@ -339,7 +339,7 @@ export default function Connexions() {
             2. Choisissez les logements à gérer
           </h2>
           {etat && (
-            <div className="min-w-48 text-right">
+            <div className="w-full sm:w-auto sm:min-w-48 sm:text-right">
               <p className="lm-chiffres text-[14px] font-semibold text-(--lm-encre)" aria-live="polite">
                 {limite === null ? pluriel(choix.size, 'logement choisi', 'logements choisis') : `${choix.size} / ${pluriel(limite, 'logement')} (${nomOffre(etat.offre)})`}
               </p>
