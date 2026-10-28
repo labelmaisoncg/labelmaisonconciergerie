@@ -25,6 +25,7 @@
  * Fonctions pures (aucune date système). Imports relatifs avec « .js » :
  * tourne aussi sous Node (ESM, api/_erp-avis.ts).
  */
+import { masquerCoordonnees } from './masquage.js';
 import { consigneCachee, contientCodeAcces, estSentiment, langueProbable, nettoyerTexte } from './messagerie-ia.js';
 import { prenomInitiale } from './proprietaire.js';
 import type { CanalReservation, DateISO, Horodatage, Id, LectureAvis, Logement, Reservation, SentimentMessage } from './types';
@@ -822,10 +823,8 @@ const NOMS_PLATEFORMES: Record<CanalReservation, string> = { airbnb: 'Airbnb', b
 
 /** Texte public donné à l'IA : sans e-mail, téléphone ni lien, sans balises, borné. */
 export function textePourIA(texte: string): string {
-  return nettoyerTexte(texte)
-    .replace(/https?:\/\/\S+|www\.\S+/gi, '…')
-    .replace(/[^\s@]+@[^\s@]+\.[^\s@]+/g, '…')
-    .replace(/\+?\d[\d\s.-]{7,}\d/g, '…')
+  // Liens, e-mails et téléphones : la même règle que les relances du CRM (masquage.ts).
+  return masquerCoordonnees(texte)
     .replace(/<\/?\s*avis[^>]*>/gi, ' ')
     .slice(0, 1500)
     .trim();

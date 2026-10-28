@@ -370,8 +370,8 @@ export function filsAEtudier(fils: FilMessages[], maintenant: Date): { fil: FilM
   return res.sort((a, b) => instant(a.dernier.envoyeLe) - instant(b.dernier.envoyeLe));
 }
 
-/** Heures couvertes chaque jour par le réveil planifié (supabase/erp-agent-cron.sql : 8 h–23 h à Paris, avec marge). */
-const HEURES_REVEIL = 16;
+/** Heures couvertes chaque jour par le réveil planifié (supabase/erp-agent-cron.sql : 5 h–22 h UTC, 17,5 h par jour à Paris, avec marge). */
+const HEURES_REVEIL = 17;
 
 /** Heures par jour pendant lesquelles l'agent passe et répond (plage des réglages, dans celle du réveil). */
 export function fenetreHeures(r: Pick<ReglagesAgent, 'horaires'>): number {

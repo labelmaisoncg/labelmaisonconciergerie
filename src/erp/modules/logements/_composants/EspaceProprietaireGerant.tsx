@@ -6,6 +6,7 @@
  * documents et bilans passent par le store comme le reste de l'ERP.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Check, Copy, Eye, FileText, Trash2, X } from 'lucide-react';
 import { statutAccesExterne } from '../../../data/acces-gerant';
 import { MODE_DEMO } from '../../../data/config';
@@ -75,7 +76,14 @@ export function statutAcces(a: AccesProprietaire | undefined, p: Pick<Proprietai
 /** Ligne de la carte Propriétaire : état de l'accès et ouverture du panneau. */
 export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietaire: Proprietaire; logement: Logement }) {
   const d = useErp();
+  const { hash } = useLocation();
   const [ouvert, setOuvert] = useState(false);
+  // Ouvert depuis « facture mensuelle à valider » (Accueil, lien « #factures ») : la carte vient à l'écran, les factures s'ouvrent.
+  useEffect(() => {
+    if (hash !== '#factures') return;
+    document.getElementById('factures')?.scrollIntoView({ block: 'start' });
+    setOuvert(true);
+  }, [hash]);
   const acces = d.donnees.accesProprietaires.find((a) => a.id === proprietaire.id);
   const s = statutAcces(acces, proprietaire);
   return (
@@ -87,14 +95,31 @@ export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietai
       <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
         Gérer
       </Button>
-      {ouvert && <PanneauEspace proprietaire={proprietaire} logement={logement} onFermer={() => setOuvert(false)} />}
+      {ouvert && <PanneauEspace proprietaire={proprietaire} logement={logement} section={hash === '#factures' ? 'factures' : undefined} onFermer={() => setOuvert(false)} />}
     </div>
   );
 }
 
 /** Le panneau complet (accès, bilans, documents) ; ouvert aussi depuis Paramètres → Accès, sans logement. */
-export function PanneauEspace({ proprietaire: p, logement, onFermer }: { proprietaire: Proprietaire; logement?: Logement; onFermer: () => void }) {
+export function PanneauEspace({
+  proprietaire: p,
+  logement,
+  section,
+  onFermer,
+}: {
+  proprietaire: Proprietaire;
+  logement?: Logement;
+  /** Partie du panneau à montrer à l'ouverture (« factures » : les factures, brouillons à valider en tête). */
+  section?: 'factures';
+  onFermer: () => void;
+}) {
   const [apercu, setApercu] = useState(false);
+  useEffect(() => {
+    if (section !== 'factures') return;
+    // Après l'ouverture du panneau (rendu au cadre suivant).
+    const cadre = window.requestAnimationFrame(() => document.getElementById('factures-proprietaire')?.scrollIntoView({ block: 'start' }));
+    return () => window.cancelAnimationFrame(cadre);
+  }, [section]);
   const [serveur, setServeur] = useState<EtatServeur | null>(MODE_DEMO ? { actif: true, email: false } : null);
   useEffect(() => {
     if (MODE_DEMO) return;
@@ -124,7 +149,9 @@ export function PanneauEspace({ proprietaire: p, logement, onFermer }: { proprie
         <div className="space-y-7">
           <Acces proprietaire={p} serveur={serveur} />
           <Bilans proprietaire={p} />
-          <FacturesProprietaire proprietaire={p} />
+          <div id="factures-proprietaire" className="scroll-mt-4">
+            <FacturesProprietaire proprietaire={p} />
+          </div>
           <RelancesPaiement proprietaireId={p.id} />
           <Documents proprietaire={p} logement={logement} />
         </div>

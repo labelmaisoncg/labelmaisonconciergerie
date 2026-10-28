@@ -44,7 +44,7 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
   { type: 'synchro', libelle: 'Mise à jour des plateformes en échec', detail: 'Une fois par jour au plus.', defaut: true },
   // Clé « rappel » gardée (préférences déjà enregistrées) : c'est désormais le briefing du matin (briefing.ts).
-  { type: 'rappel', libelle: 'Briefing du matin', detail: 'Le point de votre journée, chaque matin à partir de 7 h.', defaut: false },
+  { type: 'rappel', libelle: 'Briefing du matin', detail: 'Le contenu de « Votre journée », chaque matin à partir de 7 h.', defaut: false },
   { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
   { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },

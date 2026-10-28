@@ -331,7 +331,8 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
           : 'Mandat en préparation';
   return (
     <>
-      <Card>
+      {/* « #factures » (ligne « facture mensuelle à valider » de l'Accueil) : la fiche défile jusqu'ici et ouvre les factures. */}
+      <Card id="factures" className="scroll-mt-20">
         <CardHeader
           titre="Propriétaire"
           actions={

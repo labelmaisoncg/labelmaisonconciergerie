@@ -17,6 +17,7 @@
  * serveur (api/_crm-assistant.ts, connecteur Claude).
  */
 import { aTraiterLe, LIBELLE_SOURCE_CRM, LIBELLE_STATUT_CRM, STATUTS_CLOS } from './crm.js';
+import { masquerCoordonnees } from './masquage.js';
 import type { ContactCrm, DateISO, Horodatage, ProfilContactCrm, SourceContactCrm, StatutContactCrm } from './types';
 
 /* ------------------------------------------------------------ profil */
@@ -83,10 +84,14 @@ const LIBELLE_SOURCE_SCORE: Record<SourceContactCrm, string> = {
   manuel: 'Ajouté à la main',
 };
 
-/** Seuils et points en plus ou en moins (expliqués dans l'écran : « Comment la file est triée ? »). */
+/**
+ * Points en plus ou en moins (le détail de chaque contact : « Pourquoi cette
+ * priorité ? »). Une relance en retard monte avec le retard sans jamais
+ * dépasser une relance prévue aujourd'hui (5 + 1 par jour, 15 au plus).
+ */
 export const REGLES_SCORE = {
   relanceDuJour: 15,
-  relanceEnRetard: 15,
+  relanceEnRetard: 5,
   parJourDeRetard: 1,
   retardMax: 10,
   demandeDuJour: 15,
@@ -192,7 +197,7 @@ export function prochaineAction(c: ContactCrm, aujourdhui: DateISO): ProchaineAc
         ? { canal: ecrire, phrase: 'Relancez pour savoir s’il a un propriétaire à vous présenter.' }
         : { canal: tel ? 'appel' : 'email', phrase: `Relancez pour proposer un rendez-vous${dans(c)}${retard}.` };
     default:
-      return { canal: ecrire, phrase: 'Faites le point avec lui.' };
+      return { canal: ecrire, phrase: 'Faites le point avec ce contact.' };
   }
 }
 
@@ -318,35 +323,43 @@ const borne = (t: string | undefined, max: number) => {
 /** Prénom pour « Bonjour … » : le premier mot du nom, sauf un nom qui n'en est pas un (e-mail, « Sans nom »). */
 export function prenomContact(nom: string | undefined): string {
   const n = String(nom ?? '').trim();
-  if (!n || n.includes('@') || /^sans nom$/i.test(n)) return '';
+  // Un nom qui contient une adresse ou des chiffres n'en est pas un (formulaire sans nom, numéro collé).
+  if (!n || n.includes('@') || /\d/.test(n) || /https?:|www\./i.test(n) || /^sans nom$/i.test(n)) return '';
   const premier = n.split(/\s+/)[0].replace(/[.,;:]+$/, '');
-  return /\d/.test(premier) ? '' : premier;
+  return premier.slice(0, 40);
 }
 
+/** Texte libre du contact pour l'IA : coordonnées masquées (masquage.ts), puis borné. */
+const libre = (t: string | undefined, max: number) => borne(masquerCoordonnees(t), max);
+
 /**
- * Faits donnés à Claude pour un contact (jamais son téléphone ni son
- * e-mail : inutiles pour écrire). Textes bornés.
+ * Faits donnés à Claude pour un contact. Jamais son téléphone ni son
+ * e-mail : ni les champs, ni dans les textes libres (nom, ville, bien,
+ * message, notes, motif, historique), où liens, e-mails et numéros sont
+ * masqués. Le prénom seul ; un nom qui contient « @ » ou des chiffres
+ * n'est pas transmis. Textes bornés.
  */
 export function contexteRelance(c: ContactCrm, aujourdhui: DateISO): string {
   const action = prochaineAction(c, aujourdhui);
+  const prenom = prenomContact(c.nom);
   const lignes = [
     `Date du jour : ${aujourdhui}`,
-    `Contact : ${borne(c.nom, 80)}${prenomContact(c.nom) ? ` (prénom pour le saluer : ${prenomContact(c.nom)})` : ' (pas de prénom connu : « Bonjour, » seul)'}`,
+    `Contact : ${prenom ? `${prenom} (prénom seul, pour le saluer)` : '(nom non communiqué), à saluer par « Bonjour, » seul'}`,
     `Profil : ${LIBELLE_PROFIL[profilContact(c)]}`,
     `Étape : ${LIBELLE_STATUT_CRM[c.statut]}`,
-    c.ville ? `Ville : ${borne(c.ville, 80)}` : '',
-    c.typeBien ? `Bien : ${borne(c.typeBien, 80)}` : '',
-    c.motifAttente ? `En attente de : ${borne(c.motifAttente, 160)}` : '',
+    c.ville ? `Ville : ${libre(c.ville, 80)}` : '',
+    c.typeBien ? `Bien : ${libre(c.typeBien, 80)}` : '',
+    c.motifAttente ? `En attente de : ${libre(c.motifAttente, 160)}` : '',
     `Demande reçue le ${String(c.creeLe).slice(0, 10)} (${LIBELLE_SOURCE_CRM[c.source] ?? c.source})`,
     c.tentatives ? `Appels sans réponse : ${c.tentatives}` : '',
     c.relanceLe ? `Relance prévue le ${c.relanceLe}` : '',
-    `Prochaine action proposée : ${action.phrase}`,
-    c.message ? `Message laissé dans le formulaire (donnée) : « ${borne(c.message, 600)} »` : '',
-    c.notes?.trim() ? `Notes de l'équipe (donnée) : « ${borne(c.notes, 600)} »` : '',
+    `Prochaine action proposée : ${masquerCoordonnees(action.phrase)}`,
+    c.message ? `Message laissé dans le formulaire (donnée) : « ${libre(c.message, 600)} »` : '',
+    c.notes?.trim() ? `Notes de l'équipe (donnée) : « ${libre(c.notes, 600)} »` : '',
   ].filter(Boolean);
   const historique = (c.historique ?? [])
     .slice(0, 5)
-    .map((t) => `- ${String(t.le).slice(0, 10)} · ${t.resultat}${t.texte ? ` : ${borne(t.texte, 200)}` : ''}`);
+    .map((t) => `- ${String(t.le).slice(0, 10)} · ${t.resultat}${t.texte ? ` : ${libre(t.texte, 200)}` : ''}`);
   return `${lignes.join('\n')}${historique.length ? `\nDerniers échanges :\n${historique.join('\n')}` : ''}`;
 }
 
@@ -370,7 +383,8 @@ const LIEN = /(https?:\/\/|www\.|\b[\w-]+\.(?:fr|com|net|org|io)\b)/i;
 const COURRIEL = /[\w.+-]+@[\w-]+(?:\.[\w-]+)+/;
 const TELEPHONE = /(?:\+|00)\d{1,3}[\s.-]?\d(?:[\s.-]?\d{2,3}){3,5}|\b0[1-9](?:[\s.-]?\d{2}){4}\b/;
 const ARGENT = /€|\beuros?\b|%|\bpour ?cent\b/i;
-const TUTOIEMENT = /\b(?:tu|toi|ton|ta|tes)\b|\bt['’]/i;
+// Mots entiers, lettres accentuées comprises (« êtes » n'est pas « tes ») : \b ne connaît que l'ASCII.
+const TUTOIEMENT = /(?<![\p{L}\p{N}])(?:tu|toi|ton|ta|tes)(?![\p{L}\p{N}])|(?<!\p{L})t['’](?=\p{L})/iu;
 
 /** Texte nettoyé (emoji retirés, espaces resserrés). */
 export const nettoyerRelance = (t: string): string =>

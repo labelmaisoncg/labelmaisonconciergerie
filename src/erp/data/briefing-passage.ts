@@ -19,10 +19,12 @@
  * - Deux versions : celle du gérant (prix conseillés, factures) pour ses
  *   appareils, celle de l'équipe pour les autres (variante `gerant`).
  *
- * Lecture seule vis-à-vis des plateformes : seule la base de l'ERP est lue,
- * seul l'état du briefing y est écrit. Imports en « .js » : tourne sous Node.
+ * Lecture seule vis-à-vis des plateformes : seule la base de l'ERP est lue
+ * (dont l'état de la dernière synchronisation), seul l'état du briefing y
+ * est écrit. Imports en « .js » : tourne sous Node.
  */
 import { construireBriefing, notificationBriefing, type EntreesBriefing } from './briefing.js';
+import { ID_ALERTE_CONTROLE } from './controle-reponse.js';
 import { COLLECTION_PASSAGES_FACTURES, moisAFacturerAutomatiquement } from './factures-mensuelles.js';
 import { estActive, preferencesPourRole, type GroupeNotification } from './notifications.js';
 import { lireAppareils, type BaseNotifications } from './notifications-envoi.js';
@@ -35,6 +37,14 @@ export const HEURE_FIN_BRIEFING = 12;
 /** Jusqu'à cette heure, le briefing attend les brouillons des factures du mois terminé. */
 export const HEURE_ATTENTE_FACTURES = 10;
 export const ID_ETAT_BRIEFING = 'briefing-etat';
+/** État de la synchronisation des plateformes (repull-synchro.ts : COLLECTION_ETAT, ID_ETAT), lu seulement. */
+const COLLECTION_ETAT_REPULL = 'repull';
+const ID_ETAT_REPULL = 'etat';
+interface EtatSynchroLu {
+  id: string;
+  derniereSynchro?: string;
+  dernierBilan?: { erreurs?: string[] };
+}
 const COLLECTION = 'connecteurs';
 const AUTEUR = 'Briefing du matin';
 
@@ -97,8 +107,12 @@ export async function passerBriefingDansEspace(
 
   const vide = Promise.resolve([] as never[]);
   const mois = moisAFacturerAutomatiquement(jour);
-  const [traceFactures, logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures] = await Promise.all([
+  const [traceFactures, etatPlateformes, reglages, signalementsLogement, logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures] = await Promise.all([
     gerant ? base.lire<{ id: string }>(COLLECTION_PASSAGES_FACTURES, [mois]) : vide,
+    // Dernière mise à jour des plateformes (état de la synchronisation, une ligne) : en échec, ou son heure.
+    base.lire<EtatSynchroLu>(COLLECTION_ETAT_REPULL, [ID_ETAT_REPULL]),
+    base.lire<NonNullable<EntreesBriefing['reglages']>[number]>('reglages', [ID_ALERTE_CONTROLE]),
+    gerant ? base.lire<NonNullable<EntreesBriefing['signalementsLogement']>[number]>('signalementsLogement') : vide,
     base.lire<EntreesBriefing['logements'][number]>('logements'),
     base.lire<EntreesBriefing['reservations'][number]>('reservations'),
     base.lire<EntreesBriefing['filsMessages'][number]>('filsMessages'),
@@ -115,7 +129,14 @@ export async function passerBriefingDansEspace(
   // Factures du mois terminé pas encore préparées (le 1er, même passage) : on attend le suivant.
   if (gerant && !traceFactures.length && heure < HEURE_ATTENTE_FACTURES) return { statut: 'attente-factures' };
 
-  const entrees = { logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures, aujourdhui: jour, maintenant: o.maintenant.toISOString() };
+  const synchro = etatPlateformes[0];
+  const entrees = {
+    logements, reservations, filsMessages, crm, incidents, avisADeposer, controles, equipe, affectations, absences, conseilsPrix, factures, reglages, signalementsLogement,
+    aujourdhui: jour,
+    maintenant: o.maintenant.toISOString(),
+    // Même lecture que l'écran (dernière ligne de synchronisation du journal) : en échec, ou réussie à telle heure.
+    ...(synchro?.dernierBilan?.erreurs?.length ? { synchroEnEchec: true } : synchro?.derniereSynchro ? { derniereSynchro: synchro.derniereSynchro } : {}),
+  };
   const equipeB = construireBriefing({ ...entrees, gerant: false });
   const notification = notificationBriefing(gerant ? construireBriefing({ ...entrees, gerant: true }) : equipeB, equipeB);
 

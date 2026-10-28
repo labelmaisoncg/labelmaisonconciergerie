@@ -8,11 +8,11 @@
  * étape. Mise à jour en direct (Supabase Realtime). Rien n'est envoyé aux
  * contacts depuis l'ERP.
  */
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, CalendarPlus, FileText, PhoneCall, Plus } from 'lucide-react';
+import { Bot, CalendarPlus, Check, FileText, PhoneCall, Plus } from 'lucide-react';
 import { idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
-import { fileDuJour } from '../../data/crm-assistant';
+import { fileDuJour, jourMoisCrm } from '../../data/crm-assistant';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { aideCrmVide, dossierProprietaireDisponible } from '../../data/marque-espace';
@@ -174,6 +174,19 @@ export default function Crm() {
 
   const modifier = (c: ContactCrm) => upsert('crm', { ...c, majLe: horodatageMaintenant() });
 
+  // « C’est envoyé » : la relance est notée, la confirmation reste quelques secondes sur la page.
+  const [notee, setNotee] = useState<string | null>(null);
+  const minuteurNotee = useRef<number>();
+  useEffect(() => () => window.clearTimeout(minuteurNotee.current), []);
+  const relanceEnvoyee = (c: ContactCrm) => {
+    modifier(c);
+    // La vue reste « Aujourd’hui » même si la file se vide.
+    regler({ relance: null, vue: 'jour' });
+    setNotee(`Relance notée pour ${c.nom}.${c.relanceLe ? ` Prochaine relance le ${jourMoisCrm(c.relanceLe)}`.replace(/\.?$/, '.') : ''}`);
+    window.clearTimeout(minuteurNotee.current);
+    minuteurNotee.current = window.setTimeout(() => setNotee(null), 8000);
+  };
+
   // La file du jour (assistant CRM) : même règle que « À faire » de l'Accueil et l'agenda.
   const file = useMemo(() => fileDuJour(crm, AUJOURDHUI), [crm]);
   const aujourdhui = file.length;
@@ -196,7 +209,7 @@ export default function Crm() {
     <>
       <PageHeader
         titre="CRM"
-        sousTitre={crm.length > 0 ? (aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : 'Personne à appeler aujourd’hui.') : undefined}
+        sousTitre={crm.length > 0 && aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : undefined}
         actions={
           <>
             {plus.length > 0 && <MenuActions texte label="Plus" actions={plus} />}
@@ -222,9 +235,19 @@ export default function Crm() {
         />
       )}
 
+      <div role="status" aria-live="polite">
+        {notee && (
+          <p className="mb-3 flex items-center gap-2 rounded-lg bg-(--lm-succes-lavis) px-3 py-2 text-[13.5px] text-(--lm-succes-texte)">
+            <Check className="size-4 shrink-0" aria-hidden />
+            {notee}
+          </p>
+        )}
+      </div>
+
       {crm.length > 0 && vue === 'jour' ? (
         file.length ? (
-          <FileDuJour entrees={file} onOuvrir={ouvrir} onRelance={(id) => preparerRelance(id)} lectureSeule={lectureSeule} />
+          // Lecture seule : la prochaine action et l'appel, sans brouillon demandé à l'IA.
+          <FileDuJour entrees={file} onOuvrir={(e) => preparerRelance(e.contact.id, !lectureSeule)} />
         ) : (
           <EmptyState icone={<PhoneCall />} titre="Personne à appeler aujourd’hui." action={<Button variant="ghost" onClick={() => regler({ vue: 'tous' })}>Voir tous les contacts</Button>} />
         )
@@ -285,7 +308,7 @@ export default function Crm() {
         contact={relance ? crm.find((c) => c.id === relance) : undefined}
         auto={relanceAuto}
         onFermer={() => preparerRelance(null, false)}
-        onModifier={modifier}
+        onEnvoye={relanceEnvoyee}
         onOuvrirFiche={(id) => ouvrir(id)}
         auteur={utilisateur.nom}
         lectureSeule={lectureSeule}

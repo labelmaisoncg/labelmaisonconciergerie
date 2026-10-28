@@ -13,8 +13,11 @@
  * attendent l'équipe (attendEquipe), avis à déposer (avisATraiter), notes
  * sous 4,5 des 14 derniers jours, contacts du jour (aTraiterLe, triés par
  * l'assistant CRM), incidents (incidentsATraiter), anomalies
- * (detecterAnomalies), prix conseillés (conseillerPrix), factures mensuelles
- * en brouillon. Prix et factures : gérant seulement, comme ailleurs.
+ * (detecterAnomalies), contrôle des réponses de l'agent en panne, fiches
+ * incomplètes pour l'agent (completudeFiche), prix conseillés
+ * (conseillerPrix), factures mensuelles en brouillon, logements signalés
+ * « pas à moi ». Prix, factures et « pas à moi » : gérant seulement, comme
+ * dans « À faire » (chaque ligne de « À faire » a sa phrase ici).
  *
  * Module pur, sans date système (jour et instant passés en entrée) ;
  * imports en « .js » : il tourne aussi côté serveur.
@@ -22,8 +25,10 @@
 import { detecterAnomalies, type TypeAnomalie } from './anomalies.js';
 import { attendEquipe } from './attente-equipe.js';
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
+import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from './controle-reponse.js';
 import { fileDuJour } from './crm-assistant.js';
 import { estFactureMensuelle, factureFigee } from './factures-mensuelles.js';
+import { completudeFiche } from './fiche-agent.js';
 import { incidentsATraiter, lienIncident } from './incidents-erp.js';
 import { avisATraiter } from './messages-programmes.js';
 import type { GroupeNotification, VarianteNotification } from './notifications.js';
@@ -33,7 +38,9 @@ import type { DateISO, ErpDonnees, Facture, Horodatage, Id, Reservation } from '
 
 /** Ce que le briefing lit (le store de l'ERP, ou les collections lues par le serveur). */
 export type EntreesBriefing = Pick<ErpDonnees, 'logements' | 'reservations' | 'filsMessages' | 'crm' | 'incidents'> &
-  Partial<Pick<ErpDonnees, 'avisADeposer' | 'controles' | 'equipe' | 'affectations' | 'absences' | 'conseilsPrix' | 'factures' | 'proprietaires'>> & {
+  Partial<
+    Pick<ErpDonnees, 'avisADeposer' | 'controles' | 'equipe' | 'affectations' | 'absences' | 'conseilsPrix' | 'factures' | 'proprietaires' | 'reglages' | 'signalementsLogement'>
+  > & {
     aujourdhui: DateISO;
     /** Instant du calcul (fraîcheur des prix lus, anomalies). */
     maintenant: Horodatage;
@@ -45,7 +52,9 @@ export type EntreesBriefing = Pick<ErpDonnees, 'logements' | 'reservations' | 'f
     synchroEnEchec?: boolean;
   };
 
-export type CleSujet = 'journee' | 'urgences' | 'messages' | 'incidents' | 'avis_deposer' | 'notes' | 'crm' | 'alertes' | 'prix' | 'factures';
+export type CleSujet =
+  | 'journee' | 'urgences' | 'messages' | 'incidents' | 'avis_deposer' | 'notes' | 'crm' | 'alertes'
+  | 'controle_agent' | 'fiches_agent' | 'prix' | 'factures' | 'signalements';
 
 export interface SujetBriefing {
   cle: CleSujet;
@@ -90,13 +99,22 @@ const MOIS_LONGS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juil
 /** « 2 arrivées », « 1 départ » (le nombre en chiffres, accord du nom). */
 export const nb = (n: number, singulier: string, pluriel = `${singulier}s`) => `${n} ${n > 1 ? pluriel : singulier}`;
 
-/** « A, B et C », « A, B, C et 2 autres ». */
+/**
+ * « A, B et C », « A, B, C et 2 autres » : chaque élément compte. Un nom
+ * qui revient est cité une fois avec son nombre (« Paris 14 Alésia (2) »),
+ * et « et N autres » compte les éléments non cités : le total est toujours
+ * celui du sujet.
+ */
 export function liste(noms: readonly string[], max = MAX_NOMS): string {
-  const uniques = [...new Set(noms.filter(Boolean))];
-  if (uniques.length <= 1) return uniques[0] ?? '';
-  if (uniques.length <= max) return `${uniques.slice(0, -1).join(', ')} et ${uniques[uniques.length - 1]}`;
-  const reste = uniques.length - max;
-  return `${uniques.slice(0, max).join(', ')} et ${reste} autre${reste > 1 ? 's' : ''}`;
+  const comptes = new Map<string, number>();
+  for (const n of noms) if (n) comptes.set(n, (comptes.get(n) ?? 0) + 1);
+  const total = [...comptes.values()].reduce((a, b) => a + b, 0);
+  const cites = [...comptes].slice(0, max);
+  const reste = total - cites.reduce((a, [, k]) => a + k, 0);
+  const morceaux = cites.map(([n, k]) => (k > 1 ? `${n} (${k})` : n));
+  if (reste > 0) morceaux.push(`${reste} autre${reste > 1 ? 's' : ''}`);
+  if (morceaux.length <= 1) return morceaux[0] ?? '';
+  return `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1]}`;
 }
 
 /** Une liste de morceaux en une phrase : « a, b et c ». */
@@ -266,6 +284,26 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
       lien: anomalies.find((a) => a.type === 'chevauchement')?.lien ?? anomalies[0]?.lien ?? '/erp',
     });
 
+  /* votre agent : contrôle des réponses en panne, fiches incomplètes (comme « À faire ») */
+  const alerteControle = (e.reglages ?? []).find((r): r is AlerteControleAgent => r?.id === ID_ALERTE_CONTROLE);
+  if (alerteControle?.active)
+    sujets.push({
+      cle: 'controle_agent',
+      n: 1,
+      phrase: 'Votre agent ne vérifie plus ses réponses : rien ne part seul, elles restent à valider.',
+      court: 'votre agent ne vérifie plus ses réponses',
+      lien: '/erp/messagerie/agent',
+    });
+  const incompletes = e.logements.filter((l) => l?.statut === 'actif' && completudeFiche(l.fiche).manquants.length);
+  if (incompletes.length)
+    sujets.push({
+      cle: 'fiches_agent',
+      n: incompletes.length,
+      phrase: `Votre agent manque d’informations sur ${incompletes.length > 1 ? `${incompletes.length} logements (${liste(incompletes.map((l) => l.nom))})` : incompletes[0].nom}.`,
+      court: nb(incompletes.length, 'fiche à compléter pour l’agent', 'fiches à compléter pour l’agent'),
+      lien: `/erp/logements/${encodeURIComponent(incompletes[0].id)}?onglet=fiche`,
+    });
+
   /* gérant : prix conseillés et factures à valider */
   if (e.gerant) {
     const { reglages, decisions } = lireElementsPrix(e.conseilsPrix);
@@ -294,14 +332,24 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
         gerant: true,
       });
     }
+    // « Ce logement n'est pas à moi » (espace opérations) : le gérant tranche dans Paramètres → Accès.
+    const signalements = (e.signalementsLogement ?? []).filter((x) => x?.statut === 'ouvert');
+    if (signalements.length)
+      sujets.push({
+        cle: 'signalements',
+        n: signalements.length,
+        phrase: `${signalements.length > 1 ? `${signalements.length} logements signalés « pas à moi »` : 'Un logement signalé « pas à moi »'} (${liste(signalements.map((x) => nomLogement(x.logementId)))}).`,
+        court: nb(signalements.length, 'logement signalé « pas à moi »', 'logements signalés « pas à moi »'),
+        lien: '/erp/parametres/acces',
+        gerant: true,
+      });
   }
 
   const aFaire = sujets.filter((s) => s.cle !== 'journee');
-  const texte = [...sujets.map((s) => s.phrase), ...(aFaire.length ? [] : ['Rien ne vous attend : bonne journée.'])].join(' ');
   return {
     date: j,
     sujets,
-    texte,
+    texte: texteDuBriefing(sujets),
     court: corpsCourt(sujets),
     rien: occupes.length + arrivees.length + departs.length === 0 && !aFaire.length,
   };
@@ -310,11 +358,28 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
 /** Où valider une facture mensuelle : la fiche d'un logement du propriétaire (carte « Propriétaire » → Gérer → Factures). */
 export function lienFacture(e: Pick<EntreesBriefing, 'logements'>, f: Pick<Facture, 'proprietaireId'>): string {
   const l = e.logements.find((x) => x.proprietaireId === f.proprietaireId);
-  return l ? `/erp/logements/${encodeURIComponent(l.id)}` : '/erp/parametres/acces';
+  // « #factures » : la fiche défile jusqu'à la carte Propriétaire et ouvre ses factures.
+  return l ? `/erp/logements/${encodeURIComponent(l.id)}#factures` : '/erp/parametres/acces';
+}
+
+/**
+ * Le briefing en un paragraphe : la journée d'abord, puis les sujets dans
+ * l'ordre donné (celui de la carte « Votre journée » à l'écran ; par défaut,
+ * celui du calcul). Rien en attente : « Rien ne vous attend : bonne journée. »
+ */
+export function texteDuBriefing(sujets: readonly SujetBriefing[], ordre?: readonly CleSujet[]): string {
+  const journee = sujets.filter((s) => s.cle === 'journee');
+  const autres = sujets.filter((s) => s.cle !== 'journee');
+  const rang = (c: CleSujet) => {
+    const i = ordre ? ordre.indexOf(c) : -1;
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const tries = ordre ? autres.map((s, i) => ({ s, i })).sort((a, b) => rang(a.s.cle) - rang(b.s.cle) || a.i - b.i).map((x) => x.s) : autres;
+  return [...journee, ...tries].map((s) => s.phrase).concat(autres.length ? [] : ['Rien ne vous attend : bonne journée.']).join(' ');
 }
 
 /** Ce qui attend, dans la notification : le plus pressant d'abord (on coupe par la fin s'il le faut). */
-const ORDRE_COURT: readonly CleSujet[] = ['urgences', 'messages', 'alertes', 'crm', 'factures', 'prix', 'avis_deposer', 'notes', 'incidents'];
+const ORDRE_COURT: readonly CleSujet[] = ['urgences', 'messages', 'alertes', 'controle_agent', 'crm', 'factures', 'prix', 'avis_deposer', 'notes', 'incidents', 'signalements', 'fiches_agent'];
 
 /**
  * Corps de notification : la journée, puis ce qui attend, du plus pressant

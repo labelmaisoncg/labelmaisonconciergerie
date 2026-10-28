@@ -1259,10 +1259,15 @@ message du voyageur bloque de toute façon un second envoi.
 
 **Quand passe-t-il ?**
 
-- toutes les 30 minutes de 8 h à 23 h, par Supabase (`pg_cron` + `pg_net`) :
-  exécuter **une fois** `supabase/erp-agent-cron.sql` dans le SQL Editor du
-  projet Label Maison, en remplaçant `REMPLACER_PAR_CRON_SECRET` par la valeur
-  de `CRON_SECRET` (rangée dans le coffre chiffré Vault) ;
+- toutes les 30 minutes de 7 h à 23 h (Paris), par Supabase (`pg_cron` +
+  `pg_net`, tâche `*/30 5-22 * * *` en heure UTC) : exécuter
+  `supabase/erp-agent-cron.sql` dans le SQL Editor du projet Label Maison, en
+  remplaçant `REMPLACER_PAR_CRON_SECRET` par la valeur de `CRON_SECRET`
+  (rangée dans le coffre chiffré Vault). **À relancer après chaque changement
+  du fichier** : en octobre 2026, le premier réveil passe de 6 h à 5 h UTC
+  pour que le briefing du matin parte à 7 h à Paris l'été aussi (l'hiver, un
+  passage de plus à 6 h ; briefing et app « Opérations » attendent 7 h, prix
+  conseillés 8 h, messages automatiques jamais avant 8 h) ;
 - chaque jour par le cron Vercel (`53 6 * * *`, secours) ;
 - juste après chaque synchronisation Repull qui apporte des messages (bouton,
   cron quotidien, webhooks) ;
@@ -1345,20 +1350,28 @@ sans message en attente n'appelle pas Claude.
 `verifier-briefing.ts`) : arrivées, départs et logements occupés ce soir,
 urgences, voyageurs qui attendent l'équipe (`attendEquipe`), incidents,
 avis à déposer, notes sous 4,5, personnes à appeler (file de l'assistant
-CRM), alertes (anomalies, mise à jour des plateformes en échec) et, pour le
-gérant seulement, prix à revoir et factures mensuelles à valider. Chaque
-sujet reprend la définition déjà utilisée par « À faire » (mêmes nombres,
-vérifiés sur la démonstration) ; un membre non gérant n'y voit ni prix ni
-facture.
+CRM), alertes (anomalies, mise à jour des plateformes en échec), votre agent
+(contrôle des réponses en panne, fiches incomplètes : `data/fiche-agent.ts`)
+et, pour le gérant seulement, prix à revoir, factures mensuelles à valider et
+logements signalés « pas à moi ». Chaque ligne de « À faire » a sa phrase,
+avec la même définition (mêmes nombres, vérifiés sur la démonstration) ; un
+membre non gérant n'y voit ni prix, ni facture, ni « pas à moi ». Dans une
+liste de noms, un nom qui revient est cité une fois avec son nombre, et
+« et N autres » compte les éléments restants.
 
 - **À l'écran** : un seul bloc en haut de l'Accueil, « Votre journée »
   (`tableau-de-bord/_composants/Briefing.tsx`). Il remplace la carte
   « À faire » et les tuiles du jour au lieu de s'y ajouter : première ligne,
-  la journée (arrivées, départs, logements occupés, prénoms et logements) ;
-  ensuite les sujets de « À faire », une phrase chacun, « Tout voir » pour le
-  détail, et « … » → « Copier le briefing ». Les tuiles « Arrivées et
-  départs » plus bas montrent désormais la semaine (ou la période choisie,
-  « Aujourd’hui » compris). Base encore vide : « À faire » seul, comme avant.
+  la journée (arrivées, départs, logements occupés ce soir ; prénoms des
+  arrivants, logements quittés) ; ensuite les sujets de « À faire », une
+  phrase chacun, « Tout voir » pour le détail, et « … » → « Copier le
+  briefing » (texte dans l'ordre de la carte ; « Copié » s'affiche 2,5 s dans
+  l'en-tête). Les tuiles « Arrivées et départs » plus bas montrent désormais
+  la semaine (ou la période choisie, « Aujourd’hui » compris) et comptent les
+  logements occupés. La ligne « facture mensuelle à valider » ouvre la fiche
+  du logement sur `#factures` : la carte Propriétaire vient à l'écran et
+  « Gérer » s'ouvre sur les factures. Base encore vide : « À faire » seul,
+  comme avant.
 - **Notification « Briefing du matin »** (type `rappel` gardé : les
   préférences des appareils restent valables ; éteinte par défaut comme
   l'ancien rappel) : le passage planifié de l'agent (`api/erp-agent.ts` →
@@ -1368,7 +1381,9 @@ facture.
   sans aucun nom (écran verrouillé), le plus pressant d'abord ; version du
   gérant (prix, factures) pour ses appareils (`VarianteNotification.gerant`),
   celle de l'équipe pour les autres. Le 1er, il attend jusqu'à 10 h que les
-  brouillons des factures du mois soient prêts. L'ancien rappel de la
+  brouillons des factures du mois soient prêts. Le serveur lit aussi l'état
+  de la dernière synchronisation (`repull/etat`, une ligne) : en échec, elle
+  compte dans « à vérifier », comme à l'écran. L'ancien rappel de la
   synchronisation de 4 h 17 UTC est retiré (trop tôt).
 - Pas de version reformulée par l'IA : le texte calculé est déjà en
   français courant, juste sans clé IA, et ne peut pas inventer un chiffre.
@@ -1378,29 +1393,41 @@ facture.
 
 - **File « à appeler / à relancer aujourd’hui »** : la règle du CRM
   (`aTraiterLe` : nouvelles demandes et relances échues, comme « À faire »
-  et l'agenda), triée par un **score expliqué** (« Pourquoi en tête de la
-  file ? ») : étape (nouvelle demande 40, à rappeler 30, rendez-vous 25,
-  échange en cours 20, en attente 10), relance du jour 15 ou en retard 15 +
-  1 par jour (10 au plus), demande du jour 15 / de la veille 10 / de la
-  semaine 5, sans nouvelles depuis 14 jours 5, source (dossier 15, audit 10,
-  accueil 5, contact 3), propriétaire 10 ou apporteur 5, 3 appels sans
-  réponse −10, ni téléphone ni e-mail −20.
+  et l'agenda), triée par un **score** : étape (nouvelle demande 40, à
+  rappeler 30, rendez-vous 25, échange en cours 20, en attente 10), relance
+  du jour 15 ou en retard 5 + 1 par jour (15 au plus : jamais devant une
+  relance du jour), demande du jour 15 / de la veille 10 / de la semaine 5,
+  sans nouvelles depuis 14 jours 5, source (dossier 15, audit 10, accueil 5,
+  contact 3), propriétaire 10 ou apporteur 5, 3 appels sans réponse −10, ni
+  téléphone ni e-mail −20. À l'écran : « Comment la file est triée ? » en
+  trois phrases sans chiffres ; le détail chiffré de chaque contact sous
+  « Pourquoi cette priorité ? ». Chaque ligne se touche ; l'appel reste à
+  droite. Si la prochaine action est d'appeler, « Appeler » passe avant
+  l'écrit. Un membre en lecture seule y voit la prochaine action et l'appel,
+  sans brouillon.
 - **Propriétaire ou apporteur** : champ `profil` du contact (fiche →
   « Profil ») ; absent, déduit de la source (candidature au Cercle =
   apporteur). Aucune migration : le champ vit dans le JSON du contact.
 - **Prochaine action** en une phrase (appeler, écrire après deux appels sans
   réponse, confirmer un rendez-vous, prendre des nouvelles…).
-- **« Préparer la relance »** (un clic) : brouillon SMS ou e-mail rédigé par
-  l'IA au ton de la maison, vouvoiement (`POST /api/erp-agent { action:
+- **« Préparer la relance »** (un clic quand la prochaine action est
+  d'écrire) : brouillon SMS ou e-mail rédigé par l'IA au ton de la maison,
+  vouvoiement (`POST /api/erp-agent { action:
   'crm_relance', contactId, canal }` → `api/_crm-assistant.ts` →
   `src/erp/data/crm-relance.ts`), éditable, « Copier ». **Rien n'est
   envoyé** : l'ERP n'envoie ni e-mail ni SMS ; « C’est envoyé » note la
   relance dans l'historique et fixe la suivante (3 jours, 7 après un premier
-  échange). Le contact est relu dans la base ; ni son téléphone ni son
-  e-mail ne partent à l'IA ; plafond mensuel de l'IA de l'espace
+  échange) ; la page confirme « Relance notée pour … » et reste sur
+  « Aujourd’hui ». Le contact est relu dans la base ; ni son téléphone ni son
+  e-mail ne partent à l'IA, ni en champ ni dans les textes libres : prénom
+  seul (« nom non communiqué » si le nom contient « @ » ou des chiffres),
+  liens, e-mails et numéros masqués dans la ville, le bien, le message, les
+  notes, le motif d'attente et l'historique (`data/masquage.ts`, la même
+  règle que les réponses aux avis) ; plafond mensuel de l'IA de l'espace
   (`compterAppelIA`), 20 brouillons par quart d'heure et par membre.
   Brouillon écarté s'il contient un lien, une adresse, un numéro, un
-  montant, du tutoiement ou un chiffre absent de la fiche ; IA absente,
+  montant, du tutoiement (mots entiers, lettres accentuées comprises :
+  « vous êtes » passe) ou un chiffre absent de la fiche ; IA absente,
   plafond atteint ou brouillon écarté : un modèle sans IA à compléter (aussi
   en démonstration).
 - **Connecteur Claude** : `crm_resume` rend la même file, dans le même ordre,
