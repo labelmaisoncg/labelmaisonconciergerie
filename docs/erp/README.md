@@ -562,7 +562,9 @@ séjours annulés exclus.
   adresse, code ou wifi, lien, message privé, geste commercial ou
   remboursement → écartée, remplacée par le texte simple (`reponseModele`),
   qui sert aussi sans clé, au plafond du mois et en démonstration. Chaque
-  appel compte dans le plafond mensuel de l'espace. La réponse se modifie,
+  appel compte dans le plafond mensuel de l'espace, et chaque membre a au
+  plus 20 demandes par quart d'heure (« Trop de demandes d’un coup :
+  réessayez dans quelques minutes. », 429). La réponse se modifie,
   puis **« Copier le texte »** (« Nouvelle proposition » demande
   confirmation si le texte a été retouché) ; « Ouvrir Airbnb » / « Ouvrir
   Booking.com » sont de
@@ -570,8 +572,12 @@ séjours annulés exclus.
 - **L'IA affine sans inventer** : sa lecture (sentiment, sens des thèmes
   déjà repérés) est gardée sur la réservation (`lectureAvis`, écriture
   conditionnelle) et ne vaut que pour le texte lu (empreinte) ; elle n'ajoute
-  jamais de thème et ne contredit pas la note. Les chiffres sont toujours
-  comptés par le code.
+  jamais de thème et ne contredit pas la note. Comme elle a lu le texte du
+  voyageur, elle peut rendre la lecture plus sévère, jamais plus indulgente
+  que les mots-clés : un avis ne sort pas seul de « à lire », un point
+  négatif ne s'efface ni ne s'adoucit, et pas « négatif » contre une note de
+  4,6 ou plus (au plus « mitigé »). Les chiffres sont toujours comptés par
+  le code.
 
 ## Automatisations
 
