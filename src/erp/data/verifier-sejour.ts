@@ -685,6 +685,19 @@ async function principal() {
     ].filter(([t, motif]) => (motif as RegExp).test(cache({ aSavoir: t as string })));
     verifier(detournes.length === 0, 'code déguisé en code postal, unité, année ou numéro : jamais lisible avant 48 h', detournes.map(([t]) => t));
     verifier(masquerCodesLivret('Boulangerie 91100 Corbeil.', '91100') === 'Boulangerie 91100 Corbeil.' && masquerCodesLivret('Boulangerie 91100 Corbeil.').includes(CODE_MASQUE), 'le code postal du logement reste lisible partout ; un autre, seulement après une virgule ou une préposition');
+    // Un code court collé à un code masqué (« 4821 puis 482 ») : un second code, le texte attend ; un code postal, une année, un bus : non.
+    const voisins = [
+      ['Bâtiment B : 4821 puis 482 en bas', /482 en bas/], ['Le 4821 puis 482', /puis 482/], ['Escalier C, 4821 et 7B9', /7B9/], ['Immeuble 4821, appartement 12B', /12B/],
+    ].filter(([t, motif]) => (motif as RegExp).test(cache({ aSavoir: t as string })));
+    verifier(voisins.length === 0, 'code court à côté d’un code masqué : jamais lisible avant 48 h', voisins.map(([t]) => t));
+    // Le jeton entier est retiré : aucune lettre collée au code ne reste visible.
+    const colles = [['Digicode : 4821M.', /M\./], ['Interphone B4821 à gauche.', /B[^\p{L}]*à/u], ['Clavier 12#4821*.', /12#|\*\./]].filter(([t, motif]) =>
+      (motif as RegExp).test(cache({ aSavoir: t as string })),
+    );
+    verifier(colles.length === 0, 'lettre ou signe collé à un code masqué (« 4821M », « B4821 ») : retiré avec lui', colles.map(([t]) => cache({ aSavoir: t as string })));
+    const clairs = ['Résidence de 1998, 91100 Corbeil-Essonnes.', 'Construit en 1890, bus 402 devant la maison.', 'Rénové en 1890 ; tram à 300 m.'];
+    const perdus = clairs.filter((t) => !cache({ aSavoir: t }).includes(t.split(' ')[0]));
+    verifier(perdus.length === 0, 'près d’un code masqué : code postal, bus et distance restent lisibles', perdus);
     const croise = cache({ parking: 'Portail du parking : code 482.', aSavoir: 'Tapez 482 en bas.' });
     verifier(!/482/.test(croise), 'code cité après « code » dans un champ, écrit nu dans un autre : le texte attend les 48 h');
     verifier(/Corbeil-Essonnes/.test(cache({ aSavoir: 'Code postal 91100 Corbeil-Essonnes.' })) && /91100/.test(cache({ aSavoir: 'Code postal 91100 Corbeil-Essonnes.' })), '« code postal 91100 » : ni masqué ni pris pour un code');

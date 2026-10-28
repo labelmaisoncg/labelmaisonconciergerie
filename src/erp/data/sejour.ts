@@ -607,8 +607,18 @@ const UNITE_APRES = /^\s{1,2}(?:m|km|mètres?|metres?|mn|min|minutes?|h|heures?|
  * alors les 48 h). Sert au livret et à l'avertissement de la fiche voyageur.
  */
 export function codeProbable(texte: string | undefined): boolean {
-  const t = String(texte ?? '').normalize('NFKC');
-  for (const m of t.matchAll(MOT_D_ACCES)) {
+  return codePres(String(texte ?? '').normalize('NFKC'), MOT_D_ACCES, true);
+}
+
+/**
+ * Un jeton avec un chiffre juste après (60 signes, même phrase) ou juste avant
+ * (30 signes, même membre de phrase) un des `mots`. `longs` : les nombres de
+ * 4 chiffres ou plus comptent aussi (près d'un mot d'accès) ; sinon seulement
+ * les jetons courts (près d'un code déjà masqué, où un code postal ou une
+ * année laissés lisibles ne sont pas des codes).
+ */
+function codePres(t: string, mots: RegExp, longs: boolean): boolean {
+  for (const m of t.matchAll(mots)) {
     const debut = m.index ?? 0;
     const finMot = debut + m[0].length;
     // « 4.8.2 » ou « 4 8 2 » : le point ne coupe pas la phrase entre deux chiffres.
@@ -622,6 +632,9 @@ export function codeProbable(texte: string | undefined): boolean {
         const fin = origine + (j.index ?? 0) + j[0].length;
         // Près d'un mot d'accès, une unité ne blanchit qu'un nombre court (« portail à 200 m ») : « keybox 1200 m », « 4821M » restent des codes.
         const long = /\d{4,}/.test(j[0]);
+        if (long && !longs) continue;
+        // Près d'un code masqué : un numéro de bus, de ligne ou de tram n'est pas un second code.
+        if (!longs && /(?<![\p{L}])(?:bus|lignes?|lines?|rer|tram)\s*$/iu.test(t.slice(Math.max(0, fin - j[0].length - 8), fin - j[0].length))) continue;
         if (long || (!PAS_UN_CODE_COURT.test(j[0]) && !UNITE_APRES.test(t.slice(fin, fin + 12)))) return true;
       }
     }
@@ -689,6 +702,13 @@ function secretsDuLivret(l: Logement | undefined): { acces: string; wifiCode: st
   return { acces: [f?.acces ?? '', ...codesCitesApresMot(autres).map((c) => `code ${c}.`)].join('\n'), wifiCode: f?.wifiCode ?? '', wifiNom: f?.wifiNom ?? '' };
 }
 
+/** Signes collés à un code masqué, avant ou après (« 4821M », « B4821 », « 12#4821 »). */
+const JETON_AUTOUR_DU_MASQUE = new RegExp(`[\\p{L}\\p{N}#*]*${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}[\\p{L}\\p{N}#*]*`, 'gu');
+
+/** Place d'un code masqué, pour codePres (caractère privé : jamais dans un texte de la fiche après nettoyerTexte). */
+const MARQUE_CODE = '\uE000';
+const MARQUE_CODE_RE = /\uE000/gu;
+
 /**
  * Un texte libre de la fiche tel que le livret le montre avant les 48 h, ou
  * undefined s'il attend les 48 h en entier.
@@ -698,10 +718,14 @@ function texteAvant48h(brut: string, l: Logement | undefined, secrets = secretsD
   // (« soleil2026 » → « soleil[code…] ») et le reste du mot de passe passerait.
   if (contientCodeAcces(brut, { wifiCode: l?.fiche?.wifiCode ?? '', wifiNom: l?.fiche?.wifiNom ?? '' })) return undefined;
   // Code postal, année, distance, numéro de bus : lisibles ; toute autre suite de chiffres masquée.
-  const masque = masquerCodesLivret(brut, l?.codePostal).trim();
+  // Le jeton entier est retiré : « 4821M » ou « B4821 » ne laissent pas voir la lettre collée au code.
+  const masque = masquerCodesLivret(brut, l?.codePostal).replace(JETON_AUTOUR_DU_MASQUE, CODE_MASQUE).trim();
   // Un code de l'accès ou cité ailleurs, ou un code court sans le mot « code » (« Portail : 482 ») : le texte attend les 48 h.
   // codeProbable lit le texte sans les codes déjà masqués : le mot « code » du remplacement n'est pas un mot d'accès.
-  return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque.split(CODE_MASQUE).join(' ')) ? masque : undefined;
+  // Mais un code court juste à côté d'un code masqué (« 4821 puis 482 », « 4821 et 7B9 ») est un second code : le texte attend aussi.
+  return masque && !contientCodeAcces(masque, secrets) && !codeProbable(masque.split(CODE_MASQUE).join(' ')) && !codePres(masque.split(CODE_MASQUE).join(MARQUE_CODE), MARQUE_CODE_RE, false)
+    ? masque
+    : undefined;
 }
 
 /**
