@@ -431,6 +431,8 @@ function fileAvis() {
   // Constats que l'équipe peut écrire autrement.
   for (const t of ['Les voisins se sont plaints du bruit hier soir.', 'Vous avez fumé dans le logement, c’est interdit.', 'La vitre est brisée.', 'Le canapé est taché.'])
     verifier(souci([msg('h', 'hote', t, '2026-10-21T12:00:00+02:00')]), `constat de l’équipe : à relire (« ${t} »)`);
+  for (const t of ['Le parking est rattaché au logement.', 'Une attache pour vélo est disponible.', 'Glace pistache offerte à l’arrivée.'])
+    verifier(!souci([msg('h', 'hote', t, '2026-10-20T09:00:00+02:00')]), `« tache » dans un autre mot : ne bloque pas (« ${t} »)`);
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
   verifier(raisonsARelire(propre, { ...d, incidents: [sansReservation] }).length === 1, 'incident du logement pendant le séjour → à relire');
   verifier(raisonsARelire(propre, { ...d, incidents: [{ ...sansReservation, date: '2026-10-10' }] }).length === 0, 'incident d’avant le séjour : sans effet');
