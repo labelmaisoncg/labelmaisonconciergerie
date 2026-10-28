@@ -180,7 +180,7 @@ section('Avis, notes, incidents et alertes');
   const cles = b.sujets.map((s) => s.cle).join();
   verifier(cles === 'journee,urgences,incidents,avis_deposer,notes,alertes', 'urgence, incident, avis à déposer, note sous 4,5, double réservation', cles);
   verifier(b.texte.includes('Une urgence signalée : Paris 14 Alésia.') && b.texte.includes('Un incident ouvert : Lisses Jardin.'), 'incidents : urgence à part, résolu ignoré', b.texte);
-  verifier(b.texte.includes('Un avis à déposer sur Airbnb (Zoé).') && b.texte.includes('Une note de voyageur sous 4,5 à lire (4,2 à Lisses Jardin).'), 'avis à déposer (Airbnb) et note à lire', b.texte);
+  verifier(b.texte.includes('Un avis à déposer sur Airbnb : Zoé.') && b.texte.includes('Une note de voyageur sous 4,5 à lire : 4,2 à Lisses Jardin.'), 'avis à déposer (Airbnb) et note à lire', b.texte);
   verifier(b.texte.includes('À vérifier : 1 risque de double réservation.'), 'alerte : double réservation', b.texte);
   verifier(b.court === 'Ni arrivée ni départ, aucun logement occupé ce soir. 1 urgence, 1 point à vérifier, 1 avis à déposer, 1 note à lire et 1 incident ouvert.', 'notification : le plus pressant d’abord (urgence, alerte)', b.court);
   verifier(chiffresInventes(b, e).length === 0, 'aucun chiffre inventé (avis, notes, alertes)', chiffresInventes(b, e));
@@ -218,6 +218,7 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
   verifier(sansPhrase.length === 0, 'chaque ligne de « À faire » est dans le texte du briefing', sansPhrase.map((x) => x.id));
   const alerte = construireBriefing({ ...seed, reglages: [...seed.reglages, { id: 'alerte-controle-agent', active: true } as never], aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: false });
   verifier(alerte.texte.includes('Votre agent ne vérifie plus ses réponses') && alerte.court.includes('votre agent ne vérifie plus ses réponses'), 'contrôle des réponses de l’agent en panne : dans le texte et la notification', alerte.court);
+  verifier(!/\([^()]*\(/.test(g.texte), 'démonstration : pas de parenthèses imbriquées (« (Daniel (2), …) »)', g.texte);
   verifier(chiffresInventes(g, { ...seed, aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: true }).length === 0, 'démonstration : aucun chiffre inventé', chiffresInventes(g, { ...seed, aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: true }));
 
   section('Rôles : prix et factures pour le gérant seulement');

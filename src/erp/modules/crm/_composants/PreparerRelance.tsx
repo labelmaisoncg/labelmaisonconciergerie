@@ -14,7 +14,7 @@ import {
 } from '../../../data/crm-assistant';
 import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
-import { AUJOURDHUI, horodatageMaintenant } from '../../../data/format';
+import { AUJOURDHUI, horodatageMaintenant, insecables } from '../../../data/format';
 import { signatureEspace } from '../../../data/marque-espace';
 import { useErp } from '../../../data/store';
 import type { ContactCrm } from '../../../data/types';
@@ -166,7 +166,7 @@ export function PreparerRelance({ contact, auto, onFermer, onEnvoye, onOuvrirFic
           <h3 id="relance-action" className="text-[12.5px] font-medium text-(--lm-encre-3)">
             Prochaine action
           </h3>
-          <p className="mt-1 text-[15px] text-(--lm-encre)">{action?.phrase}</p>
+          <p className="mt-1 text-[15px] text-(--lm-encre)">{insecables(action?.phrase ?? '')}</p>
           {dansLaFile ? (
             <details className="group mt-2">
               <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">

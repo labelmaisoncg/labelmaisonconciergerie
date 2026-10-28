@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CalendarDays, Check, Copy } from 'lucide-react';
 import { construireBriefing, journeeDe, liste, texteDuBriefing, type CleSujet } from '../../../data/briefing';
-import { AUJOURDHUI, MAINTENANT } from '../../../data/format';
+import { AUJOURDHUI, MAINTENANT, insecables } from '../../../data/format';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
 import { useErp } from '../../../data/store';
@@ -111,7 +111,7 @@ export function Briefing({ elements }: { elements: ElementATraiter[] }) {
               {(journee?.court ?? '').replace(/\.$/, '')}
             </Link>
             {/* Jamais coupé : les départs restent visibles sur un téléphone. */}
-            {(qui || !elements.length) && <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2)">{qui || 'Rien d’autre ne vous attend.'}</p>}
+            {(qui || !elements.length) && <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2)">{insecables(qui) || 'Rien d’autre ne vous attend.'}</p>}
           </div>
         </li>
       }

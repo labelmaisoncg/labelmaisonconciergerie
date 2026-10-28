@@ -103,7 +103,8 @@ export const nb = (n: number, singulier: string, pluriel = `${singulier}s`) => `
  * « A, B et C », « A, B, C et 2 autres » : chaque élément compte. Un nom
  * qui revient est cité une fois avec son nombre (« Paris 14 Alésia (2) »),
  * et « et N autres » compte les éléments non cités : le total est toujours
- * celui du sujet.
+ * celui du sujet. Une liste qui peut avoir des doublons vient après « : »
+ * dans la phrase, jamais entre parenthèses (pas de « (Daniel (2), …) »).
  */
 export function liste(noms: readonly string[], max = MAX_NOMS): string {
   const comptes = new Map<string, number>();
@@ -228,7 +229,7 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
     sujets.push({
       cle: 'avis_deposer',
       n: aDeposer.length,
-      phrase: `${aDeposer.length > 1 ? `${aDeposer.length} avis à déposer` : 'Un avis à déposer'} sur Airbnb (${liste(aDeposer.map((a) => prenom(a.reservation.voyageur?.nom) || 'un voyageur'))}).`,
+      phrase: `${aDeposer.length > 1 ? `${aDeposer.length} avis à déposer` : 'Un avis à déposer'} sur Airbnb : ${liste(aDeposer.map((a) => prenom(a.reservation.voyageur?.nom) || 'un voyageur'))}.`,
       court: nb(aDeposer.length, 'avis à déposer', 'avis à déposer'),
       lien: `/erp/reservations/${encodeURIComponent(aDeposer[0].reservation.id)}`,
     });
@@ -240,7 +241,7 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
     sujets.push({
       cle: 'notes',
       n: notes.length,
-      phrase: `${notes.length > 1 ? `${notes.length} notes de voyageurs` : 'Une note de voyageur'} sous ${note(SEUIL_NOTE_CONTROLE)} à lire (${liste(notes.map((r) => `${note(r.noteVoyageur!)} à ${nomLogement(r.logementId)}`))}).`,
+      phrase: `${notes.length > 1 ? `${notes.length} notes de voyageurs` : 'Une note de voyageur'} sous ${note(SEUIL_NOTE_CONTROLE)} à lire : ${liste(notes.map((r) => `${note(r.noteVoyageur!)} à ${nomLogement(r.logementId)}`))}.`,
       court: nb(notes.length, 'note à lire', 'notes à lire'),
       lien: `/erp/reservations/${encodeURIComponent(notes[0].id)}`,
     });
@@ -326,7 +327,7 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
       sujets.push({
         cle: 'factures',
         n: factures.length,
-        phrase: `${factures.length > 1 ? `${factures.length} factures mensuelles à valider` : 'Une facture mensuelle à valider'} (${qui.length ? `${liste(qui)}, ` : ''}${liste(mois)}).`,
+        phrase: `${factures.length > 1 ? `${factures.length} factures mensuelles à valider` : 'Une facture mensuelle à valider'} : ${qui.length ? `${liste(qui)}, ` : ''}${liste(mois)}.`,
         court: nb(factures.length, 'facture à valider', 'factures à valider'),
         lien: lienFacture(e, factures[0]),
         gerant: true,
@@ -338,7 +339,7 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
       sujets.push({
         cle: 'signalements',
         n: signalements.length,
-        phrase: `${signalements.length > 1 ? `${signalements.length} logements signalés « pas à moi »` : 'Un logement signalé « pas à moi »'} (${liste(signalements.map((x) => nomLogement(x.logementId)))}).`,
+        phrase: `${signalements.length > 1 ? `${signalements.length} logements signalés « pas à moi »` : 'Un logement signalé « pas à moi »'} : ${liste(signalements.map((x) => nomLogement(x.logementId)))}.`,
         court: nb(signalements.length, 'logement signalé « pas à moi »', 'logements signalés « pas à moi »'),
         lien: '/erp/parametres/acces',
         gerant: true,

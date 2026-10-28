@@ -1,5 +1,6 @@
 import { ChevronRight, Phone } from 'lucide-react';
 import type { EntreeFile } from '../../../data/crm-assistant';
+import { insecables } from '../../../data/format';
 import { Aide, Badge, Card } from '../../../ui';
 
 export interface FileDuJourProps {
@@ -36,7 +37,7 @@ export function FileDuJour({ entrees, onOuvrir }: FileDuJourProps) {
                       <span className="truncate text-[14.5px] font-medium text-(--lm-encre)">{c.nom}</span>
                       {profil === 'apporteur' && <Badge className="shrink-0">Apporteur</Badge>}
                     </span>
-                    <span className="mt-0.5 block text-[13px] text-(--lm-encre-2)">{ligne}</span>
+                    <span className="mt-0.5 block text-[13px] text-(--lm-encre-2)">{insecables(ligne)}</span>
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 </button>
