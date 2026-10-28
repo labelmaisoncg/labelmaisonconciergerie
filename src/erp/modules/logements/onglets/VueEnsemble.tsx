@@ -29,6 +29,7 @@ import { PrixConseilles } from '../_composants/PrixConseilles';
 import { CarteAvisLogement } from '../_composants/Avis';
 import { TextesAnnonce } from '../_composants/TextesAnnonce';
 import { LienAnnonce, RelierAnnonce } from '../_composants/RelierAnnonce';
+import { SupprimerLogement } from '../_composants/SupprimerLogement';
 
 const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
 
@@ -273,6 +274,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
               <Ligne libelle="Résidence principale">{l.residencePrincipale ? 'Oui (120 nuits par an)' : 'Non'}</Ligne>
             </dl>
             <LienAnnonce logement={l} />
+            <SupprimerLogement logement={l} />
           </Repli>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { DemandeNotifications } from '../modules/parametres/_application/Demande
 import { BarreOnglets } from './BarreOnglets';
 import { DemoBanner } from './DemoBanner';
 import { AlerteSynchro, BandeauLecture } from './EtatSynchro';
+import { MessageRetour } from './MessageRetour';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { OngletsRubrique } from './OngletsRubrique';
@@ -11,8 +12,9 @@ import { OngletsRubrique } from './OngletsRubrique';
 /**
  * Cadre de l'ERP : barre latérale fixe (barre d'onglets en bas sous
  * 1024 px, comme une app), bandeau démo (développement) ou lecture seule,
- * en-tête, contenu, alertes d'enregistrement, demande des notifications à
- * l'ouverture. Aucun défilement horizontal de page : les tableaux défilent
+ * en-tête, contenu, alertes d'enregistrement, message de réussite après
+ * une action qui change de page (MessageRetour), demande des notifications
+ * à l'ouverture. Aucun défilement horizontal de page : les tableaux défilent
  * dans leur propre conteneur.
  */
 export function ErpLayout({ children }: { children: ReactNode }) {
@@ -42,6 +44,7 @@ export function ErpLayout({ children }: { children: ReactNode }) {
       </div>
       <BarreOnglets />
       <AlerteSynchro />
+      <MessageRetour />
       <DemandeNotifications />
     </div>
   );

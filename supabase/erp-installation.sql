@@ -284,9 +284,13 @@ create policy "ecritures reservees aux gerants (modification)" on erp.enregistre
   as restrictive for update to authenticated
   using (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant())
   with check (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant());
+-- Supprimer : les mêmes, les réglages de l'agent et un logement (seulement sans historique, décidé
+-- par un gérant : src/erp/data/suppression-logement.ts). Même liste que
+-- SUPPRESSIONS_GERANT_SEULEMENT (src/erp/data/ecritures-gerant.ts).
 create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrements
   as restrictive for delete to authenticated
-  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent')) or erp.acces_gerant());
+  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements'))
+         or erp.acces_gerant());
 
 -- Réglages de l'agent réservés au gérant (reglages / agent) : marche ou pause,
 -- niveau d'autonomie, horaires, ce qu'il vous confie, délai avant de vous
@@ -381,6 +385,50 @@ revoke all on function erp.garder_lien_annonce() from public, anon;
 drop trigger if exists garder_lien_annonce on erp.enregistrements;
 create trigger garder_lien_annonce before insert or update on erp.enregistrements
   for each row execute function erp.garder_lien_annonce();
+
+-- Un logement qui a vécu ne se supprime pas (src/erp/data/suppression-logement.ts) :
+-- la base le refuse aussi, pour une suppression envoyée hors de l'ERP ou depuis des
+-- données pas à jour (réservation, ménage ou message arrivés entre-temps). Ce qui
+-- porte l'identifiant du logement : réservations, conversations, missions, linge,
+-- incidents, contrôles, charges, documents partagés, dossiers, avis à déposer,
+-- messages automatiques ; mandats hors brouillon ; améliorations hors « à proposer » ;
+-- textes d'annonce validés ou publiés ; prix conseillés traités ; bilans publiés.
+-- Les factures numérotées ne se suppriment pas (LMF01) et gardent leur texte. Ce que
+-- l'ERP retire avec le logement (brouillons, propositions, affectations) ne compte
+-- pas. Les rôles autres que authenticated (maintenance) ne sont pas concernés.
+-- Même déclencheur dans erp-installation.sql et erp-acces-gerants.sql (et, par
+-- espace, erp-espaces.sql).
+create or replace function erp.garder_logement_avec_historique() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' or old.collection <> 'logements' then
+    return old;
+  end if;
+  if exists (
+    select 1 from erp.enregistrements e
+    where e.donnees ->> 'logementId' = old.id
+      and (e.collection in ('reservations', 'filsMessages', 'missions', 'mouvementsLinge', 'incidents', 'controles',
+                            'charges', 'documentsProprietaire', 'dossiers', 'avisADeposer', 'envoisProgrammes')
+        or (e.collection = 'mandats' and coalesce(e.donnees ->> 'statut', '') <> 'brouillon')
+        or (e.collection = 'recommandations' and coalesce(e.donnees ->> 'statut', '') <> 'a_proposer')
+        or (e.collection = 'versionsAnnonce' and coalesce(e.donnees ->> 'statut', '') in ('validee', 'publiee'))
+        or (e.collection = 'conseilsPrix' and coalesce(e.donnees ->> 'genre', '') = 'decision'))
+  ) or exists (
+    select 1 from erp.enregistrements e
+    where e.collection = 'bilansProprietaire' and coalesce(e.donnees ->> 'statut', '') = 'publie'
+      and (coalesce(e.donnees -> 'chiffres' -> 'logements', '[]') @> jsonb_build_array(jsonb_build_object('logementId', old.id))
+        or coalesce(e.donnees -> 'chiffres' -> 'sejours', '[]') @> jsonb_build_array(jsonb_build_object('logementId', old.id)))
+  ) then
+    raise exception 'Ce logement a un historique : passez-le en « Sorti » plutôt que de le supprimer.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+revoke all on function erp.garder_logement_avec_historique() from public, anon;
+drop trigger if exists garder_logement_avec_historique on erp.enregistrements;
+create trigger garder_logement_avec_historique before delete on erp.enregistrements
+  for each row when (old.collection = 'logements') execute function erp.garder_logement_avec_historique();
 
 -- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
 -- retours à la ligne, espaces insécables ou invisibles). Même fonction que
