@@ -239,6 +239,29 @@ export interface Logement {
   descriptif?: DescriptifLogement;
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
+  /**
+   * Place du logement sur la carte de l’accueil (octobre 2026), calculée
+   * d'après son adresse par le géocodeur public (data/carte.ts). Aussi
+   * sensible que l'adresse : chaque espace ne la reçoit que pour les
+   * logements qu'il voit déjà. Jamais écrite par la synchronisation.
+   */
+  position?: PositionLogement;
+}
+
+/**
+ * Point d'un logement sur la carte. `precision` : « adresse » (le numéro de
+ * la rue a été trouvé) ou « commune » (seulement le centre de la commune,
+ * montré comme approximatif). `adresse` : le texte géocodé, pour savoir si
+ * l'adresse a changé depuis.
+ */
+export interface PositionLogement {
+  lat: number;
+  lng: number;
+  precision: 'adresse' | 'commune';
+  /** Service qui l'a trouvée (« geoplateforme », « demo »). */
+  source: string;
+  adresse: string;
+  le: Horodatage;
 }
 
 /** Ancien propriétaire d'un logement, de `depuis` (absent : depuis toujours) à `jusquAu` (exclu). */

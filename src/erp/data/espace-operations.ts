@@ -49,6 +49,7 @@ import {
   type DonneesOps,
 } from './operations.js';
 import { ACCES_RETIRE } from './acces-externe.js';
+import { etatDuJour, jourCarte, titreIncident, type VarianteCarte } from './carte.js';
 import { prenomInitiale } from './proprietaire.js';
 import type { CategorieIncident, DateISO, Horodatage, Id, Incident, Logement } from './types';
 import type {
@@ -207,6 +208,9 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
       .filter(enCharge),
   );
   const signales = new Set(e.signalementsLogement.filter((s) => s.statut === 'ouvert').map((s) => s.logementId));
+  // Carte : état du jour de ses logements ; seulement les incidents qu'elle voit déjà, ménage sans prestataire.
+  const entreesCarte = { reservations: e.reservations, missions: e.missions, incidents, controles: e.controles };
+  const varianteCarte: VarianteCarte = { voyageur: (r) => prenomInitiale(r.voyageur?.nom), probleme: (i) => titreIncident(i), lienProbleme: true };
 
   const logements: LogementOps[] = e.logements
     .slice()
@@ -223,6 +227,7 @@ export function vueOperations(brutes: EntreesOperations, membreId: Id, o: Option
         ...(suivi.membreId ? { suiviPar: nomDe(suivi.membreId) } : {}),
         ...(signales.has(l.id) ? { signale: true } : {}),
         ...(acces ? { acces } : {}),
+        carte: jourCarte(l, etatDuJour(l.id, entreesCarte, aujourdhui), varianteCarte),
       };
     });
 

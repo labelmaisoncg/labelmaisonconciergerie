@@ -47,6 +47,17 @@
   /* Factures imprimées (charte « Ivoire & or ») : fond ivoire clair, filets champagne. */
   --lm-ivoire: #f8f3e7;
   --lm-champagne: #d5c69f;
+  /*
+   * Carte des logements (carte/) : les trois couleurs demandées par le gérant,
+   * un sens chacune, toujours avec un mot et une icône (≥ 4,8:1 avec l'icône
+   * blanche, ≥ 4,1:1 sur le fond de carte). Le problème n'est pas une
+   * couleur : un « ! » foncé posé sur le point, qui garde sa couleur.
+   */
+  --lm-carte-reserve: #c4314b;
+  --lm-carte-libre: #2f7d55;
+  --lm-carte-menage: #b85600;
+  --lm-carte-probleme: #14110e;
+  --lm-carte-ombre: 0 1px 4px rgba(20, 17, 14, 0.35);
 
   /*
    * Échelle des arrondis (règles Apple : cohérence + arrondis concentriques,
@@ -137,6 +148,33 @@
 
 @media print {
   .erp-root .lm-sans-impression { display: none !important; }
+}
+
+/*
+ * Carte des logements (carte/FondCarte.tsx) : la bibliothèque de carte garde
+ * ses propres styles ; ici, les textes de ses commandes et du message « deux
+ * doigts » dans la police de l'ERP, et les points au-dessus des tuiles.
+ */
+.erp-root .maplibregl-map {
+  font-family: var(--lm-sans);
+}
+.erp-root .maplibregl-ctrl-attrib {
+  font-size: 11px;
+}
+/* Zoom : boutons de 36 px (zone de toucher d'au moins 32 px), arrondi des blocs (8 px). */
+.erp-root .maplibregl-ctrl-group {
+  border-radius: 8px;
+  overflow: hidden;
+}
+.erp-root .maplibregl-ctrl-group button {
+  width: 36px;
+  height: 36px;
+}
+.erp-root .maplibregl-cooperative-gesture-screen {
+  font-size: 14px;
+}
+.erp-root .lm-marqueur {
+  line-height: 0;
 }
 
 /*

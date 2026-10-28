@@ -6,6 +6,7 @@
  * par propriétaire et ne renvoie que les champs de VueProprietaire.
  */
 import type { AccesExterne, LienAccesExterne } from './acces-externe';
+import type { JourCarte } from './carte';
 import type { CanalReservation, Centimes, DateISO, Horodatage, Id, IdentiteSociete } from './types';
 
 /* ------------------------------------------------------------------ accès */
@@ -134,6 +135,13 @@ export interface LogementVue {
   photo?: string;
   capacite: number;
   chambres: number;
+  /**
+   * Carte de l'accueil (octobre 2026) : sa position (lat, lng, précision) et
+   * ce qui s'y passe aujourd'hui. Voyageur « Prénom N. » de ses séjours
+   * seulement ; ménage sans le nom de qui le fait ; incident par sa nature,
+   * jamais sa description (data/carte.ts).
+   */
+  carte?: JourCarte;
 }
 
 export interface ChiffresMoisVue {

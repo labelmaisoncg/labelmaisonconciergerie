@@ -12,6 +12,7 @@ import { Indicateurs } from './_composants/Indicateurs';
 import { AVenir } from './_composants/AVenir';
 import { AnnoncesEquipe } from './_composants/AnnoncesEquipe';
 import { Briefing } from './_composants/Briefing';
+import { CarteDuJour } from './_composants/CarteDuJour';
 import { construireATraiter } from './_composants/aTraiter';
 import { PropositionInstallation } from '../parametres/_application/PropositionInstallation';
 
@@ -19,8 +20,10 @@ import { PropositionInstallation } from '../parametres/_application/PropositionI
  * Accueil du channel manager, dans l'ordre où l'on s'en sert : les annonces
  * du gérant à l'équipe (jusqu'à « J'ai lu »), la mise en service (et, sur
  * téléphone, l'installation de l'app), « Votre journée » (le briefing du
- * matin : la journée, puis ce qui attend une action, en un seul bloc), les
- * arrivées et départs de la semaine (ou d'une période choisie), quatre
+ * matin : la journée, puis ce qui attend une action, en un seul bloc), la
+ * carte des logements (réservé, libre, ménage, problème : ce qui se passe
+ * aujourd'hui), les arrivées et départs de la semaine (ou d'une période
+ * choisie), quatre
  * repères sur 30 jours, puis deux courbes. Le détail est à un clic (pages
  * de rubrique, panneaux).
  */
@@ -57,6 +60,7 @@ export default function TableauDeBord() {
 
       {!vide && (
         <>
+          <CarteDuJour />
           <Aujourdhui />
           <Indicateurs />
           <AVenir />

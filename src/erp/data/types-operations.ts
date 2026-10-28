@@ -8,6 +8,7 @@
  * filtre par logement et ne renvoie que les champs de VueOperations.
  */
 import type { AccesExterne } from './acces-externe';
+import type { JourCarte } from './carte';
 import type { CanalReservation, CategorieIncident, DateISO, Horodatage, Id, StatutIncident } from './types';
 
 /* ----------------------------------------------------------------- équipe */
@@ -138,6 +139,12 @@ export interface LogementOps {
   signale?: boolean;
   /** Consignes d'accès : seulement le jour où la personne y a quelque chose à faire. */
   acces?: string;
+  /**
+   * Carte de l'accueil (octobre 2026) : position (lat, lng, précision) et ce
+   * qui s'y passe aujourd'hui. Incidents : ceux que la personne voit déjà ;
+   * ménage sans le nom du prestataire (data/carte.ts).
+   */
+  carte?: JourCarte;
 }
 
 /** Séjour vu de l'espace : « Prénom N. », nombre de voyageurs, dates. */
