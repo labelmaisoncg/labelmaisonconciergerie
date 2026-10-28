@@ -388,9 +388,13 @@ function dernierMessageEquipe(fil: Pick<FilMessages, 'messages'>): Message | und
  */
 export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
   const sans = messagesSansReponse(fil);
-  // Seulement une réponse à la proposition (accepte, refuse, demande, une heure, une option) : une simple
-  // question (« Où peut-on se garer ? ») suit la règle ordinaire.
-  if (!sans.some((m) => repondALaProposition(nettoyerTexte(m.texte).replace(/[’`´]/g, "'")))) return false;
+  // Seule une simple question (« Où peut-on se garer ? »), qui ne répond pas à la proposition, suit la règle
+  // ordinaire. Tout le reste (« Parfait, merci ! », « Je confirme », « Sounds great! ») reste à valider.
+  const questionSimple = (m: Message) => {
+    const t = nettoyerTexte(m.texte).replace(/[’`´]/g, "'");
+    return /\?/.test(t) && !repondALaProposition(t);
+  };
+  if (!sans.length || sans.every(questionSimple)) return false;
   for (let i = fil.messages.length - 1; i >= 0; i--) {
     const equipe = fil.messages[i];
     if (equipe.auteur !== 'hote') continue;

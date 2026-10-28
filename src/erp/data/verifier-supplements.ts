@@ -538,6 +538,19 @@ async function principal() {
       ],
     });
     verifier(!apresPropositionSupplements(question), 'question simple après la proposition (« Où peut-on se garer ? ») : pas une réponse à la proposition');
+    // Acceptations courtes, sans « oui » ni option : toujours des réponses à la proposition, jamais envoyées seules.
+    for (const [voyageur, texte, langue] of [
+      ['Parfait, merci !', 'Parfait Emily, c’est noté. À jeudi !', 'fr'],
+      ['Je confirme', 'Merci Emily, c’est confirmé.', 'fr'],
+      ['Ça nous va très bien', 'Très bien, c’est noté pour vous.', 'fr'],
+      ['Sounds great!', 'Great, it’s booked!', 'en'],
+      ['Perfect, thanks!', 'You are all set, see you soon!', 'en'],
+      ["Let's do it", 'Done! See you Thursday.', 'en'],
+    ] as [string, string, 'fr' | 'en'][]) {
+      const f = auto(voyageur, langue);
+      const v = niveaux.map((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue, texte }, p, messagesVerdict(f, new Date('2026-10-27T10:00:00Z'), fiche)).verdict);
+      verifier(apresPropositionSupplements(f) && v.every((x) => x === 'valider'), `acceptation courte (« ${voyageur} ») : à valider à tous les niveaux`, v);
+    }
     verifier(
       verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue: 'fr', texte: 'Bonjour Emily, le parking est devant la résidence, place 12 réservée.' }, autonome, messagesVerdict(question, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'envoyer',
       'question simple après la proposition : la réponse part seule en autonome',
