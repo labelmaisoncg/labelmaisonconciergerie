@@ -35,7 +35,7 @@ import {
 import { Button, Card, classesBouton, cn } from '../ui';
 import { MESSAGES_REFUS_CHECKIN, type ErreurCheckin, type GuideSejour, type LangueSejour, type SaisieCheckin, type VueSejour } from '../data/sejour';
 import { FormulaireCheckin } from './FormulaireCheckin';
-import { TEXTES, dateCourteSejour, dateLongueSejour, jourHorodatage, texteApresArrivee, texteConsignes, texteFiche } from './textes';
+import { TEXTES, dateCourteSejour, dateLongueSejour, jourHorodatage, texteApresArrivee, texteFiche } from './textes';
 
 export interface LivretSejourProps {
   vue: VueSejour;
@@ -392,7 +392,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
 
         {/* L'heure de départ est déjà dans la carte des dates : ici, seulement les consignes. */}
         <Rubrique icone={<LogOut />} titre={t.departTitre}>
-          <Texte>{l.consignesDepart ? texteConsignes(l.consignesDepart, langue) : t.departDefaut}</Texte>
+          <Texte>{l.consignesDepart ? texteApresArrivee(l.consignesDepart, langue, vue.moment === 'avant' ? t.nombreMasque : t.nombreRetire) : t.departDefaut}</Texte>
         </Rubrique>
 
         {(vue.contact.plateforme || vue.contact.email || vue.contact.telephone) && (

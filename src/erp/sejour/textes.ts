@@ -248,14 +248,25 @@ export function jourHorodatage(h: string, langue: LangueSejour): string {
 /** Le code retiré tel que la vue le donne, avec le mot « code » qui le précède s'il y en a un. */
 const CODE_MASQUE_VU = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
 
+/** Mots d'accès : juste avant un nombre retiré, il s'agit d'un code. */
+const MOT_ACCES =
+  /^(?:codes?|portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|claviers?|serrures?|coffres?|keybox(?:es)?|lockbox(?:es)?|keypads?|padlocks?|safes?|gates?|doors?|locks?|intercoms?)$/iu;
+
 /**
- * Un mot d'accès plus tôt dans le même membre de phrase (« Digicode immeuble »,
- * « dans la boîte ») : le nombre retiré est un code. Sinon ce peut être un
- * téléphone, un étage ou une année (« Appartement 1204, 12e étage »).
+ * Un mot d'accès parmi les trois derniers mots du même membre de phrase
+ * (« dans la boîte », « Digicode immeuble ») : le nombre retiré est un code.
+ * Plus loin (« Si la porte est bloquée, appelez le … »), ou sans mot d'accès
+ * (« Appartement 1204, 12e étage »), ce peut être un téléphone, un étage, une année.
  */
-const ACCES_AVANT =
-  /(?<![\p{L}])(?:codes?(?!\s+postal)|portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|claviers?|serrures?|coffres?|keybox(?:es)?|lockbox(?:es)?|key\s?safes?|keypads?|padlocks?|gates?|doors?|locks?|intercoms?)(?![\p{L}])[^.;!?\n()]*$/iu;
-const apresMotAcces = (avant: string) => ACCES_AVANT.test(avant);
+function apresMotAcces(avant: string): boolean {
+  const membre = avant.split(/[.;!?\n]/).pop() ?? '';
+  if (/(?<![\p{L}])codes?\s+postal\s*:?\s*\(?$/iu.test(membre)) return false;
+  return (membre.match(/\p{L}+/gu) ?? []).slice(-3).some((m) => MOT_ACCES.test(m));
+}
+
+/** Entre parenthèses (« (4821) »), la mention neutre perd les siennes : jamais « ((masqué)) ». */
+const entreParentheses = (entier: string, debut: number, fin: number) => entier[debut - 1] === '(' && entier[fin] === ')';
+const sansParentheses = (s: string) => s.replace(/^\((.*)\)$/u, '$1');
 
 /**
  * Texte de la fiche affiché : le code retiré dit sans crochets, dans la
@@ -264,21 +275,14 @@ const apresMotAcces = (avant: string) => ACCES_AVANT.test(avant);
  * retiré, « (affiché 48 h avant l’arrivée) ».
  */
 export const texteFiche = (t: string, langue: LangueSejour): string =>
-  t.replace(CODE_MASQUE_VU, (_tout: string, mot: string | undefined, position: number, entier: string) =>
-    mot ? `${mot}${TEXTES[langue].codeMasqueApresMot}` : apresMotAcces(entier.slice(0, position)) ? TEXTES[langue].codeMasque : TEXTES[langue].nombreMasque,
-  );
+  t.replace(CODE_MASQUE_VU, (tout: string, mot: string | undefined, position: number, entier: string) => {
+    if (mot) return `${mot}${TEXTES[langue].codeMasqueApresMot}`;
+    const s = apresMotAcces(entier.slice(0, position)) ? TEXTES[langue].codeMasque : TEXTES[langue].nombreMasque;
+    return entreParentheses(entier, position, position + tout.length) ? sansParentheses(s) : s;
+  });
 
 /** Le code retiré, avec ce qui le précède : le mot « code » (« code : [code communiqué…] »), deux-points ou espace. */
 const CODE_RETIRE = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*|\\s*:\\s*|\\s+)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
-
-/**
- * Consignes de départ : le code retiré est celui de l'arrivée.
- * « Laissez les clés dans la boîte, code 4821. » devient « Laissez les clés
- * dans la boîte, code : le même qu’à votre arrivée. » ; « Boîte à clés :
- * 4821 » devient « Boîte à clés, code : le même qu’à votre arrivée ».
- */
-export const texteConsignes = (t: string, langue: LangueSejour): string =>
-  t.replace(CODE_RETIRE, (_tout: string, avant: string | undefined, position: number, entier: string) => codeDeLArrivee(avant, position, entier, langue));
 
 function codeDeLArrivee(avant: string | undefined, position: number, entier: string, langue: LangueSejour): string {
   const c = TEXTES[langue].codeArrivee;
@@ -288,13 +292,17 @@ function codeDeLArrivee(avant: string | undefined, position: number, entier: str
 }
 
 /**
- * Autres textes de la fiche, le jour du départ et après : seul un code (après
- * « code » ou un mot d'accès) est « le même qu’à votre arrivée » ; un autre
- * nombre retiré est « (masqué) » (« Appartement (masqué), 12e étage »).
+ * Code retiré, une fois arrivé (consignes de départ, et les autres textes le
+ * jour du départ et après) : après « code » ou un mot d'accès, c'est celui de
+ * l'arrivée. « Laissez les clés dans la boîte, code 4821. » devient « …dans la
+ * boîte, code : le même qu’à votre arrivée. » ; « Boîte à clés : 4821 » devient
+ * « Boîte à clés, code : le même qu’à votre arrivée ». Un autre nombre retiré
+ * (téléphone, étage, année) prend la mention neutre : « (masqué) » par défaut,
+ * « (affiché 48 h avant l’arrivée) » pour des consignes lues avant l'arrivée.
  */
-export const texteApresArrivee = (t: string, langue: LangueSejour): string =>
-  t.replace(CODE_RETIRE, (_tout: string, avant: string | undefined, position: number, entier: string) =>
-    (avant && /code/i.test(avant)) || apresMotAcces(entier.slice(0, position))
-      ? codeDeLArrivee(avant, position, entier, langue)
-      : `${avant && /\S/.test(avant) ? avant : avant && /^\s/.test(avant) ? ' ' : ''}${TEXTES[langue].nombreRetire}`,
-  );
+export const texteApresArrivee = (t: string, langue: LangueSejour, neutre: string = TEXTES[langue].nombreRetire): string =>
+  t.replace(CODE_RETIRE, (tout: string, avant: string | undefined, position: number, entier: string) => {
+    if ((avant && /code/i.test(avant)) || apresMotAcces(entier.slice(0, position))) return codeDeLArrivee(avant, position, entier, langue);
+    const n = entreParentheses(entier, position + (avant?.length ?? 0), position + tout.length) ? sansParentheses(neutre) : neutre;
+    return `${avant && /\S/.test(avant) ? avant : avant && /^\s/.test(avant) ? ' ' : ''}${n}`;
+  });

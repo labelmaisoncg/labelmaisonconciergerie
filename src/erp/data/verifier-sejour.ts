@@ -66,7 +66,7 @@ import {
   type SaisieCheckin,
 } from './sejour';
 import { creerSeed } from './seed';
-import { TEXTES, texteApresArrivee, texteConsignes, texteFiche } from '../sejour/textes';
+import { TEXTES, texteApresArrivee, texteFiche } from '../sejour/textes';
 import type { FilMessages, Logement, Reservation, StatutReservation } from './types';
 
 let echecs = 0;
@@ -541,8 +541,8 @@ async function principal() {
     verifier(jour(AUJ).acces.visible === false && (jour(AUJ).acces as { aPartirDu?: string }).aPartirDu === '2026-11-08', 'avant la fenêtre : la date « à partir du » reste');
     const consignes = matin.logement.consignesDepart ?? '';
     verifier(consignes.includes(CODE_MASQUE) && !consignes.includes('4821'), 'consignes de départ du dernier jour : code masqué', consignes);
-    const fr = texteConsignes(consignes, 'fr');
-    const en = texteConsignes(consignes, 'en');
+    const fr = texteApresArrivee(consignes, 'fr');
+    const en = texteApresArrivee(consignes, 'en');
     verifier(fr === 'Laissez les clés dans la boîte, code : le même qu’à votre arrivée.' && en === 'Laissez les clés dans la boîte, code: the same as on arrival.' && ![fr, en].some((x) => /[[\]]/.test(x)), 'consignes : « code : le même qu’à votre arrivée » / « code: the same as on arrival », sans crochets', [fr, en]);
     const formes: [string, string][] = [
       [`Clés dans la boîte, code : ${CODE_MASQUE}.`, 'Clés dans la boîte, code : le même qu’à votre arrivée.'],
@@ -550,9 +550,9 @@ async function principal() {
       [`Clés dans la boîte ${CODE_MASQUE} à gauche.`, 'Clés dans la boîte, code : le même qu’à votre arrivée à gauche.'],
       [`Clés dans la boîte, ${CODE_MASQUE}.`, 'Clés dans la boîte, code : le même qu’à votre arrivée.'],
       [`Digicode ${CODE_MASQUE} pour sortir.`, 'Digicode, code : le même qu’à votre arrivée pour sortir.'],
-      [`(${CODE_MASQUE})`, '(code : le même qu’à votre arrivée)'],
+      [`Clés dans la boîte (${CODE_MASQUE}).`, 'Clés dans la boîte (code : le même qu’à votre arrivée).'],
     ];
-    const mal = formes.filter(([t, attendu]) => texteConsignes(t, 'fr') !== attendu).map(([t]) => texteConsignes(t, 'fr'));
+    const mal = formes.filter(([t, attendu]) => texteApresArrivee(t, 'fr') !== attendu).map(([t]) => texteApresArrivee(t, 'fr'));
     verifier(mal.length === 0, 'consignes : « code : » jamais doublé, ni crochet, ni espace avant la virgule', mal);
     // Autres textes le jour du départ : un code est « le même qu'à votre arrivée », un autre nombre « (masqué) ».
     const apres: [string, string][] = [
@@ -564,6 +564,19 @@ async function principal() {
     ];
     const malApres = apres.filter(([t, attendu]) => texteApresArrivee(t, 'fr') !== attendu).map(([t]) => texteApresArrivee(t, 'fr'));
     verifier(malApres.length === 0 && texteApresArrivee(`Flat ${CODE_MASQUE}, 12th floor.`, 'en') === 'Flat (hidden), 12th floor.', 'jour du départ : « le même qu’à votre arrivée » seulement pour un code, sinon « (masqué) »', malApres);
+    // Consignes avec un téléphone : le code de la boîte est celui de l'arrivée, le téléphone prend la mention neutre du moment.
+    const telephone = `Laissez les clés dans la boîte, code ${CODE_MASQUE}. En cas de souci, appelez Sarah au ${CODE_MASQUE}.`;
+    const loin = `Si la porte est bloquée, appelez le ${CODE_MASQUE}.`;
+    verifier(
+      texteApresArrivee(telephone, 'fr', TEXTES.fr.nombreMasque) === 'Laissez les clés dans la boîte, code : le même qu’à votre arrivée. En cas de souci, appelez Sarah au (affiché 48 h avant l’arrivée).' &&
+        texteApresArrivee(telephone, 'fr') === 'Laissez les clés dans la boîte, code : le même qu’à votre arrivée. En cas de souci, appelez Sarah au (masqué).' &&
+        texteApresArrivee(loin, 'fr') === 'Si la porte est bloquée, appelez le (masqué).' &&
+        texteFiche(loin, 'fr') === 'Si la porte est bloquée, appelez le (affiché 48 h avant l’arrivée).' &&
+        texteApresArrivee(`Appartement (${CODE_MASQUE}).`, 'fr') === 'Appartement (masqué).' &&
+        texteFiche(`Appartement (${CODE_MASQUE}).`, 'fr') === 'Appartement (affiché 48 h avant l’arrivée).',
+      'consignes et textes : un téléphone n’est jamais « le même qu’à votre arrivée » ; mot d’accès cherché dans les trois derniers mots ; jamais « ((…)) »',
+      [texteApresArrivee(telephone, 'fr', TEXTES.fr.nombreMasque), texteApresArrivee(loin, 'fr'), texteFiche(loin, 'fr'), texteApresArrivee(`Appartement (${CODE_MASQUE}).`, 'fr')],
+    );
     verifier(
       texteFiche(`Appartement ${CODE_MASQUE}, 12e étage.`, 'fr') === 'Appartement (affiché 48 h avant l’arrivée), 12e étage.' && texteFiche(`Flat ${CODE_MASQUE}.`, 'en') === 'Flat (shown 48 h before arrival).',
       'avant 48 h : un nombre qui n’est pas après un mot d’accès est « (affiché 48 h avant l’arrivée) »',
@@ -573,7 +586,7 @@ async function principal() {
     if (racine) {
       const livret = code('src/erp/sejour/LivretSejour.tsx');
       verifier(/vue\.moment !== 'apres' &&/.test(livret) && /vue\.moment === 'pendant' \?[\s\S]{0,80}\{carteAcces\}[\s\S]{0,40}\{carteCheckinEl\}/.test(livret), 'livret : pas d’accès après le séjour ; pendant, l’accès avant le check-in');
-      verifier(/texteConsignes\(l\.consignesDepart, langue\)/.test(livret) && !/departAvant/.test(livret), 'livret : consignes avec le code de l’arrivée, plus de « Départ avant »');
+      verifier(/texteApresArrivee\(l\.consignesDepart, langue, vue\.moment === 'avant' \? t\.nombreMasque : t\.nombreRetire\)/.test(livret) && !/departAvant/.test(livret), 'livret : consignes avec le code de l’arrivée, mention neutre selon le moment, plus de « Départ avant »');
     }
 
     // Enfants : seulement sur la fiche d'un adulte (18 ans le jour de l'arrivée).
