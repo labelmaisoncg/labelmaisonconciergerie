@@ -9,8 +9,9 @@
  *
  * Un logement déjà créé à la main ne se coche pas ici (il arriverait en
  * double) : il se relie à son annonce depuis sa fiche (« Relier à une
- * annonce ») ; la page le rappelle quand il y en a. Démo : annonces fictives
- * (data/seed-connexions.ts), rien ne se coche ni ne s'enregistre.
+ * annonce ») ; la page le rappelle quand il y en a. Démo : comptes et
+ * annonces fictifs (data/seed-connexions.ts), rien ne se coche, ne se
+ * déconnecte ni ne s'enregistre.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
@@ -225,7 +226,7 @@ export default function Connexions() {
 
       {!reel && (
         <Alert tone="neutre" className="mb-4">
-          Démo : annonces fictives, rien n’est connecté.
+          Démo : comptes et annonces fictifs.
         </Alert>
       )}
       {reel && !gerant && (
@@ -280,7 +281,7 @@ export default function Connexions() {
                     {comptes.map((c) => (
                       <li key={c.id} className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
                         <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
-                        <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
+                        <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant || !reel} onClick={() => setADeconnecter(c)}>
                           Déconnecter
                         </Button>
                       </li>
@@ -320,7 +321,7 @@ export default function Connexions() {
                     </Badge>
                     <span className="truncate font-medium">{nomFournisseur(c.fournisseur)}</span>
                   </span>
-                  <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
+                  <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant || !reel} onClick={() => setADeconnecter(c)}>
                     Déconnecter
                   </Button>
                 </li>

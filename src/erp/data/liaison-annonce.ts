@@ -11,12 +11,14 @@
  * logement au lieu d'en créer un second (repull-synchro.ts, indexer) : nom,
  * photos, description, réservations et messages viennent de l'annonce ;
  * propriétaire, mandat, checklist, serrure, linge, numéro
- * d'enregistrement, adresse et position sur la carte restent ceux de
- * l'équipe (versLogement, repull.ts).
+ * d'enregistrement, adresse, position sur la carte, wifi et horaires
+ * restent ceux de l'équipe (versLogement, repull.ts).
  *
  * Délier n'est permis que tant que rien de l'annonce n'est arrivé sur le
- * logement (ni réservation ni conversation) : le logement reprend alors ce
- * qu'il était avant le lien. Au-delà, défaire le lien voudrait déplacer
+ * logement (ni réservation ni conversation) : le logement reprend alors les
+ * seuls champs que l'import remplace (CHAMPS_ANNONCE), tels qu'avant le
+ * lien, et son statut d'avant une mise en pause ; tout ce que l'équipe a
+ * changé depuis reste. Au-delà, défaire le lien voudrait déplacer
  * réservations, conversations et ménages : ce n'est pas fait ici.
  *
  * Ce module n'importe que des types et des constantes (il tourne aussi côté
@@ -25,16 +27,18 @@
 import { PREFIXE_REPULL } from './repull.js';
 import type { ChampsAnnonce, FilMessages, Horodatage, Logement, Reservation } from './types';
 
-/** Champs que l'annonce remplit ou remplace : gardés au moment du lien, rendus par « Délier ». */
+/**
+ * Champs que l'import REMPLACE sur un logement relié à la main (versLogement,
+ * repull.ts ; photos et prix : repull-synchro.ts) : gardés au moment du lien,
+ * rendus par « Délier ». Jamais l'adresse, la fiche (wifi, accès, horaires,
+ * règles) ni les lits : l'annonce ne les remplit que s'ils sont vides, et une
+ * copie d'anciens codes n'a rien à faire dans la trace.
+ */
 export const CHAMPS_ANNONCE = [
   'nom',
-  'adresse',
-  'ville',
   'capacite',
   'chambres',
   'surfaceM2',
-  'lits',
-  'fiche',
   'annonces',
   'photoUrl',
   'photos',
@@ -106,12 +110,29 @@ export function verifierLiaison(o: {
   const l = o.logements.find((x) => x.id === o.logementId);
   if (!l) return refus('Logement introuvable dans cet espace.', 404);
   if (!creeALaMain(l)) return refus('Ce logement vient déjà d’une annonce.', 409);
+  if (l.statut === 'sorti') return refus('Ce logement est « Sorti » : changez d’abord son statut pour le relier.', 409);
   if (relie(l)) return refus(l.repull?.id === o.annonceId ? 'Ce logement est déjà relié à cette annonce.' : 'Ce logement est déjà relié à une annonce.', 409);
   const a = o.annonces.find((x) => x.id === o.annonceId);
   if (!a || a.statutRepull === 'archived') return refus('Cette annonce n’est pas sur les plateformes connectées à cet espace : rechargez la liste.', 404);
   const deja = logementDeLAnnonce(o.annonceId, o.logements);
   if (deja) return refus(`Cette annonce est déjà dans l’ERP : ${deja.nom}.`, 409);
   return { ok: true };
+}
+
+/** Commune sans accents, casse, tirets ni blancs en trop (« Évry-Courcouronnes » = « evry courcouronnes »). */
+const commune = (v: string | undefined): string =>
+  (v ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+
+/** L'annonce et le logement sont-ils dans deux communes différentes ? (faux si l'une est inconnue) */
+export function villesDifferentes(villeAnnonce: string | undefined, villeLogement: string | undefined): boolean {
+  const a = commune(villeAnnonce);
+  const b = commune(villeLogement);
+  return !!a && !!b && a !== b;
 }
 
 /** Ce que l'annonce pourra remplacer, tel qu'il est maintenant (copie). */
@@ -156,14 +177,22 @@ export function delierPossible(
   return { ok: true };
 }
 
-/** Le logement délié : sans annonce, avec ce qu'il était avant le lien. */
+/**
+ * Le logement délié : sans annonce ; les champs que l'import remplace
+ * reprennent leur valeur d'avant le lien (une photo de couverture déposée
+ * par l'équipe depuis reste), le statut d'avant une mise en pause revient ;
+ * tout le reste (fiche, adresse, réglages) reste tel que l'équipe l'a laissé.
+ */
 export function delierLogement(l: Logement): Logement {
-  const { repull: _annonce, liaison, ...reste } = l;
+  const { repull, liaison, ...reste } = l;
   const suivant = { ...reste } as Record<string, unknown>;
   const avant = (liaison?.avant ?? {}) as Record<string, unknown>;
   for (const k of CHAMPS_ANNONCE) {
+    if (k === 'photoUrl' && (l.photoUrl ?? '').startsWith('stockage://')) continue;
     if (k in avant) suivant[k] = avant[k];
     else delete suivant[k];
   }
+  // Annonce décochée (en pause) : le statut choisi avant la pause revient.
+  if (repull?.horsSelection && repull.statutAvantPause && l.statut === 'pause') suivant.statut = repull.statutAvantPause;
   return suivant as unknown as Logement;
 }

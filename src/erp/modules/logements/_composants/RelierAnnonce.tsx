@@ -1,8 +1,9 @@
 /**
  * « Relier à une annonce » (fiche d'un logement créé à la main) : la liste
  * des annonces trouvées sur les plateformes connectées à l'espace, photo,
- * nom, ville et plateforme. Une annonce déjà dans l'ERP est grisée, avec le
- * nom de son logement. Relier ne change rien sur les plateformes : le
+ * nom, ville et plateforme ; celles déjà dans l'ERP sont repliées et
+ * grisées. Une annonce dans une autre commune que le logement est signalée
+ * avant « Relier ». Relier ne change rien sur les plateformes : le
  * serveur pose le lien dans l'ERP puis ajoute l'annonce aux logements
  * suivis, et l'import met à jour CE logement (data/liaison-annonce.ts).
  *
@@ -10,10 +11,10 @@
  * n'est arrivé sur le logement. Démo : tout se passe dans l'ERP local.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ImageOff, Link2, Plug, Unlink } from 'lucide-react';
+import { AlertTriangle, ImageOff, Link2, Plug, Unlink } from 'lucide-react';
 import { MODE_DEMO } from '../../../data/config';
 import { dateCourte, horodatageMaintenant, pluriel } from '../../../data/format';
-import { delierLogement, delierPossible, depasseLimite, lierLogement, logementDeLAnnonce, peutRelier, relie } from '../../../data/liaison-annonce';
+import { delierLogement, delierPossible, depasseLimite, lierLogement, logementDeLAnnonce, peutRelier, relie, villesDifferentes } from '../../../data/liaison-annonce';
 import type { AnnonceDecouverte, EtatConnexions, ResultatLiaison } from '../../../data/repull-connexion';
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
@@ -93,9 +94,13 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
   const prises = annonces.filter((a) => !!logementLie(a) || !!a.logementId);
   const sansPlateforme = !!erreur?.sansConnexion || (!!etat && !etat.connexions.length && !annonces.length);
   const horsOffre = !!choisie && !!etat && depasseLimite(etat.selection, choisie, etat.limite);
+  const annonceChoisie = libres.find((x) => x.id === choisie);
+  // Autre commune que le logement : un mot avant « Relier » (le bouton reste actif).
+  const autreVille = annonceChoisie && villesDifferentes(annonceChoisie.ville, l.ville) ? annonceChoisie.ville : undefined;
+  const annonceDuPied = envoi ? 'Import en cours : photos, réservations, messages… Cela peut prendre jusqu’à une minute.' : annonceChoisie && !horsOffre ? CE_QUI_CHANGE : '';
 
   const relier = async () => {
-    const a = libres.find((x) => x.id === choisie);
+    const a = annonceChoisie;
     if (!a || !permis || horsOffre) return;
     setEnvoi(true);
     setEchec(null);
@@ -104,7 +109,8 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
         await pause(600);
         // Démo : le lien et ce que l'import apporterait (nom et photo de l'annonce), dans l'ERP local seulement.
         const lie = lierLogement(l, a.id, { le: horodatageMaintenant(), par: d.utilisateur.email });
-        d.upsert('logements', { ...lie, nom: a.nom, ...(a.photo ? { photoUrl: a.photo, photos: [a.photo] } : {}) });
+        const annonces = a.plateformes.filter((p): p is 'airbnb' | 'booking' => p === 'airbnb' || p === 'booking').map((canal) => ({ canal, connecte: true }));
+        d.upsert('logements', { ...lie, nom: a.nom, annonces, ...(a.photo ? { photoUrl: a.photo, photos: [a.photo] } : {}) });
         setFait(texteRelie({ reservations: 0, conversations: 0, partiel: false }));
         return;
       }
@@ -125,11 +131,18 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
     </Button>
   ) : etat && libres.length > 0 ? (
     <>
-      {(envoi || (choisie && !horsOffre)) && (
-        <p className="mb-1 w-full text-[13px] text-(--lm-encre-2)" aria-live="polite">
-          {envoi ? 'Import en cours : photos, réservations, messages… Cela peut prendre jusqu’à une minute.' : CE_QUI_CHANGE}
+      {autreVille && !envoi && (
+        <p role="note" className="flex w-full items-start gap-2 text-[13px] text-(--lm-encre)">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-(--lm-alerte)" aria-hidden />
+          <span>
+            L’annonce est à {autreVille}, le logement à {l.ville}&nbsp;: vérifiez que c’est le bon.
+          </span>
         </p>
       )}
+      {/* Toujours là (vide au départ) : un lecteur d'écran annonce ce qui change. */}
+      <p aria-live="polite" className={annonceDuPied ? 'mb-1 w-full text-[13px] text-(--lm-encre-2)' : 'sr-only'}>
+        {annonceDuPied}
+      </p>
       <Button variant="ghost" onClick={onFermer} disabled={envoi}>
         Annuler
       </Button>
@@ -232,21 +245,27 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
                 Déjà dans l’ERP ({prises.length})
               </summary>
               <ul className="mt-2 flex flex-col gap-2">
-                {prises.map((a) => (
-                  <li key={a.id} aria-disabled="true" className="flex items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-2.5">
-                    <span className="opacity-60">
-                      <Photo url={a.photo} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-medium text-(--lm-encre-2)">{a.nom}</span>
-                      <span className="block truncate text-[12.5px] text-(--lm-encre-2)">Déjà dans l’ERP : {logementLie(a)?.nom ?? 'un autre logement'}</span>
-                    </span>
-                  </li>
-                ))}
+                {prises.map((a) => {
+                  const nom = logementLie(a)?.nom;
+                  const autreNom = nom && nom.trim().toLowerCase() !== a.nom.trim().toLowerCase() ? nom : undefined;
+                  return (
+                    <li key={a.id} aria-disabled="true" className="flex items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-2.5">
+                      <span className="opacity-60">
+                        <Photo url={a.photo} />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[14px] font-medium text-(--lm-encre-2)">{a.nom}</span>
+                        <span className="block truncate text-[12.5px] text-(--lm-encre-2)">
+                          {[autreNom ? `Dans l’ERP : « ${autreNom} »` : '', a.ville, plateformes(a)].filter(Boolean).join(' · ')}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
               <p className="mt-3">
-                Votre annonce y est déjà, en logement à part ? Gardez celui-là, qui a ses réservations et ses messages : ouvrez-le, choisissez le propriétaire avec « Modifier »,
-                ajoutez son mandat, puis passez ce logement-ci en « Sorti ». Rien n’est supprimé.
+                Votre annonce y est déjà ? Gardez le logement importé, qui a ses réservations et ses messages : ouvrez-le, choisissez le propriétaire avec « Modifier », ajoutez
+                son mandat, puis passez « {l.nom} » en « Sorti ». Rien n’est supprimé.
               </p>
             </details>
           )}
@@ -300,7 +319,7 @@ export function LienAnnonce({ logement: l }: { logement: Logement }) {
         onFermer={() => !envoi && setConfirmer(false)}
         taille="sm"
         titre="Délier ce logement ?"
-        description="Il reprend son nom, ses photos et sa fiche d’avant le lien. L’annonce n’est plus suivie : cochez-la dans Connexions pour l’ajouter comme un logement à part."
+        description="Il reprend son nom et ses photos d’avant le lien ; vos changements depuis restent. L’annonce n’est plus suivie : cochez-la dans Connexions pour l’ajouter comme un logement à part."
         pied={
           <>
             <Button variant="ghost" onClick={() => setConfirmer(false)} disabled={envoi}>

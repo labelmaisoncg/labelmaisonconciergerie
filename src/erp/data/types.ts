@@ -47,6 +47,8 @@ export interface OrigineRepull {
   canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
   /** Logement retiré du choix (page Connexions) : en pause, plus synchronisé. */
   horsSelection?: boolean;
+  /** Statut du logement juste avant cette mise en pause : il revient quand l'annonce est recochée, ou au « Délier ». */
+  statutAvantPause?: StatutLogement;
   /** Dernière lecture des photos de l'annonce (relues une fois par semaine). */
   photosLuesLe?: Horodatage;
   /** D'où viennent les photos et les prix, ou pourquoi ils manquent (dernier relevé). */

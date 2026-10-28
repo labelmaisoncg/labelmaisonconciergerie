@@ -23,11 +23,12 @@ import { signatureValide, type OutilsSignature } from './repull-signature';
 import { executerAutomatisations } from '../automatisations';
 import { donneesVides } from './collections';
 import { ID_PROPRIETAIRE_A_RENSEIGNER, canonique, ecartsBilan, montantsReservation, noteSur5, heure, photosDepuisContenu, tarifsDepuisBooking, versFil, versLogement, type RepullConversation } from './repull';
-import { aRelier, delierLogement, delierPossible, depasseLimite, lierLogement, logementsARelier, peutRelier, verifierLiaison } from './liaison-annonce';
+import { aRelier, delierLogement, delierPossible, depasseLimite, lierLogement, logementsARelier, peutRelier, verifierLiaison, villesDifferentes } from './liaison-annonce';
+import { operationReserveeAuGerant } from './ecritures-gerant';
 import { positionAJour, texteAdresse } from './carte';
 import { attendEquipe } from './attente-equipe';
 import { BaseErp, ClientRepull, COLLECTION_ETAT, ErreurRepull, ID_ETAT, ID_SELECTION, ecritureRepullPermise, lancer, phasesDues, type EtatRepull, type ResultatLancement, type SelectionRepull } from './repull-synchro';
-import { ErreurConnexion, deconnecter, delierAnnonce, demarrerConnexion, enregistrerSelection, lireEtatConnexions, relierAnnonce, type ContexteConnexion } from './repull-connexion';
+import { ErreurConnexion, LIEN_NON_RETIRE, deconnecter, delierAnnonce, demarrerConnexion, enregistrerSelection, lireEtatConnexions, relierAnnonce, type ContexteConnexion } from './repull-connexion';
 import { ErreurEnvoi, cleEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi';
 import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb } from './page-airbnb';
 import { PAR_MESSAGE_AUTO } from './messages-programmes';
@@ -1506,6 +1507,35 @@ async function principal() {
       const lie = lierLogement(linas, '106', { le: '2026-10-02T10:00:00+02:00', par: 'gerant@test' });
       const delie = delierLogement({ ...lie, nom: 'Nom de l’annonce', photos: ['https://x/1.jpg'], descriptif: { titre: 'Titre' } });
       verifier(lie.repull?.id === '106' && lie.liaison?.avant.nom === 'Maison de Linas' && canonique(delie) === canonique(linas), 'lier puis délier : le logement redevient exactement ce qu’il était');
+      verifier(
+        Object.keys(lie.liaison?.avant ?? {}).sort().join() === 'annonces,capacite,chambres,nom,surfaceM2' && !('fiche' in (lie.liaison?.avant ?? {})),
+        `trace du lien : les seuls champs que l’import remplace, jamais la fiche (wifi, accès) ni l’adresse (${Object.keys(lie.liaison?.avant ?? {}).join()})`,
+      );
+      const apresEquipe = delierLogement({ ...lie, nom: 'Nom de l’annonce', photos: ['https://x/1.jpg'], photoUrl: 'stockage://erp-fichiers/logements/linas.jpg', fiche: { ...lie.fiche, wifiCode: 'nouveau-code', acces: 'Nouveau boîtier' } });
+      verifier(
+        apresEquipe.nom === 'Maison de Linas' && !apresEquipe.photos && apresEquipe.photoUrl === 'stockage://erp-fichiers/logements/linas.jpg' && apresEquipe.fiche.wifiCode === 'nouveau-code' && apresEquipe.fiche.acces === 'Nouveau boîtier',
+        'délier : nom et photos de l’annonce retirés ; wifi, accès et photo de l’équipe changés depuis le lien gardés',
+      );
+    }
+    verifier(/« Sorti »/.test(message(regle({ logements: tous.map((x) => (x.id === 'log-linas' ? { ...x, statut: 'sorti' as const } : x)) }))), 'règle : logement « Sorti » refusé, comme l’écran');
+    verifier(
+      villesDifferentes('Montlhéry', 'Linas') && !villesDifferentes('Évry-Courcouronnes', 'evry courcouronnes') && !villesDifferentes(undefined, 'Linas') && !villesDifferentes('Linas', ''),
+      'communes différentes : accents, casse et tirets ignorés ; une commune inconnue ne prévient pas',
+    );
+    {
+      // Miroir du déclencheur erp.garder_lien_annonce() : un compte « opérations » ne met pas un lien en file.
+      const d0 = { ...donneesVides(), logements: [linas] } as ErpDonnees;
+      const ecrire = (id: string, donnees: unknown) => ({ type: 'ecrire', collection: 'logements', id, donnees }) as never;
+      verifier(
+        operationReserveeAuGerant(ecrire('log-linas', { ...linas, repull: { id: '106' } }), d0) &&
+          operationReserveeAuGerant(ecrire('log-linas', lierLogement(linas, '106', { le: 'x', par: 'y' })), d0) &&
+          operationReserveeAuGerant(ecrire('log-neuf', { ...linas, id: 'log-neuf', repull: { id: '106' } }), d0) &&
+          operationReserveeAuGerant(ecrire('repull-9', { ...linas, id: 'repull-9' }), d0) &&
+          !operationReserveeAuGerant(ecrire('log-linas', { ...linas, nom: 'Nouveau nom' }), d0) &&
+          !operationReserveeAuGerant(ecrire('log-neuf', { ...linas, id: 'log-neuf' }), d0) &&
+          !operationReserveeAuGerant({ type: 'supprimer', collection: 'logements', id: 'log-linas' } as never, d0),
+        'compte « opérations » : poser, changer ou créer un lien refusé ; modifier le reste ou créer un logement, permis',
+      );
     }
 
     // Serveur : offre pleine (3 logements suivis) → refus avant toute écriture.
@@ -1563,10 +1593,24 @@ async function principal() {
     verifier(/déjà arrivés sur ce logement/.test(refus) && lu('log-linas').repull?.id === '106', `délier après l’arrivée de réservations : refusé, rien ne bouge (${refus})`);
     verifier(!delierPossible(lu('log-linas'), base2.collection('reservations'), base2.collection('filsMessages')).ok, 'règle : délier impossible une fois des réservations arrivées');
 
+    // Décocher l'annonce dans Connexions, puis la recocher : « En préparation » le reste.
+    await enregistrerSelection(ctx(), ['101'], 'gerant@test');
+    verifier(
+      lu('log-linas').statut === 'pause' && lu('log-linas').repull?.horsSelection === true && lu('log-linas').repull?.statutAvantPause === 'lancement',
+      `annonce décochée : logement relié en pause, son statut d’avant gardé (${lu('log-linas').statut}, ${lu('log-linas').repull?.statutAvantPause})`,
+    );
+    await enregistrerSelection(ctx(), ['101', '106'], 'gerant@test');
+    verifier(
+      lu('log-linas').statut === 'lancement' && !lu('log-linas').repull?.horsSelection && !lu('log-linas').repull?.statutAvantPause,
+      `annonce recochée : le statut d’avant la pause revient (${lu('log-linas').statut})`,
+    );
+
     // Lien par erreur sur une annonce sans réservation : délier.
     await enregistrerSelection(ctx(), ['101', '106'], 'gerant@test');
     await relierAnnonce(ctx(), 'log-studio', '107', GERANT);
     verifier(lu('log-studio').nom === 'Studio neuf' && !base2.get('logements', 'repull-107'), 'second logement relié (annonce sans réservation)');
+    await enregistrerSelection(ctx(), ['101', '106'], 'gerant@test');
+    verifier(lu('log-studio').statut === 'pause' && lu('log-studio').repull?.statutAvantPause === 'lancement', 'annonce décochée : le second logement passe en pause');
     refus = '';
     await delierAnnonce(ctx(), 'log-studio', { email: 'ops@test', role: 'operations' }).catch((e) => (refus = e instanceof ErreurConnexion ? `${e.statut}` : String(e)));
     verifier(refus === '403' && lu('log-studio').repull?.id === '107', 'délier : opérations refusé');
@@ -1580,6 +1624,44 @@ async function principal() {
     refus = '';
     await relierAnnonce(ctx(), 'log-studio', '108', GERANT).catch((e) => (refus = e instanceof ErreurConnexion ? e.message : String(e)));
     verifier(/plus sur vos plateformes/.test(refus) && canonique(lu('log-studio')) === canonique(studio), `choix refusé : le lien est retiré, le logement reste tel quel (${refus})`);
+
+    {
+      // Le choix échoue ET le lien ne peut pas être retiré (logement modifié entre-temps) : jamais en silence.
+      R.listings.push(annonce('120', 'Annonce retirée à son tour', 'Évry', 'airbnb'));
+      await lireEtatConnexions(ctx(), { forcer: true });
+      R.listings.splice(R.listings.findIndex((x) => x.id === '120'), 1);
+      const capricieuse = erp2();
+      const remplacer = capricieuse.remplacerSi.bind(capricieuse);
+      let ecritures = 0;
+      capricieuse.remplacerSi = async (...a: Parameters<BaseErp['remplacerSi']>) => (++ecritures === 1 ? remplacer(...a) : false);
+      const traces: unknown[][] = [];
+      const consoleErreur = console.error;
+      console.error = (...a: unknown[]) => void traces.push(a);
+      refus = '';
+      try {
+        await relierAnnonce({ ...ctx(), base: capricieuse }, 'log-studio', '120', GERANT).catch((e) => (refus = e instanceof ErreurConnexion ? e.message : String(e)));
+      } finally {
+        console.error = consoleErreur;
+      }
+      verifier(refus.includes(LIEN_NON_RETIRE) && lu('log-studio').repull?.id === '120', `lien resté : le gérant est prévenu (${refus})`);
+      verifier(
+        traces.some((t) => String(t[0]).includes('lien non retiré')) && base2.collection<Journal>('journal').some((j) => j.action === 'Lien à retirer' && j.entiteId === 'log-studio'),
+        'lien resté : écrit au journal du serveur et dans l’historique du logement',
+      );
+      await delierAnnonce(ctx(), 'log-studio', GERANT);
+      verifier(canonique(lu('log-studio')) === canonique(studio), 'lien resté : « Délier » le retire, le logement redevient tel quel');
+    }
+
+    // Deux « Relier » en même temps sur la même annonce : jamais deux logements reliés.
+    {
+      base2.poser('logements', { ...manuel('log-course', 'Logement de la course'), adresse: '9 rue de la Course' });
+      await Promise.allSettled([relierAnnonce(ctx(), 'log-studio', '107', GERANT), relierAnnonce(ctx(), 'log-course', '107', GERANT)]);
+      const lies = base2.collection<Logement>('logements').filter((x) => x.repull?.id === '107');
+      verifier(lies.length <= 1, `course entre deux liens : au plus un logement relié à l’annonce (${lies.map((x) => x.id).join() || 'aucun'})`);
+      for (const x of lies) if (x.liaison) base2.poser('logements', delierLogement(x));
+      base2.poser('logements', studio);
+      await enregistrerSelection(ctx(), ['101', '106'], 'gerant@test');
+    }
 
     // Espaces séparés : un autre espace ne relie ni ne lit les logements ou les annonces de celui-ci.
     const base3 = new FausseBase();
@@ -1606,6 +1688,17 @@ async function principal() {
     const aLaMain = versLogement(annonceAdresse, { ...linas, repull: { id: '42' } }, ctxL);
     const vide = versLogement(annonceAdresse, { ...linas, adresse: '', ville: '', repull: { id: '42' } }, ctxL);
     verifier(importe.adresse === '1 rue Neuve' && aLaMain.adresse === linas.adresse && aLaMain.ville === 'Linas' && vide.adresse === '1 rue Neuve' && vide.ville === 'Massy', 'adresse : celle de l’annonce pour un logement importé, celle de l’équipe pour un logement relié (sauf vide)');
+    const annonceWifi = { id: '42', name: 'X', details: { wifiNetwork: 'Box-annonce', wifiPassword: 'code-annonce', checkInTimeStart: '15:00', checkOutTime: '10:00' } } as never;
+    const ficheEquipe = { ...linas.fiche, wifiNom: 'Box-equipe', wifiCode: 'code-equipe' };
+    const wImporte = versLogement(annonceWifi, { ...linas, id: 'repull-42', fiche: ficheEquipe }, ctxL);
+    const wMain = versLogement(annonceWifi, { ...linas, repull: { id: '42' }, fiche: ficheEquipe }, ctxL);
+    const wVide = versLogement(annonceWifi, { ...linas, repull: { id: '42' }, fiche: { ...ficheEquipe, wifiNom: '', wifiCode: '', heureArrivee: '', heureDepart: '' } }, ctxL);
+    verifier(
+      wImporte.fiche.wifiNom === 'Box-annonce' && wImporte.fiche.wifiCode === 'code-annonce' && wImporte.fiche.heureArrivee === '15:00' &&
+        wMain.fiche.wifiNom === 'Box-equipe' && wMain.fiche.wifiCode === 'code-equipe' && wMain.fiche.heureArrivee === '16:00' && wMain.fiche.heureDepart === '11:00' &&
+        wVide.fiche.wifiNom === 'Box-annonce' && wVide.fiche.wifiCode === 'code-annonce' && wVide.fiche.heureArrivee === '15:00' && wVide.fiche.heureDepart === '10:00',
+      'wifi et horaires : ceux de l’annonce pour un logement importé, ceux de l’équipe pour un logement relié (sauf vides)',
+    );
   }
 
   section('Connexions : connecter, déconnecter, offre dépassée');

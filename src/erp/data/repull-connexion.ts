@@ -712,6 +712,33 @@ async function journaliserLiaison(ctx: ContexteConnexion, qui: Gerant, action: s
   await ctx.base.ecrire('journal', [ligne], qui.email).catch(() => undefined);
 }
 
+/** Phrase ajoutée au refus quand le lien posé n'a pas pu être retiré. */
+export const LIEN_NON_RETIRE = 'Attention : ce logement est resté relié à l’annonce. Rechargez la page, puis déliez-le (repli « Administratif »).';
+
+/**
+ * Retire le lien qu'on vient de poser (le choix ou la course a échoué), si
+ * personne n'a touché au logement entre-temps. Vrai : retiré, ou déjà plus
+ * là. Faux : le lien est resté ; c'est écrit au journal du serveur et dans
+ * l'historique du logement, et le gérant le lit dans le refus.
+ */
+async function retirerLien(ctx: ContexteConnexion, qui: Gerant, logementId: string, annonce: string, pourquoi: string): Promise<boolean> {
+  let retire = false;
+  let detail = '';
+  try {
+    const [actuel] = await ctx.base.lireVersions<Logement>('logements', [logementId]);
+    if (!actuel || actuel.element.repull?.id !== annonce || actuel.element.liaison?.annonce !== annonce) return true;
+    retire = await ctx.base.remplacerSi('logements', delierLogement(actuel.element), actuel.version, qui.email);
+    if (!retire) detail = 'logement modifié entre-temps';
+  } catch (e) {
+    detail = e instanceof Error ? e.message : String(e);
+  }
+  if (retire) return true;
+  console.error('[erp-repull-connexion] lien non retiré', { logementId, annonce, pourquoi, detail });
+  const maintenant = (ctx.maintenant ?? (() => new Date()))();
+  await journaliserLiaison(ctx, qui, 'Lien à retirer', logementId, `Le lien avec l’annonce ${annonce} n’a pas pu être retiré après un échec (${pourquoi}) : déliez ce logement.`, maintenant);
+  return false;
+}
+
 /**
  * Relie un logement créé à la main à une annonce trouvée sur les
  * plateformes de l'espace, puis l'annonce entre dans les logements suivis
@@ -745,6 +772,15 @@ export async function relierAnnonce(ctx: ContexteConnexion, logementIdBrut: unkn
   if (!(await ctx.base.remplacerSi('logements', lie, lu.version, qui.email))) {
     throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
   }
+  // Course : un autre logement relié à la même annonce entre la lecture et l'écriture (deux « Relier »
+  // en même temps, ou un import). Relu APRÈS l'écriture : s'il y en a un autre, ce lien-ci est retiré.
+  // De deux liens simultanés, au plus un reste (chacun relit après sa propre écriture).
+  const relus = await ctx.base.lireVersions<Logement>('logements');
+  const autre = relus.find((v) => v.element.id !== logementId && v.element.repull?.id === annonce);
+  if (autre) {
+    const retire = await retirerLien(ctx, qui, logementId, annonce, 'annonce reliée à un autre logement');
+    throw new ErreurConnexion(`Cette annonce vient d’être reliée à un autre logement (${autre.element.nom}) : rechargez la page.${retire ? '' : ` ${LIEN_NON_RETIRE}`}`, 409);
+  }
 
   let r: Pick<ResultatSelection, 'ok' | 'partiel' | 'message'>;
   try {
@@ -756,11 +792,10 @@ export async function relierAnnonce(ctx: ContexteConnexion, logementIdBrut: unkn
       r = { ok: false, partiel: true, message: `L’import n’a pas pu se faire tout de suite (${messageErreur(e)}) : il viendra au prochain passage.` };
     } else {
       // Choix pas enregistré : le lien est retiré, si personne n'a touché au logement entre-temps.
-      const [actuel] = await ctx.base.lireVersions<Logement>('logements', [logementId]).catch(() => []);
-      if (actuel?.element.repull?.id === annonce && actuel.element.liaison?.annonce === annonce) {
-        await ctx.base.remplacerSi('logements', delierLogement(actuel.element), actuel.version, qui.email).catch(() => false);
-      }
-      if (e instanceof ErreurConnexion && /plus disponible/.test(e.message)) throw new ErreurConnexion('Cette annonce n’est plus sur vos plateformes : rechargez la liste.', 404);
+      const retire = await retirerLien(ctx, qui, logementId, annonce, messageErreur(e));
+      const suite = retire ? '' : ` ${LIEN_NON_RETIRE}`;
+      if (e instanceof ErreurConnexion && /plus disponible/.test(e.message)) throw new ErreurConnexion(`Cette annonce n’est plus sur vos plateformes : rechargez la liste.${suite}`, 404);
+      if (!retire) throw new ErreurConnexion(`${messageErreur(e)}${suite}`, e instanceof ErreurConnexion ? e.statut : 502);
       throw e;
     }
   }

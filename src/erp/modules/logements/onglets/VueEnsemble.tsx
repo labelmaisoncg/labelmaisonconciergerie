@@ -9,7 +9,7 @@ import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
-import { aRelier, peutRelier } from '../../../data/liaison-annonce';
+import { aRelier, peutRelier, relie } from '../../../data/liaison-annonce';
 import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, note, pluriel, pourcentage } from '../../../data/format';
 import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors';
 import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
@@ -79,6 +79,9 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   // Le couchage de l'annonce (pièce par pièce) remplace la ligne saisie à la main.
   const lits = desc?.couchage?.length ? '' : l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
   const jours = (l.tarifs?.jours ?? []).filter((j) => j.date >= AUJOURDHUI).slice(0, 60);
+  // Pas encore relié à une annonce : les lignes vides d'un logement créé à la main (Airbnb, Booking,
+  // site direct « hors ligne ») ne disent rien ; seul un lien saisi par l'équipe reste.
+  const annonces = relie(l) ? l.annonces : l.annonces.filter((a) => a.connecte || !!a.url);
   const bas = jours.length ? Math.min(...jours.map((j) => j.prixCentimes)) : 0;
   const haut = jours.length ? Math.max(...jours.map((j) => j.prixCentimes)) : 0;
 
@@ -215,11 +218,11 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
           <Card>
             <CardHeader titre="Plateformes" />
-            {l.annonces.length === 0 ? (
+            {annonces.length === 0 ? (
               <p className="text-[13.5px] text-(--lm-encre-2)">Aucune annonce reliée.</p>
             ) : (
               <ul className="space-y-2">
-                {l.annonces.map((a) => {
+                {annonces.map((a) => {
                   // Lien Airbnb saisi par l'équipe (pas une annonce reliée) : on peut le retirer.
                   const saisi = a.canal === 'airbnb' && !a.connecte && !!a.url && !(l.repull?.canaux ?? []).some((c) => /airbnb/i.test(c.plateforme));
                   return (

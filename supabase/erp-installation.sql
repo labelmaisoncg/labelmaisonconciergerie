@@ -331,6 +331,57 @@ drop trigger if exists garder_autonomie_agent on erp.enregistrements;
 create trigger garder_autonomie_agent before insert or update on erp.enregistrements
   for each row execute function erp.garder_autonomie_agent();
 
+-- Lien d'un logement à son annonce (donnees.repull.id, donnees.liaison, id
+-- « repull-… ») : gérant de l'espace et compte serveur seulement (« Relier à
+-- une annonce », api/erp-repull-connexion.ts ; la synchronisation). Sans
+-- cette règle, un compte « opérations » poserait repull.id sur n'importe quel
+-- logement créé à la main : au passage suivant, les réservations et les
+-- messages de l'annonce iraient sur ce logement (repull-synchro.ts, indexer :
+-- le logement relié à la main passe d'abord), chez un autre propriétaire.
+-- Ajout qui devient modification (upsert de l'ERP) : la ligne déjà là fait foi.
+create or replace function erp.garder_lien_annonce() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant jsonb;
+  existe boolean := false;
+begin
+  if current_user <> 'authenticated' then
+    return new;
+  end if;
+  if new.collection <> 'logements' and not (tg_op = 'UPDATE' and old.collection = 'logements') then
+    return new;
+  end if;
+  if erp.acces_gerant() then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.collection = 'logements' then
+    if new.collection <> 'logements' or new.id <> old.id then
+      raise exception 'Seul un gérant relie un logement à son annonce.' using errcode = '42501';
+    end if;
+    avant := old.donnees;
+    existe := true;
+  else
+    select e.donnees into avant from erp.enregistrements e
+      where e.collection = 'logements' and e.id = new.id;
+    existe := found;
+  end if;
+  if existe then
+    if (new.donnees -> 'repull' ->> 'id') is not distinct from (avant -> 'repull' ->> 'id')
+       and (new.donnees -> 'liaison') is not distinct from (avant -> 'liaison') then
+      return new;
+    end if;
+  elsif (new.donnees -> 'repull' ->> 'id') is null and not (new.donnees ? 'liaison') and new.id not like 'repull-%' then
+    return new;
+  end if;
+  raise exception 'Seul un gérant relie un logement à son annonce.' using errcode = '42501';
+end;
+$$;
+revoke all on function erp.garder_lien_annonce() from public, anon;
+drop trigger if exists garder_lien_annonce on erp.enregistrements;
+create trigger garder_lien_annonce before insert or update on erp.enregistrements
+  for each row execute function erp.garder_lien_annonce();
+
 -- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
 -- retours à la ligne, espaces insécables ou invisibles). Même fonction que
 -- dans erp-espaces.sql.
