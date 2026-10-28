@@ -542,6 +542,23 @@ async function principal() {
     for (const q of ['Could you tell me where the nearest bakery is, please?', 'Is the second bedroom heated?', 'Ok, and is there a hairdryer?']) {
       verifier(!apresPropositionSupplements(auto(q, 'en')), `question ordinaire après la proposition (« ${q} ») : règle ordinaire`);
     }
+    // Question qui accepte, ou réponse longtemps après : une réponse de l'agent qui s'engage n'est jamais envoyée seule.
+    for (const [voyageur, texte, langue] of [
+      ['Super, c’est possible pour 12h ?', 'Oui, c’est noté pour 12 h !', 'fr'],
+      ['Est-ce encore possible ?', 'Oui, c’est réservé pour vous.', 'fr'],
+      ['Ok please, can we have it?', 'Of course, it’s booked!', 'en'],
+      ['Merci ! Et pour le ménage, c’est le mercredi ?', 'Oui, c’est noté pour mercredi.', 'fr'],
+    ] as [string, string, 'fr' | 'en'][]) {
+      const f = auto(voyageur, langue);
+      const v = niveaux.map((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue, texte }, p, messagesVerdict(f, new Date('2026-10-27T10:00:00Z'), fiche)).verdict);
+      verifier(v.every((x) => x === 'valider'), `proposition en cours, réponse qui s’engage (« ${texte} ») : à valider`, v);
+    }
+    // Heure redemandée sans mot d'arrivée, après une réponse de l'équipe : toujours hors horaires.
+    const relance = fil('fil-68', 'r1', { messages: [msg('v1', 'voyageur', 'Oui pour l’arrivée à 12 h'), msg('h', 'hote', 'Je vérifie avec l’équipe ménage.'), msg('v2', 'voyageur', 'Alors, c’est bon pour 12 h ?')] });
+    verifier(
+      verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'arrivee', langue: 'fr', texte: 'Oui, c’est noté pour 12 h.' }, autonome, messagesVerdict(relance, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider',
+      '« c’est bon pour 12 h ? » puis « c’est noté pour 12 h » : à valider (12 h est hors des horaires)',
+    );
     // Au-delà de 72 h, la proposition ne compte plus.
     const tard = fil('fil-67', 'r1', {
       messages: [
@@ -550,6 +567,10 @@ async function principal() {
       ],
     });
     verifier(!apresPropositionSupplements(tard), 'message arrivé plus de 72 h après la proposition : règle ordinaire');
+    verifier(
+      verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'C’est noté, à très vite !' }, autonome, messagesVerdict(tard, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider',
+      'plus de 72 h après, une réponse qui s’engage reste à valider (proposition toujours en cours)',
+    );
     // Acceptations courtes, sans « oui » ni option : toujours des réponses à la proposition, jamais envoyées seules.
     for (const [voyageur, texte, langue] of [
       ['Parfait, merci !', 'Parfait Emily, c’est noté. À jeudi !', 'fr'],

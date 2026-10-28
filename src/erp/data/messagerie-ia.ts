@@ -349,6 +349,8 @@ export interface ContexteSupplement {
   sansReponse: readonly string[];
   /** Ils répondent à une proposition de suppléments (message automatique « Proposer les suppléments », ou proposition de l'équipe avec un prix). */
   apresProposition?: boolean;
+  /** Une proposition de suppléments est en cours (aucune réponse de l'équipe depuis), quel que soit le délai. */
+  propositionEnCours?: boolean;
   /** Heures habituelles du logement : une heure accordée en dehors est une offre. */
   fiche?: HorairesLogement;
 }
@@ -363,9 +365,15 @@ export const MOTIF_REPONSE_PROPOSITION = 'Réponse à une proposition de supplé
  */
 export function supplementAValider(d: Pick<DecisionNotee, 'intention' | 'texte' | 'texteFr'>, c: ContexteSupplement): string | null {
   if (c.apresProposition) return MOTIF_REPONSE_PROPOSITION;
+  // Proposition en cours : une réponse qui s'engage (« c'est noté », « réservé », « booked ») n'est jamais envoyée seule.
+  if (c.propositionEnCours && [d.texte, d.texteFr].some((t) => !!t && ENGAGEMENT.test(nettoyerTexte(t).replace(/[’`´]/g, "'")))) return MOTIF_REPONSE_PROPOSITION;
   const demande = (d.intention && INTENTIONS_SUPPLEMENTS.includes(d.intention)) || c.sansReponse.some((m) => !!supplementDansTexte(m));
   // Heures demandées par le voyageur hors des horaires (« Can we arrive at 1pm? ») : une réponse qui les reprend les accorde.
   const horsHoraires = new Set(c.sansReponse.flatMap((m) => heuresHors(nettoyerTexte(m).replace(/[’`´]/g, "'"), c.fiche)));
+  // Toute heure du voyageur entre le départ et l'arrivée habituels (logement libre, ménage) : hors horaires, quels que soient les mots.
+  const depart = heureFiche(c.fiche?.heureDepart, HORAIRES_PRUDENTS.heureDepart);
+  const arrivee = heureFiche(c.fiche?.heureArrivee, HORAIRES_PRUDENTS.heureArrivee);
+  for (const m of c.sansReponse) for (const h of heuresDe(nettoyerTexte(m))) if (h > depart && h < arrivee) horsHoraires.add(h);
   const reprend = (t?: string) => !!t && heuresDe(nettoyerTexte(t)).some((h) => horsHoraires.has(h));
   const offre = offreSupplement(d.texte ?? '', c.fiche) || offreSupplement(d.texteFr ?? '', c.fiche) || reprend(d.texte) || reprend(d.texteFr);
   return demande || offre ? MOTIF_SUPPLEMENT : null;
@@ -408,6 +416,24 @@ export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, 
     const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
     if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return recente(equipe);
     // Un autre message automatique (infos d'arrivée…) ne clôt pas la proposition : on remonte.
+    if (!equipe.envoi?.moment) return false;
+  }
+  return false;
+}
+
+/** Une réponse qui s'engage : « c'est noté », « réservé », « confirmé », « booked », « all set »… */
+const ENGAGEMENT =
+  /c'est (?:bien )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|fait|bon|ok|d'accord|entendu|parfait|pr[ée]vu|organis[ée])|bien (?:not[ée]|r[ée]serv[ée]|pris en compte|enregistr[ée])|not[ée] pour|nous (?:avons )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|\b(?:je|nous) (?:note|notons|r[ée]serve|r[ée]servons|confirme|confirmons|organise|organisons|pr[ée]vois|pr[ée]voyons)\b|[çc]a marche|d'accord pour|ok pour|\b(?:booked|confirmed|arranged|reserved|noted|all set|sorted|done)\b|it'?s yours|we(?:'ll| will) (?:arrange|book|reserve|organi[sz]e|prepare)/i;
+
+/** Une proposition de suppléments attend-elle encore l'équipe (aucune vraie réponse de l'équipe depuis) ? */
+export function propositionEnCours(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
+  if (!messagesSansReponse(fil).length) return false;
+  for (let i = fil.messages.length - 1; i >= 0; i--) {
+    const equipe = fil.messages[i];
+    if (equipe.auteur !== 'hote') continue;
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return true;
+    const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
+    if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return true;
     if (!equipe.envoi?.moment) return false;
   }
   return false;
@@ -488,6 +514,7 @@ export interface MessagesVerdict {
   recents: string[];
   sansReponse?: string[];
   apresProposition?: boolean;
+  propositionEnCours?: boolean;
   fiche?: HorairesLogement;
 }
 
@@ -501,6 +528,7 @@ export function messagesVerdict(fil: Pick<FilMessages, 'messages' | 'reservation
       .map((m) => m.texte),
     sansReponse: messagesSansReponse(fil).map((m) => m.texte),
     apresProposition: apresPropositionSupplements(fil, fiche),
+    propositionEnCours: propositionEnCours(fil, fiche),
     ...(fiche ? { fiche: { heureArrivee: fiche.heureArrivee, heureDepart: fiche.heureDepart } } : {}),
   };
 }
@@ -761,7 +789,7 @@ export function verdictEnvoi(d: DecisionNotee, p: PolitiqueEnvoi, voyageur: stri
   if (reponse) return { verdict: 'transmettre', ...reponse };
   // Supplément (arrivée plus tôt, départ plus tard, ménage, navette) : jamais vendu seul, quel que soit le niveau.
   // La demande se cherche dans les messages encore sans réponse (une demande déjà traitée ne bloque plus).
-  const supplement = supplementAValider(d, { sansReponse: v.sansReponse ?? recents.slice(-1), apresProposition: v.apresProposition, fiche: v.fiche });
+  const supplement = supplementAValider(d, { sansReponse: v.sansReponse ?? recents.slice(-1), apresProposition: v.apresProposition, propositionEnCours: v.propositionEnCours, fiche: v.fiche });
   if (supplement) return { verdict: 'valider', motif: supplement };
   if (!p.envoiAuto) return { verdict: 'valider', motif: 'Vous validez chaque réponse.' };
   const texteRecent = recents.join('\n');
@@ -1052,7 +1080,7 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 /** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
 // Une heure, une distance ou un ordinal avant le code (« actif de 7h à 22h : 482 ») ne l'arrête pas : la recherche continue.
 const CODE_APRES_MOT =
-  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?![\p{L}\p{N}]))/giu;
+  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?<!(?:n°|num[ée]ro|place|rue|avenue|boulevard|bd|all[ée]e|b[âa]timent|b[âa]t|du|au|porte)\s?)(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?=\s|$|[.,;:!?)]))/giu;
 
 /**
  * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un
