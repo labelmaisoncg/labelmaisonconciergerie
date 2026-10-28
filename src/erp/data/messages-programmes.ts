@@ -810,7 +810,7 @@ const SIGNAL_NEGATIF =
  * constats de saleté, d'odeur de tabac et de nuisibles.)
  */
 const SOUCI_CONSTATE =
-  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|bris(?:é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])tach(?:e|es|é|ée|és|ées)(?![a-zà-ÿ])|ab[iî]m|plainte|se plaign|plaints?\b|fum[ée] dans|avez fum[ée]|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
+  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|bris(?:é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])tach(?:e|es|é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])casse(?![a-zà-ÿ-])|retien\w* (?:sur )?(?:la |votre )?caution|ab[iî]m|plainte|se plaign|plaints?\b|fum[ée] dans|avez fum[ée]|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
 
 /**
  * La fiche de police du check-in en ligne (« J'ai rempli la fiche individuelle
@@ -821,25 +821,22 @@ export const FICHE_DE_POLICE = /fiches?\s+(individuelles?\s+)?de\s+police/gi;
 /**
  * Consigne de prévention dans un message de l'équipe (« en cas de casse »,
  * « n'hésitez pas à nous signaler tout dégât ») : une consigne, pas un souci
- * constaté. Le message est découpé en propositions (virgule, deux-points,
- * point-virgule, tiret, fin de phrase) et seule la proposition qui COMMENCE par
- * la tournure est ignorée, si elle ne dit rien au passé (« que vous avez
- * causés ») ; « en cas de… », en plus, sept mots au plus (sans virgule, la
- * suite est une principale : « en cas de nouveau tapage cette nuit nous
- * appellerons la police » reste un constat). « Merci de nous indiquer ce qui
- * s'est passé : nous avons trouvé un verre cassé » aussi.
+ * constaté. Seul le groupe de prévention lui-même est retiré (« en cas de
+ * casse », « en cas de souci ou de dégât », « signaler tout dégât », « prévenir
+ * d'éventuels dégâts ») : un constat dans la même proposition reste vu, quel
+ * que soit son temps (« merci de nous indiquer pourquoi la vitre est cassée »,
+ * « merci de nous signaler le verre cassé hier soir »), et « signaler les
+ * dégâts que vous avez causés » n'est jamais une consigne. « En cas de nouveau
+ * tapage » ou « de dégât supplémentaire » dit qu'il y en a déjà eu : gardé.
  */
-const DEBUT_EN_CAS_DE = /^en cas d['’e]/i;
-const DEBUT_SIGNALER = /^(n['’]h[ée]sitez pas [àa]|merci de)\s+(nous\s+)?(signaler|pr[ée]venir|indiquer)/i;
-const AU_PASSE = /\b(avez|avons|ont|a été|ont été|était|étaient|sont)\b/i;
-const consignePreventive = (p: string): boolean =>
-  !AU_PASSE.test(p) && (DEBUT_SIGNALER.test(p) || (DEBUT_EN_CAS_DE.test(p) && p.split(/\s+/).length <= 7));
-const sansConsignesPreventives = (texte: string): string =>
-  texte
-    .split(/[.!?\n;,:–—]+/)
-    .map((p) => p.trim())
-    .filter((p) => !consignePreventive(p))
-    .join(' . ');
+const MOT_SOUCI = String.raw`(?:casse|d[ée]g[aâ]ts?|dommages?|d[ée]gradations?|bris|probl[èe]mes?|soucis?|incidents?|objets?\s+cass[ée]e?s?)(?![a-zà-ÿ])(?!\s+(?:suppl[ée]mentaires?|nouveaux?|nouvelles?|autres?|encore|de plus|en plus)(?![a-zà-ÿ]))`;
+const SUITE_SOUCI = String.raw`(?:\s*(?:,|ou|et)\s+(?:de\s+|d['’]\s*|un\s+|une\s+)?` + MOT_SOUCI + ')*';
+const GROUPE_PREVENTIF = new RegExp(
+  String.raw`\ben cas (?:de\s+|d['’]\s*)` + MOT_SOUCI + SUITE_SOUCI +
+    String.raw`|\b(?:signaler|pr[ée]venir|indiquer|d[ée]clarer)\s+(?:nous\s+)?(?:(?:de\s+|d['’]\s*)?(?:tout|toute|tous|toutes|le moindre|la moindre|[ée]ventuel(?:le)?s?)\s+(?:[ée]ventuel(?:le)?s?\s+)?|s['’]il y a\s+(?:un\s+|une\s+|des\s+|de\s+|d['’]\s*)?)` + MOT_SOUCI + SUITE_SOUCI,
+  'gi',
+);
+const sansConsignesPreventives = (texte: string): string => texte.replace(GROUPE_PREVENTIF, ' ');
 
 /** Séjours dont l'avis est attendu : Airbnb, terminés depuis moins de 14 jours, pas annulés. */
 export function sejourAvecAvis(r: Pick<Reservation, 'canal' | 'statut' | 'depart'>, aujourdhui: DateISO): boolean {

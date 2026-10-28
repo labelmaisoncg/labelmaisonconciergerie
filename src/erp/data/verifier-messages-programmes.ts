@@ -431,6 +431,18 @@ function fileAvis() {
   // Constats que l'équipe peut écrire autrement.
   for (const t of ['Les voisins se sont plaints du bruit hier soir.', 'Vous avez fumé dans le logement, c’est interdit.', 'La vitre est brisée.', 'Le canapé est taché.'])
     verifier(souci([msg('h', 'hote', t, '2026-10-21T12:00:00+02:00')]), `constat de l’équipe : à relire (« ${t} »)`);
+  // Correctif d'audit 05 : seul le groupe de prévention est retiré, jamais un constat de la même proposition.
+  for (const t of [
+    'Merci de nous indiquer pourquoi la vitre est cassée.',
+    'Merci de nous indiquer pourquoi les draps étaient tachés.',
+    'Merci de nous indiquer qui a cassé la lampe.',
+    'Merci de nous signaler le verre cassé hier soir.',
+    'Il y a eu de la casse dans la cuisine.',
+    'En cas de dégât supplémentaire, nous retiendrons la caution.',
+  ])
+    verifier(souci([msg('h', 'hote', t, '2026-10-21T12:00:00+02:00')]), `constat dans une consigne, écrit par l’équipe : à relire (« ${t} »)`);
+  for (const t of ['En cas de casse, prévenez-nous.', 'Merci de nous signaler tout dégât éventuel.', 'Merci de nous prévenir s’il y a un dégât.', 'Un casse-croûte vous attend.'])
+    verifier(!souci([msg('h', 'hote', t, '2026-10-19T15:00:00+02:00')]), `consigne de prévention saine : ne bloque pas (« ${t} »)`);
   for (const t of ['Le parking est rattaché au logement.', 'Une attache pour vélo est disponible.', 'Glace pistache offerte à l’arrivée.'])
     verifier(!souci([msg('h', 'hote', t, '2026-10-20T09:00:00+02:00')]), `« tache » dans un autre mot : ne bloque pas (« ${t} »)`);
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
