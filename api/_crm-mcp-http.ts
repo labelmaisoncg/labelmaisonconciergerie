@@ -9,22 +9,30 @@
 // gérant qui a autorisé Claude, voir api/_oauth.ts), Label Maison pour la clé
 // fixée. Les données sont lues (et le CRM écrit) avec le compte serveur dans
 // cet espace, ou avec le compte d'équipe pour Label Maison (baseErp).
-// Logique des outils : src/erp/data/crm-mcp.ts (CRM) et cm-mcp.ts (channel manager).
+// Logique des outils : src/erp/data/crm-mcp.ts (CRM), cm-mcp.ts (channel
+// manager) et copilote-mcp.ts (réponse proposée, ménage interne, brouillon de
+// facture, prix conseillés en lecture). Chaque écriture d'un outil est tracée
+// avant d'être faite dans la collection actionsAgent de l'espace (copilote.ts),
+// avec l'accès qui l'a faite (jeton OAuth et gérant qui l'a autorisé, ou clé).
 // Rien n'est jamais envoyé aux voyageurs ni écrit vers les plateformes.
 // =============================================================================
 
 import { traiterMcp, VERSIONS_PROTOCOLE, type ContexteMcp } from '../src/erp/data/crm-mcp.js';
+import { COLLECTION_ACTIONS_AGENT } from '../src/erp/data/copilote.js';
+import { ID_REGLAGE_SOCIETE } from '../src/erp/data/identite-conciergerie.js';
+import { COLLECTION_PRIX, type ElementPrix } from '../src/erp/data/prix-conseils.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
-import type { ContactCrm, FilMessages, Logement, Reservation } from '../src/erp/data/types.js';
+import type { ContactCrm, Facture, FilMessages, Logement, Mandat, Mission, Proprietaire, Reglage, Reservation } from '../src/erp/data/types.js';
+import type { ClientAction } from '../src/erp/data/types-copilote.js';
 import { configuration, lireCorps, type ConfigRepullErp } from './_erp-repull.js';
 import type { EspaceDuJeton } from './_erp-espaces.js';
 
 /** Appels venant d'un navigateur : seulement ces origines (protection « DNS rebinding » demandée par la spécification). */
 const ORIGINES = /^https:\/\/([a-z0-9-]+\.)*(claude\.ai|claude\.com|anthropic\.com|labelmaisoncg\.fr)$/i;
 
-/** Contrôle d'accès d'une route : l'espace de l'accès (sa base, son nom), ou null (refusé). */
-export type Verification = (req: any, c: ConfigRepullErp) => Promise<EspaceDuJeton | null>;
+/** Contrôle d'accès d'une route : l'espace de l'accès (sa base, son nom) et qui appelle (trace), ou null (refusé). */
+export type Verification = (req: any, c: ConfigRepullErp) => Promise<(EspaceDuJeton & { client?: ClientAction }) | null>;
 
 export async function servirCrmMcp(req: any, res: any, autorise: Verification, enteteRefus?: (req: any) => string) {
   res.setHeader('Cache-Control', 'no-store');
@@ -38,7 +46,7 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
     console.error('[crm-mcp] ERP_PASSWORD absent : CRM inaccessible.');
     return json(503, { error: 'Connecteur indisponible.' });
   }
-  let espace: EspaceDuJeton | null = null;
+  let espace: (EspaceDuJeton & { client?: ClientAction }) | null = null;
   try {
     espace = await autorise(req, c);
   } catch (e) {
@@ -65,6 +73,7 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
     aujourdhui: () => horodatageParis().slice(0, 10),
     maintenant: () => horodatageParis(),
     espace: { id: espace.id, nom: espace.nom },
+    ...(espace.client ? { client: espace.client } : {}),
   };
 
   const corps = typeof req.body === 'string' ? lireJson(req.body) : req.body ?? lireCorps(req);
@@ -79,7 +88,7 @@ export async function servirCrmMcp(req: any, res: any, autorise: Verification, e
  * Les données de l'accès, seul point d'entrée des outils : `base` est celle
  * de l'espace du jeton (ou de la clé), et rien d'autre.
  */
-export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm'> {
+export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm' | 'copilote' | 'actions'> {
   return {
     depot: {
       tous: () => base.lire<ContactCrm>('crm'),
@@ -91,9 +100,27 @@ export function depotsMcp(base: BaseErp): Pick<ContexteMcp, 'depot' | 'cm'> {
       reservations: () => base.lire<Reservation>('reservations'),
       fils: () => base.lire<FilMessages>('filsMessages'),
       fil: async (id) => (await base.lire<FilMessages>('filsMessages', [id]))[0],
-      // Seule écriture du channel manager : une conversation classée « terminée » (rien vers les plateformes).
+      // Seules écritures du channel manager : conversation « terminée », réponse proposée (rien vers les plateformes).
       enregistrerFil: (f) => base.ecrire('filsMessages', [f], 'Claude'),
     },
+    copilote: {
+      missions: () => base.lire<Mission>('missions'),
+      // Ménage interne : écrit dans l'ERP seulement, jamais transmis à un prestataire.
+      enregistrerMission: (m) => base.ecrire('missions', [m], 'Claude'),
+      facturation: async () => {
+        const [proprietaires, mandats, factures, reglages] = await Promise.all([
+          base.lire<Proprietaire>('proprietaires'),
+          base.lire<Mandat>('mandats'),
+          base.lire<Facture>('factures'),
+          base.lire<Reglage>('reglages', [ID_REGLAGE_SOCIETE]),
+        ]);
+        return { proprietaires, mandats, factures, reglages };
+      },
+      // Brouillon ajouté seulement s'il est absent : une facture déjà là (validée ou non) n'est jamais remplacée.
+      ajouterFacture: async (f) => (await base.ajouterSiAbsent('factures', [f], 'Claude')) > 0,
+      prix: () => base.lire<ElementPrix>(COLLECTION_PRIX),
+    },
+    actions: { enregistrer: (a) => base.ecrire(COLLECTION_ACTIONS_AGENT, [a], 'Claude') },
   };
 }
 

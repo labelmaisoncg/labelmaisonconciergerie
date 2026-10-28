@@ -9,6 +9,12 @@
  * donne la base de l'ERP, les vérifications des dépôts en mémoire.
  * Pas de suppression possible par ce connecteur : on corrige, on ne détruit pas.
  * Rien n'est envoyé aux voyageurs ni écrit vers les plateformes.
+ *
+ * Copilote (copilote-mcp.ts, copilote.ts) : réponse proposée que l'équipe
+ * envoie, ménage interne, brouillon de facture, prix conseillés (lecture).
+ * Chaque appel d'un outil d'écriture est tracé AVANT d'écrire (contexteTrace)
+ * et annulable par le gérant ; un outil de lecture ne peut rien écrire
+ * (contexteLecture).
  */
 import {
   aTraiterLe,
@@ -23,6 +29,8 @@ import {
   trouverDoublon,
 } from './crm.js';
 import { OUTILS_CM } from './cm-mcp.js';
+import { contexteLecture, contexteTrace } from './copilote.js';
+import { OUTILS_COPILOTE } from './copilote-mcp.js';
 import { fileDuJour, LIBELLE_PROFIL, profilContact } from './crm-assistant.js';
 import { estLabelMaison } from './espaces.js';
 import { choix, date, ECRITURE, ErreurOutil, LECTURE, texte, type Args, type ContexteMcp, type Outil } from './mcp-commun.js';
@@ -47,7 +55,8 @@ export const VERSIONS_PROTOCOLE = ['2025-11-25', '2025-06-18', '2025-03-26', '20
 /** Mode d'emploi commun à tous les espaces : channel manager. */
 const MODE_EMPLOI_CM = `CHANNEL MANAGER (Airbnb, Booking.com, direct) — pour savoir quoi faire maintenant : cm_resume (voyageurs qui attendent une réponse, arrivées et départs du jour, avis à lire, appels du jour).
 Logements : logements_lister, puis logement_voir (fiche, couchage, conditions, prix des 14 prochains jours). Réservations : reservations_periode (arrivées, départs, sur place entre deux dates), reservation_voir.
-Messagerie : conversations_a_repondre, conversation_voir ; conversation_pas_besoin_de_repondre la classe « terminée » dans l'ERP (elle se rouvre si le voyageur réécrit). Pour aider à répondre : reponse_preparer donne le contexte ; proposez la réponse, l'équipe l'envoie elle-même depuis l'ERP (ce connecteur n'envoie jamais rien aux voyageurs). Chiffres : indicateurs (occupation, revenu, prix moyen par nuit, note).
+Messagerie : conversations_a_repondre, conversation_voir ; conversation_pas_besoin_de_repondre la classe « terminée » dans l'ERP (elle se rouvre si le voyageur réécrit). Pour aider à répondre : reponse_preparer donne le contexte ; reponse_proposer range votre réponse dans l'ERP, l'équipe la relit et l'envoie elle-même (ce connecteur n'envoie jamais rien aux voyageurs). Chiffres : indicateurs (occupation, revenu, prix moyen par nuit, note).
+Copilote : menage_creer prévoit un ménage au planning interne (rien n'est envoyé à un prestataire) ; facture_preparer prépare le brouillon d'une facture mensuelle (le gérant la valide et la partage) ; prix_conseils donne les prix conseillés (lecture seule : aucun prix n'est jamais changé, l'équipe le fait sur la plateforme). Aucun paiement. Chaque modification est tracée et le gérant peut l'annuler (Paramètres → Actions de l'IA).
 Codes d'accès, wifi, e-mails et téléphones des voyageurs ne sont jamais transmis ; les voyageurs sont nommés « Prénom N. ».`;
 
 /** Mode d'emploi commun à tous les espaces : CRM d'appels (« le suivi » : Label Maison seulement). */
@@ -56,7 +65,7 @@ Pour savoir quoi faire aujourd'hui : crm_resume. Pour retrouver quelqu'un : crm_
 Après un appel, utiliser crm_noter_appel (l'étape avance toute seule) ; pour changer l'étape, une relance, le suivi ou les notes : crm_modifier. Un nouveau contact : crm_ajouter (les doublons par e-mail ou téléphone sont détectés).
 Les modifications apparaissent en direct dans l'ERP (labelmaisoncg.fr/erp/crm). Répondre en français.`;
 
-/** Instructions du serveur pour l'espace de Label Maison (inchangées depuis la version 2.0.0). */
+/** Instructions du serveur pour l'espace de Label Maison (copilote ajouté en 2.1.0). */
 export const INSTRUCTIONS_SERVEUR = `Label Maison Conciergerie (gestion locative courte durée en Essonne) : channel manager et CRM d'appels.
 ${MODE_EMPLOI_CM}
 CRM D'APPELS — chaque demande envoyée depuis le site labelmaisoncg.fr (formulaires audit, accueil, contact, Cercle) arrive automatiquement dans le CRM à l'étape « À appeler ».
@@ -374,8 +383,8 @@ const OUTILS_CRM: Outil[] = [
   },
 ];
 
-/** Tous les outils : CRM d'abord (connexions déjà faites dans Claude), puis channel manager. */
-export const OUTILS: Outil[] = [...OUTILS_CRM, ...OUTILS_CM];
+/** Tous les outils : CRM d'abord (connexions déjà faites dans Claude), puis channel manager, puis copilote. */
+export const OUTILS: Outil[] = [...OUTILS_CRM, ...OUTILS_CM, ...OUTILS_COPILOTE];
 
 /**
  * Outils annoncés à Claude pour l'espace du jeton : Label Maison, exactement
@@ -419,7 +428,7 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
       return resultat(id, {
         protocolVersion: VERSIONS_PROTOCOLE.includes(demandee) ? demandee : '2025-06-18',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'label-maison', title: ctx.espace && !estLabelMaison(ctx.espace.id) ? ctx.espace.nom : 'Label Maison', version: '2.0.0' },
+        serverInfo: { name: 'label-maison', title: ctx.espace && !estLabelMaison(ctx.espace.id) ? ctx.espace.nom : 'Label Maison', version: '2.1.0' },
         instructions: instructionsServeur(ctx.espace),
       });
     }
@@ -435,7 +444,8 @@ async function repondre(m: Requete, ctx: ContexteMcp): Promise<unknown> {
       if (!outil) return erreur(id, -32602, `Outil inconnu : ${String(nom)}`);
       const args = (m.params?.arguments && typeof m.params.arguments === 'object' ? m.params.arguments : {}) as Args;
       try {
-        const r = await outil.executer(args, ctx);
+        // Écriture : tracée avant d'être faite (et annulable) ; lecture : aucune écriture possible.
+        const r = await outil.executer(args, outil.annotations.readOnlyHint ? contexteLecture(ctx) : contexteTrace(ctx, outil.name));
         return resultat(id, { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }], structuredContent: r });
       } catch (e) {
         // Erreur d'utilisation ou de base : renvoyée à Claude pour qu'il corrige ou explique.

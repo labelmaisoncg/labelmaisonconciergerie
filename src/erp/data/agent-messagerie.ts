@@ -52,6 +52,11 @@
  * simultanés utilisent la même clé (fil + message du voyageur) : le second
  * est refusé par Repull, rien ne part deux fois.
  *
+ * Actions de l'IA (copilote.ts) : chaque décision (réponse envoyée seule,
+ * réponse à valider, conversation transmise) est aussi tracée dans
+ * `actionsAgent`, textes masqués ; une réponse à valider se retire depuis
+ * Paramètres → Actions de l'IA, un message parti ne se reprend pas.
+ *
  * Réseau injecté (client IA, fetch) : l'auto-contrôle (verifier-agent.ts)
  * simule Claude, Repull, la base et Telegram en mémoire.
  *
@@ -73,6 +78,7 @@ import {
   type ResultatControle,
 } from './controle-reponse.js';
 import type { GroupeNotification } from './notifications.js';
+import { COLLECTION_ACTIONS_AGENT, actionAgentMessagerie, type SortAgent } from './copilote.js';
 import { REGLAGES_AGENT_DEFAUT, reglagesAgent } from './reglages.js';
 import { LIBELLE_TYPE_GUIDE, MAX_GUIDES_PAR_REPONSE, guideEnvoyable, guidesAJoindre, lienGuide, questionsValides, texteAvecGuides, type SignerFichier } from './guides.js';
 import {
@@ -647,6 +653,8 @@ class Passage {
   /** Au moins un contrôle fait pendant ce passage (agent/etat à mettre à jour). */
   controleFait = false;
   private politique: PolitiqueEnvoi = politiqueEnvoi(REGLAGES_AGENT_DEFAUT, true);
+  /** Logement de la conversation en cours (codes et wifi à masquer dans la trace). */
+  private logementEnCours?: Logement;
 
   constructor(private readonly o: OptionsAgent) {
     this.maintenant = o.maintenant ?? (() => new Date());
@@ -698,6 +706,21 @@ class Passage {
       details,
     };
     await this.o.base.ecrire('journal', [l]).catch(() => undefined);
+  }
+
+  /**
+   * Trace de la décision dans « Actions de l'IA » (copilote.ts), textes
+   * masqués. Ne bloque jamais l'agent : le journal garde aussi la décision.
+   */
+  private async tracer(sort: SortAgent, avant: FilMessages, apres: FilMessages | undefined, o: { texte?: string; motif?: string } = {}) {
+    if (!apres) return;
+    try {
+      const espace = await this.o.base.espace();
+      const a = actionAgentMessagerie({ sort, avant, apres, le: horodatageParis(this.maintenant()), espace, ...o, ...(this.logementEnCours ? { logement: this.logementEnCours } : {}) });
+      await this.o.base.ecrire(COLLECTION_ACTIONS_AGENT, [a], AUTEUR_AGENT);
+    } catch {
+      /* trace facultative pour l'agent : la décision est déjà prise et notée au journal */
+    }
   }
 
   /* ------------------------------------------------------ Telegram */
@@ -784,9 +807,11 @@ class Passage {
   /** Transmission à l'équipe (fil escaladé, journal, Telegram). `note` : demande, confiance, réponse proposée gardée. */
   private async transmettre(fil: FilMessages, dernier: Message, raison: RaisonEscalade, resume: string, attente?: string, note?: NoteDecision): Promise<void> {
     let ecrit: FilMessages | undefined;
+    let attenteEnvoyee = false;
     if (attente) {
       try {
         ecrit = (await this.envoyer(fil, dernier, attente, { transmettre: true, raison, resume }, (f) => this.escalade(f, dernier, raison, resume, note)))?.fil;
+        attenteEnvoyee = !!ecrit;
       } catch (e) {
         if (e instanceof DelaiEcoule) throw e;
         if (e instanceof ErreurEnvoi && e.code === 'en_cours') return; // un autre passage s'en occupe
@@ -799,6 +824,7 @@ class Passage {
     const libelle = { argent: 'question d’argent', litige: 'souci à régler', hors_fiche: 'information absente de la fiche', exception: 'demande d’exception', autre: 'à vérifier' }[raison];
     const garde = note?.brouillon ? ' Réponse proposée gardée pour l’équipe.' : '';
     await this.journal(fil, `Conversation avec ${fil.voyageur} transmise à l’équipe (${libelle}) : ${resume}${detailNote(note)}${garde}`);
+    await this.tracer('transmise', fil, ecrit, { motif: `${libelle} : ${resume}`, ...(attenteEnvoyee && attente ? { texte: attente } : {}) });
     await this.telegram(`Label Maison — à vous de jouer\n${fil.voyageur} (${nomPlateforme(fil.canal)}) : ${libelle}.\n${resume}\n\n« ${dernier.texte.slice(0, 500)} »`);
   }
 
@@ -844,6 +870,7 @@ class Passage {
 
   /** Une conversation : reprise d'un envoi commencé, ou décision puis action. */
   private async traiter(fil: FilMessages, dernier: Message, logement: Logement | undefined, reservation: Reservation | undefined): Promise<void> {
+    this.logementEnCours = logement;
     const ec = fil.agent?.enCours?.messageId === dernier.id ? fil.agent.enCours : undefined;
     if (ec) {
       if (this.maintenant().getTime() - instant(ec.depuis) > REPRISE_MAX_MS) {
@@ -864,8 +891,9 @@ class Passage {
         await this.transmettre(fil, dernier, 'autre', `${controleReprise.motif} Une réponse de votre agent en attente d’envoi n’est pas repartie : vérifiez sur la plateforme si le voyageur l’a reçue.`);
         return;
       }
-      await this.envoyer(fil, dernier, ec.texte, {}, (f) => ({ ...f, agent: this.suivi(dernier, 'repondre', ec.resume || 'Réponse envoyée (reprise).') }));
+      const r = await this.envoyer(fil, dernier, ec.texte, {}, (f) => ({ ...f, agent: this.suivi(dernier, 'repondre', ec.resume || 'Réponse envoyée (reprise).') }));
       this.bilan.repondus++;
+      await this.tracer('envoyee', fil, r?.fil, { texte: r?.message?.texte ?? ec.texte });
       return;
     }
 
@@ -925,6 +953,7 @@ class Passage {
       this.bilan.repondus++;
       this.noter(fil, 'envoyee', note);
       await this.journal(fil, `Réponse envoyée seule à ${fil.voyageur}.${detailNote(note)}`);
+      await this.tracer('envoyee', fil, r.fil, { texte: r.message.texte });
       await this.telegram(`Réponse de votre agent à ${fil.voyageur} (${nomPlateforme(r.canal)})\n« ${dernier.texte.slice(0, 300)} »\n→ ${r.message.texte.slice(0, 1500)}`);
     } catch (e) {
       if (e instanceof ErreurEnvoi && (e.code === 'en_cours' || e.code === 'deja_envoye')) return; // déjà envoyé, ou un autre passage s'en occupe
@@ -1038,12 +1067,13 @@ class Passage {
 
   /** Réponse gardée « à valider » : le fil attend l'équipe, qui l'envoie en un clic. */
   private async aValider(fil: FilMessages, dernier: Message, resume: string, motif: string, note: NoteDecision): Promise<void> {
-    await this.majFil(fil.id, (f) =>
+    const suivant = await this.majFil(fil.id, (f) =>
       this.avecAnalyse({ ...f, statut: f.statut === 'clos' ? 'ouvert' : f.statut, traitePar: 'en_attente', agent: this.suivi(dernier, 'a_valider', resume, note) }, note),
     );
     this.bilan.aValider = (this.bilan.aValider ?? 0) + 1;
     this.noter(fil, 'a_valider', note);
     await this.journal(fil, `Réponse préparée pour ${fil.voyageur}, à valider par l’équipe : ${motif}${detailNote(note)}`);
+    await this.tracer('a_valider', fil, suivant, { motif });
     const proposee = (note.brouillon?.texte ?? '').slice(0, 1500);
     await this.telegram(`Réponse à valider pour ${fil.voyageur} (${nomPlateforme(fil.canal)})\n${motif}\n« ${dernier.texte.slice(0, 300)} »\n→ ${proposee}`);
   }

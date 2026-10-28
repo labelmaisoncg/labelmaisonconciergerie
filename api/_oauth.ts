@@ -186,25 +186,25 @@ async function revoquerFamille(base: BaseErp, famille: string): Promise<void> {
 // effet en 1 min au plus) et refusés (un jeton révoqué que Claude rejoue ne
 // relit pas la base à chaque appel).
 const DUREE_CACHE_MS = 60_000;
-const cache = new Map<string, { par: string | null; jusqua: number }>();
+const cache = new Map<string, { par: string | null; client?: string; jusqua: number }>();
 
 /**
- * Jeton d'accès valide ? Renvoie le membre qui a autorisé Claude. `base` :
- * celle de l'espace du jeton (espaceDuJeton) ; un jeton rangé pour un autre
- * espace est refusé.
+ * Jeton d'accès valide ? Renvoie le membre qui a autorisé Claude et le client
+ * OAuth (trace des actions de Claude). `base` : celle de l'espace du jeton
+ * (espaceDuJeton) ; un jeton rangé pour un autre espace est refusé.
  */
-export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: string } | null> {
+export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: string; client?: string } | null> {
   const espace = espaceDuJeton(jeton);
   if (!espace) return null;
   const id = idJeton(jeton);
   const enCache = cache.get(id);
-  if (enCache && enCache.jusqua > Date.now()) return enCache.par ? { par: enCache.par } : null;
+  if (enCache && enCache.jusqua > Date.now()) return enCache.par ? { par: enCache.par, ...(enCache.client ? { client: enCache.client } : {}) } : null;
   const { element: j, revoqueAvant } = await lireAvecRevocation<Jeton>(base, id);
   const expire = j ? Date.parse(j.expire) : 0;
   const valide = !!j && j.type === 'acces' && !j.revoque && espaceDe(j) === espace && expire >= Date.now() && Date.parse(j.creeLe) >= revoqueAvant;
   if (cache.size > 1000) cache.clear();
-  cache.set(id, { par: valide ? j!.par : null, jusqua: valide ? Math.min(Date.now() + DUREE_CACHE_MS, expire) : Date.now() + DUREE_CACHE_MS });
-  return valide ? { par: j!.par } : null;
+  cache.set(id, { par: valide ? j!.par : null, ...(valide && j!.client ? { client: j!.client } : {}), jusqua: valide ? Math.min(Date.now() + DUREE_CACHE_MS, expire) : Date.now() + DUREE_CACHE_MS });
+  return valide ? { par: j!.par, ...(j!.client ? { client: j!.client } : {}) } : null;
 }
 
 /** Connexions en cours dans l'espace de `base` (une par application autorisée), pour la fenêtre « Connecter à Claude ». */

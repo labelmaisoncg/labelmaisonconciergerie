@@ -36,6 +36,8 @@ import { CONSIGNES_CONTROLE } from './controle-reponse';
 import { DUREE_LIEN_GUIDE_S, guidesAJoindre, signerFichierStockage, texteAvecGuides } from './guides';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, type EtatRepull } from './repull-synchro';
 import type { FilMessages, GuideLogement, Journal, Logement, Message, ReglagesAgent, Reservation } from './types';
+import { COLLECTION_ACTIONS_AGENT } from './copilote';
+import type { ActionAgent } from './types-copilote';
 
 /* ------------------------------------------------------------ assertions */
 
@@ -546,6 +548,21 @@ async function principal() {
     );
     base.poser('reservations', reservation);
     base.poser('logements', logement);
+  }
+
+  /* ------------------------------------------- actions de l'IA (copilote) */
+  section('Actions de l’IA : chaque décision tracée, sans code ni wifi');
+  {
+    const actions = base.collection<ActionAgent>(COLLECTION_ACTIONS_AGENT);
+    const envois = actions.filter((a) => a.outil === 'agent_envoi');
+    verifier(envois.length > 0 && envois.every((a) => a.etat === 'faite' && a.effet === 'externe' && !a.annulable && !!a.pasAnnulable), `réponses envoyées seules : tracées, externes, jamais annulables (${envois.length})`);
+    const transmis = actions.filter((a) => a.outil === 'agent_transmission');
+    verifier(transmis.length > 0 && transmis.every((a) => a.etat === 'faite' && !a.annulable), `transmissions tracées, non annulables (${transmis.length})`);
+    verifier(transmis.some((a) => a.effet === 'externe' && a.changements.some((c) => c.champ === 'Message d’attente envoyé')), 'transmission avec message d’attente : effet externe, message noté');
+    verifier(actions.every((a) => a.source === 'agent' && a.client?.genre === 'agent' && a.collection === 'filsMessages' && /^\/erp\/messagerie\//.test(a.lien ?? '')), 'traces de l’agent : source, conversation, lien');
+    const texte = JSON.stringify(actions);
+    verifier(!/motdepasse101|Box-101|4821/.test(texte), 'aucune trace ne contient le wifi ou le code d’accès (réponse qui les donnait comprise)');
+    verifier(envois.length + transmis.length >= 3, 'une trace par décision prise pendant les passages');
   }
 
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
