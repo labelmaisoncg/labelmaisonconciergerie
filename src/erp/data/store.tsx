@@ -480,11 +480,14 @@ function CoeurErp({
     };
 
     const marquerMenageInterneFait = (id: Id): Resultat => {
+      // Gérant seulement (le bouton n'apparaît que pour lui) ; jamais en lecture seule.
+      if (utilisateurRef.current.role !== 'gerant' || lectureSeule) return echec('Réservé au gérant.');
       const m = trouver('missions', id);
       if (!m) return echec('Mission introuvable.');
       const r = menageInterneFait(m);
       if (!r.ok) return echec(r.erreur);
-      appliquer((d) => modifier(d, 'missions', id, (x) => ({ ...x, statut: 'validee' })), 'Ménage interne fait', 'mission', id);
+      // Revérifié sur la version écrite : jamais un ménage de prestataire, même changé entre-temps.
+      appliquer((d) => modifier(d, 'missions', id, (x) => (menageInterneFait(x).ok ? { ...x, statut: 'validee' } : x)), 'Ménage interne fait', 'mission', id);
       return OK;
     };
 

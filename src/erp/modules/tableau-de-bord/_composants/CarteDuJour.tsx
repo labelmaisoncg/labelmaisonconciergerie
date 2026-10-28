@@ -53,7 +53,7 @@ export function CarteDuJour() {
         })}
         actionMenage={(p) =>
           // Ménage interne (prévu par Claude) : personne d'autre ne le termine, l'équipe le marque « Fait ».
-          p.menage?.interne && p.menage.missionId && p.menage.statut !== 'fait' && !d.lectureSeule
+          p.menage?.interne && p.menage.missionId && p.menage.statut !== 'fait' && d.utilisateur.role === 'gerant' && !d.lectureSeule
             ? {
                 libelle: 'Marquer le ménage fait',
                 onClick: () => {
