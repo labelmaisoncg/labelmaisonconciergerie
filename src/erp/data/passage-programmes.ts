@@ -372,7 +372,9 @@ class Passage {
       const raisons = raisonsARelire(r, signaux);
       if (raisons.length) {
         // Son texte a été écrit avant que le souci soit connu (souvent un éloge) : retiré, l'équipe écrit l'avis.
-        const ligne: AvisADeposer = { ...a, statut: 'a_relire', raisons: [...new Set([...(a.raisons ?? []), ...raisons])], texte: '', source: 'modele' };
+        // Un texte retouché par l'équipe reste le sien (à relire).
+        const garde = a.source === 'equipe';
+        const ligne: AvisADeposer = { ...a, statut: 'a_relire', raisons: [...new Set([...(a.raisons ?? []), ...raisons])], ...(garde ? {} : { texte: '', source: 'modele' as const }) };
         if (await this.ecrireAvis(ligne, ['pret'])) this.bilan.avisARelire++;
       }
     }
@@ -508,7 +510,8 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
 
   let vues = etat.vues;
   try {
-    const reglagesLus = await o.base.lire<Reglage>('reglages', ['agent', ID_REGLAGES_PROGRAMMES, ID_REGLAGES_SUPPLEMENTS]);
+    // 'societe' : nom de la société, signature des réponses publiées par l'ERP (avis-auto.ts, signatureSociete).
+    const reglagesLus = await o.base.lire<Reglage>('reglages', ['agent', ID_REGLAGES_PROGRAMMES, ID_REGLAGES_SUPPLEMENTS, 'societe']);
     const [reservations, envois, avis] = await Promise.all([
       o.base.lire<Reservation>('reservations'),
       o.base.lire<EnvoiProgramme>(COLLECTION_ENVOIS_PROGRAMMES),
@@ -534,19 +537,22 @@ export async function lancerProgrammes(o: OptionsProgrammes): Promise<BilanProgr
     if (!allume(auto.voyageurs) && reservations.some((r) => sejourAvecAvis(r, aujourdhui))) {
       await p.avis({ reservations, fils: lireFils, logements, avis, ...(await lireSignaux()) });
     }
-    if (autoAllume) {
-      const [reponses, s] = await Promise.all([o.base.lire<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS), lireSignaux()]);
+    // Un envoi coupé (marque « en cours ») se vérifie même réglage éteint depuis : relu chez la plateforme, jamais renvoyé.
+    const reponses = await o.base.lire<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS).catch(() => [] as ReponseAvisAuto[]);
+    const enCours = avis.some((a) => a?.publication?.statut === 'en_cours') || reponses.some((x) => x?.publication?.statut === 'en_cours');
+    if (autoAllume || enCours) {
+      const s = await lireSignaux();
       let proprietaires: Proprietaire[] | null = null;
       const b = await passerAvisAuto(o, {
-          reglagesLus,
-          reservations,
-          logements,
-          avis,
-          reponses,
-          incidents: s.incidents,
-          controles: s.controles,
-          fils: lireFils,
-          proprietaires: async () => (proprietaires ??= await o.base.lire<Proprietaire>('proprietaires').catch(() => [] as Proprietaire[])),
+        reglagesLus,
+        reservations,
+        logements,
+        avis,
+        reponses,
+        incidents: s.incidents,
+        controles: s.controles,
+        fils: lireFils,
+        proprietaires: async () => (proprietaires ??= await o.base.lire<Proprietaire>('proprietaires').catch(() => [] as Proprietaire[])),
       });
       if (b.lance) {
         const { erreurs, ...reste } = b;

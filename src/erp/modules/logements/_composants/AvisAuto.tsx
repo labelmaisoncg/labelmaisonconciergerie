@@ -1,27 +1,31 @@
 /**
  * Publication automatique des avis (octobre 2026, comme Smoobu), dans
- * Logements → Avis : les deux réglages du gérant (éteints par défaut), et
- * « À valider » — avis sur les voyageurs gardés (séjour sensible) et
- * réponses gardées (avis pas positif), avec « Publier », « Modifier »,
- * « Ne pas publier » / « Ne pas répondre ».
+ * Logements → Avis : la carte « Publication automatique » du gérant (deux
+ * réglages, éteints par défaut), et « À valider » — avis sur les voyageurs
+ * gardés (séjour sensible) et réponses gardées (avis pas positif), avec
+ * « Publier », « Modifier », « Ne pas publier » / « Ne pas répondre ». Pour
+ * un avis sur un voyageur, le gérant choisit la note (1 à 5 étoiles) et « Je
+ * recommande » avant de publier.
  *
  * « Publier » passe par le serveur (api/_erp-avis.ts : gérant seulement,
  * avis relu chez la plateforme, jamais deux fois, tracé dans « Actions de
  * l'IA »). En démonstration, rien ne part : la publication est simulée.
- * Règles : src/erp/data/avis-auto.ts.
+ * Réglage éteint : rien de tout cela (avisAValider est vide). Règles :
+ * src/erp/data/avis-auto.ts.
  */
 import { useMemo, useState } from 'react';
 import { ChevronRight, Send, Star } from 'lucide-react';
-import { Alert, Badge, Button, Card, CardHeader, Drawer, Interrupteur, Modal, Textarea } from '../../../ui';
+import { Alert, Badge, Button, Card, CardHeader, Drawer, Interrupteur, Modal, Textarea, cn } from '../../../ui';
 import { useErp, type ErpContexte } from '../../../data/store';
-import { AUJOURDHUI, dateCourte, horodatageMaintenant, note as noteFr, pluriel } from '../../../data/format';
+import { AUJOURDHUI, dateCourte, horodatageMaintenant, jourMois, pluriel } from '../../../data/format';
 import { problemesReponse, separerAvis } from '../../../data/avis';
 import {
   COLLECTION_REPONSES_AVIS,
   EXPLICATIONS_AVIS_AUTO,
-  NOTE_AVIS_AUTO,
   avecAvisAuto,
   avisAValider,
+  choixInitial,
+  noteDeLAvis,
   problemesTexteAvis,
   reglagesAvisAuto,
   type ElementAValider,
@@ -34,19 +38,32 @@ import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serv
 
 const NOMS: Record<string, string> = { airbnb: 'Airbnb', booking: 'Booking.com' };
 const nomPlateforme = (canal: string) => NOMS[canal] ?? 'la plateforme';
+const etoiles = (n: number) => `${n} étoile${n > 1 ? 's' : ''}`;
+
+/** Titre unique de l'encadré des raisons, partout (panneau, fiche du séjour, avis). */
+export const TITRE_RAISONS = 'Pourquoi il attend votre accord';
 
 /* ------------------------------------------------------------ actions */
 
+/** Note et « Je recommande » choisis par le gérant (avis sur le voyageur). */
+export interface ChoixPublication {
+  note: number;
+  recommande: boolean;
+}
+
 /**
- * Publie un avis gardé « à valider » avec le texte du gérant. Démo : rien ne
- * part, la ligne passe « publiée » et la trace est ajoutée, comme en vrai.
+ * Publie un avis gardé « à valider » avec le texte du gérant (et, pour un
+ * avis sur le voyageur, la note et « Je recommande » qu'il a choisis). Démo :
+ * rien ne part, la ligne passe « publiée » et la trace est ajoutée, comme en
+ * vrai.
  */
-export async function publierAvisValide(d: ErpContexte, genre: ElementAValider['genre'], reservationId: string, texte: string): Promise<string> {
+export async function publierAvisValide(d: ErpContexte, genre: ElementAValider['genre'], reservationId: string, texte: string, choix?: ChoixPublication): Promise<string> {
   const t = texte.trim();
+  if (genre === 'voyageur' && !choix) throw new Error('Choisissez la note du voyageur avant de publier.');
   if (d.demo) {
     const le = horodatageMaintenant();
     const r = d.reservations.find((x) => x.id === reservationId);
-    if (genre === 'voyageur') {
+    if (genre === 'voyageur' && choix) {
       const ligne = d.avisADeposer.find((a) => a.id === reservationId);
       if (!ligne?.publication) throw new Error('Cet avis n’attend plus votre accord.');
       const modifie = t !== (ligne.publication.texte ?? '').trim();
@@ -56,10 +73,15 @@ export async function publierAvisValide(d: ErpContexte, genre: ElementAValider['
         texte: t,
         traiteLe: le,
         traitePar: d.utilisateur.nom,
-        publication: { ...ligne.publication, statut: 'publie', texte: t, le, publieLe: le, par: d.utilisateur.nom, ...(modifie ? { modifie: true } : {}) },
+        publication: { ...ligne.publication, statut: 'publie', texte: t, le, publieLe: le, par: d.utilisateur.nom, note: choix.note, recommande: choix.recommande, ...(modifie ? { modifie: true } : {}) },
       });
-      if (r) d.upsert('actionsAgent', actionPublicationAvis({ genre, reservation: r, plateforme: 'Airbnb', texte: t, le, espace: espaceOuvert().id, par: d.utilisateur.email, modifie, note: NOTE_AVIS_AUTO }));
-      return 'Démonstration : rien n’est parti, l’avis serait publié sur Airbnb.';
+      if (r) {
+        d.upsert(
+          'actionsAgent',
+          actionPublicationAvis({ genre, reservation: r, plateforme: 'Airbnb', texte: t, le, espace: espaceOuvert().id, par: d.utilisateur.email, modifie, note: choix.note, recommande: choix.recommande }),
+        );
+      }
+      return `Démonstration : rien n’est parti, l’avis serait publié sur Airbnb avec ${etoiles(choix.note)}.`;
     }
     const ligne = d.reponsesAvis.find((x) => x.id === reservationId);
     if (!ligne) throw new Error('Cette réponse n’attend plus votre accord.');
@@ -68,7 +90,13 @@ export async function publierAvisValide(d: ErpContexte, genre: ElementAValider['
     if (r) d.upsert('actionsAgent', actionPublicationAvis({ genre, reservation: r, plateforme: nomPlateforme(ligne.canal), texte: t, le, espace: espaceOuvert().id, par: d.utilisateur.email, modifie }));
     return `Démonstration : rien n’est parti, la réponse serait publiée sur ${nomPlateforme(ligne.canal)}.`;
   }
-  const res = await appelerServeur<{ message: string }>('/api/erp-agent', 'POST', { action: 'avis_publier', genre, reservationId, texte: t });
+  const res = await appelerServeur<{ message: string }>('/api/erp-agent', 'POST', {
+    action: 'avis_publier',
+    genre,
+    reservationId,
+    texte: t,
+    ...(choix ? { rating: choix.note, isRevieweeRecommended: choix.recommande } : {}),
+  });
   // La ligne vient du serveur : relue et posée telle quelle (sans être réécrite).
   await d.relire(genre === 'voyageur' ? 'avisADeposer' : COLLECTION_REPONSES_AVIS, reservationId);
   return res.message;
@@ -101,11 +129,78 @@ export function rouvrirAvis(d: ErpContexte, genre: ElementAValider['genre'], res
   if (ligne) d.upsert('reponsesAvis', { ...ligne, publication: { ...ligne.publication, statut: 'a_valider', le } });
 }
 
+/** « Abdel a choisi de ne pas le publier (24 sept.). » */
+export function phraseRefus(genre: ElementAValider['genre'], par: string | undefined, le: string): string {
+  const quand = (le.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jourMois : dateCourte)(le.slice(0, 10));
+  return `${par || 'Le gérant'} a choisi de ne pas ${genre === 'voyageur' ? 'le publier' : 'répondre'} (${quand}).`;
+}
+
+/* --------------------------------------------- note avant « Publier » */
+
+/**
+ * Note du voyageur (5 étoiles touchables) et « Je recommande ». `note` nulle :
+ * rien de choisi (séjour à problème), « Publier » attend.
+ */
+export function ChoixNote({
+  note,
+  recommande,
+  onNote,
+  onRecommande,
+  disabled,
+}: {
+  note: number | null;
+  recommande: boolean;
+  onNote: (n: number) => void;
+  onRecommande: (v: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="mt-2 rounded-lg border border-(--lm-bord) px-3 py-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <div role="radiogroup" aria-label="Note du voyageur" className="-ml-1 flex">
+          {[1, 2, 3, 4, 5].map((n) => {
+            const plein = note !== null && n <= note;
+            return (
+              <button
+                key={n}
+                type="button"
+                role="radio"
+                aria-checked={note === n}
+                aria-label={etoiles(n)}
+                disabled={disabled}
+                onClick={() => onNote(n)}
+                className="grid size-9 place-items-center rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:cursor-not-allowed"
+              >
+                <Star aria-hidden className={cn('size-6', plein ? 'fill-(--lm-or) text-(--lm-or)' : 'text-(--lm-encre-3)')} />
+              </button>
+            );
+          })}
+        </div>
+        <span className="text-[13px] text-(--lm-encre-2)">{note === null ? 'Choisissez la note' : `${note} sur 5`}</span>
+      </div>
+      <div className="mt-1 flex items-center justify-between gap-3 border-t border-(--lm-bord) pt-2">
+        <span aria-hidden className="text-[13.5px] text-(--lm-encre)">
+          Je recommande ce voyageur
+        </span>
+        <Interrupteur actif={recommande} label="Je recommande ce voyageur" disabled={disabled} onChange={onRecommande} />
+      </div>
+    </div>
+  );
+}
+
+/** Phrase sous le texte d'un avis sur le voyageur à valider : ce qui sera publié, le délai, et que c'est définitif. */
+export function phraseAvantPublication(note: number | null, recommande: boolean, joursRestants?: number): string {
+  const delai = joursRestants !== undefined ? ` Encore ${pluriel(joursRestants, 'jour')} pour le faire.` : '';
+  const quoi = note === null ? 'Choisissez la note avant de publier.' : `Il sera publié sur Airbnb avec ${etoiles(note)}${recommande ? '' : ', sans recommandation'}.`;
+  return `${quoi}${delai} Un avis publié ne se modifie plus.`;
+}
+
 /* ----------------------------------------------------------- réglages */
 
 /**
- * Les deux réglages (gérant) : un interrupteur et une phrase chacun.
- * Allumer demande une confirmation (ce qui est publié ne se retire pas).
+ * « Publication automatique » (gérant) : deux lignes, un interrupteur et une
+ * phrase chacune. Allumer demande une confirmation (ce qui est publié ne se
+ * retire pas).
  */
 export function ReglagesAvisAutoCarte({ className }: { className?: string }) {
   const d = useErp();
@@ -121,7 +216,10 @@ export function ReglagesAvisAutoCarte({ className }: { className?: string }) {
 
   return (
     <Card flush className={className}>
-      <ul className="divide-y divide-(--lm-bord)">
+      <div className="p-4 pb-0 sm:p-5 sm:pb-0">
+        <CardHeader titre="Publication automatique" description="Rien n’est publié tant que vous ne l’allumez pas." />
+      </div>
+      <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
         {cles.map((cle) => (
           <li key={cle} className="flex items-start gap-3 px-4 py-3.5 sm:px-5">
             <div className="min-w-0 flex-1">
@@ -133,7 +231,7 @@ export function ReglagesAvisAutoCarte({ className }: { className?: string }) {
             <span className="mt-0.5">
               <Interrupteur
                 actif={reglages[cle].actif}
-                label={`${reglages[cle].actif ? 'Éteindre' : 'Allumer'} « ${EXPLICATIONS_AVIS_AUTO[cle].titre} »`}
+                label={`${reglages[cle].actif ? 'Éteindre' : 'Allumer'} ${EXPLICATIONS_AVIS_AUTO[cle].libelle}`}
                 onChange={(v) => (v ? setAllumer(cle) : enregistrer(cle, false))}
               />
             </span>
@@ -144,11 +242,11 @@ export function ReglagesAvisAutoCarte({ className }: { className?: string }) {
         ouvert={!!allumer}
         onFermer={() => setAllumer(null)}
         taille="sm"
-        titre={allumer === 'voyageurs' ? 'Publier automatiquement les avis sur les voyageurs\u00a0?' : 'Publier automatiquement les réponses aux avis\u00a0?'}
+        titre={allumer === 'voyageurs' ? 'Publier automatiquement les avis sur les voyageurs ?' : 'Publier automatiquement les réponses aux avis ?'}
         description={
           allumer === 'voyageurs'
             ? 'Deux jours après chaque départ Airbnb, votre agent publie un avis 5 étoiles sur le voyageur. Un séjour avec un incident, une plainte ou un litige attend votre accord. Un avis publié ne se modifie plus.'
-            : 'Sous chaque avis positif sur Airbnb et Booking.com, votre agent publie une réponse. Un avis mitigé ou négatif attend votre accord. Une réponse publiée ne se reprend pas.'
+            : 'Sous chaque avis 5 sur 5 sur Airbnb, ou 9 sur 10 et plus sur Booking.com, sans reproche, votre agent publie une réponse signée du nom de votre société. Les autres attendent votre accord. Une réponse publiée ne se reprend pas.'
         }
         pied={
           <>
@@ -173,11 +271,12 @@ export function ReglagesAvisAutoCarte({ className }: { className?: string }) {
 
 /* --------------------------------------------------------- à valider */
 
-/** « Daniel · Incident pendant le séjour · encore 6 j » : une ligne secondaire. */
+/** « encore 6 j · Un incident pendant le séjour · Corbeil Centre Familial » : le délai d'abord. */
 function detail(e: ElementAValider, logement?: string): string {
-  const raison = e.raisons[0]?.replace(/\s*:\s*à vérifier$/, '');
-  if (e.genre === 'voyageur') return [raison, logement, e.joursRestants !== undefined ? `encore ${e.joursRestants} j` : ''].filter(Boolean).join(' · ');
-  return [e.note !== undefined ? `${noteFr(e.note)} sur 5` : '', raison, nomPlateforme(e.canal)].filter(Boolean).join(' · ');
+  // Réponse : la note est déjà en tête de ligne, la raison suivante la complète.
+  const raison = e.raisons.find((x) => e.genre === 'voyageur' || !/^Note de /.test(x))?.replace(/\s*:\s*à vérifier$/, '');
+  if (e.genre === 'voyageur') return [e.joursRestants !== undefined ? `encore ${e.joursRestants} j` : '', raison, logement].filter(Boolean).join(' · ');
+  return [noteDeLAvis(e.note, e.canal), raison, nomPlateforme(e.canal)].filter(Boolean).join(' · ');
 }
 
 /** « À valider » : ce qui attend l'accord du gérant avant d'être publié (rien si la liste est vide). */
@@ -228,14 +327,18 @@ export function CarteAValider({ className }: { className?: string }) {
 }
 
 /**
- * Un avis à valider : pourquoi il attend, le texte (modifiable), puis
- * « Publier » ou « Ne pas publier » / « Ne pas répondre ».
+ * Un avis à valider : pourquoi il attend, le texte (modifiable), la note et
+ * « Je recommande » (avis sur le voyageur), puis « Publier » ou « Ne pas
+ * publier » / « Ne pas répondre ».
  */
 export function PanneauAValider({ element: e, onFermer }: { element: ElementAValider; onFermer: () => void }) {
   const d = useErp();
   const r = d.reservations.find((x) => x.id === e.reservationId);
   const logement = d.logements.find((l) => l.id === e.logementId);
   const voyageur = e.genre === 'voyageur';
+  const initial = choixInitial(e.raisons, { note: e.noteChoisie, recommande: e.recommande });
+  const [note, setNote] = useState<number | null>(initial.note);
+  const [recommande, setRecommande] = useState(initial.recommande);
   const [texte, setTexte] = useState(e.texte);
   const [edition, setEdition] = useState(voyageur || !e.texte.trim());
   const [enCours, setEnCours] = useState(false);
@@ -248,13 +351,14 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
       ? problemesTexteAvis(texte, { nomVoyageur: r?.voyageur.nom, ...(logement ? { logement } : {}) })
       : problemesReponse(texte, { nomVoyageur: r?.voyageur.nom, textePrive: prive, ...(logement ? { logement } : {}) })
     : [];
+  const pret = !!texte.trim() && !problemes.length && (!voyageur || note !== null);
 
   const publier = async () => {
-    if (enCours) return;
+    if (enCours || !pret) return;
     setEnCours(true);
     setErreur(null);
     try {
-      setFait(await publierAvisValide(d, e.genre, e.reservationId, texte));
+      setFait(await publierAvisValide(d, e.genre, e.reservationId, texte, voyageur && note !== null ? { note, recommande } : undefined));
     } catch (x) {
       setErreur(x instanceof ErreurServeur || x instanceof Error ? x.message : 'La publication n’a pas abouti : réessayez dans un instant.');
     } finally {
@@ -290,7 +394,7 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
                 Modifier
               </Button>
             )}
-            <Button variant="primary" icone={<Send />} chargement={enCours} disabled={!texte.trim() || problemes.length > 0} onClick={() => void publier()}>
+            <Button variant="primary" icone={<Send />} chargement={enCours} disabled={!pret} onClick={() => void publier()}>
               Publier
             </Button>
           </>
@@ -304,7 +408,7 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
       ) : (
         <>
           {e.raisons.length > 0 && (
-            <Alert tone="alerte" titre="Pourquoi il attend votre accord">
+            <Alert tone="alerte" titre={TITRE_RAISONS}>
               <ul>
                 {e.raisons.map((x) => (
                   <li key={x}>{x}</li>
@@ -319,7 +423,7 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
                 <h3 className="text-[13px] font-semibold text-(--lm-encre)">L’avis de {e.voyageur}</h3>
                 {e.note !== undefined && (
                   <Badge tone="neutre" icone={<Star />}>
-                    {noteFr(e.note)} sur 5
+                    {noteDeLAvis(e.note, e.canal)}
                   </Badge>
                 )}
               </div>
@@ -328,7 +432,8 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
           )}
 
           <section className="mt-4" aria-label={voyageur ? 'Avis à publier' : 'Réponse à publier'}>
-            <h3 className="text-[13px] font-semibold text-(--lm-encre)">{voyageur ? 'Votre avis, 5 étoiles' : 'Votre réponse'}</h3>
+            <h3 className="text-[13px] font-semibold text-(--lm-encre)">{voyageur ? 'Votre avis' : 'Votre réponse'}</h3>
+            {voyageur && <ChoixNote note={note} recommande={recommande} onNote={setNote} onRecommande={setRecommande} disabled={!gerant} />}
             {edition ? (
               <Textarea
                 aria-label={voyageur ? 'Texte de l’avis' : 'Texte de la réponse'}
@@ -350,8 +455,8 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
             <p className="mt-2 text-[12.5px] text-(--lm-encre-2)">
               {gerant
                 ? voyageur
-                  ? `Publié sur Airbnb avec 5 étoiles${e.joursRestants !== undefined ? `, encore ${pluriel(e.joursRestants, 'jour')} pour le faire` : ''}. Un avis publié ne se modifie plus.`
-                  : `Publiée sous l’avis, sur ${nomPlateforme(e.canal)}. Une réponse publiée ne se reprend pas.`
+                  ? phraseAvantPublication(note, recommande, e.joursRestants)
+                  : `Elle sera publiée sous l’avis, sur ${nomPlateforme(e.canal)}. Une réponse publiée ne se reprend pas.`
                 : 'Seul le gérant publie cet avis.'}
             </p>
           </section>

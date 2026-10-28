@@ -50,7 +50,7 @@ export interface AvisRedige {
 export async function redigerAvisVoyageur(
   o: OptionsRedactionAvis,
   r: Reservation,
-  logement: Pick<Logement, 'nom' | 'ville'> | undefined,
+  logement: (Pick<Logement, 'nom' | 'ville'> & Partial<Pick<Logement, 'adresse'>>) | undefined,
   fils: readonly FilMessages[],
   raisons: readonly string[],
   langue?: string,
@@ -90,7 +90,7 @@ export async function redigerAvisVoyageur(
     }
     // Un avis public : jamais de lien, d'adresse, de chiffre ni d'e-mail sans relecture (alerte de forme,
     // pas un souci du séjour : le texte, même élogieux, reste proposé, à relire).
-    const alerte = alerteTexteAvis(res.texte);
+    const alerte = alerteTexteAvis(res.texte, logement);
     if (alerte) res.raisons.push(alerte);
   } catch (e) {
     res.echec = { plafond: e instanceof ErreurAssistant && e.code === 'plafond', message: texteErreurIA(e) };

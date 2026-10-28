@@ -567,10 +567,14 @@ export interface EntreePublicationAvis {
   /** Texte retouché par le gérant avant de publier. */
   modifie?: boolean;
   logement?: Pick<Logement, 'fiche'>;
-  /** Note donnée au voyageur (avis sur le voyageur). */
+  /** Note donnée au voyageur (avis sur le voyageur) et « Je recommande » (oui, sans précision). */
   note?: number;
+  recommande?: boolean;
   id?: string;
 }
+
+/** « de Laura J. », « d’Antoine G. » : élision devant une voyelle. */
+const de = (nom: string) => (/^[aeiouyàâéèêîôûAEIOUYÀÂÉÈÊÎÔÛ]/.test(nom) ? `d’${nom}` : `de ${nom}`);
 
 /**
  * Trace d'un avis publié sur la plateforme (« Actions de l'IA ») : action
@@ -582,8 +586,9 @@ export function actionPublicationAvis(o: EntreePublicationAvis): ActionAgent {
   const cible = prenomInitiale(o.reservation.voyageur?.nom);
   const texte = texteMasque(o.texte, EXTRAIT, o.logement);
   const voyageur = o.genre === 'voyageur';
-  const quand = o.par ? 'après votre accord' : 'seul';
-  const resume = voyageur ? `Avis sur ${cible} publié ${quand} sur ${o.plateforme}${o.note ? ` (${o.note} étoiles)` : ''}.` : `Réponse à l’avis de ${cible} publiée ${quand} sur ${o.plateforme}.`;
+  // Qui l'a publié (seul, ou le gérant) est dit par l'état affiché (etatAffiche), pas dans la phrase.
+  const etoiles = o.note ? `${o.note} étoile${o.note > 1 ? 's' : ''}` : '';
+  const resume = voyageur ? `Avis sur ${cible} publié sur ${o.plateforme}${etoiles ? ` (${etoiles})` : ''}.` : `Réponse à l’avis ${de(cible)} publiée sur ${o.plateforme}.`;
   return borner({
     id: o.id ?? idAction(),
     le: o.le,
@@ -598,7 +603,7 @@ export function actionPublicationAvis(o: EntreePublicationAvis): ActionAgent {
     resume: phrase(resume),
     changements: [
       { champ: voyageur ? 'Avis publié' : 'Réponse publiée', apres: texte || 'publié' },
-      ...(voyageur && o.note ? [{ champ: 'Note', apres: `${o.note} étoiles, recommandé` }] : []),
+      ...(voyageur && o.note ? [{ champ: 'Note', apres: `${etoiles}${o.recommande === false ? ', pas recommandé' : ', recommandé'}` }] : []),
     ],
     effet: 'externe',
     etat: 'faite',

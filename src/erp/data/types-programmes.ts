@@ -100,6 +100,9 @@ export interface PublicationAvis {
   deja?: true;
   /** Texte retouché par le gérant avant de publier. */
   modifie?: true;
+  /** Avis sur le voyageur : note donnée (1 à 5 étoiles) et « Je recommande ». La publication automatique donne 5 et recommande. */
+  note?: number;
+  recommande?: boolean;
 }
 
 /**

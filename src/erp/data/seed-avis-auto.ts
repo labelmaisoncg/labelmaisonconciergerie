@@ -2,19 +2,22 @@
  * Démonstration de la publication automatique des avis (avis-auto.ts) : les
  * deux réglages allumés depuis le 15 septembre ; les avis sur les voyageurs
  * des séjours Airbnb terminés depuis publiés seuls deux jours après le départ
- * (ou par Abdel, depuis « À valider »), deux séjours à valider (incident,
- * contrôle à revoir), le dernier séjour prévu pour après-demain ; des
- * réponses publiées sous les avis positifs, deux réponses à valider (avis
- * mitigés), une réponse écartée par le gérant. Chaque publication est dans
- * « Actions de l'IA ». Rien n'est jamais envoyé : c'est la démonstration.
+ * avec 5 étoiles (ou par Abdel, depuis « À valider », avec la note qu'il a
+ * choisie), deux séjours à valider (incident, contrôle à revoir), le dernier
+ * séjour prévu pour demain ; des réponses publiées sous les avis 5 sur 5
+ * (Airbnb) ou 10 sur 10 (Booking.com), les autres à valider, une réponse
+ * écartée par le gérant. Réponses signées du nom de la société s'il est
+ * enregistré (pas dans la démonstration : sans signature). Chaque publication
+ * est dans « Actions de l'IA ». Rien n'est jamais envoyé : c'est la
+ * démonstration.
  */
 import { lireAvis, prenomPublic, reponseModele } from './avis';
-import { PAR_PUBLICATION_AUTO, jourPublicationAuto, raisonsReponseAValider } from './avis-auto';
+import { PAR_PUBLICATION_AUTO, jourPublicationAuto, raisonsReponseAValider, signatureSociete } from './avis-auto';
 import { actionPublicationAvis } from './copilote';
 import { ID_LABEL_MAISON } from './espaces';
 import { DATE_DEMO } from './format';
 import { masquerCoordonnees } from './masquage';
-import { ID_REGLAGES_PROGRAMMES, ajouterJoursISO, prenomDe, signatureProgrammes } from './messages-programmes';
+import { ID_REGLAGES_PROGRAMMES, ajouterJoursISO, prenomDe } from './messages-programmes';
 import type { ErpDonnees, Reservation } from './types';
 import type { ActionAgent } from './types-copilote';
 import type { AvisADeposer, ReglagesMessagesProgrammes, ReponseAvisAuto } from './types-programmes';
@@ -22,11 +25,14 @@ import type { AvisADeposer, ReglagesMessagesProgrammes, ReponseAvisAuto } from '
 /** Allumés par Abdel le 15 septembre. */
 const ALLUME_LE = '2026-09-15T09:05:00+02:00';
 const ABDEL = { nom: 'Abdel' };
-/** Séjours publiés par Abdel depuis « À valider » (incident pendant le séjour, relu puis publié). */
-const PUBLIES_PAR_ABDEL = new Set(['res-0025', 'res-0152']);
-/** Réponses : publiées seules, à valider, écartée par le gérant. */
-const REPONSES_PUBLIEES = ['res-0178', 'res-0199', 'res-0234', 'res-0060', 'res-0091'];
-const REPONSES_A_VALIDER = ['res-0179', 'res-0258'];
+/** Séjours publiés par Abdel depuis « À valider » (incident pendant le séjour, relu puis publié), avec la note qu'il a choisie. */
+const PUBLIES_PAR_ABDEL = new Map([
+  ['res-0025', 4],
+  ['res-0152', 5],
+]);
+/** Réponses : publiées seules si l'avis le permet (raisonsReponseAValider vide), sinon à valider ; une écartée par le gérant. */
+const REPONSES_PUBLIEES = ['res-0150', 'res-0024', 'res-0256', 'res-0199', 'res-0060'];
+const REPONSES_A_VALIDER = ['res-0179', 'res-0258', 'res-0091'];
 const REPONSE_ECARTEE = 'res-0151';
 
 const heure = (jour: string, hm: string) => `${jour}T${hm}:00+02:00`;
@@ -54,6 +60,7 @@ export function creerAvisAutoDemo(
       return { ...a, publication: { statut: 'a_valider', avisId: `demo-${r.id}`, le: heure(jour, '10:01'), texte: a.texte ?? '', raisons: a.raisons ?? [] } };
     }
     const parAbdel = PUBLIES_PAR_ABDEL.has(r.id);
+    const note = PUBLIES_PAR_ABDEL.get(r.id) ?? 5;
     const texte =
       a.texte?.trim() ||
       `${prenomDe(r.voyageur.nom)} a séjourné dans notre logement et a suivi les consignes. Merci pour ce séjour.`;
@@ -69,7 +76,8 @@ export function creerAvisAutoDemo(
         espace: ID_LABEL_MAISON,
         // Le nom du membre (l'écran nomme les membres d'après leur adresse ; la démonstration n'en montre aucune).
         ...(parAbdel ? { par: ABDEL.nom } : {}),
-        note: 5,
+        note,
+        recommande: true,
         logement: logement(r),
       }),
     );
@@ -79,12 +87,12 @@ export function creerAvisAutoDemo(
       texte,
       traiteLe: le,
       traitePar: parAbdel ? ABDEL.nom : PAR_PUBLICATION_AUTO,
-      publication: { statut: 'publie', avisId: `demo-${r.id}`, le, publieLe: le, par: parAbdel ? ABDEL.nom : PAR_PUBLICATION_AUTO, texte },
+      publication: { statut: 'publie', avisId: `demo-${r.id}`, le, publieLe: le, par: parAbdel ? ABDEL.nom : PAR_PUBLICATION_AUTO, texte, note, recommande: true },
     };
   });
 
-  // Réponses aux avis : texte simple au ton de la maison (comme sans IA), signé.
-  const signature = signatureProgrammes({ reglages });
+  // Réponses aux avis : texte simple au ton de la maison (comme sans IA), signé du nom de la société s'il est enregistré.
+  const signature = signatureSociete(reglages);
   const reponsesAvis: ReponseAvisAuto[] = [];
   // Avis écrit le lendemain du départ, réponse le surlendemain (jamais après aujourd'hui).
   const jourReponse = (r: Reservation) => (ajouterJoursISO(r.depart, 3) > DATE_DEMO ? DATE_DEMO : ajouterJoursISO(r.depart, 3));
@@ -106,7 +114,8 @@ export function creerAvisAutoDemo(
   for (const id of REPONSES_PUBLIEES) {
     const r = parId.get(id);
     const a = r ? lireAvis(r) : null;
-    if (!r || !a) continue;
+    // Seulement un avis qui partirait seul pour de vrai (5 sur 5 sur Airbnb, 9 sur 10 et plus sur Booking.com, sans reproche).
+    if (!r || !a || raisonsReponseAValider(a).length) continue;
     const le = heure(jourReponse(r), '10:04');
     const texte = reponseModele(a, { prenom: prenomPublic(r.voyageur.nom), signature });
     const x = ligne(r, { statut: 'publie', avisId: `demo-rep-${id}`, le, publieLe: le, par: PAR_PUBLICATION_AUTO, texte });

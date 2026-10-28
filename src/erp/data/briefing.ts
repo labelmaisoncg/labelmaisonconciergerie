@@ -32,7 +32,7 @@ import { fileDuJour } from './crm-assistant.js';
 import { estFactureMensuelle, factureFigee } from './factures-mensuelles.js';
 import { completudeFiche } from './fiche-agent.js';
 import { incidentsATraiter, lienIncident } from './incidents-erp.js';
-import { avisADeposerEquipe, avisAValider } from './avis-auto.js';
+import { avisADeposerEquipe, avisAValider, libelleAValider } from './avis-auto.js';
 import type { GroupeNotification, VarianteNotification } from './notifications.js';
 import { sansChargeLe } from './operations.js';
 import { conseillerPrix, lireElementsPrix } from './prix-conseils.js';
@@ -236,13 +236,14 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
       lien: `/erp/reservations/${encodeURIComponent(aDeposer[0].reservation.id)}`,
     });
   // Publication automatique des avis : ce qui attend l'accord du gérant avant de partir (Logements → Avis).
-  const aValider = e.gerant ? avisAValider({ reservations: e.reservations, avisADeposer: e.avisADeposer ?? [], reponsesAvis: e.reponsesAvis ?? [] }, j) : [];
+  const aValider = e.gerant ? avisAValider({ reservations: e.reservations, avisADeposer: e.avisADeposer ?? [], reponsesAvis: e.reponsesAvis ?? [], reglages: e.reglages ?? [] }, j) : [];
   if (aValider.length)
     sujets.push({
       cle: 'avis_valider',
       n: aValider.length,
-      phrase: `${aValider.length > 1 ? `${aValider.length} avis à valider` : 'Un avis à valider'} avant publication : ${liste(aValider.map((x) => x.voyageur || 'un voyageur'))}.`,
-      court: nb(aValider.length, 'avis à valider', 'avis à valider'),
+      // « 2 avis et 1 réponse à valider » : les avis sur les voyageurs, puis les réponses.
+      phrase: `${libelleAValider(aValider)} avant publication : ${liste(aValider.map((x) => x.voyageur || 'un voyageur'))}.`,
+      court: libelleAValider(aValider),
       lien: '/erp/logements/avis',
       gerant: true,
     });

@@ -22,38 +22,45 @@
  */
 import type Anthropic from '@anthropic-ai/sdk';
 import type { ClientIA } from './agent-messagerie';
-import { lireAvis } from './avis';
+import { lireAvis, reponseModele, type AvisLu } from './avis';
 import {
   COLLECTION_REPONSES_AVIS,
   EXPLICATIONS_AVIS_AUTO,
   ID_ETAT_AVIS_AUTO,
   JOURS_REPONSE_AUTO,
+  RAISON_ENVOI_COUPE,
   allume,
   avecAvisAuto,
   avisADeposerEquipe,
   avisAValider,
   avisPositif,
+  choixInitial,
   deciderAvisVoyageur,
   etatPublicationVoyageur,
   fenetreAvisVoyageur,
   indexSejours,
   langueVoyageur,
+  libelleAValider,
+  noteDeLAvis,
+  notePreReglee,
   passageAvisDu,
   problemesTexteAvis,
   raisonsAvisSensible,
   raisonsReponseAValider,
   reglagesAvisAuto,
   reponseADecider,
+  reponseGeree,
   sejourDuProprietaire,
+  signatureSociete,
   verdictAvisVoyageur,
 } from './avis-auto';
 import { passerAvisAuto, publierAvisParGerant, RESERVE_APPELS, type DonneesAvisAuto, type OptionsAvisAuto } from './avis-auto-passage';
-import { COLLECTION_ACTIONS_AGENT, etatAffiche } from './copilote';
+import { COLLECTION_ACTIONS_AGENT, actionPublicationAvis, etatAffiche } from './copilote';
 import { ecritureGerantSeulement } from './ecritures-gerant';
 import { COLLECTION_AVIS_A_DEPOSER, COLLECTION_ETAT_PROGRAMMES, ID_REGLAGES_PROGRAMMES, modeleParDefaut, reglagesProgrammes } from './messages-programmes';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ecritureRepullPermise, type EtatRepull } from './repull-synchro';
-import type { RepullReview } from './repull';
+import { appliquerAvis, noteSur5, type RepullReview } from './repull';
 import { lancerProgrammes } from './passage-programmes';
 import type { FilMessages, Incident, Logement, Message, Proprietaire, Reglage, Reservation } from './types';
 import type { ActionAgent } from './types-copilote';
@@ -192,7 +199,11 @@ section('2. Réglages : éteints par défaut, gardés avec les messages automati
   verifier(!allume(reglagesAvisAuto({ reglages: [eteint as Reglage] }).voyageurs) && !reglagesAvisAuto({ reglages: [eteint as Reglage] }).voyageurs.activeLe, 'éteint : l’heure d’allumage est retirée');
   verifier(ecritureGerantSeulement('reglages', ID_REGLAGES_PROGRAMMES) && ecritureGerantSeulement(COLLECTION_REPONSES_AVIS, 'res-1'), 'réglages des avis (messages-programmes) et réponses aux avis : écritures réservées au gérant');
   verifier(!ecritureGerantSeulement(COLLECTION_AVIS_A_DEPOSER, 'res-1'), 'avis à déposer : l’équipe garde « C’est fait » et « Passer »');
-  verifier(/deux jours après le départ/.test(EXPLICATIONS_AVIS_AUTO.voyageurs.phrase) && /avis positifs/.test(EXPLICATIONS_AVIS_AUTO.reponses.phrase), 'une phrase d’explication par réglage');
+  verifier(
+    /deux jours après le départ/.test(EXPLICATIONS_AVIS_AUTO.voyageurs.phrase) && /5 sur 5/.test(EXPLICATIONS_AVIS_AUTO.reponses.phrase) && /9 sur 10/.test(EXPLICATIONS_AVIS_AUTO.reponses.phrase),
+    'une phrase d’explication par réglage (seuils de chaque plateforme)',
+  );
+  verifier(EXPLICATIONS_AVIS_AUTO.voyageurs.titre === 'Avis sur les voyageurs' && EXPLICATIONS_AVIS_AUTO.reponses.titre === 'Réponses aux avis', 'lignes « Avis sur les voyageurs » et « Réponses aux avis »');
 }
 
 section('3. Avis sur le voyageur : Airbnb, de 2 à 14 jours après le départ');
@@ -212,7 +223,8 @@ section('3. Avis sur le voyageur : Airbnb, de 2 à 14 jours après le départ');
     (['publie', 'a_valider', 'refuse', 'echec', 'expire'] as const).every((s) => deciderAvisVoyageur(r, ligne({ publication: { statut: s, le: '' } }), AUJOURDHUI, on).genre === 'rien'),
     'publié, à valider, refusé, en échec, expiré : jamais repris (jamais deux fois)',
   );
-  verifier(deciderAvisVoyageur(r, ligne({ publication: { statut: 'en_cours', le: '' } }), AUJOURDHUI, on).genre === 'preparer', 'envoi resté en cours : repris (la plateforme dira s’il est parti)');
+  verifier(deciderAvisVoyageur(r, ligne({ publication: { statut: 'en_cours', le: '' } }), AUJOURDHUI, on).genre === 'rien', 'envoi resté en cours : jamais rédigé à nouveau (la reprise relit la plateforme)');
+  verifier(deciderAvisVoyageur(r, ligne({ statut: 'pret', source: 'equipe', texte: 'Retouché.' }), AUJOURDHUI, on).genre === 'rien', 'texte retouché par l’équipe (sans « C’est fait ») : jamais réécrit, parcours à la main');
   verifier(deciderAvisVoyageur(resa('a', 15), ligne({ publication: { statut: 'a_valider', le: '' } }), AUJOURDHUI, on).genre === 'expirer', 'à valider après le délai : expiré');
   verifier(deciderAvisVoyageur(resa('a', 1), undefined, AUJOURDHUI, on).genre === 'attendre', 'avant deux jours : attendre');
 }
@@ -284,7 +296,7 @@ section('6. Réponses : publiées seules pour un avis positif seulement');
   verifier(!reponseADecider(a({ submittedAt: new Date(MAINTENANT.getTime() - (JOURS_REPONSE_AUTO + 1) * 86_400_000).toISOString() }), r, undefined, MAINTENANT), `avis de plus de ${JOURS_REPONSE_AUTO} jours : laissé à l’équipe`);
   const ligne = (statut: ReponseAvisAuto['publication']['statut']) => ({ publication: { statut, le: '' } });
   verifier(['publie', 'a_valider', 'refuse', 'echec', 'sans_objet'].every((s) => !reponseADecider(a({}), r, ligne(s as never), MAINTENANT)), 'déjà décidé (publié, à valider, refusé…) : jamais deux fois');
-  verifier(reponseADecider(a({}), r, ligne('en_cours'), MAINTENANT), 'envoi resté en cours : repris');
+  verifier(!reponseADecider(a({}), r, ligne('en_cours'), MAINTENANT), 'envoi resté en cours : pas une nouvelle réponse (la reprise relit la plateforme)');
   verifier(!reponseADecider(a({ reviewerRole: 'host' }), r, undefined, MAINTENANT), 'avis de l’hôte : ce n’est pas une réponse');
 }
 
@@ -625,7 +637,11 @@ async function passages() {
   m.horloge = new Date('2026-10-31T10:00:00Z');
   await passerAvisAuto(m.options(), donnees(m));
   const lc2 = m.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'res-20')!;
-  verifier(lc2.publication?.statut === 'publie' && lc2.publication.deja && m.repull.publications().length === nPub + 2, 'passage suivant : Airbnb dit qu’il est parti, rien n’est renvoyé', [lc2.publication, m.repull.publications().length - nPub]);
+  verifier(
+    lc2.publication?.statut === 'publie' && !lc2.publication.deja && lc2.statut === 'fait' && m.repull.publications().length === nPub + 2,
+    'passage suivant : Airbnb dit qu’il est parti (notre texte), noté publié, rien n’est renvoyé',
+    [lc2.publication, m.repull.publications().length - nPub],
+  );
   // 409 review_already_submitted : noté publié, sans erreur.
   const dejaParti = resa('res-21', 3);
   m.base.poser('reservations', dejaParti);
@@ -668,26 +684,46 @@ async function passages() {
     });
     g.repull.avisHote.set('30', avisHote('30', '30'));
     const qui = { email: 'gerant@exemple.invalid', nom: 'Gérant' };
-    const sale = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Écrivez à lucas@exemple.fr' }, qui);
+    const sale = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Écrivez à lucas@exemple.fr', rating: 4, isRevieweeRecommended: true }, qui);
     verifier(!sale.ok && sale.statut === 400 && /e-mail|coordonn/.test(sale.message) && !g.repull.publications().length, 'texte avec un contact : refusé, rien n’est envoyé', sale);
-    const ok = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Lucas a séjourné chez nous, merci.' }, qui);
+    const sansNote = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Lucas a séjourné chez nous, merci.' }, qui);
+    const mauvaises = await Promise.all(
+      [
+        { rating: 0, isRevieweeRecommended: true },
+        { rating: 6, isRevieweeRecommended: true },
+        { rating: 4.5, isRevieweeRecommended: true },
+        { rating: '5', isRevieweeRecommended: true },
+        { rating: 5, isRevieweeRecommended: 'oui' },
+        { rating: 5 },
+      ].map((x) => publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Lucas a séjourné chez nous, merci.', ...x }, qui)),
+    );
+    verifier(
+      !sansNote.ok && sansNote.statut === 400 && mauvaises.every((x) => !x.ok && x.statut === 400) && !g.repull.appels.length,
+      'note absente, hors de 1 à 5, décimale ou en texte, recommandation absente ou en texte : refusé avant tout appel',
+      [sansNote, mauvaises],
+    );
+    const ok = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Lucas a séjourné chez nous, merci.', rating: 3, isRevieweeRecommended: false }, qui);
     const pub = g.repull.publications();
     verifier(ok.ok && pub.length === 1 && pub[0].chemin === '/v1/reviews/30/guest-review' && g.repull.appels.some((a) => a.methode === 'GET' && a.chemin === '/v1/reviews/30'), 'publié une fois, après avoir relu l’avis chez Airbnb', ok);
     const l = g.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'res-30')!;
     verifier(l.publication?.statut === 'publie' && l.publication.par === 'Gérant' && l.publication.modifie && l.statut === 'fait', 'ligne publiée par le gérant, texte retouché noté', l.publication);
     const t = g.base.collection<ActionAgent>(COLLECTION_ACTIONS_AGENT)[0];
     verifier(t?.envoyee?.par === 'gerant@exemple.invalid' && etatAffiche(t, [], () => 'Gérant').libelle.startsWith('Publié par Gérant'), 'trace : « Publié par » le gérant', t);
-    const encore = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Encore.' }, qui);
+    const corpsEnvoye = g.repull.publications()[0]?.corps as { rating?: unknown; isRevieweeRecommended?: unknown } | undefined;
+    verifier(corpsEnvoye?.rating === 3 && corpsEnvoye.isRevieweeRecommended === false, 'la note et la recommandation choisies par le gérant partent telles quelles (3 étoiles, pas recommandé)', corpsEnvoye);
+    const lp = g.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'res-30')!;
+    verifier(lp.publication?.note === 3 && lp.publication.recommande === false, 'fiche du séjour : « Publié sur Airbnb le …, 3 étoiles »', lp.publication);
+    const encore = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-30', texte: 'Encore.', rating: 5, isRevieweeRecommended: true }, qui);
     verifier(!encore.ok && g.repull.publications().length === 1, 'second clic : refusé, rien de renvoyé', encore);
     // Avis relu qui ne correspond pas au séjour : rien n'est publié.
     const r2 = resa('res-31', 4);
     g.base.poser('reservations', r2);
     g.base.poser(COLLECTION_AVIS_A_DEPOSER, { id: 'res-31', reservationId: 'res-31', logementId: 'log-1', voyageur: 'Marie', depart: r2.depart, canal: 'airbnb', statut: 'a_relire', creeLe: '', publication: { statut: 'a_valider', avisId: '30', le: '', texte: 'Texte.' } });
-    const autre = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-31', texte: 'Marie a séjourné chez nous.' }, qui);
+    const autre = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-31', texte: 'Marie a séjourné chez nous.', rating: 5, isRevieweeRecommended: true }, qui);
     verifier(!autre.ok && /ne correspond pas/.test(autre.message) && g.repull.publications().length === 1, 'avis d’un autre séjour (identifiant glissé dans la base) : refusé', autre);
     // Réglage éteint depuis : rien n'est publié.
     g.base.poser('reglages', reglagesAllumes(false, false));
-    const eteint = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-31', texte: 'Marie a séjourné chez nous.' }, qui);
+    const eteint = await publierAvisParGerant(g.options(), { genre: 'voyageur', reservationId: 'res-31', texte: 'Marie a séjourné chez nous.', rating: 5, isRevieweeRecommended: true }, qui);
     verifier(!eteint.ok && /éteinte/.test(eteint.message), 'réglage éteint : « Publier » refusé', eteint);
   }
 
@@ -797,7 +833,247 @@ async function passages() {
   }
 }
 
+/* ===================================================== relecture (A1 à C18) */
+
+/** Règles pures corrigées après les relectures (fonctionnel, produit, design). */
+function reglesRelecture() {
+  section('17. Échelle de Booking.com : toujours sur 10 (A1)');
+  {
+    verifier(
+      noteSur5(5, 'booking') === 2.5 && noteSur5(8, 'booking') === 4 && noteSur5(9, 'booking') === 4.5 && noteSur5(10, 'booking') === 5,
+      'Booking.com : 5/10 → 2,5 ; 8/10 → 4 ; 9/10 → 4,5 ; 10/10 → 5 (sur 5)',
+      [noteSur5(5, 'booking'), noteSur5(8, 'booking'), noteSur5(9, 'booking'), noteSur5(10, 'booking')],
+    );
+    verifier(noteSur5(8.9, 'booking') === 4.45 && noteSur5(5, 'booking.com') === 2.5, 'un 8,9/10 reste sous 4,5 ; « booking.com » compte aussi');
+    verifier(noteSur5(5, 'airbnb') === 5 && noteSur5(4, 'airbnb') === 4 && noteSur5(9) === 4.5, 'Airbnb sur 5 ; plateforme inconnue : sur 10 au-dessus de 5');
+    const sejour = resa('res-b', 5, { canal: 'booking' });
+    verifier(appliquerAvis(sejour, { id: '1', reviewerRole: 'guest', platform: 'booking', rating: 5, publicReview: 'Correct.' }).noteVoyageur === 2.5, 'un 5/10 de Booking.com devient 2,5/5, jamais 5/5');
+    verifier(appliquerAvis(sejour, { id: '1', reviewerRole: 'guest', rating: 5, publicReview: 'Correct.' }).noteVoyageur === 2.5, 'sans plateforme dans l’avis : le canal du séjour (Booking.com)');
+    verifier(noteDeLAvis(4.5, 'booking') === '9 sur 10' && noteDeLAvis(2.5, 'booking') === '5 sur 10' && noteDeLAvis(4.8, 'airbnb') === '4,8 sur 5', 'note affichée sur l’échelle de la plateforme');
+  }
+
+  section('18. Réponses publiées seules : 5/5 sur Airbnb, 9/10 et plus sur Booking.com (B8)');
+  {
+    const lu = (canal: Reservation['canal'], note: number) => lireAvis(resa('res-s', 5, { canal, noteVoyageur: note, commentaireVoyageur: 'Logement très propre, calme et parfaitement situé. Merci !' }))!;
+    const cas: [string, AvisLu, boolean, RegExp | null][] = [
+      ['Booking.com 5/10', lu('booking', 2.5), false, /Note de 5 sur 10/],
+      ['Booking.com 8/10', lu('booking', 4), false, /Note de 8 sur 10/],
+      ['Booking.com 9/10', lu('booking', 4.5), true, null],
+      ['Booking.com 10/10', lu('booking', 5), true, null],
+      ['Airbnb 4/5', lu('airbnb', 4), false, /Note de 4 sur 5/],
+      ['Airbnb 5/5', lu('airbnb', 5), true, null],
+    ];
+    const rates = cas.filter(([, a, seul, re]) => {
+      const raisons = raisonsReponseAValider(a);
+      return seul ? raisons.length > 0 : !re || !raisons.some((x) => re.test(x));
+    });
+    verifier(!rates.length, 'Booking.com 5/10 et 8/10 à valider, 9/10 et 10/10 seuls ; Airbnb 4/5 à valider, 5/5 seul', rates.map(([n, a]) => [n, raisonsReponseAValider(a)]));
+    verifier(raisonsReponseAValider(lu('booking', 4.5), { plateforme: 'booking', noteNative: 8.9 }).some((x) => /Note de 8,9 sur 10/.test(x)), 'la note telle que la plateforme la donne : 8,9/10 attend le gérant');
+    verifier(raisonsReponseAValider(lireAvis(resa('res-s', 5, { canal: 'booking', noteVoyageur: 5, commentaireVoyageur: 'Parfait, mais le lit était sale.' }))!).length > 0, '10/10 avec un reproche : à valider');
+  }
+
+  section('19. Note choisie avant « Publier » (B9)');
+  {
+    verifier(
+      ['Un incident pendant le séjour', '2 incidents pendant le séjour', 'Contrôle après départ : points à revoir', 'Note du voyageur : 3/5', 'Litige ou remboursement signalé par la plateforme', 'Conversation transmise à l’équipe (litige ou argent)'].every((x) => !notePreReglee([x])),
+      'incident, contrôle à revoir, note du voyageur sous 4, litige : rien de pré-choisi',
+    );
+    verifier(notePreReglee(['Séjour du propriétaire']) && notePreReglee([RAISON_ENVOI_COUPE]) && notePreReglee([]), 'autres raisons : 5 étoiles et « Je recommande » pré-choisis');
+    verifier(JSON.stringify(choixInitial([])) === '{"note":5,"recommande":true}' && JSON.stringify(choixInitial(['Un incident pendant le séjour'])) === '{"note":null,"recommande":false}', 'choix initial : 5 et recommandé, ou rien (Publier grisé)');
+    verifier(JSON.stringify(choixInitial(['Un incident pendant le séjour'], { note: 3, recommande: false })) === '{"note":3,"recommande":false}', 'envoi coupé : la note déjà choisie revient');
+  }
+
+  section('20. Faux positifs (A4)');
+  {
+    verifier(
+      problemesTexteAvis('Merci pour ces 3 nuits : Marie left the place spotless, tout était parfait sur place.', { nomVoyageur: 'Marie Dupont', logement: LOGEMENT }).length === 0,
+      '« 3 nuits », « the place », « sur place » : rien à retirer',
+      problemesTexteAvis('Merci pour ces 3 nuits : Marie left the place spotless, tout était parfait sur place.', { nomVoyageur: 'Marie Dupont', logement: LOGEMENT }),
+    );
+    verifier(problemesTexteAvis('Le code 482 a bien marché.', { logement: LOGEMENT }).length > 0 && problemesTexteAvis('Logement rue de la Gare.', { logement: LOGEMENT }).length > 0, '« code 482 » et la rue du logement : toujours signalés');
+    const r = resa('res-1', 3);
+    const signaux = { incidents: [] as Incident[], controles: [], logements: [LOGEMENT], proprietaires: [PROPRIETAIRE] };
+    const avec = (messages: Message[]) => raisonsAvisSensible(r, { ...signaux, filsMessages: [fil('f', r, messages)] });
+    verifier(avec([msg('h', 'hote', 'Petit rappel : pas de fête dans le logement.', `${r.arrivee}T10:00:00+01:00`)]).length === 0, 'rappel de l’hôte « pas de fête » : séjour sans souci');
+    verifier(avec([msg('v', 'voyageur', 'We are a party of 4, all non-smokers.', `${r.arrivee}T10:00:00+01:00`)]).length === 0, '« party of 4 », « non-smokers » : séjour sans souci');
+    verifier(avec([msg('v', 'voyageur', 'Is it noisy at night?', `${jourMoins(40)}T10:00:00+01:00`)]).length === 0, 'question d’avant la réservation : séjour sans souci');
+    verifier(avec([msg('v', 'voyageur', 'There is a lot of noise from the neighbours.', `${r.arrivee}T23:00:00+01:00`)]).length > 0, 'bruit signalé par le voyageur pendant le séjour : à valider');
+  }
+
+  section('21. Réglage éteint, texte retouché (A5, A6)');
+  {
+    const r = resa('res-1', 3);
+    const p = (statut: 'a_valider' | 'publie' | 'refuse' | 'en_cours') => ({ statut, le: '2026-10-28T10:00:00+01:00', texte: 'Texte.', raisons: ['Un incident pendant le séjour'] });
+    const ligneAvis = (statut: 'a_valider' | 'publie' | 'refuse' | 'en_cours'): AvisADeposer => ({ id: r.id, reservationId: r.id, logementId: r.logementId, voyageur: 'Marie', depart: r.depart, canal: 'airbnb', statut: 'a_relire', creeLe: '', texte: 'Texte.', publication: p(statut) });
+    const off = reglagesAvisAuto({ reglages: [] });
+    const on = reglagesAvisAuto({ reglages: [reglagesAllumes(true, true) as Reglage] });
+    const s = { incidents: [], controles: [], filsMessages: [], logements: [LOGEMENT], proprietaires: [PROPRIETAIRE] };
+    verifier(
+      avisAValider({ reservations: [r], avisADeposer: [ligneAvis('a_valider')], reponsesAvis: [{ id: 'x', reservationId: 'x', logementId: 'log-1', voyageur: 'Paul', canal: 'airbnb', publication: p('a_valider'), creeLe: '' }], reglages: [] }, AUJOURDHUI).length === 0,
+      'éteint : rien « à valider », nulle part',
+    );
+    verifier(['a_valider', 'refuse', 'en_cours'].every((x) => etatPublicationVoyageur(r, ligneAvis(x as 'a_valider'), AUJOURDHUI, off, s) === null), 'éteint : la carte habituelle (copier, coller sur Airbnb), aucun « Publier »');
+    verifier(etatPublicationVoyageur(r, ligneAvis('publie'), AUJOURDHUI, off, s)?.genre === 'publiee', 'éteint : ce qui est déjà publié reste affiché');
+    verifier(!reponseGeree({ publication: p('a_valider') }, off) && !reponseGeree({ publication: p('refuse') }, off) && reponseGeree({ publication: p('publie') }, off), 'éteint : « Proposer une réponse » revient ; une réponse publiée reste affichée');
+    verifier(reponseGeree({ publication: p('a_valider') }, on), 'allumé : la réponse à valider remplace « Proposer une réponse »');
+    const retouche: AvisADeposer = { id: r.id, reservationId: r.id, logementId: r.logementId, voyageur: 'Marie', depart: r.depart, canal: 'airbnb', statut: 'pret', creeLe: '', texte: 'Retouché par l’équipe.', source: 'equipe' };
+    verifier(etatPublicationVoyageur(r, retouche, AUJOURDHUI, on, s) === null, 'texte retouché par l’équipe : la carte habituelle, même allumé');
+    verifier(
+      avisADeposerEquipe({ reservations: [r], avisADeposer: [retouche], incidents: [], controles: [], filsMessages: [], reglages: [reglagesAllumes(true, false) as Reglage] }, AUJOURDHUI).some((x) => x.reservation.id === r.id),
+      'texte retouché : reste dans « avis à déposer » (parcours à la main)',
+    );
+  }
+
+  section('22. Formulations (C16, C17, C18), signature (B10)');
+  {
+    const le = '2026-10-28T10:00:00+01:00';
+    const rep = actionPublicationAvis({ genre: 'reponse', reservation: { id: 'r1', voyageur: { nom: 'Antoine Girard' } }, plateforme: 'Airbnb', texte: 'Merci.', le });
+    const av = actionPublicationAvis({ genre: 'voyageur', reservation: { id: 'r2', voyageur: { nom: 'Romain Lefort' } }, plateforme: 'Airbnb', texte: 'Merci.', le, note: 5, recommande: true });
+    const lau = actionPublicationAvis({ genre: 'reponse', reservation: { id: 'r3', voyageur: { nom: 'Laura Jamet' } }, plateforme: 'Booking.com', texte: 'Merci.', le, par: 'gerant@exemple.invalid' });
+    verifier(rep.resume === 'Réponse à l’avis d’Antoine G. publiée sur Airbnb.' && lau.resume === 'Réponse à l’avis de Laura J. publiée sur Booking.com.', 'résumé sans « seul » ni « après votre accord », élision « d’ »', [rep.resume, lau.resume]);
+    verifier(av.resume === 'Avis sur Romain L. publié sur Airbnb (5 étoiles).', 'avis sur le voyageur : « … publié sur Airbnb (5 étoiles). »', av.resume);
+    verifier(etatAffiche(rep, []).libelle === 'Publiée seule' && etatAffiche(av, []).libelle === 'Publié seul' && etatAffiche(lau, [], () => 'Abdel').libelle === 'Publiée par Abdel', 'accords : « Publiée seule », « Publié seul », « Publiée par Abdel »');
+    const v = { genre: 'voyageur' as const };
+    const r = { genre: 'reponse' as const };
+    verifier(
+      libelleAValider([v, v, r, r]) === '2 avis et 2 réponses à valider' && libelleAValider([v]) === '1 avis à valider' && libelleAValider([r, r]) === '2 réponses à valider' && libelleAValider([v, r]) === '1 avis et 1 réponse à valider',
+      'Accueil : « 2 avis et 2 réponses à valider », « 1 avis à valider », « 2 réponses à valider »',
+      [libelleAValider([v, v, r, r]), libelleAValider([v]), libelleAValider([r, r]), libelleAValider([v, r])],
+    );
+    const lu = (cle: 'communication' | 'annonce' | 'proprete'): AvisLu => ({ reservationId: 'x', logementId: 'log-1', date: '2026-10-20', canal: 'airbnb', auteur: 'Laura J.', note: 5, textePublic: 'Très bien.', textePrive: '', sentiment: 'positif', themes: [{ cle, sentiment: 'positif' }], source: 'mots' });
+    verifier(reponseModele(lu('communication')).includes('que nos échanges vous aient plu'), '« que nos échanges vous aient plu »', reponseModele(lu('communication')));
+    verifier(reponseModele(lu('proprete')).includes('que la propreté du logement vous ait plu'), '« que la propreté du logement vous ait plu »');
+    verifier(reponseModele(lu('annonce')).includes('qu’un logement fidèle à l’annonce vous ait plu'), '« qu’un logement fidèle à l’annonce vous ait plu »', reponseModele(lu('annonce')));
+    verifier(
+      signatureSociete([{ id: 'societe', raisonSociale: 'Conciergerie Test' } as unknown as Reglage]) === 'Conciergerie Test' && signatureSociete([{ ...REGLAGES_AGENT_DEFAUT, signature: 'Signature de l’agent' }]) === '',
+      'signature des réponses : le nom de la société enregistré, jamais celle de l’agent ; sinon rien',
+    );
+  }
+}
+
+/** Passages simulés : envois coupés, 409, seuils, signature. */
+async function passagesRelecture() {
+  const depuisLongtemps = '2026-10-28T10:00:00+01:00'; // une heure avant MAINTENANT : bail passé
+  const ilYaDeuxMinutes = '2026-10-28T10:58:00+01:00';
+
+  section('23. Envoi coupé d’un avis sur le voyageur : relu, jamais redemandé à l’IA (A2)');
+  {
+    const m = monde();
+    m.base.poser('reglages', reglagesAllumes(true, false));
+    const marque = (id: string, depuis: string) => ({ statut: 'en_cours' as const, avisId: id.slice(4), le: depuis, depuis, par: 'Gérant', texte: 'Texte de la marque.', note: 4, recommande: true });
+    for (const id of ['res-100', 'res-101', 'res-102']) {
+      const r = resa(id, 3);
+      m.base.poser('reservations', r);
+      m.base.poser(COLLECTION_AVIS_A_DEPOSER, { id, reservationId: id, logementId: 'log-1', voyageur: 'Marie', depart: r.depart, canal: 'airbnb', statut: 'a_relire', creeLe: '', publication: marque(id, id === 'res-102' ? ilYaDeuxMinutes : depuisLongtemps) });
+      m.repull.avisHote.set(id.slice(4), avisHote(id.slice(4), id.slice(4)));
+    }
+    m.repull.avisHote.get('101')!.submittedAt = '2026-10-28T09:30:00Z';
+    m.repull.avisHote.get('101')!.publicReview = 'Texte de la marque.';
+    const b = await passerAvisAuto(m.options(), donnees(m));
+    const l = (id: string) => m.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, id)!;
+    verifier(!m.repull.publications().length && !m.ia.appels.length, 'aucun envoi, aucun appel à l’IA', [m.repull.publications(), m.ia.appels.length]);
+    verifier(
+      l('res-100').publication?.statut === 'a_valider' && l('res-100').publication?.texte === 'Texte de la marque.' && l('res-100').publication?.raisons?.[0] === RAISON_ENVOI_COUPE && l('res-100').statut === 'a_relire',
+      'pas en ligne : « à valider », avec le texte de la marque et « L’envoi a été coupé »',
+      l('res-100').publication,
+    );
+    verifier(l('res-100').publication?.note === 4 && avisAValider({ reservations: m.base.collection<Reservation>('reservations'), avisADeposer: m.base.collection<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER), reglages: m.base.collection<Reglage>('reglages') }, AUJOURDHUI).find((x) => x.reservationId === 'res-100')?.noteChoisie === 4, 'la note choisie revient dans « À valider »');
+    verifier(l('res-101').publication?.statut === 'publie' && !l('res-101').publication?.deja && l('res-101').statut === 'fait' && b.avisPublies === 1, 'en ligne avec notre texte : « publié »', l('res-101').publication);
+    verifier(m.base.collection<ActionAgent>(COLLECTION_ACTIONS_AGENT).some((t) => t.cibleId === 'res-101' && t.resume.includes('4 étoiles')), 'publication retrouvée : tracée dans « Actions de l’IA » (4 étoiles)');
+    verifier(l('res-102').publication?.statut === 'en_cours' && !m.repull.appels.some((a) => a.chemin === '/v1/reviews/102'), 'marque de moins de 5 minutes : un envoi en train de se faire, pas touchée');
+    // Réglage éteint depuis : la vérification se fait quand même (une lecture, jamais un envoi).
+    const e = monde();
+    const r = resa('res-103', 3);
+    e.base.poser('reservations', r);
+    e.base.poser(COLLECTION_AVIS_A_DEPOSER, { id: 'res-103', reservationId: 'res-103', logementId: 'log-1', voyageur: 'Marie', depart: r.depart, canal: 'airbnb', statut: 'a_relire', creeLe: '', publication: marque('res-103', depuisLongtemps) });
+    e.repull.avisHote.set('103', avisHote('103', '103'));
+    await passerAvisAuto(e.options(), donnees(e));
+    verifier(e.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'res-103')?.publication?.statut === 'a_valider' && !e.repull.publications().length, 'réglage éteint depuis : relu (GET), remis « à valider », rien d’envoyé');
+  }
+
+  section('24. Réponse coupée : relue, jamais renvoyée (A3)');
+  {
+    const m = monde();
+    m.base.poser('reglages', reglagesAllumes(false, true));
+    for (const id of ['res-110', 'res-111']) {
+      const r = resa(id, 6);
+      m.base.poser('reservations', r);
+      m.base.poser(COLLECTION_REPONSES_AVIS, { id, reservationId: id, logementId: 'log-1', voyageur: 'Marie', canal: 'airbnb', note: 5, publication: { statut: 'en_cours', avisId: id.slice(4), le: depuisLongtemps, depuis: depuisLongtemps, par: 'Publication automatique', texte: 'Merci Marie !' }, creeLe: '' });
+      m.repull.avisVoyageurs.set(id.slice(4), avisVoyageur(id.slice(4), id.slice(4), 5, 'Parfait.'));
+    }
+    m.repull.avisVoyageurs.get('110')!.response = { body: 'Merci Marie !', submittedAt: '2026-10-28T09:00:00Z' };
+    await passerAvisAuto(m.options(), donnees(m));
+    const l = (id: string) => m.base.get<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS, id)!;
+    verifier(m.repull.appels.some((a) => a.methode === 'GET' && a.chemin === '/v1/reviews/110') && m.repull.appels.some((a) => a.methode === 'GET' && a.chemin === '/v1/reviews/111'), 'chaque réponse coupée relue (GET /v1/reviews/{id}, compté)');
+    verifier(l('res-110').publication.statut === 'publie' && !l('res-110').publication.deja, 'répondue chez la plateforme : « publiée »', l('res-110').publication);
+    verifier(l('res-111').publication.statut === 'a_valider' && l('res-111').publication.texte === 'Merci Marie !' && l('res-111').publication.raisons?.[0] === RAISON_ENVOI_COUPE, 'pas de réponse en ligne : « à valider » avec le même texte', l('res-111').publication);
+    verifier(!m.repull.publications().length && !m.ia.appels.length, 'rien n’est renvoyé, rien n’est redemandé à l’IA');
+  }
+
+  section('25. 409 : seul « déjà fait » vaut « publié » (A7)');
+  {
+    const m = monde();
+    m.base.poser('reglages', reglagesAllumes(true, true));
+    const r = resa('res-120', 3);
+    m.base.poser('reservations', r);
+    m.repull.avisHote.set('120', avisHote('120', '120'));
+    m.repull.prochaine = { statut: 409, code: 'not_host_review' };
+    await passerAvisAuto(m.options(), donnees(m));
+    const l = m.base.get<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, 'res-120')!;
+    verifier(l.publication?.statut === 'echec' && etatPublicationVoyageur(r, l, AUJOURDHUI, reglagesAvisAuto({ reglages: [reglagesAllumes(true, true) as Reglage] }), {})?.genre === 'echec', 'avis : 409 « not_host_review » → échec, carte à la main', l.publication);
+    for (const [code, attendu] of [['conflict', 'echec'], ['already_replied', 'publie']] as const) {
+      const n = monde();
+      n.base.poser('reglages', reglagesAllumes(false, true));
+      n.base.poser('reservations', resa('res-121', 6));
+      n.repull.avisVoyageurs.set('121', avisVoyageur('121', '121', 5, 'Logement très propre, calme et parfaitement situé. Merci !'));
+      n.repull.prochaine = { statut: 409, code };
+      await passerAvisAuto(n.options(), donnees(n));
+      const x = n.base.get<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS, 'res-121');
+      verifier(x?.publication.statut === attendu, `réponse : 409 « ${code} » → ${attendu === 'echec' ? 'échec (Proposer une réponse revient)' : 'déjà répondu, noté publié'}`, x?.publication);
+    }
+  }
+
+  section('26. Seuils par plateforme, signature de la société (B8, B10)');
+  {
+    const m = monde();
+    m.base.poser('reglages', reglagesAllumes(false, true));
+    m.base.poser('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true, signature: 'Signature de l’agent' });
+    m.base.poser('reglages', { id: 'societe', raisonSociale: 'Conciergerie Test' });
+    const positif = 'Logement très propre, calme et parfaitement situé. Merci !';
+    const cas: [string, Reservation['canal'], number, boolean][] = [
+      ['res-130', 'booking', 5, false],
+      ['res-131', 'booking', 8, false],
+      ['res-132', 'booking', 9, true],
+      ['res-133', 'booking', 10, true],
+      ['res-134', 'airbnb', 4, false],
+      ['res-135', 'airbnb', 5, true],
+    ];
+    for (const [id, canal, note] of cas) {
+      m.base.poser('reservations', resa(id, 6, { canal }));
+      m.repull.avisVoyageurs.set(id.slice(4), avisVoyageur(id.slice(4), id.slice(4), note, positif, { platform: canal }));
+    }
+    await passerAvisAuto(m.options({ maxRedactions: 10, maxPublications: 10 }), donnees(m));
+    const pubs = m.repull.publications().map((x) => x.chemin.split('/')[3]);
+    const rates = cas.filter(([id, , , seul]) => pubs.includes(id.slice(4)) !== seul);
+    verifier(!rates.length, 'Booking.com 5/10 et 8/10, Airbnb 4/5 : à valider ; Booking.com 9/10 et 10/10, Airbnb 5/5 : publiés seuls', { pubs, rates });
+    const l = (id: string) => m.base.get<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS, id)!;
+    verifier(l('res-130').note === 2.5 && l('res-130').publication.raisons?.some((x) => /Note de 5 sur 10/.test(x)), 'un 5/10 de Booking.com : noté 2,5/5, « Note de 5 sur 10 »', l('res-130'));
+    const textes = m.repull.publications().map((x) => (x.corps as { message: string }).message);
+    verifier(textes.length > 0 && textes.every((t) => t.endsWith('Conciergerie Test') && !t.includes('Signature de l’agent')), 'réponses signées du nom de la société, jamais de la signature de l’agent', textes);
+    const sansSociete = monde();
+    sansSociete.base.poser('reglages', reglagesAllumes(false, true));
+    sansSociete.base.poser('reglages', { ...REGLAGES_AGENT_DEFAUT, actif: true, signature: 'Signature de l’agent' });
+    sansSociete.base.poser('reservations', resa('res-136', 6));
+    sansSociete.repull.avisVoyageurs.set('136', avisVoyageur('136', '136', 5, positif));
+    await passerAvisAuto(sansSociete.options(), donnees(sansSociete));
+    const t = (sansSociete.repull.publications()[0]?.corps as { message?: string } | undefined)?.message ?? '';
+    verifier(!!t && !t.includes('Signature de l’agent'), 'sans société enregistrée : pas de signature (jamais celle de l’agent)', t);
+  }
+}
+
 await passages();
+reglesRelecture();
+await passagesRelecture();
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
 (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;

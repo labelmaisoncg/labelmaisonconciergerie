@@ -24,20 +24,28 @@
  *
  * 2. « Réponses aux avis : publication automatique » (Airbnb, Booking.com) :
  *    la réponse est rédigée comme « Proposer une réponse » (avis.ts,
- *    avis-serveur.ts) et publiée seule SEULEMENT pour un avis positif : note
- *    de 4 sur 5 au moins ET lecture « Positif » (analyse des avis : une note
- *    sous 4,6 est au mieux « Mitigé »), aucun point négatif, ni dans la partie
- *    publique ni dans le message privé, aucune réclamation. Le reste va dans
- *    « À valider » (Publier, Modifier, Ne pas répondre).
+ *    avis-serveur.ts), signée du nom de la société, et publiée seule
+ *    SEULEMENT pour un avis positif : 5 sur 5 sur Airbnb, 9 sur 10 ou plus
+ *    sur Booking.com (SEUILS_REPONSE_AUTO), lecture « Positif », aucun point
+ *    négatif, ni dans la partie publique ni dans le message privé, aucune
+ *    réclamation. Le reste va dans « À valider » (Publier, Modifier, Ne pas
+ *    répondre).
+ *
+ * Réglage éteint : aucun « Publier » nulle part ; les avis reviennent à la
+ * carte habituelle (copier, coller sur Airbnb) et les réponses à « Proposer
+ * une réponse ». Ce qui est déjà publié reste affiché.
  *
  * Jamais deux fois : une publication est marquée « en cours » avant l'envoi,
- * la plateforme refuse un second avis (409 review_already_submitted) et une
- * seconde réponse ; un avis déjà en ligne est noté tel quel.
+ * la plateforme refuse un second avis (409 review_already_submitted) ; un
+ * avis déjà en ligne est noté tel quel. Un envoi coupé (marque « en cours »
+ * plus vieille que le bail) n'est jamais renvoyé ni rédigé à nouveau : la
+ * plateforme est relue, « publié » s'il y est, sinon « à valider » avec le
+ * même texte (avis-auto-passage.ts, reprendreCoupes).
  *
  * Module pur, sans date système ; imports en « .js » : il tourne aussi côté
  * serveur (Node, ESM).
  */
-import { libelleTheme, problemesReponse, sansReponse, type AvisLu } from './avis.js';
+import { libelleTheme, problemesReponse, sansReponse, signatureSure, type AvisLu } from './avis.js';
 import { masquerCoordonnees } from './masquage.js';
 import { consigneCachee, langueFil, masquerCodes, nettoyerTexte, sujetSensibleMessages } from './messagerie-ia.js';
 import {
@@ -79,10 +87,15 @@ export const PAR_PUBLICATION_AUTO = 'Publication automatique';
 export const JOURS_AVANT_AVIS_AUTO = 2;
 /** Note donnée au voyageur (propreté, communication, respect du règlement). */
 export const NOTE_AVIS_AUTO = 5;
-/** Réponse publiée seule : note de l'avis au moins égale (sur 5)… */
-export const NOTE_MIN_REPONSE_AUTO = 4;
+/**
+ * Réponse publiée seule : note de l'avis au moins égale à ce seuil, sur
+ * l'échelle de la plateforme (Airbnb : 5 sur 5 ; Booking.com : 9 sur 10)…
+ */
+export const SEUILS_REPONSE_AUTO = { airbnb: { note: 5, sur: 5 }, booking: { note: 9, sur: 10 } } as const;
 /** …pour un avis écrit il y a moins de ce nombre de jours (un vieil avis sans réponse reste à l'équipe). */
 export const JOURS_REPONSE_AUTO = 30;
+/** Raison d'un envoi coupé, remis « à valider » avec le même texte. */
+export const RAISON_ENVOI_COUPE = 'L’envoi a été coupé : vérifiez et publiez';
 /** Avis sur le voyageur pas encore publié dans les derniers jours du délai : l'équipe le dépose elle-même (filet). */
 export const JOURS_SECOURS_MANUEL = 2;
 /** Le passage des avis tourne une fois par jour, à partir de cette heure (Paris), jamais après 21 h. */
@@ -131,15 +144,17 @@ export function avecAvisAuto(
   return { ...reglages, avisAuto: { ...avant, [cle]: suivant }, majLe: o.le, majPar: o.par };
 }
 
-/** Explication d'une ligne de réglage, en une phrase. */
-export const EXPLICATIONS_AVIS_AUTO: Record<keyof ReglagesAvisAuto, { titre: string; phrase: string }> = {
+/** Une ligne de la carte « Publication automatique » : titre, phrase, nom complet (lecteur d'écran). */
+export const EXPLICATIONS_AVIS_AUTO: Record<keyof ReglagesAvisAuto, { titre: string; phrase: string; libelle: string }> = {
   voyageurs: {
-    titre: 'Avis sur les voyageurs : publication automatique',
+    titre: 'Avis sur les voyageurs',
     phrase: 'Sur Airbnb, deux jours après le départ, avec 5 étoiles. Un séjour avec un souci attend votre accord.',
+    libelle: 'la publication automatique des avis sur les voyageurs',
   },
   reponses: {
-    titre: 'Réponses aux avis : publication automatique',
-    phrase: 'Sur Airbnb et Booking.com, seulement sous les avis positifs. Les autres attendent votre accord.',
+    titre: 'Réponses aux avis',
+    phrase: 'Sous les avis 5 sur 5 sur Airbnb, 9 sur 10 et plus sur Booking.com, sans reproche. Les autres attendent votre accord.',
+    libelle: 'la publication automatique des réponses aux avis',
   },
 };
 
@@ -191,23 +206,26 @@ export function fenetreAvisVoyageur(r: Pick<Reservation, 'canal' | 'statut' | 'd
 export const jourPublicationAuto = (depart: DateISO): DateISO => ajouterJoursISO(depart, JOURS_AVANT_AVIS_AUTO);
 
 export type DecisionAvisVoyageur =
-  /** À rédiger, puis publier ou garder pour le gérant (reprise d'un envoi coupé comprise). */
+  /** À rédiger, puis publier ou garder pour le gérant. */
   | { genre: 'preparer' }
   /** Pas encore (moins de deux jours après le départ). */
   | { genre: 'attendre' }
   /** Délai d'Airbnb passé sans publication. */
   | { genre: 'expirer' }
-  /** Rien à faire (pas Airbnb, décision déjà prise, déjà déposé, réglage éteint). */
+  /** Rien à faire (pas Airbnb, décision déjà prise, texte retouché par l'équipe, envoi en cours, réglage éteint). */
   | { genre: 'rien' };
 
 /**
  * Que faire de l'avis de ce séjour, maintenant ? Une ligne déjà traitée par
- * l'équipe (« C’est fait », « Passer »), publiée, refusée, à valider ou en
- * échec n'est jamais reprise : la décision reste à l'équipe.
+ * l'équipe (« C’est fait », « Passer »), dont l'équipe a retouché le texte
+ * (parcours à la main, jamais réécrit), publiée, refusée, à valider ou en
+ * échec n'est jamais reprise : la décision reste à l'équipe. Une marque « en
+ * cours » relève de la reprise des envois coupés (reprendreCoupes), jamais
+ * d'une nouvelle rédaction.
  */
 export function deciderAvisVoyageur(
   r: Pick<Reservation, 'canal' | 'statut' | 'depart'>,
-  avis: Pick<AvisADeposer, 'statut' | 'publication'> | undefined,
+  avis: Pick<AvisADeposer, 'statut' | 'publication' | 'source'> | undefined,
   aujourdhui: DateISO,
   reglage: ReglageAvisAuto,
 ): DecisionAvisVoyageur {
@@ -216,10 +234,33 @@ export function deciderAvisVoyageur(
   if (f === 'hors') return { genre: 'rien' };
   if (avis && (avis.statut === 'fait' || avis.statut === 'passe')) return { genre: 'rien' };
   const p = avis?.publication;
-  if (p && p.statut !== 'en_cours') return f === 'passee' && p.statut === 'a_valider' ? { genre: 'expirer' } : { genre: 'rien' };
+  if (p) return f === 'passee' && p.statut === 'a_valider' ? { genre: 'expirer' } : { genre: 'rien' };
+  if (avis?.source === 'equipe') return { genre: 'rien' };
   if (f === 'trop_tot') return { genre: 'attendre' };
-  if (f === 'passee') return p?.statut === 'en_cours' ? { genre: 'expirer' } : { genre: 'rien' };
+  if (f === 'passee') return { genre: 'rien' };
   return { genre: 'preparer' };
+}
+
+/**
+ * Note pré-choisie dans « Publier » (5 étoiles, « Je recommande ») : oui,
+ * sauf pour un incident, un contrôle à revoir, une note du voyageur sous 4 ou
+ * un litige. Alors rien n'est pré-choisi : le gérant choisit la note.
+ */
+export const notePreReglee = (raisons: readonly string[]): boolean =>
+  !raisons.some((x) => /incident|Contrôle après départ|Note du voyageur|litige/i.test(x));
+
+/** Note donnée au voyageur, valide pour Airbnb : entier de 1 à 5. */
+export const noteVoyageurValide = (n: unknown): n is number => Number.isInteger(n) && (n as number) >= 1 && (n as number) <= 5;
+
+/**
+ * Note et « Je recommande » proposés dans « Publier » : ceux déjà choisis
+ * (envoi coupé), sinon 5 étoiles et recommandé, sauf séjour à problème
+ * (notePreReglee) : rien de choisi, « Publier » attend la note.
+ */
+export function choixInitial(raisons: readonly string[], deja?: { note?: number; recommande?: boolean }): { note: number | null; recommande: boolean } {
+  const n = deja?.note;
+  if (noteVoyageurValide(n)) return { note: n, recommande: deja?.recommande === true };
+  return notePreReglee(raisons) ? { note: NOTE_AVIS_AUTO, recommande: true } : { note: null, recommande: false };
 }
 
 /** Le séjour est-il celui du propriétaire (montant nul, ou réservé à son nom) ? */
@@ -321,7 +362,7 @@ export function problemesTexteAvis(texte: string, ctx: { nomVoyageur?: string; l
   if (!t) return ['aucun texte'];
   const raisons: string[] = [];
   if (t.length > 1000) raisons.push('plus de 1 000 caractères');
-  if (alerteTexteAvis(t)) raisons.push('un lien, une adresse, un chiffre ou un e-mail');
+  if (alerteTexteAvis(t, ctx.logement)) raisons.push('un lien, une adresse, un chiffre ou un e-mail');
   raisons.push(...problemesReponse(t, { nomVoyageur: ctx.nomVoyageur, ...(ctx.logement ? { logement: ctx.logement } : {}) }));
   const propre = nettoyerTexte(t);
   if (masquerCoordonnees(propre) !== propre) raisons.push('des coordonnées');
@@ -356,14 +397,39 @@ const RECLAMATION_AVIS = /r[ée]clamation|litige|plainte|inacceptable|arnaque|es
 export const PLATEFORMES_REPONSE = ['airbnb', 'booking'] as const;
 
 /**
- * Pourquoi la réponse à cet avis ne part pas seule (vide : avis positif, elle
- * peut partir) : note absente ou sous 4, lecture « Mitigé » ou « Négatif »,
- * point à revoir (public ou privé), réclamation, consigne cachée.
+ * Signature d'une réponse publiée par l'ERP : le nom de la société enregistré
+ * par le gérant (reglages/societe, réservé au gérant par la base) ; sans
+ * identité enregistrée, pas de signature. Jamais la signature de l'agent,
+ * que l'équipe peut changer.
  */
-export function raisonsReponseAValider(a: AvisLu): string[] {
+export function signatureSociete(reglages: readonly Reglage[] | undefined): string {
+  const societe = (reglages ?? []).find((r) => r?.id === 'societe') as { raisonSociale?: unknown } | undefined;
+  return signatureSure(typeof societe?.raisonSociale === 'string' ? societe.raisonSociale.replace(/\s+/g, ' ').trim().slice(0, 80) : '');
+}
+
+/** Note d'un avis telle que la plateforme l'affiche : « 4,8 sur 5 », « 9 sur 10 » (Booking.com). */
+export function noteDeLAvis(note: number | undefined, plateforme: unknown): string {
+  if (note === undefined) return '';
+  const sur10 = plateformeAvis(plateforme) === 'booking';
+  const v = Math.round((sur10 ? note * 2 : note) * 10) / 10;
+  return `${String(v).replace('.', ',')} sur ${sur10 ? 10 : 5}`;
+}
+
+/**
+ * Pourquoi la réponse à cet avis ne part pas seule (vide : avis positif, elle
+ * peut partir) : note absente ou sous le seuil de la plateforme (5 sur 5 sur
+ * Airbnb, 9 sur 10 sur Booking.com), lecture « Mitigé » ou « Négatif », point
+ * à revoir (public ou privé), réclamation, consigne cachée. `plateforme` et
+ * `noteNative` : l'avis tel que la plateforme le donne (sans eux : le canal
+ * du séjour, et la note ramenée sur 5).
+ */
+export function raisonsReponseAValider(a: AvisLu, o: { plateforme?: unknown; noteNative?: number | null } = {}): string[] {
   const raisons: string[] = [];
-  if (a.note === undefined) raisons.push('Avis sans note');
-  else if (a.note < NOTE_MIN_REPONSE_AUTO) raisons.push(`Note de ${String(a.note).replace('.', ',')} sur 5`);
+  const sur10 = plateformeAvis(o.plateforme ?? a.canal) === 'booking';
+  const seuil = SEUILS_REPONSE_AUTO[sur10 ? 'booking' : 'airbnb'];
+  const natif = typeof o.noteNative === 'number' && Number.isFinite(o.noteNative) ? o.noteNative : a.note === undefined ? undefined : sur10 ? a.note * 2 : a.note;
+  if (natif === undefined) raisons.push('Avis sans note');
+  else if (natif < seuil.note) raisons.push(`Note de ${String(Math.round(natif * 10) / 10).replace('.', ',')} sur ${seuil.sur}`);
   if (a.sentiment === 'negatif') raisons.push('Avis négatif');
   else if (a.sentiment === 'neutre') raisons.push('Avis mitigé');
   const publics = a.themes.filter((t) => !t.prive && t.sentiment === 'negatif');
@@ -402,7 +468,8 @@ export function reponseADecider(
   if (a.reviewerRole && a.reviewerRole !== 'guest') return false;
   if (!(PLATEFORMES_REPONSE as readonly string[]).includes(plateformeAvis(a.platform))) return false;
   if (r.statut === 'annulee' || avisRepondu(a)) return false;
-  if (ligne && ligne.publication.statut !== 'en_cours') return false;
+  // Déjà décidé dans l'ERP (une marque « en cours » relève de la reprise des envois coupés).
+  if (ligne) return false;
   const ecrit = Date.parse(a.submittedAt ?? '');
   if (Number.isFinite(ecrit)) return maintenant.getTime() - ecrit <= JOURS_REPONSE_AUTO * 86_400_000;
   return joursEntre(r.depart, dateParisDe(maintenant)) <= JOURS_REPONSE_AUTO + 15;
@@ -438,6 +505,9 @@ export interface ElementAValider {
   raisons: string[];
   /** Avis sur le voyageur : jours qui restent avant la fin du délai d'Airbnb. */
   joursRestants?: number;
+  /** Avis sur le voyageur : note et recommandation déjà choisies (un envoi coupé revient avec elles). */
+  noteChoisie?: number;
+  recommande?: boolean;
   /** Réponse : note et texte public de l'avis. */
   note?: number;
   avis?: string;
@@ -448,11 +518,16 @@ export interface ElementAValider {
 /**
  * Ce qui attend le gérant : avis sur les voyageurs gardés (séjour sensible),
  * encore dans le délai d'Airbnb, puis réponses gardées (avis pas positif) ;
- * les plus pressés d'abord.
+ * les plus pressés d'abord. Réglage éteint : rien (la carte habituelle et
+ * « Proposer une réponse » reprennent).
  */
-export function avisAValider(d: Pick<ErpDonnees, 'reservations' | 'avisADeposer'> & { reponsesAvis?: readonly ReponseAvisAuto[] }, aujourdhui: DateISO): ElementAValider[] {
+export function avisAValider(
+  d: Pick<ErpDonnees, 'reservations' | 'avisADeposer'> & { reponsesAvis?: readonly ReponseAvisAuto[]; reglages?: readonly Reglage[] },
+  aujourdhui: DateISO,
+): ElementAValider[] {
+  const reglages = reglagesAvisAuto(d);
   const parId = new Map(d.reservations.map((r) => [r.id, r]));
-  const voyageurs = (d.avisADeposer ?? [])
+  const voyageurs = (allume(reglages.voyageurs) ? (d.avisADeposer ?? []) : [])
     .filter((a) => a.publication?.statut === 'a_valider' && a.statut !== 'fait' && a.statut !== 'passe')
     .map((a) => ({ a, r: parId.get(a.reservationId) }))
     .filter((x): x is { a: AvisADeposer; r: Reservation } => !!x.r && fenetreAvisVoyageur(x.r, aujourdhui) === 'ouverte')
@@ -466,11 +541,13 @@ export function avisAValider(d: Pick<ErpDonnees, 'reservations' | 'avisADeposer'
         texte: a.publication?.texte ?? '',
         raisons: a.publication?.raisons ?? [],
         joursRestants: Math.max(0, JOURS_AVIS - joursEntre(r.depart, aujourdhui)),
+        ...(noteVoyageurValide(a.publication?.note) ? { noteChoisie: a.publication!.note } : {}),
+        ...(typeof a.publication?.recommande === 'boolean' ? { recommande: a.publication.recommande } : {}),
         canal: r.canal,
         le: a.publication!.le,
       }),
     );
-  const reponses = (d.reponsesAvis ?? [])
+  const reponses = (allume(reglages.reponses) ? (d.reponsesAvis ?? []) : [])
     .filter((x) => x?.publication?.statut === 'a_valider')
     .sort((x, y) => y.publication.le.localeCompare(x.publication.le))
     .map(
@@ -490,6 +567,15 @@ export function avisAValider(d: Pick<ErpDonnees, 'reservations' | 'avisADeposer'
   return [...voyageurs, ...reponses];
 }
 
+/** « 2 avis et 1 réponse à valider », « 1 avis à valider », « 2 réponses à valider ». */
+export function libelleAValider(liste: readonly Pick<ElementAValider, 'genre'>[]): string {
+  const avis = liste.filter((x) => x.genre === 'voyageur').length;
+  const reponses = liste.length - avis;
+  const r = `${reponses} ${reponses > 1 ? 'réponses' : 'réponse'}`;
+  if (avis && reponses) return `${avis} avis et ${r} à valider`;
+  return avis ? `${avis} avis à valider` : `${r} à valider`;
+}
+
 /**
  * « Avis à déposer » qui restent à l'équipe (à la main), réglage compris :
  * publication automatique allumée, un séjour n'y figure que si la plateforme
@@ -506,6 +592,8 @@ export function avisADeposerEquipe(
     const p = x.avis?.publication;
     if (p?.statut === 'echec') return true;
     if (p) return false;
+    // Texte retouché par l'équipe : elle le dépose elle-même (jamais réécrit).
+    if (x.avis?.source === 'equipe') return true;
     return x.joursRestants < JOURS_SECOURS_MANUEL;
   });
 }
@@ -528,6 +616,8 @@ export function etatPublicationVoyageur(
   signaux: SignauxSejour,
 ): EtatPublicationVoyageur | null {
   const p = avis?.publication;
+  // Réglage éteint : seul ce qui est déjà publié reste affiché ; le reste, la carte habituelle (copier, coller).
+  if (!allume(reglages.voyageurs)) return p?.statut === 'publie' ? { genre: 'publiee', publication: p } : null;
   if (p) {
     if (p.statut === 'publie') return { genre: 'publiee', publication: p };
     if (p.statut === 'refuse') return { genre: 'refusee', publication: p };
@@ -537,7 +627,8 @@ export function etatPublicationVoyageur(
     if (p.statut === 'a_valider') return fenetreAvisVoyageur(r, aujourdhui) === 'passee' ? { genre: 'expiree' } : { genre: 'a_valider', publication: p };
     return null;
   }
-  if (!allume(reglages.voyageurs) || (avis && (avis.statut === 'fait' || avis.statut === 'passe'))) return null;
+  // Déjà traité, ou texte retouché par l'équipe (parcours à la main) : la carte habituelle.
+  if ((avis && (avis.statut === 'fait' || avis.statut === 'passe')) || avis?.source === 'equipe') return null;
   const f = fenetreAvisVoyageur(r, aujourdhui);
   if (f !== 'trop_tot' && f !== 'ouverte') return null;
   // Filet : pas encore publié dans les derniers jours du délai, l'équipe le dépose elle-même.
@@ -549,3 +640,14 @@ export function etatPublicationVoyageur(
 /** La réponse à l'avis de ce séjour, publiée ou à valider par l'ERP (undefined : rien). */
 export const reponseDuSejour = (d: { reponsesAvis?: readonly ReponseAvisAuto[] }, reservationId: Id): ReponseAvisAuto | undefined =>
   (d.reponsesAvis ?? []).find((x) => x?.reservationId === reservationId);
+
+/**
+ * L'ERP s'occupe-t-il de cette réponse (« Proposer une réponse » ne s'affiche
+ * pas) ? Publiée : toujours (elle est en ligne). En cours, écartée ou à
+ * valider : réglage allumé seulement ; éteint, « Proposer une réponse ».
+ */
+export function reponseGeree(ligne: Pick<ReponseAvisAuto, 'publication'> | undefined, reglages: ReglagesAvisAuto): boolean {
+  const s = ligne?.publication?.statut;
+  if (s === 'publie') return true;
+  return allume(reglages.reponses) && (s === 'en_cours' || s === 'refuse' || s === 'a_valider');
+}

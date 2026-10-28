@@ -394,6 +394,12 @@ function fileAvis() {
   verifier(raisonsARelire(avecIncident, d)[0] === 'Un incident pendant le séjour', 'incident du séjour → à relire');
   verifier(raisonsARelire(noteBasse, d).some((x) => x.includes('3,5/5')), 'note sous 4 → à relire');
   verifier(raisonsARelire(negatif, d).includes('Un message signale un souci'), 'message négatif → à relire');
+  // Seulement les messages du voyageur, à partir de la veille de l'arrivée (octobre 2026).
+  const avecFils = (messages: Message[]) => ({ ...d, filsMessages: [fil('fil-g', 'g', { messages })] });
+  verifier(raisonsARelire(negatif, avecFils([msg('h', 'hote', 'Rappel : pas de fête dans le logement, merci.')])).length === 0, 'rappel de l’hôte « pas de fête » : rien à relire');
+  verifier(raisonsARelire(negatif, avecFils([msg('v', 'voyageur', 'Hello, we are a party of 4 non-smokers.')])).length === 0, '« a party of 4 », « non-smokers » : rien à relire');
+  verifier(raisonsARelire(negatif, avecFils([msg('v', 'voyageur', 'Is there much noise from the street?', '2026-10-10T10:00:00+02:00')])).length === 0, 'question sur le bruit avant la réservation : rien à relire');
+  verifier(raisonsARelire(negatif, avecFils([msg('v', 'voyageur', 'There is a lot of noise tonight.', '2026-10-18T21:00:00+02:00')])).includes('Un message signale un souci'), 'la veille de l’arrivée : compte');
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
   verifier(raisonsARelire(propre, { ...d, incidents: [sansReservation] }).length === 1, 'incident du logement pendant le séjour → à relire');
   verifier(raisonsARelire(propre, { ...d, incidents: [{ ...sansReservation, date: '2026-10-10' }] }).length === 0, 'incident d’avant le séjour : sans effet');
@@ -549,7 +555,14 @@ function libelles() {
 function alertesAvis() {
   section('Avis préparés par l’IA : à relire s’ils contiennent un lien, une adresse, un chiffre, un e-mail');
   verifier(alerteTexteAvis('Lucas a été un voyageur parfait.') === null, 'texte simple : rien à signaler');
-  verifier(['Voir https://exemple.fr', 'Écrivez à lucas@exemple.fr', 'Il était 4 personnes', 'Logement rue de la Paix', 'Voir www.site.com', 'Voir monsite.fr'].every((t) => alerteTexteAvis(t) !== null), 'lien, e-mail, chiffre, adresse : à relire');
+  verifier(
+    ['Voir https://exemple.fr', 'Écrivez à lucas@exemple.fr', 'Le code 482 marchait', 'Au 12 rue de la Paix', 'Voir www.site.com', 'Voir monsite.fr', 'Payé 120 euros', 'Il a laissé 3 serviettes'].every((t) => alerteTexteAvis(t) !== null),
+    'lien, e-mail, chiffre (code, prix, nombre sans unité), adresse avec numéro : à relire',
+  );
+  // Faux positifs d'avant (octobre 2026) : « place », « sur place », « au cours de », « 3 nuits ».
+  const sansSouci = ['Lucas left the place spotless.', 'He took great care of our place.', 'Tout était parfait sur place.', 'Au cours de son séjour, tout s’est bien passé.', 'Merci pour ces 3 nuits.', 'A party of 4 guests, 5 stars.', 'Un séjour de 2 semaines, 12 voyageurs.'];
+  verifier(sansSouci.every((t) => alerteTexteAvis(t) === null), `« place », « sur place », « au cours de », « 3 nuits », « 4 guests » : rien à signaler ${JSON.stringify(sansSouci.filter((t) => alerteTexteAvis(t) !== null))}`);
+  verifier(alerteTexteAvis('Logement rue de la Gare, très calme.', { adresse: '12 rue de la Gare, 91100 Corbeil-Essonnes' }) !== null && alerteTexteAvis('Logement rue de la Paix, très calme.', { adresse: '12 rue de la Gare, 91100 Corbeil-Essonnes' }) === null, 'la rue du logement (sans numéro) : à relire ; une autre rue sans numéro : non');
 }
 
 /* ==================================================== passage simulé */

@@ -14,7 +14,7 @@ import { extrait } from '../../../data/notifications';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
 import { prenomDe } from '../../../data/messages-programmes';
-import { avisADeposerEquipe, avisAValider } from '../../../data/avis-auto';
+import { avisADeposerEquipe, avisAValider, libelleAValider } from '../../../data/avis-auto';
 import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from '../../../data/controle-reponse';
 import { trierParUrgence, urgenceFil } from '../../../data/messagerie-ia';
 import { attendEquipe } from '../../../data/attente-equipe';
@@ -103,7 +103,7 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
   if (aValider.length)
     liste.push({
       id: 'avisValider', type: 'avisValider', priorite: aValider.some((x) => x.joursRestants !== undefined && x.joursRestants <= 2) ? 1 : 2, ton: 'alerte', to: '/erp/logements/avis',
-      titre: aValider.length > 1 ? `${aValider.length} avis à valider` : 'Un avis à valider',
+      titre: libelleAValider(aValider),
       details: aValider.map((x) => `${x.genre === 'voyageur' ? `Avis sur ${x.voyageur}` : `Réponse à ${x.voyageur}`} (${nom(x.logementId)})`),
     });
 

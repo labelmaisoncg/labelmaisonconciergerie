@@ -793,9 +793,13 @@ export function prochainEnvoi(
 
 /* ===================================================== avis à déposer */
 
-/** Mots d'un message qui doivent faire relire l'avis (plainte, dégât, bruit…). */
+/**
+ * Mots d'un message DU VOYAGEUR qui doivent faire relire l'avis (plainte,
+ * dégât, bruit…). « a party of 4 » (un groupe de 4) et « non-smokers » (non-
+ * fumeurs) ne disent aucun souci.
+ */
 const SIGNAL_NEGATIF =
-  /plainte|inacceptable|d[ée]cevant|d[ée]çu|sale\b|salet[ée]|cass[ée]|abîm|ab[iî]m[ée]|d[ée]g[aâ]t|d[ée]gradation|bruit|f[êe]te\b|tapage|odeur|cafard|punaise|rembours|litige|avocat|police|voisins? (se )?plai|complain|dirty|broken|damage|noise|party\b|refund|smok|fum[ée] dans|cigarette/i;
+  /plainte|inacceptable|d[ée]cevant|d[ée]çu|sale\b|salet[ée]|cass[ée]|abîm|ab[iî]m[ée]|d[ée]g[aâ]t|d[ée]gradation|bruit|f[êe]te\b|tapage|odeur|cafard|punaise|rembours|litige|avocat|police|voisins? (se )?plai|complain|dirty|broken|damage|noise|party\b(?!\s+of\b)|refund|(?<!non[-\s]?)smok|fum[ée] dans|cigarette/i;
 
 /** Séjours dont l'avis est attendu : Airbnb, terminés depuis moins de 14 jours, pas annulés. */
 export function sejourAvecAvis(r: Pick<Reservation, 'canal' | 'statut' | 'depart'>, aujourdhui: DateISO): boolean {
@@ -809,7 +813,9 @@ export const joursRestantsAvis = (depart: DateISO, aujourdhui: DateISO): number 
  * Pourquoi relire l'avis avant de le déposer : incident pendant le séjour,
  * note du voyageur sous 4, contrôle après départ avec des points à revoir,
  * conversation transmise pour un litige ou de l'argent, mot négatif dans les
- * messages. Vide : rien ne s'y oppose.
+ * messages du voyageur à partir de la veille de son arrivée (comme
+ * sujetSensibleMessages : ni les rappels de l'hôte, « pas de fête », ni les
+ * questions d'avant la réservation). Vide : rien ne s'y oppose.
  */
 export function raisonsARelire(
   r: Pick<Reservation, 'id' | 'logementId' | 'arrivee' | 'depart' | 'noteVoyageur'>,
@@ -826,7 +832,11 @@ export function raisonsARelire(
   if (controles.length) raisons.push('Contrôle après départ : points à revoir');
   const fils = (d.filsMessages ?? []).filter((f) => f.reservationId === r.id);
   if (fils.some((f) => f.raisonEscalade === 'litige' || f.raisonEscalade === 'argent')) raisons.push('Conversation transmise à l’équipe (litige ou argent)');
-  else if (fils.some((f) => f.messages.some((m) => m.auteur !== 'agent' && m.envoi?.par !== PAR_MESSAGE_AUTO && SIGNAL_NEGATIF.test(m.texte)))) {
+  else if (
+    fils.some((f) =>
+      f.messages.some((m) => m.auteur === 'voyageur' && m.envoi?.par !== PAR_MESSAGE_AUTO && String(m.envoyeLe ?? '').slice(0, 10) >= ajouterJoursISO(r.arrivee, -1) && SIGNAL_NEGATIF.test(m.texte)),
+    )
+  ) {
     raisons.push('Un message signale un souci');
   }
   return raisons;
@@ -834,7 +844,28 @@ export function raisonsARelire(
 
 /** Ce qu'un avis public ne doit pas contenir : lien, adresse e-mail, chiffre (code, numéro, prix) ou adresse postale. */
 const LIEN_AVIS = /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:fr|com|net|org|eu|io|be|ch)\b/i;
-const ADRESSE_AVIS = /\b(?:rue|avenue|av\.|boulevard|bd|allée|allee|chemin|impasse|place|quai|route|cours|résidence|residence|bâtiment|batiment)\b/i;
+/**
+ * Adresse postale : un numéro suivi d'un type de voie (même motif que ADRESSE,
+ * avis.ts). « sur place », « left the place spotless », « au cours de » n'en
+ * sont pas ; la rue du logement, elle, est cherchée à part.
+ */
+const ADRESSE_AVIS = /\b\d{1,4}\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.?|boulevard|bd|allée|allee|chemin|impasse|place|quai|route|cours|square|passage|villa|résidence|residence|street|st\.?|road|rd\.?|lane|drive)\b/i;
+/**
+ * Un nombre d'un ou deux chiffres suivi d'une unité (« 3 nuits », « 5 étoiles »,
+ * « a party of 4 guests ») : permis. Tout autre chiffre reste signalé (code,
+ * numéro, prix, « code 482 »).
+ */
+const NOMBRE_AVEC_UNITE =
+  /(?<![\p{L}\p{N}])\d{1,2}\s*(?:nuits?|jours?|semaines?|[ée]toiles?|personnes?|voyageurs?|nights?|days?|weeks?|stars?|guests?|people)(?![\p{L}\p{N}])/giu;
+/** Mots d'un texte, minuscules, sans accents ni ponctuation. */
+const motsSansAccents = (t: string) =>
+  ` ${String(t ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .join(' ')} `;
 
 /**
  * Alerte sur la FORME d'un avis (lien, adresse, chiffre, e-mail) : à relire,
@@ -842,10 +873,16 @@ const ADRESSE_AVIS = /\b(?:rue|avenue|av\.|boulevard|bd|allée|allee|chemin|impa
  */
 export const ALERTE_FORME_AVIS = 'Le texte contient un lien, une adresse, un chiffre ou un e-mail : à vérifier avant de déposer';
 
-/** Raison de relire un avis rédigé par l'IA (lien, adresse, chiffre, e-mail) ; null : rien à signaler. */
-export function alerteTexteAvis(texte: string): string | null {
+/**
+ * Raison de relire un avis rédigé par l'IA (lien, adresse, chiffre, e-mail) ;
+ * null : rien à signaler. `logement` : sa rue est aussi une adresse
+ * (« rue de la Gare », sans numéro).
+ */
+export function alerteTexteAvis(texte: string, logement?: Partial<Pick<Logement, 'adresse'>>): string | null {
   const t = String(texte ?? '');
-  if (LIEN_AVIS.test(t) || /@/.test(t) || /\d/.test(t) || ADRESSE_AVIS.test(t)) return ALERTE_FORME_AVIS;
+  const rue = motsSansAccents(String(logement?.adresse ?? '').replace(/^\s*\d+\s*(?:bis|ter)?,?\s*/i, '').split(',')[0]).trim();
+  const rueCitee = rue.length >= 6 && motsSansAccents(t).includes(` ${rue} `);
+  if (LIEN_AVIS.test(t) || /@/.test(t) || /\d/.test(t.replace(NOMBRE_AVEC_UNITE, '')) || ADRESSE_AVIS.test(t) || rueCitee) return ALERTE_FORME_AVIS;
   return null;
 }
 

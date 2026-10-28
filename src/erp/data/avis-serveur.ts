@@ -130,10 +130,11 @@ export async function redigerReponseAvis(
   o: OptionsAssistant,
   r: Reservation,
   avis: AvisLu,
-  x: { logement?: Logement; reglagesLus: readonly { id: string }[]; delaiMs?: number; repliSurPanne?: boolean },
+  x: { logement?: Logement; reglagesLus: readonly { id: string }[]; delaiMs?: number; repliSurPanne?: boolean; signature?: string },
 ): Promise<ReponseRedigee> {
   const maintenant = (o.maintenant ?? (() => new Date()))();
-  const signature = signatureSure(reglagesAgent({ reglages: x.reglagesLus as ReglagesAgent[] }, o.nomEspace).signature);
+  // `signature` donnée (publication par l'ERP : le nom de la société, ou rien) : elle remplace celle de l'agent.
+  const signature = x.signature !== undefined ? signatureSure(x.signature) : signatureSure(reglagesAgent({ reglages: x.reglagesLus as ReglagesAgent[] }, o.nomEspace).signature);
   const prenom = prenomPublic(r.voyageur?.nom);
   const simple = reponseModele(avis, { prenom, signature });
   const ctx: ContexteControle = { nomVoyageur: r.voyageur?.nom, textePrive: avis.textePrive, ...(x.logement ? { logement: x.logement } : {}) };

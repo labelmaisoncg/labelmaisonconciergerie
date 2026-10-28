@@ -31,8 +31,8 @@ import {
   type SyntheseAvis,
 } from '../../../data/avis';
 import type { ReponseAvisPreparee } from '../../../data/avis-serveur';
-import { reponseDuSejour } from '../../../data/avis-auto';
-import { ReponsePubliee, reponseGeree } from './ReponsePubliee';
+import { reglagesAvisAuto, reponseDuSejour, reponseGeree } from '../../../data/avis-auto';
+import { ReponsePubliee } from './ReponsePubliee';
 import type { CanalReservation, Logement, SentimentMessage } from '../../../data/types';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 
@@ -256,7 +256,8 @@ export function ReponseAvis({ avis: a, discret }: { avis: AvisLu; discret?: bool
   const problemes = texte.trim() ? problemesReponse(texte, { nomVoyageur: r?.voyageur.nom, textePrive: a.textePrive, ...(logement ? { logement } : {}) }) : [];
   // Publication automatique des réponses : publiée, en cours, écartée ou à valider (ReponsePubliee).
   const ligne = reponseDuSejour(d, a.reservationId);
-  if (reponseGeree(ligne)) return <ReponsePubliee ligne={ligne!} discret={discret} />;
+  // Réglage éteint : seule une réponse déjà publiée s'affiche ainsi ; le reste revient à « Proposer une réponse ».
+  if (reponseGeree(ligne, reglagesAvisAuto(d))) return <ReponsePubliee ligne={ligne!} discret={discret} />;
   if (sansReponse(a) || (discret && !peut)) return null;
   // La plateforme a refusé la réponse publiée par l'ERP : l'équipe reprend à la main.
   const refusPlateforme = ligne?.publication.statut === 'echec' ? ligne.publication.erreur : undefined;

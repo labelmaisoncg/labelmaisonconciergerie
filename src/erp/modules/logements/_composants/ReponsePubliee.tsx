@@ -14,7 +14,7 @@ import { problemesReponse, separerAvis } from '../../../data/avis';
 import { PAR_PUBLICATION_AUTO } from '../../../data/avis-auto';
 import type { ReponseAvisAuto } from '../../../data/types-programmes';
 import { ErreurServeur } from '../../messagerie/_composants/serveur';
-import { publierAvisValide, refuserAvis, rouvrirAvis } from './AvisAuto';
+import { TITRE_RAISONS, phraseRefus, publierAvisValide, refuserAvis, rouvrirAvis } from './AvisAuto';
 
 const NOMS: Record<string, string> = { airbnb: 'Airbnb', booking: 'Booking.com' };
 /** « 24 sept. » cette année, « 24 sept. 2025 » sinon. */
@@ -22,9 +22,11 @@ const jour = (iso: string) => (iso.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jour
 /** Un seul point en fin de phrase (« le 17 sept. » ne prend pas un second point). */
 const point = (s: string) => (s.endsWith('.') ? s : `${s}.`);
 
-/** Vrai si l'ERP s'occupe de cette réponse (la réponse habituelle ne s'affiche pas). */
-export const reponseGeree = (ligne: ReponseAvisAuto | undefined): boolean =>
-  !!ligne?.publication && ['publie', 'en_cours', 'refuse', 'a_valider'].includes(ligne.publication.statut);
+/**
+ * Raisons déjà dites par l'analyse de l'avis, juste au-dessus (note, sentiment, points à revoir) :
+ * pas répétées. Les autres (proposition écartée, envoi coupé, texte à vérifier…) restent.
+ */
+const DEJA_DANS_L_ANALYSE = /^(Avis (négatif|mitigé|sans note)|Note de |Point à revoir|Le message privé signale)/;
 
 /** `discret` (fiche d'un séjour) : boutons secondaires, comme « Proposer une réponse ». */
 export function ReponsePubliee({ ligne, discret }: { ligne: ReponseAvisAuto; discret?: boolean }) {
@@ -64,9 +66,7 @@ export function ReponsePubliee({ ligne, discret }: { ligne: ReponseAvisAuto; dis
       <section className={cadre} aria-label="Votre réponse">
         {titre}
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
-          <p className="text-[13.5px] text-(--lm-encre)">
-            {point(`Pas de réponse publiée${par}, le ${jour(p.le)}`)}
-          </p>
+          <p className="text-[13.5px] text-(--lm-encre)">{phraseRefus('reponse', p.par, p.le)}</p>
           {gerant && (
             <button type="button" onClick={() => rouvrirAvis(d, 'reponse', ligne.id)} className="inline-flex min-h-8 items-center text-[13px] text-(--lm-encre-2) hover:text-(--lm-encre) hover:underline">
               Annuler
@@ -78,6 +78,7 @@ export function ReponsePubliee({ ligne, discret }: { ligne: ReponseAvisAuto; dis
   }
 
   // À valider.
+  const autres = (p.raisons ?? []).filter((x) => x && !DEJA_DANS_L_ANALYSE.test(x));
   const prive = r ? separerAvis(r.commentaireVoyageur).prive : '';
   const problemes = texte.trim() ? problemesReponse(texte, { nomVoyageur: r?.voyageur.nom, textePrive: prive, ...(logement ? { logement } : {}) }) : [];
   const publier = async () => {
@@ -104,7 +105,15 @@ export function ReponsePubliee({ ligne, discret }: { ligne: ReponseAvisAuto; dis
         </Alert>
       ) : (
         <>
-          {p.raisons && p.raisons.length > 0 && <p className="mt-1 text-[13px] text-(--lm-encre-2)">{p.raisons.join(' · ')}</p>}
+          {autres.length > 0 && (
+            <Alert tone="alerte" titre={TITRE_RAISONS} className="mt-2">
+              <ul>
+                {autres.map((x) => (
+                  <li key={x}>{x}</li>
+                ))}
+              </ul>
+            </Alert>
+          )}
           {edition ? (
             <Textarea aria-label="Texte de la réponse" rows={8} value={texte} disabled={!gerant} onChange={(x) => setTexte(x.target.value)} className="mt-2" />
           ) : (

@@ -390,11 +390,17 @@ export function empreinteTexte(texte: string): string {
 
 const noteLue = (n: unknown): number | undefined => (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= 5 ? n : undefined);
 
-/** Sentiment de l'avis : la note d'abord (sous 4 : négatif ; de 4 à 4,5 : mitigé), puis les mots. */
-export function sentimentAvis(note: number | undefined, positifs: number, negatifs: number): SentimentMessage {
+/**
+ * Note sur 5 à partir de laquelle un avis est dans le haut de l'échelle : 4,6
+ * (Airbnb, Vrbo), 4,5 sur Booking.com (9 sur 10, « Superbe »).
+ */
+export const noteHaute = (canal?: string): number => (canal === 'booking' ? 4.5 : 4.6);
+
+/** Sentiment de l'avis : la note d'abord (sous 4 : négatif ; de 4 au haut de l'échelle : mitigé), puis les mots. */
+export function sentimentAvis(note: number | undefined, positifs: number, negatifs: number, canal?: string): SentimentMessage {
   if (note !== undefined) {
     if (note < 4) return 'negatif';
-    if (note < 4.6) return negatifs > positifs ? 'negatif' : 'neutre';
+    if (note < noteHaute(canal)) return negatifs > positifs ? 'negatif' : 'neutre';
     return negatifs > positifs ? 'neutre' : 'positif';
   }
   if (negatifs > positifs) return 'negatif';
@@ -423,7 +429,7 @@ export function lireAvis(r: Reservation): AvisLu | null {
   if (note === undefined && !textePublic && !textePrive) return null;
   const pub = lireTexte(textePublic);
   const priv = lireTexte(textePrive);
-  let sentiment = sentimentAvis(note, pub.positifs + priv.positifs, pub.negatifs + priv.negatifs);
+  let sentiment = sentimentAvis(note, pub.positifs + priv.positifs, pub.negatifs + priv.negatifs, r.canal);
   let publics = [...pub.themes.entries()].map(([cle, s]): ThemeLu => ({ cle, sentiment: s }));
   let source: AvisLu['source'] = 'mots';
   const ia = lectureValable(r.lectureAvis, textePublic);
@@ -436,9 +442,9 @@ export function lireAvis(r: Reservation): AvisLu | null {
     for (const t of Array.isArray(ia.themes) ? ia.themes : []) if (estCleTheme(t?.theme) && estSentiment(t?.sentiment)) sens.set(t.theme, t.sentiment);
     if (sens.size) publics = publics.flatMap((t): ThemeLu[] => (t.sentiment === 'negatif' ? [t] : sens.has(t.cle) ? [{ cle: t.cle, sentiment: sens.get(t.cle)! }] : []));
     // - Sentiment de l'avis : jamais plus positif que les mots-clés (un avis ne sort pas seul de
-    //   « à lire ») ; et pas « négatif » contre une note de 4,6 ou plus (au plus « mitigé »).
+    //   « à lire ») ; et pas « négatif » contre une note du haut de l'échelle (au plus « mitigé »).
     const plusSevere = RANG_SENTIMENT[ia.sentiment] < RANG_SENTIMENT[sentiment] ? ia.sentiment : sentiment;
-    sentiment = note !== undefined && note >= 4.6 && plusSevere === 'negatif' ? 'neutre' : plusSevere;
+    sentiment = note !== undefined && note >= noteHaute(r.canal) && plusSevere === 'negatif' ? 'neutre' : plusSevere;
   }
   // Message privé : ses thèmes à part (jamais repris dans la réponse), sauf s'il redit la même chose que l'avis public.
   const sensPublic = new Map(publics.map((t) => [t.cle, t.sentiment]));
@@ -710,12 +716,15 @@ export function reponseModele(a: AvisLu, o: { prenom?: string; signature?: strin
     }
   } else {
     lignes.push(prenom ? `Bonjour ${prenom},` : 'Bonjour,');
-    const plu = (n: number) => (n > 1 ? 'vous aient plu' : 'vous ait plu');
+    // Accord sur ce qui est nommé : « que nos échanges vous aient plu », « que la propreté vous ait plu ».
+    const plu = (points: string[]) => (points.length > 1 || /^(les|nos|des|vos|ses|leurs)\s/i.test(points[0] ?? '') ? 'vous aient plu' : 'vous ait plu');
+    // « qu’un logement », « qu’à », mais « que la » : élision devant une voyelle.
+    const que = (suite: string) => (/^[aeiouyàâéèêîôû]/i.test(suite) ? `qu’${suite}` : `que ${suite}`);
     if (!neg.length && a.sentiment !== 'negatif') {
       lignes.push(
         [
           'Merci beaucoup pour votre avis et pour votre séjour.',
-          pos.length ? `Nous sommes ravis que ${enumerer(pos, 'et')} ${plu(pos.length)}.` : 'Nous sommes ravis que votre séjour se soit bien passé.',
+          pos.length ? `Nous sommes ravis ${que(enumerer(pos, 'et'))} ${plu(pos)}.` : 'Nous sommes ravis que votre séjour se soit bien passé.',
           'Au plaisir de vous accueillir à nouveau.',
         ].join(' '),
       );
@@ -723,7 +732,7 @@ export function reponseModele(a: AvisLu, o: { prenom?: string; signature?: strin
       lignes.push(
         [
           'Merci pour votre avis et pour votre séjour.',
-          pos.length ? `Nous sommes heureux que ${enumerer(pos, 'et')} ${plu(pos.length)}.` : '',
+          pos.length ? `Nous sommes heureux ${que(enumerer(pos, 'et'))} ${plu(pos)}.` : '',
           neg.length
             ? `Nous sommes désolés pour ${enumerer(neg, 'et')} : nous avons bien noté votre remarque.`
             : 'Nous sommes désolés que votre séjour n’ait pas été à la hauteur de vos attentes : nous avons bien noté vos remarques.',

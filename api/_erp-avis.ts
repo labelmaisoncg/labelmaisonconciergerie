@@ -11,11 +11,12 @@
 //     dans le plafond mensuel de l'espace. Aucun appel à Repull : seule la base
 //     de l'ERP est lue (la clé Repull n'est pas exigée).
 //
-//   POST { action: 'avis_publier', genre: 'voyageur' | 'reponse', reservationId, texte }
+//   POST { action: 'avis_publier', genre: 'voyageur' | 'reponse', reservationId, texte,
+//          rating (1 à 5, avis sur le voyageur), isRevieweeRecommended (booléen, idem) }
 //     → { ok, message }
 //     « Publier » depuis « À valider » (publication automatique des avis,
 //     octobre 2026, exception limitée aux avis) : l'avis sur le voyageur
-//     (Airbnb, 5 étoiles) ou la réponse à l'avis du voyageur, avec le texte
+//     (Airbnb, note et « Je recommande » choisis par le gérant) ou la réponse à l'avis du voyageur, avec le texte
 //     validé par le gérant. GÉRANT SEULEMENT ; réglage allumé ; avis relu chez
 //     la plateforme avant l'envoi ; jamais deux fois ; tracé dans « Actions de
 //     l'IA ». Détail : src/erp/data/avis-auto-passage.ts. Chaque appel Repull
@@ -101,7 +102,7 @@ async function publier(res: any, corps: Record<string, unknown>, espace: string 
         modele: a.modele,
         ...(assistant.nomEspace !== undefined ? { nomEspace: assistant.nomEspace } : {}),
       },
-      { genre: corps.genre, reservationId: corps.reservationId, texte: corps.texte },
+      { genre: corps.genre, reservationId: corps.reservationId, texte: corps.texte, rating: corps.rating, isRevieweeRecommended: corps.isRevieweeRecommended },
       { email: par, nom: nom.charAt(0).toLocaleUpperCase('fr') + nom.slice(1) },
     );
     return r.ok ? repondre(res, 200, { ok: true, message: r.message }) : repondre(res, r.statut, { ok: false, erreur: r.message });

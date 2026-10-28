@@ -43,6 +43,7 @@ import {
   NOTE_AVIS_AUTO,
   PAR_PUBLICATION_AUTO,
   PLATEFORMES_REPONSE,
+  RAISON_ENVOI_COUPE,
   allume,
   avisDepose,
   avisRepondu,
@@ -50,6 +51,7 @@ import {
   fenetreAvisVoyageur,
   indexSejours,
   langueVoyageur,
+  noteVoyageurValide,
   passageAvisDu,
   plateformeAvis,
   problemesTexteAvis,
@@ -57,6 +59,7 @@ import {
   raisonsReponseAValider,
   reglagesAvisAuto,
   reponseADecider,
+  signatureSociete,
   verdictAvisVoyageur,
   type EtatAvisAuto,
 } from './avis-auto.js';
@@ -149,13 +152,24 @@ export interface BilanAvisAuto {
 /** Résultat d'un envoi à la plateforme. */
 type Envoi = { ok: true; deja?: true } | { ok: false; statut: 'echec' | 'expire' | 'reprendre'; message: string };
 
+/**
+ * Codes 409 qui disent CLAIREMENT que c'est déjà fait : l'avis sur le
+ * voyageur déjà déposé (OpenAPI : review_already_submitted), la réponse déjà
+ * publiée. Tout autre 409 (not_host_review, code inconnu…) est un échec :
+ * rien n'est noté « publié », l'équipe reprend à la main.
+ */
+const DEJA_FAIT: Record<'voyageur' | 'reponse', ReadonlySet<string>> = {
+  voyageur: new Set(['review_already_submitted']),
+  reponse: new Set(['already_replied', 'already_responded', 'review_already_replied', 'review_already_responded', 'reply_already_exists', 'response_already_exists']),
+};
+
 /** Ce que la plateforme a répondu, en clair. */
 function lireEchec(e: unknown, genre: 'voyageur' | 'reponse'): Envoi {
   if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
   if (e instanceof ErreurRepull) {
-    if (e.statut === 409 && (e.code === 'review_already_submitted' || e.code === 'already_replied' || (genre === 'reponse' && e.code !== 'reply_not_allowed'))) return { ok: true, deja: true };
+    if (e.statut === 409 && DEJA_FAIT[genre].has(String(e.code ?? ''))) return { ok: true, deja: true };
     if (e.statut === 409 && e.code === 'review_window_closed') return { ok: false, statut: 'expire', message: 'Le délai d’Airbnb pour cet avis est passé.' };
-    if (e.statut === 409 && e.code === 'reply_not_allowed') return { ok: false, statut: 'echec', message: 'La plateforme ne prend plus de réponse à cet avis.' };
+    if (e.statut === 409) return { ok: false, statut: 'echec', message: `La plateforme a refusé : rien n’a été publié. ${messageErreur(e)}`.trim() };
     if (e.statut === 403 && e.code === 'listing_inactive') return { ok: false, statut: 'echec', message: 'Ce logement est désactivé chez notre service de connexion : rien n’a été publié. Réactivez-le dans Logements → Connexions.' };
     if (e.statut === 403 && e.code === 'connection_reauth_required') return { ok: false, statut: 'echec', message: 'La connexion à la plateforme est à refaire (Logements → Connexions) : rien n’a été publié.' };
     if (e.statut === 422 && e.code === 'unsupported_channel') return { ok: false, statut: 'echec', message: 'Cette plateforme ne prend pas cet avis par notre service de connexion : rien n’a été publié.' };
@@ -249,10 +263,17 @@ async function journal(o: Pick<ContexteConnexion, 'base'>, le: string, entite: s
   await o.base.ecrire('journal', [l], AUTEUR).catch(() => undefined);
 }
 
-/** POST de l'avis sur le voyageur (5 étoiles, recommandé). */
-async function envoyerAvisVoyageur(client: ClientRepull, avisId: string, r: Reservation, texte: string): Promise<Envoi> {
+/** Note donnée au voyageur et « Je recommande » : 5 et oui pour la publication automatique, au choix du gérant sinon. */
+interface ChoixNote {
+  note: number;
+  recommande: boolean;
+}
+const CHOIX_AUTO: ChoixNote = { note: NOTE_AVIS_AUTO, recommande: true };
+
+/** POST de l'avis sur le voyageur (note et recommandation choisies). */
+async function envoyerAvisVoyageur(client: ClientRepull, avisId: string, r: Reservation, texte: string, choix: ChoixNote): Promise<Envoi> {
   try {
-    await client.post(`/v1/reviews/${avisId}/guest-review`, { publicReview: texte, rating: NOTE_AVIS_AUTO, isRevieweeRecommended: true }, {}, { 'Idempotency-Key': `lm-avis-voyageur-${r.id}`.slice(0, 255) });
+    await client.post(`/v1/reviews/${avisId}/guest-review`, { publicReview: texte, rating: choix.note, isRevieweeRecommended: choix.recommande }, {}, { 'Idempotency-Key': `lm-avis-voyageur-${r.id}`.slice(0, 255) });
     return { ok: true };
   } catch (e) {
     return lireEchec(e, 'voyageur');
@@ -269,8 +290,9 @@ async function envoyerReponse(client: ClientRepull, avisId: string, r: Reservati
   }
 }
 
-const ligneReponse = (r: Reservation, a: Pick<RepullReview, 'rating' | 'publicReview'>): Omit<ReponseAvisAuto, 'publication' | 'creeLe'> => {
-  const note = noteSur5(a.rating);
+const ligneReponse = (r: Reservation, a: Pick<RepullReview, 'rating' | 'publicReview' | 'platform'>): Omit<ReponseAvisAuto, 'publication' | 'creeLe'> => {
+  // Booking.com note toujours sur 10 : ramenée sur 5 selon la plateforme de l'avis (sinon du séjour).
+  const note = noteSur5(a.rating, a.platform ?? r.canal);
   const avis = masquerCoordonnees(String(a.publicReview ?? '')).trim().slice(0, 600);
   return {
     id: r.id,
@@ -317,11 +339,21 @@ class PassageAvis {
     return this.publications < this.maxPublications && this.reste() >= TEMPS_ENVOI_MS;
   }
 
+  /** Marques « en cours » plus vieilles que le bail : des envois coupés, à vérifier chez la plateforme (reprendreCoupes). */
+  private coupes(d: DonneesAvisAuto): { avis: AvisADeposer[]; reponses: ReponseAvisAuto[] } {
+    const le = this.le();
+    const coupe = (p: PublicationAvis | undefined) => p?.statut === 'en_cours' && !marqueRecente(p, le);
+    return { avis: d.avis.filter((a) => coupe(a?.publication)), reponses: d.reponses.filter((x) => coupe(x?.publication)) };
+  }
+
   async lancer(d: DonneesAvisAuto): Promise<BilanAvisAuto> {
     const reglages = reglagesAvisAuto({ reglages: d.reglagesLus });
     const voyageursOn = allume(reglages.voyageurs);
     const reponsesOn = allume(reglages.reponses);
-    if (!voyageursOn && !reponsesOn) return this.bilan;
+    // Un envoi coupé se vérifie même réglage éteint depuis (une lecture par avis, jamais un envoi).
+    const coupes = this.coupes(d);
+    const aReprendre = coupes.avis.length + coupes.reponses.length > 0;
+    if (!voyageursOn && !reponsesOn && !aReprendre) return this.bilan;
     const maintenant = this.maintenant();
     const aujourdhui = dateParisDe(maintenant);
     const [etatLu] = await this.o.base.lireVersions<EtatAvisAuto>(COLLECTION_ETAT_PROGRAMMES, [ID_ETAT_AVIS_AUTO]);
@@ -330,10 +362,10 @@ class PassageAvis {
 
     const avisParId = new Map(d.avis.map((a) => [a.id, a]));
     const decisions = voyageursOn ? d.reservations.map((r) => ({ r, x: deciderAvisVoyageur(r, avisParId.get(r.id), aujourdhui, reglages.voyageurs) })) : [];
-    // Délai d'Airbnb passé pour un avis à valider (ou un envoi resté en cours) : noté, sans appel.
+    // Délai d'Airbnb passé pour un avis à valider : noté, sans appel.
     for (const { r } of decisions.filter((x) => x.x.genre === 'expirer')) {
       const p = avisParId.get(r.id)?.publication;
-      if (await ecrireLigneAvis(this.o, r, { ...(p ?? {}), statut: 'expire', le: this.le(), erreur: 'Le délai d’Airbnb pour cet avis est passé.' }, { statut: 'passe' }, ['a_valider', 'en_cours'], this.le())) this.bilan.expires++;
+      if (await ecrireLigneAvis(this.o, r, { ...(p ?? {}), statut: 'expire', le: this.le(), erreur: 'Le délai d’Airbnb pour cet avis est passé.' }, { statut: 'passe' }, ['a_valider'], this.le())) this.bilan.expires++;
     }
     const voyageurs = decisions.filter((x) => x.x.genre === 'preparer').map((x) => x.r).sort((a, b) => a.depart.localeCompare(b.depart));
     const reponsesParId = new Map(d.reponses.map((x) => [x.id, x]));
@@ -345,7 +377,7 @@ class PassageAvis {
         (r) => (PLATEFORMES_REPONSE as readonly string[]).includes(r.canal) && r.statut !== 'annulee' && r.depart <= aujourdhui && r.depart >= limite && reponsesParId.get(r.id)?.publication.statut !== 'publie',
       );
 
-    if (voyageurs.length || reponsesPossibles) {
+    if (voyageurs.length || reponsesPossibles || aReprendre) {
       const etatRepull = await lireEtat(this.o.base, maintenant, this.o.budgetMois ?? BUDGET_ERP_DEFAUT, this.o.quotaMois ?? QUOTA_MOIS_DEFAUT);
       if (etatRepull.budgetMois - etatRepull.appelsMois < RESERVE_APPELS) {
         this.bilan.budget = true;
@@ -354,6 +386,8 @@ class PassageAvis {
         try {
           await avecClient(this.o, async (client) => {
             const sejour = indexSejours(d.reservations);
+            // D'abord les envois coupés : relus chez la plateforme, jamais renvoyés ni rédigés à nouveau.
+            if (aReprendre) await this.reprendreCoupes(client, d, coupes, aujourdhui);
             if (voyageurs.length) {
               const trouves = await this.avisHotes(client, voyageurs, sejour);
               for (const r of voyageurs) {
@@ -407,7 +441,122 @@ class PassageAvis {
     }
   }
 
-  /** Avis à déposer sur les voyageurs, chez Airbnb : les pages récentes, jusqu'à trouver ceux des séjours attendus. */
+  /**
+   * Un avis relu chez la plateforme (GET /v1/reviews/{id}, compté) ; null :
+   * il n'existe plus (404) ; undefined : pas de réponse (laissé tel quel,
+   * repris au passage suivant).
+   */
+  private async relireAvis(client: ClientRepull, avisId: string): Promise<RepullReview | null | undefined> {
+    try {
+      return await client.get<RepullReview>(`/v1/reviews/${encodeURIComponent(avisId)}`);
+    } catch (e) {
+      if (e instanceof BudgetEpuise || e instanceof DelaiEcoule) throw e;
+      if (e instanceof ErreurRepull && e.statut === 404) return null;
+      this.bilan.complet = false;
+      this.bilan.erreurs.push(messageErreur(e, { budgetMois: this.o.budgetMois, origineCle: this.o.origineCle }));
+      return undefined;
+    }
+  }
+
+  /**
+   * Envois coupés (marque « en cours » plus vieille que le bail) : la
+   * plateforme est relue. L'avis ou la réponse y est : « publié ». Sinon : de
+   * nouveau « à valider », avec le texte de la marque (celui qui partait) et
+   * la raison « L’envoi a été coupé » — rien ne repart seul, rien n'est
+   * redemandé à l'IA. Délai d'Airbnb passé : expiré ; avis disparu : échec
+   * (l'équipe reprend à la main).
+   */
+  private async reprendreCoupes(client: ClientRepull, d: DonneesAvisAuto, coupes: { avis: AvisADeposer[]; reponses: ReponseAvisAuto[] }, aujourdhui: string) {
+    const parId = new Map(d.reservations.map((r) => [r.id, r]));
+    const parSejour = (r: Reservation, a: RepullReview) => indexSejours([r])(a)?.id === r.id;
+    for (const ligne of coupes.avis) {
+      if (this.reste() < TEMPS_ENVOI_MS) {
+        this.bilan.complet = false;
+        return;
+      }
+      const r = parId.get(ligne.reservationId);
+      const p = ligne.publication!;
+      if (!r) continue;
+      const a = p.avisId ? await this.relireAvis(client, p.avisId) : null;
+      if (a === undefined) continue;
+      const le = this.le();
+      const texte = (p.texte ?? '').trim();
+      if (a && parSejour(r, a) && avisDepose(a)) {
+        const enLigne = String(a.publicReview ?? '').trim();
+        const notre = !enLigne || enLigne === texte;
+        const ecrit = await ecrireLigneAvis(
+          this.o,
+          r,
+          { ...p, statut: 'publie', le, publieLe: a.submittedAt || le, ...(notre ? {} : { deja: true as const }), texte: enLigne || texte },
+          { statut: 'fait', texte: enLigne || texte, traiteLe: le, traitePar: p.par ?? AUTEUR },
+          ['en_cours'],
+          le,
+        );
+        if (ecrit && notre) {
+          this.bilan.avisPublies++;
+          const par = p.par && p.par !== AUTEUR ? p.par : undefined;
+          await tracer(this.o, { genre: 'voyageur', reservation: r, plateforme: 'Airbnb', texte: texte || enLigne, le, ...(par ? { par } : {}), ...(d.logements.get(r.logementId) ? { logement: d.logements.get(r.logementId) } : {}), note: p.note ?? NOTE_AVIS_AUTO, recommande: p.recommande ?? true });
+        }
+        continue;
+      }
+      if (!a || !parSejour(r, a)) {
+        if (await ecrireLigneAvis(this.o, r, { ...p, statut: 'echec', le, erreur: AVIS_INTROUVABLE }, {}, ['en_cours'], le)) this.bilan.echecs++;
+        continue;
+      }
+      if (fenetreAvisVoyageur(r, aujourdhui) === 'passee' || (a.expiresAt && Date.parse(a.expiresAt) <= this.maintenant().getTime())) {
+        if (await ecrireLigneAvis(this.o, r, { ...p, statut: 'expire', le, erreur: 'Le délai d’Airbnb pour cet avis est passé.' }, { statut: 'passe' }, ['en_cours'], le)) this.bilan.expires++;
+        continue;
+      }
+      const raisons = [RAISON_ENVOI_COUPE, ...(p.raisons ?? []).filter((x) => x !== RAISON_ENVOI_COUPE)];
+      if (await ecrireLigneAvis(this.o, r, { ...p, statut: 'a_valider', le, texte, raisons }, { statut: 'a_relire', texte, raisons }, ['en_cours'], le)) this.bilan.aValider++;
+    }
+    for (const ligne of coupes.reponses) {
+      if (this.reste() < TEMPS_ENVOI_MS) {
+        this.bilan.complet = false;
+        return;
+      }
+      const r = parId.get(ligne.reservationId);
+      const p = ligne.publication;
+      if (!r) continue;
+      const a = p.avisId ? await this.relireAvis(client, p.avisId) : null;
+      if (a === undefined) continue;
+      const le = this.le();
+      const texte = (p.texte ?? '').trim();
+      const { publication: _p, creeLe: _c, ...base } = ligne;
+      if (a && parSejour(r, a) && avisRepondu(a)) {
+        const enLigne = typeof a.response === 'object' && a.response ? String(a.response.body ?? '').trim() : '';
+        const notre = !enLigne || enLigne === texte;
+        const ecrit = await ecrireLigneReponse(
+          this.o,
+          base,
+          { ...p, statut: 'publie', le, publieLe: (typeof a.response === 'object' && a.response?.submittedAt) || le, ...(notre ? {} : { deja: true as const }), texte: enLigne || texte },
+          ['en_cours'],
+          le,
+        );
+        if (ecrit && notre) {
+          this.bilan.reponsesPubliees++;
+          const par = p.par && p.par !== AUTEUR ? p.par : undefined;
+          await tracer(this.o, { genre: 'reponse', reservation: r, plateforme: nomPlateforme(a.platform ?? r.canal), texte: texte || enLigne, le, ...(par ? { par } : {}), ...(d.logements.get(r.logementId) ? { logement: d.logements.get(r.logementId) } : {}) });
+        }
+        continue;
+      }
+      if (!a || !parSejour(r, a)) {
+        if (await ecrireLigneReponse(this.o, base, { ...p, statut: 'echec', le, erreur: 'La plateforme ne propose plus cet avis : répondez-y vous-même.' }, ['en_cours'], le)) this.bilan.echecs++;
+        continue;
+      }
+      const raisons = [RAISON_ENVOI_COUPE, ...(p.raisons ?? []).filter((x) => x !== RAISON_ENVOI_COUPE)];
+      if (await ecrireLigneReponse(this.o, base, { ...p, statut: 'a_valider', le, texte, raisons }, ['en_cours'], le)) this.bilan.aValider++;
+    }
+  }
+
+  /**
+   * Avis à déposer sur les voyageurs, chez Airbnb : les pages récentes,
+   * jusqu'à trouver ceux des séjours attendus. GET /v1/reviews ne filtre ni
+   * par réservation ni par date et ne se trie pas (OpenAPI : account,
+   * platform, listingId, rating_min/max, status, reviewerRole, curseur) : on
+   * lit au plus 3 pages de 100 ; un avis qui n'y est pas passe à l'équipe
+   * (AVIS_INTROUVABLE) ou revient dans les deux derniers jours du délai.
+   */
   private async avisHotes(client: ClientRepull, voyageurs: Reservation[], sejour: ReturnType<typeof indexSejours>): Promise<Map<string, RepullReview>> {
     const voulus = new Set(voyageurs.map((r) => r.id));
     const trouves = new Map<string, RepullReview>();
@@ -451,7 +600,8 @@ class PassageAvis {
 
   private async avisVoyageur(client: ClientRepull, r: Reservation, a: RepullReview | undefined, d: DonneesAvisAuto, aujourdhui: string) {
     const prenom = prenomDe(r.voyageur?.nom);
-    const attendus: (StatutPublication | 'aucune')[] = ['aucune', 'en_cours'];
+    // Seulement une ligne neuve : une marque « en cours » relève de reprendreCoupes, jamais d'une nouvelle rédaction.
+    const attendus: (StatutPublication | 'aucune')[] = ['aucune'];
     if (!a) {
       // Pas encore proposé par Airbnb : un jour de grâce, puis l'équipe le dépose elle-même (carte « Votre avis sur le voyageur »).
       const jours = Math.round((Date.parse(`${aujourdhui}T00:00:00Z`) - Date.parse(`${r.depart}T00:00:00Z`)) / 86_400_000);
@@ -526,29 +676,56 @@ class PassageAvis {
       this.bilan.complet = false;
       return;
     }
-    // Marque AVANT l'envoi : si elle ne s'écrit pas (l'équipe a décidé entre-temps), rien ne part.
-    const marque = await ecrireLigneAvis(this.o, r, { statut: 'en_cours', avisId: String(a.id), le: this.le(), depuis: this.le(), texte }, { texte, source: redige.source, redigeLe: this.le() }, attendus, this.le());
+    // Marque AVANT l'envoi, avec le texte qui part : si elle ne s'écrit pas (l'équipe a décidé entre-temps), rien ne part.
+    const marque = await ecrireLigneAvis(
+      this.o,
+      r,
+      { statut: 'en_cours', avisId: String(a.id), le: this.le(), depuis: this.le(), par: AUTEUR, texte, note: CHOIX_AUTO.note, recommande: CHOIX_AUTO.recommande },
+      { texte, source: redige.source, redigeLe: this.le() },
+      attendus,
+      this.le(),
+    );
     if (!marque) return;
-    const envoi = await envoyerAvisVoyageur(client, String(a.id), r, texte);
-    await this.apresEnvoiVoyageur(r, String(a.id), texte, envoi, { par: AUTEUR }, logement);
+    const envoi = await envoyerAvisVoyageur(client, String(a.id), r, texte, CHOIX_AUTO);
+    await this.apresEnvoiVoyageur(r, String(a.id), texte, CHOIX_AUTO, envoi, { par: AUTEUR }, logement);
   }
 
-  private async apresEnvoiVoyageur(r: Reservation, avisId: string, texte: string, envoi: Envoi, qui: { par: string; email?: string; modifie?: boolean }, logement?: Logement) {
+  private async apresEnvoiVoyageur(
+    r: Reservation,
+    avisId: string,
+    texte: string,
+    choix: ChoixNote,
+    envoi: Envoi,
+    qui: { par: string; email?: string; modifie?: boolean },
+    logement?: Logement,
+  ) {
     if (envoi.ok) {
       this.publications++;
       const le = this.le();
       await ecrireLigneAvis(
         this.o,
         r,
-        { statut: 'publie', avisId, le, publieLe: le, par: qui.par, texte, ...(envoi.deja ? { deja: true as const } : {}), ...(qui.modifie ? { modifie: true as const } : {}) },
+        {
+          statut: 'publie',
+          avisId,
+          le,
+          publieLe: le,
+          par: qui.par,
+          texte,
+          note: choix.note,
+          recommande: choix.recommande,
+          ...(envoi.deja ? { deja: true as const } : {}),
+          ...(qui.modifie ? { modifie: true as const } : {}),
+        },
         { statut: 'fait', texte, traiteLe: le, traitePar: qui.par },
         ['en_cours'],
         le,
       );
       if (envoi.deja) return;
       this.bilan.avisPublies++;
-      await tracer(this.o, { genre: 'voyageur', reservation: r, plateforme: 'Airbnb', texte, le, ...(qui.email ? { par: qui.email } : {}), ...(qui.modifie ? { modifie: true } : {}), ...(logement ? { logement } : {}), note: NOTE_AVIS_AUTO });
-      await journal(this.o, le, COLLECTION_AVIS_A_DEPOSER, r.id, `Avis sur ${prenomDe(r.voyageur?.nom) || 'le voyageur'} publié sur Airbnb (${NOTE_AVIS_AUTO} étoiles)${qui.email ? ` par ${qui.par}` : ', automatiquement'}.`);
+      await tracer(this.o, { genre: 'voyageur', reservation: r, plateforme: 'Airbnb', texte, le, ...(qui.email ? { par: qui.email } : {}), ...(qui.modifie ? { modifie: true } : {}), ...(logement ? { logement } : {}), note: choix.note, recommande: choix.recommande });
+      const etoiles = `${choix.note} étoile${choix.note > 1 ? 's' : ''}${choix.recommande ? ', recommandé' : ''}`;
+      await journal(this.o, le, COLLECTION_AVIS_A_DEPOSER, r.id, `Avis sur ${prenomDe(r.voyageur?.nom) || 'le voyageur'} publié sur Airbnb (${etoiles})${qui.email ? ` par ${qui.par}` : ', automatiquement'}.`);
       return;
     }
     if (envoi.statut === 'reprendre') {
@@ -564,7 +741,8 @@ class PassageAvis {
 
   private async reponse(client: ClientRepull, r: Reservation, a: RepullReview, d: DonneesAvisAuto) {
     const ligne = ligneReponse(r, a);
-    const attendus: (StatutPublication | 'aucune')[] = ['aucune', 'en_cours'];
+    // Seulement une ligne neuve : une marque « en cours » relève de reprendreCoupes, jamais d'une nouvelle rédaction.
+    const attendus: (StatutPublication | 'aucune')[] = ['aucune'];
     // L'avis tel que la plateforme le donne (la synchronisation des avis passe une fois par semaine).
     const r2 = appliquerAvis(r, a);
     const lu = lireAvis(r2);
@@ -581,14 +759,22 @@ class PassageAvis {
       { base: this.o.base, ia: this.o.ia, modele: this.o.modele, nomEspace: this.o.nomEspace, plafondIAMois: this.o.plafondIAMois, maintenant: this.o.maintenant, par: AUTEUR },
       r2,
       lu,
-      { ...(logement ? { logement } : {}), reglagesLus: d.reglagesLus, delaiMs: Math.min(20_000, this.reste() - 4_000), repliSurPanne: true },
+      {
+        ...(logement ? { logement } : {}),
+        reglagesLus: d.reglagesLus,
+        // Signée du nom de la société (réglage du gérant), jamais de la signature de l'agent que l'équipe peut changer.
+        signature: signatureSociete(d.reglagesLus),
+        delaiMs: Math.min(20_000, this.reste() - 4_000),
+        repliSurPanne: true,
+      },
     );
     if (red.appelIA) this.bilan.appelsIA++;
     if (red.panne && this.o.ia) this.etatIA = 'panne';
     if (red.lecture) await garderLecture(this.o, r.id, red.lecture).catch(() => false);
     // La lecture de l'IA ne peut que rendre l'avis plus sévère (avis.ts, lireAvis).
     const lecture = red.lecture ? (lireAvis({ ...r2, lectureAvis: red.lecture }) ?? lu) : lu;
-    const raisons = raisonsReponseAValider(lecture);
+    // Seuil de la plateforme sur la note telle qu'elle la donne (Airbnb 5 sur 5, Booking.com 9 sur 10).
+    const raisons = raisonsReponseAValider(lecture, { plateforme: a.platform ?? r.canal, noteNative: typeof a.rating === 'number' ? a.rating : undefined });
     if (red.ecartee) raisons.push('La proposition de votre agent a été écartée : relisez le texte simple');
     if (red.panne) raisons.push('Votre agent n’a pas pu rédiger la réponse : relisez le texte simple');
     const texte = red.texte.trim();
@@ -609,7 +795,7 @@ class PassageAvis {
       this.bilan.complet = false;
       return;
     }
-    const marque = await ecrireLigneReponse(this.o, ligne, { statut: 'en_cours', avisId: String(a.id), le: this.le(), depuis: this.le(), texte }, attendus, this.le());
+    const marque = await ecrireLigneReponse(this.o, ligne, { statut: 'en_cours', avisId: String(a.id), le: this.le(), depuis: this.le(), par: AUTEUR, texte }, attendus, this.le());
     if (!marque) return;
     const envoi = await envoyerReponse(client, String(a.id), r, texte);
     await this.apresEnvoiReponse(marque, r, String(a.id), texte, envoi, { par: AUTEUR }, logement, nomPlateforme(a.platform ?? r.canal));
@@ -654,17 +840,29 @@ class PassageAvis {
 
   /**
    * Publie le texte validé (et peut-être retouché) par le gérant, pour un
-   * avis gardé « à valider » : relu chez la plateforme d'abord.
+   * avis gardé « à valider » : relu chez la plateforme d'abord. Avis sur le
+   * voyageur : avec la note (1 à 5 étoiles) et « Je recommande » qu'il a
+   * choisis, obligatoires et vérifiés ici.
    */
-  async publierGerant(genre: 'voyageur' | 'reponse', reservationId: string, texteBrut: string, qui: { email: string; nom: string }): Promise<ResultatPublication> {
+  async publierGerant(
+    genre: 'voyageur' | 'reponse',
+    reservationId: string,
+    texteBrut: string,
+    qui: { email: string; nom: string },
+    choixBrut: { note?: unknown; recommande?: unknown } = {},
+  ): Promise<ResultatPublication> {
     const texte = String(texteBrut ?? '').replace(/\r\n/g, '\n').trim();
     const id = String(reservationId ?? '').trim();
+    if (genre === 'voyageur' && (!noteVoyageurValide(choixBrut.note) || typeof choixBrut.recommande !== 'boolean')) {
+      return refus('Choisissez la note du voyageur (de 1 à 5 étoiles) et si vous le recommandez.', 400);
+    }
     const [r] = id ? await this.o.base.lire<Reservation>('reservations', [id]) : [];
     if (!r) return refus('Séjour introuvable : rechargez la page.', 404);
     const [logement] = r.logementId ? await this.o.base.lire<Logement>('logements', [r.logementId]) : [];
     const aujourdhui = dateParisDe(this.maintenant());
 
     if (genre === 'voyageur') {
+      const choix: ChoixNote = { note: choixBrut.note as number, recommande: choixBrut.recommande as boolean };
       const [ligne] = await this.o.base.lire<AvisADeposer>(COLLECTION_AVIS_A_DEPOSER, [r.id]);
       const p = ligne?.publication;
       if (!ligne || p?.statut !== 'a_valider' || !p.avisId) return refus('Cet avis n’attend plus votre accord : rechargez la page.', 409);
@@ -679,11 +877,12 @@ class PassageAvis {
           await ecrireLigneAvis(this.o, r, { statut: 'publie', avisId: p.avisId, le: this.le(), publieLe: a.submittedAt || this.le(), deja: true }, { statut: 'fait', traiteLe: this.le() }, ['a_valider'], this.le());
           return { ok: true as const, message: 'Cet avis était déjà déposé sur Airbnb : rien n’a été renvoyé.' };
         }
-        const marque = await ecrireLigneAvis(this.o, r, { ...p, statut: 'en_cours', le: this.le(), depuis: this.le() }, {}, ['a_valider'], this.le());
+        // La marque garde ce qui part (texte, note, gérant) : un envoi coupé revient « à valider » avec eux.
+        const marque = await ecrireLigneAvis(this.o, r, { ...p, statut: 'en_cours', le: this.le(), depuis: this.le(), par: qui.nom, texte, note: choix.note, recommande: choix.recommande }, {}, ['a_valider'], this.le());
         if (!marque) return refus('Cet avis vient de changer : rechargez la page.', 409);
-        const envoi = await envoyerAvisVoyageur(client, p.avisId!, r, texte);
-        await this.apresEnvoiVoyageur(r, p.avisId!, texte, envoi, { par: qui.nom, email: qui.email, ...(texte !== (p.texte ?? '').trim() ? { modifie: true } : {}) }, logement);
-        if (envoi.ok) return { ok: true as const, message: envoi.deja ? 'Cet avis était déjà déposé sur Airbnb : rien n’a été renvoyé.' : 'Avis publié sur Airbnb.' };
+        const envoi = await envoyerAvisVoyageur(client, p.avisId!, r, texte, choix);
+        await this.apresEnvoiVoyageur(r, p.avisId!, texte, choix, envoi, { par: qui.nom, email: qui.email, ...(texte !== (p.texte ?? '').trim() ? { modifie: true } : {}) }, logement);
+        if (envoi.ok) return { ok: true as const, message: envoi.deja ? 'Cet avis était déjà déposé sur Airbnb : rien n’a été renvoyé.' : `Avis publié sur Airbnb, ${choix.note} étoile${choix.note > 1 ? 's' : ''}.` };
         if (envoi.statut === 'reprendre') {
           // Peut-être parti : on le saura au prochain passage (jamais renvoyé sans vérifier).
           return refus('Pas de réponse d’Airbnb : la publication sera vérifiée au prochain passage, rien ne sera envoyé deux fois.', 502);
@@ -710,7 +909,7 @@ class PassageAvis {
         return { ok: true as const, message: 'Cet avis a déjà une réponse sur la plateforme : rien n’a été renvoyé.' };
       }
       const { publication: _x, creeLe: _y, ...base } = ligne;
-      const marque = await ecrireLigneReponse(this.o, base, { ...p, statut: 'en_cours', le: this.le(), depuis: this.le() }, ['a_valider'], this.le());
+      const marque = await ecrireLigneReponse(this.o, base, { ...p, statut: 'en_cours', le: this.le(), depuis: this.le(), par: qui.nom, texte }, ['a_valider'], this.le());
       if (!marque) return refus('Cette réponse vient de changer : rechargez la page.', 409);
       const envoi = await envoyerReponse(client, p.avisId!, r, texte);
       const plateforme = nomPlateforme(a.platform ?? r.canal);
@@ -743,12 +942,13 @@ export async function passerAvisAuto(o: OptionsAvisAuto, d: DonneesAvisAuto): Pr
 
 /**
  * « Publier » du gérant depuis « À valider » (api/_erp-avis.ts) : l'avis sur
- * le voyageur ou la réponse à l'avis, avec le texte qu'il a validé. Réglage
+ * le voyageur (avec `rating`, entier de 1 à 5, et `isRevieweeRecommended`,
+ * booléen) ou la réponse à l'avis, avec le texte qu'il a validé. Réglage
  * éteint depuis : rien n'est publié.
  */
 export async function publierAvisParGerant(
   o: OptionsAvisAuto,
-  demande: { genre: unknown; reservationId: unknown; texte: unknown },
+  demande: { genre: unknown; reservationId: unknown; texte: unknown; rating?: unknown; isRevieweeRecommended?: unknown },
   qui: { email: string; nom: string },
 ): Promise<ResultatPublication> {
   const genre = demande.genre === 'voyageur' || demande.genre === 'reponse' ? demande.genre : null;
@@ -759,7 +959,7 @@ export async function publierAvisParGerant(
     return refus('La publication automatique de ces avis est éteinte (Logements → Avis) : rien n’a été publié.', 409);
   }
   try {
-    return await new PassageAvis(o).publierGerant(genre, String(demande.reservationId ?? ''), String(demande.texte ?? ''), qui);
+    return await new PassageAvis(o).publierGerant(genre, String(demande.reservationId ?? ''), String(demande.texte ?? ''), qui, { note: demande.rating, recommande: demande.isRevieweeRecommended });
   } catch (e) {
     if (e instanceof BudgetEpuise) return refus(messageErreur(e, { budgetMois: o.budgetMois, origineCle: o.origineCle }), 429);
     if (e instanceof DelaiEcoule) return refus('La plateforme met trop de temps à répondre : réessayez dans un instant.', 504);
