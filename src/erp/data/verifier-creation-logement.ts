@@ -1,8 +1,10 @@
 /**
  * Auto-contrôle de la création d'un logement à la main, sans réseau :
  * logement vierge (statut « En préparation »), règles du formulaire, écrans
- * de l'assistant pas à pas, et surtout l'égalité des deux chemins (le
- * formulaire et l'assistant enregistrent exactement le même logement).
+ * de l'assistant pas à pas (nom jamais en double, résidence principale
+ * jamais supposée, surface facultative, lits), et surtout l'égalité des deux
+ * chemins (le formulaire et l'assistant enregistrent exactement le même
+ * logement).
  *
  * Lancement (Node 18+) :
  *   node_modules/.bin/esbuild src/erp/data/verifier-creation-logement.ts --bundle --platform=node --format=esm \
@@ -14,6 +16,8 @@ import {
   aPlacerSurCarte,
   brouillonInitial,
   capaciteSuggeree,
+  changerTotalLits,
+  cleNom,
   creationDepuisAssistant,
   erreursEtape,
   erreursProprietaire,
@@ -23,12 +27,15 @@ import {
   lignesRecap,
   logementDepuisSaisie,
   logementVierge,
+  nomDejaPris,
   nomSuggere,
   proprietaireDepuisSaisie,
   saisieDepuisBrouillon,
   saisieInitiale,
   saisieProprietaireInitiale,
   texteCapacite,
+  texteLits,
+  totalLits,
   typeDeLaFamille,
   type BrouillonLogement,
   type SaisieLogement,
@@ -73,8 +80,12 @@ const brouillon = (x: Partial<BrouillonLogement> = {}): BrouillonLogement => ({
   surfaceM2: '58',
   nom: 'T3 Corbeil-Essonnes',
   proprietaireId: A,
+  residencePrincipale: false,
   ...x,
 });
+
+/** Noms des logements déjà dans l'espace. */
+const NOMS_PRIS = ['Maison de Linas', 'Studio Gare'];
 
 section('Logement vierge : valeurs par défaut de toute création à la main');
 {
@@ -169,7 +180,7 @@ section('Assistant : six écrans, une question chacun');
 {
   verifier(empreinte(ETAPES_ASSISTANT) === empreinte(['type', 'adresse', 'capacite', 'nom', 'proprietaire', 'recapitulatif']), 'type, adresse, capacité, nom, propriétaire, récapitulatif');
   const b = brouillonInitial(true);
-  const ctx = { proprietaires };
+  const ctx = { proprietaires, nomsPris: NOMS_PRIS };
   verifier(erreursEtape('type', b, ctx).type === 'Choisissez un type de logement.', 'type : rien de choisi, « Continuer » grisé');
   verifier(Object.keys(erreursEtape('type', { ...b, type: 'maison' }, ctx)).length === 0, 'type choisi : on continue');
   verifier(
@@ -177,22 +188,82 @@ section('Assistant : six écrans, une question chacun');
     'adresse vide : ce qu’il faut faire, en toutes lettres',
   );
   verifier(erreursEtape('adresse', { ...b, adresse: '1 rue', codePostal: '911', ville: 'Évry' }, ctx).codePostal === 'Code postal à 5 chiffres.', 'code postal incomplet : la règle du formulaire');
-  verifier(empreinte(erreursEtape('capacite', b, ctx)) === empreinte({ surfaceM2: 'Indiquez la surface en m².' }), 'capacité : seuls les m² manquent au départ');
+  verifier(Object.keys(erreursEtape('capacite', b, ctx)).length === 0, 'capacité : on continue sans surface (facultative, à compléter dans la fiche)');
   verifier(erreursEtape('capacite', { ...b, surfaceM2: '0' }, ctx).surfaceM2 === 'Surface en m², nombre entier.', 'surface à 0 refusée');
   verifier(erreursEtape('capacite', { ...b, surfaceM2: '30', capacite: 0 }, ctx).capacite === 'Au moins 1 voyageur.', 'zéro voyageur refusé');
   verifier(erreursEtape('nom', b, ctx).nom === 'Donnez un nom au logement.' && !erreursEtape('nom', { ...b, nom: 'X' }, ctx).nom, 'nom : obligatoire');
   verifier(erreursEtape('proprietaire', b, ctx).proprietaireId === 'Choisissez le propriétaire.', 'propriétaire : à choisir dans la liste');
-  verifier(!erreursEtape('proprietaire', { ...b, proprietaireId: B }, ctx).proprietaireId, 'propriétaire choisi : on continue');
+  verifier(!erreursEtape('proprietaire', { ...b, proprietaireId: B }, ctx).proprietaireId, 'propriétaire choisi : plus d’erreur sur lui');
   verifier(erreursEtape('proprietaire', { ...b, proprietaireId: 'pro-supprime' }, ctx).proprietaireId !== undefined, 'propriétaire retiré entre-temps : refusé');
   const nouveau = erreursEtape('proprietaire', { ...b, modeProprietaire: 'nouveau', nouveauProprietaire: { ...saisieProprietaireInitiale(), email: 'pas-un-mail' } }, ctx);
   verifier(nouveau['proprietaire.nom'] === 'Indiquez le nom du propriétaire.' && nouveau['proprietaire.email'] === 'Adresse e-mail invalide.', 'nouveau propriétaire : vide dit quoi faire, mal saisi dit pourquoi');
   verifier(brouillonInitial(false).modeProprietaire === 'nouveau' && brouillonInitial(true).modeProprietaire === 'liste', 'aucun propriétaire encore : on en crée un directement');
   verifier(Object.keys(erreursEtape('recapitulatif', brouillon(), ctx)).length === 0, 'réponses complètes : « Créer le logement » permis');
+  verifier(Object.keys(erreursEtape('recapitulatif', brouillon({ surfaceM2: '' }), ctx)).length === 0, 'sans surface : « Créer le logement » permis');
   verifier(Object.keys(erreursEtape('recapitulatif', brouillon({ ville: '' }), ctx)).length === 1, 'récapitulatif : reprend les erreurs de chaque écran');
   // Toute erreur possible du formulaire se corrige sur un écran de l'assistant.
   for (const cle of Object.keys(erreursSaisieLogement(saisieInitiale()))) verifier(etapeDuChamp(cle) !== 'recapitulatif', `« ${cle} » se corrige sur un écran (${etapeDuChamp(cle)})`);
   const s = saisieDepuisBrouillon(brouillon(), A);
-  verifier(s.numeroEnregistrement === '' && s.dpe === '' && s.serrure === 'boite_a_cles' && !s.residencePrincipale, 'ce que l’assistant ne demande pas garde les valeurs de départ du formulaire');
+  verifier(s.numeroEnregistrement === '' && s.dpe === '' && s.serrure === 'boite_a_cles', 'ce que l’assistant ne demande pas garde les valeurs de départ du formulaire');
+}
+
+section('Assistant : nom déjà pris (casse, accents, espaces)');
+{
+  const ctx = { proprietaires, nomsPris: NOMS_PRIS };
+  const message = 'Un logement s’appelle déjà « Maison de Linas ». Choisissez un autre nom.';
+  for (const nom of ['Maison de Linas', 'maison de linas', 'MAISON DE LINAS', 'Maison de Linás', 'Maîson dé Linas', '  Maison   de  Linas ', 'Maison\tde Linas']) {
+    verifier(erreursEtape('nom', brouillon({ nom }), ctx).nom === message, `« ${nom} » refusé, avec le nom existant`);
+  }
+  verifier(!erreursEtape('nom', brouillon({ nom: 'Maison de Linas 2' }), ctx).nom && !erreursEtape('nom', brouillon({ nom: 'Maison de Lina' }), ctx).nom, 'nom voisin mais différent : accepté');
+  verifier(erreursEtape('nom', brouillon({ nom: '   ' }), ctx).nom === 'Donnez un nom au logement.', 'nom vide : on demande un nom (pas de doublon annoncé)');
+  verifier(erreursEtape('nom', brouillon({ nom: 'Studio  gare' }), ctx).nom === 'Un logement s’appelle déjà « Studio Gare ». Choisissez un autre nom.', 'le message cite le nom tel qu’il est écrit dans l’ERP');
+  verifier(cleNom('L’Étoile  du   Nord ') === cleNom("l'etoile du nord"), 'apostrophes et accents unifiés');
+  verifier(nomDejaPris('maison de linas', NOMS_PRIS) === 'Maison de Linas' && nomDejaPris('', NOMS_PRIS) === undefined, 'nomDejaPris rend le nom existant');
+  const r = creationDepuisAssistant(brouillon({ nom: 'maison de linás' }), { ...ctx, idLogement: 'log-x', idProprietaire: 'pro-x', aujourdhui: JOUR });
+  verifier(!r.ok && r.etape === 'nom', 'nom en double : rien n’est créé, retour à l’écran du nom');
+  verifier(nomSuggere('maison', 'de Linas', NOMS_PRIS) === 'Maison de Linas 2' && nomSuggere('studio', 'gare', NOMS_PRIS) === 'Studio gare 2', 'le nom proposé évite aussi les doublons sans casse ni accents');
+}
+
+section('Assistant : résidence principale, jamais supposée');
+{
+  const ctx = { proprietaires, nomsPris: NOMS_PRIS };
+  verifier(brouillonInitial(true).residencePrincipale === undefined, 'pas de réponse par défaut');
+  verifier(
+    erreursEtape('proprietaire', brouillon({ residencePrincipale: undefined }), ctx).residencePrincipale === 'Dites si c’est la résidence principale du propriétaire.',
+    'sans réponse : « Continuer » grisé, en toutes lettres',
+  );
+  verifier(Object.keys(erreursEtape('proprietaire', brouillon({ residencePrincipale: false }), ctx)).length === 0, '« Non » : on continue');
+  verifier(Object.keys(erreursEtape('proprietaire', brouillon({ residencePrincipale: true }), ctx)).length === 0, '« Oui » : on continue');
+  const nouveau = brouillon({ modeProprietaire: 'nouveau', nouveauProprietaire: { type: 'particulier', nom: 'Léa Roy', email: 'lea@exemple.fr', telephone: '06 12 34 56 78', adresse: '4 rue C', notes: '' }, residencePrincipale: undefined });
+  verifier(empreinte(Object.keys(erreursEtape('proprietaire', nouveau, ctx))) === empreinte(['residencePrincipale']), 'nouveau propriétaire aussi : la question est posée');
+  const sans = creationDepuisAssistant(brouillon({ residencePrincipale: undefined }), { ...ctx, idLogement: 'log-r', idProprietaire: 'pro-r', aujourdhui: JOUR });
+  verifier(!sans.ok && sans.etape === 'proprietaire', 'sans réponse : rien n’est créé, retour à l’écran du propriétaire');
+  const non = creationDepuisAssistant(brouillon({ residencePrincipale: false }), { ...ctx, idLogement: 'log-r', idProprietaire: 'pro-r', aujourdhui: JOUR });
+  const oui = creationDepuisAssistant(brouillon({ residencePrincipale: true }), { ...ctx, idLogement: 'log-r', idProprietaire: 'pro-r', aujourdhui: JOUR });
+  verifier(non.ok && non.logement.residencePrincipale === false, '« Non » : false, la valeur du formulaire');
+  verifier(oui.ok && oui.logement.residencePrincipale === true, '« Oui » : true (plafond de nuits appliqué)');
+  verifier(saisieDepuisBrouillon(brouillon({ residencePrincipale: true }), A).residencePrincipale === true, 'la réponse passe dans la saisie du formulaire');
+}
+
+section('Assistant : lits (un compteur, détail replié)');
+{
+  const l = { double: 1, simple: 0, canape: 0 };
+  verifier(totalLits({ double: 2, simple: 1, canape: 1 }) === 4, 'total des lits');
+  verifier(empreinte(changerTotalLits(l, 3)) === empreinte({ double: 3, simple: 0, canape: 0 }), 'un lit de plus : un lit double');
+  verifier(empreinte(changerTotalLits({ double: 1, simple: 2, canape: 1 }, 3)) === empreinte({ double: 0, simple: 2, canape: 1 }), 'un lit de moins : un double d’abord');
+  verifier(empreinte(changerTotalLits({ double: 0, simple: 2, canape: 1 }, 1)) === empreinte({ double: 0, simple: 0, canape: 1 }), 'puis les simples, le canapé-lit en dernier');
+  verifier(empreinte(changerTotalLits(l, -3)) === empreinte({ double: 0, simple: 0, canape: 0 }), 'jamais moins de zéro');
+  verifier(texteLits({ double: 2, simple: 0, canape: 1 }) === '2 lits doubles, 1 canapé-lit' && texteLits({ double: 0, simple: 0, canape: 0 }) === '', 'détail des lits en une ligne');
+}
+
+section('Assistant : surface facultative, le formulaire la demande toujours');
+{
+  const ctx = { proprietaires, nomsPris: NOMS_PRIS };
+  const r = creationDepuisAssistant(brouillon({ surfaceM2: '' }), { ...ctx, idLogement: 'log-s', idProprietaire: 'pro-s', aujourdhui: JOUR });
+  verifier(r.ok && r.logement.surfaceM2 === 0, 'sans surface : 0, à compléter dans la fiche');
+  verifier(erreursSaisieLogement(saisieInitiale()).surfaceM2 !== undefined, 'formulaire : surface toujours obligatoire');
+  verifier(erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: '' }, { surfaceFacultative: true }).surfaceM2 === undefined, 'assistant : surface vide acceptée');
+  verifier(erreursSaisieLogement({ ...saisieInitiale(), surfaceM2: '0' }, { surfaceFacultative: true }).surfaceM2 !== undefined, 'assistant : surface à 0 refusée');
 }
 
 section('Assistant : suggestions');
@@ -211,15 +282,20 @@ section('Assistant : récapitulatif');
   verifier(texteCapacite(brouillon()) === '4 voyageurs · 2 chambres · 2 lits doubles, 1 canapé-lit · 58 m²', `capacité en une ligne (${texteCapacite(brouillon())})`);
   verifier(texteCapacite({ capacite: 1, chambres: 0, lits: { double: 0, simple: 1, canape: 0 }, surfaceM2: '' }) === '1 voyageur · Pas de chambre séparée · 1 lit simple', 'singulier, studio sans surface');
   const lignes = lignesRecap(brouillon(), proprietaires);
-  verifier(empreinte(lignes.map((l) => l.etape)) === empreinte(['type', 'adresse', 'capacite', 'nom', 'proprietaire']), 'une ligne par écran, dans l’ordre');
+  verifier(empreinte(lignes.map((l) => l.etape)) === empreinte(['type', 'adresse', 'capacite', 'nom', 'proprietaire', 'proprietaire']), 'une ligne par réponse, dans l’ordre des écrans');
+  verifier(new Set(lignes.map((l) => l.cle)).size === lignes.length, 'chaque ligne a sa clé');
   verifier(lignes[0].valeur === 'Appartement T3' && lignes[1].valeur === '12 rue de la Gare, 91100 Corbeil-Essonnes' && lignes[4].valeur === 'Alice Martin', 'type, adresse et propriétaire lisibles');
+  verifier(lignes[5].libelle === 'Résidence principale' && lignes[5].valeur === 'Non', 'résidence principale : « Non »');
+  verifier(lignesRecap(brouillon({ residencePrincipale: true }), proprietaires)[5].valeur === 'Oui, 120 nuits par an au plus', 'résidence principale : « Oui » et son plafond');
+  verifier(lignesRecap(brouillon({ residencePrincipale: undefined }), proprietaires)[5].valeur === '', 'sans réponse : à compléter');
+  verifier(texteCapacite(brouillon({ surfaceM2: '' })) === '4 voyageurs · 2 chambres · 2 lits doubles, 1 canapé-lit', 'sans surface : pas de « m² »');
   const avecNouveau = lignesRecap(brouillon({ modeProprietaire: 'nouveau', nouveauProprietaire: { ...saisieProprietaireInitiale(), nom: ' Léa Roy ' } }), proprietaires);
   verifier(avecNouveau[4].valeur === 'Léa Roy (nouveau)', 'nouveau propriétaire signalé');
 }
 
 section('Formulaire et assistant : exactement le même logement');
 {
-  const r = creationDepuisAssistant(brouillon(), { proprietaires, idLogement: 'log-a', idProprietaire: 'pro-inutile', aujourdhui: JOUR });
+  const r = creationDepuisAssistant(brouillon(), { proprietaires, nomsPris: NOMS_PRIS, idLogement: 'log-a', idProprietaire: 'pro-inutile', aujourdhui: JOUR });
   // La même chose tapée dans le formulaire.
   const parFormulaire = logementDepuisSaisie(
     {
@@ -245,16 +321,16 @@ section('Formulaire et assistant : exactement le même logement');
 
   const n = creationDepuisAssistant(
     brouillon({ modeProprietaire: 'nouveau', proprietaireId: '', nouveauProprietaire: { type: 'societe', nom: 'Gîtes SAS', email: 'contact@gites.fr', telephone: '01 23 45 67 89', adresse: '9 av. D', notes: '' } }),
-    { proprietaires, idLogement: 'log-b', idProprietaire: 'pro-nouveau', aujourdhui: JOUR },
+    { proprietaires, nomsPris: NOMS_PRIS, idLogement: 'log-b', idProprietaire: 'pro-nouveau', aujourdhui: JOUR },
   );
   verifier(n.ok && n.proprietaire?.id === 'pro-nouveau' && n.logement.proprietaireId === 'pro-nouveau', 'nouveau propriétaire : créé avec le logement, qui le désigne');
   verifier(
     n.ok && empreinte(n.proprietaire) === empreinte(proprietaireDepuisSaisie({ type: 'societe', nom: 'Gîtes SAS', email: 'contact@gites.fr', telephone: '01 23 45 67 89', adresse: '9 av. D', notes: '' }, 'pro-nouveau', JOUR)),
     'fiche du nouveau propriétaire identique à celle de sa fenêtre',
   );
-  const refus = creationDepuisAssistant(brouillon({ proprietaireId: 'pro-supprime' }), { proprietaires, idLogement: 'log-c', idProprietaire: 'pro-x', aujourdhui: JOUR });
+  const refus = creationDepuisAssistant(brouillon({ proprietaireId: 'pro-supprime' }), { proprietaires, nomsPris: NOMS_PRIS, idLogement: 'log-c', idProprietaire: 'pro-x', aujourdhui: JOUR });
   verifier(!refus.ok && refus.etape === 'proprietaire', 'propriétaire disparu : rien n’est créé, retour à son écran');
-  const incomplet = creationDepuisAssistant(brouillon({ type: undefined }), { proprietaires, idLogement: 'log-d', idProprietaire: 'pro-x', aujourdhui: JOUR });
+  const incomplet = creationDepuisAssistant(brouillon({ type: undefined }), { proprietaires, nomsPris: NOMS_PRIS, idLogement: 'log-d', idProprietaire: 'pro-x', aujourdhui: JOUR });
   verifier(!incomplet.ok && incomplet.etape === 'type', 'type manquant : retour au premier écran');
 }
 

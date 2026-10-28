@@ -1,9 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { BedDouble, Building2, House, Link2, Minus, Plus, Shapes, X, type LucideIcon } from 'lucide-react';
-import { Button, Field, IconButton, Input, Modal, ProgressBar, SearchInput, Segmente, cn, useFenetre } from '../../../ui';
+import { Button, Field, IconButton, Input, Modal, ProgressBar, Repli, SearchInput, Segmente, cn, useFenetre } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { AUJOURDHUI, pluriel } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
+import { PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../../data/constantes';
 import { peutRelier } from '../../../data/liaison-annonce';
 import {
   BORNES,
@@ -12,11 +13,14 @@ import {
   TYPES_LIT,
   brouillonInitial,
   capaciteSuggeree,
+  changerTotalLits,
   creationDepuisAssistant,
   erreursEtape,
   familleDuType,
   lignesRecap,
   nomSuggere,
+  texteLits,
+  totalLits,
   typeDeLaFamille,
   type BrouillonLogement,
   type EtapeAssistant,
@@ -60,7 +64,7 @@ const NBSP = '\u00a0';
 const QUESTIONS: Record<EtapeAssistant, { question: string; aide?: string }> = {
   type: { question: `Quel type de logement${NBSP}?`, aide: 'Vous compléterez le reste ensuite, dans sa fiche.' },
   adresse: { question: `Où se trouve-t-il${NBSP}?` },
-  capacite: { question: `Combien de voyageurs peut-il accueillir${NBSP}?` },
+  capacite: { question: 'Sa capacité' },
   nom: { question: `Quel nom lui donner${NBSP}?`, aide: 'Le nom que l’équipe verra partout.' },
   proprietaire: { question: `À qui appartient-il${NBSP}?` },
   recapitulatif: { question: `Tout est correct${NBSP}?`, aide: `Il démarre «${NBSP}En préparation${NBSP}» ; rien n’est publié sur les plateformes.` },
@@ -85,7 +89,7 @@ const TYPES_PROPRIETAIRE = (Object.entries(LIBELLES.typeProprietaire) as [TypePr
 const SEUIL_RECHERCHE = 6;
 
 /** Erreurs sans champ à elles (choix, compteurs) : toujours dites au-dessus de « Continuer ». */
-const SANS_CHAMP = new Set(['type', 'proprietaireId', 'capacite', 'chambres', 'lits']);
+const SANS_CHAMP = new Set(['type', 'proprietaireId', 'residencePrincipale', 'capacite', 'chambres', 'lits']);
 
 /** Champs en 16 px : pas de zoom à la saisie sur iPhone. */
 const GRAND = 'h-11 text-[16px]';
@@ -96,6 +100,7 @@ const CHOIX_REPOS = 'border-(--lm-bord-fort) bg-(--lm-surface) hover:border-(--l
 const CHOIX_ACTIF = 'border-(--lm-or-texte) bg-(--lm-or-lavis) ring-1 ring-(--lm-or-texte)';
 
 const idChamp = (cle: string) => `assistant-logement-${cle.replace('.', '-')}`;
+const ID_QUESTION_RESIDENCE = 'assistant-logement-question-residence';
 
 /**
  * Choix exclusifs (cartes, lignes) : les flèches changent de réponse, focus
@@ -157,14 +162,17 @@ function Assistant({ onFermer, onCree }: Omit<AssistantLogementProps, 'ouvert'>)
     if (abandon && !confirmer) onFermer();
   }, [abandon, confirmer, onFermer]);
 
+  const nomsPris = useMemo(() => d.logements.map((l) => l.nom), [d.logements]);
   const index = ETAPES_ASSISTANT.indexOf(etape);
   const total = ETAPES_ASSISTANT.length;
-  const ctx = { proprietaires };
+  const ctx = { proprietaires, nomsPris };
   const erreurs = erreursEtape(etape, b, ctx);
   const valide = Object.keys(erreurs).length === 0;
   // Chaque erreur est dite une fois : sous son champ s'il a été quitté, sinon au-dessus de « Continuer ».
-  const raison = Object.entries(erreurs).find(([k]) => SANS_CHAMP.has(k) || !touches.has(k))?.[1];
-  const erreurChamp = (k: string) => (touches.has(k) ? erreurs[k] : undefined);
+  // Un nom déjà pris se dit sous le champ dès qu'il est écrit (proposé ou tapé).
+  const sousLeChamp = (k: string) => !SANS_CHAMP.has(k) && (touches.has(k) || (k === 'nom' && !!b.nom.trim()));
+  const raison = Object.entries(erreurs).find(([k]) => !sousLeChamp(k))?.[1];
+  const erreurChamp = (k: string) => (sousLeChamp(k) ? erreurs[k] : undefined);
   const quitter = (k: string) => setTouches((t) => (t.has(k) ? t : new Set(t).add(k)));
 
   // Nouvel écran : sa question reçoit le focus (lue par les lecteurs d'écran), en haut de l'écran.
@@ -173,7 +181,6 @@ function Assistant({ onFermer, onCree }: Omit<AssistantLogementProps, 'ouvert'>)
     titre.current?.focus();
   }, [etape]);
 
-  const nomsPris = useMemo(() => d.logements.map((l) => l.nom), [d.logements]);
   const nbLogements = useMemo(() => {
     const n = new Map<Id, number>();
     for (const l of d.logements) n.set(l.proprietaireId, (n.get(l.proprietaireId) ?? 0) + 1);
@@ -466,17 +473,27 @@ function EtapeAdresse({ b, maj, erreur, quitter }: PropsChamps) {
 
 function EtapeCapacite({ b, maj, erreur, quitter }: Omit<PropsChamps, 'erreur'> & { erreur?: string }) {
   const erreurId = useId();
+  const detail = texteLits(b.lits);
   return (
     <ul className="divide-y divide-(--lm-bord) border-b border-(--lm-bord)">
       <Compteur libelle="Voyageurs" valeur={b.capacite} bornes={BORNES.capacite} retirer="Retirer un voyageur" ajouter="Ajouter un voyageur" onChange={(capacite) => maj({ capacite })} />
       <Compteur libelle="Chambres" valeur={b.chambres} bornes={BORNES.chambres} retirer="Retirer une chambre" ajouter="Ajouter une chambre" onChange={(chambres) => maj({ chambres })} />
-      {TYPES_LIT.map((t) => (
-        <Compteur key={t} {...LITS[t]} valeur={b.lits[t]} bornes={BORNES.lits} onChange={(n) => maj({ lits: { ...b.lits, [t]: n } })} />
-      ))}
+      <Compteur libelle="Lits" valeur={totalLits(b.lits)} bornes={BORNES.lits} retirer="Retirer un lit" ajouter="Ajouter un lit" onChange={(n) => maj({ lits: changerTotalLits(b.lits, n) })} />
+      {/* Le détail par type est replié : déplié d'office s'il y a déjà autre chose que des lits doubles. */}
+      <li className="pb-3">
+        <Repli titre="Préciser les lits" description={detail || 'Aucun lit'} ouvert={b.lits.simple + b.lits.canape > 0} className="shadow-none">
+          <ul className="-my-2.5 divide-y divide-(--lm-bord)">
+            {TYPES_LIT.map((t) => (
+              <Compteur key={t} {...LITS[t]} valeur={b.lits[t]} bornes={BORNES.lits} onChange={(n) => maj({ lits: { ...b.lits, [t]: n } })} />
+            ))}
+          </ul>
+        </Repli>
+      </li>
       <li className="py-2.5">
         <div className="flex min-h-11 items-center justify-between gap-4">
           <label htmlFor={idChamp('surfaceM2')} className="text-[15px] text-(--lm-encre)">
             Surface<span className="sr-only"> en m²</span>
+            <span className="block text-[12.5px] text-(--lm-encre-3)">Facultatif</span>
           </label>
           <div className="relative w-[9.5rem] shrink-0">
             <Input
@@ -584,6 +601,13 @@ function EtapeProprietaire({
   const s = b.nouveauProprietaire;
   const majNouveau = <K extends keyof SaisieProprietaire>(k: K, v: SaisieProprietaire[K]) => maj({ nouveauProprietaire: { ...s, [k]: v } });
   const choisi = visibles.some((p) => p.id === b.proprietaireId) ? b.proprietaireId : undefined;
+  // Propriétaire touché dans une longue liste : la question suivante, plus bas, vient à l'écran.
+  const choisirProprietaire = (proprietaireId: Id) => {
+    maj({ proprietaireId });
+    if (b.residencePrincipale !== undefined) return;
+    const fluide = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    requestAnimationFrame(() => document.getElementById(ID_QUESTION_RESIDENCE)?.scrollIntoView({ block: 'nearest', behavior: fluide ? 'smooth' : 'auto' }));
+  };
 
   return (
     <>
@@ -622,8 +646,8 @@ function EtapeProprietaire({
                     role="radio"
                     aria-checked={actif}
                     tabIndex={actif || (!choisi && i === 0) ? 0 : -1}
-                    onClick={() => maj({ proprietaireId: p.id })}
-                    onKeyDown={entreeChoix(actif, () => maj({ proprietaireId: p.id }), continuer)}
+                    onClick={() => choisirProprietaire(p.id)}
+                    onKeyDown={entreeChoix(actif, () => choisirProprietaire(p.id), continuer)}
                     className={cn(
                       'flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-inset focus:outline-none',
                       actif ? 'bg-(--lm-or-lavis)' : 'hover:bg-(--lm-surface-2)',
@@ -693,7 +717,59 @@ function EtapeProprietaire({
           </Field>
         </div>
       )}
+
+      <ResidencePrincipale valeur={b.residencePrincipale} choisir={(residencePrincipale) => maj({ residencePrincipale })} continuer={continuer} />
     </>
+  );
+}
+
+/**
+ * Résidence principale du propriétaire : le plafond légal de nuits en
+ * dépend, la réponse est donc demandée (ni « Oui » ni « Non » d'avance).
+ */
+function ResidencePrincipale({ valeur, choisir, continuer }: { valeur?: boolean; choisir: (v: boolean) => void; continuer: () => void }) {
+  const questionId = useId();
+  const aideId = useId();
+  const actuelle = valeur === undefined ? undefined : valeur ? 'oui' : 'non';
+  const options = [
+    { v: 'oui', libelle: 'Oui' },
+    { v: 'non', libelle: 'Non' },
+  ] as const;
+  return (
+    <div id={ID_QUESTION_RESIDENCE} className="mt-6 border-t border-(--lm-bord) pt-5">
+      <p id={questionId} className="text-[15px] font-medium text-(--lm-encre)">
+        C’est la résidence principale du propriétaire{NBSP}?
+      </p>
+      <div
+        role="radiogroup"
+        aria-labelledby={questionId}
+        aria-describedby={aideId}
+        onKeyDown={clavierChoix(['oui', 'non'], actuelle, (v) => choisir(v === 'oui'))}
+        className="mt-2 grid grid-cols-2 gap-2"
+      >
+        {options.map((o, i) => {
+          const actif = actuelle === o.v;
+          return (
+            <button
+              key={o.v}
+              id={i === 0 ? idChamp('residencePrincipale') : undefined}
+              type="button"
+              role="radio"
+              aria-checked={actif}
+              tabIndex={actif || (!actuelle && i === 0) ? 0 : -1}
+              onClick={() => choisir(o.v === 'oui')}
+              onKeyDown={entreeChoix(actif, () => choisir(o.v === 'oui'), continuer)}
+              className={cn(CHOIX, 'h-11 items-center justify-center rounded-lg text-[15px] font-medium', actif ? `${CHOIX_ACTIF} text-(--lm-brun)` : `${CHOIX_REPOS} text-(--lm-encre)`)}
+            >
+              {o.libelle}
+            </button>
+          );
+        })}
+      </div>
+      <p id={aideId} className="mt-1.5 text-[12.5px] text-(--lm-encre-3)">
+        Si oui, location limitée à {PLAFOND_NUITS_RESIDENCE_PRINCIPALE} nuits par année civile.
+      </p>
+    </div>
   );
 }
 
@@ -712,7 +788,7 @@ function Recapitulatif({
     <>
       <ul className="divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
         {lignesRecap(b, proprietaires).map((l) => (
-          <li key={l.etape} className="flex items-start gap-3 py-3 pr-2 pl-4">
+          <li key={l.cle} className="flex items-start gap-3 py-3 pr-2 pl-4">
             <div className="min-w-0 flex-1">
               <p className="text-[12.5px] text-(--lm-encre-3)">{l.libelle}</p>
               <p className={cn('mt-0.5 text-[15px] break-words', l.valeur ? 'text-(--lm-encre)' : 'text-(--lm-encre-3)')}>{l.valeur || 'À compléter'}</p>

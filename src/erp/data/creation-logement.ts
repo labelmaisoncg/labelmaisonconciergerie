@@ -15,7 +15,7 @@
  * les plateformes : un logement créé ici vit dans l'ERP, puis se relie à son
  * annonce depuis sa fiche (liaison-annonce.ts).
  */
-import { CHECKLIST_LANCEMENT } from './constantes';
+import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from './constantes';
 import { LIBELLES } from './libelles';
 import { changerProprietaire } from './proprietaire';
 import { positionAJour, texteAdresse } from './carte';
@@ -104,14 +104,18 @@ export function saisieInitiale(l?: Logement): SaisieLogement {
   };
 }
 
-/** Erreurs de la saisie, par champ, en une phrase chacune. */
-export function erreursSaisieLogement(s: SaisieLogement): ErreursLogement {
+/**
+ * Erreurs de la saisie, par champ, en une phrase chacune. `surfaceFacultative` :
+ * l'assistant laisse la surface vide (0, à compléter dans la fiche) ; le
+ * formulaire la demande toujours.
+ */
+export function erreursSaisieLogement(s: SaisieLogement, o: { surfaceFacultative?: boolean } = {}): ErreursLogement {
   const e: ErreursLogement = {};
   if (!s.nom.trim()) e.nom = 'Le nom est obligatoire.';
   if (!s.adresse.trim()) e.adresse = 'L’adresse est obligatoire.';
   if (!/^\d{5}$/.test(s.codePostal.trim())) e.codePostal = 'Code postal à 5 chiffres.';
   if (!s.ville.trim()) e.ville = 'La ville est obligatoire.';
-  if (!(entier(s.surfaceM2) > 0)) e.surfaceM2 = 'Surface en m², nombre entier.';
+  if (!(entier(s.surfaceM2) > 0) && !(o.surfaceFacultative && !s.surfaceM2.trim())) e.surfaceM2 = 'Surface en m², nombre entier.';
   if (!(entier(s.capacite) > 0)) e.capacite = 'Au moins 1 voyageur.';
   if (Number.isNaN(entier(s.chambres))) e.chambres = 'Nombre entier.';
   if (Object.values(s.lits).some((n) => Number.isNaN(entier(n)))) e.lits = 'Nombres entiers.';
@@ -144,7 +148,8 @@ export function logementDepuisSaisie(s: SaisieLogement, cible: Logement | Id, au
     codePostal: s.codePostal.trim(),
     ville: s.ville.trim(),
     type: s.type,
-    surfaceM2: entier(s.surfaceM2),
+    // Vide (assistant) : 0, comme un logement importé sans surface.
+    surfaceM2: s.surfaceM2.trim() ? entier(s.surfaceM2) : 0,
     capacite: entier(s.capacite),
     chambres: entier(s.chambres),
     lits,
@@ -248,17 +253,44 @@ export interface BrouillonLogement {
   capacite: number;
   chambres: number;
   lits: Record<TypeLit, number>;
-  /** Tapée (texte) : la surface n'a pas de « − / + ». */
+  /** Tapée (texte) : la surface n'a pas de « − / + ». Facultative : vide, elle se complète dans la fiche. */
   surfaceM2: string;
   nom: string;
+  /**
+   * Résidence principale du propriétaire (plafond légal de nuits par an) :
+   * absent tant que personne n'a répondu, jamais supposé.
+   */
+  residencePrincipale?: boolean;
   /** Propriétaire déjà enregistré (« liste ») ou nouveau, créé avec le logement. */
   modeProprietaire: 'liste' | 'nouveau';
   proprietaireId: Id;
   nouveauProprietaire: SaisieProprietaire;
 }
 
-/** Bornes des compteurs « − / + ». */
+/** Bornes des compteurs « − / + » (« lits » : le total comme chaque type de lit). */
 export const BORNES = { capacite: [1, 30], chambres: [0, 20], lits: [0, 20] } as const;
+
+export const totalLits = (lits: Record<TypeLit, number>): number => TYPES_LIT.reduce((n, t) => n + lits[t], 0);
+
+/**
+ * Compteur « Lits » (le détail par type est replié) : un lit de plus est un
+ * lit double ; un lit de moins retire d'abord un lit double, puis un lit
+ * simple, puis un canapé-lit. Le détail se précise dans « Préciser les lits ».
+ */
+export function changerTotalLits(lits: Record<TypeLit, number>, total: number): Record<TypeLit, number> {
+  const r = { ...lits };
+  let ecart = Math.max(0, total) - totalLits(lits);
+  if (ecart > 0) {
+    r.double += ecart;
+    return r;
+  }
+  for (const t of TYPES_LIT) {
+    const retire = Math.min(r[t], -ecart);
+    r[t] -= retire;
+    ecart += retire;
+  }
+  return r;
+}
 
 /** Capacité proposée d'après le type, tant que l'utilisateur n'y a pas touché. */
 export function capaciteSuggeree(t: TypeLogement): Pick<BrouillonLogement, 'capacite' | 'chambres' | 'lits'> {
@@ -286,12 +318,30 @@ export function brouillonInitial(avecProprietaires: boolean): BrouillonLogement 
 /** Mot du type dans un nom proposé (« T2 Corbeil-Essonnes », « Maison Évry »). */
 const MOT_TYPE: Record<TypeLogement, string> = { studio: 'Studio', T1: 'T1', T2: 'T2', T3: 'T3', T4: 'T4', maison: 'Maison', autre: 'Logement' };
 
+/**
+ * Clé de comparaison d'un nom : sans casse, sans accents, espaces resserrés,
+ * apostrophes unifiées (« Maison de Linas » = « maison  de linás »).
+ */
+export const cleNom = (nom: string): string =>
+  nom
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’‘`]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('fr');
+
+/** Le logement qui porte déjà ce nom (tel qu'il est écrit), s'il y en a un. */
+export function nomDejaPris(nom: string, nomsPris: readonly string[]): string | undefined {
+  const cle = cleNom(nom);
+  return cle ? nomsPris.find((n) => cleNom(n) === cle) : undefined;
+}
+
 /** Nom proposé d'après le type et la ville ; numéroté s'il est déjà pris. */
 export function nomSuggere(type: TypeLogement | undefined, ville: string, nomsPris: readonly string[]): string {
   const base = [MOT_TYPE[type ?? 'autre'], ville.trim().replace(/\s+/g, ' ')].filter(Boolean).join(' ');
-  const pris = new Set(nomsPris.map((n) => n.trim().toLocaleLowerCase('fr')));
   let nom = base;
-  for (let k = 2; pris.has(nom.toLocaleLowerCase('fr')) && k < 100; k++) nom = `${base} ${k}`;
+  for (let k = 2; nomDejaPris(nom, nomsPris) && k < 100; k++) nom = `${base} ${k}`;
   return nom;
 }
 
@@ -312,6 +362,8 @@ export function saisieDepuisBrouillon(b: BrouillonLogement, proprietaireId: Id):
     capacite: String(b.capacite),
     chambres: String(b.chambres),
     lits: { double: String(b.lits.double), simple: String(b.lits.simple), canape: String(b.lits.canape) },
+    // Sans réponse, rien n'est créé (erreursEtape) ; « Non » vaut false, comme dans le formulaire.
+    residencePrincipale: b.residencePrincipale === true,
     proprietaireId,
   };
 }
@@ -322,7 +374,7 @@ export const CHAMPS_ETAPE: Record<Exclude<EtapeAssistant, 'recapitulatif'>, (key
   adresse: ['adresse', 'codePostal', 'ville'],
   capacite: ['capacite', 'chambres', 'lits', 'surfaceM2'],
   nom: ['nom'],
-  proprietaire: ['proprietaireId'],
+  proprietaire: ['proprietaireId', 'residencePrincipale'],
 };
 
 /** Champ vide : on dit ce qu'il faut faire plutôt que ce qui ne va pas. */
@@ -330,7 +382,6 @@ const A_REMPLIR: Partial<Record<keyof SaisieLogement, string>> = {
   adresse: 'Indiquez l’adresse.',
   codePostal: 'Indiquez le code postal.',
   ville: 'Indiquez la ville.',
-  surfaceM2: 'Indiquez la surface en m².',
   nom: 'Donnez un nom au logement.',
 };
 const A_REMPLIR_PROPRIETAIRE: Partial<Record<keyof SaisieProprietaire, string>> = {
@@ -342,6 +393,8 @@ const A_REMPLIR_PROPRIETAIRE: Partial<Record<keyof SaisieProprietaire, string>> 
 
 export interface ContexteAssistant {
   proprietaires: readonly Pick<Proprietaire, 'id'>[];
+  /** Noms des logements de l'espace : un nouveau logement n'en reprend aucun. */
+  nomsPris: readonly string[];
 }
 
 /**
@@ -361,23 +414,27 @@ export function erreursEtape(etape: EtapeAssistant, b: BrouillonLogement, ctx: C
   if (etape === 'proprietaire') {
     if (b.modeProprietaire === 'liste') {
       if (!ctx.proprietaires.some((p) => p.id === b.proprietaireId)) r.proprietaireId = 'Choisissez le propriétaire.';
-      return r;
+    } else {
+      const s = b.nouveauProprietaire;
+      const e = erreursProprietaire(s);
+      for (const k of ['nom', 'email', 'telephone', 'adresse'] as const) {
+        if (e[k]) r[`proprietaire.${k}`] = (!s[k].trim() && A_REMPLIR_PROPRIETAIRE[k]) || e[k]!;
+      }
     }
-    const s = b.nouveauProprietaire;
-    const e = erreursProprietaire(s);
-    for (const k of ['nom', 'email', 'telephone', 'adresse'] as const) {
-      if (e[k]) r[`proprietaire.${k}`] = (!s[k].trim() && A_REMPLIR_PROPRIETAIRE[k]) || e[k]!;
-    }
+    if (b.residencePrincipale === undefined) r.residencePrincipale = 'Dites si c’est la résidence principale du propriétaire.';
     return r;
   }
-  // Mêmes règles que le formulaire, sur les champs de cet écran.
+  // Mêmes règles que le formulaire, sur les champs de cet écran (surface facultative ici).
   const saisie = saisieDepuisBrouillon(b, b.proprietaireId);
-  const e = erreursSaisieLogement(saisie);
+  const e = erreursSaisieLogement(saisie, { surfaceFacultative: true });
   for (const k of CHAMPS_ETAPE[etape]) {
     if (!e[k]) continue;
     const vide = typeof saisie[k] === 'string' && !(saisie[k] as string).trim();
     r[k] = (vide && A_REMPLIR[k]) || e[k]!;
   }
+  // Un nom déjà porté par un logement de l'espace : deux fiches impossibles à distinguer.
+  const pris = etape === 'nom' && !r.nom ? nomDejaPris(b.nom, ctx.nomsPris) : undefined;
+  if (pris) r.nom = `Un logement s’appelle déjà « ${pris} ». Choisissez un autre nom.`;
   return r;
 }
 
@@ -404,7 +461,7 @@ export function creationDepuisAssistant(
   if (erreurs.length) return { ok: false, etape: etapeDuChamp(erreurs[0][0]), erreur: erreurs[0][1] };
   const proprietaire = b.modeProprietaire === 'nouveau' ? proprietaireDepuisSaisie(b.nouveauProprietaire, o.idProprietaire, o.aujourdhui) : undefined;
   const saisie = saisieDepuisBrouillon(b, proprietaire?.id ?? b.proprietaireId);
-  const reste = Object.entries(erreursSaisieLogement(saisie));
+  const reste = Object.entries(erreursSaisieLogement(saisie, { surfaceFacultative: true }));
   if (reste.length) return { ok: false, etape: etapeDuChamp(reste[0][0]), erreur: reste[0][1] };
   return { ok: true, logement: logementDepuisSaisie(saisie, o.idLogement, o.aujourdhui), ...(proprietaire ? { proprietaire } : {}) };
 }
@@ -421,13 +478,18 @@ const compte = (n: number, [un, plusieurs]: [string, string]) => `${n} ${n > 1 ?
 /** « Appartement T2 », « Maison »… */
 export const libelleType = (t: TypeLogement): string => (familleDuType(t) === 'appartement' ? `Appartement ${t}` : LIBELLES.typeLogement[t]);
 
+/** « 2 lits doubles, 1 canapé-lit » ; vide sans lit. */
+export const texteLits = (lits: Record<TypeLit, number>): string =>
+  TYPES_LIT.filter((t) => lits[t] > 0)
+    .map((t) => compte(lits[t], LITS_MOTS[t]))
+    .join(', ');
+
 /** « 4 voyageurs · 2 chambres · 2 lits doubles, 1 canapé-lit · 45 m² » */
 export function texteCapacite(b: Pick<BrouillonLogement, 'capacite' | 'chambres' | 'lits' | 'surfaceM2'>): string {
-  const lits = TYPES_LIT.filter((t) => b.lits[t] > 0).map((t) => compte(b.lits[t], LITS_MOTS[t]));
   return [
     compte(b.capacite, ['voyageur', 'voyageurs']),
     b.chambres > 0 ? compte(b.chambres, ['chambre', 'chambres']) : 'Pas de chambre séparée',
-    lits.join(', '),
+    texteLits(b.lits),
     b.surfaceM2.trim() ? `${b.surfaceM2.trim()} m²` : '',
   ]
     .filter(Boolean)
@@ -435,6 +497,8 @@ export function texteCapacite(b: Pick<BrouillonLogement, 'capacite' | 'chambres'
 }
 
 export interface LigneRecap {
+  /** Unique dans le récapitulatif (un écran peut donner deux lignes). */
+  cle: string;
   etape: Exclude<EtapeAssistant, 'recapitulatif'>;
   libelle: string;
   valeur: string;
@@ -446,11 +510,14 @@ export function lignesRecap(b: BrouillonLogement, proprietaires: readonly Pick<P
     b.modeProprietaire === 'nouveau'
       ? `${b.nouveauProprietaire.nom.trim()} (nouveau)`
       : (proprietaires.find((p) => p.id === b.proprietaireId)?.nom ?? '');
+  const residence =
+    b.residencePrincipale === undefined ? '' : b.residencePrincipale ? `Oui, ${PLAFOND_NUITS_RESIDENCE_PRINCIPALE} nuits par an au plus` : 'Non';
   return [
-    { etape: 'type', libelle: 'Type', valeur: b.type ? libelleType(b.type) : '' },
-    { etape: 'adresse', libelle: 'Adresse', valeur: [b.adresse.trim(), [b.codePostal.trim(), b.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') },
-    { etape: 'capacite', libelle: 'Capacité', valeur: texteCapacite(b) },
-    { etape: 'nom', libelle: 'Nom', valeur: b.nom.trim() },
-    { etape: 'proprietaire', libelle: 'Propriétaire', valeur: proprietaire },
+    { cle: 'type', etape: 'type', libelle: 'Type', valeur: b.type ? libelleType(b.type) : '' },
+    { cle: 'adresse', etape: 'adresse', libelle: 'Adresse', valeur: [b.adresse.trim(), [b.codePostal.trim(), b.ville.trim()].filter(Boolean).join(' ')].filter(Boolean).join(', ') },
+    { cle: 'capacite', etape: 'capacite', libelle: 'Capacité', valeur: texteCapacite(b) },
+    { cle: 'nom', etape: 'nom', libelle: 'Nom', valeur: b.nom.trim() },
+    { cle: 'proprietaire', etape: 'proprietaire', libelle: 'Propriétaire', valeur: proprietaire },
+    { cle: 'residencePrincipale', etape: 'proprietaire', libelle: 'Résidence principale', valeur: residence },
   ];
 }
