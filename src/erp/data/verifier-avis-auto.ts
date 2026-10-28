@@ -929,6 +929,7 @@ function reglesRelecture() {
     verifier(avec([msg('v', 'voyageur', 'We are a party of 4, all non-smokers.', `${r.arrivee}T10:00:00+01:00`)]).length === 0, '« party of 4 », « non-smokers » : séjour sans souci');
     verifier(avec([msg('v', 'voyageur', 'Birthday party on Saturday, about 15 friends.', `${jourMoins(40)}T10:00:00+01:00`)]).includes('Un message signale un souci'), 'fête annoncée par le voyageur avant la réservation : à valider');
     verifier(avec([msg('v', 'voyageur', 'There is a lot of noise from the neighbours.', `${r.arrivee}T23:00:00+01:00`)]).length > 0, 'bruit signalé par le voyageur pendant le séjour : à valider');
+    verifier(avec([msg('v', 'voyageur', 'J’ai rempli la fiche de police, à bientôt !', `${r.arrivee}T10:00:00+01:00`)]).length === 0, '« j’ai rempli la fiche de police » : ni souci, ni réclamation');
   }
 
   section('21. Réglage éteint, texte retouché (A5, A6)');

@@ -412,6 +412,12 @@ function fileAvis() {
   verifier(souci([msg('h', 'hote', 'Forte odeur de cigarette dans la chambre.', '2026-10-21T12:00:00+02:00')]), 'odeur de cigarette constatée par l’équipe : à relire');
   verifier(souci([msg('v', 'voyageur', 'We will be a party of twenty people.', '2026-10-05T10:00:00+02:00')]), '« a party of twenty people » : à relire');
   verifier(!souci([msg('v', 'voyageur', 'We are a party of four, very quiet.', '2026-10-05T10:00:00+02:00')]), '« a party of four » : rien à relire');
+  // Faux positifs relevés en relecture : la fiche de police, les consignes de prévention de l'équipe.
+  verifier(!souci([msg('v', 'voyageur', 'J’ai rempli la fiche individuelle de police.', '2026-10-18T10:00:00+02:00')]), '« j’ai rempli la fiche de police », écrit par le voyageur : ne bloque pas');
+  verifier(!souci([msg('h', 'hote', 'Bienvenue ! N’hésitez pas à nous signaler tout dégât ou souci.', '2026-10-19T15:00:00+02:00')]), '« n’hésitez pas à nous signaler tout dégât », message d’accueil : ne bloque pas');
+  verifier(!souci([msg('h', 'hote', 'En cas de casse, merci de nous prévenir.', '2026-10-19T15:00:00+02:00')]), '« en cas de casse, merci de nous prévenir » : ne bloque pas');
+  verifier(souci([msg('h', 'hote', 'En cas de doute, appelez-nous : nous avons trouvé un verre cassé.', '2026-10-21T12:00:00+02:00')]), 'tournure « en cas de » suivie d’un vrai constat (verre cassé) : à relire');
+  verifier(souci([msg('v', 'voyageur', 'La police est venue cette nuit, j’ai aussi rempli la fiche de police.', '2026-10-20T08:00:00+02:00')]), 'police venue, en plus de la fiche de police, écrit par le voyageur : à relire');
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
   verifier(raisonsARelire(propre, { ...d, incidents: [sansReservation] }).length === 1, 'incident du logement pendant le séjour → à relire');
   verifier(raisonsARelire(propre, { ...d, incidents: [{ ...sansReservation, date: '2026-10-10' }] }).length === 0, 'incident d’avant le séjour : sans effet');

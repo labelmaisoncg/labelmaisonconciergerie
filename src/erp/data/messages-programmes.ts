@@ -810,7 +810,21 @@ const SIGNAL_NEGATIF =
  * constats de saleté, d'odeur de tabac et de nuisibles.)
  */
 const SOUCI_CONSTATE =
-  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass[ée]|ab[iî]m|plainte|se plaign|plaint\b|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
+  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|ab[iî]m|plainte|se plaign|plaint\b|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
+
+/**
+ * La fiche de police du check-in en ligne (« J'ai rempli la fiche individuelle
+ * de police ») ne dit aucun souci : retirée avant de chercher « police ».
+ */
+export const FICHE_DE_POLICE = /fiches?\s+(individuelles?\s+)?de\s+police/gi;
+
+/**
+ * Tournures de prévention dans un message de l'équipe (« en cas de casse »,
+ * « n'hésitez pas à nous signaler tout dégât ») : une consigne, pas un souci
+ * constaté. « En cas de… » est retiré jusqu'à la virgule suivante ; « merci de /
+ * n'hésitez pas à (nous) signaler… » jusqu'à la fin de la phrase.
+ */
+const TOURNURE_PREVENTIVE = /\ben cas d['’e][^.!?\n;,]*|\b(n['’]h[ée]sitez pas [àa]|merci de)\s+(nous\s+)?(signaler|pr[ée]venir|indiquer)[^.!?\n]*/gi;
 
 /** Séjours dont l'avis est attendu : Airbnb, terminés depuis moins de 14 jours, pas annulés. */
 export function sejourAvecAvis(r: Pick<Reservation, 'canal' | 'statut' | 'depart'>, aujourdhui: DateISO): boolean {
@@ -862,10 +876,11 @@ function signalNegatifDansLesMessages(r: Pick<Reservation, 'arrivee' | 'depart'>
     f.messages.some((m) => {
       if (m.envoi?.par === PAR_MESSAGE_AUTO) return false;
       const texte = String(m.texte ?? '');
-      if (m.auteur === 'voyageur') return SIGNAL_NEGATIF.test(texte);
+      const sansFiche = texte.replace(FICHE_DE_POLICE, ' ');
+      if (m.auteur === 'voyageur') return SIGNAL_NEGATIF.test(sansFiche);
       if (m.auteur !== 'hote') return false;
       const jour = String(m.envoyeLe ?? '').slice(0, 10);
-      return jour >= debutEquipe && jour <= finEquipe && SOUCI_CONSTATE.test(texte);
+      return jour >= debutEquipe && jour <= finEquipe && SOUCI_CONSTATE.test(sansFiche.replace(TOURNURE_PREVENTIVE, ' '));
     }),
   );
 }

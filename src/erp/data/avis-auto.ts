@@ -49,6 +49,7 @@ import { libelleTheme, problemesReponse, sansReponse, signatureSure, type AvisLu
 import { masquerCoordonnees } from './masquage.js';
 import { consigneCachee, langueFil, masquerCodes, nettoyerTexte, sujetSensibleMessages } from './messagerie-ia.js';
 import {
+  FICHE_DE_POLICE,
   ID_REGLAGES_PROGRAMMES,
   JOURS_AVIS,
   PAR_MESSAGE_AUTO,
@@ -338,7 +339,8 @@ export function raisonsAvisSensible(
   // Messages du voyageur de la veille de l'arrivée à aujourd'hui (pas les questions d'avant la réservation).
   const depuis = ajouterJoursISO(r.arrivee, -1);
   const textes = fils.flatMap((f) => f.messages).filter((m) => m.auteur === 'voyageur' && m.envoi?.par !== PAR_MESSAGE_AUTO && m.envoyeLe.slice(0, 10) >= depuis).map((m) => m.texte);
-  const sensible = textes.length ? sujetSensibleMessages(textes) : null;
+  // La fiche de police du check-in en ligne n'est pas une réclamation (« police »).
+  const sensible = textes.length ? sujetSensibleMessages(textes.map((t) => String(t ?? '').replace(FICHE_DE_POLICE, ' '))) : null;
   if (sensible) raisons.push(`Échange sensible avec le voyageur (${LIBELLE_SENSIBLE[sensible.raison] ?? 'à vérifier'})`);
   if (textes.some((t) => consigneAdressee(t))) raisons.push('Messages du voyageur avec des consignes inhabituelles');
   if (LITIGE_PLATEFORME.test(`${r.repull?.statut ?? ''} ${r.repull?.statutDetail ?? ''}`)) raisons.push('Litige ou remboursement signalé par la plateforme');
