@@ -589,9 +589,10 @@ function photoDuLogement(l: Logement | undefined): string | undefined {
 }
 
 /** Mots d'accès près desquels un court jeton avec un chiffre est un code probable (« code postal » n'en est pas un). */
-const MOT_D_ACCES = /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|codes?(?!\s+postal))(?![\p{L}])/giu;
+const MOT_D_ACCES =
+  /(?<![\p{L}])(?:portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|grilles?|barri[eè]res?|garages?|coffres?|bips?|t[ée]l[ée]commandes?|claviers?|gates?|doors?|keybox(?:es)?|lockbox(?:es)?|key\s?safes?|keypads?|padlocks?|intercoms?|codes?(?!\s+postal))(?![\p{L}])/giu;
 /** Jeton d'au moins 3 signes dont un chiffre (« 482 », « B7Z », « 12#4 »). */
-const JETON_CHIFFRE = /(?<![\p{L}\p{N}#*])(?=[\p{L}\p{N}#*]*\d)[\p{L}\p{N}#*]{3,}(?![\p{L}\p{N}#*])/gu;
+const JETON_CHIFFRE = /(?<![\p{L}\p{N}#*])(?:\d(?:[ \-.·/]\d){2,}|(?=[\p{L}\p{N}#*]*\d)[\p{L}\p{N}#*]{3,})(?![\p{L}\p{N}#*])/gu;
 /** Jetons qui ressemblent à un code sans en être un : heure, ordinal, distance, durée, montant, débit. */
 const PAS_UN_CODE_COURT = /^(\d{1,2}h\d{0,2}|\d{1,3}(er|re|e|ème|eme|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|€|eur|euros?|mb|mbps|go|gb))$/iu;
 /** Unité écrite après le nombre, séparée par une espace (« à 200 m », « 150 € ») : une distance, une durée, un montant. */
@@ -610,7 +611,8 @@ export function codeProbable(texte: string | undefined): boolean {
   for (const m of t.matchAll(MOT_D_ACCES)) {
     const debut = m.index ?? 0;
     const finMot = debut + m[0].length;
-    const apres = t.slice(finMot, finMot + 30).split(/[.\n;!?]/)[0];
+    // « 4.8.2 » ou « 4 8 2 » : le point ne coupe pas la phrase entre deux chiffres.
+    const apres = t.slice(finMot, finMot + 60).split(/(?<!\d)[.]|[.](?!\d)|[\n;!?]/)[0];
     const avant = t.slice(Math.max(0, debut - 30), debut).split(/[.,:\n;!?]/).pop() ?? '';
     for (const [morceau, origine] of [
       [apres, finMot],
@@ -663,6 +665,9 @@ export function vueSejour(e: EntreesSejour, lien: (fichier: string) => string | 
     const brut = t?.trim();
     if (!brut) return undefined;
     if (codes) return brut;
+    // Le wifi (nom ou mot de passe) cherché AVANT le masquage : masquerCodes en couperait les chiffres
+    // (« soleil2026 » → « soleil[code…] ») et le reste du mot de passe passerait.
+    if (contientCodeAcces(brut, { wifiCode: f?.wifiCode ?? '', wifiNom: f?.wifiNom ?? '' })) return undefined;
     const masque = masquerCodes(brut).trim();
     // Un code court sans le mot « code » (« Portail : 482 ») : le texte attend aussi les 48 h.
     return masque && !contientCodeAcces(masque, l) && !codeProbable(masque) ? masque : undefined;

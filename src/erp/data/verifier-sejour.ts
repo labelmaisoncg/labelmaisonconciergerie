@@ -482,7 +482,12 @@ async function principal() {
   section('11. Relecture : codes courts, jour du départ, enfants, nom du logement');
   {
     // Codes écrits sans le mot « code », à côté d'un mot d'accès.
-    const codes = ['Portail du parking : 482.', 'Dans la boîte B7Z', '482 au portail', 'Cadenas du local vélo 1234', 'Badge A12 sur le trousseau', 'Interphone 12B', 'Boîte aux lettres, code 0042', 'Digicode : 12#4'];
+    const codes = [
+      'Portail du parking : 482.', 'Dans la boîte B7Z', '482 au portail', 'Cadenas du local vélo 1234', 'Badge A12 sur le trousseau', 'Interphone 12B', 'Boîte aux lettres, code 0042', 'Digicode : 12#4',
+      // Chiffres espacés, autres mots d'accès (dont l'anglais), code loin du mot.
+      'Portail du parking : 4 8 2.', 'Le code est le 4.8.2', 'Gate code: 4-8-2', 'Gate: 482', 'Keybox 482 on the left', 'Lockbox: B7Z', 'Garage : 482', 'Grille du parking : 482', 'Barrière : 482', 'Coffre à clés : 482', 'Télécommande du garage, bip 482',
+      'Portail du parking, tout au fond à droite après les poubelles : 482',
+    ];
     const pasCodes = [
       'Code postal 91100',
       'Le portail ferme à 22h',
@@ -503,6 +508,10 @@ async function principal() {
     verifier(ratesCodes.length === 0, 'code court près de portail, boîte, cadenas, badge, interphone, digicode : vu', ratesCodes);
     verifier(fauxCodes.length === 0, 'code postal, heures, étages, distance, montant, durée : pas un code', fauxCodes);
     verifier(!codeProbable(`Clés dans la boîte, ${CODE_MASQUE}.`) && !codeProbable(CODE_MASQUE), 'le code déjà masqué ne compte pas (« 48 heures »)');
+
+    // Wifi écrit hors de la case wifi, avec des chiffres : cherché avant le masquage (jamais « soleil[code…] »).
+    const wifiGlisse = vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, aSavoir: 'Le wifi : soleil2026, réseau Livebox-Essai.', parking: 'Mot de passe soleil2026 aussi pour le portail' } }, aujourdhui: AUJ, checkinOuvert: true });
+    verifier(!wifiGlisse.logement.aSavoir && !wifiGlisse.logement.parking && !/soleil|Livebox/i.test(JSON.stringify(wifiGlisse)), 'avant l’heure : un texte qui cite le wifi n’est pas montré, même en partie', wifiGlisse.logement);
 
     // Livret : un texte qui cite un tel code attend les 48 h, entier.
     const court: Logement = { ...LOGEMENT, fiche: { ...LOGEMENT.fiche, parking: 'Portail du parking : 482.', regles: 'Dans la boîte B7Z, les clés du local.', aSavoir: 'Poubelles le mardi.' } };
