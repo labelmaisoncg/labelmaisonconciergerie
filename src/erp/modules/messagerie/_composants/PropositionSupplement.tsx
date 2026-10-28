@@ -100,6 +100,7 @@ export function PropositionSupplement({ proposition: p, logementId, onInserer }:
         // Onglet « Infos pour votre agent », panneau des suppléments ouvert : à la place de « Insérer » (rien à insérer ici).
         <Link
           to={`/erp/logements/${encodeURIComponent(logementId)}?onglet=fiche&supplements=regler`}
+          aria-label="Régler les suppléments de ce logement"
           className="inline-flex h-8 shrink-0 items-center px-1.5 text-[13px] font-medium text-(--lm-or-texte) hover:underline"
         >
           Régler

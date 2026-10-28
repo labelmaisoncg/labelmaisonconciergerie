@@ -550,6 +550,16 @@ async function principal() {
       const m = masquerCodes('Portail du parking : code 482. Local vélos : CODE SOLEIL. Code WIFI au dos de la porte. Arrivée dès 16:00, parking à 300 m.');
       verifier(!/482|SOLEIL/.test(m) && /Code WIFI/.test(m) && /16:00/.test(m) && /300 m/.test(m), `masquage avant l'heure : codes courts et en majuscules cachés, le reste intact (${m})`);
       verifier(secretsAcces({ acces: '', parking: 'Serrure connectée, code par séjour.', wifiNom: '', wifiCode: '' }).length === 0, '« code par séjour » dans le parking : aucun secret');
+      // Code écrit après d'autres mots (« Code portail : 482 », « Le code est 731 », « Cadenas vélo 315 »), jamais une heure ni une distance.
+      const loin = { acces: 'Boîte à clés à droite.', parking: 'Code portail : 482', regles: 'Le code est 731. Arrivée avant 16h00, code par séjour.', aSavoir: 'Code d’entrée immeuble : B2C4. Cadenas vélo 315. Parking à 300m.', wifiNom: '', wifiCode: '' };
+      const s = secretsAcces(loin);
+      verifier(['482', '731', 'B2C4', '315'].every((c) => s.includes(c)) && !s.includes('16h00') && !s.includes('300m'), `codes après d'autres mots repérés, ni heure ni distance (${s.join(', ')})`);
+      verifier(
+        ['The parking gate code is 482.', 'It is 731.', 'Use B2C4 downstairs.'].every((t) => contientCodeAcces(t, loin)) && !contientCodeAcces('Arrival from 16h00, the parking is 300m away.', loin),
+        'réponse qui cite ces codes : repérée ; heure et distance : non',
+      );
+      const ml = masquerCodes(`${loin.parking}\n${loin.regles}\n${loin.aSavoir}`);
+      verifier(!/482|731|B2C4|315/.test(ml) && /16h00/.test(ml) && /300m/.test(ml), `masquage avant l'heure : codes cachés, heure et distance intactes (${ml})`);
     }
     verifier(contientCodeAcces('Votre code est A12B.', { acces: 'code : A12B' }) && contientCodeAcces('le code 4 8 2 1', { acces: 'code 4821' }), 'vrai code écrit dans un message : repéré');
     // Secret court ou sans chiffre : en mot entier seulement.

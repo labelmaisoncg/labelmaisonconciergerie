@@ -29,6 +29,7 @@ import {
   scoreContact,
   sonBien,
 } from './crm-assistant';
+import { masquerCoordonnees } from './masquage';
 import { OUTILS } from './crm-mcp';
 import { canalValide, preparerRelance } from './crm-relance';
 import { DATE_DEMO } from './format';
@@ -109,6 +110,14 @@ section('File du jour : la règle du CRM, triée par score');
   verifier(demo.length === accueil?.details.length && demo.length === 3, 'démonstration : même nombre que la ligne « à appeler » de l’Accueil', [demo.length, accueil?.details.length]);
   verifier(demo.some((e) => e.profil === 'apporteur'), 'démonstration : un apporteur dans la file (candidature au Cercle)');
   verifier(demo.every((e, i) => i === 0 || demo[i - 1].score.points >= e.score.points), 'démonstration : triée par score décroissant', demo.map((e) => e.score.points));
+}
+
+section('Coordonnées déguisées : masquées avant l’IA');
+{
+  const m = masquerCoordonnees('Appelez le 06/12/34/56/78 ou 06_12_34_56_78, écrivez à jean (at) exemple point fr, jean @ exemple . fr ou jean arobase exemple.fr.');
+  verifier(!/06|jean/.test(m), 'téléphones à barres ou soulignés, e-mails déguisés : masqués', m);
+  const intact = 'We arrive at noon and stay at the flat. Arrivée à 16:00, parking à 300 m.';
+  verifier(masquerCoordonnees(intact) === intact, 'texte ordinaire (« arrive at noon », heure, distance) : intact', masquerCoordonnees(intact));
 }
 
 section('Prochaine action, en une phrase');

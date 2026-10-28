@@ -311,6 +311,15 @@ const MOT_DEPART = /(?<![àa] )\bpart(ir|ez|irez|ira)\b|d[ée]part|check.?out|\b
  * départ après `heureDepart` (« check-out until 2pm is fine »), lus
  * proposition par proposition.
  */
+/** Heures d'un texte hors des horaires du logement (arrivée avant, départ après), proposition par proposition. */
+function heuresHors(texte: string, fiche?: HorairesLogement): string[] {
+  const arrivee = heureFiche(fiche?.heureArrivee, HORAIRES_PRUDENTS.heureArrivee);
+  const depart = heureFiche(fiche?.heureDepart, HORAIRES_PRUDENTS.heureDepart);
+  return texte.replace(/\b([ap])\.\s?m\.?/gi, '$1m').split(/[;!?\n]|\.(?!\d)|,(?!\d)|:(?!\d)|\s(?:et|and|mais|but|puis|then|ou|or)\s/i).flatMap((p) =>
+    heuresDe(p).filter((h) => (MOT_ARRIVEE.test(p) && h < arrivee) || (MOT_DEPART.test(p) && h > depart)),
+  );
+}
+
 function heureHorsHoraires(texte: string, fiche?: HorairesLogement): boolean {
   if (!ACCORD.test(texte)) return false;
   const arrivee = heureFiche(fiche?.heureArrivee, HORAIRES_PRUDENTS.heureArrivee);
@@ -355,7 +364,10 @@ export const MOTIF_REPONSE_PROPOSITION = 'Réponse à une proposition de supplé
 export function supplementAValider(d: Pick<DecisionNotee, 'intention' | 'texte' | 'texteFr'>, c: ContexteSupplement): string | null {
   if (c.apresProposition) return MOTIF_REPONSE_PROPOSITION;
   const demande = (d.intention && INTENTIONS_SUPPLEMENTS.includes(d.intention)) || c.sansReponse.some((m) => !!supplementDansTexte(m));
-  const offre = offreSupplement(d.texte ?? '', c.fiche) || offreSupplement(d.texteFr ?? '', c.fiche);
+  // Heures demandées par le voyageur hors des horaires (« Can we arrive at 1pm? ») : une réponse qui les reprend les accorde.
+  const horsHoraires = new Set(c.sansReponse.flatMap((m) => heuresHors(nettoyerTexte(m).replace(/[’`´]/g, "'"), c.fiche)));
+  const reprend = (t?: string) => !!t && heuresDe(nettoyerTexte(t)).some((h) => horsHoraires.has(h));
+  const offre = offreSupplement(d.texte ?? '', c.fiche) || offreSupplement(d.texteFr ?? '', c.fiche) || reprend(d.texte) || reprend(d.texteFr);
   return demande || offre ? MOTIF_SUPPLEMENT : null;
 }
 
@@ -376,11 +388,16 @@ function dernierMessageEquipe(fil: Pick<FilMessages, 'messages'>): Message | und
  */
 export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
   if (!messagesSansReponse(fil).length) return false;
-  const equipe = dernierMessageEquipe(fil);
-  if (!equipe) return false;
-  if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return true;
-  const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
-  return (SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '));
+  for (let i = fil.messages.length - 1; i >= 0; i--) {
+    const equipe = fil.messages[i];
+    if (equipe.auteur !== 'hote') continue;
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return true;
+    const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
+    if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return true;
+    // Un autre message automatique (infos d'arrivée…) ne clôt pas la proposition : on remonte.
+    if (!equipe.envoi?.moment) return false;
+  }
+  return false;
 }
 
 /** Le voyageur accepte une proposition (« Oui pour la première option », « Yes please »). */
@@ -401,7 +418,7 @@ export function reponseSansDemandeAuxSupplements(fil: Pick<FilMessages, 'message
   if (!sans.length || dernierMessageEquipe(fil)?.envoi?.moment !== MOMENT_PROPOSER_SUPPLEMENTS) return false;
   return !sans.some((m) => {
     const t = nettoyerTexte(m.texte).replace(/[’`´]/g, "'");
-    return !!supplementDansTexte(t) || ACCEPTE.test(t) || /\?/.test(t);
+    return !!supplementDansTexte(t) || ACCEPTE.test(t) || /\?/.test(t) || !!sujetSensibleMessages([t]);
   });
 }
 
@@ -999,7 +1016,7 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 }
 
 /** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
-const CODE_APRES_MOT = /code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi;
+const CODE_APRES_MOT = /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,30}?(?<![\p{L}\p{N}#*])((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])/giu;
 
 /**
  * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un
@@ -1008,10 +1025,13 @@ const CODE_APRES_MOT = /code\s*:?\s*((?=[A-Za-z]*[0-9#*])[A-Za-z0-9#*]{3,})/gi;
  */
 function codesApresMotCode(texte: string): string[] {
   return [
-    ...[...texte.matchAll(CODE_APRES_MOT)].map((m) => m[1]),
+    ...[...texte.matchAll(CODE_APRES_MOT)].map((m) => m[1]).filter((j) => !PAS_UN_CODE.test(j)),
     ...[...texte.matchAll(/[Cc][Oo][Dd][Ee]\s*:?\s*([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu)].map((m) => m[1]).filter((m) => !MOTS_PAS_CODE.has(sansAccentsMaj(m))),
   ];
 }
+
+/** Jetons qui suivent « code », « cadenas »… sans en être un : heure (« 16h00 »), distance, durée, débit, montant. */
+const PAS_UN_CODE = /^(\d{1,2}h\d{0,2}|\d+(m|km|mn|min|mins|h|j|mb|mbps|go|gb|eur|euros?))$/i;
 
 /** Mots en majuscules qui suivent « code » sans en être un. */
 const MOTS_PAS_CODE = new Set([
@@ -1082,7 +1102,7 @@ export function masquerCodes(texte: string): string {
   const cache = '[code communiqué dans les 48 heures avant l’arrivée]';
   // D'abord les codes courts écrits après « code » (« code 482 », « code A12 »), puis toute suite de 4 chiffres ou plus.
   return nettoyerTexte(texte)
-    .replace(CODE_APRES_MOT, (tout, jeton: string) => tout.slice(0, tout.length - jeton.length) + cache)
+    .replace(CODE_APRES_MOT, (tout, jeton: string) => (PAS_UN_CODE.test(jeton) ? tout : tout.slice(0, tout.length - jeton.length) + cache))
     .replace(/([Cc][Oo][Dd][Ee]\s*:?\s*)([A-ZÀ-ÖØ-Þ]{4,})(?![\p{L}\p{N}])/gu, (tout, avant: string, mot: string) => (MOTS_PAS_CODE.has(sansAccentsMaj(mot)) ? tout : avant + cache))
     .replace(SUITE_CHIFFRES, cache);
 }

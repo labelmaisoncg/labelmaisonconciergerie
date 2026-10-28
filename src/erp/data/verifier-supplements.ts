@@ -520,6 +520,24 @@ async function principal() {
     const propEquipe = fil('fil-62', 'r1', { messages: [msg('p', 'hote', 'Bonne nouvelle : le jeudi 29 octobre, vous pouvez arriver dès 12 h, pour 20 €.'), msg('v', 'voyageur', 'Oui merci !')] });
     verifier(apresPropositionSupplements(propEquipe) && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'Merci Emily, à jeudi !' }, autonome, messagesVerdict(propEquipe, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider', 'réponse à une proposition de l’équipe avec un prix : à valider');
     verifier(!apresPropositionSupplements(fil('fil-63', 'r1', { messages: [msg('p', 'hote', 'Bonjour Emily, le parking est devant la résidence.'), msg('v', 'voyageur', 'Merci !')] })), 'réponse à un autre message de l’équipe : règle ordinaire');
+    // Proposition, puis un autre message automatique (infos d'arrivée), puis « Oui » : toujours une réponse à la proposition.
+    const deuxAuto = fil('fil-64', 'r1', {
+      messages: [
+        { ...msg('p', 'hote', 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+        { ...msg('i', 'hote', 'Bonjour Emily, voici les infos d’arrivée.'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'veille_arrivee' } },
+        msg('v', 'voyageur', 'Oui pour la première option'),
+      ],
+    });
+    verifier(apresPropositionSupplements(deuxAuto) && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'C’est noté, à jeudi !' }, autonome, messagesVerdict(deuxAuto, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider', 'proposition puis infos d’arrivée, puis « Oui » : toujours à valider');
+    // Le voyageur demande une heure hors des horaires : une réponse qui la reprend l'accorde, même mal classée par l'IA.
+    for (const [voyageur, texte, langue] of [
+      ['Can we arrive at 1pm?', 'Hi Tom, yes, 1 pm works. See you then!', 'en'],
+      ['Arrivée à 14h possible ?', 'Bonjour, oui ! Rendez-vous à 14 h.', 'fr'],
+    ] as [string, string, 'fr' | 'en'][]) {
+      const f = fil('fil-65', 'r1', { messages: [msg('v', 'voyageur', voyageur)] });
+      const v = niveaux.map((p) => verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue, texte }, p, messagesVerdict(f, new Date('2026-10-27T10:00:00Z'), fiche)).verdict);
+      verifier(v.every((x) => x === 'valider'), `heure demandée hors des horaires reprise dans la réponse (« ${voyageur} ») : à valider`, v);
+    }
     verifier(/proposition de suppléments/.test(MOTIF_REPONSE_PROPOSITION) && /question d’argent/.test(MOTIF_SUPPLEMENT), 'motif propre à une réponse à une proposition');
     verifier(['simples', 'autonome'].every((n) => /ne vend jamais seul un supplément/.test(explicationNiveau(n as 'simples', { horsFiche: true }).regles.join())) && /ne vend jamais seul un supplément/.test(explicationNiveau('valider', { horsFiche: true }).regles.join()), 'écran « Votre agent » : la règle est dite à chaque niveau');
   }
@@ -703,7 +721,7 @@ async function principal() {
     const nonMerci = reponseA('Non merci, à jeudi !');
     verifier(infos(nonMerci) === 'envoyer' && infos(reponseA('No thanks, see you Thursday')) === 'envoyer', '« Non merci, à jeudi » : les infos d’arrivée de la veille partent quand même');
     verifier(attendEquipe(nonMerci) && reponseSansDemandeAuxSupplements(nonMerci), 'la conversation reste dans « À répondre » (règle unique inchangée)');
-    for (const t of ['Pourrions-nous partir plus tard dimanche ?', 'Oui pour la première option, merci !', 'Yes please, the first one!', 'Non merci. Où peut-on se garer ?']) {
+    for (const t of ['Pourrions-nous partir plus tard dimanche ?', 'Oui pour la première option, merci !', 'Yes please, the first one!', 'Non merci. Où peut-on se garer ?', 'Non merci. Nous devons annuler']) {
       verifier(infos(reponseA(t)) === 'attendre', `« ${t} » : vraie demande, les infos d’arrivée attendent l’équipe`);
     }
     verifier(infos(reponseA('Non merci, à jeudi !', { statut: 'escalade' })) === 'attendre', 'conversation transmise par l’agent : les infos d’arrivée attendent');
