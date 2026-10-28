@@ -351,6 +351,8 @@ export interface ContexteSupplement {
   apresProposition?: boolean;
   /** Une proposition de suppléments est en cours (aucune réponse de l'équipe depuis), quel que soit le délai. */
   propositionEnCours?: boolean;
+  /** La proposition en cours a moins de 72 h (au premier message sans réponse). */
+  propositionRecente?: boolean;
   /** Heures habituelles du logement : une heure accordée en dehors est une offre. */
   fiche?: HorairesLogement;
 }
@@ -366,7 +368,12 @@ export const MOTIF_REPONSE_PROPOSITION = 'Réponse à une proposition de supplé
 export function supplementAValider(d: Pick<DecisionNotee, 'intention' | 'texte' | 'texteFr'>, c: ContexteSupplement): string | null {
   if (c.apresProposition) return MOTIF_REPONSE_PROPOSITION;
   // Proposition en cours : une réponse qui s'engage (« c'est noté », « réservé », « booked ») n'est jamais envoyée seule.
-  if (c.propositionEnCours && [d.texte, d.texteFr].some((t) => !!t && ENGAGEMENT.test(nettoyerTexte(t).replace(/[’`´]/g, "'")))) return MOTIF_REPONSE_PROPOSITION;
+  if (c.propositionEnCours) {
+    // Dans les 72 h, ou si le voyageur répond à la proposition : aussi « Done! », « ça marche », « c'est bon », « noted »…
+    const large = c.propositionRecente || c.sansReponse.some((m) => repondALaProposition(nettoyerTexte(m).replace(/[’`´]/g, "'"), c.fiche));
+    const motif = large ? ENGAGEMENT_LARGE : ENGAGEMENT;
+    if ([d.texte, d.texteFr].some((t) => !!t && motif.test(nettoyerTexte(t).replace(/[’`´]/g, "'")))) return MOTIF_REPONSE_PROPOSITION;
+  }
   const demande = (d.intention && INTENTIONS_SUPPLEMENTS.includes(d.intention)) || c.sansReponse.some((m) => !!supplementDansTexte(m));
   // Heures demandées par le voyageur hors des horaires (« Can we arrive at 1pm? ») : une réponse qui les reprend les accorde.
   const horsHoraires = new Set(c.sansReponse.flatMap((m) => heuresHors(nettoyerTexte(m).replace(/[’`´]/g, "'"), c.fiche)));
@@ -425,6 +432,30 @@ export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, 
 // Engagements explicites seulement : « done », « ça marche », « c'est bon » sont trop courants pour garder la main tout le séjour.
 const ENGAGEMENT =
   /c'est (?:bien )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|bien (?:not[ée]|r[ée]serv[ée]|pris en compte|enregistr[ée])|not[ée] pour|nous (?:avons )?(?:not[ée]|r[ée]serv[ée]|confirm[ée]|pr[ée]vu|organis[ée])|\b(?:je|nous) (?:r[ée]serve|r[ée]servons|confirme|confirmons|organise|organisons|pr[ée]vois|pr[ée]voyons)\b|d'accord pour|ok pour|\b(?:booked|confirmed|arranged|reserved)\b|it'?s yours|we(?:'ll| will) (?:arrange|book|reserve|organi[sz]e|prepare)/i;
+
+/** Engagements, y compris les formules courtes, pour une réponse qui suit de près la proposition ou y répond. */
+const ENGAGEMENT_LARGE = new RegExp(
+  `${ENGAGEMENT.source}|c'est (?:bien )?(?:fait|bon|ok|d'accord|entendu|parfait)|\\b(?:je|nous) (?:note|notons)\\b|[çc]a marche|\\bentendu\\b|\\b(?:noted|all set|sorted|done)\\b`,
+  'i',
+);
+
+/** Âge (ms) de la proposition en cours au premier message sans réponse ; null : aucune. */
+export function agePropositionEnCours(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): number | null {
+  const sans = messagesSansReponse(fil);
+  if (!sans.length) return null;
+  const debut = Math.min(...sans.map((m) => Date.parse(m.envoyeLe)).filter(Number.isFinite));
+  for (let i = fil.messages.length - 1; i >= 0; i--) {
+    const equipe = fil.messages[i];
+    if (equipe.auteur !== 'hote') continue;
+    const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS || ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' ')))) {
+      const envoi = Date.parse(equipe.envoyeLe);
+      return Number.isFinite(debut) && Number.isFinite(envoi) ? debut - envoi : 0;
+    }
+    if (!equipe.envoi?.moment) return null;
+  }
+  return null;
+}
 
 /** Une proposition de suppléments attend-elle encore l'équipe (aucune vraie réponse de l'équipe depuis) ? */
 export function propositionEnCours(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
@@ -516,6 +547,7 @@ export interface MessagesVerdict {
   sansReponse?: string[];
   apresProposition?: boolean;
   propositionEnCours?: boolean;
+  propositionRecente?: boolean;
   fiche?: HorairesLogement;
 }
 
@@ -530,6 +562,7 @@ export function messagesVerdict(fil: Pick<FilMessages, 'messages' | 'reservation
     sansReponse: messagesSansReponse(fil).map((m) => m.texte),
     apresProposition: apresPropositionSupplements(fil, fiche),
     propositionEnCours: propositionEnCours(fil, fiche),
+    propositionRecente: ((a) => a !== null && a <= DUREE_PROPOSITION_MS)(agePropositionEnCours(fil, fiche)),
     ...(fiche ? { fiche: { heureArrivee: fiche.heureArrivee, heureDepart: fiche.heureDepart } } : {}),
   };
 }
@@ -790,7 +823,7 @@ export function verdictEnvoi(d: DecisionNotee, p: PolitiqueEnvoi, voyageur: stri
   if (reponse) return { verdict: 'transmettre', ...reponse };
   // Supplément (arrivée plus tôt, départ plus tard, ménage, navette) : jamais vendu seul, quel que soit le niveau.
   // La demande se cherche dans les messages encore sans réponse (une demande déjà traitée ne bloque plus).
-  const supplement = supplementAValider(d, { sansReponse: v.sansReponse ?? recents.slice(-1), apresProposition: v.apresProposition, propositionEnCours: v.propositionEnCours, fiche: v.fiche });
+  const supplement = supplementAValider(d, { sansReponse: v.sansReponse ?? recents.slice(-1), apresProposition: v.apresProposition, propositionEnCours: v.propositionEnCours, propositionRecente: v.propositionRecente, fiche: v.fiche });
   if (supplement) return { verdict: 'valider', motif: supplement };
   if (!p.envoiAuto) return { verdict: 'valider', motif: 'Vous validez chaque réponse.' };
   const texteRecent = recents.join('\n');

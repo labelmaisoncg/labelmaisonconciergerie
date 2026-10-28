@@ -581,6 +581,28 @@ async function principal() {
       verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'C’est noté, à très vite !' }, autonome, messagesVerdict(tard, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider',
       'plus de 72 h après, une réponse qui s’engage reste à valider (proposition toujours en cours)',
     );
+    // Formules courtes (« Ça marche », « C'est bon ») : à valider dans les 72 h, ou quand le voyageur répond à la proposition.
+    const recente = fil('fil-70', 'r1', {
+      messages: [
+        { ...msg('p', 'hote', 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €', '2026-10-25T11:00:00+02:00'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+        msg('v', 'voyageur', 'On peut l’avoir ?', '2026-10-26T10:00:00+01:00'),
+      ],
+    });
+    verifier(
+      verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'arrivee', langue: 'fr', texte: 'Ça marche, à jeudi !' }, autonome, messagesVerdict(recente, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider',
+      'moins de 72 h après la proposition : « Ça marche » reste à valider',
+    );
+    const option = fil('fil-71', 'r1', {
+      messages: [
+        { ...msg('p', 'hote', 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €', '2026-10-22T10:00:00+02:00'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+        msg('v', 'voyageur', 'Oui pour la première option', '2026-10-26T10:00:00+01:00'),
+      ],
+    });
+    verifier(
+      !apresPropositionSupplements(option) &&
+        verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'C’est bon, à jeudi !' }, autonome, messagesVerdict(option, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider',
+      '96 h après, « Oui pour la première option » puis « C’est bon » : à valider (le voyageur répond à la proposition)',
+    );
     // Acceptations courtes, sans « oui » ni option : toujours des réponses à la proposition, jamais envoyées seules.
     for (const [voyageur, texte, langue] of [
       ['Parfait, merci !', 'Parfait Emily, c’est noté. À jeudi !', 'fr'],
