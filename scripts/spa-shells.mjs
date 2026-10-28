@@ -50,7 +50,7 @@ function ecranPortrait(page, remplacer) {
     '      .lm-portrait { display: none; }',
     // Safari de l'iPhone seulement (Android suit le manifeste ; son clavier ouvert ne doit pas passer pour du paysage).
     '      @supports (-webkit-touch-callout: none) {',
-    '        @media (display-mode: standalone) and (orientation: landscape) and (max-height: 500px) and (max-width: 950px) and (pointer: coarse) {',
+    '        @media (display-mode: standalone) and (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) and (pointer: coarse) {',
     '          .lm-portrait { position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; background: #fbfaf8; color: #14110e; text-align: center; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }',
     '          .lm-portrait svg { width: 40px; height: 40px; margin-bottom: 8px; }',
     '          .lm-portrait strong { font-size: 17px; font-weight: 600; }',
