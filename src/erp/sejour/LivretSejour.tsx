@@ -129,7 +129,8 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
   const [edition, setEdition] = useState(false);
   const [envoye, setEnvoye] = useState(false);
   const carteCheckin = useRef<HTMLDivElement>(null);
-  const tx = (s: string) => texteFiche(s, langue);
+  // Le jour du départ (et après), un code retiré est celui que le voyageur a reçu pour son arrivée.
+  const tx = (s: string) => (vue.moment === 'avant' ? texteFiche(s, langue) : texteConsignes(s, langue));
 
   const envoyer = async (saisie: SaisieCheckin) => {
     const r = await onEnvoyer(saisie);
