@@ -79,6 +79,7 @@ import { MESSAGE_INVITATION_HISTORIQUE } from '../api/erp-invitation';
 import { MESSAGE_COMPTE_SERVEUR, baseErp, configuration, deposeurFichiersErp, etatBase, oublierEtatBase, signeurFichiersErp, stockageFerme, variableManquante } from '../api/_erp-repull';
 import { BUDGET_ESPACE_DEFAUT, PLAFOND_IA_DEFAUT, codeEspaceDuWebhook, configurationEspace, espaceDemande, espaceDuWorkspace, espacesActifs, workspaceDeLEvenement } from '../api/_erp-espaces';
 import routeSynchro from '../api/erp-repull-sync';
+import routeConnexions from '../api/erp-repull-connexion';
 import routeAgent from '../api/erp-agent';
 import routeWebhook from '../api/erp-repull-webhook';
 import routeAgenda from '../api/erp-agenda';
@@ -902,6 +903,37 @@ async function principal() {
     res = reponse();
     await routeAgenda(requete({ methode: 'GET', entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS } }), res);
     verifier(res.statut === 200 && res.corps?.liens === 0, 'agenda du CRM : le gérant de Sens voit les liens de Sens (aucun encore)', res.corps);
+  }
+
+  section('Relier un logement créé à la main : gérant, dans son espace');
+  {
+    const logement = (id: string, nom: string) => ({ id, nom, adresse: '1 rue A', ville: 'Sens', codePostal: '89100', statut: 'lancement', annonces: [] });
+    monde.poser(LM, 'logements', logement('log-lm', 'Logement de Label Maison'));
+    monde.poser(SENS, 'logements', logement('log-sens', 'Logement de Sens'));
+    const relier = async (jeton: string, espace: string, corps: Record<string, unknown>) => {
+      const r = reponse();
+      await routeConnexions(requete({ entetes: { authorization: `Bearer ${jeton}`, 'x-erp-espace': espace }, corps }), r);
+      return r;
+    };
+    monde.oublier();
+    let res = await relier('jeton-ops-sens', SENS, { action: 'relier', logement: 'log-sens', annonce: '5' });
+    verifier(res.statut === 403 && /Seul un gérant peut relier/.test(res.corps?.erreur) && monde.repull.length === 0 && !monde.ecritures(SENS).length, 'opérations de Sens : relier refusé par le serveur, rien d’écrit', res.corps);
+    res = await relier('jeton-ops-sens', SENS, { action: 'delier', logement: 'log-sens' });
+    verifier(res.statut === 403, 'opérations de Sens : délier refusé', res.corps);
+    monde.oublier();
+    res = await relier('jeton-sens', SENS, { action: 'relier', logement: 'log-lm', annonce: '5' });
+    verifier(res.statut === 404 && /introuvable dans cet espace/.test(res.corps?.erreur) && !monde.ecritures(LM).length && !monde.ecritures(SENS).length, 'gérant de Sens : un logement de Label Maison reste introuvable', res.corps);
+    res = await relier('jeton-sens', SENS, { action: 'relier', logement: 'log-sens', annonce: '5' });
+    verifier(res.statut === 404 && /pas sur les plateformes connectées à cet espace/.test(res.corps?.erreur) && !monde.ecritures(SENS).length, 'gérant de Sens : annonce inconnue de Sens refusée, rien d’écrit', res.corps);
+    verifier(monde.repull.length === 0, 'refus avant tout appel au service de connexion');
+    // Espace sans accès Repull : la liste dit « aucune plateforme connectée » (code sans_connexion).
+    monde.membres.push({ espace: VIDE, email: 'gerant-b@exemple.invalid', role: 'gerant' });
+    monde.lies.add(`${VIDE}:gerant-b@exemple.invalid`);
+    res = reponse();
+    await routeConnexions(requete({ methode: 'GET', entetes: { authorization: 'Bearer jeton-sens', 'x-erp-espace': VIDE }, query: { action: 'etat' } }), res);
+    verifier(res.statut === 503 && res.corps?.code === 'sans_connexion', 'espace sans plateforme : code « sans_connexion » pour l’écran', res.corps);
+    monde.membres = monde.membres.filter((m) => !(m.espace === VIDE && m.email === 'gerant-b@exemple.invalid'));
+    monde.lies.delete(`${VIDE}:gerant-b@exemple.invalid`);
   }
 
   section('Connecteur Claude : chaque espace sa clé');

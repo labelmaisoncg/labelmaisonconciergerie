@@ -276,8 +276,13 @@ section('Synchronisation des plateformes : la position reste, une adresse chang�
   const ctx = { id: L, aujourdhui: J, proprietaireId: base.proprietaireId };
   const meme = versLogement({ id: '1001', name: base.nom, address: { street: base.adresse, city: base.ville } }, place, ctx);
   verifier(meme.position === place.position && positionAJour(meme), 'même adresse lue sur la plateforme : position gardée, à jour');
-  const autre = versLogement({ id: '1001', name: base.nom, address: { street: '3 rue du Port', city: base.ville } }, place, ctx);
-  verifier(!!autre.position && !positionAJour(autre), 'nouvelle rue lue sur la plateforme : position gardée mais périmée (à placer de nouveau)');
+  // Logement importé (« repull-1001 ») : l'adresse suit l'annonce.
+  const importe = { ...place, id: 'repull-1001' };
+  const autre = versLogement({ id: '1001', name: base.nom, address: { street: '3 rue du Port', city: base.ville } }, importe, { ...ctx, id: importe.id });
+  verifier(autre.adresse === '3 rue du Port' && !!autre.position && !positionAJour(autre), 'logement importé, nouvelle rue lue sur la plateforme : position gardée mais périmée (à placer de nouveau)');
+  // Logement créé à la main puis relié : l'adresse de l'équipe reste, la position aussi.
+  const relie = versLogement({ id: '1001', name: base.nom, address: { street: '3 rue du Port', city: 'Évry' } }, { ...place, repull: { id: '1001' } }, ctx);
+  verifier(relie.adresse === base.adresse && relie.ville === base.ville && relie.position === place.position && positionAJour(relie), 'logement créé à la main et relié : adresse de l’équipe et position gardées');
 }
 
 /* ------------------------------------------------------------- géocodage */

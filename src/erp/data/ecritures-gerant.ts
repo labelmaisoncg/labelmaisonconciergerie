@@ -5,7 +5,8 @@
  *
  * La base refuse ces écritures à tout autre compte (règles RLS, et
  * déclencheur des réglages de l'agent réservés au gérant :
- * REGLAGES_AGENT_GERANT). Le store ne les met donc
+ * REGLAGES_AGENT_GERANT ; déclencheur du lien d'un logement à son annonce :
+ * lienAnnonceChange). Le store ne les met donc
  * pas en file pour un compte qui n'est pas gérant : elles sont signalées
  * comme un refus de la base et la version enregistrée revient
  * (synchro.ts, ecritureInterdite). verifier-synchro.ts lit les fichiers SQL
@@ -54,6 +55,22 @@ export function ecritureGerantSeulement(collection: string, id: string): boolean
 }
 
 /**
+ * Lien d'un logement à son annonce (repull.id, liaison ; un logement
+ * « repull-… ») posé, retiré ou changé : comme le déclencheur
+ * erp.garder_lien_annonce() (erp-espaces.sql, erp-installation.sql,
+ * erp-acces-gerants.sql), réservé au gérant. Comparé à `avant` ; sans ligne :
+ * un nouveau logement sans lien ni « repull- » reste permis.
+ */
+export function lienAnnonceChange(op: Operation, avant: ErpDonnees): boolean {
+  if (op.type !== 'ecrire' || op.collection !== 'logements') return false;
+  const nouveau = op.donnees as { repull?: { id?: unknown }; liaison?: unknown };
+  const ancien = ((avant.logements ?? []) as unknown as { id: string; repull?: { id?: unknown }; liaison?: unknown }[]).find((l) => l?.id === op.id);
+  const id = (x?: { id?: unknown }) => (x?.id === undefined || x?.id === null ? null : String(x.id));
+  if (ancien) return id(nouveau.repull) !== id(ancien.repull) || stable(nouveau.liaison) !== stable(ancien.liaison);
+  return id(nouveau.repull) !== null || nouveau.liaison !== undefined || op.id.startsWith('repull-');
+}
+
+/**
  * Opération qu'un compte qui n'est pas gérant ne peut pas faire (la base la
  * refuserait) : écriture réservée, suppression des réglages de l'agent,
  * changement d'un de ses réglages réservés (REGLAGES_AGENT_GERANT, comparés
@@ -62,6 +79,7 @@ export function ecritureGerantSeulement(collection: string, id: string): boolean
  */
 export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boolean {
   if (ecritureGerantSeulement(op.collection, op.id)) return true;
+  if (lienAnnonceChange(op, avant)) return true;
   if (op.collection !== 'reglages' || op.id !== ID_REGLAGES_AGENT) return false;
   if (op.type === 'supprimer') return true;
   const ancien = ((avant.reglages ?? []) as unknown as ({ id: string } & Record<string, unknown>)[]).find((r) => r?.id === ID_REGLAGES_AGENT);

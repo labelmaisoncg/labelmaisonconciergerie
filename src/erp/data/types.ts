@@ -47,6 +47,8 @@ export interface OrigineRepull {
   canaux?: { plateforme: string; idExterne: string; actif: boolean }[];
   /** Logement retiré du choix (page Connexions) : en pause, plus synchronisé. */
   horsSelection?: boolean;
+  /** Statut du logement juste avant cette mise en pause : il revient quand l'annonce est recochée, ou au « Délier ». */
+  statutAvantPause?: StatutLogement;
   /** Dernière lecture des photos de l'annonce (relues une fois par semaine). */
   photosLuesLe?: Horodatage;
   /** D'où viennent les photos et les prix, ou pourquoi ils manquent (dernier relevé). */
@@ -240,12 +242,40 @@ export interface Logement {
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
   /**
+   * Logement créé à la main, relié à son annonce depuis sa fiche
+   * (data/liaison-annonce.ts) : qui, quand, et ce qu'il était avant le lien.
+   * Jamais écrit par la synchronisation (elle le garde tel quel).
+   */
+  liaison?: LiaisonAnnonce;
+  /**
    * Place du logement sur la carte de l’accueil (octobre 2026), calculée
    * d'après son adresse par le géocodeur public (data/carte.ts). Aussi
    * sensible que l'adresse : chaque espace ne la reçoit que pour les
    * logements qu'il voit déjà. Jamais écrite par la synchronisation.
    */
   position?: PositionLogement;
+}
+
+/** Champs d'un logement que son annonce remplit ou remplace (versLogement, repull.ts). */
+export type ChampsAnnonce = Partial<
+  Pick<Logement, 'nom' | 'adresse' | 'ville' | 'capacite' | 'chambres' | 'surfaceM2' | 'lits' | 'fiche' | 'annonces' | 'photoUrl' | 'photos' | 'descriptif' | 'tarifs'>
+>;
+
+/** Lien d'un logement créé à la main avec son annonce (« Relier à une annonce »). */
+export interface LiaisonAnnonce {
+  /** Annonce reliée (même valeur que repull.id au moment du lien). */
+  annonce: string;
+  le: Horodatage;
+  /** Gérant qui a relié (adresse du compte). */
+  par: string;
+  /** Le logement juste avant le lien : ce que « Délier » lui rend. */
+  avant: ChampsAnnonce;
+  /**
+   * Noms (jamais les valeurs) des champs vides au moment du lien, que
+   * l'import remplit seulement s'ils sont vides (CHAMPS_REMPLIS_SI_VIDES,
+   * liaison-annonce.ts) : « Délier » les vide de nouveau.
+   */
+  vides?: string[];
 }
 
 /**

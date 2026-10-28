@@ -1020,9 +1020,23 @@ Fusion sans écrasement : ce qui vient de Repull est remplacé à chaque passage
 ce que l'équipe saisit (propriétaire, mandat, commission, serrure, linge,
 checklist, numéro d'enregistrement, statut d'un fil, note hors avis...) n'est
 jamais touché, une valeur absente chez Repull ne vide rien, et rien n'est
-jamais supprimé. Un logement créé à la main se relie à son annonce dans
-Logements → fiche → Canaux → **Relier à Repull** (identifiant d'annonce) :
-il est alors mis à jour au lieu d'être dupliqué. Chaque passage laisse une
+jamais supprimé. Un logement créé à la main (dans n'importe quel espace,
+même sans plateforme connectée) se relie ensuite à son annonce depuis sa
+fiche : **Pas encore relié à une annonce → Relier à une annonce** (gérant),
+puis l'annonce choisie dans la liste de celles trouvées sur les plateformes
+de l'espace. Il est alors mis à jour au lieu d'être dupliqué : nom, photos,
+description, réservations et messages viennent de l'annonce ; propriétaire,
+mandat, réglages, adresse, position sur la carte, wifi et horaires restent.
+Rien n'est écrit sur les plateformes ; l'annonce entre dans les logements
+suivis (même limite d'offre). Relier et délier sont réservés au gérant,
+jusque dans la base (déclencheur `erp.garder_lien_annonce()`). Décocher
+l'annonce dans Connexions met le logement en pause ; son statut d'avant
+revient quand elle est recochée, ou au « Délier ». « Délier » (repli
+Administratif) n'existe que tant qu'aucune réservation ni conversation de
+l'annonce n'est arrivée ; il rend les champs que l'import remplace (nom,
+photos, description, capacité…) et revide ceux qu'il a remplis parce qu'ils
+étaient vides (wifi, accès, règles, adresse…). Règles :
+`src/erp/data/liaison-annonce.ts`. Chaque passage laisse une
 ligne dans le journal (« Synchronisation Repull ») ; l'état (appels du mois,
 dernier bilan) est dans la ligne `repull / etat` de `erp.enregistrements`,
 ignorée par l'application.

@@ -6,9 +6,15 @@
  * quitte jamais Vercel, l'ERP envoie seulement le jeton de session. L'offre
  * gratuite de Repull permet 3 logements : une fois la limite atteinte, les
  * autres cases sont grisées (et le serveur refuse de toute façon au-delà).
+ *
+ * Un logement déjà créé à la main ne se coche pas ici (il arriverait en
+ * double) : il se relie à son annonce depuis sa fiche (« Relier à une
+ * annonce ») ; la page le rappelle quand il y en a. Démo : comptes et
+ * annonces fictifs (data/seed-connexions.ts), rien ne se coche, ne se
+ * déconnecte ni ne s'enregistre.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, Home, ImageOff, Lock, Plug, RefreshCw, Unplug } from 'lucide-react';
 import type {
   AnnonceDecouverte,
@@ -17,11 +23,9 @@ import type {
   ResultatSelection,
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
-import { entetesServeur } from '../../data/espaces';
-import { obtenirClient } from '../../data/supabase';
+import { logementsARelier } from '../../data/liaison-annonce';
 import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal, PageHeader, ProgressBar, Repli, Skeleton, cn, type Ton } from '../../ui';
-
-const API = '/api/erp-repull-connexion';
+import { NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
 
 /** Plateformes toujours présentées, dans cet ordre. */
 const PRINCIPALES: { id: string; nom: string; aide: string }[] = [
@@ -33,32 +37,9 @@ const PRINCIPALES: { id: string; nom: string; aide: string }[] = [
   },
 ];
 
-const NOMS: Record<string, string> = { airbnb: 'Airbnb', booking: 'Booking.com', vrbo: 'Vrbo' };
-
 interface Message {
   ton: Ton;
   texte: string;
-}
-
-/** Appel du serveur avec le jeton de la session. */
-async function appeler<T>(methode: 'GET' | 'POST', params: Record<string, string>, corps?: unknown): Promise<T> {
-  const { data } = await obtenirClient().auth.getSession();
-  const jeton = data.session?.access_token;
-  if (!jeton) throw new Error('Votre session a expiré : reconnectez-vous à l’ERP.');
-  let r: Response;
-  try {
-    r = await fetch(`${API}?${new URLSearchParams(params)}`, {
-      method: methode,
-      headers: entetesServeur(jeton),
-      ...(corps !== undefined ? { body: JSON.stringify(corps) } : {}),
-      cache: 'no-store',
-    });
-  } catch {
-    throw new Error('Le serveur ne répond pas. Vérifiez votre connexion, puis réessayez.');
-  }
-  const json = (await r.json().catch(() => ({}))) as T & { ok?: boolean; erreur?: string };
-  if (!r.ok || json.ok === false) throw new Error(json.erreur ?? `Une erreur est survenue (${r.status}). Réessayez dans un instant.`);
-  return json;
 }
 
 const pluriel = (n: number, un: string, plusieurs = `${un}s`) => `${n} ${n > 1 ? plusieurs : un}`;
@@ -74,25 +55,8 @@ function texteResultat(r: ResultatSelection): string {
   return debut;
 }
 
-/** Réponse incomplète du serveur (ancienne version en cache, erreur réseau…) : jamais de plantage. */
-function normaliserEtat(e: Partial<EtatConnexions> | null | undefined): EtatConnexions {
-  const liste = <T,>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
-  return {
-    ...(e ?? {}),
-    ok: true,
-    fournisseurs: liste(e?.fournisseurs),
-    connexions: liste(e?.connexions),
-    annonces: liste(e?.annonces).map((a) => ({ ...a, plateformes: liste(a?.plateformes) })),
-    selection: liste(e?.selection),
-    limite: e?.limite === undefined ? 3 : e.limite,
-    sourceLimite: e?.sourceLimite ?? 'defaut',
-    avertissements: liste(e?.avertissements),
-    appels: e?.appels ?? { mois: 0, budget: 0 },
-  };
-}
-
 export default function Connexions() {
-  const { mode, utilisateur, lancerAutomatisations, lectureSeule } = useErp();
+  const { mode, utilisateur, lancerAutomatisations, lectureSeule, logements } = useErp();
   const reel = mode === 'reel';
   const gerant = utilisateur.role === 'gerant' && !lectureSeule;
   const [params] = useSearchParams();
@@ -110,9 +74,19 @@ export default function Connexions() {
   const [deconnexion, setDeconnexion] = useState(false);
   const retourTraite = useRef(false);
 
+  // Démo : annonces fictives, d'après les logements de la démo au moment de l'ouverture.
+  const logementsRef = useRef(logements);
+  logementsRef.current = logements;
+
   const charger = useCallback(
     async (forcer = false) => {
-      if (!reel) return null;
+      if (!reel) {
+        const { etatConnexionsDemo } = await import('../../data/seed-connexions');
+        const e = etatConnexionsDemo(logementsRef.current);
+        setEtat(e);
+        setChoix(new Set(e.selection));
+        return e;
+      }
       setChargement(true);
       setErreur(null);
       try {
@@ -209,6 +183,8 @@ export default function Connexions() {
   };
 
   const limite = etat?.limite ?? null;
+  // Logements créés à la main, pas encore reliés : à relier depuis leur fiche plutôt qu'à cocher ici.
+  const aRelier = gerant && etat?.annonces.some((a) => !a.importee) ? logementsARelier(logements) : [];
   const atteinte = limite !== null && choix.size >= limite;
   const modifie = useMemo(() => {
     const avant = new Set(etat?.selection ?? []);
@@ -250,7 +226,7 @@ export default function Connexions() {
 
       {!reel && (
         <Alert tone="neutre" className="mb-4">
-          Démo : rien n’est connecté ici.
+          Démo : comptes et annonces fictifs.
         </Alert>
       )}
       {reel && !gerant && (
@@ -305,7 +281,7 @@ export default function Connexions() {
                     {comptes.map((c) => (
                       <li key={c.id} className="flex items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
                         <span className="truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
-                        <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
+                        <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant || !reel} onClick={() => setADeconnecter(c)}>
                           Déconnecter
                         </Button>
                       </li>
@@ -345,7 +321,7 @@ export default function Connexions() {
                     </Badge>
                     <span className="truncate font-medium">{nomFournisseur(c.fournisseur)}</span>
                   </span>
-                  <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant} onClick={() => setADeconnecter(c)}>
+                  <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant || !reel} onClick={() => setADeconnecter(c)}>
                     Déconnecter
                   </Button>
                 </li>
@@ -379,6 +355,20 @@ export default function Connexions() {
         {etat && etat.annonces.length > 0 && etat.selection.length === 0 && !message && (
           <Alert tone="info" className="mb-3">
             Choisissez vos logements : rien n’est importé tant que vous ne les avez pas choisis.
+          </Alert>
+        )}
+        {aRelier.length > 0 && (
+          <Alert tone="info" className="mb-3">
+            {aRelier.length === 1
+              ? `« ${aRelier[0].nom} » a été créé à la main. Pour éviter un doublon, reliez-le à son annonce plutôt que de la cocher ici.`
+              : `${aRelier.length} logements ont été créés à la main. Pour éviter des doublons, reliez-les à leur annonce plutôt que de la cocher ici.`}
+            <span className="mt-1 flex flex-wrap gap-x-4">
+              {aRelier.slice(0, 4).map((l) => (
+                <Link key={l.id} to={`/erp/logements/${l.id}?relier=1`} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                  Relier {aRelier.length === 1 ? 'à son annonce' : `« ${l.nom} »`}
+                </Link>
+              ))}
+            </span>
           </Alert>
         )}
         {atteinte && etat && etat.annonces.length > choix.size && (
@@ -415,7 +405,7 @@ export default function Connexions() {
             {etat.annonces.map((a) => {
               const coche = choix.has(a.id);
               const bloque = !coche && atteinte;
-              const inactif = !gerant || enregistrement;
+              const inactif = !gerant || enregistrement || !reel;
               return (
                 <li key={a.id}>
                   <label
@@ -471,7 +461,7 @@ export default function Connexions() {
 
         {etat && etat.annonces.length > 0 && (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-            <Button variant="primary" size="lg" icone={<Check />} chargement={enregistrement} disabled={!gerant || !modifie || enregistrement} onClick={() => void enregistrer()}>
+            <Button variant="primary" size="lg" icone={<Check />} chargement={enregistrement} disabled={!reel || !gerant || !modifie || enregistrement} onClick={() => void enregistrer()}>
               Enregistrer mon choix
             </Button>
             {enregistrement ? (
