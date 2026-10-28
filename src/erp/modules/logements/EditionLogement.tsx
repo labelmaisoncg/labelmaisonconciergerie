@@ -72,7 +72,7 @@ function initial(l?: Logement): Saisie {
 const entier = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : NaN);
 
 export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
-  const { proprietaires, upsert, mettreAJour, lectureSeule } = useErp();
+  const { proprietaires, upsert, mettreAJour, lectureSeule, utilisateur } = useErp();
   const [nouveauProprietaire, setNouveauProprietaire] = useState(false);
   const [s, setS] = useState<Saisie>(() => initial(logement));
   const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
@@ -159,7 +159,8 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
     upsert('logements', changerProprietaire(aEnregistrer, s.proprietaireId, AUJOURDHUI));
     onFermer();
     if (!logement) onCree?.(suivant.id);
-    if (!lectureSeule && aEnregistrer.statut !== 'sorti' && !positionAJour(aEnregistrer)) void placerLogement(aEnregistrer, mettreAJour);
+    // Géocodage : gérant seulement (data/geocodage.ts) ; un compte « opérations » laisse le logement « à placer ».
+    if (utilisateur.role === 'gerant' && !lectureSeule && aEnregistrer.statut !== 'sorti' && !positionAJour(aEnregistrer)) void placerLogement(aEnregistrer, mettreAJour);
   };
 
   return (

@@ -61,6 +61,12 @@ export function Detail() {
           <>
             {/* Un ménage interne (prévu par Claude) n'est jamais confié à un prestataire. */}
             {m.statut === 'a_attribuer' && missionPrestataire(m) && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier</Button>}
+            {/* Ménage interne : l'équipe le fait elle-même, puis « Fait » (ni prestataire, ni paiement). */}
+            {m.type === 'menage' && !missionPrestataire(m) && !verrouillee && (
+              <Button variant="primary" icone={<CheckCircle2 />} onClick={() => traiter(d.marquerMenageInterneFait(m.id), 'Ménage marqué fait.')}>
+                Fait
+              </Button>
+            )}
             {m.statut === 'attribuee' && <Button variant="primary" icone={<Play />} onClick={() => statut('en_cours', 'Mission démarrée.')}>Démarrer</Button>}
             {m.statut === 'en_cours' && <Button variant="primary" icone={<Send />} onClick={() => statut('a_valider', 'Mission terminée, en attente de validation.')}>Terminer</Button>}
             {m.statut === 'a_valider' && (

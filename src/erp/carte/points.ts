@@ -24,6 +24,7 @@ export function pointsDuGerant(
     probleme: (i) => titreIncident(i),
     lienProbleme: true,
     menagePar: (m) => (m.prestataireId ? nomPrestataire.get(m.prestataireId) : undefined),
+    menageInterne: true,
   };
   const entrees = { reservations: d.reservations, missions: d.missions, incidents: d.incidents, controles: d.controles };
   return d.logements

@@ -12,13 +12,13 @@
  * placer (aPlacer). Rien n'est calculé ici : les points arrivent déjà
  * réduits à ce que l'espace voit (data/carte.ts, carte/points.ts).
  */
-import { Component, Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ChevronRight, X } from 'lucide-react';
+import { Component, Suspense, lazy, useEffect, useId, useMemo, useRef, useState, type ReactNode, type TouchEvent } from 'react';
+import { Check, ChevronRight, X } from 'lucide-react';
 import { compterCarte, garderPoint, trierPoints, type FiltreCarte, type PointCarte } from '../data/carte';
 import type { DateISO, Id } from '../data/types';
-import { Badge, Button, FilterChips, IconButton, cn, useLienFichier, type Filtre } from '../ui';
+import { Button, FilterChips, IconButton, cn, useLienFichier, type Filtre } from '../ui';
 import { BadgeProbleme, PastilleEtat } from './Pastille';
-import { ligneMenage, motEtat, phraseDuJour, phraseLegende, titreEtat } from './phrases';
+import { ligneMenage, motEtat, phraseDuJour, phraseFiltreVide, phraseLegende, precisionMenage, titreEtat } from './phrases';
 
 const FondCarte = lazy(() => import('./FondCarte'));
 
@@ -32,6 +32,8 @@ export interface CarteLogementsProps {
   points: PointCarte[];
   aujourdhui: DateISO;
   action: (p: PointCarte) => ActionCarte | null;
+  /** Gérant : « Marquer fait » d'un ménage interne (la fiche reste ouverte et se met à jour). */
+  actionMenage?: (p: PointCarte) => ActionCarte | null;
   /** Sous les logements pas encore placés (gérant : « Placer … sur la carte »). */
   aPlacer?: ReactNode;
   className?: string;
@@ -51,17 +53,33 @@ class GardeCarte extends Component<{ onErreur: () => void; children: ReactNode }
   }
 }
 
+/** Photo de couverture ; sans photo (ou si elle ne se charge pas) : rien, jamais un carré vide. */
 function Photo({ url, className }: { url?: string; className?: string }) {
   const lien = useLienFichier(url);
   const [casse, setCasse] = useState<string>();
-  if (lien && casse !== lien) {
-    return <img src={lien} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setCasse(lien)} className={cn('bg-(--lm-surface-2) object-cover', className)} />;
-  }
-  return <span aria-hidden className={cn('block bg-(--lm-surface-2)', className)} />;
+  if (!lien || casse === lien) return null;
+  return <img src={lien} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setCasse(lien)} className={cn('bg-(--lm-surface-2) object-cover', className)} />;
 }
 
+/** Glisser la feuille vers le bas (téléphone) la ferme, comme une feuille iOS. */
+const SEUIL_GLISSER_PX = 56;
+
 /** Fiche d'un logement : ce qui se passe aujourd'hui, en quelques lignes, et l'action de l'espace. */
-function Fiche({ p, aujourdhui, action, surCarte, onFermer }: { p: PointCarte; aujourdhui: DateISO; action: ActionCarte | null; surCarte: boolean; onFermer: () => void }) {
+function Fiche({
+  p,
+  aujourdhui,
+  action,
+  actionMenage,
+  surCarte,
+  onFermer,
+}: {
+  p: PointCarte;
+  aujourdhui: DateISO;
+  action: ActionCarte | null;
+  actionMenage: ActionCarte | null;
+  surCarte: boolean;
+  onFermer: () => void;
+}) {
   const titreId = useId();
   const ref = useRef<HTMLDivElement>(null);
   // Focus dans la fiche à l'ouverture (sans faire défiler), rendu au repère à la fermeture.
@@ -79,6 +97,14 @@ function Fiche({ p, aujourdhui, action, surCarte, onFermer }: { p: PointCarte; a
   }, [onFermer]);
   const approx = p.position?.precision === 'commune';
   const menage = ligneMenage(p);
+  const depart = useRef<number | null>(null);
+  const toucher = (e: TouchEvent) => {
+    depart.current = ref.current && ref.current.scrollTop <= 0 ? e.touches[0].clientY : null;
+  };
+  const lacher = (e: TouchEvent) => {
+    if (depart.current !== null && e.changedTouches[0].clientY - depart.current > SEUIL_GLISSER_PX) onFermer();
+    depart.current = null;
+  };
   return (
     <div
       ref={ref}
@@ -86,6 +112,8 @@ function Fiche({ p, aujourdhui, action, surCarte, onFermer }: { p: PointCarte; a
       aria-modal="false"
       aria-labelledby={titreId}
       tabIndex={-1}
+      onTouchStart={toucher}
+      onTouchEnd={lacher}
       className={cn(
         'lm-apparition fixed inset-x-0 bottom-0 z-40 max-h-[75vh] overflow-y-auto rounded-t-2xl border-t border-(--lm-bord) bg-(--lm-surface) pb-[env(safe-area-inset-bottom)] shadow-(--lm-ombre-haute) outline-none',
         surCarte
@@ -93,13 +121,18 @@ function Fiche({ p, aujourdhui, action, surCarte, onFermer }: { p: PointCarte; a
           : 'md:static md:mb-3 md:max-w-md md:rounded-xl md:border md:pb-0 md:shadow-(--lm-ombre)',
       )}
     >
-      <div className="flex items-start gap-3 p-4 pb-3">
+      {/* Poignée de la feuille (téléphone) : on la glisse vers le bas pour fermer. */}
+      <div aria-hidden className="flex justify-center pt-2 md:hidden">
+        <span className="h-1 w-9 rounded-full bg-(--lm-bord-fort)" />
+      </div>
+      <div className="flex items-start gap-3 p-4 pb-3 max-md:pt-2">
         <Photo url={p.photo} className="size-16 shrink-0 rounded-md" />
         <div className="min-w-0 flex-1">
           <h3 id={titreId} className="truncate text-[15px] font-semibold text-(--lm-encre)">
             {p.nom}
           </h3>
-          <p className="truncate text-[13px] text-(--lm-encre-2)">{approx ? `${p.ville} · position approximative` : p.ville}</p>
+          <p className="truncate text-[13px] text-(--lm-encre-2)">{p.ville}</p>
+          {approx && <p className="text-[13px] text-(--lm-encre-2)">Position approximative (centre de la commune)</p>}
           <p className="mt-1.5 flex items-center gap-1.5 text-[13px] font-semibold text-(--lm-encre)">
             <PastilleEtat etat={p.etat} />
             {titreEtat(p.etat)}
@@ -112,13 +145,18 @@ function Fiche({ p, aujourdhui, action, surCarte, onFermer }: { p: PointCarte; a
       <div className="space-y-2 px-4 pb-4 text-[13.5px]">
         <p className="text-(--lm-encre)">{phraseDuJour(p, aujourdhui)}</p>
         {menage && <p className="text-(--lm-encre-2)">{menage}</p>}
+        {actionMenage && (
+          <Button size="sm" icone={<Check />} onClick={actionMenage.onClick}>
+            {actionMenage.libelle}
+          </Button>
+        )}
         {p.problemes.slice(0, 2).map((x, k) => (
           <p key={x.id ?? k} className="flex items-start gap-2 text-(--lm-encre)">
             <BadgeProbleme className="mt-0.5 size-4 text-[10.5px] ring-0" />
+            {/* L'urgence se dit avec le marqueur foncé du problème : ici, le rouge veut seulement dire « réservé ». */}
             <span className="line-clamp-2 min-w-0 flex-1">
-              <span className="font-medium">Problème signalé</span> : {x.titre}
+              <span className="font-semibold">{x.urgent ? 'Problème urgent' : 'Problème signalé'}</span> : {x.titre}
             </span>
-            {x.urgent && <Badge tone="danger">Urgent</Badge>}
           </p>
         ))}
         {p.problemes.length > 2 && <p className="text-(--lm-encre-2)">Et {p.problemes.length - 2} autre{p.problemes.length > 3 ? 's' : ''}.</p>}
@@ -160,7 +198,9 @@ function LigneLogement({ p, aujourdhui, choisi, onClick }: { p: PointCarte; aujo
               {p.problemes.length ? ', problème signalé' : ''}
             </span>
           </span>
-          <span className="mt-0.5 block truncate text-[12.5px] text-(--lm-encre-2)">{p.problemes.length ? `Problème signalé · ${phraseDuJour(p, aujourdhui)}` : phraseDuJour(p, aujourdhui)}</span>
+          <span className="mt-0.5 block truncate text-[12.5px] text-(--lm-encre-2)">
+            {p.problemes.length ? `${p.problemes.some((x) => x.urgent) ? 'Problème urgent' : 'Problème signalé'} · ${phraseDuJour(p, aujourdhui)}` : phraseDuJour(p, aujourdhui)}
+          </span>
         </span>
         <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
       </button>
@@ -168,7 +208,7 @@ function LigneLogement({ p, aujourdhui, choisi, onClick }: { p: PointCarte; aujo
   );
 }
 
-export function CarteLogements({ points, aujourdhui, action, aPlacer, className }: CarteLogementsProps) {
+export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlacer, className }: CarteLogementsProps) {
   const listeId = useId();
   const [filtre, setFiltre] = useState<FiltreCarte | null>(null);
   const [choisi, setChoisi] = useState<Id>();
@@ -212,6 +252,8 @@ export function CarteLogements({ points, aujourdhui, action, aPlacer, className 
             <PastilleEtat etat={e} />
             <span className="lm-chiffres text-(--lm-encre)">{comptes[e]}</span>
             {motEtat(e, comptes[e])}
+            {/* Ménage avant l'arrivée du soir : réservés + ceux-là = logements occupés ce soir. */}
+            {e === 'menage' && precisionMenage(comptes) && <span className="font-normal text-(--lm-encre-2)">· {precisionMenage(comptes)}</span>}
           </>
         ),
       })),
@@ -231,8 +273,11 @@ export function CarteLogements({ points, aujourdhui, action, aPlacer, className 
       : []),
   ];
   const choisir = (id: Id) => setChoisi((c) => (c === id ? undefined : id));
-  const montrerListe = liste || !avecCarte;
+  // Filtre qui ne garde aucun repère placé (ses logements sont à placer) : une phrase sur la carte, et la liste.
+  const filtreVide = avecCarte && !!filtre && !places.some((p) => visibles.has(p.id));
+  const montrerListe = liste || !avecCarte || filtreVide;
   const visiblesTries = tries.filter((p) => visibles.has(p.id));
+  const approximatifs = avecCarte && places.some((p) => p.position?.precision === 'commune');
 
   return (
     <div className={className}>
@@ -249,30 +294,46 @@ export function CarteLogements({ points, aujourdhui, action, aPlacer, className 
                 <FondCarte points={places} visibles={visibles} choisi={choisi} onChoisir={choisir} onFond={() => setChoisi(undefined)} onErreur={() => setSansCarte(true)} />
               </Suspense>
             </GardeCarte>
+            {filtreVide && filtre && (
+              <p role="status" className="absolute inset-x-3 top-1/2 z-10 mx-auto w-fit max-w-[calc(100%-1.5rem)] -translate-y-1/2 rounded-lg bg-(--lm-surface) px-3 py-2 text-center text-[13.5px] text-(--lm-encre) shadow-(--lm-ombre)">
+                {phraseFiltreVide(filtre)}
+              </p>
+            )}
           </div>
         )}
-        {point && <Fiche key={point.id} p={point} aujourdhui={aujourdhui} action={action(point)} surCarte={avecCarte} onFermer={() => setChoisi(undefined)} />}
+        {point && (
+          <Fiche
+            key={point.id}
+            p={point}
+            aujourdhui={aujourdhui}
+            action={action(point)}
+            actionMenage={actionMenage?.(point) ?? null}
+            surCarte={avecCarte}
+            onFermer={() => setChoisi(undefined)}
+          />
+        )}
       </div>
 
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        {avecCarte && nonPlaces.length > 0 ? (
-          <p className="min-w-0 text-[13px] text-(--lm-encre-2)">
-            Pas encore sur la carte :{' '}
-            {nonPlaces.map((p, k) => (
-              <span key={p.id}>
-                {k > 0 && ', '}
-                <button type="button" onClick={() => choisir(p.id)} className="inline-flex min-h-8 items-center font-medium text-(--lm-encre) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
-                  {p.nom}
-                </button>
-              </span>
-            ))}
-          </p>
-        ) : !avecCarte ? (
-          <p className="text-[13px] text-(--lm-encre-2)">{sansCarte ? 'La carte ne s’affiche pas sur cet appareil : voici la liste.' : 'Aucun logement n’est encore sur la carte.'}</p>
-        ) : (
-          <span />
-        )}
-        {avecCarte && (
+      <div className="mt-2.5 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+        <div className="min-w-0 text-[13px] text-(--lm-encre-2)">
+          {!avecCarte && <p className="py-1.5">{sansCarte ? 'La carte ne s’affiche pas sur cet appareil : voici la liste.' : 'Aucun logement n’est encore sur la carte.'}</p>}
+          {avecCarte && nonPlaces.length > 0 && (
+            <p>
+              Pas encore sur la carte :{' '}
+              {nonPlaces.map((p, k) => (
+                <span key={p.id}>
+                  {k > 0 && ', '}
+                  <button type="button" onClick={() => choisir(p.id)} className="inline-flex min-h-8 items-center font-medium text-(--lm-encre) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
+                    {p.nom}
+                  </button>
+                </span>
+              ))}
+            </p>
+          )}
+          {approximatifs && <p className={nonPlaces.length ? undefined : 'py-1.5'}>En pointillés : position approximative</p>}
+        </div>
+        {/* Filtre sans repère placé : la liste est déjà là, pas de bouton qui ne ferait rien. */}
+        {avecCarte && !filtreVide && (
           <button
             type="button"
             aria-expanded={liste}

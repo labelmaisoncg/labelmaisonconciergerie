@@ -96,7 +96,7 @@ export function Accueil({
 
       {points.length > 0 && (
         <Rubrique titre="Aujourd’hui">
-          <CarteLogements points={points} aujourdhui={vue.aujourdhui} action={(p) => ({ libelle: 'Voir le logement', onClick: () => onLogement(p.id) })} />
+          <CarteLogements points={points} aujourdhui={vue.aujourdhui} action={(p) => ({ libelle: 'Ouvrir le logement', onClick: () => onLogement(p.id) })} />
         </Rubrique>
       )}
 

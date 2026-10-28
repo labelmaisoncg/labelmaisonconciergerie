@@ -10,8 +10,12 @@
  *   - espaces : le propriétaire et l'équipe de terrain ne voient que ce
  *     qu'ils voyaient déjà (ni description d'incident ni prestataire pour le
  *     propriétaire, ni incident qu'un agent ne voit pas) ;
+ *   - ménage interne (prévu par Claude) : s'efface devant celui d'un
+ *     prestataire, sinon orange jusqu'au contrôle qualité ou à « Fait » ;
+ *     jamais confié ni payé ;
  *   - démo : les quatre cas, positions factices près du centre des communes ;
- *   - phrases de la fiche et de la légende.
+ *   - phrases de la fiche et de la légende ; repères écartés quand ils se
+ *     chevauchent.
  *
  * Lancement (Node 18+) :
  *   node_modules/.bin/esbuild src/erp/data/verifier-carte.ts --bundle --platform=node \
@@ -47,8 +51,11 @@ import { vueOperations, type EntreesOperations } from './espace-operations';
 import { versLogement } from './repull';
 import { creerSeed } from './seed';
 import { pointsDeLaVue, pointsDuGerant } from '../carte/points';
-import { libelleRepere, ligneMenage, phraseDuJour, phraseLegende } from '../carte/phrases';
+import { libelleRepere, ligneMenage, phraseDuJour, phraseFiltreVide, phraseLegende, precisionMenage } from '../carte/phrases';
 import { phraseBilan } from '../carte/placer';
+import { ECART_PX, ecartements } from '../carte/ecartement';
+import { executerAutomatisations } from '../automatisations';
+import { menageInterneFait } from './selectors';
 import type { Incident, Logement, Mission, PositionLogement, Reservation } from './types';
 import type { ControleQualite } from './types-operations';
 
@@ -163,6 +170,51 @@ section('État du jour : réservé, libre, ménage');
   verifier(deux.menage?.statut === 'en_cours' && deux.menage.mission?.id === 'm7', 'deux ménages du jour : le moins avancé compte');
 }
 
+section('Ménage interne (prévu par Claude) : jamais devant celui d’un prestataire');
+{
+  const depart = sejour('r0', '2026-09-21', J);
+  const rotation = [depart, sejour('r1', J, '2026-09-27')];
+  const interne = (statut: Mission['statut'], extra: Partial<Mission> = {}) => mission('mi', statut, { interne: true, ...extra });
+  const avec = etat({ reservations: rotation, missions: [mission('mp', 'validee', { reservationId: 'r0' }), interne('a_attribuer')] });
+  verifier(avec.etat === 'reserve' && avec.menage?.mission?.id === 'mp', 'rotation : ménage du prestataire validé, ménage interne ignoré → réservé');
+  verifier(etat({ reservations: rotation, missions: [mission('mp', 'en_cours', { reservationId: 'r0' }), interne('a_attribuer')] }).menage?.mission?.id === 'mp', 'le ménage du prestataire compte, même en cours');
+  const seul = etat({ reservations: [depart], missions: [interne('a_attribuer', { reservationId: 'r0' })] });
+  verifier(seul.etat === 'menage' && seul.menage?.statut === 'a_faire', 'ménage interne seul, départ du jour : orange (ménage prévu)');
+  const controle: ControleQualite = { id: 'c1', logementId: L, reservationId: 'r0', echeance: J, statut: 'fait', points: [] };
+  verifier(etat({ reservations: [depart], missions: [interne('a_attribuer', { reservationId: 'r0' })], controles: [controle] }).etat === 'libre', 'ménage interne seul : fait au contrôle qualité du départ');
+  verifier(etat({ reservations: [], missions: [interne('a_attribuer')] }).etat === 'menage', 'ménage interne seul, logement vide : orange');
+  const controleDuJour: ControleQualite = { id: 'c2', logementId: L, echeance: J, statut: 'fait', points: [], realiseLe: `${J}T15:00:00+02:00` };
+  verifier(etat({ reservations: [], missions: [interne('a_attribuer')], controles: [controleDuJour] }).etat === 'libre', 'ménage interne seul : un contrôle fait ce jour-là le termine');
+  verifier(etat({ reservations: [], missions: [interne('validee')] }).etat === 'libre', 'ménage interne marqué « Fait » (validé) : libre');
+
+  const fait = menageInterneFait(interne('a_attribuer'));
+  verifier(fait.ok && fait.mission.statut === 'validee', '« Fait » : le ménage interne passe validé');
+  verifier(!menageInterneFait(mission('mp', 'a_valider')).ok, '« Fait » refusé pour un ménage de prestataire (il se valide)');
+  verifier(!menageInterneFait(interne('annulee')).ok && !menageInterneFait(interne('validee')).ok, '« Fait » refusé pour un ménage annulé ou déjà fait');
+
+  // Jamais confié ni payé : le moteur d'automatisations ne le touche pas.
+  const seed = creerSeed();
+  const avant = seed.missions.find((m) => m.id === 'mis-demo-interne')!;
+  verifier(!!avant && avant.interne === true && avant.date === DATE_DEMO, 'démo : un ménage interne prévu aujourd’hui (Juvisy)');
+  const valide = { ...avant, statut: 'validee' as const, tarifCentimes: 4500 };
+  const apres = executerAutomatisations({ ...seed, missions: seed.missions.map((m) => (m.id === valide.id ? valide : m)) }, { date: DATE_DEMO, maintenant: `${DATE_DEMO}T10:30:00+02:00`, journaliser: false }).donnees;
+  verifier(!apres.paiementsPrestataires.some((x) => x.missions.includes(valide.id)), 'ménage interne fait : dans aucun paiement de prestataire');
+  verifier(!apres.missions.find((m) => m.id === valide.id)?.prestataireId, 'ménage interne : jamais confié à un prestataire');
+  const aFaire = executerAutomatisations(seed, { date: DATE_DEMO, maintenant: `${DATE_DEMO}T10:30:00+02:00`, journaliser: false }).donnees;
+  verifier(!aFaire.missions.find((m) => m.id === avant.id)?.prestataireId, 'ménage interne à faire : le moteur ne le confie pas');
+
+  // Sur la carte : orange à Juvisy ; le gérant peut le marquer « Fait » ; les espaces ne voient ni « interne » ni l'id.
+  const juvisy = pointsDuGerant(seed, DATE_DEMO).find((x) => x.id === 'log-juvisy')!;
+  verifier(juvisy.etat === 'menage' && juvisy.menage?.interne === true && juvisy.menage.missionId === avant.id, 'gérant : Juvisy en ménage (interne), avec de quoi le marquer « Fait »');
+  verifier(ligneMenage(juvisy) === 'Ménage prévu par Claude à 14 h : aucun prestataire n’est prévenu.', 'gérant : la fiche dit que personne n’est prévenu');
+  const faitSeed = { ...seed, missions: seed.missions.map((m) => (m.id === avant.id ? { ...m, statut: 'validee' as const } : m)) };
+  verifier(pointsDuGerant(faitSeed, DATE_DEMO).find((x) => x.id === 'log-juvisy')?.etat === 'libre', 'marqué « Fait » : Juvisy redevient libre');
+  const opsJuvisy = vueOperations(seed as unknown as EntreesOperations, 'eq-ines', { aujourdhui: DATE_DEMO })!.logements.find((l) => l.id === 'log-juvisy')!;
+  verifier(opsJuvisy.carte?.etat === 'menage' && !('interne' in (opsJuvisy.carte.menage ?? {})) && !('missionId' in (opsJuvisy.carte.menage ?? {})), 'opérations : ménage prévu, sans « interne » ni id de mission');
+  const proJuvisy = vueProprietaire(seed, 'pro-nguyen', { aujourdhui: DATE_DEMO })!.logements.find((l) => l.id === 'log-juvisy')!;
+  verifier(proJuvisy.carte?.etat === 'menage' && !('missionId' in (proJuvisy.carte.menage ?? {})), 'propriétaire : ménage prévu, sans id de mission');
+}
+
 section('Problème : un incident ouvert, en plus de la couleur');
 {
   const e = etat({ reservations: [sejour('r1', VEILLE, '2026-09-27')], incidents: [incident('i1'), incident('i2', { gravite: 'haute' }), incident('i3', { statut: 'resolu', resoluLe: VEILLE })] });
@@ -255,6 +307,7 @@ section('Géocodage : seule l’adresse part, résultats triés');
   verifier(lirePosition(reponse({ ...bon, postcode: '91000', city: 'Évry-Courcouronnes' }), sansCp, 'adresse') !== null, 'sans code postal : la même commune suffit (accents et tirets ignorés)');
   verifier(lirePosition(reponse({ ...bon, postcode: '91300', city: 'Massy' }), sansCp, 'adresse') === null, 'sans code postal : une autre commune est refusée');
   verifier(nomCommune('St-Germain-lès-Corbeil') === nomCommune('Saint Germain les Corbeil'), '« St » = « Saint »');
+  verifier(lirePosition(reponse({ ...bon, postcode: '91240', city: 'Saint-Michel-sur-Orge' }), { codePostal: '', ville: 'Saint' }, 'adresse') === null, 'sans code postal : « Saint » n’est pas Saint-Michel-sur-Orge (nom exact seulement)');
 }
 
 section('Géocodage : adresse, puis commune, puis rien ; démo sans appel');
@@ -379,7 +432,8 @@ section('Phrases de la fiche, de la liste et de la légende');
   const s = { voyageur: 'Lina C.', arrivee: J, depart: '2026-09-26' };
   verifier(phraseDuJour(p({ etat: 'reserve', sejour: s }), J) === 'Lina C. arrive aujourd’hui, jusqu’au 26 sept.', 'arrivée du jour : un seul point final');
   verifier(phraseDuJour(p({ etat: 'reserve', sejour: { ...s, arrivee: VEILLE, depart: DEMAIN } }), J) === 'Lina C. est là, départ demain.', 'séjour qui finit demain');
-  verifier(phraseDuJour(p({ etat: 'menage', depart: { voyageur: 'Paul R.' }, menage: { statut: 'a_faire', heure: '11:00' }, sejour: s }), J) === 'Ménage à faire après le départ, Lina C. arrive aujourd’hui, jusqu’au 26 sept.', 'rotation : le ménage, puis l’arrivée');
+  verifier(phraseDuJour(p({ etat: 'menage', depart: { voyageur: 'Paul R.' }, menage: { statut: 'a_faire', heure: '11:00' }, sejour: s }), J) === 'Ménage prévu après le départ, Lina C. arrive aujourd’hui, jusqu’au 26 sept.', 'rotation : le ménage, puis l’arrivée');
+  verifier(phraseDuJour(p({ etat: 'menage', menage: { statut: 'a_faire' } }), J) === 'Ménage prévu aujourd’hui, libre ce soir.', 'ménage prévu dans un logement vide');
   verifier(phraseDuJour(p({ etat: 'menage', menage: { statut: 'en_cours' } }), J) === 'Ménage en cours, libre ce soir.', 'ménage en cours, personne ce soir');
   verifier(phraseDuJour(p({ etat: 'libre', depart: {}, menage: { statut: 'fait' } }), J) === 'Ménage fait, libre ce soir.', 'départ du jour, ménage fait');
   verifier(phraseDuJour(p({ prochaineArrivee: DEMAIN }), J) === 'Libre ce soir, prochaine arrivée demain.', 'libre, arrivée demain');
@@ -390,11 +444,37 @@ section('Phrases de la fiche, de la liste et de la légende');
   verifier(libelleRepere(p({ etat: 'menage', problemes: [{ titre: 'x', urgent: false }], position: { lat: 1, lng: 1, precision: 'commune' } })) === 'Cosy F2 : ménage, problème signalé, position approximative', 'libellé d’un repère : état en mots, problème, précision');
   const pts = [p({ id: 'a', nom: 'B', etat: 'reserve' }), p({ id: 'b', nom: 'A', etat: 'libre', problemes: [{ titre: 'x', urgent: true }] }), p({ id: 'c', nom: 'C', etat: 'menage' }), p({ id: 'd', nom: 'D', etat: 'reserve' })];
   const c = compterCarte(pts);
-  verifier(c.reserve === 2 && c.libre === 1 && c.menage === 1 && c.probleme === 1, 'comptes de la légende');
+  verifier(c.reserve === 2 && c.libre === 1 && c.menage === 1 && c.probleme === 1 && c.menageOccupe === 0, 'comptes de la légende');
   verifier(phraseLegende(c) === '2 réservés, 1 libre, 1 ménage, 1 problème.', 'légende lue : « 2 réservés, 1 libre, 1 ménage, 1 problème. »');
+  const avecArrivee = compterCarte([...pts, p({ id: 'e', nom: 'E', etat: 'menage', sejour: s })]);
+  verifier(avecArrivee.menageOccupe === 1 && precisionMenage(avecArrivee) === '1 occupé ce soir', 'ménage avant une arrivée : « 1 occupé ce soir » (réservés + ceux-là = occupés ce soir)');
+  verifier(precisionMenage({ menage: 2, menageOccupe: 2 }) === 'occupés ce soir' && precisionMenage({ menage: 2, menageOccupe: 0 }) === '', 'précision du ménage : tous, ou rien');
+  verifier(phraseLegende(avecArrivee) === '2 réservés, 1 libre, 2 ménages (1 occupé ce soir), 1 problème.', 'légende lue avec la précision');
+  verifier(phraseFiltreVide('libre') === 'Aucun logement libre sur la carte.', 'filtre sans repère placé : une phrase');
   verifier(pts.filter((x) => garderPoint(x, 'probleme')).map((x) => x.id).join() === 'b' && pts.filter((x) => garderPoint(x, 'reserve')).length === 2 && pts.filter((x) => garderPoint(x, null)).length === 4, 'filtre de la légende');
   verifier(trierPoints(pts).map((x) => x.id).join() === 'b,c,a,d', 'liste : problème, puis ménage, réservé, libre');
   verifier(phraseBilan({ exacts: 3, approximatifs: 1, introuvables: 1, reseau: false }) === '3 placés, 1 au centre de sa commune, 1 introuvable : vérifiez l’adresse dans la fiche du logement.', 'bilan du placement');
+}
+
+section('Repères qui se chevauchent : écartés, chacun touchable');
+{
+  const d = ecartements([
+    { id: 'a', ecran: { x: 100, y: 100 } },
+    { id: 'b', ecran: { x: 108, y: 104 } },
+    { id: 'c', ecran: { x: 300, y: 300 } },
+  ]);
+  const ou = (id: string, x: number, y: number) => ({ x: x + d.get(id)![0], y: y + d.get(id)![1] });
+  const a = ou('a', 100, 100);
+  const b = ou('b', 108, 104);
+  verifier(Math.hypot(a.x - b.x, a.y - b.y) >= ECART_PX - 1, `deux repères à 9 px : écartés d’au moins ${ECART_PX} px`);
+  verifier(d.get('c')![0] === 0 && d.get('c')![1] === 0, 'un repère seul ne bouge pas');
+  const groupe = Array.from({ length: 6 }, (_, k) => ({ id: `g${k}`, ecran: { x: 200 + k * 5, y: 200 + (k % 2) * 6 } }));
+  const dg = ecartements(groupe);
+  const pos = groupe.map((g) => ({ x: g.ecran.x + dg.get(g.id)![0], y: g.ecran.y + dg.get(g.id)![1] }));
+  let mini = Infinity;
+  for (let i = 0; i < pos.length; i++) for (let j = i + 1; j < pos.length; j++) mini = Math.min(mini, Math.hypot(pos[i].x - pos[j].x, pos[i].y - pos[j].y));
+  verifier(mini >= ECART_PX - 1, `six repères serrés : au moins ${ECART_PX} px entre deux (${Math.round(mini)} px)`);
+  verifier(groupe.every((g) => Math.hypot(...dg.get(g.id)!) <= 80), 'décalage modeste (le repère reste près de sa place)');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

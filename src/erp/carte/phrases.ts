@@ -42,7 +42,7 @@ export function phraseDuJour(p: PointCarte, aujourdhui: DateISO): string {
   const m = p.menage;
   let menage = '';
   if (m?.statut === 'en_cours') menage = 'Ménage en cours';
-  else if (m?.statut === 'a_faire' && p.etat === 'menage') menage = p.depart ? 'Ménage à faire après le départ' : 'Ménage à faire';
+  else if (m?.statut === 'a_faire' && p.etat === 'menage') menage = p.depart ? 'Ménage prévu après le départ' : 'Ménage prévu aujourd’hui';
   else if (m?.statut === 'fait' && p.depart) menage = 'Ménage fait';
   const soir = ceSoir(p, aujourdhui);
   const phrase = menage ? `${menage}, ${soir}` : majuscule(soir);
@@ -61,17 +61,39 @@ export function ligneMenage(p: Pick<PointCarte, 'etat' | 'menage' | 'depart'>): 
   // Le statut est déjà dans la phrase du jour (ménage pas fini, ou fait après le départ).
   const dejaDit = p.etat === 'menage' || (m.statut === 'fait' && !!p.depart);
   const h = m.statut === 'a_faire' ? heureLisible(m.heure) : '';
+  // Ménage interne (gérant) : prévu par Claude, aucun prestataire n'est prévenu.
+  if (m.interne) return m.statut === 'fait' ? 'Ménage prévu par Claude, fait.' : `Ménage prévu par Claude${h ? ` à ${h}` : ''} : aucun prestataire n’est prévenu.`;
   const par = m.par ? ` par ${m.par}` : '';
   if (dejaDit) return h || par ? `Ménage${h ? ` prévu à ${h}` : ''}${par}.` : '';
   const debut = m.statut === 'en_cours' ? 'Ménage en cours' : m.statut === 'fait' ? 'Ménage fait' : h ? `Ménage prévu à ${h}` : 'Ménage à faire';
   return `${debut}${par}.`;
 }
 
+/**
+ * Précision de la pastille « ménage » quand un voyageur dort là ce soir :
+ * réservés + ceux-là = logements occupés ce soir (même chiffre que « Votre
+ * journée »). « occupés ce soir » (tous), « 1 occupé ce soir » (une partie).
+ */
+export function precisionMenage(c: Pick<ComptesCarte, 'menage' | 'menageOccupe'>): string {
+  if (!c.menageOccupe) return '';
+  if (c.menageOccupe === c.menage) return c.menage > 1 ? 'occupés ce soir' : 'occupé ce soir';
+  return `${c.menageOccupe} ${c.menageOccupe > 1 ? 'occupés' : 'occupé'} ce soir`;
+}
+
 /** Légende en une phrase, pour les lecteurs d'écran : « 4 réservés, 2 libres, 1 ménage, 1 problème. » */
 export function phraseLegende(c: ComptesCarte): string {
-  const parts = (['reserve', 'libre', 'menage'] as const).filter((e) => c[e] > 0).map((e) => `${c[e]} ${motEtat(e, c[e])}`);
+  const parts = (['reserve', 'libre', 'menage'] as const).filter((e) => c[e] > 0).map((e) => {
+    const precision = e === 'menage' ? precisionMenage(c) : '';
+    return `${c[e]} ${motEtat(e, c[e])}${precision ? ` (${precision})` : ''}`;
+  });
   if (c.probleme) parts.push(`${c.probleme} ${c.probleme > 1 ? 'problèmes' : 'problème'}`);
   return parts.length ? `${parts.join(', ')}.` : '';
+}
+
+/** Filtre de la légende qui ne garde aucun repère placé : « Aucun logement libre sur la carte. » */
+export function phraseFiltreVide(f: 'reserve' | 'libre' | 'menage' | 'probleme'): string {
+  const quoi = { reserve: 'Aucun logement réservé', libre: 'Aucun logement libre', menage: 'Aucun ménage', probleme: 'Aucun problème' }[f];
+  return `${quoi} sur la carte.`;
 }
 
 /** Libellé d'un repère pour les lecteurs d'écran : « Cosy F2 : ménage, problème signalé ». */

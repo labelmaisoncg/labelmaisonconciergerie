@@ -5,8 +5,10 @@
  * (api/espace-proprietaire.ts, api/espace-operations.ts) et leurs démos ;
  * vérifié par verifier-carte.ts.
  *
- * État du jour d'un logement, une seule couleur à la fois :
- * - « Ménage » (orange) : le ménage du jour n'est pas fini. En cours ; ou à
+ * État du jour d'un logement, une seule couleur à la fois (couleurs choisies
+ * par le gérant : le rouge veut dire « réservé », jamais « problème ») :
+ * - « Ménage » (orange) : le ménage du jour n'est pas fini. En cours, même
+ *   en milieu de séjour (« le ménage est en train d'être fait ») ; ou à
  *   faire alors que personne n'est dans les lieux (départ du jour, logement
  *   vide). Un ménage en milieu de séjour pas encore commencé ne compte pas :
  *   le voyageur est là, le logement reste « Réservé ».
@@ -17,11 +19,16 @@
  * arrivée le même jour) : « Ménage » jusqu'à ce que le ménage soit fait, puis
  * « Réservé » ; départ seul : « Ménage », puis « Libre ».
  *
- * Ménage du jour : la mission de ménage datée d'aujourd'hui (interne
- * comprise) ; sans mission, le départ du jour (ménage hors de l'ERP), sauf si
- * la mission de ce séjour est prévue un autre jour. Fait : mission « à
- * valider » ou « validée » (le prestataire a fini), ou contrôle qualité fait
- * pour ce départ. Refusée : à refaire.
+ * Ménage du jour :
+ * - la mission de ménage d'un prestataire datée d'aujourd'hui. Fait : « à
+ *   valider » ou « validée » (le prestataire a fini) ; refusée : à refaire ;
+ * - sans mission, le départ du jour (ménage hors de l'ERP) : « ménage prévu
+ *   aujourd'hui », orange jusqu'à ce que le contrôle qualité de ce départ
+ *   soit fait ; rien si la mission de ce séjour est prévue un autre jour ;
+ * - un ménage interne (prévu par Claude, jamais confié ni payé) ne compte
+ *   que s'il n'y a pas de mission de prestataire ce jour-là. Il suit alors
+ *   la règle du départ sans mission : orange jusqu'au contrôle qualité fait,
+ *   ou jusqu'à ce que l'équipe le marque « Fait » (validée, menages/Detail).
  *
  * « Problème » : un incident ouvert (pas réglé) sur le logement, urgent ou
  * non. Il s'ajoute à la couleur (un « ! » sur le point), sans la cacher.
@@ -35,8 +42,9 @@
  * Géocodage (gérant seulement, data/geocodage.ts) : le texte de l'adresse
  * seul (rue, code postal, commune) part au géocodeur public de l'IGN
  * (Géoplateforme) ; jamais un nom. Un résultat n'est gardé qu'avec un bon
- * score (SEUIL_SCORE) et le même code postal (la même commune sans code
- * postal) ; sinon le centre de la commune, montré comme approximatif ;
+ * score (SEUIL_SCORE) et le même code postal (sans code postal : le même
+ * nom exact de commune) ; sinon le centre de la commune, montré comme
+ * approximatif ;
  * sinon rien.
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
@@ -108,13 +116,24 @@ export function etatDuJour(logementId: Id, e: EntreesCarte, date: DateISO): Etat
   const present = !!ceSoir && ceSoir.arrivee < date;
 
   const missions = (e.missions ?? []).filter((m) => estMenage(m) && m.logementId === logementId);
-  const duJour = missions.filter((m) => m.date === date).sort((a, b) => RANG_MENAGE[statutMenage(a)] - RANG_MENAGE[statutMenage(b)]);
+  // Contrôle qualité fait : pour ce séjour, ou ce jour-là dans ce logement.
+  const controleFait = (reservationId?: Id) =>
+    (e.controles ?? []).some(
+      (c) => c?.logementId === logementId && c.statut === 'fait' && ((!!reservationId && c.reservationId === reservationId) || String(c.realiseLe ?? '').slice(0, 10) === date),
+    );
+  const duJour = missions.filter((m) => m.date === date);
+  // Un ménage interne s'efface devant celui d'un prestataire le même jour.
+  const prestataires = duJour.filter((m) => m.interne !== true);
+  const retenues = (prestataires.length ? prestataires : duJour).sort((a, b) => RANG_MENAGE[statutMenage(a)] - RANG_MENAGE[statutMenage(b)]);
   let menage: EtatDuJour['menage'];
-  if (duJour.length) menage = { statut: statutMenage(duJour[0]), mission: duJour[0] };
-  else if (depart && !missions.some((m) => m.reservationId === depart.id)) {
+  if (retenues.length) {
+    const m = retenues[0];
+    const statut = statutMenage(m);
+    // Ménage interne pas encore marqué « Fait » : comme un départ sans mission, fait au contrôle qualité.
+    menage = { statut: m.interne === true && statut !== 'fait' && controleFait(m.reservationId ?? depart?.id) ? 'fait' : statut, mission: m };
+  } else if (depart && !missions.some((m) => m.reservationId === depart.id)) {
     // Ménage hors de l'ERP : fait quand le contrôle qualité de ce départ est fait.
-    const controle = (e.controles ?? []).some((c) => c?.logementId === logementId && c.reservationId === depart.id && c.statut === 'fait');
-    menage = { statut: controle ? 'fait' : 'a_faire' };
+    menage = { statut: controleFait(depart.id) ? 'fait' : 'a_faire' };
   }
 
   const enAttente = menage && (menage.statut === 'en_cours' || (menage.statut === 'a_faire' && !present));
@@ -237,9 +256,10 @@ export function lirePosition(
   if (cp) {
     if (String(pr.postcode ?? '') !== cp) return null;
   } else {
+    // Sans code postal : le nom exact de la commune (« Saint » n'est pas Saint-Michel-sur-Orge).
     const voulu = nomCommune(attendu.ville);
     const villes = [pr.city, pr.municipality, pr.name].map(nomCommune);
-    if (!voulu || !villes.some((v) => v === voulu || v.startsWith(`${voulu} `))) return null;
+    if (!voulu || !villes.includes(voulu)) return null;
   }
   return { lat: lat as number, lng: lng as number };
 }
@@ -265,7 +285,12 @@ export interface PointCarte {
   /** Voyageur qui part aujourd'hui. */
   depart?: { voyageur?: string };
   /** Ménage du jour : statut, heure prévue, qui (gérant seulement). */
-  menage?: { statut: StatutMenageCarte; heure?: string; par?: string };
+  /**
+   * Ménage du jour : statut, heure prévue, qui (gérant seulement). Gérant
+   * seulement aussi : `interne` (prévu par Claude, personne n'est prévenu) et
+   * l'id de la mission, pour le marquer « Fait ».
+   */
+  menage?: { statut: StatutMenageCarte; heure?: string; par?: string; interne?: true; missionId?: Id };
   /** Incidents ouverts : titre court, urgent, id (pour l'ouvrir, quand l'espace le peut). */
   problemes: { titre: string; urgent: boolean; id?: Id }[];
   prochaineArrivee?: DateISO;
@@ -286,6 +311,8 @@ export interface VarianteCarte {
   lienProbleme: boolean;
   /** Qui fait le ménage (gérant seulement). */
   menagePar?: (m: Mission) => string | undefined;
+  /** Ménage interne signalé, avec l'id de sa mission (gérant seulement : il le marque « Fait »). */
+  menageInterne?: boolean;
 }
 
 /** Titre court d'un incident : sa description, une ligne. */
@@ -326,7 +353,16 @@ export function jourCarte(l: Pick<Logement, 'adresse' | 'codePostal' | 'ville' |
     etat: x.etat,
     ...(x.ceSoir ? { sejour: { ...voyageurDe(x.ceSoir), arrivee: x.ceSoir.arrivee, depart: x.ceSoir.depart } } : {}),
     ...(x.depart ? { depart: voyageurDe(x.depart) } : {}),
-    ...(m ? { menage: { statut: m.statut, ...(heure ? { heure } : {}), ...(par ? { par } : {}) } } : {}),
+    ...(m
+      ? {
+          menage: {
+            statut: m.statut,
+            ...(heure ? { heure } : {}),
+            ...(par ? { par } : {}),
+            ...(v.menageInterne && m.mission?.interne === true ? { interne: true as const, missionId: m.mission.id } : {}),
+          },
+        }
+      : {}),
     problemes: x.problemes.map((i) => ({ titre: v.probleme(i), urgent: estUrgent(i), ...(v.lienProbleme ? { id: i.id } : {}) })),
     ...(x.prochaineArrivee ? { prochaineArrivee: x.prochaineArrivee } : {}),
   };
@@ -339,14 +375,17 @@ export interface ComptesCarte {
   libre: number;
   menage: number;
   probleme: number;
+  /** Ménages dans un logement où quelqu'un dort ce soir : réservés + ceux-là = logements occupés ce soir. */
+  menageOccupe: number;
 }
 
 /** Comptes de la légende : un logement par état, et ceux qui ont un problème (en plus). */
-export function compterCarte(points: readonly Pick<PointCarte, 'etat' | 'problemes'>[]): ComptesCarte {
-  const c: ComptesCarte = { reserve: 0, libre: 0, menage: 0, probleme: 0 };
+export function compterCarte(points: readonly Pick<PointCarte, 'etat' | 'problemes' | 'sejour'>[]): ComptesCarte {
+  const c: ComptesCarte = { reserve: 0, libre: 0, menage: 0, probleme: 0, menageOccupe: 0 };
   for (const p of points) {
     c[p.etat]++;
     if (p.problemes.length) c.probleme++;
+    if (p.etat === 'menage' && p.sejour) c.menageOccupe++;
   }
   return c;
 }

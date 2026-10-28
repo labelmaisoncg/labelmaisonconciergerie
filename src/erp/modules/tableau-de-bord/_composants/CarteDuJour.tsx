@@ -20,6 +20,7 @@ export function CarteDuJour() {
   const d = useErp();
   const naviguer = useNavigate();
   const peutPlacer = d.utilisateur.role === 'gerant' && !d.lectureSeule;
+  const [retourMenage, setRetourMenage] = useState<string>();
   const points = useMemo(() => pointsDuGerant(d.donnees, AUJOURDHUI), [d.donnees]);
   const aPlacer = useMemo(() => logementsAPlacer(d.logements), [d.logements]);
   const [avancement, setAvancement] = useState<{ fait: number; total: number } | null>(null);
@@ -50,6 +51,18 @@ export function CarteDuJour() {
           // Un problème signalé : la fiche s'ouvre sur l'incident.
           onClick: () => naviguer(p.problemes[0]?.id ? lienIncident({ id: p.problemes[0].id, logementId: p.id }) : `/erp/logements/${encodeURIComponent(p.id)}`),
         })}
+        actionMenage={(p) =>
+          // Ménage interne (prévu par Claude) : personne d'autre ne le termine, l'équipe le marque « Fait ».
+          p.menage?.interne && p.menage.missionId && p.menage.statut !== 'fait' && !d.lectureSeule
+            ? {
+                libelle: 'Marquer le ménage fait',
+                onClick: () => {
+                  const r = d.marquerMenageInterneFait(p.menage!.missionId!);
+                  setRetourMenage(r.ok ? undefined : r.erreur);
+                },
+              }
+            : null
+        }
         aPlacer={
           peutPlacer && (n > 0 || avancement || bilan) ? (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -67,6 +80,11 @@ export function CarteDuJour() {
           ) : undefined
         }
       />
+      {retourMenage && (
+        <p role="alert" className="mt-2 text-[13px] font-medium text-(--lm-danger)">
+          {retourMenage}
+        </p>
+      )}
     </section>
   );
 }

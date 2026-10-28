@@ -265,6 +265,18 @@ export function nuitsAnnee(reservations: Reservation[], logementId: Id, annee = 
  */
 export const missionPrestataire = (m: Pick<Mission, 'interne'>): boolean => m.interne !== true;
 
+/**
+ * « Fait » d'un ménage interne (prévu par Claude) : il passe « validée »,
+ * sans checklist ni photos (aucun prestataire), et sort du ménage à faire
+ * de la carte. Jamais un ménage de prestataire (lui se valide : missionValidable).
+ */
+export function menageInterneFait<M extends Pick<Mission, 'type' | 'statut' | 'interne'>>(m: M): { ok: true; mission: M } | { ok: false; erreur: string } {
+  if (m.type !== 'menage' || m.interne !== true) return { ok: false, erreur: 'Seul un ménage interne se marque « Fait » ; celui d’un prestataire se valide.' };
+  if (m.statut === 'annulee') return { ok: false, erreur: 'Ce ménage est annulé.' };
+  if (m.statut === 'validee') return { ok: false, erreur: 'Ce ménage est déjà fait.' };
+  return { ok: true, mission: { ...m, statut: 'validee' } };
+}
+
 export function aPhotosAvantApres(m: Mission): boolean {
   return m.photos.some((p) => p.moment === 'avant') && m.photos.some((p) => p.moment === 'apres');
 }

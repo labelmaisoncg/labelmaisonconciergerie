@@ -8,9 +8,13 @@
  * « Maison de Linas » (en préparation) reste à placer : la démo montre la
  * liste « Pas encore sur la carte » et le bouton du gérant. « Soisy Bords de
  * Seine » est placé au centre de sa commune (position approximative).
+ * « Juvisy Gare » a un ménage interne prévu par Claude aujourd'hui (orange,
+ * « Fait » dans la fiche du ménage).
  */
 import { nouvellePosition, texteAdresse } from './carte';
-import type { Logement, PositionLogement } from './types';
+import { checklistMenageVierge } from './constantes';
+import { AUJOURDHUI } from './format';
+import type { Logement, Mission, PositionLogement } from './types';
 
 /** Centres des communes de la démo (lat, lng), arrondis à la centaine de mètres. */
 export const CENTRES_COMMUNES_DEMO: Record<string, [number, number]> = {
@@ -54,4 +58,23 @@ export function geocoderDemo(l: Pick<Logement, 'adresse' | 'codePostal' | 'ville
   const centre = CENTRES_COMMUNES_DEMO[String(l.codePostal ?? '').trim()];
   if (!centre || !texteAdresse(l)) return null;
   return nouvellePosition(l, { lat: centre[0], lng: centre[1] }, 'commune', 'demo', le);
+}
+
+/** Démo : un ménage interne prévu par Claude aujourd'hui à Juvisy (ni confié, ni payé). */
+export function menageInterneDemo(): Mission {
+  return {
+    id: 'mis-demo-interne',
+    type: 'menage',
+    logementId: 'log-juvisy',
+    date: AUJOURDHUI,
+    heureDebut: '14:00',
+    heureFinMax: '16:00',
+    statut: 'a_attribuer',
+    checklist: checklistMenageVierge(),
+    photos: [],
+    tarifCentimes: 0,
+    controleQualite: false,
+    commentaire: 'Prévu par Claude.',
+    interne: true,
+  };
 }

@@ -11,7 +11,7 @@
  * page, deux doigts déplacent la carte ; sur ordinateur, Ctrl (⌘) + molette
  * pour zoomer. Pas de rotation ni d'inclinaison.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { LngLatBounds, Map as CarteMapLibre, Marker, NavigationControl, setWorkerUrl, type StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -19,6 +19,7 @@ import urlTravailleur from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import type { PointCarte } from '../data/carte';
 import type { Id } from '../data/types';
 import { cn } from '../ui';
+import { ecartements } from './ecartement';
 import { PastilleEtat } from './Pastille';
 import { libelleRepere } from './phrases';
 
@@ -62,6 +63,8 @@ const ZOOM_MAX_CADRAGE = 13;
 const ZOOM_UN_LOGEMENT = 12.5;
 /** Largeur de la fiche ouverte sur ordinateur (côté droit de la carte), marge comprise. */
 const LARGEUR_FICHE = 356;
+/** Carte étroite (téléphone) : crédits repliés derrière le bouton « i ». */
+const LARGEUR_TELEPHONE = 640;
 
 export interface FondCarteProps {
   /** Logements placés (avec position). */
@@ -104,6 +107,19 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
   const [elements, setElements] = useState<[Id, HTMLElement][]>([]);
   const rappels = useRef({ onFond, onErreur });
   rappels.current = { onFond, onErreur };
+  const visiblesRef = useRef(visibles);
+  visiblesRef.current = visibles;
+
+  /** Écarte les repères visibles qui se chevauchent (au zoom, au redimensionnement, au filtre). */
+  const ecarter = useCallback(() => {
+    const m = carte.current;
+    if (!m) return;
+    const positions = [...reperes.current]
+      .filter(([id]) => visiblesRef.current.has(id))
+      .map(([id, r]) => ({ id, ecran: m.project(r.getLngLat()) }));
+    const d = ecartements(positions);
+    for (const [id, r] of reperes.current) r.setOffset(d.get(id) ?? [0, 0]);
+  }, []);
 
   // Une carte par montage ; retirée (et ses repères) au démontage.
   useEffect(() => {
@@ -123,7 +139,8 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
         touchPitch: false,
         renderWorldCopies: false,
         cooperativeGestures: true,
-        attributionControl: { compact: false },
+        // Crédits toujours là : en entier sur ordinateur, derrière le bouton « i » sur téléphone.
+        attributionControl: { compact: el.clientWidth < LARGEUR_TELEPHONE },
         locale: TEXTES,
         // Style d'OpenFreeMap tel quel : pas de validation (plus rapide, sans avertissements sur ses filtres).
         validateStyle: false,
@@ -141,6 +158,14 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
       if (!(e.originalEvent.target as HTMLElement | null)?.closest?.('.lm-marqueur')) rappels.current.onFond();
     });
     m.getCanvas().addEventListener('webglcontextlost', () => rappels.current.onErreur());
+    m.on('zoom', ecarter);
+    m.on('resize', ecarter);
+    // Téléphone : les crédits commencent repliés (le bouton « i » les montre), sans cacher un nom de ville.
+    m.once('idle', () => {
+      const credits = m.getContainer().querySelector('.maplibregl-ctrl-attrib.maplibregl-compact');
+      credits?.classList.remove('maplibregl-compact-show');
+      credits?.removeAttribute('open');
+    });
     carte.current = m;
     const liste = reperes.current;
     return () => {
@@ -174,7 +199,8 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
       } else r.setLngLat([p.position.lng, p.position.lat]);
     }
     setElements(points.filter((p) => reperes.current.has(p.id)).map((p) => [p.id, reperes.current.get(p.id)!.getElement()]));
-  }, [points]);
+    ecarter();
+  }, [points, ecarter]);
 
   // Cadrage sur tous les logements placés, quand leurs positions changent (pas au filtre).
   const signature = useMemo(() => points.map((p) => `${p.id}:${p.position?.lat}:${p.position?.lng}`).join('|'), [points]);
@@ -185,7 +211,8 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
     const b = new LngLatBounds();
     for (const p of places) b.extend([p.position!.lng, p.position!.lat]);
     m.fitBounds(b, { padding: 48, maxZoom: places.length > 1 ? ZOOM_MAX_CADRAGE : ZOOM_UN_LOGEMENT, duration: 0 });
-  }, [signature]);
+    ecarter();
+  }, [signature, ecarter]);
 
   // Repères qui se chevauchent : le plus important au-dessus (problème, puis ménage, réservé,
   // libre : l'ordre reçu), le repère choisi au-dessus de tout ; sur ordinateur, jamais caché sous la fiche.
@@ -203,7 +230,8 @@ export default function FondCarte({ points, visibles, choisi, onChoisir, onFond,
   // Filtre de la légende : les repères écartés sont masqués (la carte ne bouge pas).
   useEffect(() => {
     for (const [id, r] of reperes.current) r.getElement().style.display = visibles.has(id) ? '' : 'none';
-  }, [visibles, elements]);
+    ecarter();
+  }, [visibles, elements, ecarter]);
 
   const parId = useMemo(() => new Map(points.map((p) => [p.id, p])), [points]);
   return (
