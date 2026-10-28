@@ -1054,7 +1054,10 @@ encore suivie : refus tant qu'elle n'est pas décochée dans Connexions (sinon
 le passage suivant le recréerait). Ce qui n'appartient qu'à lui part avec lui
 (qui le suit, ses réglages de suppléments, de messages automatiques et de prix,
 améliorations « à proposer », textes proposés, mandat en préparation).
-Règles : `src/erp/data/suppression-logement.ts`.
+Règles : `src/erp/data/suppression-logement.ts`. La base refuse aussi, même au
+gérant, la suppression d'un logement qui a un historique (déclencheur
+`erp.garder_logement_avec_historique`) : une suppression envoyée hors de l'ERP,
+ou depuis un écran pas encore à jour, ne laisse pas de réservation sans logement.
 
 ### Budget d'appels (offre gratuite Repull)
 

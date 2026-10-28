@@ -1283,6 +1283,52 @@ drop trigger if exists garder_lien_annonce on erp.enregistrements;
 create trigger garder_lien_annonce before insert or update on erp.enregistrements
   for each row execute function erp.garder_lien_annonce();
 
+-- Un logement qui a vécu ne se supprime pas (src/erp/data/suppression-logement.ts) :
+-- la base le refuse aussi, pour une suppression envoyée hors de l'ERP ou depuis des
+-- données pas à jour (réservation, ménage ou message arrivés entre-temps). Ce qui
+-- porte l'identifiant du logement : réservations, conversations, missions, linge,
+-- incidents, contrôles, charges, documents partagés, dossiers, avis à déposer,
+-- messages automatiques ; mandats hors brouillon ; améliorations hors « à proposer » ;
+-- textes d'annonce validés ou publiés ; prix conseillés traités ; bilans publiés.
+-- Les factures numérotées ne se suppriment pas (LMF01) et gardent leur texte. Ce que
+-- l'ERP retire avec le logement (brouillons, propositions, affectations) ne compte
+-- pas. Les rôles autres que authenticated (maintenance) ne sont pas concernés.
+-- Même déclencheur que dans erp-installation.sql et erp-acces-gerants.sql,
+-- limité à l'espace du logement.
+create or replace function erp.garder_logement_avec_historique() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' or old.collection <> 'logements' then
+    return old;
+  end if;
+  if exists (
+    select 1 from erp.enregistrements e
+    where e.donnees ->> 'logementId' = old.id
+      and e.espace = old.espace
+      and (e.collection in ('reservations', 'filsMessages', 'missions', 'mouvementsLinge', 'incidents', 'controles',
+                            'charges', 'documentsProprietaire', 'dossiers', 'avisADeposer', 'envoisProgrammes')
+        or (e.collection = 'mandats' and coalesce(e.donnees ->> 'statut', '') <> 'brouillon')
+        or (e.collection = 'recommandations' and coalesce(e.donnees ->> 'statut', '') <> 'a_proposer')
+        or (e.collection = 'versionsAnnonce' and coalesce(e.donnees ->> 'statut', '') in ('validee', 'publiee'))
+        or (e.collection = 'conseilsPrix' and coalesce(e.donnees ->> 'genre', '') = 'decision'))
+  ) or exists (
+    select 1 from erp.enregistrements e
+    where e.collection = 'bilansProprietaire' and coalesce(e.donnees ->> 'statut', '') = 'publie'
+      and e.espace = old.espace
+      and (coalesce(e.donnees -> 'chiffres' -> 'logements', '[]') @> jsonb_build_array(jsonb_build_object('logementId', old.id))
+        or coalesce(e.donnees -> 'chiffres' -> 'sejours', '[]') @> jsonb_build_array(jsonb_build_object('logementId', old.id)))
+  ) then
+    raise exception 'Ce logement a un historique : passez-le en « Sorti » plutôt que de le supprimer.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+revoke all on function erp.garder_logement_avec_historique() from public, anon;
+drop trigger if exists garder_logement_avec_historique on erp.enregistrements;
+create trigger garder_logement_avec_historique before delete on erp.enregistrements
+  for each row when (old.collection = 'logements') execute function erp.garder_logement_avec_historique();
+
 -- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
 -- retours à la ligne, espaces insécables ou invisibles) ; vide si absent. Le
 -- même partout : index d'unicité, numérotation et gardes des factures.
@@ -1781,7 +1827,11 @@ begin
     -- Logements à supprimer : un dans chaque espace (ids distincts : avant la passe 2, la clé est (collection, id)).
     insert into erp.enregistrements (espace, collection, id, donnees) values
       (lm, 'logements', 'recette-suppr', '{"id": "recette-suppr", "nom": "Recette à supprimer"}'),
-      (essai, 'logements', 'recette-suppr-autre', '{"id": "recette-suppr-autre", "nom": "Recette autre à supprimer"}');
+      (essai, 'logements', 'recette-suppr-autre', '{"id": "recette-suppr-autre", "nom": "Recette autre à supprimer"}'),
+      (lm, 'logements', 'recette-suppr-vecu', '{"id": "recette-suppr-vecu", "nom": "Recette avec historique"}'),
+      (lm, 'reservations', 'recette-suppr-vecu', '{"id": "recette-suppr-vecu", "logementId": "recette-suppr-vecu"}'),
+      (essai, 'logements', 'recette-suppr-vecu-autre', '{"id": "recette-suppr-vecu-autre", "nom": "Recette autre, réservation ailleurs"}'),
+      (lm, 'reservations', 'recette-suppr-vecu-autre', '{"id": "recette-suppr-vecu-autre", "logementId": "recette-suppr-vecu-autre"}');
     update erp.enregistrements set donnees = donnees || '{"v": 2}' where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
@@ -2040,6 +2090,13 @@ begin
     select count(*) into n from erp.historique
       where collection = 'logements' and id = 'recette-suppr' and operation = 'suppression' and donnees ->> 'nom' = 'Recette à supprimer (vue)';
     if n <> 1 then resultat := 'un logement supprimé ne reste pas dans l''historique'; raise exception 'stop'; end if;
+    -- Un logement qui a une réservation : pas même le gérant (erp.garder_logement_avec_historique).
+    begin
+      delete from erp.enregistrements where espace = lm and collection = 'logements' and id = 'recette-suppr-vecu';
+      resultat := 'un gérant supprime un logement qui a une réservation';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
     -- Check-in en ligne : le gérant (et le serveur) le lit et l'efface ; rien ne reste dans l'historique.
     select count(*) into n from erp.enregistrements where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
     if n <> 1 then resultat := 'un gérant (le serveur) ne lit pas les check-ins en ligne'; raise exception 'stop'; end if;
@@ -2177,6 +2234,9 @@ begin
     delete from erp.enregistrements where espace = essai and collection = 'logements' and id = 'recette-suppr-autre';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'le gérant de l''autre espace ne supprime pas son logement'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where espace = essai and collection = 'logements' and id = 'recette-suppr-vecu-autre';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'une réservation de Label Maison empêche de supprimer un logement d''un autre espace'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements where espace = lm;
     if n <> 0 then resultat := 'le membre de l''autre espace voit Label Maison'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = '{"id": "ligne-autre", "v": 2}' where espace = essai and collection = 'recette' and id = 'ligne-autre';
@@ -2716,7 +2776,8 @@ select
 -- -- annonce, du numéro des factures et de l'espace d'une donnée (lisent la colonne espace) ;
 -- -- erp-installation.sql remet les trois premières et l'index des numéros, version d'avant les espaces.
 -- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent(), erp.garder_lien_annonce(),
---   erp.reserver_numero_facture(), erp.garder_espace_enregistrement(), erp.borner_actions_ia() cascade;
+--   erp.reserver_numero_facture(), erp.garder_espace_enregistrement(), erp.borner_actions_ia(),
+--   erp.garder_logement_avec_historique() cascade;
 -- drop table if exists erp.invitations_espace, erp.invitations, erp.espaces cascade;
 -- drop function if exists erp.mes_espaces(), erp.est_serveur(), erp.espace_entete(), erp.id_label_maison() cascade;
 -- commit;
