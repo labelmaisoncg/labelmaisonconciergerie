@@ -1208,6 +1208,35 @@ export function masquerCodes(texte: string): string {
     .replace(SUITE_CHIFFRES, cache);
 }
 
+/** `mot` remplacé en entier dans `texte` (bornes ni lettre ni chiffre, espaces et tirets du mot souples, sans casse). */
+function remplacerMotEntier(texte: string, mot: string, par: string): string {
+  const morceaux = nettoyerTexte(mot)
+    .split(/[\s\-–—._·/]+/)
+    .filter(Boolean)
+    .map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  if (!morceaux.length) return texte;
+  return texte.replace(new RegExp(`(^|[^\\p{L}\\p{N}])${morceaux.join('[\\s\\-–—._·/]*')}(?=$|[^\\p{L}\\p{N}])`, 'giu'), (_tout, avant: string) => avant + par);
+}
+
+/**
+ * Texte de la fiche donné à l'IA avant l'heure. Le wifi (nom du réseau et mot
+ * de passe) est cherché dans le texte BRUT et remplacé en entier, avant
+ * masquerCodes : celui-ci ne retire que les suites de chiffres
+ * (« soleil2026 » → « soleil[code…] ») et un mot de passe court
+ * (« motdepasse201 ») passerait tel quel. Un wifi encore lisible après coup
+ * (écrit en morceaux, collé à un autre mot) : le texte entier est retiré ('').
+ */
+export function masquerCodesEtWifi(texte: string, fiche: { wifiCode?: string; wifiNom?: string } | undefined): string {
+  const wifi = { wifiCode: fiche?.wifiCode ?? '', wifiNom: fiche?.wifiNom ?? '' };
+  let t = nettoyerTexte(texte);
+  // Le plus long d'abord : un nom de réseau contenu dans le mot de passe ne le coupe pas en deux.
+  for (const s of [wifi.wifiCode, wifi.wifiNom].map((x) => x.trim()).filter((x) => x.length >= 3).sort((a, b) => b.length - a.length)) {
+    t = remplacerMotEntier(t, s, CODE_MASQUE);
+  }
+  if (contientCodeAcces(t, wifi)) return '';
+  return masquerCodes(t);
+}
+
 /* ======================================================== plafond de l'IA */
 
 /**

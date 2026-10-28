@@ -86,7 +86,7 @@ import {
   contientCodeAcces,
   estIntention,
   estSentiment,
-  masquerCodes,
+  masquerCodesEtWifi,
   messageAttente,
   messagesVerdict,
   politiqueEnvoi,
@@ -432,14 +432,14 @@ const court = (v: string | undefined, max: number) => {
 const permis = (v: boolean | undefined, oui: string, non: string) => (v === undefined ? '' : v ? oui : non);
 
 /** Ce que dit l'annonce sur les plateformes (couchage, conditions, textes), sans prix : ils varient. */
-function lignesAnnonce(d: DescriptifLogement | undefined, masquer = false): string[] {
+function lignesAnnonce(d: DescriptifLogement | undefined, masquer = false, fiche?: Logement['fiche']): string[] {
   if (!d) return [];
   const c = d.conditions ?? {};
   const s = d.sejour ?? {};
   const t = d.textes ?? {};
-  // Avant l'heure des codes, les suites de chiffres des textes de l'annonce (« Digicode immeuble 2468 ») sont retirées.
+  // Avant l'heure des codes, le wifi et les suites de chiffres des textes de l'annonce (« Digicode immeuble 2468 ») sont retirés.
   const court = (v: string | undefined, max = 900) => {
-    const x = masquer && v ? masquerCodes(v) : v;
+    const x = masquer && v ? masquerCodesEtWifi(v, fiche) : v;
     return x && x.length > max ? `${x.slice(0, max - 1).trimEnd()}…` : x ?? '';
   };
   return [
@@ -475,6 +475,8 @@ export function construireContexte(
   const aujourdhui = dateParis(maintenant);
   const codes = codesPermis(fil, reservation, aujourdhui);
   const f = logement?.fiche;
+  // Avant l'heure : wifi cherché dans le texte brut et retiré en entier, puis les codes (jamais « soleil[code…] »).
+  const masque = (v: string | undefined) => masquerCodesEtWifi(v ?? '', f);
   const fiche = f
     ? [
         ligne(
@@ -491,16 +493,18 @@ export function construireContexte(
         ),
         ligne('Heure d’arrivée (à partir de)', f.heureArrivee),
         ligne('Heure de départ (avant)', f.heureDepart),
-        ligne('Parking', codes.ok ? f.parking : masquerCodes(f.parking ?? '')),
-        ligne('Règles de la maison', codes.ok ? f.regles : masquerCodes(f.regles ?? '')),
+        ligne('Parking', codes.ok ? f.parking : masque(f.parking)),
+        ligne('Règles de la maison', codes.ok ? f.regles : masque(f.regles)),
         ligne('Équipements', f.equipements),
         // Avant l'heure des codes, les suites de chiffres (un code du portail glissé dans une réponse) sont retirées.
-        ligne('À savoir', codes.ok ? (f.aSavoir ?? '') : masquerCodes(f.aSavoir ?? '')),
-        ligne('Consignes de départ', codes.ok ? (f.consignesDepart ?? '') : masquerCodes(f.consignesDepart ?? '')),
+        ligne('À savoir', codes.ok ? (f.aSavoir ?? '') : masque(f.aSavoir)),
+        ligne('Consignes de départ', codes.ok ? (f.consignesDepart ?? '') : masque(f.consignesDepart)),
         ...questionsValides(f.questions)
           .slice(0, 30)
-          .map((q) => `- Question fréquente : ${court(q.question, 200)} → Réponse : ${court(codes.ok ? q.reponse : masquerCodes(q.reponse), 600)}`),
-        ...lignesAnnonce(logement?.descriptif, !codes.ok),
+          .map((q) => ({ question: codes.ok ? q.question : masque(q.question), reponse: codes.ok ? q.reponse : masque(q.reponse) }))
+          .filter((q) => q.question && q.reponse)
+          .map((q) => `- Question fréquente : ${court(q.question, 200)} → Réponse : ${court(q.reponse, 600)}`),
+        ...lignesAnnonce(logement?.descriptif, !codes.ok, f),
         ...(codes.ok
           ? [ligne('Accès et remise des clés', f.acces), ligne('Réseau wifi', f.wifiNom), ligne('Mot de passe wifi', f.wifiCode)]
           : [`- Accès, codes et wifi : pas encore communicables (${codes.raison}).`]),
