@@ -66,7 +66,7 @@ import {
   type SaisieCheckin,
 } from './sejour';
 import { creerSeed } from './seed';
-import { TEXTES, texteConsignes, texteFiche } from '../sejour/textes';
+import { TEXTES, texteApresArrivee, texteConsignes, texteFiche } from '../sejour/textes';
 import type { FilMessages, Logement, Reservation, StatutReservation } from './types';
 
 let echecs = 0;
@@ -554,6 +554,20 @@ async function principal() {
     ];
     const mal = formes.filter(([t, attendu]) => texteConsignes(t, 'fr') !== attendu).map(([t]) => texteConsignes(t, 'fr'));
     verifier(mal.length === 0, 'consignes : « code : » jamais doublé, ni crochet, ni espace avant la virgule', mal);
+    // Autres textes le jour du départ : un code est « le même qu'à votre arrivée », un autre nombre « (masqué) ».
+    const apres: [string, string][] = [
+      [`Portail du parking : code ${CODE_MASQUE}, place 12.`, 'Portail du parking : code : le même qu’à votre arrivée, place 12.'],
+      [`Digicode immeuble ${CODE_MASQUE}.`, 'Digicode immeuble, code : le même qu’à votre arrivée.'],
+      [`Appartement ${CODE_MASQUE}, 12e étage.`, 'Appartement (masqué), 12e étage.'],
+      [`Urgence : appelez le ${CODE_MASQUE}.`, 'Urgence : appelez le (masqué).'],
+      [`Résidence de ${CODE_MASQUE}, 91100 Corbeil-Essonnes. Boîte aux lettres ${CODE_MASQUE}.`, 'Résidence de (masqué), 91100 Corbeil-Essonnes. Boîte aux lettres, code : le même qu’à votre arrivée.'],
+    ];
+    const malApres = apres.filter(([t, attendu]) => texteApresArrivee(t, 'fr') !== attendu).map(([t]) => texteApresArrivee(t, 'fr'));
+    verifier(malApres.length === 0 && texteApresArrivee(`Flat ${CODE_MASQUE}, 12th floor.`, 'en') === 'Flat (hidden), 12th floor.', 'jour du départ : « le même qu’à votre arrivée » seulement pour un code, sinon « (masqué) »', malApres);
+    verifier(
+      texteFiche(`Appartement ${CODE_MASQUE}, 12e étage.`, 'fr') === 'Appartement (affiché 48 h avant l’arrivée), 12e étage.' && texteFiche(`Flat ${CODE_MASQUE}.`, 'en') === 'Flat (shown 48 h before arrival).',
+      'avant 48 h : un nombre qui n’est pas après un mot d’accès est « (affiché 48 h avant l’arrivée) »',
+    );
     verifier(TEXTES.fr.accesJourDepart.includes('arrivée') && TEXTES.en.codeAttente === 'Your access code will appear here 48 hours before arrival' && TEXTES.en.questionsTitre === 'FAQs', 'textes du jour du départ et anglais revus');
     verifier(!('departAvant' in TEXTES.fr) && !('heureArriveeAide' in TEXTES.fr) && TEXTES.fr.checkinEnCours === 'Il reste votre check-in : deux minutes.' && TEXTES.en.checkinEnCours === 'Your check-in is still missing: two minutes.', '« Départ avant » et l’aide de l’heure retirés ; check-in pendant le séjour');
     if (racine) {

@@ -35,7 +35,7 @@ import {
 import { Button, Card, classesBouton, cn } from '../ui';
 import { MESSAGES_REFUS_CHECKIN, type ErreurCheckin, type GuideSejour, type LangueSejour, type SaisieCheckin, type VueSejour } from '../data/sejour';
 import { FormulaireCheckin } from './FormulaireCheckin';
-import { TEXTES, dateCourteSejour, dateLongueSejour, jourHorodatage, texteConsignes, texteFiche } from './textes';
+import { TEXTES, dateCourteSejour, dateLongueSejour, jourHorodatage, texteApresArrivee, texteConsignes, texteFiche } from './textes';
 
 export interface LivretSejourProps {
   vue: VueSejour;
@@ -130,7 +130,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
   const [envoye, setEnvoye] = useState(false);
   const carteCheckin = useRef<HTMLDivElement>(null);
   // Le jour du départ (et après), un code retiré est celui que le voyageur a reçu pour son arrivée.
-  const tx = (s: string) => (vue.moment === 'avant' ? texteFiche(s, langue) : texteConsignes(s, langue));
+  const tx = (s: string) => (vue.moment === 'avant' ? texteFiche(s, langue) : texteApresArrivee(s, langue));
 
   const envoyer = async (saisie: SaisieCheckin) => {
     const r = await onEnvoyer(saisie);

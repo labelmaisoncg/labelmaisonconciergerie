@@ -112,6 +112,8 @@ const FR = {
   // Le code retiré, montré sans crochets (CODE_MASQUE, celui de l'agent, ne change pas).
   codeMasque: '(code communiqué 48 h avant l’arrivée)',
   codeMasqueApresMot: '(communiqué 48 h avant l’arrivée)',
+  nombreMasque: '(affiché 48 h avant l’arrivée)',
+  nombreRetire: '(masqué)',
 };
 
 const EN: typeof FR = {
@@ -216,6 +218,8 @@ const EN: typeof FR = {
   lienExpire: 'This link has expired.',
   codeMasque: '(code shared 48 h before arrival)',
   codeMasqueApresMot: '(shared 48 h before arrival)',
+  nombreMasque: '(shown 48 h before arrival)',
+  nombreRetire: '(hidden)',
 };
 
 export const TEXTES: Record<LangueSejour, typeof FR> = { fr: FR, en: EN };
@@ -245,12 +249,24 @@ export function jourHorodatage(h: string, langue: LangueSejour): string {
 const CODE_MASQUE_VU = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
 
 /**
+ * Un mot d'accès plus tôt dans le même membre de phrase (« Digicode immeuble »,
+ * « dans la boîte ») : le nombre retiré est un code. Sinon ce peut être un
+ * téléphone, un étage ou une année (« Appartement 1204, 12e étage »).
+ */
+const ACCES_AVANT =
+  /(?<![\p{L}])(?:codes?(?!\s+postal)|portails?|portes?|bo[iî]tes?|cadenas|badges?|digicodes?|interphones?|claviers?|serrures?|coffres?|keybox(?:es)?|lockbox(?:es)?|key\s?safes?|keypads?|padlocks?|gates?|doors?|locks?|intercoms?)(?![\p{L}])[^.;!?\n()]*$/iu;
+const apresMotAcces = (avant: string) => ACCES_AVANT.test(avant);
+
+/**
  * Texte de la fiche affiché : le code retiré dit sans crochets, dans la
  * langue du voyageur (« Digicode (code communiqué 48 h avant l’arrivée) »,
- * « Portail : code (communiqué 48 h avant l’arrivée) »).
+ * « Portail : code (communiqué 48 h avant l’arrivée) ») ; un autre nombre
+ * retiré, « (affiché 48 h avant l’arrivée) ».
  */
 export const texteFiche = (t: string, langue: LangueSejour): string =>
-  t.replace(CODE_MASQUE_VU, (_tout: string, mot: string | undefined) => (mot ? `${mot}${TEXTES[langue].codeMasqueApresMot}` : TEXTES[langue].codeMasque));
+  t.replace(CODE_MASQUE_VU, (_tout: string, mot: string | undefined, position: number, entier: string) =>
+    mot ? `${mot}${TEXTES[langue].codeMasqueApresMot}` : apresMotAcces(entier.slice(0, position)) ? TEXTES[langue].codeMasque : TEXTES[langue].nombreMasque,
+  );
 
 /** Le code retiré, avec ce qui le précède : le mot « code » (« code : [code communiqué…] »), deux-points ou espace. */
 const CODE_RETIRE = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*|\\s*:\\s*|\\s+)?${CODE_MASQUE.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'giu');
@@ -262,9 +278,23 @@ const CODE_RETIRE = new RegExp(`((?<![\\p{L}])codes?\\s*:?\\s*|\\s*:\\s*|\\s+)?$
  * 4821 » devient « Boîte à clés, code : le même qu’à votre arrivée ».
  */
 export const texteConsignes = (t: string, langue: LangueSejour): string =>
-  t.replace(CODE_RETIRE, (_tout: string, avant: string | undefined, position: number, entier: string) => {
-    const c = TEXTES[langue].codeArrivee;
-    if (avant && /code/i.test(avant)) return c;
-    // Juste après un mot : une virgule (« la boîte, code : … ») ; sinon l'espace d'avant est gardé.
-    return /[\p{L}\p{N}]/u.test(entier.slice(0, position).slice(-1)) ? `, ${c}` : `${avant && /^\s/.test(avant) ? ' ' : ''}${c}`;
-  });
+  t.replace(CODE_RETIRE, (_tout: string, avant: string | undefined, position: number, entier: string) => codeDeLArrivee(avant, position, entier, langue));
+
+function codeDeLArrivee(avant: string | undefined, position: number, entier: string, langue: LangueSejour): string {
+  const c = TEXTES[langue].codeArrivee;
+  if (avant && /code/i.test(avant)) return c;
+  // Juste après un mot : une virgule (« la boîte, code : … ») ; sinon l'espace d'avant est gardé.
+  return /[\p{L}\p{N}]/u.test(entier.slice(0, position).slice(-1)) ? `, ${c}` : `${avant && /^\s/.test(avant) ? ' ' : ''}${c}`;
+}
+
+/**
+ * Autres textes de la fiche, le jour du départ et après : seul un code (après
+ * « code » ou un mot d'accès) est « le même qu’à votre arrivée » ; un autre
+ * nombre retiré est « (masqué) » (« Appartement (masqué), 12e étage »).
+ */
+export const texteApresArrivee = (t: string, langue: LangueSejour): string =>
+  t.replace(CODE_RETIRE, (_tout: string, avant: string | undefined, position: number, entier: string) =>
+    (avant && /code/i.test(avant)) || apresMotAcces(entier.slice(0, position))
+      ? codeDeLArrivee(avant, position, entier, langue)
+      : `${avant && /\S/.test(avant) ? avant : avant && /^\s/.test(avant) ? ' ' : ''}${TEXTES[langue].nombreRetire}`,
+  );
