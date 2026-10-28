@@ -6,7 +6,7 @@ import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
 import { PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
 import { AUJOURDHUI } from '../../data/format';
-import { TYPES_LIT, erreursSaisieLogement, logementDepuisSaisie, saisieInitiale, type ErreursLogement, type SaisieLogement } from '../../data/creation-logement';
+import { TYPES_LIT, erreursSaisieLogement, logementDepuisSaisie, nomsInterdits, saisieInitiale, type ErreursLogement, type SaisieLogement } from '../../data/creation-logement';
 import { enregistrerLogement } from './_composants/enregistrerLogement';
 import type { Logement, Serrure, StatutLogement, TypeLogement } from '../../data/types';
 
@@ -52,7 +52,8 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
 
   const enregistrer = (ev: FormEvent) => {
     ev.preventDefault();
-    const e = erreursSaisieLogement(s);
+    // Pas deux logements du même nom (sans casse, accents ni espaces) ; garder le sien reste possible.
+    const e = erreursSaisieLogement(s, { nomsPris: nomsInterdits(d.logements, logement, s.nom) });
     setErreurs(e);
     if (Object.keys(e).length) return;
     const aEnregistrer = logementDepuisSaisie(s, logement ?? nouvelId('log'), AUJOURDHUI);

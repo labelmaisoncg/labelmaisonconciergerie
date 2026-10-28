@@ -105,13 +105,17 @@ export function saisieInitiale(l?: Logement): SaisieLogement {
 }
 
 /**
- * Erreurs de la saisie, par champ, en une phrase chacune. `surfaceFacultative` :
- * l'assistant laisse la surface vide (0, à compléter dans la fiche) ; le
- * formulaire la demande toujours.
+ * Erreurs de la saisie, par champ, en une phrase chacune.
+ * - `surfaceFacultative` : l'assistant laisse la surface vide (0, à compléter
+ *   dans la fiche) ; le formulaire la demande toujours.
+ * - `nomsPris` : noms que ce logement ne peut pas prendre (nomsInterdits) ;
+ *   comparés sans casse, accents ni espaces en trop.
  */
-export function erreursSaisieLogement(s: SaisieLogement, o: { surfaceFacultative?: boolean } = {}): ErreursLogement {
+export function erreursSaisieLogement(s: SaisieLogement, o: { surfaceFacultative?: boolean; nomsPris?: readonly string[] } = {}): ErreursLogement {
   const e: ErreursLogement = {};
+  const pris = o.nomsPris ? nomDejaPris(s.nom, o.nomsPris) : undefined;
   if (!s.nom.trim()) e.nom = 'Le nom est obligatoire.';
+  else if (pris) e.nom = messageNomPris(pris);
   if (!s.adresse.trim()) e.adresse = 'L’adresse est obligatoire.';
   if (!/^\d{5}$/.test(s.codePostal.trim())) e.codePostal = 'Code postal à 5 chiffres.';
   if (!s.ville.trim()) e.ville = 'La ville est obligatoire.';
@@ -337,6 +341,21 @@ export function nomDejaPris(nom: string, nomsPris: readonly string[]): string | 
   return cle ? nomsPris.find((n) => cleNom(n) === cle) : undefined;
 }
 
+/** Même phrase dans l'assistant et le formulaire. */
+export const messageNomPris = (existant: string): string => `Un logement s’appelle déjà « ${existant} ». Choisissez un autre nom.`;
+
+/**
+ * Noms qu'un logement ne peut pas prendre : ceux des autres logements de
+ * l'espace (le logement modifié est exclu). Garder son nom reste toujours
+ * possible, même si un autre logement le porte déjà (deux annonces importées
+ * homonymes, dont le nom revient de la plateforme à chaque synchronisation) :
+ * seul un nom nouveau ou changé est comparé.
+ */
+export function nomsInterdits(logements: readonly Pick<Logement, 'id' | 'nom'>[], existant: Pick<Logement, 'id' | 'nom'> | undefined, nom: string): string[] {
+  if (existant && cleNom(nom) === cleNom(existant.nom)) return [];
+  return logements.filter((l) => l.id !== existant?.id).map((l) => l.nom);
+}
+
 /** Nom proposé d'après le type et la ville ; numéroté s'il est déjà pris. */
 export function nomSuggere(type: TypeLogement | undefined, ville: string, nomsPris: readonly string[]): string {
   const base = [MOT_TYPE[type ?? 'autre'], ville.trim().replace(/\s+/g, ' ')].filter(Boolean).join(' ');
@@ -424,17 +443,14 @@ export function erreursEtape(etape: EtapeAssistant, b: BrouillonLogement, ctx: C
     if (b.residencePrincipale === undefined) r.residencePrincipale = 'Dites si c’est la résidence principale du propriétaire.';
     return r;
   }
-  // Mêmes règles que le formulaire, sur les champs de cet écran (surface facultative ici).
+  // Mêmes règles que le formulaire, sur les champs de cet écran (surface facultative ici, nom jamais en double).
   const saisie = saisieDepuisBrouillon(b, b.proprietaireId);
-  const e = erreursSaisieLogement(saisie, { surfaceFacultative: true });
+  const e = erreursSaisieLogement(saisie, { surfaceFacultative: true, nomsPris: ctx.nomsPris });
   for (const k of CHAMPS_ETAPE[etape]) {
     if (!e[k]) continue;
     const vide = typeof saisie[k] === 'string' && !(saisie[k] as string).trim();
     r[k] = (vide && A_REMPLIR[k]) || e[k]!;
   }
-  // Un nom déjà porté par un logement de l'espace : deux fiches impossibles à distinguer.
-  const pris = etape === 'nom' && !r.nom ? nomDejaPris(b.nom, ctx.nomsPris) : undefined;
-  if (pris) r.nom = `Un logement s’appelle déjà « ${pris} ». Choisissez un autre nom.`;
   return r;
 }
 
@@ -461,7 +477,7 @@ export function creationDepuisAssistant(
   if (erreurs.length) return { ok: false, etape: etapeDuChamp(erreurs[0][0]), erreur: erreurs[0][1] };
   const proprietaire = b.modeProprietaire === 'nouveau' ? proprietaireDepuisSaisie(b.nouveauProprietaire, o.idProprietaire, o.aujourdhui) : undefined;
   const saisie = saisieDepuisBrouillon(b, proprietaire?.id ?? b.proprietaireId);
-  const reste = Object.entries(erreursSaisieLogement(saisie, { surfaceFacultative: true }));
+  const reste = Object.entries(erreursSaisieLogement(saisie, { surfaceFacultative: true, nomsPris: o.nomsPris }));
   if (reste.length) return { ok: false, etape: etapeDuChamp(reste[0][0]), erreur: reste[0][1] };
   return { ok: true, logement: logementDepuisSaisie(saisie, o.idLogement, o.aujourdhui), ...(proprietaire ? { proprietaire } : {}) };
 }

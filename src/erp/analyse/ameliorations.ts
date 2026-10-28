@@ -130,7 +130,8 @@ export function suggererAmeliorations(e: EntreeAmeliorations): Amelioration[] {
   }
   // Aménagement (offre Label Maison Studio) : grand bien sous-exploité ou petit bien à démarquer.
   const grand = l.surfaceM2 >= 60 || l.capacite >= 6;
-  const petit = l.type === 'studio' || l.surfaceM2 <= 32;
+  // Surface inconnue (0) : pas un petit bien pour autant.
+  const petit = l.type === 'studio' || (l.surfaceM2 > 0 && l.surfaceM2 <= 32);
   if ((grand && (m.occupation90 < e.medianeOccupation || m.ratioAdr < 1)) || (petit && m.ratioAdr < 1.05 && (codes.has('occupation_faible') || codes.has('prix_bas')))) {
     a({
       code: 'amenagement_studio',

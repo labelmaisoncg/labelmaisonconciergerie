@@ -27,8 +27,10 @@ import {
   lignesRecap,
   logementDepuisSaisie,
   logementVierge,
+  messageNomPris,
   nomDejaPris,
   nomSuggere,
+  nomsInterdits,
   proprietaireDepuisSaisie,
   saisieDepuisBrouillon,
   saisieInitiale,
@@ -41,6 +43,7 @@ import {
   type SaisieLogement,
 } from './creation-logement';
 import { CHECKLIST_LANCEMENT } from './constantes';
+import { natureLogement, proposerVersion } from '../annonces/generer';
 import { texteAdresse } from './carte';
 import type { Logement, Proprietaire } from './types';
 
@@ -332,6 +335,55 @@ section('Formulaire et assistant : exactement le même logement');
   verifier(!refus.ok && refus.etape === 'proprietaire', 'propriétaire disparu : rien n’est créé, retour à son écran');
   const incomplet = creationDepuisAssistant(brouillon({ type: undefined }), { proprietaires, nomsPris: NOMS_PRIS, idLogement: 'log-d', idProprietaire: 'pro-x', aujourdhui: JOUR });
   verifier(!incomplet.ok && incomplet.etape === 'type', 'type manquant : retour au premier écran');
+}
+
+section('Formulaire de modification : nom jamais en double, garder le sien reste possible');
+{
+  const logs = [
+    { id: 'log-a', nom: 'Maison de Linas' },
+    { id: 'log-b', nom: 'Studio Gare' },
+    // Deux annonces importées homonymes : chacune garde son nom.
+    { id: 'log-c', nom: 'Studio Gare' },
+  ];
+  const ok: SaisieLogement = { ...saisieInitiale(), adresse: '1 rue', codePostal: '91100', ville: 'Évry', surfaceM2: '30', capacite: '2', proprietaireId: A };
+  const erreurNom = (existant: (typeof logs)[number] | undefined, nom: string) => erreursSaisieLogement({ ...ok, nom }, { nomsPris: nomsInterdits(logs, existant, nom) }).nom;
+  verifier(!erreurNom(logs[0], 'Maison de Linas'), 'garder son propre nom : accepté');
+  verifier(!erreurNom(logs[0], 'maison  de LINÁS '), 'son propre nom, autre casse, accents ou espaces : accepté');
+  verifier(!erreurNom(logs[1], 'Studio Gare') && !erreurNom(logs[2], 'Studio Gare'), 'homonymes déjà là (annonces importées) : chacun garde son nom');
+  for (const nom of ['Studio Gare', 'studio gare', 'Stüdio  Garé', ' STUDIO GARE ']) {
+    verifier(erreurNom(logs[0], nom) === messageNomPris('Studio Gare'), `renommer en « ${nom} » : refusé, même message que l’assistant`);
+  }
+  verifier(erreurNom(logs[1], 'Maison de Linás') === 'Un logement s’appelle déjà « Maison de Linas ». Choisissez un autre nom.', 'le message cite le nom existant');
+  verifier(!erreurNom(logs[0], 'Maison de Linas, jardin'), 'nom nouveau et libre : accepté');
+  verifier(erreurNom(undefined, 'maison de linas') === messageNomPris('Maison de Linas'), 'création par le formulaire : nom pris refusé');
+  verifier(empreinte(nomsInterdits(logs, logs[0], 'Autre nom')) === empreinte(['Studio Gare', 'Studio Gare']), 'le logement modifié est exclu de la comparaison');
+  verifier(erreurNom(logs[0], '') === 'Le nom est obligatoire.', 'nom vide : « obligatoire », pas « déjà pris »');
+  verifier(!erreursSaisieLogement({ ...ok, nom: 'Studio Gare' }).nom, 'sans liste de noms : rien de comparé (comportement d’avant)');
+}
+
+section('Surface inconnue (0) : jamais « 0 m² »');
+{
+  verifier(natureLogement({ type: 'studio', surfaceM2: 0, chambres: 0 }) === 'Studio', 'studio sans surface : « Studio »');
+  verifier(natureLogement({ type: 'studio', surfaceM2: 22, chambres: 0 }) === 'Studio de 22 m²', 'studio avec surface : « Studio de 22 m² »');
+  verifier(natureLogement({ type: 'maison', surfaceM2: 0, chambres: 3 }) === 'Maison avec 3 chambres', 'maison sans surface : « Maison avec 3 chambres »');
+  verifier(natureLogement({ type: 'maison', surfaceM2: 120, chambres: 1 }) === 'Maison de 120 m² avec 1 chambre', 'maison : « chambre » au singulier');
+  verifier(natureLogement({ type: 'T3', surfaceM2: 0, chambres: 2 }) === 'T3 avec 2 chambres', 'T3 sans surface : « T3 avec 2 chambres »');
+  verifier(natureLogement({ type: 'T2', surfaceM2: 45, chambres: 1 }) === 'T2 de 45 m² avec 1 chambre', 'T2 avec surface : inchangé');
+  verifier(natureLogement({ type: 'T1', surfaceM2: 0, chambres: 0 }) === 'T1', 'sans surface ni chambre : le type seul');
+  // Annonce générée pour un logement créé sans surface par l'assistant.
+  const r = creationDepuisAssistant(brouillon({ type: 'studio', chambres: 0, surfaceM2: '' }), {
+    proprietaires,
+    nomsPris: NOMS_PRIS,
+    idLogement: 'log-sans-surface',
+    idProprietaire: 'pro-x',
+    aujourdhui: JOUR,
+  });
+  if (r.ok) {
+    const v = proposerVersion({ logements: [r.logement], reservations: [], recommandations: [] }, r.logement.id, '2026-11', JOUR);
+    const tout = [v.titre, ...(v.titres ?? []), v.accroche, v.description].join('\n');
+    verifier(!/(^|[^\d])0 m²/.test(tout) && !/de 0 m/.test(tout), 'annonce générée (titres, accroche, description) : aucun « 0 m² »');
+    verifier(v.description.includes('Studio, jusqu’à'), `description : « Studio, jusqu’à … » (${v.description.slice(0, 40)}…)`);
+  } else verifier(false, `logement sans surface créé (${r.erreur})`);
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

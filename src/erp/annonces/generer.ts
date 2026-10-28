@@ -50,10 +50,16 @@ function couchages(l: Logement): string {
   return morceaux.length > 1 ? `${morceaux.slice(0, -1).join(', ')} et ${morceaux[morceaux.length - 1]}` : morceaux[0] ?? '';
 }
 
-function nature(l: Logement): string {
-  if (l.type === 'studio') return `Studio de ${l.surfaceM2} m²`;
-  if (l.type === 'maison') return `Maison de ${l.surfaceM2} m² avec ${l.chambres} chambres`;
-  return `${LIBELLES.typeLogement[l.type]} de ${l.surfaceM2} m² avec ${l.chambres} chambre${l.chambres > 1 ? 's' : ''}`;
+/**
+ * « Studio de 22 m² », « Maison de 120 m² avec 3 chambres », « T2 de 45 m²
+ * avec 1 chambre ». Surface inconnue (0 : logement importé ou créé sans
+ * surface) : jamais « de 0 m² » (« Studio », « Maison avec 3 chambres »).
+ */
+export function natureLogement(l: Pick<Logement, 'type' | 'surfaceM2' | 'chambres'>): string {
+  const surface = l.surfaceM2 > 0 ? ` de ${l.surfaceM2} m²` : '';
+  if (l.type === 'studio') return `Studio${surface}`;
+  const chambres = l.chambres > 0 ? ` avec ${l.chambres} chambre${l.chambres > 1 ? 's' : ''}` : '';
+  return `${l.type === 'maison' ? 'Maison' : LIBELLES.typeLogement[l.type]}${surface}${chambres}`;
 }
 
 /** Avis des 12 derniers mois jusqu'à `date` : plaintes par thème, note moyenne. */
@@ -145,7 +151,7 @@ export function proposerVersion(d: DonneesAnnonce, logementId: Id, mois: string,
 
   const blocs: { texte: string; optionnel: boolean }[] = [
     { texte: `${accroche}.`, optionnel: false },
-    { texte: `${nature(l)}, jusqu’à ${l.capacite} voyageurs : ${couchages(l)}.`, optionnel: false },
+    { texte: `${natureLogement(l)}, jusqu’à ${l.capacite} voyageurs : ${couchages(l)}.`, optionnel: false },
     { texte: `Sur place : ${equipements.join(', ')}.`, optionnel: false },
     { texte: phraseSaison + (saison === 'automne' && fibre ? ' La fibre permet les visioconférences.' : ''), optionnel: false },
     ...(ancrage?.public[saison] ? [{ texte: ancrage.public[saison] as string, optionnel: false }] : []),
