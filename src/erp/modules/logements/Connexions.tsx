@@ -256,7 +256,7 @@ export default function Connexions() {
           1. Vos plateformes
         </h2>
         {/* Colonnes bornées (grid-cols-1) : un nom de compte long ne fait jamais déborder la carte. */}
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {PRINCIPALES.map((p) => {
             const comptes = connexions.filter((c) => c.fournisseur === p.id);
             const actif = comptes.some((c) => c.statut === 'active');
@@ -280,8 +280,11 @@ export default function Connexions() {
                 {comptes.length > 0 ? (
                   <ul className="space-y-1.5">
                     {comptes.map((c) => (
-                      <li key={c.id} className="flex min-w-0 items-center justify-between gap-2 text-[13px] text-(--lm-encre-2)">
-                        <span className="min-w-0 truncate">{c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}</span>
+                      <li key={c.id} className="flex min-w-0 flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[13px] text-(--lm-encre-2)">
+                        {/* Nom lisible d'abord : faute de place, « Déconnecter » passe dessous. */}
+                        <span className="min-w-0 flex-1 basis-40 truncate" title={c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}>
+                          {c.nom ?? (c.compte ? `Compte ${c.compte}` : 'Compte connecté')}
+                        </span>
                         <Button size="sm" variant="ghost" icone={<Unplug />} disabled={!gerant || !reel} onClick={() => setADeconnecter(c)}>
                           Déconnecter
                         </Button>
