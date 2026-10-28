@@ -24,12 +24,12 @@ export const MOTIF_EMAIL = /[^\s@]+@[^\s@]+\.[^\s@]+/g;
  */
 const DOMAINE_SUITE = String.raw`(?:\s*(?:\.|[([{]\s*(?:dot|point)\s*[)\]}]|\s(?:dot|point)\s)\s*[\p{L}\p{N}-]+)`;
 export const MOTIF_EMAIL_DEGUISE = new RegExp(
-  String.raw`[\p{L}\p{N}._%+-]+\s*(?:[([{]\s*(?:at|arobase)\s*[)\]}]|\sarobase\s|@)\s*[\p{L}\p{N}-]+${DOMAINE_SUITE}*` +
-    String.raw`|[\p{L}\p{N}._%+-]+\sat\s[\p{L}\p{N}-]+${DOMAINE_SUITE}*\s*(?:\.|[([{]\s*(?:dot|point)\s*[)\]}]|\s(?:dot|point)\s)\s*(?:fr|com|net|org|eu|io|be|ch|de|es|it|uk|co)(?![\p{L}\p{N}])`,
+  String.raw`[\p{L}\p{N}._%+-]+(?:\s*[([{]\s*(?:at|arobase)\s*[)\]}]\s*|\sarobase\s|@)[\p{L}\p{N}-]+${DOMAINE_SUITE}*|[\p{L}\p{N}._%+-]+\s+@\s+\p{L}[\p{L}\p{N}-]*${DOMAINE_SUITE}+` +
+    String.raw`|[\p{L}\p{N}._%+-]+\sat\s[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)*(?:\.|\s*[([{]\s*(?:dot|point)\s*[)\]}]\s*|\s(?:dot|point)\s)(?:fr|com|net|org|eu|io|be|ch|de|es|it|uk|co)(?![\p{L}\p{N}])`,
   'giu',
 );
-/** Numéro de téléphone (8 chiffres ou plus ; espaces, points, tirets, barres, soulignés ou parenthèses compris ; « + » devant). */
-export const MOTIF_TELEPHONE = /\+?\(?\d[\d\s.\-/_()]{7,}\d/g;
+/** Numéro de téléphone (9 chiffres ou plus, séparés par des espaces, points, tirets, barres, soulignés ou parenthèses ; « + » devant). Une date (15/11/2026) n'en est pas un. */
+export const MOTIF_TELEPHONE = /\+?\(?\d(?:[\s.\-/_()]{0,3}\d){8,}/g;
 
 /** Le texte, sans lien, e-mail ni téléphone (remplacés par « … »). */
 export function masquerCoordonnees(texte: string | undefined | null): string {

@@ -1037,7 +1037,9 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 }
 
 /** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
-const CODE_APRES_MOT = /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,30}?(?<![\p{L}\p{N}#*])((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])/giu;
+// Une heure, une distance ou un ordinal avant le code (« actif de 7h à 22h : 482 ») ne l'arrête pas : la recherche continue.
+const CODE_APRES_MOT =
+  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])/giu;
 
 /**
  * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un

@@ -116,7 +116,7 @@ section('Coordonnées déguisées : masquées avant l’IA');
 {
   const m = masquerCoordonnees('Appelez le 06/12/34/56/78 ou 06_12_34_56_78, écrivez à jean (at) exemple point fr, jean @ exemple . fr ou jean arobase exemple.fr.');
   verifier(!/06|jean/.test(m), 'téléphones à barres ou soulignés, e-mails déguisés : masqués', m);
-  const intact = 'We arrive at noon and stay at the flat. Arrivée à 16:00, parking à 300 m.';
+  const intact = 'We arrive at noon and stay at the flat. Arrivée à 16:00, parking à 300 m. We arrived at Orly. It was easy. Stayed at Evry. De rien. Séjour du 01/08/2026 au 05/08/2026, budget 2 500 - 3 000 €. Dispo @ 18h. Merci';
   verifier(masquerCoordonnees(intact) === intact, 'texte ordinaire (« arrive at noon », heure, distance) : intact', masquerCoordonnees(intact));
 }
 
