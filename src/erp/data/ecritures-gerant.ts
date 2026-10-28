@@ -18,7 +18,11 @@ import { CODES_REFUS_BASE, type Operation, type RefusBase } from './synchro';
 import type { ErpDonnees, Journal } from './types';
 
 /** Collections entières : ce que seul le serveur écrit, les factures et les annonces à l'équipe. */
-export const COLLECTIONS_GERANT_SEULEMENT: readonly string[] = ['envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe'];
+/**
+ * reponsesAvis (octobre 2026) : réponses publiques aux avis, préparées et
+ * publiées par le serveur, décidées par le gérant (« Ne pas répondre »).
+ */
+export const COLLECTIONS_GERANT_SEULEMENT: readonly string[] = ['envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe', 'reponsesAvis'];
 
 /** Éléments précis d'une collection partagée avec l'équipe. */
 export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[]>> = {

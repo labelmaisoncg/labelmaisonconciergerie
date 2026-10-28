@@ -31,7 +31,7 @@ const AVIS_DEMO = [
   (p: string) => `${p} a pris grand soin du logement et a suivi toutes les consignes. Échanges courtois et rapides : merci pour ce séjour, au plaisir de vous revoir.`,
 ];
 
-export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'avisADeposer'>): Pick<ErpDonnees, 'envoisProgrammes' | 'avisADeposer' | 'reglages' | 'filsMessages'> {
+export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'avisADeposer' | 'reponsesAvis'>): Pick<ErpDonnees, 'envoisProgrammes' | 'avisADeposer' | 'reglages' | 'filsMessages'> {
   const reglages: ReglagesMessagesProgrammes = {
     id: ID_REGLAGES_PROGRAMMES,
     modeles: {

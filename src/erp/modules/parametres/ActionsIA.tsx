@@ -8,7 +8,9 @@
  *   Elles reviennent dans la liste du jour une fois envoyées ou retirées.
  * - « Annuler » relit la cible dans la base : si elle a changé depuis
  *   l'action, rien n'est écrasé et la raison s'affiche.
- * - Un message envoyé ne se reprend pas ; aucun prix, aucun paiement.
+ * - Un message envoyé ne se reprend pas, un avis publié non plus (publication
+ *   automatique des avis : « Publié seul » ou « Publié par … ») ; aucun prix,
+ *   aucun paiement.
  *
  * Règles : src/erp/data/copilote.ts. Collection réservée aux gérants par la
  * base (supabase/erp-espaces.sql).
@@ -32,7 +34,14 @@ type Source = 'tout' | 'claude' | 'agent';
 const lienSur = (l: string | undefined): string | undefined => (l && /^\/erp\/[\w\-/?=%.&]*$/.test(l) ? l : undefined);
 
 /** Libellé du lien vers la cible. */
-const libelleLien = (a: ActionAgent) => (a.collection === 'filsMessages' ? 'Ouvrir la conversation' : a.collection === 'crm' ? 'Ouvrir la fiche' : 'Ouvrir le logement');
+const libelleLien = (a: ActionAgent) =>
+  a.collection === 'filsMessages'
+    ? 'Ouvrir la conversation'
+    : a.collection === 'crm'
+      ? 'Ouvrir la fiche'
+      : a.collection === 'avisADeposer' || a.collection === 'reponsesAvis'
+        ? 'Ouvrir le séjour'
+        : 'Ouvrir le logement';
 
 /** Champ vide avant l'action, dit simplement (« Relance : aucune », « Suivi par : personne »). */
 const FEMININS = new Set(['Relance', 'Étape', 'Ville', 'Adresse', 'Notes']);

@@ -263,12 +263,13 @@ delete from erp.historique where collection = 'checkinsEnLigne';
 -- synchronisation, passages des factures mensuelles, état des prix) et ce
 -- que seul un gérant change (factures, réglages des prix, modèles des
 -- messages automatiques, identité de la société, numérotation des factures,
--- suppléments proposés aux voyageurs).
+-- suppléments proposés aux voyageurs, réponses publiques aux avis des
+-- voyageurs : reponsesAvis, publiées par le serveur, refusées par le gérant).
 -- Même règle que dans erp-espaces.sql (par espace).
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
-  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
+  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe', 'reponsesAvis')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
       or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'))
 $$;

@@ -627,9 +627,11 @@ section('Rôles : l’équipe prépare, un compte en lecture lit seulement');
   verifier(!m.ok && m.statut === 403, 'compte en lecture : 403 avant la moindre réponse préparée', m);
 }
 
-section('Plateformes en lecture seule');
+section('Plateformes : « Proposer une réponse » ne publie rien, seule la publication des avis écrit');
 {
-  verifier(!ecritureRepullPermise('POST', '/v1/reviews/123/response', {}) && !ecritureRepullPermise('POST', '/v1/reviews/123/reply', { response: 'Merci' }), 'aucune réponse d’avis ne peut partir vers la plateforme');
+  // « Proposer une réponse » ne fait que lire la base ; la publication (avis-auto-passage.ts) envoie exactement { message }.
+  verifier(!ecritureRepullPermise('POST', '/v1/reviews/123/response', {}) && !ecritureRepullPermise('POST', '/v1/reviews/123/reply', { response: 'Merci' }), 'ni route inconnue ni alias « response » vers la plateforme');
+  verifier(ecritureRepullPermise('POST', '/v1/reviews/123/reply', { message: 'Merci' }) && !ecritureRepullPermise('PUT', '/v1/listings/1', { message: 'Merci' }), 'réponse publique : { message } seulement, rien d’autre que les avis');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

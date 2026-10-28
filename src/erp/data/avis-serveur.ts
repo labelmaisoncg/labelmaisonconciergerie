@@ -19,7 +19,7 @@
  * verifier-avis.ts les simule. Imports relatifs avec « .js » : tourne sous Node.
  */
 import { ErreurAssistant, compterAppelIA, type OptionsAssistant } from './agent-assistant.js';
-import { MODELE_AGENT_DEFAUT, signer } from './agent-messagerie.js';
+import { MODELE_AGENT_DEFAUT, signer, type ClientIA } from './agent-messagerie.js';
 import {
   SCHEMA_REPONSE_AVIS,
   consignesReponseAvis,
@@ -32,6 +32,7 @@ import {
   reponseModele,
   sansReponse,
   signatureSure,
+  type AvisLu,
   type ContexteControle,
 } from './avis.js';
 import { reglagesAgent } from './reglages.js';
@@ -52,7 +53,7 @@ export interface ReponseAvisPreparee {
 const AUTEUR = 'Agent IA';
 
 /** Écrit la lecture sur la réservation, à partir de la version lue (une synchronisation passée entre-temps n'est jamais écrasée). */
-async function garderLecture(o: OptionsAssistant, id: string, lecture: LectureAvis): Promise<boolean> {
+export async function garderLecture(o: Pick<OptionsAssistant, 'base'>, id: string, lecture: LectureAvis): Promise<boolean> {
   for (let essai = 0; essai < 3; essai++) {
     const [lu] = await o.base.lireVersions<Reservation>('reservations', [id]);
     if (!lu) return false;
@@ -103,6 +104,82 @@ export function freinDemandes(max = DEMANDES_PAR_QUART_D_HEURE, fenetreMs = FENE
   };
 }
 
+/** Une réponse rédigée (IA ou texte simple), avec ce qu'il s'est passé. */
+export interface ReponseRedigee extends ReponseAvisPreparee {
+  /** Un appel à l'IA a été compté. */
+  appelIA: boolean;
+  /** La proposition de l'IA a été écartée (contact, code, message privé, promesse…) : texte simple. */
+  ecartee: boolean;
+  /** Ce que contenait la proposition écartée. */
+  problemes: string[];
+  /** L'IA n'a pas pu rédiger (service indisponible, réponse illisible) : texte simple. */
+  panne: boolean;
+}
+
+/**
+ * Rédige la réponse publique à un avis déjà lu (« Proposer une réponse », et
+ * la publication automatique des réponses, avis-auto-passage.ts) : l'IA ne
+ * voit que la partie publique, le prénom, la note, la plateforme et les
+ * thèmes repérés ; sa réponse est contrôlée (problemesReponse) et remplacée
+ * par le texte simple au moindre doute. Sans IA, au plafond du mois ou
+ * illisible : le texte simple. `repliSurPanne` (passage planifié) : une IA en
+ * panne rend aussi le texte simple, au lieu de lever l'erreur ; `delaiMs` :
+ * l'appel est borné, sans nouvel essai.
+ */
+export async function redigerReponseAvis(
+  o: OptionsAssistant,
+  r: Reservation,
+  avis: AvisLu,
+  x: { logement?: Logement; reglagesLus: readonly { id: string }[]; delaiMs?: number; repliSurPanne?: boolean },
+): Promise<ReponseRedigee> {
+  const maintenant = (o.maintenant ?? (() => new Date()))();
+  const signature = signatureSure(reglagesAgent({ reglages: x.reglagesLus as ReglagesAgent[] }, o.nomEspace).signature);
+  const prenom = prenomPublic(r.voyageur?.nom);
+  const simple = reponseModele(avis, { prenom, signature });
+  const ctx: ContexteControle = { nomVoyageur: r.voyageur?.nom, textePrive: avis.textePrive, ...(x.logement ? { logement: x.logement } : {}) };
+  const repli = (note: string, extra: Partial<ReponseRedigee> = {}): ReponseRedigee => ({ texte: simple, source: 'modele', note, appelIA: false, ecartee: false, problemes: [], panne: false, ...extra });
+  const enPanne = 'Votre agent ne répond pas pour l’instant : voici un texte simple.';
+
+  if (!o.ia) return repli('Votre agent n’est pas encore activé sur ce site : voici un texte simple.');
+  try {
+    await compterAppelIA(o);
+  } catch (e) {
+    if (e instanceof ErreurAssistant && e.code === 'plafond') return repli(`${e.message.replace(/ : écrivez votre réponse vous-même\.?$/, '')} : voici un texte simple.`);
+    if (x.repliSurPanne) return repli(enPanne, { panne: true });
+    throw e;
+  }
+  const creer = o.ia.messages.create as (p: Parameters<ClientIA['messages']['create']>[0], y?: { timeout?: number; maxRetries?: number }) => ReturnType<ClientIA['messages']['create']>;
+  const demande: Parameters<ClientIA['messages']['create']>[0] = {
+    model: o.modele ?? MODELE_AGENT_DEFAUT,
+    max_tokens: 700,
+    system: consignesReponseAvis(o.nomEspace === undefined ? 'Label Maison' : o.nomEspace.trim() || 'la conciergerie'),
+    messages: [{ role: 'user', content: contexteReponseAvis(avis, prenom) }],
+    output_config: { format: { type: 'json_schema', schema: SCHEMA_REPONSE_AVIS as unknown as Record<string, unknown> } },
+  };
+  let m: Awaited<ReturnType<ClientIA['messages']['create']>>;
+  try {
+    m = x.delaiMs === undefined ? await creer.call(o.ia.messages, demande) : await creer.call(o.ia.messages, demande, { timeout: Math.max(5_000, x.delaiMs), maxRetries: 0 });
+  } catch (e) {
+    if (x.repliSurPanne) return repli(enPanne, { appelIA: true, panne: true });
+    throw e;
+  }
+  const lu = lireReponseIA(m);
+  if (!lu) return repli('Votre agent n’a pas de réponse sûre : voici un texte simple.', { appelIA: true, panne: true });
+
+  const lecture = lectureDepuisIA(lu, avis, horodatageParis(maintenant));
+  const texte = signer(lu.texte, signature);
+  const problemes = problemesReponse(texte, ctx);
+  if (problemes.length) {
+    return repli(`La proposition de votre agent contenait ${problemes[0]} : elle a été écartée, voici un texte simple.`, {
+      appelIA: true,
+      ecartee: true,
+      problemes,
+      ...(lecture ? { lecture } : {}),
+    });
+  }
+  return { texte, source: 'ia', appelIA: true, ecartee: false, problemes: [], panne: false, ...(lecture ? { lecture } : {}) };
+}
+
 /**
  * Réponse proposée pour l'avis du séjour `reservationId`. Lève
  * ErreurAssistant (message prêt à afficher) si le membre a fait trop de
@@ -123,42 +200,16 @@ export async function preparerReponseAvis(o: OptionsAssistant, reservationId: st
     o.base.lire<ReglagesAgent>('reglages', ['agent']),
   ]);
   const maintenant = (o.maintenant ?? (() => new Date()))();
-  const signature = signatureSure(reglagesAgent({ reglages: reglagesLus }, o.nomEspace).signature);
-  const prenom = prenomPublic(r.voyageur?.nom);
-  const simple = reponseModele(avis, { prenom, signature });
-  const ctx: ContexteControle = { nomVoyageur: r.voyageur?.nom, textePrive: avis.textePrive, ...(logements[0] ? { logement: logements[0] } : {}) };
-  const repli = (note: string): ReponseAvisPreparee => ({ texte: simple, source: 'modele', note });
-
-  if (!o.ia) return repli('Votre agent n’est pas encore activé sur ce site : voici un texte simple.');
-  try {
-    await compterAppelIA(o);
-  } catch (e) {
-    if (e instanceof ErreurAssistant && e.code === 'plafond') return repli(`${e.message.replace(/ : écrivez votre réponse vous-même\.?$/, '')} : voici un texte simple.`);
-    throw e;
+  const red = await redigerReponseAvis(o, r, avis, { ...(logements[0] ? { logement: logements[0] } : {}), reglagesLus });
+  if (red.lecture) await garderLecture(o, r.id, red.lecture).catch(() => false);
+  // Journal quand l'IA a rédigé une réponse lisible (gardée ou écartée).
+  if (red.appelIA && !red.panne) {
+    await journal(
+      o,
+      r,
+      `Réponse à l’avis de ${avis.auteur} préparée pour ${o.par}${red.ecartee ? ` (proposition de l’IA écartée : ${red.problemes.join(', ')})` : ''}. Rien n’est publié par l’ERP.`,
+      maintenant,
+    );
   }
-  const m = await o.ia.messages.create({
-    model: o.modele ?? MODELE_AGENT_DEFAUT,
-    max_tokens: 700,
-    system: consignesReponseAvis(o.nomEspace === undefined ? 'Label Maison' : o.nomEspace.trim() || 'la conciergerie'),
-    messages: [{ role: 'user', content: contexteReponseAvis(avis, prenom) }],
-    output_config: { format: { type: 'json_schema', schema: SCHEMA_REPONSE_AVIS as unknown as Record<string, unknown> } },
-  });
-  const lu = lireReponseIA(m);
-  if (!lu) return repli('Votre agent n’a pas de réponse sûre : voici un texte simple.');
-
-  const lecture = lectureDepuisIA(lu, avis, horodatageParis(maintenant));
-  if (lecture) await garderLecture(o, r.id, lecture).catch(() => false);
-
-  const texte = signer(lu.texte, signature);
-  const problemes = problemesReponse(texte, ctx);
-  const resultat: ReponseAvisPreparee = problemes.length
-    ? { ...repli(`La proposition de votre agent contenait ${problemes[0]} : elle a été écartée, voici un texte simple.`) }
-    : { texte, source: 'ia' };
-  await journal(
-    o,
-    r,
-    `Réponse à l’avis de ${avis.auteur} préparée pour ${o.par}${problemes.length ? ` (proposition de l’IA écartée : ${problemes.join(', ')})` : ''}. Rien n’est publié par l’ERP.`,
-    maintenant,
-  );
-  return { ...resultat, ...(lecture ? { lecture } : {}) };
+  return { texte: red.texte, source: red.source, ...(red.note ? { note: red.note } : {}), ...(red.lecture ? { lecture: red.lecture } : {}) };
 }

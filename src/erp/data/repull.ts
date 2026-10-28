@@ -310,10 +310,16 @@ export interface RepullReview {
   guestName?: string;
   reviewerRole?: 'guest' | 'host' | string;
   rating?: number | null;
-  publicReview?: string;
-  privateFeedback?: string;
-  submittedAt?: string;
-  updatedAt?: string;
+  publicReview?: string | null;
+  privateFeedback?: string | null;
+  submittedAt?: string | null;
+  updatedAt?: string | null;
+  /** Fin du délai pour l'avis de l'hôte sur le voyageur (Airbnb : 14 jours après le départ). */
+  expiresAt?: string | null;
+  /** Réponse publique de l'hôte, quand il y en a une (ReviewResponse). */
+  response?: { body?: string | null; submittedAt?: string | null } | null;
+  /** Langue de l'avis (ISO 639-1). */
+  language?: string | null;
 }
 
 /* ------------------------------------------------------------------ outils */

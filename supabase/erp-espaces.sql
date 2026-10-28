@@ -1149,7 +1149,13 @@ grant execute on function erp.purger_checkins_espaces_fermes() to authenticated;
 --     numéro), réglages des prix (conseilsPrix/reglages), modèles des
 --     messages automatiques, identité de la société et numérotation des
 --     factures, suppléments proposés aux voyageurs (reglages :
---     messages-programmes, societe, numerotation-factures, supplements).
+--     messages-programmes, societe, numerotation-factures, supplements),
+--     dont la publication automatique des avis (reglages/messages-programmes,
+--     avisAuto) ;
+--   - les réponses publiques aux avis des voyageurs (reponsesAvis, octobre
+--     2026) : préparées et publiées par le serveur, « Ne pas répondre » par
+--     le gérant. Un compte « opérations » ne peut ni en glisser une ni en
+--     effacer une.
 -- Sans cette règle, un compte « opérations » pourrait, par l'API, réécrire un
 -- message automatique (il partirait à tous les voyageurs), glisser un envoi
 -- « en cours » avec le texte de son choix, poser un verrou sans fin, remettre
@@ -1159,7 +1165,7 @@ grant execute on function erp.purger_checkins_espaces_fermes() to authenticated;
 create or replace function erp.ecriture_gerant_seulement(p_collection text, p_id text) returns boolean
 language sql immutable set search_path = ''
 as $$
-  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe')
+  select p_collection in ('envoisProgrammes', 'programmes', 'agent', 'repull', 'factures', 'passagesFacturesMensuelles', 'annoncesEquipe', 'reponsesAvis')
       or (p_collection = 'conseilsPrix' and p_id in ('reglages', 'etat'))
       or (p_collection = 'reglages' and p_id in ('messages-programmes', 'societe', 'numerotation-factures', 'alerte-controle-agent', 'supplements'))
 $$;
@@ -1988,6 +1994,12 @@ begin
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'factures', 'recette-intrus', '{"id": "recette-intrus", "statut": "brouillon"}');
       resultat := 'un compte « opérations » écrit une facture'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees)
+        values (lm, 'reponsesAvis', 'recette-intrus', '{"id": "recette-intrus", "publication": {"statut": "a_valider", "texte": "Recette"}}');
+      resultat := 'un compte « opérations » glisse une réponse d''avis à publier'; raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
     update erp.enregistrements set donnees = donnees || '{"recette": 1}'
