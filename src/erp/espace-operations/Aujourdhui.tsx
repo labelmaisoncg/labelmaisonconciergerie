@@ -2,6 +2,8 @@ import { LogIn, LogOut, ShieldCheck, UserX, Wrench } from 'lucide-react';
 import { jourMois } from '../data/format';
 import type { ElementProgrammeOps } from '../data/types-operations';
 import { Button } from '../ui';
+import { CarteLogements } from '../carte/CarteLogements';
+import { pointsDeLaVue } from '../carte/points';
 import { LigneControle } from './Controles';
 import { LigneIncident } from './Incidents';
 import { LienAction, Ligne, Liste, Rubrique, TitreEspace, court, useOps } from './commun';
@@ -10,8 +12,9 @@ const MAX = 5;
 
 /**
  * Accueil de l'espace (pensé pour le téléphone) : les urgences d'abord, puis
- * les incidents ouverts, les contrôles en retard, le programme du jour sur
- * ses logements et, pour le responsable de pôle, qui remplace qui.
+ * la carte de ses logements (réservé, libre, ménage, problème), les
+ * incidents ouverts, les contrôles en retard, le programme du jour sur ses
+ * logements et, pour le responsable de pôle, qui remplace qui.
  */
 export function Aujourdhui() {
   const { vue, pole, naviguer } = useOps();
@@ -21,6 +24,8 @@ export function Aujourdhui() {
   const enRetard = vue.controles.filter((c) => c.enRetard);
   const calme = !urgences.length && !normaux.length && !enRetard.length;
   const date = new Date(`${vue.aujourdhui}T12:00:00`).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+  // Carte du jour : position et état calculés par le serveur, pour ses logements seulement.
+  const points = pointsDeLaVue(vue.logements);
 
   return (
     <>
@@ -48,6 +53,20 @@ export function Aujourdhui() {
               <LigneIncident key={i.id} incident={i} />
             ))}
           </Liste>
+        </Rubrique>
+      )}
+
+      {points.length > 0 && (
+        <Rubrique titre={points.length > 1 ? 'Vos logements aujourd’hui' : 'Votre logement aujourd’hui'}>
+          <CarteLogements
+            points={points}
+            aujourdhui={vue.aujourdhui}
+            action={(p) =>
+              p.problemes[0]?.id
+                ? { libelle: 'Voir l’incident', onClick: () => naviguer({ incident: p.problemes[0].id }) }
+                : { libelle: 'Ouvrir le logement', onClick: () => naviguer({ logement: p.id }) }
+            }
+          />
         </Rubrique>
       )}
 

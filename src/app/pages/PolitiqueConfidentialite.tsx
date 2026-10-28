@@ -12,6 +12,8 @@ import { ACTIVITE, Bloc, EDITEUR, GOLD, GOLD_DARK, INK, INK_2, IVORY, LINE, Lien
 //  - connecteur Claude du CRM : api/crm-mcp/index.ts, api/_oauth.ts, src/erp/data/crm-mcp.ts
 //  - traceurs : SplashIntro, CercleAnnounce, Studio (stockage local),
 //    middleware.ts (cookie de session /erp et /linge), src/styles/fonts.css.
+//  - cartes des logements : src/erp/carte/FondCarte.tsx (fond OpenFreeMap),
+//    src/erp/data/geocodage.ts (adresse envoyée à l'IGN, outil de l'équipe seulement).
 // ⚠ Studio.tsx peut charger Microsoft Clarity si VITE_CLARITY_ID est défini :
 // l'activer impose un bandeau de consentement ET une mise à jour de la
 // section « Cookies » ci-dessous.
@@ -385,6 +387,15 @@ export function PolitiqueConfidentialite() {
           <ul className="list-disc pl-5 grid gap-1.5">
             <li>les polices de caractères, chargées depuis Google Fonts ;</li>
             <li>la carte de la page d’accueil, fournie par OpenStreetMap ;</li>
+            <li>
+              les cartes des logements de l’outil de gestion, de l’espace propriétaire et de l’espace
+              opérations, dont le fond est fourni par OpenFreeMap (données OpenStreetMap) ;
+            </li>
+            <li>
+              dans l’outil de gestion de l’équipe seulement, l’adresse d’un logement géré (rue, code postal,
+              commune, sans aucun nom) envoyée au service public de géolocalisation de l’IGN
+              (Géoplateforme), pour placer ce logement sur la carte ;
+            </li>
             <li>
               les vidéos Instagram, TikTok et YouTube de la page d’accueil, chargées seulement si vous
               cliquez pour les lire : la plateforme concernée peut alors déposer ses propres cookies, selon

@@ -3,6 +3,8 @@ import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/forma
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
 import { Badge, Card } from '../ui';
+import { CarteLogements } from '../carte/CarteLogements';
+import { pointsDeLaVue } from '../carte/points';
 import { CANAL, LienAction, PhotoLogement, Rubrique, TitreEspace, sansLogement, titreMois, type LienDocument, type OngletEspace } from './commun';
 
 /** Net du mois : le chiffre que le propriétaire vient chercher. */
@@ -56,6 +58,8 @@ export function Accueil({
   const publie = !vue.moisPrecedent.provisoire;
   const aRegler = vue.factures.filter((f) => f.statut !== 'payee');
   const c = vue.contacts;
+  // Carte du jour : position et état calculés par le serveur, pour ses logements seulement.
+  const points = pointsDeLaVue(vue.logements);
   return (
     <>
       <TitreEspace titre={`Bonjour, ${vue.proprietaire.nom}`} description={`L’activité de vos logements, mise à jour chaque jour par ${vue.conciergerie.nom}.`} />
@@ -88,6 +92,12 @@ export function Accueil({
           </span>
           <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
         </button>
+      )}
+
+      {points.length > 0 && (
+        <Rubrique titre="Aujourd’hui">
+          <CarteLogements points={points} aujourdhui={vue.aujourdhui} action={(p) => ({ libelle: 'Ouvrir le logement', onClick: () => onLogement(p.id) })} />
+        </Rubrique>
       )}
 
       <Rubrique titre={vue.logements.length > 1 ? 'Vos logements' : 'Votre logement'}>

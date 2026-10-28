@@ -17,7 +17,8 @@ import { espaceDe } from '../src/erp/data/acces-externe.js';
 import { CONTENU_ESPACE, adresseWeb, donneesDuProprietaire, photoCouverture, proprietaireAutorise, type EntreesProprietaire } from '../src/erp/data/proprietaire.js';
 import { COLLECTION_RELANCES, facturePartagee } from '../src/erp/data/relances.js';
 import { ID_REGLAGE_SOCIETE } from '../src/erp/data/identite-conciergerie.js';
-import type { Facture, Logement, Mandat, Proprietaire, Reglage, Reservation } from '../src/erp/data/types';
+import type { Facture, Incident, Logement, Mandat, Mission, Proprietaire, Reglage, Reservation } from '../src/erp/data/types';
+import type { ControleQualite } from '../src/erp/data/types-operations';
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire, RelancePaiement } from '../src/erp/data/types-proprietaire';
 import { configuration, signeurFichiersErp, stockageFerme } from './_erp-repull.js';
 import { GENRES, envoyerEmailEspace, secretAcces } from './_acces-externe.js';
@@ -64,15 +65,16 @@ export async function lireProprietaire(b: BaseErp, id: string): Promise<Propriet
  * Données d'un propriétaire, dans la base de son espace, filtrées dès la
  * lecture : ses logements, leurs réservations et mandats (logement changé
  * de propriétaire : ses périodes seulement, donneesDuProprietaire), ses
- * documents, bilans, factures partagées et leurs relances, et l'identité
- * légale de son espace (ligne imprimée en tête des bilans). Rien d'autre ne
- * sort d'ici.
+ * documents, bilans, factures partagées et leurs relances, l'identité
+ * légale de son espace (ligne imprimée en tête des bilans), et pour la carte
+ * de l'accueil les ménages, incidents et contrôles de ses logements actuels
+ * (réduits à l'état du jour par vueProprietaire). Rien d'autre ne sort d'ici.
  */
 export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string): Promise<EntreesProprietaire> {
   if (!proprietaireAutorise(proprietaireId)) {
     return { proprietaires: [], logements: [], reservations: [], mandats: [], documentsProprietaire: [], bilansProprietaire: [], factures: [], relancesPaiement: [] };
   }
-  const [proprietaires, logements, reservations, mandats, documents, bilans, factures, relances, reglages] = await Promise.all([
+  const [proprietaires, logements, reservations, mandats, documents, bilans, factures, relances, reglages, missions, incidents, controles] = await Promise.all([
     b.lire<Proprietaire>('proprietaires', [proprietaireId]),
     b.lire<Logement>('logements'),
     b.lire<Reservation>('reservations'),
@@ -82,8 +84,15 @@ export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string):
     b.lire<Facture>('factures'),
     b.lire<RelancePaiement>(COLLECTION_RELANCES).catch(() => []),
     b.lire<Reglage>('reglages', [ID_REGLAGE_SOCIETE]).catch(() => []),
+    // Carte de l'accueil : sans ces collections, l'état du jour se lit sur les seuls séjours.
+    b.lire<Mission>('missions').catch(() => []),
+    b.lire<Incident>('incidents').catch(() => []),
+    b.lire<ControleQualite>('controles').catch(() => []),
   ]);
   const siens = donneesDuProprietaire({ logements, reservations, mandats }, proprietaireId);
+  // Ses logements actuels seulement (pas ceux qu'il a cédés) : ménages, incidents et contrôles du jour.
+  const actuels = new Set(siens.logements.filter((l) => l.proprietaireId === proprietaireId).map((l) => l.id));
+  const deSesLogements = <T extends { logementId?: string }>(x: readonly T[]): T[] => x.filter((y) => !!y && actuels.has(String(y.logementId)));
   return {
     proprietaires: proprietaires.filter((p) => p?.id === proprietaireId),
     logements: siens.logements,
@@ -94,6 +103,9 @@ export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string):
     factures: factures.filter((f) => facturePartagee(f, proprietaireId)),
     relancesPaiement: relances.filter((r) => r?.proprietaireId === proprietaireId && r.statut === 'envoyee'),
     reglages: reglages.filter((r) => r?.id === ID_REGLAGE_SOCIETE),
+    missions: deSesLogements(missions),
+    incidents: deSesLogements(incidents),
+    controles: deSesLogements(controles),
   };
 }
 

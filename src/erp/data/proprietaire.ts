@@ -23,12 +23,14 @@
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
+import { TITRES_PROPRIETAIRE, etatDuJour, jourCarte, type VarianteCarte } from './carte.js';
 import { ID_LABEL_MAISON, espaceOuvert, estLabelMaison } from './espaces.js';
 import { identiteComplete, identiteConciergerie, ligneLegale } from './identite-conciergerie.js';
 import { facturePartagee, facturesVue } from './relances.js';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull.js';
 import { consoliderSejours, prolongations, type SejourConsolide } from './sejours-consolides.js';
-import type { CanalReservation, DateISO, Facture, Id, Logement, Mandat, Proprietaire, Reglage, Reservation } from './types';
+import type { CanalReservation, DateISO, Facture, Id, Incident, Logement, Mandat, Mission, Proprietaire, Reglage, Reservation } from './types';
+import type { ControleQualite } from './types-operations';
 import type {
   ArriveeVue,
   AvisVue,
@@ -809,6 +811,13 @@ export interface EntreesProprietaire {
   relancesPaiement?: readonly RelancePaiement[];
   /** Réglages de l'espace : seule l'identité de la société ('societe') sert ici (ligne légale des bilans imprimés). */
   reglages?: readonly Reglage[];
+  /**
+   * Carte de l'accueil : ménages, incidents et contrôles de ses logements,
+   * pour l'état du jour seulement (rien d'autre n'en sort : data/carte.ts).
+   */
+  missions?: readonly Mission[];
+  incidents?: readonly Incident[];
+  controles?: readonly ControleQualite[];
 }
 
 export interface OptionsVue {
@@ -876,9 +885,28 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     .slice(0, NB_PROCHAINES_ARRIVEES)
     .map((r) => ({ logementId: r.logementId, ...sejourVu(r) }));
 
+  // Carte : ce qui se passe aujourd'hui dans ses logements gérés. Voyageur seulement pour ses séjours ;
+  // ménage sans le nom de qui le fait ; incident du logement (pas un différend avec un voyageur)
+  // par sa nature, jamais sa description.
+  const geresIds = new Set(geres.map((l) => l.id));
+  const siens = new Set(actifs.map((r) => r.id));
+  const deSesLogements = <T extends { logementId?: Id }>(x: readonly T[] | undefined): T[] => (x ?? []).filter((y) => !!y && geresIds.has(y.logementId as Id));
+  const entreesCarte = {
+    reservations: sejoursDe(e.reservations, geresIds),
+    missions: deSesLogements(e.missions),
+    incidents: deSesLogements(e.incidents).filter((i) => i.categorie !== 'voyageur'),
+    controles: deSesLogements(e.controles),
+  };
+  const variante: VarianteCarte = {
+    voyageur: (r) => (siens.has(r.id) ? prenomInitiale(r.voyageur?.nom) : undefined),
+    probleme: (i) => TITRES_PROPRIETAIRE[i.categorie] ?? TITRES_PROPRIETAIRE.autre,
+    lienProbleme: false,
+  };
+
   const logements: LogementVue[] = geres.map((l) => {
     const photo = o.photo ? o.photo(l) : photoCouverture(l);
-    return { id: l.id, nom: l.nom, ville: l.ville, capacite: entier(l.capacite), chambres: entier(l.chambres), ...(photo ? { photo } : {}) };
+    const carte = jourCarte(l, etatDuJour(l.id, entreesCarte, aujourdhui), variante);
+    return { id: l.id, nom: l.nom, ville: l.ville, capacite: entier(l.capacite), chambres: entier(l.chambres), ...(photo ? { photo } : {}), carte };
   });
 
   // Le PDF d'une facture ne se voit que tant que la facture est partagée.

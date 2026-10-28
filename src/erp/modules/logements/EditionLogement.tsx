@@ -7,6 +7,8 @@ import { LIBELLES } from '../../data/libelles';
 import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
 import { AUJOURDHUI } from '../../data/format';
 import { changerProprietaire } from '../../data/proprietaire';
+import { positionAJour, texteAdresse } from '../../data/carte';
+import { placerLogement } from '../../carte/placer';
 import type { Dpe, Logement, Serrure, StatutLogement, TypeLit, TypeLogement } from '../../data/types';
 
 interface Props {
@@ -70,7 +72,7 @@ function initial(l?: Logement): Saisie {
 const entier = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : NaN);
 
 export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
-  const { proprietaires, upsert } = useErp();
+  const { proprietaires, upsert, mettreAJour, lectureSeule, utilisateur } = useErp();
   const [nouveauProprietaire, setNouveauProprietaire] = useState(false);
   const [s, setS] = useState<Saisie>(() => initial(logement));
   const [erreurs, setErreurs] = useState<Partial<Record<keyof Saisie, string>>>({});
@@ -148,10 +150,17 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
       serrure: s.serrure,
       statut: logement ? s.statut : base.statut,
     };
+    // Carte de l'accueil : une adresse changée retire l'ancienne position (elle ne vaut plus) ;
+    // le logement est ensuite placé d'après sa nouvelle adresse (ou pour la première fois).
+    const adresseChangee = !logement || texteAdresse(suivant) !== texteAdresse(logement);
+    const { position: _ancienne, ...sansPosition } = suivant;
+    const aEnregistrer: Logement = adresseChangee ? sansPosition : suivant;
     // Autre propriétaire : l'ancien garde ses chiffres jusqu'à hier, le nouveau commence aujourd'hui.
-    upsert('logements', changerProprietaire(suivant, s.proprietaireId, AUJOURDHUI));
+    upsert('logements', changerProprietaire(aEnregistrer, s.proprietaireId, AUJOURDHUI));
     onFermer();
     if (!logement) onCree?.(suivant.id);
+    // Géocodage : gérant seulement (data/geocodage.ts) ; un compte « opérations » laisse le logement « à placer ».
+    if (utilisateur.role === 'gerant' && !lectureSeule && aEnregistrer.statut !== 'sorti' && !positionAJour(aEnregistrer)) void placerLogement(aEnregistrer, mettreAJour);
   };
 
   return (
