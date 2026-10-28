@@ -4,7 +4,7 @@ import { Ban, CheckCircle2, Play, RotateCcw, SearchX, Send, UserPlus, XCircle } 
 import { dateHeure, dateJour, euros } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { useErp } from '../../data/store';
-import { missionValidable, prestataireConforme } from '../../data/selectors';
+import { missionPrestataire, missionValidable, prestataireConforme } from '../../data/selectors';
 import type { StatutMission } from '../../data/types';
 import { Alert, Badge, Button, Card, CardHeader, Checklist, EmptyState, MenuActions, PageHeader, Repli, StatusBadge, Timeline, type EvenementFrise } from '../../ui';
 import { AttribuerModal } from './_composants/AttribuerModal';
@@ -59,7 +59,8 @@ export function Detail() {
         sousTitre={<span className="inline-block first-letter:uppercase">{`${dateJour(m.date)}, de ${m.heureDebut} à ${m.heureFinMax} au plus tard`}</span>}
         actions={
           <>
-            {m.statut === 'a_attribuer' && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier</Button>}
+            {/* Un ménage interne (prévu par Claude) n'est jamais confié à un prestataire. */}
+            {m.statut === 'a_attribuer' && missionPrestataire(m) && <Button variant="primary" icone={<UserPlus />} onClick={() => setAttribuer(true)}>Confier</Button>}
             {m.statut === 'attribuee' && <Button variant="primary" icone={<Play />} onClick={() => statut('en_cours', 'Mission démarrée.')}>Démarrer</Button>}
             {m.statut === 'en_cours' && <Button variant="primary" icone={<Send />} onClick={() => statut('a_valider', 'Mission terminée, en attente de validation.')}>Terminer</Button>}
             {m.statut === 'a_valider' && (

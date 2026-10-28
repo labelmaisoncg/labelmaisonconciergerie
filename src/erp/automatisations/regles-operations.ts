@@ -3,7 +3,7 @@
  */
 import { checklistMenageVierge, SEUIL_NOTE_CONTROLE } from '../data/constantes';
 import { ajouterJours, jourMois } from '../data/format';
-import { logementById, prestataireConforme, reservationById } from '../data/selectors';
+import { logementById, missionPrestataire, prestataireConforme, reservationById } from '../data/selectors';
 import type { Logement, Mission, Prestataire } from '../data/types';
 import { collecteur, hachage, heureDe } from './outils';
 import type { Regle } from './types';
@@ -35,7 +35,8 @@ export const attribuerAutomatiquement: Regle = {
     // Copie de travail : les attributions faites dans ce passage comptent pour les suivantes.
     const planning: Mission[] = d.missions.filter((m) => m.prestataireId && !INACTIVES.includes(m.statut));
     const aAttribuer = d.missions
-      .filter((m) => m.type === 'menage' && m.statut === 'a_attribuer' && m.date >= ctx.date)
+      // Un ménage interne (prévu par Claude) n'est jamais confié à un prestataire.
+      .filter((m) => m.type === 'menage' && m.statut === 'a_attribuer' && m.date >= ctx.date && missionPrestataire(m))
       .sort((a, b) => a.date.localeCompare(b.date) || a.heureDebut.localeCompare(b.heureDebut));
     for (const m of aAttribuer) {
       const l = logementById(d, m.logementId);
@@ -74,7 +75,7 @@ export const controleQualite: Regle = {
     const c = collecteur(this.cle, ctx);
     const debut = ajouterJours(ctx.date, -7);
     for (const m of d.missions) {
-      if (m.type !== 'menage' || INACTIVES.includes(m.statut) || m.date < debut) continue;
+      if (m.type !== 'menage' || !missionPrestataire(m) || INACTIVES.includes(m.statut) || m.date < debut) continue;
       const r = reservationById(d, m.reservationId);
       const noteBasse = r?.statut === 'terminee' && r.noteVoyageur !== undefined && r.noteVoyageur < SEUIL_NOTE_CONTROLE;
       const tire = hachage(m.id) % 10 === 0;
@@ -128,7 +129,7 @@ export const preuvesManquantes: Regle = {
     const debut = ajouterJours(ctx.date, -30);
     const heure = heureDe(ctx.maintenant);
     for (const m of d.missions) {
-      if (m.type !== 'menage' || m.date < debut) continue;
+      if (m.type !== 'menage' || !missionPrestataire(m) || m.date < debut) continue;
       if (m.statut !== 'attribuee' && m.statut !== 'en_cours' && m.statut !== 'a_valider') continue;
       const passee = m.date < ctx.date || (m.date === ctx.date && heure >= m.heureFinMax);
       if (!passee) continue;

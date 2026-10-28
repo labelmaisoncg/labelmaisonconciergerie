@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { AlarmClock, CalendarCheck, ClipboardCheck, Plug, Sparkles } from 'lucide-react';
 import { AUJOURDHUI, nombre } from '../../data/format';
 import { useErp } from '../../data/store';
-import { missionsAAttribuerSous, missionsAControler, missionsDuJour } from '../../data/selectors';
+import { missionPrestataire, missionsAAttribuerSous, missionsAControler, missionsDuJour } from '../../data/selectors';
 import type { Mission } from '../../data/types';
 import { ButtonLink, EmptyState, PageHeader, Stat, Tabs } from '../../ui';
 import { ATraiter } from './_composants/ATraiter';
@@ -28,7 +28,7 @@ export function Liste() {
   const duJour = missionsDuJour(d.missions, AUJOURDHUI).length;
   const urgentes = missionsAAttribuerSous(d.missions, 48).length;
   const nbAValider = d.missions.filter((m) => m.statut === 'a_valider').length;
-  const nbAAttribuer = d.missions.filter((m) => m.statut === 'a_attribuer').length;
+  const nbAAttribuer = d.missions.filter((m) => m.statut === 'a_attribuer' && missionPrestataire(m)).length;
   const nbControles = missionsAControler(d.missions, d.reservations).filter((m) => m.noteControle === undefined).length;
 
   const valider = (m: Mission) => traiter(d.validerMission(m.id), 'Ménage vérifié : il sera payé avec le prochain versement du prestataire.', 'Ce ménage ne peut pas encore être vérifié');

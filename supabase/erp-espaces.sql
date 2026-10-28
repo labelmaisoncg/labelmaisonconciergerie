@@ -324,6 +324,11 @@ create or replace function erp.archiver_version() returns trigger
 language plpgsql security definer set search_path = ''
 as $$
 begin
+  -- Actions de l'IA : pas d'ancienne version (elles sont bornées à 90 jours et
+  -- gardent les anciennes valeurs d'une fiche du CRM).
+  if coalesce(old.collection, '') = 'actionsAgent' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
   if tg_op = 'DELETE' then
     insert into erp.historique (espace, collection, id, operation, donnees, maj_par)
     values (old.espace, old.collection, old.id, 'suppression', old.donnees, old.maj_par);
@@ -1042,6 +1047,27 @@ create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
          or espace = any ((select erp.espaces_gerant())::uuid[]))
   with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances')
               or espace = any ((select erp.espaces_gerant())::uuid[]));
+-- Actions de l'IA (copilote, collection actionsAgent) : ce que Claude et
+-- l'agent de la messagerie ont fait, avec de quoi l'annuler (valeurs d'avant
+-- d'une fiche du CRM). Écrites par le serveur (compte serveur, ou compte
+-- d'équipe de Label Maison) ; lues et annulées par les gérants de l'espace
+-- seulement, comme les accès extérieurs. Un compte « opérations » ou
+-- « lecture » n'y voit rien et n'y écrit rien.
+drop policy if exists "actions ia reservees aux gerants" on erp.enregistrements;
+create policy "actions ia reservees aux gerants" on erp.enregistrements
+  as restrictive for all to authenticated
+  using (collection <> 'actionsAgent' or espace = any ((select erp.espaces_gerant())::uuid[]))
+  with check (collection <> 'actionsAgent' or espace = any ((select erp.espaces_gerant())::uuid[]));
+-- Témoin lu par le serveur et l'écran avant d'écrire ou d'annuler une action de
+-- l'IA : tant que ce fichier n'est pas relancé, la fonction n'existe pas et rien
+-- n'est tracé (la collection serait lisible et modifiable par tous les membres).
+create or replace function erp.actions_ia_protegees() returns boolean
+language sql stable security definer set search_path = ''
+as $$ select exists (select 1 from pg_catalog.pg_policies
+                      where schemaname = 'erp' and tablename = 'enregistrements'
+                        and policyname = 'actions ia reservees aux gerants') $$;
+revoke all on function erp.actions_ia_protegees() from public, anon;
+grant execute on function erp.actions_ia_protegees() to authenticated;
 -- Écritures réservées aux gérants de l'espace (et au compte serveur, gérant de
 -- l'espace nommé) ; la lecture ne change pas. Ce sont :
 --   - ce que seul le serveur écrit : envois des messages automatiques et leur
@@ -1325,6 +1351,35 @@ drop trigger if exists garder_espace_enregistrement on erp.enregistrements;
 create trigger garder_espace_enregistrement before update on erp.enregistrements
   for each row execute function erp.garder_espace_enregistrement();
 
+-- Actions de l'IA (actionsAgent) : bornées. À chaque action ajoutée, celles
+-- de l'espace écrites il y a plus de 90 jours, et au-delà des plus récentes
+-- de chaque source (5 000 de Claude, 500 de l'agent), sont retirées : les décisions
+-- de l'agent ne poussent jamais dehors les actions de Claude, annulables 90
+-- jours. Pas d'ancienne version gardée (erp.archiver_version). Avec les
+-- droits de celui qui écrit : il ne retire que ce qu'il pourrait retirer
+-- lui-même (gérant de l'espace).
+create or replace function erp.borner_actions_ia() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  delete from erp.enregistrements e
+   where e.espace = new.espace and e.collection = 'actionsAgent' and e.id <> new.id
+     and (e.maj_le < now() - interval '90 days'
+          or e.id in (select x.id from (
+                        select y.id, coalesce(y.donnees ->> 'source', '') as source, row_number() over (
+                                 partition by coalesce(y.donnees ->> 'source', '')
+                                 order by coalesce(y.donnees ->> 'le', '') desc, y.id desc) as rang
+                          from erp.enregistrements y
+                         where y.espace = new.espace and y.collection = 'actionsAgent') x
+                       where x.rang > case when x.source = 'claude' then 5000 else 500 end));
+  return null;
+end;
+$$;
+revoke all on function erp.borner_actions_ia() from public, anon;
+drop trigger if exists borner_actions_ia on erp.enregistrements;
+create trigger borner_actions_ia after insert on erp.enregistrements
+  for each row when (new.collection = 'actionsAgent') execute function erp.borner_actions_ia();
+
 -- Deux factures d'un même espace ne partagent jamais un numéro (index unique
 -- partiel). Créé seulement si les données le permettent : sinon un
 -- avertissement liste les numéros en double (colonne numeros_factures du
@@ -1419,6 +1474,11 @@ create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
   using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs')
          or espace = any ((select erp.espaces_gerant())::uuid[]));
+-- Anciennes versions des actions de l'IA : gérants de l'espace seulement, comme elles.
+drop policy if exists "versions des actions ia reservees aux gerants" on erp.historique;
+create policy "versions des actions ia reservees aux gerants" on erp.historique
+  as restrictive for select to authenticated
+  using (collection <> 'actionsAgent' or espace = any ((select erp.espaces_gerant())::uuid[]));
 
 -- ------------------------------------------------------------------ droits
 
@@ -1586,6 +1646,7 @@ begin
     insert into erp.enregistrements (espace, collection, id, donnees) values
       (lm, 'recette', 'ligne-lm', '{"id": "ligne-lm"}'),
       (lm, 'accesProprietaires', 'recette', '{"id": "recette"}'),
+      (lm, 'actionsAgent', 'recette-action', '{"id": "recette-action", "etat": "faite"}'),
       (essai, 'recette', 'ligne-autre', '{"id": "ligne-autre"}'),
       (essai, 'accesProprietaires', 'recette-version', '{"id": "recette-version"}');
     -- Anciennes versions d'accès : une dans chaque espace (l'enregistrement de
@@ -1671,6 +1732,17 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Actions de l'IA : réservées aux gérants, en lecture comme en écriture.
+    select count(*) into n from erp.enregistrements where collection = 'actionsAgent';
+    if n <> 0 then resultat := 'un compte « opérations » lit les actions de l''IA'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'actionsAgent', 'recette-intrus', '{"etat": "annulee"}');
+      resultat := 'un compte « opérations » écrit une action de l''IA'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"etat": "annulee"}' where espace = lm and collection = 'actionsAgent' and id = 'recette-action';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » annule une action de l''IA'; raise exception 'stop'; end if;
     select count(*) into n from erp.membres where email like 'recette-%';
     if n <> 1 then resultat := format('un membre de Label Maison voit %s membres d''essai au lieu de 1', n); raise exception 'stop'; end if;
     j := erp.qui_suis_je();
@@ -1789,6 +1861,10 @@ begin
 
     -- 1 quater. Gérant de Label Maison : tout, et la numérotation des factures.
     perform set_config('request.jwt.claims', j_plateforme, true);
+    -- Actions de l'IA : le gérant les lit et les annule.
+    update erp.enregistrements set donnees = donnees || '{"etat": "annulee"}' where espace = lm and collection = 'actionsAgent' and id = 'recette-action';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne peut pas annuler une action de l''IA'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
       where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent', 'supplements'))
                              or (collection = 'conseilsPrix' and id = 'reglages')
@@ -2445,7 +2521,7 @@ select
 -- -- de l'espace d'une donnée (lisent la colonne espace) ; erp-installation.sql remet les
 -- -- deux premières gardes et l'index des numéros, version d'avant les espaces.
 -- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent(),
---   erp.reserver_numero_facture(), erp.garder_espace_enregistrement() cascade;
+--   erp.reserver_numero_facture(), erp.garder_espace_enregistrement(), erp.borner_actions_ia() cascade;
 -- drop table if exists erp.invitations_espace, erp.invitations, erp.espaces cascade;
 -- drop function if exists erp.mes_espaces(), erp.est_serveur(), erp.espace_entete(), erp.id_label_maison() cascade;
 -- commit;

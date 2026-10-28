@@ -258,6 +258,13 @@ export function nuitsAnnee(reservations: Reservation[], logementId: Id, annee = 
 
 /* --------------------------------------------------------------- missions */
 
+/**
+ * Mission d'un prestataire (confiée ou à confier) : jamais un ménage interne
+ * prévu par Claude (copilote, `interne: true`). Ces ménages restent au planning
+ * de l'ERP : ni attribution, ni paiement, ni contrôle, ni alerte « personne ».
+ */
+export const missionPrestataire = (m: Pick<Mission, 'interne'>): boolean => m.interne !== true;
+
 export function aPhotosAvantApres(m: Mission): boolean {
   return m.photos.some((p) => p.moment === 'avant') && m.photos.some((p) => p.moment === 'apres');
 }
@@ -275,12 +282,12 @@ export function missionValidable(m: Mission): Verdict {
 /** Part des ménages passés de la fenêtre validés avec photos avant et après (0..1). */
 /** Ménages passés de la fenêtre (base du taux de validation avec photos). */
 export function nbMenagesPasses(missions: Mission[], f: Fenetre): number {
-  return missions.filter((m) => m.type === 'menage' && m.statut !== 'annulee' && m.date >= f.debut && m.date < f.fin && m.date < AUJOURDHUI).length;
+  return missions.filter((m) => m.type === 'menage' && missionPrestataire(m) && m.statut !== 'annulee' && m.date >= f.debut && m.date < f.fin && m.date < AUJOURDHUI).length;
 }
 
 export function tauxMissionsValideesAvecPhotos(missions: Mission[], f: Fenetre): number {
   const passees = missions.filter(
-    (m) => m.type === 'menage' && m.statut !== 'annulee' && m.date >= f.debut && m.date < f.fin && m.date < AUJOURDHUI,
+    (m) => m.type === 'menage' && missionPrestataire(m) && m.statut !== 'annulee' && m.date >= f.debut && m.date < f.fin && m.date < AUJOURDHUI,
   );
   if (!passees.length) return 0;
   return passees.filter((m) => m.statut === 'validee' && aPhotosAvantApres(m)).length / passees.length;
@@ -289,13 +296,13 @@ export function tauxMissionsValideesAvecPhotos(missions: Mission[], f: Fenetre):
 /** Missions sans prestataire dans les `heures` prochaines heures (48 h par défaut). */
 export function missionsAAttribuerSous(missions: Mission[], heures = 48, depuis: DateISO = AUJOURDHUI): Mission[] {
   const limite = ajouterJours(depuis, Math.ceil(heures / 24));
-  return missions.filter((m) => m.statut === 'a_attribuer' && m.date >= depuis && m.date <= limite);
+  return missions.filter((m) => m.statut === 'a_attribuer' && missionPrestataire(m) && m.date >= depuis && m.date <= limite);
 }
 
 /** Missions nécessitant un contrôle qualité (tirage 1/10 ou note voyageur basse). */
 export function missionsAControler(missions: Mission[], reservations: Reservation[]): Mission[] {
   return missions.filter((m) => {
-    if (m.type !== 'menage') return false;
+    if (m.type !== 'menage' || !missionPrestataire(m)) return false;
     const r = m.reservationId ? reservations.find((x) => x.id === m.reservationId) : undefined;
     return m.controleQualite || (r?.noteVoyageur !== undefined && r.noteVoyageur < SEUIL_NOTE_CONTROLE);
   });

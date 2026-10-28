@@ -24,7 +24,9 @@ export default function handler(req: any, res: any) {
       const espace = espaceDuJeton(jeton);
       if (!espace) return null;
       const ouvert = await espaceOuvertAuJeton(c, espace);
-      return ouvert && (await accesValide(ouvert.base, jeton)) ? ouvert : null;
+      const acces = ouvert ? await accesValide(ouvert.base, jeton) : null;
+      // Qui agit, pour la trace des actions de Claude : le client OAuth et le gérant qui l'a autorisé.
+      return ouvert && acces ? { ...ouvert, client: { genre: 'oauth' as const, autorisePar: acces.par, ...(acces.client ? { client: acces.client.slice(0, 80) } : {}) } } : null;
     },
     // Jeton présenté mais refusé (expiré, révoqué) : Claude le rafraîchit ou relance la connexion.
     (r) => (jetonBearer(r) ? `Bearer error="invalid_token", resource_metadata="${META_RESSOURCE}"` : `Bearer resource_metadata="${META_RESSOURCE}"`),

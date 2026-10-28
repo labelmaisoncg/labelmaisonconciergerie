@@ -2,7 +2,7 @@
  * Règles financières : paiements prestataires, retards, facturation mensuelle (SPEC §2.4, §2.7).
  */
 import { ajouterJours, euros, jourMois, moisAnnee } from '../data/format';
-import { mandatDuLogement, releveProprietaire } from '../data/selectors';
+import { mandatDuLogement, missionPrestataire, releveProprietaire } from '../data/selectors';
 import type { Facture, Id, Mission, PaiementPrestataire } from '../data/types';
 import { collecteur, moisPrecedent, moisSuivant } from './outils';
 import type { Regle } from './types';
@@ -33,7 +33,7 @@ export const paiementsPrestataires: Regle = {
     const ouvertes = [moisPrecedent(courant), courant];
     const groupes = new Map<string, Mission[]>();
     for (const m of d.missions) {
-      if (m.statut !== 'validee' || !m.prestataireId || m.tarifCentimes <= 0) continue;
+      if (m.statut !== 'validee' || !m.prestataireId || !missionPrestataire(m) || m.tarifCentimes <= 0) continue;
       const periode = m.date.slice(0, 7);
       if (!ouvertes.includes(periode)) continue;
       const cle = `${m.prestataireId}|${periode}`;

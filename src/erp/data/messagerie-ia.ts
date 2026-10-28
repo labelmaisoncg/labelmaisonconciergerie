@@ -1096,6 +1096,12 @@ export function trierParUrgence<F extends Pick<FilMessages, 'id' | 'dernierMessa
 /** Suite de 4 chiffres ou plus, séparés ou non (« 4821 », « 4 8 2 1 », « 48-21 ») : un code possible. */
 const SUITE_CHIFFRES = /\d(?:[\s\-–—.·/]?\d){3,}/g;
 
+/**
+ * Au moins 3 chiffres isolés, séparés par des espaces, des points ou des tirets
+ * (« 4 8 2 », « 4.8.2 », « 4-8-2 ») : un code épelé. Lire sur nettoyerTexte(t).
+ */
+export const CHIFFRES_EPELES = /(?<![\p{L}\p{N}])\p{Nd}(?:[\s.\-‐‑‒–—―·]+\p{Nd}){2,}(?![\p{L}\p{N}])/u;
+
 /** Texte sans espaces ni séparateurs (« 1-2-3-4 » = « 1234 »), en minuscules, chiffres pleine largeur ramenés (NFKC). */
 const compact = (t: string) => nettoyerTexte(t).toLowerCase().replace(/[\s\-–—._·/]+/g, '');
 
@@ -1269,9 +1275,9 @@ export function marquerBrouillonValide(f: FilMessages, par: string, modifiee: bo
   return { ...f, agent: { ...f.agent, brouillon: { ...b, valideePar: par, valideeLe: le, modifiee } } };
 }
 
-/** Phrase du journal pour une réponse de l'agent envoyée par l'équipe. */
-export function detailValidation(v: ValidationBrouillon, par: string, voyageur: string): string {
-  const origine = v.source === 'agent' ? 'préparée par l’agent' : 'proposée par l’agent';
+/** Phrase du journal pour une réponse de l'agent (ou de Claude, `proposePar`) envoyée par l'équipe. */
+export function detailValidation(v: ValidationBrouillon, par: string, voyageur: string, proposePar?: 'claude'): string {
+  const origine = v.source === 'agent' ? (proposePar === 'claude' ? 'proposée par Claude' : 'préparée par l’agent') : 'proposée par l’agent';
   return `Réponse ${origine} envoyée à ${voyageur} par ${par}${v.modifiee ? ', après retouche' : ', telle quelle'}.`;
 }
 

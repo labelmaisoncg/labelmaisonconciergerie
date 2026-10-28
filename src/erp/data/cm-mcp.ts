@@ -128,14 +128,15 @@ function filCourt(f: FilMessages, logements: Logement[]) {
 
 /* ---------------------------------------------------------- recherches */
 
-const idValide = (v: unknown, nom: string, aide: string): string => {
+export const idValide = (v: unknown, nom: string, aide: string): string => {
   const id = texte(v, nom, 100);
   if (!id) throw new ErreurOutil(`« ${nom} » est obligatoire (${aide}).`);
   if (!ID.test(id)) throw new ErreurOutil(`Identifiant invalide « ${id.slice(0, 40)} » (${aide}).`);
   return id;
 };
 
-async function logementVise(a: Args, ctx: ContexteMcp): Promise<Logement> {
+/** Logement désigné par `id` ou par `recherche` (un seul doit correspondre). Aussi pour copilote-mcp.ts. */
+export async function logementVise(a: Args, ctx: ContexteMcp): Promise<Logement> {
   const logements = await ctx.cm.logements();
   if (a.id !== undefined && a.id !== null && a.id !== '') {
     const id = idValide(a.id, 'id', 'voir logements_lister');
@@ -151,7 +152,8 @@ async function logementVise(a: Args, ctx: ContexteMcp): Promise<Logement> {
   throw new ErreurOutil(`${trouves.length} logements correspondent : ${trouves.slice(0, 8).map((l) => `${l.nom} (id ${l.id})`).join(' ; ')}. Précisez l’id.`);
 }
 
-async function filVise(a: Args, ctx: ContexteMcp): Promise<FilMessages> {
+/** Conversation désignée par `id`. Aussi pour copilote-mcp.ts. */
+export async function filVise(a: Args, ctx: ContexteMcp): Promise<FilMessages> {
   const id = idValide(a.id, 'id', 'voir conversations_a_repondre');
   const f = await ctx.cm.fil(id);
   if (!f) throw new ErreurOutil(`Aucune conversation avec l’id « ${id} ». Utilisez conversations_a_repondre.`);

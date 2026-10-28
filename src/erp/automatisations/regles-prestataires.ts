@@ -2,7 +2,7 @@
  * Règles prestataires et linge (SPEC §2.3, §2.6).
  */
 import { ajouterJours, ecartJours, jourMois } from '../data/format';
-import { ecartsLinge, libelleDocument, logementById, prestataireConforme, statutDocument } from '../data/selectors';
+import { ecartsLinge, libelleDocument, logementById, missionPrestataire, prestataireConforme, statutDocument } from '../data/selectors';
 import type { DocumentPrestataire, Mission } from '../data/types';
 import { collecteur } from './outils';
 import type { Regle } from './types';
@@ -55,7 +55,7 @@ export const documentsPrestataires: Regle = {
         .map((p) => p.id),
     );
     for (const m of d.missions) {
-      if (!m.prestataireId || !bloques.has(m.prestataireId) || m.statut !== 'attribuee' || m.date < ctx.date) continue;
+      if (!m.prestataireId || !missionPrestataire(m) || !bloques.has(m.prestataireId) || m.statut !== 'attribuee' || m.date < ctx.date) continue;
       const p = d.prestataires.find((x) => x.id === m.prestataireId);
       const libre: Mission = { ...m, prestataireId: undefined, statut: 'a_attribuer' };
       c.modifier('missions', libre, `Retirée à ${p?.nom ?? 'un prestataire'} (non conforme).`);
@@ -79,7 +79,7 @@ export const suiviLinge: Regle = {
     const c = collecteur(this.cle, ctx);
     const debut = ajouterJours(ctx.date, -14);
     for (const m of d.missions) {
-      if (m.type !== 'menage' || m.date >= ctx.date || m.date < debut) continue;
+      if (m.type !== 'menage' || !missionPrestataire(m) || m.date >= ctx.date || m.date < debut) continue;
       if (m.statut === 'annulee' || m.statut === 'refusee' || m.statut === 'a_attribuer') continue;
       const trace = d.mouvementsLinge.some(
         (x) => x.missionId === m.id ||

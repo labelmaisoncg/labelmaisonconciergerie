@@ -491,6 +491,8 @@ function CoeurErp({
       const p = trouver('prestataires', prestataireId);
       if (!m) return echec('Mission introuvable.');
       if (!p) return echec('Prestataire introuvable.');
+      // Ménage interne (prévu par Claude, copilote) : jamais confié à un prestataire.
+      if (m.interne) return echec('Ménage interne à l’ERP : il ne se confie pas à un prestataire.');
       const verdict = prestataireConforme(p);
       if (!verdict.ok) return echec(`${p.nom} ne peut pas recevoir de mission. ${verdict.raisons.join(' ')}`);
       appliquer(

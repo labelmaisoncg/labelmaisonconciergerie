@@ -22,6 +22,7 @@ import { REGLAGES_AGENT_DEFAUT } from './reglages';
 import { creerProgrammesDemo } from './seed-programmes';
 import { creerVersionsAnnonce } from './seed-annonces';
 import { creerContactsCrm } from './seed-crm';
+import { creerActionsAgentDemo } from './seed-copilote';
 import { creerDossiersDemo } from './seed-dossiers';
 import { creerEspaceProprietaireDemo, prolongationDemo } from './seed-proprietaire';
 import { premiereAnnonce } from './annonces-equipe';
@@ -830,7 +831,10 @@ export function creerSeed(): ErpDonnees {
     conseilsPrix: [],
     // Le premier message du gérant, comme on le publierait en un clic (Paramètres → Annonces à l'équipe).
     annoncesEquipe: [{ id: 'aeq-bonjour', ...premiereAnnonce(nomConciergerie(ESPACE_LABEL_MAISON)), publieeLe: `${AUJOURDHUI}T08:45:00+02:00`, publieePar: 'Abdel' }],
+    actionsAgent: [] as ErpDonnees['actionsAgent'],
   };
   const complet = { ...donnees, ...creerEspaceProprietaireDemo(donnees) };
-  return { ...complet, ...creerProgrammesDemo(complet) };
+  const avecProgrammes = { ...complet, ...creerProgrammesDemo(complet) };
+  // Actions de l'IA (copilote) : tirées des contacts et conversations finaux, pour que « Annuler » y marche.
+  return { ...avecProgrammes, actionsAgent: creerActionsAgentDemo(avecProgrammes) };
 }
