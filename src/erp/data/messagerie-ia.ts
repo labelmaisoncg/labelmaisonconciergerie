@@ -392,34 +392,43 @@ export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, 
   // ordinaire. Tout le reste (« Parfait, merci ! », « Je confirme », « Sounds great! ») reste à valider.
   const questionSimple = (m: Message) => {
     const t = nettoyerTexte(m.texte).replace(/[’`´]/g, "'");
-    return /\?/.test(t) && !repondALaProposition(t);
+    return /\?/.test(t) && !repondALaProposition(t, fiche);
   };
   if (!sans.length || sans.every(questionSimple)) return false;
+  // La proposition ne vaut que pour une réponse arrivée dans les 72 h : au-delà, la règle ordinaire.
+  const recente = (proposition: Message) => {
+    const debut = Math.min(...sans.map((m) => Date.parse(m.envoyeLe)).filter(Number.isFinite));
+    const envoi = Date.parse(proposition.envoyeLe);
+    return !Number.isFinite(debut) || !Number.isFinite(envoi) || debut - envoi <= DUREE_PROPOSITION_MS;
+  };
   for (let i = fil.messages.length - 1; i >= 0; i--) {
     const equipe = fil.messages[i];
     if (equipe.auteur !== 'hote') continue;
-    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return true;
+    if (equipe.envoi?.moment === MOMENT_PROPOSER_SUPPLEMENTS) return recente(equipe);
     const t = nettoyerTexte(equipe.texte).replace(/[’`´]/g, "'");
-    if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return true;
+    if ((SUJET_SUPPLEMENT.test(t) || heureHorsHoraires(t, fiche)) && ARGENT.test(t.replace(SANS_ARGENT, ' '))) return recente(equipe);
     // Un autre message automatique (infos d'arrivée…) ne clôt pas la proposition : on remonte.
     if (!equipe.envoi?.moment) return false;
   }
   return false;
 }
 
+/** Une proposition de suppléments compte pour les réponses arrivées dans les 72 h. */
+const DUREE_PROPOSITION_MS = 72 * 3600_000;
+
 /** Le voyageur refuse la proposition, sans rien demander (« Non merci », « No thanks », « Pas besoin »). */
 const REFUSE = /\b(non|no|nope)\b|pas besoin|rien pour nous|[çc]a ira|not needed|we(?:'re| are) (?:fine|good)|no thanks?/i;
 /** Un supplément, une option ou une heure cités dans la réponse du voyageur. */
-const OPTION = /(?<![\p{L}\p{N}])(options?|premi[eè]re|deuxi[eè]me|seconde?|troisi[eè]me|first|second|third|celle-ci|celle-l[àa]|navette|shuttle|m[ée]nage|cleaning|late|early|plus t[ôo]t|plus tard|anticip[ée]e?s?|tardifs?)(?![\p{L}\p{N}])/iu;
+const OPTION =
+  /(?<![\p{L}\p{N}])(options?|(?:la |the )?(?:premi[eè]re|deuxi[eè]me|seconde?|troisi[eè]me|first|second|third|last|derni[eè]re) (?:option|one|proposition|choice|choix)|celle-ci|celle-l[àa]|navette|shuttle|m[ée]nage (?:en plus|suppl[ée]mentaire)|extra clean\w*|late check.?out|early check.?in|arriv\p{L}* plus t[ôo]t|part\p{L}* plus tard|anticip[ée]e?s?|tardifs?)(?![\p{L}\p{N}])/iu;
 /** Message du voyageur qui répond à une proposition de suppléments. */
-function repondALaProposition(t: string): boolean {
-  return ACCEPTE.test(t) || REFUSE.test(t) || !!supplementDansTexte(t) || heuresDe(t).length > 0 || OPTION.test(t);
+function repondALaProposition(t: string, fiche?: HorairesLogement): boolean {
+  // Sans « please » ni « ok » (formules de politesse d'une question ordinaire), et seulement une heure hors des horaires.
+  return ACCEPTE_SANS_POLITESSE.test(t) || REFUSE.test(t) || !!supplementDansTexte(t) || heuresHors(t, fiche).length > 0 || OPTION.test(t);
 }
 
-/** Le voyageur accepte une proposition (« Oui pour la première option », « Yes please »). */
-/** Accepter, sans les formules de politesse (« please ») qui accompagnent aussi un refus. */
+/** Le voyageur accepte (« Oui pour la première option »), sans les formules de politesse (« please », « ok ») d'une question ordinaire. */
 const ACCEPTE_SANS_POLITESSE = /\b(oui|ouais|yes|yep|yeah|d'accord|volontiers|je veux bien|on veut bien|nous voulons bien|je prends|nous prenons|on prend|go for|sounds good|we'll take|we will take)\b/i;
-const ACCEPTE = /\b(oui|ouais|yes|yep|yeah|ok|okay|d'accord|volontiers|avec plaisir|je veux bien|on veut bien|nous voulons bien|je prends|nous prenons|on prend|go for|sounds good|we'll take|we will take|please)\b/i;
 
 /**
  * Réponse du voyageur au message automatique « Proposer les suppléments »
@@ -1043,7 +1052,7 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 /** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
 // Une heure, une distance ou un ordinal avant le code (« actif de 7h à 22h : 482 ») ne l'arrête pas : la recherche continue.
 const CODE_APRES_MOT =
-  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])/giu;
+  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?![\p{L}\p{N}]))/giu;
 
 /**
  * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un

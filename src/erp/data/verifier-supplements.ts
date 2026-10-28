@@ -538,6 +538,18 @@ async function principal() {
       ],
     });
     verifier(!apresPropositionSupplements(question), 'question simple après la proposition (« Où peut-on se garer ? ») : pas une réponse à la proposition');
+    // Questions ordinaires (« please », « second » sans « option ») : pas des réponses à la proposition.
+    for (const q of ['Could you tell me where the nearest bakery is, please?', 'Is the second bedroom heated?', 'Ok, and is there a hairdryer?']) {
+      verifier(!apresPropositionSupplements(auto(q, 'en')), `question ordinaire après la proposition (« ${q} ») : règle ordinaire`);
+    }
+    // Au-delà de 72 h, la proposition ne compte plus.
+    const tard = fil('fil-67', 'r1', {
+      messages: [
+        { ...msg('p', 'hote', 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €', '2026-10-20T11:00:00+02:00'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+        msg('v', 'voyageur', 'Parfait, merci pour le séjour !', '2026-10-26T10:00:00+01:00'),
+      ],
+    });
+    verifier(!apresPropositionSupplements(tard), 'message arrivé plus de 72 h après la proposition : règle ordinaire');
     // Acceptations courtes, sans « oui » ni option : toujours des réponses à la proposition, jamais envoyées seules.
     for (const [voyageur, texte, langue] of [
       ['Parfait, merci !', 'Parfait Emily, c’est noté. À jeudi !', 'fr'],
