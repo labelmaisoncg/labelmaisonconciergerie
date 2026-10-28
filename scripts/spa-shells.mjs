@@ -41,19 +41,24 @@ const html = readFileSync(shell, 'utf8');
  * App installée tenue en portrait, comme une app du téléphone. Android suit
  * le manifeste (« orientation »: « portrait ») ; l'iPhone l'ignore et ne
  * permet pas de bloquer la rotation : en paysage, l'app installée sur un
- * téléphone montre « Tournez votre téléphone » à la place de l'écran. Rien ne
- * change dans le navigateur, sur ordinateur ni sur tablette (hauteur > 500 px).
+ * iPhone montre « Tournez votre téléphone » à la place de l'écran. Rien ne
+ * change dans le navigateur, sur ordinateur ni sur iPad.
  */
 function ecranPortrait(page, remplacer) {
   const style = [
     '    <style>',
     '      .lm-portrait { display: none; }',
-    '      @media (display-mode: standalone) and (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {',
-    '        .lm-portrait { position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; background: #fbfaf8; color: #14110e; text-align: center; font-family: Figtree, ui-sans-serif, system-ui, -apple-system, sans-serif; }',
-    '        .lm-portrait svg { width: 40px; height: 40px; margin-bottom: 8px; transform: rotate(90deg); }',
-    '        .lm-portrait strong { font-size: 17px; font-weight: 600; }',
-    '        .lm-portrait span { font-size: 15px; color: rgba(20, 17, 14, 0.68); }',
-    '        html, body { overflow: hidden; }',
+    // Safari de l'iPhone seulement (Android suit le manifeste ; son clavier ouvert ne doit pas passer pour du paysage).
+    '      @supports (-webkit-touch-callout: none) {',
+    '        @media (display-mode: standalone) and (orientation: landscape) and (max-height: 500px) and (max-width: 950px) and (pointer: coarse) {',
+    '          .lm-portrait { position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; background: #fbfaf8; color: #14110e; text-align: center; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }',
+    '          .lm-portrait svg { width: 40px; height: 40px; margin-bottom: 8px; }',
+    '          .lm-portrait strong { font-size: 17px; font-weight: 600; }',
+    '          .lm-portrait span { font-size: 15px; color: rgba(20, 17, 14, 0.68); }',
+    '          html, body { overflow: hidden; }',
+    // L'app reste montée (rien ne se perd), mais hors de portée du lecteur d'écran et du clavier.
+    '          #root { visibility: hidden; }',
+    '        }',
     '      }',
     '    </style>',
   ].join('\n');
