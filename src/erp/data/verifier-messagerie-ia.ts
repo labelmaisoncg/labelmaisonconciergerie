@@ -560,6 +560,11 @@ async function principal() {
       );
       const ml = masquerCodes(`${loin.parking}\n${loin.regles}\n${loin.aSavoir}`);
       verifier(!/482|731|B2C4|315/.test(ml) && /16h00/.test(ml) && /300m/.test(ml), `masquage avant l'heure : codes cachés, heure et distance intactes (${ml})`);
+      const ordinaires = { acces: 'Accès par code 24h/24, code 48h avant.', parking: 'Digicode 1er portail.', wifiNom: '', wifiCode: '' };
+      verifier(
+        secretsAcces(ordinaires).length === 0 && !contientCodeAcces('Le parking est accessible 24h/24, au 1er étage ; le code arrive 48h avant votre arrivée.', ordinaires),
+        `« 24h/24 », « 48h avant », « 1er portail » : jamais pris pour un code (${secretsAcces(ordinaires).join(', ')})`,
+      );
     }
     verifier(contientCodeAcces('Votre code est A12B.', { acces: 'code : A12B' }) && contientCodeAcces('le code 4 8 2 1', { acces: 'code 4821' }), 'vrai code écrit dans un message : repéré');
     // Secret court ou sans chiffre : en mot entier seulement.

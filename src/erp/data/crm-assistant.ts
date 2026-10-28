@@ -164,9 +164,12 @@ const BIENS_FEMININS = /^(maison|villa|chambre|propri[ée]t[ée]|r[ée]sidence|l
 export function sonBien(typeBien: string | undefined): string {
   const bien = (typeBien ?? '').trim();
   if (!bien || bien.length > 30) return 'son bien';
-  const nom = /^[A-Z]\d/.test(bien) ? bien : bien.charAt(0).toLowerCase() + bien.slice(1);
+  const nom = nomDuBien(bien);
   return `${BIENS_FEMININS.test(nom) ? 'sa' : 'son'} ${nom}`;
 }
+
+/** Nom commun en minuscule (« Maison » → « maison »), « T2 » ou « F3 » gardés tels quels. */
+const nomDuBien = (bien: string) => (/^[A-Z]\d/.test(bien) ? bien : bien.charAt(0).toLowerCase() + bien.slice(1));
 
 const dans = (c: Pick<ContactCrm, 'typeBien' | 'ville'>) => {
   const ville = c.ville?.trim();
@@ -438,7 +441,7 @@ export function relanceModele(c: ContactCrm, canal: CanalRelance, o: { signature
   const prenom = prenomContact(c.nom);
   const bonjour = prenom ? `Bonjour ${prenom},` : 'Bonjour,';
   const apporteur = profilContact(c) === 'apporteur';
-  const bien = c.typeBien?.trim() && c.typeBien.trim().length <= 30 ? ` pour votre ${c.typeBien.trim()}` : '';
+  const bien = c.typeBien?.trim() && c.typeBien.trim().length <= 30 ? ` pour votre ${nomDuBien(c.typeBien.trim())}` : '';
   const ville = c.ville?.trim() ? ` à ${c.ville.trim()}` : '';
   let corps: string;
   let objet: string;

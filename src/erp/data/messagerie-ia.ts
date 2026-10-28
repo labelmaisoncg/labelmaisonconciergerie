@@ -142,7 +142,7 @@ const ARGENT = new RegExp(
     '%', 'moiti[ée]', '\\bhalf\\b', '\\bmitad\\b', '\\bmet[àa]\\b', 'h[äa]lfte',
     '\\brendr(e|ons|ez|ai|a|ont)\\b', '\\brendu(e|s|es)?\\b', '\\bgive\\b.{0,40}\\bback\\b', '\\bsettle',
     // Suppléments payants (cahier B7) : jamais vendus par l'agent seul (« supplémentaire » n'en est pas un).
-    'suppl[ée]ments?(?!aires?)', 'surco[ûu]t', 'surcharge', '\\bupsell', '\\ben sus\\b', 'zuschlag', 'aufpreis', 'suplemento', 'supplemento', 'toeslag',
+    'suppl[ée]ments?(?!aires?|ary)', 'surco[ûu]t', 'surcharge', '\\bupsell', '\\ben sus\\b', 'zuschlag', 'aufpreis', 'suplemento', 'supplemento', 'toeslag',
     '€', '\\$', '£', '\\bCHF\\b', 'dollar', '\\beuros?\\b', '\\bEUR\\b',
   ].join('|'),
   'i',
@@ -275,7 +275,7 @@ export function supplementDansTexte(texte: string): SupplementDemande | undefine
  * offre : « Si vous souhaitez arriver plus tôt, dites-le-nous » n'accorde rien.
  */
 const SUJET_SUPPLEMENT =
-  /suppl[ée]ments?(?!aires?)|early check.?in|late check.?out|arriv\w* (plus t[ôo]t|en avance)|part\w* plus tard|d[ée]part (plus )?tardif|rester plus longtemps|check.?in (earlier|early)|check.?out (later|late)|(arrive|check in) earlier|(leave|stay) later|(be|is) ready (early|earlier)|pr[eê]t plus t[ôo]t|navette|shuttle|(viendr\w*|venir|passer|passerons) (vous |te )?chercher|pick (you|them) up|organis\w* (un |le |votre )?m[ée]nage|m[ée]nage (suppl[ée]mentaire|en plus|en cours|pendant|au milieu)|(extra|mid.?stay) clean|clean(ing)? during|arrange (a |the )?(cleaning|transfer|pick.?up)/i;
+  /suppl[ée]ments?(?!aires?|ary)|early check.?in|late check.?out|arriv\w* (plus t[ôo]t|en avance)|part\w* plus tard|d[ée]part (plus )?tardif|rester plus longtemps|check.?in (earlier|early)|check.?out (later|late)|(arrive|check in) earlier|(leave|stay) later|(be|is) ready (early|earlier)|pr[eê]t plus t[ôo]t|navette|shuttle|(viendr\w*|venir|passer|passerons) (vous |te )?chercher|pick (you|them) up|organis\w* (un |le |votre )?m[ée]nage|m[ée]nage (suppl[ée]mentaire|en plus|en cours|pendant|au milieu)|(extra|mid.?stay) clean|clean(ing)? during|arrange (a |the )?(cleaning|transfer|pick.?up)/i;
 /**
  * Une réponse qui accorde : « vous pourrez », « c'est noté », « pas de
  * souci », « you can », « is fine », « we will arrange »… Sans « vérifier » ni
@@ -387,7 +387,10 @@ function dernierMessageEquipe(fil: Pick<FilMessages, 'messages'>): Message | und
  * prix (« Insérer » dans la Messagerie).
  */
 export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, fiche?: HorairesLogement): boolean {
-  if (!messagesSansReponse(fil).length) return false;
+  const sans = messagesSansReponse(fil);
+  // Seulement une réponse à la proposition (accepte, refuse, demande, une heure, une option) : une simple
+  // question (« Où peut-on se garer ? ») suit la règle ordinaire.
+  if (!sans.some((m) => repondALaProposition(nettoyerTexte(m.texte).replace(/[’`´]/g, "'")))) return false;
   for (let i = fil.messages.length - 1; i >= 0; i--) {
     const equipe = fil.messages[i];
     if (equipe.auteur !== 'hote') continue;
@@ -400,7 +403,18 @@ export function apresPropositionSupplements(fil: Pick<FilMessages, 'messages'>, 
   return false;
 }
 
+/** Le voyageur refuse la proposition, sans rien demander (« Non merci », « No thanks », « Pas besoin »). */
+const REFUSE = /\b(non|no|nope)\b|pas besoin|rien pour nous|[çc]a ira|not needed|we(?:'re| are) (?:fine|good)|no thanks?/i;
+/** Un supplément, une option ou une heure cités dans la réponse du voyageur. */
+const OPTION = /(?<![\p{L}\p{N}])(options?|premi[eè]re|deuxi[eè]me|seconde?|troisi[eè]me|first|second|third|celle-ci|celle-l[àa]|navette|shuttle|m[ée]nage|cleaning|late|early|plus t[ôo]t|plus tard|anticip[ée]e?s?|tardifs?)(?![\p{L}\p{N}])/iu;
+/** Message du voyageur qui répond à une proposition de suppléments. */
+function repondALaProposition(t: string): boolean {
+  return ACCEPTE.test(t) || REFUSE.test(t) || !!supplementDansTexte(t) || heuresDe(t).length > 0 || OPTION.test(t);
+}
+
 /** Le voyageur accepte une proposition (« Oui pour la première option », « Yes please »). */
+/** Accepter, sans les formules de politesse (« please ») qui accompagnent aussi un refus. */
+const ACCEPTE_SANS_POLITESSE = /\b(oui|ouais|yes|yep|yeah|d'accord|volontiers|je veux bien|on veut bien|nous voulons bien|je prends|nous prenons|on prend|go for|sounds good|we'll take|we will take)\b/i;
 const ACCEPTE = /\b(oui|ouais|yes|yep|yeah|ok|okay|d'accord|volontiers|avec plaisir|je veux bien|on veut bien|nous voulons bien|je prends|nous prenons|on prend|go for|sounds good|we'll take|we will take|please)\b/i;
 
 /**
@@ -416,9 +430,10 @@ export function reponseSansDemandeAuxSupplements(fil: Pick<FilMessages, 'message
   if (fil.statut === 'escalade') return false;
   const sans = messagesSansReponse(fil);
   if (!sans.length || dernierMessageEquipe(fil)?.envoi?.moment !== MOMENT_PROPOSER_SUPPLEMENTS) return false;
-  return !sans.some((m) => {
+  // Seulement un refus explicite, sans question, heure, option ni sujet sensible : tout le reste attend l'équipe.
+  return sans.every((m) => {
     const t = nettoyerTexte(m.texte).replace(/[’`´]/g, "'");
-    return !!supplementDansTexte(t) || ACCEPTE.test(t) || /\?/.test(t) || !!sujetSensibleMessages([t]);
+    return REFUSE.test(t) && !ACCEPTE_SANS_POLITESSE.test(t) && !supplementDansTexte(t) && !/\?/.test(t) && !heuresDe(t).length && !OPTION.test(t) && !sujetSensibleMessages([t]);
   });
 }
 
@@ -482,8 +497,14 @@ export function messagesVerdict(fil: Pick<FilMessages, 'messages' | 'reservation
  * sans séparateur (« mo » puis « ney back » donnent « money back »).
  */
 export function sujetSensibleMessages(messages: string[], intention?: IntentionMessage): SujetSensible | null {
-  return sujetSensible(messages.join('\n'), intention) ?? sujetSensible(messages.join(''));
+  // Le mot « supplément » du voyageur ne suffit pas (« Non merci pour les suppléments ») : une vraie demande
+  // de supplément est relevée par supplementAValider, sur les seuls messages sans réponse et la réponse proposée.
+  const sans = messages.map((m) => m.replace(MOT_SUPPLEMENT, ' '));
+  return sujetSensible(sans.join('\n'), intention) ?? sujetSensible(sans.join(''));
 }
+
+/** Le mot « supplément » seul (sans « supplémentaire »), en plusieurs langues. */
+const MOT_SUPPLEMENT = /suppl[ée]ments?(?!aires?|ary)|suplementos?|supplement[io]/gi;
 
 /* ===================================================== message d'attente */
 
@@ -1031,7 +1052,7 @@ function codesApresMotCode(texte: string): string[] {
 }
 
 /** Jetons qui suivent « code », « cadenas »… sans en être un : heure (« 16h00 »), distance, durée, débit, montant. */
-const PAS_UN_CODE = /^(\d{1,2}h\d{0,2}|\d+(m|km|mn|min|mins|h|j|mb|mbps|go|gb|eur|euros?))$/i;
+const PAS_UN_CODE = /^(\d{1,3}h\d{0,2}|\d{1,3}(er|re|e|[èe]me|nd|rd|th|st)|\d+(m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))$/i;
 
 /** Mots en majuscules qui suivent « code » sans en être un. */
 const MOTS_PAS_CODE = new Set([

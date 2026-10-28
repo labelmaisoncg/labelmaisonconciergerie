@@ -43,6 +43,7 @@ import {
   politiqueEnvoi,
   reponseSansDemandeAuxSupplements,
   sujetSensible,
+  sujetSensibleMessages,
   supplementDansTexte,
   verdictEnvoi,
   type DecisionNotee,
@@ -529,6 +530,20 @@ async function principal() {
       ],
     });
     verifier(apresPropositionSupplements(deuxAuto) && verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'avis', langue: 'fr', texte: 'C’est noté, à jeudi !' }, autonome, messagesVerdict(deuxAuto, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'valider', 'proposition puis infos d’arrivée, puis « Oui » : toujours à valider');
+    // Une simple question après la proposition suit la règle ordinaire : elle repart seule.
+    const question = fil('fil-66', 'r1', {
+      messages: [
+        { ...msg('p', 'hote', 'Bonjour Emily, nous pouvons vous proposer : • Arrivée plus tôt, dès 12 h : 20 €'), envoi: { par: PAR_MESSAGE_AUTO, moment: 'proposer_supplements' } },
+        msg('v', 'voyageur', 'Où peut-on se garer ?'),
+      ],
+    });
+    verifier(!apresPropositionSupplements(question), 'question simple après la proposition (« Où peut-on se garer ? ») : pas une réponse à la proposition');
+    verifier(
+      verdictEnvoi({ action: 'repondre', raison: 'aucune', confiance: 0.99, intention: 'infos', langue: 'fr', texte: 'Bonjour Emily, le parking est devant la résidence, place 12 réservée.' }, autonome, messagesVerdict(question, new Date('2026-10-27T10:00:00Z'), fiche)).verdict === 'envoyer',
+      'question simple après la proposition : la réponse part seule en autonome',
+    );
+    // « supplementary » n'est pas un supplément ; « Non merci pour les suppléments » ne rend pas sensibles les messages suivants.
+    verifier(!sujetSensibleMessages(['Are there supplementary blankets?']) && !sujetSensibleMessages(['Non merci pour les suppléments', 'Quel est le nom du wifi ?']), '« supplementary » et un refus des suppléments : pas une question d’argent');
     // Le voyageur demande une heure hors des horaires : une réponse qui la reprend l'accorde, même mal classée par l'IA.
     for (const [voyageur, texte, langue] of [
       ['Can we arrive at 1pm?', 'Hi Tom, yes, 1 pm works. See you then!', 'en'],
@@ -721,7 +736,7 @@ async function principal() {
     const nonMerci = reponseA('Non merci, à jeudi !');
     verifier(infos(nonMerci) === 'envoyer' && infos(reponseA('No thanks, see you Thursday')) === 'envoyer', '« Non merci, à jeudi » : les infos d’arrivée de la veille partent quand même');
     verifier(attendEquipe(nonMerci) && reponseSansDemandeAuxSupplements(nonMerci), 'la conversation reste dans « À répondre » (règle unique inchangée)');
-    for (const t of ['Pourrions-nous partir plus tard dimanche ?', 'Oui pour la première option, merci !', 'Yes please, the first one!', 'Non merci. Où peut-on se garer ?', 'Non merci. Nous devons annuler']) {
+    for (const t of ['Pourrions-nous partir plus tard dimanche ?', 'Oui pour la première option, merci !', 'Yes please, the first one!', 'Non merci. Où peut-on se garer ?', 'Non merci. Nous devons annuler', 'Ce serait top l’arrivée à 12 h, merci', 'Late checkout would be great, thanks.', 'Je confirme pour l’arrivée anticipée.', 'Super, la première option.']) {
       verifier(infos(reponseA(t)) === 'attendre', `« ${t} » : vraie demande, les infos d’arrivée attendent l’équipe`);
     }
     verifier(infos(reponseA('Non merci, à jeudi !', { statut: 'escalade' })) === 'attendre', 'conversation transmise par l’agent : les infos d’arrivée attendent');
