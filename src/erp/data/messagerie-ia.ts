@@ -1080,7 +1080,7 @@ function ficheEtAnnonce(source: SourceCodes, descriptif?: DescriptifLogement): {
 /** Après « code » : un jeton d'au moins 3 signes dont un chiffre, # ou * (« code 4821 », « code A12 », « code : AB12 »), jamais un mot (« code par séjour »). */
 // Une heure, une distance ou un ordinal avant le code (« actif de 7h à 22h : 482 ») ne l'arrête pas : la recherche continue.
 const CODE_APRES_MOT =
-  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?<!(?:n°|num[ée]ro|place|rue|avenue|boulevard|bd|all[ée]e|b[âa]timent|b[âa]t|du|au|porte)\s?)(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?=\s|$|[.,;:!?)]))/giu;
+  /(?:code|cadenas|badge|interphone|bo[iî]te [àa] cl[ée]s?)[^.\n;!?]{0,40}?(?<![\p{L}\p{N}#*])(?<!(?:place|rue|avenue|boulevard|bd|all[ée]e|b[âa]timent|b[âa]t|porte du|porte au|porte n°|au n°)\s?)(?!(?:\d{1,3}h\d{0,2}|\d{1,3}(?:er|re|e|[èe]me|nd|rd|th|st)|\d+(?:m|km|mn|min|mins|h|j|jours?|mb|mbps|go|gb|eur|euros?))(?![\p{L}\p{N}]))((?=\p{L}*[0-9#*])[A-Za-z0-9#*]{3,})(?![\p{L}\p{N}])(?!\s?(?:m|km|mn|min|mins|h|j|jours?|€|eur|euros?)(?=\s|$|[.,;:!?)]))/giu;
 
 /**
  * Codes écrits après le mot « code » : jeton avec un chiffre, # ou * ; ou un
