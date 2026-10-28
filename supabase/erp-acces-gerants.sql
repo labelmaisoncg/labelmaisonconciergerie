@@ -24,7 +24,8 @@
 -- et ce que seul un gérant change (factures, conseilsPrix/reglages,
 -- reglages : messages-programmes, societe, numerotation-factures, supplements) ; dans les
 -- réglages de l'agent (reglages/agent), la marche, le niveau d'autonomie, les
--- horaires, ce qu'il confie et le délai : un gérant seulement ; une facture
+-- horaires, ce qu'il confie et le délai : un gérant seulement ; le lien d'un
+-- logement à son annonce (repull.id, liaison) : un gérant seulement ; une facture
 -- numérotée ne change plus, sauf son paiement et son partage, et ne se
 -- supprime pas (LMF01) ; son numéro n'est jamais écrit par l'API (LMF02), et
 -- deux factures ne partagent pas un numéro.
@@ -174,6 +175,58 @@ drop trigger if exists garder_autonomie_agent on erp.enregistrements;
 create trigger garder_autonomie_agent before insert or update on erp.enregistrements
   for each row execute function erp.garder_autonomie_agent();
 
+-- Lien d'un logement à son annonce (donnees.repull.id, donnees.liaison, id
+-- « repull-… ») : gérant de l'espace et compte serveur seulement (« Relier à
+-- une annonce », api/erp-repull-connexion.ts ; la synchronisation). Sans
+-- cette règle, un compte « opérations » poserait repull.id sur n'importe quel
+-- logement créé à la main : au passage suivant, les réservations et les
+-- messages de l'annonce iraient sur ce logement (repull-synchro.ts, indexer :
+-- le logement relié à la main passe d'abord), chez un autre propriétaire.
+-- Ajout qui devient modification (upsert de l'ERP) : la ligne déjà là fait foi.
+-- Même déclencheur que dans erp-installation.sql (et, par espace, erp-espaces.sql).
+create or replace function erp.garder_lien_annonce() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant jsonb;
+  existe boolean := false;
+begin
+  if current_user <> 'authenticated' then
+    return new;
+  end if;
+  if new.collection <> 'logements' and not (tg_op = 'UPDATE' and old.collection = 'logements') then
+    return new;
+  end if;
+  if erp.acces_gerant() then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.collection = 'logements' then
+    if new.collection <> 'logements' or new.id <> old.id then
+      raise exception 'Seul un gérant relie un logement à son annonce.' using errcode = '42501';
+    end if;
+    avant := old.donnees;
+    existe := true;
+  else
+    select e.donnees into avant from erp.enregistrements e
+      where e.collection = 'logements' and e.id = new.id;
+    existe := found;
+  end if;
+  if existe then
+    if (new.donnees -> 'repull' ->> 'id') is not distinct from (avant -> 'repull' ->> 'id')
+       and (new.donnees -> 'liaison') is not distinct from (avant -> 'liaison') then
+      return new;
+    end if;
+  elsif (new.donnees -> 'repull' ->> 'id') is null and not (new.donnees ? 'liaison') and new.id not like 'repull-%' then
+    return new;
+  end if;
+  raise exception 'Seul un gérant relie un logement à son annonce.' using errcode = '42501';
+end;
+$$;
+revoke all on function erp.garder_lien_annonce() from public, anon;
+drop trigger if exists garder_lien_annonce on erp.enregistrements;
+create trigger garder_lien_annonce before insert or update on erp.enregistrements
+  for each row execute function erp.garder_lien_annonce();
+
 -- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
 -- retours à la ligne, espaces insécables ou invisibles). Même fonction que
 -- dans erp-espaces.sql.
@@ -311,6 +364,7 @@ begin
       where id = 'recette-acces' and collection in ('recette', 'accesProprietaires');
     -- Check-in en ligne : jamais archivé, ni modifié ni effacé.
     insert into erp.enregistrements (collection, id, donnees) values ('checkinsEnLigne', 'recette-checkin', '{"id": "recette-checkin"}');
+    insert into erp.enregistrements (collection, id, donnees) values ('logements', 'recette-lien', '{"id": "recette-lien", "nom": "Recette"}');
     update erp.enregistrements set donnees = donnees || '{"v": 2}' where collection = 'checkinsEnLigne' and id = 'recette-checkin';
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
@@ -347,6 +401,22 @@ begin
     begin
       insert into erp.enregistrements (collection, id, donnees) values ('accesProprietaires', 'recette-intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    -- Lien d'un logement à son annonce : jamais par un compte « opérations » (le reste de la fiche, oui).
+    update erp.enregistrements set donnees = donnees || '{"nom": "Recette modifiée"}' where collection = 'logements' and id = 'recette-lien';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un compte « opérations » ne modifie plus un logement'; raise exception 'stop'; end if;
+    begin
+      update erp.enregistrements set donnees = donnees || '{"repull": {"id": "999"}}' where collection = 'logements' and id = 'recette-lien';
+      resultat := 'un compte « opérations » relie un logement à une annonce';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('logements', 'recette-lien-2', '{"id": "recette-lien-2", "repull": {"id": "999"}}');
+      resultat := 'un compte « opérations » crée un logement relié à une annonce';
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
@@ -405,6 +475,10 @@ begin
     if n <> 1 then resultat := 'un gérant ne lit pas les accès des propriétaires'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'accesProprietaires' and id = 'recette-acces';
     if n <> 1 then resultat := 'un gérant ne lit pas les anciennes versions des accès'; raise exception 'stop'; end if;
+    -- Lien d'un logement à son annonce : le gérant (et le serveur) le pose.
+    update erp.enregistrements set donnees = donnees || '{"repull": {"id": "999"}}' where collection = 'logements' and id = 'recette-lien';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant (le serveur) ne relie pas un logement à son annonce'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements where collection = 'checkinsEnLigne' and id = 'recette-checkin';
     if n <> 1 then resultat := 'un gérant (le serveur) ne lit pas les check-ins en ligne'; raise exception 'stop'; end if;
     delete from erp.enregistrements where collection = 'checkinsEnLigne' and id = 'recette-checkin';

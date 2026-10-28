@@ -958,7 +958,14 @@ export class SessionRepull {
       ...existant,
       statut,
       ...(photo ? { photoUrl: photo } : {}),
-      repull: { ...existant.repull, ...(statutRepull ? { statut: statutRepull } : {}), horsSelection: true },
+      repull: {
+        ...existant.repull,
+        ...(statutRepull ? { statut: statutRepull } : {}),
+        horsSelection: true,
+        // Statut d'avant la pause (« En préparation »…), gardé une seule fois : il revient quand
+        // l'annonce est recochée (poserAnnonce) ou au « Délier » (liaison-annonce.ts).
+        ...(existant.repull.horsSelection ? {} : { statutAvantPause: existant.statut }),
+      },
     };
     // Ses photos par la page publique de l'annonce Airbnb : aucun appel au service de connexion.
     if (statut !== 'sorti') suivant = await this.photosParPageEnPause(suivant);
@@ -1066,8 +1073,12 @@ export class SessionRepull {
       }
     }
     const logement = versLogement(annonce, existant, { id, aujourdhui: this.aujourdhui, proprietaireId: ID_PROPRIETAIRE_A_RENSEIGNER });
-    // De nouveau choisi après avoir été retiré : le statut suit de nouveau l'annonce.
-    if (existant?.repull?.horsSelection) logement.statut = statutLogement(l.status);
+    // De nouveau choisi après avoir été retiré : le statut d'avant la pause revient (« En
+    // préparation » le reste) ; sans lui, ou annonce archivée entre-temps, il suit l'annonce.
+    if (existant?.repull?.horsSelection) {
+      const avant = existant.repull.statutAvantPause;
+      logement.statut = avant && l.status !== 'archived' ? avant : statutLogement(l.status);
+    }
     logements.poser(logement);
     this.logementParRepull.set(String(l.id), id);
     return id;

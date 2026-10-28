@@ -7,11 +7,15 @@
 //   GET  ?action=fournisseurs      plateformes et logiciels proposés par Repull
 //   POST { action: 'connecter', fournisseur }          → { url } page Repull Connect
 //   POST { action: 'selection', ids: string[] }        → choix enregistré + import
+//   POST { action: 'relier', logement, annonce }       → logement créé à la main
+//                                                        relié à son annonce + import
+//   POST { action: 'delier', logement }                → lien retiré (rien d'importé)
 //   POST { action: 'deconnecter', fournisseur, compte? }
 //
 // Authentification : Authorization: Bearer <jeton de session Supabase>, membre
-// de l'équipe (gérant ou opérations) ; connecter, choisir et déconnecter sont
-// réservés aux gérants. Espace : celui de l'en-tête x-erp-espace (Label Maison
+// de l'équipe (gérant ou opérations) ; connecter, choisir, relier, délier et
+// déconnecter sont réservés aux gérants. Relier et délier n'écrivent que dans
+// l'ERP (src/erp/data/liaison-annonce.ts). Espace : celui de l'en-tête x-erp-espace (Label Maison
 // à défaut), avec son accès Repull (workspace ou clé propre). Chaque appel
 // Repull est compté dans la part mensuelle de l'espace (REPULL_BUDGET_ERP pour
 // Label Maison). Détail : src/erp/data/repull-connexion.ts.
@@ -20,8 +24,10 @@
 import {
   ErreurConnexion,
   deconnecter,
+  delierAnnonce,
   demarrerConnexion,
   enregistrerSelection,
+  relierAnnonce,
   lireEtatConnexions,
   lireFournisseurs,
   messageErreur,
@@ -65,7 +71,8 @@ export default async function handler(req: any, res: any) {
     return repondre(res, 503, { ok: false, erreur: e instanceof Error ? e.message : String(e) });
   }
   const manque = variableManquante(c);
-  if (manque) return repondre(res, 503, { ok: false, erreur: manque });
+  // sans_connexion : espace sans accès Repull, l'écran propose Logements → Connexions.
+  if (manque) return repondre(res, 503, { ok: false, erreur: manque, ...(!c.cle ? { code: 'sans_connexion' } : {}) });
 
   const limite = Number(String(process.env.REPULL_LIMITE_LOGEMENTS ?? '').trim());
   const ctx: ContexteConnexion = {
@@ -83,7 +90,8 @@ export default async function handler(req: any, res: any) {
   const action = String((req.method === 'GET' ? req.query?.action : corps.action) ?? 'etat');
   const ecriture = req.method === 'POST';
   if (ecriture && membre.role !== 'gerant') {
-    return repondre(res, 403, { ok: false, erreur: 'Seul un gérant peut connecter une plateforme ou choisir les logements.' });
+    const lien = action === 'relier' || action === 'delier';
+    return repondre(res, 403, { ok: false, erreur: lien ? 'Seul un gérant peut relier un logement à son annonce.' : 'Seul un gérant peut connecter une plateforme ou choisir les logements.' });
   }
 
   try {
@@ -104,6 +112,12 @@ export default async function handler(req: any, res: any) {
     }
     if (ecriture && action === 'selection') {
       return repondre(res, 200, await enregistrerSelection(ctx, corps.ids, membre.email));
+    }
+    if (ecriture && action === 'relier') {
+      return repondre(res, 200, await relierAnnonce(ctx, corps.logement, corps.annonce, { email: membre.email, role: membre.role }));
+    }
+    if (ecriture && action === 'delier') {
+      return repondre(res, 200, await delierAnnonce(ctx, corps.logement, { email: membre.email, role: membre.role }));
     }
     if (ecriture && action === 'deconnecter') {
       return repondre(res, 200, await deconnecter(ctx, String(corps.fournisseur ?? ''), corps.compte ? String(corps.compte) : undefined));

@@ -17,7 +17,9 @@
  *
  * Identifiants déterministes : `repull-<id Repull>`. Un logement créé à la
  * main peut être relié à son annonce en renseignant `repull.id` : il est alors
- * mis à jour au lieu d'être dupliqué.
+ * mis à jour au lieu d'être dupliqué (« Relier à une annonce », fiche du
+ * logement : liaison-annonce.ts). Son adresse, son wifi et ses horaires
+ * restent ceux de l'équipe.
  *
  * Ce module ne doit importer que des types et des constantes (il tourne aussi
  * côté serveur, hors de Vite).
@@ -529,7 +531,9 @@ function logementVierge(l: RepullListing, ctx: ContexteLogement): Logement {
  * connexion), photo (sauf photo déposée par l'équipe), et le statut quand
  * l'annonce change d'état chez Repull (archivée → sorti, désactivée → pause,
  * réactivée → actif). Règles de la maison, accès et équipements ne sont
- * remplis que s'ils sont vides. Tout le reste appartient à l'ERP.
+ * remplis que s'ils sont vides, comme l'adresse, la ville, le wifi et les
+ * horaires d'un logement créé à la main puis relié. Tout le reste appartient
+ * à l'ERP.
  */
 export function versLogement(l: RepullListing, existant: Logement | undefined, ctx: ContexteLogement): Logement {
   const base = existant ?? logementVierge(l, ctx);
@@ -539,8 +543,11 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
 
   const nom = texte(l.name) || texte(c?.name);
   if (nom) suivant.nom = nom;
-  if (texte(l.address?.street)) suivant.adresse = texte(l.address?.street);
-  if (texte(l.address?.city)) suivant.ville = texte(l.address?.city);
+  // Logement créé à la main puis relié : l'adresse saisie par l'équipe (avec son code postal, et
+  // la position sur la carte calculée d'après elle) reste ; l'annonce ne la remplit que si elle est vide.
+  const aLaMain = !!existant && existant.id !== idRepull(l.id);
+  if (texte(l.address?.street) && !(aLaMain && texte(base.adresse))) suivant.adresse = texte(l.address?.street);
+  if (texte(l.address?.city) && !(aLaMain && texte(base.ville))) suivant.ville = texte(l.address?.city);
   const capacite = nombre(d?.personCapacity);
   if (capacite !== undefined && capacite > 0) suivant.capacite = capacite;
   const chambres = nombre(d?.bedrooms);
@@ -549,13 +556,15 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
   if (surface !== undefined) suivant.surfaceM2 = surface;
 
   const fiche: FicheLogement = { ...base.fiche, equipements: [...(base.fiche?.equipements ?? [])] };
-  if (texte(d?.wifiNetwork)) fiche.wifiNom = texte(d?.wifiNetwork);
-  if (texte(d?.wifiPassword)) fiche.wifiCode = texte(d?.wifiPassword);
+  // Logement relié à la main : wifi et horaires de l'équipe restent, comme l'adresse (remplis s'ils sont vides).
+  const remplacer = (avant: string | undefined) => !(aLaMain && texte(avant));
+  if (texte(d?.wifiNetwork) && remplacer(fiche.wifiNom)) fiche.wifiNom = texte(d?.wifiNetwork);
+  if (texte(d?.wifiPassword) && remplacer(fiche.wifiCode)) fiche.wifiCode = texte(d?.wifiPassword);
   const pol = l.policies ?? undefined;
   const arrivee = heure(d?.checkInTimeStart) ?? heure(pol?.checkIn?.from);
-  if (arrivee) fiche.heureArrivee = arrivee;
+  if (arrivee && remplacer(fiche.heureArrivee)) fiche.heureArrivee = arrivee;
   const depart = heure(d?.checkOutTime) ?? heure(pol?.checkOut?.until);
-  if (depart) fiche.heureDepart = depart;
+  if (depart && remplacer(fiche.heureDepart)) fiche.heureDepart = depart;
   const regles = texte(c?.houseRules) || texte(pol?.houseRules);
   if (!texte(fiche.regles) && regles) fiche.regles = regles;
   const acces = texte(d?.directions) || texte(pol?.checkIn?.instructions);
