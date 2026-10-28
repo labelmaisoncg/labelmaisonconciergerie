@@ -130,7 +130,7 @@ export function CarteAvisADeposer({ r }: { r: Reservation }) {
               <ExternalLink aria-hidden /> Ouvrir Airbnb
             </a>
             <span role="status" className="text-[12.5px] text-(--lm-encre-2)">
-              {copie === 'ok' ? 'Copié.' : copie === 'echec' ? 'Copie impossible : sélectionnez le texte.' : ''}
+              {copie === 'ok' ? 'Texte copié.' : copie === 'echec' ? 'Copie impossible : sélectionnez le texte.' : ''}
             </span>
           </div>
           {modifiable && (

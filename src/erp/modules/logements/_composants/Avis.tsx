@@ -108,7 +108,7 @@ export function BarresThemes({ synthese, max = 6, suite }: { synthese: SyntheseA
 
 /* --------------------------------------------------------- un avis en ligne */
 
-/** Une ligne : le texte de l'avis, puis « ☆ 4,0 · Négatif · Laura J. · Massy · 21 sept. » sur une seule ligne. */
+/** Une ligne : le texte de l'avis, puis « ☆ 4,0 · Négatif · 21 sept. · Laura J. · Massy » sur une seule ligne. */
 export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logement?: string; onOuvrir: () => void }) {
   const s = LIBELLE_SENTIMENT[a.sentiment];
   const parties: ReactNode[] = [
@@ -120,9 +120,10 @@ export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logem
       </span>
     ),
     a.sentiment !== 'positif' && <span className={s.ton === 'danger' ? 'text-(--lm-danger)' : 'text-(--lm-alerte)'}>{s.libelle}</span>,
+    // La date avant l'auteur et le logement : une ligne trop longue se coupe sur le nom du logement.
+    (a.date.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jourMois : dateCourte)(a.date),
     a.auteur,
     logement,
-    (a.date.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jourMois : dateCourte)(a.date),
   ].filter(Boolean);
   return (
     <li>
@@ -414,7 +415,7 @@ export function SansAvis({ connecte }: { connecte: boolean }) {
     <EmptyState
       icone={<Star />}
       titre="Pas encore d’avis"
-      description={connecte ? 'Les avis des voyageurs arrivent ici après leur séjour.' : 'Connectez Airbnb ou Booking : les avis des voyageurs arrivent ici après leur séjour.'}
+      description={connecte ? 'Les avis des voyageurs arrivent ici après leur séjour.' : 'Connectez Airbnb ou Booking.com : les avis des voyageurs arrivent ici après leur séjour.'}
       action={
         !connecte && (
           <ButtonLink to="/erp/logements/connexions" variant="primary" icone={<Plug />}>

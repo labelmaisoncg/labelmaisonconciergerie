@@ -85,7 +85,7 @@ export default function AvisParc() {
     {
       libelle: 'Tendance',
       valeur: p.tendance ? TENDANCE[p.tendance.sens] : '-',
-      detail: p.tendance ? `${p.tendance.nbRecents} derniers avis : ${note(p.tendance.recente)}` : 'Pas assez d’avis',
+      detail: p.tendance ? `${p.tendance.nbRecents} derniers avis :\u00a0${note(p.tendance.recente)}` : 'Pas assez d’avis',
     },
   ];
 
@@ -105,7 +105,7 @@ export default function AvisParc() {
                 {reperes.map((e) => (
                   <div key={e.libelle} className="min-w-0 px-3 py-3.5 sm:px-5 sm:py-4">
                     <dt className="truncate text-[12px] font-medium text-(--lm-encre-2) sm:text-[12.5px]">{e.libelle}</dt>
-                    <dd className="lm-chiffres mt-1 truncate text-[19px] leading-tight font-semibold text-(--lm-encre) sm:text-[22px]">{e.valeur}</dd>
+                    <dd className="lm-chiffres mt-1 truncate text-[17px] leading-tight font-semibold text-(--lm-encre) min-[390px]:text-[19px] sm:text-[22px]">{e.valeur}</dd>
                     {e.detail && <dd className="mt-0.5 text-[11.5px] leading-snug text-(--lm-encre-3)">{e.detail}</dd>}
                   </div>
                 ))}

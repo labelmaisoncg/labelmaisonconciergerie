@@ -63,7 +63,7 @@ export function Tabs({ onglets, actif, onChange, label = 'Onglets', className }:
     <div
       role={onglets.some((o) => o.to) ? undefined : 'tablist'}
       aria-label={label}
-      className={cn('lm-defilement mb-5 flex overflow-x-auto border-b border-(--lm-bord)', className)}
+      className={cn('lm-defilement mb-5 flex overflow-x-auto overflow-y-hidden border-b border-(--lm-bord)', className)}
     >
       {onglets.map((o, i) =>
         o.to ? (
