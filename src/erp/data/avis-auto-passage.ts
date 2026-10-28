@@ -84,6 +84,19 @@ const PAGES_AVIS_SANS_REPONSE = 2;
 const TEMPS_REDACTION_MS = 15_000;
 const TEMPS_ENVOI_MS = 5_000;
 
+/**
+ * Une marque « en cours » plus récente que ce délai est celle d'un envoi en
+ * train de se faire (un autre passage, ou « Publier » du gérant) : elle n'est
+ * pas reprise. Au-delà (la fonction s'arrête à 60 s), c'est un envoi coupé.
+ */
+const BAIL_EN_COURS_MS = 5 * 60_000;
+const marqueRecente = (p: Pick<PublicationAvis, 'statut' | 'depuis' | 'le'> | undefined, le: string): boolean => {
+  if (p?.statut !== 'en_cours') return false;
+  const depuis = Date.parse(p.depuis ?? p.le ?? '');
+  // Sans heure lisible (ligne ancienne ou abîmée) : reprise, la plateforme refusera un second dépôt (409).
+  return Number.isFinite(depuis) && Date.parse(le) - depuis < BAIL_EN_COURS_MS;
+};
+
 /** Auteur des écritures et du journal. */
 const AUTEUR = PAR_PUBLICATION_AUTO;
 const ACTION_JOURNAL = 'Avis publiés';
@@ -168,6 +181,7 @@ async function ecrireLigneAvis(
     // « C’est fait » ou « Passer » de l'équipe, ou une autre décision : on n'y touche pas.
     if (avant && (avant.statut === 'fait' || avant.statut === 'passe') && pub.statut !== 'publie') return null;
     if (!attendus.includes(actuel)) return null;
+    if (pub.statut === 'en_cours' && marqueRecente(avant?.publication, le)) return null;
     const neuf: AvisADeposer = {
       id: r.id,
       reservationId: r.id,
@@ -204,6 +218,7 @@ async function ecrireLigneReponse(
     const [lu] = await o.base.lireVersions<ReponseAvisAuto>(COLLECTION_REPONSES_AVIS, [ligne.id]);
     const actuel = lu?.element?.publication?.statut ?? 'aucune';
     if (!attendus.includes(actuel)) return null;
+    if (pub.statut === 'en_cours' && marqueRecente(lu?.element?.publication, le)) return null;
     const suivant: ReponseAvisAuto = { ...(lu?.element ?? {}), ...ligne, creeLe: lu?.element?.creeLe ?? ligne.creeLe ?? le, publication: pub };
     if (!lu) {
       if ((await o.base.ajouterSiAbsent(COLLECTION_REPONSES_AVIS, [suivant], AUTEUR)) > 0) return suivant;
@@ -577,7 +592,13 @@ class PassageAvis {
     if (red.ecartee) raisons.push('La proposition de votre agent a été écartée : relisez le texte simple');
     if (red.panne) raisons.push('Votre agent n’a pas pu rédiger la réponse : relisez le texte simple');
     const texte = red.texte.trim();
-    const problemes = problemesReponse(texte, { nomVoyageur: r.voyageur?.nom, textePrive: lu.textePrive, ...(logement ? { logement } : {}) });
+    // Publiée seule : mêmes contrôles qu'un avis public (aucun chiffre, lien, coordonnée ni code), en plus de ceux d'une réponse.
+    const problemes = [
+      ...new Set([
+        ...problemesReponse(texte, { nomVoyageur: r.voyageur?.nom, textePrive: lu.textePrive, ...(logement ? { logement } : {}) }),
+        ...problemesTexteAvis(texte, { nomVoyageur: r.voyageur?.nom, ...(logement ? { logement } : {}) }),
+      ]),
+    ];
     if (problemes.length) raisons.push(`Le texte contient ${problemes.join(', ')} : à vérifier`);
     if (texte.length > LONGUEUR_MAX_AVIS) raisons.push('Réponse de plus de 1 000 caractères : à raccourcir');
     if (raisons.length) {

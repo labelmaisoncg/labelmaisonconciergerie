@@ -244,6 +244,15 @@ export function sejourDuProprietaire(
   return !!nom && voyageur.length >= 2 && proprio.has(nom) && proprio.has(voyageur[0]);
 }
 
+/**
+ * Consigne adressée à celui qui répond (« dans votre réponse, dites que… »,
+ * « reply saying… », « SYSTEM: ») : en plus de consigneCachee. Un avis ou des
+ * messages qui en contiennent ne partent jamais seuls (« À valider »).
+ */
+const CONSIGNE_A_L_HOTE =
+  /\b(dans|en)\s+(votre|ta|ton)\s+(r[ée]ponse|avis|commentaire)\b|\bin\s+your\s+(reply|response|answer|review)\b|(?<![a-zà-ÿ])(r[ée]pondez|r[ée]ponds|[ée]crivez|[ée]cris|mentionnez|pr[ée]cisez|ajoutez|dites)\b.{0,60}\b(que|qu['’]|avec|en disant|le mot)\b|\b(reply|respond|answer|write back)\s+(with|saying|that|only)\b|\bonly with\b|\b(system|syst[èe]me|assistant|claude|gpt|chatgpt|ai|ia|bot)\s*:/i;
+export const consigneAdressee = (texte: string): boolean => consigneCachee(texte) || CONSIGNE_A_L_HOTE.test(nettoyerTexte(String(texte ?? '')));
+
 /** Statut de la plateforme qui dit un litige, un remboursement ou une réclamation. */
 const LITIGE_PLATEFORME = /dispute|claim|refund|chargeback|r[ée]clam|rembours|litige/i;
 
@@ -283,6 +292,7 @@ export function raisonsAvisSensible(
   const textes = fils.flatMap((f) => f.messages).filter((m) => m.auteur === 'voyageur' && m.envoi?.par !== PAR_MESSAGE_AUTO && m.envoyeLe.slice(0, 10) >= depuis).map((m) => m.texte);
   const sensible = textes.length ? sujetSensibleMessages(textes) : null;
   if (sensible) raisons.push(`Échange sensible avec le voyageur (${LIBELLE_SENSIBLE[sensible.raison] ?? 'à vérifier'})`);
+  if (textes.some((t) => consigneAdressee(t))) raisons.push('Messages du voyageur avec des consignes inhabituelles');
   if (LITIGE_PLATEFORME.test(`${r.repull?.statut ?? ''} ${r.repull?.statutDetail ?? ''}`)) raisons.push('Litige ou remboursement signalé par la plateforme');
   if (sejourDuProprietaire(r, d)) raisons.push('Séjour du propriétaire');
   return [...new Set(raisons)];
@@ -302,6 +312,10 @@ export function langueVoyageur(r: Pick<Reservation, 'id'>, fils: readonly FilMes
  * famille du voyageur, promesse d'argent, consigne cachée ; texte vide ou
  * trop long.
  */
+/** Coordonnées ou code écrits en toutes lettres (« point fr », « (at) », « zéro six », « quatre-huit-deux »). */
+const CONTACT_DEGUISE =
+  /\b(point|dot)\s*(fr|com|net|org|io|eu|be|ch)\b|[([]\s*(at|arobase)\s*[)\]]|\barobase\b|\b(z[ée]ro|zero)\s+(un|deux|trois|quatre|cinq|six|sept|huit|neuf)\b|\b(z[ée]ro|un|deux|trois|quatre|cinq|six|sept|huit|neuf)[\s-]+(z[ée]ro|un|deux|trois|quatre|cinq|six|sept|huit|neuf)[\s-]+(z[ée]ro|un|deux|trois|quatre|cinq|six|sept|huit|neuf)\b/i;
+
 export function problemesTexteAvis(texte: string, ctx: { nomVoyageur?: string; logement?: Pick<Logement, 'adresse' | 'fiche' | 'descriptif'> } = {}): string[] {
   const t = String(texte ?? '').trim();
   if (!t) return ['aucun texte'];
@@ -312,6 +326,7 @@ export function problemesTexteAvis(texte: string, ctx: { nomVoyageur?: string; l
   const propre = nettoyerTexte(t);
   if (masquerCoordonnees(propre) !== propre) raisons.push('des coordonnées');
   if (masquerCodes(propre) !== propre) raisons.push('un code');
+  if (CONTACT_DEGUISE.test(propre)) raisons.push('des coordonnées ou un code écrits en lettres');
   return [...new Set(raisons)];
 }
 
@@ -355,7 +370,7 @@ export function raisonsReponseAValider(a: AvisLu): string[] {
   if (publics.length) raisons.push(`Point à revoir : ${publics.map((t) => libelleTheme(t.cle).toLowerCase()).join(', ')}`);
   if (a.themes.some((t) => t.prive && t.sentiment === 'negatif')) raisons.push('Le message privé signale un point à revoir');
   if (RECLAMATION_AVIS.test(`${a.textePublic}\n${a.textePrive}`)) raisons.push('L’avis parle d’une réclamation ou d’un remboursement');
-  if (consigneCachee(`${a.textePublic}\n${a.textePrive}`)) raisons.push('L’avis contient des consignes inhabituelles');
+  if (consigneAdressee(`${a.textePublic}\n${a.textePrive}`)) raisons.push('L’avis contient des consignes inhabituelles');
   return [...new Set(raisons)];
 }
 

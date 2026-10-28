@@ -322,11 +322,23 @@ export class ClientRepull {
     envoi?: unknown,
     entetes: Record<string, string> = {},
   ): Promise<T> {
-    if (!ecritureRepullPermise(methode, chemin, envoi)) {
-      throw new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
-    }
+    // Contrôle sur ce qui part vraiment : le corps tel qu'il sera sérialisé (jamais un toJSON
+    // ou un accesseur qui enverrait autre chose), et, pour une écriture, l'URL construite : le
+    // chemin inchangé par l'analyse de l'URL (tabulations, retours à la ligne, « . » retirés),
+    // et aucun paramètre de requête pour un POST (avis, message, connexion). Un DELETE de
+    // connexion garde son paramètre (accountId).
+    const corpsEnvoye = envoi === undefined ? undefined : JSON.stringify(envoi);
+    const corpsVu: unknown = corpsEnvoye === undefined ? undefined : JSON.parse(corpsEnvoye);
+    const refus = () => new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
+    if (!ecritureRepullPermise(methode, chemin, corpsVu)) throw refus();
     const url = new URL(this.base + chemin);
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
+    if (methode.toUpperCase() !== 'GET') {
+      const prefixe = new URL(this.base).pathname.replace(/\/+$/, '');
+      if (url.pathname !== prefixe + chemin.split('?')[0] || (methode.toUpperCase() === 'POST' && url.search)) throw refus();
+    }
+    const enTetes: Record<string, string> = {};
+    for (const [k, v] of Object.entries(entetes)) if (!/^(authorization|x-workspace-id|x-http-method-override|x-method-override|x-http-method)$/i.test(k)) enTetes[k] = v;
     for (let essai = 1; ; essai++) {
       if (Date.now() > this.o.echeance) throw new DelaiEcoule();
       if (this.restant <= 0) throw new BudgetEpuise();
@@ -340,11 +352,11 @@ export class ClientRepull {
           headers: {
             Authorization: `Bearer ${this.o.cle}`,
             Accept: 'application/json',
-            ...(envoi !== undefined ? { 'Content-Type': 'application/json' } : {}),
-            ...entetes,
+            ...(corpsEnvoye !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            ...enTetes,
             ...(this.o.workspace ? { 'X-Workspace-Id': this.o.workspace } : {}),
           },
-          ...(envoi !== undefined ? { body: JSON.stringify(envoi) } : {}),
+          ...(corpsEnvoye !== undefined ? { body: corpsEnvoye } : {}),
           signal: abandon.signal,
         });
       } catch {

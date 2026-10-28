@@ -83,8 +83,21 @@ export function lienAnnonceChange(op: Operation, avant: ErpDonnees): boolean {
 }
 
 /**
+ * Publication d'un avis sur le voyageur (avisADeposer.publication) posée,
+ * changée ou effacée, ou ligne qui en a une supprimée : comme le déclencheur
+ * erp.garder_publication_avis(), réservé au gérant (et au serveur).
+ */
+export function publicationAvisChange(op: Operation, avant: ErpDonnees): boolean {
+  if (op.collection !== 'avisADeposer') return false;
+  const ancien = ((avant.avisADeposer ?? []) as unknown as { id: string; publication?: unknown }[]).find((a) => a?.id === op.id);
+  if (op.type === 'supprimer') return ancien?.publication !== undefined;
+  return stable((op.donnees as { publication?: unknown }).publication) !== stable(ancien?.publication);
+}
+
+/**
  * Opération qu'un compte qui n'est pas gérant ne peut pas faire (la base la
  * refuserait) : écriture réservée, suppression d'un logement ou des réglages de l'agent,
+ * publication d'un avis (publicationAvisChange),
  * changement d'un de ses réglages réservés (REGLAGES_AGENT_GERANT, comparés
  * à `avant` comme le déclencheur erp.garder_autonomie_agent les compare à la
  * ligne enregistrée ; sans ligne : aucune de ces clés).
@@ -93,6 +106,7 @@ export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boo
   if (ecritureGerantSeulement(op.collection, op.id)) return true;
   if (op.type === 'supprimer' && SUPPRESSIONS_GERANT_SEULEMENT.includes(op.collection)) return true;
   if (lienAnnonceChange(op, avant)) return true;
+  if (publicationAvisChange(op, avant)) return true;
   if (op.collection !== 'reglages' || op.id !== ID_REGLAGES_AGENT) return false;
   if (op.type === 'supprimer') return true;
   const ancien = ((avant.reglages ?? []) as unknown as ({ id: string } & Record<string, unknown>)[]).find((r) => r?.id === ID_REGLAGES_AGENT);

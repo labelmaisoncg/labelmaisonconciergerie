@@ -234,6 +234,59 @@ drop trigger if exists garder_lien_annonce on erp.enregistrements;
 create trigger garder_lien_annonce before insert or update on erp.enregistrements
   for each row execute function erp.garder_lien_annonce();
 
+-- Publication des avis sur les voyageurs (avisADeposer.publication : « à valider »,
+-- « en cours », « publié », « Ne pas publier »…) : écrite par le serveur et le gérant
+-- seulement (src/erp/data/avis-auto-passage.ts, AvisAuto.tsx). Sans cette règle, un
+-- compte « opérations » effacerait le « Ne pas publier » du gérant (le passage suivant
+-- publierait l'avis 5 étoiles) ou glisserait un avis « à valider » au texte de son
+-- choix. L'équipe garde « C'est fait », « Passer » et le texte à copier (le reste de la
+-- ligne). Ajout qui devient modification (upsert de l'ERP) : la ligne déjà là fait foi.
+-- Même déclencheur dans erp-installation.sql et erp-acces-gerants.sql (et, par
+-- espace, erp-espaces.sql).
+create or replace function erp.garder_publication_avis() returns trigger
+language plpgsql set search_path = ''
+as $$
+declare
+  avant jsonb;
+begin
+  if current_user <> 'authenticated' then
+    return case when tg_op = 'DELETE' then old else new end;
+  end if;
+  if tg_op = 'DELETE' then
+    if old.collection <> 'avisADeposer' or not (old.donnees ? 'publication') or erp.acces_gerant() then
+      return old;
+    end if;
+    raise exception 'Seul un gérant décide de la publication d''un avis.' using errcode = '42501';
+  end if;
+  if new.collection <> 'avisADeposer' and not (tg_op = 'UPDATE' and old.collection = 'avisADeposer') then
+    return new;
+  end if;
+  if erp.acces_gerant() then
+    return new;
+  end if;
+  if tg_op = 'UPDATE' and old.collection = 'avisADeposer' then
+    if new.collection <> 'avisADeposer' or new.id <> old.id then
+      if not (old.donnees ? 'publication') and not (new.donnees ? 'publication') then
+        return new;
+      end if;
+      raise exception 'Seul un gérant décide de la publication d''un avis.' using errcode = '42501';
+    end if;
+    avant := old.donnees;
+  else
+    select e.donnees into avant from erp.enregistrements e
+      where e.collection = 'avisADeposer' and e.id = new.id;
+  end if;
+  if (new.donnees -> 'publication') is not distinct from (avant -> 'publication') then
+    return new;
+  end if;
+  raise exception 'Seul un gérant décide de la publication d''un avis.' using errcode = '42501';
+end;
+$$;
+revoke all on function erp.garder_publication_avis() from public, anon;
+drop trigger if exists garder_publication_avis on erp.enregistrements;
+create trigger garder_publication_avis before insert or update or delete on erp.enregistrements
+  for each row execute function erp.garder_publication_avis();
+
 -- Un logement qui a vécu ne se supprime pas (src/erp/data/suppression-logement.ts) :
 -- la base le refuse aussi, pour une suppression envoyée hors de l'ERP ou depuis des
 -- données pas à jour (réservation, ménage ou message arrivés entre-temps). Ce qui
@@ -419,7 +472,8 @@ begin
     insert into erp.enregistrements (collection, id, donnees) values ('logements', 'recette-suppr', '{"id": "recette-suppr", "nom": "Recette à supprimer"}');
     insert into erp.enregistrements (collection, id, donnees) values
       ('logements', 'recette-suppr-vecu', '{"id": "recette-suppr-vecu", "nom": "Recette avec historique"}'),
-      ('reservations', 'recette-suppr-vecu', '{"id": "recette-suppr-vecu", "logementId": "recette-suppr-vecu"}');
+      ('reservations', 'recette-suppr-vecu', '{"id": "recette-suppr-vecu", "logementId": "recette-suppr-vecu"}'),
+      ('avisADeposer', 'recette-avis-decide', '{"id": "recette-avis-decide", "statut": "passe", "publication": {"statut": "refuse", "avisId": "1"}}');
     update erp.enregistrements set donnees = donnees || '{"v": 2}' where collection = 'checkinsEnLigne' and id = 'recette-checkin';
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
@@ -482,6 +536,25 @@ begin
     update erp.enregistrements set donnees = donnees || '{"nom": "Recette à supprimer (vue)"}' where collection = 'logements' and id = 'recette-suppr';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'un compte « opérations » ne modifie plus le logement qu''il ne peut pas supprimer'; raise exception 'stop'; end if;
+    -- Publication des avis (erp.garder_publication_avis) : décidée par le gérant et le serveur seulement.
+    begin
+      update erp.enregistrements set donnees = donnees - 'publication' where collection = 'avisADeposer' and id = 'recette-avis-decide';
+      resultat := 'un compte « opérations » efface le « Ne pas publier » du gérant'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      delete from erp.enregistrements where collection = 'avisADeposer' and id = 'recette-avis-decide';
+      resultat := 'un compte « opérations » efface un avis décidé par le gérant'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('avisADeposer', 'recette-avis-glisse', '{"id": "recette-avis-glisse", "publication": {"statut": "a_valider", "avisId": "2", "texte": "Recette"}}');
+      resultat := 'un compte « opérations » glisse un avis « à valider »'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"statut": "fait"}' where collection = 'avisADeposer' and id = 'recette-avis-decide';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un compte « opérations » ne marque plus un avis « C’est fait »'; raise exception 'stop'; end if;
     begin
       insert into erp.enregistrements (collection, id, donnees) values ('reglagesRelances', 'recette-intrus', '{}');
       resultat := 'un compte « opérations » écrit les réglages des relances';
@@ -555,6 +628,10 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Publication des avis : le gérant la décide (« Ne pas publier », rouvrir).
+    update erp.enregistrements set donnees = jsonb_set(donnees, '{publication,statut}', '"a_valider"') where collection = 'avisADeposer' and id = 'recette-avis-decide';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne décide pas de la publication d''un avis'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements where collection = 'checkinsEnLigne' and id = 'recette-checkin';
     if n <> 1 then resultat := 'un gérant (le serveur) ne lit pas les check-ins en ligne'; raise exception 'stop'; end if;
     delete from erp.enregistrements where collection = 'checkinsEnLigne' and id = 'recette-checkin';
