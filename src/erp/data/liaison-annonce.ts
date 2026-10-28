@@ -16,9 +16,11 @@
  *
  * Délier n'est permis que tant que rien de l'annonce n'est arrivé sur le
  * logement (ni réservation ni conversation) : le logement reprend alors les
- * seuls champs que l'import remplace (CHAMPS_ANNONCE), tels qu'avant le
- * lien, et son statut d'avant une mise en pause ; tout ce que l'équipe a
- * changé depuis reste. Au-delà, défaire le lien voudrait déplacer
+ * champs que l'import remplace (CHAMPS_ANNONCE), tels qu'avant le lien ;
+ * ceux qu'il a remplis parce qu'ils étaient vides (wifi, accès, règles,
+ * adresse… : CHAMPS_REMPLIS_SI_VIDES) redeviennent vides ; son statut d'avant
+ * une mise en pause revient. Le reste de ce que l'équipe a changé depuis
+ * reste. Au-delà, défaire le lien voudrait déplacer
  * réservations, conversations et ménages : ce n'est pas fait ici.
  *
  * Ce module n'importe que des types et des constantes (il tourne aussi côté
@@ -45,6 +47,39 @@ export const CHAMPS_ANNONCE = [
   'descriptif',
   'tarifs',
 ] as const satisfies readonly (keyof ChampsAnnonce)[];
+
+/**
+ * Champs que l'import remplit SEULEMENT s'ils sont vides sur un logement
+ * relié à la main (versLogement, repull.ts ; lits : page publique Airbnb,
+ * repull-synchro.ts). Au lien, on garde le NOM de ceux qui sont vides (jamais
+ * leur valeur) ; « Délier » les vide de nouveau : un lien fait par erreur ne
+ * laisse ni le wifi, ni l'accès, ni les règles d'une autre annonce dans le
+ * livret et les réponses aux voyageurs. Parking, consignes de départ et code
+ * postal n'y sont pas : l'import ne les écrit jamais, les vider n'effacerait
+ * que ce que l'équipe a saisi.
+ */
+export const CHAMPS_REMPLIS_SI_VIDES = [
+  'adresse',
+  'ville',
+  'lits',
+  'fiche.wifiNom',
+  'fiche.wifiCode',
+  'fiche.heureArrivee',
+  'fiche.heureDepart',
+  'fiche.acces',
+  'fiche.regles',
+  'fiche.aSavoir',
+  'fiche.equipements',
+] as const;
+type ChampRempli = (typeof CHAMPS_REMPLIS_SI_VIDES)[number];
+
+/** Valeur d'un de ces champs (« fiche.wifiCode » : dans la fiche). */
+function valeurChamp(l: Logement, champ: ChampRempli): unknown {
+  return champ.startsWith('fiche.') ? (l.fiche as unknown as Record<string, unknown> | undefined)?.[champ.slice(6)] : (l as unknown as Record<string, unknown>)[champ];
+}
+
+/** Vide : absent, texte blanc, liste vide. */
+const estVide = (v: unknown): boolean => (Array.isArray(v) ? v.length === 0 : typeof v === 'string' ? !v.trim() : v === undefined || v === null);
 
 /** Identifiant d'annonce acceptable (celui du service de connexion : chiffres, lettres, « - », « _ »). */
 const FORME_ANNONCE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -142,9 +177,13 @@ function champsAnnonce(l: Logement): ChampsAnnonce {
   return avant as ChampsAnnonce;
 }
 
-/** Le logement relié : `repull.id` posé, et ce qu'il était avant gardé pour « Délier ». */
+/**
+ * Le logement relié : `repull.id` posé ; gardés pour « Délier » : les champs
+ * que l'import remplace, et le nom des champs vides qu'il pourrait remplir.
+ */
 export function lierLogement(l: Logement, annonce: string, o: { le: Horodatage; par: string }): Logement {
-  return { ...l, repull: { id: annonce }, liaison: { annonce, le: o.le, par: o.par, avant: champsAnnonce(l) } };
+  const vides = CHAMPS_REMPLIS_SI_VIDES.filter((c) => estVide(valeurChamp(l, c)));
+  return { ...l, repull: { id: annonce }, liaison: { annonce, le: o.le, par: o.par, avant: champsAnnonce(l), vides: [...vides] } };
 }
 
 /** Réservations et conversations arrivées de l'annonce sur ce logement. */
@@ -180,8 +219,10 @@ export function delierPossible(
 /**
  * Le logement délié : sans annonce ; les champs que l'import remplace
  * reprennent leur valeur d'avant le lien (une photo de couverture déposée
- * par l'équipe depuis reste), le statut d'avant une mise en pause revient ;
- * tout le reste (fiche, adresse, réglages) reste tel que l'équipe l'a laissé.
+ * par l'équipe depuis reste) ; ceux qui étaient vides au lien, et que
+ * l'import a pu remplir, redeviennent vides (adresse vidée : sa position sur
+ * la carte part avec elle) ; le statut d'avant une mise en pause revient.
+ * Le reste (parking, consignes, réglages…) reste tel que l'équipe l'a laissé.
  */
 export function delierLogement(l: Logement): Logement {
   const { repull, liaison, ...reste } = l;
@@ -192,7 +233,20 @@ export function delierLogement(l: Logement): Logement {
     if (k in avant) suivant[k] = avant[k];
     else delete suivant[k];
   }
-  // Annonce décochée (en pause) : le statut choisi avant la pause revient.
-  if (repull?.horsSelection && repull.statutAvantPause && l.statut === 'pause') suivant.statut = repull.statutAvantPause;
+  const vides = new Set<string>(liaison?.vides ?? []);
+  const fiche = { ...l.fiche } as unknown as Record<string, unknown>;
+  for (const c of CHAMPS_REMPLIS_SI_VIDES) {
+    if (!vides.has(c)) continue;
+    const cible = c.startsWith('fiche.') ? fiche : suivant;
+    const cle = c.startsWith('fiche.') ? c.slice(6) : c;
+    if (Array.isArray(cible[cle])) cible[cle] = [];
+    else if (cle === 'aSavoir') delete cible[cle];
+    else cible[cle] = '';
+  }
+  suivant.fiche = fiche;
+  if ((vides.has('adresse') && l.adresse) || (vides.has('ville') && l.ville)) delete suivant.position;
+  // Annonce décochée (en pause) : le statut choisi avant la pause revient (en préparation ou actif).
+  const avantPause = repull?.statutAvantPause;
+  if (repull?.horsSelection && l.statut === 'pause' && (avantPause === 'lancement' || avantPause === 'actif')) suivant.statut = avantPause;
   return suivant as unknown as Logement;
 }

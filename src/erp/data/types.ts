@@ -270,6 +270,12 @@ export interface LiaisonAnnonce {
   par: string;
   /** Le logement juste avant le lien : ce que « Délier » lui rend. */
   avant: ChampsAnnonce;
+  /**
+   * Noms (jamais les valeurs) des champs vides au moment du lien, que
+   * l'import remplit seulement s'ils sont vides (CHAMPS_REMPLIS_SI_VIDES,
+   * liaison-annonce.ts) : « Délier » les vide de nouveau.
+   */
+  vides?: string[];
 }
 
 /**

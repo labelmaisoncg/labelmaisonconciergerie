@@ -1511,10 +1511,29 @@ async function principal() {
         Object.keys(lie.liaison?.avant ?? {}).sort().join() === 'annonces,capacite,chambres,nom,surfaceM2' && !('fiche' in (lie.liaison?.avant ?? {})),
         `trace du lien : les seuls champs que l’import remplace, jamais la fiche (wifi, accès) ni l’adresse (${Object.keys(lie.liaison?.avant ?? {}).join()})`,
       );
-      const apresEquipe = delierLogement({ ...lie, nom: 'Nom de l’annonce', photos: ['https://x/1.jpg'], photoUrl: 'stockage://erp-fichiers/logements/linas.jpg', fiche: { ...lie.fiche, wifiCode: 'nouveau-code', acces: 'Nouveau boîtier' } });
       verifier(
-        apresEquipe.nom === 'Maison de Linas' && !apresEquipe.photos && apresEquipe.photoUrl === 'stockage://erp-fichiers/logements/linas.jpg' && apresEquipe.fiche.wifiCode === 'nouveau-code' && apresEquipe.fiche.acces === 'Nouveau boîtier',
-        'délier : nom et photos de l’annonce retirés ; wifi, accès et photo de l’équipe changés depuis le lien gardés',
+        (lie.liaison?.vides ?? []).join() === 'fiche.wifiNom,fiche.wifiCode,fiche.regles,fiche.aSavoir,fiche.equipements' && !JSON.stringify(lie.liaison).includes('Code au portail'),
+        `trace du lien : le nom des champs vides que l’import pourrait remplir, jamais une valeur (${(lie.liaison?.vides ?? []).join()})`,
+      );
+      const apresEquipe = delierLogement({
+        ...lie,
+        nom: 'Nom de l’annonce',
+        photos: ['https://x/1.jpg'],
+        photoUrl: 'stockage://erp-fichiers/logements/linas.jpg',
+        fiche: { ...lie.fiche, wifiCode: 'code-annonce', regles: 'Règles de l’annonce', acces: 'Nouveau boîtier', parking: 'Place 3' },
+      });
+      verifier(
+        apresEquipe.nom === 'Maison de Linas' && !apresEquipe.photos && apresEquipe.photoUrl === 'stockage://erp-fichiers/logements/linas.jpg' &&
+          apresEquipe.fiche.wifiCode === '' && apresEquipe.fiche.regles === '' && apresEquipe.fiche.acces === 'Nouveau boîtier' && apresEquipe.fiche.parking === 'Place 3',
+        'délier : nom et photos rendus, champs vides au lien revidés (wifi, règles) ; accès, parking et photo changés par l’équipe gardés',
+      );
+      // Adresse vide au lien, remplie par l'annonce puis placée sur la carte : « Délier » retire les deux.
+      const sansAdresse = { ...linas, adresse: '', ville: '', position: undefined };
+      const lieSansAdresse = lierLogement(sansAdresse, '106', { le: 'x', par: 'y' });
+      const delieSansAdresse = delierLogement({ ...lieSansAdresse, adresse: '2 rue de l’annonce', ville: 'Montlhéry', position: linas.position });
+      verifier(
+        delieSansAdresse.adresse === '' && delieSansAdresse.ville === '' && !delieSansAdresse.position && delieSansAdresse.codePostal === '91310',
+        'délier : adresse remplie par l’annonce revidée, sa position retirée ; code postal de l’équipe gardé',
       );
     }
     verifier(/« Sorti »/.test(message(regle({ logements: tous.map((x) => (x.id === 'log-linas' ? { ...x, statut: 'sorti' as const } : x)) }))), 'règle : logement « Sorti » refusé, comme l’écran');
@@ -1661,6 +1680,47 @@ async function principal() {
       for (const x of lies) if (x.liaison) base2.poser('logements', delierLogement(x));
       base2.poser('logements', studio);
       await enregistrerSelection(ctx(), ['101', '106'], 'gerant@test');
+    }
+
+    // S6 : un logement à fiche vide relié par erreur à une annonce qui a wifi, accès et règles, puis délié :
+    // rien de cette annonce ne reste dans le livret ni dans les réponses aux voyageurs.
+    {
+      const vierge: Logement = { ...manuel('log-vierge', 'Logement vierge'), adresse: '5 rue Vierge', fiche: { wifiNom: '', wifiCode: '', heureArrivee: '16:00', heureDepart: '11:00', acces: '', parking: '', regles: '', equipements: [] } };
+      base2.poser('logements', vierge);
+      const i107 = R.listings.findIndex((x) => x.id === '107');
+      R.listings[i107] = {
+        ...R.listings[i107],
+        details: { personCapacity: 2, wifiNetwork: 'Box-Annonce', wifiPassword: 'code-annonce', checkInTimeStart: '17:00', checkOutTime: '10:00', directions: 'Accès annonce 107' },
+        content: { houseRules: 'Règles annonce 107' },
+        updatedAt: '2026-10-02T09:00:00.000Z',
+      };
+      await relierAnnonce(ctx(), 'log-vierge', '107', GERANT);
+      const v1 = lu('log-vierge');
+      verifier(
+        v1.fiche.wifiNom === 'Box-Annonce' && v1.fiche.wifiCode === 'code-annonce' && v1.fiche.acces === 'Accès annonce 107' && v1.fiche.regles === 'Règles annonce 107' && v1.fiche.heureArrivee === '16:00',
+        'S6 relié : la fiche vide reçoit wifi, accès et règles de l’annonce ; les horaires de l’équipe restent',
+      );
+      await delierAnnonce(ctx(), 'log-vierge', GERANT);
+      const v2 = lu('log-vierge');
+      const restes = (['wifiNom', 'wifiCode', 'acces', 'regles', 'heureArrivee', 'heureDepart'] as const).filter((k) => canonique(v2.fiche[k]) !== canonique(vierge.fiche[k]));
+      verifier(restes.length === 0 && canonique(v2) === canonique(vierge), `S6 délié : la fiche redevient vide, le logement tel qu’avant (restent : ${restes.map((k) => `${k}=${v2.fiche[k]}`).join(', ') || 'rien'})`);
+      base2.lignes.delete(base2.cle('logements', 'log-vierge'));
+    }
+
+    // S8 : logement IMPORTÉ déjà en pause (annonce désactivée), décoché, puis annonce réactivée et recochée : il suit l'annonce.
+    {
+      const i101 = R.listings.findIndex((x) => x.id === '101');
+      R.listings[i101] = { ...R.listings[i101], status: 'inactive', updatedAt: '2026-10-03T09:00:00.000Z' };
+      avancer(11);
+      await lancer(options('manuel', { base: erp2() }));
+      verifier(lu('repull-101').statut === 'pause', `S8 annonce désactivée : logement importé en pause (${lu('repull-101').statut})`);
+      await enregistrerSelection(ctx(), ['106'], 'gerant@test');
+      verifier(lu('repull-101').repull?.horsSelection === true && lu('repull-101').repull?.statutAvantPause === undefined, 'S8 décoché alors qu’il était déjà en pause : aucun statut d’avant gardé');
+      R.listings[i101] = { ...R.listings[i101], status: 'active', updatedAt: '2026-10-04T09:00:00.000Z' };
+      avancer(11);
+      await lireEtatConnexions(ctx(), { forcer: true });
+      await enregistrerSelection(ctx(), ['101', '106'], 'gerant@test');
+      verifier(lu('repull-101').statut === 'actif' && !lu('repull-101').repull?.horsSelection, `S8 annonce réactivée puis recochée : le logement suit l’annonce active (${lu('repull-101').statut})`);
     }
 
     // Espaces séparés : un autre espace ne relie ni ne lit les logements ou les annonces de celui-ci.
