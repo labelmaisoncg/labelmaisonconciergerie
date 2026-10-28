@@ -63,7 +63,6 @@ const ZOOM_MAX_CADRAGE = 13;
 const ZOOM_UN_LOGEMENT = 12.5;
 /** Largeur de la fiche ouverte sur ordinateur (côté droit de la carte), marge comprise. */
 const LARGEUR_FICHE = 356;
-/** Carte étroite (téléphone) : crédits repliés derrière le bouton « i ». */
 
 export interface FondCarteProps {
   /** Logements placés (avec position). */

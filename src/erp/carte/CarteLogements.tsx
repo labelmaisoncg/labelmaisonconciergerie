@@ -368,18 +368,24 @@ const LIEN_CREDIT = 'inline-flex min-h-8 items-center underline-offset-2 hover:u
  */
 function CreditsCarte() {
   return (
-    <p className="mt-1 text-right text-[11.5px] text-(--lm-encre-3)">
-      <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
-        OpenFreeMap
-      </a>
-      {' · '}
-      <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
-        © OpenMapTiles
-      </a>
-      {' · Données '}
-      <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
-        © contributeurs OpenStreetMap
-      </a>
+    // Sur téléphone, la ligne se coupe entre deux mentions, jamais au milieu de l'une d'elles.
+    <p className="mt-1 flex flex-wrap justify-end gap-x-1.5 text-[11.5px] text-(--lm-encre-3)">
+      <span className="whitespace-nowrap">
+        <a href="https://openfreemap.org" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
+          OpenFreeMap
+        </a>
+        {' · '}
+        <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
+          © OpenMapTiles
+        </a>
+        <span className="max-sm:hidden"> ·</span>
+      </span>
+      <span className="whitespace-nowrap">
+        {'Données '}
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className={LIEN_CREDIT}>
+          © contributeurs OpenStreetMap
+        </a>
+      </span>
     </p>
   );
 }
