@@ -1174,11 +1174,16 @@ tête de conversation ; aucun appel à l'IA juste pour trier.
 **Suppléments (B7)** (`src/erp/data/supplements.ts`) : arrivée plus tôt,
 départ plus tard, ménage supplémentaire, navette.
 
-- **Réglages** : fiche du logement → carte « Suppléments » → « Régler » /
-  « Modifier » (gérant). Pour chacun : proposé ou non, prix indicatif (0 € :
+- **Réglages** : fiche du logement → onglet « Infos pour votre agent » →
+  carte « Suppléments », juste après « Arrivée et départ » → « Régler » /
+  « Modifier » (gérant ; rien de réglé et pas gérant : pas de carte ; logement
+  sorti : pas de carte). Pour chacun : proposé ou non, prix indicatif (0 € :
   sans supplément), heure possible (arrivée dès, départ jusqu'à, avant
-  l'arrivée / après le départ habituels), « Selon le planning » (coché par
-  défaut), précision montrée au voyageur. Élément `reglages/supplements` (un
+  l'arrivée / après le départ habituels), « Seulement si personne ne part
+  (n'arrive) ce jour-là » (coché par défaut), précision montrée au voyageur.
+  Heures au format 12:00 à l'écran, « 12 h » seulement dans les textes aux
+  voyageurs. `?onglet=fiche&supplements=regler` ouvre directement le panneau
+  (lien « Régler les suppléments » de la Messagerie). Élément `reglages/supplements` (un
   bloc par logement), dans `erp.ecriture_gerant_seulement` (les trois
   fichiers SQL et leurs recettes, `ecritures-gerant.ts`). Lecture tolérante :
   jamais allumé sans prix lisible.
@@ -1188,26 +1193,54 @@ départ plus tard, ménage supplémentaire, navette.
   donne le supplément, son prix, l'état (possible, à vérifier, pas possible
   ce jour-là) et ce que dit le planning : un départ d'un autre voyageur le jour
   de l'arrivée (ou une arrivée le jour du départ) le bloque « selon le
-  planning », sinon il est à vérifier ; un ménage prévu ce jour-là est dit
-  (et le met « à vérifier » s'il gêne l'heure). « Insérer » met la
-  proposition (ou, si ce n'est pas possible, une réponse polie sans prix) dans
-  la zone de réponse, en français ou en anglais selon le voyageur ; l'équipe
-  l'envoie comme une réponse normale. Les suppléments du logement sont aussi
-  dans la rangée des modèles.
+  planning », sinon il est à vérifier ; un ménage prévu ce jour-là est dit.
+  Arrivée plus tôt : un ménage qui finit après l'heure la met « à vérifier ».
+  Départ plus tard sans arrivée ce jour-là : le ménage de ce départ se décale
+  (« Ménage décalé après 14:00 ») et le départ reste possible ; à vérifier
+  seulement si un voyageur arrive (case décochée) ou si le ménage décalé
+  (2 h, `DUREE_MENAGE_MINUTES`) ne tient plus avant sa fin au plus tard.
+  « Insérer » met la proposition (ou, si ce n'est pas possible, une réponse
+  polie sans prix) dans la zone de réponse, en français ou en anglais selon
+  le voyageur ; « à vérifier », elle est au conditionnel (« une arrivée dès
+  12 h devrait être possible, pour 20 € : nous vérifions avec l'équipe ménage
+  et vous confirmons très vite »), jamais « Bonne nouvelle ». Une fois
+  insérée, seul le bandeau de la zone de réponse reste. L'équipe l'envoie
+  comme une réponse normale. Les autres suppléments du logement sont dans la
+  rangée des modèles (pas celui déjà demandé).
 - **Message automatique** « Proposer les suppléments » : facultatif, éteint par
   défaut, 3 jours avant l'arrivée (11:00, réglable), seulement pour les
   logements qui proposent un supplément, avec ceux que le planning permet
   (rien « à vérifier » ne part) ; rien de possible : pas envoyé, noté une fois.
+  Ni « Accès et clés » ni « Wifi » dans l'éditeur pour ce moment. Le message
+  garde son moment (`envoi.moment = 'proposer_supplements'`, comme tout
+  message automatique). La réponse du voyageur qui ne demande rien (« Non
+  merci, à jeudi ») ne retient pas les infos d'arrivée
+  (`reponseSansDemandeAuxSupplements`, `attendReponse` dans
+  `messages-programmes.ts`) ; une demande de supplément (`supplementDansTexte`),
+  un « oui » ou une question les retient. Ailleurs, la règle reste
+  `attendEquipe` / `voyageurAttend`, et la conversation reste dans « À
+  répondre ».
 - **Aucun paiement ni changement de réservation par l'ERP** : ni offre
   spéciale, ni modification sur la plateforme, ni lien de paiement.
   L'encaissement se fait hors ERP (c'est écrit dans l'aide de la carte et des
   messages automatiques).
-- **L'agent ne vend jamais seul un supplément** : demande d'arrivée plus tôt ou
-  de départ plus tard (lue par l'IA ou dans les mots du voyageur), ou réponse
-  qui en accorde un : « à valider » à tous les niveaux d'autonomie
-  (`supplementAValider`, dans `verdictEnvoi`) ; un prix ou le mot
-  « supplément » est une question d'argent (transmis, `sujetSensible`), et ses
-  consignes lui disent de n'accorder rien et de ne donner aucun prix.
+- **L'agent ne vend jamais seul un supplément** (`supplementAValider`, dans
+  `verdictEnvoi`, conversation lue par `messagesVerdict`) : « à valider » à
+  tous les niveaux d'autonomie pour toute réponse à une proposition de
+  suppléments (message automatique « Proposer les suppléments », ou
+  proposition de l'équipe avec un prix), pour une demande d'arrivée plus tôt
+  ou de départ plus tard (lue par l'IA, ou dans les mots du voyageur encore
+  sans réponse, sous la forme d'une demande : « possible », « peut-on »,
+  « could we… earlier »), et pour une réponse qui accorde un supplément
+  (« vous pourrez », « you can », « c'est noté »…) ou une heure avant
+  l'arrivée / après le départ de la fiche (`offreSupplement`). Les questions
+  simples partent seules : « Nous arriverons vers 15 h, est-ce trop tôt ? »,
+  « We will arrive early evening, where is the key box? », le wifi après une
+  demande déjà traitée, « Si vous souhaitez arriver plus tôt, dites-le-nous ».
+  Un prix ou le mot « supplément » est une question d'argent (transmis,
+  `sujetSensible`) ; ses consignes lui disent de n'accorder rien, de ne
+  donner aucun prix et de ne jamais proposer de lui-même une arrivée plus tôt
+  ni un départ plus tard.
 
 **Textes de l'annonce (A6)** (`src/erp/annonces/textes.ts`, limites dans
 `src/erp/annonces/limites.ts` avec leurs sources) : fiche du logement → carte
@@ -1220,12 +1253,21 @@ Airbnb 50 caractères pour le titre, 500 pour la description ; Booking.com 3 à
 de ! # & ` ' " - , : les textes tiennent dans les deux. Garde-fous (pour tout
 texte proposé) : aucun équipement absent de la fiche (négations comprises),
 aucune promesse, ni coordonnée, ni lien, ni nom de plateforme, ni code d'accès
-ou wifi, ni adresse exacte, ni nom du propriétaire. « Rédiger avec votre
-agent » : `POST /api/erp-agent { action: 'textes_annonce', logementId }`
-(`api/_erp-annonces.ts`, `src/erp/data/annonce-ia.ts`, gérant ou
-opérations, plafond mensuel de l'IA) ; l'IA ne reçoit que des faits sûrs et
-publics, ce qu'elle rend repasse par les garde-fous et un texte refusé est
-remplacé par celui de la fiche. La dernière proposition est gardée dans
+ou wifi (même court : « code 482 », ou un code court de la fiche recopié),
+ni adresse exacte, ni nom du propriétaire. Compteur lisible sans survol
+(« 48 / 50 caractères · Airbnb et Booking.com », « 2 caractères · trop court
+pour Booking.com »). « Rédiger avec votre agent » : `POST /api/erp-agent
+{ action: 'textes_annonce', logementId }` (`api/_erp-annonces.ts`,
+`src/erp/data/annonce-ia.ts`, gérant ou opérations, plafond mensuel de
+l'IA, 20 demandes par quart d'heure et par membre : « Trop de demandes d'un
+coup : réessayez dans quelques minutes. », 429 ; la clé Repull n'est pas
+exigée ; indisponible : « La rédaction par votre agent n'est pas disponible
+pour l'instant : les textes tirés de la fiche restent proposés. », 503) ;
+l'IA ne reçoit que des faits sûrs et publics (stationnement en une catégorie,
+jamais le texte libre du parking ; phrases des textes de l'annonce qui
+parlent d'un accès retirées ; équipements qui citent un code écartés), ce
+qu'elle rend repasse par les garde-fous et un texte refusé est remplacé par
+celui de la fiche. Pas de carte « L'annonce » pour un logement sorti. La dernière proposition est gardée dans
 `versionsAnnonce` (id `textes-<logement>`, champ `titres`). **L'ERP ne publie
 jamais l'annonce** : l'équipe copie et colle elle-même sur la plateforme.
 

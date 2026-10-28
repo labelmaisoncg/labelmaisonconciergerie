@@ -7,7 +7,7 @@
 
 import type { AccesProprietaire, BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, ControleQualite, MembreEquipe, SignalementLogement } from './types-operations';
-import type { AvisADeposer, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
+import type { AvisADeposer, DeclencheurMessage, EnvoiProgramme, ReglagesMessagesProgrammes } from './types-programmes';
 import type { ElementPrix } from './prix-conseils';
 import type { AnnonceEquipe } from './annonces-equipe';
 import type { ReglagesSupplements } from './supplements';
@@ -435,6 +435,12 @@ export interface EnvoiMessage {
   reecrit?: boolean;
   /** Qui l'a envoyé (nom du membre, ou « Agent IA »). */
   par?: string;
+  /**
+   * Message automatique : son moment (« proposer_supplements »…). Une réponse
+   * du voyageur à « Proposer les suppléments » n'est jamais envoyée seule par
+   * l'agent (messagerie-ia.ts, apresPropositionSupplements).
+   */
+  moment?: DeclencheurMessage;
 }
 
 /**

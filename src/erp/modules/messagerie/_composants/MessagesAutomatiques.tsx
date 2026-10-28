@@ -11,7 +11,7 @@
  */
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarCheck, Check, ChevronRight, CircleAlert, Gift, KeyRound, LogOut, Minus, Star, type LucideIcon } from 'lucide-react';
+import { CalendarCheck, Check, ChevronRight, CircleAlert, CirclePlus, KeyRound, LogOut, Minus, Star, type LucideIcon } from 'lucide-react';
 import { Aide, Alert, Button, Card, CardHeader, Interrupteur, Modal, TON_LAVIS, cn, type Ton } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { MAINTENANT, dateCourte, dateHeure, horodatageMaintenant, jourMois } from '../../../data/format';
@@ -32,7 +32,8 @@ import { EditeurMessageAuto } from './EditeurMessageAuto';
 
 const ICONES: Record<DeclencheurMessage, LucideIcon> = {
   confirmation: CalendarCheck,
-  proposer_supplements: Gift,
+  // Un « plus » : un cadeau laisserait croire que c'est offert.
+  proposer_supplements: CirclePlus,
   veille_arrivee: KeyRound,
   jour_depart: LogOut,
   demande_avis: Star,
@@ -93,11 +94,14 @@ export function MessagesAutomatiques() {
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-[13.5px] text-(--lm-encre-2)">Ils partent tout seuls sur la plateforme du voyageur, entre 8 h et 21 h.</p>
+        <p className="text-[13.5px] text-(--lm-encre-2)">Ils partent tout seuls sur la plateforme du voyageur, entre 08:00 et 21:00.</p>
         <Aide className="mt-2 mb-0">
           <ul className="list-disc space-y-1 pl-5">
             <li>Chaque message part une seule fois par séjour.</li>
-            <li>Rien pour une réservation annulée, ni quand le voyageur attend une réponse de l’équipe.</li>
+            <li>
+              Rien pour une réservation annulée, ni quand le voyageur attend une réponse de l’équipe. Un simple « Non merci » à « Proposer les suppléments » ne retient
+              pas les infos d’arrivée.
+            </li>
             <li>L’accès et le wifi n’apparaissent que dans les 48 h avant l’arrivée : sinon, la ligne est retirée.</li>
             <li>« Merci pour la réservation » part seulement pour les réservations faites après l’allumage.</li>
             <li>

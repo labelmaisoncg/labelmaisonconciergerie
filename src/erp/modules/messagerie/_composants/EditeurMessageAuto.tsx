@@ -179,7 +179,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
               <Select id="heure-envoi" aria-describedby="heure-envoi-aide" value={heure} disabled={!p.modifiable} onChange={(e) => setHeure(e.target.value)} options={HEURES_ENVOI.map((h) => ({ valeur: h, libelle: h }))} />
             </div>
             <p id="heure-envoi-aide" className="text-[12px] text-(--lm-encre-3)">
-              Heure de Paris. Jamais avant 8 h ni après 21 h.
+              Heure de Paris. Jamais avant 08:00 ni après 21:00.
             </p>
           </div>
         )}
@@ -206,10 +206,19 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
                   <Pastille key={v.cle} libelle={v.libelle} sensible={v.sensible} onClick={() => inserer(v.libelle)} />
                 ))}
               </div>
-              <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-3)">
-                <Lock className="size-3 shrink-0" aria-hidden /> Accès et wifi : seulement dans les 48 h avant l’arrivée, sinon la ligne est retirée.
-              </p>
+              {/* « Proposer les suppléments » part 3 jours avant : ni accès ni wifi à proposer. */}
+              {VARIABLES.some((v) => v.sensible && (!v.moments || v.moments.includes(k))) && (
+                <p className="mt-2 flex items-center gap-1 text-[12px] text-(--lm-encre-3)">
+                  <Lock className="size-3 shrink-0" aria-hidden /> Accès et wifi : seulement dans les 48 h avant l’arrivée, sinon la ligne est retirée.
+                </p>
+              )}
             </div>
+          )}
+          {k === 'proposer_supplements' && (
+            <p className="mt-2 text-[12px] text-(--lm-encre-2)">
+              Le voyageur répond « Non merci » : les infos d’arrivée partent quand même. Il demande ou accepte un supplément, ou pose une question : elles attendent
+              votre réponse, et votre agent ne lui répond jamais seul.
+            </p>
           )}
         </div>
 

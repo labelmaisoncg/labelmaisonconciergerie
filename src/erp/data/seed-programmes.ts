@@ -93,7 +93,7 @@ export function creerProgrammesDemo(d: Omit<ErpDonnees, 'envoisProgrammes' | 'av
     const logement = d.logements.find((l) => l.id === r.logementId);
     const rendu = rendreMessage(reglages.modeles[e.declencheur].texte, { reservation: r, logement, fil, signature, aujourdhui: e.envoyeLe.slice(0, 10) });
     if (!rendu.texte || rendu.codesEnClair) continue;
-    const message: Message = { id: `msg-auto-${e.id}`, auteur: 'hote', texte: rendu.texte, envoyeLe: e.envoyeLe, envoi: { canal: e.canal ?? r.canal, par: PAR_MESSAGE_AUTO } };
+    const message: Message = { id: `msg-auto-${e.id}`, auteur: 'hote', texte: rendu.texte, envoyeLe: e.envoyeLe, envoi: { canal: e.canal ?? r.canal, par: PAR_MESSAGE_AUTO, moment: e.declencheur } };
     ajouts.set(fil.id, [...(ajouts.get(fil.id) ?? []), message]);
   }
   const filsMessages = d.filsMessages.map((f) => {

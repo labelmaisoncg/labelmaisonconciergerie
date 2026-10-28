@@ -26,7 +26,6 @@
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
 import { MODELE_AGENT_DEFAUT, texteErreurIA, type ClientIA } from './agent-messagerie.js';
-import { attendEquipe } from './attente-equipe.js';
 import { ErreurAssistant, compterAppelIA } from './agent-assistant.js';
 import { ErreurEnvoi, envoyerMessage, messageEchecEnvoi } from './messagerie-envoi.js';
 import { BUDGET_ERP_DEFAUT, BudgetEpuise, DelaiEcoule, ErreurRepull, QUOTA_MOIS_DEFAUT, lireEtat } from './repull-synchro.js';
@@ -34,6 +33,7 @@ import type { ContexteConnexion } from './repull-connexion.js';
 import { horodatageParis } from './repull.js';
 import { lienGuide, type SignerFichier } from './guides.js';
 import {
+  attendReponse,
   COLLECTION_AVIS_A_DEPOSER,
   COLLECTION_ENVOIS_PROGRAMMES,
   COLLECTION_ETAT_PROGRAMMES,
@@ -66,7 +66,6 @@ import {
   texteAvisParDefaut,
   unMomentAllume,
   variablesDuTexte,
-  voyageurAttend,
   type DecisionPlanifiee,
   type ReservationsVues,
 } from './messages-programmes.js';
@@ -191,7 +190,7 @@ class Passage {
           // Conversation relue juste avant l'envoi : le voyageur a pu écrire, ou l'agent passer la main, depuis le plan.
           // Illisible, plus reliée au séjour ou à une plateforme, ou voyageur qui attend l'équipe : rien ne part (nouvel essai).
           const fil = await this.relireFil(x.fil.id, p.reservation.id);
-          if (!fil || voyageurAttend(fil) || attendEquipe(fil)) {
+          if (!fil || attendReponse(fil)) {
             this.bilan.reportes++;
             continue;
           }
@@ -291,6 +290,8 @@ class Passage {
         texte: e.texte!,
         auteur: 'hote',
         par: PAR_MESSAGE_AUTO,
+        // Le moment reste sur le message : une réponse à « Proposer les suppléments » n'est jamais envoyée seule par l'agent.
+        moment: e.declencheur,
         cleIdempotence: e.cle,
         // Un message automatique ne change pas qui s'occupe de la conversation (l'agent garde la main).
         completer: (f) => ({ ...f, statut: avant.statut, traitePar: avant.traitePar }),

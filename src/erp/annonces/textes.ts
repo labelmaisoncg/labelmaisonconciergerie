@@ -68,6 +68,24 @@ export function compteurs(t: string, genre: 'titre' | 'description'): Record<Pla
   return { airbnb: de('airbnb'), booking: de('booking') };
 }
 
+/**
+ * Compteur affiché sous un texte, lisible sans survol : « 48 / 50 caractères
+ * · Airbnb et Booking.com », « 52 / 50 caractères · trop long pour Airbnb »,
+ * « 2 caractères · trop court pour Booking.com ». `ok` : il tient dans les deux.
+ */
+export function libelleCompteur(t: string, genre: 'titre' | 'description'): { texte: string; ok: boolean } {
+  const c = compteurs(t, genre);
+  const n = c.airbnb.longueur;
+  const max = genre === 'titre' ? TITRE_MAX : DESCRIPTION_MAX;
+  const unite = n > 1 ? 'caractères' : 'caractère';
+  const plateformes = (['airbnb', 'booking'] as const).filter((p) => !c[p].ok);
+  const noms = (liste: readonly PlateformeAnnonce[]) => liste.map((p) => LIMITES_PLATEFORMES[p].nom).join(' et ');
+  const courts = plateformes.filter((p) => n < (genre === 'titre' ? LIMITES_PLATEFORMES[p].titre.min : 1));
+  if (courts.length) return { texte: `${n} ${unite} · trop court pour ${noms(courts)}`, ok: false };
+  if (plateformes.length) return { texte: `${n} / ${max} ${unite} · trop long pour ${noms(plateformes)}`, ok: false };
+  return { texte: `${n} / ${max} ${unite} · ${noms(['airbnb', 'booking'])}`, ok: true };
+}
+
 /** Texte de recherche : nettoyé (NFKC, invisibles retirés), sans accents, en minuscules, apostrophes droites. */
 export const pourRecherche = (t: string): string =>
   nettoyerTexte(String(t ?? ''))
@@ -128,6 +146,24 @@ export function parkingPrive(parking: string | undefined): boolean {
   const p = sansNegations(parking ?? '');
   if (!p.trim() || /payant|public|\brue\b/.test(p)) return false;
   return /priv|propriete|residence|\bcour\b|garage|\bbox\b|\bplaces?\b/.test(p);
+}
+
+/**
+ * Stationnement en une catégorie (parking à soi, payant à proximité, gratuit
+ * dans la rue), jamais le texte libre de la fiche : un code de portail s'y
+ * glisse (« Portail du parking : code 482 »).
+ */
+const PARKING = {
+  prive: { phrase: 'Parking privé sur place.', contexte: 'parking privé sur place' },
+  payant: { phrase: 'Parking payant à proximité.', contexte: 'parking payant à proximité' },
+  rue: { phrase: 'Stationnement gratuit dans la rue.', contexte: 'stationnement gratuit dans la rue' },
+} as const;
+export function categorieParking(parking: string | undefined): keyof typeof PARKING | undefined {
+  const p = pourRecherche(parking ?? '');
+  if (parkingPrive(parking)) return 'prive';
+  if (/payant/.test(p) && !/pas de parking/.test(p)) return 'payant';
+  if (/gratuit/.test(p) && /\brue\b/.test(p)) return 'rue';
+  return undefined;
 }
 
 /** Linge de lit et serviettes fournis : la dotation du logement les compte. */
@@ -210,6 +246,54 @@ function motsPersonnels(noms: readonly string[], l: LogementAnnonce): string[] {
 /** Rue de l'adresse du logement, sans son numéro (« quai des tanneurs ») : jamais dans l'annonce. */
 const rueDe = (adresse: string | undefined): string => pourRecherche(adresse ?? '').replace(/^\s*\d+\s*(bis|ter)?,?\s*/, '').trim();
 
+/**
+ * Un code cité dans un texte, même court : « code 482 », « digicode : 4B12 »,
+ * « cadenas 091 », « wifi 1234 » (débits « 1000 Mb/s » et distances « 300 m » exceptés). Sans
+ * accents (pourRecherche).
+ */
+const CODE_CITE = /\b(?:code|digicode|cadenas|interphone|badge|mot de passe|password|portail|boite a cles|wi-?fi)\b[^.\n]{0,25}?\b[a-z]*\d{3,}[a-z]*\b(?!\s*(?:mb|gb|mbit|mo|go|m2|km|m\b|min|eur|€))/;
+/** Mots d'un accès : une phrase ou un élément qui en contient n'est jamais donné à l'IA. */
+const MOTS_ACCES = /\b(?:code|codes|digicode|cadenas|interphone|badge|mot de passe|password|identifiant|login|wi-?fi|reseau|cle|cles|clef|clefs|boite a cles|portail|serrure|acces)\b/;
+/** Mots d'un code dans un équipement (« Wifi » seul reste un équipement). */
+const MOTS_CODE = /\b(?:code|codes|digicode|cadenas|interphone|badge|mot de passe|password|identifiant|login)\b/;
+
+/**
+ * Codes courts de la fiche (3 caractères ou plus avec un chiffre, après
+ * « code », « digicode », « cadenas », « portail »…) : parking, accès,
+ * « À savoir », règles, questions fréquentes, accès des voyageurs de
+ * l'annonce. contientCodeAcces ne repère dans ces champs que les suites de
+ * 4 chiffres ou plus.
+ */
+export function codesCourts(l: LogementAnnonce): string[] {
+  const f = l.fiche ?? ({} as Logement['fiche']);
+  const champs = [f.parking, f.acces, f.aSavoir, f.regles, ...(f.questions ?? []).map((q) => q?.reponse), l.descriptif?.textes?.accesVoyageurs];
+  const motif = new RegExp(CODE_CITE.source, 'g');
+  const codes = new Set<string>();
+  for (const champ of champs) {
+    for (const m of pourRecherche(champ ?? '').matchAll(motif)) {
+      const jeton = /\b[a-z]*\d{3,}[a-z]*\b(?=[^\d]*$)/.exec(m[0])?.[0];
+      if (jeton) codes.add(jeton);
+    }
+  }
+  return [...codes];
+}
+
+/** Le texte risque-t-il de donner un accès (mots d'un accès ou code cité) ? */
+const parleDAcces = (t: string): boolean => {
+  const r = pourRecherche(t);
+  return MOTS_ACCES.test(r) || CODE_CITE.test(r);
+};
+
+/** Texte libre donné à l'IA : les phrases qui parlent d'un accès retirées, puis les suites de chiffres masquées. */
+function sansAcces(t: string | undefined): string {
+  return masquerCodes(
+    String(t ?? '')
+      .split(/(?<=[.!?…])\s+|\n+/)
+      .filter((phrase) => phrase.trim() && !parleDAcces(phrase))
+      .join(' '),
+  ).trim();
+}
+
 export interface ContexteControle {
   logement: LogementAnnonce;
   /** Noms à ne jamais citer (propriétaire). */
@@ -224,7 +308,10 @@ function problemesCommuns(texte: string, c: ContexteControle): Probleme[] {
   if (inventes.length) p.push({ code: 'invente', message: `Cite ${inventes.map((x) => `« ${x} »`).join(', ')}, absent${inventes.length > 1 ? 's' : ''} de la fiche du logement.` });
   if (PROMESSE.test(t)) p.push({ code: 'promesse', message: 'Promet ce que le logement ne peut pas garantir.' });
   if (LIEN.test(t) || CONTACT.test(t) || TELEPHONE.test(t)) p.push({ code: 'coordonnees', message: 'Contient une coordonnée, un lien ou le nom d’une plateforme, interdits sur les annonces.' });
-  if (contientCodeAcces(brut, c.logement as Logement)) p.push({ code: 'code', message: 'Contient un code d’accès ou le wifi du logement.' });
+  const courts = codesCourts(c.logement);
+  if (contientCodeAcces(brut, c.logement as Logement) || CODE_CITE.test(t) || courts.some((x) => new RegExp(`(?:^|[^a-z0-9])${x}(?:[^a-z0-9]|$)`).test(t))) {
+    p.push({ code: 'code', message: 'Contient un code d’accès ou le wifi du logement.' });
+  }
   const rue = rueDe(c.logement.adresse);
   if (NUMERO_DE_VOIE.test(t) || (rue.length >= 6 && t.includes(rue))) p.push({ code: 'personnel', message: 'Donne l’adresse exacte du logement.' });
   if (motsPersonnels(c.noms ?? [], c.logement).some((m) => new RegExp(`\\b${m}\\b`).test(t))) p.push({ code: 'personnel', message: 'Cite le nom du propriétaire.' });
@@ -290,7 +377,7 @@ const heureLisible = (h: string | undefined) => (h && /^\d{2}:\d{2}$/.test(h) ? 
 
 /** Couchage en une phrase : celui de l'annonce pièce par pièce, sinon les lits de la fiche. */
 function couchage(l: LogementAnnonce): string {
-  const pieces = (l.descriptif?.couchage ?? []).filter((p) => p.lits?.trim());
+  const pieces = (l.descriptif?.couchage ?? []).filter((p) => p.lits?.trim() && !parleDAcces(`${p.piece ?? ''} ${p.lits}`));
   if (pieces.length) return enumerer(pieces.slice(0, 4).map((p) => (p.piece?.trim() ? `${minuscule(p.lits.trim())} (${minuscule(p.piece.trim())})` : minuscule(p.lits.trim()))));
   return enumerer((l.lits ?? []).filter((x) => x.nombre > 0).map((x) => `${x.nombre} ${LITS[x.type][x.nombre > 1 ? 1 : 0]}`));
 }
@@ -303,7 +390,11 @@ function lieu(l: LogementAnnonce): { court: string; repere?: string; reperes: st
 
 /** Équipements de la fiche, sans ce qui ne fait pas choisir un logement. */
 function equipementsUtiles(l: LogementAnnonce): string[] {
-  return (l.fiche?.equipements ?? []).map((e) => e.replace(/\s+/g, ' ').trim()).filter((e) => e && !/fer à repasser|s[èe]che-cheveux|cintres?|produits? de base/i.test(e));
+  return (l.fiche?.equipements ?? [])
+    .map((e) => e.replace(/\s+/g, ' ').trim())
+    .filter((e) => e && !/fer à repasser|s[èe]che-cheveux|cintres?|produits? de base/i.test(e))
+    // « Wifi (code 9137) », « Box, mot de passe … » : jamais dans un texte ni donné à l'IA.
+    .filter((e) => !MOTS_CODE.test(pourRecherche(e)) && !CODE_CITE.test(pourRecherche(e)) && !contientCodeAcces(e, l as Logement));
 }
 
 /** Atouts qui font un titre, dans l'ordre : extérieur, climatisation, parking à soi, wifi fibre, arrivée autonome. */
@@ -399,7 +490,7 @@ function phrasesDescription(l: LogementAnnonce): { texte: string; obligatoire: b
   const eq = equipementsUtiles(l).map(minuscule);
   const arrivee = heureLisible(f.heureArrivee);
   const depart = heureLisible(f.heureDepart);
-  const parking = pourRecherche(f.parking ?? '');
+  const parking = categorieParking(f.parking);
   const phrases: { texte: string; obligatoire: boolean }[] = [
     { texte: `${type.phrase}${surface}${chambres} à ${court}${cap}.`, obligatoire: true },
     ...(lits ? [{ texte: `Couchage : ${lits}.`, obligatoire: true }] : []),
@@ -417,16 +508,7 @@ function phrasesDescription(l: LogementAnnonce): { texte: string; obligatoire: b
       obligatoire: false,
     },
     { texte: depart ? `Départ avant ${depart}.` : '', obligatoire: false },
-    {
-      texte: parkingPrive(f.parking)
-        ? 'Parking privé sur place.'
-        : /payant/.test(parking) && !/pas de parking/.test(parking)
-          ? 'Parking payant à proximité.'
-          : /gratuit/.test(parking) && /\brue\b/.test(parking)
-            ? 'Stationnement gratuit dans la rue.'
-            : '',
-      obligatoire: false,
-    },
+    { texte: parking ? PARKING[parking].phrase : '', obligatoire: false },
     { texte: lingeFourni(l) ? 'Linge de lit et serviettes fournis.' : '', obligatoire: false },
   ];
   return phrases.filter((p) => p.texte);
@@ -522,14 +604,16 @@ export function contexteAnnonceIA(l: LogementAnnonce): string {
     ligne('Atouts sûrs', atouts(l).join(', ')),
     ligne('Arrivée', `${l.serrure === 'connectee' ? 'autonome, serrure connectée' : l.serrure === 'boite_a_cles' ? 'autonome, boîte à clés' : 'remise des clés'}${f.heureArrivee ? `, à partir de ${f.heureArrivee}` : ''}`),
     ligne('Départ', f.heureDepart ? `avant ${f.heureDepart}` : ''),
-    ligne('Stationnement', parkingPrive(f.parking) ? 'parking privé sur place' : f.parking ? masquerCodes(f.parking).replace(/\bn[°º]\s*\d+/gi, '').trim() : ''),
+    // Une catégorie seulement : le texte libre de la fiche peut cacher un code (« portail : code 482 »).
+    ligne('Stationnement', categorieParking(f.parking) ? PARKING[categorieParking(f.parking)!].contexte : ''),
     ligne('Linge de lit et serviettes', lingeFourni(l) ? 'fournis' : ''),
     ...(reperes.length ? ['- Repères proches (vérifiés) :', ...reperes.map((r) => `  - ${r}`)] : []),
     '',
     'ANNONCE ACTUELLE (pour l’améliorer ; ne recopie ni coordonnée ni code)',
-    ligne('Titre', actuel?.titre ? masquerCodes(actuel.titre) : '(aucun)'),
-    ligne('Description', texteActuel ? masquerCodes(texteActuel).slice(0, 1200) : '(aucune)'),
-    ligne('Quartier', actuel?.textes?.quartier ? masquerCodes(actuel.textes.quartier).slice(0, 600) : ''),
+    // Textes publiés de l'annonce : les phrases qui parlent d'un accès (code, portail, wifi, clés…) sont retirées.
+    ligne('Titre', sansAcces(actuel?.titre) || '(aucun)'),
+    ligne('Description', sansAcces(texteActuel).slice(0, 1200) || '(aucune)'),
+    ligne('Quartier', sansAcces(actuel?.textes?.quartier).slice(0, 600)),
   ]
     .filter((x) => x !== '')
     .join('\n');

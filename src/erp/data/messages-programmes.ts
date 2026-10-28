@@ -30,7 +30,7 @@
  * Imports relatifs avec « .js » : ce fichier tourne aussi sous Node.
  */
 import { attendEquipe } from './attente-equipe.js';
-import { contientCodeAcces } from './messagerie-ia.js';
+import { contientCodeAcces, reponseSansDemandeAuxSupplements } from './messagerie-ia.js';
 import { reglagesAgent } from './reglages.js';
 import { aDesSupplements, type ReglagesSupplements } from './supplements.js';
 import type { DateISO, ErpDonnees, FilMessages, GuideLogement, Horodatage, Id, Incident, Logement, Reservation } from './types';
@@ -132,8 +132,9 @@ export const VARIABLES: VariableMessage[] = [
   { cle: 'heure_depart', libelle: 'Heure de départ', retirerSiVide: true },
   { cle: 'lien_guide', libelle: 'Lien du guide', retirerSiVide: true },
   { cle: 'signature', libelle: 'Signature' },
-  { cle: 'acces', libelle: 'Accès et clés', sensible: true, retirerSiVide: true },
-  { cle: 'wifi', libelle: 'Wifi', sensible: true, retirerSiVide: true },
+  // Ni accès ni wifi pour « Proposer les suppléments » (3 jours avant l'arrivée : toujours hors des 48 h).
+  { cle: 'acces', libelle: 'Accès et clés', sensible: true, retirerSiVide: true, moments: DECLENCHEURS.filter((k) => k !== 'proposer_supplements') },
+  { cle: 'wifi', libelle: 'Wifi', sensible: true, retirerSiVide: true, moments: DECLENCHEURS.filter((k) => k !== 'proposer_supplements') },
   { cle: 'supplements', libelle: 'Suppléments proposés', retirerSiVide: true, moments: ['proposer_supplements'] },
 ];
 
@@ -527,6 +528,17 @@ export function voyageurAttend(fil: Pick<FilMessages, 'messages' | 'statut'>): b
   return fil.statut !== 'clos' && fil.messages[fil.messages.length - 1]?.auteur === 'voyageur';
 }
 
+/**
+ * Rien ne part à un voyageur qui attend l'équipe : il a écrit en dernier
+ * (voyageurAttend), ou sa conversation attend l'équipe (attendEquipe, même
+ * règle que « À répondre »). Seule exception : sa réponse au message
+ * « Proposer les suppléments » ne demande rien (« Non merci, à jeudi ») ;
+ * elle ne retient pas les infos d'arrivée (reponseSansDemandeAuxSupplements).
+ */
+export function attendReponse(fil: Pick<FilMessages, 'messages' | 'statut' | 'traitePar'>): boolean {
+  return (voyageurAttend(fil) || attendEquipe(fil)) && !reponseSansDemandeAuxSupplements(fil);
+}
+
 export type DecisionEnvoi =
   | { genre: 'rien' }
   /** Pas encore (heure, conversation à venir, voyageur qui attend une réponse) : nouvel essai au prochain passage. */
@@ -563,7 +575,7 @@ function obstacle(r: Pick<Reservation, 'statut'>, fil: FilMessages | undefined):
   if (!fil.repull?.id) return { raison: RAISONS.horsPlateforme, final: true };
   // Le voyageur attend l'équipe : il a écrit en dernier, ou sa conversation est transmise / en attente
   // (même règle que « À répondre ») alors que le dernier message vient de l'agent (« Je vérifie avec l'équipe… »).
-  if (voyageurAttend(fil) || attendEquipe(fil)) return { raison: RAISONS.attend, final: false };
+  if (attendReponse(fil)) return { raison: RAISONS.attend, final: false };
   return null;
 }
 
@@ -601,7 +613,7 @@ export function deciderEnvoi(e: EntreeDecision): DecisionEnvoi {
       return { genre: 'verifier', envoi, raison: RAISONS.repriseCodes };
     }
     // Le voyageur attend l'équipe depuis le premier essai : rien ne repart (nouvel essai tant que la reprise est possible).
-    if (voyageurAttend(filReprise) || attendEquipe(filReprise)) return { genre: 'attendre', raison: RAISONS.attend };
+    if (attendReponse(filReprise)) return { genre: 'attendre', raison: RAISONS.attend };
     if (!dansPlageEnvoi(maintenant)) return { genre: 'attendre', raison: RAISONS.horsHeures };
     return { genre: 'reprendre', envoi, fil: filReprise };
   }

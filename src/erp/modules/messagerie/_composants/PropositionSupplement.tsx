@@ -10,7 +10,7 @@
  * paiement, ni modification de la réservation).
  */
 import { Link } from 'react-router-dom';
-import { Clock, Gift, LogOut, Sparkles, type LucideIcon } from 'lucide-react';
+import { Car, Clock, LogOut, SprayCan, type LucideIcon } from 'lucide-react';
 import { Button, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { AUJOURDHUI } from '../../../data/format';
@@ -30,7 +30,8 @@ import {
   type ReglageSupplement,
 } from '../../../data/supplements';
 
-const ICONES: Record<CleSupplement, LucideIcon> = { arrivee_anticipee: Clock, depart_tardif: LogOut, menage_supplementaire: Sparkles, navette: Gift };
+/** Une icône par supplément (Sparkles est réservé à l'IA ; un cadeau laisserait croire que c'est offert). */
+export const ICONES_SUPPLEMENTS: Record<CleSupplement, LucideIcon> = { arrivee_anticipee: Clock, depart_tardif: LogOut, menage_supplementaire: SprayCan, navette: Car };
 /** Le mot dit l'état ; la couleur ne fait que l'appuyer. */
 const STATUTS: Record<Disponibilite['statut'], { libelle: string; classe: string }> = {
   possible: { libelle: 'possible', classe: 'text-(--lm-succes)' },
@@ -70,7 +71,7 @@ export function usePropositionsSupplements(fil: FilMessages, logement: Logement 
 /** Bandeau au-dessus de la zone de réponse : le supplément demandé et sa proposition prête. */
 export function PropositionSupplement({ proposition: p, logementId, onInserer }: { proposition: PropositionPrete; logementId: string; onInserer: (texte: string) => void }) {
   const { utilisateur, lectureSeule } = useErp();
-  const Icone = ICONES[p.cle];
+  const Icone = ICONES_SUPPLEMENTS[p.cle];
   const titre = LIBELLES_SUPPLEMENTS[p.cle].titre;
   const statut = STATUTS[p.disponibilite.statut];
   const regle = p.reglage.actif;
@@ -85,15 +86,16 @@ export function PropositionSupplement({ proposition: p, logementId, onInserer }:
           <span className="font-normal">
             {' · '}
             <span className={cn('font-medium', statut.classe)}>{statut.libelle}</span>
-            <span className="lm-chiffres text-(--lm-encre-2)">{prix}</span>
+            <span className="lm-chiffres whitespace-nowrap text-(--lm-encre-2)">{prix}</span>
           </span>
         </p>
-        <p className="line-clamp-2 text-[12px] text-(--lm-encre-2)" title={constats}>
+        <p className="line-clamp-1 text-[12px] text-(--lm-encre-2)" title={constats}>
           {constats}
           {!regle && p.disponibilite.statut !== 'impossible' && utilisateur.role === 'gerant' && !lectureSeule && (
             <>
               {' '}
-              <Link to={`/erp/logements/${encodeURIComponent(logementId)}`} className="font-medium text-(--lm-or-texte) hover:underline">
+              {/* Onglet « Infos pour votre agent », panneau des suppléments ouvert. */}
+              <Link to={`/erp/logements/${encodeURIComponent(logementId)}?onglet=fiche&supplements=regler`} className="font-medium text-(--lm-or-texte) hover:underline">
                 Régler les suppléments
               </Link>
             </>

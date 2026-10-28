@@ -25,7 +25,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { COLLECTION_AGENT, ID_ETAT_AGENT, type ClientIA, type EtatAgent } from './agent-messagerie';
 import { ErreurAssistant, type OptionsAssistant } from './agent-assistant';
-import { ACTION_TEXTES_ANNONCE, proposerTextesAnnonceIA } from './annonce-ia';
+import { ACTION_TEXTES_ANNONCE, FENETRE_TEXTES_MS, MESSAGE_REDACTION_INDISPONIBLE, MESSAGE_TROP_DE_DEMANDES, TEXTES_PAR_QUART_D_HEURE, freinTextesAnnonce, proposerTextesAnnonceIA } from './annonce-ia';
 import { DESCRIPTION_MAX, DESCRIPTION_MIN, LIMITES_PLATEFORMES, NOMBRE_TITRES, TITRE_MAX } from '../annonces/limites';
 import {
   compteurs,
@@ -35,6 +35,7 @@ import {
   controlerTitre,
   equipementsInventes,
   finaliserTextes,
+  libelleCompteur,
   lireTextesIA,
   longueur,
   proposerTextesAnnonce,
@@ -151,6 +152,13 @@ async function principal() {
     const c = compteurs('é'.repeat(50), 'titre');
     verifier(c.airbnb.ok && c.airbnb.longueur === 50 && !compteurs('x'.repeat(51), 'titre').airbnb.ok && compteurs('x'.repeat(51), 'titre').booking.ok, 'compteur : 50 accents tiennent, 51 dépassent Airbnb mais pas Booking.com');
     verifier(longueur('m²') === 2 && longueur('é') === 1, 'caractères comptés comme les plateformes (accent composé : un caractère)');
+    // Compteur lisible sans survol (pas de title) : la ou les plateformes qui le refusent.
+    const compteur = (n: number, genre: 'titre' | 'description' = 'titre') => libelleCompteur('x'.repeat(n), genre).texte;
+    verifier(compteur(48) === '48 / 50 caractères · Airbnb et Booking.com', 'compteur : « 48 / 50 caractères · Airbnb et Booking.com »', compteur(48));
+    verifier(compteur(52) === '52 / 50 caractères · trop long pour Airbnb' && !libelleCompteur('x'.repeat(52), 'titre').ok, 'compteur : « 52 / 50 caractères · trop long pour Airbnb »', compteur(52));
+    verifier(compteur(2) === '2 caractères · trop court pour Booking.com', 'compteur : « 2 caractères · trop court pour Booking.com »', compteur(2));
+    verifier(compteur(422, 'description') === '422 / 500 caractères · Airbnb et Booking.com', 'compteur de la description : « 422 / 500 caractères · Airbnb et Booking.com »', compteur(422, 'description'));
+    verifier(compteur(300) === '300 / 50 caractères · trop long pour Airbnb et Booking.com' && compteur(1) === '1 caractère · trop court pour Booking.com', 'compteur : trop long pour les deux, singulier');
   }
 
   section('2. Démo : 3 titres et 1 description par logement, dans les limites');
@@ -229,6 +237,36 @@ async function principal() {
     const ctx = contexteAnnonceIA({ ...l, fiche: { ...l.fiche, acces: 'Boîte à clés, code 4821.', aSavoir: 'Digicode 2468' } });
     verifier(!ctx.includes(l.fiche.wifiCode) && !ctx.includes(l.fiche.wifiNom) && !ctx.includes('4821') && !ctx.includes('2468'), 'contexte : ni wifi, ni accès, ni codes');
     verifier(!ctx.includes(l.adresse) && !ctx.includes(nomProprietaire(l)) && !/Tanneurs/.test(ctx), 'contexte : ni adresse, ni propriétaire');
+    // Audit : un code court (3 chiffres) dans le texte libre du parking ne part jamais à l'IA ; seule la catégorie part.
+    const portail: Logement = { ...l, fiche: { ...l.fiche, parking: 'Portail du parking : code 482, badge dans la boîte', acces: 'Boîte à clés code 0912' } };
+    const ctxPortail = contexteAnnonceIA(portail);
+    verifier(!/482|0912|badge|portail/i.test(ctxPortail), 'parking « Portail du parking : code 482 » : ni le code ni le texte libre envoyés à l’IA', ctxPortail.split('\n').filter((x) => /Stationnement/.test(x)));
+    const categorie = (parking: string) => contexteAnnonceIA({ ...l, fiche: { ...l.fiche, parking } }).split('\n').find((x) => /Stationnement/.test(x)) ?? '';
+    verifier(
+      categorie('Place privée dans la cour, portail code 482') === '- Stationnement : parking privé sur place' &&
+        categorie('Parking payant à 200 m, code 391 à l’entrée') === '- Stationnement : parking payant à proximité' &&
+        categorie('Gratuit dans la rue, place 12') === '- Stationnement : stationnement gratuit dans la rue' &&
+        categorie('Voir avec la gardienne, interphone 45B') === '',
+      'stationnement : seulement une catégorie (parking privé, payant à proximité, gratuit dans la rue), jamais le texte de la fiche',
+    );
+    // Autres champs libres envoyés : textes de l'annonce actuelle (titre, description, quartier), équipements, couchage.
+    const libres: Logement = {
+      ...l,
+      fiche: { ...l.fiche, equipements: [...l.fiche.equipements, 'Wifi (code 913)', 'Box, mot de passe soleil'] },
+      descriptif: {
+        ...l.descriptif,
+        titre: 'Joli 2 pièces, digicode 4B7',
+        textes: { ...l.descriptif?.textes, description: 'Appartement lumineux. Le portail s’ouvre avec le code 482. Cuisine équipée.', quartier: 'Quartier calme. Cadenas du local vélo : 091.' },
+        couchage: [{ piece: 'Chambre', lits: '1 lit double' }, { piece: 'Placard', lits: 'Clés de secours, code 775' }],
+      },
+    };
+    const ctxLibres = contexteAnnonceIA(libres);
+    verifier(!/482|913|4b7|091|775|soleil|portail|cadenas|digicode|mot de passe/i.test(ctxLibres) && /Appartement lumineux/.test(ctxLibres) && /Cuisine équipée/.test(ctxLibres) && /Quartier calme/.test(ctxLibres), 'champs libres : les phrases qui parlent d’un accès sont retirées, le reste est gardé', ctxLibres);
+    // Ce que rend l'IA : un code court cité, ou recopié de la fiche, est écarté.
+    const cite = `Appartement lumineux de 40 m² à Corbeil, pour 4 voyageurs. Arrivée autonome par boîte à clés à partir de 16 h. Le portail du parking s’ouvre avec le code 482. Wifi sur place. `.repeat(2);
+    verifier(controlerDescription(cite, { logement: portail }).some((p) => p.code === 'code'), 'description qui cite « code 482 » : écartée (code)');
+    verifier(controlerDescription(`Appartement lumineux à Corbeil. Le portail s’ouvre avec le 482. ${'Logement bien équipé. '.repeat(8)}`, { logement: portail }).some((p) => p.code === 'code'), 'le code court de la fiche recopié sans le mot « code » : écarté');
+    verifier(!controlerDescription(`Appartement de 40 m² avec wifi fibre 1000 Mb/s, à 300 m de la gare. ${'Logement lumineux et bien équipé. '.repeat(6)}`, { logement: portail }).some((p) => p.code === 'code'), 'surface, débit, distance : pas pris pour un code');
     verifier(l.fiche.equipements.filter((e) => !/fer à repasser/i.test(e)).every((e) => ctx.includes(e)) && /liste fermée/.test(ctx), 'contexte : la liste fermée des équipements');
     const brut = {
       titres: ['2 pièces avec piscine à Corbeil', 'Corbeil bords de Seine, 2 pièces lumineux', 'Appelez-nous au 0612345678', '2 pièces lumineux, wifi fibre, Corbeil.'],
@@ -289,7 +327,31 @@ async function principal() {
     } catch (e) {
       erreur = e;
     }
-    verifier(erreur instanceof ErreurAssistant && erreur.code === 'indisponible', 'sans clé de l’IA : refus clair');
+    verifier(erreur instanceof ErreurAssistant && erreur.code === 'indisponible' && erreur.message === MESSAGE_REDACTION_INDISPONIBLE, 'sans clé de l’IA : refus clair, les textes de la fiche restent proposés');
+    verifier(!/REPULL|Vercel|_KEY|variable/i.test(MESSAGE_REDACTION_INDISPONIBLE) && /textes tirés de la fiche restent proposés/.test(MESSAGE_REDACTION_INDISPONIBLE), 'message d’indisponibilité : ni nom de variable ni hébergeur');
+
+    // Frein par membre : 20 demandes par quart d'heure (comme les brouillons du CRM).
+    let t = 0;
+    const frein = freinTextesAnnonce(TEXTES_PAR_QUART_D_HEURE, FENETRE_TEXTES_MS, () => t);
+    const suite = Array.from({ length: 21 }, () => frein('lm:ops@exemple.invalid'));
+    verifier(TEXTES_PAR_QUART_D_HEURE === 20 && FENETRE_TEXTES_MS === 15 * 60_000 && suite.slice(0, 20).every((x) => !x) && suite[20], '20 demandes passent, la 21ᵉ est freinée', suite);
+    verifier(!frein('lm:gerant@exemple.invalid') && !frein('sens:ops@exemple.invalid'), 'un autre membre, ou le même dans un autre espace : pas freiné');
+    t += FENETRE_TEXTES_MS;
+    verifier(!frein('lm:ops@exemple.invalid'), 'un quart d’heure plus tard : de nouveau permis');
+    const appelsAvant = ia.appels.length;
+    const comptesAvant = b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels;
+    try {
+      await proposerTextesAnnonceIA(options(), l.id, { tropDeDemandes: () => true });
+      erreur = undefined;
+    } catch (e) {
+      erreur = e;
+    }
+    verifier(
+      erreur instanceof ErreurAssistant && erreur.statut === 429 && erreur.code === 'occupe' && erreur.message === MESSAGE_TROP_DE_DEMANDES && MESSAGE_TROP_DE_DEMANDES === 'Trop de demandes d’un coup : réessayez dans quelques minutes.',
+      'demande freinée : 429, « Trop de demandes d’un coup : réessayez dans quelques minutes. »',
+      erreur instanceof Error ? erreur.message : erreur,
+    );
+    verifier(ia.appels.length === appelsAvant && b.get<EtatAgent>(COLLECTION_AGENT, ID_ETAT_AGENT)?.iaMois?.appels === comptesAvant, 'la demande freinée n’appelle pas l’IA et ne compte rien');
     try {
       await proposerTextesAnnonceIA(options(), 'inconnu');
       erreur = undefined;
@@ -319,11 +381,18 @@ async function principal() {
       const lignes = route.split('\n').filter((x) => /ANNONCES|repondreAnnonces/.test(x));
       verifier(lignes.length === 2 && /import \{ ACTIONS_ANNONCES, repondreAnnonces \} from '\.\/_erp-annonces\.js';/.test(route), 'api/erp-agent.ts : un import et une ligne d’enregistrement', lignes);
       verifier(/repondreAnnonces\(res, !planifie && req\.method === 'POST', corps, espace, email\)/.test(route), 'membre en POST seulement (jamais le passage planifié)');
+      const api = source('api/_erp-annonces.ts');
+      const codeApi = api.replace(/^\s*\/\/.*$/gm, '');
+      verifier(!/variableManquante/.test(codeApi) && /c\.motDePasse/.test(codeApi), 'api/_erp-annonces.ts : la clé Repull n’est pas exigée pour rédiger (seule la base est lue)');
+      verifier(!/['`"][^'`"]*(REPULL_API_KEY|Vercel)[^'`"]*['`"]/.test(codeApi) && (codeApi.match(/MESSAGE_REDACTION_INDISPONIBLE/g) ?? []).length >= 3, 'api/_erp-annonces.ts : 503 avec le message simple, jamais « REPULL_API_KEY » ni « Vercel » à l’écran');
+      verifier(/freinTextesAnnonce\(\)/.test(codeApi) && /tropDeDemandes\(cle\)/.test(codeApi) && /\$\{c\.espace \?\? ''\}:\$\{par\}/.test(codeApi), 'api/_erp-annonces.ts : frein par membre (espace et e-mail)');
       const fonctions = fs.readdirSync(chemins.join(racine, 'api')).filter((f) => /\.ts$/.test(f) && !f.startsWith('_'));
       verifier(fonctions.length === 20 && !fonctions.some((f) => /annonce|supplement/i.test(f)), 'aucune nouvelle fonction Vercel (20 fichiers à la racine de api/, comme avant)', fonctions.length);
       const ecran = source('src/erp/modules/logements/_composants/TextesAnnonce.tsx');
       verifier(/Copier/.test(ecran) && !/Publier|Marquer comme publiée|appelerServeur<[^>]*>\('\/api\/erp-repull/.test(ecran), 'écran : « Copier », jamais « Publier »');
       verifier(/L’ERP ne publie jamais l’annonce/.test(ecran), 'écran : l’ERP ne publie jamais l’annonce (aide)');
+      verifier(/aria-live="polite"/.test(ecran) && /libelleCompteur/.test(ecran) && !/title=\{`Airbnb/.test(ecran), 'écran : « Copié » annoncé (aria-live), compteur lisible sans survol');
+      verifier(/pour le titre sur Booking\.com/.test(ecran) && /Tirés de la fiche du logement, à copier puis coller vous-même sur Airbnb ou Booking\.com\./.test(ecran), 'écran : une seule phrase d’introduction, « 255 pour le titre »');
     }
   }
 

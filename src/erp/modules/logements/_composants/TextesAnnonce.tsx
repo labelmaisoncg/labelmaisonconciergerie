@@ -14,8 +14,8 @@ import { Aide, Alert, Button, Drawer, cn } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { AUJOURDHUI, jourMois } from '../../../data/format';
 import type { Logement, VersionAnnonce } from '../../../data/types';
-import { DESCRIPTION_MAX, LIMITES_PLATEFORMES, NOMBRE_TITRES, TITRE_MAX } from '../../../annonces/limites';
-import { compteurs, proposerTextesAnnonce, type TextesFinaux } from '../../../annonces/textes';
+import { LIMITES_PLATEFORMES, NOMBRE_TITRES } from '../../../annonces/limites';
+import { libelleCompteur, proposerTextesAnnonce, type TextesFinaux } from '../../../annonces/textes';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 
 /** Id de la dernière proposition de l'agent pour un logement. */
@@ -43,27 +43,26 @@ function Copier({ texte, libelle }: { texte: string; libelle: string }) {
     minuteur.current = window.setTimeout(() => setEtat(undefined), 2000);
   };
   return (
-    <Button size="sm" icone={etat === 'ok' ? <Check /> : <Copy />} onClick={() => void copier()} aria-label={`Copier ${libelle}`} className="shrink-0">
-      {etat === 'ok' ? 'Copié' : etat === 'echec' ? 'Sélectionnez le texte' : 'Copier'}
-    </Button>
+    <>
+      <Button size="sm" icone={etat === 'ok' ? <Check /> : <Copy />} onClick={() => void copier()} aria-label={`Copier ${libelle}`} className="shrink-0">
+        {etat === 'ok' ? 'Copié' : etat === 'echec' ? 'Sélectionnez le texte' : 'Copier'}
+      </Button>
+      {/* Le libellé du bouton est remplacé par son aria-label : « Copié » est annoncé à part. */}
+      <span className="sr-only" aria-live="polite">
+        {etat === 'ok' ? 'Copié' : etat === 'echec' ? 'Copie impossible : sélectionnez le texte.' : ''}
+      </span>
+    </>
   );
 }
 
-/** Un texte à copier : le texte, son compteur et « Copier ». */
+/** Un texte à copier : le texte, son compteur (lisible sans survol) et « Copier ». */
 function BlocTexte({ texte, genre, libelle }: { texte: string; genre: 'titre' | 'description'; libelle: string }) {
-  const c = compteurs(texte, genre);
-  const ok = c.airbnb.ok && c.booking.ok;
-  const max = genre === 'titre' ? TITRE_MAX : DESCRIPTION_MAX;
+  const c = libelleCompteur(texte, genre);
   return (
     <li className="rounded-lg border border-(--lm-bord) px-3.5 py-3">
       <p className={cn('break-words text-(--lm-encre) select-text', genre === 'titre' ? 'text-[15px] font-semibold' : 'text-[13.5px] leading-relaxed whitespace-pre-line')}>{texte}</p>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p
-          className={cn('lm-chiffres text-[12px]', ok ? 'text-(--lm-encre-3)' : 'font-medium text-(--lm-danger)')}
-          title={`Airbnb : ${LIMITES_PLATEFORMES.airbnb[genre].max} caractères au plus. Booking.com : ${LIMITES_PLATEFORMES.booking[genre].max.toLocaleString('fr-FR')}.`}
-        >
-          {c.airbnb.longueur} / {max} caractères{ok ? '' : ' : trop long pour Airbnb'}
-        </p>
+        <p className={cn('lm-chiffres min-w-0 text-[12px]', c.ok ? 'text-(--lm-encre-3)' : 'font-medium text-(--lm-danger)')}>{c.texte}</p>
         <Copier texte={texte} libelle={libelle} />
       </div>
     </li>
@@ -119,10 +118,11 @@ export function TextesAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
     }
   };
 
+  // Une seule phrase : d'où viennent les textes, et ce qu'on en fait.
   const origine =
     garde && variante === 0
-      ? `Rédigés par votre agent le ${jourMois(garde.creeLe)}, à partir de la fiche du logement.`
-      : 'Tirés de la fiche du logement : équipements, couchage, quartier.';
+      ? `Rédigés par votre agent le ${jourMois(garde.creeLe)} à partir de la fiche du logement, à copier puis coller vous-même sur Airbnb ou Booking.com.`
+      : 'Tirés de la fiche du logement, à copier puis coller vous-même sur Airbnb ou Booking.com.';
 
   return (
     <Drawer
@@ -144,7 +144,7 @@ export function TextesAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
       }
     >
       <div className="space-y-5">
-        <p className="text-[13px] text-(--lm-encre-2)">{origine} À copier, puis à coller vous-même sur Airbnb ou Booking.com.</p>
+        <p className="text-[13px] text-(--lm-encre-2)">{origine}</p>
         {avis && <Alert tone={avis.ton}>{avis.texte}</Alert>}
 
         <section aria-labelledby="textes-titres">
@@ -180,7 +180,7 @@ export function TextesAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
             <li>Ni code d’accès, ni wifi, ni adresse exacte, ni coordonnées, ni lien : les plateformes les refusent.</li>
             <li>
               Limites : {LIMITES_PLATEFORMES.airbnb.titre.max} caractères pour le titre et {LIMITES_PLATEFORMES.airbnb.description.max} pour la description sur Airbnb ;{' '}
-              {LIMITES_PLATEFORMES.booking.titre.max} pour le nom sur Booking.com. Les textes proposés tiennent dans les deux.
+              {LIMITES_PLATEFORMES.booking.titre.max} pour le titre sur Booking.com. Les textes proposés tiennent dans les deux.
             </li>
             <li>Votre agent rédige à partir des mêmes faits ; ce qu’il écrit est relu par les mêmes règles, et un texte refusé est remplacé par celui de la fiche.</li>
           </ul>
