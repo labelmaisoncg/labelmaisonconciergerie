@@ -810,7 +810,7 @@ const SIGNAL_NEGATIF =
  * constats de saleté, d'odeur de tabac et de nuisibles.)
  */
 const SOUCI_CONSTATE =
-  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|ab[iî]m|plainte|se plaign|plaint\b|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
+  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|bris(?:é|ée|és|ées)(?![a-zà-ÿ])|tach(?:e|es|é|ée|és|ées)(?![a-zà-ÿ])|ab[iî]m|plainte|se plaign|plaints?\b|fum[ée] dans|avez fum[ée]|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
 
 /**
  * La fiche de police du check-in en ligne (« J'ai rempli la fiche individuelle
@@ -819,12 +819,27 @@ const SOUCI_CONSTATE =
 export const FICHE_DE_POLICE = /fiches?\s+(individuelles?\s+)?de\s+police/gi;
 
 /**
- * Tournures de prévention dans un message de l'équipe (« en cas de casse »,
+ * Consigne de prévention dans un message de l'équipe (« en cas de casse »,
  * « n'hésitez pas à nous signaler tout dégât ») : une consigne, pas un souci
- * constaté. « En cas de… » est retiré jusqu'à la virgule suivante ; « merci de /
- * n'hésitez pas à (nous) signaler… » jusqu'à la fin de la phrase.
+ * constaté. Le message est découpé en propositions (virgule, deux-points,
+ * point-virgule, tiret, fin de phrase) et seule la proposition qui COMMENCE par
+ * la tournure est ignorée, si elle ne dit rien au passé (« que vous avez
+ * causés ») ; « en cas de… », en plus, sept mots au plus (sans virgule, la
+ * suite est une principale : « en cas de nouveau tapage cette nuit nous
+ * appellerons la police » reste un constat). « Merci de nous indiquer ce qui
+ * s'est passé : nous avons trouvé un verre cassé » aussi.
  */
-const TOURNURE_PREVENTIVE = /\ben cas d['’e][^.!?\n;,]*|\b(n['’]h[ée]sitez pas [àa]|merci de)\s+(nous\s+)?(signaler|pr[ée]venir|indiquer)[^.!?\n]*/gi;
+const DEBUT_EN_CAS_DE = /^en cas d['’e]/i;
+const DEBUT_SIGNALER = /^(n['’]h[ée]sitez pas [àa]|merci de)\s+(nous\s+)?(signaler|pr[ée]venir|indiquer)/i;
+const AU_PASSE = /\b(avez|avons|ont|a été|ont été|était|étaient|sont)\b/i;
+const consignePreventive = (p: string): boolean =>
+  !AU_PASSE.test(p) && (DEBUT_SIGNALER.test(p) || (DEBUT_EN_CAS_DE.test(p) && p.split(/\s+/).length <= 7));
+const sansConsignesPreventives = (texte: string): string =>
+  texte
+    .split(/[.!?\n;,:–—]+/)
+    .map((p) => p.trim())
+    .filter((p) => !consignePreventive(p))
+    .join(' . ');
 
 /** Séjours dont l'avis est attendu : Airbnb, terminés depuis moins de 14 jours, pas annulés. */
 export function sejourAvecAvis(r: Pick<Reservation, 'canal' | 'statut' | 'depart'>, aujourdhui: DateISO): boolean {
@@ -880,7 +895,7 @@ function signalNegatifDansLesMessages(r: Pick<Reservation, 'arrivee' | 'depart'>
       if (m.auteur === 'voyageur') return SIGNAL_NEGATIF.test(sansFiche);
       if (m.auteur !== 'hote') return false;
       const jour = String(m.envoyeLe ?? '').slice(0, 10);
-      return jour >= debutEquipe && jour <= finEquipe && SOUCI_CONSTATE.test(sansFiche.replace(TOURNURE_PREVENTIVE, ' '));
+      return jour >= debutEquipe && jour <= finEquipe && SOUCI_CONSTATE.test(sansConsignesPreventives(sansFiche));
     }),
   );
 }

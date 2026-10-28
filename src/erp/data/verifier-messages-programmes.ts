@@ -418,6 +418,19 @@ function fileAvis() {
   verifier(!souci([msg('h', 'hote', 'En cas de casse, merci de nous prévenir.', '2026-10-19T15:00:00+02:00')]), '« en cas de casse, merci de nous prévenir » : ne bloque pas');
   verifier(souci([msg('h', 'hote', 'En cas de doute, appelez-nous : nous avons trouvé un verre cassé.', '2026-10-21T12:00:00+02:00')]), 'tournure « en cas de » suivie d’un vrai constat (verre cassé) : à relire');
   verifier(souci([msg('v', 'voyageur', 'La police est venue cette nuit, j’ai aussi rempli la fiche de police.', '2026-10-20T08:00:00+02:00')]), 'police venue, en plus de la fiche de police, écrit par le voyageur : à relire');
+  // Une consigne de prévention n'efface jamais le constat qui la suit dans la même phrase.
+  for (const t of [
+    'Merci de nous indiquer ce qui s’est passé : nous avons trouvé un verre cassé.',
+    'Merci de nous prévenir quand vous partez, les voisins se plaignent du bruit.',
+    'N’hésitez pas à nous signaler tout souci, nous avons déjà eu une plainte des voisins hier.',
+    'En cas de nouveau tapage cette nuit nous appellerons la police',
+    'Merci de nous signaler les dégâts que vous avez causés.',
+  ])
+    verifier(souci([msg('h', 'hote', t, '2026-10-20T09:00:00+02:00')]), `consigne suivie d’un constat, écrit par l’équipe : à relire (« ${t} »)`);
+  verifier(!souci([msg('h', 'hote', 'En cas de souci ou de dégât, prévenez-nous.', '2026-10-19T15:00:00+02:00')]), '« en cas de souci ou de dégât, prévenez-nous » : ne bloque pas');
+  // Constats que l'équipe peut écrire autrement.
+  for (const t of ['Les voisins se sont plaints du bruit hier soir.', 'Vous avez fumé dans le logement, c’est interdit.', 'La vitre est brisée.', 'Le canapé est taché.'])
+    verifier(souci([msg('h', 'hote', t, '2026-10-21T12:00:00+02:00')]), `constat de l’équipe : à relire (« ${t} »)`);
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };
   verifier(raisonsARelire(propre, { ...d, incidents: [sansReservation] }).length === 1, 'incident du logement pendant le séjour → à relire');
   verifier(raisonsARelire(propre, { ...d, incidents: [{ ...sansReservation, date: '2026-10-10' }] }).length === 0, 'incident d’avant le séjour : sans effet');
