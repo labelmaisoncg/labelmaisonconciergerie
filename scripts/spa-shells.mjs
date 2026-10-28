@@ -38,6 +38,42 @@ if (routes.length === 0) {
 const html = readFileSync(shell, 'utf8');
 
 /**
+ * App installée tenue en portrait, comme une app du téléphone. Android suit
+ * le manifeste (« orientation »: « portrait ») ; l'iPhone l'ignore et ne
+ * permet pas de bloquer la rotation : en paysage, l'app installée sur un
+ * iPhone montre « Tournez votre téléphone » à la place de l'écran. Rien ne
+ * change dans le navigateur, sur ordinateur ni sur iPad.
+ */
+function ecranPortrait(page, remplacer) {
+  const style = [
+    '    <style>',
+    '      .lm-portrait { display: none; }',
+    // Safari de l'iPhone seulement (Android suit le manifeste ; son clavier ouvert ne doit pas passer pour du paysage).
+    '      @supports (-webkit-touch-callout: none) {',
+    '        @media (display-mode: standalone) and (orientation: landscape) and (max-height: 500px) and (max-width: 1000px) and (pointer: coarse) {',
+    '          .lm-portrait { position: fixed; inset: 0; z-index: 2147483647; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 24px; background: #fbfaf8; color: #14110e; text-align: center; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }',
+    '          .lm-portrait svg { width: 40px; height: 40px; margin-bottom: 8px; }',
+    '          .lm-portrait strong { font-size: 17px; font-weight: 600; }',
+    '          .lm-portrait span { font-size: 15px; color: rgba(20, 17, 14, 0.68); }',
+    '          html, body { overflow: hidden; }',
+    // L'app reste montée (rien ne se perd), mais hors de portée du lecteur d'écran et du clavier.
+    '          #root { visibility: hidden; }',
+    '        }',
+    '      }',
+    '    </style>',
+  ].join('\n');
+  const ecran = [
+    '<body>',
+    '    <div class="lm-portrait" role="status">',
+    '      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>',
+    '      <strong>Tournez votre téléphone</strong>',
+    '      <span>L’app s’utilise à la verticale.</span>',
+    '    </div>',
+  ].join('\n');
+  return remplacer(remplacer(page, /<\/head>/, `${style}\n  </head>`), /<body>/, ecran);
+}
+
+/**
  * Coquille de l'ERP : pas de traduction automatique du navigateur dès le
  * premier octet (elle réécrit le texte sous React et fait planter
  * l'application), et tout ce qu'il faut pour l'installer comme une app
@@ -54,6 +90,7 @@ function coquilleErp(page) {
   p = remplacer(p, /<meta name="viewport" content="[^"]*"\s*\/?>/, '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />');
   p = remplacer(p, /<meta name="theme-color" content="[^"]*"\s*\/?>/, '<meta name="theme-color" content="#fbfaf8" />');
   p = remplacer(p, /<link rel="apple-touch-icon" href="[^"]*"\s*\/?>/, '<link rel="apple-touch-icon" href="/erp-app/apple-touch-icon.png" />');
+  p = ecranPortrait(p, remplacer);
   return p.replace(
     '<head>',
     [
@@ -83,6 +120,7 @@ function coquilleOperations(page) {
   p = remplacer(p, /<meta name="viewport" content="[^"]*"\s*\/?>/, '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />');
   p = remplacer(p, /<meta name="theme-color" content="[^"]*"\s*\/?>/, '<meta name="theme-color" content="#fbfaf8" />');
   p = remplacer(p, /<link rel="apple-touch-icon" href="[^"]*"\s*\/?>/, '<link rel="apple-touch-icon" href="/erp-app/apple-touch-icon.png" />');
+  p = ecranPortrait(p, remplacer);
   return p.replace(
     '<head>',
     [
