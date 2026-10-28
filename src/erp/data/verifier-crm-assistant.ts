@@ -27,6 +27,7 @@ import {
   refusRelance,
   relanceModele,
   scoreContact,
+  sonBien,
 } from './crm-assistant';
 import { OUTILS } from './crm-mcp';
 import { canalValide, preparerRelance } from './crm-relance';
@@ -112,6 +113,14 @@ section('File du jour : la règle du CRM, triée par score');
 
 section('Prochaine action, en une phrase');
 {
+  verifier(
+    sonBien('Maison') === 'sa maison' && sonBien('Appartement') === 'son appartement' && sonBien('T2') === 'son T2' && sonBien('Villa') === 'sa villa' && sonBien(undefined) === 'son bien',
+    'bien accordé et en minuscule : « sa maison », « son appartement », « son T2 »',
+    [sonBien('Maison'), sonBien('Appartement'), sonBien('T2')],
+  );
+  const m = prochaineAction(contact('m', { statut: 'contacte', typeBien: 'Maison', ville: 'Corbeil-Essonnes' }), J);
+  verifier(/sur sa maison à Corbeil-Essonnes/.test(m.phrase), 'jamais « son Maison »', m);
+  verifier(!/\b(il|lui-même)\b/.test(prochaineAction(contact('n', { source: 'cercle', statut: 'contacte' }), J).phrase), 'apporteur : pas de tournure au masculin');
   const a = prochaineAction(contact('a'), J);
   verifier(a.canal === 'appel' && a.phrase === 'Appelez pour un premier échange sur son T2 à Massy : ses attentes et ses dates.', 'nouvelle demande d’un propriétaire : appeler', a);
   const b = prochaineAction(contact('b', { source: 'cercle' }), J);

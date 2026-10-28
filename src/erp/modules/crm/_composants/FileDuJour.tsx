@@ -1,5 +1,5 @@
 import { ChevronRight, Phone } from 'lucide-react';
-import type { EntreeFile } from '../../../data/crm-assistant';
+import { REGLES_SCORE, type EntreeFile } from '../../../data/crm-assistant';
 import { insecables } from '../../../data/format';
 import { Aide, Badge, Card } from '../../../ui';
 
@@ -58,7 +58,7 @@ export function FileDuJour({ entrees, onOuvrir }: FileDuJourProps) {
       <Aide titre="Comment la file est triée ?" className="mt-3">
         <p>
           En tête : les nouvelles demandes et les rappels prévus aujourd’hui, puis les relances en retard (plus le retard est long, plus elles montent). À égalité, une demande d’audit ou un dossier rempli passe
-          devant un simple message, et un propriétaire devant un apporteur. Un contact qui ne répond pas après 3 appels, ou sans téléphone ni e-mail, recule.
+          devant un simple message, et un propriétaire devant un apporteur. Un contact qui ne répond pas après {REGLES_SCORE.appelsSansReponse} appels, ou sans téléphone ni e-mail, recule.
         </p>
         <p className="mt-1">L’ERP n’envoie ni e-mail ni SMS.</p>
       </Aide>

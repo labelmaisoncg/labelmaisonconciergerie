@@ -85,7 +85,7 @@ export default function AvisParc() {
     {
       libelle: 'Tendance',
       valeur: p.tendance ? TENDANCE[p.tendance.sens] : '-',
-      detail: p.tendance ? `${p.tendance.nbRecents} derniers avis :\u00a0${note(p.tendance.recente)}` : 'Pas assez d’avis',
+      detail: p.tendance ? `${p.tendance.nbRecents} derniers avis\u00a0:\u00a0${note(p.tendance.recente)}` : 'Pas assez d’avis',
     },
   ];
 

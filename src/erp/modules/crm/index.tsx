@@ -10,7 +10,7 @@
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Bot, CalendarPlus, Check, FileText, PhoneCall, Plus } from 'lucide-react';
+import { Bot, CalendarPlus, FileText, PhoneCall, Plus } from 'lucide-react';
 import { idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
 import { fileDuJour, jourMoisCrm } from '../../data/crm-assistant';
 import { espaceOuvert } from '../../data/espaces';
@@ -235,14 +235,7 @@ export default function Crm() {
         />
       )}
 
-      <div role="status" aria-live="polite">
-        {notee && (
-          <p className="mb-3 flex items-center gap-2 rounded-lg bg-(--lm-succes-lavis) px-3 py-2 text-[13.5px] text-(--lm-succes-texte)">
-            <Check className="size-4 shrink-0" aria-hidden />
-            {notee}
-          </p>
-        )}
-      </div>
+      <div aria-live="polite">{notee && <Alert tone="succes" className="mb-3" titre={notee} />}</div>
 
       {crm.length > 0 && vue === 'jour' ? (
         file.length ? (

@@ -188,18 +188,12 @@ export function PreparerRelance({ contact, auto, onFermer, onEnvoye, onOuvrirFic
             </details>
           ) : (
             <p className="mt-2 text-[13px] text-(--lm-encre-2)">
-              {`Pas dans la file d’aujourd’hui${contact.relanceLe && contact.relanceLe > AUJOURDHUI ? ` : relance prévue le ${jourMoisCrm(contact.relanceLe)}` : ''}`.replace(/\.?$/, '.')}
+              {insecables(`Pas dans la file d’aujourd’hui${contact.relanceLe && contact.relanceLe > AUJOURDHUI ? ` : relance prévue le ${jourMoisCrm(contact.relanceLe)}` : ''}`.replace(/\.?$/, '.'))}
             </p>
           )}
         </section>
 
-        {lectureSeule ? null : possibles.length === 0 ? (
-          <Alert tone="alerte" titre="Ni téléphone ni e-mail dans la fiche.">
-            <Button size="sm" variant="secondary" onClick={() => onOuvrirFiche(contact.id)}>
-              Ouvrir la fiche
-            </Button>
-          </Alert>
-        ) : (
+        {lectureSeule || possibles.length === 0 ? null : (
           <section aria-labelledby="relance-brouillon" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 id="relance-brouillon" className="text-[14px] font-semibold text-(--lm-encre)">
@@ -209,7 +203,7 @@ export function PreparerRelance({ contact, auto, onFermer, onEnvoye, onOuvrirFic
                 <Segmente label="Type de message" valeur={canal} onChange={choisirCanal} options={possibles.map((x) => ({ valeur: x, libelle: NOM_CANAL[x] }))} />
               )}
             </div>
-            <p className="text-[13px] text-(--lm-encre-2)">Envoyez-le vous-même depuis votre téléphone ou votre messagerie, puis « C’est envoyé ». L’ERP n’envoie rien.</p>
+            {pret && <p className="text-[13px] text-(--lm-encre-2)">Envoyez-le vous-même depuis votre téléphone ou votre messagerie, puis « C’est envoyé ». L’ERP n’envoie rien.</p>}
             {etat.etape === 'chargement' && (
               <div className="space-y-2" aria-live="polite" aria-busy>
                 <p className="text-[13.5px] text-(--lm-encre-2)">Votre agent rédige…</p>

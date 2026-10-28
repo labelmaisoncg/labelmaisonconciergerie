@@ -157,13 +157,21 @@ export interface ProchaineAction {
   canal: 'appel' | CanalRelance | 'fiche';
 }
 
+/** Biens au féminin (saisie libre) : « sa maison », « son appartement ». */
+const BIENS_FEMININS = /^(maison|villa|chambre|propri[ée]t[ée]|r[ée]sidence|long[èe]re|ferme|p[ée]niche|cabane|grange|demeure|bastide)\b/i;
+
+/** « son appartement », « sa maison », « son T2 » : déterminant accordé, nom commun en minuscule. */
+export function sonBien(typeBien: string | undefined): string {
+  const bien = (typeBien ?? '').trim();
+  if (!bien || bien.length > 30) return 'son bien';
+  const nom = /^[A-Z]\d/.test(bien) ? bien : bien.charAt(0).toLowerCase() + bien.slice(1);
+  return `${BIENS_FEMININS.test(nom) ? 'sa' : 'son'} ${nom}`;
+}
+
 const dans = (c: Pick<ContactCrm, 'typeBien' | 'ville'>) => {
-  const bien = c.typeBien?.trim();
   const ville = c.ville?.trim();
-  if (bien && ville) return ` sur son ${bien.length > 30 ? 'bien' : bien} à ${ville}`;
-  if (bien) return ` sur son ${bien.length > 30 ? 'bien' : bien}`;
-  if (ville) return ` sur son bien à ${ville}`;
-  return '';
+  if (!c.typeBien?.trim() && !ville) return '';
+  return ` sur ${sonBien(c.typeBien)}${ville ? ` à ${ville}` : ''}`;
 };
 
 /** La prochaine action conseillée, en une phrase. */
@@ -183,7 +191,7 @@ export function prochaineAction(c: ContactCrm, aujourdhui: DateISO): ProchaineAc
     case 'a_appeler':
       if (!tel) return { canal: 'email', phrase: 'Écrivez-lui pour proposer un premier appel.' };
       return apporteur
-        ? { canal: 'appel', phrase: 'Appelez pour présenter la recommandation et savoir quel propriétaire il a en tête.' }
+        ? { canal: 'appel', phrase: 'Appelez pour présenter la recommandation et savoir quel propriétaire est concerné.' }
         : { canal: 'appel', phrase: `Appelez pour un premier échange${dans(c)} : ses attentes et ses dates.` };
     case 'a_rappeler':
       if (!tel) return { canal: 'email', phrase: 'Écrivez-lui pour proposer un appel.' };
@@ -194,7 +202,7 @@ export function prochaineAction(c: ContactCrm, aujourdhui: DateISO): ProchaineAc
       return { canal: ecrire, phrase: `Prenez de ses nouvelles${c.motifAttente?.trim() ? ` (en attente : ${c.motifAttente.trim().slice(0, 60)})` : ''}.` };
     case 'contacte':
       return apporteur
-        ? { canal: ecrire, phrase: 'Relancez pour savoir s’il a un propriétaire à vous présenter.' }
+        ? { canal: ecrire, phrase: 'Relancez pour savoir si ce contact a un propriétaire à vous présenter.' }
         : { canal: tel ? 'appel' : 'email', phrase: `Relancez pour proposer un rendez-vous${dans(c)}${retard}.` };
     default:
       return { canal: ecrire, phrase: 'Faites le point avec ce contact.' };
