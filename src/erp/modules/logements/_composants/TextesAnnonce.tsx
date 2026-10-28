@@ -62,7 +62,7 @@ function BlocTexte({ texte, genre, libelle }: { texte: string; genre: 'titre' | 
     <li className="rounded-lg border border-(--lm-bord) px-3.5 py-3">
       <p className={cn('break-words text-(--lm-encre) select-text', genre === 'titre' ? 'text-[15px] font-semibold' : 'text-[13.5px] leading-relaxed whitespace-pre-line')}>{texte}</p>
       <div className="mt-2 flex items-center justify-between gap-3">
-        <p className={cn('lm-chiffres min-w-0 text-[12px]', c.ok ? 'text-(--lm-encre-3)' : 'font-medium text-(--lm-danger)')}>{c.texte}</p>
+        <p className={cn('lm-chiffres min-w-0 text-[12px]', c.ok ? 'text-(--lm-encre-3)' : 'font-medium text-(--lm-danger)')}>{c.texte.replace(' et ', ' et\u00a0')}</p>
         <Copier texte={texte} libelle={libelle} />
       </div>
     </li>

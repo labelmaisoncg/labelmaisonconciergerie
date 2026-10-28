@@ -214,12 +214,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
               )}
             </div>
           )}
-          {k === 'proposer_supplements' && (
-            <p className="mt-2 text-[12px] text-(--lm-encre-2)">
-              Le voyageur répond « Non merci » : les infos d’arrivée partent quand même. Il demande ou accepte un supplément, ou pose une question : elles attendent
-              votre réponse, et votre agent ne lui répond jamais seul.
-            </p>
-          )}
+          {k === 'proposer_supplements' && <p className="mt-2 text-[12px] text-(--lm-encre-3)">Un « Non merci » ne retient pas les infos d’arrivée.</p>}
         </div>
 
         <section aria-labelledby="apercu-titre">

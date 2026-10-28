@@ -76,7 +76,10 @@ export function PropositionSupplement({ proposition: p, logementId, onInserer }:
   const statut = STATUTS[p.disponibilite.statut];
   const regle = p.reglage.actif;
   const prix = regle && p.disponibilite.statut !== 'impossible' ? ` · ${resumeSupplement(p.cle, p.reglage)}` : '';
-  const constats = [...p.disponibilite.constats, ...(!regle && p.disponibilite.statut !== 'impossible' ? ['Pas proposé pour ce logement.'] : [])].join(' ');
+  const nonRegle = !regle && p.disponibilite.statut !== 'impossible';
+  // « Pas proposé pour ce logement. » en tête : il reste lisible sur la ligne tronquée.
+  const constats = [...(nonRegle ? ['Pas proposé pour ce logement.'] : []), ...p.disponibilite.constats].join(' ');
+  const regler = nonRegle && utilisateur.role === 'gerant' && !lectureSeule;
   return (
     <div role="group" aria-label={`Demande : ${titre.toLowerCase()}`} className="flex items-center gap-2 rounded-lg bg-(--lm-surface-2) py-1.5 pr-1.5 pl-3 text-[13px]">
       <Icone className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
@@ -85,23 +88,23 @@ export function PropositionSupplement({ proposition: p, logementId, onInserer }:
           {titre}
           <span className="font-normal">
             {' · '}
-            <span className={cn('font-medium', statut.classe)}>{statut.libelle}</span>
+            <span className={cn('font-medium whitespace-nowrap', statut.classe)}>{statut.libelle}</span>
             <span className="lm-chiffres whitespace-nowrap text-(--lm-encre-2)">{prix}</span>
           </span>
         </p>
         <p className="line-clamp-1 text-[12px] text-(--lm-encre-2)" title={constats}>
           {constats}
-          {!regle && p.disponibilite.statut !== 'impossible' && utilisateur.role === 'gerant' && !lectureSeule && (
-            <>
-              {' '}
-              {/* Onglet « Infos pour votre agent », panneau des suppléments ouvert. */}
-              <Link to={`/erp/logements/${encodeURIComponent(logementId)}?onglet=fiche&supplements=regler`} className="font-medium text-(--lm-or-texte) hover:underline">
-                Régler les suppléments
-              </Link>
-            </>
-          )}
         </p>
       </div>
+      {regler && (
+        // Onglet « Infos pour votre agent », panneau des suppléments ouvert : à la place de « Insérer » (rien à insérer ici).
+        <Link
+          to={`/erp/logements/${encodeURIComponent(logementId)}?onglet=fiche&supplements=regler`}
+          className="inline-flex h-8 shrink-0 items-center px-1.5 text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+        >
+          Régler
+        </Link>
+      )}
       {p.texte && (
         <Button size="sm" onClick={() => onInserer(p.texte!)} className="shrink-0" title={p.disponibilite.statut === 'impossible' ? 'Insérer une réponse polie : ce n’est pas possible ce jour-là' : 'Insérer la proposition avec le prix réglé'}>
           Insérer

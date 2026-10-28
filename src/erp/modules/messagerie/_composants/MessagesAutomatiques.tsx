@@ -100,7 +100,7 @@ export function MessagesAutomatiques() {
             <li>Chaque message part une seule fois par séjour.</li>
             <li>
               Rien pour une réservation annulée, ni quand le voyageur attend une réponse de l’équipe. Un simple « Non merci » à « Proposer les suppléments » ne retient
-              pas les infos d’arrivée.
+              pas les infos d’arrivée ; toute autre réponse vous attend, et votre agent n’y répond jamais seul.
             </li>
             <li>L’accès et le wifi n’apparaissent que dans les 48 h avant l’arrivée : sinon, la ligne est retirée.</li>
             <li>« Merci pour la réservation » part seulement pour les réservations faites après l’allumage.</li>

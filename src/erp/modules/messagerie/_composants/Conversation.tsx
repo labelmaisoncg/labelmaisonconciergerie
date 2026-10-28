@@ -667,7 +667,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                       : aide.genre === 'supplement'
                         ? aide.statut === 'impossible'
                           ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
-                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier avec l’équipe ménage' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
+                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
                         : aide.source === 'agent'
                           ? 'Préparée par votre agent : relisez, puis envoyez.'
                           : 'Proposée par votre agent : relisez, puis envoyez.'}
