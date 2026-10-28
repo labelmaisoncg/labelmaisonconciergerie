@@ -8,7 +8,7 @@
   "start_url": "/erp",
   "scope": "/erp",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "portrait",
   "background_color": "#fbfaf8",
   "theme_color": "#fbfaf8",
   "categories": ["business", "productivity"],
