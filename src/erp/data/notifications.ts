@@ -14,8 +14,9 @@
  * signalé », et non trois.
  */
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
+import { LIBELLE_SOURCE_SCORE } from './crm-assistant.js';
 import { lienIncident } from './incidents-erp.js';
-import type { ContactCrm, FilMessages, Incident, Logement, RaisonEscalade, Reservation, SourceContactCrm } from './types';
+import type { ContactCrm, FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
 
 export type TypeNotification =
   | 'reservation'
@@ -49,7 +50,7 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
   { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
-  { type: 'lead', libelle: 'Nouveau lead à appeler', detail: 'Un formulaire du site ou un dossier propriétaire : prénom, ville, demande.', defaut: true },
+  { type: 'lead', libelle: 'Nouvelle demande à appeler', detail: 'Un formulaire du site ou un dossier propriétaire : prénom, ville, demande.', defaut: true },
 ];
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;
@@ -57,7 +58,7 @@ export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>
 /**
  * Types réservés au gérant : les prix conseillés ne partent jamais vers
  * l'appareil d'un autre rôle (comme leur carte et leur ligne de l'Accueil),
- * ni les nouveaux leads du CRM (demande du gérant : c'est lui qui rappelle).
+ * ni les nouvelles demandes du CRM (demande du gérant : c'est lui qui rappelle).
  */
 export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix', 'lead'];
 
@@ -443,19 +444,10 @@ export function demandeNotifications(c: ContexteDemandeNotifications): RaisonDem
   return 'proposer';
 }
 
-/* ------------------------------------------------ nouveau lead (CRM) */
-
-const DEMANDE_LEAD: Record<SourceContactCrm, string> = {
-  audit: 'Demande d’audit',
-  accueil: 'Formulaire de l’accueil',
-  contact: 'Formulaire contact',
-  cercle: 'Candidature Cercle',
-  dossier: 'Dossier propriétaire',
-  manuel: 'Ajout manuel',
-};
+/* ------------------------------------------- nouvelle demande (CRM) */
 
 /**
- * « Nouveau lead à appeler » : un formulaire du site ou un dossier
+ * « Nouvelle demande à appeler » : un formulaire du site ou un dossier
  * propriétaire vient d'arriver dans le CRM (api/_erp-crm.ts). Pour le gérant
  * seulement (type réservé), livrée tout de suite. Sur l'écran verrouillé :
  * « Prénom N. », la ville et la demande, jamais le téléphone ni l'e-mail (un
@@ -469,7 +461,7 @@ export function notificationNouveauLead(
 ): GroupeNotification {
   const nom = String(c.nom ?? '').trim();
   const qui = !nom || nom === 'Sans nom' || nom.includes('@') ? 'Un nouveau contact' : prenomInitiale(nom);
-  const corps = [qui, extrait(c.ville ?? '', 40), DEMANDE_LEAD[c.source] ?? ''].filter(Boolean).join(' · ');
+  const corps = [qui, extrait(c.ville ?? '', 40), LIBELLE_SOURCE_SCORE[c.source] ?? ''].filter(Boolean).join(' · ');
   const quand = c.historique?.[0]?.le ?? c.majLe ?? c.creeLe;
   return {
     cle: `lead-${c.id}-${quand}`,
@@ -477,7 +469,7 @@ export function notificationNouveauLead(
     variantes: [
       {
         type: 'lead',
-        titre: o.nouveau ? 'Nouveau lead à appeler' : 'Nouvelle demande d’un contact du CRM',
+        titre: o.nouveau ? 'Nouvelle demande à appeler' : 'Nouvelle demande d’un contact connu',
         corps,
         url: `/erp/crm?contact=${encodeURIComponent(c.id)}`,
         gerant: true,

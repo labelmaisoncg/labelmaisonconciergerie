@@ -75,7 +75,8 @@ export const POINTS_ETAPE: Record<StatutContactCrm, { points: number; libelle: s
 /** Points de la source : une demande d'audit ou un dossier rempli dit une intention forte. */
 export const POINTS_SOURCE: Record<SourceContactCrm, number> = { dossier: 15, audit: 10, accueil: 5, contact: 3, cercle: 0, manuel: 0 };
 
-const LIBELLE_SOURCE_SCORE: Record<SourceContactCrm, string> = {
+/** D'où vient la demande, en une phrase (détail du score, notification « Nouvelle demande à appeler »). */
+export const LIBELLE_SOURCE_SCORE: Record<SourceContactCrm, string> = {
   dossier: 'Dossier propriétaire rempli',
   audit: 'Demande d’audit',
   accueil: 'Demande depuis l’accueil du site',

@@ -181,7 +181,7 @@ export default async function handler(req: any, res: any) {
 
   const [resultatCrm, mailEnvoye] = await Promise.all([crm, envoi]);
   const crmOk = !!resultatCrm && resultatCrm.etat !== 'inactif';
-  // Notification au gérant (« Nouveau lead à appeler ») : avant de répondre (une
+  // Notification au gérant (« Nouvelle demande à appeler ») : avant de répondre (une
   // fonction Vercel s'arrête à la réponse), bornée à 3 s, sans effet sur la réponse.
   if (resultatCrm && resultatCrm.etat !== 'inactif') {
     await avecDelai(notifierNouveauLead(resultatCrm.contact, resultatCrm.etat === 'cree'), 3000).catch((err) => {

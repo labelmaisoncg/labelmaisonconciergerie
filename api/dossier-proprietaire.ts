@@ -60,7 +60,7 @@ export default async function handler(req: any, res: any) {
   } catch (e) {
     console.error('[dossier-proprietaire] ERP :', e);
   }
-  // Notification au gérant (« Nouveau lead à appeler »), bornée à 3 s, sans effet sur la réponse.
+  // Notification au gérant (« Nouvelle demande à appeler »), bornée à 3 s, sans effet sur la réponse.
   if (enregistre) {
     await avecDelai(notifierNouveauLead(enregistre.crm.contact, enregistre.crm.cree), 3_000).catch((e) => {
       console.error('[dossier-proprietaire] notification :', e instanceof Error ? e.message : e);

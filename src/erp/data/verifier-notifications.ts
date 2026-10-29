@@ -426,7 +426,7 @@ async function principal() {
     verifier(parOps.role === 'operations', 'réabonnement par un autre compte : le rôle de ce compte remplace l’ancien');
   }
 
-  section('Nouveau lead à appeler (CRM)');
+  section('Nouvelle demande à appeler (CRM)');
   {
     const contact = {
       id: 'crm-abc',
@@ -441,14 +441,14 @@ async function principal() {
     };
     const g = notificationNouveauLead(contact, { nouveau: true });
     const v = g.variantes[0];
-    verifier(v.type === 'lead' && v.titre === 'Nouveau lead à appeler' && v.corps === 'Marie D. · Évry-Courcouronnes · Demande d’audit', `contenu : « ${v.titre} », « ${v.corps} »`);
+    verifier(v.type === 'lead' && v.titre === 'Nouvelle demande à appeler' && v.corps === 'Marie D. · Évry-Courcouronnes · Demande d’audit', `contenu : « ${v.titre} », « ${v.corps} »`);
     verifier(v.url === '/erp/crm?contact=crm-abc' && g.urgente === true && v.gerant === true, 'ouvre la fiche du contact dans le CRM ; livrée tout de suite ; gérant seulement');
     verifier(!JSON.stringify(g).includes('06 12') && !JSON.stringify(g).includes('marie@') && !JSON.stringify(g).includes('Dupont'), 'écran verrouillé : ni téléphone, ni e-mail, ni nom de famille');
     const parEmail = notificationNouveauLead({ ...contact, nom: 'marie@exemple.fr', ville: undefined }, { nouveau: true });
     verifier(parEmail.variantes[0].corps === 'Un nouveau contact · Demande d’audit', 'nom qui est l’adresse e-mail : « Un nouveau contact »');
     const redemande = notificationNouveauLead({ ...contact, source: 'dossier', historique: [{ le: '2026-11-02T09:00:00+01:00', par: 'Site web', resultat: 'formulaire' as const }, ...contact.historique] }, { nouveau: false });
-    verifier(redemande.cle !== g.cle && redemande.variantes[0].titre === 'Nouvelle demande d’un contact du CRM' && redemande.variantes[0].corps.endsWith('Dossier propriétaire'), 'la même personne redemande : une nouvelle notification');
-    verifier(TYPES_NOTIFICATION.some((t) => t.type === 'lead' && t.defaut) && typePourRole('lead', 'gerant') && !typePourRole('lead', 'operations') && !typePourRole('lead', undefined), 'réglage « Nouveau lead à appeler » : activé par défaut, proposé au gérant seul');
+    verifier(redemande.cle !== g.cle && redemande.variantes[0].titre === 'Nouvelle demande d’un contact connu' && redemande.variantes[0].corps.endsWith('Dossier propriétaire rempli'), 'la même personne redemande : une nouvelle notification');
+    verifier(TYPES_NOTIFICATION.some((t) => t.type === 'lead' && t.defaut) && typePourRole('lead', 'gerant') && !typePourRole('lead', 'operations') && !typePourRole('lead', undefined), 'réglage « Nouvelle demande à appeler » : activé par défaut, proposé au gérant seul');
 
     const cles = { ...(await genererClesVapid()), sujet: 'https://www.labelmaisoncg.fr' };
     const base = new FausseBase();

@@ -37,7 +37,7 @@ export async function enregistrerDemandeCrm(demande: DemandeSite): Promise<Resul
 }
 
 /**
- * Notification « Nouveau lead à appeler » sur les appareils du gérant
+ * Notification « Nouvelle demande à appeler » sur les appareils du gérant
  * (notifications.ts, type « lead », réservé au gérant). Sans clés VAPID ni
  * compte d'équipe : rien. Ne lève jamais : un échec n'empêche pas la demande
  * d'être acceptée (elle est déjà dans le CRM et partie par e-mail).
