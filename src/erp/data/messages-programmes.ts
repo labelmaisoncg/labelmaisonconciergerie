@@ -35,7 +35,7 @@
  * Imports relatifs avec « .js » : ce fichier tourne aussi sous Node.
  */
 import { attendEquipe } from './attente-equipe.js';
-import { contientCodeAcces, reponseSansDemandeAuxSupplements } from './messagerie-ia.js';
+import { FICHE_DE_POLICE, contientCodeAcces, reponseSansDemandeAuxSupplements } from './messagerie-ia.js';
 import { reglagesAgent } from './reglages.js';
 import { aDesSupplements, type ReglagesSupplements } from './supplements.js';
 import type { DateISO, ErpDonnees, FilMessages, GuideLogement, Horodatage, Id, Incident, Logement, Reservation } from './types';
@@ -812,11 +812,8 @@ const SIGNAL_NEGATIF =
 const SOUCI_CONSTATE =
   /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|bris(?:é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])tach(?:e|es|é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])casse(?![a-zà-ÿ-])|retien\w* (?:sur )?(?:la |votre )?caution|ab[iî]m|plainte|se plaign|plaints?\b|fum[ée] dans|avez fum[ée]|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
 
-/**
- * La fiche de police du check-in en ligne (« J'ai rempli la fiche individuelle
- * de police ») ne dit aucun souci : retirée avant de chercher « police ».
- */
-export const FICHE_DE_POLICE = /fiches?\s+(individuelles?\s+)?de\s+police/gi;
+/** La fiche de police du check-in en ligne ne dit aucun souci (messagerie-ia.ts). */
+export { FICHE_DE_POLICE };
 
 /**
  * Consigne de prévention dans un message de l'équipe (« en cas de casse »,

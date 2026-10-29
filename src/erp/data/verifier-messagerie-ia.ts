@@ -341,6 +341,11 @@ async function principal() {
   }
   verifier(sujetSensible('On peut déposer nos valises ?') === null && sujetSensible('À quelle heure la remise des clés ?') === null, 'pas de faux sujet sensible : bagages, remise des clés');
   verifier(sujetSensible('Je voudrais annuler')?.raison === 'argent' && sujetSensible('Le chauffage ne marche pas')?.raison === 'litige', 'raisons : annulation → argent, problème sur place → litige');
+  verifier(
+    sujetSensible('J’ai rempli la fiche de police, merci !') === null && sujetSensible('Les fiches individuelles de police sont remplies.') === null,
+    '« fiche de police » du check-in en ligne : pas une réclamation',
+  );
+  verifier(sujetSensible('La police est venue cette nuit.')?.raison === 'litige' && sujetSensible('Fiche de police remplie. Mais nous allons appeler la police.')?.raison === 'litige', '« police » ailleurs que dans « fiche de police » : toujours une réclamation');
 
   /* --------------------------------------------- niveaux et seuils */
   section('Niveaux d’autonomie et seuils');
