@@ -29,7 +29,6 @@ export function PageHeader({ titre, sousTitre, actions, fil: filBrut, coin, clas
   const fil = sansRacine.some((m) => m.to) ? sansRacine : undefined;
   return (
     <header className={cn('mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6', coin && 'relative', className)}>
-      {coin && <div className="absolute top-0 right-0">{coin}</div>}
       <div className={cn('min-w-0', coin && 'pr-11')}>
         {fil && fil.length > 0 && (
           <nav aria-label="Fil d’Ariane" className="mb-1.5">
@@ -54,6 +53,8 @@ export function PageHeader({ titre, sousTitre, actions, fil: filBrut, coin, clas
         {sousTitre && <p className="mt-1 max-w-3xl text-sm text-(--lm-encre-2)">{sousTitre}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      {/* Après le titre dans l'ordre de lecture (VoiceOver, tabulation), en haut à droite à l'écran. */}
+      {coin && <div className="absolute top-0 right-0">{coin}</div>}
     </header>
   );
 }
