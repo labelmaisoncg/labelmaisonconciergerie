@@ -169,7 +169,7 @@ export function PreparerRelance({ contact, auto, onFermer, onEnvoye, onOuvrirFic
           <p className="mt-1 text-[15px] text-(--lm-encre)">{insecables(action?.phrase ?? '')}</p>
           {dansLaFile ? (
             <details className="group mt-2">
-              <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+              <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium lm-lien [&::-webkit-details-marker]:hidden">
                 Pourquoi cette priorité ?
                 <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
               </summary>

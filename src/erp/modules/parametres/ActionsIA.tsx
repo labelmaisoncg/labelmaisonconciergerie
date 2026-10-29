@@ -247,7 +247,7 @@ export default function ActionsIA() {
                               onClick={() => setOuverte(deplie ? null : a.id)}
                               aria-expanded={deplie}
                               aria-controls={idDetail}
-                              className="block w-full rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                              className="block w-full rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                             >
                               {contenu}
                             </button>
@@ -274,7 +274,7 @@ export default function ActionsIA() {
                             {qui && <p className="text-(--lm-encre-2)">{qui}</p>}
                             {raisonVisible && <p className="text-(--lm-encre-2)">{a.pasAnnulable}</p>}
                             {lienSur(a.lien) && (
-                              <Link to={lienSur(a.lien)!} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                              <Link to={lienSur(a.lien)!} className="inline-flex min-h-8 items-center font-medium lm-lien">
                                 {libelleLien(a)}
                               </Link>
                             )}

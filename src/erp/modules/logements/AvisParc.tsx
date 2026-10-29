@@ -141,7 +141,7 @@ export default function AvisParc() {
                     type="button"
                     aria-expanded={tous}
                     onClick={() => setTous((t) => !t)}
-                    className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+                    className="inline-flex min-h-8 items-center text-[13px] font-medium lm-lien"
                   >
                     {tous ? 'Réduire' : `Voir les ${p.aLire.length - PAR_PAGE} autres`}
                   </button>

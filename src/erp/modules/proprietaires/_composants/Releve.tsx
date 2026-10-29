@@ -13,7 +13,7 @@ export function DocumentReleve({ proprietaire: p, periode }: { proprietaire: Pro
   const d = useErp();
   const { lignes, totaux } = releveProprietaire(d, p.id, periode);
   return (
-    <article className="bg-white text-(--lm-encre)">
+    <article className="lm-document bg-white text-(--lm-encre)">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-(--lm-or-anneau) pb-4">
         <div>
           <p className="lm-serif text-[19px] text-(--lm-brun)">{SOCIETE.nom}</p>

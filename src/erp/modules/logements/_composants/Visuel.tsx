@@ -45,7 +45,7 @@ export function VisuelLogement({
           {initiales(logement.nom)}
         </span>
       ) : (
-        <House aria-hidden className="size-9" strokeWidth={1.25} />
+        <House aria-hidden className="size-8" />
       )}
     </div>
   );

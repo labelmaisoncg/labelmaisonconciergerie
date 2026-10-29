@@ -152,18 +152,21 @@ export function GlobalSearch({ className }: { className?: string }) {
         onClick={() => setOuvert(true)}
         aria-haspopup="dialog"
         aria-label={`Rechercher partout (raccourci ${mac ? 'Cmd' : 'Ctrl'} + K)`}
-        className="flex h-9 w-full min-w-0 items-center gap-2 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) px-2.5 text-left text-[13.5px] text-(--lm-encre-3) transition-colors hover:border-(--lm-bord-fort) hover:bg-(--lm-surface)"
+        // Pilule de recherche d'Airbnb : blanche, l'ombre unique, et à droite la pastille ronde or à la loupe blanche.
+        className="flex h-12 w-full min-w-0 items-center gap-2 rounded-full border border-(--lm-bord) bg-(--lm-surface) py-1.5 pr-1.5 pl-5 text-left shadow-(--lm-ombre-haute)"
       >
-        <Search className="size-4 shrink-0" aria-hidden />
-        <span className="min-w-0 flex-1 truncate">
+        <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-(--lm-encre)">
           <span className="sm:hidden">Rechercher</span>
           <span className="hidden sm:inline">Rechercher un voyageur, un logement, une conversation…</span>
         </span>
-        <kbd className="hidden shrink-0 rounded-md border border-(--lm-bord-fort) bg-(--lm-surface) px-1.5 font-sans text-[11px] text-(--lm-encre-3) md:inline">
+        <kbd className="hidden shrink-0 rounded-md border border-(--lm-bord) px-1.5 font-sans text-[11px] text-(--lm-encre-2) lg:inline">
           {mac ? '⌘' : 'Ctrl'} K
         </kbd>
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--lm-or-texte) text-white">
+          <Search className="size-4" strokeWidth={2.5} />
+        </span>
       </button>
-      {/* Hors de l'en-tête (backdrop-blur) : sinon « fixed » serait relatif à l'en-tête. */}
+      {/* Hors de l'en-tête (en-tête collant, son propre empilement) : la palette passe au-dessus de tout. */}
       {ouvert && createPortal(<Palette onFermer={() => setOuvert(false)} />, document.querySelector('.erp-root') ?? document.body)}
     </div>
   );
@@ -285,15 +288,17 @@ function Palette({ onFermer }: { onFermer: () => void }) {
       onMouseDown: (e: MouseEvent) => e.preventDefault(),
       onMouseMove: () => actif !== i && setActif(i),
       onClick: () => choisir(l),
-      className: cn('flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2', sel && 'bg-(--lm-or-lavis)'),
+      className: cn('flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5', sel && 'bg-(--lm-surface-2)'),
     };
     if (l.genre === 'resultat') {
       const Icone = ICONES[l.e.type];
       return (
         <div key={`${l.e.type}-${l.e.id}`} {...commun}>
-          <Icone className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
+          <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre)">
+            <Icone className="size-5" />
+          </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">
+            <span className="block truncate text-[14px] font-medium text-(--lm-encre)">
               <Surligne texte={l.e.titre} mots={mots} />
             </span>
             <span className="block truncate text-[12px] text-(--lm-encre-3)">
@@ -308,11 +313,11 @@ function Palette({ onFermer }: { onFermer: () => void }) {
       const Icone = l.r.icone;
       return (
         <div key={l.r.id} {...commun}>
-          <span aria-hidden className="grid size-7 shrink-0 place-items-center rounded-md bg-(--lm-surface-2) text-(--lm-or-texte) [&_svg]:size-4">
+          <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-5">
             <Icone />
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">{l.r.libelle}</span>
+            <span className="block truncate text-[14px] font-medium text-(--lm-encre)">{l.r.libelle}</span>
             {l.r.detail && <span className="block truncate text-[12px] text-(--lm-encre-3)">{l.r.detail}</span>}
           </span>
           {sel && <CornerDownLeft className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-hidden />}
@@ -322,15 +327,17 @@ function Palette({ onFermer }: { onFermer: () => void }) {
     if (l.genre === 'recente') {
       return (
         <div key={`r-${l.q}`} {...commun}>
-          <Clock className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
-          <span className="min-w-0 flex-1 truncate text-[13.5px] text-(--lm-encre-2)">{l.q}</span>
+          <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre)">
+            <Clock className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[14px] text-(--lm-encre)">{l.q}</span>
         </div>
       );
     }
     return (
       <div key={`tout-${l.g.groupe.type}`} {...commun} className={cn(commun.className, 'py-1.5')}>
-        <ClipboardList className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
-        <span className="text-[13px] font-medium text-(--lm-or-texte)">
+        <ClipboardList className="size-4 shrink-0 text-(--lm-encre)" aria-hidden />
+        <span className="lm-lien text-[13px] font-semibold">
           Voir tout ({l.g.total}){l.g.groupe.liste ? '' : ' ici'}
         </span>
       </div>
@@ -343,7 +350,7 @@ function Palette({ onFermer }: { onFermer: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-stretch justify-center sm:items-start sm:p-4 sm:pt-[10vh]">
-      <div aria-hidden className="lm-apparition absolute inset-0 bg-[rgba(20,17,14,0.4)]" onClick={onFermer} />
+      <div aria-hidden className="lm-apparition absolute inset-0 bg-(--lm-voile)" onClick={onFermer} />
       <div
         ref={ref}
         role="dialog"
@@ -353,7 +360,7 @@ function Palette({ onFermer }: { onFermer: () => void }) {
         className="lm-apparition relative flex h-full w-full flex-col bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:h-auto sm:max-h-[75vh] sm:max-w-2xl sm:rounded-2xl"
       >
         <div className="flex items-center gap-2 border-b border-(--lm-bord) px-3 py-2.5 sm:px-4">
-          <Search className="size-5 shrink-0 text-(--lm-encre-3)" aria-hidden />
+          <Search className="size-5 shrink-0 text-(--lm-encre)" aria-hidden />
           <input
             ref={champ}
             type="text"
@@ -371,11 +378,11 @@ function Palette({ onFermer }: { onFermer: () => void }) {
             style={{ outline: 'none' }}
           />
           {q && (
-            <button type="button" onClick={() => setQ('')} className="rounded-md px-2 py-1 text-[12.5px] text-(--lm-encre-3) hover:text-(--lm-encre)">
+            <button type="button" onClick={() => setQ('')} className="inline-flex h-8 items-center rounded-lg px-2 text-[13px] font-semibold text-(--lm-encre) underline underline-offset-[3px] hover:bg-(--lm-surface-2)">
               Effacer
             </button>
           )}
-          <button type="button" onClick={onFermer} aria-label="Fermer la recherche" className="grid size-8 place-items-center rounded-md text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis)">
+          <button type="button" onClick={onFermer} aria-label="Fermer la recherche" className="grid size-8 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis)">
             <X className="size-4" />
           </button>
         </div>
@@ -390,12 +397,12 @@ function Palette({ onFermer }: { onFermer: () => void }) {
           {sections.map((s) => (
             <div key={s.titre} role="group" aria-label={s.titre} className="mb-1.5">
               <div className="flex items-center justify-between px-3 pt-2 pb-1">
-                <p className="text-[11px] font-semibold tracking-[0.06em] text-(--lm-encre-3) uppercase">
+                <p className="text-[13px] font-semibold text-(--lm-encre)">
                   {s.titre}
                   {s.compte !== undefined && <span className="lm-chiffres ml-1.5 font-medium normal-case">{s.compte}</span>}
                 </p>
                 {s.titre === 'Recherches récentes' && (
-                  <button type="button" onClick={oublier} className="text-[11.5px] text-(--lm-encre-3) hover:text-(--lm-or-texte)">
+                  <button type="button" onClick={oublier} className="lm-lien inline-flex min-h-8 items-center text-[12.5px] font-medium">
                     Effacer l’historique
                   </button>
                 )}

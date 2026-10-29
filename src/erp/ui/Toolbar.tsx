@@ -13,21 +13,21 @@ export interface SearchInputProps {
 export function SearchInput({ valeur, onChange, placeholder = 'Rechercher', label = 'Rechercher', className }: SearchInputProps) {
   return (
     <div className={cn('relative w-full sm:w-72', className)}>
-      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-(--lm-encre-3)" />
+      <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-(--lm-encre)" />
       <input
         type="search"
         value={valeur}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={label}
-        className="h-9 w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) pr-9 pl-8 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-3) focus:border-(--lm-or) focus:ring-4 focus:ring-(--lm-or-lavis) focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+        className="h-10 w-full rounded-full border border-(--lm-bord-fort) bg-(--lm-surface) pr-10 pl-10 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-2) hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
       />
       {valeur && (
         <button
           type="button"
           onClick={() => onChange('')}
           aria-label="Effacer la recherche"
-          className="absolute top-1/2 right-0.5 grid size-8 -translate-y-1/2 place-items-center rounded-md text-(--lm-encre-3) hover:text-(--lm-encre)"
+          className="absolute top-1/2 right-1 grid size-8 -translate-y-1/2 place-items-center rounded-full text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
         >
           <X className="size-3.5" />
         </button>
@@ -69,10 +69,11 @@ export function FilterChips({ filtres, actifs, onChange, unique, label = 'Filtre
             aria-pressed={actif}
             onClick={() => basculer(f.cle)}
             className={cn(
-              'inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium whitespace-nowrap transition-colors',
+              // Filtre en pilule bordée (Airbnb). Choisi : l'or, contour doublé et texte en 600 (pas la couleur seule).
+              'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[13px] whitespace-nowrap transition-colors',
               actif
-                ? 'border-(--lm-or) bg-(--lm-or-lavis) text-(--lm-brun)'
-                : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre-2) hover:text-(--lm-encre)',
+                ? 'border-(--lm-or-texte) bg-(--lm-or-lavis) font-semibold text-(--lm-encre) shadow-[inset_0_0_0_1px_var(--lm-or-texte)]'
+                : 'border-(--lm-bord-fort) bg-(--lm-surface) font-medium text-(--lm-encre) hover:border-(--lm-encre)',
             )}
           >
             {f.libelle}

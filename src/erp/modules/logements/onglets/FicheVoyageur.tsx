@@ -128,7 +128,7 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
                   type="button"
                   aria-label={`Retirer ${e}`}
                   onClick={() => maj('equipements', f.equipements.filter((x) => x !== e))}
-                  className="-ml-1.5 grid size-8 place-items-center rounded-full text-(--lm-encre-2) hover:bg-(--lm-or-lavis) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                  className="-ml-1.5 grid size-8 place-items-center rounded-full text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                 >
                   <X className="size-3.5" aria-hidden />
                 </button>

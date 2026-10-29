@@ -23,7 +23,7 @@ export function DocumentReleve({ proprietaire, periode, releve, logements, manda
   const { totaux } = releve;
   const siens = logements.filter((l) => l.proprietaireId === proprietaire.id);
   return (
-    <article className="lm-releve-print rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 shadow-(--lm-ombre) sm:p-6" aria-label="Relevé propriétaire">
+    <article className="lm-releve-print lm-document rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 sm:p-6" aria-label="Relevé propriétaire">
       <header className="flex flex-wrap items-start justify-between gap-4 border-b border-(--lm-bord) pb-4">
         <div>
           <p className="lm-serif text-[20px] text-(--lm-brun)">{ENTREPRISE.raisonSociale}</p>

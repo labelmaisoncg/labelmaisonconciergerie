@@ -68,8 +68,8 @@ function detailTheme(t: StatTheme): string {
     .join(' · ');
 }
 
-const lien = '-my-1.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline';
-const bascule = 'inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline';
+const lien = '-my-1.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien';
+const bascule = 'inline-flex min-h-8 items-center text-[13px] font-medium lm-lien';
 
 /* ------------------------------------------------------ thèmes en barres */
 
@@ -134,7 +134,7 @@ export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logem
       <button
         type="button"
         onClick={onOuvrir}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset sm:px-5"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset sm:px-5"
       >
         <span className="min-w-0 flex-1">
           <span className={cn('line-clamp-2 text-[13.5px] text-(--lm-encre)', !a.textePublic && 'text-(--lm-encre-2) italic')}>
@@ -394,7 +394,7 @@ export function PanneauAvis({ avis: a, ouvert, onFermer }: { avis: AvisLu; ouver
         </Link>
       </div>
 
-      {a.textePublic && <blockquote className="mt-3 border-l-2 border-(--lm-or) pl-3 text-[14px] leading-relaxed whitespace-pre-line text-(--lm-encre)">{a.textePublic}</blockquote>}
+      {a.textePublic && <blockquote className="mt-3 border-l-2 border-(--lm-bord-fort) pl-3 text-[14px] leading-relaxed whitespace-pre-line text-(--lm-encre)">{a.textePublic}</blockquote>}
 
       {publics.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Points relevés">

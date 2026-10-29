@@ -225,7 +225,7 @@ export function RelancesPaiement({ proprietaireId }: { proprietaireId?: string }
                       </div>
                       {m && (
                         <details className="group mt-1">
-                          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+                          <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium lm-lien [&::-webkit-details-marker]:hidden">
                             Voir le message
                             <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
                           </summary>

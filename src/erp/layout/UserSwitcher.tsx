@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronDown, LogOut, Settings } from 'lucide-react';
+import { ChevronDown, LogOut, Menu, Settings } from 'lucide-react';
 import { useErp } from '../data/store';
 import { LIBELLES } from '../data/libelles';
 import { pluriel } from '../data/format';
@@ -48,32 +48,34 @@ export function UserSwitcher() {
         aria-expanded={ouvert}
         aria-label={`${utilisateur.nom} : compte et paramètres`}
         onClick={() => setOuvert((o) => !o)}
-        className="flex h-9 items-center gap-2 rounded-lg px-1.5 hover:bg-(--lm-surface-2)"
+        // Menu du compte d'Airbnb : une pilule blanche bordée, qui flotte au survol.
+        className="flex h-12 items-center gap-2 rounded-full border border-(--lm-bord) bg-(--lm-surface) py-1 pr-1.5 pl-3 transition-shadow hover:shadow-(--lm-ombre-haute) md:pl-1.5"
       >
-        <Avatar nom={utilisateur.nom} taille="sm" />
+        <Menu className="size-4 text-(--lm-encre) md:hidden" aria-hidden />
+        <Avatar nom={utilisateur.nom} />
         <span className="hidden text-left leading-tight md:block">
-          <span className="block text-[13px] font-medium text-(--lm-encre)">{utilisateur.nom}</span>
-          <span className="block text-[11.5px] text-(--lm-encre-3)">{LIBELLES.role[utilisateur.role]}</span>
+          <span className="block text-[13px] font-semibold text-(--lm-encre)">{utilisateur.nom}</span>
+          <span className="block text-[12px] text-(--lm-encre-2)">{LIBELLES.role[utilisateur.role]}</span>
         </span>
-        <ChevronDown className="size-4 text-(--lm-encre-3)" aria-hidden />
+        <ChevronDown className="mr-1 hidden size-4 text-(--lm-encre) md:block" aria-hidden />
       </button>
       {ouvert && (
-        <div role="menu" className="lm-apparition absolute right-0 z-40 mt-1 w-64 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-1.5 shadow-(--lm-ombre-haute)">
-          <div className="flex items-center gap-2.5 px-2.5 pt-1.5 pb-2">
-            <Avatar nom={utilisateur.nom} taille="sm" />
+        <div role="menu" className="lm-apparition absolute right-0 z-40 mt-2 w-64 overflow-hidden rounded-xl border border-(--lm-bord) bg-(--lm-surface) py-2 shadow-(--lm-ombre-haute)">
+          <div className="flex items-center gap-2.5 px-4 pt-1 pb-2.5">
+            <Avatar nom={utilisateur.nom} />
             <span className="min-w-0">
-              <span className="block truncate text-[13px] font-medium">{utilisateur.nom}</span>
-              <span className="block truncate text-[11.5px] text-(--lm-encre-3)">
+              <span className="block truncate text-[14px] font-semibold">{utilisateur.nom}</span>
+              <span className="block truncate text-[12px] text-(--lm-encre-2)">
                 {mode === 'demo' ? 'Données de démonstration' : utilisateur.email}
               </span>
             </span>
           </div>
-          <div className="my-1 border-t border-(--lm-bord)" />
+          <div className="my-1.5 border-t border-(--lm-bord)" />
           <Link
             to="/erp/parametres"
             role="menuitem"
             onClick={() => setOuvert(false)}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
+            className="flex min-h-11 w-full items-center gap-3 px-4 text-left text-[14px] text-(--lm-encre) hover:bg-(--lm-surface-2)"
           >
             <Settings className="size-4" aria-hidden />
             Paramètres
@@ -82,7 +84,7 @@ export function UserSwitcher() {
             type="button"
             role="menuitem"
             onClick={deconnecter}
-            className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
+            className="flex min-h-11 w-full items-center gap-3 px-4 text-left text-[14px] text-(--lm-encre) hover:bg-(--lm-surface-2)"
           >
             <LogOut className="size-4" aria-hidden />
             Se déconnecter

@@ -94,7 +94,7 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
                         type="button"
                         onClick={() => setOuverte(f.id)}
                         aria-label={`Voir la facture ${f.numero}`}
-                        className="-mx-1 inline-flex min-h-8 items-center rounded-md px-1 text-(--lm-or-texte) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                        className="-mx-1 inline-flex min-h-8 items-center rounded-md px-1 lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                       >
                         {f.numero}
                       </button>
@@ -111,7 +111,7 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
                 <div className="flex flex-wrap items-center gap-1.5">
                   {pdf ? (
                     <>
-                      <LienFichier url={pdf.fichier} className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+                      <LienFichier url={pdf.fichier} className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[13px] font-medium lm-lien">
                         <FileText className="size-3.5" aria-hidden />
                         PDF
                       </LienFichier>

@@ -159,7 +159,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
       ouvert={ouvert}
       onFermer={() => !envoi && onFermer()}
       titre="Relier à une annonce"
-      description={fait || sansPlateforme || erreur ? undefined : `Choisissez l’annonce de « ${l.nom} ».`}
+      description={fait || sansPlateforme || erreur ? undefined : `Choisissez l’annonce de « ${l.nom} ».`}
       pied={pied}
     >
       {fait ? (
@@ -211,7 +211,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
                     <label
                       className={cn(
                         'flex cursor-pointer items-center gap-3 rounded-xl border bg-(--lm-surface) p-2.5 transition-colors',
-                        coche ? 'border-(--lm-or) ring-1 ring-(--lm-or-anneau)' : 'border-(--lm-bord) hover:border-(--lm-or-anneau)',
+                        coche ? 'border-(--lm-or) ring-1 ring-(--lm-or-anneau)' : 'border-(--lm-bord) hover:shadow-(--lm-ombre-haute) transition',
                       )}
                     >
                       <input type="radio" name="annonce" value={a.id} checked={coche} onChange={() => setChoisie(a.id)} className="size-4 shrink-0 accent-(--lm-or)" />
@@ -241,7 +241,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
           {prises.length > 0 && (
             // Annonces déjà dans l'ERP : repliées (souvent nombreuses), avec la marche à suivre en cas de doublon.
             <details open={!libres.length} className="mt-3 text-[13px] text-(--lm-encre-2)">
-              <summary className="inline-flex min-h-8 cursor-pointer items-center font-medium text-(--lm-or-texte) hover:underline">
+              <summary className="inline-flex min-h-8 cursor-pointer items-center font-medium lm-lien">
                 Déjà dans l’ERP ({prises.length})
               </summary>
               <ul className="mt-2 flex flex-col gap-2">
@@ -256,7 +256,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14px] font-medium text-(--lm-encre-2)">{a.nom}</span>
                         <span className="block truncate text-[12.5px] text-(--lm-encre-2)">
-                          {[autreNom ? `Dans l’ERP : « ${autreNom} »` : '', a.ville, plateformes(a)].filter(Boolean).join(' · ')}
+                          {[autreNom ? `Dans l’ERP : « ${autreNom} »` : '', a.ville, plateformes(a)].filter(Boolean).join(' · ')}
                         </span>
                       </span>
                     </li>

@@ -269,7 +269,7 @@ export function EditeurMessageAuto(p: EditeurMessageAutoProps) {
 
         {/* Repli sans cadre (comme « Avancé ») : ses champs ne sont pas dans un second cadre aussi arrondi qu'eux. */}
         <details className="group" open={nbPropres > 0}>
-          <summary className="-my-1.5 inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+          <summary className="-my-1.5 inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium lm-lien [&::-webkit-details-marker]:hidden">
             Texte différent pour un logement{nbPropres ? ` (${nbPropres})` : ''}
             <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
           </summary>

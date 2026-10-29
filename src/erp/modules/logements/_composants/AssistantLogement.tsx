@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { BedDouble, Building2, House, Link2, Minus, Plus, Shapes, X, type LucideIcon } from 'lucide-react';
-import { Button, Field, IconButton, Input, Modal, ProgressBar, Repli, SearchInput, Segmente, cn, useFenetre } from '../../../ui';
+import { Button, Field, IconButton, Input, Modal, Repli, SearchInput, Segmente, cn, useFenetre } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { AUJOURDHUI, pluriel } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
@@ -95,8 +95,9 @@ const SANS_CHAMP = new Set(['type', 'proprietaireId', 'residencePrincipale', 'ca
 const GRAND = 'h-11 text-[16px]';
 
 const CHOIX =
-  'flex w-full rounded-xl border text-left transition-colors focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none';
-const CHOIX_REPOS = 'border-(--lm-bord-fort) bg-(--lm-surface) hover:border-(--lm-encre-3) hover:bg-(--lm-surface-2)';
+  'flex w-full rounded-xl border text-left transition-colors focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
+// Choix d'Airbnb : filet gris, bord à l'encre au survol ; choisi : l'or (état choisi), contour doublé.
+const CHOIX_REPOS = 'border-(--lm-bord-fort) bg-(--lm-surface) hover:border-(--lm-encre)';
 const CHOIX_ACTIF = 'border-(--lm-or-texte) bg-(--lm-or-lavis) ring-1 ring-(--lm-or-texte)';
 
 const idChamp = (cle: string) => `assistant-logement-${cle.replace('.', '-')}`;
@@ -262,7 +263,7 @@ function Assistant({ onFermer, onCree }: Omit<AssistantLogementProps, 'ouvert'>)
   return (
     <>
       <div className="fixed inset-0 z-50 flex justify-center sm:items-center sm:p-4">
-        <div aria-hidden className="lm-apparition absolute inset-0 bg-[rgba(20,17,14,0.4)]" onClick={demanderFermeture} />
+        <div aria-hidden className="lm-apparition absolute inset-0 bg-(--lm-voile)" onClick={demanderFermeture} />
         <div
           ref={ref}
           role="dialog"
@@ -271,16 +272,23 @@ function Assistant({ onFermer, onCree }: Omit<AssistantLogementProps, 'ouvert'>)
           tabIndex={-1}
           className="lm-apparition relative flex h-full w-full flex-col bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:h-[min(42rem,92vh)] sm:max-w-xl sm:rounded-2xl"
         >
-          <header className="flex items-center gap-3 border-b border-(--lm-bord) pt-[max(0.625rem,env(safe-area-inset-top))] pr-2 pb-2.5 pl-4 sm:pr-3 sm:pl-6">
-            <ProgressBar valeur={(index + 1) / total} label={`Nouveau logement · Étape ${index + 1} sur ${total}`} className="min-w-0 flex-1" />
-            <IconButton label="Fermer" onClick={demanderFermeture}>
+          {/* En-tête d'Airbnb : fermer rond à gauche, titre centré, un filet dessous. */}
+          <header className="flex items-center gap-2 border-b border-(--lm-bord) px-3 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5">
+            <IconButton label="Fermer" size="sm" onClick={demanderFermeture}>
               <X />
             </IconButton>
+            <div className="min-w-0 flex-1 text-center leading-tight">
+              <p className="text-[16px] font-semibold text-(--lm-encre)">Nouveau logement</p>
+              <p className="lm-chiffres text-[13px] text-(--lm-encre-2)">
+                Étape {index + 1} sur {total}
+              </p>
+            </div>
+            <span aria-hidden className="size-8 shrink-0" />
           </header>
 
           <form onSubmit={continuer} onKeyDown={entree} noValidate className="flex min-h-0 flex-1 flex-col">
             <div ref={corps} className="lm-defilement min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-8 sm:px-8 sm:pt-8">
-              <h2 id={titreId} ref={titre} tabIndex={-1} style={{ outline: 'none' }} className="lm-serif text-[26px] leading-tight text-balance text-(--lm-encre) sm:text-[28px]">
+              <h2 id={titreId} ref={titre} tabIndex={-1} style={{ outline: 'none' }} className="lm-titre text-[24px] leading-tight text-balance text-(--lm-encre) sm:text-[28px]">
                 {q.question}
               </h2>
               {aide && <p className="mt-1.5 text-[14px] text-(--lm-encre-2)">{aide}</p>}
@@ -317,23 +325,36 @@ function Assistant({ onFermer, onCree }: Omit<AssistantLogementProps, 'ouvert'>)
               </div>
             </div>
 
-            <footer className="border-t border-(--lm-bord) px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
-              {raison && (
-                <p id={raisonId} className="mb-2 text-[13px] text-(--lm-encre-2) sm:text-right">
-                  {raison}
-                </p>
-              )}
-              <div className="flex items-center justify-between gap-3">
-                {index > 0 || retourRecap ? (
-                  <Button variant="ghost" size="lg" onClick={retour} className="-ml-2 px-3">
-                    Retour
-                  </Button>
-                ) : (
-                  <span aria-hidden />
+            {/* Pied d'Airbnb : la barre de progression en lisière, « Retour » souligné à gauche, l'action à droite. */}
+            <footer className="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <div
+                role="progressbar"
+                aria-label={`Nouveau logement · Étape ${index + 1} sur ${total}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(((index + 1) / total) * 100)}
+                className="h-1 w-full bg-(--lm-neutre-lavis)"
+              >
+                <div className="h-full bg-(--lm-encre) transition-[width]" style={{ width: `${((index + 1) / total) * 100}%` }} />
+              </div>
+              <div className="px-4 pt-3 sm:px-6">
+                {raison && (
+                  <p id={raisonId} className="mb-2 text-[13px] text-(--lm-encre-2) sm:text-right">
+                    {raison}
+                  </p>
                 )}
-                <Button type="submit" variant="primary" size="lg" disabled={!valide || envoi} aria-describedby={raison ? raisonId : undefined}>
-                  {libelleSuite}
-                </Button>
+                <div className="lm-pied-fenetre flex items-center justify-between gap-3">
+                  {index > 0 || retourRecap ? (
+                    <Button variant="ghost" size="lg" onClick={retour}>
+                      Retour
+                    </Button>
+                  ) : (
+                    <span aria-hidden />
+                  )}
+                  <Button type="submit" variant="primary" size="lg" disabled={!valide || envoi} aria-describedby={raison ? raisonId : undefined}>
+                    {libelleSuite}
+                  </Button>
+                </div>
               </div>
             </footer>
           </form>
@@ -388,7 +409,7 @@ function EtapeType({ type, choisir, continuer, titreId }: { type?: TypeLogement;
               onKeyDown={entreeChoix(actif, () => choisirFamille(f.valeur), continuer)}
               className={cn(CHOIX, 'min-h-28 flex-col items-start justify-between gap-4 p-4', actif ? CHOIX_ACTIF : CHOIX_REPOS)}
             >
-              <Icone aria-hidden strokeWidth={1.6} className={cn('size-7', actif ? 'text-(--lm-or-texte)' : 'text-(--lm-encre-2)')} />
+              <Icone aria-hidden className={cn('size-7', actif ? 'text-(--lm-or-texte)' : 'text-(--lm-encre)')} />
               <span className="text-[15px] font-semibold text-(--lm-encre)">{f.libelle}</span>
             </button>
           );
@@ -651,7 +672,7 @@ function EtapeProprietaire({
                     onClick={() => choisirProprietaire(p.id)}
                     onKeyDown={entreeChoix(actif, () => choisirProprietaire(p.id), continuer)}
                     className={cn(
-                      'flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-inset focus:outline-none',
+                      'flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-inset focus:outline-none',
                       actif ? 'bg-(--lm-or-lavis)' : 'hover:bg-(--lm-surface-2)',
                     )}
                   >
@@ -795,7 +816,7 @@ function Recapitulatif({
               <p className="text-[12.5px] text-(--lm-encre-3)">{l.libelle}</p>
               <p className={cn('mt-0.5 text-[15px] break-words', l.valeur ? 'text-(--lm-encre)' : 'text-(--lm-encre-3)')}>{l.valeur || 'À compléter'}</p>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => modifier(l.etape)} aria-label={`Modifier : ${l.libelle}`} className="text-(--lm-or-texte)">
+            <Button variant="ghost" size="sm" onClick={() => modifier(l.etape)} aria-label={`Modifier : ${l.libelle}`}>
               Modifier
             </Button>
           </li>

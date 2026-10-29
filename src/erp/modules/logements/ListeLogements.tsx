@@ -52,7 +52,7 @@ export default function ListeLogements() {
                 aria-label={connecte ? 'Plateformes et synchronisation' : 'Connecter Airbnb, Booking…'}
                 title={connecte ? 'Plateformes et synchronisation' : 'Connecter Airbnb, Booking…'}
                 icone={<Plug />}
-                className="w-9 px-0"
+                className="size-10 rounded-full border-(--lm-bord-fort) px-0 hover:border-(--lm-encre) hover:bg-(--lm-surface)"
               />
               {creer && (
                 <IconButton label="Ajouter un logement" variant="secondary" onClick={creer}>

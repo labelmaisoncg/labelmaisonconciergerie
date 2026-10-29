@@ -15,7 +15,7 @@ const MAX_LIGNES = 3;
 const JOURS_HISTORIQUE = 30;
 
 // Zone de toucher de 32 px, comme les autres liens de la page.
-const lien = 'inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline';
+const lien = 'inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien';
 
 /**
  * Prix conseillés d'un logement (page du logement, sous les chiffres) : les
@@ -134,7 +134,7 @@ function DejaTraites({ decisions }: { decisions: DecisionPrix[] }) {
   const [ouvert, setOuvert] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOuvert(true)} className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">
+      <button type="button" onClick={() => setOuvert(true)} className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-encre-2) hover:underline">
         Déjà traités ({decisions.length})
       </button>
       <Modal ouvert={ouvert} onFermer={() => setOuvert(false)} titre="Prix déjà traités" description="Ces 30 derniers jours." taille="sm">

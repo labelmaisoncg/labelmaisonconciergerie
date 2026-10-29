@@ -34,7 +34,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
   return (
     <div className="flex min-h-0 flex-col lg:h-full">
       {/* Mobile : la recherche et les filtres restent sous la barre du haut pendant le défilement. */}
-      <div className="space-y-2.5 bg-(--lm-fond) pb-3 max-lg:sticky max-lg:top-14 max-lg:z-10 max-lg:-mx-4 max-lg:px-4 max-lg:pt-1 lg:border-b lg:border-(--lm-bord) lg:bg-(--lm-surface) lg:p-3">
+      <div className="space-y-2.5 bg-(--lm-fond) pb-3 max-lg:sticky max-lg:top-16 max-lg:z-10 max-lg:-mx-4 max-lg:px-4 max-lg:pt-1 lg:border-b lg:border-(--lm-bord) lg:bg-(--lm-surface) lg:p-3">
         <SearchInput valeur={recherche} onChange={onRecherche} placeholder="Voyageur, logement…" label="Rechercher une conversation" className="sm:w-full" />
         <Segmente
           label="Filtrer les conversations"
@@ -101,7 +101,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                       )}
                       {/* Un seul repère : la pastille dorée « à répondre » (doublée d'un nom en gras et d'un texte lu par les lecteurs d'écran). */}
                       {attente && (
-                        <span className="size-2.5 shrink-0 rounded-full bg-(--lm-or)" role="img" aria-label="À répondre" />
+                        <span className="size-2.5 shrink-0 rounded-full bg-(--lm-encre)" role="img" aria-label="À répondre" />
                       )}
                     </div>
                   </div>

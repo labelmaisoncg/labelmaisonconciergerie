@@ -267,7 +267,7 @@ export function EntreeApp({ app, onOuvrir }: { app: AppOps; onOuvrir: () => void
       type="button"
       onClick={onOuvrir}
       aria-label={libelle}
-      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
     >
       {installee ? <Bell className="size-4" aria-hidden /> : <Download className="size-4" aria-hidden />}
       <span className="max-lg:sr-only">{libelle}</span>
@@ -344,7 +344,7 @@ function EtapesInstallationOps({ appareil }: { appareil: AppareilOps }) {
     <ol className="flex flex-col gap-3">
       {etapesInstallationOps(appareil).map((e, i) => (
         <li key={i} className="flex items-start gap-3 text-[14px] leading-relaxed text-(--lm-encre)">
-          <span aria-hidden className="mt-px grid size-6 shrink-0 place-items-center rounded-full bg-(--lm-or-lavis) text-[12.5px] font-semibold text-(--lm-or-texte)">
+          <span aria-hidden className="mt-px grid size-6 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-[12.5px] font-semibold text-(--lm-encre)">
             {i + 1}
           </span>
           <span className="min-w-0">{e}</span>

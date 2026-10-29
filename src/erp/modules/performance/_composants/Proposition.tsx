@@ -20,7 +20,7 @@ const STYLE_IMPRESSION = `.lm-impression { display: none; }
 /** La page remise au propriétaire (aperçu et impression). */
 function DocumentProposition({ p, biens, choisies }: { p: Proprietaire; biens: LigneParc[]; choisies: RecommandationProprietaire[] }) {
   return (
-    <article className="rounded-xl border border-(--lm-bord) bg-white p-5 text-[13px] text-(--lm-encre)">
+    <article className="lm-document rounded-xl border border-(--lm-bord) bg-white p-5 text-[13px] text-(--lm-encre)">
       <header className="mb-4 flex items-start justify-between gap-4 border-b border-(--lm-or-anneau) pb-3">
         <div>
           <p className="lm-serif text-[20px]">Label Maison</p>

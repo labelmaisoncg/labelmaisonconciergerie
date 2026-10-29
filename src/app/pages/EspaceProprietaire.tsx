@@ -136,9 +136,9 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
-        {marque.nom && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
+        {marque.nom && <p className="lm-titre text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
         <Card className="mt-6 p-6">
-          <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Votre espace propriétaire</h1>
+          <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)">Votre espace propriétaire</h1>
           <p className="mt-2 text-[14px] text-(--lm-encre-2)">
             {CONTENU_ESPACE.vous.charAt(0).toUpperCase()}
             {CONTENU_ESPACE.vous.slice(1)}. Recevez un lien de connexion par e-mail : aucun mot de passe à retenir.
@@ -175,7 +175,7 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
           {marque.labelMaison ? (
             <>
               Besoin d’aide ?{' '}
-              <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+              <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium lm-lien">
                 {c.telephone}
               </a>
             </>
@@ -185,7 +185,7 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
         </p>
         {MODE_DEMO && (
           <p className="mt-2 text-center text-[13px]">
-            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 items-center font-medium lm-lien">
               Voir l’espace de démonstration
             </a>
           </p>
@@ -299,7 +299,7 @@ export default function EspaceProprietaire() {
       {(etat.nom === 'ferme' || etat.nom === 'erreur') && (
         <div className="grid min-h-screen place-items-center px-4">
           <Card className="w-full max-w-sm p-6 text-center">
-            <p className="lm-serif text-[22px] text-(--lm-brun)">Espace propriétaire</p>
+            <p className="lm-titre text-[22px] text-(--lm-brun)">Espace propriétaire</p>
             <p className="mt-3 text-[14px] text-(--lm-encre-2)">{etat.message}</p>
             {etat.nom === 'erreur' && (
               <Button variant="secondary" className="mt-4" onClick={() => window.location.reload()}>
@@ -326,7 +326,7 @@ export default function EspaceProprietaire() {
           onSortir={() => void sortir()}
           bandeau={
             etat.demo ? (
-              <p className="lm-sans-impression bg-(--lm-or-lavis) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-brun)">
+              <p className="lm-sans-impression border-b border-(--lm-bord) bg-(--lm-surface-2) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-encre)">
                 Démonstration · espace de {etat.vue.proprietaire.nom}
               </p>
             ) : undefined

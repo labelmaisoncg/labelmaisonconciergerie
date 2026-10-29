@@ -200,7 +200,7 @@ export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: bool
       </ul>
 
       <details className="group mt-1 text-[13px]">
-        <summary className="cursor-pointer py-1.5 font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Détails techniques (pour la personne qui gère le site)</summary>
+        <summary className="cursor-pointer py-1.5 font-medium text-(--lm-encre-2) hover:underline">Détails techniques (pour la personne qui gère le site)</summary>
         <ul className="divide-y divide-(--lm-bord)">
           <Ligne ok={c ? c.ia : null} titre={c?.ia ? 'Clé IA : présente' : 'Clé IA : manquante'}>
             {c?.ia ? `Modèle ${etat?.modele}.` : 'Ajoutez ANTHROPIC_API_KEY dans Vercel (Settings → Environment Variables), puis redéployez.'}

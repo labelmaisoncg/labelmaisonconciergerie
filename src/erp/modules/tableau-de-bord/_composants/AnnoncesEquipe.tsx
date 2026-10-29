@@ -47,7 +47,7 @@ export function AnnoncesEquipe() {
   return (
     <Card role="region" aria-labelledby={titreId} className="mb-6">
       <div className="flex items-center gap-3">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-[18px]">
           <Megaphone />
         </span>
         <h2 id={titreId} className="text-[16px] font-semibold text-(--lm-encre)">
@@ -99,7 +99,7 @@ function LigneAnnonce({ annonce: a, onLu }: { annonce: AnnonceEquipe; onLu: () =
           aria-expanded={deplie}
           aria-controls={texteId}
           onClick={() => setDeplie((o) => !o)}
-          className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+          className="inline-flex h-8 items-center text-[13px] font-medium lm-lien"
         >
           {deplie ? 'Réduire' : 'Lire la suite'}
         </button>

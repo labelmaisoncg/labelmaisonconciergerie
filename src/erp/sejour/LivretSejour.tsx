@@ -51,7 +51,7 @@ export interface LivretSejourProps {
 function Rubrique({ icone, titre, children, id, className }: { icone: ReactNode; titre: string; children: ReactNode; id?: string; className?: string }) {
   return (
     <Card className={cn('scroll-mt-20', className)} {...(id ? { id } : {})}>
-      <h2 className="mb-3 flex items-center gap-2 text-[16px] font-semibold text-(--lm-encre) [&_svg]:size-[18px] [&_svg]:text-(--lm-or-texte)">
+      <h2 className="mb-3 flex items-center gap-2 text-[16px] font-semibold text-(--lm-encre) [&_svg]:size-5 [&_svg]:text-(--lm-encre)">
         <span aria-hidden>{icone}</span>
         {titre}
       </h2>
@@ -105,9 +105,9 @@ function ListeGuides({ guides, langue }: { guides: GuideSejour[]; langue: Langue
             href={g.lien}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-12 items-center gap-3 rounded-lg px-2 py-2 hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+            className="flex min-h-12 items-center gap-3 rounded-lg px-2 py-2 hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
           >
-            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-4">
+            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-4">
               {ICONES_GUIDE[g.type]}
             </span>
             <span className="min-w-0 flex-1">
@@ -161,7 +161,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-[16px] font-semibold text-(--lm-encre)">
-              <ClipboardCheck className="size-[18px] text-(--lm-or-texte)" aria-hidden />
+              <ClipboardCheck className="size-[18px] text-(--lm-encre)" aria-hidden />
               {t.checkinTitre}
             </h2>
             {c.fait ? (
@@ -248,9 +248,9 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
   return (
     <div className="min-h-screen bg-(--lm-fond)">
       {bandeau}
-      <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)">
         <div className="mx-auto flex h-14 max-w-xl items-center justify-between gap-3 px-4">
-          <p className="lm-serif min-w-0 truncate text-[18px] leading-tight text-(--lm-brun)">{vue.conciergerie}</p>
+          <p className="lm-titre min-w-0 truncate text-[18px] leading-tight text-(--lm-brun)">{vue.conciergerie}</p>
           <Button variant="secondary" size="sm" onClick={onLangue} lang={langue === 'fr' ? 'en' : 'fr'} aria-label={t.langue} className="font-semibold">
             {t.langueCode}
           </Button>
@@ -261,8 +261,8 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
         {l.photo && <img src={l.photo} alt="" className="aspect-[16/10] w-full rounded-xl bg-(--lm-surface-2) object-cover" />}
 
         <section className="px-1 pt-1">
-          <p className="text-[13px] font-medium tracking-wide text-(--lm-or-texte) uppercase">{t.titrePage}</p>
-          <h1 className="lm-serif mt-1 text-[30px] leading-tight text-(--lm-encre)">{t.bonjour(vue.prenom)}</h1>
+          <p className="text-[13px] font-semibold text-(--lm-encre-2)">{t.titrePage}</p>
+          <h1 className="lm-titre mt-1 text-[24px] leading-tight text-(--lm-encre) sm:text-[28px]">{t.bonjour(vue.prenom)}</h1>
           {nomLogement && <p className="mt-1 text-[16px] text-(--lm-encre-2)">{nomLogement}</p>}
           {vue.moment === 'apres' && <p className="mt-2 text-[15px] text-(--lm-encre-2)">{t.apres}</p>}
         </section>
@@ -344,7 +344,7 @@ export function LivretSejour({ vue, langue, onLangue, aujourdhui, onEnvoyer, ban
                 <ul className="flex flex-col gap-1.5">
                   {lignesConditions.map((x) => (
                     <li key={x} className="flex items-center gap-2 text-[15px] text-(--lm-encre-2)">
-                      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--lm-or)" />
+                      <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-(--lm-encre)" />
                       {x}
                     </li>
                   ))}

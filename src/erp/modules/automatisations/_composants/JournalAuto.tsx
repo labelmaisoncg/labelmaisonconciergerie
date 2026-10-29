@@ -72,7 +72,7 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
           onChange={setNiveaux}
         />
         <details open={domaines.length > 0 || undefined}>
-          <summary className="cursor-pointer rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Filtrer par domaine</summary>
+          <summary className="cursor-pointer rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:underline">Filtrer par domaine</summary>
           <FilterChips
             className="mt-2"
             label="Filtrer par domaine"
@@ -105,7 +105,7 @@ export function JournalAuto({ evenements, onVider }: JournalAutoProps) {
                   </p>
                 </div>
                 {lien && (
-                  <Link to={lien} className="mt-0.5 inline-flex shrink-0 items-center gap-0.5 rounded-md text-[12.5px] font-medium text-(--lm-or-texte) hover:text-(--lm-brun)">
+                  <Link to={lien} className="lm-lien mt-0.5 inline-flex min-h-8 shrink-0 items-center gap-0.5 rounded-md text-[12.5px] font-semibold">
                     Ouvrir <ArrowUpRight className="size-3.5" aria-hidden />
                   </Link>
                 )}

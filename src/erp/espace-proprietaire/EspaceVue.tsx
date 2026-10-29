@@ -88,13 +88,13 @@ export function EspaceVue({
   return (
     <div className="min-h-screen bg-(--lm-fond)">
       {bandeau}
-      <header className="lm-sans-impression sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4">
+      <header className="lm-sans-impression sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)">
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4">
           <div className="min-w-0">
-            <p className="lm-serif truncate text-[18px] leading-tight text-(--lm-brun)">{vue.conciergerie.nom}</p>
+            <p className="lm-titre truncate text-[18px] leading-tight text-(--lm-brun)">{vue.conciergerie.nom}</p>
             <p className="truncate text-[11.5px] text-(--lm-encre-2)">Espace propriétaire</p>
           </div>
-          <nav aria-label="Rubriques" className="hidden items-center gap-1 sm:flex">
+          <nav aria-label="Rubriques" className="hidden items-stretch gap-1 self-stretch sm:flex">
             {ONGLETS.map((o) => (
               <button
                 key={o.cle}
@@ -102,8 +102,8 @@ export function EspaceVue({
                 aria-current={o.cle === onglet || (o.cle === 'bilans' && finances) ? 'page' : undefined}
                 onClick={() => allerA(o.cle)}
                 className={cn(
-                  'inline-flex h-9 items-center gap-1.5 rounded-lg px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
-                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
+                  'relative inline-flex h-full items-center gap-1.5 px-3 text-[14px] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset [&_svg]:size-4',
+                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'font-semibold text-(--lm-encre) after:bg-(--lm-encre)' : 'font-medium text-(--lm-encre-2) hover:text-(--lm-encre) hover:after:bg-(--lm-bord-fort)',
                 )}
               >
                 {o.icone}
@@ -115,7 +115,7 @@ export function EspaceVue({
             <button
               type="button"
               onClick={onSortir}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
             >
               <LogOut className="size-4" aria-hidden />
               <span className="max-sm:sr-only">Se déconnecter</span>
@@ -150,7 +150,7 @@ export function EspaceVue({
 
       <nav
         aria-label="Rubriques"
-        className="lm-sans-impression fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur sm:hidden"
+        className="lm-sans-impression fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface) pb-[env(safe-area-inset-bottom)] sm:hidden"
       >
         <ul className="grid grid-cols-5">
           {ONGLETS.map((o) => (
@@ -160,8 +160,8 @@ export function EspaceVue({
                 aria-current={o.cle === onglet || (o.cle === 'bilans' && finances) ? 'page' : undefined}
                 onClick={() => allerA(o.cle)}
                 className={cn(
-                  'flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset [&_svg]:size-5',
-                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'text-(--lm-or-texte)' : 'text-(--lm-encre-2)',
+                  'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset [&_svg]:size-6 [&_svg]:stroke-2',
+                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'font-semibold text-(--lm-or-texte) [&_svg]:fill-(--lm-or-lavis)' : 'font-medium text-(--lm-encre-2)',
                 )}
               >
                 {o.icone}

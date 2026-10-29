@@ -106,7 +106,7 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
 
       {/* Filtres moins fréquents : repliés, ouverts d'office s'ils sont utilisés. */}
       <details open={!!(logementId || canal || du || au) || undefined} className="group mb-4">
-        <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+        <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium lm-lien [&::-webkit-details-marker]:hidden">
           Plus de filtres
           <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
         </summary>

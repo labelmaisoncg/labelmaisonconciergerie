@@ -176,7 +176,7 @@ export default function Module() {
             </Badge>
           }
           pied={
-            <Link to={`/erp/logements/${choisi.logement.id}`} className="text-[13.5px] font-medium text-(--lm-or-texte) hover:underline">
+            <Link to={`/erp/logements/${choisi.logement.id}`} className="text-[13.5px] font-medium lm-lien">
               Ouvrir la fiche logement
             </Link>
           }

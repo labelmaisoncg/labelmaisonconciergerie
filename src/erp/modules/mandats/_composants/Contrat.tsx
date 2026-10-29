@@ -29,7 +29,7 @@ function Article({ n, titre, children }: { n: number; titre: string; children: R
 export function DocumentContrat({ mandat: m, proprietaire: p, logement: l }: Parties) {
   const date = m.signeLe ?? AUJOURDHUI;
   return (
-    <article className="mx-auto max-w-[720px] bg-white text-(--lm-encre)">
+    <article className="lm-document mx-auto max-w-[720px] bg-white text-(--lm-encre)">
       <header className="border-b border-(--lm-or-anneau) pb-4 text-center">
         <p className="lm-serif text-[22px] text-(--lm-brun)">{SOCIETE.nom}</p>
         <p className="text-[12px] text-(--lm-encre-2)">
@@ -60,7 +60,7 @@ export function DocumentContrat({ mandat: m, proprietaire: p, logement: l }: Par
         <p>
           Le Mandant confie au Gestionnaire la gestion en location meublée de courte durée du logement
           {/* Surface inconnue (0 : logement importé ou créé sans surface) : rien plutôt que « 0 m² ». */}
-          {l ? ` « ${l.nom} », ${l.adresse}, ${l.codePostal} ${l.ville} (${LIBELLES.typeLogement[l.type]}${l.surfaceM2 > 0 ? `, ${l.surfaceM2} m²` : ''}, ${l.capacite} voyageurs)` : ' désigné en annexe'}.
+          {l ? ` « ${l.nom} », ${l.adresse}, ${l.codePostal} ${l.ville} (${LIBELLES.typeLogement[l.type]}${l.surfaceM2 > 0 ? `, ${l.surfaceM2} m²` : ''}, ${l.capacite} voyageurs)` : ' désigné en annexe'}.
           {l?.numeroEnregistrement && ` Numéro d’enregistrement meublé de tourisme : ${l.numeroEnregistrement}.`}
         </p>
         <p>

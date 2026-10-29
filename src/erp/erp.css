@@ -6,9 +6,15 @@
 .erp-root {
   --lm-fond: #fbfaf8;
   --lm-surface: #ffffff;
-  --lm-surface-2: #f6f3ee;
-  --lm-bord: rgba(20, 17, 14, 0.08);
-  --lm-bord-fort: rgba(20, 17, 14, 0.16);
+  /*
+   * Gris neutres, sur l'échelle d'Airbnb mais en teinte chaude (encre
+   * #14110e) : fond d'icône ronde et survol (#f7f7f7 / #f2f2f2), filet des
+   * cartes et séparateurs (#dddddd), contour des champs (#c1c1c1).
+   */
+  --lm-surface-2: #f4f2ee;
+  --lm-bord: rgba(20, 17, 14, 0.13);
+  /* Contour des champs : 3:1 sur blanc (« muted-soft » d’Airbnb), lisible au repos. */
+  --lm-bord-fort: rgba(20, 17, 14, 0.45);
   --lm-encre: #14110e;
   /* Textes secondaires : contrastes AA (≥ 4,5:1 sur fond blanc et ivoire). */
   --lm-encre-2: rgba(20, 17, 14, 0.68);
@@ -72,10 +78,25 @@
    * Pas d’autre valeur.
    */
 
-  --lm-ombre: 0 1px 2px rgba(20, 17, 14, 0.04), 0 8px 24px -16px rgba(20, 17, 14, 0.18);
-  --lm-ombre-haute: 0 24px 64px -24px rgba(20, 17, 14, 0.35);
+  /*
+   * Un seul niveau d'ombre, celui d'Airbnb en teinte chaude. Au repos, tout
+   * est à plat : une carte n'a que son filet d'1 px (--lm-ombre ne dessine
+   * rien). --lm-ombre-haute est l'ombre unique : carte cliquable au survol,
+   * recherche, menus, fenêtres et feuilles. Le voile des fenêtres : l'encre à 50 %.
+   */
+  --lm-ombre: 0 0 #0000;
+  --lm-ombre-haute: 0 0 0 1px rgba(20, 17, 14, 0.02), 0 2px 6px rgba(20, 17, 14, 0.04), 0 4px 8px rgba(20, 17, 14, 0.1);
+  --lm-voile: rgba(20, 17, 14, 0.5);
   --lm-serif: 'Playfair Display', Georgia, serif;
-  --lm-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Une seule police, géométrique à graisses modestes, comme Cereal chez Airbnb : Figtree, déjà chargée par le site (src/styles/fonts.css). */
+  --lm-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /*
+   * Police des titres (classe .lm-titre) : la serif de la charte, « comme sur
+   * les factures » (choix du propriétaire, octobre 2026). Le reste de
+   * l'interface suit Airbnb en Figtree. Pour des titres en sans, une ligne :
+   *   --lm-titre: var(--lm-sans);
+   */
+  --lm-titre: var(--lm-serif);
 
   color-scheme: light;
   min-height: 100vh;
@@ -101,13 +122,50 @@
   letter-spacing: -0.01em;
 }
 
+/* Titres de l'interface (pages, fenêtres, marque) : police du jeton --lm-titre. */
+.erp-root .lm-titre {
+  font-family: var(--lm-titre);
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+/*
+ * Documents imprimés (facture, relevés, contrat, proposition) : ils gardent
+ * leur charte, titres en serif et texte dans la police système d'origine.
+ */
+.erp-root .lm-document {
+  --lm-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: var(--lm-sans);
+}
+
+/*
+ * Lien d'action tertiaire, comme le « Afficher plus » d'Airbnb : à l'encre
+ * et souligné (le soulignement, pas la couleur, dit que c'est un lien),
+ * trait plus épais au survol. L'or reste au bouton principal.
+ */
+.erp-root .lm-lien {
+  color: var(--lm-encre);
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+.erp-root .lm-lien:hover {
+  text-decoration-thickness: 2px;
+}
+
 .erp-root .lm-chiffres {
   font-variant-numeric: tabular-nums;
 }
 
 .erp-root :focus-visible {
-  outline: 2px solid var(--lm-or);
+  outline: 2px solid var(--lm-encre);
   outline-offset: 2px;
+}
+/* Couleur de repos du contour : la base du site la met en or à 50 %, et
+   transition-colors l'animerait vers l'encre. Net d'emblée. */
+.erp-root,
+.erp-root * {
+  outline-color: var(--lm-encre);
 }
 
 /* Barres de défilement discrètes dans les conteneurs (tableaux, tiroirs). */
@@ -128,6 +186,11 @@
   from { transform: translateX(-100%); }
   to { transform: none; }
 }
+/* Feuille du téléphone : elle monte du bas. */
+@keyframes lm-feuille {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
 @keyframes lm-pulsation {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
@@ -135,6 +198,12 @@
 .erp-root .lm-apparition { animation: lm-apparition 0.18s ease-out; }
 .erp-root .lm-tiroir { animation: lm-tiroir 0.22s ease-out; }
 .erp-root .lm-tiroir-gauche { animation: lm-tiroir-gauche 0.22s ease-out; }
+/* Fenêtre : feuille qui monte du bas sur téléphone, simple apparition au-delà. */
+.erp-root .lm-feuille { animation: lm-feuille 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+@media (width >= 40rem) {
+  .erp-root .lm-feuille { animation: lm-apparition 0.18s ease-out; }
+  .erp-root .lm-feuille.lm-tiroir { animation: lm-tiroir 0.22s ease-out; }
+}
 .erp-root .lm-squelette { animation: lm-pulsation 1.4s ease-in-out infinite; background: var(--lm-neutre-lavis); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -320,5 +389,22 @@ html:has(.erp-root) body {
 @media (width >= 64rem) and (display-mode: standalone) {
   .erp-root #contenu {
     padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+}
+
+/*
+ * Pied des fenêtres (Modal, Drawer), comme Airbnb : le bouton tertiaire
+ * (« Annuler ») est souligné d'office et aligné sur le texte ; sur téléphone,
+ * les actions font 48 px de haut.
+ */
+.erp-root .lm-pied-fenetre > .lm-tertiaire:not(.rounded-full) {
+  text-decoration-line: underline;
+  margin-left: -0.75rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+}
+@media (width < 40rem) {
+  .erp-root .lm-pied-fenetre > :is(button, a) {
+    height: 3rem;
   }
 }

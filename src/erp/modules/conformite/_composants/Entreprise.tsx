@@ -102,7 +102,7 @@ export function ConformiteEntreprise() {
               )}
               <p className="mt-2 text-[13px]">{p.action}</p>
               <details className="mt-1.5">
-                <summary className="cursor-pointer rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Pourquoi ?</summary>
+                <summary className="cursor-pointer rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:underline">Pourquoi ?</summary>
                 <p className="mt-1 text-[13px] text-(--lm-encre-2)">{p.description}</p>
               </details>
               <div className="mt-3 w-40">

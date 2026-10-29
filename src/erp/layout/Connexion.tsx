@@ -132,12 +132,12 @@ function Cadre({ titre, sousTitre, icone, children }: { titre: string; sousTitre
         <div className="rounded-2xl border border-(--lm-bord) bg-(--lm-surface) p-6 shadow-(--lm-ombre) sm:p-8">
           <div className="mb-5 flex items-start gap-3">
             {icone && (
-              <span aria-hidden className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
+              <span aria-hidden className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-[18px]">
                 {icone}
               </span>
             )}
             <div className="min-w-0">
-              <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)" style={{ fontFamily: 'var(--lm-serif)' }}>
+              <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)" style={{ fontFamily: 'var(--lm-titre)' }}>
                 {titre}
               </h1>
               {sousTitre && <p className="mt-1 text-[13.5px] text-(--lm-encre-2)">{sousTitre}</p>}
@@ -156,7 +156,7 @@ function Chargement({ texte }: { texte: string }) {
     <main translate="no" className="flex min-h-screen items-center justify-center bg-(--lm-fond) px-4" aria-busy="true">
       <div className="flex flex-col items-center text-center">
         <Marque />
-        <Loader2 className="size-6 animate-spin text-(--lm-or-texte)" aria-hidden />
+        <Loader2 className="size-6 animate-spin text-(--lm-encre)" aria-hidden />
         <p role="status" className="mt-3 text-[14px] text-(--lm-encre-2)">
           {texte}
         </p>
@@ -167,7 +167,7 @@ function Chargement({ texte }: { texte: string }) {
 
 /* -------------------------------------------------------------- connexion */
 
-const LIEN_TEXTE = 'inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline';
+const LIEN_TEXTE = 'inline-flex min-h-8 items-center text-[13px] font-medium lm-lien';
 
 /** Sans code d'invitation sur l'appareil, « Créer mon compte » ne mène à rien : on le dit. */
 const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
@@ -186,7 +186,7 @@ const ROLES_COMPTE = [
   { titre: 'Équipe d’une conciergerie', detail: 'Gérants et équipes, comme Label Maison, avec votre invitation.' },
 ] as const;
 const CLASSE_CHOIX =
-  'flex min-h-14 w-full items-center gap-3 rounded-lg border border-(--lm-bord-fort) px-4 py-3 text-left hover:border-(--lm-or) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none';
+  'flex min-h-14 w-full items-center gap-3 rounded-lg border border-(--lm-bord-fort) px-4 py-3 text-left hover:border-(--lm-encre) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
 
 function ChoixRole({ onEquipe, onRetour }: { onEquipe: () => void; onRetour: () => void }) {
   const contenu = (r: (typeof ROLES_COMPTE)[number]) => (

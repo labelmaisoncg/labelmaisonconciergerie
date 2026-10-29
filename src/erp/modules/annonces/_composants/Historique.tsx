@@ -66,7 +66,7 @@ export function HistoriqueLogement({ logement: l, onRetour }: { logement: Logeme
             <Link to={`/erp/logements/${l.id}`} className="hover:underline">{l.nom}</Link>
           </h3>
           <p className="mt-0.5 text-[12.5px] text-(--lm-encre-2)">
-            {enLigne ? `En ligne : « ${enLigne.titre} », depuis ${age} j` : 'Aucune version publiée'}
+            {enLigne ? `En ligne : « ${enLigne.titre} », depuis ${age} j` : 'Aucune version publiée'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">

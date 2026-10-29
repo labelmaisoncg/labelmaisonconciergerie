@@ -13,7 +13,7 @@ export function DemoBanner() {
   if (!demo) return null;
   return (
     <>
-      <div className="lm-sans-impression flex items-center gap-2 border-b border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-1.5 text-[12.5px] text-(--lm-brun)">
+      <div className="lm-sans-impression flex items-center gap-2 border-b border-(--lm-bord) bg-(--lm-surface-2) px-4 py-1.5 text-[12.5px] text-(--lm-encre)">
         <FlaskConical className="size-3.5 shrink-0" aria-hidden />
         <p className="min-w-0 flex-1 truncate">
           <strong className="font-semibold">Données de démonstration</strong>
@@ -22,7 +22,7 @@ export function DemoBanner() {
         <button
           type="button"
           onClick={() => setConfirmer(true)}
-          className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium hover:bg-(--lm-or-lavis) hover:underline"
+          className="inline-flex min-h-8 shrink-0 items-center gap-1 rounded-lg px-1.5 font-semibold underline underline-offset-[3px] hover:bg-(--lm-neutre-lavis)"
         >
           <RotateCcw className="size-3.5" aria-hidden />
           Réinitialiser

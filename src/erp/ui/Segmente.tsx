@@ -14,10 +14,13 @@ export interface SegmenteProps<T extends string> {
   className?: string;
 }
 
-/** Choix exclusif court (2 à 4 options), à la manière d'un contrôle segmenté. */
+/**
+ * Choix exclusif court (2 à 4 options), comme le sélecteur d'Airbnb : une
+ * piste grise, l'option choisie en pastille blanche ombrée, à l'encre en 600.
+ */
 export function Segmente<T extends string>({ options, valeur, onChange, label, className }: SegmenteProps<T>) {
   return (
-    <div role="group" aria-label={label} className={cn('inline-flex rounded-lg border border-(--lm-bord-fort) p-0.5', className)}>
+    <div role="group" aria-label={label} className={cn('inline-flex rounded-full bg-(--lm-surface-2) p-1', className)}>
       {options.map((o) => (
         <button
           key={o.valeur}
@@ -25,8 +28,8 @@ export function Segmente<T extends string>({ options, valeur, onChange, label, c
           aria-pressed={valeur === o.valeur}
           onClick={() => onChange(o.valeur)}
           className={cn(
-            'h-8 rounded-md px-3 text-[12.5px] font-medium whitespace-nowrap focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
-            valeur === o.valeur ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:text-(--lm-encre)',
+            'h-8 rounded-full px-3.5 text-[13px] whitespace-nowrap transition-colors',
+            valeur === o.valeur ? 'bg-(--lm-surface) font-semibold text-(--lm-encre) shadow-(--lm-ombre-haute)' : 'font-medium text-(--lm-encre-2) hover:text-(--lm-encre)',
           )}
         >
           {o.libelle}

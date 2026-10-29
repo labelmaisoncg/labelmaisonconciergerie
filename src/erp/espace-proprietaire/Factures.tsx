@@ -29,7 +29,7 @@ function DetailFactureMensuelle({ f, espace, LienDocument, onRetour }: { f: Fact
       <button
         type="button"
         onClick={onRetour}
-        className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+        className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
       >
         <ChevronLeft className="size-4" aria-hidden />
         Toutes les factures
@@ -73,7 +73,7 @@ function DetailFacture({ f, espace, LienDocument, onRetour }: { f: FactureVue; e
       <button
         type="button"
         onClick={onRetour}
-        className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+        className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
       >
         <ChevronLeft className="size-4" aria-hidden />
         Toutes les factures
@@ -82,7 +82,7 @@ function DetailFacture({ f, espace, LienDocument, onRetour }: { f: FactureVue; e
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{enteteImprime(espace)}</p>
-            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">Facture {f.numero}</h1>
+            <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun)">Facture {f.numero}</h1>
             <p className="text-[13px] text-(--lm-encre-2)">
               Émise le {dateCourte(f.dateEmission)} · échéance le {dateCourte(f.echeance)}
             </p>
@@ -173,7 +173,7 @@ export function Factures({ vue, choisie, onChoisir, LienDocument }: { vue: VuePr
                   <button
                     type="button"
                     onClick={() => onChoisir(x.id)}
-                    className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
+                    className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
                   >
                     <span className="min-w-0 flex-1">
                       <span className="block text-[15px] font-semibold text-(--lm-encre)">{x.numero}</span>

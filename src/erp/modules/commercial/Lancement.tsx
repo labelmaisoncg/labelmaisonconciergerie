@@ -98,7 +98,7 @@ export default function Lancement() {
         <Card>
           <div className="mb-4">
             <p className="text-[12px] text-(--lm-encre-3)">Étape {etape + 1} sur {ETAPES.length}</p>
-            <h2 className="lm-serif text-[20px] text-(--lm-encre)">{ETAPES[etape].titre}</h2>
+            <h2 className="lm-titre text-[20px] text-(--lm-encre)">{ETAPES[etape].titre}</h2>
             <p className="text-[13px] text-(--lm-encre-2)">{ETAPES[etape].description}</p>
           </div>
           {Object.values(erreurs).some(Boolean) && (

@@ -37,7 +37,7 @@ export function DocumentFacture({ doc, className }: { doc: Doc; className?: stri
   const franchise = !!doc.mentionTva;
   return (
     <article
-      className={cn('lm-facture rounded-xl border border-(--lm-champagne) px-4 py-5 text-[13px] text-(--lm-encre) sm:px-8 sm:py-8', className)}
+      className={cn('lm-facture lm-document rounded-xl border border-(--lm-champagne) px-4 py-5 text-[13px] text-(--lm-encre) sm:px-8 sm:py-8', className)}
       aria-label={doc.brouillon ? `Brouillon de facture, ${mois}` : `Facture ${doc.numero}`}
     >
       <header className="lm-facture-bloc grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] print:grid-cols-[minmax(0,1fr)_auto]">

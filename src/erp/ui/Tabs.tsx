@@ -21,13 +21,17 @@ export interface TabsProps {
   className?: string;
 }
 
+/*
+ * Onglets d'Airbnb : l'actif à l'encre, en 600, souligné de 2 px d'encre ;
+ * les autres en gris. Le trait et la graisse disent l'onglet actif, pas la couleur seule.
+ */
 const BASE =
-  'relative inline-flex h-10 shrink-0 items-center gap-1.5 px-3 text-[13.5px] font-medium whitespace-nowrap text-(--lm-encre-2) transition-colors hover:text-(--lm-encre)';
-const ACTIF = 'text-(--lm-encre) after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-(--lm-or)';
+  'relative inline-flex h-11 shrink-0 items-center gap-1.5 px-3 text-[14px] font-medium whitespace-nowrap text-(--lm-encre-2) transition-colors after:absolute after:inset-x-3 after:bottom-0 after:h-0.5 hover:text-(--lm-encre) hover:after:bg-(--lm-bord-fort)';
+const ACTIF = 'font-semibold text-(--lm-encre) after:bg-(--lm-encre) hover:after:bg-(--lm-encre)';
 
 function Compteur({ n }: { n?: number }) {
   if (n === undefined) return null;
-  return <span className="lm-chiffres rounded-full bg-(--lm-neutre-lavis) px-1.5 text-[11.5px] text-(--lm-encre-2)">{n}</span>;
+  return <span className="lm-chiffres rounded-full bg-(--lm-neutre-lavis) px-1.5 text-[12px] font-semibold text-(--lm-encre-2)">{n}</span>;
 }
 
 /** Onglets : contrôlés (état local) ou routés (NavLink) selon la présence de `to`. */

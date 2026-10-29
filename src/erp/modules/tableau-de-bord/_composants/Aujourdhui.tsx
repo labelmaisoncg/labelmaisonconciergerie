@@ -11,9 +11,9 @@ function Tuile({ titre, icone, n, texte }: { titre: string; icone: ReactNode; n:
   return (
     <Link
       to="/erp/reservations"
-      className="flex min-w-0 items-start gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre) transition-colors hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none sm:p-3.5"
+      className="flex min-w-0 items-start gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre) transition hover:shadow-(--lm-ombre-haute) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none sm:p-3.5"
     >
-      <span aria-hidden className="hidden size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) sm:grid [&_svg]:size-[18px]">
+      <span aria-hidden className="hidden size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) sm:grid [&_svg]:size-[18px]">
         {icone}
       </span>
       <span className="min-w-0 flex-1">

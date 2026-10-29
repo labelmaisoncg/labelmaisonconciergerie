@@ -6,7 +6,7 @@ import { AUJOURDHUI, MAINTENANT, insecables } from '../../../data/format';
 import { ACTION_JOURNAL_REPULL } from '../../../data/repull';
 import { logementById } from '../../../data/selectors';
 import { useErp } from '../../../data/store';
-import { MenuActions, TON_LAVIS, cn } from '../../../ui';
+import { MenuActions } from '../../../ui';
 import { ATraiter } from './ATraiter';
 import type { ElementATraiter, TypeATraiter } from './aTraiter';
 
@@ -104,11 +104,11 @@ export function Briefing({ elements }: { elements: ElementATraiter[] }) {
       actions={<MenuActions label="Plus d’actions sur votre journée" actions={[{ libelle: 'Copier le briefing', icone: <Copy />, onClick: copier }]} />}
       premiere={
         <li className="flex items-start gap-3 px-4 py-3">
-          <span aria-hidden className={cn('mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg [&_svg]:size-4', TON_LAVIS.or)}>
+          <span aria-hidden className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-[18px]">
             <CalendarDays />
           </span>
           <div className="min-w-0 flex-1">
-            <Link to={journee?.lien ?? '/erp/reservations'} className="inline-flex min-h-8 items-center text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
+            <Link to={journee?.lien ?? '/erp/reservations'} className="inline-flex min-h-8 items-center text-[13.5px] font-semibold text-(--lm-encre) hover:underline">
               {(journee?.court ?? '').replace(/\.$/, '')}
             </Link>
             {/* Jamais coupé : les départs restent visibles sur un téléphone. */}

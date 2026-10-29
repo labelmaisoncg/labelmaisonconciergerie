@@ -58,7 +58,7 @@ export function Controles() {
                   fin={
                     c.note !== undefined && (
                       <span className="lm-chiffres inline-flex items-center gap-1 text-[13px] text-(--lm-encre-2)">
-                        <Star className="size-3.5 text-(--lm-or-texte)" aria-hidden />
+                        <Star className="size-3.5 text-(--lm-encre)" aria-hidden />
                         {c.note}/5
                       </span>
                     )
@@ -160,12 +160,12 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
           type="button"
           onClick={onFermer}
           aria-label="Retour aux contrôles"
-          className="-ml-2 grid size-10 shrink-0 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          className="-ml-2 grid size-10 shrink-0 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
         >
           <ArrowLeft className="size-5" />
         </button>
         <div className="min-w-0 pt-1">
-          <h1 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">{nomLogement(logementId)}</h1>
+          <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun)">{nomLogement(logementId)}</h1>
           <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">
             {fait
               ? `Fait le ${dateHeure(fait.realiseLe ?? fait.echeance)}${fait.parId ? ` par ${nomMembre(fait.parId)}` : ''}`
@@ -188,7 +188,7 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
         <p className="text-[14px] font-medium text-(--lm-encre)">Note d’ensemble</p>
         {lecture ? (
           // Contrôle en lecture : la note est un résultat, pas des boutons grisés.
-          <p className="mt-2 flex items-center gap-1 text-(--lm-or-texte)">
+          <p className="mt-2 flex items-center gap-1 text-(--lm-encre)">
             {[1, 2, 3, 4, 5].map((n) => (
               <Star key={n} className={cn('size-6', (note ?? 0) >= n ? 'fill-current' : 'text-(--lm-encre-3)')} aria-hidden />
             ))}
@@ -212,7 +212,7 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
                 aria-label={`${n} sur 5`}
                 aria-pressed={note === n}
                 onClick={() => setNote(n)}
-                className="grid size-11 place-items-center rounded-lg text-(--lm-or-texte) hover:bg-(--lm-or-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                className="grid size-11 place-items-center rounded-full text-(--lm-encre) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
               >
                 <Star className={cn('size-7', (note ?? 0) >= n ? 'fill-current' : 'text-(--lm-encre-3)')} aria-hidden />
               </button>
@@ -285,7 +285,7 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
       aria-pressed={p.etat === etat}
       onClick={() => onChange({ etat: p.etat === etat ? undefined : etat })}
       className={cn(
-        'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
+        'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
         p.etat === etat
           ? etat === 'ok'
             ? 'border-(--lm-succes) bg-(--lm-succes-lavis) text-(--lm-encre)'

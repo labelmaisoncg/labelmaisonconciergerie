@@ -48,11 +48,11 @@ export function CreerEspace({ email, invitation, onCree, onDeconnecter }: Props)
       <div className="w-full max-w-[440px]">
         <div className="rounded-2xl border border-(--lm-bord) bg-(--lm-surface) p-6 shadow-(--lm-ombre) sm:p-8">
           <div className="mb-5 flex items-start gap-3">
-            <span aria-hidden className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
+            <span aria-hidden className="mt-1 grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-[18px]">
               <Sparkles />
             </span>
             <div className="min-w-0">
-              <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Créez l’espace de votre conciergerie</h1>
+              <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)">Créez l’espace de votre conciergerie</h1>
               <p className="mt-1 text-[13.5px] text-(--lm-encre-2)">
                 Vos logements, réservations, messages et équipes, rien qu’à vous. Vous gérerez cet espace.
               </p>
@@ -84,7 +84,7 @@ export function CreerEspace({ email, invitation, onCree, onDeconnecter }: Props)
           <button
             type="button"
             onClick={onDeconnecter}
-            className="mt-3 inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+            className="mt-3 inline-flex min-h-8 items-center text-[13px] font-medium lm-lien"
           >
             {/* Même lien que « Dernière étape » (Connexion.tsx). */}
             Ce n’est pas moi&nbsp;: se déconnecter

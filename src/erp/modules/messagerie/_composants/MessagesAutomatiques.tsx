@@ -138,14 +138,14 @@ export function MessagesAutomatiques() {
                     <Icone />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[14.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{LIBELLES_DECLENCHEURS[k].titre}</span>
+                    <span className="block text-[14.5px] font-semibold text-(--lm-encre) group-hover:underline">{LIBELLES_DECLENCHEURS[k].titre}</span>
                     <span className="block text-[12.5px] text-(--lm-encre-2)">
                       {LIBELLES_DECLENCHEURS[k].quand(m.heure)} · {suite}
                     </span>
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 </button>
-                <Interrupteur actif={m.actif} disabled={!gerant} label={`${m.actif ? 'Éteindre' : 'Allumer'} « ${LIBELLES_DECLENCHEURS[k].titre} »`} onChange={(v) => basculer(k, v)} />
+                <Interrupteur actif={m.actif} disabled={!gerant} label={`${m.actif ? 'Éteindre' : 'Allumer'} « ${LIBELLES_DECLENCHEURS[k].titre} »`} onChange={(v) => basculer(k, v)} />
               </li>
             );
           })}
@@ -193,7 +193,7 @@ export function MessagesAutomatiques() {
         )}
         {historique.length > 6 && (
           <div className="border-t border-(--lm-bord) px-4 py-2">
-            <button type="button" onClick={() => setTout((t) => !t)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+            <button type="button" onClick={() => setTout((t) => !t)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium lm-lien">
               {tout ? 'Voir moins' : `Voir tout (${historique.length})`}
             </button>
           </div>
@@ -224,7 +224,7 @@ export function MessagesAutomatiques() {
         ouvert={!!allumer}
         onFermer={() => setAllumer(null)}
         taille="sm"
-        titre={allumer ? `Allumer « ${LIBELLES_DECLENCHEURS[allumer].titre} » ?` : ''}
+        titre={allumer ? `Allumer « ${LIBELLES_DECLENCHEURS[allumer].titre} » ?` : ''}
         description={
           allumer &&
           `${allumer === 'confirmation' ? 'Il partira tout seul pour chaque nouvelle réservation, à partir de maintenant.' : 'Il partira tout seul, à partir de maintenant, aux voyageurs concernés.'}${

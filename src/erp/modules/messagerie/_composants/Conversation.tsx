@@ -270,7 +270,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
         {logement && !fiche.complete && (
           <>
             {' '}Il répondra mieux avec les infos du logement :{' '}
-            <Link to={`/erp/logements/${logement.id}?onglet=fiche`} className="font-medium text-(--lm-or-texte) underline-offset-2 hover:underline">
+            <Link to={`/erp/logements/${logement.id}?onglet=fiche`} className="font-medium lm-lien">
               les compléter
             </Link>
             .
@@ -385,7 +385,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
     const lien = await lienPartage(g.media.fichier, DUREE_LIEN_GUIDE_S);
     setGuideEnCours(null);
     if (lien) inserer(`${g.titre} : ${lien}`);
-    else setErreur(`Le lien du guide « ${g.titre} » n’a pas pu être créé. Réessayez.`);
+    else setErreur(`Le lien du guide « ${g.titre} » n’a pas pu être créé. Réessayez.`);
   };
 
   const infos = [
@@ -416,7 +416,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
         <Link
           to="/erp/messagerie"
           aria-label="Retour aux conversations"
-          className="grid size-10 shrink-0 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) lg:hidden"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis) lg:hidden"
         >
           <ArrowLeft className="size-5" />
         </Link>
@@ -570,7 +570,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   title="Votre agent prépare une réponse : vous la relisez, puis vous l’envoyez"
                   className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-3 text-[12.5px] font-medium text-(--lm-brun) hover:border-(--lm-or) disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {iaEnCours === 'proposition' ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Sparkles className="size-3 text-(--lm-or-texte)" aria-hidden />}
+                  {iaEnCours === 'proposition' ? <Loader2 className="size-3 animate-spin" aria-hidden /> : <Sparkles className="size-3 text-(--lm-encre)" aria-hidden />}
                   {iaEnCours === 'proposition' ? 'Préparation…' : 'Proposer une réponse'}
                 </button>
                 {/* Seulement quand l'équipe a écrit sa réponse (pas sur une proposition de l'agent, déjà dans la langue du voyageur). */}
@@ -646,7 +646,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                     key={x.cle}
                     type="button"
                     onClick={() => insererSupplement(x)}
-                    title={`Proposer « ${LIBELLES_SUPPLEMENTS[x.cle].titre} » : ${x.disponibilite.constats.join(' ') || 'prix réglé pour ce logement'}`}
+                    title={`Proposer « ${LIBELLES_SUPPLEMENTS[x.cle].titre} » : ${x.disponibilite.constats.join(' ') || 'prix réglé pour ce logement'}`}
                     className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre)"
                   >
                     {LIBELLES_SUPPLEMENTS[x.cle].titre}
@@ -664,15 +664,15 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   {(() => {
                     // Sparkles pour ce qui vient de l'IA ; l'icône du supplément pour une proposition de l'équipe.
                     const Icone = aide.genre === 'supplement' ? ICONES_SUPPLEMENTS[aide.cle] : Sparkles;
-                    return <Icone className="mt-1.5 size-3.5 shrink-0 text-(--lm-or-texte)" aria-hidden />;
+                    return <Icone className="mt-1.5 size-3.5 shrink-0 text-(--lm-encre)" aria-hidden />;
                   })()}
                   <span className="py-1 text-(--lm-encre)">
                     {aide.genre === 'traduction'
                       ? `Traduit en ${aide.nom} : relisez, puis envoyez.`
                       : aide.genre === 'supplement'
                         ? aide.statut === 'impossible'
-                          ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
-                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
+                          ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
+                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
                         : aide.parClaude
                           ? 'Proposée par Claude : relisez, puis envoyez.'
                           : aide.source === 'agent'
@@ -681,12 +681,12 @@ export function Conversation({ fil, logement, reservation }: Props) {
                   </span>
                 </span>
                 {aide.genre === 'proposition' && aide.texteFr && (
-                  <button type="button" onClick={() => setVoirFr((v) => !v)} aria-expanded={voirFr} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                  <button type="button" onClick={() => setVoirFr((v) => !v)} aria-expanded={voirFr} className="inline-flex min-h-8 items-center font-medium lm-lien">
                     {voirFr ? 'Masquer le français' : 'Voir en français'}
                   </button>
                 )}
                 {precedent !== null && (
-                  <button type="button" onClick={retablir} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                  <button type="button" onClick={retablir} className="inline-flex min-h-8 items-center font-medium lm-lien">
                     Rétablir mon texte
                   </button>
                 )}
@@ -809,7 +809,7 @@ function Bulle({
           onClick={onTraduction}
           disabled={traduction.chargement}
           aria-pressed={traduit}
-          className="-my-1 inline-flex min-h-8 items-center gap-1 px-1 text-[12px] font-medium text-(--lm-or-texte) hover:underline disabled:opacity-70"
+          className="-my-1 inline-flex min-h-8 items-center gap-1 px-1 text-[12px] font-medium lm-lien disabled:opacity-70"
         >
           {traduction.chargement ? (
             <>

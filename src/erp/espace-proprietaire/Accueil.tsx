@@ -84,7 +84,7 @@ export function Accueil({
         <button
           type="button"
           onClick={() => onOnglet('factures')}
-          className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2.5 text-left shadow-(--lm-ombre) hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2.5 text-left shadow-(--lm-ombre) hover:shadow-(--lm-ombre-haute) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none transition"
         >
           <ReceiptText className="size-4 shrink-0 text-(--lm-encre-2)" aria-hidden />
           <span className="min-w-0 flex-1 text-[14px] text-(--lm-encre)">
@@ -110,7 +110,7 @@ export function Accueil({
                   <button
                     type="button"
                     onClick={() => onLogement(l.id)}
-                    className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-offset-4 focus:outline-none"
+                    className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-4 focus:outline-none"
                   >
                     <PhotoLogement url={l.photo} nom={l.nom} className="aspect-[4/3] w-full rounded-xl transition-opacity group-hover:opacity-90" />
                     <span className="mt-2.5 block text-[15px] font-semibold text-(--lm-encre)">{l.nom}</span>
@@ -118,7 +118,7 @@ export function Accueil({
                       {l.ville} · {pluriel(l.capacite, 'voyageur')} · {pluriel(l.chambres, 'chambre')}
                     </span>
                     {occ !== undefined && <span className="mt-0.5 block text-[13.5px] text-(--lm-encre-2)">Ce mois-ci : {pourcentage(occ)} réservé</span>}
-                    <span className="mt-1 inline-flex min-h-8 items-center gap-0.5 text-[13px] font-medium text-(--lm-or-texte) group-hover:underline">
+                    <span className="mt-1 inline-flex min-h-8 items-center gap-0.5 text-[13px] font-medium lm-lien">
                       Performances et avis
                       <ChevronRight className="size-3.5" aria-hidden />
                     </span>
@@ -170,7 +170,7 @@ export function Accueil({
                 {vue.documents.slice(0, 3).map((d) => (
                   <li key={d.id}>
                     <LienDocument id={d.id} className="flex min-h-14 items-center gap-3 px-4 py-2.5 hover:bg-(--lm-surface-2)">
-                      <FileText className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
+                      <FileText className="size-4 shrink-0 text-(--lm-encre)" aria-hidden />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14px] font-medium text-(--lm-encre)">{d.titre}</span>
                         <span className="block text-[12.5px] text-(--lm-encre-2)">
@@ -193,20 +193,20 @@ export function Accueil({
               <p className="text-[14px] text-(--lm-encre-2)">Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.</p>
               <ul className="mt-3 space-y-1 text-[14px]">
                 <li>
-                  <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
-                    <Phone className="size-4 text-(--lm-or-texte)" aria-hidden />
+                  <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:underline">
+                    <Phone className="size-4 text-(--lm-encre)" aria-hidden />
                     {c.telephone}
                   </a>
                 </li>
                 <li>
-                  <a href={c.whatsapp} target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
-                    <MessageCircle className="size-4 text-(--lm-or-texte)" aria-hidden />
+                  <a href={c.whatsapp} target="_blank" rel="noreferrer" className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:underline">
+                    <MessageCircle className="size-4 text-(--lm-encre)" aria-hidden />
                     WhatsApp
                   </a>
                 </li>
                 <li>
-                  <a href={`mailto:${c.email}`} className="flex min-h-9 min-w-0 items-center gap-2.5 font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
-                    <Mail className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
+                  <a href={`mailto:${c.email}`} className="flex min-h-9 min-w-0 items-center gap-2.5 font-medium text-(--lm-encre) hover:underline">
+                    <Mail className="size-4 shrink-0 text-(--lm-encre)" aria-hidden />
                     <span className="truncate">{c.email}</span>
                   </a>
                 </li>

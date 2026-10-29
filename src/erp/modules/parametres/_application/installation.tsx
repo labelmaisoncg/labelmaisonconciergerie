@@ -124,7 +124,7 @@ export function EtapesInstallation({ appareil: a, className }: { appareil: Appar
     <ol className={cn('flex flex-col gap-3', className)}>
       {etapesInstallation(a).map((e, i) => (
         <li key={i} className="flex items-start gap-3 text-[14px] leading-relaxed text-(--lm-encre)">
-          <span aria-hidden className="lm-chiffres mt-px grid size-6 shrink-0 place-items-center rounded-full bg-(--lm-or-lavis) text-[12.5px] font-semibold text-(--lm-or-texte)">
+          <span aria-hidden className="lm-chiffres mt-px grid size-6 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-[12.5px] font-semibold text-(--lm-encre)">
             {i + 1}
           </span>
           <span className="min-w-0">{e.texte}</span>

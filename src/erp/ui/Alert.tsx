@@ -44,7 +44,7 @@ export function Alert({ tone = 'info', titre, children, actions, actionsDessous,
       className={cn('flex items-start gap-x-3 gap-y-2 rounded-xl border px-4 py-3 [.rounded-xl_&]:rounded-lg [&>svg]:mt-0.5 [&>svg]:size-[18px] [&>svg]:shrink-0', actionsDessous && 'flex-wrap sm:flex-nowrap', STYLES[tone], className)}
     >
       {icone ?? ICONES[tone]}
-      <div className="min-w-0 flex-1 text-[13.5px] text-(--lm-encre)">
+      <div className="min-w-0 flex-1 text-[14px] text-(--lm-encre)">
         {titre && <p className="font-semibold">{titre}</p>}
         {children && <div className={cn(titre && 'mt-0.5', 'text-(--lm-encre-2)')}>{children}</div>}
       </div>

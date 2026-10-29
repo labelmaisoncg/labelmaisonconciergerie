@@ -72,7 +72,7 @@ export function PhotoLogement({ url, nom, className }: { url?: string; nom: stri
 export function TitreEspace({ titre, description }: { titre: ReactNode; description?: ReactNode }) {
   return (
     <div className="mb-5">
-      <h1 className="lm-serif text-[26px] leading-tight text-(--lm-brun) sm:text-[30px]">{titre}</h1>
+      <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun) sm:text-[28px]">{titre}</h1>
       {description && <p className="mt-1 max-w-2xl text-[14px] text-(--lm-encre-2)">{description}</p>}
     </div>
   );
@@ -97,7 +97,7 @@ export function LienAction({ onClick, children }: { onClick: () => void; childre
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+      className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
     >
       {children}
     </button>

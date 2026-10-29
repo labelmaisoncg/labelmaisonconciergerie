@@ -15,25 +15,26 @@ export function Topbar() {
   const sousPage = !!module && pathname.replace(/\/$/, '') !== module.path;
 
   return (
-    <header className="lm-sans-impression sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-(--lm-bord) bg-(--lm-surface)/90 px-3 backdrop-blur sm:gap-3 sm:px-5">
-      <nav aria-label="Vous êtes ici" className="hidden min-w-0 items-center gap-1 text-[13px] md:flex">
+    // En-tête blanc d'Airbnb, un filet dessous ; la recherche en pilule au centre de l'attention.
+    <header className="lm-sans-impression sticky top-0 z-30 flex h-16 items-center gap-2 border-b border-(--lm-bord) bg-(--lm-surface) px-4 sm:gap-3 sm:px-6 lg:h-[4.5rem]">
+      <nav aria-label="Vous êtes ici" className="hidden min-w-0 items-center gap-1 text-[14px] md:flex">
         {module ? (
           <>
-            <span className={module.label === rubrique?.libelle ? 'font-medium text-(--lm-encre)' : 'text-(--lm-encre-3)'}>{rubrique?.libelle}</span>
+            <span className={module.label === rubrique?.libelle ? 'font-semibold text-(--lm-encre)' : 'text-(--lm-encre-2)'}>{rubrique?.libelle}</span>
             {rubrique && module.label !== rubrique.libelle && (
               <>
-                <ChevronRight className="size-3.5 text-(--lm-encre-3)" aria-hidden />
-                <span aria-current={sousPage ? undefined : 'page'} className={sousPage ? 'truncate text-(--lm-encre-3)' : 'truncate font-medium text-(--lm-encre)'}>
+                <ChevronRight className="size-4 text-(--lm-encre-2)" aria-hidden />
+                <span aria-current={sousPage ? undefined : 'page'} className={sousPage ? 'truncate text-(--lm-encre-2)' : 'truncate font-semibold text-(--lm-encre)'}>
                   {module.label}
                 </span>
               </>
             )}
           </>
         ) : (
-          <span className="font-medium text-(--lm-encre)">Page introuvable</span>
+          <span className="font-semibold text-(--lm-encre)">Page introuvable</span>
         )}
       </nav>
-      <GlobalSearch className="min-w-0 flex-1 md:ml-auto md:max-w-md lg:w-[28rem] lg:flex-none" />
+      <GlobalSearch className="min-w-0 flex-1 md:ml-auto md:max-w-lg lg:w-[30rem] lg:flex-none" />
       <IndicateurSynchro />
       <UserSwitcher />
     </header>

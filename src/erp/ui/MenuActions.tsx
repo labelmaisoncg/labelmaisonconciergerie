@@ -81,8 +81,9 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
   }, [ouvert]);
 
   if (!liste.length) return null;
+  // Menu d'Airbnb : lignes de 14 px pleine largeur, survol gris, icônes à l'encre.
   const classeItem =
-    'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13.5px] text-(--lm-encre) hover:bg-(--lm-surface-2) focus:bg-(--lm-surface-2) focus:outline-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-(--lm-encre-3)';
+    'flex min-h-10 w-full items-center gap-3 px-4 py-2 text-left text-[14px] text-(--lm-encre) hover:bg-(--lm-surface-2) focus:bg-(--lm-surface-2) focus:outline-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-(--lm-encre)';
 
   return (
     <div ref={ref} className={cn('relative', className)}>
@@ -96,15 +97,16 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
         title={label}
         onClick={() => setOuvert((o) => !o)}
         className={cn(
-          'inline-flex h-9 items-center justify-center gap-1.5 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) text-sm font-medium text-(--lm-encre) transition-colors hover:bg-(--lm-surface-2) [&_svg]:size-4',
-          texte ? 'px-3' : 'w-9',
+          // Avec texte : bouton secondaire (bordé d'encre) ; sans texte : bouton d'icône rond, blanc bordé.
+          'inline-flex h-10 items-center justify-center gap-1.5 border bg-(--lm-surface) text-[14px] font-semibold text-(--lm-encre) transition-colors [&_svg]:size-4',
+          texte ? 'rounded-lg border-(--lm-encre) px-4 hover:bg-(--lm-surface-2)' : 'w-10 rounded-full border-(--lm-bord-fort) hover:border-(--lm-encre)',
         )}
       >
         <Ellipsis aria-hidden />
         {texte && (
           <>
             {label}
-            <ChevronDown aria-hidden className="text-(--lm-encre-3)" />
+            <ChevronDown aria-hidden />
           </>
         )}
       </button>
@@ -115,7 +117,7 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
           role="menu"
           aria-label={label}
           className={cn(
-            'lm-apparition absolute z-40 mt-1 w-max max-w-[min(20rem,calc(100vw-2rem))] min-w-56 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-1 shadow-(--lm-ombre-haute)',
+            'lm-apparition absolute z-40 mt-2 w-max max-w-[min(20rem,calc(100vw-2rem))] min-w-60 overflow-hidden rounded-xl border border-(--lm-bord) bg-(--lm-surface) py-2 shadow-(--lm-ombre-haute)',
             'right-0',
           )}
           style={decalage ? { right: -decalage } : undefined}

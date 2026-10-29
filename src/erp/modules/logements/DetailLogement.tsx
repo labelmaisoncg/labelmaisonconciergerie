@@ -32,7 +32,7 @@ export default function DetailLogement() {
         <EmptyState
           titre="Ce logement n’existe pas ou a été supprimé"
           action={
-            <Link to="/erp/logements" className="text-sm font-medium text-(--lm-or-texte) hover:underline">
+            <Link to="/erp/logements" className="text-sm font-medium lm-lien">
               Retour à la liste
             </Link>
           }

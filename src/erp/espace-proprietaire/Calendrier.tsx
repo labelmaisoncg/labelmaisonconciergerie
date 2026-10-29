@@ -31,7 +31,7 @@ function Jour({ j, aujourdhui }: { j: JourCalendrier; aujourdhui: string }) {
       <span
         className={cn(
           'lm-chiffres relative grid h-full place-items-center text-[13.5px]',
-          j.date === aujourdhui ? 'font-semibold text-(--lm-or-texte) underline decoration-2 underline-offset-4' : 'text-(--lm-encre)',
+          j.date === aujourdhui ? 'font-semibold text-(--lm-encre) underline decoration-2 underline-offset-4' : 'text-(--lm-encre)',
         )}
       >
         {Number(j.date.slice(8))}
@@ -83,7 +83,7 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
   const cede = vue.logementsCedes.find((l) => l.id === c?.logementId);
   const hors = new Set(c?.jours.map((j) => j.hors).filter((x): x is 'avant' | 'apres' | 'autre' => !!x));
   const bouton =
-    'grid size-9 place-items-center rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:opacity-50';
+    'grid size-9 place-items-center rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none disabled:opacity-50';
   return (
     <>
       <TitreEspace titre="Calendrier" description="Les nuits réservées et libres, avec les arrivées et les départs." />
@@ -97,7 +97,7 @@ export function Calendrier({ vue, onMois, enCours }: { vue: VueProprietaire; onM
               aria-pressed={l.id === c?.logementId}
               onClick={() => setChoix(l.id)}
               className={cn(
-                'h-9 shrink-0 rounded-full border px-4 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
+                'h-9 shrink-0 rounded-full border px-4 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
                 l.id === c?.logementId ? 'border-(--lm-encre) bg-(--lm-encre) text-white' : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre) hover:border-(--lm-encre-3)',
               )}
             >

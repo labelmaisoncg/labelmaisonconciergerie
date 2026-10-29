@@ -49,7 +49,7 @@ export function FicheEtapes({ etapes, valeurs, onChange, lectureSeule }: FicheEt
                         type="button"
                         onClick={() => setOuverte(l)}
                         aria-label={`Modifier : ${l.libelle}`}
-                        className="flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
+                        className="flex min-h-11 w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
                       >
                         {contenu}
                         <ChevronRight className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />

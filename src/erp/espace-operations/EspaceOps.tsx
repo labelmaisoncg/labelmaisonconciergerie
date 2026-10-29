@@ -63,13 +63,13 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
     <Ops.Provider value={contexte}>
       <div className="min-h-screen bg-(--lm-fond)">
         {bandeau}
-        <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)/95 backdrop-blur">
-          <div className="mx-auto flex h-14 max-w-5xl items-center justify-between gap-3 px-4">
+        <header className="sticky top-0 z-20 border-b border-(--lm-bord) bg-(--lm-surface)">
+          <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-3 px-4">
             <div className="min-w-0 shrink-0">
-              <p className="lm-serif truncate text-[18px] leading-tight text-(--lm-brun)">{conciergerie}</p>
+              <p className="lm-titre truncate text-[18px] leading-tight text-(--lm-brun)">{conciergerie}</p>
               <p className="truncate text-[11.5px] text-(--lm-encre-2)">Espace opérations</p>
             </div>
-            <nav aria-label="Rubriques" className="hidden items-center gap-1 md:flex">
+            <nav aria-label="Rubriques" className="hidden items-stretch gap-0.5 self-stretch md:flex">
               {onglets.map((o) => (
                 <button
                   key={o.cle}
@@ -77,8 +77,8 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                   aria-current={o.cle === onglet ? 'page' : undefined}
                   onClick={() => naviguer({ onglet: o.cle, controle: undefined })}
                   className={cn(
-                    'inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-[13.5px] lg:px-3 font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none [&_svg]:size-4',
-                    o.cle === onglet ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
+                    'relative inline-flex h-full items-center gap-1.5 px-2 text-[14px] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 lg:px-3 focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset [&_svg]:size-4',
+                    o.cle === onglet ? 'font-semibold text-(--lm-encre) after:bg-(--lm-encre)' : 'font-medium text-(--lm-encre-2) hover:text-(--lm-encre) hover:after:bg-(--lm-bord-fort)',
                   )}
                 >
                   {o.icone}
@@ -92,7 +92,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                 <button
                   type="button"
                   onClick={onSortir}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                 >
                   <LogOut className="size-4" aria-hidden />
                   {/* Libellés à partir de 1024 px : avec les onglets, l'en-tête tient sur une ligne. */}
@@ -133,7 +133,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
         </main>
 
         {!ecran.controle && (
-          <nav aria-label="Rubriques" className="fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface)/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
+          <nav aria-label="Rubriques" className="fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface) pb-[env(safe-area-inset-bottom)] md:hidden">
             <ul className={cn('grid', onglets.length === 5 ? 'grid-cols-5' : 'grid-cols-4')}>
               {onglets.map((o) => (
                 <li key={o.cle}>
@@ -142,8 +142,8 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                     aria-current={o.cle === onglet ? 'page' : undefined}
                     onClick={() => naviguer({ onglet: o.cle })}
                     className={cn(
-                      'flex h-14 w-full flex-col items-center justify-center gap-0.5 text-[11px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset [&_svg]:size-5',
-                      o.cle === onglet ? 'text-(--lm-or-texte)' : 'text-(--lm-encre-2)',
+                      'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset [&_svg]:size-6 [&_svg]:stroke-2',
+                      o.cle === onglet ? 'font-semibold text-(--lm-or-texte) [&_svg]:fill-(--lm-or-lavis)' : 'font-medium text-(--lm-encre-2)',
                     )}
                   >
                     {o.icone}

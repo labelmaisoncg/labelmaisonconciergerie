@@ -42,7 +42,7 @@ function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) 
 }
 
 // Zone de toucher de 32 px ; les marges négatives gardent la hauteur de la ligne.
-const lien = '-my-1.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline';
+const lien = '-my-1.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien';
 
 /** Trois repères dans une seule carte, côte à côte même sur téléphone. */
 function Chiffres({ elements }: { elements: { libelle: string; valeur: string; detail?: string }[] }) {
@@ -144,7 +144,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
                   <li key={r.id}>
                     <Link
                       to={`/erp/reservations/${r.id}`}
-                      className="flex items-center gap-x-4 px-4 py-2.5 hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset sm:px-5"
+                      className="flex items-center gap-x-4 px-4 py-2.5 hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset sm:px-5"
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">{r.voyageur.nom}</span>
@@ -317,7 +317,7 @@ function LigneRelier({ logement: l }: { logement: Logement }) {
             <Link2 className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
             Pas encore relié à une annonce
           </span>
-          <button type="button" onClick={() => setOuvert(true)} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline sm:ml-auto">
+          <button type="button" onClick={() => setOuvert(true)} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien sm:ml-auto">
             Relier à une annonce <ArrowRight className="size-3.5" aria-hidden />
           </button>
         </div>
@@ -365,7 +365,7 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
                 type="button"
                 onClick={() => setEdition(true)}
                 aria-label="Modifier le propriétaire"
-                className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+                className="inline-flex h-8 items-center text-[13px] font-medium lm-lien"
               >
                 Modifier
               </button>
@@ -378,13 +378,13 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
           <div className="space-y-1.5 text-[13.5px]">
             <p className="font-semibold text-(--lm-encre)">{prop.nom}</p>
             {prop.contact.telephone && (
-              <a href={`tel:${prop.contact.telephone.replace(/[^\d+]/g, '')}`} className="flex min-h-8 items-center gap-2 text-(--lm-encre-2) hover:text-(--lm-or-texte)">
+              <a href={`tel:${prop.contact.telephone.replace(/[^\d+]/g, '')}`} className="flex min-h-8 items-center gap-2 text-(--lm-encre-2) hover:underline">
                 <Phone className="size-3.5 shrink-0" aria-hidden />
                 {prop.contact.telephone}
               </a>
             )}
             {prop.contact.email && (
-              <a href={`mailto:${prop.contact.email}`} className="flex min-h-8 min-w-0 items-center gap-2 text-(--lm-encre-2) hover:text-(--lm-or-texte)">
+              <a href={`mailto:${prop.contact.email}`} className="flex min-h-8 min-w-0 items-center gap-2 text-(--lm-encre-2) hover:underline">
                 <Mail className="size-3.5 shrink-0" aria-hidden />
                 <span className="truncate">{prop.contact.email}</span>
               </a>
@@ -395,7 +395,7 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
               <button
                 type="button"
                 onClick={() => setNouveauMandat(true)}
-                className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+                className="inline-flex min-h-8 items-center text-[13px] font-medium lm-lien"
               >
                 Ajouter son mandat
               </button>
@@ -479,7 +479,7 @@ function Annonce({ logement: l, descriptif }: { logement: Logement; descriptif?:
             type="button"
             aria-expanded={ouvert}
             onClick={() => setOuvert((o) => !o)}
-            className="mt-2 inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+            className="mt-2 inline-flex h-8 items-center text-[13px] font-medium lm-lien"
           >
             {ouvert ? 'Réduire' : 'Lire la suite'}
           </button>

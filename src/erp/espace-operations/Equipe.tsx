@@ -58,7 +58,7 @@ export function Equipe() {
                   <a
                     href={`tel:${tel}`}
                     aria-label={`Appeler ${m.nom}`}
-                    className="grid size-10 shrink-0 place-items-center rounded-lg border border-(--lm-bord-fort) text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                    className="grid size-10 shrink-0 place-items-center rounded-lg border border-(--lm-bord-fort) text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                   >
                     <Phone className="size-4" aria-hidden />
                   </a>
