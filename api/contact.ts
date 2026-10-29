@@ -1,5 +1,5 @@
 import { Resend } from 'resend';
-import { avecDelai, enregistrerDemandeCrm, type ResultatCrm } from './_erp-crm.js';
+import { avecDelai, enregistrerDemandeCrm, notifierNouveauLead, type ResultatCrm } from './_erp-crm.js';
 import { EMAIL_SUR } from '../src/erp/data/crm.js';
 import { adresseIp, echapperHtml, freinEnvois, provenanceSite } from './_garde-formulaire.js';
 
@@ -181,6 +181,13 @@ export default async function handler(req: any, res: any) {
 
   const [resultatCrm, mailEnvoye] = await Promise.all([crm, envoi]);
   const crmOk = !!resultatCrm && resultatCrm.etat !== 'inactif';
+  // Notification au gérant (« Nouveau lead à appeler ») : avant de répondre (une
+  // fonction Vercel s'arrête à la réponse), bornée à 3 s, sans effet sur la réponse.
+  if (resultatCrm && resultatCrm.etat !== 'inactif') {
+    await avecDelai(notifierNouveauLead(resultatCrm.contact, resultatCrm.etat === 'cree'), 3000).catch((err) => {
+      console.error('[contact] notification :', err instanceof Error ? err.message : err);
+    });
+  }
   if (mailEnvoye || crmOk) return res.status(200).json({ ok: true });
   return res
     .status(502)

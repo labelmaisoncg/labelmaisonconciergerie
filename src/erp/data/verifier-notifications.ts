@@ -22,6 +22,7 @@ import {
   estProbleme,
   JOURS_PLUS_TARD_NOTIFICATIONS,
   nettoyerPreferences,
+  notificationNouveauLead,
   notificationsEntre,
   preferencesPourRole,
   prenomInitiale,
@@ -423,6 +424,49 @@ async function principal() {
     verifier(recus.includes('ancien:prix') && !recus.includes('ops:prix'), 'rôle mis à jour à l’ouverture des réglages : l’ancien appareil du gérant reçoit de nouveau les prix');
     const parOps = await enregistrerAppareil(base, { abonnement: abonnement('gerant'), par: 'ops@exemple.fr', role: 'operations' });
     verifier(parOps.role === 'operations', 'réabonnement par un autre compte : le rôle de ce compte remplace l’ancien');
+  }
+
+  section('Nouveau lead à appeler (CRM)');
+  {
+    const contact = {
+      id: 'crm-abc',
+      nom: 'Marie Dupont',
+      telephone: '06 12 34 56 78',
+      email: 'marie@exemple.fr',
+      ville: 'Évry-Courcouronnes',
+      source: 'audit' as const,
+      creeLe: '2026-10-29T10:12:00+01:00',
+      majLe: '2026-10-29T10:12:00+01:00',
+      historique: [{ le: '2026-10-29T10:12:00+01:00', par: 'Site web', resultat: 'formulaire' as const }],
+    };
+    const g = notificationNouveauLead(contact, { nouveau: true });
+    const v = g.variantes[0];
+    verifier(v.type === 'lead' && v.titre === 'Nouveau lead à appeler' && v.corps === 'Marie D. · Évry-Courcouronnes · Demande d’audit', `contenu : « ${v.titre} », « ${v.corps} »`);
+    verifier(v.url === '/erp/crm?contact=crm-abc' && g.urgente === true && v.gerant === true, 'ouvre la fiche du contact dans le CRM ; livrée tout de suite ; gérant seulement');
+    verifier(!JSON.stringify(g).includes('06 12') && !JSON.stringify(g).includes('marie@') && !JSON.stringify(g).includes('Dupont'), 'écran verrouillé : ni téléphone, ni e-mail, ni nom de famille');
+    const parEmail = notificationNouveauLead({ ...contact, nom: 'marie@exemple.fr', ville: undefined }, { nouveau: true });
+    verifier(parEmail.variantes[0].corps === 'Un nouveau contact · Demande d’audit', 'nom qui est l’adresse e-mail : « Un nouveau contact »');
+    const redemande = notificationNouveauLead({ ...contact, source: 'dossier', historique: [{ le: '2026-11-02T09:00:00+01:00', par: 'Site web', resultat: 'formulaire' as const }, ...contact.historique] }, { nouveau: false });
+    verifier(redemande.cle !== g.cle && redemande.variantes[0].titre === 'Nouvelle demande d’un contact du CRM' && redemande.variantes[0].corps.endsWith('Dossier propriétaire'), 'la même personne redemande : une nouvelle notification');
+    verifier(TYPES_NOTIFICATION.some((t) => t.type === 'lead' && t.defaut) && typePourRole('lead', 'gerant') && !typePourRole('lead', 'operations') && !typePourRole('lead', undefined), 'réglage « Nouveau lead à appeler » : activé par défaut, proposé au gérant seul');
+
+    const cles = { ...(await genererClesVapid()), sujet: 'https://www.labelmaisoncg.fr' };
+    const base = new FausseBase();
+    const p256dh = await clePubliqueNavigateur();
+    const abonnement = (n: string): AbonnementPush => ({ endpoint: `https://web.push.apple.com/${n}`, keys: { p256dh, auth: b64url(globalThis.crypto.getRandomValues(new Uint8Array(16))) } });
+    await enregistrerAppareil(base, { abonnement: abonnement('abdel'), par: 'gerant@exemple.fr', role: 'gerant' });
+    await enregistrerAppareil(base, { abonnement: abonnement('ops'), preferences: { lead: true }, par: 'ops@exemple.fr', role: 'operations' });
+    await enregistrerAppareil(base, { abonnement: abonnement('ancien'), preferences: { lead: true } });
+    await enregistrerAppareil(base, { abonnement: abonnement('coupe'), par: 'gerant2@exemple.fr', role: 'gerant', preferences: { lead: false } });
+    const recus: string[] = [];
+    const envoyer = async (a: AbonnementPush, c: unknown) => {
+      recus.push(`${a.endpoint.split('/').pop()}:${(c as { type: string }).type}`);
+      return { ok: true, statut: 201, expire: false };
+    };
+    const b1 = await envoyerNotifications(base, [g], { cles, envoyer, maintenant: MAINTENANT });
+    verifier(recus.join(',') === 'abdel:lead', `envoyé au seul appareil du gérant qui l’accepte (${recus.join(',')})`);
+    const b2 = await envoyerNotifications(base, [g], { cles, envoyer, maintenant: MAINTENANT });
+    verifier(b1.envoyees === 1 && b2.dejaParties === 1 && recus.length === 1, 'jamais deux fois la même demande');
   }
 
   section('Surveillance d’un passage');

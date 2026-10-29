@@ -8,11 +8,14 @@
 // =============================================================================
 
 import { contactDepuisDemande, fusionnerDemande, idContactCrm, trouverDoublon, type DemandeSite } from '../src/erp/data/crm.js';
+import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
+import { notificationNouveauLead } from '../src/erp/data/notifications.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { ContactCrm } from '../src/erp/data/types.js';
+import { clesServeur } from './_erp-notifications.js';
 import { baseErp, configuration } from './_erp-repull.js';
 
-export type ResultatCrm = { etat: 'cree' | 'mis_a_jour'; id: string } | { etat: 'inactif' };
+export type ResultatCrm = { etat: 'cree' | 'mis_a_jour'; id: string; contact: ContactCrm } | { etat: 'inactif' };
 
 const AUTEUR = 'Formulaire du site';
 
@@ -25,11 +28,25 @@ export async function enregistrerDemandeCrm(demande: DemandeSite): Promise<Resul
   const existants = await base.lire<ContactCrm>('crm');
   const doublon = trouverDoublon(existants, nouveau);
   if (doublon) {
-    await base.ecrire('crm', [fusionnerDemande(doublon, nouveau, maintenant)], AUTEUR);
-    return { etat: 'mis_a_jour', id: doublon.id };
+    const fusionne = fusionnerDemande(doublon, nouveau, maintenant);
+    await base.ecrire('crm', [fusionne], AUTEUR);
+    return { etat: 'mis_a_jour', id: doublon.id, contact: fusionne };
   }
   await base.ecrire('crm', [nouveau], AUTEUR);
-  return { etat: 'cree', id: nouveau.id };
+  return { etat: 'cree', id: nouveau.id, contact: nouveau };
+}
+
+/**
+ * Notification « Nouveau lead à appeler » sur les appareils du gérant
+ * (notifications.ts, type « lead », réservé au gérant). Sans clés VAPID ni
+ * compte d'équipe : rien. Ne lève jamais : un échec n'empêche pas la demande
+ * d'être acceptée (elle est déjà dans le CRM et partie par e-mail).
+ */
+export async function notifierNouveauLead(contact: ContactCrm, nouveau: boolean): Promise<void> {
+  const cles = clesServeur();
+  const c = configuration();
+  if (!cles || !c.motDePasse) return;
+  await envoyerNotifications(baseErp(c), [notificationNouveauLead(contact, { nouveau })], { cles });
 }
 
 /** Promesse coupée au bout de `ms` (la réponse au visiteur n'attend pas indéfiniment). */

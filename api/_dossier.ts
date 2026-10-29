@@ -28,7 +28,7 @@ export interface DossierEnregistre {
   proprietaireExistant: boolean;
   nomLogement: string;
   /** Contact du CRM complété, ou créé s'il n'existait pas. */
-  crm: { id: string; cree: boolean };
+  crm: { id: string; cree: boolean; contact: ContactCrm };
 }
 
 /** Pas encore dans le CRM (dossier reçu sans appel enregistré) : on l'y ajoute, déjà « Contacté ». */
@@ -88,7 +88,7 @@ export async function enregistrerDossier(v: Valeurs): Promise<DossierEnregistre 
   await base.ecrire('logements', [logement], AUTEUR);
   await base.ecrire('dossiers', [dossier], AUTEUR);
   await base.ecrire('crm', [contact], AUTEUR);
-  return { dossier, proprietaireExistant: !!existant, nomLogement: logement.nom, crm: { id: contact.id, cree: !existantCrm } };
+  return { dossier, proprietaireExistant: !!existant, nomLogement: logement.nom, crm: { id: contact.id, cree: !existantCrm, contact } };
 }
 
 /** E-mail récapitulatif : toutes les réponses, partie par partie. */
