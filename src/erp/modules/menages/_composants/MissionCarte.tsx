@@ -17,7 +17,7 @@ export function MissionCarte({ mission: m, logement, prestataire }: Props) {
   return (
     <Link
       to={`/erp/menages/${m.id}`}
-      className="group relative block overflow-hidden rounded-lg border border-(--lm-bord) bg-(--lm-surface) p-2.5 pl-3.5 text-[12.5px] transition-colors hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or) focus-visible:outline-none"
+      className="group relative block overflow-hidden rounded-lg border border-(--lm-bord) bg-(--lm-surface) p-2.5 pl-3.5 text-[12.5px] transition hover:shadow-(--lm-ombre-haute) focus-visible:ring-2 focus-visible:ring-(--lm-or) focus-visible:outline-none"
     >
       <span aria-hidden className={cn('absolute inset-y-0 left-0 w-1', TON_PLEIN[tonStatut('statutMission', m.statut)])} />
       <p className="truncate font-semibold text-(--lm-encre)">{logement?.nom ?? 'Logement inconnu'}</p>

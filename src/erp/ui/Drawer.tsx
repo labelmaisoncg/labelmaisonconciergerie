@@ -2,6 +2,7 @@ import { useId, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from './cn';
 import { IconButton } from './Button';
+import { PIED_FENETRE } from './Modal';
 import { useFenetre } from './useFenetre';
 
 export interface DrawerProps {
@@ -19,36 +20,44 @@ export interface DrawerProps {
 
 const LARGEURS = { md: 'sm:max-w-md', lg: 'sm:max-w-xl', xl: 'sm:max-w-3xl' };
 
-/** Panneau latéral de détail, plein écran sur mobile. */
+/**
+ * Panneau de détail : à droite sur ordinateur, feuille qui monte du bas sur
+ * téléphone (arrondie en haut). En-tête d'Airbnb : fermer rond à gauche,
+ * titre centré, actions à droite, un filet dessous.
+ */
 export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, largeur = 'lg', children }: DrawerProps) {
   const ref = useFenetre<HTMLDivElement>(ouvert, onFermer);
   const titreId = useId();
   if (!ouvert) return null;
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <div aria-hidden className="lm-apparition absolute inset-0 bg-[rgba(20,17,14,0.32)]" onClick={onFermer} />
+    <div className="fixed inset-0 z-50 flex items-end justify-end sm:items-stretch">
+      <div aria-hidden className="lm-apparition absolute inset-0 bg-(--lm-voile)" onClick={onFermer} />
       <div
         ref={ref}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titreId}
         tabIndex={-1}
-        className={cn('lm-tiroir relative flex h-full w-full flex-col bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none', LARGEURS[largeur])}
+        className={cn(
+          'lm-feuille lm-tiroir relative flex h-[94dvh] w-full flex-col rounded-t-2xl bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:h-full sm:rounded-none',
+          LARGEURS[largeur],
+        )}
       >
-        <div className="flex items-start gap-3 border-b border-(--lm-bord) px-4 py-3.5 sm:px-5">
-          <div className="min-w-0 flex-1">
-            <h2 id={titreId} className="lm-serif truncate text-[20px] text-(--lm-encre)">
-              {titre}
-            </h2>
-            {sousTitre && <div className="mt-0.5 text-[13px] text-(--lm-encre-2)">{sousTitre}</div>}
-          </div>
-          {actions}
-          <IconButton label="Fermer" onClick={onFermer}>
+        <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-(--lm-bord) px-3 py-2.5">
+          <IconButton label="Fermer" onClick={onFermer} size="sm">
             <X />
           </IconButton>
+          <div className="min-w-0 flex-1 text-center">
+            <h2 id={titreId} className="lm-titre truncate text-[16px] leading-snug text-(--lm-encre)">
+              {titre}
+            </h2>
+            {sousTitre && <div className="mt-0.5 text-[13px] leading-snug text-(--lm-encre-2) [&>.flex]:justify-center">{sousTitre}</div>}
+          </div>
+          {/* Sans actions, une place vide de la taille du bouton fermer garde le titre au centre. */}
+          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : <span aria-hidden className="size-8 shrink-0" />}
         </div>
-        <div className="lm-defilement flex-1 overflow-y-auto px-4 py-4 sm:px-5">{children}</div>
-        {pied && <div className="flex flex-wrap justify-end gap-2 border-t border-(--lm-bord) px-4 py-3 sm:px-5">{pied}</div>}
+        <div className="lm-defilement flex-1 overflow-y-auto px-4 py-5 sm:px-6">{children}</div>
+        {pied && <div className={PIED_FENETRE}>{pied}</div>}
       </div>
     </div>
   );

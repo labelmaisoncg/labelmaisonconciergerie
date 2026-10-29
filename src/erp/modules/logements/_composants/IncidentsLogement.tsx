@@ -131,7 +131,7 @@ export function IncidentsLogement({ logement: l }: { logement: Logement }) {
           titre={ouverts.length ? `Incidents ouverts (${ouverts.length})` : 'Incidents ouverts'}
           actions={
             regles.length > 0 && (
-              <button type="button" onClick={() => setVoirRegles((v) => !v)} aria-expanded={voirRegles} className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <button type="button" onClick={() => setVoirRegles((v) => !v)} aria-expanded={voirRegles} className="inline-flex min-h-8 items-center text-[13px] font-medium lm-lien">
                 {voirRegles ? 'Masquer les réglés' : `Voir les réglés (${regles.length})`}
               </button>
             )

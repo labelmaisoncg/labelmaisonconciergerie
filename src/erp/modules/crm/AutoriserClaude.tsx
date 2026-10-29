@@ -95,11 +95,11 @@ export default function AutoriserClaude() {
     <Colonne>
       <Card>
         <div className="space-y-5">
-          <div className="flex size-11 items-center justify-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte)">
+          <div className="flex size-11 items-center justify-center rounded-full bg-(--lm-surface-2) text-(--lm-encre)">
             <Bot className="size-6" aria-hidden />
           </div>
           <div>
-            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Connecter Claude à l’espace {nomEspace}&nbsp;?</h1>
+            <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)">Connecter Claude à l’espace {nomEspace}&nbsp;?</h1>
             <p className="mt-1 text-[14px] text-(--lm-encre-2)">
               Demande venue de <span className="font-medium text-(--lm-encre)">{origine.hote}</span>. Claude ne verra que cet espace&nbsp;: ses logements,
               réservations, messages et son CRM.

@@ -19,7 +19,7 @@ export function Section({ titre, description, actions, children, className, id }
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div className="min-w-0">
             {titre && (
-              <h2 id={titreId} className="text-[16px] font-semibold text-(--lm-encre)">
+              <h2 id={titreId} className="text-[18px] leading-tight font-semibold tracking-[-0.01em] text-(--lm-encre) sm:text-[20px]">
                 {titre}
               </h2>
             )}

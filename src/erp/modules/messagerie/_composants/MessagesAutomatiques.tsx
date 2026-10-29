@@ -138,7 +138,7 @@ export function MessagesAutomatiques() {
                     <Icone />
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[14.5px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{LIBELLES_DECLENCHEURS[k].titre}</span>
+                    <span className="block text-[14.5px] font-semibold text-(--lm-encre) group-hover:underline">{LIBELLES_DECLENCHEURS[k].titre}</span>
                     <span className="block text-[12.5px] text-(--lm-encre-2)">
                       {LIBELLES_DECLENCHEURS[k].quand(m.heure)} · {suite}
                     </span>
@@ -193,7 +193,7 @@ export function MessagesAutomatiques() {
         )}
         {historique.length > 6 && (
           <div className="border-t border-(--lm-bord) px-4 py-2">
-            <button type="button" onClick={() => setTout((t) => !t)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+            <button type="button" onClick={() => setTout((t) => !t)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium lm-lien">
               {tout ? 'Voir moins' : `Voir tout (${historique.length})`}
             </button>
           </div>

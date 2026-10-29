@@ -29,7 +29,7 @@ function Article({ n, titre, children }: { n: number; titre: string; children: R
 export function DocumentContrat({ mandat: m, proprietaire: p, logement: l }: Parties) {
   const date = m.signeLe ?? AUJOURDHUI;
   return (
-    <article className="mx-auto max-w-[720px] bg-white text-(--lm-encre)">
+    <article className="lm-document mx-auto max-w-[720px] bg-white text-(--lm-encre)">
       <header className="border-b border-(--lm-or-anneau) pb-4 text-center">
         <p className="lm-serif text-[22px] text-(--lm-brun)">{SOCIETE.nom}</p>
         <p className="text-[12px] text-(--lm-encre-2)">

@@ -123,7 +123,7 @@ function CarteAvisAuto({ r, etat }: { r: Reservation; etat: Exclude<EtatPublicat
                 )}
           </p>
           {etat.publication.texte && (
-            <blockquote className="mt-2 border-l-2 border-(--lm-or) pl-3 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2)">{etat.publication.texte}</blockquote>
+            <blockquote className="mt-2 border-l-2 border-(--lm-bord-fort) pl-3 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre-2)">{etat.publication.texte}</blockquote>
           )}
         </>
       )}
@@ -253,7 +253,7 @@ function CarteAvisManuel({ r, etat, erreurAuto }: { r: Reservation; etat: Return
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1">
             {suivant && (
-              <Link to={`/erp/reservations/${encodeURIComponent(suivant.reservation.id)}`} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <Link to={`/erp/reservations/${encodeURIComponent(suivant.reservation.id)}`} className="inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien">
                 Avis suivant : {prenomDe(suivant.reservation.voyageur.nom)} <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             )}

@@ -67,7 +67,7 @@ export function PanneauContexte({ fil, logement, reservation, enTiroir }: Props)
               ) : (
                 <StatusBadge type="statutReservation" valeur={reservation.statut} />
               )}
-              <Link to={`/erp/reservations/${reservation.id}`} className="inline-flex h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <Link to={`/erp/reservations/${reservation.id}`} className="inline-flex h-8 items-center gap-1 text-[13px] font-medium lm-lien">
                 Voir la réservation <ArrowRight className="size-3.5" aria-hidden />
               </Link>
             </div>
@@ -99,7 +99,7 @@ export function PanneauContexte({ fil, logement, reservation, enTiroir }: Props)
           <div className="space-y-2.5">
             {photo && logement && <VisuelLogement logement={logement} decoratif className="aspect-[16/10] w-full rounded-xl" />}
             <div>
-              <Link to={`/erp/logements/${logement.id}`} className="font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
+              <Link to={`/erp/logements/${logement.id}`} className="font-medium text-(--lm-encre) hover:underline">
                 {logement.nom}
               </Link>
               <p className="text-(--lm-encre-2)">{[logement.adresse, logement.ville].filter(Boolean).join(', ')}</p>
@@ -108,7 +108,7 @@ export function PanneauContexte({ fil, logement, reservation, enTiroir }: Props)
             {!fiche.complete && (
               <p className="text-[12.5px] text-(--lm-encre-2)">
                 Votre agent répondra mieux avec les infos du logement.{' '}
-                <Link to={`/erp/logements/${logement.id}?onglet=fiche`} className="font-medium text-(--lm-or-texte) hover:underline">
+                <Link to={`/erp/logements/${logement.id}?onglet=fiche`} className="font-medium lm-lien">
                   Compléter
                 </Link>
               </p>

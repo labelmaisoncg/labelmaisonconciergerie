@@ -61,7 +61,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
           <Link to={`/erp/logements/${logement.id}`} className="group -m-1 mb-3 flex items-center gap-3 rounded-lg p-1 hover:bg-(--lm-surface-2)">
             <VisuelLogement logement={logement} taille="sm" className="size-12 shrink-0 rounded-lg" />
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] font-semibold text-(--lm-encre) group-hover:text-(--lm-or-texte)">{logement.nom}</span>
+              <span className="block truncate text-[15px] font-semibold text-(--lm-encre) group-hover:underline">{logement.nom}</span>
               <span className="block truncate text-[13px] text-(--lm-encre-2)">{logement.ville}</span>
             </span>
             <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
@@ -125,7 +125,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
               return (
                 <li key={f.id}>
                   <Link to={`/erp/messagerie/${f.id}`} className="group flex items-center gap-3 rounded-lg px-2 py-2 hover:bg-(--lm-surface-2)">
-                    <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-4">
+                    <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-4">
                       <MessageSquare />
                     </span>
                     <span className="min-w-0 flex-1">
@@ -134,7 +134,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
                         {pluriel(f.messages.length, 'message')} · dernier le {dateHeure(f.dernierMessageLe)}
                       </span>
                     </span>
-                    <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3) group-hover:text-(--lm-or-texte)" aria-hidden />
+                    <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3) group-hover:underline" aria-hidden />
                   </Link>
                 </li>
               );
@@ -160,7 +160,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
         </dl>
         {mandat && (
           <details className="mt-2 text-[13px]">
-            <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1 text-[12.5px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+            <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1 text-[12.5px] font-medium lm-lien [&::-webkit-details-marker]:hidden">
               Part du propriétaire
               <ChevronDown className="size-3.5 transition-transform [details[open]_&]:rotate-180" aria-hidden />
             </summary>
@@ -188,7 +188,7 @@ export function FicheReservation({ r }: { r: Reservation }) {
             }
           />
           {/* L'avis public, puis le message privé à part : il n'est jamais repris dans une réponse publique. */}
-          {parties.public && <blockquote className="border-l-2 border-(--lm-or) pl-3 text-[13.5px] text-(--lm-encre-2) italic">« {parties.public} »</blockquote>}
+          {parties.public && <blockquote className="border-l-2 border-(--lm-bord-fort) pl-3 text-[13.5px] text-(--lm-encre-2) italic">« {parties.public} »</blockquote>}
           {parties.prive && (
             <p className="mt-2 flex gap-1.5 text-[13px] text-(--lm-encre-2)">
               <Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />

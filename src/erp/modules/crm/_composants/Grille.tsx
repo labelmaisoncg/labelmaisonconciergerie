@@ -35,7 +35,7 @@ const COLONNES = [
 ];
 
 const CELLULE = 'border-b border-r border-(--lm-bord) px-3 py-1.5 align-middle';
-const CHAMP = 'h-8 rounded-md bg-transparent text-[13px] focus:ring-2 focus:ring-(--lm-or-anneau) focus:outline-none';
+const CHAMP = 'h-8 rounded-md bg-transparent text-[13px] focus:ring-2 focus:ring-(--lm-encre) focus:outline-none';
 
 /** Pastille d'étape, modifiable sur place : sélecteur natif posé dessus (clavier, lecteurs d'écran), focus visible. */
 export function PastilleStatut({ contact, onModifier, lectureSeule }: { contact: ContactCrm; onModifier: (c: ContactCrm) => void; lectureSeule: boolean }) {
@@ -47,7 +47,7 @@ export function PastilleStatut({ contact, onModifier, lectureSeule }: { contact:
   );
   if (lectureSeule) return pastille;
   return (
-    <span className="relative inline-flex h-8 items-center rounded-full focus-within:ring-2 focus-within:ring-(--lm-or-anneau)">
+    <span className="relative inline-flex h-8 items-center rounded-full focus-within:ring-2 focus-within:ring-(--lm-encre)">
       {pastille}
       <select
         aria-label={`Étape de ${contact.nom}`}
@@ -93,7 +93,7 @@ function CelluleRelance({ c, onModifier, lectureSeule }: { c: ContactCrm; onModi
         type="button"
         onClick={() => setEdition(true)}
         aria-label={c.relanceLe ? `Relance de ${c.nom} : ${jourMois(c.relanceLe)}${retard ? ', en retard' : ''}. Modifier` : `Prévoir une relance pour ${c.nom}`}
-        className="flex h-8 w-full min-w-0 items-center rounded-md px-1 text-left hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+        className="flex h-8 w-full min-w-0 items-center rounded-md px-1 text-left hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
       >
         {texte}
       </button>
@@ -132,7 +132,7 @@ function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n:
         <button
           type="button"
           onClick={() => onOuvrir(c.id)}
-          className="-my-1.5 block max-w-full truncate rounded-md py-1.5 text-left font-medium text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          className="-my-1.5 block max-w-full truncate rounded-md py-1.5 text-left font-medium text-(--lm-encre) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
         >
           {c.nom}
         </button>
@@ -144,9 +144,9 @@ function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n:
         {c.telephone ? (
           <a
             href={`tel:${c.telephone.replace(/[^\d+]/g, '')}`}
-            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap text-(--lm-encre) hover:text-(--lm-or-texte)"
+            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap text-(--lm-encre) hover:underline"
           >
-            <Phone className="size-3.5 text-(--lm-or-texte)" aria-hidden />
+            <Phone className="size-3.5 text-(--lm-encre)" aria-hidden />
             <span className="lm-chiffres">{c.telephone}</span>
           </a>
         ) : (
@@ -237,7 +237,7 @@ export function Grille({ contacts, onOuvrir, onModifier, lectureSeule }: GrilleP
                     type="button"
                     onClick={() => basculer(g.cle)}
                     aria-expanded={!replie}
-                    className="sticky left-0 flex h-9 items-center gap-2 px-3 text-[13px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
+                    className="sticky left-0 flex h-9 items-center gap-2 px-3 text-[13px] font-semibold text-(--lm-encre) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
                   >
                     {replie ? <ChevronRight className="size-4" aria-hidden /> : <ChevronDown className="size-4" aria-hidden />}
                     <span className={cn('size-2 rounded-full', POINT[g.cle])} aria-hidden />

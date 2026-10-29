@@ -26,7 +26,7 @@ export function Documents({ vue, LienDocument }: { vue: VueProprietaire; LienDoc
                     return (
                       <li key={d.id}>
                         <LienDocument id={d.id} className="flex min-h-14 items-center gap-3 px-4 py-2.5 hover:bg-(--lm-surface-2)">
-                          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte)" aria-hidden>
+                          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre)" aria-hidden>
                             <FileText className="size-4" />
                           </span>
                           <span className="min-w-0 flex-1">

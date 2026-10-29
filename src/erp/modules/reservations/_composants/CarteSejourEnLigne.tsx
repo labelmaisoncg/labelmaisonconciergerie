@@ -38,7 +38,7 @@ function Fiches({ c, reservees }: { c: CheckinEnLigne; reservees?: number }) {
   if (c.fiches.length === 0) return null;
   return (
     <details className="text-[13px]">
-      <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+      <summary className="inline-flex h-8 cursor-pointer list-none items-center gap-1.5 font-medium lm-lien [&::-webkit-details-marker]:hidden">
         <Lock className="size-3.5" aria-hidden />
         {pluriel(c.fiches.length, 'fiche de police', 'fiches de police')}
       </summary>

@@ -32,7 +32,7 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
   const decrit = [aideId, erreurId].filter(Boolean).join(' ') || undefined;
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
-      <label htmlFor={id} className="text-[13px] font-medium text-(--lm-encre)">
+      <label htmlFor={id} className="text-[13px] font-semibold text-(--lm-encre)">
         {label}
         {requis && (
           <span aria-hidden className="ml-0.5 text-(--lm-danger)">
@@ -62,16 +62,21 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
   );
 }
 
+/*
+ * Champ à la manière d'Airbnb : filet d'1 px, 8 px d'arrondi, 44 px de haut.
+ * Au focus, le bord passe à 2 px d'encre (le second pixel est une ombre
+ * intérieure : rien ne bouge), sans halo : bien visible au clavier.
+ */
 const CHAMP =
-  'w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
-  'transition-[border-color,box-shadow] focus:border-(--lm-or) focus:ring-4 focus:ring-(--lm-or-lavis) focus:outline-none ' +
-  'disabled:cursor-not-allowed disabled:bg-(--lm-surface-2) aria-[invalid=true]:border-(--lm-danger)';
+  'w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
+  'transition-[border-color,box-shadow] hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none ' +
+  'disabled:cursor-not-allowed disabled:bg-(--lm-surface-2) aria-[invalid=true]:border-(--lm-danger) aria-[invalid=true]:focus:shadow-[inset_0_0_0_1px_var(--lm-danger)]';
 
 export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
   { className, ...rest },
   ref,
 ) {
-  return <input ref={ref} className={cn(CHAMP, 'h-9', className)} {...rest} />;
+  return <input ref={ref} className={cn(CHAMP, 'h-11', className)} {...rest} />;
 });
 
 export interface OptionSelect {
@@ -92,7 +97,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
 ) {
   return (
     <div className="relative">
-      <select ref={ref} className={cn(CHAMP, 'h-9 appearance-none pr-8', className)} {...rest}>
+      <select ref={ref} className={cn(CHAMP, 'h-11 appearance-none pr-9', className)} {...rest}>
         {placeholder !== undefined && <option value="">{placeholder}</option>}
         {options?.map((o) => (
           <option key={o.valeur} value={o.valeur} disabled={o.desactive}>
@@ -101,7 +106,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         ))}
         {children}
       </select>
-      <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-(--lm-encre-3)" />
+      <ChevronDown aria-hidden className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-(--lm-encre)" />
     </div>
   );
 });
@@ -110,5 +115,5 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   { className, rows = 3, ...rest },
   ref,
 ) {
-  return <textarea ref={ref} rows={rows} className={cn(CHAMP, 'py-2 leading-relaxed', className)} {...rest} />;
+  return <textarea ref={ref} rows={rows} className={cn(CHAMP, 'py-2.5 leading-relaxed', className)} {...rest} />;
 });

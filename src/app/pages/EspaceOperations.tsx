@@ -180,9 +180,9 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
-        {marque.nom && <p className="lm-serif text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
+        {marque.nom && <p className="lm-titre text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
         <Card className="mt-6 p-6">
-          <h1 className="lm-serif text-[24px] leading-tight text-(--lm-encre)">Votre espace opérations</h1>
+          <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)">Votre espace opérations</h1>
           <p className="mt-2 text-[14px] text-(--lm-encre-2)">
             Vos logements, le programme du jour, les incidents et les contrôles qualité. Recevez un lien de connexion par e-mail : aucun mot de passe à retenir.
           </p>
@@ -209,7 +209,7 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
         {MODE_DEMO && (
           <div className="mt-4 flex flex-col items-center">
             {DEMOS.map((d) => (
-              <a key={d.id} href={`?apercu=${d.id}`} className="inline-flex min-h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <a key={d.id} href={`?apercu=${d.id}`} className="inline-flex min-h-8 items-center text-[13px] font-medium lm-lien">
                 Démonstration : {d.libelle}
               </a>
             ))}
@@ -392,7 +392,7 @@ export default function EspaceOperations() {
           entreeApp={<EntreeApp app={app} onOuvrir={() => setFeuilleApp(true)} />}
           bandeau={
             MODE_DEMO ? (
-              <p className="bg-(--lm-or-lavis) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-brun)">Démonstration · espace de {vue.moi.nom}</p>
+              <p className="border-b border-(--lm-bord) bg-(--lm-surface-2) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-encre)">Démonstration · espace de {vue.moi.nom}</p>
             ) : undefined
           }
         />

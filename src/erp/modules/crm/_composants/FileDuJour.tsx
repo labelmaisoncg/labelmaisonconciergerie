@@ -30,7 +30,7 @@ export function FileDuJour({ entrees, onOuvrir }: FileDuJourProps) {
                 <button
                   type="button"
                   onClick={() => onOuvrir(e)}
-                  className="flex min-w-0 flex-1 items-center gap-2 py-3 pl-4 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
+                  className="flex min-w-0 flex-1 items-center gap-2 py-3 pl-4 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-2">
@@ -45,7 +45,7 @@ export function FileDuJour({ entrees, onOuvrir }: FileDuJourProps) {
                   <a
                     href={`tel:${c.telephone.replace(/[^\d+]/g, '')}`}
                     aria-label={`Appeler ${c.nom} au ${c.telephone}`}
-                    className="grid size-10 shrink-0 place-items-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                    className="grid size-10 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                   >
                     <Phone className="size-[18px]" aria-hidden />
                   </a>

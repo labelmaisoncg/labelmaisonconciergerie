@@ -82,7 +82,7 @@ export function PropositionSupplement({ proposition: p, logementId, onInserer }:
   const regler = nonRegle && utilisateur.role === 'gerant' && !lectureSeule;
   return (
     <div role="group" aria-label={`Demande : ${titre.toLowerCase()}`} className="flex items-center gap-2 rounded-lg bg-(--lm-surface-2) py-1.5 pr-1.5 pl-3 text-[13px]">
-      <Icone className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
+      <Icone className="size-4 shrink-0 text-(--lm-encre)" aria-hidden />
       <div className="min-w-0 flex-1 py-0.5">
         <p className="font-medium text-(--lm-encre)">
           {titre}
@@ -101,7 +101,7 @@ export function PropositionSupplement({ proposition: p, logementId, onInserer }:
         <Link
           to={`/erp/logements/${encodeURIComponent(logementId)}?onglet=fiche&supplements=regler`}
           aria-label="Régler les suppléments de ce logement"
-          className="inline-flex h-8 shrink-0 items-center px-1.5 text-[13px] font-medium text-(--lm-or-texte) hover:underline"
+          className="inline-flex h-8 shrink-0 items-center px-1.5 text-[13px] font-medium lm-lien"
         >
           Régler
         </Link>

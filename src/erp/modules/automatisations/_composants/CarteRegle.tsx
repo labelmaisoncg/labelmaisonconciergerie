@@ -61,7 +61,7 @@ function Interrupteur({ actif, onChange, label }: { actif: boolean; onChange: (v
       onClick={() => onChange(!actif)}
       className={cn(
         'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors',
-        actif ? 'bg-(--lm-or)' : 'bg-(--lm-bord-fort)',
+        actif ? 'bg-(--lm-or-texte)' : 'bg-(--lm-bord-fort)',
       )}
     >
       <span

@@ -77,7 +77,7 @@ export function SupplementsLogement({ logement: l }: { logement: Logement }) {
           titre="Suppléments"
           actions={
             gerant && (
-              <button type="button" onClick={() => setEdition(true)} className="inline-flex h-8 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <button type="button" onClick={() => setEdition(true)} className="inline-flex h-8 items-center text-[13px] font-medium lm-lien">
                 {actifs.length ? 'Modifier' : 'Régler'}
               </button>
             )

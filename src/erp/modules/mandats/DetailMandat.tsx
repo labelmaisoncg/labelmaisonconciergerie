@@ -118,10 +118,10 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
 
         <dl className="grid grid-cols-1 gap-x-6 divide-y divide-(--lm-bord) sm:grid-cols-2 sm:divide-y-0">
           <Clause titre="Propriétaire">
-            {p ? <Link className="text-(--lm-or-texte) hover:underline" to={`/erp/proprietaires/${p.id}`}>{p.nom}</Link> : 'Inconnu'}
+            {p ? <Link className="lm-lien" to={`/erp/proprietaires/${p.id}`}>{p.nom}</Link> : 'Inconnu'}
           </Clause>
           <Clause titre="Logement">
-            {l ? <Link className="text-(--lm-or-texte) hover:underline" to={`/erp/logements/${l.id}`}>{l.nom}</Link> : 'Inconnu'}
+            {l ? <Link className="lm-lien" to={`/erp/logements/${l.id}`}>{l.nom}</Link> : 'Inconnu'}
           </Clause>
         </dl>
 
@@ -153,7 +153,7 @@ export function DetailMandat({ mandat: m, onFermer, onModifier }: Props) {
           )}
         </dl>
         <details className="mt-3">
-          <summary className="cursor-pointer rounded-md text-[13px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte)">Autres clauses</summary>
+          <summary className="cursor-pointer rounded-md text-[13px] font-medium text-(--lm-encre-2) hover:underline">Autres clauses</summary>
           <dl className="mt-2 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord) px-4">
             <Clause titre="Préavis de résiliation">{m.preavisJours} jours, par lettre recommandée.</Clause>
             <Clause titre="Non-sollicitation">

@@ -40,7 +40,7 @@ export function Logements() {
                 <button
                   type="button"
                   onClick={() => naviguer({ logement: l.id })}
-                  className="flex w-full flex-col rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-2 text-left shadow-(--lm-ombre) transition-colors hover:border-(--lm-bord-fort) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+                  className="flex w-full flex-col rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-2 text-left shadow-(--lm-ombre) transition-colors hover:border-(--lm-bord-fort) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
                 >
                   <Photo url={l.photo} nom={l.nom} />
                   <span className="px-1.5 pt-2.5 pb-1">

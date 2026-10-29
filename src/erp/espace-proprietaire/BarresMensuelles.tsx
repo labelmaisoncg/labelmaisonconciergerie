@@ -89,7 +89,7 @@ export function BarresMensuelles({ mois, titre }: { mois: MoisPerformance[]; tit
                   }}
                   onBlur={() => setActif(null)}
                   onKeyDown={(e) => deplacer(e, i)}
-                  className="group relative h-full min-w-0 flex-1 focus:outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-inset"
+                  className="group relative h-full min-w-0 flex-1 focus:outline-none focus-visible:rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-inset"
                 >
                   {x.suivi && x.net > 0 && (
                     <span

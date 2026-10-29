@@ -13,7 +13,7 @@ export function Badge({ tone = 'neutre', point, icone, className, children, ...r
   return (
     <span
       className={cn(
-        'inline-flex max-w-full items-center gap-1.5 rounded-full px-2 py-0.5 text-[12px] font-medium whitespace-nowrap [&_svg]:size-3.5',
+        'inline-flex max-w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap [&_svg]:size-3.5',
         TON_LAVIS[tone],
         className,
       )}

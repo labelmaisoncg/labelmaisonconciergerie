@@ -194,9 +194,9 @@ export function ChoixNote({
                 tabIndex={note === n || (note === null && n === 1) ? 0 : -1}
                 disabled={disabled}
                 onClick={() => onNote(n)}
-                className="grid size-9 place-items-center rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none disabled:cursor-not-allowed"
+                className="grid size-9 place-items-center rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none disabled:cursor-not-allowed"
               >
-                <Star aria-hidden className={cn('size-6', plein ? 'fill-(--lm-or) text-(--lm-or)' : 'text-(--lm-encre-3)')} />
+                <Star aria-hidden className={cn('size-6', plein ? 'fill-(--lm-encre) text-(--lm-encre)' : 'text-(--lm-encre-3)')} />
               </button>
             );
           })}
@@ -336,7 +336,7 @@ export function CarteAValider({ className }: { className?: string }) {
             <button
               type="button"
               onClick={() => setChoisi(e)}
-              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset sm:px-5"
+              className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset sm:px-5"
             >
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">{e.genre === 'voyageur' ? `Avis sur ${e.voyageur}` : `Réponse à ${e.voyageur}`}</span>
@@ -453,7 +453,7 @@ export function PanneauAValider({ element: e, onFermer }: { element: ElementAVal
                   </Badge>
                 )}
               </div>
-              <blockquote className="mt-2 border-l-2 border-(--lm-or) pl-3 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre)">{e.avis}</blockquote>
+              <blockquote className="mt-2 border-l-2 border-(--lm-bord-fort) pl-3 text-[13.5px] leading-relaxed whitespace-pre-line text-(--lm-encre)">{e.avis}</blockquote>
             </section>
           )}
 

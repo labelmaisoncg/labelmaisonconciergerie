@@ -39,7 +39,7 @@ export function ListeMobile({ contacts, onOuvrir, onModifier, lectureSeule }: Gr
                 type="button"
                 onClick={() => basculer(g.cle)}
                 aria-expanded={!replie}
-                className="flex h-11 w-full items-center gap-2 px-3.5 text-left text-[14px] font-semibold text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
+                className="flex h-11 w-full items-center gap-2 px-3.5 text-left text-[14px] font-semibold text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
               >
                 <span className={cn('size-2 rounded-full', POINT[g.cle])} aria-hidden />
                 <span className="flex-1">{g.libelle}</span>
@@ -69,7 +69,7 @@ function Contact({ c, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm } & 
         <button
           type="button"
           onClick={() => onOuvrir(c.id)}
-          className="-my-1 block min-h-8 w-full truncate rounded-md py-1 text-left text-[14.5px] font-medium text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          className="-my-1 block min-h-8 w-full truncate rounded-md py-1 text-left text-[14.5px] font-medium text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
         >
           {c.nom}
         </button>
@@ -88,7 +88,7 @@ function Contact({ c, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm } & 
         <a
           href={`tel:${c.telephone.replace(/[^\d+]/g, '')}`}
           aria-label={`Appeler ${c.nom} au ${c.telephone}`}
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-(--lm-or-lavis) text-(--lm-or-texte) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+          className="grid size-10 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
         >
           <Phone className="size-[18px]" aria-hidden />
         </a>

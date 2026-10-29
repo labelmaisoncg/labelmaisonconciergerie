@@ -58,7 +58,7 @@ export function Checklist({ elements, onToggle, label, className }: ChecklistPro
                     checked={e.fait}
                     onChange={(ev) => onToggle(i, ev.target.checked)}
                   />
-                  <span className="contents peer-focus-visible:[&>span:first-child]:ring-2 peer-focus-visible:[&>span:first-child]:ring-(--lm-or)">
+                  <span className="contents peer-focus-visible:[&>span:first-child]:ring-2 peer-focus-visible:[&>span:first-child]:ring-(--lm-encre)">
                     {boite}
                     {texte}
                   </span>

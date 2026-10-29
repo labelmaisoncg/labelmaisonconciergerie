@@ -65,7 +65,7 @@ export function OrganiserPhotos({ logement: l }: { logement: Logement }) {
               <Miniature url={u} />
               <div className="flex items-center justify-between gap-1 px-1.5 py-1">
                 {i === 0 ? (
-                  <span className="px-1.5 text-[12.5px] font-medium text-(--lm-or-texte)">Couverture</span>
+                  <span className="px-1.5 text-[12.5px] font-semibold text-(--lm-encre)">Couverture</span>
                 ) : (
                   <IconButton label={`Mettre la photo ${i + 1} en couverture`} size="sm" onClick={() => enregistrer([u, ...equipe.filter((x) => x !== u)])}>
                     <Star />

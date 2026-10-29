@@ -34,7 +34,7 @@ export function Stat({ label, valeur, delta, tone = 'neutre', icone, aide, to, c
       <div className="flex items-start justify-between gap-2">
         <p className="text-[12.5px] font-medium text-(--lm-encre-2)">{label}</p>
         {icone && (
-          <span aria-hidden className={cn('grid size-7 shrink-0 place-items-center rounded-md [&_svg]:size-4', TON_LAVIS[tone === 'neutre' ? 'or' : tone])}>
+          <span aria-hidden className={cn('grid size-8 shrink-0 place-items-center rounded-full [&_svg]:size-4', tone === 'neutre' ? 'bg-(--lm-surface-2) text-(--lm-encre)' : TON_LAVIS[tone])}>
             {icone}
           </span>
         )}
@@ -53,10 +53,10 @@ export function Stat({ label, valeur, delta, tone = 'neutre', icone, aide, to, c
     </>
   );
   const classes = cn(
-    'block rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 shadow-(--lm-ombre)',
+    'block rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4',
     tone === 'danger' && 'border-l-[3px] border-l-(--lm-danger)',
     tone === 'alerte' && 'border-l-[3px] border-l-(--lm-alerte)',
-    to && 'transition-colors hover:border-(--lm-or-anneau)',
+    to && 'transition-shadow hover:shadow-(--lm-ombre-haute)',
     className,
   );
   return to ? (

@@ -44,14 +44,14 @@ export function CarteProspect({ p, actions }: { p: Prospect; actions: ActionsPro
         e.dataTransfer.effectAllowed = 'move';
       }}
       className={cn(
-        'rounded-lg border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre) transition-colors hover:border-(--lm-or-anneau)',
+        'rounded-lg border border-(--lm-bord) bg-(--lm-surface) p-3 shadow-(--lm-ombre) transition hover:shadow-(--lm-ombre-haute)',
         !fini && 'cursor-grab active:cursor-grabbing',
         p.etape === 'perdu' && 'opacity-75',
       )}
     >
       <div className="flex items-start gap-2">
         <button type="button" onClick={() => actions.ouvrir(p)} className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte)">{p.nom}</span>
+          <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) hover:underline">{p.nom}</span>
           <span className="mt-0.5 flex items-center gap-1 truncate text-[12px] text-(--lm-encre-2)">
             <MapPin aria-hidden className="size-3 shrink-0" />
             {p.ville} · {p.typeBien}

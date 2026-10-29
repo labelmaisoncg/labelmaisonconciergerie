@@ -485,9 +485,9 @@ function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; 
         <ul className="mb-4 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
           {documents.map((doc) => (
             <li key={doc.id} className="flex items-center gap-3 px-3 py-2">
-              <FileText className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />
+              <FileText className="size-4 shrink-0 text-(--lm-encre)" aria-hidden />
               <div className="min-w-0 flex-1">
-                <LienFichier url={doc.fichier} className="block truncate text-[13.5px] font-medium text-(--lm-encre) hover:text-(--lm-or-texte)">
+                <LienFichier url={doc.fichier} className="block truncate text-[13.5px] font-medium text-(--lm-encre) hover:underline">
                   {doc.titre}
                 </LienFichier>
                 <p className="truncate text-[12px] text-(--lm-encre-2)">

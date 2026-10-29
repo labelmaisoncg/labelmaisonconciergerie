@@ -166,13 +166,13 @@ export function CarteSynchroRepull() {
         </div>
       </dl>
       <p className="mt-3 text-[12.5px]">
-        <Link to="/erp/logements/connexions" className="-my-1.5 inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+        <Link to="/erp/logements/connexions" className="-my-1.5 inline-flex min-h-8 items-center font-medium lm-lien">
           Gérer vos connexions
         </Link>
       </p>
       {/* Repli sans cadre : ses champs et boutons ne sont pas dans un second cadre aussi arrondi que la carte. */}
       <details className="group mt-3">
-        <summary className="-my-1.5 inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline [&::-webkit-details-marker]:hidden">
+        <summary className="-my-1.5 inline-flex min-h-8 cursor-pointer list-none items-center gap-1 text-[13px] font-medium lm-lien [&::-webkit-details-marker]:hidden">
           Avancé
           <ChevronDown className="size-3.5 transition-transform group-open:rotate-180" aria-hidden />
         </summary>
@@ -192,7 +192,7 @@ export function CarteSynchroRepull() {
         </dl>
         <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">
           Pas plus d’une mise à jour manuelle toutes les 10 minutes, pour ménager le forfait.{' '}
-          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="-my-1.5 inline-flex min-h-8 items-center gap-1 text-(--lm-or-texte) hover:underline">
+          <a href={URL_TABLEAU_REPULL} target="_blank" rel="noreferrer" className="-my-1.5 inline-flex min-h-8 items-center gap-1 lm-lien">
             Tableau de bord Repull <ExternalLink className="size-3.5" aria-hidden />
           </a>
         </p>

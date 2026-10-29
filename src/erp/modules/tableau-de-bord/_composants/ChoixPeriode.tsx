@@ -104,7 +104,7 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
         aria-haspopup="dialog"
         aria-expanded={ouvert}
         onClick={() => (ouvert ? fermer(false) : ouvrir())}
-        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3 text-[13px] font-medium text-(--lm-encre) hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+        className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3 text-[13px] font-medium text-(--lm-encre) hover:shadow-(--lm-ombre-haute) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none transition"
       >
         <CalendarDays className="size-4 text-(--lm-encre-2)" aria-hidden />
         {libellePeriode(valeur)}
@@ -131,7 +131,7 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
                   aria-pressed={actif}
                   onClick={() => choisir(p)}
                   className={cn(
-                    'h-8 rounded-lg px-2.5 text-[12.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
+                    'h-8 rounded-lg px-2.5 text-[12.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
                     actif ? 'bg-(--lm-or-lavis) text-(--lm-brun)' : 'bg-(--lm-surface-2) text-(--lm-encre-2) hover:text-(--lm-encre)',
                   )}
                 >
@@ -146,7 +146,7 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
               type="button"
               aria-label="Mois précédent"
               onClick={() => setMois(moisPrecedent(mois))}
-              className="grid size-8 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+              className="grid size-8 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
             >
               <ChevronLeft className="size-4" aria-hidden />
             </button>
@@ -157,7 +157,7 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
               type="button"
               aria-label="Mois suivant"
               onClick={() => setMois(debutMoisSuivant(mois))}
-              className="grid size-8 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+              className="grid size-8 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
             >
               <ChevronRight className="size-4" aria-hidden />
             </button>
@@ -184,9 +184,9 @@ export function ChoixPeriode({ valeur, onChange }: { valeur: Periode; onChange: 
                     aria-current={jour === AUJOURDHUI ? 'date' : undefined}
                     onClick={() => toucher(jour)}
                     className={cn(
-                      'lm-chiffres grid size-9 place-items-center rounded-full text-[13px] focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none',
+                      'lm-chiffres grid size-9 place-items-center rounded-full text-[13px] focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
                       borne ? 'bg-(--lm-or-texte) font-semibold text-white' : 'text-(--lm-encre) hover:bg-(--lm-surface-2)',
-                      jour === AUJOURDHUI && !borne && 'font-semibold text-(--lm-or-texte) underline decoration-2 underline-offset-4',
+                      jour === AUJOURDHUI && !borne && 'font-semibold text-(--lm-encre) underline decoration-2 underline-offset-4',
                     )}
                   >
                     {Number(jour.slice(8))}

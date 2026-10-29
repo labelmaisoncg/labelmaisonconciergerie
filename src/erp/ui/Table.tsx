@@ -71,7 +71,7 @@ export function Table<T>({
       <table className="w-full border-collapse text-[13.5px]">
         {legende && <caption className="sr-only">{legende}</caption>}
         <thead>
-          <tr className="border-b border-(--lm-bord) bg-(--lm-surface-2)">
+          <tr className="border-b border-(--lm-bord)">
             {colonnes.map((c) => {
               const actif = tri?.cle === c.cle;
               return (
@@ -81,7 +81,7 @@ export function Table<T>({
                   aria-sort={actif ? (tri!.sens === 'asc' ? 'ascending' : 'descending') : undefined}
                   className={cn(
                     cellule,
-                    'text-[12px] font-medium whitespace-nowrap text-(--lm-encre-2)',
+                    'text-[12px] font-semibold whitespace-nowrap text-(--lm-encre-2)',
                     ALIGN[c.align ?? 'gauche'],
                     c.largeur,
                     c.masquerMobile && 'hidden sm:table-cell',

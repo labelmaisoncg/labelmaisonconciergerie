@@ -95,7 +95,7 @@ export function ReglagesPrix() {
                   <span className="min-w-0 flex-1 truncate text-[13.5px] text-(--lm-encre)">{l.nom}</span>
                   {bornesTexte(l) && <span className="shrink-0 text-[12.5px] text-(--lm-encre-2)">{bornesTexte(l)}</span>}
                   {!lecture && (
-                    <button type="button" onClick={() => setBornes(l)} className="inline-flex min-h-8 shrink-0 items-center text-[13px] font-medium text-(--lm-or-texte) hover:underline" aria-label={`Plancher et plafond de ${l.nom}`}>
+                    <button type="button" onClick={() => setBornes(l)} className="inline-flex min-h-8 shrink-0 items-center text-[13px] font-medium lm-lien" aria-label={`Plancher et plafond de ${l.nom}`}>
                       {bornesTexte(l) ? 'Modifier' : 'Choisir'}
                     </button>
                   )}

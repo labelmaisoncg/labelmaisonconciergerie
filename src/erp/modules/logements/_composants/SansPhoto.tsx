@@ -45,7 +45,7 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
   return (
     <section aria-labelledby="sans-photo-titre" className="mb-5 flex flex-col gap-4 rounded-xl bg-(--lm-surface-2) p-4 sm:flex-row sm:items-start sm:p-5">
       <span aria-hidden className="grid size-12 shrink-0 place-items-center rounded-lg bg-(--lm-surface) text-(--lm-encre-3)">
-        <House className="size-6" strokeWidth={1.5} />
+        <House className="size-6" />
       </span>
       <div className="min-w-0 flex-1">
         <h2 id="sans-photo-titre" className="text-[14px] font-semibold text-(--lm-encre)">
@@ -54,7 +54,7 @@ export function SansPhoto({ logement: l }: { logement: Logement }) {
         {texte && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{texte}</p>}
         {details && (
           <details className="mt-1 text-[12.5px] text-(--lm-encre-2)">
-            <summary className="inline-flex h-8 cursor-pointer items-center font-medium text-(--lm-or-texte) hover:underline">Détails</summary>
+            <summary className="inline-flex h-8 cursor-pointer items-center font-medium lm-lien">Détails</summary>
             <p>{details}</p>
           </details>
         )}

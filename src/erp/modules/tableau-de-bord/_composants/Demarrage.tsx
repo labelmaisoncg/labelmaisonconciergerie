@@ -140,7 +140,7 @@ export function Demarrage() {
   return (
     <Card className="mb-6 sm:mb-8" aria-labelledby="demarrage-titre">
       <div className="flex items-start gap-3">
-        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-(--lm-or-texte) [&_svg]:size-[18px]">
+        <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-[18px]">
           <Rocket />
         </span>
         <div className="min-w-0 flex-1">
@@ -181,7 +181,7 @@ export function Demarrage() {
                 <p className={cn('text-[14px] font-medium', e.fait ? 'text-(--lm-encre-2) line-through decoration-(--lm-encre-3)' : 'text-(--lm-encre)')}>
                   {/* Les autres étapes restent accessibles par leur titre, sans bouton concurrent. */}
                   {!e.fait && i !== prochaine ? (
-                    <Link to={e.lien} className="-my-1.5 inline-flex min-h-8 items-center hover:text-(--lm-or-texte) hover:underline">
+                    <Link to={e.lien} className="-my-1.5 inline-flex min-h-8 items-center hover:underline">
                       {e.titre}
                     </Link>
                   ) : (

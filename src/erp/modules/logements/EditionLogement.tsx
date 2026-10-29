@@ -98,7 +98,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
         <button
           type="button"
           onClick={() => setNouveauProprietaire(true)}
-          className="-mt-2 inline-flex h-8 items-center gap-1 justify-self-start text-[13px] font-medium text-(--lm-or-texte) hover:underline sm:col-span-2"
+          className="-mt-2 inline-flex h-8 items-center gap-1 justify-self-start text-[13px] font-medium lm-lien sm:col-span-2"
         >
           <Plus className="size-3.5" aria-hidden />
           Nouveau propriétaire

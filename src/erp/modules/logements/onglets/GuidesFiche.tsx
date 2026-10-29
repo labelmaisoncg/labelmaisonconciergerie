@@ -118,7 +118,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
                     {g.quand ? ` · ${g.quand}` : ''}
                   </span>
                   {adresse && (
-                    <LienFichier url={adresse} className="mt-1 inline-flex h-8 items-center gap-1 text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+                    <LienFichier url={adresse} className="mt-1 inline-flex h-8 items-center gap-1 text-[12.5px] font-medium lm-lien">
                       Voir <ExternalLink className="size-3.5" aria-hidden />
                     </LienFichier>
                   )}

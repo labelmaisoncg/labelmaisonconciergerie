@@ -37,7 +37,7 @@ export function CarteMontant({ titre, montant, couleur, icone, lignes, note, acc
       </p>
       {(lignes || note) && (
         <details className="group mt-3">
-          <summary className="inline-flex cursor-pointer list-none items-center rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte) [&::-webkit-details-marker]:hidden">
+          <summary className="inline-flex cursor-pointer list-none items-center rounded-md text-[12.5px] font-medium text-(--lm-encre-2) hover:underline [&::-webkit-details-marker]:hidden">
             <span className="group-open:hidden">Voir le détail</span>
             <span className="hidden group-open:inline">Masquer le détail</span>
           </summary>

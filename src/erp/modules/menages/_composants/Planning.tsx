@@ -62,11 +62,11 @@ export function Planning() {
               aria-label={dateJour(jour)}
               className={cn(
                 'flex min-h-32 flex-col rounded-xl border bg-(--lm-surface-2) p-2',
-                estAujourdhui ? 'border-(--lm-or-anneau)' : 'border-(--lm-bord)',
+                estAujourdhui ? 'border-(--lm-encre)' : 'border-(--lm-bord)',
               )}
             >
               <header className="mb-2 flex items-center justify-between px-1">
-                <p className={cn('text-[12.5px] font-semibold first-letter:uppercase', estAujourdhui ? 'text-(--lm-or-texte)' : 'text-(--lm-encre)')}>
+                <p className={cn('text-[12.5px] font-semibold first-letter:uppercase', estAujourdhui ? 'text-(--lm-encre) underline decoration-2 underline-offset-4' : 'text-(--lm-encre)')}>
                   {dateJour(jour)}
                   {estAujourdhui && <span className="sr-only"> (aujourd’hui)</span>}
                 </p>

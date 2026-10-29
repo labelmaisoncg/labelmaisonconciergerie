@@ -105,7 +105,7 @@ function Contenu() {
           <div className="p-4 pb-2 sm:p-5 sm:pb-2">
             <CardHeader
               titre="Par logement"
-              actions={<Link to="/erp/finance/rentabilite" className="text-[13px] font-medium text-(--lm-or-texte) hover:underline">Rentabilité</Link>}
+              actions={<Link to="/erp/finance/rentabilite" className="text-[13px] font-medium lm-lien">Rentabilité</Link>}
             />
           </div>
           <ul className="divide-y divide-(--lm-bord) border-t border-(--lm-bord)">
@@ -125,7 +125,7 @@ function Contenu() {
           <p className="lm-chiffres text-[28px] leading-none font-semibold">{pourcentage(s.tauxEffectif, 1)}</p>
           <ProgressBar className="mt-3" valeur={s.tauxEffectif / (COMMISSION_CIBLE_MAX / 100)} tone={tauxOk ? 'succes' : 'alerte'} label={tauxOk ? 'Dans l’objectif' : 'En dessous de l’objectif'} />
           {sousCible.length > 0 && (
-            <Link to="/erp/mandats" className="mt-3 inline-block text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+            <Link to="/erp/mandats" className="mt-3 inline-block text-[12.5px] font-medium lm-lien">
               {nombre(sousCible.length)} contrat{sousCible.length > 1 ? 's' : ''} à revoir
             </Link>
           )}
@@ -133,8 +133,8 @@ function Contenu() {
       </div>
 
       <details className="group mb-6">
-        <summary className="mb-3 inline-flex cursor-pointer list-none items-center gap-1.5 text-[13.5px] font-medium text-(--lm-encre-2) hover:text-(--lm-or-texte) [&::-webkit-details-marker]:hidden">
-          <ChevronRight className="size-4 text-(--lm-or-texte) transition-transform group-open:rotate-90" aria-hidden />
+        <summary className="mb-3 inline-flex cursor-pointer list-none items-center gap-1.5 text-[13.5px] font-medium text-(--lm-encre-2) hover:underline [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-4 text-(--lm-encre) transition-transform group-open:rotate-90" aria-hidden />
           Voir l’évolution mois par mois
         </summary>
         <div className="grid gap-4 xl:grid-cols-2">

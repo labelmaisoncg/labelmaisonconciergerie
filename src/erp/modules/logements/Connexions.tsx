@@ -294,7 +294,7 @@ export default function Connexions() {
                 ) : (
                   // Les consignes restent à un clic (celle de Booking.com évite de céder vos prix et calendriers).
                   <details className="text-[12.5px] text-(--lm-encre-2)">
-                    <summary className="-my-[7px] cursor-pointer py-[7px] font-medium text-(--lm-or-texte) hover:underline">Comment ça marche ?</summary>
+                    <summary className="-my-[7px] cursor-pointer py-[7px] font-medium lm-lien">Comment ça marche ?</summary>
                     <p className="mt-1.5">{p.aide}</p>
                   </details>
                 )}
@@ -368,7 +368,7 @@ export default function Connexions() {
               : `${aRelier.length} logements ont été créés à la main. Pour éviter des doublons, reliez-les à leur annonce plutôt que de la cocher ici.`}
             <span className="mt-1 flex flex-wrap gap-x-4">
               {aRelier.slice(0, 4).map((l) => (
-                <Link key={l.id} to={`/erp/logements/${l.id}?relier=1`} className="inline-flex min-h-8 items-center font-medium text-(--lm-or-texte) hover:underline">
+                <Link key={l.id} to={`/erp/logements/${l.id}?relier=1`} className="inline-flex min-h-8 items-center font-medium lm-lien">
                   Relier {aRelier.length === 1 ? 'à son annonce' : `« ${l.nom} »`}
                 </Link>
               ))}
@@ -418,7 +418,7 @@ export default function Connexions() {
                     className={cn(
                       'flex h-full items-center gap-3 rounded-xl border bg-(--lm-surface) p-3 transition-colors',
                       coche ? 'border-(--lm-or) ring-1 ring-(--lm-or-anneau)' : 'border-(--lm-bord)',
-                      bloque ? 'cursor-not-allowed opacity-50 grayscale' : inactif ? 'cursor-default' : 'cursor-pointer hover:border-(--lm-or-anneau)',
+                      bloque ? 'cursor-not-allowed opacity-50 grayscale' : inactif ? 'cursor-default' : 'cursor-pointer hover:shadow-(--lm-ombre-haute) transition',
                     )}
                   >
                     <input
@@ -537,7 +537,7 @@ function LogoPlateforme({ nom, logo }: { nom: string; logo?: string }) {
   const [casse, setCasse] = useState(false);
   if (logo && !casse) return <img src={logo} alt="" className="size-10 shrink-0 rounded-lg border border-(--lm-bord) bg-white object-contain p-1" onError={() => setCasse(true)} />;
   return (
-    <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-or-lavis) text-[15px] font-semibold text-(--lm-brun)">
+    <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--lm-surface-2) text-[15px] font-semibold text-(--lm-encre)">
       {nom.charAt(0)}
     </span>
   );

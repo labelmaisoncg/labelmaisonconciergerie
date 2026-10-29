@@ -14,8 +14,20 @@ export interface ModalProps {
   children?: ReactNode;
 }
 
-const TAILLES = { sm: 'max-w-sm', md: 'max-w-lg', lg: 'max-w-2xl' };
+const TAILLES = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl' };
 
+/**
+ * Pied d'une fenêtre, comme Airbnb : un filet dessus, l'action d'abandon
+ * (« Annuler », bouton tertiaire souligné) à gauche, l'action principale à
+ * droite ; 48 px de haut sur téléphone (erp.css, .lm-pied-fenetre).
+ */
+export const PIED_FENETRE = 'lm-pied-fenetre flex flex-wrap items-center justify-end gap-2 border-t border-(--lm-bord) px-5 py-3.5 sm:px-6 [&>*:first-child:not(:last-child)]:mr-auto';
+
+/**
+ * Fenêtre à la manière d'Airbnb : en-tête avec le bouton fermer rond à
+ * gauche et le titre centré (16 px, 600), un filet dessous ; sur téléphone,
+ * une feuille qui monte du bas, arrondie en haut.
+ */
 export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md', children }: ModalProps) {
   const ref = useFenetre<HTMLDivElement>(ouvert, onFermer);
   const titreId = useId();
@@ -23,7 +35,7 @@ export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md
   if (!ouvert) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
-      <div aria-hidden className="lm-apparition absolute inset-0 bg-[rgba(20,17,14,0.4)]" onClick={onFermer} />
+      <div aria-hidden className="lm-apparition absolute inset-0 bg-(--lm-voile)" onClick={onFermer} />
       <div
         ref={ref}
         role="dialog"
@@ -32,28 +44,29 @@ export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md
         aria-describedby={description ? descId : undefined}
         tabIndex={-1}
         className={cn(
-          'lm-apparition relative flex max-h-[92vh] w-full flex-col rounded-t-2xl bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:rounded-2xl',
+          'lm-feuille relative flex max-h-[92dvh] w-full flex-col rounded-t-2xl bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:rounded-2xl',
           TAILLES[taille],
         )}
       >
-        {/* Sans contenu, l'en-tête garde son souffle au-dessus du pied. */}
-        <div className={cn('flex items-start gap-3 px-5 pt-4', !children && 'pb-4')}>
-          <div className="min-w-0 flex-1">
-            <h2 id={titreId} className="lm-serif text-[20px] text-(--lm-encre)">
-              {titre}
-            </h2>
+        <div className="relative flex min-h-14 shrink-0 items-center justify-center border-b border-(--lm-bord) px-14 py-3">
+          <IconButton label="Fermer" onClick={onFermer} size="sm" className="absolute top-1/2 left-3 -translate-y-1/2">
+            <X />
+          </IconButton>
+          <h2 id={titreId} className="lm-titre text-center text-[16px] leading-snug text-(--lm-encre)">
+            {titre}
+          </h2>
+        </div>
+        {(description || children) && (
+          <div className="lm-defilement overflow-y-auto px-5 py-5 sm:px-6">
             {description && (
-              <p id={descId} className="mt-1 text-[13.5px] text-(--lm-encre-2)">
+              <p id={descId} className={cn('text-[14px] text-(--lm-encre-2)', children && 'mb-4')}>
                 {description}
               </p>
             )}
+            {children}
           </div>
-          <IconButton label="Fermer" onClick={onFermer} size="sm">
-            <X />
-          </IconButton>
-        </div>
-        {children && <div className="lm-defilement overflow-y-auto px-5 py-4">{children}</div>}
-        {pied && <div className="flex flex-wrap justify-end gap-2 border-t border-(--lm-bord) px-5 py-3">{pied}</div>}
+        )}
+        {pied && <div className={PIED_FENETRE}>{pied}</div>}
       </div>
     </div>
   );

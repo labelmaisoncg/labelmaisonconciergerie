@@ -324,7 +324,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
               {nonPlaces.map((p, k) => (
                 <span key={p.id}>
                   {k > 0 && ', '}
-                  <button type="button" onClick={() => choisir(p.id)} className="inline-flex min-h-8 items-center font-medium text-(--lm-encre) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
+                  <button type="button" onClick={() => choisir(p.id)} className="inline-flex min-h-8 items-center font-medium text-(--lm-encre) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none">
                     {p.nom}
                   </button>
                 </span>
@@ -340,7 +340,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
             aria-expanded={liste}
             aria-controls={listeId}
             onClick={() => setListe((x) => !x)}
-            className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+            className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
           >
             {liste ? 'Masquer la liste' : 'Voir en liste'}
           </button>
@@ -359,7 +359,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
   );
 }
 
-const LIEN_CREDIT = 'inline-flex min-h-8 items-center underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none';
+const LIEN_CREDIT = 'inline-flex min-h-8 items-center underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
 
 /**
  * Crédits du fond de carte, exigés par OpenFreeMap et OpenStreetMap : sous la

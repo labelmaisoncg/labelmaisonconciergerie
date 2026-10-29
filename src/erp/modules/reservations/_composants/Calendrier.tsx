@@ -219,13 +219,13 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
                   style={{ width: w }}
                   className={cn('lm-chiffres flex h-12 shrink-0 flex-col items-center justify-center gap-0.5 leading-none', estWeekEnd(j) && 'bg-(--lm-surface-2)')}
                 >
-                  <span className={cn('text-[11px]', premier ? 'font-semibold text-(--lm-or-texte)' : 'text-(--lm-encre-3)')}>
+                  <span className={cn('text-[11px]', premier ? 'font-semibold text-(--lm-encre)' : 'text-(--lm-encre-3)')}>
                     {premier ? MOIS_COURTS[Number(j.slice(5, 7)) - 1] : w >= 40 ? JOURS_COURTS[js] : JOURS_INITIALE[js]}
                   </span>
                   <span
                     className={cn(
                       'grid size-6 place-items-center rounded-full text-[12.5px]',
-                      auj ? 'bg-(--lm-or-texte) font-semibold text-(--lm-surface)' : 'font-medium text-(--lm-encre)',
+                      auj ? 'bg-(--lm-encre) font-semibold text-(--lm-surface)' : 'font-medium text-(--lm-encre)',
                     )}
                     aria-label={auj ? 'Aujourd’hui' : undefined}
                   >
@@ -247,7 +247,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
               >
                 <VisuelLogement logement={l} taille="sm" className={cn('shrink-0 rounded-lg', col > 150 ? 'size-9' : 'size-7')} />
                 <span className="min-w-0">
-                  <span className={cn('block font-medium text-(--lm-encre) group-hover:text-(--lm-or-texte)', col > 150 ? 'truncate text-[13px]' : 'line-clamp-2 text-[12px] leading-tight')}>
+                  <span className={cn('block font-medium text-(--lm-encre) group-hover:underline', col > 150 ? 'truncate text-[13px]' : 'line-clamp-2 text-[12px] leading-tight')}>
                     {l.nom}
                   </span>
                   {col > 150 && (
@@ -274,7 +274,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
                   ))}
                 </div>
                 {aujourdhuiVisible && (
-                  <span aria-hidden className="absolute inset-y-0 z-[3] w-px bg-(--lm-or)" style={{ left: indexAujourdhui * w + w / 2 }} />
+                  <span aria-hidden className="absolute inset-y-0 z-[3] w-px bg-(--lm-encre)" style={{ left: indexAujourdhui * w + w / 2 }} />
                 )}
                 {sejours.map((r) => (
                   <Barre
@@ -321,7 +321,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
             type="button"
             aria-pressed={annulees}
             onClick={() => setAnnulees((a) => !a)}
-            className="-my-1 ml-auto inline-flex h-8 items-center rounded-md px-2 font-medium text-(--lm-or-texte) hover:bg-(--lm-or-lavis)"
+            className="lm-lien -my-1 ml-auto inline-flex h-8 items-center rounded-lg px-2 font-semibold hover:bg-(--lm-surface-2)"
           >
             {annulees ? 'Masquer les annulations' : `Voir les annulations (${nbAnnulees})`}
           </button>
@@ -377,7 +377,7 @@ function Barre({
       onFocus={(e) => e.currentTarget.matches(':focus-visible') && onMontrer(r, e.currentTarget)}
       onBlur={onCacher}
       className={cn(
-        'absolute inset-y-3 z-[4] flex items-center gap-1.5 overflow-hidden px-2 text-left text-[12px] font-medium whitespace-nowrap transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-offset-1 focus:outline-none',
+        'absolute inset-y-3 z-[4] flex items-center gap-1.5 overflow-hidden px-2 text-left text-[12px] font-medium whitespace-nowrap transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-1 focus:outline-none',
         coupeGauche && coupeDroite ? 'rounded-none' : coupeGauche ? 'rounded-r-lg' : coupeDroite ? 'rounded-l-lg' : 'rounded-lg',
         annulee && 'border border-dashed border-(--lm-bord-fort) bg-(--lm-surface) line-through',
       )}

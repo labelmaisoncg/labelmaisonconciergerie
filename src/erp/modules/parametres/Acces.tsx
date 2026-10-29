@@ -85,7 +85,7 @@ export default function Acces() {
           <button
             type="button"
             onClick={() => setParams({})}
-            className="inline-flex min-h-8 items-center rounded-md px-1 font-medium text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+            className="inline-flex min-h-8 items-center rounded-md px-1 font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
           >
             Tout voir
           </button>

@@ -62,7 +62,7 @@ function EnteteMarque({ nom }: { nom: string }) {
           LM
         </span>
       )}
-      <p className="lm-serif text-[22px] leading-tight text-(--lm-brun)">{nom}</p>
+      <p className="lm-titre text-[22px] leading-tight text-(--lm-brun)">{nom}</p>
     </div>
   );
 }
@@ -187,7 +187,7 @@ export default function Sejour() {
     return { erreurs: Array.isArray(r.json.erreurs) ? (r.json.erreurs as ErreurCheckin[]) : [], message: String(r.json.erreur ?? t.erreur) };
   };
 
-  const bandeau = MODE_DEMO && demo ? <p className="bg-(--lm-or-lavis) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-brun)">Démonstration · séjour de {demo.reservation.voyageur.nom}</p> : undefined;
+  const bandeau = MODE_DEMO && demo ? <p className="border-b border-(--lm-bord) bg-(--lm-surface-2) px-4 py-2 text-center text-[12.5px] font-medium text-(--lm-encre)">Démonstration · séjour de {demo.reservation.voyageur.nom}</p> : undefined;
 
   return (
     <div className="erp-root" lang={langue}>

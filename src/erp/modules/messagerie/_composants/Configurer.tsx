@@ -160,7 +160,7 @@ export function Configurer() {
               )}
             >
               <span className="flex items-center gap-1.5 text-[14px] font-semibold text-(--lm-encre)">
-                {autonomie === n.cle && <Check className="size-4 shrink-0 text-(--lm-or-texte)" aria-hidden />}
+                {autonomie === n.cle && <Check className="size-4 shrink-0 text-(--lm-encre)" aria-hidden />}
                 {n.libelle}
               </span>
               <span className="sr-only">{n.description}</span>
@@ -188,7 +188,7 @@ export function Configurer() {
               )}
             >
               <span className="flex items-center gap-1.5 text-[14px] font-semibold text-(--lm-encre)">
-                {f.ton === t.cle && <Check className="size-4 text-(--lm-or-texte)" aria-hidden />}
+                {f.ton === t.cle && <Check className="size-4 text-(--lm-encre)" aria-hidden />}
                 {t.libelle}
               </span>
               <span className="sr-only">{t.description}</span>
@@ -364,7 +364,7 @@ export function Configurer() {
             <p className="text-[13.5px] text-(--lm-encre-2)">Aucun logement pour l’instant : ils arrivent avec la connexion des plateformes.</p>
           )
         )}
-        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-0.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+        <Link to={incompletes[0] ? `/erp/logements/${incompletes[0].id}?onglet=fiche` : '/erp/logements'} className="mt-0.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien">
           {incompletes[0] ? `Compléter la fiche de ${incompletes[0].nom}` : 'Voir vos logements'} <ArrowRight className="size-3.5" aria-hidden />
         </Link>
       </Bloc>

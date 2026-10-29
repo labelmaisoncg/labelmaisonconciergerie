@@ -21,7 +21,7 @@ export function Wordmark({ className }: { className?: string }) {
       </span>
       <span className="flex min-w-0 flex-col leading-none">
         <span className="truncate text-[11.5px] font-semibold tracking-[0.18em] text-(--lm-or-texte) [font-variant:small-caps]">{nom}</span>
-        <span className="lm-serif mt-1 text-[17px] text-(--lm-encre)">ERP</span>
+        <span className="lm-titre mt-1 text-[17px] text-(--lm-encre)">ERP</span>
       </span>
     </Link>
   );

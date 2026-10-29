@@ -266,7 +266,7 @@ function Avance({ serveurActif, demo }: { serveurActif: boolean; demo: boolean }
             <ol className="list-decimal space-y-1 pl-5">
               <li>
                 Ouvrez{' '}
-                <a href={VERCEL} target="_blank" rel="noreferrer" className="font-medium text-(--lm-or-texte) hover:underline">
+                <a href={VERCEL} target="_blank" rel="noreferrer" className="font-medium lm-lien">
                   Vercel
                 </a>
                 , le projet du site, puis Settings → Environment Variables.

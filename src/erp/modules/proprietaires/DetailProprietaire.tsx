@@ -34,7 +34,7 @@ export default function DetailProprietaire() {
     return (
       <>
         <PageHeader titre="Propriétaire introuvable" fil={[{ libelle: 'Propriétaires', to: '/erp/proprietaires' }]} />
-        <EmptyState titre="Ce propriétaire n’existe plus" action={<Link to="/erp/proprietaires" className="text-sm font-medium text-(--lm-or-texte) hover:underline">Retour à la liste</Link>} />
+        <EmptyState titre="Ce propriétaire n’existe plus" action={<Link to="/erp/proprietaires" className="text-sm font-medium lm-lien">Retour à la liste</Link>} />
       </>
     );
   }
@@ -84,7 +84,7 @@ export default function DetailProprietaire() {
           <Card>
             <CardHeader titre="Coordonnées" />
             <ul className="space-y-2.5 text-[13.5px]">
-              <li className="flex items-start gap-2.5"><Mail className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><a href={`mailto:${p.contact.email}`} className="break-all text-(--lm-or-texte) hover:underline">{p.contact.email}</a></li>
+              <li className="flex items-start gap-2.5"><Mail className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><a href={`mailto:${p.contact.email}`} className="break-all lm-lien">{p.contact.email}</a></li>
               <li className="flex items-start gap-2.5"><Phone className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden /><a href={`tel:${p.contact.telephone.replace(/\s/g, '')}`} className="hover:underline">{p.contact.telephone}</a></li>
               <li className="flex items-start gap-2.5"><MapPin className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />{p.adresse}</li>
             </ul>
@@ -108,7 +108,7 @@ export default function DetailProprietaire() {
                   const eco = economieBien(d.donnees, l.id);
                   return (
                     <li key={l.id}>
-                      <Link to={`/erp/logements/${l.id}`} className="flex items-start gap-3 rounded-lg border border-(--lm-bord) p-2.5 hover:border-(--lm-or-anneau)">
+                      <Link to={`/erp/logements/${l.id}`} className="flex items-start gap-3 rounded-lg border border-(--lm-bord) p-2.5 hover:shadow-(--lm-ombre-haute) transition">
                         <VisuelLogement logement={l} taille="sm" className="size-10 shrink-0 rounded-lg" />
                         <span className="min-w-0 flex-1">
                           <span className="flex items-start justify-between gap-2">
@@ -155,7 +155,7 @@ export default function DetailProprietaire() {
               cleLigne={(m) => m.id}
               vide="Pas encore de contrat."
               colonnes={[
-                { cle: 'ref', titre: 'Référence', rendu: (m) => <Link to={`/erp/mandats?mandat=${m.id}`} className="font-medium text-(--lm-or-texte) hover:underline">{m.reference}</Link> },
+                { cle: 'ref', titre: 'Référence', rendu: (m) => <Link to={`/erp/mandats?mandat=${m.id}`} className="font-medium lm-lien">{m.reference}</Link> },
                 { cle: 'log', titre: 'Logement', masquerMobile: true, rendu: (m) => d.logements.find((l) => l.id === m.logementId)?.nom ?? 'Inconnu' },
                 {
                   cle: 'com',
@@ -196,7 +196,7 @@ export default function DetailProprietaire() {
           <section aria-label="Factures">
             <div className="mb-2 flex items-center justify-between">
               <h2 className="text-[15px] font-semibold">Factures</h2>
-              <Link to="/erp/finance" className="inline-flex items-center gap-1 text-[13px] font-medium text-(--lm-or-texte) hover:underline">
+              <Link to="/erp/finance" className="inline-flex items-center gap-1 text-[13px] font-medium lm-lien">
                 <ScrollText className="size-3.5" aria-hidden />
                 Finance
               </Link>

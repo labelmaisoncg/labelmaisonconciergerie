@@ -26,16 +26,17 @@ export function Sidebar({ onNaviguer, className }: SidebarProps) {
           onClick={onNaviguer}
           aria-current={actif ? 'page' : undefined}
           className={cn(
-            'flex h-10 items-center gap-2.5 rounded-lg px-3 text-[13.5px] font-medium transition-colors',
+            'flex h-11 items-center gap-3 rounded-lg px-3 text-[14px] transition-colors',
+            // Rubrique ouverte : fond gris, libellé en 600, icône or (comme l'onglet actif de la barre du bas).
             actif
-              ? 'bg-(--lm-or-lavis) text-(--lm-brun) [&>svg]:text-(--lm-or-texte)'
-              : 'text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
+              ? 'bg-(--lm-surface-2) font-semibold text-(--lm-encre) [&>svg]:fill-(--lm-or-lavis) [&>svg]:text-(--lm-or-texte)'
+              : 'font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)',
           )}
         >
-          <Icone className="size-[18px] shrink-0" aria-hidden />
+          <Icone className="size-5 shrink-0" aria-hidden />
           <span className="flex-1 truncate">{g.libelle}</span>
           {n > 0 && (
-            <span className="lm-chiffres rounded-full bg-(--lm-or-texte) px-1.5 py-px text-[11px] font-semibold text-white">
+            <span className="lm-chiffres min-w-5 rounded-full bg-(--lm-encre) px-1.5 py-px text-center text-[11px] font-semibold text-white">
               {n}
               <span className="sr-only"> à regarder</span>
             </span>
@@ -47,10 +48,10 @@ export function Sidebar({ onNaviguer, className }: SidebarProps) {
 
   return (
     <div className={cn('flex h-full flex-col bg-(--lm-surface)', className)}>
-      <div className="flex h-14 shrink-0 items-center px-4">
+      <div className="flex h-[4.5rem] shrink-0 items-center px-5">
         <Wordmark />
       </div>
-      <nav aria-label="Menu principal" className="lm-defilement flex flex-1 flex-col overflow-y-auto px-2.5 pt-3 pb-4">
+      <nav aria-label="Menu principal" className="lm-defilement flex flex-1 flex-col overflow-y-auto px-3 pt-3 pb-4">
         <ul className="space-y-0.5">{GROUPES.filter((g) => !g.bas).map(entree)}</ul>
         <ul className="mt-auto space-y-0.5 border-t border-(--lm-bord) pt-3">{GROUPES.filter((g) => g.bas).map(entree)}</ul>
       </nav>

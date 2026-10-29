@@ -12,7 +12,7 @@ export interface ProgressBarProps {
   className?: string;
 }
 
-export function ProgressBar({ valeur, label, afficherValeur, tone = 'or', className }: ProgressBarProps) {
+export function ProgressBar({ valeur, label, afficherValeur, tone, className }: ProgressBarProps) {
   const borne = Math.min(1, Math.max(0, Number.isFinite(valeur) ? valeur : 0));
   return (
     <div className={cn('w-full', className)}>
@@ -30,7 +30,8 @@ export function ProgressBar({ valeur, label, afficherValeur, tone = 'or', classN
         aria-valuenow={Math.round(borne * 100)}
         className="h-1.5 w-full overflow-hidden rounded-full bg-(--lm-neutre-lavis)"
       >
-        <div className={cn('h-full rounded-full transition-[width]', TON_PLEIN[tone])} style={{ width: `${borne * 100}%` }} />
+        {/* Sans ton : à l'encre (l'or reste au bouton principal et aux états choisis). */}
+        <div className={cn('h-full rounded-full transition-[width]', tone ? TON_PLEIN[tone] : 'bg-(--lm-encre)')} style={{ width: `${borne * 100}%` }} />
       </div>
     </div>
   );

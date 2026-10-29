@@ -90,7 +90,7 @@ function TableauMois({ mois }: { mois: MoisPerformance[] }) {
   );
   return (
     <details className="group mt-3 border-t border-(--lm-bord) pt-2">
-      <summary className="inline-flex min-h-9 cursor-pointer items-center rounded-md text-[13px] font-medium text-(--lm-or-texte) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none">
+      <summary className="inline-flex min-h-9 cursor-pointer items-center rounded-md text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none">
         Voir les chiffres mois par mois
       </summary>
       <div className="lm-defilement mt-2 -mx-2 overflow-x-auto sm:-mx-3">
@@ -133,7 +133,7 @@ function Etoiles({ note }: { note: number }) {
   return (
     <span role="img" className="inline-flex items-center gap-0.5" aria-label={`${nombre(note, 1)} sur 5`}>
       {[1, 2, 3, 4, 5].map((i) => (
-        <Star key={i} className={cn('size-3.5', note >= i - 0.25 ? 'fill-(--lm-or) text-(--lm-or)' : 'text-(--lm-encre-3)')} aria-hidden />
+        <Star key={i} className={cn('size-3.5', note >= i - 0.25 ? 'fill-(--lm-encre) text-(--lm-encre)' : 'text-(--lm-encre-3)')} aria-hidden />
       ))}
     </span>
   );
@@ -147,7 +147,7 @@ export function FicheLogement({ logement: l, fiche: f, aujourdhui }: { logement:
   return (
     <>
       {l.photo && <PhotoLogement url={l.photo} nom={l.nom} className="mb-4 aspect-[16/9] w-full rounded-xl sm:aspect-[21/9]" />}
-      <h1 className="lm-serif text-[26px] leading-tight text-(--lm-brun) sm:text-[30px]">{l.nom}</h1>
+      <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun) sm:text-[28px]">{l.nom}</h1>
       <p className="text-[14px] text-(--lm-encre-2)">
         {l.ville} · {pluriel(l.capacite, 'voyageur')} · {pluriel(l.chambres, 'chambre')}
       </p>
@@ -249,7 +249,7 @@ export function Logements({ vue, choisi, onChoisir }: { vue: VueProprietaire; ch
           <button
             type="button"
             onClick={() => onChoisir(undefined)}
-            className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none"
+            className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
           >
             <ChevronLeft className="size-4" aria-hidden />
             Mes logements
@@ -272,7 +272,7 @@ export function Logements({ vue, choisi, onChoisir }: { vue: VueProprietaire; ch
                 <button
                   type="button"
                   onClick={() => onChoisir(l.id)}
-                  className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus-visible:ring-offset-4 focus:outline-none"
+                  className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-4 focus:outline-none"
                 >
                   <PhotoLogement url={l.photo} nom={l.nom} className="aspect-[4/3] w-full rounded-xl transition-opacity group-hover:opacity-90" />
                   <span className="mt-2.5 flex items-center justify-between gap-2">

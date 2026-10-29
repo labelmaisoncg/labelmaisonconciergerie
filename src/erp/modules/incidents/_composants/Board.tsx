@@ -34,7 +34,7 @@ export function Board({ incidents, onOuvrir }: { incidents: Incident[]; onOuvrir
                   key={i.id}
                   type="button"
                   onClick={() => onOuvrir(i)}
-                  className="rounded-lg border border-(--lm-bord) bg-(--lm-surface) p-3 text-left text-[12.5px] transition-colors hover:border-(--lm-or-anneau) focus-visible:ring-2 focus-visible:ring-(--lm-or) focus-visible:outline-none"
+                  className="rounded-lg border border-(--lm-bord) bg-(--lm-surface) p-3 text-left text-[12.5px] transition hover:shadow-(--lm-ombre-haute) focus-visible:ring-2 focus-visible:ring-(--lm-or) focus-visible:outline-none"
                 >
                   <div className="mb-1 flex flex-wrap items-center gap-1.5">
                     <StatusBadge type="gravite" valeur={i.gravite} />

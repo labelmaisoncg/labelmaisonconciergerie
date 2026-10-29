@@ -35,23 +35,23 @@ function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
   const reste = complet ? e.details.length - 1 : 0;
   return (
     <li className="flex items-start gap-3 px-4 py-3">
-      <span aria-hidden className={cn('mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg [&_svg]:size-4', TON_LAVIS[e.ton])}>
+      <span aria-hidden className={cn('mt-0.5 grid size-9 shrink-0 place-items-center rounded-lg [&_svg]:size-[18px]', e.ton === 'or' || e.ton === 'neutre' ? 'bg-(--lm-surface-2) text-(--lm-encre)' : TON_LAVIS[e.ton])}>
         <Icone />
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-          <Link to={e.to} className="inline-flex min-h-8 items-center text-[13.5px] font-semibold text-(--lm-encre) hover:text-(--lm-or-texte) hover:underline">
+          <Link to={e.to} className="inline-flex min-h-8 items-center text-[14px] font-semibold text-(--lm-encre) hover:underline">
             {e.titre}
           </Link>
           {complet && <span className="text-[11.5px] text-(--lm-encre-3)">{PRIORITES[e.priorite]}</span>}
         </div>
-        <ul className="mt-0.5 space-y-0.5 text-[12.5px] text-(--lm-encre-2)">
+        <ul className="mt-0.5 space-y-0.5 text-[13px] text-(--lm-encre-2)">
           {apercu.map((t, i) => (
             // Dans la carte, des détails en texte simple (le titre mène déjà au premier) ;
             // dans « Tout voir », une ligne touchable par détail, avec un chevron.
             <li key={i} className={complet && e.liens?.[i] ? undefined : 'truncate'} title={t}>
               {complet && e.liens?.[i] ? (
-                <Link to={e.liens[i]} className="flex min-h-8 items-center justify-between gap-2 rounded-md hover:text-(--lm-or-texte)">
+                <Link to={e.liens[i]} className="flex min-h-8 items-center justify-between gap-2 rounded-md hover:underline">
                   <span className="truncate">{t}</span>
                   <ChevronRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 </Link>
@@ -66,7 +66,7 @@ function Ligne({ e, complet }: { e: ElementATraiter; complet?: boolean }) {
             type="button"
             onClick={() => setOuvert((o) => !o)}
             aria-expanded={ouvert}
-            className="mt-1 inline-flex min-h-8 items-center gap-0.5 text-[12px] font-medium text-(--lm-or-texte) hover:underline"
+            className="mt-1 inline-flex min-h-8 items-center gap-0.5 text-[12px] font-medium lm-lien"
           >
             {ouvert ? <ChevronDown className="size-3.5" aria-hidden /> : <ChevronRight className="size-3.5" aria-hidden />}
             {ouvert ? 'Voir moins' : `Voir ${reste} de plus`}
@@ -116,7 +116,7 @@ export function ATraiter({ elements, titre = 'À faire', max = 5, premiere, acti
                 </span>
               )}
               {!statut && elements.length > max && (
-                <button type="button" onClick={() => setTout(true)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium text-(--lm-or-texte) hover:underline">
+                <button type="button" onClick={() => setTout(true)} className="inline-flex min-h-8 items-center text-[12.5px] font-medium lm-lien">
                   Tout voir ({elements.length})
                 </button>
               )}

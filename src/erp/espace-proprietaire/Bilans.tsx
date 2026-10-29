@@ -72,7 +72,7 @@ export function BilanDetail({
       </header>
 
       {bilan.commentaire.trim() && (
-        <blockquote className="mt-4 rounded-xl border border-(--lm-or-anneau) bg-(--lm-or-lavis) px-4 py-3 text-[14px] whitespace-pre-line text-(--lm-encre)">
+        <blockquote className="mt-4 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) px-4 py-3 text-[14px] whitespace-pre-line text-(--lm-encre)">
           <p className="mb-1 text-[12.5px] font-semibold text-(--lm-brun)">Le mot {deNom(conciergerie)}</p>
           {bilan.commentaire.trim()}
         </blockquote>
@@ -181,7 +181,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
     const plusRecent = vue.bilans[i - 1];
     const plusAncien = vue.bilans[i + 1];
     const nav =
-      'inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none';
+      'inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
     return (
       <>
         <div className="lm-sans-impression mb-4 flex items-center justify-between gap-2">
@@ -212,7 +212,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
               <button
                 type="button"
                 onClick={() => onChoisir(b.mois)}
-                className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-or-anneau) focus:outline-none focus-visible:ring-inset"
+                className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-semibold text-(--lm-encre)">{titreMois(b.mois)}</span>
