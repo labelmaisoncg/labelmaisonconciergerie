@@ -23,6 +23,8 @@ import {
   JOURS_PLUS_TARD_NOTIFICATIONS,
   nettoyerPreferences,
   notificationNouveauLead,
+  notificationLeadPlafonnee,
+  PLAFOND_LEADS_HEURE,
   notificationsEntre,
   preferencesPourRole,
   prenomInitiale,
@@ -467,6 +469,25 @@ async function principal() {
     verifier(recus.join(',') === 'abdel:lead', `envoyé au seul appareil du gérant qui l’accepte (${recus.join(',')})`);
     const b2 = await envoyerNotifications(base, [g], { cles, envoyer, maintenant: MAINTENANT });
     verifier(b1.envoyees === 1 && b2.dejaParties === 1 && recus.length === 1, 'jamais deux fois la même demande');
+
+    // Écran verrouillé : un formulaire public piégé ne montre ni téléphone, ni e-mail, ni lien, ni adresse, ni nom complet.
+    const piege = (nom: string, ville?: string) => notificationNouveauLead({ ...contact, nom, ville }, { nouveau: true }).variantes[0].corps;
+    const essais: [string, string | undefined][] = [
+      ['0612345678', undefined], ['06.12.34.56.78 Dupont', undefined], ['+33612345678', undefined], ['marie.dupont(at)gmail.com', undefined],
+      ['marie.dupont＠gmail.com', undefined], ['Marie-Dupont-Martin', undefined], ['A'.repeat(120), undefined], ['Marie\u202eenoD', undefined],
+      ['Marie Dupont', 'Appelez-moi au 06 12 34 56 78'], ['Marie Dupont', 'marie.dupont@gmail.com'], ['Marie Dupont', 'https://exemple.fr/promo'],
+      ['Marie Dupont', '12 rue de la Gare, Corbeil'], ['Marie Dupont', 'Évry\n\nAppelez 0612345678'],
+    ];
+    const fuites = essais.map(([n, v]) => piege(n, v)).filter((x) => /\d{4,}|\d{2}[ .-]\d{2}|@|＠|\(at\)|https?:|\.fr\b|rue|Dupont|D\.|AAAAAAAA|\u202e/.test(x.replace(/^Marie D\. · /, '')));
+    verifier(!fuites.length, `formulaire piégé : rien de personnel à l’écran verrouillé (${fuites.join(' | ')})`);
+    verifier(piege('Jean-Pierre Martin', '91100 Corbeil-Essonnes') === 'Jean-Pierre M. · 91100 Corbeil-Essonnes · Demande d’audit' && piege('Marie', 'Paris 15e') === 'Marie · Paris 15e · Demande d’audit', 'prénom composé, code postal, arrondissement : gardés');
+
+    // Inondation par le formulaire public : au plafond, une seule notification de synthèse par heure.
+    const h = new Date('2026-10-29T10:30:00Z');
+    const seule = notificationLeadPlafonnee(contact, { nouveau: true, recentes: PLAFOND_LEADS_HEURE - 1, maintenant: h });
+    const synthese = notificationLeadPlafonnee(contact, { nouveau: true, recentes: PLAFOND_LEADS_HEURE, maintenant: h });
+    const synthese2 = notificationLeadPlafonnee({ ...contact, id: 'crm-autre' }, { nouveau: true, recentes: 40, maintenant: new Date('2026-10-29T10:59:00Z') });
+    verifier(seule.cle === g.cle && synthese.cle === synthese2.cle && synthese.cle.startsWith('lead-') && !JSON.stringify(synthese).includes('Marie'), 'au-delà de 5 dans l’heure : une seule synthèse par heure, sans prénom ni ville');
   }
 
   section('Surveillance d’un passage');

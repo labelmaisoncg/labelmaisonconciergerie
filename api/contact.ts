@@ -179,15 +179,18 @@ export default async function handler(req: any, res: any) {
     }
   })();
 
-  const [resultatCrm, mailEnvoye] = await Promise.all([crm, envoi]);
+  // Notification au gérant (« Nouvelle demande à appeler ») : dès que la ligne CRM est écrite, en même
+  // temps que l'e-mail, avant de répondre (une fonction Vercel s'arrête à la réponse), bornée à 3 s,
+  // sans effet sur la réponse (au pire 6 s de CRM + 3 s, comme avant l'e-mail).
+  const notification = crm.then((r) =>
+    r && r.etat !== 'inactif'
+      ? avecDelai(notifierNouveauLead(r.contact, r.etat === 'cree'), 3000).catch((err) => {
+          console.error('[contact] notification :', err instanceof Error ? err.message : err);
+        })
+      : undefined,
+  );
+  const [resultatCrm, mailEnvoye] = await Promise.all([crm, envoi, notification]);
   const crmOk = !!resultatCrm && resultatCrm.etat !== 'inactif';
-  // Notification au gérant (« Nouvelle demande à appeler ») : avant de répondre (une
-  // fonction Vercel s'arrête à la réponse), bornée à 3 s, sans effet sur la réponse.
-  if (resultatCrm && resultatCrm.etat !== 'inactif') {
-    await avecDelai(notifierNouveauLead(resultatCrm.contact, resultatCrm.etat === 'cree'), 3000).catch((err) => {
-      console.error('[contact] notification :', err instanceof Error ? err.message : err);
-    });
-  }
   if (mailEnvoye || crmOk) return res.status(200).json({ ok: true });
   return res
     .status(502)

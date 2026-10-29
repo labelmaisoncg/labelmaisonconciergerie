@@ -8,8 +8,8 @@
 // =============================================================================
 
 import { contactDepuisDemande, fusionnerDemande, idContactCrm, trouverDoublon, type DemandeSite } from '../src/erp/data/crm.js';
-import { envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
-import { notificationNouveauLead } from '../src/erp/data/notifications.js';
+import { envoyeesDepuis, envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
+import { notificationLeadPlafonnee } from '../src/erp/data/notifications.js';
 import { horodatageParis } from '../src/erp/data/repull.js';
 import type { ContactCrm } from '../src/erp/data/types.js';
 import { clesServeur } from './_erp-notifications.js';
@@ -39,14 +39,23 @@ export async function enregistrerDemandeCrm(demande: DemandeSite): Promise<Resul
 /**
  * Notification « Nouvelle demande à appeler » sur les appareils du gérant
  * (notifications.ts, type « lead », réservé au gérant). Sans clés VAPID ni
- * compte d'équipe : rien. Ne lève jamais : un échec n'empêche pas la demande
- * d'être acceptée (elle est déjà dans le CRM et partie par e-mail).
+ * compte d'équipe : rien. Plafonnée (formulaire public) : au-delà de 5 dans
+ * l'heure, une seule « Plusieurs nouvelles demandes » par heure. Ne lève jamais :
+ * un échec n'empêche pas la demande d'être acceptée (elle est déjà dans le CRM
+ * et partie par e-mail).
  */
 export async function notifierNouveauLead(contact: ContactCrm, nouveau: boolean): Promise<void> {
-  const cles = clesServeur();
-  const c = configuration();
-  if (!cles || !c.motDePasse) return;
-  await envoyerNotifications(baseErp(c), [notificationNouveauLead(contact, { nouveau })], { cles });
+  try {
+    const cles = clesServeur();
+    const c = configuration();
+    if (!cles || !c.motDePasse) return;
+    const base = baseErp(c);
+    const maintenant = new Date();
+    const recentes = await envoyeesDepuis(base, 'lead-', new Date(maintenant.getTime() - 3_600_000)).catch(() => 0);
+    await envoyerNotifications(base, [notificationLeadPlafonnee(contact, { nouveau, recentes, maintenant })], { cles, maintenant });
+  } catch (e) {
+    console.warn('[crm] notification de la demande impossible', e instanceof Error ? e.message : e);
+  }
 }
 
 /** Promesse coupée au bout de `ms` (la réponse au visiteur n'attend pas indéfiniment). */

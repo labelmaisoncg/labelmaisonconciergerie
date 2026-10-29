@@ -455,13 +455,48 @@ export function demandeNotifications(c: ContexteDemandeNotifications): RaisonDem
  * `nouveau` faux : la personne était déjà dans le CRM et redemande. Une
  * nouvelle demande de la même personne repart (clé : l'heure de la demande).
  */
+/** Texte d'un formulaire public sans caractères de contrôle ni de mise en forme (sens d'écriture, invisibles). */
+const sansControle = (s: unknown): string => String(s ?? '').replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+/** Un prénom : des lettres (trait d'union, apostrophe), 24 caractères au plus. */
+const PRENOM = /^\p{L}[\p{L}\p{M}'’]*(?:-\p{L}[\p{L}\p{M}'’]*)?$/u;
+
+/**
+ * « Prénom N. » d'un formulaire public, pour l'écran verrouillé : seulement si
+ * le premier mot est un prénom (lettres, au plus un trait d'union, 24
+ * caractères) ; l'initiale seulement si le dernier mot commence par une lettre.
+ * Un téléphone, une adresse e-mail (même déguisée), un nom très long ou un nom
+ * complet en un mot (« Marie-Dupont-Martin ») : « Un nouveau contact ».
+ */
+export function prenomLead(nom: unknown): string {
+  const mots = sansControle(nom).split(' ').filter(Boolean);
+  const premier = mots[0] ?? '';
+  if (!premier || premier === 'Sans' || premier.length > 24 || !PRENOM.test(premier)) return 'Un nouveau contact';
+  const dernier = mots.length > 1 ? mots[mots.length - 1] : '';
+  const initiale = /^\p{L}/u.test(dernier) ? ` ${dernier.charAt(0).toLocaleUpperCase('fr')}.` : '';
+  return `${premier}${initiale}`;
+}
+
+/**
+ * Ville d'un formulaire public, pour l'écran verrouillé : rien si elle porte un
+ * e-mail, un lien, une adresse (numéro et voie) ou d'autres chiffres qu'un code
+ * postal ou un arrondissement ; 40 caractères au plus.
+ */
+export function villeLead(ville: unknown): string {
+  const v = sansControle(ville);
+  if (!v) return '';
+  if (/[@＠]|\((?:at|arobase)\)|\[(?:at|arobase)\]|:\/\/|www\.|\.(?:fr|com|net|org|io|eu|be|ch)\b/i.test(v)) return '';
+  if (/\d+\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.?|boulevard|bd|all[ée]e|chemin|impasse|place|quai|route|cours|square|passage|villa|r[ée]sidence)\b/i.test(v)) return '';
+  const chiffres = v.replace(/(?<!\d)\d{5}(?!\d)/, '').match(/\d+/g) ?? [];
+  if (chiffres.some((g) => g.length > 3) || chiffres.join('').length > 3) return '';
+  return extrait(v, 40);
+}
+
 export function notificationNouveauLead(
   c: Pick<ContactCrm, 'id' | 'nom' | 'ville' | 'source' | 'creeLe' | 'majLe' | 'historique'>,
   o: { nouveau: boolean },
 ): GroupeNotification {
-  const nom = String(c.nom ?? '').trim();
-  const qui = !nom || nom === 'Sans nom' || nom.includes('@') ? 'Un nouveau contact' : prenomInitiale(nom);
-  const corps = [qui, extrait(c.ville ?? '', 40), LIBELLE_SOURCE_SCORE[c.source] ?? ''].filter(Boolean).join(' · ');
+  const qui = prenomLead(c.nom);
+  const corps = [qui, villeLead(c.ville), LIBELLE_SOURCE_SCORE[c.source] ?? ''].filter(Boolean).join(' · ');
   const quand = c.historique?.[0]?.le ?? c.majLe ?? c.creeLe;
   return {
     cle: `lead-${c.id}-${quand}`,
@@ -475,5 +510,26 @@ export function notificationNouveauLead(
         gerant: true,
       },
     ],
+  };
+}
+
+/** Notifications « lead » au plus par heure : au-delà (formulaire public, robots), une seule de synthèse par heure. */
+export const PLAFOND_LEADS_HEURE = 5;
+
+/**
+ * La notification d'une nouvelle demande, plafonnée : `recentes` est le nombre de
+ * notifications « lead » parties dans l'heure (journal d'idempotence). Au
+ * plafond, « Plusieurs nouvelles demandes à appeler », une seule par heure (clé de
+ * l'heure), sans prénom ni ville : le gérant ouvre le CRM.
+ */
+export function notificationLeadPlafonnee(
+  c: Parameters<typeof notificationNouveauLead>[0],
+  o: { nouveau: boolean; recentes: number; maintenant: Date },
+): GroupeNotification {
+  if (o.recentes < PLAFOND_LEADS_HEURE) return notificationNouveauLead(c, o);
+  return {
+    cle: `lead-plusieurs-${o.maintenant.toISOString().slice(0, 13)}`,
+    urgente: false,
+    variantes: [{ type: 'lead', titre: 'Plusieurs nouvelles demandes à appeler', corps: 'Beaucoup de demandes en peu de temps : ouvrez le CRM.', url: '/erp/crm', gerant: true }],
   };
 }
