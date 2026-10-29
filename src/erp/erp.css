@@ -161,6 +161,12 @@
   outline: 2px solid var(--lm-encre);
   outline-offset: 2px;
 }
+/* Couleur de repos du contour : la base du site la met en or à 50 %, et
+   transition-colors l'animerait vers l'encre. Net d'emblée. */
+.erp-root,
+.erp-root * {
+  outline-color: var(--lm-encre);
+}
 
 /* Barres de défilement discrètes dans les conteneurs (tableaux, tiroirs). */
 .erp-root .lm-defilement {
