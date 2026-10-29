@@ -90,11 +90,12 @@
   /* Une seule police, géométrique à graisses modestes, comme Cereal chez Airbnb : Figtree, déjà chargée par le site (src/styles/fonts.css). */
   --lm-sans: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   /*
-   * Police des titres (classe .lm-titre) : la sans, comme Airbnb. Pour revenir
-   * aux titres en serif de la charte, une ligne :
-   *   --lm-titre: var(--lm-serif);
+   * Police des titres (classe .lm-titre) : la serif de la charte, « comme sur
+   * les factures » (choix du propriétaire, octobre 2026). Le reste de
+   * l'interface suit Airbnb en Figtree. Pour des titres en sans, une ligne :
+   *   --lm-titre: var(--lm-sans);
    */
-  --lm-titre: var(--lm-sans);
+  --lm-titre: var(--lm-serif);
 
   color-scheme: light;
   min-height: 100vh;
