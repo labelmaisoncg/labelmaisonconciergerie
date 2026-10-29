@@ -14,17 +14,23 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   /** Fil d'Ariane au-dessus du titre. */
   fil?: Miette[];
+  /**
+   * Une icône seule tout en haut à droite, à l'écart des actions (la corbeille
+   * d'une fiche) : au même endroit sur téléphone et sur ordinateur.
+   */
+  coin?: ReactNode;
   className?: string;
 }
 
-export function PageHeader({ titre, sousTitre, actions, fil: filBrut, className }: PageHeaderProps) {
+export function PageHeader({ titre, sousTitre, actions, fil: filBrut, coin, className }: PageHeaderProps) {
   // La barre latérale et les onglets de rubrique disent déjà où l'on est : le
   // fil d'Ariane ne s'affiche que s'il ramène vers une page parente (fiche).
   const sansRacine = (filBrut ?? []).filter((m) => m.libelle !== 'ERP' && m.to !== '/erp');
   const fil = sansRacine.some((m) => m.to) ? sansRacine : undefined;
   return (
-    <header className={cn('mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6', className)}>
-      <div className="min-w-0">
+    <header className={cn('mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6', coin && 'relative', className)}>
+      {coin && <div className="absolute top-0 right-0">{coin}</div>}
+      <div className={cn('min-w-0', coin && 'pr-11')}>
         {fil && fil.length > 0 && (
           <nav aria-label="Fil d’Ariane" className="mb-1.5">
             <ol className="flex flex-wrap items-center gap-1 text-[12.5px] text-(--lm-encre-3)">

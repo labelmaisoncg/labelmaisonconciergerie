@@ -154,7 +154,7 @@ const ARGENT = new RegExp(
 const SANS_ARGENT = /feel free|prise? en charge|in charge of|(vous|se|nous|me|te|s'y|y) rendre (au|aux|à|a|chez|sur|en|dans|jusqu)/gi;
 
 /** Réclamation et litige. */
-const RECLAMATION = /r[ée]clamation|litige|plainte|inacceptable|arnaque|avocat|scam|complain|unacceptable|lawyer|police/i;
+const RECLAMATION = /r[ée]clamation|litige|plainte|inacceptable|arnaque|avocat|scam|complain|unacceptable|lawyer|police|gendarm|polizei|polic[ií]a|polizia/i;
 
 /**
  * La fiche de police du check-in en ligne (« J'ai rempli la fiche individuelle

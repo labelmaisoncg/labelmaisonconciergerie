@@ -443,6 +443,8 @@ function fileAvis() {
     verifier(souci([msg('h', 'hote', t, '2026-10-21T12:00:00+02:00')]), `constat dans une consigne, écrit par l’équipe : à relire (« ${t} »)`);
   for (const t of ['En cas de casse, prévenez-nous.', 'Merci de nous signaler tout dégât éventuel.', 'Merci de nous prévenir s’il y a un dégât.', 'Un casse-croûte vous attend.'])
     verifier(!souci([msg('h', 'hote', t, '2026-10-19T15:00:00+02:00')]), `consigne de prévention saine : ne bloque pas (« ${t} »)`);
+  verifier(souci([msg('h', 'hote', 'Les gendarmes sont passés cette nuit pour le bruit.', '2026-10-20T08:00:00+02:00')]), 'gendarmes venus, écrit par l’équipe : à relire');
+  verifier(souci([msg('v', 'voyageur', 'Die Polizei war hier.', '2026-10-20T08:00:00+02:00')]), '« Polizei », écrit par le voyageur : à relire');
   for (const t of ['Le parking est rattaché au logement.', 'Une attache pour vélo est disponible.', 'Glace pistache offerte à l’arrivée.'])
     verifier(!souci([msg('h', 'hote', t, '2026-10-20T09:00:00+02:00')]), `« tache » dans un autre mot : ne bloque pas (« ${t} »)`);
   const sansReservation: Incident = { ...incident, id: 'i2', reservationId: undefined, date: '2026-10-21' };

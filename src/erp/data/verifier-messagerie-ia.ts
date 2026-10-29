@@ -346,6 +346,7 @@ async function principal() {
     '« fiche de police » du check-in en ligne : pas une réclamation',
   );
   verifier(sujetSensible('La police est venue cette nuit.')?.raison === 'litige' && sujetSensible('Fiche de police remplie. Mais nous allons appeler la police.')?.raison === 'litige', '« police » ailleurs que dans « fiche de police » : toujours une réclamation');
+  verifier(['Nous avons dû aller à la gendarmerie.', 'Die Polizei war hier.', 'Vino la policía anoche.'].every((t) => sujetSensible(t)?.raison === 'litige'), 'gendarmerie, Polizei, policía : une réclamation, comme « police »');
 
   /* --------------------------------------------- niveaux et seuils */
   section('Niveaux d’autonomie et seuils');

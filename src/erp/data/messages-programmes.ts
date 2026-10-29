@@ -800,7 +800,7 @@ export function prochainEnvoi(
  * party of twenty people » en dit un. Quels messages : signalNegatifDansLesMessages.
  */
 const SIGNAL_NEGATIF =
-  /plainte|inacceptable|d[ée]cevant|d[ée]çu|sale\b|salet[ée]|cass[ée]|abîm|ab[iî]m[ée]|d[ée]g[aâ]t|d[ée]gradation|bruit|f[êe]te\b|tapage|odeur|cafard|punaise|rembours|litige|avocat|police|voisins? (se )?plai|complain|dirty|broken|damage|noise|party\b(?!\s+of\s+(?:\d|one|two|three|four|five|six|seven|eight|nine)\b)|refund|(?<!non[-\s]?)smok|fum[ée] dans|cigarette/i;
+  /plainte|inacceptable|d[ée]cevant|d[ée]çu|sale\b|salet[ée]|cass[ée]|abîm|ab[iî]m[ée]|d[ée]g[aâ]t|d[ée]gradation|bruit|f[êe]te\b|tapage|odeur|cafard|punaise|rembours|litige|avocat|police|gendarm|polizei|polic[ií]a|polizia|voisins? (se )?plai|complain|dirty|broken|damage|noise|party\b(?!\s+of\s+(?:\d|one|two|three|four|five|six|seven|eight|nine)\b)|refund|(?<!non[-\s]?)smok|fum[ée] dans|cigarette/i;
 
 /**
  * Mots d'un message DE L'ÉQUIPE (l'hôte) qui CONSTATENT un souci : dégât,
@@ -810,7 +810,7 @@ const SIGNAL_NEGATIF =
  * constats de saleté, d'odeur de tabac et de nuisibles.)
  */
 const SOUCI_CONSTATE =
-  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|bris(?:é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])tach(?:e|es|é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])casse(?![a-zà-ÿ-])|retien\w* (?:sur )?(?:la |votre )?caution|ab[iî]m|plainte|se plaign|plaints?\b|fum[ée] dans|avez fum[ée]|(?<!fiches? de )\bpolice\b|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
+  /d[ée]g[aâ]ts?\b|d[ée]gradation|cass(?:é|ée|és|ées)(?![a-zà-ÿ])|bris(?:é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])tach(?:e|es|é|ée|és|ées)(?![a-zà-ÿ])|(?<![a-zà-ÿ])casse(?![a-zà-ÿ-])|retien\w* (?:sur )?(?:la |votre )?caution|ab[iî]m|plainte|se plaign|plaints?\b|fum[ée] dans|avez fum[ée]|(?<!fiches? de )\bpolice\b|gendarm|polizei|polic[ií]a|polizia|rembours|litige|avocat|r[ée]clamation|retenue sur|damage|broken|complain|refund|lawyer|police report|salet[ée]|laiss[ée]e? (tr[eè]s )?sale|odeur (de |d[’'])?(cigarette|tabac|fum[ée]e)|smell(ed|s)? (of )?smoke|cafards?|punaises?|bed ?bugs?|tapage/i;
 
 /** La fiche de police du check-in en ligne ne dit aucun souci (messagerie-ia.ts). */
 export { FICHE_DE_POLICE };
