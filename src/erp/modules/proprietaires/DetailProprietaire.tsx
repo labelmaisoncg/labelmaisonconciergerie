@@ -14,7 +14,9 @@ import { Imprimable } from '../mandats/_composants/Imprimable';
 import { FormMandat } from '../mandats/FormMandat';
 import { FormProprietaire } from './FormProprietaire';
 import { DocumentReleve } from './_composants/Releve';
+import { SupprimerProprietaire } from '../logements/_composants/SupprimerProprietaire';
 import { revenuNet12Mois } from './_composants/calculs';
+import { peutSupprimerPersonne } from '../../data/suppression-personnes';
 
 const PERIODE_COURANTE = periodeDe(AUJOURDHUI);
 const PERIODE_PRECEDENTE = periodeDe(ajouterJours(debutMois(AUJOURDHUI), -1));
@@ -62,6 +64,7 @@ export default function DetailProprietaire() {
           </span>
         }
         sousTitre={`${LIBELLES.typeProprietaire[p.type]} · client depuis le ${dateCourte(p.creeLe)}`}
+        coin={peutSupprimerPersonne(d.utilisateur.role, d.lectureSeule) ? <SupprimerProprietaire proprietaire={p} /> : undefined}
         actions={
           <>
             <Button icone={<Pencil />} onClick={() => setEdition(true)}>

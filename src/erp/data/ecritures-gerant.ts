@@ -34,10 +34,12 @@ export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[
 
 /**
  * Suppressions réservées au gérant, dans des collections que l'équipe
- * modifie : un logement (data/suppression-logement.ts). Même liste que la
- * règle « ecritures reservees aux gerants (suppression) » de la base.
+ * modifie : un logement (data/suppression-logement.ts), une fiche
+ * propriétaire ou un membre de l'équipe de terrain
+ * (data/suppression-personnes.ts). Même liste que la règle « ecritures
+ * reservees aux gerants (suppression) » de la base.
  */
-export const SUPPRESSIONS_GERANT_SEULEMENT: readonly string[] = ['logements'];
+export const SUPPRESSIONS_GERANT_SEULEMENT: readonly string[] = ['logements', 'proprietaires', 'equipe'];
 
 /**
  * Réglages de l'agent : l'équipe change le ton, la signature, les langues et

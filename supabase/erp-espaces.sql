@@ -1182,12 +1182,13 @@ create policy "ecritures reservees aux gerants (modification)" on erp.enregistre
   using (not erp.ecriture_gerant_seulement(collection, id) or espace = any ((select erp.espaces_gerant())::uuid[]))
   with check (not erp.ecriture_gerant_seulement(collection, id) or espace = any ((select erp.espaces_gerant())::uuid[]));
 -- Supprimer : les mêmes, les réglages de l'agent (les retirer rendrait son niveau d'autonomie par
--- défaut) et un logement (src/erp/data/suppression-logement.ts : seulement sans historique, décidé
--- par un gérant ; l'équipe modifie la fiche, elle ne la supprime pas). Même liste que
+-- défaut), un logement (src/erp/data/suppression-logement.ts), une fiche propriétaire ou un membre
+-- de l'équipe de terrain (src/erp/data/suppression-personnes.ts) : seulement sans historique, décidé
+-- par un gérant ; l'équipe modifie ces fiches, elle ne les supprime pas. Même liste que
 -- SUPPRESSIONS_GERANT_SEULEMENT (src/erp/data/ecritures-gerant.ts).
 create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrements
   as restrictive for delete to authenticated
-  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements'))
+  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements', 'proprietaires', 'equipe'))
          or espace = any ((select erp.espaces_gerant())::uuid[]));
 
 -- Réglages de l'agent réservés au gérant (reglages, élément « agent ») : marche
@@ -1386,6 +1387,88 @@ revoke all on function erp.garder_logement_avec_historique() from public, anon;
 drop trigger if exists garder_logement_avec_historique on erp.enregistrements;
 create trigger garder_logement_avec_historique before delete on erp.enregistrements
   for each row when (old.collection = 'logements') execute function erp.garder_logement_avec_historique();
+
+-- Une fiche propriétaire qui a vécu ne se supprime pas (src/erp/data/suppression-personnes.ts) :
+-- la base le refuse aussi, pour une suppression envoyée hors de l'ERP ou depuis des données
+-- pas à jour. Ce qui la nomme : ses logements (proprietaireId, ou dont il a été le
+-- propriétaire : proprietairesPrecedents) ; mandats hors brouillon ; factures, bilans,
+-- documents partagés, dossiers et relances de paiement à son nom ; améliorations hors
+-- « à proposer » ; actions de l'IA qui le visent ; et un accès à son espace encore invité ou
+-- actif (« Retirez d'abord son accès »). Ce que l'ERP retire avec lui (mandat en préparation,
+-- accès retiré, améliorations « à proposer ») ne compte pas. Les rôles autres que
+-- authenticated (maintenance) ne sont pas concernés. Même déclencheur que dans
+-- erp-installation.sql et erp-acces-gerants.sql, limité à l'espace du propriétaire.
+create or replace function erp.garder_proprietaire_avec_historique() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' or old.collection <> 'proprietaires' then
+    return old;
+  end if;
+  if exists (
+    select 1 from erp.enregistrements e
+    where e.espace = old.espace
+      and ((e.collection = 'logements'
+              and (e.donnees ->> 'proprietaireId' = old.id
+                or coalesce(e.donnees -> 'proprietairesPrecedents', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('proprietaireId', old.id))))
+        or (e.donnees ->> 'proprietaireId' = old.id
+              and (e.collection in ('factures', 'bilansProprietaire', 'documentsProprietaire', 'dossiers', 'relancesPaiement')
+                or (e.collection = 'mandats' and coalesce(e.donnees ->> 'statut', '') <> 'brouillon')
+                or (e.collection = 'recommandations' and coalesce(e.donnees ->> 'statut', '') <> 'a_proposer')))
+        or (e.collection = 'accesProprietaires' and (e.id = old.id or e.donnees ->> 'proprietaireId' = old.id)
+              and coalesce(e.donnees ->> 'statut', '') in ('invite', 'actif'))
+        or (e.collection = 'actionsAgent'
+              and (e.donnees ->> 'cibleId' = old.id
+                or e.donnees ->> 'lien' = '/erp/proprietaires/' || old.id
+                or starts_with(e.donnees ->> 'lien', '/erp/proprietaires/' || old.id || '?')
+                or starts_with(e.donnees ->> 'lien', '/erp/proprietaires/' || old.id || '#'))))
+  ) then
+    raise exception 'Ce propriétaire a un historique ou un accès encore ouvert : il ne peut pas être supprimé.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+revoke all on function erp.garder_proprietaire_avec_historique() from public, anon;
+drop trigger if exists garder_proprietaire_avec_historique on erp.enregistrements;
+create trigger garder_proprietaire_avec_historique before delete on erp.enregistrements
+  for each row when (old.collection = 'proprietaires') execute function erp.garder_proprietaire_avec_historique();
+
+-- Un membre de l'équipe de terrain qui a vécu ne se supprime pas (même module) : incidents
+-- qu'il a signalés ou qui lui ont été confiés (signalePar, assigneA), contrôles qualité qu'il
+-- a faits (parId), absences qui le nomment (membreId, remplacantId, parMembreId), ses « ce
+-- logement n'est pas à moi » (membreId), actions de l'IA qui le visent ; et un accès à
+-- l'espace opérations encore invité ou actif. Ce que l'ERP retire avec lui (sa place dans
+-- « qui suit quoi », son accès retiré) ne compte pas. Ménages, missions et linge sont ceux
+-- des prestataires : rien ne les relie à un membre. Limité à l'espace du membre.
+create or replace function erp.garder_membre_avec_historique() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' or old.collection <> 'equipe' then
+    return old;
+  end if;
+  if exists (
+    select 1 from erp.enregistrements e
+    where e.espace = old.espace
+      and ((e.collection = 'accesOperations' and (e.id = old.id or e.donnees ->> 'membreId' = old.id)
+              and coalesce(e.donnees ->> 'statut', '') in ('invite', 'actif'))
+        or (e.collection = 'incidents' and (e.donnees ->> 'assigneA' = old.id or e.donnees ->> 'signalePar' = old.id))
+        or (e.collection = 'controles' and e.donnees ->> 'parId' = old.id)
+        or (e.collection = 'absences'
+              and (e.donnees ->> 'membreId' = old.id or e.donnees ->> 'remplacantId' = old.id or e.donnees ->> 'parMembreId' = old.id))
+        or (e.collection = 'signalementsLogement' and e.donnees ->> 'membreId' = old.id)
+        or (e.collection = 'actionsAgent'
+              and (e.donnees ->> 'cibleId' = old.id or e.donnees ->> 'lien' = '/erp/parametres/acces?personne=' || old.id)))
+  ) then
+    raise exception 'Ce membre de l''équipe a un historique ou un accès encore ouvert : retirez-le de l''équipe plutôt que de le supprimer.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+revoke all on function erp.garder_membre_avec_historique() from public, anon;
+drop trigger if exists garder_membre_avec_historique on erp.enregistrements;
+create trigger garder_membre_avec_historique before delete on erp.enregistrements
+  for each row when (old.collection = 'equipe') execute function erp.garder_membre_avec_historique();
 
 -- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
 -- retours à la ligne, espaces insécables ou invisibles) ; vide si absent. Le
@@ -1890,7 +1973,21 @@ begin
       (lm, 'reservations', 'recette-suppr-vecu', '{"id": "recette-suppr-vecu", "logementId": "recette-suppr-vecu"}'),
       (essai, 'logements', 'recette-suppr-vecu-autre', '{"id": "recette-suppr-vecu-autre", "nom": "Recette autre, réservation ailleurs"}'),
       (lm, 'reservations', 'recette-suppr-vecu-autre', '{"id": "recette-suppr-vecu-autre", "logementId": "recette-suppr-vecu-autre"}'),
-      (lm, 'avisADeposer', 'recette-avis-decide', '{"id": "recette-avis-decide", "statut": "passe", "publication": {"statut": "refuse", "avisId": "1"}}');
+      (lm, 'avisADeposer', 'recette-avis-decide', '{"id": "recette-avis-decide", "statut": "passe", "publication": {"statut": "refuse", "avisId": "1"}}'),
+      -- Propriétaires et membres de l'équipe à supprimer : sans historique ; avec un logement ou un
+      -- contrôle ; avec un accès encore ouvert ; un propriétaire de l'autre espace nommé par un logement d'ici.
+      (lm, 'proprietaires', 'recette-prop-suppr', '{"id": "recette-prop-suppr", "nom": "Recette propriétaire à supprimer"}'),
+      (lm, 'proprietaires', 'recette-prop-vecu', '{"id": "recette-prop-vecu", "nom": "Recette propriétaire avec logement"}'),
+      (lm, 'logements', 'recette-prop-vecu-log', '{"id": "recette-prop-vecu-log", "nom": "Recette logement du propriétaire", "proprietaireId": "recette-prop-vecu"}'),
+      (lm, 'proprietaires', 'recette-prop-acces', '{"id": "recette-prop-acces", "nom": "Recette propriétaire invité"}'),
+      (lm, 'accesProprietaires', 'recette-prop-acces', '{"id": "recette-prop-acces", "proprietaireId": "recette-prop-acces", "statut": "invite"}'),
+      (lm, 'equipe', 'recette-membre-suppr', '{"id": "recette-membre-suppr", "nom": "Recette membre à supprimer", "actif": true, "logementIds": []}'),
+      (lm, 'equipe', 'recette-membre-vecu', '{"id": "recette-membre-vecu", "nom": "Recette membre avec contrôle", "actif": true, "logementIds": []}'),
+      (lm, 'controles', 'recette-membre-vecu', '{"id": "recette-membre-vecu", "logementId": "recette-membre-vecu-log", "parId": "recette-membre-vecu", "statut": "fait"}'),
+      (lm, 'equipe', 'recette-membre-acces', '{"id": "recette-membre-acces", "nom": "Recette membre connecté", "actif": true, "logementIds": []}'),
+      (lm, 'accesOperations', 'recette-membre-acces', '{"id": "recette-membre-acces", "membreId": "recette-membre-acces", "statut": "actif"}'),
+      (essai, 'proprietaires', 'recette-prop-autre', '{"id": "recette-prop-autre", "nom": "Recette propriétaire autre espace"}'),
+      (lm, 'logements', 'recette-prop-autre-log', '{"id": "recette-prop-autre-log", "nom": "Recette logement nommant autre espace", "proprietaireId": "recette-prop-autre"}');
     update erp.enregistrements set donnees = donnees || '{"v": 2}' where espace = lm and collection = 'checkinsEnLigne' and id = 'recette-checkin';
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 then resultat := 'un check-in en ligne est archivé (la purge à 6 mois ne l''effacerait pas)'; raise exception 'stop'; end if;
@@ -1999,6 +2096,16 @@ begin
     update erp.enregistrements set donnees = donnees || '{"nom": "Recette à supprimer (vue)"}' where espace = lm and collection = 'logements' and id = 'recette-suppr';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'un compte « opérations » ne modifie plus le logement qu''il ne peut pas supprimer'; raise exception 'stop'; end if;
+    -- Supprimer une fiche propriétaire ou un membre de l'équipe : un gérant seulement (l'équipe modifie les fiches).
+    delete from erp.enregistrements where espace = lm and collection = 'proprietaires' and id = 'recette-prop-suppr';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » supprime un propriétaire'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where espace = lm and collection = 'equipe' and id = 'recette-membre-suppr';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » supprime un membre de l''équipe'; raise exception 'stop'; end if;
+    update erp.enregistrements set donnees = donnees || '{"nom": "Recette propriétaire à supprimer (vu)"}' where espace = lm and collection = 'proprietaires' and id = 'recette-prop-suppr';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un compte « opérations » ne modifie plus le propriétaire qu''il ne peut pas supprimer'; raise exception 'stop'; end if;
     -- Publication des avis (erp.garder_publication_avis) : décidée par le gérant et le serveur seulement.
     begin
       update erp.enregistrements set donnees = donnees - 'publication' where espace = lm and collection = 'avisADeposer' and id = 'recette-avis-decide';
@@ -2181,6 +2288,39 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Supprimer une fiche propriétaire ou un membre de l'équipe sans historique : le gérant, oui ;
+    -- leur dernière version reste dans l'historique.
+    delete from erp.enregistrements where espace = lm and collection = 'proprietaires' and id = 'recette-prop-suppr';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne supprime pas un propriétaire sans historique'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where espace = lm and collection = 'equipe' and id = 'recette-membre-suppr';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne supprime pas un membre de l''équipe sans historique'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique
+      where operation = 'suppression' and ((collection = 'proprietaires' and id = 'recette-prop-suppr') or (collection = 'equipe' and id = 'recette-membre-suppr'));
+    if n <> 2 then resultat := 'un propriétaire ou un membre supprimé ne reste pas dans l''historique'; raise exception 'stop'; end if;
+    -- Un propriétaire qui a un logement, un membre qui a fait un contrôle, un accès encore ouvert : pas
+    -- même le gérant (erp.garder_proprietaire_avec_historique, erp.garder_membre_avec_historique).
+    begin
+      delete from erp.enregistrements where espace = lm and collection = 'proprietaires' and id = 'recette-prop-vecu';
+      resultat := 'un gérant supprime un propriétaire qui a un logement'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      delete from erp.enregistrements where espace = lm and collection = 'proprietaires' and id = 'recette-prop-acces';
+      resultat := 'un gérant supprime un propriétaire dont l''accès est encore ouvert'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      delete from erp.enregistrements where espace = lm and collection = 'equipe' and id = 'recette-membre-vecu';
+      resultat := 'un gérant supprime un membre qui a fait un contrôle'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      delete from erp.enregistrements where espace = lm and collection = 'equipe' and id = 'recette-membre-acces';
+      resultat := 'un gérant supprime un membre dont l''accès est encore ouvert'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
     -- Publication des avis : le gérant la décide (« Ne pas publier », rouvrir).
     update erp.enregistrements set donnees = jsonb_set(donnees, '{publication,statut}', '"a_valider"') where espace = lm and collection = 'avisADeposer' and id = 'recette-avis-decide';
     get diagnostics n = row_count;
@@ -2325,6 +2465,14 @@ begin
     delete from erp.enregistrements where espace = essai and collection = 'logements' and id = 'recette-suppr-vecu-autre';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'une réservation de Label Maison empêche de supprimer un logement d''un autre espace'; raise exception 'stop'; end if;
+    -- Un propriétaire de cet espace nommé par un logement de Label Maison : supprimable (chaque espace ses
+    -- données) ; un propriétaire de Label Maison : jamais d'ici.
+    delete from erp.enregistrements where espace = essai and collection = 'proprietaires' and id = 'recette-prop-autre';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un logement de Label Maison empêche de supprimer un propriétaire d''un autre espace'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where collection = 'proprietaires' and id = 'recette-prop-vecu';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'le gérant d''un autre espace supprime un propriétaire de Label Maison'; raise exception 'stop'; end if;
     select count(*) into n from erp.enregistrements where espace = lm;
     if n <> 0 then resultat := 'le membre de l''autre espace voit Label Maison'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = '{"id": "ligne-autre", "v": 2}' where espace = essai and collection = 'recette' and id = 'ligne-autre';
@@ -2865,7 +3013,8 @@ select
 -- -- erp-installation.sql remet les trois premières et l'index des numéros, version d'avant les espaces.
 -- drop function if exists erp.numeroter_facture(text), erp.garder_autonomie_agent(), erp.garder_lien_annonce(),
 --   erp.reserver_numero_facture(), erp.garder_espace_enregistrement(), erp.borner_actions_ia(),
---   erp.garder_logement_avec_historique(), erp.garder_publication_avis() cascade;
+--   erp.garder_logement_avec_historique(), erp.garder_proprietaire_avec_historique(), erp.garder_membre_avec_historique(),
+--   erp.garder_publication_avis() cascade;
 -- drop table if exists erp.invitations_espace, erp.invitations, erp.espaces cascade;
 -- drop function if exists erp.mes_espaces(), erp.est_serveur(), erp.espace_entete(), erp.id_label_maison() cascade;
 -- commit;

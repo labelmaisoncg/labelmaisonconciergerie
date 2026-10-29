@@ -46,6 +46,7 @@ import type { ActionsOps, Ecran } from '../../espace-operations/commun';
 import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, inviterAvecReessai, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
 import { RelancesPaiement } from '../logements/_composants/RelancesPaiement';
 import { ErreurServeur, appelerServeur } from '../messagerie/_composants/serveur';
+import { SupprimerMembre } from './SupprimerMembre';
 
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
 const API_OPERATIONS = '/api/espace-operations';
@@ -699,7 +700,8 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
       setEnCours(undefined);
     }
   };
-  const retirer = async () => {
+  /** Retire son accès ; rend le message d'erreur s'il y en a un (aussi montré sous la section Accès). */
+  const retirer = async (): Promise<string | undefined> => {
     setConfirmer(false);
     setErreur(undefined);
     setEnCours('retirer');
@@ -707,8 +709,10 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
       if (MODE_DEMO) {
         if (acces) d.upsert('accesOperations', { ...acces, statut: 'retire', retireLe: horodatageMaintenant(), version: acces.version + 1, liens: [] });
       } else await appelerServeur(API_OPERATIONS, 'POST', { action: 'retirer', membreId: id });
+      return undefined;
     } catch (e) {
       setErreur((e as Error).message);
+      return (e as Error).message;
     } finally {
       setEnCours(undefined);
     }
@@ -722,6 +726,7 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
       titre={m.nom}
       sousTitre={ROLES_OPERATIONS[m.role]}
       largeur="lg"
+      actions={gerant ? <SupprimerMembre membre={m} onRetirerAcces={retirer} onRetireDeLEquipe={() => setFiche((f) => ({ ...f, actif: false }))} /> : undefined}
       pied={
         gerant ? (
           <>

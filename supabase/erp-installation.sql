@@ -285,12 +285,13 @@ create policy "ecritures reservees aux gerants (modification)" on erp.enregistre
   as restrictive for update to authenticated
   using (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant())
   with check (not erp.ecriture_gerant_seulement(collection, id) or erp.acces_gerant());
--- Supprimer : les mêmes, les réglages de l'agent et un logement (seulement sans historique, décidé
--- par un gérant : src/erp/data/suppression-logement.ts). Même liste que
+-- Supprimer : les mêmes, les réglages de l'agent, un logement, une fiche propriétaire ou un membre
+-- de l'équipe de terrain (seulement sans historique, décidé par un gérant :
+-- src/erp/data/suppression-logement.ts, suppression-personnes.ts). Même liste que
 -- SUPPRESSIONS_GERANT_SEULEMENT (src/erp/data/ecritures-gerant.ts).
 create policy "ecritures reservees aux gerants (suppression)" on erp.enregistrements
   as restrictive for delete to authenticated
-  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements'))
+  using ((not erp.ecriture_gerant_seulement(collection, id) and not (collection = 'reglages' and id = 'agent') and collection not in ('logements', 'proprietaires', 'equipe'))
          or erp.acces_gerant());
 
 -- Réglages de l'agent réservés au gérant (reglages / agent) : marche ou pause,
@@ -483,6 +484,86 @@ revoke all on function erp.garder_logement_avec_historique() from public, anon;
 drop trigger if exists garder_logement_avec_historique on erp.enregistrements;
 create trigger garder_logement_avec_historique before delete on erp.enregistrements
   for each row when (old.collection = 'logements') execute function erp.garder_logement_avec_historique();
+
+-- Une fiche propriétaire qui a vécu ne se supprime pas (src/erp/data/suppression-personnes.ts) :
+-- la base le refuse aussi, pour une suppression envoyée hors de l'ERP ou depuis des données
+-- pas à jour. Ce qui la nomme : ses logements (proprietaireId, ou dont il a été le
+-- propriétaire : proprietairesPrecedents) ; mandats hors brouillon ; factures, bilans,
+-- documents partagés, dossiers et relances de paiement à son nom ; améliorations hors
+-- « à proposer » ; actions de l'IA qui le visent ; et un accès à son espace encore invité ou
+-- actif (« Retirez d'abord son accès »). Ce que l'ERP retire avec lui (mandat en préparation,
+-- accès retiré, améliorations « à proposer ») ne compte pas. Les rôles autres que
+-- authenticated (maintenance) ne sont pas concernés. Même déclencheur dans
+-- erp-installation.sql et erp-acces-gerants.sql (et, par espace, erp-espaces.sql).
+create or replace function erp.garder_proprietaire_avec_historique() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' or old.collection <> 'proprietaires' then
+    return old;
+  end if;
+  if exists (
+    select 1 from erp.enregistrements e
+    where (e.collection = 'logements'
+             and (e.donnees ->> 'proprietaireId' = old.id
+               or coalesce(e.donnees -> 'proprietairesPrecedents', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('proprietaireId', old.id))))
+       or (e.donnees ->> 'proprietaireId' = old.id
+             and (e.collection in ('factures', 'bilansProprietaire', 'documentsProprietaire', 'dossiers', 'relancesPaiement')
+               or (e.collection = 'mandats' and coalesce(e.donnees ->> 'statut', '') <> 'brouillon')
+               or (e.collection = 'recommandations' and coalesce(e.donnees ->> 'statut', '') <> 'a_proposer')))
+       or (e.collection = 'accesProprietaires' and (e.id = old.id or e.donnees ->> 'proprietaireId' = old.id)
+             and coalesce(e.donnees ->> 'statut', '') in ('invite', 'actif'))
+       or (e.collection = 'actionsAgent'
+             and (e.donnees ->> 'cibleId' = old.id
+               or e.donnees ->> 'lien' = '/erp/proprietaires/' || old.id
+               or starts_with(e.donnees ->> 'lien', '/erp/proprietaires/' || old.id || '?')
+               or starts_with(e.donnees ->> 'lien', '/erp/proprietaires/' || old.id || '#')))
+  ) then
+    raise exception 'Ce propriétaire a un historique ou un accès encore ouvert : il ne peut pas être supprimé.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+revoke all on function erp.garder_proprietaire_avec_historique() from public, anon;
+drop trigger if exists garder_proprietaire_avec_historique on erp.enregistrements;
+create trigger garder_proprietaire_avec_historique before delete on erp.enregistrements
+  for each row when (old.collection = 'proprietaires') execute function erp.garder_proprietaire_avec_historique();
+
+-- Un membre de l'équipe de terrain qui a vécu ne se supprime pas (même module) : incidents
+-- qu'il a signalés ou qui lui ont été confiés (signalePar, assigneA), contrôles qualité qu'il
+-- a faits (parId), absences qui le nomment (membreId, remplacantId, parMembreId), ses « ce
+-- logement n'est pas à moi » (membreId), actions de l'IA qui le visent ; et un accès à
+-- l'espace opérations encore invité ou actif. Ce que l'ERP retire avec lui (sa place dans
+-- « qui suit quoi », son accès retiré) ne compte pas. Ménages, missions et linge sont ceux
+-- des prestataires : rien ne les relie à un membre.
+create or replace function erp.garder_membre_avec_historique() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user <> 'authenticated' or old.collection <> 'equipe' then
+    return old;
+  end if;
+  if exists (
+    select 1 from erp.enregistrements e
+    where (e.collection = 'accesOperations' and (e.id = old.id or e.donnees ->> 'membreId' = old.id)
+             and coalesce(e.donnees ->> 'statut', '') in ('invite', 'actif'))
+       or (e.collection = 'incidents' and (e.donnees ->> 'assigneA' = old.id or e.donnees ->> 'signalePar' = old.id))
+       or (e.collection = 'controles' and e.donnees ->> 'parId' = old.id)
+       or (e.collection = 'absences'
+             and (e.donnees ->> 'membreId' = old.id or e.donnees ->> 'remplacantId' = old.id or e.donnees ->> 'parMembreId' = old.id))
+       or (e.collection = 'signalementsLogement' and e.donnees ->> 'membreId' = old.id)
+       or (e.collection = 'actionsAgent'
+             and (e.donnees ->> 'cibleId' = old.id or e.donnees ->> 'lien' = '/erp/parametres/acces?personne=' || old.id))
+  ) then
+    raise exception 'Ce membre de l''équipe a un historique ou un accès encore ouvert : retirez-le de l''équipe plutôt que de le supprimer.' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+revoke all on function erp.garder_membre_avec_historique() from public, anon;
+drop trigger if exists garder_membre_avec_historique on erp.enregistrements;
+create trigger garder_membre_avec_historique before delete on erp.enregistrements
+  for each row when (old.collection = 'equipe') execute function erp.garder_membre_avec_historique();
 
 -- Numéro de facture comparable : sans blancs autour (espaces, tabulations,
 -- retours à la ligne, espaces insécables ou invisibles). Même fonction que

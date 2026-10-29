@@ -1059,6 +1059,31 @@ gérant, la suppression d'un logement qui a un historique (déclencheur
 `erp.garder_logement_avec_historique`) : une suppression envoyée hors de l'ERP,
 ou depuis un écran pas encore à jour, ne laisse pas de réservation sans logement.
 
+**Supprimer un propriétaire ou un membre de l'équipe** (Paramètres → Accès →
+« Gérer » : corbeille en haut à droite du panneau « Espace propriétaire » ou
+du tiroir d'un responsable opérationnel ; gérant seulement, jamais en lecture
+seule ; mêmes règles de la base : `proprietaires` et `equipe` dans
+« ecritures reservees aux gerants (suppression) ») : seulement une fiche sans
+historique (créée par erreur, en double, pour un essai). Depuis la fiche d'un
+logement, le panneau du propriétaire n'a pas la corbeille (il a ce logement :
+le refus serait systématique). Propriétaire : un
+logement actuel (« Rattachez d'abord ses logements à un autre propriétaire »),
+un logement dont il a été le propriétaire, un mandat envoyé, signé ou résilié,
+une facture, un bilan, un document partagé, un dossier propriétaire, une
+amélioration proposée ou une action de l'IA : refus expliqué, et « Retirer
+l'accès » si son espace est encore ouvert (un accès invité ou actif bloque
+aussi à lui seul). Membre : un incident signalé ou confié, un contrôle qualité,
+une absence (la sienne, remplacée ou notée par lui), un « ce logement n'est pas
+à moi » ou une action de l'IA : refus, et « Retirer de l'équipe » (l'interrupteur
+du tiroir : plus d'accès, l'historique reste) ; un accès encore ouvert :
+« Retirez d'abord son accès ». Ce qui n'appartient qu'à eux part avec eux : le
+mandat en préparation et l'ancien accès (retiré) du propriétaire ; la place du
+membre dans « qui suit quoi » (affectations), ses logements et son ancien accès.
+Rien ne part vers les plateformes. Règles : `src/erp/data/suppression-personnes.ts` ;
+la base refuse aussi, même au gérant, la suppression d'une personne qui a un
+historique ou un accès encore ouvert (déclencheurs
+`erp.garder_proprietaire_avec_historique`, `erp.garder_membre_avec_historique`).
+
 ### Budget d'appels (offre gratuite Repull)
 
 L'offre gratuite compte **1 000 appels par mois pour tout le compte** (agent IA
