@@ -14,8 +14,9 @@
  * signalé », et non trois.
  */
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
+import { LIBELLE_SOURCE_SCORE } from './crm-assistant.js';
 import { lienIncident } from './incidents-erp.js';
-import type { FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
+import type { ContactCrm, FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
 
 export type TypeNotification =
   | 'reservation'
@@ -30,7 +31,8 @@ export type TypeNotification =
   | 'urgence'
   | 'prix'
   | 'anomalie'
-  | 'annonce';
+  | 'annonce'
+  | 'lead';
 
 /** Les types, dans l'ordre des réglages, avec leur valeur par défaut. */
 export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; detail: string; defaut: boolean }[] = [
@@ -48,15 +50,17 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
   { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
+  { type: 'lead', libelle: 'Nouvelle demande à appeler', detail: 'Un formulaire du site ou un dossier propriétaire : prénom, ville, demande.', defaut: true },
 ];
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;
 
 /**
  * Types réservés au gérant : les prix conseillés ne partent jamais vers
- * l'appareil d'un autre rôle (comme leur carte et leur ligne de l'Accueil).
+ * l'appareil d'un autre rôle (comme leur carte et leur ligne de l'Accueil),
+ * ni les nouvelles demandes du CRM (demande du gérant : c'est lui qui rappelle).
  */
-export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix'];
+export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix', 'lead'];
 
 /** Ce type se règle-t-il (et part-il) pour ce rôle ? */
 export const typePourRole = (t: TypeNotification, role: string | undefined): boolean => role === 'gerant' || !TYPES_RESERVES_GERANT.includes(t);
@@ -438,4 +442,94 @@ export function demandeNotifications(c: ContexteDemandeNotifications): RaisonDem
   if (c.propositionInstallation) return 'installation';
   if (c.autreFenetre) return 'autre-fenetre';
   return 'proposer';
+}
+
+/* ------------------------------------------- nouvelle demande (CRM) */
+
+/**
+ * « Nouvelle demande à appeler » : un formulaire du site ou un dossier
+ * propriétaire vient d'arriver dans le CRM (api/_erp-crm.ts). Pour le gérant
+ * seulement (type réservé), livrée tout de suite. Sur l'écran verrouillé :
+ * « Prénom N. », la ville et la demande, jamais le téléphone ni l'e-mail (un
+ * nom qui est en fait l'adresse e-mail devient « Un nouveau contact »).
+ * `nouveau` faux : la personne était déjà dans le CRM et redemande. Une
+ * nouvelle demande de la même personne repart (clé : l'heure de la demande).
+ */
+/** Texte d'un formulaire public sans caractères de contrôle ni de mise en forme (sens d'écriture, invisibles). */
+const sansControle = (s: unknown): string => String(s ?? '').replace(/[\p{Cc}\p{Cf}]+/gu, ' ').replace(/\s+/g, ' ').trim();
+/** Un prénom : des lettres (trait d'union, apostrophe), 24 caractères au plus. */
+const PRENOM = /^\p{L}[\p{L}\p{M}'’]*(?:-\p{L}[\p{L}\p{M}'’]*)?$/u;
+
+/**
+ * « Prénom N. » d'un formulaire public, pour l'écran verrouillé : seulement si
+ * le premier mot est un prénom (lettres, au plus un trait d'union, 24
+ * caractères) ; l'initiale seulement si le dernier mot commence par une lettre.
+ * Un téléphone, une adresse e-mail (même déguisée), un nom très long ou un nom
+ * complet en un mot (« Marie-Dupont-Martin ») : « Un nouveau contact ».
+ */
+export function prenomLead(nom: unknown): string {
+  const mots = sansControle(nom).split(' ').filter(Boolean);
+  const premier = mots[0] ?? '';
+  if (!premier || premier === 'Sans' || premier.length > 24 || !PRENOM.test(premier)) return 'Un nouveau contact';
+  const dernier = mots.length > 1 ? mots[mots.length - 1] : '';
+  const initiale = /^\p{L}/u.test(dernier) ? ` ${dernier.charAt(0).toLocaleUpperCase('fr')}.` : '';
+  return `${premier}${initiale}`;
+}
+
+/**
+ * Ville d'un formulaire public, pour l'écran verrouillé : rien si elle porte un
+ * e-mail, un lien, une adresse (numéro et voie) ou d'autres chiffres qu'un code
+ * postal ou un arrondissement ; 40 caractères au plus.
+ */
+export function villeLead(ville: unknown): string {
+  const v = sansControle(ville);
+  if (!v) return '';
+  if (/[@＠]|\((?:at|arobase)\)|\[(?:at|arobase)\]|:\/\/|www\.|\.(?:fr|com|net|org|io|eu|be|ch)\b/i.test(v)) return '';
+  if (/\d+\s*(?:bis|ter)?,?\s+(?:rue|avenue|av\.?|boulevard|bd|all[ée]e|chemin|impasse|place|quai|route|cours|square|passage|villa|r[ée]sidence)\b/i.test(v)) return '';
+  const chiffres = v.replace(/(?<!\d)\d{5}(?!\d)/, '').match(/\d+/g) ?? [];
+  if (chiffres.some((g) => g.length > 3) || chiffres.join('').length > 3) return '';
+  return extrait(v, 40);
+}
+
+export function notificationNouveauLead(
+  c: Pick<ContactCrm, 'id' | 'nom' | 'ville' | 'source' | 'creeLe' | 'majLe' | 'historique'>,
+  o: { nouveau: boolean },
+): GroupeNotification {
+  const qui = prenomLead(c.nom);
+  const corps = [qui, villeLead(c.ville), LIBELLE_SOURCE_SCORE[c.source] ?? ''].filter(Boolean).join(' · ');
+  const quand = c.historique?.[0]?.le ?? c.majLe ?? c.creeLe;
+  return {
+    cle: `lead-${c.id}-${quand}`,
+    urgente: true,
+    variantes: [
+      {
+        type: 'lead',
+        titre: o.nouveau ? 'Nouvelle demande à appeler' : 'Nouvelle demande d’un contact connu',
+        corps,
+        url: `/erp/crm?contact=${encodeURIComponent(c.id)}`,
+        gerant: true,
+      },
+    ],
+  };
+}
+
+/** Notifications « lead » au plus par heure : au-delà (formulaire public, robots), une seule de synthèse par heure. */
+export const PLAFOND_LEADS_HEURE = 5;
+
+/**
+ * La notification d'une nouvelle demande, plafonnée : `recentes` est le nombre de
+ * notifications « lead » parties dans l'heure (journal d'idempotence). Au
+ * plafond, « Plusieurs nouvelles demandes à appeler », une seule par heure (clé de
+ * l'heure), sans prénom ni ville : le gérant ouvre le CRM.
+ */
+export function notificationLeadPlafonnee(
+  c: Parameters<typeof notificationNouveauLead>[0],
+  o: { nouveau: boolean; recentes: number; maintenant: Date },
+): GroupeNotification {
+  if (o.recentes < PLAFOND_LEADS_HEURE) return notificationNouveauLead(c, o);
+  return {
+    cle: `lead-plusieurs-${o.maintenant.toISOString().slice(0, 13)}`,
+    urgente: false,
+    variantes: [{ type: 'lead', titre: 'Plusieurs nouvelles demandes à appeler', corps: 'Beaucoup de demandes en peu de temps : ouvrez le CRM.', url: '/erp/crm', gerant: true }],
+  };
 }

@@ -62,6 +62,13 @@ export async function idAppareil(endpoint: string): Promise<string> {
   return `${PREFIXE_APPAREIL}${(await empreinte(endpoint)).slice(0, 32)}`;
 }
 
+/** Notifications parties depuis `depuis` dont la clé commence par `prefixe` (journal d'idempotence). */
+export async function envoyeesDepuis(base: BaseNotifications, prefixe: string, depuis: Date): Promise<number> {
+  const [j] = await base.lire<Journal>(COLLECTION, [ID_JOURNAL]);
+  const seuil = depuis.toISOString();
+  return (Array.isArray(j?.envoyees) ? j.envoyees : []).filter((e) => typeof e?.cle === 'string' && e.cle.startsWith(prefixe) && String(e.le ?? '') >= seuil).length;
+}
+
 /** Appareils abonnés et encore valables. */
 export async function lireAppareils(base: BaseNotifications): Promise<Appareil[]> {
   const tous = await base.lire<Appareil>(COLLECTION);

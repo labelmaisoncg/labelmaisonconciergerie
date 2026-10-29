@@ -16,7 +16,7 @@ import { EMAIL_SUR } from '../src/erp/data/crm.js';
 import { ETAPES_DOSSIER } from '../src/erp/data/dossier-proprietaire.js';
 import { nettoyerValeurs } from '../src/erp/data/etapes-formulaire.js';
 import { emailDossier, enregistrerDossier, type DossierEnregistre } from './_dossier.js';
-import { avecDelai } from './_erp-crm.js';
+import { avecDelai, notifierNouveauLead } from './_erp-crm.js';
 import { lireCorps } from './_erp-repull.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
 
@@ -59,6 +59,12 @@ export default async function handler(req: any, res: any) {
     enregistre = await avecDelai(enregistrerDossier(v), 8_000);
   } catch (e) {
     console.error('[dossier-proprietaire] ERP :', e);
+  }
+  // Notification au gérant (« Nouvelle demande à appeler »), bornée à 3 s, sans effet sur la réponse.
+  if (enregistre) {
+    await avecDelai(notifierNouveauLead(enregistre.crm.contact, enregistre.crm.cree), 3_000).catch((e) => {
+      console.error('[dossier-proprietaire] notification :', e instanceof Error ? e.message : e);
+    });
   }
 
   let emailOk = false;
