@@ -38,7 +38,7 @@ const TAILLES: Record<TailleBouton, string> = {
 /** Classes d'un bouton, pour styler un autre élément (lien) à l'identique. */
 export function classesBouton(variant: VarianteBouton = 'secondary', size: TailleBouton = 'md', className?: string): string {
   return cn(
-    'inline-flex shrink-0 items-center justify-center rounded-lg font-semibold whitespace-nowrap transition-colors',
+    'inline-flex shrink-0 items-center justify-center rounded-lg font-medium whitespace-nowrap transition-colors',
     'disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-4 [&_svg]:stroke-2',
     VARIANTES[variant],
     TAILLES[size],

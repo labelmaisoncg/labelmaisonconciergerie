@@ -48,7 +48,7 @@ export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, larg
             <X />
           </IconButton>
           <div className="min-w-0 flex-1 text-center">
-            <h2 id={titreId} className="lm-titre truncate text-[16px] leading-snug text-(--lm-encre)">
+            <h2 id={titreId} className="lm-titre truncate text-[17px] leading-snug text-(--lm-encre)">
               {titre}
             </h2>
             {sousTitre && <div className="mt-0.5 text-[13px] leading-snug text-(--lm-encre-2) [&>.flex]:justify-center">{sousTitre}</div>}

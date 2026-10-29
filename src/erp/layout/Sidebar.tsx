@@ -26,7 +26,7 @@ export function Sidebar({ onNaviguer, className }: SidebarProps) {
           onClick={onNaviguer}
           aria-current={actif ? 'page' : undefined}
           className={cn(
-            'flex h-11 items-center gap-3 rounded-lg px-3 text-[14px] transition-colors',
+            'flex h-11 items-center gap-3 rounded-lg px-3 text-[14px] transition-[color,background-color]',
             // Rubrique ouverte : fond gris, libellé en 600, icône or (comme l'onglet actif de la barre du bas).
             actif
               ? 'bg-(--lm-surface-2) font-semibold text-(--lm-encre) [&>svg]:fill-(--lm-or-lavis) [&>svg]:text-(--lm-or-texte)'

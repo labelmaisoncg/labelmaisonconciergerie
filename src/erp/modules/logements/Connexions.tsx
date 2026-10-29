@@ -364,12 +364,12 @@ export default function Connexions() {
         {aRelier.length > 0 && (
           <Alert tone="info" className="mb-3">
             {aRelier.length === 1
-              ? `« ${aRelier[0].nom} » a été créé à la main. Pour éviter un doublon, reliez-le à son annonce plutôt que de la cocher ici.`
+              ? `« ${aRelier[0].nom} » a été créé à la main. Pour éviter un doublon, reliez-le à son annonce plutôt que de la cocher ici.`
               : `${aRelier.length} logements ont été créés à la main. Pour éviter des doublons, reliez-les à leur annonce plutôt que de la cocher ici.`}
             <span className="mt-1 flex flex-wrap gap-x-4">
               {aRelier.slice(0, 4).map((l) => (
                 <Link key={l.id} to={`/erp/logements/${l.id}?relier=1`} className="inline-flex min-h-8 items-center font-medium lm-lien">
-                  Relier {aRelier.length === 1 ? 'à son annonce' : `« ${l.nom} »`}
+                  Relier {aRelier.length === 1 ? 'à son annonce' : `« ${l.nom} »`}
                 </Link>
               ))}
             </span>

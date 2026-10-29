@@ -153,7 +153,7 @@ export function GlobalSearch({ className }: { className?: string }) {
         aria-haspopup="dialog"
         aria-label={`Rechercher partout (raccourci ${mac ? 'Cmd' : 'Ctrl'} + K)`}
         // Pilule de recherche d'Airbnb : blanche, l'ombre unique, et à droite la pastille ronde or à la loupe blanche.
-        className="flex h-12 w-full min-w-0 items-center gap-2 rounded-full border border-(--lm-bord) bg-(--lm-surface) py-1.5 pr-1.5 pl-5 text-left shadow-(--lm-ombre-haute) transition-shadow hover:shadow-[0_0_0_1px_rgba(20,17,14,0.04),0_4px_12px_rgba(20,17,14,0.14)]"
+        className="flex h-12 w-full min-w-0 items-center gap-2 rounded-full border border-(--lm-bord) bg-(--lm-surface) py-1.5 pr-1.5 pl-5 text-left shadow-(--lm-ombre-haute)"
       >
         <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-(--lm-encre)">
           <span className="sm:hidden">Rechercher</span>

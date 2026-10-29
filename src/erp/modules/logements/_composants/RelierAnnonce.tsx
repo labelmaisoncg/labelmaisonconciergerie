@@ -159,7 +159,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
       ouvert={ouvert}
       onFermer={() => !envoi && onFermer()}
       titre="Relier à une annonce"
-      description={fait || sansPlateforme || erreur ? undefined : `Choisissez l’annonce de « ${l.nom} ».`}
+      description={fait || sansPlateforme || erreur ? undefined : `Choisissez l’annonce de « ${l.nom} ».`}
       pied={pied}
     >
       {fait ? (
@@ -256,7 +256,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[14px] font-medium text-(--lm-encre-2)">{a.nom}</span>
                         <span className="block truncate text-[12.5px] text-(--lm-encre-2)">
-                          {[autreNom ? `Dans l’ERP : « ${autreNom} »` : '', a.ville, plateformes(a)].filter(Boolean).join(' · ')}
+                          {[autreNom ? `Dans l’ERP : « ${autreNom} »` : '', a.ville, plateformes(a)].filter(Boolean).join(' · ')}
                         </span>
                       </span>
                     </li>

@@ -145,7 +145,7 @@ export function MessagesAutomatiques() {
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 </button>
-                <Interrupteur actif={m.actif} disabled={!gerant} label={`${m.actif ? 'Éteindre' : 'Allumer'} « ${LIBELLES_DECLENCHEURS[k].titre} »`} onChange={(v) => basculer(k, v)} />
+                <Interrupteur actif={m.actif} disabled={!gerant} label={`${m.actif ? 'Éteindre' : 'Allumer'} « ${LIBELLES_DECLENCHEURS[k].titre} »`} onChange={(v) => basculer(k, v)} />
               </li>
             );
           })}
@@ -224,7 +224,7 @@ export function MessagesAutomatiques() {
         ouvert={!!allumer}
         onFermer={() => setAllumer(null)}
         taille="sm"
-        titre={allumer ? `Allumer « ${LIBELLES_DECLENCHEURS[allumer].titre} » ?` : ''}
+        titre={allumer ? `Allumer « ${LIBELLES_DECLENCHEURS[allumer].titre} » ?` : ''}
         description={
           allumer &&
           `${allumer === 'confirmation' ? 'Il partira tout seul pour chaque nouvelle réservation, à partir de maintenant.' : 'Il partira tout seul, à partir de maintenant, aux voyageurs concernés.'}${

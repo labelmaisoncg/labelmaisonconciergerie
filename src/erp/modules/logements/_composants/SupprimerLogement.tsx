@@ -37,7 +37,7 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
     const nom = l.nom;
     const r = d.supprimerLogement(l.id);
     if (!r.ok) return setEchec(r.erreur);
-    naviguer('/erp/logements', { state: { message: `« ${nom} » a été supprimé.` } });
+    naviguer('/erp/logements', { state: { message: `« ${nom} » a été supprimé.` } });
   };
 
   const passerEnSorti = () => {
@@ -62,11 +62,11 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
   let description: string | undefined;
   let pied: ReactNode = null;
   if (sorti) {
-    titre = `« ${l.nom} » est sorti`;
+    titre = `« ${l.nom} » est sorti`;
     description = 'Il n’est plus géré. Il reste en fin de liste, avec son historique.';
     pied = fermerSeul;
   } else if (verdict?.ok) {
-    titre = `Supprimer « ${l.nom} » ?`;
+    titre = `Supprimer « ${l.nom} » ?`;
     description = `Il disparaît de l’ERP${verdict.avecLui.length ? `, avec ${verdict.avecLui.join(' et ')}` : ''}. C’est définitif.`;
     pied = (
       <>
@@ -78,7 +78,7 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
     );
   } else if (verdict?.motif === 'historique') {
     const dejaSorti = l.statut === 'sorti';
-    titre = `Impossible de supprimer « ${l.nom} »`;
+    titre = `Impossible de supprimer « ${l.nom} »`;
     description = `Il a ${resumeHistorique(verdict.historique)}. ${
       dejaSorti ? 'Il est déjà « Sorti » : il n’est plus géré, rien n’est perdu.' : 'Passez-le en « Sorti » : il n’est plus géré, son historique reste.'
     }`;
@@ -101,7 +101,7 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
       </>
     );
   } else if (verdict?.motif === 'annonce') {
-    titre = `« ${l.nom} » est encore suivi`;
+    titre = `« ${l.nom} » est encore suivi`;
     description = 'Son annonce arrive toujours des plateformes : supprimé, il reviendrait au prochain import. Décochez-la dans Connexions, puis supprimez-le.';
     pied = (
       <>

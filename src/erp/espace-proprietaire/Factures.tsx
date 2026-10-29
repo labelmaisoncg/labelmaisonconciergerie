@@ -82,7 +82,7 @@ function DetailFacture({ f, espace, LienDocument, onRetour }: { f: FactureVue; e
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{enteteImprime(espace)}</p>
-            <h1 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">Facture {f.numero}</h1>
+            <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun)">Facture {f.numero}</h1>
             <p className="text-[13px] text-(--lm-encre-2)">
               Émise le {dateCourte(f.dateEmission)} · échéance le {dateCourte(f.echeance)}
             </p>

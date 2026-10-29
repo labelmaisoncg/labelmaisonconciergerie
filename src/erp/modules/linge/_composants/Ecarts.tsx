@@ -28,7 +28,7 @@ export function Ecarts({ onMessage }: { onMessage: (texte: string) => void }) {
       date: AUJOURDHUI,
       categorie: 'linge',
       gravite: e.manquant >= 3 ? 'haute' : 'moyenne',
-      description: `Écart d’inventaire : ${pluriel(e.manquant, 'article')} « ${e.article} » non revenu${e.manquant > 1 ? 's' : ''} de blanchisserie (envoi du ${dateCourte(e.date)}${blanchisseur ? `, ${blanchisseur.nom}` : ''}). ${refEnvoi(e.envoiId)}.`,
+      description: `Écart d’inventaire : ${pluriel(e.manquant, 'article')} « ${e.article} » non revenu${e.manquant > 1 ? 's' : ''} de blanchisserie (envoi du ${dateCourte(e.date)}${blanchisseur ? `, ${blanchisseur.nom}` : ''}). ${refEnvoi(e.envoiId)}.`,
       refacturable: blanchisseur ? 'prestataire' : 'aucun',
       responsable: 'Kamel',
     });

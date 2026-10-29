@@ -158,7 +158,7 @@ export default function AnnoncesEquipe() {
                     {dateHeure(a.publieeLe)}
                   </p>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => setARetirer(a)} aria-label={`Retirer « ${a.titre} » de l’Accueil`}>
+                <Button size="sm" variant="ghost" onClick={() => setARetirer(a)} aria-label={`Retirer « ${a.titre} » de l’Accueil`}>
                   Retirer
                 </Button>
               </li>
@@ -178,7 +178,7 @@ export default function AnnoncesEquipe() {
         onFermer={() => setARetirer(null)}
         taille="sm"
         titre="Retirer de l’Accueil ?"
-        description={aRetirer ? `« ${aRetirer.titre} » disparaîtra pour toute l’équipe.` : undefined}
+        description={aRetirer ? `« ${aRetirer.titre} » disparaîtra pour toute l’équipe.` : undefined}
         pied={
           <>
             <Button variant="secondary" onClick={() => setARetirer(null)}>

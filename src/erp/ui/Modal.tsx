@@ -21,7 +21,7 @@ const TAILLES = { sm: 'sm:max-w-sm', md: 'sm:max-w-lg', lg: 'sm:max-w-2xl' };
  * (« Annuler », bouton tertiaire souligné) à gauche, l'action principale à
  * droite ; 48 px de haut sur téléphone (erp.css, .lm-pied-fenetre).
  */
-export const PIED_FENETRE = 'lm-pied-fenetre flex flex-wrap items-center justify-end gap-2 border-t border-(--lm-bord) px-5 py-3.5 sm:px-6 [&>*:first-child:not(:last-child)]:mr-auto';
+export const PIED_FENETRE = 'lm-pied-fenetre flex flex-wrap items-center justify-end gap-2 border-t border-(--lm-bord) px-5 py-3.5 sm:px-6 [&>button:first-of-type:not(:last-child)]:mr-auto';
 
 /**
  * Fenêtre à la manière d'Airbnb : en-tête avec le bouton fermer rond à
@@ -52,7 +52,7 @@ export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md
           <IconButton label="Fermer" onClick={onFermer} size="sm" className="absolute top-1/2 left-3 -translate-y-1/2">
             <X />
           </IconButton>
-          <h2 id={titreId} className="lm-titre text-center text-[16px] leading-snug text-(--lm-encre)">
+          <h2 id={titreId} className="lm-titre text-center text-[17px] leading-snug text-balance text-(--lm-encre)">
             {titre}
           </h2>
         </div>

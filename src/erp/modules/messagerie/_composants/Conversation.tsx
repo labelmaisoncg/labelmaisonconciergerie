@@ -385,7 +385,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
     const lien = await lienPartage(g.media.fichier, DUREE_LIEN_GUIDE_S);
     setGuideEnCours(null);
     if (lien) inserer(`${g.titre} : ${lien}`);
-    else setErreur(`Le lien du guide « ${g.titre} » n’a pas pu être créé. Réessayez.`);
+    else setErreur(`Le lien du guide « ${g.titre} » n’a pas pu être créé. Réessayez.`);
   };
 
   const infos = [
@@ -646,7 +646,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
                     key={x.cle}
                     type="button"
                     onClick={() => insererSupplement(x)}
-                    title={`Proposer « ${LIBELLES_SUPPLEMENTS[x.cle].titre} » : ${x.disponibilite.constats.join(' ') || 'prix réglé pour ce logement'}`}
+                    title={`Proposer « ${LIBELLES_SUPPLEMENTS[x.cle].titre} » : ${x.disponibilite.constats.join(' ') || 'prix réglé pour ce logement'}`}
                     className="inline-flex h-8 shrink-0 items-center gap-1 rounded-full border border-(--lm-bord-fort) px-3 text-[12.5px] font-medium text-(--lm-encre-2) hover:border-(--lm-or) hover:text-(--lm-encre)"
                   >
                     {LIBELLES_SUPPLEMENTS[x.cle].titre}
@@ -671,8 +671,8 @@ export function Conversation({ fil, logement, reservation }: Props) {
                       ? `Traduit en ${aide.nom} : relisez, puis envoyez.`
                       : aide.genre === 'supplement'
                         ? aide.statut === 'impossible'
-                          ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
-                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
+                          ? `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} », pas possible ce jour-là : relisez la réponse, puis envoyez.`
+                          : `« ${LIBELLES_SUPPLEMENTS[aide.cle].titre} »${aide.statut === 'a_verifier' ? ', à vérifier' : ''} : relisez, puis envoyez. L’ERP n’encaisse rien.`
                         : aide.parClaude
                           ? 'Proposée par Claude : relisez, puis envoyez.'
                           : aide.source === 'agent'

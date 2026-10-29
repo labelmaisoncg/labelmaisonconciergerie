@@ -13,7 +13,8 @@
    */
   --lm-surface-2: #f4f2ee;
   --lm-bord: rgba(20, 17, 14, 0.13);
-  --lm-bord-fort: rgba(20, 17, 14, 0.3);
+  /* Contour des champs : 3:1 sur blanc (« muted-soft » d’Airbnb), lisible au repos. */
+  --lm-bord-fort: rgba(20, 17, 14, 0.45);
   --lm-encre: #14110e;
   /* Textes secondaires : contrastes AA (≥ 4,5:1 sur fond blanc et ivoire). */
   --lm-encre-2: rgba(20, 17, 14, 0.68);

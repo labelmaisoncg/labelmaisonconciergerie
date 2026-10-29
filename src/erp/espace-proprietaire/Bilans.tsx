@@ -61,7 +61,7 @@ export function BilanDetail({
         <div>
           <p className="hidden text-[12px] text-(--lm-encre-2) print:block">{enteteImprime(espace)}</p>
           <p className="hidden text-[13px] font-medium text-(--lm-encre) print:block">Bilan locatif · {proprietaire}</p>
-          <h2 className="lm-serif text-[24px] leading-tight text-(--lm-brun)">{titreMois(c.mois)}</h2>
+          <h2 className="lm-titre text-[24px] leading-tight text-(--lm-brun)">{titreMois(c.mois)}</h2>
           {bilan.publieLe && <p className="text-[13px] text-(--lm-encre-2)">Publié le {dateCourte(bilan.publieLe.slice(0, 10))}</p>}
         </div>
         {onImprimer && (

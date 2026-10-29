@@ -173,7 +173,7 @@ function EditionSupplements({ logement: l, onFermer }: { logement: Logement; onF
                     <p className="text-[14.5px] font-semibold text-(--lm-encre)">{libelle.titre}</p>
                     <p className="text-[12.5px] text-(--lm-encre-2)">{libelle.aide}</p>
                   </div>
-                  <Interrupteur actif={r.actif} label={`Proposer « ${libelle.titre} »`} onChange={(v) => maj(k, { actif: v })} />
+                  <Interrupteur actif={r.actif} label={`Proposer « ${libelle.titre} »`} onChange={(v) => maj(k, { actif: v })} />
                 </div>
                 {r.actif && (
                   <div className="mt-3 grid grid-cols-2 gap-3">

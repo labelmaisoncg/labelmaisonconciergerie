@@ -122,7 +122,7 @@ function Formulaire({ identite, espace }: { identite: IdentiteSociete & { enregi
           <p className="mb-1.5 text-[13px] font-medium text-(--lm-encre)">TVA</p>
           <Segmente<RegimeTva> label="Régime de TVA" options={REGIMES_TVA} valeur={s.regimeTva} onChange={(v) => maj('regimeTva', v)} />
           <p className="mt-1.5 text-[12px] text-(--lm-encre-3)">
-            {s.regimeTva === 'franchise' ? `Vos factures portent « ${MENTION_FRANCHISE_TVA} ».` : 'La TVA s’ajoute au total de vos factures.'}
+            {s.regimeTva === 'franchise' ? `Vos factures portent « ${MENTION_FRANCHISE_TVA} ».` : 'La TVA s’ajoute au total de vos factures.'}
           </p>
         </div>
         {s.regimeTva === 'tva' && (
