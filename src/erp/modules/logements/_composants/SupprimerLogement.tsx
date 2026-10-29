@@ -1,6 +1,6 @@
 /**
- * « Supprimer le logement » (repli « Administratif » de la fiche), pour le
- * gérant : un logement créé par erreur, en double ou pour un essai
+ * « Supprimer le logement » (la corbeille tout en haut à droite de la fiche,
+ * DetailLogement), pour le gérant : un logement créé par erreur, en double ou pour un essai
  * disparaît de l'ERP. Avec un historique, ou une annonce encore suivie, la
  * fenêtre dit pourquoi et propose la suite : « Passer en Sorti » ou
  * Connexions. Règles : data/suppression-logement.ts.
@@ -12,7 +12,7 @@ import { AUJOURDHUI } from '../../../data/format';
 import { peutSupprimerLogement, phraseSejoursAVenir, resumeHistorique, sejoursAVenir, verdictSuppression } from '../../../data/suppression-logement';
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
-import { Alert, Button, ButtonLink, Modal } from '../../../ui';
+import { Alert, Button, ButtonLink, IconButton, Modal } from '../../../ui';
 
 const CONNEXIONS = '/erp/logements/connexions';
 
@@ -118,13 +118,13 @@ export function SupprimerLogement({ logement: l }: { logement: Logement }) {
   }
 
   return (
-    <div className="mt-4 flex justify-end border-t border-(--lm-bord) pt-3">
-      <Button size="sm" variant="ghost" icone={<Trash2 />} className="text-(--lm-danger) hover:text-(--lm-danger)" onClick={ouvrir}>
-        Supprimer le logement
-      </Button>
+    <>
+      <IconButton label="Supprimer le logement" onClick={ouvrir}>
+        <Trash2 />
+      </IconButton>
       <Modal ouvert={ouvert} onFermer={fermer} taille="sm" titre={titre} description={description} pied={pied}>
         {echec ? <Alert tone="danger">{echec}</Alert> : undefined}
       </Modal>
-    </div>
+    </>
   );
 }

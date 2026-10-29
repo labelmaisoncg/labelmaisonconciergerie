@@ -7,6 +7,7 @@ import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import type { Mission } from '../../../data/types';
 import { Aide, Badge, Button, StatusBadge, Table, type Colonne } from '../../../ui';
 import { controlePlanifie, nouveauControle } from './outils';
+import { noteDeLAvis } from '../../../data/avis-auto';
 
 /** Contrôle qualité (SPEC §2.5) : tirage 1 sur 10 et toute note voyageur < 4,5. */
 export function Controle({ onMessage }: { onMessage: (texte: string) => void }) {
@@ -39,7 +40,7 @@ export function Controle({ onMessage }: { onMessage: (texte: string) => void }) 
         const r = reservations.find((x) => x.id === m.reservationId);
         const basse = r?.noteVoyageur !== undefined && r.noteVoyageur < SEUIL_NOTE_CONTROLE;
         return basse ? (
-          <Badge tone="danger" icone={<Star />}>Note voyageur {note(r?.noteVoyageur)}</Badge>
+          <Badge tone="danger" icone={<Star />}>Note voyageur {noteDeLAvis(r?.noteVoyageur, r?.canal)}</Badge>
         ) : (
           <Badge tone="info">Tirage 1 sur 10</Badge>
         );

@@ -241,6 +241,29 @@ html:has(.erp-root) {
 html:has(.erp-root) body {
   overscroll-behavior: none;
 }
+
+/*
+ * Appui long, comme une app (demande de l'utilisateur) : sur iPhone, un appui
+ * long sur un lien de l'app (carte de logement, réservation, onglet) n'ouvre
+ * plus l'aperçu de Safari ni le menu « Ouvrir / Copier le lien », et ne
+ * sélectionne pas le texte de la carte. Les liens vers
+ * l'extérieur (téléphone, e-mail, plateformes) gardent leur menu : on peut
+ * toujours copier un numéro.
+ */
+@media (pointer: coarse) {
+  .erp-root a[href^='/'],
+  .erp-root a[href^='/'] img {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* Les photos de contenu (preuves d'incident, ménage, galerie) gardent leur
+     menu « Enregistrer / Partager » ; seule la sélection bleue disparaît. */
+  .erp-root img {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
 @media (pointer: coarse) {
   .erp-root input:not([type='checkbox']):not([type='radio']):not([type='range']),
   .erp-root textarea,

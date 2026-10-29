@@ -7,6 +7,8 @@ import { LIBELLES } from '../../data/libelles';
 import { pluriel } from '../../data/format';
 import { logementById } from '../../data/selectors';
 import { completudeFiche } from './_composants/stats';
+import { SupprimerLogement } from './_composants/SupprimerLogement';
+import { peutSupprimerLogement } from '../../data/suppression-logement';
 import { EditionLogement } from './EditionLogement';
 import { OngletVueEnsemble } from './onglets/VueEnsemble';
 import { OngletFiche } from './onglets/FicheVoyageur';
@@ -65,6 +67,8 @@ export default function DetailLogement() {
             Modifier
           </Button>
         }
+        // Supprimer : à part, une corbeille tout en haut à droite (gérant seulement).
+        coin={peutSupprimerLogement(d.utilisateur.role, d.lectureSeule) ? <SupprimerLogement logement={l} /> : undefined}
       />
 
       <Tabs

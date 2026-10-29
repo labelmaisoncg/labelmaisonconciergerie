@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ClipboardCheck } from 'lucide-react';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
-import { dateCourte, note } from '../../../data/format';
+import { dateCourte } from '../../../data/format';
 import { nouvelId, useErp } from '../../../data/store';
 import type { Mission } from '../../../data/types';
 import { Badge, Button, Card, CardHeader, Field, Select } from '../../../ui';
 import { controlePlanifie, nouveauControle } from './outils';
+import { noteDeLAvis } from '../../../data/avis-auto';
 
 interface Props {
   mission: Mission;
@@ -44,7 +45,7 @@ export function ControleCarte({ mission: m, onMessage }: Props) {
         actions={m.controleQualite || basse ? <Badge tone="or" icone={<ClipboardCheck />}>À contrôler</Badge> : undefined}
       />
       <div className="space-y-3 text-[13px]">
-        {basse && <p className="text-(--lm-danger)">Note voyageur {note(r?.noteVoyageur)} : contrôle obligatoire (seuil {note(SEUIL_NOTE_CONTROLE)}).</p>}
+        {basse && <p className="text-(--lm-danger)">Note voyageur {noteDeLAvis(r?.noteVoyageur, r?.canal)} : contrôle obligatoire (seuil {noteDeLAvis(SEUIL_NOTE_CONTROLE, r?.canal)}).</p>}
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={m.controleQualite} onChange={basculer} className="size-4 accent-(--lm-or)" />
           Mission sélectionnée pour contrôle physique

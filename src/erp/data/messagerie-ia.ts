@@ -154,7 +154,14 @@ const ARGENT = new RegExp(
 const SANS_ARGENT = /feel free|prise? en charge|in charge of|(vous|se|nous|me|te|s'y|y) rendre (au|aux|à|a|chez|sur|en|dans|jusqu)/gi;
 
 /** Réclamation et litige. */
-const RECLAMATION = /r[ée]clamation|litige|plainte|inacceptable|arnaque|avocat|scam|complain|unacceptable|lawyer|police/i;
+const RECLAMATION = /r[ée]clamation|litige|plainte|inacceptable|arnaque|avocat|scam|complain|unacceptable|lawyer|police|gendarm|polizei|polic[ií]a|polizia/i;
+
+/**
+ * La fiche de police du check-in en ligne (« J'ai rempli la fiche individuelle
+ * de police ») n'est ni une réclamation ni un souci : retirée avant de chercher
+ * « police » (ici, pour l'agent, et dans les règles des avis).
+ */
+export const FICHE_DE_POLICE = /fiches?\s+(individuelles?\s+)?de\s+police/gi;
 
 /** Données personnelles : pièce d'identité, suppression de données... */
 export const DONNEES_PERSONNELLES =
@@ -175,7 +182,7 @@ export function sujetSensible(texteVoyageur: string, intention?: IntentionMessag
   const t = nettoyerTexte(texteVoyageur).replace(/[’`´]/g, "'");
   if (intention === 'annulation' || ANNULATION.test(t)) return { raison: 'argent', motif: 'Le voyageur parle d’annulation : à vous de décider.' };
   if (intention === 'paiement' || ARGENT.test(t.replace(SANS_ARGENT, ' '))) return { raison: 'argent', motif: 'Question d’argent (paiement, remboursement, caution) : à vous de décider.' };
-  if (RECLAMATION.test(t)) return { raison: 'litige', motif: 'Réclamation : une réponse de l’équipe s’impose.' };
+  if (RECLAMATION.test(t.replace(FICHE_DE_POLICE, ' '))) return { raison: 'litige', motif: 'Réclamation : une réponse de l’équipe s’impose.' };
   if (intention === 'probleme_technique' || estProbleme(t)) return { raison: 'litige', motif: 'Problème sur place : une réponse de l’équipe s’impose.' };
   if (DONNEES_PERSONNELLES.test(t)) return { raison: 'autre', motif: 'Données personnelles : à vous de répondre.' };
   return null;

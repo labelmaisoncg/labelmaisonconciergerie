@@ -2,8 +2,9 @@ import { useMemo, useState } from 'react';
 import { Button, Card, FilterChips, Timeline, type EvenementFrise } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
-import { dateCourte, dateHeure, euros, note, pluriel } from '../../../data/format';
+import { dateCourte, dateHeure, euros, pluriel } from '../../../data/format';
 import type { Logement } from '../../../data/types';
+import { noteDeLAvis } from '../../../data/avis-auto';
 
 type Genre = 'reservation' | 'journal';
 type Evenement = EvenementFrise & { genre: Genre; tri: string };
@@ -31,7 +32,7 @@ export function OngletHistorique({ logement: l }: { logement: Logement }) {
           tone: r.statut === 'annulee' ? 'danger' : 'info',
           titre: `Séjour ${r.voyageur.nom} (${LIBELLES.canal[r.canal]})`,
           meta: `${dateCourte(r.arrivee)} · ${LIBELLES.statutReservation[r.statut]}`,
-          description: `${pluriel(r.nuits, 'nuit')}, ${euros(r.montantBrutCentimes)}${r.noteVoyageur !== undefined ? `, note ${note(r.noteVoyageur)}` : ''}`,
+          description: `${pluriel(r.nuits, 'nuit')}, ${euros(r.montantBrutCentimes)}${r.noteVoyageur !== undefined ? `, note ${noteDeLAvis(r.noteVoyageur, r.canal)}` : ''}`,
         })),
       ...d.journal
         .filter((j) => j.entiteId === l.id || mandats.has(j.entiteId))
