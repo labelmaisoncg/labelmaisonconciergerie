@@ -97,10 +97,10 @@ WHY_IMMO = ("Pourquoi passer par Label Maison", [
 PAGES_IMMO = [
     dict(
         slug="gestion-locative-paris",
-        title="Gestion locative à Paris — meublé, bail mobilité et courte durée | Label Maison",
-        desc="Gestion locative complète à Paris : recherche de locataires, bail mobilité, meublé longue "
-             "durée ou courte durée, états des lieux, loyers et travaux. Un interlocuteur unique, "
-             "rémunéré au résultat.",
+        title="Gestion locative à Paris | Label Maison Conciergerie",
+        desc="Gestion locative à Paris : nous gérons votre appartement de A à Z (locataires, bail, "
+             "loyers, travaux, états des lieux) ou en location courte durée. Frais au pourcentage des "
+             "loyers, sans abonnement. Recommandation écrite gratuite.",
         crumb="Gestion locative Paris",
         trail=[("Accueil", "/"), ("Propriétaires", "/proprietaires")],
         nav=NAV_IMMO,
@@ -113,9 +113,9 @@ PAGES_IMMO = [
                 "Gestion locative meublée courte durée"],
         badge="🏠 Paris · Gestion locative",
         h1="Gestion locative à <span class=\"font-serif-italic\">Paris</span>",
-        sub="Meublé longue durée, bail mobilité ou courte durée : nous gérons votre bien parisien de "
-            "bout en bout — locataires, loyers, travaux, états des lieux — et vous n'avez plus qu'à "
-            "suivre vos revenus.",
+        sub="Faire gérer son appartement à Paris, sans y passer de temps : longue durée, bail mobilité "
+            "ou courte durée, nous prenons le bien de bout en bout — locataires, loyers, travaux, états "
+            "des lieux — et vous suivez vos revenus.",
         photo=("real/logement-suite.jpg", "Appartement parisien en gestion locative"),
         puces=["Locataires <b>sélectionnés</b>", "Loyers <b>suivis</b>",
                "Travaux <b>coordonnés</b>", "Un <b>interlocuteur</b> unique"],
@@ -150,6 +150,22 @@ PAGES_IMMO = [
              "rapporte le plus à votre bien, au regard de la loi et de votre fiscalité."),
         ]),
         sections=[
+            ("Faire gérer son appartement à Paris : ce que cela coûte, ce que cela change", [
+                "La <strong>gestion complète</strong> d'un appartement à Paris se facture en pourcentage "
+                "des loyers encaissés : sur le marché parisien, les mandats de gestion courante se "
+                "situent le plus souvent entre 6 et 10 % hors taxes des loyers, la mise en location "
+                "(recherche du locataire, bail, état des lieux) étant facturée à part, en général "
+                "autour d'un demi-mois à un mois de loyer. Notre proposition écrite indique le taux "
+                "exact pour votre bien ; il n'y a ni abonnement ni frais de dossier.",
+                "Ce que cela change : un loyer fixé au niveau du marché plutôt qu'au doigt mouillé, "
+                "un locataire sélectionné sur dossier complet, des loyers suivis chaque mois, les "
+                "régularisations de charges faites, et quelqu'un qui décroche quand le chauffe-eau "
+                "lâche. Pour un propriétaire qui vit loin de Paris ou qui n'a pas le temps, c'est la "
+                "différence entre un placement et une corvée.",
+                "La <strong>gestion partielle</strong> (mise en location seule, puis vous gérez) "
+                "existe aussi : elle convient aux propriétaires présents à Paris qui veulent seulement "
+                "sécuriser le choix du locataire et le bail.",
+            ]),
             ("Meublé, bail mobilité ou courte durée : que choisir à Paris ?", [
                 "<strong>Le meublé longue durée</strong> reste la valeur sûre : bail d'un an "
                 "(neuf mois pour un étudiant), loyer supérieur au nu, et une rotation limitée. "
@@ -196,6 +212,16 @@ PAGES_IMMO = [
                "les deux dans <a href=\"/gestion-airbnb-ou-gestion-classique\"><strong>cet article</strong></a>."),
         faq_title="Questions fréquentes — gestion locative à Paris",
         faq=[
+            ("Combien coûte la gestion d'un appartement à Paris ?",
+             "Un pourcentage des loyers encaissés pour la gestion courante (le marché parisien se "
+             "situe le plus souvent entre 6 et 10 % HT), plus des honoraires de mise en location à "
+             "chaque changement de locataire. Le taux exact figure dans notre proposition écrite, "
+             "gratuite ; il n'y a pas d'abonnement."),
+            ("Quels documents faut-il pour mettre un appartement en gestion à Paris ?",
+             "Titre de propriété ou dernière taxe foncière, diagnostics (DPE, électricité, gaz, "
+             "plomb selon l'immeuble), règlement de copropriété, inventaire du mobilier, et pour une "
+             "location de courte durée, la déclaration en mairie avec numéro d'enregistrement. Nous "
+             "montons le dossier avec vous."),
             ("Quels sont vos frais de gestion locative ?",
              "Un pourcentage des loyers encaissés en gestion longue durée, une commission sur les "
              "revenus en courte durée. Pas de frais de dossier ni d'abonnement. Le taux exact dépend "
