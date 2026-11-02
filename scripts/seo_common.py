@@ -307,9 +307,88 @@ LOCKUP = (
 )
 
 
+# --------------------------------------------------------------------------- #
+#  Longueur des balises : Google tronque le title vers 60 caractères et la
+#  description vers 155. On raccourcit sans couper un mot : d'abord le suffixe
+#  de marque (Google l'ajoute lui-même), puis le code postal, puis la dernière
+#  partie après un séparateur. La description s'arrête à une fin de phrase, sinon
+#  à la dernière virgule.
+# --------------------------------------------------------------------------- #
+TITLE_MAX = 60
+DESC_MAX = 155
+_SUFFIXES_MARQUE = re.compile(
+    r"\s*[|·–—-]\s*(Label ?Maison( Conciergerie| Studio| Sens)?|LabelMaison)\s*$", re.I)
+_SEPARATEURS = (" — ", " – ", " | ", " · ", " : ")
+
+
+_MOTS_CREUX = {"dans", "les", "et", "de", "à", "en", "pour", "du", "la", "le", "des", "sur",
+               "au", "aux", "clé", "un", "une", "ou", "avec", "par", "vos", "votre", "nos"}
+
+
+def _coupe_mots(t: str, maxi: int) -> str:
+    """Coupe au dernier espace avant maxi, puis retire les mots creux et la
+    ponctuation laissés en fin (« … gestion locative clé » -> « … gestion locative »)."""
+    mots = t[:maxi + 1].rsplit(" ", 1)[0].split(" ")
+    creux = lambda m: (m.lower().strip("’'") in _MOTS_CREUX or m in ("—", "–", "|", "·", ":")
+                       or re.match(r"^(d|l|qu|j|n|s|c)[’'][\w-]*$", m, re.I))
+    while mots and creux(mots[-1]):
+        mots.pop()
+    court = " ".join(mots).rstrip(" ,;:—–-|·")
+    # Un seul mot après le dernier séparateur (« … — gestion ») : on s'arrête au séparateur.
+    for sep in _SEPARATEURS:
+        i = court.rfind(sep)
+        if i > 0 and len(court[i + len(sep):].split()) < 2:
+            court = court[:i].rstrip(" ,;:")
+    return court
+
+
+def title_court(title: str, maxi: int = TITLE_MAX) -> str:
+    t = re.sub(r"\s+", " ", title).strip()
+    if len(t) <= maxi:
+        return t
+    t2 = _SUFFIXES_MARQUE.sub("", t).strip()
+    if len(t2) <= maxi:
+        return t2
+    a_sep = lambda x: any(sep.strip() in x for sep in _SEPARATEURS)
+    # Variante A : on garde le code postal (il distingue les communes homonymes :
+    # Saint-Louis 68 et 974, La Trinité 06 et 972). Variante B : on le retire pour
+    # garder la fin descriptive (« — gestion locative »). A gagne si elle conserve
+    # une partie descriptive, sinon B.
+    a = _coupe_mots(t2, maxi)
+    t3 = re.sub(r"\s*\((\d{5}|\d{2,3}|\d{2}[AB])\)", "", t2).strip()
+    b = t3 if len(t3) <= maxi else _coupe_mots(t3, maxi)
+    if a_sep(a) and len(a) >= 25:
+        return a
+    if a_sep(b) and len(b) >= 25:
+        return b
+    if len(a) >= 25:
+        return a
+    return t3[:maxi].rstrip(" ,;:—–-")
+
+
+def desc_courte(desc: str, maxi: int = DESC_MAX) -> str:
+    d = re.sub(r"\s+", " ", desc).strip()
+    if len(d) <= maxi:
+        return d
+    # Fin de phrase si elle n'ampute pas trop ; sinon fin de proposition (virgule,
+    # point-virgule, deux-points) : on garde le maximum de contenu propre à la page.
+    fin = max(d.rfind(". ", 0, maxi), d.rfind("! ", 0, maxi), d.rfind("? ", 0, maxi))
+    if fin >= maxi - 35:
+        return d[:fin + 1]
+    clause = max(d.rfind(", ", 0, maxi - 1), d.rfind(" ; ", 0, maxi - 1), d.rfind(" : ", 0, maxi - 1))
+    if clause >= 70 and clause > fin:
+        return d[:clause].rstrip() + "."
+    if fin >= 70:
+        return d[:fin + 1]
+    mots = d[:maxi - 1].rsplit(" ", 1)[0]
+    return mots.rstrip(" ,;:") + "…"
+
+
 def head(title: str, desc: str, path: str, jsonlds: list,
          image: str = LOGO) -> str:
     url = SITE + path
+    title = title_court(title)
+    desc = desc_courte(desc)
     return f"""<!doctype html>
 <html lang="fr">
 <head>

@@ -135,12 +135,126 @@ function coquilleOperations(page) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Balises SEO par route. Sans cela, chaque coquille recopie le <title>, la
+// description et surtout la balise canonical de l'accueil : Google lit alors
+// /proprietaires ou /studio comme une copie de « / » avant même d'exécuter le
+// JavaScript (react-helmet-async ne corrige qu'après). On écrit donc, dans le
+// HTML brut, les mêmes valeurs que le <Helmet> de chaque page, et un noindex
+// pour les espaces privés.
+// ---------------------------------------------------------------------------
+const SITE = 'https://www.labelmaisoncg.fr';
+const META = {
+  '/': {
+    title: 'Conciergerie Airbnb Paris & Essonne · Label Maison Conciergerie',
+    description:
+      'Label Maison gère votre location courte durée de A à Z à Paris, en Essonne et en Île-de-France : annonce, voyageurs, ménage hôtelier, revenus. Estimation gratuite.',
+  },
+  '/proprietaires': {
+    title: 'Gestion de biens immobiliers clé en main · Label Maison Conciergerie',
+    description:
+      'Confiez la gestion de votre patrimoine immobilier à une conciergerie privée haut de gamme à Paris. Revenus optimisés, sérénité totale, performance prouvée.',
+  },
+  '/billetterie': {
+    title: "Billetterie d'avion · Vols privés et première classe · Label Maison",
+    description:
+      'Réservation de vols premium : jets privés, première classe Emirates, Qatar Airways. Notre équipe orchestre vos voyages 24/7 avec discrétion.',
+  },
+  '/logement': {
+    title: "Logements d'exception · Suites, villas et penthouses · Label Maison",
+    description:
+      'Studios élégants, suites avec jacuzzi, villas et penthouses : des lieux à la hauteur de votre style de vie. Service conciergerie inclus.',
+  },
+  '/transport': {
+    title: 'Transport privé · Berlines, SUV, véhicules blindés · Label Maison',
+    description:
+      'Chauffeur privé à Paris et international : berlines de luxe, SUV premium, véhicules blindés. Disponibilité 24/7.',
+  },
+  '/activites': {
+    title: 'Activités exclusives VIP · Paris, Dubaï, Marrakech · Label Maison',
+    description:
+      'Yacht privé Dubaï, croisière Seine, hammam royal Marrakech, shooting Tour Eiffel : expériences exclusives orchestrées sur mesure.',
+  },
+  '/shopping': {
+    title: 'Personal Shopping · Horlogerie, mode, joaillerie · Label Maison',
+    description:
+      'Sourcing de pièces rares : Rolex, Hermès Birkin, Patek Philippe, Cartier. Authentification, négociation discrète, livraison sécurisée mondiale.',
+  },
+  '/cerclelabelmaison': {
+    title: 'Le Cercle LabelMaison — Recommandez un propriétaire, gagnez 150 €',
+    description:
+      "Recommandez un propriétaire. Gagnez 150 €. Le programme d'affiliation de LabelMaison Conciergerie : aucune commission, aucun engagement, prime à la première réservation.",
+  },
+  '/studio': {
+    title: 'Rendu déco luxe de votre chambre à partir d’une photo — Label Maison Studio',
+    description:
+      'Envoyez une photo de votre chambre ou salon : le studio Label Maison en génère la version luxe photoréaliste, sans travaux. Aperçu gratuit, rendu HD à 9,99 €.',
+  },
+  '/studio/conditions': {
+    title: 'Conditions, remboursement et données — Label Maison Studio',
+    description:
+      'Conditions générales de vente, politique de remboursement, protection des données personnelles et mentions légales du service Label Maison Studio.',
+    robots: 'noindex,follow',
+  },
+  '/mentions-legales': {
+    title: 'Mentions légales — Label Maison Conciergerie',
+    description:
+      'Mentions légales du site Label Maison Conciergerie : éditeur, directeur de la publication, hébergeur et contact.',
+    robots: 'noindex,follow',
+  },
+  '/politique-de-confidentialite': {
+    title: 'Politique de confidentialité — Label Maison Conciergerie',
+    description:
+      'Vos données chez Label Maison Conciergerie : ce que nous collectons, pourquoi, combien de temps, nos prestataires, les cookies et vos droits RGPD.',
+    robots: 'noindex,follow',
+  },
+};
+// Espaces privés (connexion requise) : jamais dans l'index.
+const PRIVEES = ['/erp', '/dossier-proprietaire', '/espace-proprietaire', '/espace-operations', '/sejour'];
+
+const echap = (t) =>
+  t.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+function coquilleSeo(page, route) {
+  const m = META[route];
+  const privee = PRIVEES.includes(route);
+  if (!m && !privee) {
+    console.warn(`[spa-shells] ${route} : pas de balises SEO dédiées (META), la coquille garde celles de l'accueil.`);
+    return page;
+  }
+  const remplacer = (texte, motif, par) => {
+    if (!motif.test(texte)) console.warn(`[spa-shells] ${route} : motif introuvable ${motif}`);
+    return texte.replace(motif, par);
+  };
+  let p = page;
+  const url = `${SITE}${route}`;
+  if (privee) {
+    p = remplacer(p, /<meta name="robots" content="[^"]*"\s*\/?>/, '<meta name="robots" content="noindex, nofollow" />');
+    // Pas de canonical ni d'Open Graph pour une page privée : rien à partager ni à indexer.
+    p = remplacer(p, /\s*<link rel="canonical" href="[^"]*"\s*\/?>/, '');
+    return p;
+  }
+  const title = echap(m.title);
+  const desc = echap(m.description);
+  p = remplacer(p, /<title>[^<]*<\/title>/, `<title>${title}</title>`);
+  p = remplacer(p, /<meta name="description" content="[^"]*"\s*\/?>/, `<meta name="description" content="${desc}" />`);
+  p = remplacer(p, /<link rel="canonical" href="[^"]*"\s*\/?>/, `<link rel="canonical" href="${url}" />`);
+  p = remplacer(p, /<meta property="og:title" content="[^"]*"\s*\/?>/, `<meta property="og:title" content="${title}" />`);
+  p = remplacer(p, /<meta property="og:description" content="[^"]*"\s*\/?>/, `<meta property="og:description" content="${desc}" />`);
+  p = remplacer(p, /<meta property="og:url" content="[^"]*"\s*\/?>/, `<meta property="og:url" content="${url}" />`);
+  if (m.robots) {
+    p = remplacer(p, /<meta name="robots" content="[^"]*"\s*\/?>/, `<meta name="robots" content="${m.robots}" />`);
+  }
+  return p;
+}
+
 const COQUILLES = { '/erp': coquilleErp, '/espace-operations': coquilleOperations };
 
 for (const route of routes) {
   const dir = join(dist, route);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'index.html'), COQUILLES[route] ? COQUILLES[route](html) : html);
+  const base = COQUILLES[route] ? COQUILLES[route](html) : html;
+  writeFileSync(join(dir, 'index.html'), route === '/' ? base : coquilleSeo(base, route));
 }
 
 console.log(`[spa-shells] ${routes.length} routes générées : ${routes.join(', ')}`);

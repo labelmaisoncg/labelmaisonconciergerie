@@ -18,7 +18,9 @@ import seo_common as C
 # Routes servies par l'application React (pas de fichier .html)
 SPA = {"/", "/proprietaires", "/logement", "/transport", "/activites", "/shopping",
        "/billetterie", "/cerclelabelmaison", "/mentions-legales",
-       "/politique-de-confidentialite"}
+       "/politique-de-confidentialite", "/studio", "/studio/conditions",
+       # module linge (routes servies par scripts/build-linge.mjs)
+       "/linge/connexion", "/linge/deconnexion"}
 
 
 def cibles_existantes() -> set:
