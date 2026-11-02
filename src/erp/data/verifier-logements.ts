@@ -129,6 +129,11 @@ section('Terrain : ménage, qui appeler, technique (équipe seulement)');
   const l = logement({ menage: { consignes: 'MENAGE-PRIVE' }, contacts: [{ role: 'urgence', nom: 'CONTACT-PRIVE', telephone: '06 00 00 00 09', note: 'ok' }], technique: { compteurGaz: 'TECHNIQUE-PRIVE' } });
   const fuites = fuitesTerrain('… CONTACT-PRIVE … 06 00 00 00 09 … TECHNIQUE-PRIVE …', l);
   verifier(fuites.join() === 'CONTACT-PRIVE,06 00 00 00 09,TECHNIQUE-PRIVE' && fuitesTerrain('rien', l).length === 0 && fuitesTerrain('ok', l).length === 0, `fuitesTerrain : les valeurs retrouvées, 3 caractères au moins (${fuites.join(', ')})`);
+  const court = logement({ menage: { duree: '3 h', produits: '2 h 30' } });
+  verifier(
+    fuitesTerrain('Arrivée à 13 h, départ 12 h 30.', court).length === 0 && fuitesTerrain('Ménage : 3 h.', court).join() === '3 h' && fuitesTerrain('(2 h 30)', court).join() === '2 h 30',
+    'fuitesTerrain : une valeur n’est retrouvée qu’entière (« 3 h » n’est pas dans « 13 h »), pas de faux positif sur une heure',
+  );
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

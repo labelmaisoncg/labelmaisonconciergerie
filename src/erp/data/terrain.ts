@@ -161,7 +161,10 @@ export function appliquerTerrain(l: Logement, s: SaisieTerrain): Logement {
  * Valeurs du volet terrain d'un logement retrouvées dans un texte (une vue,
  * un contexte donné à l'IA, la réponse d'un outil) : noms, téléphones et
  * notes des contacts, repères techniques, ménage. Vide attendu partout
- * hors de l'ERP. Les valeurs de moins de 3 caractères ne comptent pas.
+ * hors de l'ERP. Les valeurs de moins de 3 caractères ne comptent pas, et une
+ * valeur n'est retrouvée qu'entière : « 3 h » (durée du ménage) n'est pas lu
+ * dans « 13 h », ni « 2 h 30 » dans « 12 h 30 » (sinon une heure quelconque
+ * ferait échouer un vérificateur).
  */
 export function fuitesTerrain(texte: string, l: Pick<Logement, 'menage' | 'contacts' | 'technique'> | undefined): string[] {
   if (!l) return [];
@@ -170,5 +173,17 @@ export function fuitesTerrain(texte: string, l: Pick<Logement, 'menage' | 'conta
     ...(l.contacts ?? []).flatMap((c) => [c?.nom, c?.telephone, c?.note]),
     ...Object.values(l.technique ?? {}),
   ];
-  return [...new Set(valeurs.map((v) => String(v ?? '').trim()).filter((v) => v.length >= 3 && texte.includes(v)))];
+  return [...new Set(valeurs.map((v) => String(v ?? '').trim()).filter((v) => v.length >= 3 && valeurEntiere(texte, v)))];
+}
+
+const alphanumerique = (c: string | undefined): boolean => !!c && /[\p{L}\p{N}]/u.test(c);
+
+/** La valeur figure dans le texte sans lettre ni chiffre collé devant ou derrière. */
+function valeurEntiere(texte: string, valeur: string): boolean {
+  let i = texte.indexOf(valeur);
+  while (i !== -1) {
+    if (!alphanumerique(texte[i - 1]) && !alphanumerique(texte[i + valeur.length])) return true;
+    i = texte.indexOf(valeur, i + 1);
+  }
+  return false;
 }
