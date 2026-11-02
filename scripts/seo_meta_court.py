@@ -36,6 +36,13 @@ def main() -> int:
                 s = s.replace(md.group(0), f'<meta name="description" content="{C.esc(dc)}"', 1)
                 s = re.sub(r'(<meta property="og:description" content=")[^"]*(")',
                            lambda mm: mm.group(1) + C.esc(dc) + mm.group(2), s, count=1)
+        # Ligne des régions dans le pied de page des pages écrites à la main (les pages
+        # générées la reçoivent par seo_common.footer) : maillage vers les hubs nationaux.
+        if "Conciergerie en France :" not in s and '<div class="wrap fbot">' in s:
+            ligne = ('<div class="wrap" style="margin-top:28px;font-size:13px;color:var(--muted)">'
+                     "<strong>Conciergerie en France :</strong> "
+                     + " · ".join(f'<a href="{h}">{C.esc(n)}</a>' for n, h in C.REGIONS) + "</div>")
+            s = s.replace('<div class="wrap fbot">', ligne + '<div class="wrap fbot">', 1)
         # Mesure d'audience (Google Analytics après consentement) sur toutes les pages.
         if "/js/mesure.js" not in s and "</body>" in s and "noindex" not in s[:1500]:
             s = s.replace("</body>", '<script defer src="/js/mesure.js"></script></body>', 1)
