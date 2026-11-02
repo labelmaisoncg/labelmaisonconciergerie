@@ -6,19 +6,31 @@
  */
 import { useState } from 'react';
 import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, CalendarDays, CalendarPlus, List, RefreshCw } from 'lucide-react';
+import { ArrowRight, Calendar, CalendarDays, CalendarPlus, List, RefreshCw } from 'lucide-react';
 import { Button, Callout, Drawer, MenuActions, PageHeader, Tabs, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { dateCourte, dateHeure } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import type { Reservation } from '../../data/types';
 import { Calendrier } from './_composants/Calendrier';
+import { CalendrierMensuel } from './_composants/CalendrierMensuel';
 import { FicheReservation } from './_composants/FicheReservation';
 import { etatSejour, plageDates } from './_composants/outils';
 import { ListeReservations } from './_composants/ListeReservations';
 import { ModalNouvelleReservation } from './_composants/ModalNouvelleReservation';
 import { DetailReservation } from './_composants/DetailReservation';
 import { useSynchroRepull } from '../parametres/SynchroRepull';
+
+type Vue = 'calendrier' | 'mois' | 'liste';
+
+/** Écran étroit (téléphone) : les mois qui défilent plutôt que le planning à colonnes. */
+function estEtroit(): boolean {
+  try {
+    return window.matchMedia('(max-width: 639px)').matches;
+  } catch {
+    return false;
+  }
+}
 
 export default function ModuleReservations() {
   return (
@@ -34,9 +46,9 @@ function PageReservations() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const logementFiltre = params.get('logement') ?? '';
-  // Venir d'une fiche logement ouvre directement la liste filtrée.
-  const vueDemandee = params.get('vue') ?? (logementFiltre || params.get('q') ? 'liste' : 'calendrier');
-  const vue = vueDemandee === 'liste' ? 'liste' : 'calendrier';
+  // Venir d'une fiche logement ouvre directement la liste filtrée ; sinon les mois sur téléphone, le planning ailleurs.
+  const vueDemandee = params.get('vue') ?? (logementFiltre || params.get('q') ? 'liste' : estEtroit() ? 'mois' : 'calendrier');
+  const vue: Vue = vueDemandee === 'liste' ? 'liste' : vueDemandee === 'mois' ? 'mois' : 'calendrier';
   const [ouverte, setOuverte] = useState<Reservation | null>(null);
   const [creation, setCreation] = useCreationParUrl();
   const [confirmation, setConfirmation] = useState<string | null>(null);
@@ -92,18 +104,17 @@ function PageReservations() {
       <Tabs
         label="Affichage des réservations"
         actif={vue}
-        onChange={(v) => setParams(v === 'liste' ? { vue: 'liste' } : {}, { replace: true })}
+        onChange={(v) => setParams({ vue: v }, { replace: true })}
         onglets={[
           { cle: 'calendrier', libelle: <><CalendarDays className="size-4" aria-hidden /> Planning</> },
+          { cle: 'mois', libelle: <><Calendar className="size-4" aria-hidden /> Mois</> },
           { cle: 'liste', libelle: <><List className="size-4" aria-hidden /> Séjours</> },
         ]}
       />
 
-      {vue === 'calendrier' ? (
-        <Calendrier logements={logementsPlanning} reservations={d.reservations} onOuvrir={setOuverte} />
-      ) : (
-        <ListeReservations reservations={d.reservations} logements={d.logements} onOuvrir={setOuverte} logementInitial={logementFiltre} />
-      )}
+      {vue === 'calendrier' && <Calendrier logements={logementsPlanning} reservations={d.reservations} onOuvrir={setOuverte} />}
+      {vue === 'mois' && <CalendrierMensuel logements={logementsPlanning} reservations={d.reservations} onOuvrir={setOuverte} logementInitial={logementFiltre} />}
+      {vue === 'liste' && <ListeReservations reservations={d.reservations} logements={d.logements} onOuvrir={setOuverte} logementInitial={logementFiltre} />}
 
       <Drawer
         ouvert={!!courante}

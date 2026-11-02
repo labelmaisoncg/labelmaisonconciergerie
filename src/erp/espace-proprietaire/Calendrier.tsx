@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { CalendrierDefilant, CalendrierMois, datesSejour, ligneChiffres, type ChargeurMois, type SejourCalendrier } from '../calendrier';
+import { CalendrierDefilant, CalendrierMois, PilulesLogement, datesSejour, ligneChiffres, type ChargeurMois, type SejourCalendrier } from '../calendrier';
 import { dateCourte, pluriel } from '../data/format';
 import type { CalendrierLogement, VueProprietaire } from '../data/types-proprietaire';
-import { Drawer, cn } from '../ui';
+import { Drawer } from '../ui';
 import { CANAL, TitreEspace } from './commun';
 
 /**
@@ -59,24 +59,7 @@ export function Calendrier({ vue, calendrier }: { vue: VueProprietaire; calendri
     <div className="mx-auto w-full max-w-[44rem]">
       <TitreEspace titre="Calendrier" description="Vos séjours, mois après mois." />
 
-      {choixPossibles.length > 1 && (
-        <div className="-mx-4 mb-4 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Logement">
-          {choixPossibles.map((l) => (
-            <button
-              key={l.id}
-              type="button"
-              aria-pressed={l.id === logementId}
-              onClick={() => setChoix(l.id)}
-              className={cn(
-                'h-9 shrink-0 rounded-full border px-4 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
-                l.id === logementId ? 'border-(--lm-encre) bg-(--lm-encre) text-white' : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre) hover:border-(--lm-encre-3)',
-              )}
-            >
-              {l.nom}
-            </button>
-          ))}
-        </div>
-      )}
+      <PilulesLogement logements={choixPossibles} choisi={logementId} onChoisir={setChoix} className="mb-4" />
 
       {(cede || hors.size > 0) && (
         <p className="mb-4 text-[13.5px] text-(--lm-encre-2)">

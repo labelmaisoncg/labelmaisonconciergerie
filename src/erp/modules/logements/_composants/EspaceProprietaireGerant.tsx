@@ -574,20 +574,23 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
   const [bilan, setBilan] = useState<string>();
   const LienDocument = useLienDocumentGerant();
   const vue = useMemo(() => vueProprietaire(d.donnees, p.id, { aujourdhui: AUJOURDHUI }), [d.donnees, p.id]);
-  // Calendrier en défilant : les mêmes fonctions pures que le serveur, sur les données du store.
-  const [moisConnus, setMoisConnus] = useState<Record<string, CalendrierLogement[]>>({});
-  useEffect(() => setMoisConnus({}), [d.donnees, p.id]);
+  // Calendrier en défilant : les mêmes fonctions pures que le serveur, sur les données du store ;
+  // le cache retient les données qui l'ont produit (d'autres données : tout est recalculé).
+  const [cache, setCache] = useState<{ pour: unknown; mois: Record<string, CalendrierLogement[]> }>({ pour: d.donnees, mois: {} });
   const chargerCalendrier = useCallback<ChargeurMois>(
     async (de, a) => {
       const plage = moisDePlage(de, a, AUJOURDHUI);
       if (!plage.ok) return plage;
       const mois = calendrierPlage(d.donnees, p.id, plage.mois) ?? [];
-      setMoisConnus((c) => ({ ...c, ...Object.fromEntries(mois.map((m) => [m.mois, m.logements])) }));
+      setCache((c) => ({ pour: d.donnees, mois: { ...(c.pour === d.donnees ? c.mois : {}), ...Object.fromEntries(mois.map((m) => [m.mois, m.logements])) } }));
       return { ok: true };
     },
     [d.donnees, p.id],
   );
-  const calendrier = useMemo(() => ({ connus: vue ? { [vue.calendrier.mois]: vue.calendrier.logements, ...moisConnus } : moisConnus, charger: chargerCalendrier }), [vue, moisConnus, chargerCalendrier]);
+  const calendrier = useMemo(() => {
+    const connus = cache.pour === d.donnees ? cache.mois : {};
+    return { connus: vue ? { [vue.calendrier.mois]: vue.calendrier.logements, ...connus } : connus, charger: chargerCalendrier };
+  }, [vue, cache, d.donnees, chargerCalendrier]);
   // Bandeau « Fermer » hors de la zone qui défile : toujours visible.
   return (
     <div ref={ref} role="dialog" aria-modal="true" aria-label={`Espace de ${p.nom}`} tabIndex={-1} className="fixed inset-0 z-[60] flex flex-col bg-(--lm-fond) outline-none">

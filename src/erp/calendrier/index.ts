@@ -7,6 +7,8 @@ export { CalendrierMois, titreDuMois } from './CalendrierMois';
 export type { CalendrierMoisProps } from './CalendrierMois';
 export { CalendrierDefilant } from './CalendrierDefilant';
 export type { CalendrierDefilantProps } from './CalendrierDefilant';
+export { PilulesLogement } from './PilulesLogement';
+export type { PilulesLogementProps } from './PilulesLogement';
 export { useMoisDefilants } from './useMoisDefilants';
 export type { ChargeurMois, MoisDefilants, OptionsMoisDefilants } from './useMoisDefilants';
 export {
@@ -18,10 +20,14 @@ export {
   bandesDuMois,
   datesSejour,
   decalageDuMois,
+  ecartMois,
   libelleJour,
   libelleSejour,
   ligneChiffres,
   lignesDuMois,
+  moisEntre,
+  moisPrecedent,
+  moisSuivant,
   plagesManquantes,
   sejourDuJour,
   sejourQuiPart,
