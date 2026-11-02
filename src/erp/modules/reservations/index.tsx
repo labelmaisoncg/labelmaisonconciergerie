@@ -46,8 +46,10 @@ function PageReservations() {
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
   const logementFiltre = params.get('logement') ?? '';
-  // Venir d'une fiche logement ouvre directement la liste filtrée ; sinon les mois sur téléphone, le planning ailleurs.
-  const vueDemandee = params.get('vue') ?? (logementFiltre || params.get('q') ? 'liste' : estEtroit() ? 'mois' : 'calendrier');
+  // Vue par défaut figée à l'arrivée : les mois sur téléphone, le planning ailleurs (un redimensionnement ne change pas la vue).
+  const [vueDefaut] = useState<Vue>(() => (estEtroit() ? 'mois' : 'calendrier'));
+  // Venir d'une fiche logement ouvre directement la liste filtrée.
+  const vueDemandee = params.get('vue') ?? (logementFiltre || params.get('q') ? 'liste' : vueDefaut);
   const vue: Vue = vueDemandee === 'liste' ? 'liste' : vueDemandee === 'mois' ? 'mois' : 'calendrier';
   const [ouverte, setOuverte] = useState<Reservation | null>(null);
   const [creation, setCreation] = useCreationParUrl();

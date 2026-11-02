@@ -49,7 +49,7 @@ export function CalendrierMensuel({ logements, reservations, onOuvrir, logementI
 
   if (!logementId) return <p className="text-[14px] text-(--lm-encre-2)">Aucun logement actif pour l’instant.</p>;
   return (
-    <div className="mx-auto w-full max-w-[44rem]">
+    <div className="w-full max-w-[44rem]">
       <PilulesLogement logements={logements.map((l) => ({ id: l.id, nom: l.nom }))} choisi={logementId} onChoisir={setChoix} className="mb-4" />
       <CalendrierDefilant
         moisInitial={moisDe(AUJOURDHUI)}

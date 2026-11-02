@@ -8,13 +8,14 @@ export interface PilulesLogementProps {
 }
 
 /**
- * Choix du logement au-dessus du calendrier : des pilules qui défilent,
- * la choisie à l'encre. Rien quand il n'y a qu'un logement.
+ * Choix du logement au-dessus du calendrier : des pilules qui défilent sur
+ * téléphone et passent à la ligne sur grand écran, la choisie à l'encre.
+ * Rien quand il n'y a qu'un logement.
  */
 export function PilulesLogement({ logements, choisi, onChoisir, className }: PilulesLogementProps) {
   if (logements.length < 2) return null;
   return (
-    <div className={cn('-mx-4 flex gap-2 overflow-x-auto px-4 pb-1', className)} role="group" aria-label="Logement">
+    <div className={cn('-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0', className)} role="group" aria-label="Logement">
       {logements.map((l) => (
         <button
           key={l.id}
