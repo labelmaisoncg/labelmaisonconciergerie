@@ -241,7 +241,7 @@ Le vérificateur de synchronisation doit finir sur « 0 échec ».
 | `PROPRIETAIRE_SECRET` | Vercel (serveur), **Production et Preview** | Signature des sessions de l'espace propriétaire (`/espace-proprietaire`), 32 caractères au moins (ex. `openssl rand -base64 48`). Absente : l'espace reste fermé et la fiche logement le dit au gérant. La changer déconnecte tous les propriétaires. Redéployer après ajout. |
 | `ACCES_SECRET` (ou `OPERATIONS_SECRET`) | Vercel (serveur), **Production et Preview** | Sessions de l'espace opérations (`/espace-operations`), 32 caractères au moins. Une seule variable `ACCES_SECRET` suffit pour les deux espaces (propriétaire et opérations) : le genre est signé dans la session, un cookie propriétaire ne vaut pas pour les opérations. `OPERATIONS_SECRET` passe avant si elle existe. Absente : l'espace opérations reste fermé et « Inviter » (Paramètres → Accès) dit ce qu'il manque. Sans `SEJOUR_SECRET`, `ACCES_SECRET` signe aussi les liens du livret d'accueil des séjours (`/sejour`, signature à part) : sans l'une ni l'autre, pas de lien (la ligne `{Lien du livret}` des messages est retirée). La changer coupe alors aussi les liens de séjour déjà envoyés. Redéployer après ajout. |
 | `SEJOUR_SECRET` (facultative) | Vercel (serveur), **Production et Preview** | Secret propre aux liens du livret d'accueil (`/sejour`), 32 caractères au moins (`openssl rand -base64 48`). **Rien à faire si elle est absente** : `ACCES_SECRET` signe les liens. La poser (ou la changer) coupe tous les liens de séjour déjà envoyés, sans toucher aux sessions des espaces propriétaire et opérations. Posée mais trop courte : aucun lien (jamais de repli discret sur `ACCES_SECRET`), la carte de la réservation le dit. Redéployer après ajout. |
-| `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des liens de connexion aux propriétaires et des invitations « Créer mon compte » de l'équipe (mêmes variables que le formulaire de contact ; un autre espace envoie seulement avec son propre expéditeur). Sans : le gérant copie le lien et l'envoie par SMS ou WhatsApp. |
+| `RESEND_API_KEY`, `CONTACT_FROM_EMAIL` | Vercel (serveur), facultatives | Envoi des invitations « Créer mon compte » des propriétaires et de l'équipe, des liens de connexion de l'espace opérations et des relances (mêmes variables que le formulaire de contact ; un autre espace envoie seulement avec son propre expéditeur). Sans : le gérant copie le lien et l'envoie par SMS ou WhatsApp. Les e-mails de confirmation d'adresse et de mot de passe oublié des comptes partent de Supabase (SMTP à régler là). |
 | `SITE_URL` | Vercel (serveur), facultative | Site des liens envoyés (invitations, « Recevoir mon lien », relances), origine `https://` seulement. Défaut `https://www.labelmaisoncg.fr`. Les liens ne prennent **jamais** l'adresse de la page qui appelle (en-tête Origin ou Host). |
 | `ORIGINES_APERCU` | Vercel (serveur), facultative | Aperçus Vercel autorisés à appeler les formulaires et les espaces extérieurs : origines **exactes**, séparées par des virgules (`https://mon-apercu.vercel.app`). Sans : seuls `labelmaisoncg.fr`, `labelmaisoncgexperience.fr` (avec ou sans `www`) et, hors Vercel en ligne, `localhost`. |
 
@@ -834,9 +834,10 @@ l'ERP est une application.
   - **Secure email change** : **activé**. Changer l'adresse d'un compte
     demande alors la confirmation des deux adresses ;
   - **URL Configuration → Redirect URLs** : exactement
-    `https://www.labelmaisoncg.fr/erp`, **sans joker** (`*` ou `**`) : un
-    lien de confirmation ou de récupération ne peut renvoyer nulle part
-    ailleurs ;
+    `https://www.labelmaisoncg.fr/erp` et, pour les comptes des
+    propriétaires, `https://www.labelmaisoncg.fr/espace-proprietaire`,
+    **sans joker** (`*` ou `**`) : un lien de confirmation ou de récupération
+    ne peut renvoyer nulle part ailleurs ;
   - **Rate Limits** : garder les limites par défaut (inscriptions et e-mails
     par heure) ; les baisser si des inscriptions en rafale apparaissent
     (Authentication → Users) ;
@@ -1958,10 +1959,13 @@ Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autr
 
 ### Côté gérant (fiche logement → carte « Propriétaire » → « Inviter » / « Gérer »)
 
-- **Accès** : adresse e-mail, « Inviter dans l'espace propriétaire » (lien
-  valable 7 jours, à usage unique, envoyé par e-mail et affiché pour le
-  copier), état « Invité le… » / « Connecté le… » / « Accès retiré »,
-  « Retirer l'accès » (déconnexion immédiate). Réservé au gérant.
+- **Accès** : adresse e-mail, « Inviter » (lien « Créer mon compte » valable
+  7 jours, à usage unique, envoyé par e-mail et affiché pour le copier), état
+  « Invitation envoyée le …, pas encore de compte » / « Compte créé le … » /
+  « Accès retiré le … », « Renvoyer l'invitation » tant que le compte n'est
+  pas créé, « Retirer l'accès » (déconnexion immédiate ; le compte Supabase
+  reste, sans rien ouvrir). Paramètres → Accès → Propriétaires montre le même
+  état. Réservé au gérant. Détail : « Compte du propriétaire » plus bas.
 - **Bilans mensuels** : les six derniers mois terminés, calculés
   automatiquement ; « Ouvrir » montre l'**aperçu exact**, le mot de Label
   Maison, puis « Publier » / « Dépublier » / « Mettre à jour » (signalé quand
@@ -1977,18 +1981,24 @@ d'août publié et deux documents ; son espace :
 
 ### Fonctionnement
 
-- **Connexion sans compte ni SQL** (`src/erp/data/proprietaire-acces.ts`) :
-  jeton aléatoire de 32 octets dans un lien `…/espace-proprietaire#jeton=…`
-  (après `#` : jamais envoyé aux serveurs ni dans les journaux, retiré de la
-  barre d'adresse à l'ouverture). Seule son empreinte SHA-256 est gardée,
-  dans la collection `accesProprietaires` (un enregistrement par
-  propriétaire, écrit **uniquement par le serveur**). Le lien ouvre une
-  session : cookie `lm_proprio` HttpOnly, Secure, SameSite=Lax, limité à
-  `/api/espace-proprietaire`, signé HMAC-SHA256 avec `PROPRIETAIRE_SECRET`,
-  30 jours. Chaque appel revérifie l'accès en base (actif, même version) :
-  retirer l'accès ou changer d'adresse ferme aussitôt toutes les sessions.
-  Le propriétaire peut redemander un lien avec son adresse (valable 1 heure,
-  réponse identique que l'adresse ait un accès ou non, 5 demandes par heure).
+- **Compte du propriétaire** (novembre 2026, `src/erp/data/acces-externe.ts`,
+  `proprietaire-acces.ts`, `compte-externe.ts`) : l'invitation porte un code
+  aléatoire de 32 octets dans un lien
+  `…/espace-proprietaire#creer=<adresse>&code=…&espace=…` (après `#` : jamais
+  envoyé aux serveurs ni dans les journaux, retiré de la barre d'adresse à
+  l'ouverture). Seule son empreinte SHA-256 est gardée, dans la collection
+  `accesProprietaires` (un enregistrement par propriétaire, écrit
+  **uniquement par le serveur**). Le propriétaire crée son compte Supabase
+  (adresse et mot de passe), confirme son adresse, et l'activation relie
+  l'accès à SON compte (`uid`) en consommant le code. Ensuite il entre avec
+  son adresse et son mot de passe ; le serveur retrouve l'accès **par l'uid**.
+  Session : cookie `lm_proprio` HttpOnly, Secure, SameSite=Lax, limité à
+  `/api/espace-proprietaire`, signé HMAC-SHA256 avec `PROPRIETAIRE_SECRET`
+  (genre, propriétaire, espace, version, uid), 30 jours. Chaque appel
+  revérifie l'accès en base (actif, même version, même compte) : retirer
+  l'accès ou changer d'adresse ferme aussitôt toutes les sessions. Plus de
+  lien magique de connexion : un seul chemin, le mot de passe (détail dans
+  « Compte du propriétaire » plus bas).
 - **Espaces** (`api/_acces-externe.ts`, commun aux propriétaires et aux
   opérations) : un accès appartient à l'espace du gérant qui invite (en-tête
   `x-erp-espace`, `verifierMembre(jeton, { espace })`). Il est écrit, lu et
@@ -2059,6 +2069,138 @@ d'août publié et deux documents ; son espace :
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
   `publie`, chiffres figés).
+
+### Compte du propriétaire (novembre 2026)
+
+Chaque propriétaire a **son compte** (adresse e-mail et mot de passe), comme
+l'équipe : plus de lien magique, un seul chemin.
+
+1. **Invitation** (gérant : Paramètres → Accès → « Inviter un propriétaire »,
+   ou fiche logement → carte Propriétaire → « Gérer ») : le serveur tire un
+   code de 32 octets, n'en garde que l'empreinte SHA-256 dans l'accès
+   (`accesProprietaires.liens`, 7 jours, une fois) et envoie « Votre espace
+   propriétaire » avec le lien
+   `https://www.labelmaisoncg.fr/espace-proprietaire#creer=<adresse>&code=<code>&espace=<uuid>`
+   (après `#` : jamais envoyé aux serveurs ; même forme que « Créer mon
+   compte » de l'équipe, site fixe). Sans expéditeur pour l'espace, le gérant
+   copie le lien. « Renvoyer l'invitation » tant que le compte n'est pas
+   créé ; un compte déjà créé n'est pas réinvité (409 `deja`) : il se
+   connecte.
+2. **« Créez votre mot de passe »** (`/espace-proprietaire#creer=…`) : adresse
+   fixe, mot de passe (12 caractères au moins, indicateur simple) et
+   confirmation. La page appelle `supabase.auth.signUp` (clé anon,
+   `src/erp/data/compte-externe.ts`, client sans session durable) avec
+   `emailRedirectTo` sur la page de l'espace ; le code reste sur l'appareil
+   (`lm_proprio_invitation`, 7 jours). Un compte déjà créé à cette adresse
+   (retrait puis nouvelle invitation, par exemple) : Supabase le signale au
+   navigateur (utilisateur factice sans identité, aucun e-mail envoyé) et la
+   page renvoie à la connexion : « Vous avez déjà un compte à cette
+   adresse : connectez-vous (« Mot de passe oublié ? » au besoin). » ;
+   « J'ai déjà un compte » y mène aussi.
+3. **Confirmation puis activation** : le lien de confirmation de Supabase
+   ramène sur la page, qui ferme cette session de lien et demande de se
+   connecter ; la connexion (adresse et mot de passe) appelle
+   `POST /api/espace-proprietaire { action: 'activer', code, espace }` avec
+   son jeton en `Authorization: Bearer`. Le serveur vérifie le jeton auprès
+   de Supabase (`GET /auth/v1/user`, clé anon : `verifierCompteSupabase`),
+   exige `email_confirmed_at`, un jeton **d'une connexion au mot de passe**
+   (`amr` « password », jamais la seule session d'un lien reçu : un compte
+   créé avant la personne, par un autre, à son adresse, aurait le mot de passe
+   de cet autre ; elle le remplace par « Mot de passe oublié ? » avant
+   d'entrer), un compte **sans autre moyen d'entrer** (téléphone, service
+   tiers), retrouve l'accès par l'empreinte du code dans l'espace du lien,
+   vérifie que l'adresse du compte est celle de l'accès, que le code n'est ni
+   expiré ni servi, écrit `uid`, `compteActif`, `activeLe`, efface le code
+   (écriture conditionnelle : présenté deux fois en même temps, une seule
+   session) et ouvre le cookie, signé avec l'uid et la version de l'accès.
+   Confirmation ouverte sur un autre appareil (sans le code) : la connexion
+   répond « Votre invitation vous attend : ouvrez son lien sur cet
+   appareil ».
+4. **Connexion ensuite** : « E-mail » + « Mot de passe » (+ « Mot de passe
+   oublié ? » : réinitialisation Supabase vers `/espace-proprietaire`, puis
+   nouveau mot de passe ; la page ferme les autres sessions Supabase du
+   compte, se reconnecte avec ce mot de passe et appelle `entrer` avec
+   `fermerAutres` : la version de l'accès augmente, toutes les sessions de
+   l'espace ouvertes avant tombent). Après `signInWithPassword`, la page appelle
+   `POST { action: 'entrer', espace? }` avec le jeton : l'accès est retrouvé
+   **par uid** dans chaque espace actif (jamais par l'adresse seule : un
+   autre compte à la même adresse n'obtient rien), actif, relié, adresse du
+   compte toujours celle de l'accès, jeton émis **après** l'activation (comme
+   `erp.jeton_apres` : qui s'était connecté au compte avant n'a rien), adresse
+   toujours celle de la fiche ; `espace` (retenu sur l'appareil) départage
+   plusieurs espaces, Label Maison sinon. Le jeton Supabase ne sert qu'à
+   prouver l'identité : la page ferme ensuite la session Supabase locale
+   (`signOut({ scope: 'local' })`) ; la session de l'espace, c'est le cookie.
+   `vue`, `calendrier`, `document`, `relances`… ne changent pas : lecture
+   avec le compte d'équipe, filtrée par propriétaire. Refus : « Ce compte n'a
+   pas accès… », « Votre invitation vous attend… », « Votre accès a été
+   retiré… » ; un code refusé (inconnu, expiré, servi, autre adresse) a
+   toujours la même phrase. Freins (`api/_garde-formulaire.ts`) : 30 essais
+   par quart d'heure et par adresse IP, 15 par compte.
+5. **Retirer l'accès** : version +1 et `compteActif: false` ferment toutes
+   les sessions ; l'`uid` reste noté pour mémoire. Le compte Supabase reste
+   (on ne supprime pas un utilisateur Auth sans clé service_role, qu'on n'a
+   pas) : il n'ouvre plus rien. Réinviter la même adresse : l'accès attend le
+   nouveau code, le même compte se relie avec lui.
+6. **Base de données** : un compte propriétaire ne lit ni n'écrit **rien** par
+   l'API Supabase directe. Les règles RLS passent par `erp.mes_espaces()` /
+   `erp.membres` : un propriétaire n'est membre de rien, donc 0 ligne ; les
+   codes des propriétaires ne sont jamais dans `erp.invitations` (seulement
+   leur empreinte dans `accesProprietaires`), donc `erp.activer` les refuse.
+   Les trois recettes le prouvent (`recette = ok`) : `erp.recette_espaces`
+   (point 9 : enregistrements, historique, membres, espaces, automatisations,
+   fichiers, invitations, `qui_suis_je`, `espaces_actifs`, `activer`,
+   `creer_espace`, `inviter_membre`), `erp.recette_acces_gerants` (point 3)
+   et la nouvelle `erp.recette_installation` (colonne `recette` du bilan
+   d'`erp-installation.sql`).
+7. **Le retrouver** : Supabase → Authentication → Users (le compte) ;
+   l'ERP montre « Compte créé le … », « Invitation envoyée le …, pas encore
+   de compte », « Nouvelle invitation envoyée le … ; le compte existe »
+   (réinvité après un retrait : l'uid est gardé), « Pas encore de compte :
+   renvoyez l'invitation » (accès d'avant les comptes, ouvert par lien) ou
+   « Accès retiré le … » (`statutCompteProprietaire`,
+   `src/erp/data/acces-gerant.ts`).
+8. **Anciens accès** : les sessions ouvertes par lien avant cette version
+   restent valables jusqu'à leur fin (30 jours) tant que le compte n'est pas
+   créé ; dès que le gérant réinvite ou que le compte est relié, elles
+   tombent. Chaque propriétaire d'aujourd'hui doit donc être **réinvité** une
+   fois. Un ancien lien `#jeton=…` ouvre la page de connexion avec « Ce lien
+   n'est plus valable : connectez-vous avec votre adresse et votre mot de
+   passe, ou demandez une nouvelle invitation. »
+9. **Démo** (`VITE_ERP_DEMO=1`) : tous les écrans se montrent sans Supabase ni
+   e-mail (`#creer=…&code=…`, connexion, mot de passe oublié,
+   `#access_token=x&type=recovery`) ; SCI Les Tilleuls a « Compte créé le … ».
+10. **Espace opérations** : même mécanique à venir ; le code est générique
+    (`GenreAcces`, `activerAccesAvecCompte`, `accesDuCompte`,
+    `verifierCompteSupabase`, `activerAvecCompte`, `entrerAvecCompte`,
+    `compte-externe.ts`), seuls les propriétaires sont branchés.
+
+**À faire par vous (propriétaire de l'entreprise)** (une fois, rien dans
+Vercel) :
+
+- réinviter chaque propriétaire de logement une fois (Paramètres → Accès →
+  « Gérer » → « Renvoyer l'invitation ») : les accès d'aujourd'hui, ouverts
+  par lien, n'ont pas de compte ;
+
+- Authentication → **URL Configuration → Redirect URLs** : ajouter exactement
+  `https://www.labelmaisoncg.fr/espace-proprietaire` (à côté de `/erp`, sans
+  joker) : la confirmation d'adresse et « Mot de passe oublié ? » y
+  reviennent ;
+- Authentication → Sign In / Providers → Email : **Allow new users to sign
+  up** activé (déjà le cas pour « Créer mon compte » de l'équipe), **Confirm
+  email** activé ;
+- Authentication → Sign In / Providers : **Phone**, **Anonymous sign-ins**,
+  **Manual linking** et tout fournisseur tiers (Google, Apple…) **désactivés**,
+  et le rester : un compte qui porte un téléphone ou une autre identité que
+  l'e-mail est refusé par l'espace propriétaire (`autre_moyen`), comme par
+  `erp.activer` pour l'équipe ;
+- Authentication → **Emails** : l'e-mail de confirmation et celui de
+  récupération partent de Supabase : SMTP personnalisé conseillé (Resend,
+  comme pour l'équipe : `docs/erp/espaces-mise-en-service.md`, étape 5) et
+  modèles « Confirm signup » / « Reset password » traduits ; sans cela,
+  l'envoi par défaut est limité à quelques messages par heure ;
+- rien d'autre : `PROPRIETAIRE_SECRET`, `SUPABASE_URL` et la clé anon
+  suffisent (aucune nouvelle variable).
 
 ### Phase 2 : factures partagées et relances de paiement
 
@@ -2196,12 +2338,13 @@ Pour les deux espaces extérieurs (propriétaires et opérations,
   Même chose pour l'envoi d'une relance (deux validations simultanées : un
   seul e-mail) et son annulation, et pour l'ajout d'un lien de connexion (il
   n'écrase pas un lien utilisé au même instant).
-- **Un lien de connexion toutes les 2 minutes au plus** par accès, compté
-  dans l'accès lui-même (date du dernier lien), donc valable pour toutes les
-  instances du serveur ; le frein par instance (5 demandes par heure et par
-  adresse IP) reste en plus. Les liens gardés sont plafonnés **par sorte**
-  (3 invitations, 3 liens de connexion) : des demandes répétées ne chassent
-  jamais une invitation encore valable.
+- **Un lien de connexion toutes les 2 minutes au plus** par accès (espace
+  opérations ; les propriétaires n'ont plus de lien de connexion, voir
+  « Compte du propriétaire »), compté dans l'accès lui-même (date du dernier
+  lien), donc valable pour toutes les instances du serveur ; le frein par
+  instance (5 demandes par heure et par adresse IP) reste en plus. Les liens
+  gardés sont plafonnés **par sorte** (3 invitations, 3 liens de connexion) :
+  des demandes répétées ne chassent jamais une invitation encore valable.
 - **Label Maison seulement si c'est Label Maison** : fiche d'espace illisible
   (panne passagère, espace fermé) = pas d'e-mail (le gérant copie le lien),
   pas de contacts, nom « Votre conciergerie » ; jamais l'expéditeur ou les
@@ -2230,7 +2373,8 @@ Pour les deux espaces extérieurs (propriétaires et opérations,
 Une page à part, **`https://www.labelmaisoncg.fr/espace-operations`**, pour
 les personnes de terrain : leur espace à elles, hors de l'ERP du gérant,
 avec leur propre connexion (lien à usage unique reçu par e-mail, session
-signée de 30 jours, mêmes mécanismes que l'espace propriétaire). Ménage,
+signée de 30 jours : la mécanique qu'avait l'espace propriétaire avant les
+comptes ; même évolution prévue, voir « Compte du propriétaire »). Ménage,
 linge et consommables restent chez BNB Cleaning : rien ici n'y touche.
 
 | Rôle | Ce que voit la personne |

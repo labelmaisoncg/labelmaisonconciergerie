@@ -9,7 +9,8 @@
 // Variables d'environnement : voir api/_acces-externe.ts (PROPRIETAIRE_SECRET,
 // RESEND_API_KEY, CONTACT_FROM_EMAIL), ERP_PASSWORD (compte d'équipe, Label
 // Maison) et ERP_SERVEUR_MOT_DE_PASSE (compte serveur : un autre espace, ses
-// fichiers compris).
+// fichiers compris). Le compte Supabase du propriétaire est vérifié avec la
+// clé anon déjà connue : rien de plus.
 // =============================================================================
 
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
@@ -38,12 +39,12 @@ export function etatEspace(): { actif: boolean; raison?: string; email: boolean 
       actif: false,
       email,
       raison:
-        'Espace propriétaire fermé : ajoutez PROPRIETAIRE_SECRET dans Vercel (Settings → Environment Variables, 32 caractères au moins, Production et Preview), puis redéployez.',
+        'Espace propriétaire fermé : ajoutez PROPRIETAIRE_SECRET dans Vercel (Settings → Environment Variables, 32 caractères au moins, Production et Preview), puis redéployez.',
     };
   }
   const c = configuration();
   if (!c.motDePasse && !c.motDePasseServeur) {
-    return { actif: false, email, raison: 'ERP_PASSWORD manquant dans Vercel : l’espace propriétaire lit la base avec le compte d’équipe.' };
+    return { actif: false, email, raison: 'ERP_PASSWORD manquant dans Vercel : l’espace propriétaire lit la base avec le compte d’équipe.' };
   }
   return { actif: true, email };
 }
@@ -168,28 +169,28 @@ export async function lienDocument(fichier: string, espace: string): Promise<str
 export const documentsFermes = (espace: string): Promise<string | null> => stockageFerme({ ...configuration(), espace: espaceDe(espace) });
 
 /**
- * Lien de connexion par e-mail, au nom de l'espace (« Label Maison »,
- * « Sens »…). Faux si l'envoi n'a pas pu se faire : le gérant copie alors
- * le lien affiché.
+ * E-mail d'invitation « Votre espace propriétaire », au nom de l'espace
+ * (« Label Maison », « Sens »…) : le lien « Créer mon mot de passe » (code à
+ * usage unique, 7 jours). Faux si l'envoi n'a pas pu se faire : le gérant
+ * copie alors le lien affiché.
  */
-export async function envoyerLien(o: { fiche: FicheEspace | undefined; email: string; nom: string; lien: string; motif: 'invitation' | 'connexion' }): Promise<boolean> {
+export async function envoyerLien(o: { fiche: FicheEspace | undefined; email: string; nom: string; lien: string }): Promise<boolean> {
   // Sans fiche d'espace, rien ne part (envoyerEmailEspace) : jamais au nom de Label Maison par défaut.
   const conciergerie = o.fiche?.nom || 'Votre conciergerie';
-  const invitation = o.motif === 'invitation';
-  const sujet = invitation ? `Votre espace propriétaire ${conciergerie}` : `Votre lien de connexion · ${conciergerie}`;
-  const intro = invitation
-    ? `${conciergerie} vous ouvre votre espace propriétaire : ${CONTENU_ESPACE.vous}, au même endroit.`
-    : 'Voici votre lien pour ouvrir votre espace propriétaire.';
-  const validite = invitation ? 'Ce lien est valable 7 jours et ne sert qu’une fois.' : 'Ce lien est valable 1 heure et ne sert qu’une fois.';
+  const sujet = `Votre espace propriétaire · ${conciergerie}`;
+  const intro = `${conciergerie} vous ouvre votre espace propriétaire : ${CONTENU_ESPACE.vous}, au même endroit.`;
+  const consigne = `Créez votre mot de passe avec ce lien, puis confirmez votre adresse avec l’e-mail que vous recevrez. Vous vous connecterez ensuite avec votre adresse (${o.email}) et ce mot de passe.`;
+  const validite = 'Ce lien est personnel : il sert une seule fois et reste valable 7 jours.';
   const html = `<!doctype html><html lang="fr"><body style="margin:0;background:#fbfaf8;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1f1b16">
 <div style="max-width:520px;margin:0 auto;padding:32px 20px">
 <p style="font-family:Georgia,serif;font-size:22px;color:#4a3828;margin:0 0 20px">${echapperHtml(conciergerie)}</p>
 <p style="font-size:15px;line-height:1.6;margin:0 0 12px">Bonjour ${echapperHtml(o.nom)},</p>
 <p style="font-size:15px;line-height:1.6;margin:0 0 24px">${echapperHtml(intro)}</p>
-<p style="margin:0 0 24px"><a href="${echapperHtml(o.lien)}" style="display:inline-block;background:#8a6a2f;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px">Ouvrir mon espace</a></p>
-<p style="font-size:13px;line-height:1.6;color:#6b6258;margin:0 0 8px">${echapperHtml(validite)} Vous pourrez ensuite demander un nouveau lien avec votre adresse e-mail.</p>
-<p style="font-size:13px;line-height:1.6;color:#6b6258;margin:0">Vous n’attendiez pas ce message ? Ignorez-le simplement.</p>
+<p style="margin:0 0 24px"><a href="${echapperHtml(o.lien)}" style="display:inline-block;background:#8a6a2f;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px">Créer mon mot de passe</a></p>
+<p style="font-size:14px;line-height:1.6;margin:0 0 12px">${echapperHtml(consigne)}</p>
+<p style="font-size:13px;line-height:1.6;color:#6b6258;margin:0 0 8px">${echapperHtml(validite)}</p>
+<p style="font-size:13px;line-height:1.6;color:#6b6258;margin:0">Vous n’attendiez pas ce message ? Ignorez-le simplement.</p>
 </div></body></html>`;
-  const text = `Bonjour ${o.nom},\n\n${intro}\n\nOuvrir mon espace : ${o.lien}\n\n${validite}\n\n${conciergerie}`;
+  const text = `Bonjour ${o.nom},\n\n${intro}\n\nCréer mon mot de passe : ${o.lien}\n\n${consigne}\n${validite}\n\nVous n’attendiez pas ce message ? Ignorez-le simplement.\n\n${conciergerie}`;
   return envoyerEmailEspace(o.fiche, { to: o.email, sujet, html, text });
 }

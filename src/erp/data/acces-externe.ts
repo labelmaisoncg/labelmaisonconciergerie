@@ -1,24 +1,49 @@
 /**
- * Accès externes à l'ERP (propriétaires, opérations), sans compte : règles
- * pures communes au serveur (api/_acces-externe.ts) et aux pages.
+ * Accès externes à l'ERP (propriétaires, opérations) : règles pures communes
+ * au serveur (api/_acces-externe.ts) et aux pages.
+ *
+ * Deux façons d'entrer :
+ * - **par compte** (propriétaires, octobre 2026) : l'invitation du gérant porte
+ *   un code à usage unique, « …/espace-proprietaire#creer=<adresse>&code=<code>
+ *   &espace=<uuid> » (après #, jamais envoyé aux serveurs). La personne crée
+ *   son compte Supabase (adresse et mot de passe), confirme son adresse, puis
+ *   l'activation relie l'accès à SON compte (uid) et consomme le code. Ensuite
+ *   elle entre avec son adresse et son mot de passe : le serveur retrouve
+ *   l'accès par l'uid, jamais par la seule adresse (un autre compte à la même
+ *   adresse n'obtient rien). Le jeton Supabase ne sert qu'à prouver l'identité
+ *   auprès de notre serveur ; la session de l'espace, c'est le cookie.
+ * - **par lien à usage unique** (opérations, en attendant la même mécanique) :
+ *   « …#espace=<uuid>&jeton=<jeton> ».
  *
  * Chaque accès appartient à l'espace qui l'a créé (Label Maison, Sens…) :
- * - le lien porte l'espace : « …#espace=<uuid>&jeton=<jeton> » (l'espace
- *   n'est pas secret ; un ancien lien sans espace vaut Label Maison) ;
- * - la session signée porte le genre, la personne, l'espace et la version :
- *   un cookie dont on change l'espace (ou le genre) n'est plus valable, et
- *   l'accès est relu dans la base de CET espace à chaque appel.
+ * - le lien porte l'espace (l'espace n'est pas secret ; un ancien lien sans
+ *   espace vaut Label Maison) ;
+ * - la session signée porte le genre, la personne, l'espace, la version et,
+ *   pour une session par compte, l'uid : un cookie dont on change l'espace
+ *   (ou le genre) n'est plus valable, et l'accès est relu dans la base de CET
+ *   espace à chaque appel.
  *
  * Imports en « .js » : ce module tourne aussi sous Node (fonctions Vercel).
  */
 import { ID_LABEL_MAISON, idEspaceValide } from './espaces.js';
-import { b64url, deB64url } from './web-push.js';
+import { b64url, deB64url, empreinte } from './web-push.js';
 
 export type GenreAcces = 'proprietaire' | 'operations';
 
 /** Accès retiré : la même phrase partout (lien, session, action), espace propriétaire et opérations. */
 export const ACCES_RETIRE = 'Votre accès a été retiré. Contactez votre conciergerie.';
 export const GENRES_ACCES: GenreAcces[] = ['proprietaire', 'operations'];
+
+/** Site fixe des pages des espaces (le même que URL_RETOUR_MOT_DE_PASSE de l'ERP et SITE_PAR_DEFAUT du serveur). */
+export const SITE_FIXE = 'https://www.labelmaisoncg.fr';
+export const PAGES_ACCES: Record<GenreAcces, string> = { proprietaire: '/espace-proprietaire', operations: '/espace-operations' };
+
+/**
+ * Page où reviennent les e-mails de Supabase (confirmation de l'adresse, mot de
+ * passe oublié) : à autoriser dans Authentication → URL Configuration →
+ * Redirect URLs, sans joker.
+ */
+export const urlRetourAcces = (genre: GenreAcces): string => `${SITE_FIXE}${PAGES_ACCES[genre]}`;
 
 /** Lien à usage unique : seule son empreinte (SHA-256) est gardée. */
 export interface LienAccesExterne {
@@ -41,6 +66,12 @@ export interface AccesExterne {
   derniereConnexion?: string;
   /** Adresse de la fiche (propriétaire, membre de l'équipe) relevée à l'invitation ('' : fiche sans adresse). */
   emailFiche?: string;
+  /** Compte Supabase (auth.users.id) relié par l'activation ; gardé pour mémoire après un retrait. */
+  uid?: string;
+  /** Compte créé, adresse confirmée, accès relié : la personne entre avec son adresse et son mot de passe. */
+  compteActif?: boolean;
+  /** Date de l'activation (compte relié). */
+  activeLe?: string;
 }
 
 /** Espace d'un accès, d'un lien ou d'une session : Label Maison si absent ou illisible. */
@@ -49,6 +80,12 @@ export function espaceDe(espace: unknown): string {
 }
 
 const adresse = (v: unknown): string => (typeof v === 'string' ? v.trim().toLowerCase() : '');
+
+/** Identifiant d'un compte Supabase (auth.users.id) : un UUID. */
+export const uidValide = (v: unknown): v is string => typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
+/** Adresse e-mail bien formée (même règle que les invitations de l'équipe). */
+export const adresseBienFormee = (e: unknown): e is string => typeof e === 'string' && e.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
 
 /**
  * L'accès vaut toujours pour la personne de la fiche : si le gérant a mis une
@@ -66,7 +103,7 @@ export function accesToujoursDeLaFiche(acces: AccesExterne, fiche: { email?: unk
   return typeof acces.emailFiche === 'string' ? actuelle === adresse(acces.emailFiche) : actuelle === '';
 }
 
-/** Délai entre deux liens de connexion demandés pour un même accès (« Recevoir mon lien »). */
+/** Délai entre deux liens de connexion demandés pour un même accès (« Recevoir mon lien », opérations). */
 export const DELAI_ENTRE_LIENS_MS = 2 * 60_000;
 
 /** Un lien de connexion a déjà été envoyé à cet accès il y a moins de DELAI_ENTRE_LIENS_MS. */
@@ -76,7 +113,7 @@ export function lienDeConnexionRecent(acces: AccesExterne, maintenantMs: number)
 
 /* ------------------------------------------------------------------ lien */
 
-/** Lien envoyé : page + « #espace=…&jeton=… » (après #, jamais envoyé aux serveurs). */
+/** Lien envoyé (opérations) : page + « #espace=…&jeton=… » (après #, jamais envoyé aux serveurs). */
 export function lienAcces(site: string, page: string, espace: string, jeton: string): string {
   return `${site.replace(/\/+$/, '')}${page}#espace=${espaceDe(espace)}&jeton=${jeton}`;
 }
@@ -87,6 +124,274 @@ export function lireLienAcces(fragment: string): { jeton?: string; espace: strin
   const jeton = p.get('jeton') ?? undefined;
   return { ...(jeton ? { jeton } : {}), espace: espaceDe(p.get('espace')) };
 }
+
+/* ------------------------------------------- compte : lien « Créer mon compte » */
+
+/** Forme d'un code d'invitation (le serveur tire 32 octets en base64url : 43 caractères ; même règle que l'équipe). */
+export const CODE_ACCES = /^[A-Za-z0-9_-]{20,100}$/;
+export const codeAccesValide = (code: unknown): code is string => typeof code === 'string' && CODE_ACCES.test(code);
+
+/** Durée d'une invitation à créer son compte (le code est gardé sur l'appareil le même temps). */
+export const DUREE_INVITATION_ACCES_MS = 7 * 24 * 3600_000;
+
+/**
+ * Lien de l'invitation : la page de l'espace, l'adresse invitée, le code à
+ * usage unique et l'espace, après « # » (jamais envoyés au serveur du site).
+ * Même forme que « Créer mon compte » de l'équipe.
+ */
+export function lienCreationAcces(site: string, page: string, email: string, code: string, espace: string): string {
+  return `${site.replace(/\/+$/, '')}${page}#creer=${encodeURIComponent(adresse(email))}&code=${encodeURIComponent(code)}&espace=${espaceDe(espace)}`;
+}
+
+/** Ce que porte un lien « Créer mon compte » ; undefined : pas un tel lien. Adresse illisible : ''. */
+export function lireLienCreation(fragment: string): { email: string; code?: string; espace: string } | undefined {
+  const p = new URLSearchParams(String(fragment ?? '').replace(/^#/, ''));
+  if (!p.has('creer')) return undefined;
+  const email = adresse(p.get('creer'));
+  const code = p.get('code');
+  return { email: adresseBienFormee(email) ? email : '', ...(codeAccesValide(code) ? { code } : {}), espace: espaceDe(p.get('espace')) };
+}
+
+/**
+ * Lien reçu par e-mail, lu AVANT que le client Supabase ne nettoie l'adresse :
+ * invitation (« #creer=… »), retour de Supabase (« #access_token=…&type=… »,
+ * recovery pour un mot de passe oublié, sinon la confirmation de l'adresse),
+ * ou erreur de Supabase (« #error=… », lien expiré).
+ */
+export type RetourLienExterne =
+  | { nature: 'rien' }
+  | { nature: 'creer'; email: string; code?: string; espace: string }
+  | { nature: 'recuperation' }
+  | { nature: 'confirmation' }
+  | { nature: 'erreur'; message: string }
+  /** Ancien lien à usage unique (« #jeton=… », d'avant les comptes) : on le dit, sans rien ouvrir. */
+  | { nature: 'ancien_lien'; message: string };
+
+export const MESSAGE_ANCIEN_LIEN = 'Ce lien n’est plus valable : connectez-vous avec votre adresse et votre mot de passe, ou demandez une nouvelle invitation.';
+
+export function lireRetourLienExterne(hash: unknown): RetourLienExterne {
+  const h = String(hash ?? '').replace(/^#/, '');
+  if (!h) return { nature: 'rien' };
+  const creer = lireLienCreation(h);
+  if (creer) return { nature: 'creer', ...creer };
+  const p = new URLSearchParams(h);
+  if (p.has('jeton')) return { nature: 'ancien_lien', message: MESSAGE_ANCIEN_LIEN };
+  const code = p.get('error_code') ?? p.get('error');
+  if (code) {
+    const expire = /expired|otp/i.test(code + (p.get('error_description') ?? ''));
+    return {
+      nature: 'erreur',
+      message: expire
+        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? », ou demandez à votre conciergerie de renvoyer l’invitation.'
+        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? », ou demandez à votre conciergerie de renvoyer l’invitation.',
+    };
+  }
+  if (p.get('access_token')) return p.get('type') === 'recovery' ? { nature: 'recuperation' } : { nature: 'confirmation' };
+  return { nature: 'rien' };
+}
+
+/* ------------------------------------------- compte : réponse de l'inscription */
+
+/** Réponse de l'inscription Supabase (signUp), relue sans confiance. */
+export interface ReponseInscription {
+  user?: { identities?: unknown[] | null } | null;
+  session?: { access_token?: string | null } | null;
+}
+
+export type SuiteInscription = { etat: 'confirmation' } | { etat: 'existe' } | { etat: 'session'; jeton: string } | { etat: 'erreur'; code: string; message: string };
+
+/**
+ * Ce que dit Supabase après « Créer mon compte » : une session (confirmation
+ * d'adresse coupée dans ses réglages : on entre tout de suite) ; un compte
+ * déjà créé à cette adresse (avec la confirmation activée, Supabase rend un
+ * utilisateur factice sans identité et n'envoie rien : la personne se
+ * connecte) ; sinon l'e-mail de confirmation est parti.
+ */
+export function interpreterInscription(data: ReponseInscription | null | undefined, error: { code?: unknown; message?: unknown } | null | undefined): SuiteInscription {
+  if (error) {
+    const texte = `${String(error.code ?? '')} ${String(error.message ?? '')}`;
+    if (/already registered|already been registered|user_already_exists/i.test(texte)) return { etat: 'existe' };
+    return { etat: 'erreur', code: String(error.code ?? ''), message: String(error.message ?? '') };
+  }
+  const jeton = data?.session?.access_token;
+  if (typeof jeton === 'string' && jeton) return { etat: 'session', jeton };
+  if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return { etat: 'existe' };
+  return { etat: 'confirmation' };
+}
+
+export const MESSAGE_COMPTE_EXISTE = 'Vous avez déjà un compte à cette adresse : connectez-vous (« Mot de passe oublié ? » au besoin).';
+
+/* --------------------------------------- compte : code gardé sur l'appareil */
+
+/** Clé de stockage du code d'invitation sur l'appareil, par genre. */
+export const CLES_INVITATION_ACCES: Record<GenreAcces, string> = { proprietaire: 'lm_proprio_invitation', operations: 'lm_operations_invitation' };
+
+export interface InvitationAccesGardee {
+  email: string;
+  code: string;
+  espace: string;
+  /** Échéance (ms) au-delà de laquelle le code n'est plus proposé. */
+  expire: number;
+}
+
+export const invitationAccesAGarder = (l: { email: string; code: string; espace: string }, maintenant: number = Date.now()): InvitationAccesGardee => ({
+  email: adresse(l.email),
+  code: l.code,
+  espace: espaceDe(l.espace),
+  expire: maintenant + DUREE_INVITATION_ACCES_MS,
+});
+
+/** Lecture tolérante de ce qui est gardé (null : rien de valable, ou échu). */
+export function lireInvitationAccesGardee(brut: unknown, maintenant: number = Date.now()): InvitationAccesGardee | null {
+  if (typeof brut !== 'string' || !brut) return null;
+  try {
+    const x = JSON.parse(brut) as Partial<InvitationAccesGardee>;
+    const email = adresse(x?.email);
+    if (!adresseBienFormee(email) || !codeAccesValide(x?.code) || typeof x?.expire !== 'number' || x.expire <= maintenant) return null;
+    return { email, code: x.code, espace: espaceDe(x.espace), expire: x.expire };
+  } catch {
+    return null;
+  }
+}
+
+/** Code à présenter pour ce compte : seulement s'il a été gardé pour la même adresse. */
+export const codeAccesPour = (gardee: InvitationAccesGardee | null, email: string): { code: string; espace: string } | undefined =>
+  gardee && gardee.email === adresse(email) ? { code: gardee.code, espace: gardee.espace } : undefined;
+
+/* ----------------------------------------------------- compte : mot de passe */
+
+export const MOT_DE_PASSE_MIN = 12;
+/** Limite de Supabase (bcrypt). */
+export const MOT_DE_PASSE_MAX = 72;
+
+/** Indicateur simple : 0 trop court, 1 faible, 2 correct, 3 solide. */
+export function forceMotDePasse(motDePasse: string): { niveau: 0 | 1 | 2 | 3; libelle: string } {
+  const m = String(motDePasse ?? '');
+  if (m.length < MOT_DE_PASSE_MIN) return { niveau: 0, libelle: `${MOT_DE_PASSE_MIN} caractères au moins` };
+  const sortes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((re) => re.test(m)).length;
+  const repete = /^(.+?)\1+$/.test(m);
+  if (repete || (sortes <= 1 && m.length < 16)) return { niveau: 1, libelle: 'Faible' };
+  if ((m.length >= 16 && sortes >= 3) || m.length >= 20) return { niveau: 3, libelle: 'Solide' };
+  return { niveau: 2, libelle: 'Correct' };
+}
+
+/** Ce qui ne va pas dans un mot de passe choisi (undefined : acceptable). */
+export function motDePasseRefuse(motDePasse: string, confirmation: string): string | undefined {
+  if (motDePasse.length < MOT_DE_PASSE_MIN) return `Mot de passe trop court : ${MOT_DE_PASSE_MIN} caractères au moins.`;
+  if (motDePasse.length > MOT_DE_PASSE_MAX) return `Mot de passe trop long : ${MOT_DE_PASSE_MAX} caractères au plus.`;
+  if (forceMotDePasse(motDePasse).niveau < 2) return 'Mot de passe trop simple : mélangez lettres, chiffres et signes, ou allongez-le.';
+  if (motDePasse !== confirmation) return 'Les deux mots de passe sont différents.';
+  return undefined;
+}
+
+/* --------------------------------------------- compte : activation et entrée */
+
+/** Compte Supabase vérifié par le serveur (GET /auth/v1/user, et la charge du jeton qu'il a accepté). */
+export interface CompteVerifie {
+  uid: string;
+  email: string;
+  /** Adresse confirmée (email_confirmed_at). */
+  confirme: boolean;
+  /**
+   * Jeton obtenu par une connexion avec le mot de passe (amr « password »),
+   * jamais par un lien reçu (confirmation, récupération, lien magique : amr
+   * « otp ») : seul qui connaît le mot de passe active l'accès. Un compte
+   * créé avant la personne, par un autre, à son adresse, aurait le mot de
+   * passe de cet autre : la confirmation seule ne doit rien relier.
+   */
+  parMotDePasse: boolean;
+  /** Émission du jeton (iat, secondes) : un jeton d'avant l'activation ne vaut rien (comme erp.jeton_apres). */
+  emisLe: number;
+  /** Autres moyens d'entrer dans le compte (téléphone, fournisseur externe) : ils survivraient à un nouveau mot de passe, refusés. */
+  autresMoyens: string[];
+}
+
+/** Le jeton (iat, secondes) a été émis après cet instant (activation de l'accès) ; sans instant : oui. Instant illisible : non. */
+export const jetonEmisApres = (emisLe: number | undefined, instant: string | undefined): boolean =>
+  !instant || emisLe === undefined || (Number.isFinite(emisLe) && emisLe * 1000 > Date.parse(instant));
+
+export type RefusActivation = 'inconnu' | 'expire' | 'utilise' | 'retire' | 'autre_adresse' | 'non_confirme' | 'mot_de_passe' | 'autre_moyen';
+
+/**
+ * Active un accès avec le code de son invitation et le compte Supabase de la
+ * personne : code présent et valable (7 jours, pas encore servi), accès pas
+ * retiré, adresse du compte confirmée et égale à celle de l'accès, jeton
+ * d'une connexion au mot de passe (jamais la seule session d'un lien reçu),
+ * compte sans autre moyen d'entrer. L'accès devient actif, relié à CE compte
+ * (uid), et le code est effacé : il ne servira plus. Tout autre cas : refus,
+ * avec sa raison (le serveur répond la même phrase pour inconnu, expiré,
+ * servi et autre adresse).
+ */
+export async function activerAccesAvecCompte<T extends AccesExterne>(
+  acces: readonly T[],
+  code: unknown,
+  compte: CompteVerifie,
+  maintenantMs: number,
+): Promise<{ ok: true; acces: T } | { ok: false; raison: RefusActivation }> {
+  if (!codeAccesValide(code) || !uidValide(compte?.uid)) return { ok: false, raison: 'inconnu' };
+  const h = await empreinte(code);
+  const a = acces.find((x) => (x?.liens ?? []).some((l) => l?.empreinte === h && l.motif === 'invitation'));
+  const lien = a?.liens.find((l) => l.empreinte === h);
+  if (!a || !lien) return { ok: false, raison: 'inconnu' };
+  if (a.statut === 'retire') return { ok: false, raison: 'retire' };
+  if (lien.utiliseLe) return { ok: false, raison: 'utilise' };
+  if (!(Date.parse(lien.expireLe) > maintenantMs)) return { ok: false, raison: 'expire' };
+  if (!compte.confirme) return { ok: false, raison: 'non_confirme' };
+  if (!adresse(compte.email) || adresse(compte.email) !== adresse(a.email)) return { ok: false, raison: 'autre_adresse' };
+  if (compte.autresMoyens?.length) return { ok: false, raison: 'autre_moyen' };
+  if (compte.parMotDePasse !== true) return { ok: false, raison: 'mot_de_passe' };
+  const quand = new Date(maintenantMs).toISOString();
+  return { ok: true, acces: { ...a, statut: 'actif', uid: compte.uid.toLowerCase(), compteActif: true, activeLe: quand, derniereConnexion: quand, liens: [] } };
+}
+
+export type RefusEntree = 'inconnu' | 'invite' | 'retire' | 'autre_moyen';
+
+/**
+ * Accès ouvert à un compte, par son uid seulement (jamais par l'adresse) :
+ * actif et relié, adresse du compte toujours celle de l'accès, jeton émis
+ * après l'activation, compte sans autre moyen d'entrer. Plusieurs (un par
+ * espace) : celui de l'espace préféré, sinon le premier. Aucun : la raison la
+ * plus utile à la personne (invitation à ouvrir, accès retiré, rien).
+ */
+export function accesDuCompte<T extends AccesExterne>(
+  acces: readonly T[],
+  uid: unknown,
+  espacePrefere?: unknown,
+  compte?: Partial<Pick<CompteVerifie, 'email' | 'emisLe' | 'autresMoyens'>>,
+): { ok: true; acces: T } | { ok: false; raison: RefusEntree } {
+  if (!uidValide(uid)) return { ok: false, raison: 'inconnu' };
+  if (compte?.autresMoyens?.length) return { ok: false, raison: 'autre_moyen' };
+  // Même compte (uid) ET toujours l'adresse de l'accès : un compte dont l'adresse a changé depuis la liaison n'entre plus.
+  const siens = acces.filter(
+    (a) => !!a && typeof a.uid === 'string' && a.uid.toLowerCase() === uid.toLowerCase() && (compte?.email === undefined || adresse(a.email) === adresse(compte.email)),
+  );
+  // Un jeton émis avant l'activation (quelqu'un connecté au compte avant qu'il soit relié) ne vaut rien, comme erp.jeton_apres.
+  const ouverts = siens.filter((a) => a.statut === 'actif' && a.compteActif === true && jetonEmisApres(compte?.emisLe, a.activeLe));
+  if (ouverts.length) {
+    const prefere = idEspaceValide(espacePrefere) ? espaceDe(espacePrefere) : undefined;
+    return { ok: true, acces: ouverts.find((a) => prefere && espaceDe(a.espace) === prefere) ?? ouverts[0] };
+  }
+  if (siens.some((a) => a.statut === 'invite')) return { ok: false, raison: 'invite' };
+  if (siens.some((a) => a.statut === 'retire')) return { ok: false, raison: 'retire' };
+  return { ok: false, raison: 'inconnu' };
+}
+
+/** Phrases du serveur pour les comptes (les mêmes quoi qu'il manque, sauf ce que la personne doit faire) ; espace insécable avant « ? » et « : ». */
+export const MESSAGE_SESSION_REFUSEE = 'Connexion refusée : reconnectez-vous avec votre adresse e-mail et votre mot de passe.';
+export const MESSAGE_NON_CONFIRME = 'Confirmez d’abord votre adresse e-mail : ouvrez le lien reçu après la création de votre compte.';
+/** Activation demandée avec la seule session d'un lien reçu (confirmation, récupération) : connexion au mot de passe exigée. */
+export const MESSAGE_MOT_DE_PASSE_REQUIS = 'Votre adresse est confirmée : connectez-vous avec votre adresse e-mail et votre mot de passe pour ouvrir votre espace.';
+/** Compte avec un autre moyen d'entrer (téléphone, service tiers) : jamais relié à un espace propriétaire. */
+export const MESSAGE_AUTRE_MOYEN =
+  'Ce compte a un autre moyen de connexion (téléphone ou service tiers) : il ne peut pas ouvrir l’espace propriétaire. Demandez à votre conciergerie de vous réinviter avec une adresse réservée à cet usage.';
+export const MESSAGE_INVITATION_PERIMEE =
+  'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé, expiré ou pour une autre adresse) : demandez à votre conciergerie de le renvoyer.';
+export const MESSAGES_ENTREE: Record<RefusEntree, string> = {
+  inconnu: 'Ce compte n’a pas accès à un espace propriétaire. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil, puis connectez-vous.',
+  invite: 'Votre invitation vous attend : ouvrez son lien sur cet appareil, puis connectez-vous.',
+  retire: ACCES_RETIRE,
+  autre_moyen: MESSAGE_AUTRE_MOYEN,
+};
 
 /* ---------------------------------------------- page de connexion */
 
@@ -139,6 +444,8 @@ export interface SessionExterne {
   v: number;
   /** Fin de validité, en secondes. */
   exp: number;
+  /** Compte relié (uid) pour une session ouverte par compte ; absente pour une session par lien. */
+  u?: string;
 }
 
 const utf8 = (t: string) => new TextEncoder().encode(t);
@@ -155,7 +462,7 @@ const cle = async (secret: string) =>
 
 /** Valeur du cookie : corps base64url + « . » + HMAC-SHA256 du corps. */
 export async function signerSessionExterne(secret: string, s: SessionExterne): Promise<string> {
-  const corps = b64url(utf8(JSON.stringify({ k: s.k, p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp })));
+  const corps = b64url(utf8(JSON.stringify({ k: s.k, p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp, ...(uidValide(s.u) ? { u: s.u.toLowerCase() } : {}) })));
   const signature = new Uint8Array(await (await webCrypto()).subtle.sign('HMAC', await cle(secret), utf8(corps)));
   return `${corps}.${b64url(signature)}`;
 }
@@ -178,16 +485,24 @@ export async function lireSessionExterne(secret: string, valeur: unknown, genre:
     const k = s.k ?? 'proprietaire';
     if (k !== genre || typeof s.p !== 'string' || !s.p || typeof s.v !== 'number' || typeof s.exp !== 'number') return null;
     if (s.e !== undefined && !idEspaceValide(s.e)) return null;
+    if (s.u !== undefined && !uidValide(s.u)) return null;
     if (s.exp <= maintenantS) return null;
-    return { k, p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp };
+    return { k, p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp, ...(s.u ? { u: s.u.toLowerCase() } : {}) };
   } catch {
     return null;
   }
 }
 
-/** La session correspond toujours à cet accès : même personne, même espace, actif, même version. */
+/**
+ * La session correspond toujours à cet accès : même personne, même espace,
+ * actif, même version ; et le même compte : une session par compte vaut pour
+ * l'accès relié à cet uid seulement, une session par lien (sans uid) ne vaut
+ * plus dès que l'accès est relié à un compte.
+ */
 export function sessionExterneValide(s: SessionExterne, acces: AccesExterne | undefined): acces is AccesExterne {
-  return !!acces && acces.id === s.p && espaceDe(acces.espace) === s.e && acces.statut === 'actif' && acces.version === s.v;
+  if (!acces || acces.id !== s.p || espaceDe(acces.espace) !== s.e || acces.statut !== 'actif' || acces.version !== s.v) return false;
+  if (s.u) return typeof acces.uid === 'string' && acces.uid.toLowerCase() === s.u && acces.compteActif === true;
+  return !acces.compteActif;
 }
 
 /* --------------------------------------------------------------- cookie */

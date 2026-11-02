@@ -1,19 +1,23 @@
 /**
- * Accès des propriétaires à leur espace, sans compte ni SQL :
+ * Accès des propriétaires à leur espace, sans SQL :
  *
- * - le gérant invite (ou le propriétaire demande un lien avec son adresse) :
- *   le serveur crée un jeton aléatoire de 32 octets, l'envoie par e-mail et
- *   n'en garde que l'empreinte SHA-256 (7 jours pour une invitation, 1 heure
- *   pour un lien demandé) ;
- * - le lien ne sert qu'une fois : il ouvre une session, cookie HttpOnly signé
- *   HMAC-SHA256 avec PROPRIETAIRE_SECRET (30 jours) ;
+ * - le gérant invite : le serveur crée un code aléatoire de 32 octets, l'envoie
+ *   par e-mail dans le lien « Créer mon compte » et n'en garde que l'empreinte
+ *   SHA-256 (7 jours, une fois) ;
+ * - le propriétaire crée son compte Supabase (adresse et mot de passe), confirme
+ *   son adresse, puis l'activation (api/_acces-externe.ts, activerAccesAvecCompte)
+ *   relie l'accès à SON compte (uid), consomme le code et ouvre une session :
+ *   cookie HttpOnly signé HMAC-SHA256 avec PROPRIETAIRE_SECRET (30 jours) ;
+ * - ensuite il entre avec son adresse et son mot de passe ; le serveur retrouve
+ *   l'accès par l'uid (accesDuCompte), jamais par la seule adresse ;
  * - chaque requête revérifie l'accès en base : retirer l'accès (ou changer
  *   d'adresse) augmente la version et ferme aussitôt toutes les sessions ;
  * - l'accès appartient à l'espace qui l'a créé (Label Maison, Sens…) : le
  *   lien et la session le portent (src/erp/data/acces-externe.ts).
  *
- * Les fonctions sur les accès sont génériques : l'espace opérations s'en
- * sert aussi (même forme d'accès, autre collection).
+ * Les fonctions sur les liens à usage unique (avecNouveauLien, utiliserLien)
+ * restent génériques : l'espace opérations s'en sert encore pour entrer par
+ * lien, et les propriétaires pour le code de leur invitation.
  *
  * Web Crypto (navigateur, Node 18+) ; imports en « .js » pour Node.
  */
@@ -88,9 +92,14 @@ export function avecNouveauLien<T extends AccesExterne = AccesProprietaire>(acce
 }
 
 /**
- * Invitation (ou nouvelle invitation) du gérant, dans son espace. Une autre
- * adresse ferme les sessions ouvertes et oublie les liens envoyés à
- * l'ancienne. `espace` absent : Label Maison (base d'avant les espaces).
+ * Invitation (ou nouvelle invitation) du gérant, dans son espace : l'accès
+ * attend que le propriétaire crée son compte et l'active avec le code
+ * (statut « invite », compte pas encore relié). Une autre adresse ferme les
+ * sessions ouvertes, oublie les liens envoyés à l'ancienne et le compte qui
+ * y était relié ; la même adresse garde l'uid pour mémoire (le même compte
+ * pourra se relier avec le nouveau code). Un propriétaire dont le compte est
+ * déjà créé n'est pas réinvité : le serveur refuse avant (il se connecte).
+ * `espace` absent : Label Maison (base d'avant les espaces).
  */
 export function inviter(
   precedent: AccesProprietaire | undefined,
@@ -102,24 +111,26 @@ export function inviter(
     return { id: o.proprietaireId, proprietaireId: o.proprietaireId, espace, email, statut: 'invite', inviteLe: iso(o.maintenantMs), invitePar: o.par, version: 1, liens: [] };
   }
   const autreAdresse = precedent.email !== email;
-  const { retireLe: _retire, ...reste } = precedent;
+  const { retireLe: _retire, compteActif: _compte, activeLe: _active, uid, derniereConnexion, ...reste } = precedent;
   return {
     ...reste,
+    // Même adresse : le compte connu reste noté (compteActif à faux : il attend le nouveau code), ainsi que la dernière connexion.
+    ...(autreAdresse ? {} : { ...(uid ? { uid, compteActif: false } : {}), ...(derniereConnexion ? { derniereConnexion } : {}) }),
     id: o.proprietaireId,
     proprietaireId: o.proprietaireId,
     espace,
     email,
-    statut: precedent.statut === 'actif' && !autreAdresse ? 'actif' : 'invite',
+    statut: 'invite',
     inviteLe: iso(o.maintenantMs),
     invitePar: o.par,
-    version: autreAdresse && precedent.statut === 'actif' ? precedent.version + 1 : precedent.version,
+    version: precedent.statut === 'actif' && (autreAdresse || precedent.compteActif) ? precedent.version + 1 : precedent.version,
     liens: autreAdresse ? [] : (precedent.liens ?? []),
   };
 }
 
-/** Retrait : plus de lien, toutes les sessions fermées. */
+/** Retrait : plus de lien, toutes les sessions fermées ; le compte relié reste noté pour mémoire, mais n'ouvre plus rien. */
 export function retirer<T extends AccesExterne = AccesProprietaire>(acces: T, maintenantMs: number): T {
-  return { ...acces, statut: 'retire', retireLe: iso(maintenantMs), version: (acces.version ?? 1) + 1, liens: [] };
+  return { ...acces, statut: 'retire', retireLe: iso(maintenantMs), version: (acces.version ?? 1) + 1, liens: [], ...(acces.compteActif !== undefined ? { compteActif: false } : {}) };
 }
 
 export type RefusLien = 'inconnu' | 'expire' | 'utilise' | 'retire';
@@ -163,24 +174,26 @@ export interface SessionProprietaire {
   exp: number;
   /** Espace de l'accès ; absent : Label Maison. */
   e?: string;
+  /** Compte relié (uid) : session ouverte par compte. */
+  u?: string;
 }
 
 export async function signerSession(secret: string, s: SessionProprietaire): Promise<string> {
-  return signerSessionExterne(secret, { k: 'proprietaire', p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp });
+  return signerSessionExterne(secret, { k: 'proprietaire', p: s.p, e: espaceDe(s.e), v: s.v, exp: s.exp, ...(s.u ? { u: s.u } : {}) });
 }
 
 /** Session lue dans le cookie : signature vérifiée (temps constant), pas expirée, d'un propriétaire. */
 export async function lireSession(secret: string, valeur: unknown, maintenantS: number): Promise<SessionProprietaire | null> {
   const s = await lireSessionExterne(secret, valeur, 'proprietaire', maintenantS);
-  return s ? { p: s.p, v: s.v, exp: s.exp, e: s.e } : null;
+  return s ? { p: s.p, v: s.v, exp: s.exp, e: s.e, ...(s.u ? { u: s.u } : {}) } : null;
 }
 
-/** La session correspond toujours à un accès actif, de même version, dans le même espace. */
+/** La session correspond toujours à un accès actif, de même version, dans le même espace, du même compte. */
 export function sessionEncoreValide(s: SessionProprietaire, acces: AccesProprietaire | undefined): acces is AccesProprietaire {
   return (
     !!acces &&
     acces.proprietaireId === s.p &&
-    sessionExterneValide({ k: 'proprietaire', p: s.p, e: espaceDe(s.e ?? ID_LABEL_MAISON), v: s.v, exp: s.exp }, acces)
+    sessionExterneValide({ k: 'proprietaire', p: s.p, e: espaceDe(s.e ?? ID_LABEL_MAISON), v: s.v, exp: s.exp, ...(s.u ? { u: s.u } : {}) }, acces)
   );
 }
 

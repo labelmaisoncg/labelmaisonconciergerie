@@ -8,10 +8,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Check, Copy, Eye, FileText, Trash2, X } from 'lucide-react';
-import { statutAccesExterne } from '../../../data/acces-gerant';
+import { statutCompteProprietaire } from '../../../data/acces-gerant';
 import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros, horodatageMaintenant } from '../../../data/format';
+import { inviter as inviterAcces, retirer as retirerAcces } from '../../../data/proprietaire-acces';
 import { facturePartagee } from '../../../data/relances';
 import { nouvelId, useErp } from '../../../data/store';
 import {
@@ -69,13 +70,17 @@ export async function inviterAvecReessai(api: string, corps: Record<string, unkn
 export const CE_QUE_VOIT_LE_PROPRIETAIRE = `Il voit ${CONTENU_ESPACE.lui}, sans rien pouvoir modifier.`;
 
 /**
- * État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour
- * Paramètres → Accès ; « Adresse changée : réinvitez » si l'adresse de la
+ * État du compte en une ligne (« Compte créé le 21 sept. 2026 », « Invitation
+ * envoyée le …, pas encore de compte »), aussi pour Paramètres → Accès et la
+ * fiche du propriétaire ; « Adresse changée : réinvitez » si l'adresse de la
  * fiche n'est plus celle de l'invitation.
  */
 export function statutAcces(a: AccesProprietaire | undefined, p: Pick<Proprietaire, 'contact'>): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
-  return statutAccesExterne(a, p.contact?.email);
+  return statutCompteProprietaire(a, p.contact?.email);
 }
+
+/** Le propriétaire a créé son compte et il est relié à cet accès. */
+const compteCree = (a: AccesProprietaire | undefined): boolean => !!a && a.statut === 'actif' && a.compteActif === true;
 
 /** Ligne de la carte Propriétaire : état de l'accès et ouverture du panneau. */
 export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietaire: Proprietaire; logement: Logement }) {
@@ -190,6 +195,10 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
   const [copie, setCopie] = useState(false);
   const s = statutAcces(acces, p);
   const ferme = !serveur?.actif;
+  const adresseSaisie = email.trim().toLowerCase();
+  const autreAdresse = !!adresseSaisie && adresseSaisie !== (p.contact.email ?? '').trim().toLowerCase();
+  // Compte créé à cette adresse : rien à renvoyer, il se connecte (« Mot de passe oublié ? » au besoin).
+  const dejaUnCompte = compteCree(acces) && !!acces && acces.email === adresseSaisie;
 
   const inviter = async () => {
     setErreur(undefined);
@@ -199,20 +208,8 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
     // Une autre adresse : c'est désormais celle de la fiche (le serveur n'invite que l'adresse de la fiche).
     if (adresse !== (p.contact.email ?? '').trim().toLowerCase()) d.mettreAJour('proprietaires', p.id, (x) => ({ ...x, contact: { ...x.contact, email: adresse } }));
     if (MODE_DEMO) {
-      // Mêmes règles que le serveur : autre adresse, sessions fermées (version) et liens oubliés.
-      const autre = !!acces && acces.email !== adresse;
-      d.upsert('accesProprietaires', {
-        id: p.id,
-        proprietaireId: p.id,
-        email: adresse,
-        emailFiche: adresse,
-        statut: acces?.statut === 'actif' && !autre ? 'actif' : 'invite',
-        inviteLe: horodatageMaintenant(),
-        invitePar: d.utilisateur.email,
-        version: (acces?.version ?? 1) + (autre && acces?.statut === 'actif' ? 1 : 0),
-        liens: [],
-        ...(acces?.derniereConnexion && !autre ? { derniereConnexion: acces.derniereConnexion } : {}),
-      });
+      // Mêmes règles que le serveur (inviter) : l'accès attend le compte ; autre adresse, sessions fermées et compte oublié.
+      d.upsert('accesProprietaires', { ...inviterAcces(acces, { proprietaireId: p.id, email: adresse, par: d.utilisateur.email, maintenantMs: Date.now() }), emailFiche: adresse });
       setInvitation({ lien: `${window.location.origin}/espace-proprietaire?apercu=${encodeURIComponent(p.id)}`, envoye: false });
       return;
     }
@@ -232,7 +229,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
     setConfirmer(false);
     setInvitation(undefined);
     if (MODE_DEMO) {
-      if (acces) d.upsert('accesProprietaires', { ...acces, statut: 'retire', retireLe: horodatageMaintenant(), version: acces.version + 1, liens: [] });
+      if (acces) d.upsert('accesProprietaires', retirerAcces(acces, Date.now()));
       return;
     }
     setEnCours('retirer');
@@ -273,19 +270,23 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
       <Field
         label="Adresse e-mail du propriétaire"
         aide={
-          email.trim().toLowerCase() !== (p.contact.email ?? '').trim().toLowerCase() && email.trim()
+          autreAdresse
             ? 'L’adresse de sa fiche sera remplacée par celle-ci.'
-            : 'Le lien de connexion part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.'
+            : dejaUnCompte
+              ? 'Il se connecte avec cette adresse et son mot de passe (« Mot de passe oublié ? » au besoin).'
+              : 'Le lien pour créer son compte part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.'
         }
       >
         <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
       </Field>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="primary" onClick={() => void inviter()} chargement={enCours === 'inviter'} disabled={ferme || !!enCours}>
-          {acces && acces.statut !== 'retire' ? 'Renvoyer une invitation' : 'Inviter'}
-        </Button>
+        {!dejaUnCompte && (
+          <Button variant="primary" onClick={() => void inviter()} chargement={enCours === 'inviter'} disabled={ferme || !!enCours}>
+            {acces && acces.statut !== 'retire' ? 'Renvoyer l’invitation' : 'Inviter'}
+          </Button>
+        )}
         {acces && acces.statut !== 'retire' && !confirmer && (
-          <Button variant="ghost" onClick={() => setConfirmer(true)} disabled={ferme || !!enCours}>
+          <Button variant={dejaUnCompte ? 'secondary' : 'ghost'} onClick={() => setConfirmer(true)} disabled={ferme || !!enCours}>
             Retirer l’accès
           </Button>
         )}
@@ -305,7 +306,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
             </>
           }
         >
-          Ses liens ne marchent plus. Son espace se ferme dès qu’il recharge la page ou ouvre un document.
+          Son espace se ferme dès qu’il recharge la page ou ouvre un document. Son compte reste, mais n’ouvre plus rien.
         </Alert>
       )}
       {erreur && (
@@ -317,10 +318,10 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
         <div className="mt-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
           <p className="text-[13px] text-(--lm-encre)">
             {invitation.envoye
-              ? `Invitation envoyée à ${email.trim().toLowerCase()}. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
+              ? `Invitation envoyée à ${email.trim().toLowerCase()} : il crée son mot de passe avec ce lien. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
               : MODE_DEMO
-                ? 'Démonstration : aucun e-mail n’est envoyé. Ce lien ouvre son espace de démonstration.'
-                : 'L’e-mail n’a pas pu partir : copiez ce lien et envoyez-le par SMS ou WhatsApp.'}
+                ? 'Démonstration : aucun e-mail n’est envoyé. Ce lien ouvre son espace de démonstration.'
+                : 'L’e-mail n’a pas pu partir : copiez ce lien et envoyez-le par SMS ou WhatsApp.'}
           </p>
           <div className="mt-2 flex gap-2">
             <Input readOnly value={invitation.lien} onFocus={(e) => e.currentTarget.select()} aria-label="Lien d’invitation" className="text-[12.5px]" />
@@ -413,9 +414,9 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
         publie
           ? `Publié le ${dateCourte(existant.publieLe!.slice(0, 10))}.${
               transfere
-                ? ` ${etat.transferts.map((t) => `${t.nom} a changé de propriétaire${t.depuis ? ` le ${dateCourte(t.depuis)}` : ''}`).join(' ; ')} : ce bilan reste tel quel.`
+                ? ` ${etat.transferts.map((t) => `${t.nom} a changé de propriétaire${t.depuis ? ` le ${dateCourte(t.depuis)}` : ''}`).join(' ; ')} : ce bilan reste tel quel.`
                 : change
-                  ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.'
+                  ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.'
                   : ''
             }`
           : 'Aperçu exact de ce que verra le propriétaire une fois publié.'
@@ -442,7 +443,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
         )
       }
     >
-      <Field label={`Le mot ${deNom(espaceOuvert().nom)}`} aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
+      <Field label={`Le mot ${deNom(espaceOuvert().nom)}`} aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
         <Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} maxLength={1200} />
       </Field>
       <div className="mt-5 border-t border-(--lm-bord) pt-5">
@@ -486,7 +487,7 @@ function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; 
 
   return (
     <section>
-      <Titre description="Contrat, attestations, bilans signés : le propriétaire les ouvre depuis son espace.">Documents partagés</Titre>
+      <Titre description="Contrat, attestations, bilans signés : le propriétaire les ouvre depuis son espace.">Documents partagés</Titre>
       {documents.length ? (
         <ul className="mb-4 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
           {documents.map((doc) => (

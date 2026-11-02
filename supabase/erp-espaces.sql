@@ -1957,6 +1957,14 @@ declare
   j_nouveau constant text := format(jeton, 'recette-nouveau@exemple.invalid', u_nouveau, neuf, ', "recette_confirme": "oui"');
   j_nouveau_autre_compte constant text := format(jeton, 'recette-nouveau@exemple.invalid', u_intrus, neuf, ', "recette_confirme": "oui"');
   j_intrus constant text := format(jeton, 'intrus@exemple.invalid', u_intrus, neuf, ', "recette_confirme": "oui"');
+  -- Compte d'un propriétaire (espace propriétaire) : compte Supabase confirmé,
+  -- uid dans aucune ligne de erp.membres ; le code de son invitation n'a son
+  -- empreinte que dans accesProprietaires (erp.enregistrements), jamais dans
+  -- erp.invitations.
+  u_proprio constant uuid := 'e55a1000-0000-4000-8000-00000000a007';
+  c_proprio constant text := 'recette-propri-0123456789abcdefghijklmnopq';
+  h_proprio constant text := encode(sha256(convert_to(c_proprio, 'UTF8')), 'hex');
+  j_proprio constant text := format(jeton, 'proprio-recette@exemple.invalid', u_proprio, neuf, ', "recette_confirme": "oui"');
 begin
   begin
     -- Données d'essai : un espace, un membre dans chaque espace, une ligne chacun
@@ -1982,7 +1990,9 @@ begin
       (lm, 'accesProprietaires', 'recette', '{"id": "recette"}'),
       (lm, 'actionsAgent', 'recette-action', '{"id": "recette-action", "etat": "faite"}'),
       (essai, 'recette', 'ligne-autre', '{"id": "ligne-autre"}'),
-      (essai, 'accesProprietaires', 'recette-version', '{"id": "recette-version"}');
+      (essai, 'accesProprietaires', 'recette-version', '{"id": "recette-version"}'),
+      (lm, 'accesProprietaires', 'recette-proprio', jsonb_build_object('id', 'recette-proprio', 'proprietaireId', 'recette-proprio', 'email', 'proprio-recette@exemple.invalid',
+        'statut', 'invite', 'version', 1, 'liens', jsonb_build_array(jsonb_build_object('empreinte', h_proprio, 'motif', 'invitation', 'creeLe', '2026-10-01T10:00:00Z', 'expireLe', '2099-01-01T00:00:00Z'))));
     -- Anciennes versions d'accès : une dans chaque espace (l'enregistrement de
     -- l'autre espace est retiré, seule sa version reste).
     update erp.enregistrements set donnees = '{"id": "recette", "v": 2}' where espace = lm and collection = 'accesProprietaires' and id = 'recette';
@@ -2956,6 +2966,83 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- 9. Compte d'un propriétaire (espace propriétaire, octobre 2026) : un compte
+    -- Supabase confirmé dont l'uid n'est dans aucune ligne de erp.membres. Il ne
+    -- lit rien, n'écrit rien, n'a ni espace ni invitation, et le code de son
+    -- invitation ne fait rien dans erp.activer (son empreinte n'est que dans
+    -- accesProprietaires) : seul le serveur, avec le compte d'équipe, l'active.
+    perform set_config('request.headers', '{}', true);
+    perform set_config('request.jwt.claims', j_proprio, true);
+    select count(*) into n from erp.enregistrements;
+    if n <> 0 then resultat := format('un compte propriétaire lit %s enregistrement(s)', n); raise exception 'stop'; end if;
+    select count(*) into n from erp.historique;
+    if n <> 0 then resultat := 'un compte propriétaire lit l''historique'; raise exception 'stop'; end if;
+    select count(*) into n from erp.membres;
+    if n <> 0 then resultat := 'un compte propriétaire lit les membres'; raise exception 'stop'; end if;
+    select count(*) into n from erp.espaces;
+    if n <> 0 then resultat := 'un compte propriétaire lit les espaces'; raise exception 'stop'; end if;
+    select count(*) into n from erp.etat_automatisations;
+    if n <> 0 then resultat := 'un compte propriétaire lit les automatisations'; raise exception 'stop'; end if;
+    begin
+      select count(*) into n from storage.objects;
+    exception when insufficient_privilege then n := 0;
+    end;
+    if n <> 0 then resultat := 'un compte propriétaire lit les fichiers'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'recette', 'proprio-intrus', '{}');
+      resultat := 'un compte propriétaire écrit dans les enregistrements';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"compteActif": true}' where collection = 'accesProprietaires' and id = 'recette-proprio';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte propriétaire modifie son accès'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where collection = 'accesProprietaires' and id = 'recette-proprio';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte propriétaire efface son accès'; raise exception 'stop'; end if;
+    begin
+      insert into erp.membres (espace, email, nom, role) values (lm, 'proprio-recette@exemple.invalid', 'Intrus', 'gerant');
+      resultat := 'un compte propriétaire s''ajoute aux membres';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      select count(*) into n from erp.invitations;
+      resultat := 'un compte propriétaire lit les invitations';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      select count(*) into n from erp.invitations_espace;
+      resultat := 'un compte propriétaire lit les invitations d''espace';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    j := erp.qui_suis_je();
+    if jsonb_array_length(j -> 'espaces') <> 0 or jsonb_array_length(j -> 'invitations_espace') <> 0 then
+      resultat := 'un compte propriétaire a un espace ou une invitation'; raise exception 'stop';
+    end if;
+    select count(*) into n from erp.espaces_actifs();
+    if n <> 0 then resultat := 'un compte propriétaire voit des espaces actifs'; raise exception 'stop'; end if;
+    begin
+      perform erp.activer(c_proprio);
+      resultat := 'erp.activer accepte le code d''une invitation de propriétaire';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      perform erp.creer_espace();
+      resultat := 'un compte propriétaire crée un espace';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      perform erp.inviter_membre(lm, 'proprio-recette@exemple.invalid', h_proprio);
+      resultat := 'un compte propriétaire invite un membre';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+
     -- Index des numéros absent ou d'une version précédente (numéros en double à
     -- corriger) : la recette ne passe pas, comme le bilan.
     if not numeros_uniques then

@@ -1,35 +1,80 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import '../../erp/erp.css';
-import { espaceARetenir, lireEspaceRetenu, lireLienAcces, marqueConnexion, type EspaceRetenu } from '../../erp/data/acces-externe';
+import {
+  MESSAGE_COMPTE_EXISTE,
+  MESSAGE_INVITATION_PERIMEE,
+  MOT_DE_PASSE_MIN,
+  adresseBienFormee,
+  espaceARetenir,
+  forceMotDePasse,
+  lireEspaceRetenu,
+  marqueConnexion,
+  motDePasseRefuse,
+  type EspaceRetenu,
+} from '../../erp/data/acces-externe';
 import { completer } from '../../erp/data/collections';
+import {
+  RETOUR_LIEN_EXTERNE,
+  changerMotDePasseExterne,
+  codeInvitationAccesDe,
+  creerCompteExterne,
+  envoyerLienMotDePasseExterne,
+  fermerSessionExterne,
+  garderInvitationAcces,
+  invitationAccesGardee,
+  nettoyerAdresse,
+  oublierInvitationAcces,
+  seConnecterExterne,
+  sessionExterne,
+} from '../../erp/data/compte-externe';
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
-import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
+import { CONTACTS_LABEL_MAISON, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { ErpDonnees } from '../../erp/data/types';
 import type { CalendrierLogement, MoisCalendrierVue, VueProprietaire } from '../../erp/data/types-proprietaire';
 import type { ChargeurMois } from '../../erp/calendrier';
 import { EspaceVue } from '../../erp/espace-proprietaire/EspaceVue';
 import { ONGLETS_ESPACE, type LienDocumentProps, type OngletEspace } from '../../erp/espace-proprietaire/commun';
-import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
+import { Alert, Button, Card, Field, IconButton, Input, PageSkeleton, cn } from '../../erp/ui';
 
 /**
  * /espace-proprietaire : l'espace en ligne des propriétaires (logements,
- * calendrier, bilans publiés, factures partagées, documents). Connexion par
- * lien à usage unique reçu par e-mail ; toutes les données viennent de
- * api/espace-proprietaire.ts, déjà filtrées pour ce propriétaire.
+ * calendrier, bilans publiés, factures partagées, documents). Chaque
+ * propriétaire a son compte (adresse e-mail et mot de passe) :
+ *
+ * 1. le lien de l'invitation (« #creer=<adresse>&code=…&espace=… ») ouvre
+ *    « Créez votre mot de passe » ; le code reste sur l'appareil ;
+ * 2. Supabase envoie l'e-mail de confirmation ; son lien ramène ici, puis la
+ *    personne se connecte avec son mot de passe : cette connexion active
+ *    l'accès avec le code (POST activer) et ouvre la session. Jamais la seule
+ *    session du lien : un compte créé avant elle, par un autre, à son adresse,
+ *    aurait le mot de passe de cet autre (le serveur l'exige aussi) ;
+ * 3. ensuite, adresse et mot de passe (POST entrer) ; « Mot de passe oublié ? »
+ *    envoie un lien qui ramène ici pour en choisir un nouveau.
+ *
+ * Le compte Supabase ne sert qu'à prouver l'identité auprès du serveur : la
+ * session de l'espace, c'est le cookie ; la session Supabase locale est fermée
+ * aussitôt après. Toutes les données viennent de api/espace-proprietaire.ts,
+ * déjà filtrées pour ce propriétaire.
  *
  * Page de connexion : au nom de l'espace du dernier lien ou de la dernière
  * session sur cet appareil (gardé dans le navigateur : id et nom de l'espace,
  * rien d'autre) ; espace inconnu : « votre conciergerie », sans le numéro de
  * Label Maison.
  *
- * Démo (VITE_ERP_DEMO=1) : ?apercu=pro-sci-tilleuls, calculé sur le jeu de démo.
+ * Démo (VITE_ERP_DEMO=1) : ?apercu=pro-sci-tilleuls, calculé sur le jeu de
+ * démo ; les écrans de compte se montrent, sans Supabase ni e-mail.
+ *
+ * Typographie : espace insécable avant « ? » et « : » dans tous les textes
+ * (vérifié par verifier-comptes-proprietaires.ts).
  */
 
 const API = '/api/espace-proprietaire';
+const GENRE = 'proprietaire';
 const PROPRIETAIRE_DEMO = 'pro-sci-tilleuls';
 
 /** Espace retenu sur cet appareil pour la page de connexion (id et nom, rien d'autre). */
@@ -52,23 +97,79 @@ function retenirEspace(e: EspaceRetenu) {
 }
 
 type MarqueConnexion = ReturnType<typeof marqueConnexion>;
+type Ton = 'danger' | 'succes' | 'neutre' | 'info';
 
 type Etat =
   | { nom: 'chargement' }
-  | { nom: 'connexion'; message?: string; ton?: 'danger' | 'succes' | 'neutre' }
+  | { nom: 'connexion'; message?: string; ton?: Ton; email?: string }
+  /** Lien d'invitation ouvert ici : il reste à choisir son mot de passe. */
+  | { nom: 'creer'; email: string }
+  /** Compte créé : la confirmation de l'adresse est partie. */
+  | { nom: 'confirmer'; email: string }
+  /** Lien « mot de passe oublié » ouvert : le compte est connecté, il choisit son nouveau mot de passe. */
+  | { nom: 'nouveau_mot_de_passe'; email: string }
   | { nom: 'ferme'; message: string }
   | { nom: 'erreur'; message: string }
   | { nom: 'pret'; vue: VueProprietaire; demo?: boolean };
 
-async function appeler(methode: 'GET' | 'POST', parametres: Record<string, string>): Promise<{ statut: number; json: Record<string, unknown> }> {
+const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
+const MESSAGE_CONFIRMEE = 'Votre adresse est confirmée. Connectez-vous avec votre mot de passe pour ouvrir votre espace.';
+const MESSAGE_OUBLIE = 'Si cette adresse a un compte, un lien pour choisir un mot de passe vient de lui être envoyé. Pensez à regarder dans les indésirables.';
+const MESSAGE_DEMO = 'Démonstration : aucun compte n’est créé et aucun e-mail n’est envoyé. Ouvrez l’espace de démonstration ci-dessous.';
+const MESSAGE_LIEN_PERIME = 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».';
+
+async function appeler(methode: 'GET' | 'POST', parametres: Record<string, string | boolean>, jeton?: string): Promise<{ statut: number; json: Record<string, unknown> }> {
   try {
+    const entetes: Record<string, string> = jeton ? { Authorization: `Bearer ${jeton}` } : {};
     const r =
       methode === 'GET'
-        ? await fetch(`${API}?${new URLSearchParams(parametres)}`, { credentials: 'same-origin', cache: 'no-store' })
-        : await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(parametres) });
+        ? await fetch(`${API}?${new URLSearchParams(parametres as Record<string, string>)}`, { credentials: 'same-origin', cache: 'no-store', headers: entetes })
+        : await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...entetes }, body: JSON.stringify(parametres) });
     return { statut: r.status, json: (await r.json().catch(() => ({}))) as Record<string, unknown> };
   } catch {
     return { statut: 0, json: { erreur: 'Pas de connexion. Vérifiez votre réseau, puis réessayez.' } };
+  }
+}
+
+/**
+ * Ouvre la session de l'espace avec le jeton Supabase du compte connecté : avec
+ * le code d'invitation gardé ici pour cette adresse, c'est l'activation
+ * (première entrée) ; sinon, ou si ce code a déjà servi, l'entrée par le
+ * compte. `fermerAutres` (nouveau mot de passe) : les sessions ouvertes avant
+ * se ferment. La session Supabase locale est fermée dans tous les cas.
+ */
+async function ouvrirAvecCompte(jeton: string, email: string, o: { fermerAutres?: boolean } = {}): Promise<{ ok: true } | { ok: false; message: string; code: string }> {
+  try {
+    const retenu = espaceRetenu()?.espace;
+    const autres: Record<string, boolean> = o.fermerAutres ? { fermerAutres: true } : {};
+    const inv = codeInvitationAccesDe(GENRE, email);
+    if (inv) {
+      const a = await appeler('POST', { action: 'activer', code: inv.code, espace: inv.espace }, jeton);
+      if (a.statut === 200) {
+        oublierInvitationAcces(GENRE);
+        if (idEspaceValide(a.json.espace)) retenirEspace({ espace: a.json.espace.toLowerCase() });
+        return { ok: true };
+      }
+      // Code refusé (déjà servi, remplacé, expiré) : il ne servira plus ; le compte a peut-être déjà son accès.
+      if (a.statut === 401 && a.json.code === 'invitation') {
+        oublierInvitationAcces(GENRE);
+        const e = await appeler('POST', { action: 'entrer', ...autres, ...(retenu ? { espace: retenu } : { espace: inv.espace }) }, jeton);
+        if (e.statut === 200) {
+          if (idEspaceValide(e.json.espace)) retenirEspace({ espace: e.json.espace.toLowerCase() });
+          return { ok: true };
+        }
+        return { ok: false, message: String(a.json.erreur ?? MESSAGE_INVITATION_PERIMEE), code: 'invitation' };
+      }
+      return { ok: false, message: String(a.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.'), code: String(a.json.code ?? '') };
+    }
+    const e = await appeler('POST', { action: 'entrer', ...autres, ...(retenu ? { espace: retenu } : {}) }, jeton);
+    if (e.statut === 200) {
+      if (idEspaceValide(e.json.espace)) retenirEspace({ espace: e.json.espace.toLowerCase() });
+      return { ok: true };
+    }
+    return { ok: false, message: String(e.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.'), code: String(e.json.code ?? '') };
+  } finally {
+    await fermerSessionExterne(GENRE);
   }
 }
 
@@ -116,90 +217,48 @@ function LienDocumentServeur({ id, className, children }: LienDocumentProps) {
 
 function LienDocumentDemo({ className, children }: LienDocumentProps) {
   return (
-    <div className={className} title="Démonstration : le fichier n’est pas joint">
+    <div className={className} title="Démonstration : le fichier n’est pas joint">
       {children}
     </div>
   );
 }
 
+/* ------------------------------------------------------------------ cadre */
+
+/** Liens tertiaires : 32 px sur ordinateur, 44 px au doigt sur téléphone. */
+const LIEN_TEXTE = 'inline-flex min-h-8 max-sm:min-h-11 items-center text-[13px] font-medium lm-lien';
+
 /**
- * Connexion, au nom de l'espace connu sur cet appareil : Label Maison (sa
- * marque et son numéro), un autre espace (son nom), ou personne (« votre
- * conciergerie », rien de Label Maison).
+ * Cadre des écrans de compte, au nom de l'espace connu sur cet appareil :
+ * Label Maison (sa marque et son numéro), un autre espace (son nom), ou
+ * personne (« votre conciergerie », rien de Label Maison).
  */
-function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' | 'succes' | 'neutre'; marque: MarqueConnexion }) {
-  const [email, setEmail] = useState('');
-  const [enCours, setEnCours] = useState(false);
-  const [retour, setRetour] = useState<{ texte: string; ton: 'succes' | 'danger' }>();
+function Cadre({ marque, titre, phrase, children }: { marque: MarqueConnexion; titre: string; phrase?: string; children: ReactNode }) {
   const c = CONTACTS_LABEL_MAISON;
-
-  const envoyer = async (e: FormEvent) => {
-    e.preventDefault();
-    setRetour(undefined);
-    if (MODE_DEMO) {
-      setRetour({ ton: 'succes', texte: 'Démonstration : aucun e-mail n’est envoyé. Ouvrez l’espace de démonstration ci-dessous.' });
-      return;
-    }
-    setEnCours(true);
-    const r = await appeler('POST', { action: 'lien', email: email.trim() });
-    setEnCours(false);
-    if (r.statut === 200) setRetour({ ton: 'succes', texte: String(r.json.message ?? 'Lien envoyé.') });
-    else setRetour({ ton: 'danger', texte: String(r.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.') });
-  };
-
   return (
     <div className="grid min-h-screen place-items-center px-4 py-10">
       <div className="w-full max-w-sm">
         {marque.nom && <p className="lm-titre text-center text-[22px] text-(--lm-brun)">{marque.nom}</p>}
         <Card className="mt-6 p-6">
-          <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)">Votre espace propriétaire</h1>
-          <p className="mt-2 text-[14px] text-(--lm-encre-2)">
-            {CONTENU_ESPACE.vous.charAt(0).toUpperCase()}
-            {CONTENU_ESPACE.vous.slice(1)}. Recevez un lien de connexion par e-mail : aucun mot de passe à retenir.
-          </p>
-          {message && (
-            <Alert tone={ton ?? 'neutre'} className="mt-4">
-              {message}
-            </Alert>
-          )}
-          <form onSubmit={(e) => void envoyer(e)} className="mt-5 space-y-4">
-            <Field label="Adresse e-mail">
-              <Input
-                type="email"
-                inputMode="email"
-                autoComplete="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="vous@exemple.fr"
-                className="h-11 text-[16px]"
-              />
-            </Field>
-            <Button type="submit" variant="primary" size="lg" chargement={enCours} className="w-full">
-              Recevoir mon lien
-            </Button>
-          </form>
-          {retour && (
-            <Alert tone={retour.ton} className="mt-4">
-              {retour.texte}
-            </Alert>
-          )}
+          <h1 className="lm-titre text-[24px] leading-tight text-(--lm-encre)">{titre}</h1>
+          {phrase && <p className="mt-2 text-[14px] text-(--lm-encre-2)">{phrase}</p>}
+          {children}
         </Card>
         <p className="mt-5 text-center text-[13px] text-(--lm-encre-2)">
           {marque.labelMaison ? (
             <>
-              Besoin d’aide ?{' '}
-              <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium lm-lien">
+              Besoin d’aide&nbsp;?{' '}
+              <a href={c.lienTelephone} className="inline-flex min-h-8 max-sm:min-h-11 items-center font-medium lm-lien">
                 {c.telephone}
               </a>
             </>
           ) : (
-            `Besoin d’aide ? Contactez ${marque.nom ?? 'votre conciergerie'}.`
+            `Besoin d’aide ? Contactez ${marque.nom ?? 'votre conciergerie'}.`
           )}
         </p>
         {MODE_DEMO && (
           <p className="mt-2 text-center text-[13px]">
-            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 items-center font-medium lm-lien">
+            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 max-sm:min-h-11 items-center font-medium lm-lien">
               Voir l’espace de démonstration
             </a>
           </p>
@@ -209,10 +268,284 @@ function Connexion({ message, ton, marque }: { message?: string; ton?: 'danger' 
   );
 }
 
+/**
+ * Indicateur simple de la force du mot de passe : trois traits (gris tant
+ * que le mot de passe est trop court, puis rouge, ambre ou vert) et un mot à
+ * partir du premier niveau. L'aide du champ dit déjà le minimum.
+ */
+function ForceMotDePasse({ motDePasse }: { motDePasse: string }) {
+  if (!motDePasse) return null;
+  const f = forceMotDePasse(motDePasse);
+  const couleur = f.niveau === 1 ? 'bg-(--lm-danger)' : f.niveau === 2 ? 'bg-(--lm-alerte)' : 'bg-(--lm-succes)';
+  return (
+    <div className="mt-1.5 flex items-center gap-2" aria-live="polite">
+      <div className="flex flex-1 gap-1" aria-hidden>
+        {[1, 2, 3].map((n) => (
+          <span key={n} className={`h-1 flex-1 rounded-sm ${f.niveau > 0 && n <= f.niveau ? couleur : 'bg-(--lm-bord-fort)'}`} />
+        ))}
+      </div>
+      {f.niveau > 0 && <span className="text-[12px] text-(--lm-encre-2)">{f.libelle}</span>}
+    </div>
+  );
+}
+
+/**
+ * Champ mot de passe avec « Afficher le mot de passe » (œil) et, si demandé,
+ * l'indicateur de force. Le champ de formulaire (Field) lui donne id et
+ * descriptions, passés au vrai contrôle.
+ */
+const ChampMotDePasse = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { force?: boolean }>(function ChampMotDePasse({ force, className, value, ...rest }, ref) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div>
+      <div className="relative">
+        <Input ref={ref} type={visible ? 'text' : 'password'} value={value} className={cn('h-11 pr-12 text-[16px]', className)} {...rest} />
+        <IconButton
+          type="button"
+          size="sm"
+          label={visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+          aria-pressed={visible}
+          onClick={() => setVisible((v) => !v)}
+          className="absolute top-1/2 right-1.5 -translate-y-1/2"
+        >
+          {visible ? <EyeOff /> : <Eye />}
+        </IconButton>
+      </div>
+      {force && <ForceMotDePasse motDePasse={String(value ?? '')} />}
+    </div>
+  );
+});
+
+/* -------------------------------------------------------------- connexion */
+
+function Connexion({
+  marque,
+  message,
+  ton,
+  emailInitial,
+  onEntre,
+  onCreer,
+}: {
+  marque: MarqueConnexion;
+  message?: string;
+  ton?: Ton;
+  emailInitial?: string;
+  onEntre: () => void;
+  onCreer: () => void;
+}) {
+  const [email, setEmail] = useState(emailInitial ?? '');
+  const [motDePasse, setMotDePasse] = useState('');
+  const [enCours, setEnCours] = useState(false);
+  const [retour, setRetour] = useState<{ texte: string; ton: Ton } | undefined>(message ? { texte: message, ton: ton ?? 'neutre' } : undefined);
+  const invitation = invitationAccesGardee(GENRE);
+
+  const connecter = async (e: FormEvent) => {
+    e.preventDefault();
+    setRetour(undefined);
+    const adresse = email.trim().toLowerCase();
+    if (!adresseBienFormee(adresse) || !motDePasse) return setRetour({ ton: 'danger', texte: 'Saisissez votre adresse e-mail et votre mot de passe.' });
+    if (MODE_DEMO) return setRetour({ ton: 'succes', texte: MESSAGE_DEMO });
+    setEnCours(true);
+    const c = await seConnecterExterne(GENRE, adresse, motDePasse);
+    if (!c.ok) {
+      setEnCours(false);
+      return setRetour({ ton: 'danger', texte: c.erreur });
+    }
+    const r = await ouvrirAvecCompte(c.jeton, adresse);
+    setEnCours(false);
+    setMotDePasse('');
+    if (r.ok) return onEntre();
+    setRetour({ ton: r.code === 'retire' || r.code === 'invite' ? 'neutre' : 'danger', texte: r.message });
+  };
+
+  const oublie = async () => {
+    const adresse = email.trim().toLowerCase();
+    if (!adresseBienFormee(adresse)) return setRetour({ ton: 'danger', texte: 'Saisissez d’abord votre adresse e-mail, puis touchez « Mot de passe oublié ? ».' });
+    if (MODE_DEMO) return setRetour({ ton: 'succes', texte: 'Démonstration : aucun e-mail n’est envoyé.' });
+    setRetour(undefined);
+    const r = await envoyerLienMotDePasseExterne(GENRE, adresse);
+    // Même réponse que l'adresse ait un compte ou non.
+    setRetour(r.ok ? { ton: 'info', texte: MESSAGE_OUBLIE } : { ton: 'danger', texte: r.erreur });
+  };
+
+  return (
+    <Cadre marque={marque} titre="Votre espace propriétaire" phrase="Connectez-vous avec votre adresse e-mail et votre mot de passe.">
+      <form onSubmit={(e) => void connecter(e)} noValidate className="mt-5 space-y-4">
+        <Field label="Adresse e-mail">
+          <Input
+            type="email"
+            name="email"
+            inputMode="email"
+            autoComplete="username"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="vous@exemple.fr"
+            className="h-11 text-[16px]"
+          />
+        </Field>
+        <Field label="Mot de passe">
+          <ChampMotDePasse name="password" autoComplete="current-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} />
+        </Field>
+        {retour && (
+          <Alert tone={retour.ton} className="py-2">
+            {retour.texte}
+          </Alert>
+        )}
+        <Button type="submit" variant="primary" size="lg" chargement={enCours} className="w-full">
+          Se connecter
+        </Button>
+      </form>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-x-4">
+        <button type="button" onClick={() => void oublie()} className={LIEN_TEXTE}>
+          Mot de passe oublié&nbsp;?
+        </button>
+        {invitation && (
+          <button type="button" onClick={onCreer} className={LIEN_TEXTE}>
+            Créer mon compte
+          </button>
+        )}
+      </div>
+    </Cadre>
+  );
+}
+
+/* --------------------------------------------------------- créer un compte */
+
+/**
+ * « Créez votre mot de passe » : l'adresse de l'invitation (fixe), le mot de
+ * passe deux fois (12 caractères au moins, indicateur simple). Le compte est
+ * créé auprès de Supabase ; l'adresse reste à confirmer par son lien.
+ */
+function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: MarqueConnexion; email: string; onCree: (r: { jeton?: string; existe?: boolean }) => void; onDejaUnCompte: () => void }) {
+  const [motDePasse, setMotDePasse] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [erreur, setErreur] = useState<string>();
+  const [enCours, setEnCours] = useState(false);
+
+  const creer = async (e: FormEvent) => {
+    e.preventDefault();
+    const refus = motDePasseRefuse(motDePasse, confirmation);
+    if (refus) return setErreur(refus);
+    setErreur(undefined);
+    // Démonstration : l'écran suivant se montre, rien n'est envoyé.
+    if (MODE_DEMO) return onCree({});
+    setEnCours(true);
+    const r = await creerCompteExterne(GENRE, email, motDePasse);
+    setEnCours(false);
+    setMotDePasse('');
+    setConfirmation('');
+    if (!r.ok) return setErreur(r.erreur);
+    onCree(r);
+  };
+
+  return (
+    <Cadre marque={marque} titre="Créez votre mot de passe" phrase="Votre espace s’ouvre avec votre adresse et ce mot de passe.">
+      <form onSubmit={(e) => void creer(e)} noValidate className="mt-5 space-y-4">
+        <div>
+          <p className="text-[13px] font-semibold text-(--lm-encre)">Adresse e-mail</p>
+          <p className="mt-1 text-[15px] font-medium text-(--lm-encre) [overflow-wrap:anywhere]">{email}</p>
+          {/* Le champ caché donne l'adresse aux gestionnaires de mots de passe. */}
+          <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
+        </div>
+        <Field label="Mot de passe" aide={`${MOT_DE_PASSE_MIN} caractères au moins.`}>
+          <ChampMotDePasse autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus force />
+        </Field>
+        <Field label="Confirmer le mot de passe">
+          <ChampMotDePasse autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
+        </Field>
+        {erreur && (
+          <Alert tone="danger" className="py-2">
+            {erreur}
+          </Alert>
+        )}
+        <Button type="submit" variant="primary" size="lg" chargement={enCours} className="w-full">
+          Créer mon compte
+        </Button>
+      </form>
+      <button type="button" onClick={onDejaUnCompte} className={`mt-4 ${LIEN_TEXTE}`}>
+        J’ai déjà un compte
+      </button>
+    </Cadre>
+  );
+}
+
+function ConfirmerAdresse({ marque, email, onConnexion }: { marque: MarqueConnexion; email: string; onConnexion: () => void }) {
+  return (
+    <Cadre marque={marque} titre="Confirmez votre adresse">
+      <p className="mt-3 text-[14px] text-(--lm-encre)">
+        Un e-mail vient de partir à <strong className="[overflow-wrap:anywhere]">{email}</strong>. Ouvrez son lien sur cet appareil&nbsp;: votre espace s’ouvrira.
+      </p>
+      <p className="mt-2 text-[13px] text-(--lm-encre-2)">Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les indésirables.</p>
+      <Button variant="secondary" className="mt-5 w-full" onClick={onConnexion}>
+        J’ai déjà un compte&nbsp;: me connecter
+      </Button>
+    </Cadre>
+  );
+}
+
+/* ---------------------------------------------------- nouveau mot de passe */
+
+function NouveauMotDePasse({ marque, email, onFini }: { marque: MarqueConnexion; email: string; onFini: (r: { ok: true } | { ok: false; message: string; code: string }) => void }) {
+  const [motDePasse, setMotDePasse] = useState('');
+  const [confirmation, setConfirmation] = useState('');
+  const [erreur, setErreur] = useState<string>();
+  const [enCours, setEnCours] = useState(false);
+
+  const valider = async (e: FormEvent) => {
+    e.preventDefault();
+    const refus = motDePasseRefuse(motDePasse, confirmation);
+    if (refus) return setErreur(refus);
+    setErreur(undefined);
+    if (MODE_DEMO) return setErreur(MESSAGE_DEMO);
+    setEnCours(true);
+    const r = await changerMotDePasseExterne(GENRE, motDePasse);
+    if (!r.ok) {
+      setEnCours(false);
+      return setErreur(r.erreur);
+    }
+    // Connexion avec le nouveau mot de passe (le serveur n'active qu'ainsi), puis les sessions d'avant se ferment.
+    await fermerSessionExterne(GENRE);
+    const c = await seConnecterExterne(GENRE, email, motDePasse);
+    if (!c.ok) {
+      setEnCours(false);
+      return setErreur(c.erreur);
+    }
+    const ouverture = await ouvrirAvecCompte(c.jeton, email, { fermerAutres: true });
+    setEnCours(false);
+    onFini(ouverture);
+  };
+
+  return (
+    <Cadre marque={marque} titre="Nouveau mot de passe" phrase={`Choisissez votre mot de passe : ${MOT_DE_PASSE_MIN} caractères au moins.`}>
+      <form onSubmit={(e) => void valider(e)} noValidate className="mt-5 space-y-4">
+        {email && <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />}
+        <Field label="Nouveau mot de passe">
+          <ChampMotDePasse autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus force />
+        </Field>
+        <Field label="Confirmer le mot de passe">
+          <ChampMotDePasse autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
+        </Field>
+        {erreur && (
+          <Alert tone={MODE_DEMO && erreur === MESSAGE_DEMO ? 'succes' : 'danger'} className="py-2">
+            {erreur}
+          </Alert>
+        )}
+        <Button type="submit" variant="primary" size="lg" chargement={enCours} className="w-full">
+          Enregistrer et ouvrir mon espace
+        </Button>
+      </form>
+    </Cadre>
+  );
+}
+
+/* ------------------------------------------------------------------- page */
+
 export default function EspaceProprietaire() {
   const [parametres, setParametres] = useSearchParams();
   const [etat, setEtat] = useState<Etat>({ nom: 'chargement' });
-  // Espace du lien reçu (un ancien lien sans espace : Label Maison).
+  // Espace du lien reçu (invitation).
   const [espaceLien, setEspaceLien] = useState<string>();
   // Calendrier : un cache par mois (tous ses logements), rempli par plages de mois en défilant.
   const [moisConnus, setMoisConnus] = useState<Record<string, CalendrierLogement[]>>({});
@@ -260,34 +593,61 @@ export default function EspaceProprietaire() {
     return { nom: 'erreur', message: String(r.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.') };
   }, [apercu]);
 
+  /** Pose l'état ; une vue prête amorce le cache du calendrier avec son premier mois, les autres viendront par plages. */
+  const montrer = useCallback((e: Etat) => {
+    setEtat(e);
+    if (e.nom === 'pret') setMoisConnus({ [e.vue.calendrier.mois]: e.vue.calendrier.logements });
+  }, []);
+
   useEffect(() => {
     let actif = true;
+    const poser = (e: Etat) => {
+      if (actif) montrer(e);
+    };
     void (async () => {
-      // Lien reçu par e-mail : « #espace=…&jeton=… », retiré de l'adresse aussitôt (historique, partage d'écran).
-      const { jeton, espace } = lireLienAcces(window.location.hash);
-      if (jeton) {
-        setEspaceLien(espace);
-        if (!MODE_DEMO) retenirEspace({ espace });
-      }
-      if (jeton && !MODE_DEMO) {
-        window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
-        const r = await appeler('POST', { action: 'entrer', jeton, espace });
-        if (!actif) return;
-        if (r.statut !== 200) {
-          if (r.statut === 503) return setEtat({ nom: 'ferme', message: String(r.json.erreur ?? '') });
-          return setEtat({ nom: 'connexion', ton: 'danger', message: String(r.json.erreur ?? 'Ce lien n’est pas valable.') });
+      const retour = RETOUR_LIEN_EXTERNE;
+      // Lien d'invitation : le code reste sur l'appareil, on choisit son mot de passe.
+      if (retour.nature === 'creer') {
+        setEspaceLien(retour.espace);
+        if (!MODE_DEMO) retenirEspace({ espace: retour.espace });
+        if (retour.email && retour.code) {
+          garderInvitationAcces(GENRE, { email: retour.email, code: retour.code, espace: retour.espace });
+          return poser({ nom: 'creer', email: retour.email });
         }
+        return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_SANS_INVITATION, email: retour.email || undefined });
       }
-      const e = await charger();
-      if (!actif) return;
-      setEtat(e);
-      // Le premier mois du calendrier est déjà dans la vue ; les autres viendront par plages.
-      if (e.nom === 'pret') setMoisConnus({ [e.vue.calendrier.mois]: e.vue.calendrier.logements });
+      if (retour.nature === 'erreur') return poser({ nom: 'connexion', ton: 'danger', message: retour.message });
+      // Ancien lien à usage unique (d'avant les comptes) : on le dit, la connexion se fait par mot de passe.
+      if (retour.nature === 'ancien_lien') return poser({ nom: 'connexion', ton: 'info', message: retour.message });
+      if (MODE_DEMO) {
+        // Démonstration : les écrans de compte se montrent sans Supabase.
+        if (retour.nature === 'recuperation') {
+          nettoyerAdresse();
+          return poser({ nom: 'nouveau_mot_de_passe', email: 'vous@exemple.fr' });
+        }
+        if (retour.nature === 'confirmation') {
+          nettoyerAdresse();
+          return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_CONFIRMEE, email: 'vous@exemple.fr' });
+        }
+        return poser(await charger());
+      }
+      if (retour.nature === 'recuperation' || retour.nature === 'confirmation') {
+        // Le client Supabase a lu les jetons du lien : la session est en mémoire, et nulle part ailleurs.
+        const s = await sessionExterne(GENRE);
+        nettoyerAdresse();
+        if (!s) return poser({ nom: 'connexion', ton: 'danger', message: MESSAGE_LIEN_PERIME });
+        if (retour.nature === 'recuperation') return poser({ nom: 'nouveau_mot_de_passe', email: s.email });
+        // Adresse confirmée : la session du lien ne relie rien (le serveur exige une connexion au mot de passe : un compte
+        // créé par un autre à cette adresse aurait le sien). On la ferme ; la personne se connecte, ce qui active l'accès.
+        await fermerSessionExterne(GENRE);
+        return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_CONFIRMEE, email: s.email });
+      }
+      poser(await charger());
     })();
     return () => {
       actif = false;
     };
-  }, [charger]);
+  }, [charger, montrer]);
 
   /** Les mois de `de` à `a` dans le cache : `GET ?action=calendrier` (ou le calcul de démonstration). */
   const chargerCalendrier = useCallback<ChargeurMois>(
@@ -312,7 +672,7 @@ export default function EspaceProprietaire() {
           return { ok: true };
         }
         if (r.statut === 401) {
-          const message = r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : demandez un nouveau lien.';
+          const message = r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : reconnectez-vous.';
           setEtat({ nom: 'connexion', ton: 'neutre', message });
           return { ok: false, erreur: message };
         }
@@ -330,6 +690,12 @@ export default function EspaceProprietaire() {
     setEtat({ nom: 'connexion', ton: 'succes', message: 'Vous êtes déconnecté.' });
   };
 
+  const marque: MarqueConnexion = MODE_DEMO ? { nom: 'Label Maison', labelMaison: true } : marqueConnexion(espaceLien, espaceRetenu());
+  const ouvrir = () => {
+    setEtat({ nom: 'chargement' });
+    void charger().then(montrer);
+  };
+
   return (
     <div className="erp-root">
       <Helmet>
@@ -342,7 +708,43 @@ export default function EspaceProprietaire() {
           <PageSkeleton />
         </div>
       )}
-      {etat.nom === 'connexion' && <Connexion message={etat.message} ton={etat.ton} marque={MODE_DEMO ? { nom: 'Label Maison', labelMaison: true } : marqueConnexion(espaceLien, espaceRetenu())} />}
+      {etat.nom === 'connexion' && (
+        <Connexion
+          key={`${etat.message ?? ''}|${etat.email ?? ''}`}
+          marque={marque}
+          message={etat.message}
+          ton={etat.ton}
+          emailInitial={etat.email}
+          onEntre={ouvrir}
+          onCreer={() => {
+            const inv = invitationAccesGardee(GENRE);
+            setEtat(inv ? { nom: 'creer', email: inv.email } : { nom: 'connexion', ton: 'info', message: MESSAGE_SANS_INVITATION });
+          }}
+        />
+      )}
+      {etat.nom === 'creer' && (
+        <CreerCompte
+          marque={marque}
+          email={etat.email}
+          onDejaUnCompte={() => setEtat({ nom: 'connexion', email: etat.email })}
+          onCree={({ jeton, existe }) => {
+            // Compte déjà créé à cette adresse (retrait puis nouvelle invitation, par exemple) : il se connecte.
+            if (existe) return setEtat({ nom: 'connexion', ton: 'info', message: MESSAGE_COMPTE_EXISTE, email: etat.email });
+            if (!jeton) return setEtat({ nom: 'confirmer', email: etat.email });
+            // Confirmation d'adresse coupée côté Supabase : le compte est déjà confirmé, on active tout de suite.
+            setEtat({ nom: 'chargement' });
+            void ouvrirAvecCompte(jeton, etat.email).then((r) => (r.ok ? ouvrir() : setEtat({ nom: 'connexion', ton: 'danger', message: r.message, email: etat.email })));
+          }}
+        />
+      )}
+      {etat.nom === 'confirmer' && <ConfirmerAdresse marque={marque} email={etat.email} onConnexion={() => setEtat({ nom: 'connexion', email: etat.email })} />}
+      {etat.nom === 'nouveau_mot_de_passe' && (
+        <NouveauMotDePasse
+          marque={marque}
+          email={etat.email}
+          onFini={(r) => (r.ok ? ouvrir() : setEtat({ nom: 'connexion', ton: r.code === 'retire' ? 'neutre' : 'danger', message: r.message, email: etat.email }))}
+        />
+      )}
       {(etat.nom === 'ferme' || etat.nom === 'erreur') && (
         <div className="grid min-h-screen place-items-center px-4">
           <Card className="w-full max-w-sm p-6 text-center">

@@ -103,6 +103,9 @@ export interface RetourLien {
  */
 function lireRetourLien(): RetourLien {
   if (typeof window === 'undefined') return { recuperation: false };
+  // Les espaces extérieurs (/espace-proprietaire, /espace-operations, /sejour) lisent leurs propres liens
+  // (src/erp/data/compte-externe.ts) : ce module, chargé avec les composants communs, n'y touche à rien.
+  if (!/^\/erp(\/|$)/.test(window.location.pathname)) return { recuperation: false };
   const hash = window.location.hash.replace(/^#/, '');
   if (!hash) return { recuperation: false };
   const p = new URLSearchParams(hash);

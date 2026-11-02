@@ -675,7 +675,7 @@ function pageConnexionErp(suite: string, erreur: string, statut: number, entetes
        <p class="intro">Vous êtes :</p>
        <a class="choix" id="role-proprietaire" href="/espace-proprietaire">
          <span class="choix-texte"><span class="choix-titre">Propriétaire</span>
-         <span class="choix-detail">Suivez vos logements. Connexion par un lien reçu par e‑mail.</span></span>
+         <span class="choix-detail">Suivez vos logements. Connexion avec votre adresse e‑mail et votre mot de passe.</span></span>
          ${ICONE_CHEVRON}
        </a>
        <a class="choix" href="/espace-operations">
