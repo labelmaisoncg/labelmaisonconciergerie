@@ -795,13 +795,72 @@ insert into erp.membres (email, nom, role) values ('equipe@labelmaisoncg.fr', '�
 -- Vérification : doit lister les membres saisis.
 -- select * from erp.membres;
 
+-- ----------------------------------------------------------------- recette
+-- Essai des règles dans une transaction annulée : rien n'est gardé. Un compte
+-- Supabase qui n'est pas membre (celui d'un propriétaire de l'espace
+-- propriétaire, par exemple : son uid et son adresse ne sont dans aucune
+-- ligne de erp.membres) ne lit rien et n'écrit rien dans le schéma erp. Les
+-- codes d'invitation des propriétaires n'ont leur empreinte que dans la
+-- collection accesProprietaires : seul le serveur, avec le compte d'équipe,
+-- les lit. Renvoie « ok » ou la première anomalie.
+create or replace function erp.recette_installation() returns text
+language plpgsql set search_path = ''
+as $$
+declare
+  resultat text := 'ok';
+  n int;
+begin
+  begin
+    insert into erp.enregistrements (collection, id, donnees) values
+      ('recette', 'recette-installation', '{"id": "recette-installation"}'),
+      ('accesProprietaires', 'recette-proprio', '{"id": "recette-proprio", "email": "proprio-recette@exemple.invalid", "statut": "invite", "version": 1, "liens": []}');
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', '{"role": "authenticated", "email": "proprio-recette@exemple.invalid", "sub": "e55a1000-0000-4000-8000-00000000a007"}', true);
+    select count(*) into n from erp.enregistrements;
+    if n <> 0 then resultat := format('un compte qui n''est pas membre lit %s enregistrement(s)', n); raise exception 'stop'; end if;
+    select count(*) into n from erp.historique;
+    if n <> 0 then resultat := 'un compte qui n''est pas membre lit l''historique'; raise exception 'stop'; end if;
+    select count(*) into n from erp.membres;
+    if n <> 0 then resultat := 'un compte qui n''est pas membre lit les membres'; raise exception 'stop'; end if;
+    select count(*) into n from erp.etat_automatisations;
+    if n <> 0 then resultat := 'un compte qui n''est pas membre lit les automatisations'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('recette', 'proprio-intrus', '{}');
+      resultat := 'un compte qui n''est pas membre écrit dans les enregistrements';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"compteActif": true}' where collection = 'accesProprietaires' and id = 'recette-proprio';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte qui n''est pas membre modifie un accès'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where collection = 'accesProprietaires' and id = 'recette-proprio';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte qui n''est pas membre efface un accès'; raise exception 'stop'; end if;
+    begin
+      insert into erp.membres (email, nom, role) values ('proprio-recette@exemple.invalid', 'Intrus', 'gerant');
+      resultat := 'un compte qui n''est pas membre s''ajoute aux membres';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    raise exception 'recette_terminee';
+  exception when others then
+    if sqlerrm <> 'recette_terminee' and resultat = 'ok' then
+      resultat := 'essai impossible : ' || sqlerrm;
+    end if;
+  end;
+  return resultat;
+end;
+$$;
+revoke all on function erp.recette_installation() from public, anon, authenticated;
+
 -- --------------------------------------------------------------- bilan
 -- Dernière instruction : son résultat s'affiche dans l'onglet « Results ».
 -- Attendu : tables_erp = 4, temps_reel = 2, stockage_photos = true,
--- politiques_photos = 4, membres = 1 (le compte d'équipe).
+-- politiques_photos = 4, membres = 1 (le compte d'équipe), recette = ok.
 select
   (select count(*) from information_schema.tables where table_schema = 'erp') as tables_erp,
   (select count(*) from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'erp') as temps_reel,
   exists (select 1 from storage.buckets where id = 'erp-fichiers') as stockage_photos,
   (select count(*) from pg_policies where schemaname = 'storage' and tablename = 'objects' and policyname like 'erp fichiers%') as politiques_photos,
-  (select count(*) from erp.membres) as membres;
+  (select count(*) from erp.membres) as membres,
+  erp.recette_installation() as recette;

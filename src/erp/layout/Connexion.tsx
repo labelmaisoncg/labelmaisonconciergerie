@@ -181,7 +181,7 @@ const MESSAGE_CREATION_FERMEE = 'La création de compte n’est pas encore ouver
  * son compte avec le lien de son invitation.
  */
 const ROLES_COMPTE = [
-  { titre: 'Propriétaire', detail: 'Suivez vos logements. Connexion par un lien reçu par e‑mail.', href: '/espace-proprietaire' },
+  { titre: 'Propriétaire', detail: 'Suivez vos logements. Connexion avec votre adresse e‑mail et votre mot de passe.', href: '/espace-proprietaire' },
   { titre: 'Agent ou responsable de pôle', detail: 'Vos missions sur le terrain. Connexion par un lien reçu par e‑mail.', href: '/espace-operations' },
   { titre: 'Équipe d’une conciergerie', detail: 'Gérants et équipes, comme Label Maison, avec votre invitation.' },
 ] as const;

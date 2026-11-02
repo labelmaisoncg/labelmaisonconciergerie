@@ -7,18 +7,25 @@
 // Gérant (Authorization: Bearer <session Supabase>, en-tête x-erp-espace,
 // membre gérant de cet espace) :
 //   GET  ?action=etat                                  espace ouvert ? e-mails ?
-//   POST { action: 'inviter', proprietaireId, email }  lien d'invitation (7 jours)
+//   POST { action: 'inviter', proprietaireId, email }  invitation « Créer mon compte »
+//                                                      (code à usage unique, 7 jours) ;
+//                                                      compte déjà créé : 409 « deja »
 //   POST { action: 'retirer', proprietaireId }         accès retiré, sessions fermées
+//                                                      (le compte Supabase reste, sans rien ouvrir)
 //   GET  ?action=relances                              relances de l'espace et réglages
 //   POST { action: 'relance-envoyer', id }             envoi d'une relance à valider
 //   POST { action: 'relance-annuler', id }
 //   POST { action: 'relances-reglages', reglages }     mode, étapes (jours), actif
 //
-// Propriétaire (sans compte) :
-//   POST { action: 'lien', email }            un lien par espace où l'adresse a
-//                                             un accès (réponse toujours identique)
-//   POST { action: 'entrer', jeton, espace }  lien à usage unique → cookie de session
-//                                             (sans espace : Label Maison)
+// Propriétaire (compte Supabase : adresse e-mail et mot de passe ; le jeton
+// Supabase, en Authorization: Bearer, ne sert qu'à prouver son identité ici) :
+//   POST { action: 'activer', code, espace }  première entrée : le code de
+//                                             l'invitation relie l'accès à SON
+//                                             compte (adresse confirmée), puis
+//                                             cookie de session
+//   POST { action: 'entrer', espace? }        connexion ensuite : l'accès est
+//                                             retrouvé par le compte (uid),
+//                                             jamais par l'adresse → cookie
 //   GET  ?action=vue&mois=AAAA-MM             son espace (session)
 //   GET  ?action=calendrier&de=AAAA-MM&a=AAAA-MM
 //                                             les mois du calendrier de `de` à `a`
@@ -33,38 +40,40 @@
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
-import { ACCES_RETIRE } from '../src/erp/data/acces-externe.js';
+import { ACCES_RETIRE, MESSAGES_ENTREE, MESSAGE_INVITATION_PERIMEE, MESSAGE_NON_CONFIRME, MESSAGE_SESSION_REFUSEE } from '../src/erp/data/acces-externe.js';
 import { calendrierPlage, dateParisISO, moisDePlage, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
-import { MESSAGES_REFUS, avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
+import { avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
 import { facturePartagee } from '../src/erp/data/relances.js';
 import type { Facture } from '../src/erp/data/types';
 import type { AccesProprietaire } from '../src/erp/data/types-proprietaire';
-import { MESSAGE_COMPTE_SERVEUR, continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
+import { MESSAGE_COMPTE_SERVEUR, lireCorps, repondre } from './_erp-repull.js';
 import { espaceDemande } from './_erp-espaces.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
 import {
-  GENRES,
-  accesParEmail,
+  activerAvecCompte,
   avecEmailFiche,
   baseAcces,
   contactsEspace,
   cookieSessionEfface,
-  entrerAvecLien,
+  entrerAvecCompte,
   expediteurEspace,
   ficheEspace,
-  lienDAcces,
+  jetonPorteur,
+  lienCreationDAcces,
   lireSessionAcces,
+  verifierCompteSupabase,
 } from './_acces-externe.js';
 import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
 import { documentsFermes, ecrireAcces, entreesCalendrier, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
 
-const tropDeDemandes = freinEnvois(5, 60 * 60_000);
-const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
-const tropDEssais = freinEnvois(20, 15 * 60_000);
+/** Freins des entrées (activer, entrer) : par adresse IP, puis par compte une fois le jeton vérifié (Supabase freine déjà les mots de passe). */
+const tropDEssais = freinEnvois(30, 15 * 60_000);
+const tropPourCeCompte = freinEnvois(15, 15 * 60_000);
 
 const DOCUMENTS_FERMES = 'Les documents ne peuvent pas être ouverts pour l’instant. Contactez votre conciergerie.';
 
-const REPONSE_LIEN = 'Si cette adresse a accès à un espace propriétaire, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
+/** Compte déjà créé et relié : on ne réinvite pas, il se connecte. */
+export const MESSAGE_COMPTE_DEJA = 'Ce propriétaire a déjà créé son compte : il se connecte avec son adresse et son mot de passe (« Mot de passe oublié ? » au besoin).';
 
 const ESPACE_INTROUVABLE = 'Espace introuvable. Contactez votre conciergerie.';
 
@@ -81,8 +90,7 @@ async function sessionProprietaire(req: any, res: any) {
 
 /** Gérant de l'espace nommé par l'appel (sans en-tête : Label Maison, comme avant). */
 async function membreGerant(req: any): Promise<{ ok: true; email: string; espace: string } | { ok: false; statut: number; erreur: string }> {
-  const entete = String(req.headers?.authorization || '');
-  const jeton = /^Bearer\s+/i.test(entete) ? entete.replace(/^Bearer\s+/i, '').trim() : '';
+  const jeton = jetonPorteur(req);
   if (!jeton) return { ok: false, statut: 401, erreur: 'Authentification requise.' };
   const m = await verifierMembre(jeton, { espace: espaceDemande(req) });
   if (!m.ok) return m;
@@ -155,52 +163,46 @@ export default async function handler(req: any, res: any) {
       if (deLaFiche && deLaFiche !== email) {
         return repondre(res, 409, { ok: false, code: 'fiche', erreur: 'Cette adresse n’est pas celle de la fiche du propriétaire : enregistrez-la dans sa fiche, puis réessayez.' });
       }
-      const jeton = await nouveauJeton();
+      // Compte déjà créé et relié à cette adresse : rien à renvoyer, il se connecte.
+      if (precedent && precedent.statut === 'actif' && precedent.compteActif && precedent.email === email) {
+        return repondre(res, 409, { ok: false, code: 'deja', erreur: MESSAGE_COMPTE_DEJA });
+      }
+      const code = await nouveauJeton();
       // L'adresse de la fiche est relevée : si elle change ensuite sans « Retirer », l'accès ne vaut plus.
       const acces = avecNouveauLien(
         avecEmailFiche('proprietaire', inviter(precedent, { proprietaireId, email, par: g.email, maintenantMs: maintenant, espace: g.espace }), proprietaire),
-        await empreinteJeton(jeton),
+        await empreinteJeton(code),
         'invitation',
         maintenant,
       );
       await ecrireAcces(b, acces);
-      const lien = lienDAcces(req, 'proprietaire', g.espace, jeton);
-      const envoye = await envoyerLien({ fiche: await ficheEspace(g.espace).catch(() => undefined), email, nom: proprietaire.nom, lien, motif: 'invitation' });
+      const lien = lienCreationDAcces('proprietaire', email, code, g.espace);
+      const envoye = await envoyerLien({ fiche: await ficheEspace(g.espace).catch(() => undefined), email, nom: proprietaire.nom, lien });
       return repondre(res, 200, { ok: true, lien, envoye, espace: g.espace, expireLe: acces.liens[acces.liens.length - 1].expireLe });
     }
 
     /* ------------------------------------------------------ propriétaire */
     if (!etat.actif) return repondre(res, 503, { ok: false, code: 'inactif', erreur: 'L’espace propriétaire n’est pas encore ouvert. Contactez votre conciergerie.' });
 
-    if (action === 'lien' && req.method === 'POST') {
+    if ((action === 'activer' || action === 'entrer') && req.method === 'POST') {
       if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée : utilisez la page de l’espace propriétaire.' });
-      const email = normaliserEmail(corps.email);
-      if (!emailValide(email)) return repondre(res, 400, { ok: false, erreur: 'Adresse e-mail invalide.' });
-      if (tropDeDemandes(adresseIp(req)) || tropPourCetteAdresse(email)) return repondre(res, 200, { ok: true, message: REPONSE_LIEN });
-      // Un lien par espace où l'adresse a un accès ; chaque espace est un compte à part.
-      // Écritures et envois après la réponse quand la plateforme le permet : même délai, que l'adresse ait un accès ou non.
-      const envoi = (async () => {
-        for (const { fiche, acces, base, version } of await accesParEmail<AccesProprietaire>('proprietaire', email)) {
-          const proprietaire = await lireProprietaire(base, acces.proprietaireId);
-          if (!proprietaire || !proprietaireAutorise(acces.proprietaireId)) continue;
-          const maintenant = Date.now();
-          const jeton = await nouveauJeton();
-          // Conditionnelle : n'écrase pas un lien utilisé au même moment (il redeviendrait valable).
-          if (!(await base.remplacerSi(GENRES.proprietaire.collection, avecNouveauLien(acces, await empreinteJeton(jeton), 'connexion', maintenant), version, 'espace-proprietaire'))) continue;
-          await envoyerLien({ fiche, email, nom: proprietaire.nom, lien: lienDAcces(req, 'proprietaire', fiche.id, jeton), motif: 'connexion' });
-        }
-      })().catch((e) => console.error('[espace-proprietaire] lien', e instanceof Error ? e.message : e));
-      if (!continuerApresReponse(envoi)) await envoi;
-      return repondre(res, 200, { ok: true, message: REPONSE_LIEN });
-    }
-
-    if (action === 'entrer' && req.method === 'POST') {
-      if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée : ouvrez le lien reçu par e-mail.' });
       if (tropDEssais(adresseIp(req))) return repondre(res, 429, { ok: false, erreur: 'Trop d’essais : patientez quelques minutes.' });
-      const r = await entrerAvecLien<AccesProprietaire>('proprietaire', corps.jeton, corps.espace);
-      if (!r.ok) return repondre(res, 401, { ok: false, code: r.raison, erreur: MESSAGES_REFUS[r.raison] });
+      // Le compte Supabase de la personne, vérifié auprès de Supabase (jamais sur la foi du jeton seul).
+      const compte = await verifierCompteSupabase(jetonPorteur(req));
+      if (!compte) return repondre(res, 401, { ok: false, code: 'compte', erreur: MESSAGE_SESSION_REFUSEE });
+      if (tropPourCeCompte(compte.email)) return repondre(res, 429, { ok: false, erreur: 'Trop d’essais : patientez quelques minutes.' });
+      if (!compte.confirme) return repondre(res, 403, { ok: false, code: 'non_confirme', erreur: MESSAGE_NON_CONFIRME });
+      if (action === 'activer') {
+        const r = await activerAvecCompte<AccesProprietaire>('proprietaire', corps.code, compte, corps.espace);
+        // Même phrase quoi qu'il manque (code inconnu, expiré, servi, autre adresse) ; l'accès retiré est dit tel quel.
+        if (!r.ok) return repondre(res, 401, r.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'invitation', erreur: MESSAGE_INVITATION_PERIMEE });
+        res.setHeader('Set-Cookie', r.cookie);
+        return repondre(res, 200, { ok: true, espace: r.espace });
+      }
+      const r = await entrerAvecCompte<AccesProprietaire>('proprietaire', compte, corps.espace);
+      if (!r.ok) return repondre(res, 401, { ok: false, code: r.raison, erreur: MESSAGES_ENTREE[r.raison] });
       res.setHeader('Set-Cookie', r.cookie);
-      return repondre(res, 200, { ok: true });
+      return repondre(res, 200, { ok: true, espace: r.espace });
     }
 
     if (action === 'sortir' && req.method === 'POST') {

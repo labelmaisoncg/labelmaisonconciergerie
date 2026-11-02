@@ -8,7 +8,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Check, Copy, Eye, FileText, Trash2, X } from 'lucide-react';
-import { statutAccesExterne } from '../../../data/acces-gerant';
+import { statutCompteProprietaire } from '../../../data/acces-gerant';
 import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros, horodatageMaintenant } from '../../../data/format';
@@ -32,7 +32,7 @@ import type { ChargeurMois } from '../../../calendrier';
 import { BilanDetail } from '../../../espace-proprietaire/Bilans';
 import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
 import { bilanDuMois, deNom, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
-import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
+import { Alert, Badge, Button, Card, CardHeader, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 import { FacturesProprietaire } from './FacturesProprietaire';
 import { RelancesPaiement } from './RelancesPaiement';
@@ -69,12 +69,41 @@ export async function inviterAvecReessai(api: string, corps: Record<string, unkn
 export const CE_QUE_VOIT_LE_PROPRIETAIRE = `Il voit ${CONTENU_ESPACE.lui}, sans rien pouvoir modifier.`;
 
 /**
- * État de l'accès en une ligne (« Connecté le 21 sept. 2026 »), aussi pour
- * Paramètres → Accès ; « Adresse changée : réinvitez » si l'adresse de la
+ * État du compte en une ligne (« Compte créé le 21 sept. 2026 », « Invitation
+ * envoyée le …, pas encore de compte »), aussi pour Paramètres → Accès et la
+ * fiche du propriétaire ; « Adresse changée : réinvitez » si l'adresse de la
  * fiche n'est plus celle de l'invitation.
  */
 export function statutAcces(a: AccesProprietaire | undefined, p: Pick<Proprietaire, 'contact'>): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
-  return statutAccesExterne(a, p.contact?.email);
+  return statutCompteProprietaire(a, p.contact?.email);
+}
+
+/** Le propriétaire a créé son compte et il est relié à cet accès. */
+const compteCree = (a: AccesProprietaire | undefined): boolean => !!a && a.statut === 'actif' && a.compteActif === true;
+
+/** Fiche du propriétaire : carte « Espace propriétaire » (état du compte, « Gérer »). Gérant seulement. */
+export function CarteCompteProprietaire({ proprietaire }: { proprietaire: Proprietaire }) {
+  const d = useErp();
+  const [ouvert, setOuvert] = useState(false);
+  if (d.utilisateur.role !== 'gerant' || d.lectureSeule) return null;
+  const acces = d.donnees.accesProprietaires.find((a) => a.id === proprietaire.id);
+  const s = statutAcces(acces, proprietaire);
+  return (
+    <Card>
+      <CardHeader
+        titre="Espace propriétaire"
+        actions={
+          <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
+            Gérer
+          </Button>
+        }
+      />
+      <Badge tone={s.ton} point>
+        {s.texte}
+      </Badge>
+      {ouvert && <PanneauEspace proprietaire={proprietaire} onFermer={() => setOuvert(false)} />}
+    </Card>
+  );
 }
 
 /** Ligne de la carte Propriétaire : état de l'accès et ouverture du panneau. */
@@ -190,6 +219,10 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
   const [copie, setCopie] = useState(false);
   const s = statutAcces(acces, p);
   const ferme = !serveur?.actif;
+  const adresseSaisie = email.trim().toLowerCase();
+  const autreAdresse = !!adresseSaisie && adresseSaisie !== (p.contact.email ?? '').trim().toLowerCase();
+  // Compte créé à cette adresse : rien à renvoyer, il se connecte (« Mot de passe oublié ? » au besoin).
+  const dejaUnCompte = compteCree(acces) && !!acces && acces.email === adresseSaisie;
 
   const inviter = async () => {
     setErreur(undefined);
@@ -273,19 +306,23 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
       <Field
         label="Adresse e-mail du propriétaire"
         aide={
-          email.trim().toLowerCase() !== (p.contact.email ?? '').trim().toLowerCase() && email.trim()
+          autreAdresse
             ? 'L’adresse de sa fiche sera remplacée par celle-ci.'
-            : 'Le lien de connexion part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.'
+            : dejaUnCompte
+              ? 'Il se connecte avec cette adresse et son mot de passe (« Mot de passe oublié ? » au besoin).'
+              : 'Le lien pour créer son compte part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.'
         }
       >
         <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
       </Field>
       <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="primary" onClick={() => void inviter()} chargement={enCours === 'inviter'} disabled={ferme || !!enCours}>
-          {acces && acces.statut !== 'retire' ? 'Renvoyer une invitation' : 'Inviter'}
-        </Button>
+        {!dejaUnCompte && (
+          <Button variant="primary" onClick={() => void inviter()} chargement={enCours === 'inviter'} disabled={ferme || !!enCours}>
+            {acces && acces.statut !== 'retire' ? 'Renvoyer l’invitation' : 'Inviter'}
+          </Button>
+        )}
         {acces && acces.statut !== 'retire' && !confirmer && (
-          <Button variant="ghost" onClick={() => setConfirmer(true)} disabled={ferme || !!enCours}>
+          <Button variant={dejaUnCompte ? 'secondary' : 'ghost'} onClick={() => setConfirmer(true)} disabled={ferme || !!enCours}>
             Retirer l’accès
           </Button>
         )}
@@ -305,7 +342,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
             </>
           }
         >
-          Ses liens ne marchent plus. Son espace se ferme dès qu’il recharge la page ou ouvre un document.
+          Son espace se ferme dès qu’il recharge la page ou ouvre un document. Son compte reste, mais n’ouvre plus rien.
         </Alert>
       )}
       {erreur && (
@@ -317,7 +354,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
         <div className="mt-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
           <p className="text-[13px] text-(--lm-encre)">
             {invitation.envoye
-              ? `Invitation envoyée à ${email.trim().toLowerCase()}. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
+              ? `Invitation envoyée à ${email.trim().toLowerCase()} : il crée son mot de passe avec ce lien. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
               : MODE_DEMO
                 ? 'Démonstration : aucun e-mail n’est envoyé. Ce lien ouvre son espace de démonstration.'
                 : 'L’e-mail n’a pas pu partir : copiez ce lien et envoyez-le par SMS ou WhatsApp.'}

@@ -13,9 +13,10 @@ import type { MembreEquipe, RoleOperations } from './types-operations';
 export type TonAcces = 'neutre' | 'succes' | 'alerte';
 
 /**
- * État d'un accès en une ligne. `ficheEmail` : adresse actuelle de la fiche
- * (propriétaire, membre de l'équipe) ; si elle a changé depuis l'invitation,
- * l'ancienne adresse n'a plus accès et il faut réinviter la nouvelle.
+ * État d'un accès par lien (opérations) en une ligne. `ficheEmail` : adresse
+ * actuelle de la fiche (membre de l'équipe) ; si elle a changé depuis
+ * l'invitation, l'ancienne adresse n'a plus accès et il faut réinviter la
+ * nouvelle.
  */
 export function statutAccesExterne(a: (AccesExterne & { inviteLe: string; retireLe?: string }) | undefined, ficheEmail: string | undefined): { texte: string; ton: TonAcces } {
   if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
@@ -23,6 +24,28 @@ export function statutAccesExterne(a: (AccesExterne & { inviteLe: string; retire
   if (!accesToujoursDeLaFiche(a, { email: ficheEmail ?? '' })) return { texte: 'Adresse changée : réinvitez', ton: 'alerte' };
   if (a.statut === 'actif') return { texte: `Connecté${a.derniereConnexion ? ` le ${dateCourte(a.derniereConnexion.slice(0, 10))}` : ''}`, ton: 'succes' };
   return { texte: `Invité le ${dateCourte(a.inviteLe.slice(0, 10))}`, ton: 'alerte' };
+}
+
+const le = (horodatage: string | undefined) => (horodatage ? ` le ${dateCourte(horodatage.slice(0, 10))}` : '');
+
+/**
+ * État du compte d'un propriétaire en une ligne (Paramètres → Accès, fiche du
+ * propriétaire, fiche logement) : « Compte créé le … » quand son compte
+ * Supabase est relié, « Invitation envoyée le …, pas encore de compte » en
+ * attendant, « Pas encore de compte : renvoyez l'invitation » pour un accès
+ * d'avant les comptes (ouvert par lien), « Accès retiré le … », « Adresse
+ * changée : réinvitez » si l'adresse de la fiche n'est plus celle de l'accès.
+ */
+export function statutCompteProprietaire(
+  a: (AccesExterne & { inviteLe: string; retireLe?: string }) | undefined,
+  ficheEmail: string | undefined,
+): { texte: string; ton: TonAcces } {
+  if (!a) return { texte: 'Pas encore invité', ton: 'neutre' };
+  if (a.statut === 'retire') return { texte: `Accès retiré${le(a.retireLe)}`, ton: 'neutre' };
+  if (!accesToujoursDeLaFiche(a, { email: ficheEmail ?? '' })) return { texte: 'Adresse changée : réinvitez', ton: 'alerte' };
+  if (a.statut === 'actif' && a.compteActif && a.uid) return { texte: `Compte créé${le(a.activeLe)}`, ton: 'succes' };
+  if (a.statut === 'actif') return { texte: 'Pas encore de compte : renvoyez l’invitation', ton: 'alerte' };
+  return { texte: `Invitation envoyée${le(a.inviteLe)}, pas encore de compte`, ton: 'alerte' };
 }
 
 /** Un logement coché qui changerait de propriétaire. */

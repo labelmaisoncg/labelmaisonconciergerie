@@ -552,7 +552,9 @@ create policy "versions reservees aux gerants" on erp.historique
 -- ----------------------------------------------------------------- recette
 -- Essai dans une transaction annulée à la fin : rien n'est gardé. Un compte
 -- « opérations » lit l'ERP et son historique, mais ni les accès ni leurs
--- anciennes versions, et ne peut pas en écrire ; un gérant lit tout.
+-- anciennes versions, et ne peut pas en écrire ; un gérant lit tout ; un
+-- compte qui n'est pas membre (le compte Supabase d'un propriétaire de
+-- l'espace propriétaire) ne lit ni n'écrit rien.
 create or replace function erp.recette_acces_gerants() returns text
 language plpgsql set search_path = ''
 as $$
@@ -567,7 +569,10 @@ begin
       ('recette-gerant@exemple.invalid', 'Recette gérant', 'gerant');
     insert into erp.enregistrements (collection, id, donnees) values
       ('recette', 'recette-acces', '{"id": "recette-acces"}'),
-      ('accesProprietaires', 'recette-acces', '{"id": "recette-acces"}');
+      ('accesProprietaires', 'recette-acces', '{"id": "recette-acces"}'),
+      -- Accès d'un propriétaire tel que le serveur l'écrit : l'empreinte du code de son invitation, rien d'autre en base.
+      ('accesProprietaires', 'recette-proprio', jsonb_build_object('id', 'recette-proprio', 'proprietaireId', 'recette-proprio', 'email', 'proprio-recette@exemple.invalid',
+        'statut', 'invite', 'version', 1, 'liens', jsonb_build_array(jsonb_build_object('empreinte', encode(sha256(convert_to('recette-propri-0123456789abcdefghijklmnopq', 'UTF8')), 'hex'), 'motif', 'invitation'))));
     -- Une ancienne version de chacun (erp.archiver_version).
     update erp.enregistrements set donnees = donnees || '{"v": 2}'
       where id = 'recette-acces' and collection in ('recette', 'accesProprietaires');
@@ -865,6 +870,38 @@ begin
       end;
     end if;
 
+    -- 3. Compte d'un propriétaire (espace propriétaire) : compte Supabase dont
+    -- l'adresse n'est dans aucune ligne de erp.membres. Rien à lire, rien à
+    -- écrire : seul le serveur (compte d'équipe, gérant) lit et écrit son accès.
+    perform set_config('role', 'authenticated', true);
+    perform set_config('request.jwt.claims', '{"role": "authenticated", "email": "proprio-recette@exemple.invalid", "sub": "e55a1000-0000-4000-8000-00000000a007"}', true);
+    select count(*) into n from erp.enregistrements;
+    if n <> 0 then resultat := format('un compte propriétaire lit %s enregistrement(s)', n); raise exception 'stop'; end if;
+    select count(*) into n from erp.historique;
+    if n <> 0 then resultat := 'un compte propriétaire lit l''historique'; raise exception 'stop'; end if;
+    select count(*) into n from erp.membres;
+    if n <> 0 then resultat := 'un compte propriétaire lit les membres'; raise exception 'stop'; end if;
+    select count(*) into n from erp.etat_automatisations;
+    if n <> 0 then resultat := 'un compte propriétaire lit les automatisations'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('recette', 'proprio-intrus', '{}');
+      resultat := 'un compte propriétaire écrit dans les enregistrements';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"compteActif": true}' where collection = 'accesProprietaires' and id = 'recette-proprio';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte propriétaire modifie son accès'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where collection = 'accesProprietaires' and id = 'recette-proprio';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte propriétaire efface son accès'; raise exception 'stop'; end if;
+    begin
+      insert into erp.membres (email, nom, role) values ('proprio-recette@exemple.invalid', 'Intrus', 'gerant');
+      resultat := 'un compte propriétaire s''ajoute aux membres';
+      raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+
     raise exception 'recette_terminee';
   exception when others then
     if sqlerrm <> 'recette_terminee' and resultat = 'ok' then
@@ -877,7 +914,8 @@ $$;
 revoke all on function erp.recette_acces_gerants() from public, anon, authenticated;
 
 -- Vérification (dernière instruction, affichée dans « Results ») :
--- attendu regles = 5, recette = ok.
+-- attendu regles = 5, recette = ok (dont : un compte qui n'est pas membre,
+-- comme celui d'un propriétaire, ne lit ni n'écrit rien).
 select
   (select count(*) from pg_policies
     where schemaname = 'erp' and permissive = 'RESTRICTIVE'

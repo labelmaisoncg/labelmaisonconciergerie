@@ -421,7 +421,7 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
       onFermer={onFermer}
       taille="lg"
       titre="Inviter un propriétaire"
-      description="Il reçoit un lien personnel, valable 7 jours, vers son espace."
+      description="Il reçoit un lien personnel, valable 7 jours, pour créer son compte et ouvrir son espace."
       pied={
         invitation ? (
           <Button variant="primary" onClick={onFermer}>

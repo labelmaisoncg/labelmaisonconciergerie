@@ -11,21 +11,24 @@ import type { CanalReservation, Centimes, DateISO, Horodatage, Id, IdentiteSocie
 
 /* ------------------------------------------------------------------ accès */
 
+/** « invite » : invitation envoyée, compte pas encore créé ; « actif » : compte créé et relié (uid, compteActif) ; « retire ». */
 export type StatutAccesProprietaire = 'invite' | 'actif' | 'retire';
 
-/** Lien de connexion à usage unique : invitation du gérant (7 jours) ou lien demandé (1 heure). */
+/** Code d'invitation à usage unique (7 jours) : seule son empreinte est gardée. */
 export type LienAccesProprietaire = LienAccesExterne;
 
 /**
  * Accès d'un propriétaire à son espace, un par propriétaire (id = proprietaireId).
- * Écrit uniquement par le serveur (invitation, connexion, retrait).
+ * Écrit uniquement par le serveur (invitation, activation du compte, connexion,
+ * retrait). Le compte Supabase relié (uid, compteActif, activeLe) vient de
+ * AccesExterne : c'est lui qu'on retrouve dans Supabase → Authentication → Users.
  */
 export interface AccesProprietaire extends AccesExterne {
   id: Id;
   proprietaireId: Id;
   /** Espace qui a invité (Label Maison, Sens…) ; absent (accès d'avant les espaces) : Label Maison. */
   espace?: string;
-  /** Adresse qui reçoit les liens de connexion (en minuscules). */
+  /** Adresse du compte attendu (en minuscules) : celle qui reçoit l'invitation et qui doit être confirmée. */
   email: string;
   statut: StatutAccesProprietaire;
   inviteLe: Horodatage;
@@ -34,7 +37,7 @@ export interface AccesProprietaire extends AccesExterne {
   retireLe?: Horodatage;
   /** Augmentée au retrait : toutes les sessions ouvertes deviennent invalides. */
   version: number;
-  /** Liens en cours (3 au plus), les plus récents en dernier. */
+  /** Codes d'invitation en cours (3 au plus), les plus récents en dernier ; effacés à l'activation. */
   liens: LienAccesProprietaire[];
 }
 
