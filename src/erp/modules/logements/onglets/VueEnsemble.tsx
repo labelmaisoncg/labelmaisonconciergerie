@@ -1,16 +1,17 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BedDouble, ExternalLink, Link2, Mail, Phone, Sofa, Sparkles, X } from 'lucide-react';
+import { ArrowRight, BedDouble, ExternalLink, Link2, Mail, MessagesSquare, Phone, Sofa, Sparkles, X } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
 import { FormMandat } from '../../mandats/FormMandat';
-import { Badge, Card, CardHeader, EmptyState, FicheEtapes, IconButton, Repli } from '../../../ui';
+import { Badge, Card, CardHeader, EmptyState, FicheEtapes, IconButton, Repli, cn } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
 import { aRelier, peutRelier, relie } from '../../../data/liaison-annonce';
-import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, note, pluriel, pourcentage } from '../../../data/format';
+import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, moisAnnee, note, pluriel, pourcentage } from '../../../data/format';
+import { attendEquipe } from '../../../data/attente-equipe';
 import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors';
 import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
 import { CompteurNuits } from '../_composants/CompteurNuits';
@@ -44,13 +45,24 @@ function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) 
 // Zone de toucher de 32 px ; les marges négatives gardent la hauteur de la ligne.
 const lien = '-my-1.5 inline-flex min-h-8 items-center gap-1 text-[13px] font-medium lm-lien';
 
-/** Trois repères dans une seule carte, côte à côte même sur téléphone. */
+/**
+ * Trois ou quatre repères dans une seule carte : trois côte à côte même sur
+ * téléphone ; quatre en deux rangées de deux sur téléphone, une rangée sur
+ * grand écran (filets entre les cases, jamais en bord de carte).
+ */
 function Chiffres({ elements }: { elements: { libelle: string; valeur: string; detail?: string }[] }) {
+  const quatre = elements.length === 4;
   return (
     <Card flush>
-      <dl className="grid grid-cols-3 divide-x divide-(--lm-bord)">
-        {elements.map((e) => (
-          <div key={e.libelle} className="min-w-0 px-3 py-3.5 sm:px-5 sm:py-4">
+      <dl className={cn('grid', quatre ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3')}>
+        {elements.map((e, i) => (
+          <div
+            key={e.libelle}
+            className={cn(
+              'min-w-0 border-(--lm-bord) px-3 py-3.5 sm:px-5 sm:py-4',
+              quatre ? cn(i % 2 === 1 ? 'border-l' : i > 0 && 'sm:border-l', i >= 2 && 'border-t sm:border-t-0') : i > 0 && 'border-l',
+            )}
+          >
             <dt className="truncate text-[12px] font-medium text-(--lm-encre-2) sm:text-[12.5px]">{e.libelle}</dt>
             <dd className="lm-chiffres mt-1 text-[19px] leading-tight font-semibold text-(--lm-encre) sm:text-[22px]">{e.valeur}</dd>
             {e.detail && <dd className="mt-0.5 truncate text-[11.5px] text-(--lm-encre-3)">{e.detail}</dd>}
@@ -79,6 +91,12 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   const dejaReserve = d.reservations.some((r) => r.logementId === l.id && estActive(r));
   // Aucun des trois chiffres connus : pas de rangée de cartes vides (la fiche a déjà son état vide).
   const chiffresConnus = !!prix || !!s.adr90 || dejaReserve || s.note !== undefined;
+  // Revenu du mois civil en cours : une case de plus, seulement s'il y a un séjour ce mois-ci ; notre part pour le gérant.
+  const gerant = d.utilisateur.role === 'gerant';
+  const revenuMois = s.revenuMois > 0 ? { libelle: 'Revenu du mois', valeur: euros(s.revenuMois, true), detail: gerant && s.commissionMois > 0 ? `Commission ${euros(s.commissionMois, true)}` : moisAnnee(AUJOURDHUI) } : undefined;
+  // Conversations de ce logement, et celles qui attendent l'équipe (même règle que la messagerie).
+  const fils = d.filsMessages.filter((f) => f.logementId === l.id);
+  const aRepondre = fils.filter(attendEquipe).length;
   const desc = l.descriptif;
   // Le couchage de l'annonce (pièce par pièce) remplace la ligne saisie à la main.
   const lits = desc?.couchage?.length ? '' : l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
@@ -118,6 +136,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
                 },
                 { libelle: 'Occupation', valeur: dejaReserve ? pourcentage(s.occupation30) : SANS_DONNEE, detail: dejaReserve ? '30 derniers j' : undefined },
                 { libelle: 'Note', valeur: s.note === undefined ? SANS_DONNEE : `${note(s.note)} / 5`, detail: s.note === undefined ? undefined : '12 mois' },
+                ...(revenuMois ? [revenuMois] : []),
               ]}
             />
           )}
@@ -164,6 +183,22 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
                   </li>
                 ))}
               </ul>
+            )}
+            {/* Les conversations des voyageurs de ce logement, dans la messagerie, avec ce qui attend une réponse. */}
+            {fils.length > 0 && (
+              <div className="border-t border-(--lm-bord) px-4 py-2 sm:px-5">
+                <Link to={`/erp/messagerie?logement=${encodeURIComponent(l.id)}`} className="inline-flex min-h-8 items-center gap-1.5 text-[13px] font-medium lm-lien">
+                  <MessagesSquare className="size-3.5" aria-hidden />
+                  Messages de ce logement
+                  {/* Même pilule à l'encre que le menu (« à répondre » n'est jamais en or) ; hors du soulignement du lien. */}
+                  {aRepondre > 0 && (
+                    <span className="lm-chiffres ml-1 inline-block rounded-full bg-(--lm-encre) px-1.5 py-px text-[11px] font-semibold text-white no-underline">
+                      {aRepondre}
+                      {' '}à répondre
+                    </span>
+                  )}
+                </Link>
+              </div>
             )}
           </Card>
 

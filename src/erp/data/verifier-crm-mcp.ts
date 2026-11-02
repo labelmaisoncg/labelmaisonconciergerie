@@ -15,6 +15,7 @@ import { attendEquipe, prenomInitiale } from './cm-mcp';
 import { creerContactsCrm } from './seed-crm';
 import { creerSeed } from './seed';
 import { fenetreJours } from './selectors';
+import { fuitesTerrain } from './terrain';
 import { mesurer as mesurerAccueil } from '../modules/tableau-de-bord/_composants/calculs';
 import type { ContactCrm, FilMessages } from './types';
 import type { ActionAgent } from './types-copilote';
@@ -242,12 +243,18 @@ async function regleAbsente() {
 
 /* --------------------------------------------------------- channel manager */
 
-/** Rien de sensible dans une réponse : wifi, code d'accès, e-mail, téléphone ou nom complet de voyageur. */
+/**
+ * Rien de sensible dans une réponse : wifi, code d'accès, e-mail, téléphone ou
+ * nom complet de voyageur, ni le volet terrain d'un logement (ménage, qui
+ * appeler, technique : équipe seulement, data/terrain.ts).
+ */
 function sansDonneeSensible(x: unknown, libelle: string) {
   const t = JSON.stringify(x);
   const fuites = [logementPiege.fiche.wifiCode, '4821', 'marie.dupont@exemple.fr', '06 12 34 56 78', '+33 6 12 34 56 78', 'Dupont'].filter((v) => t.includes(v));
   const wifi = /"wifi(Nom|Code)"/.test(t);
   verifier(!fuites.length && !wifi, `${libelle} : aucune donnée sensible ${fuites.length ? `(${fuites.join(', ')})` : ''}`);
+  const terrain = seed.logements.flatMap((l) => fuitesTerrain(t, l));
+  verifier(!terrain.length && !/"(technique|compteurElectricite|compteurEau|compteurGaz|disjoncteur|chaudiere|arriveeEau)"/.test(t), `${libelle} : rien du volet terrain (ménage, contacts, technique) ${terrain.length ? `(${terrain.join(', ')})` : ''}`);
 }
 
 const eur = (c: number) => `${(c / 100).toLocaleString('fr-FR', { minimumFractionDigits: c % 100 ? 2 : 0, maximumFractionDigits: 2 })} €`;

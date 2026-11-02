@@ -32,6 +32,7 @@ import { codesPermis } from './agent-messagerie';
 import { CODE_MASQUE, contientCodeAcces } from './messagerie-ia';
 import { TEXTES_DEFAUT, VARIABLES, codesAutorises, rendreMessage, texteAffiche, texteStocke } from './messages-programmes';
 import { ecritureRepullPermise } from './repull-synchro';
+import { fuitesTerrain } from './terrain';
 import {
   COLLECTION_CHECKINS,
   JOURS_LIEN_APRES_DEPART,
@@ -134,6 +135,10 @@ const LOGEMENT: Logement = {
   },
   descriptif: { titre: 'Studio lumineux au bord de l’eau', textes: { transports: 'RER D à 5 minutes.' }, conditions: { fetes: false, fumeur: false, animaux: true, calme: { debut: '22:00', fin: '07:00' } } },
   dotationLinge: [],
+  // Volet terrain (équipe seulement) : jamais dans le livret, codes visibles ou non.
+  menage: { duree: '2 h 30', consignes: 'MENAGE-PRIVE : détartrer la cafetière.' },
+  contacts: [{ role: 'serrurier', nom: 'CONTACT-PRIVE Serrurerie', telephone: '06 00 00 00 09', note: 'intervient sous 2 h' }],
+  technique: { disjoncteur: 'TECHNIQUE-PRIVE au-dessus de la porte', notes: 'NOTES-TECHNIQUE' },
   annonces: [],
   checklistLancement: [],
   photosEquipe: ['stockage://erp-fichiers/logements/log-1/photos/a.jpg'],
@@ -260,6 +265,11 @@ async function principal() {
     verifier(avant.logement.questions.length === 1 && avant.logement.questions[0].question.includes('sèche-cheveux'), 'question fréquente qui cite le wifi : pas montrée avant l’heure', avant.logement.questions);
     verifier(avant.prenom === 'Alix' && !/Testeur/.test(texte), 'prénom seul, jamais le nom de famille');
     verifier(!/31400|4700|4000|montant|commission|pro-exemple|propri[ée]taire|M\. Exemple|GB/.test(texte), 'ni montant, ni frais, ni propriétaire, ni pays du voyageur', texte.slice(0, 300));
+    verifier(fuitesTerrain(texte, LOGEMENT).length === 0 && !/MENAGE-PRIVE|CONTACT-PRIVE|TECHNIQUE-PRIVE|06 00 00 00 09|"menage"|"contacts"|"technique"|"disjoncteur"/.test(texte), 'cloison : ménage, contacts et technique du logement absents du livret (avant l’heure)', fuitesTerrain(texte, LOGEMENT));
+    {
+      const pendant = JSON.stringify(vueSejour({ conciergerie: 'Label Maison', reservation: resa(), logement: LOGEMENT, aujourdhui: '2026-11-11', checkinOuvert: true }, (f) => `https://stockage.exemple.invalid/signe?f=${encodeURIComponent(f)}`));
+      verifier(fuitesTerrain(pendant, LOGEMENT).length === 0 && /4821/.test(pendant), 'cloison : codes visibles pendant le séjour, mais toujours rien du volet terrain', fuitesTerrain(pendant, LOGEMENT));
+    }
     verifier(avant.logement.nom === 'Studio lumineux au bord de l’eau', 'nom du logement : le titre vu sur la plateforme (pas le nom interne)');
     // Champs montrés tels quels : un code du logement n'y passe pas non plus avant l'heure.
     const glisse = vueSejour({

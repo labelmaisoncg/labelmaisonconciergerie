@@ -63,6 +63,7 @@ import { ID_LABEL_MAISON } from './espaces';
 import { espaceARetenir, lienAcces, lireEspaceRetenu, lireLienAcces, lireSessionExterne, marqueConnexion, signerSessionExterne } from './acces-externe';
 import { creerSeed } from './seed';
 import { mandatAuJour, proprietaireLe } from './selectors';
+import { fuitesTerrain } from './terrain';
 import { b64url } from './web-push';
 import type { Logement, Mandat, Proprietaire, Reservation } from './types';
 import type { BilanProprietaire, DocumentProprietaire } from './types-proprietaire';
@@ -107,6 +108,10 @@ const logement = (id: string, proprietaireId: string, statut: Logement['statut']
     serrure: 'connectee',
     fiche: { acces: 'CODE-PORTE-4821', wifiNom: 'WIFI-SECRET', wifiMotDePasse: 'MDP-WIFI' },
     dotationLinge: [],
+    // Volet terrain (équipe seulement) : jamais dans la vue du propriétaire.
+    menage: { consignes: 'MENAGE-PRIVE' },
+    contacts: [{ role: 'serrurier', nom: 'CONTACT-PRIVE', telephone: '06 00 00 00 09', note: 'NOTE-CONTACT' }],
+    technique: { disjoncteur: 'TECHNIQUE-PRIVE', notes: 'NOTES-TECHNIQUE' },
     annonces: [],
     checklistLancement: [],
     photos: ['https://photos.exemple.invalid/a.jpg'],
@@ -228,6 +233,10 @@ async function main() {
     'vue : aucune donnée personnelle (contacts, codes, adresses, avis, pays, noms complets)',
   );
   verifier(!/"id":"res-/.test(texte) && !/stockage:\/\//.test(texte), 'vue : ni identifiant de réservation, ni chemin de fichier');
+  verifier(
+    e.logements.every((l) => fuitesTerrain(texte, l).length === 0) && !/MENAGE-PRIVE|CONTACT-PRIVE|TECHNIQUE-PRIVE|NOTE-CONTACT|NOTES-TECHNIQUE|"technique"|"disjoncteur"|"serrurier"/.test(texte),
+    'cloison : ménage, contacts et technique du logement absents de la vue du propriétaire',
+  );
   verifier(vue.prochainesArrivees.length === 1 && vue.prochainesArrivees[0].voyageur === 'Voyageur' && vue.prochainesArrivees[0].logementId === 'log-a2', 'prochaines arrivées : les siennes, anonymisées');
   verifier(vue.calendrier.mois === '2026-08' && vue.calendrier.logements.length === 2, 'calendrier du mois demandé');
 
@@ -254,6 +263,7 @@ async function main() {
     verifier(JSON.stringify(mois[0].logements) === JSON.stringify(vue.calendrier.logements), 'plage : exactement le calendrier de la vue pour le même mois');
     const texteP = JSON.stringify(mois);
     verifier(!/log-b|log-x|Bruno|Zo[ée]|Xavier|999999|Camille Martin|exemple\.invalid|john\.doe|\+33 6|montant|"id":"res-|CODE-PORTE|ADRESSE-PRIVEE/i.test(texteP), 'plage : rien d’un autre, aucune donnée personnelle ni montant');
+    verifier(e.logements.every((l) => fuitesTerrain(texteP, l).length === 0), 'plage : rien du volet terrain (ménage, contacts, technique)');
     verifier(Object.keys(mois[0].logements[0]).sort().join() === 'jours,logementId,nuitsLibres,nuitsReservees,occupation,sejours', 'plage : les champs de CalendrierLogement, pas un de plus');
     verifier(Object.keys(mois[0].logements[0].sejours[0]).sort().join() === 'arrivee,canal,depart,nbPersonnes,nuits,voyageur', 'plage : un séjour = dates, nuits, Prénom N., voyageurs, plateforme');
     const legeres = { proprietaires: e.proprietaires, logements: e.logements, reservations: e.reservations, mandats: e.mandats };

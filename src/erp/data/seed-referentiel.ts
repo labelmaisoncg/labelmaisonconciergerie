@@ -184,6 +184,27 @@ export const LOGEMENTS: Logement[] = [
       parking: 'Parking public quai de l’Essonne à 150 m',
     }),
     dotationLinge: dotation(1, 0, 1),
+    // Démo de l'onglet Terrain : noms inventés, numéros fictifs (06 00 00 00 0x).
+    menage: {
+      duree: '2 h 30',
+      produits: 'Sous l’évier de la cuisine : multi-surfaces, vitres, sols. Aspirateur et serpillière dans le placard de l’entrée.',
+      consignes: 'Changer les draps du canapé-lit même s’il semble non utilisé. Détartrer la cafetière le 1er du mois. Laisser les volets du salon à mi-hauteur.',
+    },
+    contacts: [
+      { role: 'menage', nom: 'Nadia Benali', telephone: '06 00 00 00 01', note: 'Du lundi au samedi, prévenir la veille.' },
+      { role: 'serrurier', nom: 'Serrurerie du Quai', telephone: '06 00 00 00 02', note: 'Intervient sous 2 h en journée.' },
+      { role: 'urgence', nom: 'Astreinte du syndic', telephone: '06 00 00 00 03', note: 'Fuite ou panne dans les parties communes.' },
+    ],
+    technique: {
+      etage: '2e étage sans ascenseur, porte gauche',
+      interphone: '« Rives de Seine » sur la platine du hall',
+      compteurElectricite: 'Palier, armoire grise à gauche de la porte',
+      disjoncteur: 'Entrée, au-dessus de la porte',
+      compteurEau: 'Sous l’évier de la cuisine, vanne bleue',
+      arriveeEau: 'Même vanne : fermer en quart de tour',
+      chaudiere: 'Chauffe-eau électrique dans la salle de bain ; remise en marche par le bouton rouge',
+      notes: 'Volet du salon dur à remonter : pousser légèrement vers le haut avant d’actionner la manivelle.',
+    },
     repull: { id: '1001', statut: 'active' },
     annonces: tousCanaux('corbeil-t2'),
     checklistLancement: checklist(),
@@ -211,6 +232,25 @@ export const LOGEMENTS: Logement[] = [
       parking: 'Place privée n° 14 dans la cour',
     }),
     dotationLinge: dotation(1, 2, 1),
+    // Démo de l'onglet Terrain : noms inventés, numéros fictifs (06 00 00 00 0x).
+    menage: {
+      duree: '3 h',
+      produits: 'Placard de la buanderie : lessive, produits sols et sanitaires. Linge propre dans l’armoire du couloir, étagère du haut.',
+      consignes: 'Vérifier les deux lits simples (barrières enfant à replier). Vider le bac du lave-vaisselle. Remettre le code de la serrure à zéro depuis l’application.',
+    },
+    contacts: [
+      { role: 'menage', nom: 'Karim Haddad', telephone: '06 00 00 00 04', note: 'Binôme avec Nadia le week-end.' },
+      { role: 'maintenance', nom: 'Électricité Dupuis', telephone: '06 00 00 00 05', note: 'Chauffe-eau et tableau électrique.' },
+      { role: 'proprietaire', nom: 'M. Garnier (SCI Les Tilleuls)', telephone: '06 00 00 00 06', note: 'À prévenir pour tout dégât des eaux.' },
+    ],
+    technique: {
+      etage: '1er étage, porte face à l’escalier',
+      compteurElectricite: 'Local compteurs au rez-de-chaussée, case n° 6',
+      disjoncteur: 'Tableau dans la buanderie',
+      compteurGaz: 'Cour intérieure, coffret jaune',
+      chaudiere: 'Chaudière gaz dans la buanderie ; pression entre 1 et 1,5 bar',
+      arriveeEau: 'Vanne générale derrière le lave-linge',
+    },
     repull: { id: '1002', statut: 'active' },
     annonces: tousCanaux('corbeil-t3'),
     checklistLancement: checklist(),

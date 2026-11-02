@@ -5,6 +5,7 @@ import {
   commissionLabelMaison,
   estActive,
   fenetreJours,
+  fenetreMois,
   noteMoyenne,
   revenuBrut,
   sejourEnCours,
@@ -19,6 +20,10 @@ export interface StatsLogement {
   revenu90: number;
   commission30: number;
   commission90: number;
+  /** Revenu brut du mois civil en cours (proratisé à la nuit, séjours à venir du mois compris). */
+  revenuMois: number;
+  /** Notre part sur ce mois, au taux du mandat (0 sans mandat signé). Montrée au gérant seulement. */
+  commissionMois: number;
   note?: number;
   /** Prix moyen par nuit constaté sur les séjours des 90 derniers jours (hors ménage), 0 sans séjour. */
   adr90: number;
@@ -30,6 +35,7 @@ export function statsLogement(d: Pick<ErpDonnees, 'reservations' | 'mandats'>, l
   const resas = d.reservations.filter((r) => r.logementId === l.id);
   const f30 = fenetreJours(30);
   const f90 = fenetreJours(90);
+  const mois = fenetreMois();
   const prochaineArrivee = resas
     .filter((r) => estActive(r) && r.arrivee >= AUJOURDHUI)
     .sort((a, b) => a.arrivee.localeCompare(b.arrivee))[0];
@@ -40,6 +46,8 @@ export function statsLogement(d: Pick<ErpDonnees, 'reservations' | 'mandats'>, l
     revenu90: revenuBrut(resas, f90),
     commission30: commissionLabelMaison(resas, d.mandats, f30),
     commission90: commissionLabelMaison(resas, d.mandats, f90),
+    revenuMois: revenuBrut(resas, mois),
+    commissionMois: commissionLabelMaison(resas, d.mandats, mois),
     note: noteMoyenne(resas, fenetreJours(365)),
     adr90: adr(resas, f90),
     prochaineArrivee,
