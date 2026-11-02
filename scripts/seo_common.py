@@ -342,7 +342,7 @@ def _coupe_mots(t: str, maxi: int) -> str:
     return court
 
 
-def title_court(title: str, maxi: int = TITLE_MAX) -> str:
+def title_court(title: str, maxi: int = TITLE_MAX, garder_cp: bool = False) -> str:
     t = re.sub(r"\s+", " ", title).strip()
     if len(t) <= maxi:
         return t
@@ -355,8 +355,14 @@ def title_court(title: str, maxi: int = TITLE_MAX) -> str:
     # garder la fin descriptive (« — gestion locative »). A gagne si elle conserve
     # une partie descriptive, sinon B.
     a = _coupe_mots(t2, maxi)
+    if garder_cp and len(a) >= 25:  # communes homonymes : le code postal fait la différence
+        return a
     t3 = re.sub(r"\s*\((\d{5}|\d{2,3}|\d{2}[AB])\)", "", t2).strip()
     b = t3 if len(t3) <= maxi else _coupe_mots(t3, maxi)
+    # Les deux gardent une partie descriptive : on prend la plus complète
+    # (« Essonne | Gestion Airbnb clé en main » plutôt que « Essonne (91) | Gestion Airbnb »).
+    if a_sep(a) and a_sep(b) and len(a) >= 25 and len(b) >= 25:
+        return b if len(b) > len(a) else a
     if a_sep(a) and len(a) >= 25:
         return a
     if a_sep(b) and len(b) >= 25:
@@ -385,9 +391,9 @@ def desc_courte(desc: str, maxi: int = DESC_MAX) -> str:
 
 
 def head(title: str, desc: str, path: str, jsonlds: list,
-         image: str = LOGO) -> str:
+         image: str = LOGO, garder_cp: bool = False) -> str:
     url = SITE + path
-    title = title_court(title)
+    title = title_court(title, garder_cp=garder_cp)
     desc = desc_courte(desc)
     return f"""<!doctype html>
 <html lang="fr">
