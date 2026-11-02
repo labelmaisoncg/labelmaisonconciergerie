@@ -33,7 +33,10 @@ const pc = (x: number) => `${(x / 7) * 100}%`;
  * noire (en retrait une fois le séjour terminé), nom en blanc une fois au
  * début. Le bouton prend la hauteur de la ligne (cible de toucher), élargi
  * d'une dizaine de pixels de chaque côté pour un morceau d'une demi-case ;
- * la bande visible est dedans.
+ * la bande visible est dedans. Un séjour sur plusieurs lignes a un bouton
+ * par morceau, mais un seul est nommé (`b.nomme`) : les autres restent
+ * cliquables à la souris et au doigt, hors de l'ordre de tabulation et
+ * cachés aux lecteurs d'écran, pour ne pas annoncer le même séjour deux fois.
  */
 function Bande({ b, libelle, passe, onSejour }: { b: BandeCalendrier; libelle: string; passe: boolean; onSejour?: (s: SejourCalendrier) => void }) {
   const position = {
@@ -58,7 +61,9 @@ function Bande({ b, libelle, passe, onSejour }: { b: BandeCalendrier; libelle: s
     <button
       type="button"
       onClick={() => onSejour(b.sejour)}
-      aria-label={libelleSejour(b.sejour, libelle)}
+      aria-label={b.nomme ? libelleSejour(b.sejour, libelle) : undefined}
+      aria-hidden={b.nomme ? undefined : true}
+      tabIndex={b.nomme ? undefined : -1}
       className={cn(
         'absolute inset-y-0 focus:outline-none [&:focus-visible>span]:ring-2 [&:focus-visible>span]:ring-(--lm-encre) [&:focus-visible>span]:ring-offset-2 [&:focus-visible>span]:ring-offset-(--lm-surface)',
         b.a - b.de < 1 && "before:absolute before:inset-y-0 before:-inset-x-2.5 before:content-['']",
@@ -79,7 +84,7 @@ function Bande({ b, libelle, passe, onSejour }: { b: BandeCalendrier; libelle: s
  * séjour terminé). Les jours passés sont en retrait,
  * aujourd'hui porte un point ; un jour hors de la période du propriétaire
  * est grisé. Rien n'est dit par la couleur seule : chaque jour a son libellé
- * et chaque bande est un bouton nommé.
+ * et chaque séjour est un bouton nommé, une seule fois par mois.
  */
 export function CalendrierMois({ mois, jours, sejours, aujourdhui, chiffres, libelleBande, onSejour, niveauTitre = 2, className }: CalendrierMoisProps) {
   const titreId = useId();

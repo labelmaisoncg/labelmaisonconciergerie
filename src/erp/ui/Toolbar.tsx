@@ -20,7 +20,7 @@ export function SearchInput({ valeur, onChange, placeholder = 'Rechercher', labe
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-label={label}
-        className="h-10 w-full rounded-full border border-(--lm-bord-fort) bg-(--lm-surface) pr-10 pl-10 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-2) hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+        className="lm-champ h-10 w-full rounded-full border border-(--lm-bord-fort) bg-(--lm-surface) pr-10 pl-10 text-[14px] text-(--lm-encre) placeholder:text-(--lm-encre-2) hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none [&::-webkit-search-cancel-button]:hidden"
       />
       {valeur && (
         <button

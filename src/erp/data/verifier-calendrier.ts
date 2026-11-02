@@ -4,7 +4,10 @@
  * store (calendrier-reservations.ts) avec la même grille de jours que
  * l'espace propriétaire, les séjours avec l'identifiant de la réservation et
  * le nom complet du voyageur, hors annulées ; les bandes du composant
- * partagé (calendrier/calendrier-mois.ts) s'y posent telles quelles.
+ * partagé (calendrier/calendrier-mois.ts) s'y posent telles quelles, avec un
+ * seul bouton nommé par séjour ; et les paramètres d'adresse au changement
+ * d'onglet (modules/reservations/_composants/outils.ts) gardent le logement
+ * venu d'une fiche.
  *
  * Lancement :
  *   node_modules/.bin/esbuild src/erp/data/verifier-calendrier.ts --bundle --platform=node --format=esm \
@@ -12,6 +15,7 @@
  *     && node /tmp/verifier-calendrier.mjs
  */
 import { bandesDuMois, libelleJour, libelleSejour, ligneChiffres } from '../calendrier/calendrier-mois';
+import { parametresOnglet } from '../modules/reservations/_composants/outils';
 import { calendrierMoisReservations } from './calendrier-reservations';
 import { calendrierMois } from './proprietaire';
 import type { Reservation } from './types';
@@ -75,6 +79,13 @@ function main() {
   /* les bandes du composant partagé sur ces séjours */
   const bandes = bandesDuMois('2026-08', aout.jours, aout.sejours);
   verifier(bandes.length === 4 && bandes.filter((b) => b.libelle).length === 3, 'bandes : une par morceau, le nom une fois par séjour');
+  // Séjour du 29 août au 3 sept. sur deux lignes (sam.–dim., puis lun.) : un seul bouton nommé, celui qui porte le nom.
+  const deuxLignes = bandes.filter((b) => b.sejour.id === 'res-2');
+  verifier(
+    deuxLignes.length === 2 && deuxLignes[0].ligne === 4 && deuxLignes[1].ligne === 5 && deuxLignes[0].libelle && deuxLignes[0].nomme && !deuxLignes[1].libelle && !deuxLignes[1].nomme,
+    'séjour sur deux lignes : un seul morceau nommé (celui du nom), l’autre reste muet pour le lecteur d’écran',
+  );
+  verifier(bandes.filter((b) => b.nomme).length === 3 && aout.sejours.every((s) => bandes.filter((b) => b.sejour === s && b.nomme).length === 1), 'chaque séjour du mois a exactement un bouton nommé');
   verifier(bandes[0].sejour.id === 'res-1' && bandes[0].ligne === 2 && bandes[0].de === 0.5 && bandes[0].a === 4.5, 'bande : du milieu du 10 au milieu du 14, identifiant conservé pour ouvrir la fiche');
   verifier(libelleSejour(aout.sejours[0]) === 'Camille Martin, du 10 août au 14 août, 4 nuits', 'libellé de la bande : nom complet');
   verifier(libelleJour(aout.jours.find((j) => j.date === '2026-08-10')!, aout.sejours) === '10 août : arrivée de Camille Martin', 'libellé du jour : nom complet, insécable avant le deux-points');
@@ -85,10 +96,18 @@ function main() {
   const suite = calendrierMoisReservations([r30], 'log-1', '2026-10');
   const bs = bandesDuMois('2026-10', suite.jours, suite.sejours);
   verifier(bf.length === 1 && bf[0].a - bf[0].de === 0.5 && !bf[0].libelle && bs.length === 1 && bs[0].libelle && libelleSejour(fin.sejours[0]) === 'Mehdi Trente, du 30 sept. au 2 oct., 2 nuits', 'morceau d’une demi-case seule : sans texte, nom en octobre, libellé complet au bouton');
+  verifier(bf[0].nomme && bs[0].nomme, 'sans morceau qui porte le nom dans le mois : le premier morceau est quand même le bouton nommé');
   // Une nuit du dimanche au lundi : jamais une case entière, le nom reste sur la première demi-case.
   const dim = calendrierMoisReservations([resa('log-1', '2026-09-13', '2026-09-14', { voyageur: { nom: 'Una Nuit', nbPersonnes: 1 } })], 'log-1', '2026-09');
   const bd = bandesDuMois('2026-09', dim.jours, dim.sejours);
-  verifier(bd.length === 2 && bd[0].libelle && !bd[1].libelle, 'une nuit du dimanche au lundi : nom sur la demi-case du dimanche');
+  verifier(bd.length === 2 && bd[0].libelle && !bd[1].libelle && bd[0].nomme && !bd[1].nomme, 'une nuit du dimanche au lundi : nom et bouton nommé sur la demi-case du dimanche');
+
+  /* onglets de la page Réservations : `?logement=` (venu d'une fiche logement) suit vers Mois et Séjours */
+  const depuisFiche = new URLSearchParams('logement=log-1&q=camille');
+  verifier(JSON.stringify(parametresOnglet('mois', depuisFiche)) === JSON.stringify({ vue: 'mois', logement: 'log-1' }), 'onglet Mois depuis une fiche logement : le logement reste présélectionné');
+  verifier(JSON.stringify(parametresOnglet('liste', depuisFiche)) === JSON.stringify({ vue: 'liste', logement: 'log-1' }), 'onglet Séjours : le logement suit aussi (la recherche, non)');
+  verifier(JSON.stringify(parametresOnglet('calendrier', depuisFiche)) === JSON.stringify({ vue: 'calendrier' }), 'onglet Planning : tous les logements, le filtre tombe');
+  verifier(JSON.stringify(parametresOnglet('mois', new URLSearchParams('vue=liste'))) === JSON.stringify({ vue: 'mois' }) && JSON.stringify(parametresOnglet('mois', new URLSearchParams('logement='))) === JSON.stringify({ vue: 'mois' }), 'sans logement (ou vide) : seulement la vue');
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;

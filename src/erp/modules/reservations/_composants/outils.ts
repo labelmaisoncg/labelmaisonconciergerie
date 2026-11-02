@@ -1,7 +1,8 @@
 /**
  * Outils du module Réservations : teintes de plateforme, état d'un séjour en
- * mots, plage de dates, chevauchements, statut d'une nouvelle réservation.
- * Les montants passent par data/selectors.
+ * mots, plage de dates, chevauchements, statut d'une nouvelle réservation,
+ * paramètres d'adresse des onglets. Les montants passent par data/selectors.
+ * Vérifié (onglets) par data/verifier-calendrier.ts.
  */
 import { AUJOURDHUI, ajouterJours, ecartJours, jourMois, pluriel } from '../../../data/format';
 import { estActive } from '../../../data/selectors';
@@ -93,4 +94,18 @@ export function statutSelonDates(arrivee: DateISO, depart: DateISO): StatutReser
   if (depart <= AUJOURDHUI) return 'terminee';
   if (arrivee <= AUJOURDHUI) return 'en_cours';
   return 'confirmee';
+}
+
+/** Les trois onglets de la page Réservations : planning à colonnes, mois qui défilent, liste des séjours. */
+export type VueReservations = 'calendrier' | 'mois' | 'liste';
+
+/**
+ * Paramètres d'adresse au changement d'onglet : toujours `{ vue }` (le reste
+ * de l'adresse est remis à plat), et `logement` quand il est là (on vient
+ * d'une fiche logement) pour Mois et Séjours, qui montrent un logement ; pas
+ * pour le planning, qui les montre tous.
+ */
+export function parametresOnglet(vue: VueReservations, courants: Pick<URLSearchParams, 'get'>): Record<string, string> {
+  const logement = vue === 'calendrier' ? '' : (courants.get('logement') ?? '');
+  return logement ? { vue, logement } : { vue };
 }

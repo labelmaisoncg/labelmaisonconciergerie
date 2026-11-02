@@ -74,6 +74,13 @@ export interface BandeCalendrier {
   depart: boolean;
   /** Premier morceau du séjour dans ce mois : il porte le nom. */
   libelle: boolean;
+  /**
+   * Le seul morceau du séjour, dans ce mois, qui est un bouton nommé pour le
+   * lecteur d'écran et le clavier (celui qui porte le nom, sinon le premier) :
+   * un séjour sur plusieurs lignes ne s'annonce qu'une fois. Les autres
+   * morceaux restent cliquables, mais cachés aux aides techniques.
+   */
+  nomme: boolean;
 }
 
 /**
@@ -127,13 +134,16 @@ export function bandesDuMois(mois: string, jours: readonly JourCalendrier[], sej
       const de = Math.max(debut, ligne * 7) - ligne * 7;
       const a = Math.min(fin, ligne * 7 + 7) - ligne * 7;
       if (a <= de) continue;
-      morceaux.push({ sejour: s, ligne, de, a, arrivee: arriveeIci && debut >= ligne * 7, depart: departIci && fin <= ligne * 7 + 7, libelle: false });
+      morceaux.push({ sejour: s, ligne, de, a, arrivee: arriveeIci && debut >= ligne * 7, depart: departIci && fin <= ligne * 7 + 7, libelle: false, nomme: false });
     }
     // Aucun morceau d'une case entière ici : le nom est dans le mois qui en a un ; s'il n'y en a
     // nulle part, sur le premier morceau du mois d'arrivée.
     const large = morceaux.find((m) => m.a - m.de >= 1);
     if (large) large.libelle = true;
     else if (morceaux.length && arriveeIci && !aUnMorceauLarge(s)) morceaux[0].libelle = true;
+    // Un seul bouton nommé par séjour : le morceau qui porte le nom, sinon le premier.
+    const nomme = morceaux.find((m) => m.libelle) ?? morceaux[0];
+    if (nomme) nomme.nomme = true;
     res.push(...morceaux);
   }
   return res;

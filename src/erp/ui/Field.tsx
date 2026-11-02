@@ -65,10 +65,12 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
 /*
  * Champ à la manière d'Airbnb : filet d'1 px, 8 px d'arrondi, 44 px de haut.
  * Au focus, le bord passe à 2 px d'encre (le second pixel est une ombre
- * intérieure : rien ne bouge), sans halo : bien visible au clavier.
+ * intérieure : rien ne bouge), sans halo : bien visible au clavier. La classe
+ * `lm-champ` dit à erp.css que ce bord est l'indicateur de focus : pas de
+ * contour global par-dessus.
  */
 const CHAMP =
-  'w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
+  'lm-champ w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
   'transition-[border-color,box-shadow] hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none ' +
   'disabled:cursor-not-allowed disabled:bg-(--lm-surface-2) aria-[invalid=true]:border-(--lm-danger) aria-[invalid=true]:focus:shadow-[inset_0_0_0_1px_var(--lm-danger)]';
 
