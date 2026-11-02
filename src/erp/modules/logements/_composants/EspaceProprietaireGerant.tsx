@@ -33,6 +33,7 @@ import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, L
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 import { FacturesProprietaire } from './FacturesProprietaire';
 import { RelancesPaiement } from './RelancesPaiement';
+import { SupprimerProprietaire } from './SupprimerProprietaire';
 
 interface EtatServeur {
   actif: boolean;
@@ -140,6 +141,8 @@ export function PanneauEspace({
         titre="Espace propriétaire"
         sousTitre={p.nom}
         largeur="lg"
+        // Supprimer la fiche : seulement depuis Paramètres → Accès (depuis un logement, il a ce logement : refus assuré).
+        actions={!logement ? <SupprimerProprietaire proprietaire={p} size="sm" onSupprime={onFermer} /> : undefined}
         pied={
           <Button variant="secondary" icone={<Eye />} onClick={() => setApercu(true)}>
             Voir son espace

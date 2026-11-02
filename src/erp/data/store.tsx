@@ -46,6 +46,7 @@ import { refusEcritureFigee } from './factures-mensuelles';
 import { messageRefus, operationReserveeAuGerant, traceRefus } from './ecritures-gerant';
 import { MESSAGE_LIEN_PERIME } from './invitation';
 import { supprimerLogementDe, verdictSuppression } from './suppression-logement';
+import { supprimerMembreDe, supprimerProprietaireDe, verdictSuppressionMembre, verdictSuppressionProprietaire } from './suppression-personnes';
 import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro, type RefusBase } from './synchro';
 import { EcranPorte, type PhasePorte } from '../layout/Connexion';
@@ -121,6 +122,14 @@ export interface ErpContexte extends ErpDonnees {
    * lui : data/suppression-logement.ts. Sinon, refus expliqué.
    */
   supprimerLogement: (id: Id) => Resultat;
+  /**
+   * Suppriment pour de bon une fiche propriétaire ou un membre de l'équipe
+   * sans historique ni accès encore ouvert (gérant, hors lecture seule), avec
+   * ce qui n'appartient qu'à eux : data/suppression-personnes.ts. Sinon,
+   * refus expliqué.
+   */
+  supprimerProprietaire: (id: Id) => Resultat;
+  supprimerMembre: (id: Id) => Resultat;
   ajouterMouvementLinge: (mouvement: Omit<MouvementLinge, 'id'>) => MouvementLinge;
   creerIncident: (incident: NouvelIncident) => Incident;
   resoudreIncident: (id: Id, options?: { coutCentimes?: number; date?: DateISO }) => Resultat;
@@ -584,6 +593,23 @@ function CoeurErp({
       return OK;
     };
 
+    // Journal : le nom seulement (aucune autre donnée personnelle).
+    const supprimerProprietaire = (id: Id): Resultat => {
+      const verdict = verdictSuppressionProprietaire({ role: utilisateurRef.current.role, lectureSeule, proprietaireId: id, donnees: ref.current });
+      if (!verdict.ok) return echec(verdict.message);
+      const nom = trouver('proprietaires', id)?.nom ?? '';
+      appliquer((d) => supprimerProprietaireDe(d, id), 'Propriétaire supprimé', 'proprietaire', id, nom);
+      return OK;
+    };
+
+    const supprimerMembre = (id: Id): Resultat => {
+      const verdict = verdictSuppressionMembre({ role: utilisateurRef.current.role, lectureSeule, membreId: id, donnees: ref.current });
+      if (!verdict.ok) return echec(verdict.message);
+      const nom = trouver('equipe', id)?.nom ?? '';
+      appliquer((d) => supprimerMembreDe(d, id), 'Membre supprimé', 'membre', id, nom);
+      return OK;
+    };
+
     const ajouterMouvementLinge = (mouvement: Omit<MouvementLinge, 'id'>): MouvementLinge => {
       const complet = { ...mouvement, id: nouvelId('lin') };
       const total = mouvement.articles.reduce((s, a) => s + a.quantite, 0);
@@ -656,6 +682,8 @@ function CoeurErp({
       cocherChecklistLancement,
       activerLogement,
       supprimerLogement,
+      supprimerProprietaire,
+      supprimerMembre,
       ajouterMouvementLinge,
       creerIncident,
       resoudreIncident,

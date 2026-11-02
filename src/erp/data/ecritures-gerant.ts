@@ -34,10 +34,12 @@ export const ELEMENTS_GERANT_SEULEMENT: Readonly<Record<string, readonly string[
 
 /**
  * Suppressions réservées au gérant, dans des collections que l'équipe
- * modifie : un logement (data/suppression-logement.ts). Même liste que la
- * règle « ecritures reservees aux gerants (suppression) » de la base.
+ * modifie : un logement (data/suppression-logement.ts), une fiche
+ * propriétaire ou un membre de l'équipe de terrain
+ * (data/suppression-personnes.ts). Même liste que la règle « ecritures
+ * reservees aux gerants (suppression) » de la base.
  */
-export const SUPPRESSIONS_GERANT_SEULEMENT: readonly string[] = ['logements'];
+export const SUPPRESSIONS_GERANT_SEULEMENT: readonly string[] = ['logements', 'proprietaires', 'equipe'];
 
 /**
  * Réglages de l'agent : l'équipe change le ton, la signature, les langues et
@@ -119,6 +121,18 @@ export function operationReserveeAuGerant(op: Operation, avant: ErpDonnees): boo
 export const MESSAGE_REFUS_GERANT = 'Modification non enregistrée : elle est réservée au gérant. L’écran affiche de nouveau la version enregistrée.';
 export const MESSAGE_REFUS_FACTURE = 'Cette facture a été validée entre-temps : elle ne change plus. Sa version enregistrée vient d’être rechargée.';
 export const MESSAGE_REFUS_DONNEES = 'Modification non enregistrée : la base l’a refusée (données invalides). L’écran affiche de nouveau la version enregistrée.';
+/**
+ * Suppression refusée par un déclencheur d'historique de la base
+ * (erp.garder_logement_avec_historique, garder_proprietaire_avec_historique,
+ * garder_membre_avec_historique) : une trace que l'écran ne voit pas (relance
+ * de paiement, données pas encore à jour). Dit tel quel, pas « réservée au gérant ».
+ */
+export const MESSAGE_REFUS_HISTORIQUE = 'La base a refusé : cette fiche a encore un historique. L’écran affiche de nouveau la version enregistrée.';
+
+/** Refus d'un déclencheur d'historique : code 42501 et son message (« … a un historique … »). */
+export function refusHistorique(r: Pick<RefusBase, 'code' | 'message'>): boolean {
+  return r.code === '42501' && /a un historique/.test(r.message ?? '');
+}
 
 /**
  * Refus pour les données elles-mêmes (synchro.ts, erreurDeLigne) : code
@@ -132,6 +146,7 @@ export function refusDeDonnees(r: Pick<RefusBase, 'code' | 'message'>): boolean 
 /** Message affiché une fois par envoi refusé (synchro.ts, surRefus). */
 export function messageRefus(refus: readonly RefusBase[]): string {
   if (refus.length > 0 && refus.every(refusDeDonnees)) return MESSAGE_REFUS_DONNEES;
+  if (refus.length > 0 && refus.every(refusHistorique)) return MESSAGE_REFUS_HISTORIQUE;
   // Tout refus portant sur des factures (code LMF, ou 42501 des anciennes installations) : le message de la facture.
   const facturesFigees =
     refus.length > 0 && refus.every((r) => (CODES_REFUS_BASE as readonly string[]).includes(r.code ?? '') || (r.collection === 'factures' && !refusDeDonnees(r)));
@@ -150,7 +165,11 @@ export function traceRefus(refus: readonly RefusBase[], o: { auteur: string; id:
     entiteId: premier?.id ?? '',
     // Lisible dans l'Historique : pas d'identifiants techniques (ils restent dans entite / entiteId).
     details: `${refus.length > 1 ? `${refus.length} modifications refusées` : '1 modification refusée'} (${
-      refus.length > 0 && refus.every(refusDeDonnees) ? 'données refusées par la base' : 'réservée au gérant ou facture déjà validée'
+      refus.length > 0 && refus.every(refusDeDonnees)
+        ? 'données refusées par la base'
+        : refus.length > 0 && refus.every(refusHistorique)
+          ? 'fiche qui a encore un historique'
+          : 'réservée au gérant ou facture déjà validée'
     }). La version enregistrée a été rechargée.`,
   };
 }
