@@ -18,7 +18,7 @@
  * sont aussi dans la rangée des modèles. Rien n'est encaissé par l'ERP.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Bot, CheckCheck, CheckCircle2, FileText, Hand, Image, Info, Languages, Link2, Loader2, Lock, RotateCcw, Send, Sparkles, Video, X } from 'lucide-react';
 import { Alert, Avatar, Button, Drawer, IconButton, MenuActions, Textarea, cn, type ActionMenu } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
@@ -88,6 +88,8 @@ const ENTREE_ENVOIE = typeof window !== 'undefined' && !!window.matchMedia?.('(p
 const HAUTEUR_MAX_SAISIE = 160;
 
 export function Conversation({ fil, logement, reservation }: Props) {
+  // Le filtre de la liste (?logement=) survit à l'ouverture d'une conversation : le retour le garde.
+  const { search } = useLocation();
   const { upsert, mode, lectureSeule, reglages, utilisateur, actionsAgent } = useErp();
   // Réponses rapides signées comme l'agent de l'espace (Label Maison : « L’équipe Label Maison »).
   const signature = signatureEspace({ reglages }, espaceOuvert());
@@ -414,7 +416,7 @@ export function Conversation({ fil, logement, reservation }: Props) {
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex h-16 shrink-0 items-center gap-2 border-b border-(--lm-bord) px-2 sm:gap-3 sm:px-4">
         <Link
-          to="/erp/messagerie"
+          to={{ pathname: '/erp/messagerie', search }}
           aria-label="Retour aux conversations"
           className="grid size-10 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis) lg:hidden"
         >
