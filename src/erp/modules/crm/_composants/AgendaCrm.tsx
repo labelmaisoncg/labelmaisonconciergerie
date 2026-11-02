@@ -93,7 +93,7 @@ export function AgendaCrm({ ouvert, onFermer, demo }: { ouvert: boolean; onFerme
   };
 
   const lienTexte =
-    'inline-flex h-8 items-center rounded-md text-[12.5px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
+    'inline-flex h-8 items-center rounded-md text-[12.5px] font-medium lm-lien';
 
   return (
     <Modal

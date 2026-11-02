@@ -65,9 +65,9 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
 /*
  * Champ à la manière d'Airbnb : filet d'1 px, 8 px d'arrondi, 44 px de haut.
  * Au focus, le bord passe à 2 px d'encre (le second pixel est une ombre
- * intérieure : rien ne bouge), sans halo : bien visible au clavier. La classe
- * `lm-champ` dit à erp.css que ce bord est l'indicateur de focus : pas de
- * contour global par-dessus.
+ * intérieure : rien ne bouge), sans halo : bien visible au clavier. C'est
+ * l'exception du guide au contour global de focus (couche base d'erp.css) :
+ * `focus:outline-none` le coupe ici, et la classe `lm-champ` marque ces champs.
  */
 const CHAMP =
   'lm-champ w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +

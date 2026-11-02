@@ -247,7 +247,7 @@ export default function ActionsIA() {
                               onClick={() => setOuverte(deplie ? null : a.id)}
                               aria-expanded={deplie}
                               aria-controls={idDetail}
-                              className="block w-full rounded-md text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+                              className="block w-full rounded-md text-left"
                             >
                               {contenu}
                             </button>

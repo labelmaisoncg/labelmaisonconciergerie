@@ -87,7 +87,7 @@ export default function Acces() {
           <button
             type="button"
             onClick={() => setParams({})}
-            className="inline-flex min-h-8 items-center rounded-md px-1 font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+            className="inline-flex min-h-8 items-center rounded-md px-1 font-medium lm-lien"
           >
             Tout voir
           </button>
@@ -1158,7 +1158,7 @@ function ApercuOps({ membre, onFermer }: { membre: MembreEquipe; onFermer: () =>
         <button
           type="button"
           onClick={onFermer}
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[13px] font-medium hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus:outline-none"
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[13px] font-medium hover:bg-white/15 focus-visible:outline-white"
         >
           <X className="size-4" aria-hidden />
           Fermer

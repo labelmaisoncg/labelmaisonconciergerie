@@ -90,7 +90,7 @@ function TableauMois({ mois }: { mois: MoisPerformance[] }) {
   );
   return (
     <details className="group mt-3 border-t border-(--lm-bord) pt-2">
-      <summary className="inline-flex min-h-9 cursor-pointer items-center rounded-md text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none">
+      <summary className="inline-flex min-h-9 cursor-pointer items-center rounded-md text-[13px] font-medium lm-lien">
         Voir les chiffres mois par mois
       </summary>
       <div className="lm-defilement mt-2 -mx-2 overflow-x-auto sm:-mx-3">
@@ -249,7 +249,7 @@ export function Logements({ vue, choisi, onChoisir }: { vue: VueProprietaire; ch
           <button
             type="button"
             onClick={() => onChoisir(undefined)}
-            className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+            className="lm-sans-impression -ml-2 mb-3 inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
           >
             <ChevronLeft className="size-4" aria-hidden />
             Mes logements
@@ -272,7 +272,7 @@ export function Logements({ vue, choisi, onChoisir }: { vue: VueProprietaire; ch
                 <button
                   type="button"
                   onClick={() => onChoisir(l.id)}
-                  className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-4 focus:outline-none"
+                  className="group block w-full rounded-xl text-left"
                 >
                   <PhotoLogement url={l.photo} nom={l.nom} className="aspect-[4/3] w-full rounded-xl transition-opacity group-hover:opacity-90" />
                   <span className="mt-2.5 flex items-center justify-between gap-2">

@@ -95,10 +95,10 @@ const SANS_CHAMP = new Set(['type', 'proprietaireId', 'residencePrincipale', 'ca
 const GRAND = 'h-11 text-[16px]';
 
 const CHOIX =
-  'flex w-full rounded-xl border text-left transition-colors focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
-// Choix d'Airbnb : filet gris, bord à l'encre au survol ; choisi : l'or (état choisi), contour doublé.
+  'flex w-full rounded-xl border text-left transition-colors';
+// Choix d'Airbnb : filet gris, bord à l'encre au survol ; choisi : l'or (état choisi).
 const CHOIX_REPOS = 'border-(--lm-bord-fort) bg-(--lm-surface) hover:border-(--lm-encre)';
-const CHOIX_ACTIF = 'border-(--lm-or-texte) bg-(--lm-or-lavis) ring-1 ring-(--lm-or-texte)';
+const CHOIX_ACTIF = 'border-(--lm-or-texte) bg-(--lm-or-lavis)';
 
 const idChamp = (cle: string) => `assistant-logement-${cle.replace('.', '-')}`;
 const ID_QUESTION_RESIDENCE = 'assistant-logement-question-residence';
@@ -672,7 +672,7 @@ function EtapeProprietaire({
                     onClick={() => choisirProprietaire(p.id)}
                     onKeyDown={entreeChoix(actif, () => choisirProprietaire(p.id), continuer)}
                     className={cn(
-                      'flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-inset focus:outline-none',
+                      'flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left focus-visible:-outline-offset-2',
                       actif ? 'bg-(--lm-or-lavis)' : 'hover:bg-(--lm-surface-2)',
                     )}
                   >

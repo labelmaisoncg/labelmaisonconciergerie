@@ -157,21 +157,37 @@
   font-variant-numeric: tabular-nums;
 }
 
-.erp-root :focus-visible {
+/*
+ * Focus clavier : un seul indicateur, le contour d'encre de 2 px, sur tout
+ * élément focalisable (bouton, lien, onglet, case, summary, tabindex). La
+ * règle vit dans la couche `base` (Tailwind 4 : theme, base, components,
+ * utilities) pour que les utilitaires d'un composant la battent là où ils
+ * sont voulus : `focus:outline-none` des champs du kit (`lm-champ`, dont le
+ * bord d'encre fait office) ; `focus-visible:-outline-offset-2` d'une ligne
+ * pleine largeur dans une carte qui rogne (le contour rentre au lieu d'être
+ * coupé) ; `focus:outline-none` plus un anneau d'encre sur le visuel quand le
+ * bouton dépasse ce qu'il montre (bande du calendrier, pastille du CRM).
+ * Hors couche, la règle battrait tous ces utilitaires et doublerait le cadre.
+ */
+@layer base {
+  .erp-root :focus-visible {
+    outline: 2px solid var(--lm-encre);
+    outline-offset: 2px;
+  }
+  /* Couleur de repos du contour : la base du site la met en or à 50 %, et
+     transition-colors l'animerait vers l'encre. Net d'emblée. */
+  .erp-root,
+  .erp-root * {
+    outline-color: var(--lm-encre);
+  }
+}
+/* Boutons de zoom de la carte : la feuille de MapLibre, hors couche, bat la
+   base (`outline: none` et un halo bleu). Même contour d'encre, sans halo ;
+   le sélecteur reprend celui de MapLibre, `.erp-root` en plus pour gagner. */
+.erp-root .maplibregl-ctrl-group button:focus:focus-visible {
   outline: 2px solid var(--lm-encre);
   outline-offset: 2px;
-}
-/* Les champs du kit (Field.tsx, SearchInput) montrent déjà leur focus par leur
-   bord qui passe à 2 px d'encre : sans cette règle, le contour global (hors
-   couche, il bat le `focus:outline-none` de Tailwind) s'ajoute et fait deux cadres. */
-.erp-root .lm-champ:focus-visible {
-  outline: none;
-}
-/* Couleur de repos du contour : la base du site la met en or à 50 %, et
-   transition-colors l'animerait vers l'encre. Net d'emblée. */
-.erp-root,
-.erp-root * {
-  outline-color: var(--lm-encre);
+  box-shadow: none;
 }
 
 /* Barres de défilement discrètes dans les conteneurs (tableaux, tiroirs). */

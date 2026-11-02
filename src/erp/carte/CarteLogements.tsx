@@ -186,7 +186,7 @@ function LigneLogement({ p, aujourdhui, choisi, onClick }: { p: PointCarte; aujo
         type="button"
         aria-pressed={choisi}
         onClick={onClick}
-        className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-(--lm-surface-2) focus-visible:bg-(--lm-surface-2) focus:outline-none"
+        className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2"
       >
         <PastilleEtat etat={p.etat} probleme={p.problemes.length > 0} />
         <span className="min-w-0 flex-1">
@@ -324,7 +324,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
               {nonPlaces.map((p, k) => (
                 <span key={p.id}>
                   {k > 0 && ', '}
-                  <button type="button" onClick={() => choisir(p.id)} className="inline-flex min-h-8 items-center font-medium text-(--lm-encre) underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none">
+                  <button type="button" onClick={() => choisir(p.id)} className="inline-flex min-h-8 items-center font-medium text-(--lm-encre) underline-offset-2 hover:underline">
                     {p.nom}
                   </button>
                 </span>
@@ -340,7 +340,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
             aria-expanded={liste}
             aria-controls={listeId}
             onClick={() => setListe((x) => !x)}
-            className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+            className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien"
           >
             {liste ? 'Masquer la liste' : 'Voir en liste'}
           </button>
@@ -359,7 +359,7 @@ export function CarteLogements({ points, aujourdhui, action, actionMenage, aPlac
   );
 }
 
-const LIEN_CREDIT = 'inline-flex min-h-8 items-center underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
+const LIEN_CREDIT = 'inline-flex min-h-8 items-center underline-offset-2 hover:underline';
 
 /**
  * Crédits du fond de carte, exigés par OpenFreeMap et OpenStreetMap : sous la

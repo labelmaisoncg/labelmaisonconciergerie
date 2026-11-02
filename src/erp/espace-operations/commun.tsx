@@ -105,7 +105,7 @@ export function LienAction({ onClick, children }: { onClick: () => void; childre
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+      className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien"
     >
       {children}
     </button>
@@ -146,7 +146,7 @@ export function Ligne({
       <button
         type="button"
         onClick={onClick}
-        className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-(--lm-surface-2) focus-visible:bg-(--lm-surface-2) focus:outline-none"
+        className="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2"
       >
         <span
           aria-hidden

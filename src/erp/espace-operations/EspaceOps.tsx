@@ -77,7 +77,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                   aria-current={o.cle === onglet ? 'page' : undefined}
                   onClick={() => naviguer({ onglet: o.cle, controle: undefined })}
                   className={cn(
-                    'relative inline-flex h-full items-center gap-1.5 px-2 text-[14px] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 lg:px-3 focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset [&_svg]:size-4',
+                    'relative inline-flex h-full items-center gap-1.5 px-2 text-[14px] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 lg:px-3 focus-visible:-outline-offset-2 [&_svg]:size-4',
                     o.cle === onglet ? 'font-semibold text-(--lm-encre) after:bg-(--lm-encre)' : 'font-medium text-(--lm-encre-2) hover:text-(--lm-encre) hover:after:bg-(--lm-bord-fort)',
                   )}
                 >
@@ -92,7 +92,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                 <button
                   type="button"
                   onClick={onSortir}
-                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
                 >
                   <LogOut className="size-4" aria-hidden />
                   {/* Libellés à partir de 1024 px : avec les onglets, l'en-tête tient sur une ligne. */}
@@ -142,7 +142,7 @@ export function EspaceOps({ vue, ecran, naviguer, actions, onSortir, bandeau, ap
                     aria-current={o.cle === onglet ? 'page' : undefined}
                     onClick={() => naviguer({ onglet: o.cle })}
                     className={cn(
-                      'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset [&_svg]:size-6 [&_svg]:stroke-2',
+                      'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none focus-visible:-outline-offset-2 [&_svg]:size-6 [&_svg]:stroke-2',
                       o.cle === onglet ? 'font-semibold text-(--lm-or-texte) [&_svg]:fill-(--lm-or-lavis)' : 'font-medium text-(--lm-encre-2)',
                     )}
                   >

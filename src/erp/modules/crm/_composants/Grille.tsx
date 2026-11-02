@@ -35,9 +35,9 @@ const COLONNES = [
 ];
 
 const CELLULE = 'border-b border-r border-(--lm-bord) px-3 py-1.5 align-middle';
-const CHAMP = 'h-8 rounded-md bg-transparent text-[13px] focus:ring-2 focus:ring-(--lm-encre) focus:outline-none';
+const CHAMP = 'h-8 rounded-md bg-transparent text-[13px]';
 
-/** Pastille d'étape, modifiable sur place : sélecteur natif posé dessus (clavier, lecteurs d'écran), focus visible. */
+/** Pastille d'étape, modifiable sur place : sélecteur natif posé dessus (clavier, lecteurs d'écran). Focus : l'anneau d'encre sur la pastille (exception du guide : le sélecteur, invisible, coupe le contour global). */
 export function PastilleStatut({ contact, onModifier, lectureSeule }: { contact: ContactCrm; onModifier: (c: ContactCrm) => void; lectureSeule: boolean }) {
   const pastille = (
     <span className={cn('inline-flex h-6 items-center gap-1 rounded-full px-2.5 text-[12.5px] font-medium whitespace-nowrap', PASTILLE[contact.statut])}>
@@ -53,7 +53,7 @@ export function PastilleStatut({ contact, onModifier, lectureSeule }: { contact:
         aria-label={`Étape de ${contact.nom}`}
         value={contact.statut}
         onChange={(e) => onModifier({ ...contact, statut: e.target.value as StatutContactCrm })}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="absolute inset-0 cursor-pointer opacity-0 focus:outline-none"
       >
         {STATUTS_CRM.map((s) => (
           <option key={s.cle} value={s.cle}>
@@ -93,7 +93,7 @@ function CelluleRelance({ c, onModifier, lectureSeule }: { c: ContactCrm; onModi
         type="button"
         onClick={() => setEdition(true)}
         aria-label={c.relanceLe ? `Relance de ${c.nom} : ${jourMois(c.relanceLe)}${retard ? ', en retard' : ''}. Modifier` : `Prévoir une relance pour ${c.nom}`}
-        className="flex h-8 w-full min-w-0 items-center rounded-md px-1 text-left hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+        className="flex h-8 w-full min-w-0 items-center rounded-md px-1 text-left hover:bg-(--lm-neutre-lavis)"
       >
         {texte}
       </button>
@@ -132,7 +132,7 @@ function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n:
         <button
           type="button"
           onClick={() => onOuvrir(c.id)}
-          className="-my-1.5 block max-w-full truncate rounded-md py-1.5 text-left font-medium text-(--lm-encre) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+          className="-my-1.5 block max-w-full truncate rounded-md py-1.5 text-left font-medium text-(--lm-encre) hover:underline"
         >
           {c.nom}
         </button>
@@ -237,7 +237,7 @@ export function Grille({ contacts, onOuvrir, onModifier, lectureSeule }: GrilleP
                     type="button"
                     onClick={() => basculer(g.cle)}
                     aria-expanded={!replie}
-                    className="sticky left-0 flex h-9 items-center gap-2 px-3 text-[13px] font-semibold text-(--lm-encre) hover:underline focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
+                    className="sticky left-0 flex h-9 items-center gap-2 px-3 text-[13px] font-semibold text-(--lm-encre) hover:underline focus-visible:-outline-offset-2"
                   >
                     {replie ? <ChevronRight className="size-4" aria-hidden /> : <ChevronDown className="size-4" aria-hidden />}
                     <span className={cn('size-2 rounded-full', POINT[g.cle])} aria-hidden />

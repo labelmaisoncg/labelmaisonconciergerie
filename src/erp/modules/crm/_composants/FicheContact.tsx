@@ -248,7 +248,7 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
                         href={pageDuSite(contact.page)}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex h-8 items-center rounded-md lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+                        className="inline-flex h-8 items-center rounded-md lm-lien"
                       >
                         Voir la page du site
                       </a>

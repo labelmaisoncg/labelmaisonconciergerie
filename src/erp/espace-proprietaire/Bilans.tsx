@@ -181,7 +181,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
     const plusRecent = vue.bilans[i - 1];
     const plusAncien = vue.bilans[i + 1];
     const nav =
-      'inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
+      'inline-flex h-9 items-center gap-1 rounded-lg px-2 text-[13.5px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)';
     return (
       <>
         <div className="lm-sans-impression mb-4 flex items-center justify-between gap-2">
@@ -212,7 +212,7 @@ export function Bilans({ vue, choisi, onChoisir }: { vue: VueProprietaire; chois
               <button
                 type="button"
                 onClick={() => onChoisir(b.mois)}
-                className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset"
+                className="flex min-h-16 w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2"
               >
                 <span className="min-w-0 flex-1">
                   <span className="block text-[15px] font-semibold text-(--lm-encre)">{titreMois(b.mois)}</span>

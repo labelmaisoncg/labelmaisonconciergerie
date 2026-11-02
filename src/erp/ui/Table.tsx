@@ -127,7 +127,7 @@ export function Table<T>({
                   aria-selected={ligneActive ? ligneActive === cle : undefined}
                   className={cn(
                     'border-b border-(--lm-bord) last:border-b-0',
-                    onLigneClick && 'cursor-pointer hover:bg-(--lm-surface-2) focus-visible:bg-(--lm-surface-2)',
+                    onLigneClick && 'cursor-pointer hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2',
                     ligneActive === cle && 'bg-(--lm-or-lavis) hover:bg-(--lm-or-lavis)',
                   )}
                 >

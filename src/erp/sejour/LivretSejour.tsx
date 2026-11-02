@@ -105,7 +105,7 @@ function ListeGuides({ guides, langue }: { guides: GuideSejour[]; langue: Langue
             href={g.lien}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-12 items-center gap-3 rounded-lg px-2 py-2 hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+            className="flex min-h-12 items-center gap-3 rounded-lg px-2 py-2 hover:bg-(--lm-surface-2)"
           >
             <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) [&_svg]:size-4">
               {ICONES_GUIDE[g.type]}

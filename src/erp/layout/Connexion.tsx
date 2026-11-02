@@ -186,7 +186,7 @@ const ROLES_COMPTE = [
   { titre: 'Équipe d’une conciergerie', detail: 'Gérants et équipes, comme Label Maison, avec votre invitation.' },
 ] as const;
 const CLASSE_CHOIX =
-  'flex min-h-14 w-full items-center gap-3 rounded-lg border border-(--lm-bord-fort) px-4 py-3 text-left hover:border-(--lm-encre) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none';
+  'flex min-h-14 w-full items-center gap-3 rounded-lg border border-(--lm-bord-fort) px-4 py-3 text-left hover:border-(--lm-encre) hover:bg-(--lm-surface-2)';
 
 function ChoixRole({ onEquipe, onRetour }: { onEquipe: () => void; onRetour: () => void }) {
   const contenu = (r: (typeof ROLES_COMPTE)[number]) => (

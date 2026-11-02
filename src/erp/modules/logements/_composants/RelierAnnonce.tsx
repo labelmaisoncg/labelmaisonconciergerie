@@ -211,7 +211,7 @@ export function RelierAnnonce({ logement: l, ouvert, onFermer }: { logement: Log
                     <label
                       className={cn(
                         'flex cursor-pointer items-center gap-3 rounded-xl border bg-(--lm-surface) p-2.5 transition-colors',
-                        coche ? 'border-(--lm-or) ring-1 ring-(--lm-or-anneau)' : 'border-(--lm-bord) hover:shadow-(--lm-ombre-haute) transition',
+                        coche ? 'border-(--lm-or)' : 'border-(--lm-bord) hover:shadow-(--lm-ombre-haute) transition',
                       )}
                     >
                       <input type="radio" name="annonce" value={a.id} checked={coche} onChange={() => setChoisie(a.id)} className="size-4 shrink-0 accent-(--lm-or)" />
