@@ -211,9 +211,9 @@ export default function Crm() {
         titre="CRM"
         sousTitre={crm.length > 0 && aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : undefined}
         actions={
-          // Comme dans Logements : les actions secondaires dans « Plus », puis le « + » rond (nouveau contact).
+          // Comme dans Logements et Réservations : le « … » rond (actions secondaires), puis le « + » rond (nouveau contact).
           <>
-            {plus.length > 0 && <MenuActions texte label="Plus" actions={plus} />}
+            {plus.length > 0 && <MenuActions label="Plus" actions={plus} />}
             {crm.length > 0 && !lectureSeule && (
               <IconButton label="Ajouter un contact" variant="secondary" onClick={() => setNouveau(true)}>
                 <Plus />

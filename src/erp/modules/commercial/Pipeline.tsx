@@ -7,7 +7,7 @@ import { euros, pourcentage } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
 import { actionsCommercialesDues, commissionPotentielle, signaturesDuMois, valeurPipeline } from '../../data/selectors';
 import type { EtapeProspect, Prospect, Responsable, SourceProspect } from '../../data/types';
-import { Button, EmptyState, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
+import { Button, EmptyState, IconButton, PageHeader, SearchInput, Select, Stat, cn, useCreationParUrl } from '../../ui';
 import { useAvis } from './_composants/Avis';
 import type { ActionsProspect } from './_composants/CarteProspect';
 import { FicheProspect } from './_composants/FicheProspect';
@@ -95,7 +95,14 @@ export default function Pipeline() {
     <>
       <PageHeader
         titre="Prospection"
-        actions={d.prospects.length > 0 && <Button variant="primary" icone={<Plus />} onClick={() => setCreation(true)}>Nouveau contact</Button>}
+        // Même « + » rond que Logements, Réservations et CRM ; l'or reste au bouton de l'écran vide.
+        actions={
+          d.prospects.length > 0 && (
+            <IconButton label="Ajouter un contact" variant="secondary" onClick={() => setCreation(true)}>
+              <Plus />
+            </IconButton>
+          )
+        }
       />
       <Onglets />
 
