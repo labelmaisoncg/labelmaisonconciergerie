@@ -48,11 +48,18 @@ async function submitContactForm(
     const res = await fetch('/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, ...data }),
+      // Page d'origine : visible dans la fiche CRM et dans la mesure d'audience.
+      body: JSON.stringify({ type, page: window.location.pathname, ...data }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.ok) {
       return { ok: false, error: json.error || `Erreur ${res.status}` };
+    }
+    // Mesure d'audience (public/js/mesure.js) : une demande envoyée = une conversion.
+    try {
+      window.dispatchEvent(new CustomEvent('lm:lead', { detail: { type } }));
+    } catch {
+      /* ignoré */
     }
     return { ok: true };
   } catch {

@@ -12,10 +12,11 @@ import re
 
 import blog_articles_a as A
 import blog_articles_b as B
+import blog_articles_c as Cc
 import seo_article as ART
 import seo_common as C
 
-ARTICLES = A.ARTICLES + B.ARTICLES
+ARTICLES = A.ARTICLES + B.ARTICLES + Cc.ARTICLES
 
 # Articles antérieurs, conservés tels quels et intégrés au sommaire du blog.
 EXISTANTS = [

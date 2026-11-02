@@ -40,6 +40,7 @@
         if (res.ok && data.ok) {
           form.reset();
           setStatus(form, 'ok', 'Merci ! Votre demande d’audit a bien été envoyée. Nous vous recontactons très vite.');
+          try { window.dispatchEvent(new CustomEvent('lm:lead', { detail: { type: 'audit' } })); } catch (e) {}
         } else {
           setStatus(form, 'err', (data && data.error) || 'Une erreur est survenue. Réessayez ou appelez-nous au +33 7 49 54 83 55.');
         }

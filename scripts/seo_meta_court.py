@@ -36,6 +36,9 @@ def main() -> int:
                 s = s.replace(md.group(0), f'<meta name="description" content="{C.esc(dc)}"', 1)
                 s = re.sub(r'(<meta property="og:description" content=")[^"]*(")',
                            lambda mm: mm.group(1) + C.esc(dc) + mm.group(2), s, count=1)
+        # Mesure d'audience (Google Analytics après consentement) sur toutes les pages.
+        if "/js/mesure.js" not in s and "</body>" in s and "noindex" not in s[:1500]:
+            s = s.replace("</body>", '<script defer src="/js/mesure.js"></script></body>', 1)
         if s != orig:
             p.write_text(s, encoding="utf-8")
             modifiees += 1

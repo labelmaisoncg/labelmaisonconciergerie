@@ -446,7 +446,14 @@ function CandidatureForm() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) setError(json.error || `Erreur ${res.status}`);
-      else setSubmitted(true);
+      else {
+        setSubmitted(true);
+        try {
+          window.dispatchEvent(new CustomEvent('lm:lead', { detail: { type: 'cercle' } }));
+        } catch {
+          /* ignoré */
+        }
+      }
     } catch {
       setError('Connexion impossible. Réessayez.');
     } finally {
