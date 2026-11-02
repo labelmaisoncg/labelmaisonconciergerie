@@ -358,8 +358,8 @@ SERVICES = [
 ]
 
 POURQUOI = [
-    ("Un référent local, pas un centre d'appels",
-     "Sur chaque ville, nous travaillons avec des équipes de ménage et des artisans du secteur. C'est ce qui permet d'intervenir dans l'heure quand il le faut."),
+    ("Un relais réel, pas une promesse",
+     "Notre équipe gère en Île-de-France. Ailleurs, nous ne prenons un logement qu'avec un partenaire local du réseau Label Maison ; sans relais sur place, nous accompagnons à distance et nous le disons."),
     ("Payés uniquement sur ce que vous gagnez",
      "Pas d'abonnement, pas de frais de dossier : une commission sur les revenus encaissés. Un calendrier vide ne nous rapporte rien non plus."),
     ("Courte durée, moyenne durée, ou les deux",
@@ -541,13 +541,15 @@ def page_hub() -> None:
         regions.setdefault(v[3], []).append(v)
     faq_items = [
         ("Dans quelles villes intervenez-vous ?",
-         "Nous couvrons Paris et l'Île-de-France, les grandes métropoles (Lyon, Marseille, Bordeaux, "
-         "Toulouse, Nantes, Lille, Strasbourg…), le littoral et la montagne. Si votre ville n'a pas "
-         "encore sa page, écrivez-nous : nous ouvrons régulièrement de nouveaux secteurs."),
+         "Notre équipe gère des logements à Paris et en Île-de-France. Pour les autres villes — "
+         "métropoles, littoral, montagne — chaque page donne les données officielles locales et "
+         "nous vous mettons en relation avec un partenaire du réseau Label Maison quand il existe. "
+         "Si votre ville n'a pas encore sa page, écrivez-nous."),
         ("Comment gérez-vous à distance ?",
-         "Nous ne gérons jamais uniquement à distance. Sur chaque ville, nous travaillons avec des "
-         "équipes de ménage et des artisans locaux, pilotés par un référent unique côté Label Maison. "
-         "C'est ce qui permet de traiter un incident dans l'heure."),
+         "Nous ne gérons pas à distance : un logement n'est pris en gestion qu'avec un relais sur "
+         "place (notre équipe en Île-de-France, un partenaire local ailleurs). À distance, nous "
+         "faisons ce qui s'y prête : estimation, démarches, préparation de l'annonce, choix et "
+         "suivi du gestionnaire."),
         ("Quel est votre modèle de rémunération ?",
          "Une commission sur les revenus encaissés. Pas d'abonnement, pas de frais d'entrée : nous ne "
          "gagnons que quand votre bien génère du revenu."),

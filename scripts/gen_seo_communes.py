@@ -22,6 +22,8 @@ import json
 import pathlib
 
 import data_communes as D
+import donnees_locales as L
+import variantes_communes as VC
 import seo_common as C
 
 NAV = [("France", "/conciergerie-airbnb-france"), ("Paris", "/conciergerie-airbnb-paris"),
@@ -220,9 +222,67 @@ WHY = [
 ]
 
 
-def var(c, n: int) -> int:
-    """Variante stable par commune (dérivée du code INSEE)."""
-    return sum(ord(x) for x in c.insee) % n
+PRESENCE = [
+    lambda c, v_txt: (
+        f"<strong>Label Maison Conciergerie</strong> est une conciergerie basée en Essonne, qui gère "
+        f"des logements en Île-de-France. À {c.nom}, nous ne faisons pas semblant d'avoir une équipe "
+        f"sur place : nous travaillons avec des <strong>partenaires locaux</strong> du réseau Label "
+        f"Maison lorsqu'ils existent, et nous accompagnons les propriétaires à distance pour tout ce "
+        f"qui ne demande pas d'être là — estimation de revenus fondée sur les locations réelles du "
+        f"secteur, vérification des démarches, préparation de l'annonce, choix et suivi d'un "
+        f"gestionnaire. Si personne ne peut tenir votre bien correctement à {c.nom}, nous vous le disons."),
+    lambda c, v_txt: (
+        f"Soyons clairs : notre équipe est en Île-de-France, pas à {c.nom}. Ce que nous faisons pour "
+        f"un propriétaire de {c.nom}, c'est d'abord <strong>lui dire la vérité sur son bien</strong> : "
+        f"ce qu'il peut rapporter au vu des locations réelles du secteur, ce que la commune exige, ce "
+        f"qu'il faut corriger avant de louer. Ensuite, nous le mettons en relation avec un "
+        f"<strong>partenaire local du réseau Label Maison</strong> quand il y en a un — ménage, "
+        f"accueil, maintenance se font sur place ou ne se font pas — et nous suivons le dossier avec lui. "
+        f"<strong>Label Maison Conciergerie</strong> ne vend pas une présence qu'elle n'a pas."),
+    lambda c, v_txt: (
+        f"<strong>Label Maison Conciergerie</strong> gère des logements en Île-de-France depuis "
+        f"l'Essonne. Pour {c.nom} et ses environs ({v_txt}), notre rôle est celui d'un "
+        f"<strong>conseil et d'un réseau</strong> : estimation gratuite à partir des annonces "
+        f"réellement louées autour de chez vous, lecture des règles de la commune, préparation du "
+        f"logement et de l'annonce, puis gestion confiée à un partenaire local sélectionné lorsqu'il "
+        f"existe. Nous préférons vous orienter vers quelqu'un de sérieux sur place que de promettre "
+        f"une équipe que nous n'avons pas à {c.nom}."),
+]
+HERO_RESEAU = [
+    lambda c: (f"Ce que votre logement peut rapporter à {c.nom}, les règles locales à respecter, et la "
+               f"bonne façon de le faire gérer : une estimation gratuite, des données officielles, et "
+               f"un partenaire local du réseau Label Maison quand il existe."),
+    lambda c: (f"Estimation gratuite de vos revenus à {c.nom}, règles de la commune vérifiées, et un "
+               f"relais sur place par le réseau Label Maison quand il existe. Sans promesse que nous "
+               f"ne pouvons pas tenir."),
+    lambda c: (f"Avant de louer à {c.nom} : combien, sous quelles règles, avec qui. Nous répondons aux "
+               f"trois questions avec des données officielles et notre réseau de partenaires locaux."),
+]
+FAQ_RESEAU = [
+    lambda c, v_txt, dept_url: (
+        f"Nous ne sommes pas installés à {c.nom} : notre équipe est en Île-de-France. Nous y "
+        f"intervenons par un partenaire local du réseau Label Maison quand il existe ; sinon, nous "
+        f"vous accompagnons à distance (estimation, démarches, préparation de l'annonce, choix d'un "
+        f"gestionnaire) et nous vous le disons clairement. Même principe pour {v_txt} et le reste du "
+        f"département : voir <a href=\"{dept_url}\">conciergerie en {c.dept_nom}</a>."),
+    lambda c, v_txt, dept_url: (
+        f"Pas avec notre propre équipe, qui travaille en Île-de-France. À {c.nom} comme à {v_txt}, "
+        f"la gestion sur place passe par un partenaire du réseau Label Maison, et nous gardons le "
+        f"conseil et le suivi. S'il n'y a pas encore de partenaire, nous vous aidons à distance et "
+        f"nous vous orientons. La page <a href=\"{dept_url}\">conciergerie en {c.dept_nom}</a> "
+        f"résume la situation du département."),
+    lambda c, v_txt, dept_url: (
+        f"Oui pour le conseil, l'estimation et les démarches, qui se font à distance ; sur place, "
+        f"c'est un partenaire local du réseau Label Maison qui intervient à {c.nom} et dans les "
+        f"communes voisines ({v_txt}) lorsqu'il existe. Nous ne cachons pas que notre équipe est en "
+        f"Île-de-France : voir aussi <a href=\"{dept_url}\">conciergerie en {c.dept_nom}</a>."),
+]
+
+
+def var(c, n: int, sel: int = 0) -> int:
+    """Variante stable par commune (dérivée du code INSEE). `sel` décorrèle les blocs :
+    deux communes qui partagent la variante d'un bloc n'ont pas forcément celle d'un autre."""
+    return sum(ord(x) * (i + 3 + sel * 7) for i, x in enumerate(c.insee)) % n
 
 
 def slug_dept(nom: str, pris: set) -> str:
@@ -233,6 +293,9 @@ def slug_dept(nom: str, pris: set) -> str:
 def slug_region(nom: str, pris: set) -> str:
     s = "conciergerie-" + C.slugify(nom)
     return s if s not in pris else "conciergerie-region-" + C.slugify(nom)
+
+
+COUVERTES: dict = {}  # rempli par main() : slug -> page curée existante
 
 
 def url_commune(c, couvertes: dict) -> str:
@@ -253,36 +316,25 @@ def page_commune(c, dept_url: str, region_url: str, couvertes: dict) -> str:
     voisines = c.voisines
     v_txt = ", ".join(x.nom for x in voisines[:4]) if voisines else c.dept_nom
     photo = C.photo(sum(ord(x) for x in c.insee))
+    # Présence réelle : l'équipe est en Île-de-France ; ailleurs, on passe par un
+    # partenaire local du réseau Label Maison, ou on accompagne à distance. On le dit.
+    direct = L.presence_idf(c.dept)
     hab = f"{c.pop:,}".replace(",", "\u202f")  # espace fine insécable
     trail = [("Accueil", "/"), (c.region, region_url), (c.dept_nom, dept_url), (c.nom, path)]
 
-    faq_items = [
-        (f"Que fait exactement une conciergerie à {c.nom} ?",
-         f"Deux métiers complémentaires. Pour un propriétaire qui loue : annonce, photos, "
-         f"tarification, accueil des voyageurs, ménage, linge, maintenance et suivi des revenus. "
-         f"Pour un propriétaire qui ne loue pas : entretien et surveillance du bien, coordination "
-         f"des prestataires et préparation avant chaque séjour."),
-        (f"Combien coûte votre conciergerie à {c.nom} ?",
-         "En location, une commission sur les revenus réellement encaissés — sans abonnement ni "
-         "frais d'entrée. En gestion de résidence secondaire, un forfait selon la fréquence des "
-         "visites et l'étendue des prestations. Tout est chiffré à l'avance."),
-        (f"Quelle rentabilité peut-on espérer à {c.nom} ?",
-         f"Cela dépend de l'adresse exacte, de la surface, de l'équipement et de la période. Nous "
-         f"ne donnons jamais de rendement au hasard : l'estimation est établie à partir de "
-         f"logements comparables réellement loués dans le secteur de {c.nom}, charges déduites."),
+    faq_items = VC.faq_generique(c.nom, var(c, 3, 4)) + [
         (f"Quelles démarches dois-je faire à {c.nom} ?",
          f"Selon la commune, la location de meublé de tourisme peut être soumise à une déclaration "
          f"en mairie avec numéro d'enregistrement à afficher sur l'annonce. La location d'une "
          f"résidence principale est plafonnée à 120 nuits par an, et la taxe de séjour est due. "
          f"Nous vérifions ce qui s'applique à {c.nom} avant toute mise en ligne."),
         (f"Intervenez-vous autour de {c.nom} ?",
-         f"Oui : nous couvrons {c.nom} et les communes voisines — {v_txt} — ainsi que l'ensemble "
-         f"du département ({c.dept_nom}). Voir notre page "
-         f"<a href=\"{dept_url}\">conciergerie en {c.dept_nom}</a>."),
-        ("Puis-je continuer à utiliser mon logement ?",
-         "Oui, autant que vous le souhaitez. Vous bloquez vos dates dans le calendrier ; nous ne "
-         "gérons que les périodes que vous ouvrez à la location."),
+         (f"Oui : nous couvrons {c.nom} et les communes voisines — {v_txt} — ainsi que l'ensemble "
+          f"du département ({c.dept_nom}). Voir notre page "
+          f"<a href=\"{dept_url}\">conciergerie en {c.dept_nom}</a>.") if direct else
+         FAQ_RESEAU[var(c, 3, 5)](c, v_txt, dept_url)),
     ]
+    faq_items[4:4] = L.faq(c.nom, c.insee)
 
     parts = [
         C.head(titre, desc, path,
@@ -295,31 +347,36 @@ def page_commune(c, dept_url: str, region_url: str, couvertes: dict) -> str:
                               "Accueil des voyageurs", "Ménage et linge hôtelier",
                               "Entretien et gardiennage", "Coordination d'artisans"]),
                 C.ld_faq(faq_items), C.ld_breadcrumb(trail)],
-               image=f"{C.SITE}/images/{photo[0]}"),
+               image=f"{C.SITE}/images/{photo[0]}", garder_cp=c.slug != C.slugify(c.nom)),
         C.header(NAV + [(c.dept_nom, dept_url)]),
         C.crumb(trail),
         C.hero(f"📍 {c.nom} · {c.cp} · {c.dept_nom}",
                f"Conciergerie à <span class=\"font-serif-italic\">{c.nom}</span>",
-               f"Location courte et moyenne durée, entretien de résidence secondaire, accueil et "
-               f"intendance : nous prenons votre bien en charge à {c.nom} et vous rendons votre temps.",
+               (f"Location courte et moyenne durée, entretien de résidence secondaire, accueil et "
+                f"intendance : nous prenons votre bien en charge à {c.nom} et vous rendons votre temps.")
+               if direct else
+               HERO_RESEAU[var(c, 3, 6)](c),
                photo[0], f"Logement géré par Label Maison Conciergerie à {c.nom}",
                ["Gestion <b>clé en main</b>", "Commission au <b>résultat</b>",
-                "Ménage <b>hôtelier</b>", "Sans <b>engagement</b>"]),
+                "Ménage <b>hôtelier</b>", "Sans <b>engagement</b>"] if direct else
+               ["Estimation <b>gratuite</b>", "Données <b>officielles</b>",
+                "Réseau de <b>partenaires locaux</b>", "Sans <b>engagement</b>"]),
         C.texte([
             f"<strong>{c.nom}</strong> compte environ <strong>{hab}</strong> habitants "
             f"({c.dept_nom}, {c.region}), à quelque {c.km_paris} km de Paris. "
             f"Que votre logement soit un investissement locatif, une résidence secondaire ou un "
             f"bien hérité que vous ne savez pas quoi faire, il coûte de l'argent chaque mois tant "
             f"qu'il ne travaille pas — et il se dégrade quand personne ne le surveille.",
-            f"<strong>Label Maison Conciergerie</strong> prend en charge les deux situations à "
-            f"{c.nom} : la <strong>gestion locative</strong> complète pour ceux qui veulent des "
-            f"revenus, et la <strong>gestion de résidence</strong> pour ceux qui veulent seulement "
-            f"retrouver leur maison prête et en bon état. Nous intervenons également sur les "
-            f"communes voisines : {v_txt}.",
+            (f"<strong>Label Maison Conciergerie</strong> prend en charge les deux situations à "
+             f"{c.nom} : la <strong>gestion locative</strong> complète pour ceux qui veulent des "
+             f"revenus, et la <strong>gestion de résidence</strong> pour ceux qui veulent seulement "
+             f"retrouver leur maison prête et en bon état. Nous intervenons également sur les "
+             f"communes voisines : {v_txt}.") if direct else
+            PRESENCE[var(c, 3, 7)](c, v_txt),
         ], pad=True),
         C.cartes(f"Notre gestion locative à {c.nom}",
                  "Vous confiez les clés. Vous suivez vos revenus. C'est tout.",
-                 SERVICES_SETS[v]),
+                 SERVICES_SETS[var(c, 3, 8)]),
         C.texte([
             SAISON[p][v],
             f"À {c.nom}, nous commençons toujours par le même travail : rendre le bien lisible en "
@@ -327,39 +384,31 @@ def page_commune(c, dept_url: str, region_url: str, couvertes: dict) -> str:
             f"prix. Dans cet ordre. Baisser le tarif d'une annonce mal présentée ne remplit pas un "
             f"calendrier : cela réduit simplement la marge.",
         ], titre=f"Le marché de la location courte durée à {c.nom}"),
+        L.bloc(c.nom, c.insee),
         C.galerie_ville(c.slug, c.nom,
                         f"Les secteurs sur lesquels nous positionnons les biens de {c.nom}, et ce "
                         f"qu'ils changent concrètement pour un calendrier de réservations."),
         C.cartes(f"Conciergerie privée et gestion de résidence à {c.nom}",
                  "Vous ne souhaitez pas louer ? Nous veillons quand même sur votre bien.",
-                 CONCIERGERIE_PRIVEE),
-        C.texte([
+                 VC.PRIVEE[var(c, 3, 1)]),
+        C.texte(([] if L.pour(c.insee) else [
             f"La location meublée de tourisme est encadrée, et les règles varient d'une commune à "
             f"l'autre. À {c.nom}, une déclaration en mairie avec numéro d'enregistrement peut être "
             f"exigée ; la location d'une résidence principale reste plafonnée à 120 nuits par an, "
-            f"et la taxe de séjour est due dans tous les cas.",
+            f"et la taxe de séjour est due dans tous les cas."]) + [
             f"<strong>Quand la courte durée n'est pas possible</strong>, le bail mobilité prend le "
             f"relais : de 1 à 10 mois, sans dépôt de garantie, pour les étudiants, stagiaires et "
             f"salariés en mission. Aucun plafond de nuitées, moins de rotations, et un revenu "
             f"supérieur à celui d'une location nue classique.",
             "<em>Le cadre fiscal des meublés de tourisme a évolué avec la loi du 19 novembre 2024. "
             "Nous signalons les points à vérifier ; votre expert-comptable tranche.</em>",
-        ], titre=f"Réglementation et démarches à {c.nom}"),
-        C.etapes(f"Comment nous démarrons à {c.nom}", [
-            ("1. Étude de votre bien",
-             "Visite sur place ou à distance, analyse des logements réellement loués autour de "
-             "vous, estimation de revenus argumentée — gratuite et sans engagement."),
-            ("2. Préparation",
-             "Ajustements d'aménagement, équipements manquants, photos professionnelles."),
-            ("3. Mise en marché",
-             "Annonce rédigée pour la recherche, diffusion multi-plateformes, prix et durées "
-             "minimales paramétrés."),
-            ("4. Exploitation",
-             "Voyageurs, ménage, maintenance, avis, reporting mensuel : vous n'avez plus rien à faire."),
-        ]),
-        C.cartes(f"Pourquoi les propriétaires de {c.nom} nous choisissent", "", WHY, cols="g2"),
+        ], titre=(f"Bail mobilité et fiscalité à {c.nom}" if L.pour(c.insee)
+                  else f"Réglementation et démarches à {c.nom}")),
+        C.etapes(f"Comment nous démarrons à {c.nom}", VC.ETAPES[var(c, 3, 2)]),
+        C.cartes(f"Pourquoi les propriétaires de {c.nom} nous choisissent", "",
+                 VC.POURQUOI[var(c, 3, 3)], cols="g2"),
         C.zones(f"Notre conciergerie autour de {c.nom}",
-                "Nous intervenons également dans les communes voisines :",
+                "Nos pages pour les communes voisines :",
                 [(x.nom, url_commune(x, couvertes)) for x in voisines]
                 + [(f"Tout le département : {c.dept_nom}", dept_url),
                    (c.region, region_url),
@@ -369,7 +418,11 @@ def page_commune(c, dept_url: str, region_url: str, couvertes: dict) -> str:
                        "revenus</strong></a>, découvrez "
                        "<a href=\"/proprietaires\">notre offre de gestion</a> ou le "
                        "<a href=\"/cerclelabelmaison\">Cercle Label Maison</a> si vous souhaitez "
-                       "nous recommander un bien.")),
+                       "nous recommander un bien."
+                       + ("" if direct else
+                          f" Vous êtes conciergerie, femme ou homme de ménage, artisan à {c.nom} ? "
+                          f"<a href=\"#contact-form\">Rejoignez le réseau Label Maison</a> : nous "
+                          f"vous confions les propriétaires qui nous écrivent depuis votre secteur."))),
         C.faq(f"Questions fréquentes — conciergerie à {c.nom}", faq_items),
         C.formulaire(f"Estimation gratuite pour votre bien à {c.nom}",
                      "Surface, quartier, disponibilité : trois informations suffisent pour recevoir "
@@ -407,8 +460,10 @@ def page_dept(code: str, nom: str, communes: list, slug: str, region_url: str,
     trail = [("Accueil", "/"), (region, region_url), (nom, path)]
     faq_items = [
         (f"Dans quelles communes intervenez-vous {dl} ?",
-         f"Nous couvrons les principales communes du département — {', '.join(x.nom for x in top[:6])} "
-         f"— et leurs environs. Chaque commune dispose de sa page dédiée."),
+         f"Les principales communes du département — {', '.join(x.nom for x in top[:6])} — ont "
+         f"chacune leur page, avec les données officielles locales (taxe de séjour, hébergement, "
+         f"règles). Notre équipe est en Île-de-France ; ailleurs, nous passons par un partenaire "
+         f"local du réseau Label Maison quand il existe, et nous accompagnons à distance sinon."),
         ("Quel est votre modèle de rémunération ?",
          "Une commission sur les revenus encaissés en gestion locative, un forfait pour l'entretien "
          "et la surveillance d'une résidence secondaire. Sans abonnement ni frais d'entrée."),
@@ -419,8 +474,8 @@ def page_dept(code: str, nom: str, communes: list, slug: str, region_url: str,
          "Systématiquement, et elle est gratuite : nous étudions des biens comparables réellement "
          "loués autour du vôtre et nous vous remettons une fourchette argumentée."),
         ("Et si ma commune n'apparaît pas ?",
-         "Écrivez-nous : nous couvrons aussi les communes plus petites du département, elles n'ont "
-         "simplement pas toutes une page dédiée."),
+         "Écrivez-nous : nous étudions votre bien de la même façon, et nous vous disons honnêtement "
+         "si un partenaire peut le gérer sur place ou s'il vaut mieux un accompagnement à distance."),
     ]
     photo = C.photo(len(nom) + len(communes))
     parts = [
@@ -435,7 +490,7 @@ def page_dept(code: str, nom: str, communes: list, slug: str, region_url: str,
                  "itemListElement": [{"@type": "ListItem", "position": i + 1, "name": x.nom,
                                       "url": f"{C.SITE}/conciergerie-{x.slug}"}
                                      for i, x in enumerate(top)]}],
-               image=f"{C.SITE}/images/{photo[0]}"),
+               image=f"{C.SITE}/images/{photo[0]}", garder_cp=len(code) == 3),
         C.header(NAV),
         C.crumb(trail),
         C.hero(f"📍 {nom} · {code}",
@@ -458,13 +513,14 @@ def page_dept(code: str, nom: str, communes: list, slug: str, region_url: str,
         ], pad=True),
         C.cartes("Ce que nous prenons en charge",
                  "Le même standard partout, exécuté par des équipes du secteur.", SERVICES_SETS[0]),
+        L.bloc_dept(nom, communes, dl, lambda x: url_commune(x, COUVERTES)),
         C.zones(f"Nos communes {dl}",
                 "Une page par commune, avec les démarches et la saisonnalité locales.",
                 [(f"{x.nom} ({x.cp})", f"/conciergerie-{x.slug}") for x in top],
                 extra=(f"Voir aussi la <a href=\"{region_url}\"><strong>conciergerie "
                        f"{rl}</strong></a> et notre "
                        f"<a href=\"/conciergerie-airbnb-france\">couverture nationale</a>.")),
-        C.cartes("Pourquoi Label Maison", "", WHY, cols="g2"),
+        C.cartes("Pourquoi Label Maison", "", VC.POURQUOI[sum(map(ord, nom)) % 3], cols="g2"),
         C.faq(f"Questions fréquentes — conciergerie {dl}", faq_items),
         C.formulaire(f"Estimation gratuite {dl}",
                      "Commune, surface, disponibilité : nous revenons vers vous avec une estimation "
@@ -491,16 +547,20 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
     top = sorted(communes, key=lambda x: -x.pop)[:24]
     rl = D.loc_region(nom)
     titre = f"Conciergerie {rl} — gestion locative dans toute la région"
-    desc = (f"Conciergerie {rl} : gestion locative courte et moyenne durée, accueil des "
-            f"voyageurs, ménage et entretien de résidence secondaire dans {len(depts)} départements "
-            f"et {len(communes)} communes.")
+    # Formulée autrement que la page département du même nom (Guadeloupe, Guyane,
+    # Martinique, Nouvelle-Calédonie, Polynésie) pour ne pas dupliquer la description.
+    desc = (f"Conciergerie {rl}, toute la région : gestion locative courte et moyenne durée "
+            f"dans {len(depts)} département{'s' if len(depts) > 1 else ''} et {len(communes)} "
+            f"communes. Accueil des voyageurs, ménage hôtelier, entretien.")
     trail = [("Accueil", "/"), (nom, path)]
     faq_items = [
         (f"Quels départements couvrez-vous {rl} ?",
          f"{', '.join(sorted(depts))} — avec une page dédiée par département et par commune."),
         ("Comment gérez-vous à distance ?",
-         "Nous ne gérons jamais uniquement à distance : sur chaque secteur, nous travaillons avec "
-         "des équipes de ménage et des artisans locaux, pilotés par un référent unique."),
+         "Nous ne gérons un logement qu'avec un relais sur place : notre équipe en Île-de-France, "
+         "un partenaire local du réseau Label Maison ailleurs. Quand ce relais n'existe pas encore, "
+         "nous accompagnons le propriétaire à distance (estimation, démarches, cahier des charges) "
+         "sans prétendre faire le ménage depuis l'Essonne."),
         ("Quel est votre modèle de rémunération ?",
          "Commission sur les revenus encaissés pour la location, forfait pour l'entretien d'une "
          "résidence secondaire. Sans abonnement."),
@@ -539,6 +599,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
             "équipes de ménage et artisans sur place. Vous gardez un interlocuteur unique.",
         ], pad=True),
         C.cartes("Ce que nous prenons en charge", "", SERVICES_SETS[1]),
+        L.bloc_region(nom, depts, communes, dept_urls),
         C.zones(f"Les départements de {nom}", "Choisissez votre département :",
                 [(d, dept_urls[d]) for d in sorted(depts)],
                 extra=("Voir aussi notre <a href=\"/conciergerie-airbnb-france\"><strong>"
@@ -547,7 +608,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
                 [(x.nom, f"/conciergerie-{x.slug}") for x in top],
                 extra=("Votre commune n'apparaît pas ? Écrivez-nous : nous couvrons aussi les "
                        "communes plus petites.")),
-        C.cartes("Pourquoi Label Maison", "", WHY, cols="g2"),
+        C.cartes("Pourquoi Label Maison", "", VC.POURQUOI[sum(map(ord, nom)) % 3], cols="g2"),
         C.faq(f"Questions fréquentes — conciergerie {rl}", faq_items),
         C.formulaire(f"Estimation gratuite {rl}",
                      "Commune, surface, disponibilité : nous revenons avec une estimation locale.",
@@ -570,6 +631,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
 def main() -> dict:
     communes, _ = D.selection()
     couvertes = D.deja_couvertes()
+    COUVERTES.update(couvertes)
 
     # Slugs de départements et de régions (calculés avant génération pour l'ancrage)
     par_dept, par_region = {}, {}

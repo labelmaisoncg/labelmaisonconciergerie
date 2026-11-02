@@ -48,11 +48,18 @@ async function submitContactForm(
     const res = await fetch('/api/contact', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type, ...data }),
+      // Page d'origine : visible dans la fiche CRM et dans la mesure d'audience.
+      body: JSON.stringify({ type, page: window.location.pathname, ...data }),
     });
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json.ok) {
       return { ok: false, error: json.error || `Erreur ${res.status}` };
+    }
+    // Mesure d'audience (public/js/mesure.js) : une demande envoyée = une conversion.
+    try {
+      window.dispatchEvent(new CustomEvent('lm:lead', { detail: { type } }));
+    } catch {
+      /* ignoré */
     }
     return { ok: true };
   } catch {
@@ -67,6 +74,61 @@ async function submitContactForm(
 //     (dépose-le dans public/images/real/, ex. '/images/real/hero-appartement.jpg').
 //     Tant qu'il vaut null, le hero affiche un canvas ivoire de marque (aucun stock).
 const HERO_IMAGE: string | null = null;
+
+// -----------------------------------------------------------------------------
+// Vidéo chargée à la demande : l'affiche (poster) s'affiche tout de suite, le
+// fichier mp4 n'est demandé que lorsque la vidéo approche de l'écran. L'accueil
+// pesait 8,4 Mo au chargement mobile (7 vidéos en autoplay) ; ici seule
+// l'affiche compte pour le premier rendu.
+// -----------------------------------------------------------------------------
+function VideoDifferee({
+  src,
+  poster,
+  className,
+  marge = '300px',
+}: {
+  src: string;
+  poster: string;
+  className?: string;
+  marge?: string;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (typeof IntersectionObserver === 'undefined') {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: marge },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [marge]);
+  useEffect(() => {
+    if (visible) ref.current?.play().catch(() => {});
+  }, [visible]);
+  return (
+    <video
+      ref={ref}
+      src={visible ? src : undefined}
+      poster={poster}
+      muted
+      loop
+      playsInline
+      preload="none"
+      className={className}
+    />
+  );
+}
 
 function HeroSection() {
   const hasPhoto = Boolean(HERO_IMAGE);
@@ -115,14 +177,14 @@ function HeroSection() {
           }`}
         >
           <span className={`h-px w-8 ${hasPhoto ? 'bg-white/50' : 'bg-[#a8813a]'}`} />
-          Paris · Dubaï · Marrakech
+          Paris · Essonne · Île-de-France
           <span className={`h-px w-8 ${hasPhoto ? 'bg-white/50' : 'bg-[#a8813a]'}`} />
         </span>
 
         <h1 className="text-[38px] md:text-[64px] leading-[1.04] font-bold tracking-tight max-w-[16ch]">
-          Votre patrimoine,{' '}
+          Conciergerie Airbnb à Paris et en Essonne :{' '}
           <span className={`font-serif-italic font-bold ${hasPhoto ? 'text-[#E7D4A6]' : 'text-[#A97C30]'}`}>
-            géré comme une maison de confiance.
+            votre bien, géré comme une maison de confiance.
           </span>
         </h1>
 
@@ -635,14 +697,10 @@ function LifestyleShowcase() {
     <section className="bg-[#FBF9F4]">
       {/* Bande vidéo cinématique */}
       <div className="relative w-full h-[58vh] md:h-[76vh] overflow-hidden">
-        <video
+        <VideoDifferee
           className="absolute inset-0 w-full h-full object-cover"
           src="/videos/sejour-mer.mp4"
           poster="/images/real/sejour-mer-poster.jpg"
-          autoPlay
-          muted
-          loop
-          playsInline
         />
         <div
           className="absolute inset-0"
@@ -691,14 +749,9 @@ function LifestyleShowcase() {
               key={i}
               className="relative shrink-0 snap-start w-[210px] h-[280px] md:w-[260px] md:h-[340px] rounded-2xl overflow-hidden bg-neutral-200"
             >
-              <video
+              <VideoDifferee
                 src={p.src}
                 poster={p.poster}
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
                 className="absolute inset-0 w-full h-full object-cover"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
@@ -2243,10 +2296,10 @@ export function Home() {
   return (
     <div className="bg-[#FBF9F4] text-[#2C2418]">
       <Helmet>
-        <title>Label Maison Conciergerie · Conciergerie privée haut de gamme à Paris</title>
+        <title>Conciergerie Airbnb Paris &amp; Essonne · Label Maison Conciergerie</title>
         <meta
           name="description"
-          content="Conciergerie privée haut de gamme à Paris : gestion de biens immobiliers, billetterie, logement, transport, activités VIP et personal shopping. Services sur mesure pour clientèle d'exception."
+          content="Label Maison gère votre location courte durée de A à Z à Paris, en Essonne et en Île-de-France : annonce, voyageurs, ménage hôtelier, revenus. Estimation gratuite."
         />
       </Helmet>
 

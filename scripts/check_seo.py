@@ -18,7 +18,9 @@ import seo_common as C
 # Routes servies par l'application React (pas de fichier .html)
 SPA = {"/", "/proprietaires", "/logement", "/transport", "/activites", "/shopping",
        "/billetterie", "/cerclelabelmaison", "/mentions-legales",
-       "/politique-de-confidentialite"}
+       "/politique-de-confidentialite", "/studio", "/studio/conditions",
+       # module linge (routes servies par scripts/build-linge.mjs)
+       "/linge/connexion", "/linge/deconnexion"}
 
 
 def cibles_existantes() -> set:
@@ -47,6 +49,8 @@ def main() -> int:
     for p in pages:
         s = p.read_text(encoding="utf-8")
         rel = str(p.relative_to(C.OUT))
+        if rel.startswith("google") and rel.endswith(".html"):
+            continue  # fichier de validation Search Console, pas une page
 
         for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', s, re.S):
             try:
