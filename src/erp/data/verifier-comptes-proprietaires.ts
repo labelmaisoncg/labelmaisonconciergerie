@@ -43,6 +43,127 @@ import { b64url, deB64url } from './web-push';
 
 let ok = 0;
 let ko = 0;
+
+/**
+ * Chaînes (', ", `) et textes JSX d'un fichier source, sans le code des ${…}
+ * ni les commentaires : ce qui peut s'afficher ou s'envoyer.
+ */
+export function textesDuSource(source: string): string[] {
+  const textes: string[] = [];
+  const ajouter = (t: string) => {
+    if (/[A-Za-zÀ-ÿ]/.test(t)) textes.push(t);
+  };
+  type Mode = 'code' | 'str1' | 'str2' | 'tpl' | 'ligne' | 'bloc';
+  let mode: Mode = 'code';
+  // Profondeur d'accolades de chaque ${…} ouvert (gabarits imbriqués).
+  const expressions: number[] = [];
+  let tampon = '';
+  let jsx: string | null = null;
+  let i = 0;
+  while (i < source.length) {
+    const c = source[i];
+    const d = source[i + 1];
+    if (mode === 'ligne') {
+      if (c === '\n') mode = 'code';
+      i++;
+      continue;
+    }
+    if (mode === 'bloc') {
+      if (c === '*' && d === '/') {
+        mode = 'code';
+        i += 2;
+      } else i++;
+      continue;
+    }
+    if (mode === 'str1' || mode === 'str2') {
+      const fin = mode === 'str1' ? "'" : '"';
+      if (c === '\\') {
+        tampon += d ?? '';
+        i += 2;
+        continue;
+      }
+      if (c === fin || c === '\n') {
+        ajouter(tampon);
+        tampon = '';
+        mode = 'code';
+        i++;
+        continue;
+      }
+      tampon += c;
+      i++;
+      continue;
+    }
+    if (mode === 'tpl') {
+      if (c === '\\') {
+        tampon += d ?? '';
+        i += 2;
+        continue;
+      }
+      if (c === '`') {
+        ajouter(tampon);
+        tampon = '';
+        mode = 'code';
+        i++;
+        continue;
+      }
+      if (c === '$' && d === '{') {
+        ajouter(tampon);
+        tampon = '';
+        expressions.push(0);
+        mode = 'code';
+        i += 2;
+        continue;
+      }
+      tampon += c;
+      i++;
+      continue;
+    }
+    // Code.
+    if (c === '/' && d === '/') {
+      mode = 'ligne';
+      i += 2;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      mode = 'bloc';
+      i += 2;
+      continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {
+      mode = c === "'" ? 'str1' : c === '"' ? 'str2' : 'tpl';
+      jsx = null;
+      i++;
+      continue;
+    }
+    if (expressions.length) {
+      if (c === '{') expressions[expressions.length - 1]++;
+      else if (c === '}') {
+        if (expressions[expressions.length - 1] === 0) {
+          expressions.pop();
+          mode = 'tpl';
+          i++;
+          continue;
+        }
+        expressions[expressions.length - 1]--;
+      }
+    }
+    // Texte JSX : entre « > » et « < », sans expression ni code.
+    if (jsx !== null) {
+      if (c === '<') {
+        if (!/[;()=]/.test(jsx)) ajouter(jsx);
+        jsx = null;
+      } else if (c === '{') jsx = null;
+      else jsx += c;
+    }
+    if (c === '>') jsx = '';
+    i++;
+  }
+  return textes;
+}
+
+/** Textes où « ? » ou « : » suit un espace simple au lieu d'un espace insécable (typographie française) ; un morceau de gabarit qui commence par « : » compte aussi. */
+export const textesAvecEspaceSimple = (source: string): string[] => textesDuSource(source).filter((t) => /(^|\S) [?:]/.test(t));
+
 function verifier(condition: boolean, libelle: string) {
   if (condition) ok++;
   else {
@@ -172,6 +293,23 @@ async function main() {
   verifier(Object.keys(vue).every((k) => attendues.includes(k)), `vue : aucune clé nouvelle (${cles})`);
   const texte = JSON.stringify(vue);
   verifier(!/uid|compteActif|activeLe|empreinte|"liens"|d3a0c0de/.test(texte), 'vue : rien du compte ni de l’accès (uid, code, liens)');
+
+  /* typographie : espace insécable avant « ? » et « : » dans les textes des fichiers des comptes */
+  verifier(textesAvecEspaceSimple("const a = 'Bonjour : oui'; const b = x ? y : z; <p>Rien reçu ? Non</p>").length === 2, 'typographie : les chaînes et les textes JSX sont lus, pas le code');
+  verifier(textesAvecEspaceSimple("const a = 'Bonjour\u00a0: oui'; // pas : ici\n/* ni : là */ const b = `x ${c ? 'd' : `e ${f}`} : y`").length === 1, 'typographie : commentaires ignorés, gabarits imbriqués lus');
+  {
+    const fs = (await import('node:fs' as string)) as { readFileSync: (chemin: string, encodage: string) => string; existsSync: (chemin: string) => boolean };
+    const racine = `${(globalThis as { process?: { cwd: () => string } }).process?.cwd() ?? '.'}/`;
+    const fichiers = ['src/app/pages/EspaceProprietaire.tsx', 'src/erp/data/acces-externe.ts', 'src/erp/modules/logements/_composants/EspaceProprietaireGerant.tsx', 'api/_proprietaire.ts'];
+    for (const f of fichiers) {
+      if (!fs.existsSync(racine + f)) {
+        verifier(false, `typographie : ${f} introuvable (lancer depuis la racine du dépôt)`);
+        continue;
+      }
+      const fautes = textesAvecEspaceSimple(fs.readFileSync(racine + f, 'utf8'));
+      verifier(fautes.length === 0, `typographie (${f}) : espace insécable avant « ? » et « : » ; à corriger : ${fautes.map((t) => JSON.stringify(t.trim().slice(0, 70))).join(' ; ')}`);
+    }
+  }
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;

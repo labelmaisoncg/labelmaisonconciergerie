@@ -177,8 +177,8 @@ export function lireRetourLienExterne(hash: unknown): RetourLienExterne {
     return {
       nature: 'erreur',
       message: expire
-        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? », ou demandez à votre conciergerie de renvoyer l’invitation.'
-        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? », ou demandez à votre conciergerie de renvoyer l’invitation.',
+        ? 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? », ou demandez à votre conciergerie de renvoyer l’invitation.'
+        : 'Ce lien n’est pas valide. Demandez un nouveau lien avec « Mot de passe oublié ? », ou demandez à votre conciergerie de renvoyer l’invitation.',
     };
   }
   if (p.get('access_token')) return p.get('type') === 'recovery' ? { nature: 'recuperation' } : { nature: 'confirmation' };
@@ -241,9 +241,9 @@ export function forceMotDePasse(motDePasse: string): { niveau: 0 | 1 | 2 | 3; li
 
 /** Ce qui ne va pas dans un mot de passe choisi (undefined : acceptable). */
 export function motDePasseRefuse(motDePasse: string, confirmation: string): string | undefined {
-  if (motDePasse.length < MOT_DE_PASSE_MIN) return `Mot de passe trop court : ${MOT_DE_PASSE_MIN} caractères au moins.`;
-  if (motDePasse.length > MOT_DE_PASSE_MAX) return `Mot de passe trop long : ${MOT_DE_PASSE_MAX} caractères au plus.`;
-  if (forceMotDePasse(motDePasse).niveau < 2) return 'Mot de passe trop simple : mélangez lettres, chiffres et signes, ou allongez-le.';
+  if (motDePasse.length < MOT_DE_PASSE_MIN) return `Mot de passe trop court : ${MOT_DE_PASSE_MIN} caractères au moins.`;
+  if (motDePasse.length > MOT_DE_PASSE_MAX) return `Mot de passe trop long : ${MOT_DE_PASSE_MAX} caractères au plus.`;
+  if (forceMotDePasse(motDePasse).niveau < 2) return 'Mot de passe trop simple : mélangez lettres, chiffres et signes, ou allongez-le.';
   if (motDePasse !== confirmation) return 'Les deux mots de passe sont différents.';
   return undefined;
 }
@@ -309,14 +309,14 @@ export function accesDuCompte<T extends AccesExterne>(acces: readonly T[], uid: 
   return { ok: false, raison: 'inconnu' };
 }
 
-/** Phrases du serveur pour les comptes (les mêmes quoi qu'il manque, sauf ce que la personne doit faire). */
-export const MESSAGE_SESSION_REFUSEE = 'Connexion refusée : reconnectez-vous avec votre adresse e-mail et votre mot de passe.';
-export const MESSAGE_NON_CONFIRME = 'Confirmez d’abord votre adresse e-mail : ouvrez le lien reçu après la création de votre compte.';
+/** Phrases du serveur pour les comptes (les mêmes quoi qu'il manque, sauf ce que la personne doit faire) ; espace insécable avant « ? » et « : ». */
+export const MESSAGE_SESSION_REFUSEE = 'Connexion refusée : reconnectez-vous avec votre adresse e-mail et votre mot de passe.';
+export const MESSAGE_NON_CONFIRME = 'Confirmez d’abord votre adresse e-mail : ouvrez le lien reçu après la création de votre compte.';
 export const MESSAGE_INVITATION_PERIMEE =
-  'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé, expiré ou pour une autre adresse) : demandez à votre conciergerie de le renvoyer.';
+  'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé, expiré ou pour une autre adresse) : demandez à votre conciergerie de le renvoyer.';
 export const MESSAGES_ENTREE: Record<RefusEntree, string> = {
-  inconnu: 'Ce compte n’a pas accès à un espace propriétaire. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil, puis connectez-vous.',
-  invite: 'Votre invitation vous attend : ouvrez son lien sur cet appareil, puis connectez-vous.',
+  inconnu: 'Ce compte n’a pas accès à un espace propriétaire. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil, puis connectez-vous.',
+  invite: 'Votre invitation vous attend : ouvrez son lien sur cet appareil, puis connectez-vous.',
   retire: ACCES_RETIRE,
 };
 

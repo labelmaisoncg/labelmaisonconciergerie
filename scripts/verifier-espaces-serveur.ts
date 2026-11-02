@@ -1421,7 +1421,7 @@ async function principal() {
     const PIRATE = 'https://labelmaisonconciergerie-pirate.vercel.app';
     const APERCU = 'https://labelmaisonconciergerie-apercu-1.vercel.app';
     const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
-    const lienDuMail = (m?: { text: string }) => /(?:Ouvrir mon espace|Créer mon mot de passe) : (\S+)/.exec(m?.text ?? '')?.[1] ?? '';
+    const lienDuMail = (m?: { text: string }) => /(?:Ouvrir mon espace|Créer mon mot de passe)[ \u00a0]: (\S+)/.exec(m?.text ?? '')?.[1] ?? '';
     const depuis = (origin: string, ip: string) => ({ origin, 'x-forwarded-for': ip });
 
     // B1 : origines acceptées, site des liens.
@@ -1632,7 +1632,7 @@ async function principal() {
       verifier(res.statut === 401, `${genre} : l’ancienne session ne revient pas après la nouvelle invitation`, res.statut);
 
       // Accès retiré par le gérant : la personne le lit tel quel (pas « session expirée »).
-      const lienNouveau = /(?:Ouvrir mon espace|Créer mon mot de passe) : (\S+)/.exec(monde.emails[0]?.text ?? '')?.[1] ?? '';
+      const lienNouveau = /(?:Ouvrir mon espace|Créer mon mot de passe)[ \u00a0]: (\S+)/.exec(monde.emails[0]?.text ?? '')?.[1] ?? '';
       res =
         genre === 'proprietaire'
           ? await activer('jeton-nouvelle', lienNouveau, site('198.51.100.63'))

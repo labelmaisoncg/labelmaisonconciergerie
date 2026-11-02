@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
 import '../../erp/erp.css';
 import {
   MESSAGE_INVITATION_PERIMEE,
@@ -31,13 +32,13 @@ import {
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
-import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
+import { CONTACTS_LABEL_MAISON, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { ErpDonnees } from '../../erp/data/types';
 import type { CalendrierLogement, MoisCalendrierVue, VueProprietaire } from '../../erp/data/types-proprietaire';
 import type { ChargeurMois } from '../../erp/calendrier';
 import { EspaceVue } from '../../erp/espace-proprietaire/EspaceVue';
 import { ONGLETS_ESPACE, type LienDocumentProps, type OngletEspace } from '../../erp/espace-proprietaire/commun';
-import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
+import { Alert, Button, Card, Field, IconButton, Input, PageSkeleton, cn } from '../../erp/ui';
 
 /**
  * /espace-proprietaire : l'espace en ligne des propriétaires (logements,
@@ -63,6 +64,9 @@ import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
  *
  * Démo (VITE_ERP_DEMO=1) : ?apercu=pro-sci-tilleuls, calculé sur le jeu de
  * démo ; les écrans de compte se montrent, sans Supabase ni e-mail.
+ *
+ * Typographie : espace insécable avant « ? » et « : » dans tous les textes
+ * (vérifié par verifier-comptes-proprietaires.ts).
  */
 
 const API = '/api/espace-proprietaire';
@@ -107,7 +111,8 @@ type Etat =
 const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
 const MESSAGE_CONFIRMEE_SANS_CODE = 'Votre adresse est confirmée. Ouvrez maintenant le lien de votre invitation sur cet appareil, puis connectez-vous.';
 const MESSAGE_OUBLIE = 'Si cette adresse a un compte, un lien pour choisir un mot de passe vient de lui être envoyé. Pensez à regarder dans les indésirables.';
-const MESSAGE_DEMO = 'Démonstration : aucun compte n’est créé et aucun e-mail n’est envoyé. Ouvrez l’espace de démonstration ci-dessous.';
+const MESSAGE_DEMO = 'Démonstration : aucun compte n’est créé et aucun e-mail n’est envoyé. Ouvrez l’espace de démonstration ci-dessous.';
+const MESSAGE_LIEN_PERIME = 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».';
 
 async function appeler(methode: 'GET' | 'POST', parametres: Record<string, string>, jeton?: string): Promise<{ statut: number; json: Record<string, unknown> }> {
   try {
@@ -206,7 +211,7 @@ function LienDocumentServeur({ id, className, children }: LienDocumentProps) {
 
 function LienDocumentDemo({ className, children }: LienDocumentProps) {
   return (
-    <div className={className} title="Démonstration : le fichier n’est pas joint">
+    <div className={className} title="Démonstration : le fichier n’est pas joint">
       {children}
     </div>
   );
@@ -214,7 +219,8 @@ function LienDocumentDemo({ className, children }: LienDocumentProps) {
 
 /* ------------------------------------------------------------------ cadre */
 
-const LIEN_TEXTE = 'inline-flex min-h-8 items-center text-[13px] font-medium lm-lien';
+/** Liens tertiaires : 32 px sur ordinateur, 44 px au doigt sur téléphone. */
+const LIEN_TEXTE = 'inline-flex min-h-8 max-sm:min-h-11 items-center text-[13px] font-medium lm-lien';
 
 /**
  * Cadre des écrans de compte, au nom de l'espace connu sur cet appareil :
@@ -235,18 +241,18 @@ function Cadre({ marque, titre, phrase, children }: { marque: MarqueConnexion; t
         <p className="mt-5 text-center text-[13px] text-(--lm-encre-2)">
           {marque.labelMaison ? (
             <>
-              Besoin d’aide ?{' '}
-              <a href={c.lienTelephone} className="inline-flex min-h-8 items-center font-medium lm-lien">
+              Besoin d’aide&nbsp;?{' '}
+              <a href={c.lienTelephone} className="inline-flex min-h-8 max-sm:min-h-11 items-center font-medium lm-lien">
                 {c.telephone}
               </a>
             </>
           ) : (
-            `Besoin d’aide ? Contactez ${marque.nom ?? 'votre conciergerie'}.`
+            `Besoin d’aide ? Contactez ${marque.nom ?? 'votre conciergerie'}.`
           )}
         </p>
         {MODE_DEMO && (
           <p className="mt-2 text-center text-[13px]">
-            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 items-center font-medium lm-lien">
+            <a href={`?apercu=${PROPRIETAIRE_DEMO}`} className="inline-flex min-h-8 max-sm:min-h-11 items-center font-medium lm-lien">
               Voir l’espace de démonstration
             </a>
           </p>
@@ -256,22 +262,53 @@ function Cadre({ marque, titre, phrase, children }: { marque: MarqueConnexion; t
   );
 }
 
-/** Indicateur simple de la force du mot de passe : trois traits et un mot. */
+/**
+ * Indicateur simple de la force du mot de passe : trois traits (gris tant
+ * que le mot de passe est trop court, puis rouge, ambre ou vert) et un mot à
+ * partir du premier niveau. L'aide du champ dit déjà le minimum.
+ */
 function ForceMotDePasse({ motDePasse }: { motDePasse: string }) {
-  const f = forceMotDePasse(motDePasse);
   if (!motDePasse) return null;
-  const couleur = f.niveau <= 1 ? 'bg-(--lm-danger)' : f.niveau === 2 ? 'bg-(--lm-or)' : 'bg-(--lm-succes)';
+  const f = forceMotDePasse(motDePasse);
+  const couleur = f.niveau === 1 ? 'bg-(--lm-danger)' : f.niveau === 2 ? 'bg-(--lm-alerte)' : 'bg-(--lm-succes)';
   return (
     <div className="mt-1.5 flex items-center gap-2" aria-live="polite">
       <div className="flex flex-1 gap-1" aria-hidden>
         {[1, 2, 3].map((n) => (
-          <span key={n} className={`h-1 flex-1 rounded-sm ${n <= Math.max(f.niveau, 1) && f.niveau > 0 ? couleur : 'bg-(--lm-bord-fort)'}`} />
+          <span key={n} className={`h-1 flex-1 rounded-sm ${f.niveau > 0 && n <= f.niveau ? couleur : 'bg-(--lm-bord-fort)'}`} />
         ))}
       </div>
-      <span className="text-[12px] text-(--lm-encre-2)">{f.libelle}</span>
+      {f.niveau > 0 && <span className="text-[12px] text-(--lm-encre-2)">{f.libelle}</span>}
     </div>
   );
 }
+
+/**
+ * Champ mot de passe avec « Afficher le mot de passe » (œil) et, si demandé,
+ * l'indicateur de force. Le champ de formulaire (Field) lui donne id et
+ * descriptions, passés au vrai contrôle.
+ */
+const ChampMotDePasse = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { force?: boolean }>(function ChampMotDePasse({ force, className, value, ...rest }, ref) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div>
+      <div className="relative">
+        <Input ref={ref} type={visible ? 'text' : 'password'} value={value} className={cn('h-11 pr-12 text-[16px]', className)} {...rest} />
+        <IconButton
+          type="button"
+          size="sm"
+          label={visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+          aria-pressed={visible}
+          onClick={() => setVisible((v) => !v)}
+          className="absolute top-1/2 right-1.5 -translate-y-1/2"
+        >
+          {visible ? <EyeOff /> : <Eye />}
+        </IconButton>
+      </div>
+      {force && <ForceMotDePasse motDePasse={String(value ?? '')} />}
+    </div>
+  );
+});
 
 /* -------------------------------------------------------------- connexion */
 
@@ -317,8 +354,8 @@ function Connexion({
 
   const oublie = async () => {
     const adresse = email.trim().toLowerCase();
-    if (!adresseBienFormee(adresse)) return setRetour({ ton: 'danger', texte: 'Saisissez d’abord votre adresse e-mail, puis touchez « Mot de passe oublié ? ».' });
-    if (MODE_DEMO) return setRetour({ ton: 'succes', texte: 'Démonstration : aucun e-mail n’est envoyé.' });
+    if (!adresseBienFormee(adresse)) return setRetour({ ton: 'danger', texte: 'Saisissez d’abord votre adresse e-mail, puis touchez « Mot de passe oublié ? ».' });
+    if (MODE_DEMO) return setRetour({ ton: 'succes', texte: 'Démonstration : aucun e-mail n’est envoyé.' });
     setRetour(undefined);
     const r = await envoyerLienMotDePasseExterne(GENRE, adresse);
     // Même réponse que l'adresse ait un compte ou non.
@@ -343,7 +380,7 @@ function Connexion({
           />
         </Field>
         <Field label="Mot de passe">
-          <Input type="password" name="password" autoComplete="current-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} className="h-11 text-[16px]" />
+          <ChampMotDePasse name="password" autoComplete="current-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} />
         </Field>
         {retour && (
           <Alert tone={retour.ton} className="py-2">
@@ -397,7 +434,7 @@ function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: Marque
   };
 
   return (
-    <Cadre marque={marque} titre="Créez votre mot de passe" phrase={`${CONTENU_ESPACE.vous.charAt(0).toUpperCase()}${CONTENU_ESPACE.vous.slice(1)} : votre espace s’ouvre avec votre adresse et ce mot de passe.`}>
+    <Cadre marque={marque} titre="Créez votre mot de passe" phrase="Votre espace s’ouvre avec votre adresse et ce mot de passe.">
       <form onSubmit={(e) => void creer(e)} noValidate className="mt-5 space-y-4">
         <div>
           <p className="text-[13px] font-semibold text-(--lm-encre)">Adresse e-mail</p>
@@ -406,13 +443,10 @@ function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: Marque
           <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
         </div>
         <Field label="Mot de passe" aide={`${MOT_DE_PASSE_MIN} caractères au moins.`}>
-          <div>
-            <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus className="h-11 text-[16px]" />
-            <ForceMotDePasse motDePasse={motDePasse} />
-          </div>
+          <ChampMotDePasse autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus force />
         </Field>
         <Field label="Confirmer le mot de passe">
-          <Input type="password" autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} className="h-11 text-[16px]" />
+          <ChampMotDePasse autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
         </Field>
         {erreur && (
           <Alert tone={MODE_DEMO && erreur === MESSAGE_DEMO ? 'succes' : 'danger'} className="py-2">
@@ -434,11 +468,11 @@ function ConfirmerAdresse({ marque, email, onConnexion }: { marque: MarqueConnex
   return (
     <Cadre marque={marque} titre="Confirmez votre adresse">
       <p className="mt-3 text-[14px] text-(--lm-encre)">
-        Un e-mail vient de partir à <strong className="[overflow-wrap:anywhere]">{email}</strong>. Ouvrez son lien sur cet appareil : votre espace s’ouvrira.
+        Un e-mail vient de partir à <strong className="[overflow-wrap:anywhere]">{email}</strong>. Ouvrez son lien sur cet appareil&nbsp;: votre espace s’ouvrira.
       </p>
-      <p className="mt-2 text-[13px] text-(--lm-encre-2)">Rien reçu d’ici quelques minutes ? Regardez dans les indésirables.</p>
+      <p className="mt-2 text-[13px] text-(--lm-encre-2)">Rien reçu d’ici quelques minutes&nbsp;? Regardez dans les indésirables.</p>
       <Button variant="secondary" className="mt-5 w-full" onClick={onConnexion}>
-        J’ai déjà un compte : me connecter
+        J’ai déjà un compte&nbsp;: me connecter
       </Button>
     </Cadre>
   );
@@ -470,17 +504,14 @@ function NouveauMotDePasse({ marque, email, onFini }: { marque: MarqueConnexion;
   };
 
   return (
-    <Cadre marque={marque} titre="Nouveau mot de passe" phrase={`Choisissez votre mot de passe : ${MOT_DE_PASSE_MIN} caractères au moins.`}>
+    <Cadre marque={marque} titre="Nouveau mot de passe" phrase={`Choisissez votre mot de passe : ${MOT_DE_PASSE_MIN} caractères au moins.`}>
       <form onSubmit={(e) => void valider(e)} noValidate className="mt-5 space-y-4">
         {email && <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />}
         <Field label="Nouveau mot de passe">
-          <div>
-            <Input type="password" autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus className="h-11 text-[16px]" />
-            <ForceMotDePasse motDePasse={motDePasse} />
-          </div>
+          <ChampMotDePasse autoComplete="new-password" value={motDePasse} onChange={(e) => setMotDePasse(e.target.value)} autoFocus force />
         </Field>
         <Field label="Confirmer le mot de passe">
-          <Input type="password" autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} className="h-11 text-[16px]" />
+          <ChampMotDePasse autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
         </Field>
         {erreur && (
           <Alert tone={MODE_DEMO && erreur === MESSAGE_DEMO ? 'succes' : 'danger'} className="py-2">
@@ -585,7 +616,7 @@ export default function EspaceProprietaire() {
         // Le client Supabase a lu les jetons du lien : la session est en mémoire, et nulle part ailleurs.
         const s = await sessionExterne(GENRE);
         nettoyerAdresse();
-        if (!s) return poser({ nom: 'connexion', ton: 'danger', message: 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».' });
+        if (!s) return poser({ nom: 'connexion', ton: 'danger', message: MESSAGE_LIEN_PERIME });
         if (retour.nature === 'recuperation') return poser({ nom: 'nouveau_mot_de_passe', email: s.email });
         // Adresse confirmée : activation avec le code gardé ici, ou entrée si le compte a déjà son accès.
         const r = await ouvrirAvecCompte(s.jeton, s.email);

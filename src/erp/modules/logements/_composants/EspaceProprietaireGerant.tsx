@@ -309,7 +309,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
           autreAdresse
             ? 'L’adresse de sa fiche sera remplacée par celle-ci.'
             : dejaUnCompte
-              ? 'Il se connecte avec cette adresse et son mot de passe (« Mot de passe oublié ? » au besoin).'
+              ? 'Il se connecte avec cette adresse et son mot de passe (« Mot de passe oublié ? » au besoin).'
               : 'Le lien pour créer son compte part à cette adresse. Il est valable 7 jours et ne sert qu’une fois.'
         }
       >
@@ -354,10 +354,10 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
         <div className="mt-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface-2) p-3">
           <p className="text-[13px] text-(--lm-encre)">
             {invitation.envoye
-              ? `Invitation envoyée à ${email.trim().toLowerCase()} : il crée son mot de passe avec ce lien. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
+              ? `Invitation envoyée à ${email.trim().toLowerCase()} : il crée son mot de passe avec ce lien. Vous pouvez aussi lui envoyer ce lien par SMS ou WhatsApp.`
               : MODE_DEMO
-                ? 'Démonstration : aucun e-mail n’est envoyé. Ce lien ouvre son espace de démonstration.'
-                : 'L’e-mail n’a pas pu partir : copiez ce lien et envoyez-le par SMS ou WhatsApp.'}
+                ? 'Démonstration : aucun e-mail n’est envoyé. Ce lien ouvre son espace de démonstration.'
+                : 'L’e-mail n’a pas pu partir : copiez ce lien et envoyez-le par SMS ou WhatsApp.'}
           </p>
           <div className="mt-2 flex gap-2">
             <Input readOnly value={invitation.lien} onFocus={(e) => e.currentTarget.select()} aria-label="Lien d’invitation" className="text-[12.5px]" />
@@ -450,9 +450,9 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
         publie
           ? `Publié le ${dateCourte(existant.publieLe!.slice(0, 10))}.${
               transfere
-                ? ` ${etat.transferts.map((t) => `${t.nom} a changé de propriétaire${t.depuis ? ` le ${dateCourte(t.depuis)}` : ''}`).join(' ; ')} : ce bilan reste tel quel.`
+                ? ` ${etat.transferts.map((t) => `${t.nom} a changé de propriétaire${t.depuis ? ` le ${dateCourte(t.depuis)}` : ''}`).join(' ; ')} : ce bilan reste tel quel.`
                 : change
-                  ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.'
+                  ? ' Les chiffres ou le mot ont changé depuis : « Mettre à jour » remplace ce que voit le propriétaire.'
                   : ''
             }`
           : 'Aperçu exact de ce que verra le propriétaire une fois publié.'
@@ -479,7 +479,7 @@ function EditeurBilan({ proprietaire: p, mois, onFermer }: { proprietaire: Propr
         )
       }
     >
-      <Field label={`Le mot ${deNom(espaceOuvert().nom)}`} aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
+      <Field label={`Le mot ${deNom(espaceOuvert().nom)}`} aide="Facultatif : ce qui a marqué le mois (travaux, remplacement, avis, conseils).">
         <Textarea rows={3} value={commentaire} onChange={(e) => setCommentaire(e.target.value)} maxLength={1200} />
       </Field>
       <div className="mt-5 border-t border-(--lm-bord) pt-5">
@@ -523,7 +523,7 @@ function Documents({ proprietaire: p, logement }: { proprietaire: Proprietaire; 
 
   return (
     <section>
-      <Titre description="Contrat, attestations, bilans signés : le propriétaire les ouvre depuis son espace.">Documents partagés</Titre>
+      <Titre description="Contrat, attestations, bilans signés : le propriétaire les ouvre depuis son espace.">Documents partagés</Titre>
       {documents.length ? (
         <ul className="mb-4 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord)">
           {documents.map((doc) => (
