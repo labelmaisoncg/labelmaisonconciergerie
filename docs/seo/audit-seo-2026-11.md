@@ -132,3 +132,17 @@ Le SEO ne fait pas le CA, il fait des rendez-vous. La chaîne est : clics → fo
 - Positions réelles dans Google France et pages indexées : seule la Search Console les donne. À exporter (Performance → 16 mois, Pages → couverture) pour la prochaine revue.
 - Backlinks existants (connecteur Ahrefs à autoriser, ou export gratuit Search Console → Liens).
 - La véracité des « +15 biens gérés ».
+
+## Addendum du 2 novembre 2026 (soir) — décision sur les pages communes
+
+Kamel a refusé le noindex : les 1 104 pages communes doivent être indexées. Mesure faite avant de toucher au gabarit : le contenu principal de deux pages communes prises au hasard était commun à **49 %** (indice de Jaccard sur suites de 8 mots, hors en-tête, pied de page et formulaire). C'est la raison du refus d'indexation, plus que le volume.
+
+Ce qui a été fait (PR 82 et suivante) :
+- **Données officielles par commune** (`scripts/data_locales.json`, construit par `scripts/maj_donnees_locales.py` à partir de data.gouv.fr) : taxe de séjour (collectivité, régime, tarifs), capacités d'hébergement INSEE 2026, règles locales des meublés avec source officielle. 913 pages communes reçoivent un bloc et des questions fréquentes propres ; les 46 hubs département et région reçoivent un tableau.
+- **Présence honnête** hors Île-de-France (équipe en Essonne, partenaire local du réseau quand il existe, accompagnement à distance sinon), avec appel aux partenaires locaux.
+- **Trois variantes réelles** de chaque bloc commun, choisies par commune avec des graines décorrélées.
+- **Pied de page** : ligne des 13 régions sur toutes les pages statiques.
+- Résultat mesuré : contenu commun 49 % → 13 % (médiane), 7 % entre hubs. Mots par page commune : ~1 380 → ~1 500 à 1 800.
+- Sitemap renvoyé dans la Search Console le 2 novembre (1 368 URL, lastmod à jour).
+
+À surveiller dans la Search Console, rapport Pages, chaque lundi : la courbe « détectée, non indexée » doit baisser à mesure que Google recrawle (quelques semaines). Si elle ne bouge pas d'ici fin décembre, le levier restant est externe (liens, fiche Google, presse) : aucune réécriture supplémentaire ne remplacera l'autorité du domaine.

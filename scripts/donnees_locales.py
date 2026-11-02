@@ -200,3 +200,122 @@ def faq(nom: str, insee: str) -> list:
 
 def presence_idf(dept: str) -> bool:
     return dept in {"75", "77", "78", "91", "92", "93", "94", "95"}
+
+
+# --------------------------------------------------------------------------- #
+#  Hubs département et région : tableau des données officielles
+# --------------------------------------------------------------------------- #
+_TBL = ('<table style="width:100%;border-collapse:collapse;margin-top:18px;font-size:15px">'
+        '<thead><tr style="text-align:left;color:#6b6257;font-size:13px">{th}</tr></thead>'
+        '<tbody>{tr}</tbody></table>')
+_TD = 'style="padding:9px 8px;border-bottom:1px solid rgba(44,36,24,.1);vertical-align:top"'
+
+
+def _ligne(cells: list) -> str:
+    return "<tr>" + "".join(f"<td {_TD}>{x}</td>" for x in cells) + "</tr>"
+
+
+def _nc(d: dict) -> str:
+    t = d.get("tarifs", {}).get("nc")
+    return _tarif(t).replace(" du prix de la nuitée par personne", " de la nuitée") \
+        .replace(" par personne et par nuit", " / pers. / nuit") if t else "—"
+
+
+def bloc_dept(nom: str, communes: list, dl: str, url_commune) -> str:
+    """Tableau des principales communes : taxe de séjour, tarif non classé, hôtels, règles."""
+    lignes, collecs, ncs, regl, hotels, chambres = [], set(), [], 0, 0, 0
+    top = sorted(communes, key=lambda x: -x.pop)
+    for c in top:
+        d = pour(c.insee)
+        if not d:
+            continue
+        ts = d.get("taxe_sejour") or {}
+        if ts.get("collectivite"):
+            collecs.add(ts["collectivite"])
+        t = d.get("tarifs", {}).get("nc")
+        if t and t.get("unite", "").strip() == "%":
+            try:
+                ncs.append(float(str(t["tarif"]).replace(",", ".")))
+            except ValueError:
+                pass
+        h = d.get("hebergement") or {}
+        hotels += h.get("hotels", 0)
+        chambres += h.get("chambres", 0)
+        r = d.get("regles") or {}
+        if r:
+            regl += 1
+        if len(lignes) < 14:
+            regles_txt = []
+            if r.get("enregistrement_numero") == "oui":
+                regles_txt.append("numéro d'enregistrement")
+            if r.get("changement_usage") == "oui":
+                regles_txt.append("changement d'usage")
+            if r.get("plafond_residence_principale_jours"):
+                regles_txt.append(f"{C.esc(r['plafond_residence_principale_jours'])} nuits")
+            lignes.append(_ligne([
+                f'<a href="{url_commune(c)}">{C.esc(c.nom)}</a>',
+                C.esc(ts.get("collectivite", "—")),
+                _nc(d),
+                (f"{h['hotels']} ({h['chambres']} ch.)" if h.get("hotels") else ("0" if h else "—")),
+                ", ".join(regles_txt) if regles_txt else ("droit commun" if d else "—"),
+            ]))
+    if not lignes:
+        return ""
+    lead = (f"Les communes de plus de 10 000 habitants {dl} dépendent de "
+            f"<strong>{len(collecs)} collectivité{'s' if len(collecs) > 1 else ''}</strong> pour la "
+            f"taxe de séjour"
+            + (f", avec un tarif pour meublé non classé compris entre <strong>{_pct(min(ncs))}</strong> "
+               f"et <strong>{_pct(max(ncs))}</strong> du prix de la nuitée" if ncs else "")
+            + f". L'INSEE y recense <strong>{hotels} hôtels</strong> ({chambres} chambres) au "
+            f"1<sup>er</sup> janvier 2026"
+            + (f" ; {regl} commune{'s' if regl > 1 else ''} appliquent des règles locales relevées "
+               f"(numéro d'enregistrement, changement d'usage ou plafond)." if regl else "."))
+    th = "".join(f"<th {_TD}>{x}</th>" for x in
+                 ("Commune", "Taxe de séjour perçue par", "Meublé non classé", "Hôtels", "Règles locales"))
+    return (f'<section class="wrap"><h2>Les chiffres officiels {C.esc(dl)}</h2><p class="lead">{lead}</p>'
+            + _TBL.format(th=th, tr="".join(lignes))
+            + '<p style="font-size:13px;color:#6b6257;margin-top:10px">Sources : DGFiP (délibérations '
+            'de taxe de séjour), INSEE (capacités d\'hébergement 2026), règles locales des meublés de '
+            'tourisme (data.gouv.fr). Le détail et les sources figurent sur la page de chaque commune.</p>'
+            '</section>')
+
+
+def bloc_region(nom: str, depts: set, communes: list, dept_urls: dict) -> str:
+    """Tableau par département : communes couvertes, hôtels, règles locales relevées."""
+    par = {}
+    for c in communes:
+        par.setdefault(c.dept_nom, []).append(c)
+    lignes, tot_h, tot_c, tot_r = [], 0, 0, 0
+    for dn in sorted(par):
+        liste = par[dn]
+        h = ch = r = n = 0
+        for c in liste:
+            d = pour(c.insee)
+            if not d:
+                continue
+            n += 1
+            hb = d.get("hebergement") or {}
+            h += hb.get("hotels", 0)
+            ch += hb.get("chambres", 0)
+            r += 1 if d.get("regles") else 0
+        tot_h += h
+        tot_c += ch
+        tot_r += r
+        lignes.append(_ligne([
+            f'<a href="{dept_urls.get(dn, "#")}">{C.esc(dn)}</a>',
+            str(len(liste)),
+            f"{h} ({ch} ch.)" if n else "—",
+            str(r) if n else "—",
+        ]))
+    if not lignes:
+        return ""
+    lead = (f"{len(par)} département{'s' if len(par) > 1 else ''}, {len(communes)} communes de plus "
+            f"de 10 000 habitants, <strong>{tot_h} hôtels</strong> ({tot_c} chambres) recensés par "
+            f"l'INSEE au 1<sup>er</sup> janvier 2026, et <strong>{tot_r} commune{'s' if tot_r > 1 else ''}</strong> "
+            f"où une règle locale sur les meublés de tourisme a été relevée.")
+    th = "".join(f"<th {_TD}>{x}</th>" for x in
+                 ("Département", "Communes couvertes", "Hôtels (chambres)", "Règles locales relevées"))
+    return (f'<section class="wrap"><h2>Les chiffres officiels en {C.esc(nom)}</h2><p class="lead">{lead}</p>'
+            + _TBL.format(th=th, tr="".join(lignes))
+            + '<p style="font-size:13px;color:#6b6257;margin-top:10px">Sources : INSEE (capacités '
+            'd\'hébergement 2026), DGFiP, règles locales des meublés de tourisme (data.gouv.fr).</p></section>')
