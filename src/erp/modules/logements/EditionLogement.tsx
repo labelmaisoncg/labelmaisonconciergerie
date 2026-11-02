@@ -1,6 +1,6 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Plus } from 'lucide-react';
-import { Button, Drawer, Field, Input, Select } from '../../ui';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Plus, X } from 'lucide-react';
+import { Button, Drawer, Field, IconButton, Input, Select, Textarea } from '../../ui';
 import { FormProprietaire } from '../proprietaires/FormProprietaire';
 import { nouvelId, useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
@@ -8,7 +8,20 @@ import { PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
 import { AUJOURDHUI } from '../../data/format';
 import { TYPES_LIT, erreursSaisieLogement, logementDepuisSaisie, nomsInterdits, saisieInitiale, type ErreursLogement, type SaisieLogement } from '../../data/creation-logement';
 import { enregistrerLogement } from './_composants/enregistrerLogement';
-import type { Logement, Serrure, StatutLogement, TypeLogement } from '../../data/types';
+import {
+  CHAMPS_MENAGE,
+  CHAMPS_TECHNIQUE,
+  LIBELLE_ROLE_CONTACT,
+  ROLES_CONTACT,
+  appliquerTerrain,
+  erreursTerrain,
+  nouveauContactSaisi,
+  saisieTerrainInitiale,
+  type SaisieContact,
+  type SaisieTerrain,
+} from '../../data/terrain';
+import type { SectionTerrain } from './onglets/Terrain';
+import type { Logement, RoleContact, Serrure, StatutLogement, TypeLogement } from '../../data/types';
 
 interface Props {
   ouvert: boolean;
@@ -16,9 +29,12 @@ interface Props {
   /** Absent : création d'un nouveau logement (statut « En préparation »). La liste passe par l'assistant pas à pas. */
   logement?: Logement;
   onCree?: (id: string) => void;
+  /** Section « Terrain » amenée à l'écran à l'ouverture (« Compléter » de l'onglet Terrain). */
+  section?: SectionTerrain;
 }
 
 const TYPES = Object.entries(LIBELLES.typeLogement).map(([valeur, libelle]) => ({ valeur, libelle }));
+const ROLES = ROLES_CONTACT.map((valeur) => ({ valeur, libelle: LIBELLE_ROLE_CONTACT[valeur] }));
 const SERRURES = Object.entries(LIBELLES.serrure).map(([valeur, libelle]) => ({ valeur, libelle }));
 const DPES = ['A', 'B', 'C', 'D', 'E', 'F', 'G'].map((v) => ({ valeur: v, libelle: v }));
 /** « En préparation » : pas encore en location (logement créé à la main ou par le dossier propriétaire). */
@@ -34,29 +50,50 @@ const STATUTS: { valeur: StatutLogement; libelle: string }[] = [
  * contrôles et logement enregistré viennent de data/creation-logement.ts,
  * comme pour l'assistant de création : les deux ne peuvent pas diverger.
  */
-export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
+export function EditionLogement({ ouvert, onFermer, logement, onCree, section }: Props) {
   const d = useErp();
   const { proprietaires } = d;
   const [nouveauProprietaire, setNouveauProprietaire] = useState(false);
   const [s, setS] = useState<SaisieLogement>(() => saisieInitiale(logement));
   const [erreurs, setErreurs] = useState<ErreursLogement>({});
+  // Volet terrain (ménage, qui appeler, technique) : à part de la saisie du logement, enregistré avec elle.
+  const [t, setT] = useState<SaisieTerrain>(() => saisieTerrainInitiale(logement));
+  const [erreursT, setErreursT] = useState<Record<string, string>>({});
+  const sections = useRef<Partial<Record<SectionTerrain, HTMLElement | null>>>({});
 
   useEffect(() => {
     if (ouvert) {
       setS(saisieInitiale(logement));
+      setT(saisieTerrainInitiale(logement));
       setErreurs({});
+      setErreursT({});
     }
   }, [ouvert, logement]);
 
+  // « Compléter » depuis l'onglet Terrain : la section demandée arrive en haut du panneau.
+  useEffect(() => {
+    if (!ouvert || !section) return;
+    const id = requestAnimationFrame(() => sections.current[section]?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(id);
+  }, [ouvert, section]);
+
   const maj = <K extends keyof SaisieLogement>(k: K, v: SaisieLogement[K]) => setS((x) => ({ ...x, [k]: v }));
+  const majMenage = (k: keyof SaisieTerrain['menage'], v: string) => setT((x) => ({ ...x, menage: { ...x.menage, [k]: v } }));
+  const majTechnique = (k: keyof SaisieTerrain['technique'], v: string) => setT((x) => ({ ...x, technique: { ...x.technique, [k]: v } }));
+  const majContact = (cle: string, patch: Partial<SaisieContact>) => setT((x) => ({ ...x, contacts: x.contacts.map((c) => (c.cle === cle ? { ...c, ...patch } : c)) }));
+  const retirerContact = (cle: string) => setT((x) => ({ ...x, contacts: x.contacts.filter((c) => c.cle !== cle) }));
+  const ajouterContact = () => setT((x) => ({ ...x, contacts: [...x.contacts, nouveauContactSaisi()] }));
 
   const enregistrer = (ev: FormEvent) => {
     ev.preventDefault();
     // Pas deux logements du même nom (sans casse, accents ni espaces) ; garder le sien reste possible.
     const e = erreursSaisieLogement(s, { nomsPris: nomsInterdits(d.logements, logement, s.nom) });
+    const eT = logement ? erreursTerrain(t).contacts : {};
     setErreurs(e);
-    if (Object.keys(e).length) return;
-    const aEnregistrer = logementDepuisSaisie(s, logement ?? nouvelId('log'), AUJOURDHUI);
+    setErreursT(eT);
+    if (Object.keys(e).length || Object.keys(eT).length) return;
+    const saisi = logementDepuisSaisie(s, logement ?? nouvelId('log'), AUJOURDHUI);
+    const aEnregistrer = logement ? appliquerTerrain(saisi, t) : saisi;
     enregistrerLogement(d, aEnregistrer);
     onFermer();
     if (!logement) onCree?.(aEnregistrer.id);
@@ -156,6 +193,99 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree }: Props) {
             <span className="block text-[12px] text-(--lm-encre-3)">Location limitée à {PLAFOND_NUITS_RESIDENCE_PRINCIPALE} nuits par année civile.</span>
           </span>
         </label>
+
+        {/* Terrain (modification seulement) : ce que l'équipe doit savoir sur place, jamais transmis aux voyageurs. */}
+        {logement && (
+          <>
+            <div className="mt-2 border-t border-(--lm-bord) pt-5 sm:col-span-2">
+              <h3 className="lm-titre text-[17px] leading-snug text-(--lm-encre)">Terrain</h3>
+              <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Pour l’équipe seulement : rien d’ici n’est transmis aux voyageurs, à votre agent ni au propriétaire.</p>
+            </div>
+
+            <fieldset
+              ref={(el) => {
+                sections.current.menage = el;
+              }}
+              className="scroll-mt-4 sm:col-span-2"
+            >
+              <legend className="mb-2 text-[14px] font-semibold text-(--lm-encre)">Ménage</legend>
+              <div className="grid grid-cols-1 gap-4">
+                {CHAMPS_MENAGE.map((c) => (
+                  <Field key={c.cle} label={c.libelle} aide={c.cle === 'consignes' ? c.aide : undefined}>
+                    {c.cle === 'duree' ? (
+                      <Input value={t.menage[c.cle]} onChange={(e) => majMenage(c.cle, e.target.value)} placeholder={c.aide} />
+                    ) : (
+                      <Textarea
+                        value={t.menage[c.cle]}
+                        onChange={(e) => majMenage(c.cle, e.target.value)}
+                        rows={c.cle === 'produits' ? 2 : 3}
+                        placeholder={c.cle === 'produits' ? c.aide : undefined}
+                      />
+                    )}
+                  </Field>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset
+              ref={(el) => {
+                sections.current.contacts = el;
+              }}
+              className="scroll-mt-4 sm:col-span-2"
+            >
+              <legend className="mb-2 text-[14px] font-semibold text-(--lm-encre)">Qui appeler</legend>
+              {t.contacts.length === 0 && <p className="mb-2 text-[13px] text-(--lm-encre-2)">Ménage, serrurier, urgence… les numéros à avoir sous la main.</p>}
+              <ul className="flex flex-col gap-3">
+                {t.contacts.map((c, i) => (
+                  <li key={c.cle} className="rounded-xl border border-(--lm-bord) p-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <Field label="Rôle">
+                        <Select value={c.role} onChange={(e) => majContact(c.cle, { role: e.target.value as RoleContact })} options={ROLES} />
+                      </Field>
+                      <Field label="Nom" erreur={erreursT[c.cle]}>
+                        <Input value={c.nom} onChange={(e) => majContact(c.cle, { nom: e.target.value })} placeholder="Ex. Nadia, ménage" />
+                      </Field>
+                      <Field label="Téléphone">
+                        <Input type="tel" inputMode="tel" autoComplete="off" value={c.telephone} onChange={(e) => majContact(c.cle, { telephone: e.target.value })} placeholder="06 00 00 00 00" />
+                      </Field>
+                      <Field label="Note">
+                        <Input value={c.note} onChange={(e) => majContact(c.cle, { note: e.target.value })} placeholder="Ex. prévenir la veille" />
+                      </Field>
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <IconButton label={`Retirer le contact ${c.nom.trim() || i + 1}`} size="sm" onClick={() => retirerContact(c.cle)}>
+                        <X />
+                      </IconButton>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <Button size="sm" icone={<Plus />} onClick={ajouterContact} className={t.contacts.length ? 'mt-3' : ''}>
+                Ajouter un contact
+              </Button>
+            </fieldset>
+
+            <fieldset
+              ref={(el) => {
+                sections.current.technique = el;
+              }}
+              className="scroll-mt-4 sm:col-span-2"
+            >
+              <legend className="mb-0.5 text-[14px] font-semibold text-(--lm-encre)">Technique</legend>
+              <p className="mb-2 text-[13px] text-(--lm-encre-2)">Jamais transmis aux voyageurs.</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {CHAMPS_TECHNIQUE.map((c) => (
+                  <Field key={c.cle} label={c.libelle}>
+                    <Input value={t.technique[c.cle]} onChange={(e) => majTechnique(c.cle, e.target.value)} />
+                  </Field>
+                ))}
+                <Field label="Notes" className="sm:col-span-2">
+                  <Textarea value={t.technique.notes} onChange={(e) => majTechnique('notes', e.target.value)} rows={3} placeholder="Ce qu’il faut savoir d’autre sur place." />
+                </Field>
+              </div>
+            </fieldset>
+          </>
+        )}
       </form>
     </Drawer>
     {/* Hors du panneau : une fenêtre par-dessus, pas dedans. */}

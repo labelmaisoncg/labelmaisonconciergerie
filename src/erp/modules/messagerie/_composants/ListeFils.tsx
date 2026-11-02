@@ -5,7 +5,7 @@
  * voyageur quand ce n'est pas le français (« EN »).
  */
 import { Link } from 'react-router-dom';
-import { CheckCircle2, SearchX } from 'lucide-react';
+import { CheckCircle2, SearchX, X } from 'lucide-react';
 import { Avatar, Badge, Button, SearchInput, Segmente, cn } from '../../../ui';
 import type { FilMessages, Logement } from '../../../data/types';
 import { nomLangue, type Urgence } from '../../../data/messagerie-ia';
@@ -27,15 +27,34 @@ interface Props {
   recherche: string;
   onRecherche: (q: string) => void;
   tri?: Map<string, TriFil>;
+  /** Filtre « ?logement=<id> » (fiche d'un logement) : une pilule retirable, gardée en ouvrant une conversation. */
+  logementFiltre?: { id: string; nom: string; retirer: () => void };
 }
 
-export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, recherche, onRecherche, tri }: Props) {
+export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, recherche, onRecherche, tri, logementFiltre }: Props) {
   const q = recherche.trim();
+  const suffixe = logementFiltre ? `?logement=${encodeURIComponent(logementFiltre.id)}` : '';
   return (
     <div className="flex min-h-0 flex-col lg:h-full">
       {/* Mobile : la recherche et les filtres restent sous la barre du haut pendant le défilement. */}
       <div className="space-y-2.5 bg-(--lm-fond) pb-3 max-lg:sticky max-lg:top-16 max-lg:z-10 max-lg:-mx-4 max-lg:px-4 max-lg:pt-1 lg:border-b lg:border-(--lm-bord) lg:bg-(--lm-surface) lg:p-3">
         <SearchInput valeur={recherche} onChange={onRecherche} placeholder="Voyageur, logement…" label="Rechercher une conversation" className="sm:w-full" />
+        {logementFiltre && (
+          <div role="group" aria-label="Filtre par logement" className="flex flex-wrap gap-1.5">
+            {/* Même pilule que les filtres choisis (FilterChips) : or, contour doublé, texte en 600, et une croix pour la retirer. */}
+            <span className="inline-flex h-9 max-w-full items-center gap-1 rounded-full border border-(--lm-or-texte) bg-(--lm-or-lavis) pr-1 pl-3.5 text-[13px] font-semibold text-(--lm-encre) shadow-[inset_0_0_0_1px_var(--lm-or-texte)]">
+              <span className="truncate">{logementFiltre.nom}</span>
+              <button
+                type="button"
+                onClick={logementFiltre.retirer}
+                aria-label={`Retirer le filtre ${logementFiltre.nom}`}
+                className="grid size-7 shrink-0 place-items-center rounded-full text-(--lm-encre-2) hover:bg-(--lm-surface) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+              >
+                <X className="size-3.5" aria-hidden />
+              </button>
+            </span>
+          </div>
+        )}
         <Segmente
           label="Filtrer les conversations"
           valeur={filtre}
@@ -49,7 +68,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
       </div>
 
       {fils.length === 0 ? (
-        <Vide q={q} filtre={filtre} onEffacer={() => onRecherche('')} onToutes={() => onFiltre('tous')} />
+        <Vide q={q} filtre={filtre} onEffacer={() => onRecherche('')} onToutes={() => onFiltre('tous')} logement={tous.length === 0 ? logementFiltre : undefined} />
       ) : (
         <ul className="lm-defilement max-lg:-mx-4 max-lg:border-t max-lg:border-(--lm-bord) max-lg:bg-(--lm-surface) lg:min-h-0 lg:flex-1 lg:overflow-y-auto" aria-label="Conversations">
           {fils.map((f) => {
@@ -63,7 +82,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
             return (
               <li key={f.id} className="border-b border-(--lm-bord) last:border-b-0 max-lg:last:border-b">
                 <Link
-                  to={`/erp/messagerie/${f.id}`}
+                  to={`/erp/messagerie/${f.id}${suffixe}`}
                   aria-current={actif ? 'true' : undefined}
                   className={cn(
                     'flex min-h-[72px] items-center gap-3 px-4 py-3 transition-colors hover:bg-(--lm-surface-2) focus-visible:bg-(--lm-surface-2) focus-visible:outline-none',
@@ -115,7 +134,17 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
   );
 }
 
-function Vide({ q, filtre, onEffacer, onToutes }: { q: string; filtre: FiltreFil; onEffacer: () => void; onToutes: () => void }) {
+function Vide({ q, filtre, onEffacer, onToutes, logement }: { q: string; filtre: FiltreFil; onEffacer: () => void; onToutes: () => void; logement?: { nom: string; retirer: () => void } }) {
+  // Aucune conversation du logement filtré, quel que soit le filtre : le dire, et proposer de retirer le filtre.
+  if (logement && !q)
+    return (
+      <div className="flex flex-col items-center px-6 py-12 text-center">
+        <p className="text-[14px] font-medium text-(--lm-encre)">Aucune conversation pour {logement.nom}</p>
+        <Button variant="ghost" size="sm" className="mt-2" onClick={logement.retirer}>
+          Voir toutes les conversations
+        </Button>
+      </div>
+    );
   if (q)
     return (
       <div className="flex flex-col items-center px-6 py-12 text-center">

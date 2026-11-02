@@ -3,13 +3,14 @@
  * (Airbnb, Booking, direct), ce que l'agent a fait, et ses réglages.
  *
  * - /erp/messagerie            Conversations (bureau : liste + conversation ; séjour à droite sur grand écran)
+ *   ?logement=<id>             seulement celles de ce logement (lien « Messages de ce logement » de sa fiche)
  * - /erp/messagerie/:filId     une conversation (mobile : plein écran)
  * - /erp/messagerie/activite   Activité de l'agent
  * - /erp/messagerie/agent      Votre agent (état et réglages)
  * - /erp/messagerie/automatiques  Messages automatiques et leur historique
  */
 import { useMemo, useState, type CSSProperties } from 'react';
-import { Link, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, MessagesSquare, Plug } from 'lucide-react';
 import { ButtonLink, EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
 import { useErp } from '../../data/store';
@@ -76,13 +77,27 @@ function normaliser(s: string) {
 function Boite() {
   const { filId } = useParams();
   const d = useErp();
-  const [filtre, setFiltre] = useState<FiltreFil>(() => (d.filsMessages.some(attendEquipe) ? 'a_traiter' : 'tous'));
+  const [params, setParams] = useSearchParams();
+  const logements = useMemo(() => new Map(d.logements.map((l) => [l.id, l])), [d.logements]);
+  // « ?logement=<id> » (fiche d'un logement) : seulement ses conversations, celles du fil ou de sa réservation.
+  const logementFiltre = params.get('logement') || undefined;
+  const nomLogementFiltre = logementFiltre ? (logements.get(logementFiltre)?.nom ?? 'Logement') : undefined;
+  const duLogement = useMemo(() => {
+    if (!logementFiltre) return d.filsMessages;
+    const reservations = new Map(d.reservations.map((r) => [r.id, r]));
+    return d.filsMessages.filter((f) => f.logementId === logementFiltre || (f.reservationId ? reservations.get(f.reservationId)?.logementId === logementFiltre : false));
+  }, [d.filsMessages, d.reservations, logementFiltre]);
+  const retirerLogement = () => {
+    const p = new URLSearchParams(params);
+    p.delete('logement');
+    setParams(p, { replace: true });
+  };
+  const [filtre, setFiltre] = useState<FiltreFil>(() => (duLogement.some(attendEquipe) ? 'a_traiter' : 'tous'));
   const [recherche, setRecherche] = useRechercheUrl();
   // 24 px : la marge du bas de page sur ordinateur.
   const [boite, hauteur] = useHauteurDisponible<HTMLDivElement>(24);
-  const logements = useMemo(() => new Map(d.logements.map((l) => [l.id, l])), [d.logements]);
 
-  const tries = useMemo(() => [...d.filsMessages].sort((a, b) => b.dernierMessageLe.localeCompare(a.dernierMessageLe)), [d.filsMessages]);
+  const tries = useMemo(() => [...duLogement].sort((a, b) => b.dernierMessageLe.localeCompare(a.dernierMessageLe)), [duLogement]);
   // Tri de « À répondre » : urgence (dates du séjour, problème signalé, voyageur mécontent) et langue du voyageur.
   const tri = useMemo(() => {
     const reservations = new Map(d.reservations.map((r) => [r.id, r]));
@@ -139,7 +154,7 @@ function Boite() {
       <aside className={cn('min-h-0 lg:border-r lg:border-(--lm-bord)', filId && 'max-lg:hidden')} aria-label="Liste des conversations">
         <ListeFils
           fils={visibles}
-          tous={d.filsMessages}
+          tous={duLogement}
           logements={logements}
           actifId={fil?.id}
           filtre={filtre}
@@ -147,6 +162,7 @@ function Boite() {
           recherche={recherche}
           onRecherche={setRecherche}
           tri={tri}
+          logementFiltre={logementFiltre && nomLogementFiltre ? { id: logementFiltre, nom: nomLogementFiltre, retirer: retirerLogement } : undefined}
         />
       </aside>
 

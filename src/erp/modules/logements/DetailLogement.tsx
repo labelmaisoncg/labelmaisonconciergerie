@@ -13,16 +13,18 @@ import { EditionLogement } from './EditionLogement';
 import { OngletVueEnsemble } from './onglets/VueEnsemble';
 import { OngletFiche } from './onglets/FicheVoyageur';
 import { OngletHistorique } from './onglets/Historique';
+import { OngletTerrain, type SectionTerrain } from './onglets/Terrain';
 
-/** Trois onglets, comme un channel manager : l'aperçu, ce que lit l'agent, l'historique. */
-const ONGLETS = ['apercu', 'fiche', 'historique'] as const;
+/** Quatre onglets, comme un channel manager : l'aperçu, ce que lit l'agent, le terrain (équipe), l'historique. */
+const ONGLETS = ['apercu', 'fiche', 'terrain', 'historique'] as const;
 type CleOnglet = (typeof ONGLETS)[number];
 
 export default function DetailLogement() {
   const { id } = useParams();
   const d = useErp();
   const [params, setParams] = useSearchParams();
-  const [edition, setEdition] = useState(false);
+  // Modification ouverte, et la section à montrer d'abord (« Compléter » de l'onglet Terrain).
+  const [edition, setEdition] = useState<{ ouvert: boolean; section?: SectionTerrain }>({ ouvert: false });
   const l = logementById(d, id);
 
   if (!l) {
@@ -63,7 +65,7 @@ export default function DetailLogement() {
           </span>
         }
         actions={
-          <Button icone={<Pencil />} onClick={() => setEdition(true)}>
+          <Button icone={<Pencil />} onClick={() => setEdition({ ouvert: true })}>
             Modifier
           </Button>
         }
@@ -79,15 +81,18 @@ export default function DetailLogement() {
           { cle: 'apercu', libelle: 'Aperçu' },
           // Compteur seulement s'il manque quelque chose à l'agent.
           { cle: 'fiche', libelle: 'Infos pour votre agent', compteur: manquants || undefined },
+          { cle: 'terrain', libelle: 'Terrain' },
           { cle: 'historique', libelle: 'Historique' },
         ]}
       />
 
       {onglet === 'apercu' && <OngletVueEnsemble logement={l} />}
       {onglet === 'fiche' && <OngletFiche logement={l} />}
+      {/* Terrain : toute l'équipe le lit ; « Compléter » seulement si l'on peut modifier. */}
+      {onglet === 'terrain' && <OngletTerrain logement={l} onCompleter={d.lectureSeule ? undefined : (section) => setEdition({ ouvert: true, section })} />}
       {onglet === 'historique' && <OngletHistorique logement={l} />}
 
-      <EditionLogement ouvert={edition} onFermer={() => setEdition(false)} logement={l} />
+      <EditionLogement ouvert={edition.ouvert} section={edition.section} onFermer={() => setEdition({ ouvert: false })} logement={l} />
     </>
   );
 }

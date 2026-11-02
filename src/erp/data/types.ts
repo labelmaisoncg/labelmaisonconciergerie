@@ -170,6 +170,51 @@ export interface LigneArticle {
   quantite: number;
 }
 
+/* ------------------------------------------------- exploitation terrain */
+
+/**
+ * Le ménage d'un logement, pour l'équipe seulement (onglet « Terrain » de la
+ * fiche) : jamais donné à l'agent IA ni au propriétaire (data/terrain.ts).
+ */
+export interface MenageLogement {
+  /** Durée prévue, en clair (« 2 h 30 »). */
+  duree?: string;
+  /** Produits et où ils sont rangés. */
+  produits?: string;
+  /** Consignes particulières. */
+  consignes?: string;
+}
+
+export type RoleContact = 'menage' | 'maintenance' | 'serrurier' | 'urgence' | 'proprietaire' | 'autre';
+
+/**
+ * Qui appeler pour ce logement (ménage, serrurier, urgence…). Réservé à
+ * l'équipe : jamais transmis aux voyageurs, à l'agent IA, au propriétaire
+ * ni au connecteur Claude (data/terrain.ts).
+ */
+export interface ContactLogement {
+  role: RoleContact;
+  nom: string;
+  telephone?: string;
+  note?: string;
+}
+
+/**
+ * Repères techniques du logement (compteurs, disjoncteur, chaudière…),
+ * jamais transmis aux voyageurs : équipe seulement (data/terrain.ts).
+ */
+export interface TechniqueLogement {
+  etage?: string;
+  interphone?: string;
+  compteurElectricite?: string;
+  compteurEau?: string;
+  compteurGaz?: string;
+  disjoncteur?: string;
+  chaudiere?: string;
+  arriveeEau?: string;
+  notes?: string;
+}
+
 export interface Annonce {
   canal: Canal;
   url?: string;
@@ -222,6 +267,16 @@ export interface Logement {
   serrure: Serrure;
   fiche: FicheLogement;
   dotationLinge: LigneArticle[];
+  /**
+   * Exploitation terrain (onglet « Terrain » de la fiche), hors de `fiche` :
+   * l'équipe seulement. `menage` n'est lu ni par l'agent IA ni par le
+   * propriétaire ; `contacts` et `technique` ne sortent jamais de l'ERP
+   * (agent, espace propriétaire, livret de séjour, connecteur Claude :
+   * data/terrain.ts, fuitesTerrain).
+   */
+  menage?: MenageLogement;
+  contacts?: ContactLogement[];
+  technique?: TechniqueLogement;
   /** @deprecated Ancien identifiant Channex (avant Repull), ni affiché ni écrit. */
   channexPropertyId?: string;
   annonces: Annonce[];

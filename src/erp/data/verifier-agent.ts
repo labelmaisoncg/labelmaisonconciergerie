@@ -32,6 +32,7 @@ import {
   type OptionsAgent,
 } from './agent-messagerie';
 import { REGLAGES_AGENT_DEFAUT } from './reglages';
+import { fuitesTerrain } from './terrain';
 import { CONSIGNES_CONTROLE } from './controle-reponse';
 import { DUREE_LIEN_GUIDE_S, guidesAJoindre, signerFichierStockage, texteAvecGuides } from './guides';
 import { BaseErp, COLLECTION_ETAT, ID_ETAT, ID_SELECTION, type EtatRepull } from './repull-synchro';
@@ -252,6 +253,10 @@ async function principal() {
       equipements: ['wifi', 'lave-linge'],
     },
     dotationLinge: [],
+    // Volet terrain (équipe seulement) : jamais dans le contexte donné à Claude, codes permis ou non.
+    menage: { duree: '2 h 30', consignes: 'MENAGE-PRIVE : détartrer la cafetière.' },
+    contacts: [{ role: 'serrurier', nom: 'CONTACT-PRIVE Serrurerie', telephone: '06 00 00 00 09', note: 'intervient sous 2 h' }],
+    technique: { disjoncteur: 'TECHNIQUE-PRIVE au-dessus de la porte', compteurEau: 'sous l’évier, vanne bleue' },
     annonces: [],
     checklistLancement: [],
     repull: { id: '101' },
@@ -316,6 +321,7 @@ async function principal() {
     verifier(!!q && q[1].length <= 600, 'contexte : textes longs de l’annonce raccourcis');
   }
   verifier(!/motdepasse101|code 4821/.test(ctx), 'contexte sans réservation : ni wifi ni code d’accès');
+  verifier(fuitesTerrain(ctx, logement).length === 0 && !/MENAGE-PRIVE|CONTACT-PRIVE|TECHNIQUE-PRIVE|06 00 00 00 09/.test(ctx), 'cloison : ménage, contacts et technique du logement absents du contexte donné à Claude');
 
   /* --------------------------------------------------- pause, horaires, clé */
   section('Pause, horaires, clé absente');
@@ -340,6 +346,7 @@ async function principal() {
   const appelIA = ia.appels[0];
   verifier(appelIA?.model === MODELE_AGENT_DEFAUT && appelIA.output_config?.format?.type === 'json_schema', 'Claude Haiku 4.5, sortie JSON imposée');
   verifier(/motdepasse101/.test(ia.derniereFiche) && /Booking\.com/.test(ia.dernierContexte), 'contexte : fiche avec codes (arrivée demain), plateforme');
+  verifier(fuitesTerrain(ia.dernierContexte, logement).length === 0, 'cloison : même codes permis, rien du volet terrain (ménage, contacts, technique) ne part à Claude');
   const posts = repull.appels.filter((a) => a.methode === 'POST');
   verifier(posts.length === 1 && posts[0].chemin === '/v1/conversations/7001/messages' && posts[0].cle === cleAgent('repull-7001', 'repull-m1'), 'un seul envoi Repull, clé liée au message du voyageur');
   verifier(repull.envois[0]?.message.endsWith(`\n\n${SIGNATURE}`), 'signature ajoutée par le code');

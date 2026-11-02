@@ -1,7 +1,8 @@
 /**
  * Auto-contrôle des règles des logements sans réseau : lien d'annonce Airbnb
  * saisi par l'équipe, ordre des photos (équipe d'abord), prix de la nuit
- * (plateforme, prix de base, puis moyenne constatée).
+ * (plateforme, prix de base, puis moyenne constatée), volet terrain
+ * (saisie ↔ logement, rôles de contact, fuitesTerrain pour la cloison).
  *
  * Lancement (Node 18+) :
  *   node_modules/.bin/esbuild src/erp/data/verifier-logements.ts --bundle --platform=node --format=esm \
@@ -10,6 +11,20 @@
  */
 import { extraireIdAirbnb, idAirbnbDuLogement, lienAnnonceAirbnb } from './page-airbnb';
 import { photosLogement, prixNuit } from '../modules/logements/_composants/stats';
+import {
+  LIBELLE_ROLE_CONTACT,
+  ROLES_CONTACT,
+  appliquerTerrain,
+  contactsRenseignes,
+  erreursTerrain,
+  fuitesTerrain,
+  lienTelephone,
+  menageRenseigne,
+  nouveauContactSaisi,
+  saisieTerrainInitiale,
+  techniqueRenseignee,
+  terrainDepuisSaisie,
+} from './terrain';
 import type { Logement } from './types';
 
 let echecs = 0;
@@ -83,6 +98,37 @@ section('Prix de la nuit : plateforme, prix de base, puis moyenne constatée');
   const c = prixNuit(logement(), { adr90: 9500, aujourdhui });
   verifier(c?.source === 'constate' && c.centimes === 9500, `puis moyenne constatée sur 90 jours (${JSON.stringify(c)})`);
   verifier(prixNuit(logement(), { adr90: 0, aujourdhui }) === undefined && prixNuit(logement(), { aujourdhui }) === undefined, 'sans séjour récent : pas de prix');
+}
+
+section('Terrain : ménage, qui appeler, technique (équipe seulement)');
+{
+  verifier(
+    ROLES_CONTACT.length === 6 && ROLES_CONTACT.map((r) => LIBELLE_ROLE_CONTACT[r]).join() === 'Ménage,Maintenance,Serrurier,Urgence,Propriétaire,Autre',
+    'six rôles de contact, libellés français',
+  );
+  const vide = saisieTerrainInitiale(logement());
+  verifier(JSON.stringify(terrainDepuisSaisie(vide)) === '{}' && vide.contacts.length === 0, 'saisie vide : aucun volet enregistré (ni {} ni [])');
+  const s = saisieTerrainInitiale(logement());
+  s.menage.duree = '  2 h 30 ';
+  s.contacts = [
+    { ...nouveauContactSaisi('serrurier'), nom: ' Serrurerie du Quai ', telephone: '06 00 00 00 02 ', note: '' },
+    { ...nouveauContactSaisi('menage'), nom: '', telephone: '', note: '' },
+    { ...nouveauContactSaisi('autre'), nom: '', telephone: '06 00 00 00 09', note: '' },
+  ];
+  s.technique.disjoncteur = 'Entrée, au-dessus de la porte';
+  verifier(erreursTerrain(s).contacts[s.contacts[2].cle] !== undefined && erreursTerrain(s).contacts[s.contacts[1].cle] === undefined, 'un téléphone sans nom : erreur ; une ligne vide : ignorée');
+  const t = terrainDepuisSaisie({ ...s, contacts: s.contacts.slice(0, 2) });
+  verifier(
+    t.menage?.duree === '2 h 30' && !('produits' in (t.menage ?? {})) && t.contacts?.length === 1 && t.contacts[0].nom === 'Serrurerie du Quai' && t.contacts[0].telephone === '06 00 00 00 02' && !('note' in t.contacts[0]) && t.technique?.disjoncteur && Object.keys(t.technique).length === 1,
+    `textes nettoyés, lignes sans nom ignorées, champs vides absents (${JSON.stringify(t)})`,
+  );
+  const avec = appliquerTerrain(logement({ menage: { duree: '1 h' }, contacts: [{ role: 'menage', nom: 'Nadia' }], technique: { notes: 'x' } }), vide);
+  verifier(!('menage' in avec) && !('contacts' in avec) && !('technique' in avec) && avec.nom === 'Studio', 'tout effacé dans le formulaire : les trois volets disparaissent du logement');
+  verifier(menageRenseigne({ duree: ' ' }) === false && menageRenseigne({ consignes: 'x' }) && techniqueRenseignee({ notes: 'n' }) && !techniqueRenseignee({}) && contactsRenseignes([{ role: 'autre', nom: ' ' }]).length === 0, 'volet renseigné : au moins un champ non vide');
+  verifier(lienTelephone('06 00 00 00 01') === 'tel:0600000001' && lienTelephone('+33 6 00 00 00 01') === 'tel:+33600000001' && lienTelephone('à prévenir') === undefined, 'lien tel: chiffres et « + » seulement, rien sans numéro');
+  const l = logement({ menage: { consignes: 'MENAGE-PRIVE' }, contacts: [{ role: 'urgence', nom: 'CONTACT-PRIVE', telephone: '06 00 00 00 09', note: 'ok' }], technique: { compteurGaz: 'TECHNIQUE-PRIVE' } });
+  const fuites = fuitesTerrain('… CONTACT-PRIVE … 06 00 00 00 09 … TECHNIQUE-PRIVE …', l);
+  verifier(fuites.join() === 'CONTACT-PRIVE,06 00 00 00 09,TECHNIQUE-PRIVE' && fuitesTerrain('rien', l).length === 0 && fuitesTerrain('ok', l).length === 0, `fuitesTerrain : les valeurs retrouvées, 3 caractères au moins (${fuites.join(', ')})`);
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
