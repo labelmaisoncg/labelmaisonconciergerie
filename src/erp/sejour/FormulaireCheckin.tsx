@@ -40,7 +40,7 @@ function Choix({ nom, valeur, options, onChange, legende, erreur }: { nom: strin
             <label
               key={libelle}
               className={cn(
-                'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[15px] transition-colors focus-within:ring-2 focus-within:ring-(--lm-encre)',
+                'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2 text-[15px] transition-colors',
                 valeur === v ? 'border-(--lm-or) bg-(--lm-or-lavis) text-(--lm-brun)' : erreur ? 'border-(--lm-danger) bg-(--lm-surface) text-(--lm-encre)' : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre)',
               )}
             >
@@ -285,7 +285,7 @@ export function FormulaireCheckin({ vue, langue, aujourdhui, onEnvoyer, onAnnule
           <button
             type="button"
             onClick={onVoirReglement}
-            className="ml-8 inline-flex min-h-8 items-center text-[14px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+            className="ml-8 inline-flex min-h-8 items-center text-[14px] font-medium lm-lien"
           >
             {t.voirReglement}
           </button>

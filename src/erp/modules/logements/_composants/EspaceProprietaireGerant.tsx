@@ -600,7 +600,7 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
         <button
           type="button"
           onClick={onFermer}
-          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[13px] font-medium hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus:outline-none"
+          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md px-2 text-[13px] font-medium hover:bg-white/15 focus-visible:outline-white"
         >
           <X className="size-4" aria-hidden />
           Fermer

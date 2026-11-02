@@ -87,7 +87,7 @@ function Repere({ p, choisi, onClick }: { p: PointCarte; choisi: boolean; onClic
       title={p.nom}
       onClick={onClick}
       className={cn(
-        'relative grid size-10 cursor-pointer place-items-center rounded-full transition-transform duration-150 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-(--lm-encre) motion-reduce:transition-none',
+        'relative grid size-10 cursor-pointer place-items-center rounded-full transition-transform duration-150 motion-reduce:transition-none',
         choisi && 'scale-125',
       )}
     >

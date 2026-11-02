@@ -160,7 +160,7 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
           type="button"
           onClick={onFermer}
           aria-label="Retour aux contrôles"
-          className="-ml-2 grid size-10 shrink-0 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+          className="-ml-2 grid size-10 shrink-0 place-items-center rounded-lg text-(--lm-encre-2) hover:bg-(--lm-neutre-lavis)"
         >
           <ArrowLeft className="size-5" />
         </button>
@@ -212,7 +212,7 @@ export function FormulaireControle({ cle, onFermer }: { cle: string; onFermer: (
                 aria-label={`${n} sur 5`}
                 aria-pressed={note === n}
                 onClick={() => setNote(n)}
-                className="grid size-11 place-items-center rounded-full text-(--lm-encre) hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+                className="grid size-11 place-items-center rounded-full text-(--lm-encre) hover:bg-(--lm-surface-2)"
               >
                 <Star className={cn('size-7', (note ?? 0) >= n ? 'fill-current' : 'text-(--lm-encre-3)')} aria-hidden />
               </button>
@@ -285,7 +285,7 @@ function Point({ p, lecture, onChange }: { p: PointBrouillon; lecture: boolean; 
       aria-pressed={p.etat === etat}
       onClick={() => onChange({ etat: p.etat === etat ? undefined : etat })}
       className={cn(
-        'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
+        'inline-flex h-10 items-center justify-center gap-1.5 rounded-lg border px-3 text-[13.5px] font-medium',
         p.etat === etat
           ? etat === 'ok'
             ? 'border-(--lm-succes) bg-(--lm-succes-lavis) text-(--lm-encre)'

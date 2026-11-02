@@ -61,7 +61,7 @@ export function CarteLogement({ logement: l, stats }: { logement: Logement; stat
   return (
     <Link
       to={l.id}
-      className="group block rounded-xl focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-4 focus-visible:ring-offset-(--lm-fond) focus:outline-none"
+      className="group block rounded-xl"
     >
       <div className="relative overflow-hidden rounded-xl bg-(--lm-surface-2)">
         <VisuelLogement logement={l} decoratif className="aspect-[20/19] w-full" />

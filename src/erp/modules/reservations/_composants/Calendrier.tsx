@@ -377,7 +377,7 @@ function Barre({
       onFocus={(e) => e.currentTarget.matches(':focus-visible') && onMontrer(r, e.currentTarget)}
       onBlur={onCacher}
       className={cn(
-        'absolute inset-y-3 z-[4] flex items-center gap-1.5 overflow-hidden px-2 text-left text-[12px] font-medium whitespace-nowrap transition-[filter] hover:brightness-110 focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-1 focus:outline-none',
+        'absolute inset-y-3 z-[4] flex items-center gap-1.5 overflow-hidden px-2 text-left text-[12px] font-medium whitespace-nowrap transition-[filter] hover:brightness-110',
         coupeGauche && coupeDroite ? 'rounded-none' : coupeGauche ? 'rounded-r-lg' : coupeDroite ? 'rounded-l-lg' : 'rounded-lg',
         annulee && 'border border-dashed border-(--lm-bord-fort) bg-(--lm-surface) line-through',
       )}

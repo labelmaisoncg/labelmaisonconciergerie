@@ -192,7 +192,7 @@ function LigneSejour({ r, logement, onOuvrir }: { r: Reservation; logement: Loge
     <button
       type="button"
       onClick={() => onOuvrir(r)}
-      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:bg-(--lm-surface-2) focus:outline-none lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_7rem] lg:gap-4"
+      className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2 lg:grid lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_7rem] lg:gap-4"
     >
       {/* Voyageur (et, sur mobile, logement et dates dessous) */}
       <span className="flex min-w-0 flex-1 items-center gap-3">

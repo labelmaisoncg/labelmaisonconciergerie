@@ -33,7 +33,9 @@ const pc = (x: number) => `${(x / 7) * 100}%`;
  * noire (en retrait une fois le séjour terminé), nom en blanc une fois au
  * début. Le bouton prend la hauteur de la ligne (cible de toucher), élargi
  * d'une dizaine de pixels de chaque côté pour un morceau d'une demi-case ;
- * la bande visible est dedans. Un séjour sur plusieurs lignes a un bouton
+ * la bande visible est dedans. Au clavier, le contour global est coupé sur
+ * le bouton (il barrerait toute la ligne) et un anneau d'encre entoure la
+ * bande (exception du guide). Un séjour sur plusieurs lignes a un bouton
  * par morceau, mais un seul est nommé (`b.nomme`) : les autres restent
  * cliquables à la souris et au doigt, hors de l'ordre de tabulation et
  * cachés aux lecteurs d'écran, pour ne pas annoncer le même séjour deux fois.

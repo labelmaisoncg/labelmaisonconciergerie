@@ -97,7 +97,7 @@ export function LienAction({ onClick, children }: { onClick: () => void; childre
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+      className="inline-flex min-h-8 items-center rounded-md px-1 text-[13px] font-medium lm-lien"
     >
       {children}
     </button>

@@ -163,7 +163,7 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
                   <li key={r.id}>
                     <Link
                       to={`/erp/reservations/${r.id}`}
-                      className="flex items-center gap-x-4 px-4 py-2.5 hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset sm:px-5"
+                      className="flex items-center gap-x-4 px-4 py-2.5 hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2 sm:px-5"
                     >
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[13.5px] font-medium text-(--lm-encre)">{r.voyageur.nom}</span>

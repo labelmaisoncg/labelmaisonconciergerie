@@ -134,7 +134,7 @@ export function LigneAvis({ avis: a, logement, onOuvrir }: { avis: AvisLu; logem
       <button
         type="button"
         onClick={onOuvrir}
-        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none focus-visible:ring-inset sm:px-5"
+        className="flex w-full items-start gap-3 px-4 py-3 text-left hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2 sm:px-5"
       >
         <span className="min-w-0 flex-1">
           <span className={cn('line-clamp-2 text-[13.5px] text-(--lm-encre)', !a.textePublic && 'text-(--lm-encre-2) italic')}>

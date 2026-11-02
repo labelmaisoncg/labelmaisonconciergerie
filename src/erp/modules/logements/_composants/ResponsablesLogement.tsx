@@ -66,7 +66,7 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
               <li key={m.id} className="flex items-center gap-3 py-2.5 first:pt-0">
                 <span className="min-w-0 flex-1">
                   {gerant ? (
-                    <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none">
+                    <Link to={`/erp/parametres/acces?personne=${encodeURIComponent(m.id)}`} className="group block rounded-md">
                       <span className="block truncate text-[13.5px] font-semibold text-(--lm-encre) group-hover:underline">{m.nom}</span>
                       {/* Le rôle sur le logement est dans les choix plus bas. */}
                       <span className="block truncate text-[12.5px] text-(--lm-encre-2)">{ROLES_OPERATIONS[m.role]}</span>

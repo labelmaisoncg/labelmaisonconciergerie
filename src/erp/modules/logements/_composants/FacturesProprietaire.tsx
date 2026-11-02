@@ -94,7 +94,7 @@ export function FacturesProprietaire({ proprietaire: p }: { proprietaire: Propri
                         type="button"
                         onClick={() => setOuverte(f.id)}
                         aria-label={`Voir la facture ${f.numero}`}
-                        className="-mx-1 inline-flex min-h-8 items-center rounded-md px-1 lm-lien focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+                        className="-mx-1 inline-flex min-h-8 items-center rounded-md px-1 lm-lien"
                       >
                         {f.numero}
                       </button>

@@ -84,7 +84,7 @@ export function Accueil({
         <button
           type="button"
           onClick={() => onOnglet('factures')}
-          className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2.5 text-left shadow-(--lm-ombre) hover:shadow-(--lm-ombre-haute) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none transition"
+          className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2.5 text-left shadow-(--lm-ombre) hover:shadow-(--lm-ombre-haute) transition"
         >
           <ReceiptText className="size-4 shrink-0 text-(--lm-encre-2)" aria-hidden />
           <span className="min-w-0 flex-1 text-[14px] text-(--lm-encre)">
@@ -110,7 +110,7 @@ export function Accueil({
                   <button
                     type="button"
                     onClick={() => onLogement(l.id)}
-                    className="group block w-full rounded-xl text-left focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus-visible:ring-offset-4 focus:outline-none"
+                    className="group block w-full rounded-xl text-left"
                   >
                     <PhotoLogement url={l.photo} nom={l.nom} className="aspect-[4/3] w-full rounded-xl transition-opacity group-hover:opacity-90" />
                     <span className="mt-2.5 block text-[15px] font-semibold text-(--lm-encre)">{l.nom}</span>

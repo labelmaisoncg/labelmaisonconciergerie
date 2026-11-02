@@ -417,7 +417,7 @@ export default function Connexions() {
                     title={bloque ? infoLimite : undefined}
                     className={cn(
                       'flex h-full items-center gap-3 rounded-xl border bg-(--lm-surface) p-3 transition-colors',
-                      coche ? 'border-(--lm-or) ring-1 ring-(--lm-or-anneau)' : 'border-(--lm-bord)',
+                      coche ? 'border-(--lm-or)' : 'border-(--lm-bord)',
                       bloque ? 'cursor-not-allowed opacity-50 grayscale' : inactif ? 'cursor-default' : 'cursor-pointer hover:shadow-(--lm-ombre-haute) transition',
                     )}
                   >

@@ -36,7 +36,7 @@ export function PilulesLogement({ logements, choisi, onChoisir, className }: Pil
           aria-pressed={l.id === choisi}
           onClick={() => onChoisir(l.id)}
           className={cn(
-            'h-9 shrink-0 rounded-full border px-4 text-[13.5px] font-medium focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none',
+            'h-9 shrink-0 rounded-full border px-4 text-[13.5px] font-medium',
             l.id === choisi ? 'border-(--lm-encre) bg-(--lm-encre) text-white' : 'border-(--lm-bord-fort) bg-(--lm-surface) text-(--lm-encre) hover:border-(--lm-encre-3)',
           )}
         >

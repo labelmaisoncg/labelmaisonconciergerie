@@ -83,7 +83,7 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
   if (!liste.length) return null;
   // Menu d'Airbnb : lignes de 14 px pleine largeur, survol gris, icônes à l'encre.
   const classeItem =
-    'flex min-h-10 w-full items-center gap-3 px-4 py-2 text-left text-[14px] text-(--lm-encre) hover:bg-(--lm-surface-2) focus:bg-(--lm-surface-2) focus:outline-none aria-disabled:cursor-not-allowed aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-(--lm-encre)';
+    'flex min-h-10 w-full items-center gap-3 px-4 py-2 text-left text-[14px] text-(--lm-encre) hover:bg-(--lm-surface-2) focus:bg-(--lm-surface-2) focus-visible:-outline-offset-2 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-(--lm-encre)';
 
   return (
     <div ref={ref} className={cn('relative', className)}>

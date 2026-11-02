@@ -80,7 +80,7 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
                   to={`/erp/messagerie/${f.id}${suffixe}`}
                   aria-current={actif ? 'true' : undefined}
                   className={cn(
-                    'flex min-h-[72px] items-center gap-3 px-4 py-3 transition-colors hover:bg-(--lm-surface-2) focus-visible:bg-(--lm-surface-2) focus-visible:outline-none',
+                    'flex min-h-[72px] items-center gap-3 px-4 py-3 transition-colors hover:bg-(--lm-surface-2) focus-visible:-outline-offset-2',
                     actif && 'bg-(--lm-or-lavis) hover:bg-(--lm-or-lavis)',
                   )}
                 >

@@ -267,7 +267,7 @@ export function EntreeApp({ app, onOuvrir }: { app: AppOps; onOuvrir: () => void
       type="button"
       onClick={onOuvrir}
       aria-label={libelle}
-      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-(--lm-encre-2) hover:bg-(--lm-surface-2) hover:text-(--lm-encre)"
     >
       {installee ? <Bell className="size-4" aria-hidden /> : <Download className="size-4" aria-hidden />}
       <span className="max-lg:sr-only">{libelle}</span>
