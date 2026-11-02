@@ -15,6 +15,8 @@ export interface DrawerProps {
   /** Actions à côté du titre. */
   actions?: ReactNode;
   largeur?: 'md' | 'lg' | 'xl';
+  /** Sur téléphone : feuille pleine (94 dvh) ou à la hauteur de son contenu (94 dvh au plus). Panneau entier sur ordinateur dans les deux cas. */
+  hauteur?: 'pleine' | 'contenu';
   children: ReactNode;
 }
 
@@ -25,7 +27,7 @@ const LARGEURS = { md: 'sm:max-w-md', lg: 'sm:max-w-xl', xl: 'sm:max-w-3xl' };
  * téléphone (arrondie en haut). En-tête d'Airbnb : fermer rond à gauche,
  * titre centré, actions à droite, un filet dessous.
  */
-export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, largeur = 'lg', children }: DrawerProps) {
+export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, largeur = 'lg', hauteur = 'pleine', children }: DrawerProps) {
   const ref = useFenetre<HTMLDivElement>(ouvert, onFermer);
   const titreId = useId();
   if (!ouvert) return null;
@@ -39,7 +41,8 @@ export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, larg
         aria-labelledby={titreId}
         tabIndex={-1}
         className={cn(
-          'lm-feuille lm-tiroir relative flex h-[94dvh] w-full flex-col rounded-t-2xl bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:h-full sm:rounded-none',
+          'lm-feuille lm-tiroir relative flex w-full flex-col rounded-t-2xl bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:h-full sm:rounded-none',
+          hauteur === 'contenu' ? 'max-h-[94dvh]' : 'h-[94dvh]',
           LARGEURS[largeur],
         )}
       >

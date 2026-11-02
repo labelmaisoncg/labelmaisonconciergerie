@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { CalendrierDefilant, CalendrierMois, PilulesLogement, datesSejour, ligneChiffres, type ChargeurMois, type SejourCalendrier } from '../calendrier';
-import { dateCourte, pluriel } from '../data/format';
+import { CalendrierDefilant, CalendrierMois, PilulesLogement, datesSejour, ligneChiffres, motDuMois, type ChargeurMois, type SejourCalendrier } from '../calendrier';
+import { dateCourte, insecables, nombre } from '../data/format';
 import type { CalendrierLogement, VueProprietaire } from '../data/types-proprietaire';
 import { Drawer } from '../ui';
 import { CANAL, TitreEspace } from './commun';
@@ -15,18 +15,18 @@ export interface CalendrierEspace {
   charger: ChargeurMois;
 }
 
-/** Détail d'un séjour touché sur le calendrier : dates, nuits, voyageurs, plateforme. */
+/** Détail d'un séjour touché sur le calendrier : dates, nuits, voyageurs, plateforme. Feuille à la hauteur du contenu sur téléphone. */
 function DetailSejour({ sejour: s, logement, onFermer }: { sejour: SejourCalendrier | null; logement?: string; onFermer: () => void }) {
   const lignes = s
     ? [
         { libelle: 'Dates', valeur: datesSejour(s) },
-        { libelle: 'Nuits', valeur: pluriel(s.nuits, 'nuit') },
-        { libelle: 'Voyageurs', valeur: pluriel(s.nbPersonnes, 'voyageur') },
+        { libelle: 'Nuits', valeur: nombre(s.nuits) },
+        { libelle: 'Voyageurs', valeur: nombre(s.nbPersonnes) },
         { libelle: 'Plateforme', valeur: CANAL[s.canal] },
       ]
     : [];
   return (
-    <Drawer ouvert={!!s} onFermer={onFermer} titre={s?.voyageur ?? ''} sousTitre={logement} largeur="md">
+    <Drawer ouvert={!!s} onFermer={onFermer} titre={s?.voyageur ?? ''} sousTitre={logement} largeur="md" hauteur="contenu">
       <dl className="divide-y divide-(--lm-bord)">
         {lignes.map((l) => (
           <div key={l.libelle} className="flex items-baseline justify-between gap-4 py-3 text-[14px]">
@@ -38,6 +38,9 @@ function DetailSejour({ sejour: s, logement, onFermer }: { sejour: SejourCalendr
     </Drawer>
   );
 }
+
+/** Mois entièrement avant l'arrivée du propriétaire : inutile de remonter plus loin. */
+const toutAvant = (c: CalendrierLogement | undefined) => !!c && c.jours.length > 0 && c.jours.every((j) => j.hors === 'avant');
 
 /**
  * Onglet Calendrier : les mois les uns sous les autres, comme sur Airbnb,
@@ -52,25 +55,33 @@ export function Calendrier({ vue, calendrier }: { vue: VueProprietaire; calendri
   const logementId = premier?.logementId;
   const logement = choixPossibles.find((l) => l.id === logementId);
   const cede = vue.logementsCedes.find((l) => l.id === logementId);
-  const hors = new Set(premier?.jours.map((j) => j.hors).filter((x): x is 'avant' | 'apres' | 'autre' => !!x));
   const duLogement = (logements: CalendrierLogement[]) => logements.find((x) => x.logementId === logementId) ?? logements[0];
+  // Jours hors de sa période sur tous les mois connus (pas seulement le premier) : la phrase et ses mots.
+  const hors = new Set(
+    Object.values(calendrier.connus)
+      .flatMap((logements) => (logements ? (duLogement(logements)?.jours ?? []) : []))
+      .map((j) => j.hors)
+      .filter((x): x is 'avant' | 'apres' | 'autre' => !!x),
+  );
 
   return (
     <div className="mx-auto w-full max-w-[44rem]">
-      <TitreEspace titre="Calendrier" description="Vos séjours, mois après mois." />
+      <TitreEspace titre="Calendrier" />
 
       <PilulesLogement logements={choixPossibles} choisi={logementId} onChoisir={setChoix} className="mb-4" />
 
       {(cede || hors.size > 0) && (
         <p className="mb-4 text-[13.5px] text-(--lm-encre-2)">
-          {[
-            cede && `${cede.nom} : plus en gestion pour vous depuis le ${dateCourte(cede.jusquAu)}.`,
-            'Le calendrier montre votre période seulement.',
-            // Jours grisés dans sa période : le séjour de l'ancien propriétaire, arrivé avant le changement.
-            hors.has('autre') && 'Le séjour en cours au changement reste à l’ancien propriétaire.',
-          ]
-            .filter(Boolean)
-            .join(' ')}
+          {insecables(
+            [
+              cede && `${cede.nom} : plus en gestion pour vous depuis le ${dateCourte(cede.jusquAu)}.`,
+              'Le calendrier montre votre période seulement.',
+              // Jours grisés dans sa période : le séjour de l'ancien propriétaire, arrivé avant le changement.
+              hors.has('autre') && 'Le séjour en cours au changement reste à l’ancien propriétaire.',
+            ]
+              .filter(Boolean)
+              .join(' '),
+          )}
         </p>
       )}
 
@@ -81,9 +92,13 @@ export function Calendrier({ vue, calendrier }: { vue: VueProprietaire; calendri
           moisInitial={vue.calendrier.mois}
           connus={calendrier.connus}
           charger={calendrier.charger}
+          butoirArriere={(logements) => toutAvant(duLogement(logements))}
           rendreMois={(mois, logements) => {
             const c = duLogement(logements);
-            return c ? <CalendrierMois mois={mois} jours={c.jours} sejours={c.sejours} aujourdhui={vue.aujourdhui} chiffres={ligneChiffres(c)} onSejour={setOuvert} /> : null;
+            // Mois sans chiffres (aucun jour à lui) : le mot du mois à leur place (« Avant votre arrivée »…).
+            return c ? (
+              <CalendrierMois mois={mois} jours={c.jours} sejours={c.sejours} aujourdhui={vue.aujourdhui} chiffres={ligneChiffres(c) || motDuMois(c.jours)} onSejour={setOuvert} />
+            ) : null;
           }}
         />
       )}

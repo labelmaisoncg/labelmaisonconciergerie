@@ -13,6 +13,7 @@ export { useMoisDefilants } from './useMoisDefilants';
 export type { ChargeurMois, MoisDefilants, OptionsMoisDefilants } from './useMoisDefilants';
 export {
   CANAL_CALENDRIER,
+  HORS,
   JOURS_SEMAINE,
   MOIS_ARRIERE_MAX,
   MOIS_AVANT_MAX,
@@ -21,6 +22,7 @@ export {
   datesSejour,
   decalageDuMois,
   ecartMois,
+  jourMoisOrdinal,
   libelleJour,
   libelleSejour,
   ligneChiffres,
@@ -28,6 +30,7 @@ export {
   moisEntre,
   moisPrecedent,
   moisSuivant,
+  motDuMois,
   plagesManquantes,
   sejourDuJour,
   sejourQuiPart,

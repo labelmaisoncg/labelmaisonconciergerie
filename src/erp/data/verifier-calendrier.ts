@@ -57,7 +57,7 @@ function main() {
   verifier(aout.mois === '2026-08' && aout.jours.length === 31, 'mois : 31 jours, mois rappelé');
   verifier(JSON.stringify(aout.jours) === JSON.stringify(ref.jours) && aout.jours.every((j) => !('hors' in j)), 'jours : la même grille que l’espace propriétaire, sans jour « hors »');
   verifier(aout.nuitsReservees === 4 + 3 + 1 && aout.nuitsLibres === 31 - 8 && Math.abs(aout.occupation - 8 / 31) < 1e-9, 'chiffres : nuits réservées, libres, occupation (annulée et dates fausses ignorées)');
-  verifier(ligneChiffres(aout) === '8 nuits réservées · 23 libres · 26 %', 'ligne des chiffres');
+  verifier(ligneChiffres(aout) === '8 nuits réservées · 23 libres · 26 %', 'ligne des chiffres, séparateurs et % insécables');
   verifier(aout.sejours.map((s) => s.id).join() === 'res-1,res-5,res-2', 'séjours : les non annulés du logement qui touchent le mois, par date d’arrivée, avec l’identifiant de la réservation');
   const s1 = aout.sejours[0];
   verifier(s1.voyageur === 'Camille Martin' && s1.nbPersonnes === 3 && s1.canal === 'airbnb' && s1.nuits === 4 && s1.arrivee === '2026-08-10' && s1.depart === '2026-08-14', 'séjour : nom complet, voyageurs, plateforme, nuits, dates');
@@ -77,7 +77,11 @@ function main() {
   verifier(bandes.length === 4 && bandes.filter((b) => b.libelle).length === 3, 'bandes : une par morceau, le nom une fois par séjour');
   verifier(bandes[0].sejour.id === 'res-1' && bandes[0].ligne === 2 && bandes[0].de === 0.5 && bandes[0].a === 4.5, 'bande : du milieu du 10 au milieu du 14, identifiant conservé pour ouvrir la fiche');
   verifier(libelleSejour(aout.sejours[0]) === 'Camille Martin, du 10 août au 14 août, 4 nuits', 'libellé de la bande : nom complet');
-  verifier(libelleJour(aout.jours.find((j) => j.date === '2026-08-10')!, aout.sejours) === '10 août : arrivée de Camille Martin', 'libellé du jour : nom complet');
+  verifier(libelleJour(aout.jours.find((j) => j.date === '2026-08-10')!, aout.sejours) === '10 août : arrivée de Camille Martin', 'libellé du jour : nom complet, insécable avant le deux-points');
+  // Séjour arrivé le 30 : seule une demi-case est dans ce mois, aucun texte dessus (le libellé du bouton le porte).
+  const fin = calendrierMoisReservations([resa('log-1', '2026-09-30', '2026-10-02', { voyageur: { nom: 'Mehdi Trente', nbPersonnes: 2 } })], 'log-1', '2026-09');
+  const bf = bandesDuMois('2026-09', fin.jours, fin.sejours);
+  verifier(bf.length === 1 && bf[0].a - bf[0].de === 0.5 && !bf[0].libelle && libelleSejour(fin.sejours[0]) === 'Mehdi Trente, du 30 sept. au 2 oct., 2 nuits', 'morceau d’une demi-case seule : sans texte, libellé complet au bouton');
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;

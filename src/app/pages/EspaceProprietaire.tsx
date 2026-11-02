@@ -7,7 +7,7 @@ import { completer } from '../../erp/data/collections';
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
-import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, calendrierPlage, moisDePlage, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
+import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { ErpDonnees } from '../../erp/data/types';
 import type { CalendrierLogement, MoisCalendrierVue, VueProprietaire } from '../../erp/data/types-proprietaire';
 import type { ChargeurMois } from '../../erp/calendrier';
@@ -304,7 +304,11 @@ export default function EspaceProprietaire() {
         }
         const r = await appeler('GET', { action: 'calendrier', de, a });
         if (r.statut === 200 && Array.isArray(r.json.mois)) {
-          retenir(r.json.mois as MoisCalendrierVue[]);
+          const mois = (r.json.mois as MoisCalendrierVue[]).filter((m) => moisValide(m?.mois) && Array.isArray(m.logements));
+          // Un mois demandé absent de la réponse : un échec (« Réessayer »), jamais une plage redemandée sans fin.
+          const recus = new Set(mois.map((m) => m.mois));
+          if (moisEntre(de, a).some((m) => !recus.has(m))) return { ok: false, erreur: ERREUR_CALENDRIER };
+          retenir(mois);
           return { ok: true };
         }
         if (r.statut === 401) {

@@ -11,6 +11,8 @@ export interface CalendrierDefilantProps<T> {
   charger: ChargeurMois;
   /** Rend un mois dont les données sont là (CalendrierMois, en général). */
   rendreMois: (mois: string, donnees: T) => ReactNode;
+  /** Vrai quand le mois le plus ancien chargé est un butoir (tout avant l'arrivée du propriétaire) : plus de « Mois précédents ». */
+  butoirArriere?: (donnees: T) => boolean;
   pas?: number;
   arriereMax?: number;
   avantMax?: number;
@@ -58,7 +60,7 @@ function defiler(el: HTMLElement, delta: number) {
  * en squelette ; quand des mois s'ajoutent au-dessus, la page ne saute pas
  * (le premier mois visible reste à sa place).
  */
-export function CalendrierDefilant<T>({ moisInitial, connus, charger, rendreMois, pas, arriereMax, avantMax, className }: CalendrierDefilantProps<T>) {
+export function CalendrierDefilant<T>({ moisInitial, connus, charger, rendreMois, butoirArriere, pas, arriereMax, avantMax, className }: CalendrierDefilantProps<T>) {
   const d = useMoisDefilants({ moisInitial, connus, charger, pas, arriereMax, avantMax });
   const conteneur = useRef<HTMLDivElement>(null);
   const sentinelle = useRef<HTMLDivElement>(null);
@@ -104,11 +106,13 @@ export function CalendrierDefilant<T>({ moisInitial, connus, charger, rendreMois
   }, [peutAvant, chargementAvant, voirAvant, sansObservateur, nbMois]);
 
   const chargement = d.chargementArriere || d.chargementAvant;
+  const premier = connus[d.mois[0]];
+  const butoir = !!butoirArriere && premier !== undefined && butoirArriere(premier);
   return (
     <div ref={conteneur} className={cn('[overflow-anchor:none]', className)} aria-busy={chargement || undefined}>
-      {d.peutArriere && (
+      {d.peutArriere && !butoir && (
         <div className="mb-4 flex justify-center">
-          <Button variant="ghost" size="sm" chargement={d.chargementArriere} onClick={voirArriere}>
+          <Button variant="ghost" size="sm" chargement={d.chargementArriere} onClick={voirArriere} className="max-sm:min-h-11">
             Mois précédents
           </Button>
         </div>
@@ -134,7 +138,7 @@ export function CalendrierDefilant<T>({ moisInitial, connus, charger, rendreMois
       <div ref={sentinelle} aria-hidden className="h-px" />
       {sansObservateur && d.peutAvant && (
         <div className="mt-4 flex justify-center">
-          <Button variant="ghost" size="sm" chargement={d.chargementAvant} onClick={d.voirAvant}>
+          <Button variant="ghost" size="sm" chargement={d.chargementAvant} onClick={d.voirAvant} className="max-sm:min-h-11">
             Mois suivants
           </Button>
         </div>

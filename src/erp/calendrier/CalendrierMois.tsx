@@ -30,16 +30,19 @@ const pc = (x: number) => `${(x / 7) * 100}%`;
 
 /**
  * Une bande : du milieu du jour d'arrivée au milieu du jour de départ,
- * noire, nom en blanc une fois au début. Le bouton prend la hauteur de la
- * ligne (cible de toucher) ; la bande visible est dedans.
+ * noire (en retrait une fois le séjour terminé), nom en blanc une fois au
+ * début. Le bouton prend la hauteur de la ligne (cible de toucher), élargi
+ * d'une dizaine de pixels de chaque côté pour un morceau d'une demi-case ;
+ * la bande visible est dedans.
  */
-function Bande({ b, libelle, onSejour }: { b: BandeCalendrier; libelle: string; onSejour?: (s: SejourCalendrier) => void }) {
+function Bande({ b, libelle, passe, onSejour }: { b: BandeCalendrier; libelle: string; passe: boolean; onSejour?: (s: SejourCalendrier) => void }) {
   const position = {
     left: b.arrivee ? `calc(${pc(b.de)} + 2px)` : pc(b.de),
     right: b.depart ? `calc(${pc(7 - b.a)} + 2px)` : pc(7 - b.a),
   };
   const visuel = cn(
-    'absolute inset-x-0 top-8 flex h-6 items-center overflow-hidden bg-(--lm-encre) text-white',
+    'absolute inset-x-0 top-8 flex h-6 items-center overflow-hidden text-white',
+    passe ? 'bg-(--lm-encre-3)' : 'bg-(--lm-encre)',
     b.arrivee && 'rounded-l-full',
     b.depart && 'rounded-r-full',
   );
@@ -56,7 +59,10 @@ function Bande({ b, libelle, onSejour }: { b: BandeCalendrier; libelle: string; 
       type="button"
       onClick={() => onSejour(b.sejour)}
       aria-label={libelleSejour(b.sejour, libelle)}
-      className="absolute inset-y-0 focus:outline-none [&:focus-visible>span]:ring-2 [&:focus-visible>span]:ring-(--lm-encre) [&:focus-visible>span]:ring-offset-2 [&:focus-visible>span]:ring-offset-(--lm-surface)"
+      className={cn(
+        'absolute inset-y-0 focus:outline-none [&:focus-visible>span]:ring-2 [&:focus-visible>span]:ring-(--lm-encre) [&:focus-visible>span]:ring-offset-2 [&:focus-visible>span]:ring-offset-(--lm-surface)',
+        b.a - b.de < 1 && "before:absolute before:inset-y-0 before:-inset-x-2.5 before:content-['']",
+      )}
       style={position}
     >
       <span className={visuel} aria-hidden>
@@ -69,7 +75,8 @@ function Bande({ b, libelle, onSejour }: { b: BandeCalendrier; libelle: string; 
 /**
  * Un mois, à la manière de l'app Airbnb (côté hôte) : titre à gauche, les
  * initiales des jours en gris, les chiffres centrés, les séjours en bandes
- * noires avec le nom du voyageur. Les jours passés sont en retrait,
+ * noires avec le nom du voyageur (en retrait, --lm-encre-3, une fois le
+ * séjour terminé). Les jours passés sont en retrait,
  * aujourd'hui porte un point ; un jour hors de la période du propriétaire
  * est grisé. Rien n'est dit par la couleur seule : chaque jour a son libellé
  * et chaque bande est un bouton nommé.
@@ -97,7 +104,7 @@ export function CalendrierMois({ mois, jours, sejours, aujourdhui, chiffres, lib
       </div>
       <div role="list" aria-label={`Jours, ${titre.toLocaleLowerCase('fr')}`}>
         {lignes.map((ligne, i) => (
-          <div key={i} className="relative grid h-15 grid-cols-7 sm:h-16">
+          <div key={i} role="presentation" className="relative grid h-15 grid-cols-7 sm:h-16">
             {ligne.map((j, c) =>
               j ? (
                 <div key={j.date} role="listitem" aria-label={libelleJour(j, sejours, aujourdhui)} className={cn('relative', j.hors && 'bg-(--lm-surface-2)')}>
@@ -119,7 +126,13 @@ export function CalendrierMois({ mois, jours, sejours, aujourdhui, chiffres, lib
             {bandes
               .filter((b) => b.ligne === i)
               .map((b) => (
-                <Bande key={`${b.sejour.arrivee}-${b.sejour.depart}`} b={b} libelle={libelleBande ? libelleBande(b.sejour) : b.sejour.voyageur} onSejour={onSejour} />
+                <Bande
+                  key={`${b.sejour.arrivee}-${b.sejour.depart}`}
+                  b={b}
+                  libelle={libelleBande ? libelleBande(b.sejour) : b.sejour.voyageur}
+                  passe={b.sejour.depart <= aujourdhui}
+                  onSejour={onSejour}
+                />
               ))}
           </div>
         ))}

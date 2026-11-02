@@ -106,11 +106,22 @@ export function bandesDuMois(mois: string, jours: readonly JourCalendrier[], sej
       if (a <= de) continue;
       morceaux.push({ sejour: s, ligne, de, a, arrivee: arriveeIci && debut >= ligne * 7, depart: departIci && fin <= ligne * 7 + 7, libelle: false });
     }
-    const large = morceaux.find((m) => m.a - m.de >= 1) ?? morceaux[0];
+    // Aucun morceau d'une case entière (seule la demi-case du 30 est dans ce mois) : pas de texte, le
+    // libellé du bouton le porte et le nom entier est dans le mois suivant.
+    const large = morceaux.find((m) => m.a - m.de >= 1);
     if (large) large.libelle = true;
     res.push(...morceaux);
   }
   return res;
+}
+
+/** Espace insécable : la ponctuation et le pourcentage ne passent jamais seuls à la ligne. */
+const NBSP = ' ';
+
+/** « 10 août », « 1er sept. ». */
+export function jourMoisOrdinal(date: DateISO): string {
+  const t = jourMois(date);
+  return date.slice(8) === '01' ? t.replace(/^1 /, '1er ') : t;
 }
 
 /** Le séjour dont la nuit du jour au lendemain est réservée (le voyageur qui dort là ce soir). */
@@ -123,7 +134,25 @@ export function sejourQuiPart(sejours: readonly SejourCalendrier[], date: DateIS
   return sejours.find((s) => s.depart === date);
 }
 
-const HORS = { avant: 'avant votre arrivée', apres: 'après votre départ', autre: 'séjour de l’ancien propriétaire' } as const;
+/** Jour qui n'est pas au propriétaire : le mot, tel qu'il se lit en tête d'un mois. */
+export const HORS: Record<NonNullable<JourCalendrier['hors']>, string> = {
+  avant: 'Avant votre arrivée',
+  apres: 'Après votre départ',
+  autre: 'Séjour de l’ancien propriétaire',
+};
+
+/**
+ * Mois entièrement hors de la période du propriétaire (aucun jour à lui,
+ * donc pas de chiffres) : le mot à mettre à la place des chiffres, celui
+ * des jours les plus nombreux ; sinon rien.
+ */
+export function motDuMois(jours: readonly JourCalendrier[]): string {
+  if (!jours.length || jours.some((j) => !j.hors)) return '';
+  const n: Partial<Record<keyof typeof HORS, number>> = {};
+  for (const j of jours) n[j.hors!] = (n[j.hors!] ?? 0) + 1;
+  const [cle] = (Object.entries(n) as [keyof typeof HORS, number][]).sort((a, b) => b[1] - a[1])[0];
+  return HORS[cle];
+}
 
 /**
  * Libellé accessible d'un jour : « 12 nov. : arrivée de Marie D. »,
@@ -131,33 +160,33 @@ const HORS = { avant: 'avant votre arrivée', apres: 'après votre départ', aut
  * « 16 nov. : libre », « 17 nov., aujourd’hui : libre ».
  */
 export function libelleJour(j: JourCalendrier, sejours: readonly SejourCalendrier[], aujourdhui?: DateISO): string {
-  const quand = `${jourMois(j.date)}${j.date === aujourdhui ? ', aujourd’hui' : ''}`;
-  if (j.hors) return `${quand} : ${HORS[j.hors]}`;
+  const quand = `${jourMoisOrdinal(j.date)}${j.date === aujourdhui ? ', aujourd’hui' : ''}${NBSP}:`;
+  if (j.hors) return `${quand} ${HORS[j.hors].toLocaleLowerCase('fr')}`;
   const arrive = j.arrivee ? sejourDuJour(sejours, j.date) : undefined;
   const part = j.depart ? sejourQuiPart(sejours, j.date) : undefined;
   const nom = (s: SejourCalendrier | undefined) => (s ? ` ${s.voyageur}` : '');
-  if (arrive && part) return `${quand} : départ de${nom(part)}, arrivée de${nom(arrive)}`;
-  if (arrive) return `${quand} : arrivée de${nom(arrive)}`;
-  if (part) return `${quand} : départ de${nom(part)}`;
+  if (arrive && part) return `${quand} départ de${nom(part)}, arrivée de${nom(arrive)}`;
+  if (arrive) return `${quand} arrivée de${nom(arrive)}`;
+  if (part) return `${quand} départ de${nom(part)}`;
   if (j.occupe) {
     const s = sejourDuJour(sejours, j.date);
-    return `${quand} : réservé${s ? `, ${s.voyageur}` : ''}`;
+    return `${quand} réservé${s ? `, ${s.voyageur}` : ''}`;
   }
-  return `${quand} : libre`;
+  return `${quand} libre`;
 }
 
-/** « 12 → 15 nov. » (« 28 oct. → 2 nov. » quand le mois change). */
+/** « 12 → 15 nov. » (« 28 oct. → 2 nov. » quand le mois change), flèche entre deux insécables. */
 export function datesSejour(s: Pick<SejourCalendrier, 'arrivee' | 'depart'>): string {
-  const a = jourMois(s.arrivee);
-  const d = jourMois(s.depart);
+  const a = jourMoisOrdinal(s.arrivee);
+  const d = jourMoisOrdinal(s.depart);
   const memeMois = s.arrivee.slice(0, 7) === s.depart.slice(0, 7);
-  return memeMois ? `${a.split(' ')[0]} → ${d}` : `${a} → ${d}`;
+  return `${memeMois ? a.split(' ')[0] : a}${NBSP}→${NBSP}${d}`;
 }
 
-/** Libellé complet d'une bande (bouton) : « Marie D., du 12 au 15 nov., 3 nuits ». */
+/** Libellé complet d'une bande (bouton) : « Marie D., du 1er au 4 sept., 3 nuits ». */
 export function libelleSejour(s: SejourCalendrier, nom: string = s.voyageur): string {
   const nuits = `${s.nuits} ${s.nuits >= 2 ? 'nuits' : 'nuit'}`;
-  return `${nom}, du ${jourMois(s.arrivee)} au ${jourMois(s.depart)}, ${nuits}`;
+  return `${nom}, du ${jourMoisOrdinal(s.arrivee)} au ${jourMoisOrdinal(s.depart)}, ${nuits}`;
 }
 
 export const CANAL_CALENDRIER: Record<CanalReservation, string> = {
@@ -177,7 +206,8 @@ export function ligneChiffres(m: Pick<MoisCalendrier, 'nuitsReservees' | 'nuitsL
   const r = m.nuitsReservees;
   const l = m.nuitsLibres;
   if (!r) return `${l} ${l >= 2 ? 'nuits libres' : 'nuit libre'}`;
-  return `${r} ${r >= 2 ? 'nuits réservées' : 'nuit réservée'} · ${l} ${l >= 2 ? 'libres' : 'libre'} · ${Math.round(m.occupation * 100)} %`;
+  const sep = `${NBSP}·${NBSP}`;
+  return `${r} ${r >= 2 ? 'nuits réservées' : 'nuit réservée'}${sep}${l} ${l >= 2 ? 'libres' : 'libre'}${sep}${Math.round(m.occupation * 100)}${NBSP}%`;
 }
 
 /**

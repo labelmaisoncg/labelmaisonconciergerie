@@ -57,7 +57,7 @@ import {
   utiliserLien,
 } from './proprietaire-acces';
 import { avecNouveauLien as avecNouveauLienOps } from './operations-acces';
-import { bandesDuMois, datesSejour, libelleJour, libelleSejour, ligneChiffres, lignesDuMois, plagesManquantes, sejourDuJour, sejourQuiPart } from '../calendrier/calendrier-mois';
+import { HORS, bandesDuMois, datesSejour, libelleJour, libelleSejour, ligneChiffres, lignesDuMois, motDuMois, plagesManquantes, sejourDuJour, sejourQuiPart } from '../calendrier/calendrier-mois';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull';
 import { ID_LABEL_MAISON } from './espaces';
 import { espaceARetenir, lienAcces, lireEspaceRetenu, lireLienAcces, lireSessionExterne, marqueConnexion, signerSessionExterne } from './acces-externe';
@@ -242,6 +242,9 @@ async function main() {
     verifier(ok('2025-09', '2025-11') && !ok('2025-08', '2025-10'), 'plage : 12 mois en arrière au plus, 13 refusés');
     verifier(ok('2028-01', '2028-03') && !ok('2028-02', '2028-04'), 'plage : 18 mois en avant au plus, 19 refusés');
     verifier(!ok('2026-11', '2026-09') && !ok('2026-13', '2026-09') && !moisDePlage(undefined, '2026-09', AUJ).ok && !moisDePlage('2026-9', '2026-09', AUJ).ok, 'plage : à l’envers ou illisible refusée');
+    // Entrées hostiles d'une requête (req.query : tableau, objet, nombre, pleine chasse, blancs) et années lointaines.
+    const hostiles: unknown[][] = [[['2026-09', '2026-10'], '2026-10'], [{ toString: () => '2026-09' }, '2026-10'], [202609, '2026-10'], ['２０２６-09', '2026-10'], [' 2026-09', '2026-10'], ['2026-09\n', '2026-10'], ['2026-00', '2026-10'], ['1900-01', '1900-02'], ['2999-01', '2999-02'], ['2026-01', '2999-12'], ["2026-09' or 1=1", '2026-10'], ['2026/09', '2026/10']];
+    verifier(hostiles.every(([de, a]) => !moisDePlage(de, a, AUJ).ok), 'plage : tableau, objet, nombre, pleine chasse, blancs, mois 00, années 1900 et 2999, injection : refusés');
   }
 
   /* calendrier par plage : les mêmes logements et les mêmes champs que la vue, rien de plus */
@@ -285,25 +288,43 @@ async function main() {
     verifier(bc.length === 2 && bc[0].a === 2.5 && bc[0].depart && bc[1].de === 2.5 && bc[1].arrivee && bc[0].ligne === bc[1].ligne, 'bande : chassé-croisé le 12, deux bandes qui se touchent au milieu de la case');
     verifier(sejourDuJour(cal.sejours, '2026-08-12')?.voyageur === 'Camille M.' && sejourDuJour(cal.sejours, '2026-08-14') === undefined && sejourQuiPart(cal.sejours, '2026-08-14')?.voyageur === 'Camille M.', 'appariement : qui dort là, qui part');
     verifier(sejourDuJour(croise, '2026-08-12')?.voyageur === 'Deux B.' && sejourQuiPart(croise, '2026-08-12')?.voyageur === 'Un A.', 'appariement : chassé-croisé, l’arrivant et le partant');
+    // Espace insécable avant le deux-points : la ponctuation ne passe jamais seule à la ligne.
+    const I = ' ';
     verifier(
-      libelleJour(jour('2026-08-10'), cal.sejours) === '10 août : arrivée de Camille M.' &&
-        libelleJour(jour('2026-08-12'), cal.sejours) === '12 août : réservé, Camille M.' &&
-        libelleJour(jour('2026-08-14'), cal.sejours) === '14 août : départ de Camille M.' &&
-        libelleJour(jour('2026-08-20'), cal.sejours) === '20 août : libre' &&
-        libelleJour(jour('2026-08-20'), cal.sejours, '2026-08-20') === '20 août, aujourd’hui : libre',
-      'libellé d’un jour : arrivée, réservé, départ, libre, aujourd’hui',
+      libelleJour(jour('2026-08-10'), cal.sejours) === `10 août${I}: arrivée de Camille M.` &&
+        libelleJour(jour('2026-08-12'), cal.sejours) === `12 août${I}: réservé, Camille M.` &&
+        libelleJour(jour('2026-08-14'), cal.sejours) === `14 août${I}: départ de Camille M.` &&
+        libelleJour(jour('2026-08-20'), cal.sejours) === `20 août${I}: libre` &&
+        libelleJour(jour('2026-08-20'), cal.sejours, '2026-08-20') === `20 août, aujourd’hui${I}: libre`,
+      'libellé d’un jour : arrivée, réservé, départ, libre, aujourd’hui ; insécable avant le deux-points',
     );
-    verifier(libelleJour({ ...jour('2026-08-12'), arrivee: true, depart: true }, croise) === '12 août : départ de Un A., arrivée de Deux B.', 'libellé d’un jour : chassé-croisé');
-    verifier(libelleJour({ date: '2026-08-02', occupe: false, veille: false, arrivee: false, depart: false, hors: 'avant' }, []) === '2 août : avant votre arrivée', 'libellé d’un jour hors période');
+    verifier(libelleJour({ ...jour('2026-08-12'), arrivee: true, depart: true }, croise) === `12 août${I}: départ de Un A., arrivée de Deux B.`, 'libellé d’un jour : chassé-croisé');
+    verifier(libelleJour({ date: '2026-08-02', occupe: false, veille: false, arrivee: false, depart: false, hors: 'avant' }, []) === `2 août${I}: avant votre arrivée`, 'libellé d’un jour hors période');
+    verifier(libelleJour({ date: '2026-09-01', occupe: false, veille: false, arrivee: false, depart: false }, []) === `1er sept.${I}: libre`, 'libellé d’un jour : « 1er »');
     verifier(libelleSejour(cal.sejours[0]) === 'Camille M., du 10 août au 14 août, 4 nuits' && libelleSejour(cal.sejours[0], 'Camille Martin').startsWith('Camille Martin,'), 'libellé d’une bande (bouton), nom au choix de l’appelant');
-    verifier(datesSejour(cal.sejours[0]) === '10 → 14 août' && datesSejour(cal.sejours[1]) === '29 août → 3 sept.', 'dates d’un séjour : même mois, mois différents');
+    verifier(libelleSejour({ ...cal.sejours[0], arrivee: '2026-09-01', depart: '2026-09-04', nuits: 3 }) === 'Camille M., du 1er sept. au 4 sept., 3 nuits', 'libellé d’une bande : « du 1er sept. »');
+    verifier(datesSejour(cal.sejours[0]) === `10${I}→${I}14 août` && datesSejour(cal.sejours[1]) === `29 août${I}→${I}3 sept.` && datesSejour({ arrivee: '2026-09-01', depart: '2026-09-04' }) === `1er${I}→${I}4 sept.`, 'dates d’un séjour : même mois, mois différents, « 1er », flèche entre insécables');
     verifier(
-      ligneChiffres(cal) === '7 nuits réservées · 24 libres · 23 %' && ligneChiffres({ nuitsReservees: 0, nuitsLibres: 31, occupation: 0 }) === '31 nuits libres' && ligneChiffres({ nuitsReservees: 0, nuitsLibres: 0, occupation: 0 }) === '',
-      'ligne des chiffres ; sans séjour, pas de zéro ; rien sans jour à lui',
+      ligneChiffres(cal) === `7 nuits réservées${I}·${I}24 libres${I}·${I}23${I}%` && ligneChiffres({ nuitsReservees: 0, nuitsLibres: 31, occupation: 0 }) === '31 nuits libres' && ligneChiffres({ nuitsReservees: 0, nuitsLibres: 0, occupation: 0 }) === '',
+      'ligne des chiffres (séparateurs et % insécables) ; sans séjour, pas de zéro ; rien sans jour à lui',
+    );
+    // Mois sans aucun jour à lui : le mot du mois à la place des chiffres.
+    const horsJour = (date: string, hors: 'avant' | 'apres' | 'autre') => ({ date, occupe: false, veille: false, arrivee: false, depart: false, hors });
+    verifier(
+      motDuMois([horsJour('2026-06-01', 'avant'), horsJour('2026-06-02', 'avant')]) === 'Avant votre arrivée' &&
+        motDuMois([horsJour('2026-12-01', 'apres')]) === 'Après votre départ' &&
+        motDuMois([horsJour('2026-10-01', 'avant'), horsJour('2026-10-02', 'autre'), horsJour('2026-10-03', 'autre')]) === 'Séjour de l’ancien propriétaire' &&
+        motDuMois([horsJour('2026-10-01', 'avant'), jour('2026-08-20')]) === '' &&
+        motDuMois([]) === '' &&
+        HORS.avant === 'Avant votre arrivée',
+      'mot du mois : le plus fréquent des « hors » ; rien dès qu’un jour est à lui',
     );
     // Arrivée un dimanche (13 sept. 2026) : une demi-case sur sa ligne, le nom passe à la ligne suivante.
     const dimanche = bandesDuMois('2026-09', sept.jours, [{ arrivee: '2026-09-13', depart: '2026-09-16', nuits: 3, voyageur: 'Marta D.', nbPersonnes: 2, canal: 'airbnb' as const }]);
     verifier(dimanche.length === 2 && dimanche[0].de === 6.5 && dimanche[0].a === 7 && !dimanche[0].libelle && dimanche[1].ligne === 2 && dimanche[1].libelle, 'bande : nom sur le premier morceau d’au moins une case');
+    // Arrivée le 30 (mercredi), départ le mois suivant : une demi-case seule dans ce mois, aucun texte.
+    const trente = bandesDuMois('2026-09', sept.jours, [{ arrivee: '2026-09-30', depart: '2026-10-02', nuits: 2, voyageur: 'Mehdi T.', nbPersonnes: 2, canal: 'airbnb' as const }]);
+    verifier(trente.length === 1 && trente[0].a - trente[0].de === 0.5 && !trente[0].libelle, 'bande : morceau d’une demi-case seule, sans texte');
     verifier(
       JSON.stringify(plagesManquantes(['2026-09', '2026-10', '2026-11'], (m) => m === '2026-09')) === '[["2026-10","2026-11"]]' &&
         JSON.stringify(plagesManquantes(['2026-09', '2026-10', '2026-12'], () => false)) === '[["2026-09","2026-10"],["2026-12","2026-12"]]' &&
