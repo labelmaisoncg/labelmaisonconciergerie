@@ -35,14 +35,15 @@ Les règles Apple (Human Interface Guidelines) servent de base. Si les dépôts 
 
 ### 4. Couleur
 - Une couleur = un sens. Rouge pour un problème, ambre (`--lm-alerte`) pour un avertissement ou un degré intermédiaire, vert pour un succès. Les plateformes (Airbnb, Booking) ne prennent pas les couleurs danger ou info.
-- **L'or est rare**, comme le rouge d'Airbnb : le bouton principal, la pastille de la recherche, les états choisis (filtre, option, pilule) et l'onglet actif de la barre du bas. Jamais pour un degré, une note, un lien ou une décoration. Les liens tertiaires sont à l'encre et soulignés (`lm-lien`), les étoiles de note à l'encre, le focus clavier est un trait d'encre de 2 px.
+- **L'or est rare**, comme le rouge d'Airbnb : le bouton principal, la pastille de la recherche, les états choisis (filtre, option, pilule) et l'onglet actif de la barre du bas. Jamais pour un degré, une note, un lien ou une décoration. Les liens tertiaires sont à l'encre et soulignés (`lm-lien`), les étoiles de note à l'encre.
+- **Focus clavier : un seul indicateur**, le contour global d'encre de 2 px (`.erp-root :focus-visible` dans `erp.css`). Les composants n'ajoutent ni `ring` ni `focus:outline-none` ; seule exception, les champs du kit (`lm-champ`), dont le bord d'encre fait office et qui coupent le contour. Un `ring` au focus, un `ring` en or ou un contour doublé est un écart.
 - Pas de bandeaux ni de liserés décoratifs de plusieurs couleurs côte à côte.
 - Les couleurs passent par les jetons `--lm-*` de `src/erp/erp.css`. Pas de couleur codée en dur dans un composant, sauf les séries de graphiques (`finance/_composants/graphiques.tsx`).
 
 ### 5. Contraste et accessibilité
 - Texte : contraste ≥ 4,5:1. Texte doré : `--lm-or-texte`. Fonds pleins dorés avec texte blanc : `--lm-or-texte`, jamais `--lm-or`.
 - Rien n'est signalé par la couleur seule : toujours un mot ou une icône avec un libellé.
-- Boutons-icônes avec `aria-label`, champs avec étiquette, zones de clic d'au moins 32 px sur ordinateur et 44 px au toucher pour le bouton principal et les actions courantes (`max-sm:min-h-11`).
+- Boutons-icônes avec `aria-label`, champs avec étiquette, zones de clic d'au moins 32 px sur ordinateur et 44 px au toucher pour le bouton principal, les actions courantes et les boutons d'icône ronds des en-têtes (`max-sm:min-h-11`, `max-sm:size-11` ; les ronds `md` du kit font 40 px sur ordinateur et 44 au toucher).
 
 ### 6. Formes et arrondis : échelle fixe (voir `src/erp/erp.css`)
 | Élément | Arrondi |
@@ -75,7 +76,7 @@ Aucune autre valeur. Arrondis concentriques : un élément intérieur est toujou
    - `npx tsc --noEmit -p tsconfig.erp.json`
    - `npm run build`
    - pour `v` dans `verifier-repull verifier-agent` : `node_modules/.bin/esbuild src/erp/data/$v.ts --bundle --platform=node --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=<dossier temporaire>/$v.cjs && node <dossier temporaire>/$v.cjs` doit afficher « 0 en échec ».
-3. **Captures** : construisez la démo (`VITE_ERP_DEMO=1 npx vite build --outDir <tmp>/dist-boss`), servez-la (`npx vite preview --outDir <tmp>/dist-boss --port 5450 --strictPort` en arrière-plan) et capturez chaque page touchée en 1280×1000 **et** en 390×844 (mobile) : `/opt/pw-browsers/chromium --headless=new --no-sandbox --disable-gpu --window-size=1280,1000 --virtual-time-budget=6000 --screenshot=<fichier> http://localhost:5450/erp/...`. Regardez les images. Arrêtez le serveur par son PID, jamais avec `pkill -f`.
+3. **Captures** : exportez le commit à relire (`git -C <worktree> archive <sha> | tar -x -C <tmp>/src`, lien symbolique `node_modules` vers le dépôt), construisez la démo (`VITE_ERP_DEMO=1 npx vite build --outDir <tmp>/dist-boss`), servez-la (`npx vite preview --outDir <tmp>/dist-boss --port 5450 --strictPort` en arrière-plan) et capturez chaque page touchée en 1280×1000 **et** en 390×844 (mobile) avec Playwright (`require('/opt/node-tools/node_modules/playwright')`, `chromium.launch({ executablePath: '/opt/pw-browsers/chromium' })`, contexte `bypass: 'localhost,127.0.0.1'` si un proxy est défini) : il permet de cliquer, de donner le focus, de défiler et de mesurer les styles calculés. Regardez les images. Arrêtez le serveur par son PID, jamais avec `pkill -f`.
 4. **Recherches automatiques** dans le diff : `rounded ` ou `rounded"` nus, `bg-(--lm-or) text-white`, couleurs hexadécimales dans les `.tsx`, mots interdits (API, Supabase, webhook, cron, Repull) dans du texte visible, plusieurs `variant="primary"` dans un même écran, `bg-(--lm-or)` hors bouton principal / recherche / état choisi / onglet actif, espaces simples avant « : » « ? » « ! » « % » dans les chaînes visibles.
 
 ## Verdict (format de réponse)
