@@ -588,9 +588,33 @@ def footer(cols: list, tagline: str, lieu: str) -> str:
         f'<a href="{INSTA}" target="_blank" rel="noopener">Instagram @labelmaisoncg</a>'
         f'<a href="{TIKTOK}" target="_blank" rel="noopener">TikTok @labelmaison.cg</a>'
         f"</div></div>{c}</div>"
-        '<div class="wrap fbot"><span>© 2026 Label Maison Conciergerie · Tous droits réservés</span>'
+        '<div class="wrap" style="margin-top:28px;font-size:13px;color:var(--muted)">'
+        "<strong>Conciergerie en France :</strong> "
+        + " · ".join(f'<a href="{h}">{esc(n)}</a>' for n, h in REGIONS)
+        + '</div><div class="wrap fbot"><span>© 2026 Label Maison Conciergerie · Tous droits réservés</span>'
         "<span>Paris · France · Marrakech · Dubaï</span></div></footer>"
     )
+
+
+# Hubs régionaux du maillage national (pages de gen_seo_communes.py), liés depuis le
+# pied de page de toutes les pages statiques : les robots atteignent chaque région en
+# un clic depuis n'importe quelle page indexée, puis les départements et les communes.
+REGIONS = [
+    ("Île-de-France", "/conciergerie-ile-de-france"),
+    ("Auvergne-Rhône-Alpes", "/conciergerie-auvergne-rhone-alpes"),
+    ("Bourgogne-Franche-Comté", "/conciergerie-bourgogne-franche-comte"),
+    ("Bretagne", "/conciergerie-bretagne"),
+    ("Centre-Val de Loire", "/conciergerie-centre-val-de-loire"),
+    ("Corse", "/conciergerie-corse"),
+    ("Grand Est", "/conciergerie-grand-est"),
+    ("Hauts-de-France", "/conciergerie-hauts-de-france"),
+    ("Normandie", "/conciergerie-normandie"),
+    ("Nouvelle-Aquitaine", "/conciergerie-nouvelle-aquitaine"),
+    ("Occitanie", "/conciergerie-occitanie"),
+    ("Pays de la Loire", "/conciergerie-pays-de-la-loire"),
+    ("Provence-Alpes-Côte d'Azur", "/conciergerie-provence-alpes-cote-d-azur"),
+    ("Outre-mer", "/conciergerie-airbnb-france"),
+]
 
 
 def mobcta(label: str = "Faire une demande") -> str:

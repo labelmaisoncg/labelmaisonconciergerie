@@ -49,6 +49,8 @@ def main() -> int:
     for p in pages:
         s = p.read_text(encoding="utf-8")
         rel = str(p.relative_to(C.OUT))
+        if rel.startswith("google") and rel.endswith(".html"):
+            continue  # fichier de validation Search Console, pas une page
 
         for m in re.findall(r'<script type="application/ld\+json">(.*?)</script>', s, re.S):
             try:
