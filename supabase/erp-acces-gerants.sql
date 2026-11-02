@@ -235,6 +235,30 @@ drop trigger if exists garder_lien_annonce on erp.enregistrements;
 create trigger garder_lien_annonce before insert or update on erp.enregistrements
   for each row execute function erp.garder_lien_annonce();
 
+-- Une donnée ne change pas de clé. L'ERP et le serveur écrivent toujours par (collection, id)
+-- (upsert, remplacerSi) : changer la collection ou l'identifiant d'une ligne n'est jamais une
+-- écriture légitime. Sans cette règle, n'importe quel membre déplacerait une fiche (propriétaire,
+-- membre de l'équipe, logement, contrôle…) vers une collection inconnue : elle disparaîtrait de
+-- l'ERP sans suppression (règle « ecritures reservees aux gerants (suppression) » contournée),
+-- sans passer par les gardes d'historique (erp.garder_*_avec_historique) et SANS TRACE dans
+-- erp.historique (la version n'est archivée que si donnees change). Les rôles autres que
+-- authenticated (maintenance) ne sont pas concernés. Même déclencheur dans erp-installation.sql,
+-- erp-acces-gerants.sql et erp-espaces.sql.
+create or replace function erp.garder_cle_enregistrement() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user = 'authenticated' and (new.collection is distinct from old.collection or new.id is distinct from old.id) then
+    raise exception 'Une donnée ne change pas de clé (collection, identifiant).' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.garder_cle_enregistrement() from public, anon;
+drop trigger if exists garder_cle_enregistrement on erp.enregistrements;
+create trigger garder_cle_enregistrement before update of collection, id on erp.enregistrements
+  for each row execute function erp.garder_cle_enregistrement();
+
 -- Publication des avis sur les voyageurs (avisADeposer.publication : « à valider »,
 -- « en cours », « publié », « Ne pas publier »…) : écrite par le serveur et le gérant
 -- seulement (src/erp/data/avis-auto-passage.ts, AvisAuto.tsx). Sans cette règle, un
@@ -638,6 +662,12 @@ begin
     update erp.enregistrements set donnees = donnees || '{"nom": "Recette propriétaire à supprimer (vu)"}' where collection = 'proprietaires' and id = 'recette-prop-suppr';
     get diagnostics n = row_count;
     if n <> 1 then resultat := 'un compte « opérations » ne modifie plus le propriétaire qu''il ne peut pas supprimer'; raise exception 'stop'; end if;
+    -- Déplacer une ligne vers une autre collection ou changer son identifiant (suppression déguisée) : jamais (erp.garder_cle_enregistrement).
+    begin
+      update erp.enregistrements set collection = 'recette-corbeille' where collection = 'controles' and id = 'recette-membre-vecu';
+      resultat := 'un compte « opérations » change la collection d''une ligne (suppression déguisée)'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
     -- Publication des avis (erp.garder_publication_avis) : décidée par le gérant et le serveur seulement.
     begin
       update erp.enregistrements set donnees = donnees - 'publication' where collection = 'avisADeposer' and id = 'recette-avis-decide';
@@ -761,6 +791,17 @@ begin
     begin
       delete from erp.enregistrements where collection = 'equipe' and id = 'recette-membre-acces';
       resultat := 'un gérant supprime un membre dont l''accès est encore ouvert'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    -- Pas même en déplaçant la fiche ou en changeant son identifiant (erp.garder_cle_enregistrement).
+    begin
+      update erp.enregistrements set collection = 'recette-corbeille' where collection = 'proprietaires' and id = 'recette-prop-vecu';
+      resultat := 'un gérant change la collection d''un propriétaire qui a un logement (suppression déguisée)'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    begin
+      update erp.enregistrements set id = 'recette-prop-vecu-2' where collection = 'proprietaires' and id = 'recette-prop-vecu';
+      resultat := 'un gérant change l''identifiant d''un propriétaire qui a un logement'; raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
     -- Publication des avis : le gérant la décide (« Ne pas publier », rouvrir).

@@ -388,6 +388,30 @@ drop trigger if exists garder_lien_annonce on erp.enregistrements;
 create trigger garder_lien_annonce before insert or update on erp.enregistrements
   for each row execute function erp.garder_lien_annonce();
 
+-- Une donnée ne change pas de clé. L'ERP et le serveur écrivent toujours par (collection, id)
+-- (upsert, remplacerSi) : changer la collection ou l'identifiant d'une ligne n'est jamais une
+-- écriture légitime. Sans cette règle, n'importe quel membre déplacerait une fiche (propriétaire,
+-- membre de l'équipe, logement, contrôle…) vers une collection inconnue : elle disparaîtrait de
+-- l'ERP sans suppression (règle « ecritures reservees aux gerants (suppression) » contournée),
+-- sans passer par les gardes d'historique (erp.garder_*_avec_historique) et SANS TRACE dans
+-- erp.historique (la version n'est archivée que si donnees change). Les rôles autres que
+-- authenticated (maintenance) ne sont pas concernés. Même déclencheur dans erp-installation.sql,
+-- erp-acces-gerants.sql et erp-espaces.sql.
+create or replace function erp.garder_cle_enregistrement() returns trigger
+language plpgsql set search_path = ''
+as $$
+begin
+  if current_user = 'authenticated' and (new.collection is distinct from old.collection or new.id is distinct from old.id) then
+    raise exception 'Une donnée ne change pas de clé (collection, identifiant).' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+revoke all on function erp.garder_cle_enregistrement() from public, anon;
+drop trigger if exists garder_cle_enregistrement on erp.enregistrements;
+create trigger garder_cle_enregistrement before update of collection, id on erp.enregistrements
+  for each row execute function erp.garder_cle_enregistrement();
+
 -- Publication des avis sur les voyageurs (avisADeposer.publication : « à valider »,
 -- « en cours », « publié », « Ne pas publier »…) : écrite par le serveur et le gérant
 -- seulement (src/erp/data/avis-auto-passage.ts, AvisAuto.tsx). Sans cette règle, un

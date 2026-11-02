@@ -8,14 +8,16 @@
  *
  * Seulement une personne SANS HISTORIQUE : fiche créée par erreur, en double
  * ou pour un essai. Dès qu'elle a vécu dans l'ERP, la suppression est refusée
- * en disant ce qu'elle a (« 2 logements, 1 mandat et 3 bilans »), et l'écran
- * propose la suite qui existe déjà : retirer l'accès (son espace est encore
- * ouvert), ou retirer le membre de l'équipe (actif: false : plus d'accès,
- * l'historique reste).
+ * en disant ce qu'elle a (« 2 logements, 1 mandat et 3 bilans ») ; un membre
+ * encore dans l'équipe peut en être retiré (actif: false : plus de logement à
+ * suivre, l'historique reste). Un accès encore ouvert bloque à lui seul ;
+ * sans historique, l'écran propose de le retirer puis de supprimer ; avec un
+ * historique, il dit seulement où l'accès se gère (on ne coupe pas l'accès
+ * d'une vraie personne depuis un refus).
  *
  * Propriétaire (historiqueDuProprietaire) :
- *   ses logements (« Rattachez d'abord ses logements à un autre propriétaire »,
- *   fiche du logement) ; les logements dont il a été le propriétaire
+ *   ses logements (« Ses logements se rattachent à un autre propriétaire depuis
+ *   la fiche du logement ») ; les logements dont il a été le propriétaire
  *   (proprietairesPrecedents) ; ses mandats envoyés, signés ou résiliés ; les
  *   factures à son nom (tout statut : une facture ne se refait pas) ; ses
  *   bilans (brouillons compris : le gérant les prépare à la main) ; les
@@ -74,8 +76,8 @@ export const peutSupprimerPersonne = (role: string | undefined, lectureSeule = f
 /** Accès encore ouvert : invité ou actif (un accès retiré ne compte pas). */
 export const accesOuvert = (a: Pick<AccesExterne, 'statut'> | undefined): boolean => a?.statut === 'invite' || a?.statut === 'actif';
 
-/** « Il disparaît de l’ERP, avec X et Y. C’est définitif. » */
-export const phraseConfirmation = (avecLui: readonly string[]): string => `Il disparaît de l’ERP${avecLui.length ? `, avec ${avecLui.join(' et ')}` : ''}. C’est définitif.`;
+/** « La fiche disparaît de l’ERP, avec X et Y. C’est définitif. » (jamais de pronom pour une personne). */
+export const phraseConfirmation = (avecLui: readonly string[]): string => `La fiche disparaît de l’ERP${avecLui.length ? `, avec ${avecLui.join(' et ')}` : ''}. C’est définitif.`;
 
 function traces<K extends string>(mots: Record<K, [string, string]>, nombres: Record<K, number>): TracePersonne[] {
   return (Object.keys(mots) as K[])
@@ -103,8 +105,10 @@ const MOTS_PROPRIETAIRE: Record<CleHistoriqueProprietaire, [string, string]> = {
   actionsIA: ['action de l’IA', 'actions de l’IA'],
 };
 
-/** Phrase ajoutée au refus tant qu'il a un logement. */
-export const PHRASE_LOGEMENTS_PROPRIETAIRE = 'Rattachez d’abord ses logements à un autre propriétaire (fiche du logement).';
+/** Phrase ajoutée au refus tant qu'il a un logement (sans laisser croire que la suppression passera ensuite). */
+export const PHRASE_LOGEMENTS_PROPRIETAIRE = 'Ses logements se rattachent à un autre propriétaire depuis la fiche du logement.';
+/** Phrase ajoutée au refus quand son espace est encore ouvert : l'accès se gère dans la section Accès du panneau. */
+export const PHRASE_ACCES_OUVERT_PROPRIETAIRE = 'Son espace propriétaire est encore ouvert : il se gère dans la section Accès.';
 
 /** L'accès du propriétaire à son espace (une ligne par propriétaire, id = proprietaireId). */
 export const accesDuProprietaire = (id: Id, d: DonneesSuppression): AccesProprietaire | undefined =>
@@ -139,14 +143,13 @@ export type VerdictSuppressionProprietaire =
       motif: 'historique';
       message: string;
       historique: TracePersonne[];
-      /** Son espace est encore ouvert (invité ou actif) : l'écran propose « Retirer l'accès ». */
+      /** Son espace est encore ouvert (invité ou actif) : dit dans le refus (il se gère dans la section Accès). */
       accesOuvert: boolean;
     };
 
 /**
  * Peut-on supprimer ce propriétaire ? Dans l'ordre : droits, fiche présente,
- * historique (dit même si son accès est ouvert : la suite est alors « Retirer
- * l'accès »), accès encore ouvert.
+ * historique (dit même si son accès est ouvert), accès encore ouvert.
  */
 export function verdictSuppressionProprietaire(o: { role: string | undefined; lectureSeule?: boolean; proprietaireId: Id; donnees: DonneesSuppression }): VerdictSuppressionProprietaire {
   if (!peutSupprimerPersonne(o.role, o.lectureSeule)) return { ok: false, motif: 'droits', message: 'Seul un gérant peut supprimer un propriétaire.' };
@@ -156,16 +159,17 @@ export function verdictSuppressionProprietaire(o: { role: string | undefined; le
   const historique = historiqueDuProprietaire(p.id, o.donnees);
   if (historique.length) {
     const logements = historique.some((t) => t.cle === 'logements');
+    const ouvert = accesOuvert(acces);
     return {
       ok: false,
       motif: 'historique',
       historique,
-      accesOuvert: accesOuvert(acces),
-      message: `« ${p.nom} » a ${resumeHistorique(historique)} : il ne peut pas être supprimé.${logements ? ` ${PHRASE_LOGEMENTS_PROPRIETAIRE}` : ''}`,
+      accesOuvert: ouvert,
+      message: `La fiche de « ${p.nom} » a ${resumeHistorique(historique)} : elle ne peut pas être supprimée.${logements ? ` ${PHRASE_LOGEMENTS_PROPRIETAIRE}` : ''}${ouvert ? ` ${PHRASE_ACCES_OUVERT_PROPRIETAIRE}` : ''}`,
     };
   }
   if (accesOuvert(acces)) {
-    return { ok: false, motif: 'acces', message: `« ${p.nom} » a encore un accès à son espace : retirez-le d’abord, puis supprimez la fiche.` };
+    return { ok: false, motif: 'acces', message: `« ${p.nom} » a encore un accès à son espace : retirez-le d’abord, puis supprimez la fiche.` };
   }
   const brouillons = (o.donnees.mandats ?? []).filter((m) => m?.proprietaireId === p.id && m.statut === 'brouillon').length;
   const avecLui: string[] = [];
@@ -209,18 +213,20 @@ export type VerdictSuppressionMembre =
       motif: 'historique';
       message: string;
       historique: TracePersonne[];
-      /** Encore dans l'équipe (actif) : l'écran propose « Retirer de l'équipe ». */
+      /** Encore dans l'équipe (actif) : l'écran propose « Retirer de l'équipe » (sauf accès encore ouvert). */
       dansLEquipe: boolean;
+      /** Son accès est encore ouvert (invité ou actif) : dit dans le refus (il se gère dans le tiroir). */
+      accesOuvert: boolean;
     };
 
-/** Suite proposée quand un membre a un historique. */
-export const PHRASE_RETIRER_DE_LEQUIPE = 'Retirez-le de l’équipe : il n’a plus d’accès, son historique reste.';
-export const PHRASE_DEJA_HORS_EQUIPE = 'Il est déjà hors de l’équipe : son historique reste.';
+/** Suite proposée quand un membre a un historique (jamais de pronom « il » pour une personne). */
+export const PHRASE_RETIRER_DE_LEQUIPE = 'Retirez cette personne de l’équipe : elle n’a plus de logement à suivre, son historique reste.';
+export const PHRASE_DEJA_HORS_EQUIPE = 'Cette personne est déjà hors de l’équipe : son historique reste.';
+export const PHRASE_ACCES_OUVERT_MEMBRE = 'Son accès est encore ouvert : il se gère dans ce panneau.';
 
 /**
  * Peut-on supprimer ce membre ? Dans l'ordre : droits, fiche présente,
- * historique (dit même si son accès est ouvert : la suite est alors « Retirer
- * de l'équipe »), accès encore ouvert.
+ * historique (dit même si son accès est ouvert), accès encore ouvert.
  */
 export function verdictSuppressionMembre(o: { role: string | undefined; lectureSeule?: boolean; membreId: Id; donnees: DonneesSuppression }): VerdictSuppressionMembre {
   if (!peutSupprimerPersonne(o.role, o.lectureSeule)) return { ok: false, motif: 'droits', message: 'Seul un gérant peut supprimer un membre de l’équipe.' };
@@ -229,16 +235,18 @@ export function verdictSuppressionMembre(o: { role: string | undefined; lectureS
   const acces = accesDuMembre(m.id, o.donnees);
   const historique = historiqueDuMembre(m.id, o.donnees);
   if (historique.length) {
+    const ouvert = accesOuvert(acces);
     return {
       ok: false,
       motif: 'historique',
       historique,
       dansLEquipe: !!m.actif,
-      message: `« ${m.nom} » a ${resumeHistorique(historique)} : il ne peut pas être supprimé. ${m.actif ? PHRASE_RETIRER_DE_LEQUIPE : PHRASE_DEJA_HORS_EQUIPE}`,
+      accesOuvert: ouvert,
+      message: `La fiche de « ${m.nom} » a ${resumeHistorique(historique)} : elle ne peut pas être supprimée. ${ouvert ? PHRASE_ACCES_OUVERT_MEMBRE : m.actif ? PHRASE_RETIRER_DE_LEQUIPE : PHRASE_DEJA_HORS_EQUIPE}`,
     };
   }
   if (accesOuvert(acces)) {
-    return { ok: false, motif: 'acces', message: `« ${m.nom} » a encore un accès à l’espace opérations : retirez-le d’abord, puis supprimez la fiche.` };
+    return { ok: false, motif: 'acces', message: `« ${m.nom} » a encore un accès à l’espace opérations : retirez-le d’abord, puis supprimez la fiche.` };
   }
   return { ok: true, avecLui: acces ? ['son ancien accès'] : [] };
 }

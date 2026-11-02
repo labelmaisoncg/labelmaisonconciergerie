@@ -3,18 +3,30 @@
  * haut à droite du tiroir, PanneauResponsable dans Acces.tsx), pour le gérant :
  * une fiche créée par erreur, en double ou pour un essai disparaît de l'ERP.
  * Avec un historique, la fenêtre dit pourquoi et propose « Retirer de
- * l'équipe » (actif: false, l'interrupteur du tiroir) ; son accès encore
- * ouvert : « Retirer l'accès » (le geste du tiroir, passé en `onRetirerAcces`).
+ * l'équipe » (actif: false, l'interrupteur du tiroir) ; si son accès est
+ * encore ouvert, seulement « Fermer » (l'accès se gère dans le tiroir : on ne
+ * le coupe pas depuis un refus). Sans historique mais avec un accès encore
+ * ouvert : « Retirer l'accès » (le geste du tiroir, passé en `onRetirerAcces`),
+ * puis « Supprimer » dès que le verdict le permet.
  * Règles : data/suppression-personnes.ts.
  */
 import { useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertTriangle, Trash2, UserMinus, UserX } from 'lucide-react';
 import { logementsSansPersonne } from '../../data/acces-gerant';
+import { MODE_DEMO } from '../../data/config';
 import { affectationsSans } from '../../data/operations';
 import { useErp } from '../../data/store';
 import { resumeHistorique } from '../../data/suppression-logement';
-import { PHRASE_DEJA_HORS_EQUIPE, PHRASE_RETIRER_DE_LEQUIPE, peutSupprimerPersonne, phraseConfirmation, verdictSuppressionMembre } from '../../data/suppression-personnes';
+import {
+  PHRASE_ACCES_OUVERT_MEMBRE,
+  PHRASE_DEJA_HORS_EQUIPE,
+  PHRASE_RETIRER_DE_LEQUIPE,
+  accesOuvert,
+  peutSupprimerPersonne,
+  phraseConfirmation,
+  verdictSuppressionMembre,
+} from '../../data/suppression-personnes';
 import type { MembreEquipe } from '../../data/types-operations';
 import { Alert, Button, IconButton, Modal } from '../../ui';
 
@@ -33,33 +45,42 @@ export function SupprimerMembre({
   const naviguer = useNavigate();
   const [ouvert, setOuvert] = useState(false);
   const [fait, setFait] = useState<'acces' | 'equipe' | null>(null);
+  // Accès retiré depuis la fenêtre : la ligne relue le montre (« Supprimer » possible) ; sinon « Fermer » seul.
+  const [relu, setRelu] = useState(false);
   const [enCours, setEnCours] = useState(false);
   const [echec, setEchec] = useState<string | null>(null);
   if (!peutSupprimerPersonne(d.utilisateur.role, d.lectureSeule)) return null;
 
   const ouvrir = () => {
     setFait(null);
+    setRelu(false);
     setEchec(null);
     setOuvert(true);
   };
   const fermer = () => setOuvert(false);
-  // Calculé à l'ouverture, sur les données du moment.
-  const verdict = ouvert && !fait ? verdictSuppressionMembre({ role: d.utilisateur.role, lectureSeule: d.lectureSeule, membreId: m.id, donnees: d.donnees }) : null;
+  // Calculé sur les données du moment : après le retrait de l'accès, « Supprimer » dès qu'il le permet.
+  const verdict = ouvert ? verdictSuppressionMembre({ role: d.utilisateur.role, lectureSeule: d.lectureSeule, membreId: m.id, donnees: d.donnees }) : null;
 
   const supprimer = () => {
     const nom = m.nom;
     const r = d.supprimerMembre(m.id);
     if (!r.ok) return setEchec(r.erreur);
     // Le tiroir se ferme de lui-même (la fiche n'existe plus) ; retour à la liste des responsables.
-    naviguer('/erp/parametres/acces', { state: { message: `« ${nom} » a été supprimé.` } });
+    naviguer('/erp/parametres/acces', { state: { message: `La fiche de « ${nom} » a été supprimée.` } });
   };
 
   const retirerAcces = async () => {
     setEchec(null);
     setEnCours(true);
     const erreur = await onRetirerAcces();
+    if (erreur) {
+      setEnCours(false);
+      return setEchec(erreur);
+    }
+    // En production la ligne est écrite par le serveur : relue (et livrée au store) avant de proposer « Supprimer », jamais sur un verdict périmé.
+    const lu = MODE_DEMO ? null : await d.relire('accesOperations', m.id);
+    setRelu(MODE_DEMO || (!!lu && !accesOuvert(lu)));
     setEnCours(false);
-    if (erreur) return setEchec(erreur);
     setFait('acces');
   };
 
@@ -77,9 +98,19 @@ export function SupprimerMembre({
       Annuler
     </Button>
   );
+  const fermerDiscret = (
+    <Button variant="ghost" onClick={fermer}>
+      Fermer
+    </Button>
+  );
   const fermerSeul = (
     <Button variant="primary" onClick={fermer}>
       Fermer
+    </Button>
+  );
+  const boutonSupprimer = (
+    <Button variant="danger" icone={<Trash2 />} onClick={supprimer}>
+      Supprimer
     </Button>
   );
 
@@ -87,17 +118,24 @@ export function SupprimerMembre({
   let description: string | undefined;
   let pied: ReactNode = null;
   if (fait === 'acces') {
-    titre = `L’accès de « ${m.nom} » est retiré`;
-    description = 'Ses liens ne marchent plus. Son espace se ferme dès qu’il recharge la page.';
-    pied = fermerSeul;
+    titre = `L’accès de « ${m.nom} » est retiré`;
+    description = 'Ses liens ne marchent plus. Son espace se ferme au prochain rechargement de la page.';
+    pied = relu && verdict?.ok ? (
+      <>
+        {fermerDiscret}
+        {boutonSupprimer}
+      </>
+    ) : (
+      fermerSeul
+    );
   } else if (fait === 'equipe') {
-    titre = `« ${m.nom} » est hors de l’équipe`;
-    description = 'Il n’a plus d’accès à l’espace opérations. Son historique reste.';
+    titre = `« ${m.nom} » est hors de l’équipe`;
+    description = 'Cette personne n’a plus d’accès à l’espace opérations. Son historique reste.';
     pied = fermerSeul;
   } else if (verdict?.ok) {
     // Logements que plus personne ne suivrait : dits avant le bouton, qui reste disponible.
     const seuls = m.actif ? logementsSansPersonne(d.donnees.equipe, m.id, m.logementIds).map((id) => d.logements.find((l) => l.id === id)?.nom ?? 'Logement') : [];
-    titre = `Supprimer « ${m.nom} » ?`;
+    titre = `Supprimer « ${m.nom} » ?`;
     description = phraseConfirmation(verdict.avecLui);
     pied = (
       <>
@@ -108,26 +146,26 @@ export function SupprimerMembre({
           </p>
         )}
         {annuler}
-        <Button variant="danger" icone={<Trash2 />} onClick={supprimer}>
-          Supprimer
-        </Button>
+        {boutonSupprimer}
       </>
     );
   } else if (verdict?.motif === 'historique') {
-    titre = `Impossible de supprimer « ${m.nom} »`;
-    description = `Il a ${resumeHistorique(verdict.historique)}. ${verdict.dansLEquipe ? PHRASE_RETIRER_DE_LEQUIPE : PHRASE_DEJA_HORS_EQUIPE}`;
-    pied = verdict.dansLEquipe ? (
-      <>
-        {annuler}
-        <Button variant="primary" icone={<UserMinus />} onClick={retirerDeLEquipe}>
-          Retirer de l’équipe
-        </Button>
-      </>
-    ) : (
-      fermerSeul
-    );
+    titre = `Impossible de supprimer « ${m.nom} »`;
+    const suite = verdict.accesOuvert ? PHRASE_ACCES_OUVERT_MEMBRE : verdict.dansLEquipe ? PHRASE_RETIRER_DE_LEQUIPE : PHRASE_DEJA_HORS_EQUIPE;
+    description = `Cette fiche a ${resumeHistorique(verdict.historique)}. ${suite}`;
+    pied =
+      !verdict.accesOuvert && verdict.dansLEquipe ? (
+        <>
+          {annuler}
+          <Button variant="primary" icone={<UserMinus />} onClick={retirerDeLEquipe}>
+            Retirer de l’équipe
+          </Button>
+        </>
+      ) : (
+        fermerSeul
+      );
   } else if (verdict?.motif === 'acces') {
-    titre = `« ${m.nom} » a encore un accès`;
+    titre = `« ${m.nom} » a encore un accès`;
     description = 'Son espace opérations est encore ouvert. Retirez d’abord son accès, puis supprimez la fiche.';
     pied = (
       <>

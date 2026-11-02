@@ -12,10 +12,12 @@
  *     && node /tmp/verifier-suppression-personnes.mjs
  */
 import { completer, donneesVides } from './collections';
-import { SUPPRESSIONS_GERANT_SEULEMENT, operationReserveeAuGerant } from './ecritures-gerant';
+import { MESSAGE_REFUS_GERANT, MESSAGE_REFUS_HISTORIQUE, SUPPRESSIONS_GERANT_SEULEMENT, messageRefus, operationReserveeAuGerant, traceRefus } from './ecritures-gerant';
 import { creerSeed } from './seed';
 import { resumeHistorique } from './suppression-logement';
 import {
+  PHRASE_ACCES_OUVERT_MEMBRE,
+  PHRASE_ACCES_OUVERT_PROPRIETAIRE,
   PHRASE_DEJA_HORS_EQUIPE,
   PHRASE_LOGEMENTS_PROPRIETAIRE,
   PHRASE_RETIRER_DE_LEQUIPE,
@@ -82,8 +84,8 @@ section('Propriétaire sans historique : supprimé, avec ce qui n’appartient q
   const v = gerantProp(d);
   verifier(v.ok, 'verdict : permis', v);
   verifier(v.ok && v.avecLui.join(' | ') === 'son mandat en préparation | son ancien accès', 'la confirmation dit le mandat en préparation et l’ancien accès', v);
-  verifier(phraseConfirmation(v.ok ? v.avecLui : []) === 'Il disparaît de l’ERP, avec son mandat en préparation et son ancien accès. C’est définitif.', 'phrase de confirmation');
-  verifier(phraseConfirmation([]) === 'Il disparaît de l’ERP. C’est définitif.', 'phrase de confirmation sans rien d’autre');
+  verifier(phraseConfirmation(v.ok ? v.avecLui : []) === 'La fiche disparaît de l’ERP, avec son mandat en préparation et son ancien accès. C’est définitif.', 'phrase de confirmation (sans pronom)');
+  verifier(phraseConfirmation([]) === 'La fiche disparaît de l’ERP. C’est définitif.', 'phrase de confirmation sans rien d’autre');
   const apres = supprimerProprietaireDe(d, PROP);
   verifier(apres.proprietaires.map((p) => p.id).join() === 'pro-autre', 'la fiche n’est plus là, l’autre reste');
   verifier(apres.mandats.map((m) => m.id).join() === 'man-autre', 'mandat en préparation retiré, celui de l’autre reste');
@@ -147,7 +149,11 @@ section('Propriétaire : chaque trace d’historique refuse la suppression');
   };
   const v = gerantProp(plein);
   verifier(!v.ok && v.motif === 'historique' && resumeHistorique(v.historique) === '2 logements, 1 mandat et 3 bilans', 'résumé : « 2 logements, 1 mandat et 3 bilans »', v);
-  verifier(!v.ok && v.message === `« Essai Dupont » a 2 logements, 1 mandat et 3 bilans : il ne peut pas être supprimé. ${PHRASE_LOGEMENTS_PROPRIETAIRE}`, 'message du store : résumé et marche à suivre', v);
+  verifier(
+    !v.ok && v.message === `La fiche de « Essai Dupont » a 2 logements, 1 mandat et 3 bilans : elle ne peut pas être supprimée. ${PHRASE_LOGEMENTS_PROPRIETAIRE}`,
+    'message du store : résumé et marche à suivre, guillemets insécables, sans pronom',
+    v,
+  );
 }
 
 section('Propriétaire : un accès encore ouvert bloque ; retiré, il part avec lui');
@@ -160,7 +166,7 @@ section('Propriétaire : un accès encore ouvert bloque ; retiré, il part avec 
     verifier(JSON.stringify(ops(d, supprimerProprietaireDe(d, PROP))) === JSON.stringify(['supprimer proprietaires/pro-essai', 'supprimer mandats/man-brouillon', 'supprimer recommandations/reco-essai'].sort()), `accès ${statut} : jamais retiré par le nettoyage (le verdict l’a refusé avant)`);
     const avecHistorique = { ...d, logements: [...d.logements, { id: 'l1', proprietaireId: PROP } as never] };
     const h = gerantProp(avecHistorique);
-    verifier(!h.ok && h.motif === 'historique' && h.accesOuvert, `accès ${statut} ET historique : on dit l’historique, et que l’accès est ouvert (« Retirer l’accès »)`, h);
+    verifier(!h.ok && h.motif === 'historique' && h.accesOuvert && h.message.endsWith(PHRASE_ACCES_OUVERT_PROPRIETAIRE), `accès ${statut} ET historique : on dit l’historique et où l’accès se gère (jamais « Retirer l’accès » depuis un refus)`, h);
   }
   const sansAcces = { ...base, accesProprietaires: [base.accesProprietaires[1]] };
   const v = gerantProp(sansAcces);
@@ -275,7 +281,7 @@ section('Membre : un accès encore ouvert bloque ; retiré, il part avec lui');
     verifier(!v.ok && v.motif === 'acces' && /retirez-le d’abord, puis supprimez la fiche/.test(v.message), `accès ${statut} sans historique : refusé, « retirez-le d’abord »`, v);
     verifier(supprimerMembreDe(d, MEM).accesOperations.length === 2, `accès ${statut} : jamais retiré par le nettoyage (le verdict l’a refusé avant)`);
     const h = gerantMem({ ...d, controles: [...d.controles, { id: 'c1', logementId: 'log-a', parId: MEM } as never] });
-    verifier(!h.ok && h.motif === 'historique' && h.dansLEquipe, `accès ${statut} ET historique : on dit l’historique (« Retirer de l’équipe »)`, h);
+    verifier(!h.ok && h.motif === 'historique' && h.dansLEquipe && h.accesOuvert && h.message.endsWith(PHRASE_ACCES_OUVERT_MEMBRE), `accès ${statut} ET historique : on dit l’historique et où l’accès se gère (ni « Retirer de l’équipe », ni « Retirer l’accès »)`, h);
   }
   const jamaisInvite = { ...base, accesOperations: [base.accesOperations[1]] };
   verifier(gerantMem(jamaisInvite).ok && (gerantMem(jamaisInvite) as { avecLui: string[] }).avecLui.length === 0, 'jamais invité : rien d’annoncé sur l’accès');
@@ -304,6 +310,15 @@ section('Droits : un gérant, jamais en lecture seule ; suppressions réservées
   verifier(!operationReserveeAuGerant({ type: 'ecrire', collection: 'proprietaires', id: PROP, donnees: { ...proprietaire(), nom: 'Renommé' } }, dp), 'modifier une fiche propriétaire reste permis à l’équipe');
   verifier(!operationReserveeAuGerant({ type: 'ecrire', collection: 'equipe', id: MEM, donnees: { ...membre(), nom: 'Renommé' } }, dm), 'modifier une fiche membre reste permis à l’équipe');
   verifier(!operationReserveeAuGerant({ type: 'supprimer', collection: 'affectations', id: 'log-b' }, dm), 'retirer une affectation reste permis à l’équipe');
+
+  // La base refuse par un déclencheur d'historique (une trace invisible de l'écran, une relance de paiement…) :
+  // le message le dit, jamais « réservée au gérant » à un gérant.
+  const refusTrigger = { collection: 'proprietaires' as const, id: PROP, code: '42501', message: 'Ce propriétaire a un historique ou un accès encore ouvert : il ne peut pas être supprimé.' };
+  const refusMembre = { collection: 'equipe' as const, id: MEM, code: '42501', message: 'Ce membre de l’équipe a un historique ou un accès encore ouvert : retirez-le de l’équipe plutôt que de le supprimer.' };
+  const refusRls = { ...refusTrigger, message: 'new row violates row-level security policy for table "enregistrements"' };
+  verifier(messageRefus([refusTrigger]) === MESSAGE_REFUS_HISTORIQUE && messageRefus([refusMembre]) === MESSAGE_REFUS_HISTORIQUE, 'refus d’un déclencheur d’historique : « La base a refusé : cette fiche a encore un historique. »');
+  verifier(messageRefus([refusRls]) === MESSAGE_REFUS_GERANT && messageRefus([refusTrigger, refusRls]) === MESSAGE_REFUS_GERANT, 'refus d’une règle de droits : toujours « réservée au gérant »');
+  verifier(/fiche qui a encore un historique/.test(traceRefus([refusTrigger], { auteur: 'A', id: 'j', horodatage: '2026-10-29T10:00:00+02:00' }).details), 'journal : le refus d’historique est dit tel quel');
 }
 
 section('Un espace à la fois : seules les données de l’espace ouvert comptent');
@@ -356,6 +371,13 @@ async function fichiersSql() {
       verifier(mem.includes(attendu), `${fichier} : le déclencheur membre regarde ${attendu}`);
     }
     for (const corps of [prop, mem]) verifier(corps.includes("current_user <> 'authenticated'"), `${fichier} : déclencheur limité au rôle authenticated (la maintenance n’est pas concernée)`);
+    verifier(/a un historique/.test(prop) && /a un historique/.test(mem) && /a un historique/.test(corpsDe(sql, 'garder_logement_avec_historique')), `${fichier} : les refus des déclencheurs disent « a un historique » (reconnu par le store : messageRefus)`);
+    // Une ligne ne change pas de clé (audit : une suppression déguisée en changement de collection contournerait tout).
+    const cleCorps = corpsDe(sql, 'garder_cle_enregistrement');
+    verifier(
+      /new\.collection is distinct from old\.collection or new\.id is distinct from old\.id/.test(cleCorps) && sql.includes('create trigger garder_cle_enregistrement before update of collection, id on erp.enregistrements'),
+      `${fichier} : déclencheur erp.garder_cle_enregistrement (ni la collection ni l’identifiant d’une ligne ne changent)`,
+    );
     const parEspace = fichier === 'supabase/erp-espaces.sql';
     verifier((prop.includes('e.espace = old.espace') && mem.includes('e.espace = old.espace')) === parEspace, `${fichier} : ${parEspace ? 'limité à l’espace de la personne' : 'sans colonne espace (version d’avant les espaces)'}`);
   }
@@ -379,21 +401,57 @@ async function fichiersSql() {
 
   section('Écrans et store : textes et ordre des contrôles');
   const ecranProp = lire('src/erp/modules/logements/_composants/SupprimerProprietaire.tsx');
+  const ecranMem = lire('src/erp/modules/parametres/SupprimerMembre.tsx');
+  const regles = lire('src/erp/data/suppression-personnes.ts');
+  // Guillemets autour du nom : espace insécable (U+00A0) des deux côtés, jamais une espace simple ; aucun « Il » pour une personne.
+  for (const [nom, src, attendu] of [
+    ['propriétaire', ecranProp, 5],
+    ['membre', ecranMem, 6],
+    ['règles', regles, 4],
+  ] as const) {
+    const ouvrants = (src.match(/« \$\{/g) ?? []).length;
+    const fermants = (src.match(/\} »/g) ?? []).length;
+    verifier(!/« \$\{/.test(src) && !/\} »/.test(src) && ouvrants === attendu && fermants === attendu, `${nom} : guillemets autour du nom avec des espaces insécables (${attendu} fois), jamais une espace simple`, [ouvrants, fermants]);
+    verifier(!/['`"]Il /.test(src) && !/\. Il /.test(src), `${nom} : aucun pronom « Il » pour une personne`);
+  }
   verifier(
-    /label="Supprimer le propriétaire"/.test(ecranProp) && /Impossible de supprimer « \$\{p\.nom\} »/.test(ecranProp) && /Retirer l’accès/.test(ecranProp) && /phraseConfirmation\(verdict\.avecLui\)/.test(ecranProp) && ecranProp.includes('PHRASE_LOGEMENTS_PROPRIETAIRE'),
-    'propriétaire : corbeille, refus, « Retirer l’accès », « Rattachez d’abord ses logements », phrase de confirmation commune',
+    /label="Supprimer la fiche"/.test(ecranProp) &&
+      /Impossible de supprimer « \$\{p\.nom\} »/.test(ecranProp) &&
+      /Cette fiche a \$\{resumeHistorique\(verdict\.historique\)\}\./.test(ecranProp) &&
+      /phraseConfirmation\(verdict\.avecLui\)/.test(ecranProp) &&
+      ecranProp.includes('PHRASE_LOGEMENTS_PROPRIETAIRE') &&
+      ecranProp.includes('PHRASE_ACCES_OUVERT_PROPRIETAIRE'),
+    'propriétaire : corbeille « Supprimer la fiche », refus « Cette fiche a… », phrases communes aux règles',
   );
-  verifier(/const RETOUR = '\/erp\/parametres\/acces';[\s\S]*naviguer\(RETOUR, \{ state: \{ message: `« \$\{nom\} » a été supprimé\.` \} \}\);\n\s*onSupprime\?\.\(\);/.test(ecranProp), 'propriétaire : retour à Paramètres → Accès avec le message « « Nom » a été supprimé. », le panneau fermé');
+  verifier(
+    /motif === 'historique'\) \{[\s\S]*?pied = fermerSeul;[\s\S]*?motif === 'acces'\) \{[\s\S]*?Retirer l’accès/.test(ecranProp),
+    'propriétaire : avec un historique, « Fermer » seul ; « Retirer l’accès » seulement sans historique (il mène à la suppression)',
+  );
+  verifier(/d\.relire\('accesProprietaires', p\.id\)/.test(ecranProp) && /accesRetire === 'relu' && verdict\?\.ok \?/.test(ecranProp), 'propriétaire : après « Retirer l’accès », la ligne est relue avant de proposer « Supprimer » (jamais sur un verdict périmé)');
+  verifier(
+    /const RETOUR = '\/erp\/parametres\/acces';[\s\S]*naviguer\(RETOUR, \{ state: \{ message: `La fiche de « \$\{nom\} » a été supprimée\.` \} \}\);\n\s*onSupprime\?\.\(\);/.test(ecranProp),
+    'propriétaire : retour à Paramètres → Accès avec « La fiche de « Nom » a été supprimée. », le panneau fermé',
+  );
   // Le module Propriétaires est sorti du menu (/erp/proprietaires redirige vers les logements) : le propriétaire se gère
   // dans le panneau « Espace propriétaire », ouvert par « Gérer » dans Paramètres → Accès (sans logement) ou depuis la fiche d'un logement.
   verifier(
     /actions=\{!logement \? <SupprimerProprietaire proprietaire=\{p\} size="sm" onSupprime=\{onFermer\} \/> : undefined\}/.test(lire('src/erp/modules/logements/_composants/EspaceProprietaireGerant.tsx')),
     'propriétaire : la corbeille est en haut à droite du panneau « Espace propriétaire », seulement depuis Paramètres → Accès',
   );
-  verifier(/coin=\{peutSupprimerPersonne\(d\.utilisateur\.role, d\.lectureSeule\) \? <SupprimerProprietaire proprietaire=\{p\} \/> : undefined\}/.test(lire('src/erp/modules/proprietaires/DetailProprietaire.tsx')), 'ancienne fiche propriétaire (hors menu) : la corbeille est dans le coin de l’en-tête, gérant seulement');
-  const ecranMem = lire('src/erp/modules/parametres/SupprimerMembre.tsx');
-  verifier(/label="Supprimer la fiche"/.test(ecranMem) && /Impossible de supprimer « \$\{m\.nom\} »/.test(ecranMem) && /Retirer de l’équipe/.test(ecranMem) && /Retirer l’accès/.test(ecranMem) && /Plus personne ne suivra/.test(ecranMem), 'tiroir du membre : corbeille, refus, « Retirer de l’équipe », « Retirer l’accès », logements sans personne');
-  verifier(/naviguer\('\/erp\/parametres\/acces', \{ state: \{ message: `« \$\{nom\} » a été supprimé\.` \} \}\)/.test(ecranMem), 'tiroir du membre : retour à la liste des responsables avec le message');
+  verifier(!lire('src/erp/modules/proprietaires/DetailProprietaire.tsx').includes('SupprimerProprietaire'), 'ancienne fiche propriétaire (plus routée) : aucune corbeille, pas de code mort');
+  verifier(
+    /label="Supprimer la fiche"/.test(ecranMem) &&
+      /Impossible de supprimer « \$\{m\.nom\} »/.test(ecranMem) &&
+      /Cette fiche a \$\{resumeHistorique\(verdict\.historique\)\}\./.test(ecranMem) &&
+      /Retirer de l’équipe/.test(ecranMem) &&
+      /Retirer l’accès/.test(ecranMem) &&
+      /Plus personne ne suivra/.test(ecranMem) &&
+      ecranMem.includes('PHRASE_ACCES_OUVERT_MEMBRE'),
+    'tiroir du membre : corbeille « Supprimer la fiche », refus « Cette fiche a… », « Retirer de l’équipe », « Retirer l’accès », logements sans personne',
+  );
+  verifier(/!verdict\.accesOuvert && verdict\.dansLEquipe \?/.test(ecranMem), 'tiroir du membre : « Retirer de l’équipe » seulement sans accès ouvert ; sinon « Fermer » seul');
+  verifier(/d\.relire\('accesOperations', m\.id\)/.test(ecranMem) && /relu && verdict\?\.ok \?/.test(ecranMem), 'tiroir du membre : après « Retirer l’accès », la ligne est relue avant de proposer « Supprimer »');
+  verifier(/naviguer\('\/erp\/parametres\/acces', \{ state: \{ message: `La fiche de « \$\{nom\} » a été supprimée\.` \} \}\)/.test(ecranMem), 'tiroir du membre : retour à la liste des responsables avec le message');
   verifier(/affectationsSans\(d\.donnees\.affectations, m\.id, m\.logementIds\)/.test(ecranMem), 'tiroir du membre : « Retirer de l’équipe » retire aussi sa place dans « qui suit quoi », comme l’interrupteur');
   verifier(/actions=\{gerant \? <SupprimerMembre membre=\{m\} onRetirerAcces=\{retirer\}/.test(lire('src/erp/modules/parametres/Acces.tsx')), 'tiroir du membre : la corbeille est en haut à droite du tiroir, gérant seulement, avec le geste « Retirer l’accès » du tiroir');
   const store = lire('src/erp/data/store.tsx');
