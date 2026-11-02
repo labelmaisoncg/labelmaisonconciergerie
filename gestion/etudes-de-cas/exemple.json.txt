@@ -1,0 +1,19 @@
+{
+  "slug": "exemple-ville",
+  "titre": "Un T2 à Exemple-Ville : de 0 à … nuits en une saison",
+  "ville": "Exemple-Ville (91)",
+  "type_bien": "T2 de 45 m², 2 couchages",
+  "depuis": "mars 2026",
+  "periode": "juin à septembre 2026",
+  "chiffres": [
+    {"libelle": "Nuits louées", "valeur": "…"},
+    {"libelle": "Revenu brut", "valeur": "… €"},
+    {"libelle": "Revenu net versé", "valeur": "… €"},
+    {"libelle": "Note moyenne", "valeur": "…/5 (… avis)"}
+  ],
+  "contexte": "Pourquoi le propriétaire nous a contactés, état du bien au départ.",
+  "ce_que_nous_avons_fait": ["Déclaration en mairie", "Photos", "Tarification", "…"],
+  "resultat": "Ce qui a changé, en une phrase mesurable.",
+  "citation": "",
+  "photos": ["real/….jpg"]
+}

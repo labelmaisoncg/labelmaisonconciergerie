@@ -367,8 +367,18 @@ export function PolitiqueConfidentialite() {
 
         <Bloc id="cookies" titre="6. Cookies et traceurs">
           <p>
-            Le site n’utilise <strong style={{ color: INK }}>aucun cookie publicitaire, aucun outil de
-            mesure d’audience et aucun pixel de réseau social</strong>.
+            Le site n’utilise <strong style={{ color: INK }}>aucun cookie publicitaire et aucun pixel de
+            réseau social</strong>.
+          </p>
+          <p>
+            <strong style={{ color: INK }}>Mesure d’audience.</strong> Nous utilisons Google Analytics 4
+            (Google Ireland Ltd) pour savoir quelles pages aident les propriétaires et d’où viennent les
+            demandes. Il n’est chargé <strong style={{ color: INK }}>qu’après votre accord</strong>, donné
+            dans le bandeau affiché à la première visite ; si vous refusez, rien n’est chargé et votre
+            refus est mémorisé dans votre navigateur. Google Analytics dépose alors des cookies
+            (identifiant de visiteur, 13 mois au plus) et reçoit les pages vues, la source de la visite et
+            l’envoi d’un formulaire, sans le contenu de ce formulaire. Vous pouvez changer d’avis à tout
+            moment en effaçant les données du site dans votre navigateur : le bandeau réapparaît.
           </p>
           <p>
             Il garde seulement, dans votre navigateur, quelques informations nécessaires à son

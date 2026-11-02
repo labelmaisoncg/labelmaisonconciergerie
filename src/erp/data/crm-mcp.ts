@@ -101,6 +101,7 @@ function resume(c: ContactCrm, aujourdhui: string, suivi = true) {
     ...(suivi && c.responsable ? { suivi_par: c.responsable } : {}),
     ...(c.notes ? { notes: c.notes.slice(0, 200) } : {}),
     recu_le: c.creeLe.slice(0, 10),
+    ...(c.page ? { page_origine: c.page } : {}),
   };
 }
 

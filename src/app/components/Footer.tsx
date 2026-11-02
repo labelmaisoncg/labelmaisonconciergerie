@@ -243,6 +243,10 @@ export function Footer() {
         <div className="border-t border-black/10 pt-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-[13px] text-neutral-500">
           <p>© 2026 Label Maison Conciergerie · Tous droits réservés</p>
           <div className="flex items-center gap-4">
+            <a href="/qui-sommes-nous" className="hover:text-[#A97C30]">
+              Qui sommes-nous
+            </a>
+            <span className="opacity-40">·</span>
             <a href="/mentions-legales" className="hover:text-[#A97C30]">
               Mentions légales
             </a>

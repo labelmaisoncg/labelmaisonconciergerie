@@ -598,7 +598,8 @@ def mobcta(label: str = "Faire une demande") -> str:
             f'<a class="btn" href="#contact-form">{esc(label)}</a></div>')
 
 
-TAIL = '<script defer src="/js/audit-form.js"></script></body></html>'
+TAIL = ('<script defer src="/js/audit-form.js"></script>'
+        '<script defer src="/js/mesure.js"></script></body></html>')
 
 
 # Marqueur des pages produites par le générateur de masse (communes/départements/
