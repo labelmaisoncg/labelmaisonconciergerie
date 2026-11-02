@@ -140,6 +140,20 @@ interface Ligne {
   maj_le: string;
 }
 
+/** Jeton d'un compte Supabase tel que le serveur le lit : charge lisible (iat, amr « password » ou « otp »), clé du monde en dernier. */
+const jetonCompte = (cle: string, o: { iat?: number; amr?: string } = {}) =>
+  `x.${Buffer.from(JSON.stringify({ sub: cle, iat: o.iat ?? Math.floor(Date.now() / 1000) + 3600, amr: [{ method: o.amr ?? 'password', timestamp: 0 }] })).toString('base64url')}.${cle}`;
+const JETON_ALICE = jetonCompte('jeton-alice');
+/** Même compte qu'Alice : session d'un lien reçu (amr otp) ; jeton émis avant l'activation. */
+const JETON_ALICE_LIEN = jetonCompte('jeton-alice-lien', { amr: 'otp' });
+const JETON_ALICE_AVANT = jetonCompte('jeton-alice-avant', { iat: Math.floor(Date.now() / 1000) - 3600 });
+const JETON_ALICE_2 = jetonCompte('jeton-alice-2');
+const JETON_CARLA = jetonCompte('jeton-carla');
+const JETON_CARLA_2 = jetonCompte('jeton-carla-2');
+const JETON_INTRUS = jetonCompte('jeton-intrus');
+const JETON_ANCIENNE = jetonCompte('jeton-ancienne');
+const JETON_NOUVELLE = jetonCompte('jeton-nouvelle');
+
 class Monde {
   historique = true;
   serveurPret = false;
@@ -149,13 +163,15 @@ class Monde {
     'gerant-b@exemple.invalid': { mdp: 'x', jeton: 'jeton-sens' },
     'ops-sens@exemple.invalid': { mdp: 'x', jeton: 'jeton-ops-sens' },
     // Comptes Supabase des propriétaires (uid, adresse confirmée) ; « doublon » : un autre compte (autre uid) à la même adresse.
-    'proprio@exemple.invalid': { mdp: 'x', jeton: 'jeton-alice', uid: 'a11ce000-0000-4000-8000-000000000001', confirme: true },
-    'doublon-alice': { mdp: 'x', jeton: 'jeton-alice-2', uid: 'a11ce000-0000-4000-8000-000000000002', email: 'proprio@exemple.invalid', confirme: true },
-    'carla@exemple.invalid': { mdp: 'x', jeton: 'jeton-carla', uid: 'ca71a000-0000-4000-8000-000000000001', confirme: true },
-    'doublon-carla': { mdp: 'x', jeton: 'jeton-carla-2', uid: 'ca71a000-0000-4000-8000-000000000002', email: 'carla@exemple.invalid', confirme: true },
-    'intrus@exemple.invalid': { mdp: 'x', jeton: 'jeton-intrus', uid: '1a7a0000-0000-4000-8000-000000000001', confirme: true },
-    'ancienne@exemple.invalid': { mdp: 'x', jeton: 'jeton-ancienne', uid: 'a0c1e000-0000-4000-8000-000000000001', confirme: true },
-    'nouvelle@exemple.invalid': { mdp: 'x', jeton: 'jeton-nouvelle', uid: 'a0c1e000-0000-4000-8000-000000000002', confirme: true },
+    'proprio@exemple.invalid': { mdp: 'x', jeton: JETON_ALICE, uid: 'a11ce000-0000-4000-8000-000000000001', confirme: true },
+    'alice-lien': { mdp: 'x', jeton: JETON_ALICE_LIEN, uid: 'a11ce000-0000-4000-8000-000000000001', email: 'proprio@exemple.invalid', confirme: true },
+    'alice-avant': { mdp: 'x', jeton: JETON_ALICE_AVANT, uid: 'a11ce000-0000-4000-8000-000000000001', email: 'proprio@exemple.invalid', confirme: true },
+    'doublon-alice': { mdp: 'x', jeton: JETON_ALICE_2, uid: 'a11ce000-0000-4000-8000-000000000002', email: 'proprio@exemple.invalid', confirme: true },
+    'carla@exemple.invalid': { mdp: 'x', jeton: JETON_CARLA, uid: 'ca71a000-0000-4000-8000-000000000001', confirme: true },
+    'doublon-carla': { mdp: 'x', jeton: JETON_CARLA_2, uid: 'ca71a000-0000-4000-8000-000000000002', email: 'carla@exemple.invalid', confirme: true },
+    'intrus@exemple.invalid': { mdp: 'x', jeton: JETON_INTRUS, uid: '1a7a0000-0000-4000-8000-000000000001', confirme: true },
+    'ancienne@exemple.invalid': { mdp: 'x', jeton: JETON_ANCIENNE, uid: 'a0c1e000-0000-4000-8000-000000000001', confirme: true },
+    'nouvelle@exemple.invalid': { mdp: 'x', jeton: JETON_NOUVELLE, uid: 'a0c1e000-0000-4000-8000-000000000002', confirme: true },
   };
   membres = [
     { espace: LM, email: 'equipe@labelmaisoncg.fr', role: 'gerant' },
@@ -622,30 +638,45 @@ async function principal() {
     verifier(acces?.espace === LM && acces.statut === 'invite' && monde.base.filter((r) => r.chemin === 'enregistrements').every((r) => r.espace === null), 'accès rangé dans Label Maison, sans en-tête (base d’avant les espaces), en attente du compte', acces);
     verifier(!JSON.stringify(acces).includes(codeDuLien(lienAlice)), 'seule l’empreinte du code est en base');
     // Pas de compte relié : « entrer » ne donne rien ; un autre compte, un code inconnu, une adresse pas confirmée, un jeton refusé : rien non plus.
-    res = await entrer('jeton-alice');
+    res = await entrer(JETON_ALICE);
     verifier(res.statut === 401 && res.corps?.code === 'inconnu' && !res.entetes['Set-Cookie'], 'avant l’activation : « entrer » refusé, pas de session', res.corps);
-    res = await activer('jeton-intrus', lienAlice);
+    res = await activer(JETON_INTRUS, lienAlice);
     const refusIntrus = res.corps?.erreur;
     verifier(res.statut === 401 && res.corps?.code === 'invitation' && !res.entetes['Set-Cookie'], 'code présenté par un compte d’une autre adresse : refusé', res.corps);
-    res = await appelProprio({ entetes: { authorization: 'Bearer jeton-alice' }, corps: { action: 'activer', code: 'x'.repeat(43) } });
+    res = await appelProprio({ entetes: { authorization: `Bearer ${JETON_ALICE}` }, corps: { action: 'activer', code: 'x'.repeat(43) } });
     verifier(res.statut === 401 && res.corps?.code === 'invitation' && res.corps?.erreur === refusIntrus, 'code inconnu : même refus, même phrase (pas d’énumération)', res.corps);
     monde.comptes[EMAIL_PROPRIO].confirme = false;
-    res = await activer('jeton-alice', lienAlice);
+    res = await activer(JETON_ALICE, lienAlice);
     monde.comptes[EMAIL_PROPRIO].confirme = true;
     verifier(res.statut === 403 && res.corps?.code === 'non_confirme' && !res.entetes['Set-Cookie'], 'adresse pas encore confirmée : activation refusée', res.corps);
     res = await appelProprio({ entetes: { authorization: 'Bearer jeton-perime' }, corps: { action: 'activer', code: codeDuLien(lienAlice) } });
     verifier(res.statut === 401 && res.corps?.code === 'compte' && !res.entetes['Set-Cookie'], 'jeton Supabase refusé : rien', res.corps);
+    // Session du lien de confirmation (amr otp) : le mot de passe du compte pourrait être celui d'un autre ; rien n'est relié.
+    res = await activer(JETON_ALICE_LIEN, lienAlice);
+    const enAttente = monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-a`)?.donnees as { statut?: string; compteActif?: boolean } | undefined;
+    verifier(res.statut === 403 && res.corps?.code === 'mot_de_passe' && !res.entetes['Set-Cookie'] && enAttente?.statut === 'invite' && !enAttente.compteActif, 'seule session du lien de confirmation : activation refusée, connexion au mot de passe exigée, code intact', res.corps);
     // Lien sans espace : Label Maison. Le bon compte, confirmé, active l'accès et ouvre la session.
-    res = await activer('jeton-alice', lienAlice, {}, undefined);
+    res = await activer(JETON_ALICE, lienAlice, {}, undefined);
     cookieAlice = cookieDe(res);
     const relie = monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-a`)?.donnees as { uid?: string; compteActif?: boolean; statut?: string; liens?: unknown[]; activeLe?: string } | undefined;
     verifier(res.statut === 200 && cookieAlice.startsWith('lm_proprio=') && res.corps?.espace === LM, 'activation : session ouverte dans Label Maison', res.corps);
     verifier(relie?.uid === 'a11ce000-0000-4000-8000-000000000001' && relie.compteActif === true && relie.statut === 'actif' && relie.liens?.length === 0 && !!relie.activeLe, 'accès relié au compte (uid), code effacé', relie);
-    res = await activer('jeton-alice', lienAlice, {}, undefined);
+    res = await activer(JETON_ALICE, lienAlice, {}, undefined);
     verifier(res.statut === 401 && res.corps?.code === 'invitation', 'le code ne sert qu’une fois', res.corps);
-    res = await entrer('jeton-alice-2');
+    res = await entrer(JETON_ALICE_AVANT);
+    verifier(res.statut === 401 && res.corps?.code === 'inconnu' && !res.entetes['Set-Cookie'], 'jeton émis avant l’activation (quelqu’un connecté au compte avant) : « entrer » refusé, comme erp.jeton_apres', res.corps);
+    // Nouveau mot de passe (fermerAutres) : la version change, la session d'avant tombe, la nouvelle vaut.
+    {
+      const avant = cookieDe(await entrer(JETON_ALICE));
+      const r2 = await appelProprio({ entetes: { authorization: `Bearer ${JETON_ALICE}` }, corps: { action: 'entrer', fermerAutres: true } });
+      const v1 = await appelProprio({ methode: 'GET', entetes: { cookie: avant }, query: { action: 'vue' } });
+      const v2 = await appelProprio({ methode: 'GET', entetes: { cookie: cookieDe(r2) }, query: { action: 'vue' } });
+      verifier(r2.statut === 200 && v1.statut === 401 && v2.statut === 200, 'nouveau mot de passe (fermerAutres) : les sessions d’avant tombent, la nouvelle vaut', { r2: r2.statut, v1: v1.statut, v2: v2.statut });
+      cookieAlice = cookieDe(r2);
+    }
+    res = await entrer(JETON_ALICE_2);
     verifier(res.statut === 401 && res.corps?.code === 'inconnu' && !res.entetes['Set-Cookie'], 'un autre compte à la même adresse (autre uid) : rien', res.corps);
-    res = await entrer('jeton-alice');
+    res = await entrer(JETON_ALICE);
     verifier(res.statut === 200 && cookieDe(res).startsWith('lm_proprio=') && res.corps?.espace === LM, 'connexion ensuite : l’accès est retrouvé par le compte', res.corps);
     res = await appelProprio({ entetes: { authorization: 'Bearer jeton-equipe' }, corps: { action: 'inviter', proprietaireId: 'pro-a', email: EMAIL_PROPRIO } });
     verifier(res.statut === 409 && res.corps?.code === 'deja', 'compte déjà créé : le gérant ne réinvite pas (il se connecte)', res.corps);
@@ -1225,9 +1256,9 @@ async function principal() {
       (monde.lignes.get(`${SENS}\u0000accesProprietaires\u0000pro-s`)?.donnees as { espace?: string } | undefined)?.espace === SENS && !monde.lignes.has(`${LM}\u0000accesProprietaires\u0000pro-s`) && monde.ecritures(LM).length === 0,
       'accès écrit dans Sens seulement',
     );
-    res = await activer('jeton-alice', lienSens, {}, LM);
+    res = await activer(JETON_ALICE, lienSens, {}, LM);
     verifier(res.statut === 401, 'code de Sens présenté à Label Maison : refusé', res.corps);
-    res = await activer('jeton-alice', lienSens);
+    res = await activer(JETON_ALICE, lienSens);
     const cookieSophie = cookieDe(res);
     verifier(res.statut === 200 && !!cookieSophie && res.corps?.espace === SENS, 'code de Sens, même compte que dans Label Maison : session ouverte dans Sens', res.corps);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieSophie } });
@@ -1279,13 +1310,13 @@ async function principal() {
     verifier(res.statut === 401, 'cookie dont l’espace est changé : refusé', res.statut);
     // Le même compte a un accès dans Label Maison et dans Sens : l'espace retenu sur l'appareil départage, Label Maison sinon.
     monde.oublier();
-    res = await entrer('jeton-alice', SENS);
+    res = await entrer(JETON_ALICE, SENS);
     verifier(res.statut === 200 && res.corps?.espace === SENS && !!cookieDe(res), 'entrer avec l’espace de Sens : session de Sens', res.corps);
-    res = await entrer('jeton-alice');
+    res = await entrer(JETON_ALICE);
     verifier(res.statut === 200 && res.corps?.espace === LM, 'entrer sans espace : Label Maison d’abord', res.corps);
     verifier(monde.base.every((r) => r.methode !== 'POST' || r.chemin !== 'enregistrements'), 'entrer n’écrit que la date de connexion (écriture conditionnelle), jamais de nouvelle ligne');
     monde.oublier();
-    res = await entrer('jeton-intrus');
+    res = await entrer(JETON_INTRUS);
     verifier(res.statut === 401 && res.corps?.code === 'inconnu' && monde.base.every((r) => r.methode === 'GET' || !r.chemin.startsWith('enregistrements')), 'compte sans accès : refusé, rien d’écrit', res.corps);
   }
 
@@ -1455,27 +1486,27 @@ async function principal() {
     verifier(/vos factures partagées/.test(monde.emails[0]?.text ?? '') && /mot de passe/.test(monde.emails[0]?.text ?? ''), 'e-mail d’invitation : il parle des factures et du mot de passe à créer', monde.emails[0]?.text);
     const lienInvitation = String(res.corps?.lien);
     verifier(lienDuMail(monde.emails[0]) === lienInvitation, 'le lien de l’e-mail est celui montré au gérant');
-    res = await activer('jeton-carla', lienInvitation, depuis(PIRATE, '198.51.100.1'));
+    res = await activer(JETON_CARLA, lienInvitation, depuis(PIRATE, '198.51.100.1'));
     verifier(res.statut === 403 && !res.entetes['Set-Cookie'], 'activer depuis une Origin tierce : refusé, pas de session', res.corps);
-    res = await entrer('jeton-carla', LM, depuis(PIRATE, '198.51.100.2'));
+    res = await entrer(JETON_CARLA, LM, depuis(PIRATE, '198.51.100.2'));
     verifier(res.statut === 403 && !res.entetes['Set-Cookie'], 'entrer depuis une Origin tierce : refusé', res.corps);
-    res = await activer('jeton-intrus', lienInvitation, depuis(APERCU, '198.51.100.3'));
+    res = await activer(JETON_INTRUS, lienInvitation, depuis(APERCU, '198.51.100.3'));
     verifier(res.statut === 401 && res.corps?.code === 'invitation' && !res.entetes['Set-Cookie'], 'depuis un aperçu autorisé, le code présenté par un autre compte : refusé, le code reste valable', res.corps);
 
     // A5 : le même code présenté deux fois en même temps, par le bon compte.
     const [e1, e2] = await Promise.all([
-      activer('jeton-carla', lienInvitation, depuis('https://www.labelmaisoncg.fr', '198.51.100.5')),
-      activer('jeton-carla', lienInvitation, depuis('https://www.labelmaisoncg.fr', '198.51.100.6')),
+      activer(JETON_CARLA, lienInvitation, depuis('https://www.labelmaisoncg.fr', '198.51.100.5')),
+      activer(JETON_CARLA, lienInvitation, depuis('https://www.labelmaisoncg.fr', '198.51.100.6')),
     ]);
     verifier([e1.statut, e2.statut].sort().join() === '200,401' && [e1, e2].filter((r) => !!r.entetes['Set-Cookie']).length === 1, 'code à usage unique présenté deux fois en même temps : une seule session', [e1.statut, e2.statut]);
     const cookieCarla = cookieDe(e1.statut === 200 ? e1 : e2);
-    res = await activer('jeton-carla', lienInvitation, depuis('https://www.labelmaisoncg.fr', '198.51.100.7'));
+    res = await activer(JETON_CARLA, lienInvitation, depuis('https://www.labelmaisoncg.fr', '198.51.100.7'));
     verifier(res.statut === 401 && res.corps?.code === 'invitation', 'troisième usage : refusé (déjà servi, code effacé)', res.corps);
     const accesCarla = () => monde.lignes.get(`${LM}\u0000accesProprietaires\u0000pro-c`)?.donnees as { uid?: string; compteActif?: boolean; statut?: string; liens?: unknown[] } | undefined;
     verifier(accesCarla()?.uid === 'ca71a000-0000-4000-8000-000000000001' && accesCarla()?.compteActif === true && accesCarla()?.liens?.length === 0, 'accès de Carla relié à son compte, code effacé', accesCarla());
-    res = await entrer('jeton-carla-2', LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.8'));
+    res = await entrer(JETON_CARLA_2, LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.8'));
     verifier(res.statut === 401 && res.corps?.code === 'inconnu' && !res.entetes['Set-Cookie'], 'un autre compte à la même adresse (autre uid) : rien', res.corps);
-    res = await entrer('jeton-carla', LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.9'));
+    res = await entrer(JETON_CARLA, LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.9'));
     verifier(res.statut === 200 && !!cookieDe(res), 'Carla entre avec son compte', res.corps);
 
     // I3 : l'adresse de la fiche fait foi (propriétaire).
@@ -1484,7 +1515,7 @@ async function principal() {
     monde.poser(LM, 'proprietaires', { id: 'pro-c', nom: 'Carla Audit', contact: { email: 'nouvelle-gerance@exemple.invalid', telephone: '' } } as { id: string });
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
     verifier(res.statut === 401, 'adresse changée dans la fiche du propriétaire sans « Retirer » : session refusée', res.statut);
-    res = await entrer('jeton-carla', LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.10'));
+    res = await entrer(JETON_CARLA, LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.10'));
     verifier(res.statut === 401 && res.corps?.code === 'retire' && !res.entetes['Set-Cookie'], 'l’ancien compte n’entre plus tant que la fiche porte une autre adresse', res.corps);
     monde.poser(LM, 'proprietaires', { id: 'pro-c', nom: 'Carla Audit', contact: { email: 'Carla@Exemple.invalid ', telephone: '' } } as { id: string });
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
@@ -1497,7 +1528,7 @@ async function principal() {
     verifier(res.statut === 401 && res.corps?.code === 'retire' && res.corps?.erreur === 'Votre accès a été retiré. Contactez votre conciergerie.' && /Max-Age=0/.test(res.entetes['Set-Cookie'] ?? ''), 'accès retiré : « Votre accès a été retiré », cookie effacé', res.corps);
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieCarla } });
     verifier(res.statut === 401 && res.corps?.code === 'retire', 'accès retiré : toujours dit tant que le cookie revient', res.corps);
-    res = await entrer('jeton-carla', LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.11'));
+    res = await entrer(JETON_CARLA, LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.11'));
     verifier(res.statut === 401 && res.corps?.code === 'retire' && accesCarla()?.uid === 'ca71a000-0000-4000-8000-000000000001' && accesCarla()?.compteActif === false, 'accès retiré : le compte n’entre plus, l’uid reste pour mémoire', { corps: res.corps, acces: accesCarla() });
     res = await appelProprio({ methode: 'GET', query: { action: 'vue' } });
     verifier(res.statut === 401 && res.corps?.code === 'session', 'sans cookie : « Connectez-vous »', res.corps);
@@ -1506,9 +1537,9 @@ async function principal() {
     res = await appelProprio({ entetes: gerantLM, corps: { action: 'inviter', proprietaireId: 'pro-c', email: 'carla@exemple.invalid' } });
     verifier(res.statut === 200 && accesCarla()?.statut === 'invite' && accesCarla()?.uid === 'ca71a000-0000-4000-8000-000000000001' && accesCarla()?.compteActif === false, 'réinvité après le retrait : en attente du code, uid gardé pour mémoire', accesCarla());
     const lienRetour = String(res.corps?.lien);
-    res = await entrer('jeton-carla', LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.12'));
+    res = await entrer(JETON_CARLA, LM, depuis('https://www.labelmaisoncg.fr', '198.51.100.12'));
     verifier(res.statut === 401 && res.corps?.code === 'invite', 'réinvité : « entrer » sans le nouveau code dit d’ouvrir l’invitation', res.corps);
-    res = await activer('jeton-carla', lienRetour, depuis('https://www.labelmaisoncg.fr', '198.51.100.13'));
+    res = await activer(JETON_CARLA, lienRetour, depuis('https://www.labelmaisoncg.fr', '198.51.100.13'));
     verifier(res.statut === 200 && !!cookieDe(res) && accesCarla()?.compteActif === true, 'réinvité : le même compte se relie avec le nouveau code', res.corps);
     res = await appelProprio({ entetes: gerantLM, corps: { action: 'inviter', proprietaireId: 'pro-c', email: 'carla@exemple.invalid' } });
     verifier(res.statut === 409 && res.corps?.code === 'deja', 'compte relié : « Renvoyer l’invitation » refusé, il se connecte', res.corps);
@@ -1607,7 +1638,7 @@ async function principal() {
       // Propriétaire : son compte Supabase active l'accès avec le code du lien ; opérations : le lien à usage unique.
       res =
         genre === 'proprietaire'
-          ? await activer('jeton-ancienne', res.corps?.lien, site('198.51.100.61'))
+          ? await activer(JETON_ANCIENNE, res.corps?.lien, site('198.51.100.61'))
           : await appel({ entetes: site('198.51.100.62'), corps: { action: 'entrer', jeton: jetonDuLien(res.corps?.lien), espace: LM } });
       const cookieAncien = cookieDe(res);
       res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieAncien } });
@@ -1635,7 +1666,7 @@ async function principal() {
       const lienNouveau = /(?:Ouvrir mon espace|Créer mon mot de passe)[ \u00a0]: (\S+)/.exec(monde.emails[0]?.text ?? '')?.[1] ?? '';
       res =
         genre === 'proprietaire'
-          ? await activer('jeton-nouvelle', lienNouveau, site('198.51.100.63'))
+          ? await activer(JETON_NOUVELLE, lienNouveau, site('198.51.100.63'))
           : await appel({ entetes: site('198.51.100.64'), corps: { action: 'entrer', jeton: jetonDuLien(lienNouveau), espace: LM } });
       const cookieNouveau = cookieDe(res);
       res = await appel({ methode: 'GET', query: { action: 'vue' }, entetes: { cookie: cookieNouveau } });

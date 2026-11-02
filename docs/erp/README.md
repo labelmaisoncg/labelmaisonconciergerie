@@ -2098,24 +2098,35 @@ l'équipe : plus de lien magique, un seul chemin.
    adresse : connectez-vous (« Mot de passe oublié ? » au besoin). » ;
    « J'ai déjà un compte » y mène aussi.
 3. **Confirmation puis activation** : le lien de confirmation de Supabase
-   ramène sur la page ; le compte confirmé appelle
+   ramène sur la page, qui ferme cette session de lien et demande de se
+   connecter ; la connexion (adresse et mot de passe) appelle
    `POST /api/espace-proprietaire { action: 'activer', code, espace }` avec
    son jeton en `Authorization: Bearer`. Le serveur vérifie le jeton auprès
    de Supabase (`GET /auth/v1/user`, clé anon : `verifierCompteSupabase`),
-   exige `email_confirmed_at`, retrouve l'accès par l'empreinte du code dans
-   l'espace du lien, vérifie que l'adresse du compte est celle de l'accès,
-   que le code n'est ni expiré ni servi, écrit `uid`, `compteActif`,
-   `activeLe`, efface le code (écriture conditionnelle : présenté deux fois en
-   même temps, une seule session) et ouvre le cookie, signé avec l'uid et la
-   version de l'accès. Confirmation ouverte sur un autre appareil (sans le
-   code) : la page dit d'ouvrir le lien de l'invitation sur cet appareil,
-   puis de se connecter.
+   exige `email_confirmed_at`, un jeton **d'une connexion au mot de passe**
+   (`amr` « password », jamais la seule session d'un lien reçu : un compte
+   créé avant la personne, par un autre, à son adresse, aurait le mot de passe
+   de cet autre ; elle le remplace par « Mot de passe oublié ? » avant
+   d'entrer), un compte **sans autre moyen d'entrer** (téléphone, service
+   tiers), retrouve l'accès par l'empreinte du code dans l'espace du lien,
+   vérifie que l'adresse du compte est celle de l'accès, que le code n'est ni
+   expiré ni servi, écrit `uid`, `compteActif`, `activeLe`, efface le code
+   (écriture conditionnelle : présenté deux fois en même temps, une seule
+   session) et ouvre le cookie, signé avec l'uid et la version de l'accès.
+   Confirmation ouverte sur un autre appareil (sans le code) : la connexion
+   répond « Votre invitation vous attend : ouvrez son lien sur cet
+   appareil ».
 4. **Connexion ensuite** : « E-mail » + « Mot de passe » (+ « Mot de passe
    oublié ? » : réinitialisation Supabase vers `/espace-proprietaire`, puis
-   nouveau mot de passe). Après `signInWithPassword`, la page appelle
+   nouveau mot de passe ; la page ferme les autres sessions Supabase du
+   compte, se reconnecte avec ce mot de passe et appelle `entrer` avec
+   `fermerAutres` : la version de l'accès augmente, toutes les sessions de
+   l'espace ouvertes avant tombent). Après `signInWithPassword`, la page appelle
    `POST { action: 'entrer', espace? }` avec le jeton : l'accès est retrouvé
    **par uid** dans chaque espace actif (jamais par l'adresse seule : un
-   autre compte à la même adresse n'obtient rien), actif, relié, adresse
+   autre compte à la même adresse n'obtient rien), actif, relié, adresse du
+   compte toujours celle de l'accès, jeton émis **après** l'activation (comme
+   `erp.jeton_apres` : qui s'était connecté au compte avant n'a rien), adresse
    toujours celle de la fiche ; `espace` (retenu sur l'appareil) départage
    plusieurs espaces, Label Maison sinon. Le jeton Supabase ne sert qu'à
    prouver l'identité : la page ferme ensuite la session Supabase locale
@@ -2178,6 +2189,11 @@ Vercel) :
 - Authentication → Sign In / Providers → Email : **Allow new users to sign
   up** activé (déjà le cas pour « Créer mon compte » de l'équipe), **Confirm
   email** activé ;
+- Authentication → Sign In / Providers : **Phone**, **Anonymous sign-ins**,
+  **Manual linking** et tout fournisseur tiers (Google, Apple…) **désactivés**,
+  et le rester : un compte qui porte un téléphone ou une autre identité que
+  l'e-mail est refusé par l'espace propriétaire (`autre_moyen`), comme par
+  `erp.activer` pour l'équipe ;
 - Authentication → **Emails** : l'e-mail de confirmation et celui de
   récupération partent de Supabase : SMTP personnalisé conseillé (Resend,
   comme pour l'équipe : `docs/erp/espaces-mise-en-service.md`, étape 5) et

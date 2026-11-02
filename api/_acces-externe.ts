@@ -58,6 +58,7 @@ import { CONTACTS_LABEL_MAISON } from '../src/erp/data/proprietaire.js';
 import { DUREE_SESSION_S, normaliserEmail, secretValide, utiliserLien, type RefusLien } from '../src/erp/data/proprietaire-acces.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
 import type { ContactsConciergerie } from '../src/erp/data/types-proprietaire';
+import { deB64url } from '../src/erp/data/web-push.js';
 import { baseErp, configuration } from './_erp-repull.js';
 import { espacesActifs, type FicheEspace } from './_erp-espaces.js';
 import { origineDe } from './_garde-formulaire.js';
@@ -303,23 +304,70 @@ export async function entrerAvecLien<T extends AccesExterne>(
 
 /* -------------------------------------------------------------- comptes */
 
+/** Charge (payload) d'un jeton Supabase ; lue seulement APRÈS que Supabase l'a accepté (c'est sa signature). null : pas un jeton. */
+function chargeDuJeton(jeton: string): Record<string, unknown> | null {
+  const morceaux = jeton.split('.');
+  if (morceaux.length !== 3) return null;
+  try {
+    const c = JSON.parse(new TextDecoder().decode(deB64url(morceaux[1]))) as unknown;
+    return c && typeof c === 'object' && !Array.isArray(c) ? (c as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Compte Supabase du jeton d'une personne (GET /auth/v1/user, clé anon) :
- * son uid, son adresse et si elle est confirmée. null : jeton refusé, compte
- * sans adresse, ou compte technique du serveur (jamais une personne).
+ * son uid, son adresse, si elle est confirmée, et, dans la charge du jeton
+ * que Supabase vient d'accepter, son émission (iat) et le moyen de connexion
+ * (amr : « password », ou « otp » pour un lien reçu) ; ses autres moyens
+ * d'entrer (téléphone, fournisseurs externes). null : jeton refusé ou
+ * illisible, compte sans adresse, ou compte technique du serveur (jamais une
+ * personne) ; « injoignable » : Supabase n'a pas répondu (panne, délai).
  */
-export async function verifierCompteSupabase(jeton: unknown, o: { fetch?: typeof fetch; url?: string; cleAnon?: string } = {}): Promise<CompteVerifie | null> {
+/** Attente maximale de la réponse de Supabase sur un compte. */
+export const DELAI_SUPABASE_MS = 10_000;
+
+export async function verifierCompteSupabase(jeton: unknown, o: { fetch?: typeof fetch; url?: string; cleAnon?: string } = {}): Promise<CompteVerifie | null | 'injoignable'> {
   if (typeof jeton !== 'string' || !jeton || jeton.length > 4096) return null;
+  const charge = chargeDuJeton(jeton);
+  if (!charge) return null;
   const f = o.fetch ?? fetch;
   const url = (o.url ?? SUPABASE_URL).replace(/\/+$/, '');
-  const r = await f(`${url}/auth/v1/user`, { headers: { apikey: o.cleAnon ?? SUPABASE_ANON_KEY, Authorization: `Bearer ${jeton}` } }).catch(() => null);
-  if (!r || !r.ok) return null;
-  const u = (await r.json().catch(() => ({}))) as { id?: unknown; email?: unknown; email_confirmed_at?: unknown; app_metadata?: { erp_role?: unknown } | null };
+  // Supabase injoignable ou trop lent (DELAI_SUPABASE_MS) : « injoignable », jamais une attente sans fin ni un faux refus.
+  const controleur = new AbortController();
+  const minuteur = setTimeout(() => controleur.abort(), DELAI_SUPABASE_MS);
+  let r: Response;
+  try {
+    r = await f(`${url}/auth/v1/user`, { headers: { apikey: o.cleAnon ?? SUPABASE_ANON_KEY, Authorization: `Bearer ${jeton}` }, signal: controleur.signal });
+  } catch {
+    return 'injoignable';
+  } finally {
+    clearTimeout(minuteur);
+  }
+  if (r.status >= 500) return 'injoignable';
+  if (!r.ok) return null;
+  const u = (await r.json().catch(() => ({}))) as {
+    id?: unknown;
+    email?: unknown;
+    email_confirmed_at?: unknown;
+    phone?: unknown;
+    identities?: unknown;
+    app_metadata?: { erp_role?: unknown; providers?: unknown } | null;
+  };
   const uid = typeof u.id === 'string' ? u.id.toLowerCase() : '';
   const email = normaliserEmail(u.email);
   if (!uidValide(uid) || !email) return null;
   if (u.app_metadata?.erp_role === 'serveur') return null;
-  return { uid, email, confirme: typeof u.email_confirmed_at === 'string' && u.email_confirmed_at !== '' };
+  const emisLe = Number(charge.iat);
+  if (!Number.isFinite(emisLe)) return null;
+  const methodes = Array.isArray(charge.amr) ? charge.amr.map((a) => String((a as { method?: unknown } | null)?.method ?? '')) : [];
+  const fournisseurs = [
+    ...(Array.isArray(u.identities) ? u.identities.map((i) => String((i as { provider?: unknown } | null)?.provider ?? '')) : []),
+    ...(Array.isArray(u.app_metadata?.providers) ? u.app_metadata.providers.map((p) => String(p ?? '')) : []),
+  ].filter((p) => p && p !== 'email');
+  const autresMoyens = [...new Set([...(typeof u.phone === 'string' && u.phone.trim() ? ['phone'] : []), ...fournisseurs])];
+  return { uid, email, confirme: typeof u.email_confirmed_at === 'string' && u.email_confirmed_at !== '', parMotDePasse: methodes.includes('password'), emisLe, autresMoyens };
 }
 
 /** Jeton « Authorization: Bearer … » d'une demande ('' : aucun). */
@@ -391,27 +439,36 @@ export async function accesParUid<T extends AccesExterne>(genre: GenreAcces, uid
 /**
  * Ouvre une session avec le compte (confirmé) de la personne : l'accès est
  * retrouvé par son uid, jamais par l'adresse (un autre compte à la même
- * adresse n'obtient rien), actif et relié, dont l'adresse est toujours celle
- * de la fiche ; `espacePrefere` (retenu sur l'appareil) départage plusieurs
+ * adresse n'obtient rien), actif et relié, à l'adresse du compte, par un
+ * jeton émis après l'activation, dont l'adresse est toujours celle de la
+ * fiche ; `espacePrefere` (retenu sur l'appareil) départage plusieurs
  * espaces. La date de connexion est notée sans bloquer l'entrée.
+ * `fermerAutres` (nouveau mot de passe) : la version de l'accès augmente,
+ * toutes les sessions ouvertes avant se ferment.
  */
 export async function entrerAvecCompte<T extends AccesExterne>(
   genre: GenreAcces,
   compte: CompteVerifie,
   espacePrefere: unknown,
   maintenantMs: number = Date.now(),
+  o: { fermerAutres?: boolean } = {},
 ): Promise<{ ok: true; acces: T; cookie: string; espace: string } | { ok: false; raison: RefusEntree }> {
   const lus = await accesParUid<T>(genre, compte.uid);
   const r = accesDuCompte(
     lus.map((x) => x.acces),
     compte.uid,
     espacePrefere,
+    compte,
   );
   if (!r.ok) return r;
   const lu = lus.find((x) => x.acces === r.acces)!;
   if (!accesToujoursDeLaFiche(r.acces, await ficheDeLAcces(lu.base, genre, r.acces))) return { ok: false, raison: 'retire' };
-  const acces: T = { ...r.acces, derniereConnexion: new Date(maintenantMs).toISOString() };
-  await lu.base.remplacerSi(GENRES[genre].collection, acces, lu.version, `acces-${genre}`).catch(() => false);
+  const connexion: T = { ...r.acces, derniereConnexion: new Date(maintenantMs).toISOString() };
+  // Nouveau mot de passe (fermerAutres) : la version change, toutes les sessions ouvertes avant tombent.
+  // La session rendue porte la version réellement écrite (écriture conditionnelle : si elle échoue, rien ne change).
+  const voulu: T = o.fermerAutres ? { ...connexion, version: (r.acces.version ?? 1) + 1 } : connexion;
+  const ecrit = await lu.base.remplacerSi(GENRES[genre].collection, voulu, lu.version, `acces-${genre}`).catch(() => false);
+  const acces: T = ecrit ? voulu : r.acces;
   return { ok: true, acces, cookie: await cookieDeLAcces(genre, acces, lu.fiche.id, maintenantMs), espace: lu.fiche.id };
 }
 

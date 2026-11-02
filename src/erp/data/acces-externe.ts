@@ -286,23 +286,41 @@ export function motDePasseRefuse(motDePasse: string, confirmation: string): stri
 
 /* --------------------------------------------- compte : activation et entrée */
 
-/** Compte Supabase vérifié par le serveur (GET /auth/v1/user). */
+/** Compte Supabase vérifié par le serveur (GET /auth/v1/user, et la charge du jeton qu'il a accepté). */
 export interface CompteVerifie {
   uid: string;
   email: string;
   /** Adresse confirmée (email_confirmed_at). */
   confirme: boolean;
+  /**
+   * Jeton obtenu par une connexion avec le mot de passe (amr « password »),
+   * jamais par un lien reçu (confirmation, récupération, lien magique : amr
+   * « otp ») : seul qui connaît le mot de passe active l'accès. Un compte
+   * créé avant la personne, par un autre, à son adresse, aurait le mot de
+   * passe de cet autre : la confirmation seule ne doit rien relier.
+   */
+  parMotDePasse: boolean;
+  /** Émission du jeton (iat, secondes) : un jeton d'avant l'activation ne vaut rien (comme erp.jeton_apres). */
+  emisLe: number;
+  /** Autres moyens d'entrer dans le compte (téléphone, fournisseur externe) : ils survivraient à un nouveau mot de passe, refusés. */
+  autresMoyens: string[];
 }
 
-export type RefusActivation = 'inconnu' | 'expire' | 'utilise' | 'retire' | 'autre_adresse' | 'non_confirme';
+/** Le jeton (iat, secondes) a été émis après cet instant (activation de l'accès) ; sans instant : oui. Instant illisible : non. */
+export const jetonEmisApres = (emisLe: number | undefined, instant: string | undefined): boolean =>
+  !instant || emisLe === undefined || (Number.isFinite(emisLe) && emisLe * 1000 > Date.parse(instant));
+
+export type RefusActivation = 'inconnu' | 'expire' | 'utilise' | 'retire' | 'autre_adresse' | 'non_confirme' | 'mot_de_passe' | 'autre_moyen';
 
 /**
  * Active un accès avec le code de son invitation et le compte Supabase de la
  * personne : code présent et valable (7 jours, pas encore servi), accès pas
- * retiré, adresse du compte confirmée et égale à celle de l'accès. L'accès
- * devient actif, relié à CE compte (uid), et le code est effacé : il ne
- * servira plus. Tout autre cas : refus, avec sa raison (le serveur répond la
- * même phrase pour inconnu, expiré, servi et autre adresse).
+ * retiré, adresse du compte confirmée et égale à celle de l'accès, jeton
+ * d'une connexion au mot de passe (jamais la seule session d'un lien reçu),
+ * compte sans autre moyen d'entrer. L'accès devient actif, relié à CE compte
+ * (uid), et le code est effacé : il ne servira plus. Tout autre cas : refus,
+ * avec sa raison (le serveur répond la même phrase pour inconnu, expiré,
+ * servi et autre adresse).
  */
 export async function activerAccesAvecCompte<T extends AccesExterne>(
   acces: readonly T[],
@@ -320,22 +338,35 @@ export async function activerAccesAvecCompte<T extends AccesExterne>(
   if (!(Date.parse(lien.expireLe) > maintenantMs)) return { ok: false, raison: 'expire' };
   if (!compte.confirme) return { ok: false, raison: 'non_confirme' };
   if (!adresse(compte.email) || adresse(compte.email) !== adresse(a.email)) return { ok: false, raison: 'autre_adresse' };
+  if (compte.autresMoyens?.length) return { ok: false, raison: 'autre_moyen' };
+  if (compte.parMotDePasse !== true) return { ok: false, raison: 'mot_de_passe' };
   const quand = new Date(maintenantMs).toISOString();
   return { ok: true, acces: { ...a, statut: 'actif', uid: compte.uid.toLowerCase(), compteActif: true, activeLe: quand, derniereConnexion: quand, liens: [] } };
 }
 
-export type RefusEntree = 'inconnu' | 'invite' | 'retire';
+export type RefusEntree = 'inconnu' | 'invite' | 'retire' | 'autre_moyen';
 
 /**
  * Accès ouvert à un compte, par son uid seulement (jamais par l'adresse) :
- * actif et relié. Plusieurs (un par espace) : celui de l'espace préféré, sinon
- * le premier. Aucun : la raison la plus utile à la personne (invitation à
- * ouvrir, accès retiré, rien).
+ * actif et relié, adresse du compte toujours celle de l'accès, jeton émis
+ * après l'activation, compte sans autre moyen d'entrer. Plusieurs (un par
+ * espace) : celui de l'espace préféré, sinon le premier. Aucun : la raison la
+ * plus utile à la personne (invitation à ouvrir, accès retiré, rien).
  */
-export function accesDuCompte<T extends AccesExterne>(acces: readonly T[], uid: unknown, espacePrefere?: unknown): { ok: true; acces: T } | { ok: false; raison: RefusEntree } {
+export function accesDuCompte<T extends AccesExterne>(
+  acces: readonly T[],
+  uid: unknown,
+  espacePrefere?: unknown,
+  compte?: Partial<Pick<CompteVerifie, 'email' | 'emisLe' | 'autresMoyens'>>,
+): { ok: true; acces: T } | { ok: false; raison: RefusEntree } {
   if (!uidValide(uid)) return { ok: false, raison: 'inconnu' };
-  const siens = acces.filter((a) => !!a && typeof a.uid === 'string' && a.uid.toLowerCase() === uid.toLowerCase());
-  const ouverts = siens.filter((a) => a.statut === 'actif' && a.compteActif === true);
+  if (compte?.autresMoyens?.length) return { ok: false, raison: 'autre_moyen' };
+  // Même compte (uid) ET toujours l'adresse de l'accès : un compte dont l'adresse a changé depuis la liaison n'entre plus.
+  const siens = acces.filter(
+    (a) => !!a && typeof a.uid === 'string' && a.uid.toLowerCase() === uid.toLowerCase() && (compte?.email === undefined || adresse(a.email) === adresse(compte.email)),
+  );
+  // Un jeton émis avant l'activation (quelqu'un connecté au compte avant qu'il soit relié) ne vaut rien, comme erp.jeton_apres.
+  const ouverts = siens.filter((a) => a.statut === 'actif' && a.compteActif === true && jetonEmisApres(compte?.emisLe, a.activeLe));
   if (ouverts.length) {
     const prefere = idEspaceValide(espacePrefere) ? espaceDe(espacePrefere) : undefined;
     return { ok: true, acces: ouverts.find((a) => prefere && espaceDe(a.espace) === prefere) ?? ouverts[0] };
@@ -348,12 +379,18 @@ export function accesDuCompte<T extends AccesExterne>(acces: readonly T[], uid: 
 /** Phrases du serveur pour les comptes (les mêmes quoi qu'il manque, sauf ce que la personne doit faire) ; espace insécable avant « ? » et « : ». */
 export const MESSAGE_SESSION_REFUSEE = 'Connexion refusée : reconnectez-vous avec votre adresse e-mail et votre mot de passe.';
 export const MESSAGE_NON_CONFIRME = 'Confirmez d’abord votre adresse e-mail : ouvrez le lien reçu après la création de votre compte.';
+/** Activation demandée avec la seule session d'un lien reçu (confirmation, récupération) : connexion au mot de passe exigée. */
+export const MESSAGE_MOT_DE_PASSE_REQUIS = 'Votre adresse est confirmée : connectez-vous avec votre adresse e-mail et votre mot de passe pour ouvrir votre espace.';
+/** Compte avec un autre moyen d'entrer (téléphone, service tiers) : jamais relié à un espace propriétaire. */
+export const MESSAGE_AUTRE_MOYEN =
+  'Ce compte a un autre moyen de connexion (téléphone ou service tiers) : il ne peut pas ouvrir l’espace propriétaire. Demandez à votre conciergerie de vous réinviter avec une adresse réservée à cet usage.';
 export const MESSAGE_INVITATION_PERIMEE =
   'Ce lien d’invitation n’est plus valable (déjà utilisé, remplacé, expiré ou pour une autre adresse) : demandez à votre conciergerie de le renvoyer.';
 export const MESSAGES_ENTREE: Record<RefusEntree, string> = {
   inconnu: 'Ce compte n’a pas accès à un espace propriétaire. Vous avez reçu une invitation ? Ouvrez son lien sur cet appareil, puis connectez-vous.',
   invite: 'Votre invitation vous attend : ouvrez son lien sur cet appareil, puis connectez-vous.',
   retire: ACCES_RETIRE,
+  autre_moyen: MESSAGE_AUTRE_MOYEN,
 };
 
 /* ---------------------------------------------- page de connexion */

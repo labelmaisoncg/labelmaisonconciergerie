@@ -147,11 +147,17 @@ export async function envoyerLienMotDePasseExterne(genre: GenreAcces, email: str
   }
 }
 
-/** Nouveau mot de passe (lien de récupération ouvert) : le compte reste connecté, son jeton sert ensuite à entrer. */
+/**
+ * Nouveau mot de passe (lien de récupération ouvert) : les autres sessions du
+ * compte se ferment (qui l'aurait ouvert avant n'a plus la main ; Supabase le
+ * fait au changement de mot de passe, on le demande aussi). La page se
+ * reconnecte ensuite avec ce mot de passe : le serveur n'active qu'ainsi.
+ */
 export async function changerMotDePasseExterne(genre: GenreAcces, motDePasse: string): Promise<ResultatCompte> {
   try {
     const { error } = await client(genre).auth.updateUser({ password: motDePasse });
     if (error) return { ok: false, erreur: traduire(error) };
+    await client(genre).auth.signOut({ scope: 'others' }).catch(() => undefined);
     const s = await sessionExterne(genre);
     return s ? { ok: true, jeton: s.jeton } : { ok: false, erreur: traduire({ message: 'auth session missing' }) };
   } catch (e) {

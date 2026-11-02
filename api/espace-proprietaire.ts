@@ -21,9 +21,13 @@
 // Supabase, en Authorization: Bearer, ne sert qu'à prouver son identité ici) :
 //   POST { action: 'activer', code, espace }  première entrée : le code de
 //                                             l'invitation relie l'accès à SON
-//                                             compte (adresse confirmée), puis
-//                                             cookie de session
-//   POST { action: 'entrer', espace? }        connexion ensuite : l'accès est
+//                                             compte (adresse confirmée, jeton
+//                                             d'une connexion au mot de passe,
+//                                             jamais la seule session d'un lien
+//                                             reçu), puis cookie de session
+//   POST { action: 'entrer', espace?,         connexion ensuite : l'accès est
+//          fermerAutres? }                     (nouveau mot de passe : les
+//                                             autres sessions se ferment)
 //                                             retrouvé par le compte (uid),
 //                                             jamais par l'adresse → cookie
 //   GET  ?action=vue&mois=AAAA-MM             son espace (session)
@@ -40,7 +44,7 @@
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
-import { ACCES_RETIRE, MESSAGES_ENTREE, MESSAGE_INVITATION_PERIMEE, MESSAGE_NON_CONFIRME, MESSAGE_SESSION_REFUSEE } from '../src/erp/data/acces-externe.js';
+import { ACCES_RETIRE, MESSAGES_ENTREE, MESSAGE_AUTRE_MOYEN, MESSAGE_INVITATION_PERIMEE, MESSAGE_MOT_DE_PASSE_REQUIS, MESSAGE_NON_CONFIRME, MESSAGE_SESSION_REFUSEE } from '../src/erp/data/acces-externe.js';
 import { calendrierPlage, dateParisISO, moisDePlage, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
 import { avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
 import { facturePartagee } from '../src/erp/data/relances.js';
@@ -71,6 +75,9 @@ const tropDEssais = freinEnvois(30, 15 * 60_000);
 const tropPourCeCompte = freinEnvois(15, 15 * 60_000);
 
 const DOCUMENTS_FERMES = 'Les documents ne peuvent pas être ouverts pour l’instant. Contactez votre conciergerie.';
+
+/** Supabase n'a pas répondu (panne, délai de 10 s) : on le dit, sans refuser la personne. */
+const MESSAGE_COMPTE_INJOIGNABLE = 'La vérification de votre compte n’a pas abouti. Réessayez dans un instant.';
 
 /** Compte déjà créé et relié : on ne réinvite pas, il se connecte. */
 export const MESSAGE_COMPTE_DEJA = 'Ce propriétaire a déjà créé son compte : il se connecte avec son adresse et son mot de passe (« Mot de passe oublié ? » au besoin).';
@@ -189,18 +196,26 @@ export default async function handler(req: any, res: any) {
       if (tropDEssais(adresseIp(req))) return repondre(res, 429, { ok: false, erreur: 'Trop d’essais : patientez quelques minutes.' });
       // Le compte Supabase de la personne, vérifié auprès de Supabase (jamais sur la foi du jeton seul).
       const compte = await verifierCompteSupabase(jetonPorteur(req));
+      if (compte === 'injoignable') return repondre(res, 503, { ok: false, code: 'supabase', erreur: MESSAGE_COMPTE_INJOIGNABLE });
       if (!compte) return repondre(res, 401, { ok: false, code: 'compte', erreur: MESSAGE_SESSION_REFUSEE });
       if (tropPourCeCompte(compte.email)) return repondre(res, 429, { ok: false, erreur: 'Trop d’essais : patientez quelques minutes.' });
       if (!compte.confirme) return repondre(res, 403, { ok: false, code: 'non_confirme', erreur: MESSAGE_NON_CONFIRME });
       if (action === 'activer') {
         const r = await activerAvecCompte<AccesProprietaire>('proprietaire', corps.code, compte, corps.espace);
         // Même phrase quoi qu'il manque (code inconnu, expiré, servi, autre adresse) ; l'accès retiré est dit tel quel.
-        if (!r.ok) return repondre(res, 401, r.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'invitation', erreur: MESSAGE_INVITATION_PERIMEE });
+        if (!r.ok) {
+          if (r.raison === 'retire') return repondre(res, 401, { ok: false, code: 'retire', erreur: ACCES_RETIRE });
+          // Session d'un lien reçu (confirmation, récupération) : le mot de passe du compte pourrait être celui d'un
+          // autre (compte créé avant la personne, à son adresse) ; une connexion au mot de passe est exigée.
+          if (r.raison === 'mot_de_passe') return repondre(res, 403, { ok: false, code: 'mot_de_passe', erreur: MESSAGE_MOT_DE_PASSE_REQUIS });
+          if (r.raison === 'autre_moyen') return repondre(res, 403, { ok: false, code: 'autre_moyen', erreur: MESSAGE_AUTRE_MOYEN });
+          return repondre(res, 401, { ok: false, code: 'invitation', erreur: MESSAGE_INVITATION_PERIMEE });
+        }
         res.setHeader('Set-Cookie', r.cookie);
         return repondre(res, 200, { ok: true, espace: r.espace });
       }
-      const r = await entrerAvecCompte<AccesProprietaire>('proprietaire', compte, corps.espace);
-      if (!r.ok) return repondre(res, 401, { ok: false, code: r.raison, erreur: MESSAGES_ENTREE[r.raison] });
+      const r = await entrerAvecCompte<AccesProprietaire>('proprietaire', compte, corps.espace, Date.now(), { fermerAutres: corps.fermerAutres === true });
+      if (!r.ok) return repondre(res, r.raison === 'autre_moyen' ? 403 : 401, { ok: false, code: r.raison, erreur: MESSAGES_ENTREE[r.raison] });
       res.setHeader('Set-Cookie', r.cookie);
       return repondre(res, 200, { ok: true, espace: r.espace });
     }

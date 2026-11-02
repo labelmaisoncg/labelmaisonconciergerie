@@ -180,7 +180,8 @@ const U_AUTRE = 'a11ce000-0000-4000-8000-000000000002';
 const A = 'pro-a';
 const t0 = Date.parse('2026-11-02T10:00:00Z');
 const s0 = Math.floor(t0 / 1000);
-const alice = { uid: U_ALICE, email: 'alice@exemple.fr', confirme: true };
+/** Compte vérifié tel que le serveur le livre : connexion au mot de passe, jeton émis maintenant, aucun autre moyen d'entrer. */
+const alice = { uid: U_ALICE, email: 'alice@exemple.fr', confirme: true, parMotDePasse: true, emisLe: s0, autresMoyens: [] as string[] };
 
 async function main() {
   /* lien « Créer mon compte » */
@@ -229,6 +230,10 @@ async function main() {
   verifier(!autreAdresse.ok && autreAdresse.raison === 'autre_adresse', 'compte d’une autre adresse : refusé');
   const nonConfirme = await activerAccesAvecCompte([invite], code, { ...alice, confirme: false }, t0 + 60_000);
   verifier(!nonConfirme.ok && nonConfirme.raison === 'non_confirme', 'adresse pas confirmée : refusé');
+  const parLien = await activerAccesAvecCompte([invite], code, { ...alice, parMotDePasse: false }, t0 + 60_000);
+  verifier(!parLien.ok && parLien.raison === 'mot_de_passe', 'seule session d’un lien reçu (confirmation, récupération) : activation refusée, le mot de passe est exigé');
+  const telephone = await activerAccesAvecCompte([invite], code, { ...alice, autresMoyens: ['phone'] }, t0 + 60_000);
+  verifier(!telephone.ok && telephone.raison === 'autre_moyen', 'compte avec téléphone ou fournisseur externe : activation refusée');
   const perime = await activerAccesAvecCompte([invite], code, alice, t0 + DUREE_INVITATION_ACCES_MS + 1);
   verifier(!perime.ok && perime.raison === 'expire', 'code de plus de 7 jours : refusé');
   const reutilise = await activerAccesAvecCompte([actif], code, { ...alice, uid: U_AUTRE }, t0 + 120_000);
@@ -248,6 +253,9 @@ async function main() {
   const autreCompte = accesDuCompte([actif], U_AUTRE);
   verifier(!autreCompte.ok && autreCompte.raison === 'inconnu', 'autre compte, même adresse : rien');
   verifier(!accesDuCompte([actif], 'pas-un-uuid').ok && !accesDuCompte([], U_ALICE).ok, 'uid illisible ou aucun accès : rien');
+  const activeS = Math.floor(Date.parse(actif.activeLe ?? '') / 1000);
+  verifier(!accesDuCompte([actif], U_ALICE, undefined, { emisLe: activeS - 1 }).ok && accesDuCompte([actif], U_ALICE, undefined, { emisLe: activeS + 1, email: 'ALICE@exemple.fr ' }).ok, 'jeton émis avant l’activation : rien ; après, même adresse : l’accès');
+  verifier(!accesDuCompte([actif], U_ALICE, undefined, { email: 'autre@exemple.fr' }).ok && !accesDuCompte([actif], U_ALICE, undefined, { autresMoyens: ['google'] }).ok, 'adresse du compte changée depuis la liaison, ou autre moyen d’entrer : rien');
   const retireRelie = retirer(actif, t0 + 2000);
   const apresRetrait = accesDuCompte([retireRelie], U_ALICE);
   verifier(!apresRetrait.ok && apresRetrait.raison === 'retire' && retireRelie.uid === U_ALICE && retireRelie.compteActif === false, 'accès retiré : l’uid reste pour mémoire, mais n’ouvre plus rien');

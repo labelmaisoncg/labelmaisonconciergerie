@@ -48,8 +48,11 @@ import { Alert, Button, Card, Field, IconButton, Input, PageSkeleton, cn } from 
  *
  * 1. le lien de l'invitation (« #creer=<adresse>&code=…&espace=… ») ouvre
  *    « Créez votre mot de passe » ; le code reste sur l'appareil ;
- * 2. Supabase envoie l'e-mail de confirmation ; son lien ramène ici, le compte
- *    confirmé active l'accès avec le code (POST activer) : la session s'ouvre ;
+ * 2. Supabase envoie l'e-mail de confirmation ; son lien ramène ici, puis la
+ *    personne se connecte avec son mot de passe : cette connexion active
+ *    l'accès avec le code (POST activer) et ouvre la session. Jamais la seule
+ *    session du lien : un compte créé avant elle, par un autre, à son adresse,
+ *    aurait le mot de passe de cet autre (le serveur l'exige aussi) ;
  * 3. ensuite, adresse et mot de passe (POST entrer) ; « Mot de passe oublié ? »
  *    envoie un lien qui ramène ici pour en choisir un nouveau.
  *
@@ -110,17 +113,17 @@ type Etat =
   | { nom: 'pret'; vue: VueProprietaire; demo?: boolean };
 
 const MESSAGE_SANS_INVITATION = 'Pour créer votre compte, ouvrez le lien de l’invitation reçue par e-mail, sur cet appareil.';
-const MESSAGE_CONFIRMEE_SANS_CODE = 'Votre adresse est confirmée. Ouvrez maintenant le lien de votre invitation sur cet appareil, puis connectez-vous.';
+const MESSAGE_CONFIRMEE = 'Votre adresse est confirmée. Connectez-vous avec votre mot de passe pour ouvrir votre espace.';
 const MESSAGE_OUBLIE = 'Si cette adresse a un compte, un lien pour choisir un mot de passe vient de lui être envoyé. Pensez à regarder dans les indésirables.';
 const MESSAGE_DEMO = 'Démonstration : aucun compte n’est créé et aucun e-mail n’est envoyé. Ouvrez l’espace de démonstration ci-dessous.';
 const MESSAGE_LIEN_PERIME = 'Ce lien a expiré ou a déjà servi. Demandez un nouveau lien avec « Mot de passe oublié ? ».';
 
-async function appeler(methode: 'GET' | 'POST', parametres: Record<string, string>, jeton?: string): Promise<{ statut: number; json: Record<string, unknown> }> {
+async function appeler(methode: 'GET' | 'POST', parametres: Record<string, string | boolean>, jeton?: string): Promise<{ statut: number; json: Record<string, unknown> }> {
   try {
     const entetes: Record<string, string> = jeton ? { Authorization: `Bearer ${jeton}` } : {};
     const r =
       methode === 'GET'
-        ? await fetch(`${API}?${new URLSearchParams(parametres)}`, { credentials: 'same-origin', cache: 'no-store', headers: entetes })
+        ? await fetch(`${API}?${new URLSearchParams(parametres as Record<string, string>)}`, { credentials: 'same-origin', cache: 'no-store', headers: entetes })
         : await fetch(API, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', ...entetes }, body: JSON.stringify(parametres) });
     return { statut: r.status, json: (await r.json().catch(() => ({}))) as Record<string, unknown> };
   } catch {
@@ -132,11 +135,13 @@ async function appeler(methode: 'GET' | 'POST', parametres: Record<string, strin
  * Ouvre la session de l'espace avec le jeton Supabase du compte connecté : avec
  * le code d'invitation gardé ici pour cette adresse, c'est l'activation
  * (première entrée) ; sinon, ou si ce code a déjà servi, l'entrée par le
- * compte. La session Supabase locale est fermée dans tous les cas.
+ * compte. `fermerAutres` (nouveau mot de passe) : les sessions ouvertes avant
+ * se ferment. La session Supabase locale est fermée dans tous les cas.
  */
-async function ouvrirAvecCompte(jeton: string, email: string): Promise<{ ok: true } | { ok: false; message: string; code: string }> {
+async function ouvrirAvecCompte(jeton: string, email: string, o: { fermerAutres?: boolean } = {}): Promise<{ ok: true } | { ok: false; message: string; code: string }> {
   try {
     const retenu = espaceRetenu()?.espace;
+    const autres: Record<string, boolean> = o.fermerAutres ? { fermerAutres: true } : {};
     const inv = codeInvitationAccesDe(GENRE, email);
     if (inv) {
       const a = await appeler('POST', { action: 'activer', code: inv.code, espace: inv.espace }, jeton);
@@ -148,7 +153,7 @@ async function ouvrirAvecCompte(jeton: string, email: string): Promise<{ ok: tru
       // Code refusé (déjà servi, remplacé, expiré) : il ne servira plus ; le compte a peut-être déjà son accès.
       if (a.statut === 401 && a.json.code === 'invitation') {
         oublierInvitationAcces(GENRE);
-        const e = await appeler('POST', { action: 'entrer', ...(retenu ? { espace: retenu } : { espace: inv.espace }) }, jeton);
+        const e = await appeler('POST', { action: 'entrer', ...autres, ...(retenu ? { espace: retenu } : { espace: inv.espace }) }, jeton);
         if (e.statut === 200) {
           if (idEspaceValide(e.json.espace)) retenirEspace({ espace: e.json.espace.toLowerCase() });
           return { ok: true };
@@ -157,7 +162,7 @@ async function ouvrirAvecCompte(jeton: string, email: string): Promise<{ ok: tru
       }
       return { ok: false, message: String(a.json.erreur ?? 'Une erreur est survenue. Réessayez dans un instant.'), code: String(a.json.code ?? '') };
     }
-    const e = await appeler('POST', { action: 'entrer', ...(retenu ? { espace: retenu } : {}) }, jeton);
+    const e = await appeler('POST', { action: 'entrer', ...autres, ...(retenu ? { espace: retenu } : {}) }, jeton);
     if (e.statut === 200) {
       if (idEspaceValide(e.json.espace)) retenirEspace({ espace: e.json.espace.toLowerCase() });
       return { ok: true };
@@ -500,7 +505,14 @@ function NouveauMotDePasse({ marque, email, onFini }: { marque: MarqueConnexion;
       setEnCours(false);
       return setErreur(r.erreur);
     }
-    const ouverture = await ouvrirAvecCompte(r.jeton, email);
+    // Connexion avec le nouveau mot de passe (le serveur n'active qu'ainsi), puis les sessions d'avant se ferment.
+    await fermerSessionExterne(GENRE);
+    const c = await seConnecterExterne(GENRE, email, motDePasse);
+    if (!c.ok) {
+      setEnCours(false);
+      return setErreur(c.erreur);
+    }
+    const ouverture = await ouvrirAvecCompte(c.jeton, email, { fermerAutres: true });
     setEnCours(false);
     onFini(ouverture);
   };
@@ -613,7 +625,10 @@ export default function EspaceProprietaire() {
           nettoyerAdresse();
           return poser({ nom: 'nouveau_mot_de_passe', email: 'vous@exemple.fr' });
         }
-        if (retour.nature === 'confirmation') nettoyerAdresse();
+        if (retour.nature === 'confirmation') {
+          nettoyerAdresse();
+          return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_CONFIRMEE, email: 'vous@exemple.fr' });
+        }
         return poser(await charger());
       }
       if (retour.nature === 'recuperation' || retour.nature === 'confirmation') {
@@ -622,11 +637,10 @@ export default function EspaceProprietaire() {
         nettoyerAdresse();
         if (!s) return poser({ nom: 'connexion', ton: 'danger', message: MESSAGE_LIEN_PERIME });
         if (retour.nature === 'recuperation') return poser({ nom: 'nouveau_mot_de_passe', email: s.email });
-        // Adresse confirmée : activation avec le code gardé ici, ou entrée si le compte a déjà son accès.
-        const r = await ouvrirAvecCompte(s.jeton, s.email);
-        if (r.ok) return poser(await charger());
-        if (r.code === 'inconnu' || r.code === 'invite') return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_CONFIRMEE_SANS_CODE, email: s.email });
-        return poser({ nom: 'connexion', ton: r.code === 'retire' ? 'neutre' : 'danger', message: r.message, email: s.email });
+        // Adresse confirmée : la session du lien ne relie rien (le serveur exige une connexion au mot de passe : un compte
+        // créé par un autre à cette adresse aurait le sien). On la ferme ; la personne se connecte, ce qui active l'accès.
+        await fermerSessionExterne(GENRE);
+        return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_CONFIRMEE, email: s.email });
       }
       poser(await charger());
     })();
