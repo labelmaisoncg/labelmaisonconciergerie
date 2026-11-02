@@ -163,6 +163,7 @@ export function Footer() {
                   ['Essonne (91)', '/conciergerie-airbnb-essonne'],
                   ['Côte d’Azur', '/conciergerie-cote-d-azur'],
                   ['Toute la France', '/conciergerie-airbnb-france'],
+                  ['Propriétaires à l’étranger', '/conciergerie-airbnb-proprietaires-expatries'],
                 ].map(([label, href]) => (
                   <li key={href}>
                     <a href={href} className="hover:text-[#A97C30]">
@@ -226,6 +227,9 @@ export function Footer() {
                   ['Navette aéroport', '/navette-aeroport-paris'],
                   ['Montres de luxe', '/achat-vente-montres-de-luxe'],
                   ['Personal shopper', '/personal-shopper-paris'],
+                  ['Voitures de luxe', '/location-voiture-de-luxe-paris'],
+                  ['Conciergerie Chine', '/conciergerie-chine'],
+                  ['Apporteur d’affaires', '/apporteur-d-affaires'],
                   ['Le blog des propriétaires', '/blog'],
                 ].map(([label, href]) => (
                   <li key={href}>
