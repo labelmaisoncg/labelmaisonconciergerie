@@ -12,6 +12,7 @@ import { statutCompteProprietaire } from '../../../data/acces-gerant';
 import { MODE_DEMO } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros, horodatageMaintenant } from '../../../data/format';
+import { inviter as inviterAcces, retirer as retirerAcces } from '../../../data/proprietaire-acces';
 import { facturePartagee } from '../../../data/relances';
 import { nouvelId, useErp } from '../../../data/store';
 import {
@@ -32,7 +33,7 @@ import type { ChargeurMois } from '../../../calendrier';
 import { BilanDetail } from '../../../espace-proprietaire/Bilans';
 import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
 import { bilanDuMois, deNom, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
-import { Alert, Badge, Button, Card, CardHeader, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
+import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
 import { FacturesProprietaire } from './FacturesProprietaire';
 import { RelancesPaiement } from './RelancesPaiement';
@@ -80,31 +81,6 @@ export function statutAcces(a: AccesProprietaire | undefined, p: Pick<Proprietai
 
 /** Le propriétaire a créé son compte et il est relié à cet accès. */
 const compteCree = (a: AccesProprietaire | undefined): boolean => !!a && a.statut === 'actif' && a.compteActif === true;
-
-/** Fiche du propriétaire : carte « Espace propriétaire » (état du compte, « Gérer »). Gérant seulement. */
-export function CarteCompteProprietaire({ proprietaire }: { proprietaire: Proprietaire }) {
-  const d = useErp();
-  const [ouvert, setOuvert] = useState(false);
-  if (d.utilisateur.role !== 'gerant' || d.lectureSeule) return null;
-  const acces = d.donnees.accesProprietaires.find((a) => a.id === proprietaire.id);
-  const s = statutAcces(acces, proprietaire);
-  return (
-    <Card>
-      <CardHeader
-        titre="Espace propriétaire"
-        actions={
-          <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
-            Gérer
-          </Button>
-        }
-      />
-      <Badge tone={s.ton} point>
-        {s.texte}
-      </Badge>
-      {ouvert && <PanneauEspace proprietaire={proprietaire} onFermer={() => setOuvert(false)} />}
-    </Card>
-  );
-}
 
 /** Ligne de la carte Propriétaire : état de l'accès et ouverture du panneau. */
 export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietaire: Proprietaire; logement: Logement }) {
@@ -232,20 +208,8 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
     // Une autre adresse : c'est désormais celle de la fiche (le serveur n'invite que l'adresse de la fiche).
     if (adresse !== (p.contact.email ?? '').trim().toLowerCase()) d.mettreAJour('proprietaires', p.id, (x) => ({ ...x, contact: { ...x.contact, email: adresse } }));
     if (MODE_DEMO) {
-      // Mêmes règles que le serveur : autre adresse, sessions fermées (version) et liens oubliés.
-      const autre = !!acces && acces.email !== adresse;
-      d.upsert('accesProprietaires', {
-        id: p.id,
-        proprietaireId: p.id,
-        email: adresse,
-        emailFiche: adresse,
-        statut: acces?.statut === 'actif' && !autre ? 'actif' : 'invite',
-        inviteLe: horodatageMaintenant(),
-        invitePar: d.utilisateur.email,
-        version: (acces?.version ?? 1) + (autre && acces?.statut === 'actif' ? 1 : 0),
-        liens: [],
-        ...(acces?.derniereConnexion && !autre ? { derniereConnexion: acces.derniereConnexion } : {}),
-      });
+      // Mêmes règles que le serveur (inviter) : l'accès attend le compte ; autre adresse, sessions fermées et compte oublié.
+      d.upsert('accesProprietaires', { ...inviterAcces(acces, { proprietaireId: p.id, email: adresse, par: d.utilisateur.email, maintenantMs: Date.now() }), emailFiche: adresse });
       setInvitation({ lien: `${window.location.origin}/espace-proprietaire?apercu=${encodeURIComponent(p.id)}`, envoye: false });
       return;
     }
@@ -265,7 +229,7 @@ function Acces({ proprietaire: p, serveur }: { proprietaire: Proprietaire; serve
     setConfirmer(false);
     setInvitation(undefined);
     if (MODE_DEMO) {
-      if (acces) d.upsert('accesProprietaires', { ...acces, statut: 'retire', retireLe: horodatageMaintenant(), version: acces.version + 1, liens: [] });
+      if (acces) d.upsert('accesProprietaires', retirerAcces(acces, Date.now()));
       return;
     }
     setEnCours('retirer');

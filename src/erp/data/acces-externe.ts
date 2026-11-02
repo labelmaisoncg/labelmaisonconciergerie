@@ -163,7 +163,11 @@ export type RetourLienExterne =
   | { nature: 'creer'; email: string; code?: string; espace: string }
   | { nature: 'recuperation' }
   | { nature: 'confirmation' }
-  | { nature: 'erreur'; message: string };
+  | { nature: 'erreur'; message: string }
+  /** Ancien lien à usage unique (« #jeton=… », d'avant les comptes) : on le dit, sans rien ouvrir. */
+  | { nature: 'ancien_lien'; message: string };
+
+export const MESSAGE_ANCIEN_LIEN = 'Ce lien n’est plus valable : connectez-vous avec votre adresse et votre mot de passe, ou demandez une nouvelle invitation.';
 
 export function lireRetourLienExterne(hash: unknown): RetourLienExterne {
   const h = String(hash ?? '').replace(/^#/, '');
@@ -171,6 +175,7 @@ export function lireRetourLienExterne(hash: unknown): RetourLienExterne {
   const creer = lireLienCreation(h);
   if (creer) return { nature: 'creer', ...creer };
   const p = new URLSearchParams(h);
+  if (p.has('jeton')) return { nature: 'ancien_lien', message: MESSAGE_ANCIEN_LIEN };
   const code = p.get('error_code') ?? p.get('error');
   if (code) {
     const expire = /expired|otp/i.test(code + (p.get('error_description') ?? ''));
@@ -184,6 +189,37 @@ export function lireRetourLienExterne(hash: unknown): RetourLienExterne {
   if (p.get('access_token')) return p.get('type') === 'recovery' ? { nature: 'recuperation' } : { nature: 'confirmation' };
   return { nature: 'rien' };
 }
+
+/* ------------------------------------------- compte : réponse de l'inscription */
+
+/** Réponse de l'inscription Supabase (signUp), relue sans confiance. */
+export interface ReponseInscription {
+  user?: { identities?: unknown[] | null } | null;
+  session?: { access_token?: string | null } | null;
+}
+
+export type SuiteInscription = { etat: 'confirmation' } | { etat: 'existe' } | { etat: 'session'; jeton: string } | { etat: 'erreur'; code: string; message: string };
+
+/**
+ * Ce que dit Supabase après « Créer mon compte » : une session (confirmation
+ * d'adresse coupée dans ses réglages : on entre tout de suite) ; un compte
+ * déjà créé à cette adresse (avec la confirmation activée, Supabase rend un
+ * utilisateur factice sans identité et n'envoie rien : la personne se
+ * connecte) ; sinon l'e-mail de confirmation est parti.
+ */
+export function interpreterInscription(data: ReponseInscription | null | undefined, error: { code?: unknown; message?: unknown } | null | undefined): SuiteInscription {
+  if (error) {
+    const texte = `${String(error.code ?? '')} ${String(error.message ?? '')}`;
+    if (/already registered|already been registered|user_already_exists/i.test(texte)) return { etat: 'existe' };
+    return { etat: 'erreur', code: String(error.code ?? ''), message: String(error.message ?? '') };
+  }
+  const jeton = data?.session?.access_token;
+  if (typeof jeton === 'string' && jeton) return { etat: 'session', jeton };
+  if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) return { etat: 'existe' };
+  return { etat: 'confirmation' };
+}
+
+export const MESSAGE_COMPTE_EXISTE = 'Vous avez déjà un compte à cette adresse : connectez-vous (« Mot de passe oublié ? » au besoin).';
 
 /* --------------------------------------- compte : code gardé sur l'appareil */
 

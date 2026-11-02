@@ -1964,8 +1964,7 @@ Données des voyageurs : « Prénom N. » et le nombre de personnes, rien d'autr
   « Invitation envoyée le …, pas encore de compte » / « Compte créé le … » /
   « Accès retiré le … », « Renvoyer l'invitation » tant que le compte n'est
   pas créé, « Retirer l'accès » (déconnexion immédiate ; le compte Supabase
-  reste, sans rien ouvrir). La même carte « Espace propriétaire » est dans la
-  fiche du propriétaire, et Paramètres → Accès → Propriétaires montre le même
+  reste, sans rien ouvrir). Paramètres → Accès → Propriétaires montre le même
   état. Réservé au gérant. Détail : « Compte du propriétaire » plus bas.
 - **Bilans mensuels** : les six derniers mois terminés, calculés
   automatiquement ; « Ouvrir » montre l'**aperçu exact**, le mot de Label
@@ -2077,7 +2076,7 @@ Chaque propriétaire a **son compte** (adresse e-mail et mot de passe), comme
 l'équipe : plus de lien magique, un seul chemin.
 
 1. **Invitation** (gérant : Paramètres → Accès → « Inviter un propriétaire »,
-   fiche du propriétaire ou fiche logement → « Gérer ») : le serveur tire un
+   ou fiche logement → carte Propriétaire → « Gérer ») : le serveur tire un
    code de 32 octets, n'en garde que l'empreinte SHA-256 dans l'accès
    (`accesProprietaires.liens`, 7 jours, une fois) et envoie « Votre espace
    propriétaire » avec le lien
@@ -2092,8 +2091,12 @@ l'équipe : plus de lien magique, un seul chemin.
    confirmation. La page appelle `supabase.auth.signUp` (clé anon,
    `src/erp/data/compte-externe.ts`, client sans session durable) avec
    `emailRedirectTo` sur la page de l'espace ; le code reste sur l'appareil
-   (`lm_proprio_invitation`, 7 jours). Même réponse qu'un compte existe ou
-   non ; « J'ai déjà un compte » mène à la connexion.
+   (`lm_proprio_invitation`, 7 jours). Un compte déjà créé à cette adresse
+   (retrait puis nouvelle invitation, par exemple) : Supabase le signale au
+   navigateur (utilisateur factice sans identité, aucun e-mail envoyé) et la
+   page renvoie à la connexion : « Vous avez déjà un compte à cette
+   adresse : connectez-vous (« Mot de passe oublié ? » au besoin). » ;
+   « J'ai déjà un compte » y mène aussi.
 3. **Confirmation puis activation** : le lien de confirmation de Supabase
    ramène sur la page ; le compte confirmé appelle
    `POST /api/espace-proprietaire { action: 'activer', code, espace }` avec
@@ -2141,14 +2144,18 @@ l'équipe : plus de lien magique, un seul chemin.
    d'`erp-installation.sql`).
 7. **Le retrouver** : Supabase → Authentication → Users (le compte) ;
    l'ERP montre « Compte créé le … », « Invitation envoyée le …, pas encore
-   de compte », « Pas encore de compte : renvoyez l'invitation » (accès
-   d'avant les comptes, ouvert par lien) ou « Accès retiré le … »
-   (`statutCompteProprietaire`, `src/erp/data/acces-gerant.ts`).
+   de compte », « Nouvelle invitation envoyée le … ; le compte existe »
+   (réinvité après un retrait : l'uid est gardé), « Pas encore de compte :
+   renvoyez l'invitation » (accès d'avant les comptes, ouvert par lien) ou
+   « Accès retiré le … » (`statutCompteProprietaire`,
+   `src/erp/data/acces-gerant.ts`).
 8. **Anciens accès** : les sessions ouvertes par lien avant cette version
    restent valables jusqu'à leur fin (30 jours) tant que le compte n'est pas
    créé ; dès que le gérant réinvite ou que le compte est relié, elles
    tombent. Chaque propriétaire d'aujourd'hui doit donc être **réinvité** une
-   fois.
+   fois. Un ancien lien `#jeton=…` ouvre la page de connexion avec « Ce lien
+   n'est plus valable : connectez-vous avec votre adresse et votre mot de
+   passe, ou demandez une nouvelle invitation. »
 9. **Démo** (`VITE_ERP_DEMO=1`) : tous les écrans se montrent sans Supabase ni
    e-mail (`#creer=…&code=…`, connexion, mot de passe oublié,
    `#access_token=x&type=recovery`) ; SCI Les Tilleuls a « Compte créé le … ».
@@ -2157,7 +2164,12 @@ l'équipe : plus de lien magique, un seul chemin.
     `verifierCompteSupabase`, `activerAvecCompte`, `entrerAvecCompte`,
     `compte-externe.ts`), seuls les propriétaires sont branchés.
 
-**À faire par le propriétaire dans Supabase** (une fois, rien dans Vercel) :
+**À faire par vous (propriétaire de l'entreprise)** (une fois, rien dans
+Vercel) :
+
+- réinviter chaque propriétaire de logement une fois (Paramètres → Accès →
+  « Gérer » → « Renvoyer l'invitation ») : les accès d'aujourd'hui, ouverts
+  par lien, n'ont pas de compte ;
 
 - Authentication → **URL Configuration → Redirect URLs** : ajouter exactement
   `https://www.labelmaisoncg.fr/espace-proprietaire` (à côté de `/erp`, sans

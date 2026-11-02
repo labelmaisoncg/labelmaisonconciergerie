@@ -21,6 +21,7 @@ import {
   MESSAGE_NON_CONFIRME,
   MOT_DE_PASSE_MIN,
   codeAccesPour,
+  interpreterInscription,
   invitationAccesAGarder,
   lireInvitationAccesGardee,
   lireRetourLienExterne,
@@ -46,9 +47,9 @@ export const RETOUR_LIEN_EXTERNE: RetourLienExterne = (() => {
   return r;
 })();
 
-/** Retire ce qui reste du fragment (« # » seul laissé par Supabase, ou un lien lu en démonstration). */
+/** Retire ce qui reste du fragment (« # » seul laissé par Supabase, que location.hash rend vide, ou un lien lu en démonstration). */
 export function nettoyerAdresse(): void {
-  if (typeof window !== 'undefined' && window.location.hash !== '') window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+  if (typeof window !== 'undefined' && window.location.href.includes('#')) window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
 }
 
 /* ---------------------------------------------------------- client */
@@ -94,17 +95,20 @@ export type ResultatCompte = { ok: true; jeton: string } | { ok: false; erreur: 
 
 /**
  * « Créer mon compte » : inscription auprès de Supabase, lien de confirmation
- * vers la page de l'espace (site fixe). Même réponse qu'un compte existe ou
- * non. Supabase rend une session seulement si la confirmation d'adresse est
- * coupée dans ses réglages : on la remet alors tout de suite au serveur
- * (jeton), qui exige quand même une adresse confirmée.
+ * vers la page de l'espace (site fixe). Un compte déjà créé à cette adresse
+ * (Supabase le signale au navigateur : utilisateur factice sans identité,
+ * aucun e-mail envoyé) : `existe`, la personne se connecte. Supabase rend une
+ * session seulement si la confirmation d'adresse est coupée dans ses
+ * réglages : on la remet alors tout de suite au serveur (jeton), qui exige
+ * quand même une adresse confirmée.
  */
-export async function creerCompteExterne(genre: GenreAcces, email: string, motDePasse: string): Promise<{ ok: true; jeton?: string } | { ok: false; erreur: string }> {
+export async function creerCompteExterne(genre: GenreAcces, email: string, motDePasse: string): Promise<{ ok: true; existe?: boolean; jeton?: string } | { ok: false; erreur: string }> {
   try {
     const { data, error } = await client(genre).auth.signUp({ email: email.trim().toLowerCase(), password: motDePasse, options: { emailRedirectTo: urlRetourAcces(genre) } });
-    if (!error) return data?.session?.access_token ? { ok: true, jeton: data.session.access_token } : { ok: true };
-    if (/already registered|already been registered|user_already_exists/i.test(`${error.code ?? ''} ${error.message}`)) return { ok: true };
-    return { ok: false, erreur: traduire(error) };
+    const suite = interpreterInscription(data, error);
+    if (suite.etat === 'erreur') return { ok: false, erreur: traduire(error) };
+    if (suite.etat === 'session') return { ok: true, jeton: suite.jeton };
+    return suite.etat === 'existe' ? { ok: true, existe: true } : { ok: true };
   } catch (e) {
     return { ok: false, erreur: traduire(e) };
   }

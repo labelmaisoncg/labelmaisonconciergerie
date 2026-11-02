@@ -4,6 +4,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import '../../erp/erp.css';
 import {
+  MESSAGE_COMPTE_EXISTE,
   MESSAGE_INVITATION_PERIMEE,
   MOT_DE_PASSE_MIN,
   adresseBienFormee,
@@ -412,7 +413,7 @@ function Connexion({
  * passe deux fois (12 caractères au moins, indicateur simple). Le compte est
  * créé auprès de Supabase ; l'adresse reste à confirmer par son lien.
  */
-function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: MarqueConnexion; email: string; onCree: (jeton?: string) => void; onDejaUnCompte: () => void }) {
+function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: MarqueConnexion; email: string; onCree: (r: { jeton?: string; existe?: boolean }) => void; onDejaUnCompte: () => void }) {
   const [motDePasse, setMotDePasse] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [erreur, setErreur] = useState<string>();
@@ -423,14 +424,15 @@ function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: Marque
     const refus = motDePasseRefuse(motDePasse, confirmation);
     if (refus) return setErreur(refus);
     setErreur(undefined);
-    if (MODE_DEMO) return setErreur(MESSAGE_DEMO);
+    // Démonstration : l'écran suivant se montre, rien n'est envoyé.
+    if (MODE_DEMO) return onCree({});
     setEnCours(true);
     const r = await creerCompteExterne(GENRE, email, motDePasse);
     setEnCours(false);
     setMotDePasse('');
     setConfirmation('');
     if (!r.ok) return setErreur(r.erreur);
-    onCree(r.jeton);
+    onCree(r);
   };
 
   return (
@@ -449,7 +451,7 @@ function CreerCompte({ marque, email, onCree, onDejaUnCompte }: { marque: Marque
           <ChampMotDePasse autoComplete="new-password" value={confirmation} onChange={(e) => setConfirmation(e.target.value)} />
         </Field>
         {erreur && (
-          <Alert tone={MODE_DEMO && erreur === MESSAGE_DEMO ? 'succes' : 'danger'} className="py-2">
+          <Alert tone="danger" className="py-2">
             {erreur}
           </Alert>
         )}
@@ -603,6 +605,8 @@ export default function EspaceProprietaire() {
         return poser({ nom: 'connexion', ton: 'info', message: MESSAGE_SANS_INVITATION, email: retour.email || undefined });
       }
       if (retour.nature === 'erreur') return poser({ nom: 'connexion', ton: 'danger', message: retour.message });
+      // Ancien lien à usage unique (d'avant les comptes) : on le dit, la connexion se fait par mot de passe.
+      if (retour.nature === 'ancien_lien') return poser({ nom: 'connexion', ton: 'info', message: retour.message });
       if (MODE_DEMO) {
         // Démonstration : les écrans de compte se montrent sans Supabase.
         if (retour.nature === 'recuperation') {
@@ -709,7 +713,9 @@ export default function EspaceProprietaire() {
           marque={marque}
           email={etat.email}
           onDejaUnCompte={() => setEtat({ nom: 'connexion', email: etat.email })}
-          onCree={(jeton) => {
+          onCree={({ jeton, existe }) => {
+            // Compte déjà créé à cette adresse (retrait puis nouvelle invitation, par exemple) : il se connecte.
+            if (existe) return setEtat({ nom: 'connexion', ton: 'info', message: MESSAGE_COMPTE_EXISTE, email: etat.email });
             if (!jeton) return setEtat({ nom: 'confirmer', email: etat.email });
             // Confirmation d'adresse coupée côté Supabase : le compte est déjà confirmé, on active tout de suite.
             setEtat({ nom: 'chargement' });

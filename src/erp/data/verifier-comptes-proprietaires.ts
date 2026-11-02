@@ -22,6 +22,7 @@ import {
   activerAccesAvecCompte,
   codeAccesPour,
   forceMotDePasse,
+  interpreterInscription,
   invitationAccesAGarder,
   lienCreationAcces,
   lireInvitationAccesGardee,
@@ -194,6 +195,14 @@ async function main() {
   verifier(lireRetourLienExterne('#access_token=x&refresh_token=y&type=recovery').nature === 'recuperation' && lireRetourLienExterne('#access_token=x&refresh_token=y&type=signup').nature === 'confirmation', 'retour de lien : mot de passe oublié, confirmation');
   const expire = lireRetourLienExterne('#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired');
   verifier(expire.nature === 'erreur' && /expiré/.test(expire.message), 'retour de lien : lien de Supabase expiré');
+  const ancien = lireRetourLienExterne(`#espace=${SENS}&jeton=${code}`);
+  verifier(ancien.nature === 'ancien_lien' && /plus valable/.test(ancien.message) && lireRetourLienExterne('#jeton=x').nature === 'ancien_lien', 'ancien lien à usage unique (#jeton=…) : dit sans rien ouvrir');
+  // Réponse de l'inscription : session (confirmation coupée), compte déjà créé (utilisateur factice sans identité, ou erreur), sinon e-mail parti.
+  verifier(interpreterInscription({ user: { identities: [] }, session: null }, null).etat === 'existe', 'inscription : utilisateur factice sans identité = compte déjà créé');
+  verifier(interpreterInscription({ user: { identities: [{}] }, session: null }, null).etat === 'confirmation' && interpreterInscription(null, null).etat === 'confirmation', 'inscription : une identité ou rien = e-mail de confirmation parti');
+  const avecSession = interpreterInscription({ user: { identities: [{}] }, session: { access_token: 'j' } }, null);
+  verifier(avecSession.etat === 'session' && avecSession.jeton === 'j', 'inscription : session rendue (confirmation coupée) = on entre tout de suite');
+  verifier(interpreterInscription(null, { code: 'user_already_exists', message: 'User already registered' }).etat === 'existe' && interpreterInscription(null, { code: 'x', message: 'Panne' }).etat === 'erreur', 'inscription : erreur « déjà inscrit » = compte déjà créé, autre erreur = erreur');
   verifier(urlRetourAcces('proprietaire') === 'https://www.labelmaisoncg.fr/espace-proprietaire', 'retour des e-mails de Supabase : la page de l’espace, site fixe');
 
   /* code gardé sur l'appareil */
@@ -279,7 +288,9 @@ async function main() {
   verifier(/^Invitation envoyée le .+, pas encore de compte$/.test(sInvite.texte) && sInvite.ton === 'alerte', 'gérant : « Invitation envoyée le …, pas encore de compte »');
   const sActif = statutCompteProprietaire(actif, 'alice@exemple.fr');
   verifier(/^Compte créé le /.test(sActif.texte) && sActif.ton === 'succes', 'gérant : « Compte créé le … »');
-  verifier(statutCompteProprietaire({ ...invite, statut: 'actif' }, 'alice@exemple.fr').texte === 'Pas encore de compte : renvoyez l’invitation', 'gérant : accès d’avant les comptes, « renvoyez l’invitation »');
+  verifier(statutCompteProprietaire({ ...invite, statut: 'actif' }, 'alice@exemple.fr').texte === 'Pas encore de compte\u00a0: renvoyez l’invitation', 'gérant : accès d’avant les comptes, « renvoyez l’invitation »');
+  const sReinvite = statutCompteProprietaire(reinvite, 'alice@exemple.fr');
+  verifier(/^Nouvelle invitation envoyée le .+ le compte existe$/.test(sReinvite.texte) && sReinvite.ton === 'alerte', 'gérant : réinvité après un retrait, « Nouvelle invitation envoyée le … ; le compte existe »');
   verifier(/^Accès retiré le /.test(statutCompteProprietaire(retireRelie, 'alice@exemple.fr').texte), 'gérant : « Accès retiré le … »');
   verifier(statutCompteProprietaire(actif, 'autre@exemple.fr').texte === 'Adresse changée : réinvitez', 'gérant : adresse changée dans la fiche');
 

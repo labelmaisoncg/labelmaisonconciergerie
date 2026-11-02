@@ -36,6 +36,7 @@ import {
   verifierAbsence,
   type RoleSurLogement,
 } from '../../data/operations';
+import { inviter as inviterProprietaire } from '../../data/proprietaire-acces';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../data/repull';
 import { nouvelId, useErp } from '../../data/store';
 import type { Id, Logement, Proprietaire } from '../../data/types';
@@ -389,20 +390,9 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
     for (const id of coches) d.mettreAJour('logements', id, (l) => changerProprietaire(l, p.id, AUJOURDHUI));
     try {
       if (MODE_DEMO) {
+        // Mêmes règles que le serveur (inviter) : l'accès attend le compte ; autre adresse, sessions fermées et compte oublié.
         const acces = d.donnees.accesProprietaires.find((a) => a.id === p.id);
-        const autre = !!acces && acces.email !== adresse;
-        d.upsert('accesProprietaires', {
-          id: p.id,
-          proprietaireId: p.id,
-          email: adresse,
-          emailFiche: adresse,
-          statut: acces?.statut === 'actif' && !autre ? 'actif' : 'invite',
-          inviteLe: horodatageMaintenant(),
-          invitePar: d.utilisateur.email,
-          version: (acces?.version ?? 1) + (autre && acces?.statut === 'actif' ? 1 : 0),
-          liens: [],
-          ...(acces?.derniereConnexion && !autre ? { derniereConnexion: acces.derniereConnexion } : {}),
-        });
+        d.upsert('accesProprietaires', { ...inviterProprietaire(acces, { proprietaireId: p.id, email: adresse, par: d.utilisateur.email, maintenantMs: Date.now() }), emailFiche: adresse });
         setInvitation({ lien: `${window.location.origin}/espace-proprietaire?apercu=${encodeURIComponent(p.id)}`, envoye: false, email: adresse });
       } else {
         const r = await inviterAvecReessai(API_PROPRIETAIRE, { action: 'inviter', proprietaireId: p.id, email: adresse });

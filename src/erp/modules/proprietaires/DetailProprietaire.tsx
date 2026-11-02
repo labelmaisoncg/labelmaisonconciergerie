@@ -9,7 +9,6 @@ import { COMMISSION_CIBLE_MIN } from '../../data/constantes';
 import { AUJOURDHUI, ajouterJours, dateCourte, debutMois, euros, horodatageMaintenant, moisAnnee, periode as periodeDe } from '../../data/format';
 import { montantTtc, proprietaireById } from '../../data/selectors';
 import { VisuelLogement } from '../logements/_composants/Visuel';
-import { CarteCompteProprietaire } from '../logements/_composants/EspaceProprietaireGerant';
 import { BadgeCommission, BadgeRentabilite, economieBien } from '../logements/_composants/EconomieBien';
 import { Imprimable } from '../mandats/_composants/Imprimable';
 import { FormMandat } from '../mandats/FormMandat';
@@ -90,7 +89,6 @@ export default function DetailProprietaire() {
               <li className="flex items-start gap-2.5"><MapPin className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />{p.adresse}</li>
             </ul>
           </Card>
-          <CarteCompteProprietaire proprietaire={p} />
           {p.notes && (
             <Card>
               <CardHeader titre="Notes" />

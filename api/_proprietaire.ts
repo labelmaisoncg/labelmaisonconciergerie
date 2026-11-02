@@ -177,7 +177,7 @@ export const documentsFermes = (espace: string): Promise<string | null> => stock
 export async function envoyerLien(o: { fiche: FicheEspace | undefined; email: string; nom: string; lien: string }): Promise<boolean> {
   // Sans fiche d'espace, rien ne part (envoyerEmailEspace) : jamais au nom de Label Maison par défaut.
   const conciergerie = o.fiche?.nom || 'Votre conciergerie';
-  const sujet = `Votre espace propriétaire ${conciergerie}`;
+  const sujet = `Votre espace propriétaire · ${conciergerie}`;
   const intro = `${conciergerie} vous ouvre votre espace propriétaire : ${CONTENU_ESPACE.vous}, au même endroit.`;
   const consigne = `Créez votre mot de passe avec ce lien, puis confirmez votre adresse avec l’e-mail que vous recevrez. Vous vous connecterez ensuite avec votre adresse (${o.email}) et ce mot de passe.`;
   const validite = 'Ce lien est personnel : il sert une seule fois et reste valable 7 jours.';

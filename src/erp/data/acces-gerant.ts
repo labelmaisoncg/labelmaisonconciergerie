@@ -44,7 +44,9 @@ export function statutCompteProprietaire(
   if (a.statut === 'retire') return { texte: `Accès retiré${le(a.retireLe)}`, ton: 'neutre' };
   if (!accesToujoursDeLaFiche(a, { email: ficheEmail ?? '' })) return { texte: 'Adresse changée : réinvitez', ton: 'alerte' };
   if (a.statut === 'actif' && a.compteActif && a.uid) return { texte: `Compte créé${le(a.activeLe)}`, ton: 'succes' };
-  if (a.statut === 'actif') return { texte: 'Pas encore de compte : renvoyez l’invitation', ton: 'alerte' };
+  if (a.statut === 'actif') return { texte: 'Pas encore de compte : renvoyez l’invitation', ton: 'alerte' };
+  // Réinvité après un retrait : le compte existe, il attend le nouveau code.
+  if (a.uid) return { texte: `Nouvelle invitation envoyée${le(a.inviteLe)} ; le compte existe`, ton: 'alerte' };
   return { texte: `Invitation envoyée${le(a.inviteLe)}, pas encore de compte`, ton: 'alerte' };
 }
 
