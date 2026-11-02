@@ -20,7 +20,68 @@ import pathlib
 
 import seo_common as C
 
-DATE = "2026-08-11"
+import datetime
+import subprocess
+
+# Date de dernière modification réelle de chaque page, lue dans l'historique git
+# (date du dernier commit qui a touché le fichier). Un <lastmod> figé pour tout
+# le site n'apprend rien à Google ; une date exacte lui dit quoi recrawler.
+AUJOURDHUI = datetime.date.today().isoformat()
+
+
+def dates_git() -> dict:
+    """Chemin relatif à la racine du dépôt -> date ISO du dernier commit."""
+    try:
+        out = subprocess.run(
+            ["git", "log", "--format=%x00%cs", "--name-only", "--", "public", "src/app"],
+            cwd=C.ROOT, capture_output=True, text=True, check=True).stdout
+    except Exception:  # pas de git (CI sans historique) : on datera d'aujourd'hui
+        return {}
+    dates, courante = {}, None
+    for ligne in out.splitlines():
+        if ligne.startswith("\x00"):
+            courante = ligne[1:].strip()
+        elif ligne.strip() and courante and ligne not in dates:
+            dates[ligne.strip()] = courante  # le premier vu est le plus récent
+    return dates
+
+
+DATES = dates_git()
+# Routes React : la coquille change quand la page source change.
+SOURCES_SPA = {"/": "src/app/pages/Home.tsx", "/proprietaires": "src/app/pages/Proprietaires.tsx",
+               "/studio": "src/app/pages/Studio.tsx", "/logement": "src/app/pages/Logement.tsx",
+               "/transport": "src/app/pages/Transport.tsx", "/activites": "src/app/pages/Activites.tsx",
+               "/shopping": "src/app/pages/Shopping.tsx", "/billetterie": "src/app/pages/Billetterie.tsx",
+               "/cerclelabelmaison": "src/app/pages/CercleLabelMaison.tsx"}
+
+
+def lastmod(url: str) -> str:
+    if url in SOURCES_SPA:
+        return DATES.get(SOURCES_SPA[url], AUJOURDHUI)
+    rel = "public" + ("/index.html" if url == "/" else url + ".html")
+    if rel not in DATES:  # page dans un dossier (ex. /bacam-spa/index.html)
+        rel = "public" + url + "/index.html"
+    # Fichier modifié mais pas encore commité : date du jour.
+    chemin = C.ROOT / rel
+    if chemin.exists() and (C.ROOT / rel) and _modifie_non_commite(rel):
+        return AUJOURDHUI
+    return DATES.get(rel, AUJOURDHUI)
+
+
+def _modifie_non_commite(rel: str) -> bool:
+    return rel in MODIFIES
+
+
+def _fichiers_modifies() -> set:
+    try:
+        out = subprocess.run(["git", "status", "--porcelain", "--", "public"],
+                             cwd=C.ROOT, capture_output=True, text=True, check=True).stdout
+    except Exception:
+        return set()
+    return {ligne[3:].strip() for ligne in out.splitlines() if ligne.strip()}
+
+
+MODIFIES = _fichiers_modifies()
 CACHE = pathlib.Path(__file__).with_name(".cache") / "communes_urls.json"
 
 # Pages servies par l'application React (pas de fichier .html dans public/)
@@ -64,7 +125,7 @@ def urlset(urls: list, auto: bool) -> str:
     lignes = []
     for u in urls:
         pr, cf = priorite(u, auto)
-        lignes.append(f"  <url><loc>{C.SITE}{u}</loc><lastmod>{DATE}</lastmod>"
+        lignes.append(f"  <url><loc>{C.SITE}{u}</loc><lastmod>{lastmod(u)}</lastmod>"
                       f"<changefreq>{cf}</changefreq><priority>{pr}</priority></url>")
     return ('<?xml version="1.0" encoding="UTF-8"?>\n'
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
@@ -77,12 +138,12 @@ def ecrire_sitemaps(cures: list, autos: list) -> list:
     principal = ('<?xml version="1.0" encoding="UTF-8"?>\n'
                  '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
                  + "\n".join(
-                     f"  <url><loc>{C.SITE}{u}</loc><lastmod>{DATE}</lastmod>"
+                     f"  <url><loc>{C.SITE}{u}</loc><lastmod>{lastmod(u)}</lastmod>"
                      f"<changefreq>{cf}</changefreq><priority>{pr}</priority></url>"
                      for u, pr, cf in SPA)
                  + "\n"
                  + "\n".join(
-                     f"  <url><loc>{C.SITE}{u}</loc><lastmod>{DATE}</lastmod>"
+                     f"  <url><loc>{C.SITE}{u}</loc><lastmod>{lastmod(u)}</lastmod>"
                      f"<changefreq>{priorite(u, False)[1]}</changefreq>"
                      f"<priority>{priorite(u, False)[0]}</priority></url>"
                      for u in cures if u not in spa_urls)
@@ -100,7 +161,7 @@ def ecrire_sitemaps(cures: list, autos: list) -> list:
     index = ('<?xml version="1.0" encoding="UTF-8"?>\n'
              '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
              + "\n".join(f"  <sitemap><loc>{C.SITE}/{f}</loc>"
-                         f"<lastmod>{DATE}</lastmod></sitemap>" for f in fichiers)
+                         f"<lastmod>{AUJOURDHUI}</lastmod></sitemap>" for f in fichiers)
              + "\n</sitemapindex>\n")
     (C.OUT / "sitemap.xml").write_text(index, encoding="utf-8")
     return fichiers

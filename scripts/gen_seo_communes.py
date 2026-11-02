@@ -491,9 +491,11 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
     top = sorted(communes, key=lambda x: -x.pop)[:24]
     rl = D.loc_region(nom)
     titre = f"Conciergerie {rl} — gestion locative dans toute la région"
-    desc = (f"Conciergerie {rl} : gestion locative courte et moyenne durée, accueil des "
-            f"voyageurs, ménage et entretien de résidence secondaire dans {len(depts)} départements "
-            f"et {len(communes)} communes.")
+    # Formulée autrement que la page département du même nom (Guadeloupe, Guyane,
+    # Martinique, Nouvelle-Calédonie, Polynésie) pour ne pas dupliquer la description.
+    desc = (f"Conciergerie {rl}, toute la région : gestion locative courte et moyenne durée "
+            f"dans {len(depts)} département{'s' if len(depts) > 1 else ''} et {len(communes)} "
+            f"communes. Accueil des voyageurs, ménage hôtelier, entretien.")
     trail = [("Accueil", "/"), (nom, path)]
     faq_items = [
         (f"Quels départements couvrez-vous {rl} ?",

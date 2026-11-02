@@ -572,13 +572,61 @@ def patch_hub() -> None:
     p.write_text(s, encoding="utf-8")
 
 
+# Les communes du secteur Essonne se lient toutes entre elles (maillage ajouté à
+# la main le 7 octobre 2026, reproduit ici pour qu'une régénération ne l'efface
+# plus). Chaque page reçoit, dans son bloc « Nos autres secteurs », les liens
+# manquants vers les autres communes du secteur.
+SECTEUR_91 = [
+    ("conciergerie-airbnb-savigny-sur-orge", "Savigny-sur-Orge"),
+    ("conciergerie-airbnb-sainte-genevieve-des-bois", "Sainte-Geneviève-des-Bois"),
+    ("conciergerie-airbnb-ris-orangis", "Ris-Orangis"),
+    ("conciergerie-airbnb-vigneux-sur-seine", "Vigneux-sur-Seine"),
+    ("conciergerie-airbnb-epinay-sur-orge", "Épinay-sur-Orge"),
+    ("conciergerie-airbnb-draveil", "Draveil"),
+    ("conciergerie-airbnb-corbeil-essonnes", "Corbeil-Essonnes"),
+    ("conciergerie-airbnb-evry-courcouronnes", "Évry-Courcouronnes"),
+    ("conciergerie-airbnb-juvisy-sur-orge", "Juvisy-sur-Orge"),
+    ("conciergerie-airbnb-massy", "Massy"),
+    ("conciergerie-airbnb-athis-mons", "Athis-Mons"),
+    ("conciergerie-airbnb-viry-chatillon", "Viry-Châtillon"),
+    ("conciergerie-grigny", "Grigny"),
+    ("conciergerie-airbnb-lisses", "Lisses"),
+    ("conciergerie-airbnb-bretigny-sur-orge", "Brétigny-sur-Orge"),
+    ("conciergerie-airbnb-palaiseau", "Palaiseau"),
+    ("conciergerie-airbnb-orly", "Orly"),
+]
+
+
+def patch_maillage_secteur() -> int:
+    """Complète le bloc zones de chaque commune du secteur avec les autres communes."""
+    patchees = 0
+    for slug, _ in SECTEUR_91:
+        p = C.OUT / f"{slug}.html"
+        if not p.exists():
+            continue
+        s = p.read_text(encoding="utf-8")
+        m = re.search(r'(<div class="zones"[^>]*>)(.*?)(</div>)', s, flags=re.S)
+        if not m:
+            continue
+        ajouts = "".join(f'<a href="/{autre}">Conciergerie {C.esc(nom)}</a>'
+                         for autre, nom in SECTEUR_91
+                         if autre != slug and f'href="/{autre}"' not in m.group(2))
+        if not ajouts:
+            continue
+        s = s[:m.end(2)] + ajouts + s[m.end(2):]
+        p.write_text(s, encoding="utf-8")
+        patchees += 1
+    return patchees
+
+
 def main() -> list:
     urls = []
     for i, v in enumerate(V):
         urls.append(SV.page(SILO, v, i, V))
     urls += [build(s) for s in POLES]
     patch_hub()
-    print(f"Essonne : {len(urls)} pages + maillage du hub existant")
+    n = patch_maillage_secteur()
+    print(f"Essonne : {len(urls)} pages + maillage du hub existant + {n} communes maillées")
     return urls
 
 
