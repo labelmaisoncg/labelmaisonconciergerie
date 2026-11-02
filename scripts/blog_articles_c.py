@@ -412,4 +412,109 @@ ARTICLES = [
             ("Estimer mes revenus", "/estimation-rentabilite-airbnb"),
         ],
     ),
+    dict(
+        slug="quelle-conciergerie-airbnb-essonne",
+        cat="Choisir une conciergerie", crumb="Conciergerie en Essonne",
+        title="Quelle conciergerie Airbnb choisir en Essonne ?",
+        h1="Quelle conciergerie Airbnb choisir en Essonne ? Les critères qui comptent vraiment dans le 91",
+        desc="Choisir une conciergerie Airbnb en Essonne : proximité réelle, délais d'intervention, "
+             "connaissance du marché du 91 (Orly, Évry, Massy, Paris-Saclay), commission et périmètre. "
+             "La méthode pour comparer, et ce que nous proposons.",
+        date="2026-11-02", date_txt="2 novembre 2026", lecture=7,
+        lead="L'Essonne n'est pas Paris : les voyageurs y viennent pour Orly, les entreprises du plateau "
+             "de Saclay, le Génopole d'Évry, les hôpitaux, les visites familiales, et de plus en plus "
+             "pour dormir à vingt minutes de la capitale à moitié prix. Une conciergerie qui ne connaît "
+             "pas ces flux fixe de mauvais prix et répond en retard. Voici comment comparer.",
+        sections=[
+            ("1. La proximité réelle, pas l'adresse sur le site", [
+                "<p>Première question à poser : <strong>où est l'équipe de ménage, et en combien de "
+                "temps quelqu'un peut être devant ma porte ?</strong> Beaucoup de conciergeries "
+                "« Île-de-France » gèrent l'Essonne depuis Paris ou depuis une plateforme nationale, "
+                "avec des prestataires trouvés sur annonce. Entre Dourdan et Draveil, il y a une heure "
+                "de route : demandez les communes où elle a déjà des logements en gestion, et combien.</p>",
+                "<p>Label Maison est basée en Essonne. Nos logements sont dans le sud de Paris et le "
+                "département, nos équipes de ménage et de linge aussi. Nous le disons parce que c'est "
+                "vérifiable, pas parce que c'est un argument : une autre conciergerie installée à "
+                "Massy sera plus proche d'un bien à Massy que nous.</p>",
+            ]),
+            ("2. La connaissance des flux du 91", [
+                "<p>Un logement à <strong>Athis-Mons, Paray-Vieille-Poste ou Orly</strong> vit au rythme "
+                "de l'aéroport : séjours courts, arrivées tardives, parking indispensable. À "
+                "<strong>Palaiseau, Orsay, Gif-sur-Yvette</strong>, la demande vient des entreprises et "
+                "des laboratoires du plateau de Saclay, en semaine, avec des séjours de plusieurs "
+                "nuits et un intérêt pour le bail mobilité. À <strong>Évry-Courcouronnes et "
+                "Corbeil-Essonnes</strong>, ce sont les déplacements professionnels, l'hôpital et "
+                "l'université. À <strong>Massy</strong>, la gare TGV. Au sud, <strong>Dourdan, "
+                "Étampes, Milly-la-Forêt</strong> attirent les week-ends verts.</p>",
+                "<p>Demandez à la conciergerie comment elle fixerait le prix de votre bien un mardi de "
+                "novembre et un samedi de juin, et pourquoi. Si la réponse est « on met un prix "
+                "dynamique », sans parler de votre ville, elle ne connaît pas le marché.</p>",
+            ]),
+            ("3. La commission, et ce qu'elle couvre", [
+                "<p>Les commissions vont de 10 % à 25 % du revenu des nuitées. Le pourcentage seul ne "
+                "dit rien : regardez ce qui est inclus (annonce, photos, prix, messages, arrivées, "
+                "ménage, linge, maintenance, avis, relevé mensuel) et ce qui est facturé en plus "
+                "(mise en service, shooting, produits d'accueil, déplacements). Notre grille est "
+                "détaillée sur la page <a href=\"/combien-coute-une-conciergerie-airbnb\">combien "
+                "coûte une conciergerie Airbnb</a>, et notre offre en Essonne sur la page "
+                "<a href=\"/conciergerie-airbnb-essonne\">conciergerie Airbnb en Essonne</a>.</p>",
+            ]),
+            ("4. La conformité, prise au sérieux", [
+                "<p>En Essonne, la plupart des communes n'ont pas instauré de changement d'usage, mais "
+                "la déclaration en mairie, le plafond de 120 nuits pour une résidence principale et la "
+                "taxe de séjour (perçue, selon les communes, par l'intercommunalité) s'appliquent. Une "
+                "conciergerie sérieuse vous demande vos documents avant de mettre en ligne. Si elle ne "
+                "pose aucune question sur la déclaration ou la copropriété, c'est un signal d'alerte. "
+                "Les règles sont résumées dans <a href=\"/loi-le-meur-meuble-de-tourisme-2027\">notre "
+                "article sur la loi Le Meur</a>.</p>",
+            ]),
+            ("5. Les preuves, pas les promesses", [
+                "<p>Demandez à voir des annonces gérées (elles sont publiques sur Airbnb), leurs avis "
+                "récents et leur note. Demandez un relevé mensuel type. Demandez le nom de la personne "
+                "qui répondra aux voyageurs. Méfiez-vous des pourcentages de revenus en plus et des "
+                "taux d'occupation moyens affichés sans source : un bien à Brunoy et un bien à Orly "
+                "n'ont rien en commun.</p>",
+                "<p>De notre côté, nous ne publions ni avis inventés ni chiffres non mesurés. Les études "
+                "de cas arrivent sur ce site à mesure que les propriétaires acceptent de partager leurs "
+                "chiffres réels.</p>",
+            ]),
+            ("Comment comparer en une heure", [
+                "<ol>"
+                "<li>Listez trois conciergeries : une locale, une parisienne, une plateforme nationale.</li>"
+                "<li>Posez-leur les mêmes cinq questions : où est l'équipe, quel prix pour mon bien un "
+                "mardi de novembre, qu'est-ce qui est inclus, quels documents vous me demandez, qui "
+                "répond aux voyageurs.</li>"
+                "<li>Comparez les réponses écrites, pas les discours.</li>"
+                "<li>Vérifiez les annonces gérées et leurs avis.</li>"
+                "<li>Lisez le contrat : durée, préavis, propriété de l'annonce.</li>"
+                "</ol>",
+                "<p>Notre <a href=\"/checklist-confier-logement-conciergerie\">checklist en 10 "
+                "points</a> détaille chaque question. Et si vous voulez notre réponse pour votre "
+                "logement, elle est gratuite : <a href=\"/estimation-rentabilite-airbnb\">demander "
+                "une estimation</a>.</p>",
+            ]),
+        ],
+        faq=[
+            ("Y a-t-il beaucoup de conciergeries Airbnb en Essonne ?",
+             "Moins qu'à Paris. Beaucoup d'acteurs couvrent le 91 depuis Paris ou via une plateforme "
+             "nationale. Les conciergeries réellement installées dans le département sont peu "
+             "nombreuses : demandez où sont les équipes et les logements gérés."),
+            ("Quelle commission en Essonne ?",
+             "Le marché va de 10 % à 25 % du revenu des nuitées. Comparez le périmètre inclus avant le "
+             "pourcentage."),
+            ("Faut-il une déclaration en mairie en Essonne ?",
+             "Oui pour une résidence secondaire louée en meublé de tourisme, et un numéro "
+             "d'enregistrement dans les communes qui l'ont instauré. La résidence principale est "
+             "limitée à 120 nuits par an. La taxe de séjour s'applique partout."),
+            ("Label Maison gère-t-elle tout le département ?",
+             "Nous gérons dans le sud de Paris et en Essonne, avec des équipes sur place. Pour un bien "
+             "très excentré, nous vous disons honnêtement si nous pouvons tenir le niveau de service."),
+        ],
+        related=[
+            ("Conciergerie Airbnb en Essonne", "/conciergerie-airbnb-essonne"),
+            ("Combien coûte une conciergerie Airbnb ?", "/combien-coute-une-conciergerie-airbnb"),
+            ("Checklist avant de signer", "/checklist-confier-logement-conciergerie"),
+            ("Combien rapporte un Airbnb dans le 91 ?", "/combien-rapporte-airbnb-91"),
+        ],
+    ),
 ]
