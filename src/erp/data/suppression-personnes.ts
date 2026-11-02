@@ -186,7 +186,7 @@ const MOTS_MEMBRE: Record<CleHistoriqueMembre, [string, string]> = {
   incidents: ['incident', 'incidents'],
   controles: ['contrôle qualité', 'contrôles qualité'],
   absences: ['absence', 'absences'],
-  signalements: ['signalement « pas à moi »', 'signalements « pas à moi »'],
+  signalements: ['signalement « pas à moi »', 'signalements « pas à moi »'],
   actionsIA: ['action de l’IA', 'actions de l’IA'],
 };
 

@@ -27,7 +27,7 @@ export function PageHeader({ titre, sousTitre, actions, fil: filBrut, coin, clas
   // fil d'Ariane ne s'affiche que s'il ramène vers une page parente (fiche).
   const sansRacine = (filBrut ?? []).filter((m) => m.libelle !== 'ERP' && m.to !== '/erp');
   const fil = sansRacine.some((m) => m.to) ? sansRacine : undefined;
-  // Page parente la plus proche : sur téléphone, un bouton retour rond (Airbnb) remplace le fil.
+  // Page parente la plus proche : sur téléphone, un bouton retour rond (Airbnb, 44 px au toucher comme les autres ronds d'en-tête) remplace le fil.
   const parent = fil && [...fil].reverse().find((m) => m.to);
   return (
     <header className={cn('mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-6', coin && 'relative', className)}>
@@ -37,7 +37,7 @@ export function PageHeader({ titre, sousTitre, actions, fil: filBrut, coin, clas
             to={parent.to!}
             aria-label={`Retour : ${parent.libelle}`}
             title={`Retour : ${parent.libelle}`}
-            className="mb-3 grid size-10 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis) sm:hidden"
+            className="mb-3 grid size-10 max-sm:size-11 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis) sm:hidden"
           >
             <ChevronLeft className="size-5" aria-hidden />
           </Link>

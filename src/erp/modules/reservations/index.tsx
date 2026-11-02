@@ -6,8 +6,8 @@
  */
 import { useState } from 'react';
 import { Route, Routes, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Calendar, CalendarDays, CalendarPlus, List, RefreshCw } from 'lucide-react';
-import { Button, Callout, Drawer, MenuActions, PageHeader, Tabs, useCreationParUrl } from '../../ui';
+import { ArrowRight, Calendar, CalendarDays, List, Plus, RefreshCw } from 'lucide-react';
+import { Button, Callout, Drawer, IconButton, MenuActions, PageHeader, Tabs, useCreationParUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { dateCourte, dateHeure } from '../../data/format';
 import { LIBELLES } from '../../data/libelles';
@@ -15,13 +15,13 @@ import type { Reservation } from '../../data/types';
 import { Calendrier } from './_composants/Calendrier';
 import { CalendrierMensuel } from './_composants/CalendrierMensuel';
 import { FicheReservation } from './_composants/FicheReservation';
-import { etatSejour, plageDates } from './_composants/outils';
+import { etatSejour, parametresOnglet, plageDates, type VueReservations } from './_composants/outils';
 import { ListeReservations } from './_composants/ListeReservations';
 import { ModalNouvelleReservation } from './_composants/ModalNouvelleReservation';
 import { DetailReservation } from './_composants/DetailReservation';
 import { useSynchroRepull } from '../parametres/SynchroRepull';
 
-type Vue = 'calendrier' | 'mois' | 'liste';
+type Vue = VueReservations;
 
 /** Écran étroit (téléphone) : les mois qui défilent plutôt que le planning à colonnes. */
 function estEtroit(): boolean {
@@ -73,10 +73,8 @@ function PageReservations() {
               : 'Airbnb et Booking.com : pas encore de mise à jour.'
         }
         actions={
+          // Comme dans Logements : les actions secondaires dans « … », puis le « + » rond (nouvelle réservation directe).
           <>
-            <Button variant="primary" icone={<CalendarPlus />} onClick={() => setCreation(true)}>
-              Nouvelle réservation
-            </Button>
             {!synchro.demo && (
               <MenuActions
                 actions={[
@@ -89,6 +87,9 @@ function PageReservations() {
                 ]}
               />
             )}
+            <IconButton label="Ajouter une réservation" variant="secondary" onClick={() => setCreation(true)}>
+              <Plus />
+            </IconButton>
           </>
         }
       />
@@ -106,7 +107,8 @@ function PageReservations() {
       <Tabs
         label="Affichage des réservations"
         actif={vue}
-        onChange={(v) => setParams({ vue: v }, { replace: true })}
+        // Toujours `{ vue }` ; le logement venu d'une fiche suit vers Mois et Séjours (parametresOnglet).
+        onChange={(v) => setParams(parametresOnglet(v as Vue, params), { replace: true })}
         onglets={[
           { cle: 'calendrier', libelle: <><CalendarDays className="size-4" aria-hidden /> Planning</> },
           { cle: 'mois', libelle: <><Calendar className="size-4" aria-hidden /> Mois</> },

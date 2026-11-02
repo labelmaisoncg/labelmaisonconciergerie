@@ -18,7 +18,7 @@ import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { aideCrmVide, dossierProprietaireDisponible } from '../../data/marque-espace';
 import { useErp } from '../../data/store';
 import type { ContactCrm } from '../../data/types';
-import { Alert, Button, EmptyState, Field, FilterChips, Input, MenuActions, Modal, PageHeader, SearchInput, Segmente, Textarea, Toolbar, useRechercheUrl } from '../../ui';
+import { Alert, Button, EmptyState, Field, FilterChips, IconButton, Input, MenuActions, Modal, PageHeader, SearchInput, Segmente, Textarea, Toolbar, useRechercheUrl } from '../../ui';
 import { AgendaCrm } from './_composants/AgendaCrm';
 import { ConnecterClaude } from './_composants/ConnecterClaude';
 import { EnvoyerDossier } from './_composants/EnvoyerDossier';
@@ -211,12 +211,13 @@ export default function Crm() {
         titre="CRM"
         sousTitre={crm.length > 0 && aujourdhui ? `${aujourdhui} à appeler aujourd’hui.` : undefined}
         actions={
+          // Comme dans Logements et Réservations : le « … » rond (actions secondaires), puis le « + » rond (nouveau contact).
           <>
-            {plus.length > 0 && <MenuActions texte label="Plus" actions={plus} />}
+            {plus.length > 0 && <MenuActions label="Plus" actions={plus} />}
             {crm.length > 0 && !lectureSeule && (
-              <Button variant="primary" icone={<Plus />} onClick={() => setNouveau(true)}>
-                Nouveau contact
-              </Button>
+              <IconButton label="Ajouter un contact" variant="secondary" onClick={() => setNouveau(true)}>
+                <Plus />
+              </IconButton>
             )}
           </>
         }

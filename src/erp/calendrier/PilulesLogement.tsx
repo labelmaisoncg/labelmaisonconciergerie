@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { cn } from '../ui';
 
 export interface PilulesLogementProps {
@@ -13,9 +14,21 @@ export interface PilulesLogementProps {
  * Rien quand il n'y a qu'un logement.
  */
 export function PilulesLogement({ logements, choisi, onChoisir, className }: PilulesLogementProps) {
+  const barre = useRef<HTMLDivElement>(null);
+  // Barre plus large que l'écran (téléphone) : la pilule choisie est ramenée dans la vue,
+  // qu'elle vienne d'un toucher ou de l'adresse (`?logement=` d'une fiche logement).
+  useEffect(() => {
+    const b = barre.current;
+    const el = b?.querySelector<HTMLElement>('[aria-pressed="true"]');
+    if (!b || !el || b.scrollWidth <= b.clientWidth) return;
+    const o = el.getBoundingClientRect();
+    const r = b.getBoundingClientRect();
+    if (o.right > r.right) b.scrollLeft += o.right - r.right + 16;
+    else if (o.left < r.left) b.scrollLeft -= r.left - o.left + 16;
+  }, [choisi]);
   if (logements.length < 2) return null;
   return (
-    <div className={cn('-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0', className)} role="group" aria-label="Logement">
+    <div ref={barre} className={cn('-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0', className)} role="group" aria-label="Logement">
       {logements.map((l) => (
         <button
           key={l.id}
