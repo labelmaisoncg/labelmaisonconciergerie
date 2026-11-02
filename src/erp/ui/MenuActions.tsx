@@ -97,9 +97,9 @@ export function MenuActions({ actions, label = 'Plus d’actions', texte, classN
         title={label}
         onClick={() => setOuvert((o) => !o)}
         className={cn(
-          // Avec texte : bouton secondaire (bordé d'encre) ; sans texte : bouton d'icône rond, blanc bordé.
+          // Avec texte : bouton secondaire (bordé d'encre) ; sans texte : bouton d'icône rond, blanc bordé (44 px au toucher, comme IconButton).
           'inline-flex h-10 items-center justify-center gap-1.5 border bg-(--lm-surface) text-[14px] font-semibold text-(--lm-encre) transition-colors [&_svg]:size-4',
-          texte ? 'rounded-lg border-(--lm-encre) px-4 hover:bg-(--lm-surface-2)' : 'w-10 rounded-full border-(--lm-bord-fort) hover:border-(--lm-encre)',
+          texte ? 'rounded-lg border-(--lm-encre) px-4 hover:bg-(--lm-surface-2)' : 'w-10 max-sm:size-11 rounded-full border-(--lm-bord-fort) hover:border-(--lm-encre)',
         )}
       >
         <Ellipsis aria-hidden />
