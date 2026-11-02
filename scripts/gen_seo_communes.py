@@ -295,6 +295,9 @@ def slug_region(nom: str, pris: set) -> str:
     return s if s not in pris else "conciergerie-region-" + C.slugify(nom)
 
 
+COUVERTES: dict = {}  # rempli par main() : slug -> page curée existante
+
+
 def url_commune(c, couvertes: dict) -> str:
     """URL canonique d'une commune : page curée si elle existe, sinon page générée."""
     return couvertes.get(c.slug) or f"/conciergerie-{c.slug}"
@@ -510,13 +513,14 @@ def page_dept(code: str, nom: str, communes: list, slug: str, region_url: str,
         ], pad=True),
         C.cartes("Ce que nous prenons en charge",
                  "Le même standard partout, exécuté par des équipes du secteur.", SERVICES_SETS[0]),
+        L.bloc_dept(nom, communes, dl, lambda x: url_commune(x, COUVERTES)),
         C.zones(f"Nos communes {dl}",
                 "Une page par commune, avec les démarches et la saisonnalité locales.",
                 [(f"{x.nom} ({x.cp})", f"/conciergerie-{x.slug}") for x in top],
                 extra=(f"Voir aussi la <a href=\"{region_url}\"><strong>conciergerie "
                        f"{rl}</strong></a> et notre "
                        f"<a href=\"/conciergerie-airbnb-france\">couverture nationale</a>.")),
-        C.cartes("Pourquoi Label Maison", "", WHY, cols="g2"),
+        C.cartes("Pourquoi Label Maison", "", VC.POURQUOI[sum(map(ord, nom)) % 3], cols="g2"),
         C.faq(f"Questions fréquentes — conciergerie {dl}", faq_items),
         C.formulaire(f"Estimation gratuite {dl}",
                      "Commune, surface, disponibilité : nous revenons vers vous avec une estimation "
@@ -595,6 +599,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
             "équipes de ménage et artisans sur place. Vous gardez un interlocuteur unique.",
         ], pad=True),
         C.cartes("Ce que nous prenons en charge", "", SERVICES_SETS[1]),
+        L.bloc_region(nom, depts, communes, dept_urls),
         C.zones(f"Les départements de {nom}", "Choisissez votre département :",
                 [(d, dept_urls[d]) for d in sorted(depts)],
                 extra=("Voir aussi notre <a href=\"/conciergerie-airbnb-france\"><strong>"
@@ -603,7 +608,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
                 [(x.nom, f"/conciergerie-{x.slug}") for x in top],
                 extra=("Votre commune n'apparaît pas ? Écrivez-nous : nous couvrons aussi les "
                        "communes plus petites.")),
-        C.cartes("Pourquoi Label Maison", "", WHY, cols="g2"),
+        C.cartes("Pourquoi Label Maison", "", VC.POURQUOI[sum(map(ord, nom)) % 3], cols="g2"),
         C.faq(f"Questions fréquentes — conciergerie {rl}", faq_items),
         C.formulaire(f"Estimation gratuite {rl}",
                      "Commune, surface, disponibilité : nous revenons avec une estimation locale.",
@@ -626,6 +631,7 @@ def page_region(nom: str, depts: dict, slug: str, dept_urls: dict, communes: lis
 def main() -> dict:
     communes, _ = D.selection()
     couvertes = D.deja_couvertes()
+    COUVERTES.update(couvertes)
 
     # Slugs de départements et de régions (calculés avant génération pour l'ancrage)
     par_dept, par_region = {}, {}
