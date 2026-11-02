@@ -20,6 +20,10 @@
 //   POST { action: 'entrer', jeton, espace }  lien à usage unique → cookie de session
 //                                             (sans espace : Label Maison)
 //   GET  ?action=vue&mois=AAAA-MM             son espace (session)
+//   GET  ?action=calendrier&de=AAAA-MM&a=AAAA-MM
+//                                             les mois du calendrier de `de` à `a`
+//                                             (12 au plus ; 12 mois en arrière,
+//                                             18 en avant ; sinon 400)
 //   GET  ?action=document&id=…                un document, par lien signé de 2 minutes
 //   POST { action: 'sortir' }
 //
@@ -30,7 +34,7 @@
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { MESSAGE_BASE_PAS_PREPAREE, estLabelMaison } from '../src/erp/data/espaces.js';
 import { ACCES_RETIRE } from '../src/erp/data/acces-externe.js';
-import { dateParisISO, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
+import { calendrierPlage, dateParisISO, moisDePlage, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
 import { MESSAGES_REFUS, avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
 import { facturePartagee } from '../src/erp/data/relances.js';
 import type { Facture } from '../src/erp/data/types';
@@ -52,7 +56,7 @@ import {
   lireSessionAcces,
 } from './_acces-externe.js';
 import { annulerRelance, ecrireReglagesRelances, envoyerRelance, lireReglagesRelances, lireRelances } from './_relances.js';
-import { documentsFermes, ecrireAcces, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
+import { documentsFermes, ecrireAcces, entreesCalendrier, entreesDuProprietaire, envoyerLien, etatEspace, lienDocument, lireAcces, lireDocument, lireProprietaire, photosSignees } from './_proprietaire.js';
 
 const tropDeDemandes = freinEnvois(5, 60 * 60_000);
 const tropPourCetteAdresse = freinEnvois(3, 60 * 60_000);
@@ -61,6 +65,19 @@ const tropDEssais = freinEnvois(20, 15 * 60_000);
 const DOCUMENTS_FERMES = 'Les documents ne peuvent pas être ouverts pour l’instant. Contactez votre conciergerie.';
 
 const REPONSE_LIEN = 'Si cette adresse a accès à un espace propriétaire, un lien de connexion vient de lui être envoyé. Pensez à regarder dans les indésirables.';
+
+const ESPACE_INTROUVABLE = 'Espace introuvable. Contactez votre conciergerie.';
+
+/** Session du propriétaire pour `vue` et `calendrier` ; sans session valable, la réponse 401 est déjà envoyée. */
+async function sessionProprietaire(req: any, res: any) {
+  const s = await lireSessionAcces<AccesProprietaire>(req, 'proprietaire');
+  if (!s.ok) {
+    res.setHeader('Set-Cookie', cookieSessionEfface('proprietaire'));
+    repondre(res, 401, s.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
+    return null;
+  }
+  return s;
+}
 
 /** Gérant de l'espace nommé par l'appel (sans en-tête : Label Maison, comme avant). */
 async function membreGerant(req: any): Promise<{ ok: true; email: string; espace: string } | { ok: false; statut: number; erreur: string }> {
@@ -192,11 +209,8 @@ export default async function handler(req: any, res: any) {
     }
 
     if (action === 'vue' && req.method === 'GET') {
-      const s = await lireSessionAcces<AccesProprietaire>(req, 'proprietaire');
-      if (!s.ok) {
-        res.setHeader('Set-Cookie', cookieSessionEfface('proprietaire'));
-        return repondre(res, 401, s.raison === 'retire' ? { ok: false, code: 'retire', erreur: ACCES_RETIRE } : { ok: false, code: 'session', erreur: 'Connectez-vous pour ouvrir votre espace.' });
-      }
+      const s = await sessionProprietaire(req, res);
+      if (!s) return;
       const fiche = await ficheEspace(s.espace).catch(() => undefined);
       const entrees = await entreesDuProprietaire(s.base, s.acces.proprietaireId);
       const photos = await photosSignees(entrees.logements, s.espace);
@@ -208,9 +222,21 @@ export default async function handler(req: any, res: any) {
         // Fiche illisible : Label Maison seulement si c'est explicitement son espace.
         conciergerie: { nom: fiche?.nom || (estLabelMaison(s.espace) ? 'Label Maison' : 'Votre conciergerie'), espace: s.espace, contacts: contactsEspace(fiche, s.espace) },
       });
-      if (!vue) return repondre(res, 404, { ok: false, erreur: 'Espace introuvable. Contactez votre conciergerie.' });
+      if (!vue) return repondre(res, 404, { ok: false, erreur: ESPACE_INTROUVABLE });
       // `espace` : la page le garde sur l'appareil (avec le nom), pour sa page de connexion.
       return repondre(res, 200, { ok: true, vue, espace: s.espace });
+    }
+
+    // Les mois du calendrier en défilant : mêmes contrôles que `vue` (session, propriétaire, bornes de sa période),
+    // mêmes champs que `vue.calendrier`, rien de plus ; la plage est bornée (moisDePlage).
+    if (action === 'calendrier' && req.method === 'GET') {
+      const s = await sessionProprietaire(req, res);
+      if (!s) return;
+      const plage = moisDePlage(req.query?.de, req.query?.a, dateParisISO());
+      if (!plage.ok) return repondre(res, 400, { ok: false, erreur: plage.erreur });
+      const mois = calendrierPlage(await entreesCalendrier(s.base, s.acces.proprietaireId), s.acces.proprietaireId, plage.mois);
+      if (!mois) return repondre(res, 404, { ok: false, erreur: ESPACE_INTROUVABLE });
+      return repondre(res, 200, { ok: true, mois });
     }
 
     if (action === 'document' && req.method === 'GET') {

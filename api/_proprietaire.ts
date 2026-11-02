@@ -109,6 +109,23 @@ export async function entreesDuProprietaire(b: BaseErp, proprietaireId: string):
   };
 }
 
+/**
+ * Entrées du calendrier par plage (action `calendrier`) : seulement ce qu'il
+ * faut pour les mois (sa fiche, ses logements, leurs réservations et mandats),
+ * filtré par le même `donneesDuProprietaire` que la vue. Rien d'autre n'est lu.
+ */
+export async function entreesCalendrier(b: BaseErp, proprietaireId: string): Promise<Pick<EntreesProprietaire, 'proprietaires' | 'logements' | 'reservations' | 'mandats'>> {
+  if (!proprietaireAutorise(proprietaireId)) return { proprietaires: [], logements: [], reservations: [], mandats: [] };
+  const [proprietaires, logements, reservations, mandats] = await Promise.all([
+    b.lire<Proprietaire>('proprietaires', [proprietaireId]),
+    b.lire<Logement>('logements'),
+    b.lire<Reservation>('reservations'),
+    b.lire<Mandat>('mandats'),
+  ]);
+  const siens = donneesDuProprietaire({ logements, reservations, mandats }, proprietaireId);
+  return { proprietaires: proprietaires.filter((p) => p?.id === proprietaireId), logements: siens.logements, reservations: siens.reservations, mandats: siens.mandats };
+}
+
 /** Signature des fichiers de l'espace de l'accès (jamais ceux d'un autre espace : signeurFichiersErp). */
 const signeurDeLEspace = (espace: string) => signeurFichiersErp({ ...configuration(), espace: espaceDe(espace) });
 

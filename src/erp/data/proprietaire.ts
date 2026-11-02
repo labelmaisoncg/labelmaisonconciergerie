@@ -45,6 +45,7 @@ import type {
   DocumentVue,
   FicheLogementVue,
   JourCalendrier,
+  MoisCalendrierVue,
   LogementBilan,
   LogementVue,
   MoisPerformance,
@@ -127,6 +128,46 @@ export function moisPrecedent(m: string): string {
 }
 
 export const joursDuMois = (m: string): number => ecartJoursISO(`${m}-01`, `${moisSuivant(m)}-01`);
+
+/** Nombre de mois de `de` à `a` (0 pour le même mois, négatif si `a` est avant). */
+export function ecartMois(de: string, a: string): number {
+  const [ad, md] = de.split('-').map(Number);
+  const [aa, ma] = a.split('-').map(Number);
+  return (aa - ad) * 12 + (ma - md);
+}
+
+/** Les mois de `de` à `a` inclus, dans l'ordre (vide si `a` est avant `de`). */
+export function moisEntre(de: string, a: string): string[] {
+  const res: string[] = [];
+  for (let m = de; m <= a; m = moisSuivant(m)) res.push(m);
+  return res;
+}
+
+/* ------------------------------------------------- plage du calendrier */
+
+/** Calendrier par plage (action `calendrier`) : 12 mois au plus par appel… */
+export const CALENDRIER_MOIS_PAR_APPEL = 12;
+/** … jamais plus de 12 mois en arrière du mois en cours… */
+export const CALENDRIER_MOIS_ARRIERE = 12;
+/** … ni plus de 18 mois en avant. */
+export const CALENDRIER_MOIS_AVANT = 18;
+
+/**
+ * Mois d'une plage demandée au calendrier, ou le refus (400) : deux mois
+ * bien formés, dans l'ordre, 12 au plus, et dans la fenêtre autorisée autour
+ * du mois en cours (12 mois en arrière, 18 en avant). Même règle pour le
+ * serveur et la démo.
+ */
+export function moisDePlage(de: unknown, a: unknown, aujourdhui: DateISO): { ok: true; mois: string[] } | { ok: false; erreur: string } {
+  if (!moisValide(de) || !moisValide(a)) return { ok: false, erreur: 'Mois demandés illisibles (AAAA-MM attendu).' };
+  const n = ecartMois(de, a) + 1;
+  if (n < 1) return { ok: false, erreur: 'Le premier mois doit précéder le dernier.' };
+  if (n > CALENDRIER_MOIS_PAR_APPEL) return { ok: false, erreur: `${CALENDRIER_MOIS_PAR_APPEL} mois au plus par demande.` };
+  const courant = moisDe(aujourdhui);
+  if (ecartMois(de, courant) > CALENDRIER_MOIS_ARRIERE) return { ok: false, erreur: `Le calendrier remonte à ${CALENDRIER_MOIS_ARRIERE} mois au plus.` };
+  if (ecartMois(courant, a) > CALENDRIER_MOIS_AVANT) return { ok: false, erreur: `Le calendrier va jusqu’à ${CALENDRIER_MOIS_AVANT} mois en avant.` };
+  return { ok: true, mois: moisEntre(de, a) };
+}
 
 /** Date du jour à Paris (« 2026-10-26 »), côté serveur comme navigateur. */
 export function dateParisISO(d: Date = new Date()): DateISO {
@@ -662,6 +703,39 @@ export function calendrierMois(reservations: readonly Reservation[], logementId:
   };
 }
 
+/** Logements qu'il a cédés à un autre propriétaire (dernier jour exclu), du plus récent au plus ancien. */
+function logementsCedesDe(logements: readonly Logement[], proprietaireId: Id): { logement: Logement; jusquAu: DateISO }[] {
+  return logementsEtPeriodes(logements, proprietaireId)
+    .filter((x) => x.logement.proprietaireId !== proprietaireId)
+    .map((x) => ({ logement: x.logement, jusquAu: x.periodes.reduce<DateISO>((m, p) => (p.fin && p.fin > m ? p.fin : m), '') }))
+    .filter((x) => !!x.jusquAu)
+    .sort((a, b) => b.jusquAu.localeCompare(a.jusquAu));
+}
+
+/**
+ * Un mois du calendrier pour chacun de ses logements : les gérés, puis ceux
+ * qu'il a cédés (calendrier borné à sa période). La seule façon de bâtir le
+ * calendrier : la vue et l'action `calendrier` passent toutes deux ici.
+ */
+function calendrierDesLogements(e: Pick<EntreesProprietaire, 'logements' | 'reservations' | 'mandats'>, proprietaireId: Id, mois: string): CalendrierLogement[] {
+  const geres = logementsDe(e.logements, proprietaireId).filter((l) => l.statut !== 'sorti');
+  const cedes = logementsCedesDe(e.logements, proprietaireId).map((x) => x.logement);
+  return [...geres, ...cedes].map((l) => calendrierMois(e.reservations, l.id, mois, bornesDuProprietaire(l, proprietaireId, e.mandats)));
+}
+
+/**
+ * Plusieurs mois du calendrier (action `calendrier`, défilement des mois) :
+ * les mêmes logements, les mêmes bornes et les mêmes champs que
+ * `VueProprietaire.calendrier`, rien de plus. `null` : propriétaire inconnu
+ * ou fiche d'attente. Les mois illisibles sont ignorés ; valider la plage
+ * avant avec `moisDePlage`.
+ */
+export function calendrierPlage(e: Pick<EntreesProprietaire, 'proprietaires' | 'logements' | 'reservations' | 'mandats'>, proprietaireId: Id, mois: readonly string[]): MoisCalendrierVue[] | null {
+  if (!proprietaireAutorise(proprietaireId)) return null;
+  if (!e.proprietaires.find((x) => x?.id === proprietaireId)) return null;
+  return mois.filter(moisValide).map((m) => ({ mois: m, logements: calendrierDesLogements(e, proprietaireId, m) }));
+}
+
 /* --------------------------------------------- fiche « Mes logements » */
 
 /**
@@ -873,11 +947,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
   const parId = new Map(e.logements.map((l) => [l.id, l]));
   const actifs = sejoursDe(e.reservations, new Set(geres.map((l) => l.id))).filter((r) => bornesDe(parId.get(r.logementId)!).some((b) => arriveDans(r, b)));
   // Logements cédés à un autre propriétaire : ses mois restent à lui (chiffres, calendrier borné).
-  const cedes = logementsEtPeriodes(e.logements, proprietaireId)
-    .filter((x) => x.logement.proprietaireId !== proprietaireId)
-    .map((x) => ({ logement: x.logement, jusquAu: x.periodes.reduce<DateISO>((m, p) => (p.fin && p.fin > m ? p.fin : m), '') }))
-    .filter((x) => !!x.jusquAu)
-    .sort((a, b) => b.jusquAu.localeCompare(a.jusquAu));
+  const cedes = logementsCedesDe(e.logements, proprietaireId);
 
   const prochainesArrivees: ArriveeVue[] = actifs
     .filter((r) => r.arrivee >= aujourdhui)
@@ -933,7 +1003,7 @@ export function vueProprietaire(e: EntreesProprietaire, proprietaireId: Id, o: O
     moisCourant: chiffresMois(bilanMensuel(donnees, proprietaireId, courant), true),
     moisPrecedent: publiePrecedent ? chiffresMois(publiePrecedent.chiffres, false) : chiffresMois(bilanMensuel(donnees, proprietaireId, precedent), true),
     prochainesArrivees,
-    calendrier: { mois: moisCalendrier, logements: [...geres, ...cedes.map((x) => x.logement)].map((l) => calendrierMois(e.reservations, l.id, moisCalendrier, bornesDe(l))) },
+    calendrier: { mois: moisCalendrier, logements: calendrierDesLogements(e, proprietaireId, moisCalendrier) },
     logementsCedes: cedes.map((x) => ({ id: x.logement.id, nom: x.logement.nom, jusquAu: x.jusquAu })),
     fiches: geres.map((l) => ficheLogement({ reservations: e.reservations, mandats: e.mandats }, l.id, aujourdhui, { proprietaireId, logement: l })),
     bilans,

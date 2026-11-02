@@ -5,7 +5,7 @@
  * le voit. Les accès sont écrits par le serveur (api/espace-proprietaire.ts) ;
  * documents et bilans passent par le store comme le reste de l'ERP.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Check, Copy, Eye, FileText, Trash2, X } from 'lucide-react';
 import { statutAccesExterne } from '../../../data/acces-gerant';
@@ -19,13 +19,16 @@ import {
   CONTENU_ESPACE,
   LIBELLE_CATEGORIE,
   bilanMensuel,
+  calendrierPlage,
   etatBilan,
   memesChiffres,
+  moisDePlage,
   moisTermines,
   vueProprietaire,
 } from '../../../data/proprietaire';
 import type { Logement, Proprietaire } from '../../../data/types';
-import type { AccesProprietaire, BilanProprietaire, CategorieDocumentProprietaire } from '../../../data/types-proprietaire';
+import type { AccesProprietaire, BilanProprietaire, CalendrierLogement, CategorieDocumentProprietaire } from '../../../data/types-proprietaire';
+import type { ChargeurMois } from '../../../calendrier';
 import { BilanDetail } from '../../../espace-proprietaire/Bilans';
 import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
 import { bilanDuMois, deNom, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
@@ -569,9 +572,22 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
   const ref = useFenetre<HTMLDivElement>(true, onFermer);
   const [onglet, setOnglet] = useState<OngletEspace>('accueil');
   const [bilan, setBilan] = useState<string>();
-  const [mois, setMois] = useState<string>();
   const LienDocument = useLienDocumentGerant();
-  const vue = useMemo(() => vueProprietaire(d.donnees, p.id, { aujourdhui: AUJOURDHUI, mois }), [d.donnees, p.id, mois]);
+  const vue = useMemo(() => vueProprietaire(d.donnees, p.id, { aujourdhui: AUJOURDHUI }), [d.donnees, p.id]);
+  // Calendrier en défilant : les mêmes fonctions pures que le serveur, sur les données du store.
+  const [moisConnus, setMoisConnus] = useState<Record<string, CalendrierLogement[]>>({});
+  useEffect(() => setMoisConnus({}), [d.donnees, p.id]);
+  const chargerCalendrier = useCallback<ChargeurMois>(
+    async (de, a) => {
+      const plage = moisDePlage(de, a, AUJOURDHUI);
+      if (!plage.ok) return plage;
+      const mois = calendrierPlage(d.donnees, p.id, plage.mois) ?? [];
+      setMoisConnus((c) => ({ ...c, ...Object.fromEntries(mois.map((m) => [m.mois, m.logements])) }));
+      return { ok: true };
+    },
+    [d.donnees, p.id],
+  );
+  const calendrier = useMemo(() => ({ connus: vue ? { [vue.calendrier.mois]: vue.calendrier.logements, ...moisConnus } : moisConnus, charger: chargerCalendrier }), [vue, moisConnus, chargerCalendrier]);
   // Bandeau « Fermer » hors de la zone qui défile : toujours visible.
   return (
     <div ref={ref} role="dialog" aria-modal="true" aria-label={`Espace de ${p.nom}`} tabIndex={-1} className="fixed inset-0 z-[60] flex flex-col bg-(--lm-fond) outline-none">
@@ -597,7 +613,7 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
             }}
             bilan={bilan}
             onBilan={setBilan}
-            onMoisCalendrier={setMois}
+            calendrier={calendrier}
             LienDocument={LienDocument}
           />
         ) : (

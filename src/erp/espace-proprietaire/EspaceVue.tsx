@@ -4,7 +4,7 @@ import type { VueProprietaire } from '../data/types-proprietaire';
 import { Tabs, cn } from '../ui';
 import { Accueil } from './Accueil';
 import { Bilans } from './Bilans';
-import { Calendrier } from './Calendrier';
+import { Calendrier, type CalendrierEspace } from './Calendrier';
 import { Documents } from './Documents';
 import { Factures } from './Factures';
 import { Logements } from './Logements';
@@ -34,8 +34,8 @@ export interface EspaceVueProps {
   facture?: string;
   /** Ouvre l'onglet des factures sur celle-ci (sans id : sur la liste). */
   onFacture?: (id?: string) => void;
-  onMoisCalendrier: (mois: string) => void;
-  calendrierEnCours?: boolean;
+  /** Mois du calendrier connus et chargeur d'une plage (serveur, démo ou calcul en mémoire). */
+  calendrier: CalendrierEspace;
   LienDocument: LienDocument;
   onSortir?: () => void;
   /** Bandeau au-dessus de l'en-tête (aperçu du gérant, démo). */
@@ -56,8 +56,7 @@ export function EspaceVue({
   onLogement,
   facture: factureProp,
   onFacture,
-  onMoisCalendrier,
-  calendrierEnCours,
+  calendrier,
   LienDocument,
   onSortir,
   bandeau,
@@ -129,7 +128,7 @@ export function EspaceVue({
       <main className="mx-auto max-w-5xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-14">
         {onglet === 'accueil' && <Accueil vue={vue} onOnglet={allerA} onBilan={onBilan} onLogement={choisirLogement} LienDocument={LienDocument} />}
         {onglet === 'logements' && <Logements vue={vue} choisi={logement} onChoisir={choisirLogement} />}
-        {onglet === 'calendrier' && <Calendrier vue={vue} onMois={onMoisCalendrier} enCours={calendrierEnCours} />}
+        {onglet === 'calendrier' && <Calendrier vue={vue} calendrier={calendrier} />}
         {finances && !(onglet === 'bilans' && bilan) && !(onglet === 'factures' && facture) && <TitreEspace titre="Finances" />}
         {finances && !(onglet === 'bilans' && bilan) && !(onglet === 'factures' && facture) && (
           <Tabs
