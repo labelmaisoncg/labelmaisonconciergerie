@@ -79,9 +79,16 @@ function main() {
   verifier(libelleSejour(aout.sejours[0]) === 'Camille Martin, du 10 août au 14 août, 4 nuits', 'libellé de la bande : nom complet');
   verifier(libelleJour(aout.jours.find((j) => j.date === '2026-08-10')!, aout.sejours) === '10 août : arrivée de Camille Martin', 'libellé du jour : nom complet, insécable avant le deux-points');
   // Séjour arrivé le 30 : seule une demi-case est dans ce mois, aucun texte dessus (le libellé du bouton le porte).
-  const fin = calendrierMoisReservations([resa('log-1', '2026-09-30', '2026-10-02', { voyageur: { nom: 'Mehdi Trente', nbPersonnes: 2 } })], 'log-1', '2026-09');
+  const r30 = resa('log-1', '2026-09-30', '2026-10-02', { voyageur: { nom: 'Mehdi Trente', nbPersonnes: 2 } });
+  const fin = calendrierMoisReservations([r30], 'log-1', '2026-09');
   const bf = bandesDuMois('2026-09', fin.jours, fin.sejours);
-  verifier(bf.length === 1 && bf[0].a - bf[0].de === 0.5 && !bf[0].libelle && libelleSejour(fin.sejours[0]) === 'Mehdi Trente, du 30 sept. au 2 oct., 2 nuits', 'morceau d’une demi-case seule : sans texte, libellé complet au bouton');
+  const suite = calendrierMoisReservations([r30], 'log-1', '2026-10');
+  const bs = bandesDuMois('2026-10', suite.jours, suite.sejours);
+  verifier(bf.length === 1 && bf[0].a - bf[0].de === 0.5 && !bf[0].libelle && bs.length === 1 && bs[0].libelle && libelleSejour(fin.sejours[0]) === 'Mehdi Trente, du 30 sept. au 2 oct., 2 nuits', 'morceau d’une demi-case seule : sans texte, nom en octobre, libellé complet au bouton');
+  // Une nuit du dimanche au lundi : jamais une case entière, le nom reste sur la première demi-case.
+  const dim = calendrierMoisReservations([resa('log-1', '2026-09-13', '2026-09-14', { voyageur: { nom: 'Una Nuit', nbPersonnes: 1 } })], 'log-1', '2026-09');
+  const bd = bandesDuMois('2026-09', dim.jours, dim.sejours);
+  verifier(bd.length === 2 && bd[0].libelle && !bd[1].libelle, 'une nuit du dimanche au lundi : nom sur la demi-case du dimanche');
 
   console.log(`${ok} contrôles réussis, ${ko} en échec.`);
   (globalThis as { process?: { exitCode?: number } }).process!.exitCode = ko ? 1 : 0;

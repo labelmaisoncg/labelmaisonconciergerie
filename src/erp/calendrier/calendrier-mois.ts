@@ -11,7 +11,7 @@
  * data/verifier-proprietaire.ts.
  */
 import { jourMois } from '../data/format';
-import { ecartJoursISO, ecartMois, moisEntre, moisPrecedent, moisSuivant } from '../data/proprietaire';
+import { ajouterJoursISO, ecartJoursISO, ecartMois, moisEntre, moisPrecedent, moisSuivant } from '../data/proprietaire';
 import type { CanalReservation, DateISO } from '../data/types';
 import type { JourCalendrier, SejourCalendrierVue } from '../data/types-proprietaire';
 
@@ -77,12 +77,35 @@ export interface BandeCalendrier {
 }
 
 /**
+ * Le séjour a-t-il, quelque part (tous ses mois confondus), un morceau
+ * d'une case entière ? Sa bande va du milieu du jour d'arrivée au milieu
+ * du jour de départ et se coupe à chaque lundi et à chaque 1er du mois.
+ * Une nuit du dimanche au lundi, ou du 30 nov. au 1er déc. : deux
+ * demi-cases, jamais une case entière.
+ */
+function aUnMorceauLarge(s: Pick<SejourCalendrier, 'arrivee' | 'depart'>): boolean {
+  const n = ecartJoursISO(s.arrivee, s.depart);
+  let debut = 0.5;
+  for (let i = 1; i <= n; i++) {
+    const d = ajouterJoursISO(s.arrivee, i);
+    if (d.slice(8) === '01' || new Date(`${d}T12:00:00Z`).getUTCDay() === 1) {
+      if (i - debut >= 1) return true;
+      debut = i;
+    }
+  }
+  return n + 0.5 - debut >= 1;
+}
+
+/**
  * Appariement séjour ↔ bande : les morceaux de bande de chaque séjour,
  * ligne par ligne. Le nom va sur le premier morceau d'au moins une case
  * (un séjour qui commence un dimanche n'a qu'une demi-case sur sa ligne :
- * le nom passe à la ligne suivante) ; à défaut, sur le premier. Un
- * chassé-croisé le même jour donne deux bandes qui se touchent au milieu de
- * la case (le composant les sépare d'un filet).
+ * le nom passe à la ligne suivante). Sans morceau d'une case entière dans
+ * ce mois : pas de texte si le séjour en a un dans un autre mois (le nom
+ * est là-bas) ; sinon (une nuit du dimanche au lundi, du 30 nov. au
+ * 1er déc.), le texte, tronqué, sur le premier morceau du mois d'arrivée.
+ * Un chassé-croisé le même jour donne deux bandes qui se touchent au milieu
+ * de la case (le composant les sépare d'un filet).
  */
 export function bandesDuMois(mois: string, jours: readonly JourCalendrier[], sejours: readonly SejourCalendrier[]): BandeCalendrier[] {
   const n = jours.length;
@@ -106,10 +129,11 @@ export function bandesDuMois(mois: string, jours: readonly JourCalendrier[], sej
       if (a <= de) continue;
       morceaux.push({ sejour: s, ligne, de, a, arrivee: arriveeIci && debut >= ligne * 7, depart: departIci && fin <= ligne * 7 + 7, libelle: false });
     }
-    // Aucun morceau d'une case entière (seule la demi-case du 30 est dans ce mois) : pas de texte, le
-    // libellé du bouton le porte et le nom entier est dans le mois suivant.
+    // Aucun morceau d'une case entière ici : le nom est dans le mois qui en a un ; s'il n'y en a
+    // nulle part, sur le premier morceau du mois d'arrivée.
     const large = morceaux.find((m) => m.a - m.de >= 1);
     if (large) large.libelle = true;
+    else if (morceaux.length && arriveeIci && !aUnMorceauLarge(s)) morceaux[0].libelle = true;
     res.push(...morceaux);
   }
   return res;

@@ -322,9 +322,20 @@ async function main() {
     // Arrivée un dimanche (13 sept. 2026) : une demi-case sur sa ligne, le nom passe à la ligne suivante.
     const dimanche = bandesDuMois('2026-09', sept.jours, [{ arrivee: '2026-09-13', depart: '2026-09-16', nuits: 3, voyageur: 'Marta D.', nbPersonnes: 2, canal: 'airbnb' as const }]);
     verifier(dimanche.length === 2 && dimanche[0].de === 6.5 && dimanche[0].a === 7 && !dimanche[0].libelle && dimanche[1].ligne === 2 && dimanche[1].libelle, 'bande : nom sur le premier morceau d’au moins une case');
-    // Arrivée le 30 (mercredi), départ le mois suivant : une demi-case seule dans ce mois, aucun texte.
-    const trente = bandesDuMois('2026-09', sept.jours, [{ arrivee: '2026-09-30', depart: '2026-10-02', nuits: 2, voyageur: 'Mehdi T.', nbPersonnes: 2, canal: 'airbnb' as const }]);
-    verifier(trente.length === 1 && trente[0].a - trente[0].de === 0.5 && !trente[0].libelle, 'bande : morceau d’une demi-case seule, sans texte');
+    // Arrivée le 30 (mercredi), départ le 2 du mois suivant : une demi-case seule en septembre, aucun texte ;
+    // la case entière est en octobre, le nom y est.
+    const s30 = { arrivee: '2026-09-30', depart: '2026-10-02', nuits: 2, voyageur: 'Mehdi T.', nbPersonnes: 2, canal: 'airbnb' as const };
+    const trente = bandesDuMois('2026-09', sept.jours, [s30]);
+    const octobre = bandesDuMois('2026-10', calendrierMois(e.reservations, 'log-a1', '2026-10').jours, [s30]);
+    verifier(trente.length === 1 && trente[0].a - trente[0].de === 0.5 && !trente[0].libelle && octobre.length === 1 && octobre[0].de === 3 && octobre[0].a === 4.5 && octobre[0].libelle, 'bande : demi-case seule en septembre sans texte, nom en octobre');
+    // Une nuit du dimanche au lundi (13 → 14 sept.) : deux demi-cases, jamais une case entière : le nom, tronqué, sur la première.
+    const nuit = bandesDuMois('2026-09', sept.jours, [{ arrivee: '2026-09-13', depart: '2026-09-14', nuits: 1, voyageur: 'Una N.', nbPersonnes: 1, canal: 'direct' as const }]);
+    verifier(nuit.length === 2 && nuit[0].de === 6.5 && nuit[0].a === 7 && nuit[0].libelle && nuit[1].de === 0 && nuit[1].a === 0.5 && !nuit[1].libelle, 'bande : une nuit du dimanche au lundi, nom sur la demi-case du dimanche');
+    // Une nuit à cheval sur deux mois (30 nov. → 1er déc.) : le nom en novembre (mois d'arrivée), pas en décembre.
+    const cheval = { arrivee: '2026-11-30', depart: '2026-12-01', nuits: 1, voyageur: 'Deux M.', nbPersonnes: 1, canal: 'direct' as const };
+    const nov = bandesDuMois('2026-11', calendrierMois(e.reservations, 'log-a1', '2026-11').jours, [cheval]);
+    const dec = bandesDuMois('2026-12', calendrierMois(e.reservations, 'log-a1', '2026-12').jours, [cheval]);
+    verifier(nov.length === 1 && nov[0].de === 0.5 && nov[0].a === 1 && nov[0].libelle && dec.length === 1 && dec[0].de === 1 && dec[0].a === 1.5 && !dec[0].libelle, 'bande : une nuit du 30 nov. au 1er déc., nom en novembre seulement');
     verifier(
       JSON.stringify(plagesManquantes(['2026-09', '2026-10', '2026-11'], (m) => m === '2026-09')) === '[["2026-10","2026-11"]]' &&
         JSON.stringify(plagesManquantes(['2026-09', '2026-10', '2026-12'], () => false)) === '[["2026-09","2026-10"],["2026-12","2026-12"]]' &&
