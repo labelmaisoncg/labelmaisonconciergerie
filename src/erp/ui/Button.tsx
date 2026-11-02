@@ -86,7 +86,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
   { label, size = 'md', variant = 'ghost', className, children, ...rest },
   ref,
 ) {
-  const rond = { sm: 'size-8 px-0', md: 'size-10 px-0', lg: 'size-12 px-0' }[size];
+  // Taille moyenne : 44 px au toucher (téléphone), 40 px à la souris.
+  const rond = { sm: 'size-8 px-0', md: 'size-10 max-sm:size-11 px-0', lg: 'size-12 px-0' }[size];
   return (
     <Button ref={ref} variant={variant} size={size} aria-label={label} title={label} className={cn(rond, 'rounded-full', ICONE_RONDE[variant], className)} {...rest}>
       {children}

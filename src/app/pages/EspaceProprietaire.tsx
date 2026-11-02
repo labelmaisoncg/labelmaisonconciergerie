@@ -300,14 +300,14 @@ const ChampMotDePasse = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInp
     <div>
       <div className="relative">
         <Input ref={ref} type={visible ? 'text' : 'password'} value={value} className={cn('h-11 pr-12 text-[16px]', className)} {...rest} />
-        {/* Œil de 40 px (cible de toucher) dans le champ de 44 px : 2 px de marge tout autour, la hauteur du champ ne change pas. */}
+        {/* Œil de 40 px, aussi sur téléphone (le champ de 44 px est sa cible) : 2 px de marge tout autour, la hauteur du champ ne change pas. */}
         <IconButton
           type="button"
           size="md"
           label={visible ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
           aria-pressed={visible}
           onClick={() => setVisible((v) => !v)}
-          className="absolute top-1/2 right-0.5 -translate-y-1/2"
+          className="absolute top-1/2 right-0.5 -translate-y-1/2 max-sm:size-10"
         >
           {visible ? <EyeOff /> : <Eye />}
         </IconButton>
