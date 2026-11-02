@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { useSearchParams } from 'react-router-dom';
 import '../../erp/erp.css';
@@ -7,9 +7,10 @@ import { completer } from '../../erp/data/collections';
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
 import { idEspaceValide } from '../../erp/data/espaces';
 import { AUJOURDHUI } from '../../erp/data/format';
-import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
+import { CONTACTS_LABEL_MAISON, CONTENU_ESPACE, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { ErpDonnees } from '../../erp/data/types';
-import type { VueProprietaire } from '../../erp/data/types-proprietaire';
+import type { CalendrierLogement, MoisCalendrierVue, VueProprietaire } from '../../erp/data/types-proprietaire';
+import type { ChargeurMois } from '../../erp/calendrier';
 import { EspaceVue } from '../../erp/espace-proprietaire/EspaceVue';
 import { ONGLETS_ESPACE, type LienDocumentProps, type OngletEspace } from '../../erp/espace-proprietaire/commun';
 import { Alert, Button, Card, Field, Input, PageSkeleton } from '../../erp/ui';
@@ -85,12 +86,25 @@ function donneesDemoLocales(): ErpDonnees | null {
   }
 }
 
-/** Vue de démonstration, calculée dans le navigateur sur le même jeu que l'ERP de démonstration. */
-async function vueDemo(proprietaireId: string, mois?: string): Promise<VueProprietaire | null> {
-  const locales = donneesDemoLocales();
-  const donnees = locales ?? (await import('../../erp/data/seed')).creerSeed();
-  return vueProprietaire(donnees, proprietaireId, { aujourdhui: AUJOURDHUI, mois });
+async function donneesDemo(): Promise<ErpDonnees> {
+  return donneesDemoLocales() ?? (await import('../../erp/data/seed')).creerSeed();
 }
+
+/** Vue de démonstration, calculée dans le navigateur sur le même jeu que l'ERP de démonstration. */
+async function vueDemo(proprietaireId: string): Promise<VueProprietaire | null> {
+  return vueProprietaire(await donneesDemo(), proprietaireId, { aujourdhui: AUJOURDHUI });
+}
+
+/** Mois du calendrier en démonstration : la même fonction pure que le serveur, mêmes bornes. */
+async function calendrierDemo(proprietaireId: string, de: string, a: string): Promise<{ ok: true; mois: MoisCalendrierVue[] } | { ok: false; erreur: string }> {
+  const plage = moisDePlage(de, a, AUJOURDHUI);
+  if (!plage.ok) return plage;
+  const mois = calendrierPlage(await donneesDemo(), proprietaireId, plage.mois);
+  return mois ? { ok: true, mois } : { ok: false, erreur: 'Propriétaire de démonstration introuvable.' };
+}
+
+type RetourChargeur = Awaited<ReturnType<ChargeurMois>>;
+const ERREUR_CALENDRIER = 'Le calendrier n’a pas pu être chargé. Réessayez dans un instant.';
 
 function LienDocumentServeur({ id, className, children }: LienDocumentProps) {
   return (
@@ -200,7 +214,10 @@ export default function EspaceProprietaire() {
   const [etat, setEtat] = useState<Etat>({ nom: 'chargement' });
   // Espace du lien reçu (un ancien lien sans espace : Label Maison).
   const [espaceLien, setEspaceLien] = useState<string>();
-  const [calendrierEnCours, setCalendrierEnCours] = useState(false);
+  // Calendrier : un cache par mois (tous ses logements), rempli par plages de mois en défilant.
+  const [moisConnus, setMoisConnus] = useState<Record<string, CalendrierLogement[]>>({});
+  // Plages en cours de chargement : une même plage n'est jamais demandée deux fois à la fois.
+  const plagesEnCours = useRef(new Map<string, Promise<RetourChargeur>>());
   const apercu = MODE_DEMO ? (parametres.get('apercu') ?? '') : '';
   const ongletUrl = parametres.get('onglet') as OngletEspace | null;
   const onglet: OngletEspace = ongletUrl && ONGLETS_ESPACE.includes(ongletUrl) ? ongletUrl : 'accueil';
@@ -225,13 +242,13 @@ export default function EspaceProprietaire() {
       { replace: false },
     );
 
-  const charger = useCallback(async (mois?: string): Promise<Etat> => {
+  const charger = useCallback(async (): Promise<Etat> => {
     if (MODE_DEMO) {
       if (!apercu) return { nom: 'connexion' };
-      const vue = await vueDemo(apercu, mois);
+      const vue = await vueDemo(apercu);
       return vue ? { nom: 'pret', vue, demo: true } : { nom: 'erreur', message: 'Propriétaire de démonstration introuvable.' };
     }
-    const r = await appeler('GET', mois ? { action: 'vue', mois } : { action: 'vue' });
+    const r = await appeler('GET', { action: 'vue' });
     if (r.statut === 200 && r.json.vue) {
       const vue = r.json.vue as VueProprietaire;
       if (idEspaceValide(r.json.espace)) retenirEspace({ espace: r.json.espace.toLowerCase(), nom: vue.conciergerie.nom });
@@ -262,20 +279,50 @@ export default function EspaceProprietaire() {
         }
       }
       const e = await charger();
-      if (actif) setEtat(e);
+      if (!actif) return;
+      setEtat(e);
+      // Le premier mois du calendrier est déjà dans la vue ; les autres viendront par plages.
+      if (e.nom === 'pret') setMoisConnus({ [e.vue.calendrier.mois]: e.vue.calendrier.logements });
     })();
     return () => {
       actif = false;
     };
   }, [charger]);
 
-  const changerMois = async (mois: string) => {
-    setCalendrierEnCours(true);
-    const e = await charger(mois);
-    setCalendrierEnCours(false);
-    if (e.nom === 'pret') setEtat(e);
-    else if (e.nom === 'connexion') setEtat({ nom: 'connexion', ton: 'neutre', message: e.message || 'Votre session a expiré : demandez un nouveau lien.' });
-  };
+  /** Les mois de `de` à `a` dans le cache : `GET ?action=calendrier` (ou le calcul de démonstration). */
+  const chargerCalendrier = useCallback<ChargeurMois>(
+    (de, a) => {
+      const cle = `${de}..${a}`;
+      const deja = plagesEnCours.current.get(cle);
+      if (deja) return deja;
+      const retenir = (mois: MoisCalendrierVue[]) => setMoisConnus((c) => ({ ...c, ...Object.fromEntries(mois.map((m) => [m.mois, m.logements])) }));
+      const p = (async (): Promise<RetourChargeur> => {
+        if (MODE_DEMO) {
+          const r = await calendrierDemo(apercu, de, a);
+          if (r.ok) retenir(r.mois);
+          return r.ok ? { ok: true } : r;
+        }
+        const r = await appeler('GET', { action: 'calendrier', de, a });
+        if (r.statut === 200 && Array.isArray(r.json.mois)) {
+          const mois = (r.json.mois as MoisCalendrierVue[]).filter((m) => moisValide(m?.mois) && Array.isArray(m.logements));
+          // Un mois demandé absent de la réponse : un échec (« Réessayer »), jamais une plage redemandée sans fin.
+          const recus = new Set(mois.map((m) => m.mois));
+          if (moisEntre(de, a).some((m) => !recus.has(m))) return { ok: false, erreur: ERREUR_CALENDRIER };
+          retenir(mois);
+          return { ok: true };
+        }
+        if (r.statut === 401) {
+          const message = r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : demandez un nouveau lien.';
+          setEtat({ nom: 'connexion', ton: 'neutre', message });
+          return { ok: false, erreur: message };
+        }
+        return { ok: false, erreur: String(r.json.erreur ?? ERREUR_CALENDRIER) };
+      })().finally(() => plagesEnCours.current.delete(cle));
+      plagesEnCours.current.set(cle, p);
+      return p;
+    },
+    [apercu],
+  );
 
   const sortir = async () => {
     if (!MODE_DEMO) await appeler('POST', { action: 'sortir' });
@@ -320,8 +367,7 @@ export default function EspaceProprietaire() {
           onLogement={(id) => regler('logements', { logement: id })}
           facture={facture}
           onFacture={(id) => regler('factures', { facture: id })}
-          onMoisCalendrier={(m) => void changerMois(m)}
-          calendrierEnCours={calendrierEnCours}
+          calendrier={{ connus: moisConnus, charger: chargerCalendrier }}
           LienDocument={etat.demo ? LienDocumentDemo : LienDocumentServeur}
           onSortir={() => void sortir()}
           bandeau={

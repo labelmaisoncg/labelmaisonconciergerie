@@ -173,13 +173,33 @@ export interface JourCalendrier {
   hors?: 'avant' | 'apres' | 'autre';
 }
 
+/** Séjour vu sur le calendrier : dates, nuits, « Prénom N. », nombre de voyageurs, plateforme. Rien d'autre. */
+export interface SejourCalendrierVue {
+  arrivee: DateISO;
+  depart: DateISO;
+  nuits: number;
+  voyageur: string;
+  nbPersonnes: number;
+  canal: CanalReservation;
+}
+
 export interface CalendrierLogement {
   logementId: Id;
   jours: JourCalendrier[];
   nuitsReservees: number;
   nuitsLibres: number;
   occupation: number;
-  sejours: { arrivee: DateISO; depart: DateISO; nuits: number; voyageur: string; nbPersonnes: number; canal: CanalReservation }[];
+  sejours: SejourCalendrierVue[];
+}
+
+/**
+ * Un mois du calendrier pour chacun de ses logements (gérés, puis cédés) :
+ * réponse de `GET ?action=calendrier&de=AAAA-MM&a=AAAA-MM`, exactement ce
+ * que `VueProprietaire.calendrier` donne pour un mois.
+ */
+export interface MoisCalendrierVue {
+  mois: string;
+  logements: CalendrierLogement[];
 }
 
 export interface ArriveeVue {
