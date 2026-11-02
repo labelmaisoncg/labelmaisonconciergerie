@@ -672,7 +672,7 @@ export default function EspaceProprietaire() {
           return { ok: true };
         }
         if (r.statut === 401) {
-          const message = r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : reconnectez-vous.';
+          const message = r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : reconnectez-vous.';
           setEtat({ nom: 'connexion', ton: 'neutre', message });
           return { ok: false, erreur: message };
         }
