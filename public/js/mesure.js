@@ -11,7 +11,7 @@
  * Flux de données → Identifiant de mesure, de la forme G-XXXXXXXXXX).
  */
 (function () {
-  var ID_GA4 = ''; // ex. 'G-AB12CD34EF' — vide tant que la propriété GA4 n'est pas créée
+  var ID_GA4 = 'G-QXHQNDCYME'; // propriété « Label Maison Conciergerie », flux Site labelmaisoncg.fr
   var CLE = 'lm-consentement'; // 'oui' | 'non'
   if (!/^G-[A-Z0-9]{6,}$/.test(ID_GA4) || /X{4,}/.test(ID_GA4)) return; // pas configuré : rien ne se charge, pas de bandeau
 
