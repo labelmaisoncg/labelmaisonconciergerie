@@ -6,7 +6,7 @@
  */
 import { Link } from 'react-router-dom';
 import { CheckCircle2, SearchX, X } from 'lucide-react';
-import { Avatar, Badge, Button, SearchInput, Segmente, cn } from '../../../ui';
+import { Avatar, Badge, Button, IconButton, SearchInput, Segmente, cn } from '../../../ui';
 import type { FilMessages, Logement } from '../../../data/types';
 import { nomLangue, type Urgence } from '../../../data/messagerie-ia';
 import { FILTRES, attendEquipe, auteurAffiche, correspond, quandCourt, type FiltreFil } from './logique';
@@ -44,14 +44,9 @@ export function ListeFils({ fils, tous, logements, actifId, filtre, onFiltre, re
             {/* Même pilule que les filtres choisis (FilterChips) : or, contour doublé, texte en 600, et une croix pour la retirer. */}
             <span className="inline-flex h-9 max-w-full items-center gap-1 rounded-full border border-(--lm-or-texte) bg-(--lm-or-lavis) pr-1 pl-3.5 text-[13px] font-semibold text-(--lm-encre) shadow-[inset_0_0_0_1px_var(--lm-or-texte)]">
               <span className="truncate">{logementFiltre.nom}</span>
-              <button
-                type="button"
-                onClick={logementFiltre.retirer}
-                aria-label={`Retirer le filtre ${logementFiltre.nom}`}
-                className="grid size-7 shrink-0 place-items-center rounded-full text-(--lm-encre-2) hover:bg-(--lm-surface) hover:text-(--lm-encre) focus-visible:ring-2 focus-visible:ring-(--lm-encre) focus:outline-none"
-              >
-                <X className="size-3.5" aria-hidden />
-              </button>
+              <IconButton label={`Retirer le filtre ${logementFiltre.nom}`} size="sm" onClick={logementFiltre.retirer} className="bg-transparent hover:bg-(--lm-surface)">
+                <X />
+              </IconButton>
             </span>
           </div>
         )}

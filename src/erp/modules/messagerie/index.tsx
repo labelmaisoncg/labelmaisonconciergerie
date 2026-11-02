@@ -175,7 +175,8 @@ function Boite() {
         ) : filId ? (
           <div className="flex h-full flex-col">
             <div className="flex h-14 shrink-0 items-center border-b border-(--lm-bord) px-2 lg:hidden">
-              <Link to="/erp/messagerie" aria-label="Retour aux conversations" className="grid size-10 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis)">
+              {/* Le filtre « ?logement= » reste au retour. */}
+              <Link to={{ pathname: '/erp/messagerie', search: params.toString() }} aria-label="Retour aux conversations" className="grid size-10 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre) hover:bg-(--lm-neutre-lavis)">
                 <ArrowLeft className="size-5" />
               </Link>
             </div>

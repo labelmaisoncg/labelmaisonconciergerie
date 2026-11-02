@@ -64,10 +64,13 @@ export default function DetailLogement() {
             </span>
           </span>
         }
+        // Lecture seule : la base refuserait l'écriture, l'écran ne propose pas « Modifier ».
         actions={
-          <Button icone={<Pencil />} onClick={() => setEdition({ ouvert: true })}>
-            Modifier
-          </Button>
+          !d.lectureSeule && (
+            <Button icone={<Pencil />} onClick={() => setEdition({ ouvert: true })}>
+              Modifier
+            </Button>
+          )
         }
         // Supprimer : à part, une corbeille tout en haut à droite (gérant seulement).
         coin={peutSupprimerLogement(d.utilisateur.role, d.lectureSeule) ? <SupprimerLogement logement={l} /> : undefined}

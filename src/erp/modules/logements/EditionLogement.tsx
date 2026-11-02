@@ -105,7 +105,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree, section }:
       ouvert={ouvert}
       onFermer={onFermer}
       titre={logement ? `Modifier ${logement.nom}` : 'Nouveau logement'}
-      sousTitre={logement ? undefined : 'Il démarre « En préparation ».'}
+      sousTitre={logement ? undefined : 'Il démarre « En préparation ».'}
       pied={
         <>
           <Button onClick={onFermer}>Annuler</Button>
@@ -128,7 +128,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree, section }:
           <Select
             value={s.proprietaireId}
             onChange={(e) => maj('proprietaireId', e.target.value)}
-            placeholder={proprietaires.length ? 'Choisir un propriétaire' : 'Aucun propriétaire : ajoutez-le'}
+            placeholder={proprietaires.length ? 'Choisir un propriétaire' : 'Aucun propriétaire : ajoutez-le'}
             options={proprietaires.map((p) => ({ valeur: p.id, libelle: p.nom }))}
           />
         </Field>
@@ -198,8 +198,8 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree, section }:
         {logement && (
           <>
             <div className="mt-2 border-t border-(--lm-bord) pt-5 sm:col-span-2">
-              <h3 className="lm-titre text-[17px] leading-snug text-(--lm-encre)">Terrain</h3>
-              <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Pour l’équipe seulement : rien d’ici n’est transmis aux voyageurs, à votre agent ni au propriétaire.</p>
+              <h3 className="text-[15px] leading-snug font-semibold text-(--lm-encre)">Terrain</h3>
+              <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">{'Pour l’équipe seulement : rien d’ici n’est transmis aux voyageurs, à votre agent ni au propriétaire.'}</p>
             </div>
 
             <fieldset
@@ -271,8 +271,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree, section }:
               }}
               className="scroll-mt-4 sm:col-span-2"
             >
-              <legend className="mb-0.5 text-[14px] font-semibold text-(--lm-encre)">Technique</legend>
-              <p className="mb-2 text-[13px] text-(--lm-encre-2)">Jamais transmis aux voyageurs.</p>
+              <legend className="mb-2 text-[14px] font-semibold text-(--lm-encre)">Technique</legend>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {CHAMPS_TECHNIQUE.map((c) => (
                   <Field key={c.cle} label={c.libelle}>

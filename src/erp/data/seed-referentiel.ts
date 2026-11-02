@@ -187,7 +187,7 @@ export const LOGEMENTS: Logement[] = [
     // Démo de l'onglet Terrain : noms inventés, numéros fictifs (06 00 00 00 0x).
     menage: {
       duree: '2 h 30',
-      produits: 'Sous l’évier de la cuisine : multi-surfaces, vitres, sols. Aspirateur et serpillière dans le placard de l’entrée.',
+      produits: 'Sous l’évier de la cuisine : multi-surfaces, vitres, sols. Aspirateur et serpillière dans le placard de l’entrée.',
       consignes: 'Changer les draps du canapé-lit même s’il semble non utilisé. Détartrer la cafetière le 1er du mois. Laisser les volets du salon à mi-hauteur.',
     },
     contacts: [
@@ -197,13 +197,13 @@ export const LOGEMENTS: Logement[] = [
     ],
     technique: {
       etage: '2e étage sans ascenseur, porte gauche',
-      interphone: '« Rives de Seine » sur la platine du hall',
+      interphone: '« Rives de Seine » sur la platine du hall',
       compteurElectricite: 'Palier, armoire grise à gauche de la porte',
       disjoncteur: 'Entrée, au-dessus de la porte',
       compteurEau: 'Sous l’évier de la cuisine, vanne bleue',
-      arriveeEau: 'Même vanne : fermer en quart de tour',
-      chaudiere: 'Chauffe-eau électrique dans la salle de bain ; remise en marche par le bouton rouge',
-      notes: 'Volet du salon dur à remonter : pousser légèrement vers le haut avant d’actionner la manivelle.',
+      arriveeEau: 'Même vanne : fermer en quart de tour',
+      chaudiere: 'Chauffe-eau électrique dans la salle de bain ; remise en marche par le bouton rouge',
+      notes: 'Volet du salon dur à remonter : pousser légèrement vers le haut avant d’actionner la manivelle.',
     },
     repull: { id: '1001', statut: 'active' },
     annonces: tousCanaux('corbeil-t2'),
@@ -235,7 +235,7 @@ export const LOGEMENTS: Logement[] = [
     // Démo de l'onglet Terrain : noms inventés, numéros fictifs (06 00 00 00 0x).
     menage: {
       duree: '3 h',
-      produits: 'Placard de la buanderie : lessive, produits sols et sanitaires. Linge propre dans l’armoire du couloir, étagère du haut.',
+      produits: 'Placard de la buanderie : lessive, produits sols et sanitaires. Linge propre dans l’armoire du couloir, étagère du haut.',
       consignes: 'Vérifier les deux lits simples (barrières enfant à replier). Vider le bac du lave-vaisselle. Remettre le code de la serrure à zéro depuis l’application.',
     },
     contacts: [
@@ -248,7 +248,7 @@ export const LOGEMENTS: Logement[] = [
       compteurElectricite: 'Local compteurs au rez-de-chaussée, case n° 6',
       disjoncteur: 'Tableau dans la buanderie',
       compteurGaz: 'Cour intérieure, coffret jaune',
-      chaudiere: 'Chaudière gaz dans la buanderie ; pression entre 1 et 1,5 bar',
+      chaudiere: 'Chaudière gaz dans la buanderie ; pression entre 1 et 1,5 bar',
       arriveeEau: 'Vanne générale derrière le lave-linge',
     },
     repull: { id: '1002', statut: 'active' },

@@ -29,7 +29,7 @@ export const LIBELLE_ROLE_CONTACT: Record<RoleContact, string> = {
 
 export const CHAMPS_MENAGE: { cle: keyof MenageLogement; libelle: string; aide: string }[] = [
   { cle: 'duree', libelle: 'Durée prévue', aide: 'Ex. 2 h 30' },
-  { cle: 'produits', libelle: 'Produits et où ils sont', aide: 'Ex. sous l’évier : multi-surfaces, vitres, sols ; aspirateur dans le placard de l’entrée' },
+  { cle: 'produits', libelle: 'Produits et où ils sont', aide: 'Ex. sous l’évier : multi-surfaces, vitres, sols ; aspirateur dans le placard de l’entrée' },
   { cle: 'consignes', libelle: 'Consignes particulières', aide: 'Ce qui ne doit pas être oublié à chaque ménage.' },
 ];
 

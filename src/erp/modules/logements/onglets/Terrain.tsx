@@ -48,13 +48,13 @@ function Bloc({ libelle, children }: { libelle: string; children: ReactNode }) {
   );
 }
 
-/** Carte vide : une phrase et « Compléter » (si l'on peut modifier). */
+/** Carte vide : une phrase et « Compléter » (si l'on peut modifier) ; 44 px au toucher. */
 function Vide({ texte, section, onCompleter }: { texte: string; section: SectionTerrain; onCompleter?: (s: SectionTerrain) => void }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <p className="text-[13.5px] text-(--lm-encre-2)">{texte}</p>
       {onCompleter && (
-        <Button size="sm" onClick={() => onCompleter(section)}>
+        <Button size="sm" className="max-sm:min-h-11" onClick={() => onCompleter(section)}>
           Compléter
         </Button>
       )}
@@ -62,7 +62,7 @@ function Vide({ texte, section, onCompleter }: { texte: string; section: Section
   );
 }
 
-/** Lien discret « Compléter » en tête de carte, quand il reste des champs vides. */
+/** Lien discret « Compléter » en tête de carte, quand elle est vide ou presque (un seul champ rempli). */
 function Completer({ section, onCompleter }: { section: SectionTerrain; onCompleter?: (s: SectionTerrain) => void }) {
   if (!onCompleter) return null;
   return (
@@ -115,7 +115,7 @@ function MenageEtLinge({ logement: l, onCompleter }: Props) {
         }
       />
       {vide ? (
-        <Vide texte="Durée, produits et consignes du ménage : rien de noté pour l’instant." section="menage" onCompleter={onCompleter} />
+        <Vide texte={'Durée, produits et consignes du ménage : rien de noté pour l’instant.'} section="menage" onCompleter={onCompleter} />
       ) : (
         <>
           {menage && (
@@ -153,7 +153,11 @@ function Telephone({ nom, telephone }: { nom: string; telephone?: string }) {
   if (!telephone?.trim()) return null;
   if (!href) return <span className="lm-chiffres shrink-0 text-[13px] text-(--lm-encre-2)">{telephone}</span>;
   return (
-    <a href={href} aria-label={`Appeler ${nom}`} className="lm-chiffres inline-flex min-h-8 shrink-0 items-center gap-1.5 text-[13px] font-medium whitespace-nowrap text-(--lm-encre) hover:underline">
+    <a
+      href={href}
+      aria-label={`Appeler ${nom}`}
+      className="lm-chiffres inline-flex min-h-8 shrink-0 items-center gap-1.5 text-[13px] font-medium whitespace-nowrap text-(--lm-encre) hover:underline max-sm:min-h-11"
+    >
       <Phone className="size-3.5 shrink-0 text-(--lm-encre-2)" aria-hidden />
       {telephone}
     </a>
@@ -208,7 +212,6 @@ function QuiAppeler({ logement: l, onCompleter }: Props) {
           </ul>
         </div>
       )}
-      {contacts.length === 0 && onCompleter && <p className="mt-3 text-[12.5px] text-(--lm-encre-3)">Ajoutez les numéros du ménage, du serrurier ou d’une urgence.</p>}
     </Card>
   );
 }
@@ -219,12 +222,14 @@ function Technique({ logement: l, onCompleter }: Props) {
   const t = l.technique;
   const lignes = CHAMPS_TECHNIQUE.filter((c) => t?.[c.cle]?.trim());
   const notes = t?.notes?.trim();
-  const partiel = techniqueRenseignee(t) && (lignes.length < CHAMPS_TECHNIQUE.length || !notes);
+  // Presque vide (un seul repère) : « Compléter » en tête ; au-delà, « Modifier » en haut de page suffit.
+  const presqueVide = techniqueRenseignee(t) && lignes.length + (notes ? 1 : 0) <= 1;
   return (
     <Card>
-      <CardHeader titre="Technique" description="Jamais transmis aux voyageurs" actions={partiel ? <Completer section="technique" onCompleter={onCompleter} /> : undefined} />
+      {/* « Jamais transmis aux voyageurs » : déjà dit par l'introduction de l'onglet, pas répété ici. */}
+      <CardHeader titre="Technique" actions={presqueVide ? <Completer section="technique" onCompleter={onCompleter} /> : undefined} />
       {!techniqueRenseignee(t) ? (
-        <Vide texte="Compteurs, disjoncteur, chaudière, arrivée d’eau : rien de noté pour l’instant." section="technique" onCompleter={onCompleter} />
+        <Vide texte={'Compteurs, disjoncteur, chaudière, arrivée d’eau : rien de noté pour l’instant.'} section="technique" onCompleter={onCompleter} />
       ) : (
         <>
           {lignes.length > 0 && (

@@ -11,7 +11,9 @@
  */
 import { extraireIdAirbnb, idAirbnbDuLogement, lienAnnonceAirbnb } from './page-airbnb';
 import { photosLogement, prixNuit } from '../modules/logements/_composants/stats';
+import { LOGEMENTS } from './seed-referentiel';
 import {
+  CHAMPS_MENAGE,
   LIBELLE_ROLE_CONTACT,
   ROLES_CONTACT,
   appliquerTerrain,
@@ -136,5 +138,47 @@ section('Terrain : ménage, qui appeler, technique (équipe seulement)');
   );
 }
 
-console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
-(globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+/* --------------------------------------------- typographie du volet terrain */
+
+/**
+ * Espaces insécables avant « : ; ? ! » et « » », après « « » : dans les
+ * textes français du volet terrain (chaînes et textes JSX des trois fichiers
+ * de l'écran) et dans les valeurs de démo du seed. Les commentaires ne
+ * comptent pas.
+ */
+const ESPACE_FAUTIVE = /\S [:;?!»]|« /;
+function chainesDu(code: string): string[] {
+  const sansCommentaires = code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const chaines = [...sansCommentaires.matchAll(/'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? '');
+  // Texte JSX entre deux balises (jamais du code : ni parenthèse, ni « = », ni « ; », ni guillemet entre un « => » et un « < »).
+  const jsx = [...sansCommentaires.matchAll(/>([^<>{}=;()'"`]+)</g)].map((m) => m[1]);
+  return [...chaines, ...jsx].filter((t) => /[\p{L}]{3,}/u.test(t));
+}
+
+async function typographie() {
+  section('Typographie du volet terrain : insécables avant « : ; ? ! »');
+  const valeursDemo = LOGEMENTS.flatMap((l) => [...Object.values(l.menage ?? {}), ...(l.contacts ?? []).flatMap((c) => [c.nom, c.telephone, c.note]), ...Object.values(l.technique ?? {})]).filter((v): v is string => !!v);
+  const fautivesDemo = valeursDemo.filter((v) => ESPACE_FAUTIVE.test(v));
+  verifier(valeursDemo.length > 0 && fautivesDemo.length === 0, `seed : ${valeursDemo.length} valeurs du volet terrain, aucune espace normale avant une ponctuation double (${fautivesDemo.join(' | ')})`);
+  verifier(LIBELLE_ROLE_CONTACT.menage === 'Ménage' && !CHAMPS_MENAGE.some((c) => ESPACE_FAUTIVE.test(c.aide) || ESPACE_FAUTIVE.test(c.libelle)), 'libellés et aides du module : insécables en place');
+
+  const proc = (globalThis as { process?: { versions?: { node?: string }; cwd(): string } }).process;
+  if (!proc?.versions?.node) return;
+  const nomFs = 'node:fs';
+  const nomChemins = 'node:path';
+  const fs = (await import(/* @vite-ignore */ nomFs)) as { readFileSync: (p: string, e: string) => string; existsSync: (p: string) => boolean };
+  const chemins = (await import(/* @vite-ignore */ nomChemins)) as { join: (...p: string[]) => string; dirname: (p: string) => string };
+  let racine = proc.cwd();
+  for (let i = 0; i < 6 && !fs.existsSync(chemins.join(racine, 'package.json')); i++) racine = chemins.dirname(racine);
+  const fichiers = ['src/erp/data/terrain.ts', 'src/erp/modules/logements/onglets/Terrain.tsx', 'src/erp/modules/logements/EditionLogement.tsx'];
+  if (!fs.existsSync(chemins.join(racine, fichiers[0]))) return;
+  for (const f of fichiers) {
+    const fautives = chainesDu(fs.readFileSync(chemins.join(racine, f), 'utf8')).filter((t) => ESPACE_FAUTIVE.test(t));
+    verifier(fautives.length === 0, `${f} : aucune espace normale avant « : ; ? ! » dans les textes (${fautives.map((t) => t.slice(0, 60)).join(' | ')})`);
+  }
+}
+
+void typographie().then(() => {
+  console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
+  (globalThis as { process?: { exitCode?: number } }).process!.exitCode = echecs ? 1 : 0;
+});

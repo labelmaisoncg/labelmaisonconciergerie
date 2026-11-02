@@ -190,7 +190,13 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
                 <Link to={`/erp/messagerie?logement=${encodeURIComponent(l.id)}`} className="inline-flex min-h-8 items-center gap-1.5 text-[13px] font-medium lm-lien">
                   <MessagesSquare className="size-3.5" aria-hidden />
                   Messages de ce logement
-                  {aRepondre > 0 && <span className="lm-chiffres ml-1 rounded-full bg-(--lm-or-lavis) px-1.5 text-[12px] font-semibold text-(--lm-encre)">{aRepondre} à répondre</span>}
+                  {/* Même pilule à l'encre que le menu (« à répondre » n'est jamais en or) ; hors du soulignement du lien. */}
+                  {aRepondre > 0 && (
+                    <span className="lm-chiffres ml-1 inline-block rounded-full bg-(--lm-encre) px-1.5 py-px text-[11px] font-semibold text-white no-underline">
+                      {aRepondre}
+                      {' '}à répondre
+                    </span>
+                  )}
                 </Link>
               </div>
             )}
