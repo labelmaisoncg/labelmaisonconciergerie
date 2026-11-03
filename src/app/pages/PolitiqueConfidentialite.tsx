@@ -371,14 +371,9 @@ export function PolitiqueConfidentialite() {
             réseau social</strong>.
           </p>
           <p>
-            <strong style={{ color: INK }}>Mesure d’audience.</strong> Nous utilisons Google Analytics 4
-            (Google Ireland Ltd) pour savoir quelles pages aident les propriétaires et d’où viennent les
-            demandes. Il n’est chargé <strong style={{ color: INK }}>qu’après votre accord</strong>, donné
-            dans le bandeau affiché à la première visite ; si vous refusez, rien n’est chargé et votre
-            refus est mémorisé dans votre navigateur. Google Analytics dépose alors des cookies
-            (identifiant de visiteur, 13 mois au plus) et reçoit les pages vues, la source de la visite et
-            l’envoi d’un formulaire, sans le contenu de ce formulaire. Vous pouvez changer d’avis à tout
-            moment en effaçant les données du site dans votre navigateur : le bandeau réapparaît.
+            <strong style={{ color: INK }}>Mesure d’audience.</strong> Le site ne mesure pas son audience :
+            aucun outil d’analyse n’est chargé, aucun bandeau de consentement ne s’affiche. Si cela
+            changeait, nous vous demanderions votre accord avant tout chargement.
           </p>
           <p>
             Il garde seulement, dans votre navigateur, quelques informations nécessaires à son
