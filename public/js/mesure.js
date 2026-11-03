@@ -11,6 +11,11 @@
  * Flux de données → Identifiant de mesure, de la forme G-XXXXXXXXXX).
  */
 (function () {
+  // Décision du propriétaire (3 novembre 2026) : plus de bandeau de consentement.
+  // Google Analytics ne peut pas tourner sans consentement (CNIL) : la mesure est
+  // donc éteinte. Pour la rallumer avec le bandeau, passer MESURE_ACTIVE à true.
+  var MESURE_ACTIVE = false;
+  if (!MESURE_ACTIVE) return;
   var ID_GA4 = 'G-QXHQNDCYME'; // propriété « Label Maison Conciergerie », flux Site labelmaisoncg.fr
   var CLE = 'lm-consentement'; // 'oui' | 'non'
   if (!/^G-[A-Z0-9]{6,}$/.test(ID_GA4) || /X{4,}/.test(ID_GA4)) return; // pas configuré : rien ne se charge, pas de bandeau

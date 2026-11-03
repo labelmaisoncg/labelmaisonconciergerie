@@ -753,6 +753,63 @@ base à l'instant T. Les anciennes versions de chaque élément restent dans
 4. **Accès prestataires** : règles RLS dédiées (leurs seules missions) avant
    de donner le rôle `prestataire` à qui que ce soit.
 
+## Remise à zéro : repartir d'une base vierge (novembre 2026)
+
+Quand l'application est prête et qu'on veut effacer tout ce qui a servi aux
+essais pour que l'équipe reparte de zéro, le script
+`supabase/erp-remise-a-zero.sql` vide les données en gardant l'application,
+l'espace Label Maison et le compte technique. Irréversible : faites une
+sauvegarde avant si vous voulez pouvoir revenir en arrière (Supabase →
+Database → Backups).
+
+**Ce qui s'efface** : toutes les fiches de tous les espaces (logements,
+réservations, propriétaires, factures, bilans, incidents, contrôles,
+conversations, avis, contacts du CRM, accès), leur historique, l'état des
+automatisations, toutes les invitations, tous les membres de l'équipe sauf le
+compte technique, les autres espaces et leurs clés du coffre
+(`erp_<identifiant>_…`), et, si on le demande, tous les comptes Supabase
+(équipe et propriétaires) sauf le compte technique et le compte serveur.
+
+**Ce qui reste** : le schéma `erp` (tables, règles, déclencheurs, fonctions,
+temps réel), l'espace Label Maison, le compte technique
+`equipe@labelmaisoncg.fr` (il reste gérant, relié à son compte Supabase : les
+fonctions serveur écrivent avec lui), le compte serveur
+`serveur@labelmaisoncg.fr` (`ERP_SERVEUR_MOT_DE_PASSE`), les réglages Supabase
+(Auth, URL de retour, SMTP), `pg_cron` et son secret au coffre
+(`erp_agent_cron_secret`), le bucket `erp-fichiers`, les variables Vercel
+(clés Repull et IA, secrets des espaces extérieurs), le compte Repull et ses
+connexions aux plateformes.
+
+Dans l'ordre :
+
+1. **Vider les fichiers** : Supabase → Storage → `erp-fichiers` → tout
+   sélectionner → Delete (un `delete` SQL laisserait les fichiers).
+2. **Lancer le script** : SQL Editor → New query → coller tout
+   `supabase/erp-remise-a-zero.sql`. À la première ligne, remplacer `NON` par
+   `OUI` ; à la deuxième aussi pour supprimer les comptes (sinon chacun garde
+   son compte Supabase, mais plus aucun n'est membre : il faudra le réinviter).
+   Run. L'onglet Results doit afficher tout à 0, sauf `espaces` = 1,
+   `membres` = 1 et `membre_relie` = 1 (et `comptes` = 1 ou 2, compte
+   technique et compte serveur, si les comptes ont été supprimés). Tant que
+   la première ligne dit `NON`, le script refuse et n'efface rien. Tout passe
+   en une seule transaction : si une étape échoue (par exemple « permission
+   denied » sur `auth.users`), rien n'est effacé ; relancer avec la deuxième
+   ligne à `NON`, puis supprimer les comptes depuis Authentication → Users.
+3. **Recréer l'équipe** : se connecter à `/erp` avec `equipe@labelmaisoncg.fr`
+   et le mot de passe `ERP_PASSWORD`, puis Paramètres → Équipe → Inviter le
+   gérant (Abdel) : il reçoit le lien, crée son compte et son mot de passe, et
+   entre. Il invite ensuite le reste de l'équipe.
+4. **Rentrer les logements** : Logements → Connexions pour connecter Airbnb et
+   Booking.com si besoin (la connexion Repull de Label Maison est déjà là),
+   puis Logements → « + » pour chaque bien, et « Relier à une annonce » :
+   réservations, conversations, avis, prix et photos arrivent seuls. Ensuite
+   le propriétaire de chaque bien (fiche → carte Propriétaire → Inviter), le
+   volet Terrain, et les réglages de l'agent (Messagerie → Votre agent).
+
+Sur les téléphones, l'application se déconnecte toute seule à la prochaine
+ouverture (les anciens comptes n'existent plus) ; se reconnecter avec le
+nouveau compte suffit.
+
 ## Connexion à l'ERP
 
 Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
