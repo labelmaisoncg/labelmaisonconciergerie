@@ -766,16 +766,19 @@ Database → Backups).
 réservations, propriétaires, factures, bilans, incidents, contrôles,
 conversations, avis, contacts du CRM, accès), leur historique, l'état des
 automatisations, toutes les invitations, tous les membres de l'équipe sauf le
-compte technique, les autres espaces et leurs clés du coffre, et, si on le
-demande, tous les comptes Supabase (équipe et propriétaires) sauf le compte
-technique.
+compte technique, les autres espaces et leurs clés du coffre
+(`erp_<identifiant>_…`), et, si on le demande, tous les comptes Supabase
+(équipe et propriétaires) sauf le compte technique et le compte serveur.
 
 **Ce qui reste** : le schéma `erp` (tables, règles, déclencheurs, fonctions,
 temps réel), l'espace Label Maison, le compte technique
-`equipe@labelmaisoncg.fr` (il reste gérant : les fonctions serveur écrivent
-avec lui), les réglages Supabase (Auth, URL de retour, SMTP), `pg_cron`, le
-bucket `erp-fichiers`, les variables Vercel (clés Repull et IA, secrets des
-espaces extérieurs), le compte Repull et ses connexions aux plateformes.
+`equipe@labelmaisoncg.fr` (il reste gérant, relié à son compte Supabase : les
+fonctions serveur écrivent avec lui), le compte serveur
+`serveur@labelmaisoncg.fr` (`ERP_SERVEUR_MOT_DE_PASSE`), les réglages Supabase
+(Auth, URL de retour, SMTP), `pg_cron` et son secret au coffre
+(`erp_agent_cron_secret`), le bucket `erp-fichiers`, les variables Vercel
+(clés Repull et IA, secrets des espaces extérieurs), le compte Repull et ses
+connexions aux plateformes.
 
 Dans l'ordre :
 
@@ -785,9 +788,13 @@ Dans l'ordre :
    `supabase/erp-remise-a-zero.sql`. À la première ligne, remplacer `NON` par
    `OUI` ; à la deuxième aussi pour supprimer les comptes (sinon chacun garde
    son compte Supabase, mais plus aucun n'est membre : il faudra le réinviter).
-   Run. L'onglet Results doit afficher tout à 0, sauf `espaces` = 1 et
-   `membres` = 1 (et `comptes` = 1 si les comptes ont été supprimés). Tant que
-   la première ligne dit `NON`, le script refuse et n'efface rien.
+   Run. L'onglet Results doit afficher tout à 0, sauf `espaces` = 1,
+   `membres` = 1 et `membre_relie` = 1 (et `comptes` = 1 ou 2, compte
+   technique et compte serveur, si les comptes ont été supprimés). Tant que
+   la première ligne dit `NON`, le script refuse et n'efface rien. Tout passe
+   en une seule transaction : si une étape échoue (par exemple « permission
+   denied » sur `auth.users`), rien n'est effacé ; relancer avec la deuxième
+   ligne à `NON`, puis supprimer les comptes depuis Authentication → Users.
 3. **Recréer l'équipe** : se connecter à `/erp` avec `equipe@labelmaisoncg.fr`
    et le mot de passe `ERP_PASSWORD`, puis Paramètres → Équipe → Inviter le
    gérant (Abdel) : il reçoit le lien, crée son compte et son mot de passe, et
