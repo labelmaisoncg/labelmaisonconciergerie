@@ -795,16 +795,38 @@ Dans l'ordre :
    en une seule transaction : si une étape échoue (par exemple « permission
    denied » sur `auth.users`), rien n'est effacé ; relancer avec la deuxième
    ligne à `NON`, puis supprimer les comptes depuis Authentication → Users.
-3. **Recréer l'équipe** : se connecter à `/erp` avec `equipe@labelmaisoncg.fr`
-   et le mot de passe `ERP_PASSWORD`, puis Paramètres → Équipe → Inviter le
-   gérant (Abdel) : il reçoit le lien, crée son compte et son mot de passe, et
-   entre. Il invite ensuite le reste de l'équipe.
+3. **Recréer l'équipe** : lancer `supabase/erp-inviter-gerant.sql` dans le
+   SQL Editor avec l'adresse du gérant (Abdel) : le résultat est un lien
+   « Créer mon compte » à lui envoyer (SMS, WhatsApp). Il l'ouvre dans le
+   navigateur de son téléphone (pas dans l'app installée), choisit son mot de
+   passe, puis se connecte : il entre comme gérant et invite ensuite le reste
+   de l'équipe depuis Paramètres → Accès. La création du compte demande que
+   Supabase envoie l'e-mail de confirmation : brancher l'envoi (ci-dessous),
+   ou décocher « Confirm email » (Authentication → Sign In / Providers →
+   Email) le temps de la création, puis le recocher. Le compte technique
+   `equipe@labelmaisoncg.fr` doit exister (mot de passe `ERP_PASSWORD`) : les
+   demandes du site arrivent dans le CRM par lui.
 4. **Rentrer les logements** : Logements → Connexions pour connecter Airbnb et
    Booking.com si besoin (la connexion Repull de Label Maison est déjà là),
    puis Logements → « + » pour chaque bien, et « Relier à une annonce » :
    réservations, conversations, avis, prix et photos arrivent seuls. Ensuite
    le propriétaire de chaque bien (fiche → carte Propriétaire → Inviter), le
    volet Terrain, et les réglages de l'agent (Messagerie → Votre agent).
+
+**Brancher l'envoi des e-mails** (confirmation de compte, mot de passe
+oublié, invitations de l'équipe et des propriétaires). Le service d'envoi
+par défaut de Supabase n'écrit qu'aux membres de l'organisation Supabase :
+sans réglage, personne d'autre ne peut créer son compte.
+1. Resend → Domains → Add domain → `labelmaisoncg.fr` (région Europe). Resend
+   affiche trois ou quatre enregistrements DNS.
+2. IONOS → Domaines → `labelmaisoncg.fr` → DNS → les ajouter tels quels
+   (noms `send` et `resend._domainkey`), puis Resend → Verify.
+3. Supabase → Authentication → Emails → SMTP Settings → Enable custom SMTP :
+   expéditeur `noreply@labelmaisoncg.fr`, nom « Label Maison », hôte
+   `smtp.resend.com`, port 465, utilisateur `resend`, mot de passe une clé
+   API Resend (« Sending access »).
+4. Vercel → `CONTACT_FROM_EMAIL` = `Label Maison <noreply@labelmaisoncg.fr>`
+   → Redeploy (invitations envoyées par l'ERP).
 
 Sur les téléphones, l'application se déconnecte toute seule à la prochaine
 ouverture (les anciens comptes n'existent plus) ; se reconnecter avec le
