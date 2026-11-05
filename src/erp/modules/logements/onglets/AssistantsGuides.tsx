@@ -1,33 +1,41 @@
 /**
- * Fiche voyageur du logement : « Nouveau guide », pas à pas (kit
- * ui/Assistant.tsx). Rien n'est ajouté avant le bouton du récapitulatif ;
- * ensuite, comme avant, la fiche s'enregistre avec « Enregistrer ». Règles
- * et ligne : data/creation-guide.ts. La modification garde sa fenêtre
- * (GuidesFiche.tsx).
+ * Fiche voyageur du logement : « Nouveau guide » et « Nouvelle question »,
+ * pas à pas (kit ui/Assistant.tsx). Rien n'est ajouté avant le bouton du
+ * récapitulatif ; ensuite, comme avant, la fiche s'enregistre avec
+ * « Enregistrer ». Règles et lignes : data/creation-guide.ts. Les
+ * modifications gardent leur fenêtre (GuidesFiche.tsx).
  *
- * La fiche voyageur est un formulaire : l'assistant s'affiche hors de lui
- * (createPortal), et son « Continuer » ne l'envoie jamais (l'envoi s'arrête
- * au cadre de l'assistant).
+ * La fiche voyageur est un formulaire : les assistants s'affichent hors de
+ * lui (createPortal), et leur « Continuer » ne l'envoie jamais (l'envoi
+ * s'arrête au cadre de l'assistant).
  */
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { FileText, Link2 } from 'lucide-react';
 import {
   ECRANS_GUIDE,
+  ECRANS_QUESTION,
   SANS_CHAMP_GUIDE,
   erreursGuide,
+  erreursQuestion,
   guideDepuisBrouillon,
   guideVide,
+  questionDepuisBrouillon,
+  questionVide,
   recapGuide,
+  recapQuestion,
   type BrouillonGuide,
+  type BrouillonQuestion,
   type EcranGuide,
+  type EcranQuestion,
 } from '../../../data/creation-guide';
 import { horodatageMaintenant } from '../../../data/format';
 import { LIBELLE_TYPE_GUIDE, TAILLE_MAX_GUIDE_MO, estLienGuide, typeFichier } from '../../../data/guides';
 import { brouillonModifie } from '../../../data/parcours-assistant';
 import { nouvelId, useErp } from '../../../data/store';
-import type { GuideLogement } from '../../../data/types';
+import type { GuideLogement, Logement, QuestionFrequente } from '../../../data/types';
 import { Assistant, CHAMP_ASSISTANT, ChoixCartes, ChoixCourts, EnvoiFichier, Field, Input, NBSP, RecapAssistant, Textarea, useParcours } from '../../../ui';
+import { aideOuCode } from '../_composants/avertissementCode';
 
 /**
  * Hors du formulaire de la fiche (dans le cadre de l'ERP, pour ses couleurs) ; et
@@ -36,7 +44,7 @@ import { Assistant, CHAMP_ASSISTANT, ChoixCartes, ChoixCourts, EnvoiFichier, Fie
 const horsDuFormulaire = (contenu: ReactNode) =>
   createPortal(<div onSubmit={(e) => e.stopPropagation()}>{contenu}</div>, document.querySelector('.erp-root') ?? document.body);
 
-/** Comme avant : le guide rejoint la fiche, qui s’enregistre avec « Enregistrer ». */
+/** Comme avant : le guide ou la question rejoint la fiche, qui s’enregistre avec « Enregistrer ». */
 const rappelEnregistrer = (sujet: string) => `${sujet} s’ajoute à la fiche${NBSP}: pensez ensuite à «${NBSP}Enregistrer${NBSP}».`;
 
 const OUI_NON = [
@@ -179,6 +187,85 @@ export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId:
       {ecran === 'recapitulatif' && (
         <RecapAssistant lignes={recapGuide(b, (t) => LIBELLE_TYPE_GUIDE[t]).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))}>
           <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">{rappelEnregistrer('Le guide')}</p>
+        </RecapAssistant>
+      )}
+    </Assistant>,
+  );
+}
+
+/* --------------------------------------------------------------- question */
+
+const QUESTIONS_QUESTION: Record<EcranQuestion, { question: string; aide?: string }> = {
+  question: { question: `Quelle question posent les voyageurs${NBSP}?` },
+  reponse: { question: `Que leur répond votre agent${NBSP}?`, aide: 'Il reprend cette réponse telle quelle.' },
+  recapitulatif: { question: `Tout est correct${NBSP}?` },
+};
+
+const idQuestion = (cle: string) => `assistant-question-${cle}`;
+
+export function AssistantQuestion({ logement, onAjoute, onFermer }: { logement?: Logement; onAjoute: (q: QuestionFrequente) => void; onFermer: () => void }) {
+  const [b, setB] = useState<BrouillonQuestion>(questionVide);
+  const depart = useRef(b);
+  const titreId = useId();
+  const p = useParcours<EcranQuestion>({ ecrans: ECRANS_QUESTION, idChamp: idQuestion });
+  const ecran = p.ecran;
+  const erreurs = erreursQuestion(ecran, b);
+  const etat = p.etat(erreurs);
+
+  const ajouter = () => {
+    const r = questionDepuisBrouillon(b, nouvelId('question'));
+    if (!r.ok) return p.corriger(r.ecran, Object.keys(erreursQuestion('recapitulatif', b)));
+    onAjoute(r.question);
+    onFermer();
+  };
+  const continuer = () => p.continuer(erreurs, ajouter);
+  const q = QUESTIONS_QUESTION[ecran];
+
+  return horsDuFormulaire(
+    <Assistant
+      titre="Nouvelle question"
+      ecrans={ECRANS_QUESTION}
+      ecran={ecran}
+      question={q.question}
+      aide={q.aide}
+      idQuestion={titreId}
+      blocage={etat}
+      libelleSuite={p.libelleSuite('Créer la question')}
+      onContinuer={continuer}
+      onRetour={p.retour}
+      saisi={brouillonModifie(depart.current, b)}
+      abandon={`Abandonner cette question${NBSP}?`}
+      onFermer={onFermer}
+    >
+      {ecran === 'question' && (
+        <Field label="Question" erreur={etat.erreurChamp('question')}>
+          <Input
+            id={idQuestion('question')}
+            value={b.question}
+            onChange={(e) => setB({ ...b, question: e.target.value })}
+            onBlur={() => p.quitter('question')}
+            placeholder={`Où jeter les poubelles${NBSP}?`}
+            autoComplete="off"
+            className={CHAMP_ASSISTANT}
+          />
+        </Field>
+      )}
+      {ecran === 'reponse' && (
+        <Field label="Réponse" aide={aideOuCode(b.reponse, logement)} erreur={etat.erreurChamp('reponse')}>
+          <Textarea
+            id={idQuestion('reponse')}
+            rows={5}
+            value={b.reponse}
+            onChange={(e) => setB({ ...b, reponse: e.target.value })}
+            onBlur={() => p.quitter('reponse')}
+            placeholder="Local au rez-de-chaussée, à droite de l’entrée. Sortie le mardi soir."
+            className="text-[16px]"
+          />
+        </Field>
+      )}
+      {ecran === 'recapitulatif' && (
+        <RecapAssistant lignes={recapQuestion(b).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))}>
+          <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">{rappelEnregistrer('La question')}</p>
         </RecapAssistant>
       )}
     </Assistant>,

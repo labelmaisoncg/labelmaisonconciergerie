@@ -74,18 +74,24 @@ import { annonceDepuisBrouillon, brouillonAnnonce, ecransAnnonce, erreursAnnonce
 import { brouillonInitial, preparerAnnonce } from './annonces-equipe';
 import {
   ECRANS_GUIDE,
+  ECRANS_QUESTION,
   erreursGuide,
+  erreursQuestion,
   guideDepuisBrouillon,
   guideVide,
+  questionDepuisBrouillon,
+  questionVide,
   recapGuide,
+  recapQuestion,
   type BrouillonGuide,
+  type BrouillonQuestion,
 } from './creation-guide';
 import { LIBELLE_TYPE_GUIDE, estLienGuide } from './guides';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
-import type { ContactCrm, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, Reservation, RoleUtilisateur, Utilisateur } from './types';
+import type { ContactCrm, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, QuestionFrequente, Reservation, RoleUtilisateur, Utilisateur } from './types';
 import type { MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
@@ -891,6 +897,27 @@ section('Fiche voyageur, nouveau guide : écrans, règles et même ligne que l�
   const recap = recapGuide(cas[2], (t) => LIBELLE_TYPE_GUIDE[t]);
   verifier(recap.find((l) => l.cle === 'media')?.libelle === 'Vidéo' && recap.find((l) => l.cle === 'media')?.valeur === 'four.mp4', 'récapitulatif : type et nom du fichier');
   verifier(recapGuide({ ...v, titre: 'x', url: 'http://x' }, (t) => LIBELLE_TYPE_GUIDE[t]).find((l) => l.cle === 'media')?.valeur === '', 'récapitulatif : lien non valable, « À compléter »');
+}
+
+section('Fiche voyageur, nouvelle question : écrans, règles et même ligne que l’ancienne fenêtre');
+{
+  /** L'ancienne fenêtre « Nouvelle question » (GuidesFiche.tsx), recopiée telle quelle. */
+  const ancienne = (e: BrouillonQuestion, id: string): QuestionFrequente | undefined =>
+    !!e.question.trim() && !!e.reponse.trim() ? { id, question: e.question.trim(), reponse: e.reponse.trim() } : undefined;
+  verifier(ECRANS_QUESTION.join() === 'question,reponse,recapitulatif', 'écrans : question, réponse, récapitulatif');
+  verifier(erreursQuestion('question', questionVide()).question === 'Écrivez la question.' && !erreursQuestion('question', questionVide()).reponse, 'question vide : sur son écran seulement');
+  verifier(erreursQuestion('reponse', questionVide()).reponse === 'Écrivez la réponse.', 'réponse vide : bloquée');
+  for (const x of [
+    { question: ' Où jeter les poubelles ? ', reponse: ' Local à droite de l’entrée. ' },
+    { question: 'Chauffage', reponse: 'Thermostat dans l’entrée.\nRéglé à 20 °C.' },
+    { question: ' ', reponse: 'x' },
+    { question: 'x', reponse: '' },
+  ]) {
+    const r = questionDepuisBrouillon(x, 'question-n');
+    const avant = ancienne(x, 'question-n');
+    verifier(r.ok === !!avant && (!r.ok || empreinte(r.question) === empreinte(avant)), `même question ajoutée ou refusée (${x.question.trim() || 'vide'})`);
+  }
+  verifier(recapQuestion({ question: ' Wifi ? ', reponse: ' Sur la box ' }).map((l) => l.valeur).join(' | ') === 'Wifi ? | Sur la box', 'récapitulatif : question et réponse telles qu’ajoutées');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

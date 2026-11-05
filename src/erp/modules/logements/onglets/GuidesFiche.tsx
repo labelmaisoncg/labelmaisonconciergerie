@@ -7,7 +7,7 @@ import { LIBELLE_TYPE_GUIDE, TAILLE_MAX_GUIDE_MO, estLienGuide, typeFichier } fr
 import type { BrouillonGuide } from '../../../data/creation-guide';
 import type { GuideLogement, Logement, QuestionFrequente } from '../../../data/types';
 import { aideOuCode } from '../_composants/avertissementCode';
-import { AssistantGuide } from './AssistantsGuides';
+import { AssistantGuide, AssistantQuestion } from './AssistantsGuides';
 
 const ICONE: Record<GuideLogement['media']['type'], ReactNode> = {
   video: <Video />,
@@ -213,8 +213,9 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
 
 /* ------------------------------------------------- questions fréquentes */
 
-/** Questions fréquentes du logement : l'agent reprend ces réponses telles quelles. */
+/** Questions fréquentes du logement : l'agent reprend ces réponses telles quelles. Une nouvelle question s'ajoute pas à pas (AssistantQuestion). */
 export function SectionQuestions({ questions, logement, onChange }: { questions: QuestionFrequente[]; logement?: Logement; onChange: (q: QuestionFrequente[]) => void }) {
+  const [nouvelle, setNouvelle] = useState(false);
   const [edition, setEdition] = useState<{ id: string | null; question: string; reponse: string } | null>(null);
   const valide = !!edition?.question.trim() && !!edition.reponse.trim();
 
@@ -231,7 +232,7 @@ export function SectionQuestions({ questions, logement, onChange }: { questions:
         titre="Questions fréquentes"
         description="Les réponses que votre agent peut donner telles quelles."
         actions={
-          <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, question: '', reponse: '' })}>
+          <Button size="sm" icone={<Plus />} onClick={() => setNouvelle(true)}>
             Ajouter
           </Button>
         }
@@ -256,17 +257,19 @@ export function SectionQuestions({ questions, logement, onChange }: { questions:
         </ul>
       )}
 
+      {nouvelle && <AssistantQuestion logement={logement} onAjoute={(q) => onChange([...questions, q])} onFermer={() => setNouvelle(false)} />}
+
       <Modal
         ouvert={!!edition}
         onFermer={() => setEdition(null)}
-        titre={edition?.id ? 'Modifier la question' : 'Nouvelle question'}
+        titre="Modifier la question"
         pied={
           <>
             <Button variant="ghost" onClick={() => setEdition(null)}>
               Annuler
             </Button>
             <Button variant="primary" disabled={!valide} onClick={valider}>
-              {edition?.id ? 'Valider' : 'Ajouter'}
+              Valider
             </Button>
           </>
         }
