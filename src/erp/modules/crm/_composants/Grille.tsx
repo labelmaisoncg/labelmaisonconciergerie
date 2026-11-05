@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight, Phone } from 'lucide-react';
+import { EMAIL_EQUIPE } from '../../../data/config';
 import { LIBELLE_SOURCE_CRM, LIBELLE_STATUT_CRM, STATUTS_CLOS, STATUTS_CRM } from '../../../data/crm';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, jourMois } from '../../../data/format';
 import { optionsSuiviCrm } from '../../../data/marque-espace';
+import { estCompteTechnique } from '../../../data/oauth-regles';
 import { useErp } from '../../../data/store';
 import type { ContactCrm, StatutContactCrm, SuiviCrm } from '../../../data/types';
 import { cn } from '../../../ui';
@@ -123,8 +125,9 @@ function CelluleRelance({ c, onModifier, lectureSeule }: { c: ContactCrm; onModi
 function Ligne({ c, n, onOuvrir, onModifier, lectureSeule }: { c: ContactCrm; n: number } & Omit<GrilleProps, 'contacts'>) {
   const { utilisateurs } = useErp();
   const derniere = c.notes || c.motifAttente || c.message || '';
-  // Label Maison : Abdel et Kamel ; un autre espace : ses membres.
-  const suivis = [{ valeur: '', libelle: '—' }, ...optionsSuiviCrm(espaceOuvert(), utilisateurs, c.responsable, true)];
+  // Label Maison : Abdel et Kamel ; un autre espace : ses membres (jamais un compte technique).
+  const personnes = utilisateurs.filter((u) => !estCompteTechnique(u.email, EMAIL_EQUIPE));
+  const suivis = [{ valeur: '', libelle: '—' }, ...optionsSuiviCrm(espaceOuvert(), personnes, c.responsable, true)];
   return (
     <tr className="group bg-(--lm-surface) hover:bg-(--lm-surface-2)">
       <td className={cn(CELLULE, 'lm-chiffres hidden text-center text-[12px] text-(--lm-encre-3) sm:table-cell')}>{n}</td>
