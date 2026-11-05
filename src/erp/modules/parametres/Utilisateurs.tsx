@@ -1,8 +1,10 @@
 import { useState, type FormEvent } from 'react';
-import { Check, Copy, Ellipsis, Mail, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { Check, Copy, Ellipsis, Mail, Server, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
+import { EMAIL_EQUIPE } from '../../data/config';
+import { estCompteTechnique } from '../../data/oauth-regles';
 import { useErp } from '../../data/store';
 import { LIBELLES } from '../../data/libelles';
-import { pluriel } from '../../data/format';
+import { insecables, pluriel } from '../../data/format';
 import { espaceDesDonnees } from '../../data/espaces';
 import { lienCreationCompte } from '../../data/invitation';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
@@ -71,11 +73,11 @@ function InvitationMembre({ invitation: i, demo, ouvertes, onEnvoyer }: { invita
           ) : r.lien ? (
             <>
               <p>
-                {demo ? 'Démonstration : aucun e-mail n’est envoyé.' : 'Nous ne pouvons pas envoyer l’e-mail pour l’instant.'} Copiez ce lien et envoyez-le à {i.nom}{' '}
+                {demo ? insecables('Démonstration : aucun e-mail n’est envoyé.') : 'Nous ne pouvons pas envoyer l’e-mail pour l’instant.'} Copiez ce lien et envoyez-le à {i.nom}{' '}
                 (SMS, WhatsApp…).{remplace}
               </p>
               <div className="mt-2 flex gap-2">
-                <Input readOnly value={r.lien} onFocus={(e) => e.currentTarget.select()} aria-label={'Lien « Créer mon compte »'} className="text-[12.5px]" />
+                <Input readOnly value={r.lien} onFocus={(e) => e.currentTarget.select()} aria-label={insecables('Lien « Créer mon compte »')} className="text-[12.5px]" />
                 <Button icone={copie ? <Check /> : <Copy />} onClick={() => void copier()}>
                   {copie ? 'Copié' : 'Copier'}
                 </Button>
@@ -124,6 +126,13 @@ const TON_ROLE = { gerant: 'or', operations: 'neutre', prestataire: 'neutre', le
 const rolesProposes = (actuel?: RoleUtilisateur) =>
   ROLES.filter((r) => r.role !== 'prestataire' || r.role === actuel).map((r) => ({ valeur: r.role, libelle: LIBELLES.role[r.role] }));
 
+/**
+ * Compte technique (serveur, compte d'équipe) : le serveur lit et écrit la
+ * base avec lui. Rangé à part, sans rôle à changer ni accès à retirer, et
+ * jamais compté dans l'équipe.
+ */
+const compteTechnique = (u: Utilisateur) => estCompteTechnique(u.email, EMAIL_EQUIPE);
+
 export default function Utilisateurs() {
   const d = useErp();
   const [message, setMessage] = useState<string>();
@@ -134,6 +143,8 @@ export default function Utilisateurs() {
   /** Membre dont la feuille d'actions est ouverte (téléphone). */
   const [feuille, setFeuille] = useState<Utilisateur | null>(null);
   const demo = d.mode !== 'reel';
+  const membres = d.utilisateurs.filter((u) => !compteTechnique(u));
+  const techniques = d.utilisateurs.filter(compteTechnique);
 
   // Même appel après l'ajout et depuis une ligne ; la réponse ({ envoye, lien? }) dit s'il faut copier le lien.
   const envoyerInvitation = async (nom: string, email: string, origine: Invitation['origine']) => {
@@ -147,9 +158,15 @@ export default function Utilisateurs() {
     }
   };
 
+  /**
+   * Le dernier gérant de l'équipe (comptes techniques à part) ne perd jamais
+   * ce rôle ni son accès, qui que ce soit qui le demande : le compte d'équipe,
+   * ouvert avec ERP_PASSWORD, ne laisse pas l'espace sans gérant en personne.
+   */
+  const dernierGerant = (u: Utilisateur) => u.role === 'gerant' && !compteTechnique(u) && membres.filter((x) => x.role === 'gerant').length === 1;
+
   const changerRole = (u: Utilisateur, role: RoleUtilisateur) => {
-    if (u.id === d.utilisateur.id && role !== 'gerant' && d.utilisateurs.filter((x) => x.role === 'gerant').length === 1)
-      return setMessage('Impossible : il doit rester au moins un gérant.');
+    if (role !== 'gerant' && dernierGerant(u)) return setMessage(insecables('Impossible : il doit rester au moins un gérant.'));
     d.upsert('utilisateurs', { ...u, role });
     setMessage(undefined);
   };
@@ -169,7 +186,8 @@ export default function Utilisateurs() {
 
   const retirer = (u: Utilisateur) => {
     if (u.id === d.utilisateur.id) return setMessage('Vous ne pouvez pas retirer votre propre accès.');
-    if (!window.confirm(`Retirer l’accès de ${u.nom} (${u.email}) à l’ERP ?`)) return;
+    if (dernierGerant(u)) return setMessage(insecables('Impossible : il doit rester au moins un gérant.'));
+    if (!window.confirm(insecables(`Retirer l’accès de ${u.nom} (${u.email}) à l’ERP ?`))) return;
     d.remove('utilisateurs', u.id);
     setMessage(undefined);
   };
@@ -288,7 +306,26 @@ export default function Utilisateurs() {
             onEnvoyer={() => void envoyerInvitation(invitation.nom, invitation.email, invitation.origine)}
           />
         )}
-        <Table legende="Utilisateurs" colonnes={colonnes} lignes={d.utilisateurs} cleLigne={(u) => u.id} vide="Personne dans l’équipe pour l’instant." />
+        <Table legende="Utilisateurs" colonnes={colonnes} lignes={membres} cleLigne={(u) => u.id} vide="Personne dans l’équipe pour l’instant." />
+        {techniques.length > 0 && (
+          <ul aria-label="Comptes techniques" className="mt-3 divide-y divide-(--lm-bord) rounded-xl border border-(--lm-bord) bg-(--lm-surface)">
+            {techniques.map((u) => (
+              <li key={u.id} className="flex items-start gap-2.5 px-3 py-2.5 text-[13.5px] sm:px-4">
+                <span className="hidden size-8 shrink-0 place-items-center rounded-full bg-(--lm-surface-2) text-(--lm-encre-2) sm:grid" aria-hidden>
+                  <Server className="size-4" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-medium">
+                    Compte technique du serveur
+                    {u.id === d.utilisateur.id && <span className="ml-1.5 text-[12px] font-normal text-(--lm-encre-3)">(vous)</span>}
+                  </span>
+                  <span className="block truncate text-[12px] text-(--lm-encre-3)">{u.email}</span>
+                  <span className="mt-1 block text-[12.5px] text-(--lm-encre-2)">Il fait tourner le site et la synchronisation des plateformes&nbsp;: ne le supprimez pas.</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
         <Modal ouvert={!!feuille} onFermer={() => setFeuille(null)} titre={feuille?.nom} description={feuille?.email} taille="sm">
           {feuille && (
             <div className="grid gap-2">
@@ -344,15 +381,15 @@ export default function Utilisateurs() {
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
           {d.mode === 'reel'
-            ? 'Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Pour créer son compte, il ouvre le lien de son invitation (« Envoyer l’invitation » sur sa ligne la lui envoie). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.'
-            : 'Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.'}
+            ? insecables('Chaque membre se connecte avec son propre compte (e-mail et mot de passe). Pour créer son compte, il ouvre le lien de son invitation (« Envoyer l’invitation » sur sa ligne la lui envoie). Les droits sont vérifiés par la base elle-même : gérant et opérations consultent et modifient, lecture consulte seulement, seul un gérant gère les membres.')
+            : insecables('Mode démonstration : les rôles ne sont pas appliqués. En production, chaque membre a son compte et la base vérifie les droits.')}
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {ROLES.filter((r) => r.role !== 'prestataire' || d.utilisateurs.some((u) => u.role === 'prestataire')).map((r) => (
+          {ROLES.filter((r) => r.role !== 'prestataire' || membres.some((u) => u.role === 'prestataire')).map((r) => (
             <div key={r.role} className="rounded-lg border border-(--lm-bord) p-3">
               <div className="mb-1 flex items-center justify-between gap-2">
                 <p className="text-[14px] font-semibold">{LIBELLES.role[r.role]}</p>
-                <Badge tone={TON_ROLE[r.role]}>{pluriel(d.utilisateurs.filter((u) => u.role === r.role).length, 'compte')}</Badge>
+                <Badge tone={TON_ROLE[r.role]}>{pluriel(membres.filter((u) => u.role === r.role).length, 'compte')}</Badge>
               </div>
               <p className="mb-1 text-[12.5px] text-(--lm-encre-2)">{r.description}</p>
               <ul className="list-disc space-y-0.5 pl-5 text-[12.5px] text-(--lm-encre-2)">

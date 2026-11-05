@@ -99,7 +99,12 @@ export interface ErpContexte extends ErpDonnees {
   /** Message à afficher (échec d'une opération hors données, ex. gestion des membres). */
   avertissement: string | null;
   fermerAvertissement: () => void;
-  seDeconnecter: () => void;
+  /**
+   * Déconnexion (session de l'application et de la page d'accès). `retour` :
+   * page de l'ERP où revenir après la prochaine connexion (« Changer de
+   * compte » de la page d'autorisation de Claude) ; sans lui, l'accueil.
+   */
+  seDeconnecter: (retour?: string) => void;
 
   upsert: <C extends NomCollection>(collection: C, element: ElementDe<C>) => void;
   remove: (collection: NomCollection, id: Id) => void;
@@ -225,7 +230,7 @@ interface PropsCoeur {
   /** Production : synchronisation active (changements distants, relance). */
   synchro?: Synchro | null;
   etatSynchro: EtatSynchro | null;
-  seDeconnecter: () => void;
+  seDeconnecter: (retour?: string) => void;
   /** Démo : jeu de données de remplacement pour « Réinitialiser ». */
   jeuDemo?: () => ErpDonnees;
   children: ReactNode;
@@ -832,7 +837,7 @@ function CoeurDemo({ seed, children }: { seed: ModuleSeed; children: ReactNode }
       lectureSeule={false}
       persistance={persistance}
       etatSynchro={null}
-      seDeconnecter={() => window.location.assign('/erp/deconnexion')}
+      seDeconnecter={(retour) => window.location.assign(adresseDeconnexion(retour))}
       jeuDemo={jeuDemo}
     >
       {children}
@@ -868,6 +873,15 @@ function retenirEspace(id: string) {
   } catch {
     /* navigation privée */
   }
+}
+
+/**
+ * Page de déconnexion (middleware.ts : session de la page d'accès effacée,
+ * puis connexion). `retour` : page de l'ERP rouverte après la connexion
+ * (revérifiée par le middleware, suiteSure : jamais hors de /erp).
+ */
+function adresseDeconnexion(retour?: string): string {
+  return typeof retour === 'string' && retour.startsWith('/erp') ? `/erp/deconnexion?suite=${encodeURIComponent(retour)}` : '/erp/deconnexion';
 }
 
 function FournisseurReel({ children }: { children: ReactNode }) {
@@ -1072,14 +1086,17 @@ function FournisseurReel({ children }: { children: ReactNode }) {
     return () => window.removeEventListener('beforeunload', avantFermeture);
   }, []);
 
-  const seDeconnecter = useCallback(() => {
-    void (async () => {
-      setPhase({ nom: 'demarrage' });
-      arreterSynchro();
-      await deconnexionSupabase();
-      window.location.assign('/erp/deconnexion');
-    })();
-  }, [arreterSynchro]);
+  const seDeconnecter = useCallback(
+    (retour?: string) => {
+      void (async () => {
+        setPhase({ nom: 'demarrage' });
+        arreterSynchro();
+        await deconnexionSupabase();
+        window.location.assign(adresseDeconnexion(retour));
+      })();
+    },
+    [arreterSynchro],
+  );
 
   const reessayer = useCallback(() => {
     void obtenirClient()
@@ -1148,7 +1165,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
           setACreer(null);
           reessayer();
         }}
-        onDeconnecter={seDeconnecter}
+        onDeconnecter={() => seDeconnecter()}
       />
     );
   }
@@ -1159,7 +1176,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
         phase={phase}
         onReessayer={reessayer}
         onMotDePasseChange={apresNouveauMotDePasse}
-        onDeconnecter={seDeconnecter}
+        onDeconnecter={() => seDeconnecter()}
         onSuivreLien={suivreLien}
         onRester={resterConnecte}
       />

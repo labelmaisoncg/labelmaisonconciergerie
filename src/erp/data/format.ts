@@ -54,6 +54,9 @@ export const MAINTENANT = MODE_DEMO ? `${AUJOURDHUI}T10:30:00+02:00` : horodatag
 /** Espaces insécables avant « : ; ? ! » et à l'intérieur des guillemets : la ponctuation ne passe jamais seule à la ligne. */
 export const insecables = (t: string): string => t.replace(/ ([:;?!»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
 
+/** « de Kamel », « d’Abdel », « d’Hélène », « d’Hugo » : élision devant une voyelle ou un h muet. */
+export const deNom = (nom: string): string => (/^h?[aàâäeéèêëiîïoôöuùûüyÿæœ]/iu.test(nom) ? `d’${nom}` : `de ${nom}`);
+
 /* ------------------------------------------------------------------ argent */
 
 const EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' });

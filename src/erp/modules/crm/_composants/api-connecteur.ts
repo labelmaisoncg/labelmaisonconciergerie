@@ -8,6 +8,10 @@ export interface ReponseConnecteur {
   erreur?: string;
   connexions?: number;
   derniere?: string;
+  /** Adresses des gérants dont une connexion est active (jamais un compte technique). */
+  par?: string[];
+  /** L'ERP est ouvert avec un compte technique : il ne peut pas connecter Claude. */
+  compteTechnique?: boolean;
   redirection?: string;
 }
 

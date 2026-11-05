@@ -24,7 +24,8 @@ export default function handler(req: any, res: any) {
       const espace = espaceDuJeton(jeton);
       if (!espace) return null;
       const ouvert = await espaceOuvertAuJeton(c, espace);
-      const acces = ouvert ? await accesValide(ouvert.base, jeton) : null;
+      // c.email : le compte d'équipe, dont une autorisation ne vaut jamais (compte technique).
+      const acces = ouvert ? await accesValide(ouvert.base, jeton, c.email) : null;
       // Qui agit, pour la trace des actions de Claude : le client OAuth et le gérant qui l'a autorisé.
       return ouvert && acces ? { ...ouvert, client: { genre: 'oauth' as const, autorisePar: acces.par, ...(acces.client ? { client: acces.client.slice(0, 80) } : {}) } } : null;
     },

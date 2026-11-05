@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { FileText, Mail, MessageSquareText, PenLine, Phone, PhoneMissed, PhoneOff, Trash2, Voicemail } from 'lucide-react';
+import { EMAIL_EQUIPE } from '../../../data/config';
 import { EMAIL_SUR, LIBELLE_RESULTAT, LIBELLE_SOURCE_CRM, noterAppel, STATUTS_CRM } from '../../../data/crm';
 import { LIBELLE_PROFIL, profilContact } from '../../../data/crm-assistant';
 import { espaceOuvert } from '../../../data/espaces';
 import { dateHeure, horodatageMaintenant, pluriel } from '../../../data/format';
 import { optionsSuiviCrm } from '../../../data/marque-espace';
+import { estCompteTechnique } from '../../../data/oauth-regles';
 import { useErp } from '../../../data/store';
 import type { ContactCrm, ProfilContactCrm, ResultatAppel, StatutContactCrm, SuiviCrm } from '../../../data/types';
 import { Button, classesBouton, Drawer, Field, Input, MenuActions, Modal, Repli, Select, Textarea, Timeline, type Ton } from '../../../ui';
@@ -200,7 +202,7 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
               value={brouillon.responsable ?? ''}
               disabled={lectureSeule}
               onChange={(e) => onModifier({ ...contact, responsable: (e.target.value || undefined) as SuiviCrm | undefined })}
-              options={[{ valeur: '', libelle: 'Personne' }, ...optionsSuiviCrm(espaceOuvert(), utilisateurs, brouillon.responsable)]}
+              options={[{ valeur: '', libelle: 'Personne' }, ...optionsSuiviCrm(espaceOuvert(), utilisateurs.filter((u) => !estCompteTechnique(u.email, EMAIL_EQUIPE)), brouillon.responsable)]}
             />
           </Field>
           {contact.statut === 'en_attente' && (

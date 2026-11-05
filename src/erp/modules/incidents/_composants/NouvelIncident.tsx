@@ -1,6 +1,8 @@
 import { useState } from 'react';
+import { EMAIL_EQUIPE } from '../../../data/config';
 import { AUJOURDHUI, dateCourte, versCentimes } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
+import { estCompteTechnique } from '../../../data/oauth-regles';
 import { useErp } from '../../../data/store';
 import type { CategorieIncident, GraviteIncident, Incident, Refacturable } from '../../../data/types';
 import { Button, EnvoiFichier, Field, Input, Modal, Select, Textarea, Prerequis } from '../../../ui';
@@ -94,7 +96,7 @@ export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
           />
         </Field>
         <Field label="Responsable du suivi">
-          <Select value={f.responsable} placeholder="Personne pour l’instant" onChange={(e) => maj('responsable', e.target.value)} options={utilisateurs.filter((u) => u.role !== 'prestataire').map((u) => ({ valeur: u.nom, libelle: u.nom }))} />
+          <Select value={f.responsable} placeholder="Personne pour l’instant" onChange={(e) => maj('responsable', e.target.value)} options={utilisateurs.filter((u) => u.role !== 'prestataire' && !estCompteTechnique(u.email, EMAIL_EQUIPE)).map((u) => ({ valeur: u.nom, libelle: u.nom }))} />
         </Field>
         <Field label="Catégorie" requis>
           <Select value={f.categorie} onChange={(e) => maj('categorie', e.target.value as CategorieIncident)} options={options(LIBELLES.categorieIncident)} />

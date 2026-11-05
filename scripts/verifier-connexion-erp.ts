@@ -22,7 +22,10 @@
  * invitation de conciergerie sans code : rien), raison du refus (espace
  * suspendu, invitation expirée ou annulée), invitation à créer l'espace
  * d'une conciergerie (en attente : entre ; échue ou de forme inconnue :
- * refusée ; base d'avant les espaces : inchangée), zone du linge inchangée.
+ * refusée ; base d'avant les espaces : inchangée), déconnexion avec retour
+ * (« Changer de compte » de la page d'autorisation de Claude : retour sur la
+ * même demande, jamais hors de l'ERP ni avec des identifiants), zone du linge
+ * inchangée.
  *
  * Fichier hors de l'ERP (middleware) : pas dans tsc.
  * Lancement (Node 20+) :
@@ -314,6 +317,36 @@ async function principal() {
     verifier(g!.status === 200 && (await g!.text()).includes('Adresse e-mail'), 'GET /erp/connexion : la page');
     const d = await appeler('/erp/deconnexion');
     verifier(/erp_session=;.*Max-Age=0/.test(d!.headers.get('set-cookie') ?? ''), 'déconnexion : session effacée');
+
+    // « Changer de compte » (page d'autorisation de Claude) : après la connexion, retour sur la même demande, dans l'ERP seulement.
+    const demande = '/erp/autoriser-claude?response_type=code&client_id=claude-test&state=etat-1';
+    const dc = await appeler(`/erp/deconnexion?suite=${encodeURIComponent(demande)}`);
+    const hc = await dc!.text();
+    verifier(
+      dc!.status === 200 && /erp_session=;.*Max-Age=0/.test(dc!.headers.get('set-cookie') ?? '') && hc.includes(`"suite":"${demande}"`),
+      'déconnexion avec retour : session effacée, retour sur la demande de Claude',
+      /"suite":"[^"]*"/.exec(hc)?.[0],
+    );
+    for (const [quoi, suite] of [
+      ['autre site', 'https://exemple-piege.fr/erp'],
+      ['adresse sans protocole', '//exemple-piege.fr/erp'],
+      ['hors de l’ERP', '/linge'],
+      ['la déconnexion elle-même', '/erp/deconnexion'],
+      ['la déconnexion avec « / » final', '/erp/deconnexion/'],
+      ['la déconnexion par « . »', '/erp/./deconnexion'],
+      ['sortie par « .. »', '/erp/../api/erp-connecteur-claude'],
+      ['sortie par « %2e%2e »', '/erp/%2e%2e/espace-proprietaire'],
+      ['barre oblique inverse', '/erp/\\exemple-piege.fr'],
+      ['fragment', '/erp/#access_token=a&refresh_token=b&type=signup'],
+      ['trop longue', `/erp/${'a'.repeat(3000)}`],
+    ]) {
+      const p = await (await appeler(`/erp/deconnexion?suite=${encodeURIComponent(suite)}`))!.text();
+      verifier(p.includes('"suite":"/erp"'), `déconnexion avec retour, ${quoi} : retour à /erp`, /"suite":"[^"]*"/.exec(p)?.[0]);
+    }
+    const ps = await (await appeler(`/erp/deconnexion?suite=${encodeURIComponent('/erp/autoriser-claude?state=x&email=a@b.fr&access_token=JETON')}`))!.text();
+    verifier(ps.includes('"suite":"/erp/autoriser-claude?state=x"') && !ps.includes('JETON') && !ps.includes('a@b.fr'), 'déconnexion avec retour : identifiants jamais recopiés', /"suite":"[^"]*"/.exec(ps)?.[0]);
+    const pm = await (await appeler(`/erp/deconnexion?suite=${encodeURIComponent('/erp/autoriser-claude?state=x&mot_de_passe=SECRET&e_mail=a@b.fr&refresh-token=R')}`))!.text();
+    verifier(pm.includes('"suite":"/erp/autoriser-claude?state=x"'), 'déconnexion avec retour : identifiants aux noms variés (mot_de_passe, e_mail, refresh-token) jamais recopiés', /"suite":"[^"]*"/.exec(pm)?.[0]);
   }
 
   section('Connexion d’un membre (base d’avant les espaces)');

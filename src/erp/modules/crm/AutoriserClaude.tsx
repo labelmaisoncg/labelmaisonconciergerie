@@ -1,8 +1,10 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, Check, Link2Off } from 'lucide-react';
+import { EMAIL_EQUIPE } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
-import { adresseRetour, demandeur, lireDemande } from '../../data/oauth-regles';
+import { deNom } from '../../data/format';
+import { TEXTE_COMPTE_TECHNIQUE, TITRE_COMPTE_TECHNIQUE, adresseRetour, demandeur, estCompteTechnique, lireDemande } from '../../data/oauth-regles';
 import { useErp } from '../../data/store';
 import { Alert, Button, ButtonLink, Card, EmptyState } from '../../ui';
 import { appelerConnecteur } from './_composants/api-connecteur';
@@ -33,10 +35,15 @@ const OUVRIR_CRM = (
  * L'accès donné vaut pour l'espace ouvert, et lui seul : son nom est dans le
  * titre, et le serveur revérifie que la personne en est gérante (en-tête
  * x-erp-espace) avant de créer le code, rangé dans cet espace.
+ *
+ * Claude se connecte au compte de la personne connectée, nommé au-dessus des
+ * boutons. Un compte technique (serveur, compte d'équipe) n'autorise jamais
+ * (le serveur le refuse aussi) : « Changer de compte » déconnecte, puis
+ * ramène sur cette même demande après la connexion.
  */
 export default function AutoriserClaude() {
   const [params] = useSearchParams();
-  const { utilisateur, mode } = useErp();
+  const { utilisateur, mode, seDeconnecter } = useErp();
   const nomEspace = espaceOuvert().nom;
   const lu = useMemo(() => lireDemande(Object.fromEntries(params)), [params]);
   const [envoi, setEnvoi] = useState(false);
@@ -90,6 +97,12 @@ export default function AutoriserClaude() {
     }
   };
   const refuser = () => window.location.assign(adresseRetour(demande.redirect_uri, { error: 'access_denied', state: demande.state }));
+  const technique = estCompteTechnique(utilisateur.email, EMAIL_EQUIPE);
+  // Même déconnexion que le menu de l'ERP ; la demande de Claude reste dans l'adresse de retour.
+  const changerDeCompte = () => {
+    setEnvoi(true);
+    seDeconnecter(`${window.location.pathname}${window.location.search}`);
+  };
 
   return (
     <Colonne>
@@ -118,13 +131,35 @@ export default function AutoriserClaude() {
             <Alert tone="alerte" titre="Demande venue d’une application de cet ordinateur. N’autorisez que si vous venez de lancer la connexion depuis Claude Code." />
           )}
           {erreur && <Alert tone="danger" titre={erreur} />}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" disabled={envoi} onClick={refuser}>
-              Refuser
-            </Button>
-            <Button variant="primary" chargement={envoi} onClick={() => void autoriser()}>
-              Autoriser
-            </Button>
+          {technique && (
+            <Alert tone="info" titre={TITRE_COMPTE_TECHNIQUE}>
+              {TEXTE_COMPTE_TECHNIQUE}
+            </Alert>
+          )}
+          <div className="space-y-2">
+            <p className="text-right text-[12.5px] text-(--lm-encre-2)">
+              Avec le compte {deNom(utilisateur.nom || utilisateur.email)}
+            </p>
+            {/* Comme le pied des fenêtres du kit : le refus en lien à gauche, l'action à droite. */}
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={envoi}
+                onClick={refuser}
+                className="inline-flex h-10 items-center rounded-md text-[14px] font-medium lm-lien disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-11"
+              >
+                Refuser
+              </button>
+              {technique ? (
+                <Button variant="primary" chargement={envoi} onClick={changerDeCompte}>
+                  Changer de compte
+                </Button>
+              ) : (
+                <Button variant="primary" chargement={envoi} onClick={() => void autoriser()}>
+                  Autoriser
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </Card>

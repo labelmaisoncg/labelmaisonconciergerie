@@ -5,6 +5,12 @@
 //   /api/crm-mcp/<clé>   accès par clé fixée par l'administrateur (MCP_CRM_TOKEN)
 // Chaque POST porte un message JSON-RPC et reçoit sa réponse en JSON (pas de SSE).
 //
+// La clé fixe MCP_CRM_TOKEN n'est rattachée à personne : aucun gérant ne l'a
+// autorisée, rien ne la retire quand quelqu'un quitte l'équipe, et la trace
+// des actions de Claude ne dit que « clé ». Quand chaque gérant connecte
+// Claude avec son propre compte (OAuth), mieux vaut la retirer de Vercel :
+// /api/crm-mcp/<clé> est alors fermée.
+//
 // Chaque appel ne voit QUE l'espace de son accès : celui du jeton OAuth (le
 // gérant qui a autorisé Claude, voir api/_oauth.ts), Label Maison pour la clé
 // fixée. Les données sont lues (et le CRM écrit) avec le compte serveur dans
