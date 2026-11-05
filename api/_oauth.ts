@@ -18,7 +18,11 @@
 // Le membre qui a autorisé Claude doit rester gérant de l'espace : retiré, ou
 // passé « opérations » ou « lecture », ses codes et jetons ne valent plus rien
 // (revérifié à l'échange du code, à chaque rafraîchissement, et à chaque
-// appel, au plus tard 1 min après, comme une déconnexion).
+// appel, au plus tard 1 min après, comme une déconnexion). Jamais un compte
+// technique (serveur, ou compte d'équipe dont l'adresse `emailEquipe` vient
+// de la configuration du serveur, configuration().email) : une autorisation
+// donnée avec lui avant cette règle tombe de la même façon, et Claude doit
+// être reconnecté par un gérant avec son propre compte.
 //
 // Un fichier préfixé par « _ » n'est pas exposé comme route par Vercel.
 // =============================================================================
@@ -26,7 +30,7 @@
 import crypto from 'node:crypto';
 import { ID_LABEL_MAISON } from '../src/erp/data/espaces.js';
 import type { BaseErp } from '../src/erp/data/repull-synchro.js';
-import { avecEspace, espaceDuJeton, type DemandeAutorisation } from '../src/erp/data/oauth-regles.js';
+import { MESSAGE_OAUTH_COMPTE_TECHNIQUE, avecEspace, espaceDuJeton, estCompteTechnique, type DemandeAutorisation } from '../src/erp/data/oauth-regles.js';
 
 const COLLECTION = 'connecteurs';
 const REVOCATION = 'oauth-revocation';
@@ -88,9 +92,13 @@ export interface Jetons {
   scope: 'crm';
 }
 
-/** Le membre qui a autorisé Claude est-il toujours gérant de l'espace de `base` ? */
-async function toujoursGerant(base: BaseErp, par: string | undefined): Promise<boolean> {
-  return !!par && (await base.roleMembre(par)) === 'gerant';
+/**
+ * Le membre qui a autorisé Claude est-il toujours gérant de l'espace de `base` ?
+ * Jamais pour un compte technique (`emailEquipe` : l'adresse du compte d'équipe,
+ * configuration().email).
+ */
+async function toujoursGerant(base: BaseErp, par: string | undefined, emailEquipe: string): Promise<boolean> {
+  return !!par && !estCompteTechnique(par, emailEquipe) && (await base.roleMembre(par)) === 'gerant';
 }
 
 function egales(a: string, b: string): boolean {
@@ -146,11 +154,13 @@ async function emettre(base: BaseErp, client: string, par: string, famille: stri
 /**
  * grant_type=authorization_code : vérifie le code, PKCE et l'adresse de
  * retour, puis émet les jetons. `base` : celle de l'espace du code
- * (espaceDuJeton) ; un code rangé pour un autre espace est refusé.
+ * (espaceDuJeton) ; un code rangé pour un autre espace est refusé, comme
+ * celui d'un compte technique (`emailEquipe` : configuration().email).
  */
 export async function echangerCode(
   base: BaseErp,
   p: { code: string; code_verifier: string; redirect_uri: string; client_id?: string },
+  emailEquipe: string,
 ): Promise<Jetons> {
   if (!p.code || !p.code_verifier || !p.redirect_uri) throw new ErreurOAuth('invalid_request', 'code, code_verifier et redirect_uri sont requis.');
   if (!/^[A-Za-z0-9._~-]{43,128}$/.test(p.code_verifier)) throw new ErreurOAuth('invalid_request', 'code_verifier invalide.');
@@ -165,12 +175,17 @@ export async function echangerCode(
   const defi = crypto.createHash('sha256').update(p.code_verifier).digest('base64url');
   if (!egales(defi, c.defi)) throw new ErreurOAuth('invalid_grant', 'Vérification PKCE échouée.');
   await base.ecrire(COLLECTION, [{ ...c, utilise: true } as Code], AUTEUR);
-  if (!(await toujoursGerant(base, c.par))) throw new ErreurOAuth('invalid_grant', 'Le membre qui a autorisé Claude n’est plus gérant de cet espace.');
+  if (estCompteTechnique(c.par, emailEquipe)) throw new ErreurOAuth('invalid_grant', MESSAGE_OAUTH_COMPTE_TECHNIQUE);
+  if (!(await toujoursGerant(base, c.par, emailEquipe))) throw new ErreurOAuth('invalid_grant', 'Le membre qui a autorisé Claude n’est plus gérant de cet espace.');
   return emettre(base, c.client, c.par, crypto.randomBytes(12).toString('hex'), espaceDe(c));
 }
 
-/** grant_type=refresh_token : rotation (l'ancien jeton de rafraîchissement est révoqué). `base` : celle de l'espace du jeton. */
-export async function rafraichir(base: BaseErp, p: { refresh_token: string; client_id?: string }): Promise<Jetons> {
+/**
+ * grant_type=refresh_token : rotation (l'ancien jeton de rafraîchissement est
+ * révoqué). `base` : celle de l'espace du jeton ; `emailEquipe` : l'adresse
+ * du compte d'équipe (configuration().email).
+ */
+export async function rafraichir(base: BaseErp, p: { refresh_token: string; client_id?: string }, emailEquipe: string): Promise<Jetons> {
   if (!p.refresh_token) throw new ErreurOAuth('invalid_request', 'refresh_token requis.');
   const espace = espaceDuJeton(p.refresh_token);
   const lu = espace ? await lireAvecRevocation<Jeton>(base, idJeton(p.refresh_token)) : { element: undefined, revoqueAvant: 0 };
@@ -182,10 +197,13 @@ export async function rafraichir(base: BaseErp, p: { refresh_token: string; clie
     throw new ErreurOAuth('invalid_grant', 'Jeton de rafraîchissement inconnu, expiré ou révoqué.');
   }
   if (p.client_id && p.client_id !== j.client) throw new ErreurOAuth('invalid_grant', 'Jeton émis pour un autre client.');
-  // Plus gérant (retiré, ou passé « opérations ») : toute l'autorisation tombe, Claude doit être reconnecté par un gérant.
-  if (!(await toujoursGerant(base, j.par))) {
+  // Plus gérant (retiré, ou passé « opérations »), ou compte technique : toute l'autorisation tombe, Claude doit être reconnecté par un gérant.
+  if (!(await toujoursGerant(base, j.par, emailEquipe))) {
     if (j.famille) await revoquerFamille(base, j.famille);
-    throw new ErreurOAuth('invalid_grant', 'Le membre qui a autorisé Claude n’est plus gérant de cet espace : reconnectez Claude depuis l’ERP.');
+    throw new ErreurOAuth(
+      'invalid_grant',
+      estCompteTechnique(j.par, emailEquipe) ? MESSAGE_OAUTH_COMPTE_TECHNIQUE : 'Le membre qui a autorisé Claude n’est plus gérant de cet espace : reconnectez Claude depuis l’ERP.',
+    );
   }
   await base.ecrire(COLLECTION, [{ ...j, revoque: true } as Jeton], AUTEUR);
   return emettre(base, j.client, j.par, j.famille ?? crypto.randomBytes(12).toString('hex'), espaceDe(j));
@@ -208,9 +226,10 @@ const cache = new Map<string, { par: string | null; client?: string; jusqua: num
  * Jeton d'accès valide ? Renvoie le membre qui a autorisé Claude et le client
  * OAuth (trace des actions de Claude). `base` : celle de l'espace du jeton
  * (espaceDuJeton) ; un jeton rangé pour un autre espace est refusé, comme
- * celui d'un membre qui n'est plus gérant de l'espace (relu au plus 1 min après).
+ * celui d'un membre qui n'est plus gérant de l'espace ou d'un compte
+ * technique (`emailEquipe` : configuration().email ; relu au plus 1 min après).
  */
-export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: string; client?: string } | null> {
+export async function accesValide(base: BaseErp, jeton: string, emailEquipe: string): Promise<{ par: string; client?: string } | null> {
   const espace = espaceDuJeton(jeton);
   if (!espace) return null;
   const id = idJeton(jeton);
@@ -219,22 +238,33 @@ export async function accesValide(base: BaseErp, jeton: string): Promise<{ par: 
   const { element: j, revoqueAvant } = await lireAvecRevocation<Jeton>(base, id);
   const expire = j ? Date.parse(j.expire) : 0;
   const valide =
-    !!j && j.type === 'acces' && !j.revoque && espaceDe(j) === espace && expire >= Date.now() && Date.parse(j.creeLe) >= revoqueAvant && (await toujoursGerant(base, j.par));
+    !!j && j.type === 'acces' && !j.revoque && espaceDe(j) === espace && expire >= Date.now() && Date.parse(j.creeLe) >= revoqueAvant && (await toujoursGerant(base, j.par, emailEquipe));
   if (cache.size > 1000) cache.clear();
   cache.set(id, { par: valide ? j!.par : null, ...(valide && j!.client ? { client: j!.client } : {}), jusqua: valide ? Math.min(Date.now() + DUREE_CACHE_MS, expire) : Date.now() + DUREE_CACHE_MS });
   return valide ? { par: j!.par, ...(j!.client ? { client: j!.client } : {}) } : null;
 }
 
-/** Connexions en cours dans l'espace de `base` (une par application autorisée), pour la fenêtre « Connecter à Claude ». */
-export async function etatConnexions(base: BaseErp): Promise<{ connexions: number; derniere?: string }> {
+/**
+ * Connexions en cours dans l'espace de `base` (une par application autorisée),
+ * pour la fenêtre « Connecter à Claude », et `par` : les adresses (distinctes,
+ * en minuscules) des gérants qui les ont données. Une connexion donnée avec un
+ * compte technique (`emailEquipe` : configuration().email) n'en est plus une :
+ * elle est refusée à chaque appel, elle n'est ni comptée ni nommée.
+ */
+export async function etatConnexions(base: BaseErp, emailEquipe: string): Promise<{ connexions: number; derniere?: string; par: string[] }> {
   const tous = await base.lire<Partial<Jeton> & { id: string; avant?: string }>(COLLECTION);
   const revoqueAvant = Date.parse(tous.find((t) => t.id === REVOCATION)?.avant ?? '') || 0;
   const actifs = tous.filter(
     (t): t is Jeton =>
-      t.type === 'rafraich' && !t.revoque && Date.parse(t.expire ?? '') > Date.now() && Date.parse(t.creeLe ?? '') >= revoqueAvant,
+      t.type === 'rafraich' &&
+      !t.revoque &&
+      Date.parse(t.expire ?? '') > Date.now() &&
+      Date.parse(t.creeLe ?? '') >= revoqueAvant &&
+      !estCompteTechnique(t.par, emailEquipe),
   );
   const derniere = actifs.map((t) => t.creeLe).sort().pop();
-  return { connexions: actifs.length, ...(derniere ? { derniere } : {}) };
+  const par = [...new Set(actifs.map((t) => String(t.par ?? '').trim().toLowerCase()).filter(Boolean))].sort();
+  return { connexions: actifs.length, ...(derniere ? { derniere } : {}), par };
 }
 
 /** « Déconnecter Claude » : tous les jetons émis jusqu'ici dans l'espace de `base` sont refusés (les autres espaces gardent les leurs). */

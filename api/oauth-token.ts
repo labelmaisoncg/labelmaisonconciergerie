@@ -46,10 +46,10 @@ export default async function handler(req: any, res: any) {
     }
     const base = ouvert?.base ?? baseErp(c);
     if (p.grant_type === 'authorization_code') {
-      return res.status(200).json(await echangerCode(base, { code: p.code, code_verifier: p.code_verifier, redirect_uri: p.redirect_uri, client_id: p.client_id }));
+      return res.status(200).json(await echangerCode(base, { code: p.code, code_verifier: p.code_verifier, redirect_uri: p.redirect_uri, client_id: p.client_id }, c.email));
     }
     if (p.grant_type === 'refresh_token') {
-      return res.status(200).json(await rafraichir(base, { refresh_token: p.refresh_token, client_id: p.client_id }));
+      return res.status(200).json(await rafraichir(base, { refresh_token: p.refresh_token, client_id: p.client_id }, c.email));
     }
     return res.status(400).json({ error: 'unsupported_grant_type' });
   } catch (e) {

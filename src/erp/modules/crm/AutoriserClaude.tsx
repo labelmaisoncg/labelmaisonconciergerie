@@ -1,8 +1,9 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, Check, Link2Off } from 'lucide-react';
+import { EMAIL_EQUIPE } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
-import { adresseRetour, demandeur, lireDemande } from '../../data/oauth-regles';
+import { PHRASE_COMPTE_TECHNIQUE, adresseRetour, demandeur, estCompteTechnique, lireDemande } from '../../data/oauth-regles';
 import { useErp } from '../../data/store';
 import { Alert, Button, ButtonLink, Card, EmptyState } from '../../ui';
 import { appelerConnecteur } from './_composants/api-connecteur';
@@ -19,6 +20,9 @@ function Colonne({ children }: { children: ReactNode }) {
   return <div className="mx-auto max-w-md pt-10 sm:pt-20">{children}</div>;
 }
 
+/** « de Abdel » → « d’Abdel » : élision devant une voyelle. */
+const deNom = (nom: string) => (/^[aeiouyàâäéèêëîïôöùûüÿæœ]/i.test(nom) ? `d’${nom}` : `de ${nom}`);
+
 const OUVRIR_CRM = (
   <ButtonLink to="/erp/crm" variant="secondary">
     Ouvrir le CRM
@@ -33,10 +37,15 @@ const OUVRIR_CRM = (
  * L'accès donné vaut pour l'espace ouvert, et lui seul : son nom est dans le
  * titre, et le serveur revérifie que la personne en est gérante (en-tête
  * x-erp-espace) avant de créer le code, rangé dans cet espace.
+ *
+ * Claude se connecte au compte de la personne connectée, nommé au-dessus des
+ * boutons. Un compte technique (serveur, compte d'équipe) n'autorise jamais
+ * (le serveur le refuse aussi) : « Changer de compte » déconnecte, puis
+ * ramène sur cette même demande après la connexion.
  */
 export default function AutoriserClaude() {
   const [params] = useSearchParams();
-  const { utilisateur, mode } = useErp();
+  const { utilisateur, mode, seDeconnecter } = useErp();
   const nomEspace = espaceOuvert().nom;
   const lu = useMemo(() => lireDemande(Object.fromEntries(params)), [params]);
   const [envoi, setEnvoi] = useState(false);
@@ -90,6 +99,12 @@ export default function AutoriserClaude() {
     }
   };
   const refuser = () => window.location.assign(adresseRetour(demande.redirect_uri, { error: 'access_denied', state: demande.state }));
+  const technique = estCompteTechnique(utilisateur.email, EMAIL_EQUIPE);
+  // Même déconnexion que le menu de l'ERP ; la demande de Claude reste dans l'adresse de retour.
+  const changerDeCompte = () => {
+    setEnvoi(true);
+    seDeconnecter(`${window.location.pathname}${window.location.search}`);
+  };
 
   return (
     <Colonne>
@@ -118,13 +133,25 @@ export default function AutoriserClaude() {
             <Alert tone="alerte" titre="Demande venue d’une application de cet ordinateur. N’autorisez que si vous venez de lancer la connexion depuis Claude Code." />
           )}
           {erreur && <Alert tone="danger" titre={erreur} />}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" disabled={envoi} onClick={refuser}>
-              Refuser
-            </Button>
-            <Button variant="primary" chargement={envoi} onClick={() => void autoriser()}>
-              Autoriser
-            </Button>
+          {technique && <Alert tone="info" titre={PHRASE_COMPTE_TECHNIQUE} />}
+          <div className="space-y-2">
+            <p className="text-right text-[12.5px] text-(--lm-encre-2)">
+              Avec le compte {deNom(utilisateur.nom || utilisateur.email)}
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant={technique ? 'ghost' : 'secondary'} disabled={envoi} onClick={refuser}>
+                Refuser
+              </Button>
+              {technique ? (
+                <Button variant="secondary" chargement={envoi} onClick={changerDeCompte}>
+                  Changer de compte
+                </Button>
+              ) : (
+                <Button variant="primary" chargement={envoi} onClick={() => void autoriser()}>
+                  Autoriser
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </Card>

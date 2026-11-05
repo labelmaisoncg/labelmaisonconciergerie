@@ -2,9 +2,14 @@
 // /api/erp-connecteur-claude — connexion de Claude à l'ERP, pour les gérants
 // connectés à l'ERP :
 //
-//   GET                                   → { ok, espace, connexions, derniere? }
+//   GET                                   → { ok, espace, connexions, derniere?, par, compteTechnique? }
 //   POST { action: 'autoriser', …demande } → { ok, espace, redirection }  code OAuth renvoyé à Claude
 //   POST { action: 'deconnecter' }         → { ok, espace }               jetons de l'espace révoqués
+//
+// par : les adresses des gérants dont une connexion est active ; compteTechnique :
+// l'ERP est ouvert avec un compte technique (serveur, ou compte d'équipe de
+// configuration().email), qui ne connecte jamais Claude (403 sur « autoriser »,
+// aucun code) : il faut se connecter avec son propre compte de gérant.
 //
 // La demande (client_id, redirect_uri, code_challenge, state…) vient de la
 // page /erp/autoriser-claude, ouverte par Claude ; elle est revérifiée ici
@@ -14,7 +19,7 @@
 // les jetons qui en sortent et la révocation ne valent que pour cet espace.
 // =============================================================================
 
-import { adresseRetour, lireDemande } from '../src/erp/data/oauth-regles.js';
+import { MESSAGE_AUTORISER_COMPTE_TECHNIQUE, adresseRetour, estCompteTechnique, lireDemande } from '../src/erp/data/oauth-regles.js';
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
 import { configuration, lireCorps, repondre } from './_erp-repull.js';
 import { creerCode, deconnecterTout, etatConnexions } from './_oauth.js';
@@ -36,6 +41,11 @@ export default async function handler(req: any, res: any) {
     return repondre(res, 403, { ok: false, erreur: 'Seul un gérant de cet espace peut connecter Claude.' });
   }
   const c = configuration();
+  // Compte technique (serveur, compte d'équipe) : jamais d'autorisation, avant même d'ouvrir la base.
+  const technique = estCompteTechnique(membre.email, c.email);
+  if (req.method === 'POST' && technique && lireCorps(req).action === 'autoriser') {
+    return repondre(res, 403, { ok: false, code: 'compte_technique', erreur: MESSAGE_AUTORISER_COMPTE_TECHNIQUE });
+  }
   if (!c.motDePasse) {
     console.error('[erp-connecteur-claude] ERP_PASSWORD absent : base inaccessible.');
     return repondre(res, 503, { ok: false, erreur: INDISPONIBLE });
@@ -45,7 +55,9 @@ export default async function handler(req: any, res: any) {
     const espace = await espaceOuvertAuJeton(c, membre.espace);
     if (!espace) return repondre(res, 503, { ok: false, erreur: INDISPONIBLE });
     const { base } = espace;
-    if (req.method === 'GET') return repondre(res, 200, { ok: true, espace: espace.nom, ...(await etatConnexions(base)) });
+    if (req.method === 'GET') {
+      return repondre(res, 200, { ok: true, espace: espace.nom, ...(await etatConnexions(base, c.email)), ...(technique ? { compteTechnique: true } : {}) });
+    }
     const corps = lireCorps(req);
     if (corps.action === 'autoriser') {
       const lu = lireDemande(corps);

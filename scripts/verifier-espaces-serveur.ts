@@ -47,7 +47,13 @@
  * ensuite, code et jetons rangés dans l'espace du gérant qui autorise, un
  * jeton de Sens ne lit jamais Label Maison et inversement, jetons modifiés
  * refusés sans rien lire, rotation et révocation par espace, non-membre et
- * non-gérant refusés, espace fermé refusé. Invitation « Créer mon compte » :
+ * non-gérant refusés, espace fermé refusé ; Claude connecté au compte d'un
+ * gérant (gerant-lm@exemple.invalid pour Label Maison), jamais à un compte
+ * technique : « Autoriser » avec le compte d'équipe ou serveur refusé (403,
+ * aucun code), autorisation donnée avant avec le compte d'équipe tombée
+ * (accès 401 passé le cache, rafraîchissement et code invalid_grant), état
+ * qui nomme le gérant (par) et jamais le compte d'équipe, adresse d'équipe
+ * lue dans la configuration du serveur. Invitation « Créer mon compte » :
  * gérant de l'espace seulement, adresse membre de l'espace pas encore
  * activée, code à usage unique (empreinte seule dans la base), lien sur le
  * site fixe, e-mail au nom de l'espace ou lien à copier ; base d'avant les
@@ -99,6 +105,7 @@ import { lienSejourServeur, oublierCheckinPret, purgeCheckinsDuJour } from '../a
 import { COLLECTION_CHECKINS, signerJetonSejour } from '../src/erp/data/sejour';
 import { relancesDuJour } from '../api/_relances';
 import { oublierJetonsGardes } from '../api/_oauth';
+import { MESSAGE_AUTORISER_COMPTE_TECHNIQUE, MESSAGE_OAUTH_COMPTE_TECHNIQUE } from '../src/erp/data/oauth-regles';
 import { notificationsOpsDuJour } from '../api/_operations-notifications';
 import { idAppareil } from '../src/erp/data/notifications-envoi';
 import { heureParis } from '../src/erp/data/notifications-operations';
@@ -160,6 +167,8 @@ class Monde {
   comptes: Record<string, { mdp: string; jeton: string; uid?: string; email?: string; confirme?: boolean }> = {
     'equipe@labelmaisoncg.fr': { mdp: 'mdp-equipe', jeton: 'jeton-equipe' },
     'serveur@labelmaisoncg.fr': { mdp: 'mdp-serveur', jeton: 'jeton-serveur' },
+    // Gérant de Label Maison avec son propre compte : c'est lui qui connecte Claude (jamais le compte d'équipe, technique).
+    'gerant-lm@exemple.invalid': { mdp: 'x', jeton: 'jeton-gerant-lm' },
     'gerant-b@exemple.invalid': { mdp: 'x', jeton: 'jeton-sens' },
     'ops-sens@exemple.invalid': { mdp: 'x', jeton: 'jeton-ops-sens' },
     // Comptes Supabase des propriétaires (uid, adresse confirmée) ; « doublon » : un autre compte (autre uid) à la même adresse.
@@ -175,6 +184,7 @@ class Monde {
   };
   membres = [
     { espace: LM, email: 'equipe@labelmaisoncg.fr', role: 'gerant' },
+    { espace: LM, email: 'gerant-lm@exemple.invalid', role: 'gerant' },
     { espace: SENS, email: 'gerant-b@exemple.invalid', role: 'gerant' },
     { espace: SENS, email: 'ops-sens@exemple.invalid', role: 'operations' },
     // Ajoutés par un gérant, sans compte encore (« Créer mon compte »).
@@ -191,7 +201,7 @@ class Monde {
   /** Invitations des membres (erp.invitations : empreinte du code, espace, adresse). */
   invitationsMembres: { espace: string; email: string; empreinte: string }[] = [];
   /** Lignes de membres liées à leur compte (« espace:adresse »), comme après la passe 1. */
-  lies = new Set<string>([`${LM}:equipe@labelmaisoncg.fr`, `${SENS}:gerant-b@exemple.invalid`, `${SENS}:ops-sens@exemple.invalid`]);
+  lies = new Set<string>([`${LM}:equipe@labelmaisoncg.fr`, `${LM}:gerant-lm@exemple.invalid`, `${SENS}:gerant-b@exemple.invalid`, `${SENS}:ops-sens@exemple.invalid`]);
   /** Clés Repull refusées (401) ; Repull en panne (503). */
   clesRefusees = new Set<string>();
   repullEnPanne = false;
@@ -230,7 +240,8 @@ class Monde {
   permis(jeton: string, entete: string | null): string[] {
     const email = this.emailDe(jeton);
     if (!email) return [];
-    if (this.historique) return email === 'equipe@labelmaisoncg.fr' ? [LM] : [];
+    // Base d'avant les espaces : Label Maison seul, pour le compte d'équipe et chaque membre (erp.membres, sans colonne espace).
+    if (this.historique) return email === 'equipe@labelmaisoncg.fr' || this.membres.some((m) => m.espace === LM && m.email === email) ? [LM] : [];
     if (email === 'serveur@labelmaisoncg.fr') return this.serveurPret && entete && this.actif(entete) ? [entete] : [];
     return this.membres.filter((m) => m.email === email && (!entete || m.espace === entete) && this.actif(m.espace)).map((m) => m.espace);
   }
@@ -546,6 +557,25 @@ async function principal() {
   monde.poser(LM, 'crm', contactCrm('crm-lm-2', 'Louis Label'));
   monde.poser(SENS, 'crm', contactCrm('crm-s-1', 'Simone Sens'));
   const FORME_LM = /^[A-Za-z0-9_-]{43}$/;
+  const EQUIPE = 'equipe@labelmaisoncg.fr';
+  const GERANT_LM = 'gerant-lm@exemple.invalid';
+  /**
+   * Autorisation donnée avec le compte d'équipe avant la règle des comptes
+   * techniques : code ou jetons émis normalement, puis `par` réécrit dans la
+   * base (comme une ligne d'avant cette version).
+   */
+  const parCompteEquipe = (espace: string, ...valeurs: string[]) => {
+    for (const v of valeurs) {
+      const h = crypto.createHash('sha256').update(v).digest('hex');
+      for (const id of [`oauth-jeton-${h}`, `oauth-code-${h}`]) {
+        const l = monde.lignes.get(`${espace}\u0000connecteurs\u0000${id}`);
+        if (l) monde.poser(espace, 'connecteurs', { ...(l.donnees as { id: string }), par: EQUIPE } as { id: string });
+      }
+    }
+  };
+  /** Écritures de codes ou de jetons (collection connecteurs) depuis le dernier monde.oublier(). */
+  const ecrituresConnecteurs = () =>
+    monde.base.filter((r) => r.methode === 'POST' && r.chemin === 'enregistrements' && (r.corps as { collection?: string }[]).some((l) => l.collection === 'connecteurs'));
 
   section('Outils');
   verifier(espaceDemande({ headers: { 'x-erp-espace': SENS.toUpperCase() } }) === SENS && espaceDemande({ headers: { 'x-erp-espace': 'sens' } }) === undefined && espaceDemande({ headers: {} }) === undefined, 'espace de l’appel : uuid de l’en-tête seulement');
@@ -727,8 +757,10 @@ async function principal() {
   section('Connecteur Claude, agenda et invitation, base pas encore préparée : Label Maison comme avant');
   {
     const gerantLM = { authorization: 'Bearer jeton-equipe' };
+    // Claude se connecte au compte d'un gérant de Label Maison (le compte d'équipe est technique).
+    const claudeLM = { authorization: 'Bearer jeton-gerant-lm' };
     monde.oublier();
-    let res = await autoriserClaude(gerantLM);
+    let res = await autoriserClaude(claudeLM);
     const code = codeDe(res);
     verifier(res.statut === 200 && FORME_LM.test(code) && res.corps?.espace === 'Label Maison', 'gérant de Label Maison : code sans espace (forme d’avant)', res.corps);
     verifier(monde.base.every((r) => r.espace === null) && monde.ecritures(LM).length === 1, 'code rangé dans Label Maison, sans en-tête');
@@ -754,11 +786,41 @@ async function principal() {
       type: 'acces',
       famille: 'f-ancienne',
       client: 'claude-test',
-      par: 'equipe@labelmaisoncg.fr',
+      par: GERANT_LM,
       creeLe: new Date().toISOString(),
       expire: new Date(Date.now() + 3600_000).toISOString(),
     } as { id: string });
     verifier((await nomsCrm(ancien)) === 'Louis Label,Lucie Label', 'ancien jeton (sans espace) : Label Maison', await nomsCrm(ancien));
+
+    // Comptes techniques : jamais d'autorisation, base d'avant les espaces comprise.
+    monde.oublier();
+    res = await autoriserClaude(gerantLM);
+    verifier(
+      res.statut === 403 && res.corps?.code === 'compte_technique' && res.corps?.erreur === MESSAGE_AUTORISER_COMPTE_TECHNIQUE && !res.corps?.redirection && ecrituresConnecteurs().length === 0,
+      'base d’avant : compte d’équipe, « Autoriser » refusé (403, message prévu), aucun code',
+      res.corps,
+    );
+    monde.membres.push({ espace: LM, email: 'serveur@labelmaisoncg.fr', role: 'gerant' });
+    monde.oublier();
+    res = await autoriserClaude({ authorization: 'Bearer jeton-serveur' });
+    verifier(res.statut === 403 && res.corps?.code === 'compte_technique' && !res.corps?.redirection && ecrituresConnecteurs().length === 0, 'base d’avant : compte serveur inscrit gérant, refusé lui aussi, aucun code', res.corps);
+    monde.membres.pop();
+    const ancienEquipe = crypto.randomBytes(32).toString('base64url');
+    monde.poser(LM, 'connecteurs', {
+      id: `oauth-jeton-${crypto.createHash('sha256').update(ancienEquipe).digest('hex')}`,
+      type: 'acces',
+      famille: 'f-ancienne-equipe',
+      client: 'claude-test',
+      par: EQUIPE,
+      creeLe: new Date().toISOString(),
+      expire: new Date(Date.now() + 3600_000).toISOString(),
+    } as { id: string });
+    monde.oublier();
+    verifier((await nomsCrm(ancienEquipe)) === 'refus 401' && !lectureCrm(), 'ancien jeton donné avec le compte d’équipe : refusé, rien de lu', await nomsCrm(ancienEquipe));
+    res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: claudeLM });
+    verifier(res.statut === 200 && res.corps?.connexions === 1 && JSON.stringify(res.corps?.par) === JSON.stringify([GERANT_LM]) && !res.corps?.compteTechnique, 'base d’avant : état nommé par le gérant qui a connecté Claude', res.corps);
+    res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantLM });
+    verifier(res.statut === 200 && res.corps?.compteTechnique === true && !res.corps?.par?.includes(EQUIPE), 'base d’avant : ERP ouvert avec le compte d’équipe, l’état le dit', res.corps);
 
     // Agenda du CRM.
     res = await creerAgenda(gerantLM);
@@ -1024,6 +1086,8 @@ async function principal() {
   {
     const gerantSens = { authorization: 'Bearer jeton-sens', 'x-erp-espace': SENS };
     const gerantLM = { authorization: 'Bearer jeton-equipe', 'x-erp-espace': LM };
+    // Claude se connecte au compte d'un gérant de Label Maison (le compte d'équipe est technique).
+    const claudeLM = { authorization: 'Bearer jeton-gerant-lm', 'x-erp-espace': LM };
     monde.oublier();
     let res = await autoriserClaude(gerantSens);
     const codeSens = codeDe(res);
@@ -1052,7 +1116,7 @@ async function principal() {
     verifier(initS.corps?.result?.serverInfo?.title === 'Sens' && consignes.startsWith('Sens ') && !/Essonne|Label Maison Conciergerie|formulaires/.test(consignes), 'instructions au nom de Sens, rien de Label Maison', consignes.slice(0, 120));
 
     // Label Maison, sur la base des espaces : sa propre autorisation.
-    res = await autoriserClaude(gerantLM);
+    res = await autoriserClaude(claudeLM);
     const codeLM = codeDe(res);
     verifier(res.statut === 200 && FORME_LM.test(codeLM), 'gérant de Label Maison : code sans préfixe, comme avant', codeLM.slice(0, 40));
     res = await jetonsDe(codeLM);
@@ -1122,12 +1186,74 @@ async function principal() {
     verifier(res.statut === 200, 'Sens : « Déconnecter Claude »', res.corps);
     verifier((await nomsCrm(accesSens2)) === 'refus 401', 'jeton de Sens refusé après la déconnexion de Sens');
     verifier((await nomsCrm(accesLM)) === 'Louis Label,Lucie Label', 'le jeton de Label Maison, lui, marche toujours');
-    res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantLM });
+    res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: claudeLM });
     verifier(res.statut === 200 && res.corps?.connexions >= 1 && res.corps?.espace === 'Label Maison', 'état de Label Maison : ses connexions, pas celles de Sens', res.corps);
 
     // Qui peut autoriser.
-    res = await autoriserClaude({ authorization: 'Bearer jeton-equipe', 'x-erp-espace': SENS });
+    res = await autoriserClaude({ authorization: 'Bearer jeton-gerant-lm', 'x-erp-espace': SENS });
     verifier(res.statut === 403, 'compte de Label Maison avec l’en-tête de Sens : refusé', res.corps);
+
+    // Comptes techniques : ni le compte d'équipe ni le compte serveur ne connectent Claude.
+    monde.oublier();
+    res = await autoriserClaude(gerantLM);
+    verifier(
+      res.statut === 403 && res.corps?.code === 'compte_technique' && res.corps?.erreur === MESSAGE_AUTORISER_COMPTE_TECHNIQUE && !res.corps?.redirection && ecrituresConnecteurs().length === 0,
+      'compte d’équipe, gérant de Label Maison : « Autoriser » refusé (403, message prévu), aucun code',
+      res.corps,
+    );
+    res = await autoriserClaude({ authorization: 'Bearer jeton-serveur', 'x-erp-espace': LM });
+    verifier(res.statut === 403 && !res.corps?.redirection && ecrituresConnecteurs().length === 0, 'compte serveur : refusé, aucun code', res.corps);
+    res = await autoriserClaude({ authorization: 'Bearer jeton-serveur', 'x-erp-espace': SENS });
+    verifier(res.statut === 403 && !res.corps?.redirection && ecrituresConnecteurs().length === 0, 'compte serveur avec l’en-tête de Sens : refusé, aucun code', res.corps);
+    // Adresse d'équipe lue dans la configuration du serveur (VITE_ERP_EMAIL_EQUIPE) : c'est elle le compte technique.
+    env.VITE_ERP_EMAIL_EQUIPE = ' Gerant-LM@Exemple.invalid ';
+    res = await autoriserClaude(claudeLM);
+    delete env.VITE_ERP_EMAIL_EQUIPE;
+    verifier(res.statut === 403 && res.corps?.code === 'compte_technique' && ecrituresConnecteurs().length === 0, 'adresse d’équipe surchargée dans Vercel : ce compte-là ne connecte pas Claude', res.corps);
+
+    // Autorisation donnée avec le compte d'équipe avant cette règle : elle tombe, comme celle d'un gérant retiré.
+    {
+      const j = await jetonsDe(codeDe(await autoriserClaude(claudeLM)));
+      const acces = String(j.corps?.access_token ?? '');
+      const rafraich = String(j.corps?.refresh_token ?? '');
+      verifier((await nomsCrm(acces)) === 'Louis Label,Lucie Label', 'jeton du gérant de Label Maison : valable');
+      parCompteEquipe(LM, acces, rafraich);
+      verifier((await nomsCrm(acces)) === 'Louis Label,Lucie Label', 'jeton du compte d’équipe : gardé 1 min au plus (cache)');
+      oublierJetonsGardes();
+      monde.oublier();
+      verifier((await nomsCrm(acces)) === 'refus 401' && !lectureCrm(), 'jeton du compte d’équipe : accès refusé (401), rien de lu', await nomsCrm(acces));
+      const r = await rafraichirJeton(rafraich);
+      verifier(r.statut === 400 && r.corps?.error === 'invalid_grant' && r.corps?.error_description === MESSAGE_OAUTH_COMPTE_TECHNIQUE, 'jeton du compte d’équipe : rafraîchissement refusé (invalid_grant, message prévu)', r.corps);
+      verifier((await rafraichirJeton(rafraich)).statut === 400 && (await nomsCrm(acces)) === 'refus 401', 'jeton du compte d’équipe : l’autorisation reste tombée');
+      const code = codeDe(await autoriserClaude(claudeLM));
+      parCompteEquipe(LM, code);
+      const e = await jetonsDe(code);
+      verifier(e.statut === 400 && e.corps?.error === 'invalid_grant' && e.corps?.error_description === MESSAGE_OAUTH_COMPTE_TECHNIQUE && !e.corps?.access_token, 'code du compte d’équipe : échange refusé (invalid_grant), aucun jeton', e.corps);
+    }
+
+    // État : le gérant qui a connecté Claude, jamais le compte d'équipe.
+    {
+      const avant = await appelRoute(routeConnecteur, { methode: 'GET', entetes: claudeLM });
+      // Une autorisation du compte d'équipe pas encore rafraîchie : ni comptée ni nommée (elle est refusée à chaque appel).
+      const j = await jetonsDe(codeDe(await autoriserClaude(claudeLM)));
+      const apresGerant = await appelRoute(routeConnecteur, { methode: 'GET', entetes: claudeLM });
+      parCompteEquipe(LM, String(j.corps?.access_token ?? ''), String(j.corps?.refresh_token ?? ''));
+      res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: claudeLM });
+      verifier(
+        res.statut === 200 && JSON.stringify(res.corps?.par) === JSON.stringify([GERANT_LM]) && !res.corps?.compteTechnique,
+        'état de Label Maison : par = le gérant qui a connecté Claude, jamais le compte d’équipe',
+        res.corps,
+      );
+      verifier(
+        apresGerant.corps?.connexions === avant.corps?.connexions + 1 && res.corps?.connexions === avant.corps?.connexions,
+        'connexion du compte d’équipe : pas comptée',
+        { avant: avant.corps?.connexions, apresGerant: apresGerant.corps?.connexions, apres: res.corps?.connexions },
+      );
+      res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantLM });
+      verifier(res.statut === 200 && res.corps?.compteTechnique === true && !res.corps?.par?.includes(EQUIPE) && res.corps?.par?.includes(GERANT_LM), 'ERP ouvert avec le compte d’équipe : compteTechnique, le gérant nommé', res.corps);
+      res = await appelRoute(routeConnecteur, { methode: 'GET', entetes: gerantSens });
+      verifier(res.statut === 200 && !res.corps?.par?.includes(GERANT_LM) && !res.corps?.compteTechnique, 'état de Sens : jamais le gérant de Label Maison', res.corps);
+    }
     res = await autoriserClaude({ authorization: 'Bearer jeton-ops-sens', 'x-erp-espace': SENS });
     verifier(res.statut === 403, 'membre de Sens sans le rôle gérant : refusé', res.corps);
     res = await autoriserClaude({ authorization: 'Bearer jeton-inconnu', 'x-erp-espace': SENS });

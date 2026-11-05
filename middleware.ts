@@ -1436,7 +1436,9 @@ export default async function middleware(request: Request): Promise<Response | u
     // ERP : le relais (5 minutes) part avec la session.
     const effacer: [string, string][] = [['Set-Cookie', cookieVide]];
     if (zone === ERP) effacer.push(['Set-Cookie', cookieRelais('', 0)]);
-    return pageConnexion(zone, zone.racine, '', 200, effacer);
+    // « Changer de compte » (page d'autorisation de Claude) : retour sur la même page après la connexion, dans l'ERP seulement.
+    const suite = zone === ERP ? sansIdentifiants(suiteSure(zone, url.searchParams.get('suite') || zone.racine)) : zone.racine;
+    return pageConnexion(zone, suite, '', 200, effacer);
   }
 
   if (chemin === zone.connexion) {
