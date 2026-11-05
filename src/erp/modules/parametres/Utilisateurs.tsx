@@ -158,9 +158,15 @@ export default function Utilisateurs() {
     }
   };
 
+  /**
+   * Le dernier gérant de l'équipe (comptes techniques à part) ne perd jamais
+   * ce rôle ni son accès, qui que ce soit qui le demande : le compte d'équipe,
+   * ouvert avec ERP_PASSWORD, ne laisse pas l'espace sans gérant en personne.
+   */
+  const dernierGerant = (u: Utilisateur) => u.role === 'gerant' && !compteTechnique(u) && membres.filter((x) => x.role === 'gerant').length === 1;
+
   const changerRole = (u: Utilisateur, role: RoleUtilisateur) => {
-    if (u.id === d.utilisateur.id && role !== 'gerant' && membres.filter((x) => x.role === 'gerant').length === 1)
-      return setMessage(insecables('Impossible : il doit rester au moins un gérant.'));
+    if (role !== 'gerant' && dernierGerant(u)) return setMessage(insecables('Impossible : il doit rester au moins un gérant.'));
     d.upsert('utilisateurs', { ...u, role });
     setMessage(undefined);
   };
@@ -180,6 +186,7 @@ export default function Utilisateurs() {
 
   const retirer = (u: Utilisateur) => {
     if (u.id === d.utilisateur.id) return setMessage('Vous ne pouvez pas retirer votre propre accès.');
+    if (dernierGerant(u)) return setMessage(insecables('Impossible : il doit rester au moins un gérant.'));
     if (!window.confirm(insecables(`Retirer l’accès de ${u.nom} (${u.email}) à l’ERP ?`))) return;
     d.remove('utilisateurs', u.id);
     setMessage(undefined);

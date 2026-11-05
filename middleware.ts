@@ -273,7 +273,7 @@ function lireCookie(request: Request, nom: string): string {
 }
 
 /** Paramètres qui ne doivent jamais revenir dans une adresse de retour (identifiants). */
-const PARAMETRE_SENSIBLE = /^(e-?mail|courriel|identifiant|login|user(name)?|mot-?de-?passe|motdepasse|mdp|pass(word|wd)?|pwd|secret|(access|refresh|id)_?token|token)$/i;
+const PARAMETRE_SENSIBLE = /^(e[-_]?mail|courriel|identifiant|login|user[-_]?(name)?|mot[-_]?de[-_]?passe|motdepasse|mdp|pass(word|wd)?|pwd|secret|(access|refresh|id)[-_]?token|token)$/i;
 
 /** Adresse de retour sans paramètre d'identifiant (formulaire envoyé sans script, lien piégé). */
 function sansIdentifiants(chemin: string): string {
@@ -288,16 +288,34 @@ function sansIdentifiants(chemin: string): string {
 const echapper = (s: string): string =>
   s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
+/** Origine fictive pour lire une destination de retour comme le navigateur la lira. */
+const ORIGINE_SUITE = 'https://suite.invalid';
+/** Longueur maximale d'une destination de retour (une demande de Claude en fait ~300). */
+const SUITE_MAX = 2000;
+
 /**
- * Une destination de retour n'est acceptée que si elle reste dans la zone.
- * Sans ce filtre, `suite` serait une redirection ouverte offerte à n'importe qui.
+ * Une destination de retour n'est acceptée que si elle reste dans la zone,
+ * une fois lue comme le navigateur la lira (« .. », « %2e%2e » résolus) :
+ * jamais hors de la zone, ni sa page de connexion ou de déconnexion (même
+ * avec un « / » final : sinon la connexion déconnecterait aussitôt), ni
+ * barre oblique inverse, ni fragment (#…), 2 000 caractères au plus. `suite`
+ * vient aussi de l'adresse (« ?suite= » de la déconnexion) : sans ce filtre,
+ * ce serait une redirection offerte à n'importe qui.
  */
 function suiteSure(zone: Zone, valeur: string): string {
-  return new RegExp(`^${zone.racine}(\\/[^\\s]*)?$`).test(valeur) &&
-    valeur !== zone.connexion &&
-    valeur !== zone.deconnexion
-    ? valeur
-    : zone.racine;
+  if (typeof valeur !== 'string' || valeur.length > SUITE_MAX || /[\\#]/.test(valeur) || !new RegExp(`^${zone.racine}(\\/[^\\s]*)?$`).test(valeur)) {
+    return zone.racine;
+  }
+  let u: URL;
+  try {
+    u = new URL(valeur, ORIGINE_SUITE);
+  } catch {
+    return zone.racine;
+  }
+  const chemin = u.pathname.replace(/\/+$/, '') || '/';
+  const dansLaZone = chemin === zone.racine || chemin.startsWith(`${zone.racine}/`);
+  if (u.origin !== ORIGINE_SUITE || !dansLaZone || chemin === zone.connexion || chemin === zone.deconnexion) return zone.racine;
+  return `${u.pathname}${u.search}`;
 }
 
 /* -------------------------------------------------------------------- vues */

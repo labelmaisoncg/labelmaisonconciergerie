@@ -332,12 +332,21 @@ async function principal() {
       ['adresse sans protocole', '//exemple-piege.fr/erp'],
       ['hors de l’ERP', '/linge'],
       ['la déconnexion elle-même', '/erp/deconnexion'],
+      ['la déconnexion avec « / » final', '/erp/deconnexion/'],
+      ['la déconnexion par « . »', '/erp/./deconnexion'],
+      ['sortie par « .. »', '/erp/../api/erp-connecteur-claude'],
+      ['sortie par « %2e%2e »', '/erp/%2e%2e/espace-proprietaire'],
+      ['barre oblique inverse', '/erp/\\exemple-piege.fr'],
+      ['fragment', '/erp/#access_token=a&refresh_token=b&type=signup'],
+      ['trop longue', `/erp/${'a'.repeat(3000)}`],
     ]) {
       const p = await (await appeler(`/erp/deconnexion?suite=${encodeURIComponent(suite)}`))!.text();
       verifier(p.includes('"suite":"/erp"'), `déconnexion avec retour, ${quoi} : retour à /erp`, /"suite":"[^"]*"/.exec(p)?.[0]);
     }
     const ps = await (await appeler(`/erp/deconnexion?suite=${encodeURIComponent('/erp/autoriser-claude?state=x&email=a@b.fr&access_token=JETON')}`))!.text();
     verifier(ps.includes('"suite":"/erp/autoriser-claude?state=x"') && !ps.includes('JETON') && !ps.includes('a@b.fr'), 'déconnexion avec retour : identifiants jamais recopiés', /"suite":"[^"]*"/.exec(ps)?.[0]);
+    const pm = await (await appeler(`/erp/deconnexion?suite=${encodeURIComponent('/erp/autoriser-claude?state=x&mot_de_passe=SECRET&e_mail=a@b.fr&refresh-token=R')}`))!.text();
+    verifier(pm.includes('"suite":"/erp/autoriser-claude?state=x"'), 'déconnexion avec retour : identifiants aux noms variés (mot_de_passe, e_mail, refresh-token) jamais recopiés', /"suite":"[^"]*"/.exec(pm)?.[0]);
   }
 
   section('Connexion d’un membre (base d’avant les espaces)');
