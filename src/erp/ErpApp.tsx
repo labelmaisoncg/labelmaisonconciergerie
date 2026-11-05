@@ -146,7 +146,7 @@ function Coquille() {
 export default function ErpApp() {
   useEnteteDocument();
   return (
-    <div className="erp-root">
+    <div className="erp-root lm-ecran-fige">
       <ErpProvider>
         <Coquille />
       </ErpProvider>

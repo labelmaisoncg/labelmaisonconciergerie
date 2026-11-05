@@ -1,5 +1,7 @@
 /** Réglage d'écran de l'app ERP (le même que la coquille /erp, scripts/spa-shells.mjs). */
 export const VIEWPORT_ERP = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover';
+/** Réglage d'écran du site (index.html) : le zoom y reste permis. */
+export const VIEWPORT_SITE = 'width=device-width, initial-scale=1.0';
 
 /**
  * Écran figé comme une app sur téléphone et tablette : pas de zoom au
@@ -9,7 +11,9 @@ export const VIEWPORT_ERP = 'width=device-width, initial-scale=1.0, maximum-scal
  *
  * Le réglage d'écran est aussi posé ici : la coquille /erp l'a déjà, mais en
  * arrivant du site sans recharger la page (même application), on gardait
- * celui du site, où le zoom est permis. Il est rendu au site en sortant.
+ * celui du site, où le zoom est permis. En sortant, le site retrouve le sien
+ * (ouvert d'abord sur /erp, la page n'avait que celui de l'ERP : on remet
+ * celui du site).
  */
 export function figerEcran(): () => void {
   if (typeof window === 'undefined') return () => undefined;
@@ -22,6 +26,6 @@ export function figerEcran(): () => void {
   if (tactile) for (const g of gestes) document.addEventListener(g, bloquer, { passive: false });
   return () => {
     if (tactile) for (const g of gestes) document.removeEventListener(g, bloquer);
-    if (meta && avant !== null) meta.setAttribute('content', avant);
+    if (meta) meta.setAttribute('content', avant && avant !== VIEWPORT_ERP ? avant : VIEWPORT_SITE);
   };
 }

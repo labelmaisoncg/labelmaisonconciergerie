@@ -68,9 +68,10 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
  * intérieure : rien ne bouge), sans halo : bien visible au clavier. C'est
  * l'exception du guide au contour global de focus (couche base d'erp.css) :
  * `focus:outline-none` le coupe ici, et la classe `lm-champ` marque ces champs.
+ * `min-w-0` : Safari donne aux champs une largeur minimale plus grande que
+ * Chrome ; à côté d'un bouton (« Ajouter une note… » + « Noter »), le champ
+ * ne rétrécissait pas et la feuille débordait.
  */
-// min-w-0 : Safari donne aux champs une largeur minimale plus grande que Chrome ; à côté d'un bouton
-// (« Ajouter une note… » + « Noter »), le champ refusait de rétrécir et la feuille débordait.
 const CHAMP =
   'lm-champ w-full min-w-0 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
   'transition-[border-color,box-shadow] hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none ' +
