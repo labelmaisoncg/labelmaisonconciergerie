@@ -1,8 +1,10 @@
 /**
  * Paramètres → Espaces (gérants de Label Maison seulement) : Label Maison est
- * la plateforme. On y invite une conciergerie, pas à pas (son nom, l'adresse
- * de la personne qui ouvrira son espace : AssistantConciergerie.tsx), on voit
- * les espaces et les invitations en attente, on suspend ou rouvre un espace.
+ * la plateforme. On y voit les espaces et les invitations en attente, on
+ * suspend ou rouvre un espace. « Inviter une conciergerie » est l'action de
+ * l'en-tête de la liste des espaces, comme dans les autres listes : pas à pas
+ * (son nom, l'adresse de la personne qui ouvrira son espace :
+ * AssistantConciergerie.tsx), le résultat s'affiche sous l'en-tête.
  *
  * Tout passe par api/erp-espaces.ts avec la session du gérant ; la base
  * revérifie ses droits (supabase/erp-espaces.sql : erp.inviter_espace…).
@@ -192,68 +194,27 @@ export default function Espaces() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
-      <Card>
-        <CardHeader titre="Inviter une conciergerie" description="Elle crée ensuite son espace, qu’elle gère seule." />
-        <Button variant="primary" icone={<Send />} disabled={!!enCours} className="max-sm:min-h-11" onClick={() => setNouvelle(true)}>
-          Inviter une conciergerie
-        </Button>
-        {resultatDe('nouvelle')}
-      </Card>
-      {nouvelle && <AssistantConciergerie onInviter={(cible) => inviter(cible, 'nouvelle')} onFermer={() => setNouvelle(false)} />}
-
       {erreur && <Alert tone="danger">{erreur}</Alert>}
 
-      {liste && liste.invitations.length > 0 && (
-        <Card>
-          <CardHeader titre="Invitations en attente" description="La conciergerie n’a pas encore créé son espace." />
-          <ul className="divide-y divide-(--lm-bord)">
-            {liste.invitations.map((i) => (
-              <li key={i.id} className="py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-medium text-(--lm-encre)">{i.nom}</p>
-                    <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-(--lm-encre-2)">
-                      <span className="[overflow-wrap:anywhere]">{i.email}</span>
-                      <span aria-hidden>·</span>
-                      {i.expiree ? <Badge tone="alerte">Expirée</Badge> : <span>valable jusqu’au {jour(i.expire_le)}</span>}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button size="sm" variant="secondary" chargement={enCours === `renvoyer-${i.id}`} disabled={!!enCours} onClick={() => void inviter(i, `renvoyer-${i.id}`)}>
-                      Renvoyer
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      chargement={enCours === `annuler-${i.id}`}
-                      disabled={!!enCours}
-                      onClick={() =>
-                        setAConfirmer({
-                          titre: `Annuler l’invitation de ${i.nom} ?`,
-                          description: `Le lien envoyé à ${i.email} ne servira plus. Vous pourrez inviter de nouveau.`,
-                          action: 'Annuler l’invitation',
-                          corps: { action: 'annuler', id: i.id },
-                          cle: `annuler-${i.id}`,
-                        })
-                      }
-                    >
-                      Annuler
-                    </Button>
-                  </div>
-                </div>
-                {resultatDe(`renvoyer-${i.id}`)}
-                {resultatDe(`annuler-${i.id}`)}
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
-
       <Card>
-        <CardHeader titre="Espaces" description="Chaque conciergerie a ses logements, son équipe et ses propriétaires ; rien ne passe d’un espace à l’autre." />
+        <CardHeader
+          titre="Espaces"
+          description="Chaque conciergerie a ses logements, son équipe et ses propriétaires ; rien ne passe d’un espace à l’autre."
+          actions={
+            <Button variant="primary" icone={<Send />} disabled={!!enCours} onClick={() => setNouvelle(true)}>
+              Inviter une conciergerie
+            </Button>
+          }
+        />
+        {/* Résultat de l'invitation : sous l'en-tête qui l'a lancée. */}
+        {resultatDe('nouvelle', 'mb-3')}
         {!liste && !erreur && <p className="text-[13.5px] text-(--lm-encre-2)">Chargement…</p>}
         {liste && autres.length === 0 && (
-          <EmptyState icone={<Building2 />} titre="Aucune autre conciergerie pour l’instant" description="Invitez-en une ci-dessus : son espace apparaîtra ici dès qu’elle l’aura créé." />
+          <EmptyState
+            icone={<Building2 />}
+            titre="Aucune autre conciergerie pour l’instant"
+            description="Invitez-en une : elle crée ensuite son espace, qu’elle gère seule, et il apparaît ici."
+          />
         )}
         {autres.length > 0 && (
           <ul className="divide-y divide-(--lm-bord)">
@@ -307,6 +268,54 @@ export default function Espaces() {
           </ul>
         )}
       </Card>
+
+      {nouvelle && <AssistantConciergerie onInviter={(cible) => inviter(cible, 'nouvelle')} onFermer={() => setNouvelle(false)} />}
+
+      {liste && liste.invitations.length > 0 && (
+        <Card>
+          <CardHeader titre="Invitations en attente" description="La conciergerie n’a pas encore créé son espace." />
+          <ul className="divide-y divide-(--lm-bord)">
+            {liste.invitations.map((i) => (
+              <li key={i.id} className="py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-medium text-(--lm-encre)">{i.nom}</p>
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-(--lm-encre-2)">
+                      <span className="[overflow-wrap:anywhere]">{i.email}</span>
+                      <span aria-hidden>·</span>
+                      {i.expiree ? <Badge tone="alerte">Expirée</Badge> : <span>valable jusqu’au {jour(i.expire_le)}</span>}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="secondary" chargement={enCours === `renvoyer-${i.id}`} disabled={!!enCours} onClick={() => void inviter(i, `renvoyer-${i.id}`)}>
+                      Renvoyer
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      chargement={enCours === `annuler-${i.id}`}
+                      disabled={!!enCours}
+                      onClick={() =>
+                        setAConfirmer({
+                          titre: `Annuler l’invitation de ${i.nom} ?`,
+                          description: `Le lien envoyé à ${i.email} ne servira plus. Vous pourrez inviter de nouveau.`,
+                          action: 'Annuler l’invitation',
+                          corps: { action: 'annuler', id: i.id },
+                          cle: `annuler-${i.id}`,
+                        })
+                      }
+                    >
+                      Annuler
+                    </Button>
+                  </div>
+                </div>
+                {resultatDe(`renvoyer-${i.id}`)}
+                {resultatDe(`annuler-${i.id}`)}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Modal
         ouvert={!!aConfirmer}

@@ -6,7 +6,7 @@
  * page, comme avant.
  */
 import { useId, useRef, useState } from 'react';
-import { ECRANS_MEMBRE, SANS_CHAMP_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre, type EcranMembre } from '../../data/creation-membre';
+import { ECRANS_MEMBRE, MEMBRE_DEJA, SANS_CHAMP_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre, type EcranMembre } from '../../data/creation-membre';
 import { brouillonModifie } from '../../data/parcours-assistant';
 import { useErp } from '../../data/store';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
@@ -32,7 +32,7 @@ export function AssistantMembre({ roles, onFermer, onAjoute }: { roles: OptionCh
   const ecran = p.ecran;
   const erreurs = erreursMembre(ecran, b, d.utilisateurs);
   // Adresse déjà dans l'équipe : dit tout de suite sous le champ.
-  const etat = p.etat(erreurs, (k) => k === 'email' && erreurs.email === 'Ce membre existe déjà.');
+  const etat = p.etat(erreurs, (k) => k === 'email' && erreurs.email === MEMBRE_DEJA);
   const maj = (patch: Partial<BrouillonMembre>) => setB((x) => ({ ...x, ...patch }));
 
   const ajouter = () => {

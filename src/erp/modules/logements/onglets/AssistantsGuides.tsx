@@ -1,9 +1,10 @@
 /**
  * Fiche voyageur du logement : « Nouveau guide » et « Nouvelle question »,
  * pas à pas (kit ui/Assistant.tsx). Rien n'est ajouté avant le bouton du
- * récapitulatif ; ensuite, comme avant, la fiche s'enregistre avec
- * « Enregistrer ». Règles et lignes : data/creation-guide.ts. Les
- * modifications gardent leur fenêtre (GuidesFiche.tsx).
+ * récapitulatif ; il enregistre aussitôt le guide ou la question dans la
+ * fiche du logement (FicheVoyageur.tsx, sans attendre « Enregistrer »).
+ * Règles et lignes : data/creation-guide.ts. Les modifications gardent leur
+ * fenêtre (GuidesFiche.tsx).
  *
  * La fiche voyageur est un formulaire : les assistants s'affichent hors de
  * lui (createPortal), et leur « Continuer » ne l'envoie jamais (l'envoi
@@ -44,8 +45,8 @@ import { aideOuCode } from '../_composants/avertissementCode';
 const horsDuFormulaire = (contenu: ReactNode) =>
   createPortal(<div onSubmit={(e) => e.stopPropagation()}>{contenu}</div>, document.querySelector('.erp-root') ?? document.body);
 
-/** Comme avant : le guide ou la question rejoint la fiche, qui s’enregistre avec « Enregistrer ». */
-const rappelEnregistrer = (sujet: string) => `${sujet} s’ajoute à la fiche${NBSP}: pensez ensuite à «${NBSP}Enregistrer${NBSP}».`;
+/** Ce que fait le bouton du récapitulatif : l'ajout s'enregistre tout de suite, pas avec « Enregistrer ». */
+const enregistreAussitot = (sujet: string) => `${sujet} s’enregistre aussitôt dans la fiche du logement.`;
 
 const OUI_NON = [
   { valeur: 'oui', libelle: 'Oui' },
@@ -58,6 +59,7 @@ const QUESTIONS_GUIDE: Record<EcranGuide, { question: string; aide?: string }> =
   titre: { question: `Quel est le titre du guide${NBSP}?`, aide: 'Votre agent l’envoie au voyageur quand sa question y correspond.' },
   quand: { question: `Quand l’envoyer${NBSP}?`, aide: `Facultatif${NBSP}: votre agent s’en sert pour choisir le bon guide.` },
   source: { question: `Un lien ou un fichier${NBSP}?` },
+  // Avec un fichier, la question devient « Quel fichier envoyer ? » (questionGuide).
   media: { question: `Où est le guide${NBSP}?` },
   acces: { question: `Contient-il l’accès au logement${NBSP}?`, aide: `Clé, code${NBSP}: il ne part alors qu’aux voyageurs confirmés, dans les 48${NBSP}h avant l’arrivée ou pendant le séjour.` },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
@@ -69,6 +71,9 @@ const SOURCES = [
 ];
 
 const idGuide = (cle: string) => `assistant-guide-${cle}`;
+
+const questionGuide = (ecran: EcranGuide, b: BrouillonGuide) =>
+  ecran === 'media' && b.source === 'fichier' ? { question: `Quel fichier envoyer${NBSP}?` } : QUESTIONS_GUIDE[ecran];
 
 export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId: string; onAjoute: (g: GuideLogement) => void; onFermer: () => void }) {
   const { utilisateur } = useErp();
@@ -89,7 +94,7 @@ export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId:
     onFermer();
   };
   const continuer = () => p.continuer(erreurs, ajouter);
-  const q = QUESTIONS_GUIDE[ecran];
+  const q = questionGuide(ecran, b);
 
   return horsDuFormulaire(
     <Assistant
@@ -100,7 +105,7 @@ export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId:
       aide={q.aide}
       idQuestion={titreId}
       blocage={etat}
-      libelleSuite={p.libelleSuite('Créer le guide')}
+      libelleSuite={p.libelleSuite('Ajouter le guide')}
       onContinuer={continuer}
       onRetour={p.retour}
       saisi={brouillonModifie(depart.current, b)}
@@ -121,7 +126,7 @@ export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId:
         </Field>
       )}
       {ecran === 'quand' && (
-        <Field label="Quand l’envoyer">
+        <Field label="Situation">
           <Textarea
             id={idGuide('quand')}
             rows={3}
@@ -152,13 +157,14 @@ export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId:
             />
           </Field>
         ) : (
-          <div id={idGuide('fichier')} tabIndex={-1} className="flex flex-col gap-3 outline-none">
+          <div className="flex flex-col gap-3">
             {b.fichier && (
               <p className="rounded-xl border border-(--lm-bord) px-4 py-3 text-[15px] text-(--lm-encre)">
                 {LIBELLE_TYPE_GUIDE[b.type === 'lien' ? 'document' : b.type]} · <span className="break-all text-(--lm-encre-2)">{b.nomFichier}</span>
               </p>
             )}
             <EnvoiFichier
+              id={idGuide('fichier')}
               dossier={`logements/${logementId}/guides`}
               accept="video/*,image/*,application/pdf"
               libelle={b.fichier ? 'Remplacer le fichier' : 'Choisir un fichier'}
@@ -186,7 +192,7 @@ export function AssistantGuide({ logementId, onAjoute, onFermer }: { logementId:
       )}
       {ecran === 'recapitulatif' && (
         <RecapAssistant lignes={recapGuide(b, (t) => LIBELLE_TYPE_GUIDE[t]).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))}>
-          <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">{rappelEnregistrer('Le guide')}</p>
+          <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">{enregistreAussitot('Il')}</p>
         </RecapAssistant>
       )}
     </Assistant>,
@@ -230,7 +236,7 @@ export function AssistantQuestion({ logement, onAjoute, onFermer }: { logement?:
       aide={q.aide}
       idQuestion={titreId}
       blocage={etat}
-      libelleSuite={p.libelleSuite('Créer la question')}
+      libelleSuite={p.libelleSuite('Ajouter la question')}
       onContinuer={continuer}
       onRetour={p.retour}
       saisi={brouillonModifie(depart.current, b)}
@@ -265,7 +271,7 @@ export function AssistantQuestion({ logement, onAjoute, onFermer }: { logement?:
       )}
       {ecran === 'recapitulatif' && (
         <RecapAssistant lignes={recapQuestion(b).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))}>
-          <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">{rappelEnregistrer('La question')}</p>
+          <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">{enregistreAussitot('Elle')}</p>
         </RecapAssistant>
       )}
     </Assistant>,

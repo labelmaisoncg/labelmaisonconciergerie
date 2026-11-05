@@ -156,7 +156,7 @@ export function Signaler({ logementId, onFermer }: { logementId?: string; onFerm
           />
         </Field>
       )}
-      {ecran === 'photos' && <ChoixPhotos photos={b.photos} onChange={(photos) => maj({ photos })} />}
+      {ecran === 'photos' && <ChoixPhotos photos={b.photos} onChange={(photos) => maj({ photos })} tactile />}
       {ecran === 'sejour' && (
         <ChoixListe
           options={[{ valeur: AUCUN, libelle: 'Aucun séjour en particulier' }, ...sejours.map((s) => ({ valeur: s.id, libelle: s.voyageur, detail: `Du ${jour(s.arrivee)} au ${jour(s.depart)}` }))]}

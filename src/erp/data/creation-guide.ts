@@ -11,13 +11,17 @@
  * Mêmes règles et mêmes lignes que les anciennes fenêtres : titre
  * obligatoire, lien en https:// ou fichier déposé ; un fichier choisi garde
  * son type (vidéo, photo, document) ; « quand » et « accès » n'apparaissent
- * que remplis ; ajouteLe et ajoutePar à la création. Comme avant, rien n'est
- * enregistré tant que la fiche n'a pas été enregistrée (« Enregistrer »).
+ * que remplis ; ajouteLe et ajoutePar à la création.
+ *
+ * Le bouton du récapitulatif enregistre aussitôt le guide (ou la question)
+ * dans la fiche du logement, sans attendre « Enregistrer » : rien ne se perd
+ * en changeant d'onglet. La fiche affichée le reçoit aussi, et ses autres
+ * modifications non enregistrées restent telles quelles (brouillonRebase).
  *
  * Ni React ni réseau (verifier-assistants.ts).
  */
 import { estLienGuide } from './guides';
-import type { GuideLogement, Horodatage, Id, QuestionFrequente } from './types';
+import type { FicheLogement, GuideLogement, Horodatage, Id, QuestionFrequente } from './types';
 
 /* ------------------------------------------------------------------ guide */
 
@@ -86,7 +90,7 @@ export function recapGuide(b: BrouillonGuide, libelleType: (t: GuideLogement['me
     b.source === 'lien'
       ? { cle: 'media', ecran: 'media', libelle: 'Lien', valeur: estLienGuide(b.url) ? b.url.trim() : '' }
       : { cle: 'media', ecran: 'media', libelle: b.fichier ? libelleType(b.type === 'lien' ? 'document' : b.type) : 'Fichier', valeur: b.fichier ? b.nomFichier || 'Fichier joint' : '' },
-    { cle: 'acces', ecran: 'acces', libelle: 'Accès au logement', valeur: b.acces ? 'Oui : seulement aux voyageurs confirmés, dans les 48 h avant l’arrivée' : 'Non' },
+    { cle: 'acces', ecran: 'acces', libelle: 'Accès au logement', valeur: b.acces ? 'Oui : seulement aux voyageurs confirmés, dans les 48 h avant l’arrivée ou pendant le séjour' : 'Non' },
   ];
 }
 
@@ -123,4 +127,29 @@ export function recapQuestion(b: BrouillonQuestion): { cle: string; ecran: Exclu
     { cle: 'question', ecran: 'question', libelle: 'Question', valeur: b.question.trim() },
     { cle: 'reponse', ecran: 'reponse', libelle: 'Réponse', valeur: b.reponse.trim() },
   ];
+}
+
+/* --------------------------------------------- ajout enregistré aussitôt */
+
+/** La fiche avec le guide ou la question en plus, à la fin de sa liste. */
+export function ficheAvecAjout(fiche: FicheLogement, ajout: { guide: GuideLogement } | { question: QuestionFrequente }): FicheLogement {
+  return 'guide' in ajout ? { ...fiche, guides: [...(fiche.guides ?? []), ajout.guide] } : { ...fiche, questions: [...(fiche.questions ?? []), ajout.question] };
+}
+
+const pareil = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Brouillon de la fiche quand la fiche enregistrée passe de `avant` à
+ * `apres` (ajout enregistré aussitôt, enregistrement, autre appareil) :
+ * chaque champ que le brouillon n'a pas touché prend la valeur enregistrée,
+ * chaque champ modifié et pas encore enregistré reste tel quel.
+ */
+export function brouillonRebase<T extends object>(brouillon: T, avant: T, apres: T): T {
+  const b = brouillon as Record<string, unknown>;
+  const v = avant as Record<string, unknown>;
+  const a = apres as Record<string, unknown>;
+  const r: Record<string, unknown> = {};
+  // Les champs dans l'ordre de la fiche enregistrée : un brouillon intact s'écrit comme elle (« Enregistrer » reste grisé).
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) r[k] = pareil(b[k], v[k]) ? a[k] : b[k];
+  return r as T;
 }

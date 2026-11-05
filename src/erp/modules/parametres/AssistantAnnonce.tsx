@@ -1,7 +1,8 @@
 /**
  * « Nouvelle annonce à l'équipe », pas à pas (kit ui/Assistant.tsx) : le
  * titre, le texte, prévenir aussi par notification, puis le récapitulatif.
- * Rien n'est publié avant « Créer l'annonce » ; règles : data/creation-annonce-equipe.ts
+ * Rien n'est publié avant « Publier l'annonce » (aussitôt, pour toute
+ * l'équipe) ; règles : data/creation-annonce-equipe.ts
  * (preparerAnnonce, comme avant). L'enregistrement et la notification restent
  * ceux de la page (AnnoncesEquipe.tsx), qui affiche ensuite ce qui est parti.
  */
@@ -80,7 +81,7 @@ export function AssistantAnnonce({
       aide={q.aide}
       idQuestion={titreId}
       blocage={etat}
-      libelleSuite={p.libelleSuite('Créer l’annonce')}
+      libelleSuite={p.libelleSuite('Publier l’annonce')}
       onContinuer={continuer}
       onRetour={p.retour}
       saisi={brouillonModifie(depart.current, b)}

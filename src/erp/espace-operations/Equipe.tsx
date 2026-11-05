@@ -5,6 +5,7 @@ import {
   SANS_CHAMP_ABSENCE,
   actionAbsenceDepuisBrouillon,
   brouillonAbsencePole,
+  ecransAbsence,
   erreursAbsence,
   recapAbsence,
   type BrouillonAbsence,
@@ -14,7 +15,7 @@ import { jourMois } from '../data/format';
 import { ROLES_OPERATIONS, ajouterJours, suiviPar, verifierAbsence } from '../data/operations';
 import { brouillonModifie } from '../data/parcours-assistant';
 import type { AbsenceMembre } from '../data/types-operations';
-import { Alert, Assistant, Avatar, Button, CHAMP_ASSISTANT, ChoixListe, Drawer, Field, Input, NBSP, RecapAssistant, Select, useParcours } from '../ui';
+import { Alert, Assistant, Avatar, Button, CHAMP_ASSISTANT, ChoixListe, Drawer, Field, Input, NBSP, RecapAssistant, Select, insecables, useParcours } from '../ui';
 import { remplacantsPossibles } from '../data/espace-operations';
 import { Ligne, Liste, Rubrique, TitreEspace, court, useOps } from './commun';
 
@@ -29,7 +30,7 @@ export function Equipe() {
         description="Les personnes qui suivent vos logements, et qui les remplace pendant une absence."
         action={
           !apercu && (
-            <Button icone={<UserX />} onClick={() => naviguer({ absence: 'nouvelle' })}>
+            <Button icone={<UserX />} className="max-sm:min-h-11" onClick={() => naviguer({ absence: 'nouvelle' })}>
               Noter une absence
             </Button>
           )
@@ -104,9 +105,10 @@ const idAbsence = (cle: string) => `assistant-absence-ops-${cle}`;
 
 /**
  * Nouvelle absence, pas à pas (kit ui/Assistant.tsx) : la personne absente,
- * les dates, le remplaçant, puis le récapitulatif avec ce qui change. Rien
- * ne part avant « Créer l'absence » ; règles et action : data/creation-absence.ts
- * (la même action « absence » qu'avant). Un refus du serveur reste ici.
+ * les dates, le remplaçant (sauté quand personne ne suit tous ses logements),
+ * puis le récapitulatif avec ce qui change. Rien ne part avant « Créer
+ * l'absence » ; règles et action : data/creation-absence.ts (la même action
+ * « absence » qu'avant). Un refus du serveur reste ici.
  */
 function AssistantAbsence({ onFermer }: { onFermer: () => void }) {
   const { vue, actions, annoncer } = useOps();
@@ -115,15 +117,18 @@ function AssistantAbsence({ onFermer }: { onFermer: () => void }) {
   const [envoi, setEnvoi] = useState(false);
   const [erreurEnvoi, setErreurEnvoi] = useState<string>();
   const titreId = useId();
-  const etapes = useParcours<EcranAbsence>({ ecrans: ECRANS_ABSENCE_POLE, idChamp: idAbsence, sansChamp: SANS_CHAMP_ABSENCE });
-  const ecran = etapes.ecran;
-  const erreurs = erreursAbsence(ecran, b, vue.absences);
-  const etat = etapes.etat(erreurs);
-  const maj = (patch: Partial<BrouillonAbsence>) => setB((x) => ({ ...x, ...patch }));
   const absents = vue.equipe.filter((m) => !m.absenceParGerant).map((m) => ({ valeur: m.id, libelle: m.nom, detail: ROLES_OPERATIONS[m.role] }));
   // Seulement ceux qui suivent déjà ce qu'ils reprendraient (sinon ils ne le verraient pas).
   const possibles = new Set(b.membreId ? remplacantsPossibles(vue, b.membreId) : []);
   const remplacants = vue.equipe.filter((m) => m.id !== b.membreId && possibles.has(m.id)).map((m) => ({ valeur: m.id, libelle: m.nom }));
+  // Personne ne suit tous ses logements : l'écran du remplaçant n'offrirait rien, il est sauté (dit au récapitulatif).
+  const avecRemplacants = !b.membreId || remplacants.length > 0;
+  const ecrans = ecransAbsence(ECRANS_ABSENCE_POLE, avecRemplacants);
+  const etapes = useParcours<EcranAbsence>({ ecrans, idChamp: idAbsence, sansChamp: SANS_CHAMP_ABSENCE });
+  const ecran = etapes.ecran;
+  const erreurs = erreursAbsence(ecran, b, vue.absences);
+  const etat = etapes.etat(erreurs);
+  const maj = (patch: Partial<BrouillonAbsence>) => setB((x) => ({ ...x, ...patch }));
   const nom = (id: string) => vue.equipe.find((m) => m.id === id)?.nom ?? 'Membre';
   const jour = (iso: string) => jourAvecAnnee(iso, vue.aujourdhui);
 
@@ -145,7 +150,7 @@ function AssistantAbsence({ onFermer }: { onFermer: () => void }) {
   return (
     <Assistant
       titre="Nouvelle absence"
-      ecrans={ECRANS_ABSENCE_POLE}
+      ecrans={ecrans}
       ecran={ecran}
       question={q.question}
       aide={q.aide}
@@ -181,24 +186,22 @@ function AssistantAbsence({ onFermer }: { onFermer: () => void }) {
         </div>
       )}
       {ecran === 'remplacant' && (
-        <>
-          {!remplacants.length && <p className="mb-3 text-[14px] text-(--lm-encre-2)">Personne ne suit tous ses logements{NBSP}: choisissez un remplaçant dans chaque logement.</p>}
-          <ChoixListe
-            options={[{ valeur: SANS_REMPLACANT, libelle: 'Pas de remplaçant choisi' }, ...remplacants]}
-            valeur={b.remplacantId || SANS_REMPLACANT}
-            onChange={(v) => maj({ remplacantId: v === SANS_REMPLACANT ? '' : v })}
-            onContinuer={continuer}
-            labelledBy={titreId}
-            idPremier={idAbsence('remplacantId')}
-          />
-        </>
+        <ChoixListe
+          options={[{ valeur: SANS_REMPLACANT, libelle: 'Pas de remplaçant choisi' }, ...remplacants]}
+          valeur={b.remplacantId || SANS_REMPLACANT}
+          onChange={(v) => maj({ remplacantId: v === SANS_REMPLACANT ? '' : v })}
+          onContinuer={continuer}
+          labelledBy={titreId}
+          idPremier={idAbsence('remplacantId')}
+        />
       )}
       {ecran === 'recapitulatif' && (
-        <RecapAssistant lignes={recapAbsence(b, { ecrans: ECRANS_ABSENCE_POLE, nom, jour }).map((l) => ({ ...l, onModifier: () => etapes.modifier(l.ecran) }))}>
+        // Remplaçant impossible : la ligne le dit, sans « Modifier » (l'écran a été sauté).
+        <RecapAssistant lignes={recapAbsence(b, { ecrans, nom, jour }).map((l) => ({ ...l, onModifier: ecrans.includes(l.ecran) ? () => etapes.modifier(l.ecran) : undefined }))}>
           {b.membreId && (
             <CeQuiChange
               absence={{ id: '', membreId: b.membreId, du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}) }}
-              consigne="choisissez un remplaçant"
+              consigne={avecRemplacants ? 'choisissez un remplaçant' : undefined}
               className="mt-4"
             />
           )}
@@ -294,8 +297,13 @@ function FenetreAbsence({ id, onFermer }: { id: string; onFermer: () => void }) 
   );
 }
 
-/** Ce qui change : ses logements et ses incidents ouverts, repris le premier jour de l'absence, et par qui. */
-function CeQuiChange({ absence: a, consigne, className }: { absence: AbsenceMembre; consigne: string; className?: string }) {
+/**
+ * Ce qui change : ses logements et ses incidents ouverts, repris le premier
+ * jour de l'absence, et par qui. Sans `consigne` (personne ne peut
+ * remplacer), pas de consigne impossible à suivre : les lignes « Personne »
+ * le montrent.
+ */
+function CeQuiChange({ absence: a, consigne, className }: { absence: AbsenceMembre; consigne?: string; className?: string }) {
   const { vue, nomLogement } = useOps();
   const nom = (m?: string) => (m ? court(vue.equipe.find((x) => x.id === m)?.nom) : 'Personne');
   const date = a.du > vue.aujourdhui ? a.du : vue.aujourdhui;
@@ -307,9 +315,7 @@ function CeQuiChange({ absence: a, consigne, className }: { absence: AbsenceMemb
   const sansPersonne = [...logements, ...incidents].filter((x) => !x.vers).length;
   return (
     <section aria-label="Ce qui change" className={['min-w-0 rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 text-[13px]', className].filter(Boolean).join(' ')}>
-      <p className="text-[13.5px] font-semibold text-(--lm-encre)">
-        Ce qui change du {jourAvecAnnee(a.du, vue.aujourdhui)} au {jourAvecAnnee(a.au, vue.aujourdhui)}
-      </p>
+      <p className="text-[13.5px] font-semibold text-(--lm-encre)">{insecables(`Ce qui change du ${jourAvecAnnee(a.du, vue.aujourdhui)} au ${jourAvecAnnee(a.au, vue.aujourdhui)}`)}</p>
       {!logements.length && !incidents.length ? (
         <p className="mt-1 text-(--lm-encre-2)">Rien à reprendre{NBSP}: aucun logement ni incident ouvert à son nom.</p>
       ) : (
@@ -330,7 +336,7 @@ function CeQuiChange({ absence: a, consigne, className }: { absence: AbsenceMemb
           ))}
         </ul>
       )}
-      {sansPersonne > 0 && (
+      {sansPersonne > 0 && consigne && (
         <p className="mt-2 text-[12.5px] text-(--lm-danger)">
           Personne pour reprendre {sansPersonne > 1 ? `${sansPersonne}${NBSP}lignes` : 'une ligne'}
           {NBSP}: {consigne}.

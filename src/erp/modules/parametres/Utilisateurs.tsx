@@ -8,7 +8,7 @@ import { insecables, pluriel } from '../../data/format';
 import { espaceDesDonnees } from '../../data/espaces';
 import { lienCreationCompte } from '../../data/invitation';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
-import { Alert, Avatar, Badge, Button, IconButton, Input, Modal, Repli, Select, Table, type Colonne } from '../../ui';
+import { Alert, Avatar, Badge, Button, IconButton, Input, Modal, Repli, Section, Select, Table, type Colonne } from '../../ui';
 import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
 import { AssistantMembre } from './AssistantMembre';
 
@@ -284,7 +284,19 @@ export default function Utilisateurs() {
 
   return (
     <div className="max-w-4xl">
-      <div>
+      {/* En-tête de la liste : l'ajout s'y fait, comme dans les autres listes. */}
+      <Section
+        titre="Membres"
+        description="Les personnes qui ont accès à l’ERP, et leur rôle."
+        className="mb-0 sm:mb-0"
+        actions={
+          peutModifier && (
+            <Button variant="primary" icone={<UserPlus />} onClick={() => setAjout(true)}>
+              Ajouter quelqu’un
+            </Button>
+          )
+        }
+      >
         {message && (
           <Alert tone="danger" className="mb-3">
             {message}
@@ -351,13 +363,8 @@ export default function Utilisateurs() {
             </div>
           )}
         </Modal>
-        {peutModifier && (
-          <Button variant="primary" icone={<UserPlus />} className="mt-4 max-sm:min-h-11" onClick={() => setAjout(true)}>
-            Ajouter quelqu’un
-          </Button>
-        )}
         {ajout && <AssistantMembre roles={ROLES_AJOUT} onFermer={() => setAjout(false)} onAjoute={ajoute} />}
-      </div>
+      </Section>
       <Repli className="mt-4" titre="Que peut faire chaque rôle ?">
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
           <ShieldCheck className="mt-0.5 size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />

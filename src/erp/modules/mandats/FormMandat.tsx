@@ -74,7 +74,7 @@ const QUESTIONS: Record<EcranMandat, { question: string; aide?: string }> = {
   logement: { question: `Pour quel logement${NBSP}?` },
   commission: { question: `Quelle commission${NBSP}?`, aide: `Cible${NBSP}: ${COMMISSION_CIBLE_MIN} à ${COMMISSION_CIBLE_MAX}${NBSP}%.` },
   menage: { question: `Quels frais de ménage${NBSP}?`, aide: 'Par séjour.' },
-  dates: { question: `Quand commence-t-il${NBSP}?` },
+  dates: { question: `Quelles sont les dates du mandat${NBSP}?` },
   preavis: { question: `Quel préavis${NBSP}?`, aide: 'Pour mettre fin au mandat.' },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
 };
@@ -92,7 +92,8 @@ const jour = (iso: string) => (iso.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jour
 function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, 'preselection' | 'onFermer' | 'onEnregistre'>) {
   const { proprietaires, logements, mandats, upsert } = useErp();
   const proposerSigne = preselection?.dejaSigne !== undefined;
-  const ecrans = ecransMandat(proposerSigne);
+  // Fiche logement, factures : le propriétaire et le logement sont déjà connus, leurs écrans sont sautés.
+  const ecrans = ecransMandat(proposerSigne, preselection);
   const [b, setB] = useState<BrouillonMandat>(() => brouillonMandat(preselection, AUJOURDHUI));
   const depart = useRef(b);
   const titreId = useId();
@@ -114,8 +115,15 @@ function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, '
     onFermer();
   };
   const continuer = () => p.continuer(erreurs, creer);
-  // Base vide : un mandat lie un propriétaire à un logement.
-  const manque = ecran === 'proprietaire' && !proprietaires.length ? 'proprietaire' : ecran === 'logement' && !logements.length ? 'logement' : undefined;
+  // Base vide, ou propriétaire sans logement : un mandat lie un propriétaire à un logement.
+  const manque =
+    ecran === 'proprietaire' && !proprietaires.length
+      ? 'proprietaire'
+      : ecran === 'logement' && !logements.length
+        ? 'logement'
+        : ecran === 'logement' && !logementsDispo.length
+          ? 'logementDuProprietaire'
+          : undefined;
   const q = QUESTIONS[ecran];
 
   return (
@@ -161,9 +169,16 @@ function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, '
           />
         ))}
       {ecran === 'logement' &&
-        (manque ? (
+        (manque === 'logement' ? (
           <Prerequis manque="Vous n’avez pas encore de logement." detail="Ajoutez le logement confié avant de créer son mandat." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
-        ) : logementsDispo.length ? (
+        ) : manque === 'logementDuProprietaire' ? (
+          <Prerequis
+            manque="Ce propriétaire n’a pas encore de logement."
+            detail={`Attribuez-lui d’abord le sien, depuis Paramètres${NBSP}→${NBSP}Accès.`}
+            lien="/erp/parametres/acces"
+            action="Ouvrir Accès"
+          />
+        ) : (
           <ChoixListe
             options={logementsDispo.map((l) => ({ valeur: l.id, libelle: l.nom, detail: l.ville }))}
             valeur={b.logementId || undefined}
@@ -172,8 +187,6 @@ function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, '
             labelledBy={titreId}
             idPremier={idChamp('logementId')}
           />
-        ) : (
-          <p className="text-[14px] text-(--lm-encre-2)">Ce propriétaire n’a pas encore de logement. Attribuez-lui d’abord le sien, depuis Paramètres → Accès.</p>
         ))}
       {ecran === 'commission' && (
         <>
@@ -189,9 +202,9 @@ function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, '
             />
           </Field>
           {pct > 0 && pct < COMMISSION_CIBLE_MIN && (
+            // La cible est déjà dans l'aide de l'écran : l'alerte ne la répète pas.
             <Alert tone="alerte" titre="Commission sous la cible" className="mt-4">
-              Les nouveaux mandats se signent entre {COMMISSION_CIBLE_MIN} et {COMMISSION_CIBLE_MAX}
-              {NBSP}%. Un taux inférieur doit rester exceptionnel.
+              Un taux inférieur doit rester exceptionnel.
             </Alert>
           )}
         </>
@@ -203,10 +216,10 @@ function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, '
       )}
       {ecran === 'dates' && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field label="Date de début" erreur={etat.erreurChamp('dateDebut')}>
+          <Field label="Début" erreur={etat.erreurChamp('dateDebut')}>
             <Input id={idChamp('dateDebut')} type="date" value={b.dateDebut} onChange={(e) => maj({ dateDebut: e.target.value })} onBlur={() => p.quitter('dateDebut')} className={CHAMP_ASSISTANT} />
           </Field>
-          <Field label="Fin de période d’essai" aide="Facultatif." erreur={etat.erreurChamp('periodeEssaiFin')}>
+          <Field label="Fin de la période d’essai" aide="Facultatif." erreur={etat.erreurChamp('periodeEssaiFin')}>
             <Input
               id={idChamp('periodeEssaiFin')}
               type="date"
@@ -232,7 +245,10 @@ function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, '
         </Field>
       )}
       {ecran === 'recapitulatif' && (
-        <RecapAssistant lignes={recapMandat(b, { proposerSigne, nomProprietaire, nomLogement, jour, euros }).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />
+        // Propriétaire et logement venus de la fiche : leurs lignes restent, sans « Modifier » (pas d'écran pour les changer).
+        <RecapAssistant
+          lignes={recapMandat(b, { proposerSigne, nomProprietaire, nomLogement, jour, euros }).map((l) => ({ ...l, onModifier: ecrans.includes(l.ecran) ? () => p.modifier(l.ecran) : undefined }))}
+        />
       )}
     </Assistant>
   );

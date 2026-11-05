@@ -32,6 +32,9 @@ export const SANS_CHAMP_MEMBRE = new Set(['role']);
 /** Adresse telle qu'enregistrée : sans espaces autour, en minuscules. */
 export const adresseMembre = (email: string): string => email.trim().toLowerCase();
 
+/** Adresse déjà dans l'équipe : dite sous le champ dès la saisie (AssistantMembre.tsx). */
+export const MEMBRE_DEJA = 'Cette adresse fait déjà partie de l’équipe.';
+
 /** Erreurs d'un écran ; le récapitulatif réunit celles de tous les écrans. */
 export function erreursMembre(ecran: EcranMembre, b: BrouillonMembre, utilisateurs: readonly Pick<Utilisateur, 'email'>[]): Record<string, string> {
   if (ecran === 'recapitulatif') return Object.assign({}, ...ECRANS_MEMBRE.filter((e) => e !== 'recapitulatif').map((e) => erreursMembre(e, b, utilisateurs)));
@@ -40,7 +43,7 @@ export function erreursMembre(ecran: EcranMembre, b: BrouillonMembre, utilisateu
   if (ecran === 'email') {
     if (!email) r.email = 'Indiquez son adresse e-mail.';
     else if (!/^\S+@\S+\.\S+$/.test(email)) r.email = 'Adresse e-mail invalide.';
-    else if (utilisateurs.some((u) => u.email.toLowerCase() === email)) r.email = 'Ce membre existe déjà.';
+    else if (utilisateurs.some((u) => u.email.toLowerCase() === email)) r.email = MEMBRE_DEJA;
   }
   if (ecran === 'nom' && !b.nom.trim()) r.nom = 'Indiquez le nom affiché.';
   return r;

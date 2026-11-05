@@ -20,7 +20,7 @@ import {
 import { LIBELLES } from '../../../data/libelles';
 import { nouvelId, useErp } from '../../../data/store';
 import type { Prestataire, TypePrestataire } from '../../../data/types';
-import { Assistant, CHAMP_ASSISTANT, ChoixListe, Field, Input, NBSP, RecapAssistant, cn, useParcours } from '../../../ui';
+import { Assistant, CHAMP_ASSISTANT, ChoixListe, Field, Input, NBSP, RecapAssistant, cn, insecables, useParcours } from '../../../ui';
 
 interface Props {
   ouvert: boolean;
@@ -135,7 +135,7 @@ function AssistantPrestataire({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
             onChange={(e) => maj('sansCascade', e.target.checked)}
           />
           <span className="text-[15px] text-(--lm-encre)">
-            Le prestataire intervient lui-même ou avec ses salariés déclarés. Il s’engage à ne pas sous-traiter, et le linge n’est jamais lavé à son domicile.
+            {insecables('Le prestataire intervient lui-même ou avec ses salariés déclarés. Il s’engage à ne pas sous-traiter, et le linge n’est jamais lavé à son domicile.')}
           </span>
         </label>
       )}

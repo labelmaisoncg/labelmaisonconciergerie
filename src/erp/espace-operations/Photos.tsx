@@ -18,6 +18,7 @@ export function ChoixPhotos({
   libelle = 'Ajouter une photo',
   variante = 'secondary',
   lecture = false,
+  tactile = false,
   className,
 }: {
   photos: PhotoChoisie[];
@@ -27,6 +28,8 @@ export function ChoixPhotos({
   variante?: 'secondary' | 'ghost';
   /** Photos montrées seulement : ni ajout ni retrait. */
   lecture?: boolean;
+  /** Seule action de l'écran (assistant) : 44 px au toucher sur téléphone, même aspect sur ordinateur. */
+  tactile?: boolean;
   className?: string;
 }) {
   const { actions } = useOps();
@@ -69,7 +72,7 @@ export function ChoixPhotos({
       {!lecture && photos.length < max && (
         <div className="flex flex-col items-start gap-1">
           <input ref={champ} type="file" accept="image/*" multiple={max > 1} className="sr-only" tabIndex={-1} aria-hidden onChange={(e) => void choisir(e.target.files)} />
-          <Button variant={variante} size="sm" icone={<Camera />} chargement={enCours} onClick={() => champ.current?.click()}>
+          <Button variant={variante} size="sm" icone={<Camera />} chargement={enCours} className={tactile ? 'max-sm:min-h-11' : undefined} onClick={() => champ.current?.click()}>
             {enCours ? 'Envoi…' : libelle}
           </Button>
           {erreur && (

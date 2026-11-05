@@ -104,9 +104,9 @@ export const TIRET_INSECABLE = '-' + String.fromCharCode(0x2060);
 
 /**
  * Typographie des textes de l'assistant sur petit écran : un nombre ne quitte
- * pas son unité (« 2 voyageurs », « 14 févr. », « 360,00 € »), « e-mail » et
- * les « -vous », « -il », « -elle » ne se coupent pas. Ce qui n'est pas du
- * texte passe tel quel.
+ * pas son unité (« 2 voyageurs », « 14 févr. », « 360,00 € »), « e-mail »,
+ * les « -vous », « -il », « -elle » et « lui-même », « elle-même » ne se
+ * coupent pas. Ce qui n'est pas du texte passe tel quel.
  */
 export function insecables(texte: string): string;
 export function insecables<T>(texte: T): T;
@@ -115,5 +115,5 @@ export function insecables(texte: unknown): unknown {
   return texte
     .replace(/(\d) (?=\S)/g, `$1${NBSP}`)
     .replace(/\b([eE])-mail/g, `$1${TIRET_INSECABLE}mail`)
-    .replace(/-(?=(?:vous|ils?|elles?|t)\b)/g, TIRET_INSECABLE);
+    .replace(/-(?=(?:vous|ils?|elles?|t|mêmes?)\b)/g, TIRET_INSECABLE);
 }

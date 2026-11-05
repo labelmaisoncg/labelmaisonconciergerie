@@ -3,9 +3,13 @@
  *
  * - Le gérant (Paramètres → Accès, fiche d'un responsable) : les dates, le
  *   remplaçant, le motif (facultatif), puis le récapitulatif avec ce qui
- *   change. La personne est celle de la fiche.
+ *   change. La personne est celle de la fiche : le récapitulatif la nomme
+ *   toujours (« Personne absente »), sans « Modifier ».
  * - Un responsable de pôle (espace opérations → Équipe) : la personne
  *   absente, les dates, le remplaçant, puis le récapitulatif.
+ *
+ * Personne ne peut remplacer (personne ne suit tous ses logements) : pas
+ * d'écran du remplaçant, le récapitulatif le dit (ecransAbsence).
  *
  * Mêmes règles et mêmes écritures qu'avant : verifierAbsence (operations.ts :
  * dates dans l'ordre, pas de chevauchement, pas son propre remplaçant) ;
@@ -25,6 +29,12 @@ export type EcranAbsence = 'personne' | 'dates' | 'remplacant' | 'motif' | 'reca
 export const ECRANS_ABSENCE_GERANT: readonly EcranAbsence[] = ['dates', 'remplacant', 'motif', 'recapitulatif'];
 /** Un responsable de pôle : la personne d'abord (pas de motif, comme avant). */
 export const ECRANS_ABSENCE_POLE: readonly EcranAbsence[] = ['personne', 'dates', 'remplacant', 'recapitulatif'];
+
+/** Écrans du parcours : sans remplaçant possible, l'écran du remplaçant n'offrirait que « Pas de remplaçant » ; il est sauté. */
+export const ecransAbsence = (base: readonly EcranAbsence[], remplacantPossible: boolean): EcranAbsence[] => base.filter((e) => remplacantPossible || e !== 'remplacant');
+
+/** Valeur du récapitulatif quand personne ne peut remplacer (écran sauté). */
+export const AUCUN_REMPLACANT_POSSIBLE = 'Aucun possible\u00a0: personne ne suit tous ses logements';
 
 export interface BrouillonAbsence {
   membreId: Id;
@@ -98,15 +108,24 @@ export function actionAbsenceDepuisBrouillon(b: BrouillonAbsence, absences: Abse
   return { ok: true, valeur: { type: 'absence', membreId: b.membreId, du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}) } };
 }
 
-/** Lignes du récapitulatif ; `nom` : nom d'une personne, `jour` : date lisible. */
+/**
+ * Lignes du récapitulatif ; `ecrans` : ceux du parcours (une ligne dont
+ * l'écran n'y est pas se lit sans « Modifier ») ; `nom` : nom d'une
+ * personne, `jour` : date lisible. La personne absente est toujours nommée.
+ */
 export function recapAbsence(
   b: BrouillonAbsence,
   o: { ecrans: readonly EcranAbsence[]; nom: (id: Id) => string; jour: (iso: DateISO) => string },
 ): { cle: string; ecran: Exclude<EcranAbsence, 'recapitulatif'>; libelle: string; valeur: string }[] {
   const lignes: { cle: string; ecran: Exclude<EcranAbsence, 'recapitulatif'>; libelle: string; valeur: string }[] = [];
-  if (o.ecrans.includes('personne')) lignes.push({ cle: 'personne', ecran: 'personne', libelle: 'Personne absente', valeur: b.membreId ? o.nom(b.membreId) : '' });
+  lignes.push({ cle: 'personne', ecran: 'personne', libelle: 'Personne absente', valeur: b.membreId ? o.nom(b.membreId) : '' });
   lignes.push({ cle: 'dates', ecran: 'dates', libelle: 'Dates', valeur: b.du && b.au ? (b.du === b.au ? `Le ${o.jour(b.du)}` : `Du ${o.jour(b.du)} au ${o.jour(b.au)} inclus`) : '' });
-  lignes.push({ cle: 'remplacant', ecran: 'remplacant', libelle: 'Remplaçant', valeur: b.remplacantId ? o.nom(b.remplacantId) : 'Pas de remplaçant choisi' });
+  lignes.push({
+    cle: 'remplacant',
+    ecran: 'remplacant',
+    libelle: 'Remplaçant',
+    valeur: !o.ecrans.includes('remplacant') ? AUCUN_REMPLACANT_POSSIBLE : b.remplacantId ? o.nom(b.remplacantId) : 'Pas de remplaçant choisi',
+  });
   if (o.ecrans.includes('motif')) lignes.push({ cle: 'motif', ecran: 'motif', libelle: 'Motif', valeur: b.motif.trim() || 'Aucun' });
   return lignes;
 }

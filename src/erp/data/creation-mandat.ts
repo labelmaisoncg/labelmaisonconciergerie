@@ -2,8 +2,11 @@
  * Nouveau mandat de gestion, pas à pas (modules/mandats/FormMandat.tsx :
  * fiche logement « Ajouter son mandat », factures du propriétaire « mandat à
  * saisir », liste des contrats) : déjà signé ou non (quand on le propose),
- * le propriétaire, le logement, la commission, les frais de ménage, les
- * dates, le préavis, puis le récapitulatif. La modification garde sa fenêtre.
+ * le propriétaire et le logement (seulement quand on ne les connaît pas
+ * déjà : la fiche logement et les factures les donnent), la commission, les
+ * frais de ménage, les dates, le préavis, puis le récapitulatif. Le
+ * récapitulatif garde toujours les lignes du propriétaire et du logement.
+ * La modification garde sa fenêtre.
  *
  * Mêmes règles et même mandat que l'ancien formulaire : commission entre 0
  * et 50 %, frais de ménage en euros, date de début, fin d'essai après le
@@ -19,11 +22,15 @@ import type { DateISO, Id, Mandat } from './types';
 
 export type EcranMandat = 'signe' | 'proprietaire' | 'logement' | 'commission' | 'menage' | 'dates' | 'preavis' | 'recapitulatif';
 
-/** Écrans du parcours : « déjà signé » seulement quand on le propose (après un changement de propriétaire). */
-export const ecransMandat = (proposerSigne: boolean): EcranMandat[] => [
+/**
+ * Écrans du parcours : « déjà signé » seulement quand on le propose (après un
+ * changement de propriétaire) ; le propriétaire et le logement seulement
+ * quand ils ne sont pas déjà connus (`connus` : la présélection).
+ */
+export const ecransMandat = (proposerSigne: boolean, connus: { proprietaireId?: Id; logementId?: Id } = {}): EcranMandat[] => [
   ...(proposerSigne ? (['signe'] as const) : []),
-  'proprietaire',
-  'logement',
+  ...(connus.proprietaireId ? [] : (['proprietaire'] as const)),
+  ...(connus.logementId ? [] : (['logement'] as const)),
   'commission',
   'menage',
   'dates',

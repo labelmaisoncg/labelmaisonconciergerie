@@ -3,9 +3,10 @@
  * « Responsables opérationnels », modules/logements/_composants/ResponsablesLogement.tsx) :
  *
  * - une personne déjà dans l'équipe : on la choisit, puis on la rattache ;
- * - une nouvelle personne : son e-mail (une fiche avec la même adresse est
- *   reprise), son nom et son rôle, ses logements (celui de la fiche coché
- *   d'office), puis on l'invite.
+ * - une nouvelle personne : comment la joindre (son e-mail, une fiche avec
+ *   la même adresse est reprise, et son téléphone), son nom, son rôle, ses
+ *   logements (celui de la fiche coché d'office), puis on l'invite. Une
+ *   question par écran.
  *
  * « Inviter un responsable » de Paramètres → Accès suit le même parcours,
  * sans le premier choix : c'est toujours une personne à inviter
@@ -27,15 +28,16 @@ export const EMAIL_RESPONSABLE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 /** Choix « une nouvelle personne » dans la liste de l'équipe. */
 export const NOUVELLE_PERSONNE = '__nouvelle__';
 
-export type EcranResponsable = 'qui' | 'email' | 'identite' | 'logements' | 'recapitulatif';
+/** « email » : l'adresse et le téléphone (« Comment le joindre ? ») ; « nom » et « role » : un écran chacun. */
+export type EcranResponsable = 'qui' | 'email' | 'nom' | 'role' | 'logements' | 'recapitulatif';
 
 /** Écrans du parcours : la suite dépend de la personne choisie. */
 export function ecransResponsable(choix: string): EcranResponsable[] {
-  return choix === NOUVELLE_PERSONNE ? ['qui', 'email', 'identite', 'logements', 'recapitulatif'] : ['qui', 'recapitulatif'];
+  return choix === NOUVELLE_PERSONNE ? ['qui', 'email', 'nom', 'role', 'logements', 'recapitulatif'] : ['qui', 'recapitulatif'];
 }
 
 /** Paramètres → Accès : une personne à inviter, sans choisir d'abord dans l'équipe. */
-export const ECRANS_INVITATION_RESPONSABLE: readonly EcranResponsable[] = ['email', 'identite', 'logements', 'recapitulatif'];
+export const ECRANS_INVITATION_RESPONSABLE: readonly EcranResponsable[] = ['email', 'nom', 'role', 'logements', 'recapitulatif'];
 
 export interface BrouillonResponsable {
   /** Identifiant d'une personne de l'équipe, NOUVELLE_PERSONNE, ou vide tant que rien n'est choisi. */
@@ -96,12 +98,12 @@ export function erreursResponsable(ecran: EcranResponsable, b: BrouillonResponsa
     if (!b.email.trim()) r.email = 'Indiquez son adresse e-mail.';
     else if (!EMAIL_RESPONSABLE.test(b.email.trim().toLowerCase())) r.email = 'Adresse e-mail invalide.';
   }
-  if (ecran === 'identite' && !existant && b.nom.trim().length < 2) r.nom = 'Indiquez le nom.';
+  if (ecran === 'nom' && !existant && b.nom.trim().length < 2) r.nom = 'Indiquez le nom.';
   if (ecran === 'logements' && !b.logementIds.length && !existant?.logementIds.length) r.logementIds = 'Cochez au moins un logement.';
   return r;
 }
 
-const ECRAN_DE_LA_CLE: Record<string, EcranResponsable> = { choix: 'qui', email: 'email', nom: 'identite', logementIds: 'logements' };
+const ECRAN_DE_LA_CLE: Record<string, EcranResponsable> = { choix: 'qui', email: 'email', nom: 'nom', logementIds: 'logements' };
 export const ecranDeLaCleResponsable = (cle: string): EcranResponsable => ECRAN_DE_LA_CLE[cle] ?? 'recapitulatif';
 
 /** Lignes du récapitulatif. */
@@ -121,9 +123,9 @@ export function recapResponsable(
     // Paramètres → Accès : pas de choix dans l'équipe, donc pas de ligne « Personne ».
     ...(o.sansChoix ? [] : [{ cle: 'qui', ecran: 'qui' as const, libelle: 'Personne', valeur: 'Nouvelle personne, à inviter' }]),
     { cle: 'email', ecran: 'email', libelle: 'Adresse e-mail', valeur: b.email.trim().toLowerCase() },
-    { cle: 'nom', ecran: 'identite', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
-    { cle: 'role', ecran: 'identite', libelle: 'Rôle', valeur: ROLES_OPERATIONS[roleRetenu(b, o.equipe)] },
-    { cle: 'telephone', ecran: 'identite', libelle: 'Téléphone', valeur: telephone || 'Non renseigné' },
+    { cle: 'telephone', ecran: 'email', libelle: 'Téléphone', valeur: telephone || 'Non renseigné' },
+    { cle: 'nom', ecran: 'nom', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
+    { cle: 'role', ecran: 'role', libelle: 'Rôle', valeur: ROLES_OPERATIONS[roleRetenu(b, o.equipe)] },
     { cle: 'logements', ecran: 'logements', libelle: 'Ses logements', valeur: noms.join(', ') },
   ];
 }

@@ -430,7 +430,7 @@ function Proprietaire({ logement: l }: { logement: Logement }) {
               <button
                 type="button"
                 onClick={() => setNouveauMandat(true)}
-                className="inline-flex min-h-8 items-center text-[13px] font-medium lm-lien"
+                className="inline-flex min-h-8 items-center text-[13px] font-medium lm-lien max-sm:min-h-11"
               >
                 Ajouter son mandat
               </button>

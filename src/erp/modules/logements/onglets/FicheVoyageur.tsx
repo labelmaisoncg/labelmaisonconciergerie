@@ -1,9 +1,10 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { BotMessageSquare, Eye, EyeOff, X } from 'lucide-react';
 import { Badge, Button, Callout, Card, CardHeader, Field, Input, Textarea } from '../../../ui';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
-import type { FicheLogement, Logement } from '../../../data/types';
+import { brouillonRebase, ficheAvecAjout } from '../../../data/creation-guide';
+import type { FicheLogement, GuideLogement, Logement, QuestionFrequente } from '../../../data/types';
 import { completudeFiche } from '../_composants/stats';
 import { SupplementsLogement } from '../_composants/SupplementsLogement';
 import { aideOuCode } from '../_composants/avertissementCode';
@@ -36,16 +37,26 @@ function Secret({ valeur, onChange }: { valeur: string; onChange: (v: string) =>
  * « Infos pour l'agent » : tout ce que l'agent IA peut dire aux voyageurs de
  * ce logement. Ce qui n'y est pas, il le transmet à l'équipe. Code wifi et
  * accès ne partent qu'aux voyageurs confirmés, dans les 48 h avant l'arrivée ou pendant le séjour.
+ *
+ * Les changements partent avec « Enregistrer », sauf un nouveau guide ou une
+ * nouvelle question : l'assistant l'enregistre aussitôt (rien ne se perd en
+ * changeant d'onglet), sans toucher aux autres modifications en cours.
  */
 export function OngletFiche({ logement: l }: { logement: Logement }) {
-  const { upsert } = useErp();
+  const { upsert, mettreAJour } = useErp();
   const [f, setF] = useState<FicheLogement>(l.fiche);
   const [equipement, setEquipement] = useState('');
   const [enregistre, setEnregistre] = useState(false);
 
+  // La fiche enregistrée change (ajout de l'assistant, « Enregistrer », autre appareil) : le brouillon
+  // prend ce qu'il n'a pas touché et garde ce qui n'est pas encore enregistré. Autre logement : sa fiche.
+  const base = useRef({ id: l.id, fiche: l.fiche });
   useEffect(() => {
-    setF(l.fiche);
-  }, [l.fiche]);
+    const avant = base.current;
+    base.current = { id: l.id, fiche: l.fiche };
+    if (avant.fiche === l.fiche) return;
+    setF((x) => (avant.id === l.id ? brouillonRebase(x, avant.fiche, l.fiche) : l.fiche));
+  }, [l.id, l.fiche]);
 
   const maj = <K extends keyof FicheLogement>(k: K, v: FicheLogement[K]) => {
     setF((x) => ({ ...x, [k]: v }));
@@ -64,8 +75,16 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
 
   const enregistrer = (e: FormEvent) => {
     e.preventDefault();
-    upsert('logements', { ...l, fiche: { ...f, aSavoir: f.aSavoir?.trim() || undefined, consignesDepart: f.consignesDepart?.trim() || undefined } });
+    const fiche = { ...f, aSavoir: f.aSavoir?.trim() || undefined, consignesDepart: f.consignesDepart?.trim() || undefined };
+    upsert('logements', { ...l, fiche });
+    setF(fiche);
     setEnregistre(true);
+  };
+
+  /** Nouveau guide ou nouvelle question (assistant) : enregistré aussitôt, et ajouté à la fiche affichée sans toucher au reste. */
+  const ajouterEnregistre = (ajout: { guide: GuideLogement } | { question: QuestionFrequente }) => {
+    const r = mettreAJour('logements', l.id, (x) => ({ ...x, fiche: ficheAvecAjout(x.fiche, ajout) }));
+    if (r.ok) setF((x) => ficheAvecAjout(x, ajout));
   };
 
   return (
@@ -161,9 +180,14 @@ export function OngletFiche({ logement: l }: { logement: Logement }) {
         </Field>
       </Card>
 
-      <SectionQuestions questions={f.questions ?? []} logement={enCours} onChange={(q) => maj('questions', q.length ? q : undefined)} />
+      <SectionQuestions
+        questions={f.questions ?? []}
+        logement={enCours}
+        onChange={(q) => maj('questions', q.length ? q : undefined)}
+        onAjoute={(question) => ajouterEnregistre({ question })}
+      />
 
-      <SectionGuides logementId={l.id} guides={f.guides ?? []} onChange={(g) => maj('guides', g.length ? g : undefined)} />
+      <SectionGuides logementId={l.id} guides={f.guides ?? []} onChange={(g) => maj('guides', g.length ? g : undefined)} onAjoute={(guide) => ajouterEnregistre({ guide })} />
 
       {/* Barre collante : « Enregistrer » reste à portée, même en bas d'une longue fiche. */}
       <div className="sticky bottom-0 z-10 -mx-4 flex flex-wrap items-center gap-2 border-t border-(--lm-bord) bg-(--lm-fond) px-4 py-3 sm:mx-0 sm:rounded-xl sm:border sm:px-4">

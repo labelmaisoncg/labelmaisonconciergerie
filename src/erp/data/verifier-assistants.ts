@@ -70,7 +70,7 @@ import {
 } from './creation-invitation-proprietaire';
 import { ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable, saisieInvitationResponsable } from './creation-responsable';
 import { ficheResponsableInvite, transfertsProprietaire } from './acces-gerant';
-import { ECRANS_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre } from './creation-membre';
+import { ECRANS_MEMBRE, MEMBRE_DEJA, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre } from './creation-membre';
 import { ECRANS_CONCIERGERIE, NOM_CONCIERGERIE_MAX, brouillonConciergerie, erreursConciergerie, invitationConciergerie, recapConciergerie, type BrouillonConciergerie } from './creation-conciergerie';
 import { annonceDepuisBrouillon, brouillonAnnonce, ecransAnnonce, erreursAnnonce, recapAnnonce, type BrouillonAnnonce } from './creation-annonce-equipe';
 import { brouillonInitial, preparerAnnonce } from './annonces-equipe';
@@ -85,15 +85,19 @@ import {
   questionVide,
   recapGuide,
   recapQuestion,
+  brouillonRebase,
+  ficheAvecAjout,
   type BrouillonGuide,
   type BrouillonQuestion,
 } from './creation-guide';
 import { LIBELLE_TYPE_GUIDE, estLienGuide } from './guides';
 import { brouillonSignalement, ecransSignalement, erreursSignalement, recapSignalement, sejoursDuLogement, signalementDepuisBrouillon, type BrouillonSignalement } from './creation-signalement';
 import {
+  AUCUN_REMPLACANT_POSSIBLE,
   ECRANS_ABSENCE_GERANT,
   ECRANS_ABSENCE_POLE,
   absenceGerantDepuisBrouillon,
+  ecransAbsence,
   actionAbsenceDepuisBrouillon,
   brouillonAbsenceGerant,
   brouillonAbsencePole,
@@ -107,7 +111,7 @@ import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
-import type { ContactCrm, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, QuestionFrequente, Reservation, RoleUtilisateur, Utilisateur } from './types';
+import type { ContactCrm, FicheLogement, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, QuestionFrequente, Reservation, RoleUtilisateur, Utilisateur } from './types';
 import type { AbsenceMembre, MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
@@ -163,12 +167,16 @@ section('Parcours : ce qui manque, dit une seule fois');
   verifier(!brouillonModifie({ a: '' }, { a: '' }) && brouillonModifie({ a: '' }, { a: 'x' }), 'fermer demande confirmation dès que quelque chose a été saisi');
 }
 
-section('Typographie à 320 px : nombres, « e-mail », « -vous »');
+section('Typographie à 320 px : nombres, « e-mail », « -vous », « lui-même »');
 {
   const T = '-\u2060';
   verifier(insecables('2 voyageurs · mer. 14 févr. · 360,00 €') === `2${NBSP}voyageurs · mer. 14${NBSP}févr. · 360,00${NBSP}€`, 'un nombre ne quitte pas son unité');
   verifier(insecables('Indiquez son e-mail.') === `Indiquez son e${T}mail.` && insecables('E-mail') === `E${T}mail`, '« e-mail » ne se coupe pas');
   verifier(insecables('Quand l’avez-vous constaté ?') === `Quand l’avez${T}vous constaté ?` && insecables('Où se trouve-t-il ?') === `Où se trouve${T}t${T}il ?`, '« -vous », « -t-il » ne se coupent pas');
+  verifier(
+    insecables('Il intervient lui-même.') === `Il intervient lui${T}même.` && insecables('se remplacer elle-même ?') === `se remplacer elle${T}même ?` && insecables('eux-mêmes') === `eux${T}mêmes`,
+    '« lui-même », « elle-même » ne se coupent pas',
+  );
   verifier(insecables('Corbeil-Essonnes, Évry-Courcouronnes') === 'Corbeil-Essonnes, Évry-Courcouronnes', 'noms de villes inchangés');
   const noeud = { type: 'span' };
   verifier(insecables(noeud) === noeud && insecables(undefined) === undefined, 'ce qui n’est pas du texte passe tel quel');
@@ -535,7 +543,7 @@ section('Responsable : écrans et règles');
   const libres = personnesLibres(equipe, 'log-1');
   verifier(libres.map((m) => m.id).join() === 'eq-2', 'personnes proposées : actives, qui ne suivent pas encore le logement');
   verifier(ecransResponsable('eq-2').join() === 'qui,recapitulatif', 'personne de l’équipe : la choisir, puis rattacher');
-  verifier(ecransResponsable(NOUVELLE_PERSONNE).join() === 'qui,email,identite,logements,recapitulatif', 'nouvelle personne : e-mail, nom et rôle, logements, puis inviter');
+  verifier(ecransResponsable(NOUVELLE_PERSONNE).join() === 'qui,email,nom,role,logements,recapitulatif', 'nouvelle personne : comment la joindre, son nom, son rôle (un écran chacun), logements, puis inviter');
   verifier(brouillonResponsable('log-1', libres).choix === '' && brouillonResponsable('log-1', []).choix === NOUVELLE_PERSONNE, 'toute l’équipe suit déjà le logement : « nouvelle personne » d’office');
   verifier(brouillonResponsable('log-1', libres).logementIds.join() === 'log-1', 'le logement de la fiche est coché d’office');
   const ctx = { equipe, libres };
@@ -546,8 +554,9 @@ section('Responsable : écrans et règles');
   verifier(erreursResponsable('email', n, ctx).email === 'Indiquez son adresse e-mail.', 'e-mail vide : à indiquer');
   verifier(erreursResponsable('email', { ...n, email: 'a@b' }, ctx).email === 'Adresse e-mail invalide.', 'e-mail invalide : refusé (même règle que Paramètres → Accès)');
   verifier(EMAIL_RESPONSABLE.test('a@b.fr') && !EMAIL_RESPONSABLE.test('a@b.f'), 'règle d’e-mail de Paramètres → Accès');
-  verifier(erreursResponsable('identite', { ...n, email: 'nouveau@exemple.fr', nom: '' }, ctx).nom === 'Indiquez le nom.', 'nouvelle fiche : nom obligatoire');
-  verifier(!erreursResponsable('identite', { ...n, email: ' YANIS@exemple.fr', nom: '' }, ctx).nom, 'fiche reprise (même adresse) : son nom suffit');
+  verifier(erreursResponsable('nom', { ...n, email: 'nouveau@exemple.fr', nom: '' }, ctx).nom === 'Indiquez le nom.', 'nouvelle fiche : nom obligatoire, sur l’écran du nom');
+  verifier(!erreursResponsable('nom', { ...n, email: ' YANIS@exemple.fr', nom: '' }, ctx).nom, 'fiche reprise (même adresse) : son nom suffit');
+  verifier(!Object.keys(erreursResponsable('role', n, ctx)).length && !Object.keys(erreursResponsable('email', { ...n, email: 'x@y.fr', telephone: '' }, ctx)).length, 'rôle toujours choisi, téléphone facultatif');
   verifier(ficheAvecEmail(equipe, ' Ines@Exemple.fr ')?.id === 'eq-1', 'fiche reprise : adresse comparée sans casse ni espaces');
   verifier(roleRetenu({ email: 'yanis@exemple.fr' }, equipe) === 'pole' && roleRetenu({ email: 'x@y.fr' }, equipe) === 'agent' && roleRetenu({ email: 'yanis@exemple.fr', role: 'agent' }, equipe) === 'agent', 'rôle : choisi, sinon celui de la fiche reprise, sinon agent');
   verifier(erreursResponsable('logements', { ...n, email: 'x@y.fr', logementIds: [] }, ctx).logementIds === 'Cochez au moins un logement.', 'aucun logement coché : bloqué');
@@ -555,6 +564,11 @@ section('Responsable : écrans et règles');
   verifier(Object.keys(erreursResponsable('recapitulatif', { ...b, choix: 'eq-2' }, ctx)).length === 0, 'rattacher une personne libre : rien ne manque');
   const recap = recapResponsable({ ...n, email: 'Yanis@exemple.fr', logementIds: ['log-1'] }, { equipe, logements: [L1, L2] });
   verifier(recap.find((l) => l.cle === 'nom')?.valeur === 'Yanis Bel (fiche reprise)' && recap.find((l) => l.cle === 'logements')?.valeur === 'Studio Parc, T2 Gare', 'récapitulatif : fiche reprise, ses logements et le nouveau');
+  verifier(
+    recap.map((l) => `${l.cle}:${l.ecran}`).join() === 'qui:qui,email:email,telephone:email,nom:nom,role:role,logements:logements',
+    `récapitulatif dans l’ordre des écrans, chaque ligne vers le sien (${recap.map((l) => `${l.cle}:${l.ecran}`).join()})`,
+  );
+  verifier(recap.every((l) => ecransResponsable(NOUVELLE_PERSONNE).includes(l.ecran)), 'chaque ligne du récapitulatif a son écran (« Modifier » possible)');
 }
 
 /* ================================================================= charge */
@@ -676,11 +690,12 @@ section('Accès, inviter un propriétaire : écrans, règles et mêmes écriture
     return { plan: { proprietaire: p, logementIds: f.coches, email: adresseSaisie }, transferts };
   };
   const b = (x: Partial<BrouillonInvitationProprietaire> = {}): BrouillonInvitationProprietaire => ({ ...brouillonInvitationProprietaire(), ...x });
-  verifier(ECRANS_INVITATION_PROPRIETAIRE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif');
+  verifier(ECRANS_INVITATION_PROPRIETAIRE.join() === 'email,nom,logements,recapitulatif', 'écrans : comment le joindre (e-mail et téléphone), son nom, logements, récapitulatif');
   verifier(erreursInvitationProprietaire('email', b(), ctx).email === 'Indiquez son adresse e-mail.', 'e-mail vide : à indiquer');
   verifier(erreursInvitationProprietaire('email', b({ email: 'alice@exemple' }), ctx).email === 'Adresse e-mail invalide.', 'e-mail invalide : refusé (même règle que l’ancienne fenêtre)');
-  verifier(erreursInvitationProprietaire('identite', b({ email: 'x@y.fr', nom: 'A' }), ctx).nom === 'Indiquez le nom du propriétaire.', 'nouvelle fiche : nom de 2 lettres au moins');
-  verifier(!erreursInvitationProprietaire('identite', b({ email: ' ALICE@exemple.fr', nom: '' }), ctx).nom, 'fiche reprise (même adresse, sans casse) : son nom suffit');
+  verifier(erreursInvitationProprietaire('nom', b({ email: 'x@y.fr', nom: 'A' }), ctx).nom === 'Indiquez le nom du propriétaire.', 'nouvelle fiche : nom de 2 lettres au moins');
+  verifier(!erreursInvitationProprietaire('nom', b({ email: ' ALICE@exemple.fr', nom: '' }), ctx).nom, 'fiche reprise (même adresse, sans casse) : son nom suffit');
+  verifier(!erreursInvitationProprietaire('email', b({ email: 'x@y.fr' }), ctx).nom, 'premier écran : le nom ne bloque pas (il a son écran)');
   verifier(!Object.keys(erreursInvitationProprietaire('logements', b(), ctx)).length, 'logements : facultatifs, comme avant');
   const cas: [Partial<BrouillonInvitationProprietaire>, string][] = [
     [{ email: ' Paul.Durand@Exemple.FR ', nom: ' Paul Durand ', telephone: ' 06 11 22 33 44 ' }, 'nouvelle fiche, sans logement'],
@@ -714,6 +729,10 @@ section('Accès, inviter un propriétaire : écrans, règles et mêmes écriture
     `récapitulatif : fiche reprise, ses logements et le nouveau (${recap.map((l) => l.valeur).join(' | ')})`,
   );
   verifier(recapInvitationProprietaire(b({ email: 'p@exemple.fr', nom: 'Paul' }), ctx).find((l) => l.cle === 'telephone')?.valeur === 'Non renseigné', 'récapitulatif : téléphone vide lisible');
+  verifier(
+    recapInvitationProprietaire(b({ email: 'p@exemple.fr', nom: 'Paul' }), ctx).map((l) => `${l.cle}:${l.ecran}`).join() === 'email:email,telephone:email,nom:nom,logements:logements',
+    'récapitulatif dans l’ordre des écrans : le téléphone se modifie avec l’e-mail',
+  );
 }
 
 /* ================================================== invitation responsable */
@@ -724,7 +743,7 @@ section('Accès, inviter un responsable : même parcours sans le choix, même sa
     { id: 'eq-1', nom: 'Inès Morel', role: 'pole', email: 'ines@exemple.fr', telephone: '06 00 00 00 01', logementIds: ['log-1'], actif: true },
     { id: 'eq-2', nom: 'Ancien', role: 'agent', email: 'ancien@exemple.fr', logementIds: [], actif: false },
   ] as MembreEquipe[];
-  verifier(ECRANS_INVITATION_RESPONSABLE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif (pas de choix dans l’équipe)');
+  verifier(ECRANS_INVITATION_RESPONSABLE.join() === 'email,nom,role,logements,recapitulatif', 'écrans : comment la joindre, son nom, son rôle, logements, récapitulatif (pas de choix dans l’équipe)');
   const b0 = brouillonInvitationResponsable(['log-2']);
   verifier(b0.choix === NOUVELLE_PERSONNE && b0.logementIds.join() === 'log-2', 'départ : une personne à inviter, le logement de la page filtrée coché');
   verifier(brouillonInvitationResponsable([]).logementIds.length === 0, 'sans filtre : rien de coché, comme avant');
@@ -785,7 +804,10 @@ section('Équipe, ajouter quelqu’un : écrans, règles et même ligne que l’
   verifier(b0.role === 'operations', 'rôle d’office : « Opérations », comme avant');
   verifier(erreursMembre('email', b0, utilisateurs).email === 'Indiquez son adresse e-mail.', 'e-mail vide : à indiquer');
   verifier(erreursMembre('email', { ...b0, email: 'clara@exemple' }, utilisateurs).email === 'Adresse e-mail invalide.', 'e-mail illisible : refusé');
-  verifier(erreursMembre('email', { ...b0, email: ' ABDEL@exemple.fr ' }, utilisateurs).email === 'Ce membre existe déjà.', 'déjà dans l’équipe (sans casse) : refusé');
+  verifier(
+    erreursMembre('email', { ...b0, email: ' ABDEL@exemple.fr ' }, utilisateurs).email === MEMBRE_DEJA && MEMBRE_DEJA === 'Cette adresse fait déjà partie de l’équipe.',
+    'déjà dans l’équipe (sans casse) : refusé, « Cette adresse fait déjà partie de l’équipe. »',
+  );
   verifier(erreursMembre('nom', { ...b0, nom: '  ' }, utilisateurs).nom === 'Indiquez le nom affiché.', 'nom affiché vide : refusé');
   verifier(!Object.keys(erreursMembre('role', b0, utilisateurs)).length, 'rôle : toujours choisi');
   const cas: [BrouillonMembre, 'reel' | 'demo'][] = [
@@ -935,6 +957,35 @@ section('Fiche voyageur, nouveau guide : écrans, règles et même ligne que l�
   const recap = recapGuide(cas[2], (t) => LIBELLE_TYPE_GUIDE[t]);
   verifier(recap.find((l) => l.cle === 'media')?.libelle === 'Vidéo' && recap.find((l) => l.cle === 'media')?.valeur === 'four.mp4', 'récapitulatif : type et nom du fichier');
   verifier(recapGuide({ ...v, titre: 'x', url: 'http://x' }, (t) => LIBELLE_TYPE_GUIDE[t]).find((l) => l.cle === 'media')?.valeur === '', 'récapitulatif : lien non valable, « À compléter »');
+  verifier(
+    recapGuide(cas[1], (t) => LIBELLE_TYPE_GUIDE[t]).find((l) => l.cle === 'acces')?.valeur === `Oui${NBSP}: seulement aux voyageurs confirmés, dans les 48${NBSP}h avant l’arrivée ou pendant le séjour`,
+    'récapitulatif : l’accès part aussi pendant le séjour, comme le dit l’aide',
+  );
+}
+
+section('Fiche voyageur : guide ou question enregistrés aussitôt, sans perdre les autres modifications');
+{
+  const g1 = { id: 'guide-1', titre: 'Clé', media: { type: 'lien', url: 'https://youtu.be/a' }, ajouteLe: 'x', ajoutePar: 'A' } as GuideLogement;
+  const g2 = { id: 'guide-2', titre: 'Four', media: { type: 'document', fichier: 'demo://four.pdf' }, ajouteLe: 'y', ajoutePar: 'A' } as GuideLogement;
+  const q1: QuestionFrequente = { id: 'question-1', question: 'Poubelles ?', reponse: 'Local vélo.' };
+  const enregistree = { heureArrivee: '16:00', heureDepart: '11:00', acces: 'Boîte à clés', parking: '', wifiNom: 'Box', wifiCode: 'abc', regles: '', equipements: ['Four'], guides: [g1] } as unknown as FicheLogement;
+  const apres = ficheAvecAjout(enregistree, { guide: g2 });
+  verifier(apres.guides?.map((g) => g.id).join() === 'guide-1,guide-2' && enregistree.guides?.length === 1, 'le guide rejoint la fiche enregistrée, à la fin, sans la changer en place');
+  verifier(ficheAvecAjout({ ...enregistree, questions: undefined }, { question: q1 }).questions?.[0]?.id === 'question-1', 'première question : la liste se crée');
+  // Brouillon intact : il devient la fiche enregistrée (« Enregistrer » reste grisé).
+  const intact = brouillonRebase(ficheAvecAjout(enregistree, { guide: g2 }), enregistree, apres);
+  verifier(JSON.stringify(intact) === JSON.stringify(apres), 'brouillon sans autre modification : identique à la fiche enregistrée');
+  // Autres modifications en cours (wifi, un guide retiré) : elles restent, à enregistrer.
+  const enCours = { ...enregistree, wifiNom: 'Box 5G', guides: [] as GuideLogement[] };
+  const rebase = brouillonRebase(ficheAvecAjout(enCours, { guide: g2 }), enregistree, apres);
+  verifier(rebase.wifiNom === 'Box 5G' && rebase.guides?.map((g) => g.id).join() === 'guide-2' && rebase.heureArrivee === '16:00', 'modifications non enregistrées gardées, nouveau guide ajouté');
+  // La fiche change ailleurs (autre appareil) : ce que le brouillon n'a pas touché suit.
+  const ailleurs = { ...enregistree, regles: 'Pas de fête' };
+  const suivi = brouillonRebase({ ...enregistree, wifiNom: 'Box 5G' }, enregistree, ailleurs);
+  verifier(suivi.regles === 'Pas de fête' && suivi.wifiNom === 'Box 5G', 'champ changé ailleurs : repris ; champ en cours : gardé');
+  // « Enregistrer » : le brouillon nettoyé devient la fiche.
+  const nettoye = { ...enCours, aSavoir: undefined };
+  verifier(JSON.stringify(brouillonRebase(nettoye, enregistree, nettoye)) === JSON.stringify(nettoye), 'après « Enregistrer » : brouillon et fiche identiques');
 }
 
 section('Fiche voyageur, nouvelle question : écrans, règles et même ligne que l’ancienne fenêtre');
@@ -1011,6 +1062,10 @@ section('Nouvelle absence : écrans, règles, même absence (gérant) et même a
   ] as AbsenceMembre[];
   verifier(ECRANS_ABSENCE_GERANT.join() === 'dates,remplacant,motif,recapitulatif', 'gérant : dates, remplaçant, motif, récapitulatif (la personne est celle de la fiche)');
   verifier(ECRANS_ABSENCE_POLE.join() === 'personne,dates,remplacant,recapitulatif', 'pôle : la personne, les dates, le remplaçant, récapitulatif (pas de motif, comme avant)');
+  verifier(
+    ecransAbsence(ECRANS_ABSENCE_GERANT, false).join() === 'dates,motif,recapitulatif' && ecransAbsence(ECRANS_ABSENCE_POLE, false).join() === 'personne,dates,recapitulatif' && ecransAbsence(ECRANS_ABSENCE_POLE, true).join() === ECRANS_ABSENCE_POLE.join(),
+    'personne ne peut remplacer : l’écran du remplaçant est sauté',
+  );
   const g0 = brouillonAbsenceGerant('eq-1', J0);
   const p0 = brouillonAbsencePole(J0);
   verifier(g0.du === J0 && g0.au === J0 && p0.du === J0 && p0.au === ajouterJours(J0, 6) && p0.membreId === '', 'départ : aujourd’hui (gérant), une semaine (pôle), comme avant');
@@ -1056,7 +1111,17 @@ section('Nouvelle absence : écrans, règles, même absence (gérant) et même a
   }
   const recap = recapAbsence({ ...p0, membreId: 'eq-2', remplacantId: 'eq-3' }, { ecrans: ECRANS_ABSENCE_POLE, nom: (id) => ({ 'eq-2': 'Yanis', 'eq-3': 'Clara' })[id] ?? '', jour: (iso) => iso.slice(8) });
   verifier(recap.map((l) => l.valeur).join(' | ') === 'Yanis | Du 05 au 11 inclus | Clara', `récapitulatif du pôle (${recap.map((l) => l.valeur).join(' | ')})`);
-  verifier(recapAbsence(g0, { ecrans: ECRANS_ABSENCE_GERANT, nom: () => '', jour: (iso) => iso }).map((l) => l.cle).join() === 'dates,remplacant,motif', 'récapitulatif du gérant : sans la personne, avec le motif');
+  const recapG = recapAbsence(g0, { ecrans: ECRANS_ABSENCE_GERANT, nom: (id) => (id === 'eq-1' ? 'Inès' : ''), jour: (iso) => iso });
+  verifier(recapG.map((l) => l.cle).join() === 'personne,dates,remplacant,motif', 'récapitulatif du gérant : la personne absente toujours nommée, avec le motif');
+  verifier(
+    recapG[0].libelle === 'Personne absente' && recapG[0].valeur === 'Inès' && !ECRANS_ABSENCE_GERANT.includes(recapG[0].ecran),
+    'gérant : « Personne absente : Inès », sans écran pour la changer (pas de « Modifier »)',
+  );
+  const sansRelais = recapAbsence(g0, { ecrans: ecransAbsence(ECRANS_ABSENCE_GERANT, false), nom: () => 'Inès', jour: (iso) => iso });
+  verifier(
+    sansRelais.find((l) => l.cle === 'remplacant')?.valeur === AUCUN_REMPLACANT_POSSIBLE && AUCUN_REMPLACANT_POSSIBLE === `Aucun possible${NBSP}: personne ne suit tous ses logements`,
+    'remplaçant impossible : dit au récapitulatif, sans « Modifier »',
+  );
 }
 
 /* ================================================================= mandat */
@@ -1113,6 +1178,11 @@ section('Nouveau mandat : écrans, règles et même mandat que l’ancien formul
   };
   verifier(ecransMandat(false).join() === 'proprietaire,logement,commission,menage,dates,preavis,recapitulatif', 'écrans : propriétaire, logement, commission, ménage, dates, préavis, récapitulatif');
   verifier(ecransMandat(true)[0] === 'signe', 'après un changement de propriétaire : « déjà signé ? » d’abord, comme l’interrupteur en tête d’avant');
+  // Fiche logement, factures : le propriétaire et le logement sont connus, on ne les redemande pas.
+  const depuisFiche = ecransMandat(true, { proprietaireId: 'pro-4', logementId: 'log-4' });
+  verifier(depuisFiche.join() === 'signe,commission,menage,dates,preavis,recapitulatif', `présélection complète : ni propriétaire ni logement à choisir (${depuisFiche.join()})`);
+  verifier(ecransMandat(false, { proprietaireId: 'pro-4' }).join() === 'logement,commission,menage,dates,preavis,recapitulatif', 'fiche propriétaire : le logement seul à choisir');
+  verifier(ecransMandat(false, {}).join() === ecransMandat(false).join(), 'sans présélection : tous les écrans');
   const pre = { proprietaireId: 'pro-4', logementId: 'log-4', dateDebut: '2026-10-01', dejaSigne: true };
   const { signe: _s1, ...b1 } = brouillonMandat(undefined, J);
   const { signe: s2, ...b2 } = brouillonMandat(pre, J);
@@ -1141,6 +1211,10 @@ section('Nouveau mandat : écrans, règles et même mandat que l’ancien formul
   }
   const recap = recapMandat({ ...b2, signe: true }, { proposerSigne: true, nomProprietaire: () => 'Alice', nomLogement: () => 'T2 Gare', jour: (iso) => iso, euros: (c) => `${c / 100} €` });
   verifier(recap.map((l) => l.cle).join() === 'signe,proprietaire,logement,commission,menage,dates,preavis', 'récapitulatif : une ligne par écran');
+  verifier(
+    recap.filter((l) => !depuisFiche.includes(l.ecran)).map((l) => l.cle).join() === 'proprietaire,logement',
+    'présélection : le récapitulatif garde le propriétaire et le logement, sans écran pour les changer (pas de « Modifier »)',
+  );
   verifier(recap.find((l) => l.cle === 'commission')?.valeur === `${COMMISSION_CIBLE_MIN}${NBSP}%` && recap.find((l) => l.cle === 'preavis')?.valeur === `90${NBSP}jours`, 'récapitulatif : unités avec une espace insécable');
 }
 

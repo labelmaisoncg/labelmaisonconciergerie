@@ -26,7 +26,7 @@ import {
   type LigneSaisie,
 } from '../../../data/creation-facture';
 import type { DestinataireFacture, TypeFacture } from '../../../data/types';
-import { Assistant, Button, CHAMP_ASSISTANT, ChoixListe, Field, IconButton, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, useParcours } from '../../../ui';
+import { Assistant, Button, CHAMP_ASSISTANT, ChoixListe, Field, IconButton, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, TIRET_INSECABLE, useParcours } from '../../../ui';
 import { prochainNumero } from '../_calculs';
 
 interface Props {
@@ -59,6 +59,8 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
   const [envoi, setEnvoi] = useState(false);
   const titreId = useId();
   const numero = prochainNumero(d.factures);
+  // « LM-2026-0091 » ne se coupe pas à ses traits d'union (320 px) : à l'affichage seulement.
+  const numeroLu = numero.replace(/-/g, TIRET_INSECABLE);
   const proprietaires = useMemo(() => [...d.proprietaires].sort((x, y) => x.nom.localeCompare(y.nom, 'fr')), [d.proprietaires]);
   const ctx = { proprietaires };
   const ecrans = ecransFacture(b);
@@ -83,14 +85,14 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
   const sansProprietaire = ecran === 'proprietaire' && !proprietaires.length;
 
   const questions: Record<EcranFacture, { question: string; aide?: string }> = {
-    type: { question: `Quel type de facture${NBSP}?`, aide: `Numéro attribué automatiquement${NBSP}: ${numero}.` },
+    type: { question: `Quel type de facture${NBSP}?`, aide: `Numéro attribué automatiquement${NBSP}: ${numeroLu}.` },
     destinataire: { question: `À qui est-elle adressée${NBSP}?` },
     proprietaire: { question: `Quel propriétaire${NBSP}?` },
     dates: { question: `Quelles dates${NBSP}?` },
     lignes: { question: `Que facturez-vous${NBSP}?`, aide: 'Une ligne par prestation, prix unitaires hors taxes.' },
     tva: { question: `Quel taux de TVA${NBSP}?`, aide: 'Taux à valider avec l’expert-comptable.' },
     statut: { question: `L’émettre maintenant${NBSP}?` },
-    recapitulatif: { question: `Tout est correct${NBSP}?`, aide: `Facture ${numero}, au nom de Label Maison Conciergerie SASU.` },
+    recapitulatif: { question: `Tout est correct${NBSP}?`, aide: `Facture ${numeroLu}, au nom de Label Maison Conciergerie SASU.` },
   };
   const q = questions[ecran];
 
@@ -174,7 +176,7 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
       {ecran === 'statut' && (
         <ChoixListe
           options={[
-            { valeur: 'emise', libelle: 'Émettre maintenant', detail: `Elle prend le numéro ${numero}` },
+            { valeur: 'emise', libelle: 'Émettre maintenant', detail: `Elle prend le numéro ${numeroLu}` },
             { valeur: 'brouillon', libelle: 'Garder en brouillon', detail: 'Vous l’émettrez plus tard' },
           ]}
           valeur={b.statut}

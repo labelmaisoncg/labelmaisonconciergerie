@@ -1,14 +1,16 @@
 /**
  * « Ajouter un responsable » de la fiche logement, pas à pas (kit
  * ui/Assistant.tsx) : une personne de l'équipe à rattacher, ou une nouvelle
- * personne à inviter (son e-mail, son nom et son rôle, ses logements). Rien
- * n'est enregistré avant « Rattacher » ou « Envoyer l'invitation » ; règles :
+ * personne à inviter (comment la joindre, son nom, son rôle, ses logements :
+ * une question par écran). Rien n'est enregistré avant « Rattacher » ou
+ * « Envoyer l'invitation » ; règles :
  * data/creation-responsable.ts. Rattacher et inviter écrivent comme avant
  * (affectationsAFiger, logementIds ; inviterResponsable de Paramètres → Accès).
  *
  * Sans logement (Paramètres → Accès, « Inviter un responsable ») : toujours
  * une personne à inviter, sans le premier choix ; les logements de la page
- * filtrée sont cochés d'office.
+ * filtrée sont cochés d'office. Un espace sans aucun logement le dit dès
+ * l'ouverture (Prerequis), avant toute saisie.
  */
 import { useId, useMemo, useRef, useState } from 'react';
 import { affectationsAFiger, ROLES_OPERATIONS } from '../../../data/operations';
@@ -34,7 +36,7 @@ import { useErp } from '../../../data/store';
 import type { Id, Logement } from '../../../data/types';
 import type { RoleOperations } from '../../../data/types-operations';
 import { Alert, Assistant, Button, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, Field, Input, Modal, NBSP, Prerequis, RecapAssistant, insecables, useParcours } from '../../../ui';
-import { LienInvitation, ListeLogements, inviterResponsable, logementsGeres, type Invitation } from '../../parametres/Acces';
+import { LienInvitation, ListeLogements, inviterResponsable, logementsGeres, titreInvitationFaite, type Invitation } from '../../parametres/Acces';
 
 const idChamp = (cle: string) => `assistant-responsable-${cle}`;
 
@@ -87,8 +89,8 @@ export function AssistantResponsable({ logement: l, logementsInitiaux = [], onFe
       <Modal
         ouvert
         onFermer={onFermer}
-        titre="Inviter un responsable"
-        description="Il reçoit un lien personnel, valable 7 jours, vers son espace opérations."
+        titre={titreInvitationFaite(invitation)}
+        description={`Il reçoit un lien personnel, valable 7${NBSP}jours, vers son espace opérations.`}
         pied={
           <Button variant="primary" onClick={onFermer}>
             Terminé
@@ -102,14 +104,17 @@ export function AssistantResponsable({ logement: l, logementsInitiaux = [], onFe
 
   const questions: Record<EcranResponsable, { question: string; aide?: string }> = {
     qui: { question: `Qui va s’occuper de ${l?.nom ?? 'ce logement'}${NBSP}?`, aide: 'La personne le verra dans son espace opérations.' },
-    email: { question: `Quelle est son adresse e-mail${NBSP}?`, aide: 'Elle reçoit un lien personnel, valable 7 jours, vers son espace opérations.' },
-    identite: { question: `Qui est-ce${NBSP}?` },
+    email: { question: `Comment la joindre${NBSP}?`, aide: `Elle reçoit un lien personnel, valable 7${NBSP}jours, vers son espace opérations.` },
+    nom: { question: `Quel est son nom${NBSP}?` },
+    role: { question: `Quel sera son rôle${NBSP}?` },
     logements: { question: `Quels logements suivra cette personne${NBSP}?` },
     recapitulatif: { question: `Tout est correct${NBSP}?` },
   };
-  const q = questions[ecran];
-  // Aucun logement dans l'espace (Paramètres → Accès, base vide) : un responsable suit toujours au moins un logement.
-  const sansLogement = ecran === 'logements' && !logements.length && !existant?.logementIds.length;
+  // Aucun logement dans l'espace (Paramètres → Accès, base vide) : un responsable suit toujours au moins un
+  // logement. Dit dès l'ouverture, avant toute saisie (« Nouveau logement » quitte l'assistant).
+  const sansLogementAuDepart = !l && !logements.length;
+  const sansLogement = sansLogementAuDepart || (ecran === 'logements' && !logements.length && !existant?.logementIds.length);
+  const q = sansLogementAuDepart ? questions.logements : questions[ecran];
 
   return (
     <Assistant
@@ -129,111 +134,99 @@ export function AssistantResponsable({ logement: l, logementsInitiaux = [], onFe
       envoi={envoi}
       onFermer={onFermer}
     >
-      {ecran === 'qui' && (
+      {sansLogement ? (
+        <Prerequis manque="Vous n’avez pas encore de logement." detail="Un responsable suit toujours au moins un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+      ) : (
         <>
-          {!libres.length && <p className="mb-3 text-[14px] text-(--lm-encre-2)">Toute l’équipe suit déjà ce logement.</p>}
-          <ChoixListe
-            options={[
-              ...libres.map((m) => ({ valeur: m.id, libelle: m.nom, detail: ROLES_OPERATIONS[m.role] })),
-              { valeur: NOUVELLE_PERSONNE, libelle: 'Une nouvelle personne', detail: 'Invitée par e-mail' },
-            ]}
-            valeur={b.choix || undefined}
-            onChange={(choix) => maj({ choix })}
-            onContinuer={continuer}
-            labelledBy={titreId}
-            idPremier={idChamp('choix')}
-          />
+          {ecran === 'qui' && (
+            <>
+              {!libres.length && <p className="mb-3 text-[14px] text-(--lm-encre-2)">Toute l’équipe suit déjà ce logement.</p>}
+              <ChoixListe
+                options={[
+                  ...libres.map((m) => ({ valeur: m.id, libelle: m.nom, detail: ROLES_OPERATIONS[m.role] })),
+                  { valeur: NOUVELLE_PERSONNE, libelle: 'Une nouvelle personne', detail: 'Invitée par e-mail' },
+                ]}
+                valeur={b.choix || undefined}
+                onChange={(choix) => maj({ choix })}
+                onContinuer={continuer}
+                labelledBy={titreId}
+                idPremier={idChamp('choix')}
+              />
+            </>
+          )}
+          {ecran === 'email' && (
+            <div className="space-y-4">
+              <Field label="Adresse e-mail" aide={existant ? insecables(`Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.`) : undefined} erreur={etat.erreurChamp('email')}>
+                <Input
+                  id={idChamp('email')}
+                  type="email"
+                  inputMode="email"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  value={b.email}
+                  onChange={(e) => maj({ email: e.target.value })}
+                  onBlur={() => p.quitter('email')}
+                  autoComplete="off"
+                  className={CHAMP_ASSISTANT}
+                />
+              </Field>
+              <Field label="Téléphone" aide={existant?.telephone ? 'Celui de la fiche reprise.' : 'Facultatif.'}>
+                <Input
+                  id={idChamp('telephone')}
+                  type="tel"
+                  value={existant?.telephone ?? b.telephone}
+                  disabled={!!existant?.telephone}
+                  onChange={(e) => maj({ telephone: e.target.value })}
+                  autoComplete="off"
+                  className={CHAMP_ASSISTANT}
+                />
+              </Field>
+            </div>
+          )}
+          {ecran === 'nom' && (
+            <Field label="Nom" aide={existant ? 'Celui de la fiche reprise.' : undefined} erreur={etat.erreurChamp('nom')}>
+              <Input
+                id={idChamp('nom')}
+                value={existant ? existant.nom : b.nom}
+                disabled={!!existant}
+                onChange={(e) => maj({ nom: e.target.value })}
+                onBlur={() => p.quitter('nom')}
+                autoComplete="off"
+                className={CHAMP_ASSISTANT}
+              />
+            </Field>
+          )}
+          {ecran === 'role' && (
+            <ChoixCourts
+              options={ROLES}
+              valeur={roleRetenu(b, equipe)}
+              onChange={(role) => maj({ role })}
+              onContinuer={continuer}
+              labelledBy={titreId}
+              idPremier={idChamp('role')}
+              className="grid-cols-1 sm:grid-cols-2"
+            />
+          )}
+          {ecran === 'logements' && (
+            <ListeLogements
+              logements={logements}
+              coches={b.logementIds}
+              onChange={(logementIds) => maj({ logementIds })}
+              pleineHauteur
+              regle={(x) => (existant?.logementIds.includes(x.id) ? { verrou: true, detail: 'Déjà suivi' } : {})}
+            />
+          )}
+          {ecran === 'recapitulatif' && (
+            <RecapAssistant lignes={recapResponsable(b, { equipe, logements: d.logements, sansChoix: !l }).map((x) => ({ ...x, onModifier: () => p.modifier(x.ecran) }))}>
+              {erreurEnvoi && (
+                <Alert tone="danger" className="mt-4">
+                  {erreurEnvoi}
+                </Alert>
+              )}
+            </RecapAssistant>
+          )}
         </>
       )}
-      {ecran === 'email' && (
-        <Field label="Adresse e-mail" aide={existant ? insecables(`Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.`) : undefined} erreur={etat.erreurChamp('email')}>
-          <Input
-            id={idChamp('email')}
-            type="email"
-            inputMode="email"
-            value={b.email}
-            onChange={(e) => maj({ email: e.target.value })}
-            onBlur={() => p.quitter('email')}
-            autoComplete="off"
-            className={CHAMP_ASSISTANT}
-          />
-        </Field>
-      )}
-      {ecran === 'identite' && (
-        <Identite b={b} maj={maj} existant={existant} erreur={etat.erreurChamp('nom')} quitter={p.quitter} continuer={continuer} />
-      )}
-      {ecran === 'logements' &&
-        (sansLogement ? (
-          <Prerequis manque="Vous n’avez pas encore de logement." detail="Un responsable suit toujours au moins un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
-        ) : (
-          <ListeLogements
-            logements={logements}
-            coches={b.logementIds}
-            onChange={(logementIds) => maj({ logementIds })}
-            pleineHauteur
-            regle={(x) => (existant?.logementIds.includes(x.id) ? { verrou: true, detail: 'Déjà suivi' } : {})}
-          />
-        ))}
-      {ecran === 'recapitulatif' && (
-        <RecapAssistant lignes={recapResponsable(b, { equipe, logements: d.logements, sansChoix: !l }).map((x) => ({ ...x, onModifier: () => p.modifier(x.ecran) }))}>
-          {erreurEnvoi && (
-            <Alert tone="danger" className="mt-4">
-              {erreurEnvoi}
-            </Alert>
-          )}
-        </RecapAssistant>
-      )}
     </Assistant>
-  );
-}
-
-function Identite({
-  b,
-  maj,
-  existant,
-  erreur,
-  quitter,
-  continuer,
-}: {
-  b: BrouillonResponsable;
-  maj: (p: Partial<BrouillonResponsable>) => void;
-  existant?: { nom: string; telephone?: string; role: RoleOperations };
-  erreur?: string;
-  quitter: (cle: string) => void;
-  continuer: () => void;
-}) {
-  const roleId = useId();
-  const { donnees } = useErp();
-  return (
-    <div className="space-y-4">
-      <Field label="Nom" erreur={erreur}>
-        <Input
-          id={idChamp('nom')}
-          value={existant ? existant.nom : b.nom}
-          disabled={!!existant}
-          onChange={(e) => maj({ nom: e.target.value })}
-          onBlur={() => quitter('nom')}
-          autoComplete="off"
-          className={CHAMP_ASSISTANT}
-        />
-      </Field>
-      <div>
-        <p id={roleId} className="mb-1.5 text-[13px] font-semibold text-(--lm-encre)">
-          Rôle
-        </p>
-        <ChoixCourts options={ROLES} valeur={roleRetenu(b, donnees.equipe)} onChange={(role) => maj({ role })} onContinuer={continuer} labelledBy={roleId} className="grid-cols-1 sm:grid-cols-2" />
-      </div>
-      <Field label="Téléphone" aide="Facultatif.">
-        <Input
-          id={idChamp('telephone')}
-          type="tel"
-          value={existant?.telephone ?? b.telephone}
-          disabled={!!existant?.telephone}
-          onChange={(e) => maj({ telephone: e.target.value })}
-          autoComplete="off"
-          className={CHAMP_ASSISTANT}
-        />
-      </Field>
-    </div>
   );
 }

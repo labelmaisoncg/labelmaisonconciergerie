@@ -1,8 +1,9 @@
 /**
  * Inviter un propriétaire, pas à pas (Paramètres → Accès,
- * modules/parametres/AssistantInvitationProprietaire.tsx) : son adresse
- * e-mail (une fiche de l'espace avec la même adresse est reprise), son nom et
- * son téléphone, ses logements, puis le récapitulatif.
+ * modules/parametres/Acces.tsx, AssistantInvitationProprietaire) : comment
+ * le joindre (son adresse e-mail, une fiche de l'espace avec la même adresse
+ * est reprise, et son téléphone), son nom, ses logements, puis le
+ * récapitulatif. Une question par écran.
  *
  * Mêmes règles et mêmes écritures que l'ancienne fenêtre « Inviter un
  * propriétaire » : nom obligatoire (2 lettres) sauf fiche reprise, adresse
@@ -18,7 +19,8 @@ import { transfertsProprietaire, type Transfert } from './acces-gerant';
 import { EMAIL_RESPONSABLE } from './creation-responsable';
 import type { DateISO, Id, Logement, Proprietaire } from './types';
 
-export const ECRANS_INVITATION_PROPRIETAIRE = ['email', 'identite', 'logements', 'recapitulatif'] as const;
+/** « email » : l'adresse et le téléphone (« Comment le joindre ? ») ; « nom » : le nom seul. */
+export const ECRANS_INVITATION_PROPRIETAIRE = ['email', 'nom', 'logements', 'recapitulatif'] as const;
 export type EcranInvitationProprietaire = (typeof ECRANS_INVITATION_PROPRIETAIRE)[number];
 
 export interface BrouillonInvitationProprietaire {
@@ -60,11 +62,11 @@ export function erreursInvitationProprietaire(ecran: EcranInvitationProprietaire
     if (!b.email.trim()) r.email = 'Indiquez son adresse e-mail.';
     else if (!EMAIL_RESPONSABLE.test(adresseInvitation(b.email))) r.email = 'Adresse e-mail invalide.';
   }
-  if (ecran === 'identite' && b.nom.trim().length < 2 && !proprietaireAvecEmail(ctx.proprietaires, b.email)) r.nom = 'Indiquez le nom du propriétaire.';
+  if (ecran === 'nom' && b.nom.trim().length < 2 && !proprietaireAvecEmail(ctx.proprietaires, b.email)) r.nom = 'Indiquez le nom du propriétaire.';
   return r;
 }
 
-const ECRAN_DE_LA_CLE: Record<string, EcranInvitationProprietaire> = { email: 'email', nom: 'identite', logementIds: 'logements' };
+const ECRAN_DE_LA_CLE: Record<string, EcranInvitationProprietaire> = { email: 'email', nom: 'nom', logementIds: 'logements' };
 export const ecranDeLaCleInvitationProprietaire = (cle: string): EcranInvitationProprietaire => ECRAN_DE_LA_CLE[cle] ?? 'recapitulatif';
 
 /** Logements cochés qui sont aujourd'hui à un autre propriétaire : dits avant d'inviter. */
@@ -112,8 +114,8 @@ export function recapInvitationProprietaire(
   const noms = ids.map((id) => ctx.logements.find((l) => l.id === id)?.nom).filter(Boolean);
   return [
     { cle: 'email', ecran: 'email', libelle: 'Adresse e-mail', valeur: adresseInvitation(b.email) },
-    { cle: 'nom', ecran: 'identite', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
-    { cle: 'telephone', ecran: 'identite', libelle: 'Téléphone', valeur: telephone || 'Non renseigné' },
+    { cle: 'telephone', ecran: 'email', libelle: 'Téléphone', valeur: telephone || 'Non renseigné' },
+    { cle: 'nom', ecran: 'nom', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
     { cle: 'logements', ecran: 'logements', libelle: 'Ses logements', valeur: noms.join(', ') || 'Aucun pour l’instant' },
   ];
 }
