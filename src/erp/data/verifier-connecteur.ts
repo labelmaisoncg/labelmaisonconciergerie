@@ -11,10 +11,12 @@
  */
 import { EMAIL_EQUIPE } from './config';
 import { EMAIL_SERVEUR } from './espaces';
+import { deNom } from './format';
 import {
   MESSAGE_AUTORISER_COMPTE_TECHNIQUE,
   MESSAGE_OAUTH_COMPTE_TECHNIQUE,
-  PHRASE_COMPTE_TECHNIQUE,
+  TEXTE_COMPTE_TECHNIQUE,
+  TITRE_COMPTE_TECHNIQUE,
   connectePar,
   estCompteTechnique,
 } from './oauth-regles';
@@ -61,7 +63,7 @@ function main() {
   for (const [nom, texte] of [
     ['refus de « Autoriser »', MESSAGE_AUTORISER_COMPTE_TECHNIQUE],
     ['refus du code ou du jeton', MESSAGE_OAUTH_COMPTE_TECHNIQUE],
-    ['phrase des écrans', PHRASE_COMPTE_TECHNIQUE],
+    ['texte de l’encadré des écrans', TEXTE_COMPTE_TECHNIQUE],
   ] as const) {
     verifier(!/'/.test(texte) && !/ [:?!%]/.test(texte) && / :/.test(texte), `${nom} : typographie française`, texte);
   }
@@ -70,7 +72,27 @@ function main() {
     'refus de « Autoriser » : le texte prévu',
   );
   verifier(MESSAGE_OAUTH_COMPTE_TECHNIQUE === 'Connexion faite avec le compte technique : reconnectez Claude avec votre propre compte de gérant.', 'refus du jeton : le texte prévu');
-  verifier(PHRASE_COMPTE_TECHNIQUE === 'Vous êtes connecté avec le compte technique : connectez-vous avec votre propre compte pour relier Claude.', 'phrase des écrans : le texte prévu');
+  verifier(TITRE_COMPTE_TECHNIQUE === 'Ce compte ne peut pas connecter Claude.' && !/'/.test(TITRE_COMPTE_TECHNIQUE), 'titre de l’encadré des écrans : le texte prévu');
+  verifier(TEXTE_COMPTE_TECHNIQUE === 'C’est le compte technique de l’ERP : connectez-vous avec votre propre compte de gérant.', 'texte de l’encadré des écrans : le texte prévu');
+  verifier(![TITRE_COMPTE_TECHNIQUE, TEXTE_COMPTE_TECHNIQUE].some((t) => /relier/.test(t)) && /connecter Claude/.test(TITRE_COMPTE_TECHNIQUE), 'encadré : « connecter Claude », comme le reste des écrans');
+
+  // « de » ou « d’ » devant un nom : voyelle, h muet (src/erp/data/format.ts, aussi pour l’espace propriétaire).
+  for (const [nom, attendu] of [
+    ['Abdel', 'd’Abdel'],
+    ['Équipe Label Maison', 'd’Équipe Label Maison'],
+    ['Hélène', 'd’Hélène'],
+    ['Hugo', 'd’Hugo'],
+    ['Yannick', 'd’Yannick'],
+    ['Œuvre', 'd’Œuvre'],
+    ['essonne conciergerie', 'd’essonne conciergerie'],
+    ['Kamel', 'de Kamel'],
+    ['Label Maison', 'de Label Maison'],
+    ['Hrant', 'de Hrant'],
+    ['abdel@exemple.invalid', 'd’abdel@exemple.invalid'],
+    ['kamel@exemple.invalid', 'de kamel@exemple.invalid'],
+  ] as const) {
+    verifier(deNom(nom) === attendu, `deNom(« ${nom} ») : « ${attendu} »`, deNom(nom));
+  }
 
   // « Connecté par … » : vous, le nom connu, sinon l'adresse.
   const noms: Record<string, string> = { 'abdel@exemple.invalid': 'Abdel', 'kamel@exemple.invalid': 'Kamel' };

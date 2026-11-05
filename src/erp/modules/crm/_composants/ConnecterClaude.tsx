@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { Check, Copy } from 'lucide-react';
 import { EMAIL_EQUIPE } from '../../../data/config';
 import { espaceOuvert } from '../../../data/espaces';
-import { ADRESSE_CONNECTEUR, PHRASE_COMPTE_TECHNIQUE, connectePar, estCompteTechnique } from '../../../data/oauth-regles';
-import { dateHeure, pluriel } from '../../../data/format';
+import { ADRESSE_CONNECTEUR, TEXTE_COMPTE_TECHNIQUE, TITRE_COMPTE_TECHNIQUE, connectePar, estCompteTechnique } from '../../../data/oauth-regles';
+import { dateHeure, insecables, pluriel } from '../../../data/format';
 import { useErp } from '../../../data/store';
 import { Alert, Button, ButtonLink, Modal } from '../../../ui';
 import { appelerConnecteur } from './api-connecteur';
@@ -62,7 +62,7 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
       setCopie(true);
       setTimeout(() => setCopie(false), 2500);
     } catch {
-      setErreur('Copie impossible : sélectionnez l’adresse et copiez-la à la main.');
+      setErreur(insecables('Copie impossible : sélectionnez l’adresse et copiez-la à la main.'));
     }
   };
 
@@ -83,7 +83,7 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
       ouvert={ouvert}
       onFermer={fermer}
       titre="Connecter à Claude"
-      description={`Une seule fois : ensuite, Claude peut consulter l’espace ${nomEspace} et y préparer des actions, que vous pouvez annuler.`}
+      description={insecables(`Une seule fois : ensuite, Claude peut consulter l’espace ${nomEspace} et y préparer des actions, que vous pouvez annuler.`)}
       pied={
         <>
           {/* Claude connecté : ce qu’il a fait dans l’ERP, avec « Annuler » (Paramètres, gérant). */}
@@ -132,7 +132,9 @@ export function ConnecterClaude({ ouvert, onFermer, demo }: { ouvert: boolean; o
           )}
           {erreur && <Alert tone="danger" titre={erreur} />}
           {technique ? (
-            <Alert tone="info" titre={PHRASE_COMPTE_TECHNIQUE} />
+            <Alert tone="info" titre={TITRE_COMPTE_TECHNIQUE}>
+              {TEXTE_COMPTE_TECHNIQUE}
+            </Alert>
           ) : (
             <ol className="space-y-4">
               <li>

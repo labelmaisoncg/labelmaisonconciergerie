@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { Bot, Check, Link2Off } from 'lucide-react';
 import { EMAIL_EQUIPE } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
-import { PHRASE_COMPTE_TECHNIQUE, adresseRetour, demandeur, estCompteTechnique, lireDemande } from '../../data/oauth-regles';
+import { deNom } from '../../data/format';
+import { TEXTE_COMPTE_TECHNIQUE, TITRE_COMPTE_TECHNIQUE, adresseRetour, demandeur, estCompteTechnique, lireDemande } from '../../data/oauth-regles';
 import { useErp } from '../../data/store';
 import { Alert, Button, ButtonLink, Card, EmptyState } from '../../ui';
 import { appelerConnecteur } from './_composants/api-connecteur';
@@ -19,9 +20,6 @@ const DROITS = [
 function Colonne({ children }: { children: ReactNode }) {
   return <div className="mx-auto max-w-md pt-10 sm:pt-20">{children}</div>;
 }
-
-/** « de Abdel » → « d’Abdel » : élision devant une voyelle. */
-const deNom = (nom: string) => (/^[aeiouyàâäéèêëîïôöùûüÿæœ]/i.test(nom) ? `d’${nom}` : `de ${nom}`);
 
 const OUVRIR_CRM = (
   <ButtonLink to="/erp/crm" variant="secondary">
@@ -133,17 +131,27 @@ export default function AutoriserClaude() {
             <Alert tone="alerte" titre="Demande venue d’une application de cet ordinateur. N’autorisez que si vous venez de lancer la connexion depuis Claude Code." />
           )}
           {erreur && <Alert tone="danger" titre={erreur} />}
-          {technique && <Alert tone="info" titre={PHRASE_COMPTE_TECHNIQUE} />}
+          {technique && (
+            <Alert tone="info" titre={TITRE_COMPTE_TECHNIQUE}>
+              {TEXTE_COMPTE_TECHNIQUE}
+            </Alert>
+          )}
           <div className="space-y-2">
             <p className="text-right text-[12.5px] text-(--lm-encre-2)">
               Avec le compte {deNom(utilisateur.nom || utilisateur.email)}
             </p>
-            <div className="flex justify-end gap-2">
-              <Button variant={technique ? 'ghost' : 'secondary'} disabled={envoi} onClick={refuser}>
+            {/* Comme le pied des fenêtres du kit : le refus en lien à gauche, l'action à droite. */}
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                disabled={envoi}
+                onClick={refuser}
+                className="inline-flex h-10 items-center rounded-md text-[14px] font-medium lm-lien disabled:cursor-not-allowed disabled:opacity-50 max-sm:min-h-11"
+              >
                 Refuser
-              </Button>
+              </button>
               {technique ? (
-                <Button variant="secondary" chargement={envoi} onClick={changerDeCompte}>
+                <Button variant="primary" chargement={envoi} onClick={changerDeCompte}>
                   Changer de compte
                 </Button>
               ) : (

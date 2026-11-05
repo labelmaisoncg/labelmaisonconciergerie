@@ -41,8 +41,9 @@ export const MESSAGE_AUTORISER_COMPTE_TECHNIQUE =
   'Le compte technique ne peut pas connecter Claude : connectez-vous à l’ERP avec votre propre compte de gérant, puis relancez la connexion depuis Claude.';
 /** Code ou jeton d'une autorisation donnée avec un compte technique (invalid_grant). */
 export const MESSAGE_OAUTH_COMPTE_TECHNIQUE = 'Connexion faite avec le compte technique : reconnectez Claude avec votre propre compte de gérant.';
-/** Écrans « Connecter à Claude » et « Autoriser », ouverts avec un compte technique. */
-export const PHRASE_COMPTE_TECHNIQUE = 'Vous êtes connecté avec le compte technique : connectez-vous avec votre propre compte pour relier Claude.';
+/** Écrans « Connecter à Claude » et « Autoriser », ouverts avec un compte technique : titre et texte de l'encadré. */
+export const TITRE_COMPTE_TECHNIQUE = 'Ce compte ne peut pas connecter Claude.';
+export const TEXTE_COMPTE_TECHNIQUE = 'C’est le compte technique de l’ERP : connectez-vous avec votre propre compte de gérant.';
 
 /**
  * « Connecté par … » sous l'état de la connexion : `par` (adresses des gérants
