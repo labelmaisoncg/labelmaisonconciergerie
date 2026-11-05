@@ -24,6 +24,7 @@ import {
   type ResultatMoteur,
 } from '../automatisations';
 import { COLLECTIONS, completer, trierJournal } from './collections';
+import { appliquerPastille } from './pastille-app';
 import { CLE_DEMO, MODE, MODE_DEMO } from './config';
 import { logementActivable, menageInterneFait, missionValidable, prestataireConforme } from './selectors';
 import {
@@ -1091,6 +1092,7 @@ function FournisseurReel({ children }: { children: ReactNode }) {
       void (async () => {
         setPhase({ nom: 'demarrage' });
         arreterSynchro();
+        appliquerPastille(0);
         await deconnexionSupabase();
         window.location.assign(adresseDeconnexion(retour));
       })();

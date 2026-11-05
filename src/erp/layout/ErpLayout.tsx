@@ -8,17 +8,20 @@ import { MessageRetour } from './MessageRetour';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { OngletsRubrique } from './OngletsRubrique';
+import { usePastilleApp } from './usePastilleApp';
 
 /**
  * Cadre de l'ERP : barre latérale fixe (barre d'onglets en bas sous
  * 1024 px, comme une app), bandeau démo (développement) ou lecture seule,
  * en-tête, contenu, alertes d'enregistrement, message de réussite après
  * une action qui change de page (MessageRetour), demande des notifications
- * à l'ouverture. Aucun défilement horizontal de page : les tableaux défilent
- * dans leur propre conteneur.
+ * à l'ouverture, pastille de l'icône de l'app (usePastilleApp). Aucun
+ * défilement horizontal de page : les tableaux défilent dans leur propre
+ * conteneur.
  */
 export function ErpLayout({ children }: { children: ReactNode }) {
   const { pathname } = useLocation();
+  usePastilleApp();
 
   // Corps entre accolades : un effet ne doit rien renvoyer d'autre qu'une
   // fonction de nettoyage. Certaines extensions du navigateur font renvoyer

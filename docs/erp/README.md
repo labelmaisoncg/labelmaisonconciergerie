@@ -1757,6 +1757,20 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
   et `/api` passent toujours par le réseau ; sans réseau, une courte page
   « Pas de connexion internet ». Chaque déploiement le remplace et vide
   l'ancien cache.
+- **Pastille rouge sur l'icône** (comme une vraie app ; `src/erp/data/pastille-app.ts`,
+  `src/erp/layout/usePastilleApp.ts`) : app ouverte, le nombre exact, soit la
+  somme des pastilles de la barre du bas que la personne doit traiter
+  (messages qui attendent une réponse ; personnes à appeler pour le gérant
+  seulement, c'est lui qui rappelle ; rien pour un compte en lecture seule),
+  repris à chaque changement et quand l'app passe au premier ou à
+  l'arrière-plan ; retirée à la déconnexion. App fermée, le service worker
+  ajoute 1 à chaque notification qui apporte une chose à traiter (nouveau
+  message d'un voyageur, problème signalé, l'agent passe la main, nouvelle
+  demande à appeler), jamais pour une notification d'essai ; l'app remet le
+  nombre exact à sa prochaine ouverture. iPhone : iOS 16.4 ou plus, app sur
+  l'écran d'accueil, notifications autorisées (sans elles, pas de pastille) ;
+  à couper dans Réglages → Notifications → Label Maison → Pastilles.
+  Contrôlé par `verifier-pastille.ts`.
 - **Envoi** : `api/erp-repull-sync.ts`, `api/erp-repull-webhook.ts` et
   `api/erp-agent.ts` enveloppent leur travail dans `surveiller`
   (`src/erp/data/notifications-envoi.ts`) : photo de la base avant et après,
