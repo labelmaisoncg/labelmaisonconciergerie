@@ -69,6 +69,7 @@ import {
 import { ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable, saisieInvitationResponsable } from './creation-responsable';
 import { ficheResponsableInvite, transfertsProprietaire } from './acces-gerant';
 import { ECRANS_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre } from './creation-membre';
+import { ECRANS_CONCIERGERIE, NOM_CONCIERGERIE_MAX, brouillonConciergerie, erreursConciergerie, invitationConciergerie, recapConciergerie, type BrouillonConciergerie } from './creation-conciergerie';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
@@ -754,6 +755,41 @@ section('Équipe, ajouter quelqu’un : écrans, règles et même ligne que l’
   const demo = membreDepuisBrouillon(cas[1][0], { utilisateurs, reel: false, maintenantMs: 1_790_000_000_000 });
   verifier(demo.ok && demo.membre.id === `usr-${(1_790_000_000_000).toString(36)}`, 'démonstration : « usr- » et l’heure');
   verifier(recapMembre(cas[1][0]).map((l) => l.valeur).join(' | ') === 'compta@exemple.fr | Cabinet Roux | Lecture seule', 'récapitulatif : adresse, nom, rôle en toutes lettres');
+}
+
+/* ============================================================ conciergerie */
+
+section('Espaces, inviter une conciergerie : écrans, règles et même envoi que l’ancien formulaire');
+{
+  /** L'ancien formulaire « Inviter une conciergerie » (Espaces.tsx), recopié tel quel : ce qu'il envoyait à api/erp-espaces. */
+  const ancien = (nom: string, email: string) => {
+    if (!nom.trim()) return undefined;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) return undefined;
+    const cible = { nom, email };
+    return { action: 'inviter', nom: cible.nom.trim(), email: cible.email.trim() };
+  };
+  /** Ce que fait l'envoi partagé avec « Renvoyer » (Espaces.tsx, inviter) du nom et de l'adresse reçus. */
+  const envoi = (cible: { nom: string; email: string }) => ({ action: 'inviter', nom: cible.nom.trim(), email: cible.email.trim() });
+  const b0 = brouillonConciergerie();
+  verifier(ECRANS_CONCIERGERIE.join() === 'nom,email,recapitulatif', 'écrans : nom, adresse, récapitulatif');
+  verifier(erreursConciergerie('nom', b0).nom === 'Donnez le nom de la conciergerie.', 'nom vide : même phrase qu’avant');
+  verifier(erreursConciergerie('email', b0).email === 'Indiquez l’adresse de la personne.', 'adresse vide : à indiquer');
+  verifier(erreursConciergerie('email', { ...b0, email: 'sens@exemple' }).email === 'Adresse e‑mail invalide.', 'adresse illisible : refusée');
+  verifier(NOM_CONCIERGERIE_MAX === 80, 'nom : 80 caractères au plus, comme le champ d’avant');
+  const cas: BrouillonConciergerie[] = [
+    { nom: ' Conciergerie de Sens ', email: ' Contact@Sens-Conciergerie.fr ' },
+    { nom: 'Évry Clés', email: 'gerant@evry.fr' },
+    { nom: '  ', email: 'gerant@evry.fr' },
+    { nom: 'Évry', email: 'gerant@evry' },
+    { nom: 'Évry', email: ' ' },
+  ];
+  for (const x of cas) {
+    const r = invitationConciergerie(x);
+    const avant = ancien(x.nom, x.email);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${JSON.stringify(x)})`);
+    if (r.ok && avant) verifier(empreinte(envoi(r.corps)) === empreinte(avant) && empreinte(r.corps) === empreinte(avant), `même corps envoyé à api/erp-espaces (${x.nom.trim()})`);
+  }
+  verifier(recapConciergerie(cas[0]).map((l) => l.valeur).join(' | ') === 'Conciergerie de Sens | Contact@Sens-Conciergerie.fr', 'récapitulatif : nom et adresse tels qu’envoyés');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

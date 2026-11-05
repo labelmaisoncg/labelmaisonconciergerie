@@ -1,8 +1,8 @@
 /**
  * Paramètres → Espaces (gérants de Label Maison seulement) : Label Maison est
- * la plateforme. On y invite une conciergerie (son nom, l'adresse de la
- * personne qui ouvrira son espace), on voit les espaces et les invitations en
- * attente, on suspend ou rouvre un espace.
+ * la plateforme. On y invite une conciergerie, pas à pas (son nom, l'adresse
+ * de la personne qui ouvrira son espace : AssistantConciergerie.tsx), on voit
+ * les espaces et les invitations en attente, on suspend ou rouvre un espace.
  *
  * Tout passe par api/erp-espaces.ts avec la session du gérant ; la base
  * revérifie ses droits (supabase/erp-espaces.sql : erp.inviter_espace…).
@@ -11,17 +11,17 @@
  * (layout/CreerEspace.tsx), au nom donné ici. Les gestes qui coupent l'accès
  * (suspendre, annuler) demandent une confirmation.
  */
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Ban, Building2, Copy, Send } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { ID_LABEL_MAISON } from '../../data/espaces';
 import { dateCourte } from '../../data/format';
-import { Alert, Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal } from '../../ui';
 import { appelerRouteGerant } from '../crm/_composants/api-connecteur';
+import { AssistantConciergerie } from './AssistantConciergerie';
 
 const API = '/api/erp-espaces';
 const INDISPONIBLE = 'Espaces indisponibles pour le moment. Réessayez dans un instant.';
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 interface EspacePlateforme {
   id: string;
@@ -110,8 +110,8 @@ export default function Espaces() {
   const d = useErp();
   const [liste, setListe] = useState<Liste | null>(null);
   const [erreur, setErreur] = useState<string>();
-  const [nom, setNom] = useState('');
-  const [email, setEmail] = useState('');
+  /** Assistant « Inviter une conciergerie » ouvert. */
+  const [nouvelle, setNouvelle] = useState(false);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [resultat, setResultat] = useState<Resultat | null>(null);
   const [aConfirmer, setAConfirmer] = useState<AConfirmer | null>(null);
@@ -130,7 +130,13 @@ export default function Espaces() {
     void relire();
   }, [relire]);
 
-  const inviter = async (cible: { nom: string; email: string }, cle: string) => {
+  /**
+   * Invitation (nouvelle, ou renvoyée depuis sa ligne) : même appel. Le
+   * résultat s'affiche là où on l'a demandée ; pour une nouvelle invitation,
+   * une erreur reste dans l'assistant (rendue), le lien ou la confirmation
+   * s'affiche sur la page.
+   */
+  const inviter = async (cible: { nom: string; email: string }, cle: string): Promise<string | undefined> => {
     setEnCours(cle);
     setResultat(null);
     const adresse = cible.email.trim();
@@ -148,23 +154,15 @@ export default function Espaces() {
               lien: r.lien,
             },
       );
-      if (cle === 'nouvelle') {
-        setNom('');
-        setEmail('');
-      }
       await relire();
+      return undefined;
     } catch (e) {
-      setResultat({ ou: cle, ton: 'danger', texte: e instanceof Error ? e.message : INDISPONIBLE });
+      const texte = e instanceof Error ? e.message : INDISPONIBLE;
+      if (cle !== 'nouvelle') setResultat({ ou: cle, ton: 'danger', texte });
+      return texte;
     } finally {
       setEnCours(null);
     }
-  };
-
-  const envoyer = (e: FormEvent) => {
-    e.preventDefault();
-    if (!nom.trim()) return setResultat({ ou: 'nouvelle', ton: 'danger', texte: 'Donnez le nom de la conciergerie.' });
-    if (!EMAIL.test(email.trim())) return setResultat({ ou: 'nouvelle', ton: 'danger', texte: 'Adresse e-mail invalide.' });
-    void inviter({ nom, email }, 'nouvelle');
   };
 
   const agir = async (corps: Record<string, unknown>, cle: string) => {
@@ -195,25 +193,13 @@ export default function Espaces() {
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <Card>
-        <CardHeader
-          titre="Inviter une conciergerie"
-          description="La personne crée son compte avec cette adresse, puis l’espace de sa conciergerie, à ce nom, qu’elle gère seule. Invitation valable 14 jours, une seule fois."
-        />
-        <form onSubmit={envoyer} noValidate className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nom de la conciergerie" aide="Il ne se change plus ensuite.">
-            <Input value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)} autoComplete="organization" />
-          </Field>
-          <Field label="E-mail de la personne qui ouvrira l’espace">
-            <Input type="email" inputMode="email" autoCapitalize="off" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <div className="sm:col-span-2">
-            <Button type="submit" variant="primary" icone={<Send />} chargement={enCours === 'nouvelle'} disabled={!!enCours}>
-              Inviter
-            </Button>
-          </div>
-        </form>
+        <CardHeader titre="Inviter une conciergerie" description="Elle crée ensuite son espace, qu’elle gère seule." />
+        <Button variant="primary" icone={<Send />} disabled={!!enCours} className="max-sm:min-h-11" onClick={() => setNouvelle(true)}>
+          Inviter une conciergerie
+        </Button>
         {resultatDe('nouvelle')}
       </Card>
+      {nouvelle && <AssistantConciergerie onInviter={(cible) => inviter(cible, 'nouvelle')} onFermer={() => setNouvelle(false)} />}
 
       {erreur && <Alert tone="danger">{erreur}</Alert>}
 
