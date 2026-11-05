@@ -225,8 +225,8 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
   section('Rôles : prix et factures pour le gérant seulement');
   verifier(!o.sujets.some((s) => s.cle === 'prix' || s.cle === 'factures') && !/Prix à revoir|facture/i.test(o.texte) && !/prix|facture/i.test(o.court), 'membre non gérant : ni prix conseillés ni factures (texte et notification)', o.texte);
   verifier(
-    g.sujets.filter((s) => s.gerant).every((s) => s.cle === 'prix' || s.cle === 'factures' || s.cle === 'signalements' || s.cle === 'avis_valider'),
-    'seuls prix, factures, « pas à moi » et avis à valider sont marqués « gérant »',
+    g.sujets.filter((s) => s.gerant).every((s) => s.cle === 'prix' || s.cle === 'factures' || s.cle === 'signalements' || s.cle === 'avis_valider' || s.cle === 'demandes'),
+    'seuls prix, factures, « pas à moi », avis à valider et demandes des propriétaires sont marqués « gérant »',
   );
   verifier(n(g, 'avis_valider') === lignes('avisValider') && n(g, 'avis_valider') > 0 && !o.sujets.some((s) => s.cle === 'avis_valider'), 'avis à valider avant publication (gérant) : même nombre que « À faire », rien pour l’équipe', [n(g, 'avis_valider'), lignes('avisValider')]);
   verifier(!o.sujets.some((s) => s.cle === 'signalements'), 'membre non gérant : pas de « pas à moi » (comme « À faire »)');
