@@ -199,7 +199,8 @@ export default function Espaces() {
       <Card>
         <CardHeader
           titre="Espaces"
-          description="Chaque conciergerie a ses logements, son équipe et ses propriétaires ; rien ne passe d’un espace à l’autre."
+          // Courte : sur ordinateur, « Inviter une conciergerie » reste à droite du titre, comme dans les autres listes.
+          description="Chaque espace est à part : ses logements, son équipe, ses propriétaires."
           actions={
             <Button variant="primary" icone={<Send />} disabled={!!enCours} onClick={() => setNouvelle(true)}>
               Inviter une conciergerie
