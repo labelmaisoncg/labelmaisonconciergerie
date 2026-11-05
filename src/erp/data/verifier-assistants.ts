@@ -99,6 +99,8 @@ import {
   recapAbsence,
 } from './creation-absence';
 import { verifierAbsence } from './operations';
+import { brouillonMandat, ecransMandat, erreursMandat, mandatDepuisBrouillon, prochaineReference, recapMandat } from './creation-mandat';
+import { COMMISSION_CIBLE_MIN } from './constantes';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
@@ -1031,6 +1033,91 @@ section('Nouvelle absence : écrans, règles, même absence (gérant) et même a
   const recap = recapAbsence({ ...p0, membreId: 'eq-2', remplacantId: 'eq-3' }, { ecrans: ECRANS_ABSENCE_POLE, nom: (id) => ({ 'eq-2': 'Yanis', 'eq-3': 'Clara' })[id] ?? '', jour: (iso) => iso.slice(8) });
   verifier(recap.map((l) => l.valeur).join(' | ') === 'Yanis | Du 05 au 11 inclus | Clara', `récapitulatif du pôle (${recap.map((l) => l.valeur).join(' | ')})`);
   verifier(recapAbsence(g0, { ecrans: ECRANS_ABSENCE_GERANT, nom: () => '', jour: (iso) => iso }).map((l) => l.cle).join() === 'dates,remplacant,motif', 'récapitulatif du gérant : sans la personne, avec le motif');
+}
+
+/* ================================================================= mandat */
+
+section('Nouveau mandat : écrans, règles et même mandat que l’ancien formulaire');
+{
+  const J = '2026-11-05';
+  const existants = [
+    { id: 'man-1', reference: 'LM-M-2026-007', proprietaireId: 'pro-1', logementId: 'log-1', statut: 'signe' },
+    { id: 'man-2', reference: 'LM-M-2025-012', proprietaireId: 'pro-2', logementId: 'log-2', statut: 'resilie' },
+    { id: 'man-3', reference: 'LM-M-2026-002', proprietaireId: 'pro-3', logementId: 'log-3', statut: 'brouillon' },
+  ] as Mandat[];
+  /** L'ancien formulaire « Nouveau mandat » (FormMandat.tsx), recopié tel quel : valeurs de départ, règles, mandat créé. */
+  const vierge = (pre?: { proprietaireId?: string; logementId?: string; dateDebut?: string }) => ({
+    proprietaireId: pre?.proprietaireId ?? '',
+    logementId: pre?.logementId ?? '',
+    commissionPct: String(COMMISSION_CIBLE_MIN),
+    fraisMenage: '45',
+    dateDebut: pre?.dateDebut ?? ajouterJours(J, 14),
+    periodeEssaiFin: ajouterJours(pre?.dateDebut ?? ajouterJours(J, 14), 92),
+    preavisJours: String(90),
+  });
+  const ancienneReference = (mandats: Mandat[]) => {
+    const annee = J.slice(0, 4);
+    const max = mandats.map((m) => m.reference.match(new RegExp(`^LM-M-${annee}-(\\d+)$`))?.[1]).filter(Boolean).reduce((a, n) => Math.max(a, Number(n)), 0);
+    return `LM-M-${annee}-${String(max + 1).padStart(3, '0')}`;
+  };
+  const ancien = (s: ReturnType<typeof vierge>, proposerSigne: boolean, signe: boolean, id: string): Mandat | undefined => {
+    const pct = Number(s.commissionPct.replace(',', '.'));
+    const err: Record<string, string> = {};
+    if (!s.proprietaireId) err.proprietaireId = 'x';
+    if (!s.logementId) err.logementId = 'x';
+    if (!(pct > 0 && pct <= 50)) err.commissionPct = 'x';
+    const frais = versCentimes(s.fraisMenage);
+    if (!(frais >= 0)) err.fraisMenage = 'x';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s.dateDebut)) err.dateDebut = 'x';
+    if (s.periodeEssaiFin && s.periodeEssaiFin <= s.dateDebut) err.periodeEssaiFin = 'x';
+    if (!/^\d+$/.test(s.preavisJours)) err.preavisJours = 'x';
+    const doublon = existants.find((m) => m.logementId === s.logementId && m.proprietaireId === s.proprietaireId && (m.statut === 'signe' || m.statut === 'envoye'));
+    if (doublon) err.logementId = 'x';
+    if (Object.keys(err).length) return undefined;
+    return {
+      ...(proposerSigne && signe
+        ? { id, reference: ancienneReference(existants), statut: 'signe' as const, signeLe: s.dateDebut, documentUrl: undefined }
+        : { id, reference: ancienneReference(existants), statut: 'brouillon' as const, documentUrl: undefined }),
+      proprietaireId: s.proprietaireId,
+      logementId: s.logementId,
+      commissionPct: pct,
+      fraisMenageCentimes: frais,
+      dateDebut: s.dateDebut,
+      periodeEssaiFin: s.periodeEssaiFin || undefined,
+      preavisJours: Number(s.preavisJours),
+    };
+  };
+  verifier(ecransMandat(false).join() === 'proprietaire,logement,commission,menage,dates,preavis,recapitulatif', 'écrans : propriétaire, logement, commission, ménage, dates, préavis, récapitulatif');
+  verifier(ecransMandat(true)[0] === 'signe', 'après un changement de propriétaire : « déjà signé ? » d’abord, comme l’interrupteur en tête d’avant');
+  const pre = { proprietaireId: 'pro-4', logementId: 'log-4', dateDebut: '2026-10-01', dejaSigne: true };
+  const { signe: _s1, ...b1 } = brouillonMandat(undefined, J);
+  const { signe: s2, ...b2 } = brouillonMandat(pre, J);
+  verifier(empreinte(b1) === empreinte(vierge()) && empreinte(b2) === empreinte(vierge(pre)) && s2, 'valeurs de départ de l’ancien formulaire (sans et avec présélection)');
+  const b0 = brouillonMandat(undefined, J);
+  verifier(erreursMandat('proprietaire', b0, existants).proprietaireId === 'Choisissez le propriétaire.', 'propriétaire : à choisir');
+  verifier(erreursMandat('logement', { ...b0, proprietaireId: 'pro-1', logementId: 'log-1' }, existants).logementId === 'Ce logement a déjà un mandat en cours (LM-M-2026-007).', 'mandat déjà en cours : refusé, avec sa référence');
+  verifier(!erreursMandat('logement', { ...b0, proprietaireId: 'pro-2', logementId: 'log-2' }, existants).logementId, 'mandat résilié : un nouveau est permis');
+  verifier(erreursMandat('commission', { ...b0, commissionPct: '55' }, existants).commissionPct === 'Pourcentage entre 0 et 50.', 'commission au-delà de 50 % : refusée');
+  verifier(erreursMandat('menage', { ...b0, fraisMenage: 'abc' }, existants).fraisMenage === 'Montant en euros, ex. 45 ou 45,50.', 'frais de ménage illisibles : refusés');
+  verifier(erreursMandat('dates', { ...b0, periodeEssaiFin: b0.dateDebut }, existants).periodeEssaiFin === 'La fin d’essai doit être après la date de début.', 'fin d’essai le jour du début : refusée');
+  verifier(erreursMandat('preavis', { ...b0, preavisJours: '3 mois' }, existants).preavisJours === 'Indiquez un nombre de jours.', 'préavis : un nombre de jours');
+  verifier(prochaineReference(existants, J) === 'LM-M-2026-008' && prochaineReference([], '2027-01-03') === 'LM-M-2027-001', 'référence suivante de l’année');
+  const cas: [ReturnType<typeof vierge>, boolean, boolean][] = [
+    [{ ...vierge(), proprietaireId: 'pro-5', logementId: 'log-5' }, false, false],
+    [{ ...vierge(pre), commissionPct: '22,5', fraisMenage: '52,50', preavisJours: '60' }, true, true],
+    [{ ...vierge(pre), periodeEssaiFin: '' }, true, false],
+    [{ ...vierge(), proprietaireId: 'pro-1', logementId: 'log-1' }, false, false],
+    [{ ...vierge(), proprietaireId: 'pro-5', logementId: 'log-5', commissionPct: '0' }, false, false],
+  ];
+  for (const [s, proposerSigne, signe] of cas) {
+    const r = mandatDepuisBrouillon({ ...s, signe }, { mandats: existants, id: 'man-n', aujourdhui: J, proposerSigne });
+    const avant = ancien(s, proposerSigne, signe, 'man-n');
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${s.logementId}, ${s.commissionPct} %)`);
+    if (r.ok && avant) verifier(empreinte(r.mandat) === empreinte(avant), `même mandat créé (${r.mandat.reference}, ${r.mandat.statut})`);
+  }
+  const recap = recapMandat({ ...b2, signe: true }, { proposerSigne: true, nomProprietaire: () => 'Alice', nomLogement: () => 'T2 Gare', jour: (iso) => iso, euros: (c) => `${c / 100} €` });
+  verifier(recap.map((l) => l.cle).join() === 'signe,proprietaire,logement,commission,menage,dates,preavis', 'récapitulatif : une ligne par écran');
+  verifier(recap.find((l) => l.cle === 'commission')?.valeur === `${COMMISSION_CIBLE_MIN}${NBSP}%` && recap.find((l) => l.cle === 'preavis')?.valeur === `90${NBSP}jours`, 'récapitulatif : unités avec une espace insécable');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
