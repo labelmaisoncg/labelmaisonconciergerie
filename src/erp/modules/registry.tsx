@@ -36,7 +36,7 @@ export const GROUPES: Rubrique[] = [
 ];
 
 /** Compteurs affichables dans la barre latérale (calculés par le layout). */
-export type CleCompteur = 'missionsAAttribuer' | 'messagesEnAttente' | 'incidentsOuverts' | 'contactsAAppeler';
+export type CleCompteur = 'missionsAAttribuer' | 'messagesEnAttente' | 'incidentsOuverts' | 'contactsAAppeler' | 'demandesProprietaires';
 
 export interface ModuleErp {
   key: string;
@@ -65,7 +65,11 @@ const module = (
 /** L'ordre compte : c'est celui des onglets de chaque rubrique. */
 export const MODULES: ModuleErp[] = [
   module('tableau-de-bord', '', 'Accueil', 'accueil', lazy(() => import('./tableau-de-bord')), { motsCles: 'tableau de bord aujourd’hui indicateurs' }),
-  module('logements', 'logements', 'Logements', 'logements', lazy(() => import('./logements')), { motsCles: 'biens appartements fiches photos' }),
+  module('logements', 'logements', 'Logements', 'logements', lazy(() => import('./logements')), {
+    // Demandes des propriétaires qui attendent (gérant seulement : useCompteurs).
+    compteur: 'demandesProprietaires',
+    motsCles: 'biens appartements fiches photos demandes propriétaires questions',
+  }),
   module('reservations', 'reservations', 'Réservations', 'reservations', lazy(() => import('./reservations')), {
     motsCles: 'calendrier planning séjours voyageurs',
   }),

@@ -7,7 +7,7 @@
  */
 import type { AccesExterne, LienAccesExterne } from './acces-externe';
 import type { JourCarte } from './carte';
-import type { CanalReservation, Centimes, DateISO, Horodatage, Id, IdentiteSociete } from './types';
+import type { CanalReservation, Centimes, DateISO, Horodatage, Id, IdentiteSociete, StatutDemandeProprietaire, SujetDemandeProprietaire, TypeDemandeProprietaire } from './types';
 
 /* ------------------------------------------------------------------ accès */
 
@@ -398,4 +398,25 @@ export interface VueProprietaire {
   factures: FactureVue[];
   /** Contacts de la conciergerie ; absents si l'espace n'en a pas renseigné. */
   contacts?: ContactsConciergerie;
+}
+
+/* ------------------------------------------------------------ demandes */
+
+/**
+ * Une demande telle que le propriétaire la voit (« Mes demandes ») : la
+ * sienne seulement, sans qui a répondu dans l'équipe (api/espace-proprietaire.ts,
+ * action « demandes » ; calcul : demandesVues, data/demandes-proprietaires.ts).
+ * Jamais dans VueProprietaire : elle se lit à part.
+ */
+export interface DemandeVue {
+  id: Id;
+  type: TypeDemandeProprietaire;
+  sujet?: SujetDemandeProprietaire;
+  /** Logement concerné (un des siens) ; absent : voir `tousLogements`. */
+  logement?: { id: Id; nom: string };
+  tousLogements?: boolean;
+  statut: StatutDemandeProprietaire;
+  creeLe: Horodatage;
+  majLe: Horodatage;
+  echanges: { id: Id; auteur: 'proprietaire' | 'conciergerie'; texte: string; le: Horodatage }[];
 }

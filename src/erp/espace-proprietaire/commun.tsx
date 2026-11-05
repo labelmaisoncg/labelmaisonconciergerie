@@ -20,8 +20,9 @@ import { cn, useLienFichier } from '../ui';
 export const enteteImprime = (c: VueProprietaire['conciergerie']): string =>
   c.ligneLegale || (c.espace && estLabelMaison(c.espace) ? ENTREPRISE_LIGNE : c.nom);
 
-export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'factures' | 'documents';
-export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'factures', 'documents'];
+/** « demandes » (Mes demandes) se range sous l'Accueil : pas d'onglet de plus dans la barre du bas. */
+export type OngletEspace = 'accueil' | 'logements' | 'calendrier' | 'bilans' | 'factures' | 'documents' | 'demandes';
+export const ONGLETS_ESPACE: OngletEspace[] = ['accueil', 'logements', 'calendrier', 'bilans', 'factures', 'documents', 'demandes'];
 
 /** Lien d'ouverture d'un document (API signée pour le propriétaire, fichier de l'ERP pour le gérant). */
 export type LienDocumentProps = { id: string; className?: string; children: ReactNode };
@@ -68,12 +69,15 @@ export function PhotoLogement({ url, nom, className }: { url?: string; nom: stri
   return <img src={lien} alt={`Photo de ${nom}`} loading="lazy" decoding="async" className={cn('object-cover', className)} />;
 }
 
-/** Titre de page de l'espace, en serif comme sur le site. */
-export function TitreEspace({ titre, description }: { titre: ReactNode; description?: ReactNode }) {
+/** Titre de page de l'espace, en serif comme sur le site ; `action` à droite sur ordinateur, dessous sur téléphone. */
+export function TitreEspace({ titre, description, action }: { titre: ReactNode; description?: ReactNode; action?: ReactNode }) {
   return (
-    <div className="mb-5">
-      <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun) sm:text-[28px]">{titre}</h1>
-      {description && <p className="mt-1 max-w-2xl text-[14px] text-(--lm-encre-2)">{description}</p>}
+    <div className={cn('mb-5', action && 'flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between')}>
+      <div className="min-w-0">
+        <h1 className="lm-titre text-[24px] leading-tight text-(--lm-brun) sm:text-[28px]">{titre}</h1>
+        {description && <p className="mt-1 max-w-2xl text-[14px] text-(--lm-encre-2)">{description}</p>}
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   );
 }

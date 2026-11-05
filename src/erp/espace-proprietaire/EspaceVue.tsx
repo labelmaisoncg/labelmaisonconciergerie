@@ -5,6 +5,7 @@ import { Tabs, cn } from '../ui';
 import { Accueil } from './Accueil';
 import { Bilans } from './Bilans';
 import { Calendrier, type CalendrierEspace } from './Calendrier';
+import { AssistantDemande, MesDemandes, type DemandesEspace } from './Demandes';
 import { Documents } from './Documents';
 import { Factures } from './Factures';
 import { Logements } from './Logements';
@@ -40,6 +41,12 @@ export interface EspaceVueProps {
   onSortir?: () => void;
   /** Bandeau au-dessus de l'en-tête (aperçu du gérant, démo). */
   bandeau?: ReactNode;
+  /** Ses demandes et leur envoi ; absent : ni « Faire une demande » ni « Mes demandes ». */
+  demandes?: DemandesEspace;
+  /** Demande ouverte dans « Mes demandes » ; sans `onDemande`, retenue ici. */
+  demande?: string;
+  /** Ouvre « Mes demandes » sur celle-ci (sans id : sur la liste). */
+  onDemande?: (id?: string) => void;
 }
 
 /**
@@ -60,7 +67,19 @@ export function EspaceVue({
   LienDocument,
   onSortir,
   bandeau,
+  demandes,
+  demande: demandeProp,
+  onDemande,
 }: EspaceVueProps) {
+  const [demandeLocale, setDemandeLocale] = useState<string>();
+  const demande = onDemande ? demandeProp : demandeLocale;
+  /** « Mes demandes », sur une demande ou sur la liste. */
+  const choisirDemande = (id?: string) => {
+    if (onDemande) return onDemande(id);
+    setDemandeLocale(id);
+    onOnglet('demandes');
+  };
+  const [assistant, setAssistant] = useState(false);
   const [factureLocale, setFactureLocale] = useState<string>();
   const facture = onFacture ? factureProp : factureLocale;
   const choisirFacture = (id?: string) => {
@@ -76,13 +95,16 @@ export function EspaceVue({
     setLogementLocal(id);
     onOnglet('logements');
   };
-  // Toucher « Logements » revient à la liste.
-  const allerA = (o: OngletEspace) => (o === 'logements' ? choisirLogement(undefined) : o === 'factures' ? choisirFacture(undefined) : onOnglet(o));
+  // Toucher « Logements » revient à la liste (de même pour les factures et les demandes).
+  const allerA = (o: OngletEspace) =>
+    o === 'logements' ? choisirLogement(undefined) : o === 'factures' ? choisirFacture(undefined) : o === 'demandes' ? choisirDemande(undefined) : onOnglet(o);
   const finances = onglet === 'bilans' || onglet === 'factures';
+  /** Onglet allumé dans la barre : « Mes demandes » se range sous l'Accueil, les factures sous Finances. */
+  const actif = (cle: OngletEspace) => cle === onglet || (cle === 'bilans' && finances) || (cle === 'accueil' && onglet === 'demandes');
   const aRegler = vue.factures.filter((f) => f.statut !== 'payee').length;
   useEffect(() => {
     window.scrollTo({ top: 0 });
-  }, [onglet, bilan, logement, facture]);
+  }, [onglet, bilan, logement, facture, demande]);
 
   return (
     <div className="min-h-screen bg-(--lm-fond)">
@@ -98,11 +120,11 @@ export function EspaceVue({
               <button
                 key={o.cle}
                 type="button"
-                aria-current={o.cle === onglet || (o.cle === 'bilans' && finances) ? 'page' : undefined}
+                aria-current={actif(o.cle) ? 'page' : undefined}
                 onClick={() => allerA(o.cle)}
                 className={cn(
                   'relative inline-flex h-full items-center gap-1.5 px-3 text-[14px] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 focus-visible:-outline-offset-2 [&_svg]:size-4',
-                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'font-semibold text-(--lm-encre) after:bg-(--lm-encre)' : 'font-medium text-(--lm-encre-2) hover:text-(--lm-encre) hover:after:bg-(--lm-bord-fort)',
+                  actif(o.cle) ? 'font-semibold text-(--lm-encre) after:bg-(--lm-encre)' : 'font-medium text-(--lm-encre-2) hover:text-(--lm-encre) hover:after:bg-(--lm-bord-fort)',
                 )}
               >
                 {o.icone}
@@ -126,7 +148,23 @@ export function EspaceVue({
       </header>
 
       <main className="mx-auto max-w-5xl px-4 pt-6 pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-14">
-        {onglet === 'accueil' && <Accueil vue={vue} onOnglet={allerA} onBilan={onBilan} onLogement={choisirLogement} LienDocument={LienDocument} />}
+        {onglet === 'accueil' && (
+          <Accueil
+            vue={vue}
+            onOnglet={allerA}
+            onBilan={onBilan}
+            onLogement={choisirLogement}
+            LienDocument={LienDocument}
+            demandes={demandes}
+            onNouvelleDemande={demandes ? () => setAssistant(true) : undefined}
+          />
+        )}
+        {onglet === 'demandes' &&
+          (demandes ? (
+            <MesDemandes vue={vue} demandes={demandes} choisie={demande} onChoisir={choisirDemande} onNouvelle={() => setAssistant(true)} onRetour={() => onOnglet('accueil')} />
+          ) : (
+            <Accueil vue={vue} onOnglet={allerA} onBilan={onBilan} onLogement={choisirLogement} LienDocument={LienDocument} />
+          ))}
         {onglet === 'logements' && <Logements vue={vue} choisi={logement} onChoisir={choisirLogement} />}
         {onglet === 'calendrier' && <Calendrier vue={vue} calendrier={calendrier} />}
         {finances && !(onglet === 'bilans' && bilan) && !(onglet === 'factures' && facture) && <TitreEspace titre="Finances" />}
@@ -147,6 +185,18 @@ export function EspaceVue({
         {onglet === 'documents' && <Documents vue={vue} LienDocument={LienDocument} />}
       </main>
 
+      {assistant && demandes && (
+        <AssistantDemande
+          vue={vue}
+          envoyer={demandes.envoyer}
+          onFermer={() => setAssistant(false)}
+          onVoir={(d) => {
+            setAssistant(false);
+            choisirDemande(d.id);
+          }}
+        />
+      )}
+
       <nav
         aria-label="Rubriques"
         className="lm-sans-impression fixed inset-x-0 bottom-0 z-20 border-t border-(--lm-bord) bg-(--lm-surface) pb-[env(safe-area-inset-bottom)] sm:hidden"
@@ -156,11 +206,11 @@ export function EspaceVue({
             <li key={o.cle}>
               <button
                 type="button"
-                aria-current={o.cle === onglet || (o.cle === 'bilans' && finances) ? 'page' : undefined}
+                aria-current={actif(o.cle) ? 'page' : undefined}
                 onClick={() => allerA(o.cle)}
                 className={cn(
                   'flex h-14 w-full flex-col items-center justify-center gap-1 text-[11px] leading-none focus-visible:-outline-offset-2 [&_svg]:size-6 [&_svg]:stroke-2',
-                  o.cle === onglet || (o.cle === 'bilans' && finances) ? 'font-semibold text-(--lm-or-texte) [&_svg]:fill-(--lm-or-lavis)' : 'font-medium text-(--lm-encre-2)',
+                  actif(o.cle) ? 'font-semibold text-(--lm-or-texte) [&_svg]:fill-(--lm-or-lavis)' : 'font-medium text-(--lm-encre-2)',
                 )}
               >
                 {o.icone}

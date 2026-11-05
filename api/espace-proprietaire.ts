@@ -36,10 +36,19 @@
 //                                             (12 au plus ; 12 mois en arrière,
 //                                             18 en avant ; sinon 400)
 //   GET  ?action=document&id=…                un document, par lien signé de 2 minutes
+//   GET  ?action=demandes                     « Mes demandes » : les siennes seulement
+//   POST { action: 'demande', type, sujet?,   une question ou une demande (session ;
+//          logement?, message }               provenance du site ; type, sujet et
+//                                             logement parmi SES logements vérifiés,
+//                                             message nettoyé de 10 à 2 000 caractères,
+//                                             5 par heure et 20 par jour au plus) ;
+//                                             puis les gérants de son espace sont
+//                                             prévenus (api/_demandes-proprietaires.ts)
 //   POST { action: 'sortir' }
 //
-// Lecture seule pour le propriétaire : il ne modifie rien. Calculs :
-// src/erp/data/proprietaire.ts.
+// Lecture seule pour le propriétaire : il ne modifie rien, sinon qu'il ajoute
+// ses demandes (jamais une réponse, un état ou la demande d'un autre).
+// Calculs : src/erp/data/proprietaire.ts, src/erp/data/demandes-proprietaires.ts.
 // =============================================================================
 
 import { verifierMembre } from '../src/erp/data/repull-synchro.js';
@@ -48,9 +57,12 @@ import { ACCES_RETIRE, MESSAGES_ENTREE, MESSAGE_AUTRE_MOYEN, MESSAGE_INVITATION_
 import { calendrierPlage, dateParisISO, moisDePlage, moisValide, proprietaireAutorise, vueProprietaire } from '../src/erp/data/proprietaire.js';
 import { avecNouveauLien, emailValide, empreinteJeton, inviter, normaliserEmail, nouveauJeton, retirer } from '../src/erp/data/proprietaire-acces.js';
 import { facturePartagee } from '../src/erp/data/relances.js';
-import type { Facture } from '../src/erp/data/types';
+import { COLLECTION_DEMANDES, demandesVues, enregistrerDemande } from '../src/erp/data/demandes-proprietaires.js';
+import { horodatageParis } from '../src/erp/data/repull.js';
+import type { Facture, Logement } from '../src/erp/data/types';
 import type { AccesProprietaire } from '../src/erp/data/types-proprietaire';
-import { MESSAGE_COMPTE_SERVEUR, lireCorps, repondre } from './_erp-repull.js';
+import { MESSAGE_COMPTE_SERVEUR, continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
+import { prevenirGerants } from './_demandes-proprietaires.js';
 import { espaceDemande } from './_erp-espaces.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
 import {
@@ -73,6 +85,12 @@ import { documentsFermes, ecrireAcces, entreesCalendrier, entreesDuProprietaire,
 /** Freins des entrées (activer, entrer) : par adresse IP, puis par compte une fois le jeton vérifié (Supabase freine déjà les mots de passe). */
 const tropDEssais = freinEnvois(30, 15 * 60_000);
 const tropPourCeCompte = freinEnvois(15, 15 * 60_000);
+/**
+ * Demandes : un premier frein par adresse IP (par instance). Le vrai plafond,
+ * 5 par heure et 20 par jour et par propriétaire, se compte dans la base
+ * (limiteDemandes, data/demandes-proprietaires.ts).
+ */
+const tropDeDemandes = freinEnvois(20, 15 * 60_000);
 
 const DOCUMENTS_FERMES = 'Les documents ne peuvent pas être ouverts pour l’instant. Contactez votre conciergerie.';
 
@@ -254,6 +272,34 @@ export default async function handler(req: any, res: any) {
       const mois = calendrierPlage(await entreesCalendrier(s.base, s.acces.proprietaireId), s.acces.proprietaireId, plage.mois);
       if (!mois) return repondre(res, 404, { ok: false, erreur: ESPACE_INTROUVABLE });
       return repondre(res, 200, { ok: true, mois });
+    }
+
+    // « Mes demandes » : mêmes contrôles que `vue` ; lues dans la base de l'espace de SA session
+    // (jamais un autre espace), puis réduites aux siennes (demandesVues : jamais qui a répondu).
+    if (action === 'demandes' && req.method === 'GET') {
+      const s = await sessionProprietaire(req, res);
+      if (!s) return;
+      const [demandes, logements] = await Promise.all([s.base.lire<unknown>(COLLECTION_DEMANDES), s.base.lire<Logement>('logements')]);
+      return repondre(res, 200, { ok: true, demandes: demandesVues(demandes, s.acces.proprietaireId, logements) });
+    }
+
+    // Une demande : pour lui seul (le propriétaire de la session, jamais celui du corps), sur un de SES
+    // logements ; enregistrée d'abord, puis les gérants de son espace sont prévenus (un échec n'y change rien).
+    if (action === 'demande' && req.method === 'POST') {
+      if (!provenanceSite(req)) return repondre(res, 403, { ok: false, erreur: 'Demande refusée\u00a0: utilisez la page de l’espace propriétaire.' });
+      const s = await sessionProprietaire(req, res);
+      if (!s) return;
+      if (tropDeDemandes(adresseIp(req))) return repondre(res, 429, { ok: false, code: 'limite', erreur: 'Trop d’envois en peu de temps\u00a0: patientez quelques minutes.' });
+      const proprietaireId = s.acces.proprietaireId;
+      const logements = await s.base.lire<Logement>('logements');
+      const maintenant = new Date();
+      const r = await enregistrerDemande(s.base, { proprietaireId, corps, logements, maintenantMs: maintenant.getTime(), le: horodatageParis(maintenant) });
+      if (!r.ok) return repondre(res, r.statut, { ok: false, code: r.code, erreur: r.erreur });
+      const proprietaire = await lireProprietaire(s.base, proprietaireId).catch(() => undefined);
+      const logement = r.demande.logementId ? logements.find((l) => l?.id === r.demande.logementId)?.nom : undefined;
+      const prevenir = prevenirGerants(s.base, s.espace, r.demande, { logement, proprietaire: proprietaire?.nom || 'Un propriétaire' });
+      if (!continuerApresReponse(prevenir)) await prevenir;
+      return repondre(res, 200, { ok: true, demande: demandesVues([r.demande], proprietaireId, logements)[0] });
     }
 
     if (action === 'document' && req.method === 'GET') {
