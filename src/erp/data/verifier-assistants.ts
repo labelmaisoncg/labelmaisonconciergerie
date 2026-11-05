@@ -59,12 +59,56 @@ import {
 import { ECRANS_CHARGE, brouillonCharge, chargeDepuisBrouillon, erreursCharge, recapCharge } from './creation-charge';
 import { ECRANS_PROSPECT, brouillonDe, creationProspect, erreursEcranProspect, erreursProspect, recapProspect, versProspect } from './creation-prospect';
 import { ECRANS_FACTURE, brouillonFacture, ecranDeLaCleFacture, ecransFacture, erreursFacture, factureDepuisBrouillon, recapFacture, totauxFacture } from './creation-facture';
+import {
+  ECRANS_INVITATION_PROPRIETAIRE,
+  brouillonInvitationProprietaire,
+  erreursInvitationProprietaire,
+  invitationProprietaireDepuisBrouillon,
+  recapInvitationProprietaire,
+  transfertsInvitation,
+  type BrouillonInvitationProprietaire,
+} from './creation-invitation-proprietaire';
+import { ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable, saisieInvitationResponsable } from './creation-responsable';
+import { ficheResponsableInvite, transfertsProprietaire } from './acces-gerant';
+import { ECRANS_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre } from './creation-membre';
+import { ECRANS_CONCIERGERIE, NOM_CONCIERGERIE_MAX, brouillonConciergerie, erreursConciergerie, invitationConciergerie, recapConciergerie, type BrouillonConciergerie } from './creation-conciergerie';
+import { annonceDepuisBrouillon, brouillonAnnonce, ecransAnnonce, erreursAnnonce, recapAnnonce, type BrouillonAnnonce } from './creation-annonce-equipe';
+import { brouillonInitial, preparerAnnonce } from './annonces-equipe';
+import {
+  ECRANS_GUIDE,
+  ECRANS_QUESTION,
+  erreursGuide,
+  erreursQuestion,
+  guideDepuisBrouillon,
+  guideVide,
+  questionDepuisBrouillon,
+  questionVide,
+  recapGuide,
+  recapQuestion,
+  type BrouillonGuide,
+  type BrouillonQuestion,
+} from './creation-guide';
+import { LIBELLE_TYPE_GUIDE, estLienGuide } from './guides';
+import { brouillonSignalement, ecransSignalement, erreursSignalement, recapSignalement, sejoursDuLogement, signalementDepuisBrouillon, type BrouillonSignalement } from './creation-signalement';
+import {
+  ECRANS_ABSENCE_GERANT,
+  ECRANS_ABSENCE_POLE,
+  absenceGerantDepuisBrouillon,
+  actionAbsenceDepuisBrouillon,
+  brouillonAbsenceGerant,
+  brouillonAbsencePole,
+  erreursAbsence,
+  recapAbsence,
+} from './creation-absence';
+import { verifierAbsence } from './operations';
+import { brouillonMandat, ecransMandat, erreursMandat, mandatDepuisBrouillon, prochaineReference, recapMandat } from './creation-mandat';
+import { COMMISSION_CIBLE_MIN } from './constantes';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
-import type { ContactCrm, Logement, Mandat, Prestataire, Reservation } from './types';
-import type { MembreEquipe } from './types-operations';
+import type { ContactCrm, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, QuestionFrequente, Reservation, RoleUtilisateur, Utilisateur } from './types';
+import type { AbsenceMembre, MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
 let reussis = 0;
@@ -597,6 +641,507 @@ section('Facture : écrans, règles et même facture que l’ancien formulaire')
   verifier(/2027$/.test(recapFacture({ ...ok, emission: '2027-02-10', echeance: '2027-02-25' }, props, '2026-11-05').find((x) => x.cle === 'dates')?.valeur ?? ''), 'récapitulatif : l’année quand ce n’est pas l’année en cours');
   verifier(ecransFacture({ destinataire: 'proprietaire' }).includes('proprietaire') && !ecransFacture({ destinataire: 'voyageur' }).includes('proprietaire'), '« Quel propriétaire ? » seulement quand c’est lui le destinataire');
   verifier(ecranDeLaCleFacture('proprietaireId') === 'proprietaire' && Object.keys(erreursFacture('recapitulatif', { ...ok, destinataire: 'voyageur', proprietaireId: '' }, ctxF)).length === 0, 'destinataire voyageur : aucun propriétaire demandé');
+}
+
+/* Lot 2 : Paramètres (Accès, Équipe, Espaces, Annonces), fiche voyageur, espace opérations. */
+
+/* ================================================= invitation propriétaire */
+
+section('Accès, inviter un propriétaire : écrans, règles et mêmes écritures que l’ancienne fenêtre');
+{
+  const A_RENSEIGNER = 'pro-a-renseigner';
+  const proprietaires = [
+    { id: 'pro-1', type: 'particulier', nom: 'Alice Martin', contact: { email: 'Alice@Exemple.fr ', telephone: '06 00 00 00 01' }, adresse: '1 rue A', ibanMasque: 'FR76 0000 1234', notes: 'n', creeLe: '2026-01-02' },
+    { id: 'pro-2', type: 'sci', nom: 'SCI Tilleuls', contact: { email: 'sci@exemple.fr', telephone: '' }, adresse: '', notes: '', creeLe: '2026-02-03' },
+    { id: A_RENSEIGNER, type: 'particulier', nom: 'À renseigner', contact: { email: '', telephone: '' }, adresse: '', notes: '', creeLe: '2026-01-01' },
+  ] as Proprietaire[];
+  const logements = [
+    { id: 'log-1', nom: 'T2 Gare', proprietaireId: 'pro-1' },
+    { id: 'log-2', nom: 'Studio Parc', proprietaireId: 'pro-2' },
+    { id: 'log-3', nom: 'Maison importée', proprietaireId: A_RENSEIGNER },
+  ];
+  const ctx = { proprietaires, logements, aRenseigner: A_RENSEIGNER };
+  const EMAIL_ACCES = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const sansIban = ({ ibanMasque: _ancien, ...p }: Proprietaire): Proprietaire => p;
+  /** L'ancienne fenêtre « Inviter un propriétaire » (Acces.tsx), recopiée telle quelle : règles, fiche, logements, adresse invitée. */
+  const ancienne = (f: { nom: string; email: string; telephone: string; coches: string[] }, id: string, creeLe: string) => {
+    const adresseSaisie = f.email.trim().toLowerCase();
+    const existant = adresseSaisie ? proprietaires.find((p) => p.contact.email.trim().toLowerCase() === adresseSaisie) : undefined;
+    if (f.nom.trim().length < 2 && !existant) return { erreur: 'Indiquez le nom du propriétaire.' };
+    if (!EMAIL_ACCES.test(adresseSaisie)) return { erreur: 'Adresse e-mail invalide.' };
+    const transferts = transfertsProprietaire(logements, proprietaires, f.coches, existant?.id ?? '', A_RENSEIGNER);
+    const p: Proprietaire = existant
+      ? { ...sansIban(existant), nom: existant.nom || f.nom.trim(), contact: { email: adresseSaisie, telephone: existant.contact.telephone || f.telephone.trim() } }
+      : { id, type: 'particulier', nom: f.nom.trim(), contact: { email: adresseSaisie, telephone: f.telephone.trim() }, adresse: '', notes: '', creeLe };
+    return { plan: { proprietaire: p, logementIds: f.coches, email: adresseSaisie }, transferts };
+  };
+  const b = (x: Partial<BrouillonInvitationProprietaire> = {}): BrouillonInvitationProprietaire => ({ ...brouillonInvitationProprietaire(), ...x });
+  verifier(ECRANS_INVITATION_PROPRIETAIRE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif');
+  verifier(erreursInvitationProprietaire('email', b(), ctx).email === 'Indiquez son adresse e‑mail.', 'e-mail vide : à indiquer');
+  verifier(erreursInvitationProprietaire('email', b({ email: 'alice@exemple' }), ctx).email === 'Adresse e‑mail invalide.', 'e-mail invalide : refusé (même règle que l’ancienne fenêtre)');
+  verifier(erreursInvitationProprietaire('identite', b({ email: 'x@y.fr', nom: 'A' }), ctx).nom === 'Indiquez le nom du propriétaire.', 'nouvelle fiche : nom de 2 lettres au moins');
+  verifier(!erreursInvitationProprietaire('identite', b({ email: ' ALICE@exemple.fr', nom: '' }), ctx).nom, 'fiche reprise (même adresse, sans casse) : son nom suffit');
+  verifier(!Object.keys(erreursInvitationProprietaire('logements', b(), ctx)).length, 'logements : facultatifs, comme avant');
+  const cas: [Partial<BrouillonInvitationProprietaire>, string][] = [
+    [{ email: ' Paul.Durand@Exemple.FR ', nom: ' Paul Durand ', telephone: ' 06 11 22 33 44 ' }, 'nouvelle fiche, sans logement'],
+    [{ email: 'paul@exemple.fr', nom: 'Paul', logementIds: ['log-3'] }, 'nouvelle fiche, logement « à renseigner »'],
+    [{ email: 'paul@exemple.fr', nom: 'Paul', logementIds: ['log-1', 'log-2'] }, 'nouvelle fiche, logements d’autres propriétaires'],
+    [{ email: 'alice@exemple.fr', nom: '', telephone: '07 99', logementIds: ['log-2'] }, 'fiche reprise : nom, téléphone gardés, IBAN retiré'],
+    [{ email: 'SCI@exemple.fr', nom: 'Autre nom', telephone: ' 01 02 03 04 05 ', logementIds: [] }, 'fiche reprise sans téléphone : le nouveau est pris'],
+  ];
+  for (const [x, quoi] of cas) {
+    const br = b(x);
+    const r = invitationProprietaireDepuisBrouillon(br, { proprietaires, nouvelId: () => 'pro-n', aujourdhui: '2026-11-05' });
+    const avant = ancienne({ nom: br.nom, email: br.email, telephone: br.telephone, coches: br.logementIds }, 'pro-n', '2026-11-05');
+    verifier(r.ok && 'plan' in avant && empreinte(r.plan) === empreinte(avant.plan), `même fiche, mêmes logements, même adresse invitée (${quoi})`);
+    verifier('plan' in avant && empreinte(transfertsInvitation(br, ctx)) === empreinte(avant.transferts), `mêmes logements repris à un autre, dits avant (${quoi})`);
+  }
+  const reprise = invitationProprietaireDepuisBrouillon(b({ email: 'alice@exemple.fr', telephone: '07' }), { proprietaires, nouvelId: () => 'x', aujourdhui: 'j' });
+  verifier(
+    reprise.ok && reprise.plan.proprietaire.id === 'pro-1' && !('ibanMasque' in reprise.plan.proprietaire) && reprise.plan.proprietaire.contact.telephone === '06 00 00 00 01',
+    'fiche reprise : même identifiant, sans IBAN, son téléphone gardé',
+  );
+  verifier(transfertsInvitation(b({ email: 'paul@exemple.fr', logementIds: ['log-1', 'log-3'] }), ctx).map((t) => t.logementId).join() === 'log-1', 'logement « à renseigner » : pas un transfert');
+  verifier(!transfertsInvitation(b({ email: 'alice@exemple.fr', logementIds: ['log-1'] }), ctx).length, 'son propre logement : pas un transfert');
+  // Saisies refusées par l'ancienne fenêtre : refusées aussi, rien n'est créé.
+  for (const x of [{ email: 'paul@exemple', nom: 'Paul' }, { email: 'paul@exemple.fr', nom: 'P' }, { email: '', nom: '' }]) {
+    const r = invitationProprietaireDepuisBrouillon(b(x), { proprietaires, nouvelId: () => 'x', aujourdhui: 'j' });
+    verifier(!r.ok && 'erreur' in ancienne({ ...x, telephone: '', coches: [] }, 'x', 'j'), `saisie refusée avant comme maintenant (${JSON.stringify(x)})`);
+  }
+  const recap = recapInvitationProprietaire(b({ email: 'Alice@exemple.fr', logementIds: ['log-2'] }), ctx);
+  verifier(
+    recap.find((l) => l.cle === 'nom')?.valeur === 'Alice Martin (fiche reprise)' && recap.find((l) => l.cle === 'logements')?.valeur === 'T2 Gare, Studio Parc',
+    `récapitulatif : fiche reprise, ses logements et le nouveau (${recap.map((l) => l.valeur).join(' | ')})`,
+  );
+  verifier(recapInvitationProprietaire(b({ email: 'p@exemple.fr', nom: 'Paul' }), ctx).find((l) => l.cle === 'telephone')?.valeur === 'Non renseigné', 'récapitulatif : téléphone vide lisible');
+}
+
+/* ================================================== invitation responsable */
+
+section('Accès, inviter un responsable : même parcours sans le choix, même saisie que l’ancienne fenêtre');
+{
+  const equipe = [
+    { id: 'eq-1', nom: 'Inès Morel', role: 'pole', email: 'ines@exemple.fr', telephone: '06 00 00 00 01', logementIds: ['log-1'], actif: true },
+    { id: 'eq-2', nom: 'Ancien', role: 'agent', email: 'ancien@exemple.fr', logementIds: [], actif: false },
+  ] as MembreEquipe[];
+  verifier(ECRANS_INVITATION_RESPONSABLE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif (pas de choix dans l’équipe)');
+  const b0 = brouillonInvitationResponsable(['log-2']);
+  verifier(b0.choix === NOUVELLE_PERSONNE && b0.logementIds.join() === 'log-2', 'départ : une personne à inviter, le logement de la page filtrée coché');
+  verifier(brouillonInvitationResponsable([]).logementIds.length === 0, 'sans filtre : rien de coché, comme avant');
+  const ctx = { equipe, libres: [] };
+  /** L'ancienne fenêtre « Inviter un responsable » (Acces.tsx), recopiée telle quelle : ses règles, puis ce qu'elle passait à inviterResponsable. */
+  const ancienne = (f: { nom: string; email: string; telephone: string; roleChoisi?: RoleOperations; coches: string[] }) => {
+    const adresse = f.email.trim().toLowerCase();
+    const existant = adresse ? equipe.find((m) => (m.email ?? '').trim().toLowerCase() === adresse) : undefined;
+    if (!existant && f.nom.trim().length < 2) return undefined;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(adresse)) return undefined;
+    if (!f.coches.length && !existant?.logementIds.length) return undefined;
+    return { nom: f.nom, email: adresse, telephone: f.telephone, role: f.roleChoisi, logementIds: f.coches };
+  };
+  const cas = [
+    { nom: ' Lucie Martin ', email: ' Lucie@Exemple.fr ', telephone: ' 06 55 ', role: 'pole' as RoleOperations, logementIds: ['log-2'] },
+    { nom: '', email: 'INES@exemple.fr', telephone: '07 00', role: undefined, logementIds: [] },
+    { nom: 'Retour', email: 'ancien@exemple.fr', telephone: '', role: undefined, logementIds: ['log-1', 'log-2'] },
+    { nom: 'Yanis', email: 'yanis@exemple.fr', telephone: '', role: 'agent' as RoleOperations, logementIds: [] },
+    { nom: 'Y', email: 'yanis@exemple.fr', telephone: '', role: undefined, logementIds: ['log-1'] },
+    { nom: 'Yanis', email: 'yanis@exemple', telephone: '', role: undefined, logementIds: ['log-1'] },
+  ];
+  for (const x of cas) {
+    const br = { ...brouillonInvitationResponsable(x.logementIds), nom: x.nom, email: x.email, telephone: x.telephone, role: x.role };
+    const avant = ancienne({ nom: x.nom, email: x.email, telephone: x.telephone, roleChoisi: x.role, coches: x.logementIds });
+    const permis = !Object.keys(erreursResponsable('recapitulatif', br, ctx)).length;
+    verifier(permis === !!avant, `même saisie permise ou refusée que l’ancienne fenêtre (${x.email.trim()}, ${x.logementIds.length} logement(s))`);
+    if (avant && permis) {
+      const n = () => 'eq-n';
+      // inviterResponsable passe l'adresse nettoyée à ficheResponsableInvite.
+      const apres = ficheResponsableInvite(equipe, { ...saisieInvitationResponsable(br), email: br.email.trim().toLowerCase() }, n);
+      const ancienneFiche = ficheResponsableInvite(equipe, { ...avant, email: avant.email.trim().toLowerCase() }, n);
+      verifier(empreinte(apres) === empreinte(ancienneFiche), `même fiche écrite par inviterResponsable (${x.email.trim()})`);
+    }
+  }
+  const recap = recapResponsable({ ...b0, email: 'lucie@exemple.fr', nom: 'Lucie' }, { equipe, logements: [L1, L2], sansChoix: true });
+  verifier(recap[0].cle === 'email' && !recap.some((l) => l.cle === 'qui'), 'récapitulatif : sans la ligne « Personne »');
+}
+
+/* ================================================================= équipe */
+
+section('Équipe, ajouter quelqu’un : écrans, règles et même ligne que l’ancien formulaire');
+{
+  const utilisateurs = [
+    { id: 'abdel@exemple.fr', email: 'Abdel@Exemple.fr', nom: 'Abdel', role: 'gerant' },
+    { id: 'usr-1', email: 'clara@exemple.fr', nom: 'Clara', role: 'operations' },
+  ] as Utilisateur[];
+  /** L'ancien formulaire « Ajouter quelqu'un » (Utilisateurs.tsx), recopié tel quel : la ligne enregistrée et l'encadré d'invitation. */
+  const ancien = (f: { email: string; nom: string; role: RoleUtilisateur }, mode: 'reel' | 'demo', maintenantMs: number) => {
+    const email = f.email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return undefined;
+    if (!f.nom.trim()) return undefined;
+    if (utilisateurs.some((u) => u.email.toLowerCase() === email)) return undefined;
+    const id = mode === 'reel' ? email : `usr-${maintenantMs.toString(36)}`;
+    return { ligne: { id, email, nom: f.nom.trim(), role: f.role }, invitation: { nom: f.nom.trim(), email } };
+  };
+  const b0 = brouillonMembre();
+  verifier(ECRANS_MEMBRE.join() === 'email,nom,role,recapitulatif', 'écrans : e-mail, nom affiché, rôle, récapitulatif');
+  verifier(b0.role === 'operations', 'rôle d’office : « Opérations », comme avant');
+  verifier(erreursMembre('email', b0, utilisateurs).email === 'Indiquez son adresse e‑mail.', 'e-mail vide : à indiquer');
+  verifier(erreursMembre('email', { ...b0, email: 'clara@exemple' }, utilisateurs).email === 'Adresse e‑mail invalide.', 'e-mail illisible : refusé');
+  verifier(erreursMembre('email', { ...b0, email: ' ABDEL@exemple.fr ' }, utilisateurs).email === 'Ce membre existe déjà.', 'déjà dans l’équipe (sans casse) : refusé');
+  verifier(erreursMembre('nom', { ...b0, nom: '  ' }, utilisateurs).nom === 'Indiquez le nom affiché.', 'nom affiché vide : refusé');
+  verifier(!Object.keys(erreursMembre('role', b0, utilisateurs)).length, 'rôle : toujours choisi');
+  const cas: [BrouillonMembre, 'reel' | 'demo'][] = [
+    [{ email: ' Ines.Morel@Exemple.FR ', nom: ' Inès Morel ', role: 'operations' }, 'reel'],
+    [{ email: 'compta@exemple.fr', nom: 'Cabinet Roux', role: 'lecture' }, 'demo'],
+    [{ email: 'associe@exemple.fr', nom: 'Sami', role: 'gerant' }, 'reel'],
+    [{ email: 'clara@exemple.fr', nom: 'Clara bis', role: 'operations' }, 'demo'],
+    [{ email: 'x@y', nom: 'X', role: 'operations' }, 'demo'],
+    [{ email: 'nom@vide.fr', nom: '', role: 'operations' }, 'reel'],
+  ];
+  for (const [x, mode] of cas) {
+    const r = membreDepuisBrouillon(x, { utilisateurs, reel: mode === 'reel', maintenantMs: 1_790_000_000_000 });
+    const avant = ancien(x, mode, 1_790_000_000_000);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.email.trim()}, ${mode})`);
+    if (r.ok && avant) {
+      verifier(empreinte(r.membre) === empreinte(avant.ligne), `même ligne enregistrée (${x.email.trim()}, ${mode})`);
+      verifier(r.membre.nom === avant.invitation.nom && r.membre.email === avant.invitation.email, `même encadré « Envoyer l’invitation » ensuite (${x.email.trim()})`);
+    }
+  }
+  const reel = membreDepuisBrouillon(cas[0][0], { utilisateurs, reel: true, maintenantMs: 0 });
+  verifier(reel.ok && reel.membre.id === 'ines.morel@exemple.fr' && Object.keys(reel.membre).sort().join() === 'email,id,nom,role', 'production : l’id est l’adresse, rien d’autre sur la ligne');
+  const demo = membreDepuisBrouillon(cas[1][0], { utilisateurs, reel: false, maintenantMs: 1_790_000_000_000 });
+  verifier(demo.ok && demo.membre.id === `usr-${(1_790_000_000_000).toString(36)}`, 'démonstration : « usr- » et l’heure');
+  verifier(recapMembre(cas[1][0]).map((l) => l.valeur).join(' | ') === 'compta@exemple.fr | Cabinet Roux | Lecture seule', 'récapitulatif : adresse, nom, rôle en toutes lettres');
+}
+
+/* ============================================================ conciergerie */
+
+section('Espaces, inviter une conciergerie : écrans, règles et même envoi que l’ancien formulaire');
+{
+  /** L'ancien formulaire « Inviter une conciergerie » (Espaces.tsx), recopié tel quel : ce qu'il envoyait à api/erp-espaces. */
+  const ancien = (nom: string, email: string) => {
+    if (!nom.trim()) return undefined;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim())) return undefined;
+    const cible = { nom, email };
+    return { action: 'inviter', nom: cible.nom.trim(), email: cible.email.trim() };
+  };
+  /** Ce que fait l'envoi partagé avec « Renvoyer » (Espaces.tsx, inviter) du nom et de l'adresse reçus. */
+  const envoi = (cible: { nom: string; email: string }) => ({ action: 'inviter', nom: cible.nom.trim(), email: cible.email.trim() });
+  const b0 = brouillonConciergerie();
+  verifier(ECRANS_CONCIERGERIE.join() === 'nom,email,recapitulatif', 'écrans : nom, adresse, récapitulatif');
+  verifier(erreursConciergerie('nom', b0).nom === 'Donnez le nom de la conciergerie.', 'nom vide : même phrase qu’avant');
+  verifier(erreursConciergerie('email', b0).email === 'Indiquez l’adresse de la personne.', 'adresse vide : à indiquer');
+  verifier(erreursConciergerie('email', { ...b0, email: 'sens@exemple' }).email === 'Adresse e‑mail invalide.', 'adresse illisible : refusée');
+  verifier(NOM_CONCIERGERIE_MAX === 80, 'nom : 80 caractères au plus, comme le champ d’avant');
+  const cas: BrouillonConciergerie[] = [
+    { nom: ' Conciergerie de Sens ', email: ' Contact@Sens-Conciergerie.fr ' },
+    { nom: 'Évry Clés', email: 'gerant@evry.fr' },
+    { nom: '  ', email: 'gerant@evry.fr' },
+    { nom: 'Évry', email: 'gerant@evry' },
+    { nom: 'Évry', email: ' ' },
+  ];
+  for (const x of cas) {
+    const r = invitationConciergerie(x);
+    const avant = ancien(x.nom, x.email);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${JSON.stringify(x)})`);
+    if (r.ok && avant) verifier(empreinte(envoi(r.corps)) === empreinte(avant) && empreinte(r.corps) === empreinte(avant), `même corps envoyé à api/erp-espaces (${x.nom.trim()})`);
+  }
+  verifier(recapConciergerie(cas[0]).map((l) => l.valeur).join(' | ') === 'Conciergerie de Sens | Contact@Sens-Conciergerie.fr', 'récapitulatif : nom et adresse tels qu’envoyés');
+}
+
+/* ======================================================= annonce à l'équipe */
+
+section('Annonce à l’équipe : écrans, règles et même annonce que l’ancien formulaire');
+{
+  const o = { id: 'aeq-n', maintenant: '2026-11-05T09:30:00.000+01:00', par: 'Abdel' };
+  /** L'ancien formulaire (AnnoncesEquipe.tsx), recopié tel quel : l'annonce enregistrée, puis la notification si la case était cochée. */
+  const ancien = (saisie: { titre: string; texte: string }, notifier: boolean, notificationsPossibles: boolean) => {
+    const r = preparerAnnonce(saisie, o);
+    return r.ok ? { annonce: r.annonce, notifier: notifier && notificationsPossibles } : undefined;
+  };
+  verifier(ecransAnnonce(true).join() === 'titre,texte,notification,recapitulatif', 'écrans : titre, texte, notification, récapitulatif');
+  verifier(ecransAnnonce(false).join() === 'titre,texte,recapitulatif', 'notifications indisponibles : pas d’écran « Prévenir aussi », comme la case d’avant');
+  const premier = brouillonAnnonce([], 'Sens Conciergerie');
+  const initial = brouillonInitial([], 'Sens Conciergerie');
+  verifier(premier.titre === initial.titre && premier.texte === initial.texte && premier.notifier, 'premier message prêt à publier, « Prévenir aussi » coché d’office');
+  verifier(brouillonAnnonce([{ id: 'aeq-1' }], 'Sens').titre === '', 'espace qui a déjà une annonce : départ vide');
+  const vide = { titre: '', texte: '', notifier: true };
+  verifier(erreursAnnonce('titre', vide).titre === 'Donnez un titre à l’annonce.' && !erreursAnnonce('titre', vide).texte, 'titre vide : sa phrase, sur son écran seulement');
+  verifier(erreursAnnonce('texte', vide).texte === 'Écrivez quelques mots.', 'texte vide : sa phrase');
+  verifier(erreursAnnonce('titre', { ...vide, titre: 'x'.repeat(61) }).titre === '60 caractères au plus.', 'titre trop long : refusé');
+  verifier(Object.keys(erreursAnnonce('recapitulatif', vide)).join() === 'titre,texte', 'récapitulatif : les deux, dans l’ordre');
+  const cas: [BrouillonAnnonce, boolean][] = [
+    [{ titre: '  Réunion   lundi ', texte: ' Rendez-vous à 9 h\r\n\r\n\r\n\r\nau bureau.  ', notifier: true }, true],
+    [{ titre: 'Linge', texte: 'Nouveaux draps livrés.', notifier: false }, true],
+    [{ titre: 'Clés', texte: 'Boîte à clés changée au T2 Gare.', notifier: true }, false],
+    [premier, true],
+    [{ titre: ' ', texte: 'Sans titre', notifier: true }, true],
+  ];
+  for (const [x, possibles] of cas) {
+    const r = annonceDepuisBrouillon(x, { ...o, notificationsPossibles: possibles });
+    const avant = ancien({ titre: x.titre, texte: x.texte }, x.notifier, possibles);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.titre.trim() || 'sans titre'})`);
+    if (r.ok && avant) verifier(empreinte(r.annonce) === empreinte(avant.annonce) && r.notifier === avant.notifier, `même annonce, même notification (${r.annonce.titre}, ${r.notifier ? 'notifiée' : 'sans notification'})`);
+  }
+  const recap = recapAnnonce(cas[0][0], true);
+  verifier(recap.map((l) => l.cle).join() === 'titre,texte,notifier' && recap[0].valeur === 'Réunion lundi', `récapitulatif : le titre tel qu’il sera publié (${recap[0].valeur})`);
+  verifier(recapAnnonce(cas[0][0], false).length === 2, 'récapitulatif sans notifications possibles : pas de ligne « Notification »');
+}
+
+/* ============================================================ guides, FAQ */
+
+section('Fiche voyageur, nouveau guide : écrans, règles et même ligne que l’ancienne fenêtre');
+{
+  const o = { id: 'guide-n', maintenant: '2026-11-05T10:00:00.000+01:00', par: 'Abdel' };
+  /** L'ancienne fenêtre « Nouveau guide » (GuidesFiche.tsx, valider sans id), recopiée telle quelle. */
+  const ancien = (b: BrouillonGuide): GuideLogement | undefined => {
+    const lienValide = b.source === 'lien' && estLienGuide(b.url);
+    const valide = !!b.titre.trim() && (b.source === 'lien' ? lienValide : !!b.fichier);
+    if (!valide) return undefined;
+    return {
+      id: o.id,
+      titre: b.titre.trim(),
+      ...(b.quand.trim() ? { quand: b.quand.trim() } : {}),
+      media: b.source === 'lien' ? { type: 'lien', url: b.url.trim() } : { type: b.type === 'lien' ? 'document' : b.type, fichier: b.fichier },
+      ...(b.acces ? { acces: true } : {}),
+      ajouteLe: o.maintenant,
+      ajoutePar: o.par,
+    };
+  };
+  const v = guideVide();
+  verifier(ECRANS_GUIDE.join() === 'titre,quand,source,media,acces,recapitulatif', 'écrans : titre, quand, lien ou fichier, adresse ou fichier, accès, récapitulatif');
+  verifier(v.source === 'lien' && !v.acces, 'départ : un lien, sans accès (comme avant)');
+  verifier(erreursGuide('titre', v).titre === 'Donnez un titre au guide.', 'titre vide : bloqué');
+  verifier(!Object.keys(erreursGuide('quand', v)).length && !Object.keys(erreursGuide('acces', v)).length, 'quand et accès : facultatifs');
+  verifier(erreursGuide('media', v).url === 'Collez l’adresse du guide.', 'lien vide : à coller');
+  verifier(erreursGuide('media', { ...v, url: 'http://youtu.be/x' }).url === `Lien non valable${NBSP}: copiez-le en entier, depuis «${NBSP}Partager${NBSP}».`, 'lien qui ne commence pas par https : refusé, dit sans jargon');
+  verifier(erreursGuide('media', { ...v, source: 'fichier' }).fichier === 'Choisissez un fichier.', 'fichier non choisi : bloqué');
+  const cas: BrouillonGuide[] = [
+    { ...v, titre: ' Comment récupérer la clé ', url: ' https://youtu.be/abc ' },
+    { ...v, titre: 'Code du portail', quand: ' Quand il demande le code ', url: 'https://drive.google.com/x', acces: true },
+    { ...v, titre: 'Four', source: 'fichier', fichier: 'stockage://logements/log-1/guides/four.mp4', nomFichier: 'four.mp4', type: 'video' },
+    { ...v, titre: 'Mode d’emploi', source: 'fichier', fichier: 'demo://logements/log-1/guides/notice', nomFichier: 'notice', type: 'lien' },
+    { ...v, titre: 'Lien et fichier', source: 'fichier', url: 'https://x.fr', fichier: 'stockage://a.pdf', nomFichier: 'a.pdf', type: 'document' },
+    { ...v, titre: '  ', url: 'https://x.fr' },
+    { ...v, titre: 'Sans https', url: 'www.x.fr' },
+    { ...v, titre: 'Sans fichier', source: 'fichier' },
+  ];
+  for (const x of cas) {
+    const r = guideDepuisBrouillon(x, o);
+    const avant = ancien(x);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.titre.trim() || 'sans titre'})`);
+    if (r.ok && avant) verifier(empreinte(r.guide) === empreinte(avant), `même guide ajouté à la fiche (${x.titre.trim()})`);
+  }
+  const fichier = guideDepuisBrouillon(cas[3], o);
+  verifier(fichier.ok && fichier.guide.media.type === 'document' && !('url' in fichier.guide.media), 'fichier de type inconnu : « document », sans adresse');
+  const recap = recapGuide(cas[2], (t) => LIBELLE_TYPE_GUIDE[t]);
+  verifier(recap.find((l) => l.cle === 'media')?.libelle === 'Vidéo' && recap.find((l) => l.cle === 'media')?.valeur === 'four.mp4', 'récapitulatif : type et nom du fichier');
+  verifier(recapGuide({ ...v, titre: 'x', url: 'http://x' }, (t) => LIBELLE_TYPE_GUIDE[t]).find((l) => l.cle === 'media')?.valeur === '', 'récapitulatif : lien non valable, « À compléter »');
+}
+
+section('Fiche voyageur, nouvelle question : écrans, règles et même ligne que l’ancienne fenêtre');
+{
+  /** L'ancienne fenêtre « Nouvelle question » (GuidesFiche.tsx), recopiée telle quelle. */
+  const ancienne = (e: BrouillonQuestion, id: string): QuestionFrequente | undefined =>
+    !!e.question.trim() && !!e.reponse.trim() ? { id, question: e.question.trim(), reponse: e.reponse.trim() } : undefined;
+  verifier(ECRANS_QUESTION.join() === 'question,reponse,recapitulatif', 'écrans : question, réponse, récapitulatif');
+  verifier(erreursQuestion('question', questionVide()).question === 'Écrivez la question.' && !erreursQuestion('question', questionVide()).reponse, 'question vide : sur son écran seulement');
+  verifier(erreursQuestion('reponse', questionVide()).reponse === 'Écrivez la réponse.', 'réponse vide : bloquée');
+  for (const x of [
+    { question: ' Où jeter les poubelles ? ', reponse: ' Local à droite de l’entrée. ' },
+    { question: 'Chauffage', reponse: 'Thermostat dans l’entrée.\nRéglé à 20 °C.' },
+    { question: ' ', reponse: 'x' },
+    { question: 'x', reponse: '' },
+  ]) {
+    const r = questionDepuisBrouillon(x, 'question-n');
+    const avant = ancienne(x, 'question-n');
+    verifier(r.ok === !!avant && (!r.ok || empreinte(r.question) === empreinte(avant)), `même question ajoutée ou refusée (${x.question.trim() || 'vide'})`);
+  }
+  verifier(recapQuestion({ question: ' Wifi ? ', reponse: ' Sur la box ' }).map((l) => l.valeur).join(' | ') === 'Wifi ? | Sur la box', 'récapitulatif : question et réponse telles qu’ajoutées');
+}
+
+/* ===================================================== espace opérations */
+
+section('Espace opérations, signaler un incident : écrans, règles et même action que l’ancienne fenêtre');
+{
+  /** L'ancienne fenêtre « Signaler un incident » (espace-operations/Signaler.tsx), recopiée telle quelle : ce qu'elle passait à agir. */
+  const ancienne = (f: { logement: string; urgent: boolean; description: string; photos: { url: string }[]; sejour: string }) => {
+    if (!f.logement) return undefined;
+    if (f.description.trim().length < 10) return undefined;
+    return { type: 'signaler', logementId: f.logement, urgent: f.urgent, description: f.description.trim(), photos: f.photos.map((p) => p.url), ...(f.sejour ? { reservationId: f.sejour } : {}) };
+  };
+  verifier(ecransSignalement(true).join() === 'logement,priorite,description,photos,sejour,recapitulatif', 'écrans : logement, priorité, description, photos, séjour, récapitulatif');
+  verifier(ecransSignalement(false).join() === 'logement,priorite,description,photos,recapitulatif', 'sans séjour dans la fenêtre : pas d’écran « séjour », comme le champ d’avant');
+  const b0 = brouillonSignalement();
+  const depuis = brouillonSignalement('log-2');
+  verifier(b0.logementId === '' && !b0.urgent && !b0.photos.length && b0.sejour === '' && depuis.logementId === 'log-2', 'départ : normal, sans photo ni séjour ; le logement d’où l’on vient');
+  verifier(erreursSignalement('logement', b0).logementId === 'Choisissez le logement.', 'logement : à choisir, même phrase qu’avant');
+  verifier(erreursSignalement('description', { ...depuis, description: 'Fuite' }).description === `Décrivez ce qui se passe (10${NBSP}caractères au moins).`, 'description trop courte : 10 caractères au moins');
+  verifier(erreursSignalement('description', depuis).description === 'Décrivez ce qui se passe.', 'description vide : à écrire');
+  verifier(!Object.keys(erreursSignalement('photos', depuis)).length && !Object.keys(erreursSignalement('priorite', depuis)).length, 'photos et priorité : rien à bloquer');
+  const sejours = [
+    { id: 'r1', logementId: 'log-1', voyageur: 'Clara D.' },
+    { id: 'r2', logementId: 'log-2', voyageur: 'Marc P.' },
+  ];
+  verifier(sejoursDuLogement(sejours, 'log-1').map((s) => s.id).join() === 'r1', 'séjours proposés : ceux du logement');
+  const cas: BrouillonSignalement[] = [
+    { ...depuis, description: '  Fuite sous l’évier de la cuisine.  ' },
+    { logementId: 'log-1', urgent: true, description: 'Porte d’entrée forcée, serrure cassée.', photos: [{ url: 'demo://operations/eq-ines/a.jpg' }, { url: 'demo://operations/eq-ines/b.jpg' }], sejour: 'r1' },
+    { logementId: 'log-1', urgent: false, description: 'Ampoule grillée dans le salon.', photos: [], sejour: '' },
+    { ...b0, description: 'Logement non choisi, description longue.' },
+    { ...depuis, description: 'Trop court' },
+  ];
+  for (const x of cas) {
+    const r = signalementDepuisBrouillon(x);
+    const avant = ancienne({ logement: x.logementId, urgent: x.urgent, description: x.description, photos: x.photos, sejour: x.sejour });
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.description.trim().slice(0, 20)})`);
+    if (r.ok && avant) verifier(empreinte(r.action) === empreinte(avant), `même action envoyée (${x.urgent ? 'urgent' : 'normal'}, ${x.photos.length} photo(s)${x.sejour ? ', séjour' : ''})`);
+  }
+  const recap = recapSignalement(cas[1], { logements: [{ id: 'log-1', nom: 'T2 Gare' }], libelleSejour: (id) => (id === 'r1' ? 'Clara D., du 3 au 6 nov.' : undefined), avecSejours: true });
+  verifier(recap.map((l) => l.valeur).join(' | ') === `T2 Gare | Urgent | Porte d’entrée forcée, serrure cassée. | 2${NBSP}photos | Clara D., du 3 au 6 nov.`, `récapitulatif (${recap.map((l) => l.valeur).join(' | ')})`);
+  verifier(recapSignalement(cas[0], { logements: [], libelleSejour: () => undefined, avecSejours: false }).every((l) => l.cle !== 'sejour'), 'récapitulatif sans séjour possible : pas de ligne « Séjour »');
+}
+
+/* ================================================================ absence */
+
+section('Nouvelle absence : écrans, règles, même absence (gérant) et même action (pôle) qu’avant');
+{
+  const J0 = '2026-11-05';
+  const absences = [
+    { id: 'abs-1', membreId: 'eq-1', du: '2026-11-10', au: '2026-11-12' },
+    { id: 'abs-2', membreId: 'eq-2', du: '2026-11-01', au: '2026-11-03', annuleeLe: '2026-10-30T10:00:00+01:00' },
+  ] as AbsenceMembre[];
+  verifier(ECRANS_ABSENCE_GERANT.join() === 'dates,remplacant,motif,recapitulatif', 'gérant : dates, remplaçant, motif, récapitulatif (la personne est celle de la fiche)');
+  verifier(ECRANS_ABSENCE_POLE.join() === 'personne,dates,remplacant,recapitulatif', 'pôle : la personne, les dates, le remplaçant, récapitulatif (pas de motif, comme avant)');
+  const g0 = brouillonAbsenceGerant('eq-1', J0);
+  const p0 = brouillonAbsencePole(J0);
+  verifier(g0.du === J0 && g0.au === J0 && p0.du === J0 && p0.au === ajouterJours(J0, 6) && p0.membreId === '', 'départ : aujourd’hui (gérant), une semaine (pôle), comme avant');
+  verifier(erreursAbsence('personne', p0, absences).membreId === 'Choisissez la personne absente.', 'pôle : la personne d’abord');
+  verifier(erreursAbsence('dates', { ...g0, au: '2026-11-04' }, absences).dates === 'La fin doit être après le début.', 'fin avant le début : refusée, sur l’écran des dates');
+  verifier(erreursAbsence('dates', { ...g0, du: '2026-11-11', au: '2026-11-15' }, absences).dates === 'Une absence est déjà notée sur ces dates pour cette personne.', 'chevauchement : refusé, sur l’écran des dates');
+  verifier(!erreursAbsence('dates', { ...g0, membreId: 'eq-2', du: '2026-11-02', au: '2026-11-02' }, absences).dates, 'absence annulée : ne compte plus');
+  verifier(!Object.keys(erreursAbsence('remplacant', { ...g0, au: '2026-11-04' }, absences)).length, 'le refus des dates ne bloque que l’écran des dates');
+  verifier(erreursAbsence('remplacant', { ...g0, remplacantId: 'eq-1' }, absences).remplacantId === 'Une personne ne peut pas se remplacer elle-même.', 'son propre remplaçant : refusé');
+  /** L'ancienne fenêtre du gérant (Acces.tsx, FormulaireAbsence, à la création), recopiée telle quelle. */
+  const ancienneGerant = (a: AbsenceMembre, id: string, maintenant: string, par: string) => {
+    const propre: AbsenceMembre = {
+      ...a,
+      id: a.id || id,
+      ...(a.motif?.trim() ? { motif: a.motif.trim() } : { motif: undefined }),
+      creeLe: a.creeLe ?? maintenant,
+      par: a.par ?? par,
+      parMembreId: undefined,
+    };
+    return verifierAbsence(propre, absences) ? undefined : propre;
+  };
+  for (const x of [
+    { du: J0, au: J0, remplacantId: '', motif: '' },
+    { du: '2026-11-13', au: '2026-11-20', remplacantId: 'eq-3', motif: '  Congés  ' },
+    { du: '2026-11-11', au: '2026-11-11', remplacantId: '', motif: '' },
+    { du: '2026-11-20', au: '2026-11-19', remplacantId: '', motif: 'x' },
+  ]) {
+    const b = { ...g0, ...x };
+    const r = absenceGerantDepuisBrouillon(b, { absences, id: 'abs-n', maintenant: '2026-11-05T09:00:00+01:00', par: 'Abdel' });
+    const avant = ancienneGerant({ id: '', membreId: 'eq-1', du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}), ...(b.motif ? { motif: b.motif } : {}) }, 'abs-n', '2026-11-05T09:00:00+01:00', 'Abdel');
+    verifier(r.ok === !!avant, `gérant : même absence permise ou refusée (${b.du} au ${b.au})`);
+    if (r.ok && avant) verifier(empreinte(r.valeur) === empreinte(avant), `gérant : même absence enregistrée (${b.du} au ${b.au}${b.motif.trim() ? ', motif' : ''})`);
+  }
+  /** L'ancien panneau du pôle (espace-operations/Equipe.tsx, à la création), recopié tel quel : l'action envoyée. */
+  const ancienPole = (a: AbsenceMembre) =>
+    verifierAbsence({ ...a, id: a.id || 'nouvelle' }, absences) ? undefined : { type: 'absence', membreId: a.membreId, du: a.du, au: a.au, remplacantId: a.remplacantId || undefined };
+  for (const x of [{ membreId: 'eq-2' }, { membreId: 'eq-3', remplacantId: 'eq-2' }, { membreId: 'eq-1', du: '2026-11-08' }, { membreId: '' }]) {
+    const b = { ...p0, ...x };
+    const r = actionAbsenceDepuisBrouillon(b, absences);
+    const avant = ancienPole({ id: '', membreId: b.membreId, du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}) });
+    verifier(r.ok === !!avant, `pôle : même absence permise ou refusée (${b.membreId || 'personne'})`);
+    if (r.ok && avant) verifier(empreinte(r.valeur) === empreinte(avant), `pôle : même action « absence » envoyée (${b.membreId})`);
+  }
+  const recap = recapAbsence({ ...p0, membreId: 'eq-2', remplacantId: 'eq-3' }, { ecrans: ECRANS_ABSENCE_POLE, nom: (id) => ({ 'eq-2': 'Yanis', 'eq-3': 'Clara' })[id] ?? '', jour: (iso) => iso.slice(8) });
+  verifier(recap.map((l) => l.valeur).join(' | ') === 'Yanis | Du 05 au 11 inclus | Clara', `récapitulatif du pôle (${recap.map((l) => l.valeur).join(' | ')})`);
+  verifier(recapAbsence(g0, { ecrans: ECRANS_ABSENCE_GERANT, nom: () => '', jour: (iso) => iso }).map((l) => l.cle).join() === 'dates,remplacant,motif', 'récapitulatif du gérant : sans la personne, avec le motif');
+}
+
+/* ================================================================= mandat */
+
+section('Nouveau mandat : écrans, règles et même mandat que l’ancien formulaire');
+{
+  const J = '2026-11-05';
+  const existants = [
+    { id: 'man-1', reference: 'LM-M-2026-007', proprietaireId: 'pro-1', logementId: 'log-1', statut: 'signe' },
+    { id: 'man-2', reference: 'LM-M-2025-012', proprietaireId: 'pro-2', logementId: 'log-2', statut: 'resilie' },
+    { id: 'man-3', reference: 'LM-M-2026-002', proprietaireId: 'pro-3', logementId: 'log-3', statut: 'brouillon' },
+  ] as Mandat[];
+  /** L'ancien formulaire « Nouveau mandat » (FormMandat.tsx), recopié tel quel : valeurs de départ, règles, mandat créé. */
+  const vierge = (pre?: { proprietaireId?: string; logementId?: string; dateDebut?: string }) => ({
+    proprietaireId: pre?.proprietaireId ?? '',
+    logementId: pre?.logementId ?? '',
+    commissionPct: String(COMMISSION_CIBLE_MIN),
+    fraisMenage: '45',
+    dateDebut: pre?.dateDebut ?? ajouterJours(J, 14),
+    periodeEssaiFin: ajouterJours(pre?.dateDebut ?? ajouterJours(J, 14), 92),
+    preavisJours: String(90),
+  });
+  const ancienneReference = (mandats: Mandat[]) => {
+    const annee = J.slice(0, 4);
+    const max = mandats.map((m) => m.reference.match(new RegExp(`^LM-M-${annee}-(\\d+)$`))?.[1]).filter(Boolean).reduce((a, n) => Math.max(a, Number(n)), 0);
+    return `LM-M-${annee}-${String(max + 1).padStart(3, '0')}`;
+  };
+  const ancien = (s: ReturnType<typeof vierge>, proposerSigne: boolean, signe: boolean, id: string): Mandat | undefined => {
+    const pct = Number(s.commissionPct.replace(',', '.'));
+    const err: Record<string, string> = {};
+    if (!s.proprietaireId) err.proprietaireId = 'x';
+    if (!s.logementId) err.logementId = 'x';
+    if (!(pct > 0 && pct <= 50)) err.commissionPct = 'x';
+    const frais = versCentimes(s.fraisMenage);
+    if (!(frais >= 0)) err.fraisMenage = 'x';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s.dateDebut)) err.dateDebut = 'x';
+    if (s.periodeEssaiFin && s.periodeEssaiFin <= s.dateDebut) err.periodeEssaiFin = 'x';
+    if (!/^\d+$/.test(s.preavisJours)) err.preavisJours = 'x';
+    const doublon = existants.find((m) => m.logementId === s.logementId && m.proprietaireId === s.proprietaireId && (m.statut === 'signe' || m.statut === 'envoye'));
+    if (doublon) err.logementId = 'x';
+    if (Object.keys(err).length) return undefined;
+    return {
+      ...(proposerSigne && signe
+        ? { id, reference: ancienneReference(existants), statut: 'signe' as const, signeLe: s.dateDebut, documentUrl: undefined }
+        : { id, reference: ancienneReference(existants), statut: 'brouillon' as const, documentUrl: undefined }),
+      proprietaireId: s.proprietaireId,
+      logementId: s.logementId,
+      commissionPct: pct,
+      fraisMenageCentimes: frais,
+      dateDebut: s.dateDebut,
+      periodeEssaiFin: s.periodeEssaiFin || undefined,
+      preavisJours: Number(s.preavisJours),
+    };
+  };
+  verifier(ecransMandat(false).join() === 'proprietaire,logement,commission,menage,dates,preavis,recapitulatif', 'écrans : propriétaire, logement, commission, ménage, dates, préavis, récapitulatif');
+  verifier(ecransMandat(true)[0] === 'signe', 'après un changement de propriétaire : « déjà signé ? » d’abord, comme l’interrupteur en tête d’avant');
+  const pre = { proprietaireId: 'pro-4', logementId: 'log-4', dateDebut: '2026-10-01', dejaSigne: true };
+  const { signe: _s1, ...b1 } = brouillonMandat(undefined, J);
+  const { signe: s2, ...b2 } = brouillonMandat(pre, J);
+  verifier(empreinte(b1) === empreinte(vierge()) && empreinte(b2) === empreinte(vierge(pre)) && s2, 'valeurs de départ de l’ancien formulaire (sans et avec présélection)');
+  const b0 = brouillonMandat(undefined, J);
+  verifier(erreursMandat('proprietaire', b0, existants).proprietaireId === 'Choisissez le propriétaire.', 'propriétaire : à choisir');
+  verifier(erreursMandat('logement', { ...b0, proprietaireId: 'pro-1', logementId: 'log-1' }, existants).logementId === 'Ce logement a déjà un mandat en cours (LM-M-2026-007).', 'mandat déjà en cours : refusé, avec sa référence');
+  verifier(!erreursMandat('logement', { ...b0, proprietaireId: 'pro-2', logementId: 'log-2' }, existants).logementId, 'mandat résilié : un nouveau est permis');
+  verifier(erreursMandat('commission', { ...b0, commissionPct: '55' }, existants).commissionPct === 'Pourcentage entre 0 et 50.', 'commission au-delà de 50 % : refusée');
+  verifier(erreursMandat('menage', { ...b0, fraisMenage: 'abc' }, existants).fraisMenage === 'Montant en euros, ex. 45 ou 45,50.', 'frais de ménage illisibles : refusés');
+  verifier(erreursMandat('dates', { ...b0, periodeEssaiFin: b0.dateDebut }, existants).periodeEssaiFin === 'La fin d’essai doit être après la date de début.', 'fin d’essai le jour du début : refusée');
+  verifier(erreursMandat('preavis', { ...b0, preavisJours: '3 mois' }, existants).preavisJours === 'Indiquez un nombre de jours.', 'préavis : un nombre de jours');
+  verifier(prochaineReference(existants, J) === 'LM-M-2026-008' && prochaineReference([], '2027-01-03') === 'LM-M-2027-001', 'référence suivante de l’année');
+  const cas: [ReturnType<typeof vierge>, boolean, boolean][] = [
+    [{ ...vierge(), proprietaireId: 'pro-5', logementId: 'log-5' }, false, false],
+    [{ ...vierge(pre), commissionPct: '22,5', fraisMenage: '52,50', preavisJours: '60' }, true, true],
+    [{ ...vierge(pre), periodeEssaiFin: '' }, true, false],
+    [{ ...vierge(), proprietaireId: 'pro-1', logementId: 'log-1' }, false, false],
+    [{ ...vierge(), proprietaireId: 'pro-5', logementId: 'log-5', commissionPct: '0' }, false, false],
+  ];
+  for (const [s, proposerSigne, signe] of cas) {
+    const r = mandatDepuisBrouillon({ ...s, signe }, { mandats: existants, id: 'man-n', aujourdhui: J, proposerSigne });
+    const avant = ancien(s, proposerSigne, signe, 'man-n');
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${s.logementId}, ${s.commissionPct} %)`);
+    if (r.ok && avant) verifier(empreinte(r.mandat) === empreinte(avant), `même mandat créé (${r.mandat.reference}, ${r.mandat.statut})`);
+  }
+  const recap = recapMandat({ ...b2, signe: true }, { proposerSigne: true, nomProprietaire: () => 'Alice', nomLogement: () => 'T2 Gare', jour: (iso) => iso, euros: (c) => `${c / 100} €` });
+  verifier(recap.map((l) => l.cle).join() === 'signe,proprietaire,logement,commission,menage,dates,preavis', 'récapitulatif : une ligne par écran');
+  verifier(recap.find((l) => l.cle === 'commission')?.valeur === `${COMMISSION_CIBLE_MIN}${NBSP}%` && recap.find((l) => l.cle === 'preavis')?.valeur === `90${NBSP}jours`, 'récapitulatif : unités avec une espace insécable');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

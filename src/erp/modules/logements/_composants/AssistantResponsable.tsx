@@ -2,16 +2,22 @@
  * « Ajouter un responsable » de la fiche logement, pas à pas (kit
  * ui/Assistant.tsx) : une personne de l'équipe à rattacher, ou une nouvelle
  * personne à inviter (son e-mail, son nom et son rôle, ses logements). Rien
- * n'est enregistré avant « Rattacher » ou « Inviter » ; règles :
+ * n'est enregistré avant « Rattacher » ou « Envoyer l'invitation » ; règles :
  * data/creation-responsable.ts. Rattacher et inviter écrivent comme avant
  * (affectationsAFiger, logementIds ; inviterResponsable de Paramètres → Accès).
+ *
+ * Sans logement (Paramètres → Accès, « Inviter un responsable ») : toujours
+ * une personne à inviter, sans le premier choix ; les logements de la page
+ * filtrée sont cochés d'office.
  */
 import { useId, useMemo, useRef, useState } from 'react';
 import { affectationsAFiger, ROLES_OPERATIONS } from '../../../data/operations';
 import { brouillonModifie } from '../../../data/parcours-assistant';
 import {
+  ECRANS_INVITATION_RESPONSABLE,
   NOUVELLE_PERSONNE,
   SANS_CHAMP_RESPONSABLE,
+  brouillonInvitationResponsable,
   brouillonResponsable,
   ecranDeLaCleResponsable,
   ecransResponsable,
@@ -20,30 +26,31 @@ import {
   personnesLibres,
   recapResponsable,
   roleRetenu,
+  saisieInvitationResponsable,
   type BrouillonResponsable,
   type EcranResponsable,
 } from '../../../data/creation-responsable';
 import { useErp } from '../../../data/store';
-import type { Logement } from '../../../data/types';
+import type { Id, Logement } from '../../../data/types';
 import type { RoleOperations } from '../../../data/types-operations';
-import { Alert, Assistant, Button, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, Field, Input, Modal, NBSP, RecapAssistant, insecables, useParcours } from '../../../ui';
+import { Alert, Assistant, Button, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, Field, Input, Modal, NBSP, Prerequis, RecapAssistant, insecables, useParcours } from '../../../ui';
 import { LienInvitation, ListeLogements, inviterResponsable, logementsGeres, type Invitation } from '../../parametres/Acces';
 
 const idChamp = (cle: string) => `assistant-responsable-${cle}`;
 
 const ROLES = (Object.keys(ROLES_OPERATIONS) as RoleOperations[]).map((r) => ({ valeur: r, libelle: ROLES_OPERATIONS[r] }));
 
-export function AssistantResponsable({ logement: l, onFermer }: { logement: Logement; onFermer: () => void }) {
+export function AssistantResponsable({ logement: l, logementsInitiaux = [], onFermer }: { logement?: Logement; logementsInitiaux?: Id[]; onFermer: () => void }) {
   const d = useErp();
   const equipe = d.donnees.equipe;
-  const libres = useMemo(() => personnesLibres(equipe, l.id), [equipe, l.id]);
-  const [b, setB] = useState<BrouillonResponsable>(() => brouillonResponsable(l.id, libres));
+  const libres = useMemo(() => (l ? personnesLibres(equipe, l.id) : []), [equipe, l]);
+  const [b, setB] = useState<BrouillonResponsable>(() => (l ? brouillonResponsable(l.id, libres) : brouillonInvitationResponsable(logementsInitiaux)));
   const depart = useRef(b);
   const [envoi, setEnvoi] = useState(false);
   const [erreurEnvoi, setErreurEnvoi] = useState<string>();
   const [invitation, setInvitation] = useState<Invitation>();
   const titreId = useId();
-  const ecrans = ecransResponsable(b.choix);
+  const ecrans = l ? ecransResponsable(b.choix) : ECRANS_INVITATION_RESPONSABLE;
   const ctx = { equipe, libres };
   const p = useParcours<EcranResponsable>({ ecrans, idChamp, sansChamp: SANS_CHAMP_RESPONSABLE });
   const ecran = p.ecran;
@@ -58,7 +65,7 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
     if (envoi) return;
     const tout = Object.keys(erreursResponsable('recapitulatif', b, ctx));
     if (tout.length) return p.corriger(ecranDeLaCleResponsable(tout[0]), tout);
-    if (!nouvelle) {
+    if (!nouvelle && l) {
       // Le responsable par défaut d'avant devient un choix enregistré : il garde la charge.
       for (const a of affectationsAFiger(d.donnees, [l.id])) d.upsert('affectations', a);
       d.mettreAJour('equipe', b.choix, (m) => ({ ...m, logementIds: [...new Set([...m.logementIds, l.id])] }));
@@ -67,7 +74,7 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
     }
     setEnvoi(true);
     setErreurEnvoi(undefined);
-    const r = await inviterResponsable(d, { nom: b.nom, email: b.email, telephone: b.telephone, role: b.role, logementIds: b.logementIds });
+    const r = await inviterResponsable(d, saisieInvitationResponsable(b));
     setEnvoi(false);
     if (r.invitation) setInvitation(r.invitation);
     else setErreurEnvoi(r.erreur);
@@ -94,17 +101,19 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
   }
 
   const questions: Record<EcranResponsable, { question: string; aide?: string }> = {
-    qui: { question: `Qui va s’occuper de ${l.nom}${NBSP}?`, aide: 'La personne le verra dans son espace opérations.' },
+    qui: { question: `Qui va s’occuper de ${l?.nom ?? 'ce logement'}${NBSP}?`, aide: 'La personne le verra dans son espace opérations.' },
     email: { question: `Quelle est son adresse e-mail${NBSP}?`, aide: 'Elle reçoit un lien personnel, valable 7 jours, vers son espace opérations.' },
     identite: { question: `Qui est-ce${NBSP}?` },
     logements: { question: `Quels logements suivra cette personne${NBSP}?` },
     recapitulatif: { question: `Tout est correct${NBSP}?` },
   };
   const q = questions[ecran];
+  // Aucun logement dans l'espace (Paramètres → Accès, base vide) : un responsable suit toujours au moins un logement.
+  const sansLogement = ecran === 'logements' && !logements.length && !existant?.logementIds.length;
 
   return (
     <Assistant
-      titre="Nouveau responsable"
+      titre={l ? 'Nouveau responsable' : 'Inviter un responsable'}
       ecrans={ecrans}
       ecran={ecran}
       question={q.question}
@@ -114,8 +123,9 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
       libelleSuite={p.libelleSuite(nouvelle ? 'Envoyer l’invitation' : 'Rattacher')}
       onContinuer={continuer}
       onRetour={p.retour}
+      sansSuite={sansLogement}
       saisi={brouillonModifie(depart.current, b)}
-      abandon={`Abandonner l’ajout${NBSP}?`}
+      abandon={l ? `Abandonner l’ajout${NBSP}?` : `Abandonner l’invitation${NBSP}?`}
       envoi={envoi}
       onFermer={onFermer}
     >
@@ -152,16 +162,20 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
       {ecran === 'identite' && (
         <Identite b={b} maj={maj} existant={existant} erreur={etat.erreurChamp('nom')} quitter={p.quitter} continuer={continuer} />
       )}
-      {ecran === 'logements' && (
-        <ListeLogements
-          logements={logements}
-          coches={b.logementIds}
-          onChange={(logementIds) => maj({ logementIds })}
-          regle={(x) => (existant?.logementIds.includes(x.id) ? { verrou: true, detail: 'Déjà suivi' } : {})}
-        />
-      )}
+      {ecran === 'logements' &&
+        (sansLogement ? (
+          <Prerequis manque="Vous n’avez pas encore de logement." detail="Un responsable suit toujours au moins un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+        ) : (
+          <ListeLogements
+            logements={logements}
+            coches={b.logementIds}
+            onChange={(logementIds) => maj({ logementIds })}
+            pleineHauteur
+            regle={(x) => (existant?.logementIds.includes(x.id) ? { verrou: true, detail: 'Déjà suivi' } : {})}
+          />
+        ))}
       {ecran === 'recapitulatif' && (
-        <RecapAssistant lignes={recapResponsable(b, { equipe, logements: d.logements }).map((x) => ({ ...x, onModifier: () => p.modifier(x.ecran) }))}>
+        <RecapAssistant lignes={recapResponsable(b, { equipe, logements: d.logements, sansChoix: !l }).map((x) => ({ ...x, onModifier: () => p.modifier(x.ecran) }))}>
           {erreurEnvoi && (
             <Alert tone="danger" className="mt-4">
               {erreurEnvoi}

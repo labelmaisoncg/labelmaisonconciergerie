@@ -4,8 +4,10 @@ import { Badge, Button, Card, CardHeader, EnvoiFichier, Field, IconButton, Input
 import { nouvelId, useErp } from '../../../data/store';
 import { horodatageMaintenant } from '../../../data/format';
 import { LIBELLE_TYPE_GUIDE, TAILLE_MAX_GUIDE_MO, estLienGuide, typeFichier } from '../../../data/guides';
+import type { BrouillonGuide } from '../../../data/creation-guide';
 import type { GuideLogement, Logement, QuestionFrequente } from '../../../data/types';
 import { aideOuCode } from '../_composants/avertissementCode';
+import { AssistantGuide, AssistantQuestion } from './AssistantsGuides';
 
 const ICONE: Record<GuideLogement['media']['type'], ReactNode> = {
   video: <Video />,
@@ -33,9 +35,7 @@ function Ligne({ children, onModifier, onSupprimer, libelle }: { children: React
 
 /* ------------------------------------------------------------- guides */
 
-type Brouillon = { titre: string; quand: string; source: 'lien' | 'fichier'; url: string; fichier: string; nomFichier: string; type: GuideLogement['media']['type']; acces: boolean };
-
-const vide: Brouillon = { titre: '', quand: '', source: 'lien', url: '', fichier: '', nomFichier: '', type: 'lien', acces: false };
+type Brouillon = BrouillonGuide;
 
 function versBrouillon(g: GuideLogement): Brouillon {
   const fichier = g.media.fichier ?? '';
@@ -55,9 +55,12 @@ function versBrouillon(g: GuideLogement): Brouillon {
  * Guides du logement : une vidéo « Comment récupérer la clé », la photo du
  * compteur, le mode d'emploi du four… L'agent les envoie au voyageur quand sa
  * question y correspond. Les changements partent avec « Enregistrer ».
+ * Un nouveau guide s'ajoute pas à pas (AssistantGuide) ; « Modifier » garde
+ * sa fenêtre.
  */
 export function SectionGuides({ logementId, guides, onChange }: { logementId: string; guides: GuideLogement[]; onChange: (g: GuideLogement[]) => void }) {
   const { utilisateur } = useErp();
+  const [nouveau, setNouveau] = useState(false);
   const [edition, setEdition] = useState<{ id: string | null; b: Brouillon } | null>(null);
   const b = edition?.b;
   const maj = (patch: Partial<Brouillon>) => setEdition((e) => (e ? { ...e, b: { ...e.b, ...patch } } : e));
@@ -87,7 +90,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
         titre="Guides"
         description="Vidéos, photos ou documents que votre agent envoie au voyageur quand sa question y correspond."
         actions={
-          <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, b: vide })}>
+          <Button size="sm" icone={<Plus />} onClick={() => setNouveau(true)}>
             Ajouter
           </Button>
         }
@@ -129,17 +132,19 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
         </ul>
       )}
 
+      {nouveau && <AssistantGuide logementId={logementId} onAjoute={(g) => onChange([...guides, g])} onFermer={() => setNouveau(false)} />}
+
       <Modal
         ouvert={!!edition}
         onFermer={() => setEdition(null)}
-        titre={edition?.id ? 'Modifier le guide' : 'Nouveau guide'}
+        titre="Modifier le guide"
         pied={
           <>
             <Button variant="ghost" onClick={() => setEdition(null)}>
               Annuler
             </Button>
             <Button variant="primary" disabled={!valide} onClick={valider}>
-              {edition?.id ? 'Valider' : 'Ajouter'}
+              Valider
             </Button>
           </>
         }
@@ -208,8 +213,9 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
 
 /* ------------------------------------------------- questions fréquentes */
 
-/** Questions fréquentes du logement : l'agent reprend ces réponses telles quelles. */
+/** Questions fréquentes du logement : l'agent reprend ces réponses telles quelles. Une nouvelle question s'ajoute pas à pas (AssistantQuestion). */
 export function SectionQuestions({ questions, logement, onChange }: { questions: QuestionFrequente[]; logement?: Logement; onChange: (q: QuestionFrequente[]) => void }) {
+  const [nouvelle, setNouvelle] = useState(false);
   const [edition, setEdition] = useState<{ id: string | null; question: string; reponse: string } | null>(null);
   const valide = !!edition?.question.trim() && !!edition.reponse.trim();
 
@@ -226,7 +232,7 @@ export function SectionQuestions({ questions, logement, onChange }: { questions:
         titre="Questions fréquentes"
         description="Les réponses que votre agent peut donner telles quelles."
         actions={
-          <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, question: '', reponse: '' })}>
+          <Button size="sm" icone={<Plus />} onClick={() => setNouvelle(true)}>
             Ajouter
           </Button>
         }
@@ -251,17 +257,19 @@ export function SectionQuestions({ questions, logement, onChange }: { questions:
         </ul>
       )}
 
+      {nouvelle && <AssistantQuestion logement={logement} onAjoute={(q) => onChange([...questions, q])} onFermer={() => setNouvelle(false)} />}
+
       <Modal
         ouvert={!!edition}
         onFermer={() => setEdition(null)}
-        titre={edition?.id ? 'Modifier la question' : 'Nouvelle question'}
+        titre="Modifier la question"
         pied={
           <>
             <Button variant="ghost" onClick={() => setEdition(null)}>
               Annuler
             </Button>
             <Button variant="primary" disabled={!valide} onClick={valider}>
-              {edition?.id ? 'Valider' : 'Ajouter'}
+              Valider
             </Button>
           </>
         }
