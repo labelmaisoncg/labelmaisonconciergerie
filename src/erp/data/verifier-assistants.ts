@@ -87,6 +87,7 @@ import {
   type BrouillonQuestion,
 } from './creation-guide';
 import { LIBELLE_TYPE_GUIDE, estLienGuide } from './guides';
+import { brouillonSignalement, ecransSignalement, erreursSignalement, recapSignalement, sejoursDuLogement, signalementDepuisBrouillon, type BrouillonSignalement } from './creation-signalement';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
@@ -918,6 +919,48 @@ section('Fiche voyageur, nouvelle question : écrans, règles et même ligne que
     verifier(r.ok === !!avant && (!r.ok || empreinte(r.question) === empreinte(avant)), `même question ajoutée ou refusée (${x.question.trim() || 'vide'})`);
   }
   verifier(recapQuestion({ question: ' Wifi ? ', reponse: ' Sur la box ' }).map((l) => l.valeur).join(' | ') === 'Wifi ? | Sur la box', 'récapitulatif : question et réponse telles qu’ajoutées');
+}
+
+/* ===================================================== espace opérations */
+
+section('Espace opérations, signaler un incident : écrans, règles et même action que l’ancienne fenêtre');
+{
+  /** L'ancienne fenêtre « Signaler un incident » (espace-operations/Signaler.tsx), recopiée telle quelle : ce qu'elle passait à agir. */
+  const ancienne = (f: { logement: string; urgent: boolean; description: string; photos: { url: string }[]; sejour: string }) => {
+    if (!f.logement) return undefined;
+    if (f.description.trim().length < 10) return undefined;
+    return { type: 'signaler', logementId: f.logement, urgent: f.urgent, description: f.description.trim(), photos: f.photos.map((p) => p.url), ...(f.sejour ? { reservationId: f.sejour } : {}) };
+  };
+  verifier(ecransSignalement(true).join() === 'logement,priorite,description,photos,sejour,recapitulatif', 'écrans : logement, priorité, description, photos, séjour, récapitulatif');
+  verifier(ecransSignalement(false).join() === 'logement,priorite,description,photos,recapitulatif', 'sans séjour dans la fenêtre : pas d’écran « séjour », comme le champ d’avant');
+  const b0 = brouillonSignalement();
+  const depuis = brouillonSignalement('log-2');
+  verifier(b0.logementId === '' && !b0.urgent && !b0.photos.length && b0.sejour === '' && depuis.logementId === 'log-2', 'départ : normal, sans photo ni séjour ; le logement d’où l’on vient');
+  verifier(erreursSignalement('logement', b0).logementId === 'Choisissez le logement.', 'logement : à choisir, même phrase qu’avant');
+  verifier(erreursSignalement('description', { ...depuis, description: 'Fuite' }).description === `Décrivez ce qui se passe (10${NBSP}caractères au moins).`, 'description trop courte : 10 caractères au moins');
+  verifier(erreursSignalement('description', depuis).description === 'Décrivez ce qui se passe.', 'description vide : à écrire');
+  verifier(!Object.keys(erreursSignalement('photos', depuis)).length && !Object.keys(erreursSignalement('priorite', depuis)).length, 'photos et priorité : rien à bloquer');
+  const sejours = [
+    { id: 'r1', logementId: 'log-1', voyageur: 'Clara D.' },
+    { id: 'r2', logementId: 'log-2', voyageur: 'Marc P.' },
+  ];
+  verifier(sejoursDuLogement(sejours, 'log-1').map((s) => s.id).join() === 'r1', 'séjours proposés : ceux du logement');
+  const cas: BrouillonSignalement[] = [
+    { ...depuis, description: '  Fuite sous l’évier de la cuisine.  ' },
+    { logementId: 'log-1', urgent: true, description: 'Porte d’entrée forcée, serrure cassée.', photos: [{ url: 'demo://operations/eq-ines/a.jpg' }, { url: 'demo://operations/eq-ines/b.jpg' }], sejour: 'r1' },
+    { logementId: 'log-1', urgent: false, description: 'Ampoule grillée dans le salon.', photos: [], sejour: '' },
+    { ...b0, description: 'Logement non choisi, description longue.' },
+    { ...depuis, description: 'Trop court' },
+  ];
+  for (const x of cas) {
+    const r = signalementDepuisBrouillon(x);
+    const avant = ancienne({ logement: x.logementId, urgent: x.urgent, description: x.description, photos: x.photos, sejour: x.sejour });
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.description.trim().slice(0, 20)})`);
+    if (r.ok && avant) verifier(empreinte(r.action) === empreinte(avant), `même action envoyée (${x.urgent ? 'urgent' : 'normal'}, ${x.photos.length} photo(s)${x.sejour ? ', séjour' : ''})`);
+  }
+  const recap = recapSignalement(cas[1], { logements: [{ id: 'log-1', nom: 'T2 Gare' }], libelleSejour: (id) => (id === 'r1' ? 'Clara D., du 3 au 6 nov.' : undefined), avecSejours: true });
+  verifier(recap.map((l) => l.valeur).join(' | ') === `T2 Gare | Urgent | Porte d’entrée forcée, serrure cassée. | 2${NBSP}photos | Clara D., du 3 au 6 nov.`, `récapitulatif (${recap.map((l) => l.valeur).join(' | ')})`);
+  verifier(recapSignalement(cas[0], { logements: [], libelleSejour: () => undefined, avecSejours: false }).every((l) => l.cle !== 'sejour'), 'récapitulatif sans séjour possible : pas de ligne « Séjour »');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
