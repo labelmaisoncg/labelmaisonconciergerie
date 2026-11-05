@@ -68,11 +68,12 @@ import {
 } from './creation-invitation-proprietaire';
 import { ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable, saisieInvitationResponsable } from './creation-responsable';
 import { ficheResponsableInvite, transfertsProprietaire } from './acces-gerant';
+import { ECRANS_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre } from './creation-membre';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
-import type { ContactCrm, Logement, Mandat, Prestataire, Proprietaire, Reservation } from './types';
+import type { ContactCrm, Logement, Mandat, Prestataire, Proprietaire, Reservation, RoleUtilisateur, Utilisateur } from './types';
 import type { MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
@@ -704,6 +705,55 @@ section('Accès, inviter un responsable : même parcours sans le choix, même sa
   }
   const recap = recapResponsable({ ...b0, email: 'lucie@exemple.fr', nom: 'Lucie' }, { equipe, logements: [L1, L2], sansChoix: true });
   verifier(recap[0].cle === 'email' && !recap.some((l) => l.cle === 'qui'), 'récapitulatif : sans la ligne « Personne »');
+}
+
+/* ================================================================= équipe */
+
+section('Équipe, ajouter quelqu’un : écrans, règles et même ligne que l’ancien formulaire');
+{
+  const utilisateurs = [
+    { id: 'abdel@exemple.fr', email: 'Abdel@Exemple.fr', nom: 'Abdel', role: 'gerant' },
+    { id: 'usr-1', email: 'clara@exemple.fr', nom: 'Clara', role: 'operations' },
+  ] as Utilisateur[];
+  /** L'ancien formulaire « Ajouter quelqu'un » (Utilisateurs.tsx), recopié tel quel : la ligne enregistrée et l'encadré d'invitation. */
+  const ancien = (f: { email: string; nom: string; role: RoleUtilisateur }, mode: 'reel' | 'demo', maintenantMs: number) => {
+    const email = f.email.trim().toLowerCase();
+    if (!/^\S+@\S+\.\S+$/.test(email)) return undefined;
+    if (!f.nom.trim()) return undefined;
+    if (utilisateurs.some((u) => u.email.toLowerCase() === email)) return undefined;
+    const id = mode === 'reel' ? email : `usr-${maintenantMs.toString(36)}`;
+    return { ligne: { id, email, nom: f.nom.trim(), role: f.role }, invitation: { nom: f.nom.trim(), email } };
+  };
+  const b0 = brouillonMembre();
+  verifier(ECRANS_MEMBRE.join() === 'email,nom,role,recapitulatif', 'écrans : e-mail, nom affiché, rôle, récapitulatif');
+  verifier(b0.role === 'operations', 'rôle d’office : « Opérations », comme avant');
+  verifier(erreursMembre('email', b0, utilisateurs).email === 'Indiquez son adresse e‑mail.', 'e-mail vide : à indiquer');
+  verifier(erreursMembre('email', { ...b0, email: 'clara@exemple' }, utilisateurs).email === 'Adresse e‑mail invalide.', 'e-mail illisible : refusé');
+  verifier(erreursMembre('email', { ...b0, email: ' ABDEL@exemple.fr ' }, utilisateurs).email === 'Ce membre existe déjà.', 'déjà dans l’équipe (sans casse) : refusé');
+  verifier(erreursMembre('nom', { ...b0, nom: '  ' }, utilisateurs).nom === 'Indiquez le nom affiché.', 'nom affiché vide : refusé');
+  verifier(!Object.keys(erreursMembre('role', b0, utilisateurs)).length, 'rôle : toujours choisi');
+  const cas: [BrouillonMembre, 'reel' | 'demo'][] = [
+    [{ email: ' Ines.Morel@Exemple.FR ', nom: ' Inès Morel ', role: 'operations' }, 'reel'],
+    [{ email: 'compta@exemple.fr', nom: 'Cabinet Roux', role: 'lecture' }, 'demo'],
+    [{ email: 'associe@exemple.fr', nom: 'Sami', role: 'gerant' }, 'reel'],
+    [{ email: 'clara@exemple.fr', nom: 'Clara bis', role: 'operations' }, 'demo'],
+    [{ email: 'x@y', nom: 'X', role: 'operations' }, 'demo'],
+    [{ email: 'nom@vide.fr', nom: '', role: 'operations' }, 'reel'],
+  ];
+  for (const [x, mode] of cas) {
+    const r = membreDepuisBrouillon(x, { utilisateurs, reel: mode === 'reel', maintenantMs: 1_790_000_000_000 });
+    const avant = ancien(x, mode, 1_790_000_000_000);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.email.trim()}, ${mode})`);
+    if (r.ok && avant) {
+      verifier(empreinte(r.membre) === empreinte(avant.ligne), `même ligne enregistrée (${x.email.trim()}, ${mode})`);
+      verifier(r.membre.nom === avant.invitation.nom && r.membre.email === avant.invitation.email, `même encadré « Envoyer l’invitation » ensuite (${x.email.trim()})`);
+    }
+  }
+  const reel = membreDepuisBrouillon(cas[0][0], { utilisateurs, reel: true, maintenantMs: 0 });
+  verifier(reel.ok && reel.membre.id === 'ines.morel@exemple.fr' && Object.keys(reel.membre).sort().join() === 'email,id,nom,role', 'production : l’id est l’adresse, rien d’autre sur la ligne');
+  const demo = membreDepuisBrouillon(cas[1][0], { utilisateurs, reel: false, maintenantMs: 1_790_000_000_000 });
+  verifier(demo.ok && demo.membre.id === `usr-${(1_790_000_000_000).toString(36)}`, 'démonstration : « usr- » et l’heure');
+  verifier(recapMembre(cas[1][0]).map((l) => l.valeur).join(' | ') === 'compta@exemple.fr | Cabinet Roux | Lecture seule', 'récapitulatif : adresse, nom, rôle en toutes lettres');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useState } from 'react';
 import { Check, Copy, Ellipsis, Mail, Server, ShieldCheck, Trash2, UserPlus } from 'lucide-react';
 import { EMAIL_EQUIPE } from '../../data/config';
 import { estCompteTechnique } from '../../data/oauth-regles';
@@ -8,8 +8,9 @@ import { insecables, pluriel } from '../../data/format';
 import { espaceDesDonnees } from '../../data/espaces';
 import { lienCreationCompte } from '../../data/invitation';
 import type { RoleUtilisateur, Utilisateur } from '../../data/types';
-import { Alert, Avatar, Badge, Button, Card, CardHeader, Field, IconButton, Input, Modal, Repli, Select, Table, type Colonne } from '../../ui';
+import { Alert, Avatar, Badge, Button, IconButton, Input, Modal, Repli, Select, Table, type Colonne } from '../../ui';
 import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
+import { AssistantMembre } from './AssistantMembre';
 
 /** Réponse de api/erp-invitation : envoyée par e-mail, sinon le lien à copier. */
 interface ResultatInvitation {
@@ -126,6 +127,9 @@ const TON_ROLE = { gerant: 'or', operations: 'neutre', prestataire: 'neutre', le
 const rolesProposes = (actuel?: RoleUtilisateur) =>
   ROLES.filter((r) => r.role !== 'prestataire' || r.role === actuel).map((r) => ({ valeur: r.role, libelle: LIBELLES.role[r.role] }));
 
+/** Rôles de l'assistant « Ajouter quelqu'un » : les mêmes, avec ce que chacun permet. */
+const ROLES_AJOUT = ROLES.filter((r) => r.role !== 'prestataire').map((r) => ({ valeur: r.role, libelle: LIBELLES.role[r.role], detail: r.description }));
+
 /**
  * Compte technique (serveur, compte d'équipe) : le serveur lit et écrit la
  * base avec lui. Rangé à part, sans rôle à changer ni accès à retirer, et
@@ -138,7 +142,8 @@ export default function Utilisateurs() {
   const [message, setMessage] = useState<string>();
   const peutModifier = d.utilisateur.role === 'gerant';
 
-  const [nouveau, setNouveau] = useState({ email: '', nom: '', role: 'operations' as RoleUtilisateur });
+  /** Assistant « Ajouter quelqu'un » ouvert. */
+  const [ajout, setAjout] = useState(false);
   const [invitation, setInvitation] = useState<Invitation>();
   /** Membre dont la feuille d'actions est ouverte (téléphone). */
   const [feuille, setFeuille] = useState<Utilisateur | null>(null);
@@ -171,17 +176,10 @@ export default function Utilisateurs() {
     setMessage(undefined);
   };
 
-  const ajouter = (e: FormEvent) => {
-    e.preventDefault();
-    const email = nouveau.email.trim().toLowerCase();
-    if (!/^\S+@\S+\.\S+$/.test(email)) return setMessage('Adresse e-mail invalide.');
-    if (!nouveau.nom.trim()) return setMessage('Indiquez le nom affiché.');
-    if (d.utilisateurs.some((u) => u.email.toLowerCase() === email)) return setMessage('Ce membre existe déjà.');
-    const id = d.mode === 'reel' ? email : `usr-${Date.now().toString(36)}`;
-    d.upsert('utilisateurs', { id, email, nom: nouveau.nom.trim(), role: nouveau.role });
-    setNouveau({ email: '', nom: '', role: 'operations' });
+  // Ajouté par l'assistant (data/creation-membre.ts) : l'encadré propose aussitôt de lui envoyer l'invitation.
+  const ajoute = (u: Utilisateur) => {
     setMessage(undefined);
-    setInvitation({ nom: nouveau.nom.trim(), email, origine: 'ajout', enCours: false });
+    setInvitation({ nom: u.nom, email: u.email, origine: 'ajout', enCours: false });
   };
 
   const retirer = (u: Utilisateur) => {
@@ -354,28 +352,11 @@ export default function Utilisateurs() {
           )}
         </Modal>
         {peutModifier && (
-          <Card className="mt-4">
-            <CardHeader titre="Ajouter quelqu’un" />
-            <form onSubmit={ajouter} className="grid gap-3 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
-              <Field label="E-mail">
-                <Input type="email" value={nouveau.email} onChange={(e) => setNouveau((n) => ({ ...n, email: e.target.value }))} />
-              </Field>
-              <Field label="Nom affiché">
-                <Input value={nouveau.nom} onChange={(e) => setNouveau((n) => ({ ...n, nom: e.target.value }))} />
-              </Field>
-              <Field label="Rôle">
-                <Select
-                  value={nouveau.role}
-                  onChange={(e) => setNouveau((n) => ({ ...n, role: e.target.value as RoleUtilisateur }))}
-                  options={rolesProposes()}
-                />
-              </Field>
-              <Button type="submit" variant="primary" icone={<UserPlus />}>
-                Ajouter
-              </Button>
-            </form>
-          </Card>
+          <Button variant="primary" icone={<UserPlus />} className="mt-4 max-sm:min-h-11" onClick={() => setAjout(true)}>
+            Ajouter quelqu’un
+          </Button>
         )}
+        {ajout && <AssistantMembre roles={ROLES_AJOUT} onFermer={() => setAjout(false)} onAjoute={ajoute} />}
       </div>
       <Repli className="mt-4" titre="Que peut faire chaque rôle ?">
         <p className="mb-3 flex items-start gap-2 text-[12.5px] text-(--lm-encre-2)">
