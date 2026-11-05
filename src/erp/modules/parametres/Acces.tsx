@@ -79,6 +79,7 @@ import {
 import { EspaceOps } from '../../espace-operations/EspaceOps';
 import type { ActionsOps, Ecran } from '../../espace-operations/commun';
 import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, inviterAvecReessai, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
+import { AssistantResponsable } from '../logements/_composants/AssistantResponsable';
 import { RelancesPaiement } from '../logements/_composants/RelancesPaiement';
 import { ErreurServeur, appelerServeur } from '../messagerie/_composants/serveur';
 import { SupprimerMembre } from './SupprimerMembre';
@@ -145,7 +146,7 @@ export default function Acces() {
         </div>
       </Repli>
       {inviterProprietaire && <AssistantInvitationProprietaire onFermer={() => setInviterProprietaire(false)} />}
-      {inviterResponsable && <InviterResponsable onFermer={() => setInviterResponsable(false)} logementsInitiaux={logementFiltre ? [logementFiltre] : []} />}
+      {inviterResponsable && <AssistantResponsable onFermer={() => setInviterResponsable(false)} logementsInitiaux={logementFiltre ? [logementFiltre] : []} />}
     </div>
   );
 }
@@ -1159,90 +1160,6 @@ export async function inviterResponsable(
   } catch (e) {
     return { erreur: `Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}` };
   }
-}
-
-/** Inviter un responsable : sa fiche dans l'espace ouvert (ou celle qui a déjà cette adresse, son rôle gardé), ses logements, puis l'invitation. */
-export function InviterResponsable({ onFermer, logementsInitiaux = [] }: { onFermer: () => void; logementsInitiaux?: Id[] }) {
-  const d = useErp();
-  const [nom, setNom] = useState('');
-  const [email, setEmail] = useState('');
-  const [telephone, setTelephone] = useState('');
-  // Rôle choisi ici ; sinon celui de la fiche reprise, ou agent de terrain pour une nouvelle personne.
-  const [roleChoisi, setRoleChoisi] = useState<RoleOperations>();
-  const [coches, setCoches] = useState<Id[]>(logementsInitiaux);
-  const [erreur, setErreur] = useState<string>();
-  const [enCours, setEnCours] = useState(false);
-  const [invitation, setInvitation] = useState<Invitation>();
-  const logements = useMemo(() => logementsGeres(d.logements), [d.logements]);
-  const adresse = email.trim().toLowerCase();
-  const existant = adresse ? d.donnees.equipe.find((m) => (m.email ?? '').trim().toLowerCase() === adresse) : undefined;
-  const role = roleChoisi ?? existant?.role ?? 'agent';
-
-  const envoyer = async () => {
-    if (!existant && nom.trim().length < 2) return setErreur('Indiquez le nom.');
-    if (!EMAIL.test(adresse)) return setErreur('Adresse e-mail invalide.');
-    if (!coches.length && !existant?.logementIds.length) return setErreur('Cochez au moins un logement.');
-    setErreur(undefined);
-    setEnCours(true);
-    const r = await inviterResponsable(d, { nom, email: adresse, telephone, role: roleChoisi, logementIds: coches });
-    if (r.invitation) setInvitation(r.invitation);
-    else setErreur(r.erreur);
-    setEnCours(false);
-  };
-
-  return (
-    <Modal
-      ouvert
-      onFermer={onFermer}
-      taille="lg"
-      titre="Inviter un responsable"
-      description="Il reçoit un lien personnel, valable 7 jours, vers son espace opérations."
-      pied={
-        invitation ? (
-          <Button variant="primary" onClick={onFermer}>
-            Terminé
-          </Button>
-        ) : (
-          <>
-            <Button variant="ghost" onClick={onFermer}>
-              Annuler
-            </Button>
-            <Button variant="primary" chargement={enCours} onClick={() => void envoyer()}>
-              Inviter
-            </Button>
-          </>
-        )
-      }
-    >
-      {invitation ? (
-        <LienInvitation invitation={invitation} />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Adresse e-mail" requis aide={existant ? 'Une fiche existe déjà avec cette adresse : elle est reprise.' : undefined} className="sm:col-span-2">
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
-          </Field>
-          <Field label="Nom" requis={!existant}>
-            <Input value={existant ? existant.nom : nom} disabled={!!existant} onChange={(e) => setNom(e.target.value)} autoComplete="off" />
-          </Field>
-          <Field label="Rôle">
-            <Select value={role} onChange={(e) => setRoleChoisi(e.target.value as RoleOperations)} options={(Object.keys(ROLES_OPERATIONS) as RoleOperations[]).map((r) => ({ valeur: r, libelle: ROLES_OPERATIONS[r] }))} />
-          </Field>
-          <Field label="Téléphone" aide="Facultatif.">
-            <Input type="tel" value={existant?.telephone ?? telephone} disabled={!!existant?.telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="off" />
-          </Field>
-          <div className="sm:col-span-2">
-            <p className="mb-1.5 text-[13px] font-medium text-(--lm-encre)">Ses logements</p>
-            <ListeLogements logements={logements} coches={coches} onChange={setCoches} regle={(l) => (existant?.logementIds.includes(l.id) ? { verrou: true, detail: 'Déjà suivi' } : {})} />
-          </div>
-          {erreur && (
-            <Alert tone="danger" className="sm:col-span-2">
-              {erreur}
-            </Alert>
-          )}
-        </div>
-      )}
-    </Modal>
-  );
 }
 
 /** L'espace tel que la personne le voit, calculé avec les mêmes règles que le serveur ; rien ne s'envoie. */

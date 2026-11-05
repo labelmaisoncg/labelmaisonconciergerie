@@ -7,6 +7,10 @@
  *   reprise), son nom et son rôle, ses logements (celui de la fiche coché
  *   d'office), puis on l'invite.
  *
+ * « Inviter un responsable » de Paramètres → Accès suit le même parcours,
+ * sans le premier choix : c'est toujours une personne à inviter
+ * (ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable).
+ *
  * Mêmes règles que l'ancienne fenêtre « Ajouter un responsable » et que
  * « Inviter un responsable » (Paramètres → Accès), mêmes écritures :
  * rattacher (affectationsAFiger, logementIds), inviter (inviterResponsable).
@@ -30,6 +34,9 @@ export function ecransResponsable(choix: string): EcranResponsable[] {
   return choix === NOUVELLE_PERSONNE ? ['qui', 'email', 'identite', 'logements', 'recapitulatif'] : ['qui', 'recapitulatif'];
 }
 
+/** Paramètres → Accès : une personne à inviter, sans choisir d'abord dans l'équipe. */
+export const ECRANS_INVITATION_RESPONSABLE: readonly EcranResponsable[] = ['email', 'identite', 'logements', 'recapitulatif'];
+
 export interface BrouillonResponsable {
   /** Identifiant d'une personne de l'équipe, NOUVELLE_PERSONNE, ou vide tant que rien n'est choisi. */
   choix: string;
@@ -45,6 +52,14 @@ export interface BrouillonResponsable {
 export function brouillonResponsable(logementId: Id, libres: readonly Pick<MembreEquipe, 'id'>[]): BrouillonResponsable {
   return { choix: libres.length ? '' : NOUVELLE_PERSONNE, email: '', nom: '', telephone: '', logementIds: [logementId] };
 }
+
+/** Départ de Paramètres → Accès : une nouvelle personne, les logements de la page filtrée cochés d'office. */
+export function brouillonInvitationResponsable(logementIds: readonly Id[]): BrouillonResponsable {
+  return { choix: NOUVELLE_PERSONNE, email: '', nom: '', telephone: '', logementIds: [...logementIds] };
+}
+
+/** Ce que reçoit inviterResponsable : la même saisie que l'ancienne fenêtre « Inviter un responsable ». */
+export const saisieInvitationResponsable = (b: BrouillonResponsable) => ({ nom: b.nom, email: b.email, telephone: b.telephone, role: b.role, logementIds: b.logementIds });
 
 /** Personnes actives de l'équipe qui ne suivent pas encore le logement, par nom. */
 export function personnesLibres(equipe: readonly MembreEquipe[], logementId: Id): MembreEquipe[] {
@@ -92,7 +107,7 @@ export const ecranDeLaCleResponsable = (cle: string): EcranResponsable => ECRAN_
 /** Lignes du récapitulatif. */
 export function recapResponsable(
   b: BrouillonResponsable,
-  o: { equipe: readonly MembreEquipe[]; logements: readonly Pick<Logement, 'id' | 'nom'>[] },
+  o: { equipe: readonly MembreEquipe[]; logements: readonly Pick<Logement, 'id' | 'nom'>[]; sansChoix?: boolean },
 ): { cle: string; ecran: Exclude<EcranResponsable, 'recapitulatif'>; libelle: string; valeur: string }[] {
   if (b.choix !== NOUVELLE_PERSONNE) {
     const m = o.equipe.find((x) => x.id === b.choix);
@@ -103,7 +118,8 @@ export function recapResponsable(
   const suivis = [...new Set([...(existant?.logementIds ?? []), ...b.logementIds])];
   const noms = suivis.map((id) => o.logements.find((l) => l.id === id)?.nom).filter(Boolean);
   return [
-    { cle: 'qui', ecran: 'qui', libelle: 'Personne', valeur: 'Nouvelle personne, à inviter' },
+    // Paramètres → Accès : pas de choix dans l'équipe, donc pas de ligne « Personne ».
+    ...(o.sansChoix ? [] : [{ cle: 'qui', ecran: 'qui' as const, libelle: 'Personne', valeur: 'Nouvelle personne, à inviter' }]),
     { cle: 'email', ecran: 'email', libelle: 'Adresse e-mail', valeur: b.email.trim().toLowerCase() },
     { cle: 'nom', ecran: 'identite', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
     { cle: 'role', ecran: 'identite', libelle: 'Rôle', valeur: ROLES_OPERATIONS[roleRetenu(b, o.equipe)] },

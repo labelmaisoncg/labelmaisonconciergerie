@@ -66,13 +66,14 @@ import {
   transfertsInvitation,
   type BrouillonInvitationProprietaire,
 } from './creation-invitation-proprietaire';
-import { transfertsProprietaire } from './acces-gerant';
+import { ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable, saisieInvitationResponsable } from './creation-responsable';
+import { ficheResponsableInvite, transfertsProprietaire } from './acces-gerant';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
 import type { ContactCrm, Logement, Mandat, Prestataire, Proprietaire, Reservation } from './types';
-import type { MembreEquipe } from './types-operations';
+import type { MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
 let reussis = 0;
@@ -656,6 +657,53 @@ section('Accès, inviter un propriétaire : écrans, règles et mêmes écriture
     `récapitulatif : fiche reprise, ses logements et le nouveau (${recap.map((l) => l.valeur).join(' | ')})`,
   );
   verifier(recapInvitationProprietaire(b({ email: 'p@exemple.fr', nom: 'Paul' }), ctx).find((l) => l.cle === 'telephone')?.valeur === 'Non renseigné', 'récapitulatif : téléphone vide lisible');
+}
+
+/* ================================================== invitation responsable */
+
+section('Accès, inviter un responsable : même parcours sans le choix, même saisie que l’ancienne fenêtre');
+{
+  const equipe = [
+    { id: 'eq-1', nom: 'Inès Morel', role: 'pole', email: 'ines@exemple.fr', telephone: '06 00 00 00 01', logementIds: ['log-1'], actif: true },
+    { id: 'eq-2', nom: 'Ancien', role: 'agent', email: 'ancien@exemple.fr', logementIds: [], actif: false },
+  ] as MembreEquipe[];
+  verifier(ECRANS_INVITATION_RESPONSABLE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif (pas de choix dans l’équipe)');
+  const b0 = brouillonInvitationResponsable(['log-2']);
+  verifier(b0.choix === NOUVELLE_PERSONNE && b0.logementIds.join() === 'log-2', 'départ : une personne à inviter, le logement de la page filtrée coché');
+  verifier(brouillonInvitationResponsable([]).logementIds.length === 0, 'sans filtre : rien de coché, comme avant');
+  const ctx = { equipe, libres: [] };
+  /** L'ancienne fenêtre « Inviter un responsable » (Acces.tsx), recopiée telle quelle : ses règles, puis ce qu'elle passait à inviterResponsable. */
+  const ancienne = (f: { nom: string; email: string; telephone: string; roleChoisi?: RoleOperations; coches: string[] }) => {
+    const adresse = f.email.trim().toLowerCase();
+    const existant = adresse ? equipe.find((m) => (m.email ?? '').trim().toLowerCase() === adresse) : undefined;
+    if (!existant && f.nom.trim().length < 2) return undefined;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(adresse)) return undefined;
+    if (!f.coches.length && !existant?.logementIds.length) return undefined;
+    return { nom: f.nom, email: adresse, telephone: f.telephone, role: f.roleChoisi, logementIds: f.coches };
+  };
+  const cas = [
+    { nom: ' Lucie Martin ', email: ' Lucie@Exemple.fr ', telephone: ' 06 55 ', role: 'pole' as RoleOperations, logementIds: ['log-2'] },
+    { nom: '', email: 'INES@exemple.fr', telephone: '07 00', role: undefined, logementIds: [] },
+    { nom: 'Retour', email: 'ancien@exemple.fr', telephone: '', role: undefined, logementIds: ['log-1', 'log-2'] },
+    { nom: 'Yanis', email: 'yanis@exemple.fr', telephone: '', role: 'agent' as RoleOperations, logementIds: [] },
+    { nom: 'Y', email: 'yanis@exemple.fr', telephone: '', role: undefined, logementIds: ['log-1'] },
+    { nom: 'Yanis', email: 'yanis@exemple', telephone: '', role: undefined, logementIds: ['log-1'] },
+  ];
+  for (const x of cas) {
+    const br = { ...brouillonInvitationResponsable(x.logementIds), nom: x.nom, email: x.email, telephone: x.telephone, role: x.role };
+    const avant = ancienne({ nom: x.nom, email: x.email, telephone: x.telephone, roleChoisi: x.role, coches: x.logementIds });
+    const permis = !Object.keys(erreursResponsable('recapitulatif', br, ctx)).length;
+    verifier(permis === !!avant, `même saisie permise ou refusée que l’ancienne fenêtre (${x.email.trim()}, ${x.logementIds.length} logement(s))`);
+    if (avant && permis) {
+      const n = () => 'eq-n';
+      // inviterResponsable passe l'adresse nettoyée à ficheResponsableInvite.
+      const apres = ficheResponsableInvite(equipe, { ...saisieInvitationResponsable(br), email: br.email.trim().toLowerCase() }, n);
+      const ancienneFiche = ficheResponsableInvite(equipe, { ...avant, email: avant.email.trim().toLowerCase() }, n);
+      verifier(empreinte(apres) === empreinte(ancienneFiche), `même fiche écrite par inviterResponsable (${x.email.trim()})`);
+    }
+  }
+  const recap = recapResponsable({ ...b0, email: 'lucie@exemple.fr', nom: 'Lucie' }, { equipe, logements: [L1, L2], sansChoix: true });
+  verifier(recap[0].cle === 'email' && !recap.some((l) => l.cle === 'qui'), 'récapitulatif : sans la ligne « Personne »');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
