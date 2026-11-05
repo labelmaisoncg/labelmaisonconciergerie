@@ -207,6 +207,7 @@ export function DetailDemande({ id, onFermer }: { id: string; onFermer: () => vo
                 <span className="flex items-start justify-between gap-3">
                   <span>Le propriétaire la lira dans son espace, rubrique «{NBSP}Mes demandes{NBSP}».</span>
                   <span className={cn('lm-chiffres shrink-0', n > MESSAGE_MAX && 'font-semibold text-(--lm-danger)')}>
+                    <span className="sr-only">Caractères{NBSP}: </span>
                     {milliers(n)} / {milliers(MESSAGE_MAX)}
                   </span>
                 </span>

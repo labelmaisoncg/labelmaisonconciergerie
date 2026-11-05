@@ -100,7 +100,10 @@ export function Accueil({
         </button>
       )}
 
-      {demandes && onNouvelleDemande && <BlocDemandes demandes={demandes} conciergerie={vue.conciergerie.nom} onNouvelle={onNouvelleDemande} onOuvrir={() => onOnglet('demandes')} />}
+      {/* Rien tant que l'on ne sait pas si les demandes sont ouvertes : le bloc n'apparaît pas pour disparaître ensuite. */}
+      {demandes && !demandes.chargement && onNouvelleDemande && (
+        <BlocDemandes demandes={demandes} conciergerie={vue.conciergerie.nom} onNouvelle={onNouvelleDemande} onOuvrir={() => onOnglet('demandes')} />
+      )}
 
       {points.length > 0 && (
         <Rubrique titre="Aujourd’hui">
@@ -198,7 +201,9 @@ export function Accueil({
         {c && (
           <Rubrique titre={`${vue.conciergerie.nom}, à votre écoute`}>
             <Card>
-              <p className="text-[14px] text-(--lm-encre-2)">Une urgence ? Appelez-nous.</p>
+              <p className="text-[14px] text-(--lm-encre-2)">
+                {demandes ? 'Une urgence ? Appelez-nous.' : 'Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.'}
+              </p>
               <ul className="mt-3 space-y-1 text-[14px]">
                 <li>
                   <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:underline">
