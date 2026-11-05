@@ -2243,12 +2243,32 @@ passe d'un espace à l'autre.
   propriétaire ne passe que par le serveur. Envois simultanés : relue après
   l'ajout (ordre d'écriture de la base, `maj_le`), une demande au-delà du
   plafond se retire (429).
-  Marche à suivre : base à espaces (Label Maison et les autres) : relancer
-  `supabase/erp-espaces.sql` en entier avec, en tête de fichier, la passe
-  déjà atteinte (`'2'` dès qu'un autre espace que Label Maison existe ; le
-  bilan le dit : `cles_par_espace = 3`), et vérifier `recette = ok`. Ne pas
-  relancer `erp-installation.sql`. Ordre : le SQL d'abord, puis la mise en
-  ligne (dans l'autre ordre, rien ne s'ouvre avant le SQL, sans risque).
+  Marche à suivre (base à espaces) :
+  1. Lire l'état, en lecture seule (SQL Editor) :
+     ```sql
+     select (select count(*) from erp.espaces) as espaces,
+            (select count(*) from pg_catalog.pg_constraint c
+              join pg_catalog.pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+             where c.contype = 'p' and a.attname = 'espace'
+               and c.conrelid in ('erp.enregistrements'::regclass, 'erp.etat_automatisations'::regclass, 'erp.membres'::regclass)) as cles_par_espace,
+            (select count(*) from erp.enregistrements where collection = 'demandesProprietaires') as demandes;
+     ```
+     La passe se lit dans `cles_par_espace`, jamais dans le nombre
+     d'espaces (une remise à zéro ne laisse que Label Maison, mais garde
+     les clés converties) : `3` → passe `'2'` ; `0` → passe `'1'` (la
+     passe 2 se fait à part, comme décrit en tête du fichier).
+     `demandes` doit valoir `0` (le serveur n'en écrit aucune avant le
+     SQL) ; sinon, les regarder avant de relancer : elles ont été écrites
+     directement dans la base.
+  2. Relancer `supabase/erp-espaces.sql` en entier, avec cette passe à la
+     ligne `select set_config('erp.passe', …)`. Ne pas relancer
+     `erp-installation.sql` ni `erp-acces-gerants.sql` (ils refusent).
+  3. Vérifier : le bilan dit `cles_par_espace` inchangé et `recette = ok`,
+     puis `select erp.demandes_proprietaires_protegees();` répond `true`.
+     Dans les 5 minutes, « Faire une demande » apparaît dans l'espace
+     propriétaire.
+  Ordre : le SQL d'abord, puis la mise en ligne (dans l'autre ordre, rien
+  ne s'ouvre avant le SQL, sans risque).
 - **Vérification** : `src/erp/data/verifier-demandes-proprietaires.ts`.
 - **Démo** : la SCI Les Tilleuls a trois demandes (une nouvelle, une
   répondue, une réglée), Sophie Lambert-Roche (deux logements) une vue,
