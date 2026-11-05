@@ -600,6 +600,24 @@ export class BaseErp {
   }
 
   /**
+   * Adresses des gérants de l'espace de cette base (erp.membres, lecture
+   * seule ; une ligne pas encore activée ne compte pas, comme dans
+   * roleMembre) : e-mail « Demande d'un propriétaire »
+   * (api/_demandes-proprietaires.ts). Comptes techniques compris : à écarter
+   * par l'appelant.
+   */
+  async emailsDesGerants(): Promise<string[]> {
+    const espace = await this.espace();
+    const r = await this.requete(`membres?select=email,role${espace ? `,uid&espace=eq.${espace}` : ''}&role=eq.gerant`, { method: 'GET', entetes: { 'Accept-Profile': 'erp' } });
+    const lignes = (await r.json().catch(() => [])) as { email?: unknown; role?: unknown; uid?: unknown }[];
+    const emails = (Array.isArray(lignes) ? lignes : [])
+      .filter((l) => l?.role === 'gerant' && (!espace || !!l?.uid))
+      .map((l) => String(l?.email ?? '').trim().toLowerCase())
+      .filter(Boolean);
+    return [...new Set(emails)];
+  }
+
+  /**
    * Supprime ces éléments d'une collection, dans l'espace de la base
    * seulement (purge des check-ins en ligne, data/sejour.ts). Renvoie le
    * nombre de lignes réellement supprimées.

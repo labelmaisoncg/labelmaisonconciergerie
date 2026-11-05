@@ -2098,7 +2098,8 @@ d'août publié et deux documents ; son espace :
   `api/espace-proprietaire.ts` (via `api/_proprietaire.ts`, session du compte
   d'équipe) lit puis filtre par propriétaire avant tout calcul, et ne renvoie
   que la `VueProprietaire` (`src/erp/data/types-proprietaire.ts`). Le serveur
-  n'écrit que les accès ; rien sur les logements, réservations, prix ou
+  n'écrit que les accès et les demandes du propriétaire (voir « Demandes des
+  propriétaires » plus bas) ; rien sur les logements, réservations, prix ou
   calendrier, et rien vers les plateformes.
 - **Calculs** (`src/erp/data/proprietaire.ts`, purs, partagés par le serveur,
   l'aperçu du gérant et la démo) : bilan d'un mois **au prorata des nuits**
@@ -2147,7 +2148,83 @@ d'août publié et deux documents ; son espace :
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
-  `publie`, chiffres figés).
+  `publie`, chiffres figés), `demandesProprietaires` (novembre 2026).
+
+### Demandes des propriétaires (novembre 2026)
+
+Le propriétaire pose une question ou fait une demande particulière depuis
+son espace ; le gérant de SON espace (Abdel pour Label Maison) est prévenu,
+répond dans l'ERP, et la réponse s'affiche dans « Mes demandes ». Rien ne
+passe d'un espace à l'autre.
+
+- **Côté propriétaire** (`src/erp/espace-proprietaire/Demandes.tsx`) :
+  « Faire une demande » est l'action principale de l'Accueil (et de « Mes
+  demandes »). Assistant pas à pas, sur le modèle de l'assistant de création
+  d'un logement (à aligner plus tard sur le composant `Assistant` du kit) :
+  une question par écran, la progression en haut, « Retour » et
+  « Continuer » en bas avec ce qui manque en toutes lettres ; 1) le type
+  (une question, une demande particulière : travaux, clés, linge, prix,
+  calendrier, autre ; ou autre chose), 2) le logement s'il en a plusieurs
+  (ou « Tous mes logements »), 3) le message, 4) le récapitulatif, puis
+  « Envoyer ». « Mes demandes » (`?onglet=demandes`, rangé sous l'Accueil :
+  pas d'onglet de plus dans la barre du bas) : chaque demande avec son état
+  (Envoyée, Vue, Répondue, Réglée) et l'échange en bulles. L'aperçu du
+  gérant (« Voir son espace ») montre tout, sans rien envoyer.
+- **Serveur** (`api/espace-proprietaire.ts`) : `GET ?action=demandes` (les
+  siennes : `demandesVues`, jamais qui a répondu dans l'équipe) et
+  `POST { action: 'demande', type, sujet?, logement?, message }` : même
+  session que `vue` (cookie revérifié en base), provenance du site, base de
+  l'espace de la session (compte serveur, en-tête `x-erp-espace`), propriétaire
+  de la session (jamais celui du corps). Règles pures :
+  `src/erp/data/demandes-proprietaires.ts` (`enregistrerDemande`) : type et
+  sujet connus, logement parmi SES logements actuels en gestion, message
+  nettoyé (contrôles, invisibles et sens d'écriture retirés) de 10 à
+  2 000 caractères, identifiant tiré au hasard par le serveur, ajout sans
+  jamais remplacer une ligne ; au plus **5 demandes par heure et 20 par
+  24 heures et par propriétaire**, comptées dans la base (plus un frein par
+  adresse IP). Le texte est une donnée : il ne part ni vers l'agent IA, ni
+  vers le connecteur Claude, ni vers une plateforme.
+- **Prévenir le gérant** (`api/_demandes-proprietaires.ts`), après
+  l'enregistrement (un échec n'enlève jamais la demande) :
+  notification d'app « Demande d’un propriétaire » (type
+  `demande_proprietaire`, réservé au gérant, activé par défaut ; le logement
+  et le sujet, jamais le nom ni le message ; au-delà de 5 dans l'heure, une
+  seule « Plusieurs demandes de propriétaires » par heure), envoyée aux
+  appareils de l'espace ; et, si l'envoi d'e-mails est configuré pour
+  l'espace (`RESEND_API_KEY` et un expéditeur : `CONTACT_FROM_EMAIL` pour
+  Label Maison, `config.email` de la fiche pour un autre espace), un e-mail
+  à chacun de ses gérants (`erp.membres`, rôle gérant, compte activé ;
+  jamais un compte technique ; 5 au plus), message échappé et tronqué. Sans
+  clés ni configuration : rien, et rien ne casse.
+- **Côté gérant** : la ligne « N demandes de propriétaires » dans « À faire »
+  (et le briefing à l'écran ; pas dans la notification du matin, qui ne lit
+  pas les demandes) ; le compteur de la rubrique Logements ; la liste
+  complète dans **Logements → Demandes** (`/erp/logements/demandes`,
+  filtres À traiter, Répondues, Réglées ; `?demande=<id>` ouvre une demande,
+  `?proprietaire=<id>` filtre). Pourquoi là : le propriétaire se gère dans
+  la rubrique Logements depuis octobre 2026 et « Avis » y est déjà la vue du
+  parc ; le CRM suit les contacts avant qu'ils soient clients, la Messagerie
+  les voyageurs (lue par l'agent IA). Sur la fiche du propriétaire (carte
+  « Propriétaire » → « Gérer ») : « N demandes à traiter » et la section
+  « Demandes ». Ouvrir une demande « Nouvelle » la passe « Vue » ; répondre
+  la passe « Répondue » ; l'état se choisit (Vue, Répondue, Réglée), chaque
+  changement est gardé (`historique`), avec l'échange (`echanges`).
+  Réservé au gérant (l'écran) ; supprimer une fiche sans historique emporte
+  ses demandes.
+- **Base** : aucun SQL à relancer. La collection suit les règles communes
+  de `erp.enregistrements` (`supabase/erp-espaces.sql`, `erp-acces-gerants.sql`) :
+  lue par les membres de l'espace (gérant, opérations, lecture), écrite par
+  le gérant et les opérations, rien pour un prestataire ni pour un
+  propriétaire (qui ne sont membres de rien) ; le propriétaire ne passe que
+  par le serveur. L'écran et la notification la réservent au gérant ; la
+  réserver aussi dans la base (comme les accès) demanderait de l'ajouter à
+  la règle « acces exterieurs reserves aux gerants ».
+- **Vérification** : `src/erp/data/verifier-demandes-proprietaires.ts`.
+- **Démo** : la SCI Les Tilleuls a trois demandes (une nouvelle, une
+  répondue, une réglée), Sophie Lambert-Roche (deux logements) une vue,
+  Hélène Marchand une nouvelle ; `/espace-proprietaire?apercu=pro-lambert`
+  montre l'écran du logement. Une demande envoyée en démo est gardée sur
+  l'appareil et l'ERP de démonstration la voit.
 
 ### Compte du propriétaire (novembre 2026)
 

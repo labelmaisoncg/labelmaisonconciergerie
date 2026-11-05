@@ -1,8 +1,9 @@
-import { ChevronRight, FileText, Mail, MessageCircle, Phone, ReceiptText } from 'lucide-react';
+import { ChevronRight, FileText, Mail, MessageCircle, MessageSquarePlus, Phone, ReceiptText } from 'lucide-react';
 import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/format';
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
-import { Badge, Card } from '../ui';
+import { Badge, Button, Card } from '../ui';
+import { ResumeDemandes, type DemandesEspace } from './Demandes';
 import { CarteLogements } from '../carte/CarteLogements';
 import { pointsDeLaVue } from '../carte/points';
 import { CANAL, LienAction, PhotoLogement, Rubrique, TitreEspace, sansLogement, titreMois, type LienDocument, type OngletEspace } from './commun';
@@ -45,6 +46,8 @@ export function Accueil({
   onBilan,
   onLogement,
   LienDocument,
+  demandes,
+  onNouvelleDemande,
 }: {
   vue: VueProprietaire;
   onOnglet: (o: OngletEspace) => void;
@@ -52,6 +55,9 @@ export function Accueil({
   /** Ouvre la fiche du logement (onglet « Mes logements »). */
   onLogement: (id: string) => void;
   LienDocument: LienDocument;
+  /** Ses demandes (absent : pas de « Faire une demande »). */
+  demandes?: DemandesEspace;
+  onNouvelleDemande?: () => void;
 }) {
   const nom = (id: string) => vue.logements.find((l) => l.id === id)?.nom ?? 'Logement';
   const occupationMois = (id: string) => vue.calendrier.mois === vue.moisCourant.mois ? vue.calendrier.logements.find((c) => c.logementId === id)?.occupation : undefined;
@@ -62,7 +68,19 @@ export function Accueil({
   const points = pointsDeLaVue(vue.logements);
   return (
     <>
-      <TitreEspace titre={`Bonjour, ${vue.proprietaire.nom}`} description={`L’activité de vos logements, mise à jour chaque jour par ${vue.conciergerie.nom}.`} />
+      <TitreEspace
+        titre={`Bonjour, ${vue.proprietaire.nom}`}
+        description={`L’activité de vos logements, mise à jour chaque jour par ${vue.conciergerie.nom}.`}
+        action={
+          demandes &&
+          onNouvelleDemande && (
+            // La seule action principale de l'Accueil : une question ou une demande à la conciergerie.
+            <Button variant="primary" size="lg" icone={<MessageSquarePlus />} onClick={onNouvelleDemande} className="max-sm:w-full">
+              Faire une demande
+            </Button>
+          )
+        }
+      />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <CarteMois titre="Ce mois-ci" c={vue.moisCourant} />
@@ -93,6 +111,8 @@ export function Accueil({
           <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
         </button>
       )}
+
+      {demandes && <ResumeDemandes demandes={demandes} onOuvrir={() => onOnglet('demandes')} />}
 
       {points.length > 0 && (
         <Rubrique titre="Aujourd’hui">
