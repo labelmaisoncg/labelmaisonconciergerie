@@ -212,8 +212,9 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
   const nFiches = construireBriefing({ ...sansFiche, aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: false }).sujets.find((s) => s.cle === 'fiches_agent')?.n ?? 0;
   verifier(nFiches === (construireATraiter(sansFiche, DATE_DEMO).find((x) => x.id === 'agent')?.details.length ?? 0) && nFiches > 0, 'une fiche incomplète : la même ligne au briefing et dans « À faire »', nFiches);
   verifier(n(g, 'signalements') === lignes('signalement'), 'logements signalés « pas à moi » (gérant) : même nombre', [n(g, 'signalements'), lignes('signalement')]);
+  verifier(n(g, 'demandes') === lignes('demandes-proprietaires') && n(g, 'demandes') > 0 && n(o, 'demandes') === 0, 'demandes des propriétaires (gérant seulement) : même nombre', [n(g, 'demandes'), lignes('demandes-proprietaires'), n(o, 'demandes')]);
   // Chaque ligne de « À faire » a sa phrase dans le briefing (même contenu à l'écran, dans le texte copié et la notification).
-  const couverts: Record<string, string> = { message: 'messages', urgence: 'urgences', incident: 'incidents', avisHote: 'avis_deposer', avisValider: 'avis_valider', avis: 'notes', crm: 'crm', agent: 'fiches_agent', 'agent-controle': 'controle_agent', signalement: 'signalements', factures: 'factures', prix: 'prix', charge: 'alertes', synchro: 'alertes' };
+  const couverts: Record<string, string> = { message: 'messages', urgence: 'urgences', incident: 'incidents', avisHote: 'avis_deposer', avisValider: 'avis_valider', avis: 'notes', crm: 'crm', agent: 'fiches_agent', 'agent-controle': 'controle_agent', signalement: 'signalements', factures: 'factures', prix: 'prix', charge: 'alertes', synchro: 'alertes', 'demandes-proprietaires': 'demandes' };
   const sansPhrase = aFaire.filter((x) => !(x.id.startsWith('anomalie-') ? g.sujets.some((s) => s.cle === 'alertes') : g.sujets.some((s) => s.cle === couverts[x.id])));
   verifier(sansPhrase.length === 0, 'chaque ligne de « À faire » est dans le texte du briefing', sansPhrase.map((x) => x.id));
   const alerte = construireBriefing({ ...seed, reglages: [...seed.reglages, { id: 'alerte-controle-agent', active: true } as never], aujourdhui: DATE_DEMO, maintenant: MAINTENANT_DEMO, gerant: false });
@@ -224,8 +225,8 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
   section('Rôles : prix et factures pour le gérant seulement');
   verifier(!o.sujets.some((s) => s.cle === 'prix' || s.cle === 'factures') && !/Prix à revoir|facture/i.test(o.texte) && !/prix|facture/i.test(o.court), 'membre non gérant : ni prix conseillés ni factures (texte et notification)', o.texte);
   verifier(
-    g.sujets.filter((s) => s.gerant).every((s) => s.cle === 'prix' || s.cle === 'factures' || s.cle === 'signalements' || s.cle === 'avis_valider'),
-    'seuls prix, factures, « pas à moi » et avis à valider sont marqués « gérant »',
+    g.sujets.filter((s) => s.gerant).every((s) => s.cle === 'prix' || s.cle === 'factures' || s.cle === 'signalements' || s.cle === 'avis_valider' || s.cle === 'demandes'),
+    'seuls prix, factures, « pas à moi », avis à valider et demandes des propriétaires sont marqués « gérant »',
   );
   verifier(n(g, 'avis_valider') === lignes('avisValider') && n(g, 'avis_valider') > 0 && !o.sujets.some((s) => s.cle === 'avis_valider'), 'avis à valider avant publication (gérant) : même nombre que « À faire », rien pour l’équipe', [n(g, 'avis_valider'), lignes('avisValider')]);
   verifier(!o.sujets.some((s) => s.cle === 'signalements'), 'membre non gérant : pas de « pas à moi » (comme « À faire »)');

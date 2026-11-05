@@ -15,8 +15,9 @@
  */
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
 import { LIBELLE_SOURCE_SCORE } from './crm-assistant.js';
+import { libelleDemande, lienDemande } from './demandes-proprietaires.js';
 import { lienIncident } from './incidents-erp.js';
-import type { ContactCrm, FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
+import type { ContactCrm, DemandeProprietaire, FilMessages, Incident, Logement, RaisonEscalade, Reservation } from './types';
 
 export type TypeNotification =
   | 'reservation'
@@ -32,7 +33,8 @@ export type TypeNotification =
   | 'prix'
   | 'anomalie'
   | 'annonce'
-  | 'lead';
+  | 'lead'
+  | 'demande_proprietaire';
 
 /** Les types, dans l'ordre des réglages, avec leur valeur par défaut. */
 export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; detail: string; defaut: boolean }[] = [
@@ -51,6 +53,7 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
   { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
   { type: 'lead', libelle: 'Nouvelle demande à appeler', detail: 'Un formulaire du site ou un dossier propriétaire : prénom, ville, demande.', defaut: true },
+  { type: 'demande_proprietaire', libelle: 'Demande d’un propriétaire', detail: 'Une question ou une demande envoyée depuis son espace : le logement et le sujet.', defaut: true },
 ];
 
 export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>>;
@@ -58,9 +61,10 @@ export type PreferencesNotifications = Partial<Record<TypeNotification, boolean>
 /**
  * Types réservés au gérant : les prix conseillés ne partent jamais vers
  * l'appareil d'un autre rôle (comme leur carte et leur ligne de l'Accueil),
- * ni les nouvelles demandes du CRM (demande du gérant : c'est lui qui rappelle).
+ * ni les nouvelles demandes du CRM (demande du gérant : c'est lui qui rappelle),
+ * ni les demandes des propriétaires (c'est lui qui leur répond).
  */
-export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix', 'lead'];
+export const TYPES_RESERVES_GERANT: readonly TypeNotification[] = ['prix', 'lead', 'demande_proprietaire'];
 
 /** Ce type se règle-t-il (et part-il) pour ce rôle ? */
 export const typePourRole = (t: TypeNotification, role: string | undefined): boolean => role === 'gerant' || !TYPES_RESERVES_GERANT.includes(t);
@@ -531,5 +535,58 @@ export function notificationLeadPlafonnee(
     cle: `lead-plusieurs-${o.maintenant.toISOString().slice(0, 13)}`,
     urgente: false,
     variantes: [{ type: 'lead', titre: 'Plusieurs nouvelles demandes à appeler', corps: 'Beaucoup de demandes en peu de temps : ouvrez le CRM.', url: '/erp/crm', gerant: true }],
+  };
+}
+
+/* ------------------------------------------- demande d'un propriétaire */
+
+/**
+ * « Demande d’un propriétaire » : un propriétaire vient d'écrire depuis son
+ * espace (api/espace-proprietaire.ts, action « demande »). Pour le gérant
+ * seulement (type réservé), livrée tout de suite, sur les appareils de
+ * l'espace du propriétaire (la base de sa session, jamais un autre espace).
+ * Sur l'écran verrouillé : le logement (40 caractères au plus) et le sujet,
+ * jamais le nom du propriétaire ni son message (une question d'argent, un
+ * code, un numéro).
+ */
+export function notificationDemandeProprietaire(
+  d: Pick<DemandeProprietaire, 'id' | 'type' | 'sujet' | 'tousLogements'>,
+  o: { logement?: string },
+): GroupeNotification {
+  const ou = o.logement?.trim() ? extrait(o.logement, 40) : d.tousLogements ? 'Tous ses logements' : 'Espace propriétaire';
+  return {
+    cle: `demande-proprio-${d.id}`,
+    urgente: true,
+    variantes: [{ type: 'demande_proprietaire', titre: 'Demande d’un propriétaire', corps: `${ou} · ${libelleDemande(d)}`, url: lienDemande(d.id), gerant: true }],
+  };
+}
+
+/** Notifications « demande d'un propriétaire » au plus par heure et par espace : au-delà, une seule de synthèse par heure. */
+export const PLAFOND_DEMANDES_PROPRIETAIRES_HEURE = 5;
+
+/**
+ * La notification d'une demande, plafonnée : `recentes` est le nombre de
+ * notifications « demande-proprio- » parties dans l'heure (journal
+ * d'idempotence de l'espace). Au plafond, « Plusieurs demandes de
+ * propriétaires », une seule par heure (clé de l'heure), sans logement ni
+ * sujet : le gérant ouvre la liste.
+ */
+export function notificationDemandePlafonnee(
+  d: Parameters<typeof notificationDemandeProprietaire>[0],
+  o: { logement?: string; recentes: number; maintenant: Date },
+): GroupeNotification {
+  if (o.recentes < PLAFOND_DEMANDES_PROPRIETAIRES_HEURE) return notificationDemandeProprietaire(d, o);
+  return {
+    cle: `demande-proprio-plusieurs-${o.maintenant.toISOString().slice(0, 13)}`,
+    urgente: false,
+    variantes: [
+      {
+        type: 'demande_proprietaire',
+        titre: 'Plusieurs demandes de propriétaires',
+        corps: 'Beaucoup de demandes en peu de temps : ouvrez la liste des demandes.',
+        url: '/erp/logements/demandes',
+        gerant: true,
+      },
+    ],
   };
 }

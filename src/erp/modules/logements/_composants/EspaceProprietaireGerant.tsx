@@ -6,10 +6,11 @@
  * documents et bilans passent par le store comme le reste de l'ERP.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Check, Copy, Eye, FileText, Trash2, X } from 'lucide-react';
 import { statutCompteProprietaire } from '../../../data/acces-gerant';
 import { MODE_DEMO } from '../../../data/config';
+import { demandesATraiter, demandesVues, peutVoirDemandes } from '../../../data/demandes-proprietaires';
 import { espaceOuvert } from '../../../data/espaces';
 import { AUJOURDHUI, dateCourte, euros, horodatageMaintenant } from '../../../data/format';
 import { inviter as inviterAcces, retirer as retirerAcces } from '../../../data/proprietaire-acces';
@@ -35,6 +36,7 @@ import { EspaceVue } from '../../../espace-proprietaire/EspaceVue';
 import { bilanDuMois, deNom, titreMois, type LienDocumentProps, type OngletEspace } from '../../../espace-proprietaire/commun';
 import { Alert, Badge, Button, Drawer, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Select, Textarea, useFenetre } from '../../../ui';
 import { appelerServeur, ErreurServeur } from '../../messagerie/_composants/serveur';
+import { DetailDemande, LigneDemande } from './DemandesProprietaires';
 import { FacturesProprietaire } from './FacturesProprietaire';
 import { RelancesPaiement } from './RelancesPaiement';
 import { SupprimerProprietaire } from './SupprimerProprietaire';
@@ -67,7 +69,7 @@ export async function inviterAvecReessai(api: string, corps: Record<string, unkn
 }
 
 /** Ce que voit un propriétaire (même phrase ici et dans Paramètres → Accès). */
-export const CE_QUE_VOIT_LE_PROPRIETAIRE = `Il voit ${CONTENU_ESPACE.lui}, sans rien pouvoir modifier.`;
+export const CE_QUE_VOIT_LE_PROPRIETAIRE = `Il voit ${CONTENU_ESPACE.lui}, sans rien pouvoir modifier, et vous envoie ses demandes.`;
 
 /**
  * État du compte en une ligne (« Compte créé le 21 sept. 2026 », « Invitation
@@ -95,11 +97,16 @@ export function CarteEspaceProprietaire({ proprietaire, logement }: { proprietai
   }, [hash]);
   const acces = d.donnees.accesProprietaires.find((a) => a.id === proprietaire.id);
   const s = statutAcces(acces, proprietaire);
+  // Ses demandes qui attendent une réponse : le gérant seul (comme leur notification).
+  const attente = peutVoirDemandes(d.utilisateur.role) ? demandesATraiter(d.donnees.demandesProprietaires.filter((x) => x.proprietaireId === proprietaire.id)).length : 0;
   return (
     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-(--lm-bord) pt-3">
       <div className="min-w-0">
         <p className="text-[13.5px] font-medium text-(--lm-encre)">Espace propriétaire</p>
-        <p className="text-[12.5px] text-(--lm-encre-2)">{s.texte}</p>
+        <p className="text-[12.5px] text-(--lm-encre-2)">
+          {s.texte}
+          {attente > 0 && <span className="font-medium text-(--lm-encre)"> · {attente > 1 ? `${attente} demandes à traiter` : '1 demande à traiter'}</span>}
+        </p>
       </div>
       <Button variant="secondary" size="sm" onClick={() => setOuvert(true)}>
         Gérer
@@ -123,6 +130,9 @@ export function PanneauEspace({
   onFermer: () => void;
 }) {
   const [apercu, setApercu] = useState(false);
+  // Une demande ouverte depuis le panneau : le panneau s'efface derrière elle, puis revient.
+  const [demande, setDemande] = useState<string>();
+  const gerant = peutVoirDemandes(useErp().utilisateur.role);
   useEffect(() => {
     if (section !== 'factures') return;
     // Après l'ouverture du panneau (rendu au cadre suivant).
@@ -144,7 +154,7 @@ export function PanneauEspace({
   return (
     <>
       <Drawer
-        ouvert={!apercu}
+        ouvert={!apercu && !demande}
         onFermer={onFermer}
         titre="Espace propriétaire"
         sousTitre={p.nom}
@@ -159,6 +169,7 @@ export function PanneauEspace({
       >
         <div className="space-y-7">
           <Acces proprietaire={p} serveur={serveur} />
+          {gerant && <DemandesDuProprietaire proprietaire={p} onOuvrir={setDemande} />}
           <Bilans proprietaire={p} />
           <div id="factures-proprietaire" className="scroll-mt-4">
             <FacturesProprietaire proprietaire={p} />
@@ -168,7 +179,42 @@ export function PanneauEspace({
         </div>
       </Drawer>
       {apercu && <ApercuEspace proprietaire={p} onFermer={() => setApercu(false)} />}
+      {demande && <DetailDemande id={demande} onFermer={() => setDemande(undefined)} />}
     </>
+  );
+}
+
+/* --------------------------------------------------------------- demandes */
+
+/** Ses demandes (les 5 premières : à traiter d'abord) ; « Tout voir » mène à Logements → Demandes, filtré sur lui. */
+function DemandesDuProprietaire({ proprietaire: p, onOuvrir }: { proprietaire: Proprietaire; onOuvrir: (id: string) => void }) {
+  const d = useErp();
+  const siennes = d.donnees.demandesProprietaires.filter((x) => x.proprietaireId === p.id);
+  const attente = demandesATraiter(siennes);
+  const t = (h: string) => Date.parse(h) || 0;
+  const liste = [...attente, ...siennes.filter((x) => !attente.includes(x)).sort((a, b) => t(b.majLe) - t(a.majLe))].slice(0, 5);
+  return (
+    <section>
+      <div className="flex items-start justify-between gap-3">
+        <Titre description="Ses questions et demandes envoyées depuis son espace.">Demandes</Titre>
+        {siennes.length > 5 && (
+          <Link to={`/erp/logements/demandes?proprietaire=${encodeURIComponent(p.id)}`} className="inline-flex min-h-8 max-sm:min-h-11 shrink-0 items-center text-[13px] font-medium lm-lien">
+            Tout voir ({siennes.length})
+          </Link>
+        )}
+      </div>
+      {liste.length ? (
+        <ul className="divide-y divide-(--lm-bord) overflow-hidden rounded-xl border border-(--lm-bord)">
+          {liste.map((x) => (
+            <li key={x.id}>
+              <LigneDemande demande={x} surSaFiche onOuvrir={() => onOuvrir(x.id)} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-[13.5px] text-(--lm-encre-2)">Aucune demande pour l’instant.</p>
+      )}
+    </section>
   );
 }
 
@@ -575,6 +621,8 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
   const [bilan, setBilan] = useState<string>();
   const LienDocument = useLienDocumentGerant();
   const vue = useMemo(() => vueProprietaire(d.donnees, p.id, { aujourdhui: AUJOURDHUI }), [d.donnees, p.id]);
+  // « Mes demandes » telles qu'il les lit (même réduction que le serveur) ; sans envoi : rien ne part d'un aperçu.
+  const demandes = useMemo(() => ({ liste: demandesVues(d.donnees.demandesProprietaires, p.id, d.donnees.logements) }), [d.donnees.demandesProprietaires, d.donnees.logements, p.id]);
   // Calendrier en défilant : les mêmes fonctions pures que le serveur, sur les données du store ;
   // le cache retient les données qui l'ont produit (d'autres données : tout est recalculé).
   const [cache, setCache] = useState<{ pour: unknown; mois: Record<string, CalendrierLogement[]> }>({ pour: d.donnees, mois: {} });
@@ -619,6 +667,7 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
             onBilan={setBilan}
             calendrier={calendrier}
             LienDocument={LienDocument}
+            demandes={demandes}
           />
         ) : (
           <div className="grid min-h-screen place-items-center p-6 text-center">

@@ -6,6 +6,7 @@
  * opérations et les « Ce logement n’est pas à moi » y remontent aussi.
  */
 import { aTraiterLe } from '../../../data/crm';
+import { demandesATraiter, lienDemande, ouPorteLaDemande, sujetDeLaDemande } from '../../../data/demandes-proprietaires';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours } from '../../../data/format';
 import { incidentsATraiter, lienIncident } from '../../../data/incidents-erp';
@@ -26,6 +27,8 @@ import { elementsPrixEtAnomalies } from './aTraiterAnalyse';
 
 export type TypeATraiter =
   | 'message' | 'avis' | 'avisHote' | 'avisValider' | 'agent' | 'crm' | 'synchro' | 'urgence' | 'incident' | 'signalement' | 'charge' | 'facture'
+  // Demandes des propriétaires (novembre 2026), gérant seulement.
+  | 'demandeProprietaire'
   // Prix conseillés et anomalies (aTraiterAnalyse.ts).
   | 'prix' | 'double' | 'suspecte' | 'prix_anormal' | 'integrite';
 
@@ -117,6 +120,20 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
       titre: sansCharge.length > 1 ? `${sansCharge.length} logements sans personne en charge aujourd’hui` : `${nom(sansCharge[0].logementId)} : sans personne en charge aujourd’hui`,
       details: sansCharge.map((x) => (x.absent ? `${nom(x.logementId)} : ${membre(x.absent)} en absence, personne ne prend le relais` : `${nom(x.logementId)} : choisir qui s’en occupe au quotidien`)),
       liens: sansCharge.map((x) => `/erp/logements/${encodeURIComponent(x.logementId)}`),
+    });
+  }
+
+  // Demandes des propriétaires qui attendent une réponse (nouvelles d'abord) : le gérant seul, comme leur notification.
+  const demandes = gerant ? demandesATraiter(d.demandesProprietaires) : [];
+  if (demandes.length) {
+    const proprietaire = (id: string) => d.proprietaires.find((p) => p.id === id)?.nom ?? 'Un propriétaire';
+    const ou = (x: (typeof demandes)[number]) => ouPorteLaDemande({ ...(x.logementId ? { logement: { nom: nom(x.logementId) } } : {}), tousLogements: x.tousLogements }, 'gerant');
+    const nouvelles = demandes.filter((x) => x.statut === 'envoyee').length;
+    liste.push({
+      id: 'demandes-proprietaires', type: 'demandeProprietaire', priorite: nouvelles ? 1 : 2, ton: 'or', to: lienDemande(demandes[0].id),
+      titre: demandes.length > 1 ? `${demandes.length} demandes de propriétaires` : 'Une demande d’un propriétaire',
+      details: demandes.map((x) => `${proprietaire(x.proprietaireId)} · ${sujetDeLaDemande(x)} · ${ou(x)}${x.statut === 'envoyee' ? ' (nouvelle)' : ''}`),
+      liens: demandes.map((x) => lienDemande(x.id)),
     });
   }
 
