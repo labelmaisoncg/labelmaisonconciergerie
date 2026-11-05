@@ -43,7 +43,11 @@
 //                                             message nettoyé de 10 à 2 000 caractères,
 //                                             5 par heure et 20 par jour au plus) ;
 //                                             puis les gérants de son espace sont
-//                                             prévenus (api/_demandes-proprietaires.ts)
+//                                             prévenus (api/_demandes-proprietaires.ts).
+//                                             « demandes » et « demande » : 503
+//                                             « fermees » tant que la base ne les
+//                                             réserve pas aux gérants (témoin
+//                                             erp.demandes_proprietaires_protegees)
 //   POST { action: 'sortir' }
 //
 // Lecture seule pour le propriétaire : il ne modifie rien, sinon qu'il ajoute
@@ -62,7 +66,7 @@ import { horodatageParis } from '../src/erp/data/repull.js';
 import type { Facture, Logement } from '../src/erp/data/types';
 import type { AccesProprietaire } from '../src/erp/data/types-proprietaire';
 import { MESSAGE_COMPTE_SERVEUR, continuerApresReponse, lireCorps, repondre } from './_erp-repull.js';
-import { prevenirGerants } from './_demandes-proprietaires.js';
+import { demandesProtegees, prevenirGerants } from './_demandes-proprietaires.js';
 import { espaceDemande } from './_erp-espaces.js';
 import { adresseIp, freinEnvois, provenanceSite } from './_garde-formulaire.js';
 import {
@@ -93,6 +97,9 @@ const tropPourCeCompte = freinEnvois(15, 15 * 60_000);
 const tropDeDemandes = freinEnvois(20, 15 * 60_000);
 
 const DOCUMENTS_FERMES = 'Les documents ne peuvent pas être ouverts pour l’instant. Contactez votre conciergerie.';
+
+/** Base pas encore prête pour les demandes (erp.demandes_proprietaires_protegees absente ou fausse). */
+const DEMANDES_FERMEES = 'Les demandes ne sont pas encore ouvertes dans votre espace. Contactez votre conciergerie.';
 
 /** Supabase n'a pas répondu (panne, délai de 10 s) : on le dit, sans refuser la personne. */
 const MESSAGE_COMPTE_INJOIGNABLE = 'La vérification de votre compte n’a pas abouti. Réessayez dans un instant.';
@@ -279,6 +286,7 @@ export default async function handler(req: any, res: any) {
     if (action === 'demandes' && req.method === 'GET') {
       const s = await sessionProprietaire(req, res);
       if (!s) return;
+      if (!(await demandesProtegees(s.base, s.espace))) return repondre(res, 503, { ok: false, code: 'fermees', erreur: DEMANDES_FERMEES });
       const [demandes, logements] = await Promise.all([s.base.lire<unknown>(COLLECTION_DEMANDES), s.base.lire<Logement>('logements')]);
       return repondre(res, 200, { ok: true, demandes: demandesVues(demandes, s.acces.proprietaireId, logements) });
     }
@@ -290,6 +298,8 @@ export default async function handler(req: any, res: any) {
       const s = await sessionProprietaire(req, res);
       if (!s) return;
       if (tropDeDemandes(adresseIp(req))) return repondre(res, 429, { ok: false, code: 'limite', erreur: 'Trop d’envois en peu de temps\u00a0: patientez quelques minutes.' });
+      // Base pas encore prête (règle « gérants seulement » absente) : rien n'est enregistré.
+      if (!(await demandesProtegees(s.base, s.espace))) return repondre(res, 503, { ok: false, code: 'fermees', erreur: DEMANDES_FERMEES });
       const proprietaireId = s.acces.proprietaireId;
       const logements = await s.base.lire<Logement>('logements');
       const maintenant = new Date();

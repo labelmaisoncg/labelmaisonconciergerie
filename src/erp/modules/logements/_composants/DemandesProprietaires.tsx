@@ -1,8 +1,8 @@
 /**
  * Demandes des propriétaires, côté gérant (novembre 2026) : la ligne d'une
  * demande (liste de Logements → Demandes, fiche du propriétaire) et son
- * panneau : l'échange en bulles, l'état (Vue, Répondue, Réglée) et la
- * réponse, que le propriétaire lit ensuite dans « Mes demandes ».
+ * panneau : l'échange en bulles, la réponse et l'état (Vue, Répondue, Réglée) ; la
+ * réponse, le propriétaire la lit ensuite dans « Mes demandes ».
  *
  * Ouvrir une demande « Nouvelle » la passe « Vue » ; répondre la passe
  * « Répondue ». Tout passe par le store (collection demandesProprietaires),
@@ -33,6 +33,8 @@ import { Echanges } from '../../../espace-proprietaire/Demandes';
 import { Badge, Button, Drawer, Field, Textarea, cn, type Ton } from '../../../ui';
 
 const NBSP = ' ';
+/** « 2 000 » : espace insécable entre les milliers. */
+const milliers = (n: number): string => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, NBSP);
 
 /** Nouvelle : à lire (l'information) ; vue, répondue : neutres ; réglée : le succès. */
 export const TON_STATUT_GERANT: Record<StatutDemandeProprietaire, Ton> = { envoyee: 'info', vue: 'neutre', repondue: 'neutre', reglee: 'succes' };
@@ -121,7 +123,7 @@ function ChoixEtat({ valeur, onChange, disabled }: { valeur: StatutGerant; onCha
 }
 
 /**
- * Le panneau d'une demande : l'échange, l'état, la réponse. Ouverte, une
+ * Le panneau d'une demande : l'échange, la réponse, puis l'état. Ouverte, une
  * demande « Nouvelle » passe « Vue » (gérant, hors lecture seule).
  */
 export function DetailDemande({ id, onFermer }: { id: string; onFermer: () => void }) {
@@ -132,7 +134,6 @@ export function DetailDemande({ id, onFermer }: { id: string; onFermer: () => vo
   const [reponse, setReponse] = useState('');
   const [erreur, setErreur] = useState<string>();
   const [envoyee, setEnvoyee] = useState(false);
-  const compteurId = useId();
 
   const statut = demande?.statut;
   useEffect(() => {
@@ -191,32 +192,37 @@ export function DetailDemande({ id, onFermer }: { id: string; onFermer: () => vo
         ) : undefined
       }
     >
+      {/* Dans l'ordre : l'échange, la réponse, puis l'état. */}
       <div className="space-y-6">
-        {peut ? (
-          <ChoixEtat valeur={demande.statut === 'envoyee' ? 'vue' : demande.statut} onChange={changer} />
-        ) : (
-          <BadgeDemande statut={demande.statut} />
-        )}
         <section aria-label="Échange">
           <Echanges echanges={demande.echanges} moi="conciergerie" nom={qui} />
         </section>
         {peut && (
-          <Field label="Votre réponse" aide={`Le propriétaire la lira dans son espace, rubrique «${NBSP}Mes demandes${NBSP}».`} erreur={erreur}>
-            <Textarea
-              value={reponse}
-              rows={4}
-              onChange={(e) => {
-                setReponse(e.target.value);
-                setEnvoyee(false);
-                setErreur(undefined);
-              }}
-              aria-describedby={compteurId}
-            />
-          </Field>
-        )}
-        {peut && (
-          <div className="-mt-4 flex items-center justify-between gap-3">
-            <p role="status" className="inline-flex items-center gap-1 text-[12.5px] font-medium text-(--lm-succes-texte)">
+          <div>
+            <Field
+              label="Votre réponse"
+              erreur={erreur}
+              // Aide et compteur dans la même description (Field la relie au champ) : le compteur est annoncé.
+              aide={
+                <span className="flex items-start justify-between gap-3">
+                  <span>Le propriétaire la lira dans son espace, rubrique «{NBSP}Mes demandes{NBSP}».</span>
+                  <span className={cn('lm-chiffres shrink-0', n > MESSAGE_MAX && 'font-semibold text-(--lm-danger)')}>
+                    {milliers(n)} / {milliers(MESSAGE_MAX)}
+                  </span>
+                </span>
+              }
+            >
+              <Textarea
+                value={reponse}
+                rows={4}
+                onChange={(e) => {
+                  setReponse(e.target.value);
+                  setEnvoyee(false);
+                  setErreur(undefined);
+                }}
+              />
+            </Field>
+            <p role="status" className="mt-1.5 inline-flex min-h-5 items-center gap-1 text-[12.5px] font-medium text-(--lm-succes-texte)">
               {envoyee && (
                 <>
                   <Check className="size-3.5" aria-hidden />
@@ -224,11 +230,9 @@ export function DetailDemande({ id, onFermer }: { id: string; onFermer: () => vo
                 </>
               )}
             </p>
-            <p id={compteurId} className={cn('lm-chiffres text-[12.5px]', n > MESSAGE_MAX ? 'font-semibold text-(--lm-danger)' : 'text-(--lm-encre-3)')}>
-              {n.toLocaleString('fr-FR').replace(/ /g, NBSP)} / {MESSAGE_MAX.toLocaleString('fr-FR').replace(/ /g, NBSP)}
-            </p>
           </div>
         )}
+        {peut ? <ChoixEtat valeur={demande.statut === 'envoyee' ? 'vue' : demande.statut} onChange={changer} /> : <BadgeDemande statut={demande.statut} />}
       </div>
     </Drawer>
   );

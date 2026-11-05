@@ -6,7 +6,7 @@
  * opérations et les « Ce logement n’est pas à moi » y remontent aussi.
  */
 import { aTraiterLe } from '../../../data/crm';
-import { demandesATraiter, libelleDemande, lienDemande, ouPorteLaDemande } from '../../../data/demandes-proprietaires';
+import { demandesATraiter, lienDemande, ouPorteLaDemande, sujetDeLaDemande } from '../../../data/demandes-proprietaires';
 import { SEUIL_NOTE_CONTROLE } from '../../../data/constantes';
 import { AUJOURDHUI, ajouterJours } from '../../../data/format';
 import { incidentsATraiter, lienIncident } from '../../../data/incidents-erp';
@@ -132,7 +132,7 @@ export function construireATraiter(d: ErpDonnees, aujourdhui = AUJOURDHUI, { ger
     liste.push({
       id: 'demandes-proprietaires', type: 'demandeProprietaire', priorite: nouvelles ? 1 : 2, ton: 'or', to: lienDemande(demandes[0].id),
       titre: demandes.length > 1 ? `${demandes.length} demandes de propriétaires` : 'Une demande d’un propriétaire',
-      details: demandes.map((x) => `${proprietaire(x.proprietaireId)} (${ou(x)})\u00a0: ${libelleDemande(x).toLowerCase()}${x.statut === 'envoyee' ? ', nouvelle' : ''}`),
+      details: demandes.map((x) => `${proprietaire(x.proprietaireId)} · ${sujetDeLaDemande(x)} · ${ou(x)}${x.statut === 'envoyee' ? ' (nouvelle)' : ''}`),
       liens: demandes.map((x) => lienDemande(x.id)),
     });
   }

@@ -79,9 +79,9 @@ export default function DemandesParc() {
                   unique
                   label="Filtrer les demandes"
                   filtres={[
-                    { cle: 'a_traiter', libelle: 'À traiter', compteur: toutes.filter((x) => dans('a_traiter', x)).length },
-                    { cle: 'repondue', libelle: 'Répondues', compteur: toutes.filter((x) => dans('repondue', x)).length },
-                    { cle: 'reglee', libelle: 'Réglées', compteur: toutes.filter((x) => dans('reglee', x)).length },
+                    { cle: 'a_traiter', libelle: 'À traiter' },
+                    { cle: 'repondue', libelle: 'Répondues' },
+                    { cle: 'reglee', libelle: 'Réglées' },
                   ]}
                   actifs={filtres}
                   onChange={setFiltres}

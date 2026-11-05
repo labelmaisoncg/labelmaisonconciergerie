@@ -88,6 +88,13 @@ export function libelleDemande(d: { type?: unknown; sujet?: unknown }): string {
   return 'Autre demande';
 }
 
+/** Le sujet seul : « Travaux », « Question », « Demande particulière », « Autre demande » (« À faire »). */
+export function sujetDeLaDemande(d: { type?: unknown; sujet?: unknown }): string {
+  if (d.type !== 'demande') return libelleDemande(d);
+  const s = SUJETS_DEMANDE.find((x) => x.valeur === d.sujet);
+  return s && s.valeur !== 'autre' ? s.libelle : 'Demande particulière';
+}
+
 /** Écran de la demande dans l'ERP (notification, « À faire », fiche du propriétaire). */
 export const lienDemande = (id: Id): string => `/erp/logements/demandes?demande=${encodeURIComponent(id)}`;
 
@@ -294,17 +301,39 @@ export interface BaseDemandes {
   lire<T>(collection: string, ids?: string[]): Promise<T[]>;
   /** Ajoute seulement si l'identifiant est libre ; renvoie le nombre ajouté. */
   ajouterSiAbsent(collection: string, elements: { id: string }[], auteur?: string): Promise<number>;
+  /**
+   * Éléments avec leur version (maj_le : l'instant où la base a écrit la
+   * ligne) et retrait : la relecture après l'ajout (envois simultanés).
+   * Absents (démonstration) : pas de relecture.
+   */
+  lireVersions?<T>(collection: string): Promise<{ element: T; version: string }[]>;
+  supprimer?(collection: string, ids: string[]): Promise<number>;
 }
 
 export type ResultatEnregistrement =
   | { ok: true; demande: DemandeProprietaire }
   | { ok: false; statut: 400 | 429 | 409; code: string; erreur: string };
 
+/** Ordre d'écriture par la base : maj_le (instant), puis son texte, puis l'identifiant. */
+function ecriteAvant(a: { version: string; id: string }, b: { version: string; id: string }): boolean {
+  const ta = Date.parse(a.version);
+  const tb = Date.parse(b.version);
+  if (Number.isFinite(ta) && Number.isFinite(tb) && ta !== tb) return ta < tb;
+  if (a.version !== b.version) return a.version < b.version;
+  return a.id < b.id;
+}
+
 /**
  * Enregistre la demande d'un propriétaire dans la base de SON espace (celle
  * de sa session) : corps vérifié, logement à lui, plafonds, puis ajout sans
  * jamais remplacer une ligne existante. `logements` : les logements de cette
  * base (filtrés ici sur les siens). Rien d'autre n'est écrit.
+ *
+ * Envois simultanés : chacun lit avant que les autres aient ajouté, et tous
+ * passeraient le plafond. Relu après l'ajout, chacun ne compte que les
+ * siennes écrites AVANT la sienne par la base (maj_le) : celles qu'il ne voit
+ * pas encore sont écrites après, elles ne comptent pas pour lui, et c'est à
+ * elles de se compter. Au-delà du plafond, la sienne se retire (429).
  */
 export async function enregistrerDemande(
   base: BaseDemandes,
@@ -319,6 +348,21 @@ export async function enregistrerDemande(
   const demande = nouvelleDemande(v.saisie, { id: o.id ?? idDemande(), proprietaireId: o.proprietaireId, le: o.le });
   const ajoutees = await base.ajouterSiAbsent(COLLECTION_DEMANDES, [demande], 'Espace propriétaire');
   if (ajoutees !== 1) return { ok: false, statut: 409, code: 'id', erreur: 'Votre demande n’a pas pu être enregistrée. Réessayez dans un instant.' };
+  if (base.lireVersions && base.supprimer) {
+    const lues = await base.lireVersions<unknown>(COLLECTION_DEMANDES).catch(() => null);
+    const sienne = lues?.find((x) => (x.element as { id?: unknown } | null)?.id === demande.id);
+    if (lues && sienne) {
+      const moi = { version: sienne.version, id: demande.id };
+      const avant = lues.filter((x) => {
+        const id = (x.element as { id?: unknown } | null)?.id;
+        return typeof id === 'string' && id !== demande.id && ecriteAvant({ version: x.version, id }, moi);
+      });
+      const relu = limiteDemandes(avant.map((x) => x.element), o.proprietaireId, o.maintenantMs);
+      if (!relu.ok && (await base.supprimer(COLLECTION_DEMANDES, [demande.id]).catch(() => 0)) === 1) {
+        return { ok: false, statut: 429, code: 'limite', erreur: relu.erreur };
+      }
+    }
+  }
   return { ok: true, demande };
 }
 

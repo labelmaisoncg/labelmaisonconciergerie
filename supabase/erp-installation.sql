@@ -223,13 +223,13 @@ create policy "connecteurs reserves aux gerants" on erp.enregistrements
   with check (collection <> 'connecteurs' or erp.acces_gerant());
 
 -- Accès des propriétaires et des opérations, relances de paiement et leurs
--- réglages, check-ins en ligne des voyageurs : gérants seulement (même raison ;
--- voir erp-acces-gerants.sql).
+-- réglages, demandes des propriétaires, check-ins en ligne des voyageurs :
+-- gérants seulement (même raison ; voir erp-acces-gerants.sql).
 drop policy if exists "acces exterieurs reserves aux gerants" on erp.enregistrements;
 create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant())
-  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant())
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant());
 
 -- Check-in en ligne (livret du séjour, cahier B2) : la collection
 -- « checkinsEnLigne » (heure d'arrivée, nombre de voyageurs, fiches de police
@@ -256,6 +256,24 @@ $$;
 revoke all on function erp.checkin_en_ligne_pret() from public, anon;
 grant execute on function erp.checkin_en_ligne_pret() to authenticated;
 delete from erp.historique where collection = 'checkinsEnLigne';
+-- Demandes des propriétaires : témoin lu par le serveur avant d'enregistrer
+-- une demande (api/_demandes-proprietaires.ts, demandesProtegees). Vrai
+-- seulement si les deux règles nomment la collection (enregistrements et
+-- anciennes versions) : sans elles, aucune demande n'est enregistrée.
+create or replace function erp.demandes_proprietaires_protegees() returns boolean
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%demandesProprietaires%' and p.with_check like '%demandesProprietaires%')
+     and exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'historique'
+                    and p.policyname = 'versions reservees aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%demandesProprietaires%')
+$$;
+revoke all on function erp.demandes_proprietaires_protegees() from public, anon;
+grant execute on function erp.demandes_proprietaires_protegees() to authenticated;
 
 -- Écritures réservées aux gérants (le serveur passe par le compte d'équipe,
 -- gérant) ; la lecture ne change pas. Ce que seul le serveur écrit (envois
@@ -700,11 +718,12 @@ $$;
 drop policy if exists "membres lisent" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated using (erp.acces_lecture());
 -- Anciennes versions des collections réservées aux gérants (accès extérieurs,
--- relances, connecteurs) : gérants seulement, comme les enregistrements.
+-- relances, demandes des propriétaires, connecteurs) : gérants seulement,
+-- comme les enregistrements.
 drop policy if exists "versions reservees aux gerants" on erp.historique;
 create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne') or erp.acces_gerant());
 
 -- ------------------------------------------------------------------ droits
 

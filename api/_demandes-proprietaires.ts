@@ -18,6 +18,7 @@
 // Un fichier préfixé par « _ » n'est pas exposé comme route par Vercel.
 // =============================================================================
 
+import { espaceDe } from '../src/erp/data/acces-externe.js';
 import { libelleDemande, lienDemande, ouPorteLaDemande } from '../src/erp/data/demandes-proprietaires.js';
 import { envoyeesDepuis, envoyerNotifications } from '../src/erp/data/notifications-envoi.js';
 import { extrait, notificationDemandePlafonnee } from '../src/erp/data/notifications.js';
@@ -37,6 +38,29 @@ const EXTRAIT_EMAIL = 600;
 /** Délai total accordé aux envois (la réponse au propriétaire n'attend pas plus). */
 const DELAI_MS = 6_000;
 const NBSP = ' ';
+
+/** Témoin de la base relu toutes les 5 minutes par espace (comme checkinPret, api/_sejour.ts). */
+const PROTEGEES_MS = 5 * 60_000;
+const protegees = new Map<string, { valeur: boolean; jusqua: number }>();
+
+/**
+ * La base réserve-t-elle les demandes aux gérants (erp.demandes_proprietaires_protegees,
+ * posée par supabase/erp-espaces.sql ou erp-acces-gerants.sql avec les règles) ?
+ * Sans elle, une demande serait lisible par toute l'équipe et un compte
+ * « opérations » pourrait y glisser une réponse : aucune n'est enregistrée ni
+ * lue. Gardé 5 minutes par espace ; une erreur vaut « non ».
+ */
+export async function demandesProtegees(base: BaseErp, espace: string): Promise<boolean> {
+  const id = espaceDe(espace);
+  const lu = protegees.get(id);
+  if (lu && lu.jusqua > Date.now()) return lu.valeur;
+  const valeur = await base.rpc<unknown>('demandes_proprietaires_protegees').then((v) => v === true, () => false);
+  protegees.set(id, { valeur, jusqua: Date.now() + PROTEGEES_MS });
+  return valeur;
+}
+
+/** Tests : oublie l'état gardé. */
+export const oublierDemandesProtegees = () => protegees.clear();
 
 /** Notification aux appareils des gérants de l'espace (plafonnée). Ne lève jamais. */
 export async function notifierDemande(base: BaseErp, demande: DemandeProprietaire, o: { logement?: string }): Promise<void> {
@@ -67,7 +91,7 @@ export function emailDemande(o: { conciergerie: string; proprietaire: string; lo
 <p style="font-size:15px;line-height:1.6;margin:0 0 8px">${echapperHtml(intro)}</p>
 <p style="font-size:14px;line-height:1.6;color:#6b6258;margin:0 0 16px">${echapperHtml(quoi)}</p>
 <p style="font-size:15px;line-height:1.6;margin:0 0 24px;padding:12px 14px;background:#ffffff;border:1px solid #e8e2d8;border-radius:8px;white-space:pre-wrap">${echapperHtml(message)}</p>
-<p style="margin:0 0 24px"><a href="${echapperHtml(o.lien)}" style="display:inline-block;background:#8a6a2f;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:10px">Ouvrir la demande</a></p>
+<p style="margin:0 0 24px"><a href="${echapperHtml(o.lien)}" style="display:inline-block;background:#8a6424;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:12px 22px;border-radius:8px">Ouvrir la demande</a></p>
 <p style="font-size:13px;line-height:1.6;color:#6b6258;margin:0">${echapperHtml(suite)}</p>
 </div></body></html>`;
   const text = `${intro}\n\n${quoi}\n\n${message}\n\nOuvrir la demande${NBSP}: ${o.lien}\n\n${suite}\n\n${o.conciergerie}`;
