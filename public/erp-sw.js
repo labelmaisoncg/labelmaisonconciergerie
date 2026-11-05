@@ -8,11 +8,56 @@
  *   réseau (la connexion reste vérifiée par le serveur) ; sans réseau, une
  *   courte page « Pas de connexion ».
  *
+ * - Pastille de l'icône (src/erp/data/pastille-app.ts) : +1 à chaque
+ *   notification qui apporte une chose à traiter (TYPES_A_TRAITER, même liste
+ *   que l'app), jamais pour une notification d'essai ; l'app ouverte envoie le
+ *   nombre exact (message « lm-pastille »), gardé ici pour repartir de là.
+ *
  * Servi à la racine du site (hors de la zone protégée /erp) pour que le
  * navigateur puisse le charger sans session ; sa portée est /erp.
  */
 const CACHE = 'lm-erp-assets-v1';
 const MAX_FICHIERS = 120;
+// Hors du préfixe « lm-erp- » : le ménage de l'activation ne l'efface pas.
+const CACHE_PASTILLE = 'lm-pastille';
+const CLE_PASTILLE = '/__pastille';
+const TYPES_A_TRAITER = ['message', 'agent_main', 'lead'];
+const PASTILLE_MAX = 9999;
+
+async function lirePastille() {
+  try {
+    const r = await (await caches.open(CACHE_PASTILLE)).match(CLE_PASTILLE);
+    const n = r ? Number(await r.text()) : 0;
+    return Number.isInteger(n) && n >= 0 ? Math.min(n, PASTILLE_MAX) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function ecrirePastille(n) {
+  try {
+    await (await caches.open(CACHE_PASTILLE)).put(CLE_PASTILLE, new Response(String(n)));
+  } catch {
+    /* stockage indisponible : la prochaine ouverture de l'app remet le bon nombre */
+  }
+}
+
+async function augmenterPastille() {
+  if (!self.navigator || typeof self.navigator.setAppBadge !== 'function') return;
+  const n = Math.min((await lirePastille()) + 1, PASTILLE_MAX);
+  await ecrirePastille(n);
+  try {
+    await self.navigator.setAppBadge(n);
+  } catch {
+    /* notifications non autorisées : pas de pastille */
+  }
+}
+
+self.addEventListener('message', (evenement) => {
+  const d = evenement.data;
+  if (!d || d.type !== 'lm-pastille' || !Number.isInteger(d.n) || d.n < 0 || d.n > PASTILLE_MAX) return;
+  evenement.waitUntil(ecrirePastille(d.n));
+});
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -71,16 +116,20 @@ self.addEventListener('push', (evenement) => {
     d = { corps: evenement.data ? evenement.data.text() : '' };
   }
   const titre = d.titre || 'Label Maison';
+  const compte = TYPES_A_TRAITER.includes(d.type) && !(typeof d.tag === 'string' && d.tag.startsWith('test-'));
   evenement.waitUntil(
-    self.registration.showNotification(titre, {
-      body: d.corps || '',
-      icon: '/erp-app/icone-192.png',
-      badge: '/erp-app/badge-96.png',
-      tag: d.tag || undefined,
-      renotify: !!d.tag,
-      lang: 'fr',
-      data: { url: typeof d.url === 'string' && d.url.startsWith('/erp') ? d.url : '/erp' },
-    }),
+    Promise.all([
+      compte ? augmenterPastille() : null,
+      self.registration.showNotification(titre, {
+        body: d.corps || '',
+        icon: '/erp-app/icone-192.png',
+        badge: '/erp-app/badge-96.png',
+        tag: d.tag || undefined,
+        renotify: !!d.tag,
+        lang: 'fr',
+        data: { url: typeof d.url === 'string' && d.url.startsWith('/erp') ? d.url : '/erp' },
+      }),
+    ]),
   );
 });
 
