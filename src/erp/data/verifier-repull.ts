@@ -1784,9 +1784,30 @@ async function principal() {
   }
   verifier(refusEcriture.filter(Boolean).length === 5 && repull.appels.length === avantEcritures, 'calendrier, prix, annonces : écriture refusée avant tout envoi (Airbnb et Booking)');
   verifier(
-    ecritureRepullPermise('POST', '/v1/conversations/c1/messages') && ecritureRepullPermise('POST', '/v1/connect/airbnb', { accessType: 'messaging' }) && ecritureRepullPermise('GET', '/v1/reservations')
-      && !ecritureRepullPermise('PUT', '/v1/conversations/c1/messages') && !ecritureRepullPermise('POST', '/v1/conversations/c1/archive'),
+    ecritureRepullPermise('POST', '/v1/conversations/c1/messages', { message: 'Bonjour' }) && ecritureRepullPermise('POST', '/v1/connect/airbnb', { accessType: 'messaging' }) && ecritureRepullPermise('GET', '/v1/reservations')
+      && !ecritureRepullPermise('PUT', '/v1/conversations/c1/messages', { message: 'Bonjour' }) && !ecritureRepullPermise('POST', '/v1/conversations/c1/archive', { message: 'Bonjour' }),
     'permis : lire, répondre aux voyageurs, connecter un compte',
+  );
+  verifier(
+    [undefined, {}, { message: '' }, { message: 3 }, { message: 'x'.repeat(4001) }, { message: 'Bonjour', price: 90 }, { message: 'Bonjour', attachments: ['x'] }, { message: 'Bonjour', type: 'special_offer' }, ['Bonjour']]
+      .every((corps) => !ecritureRepullPermise('POST', '/v1/conversations/c1/messages', corps)),
+    'message au voyageur : exactement { message } (texte non vide, 4 000 caractères au plus), rien d’autre',
+  );
+  verifier(
+    ecritureRepullPermise('POST', '/v1/listings/status', { listingIds: ['101', '102'], active: false })
+      && [undefined, {}, { listingIds: [], active: true }, { listingIds: ['101'] }, { listingIds: ['101'], active: 'false' }, { listingIds: ['101'], active: true, price: 90 }, { listingIds: ['../1'], active: true }]
+        .every((corps) => !ecritureRepullPermise('POST', '/v1/listings/status', corps)),
+    'logements suivis : exactement { listingIds, active }',
+  );
+  verifier(
+    !ecritureRepullPermise('POST', '/v1/connect/airbnb', { accessType: 'messaging', writePolicy: 'full' })
+      && !ecritureRepullPermise('POST', '/v1/connect', { allowedProviders: ['booking-extranet-login'], accessType: 'full_access' }),
+    'connexions : aucun champ de plus que ceux envoyés par l’ERP',
+  );
+  verifier(
+    ['@evil.example/v1/reservations', '//evil.example/v1/reservations', 'https://evil.example/v1/x', '.evil.example/v1/x', 'v1/reservations']
+      .every((c) => !ecritureRepullPermise('GET', c)),
+    'lecture : toujours un chemin « /v1/… » de l’API (la clé ne part jamais vers un autre hôte)',
   );
   verifier(
     !ecritureRepullPermise('POST', '/v1/connect/booking', { redirectUrl: 'x' })

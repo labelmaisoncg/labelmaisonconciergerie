@@ -19,8 +19,17 @@ import { ErreurAssistant, proposerReponse, texteErreurAssistant, traduireMessage
 import { optionsAssistant } from './_erp-agent.js';
 import { repondre, variableManquante, type ConfigRepullErp } from './_erp-repull.js';
 import { configurationEspace } from './_erp-espaces.js';
+import { freinEnvois } from './_garde-formulaire.js';
 
 export const ACTIONS_ASSISTANT = new Set(['brouillon', 'traduire', 'traduire_texte']);
+
+/**
+ * Demandes à l'IA par membre : 40 par quart d'heure (par instance du serveur),
+ * comme l'assistant CRM et les réponses aux avis. Label Maison n'a pas de
+ * plafond mensuel : sans ce frein, un compte (ou une session volée) pourrait
+ * appeler l'IA en boucle.
+ */
+const tropDeDemandes = freinEnvois(40, 15 * 60_000);
 
 /** Répond à une action de l'assistant pour le membre `par` (son e-mail, pour le journal) dans `espace`. */
 export async function repondreAssistant(res: any, action: string, corps: Record<string, unknown>, espace: string | undefined, par: string) {
@@ -32,6 +41,7 @@ export async function repondreAssistant(res: any, action: string, corps: Record<
   }
   const manque = variableManquante(c);
   if (manque) return repondre(res, 503, { ok: false, erreur: manque });
+  if (tropDeDemandes(`${c.espace ?? ''}:${par}`)) return repondre(res, 429, { ok: false, code: 'occupe', erreur: 'Beaucoup de demandes à votre agent d’un coup : patientez quelques minutes.' });
   const o = optionsAssistant(c, par);
   try {
     if (action === 'brouillon') {

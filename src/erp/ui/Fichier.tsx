@@ -10,13 +10,20 @@ import { estFichierStocke, lienFichier, televerser } from '../data/supabase';
 import { Button, type TailleBouton, type VarianteBouton } from './Button';
 import { cn } from './cn';
 
-/** Adresse affichable d'un fichier : lien signé (stockage), adresse web telle quelle, rien pour la démo. */
+/**
+ * Adresse web affichable telle quelle : https (ou blob, aperçu local) seulement.
+ * Jamais « javascript: » ni « data: » : une adresse écrite dans la base par un
+ * autre compte ne doit pas pouvoir lancer un script dans l'ERP au clic.
+ */
+const adresseWebSure = (url: string): boolean => /^(https:\/\/|blob:)/i.test(url.trim());
+
+/** Adresse affichable d'un fichier : lien signé (stockage), adresse web https telle quelle, rien pour la démo. */
 export function useLienFichier(url?: string): string | undefined {
-  const [lien, setLien] = useState<string | undefined>(() => (url && !url.startsWith('demo://') && !estFichierStocke(url) ? url : undefined));
+  const [lien, setLien] = useState<string | undefined>(() => (url && !url.startsWith('demo://') && !estFichierStocke(url) && adresseWebSure(url) ? url : undefined));
   useEffect(() => {
     let actif = true;
     if (!url || url.startsWith('demo://')) setLien(undefined);
-    else if (!estFichierStocke(url)) setLien(url);
+    else if (!estFichierStocke(url)) setLien(adresseWebSure(url) ? url : undefined);
     else {
       setLien(undefined);
       void lienFichier(url).then((l) => actif && setLien(l ?? undefined));

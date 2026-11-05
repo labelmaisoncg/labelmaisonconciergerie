@@ -225,9 +225,19 @@ function corpsAvisPermis(genre: string, corps: unknown): boolean {
  * « # » ni séparateur encodé), sans paramètre de requête pour un avis, et,
  * pour les connexions et les avis, sur le corps.
  */
+/** Corps d'un objet simple dont les clés sont toutes dans `permises` (rien d'autre ne part). */
+function clesSeulement(corps: unknown, permises: readonly string[]): corps is Record<string, unknown> {
+  return !!corps && typeof corps === 'object' && !Array.isArray(corps) && Object.keys(corps).every((k) => permises.includes(k));
+}
+
+/** Longueur maximale d'un message au voyageur (même valeur que LONGUEUR_MAX_MESSAGE, messagerie-envoi.ts). */
+const LONGUEUR_MAX_MESSAGE_VOYAGEUR = 4000;
+
 export function ecritureRepullPermise(methode: string, chemin: string, corps?: unknown): boolean {
   const m = methode.toUpperCase();
-  if (/[\\#]|%2e|%2f|%5c/i.test(chemin)) return false;
+  // Toujours un chemin de l'API (« /v1/… ») : jamais « @hote », « //hote » ni une adresse complète,
+  // qui feraient partir la clé Repull ailleurs que chez api.repull.dev.
+  if (!/^\/v1\//.test(chemin) || /[\\#]|%2e|%2f|%5c/i.test(chemin)) return false;
   const c = chemin.split('?')[0];
   if (c.split('/').some((seg) => seg === '.' || seg === '..')) return false;
   if (m === 'GET') return true;
@@ -235,11 +245,24 @@ export function ecritureRepullPermise(methode: string, chemin: string, corps?: u
   if (m === 'POST') {
     const avis = CHEMIN_AVIS.exec(chemin);
     if (avis) return corpsAvisPermis(avis[2], corps);
-    if (/^\/v1\/conversations\/[^/]+\/messages$/.test(c) || c === '/v1/listings/status') return true;
-    if (c === '/v1/connect/airbnb') return x.accessType === 'messaging';
+    // Message au voyageur : exactement { message } (texte), jamais une offre, un prix ou une pièce jointe.
+    if (/^\/v1\/conversations\/[^/]+\/messages$/.test(c)) {
+      return clesSeulement(corps, ['message']) && typeof corps.message === 'string' && corps.message.trim().length > 0 && corps.message.length <= LONGUEUR_MAX_MESSAGE_VOYAGEUR;
+    }
+    // Logements suivis (compteur interne à Repull) : exactement { listingIds, active }.
+    if (c === '/v1/listings/status') {
+      const ids = (corps as { listingIds?: unknown } | undefined)?.listingIds;
+      return (
+        clesSeulement(corps, ['listingIds', 'active']) &&
+        typeof corps.active === 'boolean' &&
+        Array.isArray(ids) && ids.length > 0 && ids.length <= 500 &&
+        ids.every((id) => (typeof id === 'string' || typeof id === 'number') && /^[A-Za-z0-9_-]{1,64}$/.test(String(id)))
+      );
+    }
+    if (c === '/v1/connect/airbnb') return clesSeulement(corps, ['redirectUrl', 'locale', 'accessType']) && x.accessType === 'messaging';
     if (c === '/v1/connect') {
       const l = x.allowedProviders;
-      return Array.isArray(l) && l.length > 0 && l.every((id) => (CONNEXIONS_PERMISES as readonly unknown[]).includes(id));
+      return clesSeulement(corps, ['redirectUrl', 'allowedProviders', 'locale', 'state']) && Array.isArray(l) && l.length > 0 && l.every((id) => (CONNEXIONS_PERMISES as readonly unknown[]).includes(id));
     }
     return false;
   }
@@ -332,6 +355,8 @@ export class ClientRepull {
     const refus = () => new ErreurRepull('L’ERP ne modifie rien sur les plateformes (calendrier, prix, annonces) : il lit les données et répond aux messages.', 403, 'lecture_seule');
     if (!ecritureRepullPermise(methode, chemin, corpsVu)) throw refus();
     const url = new URL(this.base + chemin);
+    // Lecture comprise : la clé ne part que vers l'hôte de l'API (jamais vers une autre adresse).
+    if (url.origin !== new URL(this.base).origin) throw refus();
     for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') url.searchParams.set(k, String(v));
     if (methode.toUpperCase() !== 'GET') {
       const prefixe = new URL(this.base).pathname.replace(/\/+$/, '');
