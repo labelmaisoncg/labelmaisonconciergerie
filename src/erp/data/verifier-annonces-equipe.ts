@@ -201,8 +201,9 @@ async function principal() {
     verifier(JSON.stringify(brouillonInitial(undefined, 'Sens')) === JSON.stringify(premiereAnnonce('Sens')), 'collection absente : prérempli aussi');
     const retiree = retirerAnnonce(annonce('r1'), { maintenant: '2026-10-27T09:00:00+02:00', par: 'Gérant' });
     verifier(brouillonInitial([retiree], 'Label Maison').titre === '' && brouillonInitial([annonce('p1')], 'Label Maison').texte === '', 'dès qu’une annonce existe (même retirée) : formulaire vide');
-    const ecran = source('src/erp/modules/parametres/AnnoncesEquipe.tsx');
-    verifier(!!ecran && !ecran.includes('Label Maison') && /brouillonInitial\(d\.annoncesEquipe,\s*nomConciergerie\(espaceOuvert\(\)\)\)/.test(ecran), 'écran du gérant : nom de l’espace ouvert, jamais « Label Maison » en dur');
+    // La saisie se fait pas à pas (AssistantAnnonce.tsx) : brouillonAnnonce part de brouillonInitial (verifier-assistants.ts).
+    const ecran = source('src/erp/modules/parametres/AnnoncesEquipe.tsx') + source('src/erp/modules/parametres/AssistantAnnonce.tsx');
+    verifier(!!ecran && !ecran.includes('Label Maison') && /brouillonAnnonce\(d\.annoncesEquipe,\s*nomConciergerie\(espaceOuvert\(\)\)\)/.test(ecran), 'écran du gérant : nom de l’espace ouvert, jamais « Label Maison » en dur');
     const seed = creerSeed();
     const demo = annoncesVisibles(seed.annoncesEquipe, []);
     verifier(demo.length === 1 && demo[0].titre === 'Bonjour 👋' && demo[0].texte === lm.texte, 'démonstration : le « Bonjour » publié', demo);
@@ -359,13 +360,19 @@ async function principal() {
     const iAppel = corpsAnnoncer.indexOf("{ action: 'annoncer', id }");
     verifier(iDemo > 0 && iEnregistrer > iDemo && iAppel > iEnregistrer, 'démonstration : aucun appel ; sinon enregistrée d’abord, puis l’action « annoncer »', { iDemo, iEnregistrer, iAppel });
     const corpsPublier = /const publier = async[\s\S]*?\n {2}\};/.exec(ecran)?.[0] ?? '';
-    const iPose = corpsPublier.indexOf("d.upsert('annoncesEquipe', r.annonce)");
-    verifier(iPose > 0 && corpsPublier.indexOf('await annoncer(r.annonce.id)') > iPose, '« Publier » : l’annonce est posée avant la notification');
+    const iPose = corpsPublier.indexOf("d.upsert('annoncesEquipe', annonce)");
+    verifier(iPose > 0 && corpsPublier.indexOf('await annoncer(annonce.id)') > iPose, '« Créer l’annonce » : l’annonce est posée avant la notification');
     verifier(!/action: 'annoncer'[^}]*(titre|texte)/.test(ecran), 'le navigateur n’envoie que l’identifiant');
     verifier(/issueDeLErreur\(err\.code, err\.message\)/.test(ecran), 'erreurs du serveur filtrées (codes connus seulement)');
+    // L'assistant ne propose l'écran « Prévenir aussi » que si c'est possible, et ne notifie que dans ce cas.
+    const assistant = source('src/erp/modules/parametres/AssistantAnnonce.tsx');
+    const regles = source('src/erp/data/creation-annonce-equipe.ts');
     verifier(
-      /const notificationsPossibles = d\.demo \|\| n\.serveurActif/.test(ecran) && /\{notificationsPossibles && \(/.test(ecran) && /notifier && notificationsPossibles \?/.test(ecran),
-      'case « Prévenir aussi par notification » seulement si les notifications marchent sur le serveur',
+      /const notificationsPossibles = d\.demo \|\| n\.serveurActif/.test(ecran) &&
+        /notificationsPossibles=\{notificationsPossibles\}/.test(ecran) &&
+        /ecransAnnonce\(notificationsPossibles\)/.test(assistant) &&
+        /notifier: b\.notifier && o\.notificationsPossibles/.test(regles),
+      '« Prévenir aussi par notification » seulement si les notifications marchent sur le serveur',
     );
   }
 

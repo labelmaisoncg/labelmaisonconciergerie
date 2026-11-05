@@ -70,6 +70,8 @@ import { ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable, saisieIn
 import { ficheResponsableInvite, transfertsProprietaire } from './acces-gerant';
 import { ECRANS_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, recapMembre, type BrouillonMembre } from './creation-membre';
 import { ECRANS_CONCIERGERIE, NOM_CONCIERGERIE_MAX, brouillonConciergerie, erreursConciergerie, invitationConciergerie, recapConciergerie, type BrouillonConciergerie } from './creation-conciergerie';
+import { annonceDepuisBrouillon, brouillonAnnonce, ecransAnnonce, erreursAnnonce, recapAnnonce, type BrouillonAnnonce } from './creation-annonce-equipe';
+import { brouillonInitial, preparerAnnonce } from './annonces-equipe';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
@@ -790,6 +792,45 @@ section('Espaces, inviter une conciergerie : écrans, règles et même envoi que
     if (r.ok && avant) verifier(empreinte(envoi(r.corps)) === empreinte(avant) && empreinte(r.corps) === empreinte(avant), `même corps envoyé à api/erp-espaces (${x.nom.trim()})`);
   }
   verifier(recapConciergerie(cas[0]).map((l) => l.valeur).join(' | ') === 'Conciergerie de Sens | Contact@Sens-Conciergerie.fr', 'récapitulatif : nom et adresse tels qu’envoyés');
+}
+
+/* ======================================================= annonce à l'équipe */
+
+section('Annonce à l’équipe : écrans, règles et même annonce que l’ancien formulaire');
+{
+  const o = { id: 'aeq-n', maintenant: '2026-11-05T09:30:00.000+01:00', par: 'Abdel' };
+  /** L'ancien formulaire (AnnoncesEquipe.tsx), recopié tel quel : l'annonce enregistrée, puis la notification si la case était cochée. */
+  const ancien = (saisie: { titre: string; texte: string }, notifier: boolean, notificationsPossibles: boolean) => {
+    const r = preparerAnnonce(saisie, o);
+    return r.ok ? { annonce: r.annonce, notifier: notifier && notificationsPossibles } : undefined;
+  };
+  verifier(ecransAnnonce(true).join() === 'titre,texte,notification,recapitulatif', 'écrans : titre, texte, notification, récapitulatif');
+  verifier(ecransAnnonce(false).join() === 'titre,texte,recapitulatif', 'notifications indisponibles : pas d’écran « Prévenir aussi », comme la case d’avant');
+  const premier = brouillonAnnonce([], 'Sens Conciergerie');
+  const initial = brouillonInitial([], 'Sens Conciergerie');
+  verifier(premier.titre === initial.titre && premier.texte === initial.texte && premier.notifier, 'premier message prêt à publier, « Prévenir aussi » coché d’office');
+  verifier(brouillonAnnonce([{ id: 'aeq-1' }], 'Sens').titre === '', 'espace qui a déjà une annonce : départ vide');
+  const vide = { titre: '', texte: '', notifier: true };
+  verifier(erreursAnnonce('titre', vide).titre === 'Donnez un titre à l’annonce.' && !erreursAnnonce('titre', vide).texte, 'titre vide : sa phrase, sur son écran seulement');
+  verifier(erreursAnnonce('texte', vide).texte === 'Écrivez quelques mots.', 'texte vide : sa phrase');
+  verifier(erreursAnnonce('titre', { ...vide, titre: 'x'.repeat(61) }).titre === '60 caractères au plus.', 'titre trop long : refusé');
+  verifier(Object.keys(erreursAnnonce('recapitulatif', vide)).join() === 'titre,texte', 'récapitulatif : les deux, dans l’ordre');
+  const cas: [BrouillonAnnonce, boolean][] = [
+    [{ titre: '  Réunion   lundi ', texte: ' Rendez-vous à 9 h\r\n\r\n\r\n\r\nau bureau.  ', notifier: true }, true],
+    [{ titre: 'Linge', texte: 'Nouveaux draps livrés.', notifier: false }, true],
+    [{ titre: 'Clés', texte: 'Boîte à clés changée au T2 Gare.', notifier: true }, false],
+    [premier, true],
+    [{ titre: ' ', texte: 'Sans titre', notifier: true }, true],
+  ];
+  for (const [x, possibles] of cas) {
+    const r = annonceDepuisBrouillon(x, { ...o, notificationsPossibles: possibles });
+    const avant = ancien({ titre: x.titre, texte: x.texte }, x.notifier, possibles);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.titre.trim() || 'sans titre'})`);
+    if (r.ok && avant) verifier(empreinte(r.annonce) === empreinte(avant.annonce) && r.notifier === avant.notifier, `même annonce, même notification (${r.annonce.titre}, ${r.notifier ? 'notifiée' : 'sans notification'})`);
+  }
+  const recap = recapAnnonce(cas[0][0], true);
+  verifier(recap.map((l) => l.cle).join() === 'titre,texte,notifier' && recap[0].valeur === 'Réunion lundi', `récapitulatif : le titre tel qu’il sera publié (${recap[0].valeur})`);
+  verifier(recapAnnonce(cas[0][0], false).length === 2, 'récapitulatif sans notifications possibles : pas de ligne « Notification »');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
