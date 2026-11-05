@@ -14,11 +14,13 @@
  *     --define:import.meta.env='{"VITE_ERP_DEMO":"1"}' --log-level=error --outfile=/tmp/verifier-assistants.mjs \
  *     && node /tmp/verifier-assistants.mjs
  */
-import { blocage, brouillonModifie, ecranPrecedent, ecranSuivant, libelleSuite, progression, retourPossible } from './parcours-assistant';
+import { blocage, brouillonModifie, ecranPrecedent, ecranSuivant, insecables, libelleSuite, progression, retourPossible } from './parcours-assistant';
 import {
   ECRANS_RESERVATION,
+  SANS_CHAMP_RESERVATION,
   brouillonReservation,
   chevauchements,
+  ditParLEncadre,
   ecranDeLaCle,
   erreursReservation,
   logementsReservables,
@@ -56,7 +58,7 @@ import {
 } from './creation-responsable';
 import { ECRANS_CHARGE, brouillonCharge, chargeDepuisBrouillon, erreursCharge, recapCharge } from './creation-charge';
 import { ECRANS_PROSPECT, brouillonDe, creationProspect, erreursEcranProspect, erreursProspect, recapProspect, versProspect } from './creation-prospect';
-import { ECRANS_FACTURE, brouillonFacture, erreursFacture, factureDepuisBrouillon, recapFacture, totauxFacture } from './creation-facture';
+import { ECRANS_FACTURE, brouillonFacture, ecranDeLaCleFacture, ecransFacture, erreursFacture, factureDepuisBrouillon, recapFacture, totauxFacture } from './creation-facture';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
@@ -115,6 +117,17 @@ section('Parcours : ce qui manque, dit une seule fois');
   verifier(!b2.valide && b2.raison === undefined, 'tout est sous les champs : pas de doublon au pied (bouton toujours grisé)');
   verifier(blocage({}, () => false).valide, 'écran complet : « Continuer » permis');
   verifier(!brouillonModifie({ a: '' }, { a: '' }) && brouillonModifie({ a: '' }, { a: 'x' }), 'fermer demande confirmation dès que quelque chose a été saisi');
+}
+
+section('Typographie à 320 px : nombres, « e-mail », « -vous »');
+{
+  const T = '‑';
+  verifier(insecables('2 voyageurs · mer. 14 févr. · 360,00 €') === `2${NBSP}voyageurs · mer. 14${NBSP}févr. · 360,00${NBSP}€`, 'un nombre ne quitte pas son unité');
+  verifier(insecables('Indiquez son e-mail.') === `Indiquez son e${T}mail.` && insecables('E-mail') === `E${T}mail`, '« e-mail » ne se coupe pas');
+  verifier(insecables('Quand l’avez-vous constaté ?') === `Quand l’avez${T}vous constaté ?` && insecables('Où se trouve-t-il ?') === `Où se trouve${T}t${T}il ?`, '« -vous », « -t-il » ne se coupent pas');
+  verifier(insecables('Corbeil-Essonnes, Évry-Courcouronnes') === 'Corbeil-Essonnes, Évry-Courcouronnes', 'noms de villes inchangés');
+  const noeud = { type: 'span' };
+  verifier(insecables(noeud) === noeud && insecables(undefined) === undefined, 'ce qui n’est pas du texte passe tel quel');
 }
 
 /* ============================================================= réservation */
@@ -206,6 +219,11 @@ section('Réservation directe : règles de chaque écran');
   const chev = resa({ arrivee: ajouterJours(J, 21), depart: ajouterJours(J, 25) });
   verifier(erreursReservation('dates', chev, ctxR).conflit === 'Ces dates chevauchent une réservation existante.', 'chevauchement : surbooking refusé');
   verifier(chevauchements(chev, ctxR).length === 1 && chevauchements(chev, ctxR)[0].nuits.length === 2, 'chevauchement : la réservation et ses 2 nuits en conflit');
+  // Le chevauchement est dit une seule fois, par l'encadré rouge : rien au pied, « Continuer » grisé.
+  const pied = blocage(erreursReservation('dates', chev, ctxR), (k) => !SANS_CHAMP_RESERVATION.has(k) && ditParLEncadre(k));
+  verifier(!SANS_CHAMP_RESERVATION.has('conflit') && !pied.valide && pied.raison === undefined, 'chevauchement : bouton grisé, pas de phrase au pied (l’encadré rouge suffit)');
+  const piedAvecDate = blocage(erreursReservation('dates', { ...chev, arrivee: '' }, ctxR), (k) => !SANS_CHAMP_RESERVATION.has(k) && ditParLEncadre(k));
+  verifier(piedAvecDate.raison === 'Indiquez la date d’arrivée.', 'une autre erreur des dates reste dite au pied');
   verifier(!erreursReservation('dates', resa({ arrivee: ajouterJours(J, 23), depart: ajouterJours(J, 25) }), ctxR).conflit, 'arrivée le jour d’un départ : permise');
   verifier(!erreursReservation('dates', resa({ logementId: 'log-2', arrivee: ajouterJours(J, 21), depart: ajouterJours(J, 25) }), ctxR).conflit, 'autre logement aux mêmes dates : permis');
   verifier(!erreursReservation('dates', resa({ arrivee: J, depart: ajouterJours(J, 1) }), ctxR).arrivee, 'arrivée aujourd’hui : permise');
@@ -411,7 +429,8 @@ section('Incident : écrans et règles');
   }
   const r = incidentDepuisBrouillon(b({ description: 'court' }), ctxI);
   verifier(!r.ok && r.ecran === 'description', 'description trop courte : rien n’est créé, retour à son écran');
-  const recap = recapIncident(b({ cout: '120', refacturable: 'proprietaire' }), { logements: [L1], reservations: resasIncident });
+  const recap = recapIncident(b({ cout: '120', refacturable: 'proprietaire' }), { logements: [L1], reservations: resasIncident, aujourdhui: '2026-11-05' });
+  verifier(!/https/.test(erreursIncident('preuves', b({ preuves: 'photo.jpg' }), ctxI).preuves ?? 'https'), 'preuve refusée : dit en mots simples, sans « https:// »');
   verifier(recap.find((l) => l.cle === 'cout')?.valeur.includes('refacturé au propriétaire') === true, `récapitulatif : coût et refacturation (${recap.find((l) => l.cle === 'cout')?.valeur})`);
   verifier(recap.find((l) => l.cle === 'suivi')?.valeur === 'Personne pour l’instant' && recap.find((l) => l.cle === 'preuves')?.valeur === 'Aucune pour l’instant', 'récapitulatif : facultatifs vides lisibles');
 }
@@ -510,7 +529,7 @@ section('Charge : écrans, règles et même ligne que le formulaire');
     const r = chargeDepuisBrouillon(x, 'chg-n');
     verifier(r.ok && empreinte(r.charge) === empreinte(ancienne(x, 'chg-n')), `même charge enregistrée (${x.libelle.trim()})`);
   }
-  verifier(recapCharge({ ...b0, libelle: 'X', montant: '10' }, [L1]).find((l) => l.cle === 'logement')?.valeur === 'Charge générale', 'récapitulatif : « Charge générale » sans logement');
+  verifier(recapCharge({ ...b0, libelle: 'X', montant: '10' }, [L1], '2026-11-05').find((l) => l.cle === 'logement')?.valeur === 'Charge générale', 'récapitulatif : « Charge générale » sans logement');
 }
 
 /* =============================================================== prospect */
@@ -532,7 +551,7 @@ section('Prospect : écrans, règles et même prospect que le formulaire');
   verifier(r.ok && r.prospect.revenuEstimeAnnuelCentimes === 1800000 && r.prospect.nom === 'Mme Garnier', 'revenu en centimes, nom sans espaces autour');
   const simulateur = brouillonDe({ ville: 'Évry', typeBien: 'T2 4 pers.', revenuEstimeAnnuelCentimes: 1534000, etape: 'contact', prochaineAction: 'Envoyer l’estimation de revenus', notes: 'Simulation' });
   verifier(simulateur.revenu === '15340' && simulateur.etape === 'contact' && erreursEcranProspect('recapitulatif', simulateur).nom !== undefined, 'pré-rempli par le simulateur : il ne manque que le nom (et la date de l’action)');
-  verifier(recapProspect(ok).find((l) => l.cle === 'action')?.valeur.startsWith('Premier appel de qualification, le ') === true, 'récapitulatif : prochaine action et sa date');
+  verifier(recapProspect(ok, '2026-11-05').find((l) => l.cle === 'action')?.valeur.startsWith('Premier appel de qualification, le ') === true, 'récapitulatif : prochaine action et sa date');
 }
 
 /* ================================================================ facture */
@@ -543,10 +562,10 @@ section('Facture : écrans, règles et même facture que l’ancien formulaire')
   const ctxF = { proprietaires: props };
   const b0 = brouillonFacture('2026-11-05');
   const ok: typeof b0 = { ...b0, proprietaireId: 'pro-1', lignes: [{ libelle: ' Commission octobre ', quantite: '1', pu: '412,50' }, { libelle: 'Ménage', quantite: '2,5', pu: '30' }] };
-  verifier(ECRANS_FACTURE.join() === 'type,destinataire,dates,lignes,tva,statut,recapitulatif', 'écrans : type, destinataire, dates, lignes, TVA, envoi, récapitulatif');
+  verifier(ECRANS_FACTURE.join() === 'type,destinataire,proprietaire,dates,lignes,tva,statut,recapitulatif', 'écrans : type, destinataire, propriétaire, dates, lignes, TVA, envoi, récapitulatif');
   verifier(b0.type === 'commission' && b0.destinataire === 'proprietaire' && b0.echeance === '2026-11-20' && b0.tva === '20' && b0.lignes.length === 1 && b0.statut === 'emise', 'départ : comme l’ancien formulaire (échéance à 15 jours, TVA 20 %)');
-  verifier(erreursFacture('destinataire', b0, ctxF).proprietaireId === 'Choisissez le propriétaire destinataire.', 'propriétaire destinataire : à choisir');
-  verifier(!erreursFacture('destinataire', { ...b0, destinataire: 'voyageur' }, ctxF).proprietaireId, 'voyageur : pas de propriétaire à choisir');
+  verifier(erreursFacture('proprietaire', b0, ctxF).proprietaireId === 'Choisissez le propriétaire destinataire.', 'propriétaire destinataire : à choisir');
+  verifier(!erreursFacture('proprietaire', { ...b0, destinataire: 'voyageur' }, ctxF).proprietaireId, 'voyageur : pas de propriétaire à choisir');
   verifier(erreursFacture('dates', { ...ok, echeance: '2026-11-01' }, ctxF).echeance === 'L’échéance doit suivre la date d’émission.', 'échéance avant l’émission : refusée');
   verifier(erreursFacture('dates', { ...ok, emission: '' }, ctxF).emission === 'Indiquez la date d’émission.', 'date d’émission vide : à indiquer');
   const l = erreursFacture('lignes', { ...ok, lignes: [{ libelle: '', quantite: '0', pu: '' }] }, ctxF);
@@ -572,7 +591,12 @@ section('Facture : écrans, règles et même facture que l’ancien formulaire')
     const r = factureDepuisBrouillon(x, { ...ctxF, id: 'fac-n', numero: 'LM-2026-0042' });
     verifier(r.ok && empreinte(r.facture) === empreinte(ancienne(x, statut)), `même facture (${x.type}, ${statut})`);
   }
-  verifier(recapFacture(ok, props).find((x) => x.cle === 'lignes')?.valeur.split('\n').length === 2, 'récapitulatif : une ligne par ligne de facture');
+  verifier(recapFacture(ok, props, '2026-11-05').find((x) => x.cle === 'lignes')?.valeur.split('\n').length === 2, 'récapitulatif : une ligne par ligne de facture');
+  verifier(recapFacture(ok, props, '2026-11-05').find((x) => x.cle === 'dates')?.valeur.startsWith('Émise le ') === true, 'récapitulatif : « Émise le » pour une facture émise');
+  verifier(recapFacture({ ...ok, statut: 'brouillon' }, props, '2026-11-05').find((x) => x.cle === 'dates')?.valeur.startsWith('Datée du ') === true, 'récapitulatif : un brouillon n’est pas « émis »');
+  verifier(/2027$/.test(recapFacture({ ...ok, emission: '2027-02-10', echeance: '2027-02-25' }, props, '2026-11-05').find((x) => x.cle === 'dates')?.valeur ?? ''), 'récapitulatif : l’année quand ce n’est pas l’année en cours');
+  verifier(ecransFacture({ destinataire: 'proprietaire' }).includes('proprietaire') && !ecransFacture({ destinataire: 'voyageur' }).includes('proprietaire'), '« Quel propriétaire ? » seulement quand c’est lui le destinataire');
+  verifier(ecranDeLaCleFacture('proprietaireId') === 'proprietaire' && Object.keys(erreursFacture('recapitulatif', { ...ok, destinataire: 'voyageur', proprietaireId: '' }, ctxF)).length === 0, 'destinataire voyageur : aucun propriétaire demandé');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

@@ -7,13 +7,14 @@
  * Mêmes règles et même incident que l'ancien formulaire (creerIncident du
  * store : statut « ouvert », trace d'historique « Incident créé ») : un
  * logement, une description de 10 caractères au moins, des preuves en
- * adresses (https://, ou les fichiers joints), un coût lisible en euros.
+ * adresses (pages en ligne, ou les fichiers joints), un coût lisible en euros.
  * La date du constat est demandée, jamais dans le futur.
  *
  * Ni React ni réseau (verifier-assistants.ts).
  */
 import { LIBELLES } from './libelles';
-import { dateCourte, dateJour, euros, pluriel, versCentimes } from './format';
+import { dateCourte, euros, pluriel, versCentimes } from './format';
+import { dateLisible } from './parcours-assistant';
 import type { NouvelIncident } from './store';
 import type { CategorieIncident, DateISO, GraviteIncident, Id, Logement, Refacturable, Reservation } from './types';
 
@@ -86,7 +87,7 @@ export function erreursIncident(ecran: EcranIncident, b: BrouillonIncident, ctx:
     if (!b.description.trim()) r.description = 'Décrivez ce qui s’est passé.';
     else if (b.description.trim().length < 10) r.description = 'Décrivez l’incident (10 caractères minimum).';
   }
-  if (ecran === 'preuves' && listePreuves(b.preuves).some((u) => !PREUVE.test(u))) r.preuves = 'Chaque preuve doit être une adresse commençant par https://';
+  if (ecran === 'preuves' && listePreuves(b.preuves).some((u) => !PREUVE.test(u))) r.preuves = 'Chaque preuve doit être un fichier joint ou l’adresse d’une page en ligne.';
   if (ecran === 'cout' && b.cout.trim()) {
     const c = versCentimes(b.cout);
     if (Number.isNaN(c) || c < 0) r.cout = 'Montant invalide.';
@@ -126,7 +127,7 @@ export function incidentDepuisBrouillon(b: BrouillonIncident, ctx: ContexteIncid
 /** Lignes du récapitulatif. */
 export function recapIncident(
   b: BrouillonIncident,
-  o: { logements: readonly Pick<Logement, 'id' | 'nom'>[]; reservations: readonly Reservation[] },
+  o: { logements: readonly Pick<Logement, 'id' | 'nom'>[]; reservations: readonly Reservation[]; aujourdhui: DateISO },
 ): { cle: string; ecran: Exclude<EcranIncident, 'recapitulatif'>; libelle: string; valeur: string }[] {
   const sejour = o.reservations.find((r) => r.id === b.reservationId);
   const preuves = listePreuves(b.preuves).length;
@@ -137,7 +138,7 @@ export function recapIncident(
       cle: 'quand',
       ecran: 'quand',
       libelle: 'Constaté le',
-      valeur: b.date ? [dateJour(b.date), sejour ? `séjour de ${sejour.voyageur.nom} (${dateCourte(sejour.arrivee)} au ${dateCourte(sejour.depart)})` : ''].filter(Boolean).join(', ') : '',
+      valeur: b.date ? [dateLisible(b.date, o.aujourdhui), sejour ? `séjour de ${sejour.voyageur.nom} (${dateCourte(sejour.arrivee)} au ${dateCourte(sejour.depart)})` : ''].filter(Boolean).join(', ') : '',
     },
     { cle: 'nature', ecran: 'nature', libelle: 'Type', valeur: `${LIBELLES.categorieIncident[b.categorie]} · ${LIBELLES.gravite[b.gravite]}` },
     { cle: 'description', ecran: 'description', libelle: 'Ce qui s’est passé', valeur: b.description.trim() },

@@ -13,11 +13,16 @@
  * Ni React ni réseau (verifier-assistants.ts).
  */
 import { LIBELLES } from './libelles';
-import { ajouterJours, dateJour, euros, versCentimes } from './format';
+import { ajouterJours, euros, versCentimes } from './format';
+import { dateLisible } from './parcours-assistant';
 import type { Centimes, DateISO, DestinataireFacture, Facture, Id, LigneFacture, Proprietaire, StatutFacture, TypeFacture } from './types';
 
-export const ECRANS_FACTURE = ['type', 'destinataire', 'dates', 'lignes', 'tva', 'statut', 'recapitulatif'] as const;
+export const ECRANS_FACTURE = ['type', 'destinataire', 'proprietaire', 'dates', 'lignes', 'tva', 'statut', 'recapitulatif'] as const;
 export type EcranFacture = (typeof ECRANS_FACTURE)[number];
+
+/** Écrans du parcours : « Quel propriétaire ? » seulement quand c'est lui le destinataire. */
+export const ecransFacture = (b: Pick<BrouillonFacture, 'destinataire'>): EcranFacture[] =>
+  ECRANS_FACTURE.filter((e) => e !== 'proprietaire' || b.destinataire === 'proprietaire');
 
 export interface LigneSaisie {
   libelle: string;
@@ -74,10 +79,10 @@ export const cleLigne = (i: number, champ: keyof LigneSaisie) => `ligne-${i}-${c
 /** Erreurs d'un écran, dans l'ordre de l'écran ; le récapitulatif réunit celles de tous les écrans. */
 export function erreursFacture(ecran: EcranFacture, b: BrouillonFacture, ctx: { proprietaires: readonly Pick<Proprietaire, 'id'>[] }): Record<string, string> {
   if (ecran === 'recapitulatif') {
-    return Object.assign({}, ...ECRANS_FACTURE.filter((e) => e !== 'recapitulatif').map((e) => erreursFacture(e, b, ctx)));
+    return Object.assign({}, ...ecransFacture(b).filter((e) => e !== 'recapitulatif').map((e) => erreursFacture(e, b, ctx)));
   }
   const r: Record<string, string> = {};
-  if (ecran === 'destinataire' && b.destinataire === 'proprietaire' && !ctx.proprietaires.some((p) => p.id === b.proprietaireId)) {
+  if (ecran === 'proprietaire' && b.destinataire === 'proprietaire' && !ctx.proprietaires.some((p) => p.id === b.proprietaireId)) {
     r.proprietaireId = 'Choisissez le propriétaire destinataire.';
   }
   if (ecran === 'dates') {
@@ -101,7 +106,7 @@ export function erreursFacture(ecran: EcranFacture, b: BrouillonFacture, ctx: { 
 }
 
 export function ecranDeLaCleFacture(cle: string): EcranFacture {
-  if (cle === 'proprietaireId') return 'destinataire';
+  if (cle === 'proprietaireId') return 'proprietaire';
   if (cle === 'emission' || cle === 'echeance') return 'dates';
   if (cle === 'lignes' || cle.startsWith('ligne-')) return 'lignes';
   if (cle === 'tva') return 'tva';
@@ -139,6 +144,7 @@ export function factureDepuisBrouillon(b: BrouillonFacture, ctx: { proprietaires
 export function recapFacture(
   b: BrouillonFacture,
   proprietaires: readonly Pick<Proprietaire, 'id' | 'nom'>[],
+  aujourdhui: DateISO,
 ): { cle: string; ecran: Exclude<EcranFacture, 'recapitulatif'>; libelle: string; valeur: string }[] {
   const t = totauxFacture(b);
   const lues = lignesLues(b.lignes);
@@ -148,7 +154,15 @@ export function recapFacture(
   return [
     { cle: 'type', ecran: 'type', libelle: 'Type', valeur: LIBELLES.typeFacture[b.type] },
     { cle: 'destinataire', ecran: 'destinataire', libelle: 'Destinataire', valeur: destinataire },
-    { cle: 'dates', ecran: 'dates', libelle: 'Dates', valeur: b.emission && b.echeance && b.echeance >= b.emission ? `Émise le ${dateJour(b.emission)}, échéance le ${dateJour(b.echeance)}` : '' },
+    {
+      cle: 'dates',
+      ecran: 'dates',
+      libelle: 'Dates',
+      valeur:
+        b.emission && b.echeance && b.echeance >= b.emission
+          ? `${b.statut === 'emise' ? 'Émise le' : 'Datée du'} ${dateLisible(b.emission, aujourdhui)}, échéance le ${dateLisible(b.echeance, aujourdhui)}`
+          : '',
+    },
     {
       cle: 'lignes',
       ecran: 'lignes',

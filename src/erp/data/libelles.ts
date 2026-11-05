@@ -103,7 +103,7 @@ export const LIBELLES = {
     autre: 'Autre',
   } satisfies Record<CategorieCharge, string>,
   sourceProspect: {
-    seo: 'Site (SEO)',
+    seo: 'Site internet',
     parrainage: 'Parrainage',
     cercle: 'Cercle Label Maison',
     reseau: 'Réseau',

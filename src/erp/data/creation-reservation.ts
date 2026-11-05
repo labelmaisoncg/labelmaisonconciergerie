@@ -14,7 +14,8 @@
  *
  * Ni React ni réseau (verifier-assistants.ts).
  */
-import { ajouterJours, dateJour, ecartJours, euros, pluriel, versCentimes } from './format';
+import { ajouterJours, ecartJours, euros, pluriel, versCentimes } from './format';
+import { dateLisible } from './parcours-assistant';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates, type Conflit } from '../modules/reservations/_composants/outils';
 import type { Centimes, DateISO, Id, Logement, Mandat, Reservation } from './types';
@@ -88,8 +89,15 @@ export function montantsReservation(b: BrouillonReservation, ctx: ContexteReserv
   };
 }
 
-/** Erreurs sans champ à elles (choix, compteur, chevauchement) : dites au-dessus de « Continuer ». */
-export const SANS_CHAMP_RESERVATION = new Set(['logementId', 'nbPersonnes', 'conflit']);
+/** Erreurs sans champ à elles (choix, compteur) : dites au-dessus de « Continuer ». */
+export const SANS_CHAMP_RESERVATION = new Set(['logementId', 'nbPersonnes']);
+
+/**
+ * Le chevauchement est dit par l'encadré rouge de l'écran des dates (les
+ * réservations et les nuits en conflit) : jamais répété au pied, où
+ * « Continuer » reste grisé sans autre phrase.
+ */
+export const ditParLEncadre = (cle: string): boolean => cle === 'conflit';
 
 /**
  * Erreurs d'un écran, par champ, dans l'ordre de l'écran ; vide : « Continuer »
@@ -177,7 +185,7 @@ export function recapReservation(b: BrouillonReservation, ctx: ContexteReservati
       cle: 'dates',
       ecran: 'dates',
       libelle: 'Dates',
-      valeur: nuits > 0 ? `Du ${dateJour(b.arrivee)} au ${dateJour(b.depart)} · ${pluriel(nuits, 'nuit')}` : '',
+      valeur: nuits > 0 ? `Du ${dateLisible(b.arrivee, ctx.aujourdhui)} au ${dateLisible(b.depart, ctx.aujourdhui)} · ${pluriel(nuits, 'nuit')}` : '',
     },
     {
       cle: 'voyageur',
