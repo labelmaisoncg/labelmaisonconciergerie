@@ -606,7 +606,7 @@ function ApercuEspace({ proprietaire: p, onFermer }: { proprietaire: Proprietair
           Fermer
         </button>
       </div>
-      <div className="lm-defilement min-h-0 flex-1 overflow-y-auto">
+      <div className="lm-defilement min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         {vue ? (
           <EspaceVue
             vue={vue}

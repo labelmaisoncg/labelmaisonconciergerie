@@ -25,7 +25,8 @@ const LARGEURS = { md: 'sm:max-w-md', lg: 'sm:max-w-xl', xl: 'sm:max-w-3xl' };
 /**
  * Panneau de détail : à droite sur ordinateur, feuille qui monte du bas sur
  * téléphone (arrondie en haut). En-tête d'Airbnb : fermer rond à gauche,
- * titre centré, actions à droite, un filet dessous.
+ * titre centré, actions à droite, un filet dessous. Le corps défile en
+ * hauteur seulement, sans rebond, comme celui de Modal.
  */
 export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, largeur = 'lg', hauteur = 'pleine', children }: DrawerProps) {
   const ref = useFenetre<HTMLDivElement>(ouvert, onFermer);
@@ -59,7 +60,7 @@ export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, larg
           {/* Sans actions, une place vide de la taille du bouton fermer garde le titre au centre. */}
           {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : <span aria-hidden className="size-8 shrink-0" />}
         </div>
-        <div className="lm-defilement flex-1 overflow-y-auto px-4 py-5 sm:px-6">{children}</div>
+        <div className="lm-defilement flex-1 overflow-x-hidden overflow-y-auto overscroll-none px-4 py-5 sm:px-6">{children}</div>
         {pied && <div className={PIED_FENETRE}>{pied}</div>}
       </div>
     </div>

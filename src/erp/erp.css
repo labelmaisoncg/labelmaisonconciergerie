@@ -332,6 +332,19 @@ html:has(.erp-root) {
 html:has(.erp-root) body {
   overscroll-behavior: none;
 }
+/*
+ * Safari repart de zéro à chaque zone qui défile (corps d'une fenêtre, d'un
+ * tiroir, liste de la recherche) : la règle posée sur html ne vaut plus à
+ * l'intérieur, et on y zoomait encore au pincement ou au double tap. Chaque
+ * élément de l'ERP la reprend donc, dans la couche `base` : un composant qui
+ * gère ses propres gestes la remplace (la carte, un utilitaire touch-*).
+ */
+@layer base {
+  .erp-root,
+  .erp-root * {
+    touch-action: pan-x pan-y;
+  }
+}
 
 /*
  * Appui long, comme une app (demande de l'utilisateur) : sur iPhone, un appui

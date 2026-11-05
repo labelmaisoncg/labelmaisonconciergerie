@@ -26,7 +26,8 @@ export const PIED_FENETRE = 'lm-pied-fenetre flex flex-wrap items-center justify
 /**
  * Fenêtre à la manière d'Airbnb : en-tête avec le bouton fermer rond à
  * gauche et le titre centré (16 px, 600), un filet dessous ; sur téléphone,
- * une feuille qui monte du bas, arrondie en haut.
+ * une feuille qui monte du bas, arrondie en haut. Le corps défile en hauteur
+ * seulement, sans rebond : la feuille ne glisse jamais sur le côté.
  */
 export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md', children }: ModalProps) {
   const ref = useFenetre<HTMLDivElement>(ouvert, onFermer);
@@ -57,7 +58,7 @@ export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md
           </h2>
         </div>
         {(description || children) && (
-          <div className="lm-defilement overflow-y-auto px-5 py-5 sm:px-6">
+          <div className="lm-defilement overflow-x-hidden overflow-y-auto overscroll-none px-5 py-5 sm:px-6">
             {description && (
               <p id={descId} className={cn('text-[14px] text-(--lm-encre-2)', children && 'mb-4')}>
                 {description}

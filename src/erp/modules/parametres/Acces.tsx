@@ -1164,7 +1164,7 @@ function ApercuOps({ membre, onFermer }: { membre: MembreEquipe; onFermer: () =>
           Fermer
         </button>
       </div>
-      <div className="lm-defilement min-h-0 flex-1 overflow-y-auto">
+      <div className="lm-defilement min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none">
         {vue ? (
           <EspaceOps vue={vue} ecran={ecran} naviguer={naviguer} actions={actions} apercu />
         ) : (

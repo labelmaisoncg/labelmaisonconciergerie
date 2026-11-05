@@ -31,7 +31,7 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
   const erreurId = erreur ? `${id}-erreur` : undefined;
   const decrit = [aideId, erreurId].filter(Boolean).join(' ') || undefined;
   return (
-    <div className={cn('flex flex-col gap-1.5', className)}>
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <label htmlFor={id} className="text-[13px] font-semibold text-(--lm-encre)">
         {label}
         {requis && (
@@ -69,8 +69,10 @@ export function Field({ label, children, aide, erreur, requis, className }: Fiel
  * l'exception du guide au contour global de focus (couche base d'erp.css) :
  * `focus:outline-none` le coupe ici, et la classe `lm-champ` marque ces champs.
  */
+// min-w-0 : Safari donne aux champs une largeur minimale plus grande que Chrome ; à côté d'un bouton
+// (« Ajouter une note… » + « Noter »), le champ refusait de rétrécir et la feuille débordait.
 const CHAMP =
-  'lm-champ w-full rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
+  'lm-champ w-full min-w-0 rounded-lg border border-(--lm-bord-fort) bg-(--lm-surface) px-3.5 text-[15px] text-(--lm-encre) placeholder:text-(--lm-encre-3) ' +
   'transition-[border-color,box-shadow] hover:border-(--lm-encre-3) focus:border-(--lm-encre) focus:shadow-[inset_0_0_0_1px_var(--lm-encre)] focus:outline-none ' +
   'disabled:cursor-not-allowed disabled:bg-(--lm-surface-2) aria-[invalid=true]:border-(--lm-danger) aria-[invalid=true]:focus:shadow-[inset_0_0_0_1px_var(--lm-danger)]';
 

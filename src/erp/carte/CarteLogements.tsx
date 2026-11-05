@@ -115,7 +115,7 @@ function Fiche({
       onTouchStart={toucher}
       onTouchEnd={lacher}
       className={cn(
-        'lm-apparition fixed inset-x-0 bottom-0 z-40 max-h-[75vh] overflow-y-auto rounded-t-2xl border-t border-(--lm-bord) bg-(--lm-surface) pb-[env(safe-area-inset-bottom)] shadow-(--lm-ombre-haute) outline-none',
+        'lm-apparition fixed inset-x-0 bottom-0 z-40 max-h-[75vh] overflow-x-hidden overflow-y-auto overscroll-none rounded-t-2xl border-t border-(--lm-bord) bg-(--lm-surface) pb-[env(safe-area-inset-bottom)] shadow-(--lm-ombre-haute) outline-none',
         surCarte
           ? 'md:absolute md:inset-x-auto md:top-3 md:right-3 md:bottom-auto md:max-h-[calc(100%-1.5rem)] md:w-[332px] md:rounded-lg md:border md:pb-0'
           : 'md:static md:mb-3 md:max-w-md md:rounded-xl md:border md:pb-0 md:shadow-(--lm-ombre)',
