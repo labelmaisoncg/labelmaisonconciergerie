@@ -12,18 +12,18 @@ import { Link } from 'react-router-dom';
 import { Phone, UserPlus } from 'lucide-react';
 import { phraseRemplacement } from '../../../data/acces-gerant';
 import { AUJOURDHUI } from '../../../data/format';
-import { ROLES_OPERATIONS, affectationsAFiger, quiSuit, remplacantDe, responsableLe, titulaireDe } from '../../../data/operations';
+import { ROLES_OPERATIONS, quiSuit, remplacantDe, responsableLe, titulaireDe } from '../../../data/operations';
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
 import type { AffectationLogement } from '../../../data/types-operations';
-import { Badge, Button, Card, CardHeader, Field, Modal, Select } from '../../../ui';
-import { InviterResponsable, Signalements, statutAccesOps } from '../../parametres/Acces';
+import { Badge, Button, Card, CardHeader, Field, Select } from '../../../ui';
+import { Signalements, statutAccesOps } from '../../parametres/Acces';
+import { AssistantResponsable } from './AssistantResponsable';
 
 export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const gerant = d.utilisateur.role === 'gerant' && !d.lectureSeule;
   const [ajouter, setAjouter] = useState(false);
-  const [inviter, setInviter] = useState(false);
   const rattaches = quiSuit(d.donnees.equipe, l.id).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
   const signalements = d.donnees.signalementsLogement.filter((s) => s.statut === 'ouvert' && s.logementId === l.id);
   const responsableId = titulaireDe(d.donnees, l.id);
@@ -128,57 +128,7 @@ export function ResponsablesLogement({ logement: l }: { logement: Logement }) {
           </Button>
         </div>
       )}
-      {ajouter && (
-        <Rattacher
-          logement={l}
-          onFermer={() => setAjouter(false)}
-          onInviter={() => {
-            setAjouter(false);
-            setInviter(true);
-          }}
-        />
-      )}
-      {inviter && <InviterResponsable onFermer={() => setInviter(false)} logementsInitiaux={[l.id]} />}
+      {ajouter && <AssistantResponsable logement={l} onFermer={() => setAjouter(false)} />}
     </Card>
-  );
-}
-
-/** Rattacher une personne déjà dans l'équipe, ou en inviter une nouvelle. */
-function Rattacher({ logement: l, onFermer, onInviter }: { logement: Logement; onFermer: () => void; onInviter: () => void }) {
-  const d = useErp();
-  const libres = d.donnees.equipe.filter((m) => m.actif && !m.logementIds.includes(l.id)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
-  const [choisi, setChoisi] = useState('');
-  const rattacher = () => {
-    if (!choisi) return;
-    // Le responsable par défaut d'avant devient un choix enregistré : il garde la charge.
-    for (const a of affectationsAFiger(d.donnees, [l.id])) d.upsert('affectations', a);
-    d.mettreAJour('equipe', choisi, (m) => ({ ...m, logementIds: [...new Set([...m.logementIds, l.id])] }));
-    onFermer();
-  };
-  return (
-    <Modal
-      ouvert
-      onFermer={onFermer}
-      titre="Ajouter un responsable"
-      description={`La personne verra ${l.nom} dans son espace opérations.`}
-      pied={
-        <>
-          <Button variant="ghost" onClick={onInviter}>
-            Inviter quelqu’un de nouveau
-          </Button>
-          <Button variant="primary" disabled={!choisi} onClick={rattacher}>
-            Rattacher
-          </Button>
-        </>
-      }
-    >
-      {libres.length ? (
-        <Field label="Personne de l’équipe">
-          <Select value={choisi} placeholder="Choisir" onChange={(e) => setChoisi(e.target.value)} options={libres.map((m) => ({ valeur: m.id, libelle: `${m.nom} · ${ROLES_OPERATIONS[m.role]}` }))} />
-        </Field>
-      ) : (
-        <p className="text-[13.5px] text-(--lm-encre-2)">Toute l’équipe suit déjà ce logement. Invitez une nouvelle personne.</p>
-      )}
-    </Modal>
   );
 }

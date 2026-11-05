@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowRight, Check, Copy, Eye, Mail, Phone, UserPlus, X } from 'lucide-react';
+import { EMAIL_RESPONSABLE } from '../../data/creation-responsable';
 import { ficheResponsableInvite, logementsSansPersonne, phrasesTransferts, statutAccesExterne, transfertsProprietaire, type Transfert } from '../../data/acces-gerant';
 import { MODE_DEMO } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
@@ -38,7 +39,7 @@ import {
 } from '../../data/operations';
 import { inviter as inviterProprietaire } from '../../data/proprietaire-acces';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../data/repull';
-import { nouvelId, useErp } from '../../data/store';
+import { nouvelId, useErp, type ErpContexte } from '../../data/store';
 import type { Id, Logement, Proprietaire } from '../../data/types';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, MembreEquipe, RoleOperations, SignalementLogement } from '../../data/types-operations';
 import { Alert, Badge, Button, Card, Drawer, Field, Input, Interrupteur, Modal, Repli, Select, classesBouton, cn, useFenetre } from '../../ui';
@@ -51,18 +52,18 @@ import { SupprimerMembre } from './SupprimerMembre';
 
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
 const API_OPERATIONS = '/api/espace-operations';
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const EMAIL = EMAIL_RESPONSABLE;
 /** La fiche sans l'ancien IBAN masqué (l'ERP ne le demande ni ne le garde plus). */
 const sansIban = ({ ibanMasque: _ancien, ...p }: Proprietaire): Proprietaire => p;
 
-type Invitation = { lien: string; envoye: boolean; email: string };
+export type Invitation = { lien: string; envoye: boolean; email: string };
 
 /** État de l'accès d'un membre de l'équipe (mêmes mots et tons que pour les propriétaires, adresse de sa fiche comprise). */
 export function statutAccesOps(a: AccesOperations | undefined, m: Pick<MembreEquipe, 'email'>): { texte: string; ton: 'neutre' | 'succes' | 'alerte' } {
   return statutAccesExterne(a, m.email);
 }
 
-const logementsGeres = (logements: Logement[]) => logements.filter((l) => l.statut !== 'sorti').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+export const logementsGeres = (logements: Logement[]) => logements.filter((l) => l.statut !== 'sorti').sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
 
 export default function Acces() {
   const d = useErp();
@@ -186,7 +187,7 @@ export function LienInvitation({ invitation }: { invitation: Invitation }) {
  * Logements à cocher. `regle` : pour un logement, s'il est verrouillé (coché
  * sans pouvoir le décocher) et la précision à montrer.
  */
-function ListeLogements({
+export function ListeLogements({
   logements,
   coches,
   onChange,
@@ -1026,6 +1027,47 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
   );
 }
 
+/**
+ * Invite un responsable (Paramètres → Accès, assistant « Ajouter un
+ * responsable » de la fiche logement) : sa fiche (reprise si l'adresse est
+ * déjà connue), les logements qu'il rejoint, puis l'invitation. En démo,
+ * aucun e-mail : un lien vers l'aperçu de son espace. Erreur d'envoi : la
+ * fiche et les logements restent enregistrés, le message le dit.
+ */
+export async function inviterResponsable(
+  d: ErpContexte,
+  saisie: { nom: string; email: string; telephone: string; role?: RoleOperations; logementIds: Id[] },
+): Promise<{ invitation: Invitation; erreur?: undefined } | { invitation?: undefined; erreur: string }> {
+  const adresse = saisie.email.trim().toLowerCase();
+  const { membre: m } = ficheResponsableInvite(d.donnees.equipe, { ...saisie, email: adresse }, () => nouvelId('eq'));
+  // Logements qu'elle rejoint : le responsable par défaut d'avant devient un choix enregistré.
+  const avant = d.donnees.equipe.find((x) => x.id === m.id);
+  for (const a of affectationsAFiger(d.donnees, m.logementIds.filter((l) => !avant?.actif || !avant.logementIds.includes(l)))) d.upsert('affectations', a);
+  d.upsert('equipe', m);
+  try {
+    if (MODE_DEMO) {
+      const acces = d.donnees.accesOperations.find((a) => a.id === m.id);
+      d.upsert('accesOperations', {
+        id: m.id,
+        membreId: m.id,
+        email: adresse,
+        emailFiche: adresse,
+        statut: acces?.statut === 'actif' && acces.email === adresse ? 'actif' : 'invite',
+        inviteLe: horodatageMaintenant(),
+        invitePar: d.utilisateur.email,
+        version: acces?.version ?? 1,
+        liens: [],
+        ...(acces?.derniereConnexion && acces.email === adresse ? { derniereConnexion: acces.derniereConnexion } : {}),
+      });
+      return { invitation: { lien: `${window.location.origin}/espace-operations?apercu=${encodeURIComponent(m.id)}`, envoye: false, email: adresse } };
+    }
+    const r = await inviterAvecReessai(API_OPERATIONS, { action: 'inviter', membreId: m.id, email: adresse });
+    return { invitation: { ...r, email: adresse } };
+  } catch (e) {
+    return { erreur: `Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}` };
+  }
+}
+
 /** Inviter un responsable : sa fiche dans l'espace ouvert (ou celle qui a déjà cette adresse, son rôle gardé), ses logements, puis l'invitation. */
 export function InviterResponsable({ onFermer, logementsInitiaux = [] }: { onFermer: () => void; logementsInitiaux?: Id[] }) {
   const d = useErp();
@@ -1049,36 +1091,10 @@ export function InviterResponsable({ onFermer, logementsInitiaux = [] }: { onFer
     if (!coches.length && !existant?.logementIds.length) return setErreur('Cochez au moins un logement.');
     setErreur(undefined);
     setEnCours(true);
-    const { membre: m } = ficheResponsableInvite(d.donnees.equipe, { nom, email: adresse, telephone, role: roleChoisi, logementIds: coches }, () => nouvelId('eq'));
-    // Logements qu'elle rejoint : le responsable par défaut d'avant devient un choix enregistré.
-    const avant = d.donnees.equipe.find((x) => x.id === m.id);
-    for (const a of affectationsAFiger(d.donnees, m.logementIds.filter((l) => !avant?.actif || !avant.logementIds.includes(l)))) d.upsert('affectations', a);
-    d.upsert('equipe', m);
-    try {
-      if (MODE_DEMO) {
-        const acces = d.donnees.accesOperations.find((a) => a.id === m.id);
-        d.upsert('accesOperations', {
-          id: m.id,
-          membreId: m.id,
-          email: adresse,
-          emailFiche: adresse,
-          statut: acces?.statut === 'actif' && acces.email === adresse ? 'actif' : 'invite',
-          inviteLe: horodatageMaintenant(),
-          invitePar: d.utilisateur.email,
-          version: acces?.version ?? 1,
-          liens: [],
-          ...(acces?.derniereConnexion && acces.email === adresse ? { derniereConnexion: acces.derniereConnexion } : {}),
-        });
-        setInvitation({ lien: `${window.location.origin}/espace-operations?apercu=${encodeURIComponent(m.id)}`, envoye: false, email: adresse });
-      } else {
-        const r = await inviterAvecReessai(API_OPERATIONS, { action: 'inviter', membreId: m.id, email: adresse });
-        setInvitation({ ...r, email: adresse });
-      }
-    } catch (e) {
-      setErreur(`Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}`);
-    } finally {
-      setEnCours(false);
-    }
+    const r = await inviterResponsable(d, { nom, email: adresse, telephone, role: roleChoisi, logementIds: coches });
+    if (r.invitation) setInvitation(r.invitation);
+    else setErreur(r.erreur);
+    setEnCours(false);
   };
 
   return (

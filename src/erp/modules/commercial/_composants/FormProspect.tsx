@@ -1,73 +1,18 @@
 import { useState, type FormEvent } from 'react';
 import { LIBELLES } from '../../../data/libelles';
 import { ETAPES_PIPELINE } from '../../../data/constantes';
-import { AUJOURDHUI, versCentimes } from '../../../data/format';
-import type { EtapeProspect, Prospect, Responsable, SourceProspect } from '../../../data/types';
+import { AUJOURDHUI } from '../../../data/format';
+import { RESPONSABLES, erreursProspect, type BrouillonProspect, type ErreursProspect } from '../../../data/creation-prospect';
+import type { EtapeProspect, Responsable, SourceProspect } from '../../../data/types';
 import { Field, Input, Select, Textarea } from '../../../ui';
 
-export interface BrouillonProspect {
-  nom: string;
-  ville: string;
-  typeBien: string;
-  source: SourceProspect;
-  responsable: Responsable;
-  etape: EtapeProspect;
-  revenu: string;
-  prochaineAction: string;
-  prochaineActionLe: string;
-  notes: string;
-}
-
-export function brouillonDe(p?: Partial<Prospect>): BrouillonProspect {
-  return {
-    nom: p?.nom ?? '',
-    ville: p?.ville ?? '',
-    typeBien: p?.typeBien ?? '',
-    source: p?.source ?? 'seo',
-    responsable: p?.responsable ?? 'abdel',
-    etape: p?.etape ?? 'nouveau',
-    revenu: p?.revenuEstimeAnnuelCentimes ? String(Math.round(p.revenuEstimeAnnuelCentimes / 100)) : '',
-    prochaineAction: p?.prochaineAction ?? '',
-    prochaineActionLe: p?.prochaineActionLe ?? '',
-    notes: p?.notes ?? '',
-  };
-}
-
-type Erreurs = Partial<Record<keyof BrouillonProspect, string>>;
-
-function valider(b: BrouillonProspect): Erreurs {
-  const e: Erreurs = {};
-  if (b.nom.trim().length < 2) e.nom = 'Indiquez le nom du propriétaire.';
-  if (!b.ville.trim()) e.ville = 'Indiquez la ville du bien.';
-  if (!b.typeBien.trim()) e.typeBien = 'Décrivez le bien (ex. T2 45 m²).';
-  const c = versCentimes(b.revenu);
-  if (!b.revenu.trim() || !Number.isFinite(c) || c <= 0) e.revenu = 'Montant annuel en euros, supérieur à 0.';
-  if (b.prochaineActionLe && !b.prochaineAction.trim()) e.prochaineAction = 'Précisez l’action prévue à cette date.';
-  if (b.prochaineAction.trim() && !b.prochaineActionLe) e.prochaineActionLe = 'Choisissez une date pour cette action.';
-  return e;
-}
-
-/** Applique le brouillon validé sur un prospect (nouveau ou existant). */
-export function versProspect(b: BrouillonProspect, base: Pick<Prospect, 'id' | 'creeLe'>): Prospect {
-  return {
-    ...base,
-    nom: b.nom.trim(),
-    ville: b.ville.trim(),
-    typeBien: b.typeBien.trim(),
-    source: b.source,
-    responsable: b.responsable,
-    etape: b.etape,
-    revenuEstimeAnnuelCentimes: versCentimes(b.revenu),
-    prochaineAction: b.prochaineAction.trim() || undefined,
-    prochaineActionLe: b.prochaineActionLe || undefined,
-    notes: b.notes.trim(),
-  };
-}
+/** Saisie, contrôles et fiche : data/creation-prospect.ts (partagés avec l'assistant « Nouveau prospect »). */
+export { brouillonDe, versProspect, type BrouillonProspect } from '../../../data/creation-prospect';
 
 const opts = <K extends string>(r: Record<K, string>, cles?: readonly K[]) =>
   (cles ?? (Object.keys(r) as K[])).map((k) => ({ valeur: k, libelle: r[k] }));
 
-/** Formulaire prospect partagé par la création (Modal) et la fiche (Drawer). */
+/** Formulaire prospect de la fiche (Drawer) ; la création passe par l'assistant pas à pas (NouveauProspect). */
 export function FormProspect({
   id,
   initial,
@@ -80,7 +25,7 @@ export function FormProspect({
   avecEtape?: boolean;
 }) {
   const [b, setB] = useState(initial);
-  const [erreurs, setErreurs] = useState<Erreurs>({});
+  const [erreurs, setErreurs] = useState<ErreursProspect>({});
   const maj = <K extends keyof BrouillonProspect>(k: K, v: BrouillonProspect[K]) => {
     setB((x) => ({ ...x, [k]: v }));
     if (erreurs[k]) setErreurs((e) => ({ ...e, [k]: undefined }));
@@ -88,7 +33,7 @@ export function FormProspect({
 
   const soumettre = (ev: FormEvent) => {
     ev.preventDefault();
-    const e = valider(b);
+    const e = erreursProspect(b);
     setErreurs(e);
     if (Object.keys(e).length === 0) onValide(b);
   };
@@ -113,7 +58,7 @@ export function FormProspect({
         <Select value={b.source} onChange={(e) => maj('source', e.target.value as SourceProspect)} options={opts(LIBELLES.sourceProspect)} />
       </Field>
       <Field label="Responsable">
-        <Select value={b.responsable} onChange={(e) => maj('responsable', e.target.value as Responsable)} options={[{ valeur: 'abdel', libelle: 'Abdel' }, { valeur: 'kamel', libelle: 'Kamel' }]} />
+        <Select value={b.responsable} onChange={(e) => maj('responsable', e.target.value as Responsable)} options={RESPONSABLES} />
       </Field>
       {avecEtape && (
         <Field label="Étape" aide={b.etape === 'signe' ? 'Pour un nouveau mandat, passez plutôt par « Lancer un mandat ».' : undefined}>

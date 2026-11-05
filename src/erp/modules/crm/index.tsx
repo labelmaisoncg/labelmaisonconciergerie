@@ -11,14 +11,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Bot, CalendarPlus, FileText, PhoneCall, Plus } from 'lucide-react';
-import { idContactCrm, STATUTS_CRM, telephoneNormalise, trouverDoublon } from '../../data/crm';
+import { STATUTS_CRM, telephoneNormalise } from '../../data/crm';
 import { fileDuJour, jourMoisCrm } from '../../data/crm-assistant';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, horodatageMaintenant } from '../../data/format';
 import { aideCrmVide, dossierProprietaireDisponible } from '../../data/marque-espace';
 import { useErp } from '../../data/store';
 import type { ContactCrm } from '../../data/types';
-import { Alert, Button, EmptyState, Field, FilterChips, IconButton, Input, MenuActions, Modal, PageHeader, SearchInput, Segmente, Textarea, Toolbar, useRechercheUrl } from '../../ui';
+import { Alert, Button, EmptyState, FilterChips, IconButton, MenuActions, PageHeader, SearchInput, Segmente, Toolbar, useRechercheUrl } from '../../ui';
+import { AssistantContact } from './_composants/AssistantContact';
 import { AgendaCrm } from './_composants/AgendaCrm';
 import { ConnecterClaude } from './_composants/ConnecterClaude';
 import { EnvoyerDossier } from './_composants/EnvoyerDossier';
@@ -29,102 +30,6 @@ import { ListeMobile } from './_composants/ListeMobile';
 import { PreparerRelance } from './_composants/PreparerRelance';
 
 type Vue = 'jour' | 'tous';
-
-function NouveauContact({ ouvert, onFermer, contacts, onOuvrir }: { ouvert: boolean; onFermer: () => void; contacts: ContactCrm[]; onOuvrir: (id: string) => void }) {
-  const { upsert, utilisateur } = useErp();
-  const [f, setF] = useState({ nom: '', telephone: '', email: '', ville: '', typeBien: '', notes: '' });
-  const doublon = useMemo(
-    () => (f.email.trim() || telephoneNormalise(f.telephone).length >= 9 ? trouverDoublon(contacts, { email: f.email, telephone: f.telephone }) : undefined),
-    [contacts, f.email, f.telephone],
-  );
-  const fermer = () => {
-    setF({ nom: '', telephone: '', email: '', ville: '', typeBien: '', notes: '' });
-    onFermer();
-  };
-  const creer = () => {
-    const maintenant = horodatageMaintenant();
-    const c: ContactCrm = {
-      id: idContactCrm(),
-      nom: f.nom.trim(),
-      ...(f.telephone.trim() ? { telephone: f.telephone.trim() } : {}),
-      ...(f.email.trim() ? { email: f.email.trim().toLowerCase() } : {}),
-      ...(f.ville.trim() ? { ville: f.ville.trim() } : {}),
-      ...(f.typeBien.trim() ? { typeBien: f.typeBien.trim() } : {}),
-      source: 'manuel',
-      statut: 'a_appeler',
-      notes: f.notes.trim(),
-      tentatives: 0,
-      historique: [{ le: maintenant, par: utilisateur.nom, resultat: 'note', texte: 'Contact ajouté à la main.' }],
-      creeLe: maintenant,
-      majLe: maintenant,
-    };
-    upsert('crm', c);
-    fermer();
-  };
-  const champ = (k: keyof typeof f) => (e: { target: { value: string } }) => setF((x) => ({ ...x, [k]: e.target.value }));
-  return (
-    <Modal
-      ouvert={ouvert}
-      onFermer={fermer}
-      titre="Nouveau contact"
-      pied={
-        <>
-          <Button variant="ghost" onClick={fermer}>
-            Annuler
-          </Button>
-          <Button variant="primary" icone={<Plus />} disabled={!f.nom.trim() || (!f.telephone.trim() && !f.email.trim())} onClick={creer}>
-            Ajouter
-          </Button>
-        </>
-      }
-    >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <Field label="Nom" requis>
-            <Input value={f.nom} onChange={champ('nom')} autoFocus />
-          </Field>
-        </div>
-        <Field label="Téléphone">
-          <Input type="tel" value={f.telephone} onChange={champ('telephone')} />
-        </Field>
-        <Field label="E-mail">
-          <Input type="email" value={f.email} onChange={champ('email')} />
-        </Field>
-        <Field label="Ville">
-          <Input value={f.ville} onChange={champ('ville')} />
-        </Field>
-        <Field label="Bien">
-          <Input value={f.typeBien} onChange={champ('typeBien')} placeholder="T2, maison…" />
-        </Field>
-        <div className="sm:col-span-2">
-          <Field label="Notes">
-            <Textarea rows={2} value={f.notes} onChange={champ('notes')} />
-          </Field>
-        </div>
-      </div>
-      {!f.telephone.trim() && !f.email.trim() && <p className="mt-3 text-[12.5px] text-(--lm-encre-2)">Téléphone ou e-mail requis.</p>}
-      {doublon && (
-        <Alert
-          tone="alerte"
-          className="mt-3"
-          titre={`${doublon.nom} est déjà dans le CRM avec ce numéro ou cet e-mail.`}
-          actions={
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => {
-                fermer();
-                onOuvrir(doublon.id);
-              }}
-            >
-              Ouvrir sa fiche
-            </Button>
-          }
-        />
-      )}
-    </Modal>
-  );
-}
 
 export default function Crm() {
   const { crm, upsert, remove, utilisateur, lectureSeule, mode } = useErp();
@@ -310,7 +215,7 @@ export default function Crm() {
       {gerant && <ConnecterClaude ouvert={claude} onFermer={() => setClaude(false)} demo={mode !== 'reel'} />}
       {gerant && <AgendaCrm ouvert={agenda} onFermer={() => setAgenda(false)} demo={mode !== 'reel'} />}
       {dossier && <EnvoyerDossier ouvert={lienDossier} onFermer={() => setLienDossier(false)} />}
-      {!lectureSeule && <NouveauContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} onOuvrir={ouvrir} />}
+      {!lectureSeule && <AssistantContact ouvert={nouveau} onFermer={() => setNouveau(false)} contacts={crm} onOuvrir={ouvrir} />}
     </>
   );
 }
