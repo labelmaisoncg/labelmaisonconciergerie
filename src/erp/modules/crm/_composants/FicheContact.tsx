@@ -279,7 +279,7 @@ export function FicheContact({ contact, onFermer, onModifier, onSupprimer, auteu
               }}
             >
               <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ajouter une note…" aria-label="Nouvelle note" />
-              <Button type="submit" variant="secondary" icone={<MessageSquareText />} disabled={!note.trim()}>
+              <Button type="submit" variant="secondary" icone={<MessageSquareText />} disabled={!note.trim()} className="shrink-0 max-sm:h-11">
                 Noter
               </Button>
             </form>

@@ -321,16 +321,33 @@ html:has(.erp-root) body {
  * double tap pour zoomer, pas de rebond qui fait glisser la page, taille du
  * texte stable en paysage (layout/ecranFige.ts pour Safari). Sur écran
  * tactile, les champs font 16 px : en dessous, l'iPhone zoome dès qu'on les
- * touche.
+ * touche. Le zoom n'est coupé que dans l'app ERP (.lm-ecran-fige, ErpApp) :
+ * le séjour, l'espace propriétaire et l'espace opérations partagent
+ * .erp-root et gardent le zoom.
  */
-html:has(.erp-root) {
+html:has(.lm-ecran-fige) {
   touch-action: pan-x pan-y;
+}
+html:has(.erp-root) {
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 html:has(.erp-root) body {
   overscroll-behavior: none;
+}
+/*
+ * Safari repart de zéro à chaque zone qui défile (corps d'une fenêtre, d'un
+ * tiroir, liste de la recherche) : la règle posée sur html ne vaut plus à
+ * l'intérieur, et on y zoomait encore au pincement ou au double tap. Chaque
+ * élément de l'app ERP la reprend donc, dans la couche `base` : un composant qui
+ * gère ses propres gestes la remplace (la carte, un utilitaire touch-*).
+ */
+@layer base {
+  .lm-ecran-fige,
+  .lm-ecran-fige * {
+    touch-action: pan-x pan-y;
+  }
 }
 
 /*

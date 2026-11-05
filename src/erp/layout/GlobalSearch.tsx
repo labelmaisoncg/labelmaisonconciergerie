@@ -387,7 +387,7 @@ function Palette({ onFermer }: { onFermer: () => void }) {
           </button>
         </div>
 
-        <div ref={listeRef} id={listeId} role="listbox" aria-label="Résultats" className="lm-defilement min-h-0 flex-1 overflow-y-auto p-2">
+        <div ref={listeRef} id={listeId} role="listbox" aria-label="Résultats" className="lm-defilement min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none p-2">
           {rien && (
             <div className="px-3 py-8 text-center">
               <p className="text-[14px] font-medium text-(--lm-encre)">Rien trouvé pour « {q.trim()} ».</p>

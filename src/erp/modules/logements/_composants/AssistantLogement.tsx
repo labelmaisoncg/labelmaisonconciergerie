@@ -287,7 +287,7 @@ function Assistant({ onFermer, onCree }: Omit<AssistantLogementProps, 'ouvert'>)
           </header>
 
           <form onSubmit={continuer} onKeyDown={entree} noValidate className="flex min-h-0 flex-1 flex-col">
-            <div ref={corps} className="lm-defilement min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-8 sm:px-8 sm:pt-8">
+            <div ref={corps} className="lm-defilement min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none px-4 pt-6 pb-8 sm:px-8 sm:pt-8">
               <h2 id={titreId} ref={titre} tabIndex={-1} style={{ outline: 'none' }} className="lm-titre text-[24px] leading-tight text-balance text-(--lm-encre) sm:text-[28px]">
                 {q.question}
               </h2>
