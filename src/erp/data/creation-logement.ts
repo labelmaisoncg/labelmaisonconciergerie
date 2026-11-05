@@ -404,7 +404,8 @@ const A_REMPLIR: Partial<Record<keyof SaisieLogement, string>> = {
   ville: 'Indiquez la ville.',
   nom: 'Donnez un nom au logement.',
 };
-const A_REMPLIR_PROPRIETAIRE: Partial<Record<keyof SaisieProprietaire, string>> = {
+/** Champ du propriétaire laissé vide (assistant du logement et assistant « Nouveau propriétaire »). */
+export const A_REMPLIR_PROPRIETAIRE: Partial<Record<keyof SaisieProprietaire, string>> = {
   nom: 'Indiquez le nom du propriétaire.',
   email: 'Indiquez son e-mail.',
   telephone: 'Indiquez son téléphone.',
