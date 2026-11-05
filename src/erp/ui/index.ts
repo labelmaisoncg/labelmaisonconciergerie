@@ -62,4 +62,20 @@ export { FicheEtapes } from './FicheEtapes';
 export type { FicheEtapesProps } from './FicheEtapes';
 export { Segmente } from './Segmente';
 export type { SegmenteProps, OptionSegment } from './Segmente';
+export {
+  Assistant,
+  CHAMP_ASSISTANT,
+  CLASSES_CHOIX,
+  ChoixCartes,
+  ChoixCourts,
+  ChoixListe,
+  Compteur,
+  InputEuros,
+  NBSP,
+  RecapAssistant,
+  clavierChoix,
+  entreeChoix,
+  useParcours,
+} from './Assistant';
+export type { AssistantProps, LigneRecapAssistant, OptionChoix, OptionsParcours } from './Assistant';
 // Graphiques : importer directement depuis './Graphiques' (recharts reste hors du lot commun).
