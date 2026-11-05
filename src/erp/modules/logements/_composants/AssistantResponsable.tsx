@@ -94,7 +94,7 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
   }
 
   const questions: Record<EcranResponsable, { question: string; aide?: string }> = {
-    qui: { question: `Qui va s’occuper de ${l.nom}${NBSP}?`, aide: `La personne verra ${l.nom} dans son espace opérations.` },
+    qui: { question: `Qui va s’occuper de ${l.nom}${NBSP}?`, aide: 'La personne le verra dans son espace opérations.' },
     email: { question: `Quelle est son adresse e-mail${NBSP}?`, aide: 'Elle reçoit un lien personnel, valable 7 jours, vers son espace opérations.' },
     identite: { question: `Qui est-ce${NBSP}?` },
     logements: { question: `Quels logements suivra-t-elle${NBSP}?` },

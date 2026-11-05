@@ -121,7 +121,7 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
       )}
       {ecran === 'destinataire' && <Destinataire b={b} maj={maj} proprietaires={proprietaires} continuer={continuer} titreId={titreId} />}
       {ecran === 'dates' && (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
           <Field label="Date d’émission" erreur={etat.erreurChamp('emission')}>
             <Input id={idChamp('emission')} type="date" value={b.emission} onChange={(e) => maj({ emission: e.target.value })} onBlur={() => p.quitter('emission')} className={CHAMP_ASSISTANT} />
           </Field>

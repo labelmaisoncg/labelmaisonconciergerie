@@ -172,7 +172,8 @@ function EcranDates({ b, maj, ctx, erreur, quitter }: PropsEcran & { ctx: Contex
   const conflits = chevauchements(b, ctx);
   return (
     <>
-      <div className="grid grid-cols-2 gap-3">
+      {/* Côte à côte dès 360 px ; en dessous, un champ de date n'a pas la place de montrer toute la date. */}
+      <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
         <Field label="Arrivée" erreur={erreur('arrivee')}>
           <Input
             id={idChamp('arrivee')}
@@ -242,7 +243,7 @@ function EcranVoyageur({ b, maj, capacite, erreur, quitter }: PropsEcran & { cap
           libelle={
             <>
               Voyageurs
-              {capacite !== undefined && <span className="block text-[12.5px] text-(--lm-encre-3)">{pluriel(capacite, 'voyageur')} au plus dans ce logement</span>}
+              {capacite !== undefined && <span className="block text-[12.5px] text-(--lm-encre-3)">{capacite} au plus</span>}
             </>
           }
           valeur={b.nbPersonnes}

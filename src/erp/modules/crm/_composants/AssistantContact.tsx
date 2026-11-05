@@ -77,6 +77,8 @@ function Parcours({ onFermer, contacts, onOuvrir }: Omit<Props, 'ouvert'>) {
       tone="alerte"
       className="mt-4"
       titre={`${doublon.nom} est déjà dans le CRM avec ce numéro ou cet e-mail.`}
+      // Dans une fenêtre, le bouton passe sous le texte (à côté, il l'étranglait sur téléphone).
+      actionsDessous
       actions={
         <Button
           size="sm"
