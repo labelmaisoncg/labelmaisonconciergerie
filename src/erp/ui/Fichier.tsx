@@ -11,19 +11,28 @@ import { Button, type TailleBouton, type VarianteBouton } from './Button';
 import { cn } from './cn';
 
 /**
- * Adresse web affichable telle quelle : https (ou blob, aperçu local) seulement.
- * Jamais « javascript: » ni « data: » : une adresse écrite dans la base par un
- * autre compte ne doit pas pouvoir lancer un script dans l'ERP au clic.
+ * Adresse web affichable : https, aperçu local (blob) ou chemin du site lui-même
+ * (« /images/… », une seule barre : ni « // » ni « /\ », qui mèneraient vers un
+ * autre site) ; une adresse http passe en https. Jamais « javascript: » ni
+ * « data: » : une adresse écrite dans la base par un autre compte ne doit pas
+ * pouvoir lancer un script dans l'ERP au clic.
  */
-const adresseWebSure = (url: string): boolean => /^(https:\/\/|blob:)/i.test(url.trim());
+export function adresseWebSure(url: string): string | undefined {
+  const u = url.trim();
+  // Tabulation ou saut de ligne : le navigateur les retire, « /\t/hote » deviendrait « //hote ».
+  if (/[\u0000-\u001f\u007f]/.test(u)) return undefined;
+  if (/^(https:\/\/|blob:|\/(?![\/\\]))/i.test(u)) return u;
+  if (/^http:\/\//i.test(u)) return `https://${u.slice(7)}`;
+  return undefined;
+}
 
-/** Adresse affichable d'un fichier : lien signé (stockage), adresse web https telle quelle, rien pour la démo. */
+/** Adresse affichable d'un fichier : lien signé (stockage), adresse web sûre (adresseWebSure), rien pour la démo. */
 export function useLienFichier(url?: string): string | undefined {
-  const [lien, setLien] = useState<string | undefined>(() => (url && !url.startsWith('demo://') && !estFichierStocke(url) && adresseWebSure(url) ? url : undefined));
+  const [lien, setLien] = useState<string | undefined>(() => (url && !url.startsWith('demo://') && !estFichierStocke(url) ? adresseWebSure(url) : undefined));
   useEffect(() => {
     let actif = true;
     if (!url || url.startsWith('demo://')) setLien(undefined);
-    else if (!estFichierStocke(url)) setLien(adresseWebSure(url) ? url : undefined);
+    else if (!estFichierStocke(url)) setLien(adresseWebSure(url));
     else {
       setLien(undefined);
       void lienFichier(url).then((l) => actif && setLien(l ?? undefined));
