@@ -19,6 +19,16 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNod
 import { useSearchParams } from 'react-router-dom';
 import { ArrowRight, Check, Copy, Eye, Mail, Phone, UserPlus, X } from 'lucide-react';
 import {
+  ECRANS_ABSENCE_GERANT,
+  SANS_CHAMP_ABSENCE,
+  absenceGerantDepuisBrouillon,
+  brouillonAbsenceGerant,
+  erreursAbsence,
+  recapAbsence,
+  type BrouillonAbsence,
+  type EcranAbsence,
+} from '../../data/creation-absence';
+import {
   ECRANS_INVITATION_PROPRIETAIRE,
   SANS_CHAMP_INVITATION_PROPRIETAIRE,
   brouillonInvitationProprietaire,
@@ -62,6 +72,7 @@ import {
   Button,
   CHAMP_ASSISTANT,
   Card,
+  ChoixListe,
   Drawer,
   Field,
   Input,
@@ -971,6 +982,7 @@ function PanneauResponsable({ id, gerant, onFermer }: { id: Id; gerant: boolean;
 function AbsencesGerant({ membre: m }: { membre: MembreEquipe }) {
   const d = useErp();
   const [edition, setEdition] = useState<AbsenceMembre | null>(null);
+  const [nouvelle, setNouvelle] = useState(false);
   const absences = absencesValables(d.donnees.absences)
     .filter((a) => a.membreId === m.id && a.au >= AUJOURDHUI)
     .sort((a, b) => a.du.localeCompare(b.du));
@@ -979,7 +991,7 @@ function AbsencesGerant({ membre: m }: { membre: MembreEquipe }) {
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <p className="text-[15px] font-semibold text-(--lm-encre)">Absences</p>
-        <Button size="sm" onClick={() => setEdition({ id: '', membreId: m.id, du: AUJOURDHUI, au: AUJOURDHUI })}>
+        <Button size="sm" className="max-sm:min-h-11" onClick={() => setNouvelle(true)}>
           Noter une absence
         </Button>
       </div>
@@ -1003,7 +1015,111 @@ function AbsencesGerant({ membre: m }: { membre: MembreEquipe }) {
         <p className="text-(--lm-encre-2)">Aucune absence prévue.</p>
       )}
       {edition && <FormulaireAbsence membre={m} absence={edition} onFermer={() => setEdition(null)} />}
+      {nouvelle && <AssistantAbsence membre={m} onFermer={() => setNouvelle(false)} />}
     </section>
+  );
+}
+
+/** Remplaçants possibles : même règle que dans l'espace opérations (ceux qui suivent déjà tout ce qui leur reviendrait). */
+function relaisPossibles(d: ReturnType<typeof useErp>, membreId: Id, dejaChoisi?: Id) {
+  const possibles = new Set(remplacantsPossibles({ ...d.donnees, affectations: affectationsEffectives(d.donnees) }, membreId));
+  return d.donnees.equipe
+    .filter((x) => x.actif && x.id !== membreId && (possibles.has(x.id) || x.id === dejaChoisi))
+    .sort((x, y) => x.nom.localeCompare(y.nom, 'fr'))
+    .map((x) => ({ valeur: x.id, libelle: x.nom }));
+}
+
+/** Date courte, avec l'année seulement quand ce n'est pas l'année en cours. */
+const jourAbsence = (iso: string) => (iso.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jourMois(iso) : dateCourte(iso));
+
+const QUESTIONS_ABSENCE: Record<EcranAbsence, { question: string; aide?: string }> = {
+  personne: { question: `Qui sera absent${NBSP}?` },
+  dates: { question: `Quelles sont les dates de l’absence${NBSP}?`, aide: 'Pendant l’absence, ses logements et ses incidents passent au remplaçant.' },
+  remplacant: { question: `Qui reprend ses logements${NBSP}?`, aide: 'Seulement là où le logement n’a pas déjà quelqu’un.' },
+  motif: { question: `Pour quel motif${NBSP}?`, aide: 'Facultatif, jamais montré à l’équipe de terrain.' },
+  recapitulatif: { question: `Tout est correct${NBSP}?` },
+};
+const SANS_REMPLACANT = '__personne__';
+const idAbsence = (cle: string) => `assistant-absence-${cle}`;
+
+/**
+ * Nouvelle absence, pas à pas (kit ui/Assistant.tsx) : les dates, le
+ * remplaçant, le motif, puis le récapitulatif avec ce qui change. Rien n'est
+ * écrit avant « Créer l'absence » ; règles et absence : data/creation-absence.ts
+ * (la même que l'ancienne fenêtre « Noter une absence »).
+ */
+function AssistantAbsence({ membre: m, onFermer }: { membre: MembreEquipe; onFermer: () => void }) {
+  const d = useErp();
+  const [b, setB] = useState<BrouillonAbsence>(() => brouillonAbsenceGerant(m.id, AUJOURDHUI));
+  const depart = useRef(b);
+  const titreId = useId();
+  const etapes = useParcours<EcranAbsence>({ ecrans: ECRANS_ABSENCE_GERANT, idChamp: idAbsence, sansChamp: SANS_CHAMP_ABSENCE });
+  const ecran = etapes.ecran;
+  const erreurs = erreursAbsence(ecran, b, d.donnees.absences);
+  const etat = etapes.etat(erreurs);
+  const maj = (patch: Partial<BrouillonAbsence>) => setB((x) => ({ ...x, ...patch }));
+  const relais = relaisPossibles(d, m.id);
+  const nom = (id: Id) => d.donnees.equipe.find((x) => x.id === id)?.nom ?? 'Personne';
+
+  const creer = () => {
+    const r = absenceGerantDepuisBrouillon(b, { absences: d.donnees.absences, id: nouvelId('abs'), maintenant: horodatageMaintenant(), par: d.utilisateur.nom });
+    if (!r.ok) return etapes.corriger(r.ecran, Object.keys(erreursAbsence('recapitulatif', b, d.donnees.absences)));
+    d.upsert('absences', r.valeur);
+    onFermer();
+  };
+  const continuer = () => etapes.continuer(erreurs, creer);
+  const q = QUESTIONS_ABSENCE[ecran];
+
+  return (
+    <Assistant
+      titre="Nouvelle absence"
+      ecrans={ECRANS_ABSENCE_GERANT}
+      ecran={ecran}
+      question={q.question}
+      aide={q.aide}
+      idQuestion={titreId}
+      blocage={etat}
+      libelleSuite={etapes.libelleSuite('Créer l’absence')}
+      onContinuer={continuer}
+      onRetour={etapes.retour}
+      saisi={brouillonModifie(depart.current, b)}
+      abandon={`Abandonner cette absence${NBSP}?`}
+      onFermer={onFermer}
+    >
+      {ecran === 'dates' && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Du">
+            <Input id={idAbsence('dates')} type="date" value={b.du} onChange={(e) => maj({ du: e.target.value })} className={CHAMP_ASSISTANT} />
+          </Field>
+          <Field label="Au (inclus)">
+            <Input type="date" value={b.au} min={b.du} onChange={(e) => maj({ au: e.target.value })} className={CHAMP_ASSISTANT} />
+          </Field>
+        </div>
+      )}
+      {ecran === 'remplacant' && (
+        <>
+          {!relais.length && <p className="mb-3 text-[14px] text-(--lm-encre-2)">Personne ne suit tous ses logements{NBSP}: ajoutez-les d’abord à quelqu’un.</p>}
+          <ChoixListe
+            options={[{ valeur: SANS_REMPLACANT, libelle: 'Pas de remplaçant choisi' }, ...relais]}
+            valeur={b.remplacantId || SANS_REMPLACANT}
+            onChange={(v) => maj({ remplacantId: v === SANS_REMPLACANT ? '' : v })}
+            onContinuer={continuer}
+            labelledBy={titreId}
+            idPremier={idAbsence('remplacantId')}
+          />
+        </>
+      )}
+      {ecran === 'motif' && (
+        <Field label="Motif">
+          <Input id={idAbsence('motif')} value={b.motif} onChange={(e) => maj({ motif: e.target.value })} maxLength={200} autoComplete="off" className={CHAMP_ASSISTANT} />
+        </Field>
+      )}
+      {ecran === 'recapitulatif' && (
+        <RecapAssistant lignes={recapAbsence(b, { ecrans: ECRANS_ABSENCE_GERANT, nom, jour: jourAbsence }).map((l) => ({ ...l, onModifier: () => etapes.modifier(l.ecran) }))}>
+          <CeQuiChange absence={{ id: '', membreId: m.id, du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}) }} avecRemplacants={relais.length > 0} className="mt-4" />
+        </RecapAssistant>
+      )}
+    </Assistant>
   );
 }
 
@@ -1012,16 +1128,7 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
   const [a, setA] = useState<AbsenceMembre>(absence);
   const [erreur, setErreur] = useState<string>();
   const existante = !!absence.id;
-  // Remplaçants possibles : même règle que dans l'espace opérations (ceux qui suivent déjà tout ce qui leur reviendrait).
-  const possibles = new Set(remplacantsPossibles({ ...d.donnees, affectations: affectationsEffectives(d.donnees) }, m.id));
-  const relais = d.donnees.equipe
-    .filter((x) => x.actif && x.id !== m.id && (possibles.has(x.id) || x.id === absence.remplacantId))
-    .sort((x, y) => x.nom.localeCompare(y.nom, 'fr'))
-    .map((x) => ({ valeur: x.id, libelle: x.nom }));
-  const apercu = useMemo(() => apercuAbsence(d.donnees, { ...a, id: a.id || 'nouvelle' }, AUJOURDHUI), [d.donnees, a]);
-  const nom = (id?: Id) => (id ? (d.donnees.equipe.find((x) => x.id === id)?.nom ?? 'Personne') : 'Personne');
-  const nomLogement = (id: Id) => d.logements.find((x) => x.id === id)?.nom ?? 'Logement';
-  const texteIncident = (id: Id) => d.donnees.incidents.find((i) => i.id === id)?.description ?? 'Incident';
+  const relais = relaisPossibles(d, m.id, absence.remplacantId);
 
   const enregistrer = () => {
     const propre: AbsenceMembre = {
@@ -1084,40 +1191,53 @@ function FormulaireAbsence({ membre: m, absence, onFermer }: { membre: MembreEqu
         <Field label="Motif" aide="Facultatif, jamais montré à l’équipe de terrain." className="sm:col-span-2">
           <Input value={a.motif ?? ''} onChange={(e) => setA({ ...a, motif: e.target.value })} maxLength={200} />
         </Field>
-        <section aria-label="Ce qui change" className="rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 sm:col-span-2">
-          <p className="text-[13.5px] font-semibold text-(--lm-encre)">
-            Ce qui change du {jourMois(a.du)} au {jourMois(a.au)}
-          </p>
-          {!apercu.logements.length && !apercu.incidents.length ? (
-            <p className="mt-1 text-(--lm-encre-2)">Rien à reprendre : aucun logement ni incident ouvert à son nom.</p>
-          ) : (
-            <ul className="mt-2 space-y-1.5">
-              {apercu.logements.map((x) => (
-                <li key={x.logementId} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-(--lm-encre)">{nomLogement(x.logementId)}</span>
-                  <ArrowRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-label="passe à" />
-                  <span className={x.vers ? 'font-medium text-(--lm-encre)' : 'font-medium text-(--lm-danger)'}>{nom(x.vers)}</span>
-                </li>
-              ))}
-              {apercu.incidents.map((x) => (
-                <li key={x.incidentId} className="flex items-center gap-2">
-                  <span className="min-w-0 flex-1 truncate text-(--lm-encre-2)">Incident · {texteIncident(x.incidentId)}</span>
-                  <ArrowRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-label="passe à" />
-                  <span className={x.vers ? 'font-medium text-(--lm-encre)' : 'font-medium text-(--lm-danger)'}>{nom(x.vers)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {/* Sans remplaçant possible, l'aide du champ dit déjà quoi faire : une seule consigne. */}
-          {apercu.sansRemplacant > 0 && relais.length > 0 && (
-            <p className="mt-2 text-[12.5px] text-(--lm-danger)">
-              Personne pour reprendre {apercu.sansRemplacant > 1 ? `${apercu.sansRemplacant} lignes` : 'une ligne'} : choisissez un remplaçant.
-            </p>
-          )}
-          <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">Au retour, tout revient à la personne.</p>
-        </section>
+        <CeQuiChange absence={a} avecRemplacants={relais.length > 0} className="sm:col-span-2" />
       </div>
     </Modal>
+  );
+}
+
+/** Ce qui change pendant l'absence : ses logements et ses incidents, et qui les reprend (calcul de l'espace opérations). */
+function CeQuiChange({ absence: a, avecRemplacants, className }: { absence: AbsenceMembre; avecRemplacants: boolean; className?: string }) {
+  const d = useErp();
+  const apercu = useMemo(() => apercuAbsence(d.donnees, { ...a, id: a.id || 'nouvelle' }, AUJOURDHUI), [d.donnees, a]);
+  const nom = (id?: Id) => (id ? (d.donnees.equipe.find((x) => x.id === id)?.nom ?? 'Personne') : 'Personne');
+  const nomLogement = (id: Id) => d.logements.find((x) => x.id === id)?.nom ?? 'Logement';
+  const texteIncident = (id: Id) => d.donnees.incidents.find((i) => i.id === id)?.description ?? 'Incident';
+  return (
+    <section aria-label="Ce qui change" className={cn('rounded-lg border border-(--lm-bord) bg-(--lm-surface-2) p-3 text-[13px]', className)}>
+      <p className="text-[13.5px] font-semibold text-(--lm-encre)">
+        Ce qui change du {jourAbsence(a.du)} au {jourAbsence(a.au)}
+      </p>
+      {!apercu.logements.length && !apercu.incidents.length ? (
+        <p className="mt-1 text-(--lm-encre-2)">Rien à reprendre{NBSP}: aucun logement ni incident ouvert à son nom.</p>
+      ) : (
+        <ul className="mt-2 space-y-1.5">
+          {apercu.logements.map((x) => (
+            <li key={x.logementId} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-(--lm-encre)">{nomLogement(x.logementId)}</span>
+              <ArrowRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-label="passe à" />
+              <span className={x.vers ? 'font-medium text-(--lm-encre)' : 'font-medium text-(--lm-danger)'}>{nom(x.vers)}</span>
+            </li>
+          ))}
+          {apercu.incidents.map((x) => (
+            <li key={x.incidentId} className="flex items-center gap-2">
+              <span className="min-w-0 flex-1 truncate text-(--lm-encre-2)">Incident · {texteIncident(x.incidentId)}</span>
+              <ArrowRight className="size-3.5 shrink-0 text-(--lm-encre-3)" aria-label="passe à" />
+              <span className={x.vers ? 'font-medium text-(--lm-encre)' : 'font-medium text-(--lm-danger)'}>{nom(x.vers)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {/* Sans remplaçant possible, l'aide du champ dit déjà quoi faire : une seule consigne. */}
+      {apercu.sansRemplacant > 0 && avecRemplacants && (
+        <p className="mt-2 text-[12.5px] text-(--lm-danger)">
+          Personne pour reprendre {apercu.sansRemplacant > 1 ? `${apercu.sansRemplacant}${NBSP}lignes` : 'une ligne'}
+          {NBSP}: choisissez un remplaçant.
+        </p>
+      )}
+      <p className="mt-2 text-[12.5px] text-(--lm-encre-3)">Au retour, tout revient à la personne.</p>
+    </section>
   );
 }
 

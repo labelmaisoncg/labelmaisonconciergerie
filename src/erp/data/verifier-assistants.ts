@@ -88,12 +88,23 @@ import {
 } from './creation-guide';
 import { LIBELLE_TYPE_GUIDE, estLienGuide } from './guides';
 import { brouillonSignalement, ecransSignalement, erreursSignalement, recapSignalement, sejoursDuLogement, signalementDepuisBrouillon, type BrouillonSignalement } from './creation-signalement';
+import {
+  ECRANS_ABSENCE_GERANT,
+  ECRANS_ABSENCE_POLE,
+  absenceGerantDepuisBrouillon,
+  actionAbsenceDepuisBrouillon,
+  brouillonAbsenceGerant,
+  brouillonAbsencePole,
+  erreursAbsence,
+  recapAbsence,
+} from './creation-absence';
+import { verifierAbsence } from './operations';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
 import type { ContactCrm, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, QuestionFrequente, Reservation, RoleUtilisateur, Utilisateur } from './types';
-import type { MembreEquipe, RoleOperations } from './types-operations';
+import type { AbsenceMembre, MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
 let reussis = 0;
@@ -961,6 +972,65 @@ section('Espace opérations, signaler un incident : écrans, règles et même ac
   const recap = recapSignalement(cas[1], { logements: [{ id: 'log-1', nom: 'T2 Gare' }], libelleSejour: (id) => (id === 'r1' ? 'Clara D., du 3 au 6 nov.' : undefined), avecSejours: true });
   verifier(recap.map((l) => l.valeur).join(' | ') === `T2 Gare | Urgent | Porte d’entrée forcée, serrure cassée. | 2${NBSP}photos | Clara D., du 3 au 6 nov.`, `récapitulatif (${recap.map((l) => l.valeur).join(' | ')})`);
   verifier(recapSignalement(cas[0], { logements: [], libelleSejour: () => undefined, avecSejours: false }).every((l) => l.cle !== 'sejour'), 'récapitulatif sans séjour possible : pas de ligne « Séjour »');
+}
+
+/* ================================================================ absence */
+
+section('Nouvelle absence : écrans, règles, même absence (gérant) et même action (pôle) qu’avant');
+{
+  const J0 = '2026-11-05';
+  const absences = [
+    { id: 'abs-1', membreId: 'eq-1', du: '2026-11-10', au: '2026-11-12' },
+    { id: 'abs-2', membreId: 'eq-2', du: '2026-11-01', au: '2026-11-03', annuleeLe: '2026-10-30T10:00:00+01:00' },
+  ] as AbsenceMembre[];
+  verifier(ECRANS_ABSENCE_GERANT.join() === 'dates,remplacant,motif,recapitulatif', 'gérant : dates, remplaçant, motif, récapitulatif (la personne est celle de la fiche)');
+  verifier(ECRANS_ABSENCE_POLE.join() === 'personne,dates,remplacant,recapitulatif', 'pôle : la personne, les dates, le remplaçant, récapitulatif (pas de motif, comme avant)');
+  const g0 = brouillonAbsenceGerant('eq-1', J0);
+  const p0 = brouillonAbsencePole(J0);
+  verifier(g0.du === J0 && g0.au === J0 && p0.du === J0 && p0.au === ajouterJours(J0, 6) && p0.membreId === '', 'départ : aujourd’hui (gérant), une semaine (pôle), comme avant');
+  verifier(erreursAbsence('personne', p0, absences).membreId === 'Choisissez la personne absente.', 'pôle : la personne d’abord');
+  verifier(erreursAbsence('dates', { ...g0, au: '2026-11-04' }, absences).dates === 'La fin doit être après le début.', 'fin avant le début : refusée, sur l’écran des dates');
+  verifier(erreursAbsence('dates', { ...g0, du: '2026-11-11', au: '2026-11-15' }, absences).dates === 'Une absence est déjà notée sur ces dates pour cette personne.', 'chevauchement : refusé, sur l’écran des dates');
+  verifier(!erreursAbsence('dates', { ...g0, membreId: 'eq-2', du: '2026-11-02', au: '2026-11-02' }, absences).dates, 'absence annulée : ne compte plus');
+  verifier(!Object.keys(erreursAbsence('remplacant', { ...g0, au: '2026-11-04' }, absences)).length, 'le refus des dates ne bloque que l’écran des dates');
+  verifier(erreursAbsence('remplacant', { ...g0, remplacantId: 'eq-1' }, absences).remplacantId === 'Une personne ne peut pas se remplacer elle-même.', 'son propre remplaçant : refusé');
+  /** L'ancienne fenêtre du gérant (Acces.tsx, FormulaireAbsence, à la création), recopiée telle quelle. */
+  const ancienneGerant = (a: AbsenceMembre, id: string, maintenant: string, par: string) => {
+    const propre: AbsenceMembre = {
+      ...a,
+      id: a.id || id,
+      ...(a.motif?.trim() ? { motif: a.motif.trim() } : { motif: undefined }),
+      creeLe: a.creeLe ?? maintenant,
+      par: a.par ?? par,
+      parMembreId: undefined,
+    };
+    return verifierAbsence(propre, absences) ? undefined : propre;
+  };
+  for (const x of [
+    { du: J0, au: J0, remplacantId: '', motif: '' },
+    { du: '2026-11-13', au: '2026-11-20', remplacantId: 'eq-3', motif: '  Congés  ' },
+    { du: '2026-11-11', au: '2026-11-11', remplacantId: '', motif: '' },
+    { du: '2026-11-20', au: '2026-11-19', remplacantId: '', motif: 'x' },
+  ]) {
+    const b = { ...g0, ...x };
+    const r = absenceGerantDepuisBrouillon(b, { absences, id: 'abs-n', maintenant: '2026-11-05T09:00:00+01:00', par: 'Abdel' });
+    const avant = ancienneGerant({ id: '', membreId: 'eq-1', du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}), ...(b.motif ? { motif: b.motif } : {}) }, 'abs-n', '2026-11-05T09:00:00+01:00', 'Abdel');
+    verifier(r.ok === !!avant, `gérant : même absence permise ou refusée (${b.du} au ${b.au})`);
+    if (r.ok && avant) verifier(empreinte(r.valeur) === empreinte(avant), `gérant : même absence enregistrée (${b.du} au ${b.au}${b.motif.trim() ? ', motif' : ''})`);
+  }
+  /** L'ancien panneau du pôle (espace-operations/Equipe.tsx, à la création), recopié tel quel : l'action envoyée. */
+  const ancienPole = (a: AbsenceMembre) =>
+    verifierAbsence({ ...a, id: a.id || 'nouvelle' }, absences) ? undefined : { type: 'absence', membreId: a.membreId, du: a.du, au: a.au, remplacantId: a.remplacantId || undefined };
+  for (const x of [{ membreId: 'eq-2' }, { membreId: 'eq-3', remplacantId: 'eq-2' }, { membreId: 'eq-1', du: '2026-11-08' }, { membreId: '' }]) {
+    const b = { ...p0, ...x };
+    const r = actionAbsenceDepuisBrouillon(b, absences);
+    const avant = ancienPole({ id: '', membreId: b.membreId, du: b.du, au: b.au, ...(b.remplacantId ? { remplacantId: b.remplacantId } : {}) });
+    verifier(r.ok === !!avant, `pôle : même absence permise ou refusée (${b.membreId || 'personne'})`);
+    if (r.ok && avant) verifier(empreinte(r.valeur) === empreinte(avant), `pôle : même action « absence » envoyée (${b.membreId})`);
+  }
+  const recap = recapAbsence({ ...p0, membreId: 'eq-2', remplacantId: 'eq-3' }, { ecrans: ECRANS_ABSENCE_POLE, nom: (id) => ({ 'eq-2': 'Yanis', 'eq-3': 'Clara' })[id] ?? '', jour: (iso) => iso.slice(8) });
+  verifier(recap.map((l) => l.valeur).join(' | ') === 'Yanis | Du 05 au 11 inclus | Clara', `récapitulatif du pôle (${recap.map((l) => l.valeur).join(' | ')})`);
+  verifier(recapAbsence(g0, { ecrans: ECRANS_ABSENCE_GERANT, nom: () => '', jour: (iso) => iso }).map((l) => l.cle).join() === 'dates,remplacant,motif', 'récapitulatif du gérant : sans la personne, avec le motif');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
