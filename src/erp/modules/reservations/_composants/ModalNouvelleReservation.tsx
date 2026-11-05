@@ -85,7 +85,8 @@ function AssistantReservation({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
 
   return (
     <Assistant
-      titre="Nouvelle réservation directe"
+      // « directe » est dit par l'aide du premier écran : à 320 px, le titre tient sur une ligne entre les deux ronds de 44 px.
+      titre="Nouvelle réservation"
       ecrans={ECRANS_RESERVATION}
       ecran={ecran}
       question={q.question}
