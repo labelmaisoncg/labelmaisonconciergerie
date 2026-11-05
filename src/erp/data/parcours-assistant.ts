@@ -94,8 +94,13 @@ export function dateLisible(date: DateISO, reference: DateISO): string {
 
 /** Espace insécable (U+00A0), avant « : ? ! » et entre un nombre et son unité. */
 export const NBSP = String.fromCharCode(0xa0);
-/** Trait d'union insécable (U+2011) : « e‑mail », « l'avez‑vous » ne se coupent pas en fin de ligne. */
-export const TIRET_INSECABLE = String.fromCharCode(0x2011);
+/**
+ * Trait d'union qui ne se coupe pas : celui de la police, suivi du gluon
+ * invisible U+2060. Le trait d'union insécable U+2011 n'existe ni dans
+ * Figtree ni dans Playfair Display : le navigateur l'empruntait à une autre
+ * police, plus court et plus épais, visible dans les questions en serif.
+ */
+export const TIRET_INSECABLE = '-' + String.fromCharCode(0x2060);
 
 /**
  * Typographie des textes de l'assistant sur petit écran : un nombre ne quitte

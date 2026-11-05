@@ -57,8 +57,8 @@ export function erreursInvitationProprietaire(ecran: EcranInvitationProprietaire
   }
   const r: Record<string, string> = {};
   if (ecran === 'email') {
-    if (!b.email.trim()) r.email = 'Indiquez son adresse e‑mail.';
-    else if (!EMAIL_RESPONSABLE.test(adresseInvitation(b.email))) r.email = 'Adresse e‑mail invalide.';
+    if (!b.email.trim()) r.email = 'Indiquez son adresse e-mail.';
+    else if (!EMAIL_RESPONSABLE.test(adresseInvitation(b.email))) r.email = 'Adresse e-mail invalide.';
   }
   if (ecran === 'identite' && b.nom.trim().length < 2 && !proprietaireAvecEmail(ctx.proprietaires, b.email)) r.nom = 'Indiquez le nom du propriétaire.';
   return r;
@@ -111,7 +111,7 @@ export function recapInvitationProprietaire(
   const ids = [...new Set([...(existant ? ctx.logements.filter((l) => l.proprietaireId === existant.id).map((l) => l.id) : []), ...b.logementIds])];
   const noms = ids.map((id) => ctx.logements.find((l) => l.id === id)?.nom).filter(Boolean);
   return [
-    { cle: 'email', ecran: 'email', libelle: 'Adresse e‑mail', valeur: adresseInvitation(b.email) },
+    { cle: 'email', ecran: 'email', libelle: 'Adresse e-mail', valeur: adresseInvitation(b.email) },
     { cle: 'nom', ecran: 'identite', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
     { cle: 'telephone', ecran: 'identite', libelle: 'Téléphone', valeur: telephone || 'Non renseigné' },
     { cle: 'logements', ecran: 'logements', libelle: 'Ses logements', valeur: noms.join(', ') || 'Aucun pour l’instant' },

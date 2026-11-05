@@ -210,7 +210,7 @@ function EcranDates({ b, maj, ctx, erreur, quitter }: PropsEcran & { ctx: Contex
         </p>
       )}
       {conflits.length > 0 && (
-        <Alert tone="danger" titre={`Dates indisponibles${NBSP}: surbooking refusé`} className="mt-4">
+        <Alert tone="danger" titre={`Dates indisponibles${NBSP}: déjà réservées`} className="mt-4">
           <ul className="mt-1 space-y-1">
             {conflits.map((c) => (
               <li key={c.reservation.id}>

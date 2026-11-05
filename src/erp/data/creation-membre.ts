@@ -38,8 +38,8 @@ export function erreursMembre(ecran: EcranMembre, b: BrouillonMembre, utilisateu
   const r: Record<string, string> = {};
   const email = adresseMembre(b.email);
   if (ecran === 'email') {
-    if (!email) r.email = 'Indiquez son adresse e‑mail.';
-    else if (!/^\S+@\S+\.\S+$/.test(email)) r.email = 'Adresse e‑mail invalide.';
+    if (!email) r.email = 'Indiquez son adresse e-mail.';
+    else if (!/^\S+@\S+\.\S+$/.test(email)) r.email = 'Adresse e-mail invalide.';
     else if (utilisateurs.some((u) => u.email.toLowerCase() === email)) r.email = 'Ce membre existe déjà.';
   }
   if (ecran === 'nom' && !b.nom.trim()) r.nom = 'Indiquez le nom affiché.';
@@ -67,7 +67,7 @@ export function membreDepuisBrouillon(b: BrouillonMembre, o: { utilisateurs: rea
 /** Lignes du récapitulatif. */
 export function recapMembre(b: BrouillonMembre): { cle: string; ecran: Exclude<EcranMembre, 'recapitulatif'>; libelle: string; valeur: string }[] {
   return [
-    { cle: 'email', ecran: 'email', libelle: 'Adresse e‑mail', valeur: adresseMembre(b.email) },
+    { cle: 'email', ecran: 'email', libelle: 'Adresse e-mail', valeur: adresseMembre(b.email) },
     { cle: 'nom', ecran: 'nom', libelle: 'Nom affiché', valeur: b.nom.trim() },
     { cle: 'role', ecran: 'role', libelle: 'Rôle', valeur: LIBELLES.role[b.role] },
   ];

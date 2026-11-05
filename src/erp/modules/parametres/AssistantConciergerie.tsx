@@ -87,7 +87,7 @@ export function AssistantConciergerie({ onInviter, onFermer }: { onInviter: (cib
         </Field>
       )}
       {ecran === 'email' && (
-        <Field label="Son adresse e‑mail" erreur={etat.erreurChamp('email')}>
+        <Field label="Son adresse e-mail" erreur={etat.erreurChamp('email')}>
           <Input
             id={idChamp('email')}
             type="email"

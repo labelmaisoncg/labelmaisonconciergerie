@@ -35,7 +35,7 @@ export function erreursConciergerie(ecran: EcranConciergerie, b: BrouillonConcie
   if (ecran === 'nom' && !b.nom.trim()) r.nom = 'Donnez le nom de la conciergerie.';
   if (ecran === 'email') {
     if (!b.email.trim()) r.email = 'Indiquez l’adresse de la personne.';
-    else if (!EMAIL.test(b.email.trim())) r.email = 'Adresse e‑mail invalide.';
+    else if (!EMAIL.test(b.email.trim())) r.email = 'Adresse e-mail invalide.';
   }
   return r;
 }

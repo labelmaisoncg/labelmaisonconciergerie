@@ -165,7 +165,7 @@ section('Parcours : ce qui manque, dit une seule fois');
 
 section('Typographie à 320 px : nombres, « e-mail », « -vous »');
 {
-  const T = '‑';
+  const T = '-\u2060';
   verifier(insecables('2 voyageurs · mer. 14 févr. · 360,00 €') === `2${NBSP}voyageurs · mer. 14${NBSP}févr. · 360,00${NBSP}€`, 'un nombre ne quitte pas son unité');
   verifier(insecables('Indiquez son e-mail.') === `Indiquez son e${T}mail.` && insecables('E-mail') === `E${T}mail`, '« e-mail » ne se coupe pas');
   verifier(insecables('Quand l’avez-vous constaté ?') === `Quand l’avez${T}vous constaté ?` && insecables('Où se trouve-t-il ?') === `Où se trouve${T}t${T}il ?`, '« -vous », « -t-il » ne se coupent pas');
@@ -677,8 +677,8 @@ section('Accès, inviter un propriétaire : écrans, règles et mêmes écriture
   };
   const b = (x: Partial<BrouillonInvitationProprietaire> = {}): BrouillonInvitationProprietaire => ({ ...brouillonInvitationProprietaire(), ...x });
   verifier(ECRANS_INVITATION_PROPRIETAIRE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif');
-  verifier(erreursInvitationProprietaire('email', b(), ctx).email === 'Indiquez son adresse e‑mail.', 'e-mail vide : à indiquer');
-  verifier(erreursInvitationProprietaire('email', b({ email: 'alice@exemple' }), ctx).email === 'Adresse e‑mail invalide.', 'e-mail invalide : refusé (même règle que l’ancienne fenêtre)');
+  verifier(erreursInvitationProprietaire('email', b(), ctx).email === 'Indiquez son adresse e-mail.', 'e-mail vide : à indiquer');
+  verifier(erreursInvitationProprietaire('email', b({ email: 'alice@exemple' }), ctx).email === 'Adresse e-mail invalide.', 'e-mail invalide : refusé (même règle que l’ancienne fenêtre)');
   verifier(erreursInvitationProprietaire('identite', b({ email: 'x@y.fr', nom: 'A' }), ctx).nom === 'Indiquez le nom du propriétaire.', 'nouvelle fiche : nom de 2 lettres au moins');
   verifier(!erreursInvitationProprietaire('identite', b({ email: ' ALICE@exemple.fr', nom: '' }), ctx).nom, 'fiche reprise (même adresse, sans casse) : son nom suffit');
   verifier(!Object.keys(erreursInvitationProprietaire('logements', b(), ctx)).length, 'logements : facultatifs, comme avant');
@@ -783,8 +783,8 @@ section('Équipe, ajouter quelqu’un : écrans, règles et même ligne que l’
   const b0 = brouillonMembre();
   verifier(ECRANS_MEMBRE.join() === 'email,nom,role,recapitulatif', 'écrans : e-mail, nom affiché, rôle, récapitulatif');
   verifier(b0.role === 'operations', 'rôle d’office : « Opérations », comme avant');
-  verifier(erreursMembre('email', b0, utilisateurs).email === 'Indiquez son adresse e‑mail.', 'e-mail vide : à indiquer');
-  verifier(erreursMembre('email', { ...b0, email: 'clara@exemple' }, utilisateurs).email === 'Adresse e‑mail invalide.', 'e-mail illisible : refusé');
+  verifier(erreursMembre('email', b0, utilisateurs).email === 'Indiquez son adresse e-mail.', 'e-mail vide : à indiquer');
+  verifier(erreursMembre('email', { ...b0, email: 'clara@exemple' }, utilisateurs).email === 'Adresse e-mail invalide.', 'e-mail illisible : refusé');
   verifier(erreursMembre('email', { ...b0, email: ' ABDEL@exemple.fr ' }, utilisateurs).email === 'Ce membre existe déjà.', 'déjà dans l’équipe (sans casse) : refusé');
   verifier(erreursMembre('nom', { ...b0, nom: '  ' }, utilisateurs).nom === 'Indiquez le nom affiché.', 'nom affiché vide : refusé');
   verifier(!Object.keys(erreursMembre('role', b0, utilisateurs)).length, 'rôle : toujours choisi');
@@ -829,7 +829,7 @@ section('Espaces, inviter une conciergerie : écrans, règles et même envoi que
   verifier(ECRANS_CONCIERGERIE.join() === 'nom,email,recapitulatif', 'écrans : nom, adresse, récapitulatif');
   verifier(erreursConciergerie('nom', b0).nom === 'Donnez le nom de la conciergerie.', 'nom vide : même phrase qu’avant');
   verifier(erreursConciergerie('email', b0).email === 'Indiquez l’adresse de la personne.', 'adresse vide : à indiquer');
-  verifier(erreursConciergerie('email', { ...b0, email: 'sens@exemple' }).email === 'Adresse e‑mail invalide.', 'adresse illisible : refusée');
+  verifier(erreursConciergerie('email', { ...b0, email: 'sens@exemple' }).email === 'Adresse e-mail invalide.', 'adresse illisible : refusée');
   verifier(NOM_CONCIERGERIE_MAX === 80, 'nom : 80 caractères au plus, comme le champ d’avant');
   const cas: BrouillonConciergerie[] = [
     { nom: ' Conciergerie de Sens ', email: ' Contact@Sens-Conciergerie.fr ' },

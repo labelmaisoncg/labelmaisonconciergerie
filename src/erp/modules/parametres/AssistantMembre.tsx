@@ -15,7 +15,7 @@ import { Assistant, CHAMP_ASSISTANT, ChoixListe, Field, Input, NBSP, RecapAssist
 const idChamp = (cle: string) => `assistant-membre-${cle}`;
 
 const QUESTIONS: Record<EcranMembre, { question: string; aide?: string }> = {
-  email: { question: `Quelle est son adresse e‑mail${NBSP}?`, aide: 'Il créera son compte avec cette adresse.' },
+  email: { question: `Quelle est son adresse e-mail${NBSP}?`, aide: 'Il créera son compte avec cette adresse.' },
   nom: { question: `Quel nom afficher${NBSP}?`, aide: 'Celui que verra l’équipe.' },
   role: { question: `Que pourra-t-il faire${NBSP}?` },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
@@ -65,7 +65,7 @@ export function AssistantMembre({ roles, onFermer, onAjoute }: { roles: OptionCh
       onFermer={onFermer}
     >
       {ecran === 'email' && (
-        <Field label="Adresse e‑mail" erreur={etat.erreurChamp('email')}>
+        <Field label="Adresse e-mail" erreur={etat.erreurChamp('email')}>
           <Input
             id={idChamp('email')}
             type="email"

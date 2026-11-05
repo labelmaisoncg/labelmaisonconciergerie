@@ -408,7 +408,7 @@ function ConfirmationTransferts({ transferts, className = 'mb-3', consigne = 'Co
 const idInvitation = (cle: string) => `assistant-invitation-proprietaire-${cle}`;
 
 const QUESTIONS_INVITATION: Record<EcranInvitationProprietaire, { question: string; aide?: string }> = {
-  email: { question: `Quelle est son adresse e‑mail${NBSP}?`, aide: `Il reçoit un lien personnel, valable 7${NBSP}jours, pour créer son compte et ouvrir son espace.` },
+  email: { question: `Quelle est son adresse e-mail${NBSP}?`, aide: `Il reçoit un lien personnel, valable 7${NBSP}jours, pour créer son compte et ouvrir son espace.` },
   identite: { question: `Qui est-ce${NBSP}?` },
   logements: { question: `Quels logements verra-t-il${NBSP}?`, aide: 'Il ne voit que ses logements.' },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
@@ -508,7 +508,7 @@ function AssistantInvitationProprietaire({ onFermer }: { onFermer: () => void })
       onFermer={onFermer}
     >
       {ecran === 'email' && (
-        <Field label="Adresse e‑mail" aide={existant ? `Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.` : undefined} erreur={etat.erreurChamp('email')}>
+        <Field label="Adresse e-mail" aide={existant ? `Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.` : undefined} erreur={etat.erreurChamp('email')}>
           <Input
             id={idInvitation('email')}
             type="email"
