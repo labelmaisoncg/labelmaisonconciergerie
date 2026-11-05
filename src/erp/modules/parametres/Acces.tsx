@@ -400,7 +400,7 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
         setInvitation({ ...r, email: adresse });
       }
     } catch (e) {
-      setErreur(`Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}`);
+      setErreur(`Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}`);
     } finally {
       setEnCours(false);
     }
@@ -1064,7 +1064,7 @@ export async function inviterResponsable(
     const r = await inviterAvecReessai(API_OPERATIONS, { action: 'inviter', membreId: m.id, email: adresse });
     return { invitation: { ...r, email: adresse } };
   } catch (e) {
-    return { erreur: `Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}` };
+    return { erreur: `Fiche et logements enregistrés, mais l’invitation n’est pas partie : ${(e as Error).message}` };
   }
 }
 

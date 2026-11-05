@@ -73,7 +73,9 @@ export {
   InputEuros,
   NBSP,
   RecapAssistant,
+  TIRET_INSECABLE,
   clavierChoix,
+  insecables,
   entreeChoix,
   useParcours,
 } from './Assistant';

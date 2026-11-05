@@ -39,7 +39,7 @@ const QUESTIONS: Record<EcranPrestataire, { question: string; aide?: string }> =
   identite: { question: `Qui est-il${NBSP}?` },
   contact: { question: `Comment le joindre${NBSP}?` },
   zone: { question: `Où intervient-il${NBSP}?` },
-  engagement: { question: 'Son engagement' },
+  engagement: { question: `S’engage-t-il à ne pas sous-traiter${NBSP}?` },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
 };
 
@@ -90,7 +90,7 @@ function AssistantPrestataire({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
 
   return (
     <Assistant
-      titre="Ajouter un prestataire"
+      titre="Nouveau prestataire"
       ecrans={ECRANS_PRESTATAIRE}
       ecran={ecran}
       question={q.question}

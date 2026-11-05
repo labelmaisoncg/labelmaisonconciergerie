@@ -1,12 +1,12 @@
 /**
  * Nouveau contact du CRM, pas à pas (kit ui/Assistant.tsx) : son nom,
  * comment le joindre, son bien, une note, puis le récapitulatif. Rien n'est
- * enregistré avant « Ajouter le contact » ; règles et ligne écrite :
+ * enregistré avant « Créer le contact » ; règles et ligne écrite :
  * data/creation-contact.ts. Un contact déjà en cours avec ce numéro ou cet
  * e-mail est signalé, avec « Ouvrir sa fiche ».
  */
 import { useRef, useState } from 'react';
-import { Alert, Assistant, Button, CHAMP_ASSISTANT, Field, Input, NBSP, RecapAssistant, Textarea, useParcours } from '../../../ui';
+import { Alert, Assistant, Button, CHAMP_ASSISTANT, Field, Input, NBSP, RecapAssistant, Textarea, insecables, useParcours } from '../../../ui';
 import { horodatageMaintenant } from '../../../data/format';
 import { idContactCrm } from '../../../data/crm';
 import { brouillonModifie } from '../../../data/parcours-assistant';
@@ -40,7 +40,7 @@ export function AssistantContact({ ouvert, ...props }: Props) {
 
 const QUESTIONS: Record<EcranContact, { question: string; aide?: string }> = {
   nom: { question: `Quel est son nom${NBSP}?` },
-  joindre: { question: `Comment le joindre${NBSP}?`, aide: 'Un téléphone ou un e-mail, au moins.' },
+  joindre: { question: `Comment le joindre${NBSP}?` },
   bien: { question: `Où est son bien${NBSP}?`, aide: 'Facultatif.' },
   notes: { question: `Une note${NBSP}?`, aide: 'Facultatif.' },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
@@ -76,13 +76,14 @@ function Parcours({ onFermer, contacts, onOuvrir }: Omit<Props, 'ouvert'>) {
     <Alert
       tone="alerte"
       className="mt-4"
-      titre={`${doublon.nom} est déjà dans le CRM avec ce numéro ou cet e-mail.`}
+      titre={insecables(`${doublon.nom} est déjà dans le CRM avec ce numéro ou cet e-mail.`)}
       // Dans une fenêtre, le bouton passe sous le texte (à côté, il l'étranglait sur téléphone).
       actionsDessous
       actions={
         <Button
           size="sm"
           variant="secondary"
+          className="max-sm:min-h-11"
           onClick={() => {
             onFermer();
             onOuvrir(doublon.id);
@@ -102,7 +103,7 @@ function Parcours({ onFermer, contacts, onOuvrir }: Omit<Props, 'ouvert'>) {
       question={q.question}
       aide={q.aide}
       blocage={etat}
-      libelleSuite={p.libelleSuite('Ajouter le contact')}
+      libelleSuite={p.libelleSuite('Créer le contact')}
       onContinuer={continuer}
       onRetour={p.retour}
       saisi={brouillonModifie(depart.current, b)}

@@ -12,11 +12,11 @@ import { AUJOURDHUI, euros } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { brouillonModifie } from '../../../data/parcours-assistant';
 import {
-  ECRANS_FACTURE,
   LIGNE_VIDE,
   SANS_CHAMP_FACTURE,
   brouillonFacture,
   cleLigne,
+  ecransFacture,
   erreursFacture,
   factureDepuisBrouillon,
   recapFacture,
@@ -26,7 +26,7 @@ import {
   type LigneSaisie,
 } from '../../../data/creation-facture';
 import type { DestinataireFacture, TypeFacture } from '../../../data/types';
-import { Assistant, Button, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, Field, IconButton, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, useParcours } from '../../../ui';
+import { Assistant, Button, CHAMP_ASSISTANT, ChoixListe, Field, IconButton, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, useParcours } from '../../../ui';
 import { prochainNumero } from '../_calculs';
 
 interface Props {
@@ -61,7 +61,8 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
   const numero = prochainNumero(d.factures);
   const proprietaires = useMemo(() => [...d.proprietaires].sort((x, y) => x.nom.localeCompare(y.nom, 'fr')), [d.proprietaires]);
   const ctx = { proprietaires };
-  const p = useParcours<EcranFacture>({ ecrans: ECRANS_FACTURE, idChamp, sansChamp: SANS_CHAMP_FACTURE });
+  const ecrans = ecransFacture(b);
+  const p = useParcours<EcranFacture>({ ecrans, idChamp, sansChamp: SANS_CHAMP_FACTURE });
   const ecran = p.ecran;
   const erreurs = erreursFacture(ecran, b, ctx);
   const etat = p.etat(erreurs);
@@ -78,30 +79,31 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
     onCree(r.facture.id);
   };
   const continuer = () => p.continuer(erreurs, creer);
-  // Le propriétaire destinataire n'existe pas encore : on dit quoi faire (ou on change de destinataire).
-  const sansProprietaire = ecran === 'destinataire' && b.destinataire === 'proprietaire' && !proprietaires.length;
+  // Le propriétaire destinataire n'existe pas encore : on dit quoi faire (« Retour » permet de changer de destinataire).
+  const sansProprietaire = ecran === 'proprietaire' && !proprietaires.length;
 
   const questions: Record<EcranFacture, { question: string; aide?: string }> = {
     type: { question: `Quel type de facture${NBSP}?`, aide: `Numéro attribué automatiquement${NBSP}: ${numero}.` },
     destinataire: { question: `À qui est-elle adressée${NBSP}?` },
+    proprietaire: { question: `Quel propriétaire${NBSP}?` },
     dates: { question: `Quelles dates${NBSP}?` },
     lignes: { question: `Que facturez-vous${NBSP}?`, aide: 'Une ligne par prestation, prix unitaires hors taxes.' },
     tva: { question: `Quel taux de TVA${NBSP}?`, aide: 'Taux à valider avec l’expert-comptable.' },
     statut: { question: `L’émettre maintenant${NBSP}?` },
-    recapitulatif: { question: `Tout est correct${NBSP}?`, aide: `Facture ${numero}, émise par Label Maison Conciergerie SASU.` },
+    recapitulatif: { question: `Tout est correct${NBSP}?`, aide: `Facture ${numero}, au nom de Label Maison Conciergerie SASU.` },
   };
   const q = questions[ecran];
 
   return (
     <Assistant
       titre="Nouvelle facture"
-      ecrans={ECRANS_FACTURE}
+      ecrans={ecrans}
       ecran={ecran}
       question={q.question}
       aide={q.aide}
       idQuestion={titreId}
       blocage={etat}
-      libelleSuite={p.libelleSuite(b.statut === 'emise' ? 'Émettre la facture' : 'Enregistrer le brouillon')}
+      libelleSuite={p.libelleSuite('Créer la facture')}
       onContinuer={continuer}
       onRetour={p.retour}
       sansSuite={sansProprietaire}
@@ -119,7 +121,16 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
           labelledBy={titreId}
         />
       )}
-      {ecran === 'destinataire' && <Destinataire b={b} maj={maj} proprietaires={proprietaires} continuer={continuer} titreId={titreId} />}
+      {ecran === 'destinataire' && (
+        <ChoixListe
+          options={options<DestinataireFacture>(LIBELLES.destinataire)}
+          valeur={b.destinataire}
+          onChange={(destinataire) => maj({ destinataire })}
+          onContinuer={continuer}
+          labelledBy={titreId}
+        />
+      )}
+      {ecran === 'proprietaire' && <ChoixProprietaire b={b} maj={maj} proprietaires={proprietaires} continuer={continuer} titreId={titreId} />}
       {ecran === 'dates' && (
         <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
           <Field label="Date d’émission" erreur={etat.erreurChamp('emission')}>
@@ -163,7 +174,7 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
       {ecran === 'statut' && (
         <ChoixListe
           options={[
-            { valeur: 'emise', libelle: 'Émettre maintenant', detail: `Elle part avec le numéro ${numero}` },
+            { valeur: 'emise', libelle: 'Émettre maintenant', detail: `Elle prend le numéro ${numero}` },
             { valeur: 'brouillon', libelle: 'Garder en brouillon', detail: 'Vous l’émettrez plus tard' },
           ]}
           valeur={b.statut}
@@ -172,12 +183,13 @@ function AssistantFacture({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
           labelledBy={titreId}
         />
       )}
-      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapFacture(b, proprietaires).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
+      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapFacture(b, proprietaires, AUJOURDHUI).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
     </Assistant>
   );
 }
 
-function Destinataire({
+/** « Quel propriétaire ? » : la liste (filtrée au-delà de 6), ou ce qu'il faut faire quand il n'y en a pas encore. */
+function ChoixProprietaire({
   b,
   maj,
   proprietaires,
@@ -191,45 +203,25 @@ function Destinataire({
   titreId: string;
 }) {
   const [recherche, setRecherche] = useState('');
-  const quelId = useId();
   const q = recherche.trim().toLocaleLowerCase('fr');
   const visibles = q ? proprietaires.filter((p) => p.nom.toLocaleLowerCase('fr').includes(q)) : proprietaires;
+  if (!proprietaires.length) return <Prerequis manque="Vous n’avez pas encore de propriétaire." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />;
   return (
     <>
-      <ChoixCourts
-        options={options<DestinataireFacture>(LIBELLES.destinataire)}
-        valeur={b.destinataire}
-        onChange={(destinataire) => maj({ destinataire })}
-        onContinuer={continuer}
-        labelledBy={titreId}
-        className="grid-cols-3"
-      />
-      {b.destinataire === 'proprietaire' && (
-        <div className="mt-6 border-t border-(--lm-bord) pt-5">
-          {proprietaires.length ? (
-            <>
-              <p id={quelId} className="mb-2 text-[15px] font-medium text-(--lm-encre)">
-                Quel propriétaire{NBSP}?
-              </p>
-              {proprietaires.length > SEUIL_RECHERCHE && (
-                <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom du propriétaire" label="Rechercher un propriétaire" className="mb-3 sm:w-full" />
-              )}
-              {visibles.length ? (
-                <ChoixListe
-                  options={visibles.map((p) => ({ valeur: p.id, libelle: p.nom }))}
-                  valeur={b.proprietaireId || undefined}
-                  onChange={(proprietaireId) => maj({ proprietaireId })}
-                  onContinuer={continuer}
-                  labelledBy={quelId}
-                />
-              ) : (
-                <p className="text-[14px] text-(--lm-encre-2)">Aucun propriétaire ne correspond.</p>
-              )}
-            </>
-          ) : (
-            <Prerequis manque="Vous n’avez pas encore de propriétaire." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
-          )}
-        </div>
+      {proprietaires.length > SEUIL_RECHERCHE && (
+        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom du propriétaire" label="Rechercher un propriétaire" className="mb-3 sm:w-full" />
+      )}
+      {visibles.length ? (
+        <ChoixListe
+          options={visibles.map((p) => ({ valeur: p.id, libelle: p.nom }))}
+          valeur={b.proprietaireId || undefined}
+          onChange={(proprietaireId) => maj({ proprietaireId })}
+          onContinuer={continuer}
+          labelledBy={titreId}
+          idPremier={idChamp('proprietaireId')}
+        />
+      ) : (
+        <p className="text-[14px] text-(--lm-encre-2)">Aucun propriétaire ne correspond.</p>
       )}
     </>
   );

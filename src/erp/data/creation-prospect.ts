@@ -12,8 +12,9 @@
  * Ni React ni réseau (verifier-assistants.ts).
  */
 import { LIBELLES } from './libelles';
-import { dateJour, euros, versCentimes } from './format';
-import type { EtapeProspect, Prospect, Responsable, SourceProspect } from './types';
+import { euros, versCentimes } from './format';
+import { dateLisible } from './parcours-assistant';
+import type { DateISO, EtapeProspect, Prospect, Responsable, SourceProspect } from './types';
 
 export interface BrouillonProspect {
   nom: string;
@@ -119,7 +120,7 @@ export const RESPONSABLES: { valeur: Responsable; libelle: string }[] = [
 ];
 
 /** Lignes du récapitulatif. */
-export function recapProspect(b: BrouillonProspect): { cle: string; ecran: Exclude<EcranProspect, 'recapitulatif'>; libelle: string; valeur: string }[] {
+export function recapProspect(b: BrouillonProspect, aujourdhui: DateISO): { cle: string; ecran: Exclude<EcranProspect, 'recapitulatif'>; libelle: string; valeur: string }[] {
   const revenu = versCentimes(b.revenu);
   return [
     { cle: 'nom', ecran: 'proprietaire', libelle: 'Propriétaire', valeur: b.nom.trim() },
@@ -136,7 +137,7 @@ export function recapProspect(b: BrouillonProspect): { cle: string; ecran: Exclu
       cle: 'action',
       ecran: 'action',
       libelle: 'Prochaine action',
-      valeur: b.prochaineAction.trim() && b.prochaineActionLe ? `${b.prochaineAction.trim()}, le ${dateJour(b.prochaineActionLe)}` : b.prochaineAction.trim() || b.prochaineActionLe ? '' : 'Aucune',
+      valeur: b.prochaineAction.trim() && b.prochaineActionLe ? `${b.prochaineAction.trim()}, le ${dateLisible(b.prochaineActionLe, aujourdhui)}` : b.prochaineAction.trim() || b.prochaineActionLe ? '' : 'Aucune',
     },
     { cle: 'notes', ecran: 'notes', libelle: 'Notes', valeur: b.notes.trim() || 'Aucune' },
   ];

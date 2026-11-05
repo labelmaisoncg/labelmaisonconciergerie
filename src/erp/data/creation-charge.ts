@@ -11,7 +11,8 @@
  * Ni React ni réseau (verifier-assistants.ts).
  */
 import { LIBELLES } from './libelles';
-import { dateJour, euros, versCentimes } from './format';
+import { euros, versCentimes } from './format';
+import { dateLisible } from './parcours-assistant';
 import type { CategorieCharge, Charge, DateISO, Id, Logement } from './types';
 
 export const ECRANS_CHARGE = ['libelle', 'montant', 'categorie', 'logement', 'recapitulatif'] as const;
@@ -63,11 +64,15 @@ export function chargeDepuisBrouillon(b: BrouillonCharge, id: Id): ResultatCharg
 }
 
 /** Lignes du récapitulatif. */
-export function recapCharge(b: BrouillonCharge, logements: readonly Pick<Logement, 'id' | 'nom'>[]): { cle: string; ecran: Exclude<EcranCharge, 'recapitulatif'>; libelle: string; valeur: string }[] {
+export function recapCharge(
+  b: BrouillonCharge,
+  logements: readonly Pick<Logement, 'id' | 'nom'>[],
+  aujourdhui: DateISO,
+): { cle: string; ecran: Exclude<EcranCharge, 'recapitulatif'>; libelle: string; valeur: string }[] {
   const c = versCentimes(b.montant);
   return [
     { cle: 'libelle', ecran: 'libelle', libelle: 'Libellé', valeur: b.libelle.trim() },
-    { cle: 'montant', ecran: 'montant', libelle: 'Montant TTC', valeur: b.montant.trim() && Number.isFinite(c) && c > 0 && b.date ? `${euros(c)}, le ${dateJour(b.date)}` : '' },
+    { cle: 'montant', ecran: 'montant', libelle: 'Montant TTC', valeur: b.montant.trim() && Number.isFinite(c) && c > 0 && b.date ? `${euros(c)}, le ${dateLisible(b.date, aujourdhui)}` : '' },
     { cle: 'categorie', ecran: 'categorie', libelle: 'Catégorie', valeur: LIBELLES.categorieCharge[b.categorie] },
     { cle: 'logement', ecran: 'logement', libelle: 'Logement concerné', valeur: logements.find((l) => l.id === b.logementId)?.nom ?? 'Charge générale' },
   ];

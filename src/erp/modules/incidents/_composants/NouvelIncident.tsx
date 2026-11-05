@@ -56,6 +56,9 @@ const QUESTIONS: Record<EcranIncident, { question: string; aide?: string }> = {
 const SEUIL_RECHERCHE = 6;
 const AUCUN = '__aucun__';
 
+/** Étiquette d'un détail de l'écran (pas une seconde question) : comme celle d'un champ. */
+const ETIQUETTE = 'text-[13px] font-semibold text-(--lm-encre)';
+
 const idChamp = (cle: string) => `assistant-incident-${cle}`;
 
 function AssistantIncident({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
@@ -91,7 +94,7 @@ function AssistantIncident({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
 
   return (
     <Assistant
-      titre="Signaler un incident"
+      titre="Nouvel incident"
       ecrans={ECRANS_INCIDENT}
       ecran={ecran}
       question={q.question}
@@ -186,7 +189,7 @@ function AssistantIncident({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
               value={b.preuves}
               onChange={(e) => maj({ preuves: e.target.value })}
               onBlur={() => p.quitter('preuves')}
-              placeholder="https://…"
+              placeholder="Adresse d’une photo en ligne"
               className="text-[16px]"
             />
           </Field>
@@ -205,7 +208,7 @@ function AssistantIncident({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
         />
       )}
 
-      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapIncident(b, { logements, reservations }).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
+      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapIncident(b, { logements, reservations, aujourdhui: AUJOURDHUI }).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
     </Assistant>
   );
 }
@@ -252,8 +255,8 @@ function ChoixSejour({ options, valeur, onChange, continuer }: { options: { vale
   const aideId = useId();
   return (
     <div>
-      <p id={id} className="text-[15px] font-medium text-(--lm-encre)">
-        Pendant quel séjour{NBSP}?
+      <p id={id} className={ETIQUETTE}>
+        Séjour concerné
       </p>
       <p id={aideId} className="mt-0.5 mb-2 text-[12.5px] text-(--lm-encre-3)">
         Facultatif, utile pour refacturer un voyageur.
@@ -276,8 +279,8 @@ function Nature({ b, maj, continuer, titreId }: { b: BrouillonIncident; maj: (p:
         className="grid-cols-2 sm:grid-cols-3"
       />
       <div className="mt-6 border-t border-(--lm-bord) pt-5">
-        <p id={graviteId} className="text-[15px] font-medium text-(--lm-encre)">
-          Quelle urgence{NBSP}?
+        <p id={graviteId} className={ETIQUETTE}>
+          Urgence
         </p>
         <ChoixCourts
           options={options<GraviteIncident>(LIBELLES.gravite)}
@@ -308,7 +311,7 @@ function Cout({
   const refacturableId = useId();
   return (
     <>
-      <p id={refacturableId} className="text-[15px] font-medium text-(--lm-encre)">
+      <p id={refacturableId} className={ETIQUETTE}>
         Refacturable à
       </p>
       <ChoixCourts

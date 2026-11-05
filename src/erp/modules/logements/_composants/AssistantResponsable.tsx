@@ -26,7 +26,7 @@ import {
 import { useErp } from '../../../data/store';
 import type { Logement } from '../../../data/types';
 import type { RoleOperations } from '../../../data/types-operations';
-import { Alert, Assistant, Button, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, Field, Input, Modal, NBSP, RecapAssistant, useParcours } from '../../../ui';
+import { Alert, Assistant, Button, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, Field, Input, Modal, NBSP, RecapAssistant, insecables, useParcours } from '../../../ui';
 import { LienInvitation, ListeLogements, inviterResponsable, logementsGeres, type Invitation } from '../../parametres/Acces';
 
 const idChamp = (cle: string) => `assistant-responsable-${cle}`;
@@ -97,21 +97,21 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
     qui: { question: `Qui va s’occuper de ${l.nom}${NBSP}?`, aide: 'La personne le verra dans son espace opérations.' },
     email: { question: `Quelle est son adresse e-mail${NBSP}?`, aide: 'Elle reçoit un lien personnel, valable 7 jours, vers son espace opérations.' },
     identite: { question: `Qui est-ce${NBSP}?` },
-    logements: { question: `Quels logements suivra-t-elle${NBSP}?` },
+    logements: { question: `Quels logements suivra cette personne${NBSP}?` },
     recapitulatif: { question: `Tout est correct${NBSP}?` },
   };
   const q = questions[ecran];
 
   return (
     <Assistant
-      titre="Ajouter un responsable"
+      titre="Nouveau responsable"
       ecrans={ecrans}
       ecran={ecran}
       question={q.question}
       aide={q.aide}
       idQuestion={titreId}
       blocage={etat}
-      libelleSuite={p.libelleSuite(nouvelle ? 'Inviter' : 'Rattacher')}
+      libelleSuite={p.libelleSuite(nouvelle ? 'Envoyer l’invitation' : 'Rattacher')}
       onContinuer={continuer}
       onRetour={p.retour}
       saisi={brouillonModifie(depart.current, b)}
@@ -136,7 +136,7 @@ export function AssistantResponsable({ logement: l, onFermer }: { logement: Loge
         </>
       )}
       {ecran === 'email' && (
-        <Field label="Adresse e-mail" aide={existant ? `Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.` : undefined} erreur={etat.erreurChamp('email')}>
+        <Field label="Adresse e-mail" aide={existant ? insecables(`Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.`) : undefined} erreur={etat.erreurChamp('email')}>
           <Input
             id={idChamp('email')}
             type="email"

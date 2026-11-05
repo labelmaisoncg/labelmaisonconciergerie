@@ -74,7 +74,7 @@ function AssistantCharge({ onFermer }: { onFermer: () => void }) {
       aide={question.aide}
       idQuestion={titreId}
       blocage={etat}
-      libelleSuite={p.libelleSuite('Ajouter la charge')}
+      libelleSuite={p.libelleSuite('Créer la charge')}
       onContinuer={continuer}
       onRetour={p.retour}
       saisi={brouillonModifie(depart.current, b)}
@@ -125,7 +125,7 @@ function AssistantCharge({ onFermer }: { onFermer: () => void }) {
           />
         </>
       )}
-      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapCharge(b, d.logements).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
+      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapCharge(b, d.logements, AUJOURDHUI).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
     </Assistant>
   );
 }

@@ -43,7 +43,7 @@ const QUESTIONS: Record<EcranProspect, { question: string; aide?: string }> = {
   bien: { question: `Quel bien${NBSP}?` },
   revenu: { question: `Combien peut-il rapporter${NBSP}?` },
   origine: { question: `D’où vient-il${NBSP}?` },
-  etape: { question: `Où en êtes-vous${NBSP}?`, aide: 'Il entre dans le pipeline à cette étape.' },
+  etape: { question: `Où en êtes-vous${NBSP}?`, aide: 'Il entre dans le suivi commercial à cette étape.' },
   action: { question: `Quelle est la prochaine action${NBSP}?` },
   notes: { question: `Une note${NBSP}?`, aide: 'Facultatif.' },
   recapitulatif: { question: `Tout est correct${NBSP}?` },
@@ -120,8 +120,8 @@ function AssistantProspect({ onFermer, initial, onCree }: Omit<Props, 'ouvert'>)
         <>
           <ChoixListe options={SOURCES} valeur={b.source} onChange={(s) => maj('source', s)} onContinuer={continuer} labelledBy={titreId} />
           <div className="mt-6 border-t border-(--lm-bord) pt-5">
-            <p id={responsableId} className="text-[15px] font-medium text-(--lm-encre)">
-              Qui le suit{NBSP}?
+            <p id={responsableId} className="text-[13px] font-semibold text-(--lm-encre)">
+              Suivi par
             </p>
             <ChoixCourts options={RESPONSABLES} valeur={b.responsable} onChange={(r) => maj('responsable', r)} onContinuer={continuer} labelledBy={responsableId} className="mt-2 grid-cols-2" />
           </div>
@@ -146,7 +146,7 @@ function AssistantProspect({ onFermer, initial, onCree }: Omit<Props, 'ouvert'>)
           <Textarea id={idChamp('notes')} rows={4} value={b.notes} onChange={(e) => maj('notes', e.target.value)} placeholder="Contexte, objections, parrain…" className="text-[16px]" />
         </Field>
       )}
-      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapProspect(b).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
+      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapProspect(b, AUJOURDHUI).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
     </Assistant>
   );
 }

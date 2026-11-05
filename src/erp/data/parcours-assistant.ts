@@ -8,8 +8,11 @@
  * avant son bouton. « Modifier » d'une ligne du récapitulatif ouvre l'écran
  * concerné, d'où « Continuer » et « Retour » ramènent au récapitulatif.
  *
- * Module pur, sans React (verifier-assistants.ts).
+ * Module pur, sans React (verifier-assistants.ts). On y trouve aussi la
+ * typographie commune des assistants (dates lisibles, espaces insécables).
  */
+import { dateJour } from './format';
+import type { DateISO } from './types';
 
 /** Où en est la personne : l'écran ouvert, et si elle y est arrivée par « Modifier » du récapitulatif. */
 export interface PositionParcours<E extends string> {
@@ -81,3 +84,31 @@ export function blocage(erreurs: Readonly<Record<string, string>>, sousLeChamp: 
 
 /** Le brouillon a changé depuis l'ouverture : fermer demande confirmation. */
 export const brouillonModifie = (depart: unknown, actuel: unknown): boolean => JSON.stringify(depart) !== JSON.stringify(actuel);
+
+/* -------------------------------------------------------------- typographie */
+
+/** « mer. 10 févr. », avec l'année quand ce n'est pas celle de `reference` (« mer. 10 févr. 2027 »). */
+export function dateLisible(date: DateISO, reference: DateISO): string {
+  return date.slice(0, 4) === reference.slice(0, 4) ? dateJour(date) : `${dateJour(date)} ${date.slice(0, 4)}`;
+}
+
+/** Espace insécable (U+00A0), avant « : ? ! » et entre un nombre et son unité. */
+export const NBSP = String.fromCharCode(0xa0);
+/** Trait d'union insécable (U+2011) : « e‑mail », « l'avez‑vous » ne se coupent pas en fin de ligne. */
+export const TIRET_INSECABLE = String.fromCharCode(0x2011);
+
+/**
+ * Typographie des textes de l'assistant sur petit écran : un nombre ne quitte
+ * pas son unité (« 2 voyageurs », « 14 févr. », « 360,00 € »), « e-mail » et
+ * les « -vous », « -il », « -elle » ne se coupent pas. Ce qui n'est pas du
+ * texte passe tel quel.
+ */
+export function insecables(texte: string): string;
+export function insecables<T>(texte: T): T;
+export function insecables(texte: unknown): unknown {
+  if (typeof texte !== 'string') return texte;
+  return texte
+    .replace(/(\d) (?=\S)/g, `$1${NBSP}`)
+    .replace(/\b([eE])-mail/g, `$1${TIRET_INSECABLE}mail`)
+    .replace(/-(?=(?:vous|ils?|elles?|t)\b)/g, TIRET_INSECABLE);
+}

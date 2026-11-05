@@ -6,14 +6,15 @@
  * (les ménages sont sortis de l'ERP, octobre 2026).
  */
 import { useId, useMemo, useRef, useState } from 'react';
-import { Alert, Assistant, CHAMP_ASSISTANT, ChoixListe, Compteur, Field, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, useParcours } from '../../../ui';
+import { Alert, Assistant, CHAMP_ASSISTANT, ChoixListe, Compteur, Field, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, insecables, useParcours } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
-import { AUJOURDHUI, dateCourte, dateJour, euros, jourMois, pluriel } from '../../../data/format';
-import { brouillonModifie } from '../../../data/parcours-assistant';
+import { AUJOURDHUI, dateCourte, euros, jourMois, pluriel } from '../../../data/format';
+import { brouillonModifie, dateLisible } from '../../../data/parcours-assistant';
 import {
   ECRANS_RESERVATION,
   SANS_CHAMP_RESERVATION,
   brouillonReservation,
+  ditParLEncadre,
   chevauchements,
   erreursReservation,
   logementsReservables,
@@ -63,7 +64,8 @@ function AssistantReservation({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
   const p = useParcours<EcranReservation>({ ecrans: ECRANS_RESERVATION, idChamp, sansChamp: SANS_CHAMP_RESERVATION });
   const ecran = p.ecran;
   const erreurs = erreursReservation(ecran, b, ctx);
-  const etat = p.etat(erreurs);
+  // Le chevauchement est dit par l'encadré rouge, pas une seconde fois au pied.
+  const etat = p.etat(erreurs, ditParLEncadre);
   const maj = (patch: Partial<BrouillonReservation>) => setB((x) => ({ ...x, ...patch }));
 
   const creer = () => {
@@ -83,7 +85,8 @@ function AssistantReservation({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
 
   return (
     <Assistant
-      titre="Nouvelle réservation directe"
+      // « directe » est dit par l'aide du premier écran : à 320 px, le titre tient sur une ligne entre les deux ronds de 44 px.
+      titre="Nouvelle réservation"
       ecrans={ECRANS_RESERVATION}
       ecran={ecran}
       question={q.question}
@@ -101,12 +104,16 @@ function AssistantReservation({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
     >
       {ecran === 'logement' &&
         (bloque ? (
-          <Prerequis
-            manque="Aucun logement actif pour l’instant."
-            detail="Un logement devient réservable quand son mandat est signé et sa checklist de lancement complète (fiche logement, onglet Lancement)."
-            lien="/erp/logements"
-            action="Voir les logements"
-          />
+          d.logements.length ? (
+            <Prerequis
+              manque="Aucun logement actif pour l’instant."
+              detail="Un logement devient réservable quand son mandat est signé et sa liste de lancement terminée."
+              lien="/erp/logements"
+              action="Voir les logements"
+            />
+          ) : (
+            <Prerequis manque="Vous n’avez pas encore de logement." detail="Une réservation se fait toujours dans un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+          )
         ) : (
           <EcranLogement b={b} maj={maj} logements={reservables} continuer={continuer} titreId={titreId} />
         ))}
@@ -199,7 +206,7 @@ function EcranDates({ b, maj, ctx, erreur, quitter }: PropsEcran & { ctx: Contex
       </div>
       {nuits > 0 && (
         <p className="lm-chiffres mt-3 text-[14px] text-(--lm-encre-2)" aria-live="polite">
-          {pluriel(nuits, 'nuit')}, du {dateJour(b.arrivee)} au {dateJour(b.depart)}
+          {insecables(`${pluriel(nuits, 'nuit')}, du ${dateLisible(b.arrivee, AUJOURDHUI)} au ${dateLisible(b.depart, AUJOURDHUI)}`)}
         </p>
       )}
       {conflits.length > 0 && (
@@ -207,10 +214,10 @@ function EcranDates({ b, maj, ctx, erreur, quitter }: PropsEcran & { ctx: Contex
           <ul className="mt-1 space-y-1">
             {conflits.map((c) => (
               <li key={c.reservation.id}>
-                {c.reservation.voyageur.nom} ({dateCourte(c.reservation.arrivee)} au {dateCourte(c.reservation.depart)}){NBSP}:{' '}
+                {c.reservation.voyageur.nom} ({insecables(dateCourte(c.reservation.arrivee))} au {insecables(dateCourte(c.reservation.depart))}){NBSP}:{' '}
                 {c.nuits.length > 4
-                  ? `${pluriel(c.nuits.length, 'nuit')} en conflit, du ${dateJour(c.nuits[0])} au ${dateJour(c.nuits[c.nuits.length - 1])}`
-                  : `nuit${c.nuits.length > 1 ? 's' : ''} du ${c.nuits.map(jourMois).join(', ')}`}
+                  ? insecables(`${pluriel(c.nuits.length, 'nuit')} en conflit, du ${dateLisible(c.nuits[0], AUJOURDHUI)} au ${dateLisible(c.nuits[c.nuits.length - 1], AUJOURDHUI)}`)
+                  : insecables(`nuit${c.nuits.length > 1 ? 's' : ''} du ${c.nuits.map(jourMois).join(', ')}`)}
               </li>
             ))}
           </ul>
