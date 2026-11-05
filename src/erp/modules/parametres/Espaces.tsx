@@ -148,11 +148,11 @@ export default function Espaces() {
       const r = await appelerRouteGerant<Retour>(API, { action: 'inviter', nom: cible.nom.trim(), email: adresse }, INDISPONIBLE);
       setResultat(
         r.envoye
-          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14 jours.${remplace}` }
+          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14\u00a0jours.${remplace}` }
           : {
               ou: cle,
               ton: 'info',
-              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse} : il sert une seule fois, pendant 14 jours, pour créer son compte puis l’espace de sa conciergerie.${remplace}`,
+              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse}\u00a0: il sert une seule fois, pendant 14\u00a0jours, pour créer son compte puis l’espace de sa conciergerie.${remplace}`,
               lien: r.lien,
             },
       );
@@ -224,7 +224,7 @@ export default function Espaces() {
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
                   <div className="min-w-0 flex-1">
                     {/* Le code technique (adresse du webhook) reste au survol, hors de la lecture. */}
-                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)" title={`Code : ${e.code}`}>
+                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)" title={`Code\u00a0: ${e.code}`}>
                       {e.nom}
                       {!e.actif && <Badge tone="alerte">Suspendu</Badge>}
                     </p>
@@ -251,8 +251,8 @@ export default function Espaces() {
                     onClick={() =>
                       e.actif
                         ? setAConfirmer({
-                            titre: `Suspendre l’espace de ${e.nom} ?`,
-                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; son agent et les mises à jour s’arrêtent. Rien n’est effacé : vous pourrez le rouvrir.',
+                            titre: `Suspendre l’espace de ${e.nom}\u00a0?`,
+                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; son agent et les mises à jour s’arrêtent. Rien n’est effacé\u00a0: vous pourrez le rouvrir.',
                             action: 'Suspendre l’espace',
                             corps: { action: 'suspendre', espace: e.id, actif: false },
                             cle: `suspendre-${e.id}`,
@@ -298,7 +298,7 @@ export default function Espaces() {
                       disabled={!!enCours}
                       onClick={() =>
                         setAConfirmer({
-                          titre: `Annuler l’invitation de ${i.nom} ?`,
+                          titre: `Annuler l’invitation de ${i.nom}\u00a0?`,
                           description: `Le lien envoyé à ${i.email} ne servira plus. Vous pourrez inviter de nouveau.`,
                           action: 'Annuler l’invitation',
                           corps: { action: 'annuler', id: i.id },
