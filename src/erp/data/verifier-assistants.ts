@@ -816,7 +816,7 @@ section('Équipe, ajouter quelqu’un : écrans, règles et même ligne que l’
     [{ email: 'associe@exemple.fr', nom: 'Sami', role: 'gerant' }, 'reel'],
     [{ email: 'clara@exemple.fr', nom: 'Clara bis', role: 'operations' }, 'demo'],
     [{ email: 'x@y', nom: 'X', role: 'operations' }, 'demo'],
-    [{ email: 'nom@vide.fr', nom: '', role: 'operations' }, 'reel'],
+    [{ email: 'nom-vide@exemple.fr', nom: '', role: 'operations' }, 'reel'],
   ];
   for (const [x, mode] of cas) {
     const r = membreDepuisBrouillon(x, { utilisateurs, reel: mode === 'reel', maintenantMs: 1_790_000_000_000 });
@@ -854,9 +854,9 @@ section('Espaces, inviter une conciergerie : écrans, règles et même envoi que
   verifier(erreursConciergerie('email', { ...b0, email: 'sens@exemple' }).email === 'Adresse e-mail invalide.', 'adresse illisible : refusée');
   verifier(NOM_CONCIERGERIE_MAX === 80, 'nom : 80 caractères au plus, comme le champ d’avant');
   const cas: BrouillonConciergerie[] = [
-    { nom: ' Conciergerie de Sens ', email: ' Contact@Sens-Conciergerie.fr ' },
-    { nom: 'Évry Clés', email: 'gerant@evry.fr' },
-    { nom: '  ', email: 'gerant@evry.fr' },
+    { nom: ' Conciergerie de Sens ', email: ' Contact@Sens.Exemple.fr ' },
+    { nom: 'Évry Clés', email: 'gerant@exemple.fr' },
+    { nom: '  ', email: 'gerant@exemple.fr' },
     { nom: 'Évry', email: 'gerant@evry' },
     { nom: 'Évry', email: ' ' },
   ];
@@ -866,7 +866,7 @@ section('Espaces, inviter une conciergerie : écrans, règles et même envoi que
     verifier(r.ok === !!avant, `même saisie permise ou refusée (${JSON.stringify(x)})`);
     if (r.ok && avant) verifier(empreinte(envoi(r.corps)) === empreinte(avant) && empreinte(r.corps) === empreinte(avant), `même corps envoyé à api/erp-espaces (${x.nom.trim()})`);
   }
-  verifier(recapConciergerie(cas[0]).map((l) => l.valeur).join(' | ') === 'Conciergerie de Sens | Contact@Sens-Conciergerie.fr', 'récapitulatif : nom et adresse tels qu’envoyés');
+  verifier(recapConciergerie(cas[0]).map((l) => l.valeur).join(' | ') === 'Conciergerie de Sens | Contact@Sens.Exemple.fr', 'récapitulatif : nom et adresse tels qu’envoyés');
 }
 
 /* ======================================================= annonce à l'équipe */
