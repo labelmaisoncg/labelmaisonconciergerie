@@ -2158,11 +2158,13 @@ répond dans l'ERP, et la réponse s'affiche dans « Mes demandes ». Rien ne
 passe d'un espace à l'autre.
 
 - **Côté propriétaire** (`src/erp/espace-proprietaire/Demandes.tsx`) :
-  « Faire une demande » est l'action principale de l'Accueil (et de « Mes
-  demandes »). Assistant pas à pas, sur le modèle de l'assistant de création
-  d'un logement (à aligner plus tard sur le composant `Assistant` du kit) :
-  une question par écran, la progression en haut, « Retour » et
-  « Continuer » en bas avec ce qui manque en toutes lettres ; 1) le type
+  sur l'Accueil, « Faire une demande » et « Mes demandes » forment un bloc
+  sous les cartes du mois (le chiffre du mois passe d'abord) ; « Faire une
+  demande » est aussi l'action de « Mes demandes ». Assistant pas à pas, sur
+  le modèle de l'assistant de création d'un logement (à aligner plus tard
+  sur le composant `Assistant` du kit) : une question par écran, « Étape n
+  sur N » en haut, la barre de progression au-dessus de « Retour » et
+  « Continuer », avec ce qui manque en toutes lettres ; 1) le type
   (une question, une demande particulière : travaux, clés, linge, prix,
   calendrier, autre ; ou autre chose), 2) le logement s'il en a plusieurs
   (ou « Tous mes logements »), 3) le message, 4) le récapitulatif, puis
@@ -2211,14 +2213,28 @@ passe d'un espace à l'autre.
   changement est gardé (`historique`), avec l'échange (`echanges`).
   Réservé au gérant (l'écran) ; supprimer une fiche sans historique emporte
   ses demandes.
-- **Base** : aucun SQL à relancer. La collection suit les règles communes
-  de `erp.enregistrements` (`supabase/erp-espaces.sql`, `erp-acces-gerants.sql`) :
-  lue par les membres de l'espace (gérant, opérations, lecture), écrite par
-  le gérant et les opérations, rien pour un prestataire ni pour un
-  propriétaire (qui ne sont membres de rien) ; le propriétaire ne passe que
-  par le serveur. L'écran et la notification la réservent au gérant ; la
-  réserver aussi dans la base (comme les accès) demanderait de l'ajouter à
-  la règle « acces exterieurs reserves aux gerants ».
+- **Base** : relancer `supabase/erp-espaces.sql` (base à espaces) ou
+  `supabase/erp-acces-gerants.sql` (base d'avant les espaces) AVANT la mise
+  en ligne. La collection est dans la règle « acces exterieurs reserves aux
+  gerants » (et ses anciennes versions dans « versions reservees aux
+  gerants ») : lue et écrite par les gérants de l'espace et le compte
+  serveur seulement ; un compte « opérations » ou « lecture » n'y lit rien,
+  n'y glisse ni réponse ni demande, n'en efface aucune. Tant que le témoin
+  `erp.demandes_proprietaires_protegees()` manque ou répond faux (ancien SQL
+  relancé par-dessus), le serveur n'enregistre ni ne lit aucune demande
+  (503 « fermees ») : jamais de message de propriétaire lisible par toute
+  l'équipe ; sa page n'affiche alors ni « Faire une demande » ni « Mes
+  demandes ». Le témoin est relu toutes les 5 minutes par instance : après
+  la relance du SQL, l'ouverture peut prendre jusqu'à 5 minutes. Le
+  propriétaire ne passe que par le serveur. Envois simultanés : relue après
+  l'ajout (ordre d'écriture de la base, `maj_le`), une demande au-delà du
+  plafond se retire (429).
+  Marche à suivre : base à espaces (Label Maison et les autres) : relancer
+  `supabase/erp-espaces.sql` en entier avec, en tête de fichier, la passe
+  déjà atteinte (`'2'` dès qu'un autre espace que Label Maison existe ; le
+  bilan le dit : `cles_par_espace = 3`), et vérifier `recette = ok`. Ne pas
+  relancer `erp-installation.sql`. Ordre : le SQL d'abord, puis la mise en
+  ligne (dans l'autre ordre, rien ne s'ouvre avant le SQL, sans risque).
 - **Vérification** : `src/erp/data/verifier-demandes-proprietaires.ts`.
 - **Démo** : la SCI Les Tilleuls a trois demandes (une nouvelle, une
   répondue, une réglée), Sophie Lambert-Roche (deux logements) une vue,

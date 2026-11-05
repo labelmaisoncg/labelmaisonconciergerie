@@ -249,6 +249,73 @@ async function principal() {
     verifier(!c.ok && c.statut === 409 && collision.donnees[COLLECTION_DEMANDES]?.[0].id === 'dem-000000000000000000000000' && (collision.donnees[COLLECTION_DEMANDES]?.[0] as DemandeProprietaire).echanges[0].texte === MESSAGE, 'identifiant déjà pris : rien n’est remplacé (409)');
   }
 
+  section('Envois simultanés : le plafond tient (relecture après l’ajout)');
+  {
+    // Base lente : chaque lecture rend l'état du moment où elle est partie, après un délai ;
+    // chaque ligne porte l'instant de son écriture (maj_le), comme erp.enregistrements.
+    const lente = baseMemoire({ logements: LOGEMENTS });
+    const attendre = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const ecriteLe = new Map<string, string>();
+    let horloge = 0;
+    const base: BaseDemandes = {
+      lire: async <T,>(c: string, ids?: string[]) => {
+        const instantane = (await lente.base.lire<T>(c, ids)).slice();
+        await attendre(20);
+        return instantane;
+      },
+      lireVersions: async <T,>(c: string) => {
+        const instantane = (await lente.base.lire<T & { id: string }>(c)).map((element) => ({ element, version: ecriteLe.get(element.id) ?? '' }));
+        await attendre(20);
+        return instantane;
+      },
+      ajouterSiAbsent: async (c, elements, auteur) => {
+        await attendre(5);
+        const n = await lente.base.ajouterSiAbsent(c, elements, auteur);
+        for (const e of elements) if (!ecriteLe.has(e.id)) ecriteLe.set(e.id, new Date(Date.UTC(2026, 10, 5, 12, 0, 0) + ++horloge).toISOString());
+        return n;
+      },
+      supprimer: async (c, ids) => {
+        const l = lente.donnees[c] ?? [];
+        const avant = l.length;
+        lente.donnees[c] = l.filter((x) => !ids.includes(x.id));
+        return avant - (lente.donnees[c]?.length ?? 0);
+      },
+    };
+    const rs = await Promise.all(
+      Array.from({ length: 12 }, (_, i) => enregistrerDemande(base, { proprietaireId: A, corps: { type: 'question', logement: 'la1', message: MESSAGE }, logements: LOGEMENTS, maintenantMs: maintenant, le: le(0), id: `dem-course${String(i).padStart(12, '0')}` })),
+    );
+    const gardees = lente.donnees[COLLECTION_DEMANDES]?.length ?? 0;
+    verifier(rs.filter((r) => r.ok).length === PLAFOND_DEMANDES_HEURE && gardees === PLAFOND_DEMANDES_HEURE, `12 envois simultanés : ${PLAFOND_DEMANDES_HEURE} gardés, les autres retirés`, [rs.filter((r) => r.ok).length, gardees]);
+    verifier(rs.filter((r) => !r.ok).every((r) => !r.ok && r.statut === 429 && r.code === 'limite'), 'les autres : 429 « limite »');
+    const seul = await enregistrerDemande(base, { proprietaireId: B, corps: { type: 'question', logement: 'lb1', message: MESSAGE }, logements: LOGEMENTS, maintenantMs: maintenant, le: le(0) });
+    verifier(seul.ok, 'un envoi seul, sous le plafond : gardé (la relecture ne refuse rien de plus)');
+  }
+
+  section('Base : demandes réservées aux gérants, témoin lu par le serveur');
+  {
+    for (const f of ['supabase/erp-espaces.sql', 'supabase/erp-installation.sql', 'supabase/erp-acces-gerants.sql']) {
+      const sql = lire(f);
+      const regle = sql.slice(sql.indexOf('create policy "acces exterieurs reserves aux gerants"'), sql.indexOf(';', sql.indexOf('create policy "acces exterieurs reserves aux gerants"')));
+      const versions = sql.slice(sql.indexOf('create policy "versions reservees aux gerants"'), sql.indexOf(';', sql.indexOf('create policy "versions reservees aux gerants"')));
+      verifier(
+        (regle.match(/'demandesProprietaires'/g) ?? []).length === 2 && /'demandesProprietaires'/.test(versions) && /create or replace function erp\.demandes_proprietaires_protegees\(\)/.test(sql),
+        `${f} : gérants seulement (enregistrements et anciennes versions), témoin erp.demandes_proprietaires_protegees`,
+      );
+    }
+    verifier(/un compte « opérations » lit les demandes des propriétaires/.test(lire('supabase/erp-espaces.sql')) && /un compte « opérations » glisse une demande ou une réponse/.test(lire('supabase/erp-acces-gerants.sql')), 'recettes SQL : lecture, réponse glissée et effacement refusés à l’équipe');
+    const route = lire('api/espace-proprietaire.ts');
+    const bloc = (action: string) => route.slice(route.indexOf(`if (action === '${action}'`), route.indexOf('\n    }\n', route.indexOf(`if (action === '${action}'`)));
+    const lecture = bloc('demandes');
+    const envoi = bloc('demande');
+    verifier(
+      /demandesProtegees\(s\.base, s\.espace\)/.test(lecture) && lecture.indexOf('demandesProtegees(') < lecture.indexOf('COLLECTION_DEMANDES') &&
+        /demandesProtegees\(s\.base, s\.espace\)/.test(envoi) && envoi.indexOf('demandesProtegees(') < envoi.indexOf('enregistrerDemande('),
+      'route : sans le témoin de la base, rien n’est lu ni enregistré (503)',
+    );
+    const page = lire('src/app/pages/EspaceProprietaire.tsx');
+    verifier(/r\.statut === 503 && r\.json\.code === 'fermees'/.test(page) && /demandes=\{demandes\.fermees \? undefined :/.test(page), 'page du propriétaire : demandes fermées (503) → ni « Faire une demande » ni « Mes demandes »');
+  }
+
   section('États et réponses : côté gérant');
   {
     const g = { par: 'gerant@exemple.fr', le: le(0) };
@@ -533,9 +600,9 @@ async function principal() {
       verifier(!!source, `${f} : lu (lancer depuis la racine du dépôt)`);
       const fautes = textesAvecEspaceSimple(source);
       verifier(fautes.length === 0, `${f} : espace insécable avant « ? » et « : »`, fautes.map((t) => t.trim().slice(0, 60)));
-      // « » dans le code (commentaires retirés) : une espace insécable à l'intérieur, écrite telle quelle, ${NBSP} ou &nbsp;.
+      // « » dans le code (commentaires retirés) : une espace insécable à l'intérieur, écrite telle quelle, ${NBSP}, {NBSP} (JSX) ou &nbsp;.
       const code = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-      const mal = [...code.matchAll(/«(?! |\$\{NBSP\}|&nbsp;)|(?<! |\$\{NBSP\}|&nbsp;)»/g)].map((m) => code.slice(Math.max(0, (m.index ?? 0) - 30), (m.index ?? 0) + 10));
+      const mal = [...code.matchAll(/«(?! |\$?\{NBSP\}|&nbsp;)|(?<! |\$?\{NBSP\}|&nbsp;)»/g)].map((m) => code.slice(Math.max(0, (m.index ?? 0) - 30), (m.index ?? 0) + 10));
       verifier(mal.length === 0, `${f} : « » avec espaces insécables (dans le code)`, mal);
     }
     const textes = ecrans.flatMap((f) => textesDuSource(lire(f)));

@@ -1,9 +1,9 @@
-import { ChevronRight, FileText, Mail, MessageCircle, MessageSquarePlus, Phone, ReceiptText } from 'lucide-react';
+import { ChevronRight, FileText, Mail, MessageCircle, Phone, ReceiptText } from 'lucide-react';
 import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/format';
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
-import { Badge, Button, Card } from '../ui';
-import { ResumeDemandes, type DemandesEspace } from './Demandes';
+import { Badge, Card } from '../ui';
+import { BlocDemandes, type DemandesEspace } from './Demandes';
 import { CarteLogements } from '../carte/CarteLogements';
 import { pointsDeLaVue } from '../carte/points';
 import { CANAL, LienAction, PhotoLogement, Rubrique, TitreEspace, sansLogement, titreMois, type LienDocument, type OngletEspace } from './commun';
@@ -68,19 +68,7 @@ export function Accueil({
   const points = pointsDeLaVue(vue.logements);
   return (
     <>
-      <TitreEspace
-        titre={`Bonjour, ${vue.proprietaire.nom}`}
-        description={`L’activité de vos logements, mise à jour chaque jour par ${vue.conciergerie.nom}.`}
-        action={
-          demandes &&
-          onNouvelleDemande && (
-            // La seule action principale de l'Accueil : une question ou une demande à la conciergerie.
-            <Button variant="primary" size="lg" icone={<MessageSquarePlus />} onClick={onNouvelleDemande} className="max-sm:w-full">
-              Faire une demande
-            </Button>
-          )
-        }
-      />
+      <TitreEspace titre={`Bonjour, ${vue.proprietaire.nom}`} description={`L’activité de vos logements, mise à jour chaque jour par ${vue.conciergerie.nom}.`} />
 
       <div className="grid gap-3 sm:grid-cols-2">
         <CarteMois titre="Ce mois-ci" c={vue.moisCourant} />
@@ -112,7 +100,7 @@ export function Accueil({
         </button>
       )}
 
-      {demandes && <ResumeDemandes demandes={demandes} onOuvrir={() => onOnglet('demandes')} />}
+      {demandes && onNouvelleDemande && <BlocDemandes demandes={demandes} conciergerie={vue.conciergerie.nom} onNouvelle={onNouvelleDemande} onOuvrir={() => onOnglet('demandes')} />}
 
       {points.length > 0 && (
         <Rubrique titre="Aujourd’hui">
@@ -210,7 +198,7 @@ export function Accueil({
         {c && (
           <Rubrique titre={`${vue.conciergerie.nom}, à votre écoute`}>
             <Card>
-              <p className="text-[14px] text-(--lm-encre-2)">Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.</p>
+              <p className="text-[14px] text-(--lm-encre-2)">Une urgence ? Appelez-nous.</p>
               <ul className="mt-3 space-y-1 text-[14px]">
                 <li>
                   <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:underline">

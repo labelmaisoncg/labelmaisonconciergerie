@@ -596,7 +596,7 @@ export default function EspaceProprietaire() {
   const facture = parametres.get('facture') ?? undefined;
   const demande = parametres.get('demande') ?? undefined;
   // « Mes demandes » : lues à part de la vue (action « demandes »), après elle.
-  const [demandes, setDemandes] = useState<{ liste: DemandeVue[]; chargement: boolean; erreur?: string }>({ liste: [], chargement: true });
+  const [demandes, setDemandes] = useState<{ liste: DemandeVue[]; chargement: boolean; erreur?: string; fermees?: boolean }>({ liste: [], chargement: true });
 
   const regler = (o: OngletEspace, suite: { bilan?: string; logement?: string; facture?: string; demande?: string } = {}) =>
     setParametres(
@@ -732,6 +732,8 @@ export default function EspaceProprietaire() {
     }
     const r = await appeler('GET', { action: 'demandes' });
     if (r.statut === 200 && Array.isArray(r.json.demandes)) return setDemandes({ liste: r.json.demandes as DemandeVue[], chargement: false });
+    // Base de l'espace pas encore prête pour les demandes (SQL à relancer) : ni « Faire une demande » ni « Mes demandes ».
+    if (r.statut === 503 && r.json.code === 'fermees') return setDemandes({ liste: [], chargement: false, fermees: true });
     if (r.statut === 401) {
       setEtat({ nom: 'connexion', ton: 'neutre', message: r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : reconnectez-vous.' });
       return;
@@ -849,7 +851,7 @@ export default function EspaceProprietaire() {
           onLogement={(id) => regler('logements', { logement: id })}
           facture={facture}
           onFacture={(id) => regler('factures', { facture: id })}
-          demandes={{ ...demandes, recharger: () => void chargerDemandes(), envoyer: envoyerDemande }}
+          demandes={demandes.fermees ? undefined : { ...demandes, recharger: () => void chargerDemandes(), envoyer: envoyerDemande }}
           demande={demande}
           onDemande={(id) => regler('demandes', { demande: id })}
           calendrier={{ connus: moisConnus, charger: chargerCalendrier }}

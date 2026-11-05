@@ -1,9 +1,11 @@
 /**
  * Demandes du propriétaire (novembre 2026), dans son espace : « Faire une
- * demande » en assistant pas à pas (une question par écran, la progression
- * en haut, « Retour » et « Continuer » en bas avec ce qui manque en toutes
- * lettres, un récapitulatif puis « Envoyer »), et « Mes demandes » avec leur
- * état et les réponses de la conciergerie.
+ * demande » en assistant pas à pas (une question par écran, « Étape n sur N »
+ * en haut, la barre de progression juste au-dessus de « Retour » et
+ * « Continuer », avec ce qui manque en toutes lettres, un récapitulatif puis
+ * « Envoyer »), et « Mes demandes » avec leur état et les réponses de la
+ * conciergerie. Sur l'Accueil, « Faire une demande » et « Mes demandes »
+ * forment un bloc sous les cartes du mois (BlocDemandes).
  *
  * Sur le modèle de modules/logements/_composants/AssistantLogement.tsx, avec
  * les seuls moyens de l'espace (pas le store de l'ERP) ; à aligner plus tard
@@ -11,7 +13,7 @@
  * (les mêmes que le serveur). Aperçu du gérant : sans `envoyer`, rien ne part.
  */
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import { Check, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Layers, MessageCircle, MessageSquarePlus, X, type LucideIcon } from 'lucide-react';
+import { Check, ChevronLeft, ChevronRight, CircleHelp, ClipboardList, Inbox, Layers, MessageCircle, MessageSquarePlus, X, type LucideIcon } from 'lucide-react';
 import {
   LIBELLE_STATUT_PROPRIETAIRE,
   MESSAGE_MAX,
@@ -103,33 +105,47 @@ export function BadgeStatutDemande({ statut }: { statut: StatutDemandeProprietai
   return <Badge tone={TON_STATUT_DEMANDE[statut]}>{LIBELLE_STATUT_PROPRIETAIRE[statut]}</Badge>;
 }
 
-/** « Envoyée le 24 sept. 2026 », « Réponse le 21 sept. 2026 ». */
+/** La date du dernier message de l'échange (le badge dit déjà l'état). */
 function quand(d: DemandeVue): string {
-  const r = derniereReponse(d);
-  return r ? `Réponse le ${dateCourte(r.le.slice(0, 10))}` : `Envoyée le ${dateCourte(d.creeLe.slice(0, 10))}`;
+  const dernier = d.echanges[d.echanges.length - 1]?.le || d.creeLe;
+  return dateCourte(dernier.slice(0, 10));
 }
 
-/** « Mes demandes » en résumé sur l'Accueil : une ligne qui mène à la liste. */
-export function ResumeDemandes({ demandes, onOuvrir }: { demandes: DemandesEspace; onOuvrir: () => void }) {
+/**
+ * Sur l'Accueil, sous les cartes du mois : « Faire une demande » et « Mes
+ * demandes » dans un même bloc (le chiffre du mois passe toujours avant).
+ */
+export function BlocDemandes({ demandes, conciergerie, onNouvelle, onOuvrir }: { demandes: DemandesEspace; conciergerie: string; onNouvelle: () => void; onOuvrir: () => void }) {
   const liste = demandes.liste;
-  if (!liste.length) return null;
   const repondues = liste.filter((d) => d.statut === 'repondue').length;
   const enCours = liste.filter((d) => d.statut !== 'reglee').length;
   const resume = repondues ? `${repondues} réponse${repondues > 1 ? 's' : ''}` : enCours ? `${enCours} en cours` : `${liste.length} réglée${liste.length > 1 ? 's' : ''}`;
   return (
-    <button
-      type="button"
-      onClick={onOuvrir}
-      className="mt-3 flex min-h-12 w-full items-center gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-2.5 text-left shadow-(--lm-ombre) transition hover:shadow-(--lm-ombre-haute)"
-    >
-      <MessageCircle className="size-4 shrink-0 text-(--lm-encre-2)" aria-hidden />
-      <span className="min-w-0 flex-1 truncate text-[14px] text-(--lm-encre)">Mes demandes · {resume}</span>
-      <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
-    </button>
+    <section aria-labelledby="bloc-demandes" className="mt-3 flex flex-col gap-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) p-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-3">
+        <Inbox className="mt-0.5 size-5 shrink-0 text-(--lm-encre)" aria-hidden />
+        <div className="min-w-0">
+          <h2 id="bloc-demandes" className="text-[15px] font-semibold text-(--lm-encre)">
+            Une question, une demande{NBSP}?
+          </h2>
+          {liste.length ? (
+            <button type="button" onClick={onOuvrir} className="inline-flex min-h-8 max-sm:min-h-11 items-center gap-0.5 text-[13.5px] font-medium lm-lien">
+              Mes demandes · {resume}
+              <ChevronRight className="size-3.5" aria-hidden />
+            </button>
+          ) : (
+            <p className="text-[13.5px] text-(--lm-encre-2)">{conciergerie} vous répond dans votre espace.</p>
+          )}
+        </div>
+      </div>
+      <Button variant="primary" icone={<MessageSquarePlus />} onClick={onNouvelle} className="max-sm:w-full">
+        Faire une demande
+      </Button>
+    </section>
   );
 }
 
-function DetailDemande({ d, conciergerie, onRetour }: { d: DemandeVue; conciergerie: string; onRetour: () => void }) {
+function DetailDemande({ d, conciergerie, onRetour, onNouvelle }: { d: DemandeVue; conciergerie: string; onRetour: () => void; onNouvelle: () => void }) {
   const repondue = !!derniereReponse(d);
   return (
     <>
@@ -154,6 +170,11 @@ function DetailDemande({ d, conciergerie, onRetour }: { d: DemandeVue; concierge
           </p>
         )}
       </Card>
+      {repondue && (
+        <button type="button" onClick={onNouvelle} className="mt-3 inline-flex min-h-8 max-sm:min-h-11 items-center text-[13.5px] font-medium lm-lien">
+          Faire une autre demande
+        </button>
+      )}
     </>
   );
 }
@@ -175,7 +196,7 @@ export function MesDemandes({
 }) {
   const nom = vue.conciergerie.nom;
   const d = choisie ? demandes.liste.find((x) => x.id === choisie) : undefined;
-  if (d) return <DetailDemande d={d} conciergerie={nom} onRetour={() => onChoisir(undefined)} />;
+  if (d) return <DetailDemande d={d} conciergerie={nom} onRetour={() => onChoisir(undefined)} onNouvelle={onNouvelle} />;
   const bouton = (
     <Button variant="primary" size="lg" icone={<MessageSquarePlus />} onClick={onNouvelle} className="max-sm:w-full">
       Faire une demande
@@ -207,7 +228,7 @@ export function MesDemandes({
           {demandes.erreur}
         </Alert>
       ) : !demandes.liste.length ? (
-        <EmptyState icone={<MessageCircle />} titre="Aucune demande pour l’instant" description={`Une question, un besoin pour votre logement${NBSP}? ${nom} vous répond ici.`} action={bouton} />
+        <EmptyState icone={<Inbox />} titre="Aucune demande pour l’instant" description={`Une question, un besoin pour votre logement${NBSP}? ${nom} vous répond ici.`} action={bouton} />
       ) : (
         <Card flush>
           <ul className="divide-y divide-(--lm-bord)">
@@ -390,7 +411,7 @@ export function AssistantDemande({
 
   const question = envoyee ? 'Demande envoyée' : QUESTIONS[etape];
   const aide = envoyee
-    ? `${nom} est prévenu. Sa réponse s’affichera dans «${NBSP}Mes demandes${NBSP}».`
+    ? `Votre demande est partie. La réponse s’affichera dans «${NBSP}Mes demandes${NBSP}».`
     : etape === 'type'
       ? `${nom} vous répondra dans votre espace.`
       : etape === 'message'
@@ -413,32 +434,25 @@ export function AssistantDemande({
           tabIndex={-1}
           className="lm-apparition relative flex h-full w-full flex-col bg-(--lm-surface) shadow-(--lm-ombre-haute) outline-none sm:h-[min(40rem,92vh)] sm:max-w-xl sm:rounded-2xl sm:overflow-hidden"
         >
-          {/* En-tête d'Airbnb : fermer rond à gauche, titre centré ; la progression juste dessous, en haut. */}
+          {/* En-tête d'Airbnb : fermer rond à gauche, titre centré, l'étape dessous (pas sur l'écran « Demande envoyée »), un filet. */}
           <header className="flex items-center gap-2 border-b border-(--lm-bord) px-3 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5">
             <IconButton label="Fermer" onClick={demanderFermeture}>
               <X />
             </IconButton>
             <div className="min-w-0 flex-1 text-center leading-tight">
               <p className="text-[16px] font-semibold text-(--lm-encre)">Nouvelle demande</p>
-              <p className="lm-chiffres text-[13px] text-(--lm-encre-2)">
-                Étape {index + 1} sur {total}
-              </p>
+              {!envoyee && (
+                <p className="lm-chiffres text-[13px] text-(--lm-encre-2)">
+                  Étape {index + 1} sur {total}
+                </p>
+              )}
             </div>
             <span aria-hidden className="size-10 shrink-0 max-sm:size-11" />
           </header>
-          <div
-            role="progressbar"
-            aria-label={`Nouvelle demande · Étape ${index + 1} sur ${total}`}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={progression}
-            className="h-1 w-full shrink-0 bg-(--lm-neutre-lavis)"
-          >
-            <div className="h-full bg-(--lm-encre) transition-[width]" style={{ width: `${progression}%` }} />
-          </div>
 
           <form onSubmit={continuer} noValidate className="flex min-h-0 flex-1 flex-col">
-            <div ref={corps} className="lm-defilement min-h-0 flex-1 overflow-y-auto px-4 pt-6 pb-8 sm:px-8 sm:pt-8">
+            {/* Écran figé : seul ce corps défile, verticalement, sans rebond qui entraîne la page. */}
+            <div ref={corps} className="lm-defilement min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none px-4 pt-6 pb-8 sm:px-8 sm:pt-8">
               {envoyee && (
                 <span aria-hidden className="mb-4 grid size-12 place-items-center rounded-full bg-(--lm-succes-lavis) text-(--lm-succes-texte) [&_svg]:size-6">
                   <Check />
@@ -465,30 +479,43 @@ export function AssistantDemande({
               )}
             </div>
 
-            <footer className="border-t border-(--lm-bord) px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
-              {raison && !envoyee && (
-                <p id={raisonId} className="mb-2 text-[13px] text-(--lm-encre-2) sm:text-right">
-                  {raison}
-                </p>
-              )}
-              <div className="lm-pied-fenetre flex items-center justify-between gap-3">
-                {!envoyee && (index > 0 || retourRecap) ? (
-                  <Button variant="ghost" size="lg" onClick={retour} disabled={enCours}>
-                    Retour
-                  </Button>
-                ) : (
-                  <span aria-hidden />
+            {/* Pied d'Airbnb : la barre de progression en lisière (elle fait le filet), « Retour » souligné à gauche, l'action à droite. */}
+            <footer className="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              <div
+                role="progressbar"
+                aria-label={`Nouvelle demande · Étape ${index + 1} sur ${total}`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={progression}
+                className="h-1 w-full bg-(--lm-neutre-lavis)"
+              >
+                <div className="h-full bg-(--lm-encre) transition-[width]" style={{ width: `${progression}%` }} />
+              </div>
+              <div className="px-4 pt-3 sm:px-6">
+                {raison && !envoyee && (
+                  <p id={raisonId} className="mb-2 text-[13px] text-(--lm-encre-2) sm:text-right">
+                    {raison}
+                  </p>
                 )}
-                <Button
-                  type="submit"
-                  variant="primary"
-                  size="lg"
-                  chargement={enCours}
-                  disabled={!envoyee && (!valide || (etape === 'recapitulatif' && apercu))}
-                  aria-describedby={raison && !envoyee ? raisonId : undefined}
-                >
-                  {libelleSuite}
-                </Button>
+                <div className="lm-pied-fenetre flex items-center justify-between gap-3">
+                  {!envoyee && (index > 0 || retourRecap) ? (
+                    <Button variant="ghost" size="lg" onClick={retour} disabled={enCours}>
+                      Retour
+                    </Button>
+                  ) : (
+                    <span aria-hidden />
+                  )}
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    size="lg"
+                    chargement={enCours}
+                    disabled={!envoyee && (!valide || (etape === 'recapitulatif' && apercu))}
+                    aria-describedby={raison && !envoyee ? raisonId : undefined}
+                  >
+                    {libelleSuite}
+                  </Button>
+                </div>
               </div>
             </footer>
           </form>
