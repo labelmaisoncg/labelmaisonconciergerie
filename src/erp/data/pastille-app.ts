@@ -1,3 +1,4 @@
+import type { RoleUtilisateur } from './types';
 import type { TypeNotification } from './notifications';
 
 /**
@@ -6,8 +7,10 @@ import type { TypeNotification } from './notifications';
  * l'écran d'accueil, notifications autorisées. Android : selon le lanceur.
  *
  * - App ouverte : le nombre exact, la somme des pastilles de la barre du bas
- *   (messages qui attendent une réponse, personnes à appeler…), repris à
- *   chaque changement et quand l'app passe au premier ou à l'arrière-plan.
+ *   que cette personne doit traiter (messages qui attendent une réponse ;
+ *   personnes à appeler pour le gérant, qui seul rappelle ; rien pour un
+ *   compte en lecture seule), repris à chaque changement et quand l'app passe
+ *   au premier ou à l'arrière-plan. Retirée à la déconnexion.
  * - App fermée : le service worker (public/erp-sw.js) ajoute 1 à chaque
  *   notification qui apporte une chose à traiter (TYPES_A_TRAITER), jamais
  *   pour une notification d'essai ; l'app remet le nombre exact à sa
@@ -15,13 +18,26 @@ import type { TypeNotification } from './notifications';
  */
 
 /** Types de notification qui ajoutent une chose comptée dans la barre du bas. Même liste que public/erp-sw.js. */
-export const TYPES_A_TRAITER: readonly TypeNotification[] = ['message', 'agent_main', 'lead'];
+export const TYPES_A_TRAITER: readonly TypeNotification[] = ['message', 'agent_main', 'probleme', 'lead'];
 
 /** Plus grand nombre envoyé au système (au-delà, l'icône n'a plus la place). */
 export const PASTILLE_MAX = 9999;
 
 /** Message de l'app au service worker : le nombre exact, pour repartir de là à la prochaine notification. */
 export const MESSAGE_PASTILLE = 'lm-pastille';
+
+/** Compteurs de la barre du bas qui ne concernent que le gérant (c'est lui qui rappelle les demandes). */
+export const COMPTEURS_DU_GERANT: readonly string[] = ['contactsAAppeler'];
+
+/**
+ * Les compteurs de la barre du bas que compte l'icône de cette personne :
+ * tous pour le gérant, sans les personnes à appeler pour les autres rôles,
+ * aucun pour un compte en lecture seule (il ne traite rien).
+ */
+export function compteursPourRole(role: RoleUtilisateur, compteurs: readonly { cle: string; n: number }[]): number[] {
+  if (role === 'lecture') return [];
+  return compteurs.filter((c) => role === 'gerant' || !COMPTEURS_DU_GERANT.includes(c.cle)).map((c) => c.n);
+}
 
 /** Total de l'icône : la somme des compteurs, entiers positifs seulement, bornée. */
 export function totalPastille(compteurs: readonly number[]): number {

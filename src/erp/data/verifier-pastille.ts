@@ -1,6 +1,8 @@
 /**
  * Auto-contrôle de la pastille de l'icône de l'app (data/pastille-app.ts) :
  *   - total : somme des compteurs, entiers positifs seulement, bornée ;
+ *   - selon le rôle : personnes à appeler pour le gérant seulement, rien en
+ *     lecture seule ;
  *   - pose et retrait (setAppBadge / clearAppBadge), refus du système sans
  *     conséquence, nombre exact transmis au service worker ;
  *   - les types qui ajoutent 1 existent, et le service worker
@@ -12,7 +14,7 @@
  *   node_modules/.bin/esbuild src/erp/data/verifier-pastille.ts --bundle --platform=node \
  *     --format=esm --log-level=error --outfile=/tmp/verifier-pastille.mjs && node /tmp/verifier-pastille.mjs
  */
-import { appliquerPastille, MESSAGE_PASTILLE, PASTILLE_MAX, totalPastille, TYPES_A_TRAITER } from './pastille-app';
+import { appliquerPastille, COMPTEURS_DU_GERANT, compteursPourRole, MESSAGE_PASTILLE, PASTILLE_MAX, totalPastille, TYPES_A_TRAITER } from './pastille-app';
 import { TYPES_NOTIFICATION } from './notifications';
 
 let echecs = 0;
@@ -59,6 +61,18 @@ async function principal() {
   verifier(totalPastille([2, -4, Number.NaN, Number.POSITIVE_INFINITY, 1.7]) === 3, 'négatifs, NaN et infini ignorés, décimales arrondies vers le bas');
   verifier(totalPastille([PASTILLE_MAX, 5]) === PASTILLE_MAX, `borné à ${PASTILLE_MAX}`);
 
+  section('1 bis. Selon le rôle');
+  {
+    const barre = [
+      { cle: 'messagesEnAttente', n: 4 },
+      { cle: 'contactsAAppeler', n: 20 },
+    ];
+    verifier(totalPastille(compteursPourRole('gerant', barre)) === 24, 'gérant : messages + personnes à appeler (24)');
+    verifier(totalPastille(compteursPourRole('operations', barre)) === 4, 'opérations : les messages seulement (4), c’est le gérant qui rappelle');
+    verifier(totalPastille(compteursPourRole('prestataire', barre)) === 4, 'prestataire : sans les personnes à appeler');
+    verifier(totalPastille(compteursPourRole('lecture', barre)) === 0, 'lecture seule : aucune pastille');
+  }
+
   section('2. Pose, retrait, service worker');
   {
     const f = fauxNavigateur();
@@ -101,7 +115,7 @@ async function principal() {
   section('3. Types qui ajoutent 1');
   const connus = new Set(TYPES_NOTIFICATION.map((t) => t.type));
   verifier(TYPES_A_TRAITER.length > 0 && TYPES_A_TRAITER.every((t) => connus.has(t)), 'chaque type compté est un vrai type de notification');
-  for (const t of ['message', 'agent_main', 'lead'] as const) verifier(TYPES_A_TRAITER.includes(t), `« ${t} » ajoute une chose à traiter`);
+  for (const t of ['message', 'agent_main', 'probleme', 'lead'] as const) verifier(TYPES_A_TRAITER.includes(t), `« ${t} » ajoute une chose à traiter`);
   for (const t of ['reservation', 'avis', 'rappel', 'agent_repondu', 'synchro', 'prix'] as const) verifier(!TYPES_A_TRAITER.includes(t), `« ${t} » n'ajoute rien`);
 
   section('4. Service worker (public/erp-sw.js) et envoi');
@@ -129,6 +143,13 @@ async function principal() {
 
     const envoi = fs.readFileSync(chemins.join(dossier, 'src/erp/data/notifications-envoi.ts'), 'utf8');
     verifier(/\{ titre: v\.titre, corps: v\.corps, url: v\.url, tag: g\.cle, type: v\.type \}/.test(envoi), 'l’envoi transmet le type au service worker');
+    const registre = fs.readFileSync(chemins.join(dossier, 'src/erp/modules/registry.tsx'), 'utf8');
+    const cles = /export type CleCompteur = ([^;]+);/.exec(registre)?.[1] ?? '';
+    verifier(COMPTEURS_DU_GERANT.every((c) => cles.includes(`'${c}'`)), 'les compteurs réservés au gérant existent bien dans le menu');
+    const magasin = fs.readFileSync(chemins.join(dossier, 'src/erp/data/store.tsx'), 'utf8');
+    verifier(/arreterSynchro\(\);\s*appliquerPastille\(0\);\s*await deconnexionSupabase\(\);/.test(magasin), 'déconnexion : la pastille est retirée avant de quitter la session');
+    const crochet = fs.readFileSync(chemins.join(dossier, 'src/erp/layout/usePastilleApp.ts'), 'utf8');
+    verifier(crochet.includes('compteursPourRole(') && crochet.includes('utilisateur.role'), 'l’app compte selon le rôle de la personne');
     const essai = fs.readFileSync(chemins.join(dossier, 'api/erp-notifications.ts'), 'utf8');
     verifier(/notificationTest\(`test-/.test(essai), 'la notification d’essai a une clé « test-… » (ignorée par la pastille)');
   }

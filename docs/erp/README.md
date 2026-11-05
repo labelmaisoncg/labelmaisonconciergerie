@@ -1759,14 +1759,17 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
   l'ancien cache.
 - **Pastille rouge sur l'icône** (comme une vraie app ; `src/erp/data/pastille-app.ts`,
   `src/erp/layout/usePastilleApp.ts`) : app ouverte, le nombre exact, soit la
-  somme des pastilles de la barre du bas (messages qui attendent une réponse,
-  personnes à appeler…), repris à chaque changement et quand l'app passe au
-  premier ou à l'arrière-plan ; retirée à la déconnexion. App fermée, le
-  service worker ajoute 1 à chaque notification qui apporte une chose à
-  traiter (nouveau message d'un voyageur, l'agent passe la main, nouvelle
+  somme des pastilles de la barre du bas que la personne doit traiter
+  (messages qui attendent une réponse ; personnes à appeler pour le gérant
+  seulement, c'est lui qui rappelle ; rien pour un compte en lecture seule),
+  repris à chaque changement et quand l'app passe au premier ou à
+  l'arrière-plan ; retirée à la déconnexion. App fermée, le service worker
+  ajoute 1 à chaque notification qui apporte une chose à traiter (nouveau
+  message d'un voyageur, problème signalé, l'agent passe la main, nouvelle
   demande à appeler), jamais pour une notification d'essai ; l'app remet le
   nombre exact à sa prochaine ouverture. iPhone : iOS 16.4 ou plus, app sur
-  l'écran d'accueil, notifications autorisées (sans elles, pas de pastille).
+  l'écran d'accueil, notifications autorisées (sans elles, pas de pastille) ;
+  à couper dans Réglages → Notifications → Label Maison → Pastilles.
   Contrôlé par `verifier-pastille.ts`.
 - **Envoi** : `api/erp-repull-sync.ts`, `api/erp-repull-webhook.ts` et
   `api/erp-agent.ts` enveloppent leur travail dans `surveiller`
