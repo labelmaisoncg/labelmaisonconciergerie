@@ -122,7 +122,7 @@ export function EnvoiFichier({
         aria-hidden
         onChange={(e) => void choisis(e.target.files)}
       />
-      <Button variant={variant} size={size} icone={icone ?? <Paperclip />} chargement={enCours} disabled={disabled} onClick={() => champ.current?.click()}>
+      <Button variant={variant} size={size} icone={icone ?? <Paperclip />} chargement={enCours} disabled={disabled} onClick={() => champ.current?.click()} className="max-sm:min-h-11">
         {enCours ? 'Envoi…' : libelle}
       </Button>
       {erreur && (

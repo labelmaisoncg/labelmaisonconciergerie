@@ -27,17 +27,23 @@ export function useFenetre<T extends HTMLElement>(ouvert: boolean, onFermer: () 
       if (pile[pile.length - 1] !== moi) return;
       if (e.key === 'Escape') fermer.current();
       if (e.key !== 'Tab' || !ref.current) return;
-      // Piège à focus minimal : on boucle dans le panneau.
-      const focusables = ref.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      );
+      // Piège à focus minimal : on boucle dans le panneau. Seuls comptent les éléments que Tab atteint :
+      // pas ceux en tabindex=-1 (les réponses non choisies d'un groupe de choix), ni ceux qui ne s'affichent pas.
+      const focusables = [
+        ...ref.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]'),
+      ].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
       if (!focusables.length) return;
       const premier = focusables[0];
       const dernier = focusables[focusables.length - 1];
-      if (e.shiftKey && document.activeElement === premier) {
+      const actif = document.activeElement;
+      // Focus sur le panneau lui-même (à l'ouverture) ou hors de lui : on entre par un bout.
+      if (actif === ref.current || !ref.current.contains(actif)) {
+        e.preventDefault();
+        (e.shiftKey ? dernier : premier).focus();
+      } else if (e.shiftKey && actif === premier) {
         e.preventDefault();
         dernier.focus();
-      } else if (!e.shiftKey && document.activeElement === dernier) {
+      } else if (!e.shiftKey && actif === dernier) {
         e.preventDefault();
         premier.focus();
       }

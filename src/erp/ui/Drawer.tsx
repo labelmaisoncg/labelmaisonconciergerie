@@ -48,7 +48,8 @@ export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, larg
         )}
       >
         <div className="flex min-h-14 shrink-0 items-center gap-2 border-b border-(--lm-bord) px-3 py-2.5">
-          <IconButton label="Fermer" onClick={onFermer} size="sm">
+          {/* 44 px au toucher ; la place vide de droite suit, le titre reste au centre. */}
+          <IconButton label="Fermer" onClick={onFermer} size="sm" className="max-sm:size-11">
             <X />
           </IconButton>
           <div className="min-w-0 flex-1 text-center">
@@ -58,7 +59,7 @@ export function Drawer({ ouvert, onFermer, titre, sousTitre, pied, actions, larg
             {sousTitre && <div className="mt-0.5 text-[13px] leading-snug text-(--lm-encre-2) [&>.flex]:justify-center">{sousTitre}</div>}
           </div>
           {/* Sans actions, une place vide de la taille du bouton fermer garde le titre au centre. */}
-          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : <span aria-hidden className="size-8 shrink-0" />}
+          {actions ? <div className="flex shrink-0 items-center gap-1.5">{actions}</div> : <span aria-hidden className="size-8 shrink-0 max-sm:size-11" />}
         </div>
         <div className="lm-defilement flex-1 overflow-x-hidden overflow-y-auto overscroll-none px-4 py-5 sm:px-6">{children}</div>
         {pied && <div className={PIED_FENETRE}>{pied}</div>}

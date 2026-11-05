@@ -1,11 +1,13 @@
 import { forwardRef, useEffect, useId, useRef, useState, type FormEvent, type InputHTMLAttributes, type KeyboardEvent, type ReactNode } from 'react';
 import { Minus, Plus, X, type LucideIcon } from 'lucide-react';
 import {
+  NBSP as ESPACE_INSECABLE,
   blocage,
   ecranPrecedent,
   ecranSuivant,
   libelleSuite,
   progression,
+  insecables,
   retourPossible,
   type Blocage,
   type PositionParcours,
@@ -65,7 +67,8 @@ export interface AssistantProps {
 }
 
 /** Espace insécable avant « ? », « : », « ! » : la ponctuation ne part jamais seule à la ligne. */
-export const NBSP = String.fromCharCode(0xa0);
+export const NBSP = ESPACE_INSECABLE;
+export { TIRET_INSECABLE, insecables } from '../data/parcours-assistant';
 
 /** Champs de l'assistant : 44 px de haut, 16 px de texte (pas de zoom à la saisie sur iPhone). */
 export const CHAMP_ASSISTANT = 'h-11 text-[16px]';
@@ -143,61 +146,74 @@ export function Assistant({
         >
           {/* En-tête d'Airbnb : fermer rond à gauche, titre centré, un filet dessous. */}
           <header className="flex items-center gap-2 border-b border-(--lm-bord) px-3 pt-[max(0.625rem,env(safe-area-inset-top))] pb-2.5">
-            <IconButton label="Fermer" size="sm" onClick={demanderFermeture}>
+            {/* 44 px au toucher (téléphone), 32 px à la souris ; l'espace de droite suit pour garder le titre au centre. */}
+            <IconButton label="Fermer" size="sm" onClick={demanderFermeture} className="max-sm:size-11">
               <X />
             </IconButton>
             <div className="min-w-0 flex-1 text-center leading-tight">
               <p className="truncate text-[16px] font-semibold text-(--lm-encre)">{titre}</p>
-              <p className="lm-chiffres text-[13px] text-(--lm-encre-2)">
-                Étape {rang} sur {total}
-              </p>
+              {/* Écran qui ne peut pas aboutir (Prerequis) : ni étape ni progression, rien n'avance. */}
+              {!sansSuite && (
+                <p className="lm-chiffres text-[13px] text-(--lm-encre-2)">
+                  Étape {rang} sur {total}
+                </p>
+              )}
             </div>
-            <span aria-hidden className="size-8 shrink-0" />
+            <span aria-hidden className="size-8 shrink-0 max-sm:size-11" />
           </header>
 
           <form onSubmit={continuer} onKeyDown={entree} noValidate className="flex min-h-0 flex-1 flex-col">
             <div ref={corps} className="lm-defilement min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-none px-4 pt-6 pb-8 sm:px-8 sm:pt-8">
               <h2 id={titreId} ref={titreRef} tabIndex={-1} style={{ outline: 'none' }} className="lm-titre text-[24px] leading-tight text-balance text-(--lm-encre) sm:text-[28px]">
-                {question}
+                {insecables(question)}
               </h2>
-              {aide && <p className="mt-1.5 text-[14px] text-(--lm-encre-2)">{aide}</p>}
+              {aide && <p className="mt-1.5 text-[14px] text-(--lm-encre-2)">{insecables(aide)}</p>}
               <div className="mt-6">{children}</div>
             </div>
 
-            {/* Pied d'Airbnb : la barre de progression en lisière, « Retour » souligné à gauche, l'action à droite. */}
-            <footer className="pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-              <div
-                role="progressbar"
-                aria-label={`${titre} · Étape ${rang} sur ${total}`}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={pourcent}
-                className="h-1 w-full bg-(--lm-neutre-lavis)"
-              >
-                <div className="h-full bg-(--lm-encre) transition-[width]" style={{ width: `${(rang / total) * 100}%` }} />
-              </div>
-              <div className="px-4 pt-3 sm:px-6">
-                {raison && !sansSuite && (
-                  <p id={raisonId} className="mb-2 text-[13px] text-(--lm-encre-2) sm:text-right">
-                    {raison}
-                  </p>
+            {/*
+              Pied d'Airbnb : la barre de progression en lisière, « Retour » souligné à gauche, l'action à droite.
+              La barre d'accueil de l'iPhone est déjà réservée par la fenêtre (erp.css) : 12 px de marge ici, sans plus.
+            */}
+            {(onRetour || !sansSuite) && (
+              <footer className="pb-3">
+                {!sansSuite ? (
+                  <div
+                    role="progressbar"
+                    aria-label={`${titre} · Étape ${rang} sur ${total}`}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={pourcent}
+                    className="h-1 w-full bg-(--lm-neutre-lavis)"
+                  >
+                    <div className="h-full bg-(--lm-encre) transition-[width]" style={{ width: `${(rang / total) * 100}%` }} />
+                  </div>
+                ) : (
+                  <div aria-hidden className="h-px w-full bg-(--lm-bord)" />
                 )}
-                <div className="lm-pied-fenetre flex min-h-12 items-center justify-between gap-3">
-                  {onRetour ? (
-                    <Button variant="ghost" size="lg" onClick={onRetour} disabled={envoi}>
-                      Retour
-                    </Button>
-                  ) : (
-                    <span aria-hidden />
+                <div className="px-4 pt-3 sm:px-6">
+                  {raison && !sansSuite && (
+                    <p id={raisonId} className="mb-2 text-[13px] text-(--lm-encre-2) sm:text-right">
+                      {insecables(raison)}
+                    </p>
                   )}
-                  {!sansSuite && (
-                    <Button type="submit" variant="primary" size="lg" disabled={!valide || envoi} chargement={envoi} aria-describedby={raison ? raisonId : undefined}>
-                      {suite}
-                    </Button>
-                  )}
+                  <div className="lm-pied-fenetre flex min-h-12 items-center justify-between gap-3">
+                    {onRetour ? (
+                      <Button variant="ghost" size="lg" onClick={onRetour} disabled={envoi}>
+                        Retour
+                      </Button>
+                    ) : (
+                      <span aria-hidden />
+                    )}
+                    {!sansSuite && (
+                      <Button type="submit" variant="primary" size="lg" disabled={!valide || envoi} chargement={envoi} aria-describedby={raison ? raisonId : undefined}>
+                        {suite}
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </footer>
+              </footer>
+            )}
           </form>
         </div>
       </div>
@@ -310,11 +326,12 @@ export function RecapAssistant({ lignes, children }: { lignes: LigneRecapAssista
         {lignes.map((l) => (
           <li key={l.cle} className="flex items-start gap-3 py-3 pr-2 pl-4">
             <div className="min-w-0 flex-1">
-              <p className="text-[12.5px] text-(--lm-encre-3)">{l.libelle}</p>
-              <p className={cn('mt-0.5 text-[15px] break-words whitespace-pre-line', l.valeur ? 'text-(--lm-encre)' : 'text-(--lm-encre-3)')}>{l.valeur || 'À compléter'}</p>
+              <p className="text-[12.5px] text-(--lm-encre-3)">{insecables(l.libelle)}</p>
+              <p className={cn('mt-0.5 text-[15px] break-words whitespace-pre-line', l.valeur ? 'text-(--lm-encre)' : 'text-(--lm-encre-3)')}>{insecables(l.valeur) || 'À compléter'}</p>
             </div>
+            {/* Lien d'action d'Airbnb : souligné, 44 px de haut au toucher. */}
             {l.onModifier && (
-              <Button variant="ghost" size="sm" onClick={l.onModifier} aria-label={`Modifier${NBSP}: ${l.libelle}`}>
+              <Button variant="ghost" size="sm" onClick={l.onModifier} aria-label={`Modifier${NBSP}: ${l.libelle}`} className="underline max-sm:min-h-11">
                 Modifier
               </Button>
             )}
@@ -423,8 +440,8 @@ export function ChoixListe<T extends string>({ options, valeur, onChange, onChoi
               {actif && <span className="size-2 rounded-full bg-(--lm-surface)" />}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] text-(--lm-encre)">{o.libelle}</span>
-              {o.detail && <span className="block text-[12.5px] text-(--lm-encre-3)">{o.detail}</span>}
+              <span className="block truncate text-[15px] text-(--lm-encre)">{insecables(o.libelle)}</span>
+              {o.detail && <span className="block text-[12.5px] text-(--lm-encre-3)">{insecables(o.detail)}</span>}
             </span>
           </button>
         );
@@ -460,7 +477,7 @@ export function ChoixCartes<T extends string>({ options, valeur, onChange, onCho
             className={cn(CLASSES_CHOIX.base, 'min-h-28 min-w-0 flex-col items-start justify-between gap-4 p-4', actif ? CLASSES_CHOIX.actif : CLASSES_CHOIX.repos)}
           >
             {Icone && <Icone aria-hidden className={cn('size-7', actif ? 'text-(--lm-or-texte)' : 'text-(--lm-encre)')} />}
-            <span className="max-w-full text-[15px] font-semibold break-words text-(--lm-encre)">{o.libelle}</span>
+            <span className="max-w-full text-[15px] font-semibold break-words text-(--lm-encre)">{insecables(o.libelle)}</span>
           </button>
         );
       })}
@@ -497,7 +514,7 @@ export function ChoixCourts<T extends string>({ options, valeur, onChange, onCho
               actif ? `${CLASSES_CHOIX.actif} text-(--lm-brun)` : `${CLASSES_CHOIX.repos} text-(--lm-encre)`,
             )}
           >
-            <span className="truncate">{o.libelle}</span>
+            <span className="truncate">{insecables(o.libelle)}</span>
           </button>
         );
       })}
