@@ -72,11 +72,20 @@ import { ECRANS_MEMBRE, brouillonMembre, erreursMembre, membreDepuisBrouillon, r
 import { ECRANS_CONCIERGERIE, NOM_CONCIERGERIE_MAX, brouillonConciergerie, erreursConciergerie, invitationConciergerie, recapConciergerie, type BrouillonConciergerie } from './creation-conciergerie';
 import { annonceDepuisBrouillon, brouillonAnnonce, ecransAnnonce, erreursAnnonce, recapAnnonce, type BrouillonAnnonce } from './creation-annonce-equipe';
 import { brouillonInitial, preparerAnnonce } from './annonces-equipe';
+import {
+  ECRANS_GUIDE,
+  erreursGuide,
+  guideDepuisBrouillon,
+  guideVide,
+  recapGuide,
+  type BrouillonGuide,
+} from './creation-guide';
+import { LIBELLE_TYPE_GUIDE, estLienGuide } from './guides';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
-import type { ContactCrm, Logement, Mandat, Prestataire, Proprietaire, Reservation, RoleUtilisateur, Utilisateur } from './types';
+import type { ContactCrm, GuideLogement, Logement, Mandat, Prestataire, Proprietaire, Reservation, RoleUtilisateur, Utilisateur } from './types';
 import type { MembreEquipe, RoleOperations } from './types-operations';
 
 let echecs = 0;
@@ -831,6 +840,57 @@ section('Annonce à l’équipe : écrans, règles et même annonce que l’anci
   const recap = recapAnnonce(cas[0][0], true);
   verifier(recap.map((l) => l.cle).join() === 'titre,texte,notifier' && recap[0].valeur === 'Réunion lundi', `récapitulatif : le titre tel qu’il sera publié (${recap[0].valeur})`);
   verifier(recapAnnonce(cas[0][0], false).length === 2, 'récapitulatif sans notifications possibles : pas de ligne « Notification »');
+}
+
+/* ============================================================ guides, FAQ */
+
+section('Fiche voyageur, nouveau guide : écrans, règles et même ligne que l’ancienne fenêtre');
+{
+  const o = { id: 'guide-n', maintenant: '2026-11-05T10:00:00.000+01:00', par: 'Abdel' };
+  /** L'ancienne fenêtre « Nouveau guide » (GuidesFiche.tsx, valider sans id), recopiée telle quelle. */
+  const ancien = (b: BrouillonGuide): GuideLogement | undefined => {
+    const lienValide = b.source === 'lien' && estLienGuide(b.url);
+    const valide = !!b.titre.trim() && (b.source === 'lien' ? lienValide : !!b.fichier);
+    if (!valide) return undefined;
+    return {
+      id: o.id,
+      titre: b.titre.trim(),
+      ...(b.quand.trim() ? { quand: b.quand.trim() } : {}),
+      media: b.source === 'lien' ? { type: 'lien', url: b.url.trim() } : { type: b.type === 'lien' ? 'document' : b.type, fichier: b.fichier },
+      ...(b.acces ? { acces: true } : {}),
+      ajouteLe: o.maintenant,
+      ajoutePar: o.par,
+    };
+  };
+  const v = guideVide();
+  verifier(ECRANS_GUIDE.join() === 'titre,quand,source,media,acces,recapitulatif', 'écrans : titre, quand, lien ou fichier, adresse ou fichier, accès, récapitulatif');
+  verifier(v.source === 'lien' && !v.acces, 'départ : un lien, sans accès (comme avant)');
+  verifier(erreursGuide('titre', v).titre === 'Donnez un titre au guide.', 'titre vide : bloqué');
+  verifier(!Object.keys(erreursGuide('quand', v)).length && !Object.keys(erreursGuide('acces', v)).length, 'quand et accès : facultatifs');
+  verifier(erreursGuide('media', v).url === 'Collez l’adresse du guide.', 'lien vide : à coller');
+  verifier(erreursGuide('media', { ...v, url: 'http://youtu.be/x' }).url === `Lien non valable${NBSP}: copiez-le en entier, depuis «${NBSP}Partager${NBSP}».`, 'lien qui ne commence pas par https : refusé, dit sans jargon');
+  verifier(erreursGuide('media', { ...v, source: 'fichier' }).fichier === 'Choisissez un fichier.', 'fichier non choisi : bloqué');
+  const cas: BrouillonGuide[] = [
+    { ...v, titre: ' Comment récupérer la clé ', url: ' https://youtu.be/abc ' },
+    { ...v, titre: 'Code du portail', quand: ' Quand il demande le code ', url: 'https://drive.google.com/x', acces: true },
+    { ...v, titre: 'Four', source: 'fichier', fichier: 'stockage://logements/log-1/guides/four.mp4', nomFichier: 'four.mp4', type: 'video' },
+    { ...v, titre: 'Mode d’emploi', source: 'fichier', fichier: 'demo://logements/log-1/guides/notice', nomFichier: 'notice', type: 'lien' },
+    { ...v, titre: 'Lien et fichier', source: 'fichier', url: 'https://x.fr', fichier: 'stockage://a.pdf', nomFichier: 'a.pdf', type: 'document' },
+    { ...v, titre: '  ', url: 'https://x.fr' },
+    { ...v, titre: 'Sans https', url: 'www.x.fr' },
+    { ...v, titre: 'Sans fichier', source: 'fichier' },
+  ];
+  for (const x of cas) {
+    const r = guideDepuisBrouillon(x, o);
+    const avant = ancien(x);
+    verifier(r.ok === !!avant, `même saisie permise ou refusée (${x.titre.trim() || 'sans titre'})`);
+    if (r.ok && avant) verifier(empreinte(r.guide) === empreinte(avant), `même guide ajouté à la fiche (${x.titre.trim()})`);
+  }
+  const fichier = guideDepuisBrouillon(cas[3], o);
+  verifier(fichier.ok && fichier.guide.media.type === 'document' && !('url' in fichier.guide.media), 'fichier de type inconnu : « document », sans adresse');
+  const recap = recapGuide(cas[2], (t) => LIBELLE_TYPE_GUIDE[t]);
+  verifier(recap.find((l) => l.cle === 'media')?.libelle === 'Vidéo' && recap.find((l) => l.cle === 'media')?.valeur === 'four.mp4', 'récapitulatif : type et nom du fichier');
+  verifier(recapGuide({ ...v, titre: 'x', url: 'http://x' }, (t) => LIBELLE_TYPE_GUIDE[t]).find((l) => l.cle === 'media')?.valeur === '', 'récapitulatif : lien non valable, « À compléter »');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);
