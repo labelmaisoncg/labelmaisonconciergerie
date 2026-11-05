@@ -57,11 +57,21 @@ import {
 import { ECRANS_CHARGE, brouillonCharge, chargeDepuisBrouillon, erreursCharge, recapCharge } from './creation-charge';
 import { ECRANS_PROSPECT, brouillonDe, creationProspect, erreursEcranProspect, erreursProspect, recapProspect, versProspect } from './creation-prospect';
 import { ECRANS_FACTURE, brouillonFacture, erreursFacture, factureDepuisBrouillon, recapFacture, totauxFacture } from './creation-facture';
+import {
+  ECRANS_INVITATION_PROPRIETAIRE,
+  brouillonInvitationProprietaire,
+  erreursInvitationProprietaire,
+  invitationProprietaireDepuisBrouillon,
+  recapInvitationProprietaire,
+  transfertsInvitation,
+  type BrouillonInvitationProprietaire,
+} from './creation-invitation-proprietaire';
+import { transfertsProprietaire } from './acces-gerant';
 import { AUJOURDHUI, ajouterJours, ecartJours, versCentimes } from './format';
 import { mandatAuJour } from './selectors';
 import { conflits, statutSelonDates } from '../modules/reservations/_composants/outils';
 import { telephoneNormalise, trouverDoublon } from './crm';
-import type { ContactCrm, Logement, Mandat, Prestataire, Reservation } from './types';
+import type { ContactCrm, Logement, Mandat, Prestataire, Proprietaire, Reservation } from './types';
 import type { MembreEquipe } from './types-operations';
 
 let echecs = 0;
@@ -573,6 +583,79 @@ section('Facture : écrans, règles et même facture que l’ancien formulaire')
     verifier(r.ok && empreinte(r.facture) === empreinte(ancienne(x, statut)), `même facture (${x.type}, ${statut})`);
   }
   verifier(recapFacture(ok, props).find((x) => x.cle === 'lignes')?.valeur.split('\n').length === 2, 'récapitulatif : une ligne par ligne de facture');
+}
+
+/* Lot 2 : Paramètres (Accès, Équipe, Espaces, Annonces), fiche voyageur, espace opérations. */
+
+/* ================================================= invitation propriétaire */
+
+section('Accès, inviter un propriétaire : écrans, règles et mêmes écritures que l’ancienne fenêtre');
+{
+  const A_RENSEIGNER = 'pro-a-renseigner';
+  const proprietaires = [
+    { id: 'pro-1', type: 'particulier', nom: 'Alice Martin', contact: { email: 'Alice@Exemple.fr ', telephone: '06 00 00 00 01' }, adresse: '1 rue A', ibanMasque: 'FR76 0000 1234', notes: 'n', creeLe: '2026-01-02' },
+    { id: 'pro-2', type: 'sci', nom: 'SCI Tilleuls', contact: { email: 'sci@exemple.fr', telephone: '' }, adresse: '', notes: '', creeLe: '2026-02-03' },
+    { id: A_RENSEIGNER, type: 'particulier', nom: 'À renseigner', contact: { email: '', telephone: '' }, adresse: '', notes: '', creeLe: '2026-01-01' },
+  ] as Proprietaire[];
+  const logements = [
+    { id: 'log-1', nom: 'T2 Gare', proprietaireId: 'pro-1' },
+    { id: 'log-2', nom: 'Studio Parc', proprietaireId: 'pro-2' },
+    { id: 'log-3', nom: 'Maison importée', proprietaireId: A_RENSEIGNER },
+  ];
+  const ctx = { proprietaires, logements, aRenseigner: A_RENSEIGNER };
+  const EMAIL_ACCES = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+  const sansIban = ({ ibanMasque: _ancien, ...p }: Proprietaire): Proprietaire => p;
+  /** L'ancienne fenêtre « Inviter un propriétaire » (Acces.tsx), recopiée telle quelle : règles, fiche, logements, adresse invitée. */
+  const ancienne = (f: { nom: string; email: string; telephone: string; coches: string[] }, id: string, creeLe: string) => {
+    const adresseSaisie = f.email.trim().toLowerCase();
+    const existant = adresseSaisie ? proprietaires.find((p) => p.contact.email.trim().toLowerCase() === adresseSaisie) : undefined;
+    if (f.nom.trim().length < 2 && !existant) return { erreur: 'Indiquez le nom du propriétaire.' };
+    if (!EMAIL_ACCES.test(adresseSaisie)) return { erreur: 'Adresse e-mail invalide.' };
+    const transferts = transfertsProprietaire(logements, proprietaires, f.coches, existant?.id ?? '', A_RENSEIGNER);
+    const p: Proprietaire = existant
+      ? { ...sansIban(existant), nom: existant.nom || f.nom.trim(), contact: { email: adresseSaisie, telephone: existant.contact.telephone || f.telephone.trim() } }
+      : { id, type: 'particulier', nom: f.nom.trim(), contact: { email: adresseSaisie, telephone: f.telephone.trim() }, adresse: '', notes: '', creeLe };
+    return { plan: { proprietaire: p, logementIds: f.coches, email: adresseSaisie }, transferts };
+  };
+  const b = (x: Partial<BrouillonInvitationProprietaire> = {}): BrouillonInvitationProprietaire => ({ ...brouillonInvitationProprietaire(), ...x });
+  verifier(ECRANS_INVITATION_PROPRIETAIRE.join() === 'email,identite,logements,recapitulatif', 'écrans : e-mail, qui, logements, récapitulatif');
+  verifier(erreursInvitationProprietaire('email', b(), ctx).email === 'Indiquez son adresse e‑mail.', 'e-mail vide : à indiquer');
+  verifier(erreursInvitationProprietaire('email', b({ email: 'alice@exemple' }), ctx).email === 'Adresse e‑mail invalide.', 'e-mail invalide : refusé (même règle que l’ancienne fenêtre)');
+  verifier(erreursInvitationProprietaire('identite', b({ email: 'x@y.fr', nom: 'A' }), ctx).nom === 'Indiquez le nom du propriétaire.', 'nouvelle fiche : nom de 2 lettres au moins');
+  verifier(!erreursInvitationProprietaire('identite', b({ email: ' ALICE@exemple.fr', nom: '' }), ctx).nom, 'fiche reprise (même adresse, sans casse) : son nom suffit');
+  verifier(!Object.keys(erreursInvitationProprietaire('logements', b(), ctx)).length, 'logements : facultatifs, comme avant');
+  const cas: [Partial<BrouillonInvitationProprietaire>, string][] = [
+    [{ email: ' Paul.Durand@Exemple.FR ', nom: ' Paul Durand ', telephone: ' 06 11 22 33 44 ' }, 'nouvelle fiche, sans logement'],
+    [{ email: 'paul@exemple.fr', nom: 'Paul', logementIds: ['log-3'] }, 'nouvelle fiche, logement « à renseigner »'],
+    [{ email: 'paul@exemple.fr', nom: 'Paul', logementIds: ['log-1', 'log-2'] }, 'nouvelle fiche, logements d’autres propriétaires'],
+    [{ email: 'alice@exemple.fr', nom: '', telephone: '07 99', logementIds: ['log-2'] }, 'fiche reprise : nom, téléphone gardés, IBAN retiré'],
+    [{ email: 'SCI@exemple.fr', nom: 'Autre nom', telephone: ' 01 02 03 04 05 ', logementIds: [] }, 'fiche reprise sans téléphone : le nouveau est pris'],
+  ];
+  for (const [x, quoi] of cas) {
+    const br = b(x);
+    const r = invitationProprietaireDepuisBrouillon(br, { proprietaires, nouvelId: () => 'pro-n', aujourdhui: '2026-11-05' });
+    const avant = ancienne({ nom: br.nom, email: br.email, telephone: br.telephone, coches: br.logementIds }, 'pro-n', '2026-11-05');
+    verifier(r.ok && 'plan' in avant && empreinte(r.plan) === empreinte(avant.plan), `même fiche, mêmes logements, même adresse invitée (${quoi})`);
+    verifier('plan' in avant && empreinte(transfertsInvitation(br, ctx)) === empreinte(avant.transferts), `mêmes logements repris à un autre, dits avant (${quoi})`);
+  }
+  const reprise = invitationProprietaireDepuisBrouillon(b({ email: 'alice@exemple.fr', telephone: '07' }), { proprietaires, nouvelId: () => 'x', aujourdhui: 'j' });
+  verifier(
+    reprise.ok && reprise.plan.proprietaire.id === 'pro-1' && !('ibanMasque' in reprise.plan.proprietaire) && reprise.plan.proprietaire.contact.telephone === '06 00 00 00 01',
+    'fiche reprise : même identifiant, sans IBAN, son téléphone gardé',
+  );
+  verifier(transfertsInvitation(b({ email: 'paul@exemple.fr', logementIds: ['log-1', 'log-3'] }), ctx).map((t) => t.logementId).join() === 'log-1', 'logement « à renseigner » : pas un transfert');
+  verifier(!transfertsInvitation(b({ email: 'alice@exemple.fr', logementIds: ['log-1'] }), ctx).length, 'son propre logement : pas un transfert');
+  // Saisies refusées par l'ancienne fenêtre : refusées aussi, rien n'est créé.
+  for (const x of [{ email: 'paul@exemple', nom: 'Paul' }, { email: 'paul@exemple.fr', nom: 'P' }, { email: '', nom: '' }]) {
+    const r = invitationProprietaireDepuisBrouillon(b(x), { proprietaires, nouvelId: () => 'x', aujourdhui: 'j' });
+    verifier(!r.ok && 'erreur' in ancienne({ ...x, telephone: '', coches: [] }, 'x', 'j'), `saisie refusée avant comme maintenant (${JSON.stringify(x)})`);
+  }
+  const recap = recapInvitationProprietaire(b({ email: 'Alice@exemple.fr', logementIds: ['log-2'] }), ctx);
+  verifier(
+    recap.find((l) => l.cle === 'nom')?.valeur === 'Alice Martin (fiche reprise)' && recap.find((l) => l.cle === 'logements')?.valeur === 'T2 Gare, Studio Parc',
+    `récapitulatif : fiche reprise, ses logements et le nouveau (${recap.map((l) => l.valeur).join(' | ')})`,
+  );
+  verifier(recapInvitationProprietaire(b({ email: 'p@exemple.fr', nom: 'Paul' }), ctx).find((l) => l.cle === 'telephone')?.valeur === 'Non renseigné', 'récapitulatif : téléphone vide lisible');
 }
 
 console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

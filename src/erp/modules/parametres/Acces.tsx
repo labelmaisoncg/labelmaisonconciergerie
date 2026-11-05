@@ -15,15 +15,28 @@
  * api/espace-operations.ts) ; fiches et logements par le store, comme le
  * reste de l'ERP. Les mêmes liens se gèrent depuis la fiche logement.
  */
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ArrowRight, Check, Copy, Eye, Mail, Phone, UserPlus, X } from 'lucide-react';
+import {
+  ECRANS_INVITATION_PROPRIETAIRE,
+  SANS_CHAMP_INVITATION_PROPRIETAIRE,
+  brouillonInvitationProprietaire,
+  erreursInvitationProprietaire,
+  invitationProprietaireDepuisBrouillon,
+  proprietaireAvecEmail,
+  recapInvitationProprietaire,
+  transfertsInvitation,
+  type BrouillonInvitationProprietaire,
+  type EcranInvitationProprietaire,
+} from '../../data/creation-invitation-proprietaire';
 import { EMAIL_RESPONSABLE } from '../../data/creation-responsable';
 import { ficheResponsableInvite, logementsSansPersonne, phrasesTransferts, statutAccesExterne, transfertsProprietaire, type Transfert } from '../../data/acces-gerant';
 import { MODE_DEMO } from '../../data/config';
 import { espaceOuvert } from '../../data/espaces';
 import { AUJOURDHUI, dateCourte, horodatageMaintenant, jourMois } from '../../data/format';
 import { affectationsEffectives, remplacantsPossibles, vueOperations } from '../../data/espace-operations';
+import { brouillonModifie } from '../../data/parcours-assistant';
 import { changerProprietaire } from '../../data/proprietaire';
 import {
   ROLES_OPERATIONS,
@@ -42,7 +55,27 @@ import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../data/repull';
 import { nouvelId, useErp, type ErpContexte } from '../../data/store';
 import type { Id, Logement, Proprietaire } from '../../data/types';
 import type { AbsenceMembre, AccesOperations, AffectationLogement, MembreEquipe, RoleOperations, SignalementLogement } from '../../data/types-operations';
-import { Alert, Badge, Button, Card, Drawer, Field, Input, Interrupteur, Modal, Repli, Select, classesBouton, cn, useFenetre } from '../../ui';
+import {
+  Alert,
+  Assistant,
+  Badge,
+  Button,
+  CHAMP_ASSISTANT,
+  Card,
+  Drawer,
+  Field,
+  Input,
+  Interrupteur,
+  Modal,
+  NBSP,
+  RecapAssistant,
+  Repli,
+  Select,
+  classesBouton,
+  cn,
+  useFenetre,
+  useParcours,
+} from '../../ui';
 import { EspaceOps } from '../../espace-operations/EspaceOps';
 import type { ActionsOps, Ecran } from '../../espace-operations/commun';
 import { CE_QUE_VOIT_LE_PROPRIETAIRE, PanneauEspace, inviterAvecReessai, statutAcces } from '../logements/_composants/EspaceProprietaireGerant';
@@ -53,8 +86,6 @@ import { SupprimerMembre } from './SupprimerMembre';
 const API_PROPRIETAIRE = '/api/espace-proprietaire';
 const API_OPERATIONS = '/api/espace-operations';
 const EMAIL = EMAIL_RESPONSABLE;
-/** La fiche sans l'ancien IBAN masqué (l'ERP ne le demande ni ne le garde plus). */
-const sansIban = ({ ibanMasque: _ancien, ...p }: Proprietaire): Proprietaire => p;
 
 export type Invitation = { lien: string; envoye: boolean; email: string };
 
@@ -113,7 +144,7 @@ export default function Acces() {
           <p>Chaque invitation part au nom de cet espace ; la personne ne voit que ses données.</p>
         </div>
       </Repli>
-      {inviterProprietaire && <InviterProprietaire onFermer={() => setInviterProprietaire(false)} />}
+      {inviterProprietaire && <AssistantInvitationProprietaire onFermer={() => setInviterProprietaire(false)} />}
       {inviterResponsable && <InviterResponsable onFermer={() => setInviterResponsable(false)} logementsInitiaux={logementFiltre ? [logementFiltre] : []} />}
     </div>
   );
@@ -185,21 +216,24 @@ export function LienInvitation({ invitation }: { invitation: Invitation }) {
 
 /**
  * Logements à cocher. `regle` : pour un logement, s'il est verrouillé (coché
- * sans pouvoir le décocher) et la précision à montrer.
+ * sans pouvoir le décocher) et la précision à montrer. `pleineHauteur` : dans
+ * un assistant, la liste ne défile pas à part (l'écran défile déjà).
  */
 export function ListeLogements({
   logements,
   coches,
   onChange,
   regle,
+  pleineHauteur,
 }: {
   logements: Logement[];
   coches: Id[];
   onChange: (ids: Id[]) => void;
   regle?: (l: Logement) => { verrou?: boolean; detail?: string };
+  pleineHauteur?: boolean;
 }) {
   return (
-    <ul className="max-h-[50vh] divide-y divide-(--lm-bord) overflow-y-auto rounded-lg border border-(--lm-bord)">
+    <ul className={cn('divide-y divide-(--lm-bord) rounded-lg border border-(--lm-bord)', !pleineHauteur && 'max-h-[50vh] overflow-y-auto')}>
       {logements.map((l) => {
         const r = regle?.(l) ?? {};
         const coche = coches.includes(l.id) || !!r.verrou;
@@ -345,48 +379,64 @@ function LogementsProprietaire({ proprietaire: p, onFermer }: { proprietaire: Pr
 }
 
 /** Ce que perd l'ancien propriétaire, dit avant d'attribuer. */
-function ConfirmationTransferts({ transferts }: { transferts: Transfert[] }) {
+function ConfirmationTransferts({ transferts, className = 'mb-3', consigne = 'Confirmez pour attribuer.' }: { transferts: Transfert[]; className?: string; consigne?: string }) {
   return (
-    <Alert tone="alerte" className="mb-3">
+    <Alert tone="alerte" className={className}>
       {phrasesTransferts(transferts).map((t) => (
         <span key={t} className="block">
           {t}
         </span>
       ))}
       <span className="block">Les chiffres d’avant restent à {[...new Set(transferts.map((t) => t.ancien))].join(', ')}.</span>
-      <span className="block">Confirmez pour attribuer.</span>
+      <span className="block">{consigne}</span>
     </Alert>
   );
 }
 
-/** Inviter un propriétaire : sa fiche (ou celle qui a déjà cette adresse dans cet espace), ses logements, puis l'invitation. */
-function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
+const idInvitation = (cle: string) => `assistant-invitation-proprietaire-${cle}`;
+
+const QUESTIONS_INVITATION: Record<EcranInvitationProprietaire, { question: string; aide?: string }> = {
+  email: { question: `Quelle est son adresse e‑mail${NBSP}?`, aide: `Il reçoit un lien personnel, valable 7${NBSP}jours, pour créer son compte et ouvrir son espace.` },
+  identite: { question: `Qui est-ce${NBSP}?` },
+  logements: { question: `Quels logements verra-t-il${NBSP}?`, aide: 'Il ne voit que ses logements.' },
+  recapitulatif: { question: `Tout est correct${NBSP}?` },
+};
+
+/**
+ * Inviter un propriétaire, pas à pas (kit ui/Assistant.tsx) : son adresse
+ * e-mail (une fiche avec la même adresse est reprise), qui il est, ses
+ * logements, puis le récapitulatif. Règles : data/creation-invitation-proprietaire.ts.
+ * Rien n'est écrit avant « Envoyer l'invitation » ; la fiche, les logements
+ * et l'invitation s'écrivent ensuite comme avant (envoyer).
+ */
+function AssistantInvitationProprietaire({ onFermer }: { onFermer: () => void }) {
   const d = useErp();
-  const [nom, setNom] = useState('');
-  const [email, setEmail] = useState('');
-  const [telephone, setTelephone] = useState('');
-  const [coches, setCoches] = useState<Id[]>([]);
+  const [b, setB] = useState<BrouillonInvitationProprietaire>(brouillonInvitationProprietaire);
+  const depart = useRef(b);
   const [erreur, setErreur] = useState<string>();
   const [enCours, setEnCours] = useState(false);
   const [invitation, setInvitation] = useState<Invitation>();
-  const [aConfirmer, setAConfirmer] = useState<Transfert[]>();
+  const titreId = useId();
+  const ctx = { proprietaires: d.proprietaires, logements: d.logements, aRenseigner: ID_PROPRIETAIRE_A_RENSEIGNER };
+  const etapes = useParcours<EcranInvitationProprietaire>({ ecrans: ECRANS_INVITATION_PROPRIETAIRE, idChamp: idInvitation, sansChamp: SANS_CHAMP_INVITATION_PROPRIETAIRE });
+  const ecran = etapes.ecran;
+  const erreurs = erreursInvitationProprietaire(ecran, b, ctx);
+  const etat = etapes.etat(erreurs);
+  const maj = (patch: Partial<BrouillonInvitationProprietaire>) => setB((x) => ({ ...x, ...patch }));
   const nomProprietaire = (id: Id) => (id === ID_PROPRIETAIRE_A_RENSEIGNER ? 'à renseigner' : (d.proprietaires.find((x) => x.id === id)?.nom ?? 'inconnu'));
-  const adresseSaisie = email.trim().toLowerCase();
-  const existant = adresseSaisie ? d.proprietaires.find((p) => p.contact.email.trim().toLowerCase() === adresseSaisie) : undefined;
+  const existant = proprietaireAvecEmail(d.proprietaires, b.email);
+  // Un logement d'un autre propriétaire : on le dit avant (il ne le verra plus).
+  const transferts = transfertsInvitation(b, ctx);
+  const logements = logementsGeres(d.logements);
 
   const envoyer = async () => {
-    const adresse = adresseSaisie;
-    if (nom.trim().length < 2 && !existant) return setErreur('Indiquez le nom du propriétaire.');
-    if (!EMAIL.test(adresse)) return setErreur('Adresse e-mail invalide.');
+    if (enCours) return;
+    const r = invitationProprietaireDepuisBrouillon(b, { proprietaires: d.proprietaires, nouvelId: () => nouvelId('pro'), aujourdhui: horodatageMaintenant().slice(0, 10) });
+    if (!r.ok) return etapes.corriger(r.ecran, Object.keys(erreursInvitationProprietaire('recapitulatif', b, ctx)));
     setErreur(undefined);
-    // Un logement d'un autre propriétaire : on le dit avant (il ne le verra plus).
-    const transferts = transfertsProprietaire(d.logements, d.proprietaires, coches, existant?.id ?? '', ID_PROPRIETAIRE_A_RENSEIGNER);
-    if (transferts.length && !aConfirmer) return setAConfirmer(transferts);
     setEnCours(true);
-    // Fiche existante reprise telle quelle, sans l'ancien IBAN (plus conservé).
-    const p: Proprietaire = existant
-      ? { ...sansIban(existant), nom: existant.nom || nom.trim(), contact: { email: adresse, telephone: existant.contact.telephone || telephone.trim() } }
-      : { id: nouvelId('pro'), type: 'particulier', nom: nom.trim(), contact: { email: adresse, telephone: telephone.trim() }, adresse: '', notes: '', creeLe: horodatageMaintenant().slice(0, 10) };
+    // Fiche existante reprise telle quelle, sans l'ancien IBAN (data/creation-invitation-proprietaire.ts).
+    const { proprietaire: p, logementIds: coches, email: adresse } = r.plan;
     d.upsert('proprietaires', p);
     for (const id of coches) d.mettreAJour('logements', id, (l) => changerProprietaire(l, p.id, AUJOURDHUI));
     try {
@@ -405,69 +455,112 @@ function InviterProprietaire({ onFermer }: { onFermer: () => void }) {
       setEnCours(false);
     }
   };
+  const continuer = () => etapes.continuer(erreurs, () => void envoyer());
 
-  return (
-    <Modal
-      ouvert
-      onFermer={onFermer}
-      taille="lg"
-      titre="Inviter un propriétaire"
-      description="Il reçoit un lien personnel, valable 7 jours, pour créer son compte et ouvrir son espace."
-      pied={
-        invitation ? (
+  // Invitation partie (ou lien de démonstration) : le lien à copier.
+  if (invitation) {
+    return (
+      <Modal
+        ouvert
+        onFermer={onFermer}
+        titre="Inviter un propriétaire"
+        description={`Il reçoit un lien personnel, valable 7${NBSP}jours, pour créer son compte et ouvrir son espace.`}
+        pied={
           <Button variant="primary" onClick={onFermer}>
             Terminé
           </Button>
-        ) : (
-          <>
-            <Button variant="ghost" onClick={onFermer}>
-              Annuler
-            </Button>
-            <Button variant="primary" chargement={enCours} onClick={() => void envoyer()}>
-              {aConfirmer ? 'Confirmer et inviter' : 'Inviter'}
-            </Button>
-          </>
-        )
-      }
-    >
-      {invitation ? (
+        }
+      >
         <LienInvitation invitation={invitation} />
-      ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {aConfirmer && (
-            <div className="sm:col-span-2">
-              <ConfirmationTransferts transferts={aConfirmer} />
-            </div>
-          )}
-          <Field label="Nom" requis={!existant}>
-            <Input value={existant ? existant.nom : nom} disabled={!!existant} onChange={(e) => setNom(e.target.value)} autoComplete="off" placeholder="Ex. SCI Les Tilleuls" />
-          </Field>
-          <Field label="Adresse e-mail" requis aide={existant ? 'Une fiche existe déjà avec cette adresse : elle est reprise.' : 'Une fiche avec cette adresse est reprise, sans doublon.'}>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" />
+      </Modal>
+    );
+  }
+
+  const q = QUESTIONS_INVITATION[ecran];
+
+  return (
+    <Assistant
+      titre="Inviter un propriétaire"
+      ecrans={ECRANS_INVITATION_PROPRIETAIRE}
+      ecran={ecran}
+      question={q.question}
+      aide={q.aide}
+      idQuestion={titreId}
+      blocage={etat}
+      libelleSuite={etapes.libelleSuite('Envoyer l’invitation')}
+      onContinuer={continuer}
+      onRetour={etapes.retour}
+      saisi={brouillonModifie(depart.current, b)}
+      abandon={`Abandonner l’invitation${NBSP}?`}
+      envoi={enCours}
+      onFermer={onFermer}
+    >
+      {ecran === 'email' && (
+        <Field label="Adresse e‑mail" aide={existant ? `Une fiche existe déjà avec cette adresse${NBSP}: elle est reprise.` : undefined} erreur={etat.erreurChamp('email')}>
+          <Input
+            id={idInvitation('email')}
+            type="email"
+            inputMode="email"
+            autoCapitalize="off"
+            spellCheck={false}
+            value={b.email}
+            onChange={(e) => maj({ email: e.target.value })}
+            onBlur={() => etapes.quitter('email')}
+            autoComplete="off"
+            className={CHAMP_ASSISTANT}
+          />
+        </Field>
+      )}
+      {ecran === 'identite' && (
+        <div className="space-y-4">
+          <Field label="Nom" aide={existant ? 'Celui de la fiche reprise.' : undefined} erreur={etat.erreurChamp('nom')}>
+            <Input
+              id={idInvitation('nom')}
+              value={existant ? existant.nom : b.nom}
+              disabled={!!existant}
+              onChange={(e) => maj({ nom: e.target.value })}
+              onBlur={() => etapes.quitter('nom')}
+              autoComplete="off"
+              placeholder="Ex. SCI Les Tilleuls"
+              className={CHAMP_ASSISTANT}
+            />
           </Field>
           <Field label="Téléphone" aide="Facultatif.">
-            <Input type="tel" value={telephone} onChange={(e) => setTelephone(e.target.value)} autoComplete="off" />
-          </Field>
-          <div className="sm:col-span-2">
-            <p className="mb-1.5 text-[13px] font-medium text-(--lm-encre)">Ses logements</p>
-            <ListeLogements
-              logements={logementsGeres(d.logements)}
-              coches={coches}
-              onChange={(ids) => {
-                setCoches(ids);
-                setAConfirmer(undefined);
-              }}
-              regle={(l) => (existant && l.proprietaireId === existant.id ? { verrou: true, detail: 'À ce propriétaire' } : { detail: `Actuellement : ${nomProprietaire(l.proprietaireId)}` })}
+            <Input
+              id={idInvitation('telephone')}
+              type="tel"
+              value={existant?.contact.telephone || b.telephone}
+              disabled={!!existant?.contact.telephone}
+              onChange={(e) => maj({ telephone: e.target.value })}
+              autoComplete="off"
+              className={CHAMP_ASSISTANT}
             />
-          </div>
+          </Field>
+        </div>
+      )}
+      {ecran === 'logements' &&
+        (logements.length ? (
+          <ListeLogements
+            logements={logements}
+            coches={b.logementIds}
+            onChange={(logementIds) => maj({ logementIds })}
+            pleineHauteur
+            regle={(l) => (existant && l.proprietaireId === existant.id ? { verrou: true, detail: 'À ce propriétaire' } : { detail: `Actuellement${NBSP}: ${nomProprietaire(l.proprietaireId)}` })}
+          />
+        ) : (
+          <p className="text-[14px] text-(--lm-encre-2)">Aucun logement pour l’instant. Vous pourrez lui en attribuer plus tard.</p>
+        ))}
+      {ecran === 'recapitulatif' && (
+        <RecapAssistant lignes={recapInvitationProprietaire(b, ctx).map((x) => ({ ...x, onModifier: () => etapes.modifier(x.ecran) }))}>
+          {transferts.length > 0 && <ConfirmationTransferts transferts={transferts} className="mt-4" consigne="Envoyer l’invitation confirme ce changement." />}
           {erreur && (
-            <Alert tone="danger" className="sm:col-span-2">
+            <Alert tone="danger" className="mt-4">
               {erreur}
             </Alert>
           )}
-        </div>
+        </RecapAssistant>
       )}
-    </Modal>
+    </Assistant>
   );
 }
 
