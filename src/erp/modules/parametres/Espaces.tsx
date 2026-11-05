@@ -1,8 +1,10 @@
 /**
  * Paramètres → Espaces (gérants de Label Maison seulement) : Label Maison est
- * la plateforme. On y invite une conciergerie (son nom, l'adresse de la
- * personne qui ouvrira son espace), on voit les espaces et les invitations en
- * attente, on suspend ou rouvre un espace.
+ * la plateforme. On y voit les espaces et les invitations en attente, on
+ * suspend ou rouvre un espace. « Inviter une conciergerie » est l'action de
+ * l'en-tête de la liste des espaces, comme dans les autres listes : pas à pas
+ * (son nom, l'adresse de la personne qui ouvrira son espace :
+ * AssistantConciergerie.tsx), le résultat s'affiche sous l'en-tête.
  *
  * Tout passe par api/erp-espaces.ts avec la session du gérant ; la base
  * revérifie ses droits (supabase/erp-espaces.sql : erp.inviter_espace…).
@@ -11,17 +13,17 @@
  * (layout/CreerEspace.tsx), au nom donné ici. Les gestes qui coupent l'accès
  * (suspendre, annuler) demandent une confirmation.
  */
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Ban, Building2, Copy, Send } from 'lucide-react';
 import { useErp } from '../../data/store';
 import { ID_LABEL_MAISON } from '../../data/espaces';
 import { dateCourte } from '../../data/format';
-import { Alert, Badge, Button, Card, CardHeader, EmptyState, Field, Input, Modal } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, EmptyState, Modal } from '../../ui';
 import { appelerRouteGerant } from '../crm/_composants/api-connecteur';
+import { AssistantConciergerie } from './AssistantConciergerie';
 
 const API = '/api/erp-espaces';
 const INDISPONIBLE = 'Espaces indisponibles pour le moment. Réessayez dans un instant.';
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 interface EspacePlateforme {
   id: string;
@@ -110,8 +112,8 @@ export default function Espaces() {
   const d = useErp();
   const [liste, setListe] = useState<Liste | null>(null);
   const [erreur, setErreur] = useState<string>();
-  const [nom, setNom] = useState('');
-  const [email, setEmail] = useState('');
+  /** Assistant « Inviter une conciergerie » ouvert. */
+  const [nouvelle, setNouvelle] = useState(false);
   const [enCours, setEnCours] = useState<string | null>(null);
   const [resultat, setResultat] = useState<Resultat | null>(null);
   const [aConfirmer, setAConfirmer] = useState<AConfirmer | null>(null);
@@ -130,7 +132,13 @@ export default function Espaces() {
     void relire();
   }, [relire]);
 
-  const inviter = async (cible: { nom: string; email: string }, cle: string) => {
+  /**
+   * Invitation (nouvelle, ou renvoyée depuis sa ligne) : même appel. Le
+   * résultat s'affiche là où on l'a demandée ; pour une nouvelle invitation,
+   * une erreur reste dans l'assistant (rendue), le lien ou la confirmation
+   * s'affiche sur la page.
+   */
+  const inviter = async (cible: { nom: string; email: string }, cle: string): Promise<string | undefined> => {
     setEnCours(cle);
     setResultat(null);
     const adresse = cible.email.trim();
@@ -140,31 +148,23 @@ export default function Espaces() {
       const r = await appelerRouteGerant<Retour>(API, { action: 'inviter', nom: cible.nom.trim(), email: adresse }, INDISPONIBLE);
       setResultat(
         r.envoye
-          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14 jours.${remplace}` }
+          ? { ou: cle, ton: 'succes', texte: `Invitation envoyée à ${adresse}. Elle est valable 14\u00a0jours.${remplace}` }
           : {
               ou: cle,
               ton: 'info',
-              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse} : il sert une seule fois, pendant 14 jours, pour créer son compte puis l’espace de sa conciergerie.${remplace}`,
+              texte: `Aucun e-mail n’est parti. Envoyez ce lien à ${adresse}\u00a0: il sert une seule fois, pendant 14\u00a0jours, pour créer son compte puis l’espace de sa conciergerie.${remplace}`,
               lien: r.lien,
             },
       );
-      if (cle === 'nouvelle') {
-        setNom('');
-        setEmail('');
-      }
       await relire();
+      return undefined;
     } catch (e) {
-      setResultat({ ou: cle, ton: 'danger', texte: e instanceof Error ? e.message : INDISPONIBLE });
+      const texte = e instanceof Error ? e.message : INDISPONIBLE;
+      if (cle !== 'nouvelle') setResultat({ ou: cle, ton: 'danger', texte });
+      return texte;
     } finally {
       setEnCours(null);
     }
-  };
-
-  const envoyer = (e: FormEvent) => {
-    e.preventDefault();
-    if (!nom.trim()) return setResultat({ ou: 'nouvelle', ton: 'danger', texte: 'Donnez le nom de la conciergerie.' });
-    if (!EMAIL.test(email.trim())) return setResultat({ ou: 'nouvelle', ton: 'danger', texte: 'Adresse e-mail invalide.' });
-    void inviter({ nom, email }, 'nouvelle');
   };
 
   const agir = async (corps: Record<string, unknown>, cle: string) => {
@@ -194,28 +194,83 @@ export default function Espaces() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-4">
+      {erreur && <Alert tone="danger">{erreur}</Alert>}
+
       <Card>
         <CardHeader
-          titre="Inviter une conciergerie"
-          description="La personne crée son compte avec cette adresse, puis l’espace de sa conciergerie, à ce nom, qu’elle gère seule. Invitation valable 14 jours, une seule fois."
-        />
-        <form onSubmit={envoyer} noValidate className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nom de la conciergerie" aide="Il ne se change plus ensuite.">
-            <Input value={nom} maxLength={80} onChange={(e) => setNom(e.target.value)} autoComplete="organization" />
-          </Field>
-          <Field label="E-mail de la personne qui ouvrira l’espace">
-            <Input type="email" inputMode="email" autoCapitalize="off" spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <div className="sm:col-span-2">
-            <Button type="submit" variant="primary" icone={<Send />} chargement={enCours === 'nouvelle'} disabled={!!enCours}>
-              Inviter
+          titre="Espaces"
+          // Courte : sur ordinateur, « Inviter une conciergerie » reste à droite du titre, comme dans les autres listes.
+          description="Chaque espace est à part : ses logements, son équipe, ses propriétaires."
+          actions={
+            <Button variant="primary" icone={<Send />} disabled={!!enCours} onClick={() => setNouvelle(true)}>
+              Inviter une conciergerie
             </Button>
-          </div>
-        </form>
-        {resultatDe('nouvelle')}
+          }
+        />
+        {/* Résultat de l'invitation : sous l'en-tête qui l'a lancée. */}
+        {resultatDe('nouvelle', 'mb-3')}
+        {!liste && !erreur && <p className="text-[13.5px] text-(--lm-encre-2)">Chargement…</p>}
+        {liste && autres.length === 0 && (
+          <EmptyState
+            icone={<Building2 />}
+            titre="Aucune autre conciergerie pour l’instant"
+            description="Invitez-en une : elle crée ensuite son espace, qu’elle gère seule, et il apparaît ici."
+          />
+        )}
+        {autres.length > 0 && (
+          <ul className="divide-y divide-(--lm-bord)">
+            {autres.map((e) => (
+              <li key={e.id} className="py-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    {/* Le code technique (adresse du webhook) reste au survol, hors de la lecture. */}
+                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)" title={`Code\u00a0: ${e.code}`}>
+                      {e.nom}
+                      {!e.actif && <Badge tone="alerte">Suspendu</Badge>}
+                    </p>
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-(--lm-encre-2)">
+                      <span>Créé le {jour(e.cree_le)}</span>
+                      <span aria-hidden>·</span>
+                      <span>
+                        {e.membres} membre{e.membres > 1 ? 's' : ''}
+                      </span>
+                      {e.contact && (
+                        <>
+                          <span aria-hidden>·</span>
+                          <span className="[overflow-wrap:anywhere]">{e.contact}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="self-start sm:self-center"
+                    chargement={enCours === `suspendre-${e.id}`}
+                    disabled={!!enCours}
+                    onClick={() =>
+                      e.actif
+                        ? setAConfirmer({
+                            titre: `Suspendre l’espace de ${e.nom}\u00a0?`,
+                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; son agent et les mises à jour s’arrêtent. Rien n’est effacé\u00a0: vous pourrez le rouvrir.',
+                            action: 'Suspendre l’espace',
+                            corps: { action: 'suspendre', espace: e.id, actif: false },
+                            cle: `suspendre-${e.id}`,
+                          })
+                        : void agir({ action: 'suspendre', espace: e.id, actif: true }, `suspendre-${e.id}`)
+                    }
+                  >
+                    {e.actif ? 'Suspendre' : 'Rouvrir'}
+                  </Button>
+                </div>
+                {resultatDe(`suspendre-${e.id}`)}
+              </li>
+            ))}
+          </ul>
+        )}
       </Card>
 
-      {erreur && <Alert tone="danger">{erreur}</Alert>}
+      {nouvelle && <AssistantConciergerie onInviter={(cible) => inviter(cible, 'nouvelle')} onFermer={() => setNouvelle(false)} />}
 
       {liste && liste.invitations.length > 0 && (
         <Card>
@@ -243,7 +298,7 @@ export default function Espaces() {
                       disabled={!!enCours}
                       onClick={() =>
                         setAConfirmer({
-                          titre: `Annuler l’invitation de ${i.nom} ?`,
+                          titre: `Annuler l’invitation de ${i.nom}\u00a0?`,
                           description: `Le lien envoyé à ${i.email} ne servira plus. Vous pourrez inviter de nouveau.`,
                           action: 'Annuler l’invitation',
                           corps: { action: 'annuler', id: i.id },
@@ -262,65 +317,6 @@ export default function Espaces() {
           </ul>
         </Card>
       )}
-
-      <Card>
-        <CardHeader titre="Espaces" description="Chaque conciergerie a ses logements, son équipe et ses propriétaires ; rien ne passe d’un espace à l’autre." />
-        {!liste && !erreur && <p className="text-[13.5px] text-(--lm-encre-2)">Chargement…</p>}
-        {liste && autres.length === 0 && (
-          <EmptyState icone={<Building2 />} titre="Aucune autre conciergerie pour l’instant" description="Invitez-en une ci-dessus : son espace apparaîtra ici dès qu’elle l’aura créé." />
-        )}
-        {autres.length > 0 && (
-          <ul className="divide-y divide-(--lm-bord)">
-            {autres.map((e) => (
-              <li key={e.id} className="py-3">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
-                  <div className="min-w-0 flex-1">
-                    {/* Le code technique (adresse du webhook) reste au survol, hors de la lecture. */}
-                    <p className="flex flex-wrap items-center gap-2 text-[14px] font-medium text-(--lm-encre)" title={`Code : ${e.code}`}>
-                      {e.nom}
-                      {!e.actif && <Badge tone="alerte">Suspendu</Badge>}
-                    </p>
-                    <p className="flex flex-wrap items-center gap-x-1.5 text-[12.5px] text-(--lm-encre-2)">
-                      <span>Créé le {jour(e.cree_le)}</span>
-                      <span aria-hidden>·</span>
-                      <span>
-                        {e.membres} membre{e.membres > 1 ? 's' : ''}
-                      </span>
-                      {e.contact && (
-                        <>
-                          <span aria-hidden>·</span>
-                          <span className="[overflow-wrap:anywhere]">{e.contact}</span>
-                        </>
-                      )}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    className="self-start sm:self-center"
-                    chargement={enCours === `suspendre-${e.id}`}
-                    disabled={!!enCours}
-                    onClick={() =>
-                      e.actif
-                        ? setAConfirmer({
-                            titre: `Suspendre l’espace de ${e.nom} ?`,
-                            description: 'Son équipe, ses propriétaires et ses responsables n’y entrent plus ; son agent et les mises à jour s’arrêtent. Rien n’est effacé : vous pourrez le rouvrir.',
-                            action: 'Suspendre l’espace',
-                            corps: { action: 'suspendre', espace: e.id, actif: false },
-                            cle: `suspendre-${e.id}`,
-                          })
-                        : void agir({ action: 'suspendre', espace: e.id, actif: true }, `suspendre-${e.id}`)
-                    }
-                  >
-                    {e.actif ? 'Suspendre' : 'Rouvrir'}
-                  </Button>
-                </div>
-                {resultatDe(`suspendre-${e.id}`)}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Card>
 
       <Modal
         ouvert={!!aConfirmer}

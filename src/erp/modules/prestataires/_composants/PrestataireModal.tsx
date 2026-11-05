@@ -1,8 +1,26 @@
-import { useState } from 'react';
+/**
+ * Ajouter un prestataire, pas à pas (kit ui/Assistant.tsx) : son métier, qui
+ * il est, comment le joindre, où il intervient, son engagement, puis le
+ * récapitulatif. Rien n'est enregistré avant « Créer le prestataire » ;
+ * règles et fiche : data/creation-prestataire.ts. Il reste non conforme tant
+ * que ses documents ne sont pas déposés.
+ */
+import { useId, useRef, useState } from 'react';
+import { brouillonModifie } from '../../../data/parcours-assistant';
+import {
+  ECRANS_PRESTATAIRE,
+  SANS_CHAMP_PRESTATAIRE,
+  brouillonPrestataire,
+  erreursPrestataire,
+  prestataireDepuisBrouillon,
+  recapPrestataire,
+  type BrouillonPrestataire,
+  type EcranPrestataire,
+} from '../../../data/creation-prestataire';
 import { LIBELLES } from '../../../data/libelles';
 import { nouvelId, useErp } from '../../../data/store';
 import type { Prestataire, TypePrestataire } from '../../../data/types';
-import { Alert, Button, Field, Input, Modal, Select } from '../../../ui';
+import { Assistant, CHAMP_ASSISTANT, ChoixListe, Field, Input, NBSP, RecapAssistant, cn, insecables, useParcours } from '../../../ui';
 
 interface Props {
   ouvert: boolean;
@@ -10,98 +28,124 @@ interface Props {
   onCree: (p: Prestataire) => void;
 }
 
-const VIDE = { nom: '', raisonSociale: '', siret: '', type: 'menage' as TypePrestataire, telephone: '', email: '', zone: '', sansCascade: false };
-
-/** Création d'un prestataire : il reste non conforme tant que ses documents ne sont pas déposés. */
 export function PrestataireModal({ ouvert, onFermer, onCree }: Props) {
-  const { upsert } = useErp();
-  const [f, setF] = useState(VIDE);
-  const [erreurs, setErreurs] = useState<Partial<Record<keyof typeof VIDE, string>>>({});
-  const maj = <K extends keyof typeof VIDE>(k: K, v: (typeof VIDE)[K]) => setF((x) => ({ ...x, [k]: v }));
+  if (!ouvert) return null;
+  // Monté à chaque ouverture : un brouillon neuf.
+  return <AssistantPrestataire onFermer={onFermer} onCree={onCree} />;
+}
 
-  const fermer = () => {
-    setF(VIDE);
-    setErreurs({});
-    onFermer();
-  };
+const QUESTIONS: Record<EcranPrestataire, { question: string; aide?: string }> = {
+  metier: { question: `Quel est son métier${NBSP}?` },
+  identite: { question: `Qui est-il${NBSP}?` },
+  contact: { question: `Comment le joindre${NBSP}?` },
+  zone: { question: `Où intervient-il${NBSP}?` },
+  engagement: { question: `S’engage-t-il à ne pas sous-traiter${NBSP}?` },
+  recapitulatif: { question: `Tout est correct${NBSP}?` },
+};
+
+const METIERS = (Object.keys(LIBELLES.typePrestataire) as TypePrestataire[]).map((t) => ({ valeur: t, libelle: LIBELLES.typePrestataire[t] }));
+
+const idChamp = (cle: string) => `assistant-prestataire-${cle}`;
+
+function AssistantPrestataire({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
+  const { upsert } = useErp();
+  const [b, setB] = useState<BrouillonPrestataire>(brouillonPrestataire);
+  const depart = useRef(b);
+  const [envoi, setEnvoi] = useState(false);
+  const titreId = useId();
+  const p = useParcours<EcranPrestataire>({ ecrans: ECRANS_PRESTATAIRE, idChamp, sansChamp: SANS_CHAMP_PRESTATAIRE });
+  const ecran = p.ecran;
+  const erreurs = erreursPrestataire(ecran, b);
+  const etat = p.etat(erreurs);
+  const maj = <K extends keyof BrouillonPrestataire>(k: K, v: BrouillonPrestataire[K]) => setB((x) => ({ ...x, [k]: v }));
 
   const creer = () => {
-    const e: typeof erreurs = {};
-    const siret = f.siret.replace(/\s/g, '');
-    if (f.nom.trim().length < 2) e.nom = 'Nom obligatoire.';
-    if (!/^\d{14}$/.test(siret)) e.siret = 'Le SIRET compte 14 chiffres : pas de prestataire non déclaré.';
-    if (!/^[+\d][\d\s.]{8,}$/.test(f.telephone.trim())) e.telephone = 'Téléphone invalide.';
-    if (f.email && !/^\S+@\S+\.\S+$/.test(f.email)) e.email = 'Adresse e-mail invalide.';
-    if (!f.zone.trim()) e.zone = 'Indiquez au moins une ville.';
-    if (!f.sansCascade) e.sansCascade = 'Engagement obligatoire.';
-    setErreurs(e);
-    if (Object.keys(e).length) return;
-    const p: Prestataire = {
-      id: nouvelId('pre'),
-      nom: f.nom.trim(),
-      raisonSociale: f.raisonSociale.trim() || undefined,
-      siret,
-      type: f.type,
-      telephone: f.telephone.trim(),
-      email: f.email.trim() || undefined,
-      zone: f.zone.split(',').map((v) => v.trim()).filter(Boolean),
-      statut: 'actif',
-      tarifs: [],
-      documents: (['contrat', 'rc_pro', 'urssaf', 'kbis'] as const).map((type) => ({ type, statut: 'manquant' as const })),
-      missionsRealisees: 0,
-    };
-    upsert('prestataires', p);
-    onCree(p);
-    fermer();
+    if (envoi) return;
+    const r = prestataireDepuisBrouillon(b, nouvelId('pre'));
+    if (!r.ok) return p.corriger(r.ecran, Object.keys(erreursPrestataire('recapitulatif', b)));
+    setEnvoi(true);
+    upsert('prestataires', r.prestataire);
+    // Fermer d'abord : ouvert par « ?nouveau=1 », la fermeture retire le paramètre de l'adresse, puis sa fiche s'ouvre.
+    onFermer();
+    onCree(r.prestataire);
   };
+  const continuer = () => p.continuer(erreurs, creer);
+  const q = QUESTIONS[ecran];
+
+  const champ = (cle: 'nom' | 'raisonSociale' | 'siret' | 'telephone' | 'email' | 'zone', label: string, extra: { aide?: string; type?: string; inputMode?: 'numeric' | 'email' | 'tel'; placeholder?: string } = {}) => (
+    <Field label={label} aide={extra.aide} erreur={etat.erreurChamp(cle)}>
+      <Input
+        id={idChamp(cle)}
+        type={extra.type}
+        inputMode={extra.inputMode}
+        placeholder={extra.placeholder}
+        value={b[cle]}
+        onChange={(e) => maj(cle, e.target.value)}
+        onBlur={() => p.quitter(cle)}
+        autoComplete="off"
+        className={CHAMP_ASSISTANT}
+      />
+    </Field>
+  );
 
   return (
-    <Modal
-      ouvert={ouvert}
-      onFermer={fermer}
-      taille="lg"
-      titre="Ajouter un prestataire"
-      description="Vous pourrez lui confier des ménages dès que son contrat, son assurance (RC Pro) et son attestation URSSAF seront déposés."
-      pied={
-        <>
-          <Button variant="ghost" onClick={fermer}>Annuler</Button>
-          <Button variant="primary" onClick={creer}>Créer le prestataire</Button>
-        </>
-      }
+    <Assistant
+      titre="Nouveau prestataire"
+      ecrans={ECRANS_PRESTATAIRE}
+      ecran={ecran}
+      question={q.question}
+      aide={q.aide}
+      idQuestion={titreId}
+      blocage={etat}
+      libelleSuite={p.libelleSuite('Créer le prestataire')}
+      onContinuer={continuer}
+      onRetour={p.retour}
+      saisi={brouillonModifie(depart.current, b)}
+      abandon={`Abandonner ce prestataire${NBSP}?`}
+      envoi={envoi}
+      onFermer={onFermer}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Nom de l’intervenant" requis erreur={erreurs.nom}>
-          <Input value={f.nom} onChange={(e) => maj('nom', e.target.value)} />
-        </Field>
-        <Field label="Raison sociale">
-          <Input value={f.raisonSociale} onChange={(e) => maj('raisonSociale', e.target.value)} />
-        </Field>
-        <Field label="SIRET" requis erreur={erreurs.siret}>
-          <Input inputMode="numeric" value={f.siret} onChange={(e) => maj('siret', e.target.value)} placeholder="14 chiffres" />
-        </Field>
-        <Field label="Métier" requis>
-          <Select value={f.type} onChange={(e) => maj('type', e.target.value as TypePrestataire)} options={(Object.keys(LIBELLES.typePrestataire) as TypePrestataire[]).map((t) => ({ valeur: t, libelle: LIBELLES.typePrestataire[t] }))} />
-        </Field>
-        <Field label="Téléphone" requis erreur={erreurs.telephone}>
-          <Input type="tel" value={f.telephone} onChange={(e) => maj('telephone', e.target.value)} />
-        </Field>
-        <Field label="E-mail" erreur={erreurs.email}>
-          <Input type="email" value={f.email} onChange={(e) => maj('email', e.target.value)} />
-        </Field>
-        <Field label="Zone d’intervention" requis aide="Villes séparées par des virgules." erreur={erreurs.zone} className="sm:col-span-2">
-          <Input value={f.zone} onChange={(e) => maj('zone', e.target.value)} placeholder="Corbeil-Essonnes, Évry-Courcouronnes" />
-        </Field>
-        <div className="sm:col-span-2">
-          <label className="flex items-start gap-2 text-[13px]">
-            <input type="checkbox" className="mt-0.5 size-4 accent-(--lm-or)" checked={f.sansCascade} onChange={(e) => maj('sansCascade', e.target.checked)} />
-            <span>
-              Le prestataire intervient lui-même ou avec ses salariés déclarés. Il s’engage à ne pas sous-traiter, et le linge n’est jamais lavé à son domicile.
-            </span>
-          </label>
-          {erreurs.sansCascade && <p role="alert" className="mt-1 text-[12px] font-medium text-(--lm-danger)">{erreurs.sansCascade}</p>}
+      {ecran === 'metier' && <ChoixListe options={METIERS} valeur={b.type} onChange={(t) => maj('type', t)} onContinuer={continuer} labelledBy={titreId} idPremier={idChamp('type')} />}
+      {ecran === 'identite' && (
+        <div className="space-y-4">
+          {champ('nom', 'Nom de l’intervenant')}
+          {champ('raisonSociale', 'Raison sociale', { aide: 'Facultatif.' })}
+          {champ('siret', 'SIRET', { inputMode: 'numeric', placeholder: '14 chiffres' })}
         </div>
-        <Alert tone="info" className="sm:col-span-2">Ajoutez ensuite ses documents et ses tarifs depuis sa fiche.</Alert>
-      </div>
-    </Modal>
+      )}
+      {ecran === 'contact' && (
+        <div className="space-y-4">
+          {champ('telephone', 'Téléphone', { type: 'tel' })}
+          {champ('email', 'E-mail', { type: 'email', inputMode: 'email', aide: 'Facultatif.' })}
+        </div>
+      )}
+      {ecran === 'zone' && champ('zone', 'Zone d’intervention', { aide: 'Villes séparées par des virgules.', placeholder: 'Corbeil-Essonnes, Évry-Courcouronnes' })}
+      {ecran === 'engagement' && (
+        <label
+          className={cn(
+            'flex cursor-pointer items-start gap-3 rounded-xl border p-4 transition-colors',
+            b.sansCascade ? 'border-(--lm-or-texte) bg-(--lm-or-lavis)' : 'border-(--lm-bord-fort) hover:border-(--lm-encre)',
+          )}
+        >
+          <input
+            id={idChamp('sansCascade')}
+            type="checkbox"
+            className="mt-0.5 size-5 shrink-0 accent-(--lm-or-texte)"
+            checked={b.sansCascade}
+            onChange={(e) => maj('sansCascade', e.target.checked)}
+          />
+          <span className="text-[15px] text-(--lm-encre)">
+            {insecables('Le prestataire intervient lui-même ou avec ses salariés déclarés. Il s’engage à ne pas sous-traiter, et le linge n’est jamais lavé à son domicile.')}
+          </span>
+        </label>
+      )}
+      {ecran === 'recapitulatif' && (
+        <RecapAssistant lignes={recapPrestataire(b).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))}>
+          <p className="mt-4 text-[13.5px] text-(--lm-encre-2)">
+            Ajoutez ensuite ses documents et ses tarifs depuis sa fiche. Vous pourrez lui confier des ménages dès que son contrat, son assurance (RC Pro) et son attestation URSSAF seront déposés.
+          </p>
+        </RecapAssistant>
+      )}
+    </Assistant>
   );
 }

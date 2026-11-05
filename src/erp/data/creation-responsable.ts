@@ -1,0 +1,131 @@
+/**
+ * Ajouter un responsable à un logement, pas à pas (fiche logement, carte
+ * « Responsables opérationnels », modules/logements/_composants/ResponsablesLogement.tsx) :
+ *
+ * - une personne déjà dans l'équipe : on la choisit, puis on la rattache ;
+ * - une nouvelle personne : comment la joindre (son e-mail, une fiche avec
+ *   la même adresse est reprise, et son téléphone), son nom, son rôle, ses
+ *   logements (celui de la fiche coché d'office), puis on l'invite. Une
+ *   question par écran.
+ *
+ * « Inviter un responsable » de Paramètres → Accès suit le même parcours,
+ * sans le premier choix : c'est toujours une personne à inviter
+ * (ECRANS_INVITATION_RESPONSABLE, brouillonInvitationResponsable).
+ *
+ * Mêmes règles que l'ancienne fenêtre « Ajouter un responsable » et que
+ * « Inviter un responsable » (Paramètres → Accès), mêmes écritures :
+ * rattacher (affectationsAFiger, logementIds), inviter (inviterResponsable).
+ *
+ * Ni React ni réseau (verifier-assistants.ts).
+ */
+import { ROLES_OPERATIONS } from './operations';
+import type { Id, Logement } from './types';
+import type { MembreEquipe, RoleOperations } from './types-operations';
+
+/** Adresse e-mail d'un responsable invité (même règle que Paramètres → Accès). */
+export const EMAIL_RESPONSABLE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+/** Choix « une nouvelle personne » dans la liste de l'équipe. */
+export const NOUVELLE_PERSONNE = '__nouvelle__';
+
+/** « email » : l'adresse et le téléphone (« Comment le joindre ? ») ; « nom » et « role » : un écran chacun. */
+export type EcranResponsable = 'qui' | 'email' | 'nom' | 'role' | 'logements' | 'recapitulatif';
+
+/** Écrans du parcours : la suite dépend de la personne choisie. */
+export function ecransResponsable(choix: string): EcranResponsable[] {
+  return choix === NOUVELLE_PERSONNE ? ['qui', 'email', 'nom', 'role', 'logements', 'recapitulatif'] : ['qui', 'recapitulatif'];
+}
+
+/** Paramètres → Accès : une personne à inviter, sans choisir d'abord dans l'équipe. */
+export const ECRANS_INVITATION_RESPONSABLE: readonly EcranResponsable[] = ['email', 'nom', 'role', 'logements', 'recapitulatif'];
+
+export interface BrouillonResponsable {
+  /** Identifiant d'une personne de l'équipe, NOUVELLE_PERSONNE, ou vide tant que rien n'est choisi. */
+  choix: string;
+  email: string;
+  nom: string;
+  telephone: string;
+  /** Rôle choisi ; absent : celui de la fiche reprise, sinon agent de terrain. */
+  role?: RoleOperations;
+  logementIds: Id[];
+}
+
+/** Départ : personne n'est choisie, ou « une nouvelle personne » quand toute l'équipe suit déjà ce logement. */
+export function brouillonResponsable(logementId: Id, libres: readonly Pick<MembreEquipe, 'id'>[]): BrouillonResponsable {
+  return { choix: libres.length ? '' : NOUVELLE_PERSONNE, email: '', nom: '', telephone: '', logementIds: [logementId] };
+}
+
+/** Départ de Paramètres → Accès : une nouvelle personne, les logements de la page filtrée cochés d'office. */
+export function brouillonInvitationResponsable(logementIds: readonly Id[]): BrouillonResponsable {
+  return { choix: NOUVELLE_PERSONNE, email: '', nom: '', telephone: '', logementIds: [...logementIds] };
+}
+
+/** Ce que reçoit inviterResponsable : la même saisie que l'ancienne fenêtre « Inviter un responsable ». */
+export const saisieInvitationResponsable = (b: BrouillonResponsable) => ({ nom: b.nom, email: b.email, telephone: b.telephone, role: b.role, logementIds: b.logementIds });
+
+/** Personnes actives de l'équipe qui ne suivent pas encore le logement, par nom. */
+export function personnesLibres(equipe: readonly MembreEquipe[], logementId: Id): MembreEquipe[] {
+  return equipe.filter((m) => m.actif && !m.logementIds.includes(logementId)).sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+}
+
+/** Fiche de l'équipe qui a déjà cette adresse (elle sera reprise). */
+export function ficheAvecEmail(equipe: readonly MembreEquipe[], email: string): MembreEquipe | undefined {
+  const adresse = email.trim().toLowerCase();
+  return adresse ? equipe.find((m) => (m.email ?? '').trim().toLowerCase() === adresse) : undefined;
+}
+
+/** Rôle retenu : celui choisi, sinon celui de la fiche reprise, sinon agent de terrain. */
+export const roleRetenu = (b: Pick<BrouillonResponsable, 'role' | 'email'>, equipe: readonly MembreEquipe[]): RoleOperations =>
+  b.role ?? ficheAvecEmail(equipe, b.email)?.role ?? 'agent';
+
+export interface ContexteResponsable {
+  equipe: readonly MembreEquipe[];
+  libres: readonly Pick<MembreEquipe, 'id'>[];
+}
+
+/** Choix et cases : dits au-dessus de « Continuer ». */
+export const SANS_CHAMP_RESPONSABLE = new Set(['choix', 'logementIds']);
+
+/** Erreurs d'un écran ; le récapitulatif réunit celles des écrans du parcours. */
+export function erreursResponsable(ecran: EcranResponsable, b: BrouillonResponsable, ctx: ContexteResponsable): Record<string, string> {
+  if (ecran === 'recapitulatif') {
+    return Object.assign({}, ...ecransResponsable(b.choix).filter((e) => e !== 'recapitulatif').map((e) => erreursResponsable(e, b, ctx)));
+  }
+  const r: Record<string, string> = {};
+  const existant = ficheAvecEmail(ctx.equipe, b.email);
+  if (ecran === 'qui' && b.choix !== NOUVELLE_PERSONNE && !ctx.libres.some((m) => m.id === b.choix)) r.choix = 'Choisissez une personne.';
+  if (ecran === 'email') {
+    if (!b.email.trim()) r.email = 'Indiquez son adresse e-mail.';
+    else if (!EMAIL_RESPONSABLE.test(b.email.trim().toLowerCase())) r.email = 'Adresse e-mail invalide.';
+  }
+  if (ecran === 'nom' && !existant && b.nom.trim().length < 2) r.nom = 'Indiquez le nom.';
+  if (ecran === 'logements' && !b.logementIds.length && !existant?.logementIds.length) r.logementIds = 'Cochez au moins un logement.';
+  return r;
+}
+
+const ECRAN_DE_LA_CLE: Record<string, EcranResponsable> = { choix: 'qui', email: 'email', nom: 'nom', logementIds: 'logements' };
+export const ecranDeLaCleResponsable = (cle: string): EcranResponsable => ECRAN_DE_LA_CLE[cle] ?? 'recapitulatif';
+
+/** Lignes du récapitulatif. */
+export function recapResponsable(
+  b: BrouillonResponsable,
+  o: { equipe: readonly MembreEquipe[]; logements: readonly Pick<Logement, 'id' | 'nom'>[]; sansChoix?: boolean },
+): { cle: string; ecran: Exclude<EcranResponsable, 'recapitulatif'>; libelle: string; valeur: string }[] {
+  if (b.choix !== NOUVELLE_PERSONNE) {
+    const m = o.equipe.find((x) => x.id === b.choix);
+    return [{ cle: 'qui', ecran: 'qui', libelle: 'Personne', valeur: m ? `${m.nom} · ${ROLES_OPERATIONS[m.role]}` : '' }];
+  }
+  const existant = ficheAvecEmail(o.equipe, b.email);
+  const telephone = existant?.telephone ?? b.telephone.trim();
+  const suivis = [...new Set([...(existant?.logementIds ?? []), ...b.logementIds])];
+  const noms = suivis.map((id) => o.logements.find((l) => l.id === id)?.nom).filter(Boolean);
+  return [
+    // Paramètres → Accès : pas de choix dans l'équipe, donc pas de ligne « Personne ».
+    ...(o.sansChoix ? [] : [{ cle: 'qui', ecran: 'qui' as const, libelle: 'Personne', valeur: 'Nouvelle personne, à inviter' }]),
+    { cle: 'email', ecran: 'email', libelle: 'Adresse e-mail', valeur: b.email.trim().toLowerCase() },
+    { cle: 'telephone', ecran: 'email', libelle: 'Téléphone', valeur: telephone || 'Non renseigné' },
+    { cle: 'nom', ecran: 'nom', libelle: 'Nom', valeur: existant ? `${existant.nom} (fiche reprise)` : b.nom.trim() },
+    { cle: 'role', ecran: 'role', libelle: 'Rôle', valeur: ROLES_OPERATIONS[roleRetenu(b, o.equipe)] },
+    { cle: 'logements', ecran: 'logements', libelle: 'Ses logements', valeur: noms.join(', ') },
+  ];
+}

@@ -1,8 +1,39 @@
-import { useEffect, useState, type FormEvent } from 'react';
-import { Alert, Button, Field, Input, Interrupteur, Modal, Select, Prerequis } from '../../ui';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
+import {
+  Alert,
+  Assistant,
+  Button,
+  CHAMP_ASSISTANT,
+  ChoixCourts,
+  ChoixListe,
+  Field,
+  Input,
+  InputEuros,
+  Interrupteur,
+  Modal,
+  NBSP,
+  Prerequis,
+  RecapAssistant,
+  Select,
+  cn,
+  useParcours,
+} from '../../ui';
 import { nouvelId, useErp } from '../../data/store';
 import { COMMISSION_CIBLE_MAX, COMMISSION_CIBLE_MIN } from '../../data/constantes';
-import { AUJOURDHUI, ajouterJours, euros, versCentimes } from '../../data/format';
+import {
+  SANS_CHAMP_MANDAT,
+  brouillonMandat,
+  ecransMandat,
+  erreursMandat,
+  mandatDepuisBrouillon,
+  pourcentage,
+  prochaineReference,
+  recapMandat,
+  type BrouillonMandat,
+  type EcranMandat,
+} from '../../data/creation-mandat';
+import { AUJOURDHUI, ajouterJours, dateCourte, euros, jourMois, versCentimes } from '../../data/format';
+import { brouillonModifie } from '../../data/parcours-assistant';
 import type { Mandat } from '../../data/types';
 
 interface Props {
@@ -25,16 +56,207 @@ interface Saisie {
   preavisJours: string;
 }
 
-function prochaineReference(mandats: Mandat[]): string {
-  const annee = AUJOURDHUI.slice(0, 4);
-  const max = mandats
-    .map((m) => m.reference.match(new RegExp(`^LM-M-${annee}-(\\d+)$`))?.[1])
-    .filter(Boolean)
-    .reduce((a, n) => Math.max(a, Number(n)), 0);
-  return `LM-M-${annee}-${String(max + 1).padStart(3, '0')}`;
+/**
+ * Création (AssistantMandat, pas à pas) ou modification (ModificationMandat,
+ * le formulaire) d'un mandat. Règles de la création : data/creation-mandat.ts.
+ */
+export function FormMandat(props: Props) {
+  if (props.mandat) return <ModificationMandat {...props} />;
+  // Monté à chaque ouverture : un brouillon neuf.
+  return props.ouvert ? <AssistantMandat preselection={props.preselection} onFermer={props.onFermer} onEnregistre={props.onEnregistre} /> : null;
 }
 
-export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistre }: Props) {
+/* ---------------------------------------------------------------- création */
+
+const QUESTIONS: Record<EcranMandat, { question: string; aide?: string }> = {
+  signe: { question: `Le mandat est-il déjà signé${NBSP}?`, aide: 'Signé, il s’applique dès la date de début. Sinon, il est créé en brouillon, à envoyer puis à signer.' },
+  proprietaire: { question: `Avec quel propriétaire${NBSP}?` },
+  logement: { question: `Pour quel logement${NBSP}?` },
+  commission: { question: `Quelle commission${NBSP}?`, aide: `Cible${NBSP}: ${COMMISSION_CIBLE_MIN} à ${COMMISSION_CIBLE_MAX}${NBSP}%.` },
+  menage: { question: `Quels frais de ménage${NBSP}?`, aide: 'Par séjour.' },
+  dates: { question: `Quelles sont les dates du mandat${NBSP}?` },
+  preavis: { question: `Quel préavis${NBSP}?`, aide: 'Pour mettre fin au mandat.' },
+  recapitulatif: { question: `Tout est correct${NBSP}?` },
+};
+
+const OUI_NON = [
+  { valeur: 'oui', libelle: 'Oui' },
+  { valeur: 'non', libelle: 'Non' },
+] as const;
+
+const idChamp = (cle: string) => `assistant-mandat-${cle}`;
+
+/** L'année seulement quand ce n'est pas l'année en cours. */
+const jour = (iso: string) => (iso.slice(0, 4) === AUJOURDHUI.slice(0, 4) ? jourMois(iso) : dateCourte(iso));
+
+function AssistantMandat({ preselection, onFermer, onEnregistre }: Pick<Props, 'preselection' | 'onFermer' | 'onEnregistre'>) {
+  const { proprietaires, logements, mandats, upsert } = useErp();
+  const proposerSigne = preselection?.dejaSigne !== undefined;
+  // Fiche logement, factures : le propriétaire et le logement sont déjà connus, leurs écrans sont sautés.
+  const ecrans = ecransMandat(proposerSigne, preselection);
+  const [b, setB] = useState<BrouillonMandat>(() => brouillonMandat(preselection, AUJOURDHUI));
+  const depart = useRef(b);
+  const titreId = useId();
+  const p = useParcours<EcranMandat>({ ecrans, idChamp, sansChamp: SANS_CHAMP_MANDAT });
+  const ecran = p.ecran;
+  const erreurs = erreursMandat(ecran, b, mandats);
+  const etat = p.etat(erreurs);
+  const maj = (patch: Partial<BrouillonMandat>) => setB((x) => ({ ...x, ...patch }));
+  const logementsDispo = logements.filter((l) => !b.proprietaireId || l.proprietaireId === b.proprietaireId);
+  const pct = pourcentage(b);
+  const nomProprietaire = (id: string) => proprietaires.find((x) => x.id === id)?.nom ?? '';
+  const nomLogement = (id: string) => logements.find((x) => x.id === id)?.nom ?? '';
+
+  const creer = () => {
+    const r = mandatDepuisBrouillon(b, { mandats, id: nouvelId('man'), aujourdhui: AUJOURDHUI, proposerSigne });
+    if (!r.ok) return p.corriger(r.ecran, Object.keys(erreursMandat('recapitulatif', b, mandats)));
+    upsert('mandats', r.mandat);
+    onEnregistre?.(r.mandat);
+    onFermer();
+  };
+  const continuer = () => p.continuer(erreurs, creer);
+  // Base vide, ou propriétaire sans logement : un mandat lie un propriétaire à un logement.
+  const manque =
+    ecran === 'proprietaire' && !proprietaires.length
+      ? 'proprietaire'
+      : ecran === 'logement' && !logements.length
+        ? 'logement'
+        : ecran === 'logement' && !logementsDispo.length
+          ? 'logementDuProprietaire'
+          : undefined;
+  const q = QUESTIONS[ecran];
+
+  return (
+    <Assistant
+      titre="Nouveau mandat"
+      ecrans={ecrans}
+      ecran={ecran}
+      question={q.question}
+      aide={q.aide}
+      idQuestion={titreId}
+      blocage={etat}
+      libelleSuite={p.libelleSuite('Créer le mandat')}
+      onContinuer={continuer}
+      onRetour={p.retour}
+      sansSuite={!!manque}
+      saisi={brouillonModifie(depart.current, b)}
+      abandon={`Abandonner ce mandat${NBSP}?`}
+      onFermer={onFermer}
+    >
+      {ecran === 'signe' && (
+        <ChoixCourts
+          options={OUI_NON}
+          valeur={b.signe ? 'oui' : 'non'}
+          onChange={(v) => maj({ signe: v === 'oui' })}
+          onContinuer={continuer}
+          labelledBy={titreId}
+          idPremier={idChamp('signe')}
+          className="grid-cols-2"
+        />
+      )}
+      {ecran === 'proprietaire' &&
+        (manque ? (
+          <Prerequis manque="Vous n’avez pas encore de propriétaire." detail="Un mandat lie un propriétaire à un logement." lien="/erp/proprietaires?nouveau=1" action="Nouveau propriétaire" />
+        ) : (
+          <ChoixListe
+            options={[...proprietaires].sort((x, y) => x.nom.localeCompare(y.nom, 'fr')).map((x) => ({ valeur: x.id, libelle: x.nom }))}
+            valeur={b.proprietaireId || undefined}
+            // Un autre propriétaire : le logement choisi ne vaut plus.
+            onChange={(proprietaireId) => maj({ proprietaireId, logementId: proprietaireId === b.proprietaireId ? b.logementId : '' })}
+            onContinuer={continuer}
+            labelledBy={titreId}
+            idPremier={idChamp('proprietaireId')}
+          />
+        ))}
+      {ecran === 'logement' &&
+        (manque === 'logement' ? (
+          <Prerequis manque="Vous n’avez pas encore de logement." detail="Ajoutez le logement confié avant de créer son mandat." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+        ) : manque === 'logementDuProprietaire' ? (
+          <Prerequis
+            manque="Ce propriétaire n’a pas encore de logement."
+            detail={`Attribuez-lui d’abord le sien, depuis Paramètres${NBSP}→${NBSP}Accès.`}
+            lien="/erp/parametres/acces"
+            action="Ouvrir Accès"
+          />
+        ) : (
+          <ChoixListe
+            options={logementsDispo.map((l) => ({ valeur: l.id, libelle: l.nom, detail: l.ville }))}
+            valeur={b.logementId || undefined}
+            onChange={(logementId) => maj({ logementId })}
+            onContinuer={continuer}
+            labelledBy={titreId}
+            idPremier={idChamp('logementId')}
+          />
+        ))}
+      {ecran === 'commission' && (
+        <>
+          <Field label="Commission (%)" erreur={etat.erreurChamp('commissionPct')}>
+            <Input
+              id={idChamp('commissionPct')}
+              inputMode="decimal"
+              value={b.commissionPct}
+              onChange={(e) => maj({ commissionPct: e.target.value })}
+              onBlur={() => p.quitter('commissionPct')}
+              autoComplete="off"
+              className={cn(CHAMP_ASSISTANT, 'sm:max-w-40')}
+            />
+          </Field>
+          {pct > 0 && pct < COMMISSION_CIBLE_MIN && (
+            // La cible est déjà dans l'aide de l'écran : l'alerte ne la répète pas.
+            <Alert tone="alerte" titre="Commission sous la cible" className="mt-4">
+              Un taux inférieur doit rester exceptionnel.
+            </Alert>
+          )}
+        </>
+      )}
+      {ecran === 'menage' && (
+        <Field label="Frais de ménage" erreur={etat.erreurChamp('fraisMenage')}>
+          <InputEuros id={idChamp('fraisMenage')} value={b.fraisMenage} onChange={(e) => maj({ fraisMenage: e.target.value })} onBlur={() => p.quitter('fraisMenage')} className="sm:max-w-48" />
+        </Field>
+      )}
+      {ecran === 'dates' && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field label="Début" erreur={etat.erreurChamp('dateDebut')}>
+            <Input id={idChamp('dateDebut')} type="date" value={b.dateDebut} onChange={(e) => maj({ dateDebut: e.target.value })} onBlur={() => p.quitter('dateDebut')} className={CHAMP_ASSISTANT} />
+          </Field>
+          <Field label="Fin de la période d’essai" aide="Facultatif." erreur={etat.erreurChamp('periodeEssaiFin')}>
+            <Input
+              id={idChamp('periodeEssaiFin')}
+              type="date"
+              value={b.periodeEssaiFin}
+              onChange={(e) => maj({ periodeEssaiFin: e.target.value })}
+              onBlur={() => p.quitter('periodeEssaiFin')}
+              className={CHAMP_ASSISTANT}
+            />
+          </Field>
+        </div>
+      )}
+      {ecran === 'preavis' && (
+        <Field label="Préavis (jours)" erreur={etat.erreurChamp('preavisJours')}>
+          <Input
+            id={idChamp('preavisJours')}
+            inputMode="numeric"
+            value={b.preavisJours}
+            onChange={(e) => maj({ preavisJours: e.target.value })}
+            onBlur={() => p.quitter('preavisJours')}
+            autoComplete="off"
+            className={cn(CHAMP_ASSISTANT, 'sm:max-w-40')}
+          />
+        </Field>
+      )}
+      {ecran === 'recapitulatif' && (
+        // Propriétaire et logement venus de la fiche : leurs lignes restent, sans « Modifier » (pas d'écran pour les changer).
+        <RecapAssistant
+          lignes={recapMandat(b, { proposerSigne, nomProprietaire, nomLogement, jour, euros }).map((l) => ({ ...l, onModifier: ecrans.includes(l.ecran) ? () => p.modifier(l.ecran) : undefined }))}
+        />
+      )}
+    </Assistant>
+  );
+}
+
+/* ------------------------------------------------------------ modification */
+
+function ModificationMandat({ ouvert, onFermer, mandat, preselection, onEnregistre }: Props) {
   const { proprietaires, logements, mandats, upsert } = useErp();
   const vierge = (): Saisie => ({
     proprietaireId: mandat?.proprietaireId ?? preselection?.proprietaireId ?? '',
@@ -83,8 +305,8 @@ export function FormMandat({ ouvert, onFermer, mandat, preselection, onEnregistr
     const suivant: Mandat = {
       ...(mandat ??
         (proposerSigne && signe
-          ? { id: nouvelId('man'), reference: prochaineReference(mandats), statut: 'signe' as const, signeLe: s.dateDebut, documentUrl: undefined }
-          : { id: nouvelId('man'), reference: prochaineReference(mandats), statut: 'brouillon' as const, documentUrl: undefined })),
+          ? { id: nouvelId('man'), reference: prochaineReference(mandats, AUJOURDHUI), statut: 'signe' as const, signeLe: s.dateDebut, documentUrl: undefined }
+          : { id: nouvelId('man'), reference: prochaineReference(mandats, AUJOURDHUI), statut: 'brouillon' as const, documentUrl: undefined })),
       proprietaireId: s.proprietaireId,
       logementId: s.logementId,
       commissionPct: pct,

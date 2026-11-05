@@ -1,7 +1,7 @@
 /**
  * Paramètres → Annonces à l'équipe (gérant) : publier un court message à
- * toute l'équipe de l'espace, affiché en haut de l'Accueil de chacun, et le
- * retirer. « Prévenir aussi par notification » (proposée quand les
+ * toute l'équipe de l'espace, affiché en haut de l'Accueil de chacun (pas à
+ * pas : AssistantAnnonce.tsx), et le retirer. « Prévenir aussi par notification » (proposée quand les
  * notifications marchent sur le serveur) l'envoie une fois aux appareils qui
  * l'acceptent : l'annonce est d'abord enregistrée, puis le serveur la relit
  * dans la base et l'envoie (api/erp-notifications.ts, action « annoncer »).
@@ -11,31 +11,25 @@
  * de l'écran disent toujours « à l'équipe » ou « Accueil ».
  * Règles : src/erp/data/annonces-equipe.ts.
  */
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { Megaphone } from 'lucide-react';
 import {
   annoncesPubliees,
-  brouillonInitial,
   issueDeLaReponse,
   issueDeLErreur,
   messagePublication,
-  preparerAnnonce,
   retirerAnnonce,
-  TEXTE_MAX,
-  TITRE_MAX,
   type AnnonceEquipe,
   type IssueNotification,
-  type SaisieAnnonce,
 } from '../../data/annonces-equipe';
-import { espaceOuvert } from '../../data/espaces';
 import { dateHeure, horodatageMaintenant } from '../../data/format';
-import { nomConciergerie } from '../../data/marque-espace';
-import { nouvelId, useErp } from '../../data/store';
-import { Aide, Alert, Button, Card, CardHeader, Field, Input, Modal, Textarea } from '../../ui';
+import { useErp } from '../../data/store';
+import { Aide, Alert, Button, Card, CardHeader, Modal } from '../../ui';
 import { appelerServeur, ErreurServeur } from '../messagerie/_composants/serveur';
 import { useNotifications } from './_application/notifications';
+import { AssistantAnnonce } from './AssistantAnnonce';
 
-/** Message sous le formulaire ; `reessayer` : l'annonce dont la notification peut être relancée. */
+/** Message sous le bouton ; `reessayer` : l'annonce dont la notification peut être relancée. */
 type Retour = ReturnType<typeof messagePublication> & { reessayer?: string };
 
 export default function AnnoncesEquipe() {
@@ -44,11 +38,8 @@ export default function AnnoncesEquipe() {
   // La case n'est proposée que si les notifications marchent sur le serveur (démonstration : pour montrer ce qui partirait).
   const notificationsPossibles = d.demo || n.serveurActif;
   const publiees = useMemo(() => annoncesPubliees(d.annoncesEquipe), [d.annoncesEquipe]);
-  // Tant que l'espace n'a aucune annonce : le premier message, prêt à publier.
-  const [saisie, setSaisie] = useState<SaisieAnnonce>(() => brouillonInitial(d.annoncesEquipe, nomConciergerie(espaceOuvert())));
-  const [notifier, setNotifier] = useState(true);
-  const [erreurs, setErreurs] = useState<Partial<Record<keyof SaisieAnnonce, string>>>({});
-  const [enCours, setEnCours] = useState(false);
+  /** Assistant « Nouvelle annonce » ouvert (tant que l'espace n'a aucune annonce, le premier message y est prêt à publier). */
+  const [nouvelle, setNouvelle] = useState(false);
   const [reessai, setReessai] = useState(false);
   const [retour, setRetour] = useState<Retour | null>(null);
   const [aRetirer, setARetirer] = useState<AnnonceEquipe | null>(null);
@@ -69,22 +60,12 @@ export default function AnnoncesEquipe() {
     setRetour({ ...messagePublication(issue), ...(relancer ? { reessayer: id } : {}) });
   };
 
-  const publier = async (e: FormEvent) => {
-    e.preventDefault();
-    if (enCours) return;
-    const r = preparerAnnonce(saisie, { id: nouvelId('aeq'), maintenant: horodatageMaintenant(), par: d.utilisateur.nom });
-    if (!r.ok) {
-      setErreurs(r.erreurs);
-      return;
-    }
-    setErreurs({});
+  /** « Publier » de l'assistant : l'annonce de preparerAnnonce (data/creation-annonce-equipe.ts), puis la notification si demandée. */
+  const publier = async (annonce: AnnonceEquipe, notifier: boolean) => {
     setRetour(null);
-    setEnCours(true);
     // D'abord enregistrée : elle reste publiée quoi qu'il arrive à la notification.
-    d.upsert('annoncesEquipe', r.annonce);
-    setSaisie({ titre: '', texte: '' });
-    montrer(notifier && notificationsPossibles ? await annoncer(r.annonce.id) : { genre: 'sans' }, r.annonce.id);
-    setEnCours(false);
+    d.upsert('annoncesEquipe', annonce);
+    montrer(notifier ? await annoncer(annonce.id) : { genre: 'sans' }, annonce.id);
   };
 
   const reessayer = async () => {
@@ -105,23 +86,8 @@ export default function AnnoncesEquipe() {
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <Card>
-        <CardHeader titre="Nouvelle annonce à l’équipe" />
-        <form onSubmit={(e) => void publier(e)} className="flex flex-col gap-4" noValidate>
-          <Field label="Titre" erreur={erreurs.titre}>
-            <Input value={saisie.titre} maxLength={TITRE_MAX} onChange={(e) => setSaisie({ ...saisie, titre: e.target.value })} autoComplete="off" />
-          </Field>
-          <Field label="Texte" erreur={erreurs.texte}>
-            <Textarea value={saisie.texte} maxLength={TEXTE_MAX} rows={4} onChange={(e) => setSaisie({ ...saisie, texte: e.target.value })} />
-          </Field>
-          {notificationsPossibles && (
-            <label className="-my-1 flex min-h-11 cursor-pointer items-start gap-3 py-1">
-              <input type="checkbox" className="mt-0.5 size-[18px] shrink-0 accent-(--lm-or-texte)" checked={notifier} onChange={(e) => setNotifier(e.target.checked)} />
-              <span className="min-w-0">
-                <span className="block text-[13.5px] font-medium text-(--lm-encre)">Prévenir aussi par notification</span>
-                <span className="block text-[12.5px] text-(--lm-encre-2)">Sur les appareils qui ont activé les notifications.</span>
-              </span>
-            </label>
-          )}
+        <CardHeader titre="Nouvelle annonce à l’équipe" description="Un court message, en haut de l’Accueil de chacun." />
+        <div className="flex flex-col gap-4">
           {retour && (
             <Alert
               tone={retour.ton}
@@ -138,12 +104,13 @@ export default function AnnoncesEquipe() {
             </Alert>
           )}
           <div>
-            <Button type="submit" variant="primary" icone={<Megaphone />} chargement={enCours} className="w-full sm:w-auto">
-              Publier
+            <Button variant="primary" icone={<Megaphone />} className="w-full max-sm:min-h-11 sm:w-auto" onClick={() => setNouvelle(true)}>
+              Écrire une annonce
             </Button>
           </div>
-        </form>
+        </div>
       </Card>
+      {nouvelle && <AssistantAnnonce notificationsPossibles={notificationsPossibles} onPublier={publier} onFermer={() => setNouvelle(false)} />}
 
       {publiees.length > 0 && (
         <Card>

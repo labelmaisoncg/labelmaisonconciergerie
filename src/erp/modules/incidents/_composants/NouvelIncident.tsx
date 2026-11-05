@@ -1,14 +1,32 @@
-import { useState } from 'react';
+/**
+ * Signaler un incident, pas à pas (kit ui/Assistant.tsx) : le logement, la
+ * date du constat, le type et l'urgence, ce qui s'est passé, les preuves,
+ * qui paiera, qui suit, puis le récapitulatif. Rien n'est enregistré avant
+ * « Créer l'incident » (creerIncident du store) ; règles :
+ * data/creation-incident.ts.
+ */
+import { useId, useMemo, useRef, useState } from 'react';
 import { EMAIL_EQUIPE } from '../../../data/config';
-import { AUJOURDHUI, dateCourte, versCentimes } from '../../../data/format';
+import { AUJOURDHUI, dateCourte } from '../../../data/format';
 import { LIBELLES } from '../../../data/libelles';
 import { estCompteTechnique } from '../../../data/oauth-regles';
+import { brouillonModifie } from '../../../data/parcours-assistant';
+import {
+  ECRANS_INCIDENT,
+  SANS_CHAMP_INCIDENT,
+  brouillonIncident,
+  erreursIncident,
+  incidentDepuisBrouillon,
+  recapIncident,
+  sejoursConcernes,
+  type BrouillonIncident,
+  type EcranIncident,
+} from '../../../data/creation-incident';
 import { useErp } from '../../../data/store';
 import type { CategorieIncident, GraviteIncident, Incident, Refacturable } from '../../../data/types';
-import { Button, EnvoiFichier, Field, Input, Modal, Select, Textarea, Prerequis } from '../../../ui';
+import { Assistant, CHAMP_ASSISTANT, ChoixCourts, ChoixListe, EnvoiFichier, Field, Input, InputEuros, NBSP, Prerequis, RecapAssistant, SearchInput, Textarea, cn, useParcours } from '../../../ui';
 
-const options = <K extends string>(libelles: Record<K, string>) =>
-  (Object.keys(libelles) as K[]).map((k) => ({ valeur: k, libelle: libelles[k] }));
+const options = <K extends string>(libelles: Record<K, string>) => (Object.keys(libelles) as K[]).map((k) => ({ valeur: k, libelle: libelles[k] }));
 
 interface Props {
   ouvert: boolean;
@@ -16,116 +34,299 @@ interface Props {
   onCree: (i: Incident) => void;
 }
 
-const VIDE = { logementId: '', reservationId: '', date: AUJOURDHUI, categorie: 'menage' as CategorieIncident, gravite: 'moyenne' as GraviteIncident, description: '', responsable: '', preuves: '', refacturable: 'aucun' as Refacturable, cout: '' };
-
 /** Déclaration d'un incident, avec preuves et imputation du coût. */
 export function NouvelIncident({ ouvert, onFermer, onCree }: Props) {
+  if (!ouvert) return null;
+  // Monté à chaque ouverture : un brouillon neuf.
+  return <AssistantIncident onFermer={onFermer} onCree={onCree} />;
+}
+
+const QUESTIONS: Record<EcranIncident, { question: string; aide?: string }> = {
+  logement: { question: `Quel logement${NBSP}?` },
+  quand: { question: `Quand l’avez-vous constaté${NBSP}?` },
+  nature: { question: `Quel type d’incident${NBSP}?` },
+  description: { question: `Que s’est-il passé${NBSP}?`, aide: 'Ce qui a été constaté, par qui, et l’impact pour le voyageur.' },
+  preuves: { question: `Avez-vous des photos${NBSP}?`, aide: 'Sans preuve, impossible de se faire rembourser.' },
+  cout: { question: `Qui paiera${NBSP}?`, aide: `Facultatif${NBSP}: à compléter plus tard si vous ne savez pas encore.` },
+  suivi: { question: `Qui suit l’incident${NBSP}?` },
+  recapitulatif: { question: `Tout est correct${NBSP}?` },
+};
+
+/** Au-delà, la liste des logements se filtre. */
+const SEUIL_RECHERCHE = 6;
+const AUCUN = '__aucun__';
+
+/** Étiquette d'un détail de l'écran (pas une seconde question) : comme celle d'un champ. */
+const ETIQUETTE = 'text-[13px] font-semibold text-(--lm-encre)';
+
+const idChamp = (cle: string) => `assistant-incident-${cle}`;
+
+function AssistantIncident({ onFermer, onCree }: Omit<Props, 'ouvert'>) {
   const { logements, reservations, utilisateurs, creerIncident } = useErp();
-  const [f, setF] = useState(VIDE);
-  const [erreurs, setErreurs] = useState<Partial<Record<keyof typeof VIDE, string>>>({});
-  const maj = <K extends keyof typeof VIDE>(k: K, v: (typeof VIDE)[K]) => setF((x) => ({ ...x, [k]: v }));
+  const [b, setB] = useState<BrouillonIncident>(() => brouillonIncident(AUJOURDHUI));
+  const depart = useRef(b);
+  const [envoi, setEnvoi] = useState(false);
+  const titreId = useId();
+  const tries = useMemo(() => [...logements].sort((x, y) => x.nom.localeCompare(y.nom, 'fr')), [logements]);
+  const ctx = { logements, aujourdhui: AUJOURDHUI };
+  const p = useParcours<EcranIncident>({ ecrans: ECRANS_INCIDENT, idChamp, sansChamp: SANS_CHAMP_INCIDENT });
+  const ecran = p.ecran;
+  const erreurs = erreursIncident(ecran, b, ctx);
+  const etat = p.etat(erreurs);
+  const maj = (patch: Partial<BrouillonIncident>) => setB((x) => ({ ...x, ...patch }));
+  const sejours = sejoursConcernes(reservations, b);
+  const responsables = utilisateurs.filter((u) => u.role !== 'prestataire' && !estCompteTechnique(u.email, EMAIL_EQUIPE)).map((u) => u.nom);
 
-  const sejours = reservations
-    .filter((r) => r.logementId === f.logementId && r.statut !== 'annulee' && r.arrivee <= f.date)
-    .sort((a, b) => b.arrivee.localeCompare(a.arrivee))
-    .slice(0, 6);
-
-  const fermer = () => {
-    setF(VIDE);
-    setErreurs({});
+  const creer = () => {
+    if (envoi) return;
+    const r = incidentDepuisBrouillon(b, ctx);
+    if (!r.ok) return p.corriger(r.ecran, Object.keys(erreursIncident('recapitulatif', b, ctx)));
+    setEnvoi(true);
+    const i = creerIncident(r.incident);
+    // Fermer d'abord : ouvert par « ?nouveau=1 », la fermeture retire le paramètre de l'adresse, puis l'incident s'ouvre.
     onFermer();
-  };
-
-  const enregistrer = () => {
-    const e: typeof erreurs = {};
-    const preuves = f.preuves.split(/\s+/).map((u) => u.trim()).filter(Boolean);
-    if (!f.logementId) e.logementId = 'Choisissez le logement.';
-    if (f.description.trim().length < 10) e.description = 'Décrivez l’incident (10 caractères minimum).';
-    if (preuves.some((u) => !/^(https?:\/\/|demo:\/\/|stockage:\/\/)/.test(u))) e.preuves = 'Chaque preuve doit être une adresse commençant par https://';
-    const cout = f.cout.trim() ? versCentimes(f.cout) : undefined;
-    if (cout !== undefined && (Number.isNaN(cout) || cout < 0)) e.cout = 'Montant invalide.';
-    setErreurs(e);
-    if (Object.keys(e).length) return;
-    const i = creerIncident({
-      logementId: f.logementId,
-      reservationId: f.reservationId || undefined,
-      date: f.date,
-      categorie: f.categorie,
-      gravite: f.gravite,
-      description: f.description.trim(),
-      responsable: f.responsable || undefined,
-      preuves,
-      refacturable: f.refacturable,
-      coutCentimes: cout,
-    });
     onCree(i);
-    fermer();
   };
+  const continuer = () => p.continuer(erreurs, creer);
+  // Aucun logement : un incident se rattache toujours à un logement.
+  const bloque = ecran === 'logement' && !logements.length;
+  const q = QUESTIONS[ecran];
 
   return (
-    <Modal
-      ouvert={ouvert}
-      onFermer={fermer}
-      taille="lg"
-      titre="Signaler un incident"
-      description="Décrivez ce qui s’est passé et joignez des photos : sans preuve, impossible de se faire rembourser."
-      pied={
-        <>
-          <Button variant="ghost" onClick={fermer}>Annuler</Button>
-          <Button variant="primary" onClick={enregistrer}>Créer l’incident</Button>
-        </>
-      }
+    <Assistant
+      titre="Nouvel incident"
+      ecrans={ECRANS_INCIDENT}
+      ecran={ecran}
+      question={q.question}
+      aide={q.aide}
+      idQuestion={titreId}
+      blocage={etat}
+      libelleSuite={p.libelleSuite('Créer l’incident')}
+      onContinuer={continuer}
+      onRetour={p.retour}
+      sansSuite={bloque}
+      saisi={brouillonModifie(depart.current, b)}
+      abandon={`Abandonner cet incident${NBSP}?`}
+      envoi={envoi}
+      onFermer={onFermer}
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {!logements.length && (
-          <Prerequis className="sm:col-span-2" manque="Vous n’avez pas encore de logement." detail="Un incident se rattache toujours à un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
-        )}
-        <Field label="Logement" requis erreur={erreurs.logementId}>
-          <Select value={f.logementId} placeholder="Choisir" onChange={(e) => setF((x) => ({ ...x, logementId: e.target.value, reservationId: '' }))} options={logements.map((l) => ({ valeur: l.id, libelle: l.nom }))} />
-        </Field>
-        <Field label="Date du constat" requis>
-          <Input type="date" value={f.date} max={AUJOURDHUI} onChange={(e) => maj('date', e.target.value)} />
-        </Field>
-        <Field label="Séjour concerné" aide="Facultatif, utile pour refacturer un voyageur.">
-          <Select
-            value={f.reservationId}
-            disabled={!f.logementId}
-            placeholder="Aucun"
-            onChange={(e) => maj('reservationId', e.target.value)}
-            options={sejours.map((r) => ({ valeur: r.id, libelle: `${r.voyageur.nom}, ${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}` }))}
+      {ecran === 'logement' &&
+        (bloque ? (
+          <Prerequis manque="Vous n’avez pas encore de logement." detail="Un incident se rattache toujours à un logement." lien="/erp/logements?nouveau=1" action="Nouveau logement" />
+        ) : (
+          <ChoixLogement
+            logements={tries}
+            valeur={b.logementId}
+            // Autre logement : le séjour choisi ne vaut plus.
+            onChange={(logementId) => maj({ logementId, reservationId: '' })}
+            continuer={continuer}
+            titreId={titreId}
+          />
+        ))}
+
+      {ecran === 'quand' && (
+        <div className="space-y-6">
+          <Field label="Date du constat" erreur={etat.erreurChamp('date')}>
+            <Input
+              id={idChamp('date')}
+              type="date"
+              max={AUJOURDHUI}
+              value={b.date}
+              onChange={(e) => {
+                const date = e.target.value;
+                // Un séjour arrivé après la nouvelle date ne peut plus être concerné.
+                maj({ date, ...(b.reservationId && !sejoursConcernes(reservations, { ...b, date }).some((r) => r.id === b.reservationId) ? { reservationId: '' } : {}) });
+              }}
+              onBlur={() => p.quitter('date')}
+              className={cn(CHAMP_ASSISTANT, 'sm:max-w-56')}
+            />
+          </Field>
+          {sejours.length > 0 && (
+            <ChoixSejour
+              options={[
+                { valeur: AUCUN, libelle: 'Aucun séjour en particulier' },
+                ...sejours.map((r) => ({ valeur: r.id, libelle: r.voyageur.nom, detail: `${dateCourte(r.arrivee)} au ${dateCourte(r.depart)}` })),
+              ]}
+              valeur={b.reservationId || AUCUN}
+              onChange={(v) => maj({ reservationId: v === AUCUN ? '' : v })}
+              continuer={continuer}
+            />
+          )}
+        </div>
+      )}
+
+      {ecran === 'nature' && (
+        <Nature b={b} maj={maj} continuer={continuer} titreId={titreId} />
+      )}
+
+      {ecran === 'description' && (
+        <Field label="Description" erreur={etat.erreurChamp('description')}>
+          <Textarea
+            id={idChamp('description')}
+            rows={5}
+            value={b.description}
+            onChange={(e) => maj({ description: e.target.value })}
+            onBlur={() => p.quitter('description')}
+            className="text-[16px]"
           />
         </Field>
-        <Field label="Responsable du suivi">
-          <Select value={f.responsable} placeholder="Personne pour l’instant" onChange={(e) => maj('responsable', e.target.value)} options={utilisateurs.filter((u) => u.role !== 'prestataire' && !estCompteTechnique(u.email, EMAIL_EQUIPE)).map((u) => ({ valeur: u.nom, libelle: u.nom }))} />
-        </Field>
-        <Field label="Catégorie" requis>
-          <Select value={f.categorie} onChange={(e) => maj('categorie', e.target.value as CategorieIncident)} options={options(LIBELLES.categorieIncident)} />
-        </Field>
-        <Field label="Gravité" requis>
-          <Select value={f.gravite} onChange={(e) => maj('gravite', e.target.value as GraviteIncident)} options={options(LIBELLES.gravite)} />
-        </Field>
-        <Field label="Description" requis erreur={erreurs.description} className="sm:col-span-2">
-          <Textarea rows={3} value={f.description} onChange={(e) => maj('description', e.target.value)} placeholder="Ce qui a été constaté, par qui, et l’impact pour le voyageur." />
-        </Field>
-        <div className="grid gap-2 sm:col-span-2">
-          <Field label="Preuves (photos, documents)" aide="Joignez des fichiers, ou collez une adresse par ligne." erreur={erreurs.preuves}>
-            <Textarea rows={2} value={f.preuves} onChange={(e) => maj('preuves', e.target.value)} placeholder="https://..." />
-          </Field>
+      )}
+
+      {ecran === 'preuves' && (
+        <div className="space-y-4">
           <EnvoiFichier
-            dossier={`incidents/${f.logementId || 'sans-logement'}`}
+            dossier={`incidents/${b.logementId || 'sans-logement'}`}
             accept="image/*,application/pdf"
             multiple
+            size="md"
             libelle="Joindre des photos ou documents"
-            onEnvoye={(urls) => setF((x) => ({ ...x, preuves: [x.preuves.trim(), ...urls].filter(Boolean).join('\n') }))}
+            onEnvoye={(urls) => setB((x) => ({ ...x, preuves: [x.preuves.trim(), ...urls].filter(Boolean).join('\n') }))}
           />
+          <Field label="Adresses des preuves" aide="Les fichiers joints s’ajoutent ici. Vous pouvez aussi coller une adresse par ligne." erreur={etat.erreurChamp('preuves')}>
+            <Textarea
+              id={idChamp('preuves')}
+              rows={3}
+              value={b.preuves}
+              onChange={(e) => maj({ preuves: e.target.value })}
+              onBlur={() => p.quitter('preuves')}
+              placeholder="Adresse d’une photo en ligne"
+              className="text-[16px]"
+            />
+          </Field>
         </div>
-        <Field label="Refacturable à">
-          <Select value={f.refacturable} onChange={(e) => maj('refacturable', e.target.value as Refacturable)} options={options(LIBELLES.refacturable)} />
-        </Field>
-        <Field label="Coût estimé (€)" erreur={erreurs.cout}>
-          <Input inputMode="decimal" value={f.cout} onChange={(e) => maj('cout', e.target.value)} placeholder="0,00" />
+      )}
+
+      {ecran === 'cout' && <Cout b={b} maj={maj} erreur={etat.erreurChamp('cout')} quitter={p.quitter} continuer={continuer} />}
+
+      {ecran === 'suivi' && (
+        <ChoixListe
+          options={[{ valeur: AUCUN, libelle: 'Personne pour l’instant' }, ...responsables.map((nom) => ({ valeur: nom, libelle: nom }))]}
+          valeur={b.responsable || AUCUN}
+          onChange={(v) => maj({ responsable: v === AUCUN ? '' : v })}
+          onContinuer={continuer}
+          labelledBy={titreId}
+        />
+      )}
+
+      {ecran === 'recapitulatif' && <RecapAssistant lignes={recapIncident(b, { logements, reservations, aujourdhui: AUJOURDHUI }).map((l) => ({ ...l, onModifier: () => p.modifier(l.ecran) }))} />}
+    </Assistant>
+  );
+}
+
+function ChoixLogement({
+  logements,
+  valeur,
+  onChange,
+  continuer,
+  titreId,
+}: {
+  logements: { id: string; nom: string; ville: string }[];
+  valeur: string;
+  onChange: (id: string) => void;
+  continuer: () => void;
+  titreId: string;
+}) {
+  const [recherche, setRecherche] = useState('');
+  const q = recherche.trim().toLocaleLowerCase('fr');
+  const visibles = q ? logements.filter((l) => `${l.nom} ${l.ville}`.toLocaleLowerCase('fr').includes(q)) : logements;
+  return (
+    <>
+      {logements.length > SEUIL_RECHERCHE && (
+        <SearchInput valeur={recherche} onChange={setRecherche} placeholder="Nom ou ville" label="Rechercher un logement" className="mb-3 sm:w-full" />
+      )}
+      {visibles.length ? (
+        <ChoixListe
+          options={visibles.map((l) => ({ valeur: l.id, libelle: l.nom, detail: l.ville }))}
+          valeur={valeur || undefined}
+          onChange={onChange}
+          onContinuer={continuer}
+          labelledBy={titreId}
+          idPremier={idChamp('logementId')}
+        />
+      ) : (
+        <p className="text-[14px] text-(--lm-encre-2)">Aucun logement ne correspond.</p>
+      )}
+    </>
+  );
+}
+
+function ChoixSejour({ options, valeur, onChange, continuer }: { options: { valeur: string; libelle: string; detail?: string }[]; valeur: string; onChange: (v: string) => void; continuer: () => void }) {
+  const id = useId();
+  const aideId = useId();
+  return (
+    <div>
+      <p id={id} className={ETIQUETTE}>
+        Séjour concerné
+      </p>
+      <p id={aideId} className="mt-0.5 mb-2 text-[12.5px] text-(--lm-encre-3)">
+        Facultatif, utile pour refacturer un voyageur.
+      </p>
+      <ChoixListe options={options} valeur={valeur} onChange={onChange} onContinuer={continuer} labelledBy={id} describedBy={aideId} />
+    </div>
+  );
+}
+
+function Nature({ b, maj, continuer, titreId }: { b: BrouillonIncident; maj: (p: Partial<BrouillonIncident>) => void; continuer: () => void; titreId: string }) {
+  const graviteId = useId();
+  return (
+    <>
+      <ChoixCourts
+        options={options<CategorieIncident>(LIBELLES.categorieIncident)}
+        valeur={b.categorie}
+        onChange={(categorie) => maj({ categorie })}
+        onContinuer={continuer}
+        labelledBy={titreId}
+        className="grid-cols-2 sm:grid-cols-3"
+      />
+      <div className="mt-6 border-t border-(--lm-bord) pt-5">
+        <p id={graviteId} className={ETIQUETTE}>
+          Urgence
+        </p>
+        <ChoixCourts
+          options={options<GraviteIncident>(LIBELLES.gravite)}
+          valeur={b.gravite}
+          onChange={(gravite) => maj({ gravite })}
+          onContinuer={continuer}
+          labelledBy={graviteId}
+          className="mt-2 grid-cols-3"
+        />
+      </div>
+    </>
+  );
+}
+
+function Cout({
+  b,
+  maj,
+  erreur,
+  quitter,
+  continuer,
+}: {
+  b: BrouillonIncident;
+  maj: (p: Partial<BrouillonIncident>) => void;
+  erreur?: string;
+  quitter: (cle: string) => void;
+  continuer: () => void;
+}) {
+  const refacturableId = useId();
+  return (
+    <>
+      <p id={refacturableId} className={ETIQUETTE}>
+        Refacturable à
+      </p>
+      <ChoixCourts
+        options={options<Refacturable>(LIBELLES.refacturable)}
+        valeur={b.refacturable}
+        onChange={(refacturable) => maj({ refacturable })}
+        onContinuer={continuer}
+        labelledBy={refacturableId}
+        className="mt-2 grid-cols-2"
+      />
+      <div className="mt-6">
+        <Field label="Coût estimé" erreur={erreur} className="sm:max-w-56">
+          <InputEuros id={idChamp('cout')} value={b.cout} onChange={(e) => maj({ cout: e.target.value })} onBlur={() => quitter('cout')} placeholder="0,00" />
         </Field>
       </div>
-    </Modal>
+    </>
   );
 }

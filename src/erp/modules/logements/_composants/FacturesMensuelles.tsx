@@ -325,7 +325,7 @@ export function FenetreFactureMensuelle({ proprietaire, factureId, onFermer }: {
                   <Button
                     variant="secondary"
                     size="sm"
-                    className="max-w-full sm:max-w-64"
+                    className="max-w-full max-sm:min-h-11 sm:max-w-64"
                     title={calcul.logementsSansTaux.length > 1 ? `Ajouter le mandat ${deNom(calcul.logementsSansTaux[0].nom)}` : undefined}
                     onClick={() => setMandatPour(calcul.logementsSansTaux[0].logementId)}
                   >

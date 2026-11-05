@@ -58,6 +58,8 @@ export function LienFichier({ url, children, className }: { url: string; childre
 export interface EnvoiFichierProps {
   /** Dossier de rangement dans l'espace privé, ex. « missions/mis-12/avant ». */
   dossier: string;
+  /** id du bouton (focus quand on tente de continuer sans fichier, dans un assistant). */
+  id?: string;
   accept?: string;
   multiple?: boolean;
   libelle?: string;
@@ -77,6 +79,7 @@ export interface EnvoiFichierProps {
 /** Bouton « joindre un fichier » : choix, envoi, erreurs affichées sous le bouton. */
 export function EnvoiFichier({
   dossier,
+  id,
   accept,
   multiple,
   libelle = 'Joindre un fichier',
@@ -138,7 +141,7 @@ export function EnvoiFichier({
         aria-hidden
         onChange={(e) => void choisis(e.target.files)}
       />
-      <Button variant={variant} size={size} icone={icone ?? <Paperclip />} chargement={enCours} disabled={disabled} onClick={() => champ.current?.click()}>
+      <Button id={id} variant={variant} size={size} icone={icone ?? <Paperclip />} chargement={enCours} disabled={disabled} onClick={() => champ.current?.click()} className="max-sm:min-h-11">
         {enCours ? 'Envoi…' : libelle}
       </Button>
       {erreur && (

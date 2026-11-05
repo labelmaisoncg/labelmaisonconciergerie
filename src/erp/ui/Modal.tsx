@@ -50,7 +50,8 @@ export function Modal({ ouvert, onFermer, titre, description, pied, taille = 'md
         )}
       >
         <div className="relative flex min-h-14 shrink-0 items-center justify-center border-b border-(--lm-bord) px-14 py-3">
-          <IconButton label="Fermer" onClick={onFermer} size="sm" className="absolute top-1/2 left-3 -translate-y-1/2">
+          {/* 44 px au toucher : à gauche 12 + 44 px, dans les 56 px réservés de chaque côté du titre (px-14), qui reste centré. */}
+          <IconButton label="Fermer" onClick={onFermer} size="sm" className="absolute top-1/2 left-3 -translate-y-1/2 max-sm:size-11">
             <X />
           </IconButton>
           <h2 id={titreId} className="lm-titre text-center text-[17px] leading-snug text-balance text-(--lm-encre)">

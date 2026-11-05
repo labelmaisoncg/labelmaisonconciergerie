@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { ExternalLink, FileText, Image, Link2, Pencil, Plus, Trash2, Video } from 'lucide-react';
-import { Badge, Button, Card, CardHeader, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Segmente, Textarea } from '../../../ui';
+import { Badge, Button, Card, CardHeader, EnvoiFichier, Field, IconButton, Input, LienFichier, Modal, Segmente, Textarea, cn } from '../../../ui';
 import { nouvelId, useErp } from '../../../data/store';
 import { horodatageMaintenant } from '../../../data/format';
 import { LIBELLE_TYPE_GUIDE, TAILLE_MAX_GUIDE_MO, estLienGuide, typeFichier } from '../../../data/guides';
+import type { BrouillonGuide } from '../../../data/creation-guide';
 import type { GuideLogement, Logement, QuestionFrequente } from '../../../data/types';
 import { aideOuCode } from '../_composants/avertissementCode';
+import { AssistantGuide, AssistantQuestion } from './AssistantsGuides';
 
 const ICONE: Record<GuideLogement['media']['type'], ReactNode> = {
   video: <Video />,
@@ -15,9 +17,9 @@ const ICONE: Record<GuideLogement['media']['type'], ReactNode> = {
 };
 
 /** Une ligne de liste (guide ou question) : contenu, puis Modifier et Supprimer à portée de pouce. */
-function Ligne({ children, onModifier, onSupprimer, libelle }: { children: ReactNode; onModifier: () => void; onSupprimer: () => void; libelle: string }) {
+function Ligne({ id, children, onModifier, onSupprimer, libelle }: { id?: string; children: ReactNode; onModifier: () => void; onSupprimer: () => void; libelle: string }) {
   return (
-    <li className="flex items-start gap-3 py-3">
+    <li id={id} className="flex items-start gap-3 py-3">
       <div className="flex min-w-0 flex-1 items-start gap-3">{children}</div>
       <div className="flex shrink-0 items-center">
         <IconButton label={`Modifier ${libelle}`} size="sm" onClick={onModifier}>
@@ -31,11 +33,36 @@ function Ligne({ children, onModifier, onSupprimer, libelle }: { children: React
   );
 }
 
+/**
+ * Élément que l'assistant vient d'ajouter (et d'enregistrer) : il vient à
+ * l'écran, sous les yeux, même au bas d'une longue fiche sur téléphone.
+ */
+function useAjoutVisible(idLigne: (id: string) => string) {
+  const [ajoute, setAjoute] = useState<string>();
+  useEffect(() => {
+    if (!ajoute) return;
+    const fluide = !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const cadre = requestAnimationFrame(() => document.getElementById(idLigne(ajoute))?.scrollIntoView({ block: 'center', behavior: fluide ? 'smooth' : 'auto' }));
+    return () => cancelAnimationFrame(cadre);
+  }, [ajoute, idLigne]);
+  return [ajoute, setAjoute] as const;
+}
+
+const idLigneGuide = (id: string) => `guide-${id}`;
+const idLigneQuestion = (id: string) => `question-${id}`;
+
+/** Ce que l'assistant vient d'enregistrer, dit aux lecteurs d'écran et sous la liste (vide : sans hauteur, mais toujours là pour être annoncé). */
+function AjoutEnregistre({ texte }: { texte?: string }) {
+  return (
+    <p role="status" className={cn('text-[12.5px] text-(--lm-succes-texte)', texte && 'mt-2')}>
+      {texte}
+    </p>
+  );
+}
+
 /* ------------------------------------------------------------- guides */
 
-type Brouillon = { titre: string; quand: string; source: 'lien' | 'fichier'; url: string; fichier: string; nomFichier: string; type: GuideLogement['media']['type']; acces: boolean };
-
-const vide: Brouillon = { titre: '', quand: '', source: 'lien', url: '', fichier: '', nomFichier: '', type: 'lien', acces: false };
+type Brouillon = BrouillonGuide;
 
 function versBrouillon(g: GuideLogement): Brouillon {
   const fichier = g.media.fichier ?? '';
@@ -55,9 +82,29 @@ function versBrouillon(g: GuideLogement): Brouillon {
  * Guides du logement : une vidéo « Comment récupérer la clé », la photo du
  * compteur, le mode d'emploi du four… L'agent les envoie au voyageur quand sa
  * question y correspond. Les changements partent avec « Enregistrer ».
+ * Un nouveau guide s'ajoute pas à pas (AssistantGuide) et s'enregistre
+ * aussitôt (`onAjoute`) ; « Modifier » garde sa fenêtre.
  */
-export function SectionGuides({ logementId, guides, onChange }: { logementId: string; guides: GuideLogement[]; onChange: (g: GuideLogement[]) => void }) {
+export function SectionGuides({
+  logementId,
+  guides,
+  onChange: changer,
+  onAjoute,
+}: {
+  logementId: string;
+  guides: GuideLogement[];
+  onChange: (g: GuideLogement[]) => void;
+  /** Nouveau guide de l'assistant : enregistré aussitôt dans la fiche du logement. */
+  onAjoute: (g: GuideLogement) => void;
+}) {
   const { utilisateur } = useErp();
+  const [nouveau, setNouveau] = useState(false);
+  const [ajoute, setAjoute] = useAjoutVisible(idLigneGuide);
+  // Une autre modification (à enregistrer) : le mot « enregistré » ne vaut plus.
+  const onChange = (g: GuideLogement[]) => {
+    setAjoute(undefined);
+    changer(g);
+  };
   const [edition, setEdition] = useState<{ id: string | null; b: Brouillon } | null>(null);
   const b = edition?.b;
   const maj = (patch: Partial<Brouillon>) => setEdition((e) => (e ? { ...e, b: { ...e.b, ...patch } } : e));
@@ -87,13 +134,13 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
         titre="Guides"
         description="Vidéos, photos ou documents que votre agent envoie au voyageur quand sa question y correspond."
         actions={
-          <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, b: vide })}>
+          <Button size="sm" icone={<Plus />} className="max-sm:min-h-11" onClick={() => setNouveau(true)}>
             Ajouter
           </Button>
         }
       />
       {guides.length === 0 ? (
-        <p className="text-[13px] text-(--lm-encre-2)">Aucun guide. Par exemple, une courte vidéo « Comment récupérer la clé », filmée au téléphone.</p>
+        <p className="text-[13px] text-(--lm-encre-2)">Aucun guide. Par exemple, une courte vidéo « Comment récupérer la clé », filmée au téléphone.</p>
       ) : (
         <ul className="divide-y divide-(--lm-bord)" aria-label="Guides du logement">
           {guides.map((g) => {
@@ -101,6 +148,7 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
             return (
               <Ligne
                 key={g.id}
+                id={idLigneGuide(g.id)}
                 libelle={`le guide ${g.titre}`}
                 onModifier={() => setEdition({ id: g.id, b: versBrouillon(g) })}
                 onSupprimer={() => onChange(guides.filter((x) => x.id !== g.id))}
@@ -129,17 +177,30 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
         </ul>
       )}
 
+      <AjoutEnregistre texte={ajoute && guides.some((g) => g.id === ajoute) ? 'Guide ajouté et enregistré.' : undefined} />
+
+      {nouveau && (
+        <AssistantGuide
+          logementId={logementId}
+          onAjoute={(g) => {
+            onAjoute(g);
+            setAjoute(g.id);
+          }}
+          onFermer={() => setNouveau(false)}
+        />
+      )}
+
       <Modal
         ouvert={!!edition}
         onFermer={() => setEdition(null)}
-        titre={edition?.id ? 'Modifier le guide' : 'Nouveau guide'}
+        titre="Modifier le guide"
         pied={
           <>
             <Button variant="ghost" onClick={() => setEdition(null)}>
               Annuler
             </Button>
             <Button variant="primary" disabled={!valide} onClick={valider}>
-              {edition?.id ? 'Valider' : 'Ajouter'}
+              Valider
             </Button>
           </>
         }
@@ -208,8 +269,29 @@ export function SectionGuides({ logementId, guides, onChange }: { logementId: st
 
 /* ------------------------------------------------- questions fréquentes */
 
-/** Questions fréquentes du logement : l'agent reprend ces réponses telles quelles. */
-export function SectionQuestions({ questions, logement, onChange }: { questions: QuestionFrequente[]; logement?: Logement; onChange: (q: QuestionFrequente[]) => void }) {
+/**
+ * Questions fréquentes du logement : l'agent reprend ces réponses telles
+ * quelles. Une nouvelle question s'ajoute pas à pas (AssistantQuestion) et
+ * s'enregistre aussitôt (`onAjoute`).
+ */
+export function SectionQuestions({
+  questions,
+  logement,
+  onChange: changer,
+  onAjoute,
+}: {
+  questions: QuestionFrequente[];
+  logement?: Logement;
+  onChange: (q: QuestionFrequente[]) => void;
+  /** Nouvelle question de l'assistant : enregistrée aussitôt dans la fiche du logement. */
+  onAjoute: (q: QuestionFrequente) => void;
+}) {
+  const [nouvelle, setNouvelle] = useState(false);
+  const [ajoutee, setAjoutee] = useAjoutVisible(idLigneQuestion);
+  const onChange = (q: QuestionFrequente[]) => {
+    setAjoutee(undefined);
+    changer(q);
+  };
   const [edition, setEdition] = useState<{ id: string | null; question: string; reponse: string } | null>(null);
   const valide = !!edition?.question.trim() && !!edition.reponse.trim();
 
@@ -226,18 +308,19 @@ export function SectionQuestions({ questions, logement, onChange }: { questions:
         titre="Questions fréquentes"
         description="Les réponses que votre agent peut donner telles quelles."
         actions={
-          <Button size="sm" icone={<Plus />} onClick={() => setEdition({ id: null, question: '', reponse: '' })}>
+          <Button size="sm" icone={<Plus />} className="max-sm:min-h-11" onClick={() => setNouvelle(true)}>
             Ajouter
           </Button>
         }
       />
       {questions.length === 0 ? (
-        <p className="text-[13px] text-(--lm-encre-2)">Aucune question. Par exemple : « Où jeter les poubelles ? », « Comment marche le chauffage ? ».</p>
+        <p className="text-[13px] text-(--lm-encre-2)">Aucune question. Par exemple : « Où jeter les poubelles ? », « Comment marche le chauffage ? ».</p>
       ) : (
         <ul className="divide-y divide-(--lm-bord)" aria-label="Questions fréquentes">
           {questions.map((q) => (
             <Ligne
               key={q.id}
+              id={idLigneQuestion(q.id)}
               libelle={`la question ${q.question}`}
               onModifier={() => setEdition({ id: q.id, question: q.question, reponse: q.reponse })}
               onSupprimer={() => onChange(questions.filter((x) => x.id !== q.id))}
@@ -251,17 +334,30 @@ export function SectionQuestions({ questions, logement, onChange }: { questions:
         </ul>
       )}
 
+      <AjoutEnregistre texte={ajoutee && questions.some((q) => q.id === ajoutee) ? 'Question ajoutée et enregistrée.' : undefined} />
+
+      {nouvelle && (
+        <AssistantQuestion
+          logement={logement}
+          onAjoute={(q) => {
+            onAjoute(q);
+            setAjoutee(q.id);
+          }}
+          onFermer={() => setNouvelle(false)}
+        />
+      )}
+
       <Modal
         ouvert={!!edition}
         onFermer={() => setEdition(null)}
-        titre={edition?.id ? 'Modifier la question' : 'Nouvelle question'}
+        titre="Modifier la question"
         pied={
           <>
             <Button variant="ghost" onClick={() => setEdition(null)}>
               Annuler
             </Button>
             <Button variant="primary" disabled={!valide} onClick={valider}>
-              {edition?.id ? 'Valider' : 'Ajouter'}
+              Valider
             </Button>
           </>
         }
