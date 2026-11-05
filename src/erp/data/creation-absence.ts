@@ -31,6 +31,9 @@ export const ECRANS_ABSENCE_GERANT: readonly EcranAbsence[] = ['dates', 'remplac
 export const ECRANS_ABSENCE_POLE: readonly EcranAbsence[] = ['personne', 'dates', 'remplacant', 'recapitulatif'];
 
 /** Écrans du parcours : sans remplaçant possible, l'écran du remplaçant n'offrirait que « Pas de remplaçant » ; il est sauté. */
+/** Aide de l'écran des dates quand l'écran du remplaçant est sauté : seul le remplaçant de chaque logement reprend. */
+export const AIDE_DATES_SANS_REMPLACANT = 'Pendant l’absence, ses logements et ses incidents passent au remplaçant prévu sur chaque logement, s’il y en a un.';
+
 export const ecransAbsence = (base: readonly EcranAbsence[], remplacantPossible: boolean): EcranAbsence[] => base.filter((e) => remplacantPossible || e !== 'remplacant');
 
 /** Valeur du récapitulatif quand personne ne peut remplacer (écran sauté). */

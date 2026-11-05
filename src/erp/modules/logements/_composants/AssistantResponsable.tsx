@@ -140,7 +140,8 @@ export function AssistantResponsable({ logement: l, logementsInitiaux = [], onFe
         <>
           {ecran === 'qui' && (
             <>
-              {!libres.length && <p className="mb-3 text-[14px] text-(--lm-encre-2)">Toute l’équipe suit déjà ce logement.</p>}
+              {/* Seulement s'il y a une équipe : vide (première personne), il n'y a rien à dire. */}
+              {!libres.length && equipe.some((m) => m.actif) && <p className="mb-3 text-[14px] text-(--lm-encre-2)">Toute l’équipe suit déjà ce logement.</p>}
               <ChoixListe
                 options={[
                   ...libres.map((m) => ({ valeur: m.id, libelle: m.nom, detail: ROLES_OPERATIONS[m.role] })),

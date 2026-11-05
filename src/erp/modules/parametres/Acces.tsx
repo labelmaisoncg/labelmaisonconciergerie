@@ -23,6 +23,7 @@ import {
   SANS_CHAMP_ABSENCE,
   absenceGerantDepuisBrouillon,
   brouillonAbsenceGerant,
+  AIDE_DATES_SANS_REMPLACANT,
   ecransAbsence,
   erreursAbsence,
   recapAbsence,
@@ -222,12 +223,12 @@ export function LienInvitation({ invitation }: { invitation: Invitation }) {
         {invitation.envoye
           ? `Invitation envoyée à ${invitation.email}. Vous pouvez aussi envoyer ce lien par SMS ou WhatsApp.`
           : MODE_DEMO
-            ? 'Démonstration : aucun e-mail n’est envoyé. Ce lien ouvre l’espace de démonstration.'
+            ? `Démonstration${NBSP}: aucun e-mail n’est envoyé. Ce lien ouvre l’espace de démonstration.`
             : 'L’e-mail n’a pas pu partir : copiez ce lien et envoyez-le par SMS ou WhatsApp.'}
       </p>
       <div className="mt-2 flex gap-2">
         <Input readOnly value={invitation.lien} onFocus={(e) => e.currentTarget.select()} aria-label="Lien d’invitation" className="text-[12.5px]" />
-        <Button variant="secondary" icone={copie ? <Check /> : <Copy />} onClick={() => void copier()}>
+        <Button variant="secondary" icone={copie ? <Check /> : <Copy />} onClick={() => void copier()} className="shrink-0 max-sm:min-h-11">
           {copie ? 'Copié' : 'Copier'}
         </Button>
       </div>
@@ -1089,7 +1090,7 @@ function AssistantAbsence({ membre: m, onFermer }: { membre: MembreEquipe; onFer
       ecrans={ecrans}
       ecran={ecran}
       question={q.question}
-      aide={q.aide}
+      aide={ecran === 'dates' && !ecrans.includes('remplacant') ? AIDE_DATES_SANS_REMPLACANT : q.aide}
       idQuestion={titreId}
       blocage={etat}
       libelleSuite={etapes.libelleSuite('Créer l’absence')}

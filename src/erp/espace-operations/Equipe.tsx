@@ -5,6 +5,7 @@ import {
   SANS_CHAMP_ABSENCE,
   actionAbsenceDepuisBrouillon,
   brouillonAbsencePole,
+  AIDE_DATES_SANS_REMPLACANT,
   ecransAbsence,
   erreursAbsence,
   recapAbsence,
@@ -153,7 +154,7 @@ function AssistantAbsence({ onFermer }: { onFermer: () => void }) {
       ecrans={ecrans}
       ecran={ecran}
       question={q.question}
-      aide={q.aide}
+      aide={ecran === 'dates' && !ecrans.includes('remplacant') ? AIDE_DATES_SANS_REMPLACANT : q.aide}
       idQuestion={titreId}
       blocage={etat}
       libelleSuite={etapes.libelleSuite('Créer l’absence')}

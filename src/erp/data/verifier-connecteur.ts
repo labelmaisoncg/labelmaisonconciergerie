@@ -76,13 +76,18 @@ function main() {
   verifier(TEXTE_COMPTE_TECHNIQUE === 'C’est le compte technique de l’ERP : connectez-vous avec votre propre compte de gérant.', 'texte de l’encadré des écrans : le texte prévu');
   verifier(![TITRE_COMPTE_TECHNIQUE, TEXTE_COMPTE_TECHNIQUE].some((t) => /relier/.test(t)) && /connecter Claude/.test(TITRE_COMPTE_TECHNIQUE), 'encadré : « connecter Claude », comme le reste des écrans');
 
-  // « de » ou « d’ » devant un nom : voyelle, h muet (src/erp/data/format.ts, aussi pour l’espace propriétaire).
+  // « de » ou « d’ » devant un nom : voyelle, h muet, pas un Y suivi d’une voyelle (src/erp/data/format.ts, aussi pour l’espace propriétaire).
   for (const [nom, attendu] of [
     ['Abdel', 'd’Abdel'],
     ['Équipe Label Maison', 'd’Équipe Label Maison'],
     ['Hélène', 'd’Hélène'],
     ['Hugo', 'd’Hugo'],
-    ['Yannick', 'd’Yannick'],
+    ['Yannick', 'de Yannick'],
+    ['Yanis Lefort', 'de Yanis Lefort'],
+    ['Yasmina', 'de Yasmina'],
+    ['Yves', 'd’Yves'],
+    ['Ysaline', 'd’Ysaline'],
+    ['Hyacinthe', 'd’Hyacinthe'],
     ['Œuvre', 'd’Œuvre'],
     ['essonne conciergerie', 'd’essonne conciergerie'],
     ['Kamel', 'de Kamel'],
