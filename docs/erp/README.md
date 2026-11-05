@@ -1766,7 +1766,8 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
   l'arrière-plan ; retirée à la déconnexion. App fermée, le service worker
   ajoute 1 à chaque notification qui apporte une chose à traiter (nouveau
   message d'un voyageur, problème signalé, l'agent passe la main, nouvelle
-  demande à appeler), jamais pour une notification d'essai ; l'app remet le
+  demande à appeler, demande d'un propriétaire), jamais pour une notification
+  d'essai ; l'app remet le
   nombre exact à sa prochaine ouverture. iPhone : iOS 16.4 ou plus, app sur
   l'écran d'accueil, notifications autorisées (sans elles, pas de pastille) ;
   à couper dans Réglages → Notifications → Label Maison → Pastilles.

@@ -66,8 +66,9 @@ async function principal() {
     const barre = [
       { cle: 'messagesEnAttente', n: 4 },
       { cle: 'contactsAAppeler', n: 20 },
+      { cle: 'demandesProprietaires', n: 2 },
     ];
-    verifier(totalPastille(compteursPourRole('gerant', barre)) === 24, 'gérant : messages + personnes à appeler (24)');
+    verifier(totalPastille(compteursPourRole('gerant', barre)) === 26, 'gérant : messages + personnes à appeler + demandes des propriétaires (26)');
     verifier(totalPastille(compteursPourRole('operations', barre)) === 4, 'opérations : les messages seulement (4), c’est le gérant qui rappelle');
     verifier(totalPastille(compteursPourRole('prestataire', barre)) === 4, 'prestataire : sans les personnes à appeler');
     verifier(totalPastille(compteursPourRole('lecture', barre)) === 0, 'lecture seule : aucune pastille');
@@ -115,7 +116,7 @@ async function principal() {
   section('3. Types qui ajoutent 1');
   const connus = new Set(TYPES_NOTIFICATION.map((t) => t.type));
   verifier(TYPES_A_TRAITER.length > 0 && TYPES_A_TRAITER.every((t) => connus.has(t)), 'chaque type compté est un vrai type de notification');
-  for (const t of ['message', 'agent_main', 'probleme', 'lead'] as const) verifier(TYPES_A_TRAITER.includes(t), `« ${t} » ajoute une chose à traiter`);
+  for (const t of ['message', 'agent_main', 'probleme', 'lead', 'demande_proprietaire'] as const) verifier(TYPES_A_TRAITER.includes(t), `« ${t} » ajoute une chose à traiter`);
   for (const t of ['reservation', 'avis', 'rappel', 'agent_repondu', 'synchro', 'prix'] as const) verifier(!TYPES_A_TRAITER.includes(t), `« ${t} » n'ajoute rien`);
 
   section('4. Service worker (public/erp-sw.js) et envoi');
