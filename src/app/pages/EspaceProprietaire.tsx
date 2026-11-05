@@ -31,12 +31,14 @@ import {
   sessionExterne,
 } from '../../erp/data/compte-externe';
 import { CLE_DEMO, MODE_DEMO } from '../../erp/data/config';
+import { COLLECTION_DEMANDES, demandesVues, enregistrerDemande, type BaseDemandes, type SaisieDemande } from '../../erp/data/demandes-proprietaires';
 import { idEspaceValide } from '../../erp/data/espaces';
-import { AUJOURDHUI } from '../../erp/data/format';
+import { AUJOURDHUI, horodatageMaintenant } from '../../erp/data/format';
 import { CONTACTS_LABEL_MAISON, calendrierPlage, moisDePlage, moisEntre, moisValide, vueProprietaire } from '../../erp/data/proprietaire';
 import type { ErpDonnees } from '../../erp/data/types';
-import type { CalendrierLogement, MoisCalendrierVue, VueProprietaire } from '../../erp/data/types-proprietaire';
+import type { CalendrierLogement, DemandeVue, MoisCalendrierVue, VueProprietaire } from '../../erp/data/types-proprietaire';
 import type { ChargeurMois } from '../../erp/calendrier';
+import type { EnvoyerDemande } from '../../erp/espace-proprietaire/Demandes';
 import { EspaceVue } from '../../erp/espace-proprietaire/EspaceVue';
 import { ONGLETS_ESPACE, type LienDocumentProps, type OngletEspace } from '../../erp/espace-proprietaire/commun';
 import { Alert, Button, Card, Field, IconButton, Input, PageSkeleton, cn } from '../../erp/ui';
@@ -204,8 +206,41 @@ async function calendrierDemo(proprietaireId: string, de: string, a: string): Pr
   return mois ? { ok: true, mois } : { ok: false, erreur: 'Propriétaire de démonstration introuvable.' };
 }
 
+/** « Mes demandes » en démonstration : la même réduction que le serveur (demandesVues), sur le jeu de démo. */
+async function demandesDemo(proprietaireId: string): Promise<DemandeVue[]> {
+  const d = await donneesDemo();
+  return demandesVues(d.demandesProprietaires ?? [], proprietaireId, d.logements);
+}
+
+/**
+ * Envoi en démonstration : la même fonction que le serveur (enregistrerDemande :
+ * corps vérifié, logement à lui, plafonds), sur le jeu de démo de cet appareil ;
+ * la demande y est gardée, et l'ERP de démonstration la voit (aucun réseau).
+ */
+async function envoyerDemo(proprietaireId: string, s: SaisieDemande): Promise<{ ok: true; demande: DemandeVue } | { ok: false; erreur: string }> {
+  const d = await donneesDemo();
+  const base: BaseDemandes = {
+    lire: async <T,>(collection: string) => ((d as unknown as Record<string, T[] | undefined>)[collection] ?? []) as T[],
+    ajouterSiAbsent: async (collection, elements) => {
+      if (collection !== COLLECTION_DEMANDES) return 0;
+      d.demandesProprietaires = [...(d.demandesProprietaires ?? []), ...(elements as typeof d.demandesProprietaires)];
+      try {
+        window.localStorage.setItem(CLE_DEMO, JSON.stringify(d));
+      } catch {
+        // Stockage indisponible : la demande reste pour cette visite seulement.
+      }
+      return elements.length;
+    },
+  };
+  const le = horodatageMaintenant();
+  const r = await enregistrerDemande(base, { proprietaireId, corps: { ...s }, logements: d.logements, maintenantMs: Date.parse(le), le });
+  if (!r.ok) return { ok: false, erreur: r.erreur };
+  return { ok: true, demande: demandesVues([r.demande], proprietaireId, d.logements)[0] };
+}
+
 type RetourChargeur = Awaited<ReturnType<ChargeurMois>>;
 const ERREUR_CALENDRIER = 'Le calendrier n’a pas pu être chargé. Réessayez dans un instant.';
+const ERREUR_DEMANDES = 'Vos demandes n’ont pas pu être chargées. Réessayez dans un instant.';
 
 function LienDocumentServeur({ id, className, children }: LienDocumentProps) {
   return (
@@ -559,14 +594,17 @@ export default function EspaceProprietaire() {
   const bilan = moisValide(bilanUrl) ? bilanUrl : undefined;
   const logement = parametres.get('logement') ?? undefined;
   const facture = parametres.get('facture') ?? undefined;
+  const demande = parametres.get('demande') ?? undefined;
+  // « Mes demandes » : lues à part de la vue (action « demandes »), après elle.
+  const [demandes, setDemandes] = useState<{ liste: DemandeVue[]; chargement: boolean; erreur?: string; fermees?: boolean }>({ liste: [], chargement: true });
 
-  const regler = (o: OngletEspace, suite: { bilan?: string; logement?: string; facture?: string } = {}) =>
+  const regler = (o: OngletEspace, suite: { bilan?: string; logement?: string; facture?: string; demande?: string } = {}) =>
     setParametres(
       (p) => {
         const n = new URLSearchParams(p);
         if (o === 'accueil') n.delete('onglet');
         else n.set('onglet', o);
-        for (const cle of ['bilan', 'logement', 'facture'] as const) {
+        for (const cle of ['bilan', 'logement', 'facture', 'demande'] as const) {
           const v = suite[cle];
           if (v) n.set(cle, v);
           else n.delete(cle);
@@ -685,6 +723,49 @@ export default function EspaceProprietaire() {
     [apercu],
   );
 
+  /** « Mes demandes » : `GET ?action=demandes` (ou le jeu de démonstration). Session tombée : retour à la connexion. */
+  const chargerDemandes = useCallback(async () => {
+    setDemandes((x) => ({ ...x, chargement: true, erreur: undefined }));
+    if (MODE_DEMO) {
+      const liste = await demandesDemo(apercu).catch(() => null);
+      return setDemandes(liste ? { liste, chargement: false } : { liste: [], chargement: false, erreur: ERREUR_DEMANDES });
+    }
+    const r = await appeler('GET', { action: 'demandes' });
+    if (r.statut === 200 && Array.isArray(r.json.demandes)) return setDemandes({ liste: r.json.demandes as DemandeVue[], chargement: false });
+    // Base de l'espace pas encore prête pour les demandes (SQL à relancer) : ni « Faire une demande » ni « Mes demandes ».
+    if (r.statut === 503 && r.json.code === 'fermees') return setDemandes({ liste: [], chargement: false, fermees: true });
+    if (r.statut === 401) {
+      setEtat({ nom: 'connexion', ton: 'neutre', message: r.json.code === 'retire' ? String(r.json.erreur ?? '') : 'Votre session a expiré : reconnectez-vous.' });
+      return;
+    }
+    setDemandes({ liste: [], chargement: false, erreur: String(r.json.erreur ?? ERREUR_DEMANDES) });
+  }, [apercu]);
+
+  const pret = etat.nom === 'pret';
+  useEffect(() => {
+    if (pret) void chargerDemandes();
+  }, [pret, chargerDemandes]);
+
+  /** Envoi d'une demande : `POST { action: 'demande' }` (ou la démonstration) ; la liste la reçoit en tête. */
+  const envoyerDemande = useCallback<EnvoyerDemande>(
+    async (s) => {
+      if (MODE_DEMO) {
+        const r = await envoyerDemo(apercu, s);
+        if (r.ok) setDemandes((x) => ({ ...x, liste: [r.demande, ...x.liste.filter((d) => d.id !== r.demande.id)] }));
+        return r;
+      }
+      const r = await appeler('POST', { action: 'demande', ...(s.type ? { type: s.type } : {}), ...(s.sujet ? { sujet: s.sujet } : {}), ...(s.logement ? { logement: s.logement } : {}), message: s.message });
+      const recue = r.json.demande as DemandeVue | undefined;
+      if (r.statut === 200 && recue?.id) {
+        setDemandes((x) => ({ ...x, liste: [recue, ...x.liste.filter((d) => d.id !== recue.id)] }));
+        return { ok: true, demande: recue };
+      }
+      if (r.statut === 401) return { ok: false, erreur: 'Votre session a expiré : reconnectez-vous, puis renvoyez votre demande.' };
+      return { ok: false, erreur: String(r.json.erreur ?? 'Votre demande n’a pas pu partir. Réessayez dans un instant.') };
+    },
+    [apercu],
+  );
+
   const sortir = async () => {
     if (!MODE_DEMO) await appeler('POST', { action: 'sortir' });
     setParametres(new URLSearchParams(), { replace: true });
@@ -770,6 +851,9 @@ export default function EspaceProprietaire() {
           onLogement={(id) => regler('logements', { logement: id })}
           facture={facture}
           onFacture={(id) => regler('factures', { facture: id })}
+          demandes={demandes.fermees ? undefined : { ...demandes, recharger: () => void chargerDemandes(), envoyer: envoyerDemande }}
+          demande={demande}
+          onDemande={(id) => regler('demandes', { demande: id })}
           calendrier={{ connus: moisConnus, charger: chargerCalendrier }}
           LienDocument={etat.demo ? LienDocumentDemo : LienDocumentServeur}
           onSortir={() => void sortir()}

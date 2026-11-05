@@ -3,6 +3,7 @@ import { dateCourte, euros, jourMois, pluriel, pourcentage } from '../data/forma
 import type { ChiffresMoisVue, VueProprietaire } from '../data/types-proprietaire';
 import { LIBELLE_CATEGORIE } from '../data/proprietaire';
 import { Badge, Card } from '../ui';
+import { BlocDemandes, type DemandesEspace } from './Demandes';
 import { CarteLogements } from '../carte/CarteLogements';
 import { pointsDeLaVue } from '../carte/points';
 import { CANAL, LienAction, PhotoLogement, Rubrique, TitreEspace, sansLogement, titreMois, type LienDocument, type OngletEspace } from './commun';
@@ -45,6 +46,8 @@ export function Accueil({
   onBilan,
   onLogement,
   LienDocument,
+  demandes,
+  onNouvelleDemande,
 }: {
   vue: VueProprietaire;
   onOnglet: (o: OngletEspace) => void;
@@ -52,6 +55,9 @@ export function Accueil({
   /** Ouvre la fiche du logement (onglet « Mes logements »). */
   onLogement: (id: string) => void;
   LienDocument: LienDocument;
+  /** Ses demandes (absent : pas de « Faire une demande »). */
+  demandes?: DemandesEspace;
+  onNouvelleDemande?: () => void;
 }) {
   const nom = (id: string) => vue.logements.find((l) => l.id === id)?.nom ?? 'Logement';
   const occupationMois = (id: string) => vue.calendrier.mois === vue.moisCourant.mois ? vue.calendrier.logements.find((c) => c.logementId === id)?.occupation : undefined;
@@ -92,6 +98,11 @@ export function Accueil({
           </span>
           <ChevronRight className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
         </button>
+      )}
+
+      {/* Rien tant que l'on ne sait pas si les demandes sont ouvertes : le bloc n'apparaît pas pour disparaître ensuite. */}
+      {demandes && !demandes.chargement && onNouvelleDemande && (
+        <BlocDemandes demandes={demandes} conciergerie={vue.conciergerie.nom} onNouvelle={onNouvelleDemande} onOuvrir={() => onOnglet('demandes')} />
       )}
 
       {points.length > 0 && (
@@ -190,7 +201,9 @@ export function Accueil({
         {c && (
           <Rubrique titre={`${vue.conciergerie.nom}, à votre écoute`}>
             <Card>
-              <p className="text-[14px] text-(--lm-encre-2)">Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.</p>
+              <p className="text-[14px] text-(--lm-encre-2)">
+                {demandes ? 'Une urgence ? Appelez-nous.' : 'Une question sur un séjour, un bilan ou votre logement ? Appelez-nous ou écrivez-nous.'}
+              </p>
               <ul className="mt-3 space-y-1 text-[14px]">
                 <li>
                   <a href={c.lienTelephone} className="flex min-h-9 items-center gap-2.5 font-medium text-(--lm-encre) hover:underline">

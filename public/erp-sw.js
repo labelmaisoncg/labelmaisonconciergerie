@@ -21,7 +21,7 @@ const MAX_FICHIERS = 120;
 // Hors du préfixe « lm-erp- » : le ménage de l'activation ne l'efface pas.
 const CACHE_PASTILLE = 'lm-pastille';
 const CLE_PASTILLE = '/__pastille';
-const TYPES_A_TRAITER = ['message', 'agent_main', 'probleme', 'lead'];
+const TYPES_A_TRAITER = ['message', 'agent_main', 'probleme', 'lead', 'demande_proprietaire'];
 const PASTILLE_MAX = 9999;
 
 async function lirePastille() {

@@ -20,6 +20,8 @@ export const COLLECTIONS: NomCollection[] = [
   'annoncesEquipe',
   // Actions de l'IA (octobre 2026, copilote) : réservée aux gérants par la base, complétée à vide ailleurs.
   'actionsAgent',
+  // Demandes des propriétaires (novembre 2026) : complétée à vide dans les anciennes sauvegardes.
+  'demandesProprietaires',
 ];
 
 /**

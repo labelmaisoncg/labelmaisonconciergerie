@@ -11,6 +11,8 @@
 --   reglagesRelances     leurs réglages (mode automatique ou non)
 --   checkinsEnLigne      check-ins en ligne des voyageurs (fiches de police),
 --                        jamais archivés : la purge à 6 mois les efface vraiment
+--   demandesProprietaires demandes des propriétaires (leurs messages, les
+--                        réponses qu'ils lisent comme venant de la conciergerie)
 -- ne sont plus lisibles ni modifiables que par un gérant (le serveur passe
 -- par le compte d'équipe, gérant), pas plus que leurs anciennes versions
 -- dans erp.historique (ni celles de la collection « connecteurs »). Sans cette règle, un compte « opérations »
@@ -48,8 +50,8 @@ $$;
 drop policy if exists "acces exterieurs reserves aux gerants" on erp.enregistrements;
 create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant())
-  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant())
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'checkinsEnLigne') or erp.acces_gerant());
 
 -- Archive des anciennes versions : la même que dans erp-installation.sql
 -- (base d'avant les espaces), sans les check-ins en ligne.
@@ -102,6 +104,24 @@ $$;
 revoke all on function erp.checkin_en_ligne_pret() from public, anon;
 grant execute on function erp.checkin_en_ligne_pret() to authenticated;
 delete from erp.historique where collection = 'checkinsEnLigne';
+-- Demandes des propriétaires : témoin lu par le serveur avant d'enregistrer
+-- une demande (api/_demandes-proprietaires.ts, demandesProtegees). Vrai
+-- seulement si les deux règles nomment la collection (enregistrements et
+-- anciennes versions) : sans elles, aucune demande n'est enregistrée.
+create or replace function erp.demandes_proprietaires_protegees() returns boolean
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%demandesProprietaires%' and p.with_check like '%demandesProprietaires%')
+     and exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'historique'
+                    and p.policyname = 'versions reservees aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%demandesProprietaires%')
+$$;
+revoke all on function erp.demandes_proprietaires_protegees() from public, anon;
+grant execute on function erp.demandes_proprietaires_protegees() to authenticated;
 
 -- Écritures réservées aux gérants (le serveur passe par le compte d'équipe,
 -- gérant) ; la lecture ne change pas. Ce que seul le serveur écrit (envois
@@ -547,7 +567,7 @@ $$;
 drop policy if exists "versions reservees aux gerants" on erp.historique;
 create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne') or erp.acces_gerant());
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne') or erp.acces_gerant());
 
 -- ----------------------------------------------------------------- recette
 -- Essai dans une transaction annulée à la fin : rien n'est gardé. Un compte
@@ -578,6 +598,10 @@ begin
       where id = 'recette-acces' and collection in ('recette', 'accesProprietaires');
     -- Check-in en ligne : jamais archivé, ni modifié ni effacé.
     insert into erp.enregistrements (collection, id, donnees) values ('checkinsEnLigne', 'recette-checkin', '{"id": "recette-checkin"}');
+    -- Demande d'un propriétaire (écrite par le serveur), avec une ancienne version (« Vue »).
+    insert into erp.enregistrements (collection, id, donnees) values ('demandesProprietaires', 'recette-demande',
+      '{"id": "recette-demande", "proprietaireId": "recette-proprio-demande", "statut": "envoyee", "echanges": [{"id": "e1", "auteur": "proprietaire", "texte": "Recette : le code du boîtier"}]}');
+    update erp.enregistrements set donnees = donnees || '{"statut": "vue"}' where collection = 'demandesProprietaires' and id = 'recette-demande';
     insert into erp.enregistrements (collection, id, donnees) values ('logements', 'recette-lien', '{"id": "recette-lien", "nom": "Recette"}');
     insert into erp.enregistrements (collection, id, donnees) values ('logements', 'recette-suppr', '{"id": "recette-suppr", "nom": "Recette à supprimer"}');
     insert into erp.enregistrements (collection, id, donnees) values
@@ -628,6 +652,23 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Demandes des propriétaires : réservées aux gérants (messages des propriétaires, réponses qu'ils lisent).
+    select count(*) into n from erp.enregistrements where collection = 'demandesProprietaires';
+    if n <> 0 then resultat := 'un compte « opérations » lit les demandes des propriétaires'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'demandesProprietaires';
+    if n <> 0 then resultat := 'un compte « opérations » lit les anciennes versions des demandes des propriétaires'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (collection, id, donnees) values ('demandesProprietaires', 'recette-intrus',
+        '{"id": "recette-intrus", "proprietaireId": "recette-proprio-demande", "statut": "repondue", "echanges": [{"id": "e1", "auteur": "conciergerie", "texte": "Envoyez votre RIB ici"}]}');
+      resultat := 'un compte « opérations » glisse une demande ou une réponse dans l''espace d''un propriétaire'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"statut": "reglee"}' where collection = 'demandesProprietaires' and id = 'recette-demande';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » répond à une demande d''un propriétaire ou la règle'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where collection = 'demandesProprietaires' and id = 'recette-demande';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » efface une demande d''un propriétaire'; raise exception 'stop'; end if;
     begin
       insert into erp.enregistrements (collection, id, donnees) values ('accesProprietaires', 'recette-intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
@@ -820,6 +861,13 @@ begin
     if n <> 1 then resultat := 'un gérant (le serveur) n''efface pas un check-in en ligne'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 or not erp.checkin_en_ligne_pret() then resultat := 'un check-in en ligne effacé reste dans l''historique'; raise exception 'stop'; end if;
+    -- Demandes des propriétaires : le gérant (le serveur) les lit, y répond, les règle, et lit leurs anciennes versions.
+    update erp.enregistrements set donnees = donnees || '{"statut": "repondue"}' where collection = 'demandesProprietaires' and id = 'recette-demande';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne répond pas à une demande d''un propriétaire'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'demandesProprietaires' and id = 'recette-demande';
+    if n < 1 then resultat := 'un gérant ne lit pas les anciennes versions des demandes des propriétaires'; raise exception 'stop'; end if;
+    if not erp.demandes_proprietaires_protegees() then resultat := 'demandes des propriétaires : règles « gérants seulement » absentes (erp.demandes_proprietaires_protegees)'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
       where (collection = 'reglages' and id in ('messages-programmes', 'agent', 'supplements')) or (collection = 'envoisProgrammes' and id = 'recette-acces');
     get diagnostics n = row_count;

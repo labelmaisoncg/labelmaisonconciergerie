@@ -28,7 +28,10 @@
  *   Part avec lui (supprimerProprietaireDe) : son mandat en préparation
  *   (brouillon) ; son ancien accès (retiré : la ligne porte son adresse et n'a
  *   plus d'objet ; sa dernière version reste dans l'historique de la base,
- *   lisible par le gérant) ; les améliorations « à proposer » (jamais montrées).
+ *   lisible par le gérant) ; les améliorations « à proposer » (jamais montrées) ;
+ *   les demandes envoyées depuis son espace (demandesProprietaires : sans
+ *   lui, elles n'ont plus d'objet ; la base ne les compte pas non plus dans
+ *   erp.garder_proprietaire_avec_historique, la règle est donc la même).
  *
  * Membre de l'équipe (historiqueDuMembre) :
  *   les incidents qu'il a signalés ou qui lui ont été confiés ; les contrôles
@@ -172,9 +175,11 @@ export function verdictSuppressionProprietaire(o: { role: string | undefined; le
     return { ok: false, motif: 'acces', message: `« ${p.nom} » a encore un accès à son espace : retirez-le d’abord, puis supprimez la fiche.` };
   }
   const brouillons = (o.donnees.mandats ?? []).filter((m) => m?.proprietaireId === p.id && m.statut === 'brouillon').length;
+  const demandes = (o.donnees.demandesProprietaires ?? []).filter((x) => x?.proprietaireId === p.id).length;
   const avecLui: string[] = [];
   if (brouillons) avecLui.push(brouillons > 1 ? 'ses mandats en préparation' : 'son mandat en préparation');
   if (acces) avecLui.push('son ancien accès');
+  if (demandes) avecLui.push(demandes > 1 ? 'les demandes envoyées depuis son espace' : 'la demande envoyée depuis son espace');
   return { ok: true, avecLui };
 }
 
@@ -272,6 +277,8 @@ export function supprimerProprietaireDe<D extends DonneesSuppression>(d: D, id: 
   filtrer(d, suivant, 'recommandations', (r: { proprietaireId?: Id; statut?: string }) => !(r?.proprietaireId === id && r.statut === 'a_proposer'));
   // Seul un accès retiré part (ouvert, le verdict l'aurait refusé ; la base aussi).
   filtrer(d, suivant, 'accesProprietaires', (a: AccesProprietaire) => !((a?.id === id || a?.proprietaireId === id) && a.statut === 'retire'));
+  // Ses demandes n'ont plus d'objet sans lui (sa dernière version reste dans l'historique de la base).
+  filtrer(d, suivant, 'demandesProprietaires', (x: { proprietaireId?: Id }) => x?.proprietaireId !== id);
   return suivant as D;
 }
 

@@ -39,6 +39,7 @@ const LIBELLES_COLLECTIONS: Record<NomCollection, string> = {
   conseilsPrix: 'Prix conseillés (réglages et décisions)',
   annoncesEquipe: 'Annonces à l’équipe',
   actionsAgent: 'Actions de l’IA (Claude et votre agent)',
+  demandesProprietaires: 'Demandes des propriétaires',
   utilisateurs: 'Utilisateurs',
   journal: 'Journal',
 };

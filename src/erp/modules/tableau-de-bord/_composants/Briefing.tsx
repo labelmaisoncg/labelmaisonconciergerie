@@ -29,6 +29,7 @@ const SUJET_DE: Partial<Record<TypeATraiter, CleSujet>> = {
   avis: 'notes',
   crm: 'crm',
   facture: 'factures',
+  demandeProprietaire: 'demandes',
   prix: 'prix',
   double: 'alertes',
   suspecte: 'alertes',
