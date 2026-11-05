@@ -31,6 +31,7 @@ import { premiereAnnonce } from './annonces-equipe';
 import { ESPACE_LABEL_MAISON } from './espaces';
 import { nomConciergerie } from './marque-espace';
 import { ID_REGLAGES_SUPPLEMENTS, type ReglagesSupplements } from './supplements';
+import { creerDemandesDemo } from './seed-demandes';
 import type {
   CanalReservation,
   ErpDonnees,
@@ -842,6 +843,7 @@ export function creerSeed(): ErpDonnees {
     // Le premier message du gérant, comme on le publierait en un clic (Paramètres → Annonces à l'équipe).
     annoncesEquipe: [{ id: 'aeq-bonjour', ...premiereAnnonce(nomConciergerie(ESPACE_LABEL_MAISON)), publieeLe: `${AUJOURDHUI}T08:45:00+02:00`, publieePar: 'Abdel' }],
     reponsesAvis: [] as ErpDonnees['reponsesAvis'],
+    demandesProprietaires: creerDemandesDemo(),
     actionsAgent: [] as ErpDonnees['actionsAgent'],
   };
   const complet = { ...donnees, ...creerEspaceProprietaireDemo(donnees) };

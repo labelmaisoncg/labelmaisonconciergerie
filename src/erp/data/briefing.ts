@@ -18,8 +18,11 @@
  * (detecterAnomalies), contrôle des réponses de l'agent en panne, fiches
  * incomplètes pour l'agent (completudeFiche), prix conseillés
  * (conseillerPrix), factures mensuelles en brouillon, logements signalés
- * « pas à moi ». Prix, factures et « pas à moi » : gérant seulement, comme
- * dans « À faire » (chaque ligne de « À faire » a sa phrase ici).
+ * « pas à moi », demandes des propriétaires sans réponse (demandesATraiter).
+ * Prix, factures, « pas à moi » et demandes : gérant seulement, comme
+ * dans « À faire » (chaque ligne de « À faire » a sa phrase ici). Les
+ * demandes ne comptent que si elles sont passées en entrée (l'écran) : le
+ * passage du matin ne les lit pas (briefing-passage.ts).
  *
  * Module pur, sans date système (jour et instant passés en entrée) ;
  * imports en « .js » : il tourne aussi côté serveur.
@@ -27,6 +30,7 @@
 import { detecterAnomalies, type TypeAnomalie } from './anomalies.js';
 import { attendEquipe } from './attente-equipe.js';
 import { SEUIL_NOTE_CONTROLE } from './constantes.js';
+import { demandesATraiter, lienDemande } from './demandes-proprietaires.js';
 import { ID_ALERTE_CONTROLE, type AlerteControleAgent } from './controle-reponse.js';
 import { fileDuJour } from './crm-assistant.js';
 import { estFactureMensuelle, factureFigee } from './factures-mensuelles.js';
@@ -41,7 +45,10 @@ import type { DateISO, ErpDonnees, Facture, Horodatage, Id, Reservation } from '
 /** Ce que le briefing lit (le store de l'ERP, ou les collections lues par le serveur). */
 export type EntreesBriefing = Pick<ErpDonnees, 'logements' | 'reservations' | 'filsMessages' | 'crm' | 'incidents'> &
   Partial<
-    Pick<ErpDonnees, 'avisADeposer' | 'reponsesAvis' | 'controles' | 'equipe' | 'affectations' | 'absences' | 'conseilsPrix' | 'factures' | 'proprietaires' | 'reglages' | 'signalementsLogement'>
+    Pick<
+      ErpDonnees,
+      'avisADeposer' | 'reponsesAvis' | 'controles' | 'equipe' | 'affectations' | 'absences' | 'conseilsPrix' | 'factures' | 'proprietaires' | 'reglages' | 'signalementsLogement' | 'demandesProprietaires'
+    >
   > & {
     aujourdhui: DateISO;
     /** Instant du calcul (fraîcheur des prix lus, anomalies). */
@@ -56,7 +63,7 @@ export type EntreesBriefing = Pick<ErpDonnees, 'logements' | 'reservations' | 'f
 
 export type CleSujet =
   | 'journee' | 'urgences' | 'messages' | 'incidents' | 'avis_deposer' | 'avis_valider' | 'notes' | 'crm' | 'alertes'
-  | 'controle_agent' | 'fiches_agent' | 'prix' | 'factures' | 'signalements';
+  | 'controle_agent' | 'fiches_agent' | 'prix' | 'factures' | 'signalements' | 'demandes';
 
 export interface SujetBriefing {
   cle: CleSujet;
@@ -358,6 +365,19 @@ export function construireBriefing(e: EntreesBriefing): Briefing {
         lien: '/erp/parametres/acces',
         gerant: true,
       });
+    // Demandes des propriétaires sans réponse (nouvelles d'abord) : le gérant leur répond.
+    const demandes = demandesATraiter(e.demandesProprietaires);
+    if (demandes.length) {
+      const qui = demandes.map((x) => e.proprietaires?.find((p) => p.id === x.proprietaireId)?.nom ?? 'un propriétaire');
+      sujets.push({
+        cle: 'demandes',
+        n: demandes.length,
+        phrase: `${demandes.length > 1 ? `${demandes.length} demandes de propriétaires` : 'Une demande d’un propriétaire'} à lire\u00a0: ${liste(qui)}.`,
+        court: nb(demandes.length, 'demande de propriétaire', 'demandes de propriétaires'),
+        lien: lienDemande(demandes[0].id),
+        gerant: true,
+      });
+    }
   }
 
   const aFaire = sujets.filter((s) => s.cle !== 'journee');
@@ -394,7 +414,7 @@ export function texteDuBriefing(sujets: readonly SujetBriefing[], ordre?: readon
 }
 
 /** Ce qui attend, dans la notification : le plus pressant d'abord (on coupe par la fin s'il le faut). */
-const ORDRE_COURT: readonly CleSujet[] = ['urgences', 'messages', 'alertes', 'controle_agent', 'crm', 'factures', 'prix', 'avis_valider', 'avis_deposer', 'notes', 'incidents', 'signalements', 'fiches_agent'];
+const ORDRE_COURT: readonly CleSujet[] = ['urgences', 'messages', 'alertes', 'controle_agent', 'crm', 'demandes', 'factures', 'prix', 'avis_valider', 'avis_deposer', 'notes', 'incidents', 'signalements', 'fiches_agent'];
 
 /**
  * Corps de notification : la journée, puis ce qui attend, du plus pressant

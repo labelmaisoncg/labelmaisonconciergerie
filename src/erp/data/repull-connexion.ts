@@ -24,10 +24,9 @@
  *   POST   /v1/listings/status          activation / désactivation par lot
  *   GET    /v1/usage/tier               offre du compte (free, starter, custom)
  *
- * Booking.com : la page hébergée guide tout (désigner le fournisseur de
- * connectivité dans l'Extranet, coller le numéro d'établissement, relier les
- * chambres) ; ses appels (verify, rooms, map-rooms) sont faits par la page
- * elle-même avec le jeton de session, sans notre clé.
+ * Booking.com : « Extranet login » seulement (POST /v1/connect, allowedProviders
+ * booking-extranet-login), jamais Repull désigné comme fournisseur de
+ * connectivité (il prendrait la main sur les prix et le calendrier).
  *
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */

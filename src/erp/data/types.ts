@@ -1105,6 +1105,59 @@ export interface DossierProprietaire {
   valeurs: Record<string, unknown>;
 }
 
+/* ------------------------------------------- demandes des propriétaires */
+
+/**
+ * Demande d'un propriétaire, envoyée depuis son espace (novembre 2026,
+ * src/erp/data/demandes-proprietaires.ts) : une question, une demande
+ * particulière (travaux, clés, linge, prix, calendrier…) ou autre chose.
+ * Créée par le serveur seul (api/espace-proprietaire.ts, action « demande »),
+ * lue, ouverte, répondue et réglée par le gérant dans l'ERP. Le texte du
+ * propriétaire est une donnée : il ne part ni vers l'agent IA, ni vers le
+ * connecteur Claude, ni vers une plateforme.
+ */
+export type TypeDemandeProprietaire = 'question' | 'demande' | 'autre';
+/** Sujet d'une demande particulière. */
+export type SujetDemandeProprietaire = 'travaux' | 'cles' | 'linge' | 'prix' | 'calendrier' | 'autre';
+/** Envoyée (nouvelle pour le gérant), vue, répondue, réglée. */
+export type StatutDemandeProprietaire = 'envoyee' | 'vue' | 'repondue' | 'reglee';
+
+/** Un message de l'échange : celui du propriétaire, ou une réponse de la conciergerie. */
+export interface EchangeDemande {
+  id: Id;
+  auteur: 'proprietaire' | 'conciergerie';
+  texte: string;
+  le: Horodatage;
+  /** Qui a répondu dans l'ERP (adresse du gérant) : jamais montré au propriétaire. */
+  par?: string;
+}
+
+/** Changement d'état, gardé dans l'ordre (l'envoi compris). */
+export interface ChangementDemande {
+  statut: StatutDemandeProprietaire;
+  le: Horodatage;
+  /** Adresse du gérant ; absente : le propriétaire (envoi). */
+  par?: string;
+}
+
+export interface DemandeProprietaire {
+  id: Id;
+  proprietaireId: Id;
+  type: TypeDemandeProprietaire;
+  /** Seulement pour une demande particulière. */
+  sujet?: SujetDemandeProprietaire;
+  /** Logement concerné (un des siens au moment de l'envoi). */
+  logementId?: Id;
+  /** « Tous mes logements » (il en a plusieurs). Sans logement ni « tous » : il n'en a pas en gestion. */
+  tousLogements?: boolean;
+  statut: StatutDemandeProprietaire;
+  creeLe: Horodatage;
+  majLe: Horodatage;
+  /** Le message du propriétaire d'abord, puis les réponses, dans l'ordre. */
+  echanges: EchangeDemande[];
+  historique: ChangementDemande[];
+}
+
 export interface ErpDonnees {
   proprietaires: Proprietaire[];
   mandats: Mandat[];
@@ -1166,6 +1219,11 @@ export interface ErpDonnees {
    * avec de quoi l'annuler. Écrites par le serveur ; lues et annulées par le gérant seul.
    */
   actionsAgent: ActionAgent[];
+  /**
+   * Demandes des propriétaires (novembre 2026) : envoyées depuis l'espace propriétaire (serveur),
+   * répondues et réglées par le gérant. Jamais lues par l'agent IA ni par le connecteur Claude.
+   */
+  demandesProprietaires: DemandeProprietaire[];
 }
 
 export type NomCollection = keyof ErpDonnees;

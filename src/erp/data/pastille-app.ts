@@ -18,7 +18,7 @@ import type { TypeNotification } from './notifications';
  */
 
 /** Types de notification qui ajoutent une chose comptée dans la barre du bas. Même liste que public/erp-sw.js. */
-export const TYPES_A_TRAITER: readonly TypeNotification[] = ['message', 'agent_main', 'probleme', 'lead'];
+export const TYPES_A_TRAITER: readonly TypeNotification[] = ['message', 'agent_main', 'probleme', 'lead', 'demande_proprietaire'];
 
 /** Plus grand nombre envoyé au système (au-delà, l'icône n'a plus la place). */
 export const PASTILLE_MAX = 9999;
@@ -26,8 +26,8 @@ export const PASTILLE_MAX = 9999;
 /** Message de l'app au service worker : le nombre exact, pour repartir de là à la prochaine notification. */
 export const MESSAGE_PASTILLE = 'lm-pastille';
 
-/** Compteurs de la barre du bas qui ne concernent que le gérant (c'est lui qui rappelle les demandes). */
-export const COMPTEURS_DU_GERANT: readonly string[] = ['contactsAAppeler'];
+/** Compteurs de la barre du bas qui ne concernent que le gérant (c'est lui qui rappelle les demandes et répond aux propriétaires). */
+export const COMPTEURS_DU_GERANT: readonly string[] = ['contactsAAppeler', 'demandesProprietaires'];
 
 /**
  * Les compteurs de la barre du bas que compte l'icône de cette personne :

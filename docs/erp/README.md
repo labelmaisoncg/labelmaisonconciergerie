@@ -1035,16 +1035,16 @@ bord). Serveur : `api/erp-repull-connexion.ts`, logique :
    demande au serveur une page Repull Connect et y envoie le gérant ; il
    revient ensuite sur `/erp/logements/connexions?retour=<plateforme>`, la
    page relit tout et dit si la connexion a abouti.
-   - Airbnb : `POST /v1/connect/airbnb` (`redirectUrl`, `locale: fr`), accès
-     complet par défaut ;
-   - Booking.com : `POST /v1/connect/booking` (`redirectUrl`). La page Repull
-     guide tout : choisir Repull (FantasticStay) comme fournisseur de
-     connectivité dans l'Extranet, coller le numéro d'établissement (Hotel
-     ID), relier les chambres. Ses appels (`/v1/connect/booking/verify`,
-     `/rooms`, `/map-rooms`) sont faits par la page elle-même avec le jeton de
-     session, jamais avec notre clé ;
-   - Vrbo et les logiciels de gestion : sélecteur hébergé `POST /v1/connect`
-     limité à ce seul fournisseur (formulaire d'identifiants chez Repull).
+   - Airbnb : `POST /v1/connect/airbnb` (`redirectUrl`, `locale: fr`,
+     `accessType: messaging`) : messagerie, réservations et avis SEULEMENT,
+     jamais l'accès complet (calendrier, prix, annonces) ;
+   - Booking.com : `POST /v1/connect` limité à `booking-extranet-login`
+     (« Extranet login ») : lecture et messagerie. **Ne jamais désigner
+     Repull (FantasticStay) comme fournisseur de connectivité dans
+     l'Extranet** : Booking.com fermerait la vente jusqu'à recevoir des prix,
+     et la clé Repull pourrait écrire prix et calendrier ;
+   - Vrbo et les logiciels de gestion : pas depuis l'ERP (le verrou
+     `ecritureRepullPermise` refuse tout autre mode de connexion).
    - « Déconnecter » : `DELETE /v1/connect/{provider}?accountId=` (Airbnb et
      Booking.com ; pour les autres, Repull renvoie la marche à suivre,
      affichée telle quelle). Les logements de ce compte sortent du choix et
@@ -1766,7 +1766,8 @@ message). Chaque notification a une clé : elle ne part jamais deux fois.
   l'arrière-plan ; retirée à la déconnexion. App fermée, le service worker
   ajoute 1 à chaque notification qui apporte une chose à traiter (nouveau
   message d'un voyageur, problème signalé, l'agent passe la main, nouvelle
-  demande à appeler), jamais pour une notification d'essai ; l'app remet le
+  demande à appeler, demande d'un propriétaire), jamais pour une notification
+  d'essai ; l'app remet le
   nombre exact à sa prochaine ouverture. iPhone : iOS 16.4 ou plus, app sur
   l'écran d'accueil, notifications autorisées (sans elles, pas de pastille) ;
   à couper dans Réglages → Notifications → Label Maison → Pastilles.
@@ -2112,7 +2113,8 @@ d'août publié et deux documents ; son espace :
   `api/espace-proprietaire.ts` (via `api/_proprietaire.ts`, session du compte
   d'équipe) lit puis filtre par propriétaire avant tout calcul, et ne renvoie
   que la `VueProprietaire` (`src/erp/data/types-proprietaire.ts`). Le serveur
-  n'écrit que les accès ; rien sur les logements, réservations, prix ou
+  n'écrit que les accès et les demandes du propriétaire (voir « Demandes des
+  propriétaires » plus bas) ; rien sur les logements, réservations, prix ou
   calendrier, et rien vers les plateformes.
 - **Calculs** (`src/erp/data/proprietaire.ts`, purs, partagés par le serveur,
   l'aperçu du gérant et la démo) : bilan d'un mois **au prorata des nuits**
@@ -2161,7 +2163,119 @@ d'août publié et deux documents ; son espace :
 - **Collections** (ajoutées à `collections.ts`, sans SQL, compatibles avec
   les anciennes sauvegardes) : `accesProprietaires`, `documentsProprietaire`,
   `bilansProprietaire` (id `<proprietaireId>-<AAAA-MM>`, statut `brouillon` /
-  `publie`, chiffres figés).
+  `publie`, chiffres figés), `demandesProprietaires` (novembre 2026).
+
+### Demandes des propriétaires (novembre 2026)
+
+Le propriétaire pose une question ou fait une demande particulière depuis
+son espace ; le gérant de SON espace (Abdel pour Label Maison) est prévenu,
+répond dans l'ERP, et la réponse s'affiche dans « Mes demandes ». Rien ne
+passe d'un espace à l'autre.
+
+- **Côté propriétaire** (`src/erp/espace-proprietaire/Demandes.tsx`) :
+  sur l'Accueil, « Faire une demande » et « Mes demandes » forment un bloc
+  sous les cartes du mois (le chiffre du mois passe d'abord) ; « Faire une
+  demande » est aussi l'action de « Mes demandes ». Assistant pas à pas, sur
+  le modèle de l'assistant de création d'un logement (à aligner plus tard
+  sur le composant `Assistant` du kit) : une question par écran, « Étape n
+  sur N » en haut, la barre de progression au-dessus de « Retour » et
+  « Continuer », avec ce qui manque en toutes lettres ; 1) le type
+  (une question, une demande particulière : travaux, clés, linge, prix,
+  calendrier, autre ; ou autre chose), 2) le logement s'il en a plusieurs
+  (ou « Tous mes logements »), 3) le message, 4) le récapitulatif, puis
+  « Envoyer ». « Mes demandes » (`?onglet=demandes`, rangé sous l'Accueil :
+  pas d'onglet de plus dans la barre du bas) : chaque demande avec son état
+  (Envoyée, Vue, Répondue, Réglée) et l'échange en bulles. L'aperçu du
+  gérant (« Voir son espace ») montre tout, sans rien envoyer.
+- **Serveur** (`api/espace-proprietaire.ts`) : `GET ?action=demandes` (les
+  siennes : `demandesVues`, jamais qui a répondu dans l'équipe) et
+  `POST { action: 'demande', type, sujet?, logement?, message }` : même
+  session que `vue` (cookie revérifié en base), provenance du site, base de
+  l'espace de la session (compte serveur, en-tête `x-erp-espace`), propriétaire
+  de la session (jamais celui du corps). Règles pures :
+  `src/erp/data/demandes-proprietaires.ts` (`enregistrerDemande`) : type et
+  sujet connus, logement parmi SES logements actuels en gestion, message
+  nettoyé (contrôles, invisibles et sens d'écriture retirés) de 10 à
+  2 000 caractères, identifiant tiré au hasard par le serveur, ajout sans
+  jamais remplacer une ligne ; au plus **5 demandes par heure et 20 par
+  24 heures et par propriétaire**, comptées dans la base (plus un frein par
+  adresse IP). Le texte est une donnée : il ne part ni vers l'agent IA, ni
+  vers le connecteur Claude, ni vers une plateforme.
+- **Prévenir le gérant** (`api/_demandes-proprietaires.ts`), après
+  l'enregistrement (un échec n'enlève jamais la demande) :
+  notification d'app « Demande d’un propriétaire » (type
+  `demande_proprietaire`, réservé au gérant, activé par défaut ; le logement
+  et le sujet, jamais le nom ni le message ; au-delà de 5 dans l'heure, une
+  seule « Plusieurs demandes de propriétaires » par heure), envoyée aux
+  appareils de l'espace ; et, si l'envoi d'e-mails est configuré pour
+  l'espace (`RESEND_API_KEY` et un expéditeur : `CONTACT_FROM_EMAIL` pour
+  Label Maison, `config.email` de la fiche pour un autre espace), un e-mail
+  à chacun de ses gérants (`erp.membres`, rôle gérant, compte activé ;
+  jamais un compte technique ; 5 au plus), message échappé et tronqué. Sans
+  clés ni configuration : rien, et rien ne casse.
+- **Côté gérant** : la ligne « N demandes de propriétaires » dans « À faire »
+  (et le briefing à l'écran ; pas dans la notification du matin, qui ne lit
+  pas les demandes) ; le compteur de la rubrique Logements ; la liste
+  complète dans **Logements → Demandes** (`/erp/logements/demandes`,
+  filtres À traiter, Répondues, Réglées ; `?demande=<id>` ouvre une demande,
+  `?proprietaire=<id>` filtre). Pourquoi là : le propriétaire se gère dans
+  la rubrique Logements depuis octobre 2026 et « Avis » y est déjà la vue du
+  parc ; le CRM suit les contacts avant qu'ils soient clients, la Messagerie
+  les voyageurs (lue par l'agent IA). Sur la fiche du propriétaire (carte
+  « Propriétaire » → « Gérer ») : « N demandes à traiter » et la section
+  « Demandes ». Ouvrir une demande « Nouvelle » la passe « Vue » ; répondre
+  la passe « Répondue » ; l'état se choisit (Vue, Répondue, Réglée), chaque
+  changement est gardé (`historique`), avec l'échange (`echanges`).
+  Réservé au gérant (l'écran) ; supprimer une fiche sans historique emporte
+  ses demandes.
+- **Base** : relancer `supabase/erp-espaces.sql` (base à espaces) ou
+  `supabase/erp-acces-gerants.sql` (base d'avant les espaces) AVANT la mise
+  en ligne. La collection est dans la règle « acces exterieurs reserves aux
+  gerants » (et ses anciennes versions dans « versions reservees aux
+  gerants ») : lue et écrite par les gérants de l'espace et le compte
+  serveur seulement ; un compte « opérations » ou « lecture » n'y lit rien,
+  n'y glisse ni réponse ni demande, n'en efface aucune. Tant que le témoin
+  `erp.demandes_proprietaires_protegees()` manque ou répond faux (ancien SQL
+  relancé par-dessus), le serveur n'enregistre ni ne lit aucune demande
+  (503 « fermees ») : jamais de message de propriétaire lisible par toute
+  l'équipe ; sa page n'affiche alors ni « Faire une demande » ni « Mes
+  demandes ». Le témoin est relu toutes les 5 minutes par instance : après
+  la relance du SQL, l'ouverture peut prendre jusqu'à 5 minutes. Le
+  propriétaire ne passe que par le serveur. Envois simultanés : relue après
+  l'ajout (ordre d'écriture de la base, `maj_le`), une demande au-delà du
+  plafond se retire (429).
+  Marche à suivre (base à espaces) :
+  1. Lire l'état, en lecture seule (SQL Editor) :
+     ```sql
+     select (select count(*) from erp.espaces) as espaces,
+            (select count(*) from pg_catalog.pg_constraint c
+              join pg_catalog.pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+             where c.contype = 'p' and a.attname = 'espace'
+               and c.conrelid in ('erp.enregistrements'::regclass, 'erp.etat_automatisations'::regclass, 'erp.membres'::regclass)) as cles_par_espace,
+            (select count(*) from erp.enregistrements where collection = 'demandesProprietaires') as demandes;
+     ```
+     La passe se lit dans `cles_par_espace`, jamais dans le nombre
+     d'espaces (une remise à zéro ne laisse que Label Maison, mais garde
+     les clés converties) : `3` → passe `'2'` ; `0` → passe `'1'` (la
+     passe 2 se fait à part, comme décrit en tête du fichier).
+     `demandes` doit valoir `0` (le serveur n'en écrit aucune avant le
+     SQL) ; sinon, les regarder avant de relancer : elles ont été écrites
+     directement dans la base.
+  2. Relancer `supabase/erp-espaces.sql` en entier, avec cette passe à la
+     ligne `select set_config('erp.passe', …)`. Ne pas relancer
+     `erp-installation.sql` ni `erp-acces-gerants.sql` (ils refusent).
+  3. Vérifier : le bilan dit `cles_par_espace` inchangé et `recette = ok`,
+     puis `select erp.demandes_proprietaires_protegees();` répond `true`.
+     Dans les 5 minutes, « Faire une demande » apparaît dans l'espace
+     propriétaire.
+  Ordre : le SQL d'abord, puis la mise en ligne (dans l'autre ordre, rien
+  ne s'ouvre avant le SQL, sans risque).
+- **Vérification** : `src/erp/data/verifier-demandes-proprietaires.ts`.
+- **Démo** : la SCI Les Tilleuls a trois demandes (une nouvelle, une
+  répondue, une réglée), Sophie Lambert-Roche (deux logements) une vue,
+  Hélène Marchand une nouvelle ; `/espace-proprietaire?apercu=pro-lambert`
+  montre l'écran du logement. Une demande envoyée en démo est gardée sur
+  l'appareil et l'ERP de démonstration la voit.
 
 ### Compte du propriétaire (novembre 2026)
 

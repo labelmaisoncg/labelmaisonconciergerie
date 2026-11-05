@@ -1048,11 +1048,18 @@ create policy "connecteurs reserves aux gerants" on erp.enregistrements
 -- l'espace nommé) seulement, en lecture comme en écriture.
 -- Sans cette règle, un compte « opérations » pourrait écrire un accès avec
 -- l'empreinte d'un jeton qu'il connaît et entrer dans l'espace d'un propriétaire.
+-- Demandes des propriétaires (demandesProprietaires, novembre 2026) : leurs
+-- messages (codes, numéros, questions d'argent) et les réponses que le
+-- propriétaire lit dans son espace comme venant de la conciergerie. Écrites
+-- par le serveur (l'envoi du propriétaire), lues, répondues et réglées par
+-- les gérants seulement : un compte « opérations » ne peut ni les lire, ni
+-- glisser une réponse ou une demande, ni en effacer une ; un compte
+-- « lecture » ne les lit pas.
 create policy "acces exterieurs reserves aux gerants" on erp.enregistrements
   as restrictive for all to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne')
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'checkinsEnLigne')
          or espace = any ((select erp.espaces_gerant())::uuid[]))
-  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'checkinsEnLigne')
+  with check (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'checkinsEnLigne')
               or espace = any ((select erp.espaces_gerant())::uuid[]));
 -- Actions de l'IA (copilote, collection actionsAgent) : ce que Claude et
 -- l'agent de la messagerie ont fait, avec de quoi l'annuler (valeurs d'avant
@@ -1113,6 +1120,25 @@ $$;
 revoke all on function erp.checkin_en_ligne_pret() from public, anon;
 grant execute on function erp.checkin_en_ligne_pret() to authenticated;
 delete from erp.historique where collection = 'checkinsEnLigne';
+-- Demandes des propriétaires : témoin lu par le serveur avant d'enregistrer
+-- une demande (api/_demandes-proprietaires.ts, demandesProtegees). Vrai
+-- seulement si les deux règles nomment la collection (enregistrements et
+-- anciennes versions) : tant que ce fichier n'est pas relancé, aucune demande
+-- n'est enregistrée (elle serait lisible par toute l'équipe).
+create or replace function erp.demandes_proprietaires_protegees() returns boolean
+language sql stable set search_path = ''
+as $$
+  select exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'enregistrements'
+                    and p.policyname = 'acces exterieurs reserves aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%demandesProprietaires%' and p.with_check like '%demandesProprietaires%')
+     and exists (select 1 from pg_catalog.pg_policies p
+                  where p.schemaname = 'erp' and p.tablename = 'historique'
+                    and p.policyname = 'versions reservees aux gerants' and p.permissive = 'RESTRICTIVE'
+                    and p.qual like '%demandesProprietaires%')
+$$;
+revoke all on function erp.demandes_proprietaires_protegees() from public, anon;
+grant execute on function erp.demandes_proprietaires_protegees() to authenticated;
 -- Espaces fermés : le compte serveur n'y entre plus (erp.mes_espaces), la
 -- purge de api/_sejour.ts ne les voit donc pas. Leurs check-ins échus
 -- (conserverJusquAu passé, ou illisible) sont effacés ici, pour le serveur
@@ -1801,12 +1827,13 @@ drop policy if exists "versions reservees aux gerants" on erp.historique;
 create policy "membres lisent" on erp.historique for select to authenticated
   using (espace = any ((select erp.espaces_lecture())::uuid[]));
 -- Anciennes versions des collections réservées aux gérants (accès extérieurs,
--- relances, connecteurs) : gérants de l'espace seulement, comme les
--- enregistrements (sinon un compte « lecture » ou « opérations » y lirait
--- adresses et empreintes des liens).
+-- relances, demandes des propriétaires, connecteurs) : gérants de l'espace
+-- seulement, comme les enregistrements (sinon un compte « lecture » ou
+-- « opérations » y lirait adresses et empreintes des liens, ou les messages
+-- des propriétaires et leurs réponses).
 create policy "versions reservees aux gerants" on erp.historique
   as restrictive for select to authenticated
-  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne')
+  using (collection not in ('accesProprietaires', 'accesOperations', 'relancesPaiement', 'demandesProprietaires', 'reglagesRelances', 'connecteurs', 'checkinsEnLigne')
          or espace = any ((select erp.espaces_gerant())::uuid[]));
 -- Anciennes versions des actions de l'IA : gérants de l'espace seulement, comme elles.
 drop policy if exists "versions des actions ia reservees aux gerants" on erp.historique;
@@ -1855,6 +1882,9 @@ begin
   update auth.users
      set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"erp_role": "serveur"}'::jsonb
    where lower(email) = 'serveur@labelmaisoncg.fr'
+     -- Compte créé par un gérant (« Add user », « Auto Confirm User ») : jamais un compte
+     -- inscrit par quelqu'un d'autre à cette adresse et resté non confirmé.
+     and email_confirmed_at is not null
      and coalesce(raw_app_meta_data ->> 'erp_role', '') <> 'serveur';
   -- Le compte serveur n'est jamais membre d'un espace (il passe par l'en-tête).
   delete from erp.membres where lower(email) = 'serveur@labelmaisoncg.fr';
@@ -1998,6 +2028,10 @@ begin
     update erp.enregistrements set donnees = '{"id": "recette", "v": 2}' where espace = lm and collection = 'accesProprietaires' and id = 'recette';
     -- Check-in en ligne (fiches de police) : jamais archivé, ni modifié ni effacé.
     insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'checkinsEnLigne', 'recette-checkin', '{"id": "recette-checkin"}');
+    -- Demande d'un propriétaire (écrite par le serveur), avec une ancienne version (« Vue »).
+    insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'demandesProprietaires', 'recette-demande',
+      '{"id": "recette-demande", "proprietaireId": "recette-proprio-demande", "statut": "envoyee", "echanges": [{"id": "e1", "auteur": "proprietaire", "texte": "Recette : le code du boîtier"}]}');
+    update erp.enregistrements set donnees = donnees || '{"statut": "vue"}' where espace = lm and collection = 'demandesProprietaires' and id = 'recette-demande';
     insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'logements', 'recette-lien', '{"id": "recette-lien", "nom": "Recette"}');
     -- Logements à supprimer : un dans chaque espace (ids distincts : avant la passe 2, la clé est (collection, id)).
     insert into erp.enregistrements (espace, collection, id, donnees) values
@@ -2101,6 +2135,23 @@ begin
       raise exception 'stop';
     exception when insufficient_privilege then null;
     end;
+    -- Demandes des propriétaires : réservées aux gérants (messages des propriétaires, réponses qu'ils lisent).
+    select count(*) into n from erp.enregistrements where collection = 'demandesProprietaires';
+    if n <> 0 then resultat := 'un compte « opérations » lit les demandes des propriétaires'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where collection = 'demandesProprietaires';
+    if n <> 0 then resultat := 'un compte « opérations » lit les anciennes versions des demandes des propriétaires'; raise exception 'stop'; end if;
+    begin
+      insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'demandesProprietaires', 'recette-intrus',
+        '{"id": "recette-intrus", "proprietaireId": "recette-proprio-demande", "statut": "repondue", "echanges": [{"id": "e1", "auteur": "conciergerie", "texte": "Envoyez votre RIB ici"}]}');
+      resultat := 'un compte « opérations » glisse une demande ou une réponse dans l''espace d''un propriétaire'; raise exception 'stop';
+    exception when insufficient_privilege then null;
+    end;
+    update erp.enregistrements set donnees = donnees || '{"statut": "reglee"}' where espace = lm and collection = 'demandesProprietaires' and id = 'recette-demande';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » répond à une demande d''un propriétaire ou la règle'; raise exception 'stop'; end if;
+    delete from erp.enregistrements where espace = lm and collection = 'demandesProprietaires' and id = 'recette-demande';
+    get diagnostics n = row_count;
+    if n <> 0 then resultat := 'un compte « opérations » efface une demande d''un propriétaire'; raise exception 'stop'; end if;
     begin
       insert into erp.enregistrements (espace, collection, id, donnees) values (lm, 'accesProprietaires', 'intrus', '{}');
       resultat := 'un compte « opérations » écrit un accès propriétaire';
@@ -2384,6 +2435,13 @@ begin
     if n <> 1 then resultat := 'un gérant (le serveur) n''efface pas un check-in en ligne'; raise exception 'stop'; end if;
     select count(*) into n from erp.historique where collection = 'checkinsEnLigne';
     if n <> 0 or not erp.checkin_en_ligne_pret() then resultat := 'un check-in en ligne effacé reste dans l''historique'; raise exception 'stop'; end if;
+    -- Demandes des propriétaires : le gérant les lit, y répond, les règle, et lit leurs anciennes versions.
+    update erp.enregistrements set donnees = donnees || '{"statut": "repondue"}' where espace = lm and collection = 'demandesProprietaires' and id = 'recette-demande';
+    get diagnostics n = row_count;
+    if n <> 1 then resultat := 'un gérant ne répond pas à une demande d''un propriétaire'; raise exception 'stop'; end if;
+    select count(*) into n from erp.historique where espace = lm and collection = 'demandesProprietaires' and id = 'recette-demande';
+    if n < 1 then resultat := 'un gérant ne lit pas les anciennes versions des demandes des propriétaires'; raise exception 'stop'; end if;
+    if not erp.demandes_proprietaires_protegees() then resultat := 'demandes des propriétaires : règles « gérants seulement » absentes (erp.demandes_proprietaires_protegees)'; raise exception 'stop'; end if;
     update erp.enregistrements set donnees = donnees || '{"recette": 2, "autonomie": "recette"}'
       where espace = lm and ((collection = 'reglages' and id in ('messages-programmes', 'societe', 'agent', 'supplements'))
                              or (collection = 'conseilsPrix' and id = 'reglages')
@@ -2558,6 +2616,8 @@ begin
     insert into erp.enregistrements (espace, collection, id, donnees) values (essai, 'connecteurs', 'recette', '{}');
     -- Id à part : avant la passe 2, la clé est encore (collection, id), sans l'espace.
     insert into erp.enregistrements (espace, collection, id, donnees) values (essai, 'accesProprietaires', 'recette-serveur', '{}');
+    -- Une demande d'un propriétaire : le serveur l'enregistre dans l'espace nommé.
+    insert into erp.enregistrements (espace, collection, id, donnees) values (essai, 'demandesProprietaires', 'recette-serveur', '{"id": "recette-serveur"}');
     -- Ce que seul le serveur écrit : permis dans l'espace nommé.
     insert into erp.enregistrements (espace, collection, id, donnees) values
       (essai, 'envoisProgrammes', 'recette-serveur', '{}'),
