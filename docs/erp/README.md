@@ -1035,16 +1035,16 @@ bord). Serveur : `api/erp-repull-connexion.ts`, logique :
    demande au serveur une page Repull Connect et y envoie le gérant ; il
    revient ensuite sur `/erp/logements/connexions?retour=<plateforme>`, la
    page relit tout et dit si la connexion a abouti.
-   - Airbnb : `POST /v1/connect/airbnb` (`redirectUrl`, `locale: fr`), accès
-     complet par défaut ;
-   - Booking.com : `POST /v1/connect/booking` (`redirectUrl`). La page Repull
-     guide tout : choisir Repull (FantasticStay) comme fournisseur de
-     connectivité dans l'Extranet, coller le numéro d'établissement (Hotel
-     ID), relier les chambres. Ses appels (`/v1/connect/booking/verify`,
-     `/rooms`, `/map-rooms`) sont faits par la page elle-même avec le jeton de
-     session, jamais avec notre clé ;
-   - Vrbo et les logiciels de gestion : sélecteur hébergé `POST /v1/connect`
-     limité à ce seul fournisseur (formulaire d'identifiants chez Repull).
+   - Airbnb : `POST /v1/connect/airbnb` (`redirectUrl`, `locale: fr`,
+     `accessType: messaging`) : messagerie, réservations et avis SEULEMENT,
+     jamais l'accès complet (calendrier, prix, annonces) ;
+   - Booking.com : `POST /v1/connect` limité à `booking-extranet-login`
+     (« Extranet login ») : lecture et messagerie. **Ne jamais désigner
+     Repull (FantasticStay) comme fournisseur de connectivité dans
+     l'Extranet** : Booking.com fermerait la vente jusqu'à recevoir des prix,
+     et la clé Repull pourrait écrire prix et calendrier ;
+   - Vrbo et les logiciels de gestion : pas depuis l'ERP (le verrou
+     `ecritureRepullPermise` refuse tout autre mode de connexion).
    - « Déconnecter » : `DELETE /v1/connect/{provider}?accountId=` (Airbnb et
      Booking.com ; pour les autres, Repull renvoie la marche à suivre,
      affichée telle quelle). Les logements de ce compte sortent du choix et

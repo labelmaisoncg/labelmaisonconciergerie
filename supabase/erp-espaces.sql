@@ -1882,6 +1882,9 @@ begin
   update auth.users
      set raw_app_meta_data = coalesce(raw_app_meta_data, '{}'::jsonb) || '{"erp_role": "serveur"}'::jsonb
    where lower(email) = 'serveur@labelmaisoncg.fr'
+     -- Compte créé par un gérant (« Add user », « Auto Confirm User ») : jamais un compte
+     -- inscrit par quelqu'un d'autre à cette adresse et resté non confirmé.
+     and email_confirmed_at is not null
      and coalesce(raw_app_meta_data ->> 'erp_role', '') <> 'serveur';
   -- Le compte serveur n'est jamais membre d'un espace (il passe par l'en-tête).
   delete from erp.membres where lower(email) = 'serveur@labelmaisoncg.fr';
