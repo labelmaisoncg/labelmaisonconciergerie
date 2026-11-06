@@ -14,7 +14,7 @@ export interface PilulesLogementProps {
  * Choix du logement au-dessus du calendrier : des pilules qui défilent sur
  * téléphone et passent à la ligne sur grand écran, la choisie à l'encre.
  * Rien quand il n'y a qu'un logement. Avec `teintes`, la pastille de
- * couleur du logement précède son nom (cerclée de blanc sur la pilule choisie).
+ * couleur du logement précède son nom (cerclée de la couleur de fond sur la pilule choisie).
  */
 export function PilulesLogement({ logements, choisi, onChoisir, teintes, className }: PilulesLogementProps) {
   const barre = useRef<HTMLDivElement>(null);
@@ -44,7 +44,7 @@ export function PilulesLogement({ logements, choisi, onChoisir, teintes, classNa
           )}
         >
           {teintes?.get(l.id) && (
-            <span aria-hidden className={cn('size-2.5 shrink-0 rounded-full', l.id === choisi && 'ring-[1.5px] ring-white')} style={{ background: teintes.get(l.id) }} />
+            <span aria-hidden className={cn('size-2.5 shrink-0 rounded-full', l.id === choisi && 'ring-[1.5px] ring-(--lm-surface)')} style={{ background: teintes.get(l.id) }} />
           )}
           {l.nom}
         </button>

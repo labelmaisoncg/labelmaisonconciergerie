@@ -13,8 +13,6 @@ export interface CalendrierMoisProps {
   chiffres?: string;
   /** Texte posé sur la bande : « Prénom N. » (propriétaire) ou le prénom complet (ERP). Par défaut, `voyageur`. */
   libelleBande?: (s: SejourCalendrier) => string;
-  /** Couleur du logement (ERP, data/couleurs-logement.ts) pour les séjours en cours et à venir ; sans : l'encre. */
-  teinte?: string;
   /** Toucher une bande ; sans, les bandes ne sont pas des boutons. */
   onSejour?: (s: SejourCalendrier) => void;
   /** Niveau du titre du mois dans la page. */
@@ -42,26 +40,22 @@ const pc = (x: number) => `${(x / 7) * 100}%`;
  * cliquables à la souris et au doigt, hors de l'ordre de tabulation et
  * cachés aux lecteurs d'écran, pour ne pas annoncer le même séjour deux fois.
  */
-function Bande({ b, libelle, passe, teinte, onSejour }: { b: BandeCalendrier; libelle: string; passe: boolean; teinte?: string; onSejour?: (s: SejourCalendrier) => void }) {
+function Bande({ b, libelle, passe, onSejour }: { b: BandeCalendrier; libelle: string; passe: boolean; onSejour?: (s: SejourCalendrier) => void }) {
   const position = {
     left: b.arrivee ? `calc(${pc(b.de)} + 2px)` : pc(b.de),
     right: b.depart ? `calc(${pc(7 - b.a)} + 2px)` : pc(7 - b.a),
   };
   const visuel = cn(
     'absolute inset-x-0 top-8 flex h-6 items-center overflow-hidden text-white',
-    passe ? 'bg-(--lm-encre-3)' : !teinte && 'bg-(--lm-encre)',
+    passe ? 'bg-(--lm-encre-3)' : 'bg-(--lm-encre)',
     b.arrivee && 'rounded-l-full',
     b.depart && 'rounded-r-full',
   );
-  // Séjour en cours ou à venir d'un logement qui a sa couleur ; terminé, il reste en retrait (gris).
-  const fond = teinte && !passe ? { background: teinte } : undefined;
   const texte = b.libelle ? <span className="min-w-0 truncate px-2 text-[12px] leading-6 font-semibold">{libelle}</span> : null;
   if (!onSejour) {
     return (
       <span className="absolute inset-y-0" style={position} aria-hidden>
-        <span className={visuel} style={fond}>
-          {texte}
-        </span>
+        <span className={visuel}>{texte}</span>
       </span>
     );
   }
@@ -78,7 +72,7 @@ function Bande({ b, libelle, passe, teinte, onSejour }: { b: BandeCalendrier; li
       )}
       style={position}
     >
-      <span className={visuel} style={fond} aria-hidden>
+      <span className={visuel} aria-hidden>
         {texte}
       </span>
     </button>
@@ -89,12 +83,12 @@ function Bande({ b, libelle, passe, teinte, onSejour }: { b: BandeCalendrier; li
  * Un mois, à la manière de l'app Airbnb (côté hôte) : titre à gauche, les
  * initiales des jours en gris, les chiffres centrés, les séjours en bandes
  * noires avec le nom du voyageur (en retrait, --lm-encre-3, une fois le
- * séjour terminé ; dans l'ERP, à la couleur du logement, `teinte`). Les jours passés sont en retrait,
+ * séjour terminé). Les jours passés sont en retrait,
  * aujourd'hui porte un point ; un jour hors de la période du propriétaire
  * est grisé. Rien n'est dit par la couleur seule : chaque jour a son libellé
  * et chaque séjour est un bouton nommé, une seule fois par mois.
  */
-export function CalendrierMois({ mois, jours, sejours, aujourdhui, chiffres, libelleBande, teinte, onSejour, niveauTitre = 2, className }: CalendrierMoisProps) {
+export function CalendrierMois({ mois, jours, sejours, aujourdhui, chiffres, libelleBande, onSejour, niveauTitre = 2, className }: CalendrierMoisProps) {
   const titreId = useId();
   const lignes = lignesDuMois(mois, jours);
   const bandes = bandesDuMois(mois, jours, sejours);
@@ -144,7 +138,6 @@ export function CalendrierMois({ mois, jours, sejours, aujourdhui, chiffres, lib
                   b={b}
                   libelle={libelleBande ? libelleBande(b.sejour) : b.sejour.voyageur}
                   passe={b.sejour.depart <= aujourdhui}
-                  teinte={teinte}
                   onSejour={onSejour}
                 />
               ))}

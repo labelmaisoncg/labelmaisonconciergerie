@@ -72,6 +72,7 @@ import {
   ecartsBilan,
 } from './repull.js';
 import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb, type FaitsPageAirbnb } from './page-airbnb.js';
+import { couleurLibre, couleursAEnregistrer, teinteConnue } from './couleurs-logement.js';
 import type { FilMessages, Id, Journal, LectureAnnonce, Lit, Logement, Reservation, TypeLit } from './types';
 
 type Fetch = typeof fetch;
@@ -1167,6 +1168,8 @@ export class SessionRepull {
       }
     }
     const logement = versLogement(annonce, existant, { id, aujourdhui: this.aujourdhui, proprietaireId: ID_PROPRIETAIRE_A_RENSEIGNER });
+    // Premier import : sa couleur dans les réservations de l'ERP, une fois pour toutes (champ de l'ERP, rien vers Repull).
+    if (!existant && !teinteConnue(logement.couleur)) logement.couleur = couleurLibre([...logements.elements.values()]);
     // De nouveau choisi après avoir été retiré : le statut d'avant la pause revient s'il était « En
     // préparation » ou « Actif » ; sinon (déjà en pause, ancienne donnée), ou annonce archivée
     // entre-temps, il suit l'annonce.
@@ -1181,6 +1184,14 @@ export class SessionRepull {
 
   private async ecrireLogements(): Promise<void> {
     const logements = await this.chargerLogements();
+    // Logement importé avant les couleurs : il garde celle qu'il affiche déjà, enregistrée une fois
+    // (data/couleurs-logement.ts). Pas un logement fait à la main puis relié (le « Délier » le rend tel
+    // quel). Champ propre à l'ERP : rien ne part vers Repull.
+    const importe = (l: Logement) => !!l.repull && l.id === idRepull(l.repull.id);
+    for (const [id, couleur] of couleursAEnregistrer([...logements.elements.values()], importe)) {
+      const l = logements.get(id);
+      if (l) logements.poser({ ...l, couleur });
+    }
     const aEcrire = logements.aEcrire();
     if (aEcrire.some((x) => x.nouveau && x.element.proprietaireId === ID_PROPRIETAIRE_A_RENSEIGNER)) await this.assurerProprietaire();
     await logements.ecrire(this.base, this.bilan.logements);

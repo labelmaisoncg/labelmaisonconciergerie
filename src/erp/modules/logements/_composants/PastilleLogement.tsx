@@ -26,8 +26,9 @@ export function PastilleLogement({ couleur, className }: { couleur?: TeinteLogem
 /**
  * Choix de la couleur d'un logement (« Modifier le logement ») : huit ronds
  * de 44 px au toucher, de vrais boutons radio (flèches du clavier), la
- * couleur retenue cochée d'un trait blanc. Le contour d'encre du focus
- * entoure le rond (le bouton radio lui-même est caché).
+ * couleur retenue cochée d'un trait blanc. Au clavier, l'anneau d'encre
+ * entoure le rond (motif de Checklist : le bouton radio caché n'a pas de
+ * contour à lui).
  */
 export function ChoixCouleurLogement({ valeur, onChange, className }: { valeur: CouleurLogement; onChange: (c: CouleurLogement) => void; className?: string }) {
   const nom = useId();
@@ -37,11 +38,11 @@ export function ChoixCouleurLogement({ valeur, onChange, className }: { valeur: 
       <legend className="mb-1 text-[13px] font-semibold text-(--lm-encre)">Couleur dans les réservations</legend>
       <div className="-mx-1.5 flex flex-wrap">
         {COULEURS_LOGEMENT.map((c) => (
-          <label key={c.cle} className="grid size-11 cursor-pointer place-items-center">
-            <input type="radio" name={nom} value={c.cle} checked={valeur === c.cle} onChange={() => onChange(c.cle)} aria-label={c.nom} className="peer sr-only" />
+          <label key={c.cle} title={c.nom} className="group grid size-11 cursor-pointer place-items-center">
+            <input type="radio" name={nom} value={c.cle} checked={valeur === c.cle} onChange={() => onChange(c.cle)} aria-label={c.nom} className="peer sr-only focus:outline-none" />
             <span
               aria-hidden
-              className="grid size-8 place-items-center rounded-full text-white peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-(--lm-encre)"
+              className="grid size-8 place-items-center rounded-full text-white transition-transform group-hover:scale-110 peer-focus-visible:ring-2 peer-focus-visible:ring-(--lm-encre) peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-(--lm-surface)"
               style={{ background: c.teinte }}
             >
               {valeur === c.cle && <Check className="size-4" strokeWidth={3} />}
@@ -50,7 +51,7 @@ export function ChoixCouleurLogement({ valeur, onChange, className }: { valeur: 
         ))}
       </div>
       <p id={aideId} className="mt-1 text-[12px] text-(--lm-encre-3)">
-        La pastille du logement dans le planning, les mois et la liste des séjours.
+        Sa pastille dans Planning, Mois et Séjours.
       </p>
     </fieldset>
   );

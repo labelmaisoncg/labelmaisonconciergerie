@@ -207,8 +207,8 @@ function LigneSejour({ r, logement, couleur, onOuvrir }: { r: Reservation; logem
         <span className="min-w-0">
           <span className={cn('block truncate text-[14px] font-medium', annule ? 'text-(--lm-encre-2) line-through' : 'text-(--lm-encre)')}>{r.voyageur.nom}</span>
           <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-(--lm-encre-3) lg:hidden">
-            <span className="lm-chiffres shrink-0">{plageDates(r.arrivee, r.depart)} ·</span>
-            <PastilleLogement couleur={couleur} className="size-2" />
+            <span className="lm-chiffres shrink-0">{plageDates(r.arrivee, r.depart)}</span>
+            {couleur ? <PastilleLogement couleur={couleur} /> : <span aria-hidden>·</span>}
             <span className="min-w-0 truncate">{logement?.nom ?? 'Logement inconnu'}</span>
           </span>
           <span className="hidden truncate text-[12.5px] text-(--lm-encre-3) lg:block">

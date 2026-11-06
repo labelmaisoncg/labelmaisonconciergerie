@@ -64,6 +64,17 @@
   --lm-carte-menage: #b85600;
   --lm-carte-probleme: #14110e;
   --lm-carte-ombre: 0 1px 4px rgba(20, 17, 14, 0.35);
+  /* Couleur de chaque logement (sa pastille dans les réservations, data/couleurs-logement.ts) :
+     teintes sourdes, texte blanc lisible, loin de l'encre, de la sarcelle, de l'or, du violet
+     et des couleurs info, succès, danger, alerte (ΔE2000 ≥ 10, verifier-couleurs-logement.ts). */
+  --lm-logement-ardoise: #41566e;
+  --lm-logement-prune: #7b3f6e;
+  --lm-logement-olive: #5d6a1e;
+  --lm-logement-cacao: #6e4b3a;
+  --lm-logement-petrole: #245460;
+  --lm-logement-framboise: #a3304f;
+  --lm-logement-myrtille: #3a3f7a;
+  --lm-logement-sapin: #355e3b;
 
   /*
    * Échelle des arrondis (règles Apple : cohérence + arrondis concentriques,

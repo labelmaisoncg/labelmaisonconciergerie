@@ -3,9 +3,10 @@
  * le même composant que l'espace propriétaire (src/erp/calendrier), pour le
  * logement choisi, sur les réservations déjà chargées (hors annulées). La
  * bande porte le nom complet du voyageur ; la toucher ouvre la fiche de la
- * réservation. Chaque logement a sa pastille de couleur (pilules) et ses
- * séjours à venir de cette couleur (data/couleurs-logement.ts). Lecture
- * seule : rien ne part vers Airbnb ou Booking.
+ * réservation. Chaque pilule porte la pastille de couleur de son logement
+ * (data/couleurs-logement.ts) ; les bandes restent à l'encre, comme dans
+ * l'espace propriétaire (un seul logement à la fois). Lecture seule : rien
+ * ne part vers Airbnb ou Booking.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { CalendrierDefilant, CalendrierMois, PilulesLogement, ligneChiffres, moisEntre, type ChargeurMois, type MoisCalendrier } from '../../../calendrier';
@@ -66,7 +67,6 @@ export function CalendrierMensuel({ logements, reservations, onOuvrir, logementI
             sejours={m.sejours}
             aujourdhui={AUJOURDHUI}
             chiffres={ligneChiffres(m)}
-            teinte={teintes.get(logementId)}
             onSejour={(s) => {
               const r = s.id ? parId.get(s.id) : undefined;
               if (r) onOuvrir(r);
