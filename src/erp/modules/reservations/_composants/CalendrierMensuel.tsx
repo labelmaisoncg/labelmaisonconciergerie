@@ -3,7 +3,9 @@
  * le même composant que l'espace propriétaire (src/erp/calendrier), pour le
  * logement choisi, sur les réservations déjà chargées (hors annulées). La
  * bande porte le nom complet du voyageur ; la toucher ouvre la fiche de la
- * réservation. Lecture seule : rien ne part vers Airbnb ou Booking.
+ * réservation. Chaque logement a sa pastille de couleur (pilules) et ses
+ * séjours à venir de cette couleur (data/couleurs-logement.ts). Lecture
+ * seule : rien ne part vers Airbnb ou Booking.
  */
 import { useCallback, useMemo, useState } from 'react';
 import { CalendrierDefilant, CalendrierMois, PilulesLogement, ligneChiffres, moisEntre, type ChargeurMois, type MoisCalendrier } from '../../../calendrier';
@@ -11,6 +13,7 @@ import { calendrierMoisReservations } from '../../../data/calendrier-reservation
 import { AUJOURDHUI } from '../../../data/format';
 import { moisDe } from '../../../data/proprietaire';
 import type { Logement, Reservation } from '../../../data/types';
+import { useCouleursLogements } from '../../logements/_composants/PastilleLogement';
 
 interface Props {
   logements: Logement[];
@@ -46,11 +49,12 @@ export function CalendrierMensuel({ logements, reservations, onOuvrir, logementI
     [reservations, logementId],
   );
   const parId = useMemo(() => new Map(reservations.map((r) => [r.id, r])), [reservations]);
+  const { teintes } = useCouleursLogements();
 
   if (!logementId) return <p className="text-[14px] text-(--lm-encre-2)">Aucun logement actif pour l’instant.</p>;
   return (
     <div className="w-full max-w-[44rem]">
-      <PilulesLogement logements={logements.map((l) => ({ id: l.id, nom: l.nom }))} choisi={logementId} onChoisir={setChoix} className="mb-4" />
+      <PilulesLogement logements={logements.map((l) => ({ id: l.id, nom: l.nom }))} choisi={logementId} onChoisir={setChoix} teintes={teintes} className="mb-4" />
       <CalendrierDefilant
         moisInitial={moisDe(AUJOURDHUI)}
         connus={connus}
@@ -62,6 +66,7 @@ export function CalendrierMensuel({ logements, reservations, onOuvrir, logementI
             sejours={m.sejours}
             aujourdhui={AUJOURDHUI}
             chiffres={ligneChiffres(m)}
+            teinte={teintes.get(logementId)}
             onSejour={(s) => {
               const r = s.id ? parId.get(s.id) : undefined;
               if (r) onOuvrir(r);

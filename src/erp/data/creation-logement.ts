@@ -19,7 +19,7 @@ import { CHECKLIST_LANCEMENT, PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from './const
 import { LIBELLES } from './libelles';
 import { changerProprietaire } from './proprietaire';
 import { positionAJour, texteAdresse } from './carte';
-import type { DateISO, Dpe, Id, Logement, Proprietaire, Serrure, StatutLogement, TypeLit, TypeLogement, TypeProprietaire } from './types';
+import type { CouleurLogement, DateISO, Dpe, Id, Logement, Proprietaire, Serrure, StatutLogement, TypeLit, TypeLogement, TypeProprietaire } from './types';
 
 /* --------------------------------------------------------------- formulaire */
 
@@ -40,6 +40,8 @@ export interface SaisieLogement {
   serrure: Serrure;
   proprietaireId: string;
   statut: StatutLogement;
+  /** Couleur choisie dans les calendriers (modification seulement) ; absente : attribuée d'office. */
+  couleur?: CouleurLogement;
 }
 
 export type ErreursLogement = Partial<Record<keyof SaisieLogement, string>>;
@@ -102,6 +104,7 @@ export function saisieInitiale(l?: Logement): SaisieLogement {
     serrure: l?.serrure ?? 'boite_a_cles',
     proprietaireId: l?.proprietaireId ?? '',
     statut: l?.statut ?? 'lancement',
+    ...(l?.couleur ? { couleur: l.couleur } : {}),
   };
 }
 
@@ -163,6 +166,7 @@ export function logementDepuisSaisie(s: SaisieLogement, cible: Logement | Id, au
     residencePrincipale: s.residencePrincipale,
     serrure: s.serrure,
     statut: existant ? s.statut : base.statut,
+    ...(s.couleur ? { couleur: s.couleur } : {}),
   };
   const adresseChangee = !existant || texteAdresse(suivant) !== texteAdresse(existant);
   const { position: _ancienne, ...sansPosition } = suivant;

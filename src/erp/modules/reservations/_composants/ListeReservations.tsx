@@ -13,6 +13,8 @@ import type { Logement, Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
 import { useRechercheUrl } from '../../../ui/useRechercheUrl';
 import { CANAUX, etatSejour, momentSejour, plageDates, recu, type MomentSejour } from './outils';
+import { PastilleLogement, useCouleursLogements } from '../../logements/_composants/PastilleLogement';
+import type { TeinteLogement } from '../../../data/couleurs-logement';
 
 const MOMENTS: { valeur: MomentSejour; libelle: string; vide: string }[] = [
   { valeur: 'a_venir', libelle: 'À venir', vide: 'Aucun séjour à venir.' },
@@ -49,6 +51,7 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
   const [du, setDu] = useState('');
   const [au, setAu] = useState('');
   const [limite, setLimite] = useState(PAR_PAGE);
+  const { couleurs } = useCouleursLogements();
   const parId = useMemo(() => new Map(logements.map((l) => [l.id, l])), [logements]);
 
   const filtrees = useMemo(() => {
@@ -163,7 +166,7 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
                       <li className="bg-(--lm-surface-2) px-4 py-1.5 text-[12px] font-semibold text-(--lm-encre-2) first-letter:uppercase">{moisAnnee(mois)}</li>
                     )}
                     <li>
-                      <LigneSejour r={r} logement={parId.get(r.logementId)} onOuvrir={onOuvrir} />
+                      <LigneSejour r={r} logement={parId.get(r.logementId)} couleur={couleurs.get(r.logementId)} onOuvrir={onOuvrir} />
                     </li>
                   </Fragment>
                 );
@@ -183,7 +186,7 @@ export function ListeReservations({ reservations, logements, onOuvrir, logementI
   );
 }
 
-function LigneSejour({ r, logement, onOuvrir }: { r: Reservation; logement: Logement | undefined; onOuvrir: (r: Reservation) => void }) {
+function LigneSejour({ r, logement, couleur, onOuvrir }: { r: Reservation; logement: Logement | undefined; couleur?: TeinteLogement; onOuvrir: (r: Reservation) => void }) {
   const annule = r.statut === 'annulee';
   const etat = etatSejour(r);
   const present = momentSejour(r) === 'en_cours';
@@ -203,8 +206,10 @@ function LigneSejour({ r, logement, onOuvrir }: { r: Reservation; logement: Loge
         )}
         <span className="min-w-0">
           <span className={cn('block truncate text-[14px] font-medium', annule ? 'text-(--lm-encre-2) line-through' : 'text-(--lm-encre)')}>{r.voyageur.nom}</span>
-          <span className="block truncate text-[12.5px] text-(--lm-encre-3) lg:hidden">
-            {plageDates(r.arrivee, r.depart)} · {logement?.nom ?? 'Logement inconnu'}
+          <span className="flex min-w-0 items-center gap-1.5 text-[12.5px] text-(--lm-encre-3) lg:hidden">
+            <span className="lm-chiffres shrink-0">{plageDates(r.arrivee, r.depart)} ·</span>
+            <PastilleLogement couleur={couleur} className="size-2" />
+            <span className="min-w-0 truncate">{logement?.nom ?? 'Logement inconnu'}</span>
           </span>
           <span className="hidden truncate text-[12.5px] text-(--lm-encre-3) lg:block">
             {LIBELLES.canal[r.canal]} · {pluriel(r.voyageur.nbPersonnes, 'voyageur')}
@@ -214,7 +219,10 @@ function LigneSejour({ r, logement, onOuvrir }: { r: Reservation; logement: Loge
 
       {/* Colonnes de grand écran */}
       <span className="hidden min-w-0 lg:block">
-        <span className="block truncate text-[13.5px] text-(--lm-encre)">{logement?.nom ?? 'Logement inconnu'}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-[13.5px] text-(--lm-encre)">
+          <PastilleLogement couleur={couleur} />
+          <span className="min-w-0 truncate">{logement?.nom ?? 'Logement inconnu'}</span>
+        </span>
         {logement?.ville && <span className="block truncate text-[12.5px] text-(--lm-encre-3)">{logement.ville}</span>}
       </span>
       <span className="lm-chiffres hidden min-w-0 lg:block">
