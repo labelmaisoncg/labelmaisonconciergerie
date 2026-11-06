@@ -38,7 +38,7 @@ export type TypeNotification =
 
 /** Les types, dans l'ordre des réglages, avec leur valeur par défaut. */
 export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; detail: string; defaut: boolean }[] = [
-  { type: 'reservation', libelle: 'Nouvelle réservation', detail: 'Logement, voyageur, dates et montant.', defaut: true },
+  { type: 'reservation', libelle: 'Nouvelle réservation', detail: 'Plateforme, logement, voyageurs, dates et ce que vous recevez.', defaut: true },
   { type: 'reservation_modifiee', libelle: 'Réservation annulée ou modifiée', detail: 'Annulation, nouvelles dates ou nombre de voyageurs.', defaut: true },
   { type: 'message', libelle: 'Nouveau message d’un voyageur', detail: 'Le début du message.', defaut: true },
   { type: 'agent_repondu', libelle: 'Votre agent a répondu', detail: 'Quand votre agent a répondu à votre place.', defaut: true },
@@ -48,7 +48,7 @@ export const TYPES_NOTIFICATION: { type: TypeNotification; libelle: string; deta
   { type: 'avis', libelle: 'Nouvel avis', detail: 'Avec la note ; mis en avant sous 4,5.', defaut: true },
   { type: 'synchro', libelle: 'Mise à jour des plateformes en échec', detail: 'Une fois par jour au plus.', defaut: true },
   // Clé « rappel » gardée (préférences déjà enregistrées) : c'est désormais le briefing du matin (briefing.ts).
-  { type: 'rappel', libelle: 'Briefing du matin', detail: 'Le contenu de « Votre journée », chaque matin à partir de 7 h.', defaut: false },
+  { type: 'rappel', libelle: 'Récap du matin', detail: 'Arrivées, départs et ce qui vous attend (« Votre journée »), chaque matin à partir de 7 h.', defaut: true },
   { type: 'prix', libelle: 'Prix à revoir', detail: 'Le matin, les logements dont le prix mérite un coup d’œil.', defaut: true },
   { type: 'anomalie', libelle: 'Anomalie à vérifier', detail: 'Double réservation, départ sans personne en charge, réservation inhabituelle.', defaut: true },
   { type: 'annonce', libelle: 'Annonce à l’équipe', detail: 'Les messages du gérant à toute l’équipe.', defaut: true },
@@ -155,6 +155,67 @@ export function plage(arrivee: string, depart: string): string {
 
 const euros = (centimes: number) => `${Math.round(centimes / 100).toLocaleString('fr-FR').replace(/ | /g, ' ')} €`;
 
+/** Espace insécable : un nombre ne quitte pas son unité, une flèche ne commence pas une ligne. */
+const NBSP = ' ';
+const JOURS = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+const jourSemaine = (d: string) => JOURS[new Date(`${d.slice(0, 10)}T12:00:00Z`).getUTCDay()] ?? '';
+const jourMoisInsecable = (d: string) => `${Number(d.slice(8, 10))}${NBSP}${MOIS[Number(d.slice(5, 7)) - 1] ?? ''}`;
+const majusculeInitiale = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+const joursEntre = (de: string, a: string) => Math.round((Date.parse(`${a.slice(0, 10)}T12:00:00Z`) - Date.parse(`${de.slice(0, 10)}T12:00:00Z`)) / 86_400_000);
+const fois = (n: number, mot: string) => `${n}${NBSP}${mot}${n > 1 ? 's' : ''}`;
+
+/**
+ * « Jeu. 12 → dim. 15 nov. », « Sam. 28 nov. → mer. 2 déc. », avec le jour
+ * de la semaine ; l'année seulement quand ce n'est pas celle d'aujourd'hui.
+ */
+export function datesSejour(arrivee: string, depart: string, aujourdhui: string): string {
+  const an = (d: string) => d.slice(0, 4);
+  const autreAnnee = an(arrivee) !== an(aujourdhui) || an(depart) !== an(aujourdhui);
+  const fin = `${jourSemaine(depart)} ${jourMoisInsecable(depart)}${autreAnnee ? `${NBSP}${an(depart)}` : ''}`;
+  const debut =
+    arrivee.slice(0, 7) === depart.slice(0, 7)
+      ? `${jourSemaine(arrivee)} ${Number(arrivee.slice(8, 10))}`
+      : `${jourSemaine(arrivee)} ${jourMoisInsecable(arrivee)}${autreAnnee && an(arrivee) !== an(depart) ? `${NBSP}${an(arrivee)}` : ''}`;
+  return majusculeInitiale(`${debut}${NBSP}→${NBSP}${fin}`);
+}
+
+/** « arrive aujourd’hui », « arrive demain », « arrive dans 12 jours », « séjour en cours ». */
+export function quandArrive(arrivee: string, depart: string, aujourdhui: string): string {
+  const n = joursEntre(aujourdhui, arrivee);
+  if (n < 0) return depart > aujourdhui ? 'séjour en cours' : 'séjour terminé';
+  if (n === 0) return 'arrive aujourd’hui';
+  if (n === 1) return 'arrive demain';
+  return `arrive dans ${n}${NBSP}jours`;
+}
+
+/** La plateforme, en tête du texte (le titre garde le nom du logement entier sur l'écran verrouillé). */
+const PLATEFORME: Record<string, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Direct' };
+
+/** « Airbnb · Inès V. · 3 voyageurs » : la plateforme, le voyageur (« Prénom N. ») et combien ils sont. */
+function quiEtCombien(r: Reservation): string {
+  return [PLATEFORME[r.canal], prenomInitiale(r.voyageur?.nom ?? ''), r.voyageur?.nbPersonnes ? fois(r.voyageur.nbPersonnes, 'voyageur') : ''].filter(Boolean).join(' · ');
+}
+
+/**
+ * Le récapitulatif d'une réservation, sur trois lignes (dépliée, la
+ * notification les montre toutes ; repliée, la première d'abord), avec les
+ * mots de l'ERP (fiche de la réservation, Séjours, Planning) :
+ *   « Airbnb · Inès V. · 3 voyageurs · arrive dans 12 jours »
+ *   « Jeu. 12 → dim. 15 nov. · 3 nuits »
+ *   « 450 € payés par le voyageur · vous recevez 398 € »
+ * Sans commission (réservation directe) : « 450 € payés par le voyageur ».
+ * Sans montant connu, la troisième ligne est omise.
+ */
+export function recapReservation(r: Reservation, aujourdhui: string): string {
+  const nuits = r.nuits ? ` · ${fois(r.nuits, 'nuit')}` : '';
+  const brut = r.montantBrutCentimes ?? 0;
+  const commission = r.commissionPlateformeCentimes ?? 0;
+  const argent = brut > 0 ? `${euros(brut)} payés par le voyageur${commission > 0 ? ` · vous recevez ${euros(brut - commission)}` : ''}` : '';
+  return [`${quiEtCombien(r)} · ${quandArrive(r.arrivee, r.depart, aujourdhui)}`, `${datesSejour(r.arrivee, r.depart, aujourdhui)}${nuits}`, argent]
+    .filter(Boolean)
+    .join('\n');
+}
+
 const RAISONS: Record<RaisonEscalade, string> = {
   argent: 'question d’argent (remboursement, geste…)',
   litige: 'litige ou problème sur place',
@@ -231,17 +292,30 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
     if (p.statut !== 'annulee' && r.statut === 'annulee') {
       modifiees.push({
         cle: `resa-${r.id}-annulee`,
-        variantes: [{ type: 'reservation_modifiee', titre: `Réservation annulée · ${nomLogement(r.logementId)}`, corps: `${qui}, ${plage(r.arrivee, r.depart)}`, url }],
+        variantes: [
+          {
+            type: 'reservation_modifiee',
+            titre: `Réservation annulée · ${nomLogement(r.logementId)}`,
+            corps: `${quiEtCombien(r)}\n${datesSejour(r.arrivee, r.depart, aujourdhui)}${r.nuits ? ` · ${r.nuits > 1 ? `${r.nuits}${NBSP}nuits libérées` : `1${NBSP}nuit libérée`}` : ''}`,
+            url,
+          },
+        ],
       });
     } else if (r.statut !== 'annulee' && (p.arrivee !== r.arrivee || p.depart !== r.depart || p.voyageur?.nbPersonnes !== r.voyageur?.nbPersonnes)) {
-      const avantTexte = p.arrivee !== r.arrivee || p.depart !== r.depart ? ` (avant : ${plage(p.arrivee, p.depart)})` : '';
+      const datesChangees = p.arrivee !== r.arrivee || p.depart !== r.depart;
+      const avantTexte = [
+        datesChangees ? datesSejour(p.arrivee, p.depart, aujourdhui).replace(/^./, (c) => c.toLowerCase()) : '',
+        p.voyageur?.nbPersonnes !== r.voyageur?.nbPersonnes && p.voyageur?.nbPersonnes ? fois(p.voyageur.nbPersonnes, 'voyageur') : '',
+      ]
+        .filter(Boolean)
+        .join(', ');
       modifiees.push({
         cle: `resa-${r.id}-modif-${r.arrivee}-${r.depart}-${r.voyageur?.nbPersonnes ?? ''}`,
         variantes: [
           {
             type: 'reservation_modifiee',
             titre: `Réservation modifiée · ${nomLogement(r.logementId)}`,
-            corps: `${qui}, ${plage(r.arrivee, r.depart)}, ${r.voyageur?.nbPersonnes ?? '?'} voyageur${(r.voyageur?.nbPersonnes ?? 0) > 1 ? 's' : ''}${avantTexte}`,
+            corps: `${quiEtCombien(r)}\n${datesSejour(r.arrivee, r.depart, aujourdhui)}${r.nuits ? ` · ${fois(r.nuits, 'nuit')}` : ''}${avantTexte ? `\nAvant${NBSP}: ${avantTexte}` : ''}`,
             url,
           },
         ],
@@ -273,14 +347,13 @@ export function notificationsEntre(avant: Instantane, apres: Instantane, mainten
     });
   } else {
     for (const r of nouvelles) {
-      const nuits = r.nuits ? `, ${r.nuits} nuit${r.nuits > 1 ? 's' : ''}` : '';
       groupes.push({
         cle: `resa-${r.id}-creee`,
         variantes: [
           {
             type: 'reservation',
             titre: `Nouvelle réservation · ${nomLogement(r.logementId)}`,
-            corps: `${prenomInitiale(r.voyageur?.nom ?? '')}, ${plage(r.arrivee, r.depart)}${nuits}${r.montantBrutCentimes ? ` · ${euros(r.montantBrutCentimes)}` : ''}`,
+            corps: recapReservation(r, aujourdhui),
             url: `/erp/reservations/${r.id}`,
           },
         ],

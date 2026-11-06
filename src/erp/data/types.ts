@@ -108,6 +108,8 @@ export interface Mandat {
 
 export type TypeLogement = 'studio' | 'T1' | 'T2' | 'T3' | 'T4' | 'maison' | 'autre';
 export type StatutLogement = 'lancement' | 'actif' | 'pause' | 'sorti';
+/** Couleur du logement dans les calendriers (data/couleurs-logement.ts). */
+export type CouleurLogement = 'ardoise' | 'prune' | 'olive' | 'cacao' | 'petrole' | 'framboise' | 'myrtille' | 'sapin';
 export type TypeLit = 'simple' | 'double' | 'canape';
 export type Dpe = 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G';
 export type Serrure = 'connectee' | 'boite_a_cles' | 'cles';
@@ -294,6 +296,14 @@ export interface Logement {
   tarifs?: TarifsLogement;
   /** Ce que dit l'annonce (description, couchage, conditions, prix de base), lu sur les plateformes. */
   descriptif?: DescriptifLogement;
+  /**
+   * Couleur du logement dans les réservations (sa pastille), enregistrée une
+   * fois : à la création, au premier import, ou par la synchronisation pour
+   * un logement importé qui n'en a pas ; modifiable dans « Modifier le
+   * logement » (data/couleurs-logement.ts). Propre à l'ERP : jamais envoyée
+   * aux plateformes.
+   */
+  couleur?: CouleurLogement;
   /** Annonce importée de Repull (synchronisation automatique). */
   repull?: OrigineRepull;
   /**

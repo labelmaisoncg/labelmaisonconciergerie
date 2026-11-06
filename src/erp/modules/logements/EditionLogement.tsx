@@ -8,6 +8,7 @@ import { PLAFOND_NUITS_RESIDENCE_PRINCIPALE } from '../../data/constantes';
 import { AUJOURDHUI } from '../../data/format';
 import { TYPES_LIT, erreursSaisieLogement, logementDepuisSaisie, nomsInterdits, saisieInitiale, type ErreursLogement, type SaisieLogement } from '../../data/creation-logement';
 import { enregistrerLogement } from './_composants/enregistrerLogement';
+import { ChoixCouleurLogement, useCouleursLogements } from './_composants/PastilleLogement';
 import {
   CHAMPS_MENAGE,
   CHAMPS_TECHNIQUE,
@@ -60,6 +61,9 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree, section }:
   const [t, setT] = useState<SaisieTerrain>(() => saisieTerrainInitiale(logement));
   const [erreursT, setErreursT] = useState<Record<string, string>>({});
   const sections = useRef<Partial<Record<SectionTerrain, HTMLElement | null>>>({});
+  // Couleur affichée : celle choisie, sinon celle attribuée d'office (enregistrée seulement si on la change).
+  const { couleurs } = useCouleursLogements();
+  const couleurActuelle = s.couleur ?? (logement ? couleurs.get(logement.id)?.cle : undefined);
 
   useEffect(() => {
     if (ouvert) {
@@ -124,6 +128,7 @@ export function EditionLogement({ ouvert, onFermer, logement, onCree, section }:
         <Field label="Nom du logement" requis erreur={erreurs.nom} className="sm:col-span-2">
           <Input value={s.nom} onChange={(e) => maj('nom', e.target.value)} placeholder="Ex. Corbeil Rives de Seine" />
         </Field>
+        {logement && couleurActuelle && <ChoixCouleurLogement valeur={couleurActuelle} onChange={(c) => maj('couleur', c)} className="sm:col-span-2" />}
         <Field label="Propriétaire" requis erreur={erreurs.proprietaireId} className="sm:col-span-2">
           <Select
             value={s.proprietaireId}

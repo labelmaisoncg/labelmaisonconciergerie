@@ -4,8 +4,9 @@
  * haut). Un séjour va du milieu du jour d'arrivée au milieu du jour de
  * départ : départ et arrivée partagent la même case. Les nuits libres
  * affichent leur prix lu sur les plateformes, les nuits fermées sans
- * réservation sont hachurées. Lecture seule : rien ne part vers Airbnb ou
- * Booking depuis ce planning.
+ * réservation sont hachurées. Les séjours gardent la couleur de leur canal ;
+ * le logement a sa pastille de couleur devant son nom (data/couleurs-logement.ts).
+ * Lecture seule : rien ne part vers Airbnb ou Booking depuis ce planning.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -16,6 +17,7 @@ import { AUJOURDHUI, ajouterJours, ecartJours, euros, moisAnnee, pluriel } from 
 import type { CanalReservation, DateISO, Logement, Reservation } from '../../../data/types';
 import { VisuelLogement } from '../../logements/_composants/Visuel';
 import { CANAUX, TEINTE_CANAL, etatSejour, nuitsDuSejour, nuitsVoyageurs, plageDates, recu } from './outils';
+import { PastilleLogement, useCouleursLogements } from '../../logements/_composants/PastilleLogement';
 
 type Plage = 'semaines' | 'mois';
 const PLAGES: { valeur: Plage; libelle: string }[] = [
@@ -108,6 +110,7 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
     return () => window.removeEventListener('scroll', fermer, true);
   }, [bulle]);
 
+  const { couleurs } = useCouleursLogements();
   const lignes = useMemo(
     () =>
       logements.map((l) => {
@@ -245,11 +248,20 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
                 style={{ width: col }}
                 title={l.nom}
               >
-                <VisuelLogement logement={l} taille="sm" className={cn('shrink-0 rounded-lg', col > 150 ? 'size-9' : 'size-7')} />
+                {/* Colonne étroite (téléphone) : la pastille se pose au coin de la vignette, le nom garde toute sa largeur. */}
+                <span className="relative shrink-0">
+                  <VisuelLogement logement={l} taille="sm" className={cn('rounded-lg', col > 150 ? 'size-9' : 'size-7')} />
+                  {col <= 150 && <PastilleLogement couleur={couleurs.get(l.id)} className="absolute -right-0.5 -bottom-0.5 ring-2 ring-(--lm-surface)" />}
+                </span>
                 <span className="min-w-0">
-                  <span className={cn('block font-medium text-(--lm-encre) group-hover:underline', col > 150 ? 'truncate text-[13px]' : 'line-clamp-2 text-[12px] leading-tight')}>
-                    {l.nom}
-                  </span>
+                  {col > 150 ? (
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <PastilleLogement couleur={couleurs.get(l.id)} />
+                      <span className="min-w-0 truncate text-[13px] font-medium text-(--lm-encre) group-hover:underline">{l.nom}</span>
+                    </span>
+                  ) : (
+                    <span className="line-clamp-2 text-[12px] leading-tight font-medium text-(--lm-encre) group-hover:underline">{l.nom}</span>
+                  )}
                   {col > 150 && (
                     <span className="block truncate text-[11.5px] text-(--lm-encre-3)">{l.statut === 'lancement' ? 'En préparation' : l.ville}</span>
                   )}
@@ -300,7 +312,8 @@ export function Calendrier({ logements, reservations, onOuvrir }: Props) {
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-t border-(--lm-bord) px-3 py-2.5 text-[12.5px] text-(--lm-encre-2) sm:px-4">
         {canauxVus.map((c) => (
           <span key={c} className="inline-flex items-center gap-1.5">
-            <span aria-hidden className="size-2.5 rounded-sm" style={{ background: TEINTE_CANAL[c].plein }} />
+            {/* Une barre, comme les séjours : la pastille ronde est celle du logement. */}
+            <span aria-hidden className="h-2.5 w-5 rounded-sm" style={{ background: TEINTE_CANAL[c].plein }} />
             {LIBELLES.canal[c]}
           </span>
         ))}
