@@ -92,7 +92,7 @@ export interface Briefing {
 }
 
 /** Titre de la notification (et nom du type dans les réglages). */
-export const TITRE_BRIEFING = 'Briefing du matin';
+export const TITRE_BRIEFING = 'Récap du matin';
 /** Corps de notification borné (l'écran verrouillé en montre environ 4 lignes ; la notification ouverte, tout). */
 const MAX_COURT = 240;
 /** Noms cités au plus dans une phrase. */

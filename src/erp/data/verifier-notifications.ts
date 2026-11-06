@@ -17,25 +17,7 @@
  */
 import { envoyerNotifications, enregistrerAppareil, lireAppareils, majRoleAppareil, reglerAppareil, surveiller, type BaseNotifications } from './notifications-envoi';
 import { b64url, chiffrer, deB64url, endpointAccepte, enteteVapid, genererClesVapid, type AbonnementPush } from './web-push';
-import {
-  demandeNotifications,
-  estProbleme,
-  JOURS_PLUS_TARD_NOTIFICATIONS,
-  nettoyerPreferences,
-  notificationNouveauLead,
-  notificationLeadPlafonnee,
-  PLAFOND_LEADS_HEURE,
-  notificationsEntre,
-  preferencesPourRole,
-  prenomInitiale,
-  synchroEnEchec,
-  TYPES_NOTIFICATION,
-  typePourRole,
-  varianteAEnvoyer,
-  type ContexteDemandeNotifications,
-  type GroupeNotification,
-  type Instantane,
-} from './notifications';
+import { demandeNotifications, estProbleme, JOURS_PLUS_TARD_NOTIFICATIONS, nettoyerPreferences, notificationNouveauLead, notificationLeadPlafonnee, PLAFOND_LEADS_HEURE, notificationsEntre, preferencesPourRole, prenomInitiale, synchroEnEchec, TYPES_NOTIFICATION, typePourRole, varianteAEnvoyer, type ContexteDemandeNotifications, type GroupeNotification, type Instantane, datesSejour, quandArrive, recapReservation } from './notifications';
 import type { FilMessages, Logement, Reservation } from './types';
 
 let echecs = 0;
@@ -226,13 +208,41 @@ async function principal() {
     const parCle = new Map(g.map((x) => [x.cle, x]));
     const n = parCle.get('resa-r-nouvelle-creee')?.variantes[0];
     verifier(
-      n?.type === 'reservation' && n.titre === 'Nouvelle réservation · Le Nid sous les Toits' && n.corps === 'Inès V., 12–15 nov., 3 nuits · 450 €' && n.url === '/erp/reservations/r-nouvelle',
-      `nouvelle réservation : logement, voyageur, dates, nuits, montant (${JSON.stringify(n)})`,
+      n?.type === 'reservation' &&
+        n.titre === 'Nouvelle réservation Airbnb · Le Nid sous les Toits' &&
+        n.corps === 'Inès V. · 3 voyageurs · arrive dans 17 jours\nJeu. 12 → dim. 15 nov. · 3 nuits\n450 € payés' &&
+        n.url === '/erp/reservations/r-nouvelle',
+      `nouvelle réservation : plateforme, logement, voyageur et nombre, délai, jours, nuits, montant (${JSON.stringify(n)})`,
     );
     verifier(!parCle.has('resa-r-passee-creee') && !parCle.has('resa-r-en-attente-creee'), 'réservation passée ou annulée à l’import : pas de notification');
-    verifier(parCle.get('resa-r-annulee-annulee')?.variantes[0].titre === 'Réservation annulée · Corbeil Centre Familial', 'réservation annulée');
+    const ann = parCle.get('resa-r-annulee-annulee')?.variantes[0];
+    verifier(ann?.titre === 'Réservation Airbnb annulée · Corbeil Centre Familial' && ann.corps === 'Daniel A. · 2 voyageurs\nJeu. 12 → dim. 15 nov. · 3 nuits libérées', `réservation annulée : plateforme, voyageur, dates, nuits libérées (${JSON.stringify(ann)})`);
     const m = parCle.get('resa-r-modif-modif-2026-11-13-2026-11-16-2')?.variantes[0];
-    verifier(m?.type === 'reservation_modifiee' && /13–16 nov\., 2 voyageurs \(avant : 12–15 nov\.\)/.test(m.corps), `réservation modifiée, avec les anciennes dates (${m?.corps})`);
+    verifier(m?.type === 'reservation_modifiee' && m.corps === 'Daniel A. · 2 voyageurs\nVen. 13 → lun. 16 nov. · 3 nuits\nAvant : jeu. 12 → dim. 15 nov.', `réservation modifiée, avec les anciennes dates (${m?.corps})`);
+    // Récapitulatif d'une réservation : dates avec le jour, délai, plateforme, argent.
+    verifier(datesSejour('2026-11-28', '2026-12-02', '2026-10-26') === 'Sam. 28 nov. → mer. 2 déc.', `séjour sur deux mois (${datesSejour('2026-11-28', '2026-12-02', '2026-10-26')})`);
+    verifier(datesSejour('2026-12-30', '2027-01-02', '2026-10-26') === 'Mer. 30 déc. 2026 → sam. 2 janv. 2027', `séjour sur deux années (${datesSejour('2026-12-30', '2027-01-02', '2026-10-26')})`);
+    verifier(datesSejour('2027-03-05', '2027-03-08', '2026-10-26') === 'Ven. 5 → lun. 8 mars 2027', `l’année seulement quand ce n’est pas celle d’aujourd’hui (${datesSejour('2027-03-05', '2027-03-08', '2026-10-26')})`);
+    verifier(
+      quandArrive('2026-10-26', '2026-10-28', '2026-10-26') === 'arrive aujourd’hui' &&
+        quandArrive('2026-10-27', '2026-10-28', '2026-10-26') === 'arrive demain' &&
+        quandArrive('2026-11-12', '2026-11-15', '2026-10-26') === 'arrive dans 17 jours' &&
+        quandArrive('2026-10-24', '2026-10-28', '2026-10-26') === 'séjour en cours',
+      'délai avant l’arrivée',
+    );
+    const avecCommission = recapReservation(resa('r-c', { montantBrutCentimes: 45000, commissionPlateformeCentimes: 5200 }), '2026-10-26');
+    verifier(avecCommission.split('\n')[2] === '450 € payés · 398 € versés par Airbnb', `montant payé et montant versé par la plateforme (${avecCommission})`);
+    const booking = recapReservation(resa('r-b', { canal: 'booking', montantBrutCentimes: 30000, commissionPlateformeCentimes: 4500 }), '2026-10-26');
+    verifier(booking.endsWith('300 € payés · 255 € versés par Booking.com'), `Booking.com (${booking})`);
+    const direct = recapReservation(resa('r-d', { canal: 'direct', montantBrutCentimes: 30000, commissionPlateformeCentimes: 0 }), '2026-10-26');
+    verifier(direct.endsWith('300 € payés') && !/versés/.test(direct), `réservation directe : le montant payé seulement (${direct})`);
+    const sansMontant = recapReservation(resa('r-0', { montantBrutCentimes: 0, voyageur: { nom: 'Clara', nbPersonnes: 1 }, nuits: 1, depart: '2026-11-13' }), '2026-10-26');
+    verifier(sansMontant === 'Clara · 1 voyageur · arrive dans 17 jours\nJeu. 12 → ven. 13 nov. · 1 nuit', `montant inconnu : deux lignes, singuliers (${JSON.stringify(sansMontant)})`);
+    const titres = (canal: Reservation['canal']) =>
+      notificationsEntre(instantane({ reservations: [] }), instantane({ reservations: [resa('r-t', { canal })] }), MAINTENANT)[0]?.variantes[0].titre;
+    verifier(titres('booking') === 'Nouvelle réservation Booking.com · Corbeil Centre Familial' && titres('direct') === 'Nouvelle réservation directe · Corbeil Centre Familial' && titres('autre') === 'Nouvelle réservation · Corbeil Centre Familial', 'la plateforme dans le titre');
+    verifier(!/Aubert/.test(avecCommission) && /Daniel A\./.test(avecCommission), 'voyageur « Prénom N. » (écran verrouillé)');
+
     const a = parCle.get('avis-r-avis');
     verifier(a?.urgente === true && a.variantes[0].titre === 'Avis à lire · 3,5 sur 5' && /bruyant/.test(a.variantes[0].corps), `avis sous 4,5 mis en avant (${JSON.stringify(a?.variantes[0])})`);
     verifier(g.length === 4, `rien pour ce qui n’a pas changé (${g.map((x) => x.cle).join(', ')})`);
@@ -301,13 +311,13 @@ async function principal() {
     const r: GroupeNotification = {
       cle: 'briefing-2026-10-26',
       variantes: [
-        { type: 'rappel', titre: 'Briefing du matin', corps: 'Avec les prix.', url: '/erp', gerant: true },
-        { type: 'rappel', titre: 'Briefing du matin', corps: 'Sans les prix.', url: '/erp' },
+        { type: 'rappel', titre: 'Récap du matin', corps: 'Avec les prix.', url: '/erp', gerant: true },
+        { type: 'rappel', titre: 'Récap du matin', corps: 'Sans les prix.', url: '/erp' },
       ],
     };
-    verifier(varianteAEnvoyer(r, {}) === undefined && varianteAEnvoyer(r, { rappel: true })?.corps === 'Sans les prix.', 'briefing du matin désactivé par défaut ; activé : la version de l’équipe');
+    verifier(varianteAEnvoyer(r, {})?.corps === 'Sans les prix.' && varianteAEnvoyer(r, { rappel: false }) === undefined, 'récap du matin activé par défaut (la version de l’équipe) ; éteint sur l’appareil : rien');
     verifier(varianteAEnvoyer(r, { rappel: true }, 'gerant')?.corps === 'Avec les prix.' && varianteAEnvoyer(r, { rappel: true }, 'operations')?.corps === 'Sans les prix.', 'variante « gérant » : seulement l’appareil d’un gérant');
-    verifier(TYPES_NOTIFICATION.find((t) => t.type === 'rappel')?.libelle === 'Briefing du matin', 'réglage : « Briefing du matin » (même clé « rappel », préférences gardées)');
+    verifier(TYPES_NOTIFICATION.find((t) => t.type === 'rappel')?.libelle === 'Récap du matin', 'réglage : « Récap du matin » (même clé « rappel », préférences gardées)');
     const s = synchroEnEchec('2026-10-26', 'Repull ne répond pas');
     verifier(s.cle === 'synchro-2026-10-26' && s.variantes[0].url === '/erp/parametres/plateformes', 'synchronisation en échec : une par jour, vers Plateformes');
     verifier(JSON.stringify(nettoyerPreferences({ message: false, inconnu: true, avis: 'oui' })) === '{"message":false}', 'préférences nettoyées (types connus, booléens)');
@@ -510,7 +520,7 @@ async function principal() {
       },
       { cles, envoyer, maintenant: () => MAINTENANT },
     );
-    verifier(r === 'fait' && titres.join() === 'Nouvelle réservation · Le Nid sous les Toits', `nouveauté repérée et envoyée après le passage (${titres.join(' | ')})`);
+    verifier(r === 'fait' && titres.join() === 'Nouvelle réservation Airbnb · Le Nid sous les Toits', `nouveauté repérée et envoyée après le passage (${titres.join(' | ')})`);
     let relancee = false;
     try {
       await surveiller(

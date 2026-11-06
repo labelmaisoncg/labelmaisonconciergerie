@@ -47,7 +47,7 @@ const DUREE_CONFIRMATION_MS = 2500;
  * bloc. La première ligne dit la journée (arrivées, départs, logements
  * occupés ce soir) ; les suivantes sont les sujets de « À faire », chacun
  * en une phrase qui mène au bon écran. Le même contenu part en notification
- * (« Briefing du matin ») et se copie depuis le menu, dans l'ordre de la
+ * (« Récap du matin ») et se copie depuis le menu, dans l'ordre de la
  * carte. Calculé sans IA (data/briefing.ts), selon le rôle : prix et
  * factures pour le gérant.
  */

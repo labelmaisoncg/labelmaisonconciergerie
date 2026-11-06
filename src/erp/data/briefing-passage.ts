@@ -48,7 +48,7 @@ interface EtatSynchroLu {
   dernierBilan?: { erreurs?: string[] };
 }
 const COLLECTION = 'connecteurs';
-const AUTEUR = 'Briefing du matin';
+const AUTEUR = 'Récap du matin';
 
 export interface EtatBriefing {
   id: typeof ID_ETAT_BRIEFING;

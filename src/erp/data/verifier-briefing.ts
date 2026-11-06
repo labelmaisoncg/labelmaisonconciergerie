@@ -234,11 +234,11 @@ const demo = (gerant: boolean) => construireBriefing({ ...seed, aujourdhui: DATE
   verifier(!aFaireOps.some((x) => x.type === 'facture' || x.type === 'prix'), '« À faire » d’un non-gérant : ni facture ni prix');
   const notif = notificationBriefing(g, o)!;
   verifier(notif.cle === `briefing-${DATE_DEMO}` && notif.variantes.length === 2 && notif.variantes[0].gerant === true && !notif.variantes[1].gerant, 'notification : version du gérant, puis version de l’équipe', notif.variantes);
-  verifier(notif.variantes.every((v) => v.type === 'rappel' && v.titre === TITRE_BRIEFING && v.url === '/erp' && v.corps.length <= 240), '« Briefing du matin », type « rappel » (préférences gardées), ouvre l’Accueil, 240 caractères au plus');
+  verifier(notif.variantes.every((v) => v.type === 'rappel' && v.titre === TITRE_BRIEFING && v.url === '/erp' && v.corps.length <= 240), '« Récap du matin », type « rappel » (préférences gardées), ouvre l’Accueil, 240 caractères au plus');
   const pour = (role: string, p: Record<string, boolean>) => varianteAEnvoyer(notif, p, role)?.corps;
   verifier(/factur/i.test(pour('gerant', { rappel: true }) ?? '') && !/factur|prix/i.test(pour('operations', { rappel: true }) ?? 'x') && !/factur|prix/i.test(pour('lecture', { rappel: true }) ?? 'x'), 'chaque appareil reçoit la version de son rôle');
-  verifier(pour('gerant', {}) === undefined, 'éteint par défaut (comme l’ancien « Rappel du matin »)');
-  verifier(TYPES_NOTIFICATION.find((t) => t.type === 'rappel')?.libelle === TITRE_BRIEFING, 'réglage de l’appareil : « Briefing du matin »');
+  verifier(/factur/i.test(pour('gerant', {}) ?? '') && pour('gerant', { rappel: false }) === undefined, 'activé par défaut (récap du matin) ; éteint sur l’appareil : rien');
+  verifier(TYPES_NOTIFICATION.find((t) => t.type === 'rappel')?.libelle === TITRE_BRIEFING, 'réglage de l’appareil : « Récap du matin »');
   const egal = notificationBriefing(o, o)!;
   verifier(egal.variantes.length === 1 && !egal.variantes[0].gerant, 'même texte pour tous : une seule variante');
 }
@@ -346,7 +346,7 @@ section('Passage planifié : fenêtre, une fois par jour, qui le reçoit');
   verifier(!fenetreBriefing(new Date('2026-10-27T05:59:00Z')) && fenetreBriefing(new Date('2026-10-27T06:00:00Z')) && !fenetreBriefing(new Date('2026-10-27T11:00:00Z')), 'fenêtre : 7 h – midi à Paris (heure d’hiver)');
   verifier(!fenetreBriefing(new Date('2026-07-01T04:59:00Z')) && fenetreBriefing(new Date('2026-07-01T05:00:00Z')), 'fenêtre : 7 h à Paris l’été (UTC+2)');
 
-  const base = baseEspace([appareil('gerant', 'gerant', { rappel: true }), appareil('ops', 'operations', { rappel: true }), appareil('eteint', 'gerant', {}), appareil('ancien', undefined, { rappel: true })]);
+  const base = baseEspace([appareil('gerant', 'gerant', { rappel: true }), appareil('ops', 'operations', { rappel: true }), appareil('eteint', 'gerant', { rappel: false }), appareil('ancien', undefined, { rappel: true })]);
   let r = await passer(base, '2026-10-27T05:30:00Z');
   verifier(r.statut === 'hors-fenetre' && base.lectures.length === 0, 'avant 7 h : rien n’est lu', base.lectures);
 
@@ -355,7 +355,7 @@ section('Passage planifié : fenêtre, une fois par jour, qui le reçoit');
   verifier(r.statut === 'fait' && recus.length === 3, '7 h 30 : envoyé aux trois appareils qui l’ont activé (pas à celui qui l’a éteint)', { statut: r.statut, recus: recus.map((x) => x.endpoint) });
   const corpsDe = (id: string) => recus.find((x) => x.endpoint.endsWith(`/${id}`))?.corps ?? '';
   verifier(/factur/i.test(corpsDe('gerant')) && !/factur|prix/i.test(corpsDe('ops')) && !/factur|prix/i.test(corpsDe('ancien')), 'gérant : avec prix et factures ; opérations et appareil sans rôle connu : sans', { gerant: corpsDe('gerant'), ops: corpsDe('ops') });
-  verifier(recus.every((x) => x.titre === TITRE_BRIEFING), 'titre « Briefing du matin »');
+  verifier(recus.every((x) => x.titre === TITRE_BRIEFING), 'titre « Récap du matin »');
   const etat = base.get<{ dernierJour: string; envoye: boolean }>('connecteurs', ID_ETAT_BRIEFING);
   verifier(etat?.dernierJour === '2026-10-27' && etat.envoye === true, 'état du jour écrit (une seule fois par jour)', etat);
   verifier(base.ecritures.every((x) => x.startsWith('connecteurs/')), 'seules écritures : l’état et le journal des notifications (collection technique)', base.ecritures);
@@ -370,7 +370,7 @@ section('Passage planifié : fenêtre, une fois par jour, qui le reçoit');
   r = await passer(base, '2026-10-28T06:00:00Z');
   verifier(r.statut === 'fait' && recus.length === 3, 'le lendemain à 7 h : le nouveau briefing part');
 
-  const personne = baseEspace([appareil('eteint', 'gerant', {})]);
+  const personne = baseEspace([appareil('eteint', 'gerant', { rappel: false })]);
   r = await passer(personne, '2026-10-27T06:30:00Z');
   verifier(r.statut === 'personne' && personne.lectures.length === 2 && personne.ecritures.length === 0, 'aucun appareil ne le veut : deux lectures, rien d’écrit', personne.lectures);
 
