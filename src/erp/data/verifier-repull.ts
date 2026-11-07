@@ -333,12 +333,14 @@ class FauxRepull {
       return json({ sessionId: `sess_${m[1]}`, url: `https://connect.repull.dev/${m[1]}/sess`, expiresAt: '2026-10-01T00:00:00Z' });
     }
     if ((m = /^\/v1\/connect\/([^/]+)$/.exec(chemin)) && methode === 'DELETE') {
+      // Comme Repull : le nom de sa liste (« booking_extranet ») n'est pas accepté pour déconnecter.
+      if (m[1] === 'booking_extranet') return json({ error: { code: 'invalid_provider', message: 'Unknown provider: booking_extranet' } }, 400);
       if (m[1] !== 'airbnb' && m[1] !== 'booking' && m[1] !== 'booking-extranet-login') return json({ error: { code: 'not_implemented', message: 'no', fix: 'Disconnect Repull from your Hostaway settings.' } }, 501);
       // Booking.com : un compte relié par « Extranet login » ne se déconnecte que sous ce nom (sinon 404, comme Repull).
       if (m[1] !== 'airbnb') {
         // Compte que Repull liste encore mais refuse de déconnecter (404 sous tous les noms).
         if (this.refuseDeconnexion.has(String(p.get('accountId')))) return json({ error: { code: 'not_found', message: 'not connected' } }, 404);
-        const compte = this.connexions.find((c) => c.provider === m![1] && (!p.get('accountId') || c.externalAccountId === p.get('accountId')));
+        const compte = this.connexions.find((c) => (c.provider === m![1] || (m![1] === 'booking-extranet-login' && c.provider === 'booking_extranet')) && (!p.get('accountId') || c.externalAccountId === p.get('accountId')));
         if (!compte) return json({ error: { code: 'not_found', message: 'not connected' } }, 404);
         this.connexions = this.connexions.filter((c) => c !== compte);
         return json({ disconnected: true, provider: m[1], accountId: p.get('accountId'), listingsDeactivated: [] });
@@ -1926,6 +1928,14 @@ async function principal() {
   await deconnecter(ctx(), 'booking', '154').catch((e) => (refusBooking = e instanceof ErreurConnexion ? `${e.statut} ${e.message}` : String(e)));
   const e5 = await lireEtatConnexions(ctx());
   verifier(/^404 Repull ne trouve plus ce compte/.test(refusBooking) && !e5.connexions.some((c) => c.compte === '154'), `compte que Repull ne connaît plus : message clair, liste relue sans lui (${refusBooking})`);
+  // Repull liste le compte sous « booking_extranet » : déconnecté sous « booking-extranet-login », sans erreur 400.
+  repull.connexions.push({ id: 'c11', provider: 'booking_extranet', status: 'active', externalAccountId: '555', createdAt: '2026-09-04T10:00:00Z' });
+  await lireEtatConnexions(ctx(), { forcer: true });
+  const avant555 = repull.appels.length;
+  await deconnecter(ctx(), 'booking', '555');
+  const essais555 = repull.appels.slice(avant555).filter((a) => a.methode === 'DELETE').map((a) => a.chemin);
+  verifier(essais555.join() === '/v1/connect/booking-extranet-login' && !repull.connexions.some((c) => c.id === 'c11'), `compte listé « booking_extranet » : déconnecté sous « booking-extranet-login » (${essais555.join(', ')})`);
+
   // Repull liste encore un établissement mais dit ne pas le connaître : il n'est plus montré, jusqu'à une nouvelle connexion Booking.com.
   repull.connexions.push({ id: 'c10', provider: 'booking-extranet-login', status: 'active', externalAccountId: '888', createdAt: '2026-09-03T10:00:00Z' });
   repull.refuseDeconnexion.add('888').add('c10');

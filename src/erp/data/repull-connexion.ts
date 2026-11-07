@@ -1143,7 +1143,9 @@ export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, c
   // noms de la même plateforme ; 404 et 501 font passer au suivant. Rien d'autre ne part chez Repull.
   const cache = await lireCache(ctx.base);
   const connu = (cache.connexions ?? []).find((c) => c.fournisseur === f && (c.compte ?? '') === (texte(compte) || ''));
-  const fournisseurs = [...new Set([connu?.fournisseurRepull, f, ...(f === 'booking' ? ['booking-extranet-login', 'booking'] : [])].filter((x): x is string => !!x && /^[a-z0-9][a-z0-9_.-]{0,40}$/.test(x)))];
+  // La liste de Repull dit parfois « booking_extranet », que sa déconnexion refuse (400) : « booking-extranet-login ».
+  const nomDeconnexion = (p: string | undefined) => (p === 'booking_extranet' ? 'booking-extranet-login' : p);
+  const fournisseurs = [...new Set([nomDeconnexion(connu?.fournisseurRepull), f, ...(f === 'booking' ? ['booking-extranet-login', 'booking'] : [])].filter((x): x is string => !!x && /^[a-z0-9][a-z0-9_.-]{0,40}$/.test(x)))];
   // Identifiant du compte : celui de la plateforme (hôte Airbnb, établissement Booking.com), puis celui de la
   // connexion chez Repull (Booking.com : `connectionId` de l'établissement), que Repull accepte parfois seul.
   const identifiants = [...new Set([texte(compte) || undefined, connu?.id && !/^(airbnb|booking)-/.test(connu.id) ? connu.id : undefined])];
@@ -1162,6 +1164,8 @@ export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, c
           introuvable = true;
           continue;
         }
+        // Nom de fournisseur que Repull ne reconnaît pas pour la déconnexion : on essaie le suivant.
+        if (e instanceof ErreurRepull && e.statut === 400 && /provider/i.test(`${e.code ?? ''} ${e.message}`)) continue;
         throw e;
       }
     }
