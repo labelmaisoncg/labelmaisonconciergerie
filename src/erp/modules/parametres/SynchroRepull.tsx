@@ -82,6 +82,7 @@ export function useSynchroRepull() {
       }
       if (corps.statut === 'selection') setRetour({ ton: 'info', texte: 'Choisissez vos logements (Logements → Connexions) : rien n’est importé tant que vous ne les avez pas choisis.' });
       else if (corps.statut === 'limite') setRetour({ ton: 'info', texte: corps.message ?? 'Synchronisation faite il y a moins de 10 minutes.' });
+      else if (corps.statut === 'occupe') setRetour({ ton: 'info', texte: corps.message ?? 'Un gérant relie une annonce à un logement : réessayez dans une minute.' });
       else if (corps.statut === 'budget') setRetour({ ton: 'danger', texte: corps.message ?? 'Part mensuelle des appels à notre service de connexion épuisée.' });
       else if (!corps.ok) setRetour({ ton: 'alerte', texte: corps.message ?? 'Synchronisation terminée avec des erreurs.' });
       else {

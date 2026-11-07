@@ -355,7 +355,8 @@ drop trigger if exists garder_autonomie_agent on erp.enregistrements;
 create trigger garder_autonomie_agent before insert or update on erp.enregistrements
   for each row execute function erp.garder_autonomie_agent();
 
--- Lien d'un logement à son annonce (donnees.repull.id, donnees.liaison, id
+-- Lien d'un logement à son annonce (donnees.repull.id, donnees.liaison, annonces
+-- des autres plateformes donnees.repull.liees, id
 -- « repull-… ») : gérant de l'espace et compte serveur seulement (« Relier à
 -- une annonce », api/erp-repull-connexion.ts ; la synchronisation). Sans
 -- cette règle, un compte « opérations » poserait repull.id sur n'importe quel
@@ -392,10 +393,12 @@ begin
   end if;
   if existe then
     if (new.donnees -> 'repull' ->> 'id') is not distinct from (avant -> 'repull' ->> 'id')
-       and (new.donnees -> 'liaison') is not distinct from (avant -> 'liaison') then
+       and (new.donnees -> 'liaison') is not distinct from (avant -> 'liaison')
+       and (new.donnees -> 'repull' -> 'liees') is not distinct from (avant -> 'repull' -> 'liees') then
       return new;
     end if;
-  elsif (new.donnees -> 'repull' ->> 'id') is null and not (new.donnees ? 'liaison') and new.id not like 'repull-%' then
+  elsif (new.donnees -> 'repull' ->> 'id') is null and not (new.donnees ? 'liaison') and (new.donnees -> 'repull' -> 'liees') is null
+        and new.id not like 'repull-%' then
     return new;
   end if;
   raise exception 'Seul un gérant relie un logement à son annonce.' using errcode = '42501';

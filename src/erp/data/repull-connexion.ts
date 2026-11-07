@@ -30,9 +30,24 @@
  *
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
-import { dateParis, horodatageParis, photosDepuisContenu, tarifsDepuisBooking } from './repull.js';
+import { canonique, dateParis, horodatageParis, photosDepuisContenu, tarifsDepuisBooking } from './repull.js';
 import type { RepullListing } from './repull.js';
 import { arriveesDeLAnnonce, delierLogement, delierPossible, depasseLimite, lierLogement, peutRelier, verifierLiaison } from './liaison-annonce.js';
+import {
+  COLLECTIONS_LOGEMENT_ID,
+  NOM_CANAL,
+  ceQuiRejoint,
+  deplacerAffectations,
+  elementDeplace,
+  fusionnerLogement,
+  liees,
+  nouvelleLiee,
+  peutRelierConnexion,
+  phraseCeQuiRejoint,
+  verifierConnexion,
+  type CanalPlateforme,
+  type TraceAnnoncesReliees,
+} from './annonces-liees.js';
 import {
   BUDGET_ERP_DEFAUT,
   BaseErp,
@@ -41,9 +56,12 @@ import {
   COLLECTION_ETAT,
   DelaiEcoule,
   ErreurRepull,
+  ID_ANNONCES_RELIEES,
   ID_SELECTION,
   QUOTA_MOIS_DEFAUT,
   conseilBudget,
+  prendreVerrou,
+  rendreVerrou,
   imputerAppels,
   lancer,
   lireEtat,
@@ -53,7 +71,8 @@ import {
   type PhaseRepull,
   type SelectionRepull,
 } from './repull-synchro.js';
-import type { FilMessages, Journal, Logement, Reservation } from './types';
+import type { AffectationLogement } from './types-operations';
+import type { ErpDonnees, FilMessages, Journal, Logement, Reservation } from './types';
 
 type Fetch = typeof fetch;
 
@@ -470,6 +489,8 @@ async function composerEtat(ctx: ContexteConnexion, cache: CacheConnexions, aver
   ]);
   const parAnnonce = new Map<string, Logement>();
   for (const l of logements) if (l.repull?.id && !parAnnonce.has(l.repull.id)) parAnnonce.set(l.repull.id, l);
+  // Annonce reliée à un logement (autre plateforme du même appartement) : elle est dans ce logement (la liaison l'emporte).
+  for (const l of logements) for (const x of l.repull?.liees ?? []) parAnnonce.set(String(x.id), l);
   const choisies = new Set(selection?.annonces ?? []);
   const annonces: AnnonceDecouverte[] = (cache.annonces ?? [])
     .filter((a) => a.statutRepull !== 'archived')
@@ -848,6 +869,227 @@ export async function delierAnnonce(ctx: ContexteConnexion, logementIdBrut: unkn
   }
   await journaliserLiaison(ctx, qui, 'Logement délié de son annonce', logementId, 'Le logement a repris ce qu’il était avant le lien.', maintenant());
   return { ok: true, logementId, annonce };
+}
+
+/* ============================================ relier l'annonce d'une autre plateforme */
+
+/** Annonce reliée (ok toujours vrai : un échec est une erreur). */
+export interface ResultatConnexion {
+  ok: true;
+  logementId: string;
+  annonce: string;
+  canal: CanalPlateforme;
+  /** Déjà relié avant cet appel : rien n'a changé. */
+  deja: boolean;
+  /** Logement à part qui portait l'annonce, retiré : ce qui y était a rejoint ce logement. */
+  retire?: { id: string; nom: string };
+  /** « Ses 12 réservations, 3 conversations et 2 ménages rejoignent ce logement. » (vide s'il n'y avait rien). */
+  phrase: string;
+  /** Éléments déplacés, par collection. */
+  deplaces: Partial<Record<string, number>>;
+  /** Champs du logement remplis par l'autre (ils étaient vides). */
+  remplis: string[];
+}
+
+/** Attente après la prise du verrou : un passage qui écrivait juste avant finit son écriture en cours. */
+const GRACE_VERROU_MS = 2_000;
+/** Écritures conditionnelles menées en même temps (déplacements). */
+const EN_PARALLELE = 8;
+
+async function parLots<T>(liste: readonly T[], travail: (x: T) => Promise<void>): Promise<void> {
+  for (let i = 0; i < liste.length; i += EN_PARALLELE) await Promise.all(liste.slice(i, i + EN_PARALLELE).map(travail));
+}
+
+/**
+ * Remplace un élément par sa version transformée, seulement s'il n'a pas
+ * changé depuis la lecture ; sinon relu et transformé de nouveau (trois
+ * essais). Vrai : écrit, ou plus rien à changer.
+ */
+async function remplacerAvecReprise<T extends { id: string }>(ctx: ContexteConnexion, collection: string, lu: { element: T; version: string }, transformer: (e: T) => T, auteur: string): Promise<boolean> {
+  let courant: { element: T; version: string } | undefined = lu;
+  for (let essai = 0; essai < 3 && courant; essai++) {
+    const suivant = transformer(courant.element);
+    if (suivant === courant.element || canonique(suivant) === canonique(courant.element)) return true;
+    if (await ctx.base.remplacerSi(collection, suivant, courant.version, auteur)) return true;
+    [courant] = await ctx.base.lireVersions<T>(collection, [lu.element.id]);
+  }
+  return !courant;
+}
+
+/** Déplace vers `vers` tout ce qui porte le logement `de` (toutes les collections), élément par élément. */
+async function deplacerTout(ctx: ContexteConnexion, de: string, vers: string, auteur: string): Promise<{ deplaces: Partial<Record<string, number>>; echecs: number }> {
+  const deplaces: Partial<Record<string, number>> = {};
+  let echecs = 0;
+  for (const c of [...COLLECTIONS_LOGEMENT_ID, 'conseilsPrix', 'actionsAgent', 'bilansProprietaire', 'equipe', 'reglages'] as const) {
+    const lus = await ctx.base.lireVersions<{ id: string }>(c);
+    const aDeplacer = lus.filter((x) => elementDeplace(c, x.element, de, vers) !== x.element);
+    await parLots(aDeplacer, async (x) => {
+      const ok = await remplacerAvecReprise(ctx, c, x, (e) => elementDeplace(c, e, de, vers) as { id: string }, auteur);
+      if (ok) deplaces[c] = (deplaces[c] ?? 0) + 1;
+      else echecs++;
+    });
+  }
+  // Qui suit le logement : l'affectation de l'autre remplit les champs vides de celle d'ici, puis part.
+  const affectations = await ctx.base.lireVersions<AffectationLogement>('affectations', [de, vers]);
+  const a = deplacerAffectations(affectations.map((x) => x.element), de, vers);
+  if (a.ecrire) {
+    const ici = affectations.find((x) => x.element.id === vers);
+    if (ici) {
+      if (!(await remplacerAvecReprise(ctx, 'affectations', ici, (e) => deplacerAffectations([e, ...affectations.filter((x) => x.element.id === de).map((x) => x.element)], de, vers).ecrire ?? e, auteur))) echecs++;
+    } else await ctx.base.ecrire('affectations', [a.ecrire], auteur);
+  }
+  if (a.supprimer) {
+    await ctx.base.supprimer('affectations', [a.supprimer]);
+    deplaces.affectations = (deplaces.affectations ?? 0) + 1;
+  }
+  return { deplaces, echecs };
+}
+
+/** Collections lues pour dire ce qui rejoint le logement (mêmes mots que la suppression d'un logement). */
+const COLLECTIONS_HISTORIQUE = ['reservations', 'filsMessages', 'factures', 'bilansProprietaire', 'documentsProprietaire', 'mandats', 'dossiers', 'missions', 'mouvementsLinge', 'incidents', 'controles', 'charges', 'avisADeposer', 'envoisProgrammes', 'recommandations', 'versionsAnnonce', 'conseilsPrix', 'actionsAgent'] as const;
+
+/**
+ * Relie à ce logement l'annonce d'une autre plateforme du même appartement
+ * (son annonce Booking.com quand il vient d'Airbnb, ou l'inverse). Rien
+ * n'est écrit sur les plateformes ni chez le service de connexion : c'est
+ * une opération sur les données de l'ERP seulement (data/annonces-liees.ts).
+ *
+ * Sous le verrou des connexions (repull-synchro.ts, prendreVerrou) : aucun
+ * passage de synchronisation ne commence pendant ce temps, et un passage
+ * commencé avant s'arrête avant sa prochaine écriture. Tout est relu APRÈS
+ * la prise du verrou et revérifié (verifierConnexion).
+ *
+ * Si l'annonce avait son propre logement dans l'ERP, dans cet ordre :
+ *   1. ce logement reçoit l'annonce reliée (et les champs vides remplis par
+ *      l'autre) : dès lors, la synchronisation envoie tout de l'annonce ici ;
+ *   2. tout ce qui portait l'autre logement passe ici (écritures
+ *      conditionnelles : une saisie de l'équipe faite entre-temps est relue,
+ *      pas écrasée) ;
+ *   3. la trace côté serveur (repull/annonces-reliees) ;
+ *   4. l'autre logement est supprimé (la base refuse s'il porte encore
+ *      quelque chose : on balaie une seconde fois, puis on le dit).
+ * Interrompu en route, le même appel reprend là où il en était ; refait
+ * après coup, il ne change rien (« deja »).
+ */
+export async function relierAutreAnnonce(ctx: ContexteConnexion, logementIdBrut: unknown, annonceBrute: unknown, qui: Gerant): Promise<ResultatConnexion> {
+  if (!peutRelierConnexion(qui.role)) throw new ErreurConnexion('Seul un gérant peut relier une annonce à un logement.', 403);
+  const logementId = texte(logementIdBrut);
+  const annonce = texte(annonceBrute);
+  const maintenant = ctx.maintenant ?? (() => new Date());
+  const verrou = await prendreVerrou(ctx.base, { motif: 'connexion', par: qui.email, maintenant: maintenant() });
+  if (!verrou) throw new ErreurConnexion('Une autre annonce est en train d’être reliée : réessayez dans une minute.', 409);
+  try {
+    await (ctx.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(GRACE_VERROU_MS);
+    return await relierSousVerrou(ctx, logementId, annonce, qui, maintenant);
+  } finally {
+    await rendreVerrou(ctx.base, verrou.jeton, qui.email).catch(() => undefined);
+  }
+}
+
+async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, annonce: string, qui: Gerant, maintenant: () => Date): Promise<ResultatConnexion> {
+  const [cache, selection, versions] = await Promise.all([lireCache(ctx.base), lireSelection(ctx.base), ctx.base.lireVersions<Logement>('logements')]);
+  const logements = versions.map((v) => v.element);
+  const choisies = new Set(selection?.annonces ?? []);
+  const annonces = (cache.annonces ?? []).map((a) => ({ ...a, selectionnee: choisies.has(a.id) }));
+  const verdict = verifierConnexion({ role: qui.role, logementId, annonceId: annonce, logements, annonces });
+  if (!verdict.ok) throw new ErreurConnexion(verdict.erreur, verdict.statut);
+  const base = { ok: true as const, logementId, annonce, canal: verdict.canal };
+  if (verdict.mode === 'deja') return { ...base, deja: true, phrase: '', deplaces: {}, remplis: [] };
+
+  const autre = verdict.autre;
+  const le = horodatageParis(maintenant());
+  const liee = liees(verdict.garde).find((x) => String(x.id) === annonce) ?? nouvelleLiee({ annonce, canal: verdict.canal, nom: verdict.nomAnnonce, le, par: qui.email, depuis: autre?.id });
+
+  // Ce qui rejoint ce logement, lu avant de rien déplacer (pour le récapitulatif et le journal).
+  let phrase = '';
+  if (autre) {
+    const lues = await Promise.all(COLLECTIONS_HISTORIQUE.map((c) => ctx.base.lire(c).then((l) => [c, l] as const)));
+    phrase = phraseCeQuiRejoint(ceQuiRejoint(autre, { logements, ...Object.fromEntries(lues) } as Partial<ErpDonnees>));
+  }
+
+  // 1. Le logement gardé : l'annonce reliée et les champs vides remplis par l'autre.
+  const lu = versions.find((v) => v.element.id === logementId)!;
+  let remplis: string[] = [];
+  const ecrit = await remplacerAvecReprise(
+    ctx,
+    'logements',
+    lu,
+    (g) => {
+      const f = fusionnerLogement(g, liee, autre);
+      remplis = f.remplis;
+      return f.logement;
+    },
+    qui.email,
+  );
+  if (!ecrit) throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
+
+  let deplaces: Partial<Record<string, number>> = {};
+  if (autre) {
+    // 2. Tout ce qui portait l'autre logement passe ici.
+    const r = await deplacerTout(ctx, autre.id, logementId, qui.email);
+    deplaces = r.deplaces;
+    if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Relancez « Relier » : elle reprend là où elle en était.`, 409);
+  }
+
+  // 3. Trace côté serveur : l'annonce va sur ce logement, d'où elle venait.
+  const [trace] = await ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+  const suivante: TraceAnnoncesReliees = {
+    id: ID_ANNONCES_RELIEES,
+    annonces: { ...(trace?.annonces ?? {}), [annonce]: { logementId, canal: liee.canal, ...(liee.depuis ? { depuis: liee.depuis } : {}), ...(liee.nom ? { nom: liee.nom } : {}), le: liee.le, par: liee.par } },
+  };
+  await ctx.base.ecrire(COLLECTION_ETAT, [suivante], qui.email);
+
+  // 4. L'autre logement retiré (la base garde sa dernière version dans son historique).
+  if (autre) {
+    try {
+      await ctx.base.supprimer('logements', [autre.id]);
+    } catch {
+      // Quelque chose y est arrivé entre-temps (ménage créé, message) : on balaie encore, puis on réessaie.
+      const r = await deplacerTout(ctx, autre.id, logementId, qui.email);
+      for (const [c, n] of Object.entries(r.deplaces)) deplaces[c] = (deplaces[c] ?? 0) + (n ?? 0);
+      try {
+        await ctx.base.supprimer('logements', [autre.id]);
+      } catch (e) {
+        throw new ErreurConnexion(`Presque fini : « ${autre.nom} » n’a pas pu être retiré (${e instanceof Error ? e.message : String(e)}). Relancez « Relier » : elle reprend là où elle en était.`, 409);
+      }
+    }
+  }
+
+  const nom = liee.nom ? `« ${liee.nom} »` : annonce;
+  await journaliserLiaison(
+    ctx,
+    qui,
+    'Annonce reliée au logement',
+    logementId,
+    `Annonce ${NOM_CANAL[liee.canal]} ${nom} reliée à ce logement.${autre ? ` « ${autre.nom} » ne figure plus dans la liste.${phrase ? ` ${phrase}` : ''}` : ''}`,
+    maintenant(),
+  );
+  return { ...base, deja: false, ...(autre ? { retire: { id: autre.id, nom: autre.nom } } : {}), phrase, deplaces, remplis };
+}
+
+/** Une annonce cochée dans Connexions, reliée à un logement existant (« Est-ce le même logement que… ? » : Oui). */
+export interface LiaisonChoisie {
+  annonce: string;
+  logement: string;
+}
+
+/**
+ * « Enregistrer mon choix » avec, pour les annonces nouvellement cochées
+ * que le gérant a dites être un logement existant, le lien d'abord (comme
+ * relierAnnonce : un passage tombé entre les deux créerait le logement en
+ * double), puis le choix tel qu'avant (enregistrerSelection, inchangé). Le
+ * lien n'écrit que dans l'ERP. Un lien refusé arrête tout avant le choix.
+ */
+export async function enregistrerSelectionAvecLiaisons(ctx: ContexteConnexion, idsBruts: unknown, liaisonsBrutes: unknown, qui: Gerant): Promise<ResultatSelection & { liaisons: number }> {
+  const brutes = Array.isArray(liaisonsBrutes) ? liaisonsBrutes : [];
+  if (brutes.length > 50) throw new ErreurConnexion('Trop de liens à la fois : enregistrez en plusieurs fois.');
+  const ids = Array.isArray(idsBruts) ? idsBruts.map((x) => texte(x)) : [];
+  const liaisons: LiaisonChoisie[] = brutes.map((x) => ({ annonce: texte((x as LiaisonChoisie)?.annonce), logement: texte((x as LiaisonChoisie)?.logement) })).filter((x) => x.annonce && x.logement);
+  if (liaisons.some((x) => !ids.includes(x.annonce))) throw new ErreurConnexion('Choix illisible : rechargez la page.');
+  if (liaisons.length && !peutRelierConnexion(qui.role)) throw new ErreurConnexion('Seul un gérant peut relier une annonce à un logement.', 403);
+  for (const x of liaisons) await relierAutreAnnonce(ctx, x.logement, x.annonce, qui);
+  const r = await enregistrerSelection(ctx, idsBruts, qui.email);
+  return { ...r, liaisons: liaisons.length };
 }
 
 /**

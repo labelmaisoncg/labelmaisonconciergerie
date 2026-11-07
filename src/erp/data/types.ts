@@ -53,6 +53,31 @@ export interface OrigineRepull {
   photosLuesLe?: Horodatage;
   /** D'où viennent les photos et les prix, ou pourquoi ils manquent (dernier relevé). */
   lecture?: LectureAnnonce;
+  /**
+   * Logement seulement : annonces des AUTRES plateformes du même appartement
+   * (l'annonce Booking.com d'un logement venu d'Airbnb, ou l'inverse), reliées
+   * par un gérant (data/annonces-liees.ts, api/erp-repull-connexion.ts). Leurs
+   * réservations et leurs conversations arrivent sur ce logement ; elles ne
+   * créent jamais de logement et ne changent ni son nom, ni ses photos, ni sa
+   * description, ni ses prix (ceux de l'annonce principale, `id`). Écrites
+   * par le serveur seulement, jamais changées ensuite (la base les garde :
+   * erp.garder_lien_annonce).
+   */
+  liees?: AnnonceLiee[];
+}
+
+/** Annonce d'une autre plateforme reliée à un logement (OrigineRepull.liees). */
+export interface AnnonceLiee {
+  /** Identifiant de l'annonce chez le service de connexion. */
+  id: string;
+  canal: 'airbnb' | 'booking';
+  /** Nom de l'annonce au moment du lien (affichage). */
+  nom?: string;
+  /** Quand et par qui (adresse du gérant). */
+  le: Horodatage;
+  par: string;
+  /** Logement de l'ERP qui portait cette annonce avant le lien, retiré depuis (« repull-… »). */
+  depuis?: Id;
 }
 
 /**
