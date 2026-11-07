@@ -56,7 +56,23 @@ export default function ModuleMessagerie() {
           ]}
         />
         {marche.retour && (
-          <Alert tone={marche.retour.ton} className="mt-4" actions={<Button size="sm" variant="ghost" onClick={marche.effacerRetour}>OK</Button>}>
+          <Alert
+            tone={marche.retour.ton}
+            className="my-4"
+            actionsDessous
+            actions={
+              <>
+                {marche.retour.detail && onglet !== 'agent' && (
+                  <ButtonLink size="sm" variant="ghost" to="/erp/messagerie/agent">
+                    Voir le détail
+                  </ButtonLink>
+                )}
+                <Button size="sm" variant="ghost" onClick={marche.effacerRetour}>
+                  OK
+                </Button>
+              </>
+            }
+          >
             {marche.retour.texte}
           </Alert>
         )}

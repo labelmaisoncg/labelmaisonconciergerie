@@ -128,11 +128,12 @@ export function Configurer() {
         <Alert tone="info" titre="Lecture seule : seul un gérant peut changer ces réglages." />
       )}
 
-      <Card className={cn('flex flex-wrap items-center gap-4', enregistre.actif ? 'border-(--lm-succes)/40' : 'border-(--lm-alerte)/40')}>
+      {/* La pause est le réglage par défaut voulu, pas un avertissement : filet neutre. */}
+      <Card className={cn('flex flex-wrap items-center gap-4', enregistre.actif && 'border-(--lm-succes)/40')}>
         <div className="min-w-0 flex-1">
           <p className="text-[16px] font-semibold text-(--lm-encre)">{enregistre.actif ? explication.titre : 'Votre agent est en pause'}</p>
           {/* Actif : le titre suffit, la phrase sous le choix du niveau explique le reste. */}
-          {!enregistre.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.{gerant && !bloque ? ' Allumez-le avec l’interrupteur en haut de la page.' : ''}</p>}
+          {!enregistre.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.{gerant && !bloque ? ' Activez-le avec l’interrupteur en haut de la page.' : ''}</p>}
           {mention && (
             <p className="mt-1 text-[12.5px]">
               <ReserveGerant />
