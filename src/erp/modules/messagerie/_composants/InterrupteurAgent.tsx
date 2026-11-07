@@ -69,8 +69,9 @@ export function useMarcheAgent() {
 }
 
 /**
- * En-tête de la Messagerie : pour un gérant, l'état et l'interrupteur
- * (marche / pause tout de suite) ; pour les autres, la pastille d'état seule.
+ * En-tête de la Messagerie : pour un gérant, l'interrupteur à la place de la
+ * pastille d'état, avec son libellé (marche / pause tout de suite, le seul
+ * endroit où on l'allume) ; pour les autres, la pastille d'état seule.
  * `marche` : celle de la page, qui affiche le retour du premier passage sous l'en-tête.
  */
 export function InterrupteurAgent({ marche: m }: { marche: ReturnType<typeof useMarcheAgent> }) {
@@ -80,8 +81,7 @@ export function InterrupteurAgent({ marche: m }: { marche: ReturnType<typeof use
   const libelle = !m.actif ? 'Agent en pause' : branche ? 'Agent actif' : 'Agent pas encore branché';
   return (
     <div className="flex items-center gap-3">
-      <p role="status" className="inline-flex items-center gap-2 text-[13px] font-medium text-(--lm-encre-2)">
-        <span aria-hidden className={cn('size-2 rounded-full', m.actif && branche ? 'bg-(--lm-succes)' : 'bg-(--lm-alerte)')} />
+      <p role="status" className={cn('text-[13px] font-medium', m.actif && !branche ? 'text-(--lm-alerte)' : 'text-(--lm-encre-2)')}>
         {libelle}
       </p>
       <Interrupteur actif={m.actif} onChange={(v) => void m.basculer(v)} label="Activer votre agent" disabled={m.enCours} taille="grand" />

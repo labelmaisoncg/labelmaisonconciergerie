@@ -184,7 +184,7 @@ export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: bool
 
       <ul className="mt-2 divide-y divide-(--lm-bord)" aria-busy={chargement}>
         <Ligne ok={etat ? actif : null} titre={actif ? 'Agent actif' : 'Agent en pause'}>
-          {actif ? passage : 'Il ne répond à personne : activez-le plus haut.'}
+          {actif ? passage : 'Il ne répond à personne : allumez-le avec l’interrupteur en haut de la page.'}
         </Ligne>
         {/* Second contrôle des réponses en échec répété (controle-reponse.ts) : rien ne part seul. */}
         {etat?.etat?.controle?.alerte && (
