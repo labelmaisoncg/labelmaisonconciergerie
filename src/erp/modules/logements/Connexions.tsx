@@ -34,7 +34,7 @@ import type {
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
 import { logementsARelier } from '../../data/liaison-annonce';
-import { NOM_CANAL, canalApporte, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
+import { NOM_CANAL, canalApporte, canalDe, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
 import type { Logement } from '../../data/types';
 import { Alert, Badge, Button, Card, CardHeader, ChoixListe, EmptyState, IconButton, Modal, NBSP, PageHeader, ProgressBar, Repli, Skeleton, cn, insecables, type Ton } from '../../ui';
 import { ErreurConnexions, NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
@@ -269,11 +269,24 @@ export default function Connexions() {
   // La limite de l'offre se compte en annonces chez le service de connexion (un logement relié en a deux).
   const infoLimite = `Vous avez atteint la limite de l’${nomOffre(etat?.offre)} (${pluriel(limite ?? 0, 'annonce')}). Passez à l’offre Starter pour en ajouter d’autres.`;
 
+  // Annonces d'un compte déconnecté : Repull les garde (en pause), l'ERP ne les montre plus, sauf encore
+  // choisies (à décocher). Plateforme inconnue ou autre logiciel : toujours montrées.
+  const { annoncesVisibles, masquees } = useMemo(() => {
+    const branchees = new Set((etat?.connexions ?? []).map((c) => c.fournisseur));
+    const choisies = new Set(etat?.selection ?? []);
+    const visibles = (etat?.annonces ?? []).filter((a) => {
+      if (choisies.has(a.id)) return true;
+      const canaux = a.plateformes.map(canalDe);
+      return !canaux.length || canaux.some((c) => !c || branchees.has(c));
+    });
+    return { annoncesVisibles: visibles, masquees: (etat?.annonces.length ?? 0) - visibles.length };
+  }, [etat]);
+
   // Un logement par carte : ses annonces (principale et reliées) ensemble ; les autres annonces une par une.
   const cartes = useMemo(() => {
     const res: CarteChoix[] = [];
     const rang = new Map<string, number>();
-    for (const a of etat?.annonces ?? []) {
+    for (const a of annoncesVisibles) {
       const l = a.logementId ? logements.find((x) => x.id === a.logementId) : undefined;
       if (l && liees(l).length) {
         const i = rang.get(l.id);
@@ -287,7 +300,7 @@ export default function Connexions() {
       } else res.push({ cle: a.id, ids: [a.id], annonces: [a], ...(l ? { logement: l } : {}) });
     }
     return res;
-  }, [etat, logements]);
+  }, [annoncesVisibles, logements]);
 
   const ajouter = (ids: string[], liaison?: { annonce: string; logement: string }) => {
     setChoix((c) => {
@@ -545,6 +558,11 @@ export default function Connexions() {
         {atteinte && etat && etat.annonces.length > choix.size && (
           <p className="mb-3 text-[12.5px] text-(--lm-encre-2)" role="note">
             {infoLimite}
+          </p>
+        )}
+        {masquees > 0 && (
+          <p className="mb-3 text-[12.5px] text-(--lm-encre-2)" role="note">
+            {pluriel(masquees, 'annonce d’un compte déconnecté n’est plus affichée', 'annonces de comptes déconnectés ne sont plus affichées')}.
           </p>
         )}
 
