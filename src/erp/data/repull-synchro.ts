@@ -2120,6 +2120,8 @@ export interface Relecture {
   id: typeof ID_RELIRE;
   /** Instant ISO : relire les réservations modifiées depuis. Absent : rien à relire. */
   depuis?: string;
+  /** Dernière demande (la réécriture change la version de l'élément). */
+  demandeLe?: string;
 }
 
 /** Demande une relecture depuis `depuisMs` (garde la plus ancienne demande en cours). */
@@ -2132,8 +2134,8 @@ export async function noterRelecture(base: BaseErp, depuisMs: number, par: strin
       if ((await base.ajouterSiAbsent(COLLECTION_ETAT, [neuve], par)) === 1) return;
       continue;
     }
-    if (lu.element.depuis && instant(lu.element.depuis) <= depuisMs) return;
-    const plusTot: Relecture = { id: ID_RELIRE, depuis };
+    // Toujours réécrite (sa version change) : un passage commencé avant ne peut plus l'effacer.
+    const plusTot: Relecture = { id: ID_RELIRE, depuis: lu.element.depuis && instant(lu.element.depuis) <= depuisMs ? lu.element.depuis : depuis, demandeLe: new Date().toISOString() };
     if (await base.remplacerSi(COLLECTION_ETAT, plusTot, lu.version, par)) return;
   }
 }
@@ -2381,11 +2383,12 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
   // Verrou des connexions : pas de passage pendant qu'un gérant relie une annonce à un logement (aucun appel).
   // Le lien dure quelques secondes : on attend qu'il finisse (une réservation reçue par webhook n'est pas
   // perdue), sans entamer le temps du passage ; au-delà, « occupe ».
-  let verrou = await lireVerrou(o.base).catch(() => null);
+  // Illisible : le passage échoue (il ne tourne jamais sans la garde du verrou).
+  let verrou = await lireVerrou(o.base);
   const patienter = o.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   for (let i = 0; i < ATTENTES_VERROU && verrou && verrouPris(verrou.verrou, maintenant().getTime()) && o.echeance - maintenant().getTime() > TEMPS_GARDE_APRES_VERROU_MS; i++) {
     await patienter(PAS_ATTENTE_VERROU_MS);
-    verrou = await lireVerrou(o.base).catch(() => null);
+    verrou = await lireVerrou(o.base);
   }
   if (verrou && verrouPris(verrou.verrou, maintenant().getTime())) {
     // Remis : le passage suivant relira les réservations d'ici (un webhook ne revient pas).
@@ -2493,7 +2496,7 @@ export async function releverConversations(o: Omit<OptionsLancement, 'declencheu
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) throw new BudgetEpuise();
   // Verrou des connexions (voir lancer) : rien pendant qu'un gérant relie une annonce à un logement.
-  const verrou = await lireVerrou(o.base).catch(() => null);
+  const verrou = await lireVerrou(o.base);
   if (verrou && verrouPris(verrou.verrou, maintenant().getTime())) return null;
   const baseSession = verrou ? baseGardee(o.base, verrou.verrou?.generation ?? 0, maintenant) : o.base;
   const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre, origineCle: o.origineCle });

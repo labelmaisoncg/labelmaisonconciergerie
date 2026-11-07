@@ -71,7 +71,7 @@ import {
   type PhaseRepull,
   type SelectionRepull,
 } from './repull-synchro.js';
-import type { ErpDonnees, FilMessages, Journal, Logement, Reservation } from './types';
+import type { AnnonceLiee, ErpDonnees, FilMessages, Journal, Logement, Reservation } from './types';
 
 type Fetch = typeof fetch;
 
@@ -914,11 +914,32 @@ async function sousVerrou<T>(ctx: ContexteConnexion, qui: Gerant, travail: (main
   }
 }
 
-/** Logements, annonces trouvées et choix, pour vérifier un lien (verifierConnexion). */
+/** Logements, annonces trouvées, choix et trace des liens, pour vérifier un lien (verifierConnexion). */
 async function lireConnexion(ctx: ContexteConnexion) {
-  const [cache, selection, versions] = await Promise.all([lireCache(ctx.base), lireSelection(ctx.base), ctx.base.lireVersions<Logement>('logements')]);
+  const [cache, selection, versions, [trace]] = await Promise.all([
+    lireCache(ctx.base),
+    lireSelection(ctx.base),
+    ctx.base.lireVersions<Logement>('logements'),
+    ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]),
+  ]);
   const choisies = new Set(selection?.annonces ?? []);
-  return { versions, logements: versions.map((v) => v.element), annonces: (cache.annonces ?? []).map((a) => ({ ...a, selectionnee: choisies.has(a.id) })) };
+  return { versions, trace, logements: versions.map((v) => v.element), annonces: (cache.annonces ?? []).map((a) => ({ ...a, selectionnee: choisies.has(a.id) })) };
+}
+
+/** La trace des liens (repull/annonces-reliees) envoie-t-elle cette annonce sur ce logement ? */
+async function traceConfirme(ctx: ContexteConnexion, annonce: string, logementId: string): Promise<boolean> {
+  const [trace] = await ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+  return trace?.annonces?.[annonce]?.logementId === logementId;
+}
+
+/** Écrit (ou réécrit) l'entrée de cette annonce dans la trace des liens. */
+async function ecrireTrace(ctx: ContexteConnexion, annonce: string, logementId: string, liee: AnnonceLiee, par: string): Promise<void> {
+  const [trace] = await ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+  const suivante: TraceAnnoncesReliees = {
+    id: ID_ANNONCES_RELIEES,
+    annonces: { ...(trace?.annonces ?? {}), [annonce]: { logementId, canal: liee.canal, ...(liee.depuis ? { depuis: liee.depuis } : {}), ...(liee.nom ? { nom: liee.nom } : {}), le: liee.le, par: liee.par } },
+  };
+  await ctx.base.ecrire(COLLECTION_ETAT, [suivante], par);
 }
 /** Collections lues pour dire ce qui rejoint le logement (mêmes mots que la suppression d'un logement). */
 const COLLECTIONS_HISTORIQUE = ['reservations', 'filsMessages', 'factures', 'bilansProprietaire', 'documentsProprietaire', 'mandats', 'dossiers', 'missions', 'mouvementsLinge', 'incidents', 'controles', 'charges', 'avisADeposer', 'envoisProgrammes', 'recommandations', 'versionsAnnonce', 'conseilsPrix', 'actionsAgent'] as const;
@@ -953,7 +974,7 @@ export async function relierAutreAnnonce(ctx: ContexteConnexion, logementIdBrut:
   // Déjà relié et terminé : ni verrou ni attente ; ce qui arriverait encore sur l'autre logement (supprimé) le rejoint.
   const avant = await lireConnexion(ctx);
   const dejaFait = verifierConnexion({ role: qui.role, logementId, annonceId: annonce, logements: avant.logements, annonces: avant.annonces });
-  if (dejaFait.ok && dejaFait.mode === 'deja') {
+  if (dejaFait.ok && dejaFait.mode === 'deja' && (await traceConfirme(ctx, annonce, logementId))) {
     const depuis = liees(dejaFait.garde).find((x) => String(x.id) === annonce)?.depuis;
     const r = depuis && depuis !== logementId && !avant.logements.some((l) => l.id === depuis) ? await deplacerTout(ctx.base, depuis, logementId, qui.email) : undefined;
     return { ok: true, logementId, annonce, canal: dejaFait.canal, deja: true, phrase: '', deplaces: r?.deplaces ?? {}, remplis: [] };
@@ -966,7 +987,12 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
   const verdict = verifierConnexion({ role: qui.role, logementId, annonceId: annonce, logements, annonces });
   if (!verdict.ok) throw new ErreurConnexion(verdict.erreur, verdict.statut);
   const base = { ok: true as const, logementId, annonce, canal: verdict.canal };
-  if (verdict.mode === 'deja') return { ...base, deja: true, phrase: '', deplaces: {}, remplis: [] };
+  if (verdict.mode === 'deja') {
+    // Relié sur la fiche mais pas dans la trace (coupure juste avant elle) : la trace d'abord, sinon rien n'aiguille.
+    const liee = liees(verdict.garde).find((x) => String(x.id) === annonce);
+    if (liee && !(await traceConfirme(ctx, annonce, logementId))) await ecrireTrace(ctx, annonce, logementId, liee, qui.email);
+    return { ...base, deja: true, phrase: '', deplaces: {}, remplis: [] };
+  }
 
   const autre = verdict.autre;
   const le = horodatageParis(maintenant());
@@ -1003,13 +1029,8 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
     if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Touchez « Terminer le lien » sur la fiche de « ${verdict.garde.nom} ».`, 409);
   }
 
-  // 3. Trace côté serveur : l'annonce va sur ce logement, d'où elle venait.
-  const [trace] = await ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
-  const suivante: TraceAnnoncesReliees = {
-    id: ID_ANNONCES_RELIEES,
-    annonces: { ...(trace?.annonces ?? {}), [annonce]: { logementId, canal: liee.canal, ...(liee.depuis ? { depuis: liee.depuis } : {}), ...(liee.nom ? { nom: liee.nom } : {}), le: liee.le, par: liee.par } },
-  };
-  await ctx.base.ecrire(COLLECTION_ETAT, [suivante], qui.email);
+  // 3. Trace côté serveur : l'annonce va sur ce logement, d'où elle venait (c'est elle qui aiguille la synchronisation).
+  await ecrireTrace(ctx, annonce, logementId, liee, qui.email);
 
   // 4. L'autre logement retiré (la base garde sa dernière version dans son historique).
   if (autre) {
@@ -1072,7 +1093,7 @@ export async function enregistrerSelectionAvecLiaisons(ctx: ContexteConnexion, i
   const lus = liaisons.length ? await lireConnexion(ctx) : null;
   const aFaire = liaisons.filter((x) => {
     const v = lus ? verifierConnexion({ role: qui.role, logementId: x.logement, annonceId: x.annonce, logements: lus.logements, annonces: lus.annonces }) : null;
-    return !(v?.ok && v.mode === 'deja');
+    return !(v?.ok && v.mode === 'deja' && lus?.trace?.annonces?.[x.annonce]?.logementId === x.logement);
   });
   if (aFaire.length) {
     await sousVerrou(ctx, qui, async (maintenant) => {

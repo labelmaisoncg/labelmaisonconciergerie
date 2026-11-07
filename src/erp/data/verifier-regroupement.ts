@@ -750,6 +750,16 @@ async function principal() {
     verifier(fb2.get<Reservation>('reservations', 'res-702')?.logementId === g.id && fb2.get<{ logementId: string }>('missions', 'mis-tard')?.logementId === g.id, 'ménage arrivé pendant l’opération : déplacé lui aussi (la base refusait la suppression)');
     verifier((fb2.get<Logement>('logements', g.id)?.repull?.liees ?? []).length === 1, 'toujours une seule annonce reliée (rien en double)');
   }
+  {
+    // Coupure juste avant la trace (annonce pas encore importée) : la fiche dit « relié », la trace ne dit rien.
+    const fb3 = new FausseBase();
+    const ctx3 = (): ContexteConnexion => ({ cle: 'sk_test_fictif', base: nouvelleBase(fb3), echeance: Date.now() + 50_000, fetch: repull.fetch as typeof fetch, attendre: async () => undefined, maintenant });
+    const g = importe('711', 'Loft des Fictifs', 'airbnb');
+    fb3.poser('logements', fusionnerLogement(g, nouvelleLiee({ annonce: '712', canal: 'booking', le: 'x', par: GERANT.email }), undefined).logement);
+    const r = await relierAutreAnnonce(ctx3(), g.id, '712', GERANT);
+    const t = fb3.get<{ annonces: Record<string, { logementId: string }> }>(COLLECTION_ETAT, ID_ANNONCES_RELIEES);
+    verifier(r.deja && t?.annonces['712']?.logementId === g.id, 'relié sur la fiche sans la trace : refaire « Relier » écrit la trace (sinon rien n’aiguillerait)');
+  }
 
   /* ------------------------------------------------ synchronisation après coup */
   section('7. Synchronisation après le lien');
