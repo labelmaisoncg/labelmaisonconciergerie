@@ -1,5 +1,7 @@
 /**
- * Onglet « Votre agent » : marche / pause, ce qu'il envoie seul
+ * Onglet « Votre agent » : marche / pause (appliquée au toucher, comme sur
+ * un iPhone : InterrupteurAgent.tsx ; le reste s'enregistre avec le bouton),
+ * ce qu'il envoie seul
  * (niveau d'autonomie), ton, langues, signature, horaires, ce qu'il vous
  * transmet, où vous prévenir. Marche, niveau, horaires et ce qu'il vous
  * confie : gérant seulement (REGLAGES_AGENT_GERANT) ; ton, signature,
@@ -23,6 +25,7 @@ import type { ReglagesAgent } from '../../../data/types';
 import { NIVEAUX_AUTONOMIE, explicationNiveau, niveauAutonomie, reglagesAEnregistrer } from '../../../data/messagerie-ia';
 import { completudeFiche } from './logique';
 import { EtatAgentServeur } from './EtatAgent';
+import { useMarcheAgent } from './InterrupteurAgent';
 
 const DELAIS = [
   { valeur: '15', libelle: '15 minutes' },
@@ -79,6 +82,8 @@ export function Configurer() {
   const enregistre = reglagesAgent(d, nomEspace);
   const [f, setF] = useState<ReglagesAgent>(enregistre);
   const [ok, setOk] = useState(false);
+  // Marche / pause : enregistrée tout de suite, sans emporter les autres réglages en cours de saisie.
+  const marche = useMarcheAgent();
   const modifie = JSON.stringify({ ...f, majLe: 0, majPar: 0 }) !== JSON.stringify({ ...enregistre, majLe: 0, majPar: 0 });
   const bloque = d.lectureSeule;
 
@@ -137,9 +142,23 @@ export function Configurer() {
         </div>
         <label className="flex items-center gap-3 text-[13.5px] font-medium text-(--lm-encre)">
           {f.actif ? 'Actif' : 'En pause'}
-          <Interrupteur actif={f.actif} onChange={(v) => maj({ actif: v })} label="Activer votre agent" disabled={reserve} />
+          <Interrupteur
+            actif={f.actif}
+            onChange={(v) => {
+              setF((x) => ({ ...x, actif: v }));
+              void marche.basculer(v);
+            }}
+            label="Activer votre agent"
+            disabled={reserve || marche.enCours}
+            taille="grand"
+          />
         </label>
       </Card>
+      {marche.retour && (
+        <Alert tone={marche.retour.ton} actions={<Button size="sm" variant="ghost" onClick={marche.effacerRetour}>OK</Button>}>
+          {marche.retour.texte}
+        </Alert>
+      )}
 
       {/* La carte d'état suit le niveau enregistré, pas celui en cours de choix. */}
       <EtatAgentServeur actifReglage={enregistre.actif} passage={explicationNiveau(niveauAutonomie(enregistre, estLabelMaison(espaceOuvert())), enregistre.transmettre).passage} />

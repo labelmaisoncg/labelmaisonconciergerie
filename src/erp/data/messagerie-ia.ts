@@ -736,6 +736,16 @@ export function reglagesAEnregistrer(formulaire: ReglagesAgent, enregistres: Par
   return r as unknown as ReglagesAgent;
 }
 
+/**
+ * Marche / pause de l'agent, appliquée tout de suite (l'interrupteur, comme
+ * sur un iPhone) : les réglages enregistrés, seul `actif` change. Les autres
+ * réglages en cours de saisie ne partent pas avec. Gérant seulement
+ * (REGLAGES_AGENT_GERANT) ; rien ne l'éteint ensuite à sa place.
+ */
+export function reglagesAvecMarche(enregistres: ReglagesAgent, actif: boolean, o: { le: string; par: string }): ReglagesAgent {
+  return { ...enregistres, actif, majLe: o.le, majPar: o.par };
+}
+
 /** Confiance minimale pour un envoi seul. */
 export const SEUIL_SIMPLES = 0.85;
 export const SEUIL_AUTONOME = 0.7;
