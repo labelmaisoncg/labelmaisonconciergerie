@@ -1157,7 +1157,7 @@ export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, c
     // Repull ne le connaît plus (ou pas sous ce nom) : la liste est relue au prochain affichage.
     delete cache.luLe;
     await ecrireCache(ctx.base, cache);
-    if (introuvable) throw new ErreurConnexion('Repull ne trouve plus ce compte parmi vos connexions. La liste est mise à jour ; s’il reste affiché, retirez-le depuis votre espace Repull (repull.dev).', 404);
+    if (introuvable) throw new ErreurConnexion('Repull ne trouve plus ce compte parmi vos connexions. La liste est mise à jour ; s’il reste affiché, retirez-le depuis votre compte Repull (repull.dev).', 404);
     throw new ErreurConnexion(`Ce logiciel se déconnecte depuis son propre site, pas depuis l’ERP.${message501 ? ` Repull explique : « ${message501} »` : ''}`, 501);
   }
   const desactivees = (Array.isArray(r?.listingsDeactivated) ? r.listingsDeactivated : []).map(texte).filter(Boolean);
