@@ -30,7 +30,7 @@
  *
  * Imports relatifs avec « .js » : ce fichier tourne sous Node (ESM).
  */
-import { dateParis, horodatageParis, photosDepuisContenu, tarifsDepuisBooking } from './repull.js';
+import { dateParis, horodatageParis, idRepull, photosDepuisContenu, tarifsDepuisBooking } from './repull.js';
 import type { RepullListing } from './repull.js';
 import { arriveesDeLAnnonce, delierLogement, delierPossible, depasseLimite, lierLogement, peutRelier, verifierLiaison } from './liaison-annonce.js';
 import {
@@ -996,7 +996,12 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
 
   const autre = verdict.autre;
   const le = horodatageParis(maintenant());
-  const liee = liees(verdict.garde).find((x) => String(x.id) === annonce) ?? nouvelleLiee({ annonce, canal: verdict.canal, nom: verdict.nomAnnonce, le, par: qui.email, depuis: autre?.id });
+  // Annonce sans logement aujourd'hui, mais qui en a eu un (fiche effacée, erp-repartir-logements.sql) : ses
+  // réservations, messages… portent encore « repull-<annonce> ». Ils rejoignent ce logement, et le rattrapage
+  // du cron (rattraperLiens) suit ce `depuis` pendant 14 jours.
+  const ancien = idRepull(annonce);
+  const orphelin = !autre && ancien !== logementId && !logements.some((l) => l.id === ancien) ? ancien : undefined;
+  const liee = liees(verdict.garde).find((x) => String(x.id) === annonce) ?? nouvelleLiee({ annonce, canal: verdict.canal, nom: verdict.nomAnnonce, le, par: qui.email, depuis: autre?.id ?? orphelin });
 
   // Ce qui rejoint ce logement, lu avant de rien déplacer (pour le récapitulatif et le journal).
   let phrase = '';
@@ -1026,7 +1031,10 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
     // 2. Tout ce qui portait l'autre logement passe ici.
     const r = await deplacerTout(ctx.base, autre.id, logementId, qui.email);
     deplaces = r.deplaces;
-    if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Touchez « Terminer le lien » sur la fiche de « ${verdict.garde.nom} ».`, 409);
+    if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Touchez « Terminer le lien » sur la fiche de « ${verdict.garde.nom} ».`, 409);
+  } else if (orphelin) {
+    // 2 bis. Ce qui portait encore l'ancienne fiche de l'annonce passe ici (rien à faire s'il n'y a rien).
+    deplaces = (await deplacerTout(ctx.base, orphelin, logementId, qui.email)).deplaces;
   }
 
   // 3. Trace côté serveur : l'annonce va sur ce logement, d'où elle venait (c'est elle qui aiguille la synchronisation).

@@ -832,6 +832,44 @@ Sur les téléphones, l'application se déconnecte toute seule à la prochaine
 ouverture (les anciens comptes n'existent plus) ; se reconnecter avec le
 nouveau compte suffit.
 
+## Repartir de zéro pour les logements (novembre 2026)
+
+Pour effacer seulement les fiches logement de Label Maison (doublons, fiches
+d'essai, fiche faite à la main en trop) et les laisser revenir propres depuis
+les annonces, sans toucher au reste : `supabase/erp-repartir-logements.sql`.
+
+**Ce qui s'efface** (espace Label Maison seulement) : toutes les fiches
+logement, importées ou faites à la main, avec ce qui y a été saisi dans l'ERP
+(fiche voyageur, repères techniques, contacts, couleur), et les liens entre
+annonces (« Relier l'annonce Booking.com »).
+
+**Ce qui reste** : réservations, conversations, ménages, linge, incidents,
+contrôles, factures, bilans, documents, propriétaires, équipe, CRM, réglages,
+journal, trace des messages déjà envoyés (rien ne repart deux fois aux
+voyageurs), choix des annonces (Connexions), compteur d'appels, les autres
+espaces et tous les comptes. L'historique de la base garde la dernière version
+de chaque fiche effacée. Les réservations ne sont pas effacées exprès :
+réimportées, chacune enverrait une notification « nouvelle réservation ».
+
+Dans l'ordre :
+
+1. **Fermer l'ERP** sur tous les appareils (ordinateur, téléphone, app) : une
+   page restée ouverte pourrait réécrire un logement effacé.
+2. **Lancer le script** : Supabase → SQL Editor → New query → coller tout
+   `supabase/erp-repartir-logements.sql`, remplacer `NON` par `OUI` à la
+   première ligne, Run. L'onglet Results doit afficher `logements` = 0 ; les
+   autres chiffres ne changent pas. Tant que la première ligne dit `NON`, rien
+   ne s'efface.
+3. **Rouvrir l'ERP**, puis Paramètres → Plateformes → « Synchroniser » : les
+   logements des annonces cochées reviennent, avec le même identifiant, et
+   leurs réservations, messages et ménages s'y raccrochent tout seuls. Une
+   fiche faite à la main ne revient pas.
+4. **Relier les annonces du même appartement** : sur la fiche Airbnb,
+   « Relier l'annonce Booking.com ». Une annonce décochée (logement « En
+   pause ») se coche d'abord dans Logements → Connexions ; à la question qui
+   suit (« Est-ce le même logement que … ? », ou la liste des logements),
+   désigner le logement Airbnb : ce qui portait son ancienne fiche le rejoint.
+
 ## Connexion à l'ERP
 
 Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
