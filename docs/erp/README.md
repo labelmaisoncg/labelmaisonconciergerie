@@ -870,6 +870,36 @@ Dans l'ordre :
    suit (« Est-ce le même logement que … ? », ou la liste des logements),
    désigner le logement Airbnb : ce qui portait son ancienne fiche le rejoint.
 
+## Repartir de zéro sauf le CRM (novembre 2026)
+
+Pour vider l'exploitation de Label Maison (logements, réservations,
+conversations, ménages…) en gardant le CRM, l'équipe et les réglages :
+`supabase/erp-repartir-de-zero.sql`. Plus large que « Repartir de zéro pour
+les logements » ci-dessus, moins que la remise à zéro complète.
+
+**Ce qui s'efface** (espace Label Maison seulement) : logements, réservations,
+conversations, ménages, linge, incidents, contrôles, charges, paiements des
+prestataires, dossiers, mandats, recommandations, textes d'annonce, documents
+partagés, bilans, affectations, signalements, actions de l'IA, demandes des
+propriétaires, annonces à l'équipe, journal, décisions sur les prix, factures
+en brouillon, liens entre annonces, et la trace des messages automatiques des
+séjours finis depuis plus de 30 jours.
+
+**Ce qui reste** : le CRM (contacts et prospects), les propriétaires, l'équipe,
+les prestataires, les accès et les comptes, les réglages, les factures émises,
+les autres espaces, le compteur d'appels et le choix des annonces, l'historique
+de la base, et la trace des messages automatiques des séjours récents ou à
+venir et des avis déjà publiés : quand les réservations reviendront, rien ne
+repartira deux fois aux voyageurs.
+
+Dans l'ordre : fermer l'ERP sur tous les appareils ; Supabase → SQL Editor →
+New query → coller tout le script, `NON` → `OUI` à la première ligne, Run ;
+l'onglet Results doit afficher `logements`, `reservations` et `conversations`
+à 0, `contacts_crm` inchangé. Rien ne revient tout seul tant qu'aucune
+plateforme n'est connectée : en reconnectant Airbnb ou Booking.com et en
+cochant les annonces, leurs logements, réservations et conversations reviennent
+(une notification seulement pour les séjours en cours ou à venir).
+
 ## Connexion à l'ERP
 
 Chacun entre avec **son adresse e-mail et son mot de passe** (page d'accès
