@@ -266,6 +266,7 @@ class FauxRepull {
   refusInclusEtendus = false;
   /** Annonces actives permises par l'offre (gratuite : 3), comme l'API (402). */
   limiteActives = 3;
+  refuseDeconnexion = new Set<string>();
   /** Compte au-delà de sa limite : l'API répond 402 partout (sauf usage et DELETE). */
   bloque402 = false;
   connexions: Record<string, unknown>[] = [
@@ -335,6 +336,8 @@ class FauxRepull {
       if (m[1] !== 'airbnb' && m[1] !== 'booking' && m[1] !== 'booking-extranet-login') return json({ error: { code: 'not_implemented', message: 'no', fix: 'Disconnect Repull from your Hostaway settings.' } }, 501);
       // Booking.com : un compte relié par « Extranet login » ne se déconnecte que sous ce nom (sinon 404, comme Repull).
       if (m[1] !== 'airbnb') {
+        // Compte que Repull liste encore mais refuse de déconnecter (404 sous tous les noms).
+        if (this.refuseDeconnexion.has(String(p.get('accountId')))) return json({ error: { code: 'not_found', message: 'not connected' } }, 404);
         const compte = this.connexions.find((c) => c.provider === m![1] && (!p.get('accountId') || c.externalAccountId === p.get('accountId')));
         if (!compte) return json({ error: { code: 'not_found', message: 'not connected' } }, 404);
         this.connexions = this.connexions.filter((c) => c !== compte);
@@ -1923,6 +1926,18 @@ async function principal() {
   await deconnecter(ctx(), 'booking', '154').catch((e) => (refusBooking = e instanceof ErreurConnexion ? `${e.statut} ${e.message}` : String(e)));
   const e5 = await lireEtatConnexions(ctx());
   verifier(/^404 Repull ne trouve plus ce compte/.test(refusBooking) && !e5.connexions.some((c) => c.compte === '154'), `compte que Repull ne connaît plus : message clair, liste relue sans lui (${refusBooking})`);
+  // Repull liste encore un établissement mais dit ne pas le connaître : il n'est plus montré, jusqu'à une nouvelle connexion Booking.com.
+  repull.connexions.push({ id: 'c10', provider: 'booking-extranet-login', status: 'active', externalAccountId: '888', createdAt: '2026-09-03T10:00:00Z' });
+  repull.refuseDeconnexion.add('888').add('c10');
+  const e6 = await lireEtatConnexions(ctx(), { forcer: true });
+  let refus888 = '';
+  await deconnecter(ctx(), 'booking', '888').catch((e) => (refus888 = e instanceof ErreurConnexion ? String(e.statut) : String(e)));
+  const e7 = await lireEtatConnexions(ctx());
+  verifier(e6.connexions.some((c) => c.compte === '888') && refus888 === '404' && !e7.connexions.some((c) => c.compte === '888'), 'compte que Repull liste encore mais ne connaît plus : plus montré après « Déconnecter »');
+  await demarrerConnexion(ctx(), 'booking', 'https://www.labelmaisoncg.fr/erp/logements/connexions');
+  const e8 = await lireEtatConnexions(ctx());
+  verifier(e8.connexions.some((c) => c.compte === '888'), 'nouvelle connexion Booking.com : les comptes mis de côté reviennent');
+  repull.connexions = repull.connexions.filter((c) => c.id !== 'c10');
   const d1 = await deconnecter(ctx(), 'airbnb', '4455');
   verifier(d1.annoncesDesactivees.includes('101') && !base2.get<SelectionRepull>(COLLECTION_ETAT, ID_SELECTION)!.annonces.includes('101'), 'Airbnb déconnecté : ses logements sortent du choix');
 

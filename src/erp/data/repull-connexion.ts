@@ -188,7 +188,16 @@ interface CacheConnexions {
   annonces?: AnnonceBrute[];
   luLe?: string;
   depassement?: DepassementOffre;
+  /**
+   * Comptes que Repull dit ne plus connaître (« Déconnecter » : 404 sous tous
+   * les noms) mais qu'il liste encore : « plateforme:compte », plus montrés.
+   * Effacés pour une plateforme dès qu'on la connecte de nouveau.
+   */
+  retirees?: string[];
 }
+
+/** Clé d'un compte dans `retirees`. */
+const cleCompte = (fournisseur: string, compte: string | undefined, id: string | undefined) => `${fournisseur}:${compte || id || ''}`;
 
 /** Annonce telle que gardée en mémoire (sans ce qui dépend de l'ERP). */
 type AnnonceBrute = Pick<AnnonceDecouverte, 'id' | 'nom' | 'ville' | 'photo' | 'statutRepull' | 'plateformes'>;
@@ -506,7 +515,8 @@ async function composerEtat(ctx: ContexteConnexion, cache: CacheConnexions, aver
   return {
     ok: true,
     fournisseurs: cache.fournisseurs ?? [],
-    connexions: cache.connexions ?? [],
+    // Comptes que Repull ne connaît plus mais liste encore (CacheConnexions.retirees) : plus montrés.
+    connexions: (cache.connexions ?? []).filter((c) => !(cache.retirees ?? []).includes(cleCompte(c.fournisseur, c.compte, c.id))),
     annonces,
     selection: [...choisies],
     ...(selection?.majLe ? { selectionMajLe: selection.majLe } : {}),
@@ -571,8 +581,9 @@ export async function demarrerConnexion(
     });
   });
   if (!texte(r?.url) || !/^https:\/\//.test(texte(r.url))) throw new ErreurConnexion('Repull n’a pas renvoyé de page de connexion. Réessayez dans un instant.', 502);
-  // Au retour, tout sera relu.
+  // Au retour, tout sera relu ; les comptes de cette plateforme mis de côté reviennent (on la reconnecte).
   delete cache.luLe;
+  if (cache.retirees?.length) cache.retirees = cache.retirees.filter((k) => !k.startsWith(`${f}:`));
   await ecrireCache(ctx.base, cache);
   return { ok: true, url: texte(r.url), ...(texte(r.expiresAt) ? { expireLe: texte(r.expiresAt) } : {}) };
 }
@@ -1157,8 +1168,10 @@ export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, c
     return null;
   });
   if (!r) {
-    // Repull ne le connaît plus (ou pas sous ce nom) : la liste est relue au prochain affichage.
+    // Repull ne le connaît plus (ou pas sous ce nom) : la liste est relue au prochain affichage, sans lui
+    // s'il dit ne pas le connaître (il peut le lister encore : il n'est plus montré).
     delete cache.luLe;
+    if (introuvable) cache.retirees = [...new Set([...(cache.retirees ?? []), cleCompte(f, texte(compte) || undefined, connu?.id)])];
     await ecrireCache(ctx.base, cache);
     if (introuvable) throw new ErreurConnexion('Repull ne trouve plus ce compte parmi vos connexions. La liste est mise à jour ; s’il reste affiché, retirez-le depuis votre compte Repull (repull.dev).', 404);
     throw new ErreurConnexion(`Ce logiciel se déconnecte depuis son propre site, pas depuis l’ERP.${message501 ? ` Repull explique : « ${message501} »` : ''}`, 501);
