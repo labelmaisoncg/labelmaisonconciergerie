@@ -4,7 +4,8 @@
  * déterministe (PRNG à graine fixe) pour rester cohérent d'un chargement à
  * l'autre. Les montants suivent les règles de selectors.ts.
  */
-import { checklistMenageVierge, SEUIL_NOTE_CONTROLE } from './constantes';
+import { CHECKLIST_LANCEMENT, checklistMenageVierge, SEUIL_NOTE_CONTROLE } from './constantes';
+import { ID_PROPRIETAIRE_A_RENSEIGNER } from './repull';
 import { AUJOURDHUI, ajouterJours, debutMoisSuivant, ecartJours } from './format';
 import {
   LOGEMENTS,
@@ -749,6 +750,77 @@ function habiller(logements: Logement[]): Logement[] {
   });
 }
 
+/**
+ * Démo des connexions d'un logement (data/annonces-liees.ts) : l'annonce
+ * Airbnb de « Massy Atlantis » (qui n'a que son annonce Booking.com) importée
+ * comme un logement à part, comme chez un gérant qui connecte Airbnb après
+ * Booking.com. Même adresse : chacune des deux fiches propose « Relier » ;
+ * réservations, conversations et ménages rejoignent alors le logement gardé.
+ * Fraîchement importé : propriétaire « à renseigner », un seul séjour (pris
+ * sur des nuits où « Massy Atlantis » est libre).
+ */
+function annonceAirbnbAPart(logements: Logement[]): Logement[] {
+  const massy = logements.find((l) => l.id === 'log-massy');
+  if (!massy) return logements;
+  const jours = Array.from({ length: 60 }, (_, k) => {
+    const date = ajouterJours(AUJOURDHUI, k);
+    const jour = new Date(`${date}T12:00:00Z`).getUTCDay();
+    return { date, prixCentimes: jour === 5 || jour === 6 ? 11800 : 9400, libre: k % 6 !== 2 };
+  });
+  const aPart: Logement = {
+    id: 'repull-219002',
+    nom: 'Massy Atlantis • Balcon • Parking',
+    adresse: massy.adresse,
+    ville: massy.ville,
+    codePostal: '',
+    type: 'T2',
+    surfaceM2: 44,
+    capacite: 4,
+    chambres: 1,
+    lits: [{ type: 'double', nombre: 1 }, { type: 'canape', nombre: 1 }],
+    statut: 'actif',
+    proprietaireId: ID_PROPRIETAIRE_A_RENSEIGNER,
+    residencePrincipale: false,
+    serrure: 'boite_a_cles',
+    fiche: { wifiNom: '', wifiCode: '', heureArrivee: '15:00', heureDepart: '11:00', acces: '', parking: '', regles: 'Pas de fête. Non-fumeur.', equipements: [] },
+    dotationLinge: [],
+    annonces: [{ canal: 'airbnb', url: 'https://www.airbnb.fr/rooms/demo-massy-balcon', connecte: true }],
+    checklistLancement: CHECKLIST_LANCEMENT.map((c) => ({ ...c, fait: false })),
+    photos: [3, 4, 5, 0].map((k) => PHOTOS_DEMO[k % PHOTOS_DEMO.length]),
+    tarifs: { devise: 'EUR', luLe: `${AUJOURDHUI}T06:17:00+02:00`, jours },
+    couleur: 'sapin',
+    repull: { id: '219002', statut: 'active', canaux: [{ plateforme: 'airbnb', idExterne: 'demo-massy-balcon', actif: true }] },
+  };
+  return [...logements, aPart];
+}
+
+/** Le séjour Airbnb du logement à part : trois nuits libres à Massy Atlantis, deux semaines au moins devant. */
+function sejourAPart(reservations: readonly Reservation[]): Reservation[] {
+  const prises = reservations.filter((r) => r.logementId === 'log-massy' && r.statut !== 'annulee');
+  for (let k = 14; k < 60; k++) {
+    const arrivee = ajouterJours(AUJOURDHUI, k);
+    const depart = ajouterJours(arrivee, 3);
+    if (prises.some((r) => r.arrivee < depart && arrivee < r.depart)) continue;
+    return [
+      {
+        id: 'res-a2190021',
+        logementId: 'repull-219002',
+        canal: 'airbnb',
+        voyageur: { nom: 'Inès Morel', nbPersonnes: 2, pays: 'France' },
+        arrivee,
+        depart,
+        nuits: 3,
+        statut: 'confirmee',
+        montantBrutCentimes: 32200,
+        commissionPlateformeCentimes: Math.round(32200 * TAUX_PLATEFORME.airbnb),
+        fraisMenageCentimes: 4000,
+        repull: { id: '2190021', code: 'HMDEMO219002' },
+      },
+    ];
+  }
+  return [];
+}
+
 /** Démo : chaque logement près du centre de sa commune (seed-carte.ts), jamais sur une adresse réelle. */
 function placer(logements: Logement[]): Logement[] {
   return logements.map((l) => {
@@ -797,8 +869,10 @@ function supplementsDemo(logements: readonly Logement[]): ReglagesSupplements {
 
 export function creerSeed(): ErpDonnees {
   const h = creerHasard(20260924);
-  const reservations = prolongationDemo(genererReservations(h));
-  const missions = genererMissions(h, reservations);
+  const generees = prolongationDemo(genererReservations(h));
+  const missions = genererMissions(h, generees);
+  // Le séjour du logement à part (annonceAirbnbAPart) : après la génération, il ne change rien au hasard.
+  const reservations = [...generees, ...sejourAPart(generees)];
   typerAvis(reservations);
   const linge = genererLinge(missions);
   const operations = genererOperations(reservations, missions, linge.ecart);
@@ -815,7 +889,7 @@ export function creerSeed(): ErpDonnees {
   const donnees = {
     proprietaires: structuredClone(PROPRIETAIRES),
     mandats: structuredClone(MANDATS),
-    logements: placer(calendrierReserve(habiller(structuredClone(LOGEMENTS)), reservations)),
+    logements: annonceAirbnbAPart(placer(calendrierReserve(habiller(structuredClone(LOGEMENTS)), reservations))),
     reservations,
     filsMessages: operations.filsMessages,
     missions: toutesMissions,

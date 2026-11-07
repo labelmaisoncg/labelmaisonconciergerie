@@ -2093,7 +2093,7 @@ export function baseGardee(base: BaseErp, generation: number, maintenant: () => 
 }
 
 /** Message d'un passage remis : un gérant relie une annonce à un logement. */
-export const MESSAGE_VERROU = 'Un gérant relie en ce moment une annonce à un logement : la synchronisation reprend dans une minute.';
+export const MESSAGE_VERROU = 'Un gérant relie en ce moment une annonce à un logement : la synchronisation reprend dans une minute.';
 
 /** Appels faits hors d'un passage (page Connexions) : ajoutés au compteur du mois. */
 export async function imputerAppels(

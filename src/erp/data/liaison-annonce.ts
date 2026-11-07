@@ -210,7 +210,7 @@ export function delierPossible(
 ): Verdict {
   if (!creeALaMain(l) || !relie(l) || !l.liaison || l.liaison.annonce !== l.repull?.id) return refus('Ce lien ne se retire pas d’ici.', 409);
   // Une annonce d'une autre plateforme lui est reliée (data/annonces-liees.ts) : délier la retirerait aussi.
-  if (l.repull?.liees?.length) return refus('Une annonce d’une autre plateforme est aussi reliée à ce logement : le lien ne se retire plus d’ici.', 409);
+  if (l.repull?.liees?.length) return refus('Une annonce d’une autre plateforme est aussi reliée à ce logement : le lien ne se retire plus d’ici.', 409);
   const a = arriveesDeLAnnonce(l.id, reservations, fils);
   if (a.reservations || a.conversations) {
     return refus('Des réservations ou des messages de l’annonce sont déjà arrivés sur ce logement : le lien ne se retire plus d’ici.', 409);

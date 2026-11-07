@@ -409,9 +409,9 @@ async function principal() {
     verifier(/même propriétaire/.test(erreur(verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [{ ...a, proprietaireId: 'pro-a' }, { ...b, proprietaireId: 'pro-b' }] }))), 'deux propriétaires connus différents : refusé');
     const aLie = fusionnerLogement(a, nouvelleLiee({ annonce: '502', canal: 'booking', le: 'x', par: 'y' }), b).logement;
     const c = importe('520', 'Troisième', 'booking');
-    verifier(/déjà reliée à « Duplex/.test(erreur(verifierConnexion({ role: 'gerant', logementId: 'repull-530', annonceId: '502', logements: [aLie, importe('530', 'Autre', 'airbnb')] }))), 'annonce déjà reliée à un autre logement : refusé (« déjà regroupé »)');
+    verifier(/déjà reliée à «\s?Duplex/.test(erreur(verifierConnexion({ role: 'gerant', logementId: 'repull-530', annonceId: '502', logements: [aLie, importe('530', 'Autre', 'airbnb')] }))), 'annonce déjà reliée à un autre logement : refusé (« déjà regroupé »)');
     verifier(/déjà relié à une autre annonce/.test(erreur(verifierConnexion({ role: 'gerant', logementId: 'repull-530', annonceId: '501', logements: [aLie, importe('530', 'Autre', 'booking')] }))), 'logement qui a déjà une annonce reliée ne rejoint pas un autre : refusé');
-    verifier(/déjà relié à « Duplex/.test(erreur(verifierConnexion({ role: 'gerant', logementId: b.id, annonceId: '520', logements: [aLie, b, c] }))), 'logement resté en route (son annonce est reliée ailleurs) : refusé');
+    verifier(/déjà relié à «\s?Duplex/.test(erreur(verifierConnexion({ role: 'gerant', logementId: b.id, annonceId: '520', logements: [aLie, b, c] }))), 'logement resté en route (son annonce est reliée ailleurs) : refusé');
     const deja = verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [aLie] });
     verifier(deja.ok && deja.mode === 'deja', 'déjà relié, l’autre logement parti : « deja » (idempotent)');
     const reprise = verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [aLie, b] });
@@ -816,6 +816,25 @@ async function principal() {
     const d1 = { ...donneesVides(), logements: [avecLiee] } as ErpDonnees;
     verifier(!operationReserveeAuGerant(ecrire(a.id, { ...avecLiee, nom: 'Nouveau nom' }), d1), 'modifier le reste d’un logement relié : permis');
     verifier(operationReserveeAuGerant(ecrire('log-main', lierLogement(logementVide('log-main', 'x'), '501', { le: '', par: '' })), d0), 'poser un lien principal : toujours réservé');
+  }
+
+  /* ------------------------------------------------ démonstration */
+  section('12. Démonstration : une paire Airbnb / Booking.com du même appartement');
+  {
+    const { creerSeed } = await import('./seed');
+    const { etatConnexionsDemo } = await import('./seed-connexions');
+    const seed = creerSeed();
+    const airbnb = seed.logements.find((l) => l.id === 'repull-219002')!;
+    const booking = seed.logements.find((l) => l.id === 'log-massy')!;
+    verifier(!!airbnb && canauxPrincipaux(airbnb).join() === 'airbnb' && canauxPrincipaux(booking).join() === 'booking', 'démo : « Massy Atlantis » (Booking.com) et son annonce Airbnb importée à part');
+    verifier(suggestionPour(airbnb, seed.logements)?.id === booking.id && suggestionPour(booking, seed.logements)?.id === airbnb.id, 'démo : chacune des deux fiches propose l’autre (même adresse)');
+    verifier(seed.logements.filter((l) => suggestionPour(l, seed.logements)).length === 2, 'démo : aucune autre proposition (fiable seulement)');
+    const r = relierConnexionDe(seed, { garde: airbnb, autre: booking, liee: nouvelleLiee({ annonce: '219001', canal: 'booking', le: 'x', par: 'demo@exemple.fr', depuis: booking.id }) });
+    const etat = etatConnexionsDemo(r.donnees.logements);
+    verifier(etat.annonces.filter((a) => a.logementId === airbnb.id).map((a) => a.id).sort().join() === '219001,219002' && !etat.annonces.some((a) => a.logementId === booking.id), 'démo, page Connexions : les deux annonces sur le même logement');
+    verifier(r.donnees.reservations.filter((x) => x.logementId === airbnb.id).length > 1 && !r.donnees.reservations.some((x) => x.logementId === booking.id), 'démo : les séjours de « Massy Atlantis » rejoignent le logement gardé');
+    const juvisy = etatConnexionsDemo(seed.logements).annonces.find((a) => a.id === '219330')!;
+    verifier(logementsPourAnnonce(juvisy, seed.logements).forte?.id === 'log-juvisy', 'démo : cocher « Juvisy Gare · 2 pièces » demande « Est-ce le même logement que Juvisy Gare ? »');
   }
 
   console.log(`\n${reussis} contrôles réussis, ${echecs} en échec.`);

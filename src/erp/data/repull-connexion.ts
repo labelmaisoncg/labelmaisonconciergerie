@@ -977,7 +977,7 @@ export async function relierAutreAnnonce(ctx: ContexteConnexion, logementIdBrut:
   const annonce = texte(annonceBrute);
   const maintenant = ctx.maintenant ?? (() => new Date());
   const verrou = await prendreVerrou(ctx.base, { motif: 'connexion', par: qui.email, maintenant: maintenant() });
-  if (!verrou) throw new ErreurConnexion('Une autre annonce est en train d’être reliée : réessayez dans une minute.', 409);
+  if (!verrou) throw new ErreurConnexion('Une autre annonce est en train d’être reliée : réessayez dans une minute.', 409);
   try {
     await (ctx.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(GRACE_VERROU_MS);
     return await relierSousVerrou(ctx, logementId, annonce, qui, maintenant);
@@ -1021,14 +1021,14 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
     },
     qui.email,
   );
-  if (!ecrit) throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
+  if (!ecrit) throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
 
   let deplaces: Partial<Record<string, number>> = {};
   if (autre) {
     // 2. Tout ce qui portait l'autre logement passe ici.
     const r = await deplacerTout(ctx, autre.id, logementId, qui.email);
     deplaces = r.deplaces;
-    if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Relancez « Relier » : elle reprend là où elle en était.`, 409);
+    if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Relancez « Relier » : elle reprend là où elle en était.`, 409);
   }
 
   // 3. Trace côté serveur : l'annonce va sur ce logement, d'où elle venait.
@@ -1050,18 +1050,18 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
       try {
         await ctx.base.supprimer('logements', [autre.id]);
       } catch (e) {
-        throw new ErreurConnexion(`Presque fini : « ${autre.nom} » n’a pas pu être retiré (${e instanceof Error ? e.message : String(e)}). Relancez « Relier » : elle reprend là où elle en était.`, 409);
+        throw new ErreurConnexion(`Presque fini : « ${autre.nom} » n’a pas pu être retiré (${e instanceof Error ? e.message : String(e)}). Relancez « Relier » : elle reprend là où elle en était.`, 409);
       }
     }
   }
 
-  const nom = liee.nom ? `« ${liee.nom} »` : annonce;
+  const nom = liee.nom ? `« ${liee.nom} »` : annonce;
   await journaliserLiaison(
     ctx,
     qui,
     'Annonce reliée au logement',
     logementId,
-    `Annonce ${NOM_CANAL[liee.canal]} ${nom} reliée à ce logement.${autre ? ` « ${autre.nom} » ne figure plus dans la liste.${phrase ? ` ${phrase}` : ''}` : ''}`,
+    `Annonce ${NOM_CANAL[liee.canal]} ${nom} reliée à ce logement.${autre ? ` « ${autre.nom} » ne figure plus dans la liste.${phrase ? ` ${phrase}` : ''}` : ''}`,
     maintenant(),
   );
   return { ...base, deja: false, ...(autre ? { retire: { id: autre.id, nom: autre.nom } } : {}), phrase, deplaces, remplis };
@@ -1082,10 +1082,10 @@ export interface LiaisonChoisie {
  */
 export async function enregistrerSelectionAvecLiaisons(ctx: ContexteConnexion, idsBruts: unknown, liaisonsBrutes: unknown, qui: Gerant): Promise<ResultatSelection & { liaisons: number }> {
   const brutes = Array.isArray(liaisonsBrutes) ? liaisonsBrutes : [];
-  if (brutes.length > 50) throw new ErreurConnexion('Trop de liens à la fois : enregistrez en plusieurs fois.');
+  if (brutes.length > 50) throw new ErreurConnexion('Trop de liens à la fois : enregistrez en plusieurs fois.');
   const ids = Array.isArray(idsBruts) ? idsBruts.map((x) => texte(x)) : [];
   const liaisons: LiaisonChoisie[] = brutes.map((x) => ({ annonce: texte((x as LiaisonChoisie)?.annonce), logement: texte((x as LiaisonChoisie)?.logement) })).filter((x) => x.annonce && x.logement);
-  if (liaisons.some((x) => !ids.includes(x.annonce))) throw new ErreurConnexion('Choix illisible : rechargez la page.');
+  if (liaisons.some((x) => !ids.includes(x.annonce))) throw new ErreurConnexion('Choix illisible : rechargez la page.');
   if (liaisons.length && !peutRelierConnexion(qui.role)) throw new ErreurConnexion('Seul un gérant peut relier une annonce à un logement.', 403);
   for (const x of liaisons) await relierAutreAnnonce(ctx, x.logement, x.annonce, qui);
   const r = await enregistrerSelection(ctx, idsBruts, qui.email);

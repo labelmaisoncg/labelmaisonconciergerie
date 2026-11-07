@@ -291,9 +291,9 @@ export function annoncesProposees(l: Logement, canal: CanalPlateforme, annonces:
     const porteur = logementPortant(a.id, logements.filter((x) => x.id !== l.id)) ?? (a.logementId ? logements.find((x) => x.id === a.logementId && x.id !== l.id) : undefined);
     const r = porteur ? ressemblance(l, porteur) : ressemblance(l, { nom: a.nom, ville: a.ville });
     let bloquee: string | undefined;
-    if (porteur && liees(porteur).length) bloquee = `« ${porteur.nom} » a déjà une autre annonce reliée.`;
-    else if (porteur && proprietairesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même propriétaire.`;
-    else if (!porteur && !a.selectionnee) bloquee = 'Pas encore suivie : cochez-la dans Connexions, l’ERP vous demandera alors si c’est ce logement.';
+    if (porteur && liees(porteur).length) bloquee = `« ${porteur.nom} » a déjà une autre annonce reliée.`;
+    else if (porteur && proprietairesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même propriétaire.`;
+    else if (!porteur && !a.selectionnee) bloquee = 'Pas encore suivie : cochez-la dans Connexions, l’ERP vous demandera alors si c’est ce logement.';
     res.push({ annonce: a, ...(porteur ? { logement: porteur } : {}), niveau: r.niveau, ...(bloquee ? { bloquee } : {}) });
   }
   const rang = (p: AnnonceProposee) => (p.bloquee ? 10 : 0) + (p.niveau === 'forte' ? 0 : p.niveau === 'proche' ? 1 : 2);
@@ -354,12 +354,12 @@ const refus = (erreur: string, statut = 400): VerdictConnexion => ({ ok: false, 
 export function verifierConnexion(o: { role: string | undefined; logementId: string; annonceId: string; logements: readonly Logement[]; annonces?: readonly AnnonceTrouvee[] }): VerdictConnexion {
   if (!peutRelierConnexion(o.role)) return refus('Seul un gérant peut relier une annonce à un logement.', 403);
   const annonce = String(o.annonceId ?? '');
-  if (!FORME_ANNONCE.test(annonce)) return refus('Annonce illisible : rechargez la page.');
+  if (!FORME_ANNONCE.test(annonce)) return refus('Annonce illisible : rechargez la page.');
   const garde = o.logements.find((x) => x.id === o.logementId);
   if (!garde) return refus('Logement introuvable dans cet espace.', 404);
-  if (!garde.repull?.id) return refus(`« ${garde.nom} » n’est relié à aucune annonce : reliez-le d’abord à son annonce (« Relier à une annonce »).`, 409);
+  if (!garde.repull?.id) return refus(`« ${garde.nom} » n’est relié à aucune annonce : reliez-le d’abord à son annonce (« Relier à une annonce »).`, 409);
   const porteurDeGarde = logementDeLAnnonceLiee(String(garde.repull.id), o.logements.filter((x) => x.id !== garde.id));
-  if (porteurDeGarde) return refus(`« ${garde.nom} » est déjà relié à « ${porteurDeGarde.nom} ».`, 409);
+  if (porteurDeGarde) return refus(`« ${garde.nom} » est déjà relié à « ${porteurDeGarde.nom} ».`, 409);
   if (String(garde.repull.id) === annonce) return refus('C’est déjà l’annonce de ce logement.', 409);
   const trouvee = o.annonces?.find((a) => a.id === annonce);
   const autres = o.logements.filter((x) => x.id !== garde.id);
@@ -371,20 +371,20 @@ export function verifierConnexion(o: { role: string | undefined; logementId: str
     return { ok: true, mode: autre ? 'absorber' : 'deja', garde, ...(autre ? { autre } : {}), canal: dejaIci.canal, annonce, ...(dejaIci.nom ? { nomAnnonce: dejaIci.nom } : {}) };
   }
   const ailleurs = logementDeLAnnonceLiee(annonce, autres);
-  if (ailleurs) return refus(`Cette annonce est déjà reliée à « ${ailleurs.nom} ».`, 409);
-  if (garde.statut === 'sorti') return refus(`« ${garde.nom} » est « Sorti » : changez d’abord son statut pour lui relier une annonce.`, 409);
+  if (ailleurs) return refus(`Cette annonce est déjà reliée à « ${ailleurs.nom} ».`, 409);
+  if (garde.statut === 'sorti') return refus(`« ${garde.nom} » est « Sorti » : changez d’abord son statut pour lui relier une annonce.`, 409);
 
   const plateformes = autre ? canauxPrincipaux(autre) : (trouvee?.plateformes ?? []).map(canalDe).filter((c): c is CanalPlateforme => !!c);
   const uniques = [...new Set(plateformes)];
-  if (!autre && (!trouvee || trouvee.statutRepull === 'archived')) return refus('Cette annonce n’est pas sur les plateformes connectées à cet espace : rechargez la liste.', 404);
+  if (!autre && (!trouvee || trouvee.statutRepull === 'archived')) return refus('Cette annonce n’est pas sur les plateformes connectées à cet espace : rechargez la liste.', 404);
   if (!uniques.length) return refus('Seules les annonces Airbnb et Booking.com se relient à un logement.');
-  if (uniques.length > 1) return refus('Cette annonce est déjà sur Airbnb et Booking.com : elle a son propre logement.', 409);
+  if (uniques.length > 1) return refus('Cette annonce est déjà sur Airbnb et Booking.com : elle a son propre logement.', 409);
   const canal = uniques[0];
-  if (canauxDuLogement(garde).includes(canal)) return refus(`« ${garde.nom} » a déjà une annonce ${NOM_CANAL[canal]}.`, 409);
+  if (canauxDuLogement(garde).includes(canal)) return refus(`« ${garde.nom} » a déjà une annonce ${NOM_CANAL[canal]}.`, 409);
 
   if (autre) {
-    if (liees(autre).length) return refus(`« ${autre.nom} » est déjà relié à une autre annonce.`, 409);
-    if (proprietairesDifferents(garde, autre)) return refus(`« ${garde.nom} » et « ${autre.nom} » n’ont pas le même propriétaire : vérifiez avant de les relier.`, 409);
+    if (liees(autre).length) return refus(`« ${autre.nom} » est déjà relié à une autre annonce.`, 409);
+    if (proprietairesDifferents(garde, autre)) return refus(`« ${garde.nom} » et « ${autre.nom} » n’ont pas le même propriétaire : vérifiez avant de les relier.`, 409);
     return { ok: true, mode: 'absorber', garde, autre, canal, annonce, nomAnnonce: trouvee?.nom ?? autre.nom };
   }
   return { ok: true, mode: 'ajouter', garde, canal, annonce, ...(trouvee?.nom ? { nomAnnonce: trouvee.nom } : {}) };

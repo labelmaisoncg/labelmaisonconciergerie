@@ -47,6 +47,7 @@ import { refusEcritureFigee } from './factures-mensuelles';
 import { messageRefus, operationReserveeAuGerant, traceRefus } from './ecritures-gerant';
 import { MESSAGE_LIEN_PERIME } from './invitation';
 import { supprimerLogementDe, verdictSuppression } from './suppression-logement';
+import { NOM_CANAL, ceQuiRejoint, nouvelleLiee, phraseCeQuiRejoint, relierConnexionDe, verifierConnexion, type AnnonceTrouvee } from './annonces-liees';
 import { supprimerMembreDe, supprimerProprietaireDe, verdictSuppressionMembre, verdictSuppressionProprietaire } from './suppression-personnes';
 import { clesActives, REGLES_CHANNEL_MANAGER } from './regles-actives';
 import { appliquerOperations, ErreurSynchro, Synchro, type ChangementDistant, type EtatAutoStocke, type EtatSynchro, type RefusBase } from './synchro';
@@ -128,6 +129,13 @@ export interface ErpContexte extends ErpDonnees {
    * lui : data/suppression-logement.ts. Sinon, refus expliqué.
    */
   supprimerLogement: (id: Id) => Resultat;
+  /**
+   * Démo seulement : relie à ce logement l'annonce d'une autre plateforme,
+   * dans l'ERP local, avec les mêmes règles que le serveur
+   * (data/annonces-liees.ts ; en production : api/erp-repull-connexion.ts,
+   * « relier-connexion »). `phrase` : ce qui a rejoint le logement.
+   */
+  relierConnexionLocale: (logementId: Id, annonce: AnnonceTrouvee) => ({ ok: true; phrase: string; retire?: { id: Id; nom: string } } | { ok: false; erreur: string });
   /**
    * Suppriment pour de bon une fiche propriétaire ou un membre de l'équipe
    * sans historique ni accès encore ouvert (gérant, hors lecture seule), avec
@@ -591,6 +599,29 @@ function CoeurErp({
       return OK;
     };
 
+    const relierConnexionLocale = (logementId: Id, annonce: AnnonceTrouvee): ReturnType<ErpContexte['relierConnexionLocale']> => {
+      const refus = (erreur: string) => ({ ok: false as const, erreur });
+      if (!jeuDemo) return refus('Réservé à la démonstration.');
+      if (lectureSeule) return refus('Lecture seule.');
+      const d = ref.current;
+      const v = verifierConnexion({ role: utilisateurRef.current.role, logementId, annonceId: annonce.id, logements: d.logements, annonces: [annonce] });
+      if (!v.ok) return refus(v.erreur);
+      if (v.mode === 'deja') return { ok: true as const, phrase: '' };
+      const liee = nouvelleLiee({ annonce: annonce.id, canal: v.canal, nom: v.nomAnnonce ?? annonce.nom, le: horodatageMaintenant(), par: utilisateurRef.current.email, depuis: v.autre?.id });
+      const phrase = v.autre ? phraseCeQuiRejoint(ceQuiRejoint(v.autre, d)) : '';
+      appliquer(
+        (x) => {
+          const garde = x.logements.find((l) => l.id === logementId);
+          return garde ? relierConnexionDe(x, { garde, autre: v.autre, liee }).donnees : x;
+        },
+        'Annonce reliée au logement',
+        'logement',
+        logementId,
+        `Annonce ${NOM_CANAL[v.canal]} « ${liee.nom ?? annonce.id} » reliée.${v.autre ? ` « ${v.autre.nom} » ne figure plus dans la liste.` : ''}`,
+      );
+      return { ok: true as const, phrase, ...(v.autre ? { retire: { id: v.autre.id, nom: v.autre.nom } } : {}) };
+    };
+
     const supprimerLogement = (id: Id): Resultat => {
       const verdict = verdictSuppression({ role: utilisateurRef.current.role, lectureSeule, logementId: id, donnees: ref.current });
       if (!verdict.ok) return echec(verdict.message);
@@ -688,6 +719,7 @@ function CoeurErp({
       cocherChecklistLancement,
       activerLogement,
       supprimerLogement,
+      relierConnexionLocale,
       supprimerProprietaire,
       supprimerMembre,
       ajouterMouvementLinge,

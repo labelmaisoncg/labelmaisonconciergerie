@@ -1,16 +1,30 @@
 /**
  * Démo de la page Connexions et de « Relier à une annonce » : des annonces
  * fictives, comme si Airbnb et Booking.com étaient connectés. Celles des
- * logements importés de la démo sont « déjà dans l'ERP » ; deux ne le sont
- * pas encore, dont « Maison des Coquelicots » à Linas, l'annonce de
- * « Maison de Linas », créé à la main. Aucune donnée réelle, aucun appel.
+ * logements importés de la démo sont « déjà dans l'ERP » (les annonces
+ * reliées d'un logement avec lui) ; trois ne le sont pas encore, dont
+ * « Maison des Coquelicots » à Linas, l'annonce de « Maison de Linas », créé
+ * à la main, et l'annonce Booking.com de « Juvisy Gare ». Aucune donnée
+ * réelle, aucun appel.
  * Chargé seulement en démo (import dynamique).
  */
+import { canauxPrincipaux, liees } from './annonces-liees';
 import type { AnnonceDecouverte, EtatConnexions } from './repull-connexion';
 import type { Logement } from './types';
 
 /** Annonces pas encore dans l'ERP (identifiants fictifs). */
 const NOUVELLES: AnnonceDecouverte[] = [
+  // L'annonce Booking.com de « Juvisy Gare » (qui n'a que son annonce Airbnb) : la cocher demande « Est-ce le même logement ? ».
+  {
+    id: '219330',
+    nom: 'Juvisy Gare · 2 pièces',
+    ville: 'Juvisy-sur-Orge',
+    photo: '/images/real/logement-suite.jpg',
+    statutRepull: 'active',
+    plateformes: ['booking'],
+    selectionnee: false,
+    importee: false,
+  },
   {
     id: '219310',
     nom: 'Maison des Coquelicots',
@@ -38,10 +52,10 @@ const couverture = (l: Logement): string | undefined => l.photos?.[0] ?? (/^\/|^
 export function etatConnexionsDemo(logements: readonly Logement[]): EtatConnexions {
   const importees: AnnonceDecouverte[] = logements
     .filter((l) => l.repull?.id && l.statut !== 'sorti')
-    .map((l) => {
-      const plateformes = [...new Set(l.annonces.filter((a) => a.canal !== 'direct' && (a.connecte || l.annonces.length === 1)).map((a) => a.canal))];
+    .flatMap((l) => {
+      const plateformes = canauxPrincipaux(l);
       const photo = couverture(l);
-      return {
+      const principale: AnnonceDecouverte = {
         id: l.repull!.id,
         nom: l.nom,
         ville: l.ville,
@@ -52,6 +66,18 @@ export function etatConnexionsDemo(logements: readonly Logement[]): EtatConnexio
         importee: !l.repull!.horsSelection,
         logementId: l.id,
       };
+      // Annonces des autres plateformes reliées à ce logement : sur la même carte.
+      const autres: AnnonceDecouverte[] = liees(l).map((x) => ({
+        id: x.id,
+        nom: x.nom ?? l.nom,
+        ville: l.ville,
+        statutRepull: 'active',
+        plateformes: [x.canal],
+        selectionnee: true,
+        importee: true,
+        logementId: l.id,
+      }));
+      return [principale, ...autres];
     });
   const annonces = [...importees, ...NOUVELLES.filter((a) => !importees.some((x) => x.id === a.id))];
   return {
