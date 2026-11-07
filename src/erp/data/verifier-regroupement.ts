@@ -846,10 +846,15 @@ async function principal() {
   repull.reservations.push(reservation('7006', '503', 'booking', '2027-01-10', '2026-11-10T09:00:00.000Z'));
   const appelsAvantChoix = repull.appels.length;
   horloge = new Date('2026-11-10T10:00:00.000Z');
+  // Sa fiche a existé puis a été effacée (erp-repartir-logements.sql) : un ménage et une conversation la portent encore.
+  fb.poser('missions', { id: 'mis-503', type: 'menage', logementId: 'repull-503' });
+  fb.poser('filsMessages', { id: 'fil-503', logementId: 'repull-503', canal: 'booking', messages: [] });
   const choix = await enregistrerSelectionAvecLiaisons(ctx(), ['501', '502', '600', '503'], [{ annonce: '503', logement: 'repull-600' }], GERANT);
   verifier(choix.liaisons === 1 && choix.selection.includes('503'), 'choix enregistré, un lien posé', choix);
   verifier(!fb.get('logements', 'repull-503') && fb.get<Logement>('logements', 'repull-600')?.repull?.liees?.[0]?.id === '503', 'annonce cochée et dite « même logement » : pas de nouveau logement, reliée à « Atelier des Tanneurs »');
   verifier(fb.get<Reservation>('reservations', 'repull-7006')?.logementId === 'repull-600', 'ses réservations : sur ce logement');
+  verifier(fb.get<{ logementId: string }>('missions', 'mis-503')?.logementId === 'repull-600' && fb.get<{ logementId: string }>('filsMessages', 'fil-503')?.logementId === 'repull-600', 'fiche de l’annonce effacée avant : ce qui la portait encore rejoint le logement');
+  verifier(fb.get<{ annonces: Record<string, { depuis?: string }> }>(COLLECTION_ETAT, ID_ANNONCES_RELIEES)?.annonces['503']?.depuis === 'repull-503', 'trace : venue de « repull-503 » (rattrapage du cron pendant 14 jours)');
   const ecrituresChoix = repull.appels.slice(appelsAvantChoix).filter((a) => a.methode !== 'GET');
   verifier(ecrituresChoix.every((a) => a.methode === 'POST' && a.chemin === '/v1/listings/status'), 'seule écriture vers le service : celle du choix, déjà existante (logements suivis), rien de nouveau', ecrituresChoix);
   let refusChoix = '';
