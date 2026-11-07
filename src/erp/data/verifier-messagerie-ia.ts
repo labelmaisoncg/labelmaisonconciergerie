@@ -50,6 +50,7 @@ import {
   INTENTIONS_SIMPLES,
   reglagesAEnregistrer,
   reglagesAvecMarche,
+  phraseRetourPassage,
   REGLAGES_AGENT_GERANT,
   reponseSensible,
   CODE_MASQUE,
@@ -439,6 +440,17 @@ async function principal() {
     const eteint = reglagesAvecMarche(allume, false, { le: '2026-11-07T09:00:00+01:00', par: 'Abdel' });
     verifier(eteint.actif === false && eteint.autonomie === 'simples' && eteint.id === 'agent', 'interrupteur : éteindre garde tout le reste');
     verifier(!reglagesAvecMarche({ ...enregistres, actif: false }, true, { le: 'x', par: 'y' }).hasOwnProperty('brouillon'), 'interrupteur : rien d’ajouté que la marche');
+    // Retour du premier passage : des nombres, jamais le message technique du serveur.
+    const N = '\u00a0';
+    const p0 = { examines: 0, repondus: 0, transmis: 0, aValider: 0, erreurs: [] as string[] };
+    verifier(phraseRetourPassage(p0).texte === 'Votre agent est activé. Aucun message en attente.' && !phraseRetourPassage(p0).detail, 'retour : rien en attente');
+    const pTout = { examines: 4, repondus: 2, transmis: 1, aValider: 1, erreurs: [] as string[] };
+    verifier(phraseRetourPassage(pTout).texte === `Votre agent est activé. Il a répondu à 2${N}voyageurs, préparé 1${N}réponse à valider et confié 1${N}conversation à l’équipe.`, `retour : ce qu’il a fait, en nombres (${phraseRetourPassage(pTout).texte})`);
+    const pErreur = { ...pTout, transmis: 0, aValider: 0, repondus: 1, erreurs: ['Inès V. : Cette conversation n’existe plus chez Repull.'] };
+    const rErreur = phraseRetourPassage(pErreur);
+    verifier(rErreur.detail && !/Repull|Inès/.test(rErreur.texte) && rErreur.texte.endsWith(`traitées${N}: le détail est dans «${N}Votre agent${N}».`), `retour : une erreur renvoie au détail, sans le message technique (${rErreur.texte})`);
+    verifier(phraseRetourPassage({ ...p0, examines: 2 }).texte === 'Votre agent est activé. Il reprendra les messages en attente à son prochain passage.', 'retour : messages examinés, rien décidé (reportés)');
+    verifier(phraseRetourPassage({ ...p0, repondus: 1 }, { enPause: true }).texte === `Votre agent est en pause. Pendant son dernier passage, il a répondu à 1${N}voyageur.`, 'retour : mis en pause pendant le passage, ce qui est parti quand même');
     // Pas encore de réglages enregistrés : le formulaire montre les valeurs par défaut, mais un membre ne les écrit pas
     // (la base refuse un ajout qui contient la marche, les horaires…) ; il crée la ligne avec le ton et la signature.
     const premier = reglagesAEnregistrer({ ...REGLAGES_AGENT_DEFAUT, ton: 'professionnel', signature: 'Inès' }, undefined, false) as unknown as Record<string, unknown>;

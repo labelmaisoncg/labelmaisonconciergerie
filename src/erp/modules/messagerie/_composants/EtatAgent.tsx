@@ -185,7 +185,7 @@ export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: bool
       <ul className="mt-2 divide-y divide-(--lm-bord)" aria-busy={chargement}>
         {/* En pause, la carte du dessus le dit déjà (et renvoie à l'interrupteur de l'en-tête). */}
         {actif && (
-          <Ligne ok={etat ? true : null} titre="Agent actif">
+          <Ligne ok={etat ? true : null} titre="À chaque passage">
             {passage}
           </Ligne>
         )}

@@ -58,7 +58,8 @@ export default function ModuleMessagerie() {
         {marche.retour && (
           <Alert
             tone={marche.retour.ton}
-            className="mt-4"
+            className="my-4"
+            actionsDessous
             actions={
               <>
                 {marche.retour.detail && onglet !== 'agent' && (

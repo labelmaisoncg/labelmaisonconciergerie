@@ -23,15 +23,15 @@ import { useErp } from '../../../data/store';
 import { nomPourSignature, reglagesAgent } from '../../../data/reglages';
 import { espaceOuvert } from '../../../data/espaces';
 import { horodatageMaintenant } from '../../../data/format';
-import { reglagesAvecMarche } from '../../../data/messagerie-ia';
+import { phraseRetourPassage, reglagesAvecMarche } from '../../../data/messagerie-ia';
 import type { PassageAgent } from '../../../data/agent-messagerie';
-import { PastilleAgent, oublierEtatAgent, resumePassage, useEtatAgent } from './EtatAgent';
+import { PastilleAgent, oublierEtatAgent, useEtatAgent } from './EtatAgent';
 import { appelerServeur } from './serveur';
 
 const NBSP = ' ';
 
 export interface RetourMarche {
-  ton: 'succes' | 'info' | 'danger';
+  ton: 'succes' | 'info' | 'alerte' | 'danger';
   texte: string;
   /** Lien vers « Votre agent », où se trouve le détail. */
   detail?: boolean;
@@ -41,7 +41,7 @@ export interface RetourMarche {
 export const RETOURS_MARCHE = {
   pasBranche: `Votre agent est activé, mais il ne peut pas encore répondre${NBSP}: un réglage du site manque. Le détail est dans «${NBSP}Votre agent${NBSP}».`,
   echec: 'Votre agent est activé, mais son premier passage n’a pas abouti. Il réessaiera tout seul dans 30 minutes au plus.',
-  horsLigneActive: 'Votre agent est activé. Le réglage part dès le retour du réseau ; il répondra à son prochain passage.',
+  horsLigneActive: `Votre agent est activé. Le réglage part dès le retour du réseau${NBSP}; il répondra à son prochain passage.`,
   horsLignePause: `La pause part dès le retour du réseau${NBSP}; d’ici là, votre agent peut encore répondre.`,
 } as const;
 
@@ -67,7 +67,7 @@ export function useMarcheAgent() {
     if (d.mode !== 'reel') return;
     if (!actif) {
       const recu = await d.enregistrerMaintenant();
-      if (!recu && !actifRef.current) setRetour({ ton: 'info', texte: RETOURS_MARCHE.horsLignePause });
+      if (!recu && !actifRef.current) setRetour({ ton: 'alerte', texte: RETOURS_MARCHE.horsLignePause });
       return;
     }
     setEnCours(true);
@@ -80,15 +80,22 @@ export function useMarcheAgent() {
       }
       // Site pas branché (clé IA, plateformes) : pas de passage, une phrase simple.
       if (etat && !(etat.cles.ia && etat.cles.repull)) {
-        setRetour({ ton: 'info', texte: RETOURS_MARCHE.pasBranche, detail: true });
+        setRetour({ ton: 'alerte', texte: RETOURS_MARCHE.pasBranche, detail: true });
         return;
       }
       const r = await appelerServeur<{ ok: boolean; passage: PassageAgent }>('/api/erp-agent', 'POST', { action: 'lancer' });
-      if (!actifRef.current) return;
       const p = r.passage;
-      setRetour(p.statut === 'fait' ? { ton: 'succes', texte: `Votre agent est activé. ${resumePassage(p)}` } : { ton: 'info', texte: RETOURS_MARCHE.echec, detail: true });
+      if (p.statut !== 'fait') {
+        if (actifRef.current) setRetour({ ton: 'alerte', texte: RETOURS_MARCHE.echec, detail: true });
+        return;
+      }
+      // Mis en pause pendant le passage : on dit seulement ce qui est parti quand même.
+      const enPause = !actifRef.current;
+      if (enPause && !p.repondus && !p.erreurs.length) return;
+      const phrase = phraseRetourPassage(p, { enPause });
+      setRetour({ ton: phrase.detail ? 'alerte' : enPause ? 'info' : 'succes', texte: phrase.texte, detail: phrase.detail });
     } catch {
-      if (actifRef.current) setRetour({ ton: 'info', texte: RETOURS_MARCHE.echec, detail: true });
+      if (actifRef.current) setRetour({ ton: 'alerte', texte: RETOURS_MARCHE.echec, detail: true });
     } finally {
       oublierEtatAgent();
       setEnCours(false);
@@ -107,7 +114,8 @@ export function useMarcheAgent() {
 export function InterrupteurAgent({ marche: m }: { marche: ReturnType<typeof useMarcheAgent> }) {
   if (!m.peutChanger) return <PastilleAgent />;
   const branche = !m.etat || (m.etat.cles.ia && m.etat.cles.repull);
-  const libelle = m.enCours && m.actif ? 'Premier passage…' : !m.actif ? 'Agent en pause' : branche ? 'Agent actif' : 'Agent pas encore branché';
+  // Court, pour tenir sur une ligne à 320 px ; mis en pause pendant le passage : « Fin du passage… » (l'activation attend).
+  const libelle = m.enCours ? (m.actif ? 'En cours…' : 'Fin du passage…') : !m.actif ? 'Agent en pause' : branche ? 'Agent actif' : 'Agent pas encore branché';
   return (
     <div className="flex items-center gap-3">
       {/* Le libellé dit l'état ; l'interrupteur porte le nom du réglage (son état est lu par aria-checked). */}
