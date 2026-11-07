@@ -1,5 +1,7 @@
 /**
- * Onglet « Votre agent » : marche / pause, ce qu'il envoie seul
+ * Onglet « Votre agent » : l'état (marche / pause se règle par l'interrupteur
+ * de l'en-tête de la Messagerie, appliqué au toucher : InterrupteurAgent.tsx),
+ * ce qu'il envoie seul
  * (niveau d'autonomie), ton, langues, signature, horaires, ce qu'il vous
  * transmet, où vous prévenir. Marche, niveau, horaires et ce qu'il vous
  * confie : gérant seulement (REGLAGES_AGENT_GERANT) ; ton, signature,
@@ -79,7 +81,8 @@ export function Configurer() {
   const enregistre = reglagesAgent(d, nomEspace);
   const [f, setF] = useState<ReglagesAgent>(enregistre);
   const [ok, setOk] = useState(false);
-  const modifie = JSON.stringify({ ...f, majLe: 0, majPar: 0 }) !== JSON.stringify({ ...enregistre, majLe: 0, majPar: 0 });
+  // La marche ne fait pas partie du formulaire : l'interrupteur de l'en-tête l'enregistre tout seul.
+  const modifie = JSON.stringify({ ...f, actif: 0, majLe: 0, majPar: 0 }) !== JSON.stringify({ ...enregistre, actif: 0, majLe: 0, majPar: 0 });
   const bloque = d.lectureSeule;
 
   // Un collègue enregistre pendant qu'on regarde : on suit, sauf modification en cours.
@@ -114,7 +117,8 @@ export function Configurer() {
     if (horairesInvalides || bloque) return;
     // Hors gérant : les réglages réservés tels qu'en base (sans les valeurs par défaut), sinon la base refuse.
     const ligne = (d.reglages ?? []).find((r): r is ReglagesAgent => r?.id === 'agent');
-    d.upsert('reglages', { ...reglagesAEnregistrer(f, ligne, gerant), signature: f.signature.trim(), majLe: horodatageMaintenant(), majPar: d.utilisateur.nom });
+    // Marche : toujours celle enregistrée (l'interrupteur de l'en-tête a pu la changer pendant la saisie).
+    d.upsert('reglages', { ...reglagesAEnregistrer({ ...f, actif: enregistre.actif }, ligne, gerant), signature: f.signature.trim(), majLe: horodatageMaintenant(), majPar: d.utilisateur.nom });
     setOk(true);
   };
 
@@ -124,21 +128,18 @@ export function Configurer() {
         <Alert tone="info" titre="Lecture seule : seul un gérant peut changer ces réglages." />
       )}
 
-      <Card className={cn('flex flex-wrap items-center gap-4', f.actif ? 'border-(--lm-succes)/40' : 'border-(--lm-alerte)/40')}>
+      {/* La pause est le réglage par défaut voulu, pas un avertissement : filet neutre. */}
+      <Card className={cn('flex flex-wrap items-center gap-4', enregistre.actif && 'border-(--lm-succes)/40')}>
         <div className="min-w-0 flex-1">
-          <p className="text-[16px] font-semibold text-(--lm-encre)">{f.actif ? explication.titre : 'Votre agent est en pause'}</p>
+          <p className="text-[16px] font-semibold text-(--lm-encre)">{enregistre.actif ? explication.titre : 'Votre agent est en pause'}</p>
           {/* Actif : le titre suffit, la phrase sous le choix du niveau explique le reste. */}
-          {!f.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.</p>}
+          {!enregistre.actif && <p className="mt-0.5 text-[13px] text-(--lm-encre-2)">Tous les messages arrivent à l’équipe.{gerant && !bloque ? ' Activez-le avec l’interrupteur en haut de la page.' : ''}</p>}
           {mention && (
             <p className="mt-1 text-[12.5px]">
               <ReserveGerant />
             </p>
           )}
         </div>
-        <label className="flex items-center gap-3 text-[13.5px] font-medium text-(--lm-encre)">
-          {f.actif ? 'Actif' : 'En pause'}
-          <Interrupteur actif={f.actif} onChange={(v) => maj({ actif: v })} label="Activer votre agent" disabled={reserve} />
-        </label>
       </Card>
 
       {/* La carte d'état suit le niveau enregistré, pas celui en cours de choix. */}

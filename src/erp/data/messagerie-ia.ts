@@ -736,6 +736,42 @@ export function reglagesAEnregistrer(formulaire: ReglagesAgent, enregistres: Par
   return r as unknown as ReglagesAgent;
 }
 
+/**
+ * Marche / pause de l'agent, appliquée tout de suite (l'interrupteur, comme
+ * sur un iPhone) : les réglages enregistrés, seul `actif` change. Les autres
+ * réglages en cours de saisie ne partent pas avec. Gérant seulement
+ * (REGLAGES_AGENT_GERANT) ; rien ne l'éteint ensuite à sa place.
+ */
+export function reglagesAvecMarche(enregistres: ReglagesAgent, actif: boolean, o: { le: string; par: string }): ReglagesAgent {
+  return { ...enregistres, actif, majLe: o.le, majPar: o.par };
+}
+
+/**
+ * Phrase du retour d'un passage lancé par l'interrupteur, écrite à partir
+ * des nombres seulement (jamais le message technique du serveur, qui peut
+ * citer une erreur de Repull) : « Votre agent est activé. Il a répondu à
+ * 2 voyageurs et confié 1 conversation à l'équipe. » Mis en pause pendant
+ * le passage : ce qui est parti quand même. `detail` : des conversations
+ * n'ont pas pu être traitées (le détail est dans « Votre agent »).
+ */
+export function phraseRetourPassage(
+  p: { examines: number; repondus: number; transmis: number; aValider?: number; erreurs: readonly string[] },
+  o: { enPause?: boolean } = {},
+): { texte: string; detail: boolean } {
+  const nb = (n: number, mot: string) => `${n} ${mot}${n > 1 ? 's' : ''}`;
+  const faits = [
+    p.repondus ? `répondu à ${nb(p.repondus, 'voyageur')}` : '',
+    p.aValider ? `préparé ${nb(p.aValider, 'réponse')} à valider` : '',
+    p.transmis ? `confié ${nb(p.transmis, 'conversation')} à l’équipe` : '',
+  ].filter(Boolean);
+  const liste = faits.length > 1 ? `${faits.slice(0, -1).join(', ')} et ${faits[faits.length - 1]}` : (faits[0] ?? '');
+  const detail = p.erreurs.length > 0;
+  const suite = detail ? ` Certaines conversations n’ont pas pu être traitées${' '}: le détail est dans «${' '}Votre agent${' '}».` : '';
+  if (o.enPause) return { texte: `Votre agent est en pause.${liste ? ` Pendant son dernier passage, il a ${liste}.` : ''}${suite}`, detail };
+  const corps = liste ? `Il a ${liste}.` : p.examines ? 'Il reprendra les messages en attente à son prochain passage.' : 'Aucun message en attente.';
+  return { texte: `Votre agent est activé. ${corps}${suite}`, detail };
+}
+
 /** Confiance minimale pour un envoi seul. */
 export const SEUIL_SIMPLES = 0.85;
 export const SEUIL_AUTONOME = 0.7;

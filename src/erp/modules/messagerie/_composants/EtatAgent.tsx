@@ -32,6 +32,11 @@ interface EtatServeur {
 /** Dernière lecture de l'état : l'en-tête et les réglages partagent le même appel. */
 let memo: { le: number; promesse: Promise<EtatServeur> } | null = null;
 
+/** Après un passage lancé d'ici (agent allumé) : la prochaine lecture redemande l'état au serveur. */
+export function oublierEtatAgent() {
+  memo = null;
+}
+
 function lireEtat(forcer: boolean): Promise<EtatServeur> {
   if (!forcer && memo && Date.now() - memo.le < 60_000) return memo.promesse;
   const promesse = appelerServeur<EtatServeur>('/api/erp-agent?action=etat', 'GET');
@@ -43,7 +48,7 @@ function lireEtat(forcer: boolean): Promise<EtatServeur> {
 }
 
 /** État serveur de l'agent (mode réel seulement ; rien en démonstration). */
-function useEtatAgent() {
+export function useEtatAgent() {
   const { mode } = useErp();
   const [etat, setEtat] = useState<EtatServeur | null>(null);
   const [chargement, setChargement] = useState(false);
@@ -178,9 +183,12 @@ export function EtatAgentServeur({ actifReglage, passage }: { actifReglage: bool
       )}
 
       <ul className="mt-2 divide-y divide-(--lm-bord)" aria-busy={chargement}>
-        <Ligne ok={etat ? actif : null} titre={actif ? 'Agent actif' : 'Agent en pause'}>
-          {actif ? passage : 'Il ne répond à personne : activez-le plus haut, puis enregistrez.'}
-        </Ligne>
+        {/* En pause, la carte du dessus le dit déjà (et renvoie à l'interrupteur de l'en-tête). */}
+        {actif && (
+          <Ligne ok={etat ? true : null} titre="À chaque passage">
+            {passage}
+          </Ligne>
+        )}
         {/* Second contrôle des réponses en échec répété (controle-reponse.ts) : rien ne part seul. */}
         {etat?.etat?.controle?.alerte && (
           <Ligne ok={false} titre="Vérification des réponses impossible">

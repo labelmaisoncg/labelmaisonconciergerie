@@ -12,7 +12,7 @@
 import { useMemo, useState, type CSSProperties } from 'react';
 import { Link, Route, Routes, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ArrowLeft, MessagesSquare, Plug } from 'lucide-react';
-import { ButtonLink, EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
+import { Alert, Button, ButtonLink, EmptyState, PageHeader, Tabs, cn, useRechercheUrl } from '../../ui';
 import { useErp } from '../../data/store';
 import { logementById, reservationById } from '../../data/selectors';
 import { AUJOURDHUI } from '../../data/format';
@@ -20,7 +20,7 @@ import { langueFil, trierParUrgence, urgenceFil } from '../../data/messagerie-ia
 import { Activite } from './_composants/Activite';
 import { Configurer } from './_composants/Configurer';
 import { Conversation } from './_composants/Conversation';
-import { PastilleAgent } from './_composants/EtatAgent';
+import { InterrupteurAgent, useMarcheAgent } from './_composants/InterrupteurAgent';
 import { ListeFils, type TriFil } from './_composants/ListeFils';
 import { MessagesAutomatiques } from './_composants/MessagesAutomatiques';
 import { PanneauContexte } from './_composants/PanneauContexte';
@@ -36,11 +36,13 @@ export default function ModuleMessagerie() {
   const onglet: Onglet = segment === 'activite' || segment === 'agent' || segment === 'automatiques' ? segment : 'conversations';
   // Sur mobile, une conversation ouverte prend tout l'écran.
   const filOuvert = onglet === 'conversations' && !!segment;
+  // Marche / pause de l'agent dans l'en-tête (gérant) : le retour de son premier passage s'affiche sous les onglets.
+  const marche = useMarcheAgent();
 
   return (
     <>
       <div className={cn(filOuvert && 'max-lg:hidden')}>
-        <PageHeader titre="Messagerie" actions={<PastilleAgent />} />
+        <PageHeader titre="Messagerie" actions={<InterrupteurAgent marche={marche} />} />
         <Tabs
           label="Sections de la messagerie"
           actif={onglet}
@@ -53,6 +55,27 @@ export default function ModuleMessagerie() {
             { cle: 'automatiques', libelle: 'Messages automatiques' },
           ]}
         />
+        {marche.retour && (
+          <Alert
+            tone={marche.retour.ton}
+            className="my-4"
+            actionsDessous
+            actions={
+              <>
+                {marche.retour.detail && onglet !== 'agent' && (
+                  <ButtonLink size="sm" variant="ghost" to="/erp/messagerie/agent">
+                    Voir le détail
+                  </ButtonLink>
+                )}
+                <Button size="sm" variant="ghost" onClick={marche.effacerRetour}>
+                  OK
+                </Button>
+              </>
+            }
+          >
+            {marche.retour.texte}
+          </Alert>
+        )}
       </div>
       <Routes>
         <Route index element={<Boite />} />
