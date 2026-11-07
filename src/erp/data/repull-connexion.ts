@@ -1053,6 +1053,10 @@ async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, anno
         throw new ErreurConnexion(`Presque fini : « ${autre.nom} » n’a pas pu être retiré (${e instanceof Error ? e.message : String(e)}). Relancez « Relier » : elle reprend là où elle en était.`, 409);
       }
     }
+    // Le serveur supprime sans le refus de la base (réservé aux comptes de l'équipe) : ce qui serait
+    // arrivé sur l'autre logement pendant ce temps (une saisie de l'équipe) le rejoint aussi.
+    const fin = await deplacerTout(ctx, autre.id, logementId, qui.email);
+    for (const [c, n] of Object.entries(fin.deplaces)) deplaces[c] = (deplaces[c] ?? 0) + (n ?? 0);
   }
 
   const nom = liee.nom ? `« ${liee.nom} »` : annonce;

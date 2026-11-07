@@ -638,6 +638,19 @@ async function principal() {
     verifier(!!ancien && !verrouPris((await lireVerrou(nouvelleBase(fb))).verrou, horloge.getTime()) && (await lireVerrou(nouvelleBase(fb))).verrou!.generation === g + 1, 'bail expiré : le verrou se libère seul');
   }
 
+  {
+    // Un lien de quelques secondes en cours : le passage (webhook d'une réservation, cron) attend sa fin, puis se fait.
+    const court = await prendreVerrou(nouvelleBase(fb), { motif: 'test', par: 'autre@exemple.fr', maintenant: horloge });
+    let attentes = 0;
+    const r = await passe({
+      attendre: async () => {
+        attentes++;
+        if (court) await rendreVerrou(nouvelleBase(fb), court.jeton, 'autre@exemple.fr');
+      },
+    });
+    verifier(!!court && r.statut === 'fait' && attentes === 1 && !r.bilan?.erreurs.length, 'lien court en cours : le passage attend sa fin puis se fait (rien de perdu)', { statut: r.statut, attentes });
+  }
+
   // Le lien.
   const appelsAvantLien = repull.appels.length;
   const ecrituresAvant = fb.ecritures.length;

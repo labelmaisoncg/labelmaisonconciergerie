@@ -2092,6 +2092,11 @@ export function baseGardee(base: BaseErp, generation: number, maintenant: () => 
   });
 }
 
+/** Attente d'un lien en cours avant un passage : 10 × 2 s au plus, s'il reste au moins 35 s au passage. */
+const ATTENTES_VERROU = 10;
+const PAS_ATTENTE_VERROU_MS = 2_000;
+const TEMPS_GARDE_APRES_VERROU_MS = 35_000;
+
 /** Message d'un passage remis : un gérant relie une annonce à un logement. */
 export const MESSAGE_VERROU = 'Un gérant relie en ce moment une annonce à un logement : la synchronisation reprend dans une minute.';
 
@@ -2243,7 +2248,14 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
   }
 
   // Verrou des connexions : pas de passage pendant qu'un gérant relie une annonce à un logement (aucun appel).
-  const verrou = await lireVerrou(o.base).catch(() => null);
+  // Le lien dure quelques secondes : on attend qu'il finisse (une réservation reçue par webhook n'est pas
+  // perdue), sans entamer le temps du passage ; au-delà, « occupe ».
+  let verrou = await lireVerrou(o.base).catch(() => null);
+  const patienter = o.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < ATTENTES_VERROU && verrou && verrouPris(verrou.verrou, maintenant().getTime()) && o.echeance - maintenant().getTime() > TEMPS_GARDE_APRES_VERROU_MS; i++) {
+    await patienter(PAS_ATTENTE_VERROU_MS);
+    verrou = await lireVerrou(o.base).catch(() => null);
+  }
   if (verrou && verrouPris(verrou.verrou, maintenant().getTime())) return { ok: true, statut: 'occupe', message: MESSAGE_VERROU, bilan: etat.dernierBilan, etat };
   // Un lien commencé pendant le passage l'arrête avant sa prochaine écriture (baseGardee).
   const baseSession = verrou ? baseGardee(o.base, verrou.verrou?.generation ?? 0, maintenant) : o.base;
