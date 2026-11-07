@@ -47,6 +47,7 @@ import {
   accueilleCanal,
   annoncesDe,
   annoncesProposees,
+  canalApporte,
   canalDe,
   canauxDuLogement,
   canauxPrincipaux,
@@ -58,6 +59,7 @@ import {
   phraseCeQuiRejoint,
   relierConnexionDe,
   ressemblance,
+  sansPlateforme,
   suggestionPour,
   verifierConnexion,
   ceQuiRejoint,
@@ -384,6 +386,34 @@ async function principal() {
     verifier(paires.length === 1 && paires[0].garde.id === a.id && paires[0].autre.id === b.id, 'page Connexions : la paire, le logement Airbnb gardé par défaut');
     const pour = logementsPourAnnonce({ id: '505', nom: 'Atelier Spire · 2 pièces · Balcon · Projecteur', ville: 'Corbeil-Essonnes', plateformes: ['booking'] }, [a, importe('506', 'Maison des Lilas', 'airbnb', { ville: 'Corbeil-Essonnes' }), importe('507', 'Loft du Port', 'airbnb', { ville: 'Massy' })]);
     verifier(pour.forte?.id === a.id && pour.candidats.length === 2 && pour.candidats[0].id === a.id, 'annonce cochée : « Est-ce le même logement que… » (fiable), sinon la liste de la même commune');
+  }
+
+  /* ================================================================ 2 bis. plateforme inconnue */
+  section('2 bis. Annonce sans plateforme connue : elle prend celle qui manque au logement');
+  {
+    const a = importe('521', 'Atelier Spire •2 chambres • Balcon • Projecteur', 'airbnb', { ville: 'Corbeil-Essonnes' });
+    // Le service de connexion ne dit aucune plateforme pour cette annonce (aucun canal).
+    const b: Logement = { ...importe('522', 'Atelier Spire 3 piece Balcon Projecteur — Two-Bedroom Apartment', 'booking', { ville: 'Corbeil-Essonnes' }), annonces: [], repull: { id: '522', canaux: [] } };
+    const autrePlateforme: Logement = { ...b, id: 'repull-523', repull: { id: '523', canaux: [{ plateforme: 'vrbo', idExterne: 'v', actif: true }] } };
+    verifier(sansPlateforme(b) && !sansPlateforme(a) && !sansPlateforme(autrePlateforme) && !sansPlateforme(logementVide('log-x', 'Fait main')), 'sans plateforme : aucun canal (une autre plateforme, ou pas d’annonce, ne compte pas)');
+    verifier(canalApporte(a, b) === 'booking' && canalApporte(b, a) === 'airbnb' && canalApporte(a, autrePlateforme) === null, 'elle apporte la plateforme qui manque au logement gardé');
+    verifier(suggestionPour(a, [a, b])?.id === b.id && suggestionPour(b, [a, b])?.id === a.id, 'noms très proches : proposée, des deux côtés');
+    const paires = pairesSuggerees([b, a]);
+    verifier(paires.length === 1 && paires[0].garde.id === a.id && paires[0].autre.id === b.id, 'page Connexions : le logement dont la plateforme est connue est gardé');
+    const annonces = [{ id: '522', nom: b.nom, plateformes: [], statutRepull: 'active', selectionnee: true, logementId: b.id }, { id: '523', nom: 'Autre plateforme', plateformes: ['vrbo'], statutRepull: 'active', selectionnee: true }];
+    const pB = annoncesProposees(a, 'booking', annonces, [a, b]);
+    verifier(pB.length === 1 && pB[0].annonce.id === '522' && !pB[0].bloquee && pB[0].logement?.id === b.id, '« Relier l’annonce Booking.com » : elle est proposée, choisissable', pB.map((x) => x.annonce.id));
+    verifier(!annoncesProposees(a, 'airbnb', annonces, [a, b]).length, 'pas pour la plateforme que le logement a déjà');
+    const v = verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '522', logements: [a, b], annonces });
+    verifier(v.ok && v.mode === 'absorber' && v.canal === 'booking' && v.autre?.id === b.id, 'relier : accepté, comme une annonce Booking.com', v);
+    const v2 = verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '523', logements: [a, b, autrePlateforme], annonces });
+    verifier(!v2.ok, 'une annonce d’une autre plateforme (ni Airbnb ni Booking.com) : toujours refusée');
+    const deuxInconnues = verifierConnexion({ role: 'gerant', logementId: b.id, annonceId: '524', logements: [a, b], annonces: [{ id: '524', nom: 'x', plateformes: [], statutRepull: 'active', selectionnee: true }] });
+    verifier(!deuxInconnues.ok, 'deux plateformes inconnues : refusé (on ne saurait pas laquelle)');
+    if (v.ok) {
+      const f = fusionnerLogement(a, nouvelleLiee({ annonce: '522', canal: v.canal, le: 'x', par: 'y', depuis: b.id }), b);
+      verifier(f.logement.annonces.some((x) => x.canal === 'booking' && !x.connecte) && f.logement.annonces.some((x) => x.canal === 'airbnb' && x.connecte), 'fiche : l’entrée Booking.com, pas « en ligne » tant que la synchronisation ne l’a pas vue');
+    }
   }
 
   /* ================================================================ 3. refus */

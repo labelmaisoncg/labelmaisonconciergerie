@@ -34,7 +34,7 @@ import type {
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
 import { logementsARelier } from '../../data/liaison-annonce';
-import { NOM_CANAL, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
+import { NOM_CANAL, canalApporte, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
 import type { Logement } from '../../data/types';
 import { Alert, Badge, Button, Card, CardHeader, ChoixListe, EmptyState, Modal, NBSP, PageHeader, ProgressBar, Repli, Skeleton, cn, insecables, type Ton } from '../../ui';
 import { NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
@@ -490,7 +490,7 @@ export default function Connexions() {
         )}
         {etat &&
           paires.map(({ garde, autre }) => {
-            const canal = canalUniqueDuLogement(autre);
+            const canal = canalApporte(garde, autre);
             if (!canal || !autre.repull?.id) return null;
             return (
               <div key={`${garde.id}|${autre.id}`} className="mb-3 flex items-center gap-x-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-1.5">

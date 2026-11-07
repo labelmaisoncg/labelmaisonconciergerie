@@ -89,6 +89,33 @@ export function canauxDuLogement(l: Pick<Logement, 'repull' | 'annonces'>): Cana
   return [...new Set([...canauxPrincipaux(l), ...liees(l).map((x) => x.canal)])];
 }
 
+/**
+ * Annonce dont le service de connexion ne dit aucune plateforme (aucun canal :
+ * ni Airbnb, ni Booking.com, ni une autre). Reliée à un logement qui n'a
+ * qu'une plateforme, elle prend l'autre (celle qu'on relie) : c'est le geste
+ * du gérant (« Relier l'annonce Booking.com ») qui le dit.
+ */
+export function sansPlateforme(l: Pick<Logement, 'repull' | 'annonces'>): boolean {
+  if (!l.repull?.id) return false;
+  if ((l.repull.canaux ?? []).some((c) => String(c?.plateforme ?? '').trim())) return false;
+  return !(l.annonces ?? []).some((a) => a?.canal === 'airbnb' || a?.canal === 'booking');
+}
+
+/** L'autre plateforme (Airbnb ↔ Booking.com). */
+export const autreCanal = (c: CanalPlateforme): CanalPlateforme => (c === 'airbnb' ? 'booking' : 'airbnb');
+
+/**
+ * Plateforme qu'un logement apporte en rejoignant `garde` : la sienne, ou,
+ * sans plateforme connue, celle qui manque à `garde` (s'il n'en a qu'une).
+ * null : aucune des deux, ou les deux à la fois.
+ */
+export function canalApporte(garde: Pick<Logement, 'repull' | 'annonces'>, l: Pick<Logement, 'repull' | 'annonces'>): CanalPlateforme | null {
+  const c = canalUniqueDuLogement(l);
+  if (c) return c;
+  const g = canalUniqueDuLogement(garde);
+  return g && sansPlateforme(l) ? autreCanal(g) : null;
+}
+
 /** Logement qui porte cette annonce comme annonce RELIÉE. */
 export function logementDeLAnnonceLiee<L extends Pick<Logement, 'id' | 'repull'>>(annonce: string, logements: readonly L[]): L | undefined {
   return logements.find((l) => liees(l).some((x) => String(x.id) === String(annonce)));
@@ -228,8 +255,9 @@ export interface AnnonceTrouvee {
 export function pairePossible(a: Logement, b: Logement): boolean {
   if (a.id === b.id || !a.repull?.id || !b.repull?.id || a.statut === 'sorti' || b.statut === 'sorti') return false;
   if (liees(a).length || liees(b).length) return false;
-  const ca = canalUniqueDuLogement(a);
-  const cb = canalUniqueDuLogement(b);
+  // Sans plateforme connue d'un côté : il prend celle qui manque à l'autre (canalApporte).
+  const ca = canalApporte(b, a);
+  const cb = canalApporte(a, b);
   if (!ca || !cb || ca === cb) return false;
   return !proprietairesDifferents(a, b);
 }
@@ -259,8 +287,11 @@ export function pairesSuggerees(logements: readonly Logement[]): { garde: Logeme
     const s = suggestionPour(l, logements);
     if (!s || vues.has(l.id) || vues.has(s.id)) continue;
     vues.add(l.id).add(s.id);
-    const lAirbnb = canalUniqueDuLogement(l) === 'airbnb';
-    paires.push(lAirbnb ? { garde: l, autre: s } : { garde: s, autre: l });
+    // Gardé : le logement Airbnb ; sinon celui dont la plateforme est connue.
+    const cl = canalUniqueDuLogement(l);
+    const cs = canalUniqueDuLogement(s);
+    const lGarde = cl === 'airbnb' || (cs !== 'airbnb' && !!cl && !cs);
+    paires.push(lGarde ? { garde: l, autre: s } : { garde: s, autre: l });
   }
   return paires;
 }
@@ -286,7 +317,9 @@ export function annoncesProposees(l: Logement, canal: CanalPlateforme, annonces:
   const miennes = new Set(annoncesDe(l));
   const res: AnnonceProposee[] = [];
   for (const a of annonces) {
-    if (a.statutRepull === 'archived' || miennes.has(a.id) || canalUnique(a.plateformes) !== canal) continue;
+    // Sans plateforme connue : proposée pour celle qui manque à ce logement (canalApporte).
+    const inconnue = !(a.plateformes ?? []).some((p) => String(p ?? '').trim()) && canalUniqueDuLogement(l) === autreCanal(canal);
+    if (a.statutRepull === 'archived' || miennes.has(a.id) || (canalUnique(a.plateformes) !== canal && !inconnue)) continue;
     if (logementDeLAnnonceLiee(a.id, logements)) continue;
     const porteur = logementPortant(a.id, logements.filter((x) => x.id !== l.id)) ?? (a.logementId ? logements.find((x) => x.id === a.logementId && x.id !== l.id) : undefined);
     const r = porteur ? ressemblance(l, porteur) : ressemblance(l, { nom: a.nom, ville: a.ville });
@@ -375,8 +408,12 @@ export function verifierConnexion(o: { role: string | undefined; logementId: str
   if (garde.statut === 'sorti') return refus(`« ${garde.nom} » est « Sorti » : changez d’abord son statut pour lui relier une annonce.`, 409);
 
   const plateformes = autre ? canauxPrincipaux(autre) : (trouvee?.plateformes ?? []).map(canalDe).filter((c): c is CanalPlateforme => !!c);
-  const uniques = [...new Set(plateformes)];
+  let uniques = [...new Set(plateformes)];
   if (!autre && (!trouvee || trouvee.statutRepull === 'archived')) return refus('Cette annonce n’est pas sur les plateformes connectées à cet espace : rechargez la liste.', 404);
+  // Aucune plateforme connue pour l'annonce : elle prend celle qui manque au logement (s'il n'en a qu'une).
+  const inconnue = autre ? sansPlateforme(autre) : !(trouvee?.plateformes ?? []).some((p) => String(p ?? '').trim());
+  const deGarde = canalUniqueDuLogement(garde);
+  if (!uniques.length && inconnue && deGarde) uniques = [autreCanal(deGarde)];
   if (!uniques.length) return refus('Seules les annonces Airbnb et Booking.com se relient à un logement.');
   if (uniques.length > 1) return refus('Cette annonce est déjà sur Airbnb et Booking.com : elle a son propre logement.', 409);
   const canal = uniques[0];
@@ -426,7 +463,8 @@ export function fusionnerLogement(garde: Logement, liee: AnnonceLiee, autre?: Lo
   const entreeAutre = autre?.annonces?.find((a) => a?.canal === liee.canal);
   const entreeIci = garde.annonces.find((a) => a?.canal === liee.canal);
   const url = entreeIci?.url || entreeAutre?.url;
-  const annonce: Annonce = { canal: liee.canal, ...(url ? { url } : {}), connecte: entreeAutre ? !!entreeAutre.connecte : true };
+  // L'autre logement n'avait pas cette plateforme (inconnue) : pas « en ligne » tant que la synchronisation ne l'a pas vue.
+  const annonce: Annonce = { canal: liee.canal, ...(url ? { url } : {}), connecte: entreeAutre ? !!entreeAutre.connecte : !autre };
   const ordre = (c: string) => ['airbnb', 'booking', 'direct'].indexOf(c);
   s.annonces = [...garde.annonces.filter((a) => a?.canal !== liee.canal), annonce].sort((a, b) => ordre(a.canal) - ordre(b.canal));
 

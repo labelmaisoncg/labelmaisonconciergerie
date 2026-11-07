@@ -26,7 +26,7 @@ import {
   NOM_CANAL,
   accueilleCanal,
   annoncesProposees,
-  canalUniqueDuLogement,
+  canalApporte,
   canauxPrincipaux,
   ceQuiRejoint,
   liees,
@@ -446,7 +446,7 @@ export function SuggestionConnexion({ logement: l }: { logement: Logement }) {
   const [ouvert, setOuvert] = useState<{ canal: CanalPlateforme; annonce: string } | null>(null);
   const [cachee, setCachee] = useState(false);
   const autre = peutRelierConnexion(d.utilisateur.role, d.lectureSeule) ? suggestionPour(l, d.logements) : undefined;
-  const canal = autre ? canalUniqueDuLogement(autre) : null;
+  const canal = autre ? canalApporte(l, autre) : null;
   const visible = !!autre && !!canal && !!autre.repull?.id && !cachee && !masquee(l.id, autre.id);
   const masquer = () => {
     if (!autre) return;
