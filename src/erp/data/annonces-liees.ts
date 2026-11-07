@@ -259,7 +259,30 @@ export function pairePossible(a: Logement, b: Logement): boolean {
   const ca = canalApporte(b, a);
   const cb = canalApporte(a, b);
   if (!ca || !cb || ca === cb) return false;
-  return !proprietairesDifferents(a, b);
+  return !proprietairesDifferents(a, b) && !historiquesDifferents(a, b) && !historiquesDifferents(b, a);
+}
+
+/**
+ * Historiques de propriétaires incompatibles : les séjours de l'autre
+ * logement seraient attribués selon l'historique du logement gardé
+ * (espace propriétaire, relevés). Compatibles : aucun des deux n'en a ; le
+ * gardé est « à renseigner » sans historique (il reprend celui de l'autre,
+ * fusionnerLogement) ; l'autre est « à renseigner » sans historique.
+ */
+export function historiquesDifferents(g: Pick<Logement, 'proprietaireId' | 'proprietaireDepuis' | 'proprietairesPrecedents'>, a: Pick<Logement, 'proprietaireId' | 'proprietaireDepuis' | 'proprietairesPrecedents'>): boolean {
+  const sansHistorique = (l: typeof g) => !l.proprietairesPrecedents?.length && !l.proprietaireDepuis;
+  if (sansHistorique(g) && sansHistorique(a)) return false;
+  if (g.proprietaireId === ID_PROPRIETAIRE_A_RENSEIGNER && !g.proprietairesPrecedents?.length) return false;
+  if (a.proprietaireId === ID_PROPRIETAIRE_A_RENSEIGNER && sansHistorique(a)) return false;
+  return JSON.stringify(g.proprietairesPrecedents ?? []) !== JSON.stringify(a.proprietairesPrecedents ?? []) || (g.proprietaireDepuis ?? '') !== (a.proprietaireDepuis ?? '');
+}
+
+/** Ce qui empêche l'autre logement de rejoindre le gardé (null : rien). */
+export function blocageAbsorption(garde: Logement, autre: Logement): string | null {
+  if (liees(autre).length) return `« ${autre.nom} » est déjà relié à une autre annonce.`;
+  if (proprietairesDifferents(garde, autre)) return `« ${garde.nom} » et « ${autre.nom} » n’ont pas le même propriétaire : vérifiez avant de les relier.`;
+  if (historiquesDifferents(garde, autre)) return `« ${garde.nom} » et « ${autre.nom} » n’ont pas le même historique de propriétaires : alignez-le dans leurs fiches avant de les relier.`;
+  return null;
 }
 
 /** Deux propriétaires connus (pas « à renseigner ») et différents. */
@@ -302,6 +325,8 @@ export interface AnnonceProposee {
   /** Logement de l'ERP qui la porte aujourd'hui (importée à part), s'il y en a un. */
   logement?: Logement;
   niveau: Ressemblance['niveau'];
+  /** Pourquoi elle ressemble (même adresse, nom très proche). */
+  raison?: Ressemblance['raison'];
   /** Raison d'une annonce qui ne se choisit pas ici ; absente : elle se choisit. */
   bloquee?: string;
 }
@@ -325,9 +350,10 @@ export function annoncesProposees(l: Logement, canal: CanalPlateforme, annonces:
     const r = porteur ? ressemblance(l, porteur) : ressemblance(l, { nom: a.nom, ville: a.ville });
     let bloquee: string | undefined;
     if (porteur && liees(porteur).length) bloquee = `« ${porteur.nom} » a déjà une autre annonce reliée.`;
-    else if (porteur && proprietairesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même propriétaire.`;
+    else if (porteur && proprietairesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même propriétaire.`;
+    else if (porteur && historiquesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même historique de propriétaires.`;
     else if (!porteur && !a.selectionnee) bloquee = 'Pas encore suivie : cochez-la dans Connexions, l’ERP vous demandera alors si c’est ce logement.';
-    res.push({ annonce: a, ...(porteur ? { logement: porteur } : {}), niveau: r.niveau, ...(bloquee ? { bloquee } : {}) });
+    res.push({ annonce: a, ...(porteur ? { logement: porteur } : {}), niveau: r.niveau, ...(r.raison ? { raison: r.raison } : {}), ...(bloquee ? { bloquee } : {}) });
   }
   const rang = (p: AnnonceProposee) => (p.bloquee ? 10 : 0) + (p.niveau === 'forte' ? 0 : p.niveau === 'proche' ? 1 : 2);
   return res.sort((x, y) => rang(x) - rang(y) || x.annonce.nom.localeCompare(y.annonce.nom, 'fr'));
@@ -400,8 +426,13 @@ export function verifierConnexion(o: { role: string | undefined; logementId: str
 
   const dejaIci = liees(garde).find((x) => String(x.id) === annonce);
   if (dejaIci) {
-    // Déjà relié : idempotent ; l'autre logement encore là (opération interrompue) : on reprend.
-    return { ok: true, mode: autre ? 'absorber' : 'deja', garde, ...(autre ? { autre } : {}), canal: dejaIci.canal, annonce, ...(dejaIci.nom ? { nomAnnonce: dejaIci.nom } : {}) };
+    // Déjà relié : idempotent.
+    if (!autre) return { ok: true, mode: 'deja', garde, canal: dejaIci.canal, annonce, ...(dejaIci.nom ? { nomAnnonce: dejaIci.nom } : {}) };
+    // L'autre logement encore là (opération interrompue) : on reprend, seulement avec le logement d'origine et les mêmes contrôles.
+    if (dejaIci.depuis && autre.id !== dejaIci.depuis) return refus(`« ${autre.nom} » n’est pas le logement d’où vient cette annonce : vérifiez avant de continuer.`, 409);
+    const bloque = blocageAbsorption(garde, autre);
+    if (bloque) return refus(bloque, 409);
+    return { ok: true, mode: 'absorber', garde, autre, canal: dejaIci.canal, annonce, ...(dejaIci.nom ? { nomAnnonce: dejaIci.nom } : {}) };
   }
   const ailleurs = logementDeLAnnonceLiee(annonce, autres);
   if (ailleurs) return refus(`Cette annonce est déjà reliée à « ${ailleurs.nom} ».`, 409);
@@ -420,8 +451,8 @@ export function verifierConnexion(o: { role: string | undefined; logementId: str
   if (canauxDuLogement(garde).includes(canal)) return refus(`« ${garde.nom} » a déjà une annonce ${NOM_CANAL[canal]}.`, 409);
 
   if (autre) {
-    if (liees(autre).length) return refus(`« ${autre.nom} » est déjà relié à une autre annonce.`, 409);
-    if (proprietairesDifferents(garde, autre)) return refus(`« ${garde.nom} » et « ${autre.nom} » n’ont pas le même propriétaire : vérifiez avant de les relier.`, 409);
+    const bloque = blocageAbsorption(garde, autre);
+    if (bloque) return refus(bloque, 409);
     return { ok: true, mode: 'absorber', garde, autre, canal, annonce, nomAnnonce: trouvee?.nom ?? autre.nom };
   }
   return { ok: true, mode: 'ajouter', garde, canal, annonce, ...(trouvee?.nom ? { nomAnnonce: trouvee.nom } : {}) };

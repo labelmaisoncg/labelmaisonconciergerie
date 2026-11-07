@@ -19,13 +19,13 @@
  * se recouvrent nettement, un seul candidat (suggestionPour).
  */
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
 import { AlertTriangle, ArrowRight, ExternalLink, ImageOff, Link2, Plug, X } from 'lucide-react';
 import { MODE_DEMO } from '../../../data/config';
 import {
   NOM_CANAL,
   accueilleCanal,
   annoncesProposees,
+  autreCanal,
   canalApporte,
   canauxPrincipaux,
   ceQuiRejoint,
@@ -79,7 +79,8 @@ function Vignette({ url }: { url?: string }) {
 /** Ligne secondaire d'une annonce proposée : sa commune, et le logement à part qui la porte s'il a un autre nom. */
 function detailAnnonce(p: AnnonceProposee): string {
   const autreNom = p.logement && p.logement.nom.trim().toLowerCase() !== p.annonce.nom.trim().toLowerCase() ? `Dans l’ERP${NBSP}: « ${p.logement.nom} »` : '';
-  return [p.niveau === 'forte' ? 'Semble correspondre' : '', autreNom, p.annonce.ville ?? ''].filter(Boolean).join(' · ');
+  const pourquoi = p.niveau === 'forte' ? (p.raison === 'adresse' ? 'Même adresse' : 'Nom très proche') : '';
+  return [pourquoi, autreNom, p.annonce.ville ?? ''].filter(Boolean).join(' · ');
 }
 
 /** Annonces à choisir, en lignes avec leur photo (choix exclusif, flèches du clavier comme ChoixListe). */
@@ -113,7 +114,7 @@ function ChoixAnnonce({ options, valeur, onChange, onContinuer, labelledBy }: { 
             <Vignette url={o.annonce.photo} />
             <span className="min-w-0 flex-1">
               <span className="line-clamp-2 text-[15px] break-words text-(--lm-encre)">{o.annonce.nom}</span>
-              {detailAnnonce(o) && <span className="block truncate text-[12.5px] text-(--lm-encre-3)">{insecables(detailAnnonce(o))}</span>}
+              {detailAnnonce(o) && <span className="line-clamp-2 block text-[12.5px] break-words text-(--lm-encre-3)">{insecables(detailAnnonce(o))}</span>}
             </span>
           </button>
         );
@@ -170,7 +171,8 @@ export function AssistantConnexion({ logement: l, canal, preselection, etat: eta
   }, [etatInitial, charger]);
 
   const nom = NOM_CANAL[canal];
-  const principal = canauxPrincipaux(l)[0];
+  // Plateforme de l'annonce principale ; inconnue (aucun canal) : celle qu'on ne relie pas.
+  const principal = canauxPrincipaux(l)[0] ?? autreCanal(canal);
   const proposees = annoncesProposees(l, canal, etat?.annonces ?? [], d.logements);
   const choisissables = proposees.filter((x) => !x.bloquee);
   const bloquees = proposees.filter((x) => x.bloquee);
@@ -216,7 +218,7 @@ export function AssistantConnexion({ logement: l, canal, preselection, etat: eta
           </Button>
         }
       >
-        <p className="text-[14px] text-(--lm-encre)">{insecables(`« ${l.nom} » a maintenant ses deux connexions${NBSP}: ${NOMS[principal ?? 'airbnb']} et ${nom}.`)}</p>
+        <p className="text-[14px] text-(--lm-encre)">{insecables(`« ${l.nom} » a maintenant ses deux connexions${NBSP}: ${NOMS[principal]} et ${nom}.`)}</p>
         {(fait.phrase || fait.retire) && (
           <p className="mt-2 text-[13.5px] text-(--lm-encre-2)">
             {insecables([fait.phrase, fait.retire ? `« ${fait.retire} » ne figure plus dans la liste des logements.` : ''].filter(Boolean).join(' '))}
@@ -227,7 +229,7 @@ export function AssistantConnexion({ logement: l, canal, preselection, etat: eta
   }
 
   const sansAnnonce = !chargement && !erreurLecture && !proposees.length;
-  const question = p.ecran === 'annonce' ? `Quelle est l’annonce ${nom} de ce logement${NBSP}?` : `Relier cette annonce à ce logement${NBSP}?`;
+  const question = p.ecran === 'annonce' ? `Quelle est l’annonce ${nom} de ce logement${NBSP}?` : `Relier cette annonce à « ${l.nom} »${NBSP}?`;
   const aide = p.ecran === 'annonce' ? `Ses réservations et ses messages arriveront sur « ${l.nom} ».` : undefined;
 
   return (
@@ -314,17 +316,22 @@ export function AssistantConnexion({ logement: l, canal, preselection, etat: eta
           </>
         ))}
       {p.ecran === 'recapitulatif' && choix && (
+        <>
+          {/* Avant le récapitulatif : visible sans défiler, même sur un petit téléphone. */}
+          <Alert tone="alerte" className="mb-4" titre="Ce lien ne se défait pas">
+            {insecables(`Il ne restera qu’un logement, « ${l.nom} », avec ses deux connexions. Vérifiez que c’est bien le même appartement.`)}
+          </Alert>
         <RecapAssistant
           lignes={[
+            { cle: 'garde', libelle: 'Logement gardé', valeur: `« ${l.nom} »\nNom, photos et prix de son annonce ${NOMS[principal]}` },
             { cle: 'annonce', libelle: `Annonce ${nom}`, valeur: choix.annonce.nom, onModifier: () => p.modifier('annonce') },
             {
               cle: 'avec',
               libelle: 'Ce qui vient avec',
               valeur: choix.logement
-                ? [phrase || 'Rien d’autre pour l’instant.', `« ${choix.logement.nom} » ne figurera plus dans la liste des logements.`].join('\n')
-                : 'Ses réservations et ses messages arriveront sur ce logement.',
+                ? [phrase || 'Rien d’autre pour l’instant.', `Le logement importé de ${nom}, « ${choix.logement.nom} », ne figurera plus dans la liste${NBSP}: tout sera sur « ${l.nom} ».`].join('\n')
+                : `Ses réservations et ses messages arriveront sur « ${l.nom} ».`,
             },
-            { cle: 'reste', libelle: 'Ce qui ne change pas', valeur: `Le nom, les photos, la description et les prix restent ceux de l’annonce ${NOMS[principal ?? 'airbnb']}.` },
           ]}
         >
           {autreVille && (
@@ -333,15 +340,13 @@ export function AssistantConnexion({ logement: l, canal, preselection, etat: eta
               <span>{insecables(`L’annonce est à ${autreVille}, ce logement à ${l.ville}${NBSP}: vérifiez que c’est le même appartement.`)}</span>
             </p>
           )}
-          <Alert tone="alerte" className="mt-4" titre="Ce lien ne se défait pas">
-            {insecables(choix.logement ? `Une fois relié, « ${choix.logement.nom} » ne peut plus redevenir un logement à part. Vérifiez que c’est bien le même appartement.` : 'Une fois reliée, l’annonce reste sur ce logement. Vérifiez que c’est bien le même appartement.')}
-          </Alert>
           {erreurEnvoi && (
             <Alert tone="danger" className="mt-4">
               {erreurEnvoi}
             </Alert>
           )}
         </RecapAssistant>
+        </>
       )}
     </Assistant>
   );
@@ -365,9 +370,16 @@ export function CarteConnexions({ logement: l, enPlus }: { logement: Logement; e
   const principaux = canauxPrincipaux(l);
   const plateformes: Canal[] = ['airbnb', 'booking', ...(l.annonces.some((a) => a.canal === 'direct' && (a.connecte || a.url)) ? (['direct'] as const) : [])];
 
+  // Fait à la main, pas encore relié, rien de saisi : une seule ligne (l'action est en haut de la fiche, « Relier à une annonce »).
+  const pasEncoreRelie = !avecAnnonce && !l.annonces.some((a) => a.connecte || a.url);
+
   return (
     <Card>
       <CardHeader titre="Connexions" />
+      {gerant && <LiensATerminer logement={l} />}
+      {pasEncoreRelie ? (
+        <p className="text-[13.5px] text-(--lm-encre-2)">Pas encore relié à une annonce.</p>
+      ) : (
       <ul className="divide-y divide-(--lm-bord)">
         {plateformes.map((canal) => {
           const a = l.annonces.find((x) => x.canal === canal);
@@ -384,16 +396,10 @@ export function CarteConnexions({ logement: l, enPlus }: { logement: Logement; e
                 <p className="text-[13.5px] font-medium text-(--lm-encre)">{NOMS[canal]}</p>
                 {reliee || saisi ? (
                   secondaire && <p className="line-clamp-2 text-[12.5px] break-words text-(--lm-encre-2)">{insecables(secondaire)}</p>
-                ) : peutRelier ? (
-                  avecAnnonce && accueilleCanal(l, canal) ? (
-                    <button type="button" onClick={() => setRelier(canal)} className={cn(LIEN, 'mt-0.5')}>
-                      Relier l’annonce {NOMS[canal]} <ArrowRight className="size-3.5" aria-hidden />
-                    </button>
-                  ) : (
-                    <Link to="?relier=1" className={cn(LIEN, 'mt-0.5')}>
-                      Relier à son annonce <ArrowRight className="size-3.5" aria-hidden />
-                    </Link>
-                  )
+                ) : peutRelier && avecAnnonce && accueilleCanal(l, canal) ? (
+                  <button type="button" onClick={() => setRelier(canal)} className={cn(LIEN, 'mt-0.5')}>
+                    Relier l’annonce {NOMS[canal]} <ArrowRight className="size-3.5" aria-hidden />
+                  </button>
                 ) : (
                   <p className="text-[12.5px] text-(--lm-encre-2)">Pas encore reliée</p>
                 )}
@@ -417,20 +423,81 @@ export function CarteConnexions({ logement: l, enPlus }: { logement: Logement; e
           );
         })}
       </ul>
+      )}
       {enPlus}
       {relier && <AssistantConnexion logement={l} canal={relier} onFermer={() => setRelier(null)} />}
     </Card>
   );
 }
 
+/* ------------------------------------------------------------ lien interrompu */
+
+/**
+ * Lien interrompu (coupure, conflit d'écriture) : l'annonce est reliée à ce
+ * logement, mais l'autre logement est encore dans la liste avec une partie
+ * de ce qu'il porte. « Terminer le lien » reprend l'opération là où elle en
+ * était (le serveur revérifie tout, data/annonces-liees.ts).
+ */
+function LiensATerminer({ logement: l }: { logement: Logement }) {
+  const d = useErp();
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState<string>();
+  const enCours = liees(l)
+    .map((x) => ({ liee: x, autre: d.logements.find((o) => o.id !== l.id && String(o.repull?.id ?? '') === String(x.id)) }))
+    .filter((x): x is { liee: (typeof x)['liee']; autre: Logement } => !!x.autre);
+  if (!enCours.length) return null;
+  const { liee, autre } = enCours[0];
+  const terminer = async () => {
+    if (envoi) return;
+    setEnvoi(true);
+    setErreur(undefined);
+    try {
+      if (MODE_DEMO) {
+        const r = d.relierConnexionLocale(l.id, { id: String(liee.id), nom: liee.nom ?? autre.nom, plateformes: [liee.canal], logementId: autre.id });
+        if (!r.ok) throw new Error(r.erreur);
+      } else {
+        await appelerConnexions<ResultatConnexion>('POST', {}, { action: 'relier-connexion', logement: l.id, annonce: String(liee.id) });
+      }
+    } catch (e) {
+      setErreur((e as Error).message);
+    } finally {
+      setEnvoi(false);
+    }
+  };
+  return (
+    <Alert
+      tone="alerte"
+      className="mb-3"
+      titre={insecables(`Le lien avec « ${autre.nom} » n’est pas terminé`)}
+      actions={
+        <Button size="sm" chargement={envoi} onClick={() => void terminer()}>
+          Terminer le lien
+        </Button>
+      }
+      actionsDessous
+    >
+      {insecables(erreur ?? `Une partie de ce qu’il porte (ménages, linge…) est encore sur « ${autre.nom} ». Terminer le lien l’amène ici.`)}
+    </Alert>
+  );
+}
+
 /* ------------------------------------------------------------ suggestion discrète */
 
 const cleMasquee = (a: string, b: string) => `lm-connexion-masquee:${[a, b].sort().join('|')}`;
-function masquee(a: string, b: string): boolean {
+/** Suggestion masquée sur cet appareil (fiche ou page Connexions : le même « non »). */
+export function masquee(a: string, b: string): boolean {
   try {
     return localStorage.getItem(cleMasquee(a, b)) === '1';
   } catch {
     return false;
+  }
+}
+/** Masque la suggestion de cette paire sur cet appareil. */
+export function masquerSuggestion(a: string, b: string): void {
+  try {
+    localStorage.setItem(cleMasquee(a, b), '1');
+  } catch {
+    /* préférence de cet appareil seulement */
   }
 }
 
@@ -450,11 +517,7 @@ export function SuggestionConnexion({ logement: l }: { logement: Logement }) {
   const visible = !!autre && !!canal && !!autre.repull?.id && !cachee && !masquee(l.id, autre.id);
   const masquer = () => {
     if (!autre) return;
-    try {
-      localStorage.setItem(cleMasquee(l.id, autre.id), '1');
-    } catch {
-      /* préférence de cet appareil seulement */
-    }
+    masquerSuggestion(l.id, autre.id);
     setCachee(true);
   };
   return (
@@ -467,6 +530,7 @@ export function SuggestionConnexion({ logement: l }: { logement: Logement }) {
             <button
               type="button"
               onClick={() => setOuvert({ canal, annonce: String(autre.repull!.id) })}
+              aria-label={`Relier l’annonce « ${autre.nom} » à ce logement`}
               className="inline-flex min-h-8 items-center gap-1 align-middle text-[13px] font-medium lm-lien max-sm:min-h-11"
             >
               Relier <ArrowRight className="size-3.5" aria-hidden />

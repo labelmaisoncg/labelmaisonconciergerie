@@ -64,7 +64,7 @@ import {
   verifierConnexion,
   ceQuiRejoint,
 } from './annonces-liees';
-import { delierPossible, lierLogement } from './liaison-annonce';
+import { delierPossible, lierLogement, verifierLiaison } from './liaison-annonce';
 import { annonceSuivie } from './suppression-logement';
 import { operationReserveeAuGerant } from './ecritures-gerant';
 import { donneesVides } from './collections';
@@ -235,7 +235,7 @@ function annonce(id: string, nom: string, plateforme: 'airbnb' | 'booking', o: B
   return {
     id,
     name: nom,
-    address: { street: '4 rue des Tanneurs', city: 'Corbeil-Essonnes' },
+    address: { street: '4 quai des Fictifs', city: 'Corbeil-Essonnes' },
     thumbnailUrl: `https://cdn.exemple.fr/${id}-couverture.jpg`,
     status: 'active',
     channels: [{ platform: plateforme, externalId: `ext-${id}`, active: true, syncEnabled: true }],
@@ -344,8 +344,11 @@ async function principal() {
     verifier(logementPortant('502', [b, lie])?.id === lie.id && logementPortant('501', [b, lie])?.id === lie.id, 'annonce reliée → le logement qui la porte, même si son logement importé existe encore (la liaison l’emporte)');
     verifier(!accueilleCanal(lie, 'booking') && accueilleCanal(a, 'booking') && !accueilleCanal(a, 'airbnb') && !accueilleCanal(logementVide('log-1', 'Fait main'), 'booking'), 'une seule annonce par plateforme ; un logement sans annonce n’en reçoit pas d’autre');
 
-    const index = indexerLogements([b, lie]);
+    const confirme = { annonces: { '502': { logementId: lie.id, canal: 'booking' } } };
+    const index = indexerLogements([b, lie], confirme);
     verifier(index.parAnnonce.get('502') === lie.id && index.parAnnonce.get('501') === lie.id && index.liees.get('502') === lie.id && !index.liees.has('501'), 'synchronisation (indexerLogements) : 502 → le logement relié, pas « repull-502 »');
+    const sansTrace = indexerLogements([b, lie]);
+    verifier(sansTrace.parAnnonce.get('502') === b.id && !sansTrace.liees.size, 'repull.liees sans la trace du serveur (posé par un compte « opérations », une vieille page) : n’aiguille rien');
     const trace = { annonces: { '502': { logementId: a.id, canal: 'booking' } } };
     const sansLiee = indexerLogements([a, b], trace);
     verifier(sansLiee.parAnnonce.get('502') === a.id, 'logement réécrit sans son annonce reliée : la trace côté serveur la renvoie encore sur lui');
@@ -370,8 +373,8 @@ async function principal() {
     verifier(r('Studio des Tanneurs', 'Studio des Tanneurs', 'Massy', 'Linas').niveau === null, 'deux communes différentes : jamais');
     verifier(r('Duplex Saint-Spire terrasse', 'Duplex Saint-Spire calme').niveau === 'proche', 'deux mots propres sur trois : proche, pas forte');
     verifier(
-      ressemblance({ nom: 'A', adresse: '4 rue des Tanneurs', ville: 'Corbeil-Essonnes' }, { nom: 'B', adresse: '4, Rue des Tanneurs', ville: '' }).niveau === 'forte' &&
-        ressemblance({ nom: 'A', adresse: 'rue des Tanneurs', ville: 'Corbeil' }, { nom: 'B', adresse: 'rue des Tanneurs', ville: 'Corbeil' }).niveau === null,
+      ressemblance({ nom: 'A', adresse: '4 quai des Fictifs', ville: 'Corbeil-Essonnes' }, { nom: 'B', adresse: '4, Quai des Fictifs', ville: '' }).niveau === 'forte' &&
+        ressemblance({ nom: 'A', adresse: 'quai des Fictifs', ville: 'Corbeil' }, { nom: 'B', adresse: 'quai des Fictifs', ville: 'Corbeil' }).niveau === null,
       'même adresse avec son numéro : forte ; une rue sans numéro ne suffit pas',
     );
     const a = importe('501', 'Atelier Spire •2 chambres • Balcon • Projecteur', 'airbnb', { ville: 'Corbeil-Essonnes' });
@@ -446,6 +449,16 @@ async function principal() {
     verifier(deja.ok && deja.mode === 'deja', 'déjà relié, l’autre logement parti : « deja » (idempotent)');
     const reprise = verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [aLie, b] });
     verifier(reprise.ok && reprise.mode === 'absorber' && reprise.autre?.id === b.id, 'déjà relié, l’autre logement encore là (interrompu) : on reprend');
+    const lieDAilleurs = fusionnerLogement(a, nouvelleLiee({ annonce: '502', canal: 'booking', le: 'x', par: 'y', depuis: 'repull-999' }), b).logement;
+    verifier(/n’est pas le logement d’où vient/.test(erreur(verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [lieDAilleurs, b] }))), 'reprise : seulement avec le logement d’où vient l’annonce');
+    verifier(/même propriétaire/.test(erreur(verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [{ ...aLie, proprietaireId: 'pro-a' }, { ...b, proprietaireId: 'pro-b' }] }))), 'reprise : les mêmes contrôles (propriétaires)');
+    const historique = [{ proprietaireId: 'pro-ancien', jusquau: '2026-06-30' }] as never;
+    const bHistorique: Logement = { ...b, proprietaireId: PROPRIO, proprietaireDepuis: '2026-07-01', proprietairesPrecedents: historique };
+    verifier(/historique de propriétaires/.test(erreur(verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [{ ...a, proprietaireId: PROPRIO }, bHistorique] }))), 'historiques de propriétaires différents : refusé (les séjours changeraient de propriétaire)');
+    verifier(verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '502', logements: [a, bHistorique] }).ok, 'gardé « à renseigner » sans historique : permis (il reprend celui de l’autre)');
+    verifier(!suggestionPour({ ...a, proprietaireId: PROPRIO, ville: 'Corbeil-Essonnes' }, [{ ...a, proprietaireId: PROPRIO, ville: 'Corbeil-Essonnes' }, { ...bHistorique, nom: a.nom, ville: 'Corbeil-Essonnes' }]), 'historiques différents : aucune suggestion');
+    const main2 = logementVide('log-main-2', 'Fait à la main 2');
+    verifier(/déjà reliée à «\s?Duplex/.test((() => { const r = verifierLiaison({ role: 'gerant', logementId: main2.id, annonceId: '502', logements: [aLie, main2], annonces: [{ id: '502', nom: 'B', statutRepull: 'active' } as never] }); return r.ok ? '' : r.erreur; })()), '« Relier à une annonce » (logement fait à la main) : une annonce déjà reliée ailleurs est refusée');
     const ajout = verifierConnexion({ role: 'gerant', logementId: a.id, annonceId: '510', logements, annonces });
     verifier(ajout.ok && ajout.mode === 'ajouter' && ajout.canal === 'booking', 'annonce pas encore dans l’ERP : seulement reliée (ajouter)');
   }
@@ -461,7 +474,7 @@ async function principal() {
       fiche: { wifiNom: '', wifiCode: '', heureArrivee: '15:00', heureDepart: '10:00', acces: 'Code du gardé', parking: '', regles: '', equipements: [] },
       contacts: [{ role: 'menage', nom: 'Équipe du gardé' }],
       technique: { etage: '2e' },
-      adresse: '4 rue des Tanneurs',
+      adresse: '4 quai des Fictifs',
       ville: 'Corbeil-Essonnes',
     };
     const autre: Logement = {
@@ -478,7 +491,7 @@ async function principal() {
       technique: { etage: '3e', compteurEau: 'Cave' },
       menage: { duree: '2 h' },
       codePostal: '91100',
-      adresse: '4 rue des Tanneurs',
+      adresse: '4 quai des Fictifs',
       ville: 'Corbeil-Essonnes',
       checklistLancement: [
         { cle: 'mandat_signe', libelle: 'Mandat signé', fait: true, preuve: 'mandat.pdf' },
@@ -781,6 +794,42 @@ async function principal() {
   await passe();
   verifier(!fb.get('logements', B) && fb.get<Reservation>('reservations', 'repull-7005')?.logementId === A, 'sans l’annonce reliée sur la fiche : rien de recréé, réservation sur le logement gardé (trace)');
   verifier(fb.get<Logement>('logements', A)?.repull?.liees?.[0]?.id === '502', 'l’annonce reliée revient sur la fiche (trace côté serveur)');
+
+  section('7 bis. Après le lien : rattrapage, réponse immédiate, relecture des réservations');
+  {
+    // Une modification faite hors ligne arrive plus tard sur l'autre logement (supprimé) : le passage du cron la ramène.
+    fb.poser('missions', { id: 'mis-hors-ligne', type: 'menage', logementId: B });
+    horloge = new Date('2026-11-10T10:00:00.000Z');
+    await passe();
+    verifier(fb.get<{ logementId: string }>('missions', 'mis-hors-ligne')?.logementId === A, 'ménage modifié hors ligne sur l’autre logement : ramené par le passage du cron (rattrapage)');
+
+    // Une réservation plus récente est connue…
+    repull.reservations.push(reservation('7012', '502', 'booking', '2027-02-10', '2026-11-10T10:20:00.000Z'));
+    horloge = new Date('2026-11-10T10:15:00.000Z');
+    await passe();
+    // …puis un autre lien est en cours : « déjà relié » répond tout de suite, sans attendre le verrou.
+    const autreLien = await prendreVerrou(nouvelleBase(fb), { motif: 'test', par: 'autre@exemple.fr', maintenant: horloge });
+    const deja2 = await relierAutreAnnonce(ctx(), A, '502', GERANT);
+    verifier(!!autreLien && deja2.deja, 'déjà relié : répond tout de suite, même pendant un autre lien');
+    // Un passage (webhook) remis pendant ce lien : relecture demandée.
+    const remis = await passe();
+    verifier(remis.statut === 'occupe' && !!fb.get<{ depuis?: string }>(COLLECTION_ETAT, 'relire')?.depuis, 'passage remis pendant un lien : relecture des réservations demandée');
+    await rendreVerrou(nouvelleBase(fb), autreLien!.jeton, 'autre@exemple.fr');
+    // La réservation de ce webhook est plus ancienne que la plus récente connue : relue quand même au passage suivant.
+    repull.reservations.push(reservation('7011', '502', 'booking', '2027-02-01', '2026-11-10T10:12:00.000Z'));
+    horloge = new Date('2026-11-10T10:30:00.000Z');
+    await passe();
+    verifier(fb.get<Reservation>('reservations', 'repull-7011')?.logementId === A, 'réservation manquée pendant le lien : relue au passage suivant (relecture), sur le logement gardé');
+    verifier(!fb.get<{ depuis?: string }>(COLLECTION_ETAT, 'relire')?.depuis, 'relecture faite : demande effacée');
+    verifier(!verrouPris({ jeton: 'x', jusqua: horloge.getTime() + 10 * 60_000 }, horloge.getTime()), 'verrou au bail plus long que prévu (forgé) : ne bloque rien');
+    let trop = '';
+    try {
+      await enregistrerSelectionAvecLiaisons(ctx(), ['501'], Array.from({ length: 11 }, (_, i) => ({ annonce: String(900 + i), logement: A })), GERANT);
+    } catch (e) {
+      trop = e instanceof Error ? e.message : String(e);
+    }
+    verifier(/Trop de liens à la fois \(10 au plus\)/.test(trop), '« Enregistrer mon choix » : 10 liens au plus à la fois', trop);
+  }
 
   /* ------------------------------------------------ choix de la page Connexions */
   section('8. Page Connexions : « Est-ce le même logement que… ? » Oui');

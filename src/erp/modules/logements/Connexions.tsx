@@ -25,7 +25,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, Check, Home, ImageOff, Link2, Lock, Plug, RefreshCw, Unplug } from 'lucide-react';
+import { ArrowRight, Check, Home, ImageOff, Link2, Lock, Plug, RefreshCw, Unplug, X } from 'lucide-react';
 import type {
   AnnonceDecouverte,
   ConnexionPlateforme,
@@ -36,9 +36,9 @@ import { useErp } from '../../data/store';
 import { logementsARelier } from '../../data/liaison-annonce';
 import { NOM_CANAL, canalApporte, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
 import type { Logement } from '../../data/types';
-import { Alert, Badge, Button, Card, CardHeader, ChoixListe, EmptyState, Modal, NBSP, PageHeader, ProgressBar, Repli, Skeleton, cn, insecables, type Ton } from '../../ui';
+import { Alert, Badge, Button, Card, CardHeader, ChoixListe, EmptyState, IconButton, Modal, NBSP, PageHeader, ProgressBar, Repli, Skeleton, cn, insecables, type Ton } from '../../ui';
 import { NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
-import { AssistantConnexion } from './_composants/ConnexionsLogement';
+import { AssistantConnexion, masquee, masquerSuggestion } from './_composants/ConnexionsLogement';
 
 /** Une carte de la liste : un logement (ses annonces ensemble), ou une annonce pas encore dans l'ERP. */
 interface CarteChoix {
@@ -108,6 +108,7 @@ export default function Connexions() {
   const [question, setQuestion] = useState<QuestionLiaison | null>(null);
   const [reponse, setReponse] = useState<string>('');
   const [aRelierPaire, setARelierPaire] = useState<{ garde: Logement; canal: CanalPlateforme; annonce: string } | null>(null);
+  const [masqueesIci, setMasqueesIci] = useState<Set<string>>(new Set());
   const retourTraite = useRef(false);
 
   // Démo : annonces fictives, d'après les logements de la démo au moment de l'ouverture.
@@ -248,7 +249,8 @@ export default function Connexions() {
     return avant.size !== choix.size || [...choix].some((id) => !avant.has(id));
   }, [etat, choix]);
   const nomLogement = (id: string) => logements.find((l) => l.id === id)?.nom ?? '';
-  const infoLimite = `Vous avez atteint la limite de l’${nomOffre(etat?.offre)} (${pluriel(limite ?? 0, 'logement')}). Passez à l’offre Starter pour en ajouter d’autres.`;
+  // La limite de l'offre se compte en annonces chez le service de connexion (un logement relié en a deux).
+  const infoLimite = `Vous avez atteint la limite de l’${nomOffre(etat?.offre)} (${pluriel(limite ?? 0, 'annonce')}). Passez à l’offre Starter pour en ajouter d’autres.`;
 
   // Un logement par carte : ses annonces (principale et reliées) ensemble ; les autres annonces une par une.
   const cartes = useMemo(() => {
@@ -312,7 +314,9 @@ export default function Connexions() {
   };
 
   // Deux logements déjà importés qui semblent être le même appartement (fiable seulement) : « Relier ».
-  const paires = gerant ? pairesSuggerees(logements).slice(0, 3) : [];
+  // Une paire masquée sur la fiche l'est aussi ici (même « non », sur cet appareil).
+  const paires = gerant ? pairesSuggerees(logements).filter((p) => !masquee(p.garde.id, p.autre.id) && !masqueesIci.has(`${p.garde.id}|${p.autre.id}`)).slice(0, 3) : [];
+  const logementsCoches = cartes.filter((c) => c.ids.length > 0 && c.ids.every((id) => choix.has(id))).length;
 
   const fournisseurs = etat?.fournisseurs ?? [];
   const connexions = etat?.connexions ?? [];
@@ -457,7 +461,7 @@ export default function Connexions() {
           {etat && (
             <div className="w-full sm:w-auto sm:min-w-48 sm:text-right">
               <p className="lm-chiffres text-[14px] font-semibold text-(--lm-encre)" aria-live="polite">
-                {limite === null ? pluriel(choix.size, 'logement choisi', 'logements choisis') : `${choix.size} / ${pluriel(limite, 'logement')} (${nomOffre(etat.offre)})`}
+                {limite === null ? pluriel(logementsCoches, 'logement choisi', 'logements choisis') : `${choix.size} / ${pluriel(limite, 'annonce')} (${nomOffre(etat.offre)})`}
               </p>
               {limite !== null && <ProgressBar className="mt-1.5" valeur={limite ? choix.size / limite : 0} tone={atteinte ? 'alerte' : 'or'} />}
             </div>
@@ -477,8 +481,8 @@ export default function Connexions() {
         {aRelier.length > 0 && (
           <Alert tone="info" className="mb-3">
             {aRelier.length === 1
-              ? `« ${aRelier[0].nom} » a été créé à la main. Pour éviter un doublon, reliez-le à son annonce plutôt que de la cocher ici.`
-              : `${aRelier.length} logements ont été créés à la main. Pour éviter des doublons, reliez-les à leur annonce plutôt que de la cocher ici.`}
+              ? `« ${aRelier[0].nom} » a été créé à la main. Pour ne pas l’avoir deux fois, reliez-le à son annonce plutôt que de la cocher ici.`
+              : `${aRelier.length} logements ont été créés à la main. Pour ne pas les avoir deux fois, reliez-les à leur annonce plutôt que de la cocher ici.`}
             <span className="mt-1 flex flex-wrap gap-x-4">
               {aRelier.slice(0, 4).map((l) => (
                 <Link key={l.id} to={`/erp/logements/${l.id}?relier=1`} className="inline-flex min-h-8 items-center font-medium lm-lien">
@@ -493,18 +497,30 @@ export default function Connexions() {
             const canal = canalApporte(garde, autre);
             if (!canal || !autre.repull?.id) return null;
             return (
-              <div key={`${garde.id}|${autre.id}`} className="mb-3 flex items-center gap-x-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) px-4 py-1.5">
+              <div key={`${garde.id}|${autre.id}`} className="mb-3 flex items-center gap-x-3 rounded-xl border border-(--lm-bord) bg-(--lm-surface) py-1.5 pr-1.5 pl-4">
                 <Link2 className="size-4 shrink-0 text-(--lm-encre-3)" aria-hidden />
                 <p className="min-w-0 flex-1 py-1 text-[13.5px] text-(--lm-encre-2)">
                   {insecables(`L’annonce ${NOM_CANAL[canal]} « ${autre.nom} » semble être celle de « ${garde.nom} ».`)}{' '}
                   <button
                     type="button"
                     onClick={() => setARelierPaire({ garde, canal, annonce: String(autre.repull!.id) })}
+                    aria-label={`Relier l’annonce « ${autre.nom} » à « ${garde.nom} »`}
                     className="inline-flex min-h-8 items-center gap-1 align-middle text-[13px] font-medium lm-lien max-sm:min-h-11"
                   >
                     Relier <ArrowRight className="size-3.5" aria-hidden />
                   </button>
                 </p>
+                <IconButton
+                  label="Masquer cette suggestion"
+                  size="sm"
+                  className="max-sm:size-11"
+                  onClick={() => {
+                    masquerSuggestion(garde.id, autre.id);
+                    setMasqueesIci((m) => new Set(m).add(`${garde.id}|${autre.id}`));
+                  }}
+                >
+                  <X />
+                </IconButton>
               </div>
             );
           })}
@@ -593,7 +609,7 @@ export default function Connexions() {
                           </Badge>
                         )}
                       </span>
-                      {rejoint && <span className="mt-1 block text-[12.5px] text-(--lm-encre-2)">{insecables(`Rejoindra « ${rejoint} »`)}</span>}
+                      {rejoint && <span className="mt-1 block text-[12.5px] text-(--lm-encre-2)">{insecables(`Sera reliée à « ${rejoint} »`)}</span>}
                       {bloque && (
                         <span id={`limite-${a.id}`} className="sr-only">
                           {infoLimite}
@@ -632,14 +648,14 @@ export default function Connexions() {
           titre={question.forte ? insecables(`Est-ce le même logement que « ${question.forte.nom} »${NBSP}?`) : `À quel logement est cette annonce${NBSP}?`}
           description={insecables(
             question.forte
-              ? `L’annonce ${NOM_CANAL[question.canal]} « ${question.annonce.nom} » semble être celle de « ${question.forte.nom} ». Oui${NBSP}: elle le rejoint, sans créer de nouveau logement.`
+              ? `L’annonce ${NOM_CANAL[question.canal]} « ${question.annonce.nom} » semble être celle de « ${question.forte.nom} ». Oui${NBSP}: elle sera reliée à « ${question.forte.nom} », sans créer de nouveau logement. Ce lien ne se défait pas.`
               : `L’annonce ${NOM_CANAL[question.canal]} « ${question.annonce.nom} » est peut-être celle d’un logement que vous avez déjà.`,
           )}
           pied={
             question.forte ? (
               <>
                 <Button variant="ghost" onClick={() => repondre(null)}>
-                  Non, un autre logement
+                  Non, c’est un autre logement
                 </Button>
                 <Button variant="primary" icone={<Link2 />} onClick={() => repondre(question.forte!.id)}>
                   Oui, c’est le même

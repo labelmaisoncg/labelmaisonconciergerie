@@ -806,7 +806,7 @@ function sejourAPart(reservations: readonly Reservation[]): Reservation[] {
         id: 'res-a2190021',
         logementId: 'repull-219002',
         canal: 'airbnb',
-        voyageur: { nom: 'Inès Morel', nbPersonnes: 2, pays: 'France' },
+        voyageur: { nom: 'Inès M.', nbPersonnes: 2, pays: 'France' },
         arrivee,
         depart,
         nuits: 3,
