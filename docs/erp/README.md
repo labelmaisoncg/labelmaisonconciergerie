@@ -959,6 +959,13 @@ l'ERP est une application.
      `ERP_PASSWORD` (Production et Preview) **et** comme mot de passe du
      compte `equipe@labelmaisoncg.fr` dans Supabase → Authentication → Users ;
   3. **Redeploy** dans Vercel.
+  **Changer, jamais supprimer :** sans `ERP_PASSWORD`, l'ERP se ferme par
+  sécurité (« Accès indisponible », page 503), et la synchronisation Airbnb /
+  Booking, l'agent et l'espace opérations ne lisent plus la base. Pour
+  changer : modifier la valeur (ou supprimer puis recréer aussitôt la
+  variable), la même dans Supabase, puis **Redeploy** : la valeur n'est prise
+  qu'au build suivant. La variable à supprimer après l'audit du 5 novembre
+  est `MCP_CRM_TOKEN`, pas celle-ci.
   Cela ferme l'ancien mot de passe commun et change la clé de signature des
   sessions : tout le monde se reconnecte une fois. Tant que ce n'est pas fait,
   quiconque connaît l'ancien mot de passe peut entrer avec le compte d'équipe
