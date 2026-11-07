@@ -109,6 +109,8 @@ export interface ConnexionPlateforme {
   statut: 'active' | 'inactive' | 'error' | string;
   /** Identifiant du compte chez la plateforme (hôte Airbnb, établissement Booking.com). */
   compte?: string;
+  /** Fournisseur tel que Repull le nomme (« booking-extranet-login »…) : c'est lui qu'il faut déconnecter. */
+  fournisseurRepull?: string;
   nom?: string;
   avatar?: string;
   depuis?: string;
@@ -288,6 +290,7 @@ function versConnexion(c: Record<string, unknown>): ConnexionPlateforme | null {
     fournisseur,
     statut: texte(c.status) || 'active',
     ...(texte(c.externalAccountId) ? { compte: texte(c.externalAccountId) } : {}),
+    ...(texte(c.provider) ? { fournisseurRepull: texte(c.provider).toLowerCase() } : {}),
     ...(texte(hote.displayNameLong) || texte(hote.displayName) ? { nom: texte(hote.displayNameLong) || texte(hote.displayName) } : {}),
     ...(texte(hote.avatarUrl) ? { avatar: texte(hote.avatarUrl) } : {}),
     ...(texte(c.createdAt) ? { depuis: texte(c.createdAt) } : {}),
@@ -1124,29 +1127,48 @@ export async function enregistrerSelectionAvecLiaisons(ctx: ContexteConnexion, i
 export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, compte?: string): Promise<ResultatDeconnecter> {
   const f = texte(fournisseur).toLowerCase();
   if (!/^[a-z0-9][a-z0-9_.-]{0,40}$/.test(f)) throw new ErreurConnexion('Plateforme inconnue.');
+  // Le fournisseur tel que Repull le nomme (Booking.com par « Extranet login » : « booking-extranet-login ») :
+  // déconnecter « booking » répondrait 404 pour un compte relié autrement. On essaie le sien, puis les autres
+  // noms de la même plateforme ; 404 et 501 font passer au suivant. Rien d'autre ne part chez Repull.
+  const cache = await lireCache(ctx.base);
+  const connu = (cache.connexions ?? []).find((c) => c.fournisseur === f && (c.compte ?? '') === (texte(compte) || ''));
+  const fournisseurs = [...new Set([connu?.fournisseurRepull, f, ...(f === 'booking' ? ['booking-extranet-login', 'booking'] : [])].filter((x): x is string => !!x && /^[a-z0-9][a-z0-9_.-]{0,40}$/.test(x)))];
+  let introuvable = false;
+  let message501: string | undefined;
   const r = await avecClient(ctx, async (client) => {
-    try {
-      return await client.supprimer<{ listingsDeactivated?: unknown[] }>(`/v1/connect/${encodeURIComponent(f)}`, { accountId: texte(compte) || undefined });
-    } catch (e) {
-      if (e instanceof ErreurRepull && e.statut === 501) {
-        throw new ErreurConnexion(
-          `Ce logiciel se déconnecte depuis son propre site, pas depuis l’ERP.${e.correctif ? ` Repull explique : « ${e.correctif} »` : ''}`,
-          501,
-        );
+    for (const p of fournisseurs) {
+      try {
+        return await client.supprimer<{ listingsDeactivated?: unknown[] }>(`/v1/connect/${encodeURIComponent(p)}`, { accountId: texte(compte) || undefined });
+      } catch (e) {
+        if (e instanceof ErreurRepull && e.statut === 501) {
+          message501 ??= e.correctif;
+          continue;
+        }
+        if (e instanceof ErreurRepull && e.statut === 404) {
+          introuvable = true;
+          continue;
+        }
+        throw e;
       }
-      if (e instanceof ErreurRepull && e.statut === 404) throw new ErreurConnexion('Ce compte n’est déjà plus connecté.', 404);
-      throw e;
     }
+    return null;
   });
+  if (!r) {
+    // Repull ne le connaît plus (ou pas sous ce nom) : la liste est relue au prochain affichage.
+    delete cache.luLe;
+    await ecrireCache(ctx.base, cache);
+    if (introuvable) throw new ErreurConnexion('Repull ne trouve plus ce compte parmi vos connexions. La liste est mise à jour ; s’il reste affiché, retirez-le depuis votre compte Repull (repull.dev).', 404);
+    throw new ErreurConnexion(`Ce logiciel se déconnecte depuis son propre site, pas depuis l’ERP.${message501 ? ` Repull explique : « ${message501} »` : ''}`, 501);
+  }
   const desactivees = (Array.isArray(r?.listingsDeactivated) ? r.listingsDeactivated : []).map(texte).filter(Boolean);
   const sel = await lireSelection(ctx.base);
   if (sel && desactivees.some((id) => sel.annonces.includes(id))) {
     const suivant: SelectionRepull = { ...sel, annonces: sel.annonces.filter((id) => !desactivees.includes(id)) };
     await ctx.base.ecrire(COLLECTION_ETAT, [suivant]);
   }
-  const cache = await lireCache(ctx.base);
-  delete cache.luLe;
-  await ecrireCache(ctx.base, cache);
+  const apres = await lireCache(ctx.base);
+  delete apres.luLe;
+  await ecrireCache(ctx.base, apres);
   return { ok: true, annoncesDesactivees: desactivees };
 }
 

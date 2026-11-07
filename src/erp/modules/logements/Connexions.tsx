@@ -37,7 +37,7 @@ import { logementsARelier } from '../../data/liaison-annonce';
 import { NOM_CANAL, canalApporte, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
 import type { Logement } from '../../data/types';
 import { Alert, Badge, Button, Card, CardHeader, ChoixListe, EmptyState, IconButton, Modal, NBSP, PageHeader, ProgressBar, Repli, Skeleton, cn, insecables, type Ton } from '../../ui';
-import { NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
+import { ErreurConnexions, NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
 import { AssistantConnexion, masquee, masquerSuggestion } from './_composants/ConnexionsLogement';
 
 /** Une carte de la liste : un logement (ses annonces ensemble), ou une annonce pas encore dans l'ERP. */
@@ -198,8 +198,25 @@ export default function Connexions() {
       setADeconnecter(null);
       await charger(true);
     } catch (err) {
-      setMessage({ ton: 'danger', texte: (err as Error).message });
+      const cible = aDeconnecter;
       setADeconnecter(null);
+      if (err instanceof ErreurConnexions && err.statut === 404) {
+        // Repull ne connaît plus ce compte : ce que le gérant voulait est fait. La liste relue dit s'il a disparu.
+        const e = await charger(true).catch(() => null);
+        if (!e) {
+          // Liste illisible (l'ancienne reste à l'écran) : le message du serveur, sans rien affirmer de plus.
+          setMessage({ ton: 'alerte', texte: err.message });
+        } else {
+          const reste = e.connexions.some((c) => c.fournisseur === cible.fournisseur && (c.compte ?? '') === (cible.compte ?? ''));
+          setMessage(
+            reste
+              ? { ton: 'alerte', texte: 'Repull ne trouve plus ce compte, mais il reste affiché. Retirez-le depuis votre compte Repull (repull.dev).' }
+              : { ton: 'info', texte: `Ce compte ${nomFournisseur(cible.fournisseur)} était déjà déconnecté. Il est retiré de la liste.` },
+          );
+        }
+      } else {
+        setMessage({ ton: 'danger', texte: (err as Error).message });
+      }
     } finally {
       setDeconnexion(false);
     }
