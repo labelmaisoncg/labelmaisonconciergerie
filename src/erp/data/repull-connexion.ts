@@ -1133,12 +1133,15 @@ export async function deconnecter(ctx: ContexteConnexion, fournisseur: string, c
   const cache = await lireCache(ctx.base);
   const connu = (cache.connexions ?? []).find((c) => c.fournisseur === f && (c.compte ?? '') === (texte(compte) || ''));
   const fournisseurs = [...new Set([connu?.fournisseurRepull, f, ...(f === 'booking' ? ['booking-extranet-login', 'booking'] : [])].filter((x): x is string => !!x && /^[a-z0-9][a-z0-9_.-]{0,40}$/.test(x)))];
+  // Identifiant du compte : celui de la plateforme (hôte Airbnb, établissement Booking.com), puis celui de la
+  // connexion chez Repull (Booking.com : `connectionId` de l'établissement), que Repull accepte parfois seul.
+  const identifiants = [...new Set([texte(compte) || undefined, connu?.id && !/^(airbnb|booking)-/.test(connu.id) ? connu.id : undefined])];
   let introuvable = false;
   let message501: string | undefined;
   const r = await avecClient(ctx, async (client) => {
-    for (const p of fournisseurs) {
+    for (const p of fournisseurs) for (const accountId of identifiants) {
       try {
-        return await client.supprimer<{ listingsDeactivated?: unknown[] }>(`/v1/connect/${encodeURIComponent(p)}`, { accountId: texte(compte) || undefined });
+        return await client.supprimer<{ listingsDeactivated?: unknown[] }>(`/v1/connect/${encodeURIComponent(p)}`, { accountId });
       } catch (e) {
         if (e instanceof ErreurRepull && e.statut === 501) {
           message501 ??= e.correctif;

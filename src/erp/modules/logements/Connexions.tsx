@@ -34,7 +34,7 @@ import type {
 } from '../../data/repull-connexion';
 import { useErp } from '../../data/store';
 import { logementsARelier } from '../../data/liaison-annonce';
-import { NOM_CANAL, canalApporte, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
+import { NOM_CANAL, canalApporte, canalDe, canalUnique, canalUniqueDuLogement, liees, logementsPourAnnonce, pairesSuggerees, type CanalPlateforme } from '../../data/annonces-liees';
 import type { Logement } from '../../data/types';
 import { Alert, Badge, Button, Card, CardHeader, ChoixListe, EmptyState, IconButton, Modal, NBSP, PageHeader, ProgressBar, Repli, Skeleton, cn, insecables, type Ton } from '../../ui';
 import { ErreurConnexions, NOMS_PLATEFORMES as NOMS, appelerConnexions as appeler, normaliserEtat } from './_composants/serveurConnexions';
@@ -258,8 +258,6 @@ export default function Connexions() {
   };
 
   const limite = etat?.limite ?? null;
-  // Logements créés à la main, pas encore reliés : à relier depuis leur fiche plutôt qu'à cocher ici.
-  const aRelier = gerant && etat?.annonces.some((a) => !a.importee) ? logementsARelier(logements) : [];
   const atteinte = limite !== null && choix.size >= limite;
   const modifie = useMemo(() => {
     const avant = new Set(etat?.selection ?? []);
@@ -269,11 +267,26 @@ export default function Connexions() {
   // La limite de l'offre se compte en annonces chez le service de connexion (un logement relié en a deux).
   const infoLimite = `Vous avez atteint la limite de l’${nomOffre(etat?.offre)} (${pluriel(limite ?? 0, 'annonce')}). Passez à l’offre Starter pour en ajouter d’autres.`;
 
+  // Annonces d'un compte déconnecté : Repull les garde (en pause), l'ERP ne les montre plus, sauf encore
+  // choisies (à décocher). Plateforme inconnue ou autre logiciel : toujours montrées.
+  const { annoncesVisibles, masquees } = useMemo(() => {
+    const branchees = new Set((etat?.connexions ?? []).map((c) => c.fournisseur));
+    const choisies = new Set(etat?.selection ?? []);
+    const visibles = (etat?.annonces ?? []).filter((a) => {
+      if (choisies.has(a.id)) return true;
+      const canaux = a.plateformes.map(canalDe);
+      return !canaux.length || canaux.some((c) => !c || branchees.has(c));
+    });
+    return { annoncesVisibles: visibles, masquees: (etat?.annonces.length ?? 0) - visibles.length };
+  }, [etat]);
+  // Logements créés à la main, pas encore reliés : à relier depuis leur fiche plutôt qu'à cocher ici.
+  const aRelier = gerant && annoncesVisibles.some((a) => !a.importee) ? logementsARelier(logements) : [];
+
   // Un logement par carte : ses annonces (principale et reliées) ensemble ; les autres annonces une par une.
   const cartes = useMemo(() => {
     const res: CarteChoix[] = [];
     const rang = new Map<string, number>();
-    for (const a of etat?.annonces ?? []) {
+    for (const a of annoncesVisibles) {
       const l = a.logementId ? logements.find((x) => x.id === a.logementId) : undefined;
       if (l && liees(l).length) {
         const i = rang.get(l.id);
@@ -287,7 +300,7 @@ export default function Connexions() {
       } else res.push({ cle: a.id, ids: [a.id], annonces: [a], ...(l ? { logement: l } : {}) });
     }
     return res;
-  }, [etat, logements]);
+  }, [annoncesVisibles, logements]);
 
   const ajouter = (ids: string[], liaison?: { annonce: string; logement: string }) => {
     setChoix((c) => {
@@ -341,7 +354,7 @@ export default function Connexions() {
   const autresConnectes = connexions.filter((c) => !PRINCIPALES.some((p) => p.id === c.fournisseur));
   // Un seul bouton principal : « Enregistrer mon choix » quand des annonces sont à choisir,
   // sinon la première plateforme à connecter ; les autres boutons restent secondaires.
-  const principale = etat && etat.annonces.length > 0 ? undefined : PRINCIPALES.find((p) => !connexions.some((c) => c.fournisseur === p.id && c.statut === 'active'))?.id;
+  const principale = etat && annoncesVisibles.length > 0 ? undefined : PRINCIPALES.find((p) => !connexions.some((c) => c.fournisseur === p.id && c.statut === 'active'))?.id;
   const nomFournisseur = (id: string) => NOMS[id] ?? fournisseurs.find((f) => f.id === id)?.nom ?? id.charAt(0).toUpperCase() + id.slice(1);
 
   return (
@@ -491,7 +504,7 @@ export default function Connexions() {
             {etat.depassement.message}
           </Alert>
         )}
-        {etat && etat.annonces.length > 0 && etat.selection.length === 0 && !message && (
+        {etat && annoncesVisibles.length > 0 && etat.selection.length === 0 && !message && (
           <Alert tone="info" className="mb-3">
             Choisissez vos logements : rien n’est importé tant que vous ne les avez pas choisis.
           </Alert>
@@ -542,9 +555,14 @@ export default function Connexions() {
               </div>
             );
           })}
-        {atteinte && etat && etat.annonces.length > choix.size && (
+        {atteinte && etat && annoncesVisibles.length > choix.size && (
           <p className="mb-3 text-[12.5px] text-(--lm-encre-2)" role="note">
             {infoLimite}
+          </p>
+        )}
+        {masquees > 0 && annoncesVisibles.length > 0 && (
+          <p className="mb-3 text-[12.5px] text-(--lm-encre-2)" role="note">
+            {pluriel(masquees, 'annonce d’un compte déconnecté n’est plus affichée', 'annonces de comptes déconnectés ne sont plus affichées')}. Reconnectez la plateforme ci-dessus pour les retrouver.
           </p>
         )}
 
@@ -554,13 +572,15 @@ export default function Connexions() {
               <Skeleton key={i} className="h-24 rounded-xl" />
             ))}
           </div>
-        ) : !etat || etat.annonces.length === 0 ? (
+        ) : !etat || annoncesVisibles.length === 0 ? (
           <EmptyState
             icone={<Home />}
             titre="Aucun logement trouvé pour l’instant"
             description={
               reel
-                ? 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici.'
+                ? masquees > 0
+                  ? `Reconnectez une plateforme ci-dessus${NBSP}: ses annonces reviendront ici.`
+                  : `Connectez une plateforme ci-dessus${NBSP}: vos logements apparaîtront ici.`
                 : undefined
             }
             action={
@@ -641,7 +661,7 @@ export default function Connexions() {
           </ul>
         )}
 
-        {etat && etat.annonces.length > 0 && (
+        {etat && annoncesVisibles.length > 0 && (
           <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
             <Button variant="primary" size="lg" icone={<Check />} chargement={enregistrement} disabled={!gerant || !modifie || enregistrement} onClick={() => void enregistrer()}>
               Enregistrer mon choix
