@@ -279,9 +279,9 @@ export function historiquesDifferents(g: Pick<Logement, 'proprietaireId' | 'prop
 
 /** Ce qui empêche l'autre logement de rejoindre le gardé (null : rien). */
 export function blocageAbsorption(garde: Logement, autre: Logement): string | null {
-  if (liees(autre).length) return `« ${autre.nom} » est déjà relié à une autre annonce.`;
-  if (proprietairesDifferents(garde, autre)) return `« ${garde.nom} » et « ${autre.nom} » n’ont pas le même propriétaire : vérifiez avant de les relier.`;
-  if (historiquesDifferents(garde, autre)) return `« ${garde.nom} » et « ${autre.nom} » n’ont pas le même historique de propriétaires : alignez-le dans leurs fiches avant de les relier.`;
+  if (liees(autre).length) return `« ${autre.nom} » est déjà relié à une autre annonce.`;
+  if (proprietairesDifferents(garde, autre)) return `« ${garde.nom} » et « ${autre.nom} » n’ont pas le même propriétaire : vérifiez avant de les relier.`;
+  if (historiquesDifferents(garde, autre)) return `« ${garde.nom} » et « ${autre.nom} » n’ont pas le même historique de propriétaires : alignez-le dans leurs fiches avant de les relier.`;
   return null;
 }
 
@@ -350,8 +350,8 @@ export function annoncesProposees(l: Logement, canal: CanalPlateforme, annonces:
     const r = porteur ? ressemblance(l, porteur) : ressemblance(l, { nom: a.nom, ville: a.ville });
     let bloquee: string | undefined;
     if (porteur && liees(porteur).length) bloquee = `« ${porteur.nom} » a déjà une autre annonce reliée.`;
-    else if (porteur && proprietairesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même propriétaire.`;
-    else if (porteur && historiquesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même historique de propriétaires.`;
+    else if (porteur && proprietairesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même propriétaire.`;
+    else if (porteur && historiquesDifferents(l, porteur)) bloquee = `« ${porteur.nom} » n’a pas le même historique de propriétaires.`;
     else if (!porteur && !a.selectionnee) bloquee = 'Pas encore suivie : cochez-la dans Connexions, l’ERP vous demandera alors si c’est ce logement.';
     res.push({ annonce: a, ...(porteur ? { logement: porteur } : {}), niveau: r.niveau, ...(r.raison ? { raison: r.raison } : {}), ...(bloquee ? { bloquee } : {}) });
   }
@@ -429,7 +429,7 @@ export function verifierConnexion(o: { role: string | undefined; logementId: str
     // Déjà relié : idempotent.
     if (!autre) return { ok: true, mode: 'deja', garde, canal: dejaIci.canal, annonce, ...(dejaIci.nom ? { nomAnnonce: dejaIci.nom } : {}) };
     // L'autre logement encore là (opération interrompue) : on reprend, seulement avec le logement d'origine et les mêmes contrôles.
-    if (dejaIci.depuis && autre.id !== dejaIci.depuis) return refus(`« ${autre.nom} » n’est pas le logement d’où vient cette annonce : vérifiez avant de continuer.`, 409);
+    if (dejaIci.depuis && autre.id !== dejaIci.depuis) return refus(`« ${autre.nom} » n’est pas le logement d’où vient cette annonce : vérifiez avant de continuer.`, 409);
     const bloque = blocageAbsorption(garde, autre);
     if (bloque) return refus(bloque, 409);
     return { ok: true, mode: 'absorber', garde, autre, canal: dejaIci.canal, annonce, ...(dejaIci.nom ? { nomAnnonce: dejaIci.nom } : {}) };

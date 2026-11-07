@@ -153,7 +153,7 @@ export function verifierLiaison(o: {
   if (deja) return refus(`Cette annonce est déjà dans l’ERP : ${deja.nom}.`, 409);
   // Annonce d'une autre plateforme déjà reliée à un logement (data/annonces-liees.ts, repull.liees).
   const reliee = o.logements.find((x) => (Array.isArray(x.repull?.liees) ? x.repull!.liees! : []).some((y) => String(y?.id) === o.annonceId));
-  if (reliee) return refus(`Cette annonce est déjà reliée à « ${reliee.nom} ».`, 409);
+  if (reliee) return refus(`Cette annonce est déjà reliée à « ${reliee.nom} ».`, 409);
   return { ok: true };
 }
 

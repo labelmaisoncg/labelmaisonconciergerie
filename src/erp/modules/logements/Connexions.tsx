@@ -316,7 +316,8 @@ export default function Connexions() {
   // Deux logements déjà importés qui semblent être le même appartement (fiable seulement) : « Relier ».
   // Une paire masquée sur la fiche l'est aussi ici (même « non », sur cet appareil).
   const paires = gerant ? pairesSuggerees(logements).filter((p) => !masquee(p.garde.id, p.autre.id) && !masqueesIci.has(`${p.garde.id}|${p.autre.id}`)).slice(0, 3) : [];
-  const logementsCoches = cartes.filter((c) => c.ids.length > 0 && c.ids.every((id) => choix.has(id))).length;
+  // Une annonce cochée et dite « même logement que… » rejoint un logement déjà compté : elle n'en ajoute pas.
+  const logementsCoches = cartes.filter((c) => c.ids.length > 0 && c.ids.every((id) => choix.has(id)) && !c.ids.every((id) => liaisons[id])).length;
 
   const fournisseurs = etat?.fournisseurs ?? [];
   const connexions = etat?.connexions ?? [];

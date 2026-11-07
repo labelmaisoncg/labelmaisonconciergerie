@@ -80,7 +80,9 @@ function Vignette({ url }: { url?: string }) {
 function detailAnnonce(p: AnnonceProposee): string {
   const autreNom = p.logement && p.logement.nom.trim().toLowerCase() !== p.annonce.nom.trim().toLowerCase() ? `Dans l’ERP${NBSP}: « ${p.logement.nom} »` : '';
   const pourquoi = p.niveau === 'forte' ? (p.raison === 'adresse' ? 'Même adresse' : 'Nom très proche') : '';
-  return [pourquoi, autreNom, p.annonce.ville ?? ''].filter(Boolean).join(' · ');
+  // Le service de connexion ne dit pas sa plateforme : elle prendra celle qu'on relie (data/annonces-liees.ts, canalApporte).
+  const sansPlateforme = !(p.annonce.plateformes ?? []).some((x) => String(x ?? '').trim()) ? 'Plateforme non indiquée' : '';
+  return [pourquoi, sansPlateforme, autreNom, p.annonce.ville ?? ''].filter(Boolean).join(' · ');
 }
 
 /** Annonces à choisir, en lignes avec leur photo (choix exclusif, flèches du clavier comme ChoixListe). */
@@ -329,7 +331,7 @@ export function AssistantConnexion({ logement: l, canal, preselection, etat: eta
               cle: 'avec',
               libelle: 'Ce qui vient avec',
               valeur: choix.logement
-                ? [phrase || 'Rien d’autre pour l’instant.', `Le logement importé de ${nom}, « ${choix.logement.nom} », ne figurera plus dans la liste${NBSP}: tout sera sur « ${l.nom} ».`].join('\n')
+                ? [phrase || 'Rien d’autre pour l’instant.', `Le logement importé de ${nom}, «${NBSP}${choix.logement.nom}${NBSP}», ne figurera plus dans la liste.`].join('\n')
                 : `Ses réservations et ses messages arriveront sur « ${l.nom} ».`,
             },
           ]}
@@ -378,7 +380,7 @@ export function CarteConnexions({ logement: l, enPlus }: { logement: Logement; e
       <CardHeader titre="Connexions" />
       {gerant && <LiensATerminer logement={l} />}
       {pasEncoreRelie ? (
-        <p className="text-[13.5px] text-(--lm-encre-2)">Pas encore relié à une annonce.</p>
+        <p className="text-[13.5px] text-(--lm-encre-2)">Aucune annonce reliée.</p>
       ) : (
       <ul className="divide-y divide-(--lm-bord)">
         {plateformes.map((canal) => {
@@ -442,10 +444,17 @@ function LiensATerminer({ logement: l }: { logement: Logement }) {
   const d = useErp();
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState<string>();
+  const [fait, setFait] = useState(false);
   const enCours = liees(l)
     .map((x) => ({ liee: x, autre: d.logements.find((o) => o.id !== l.id && String(o.repull?.id ?? '') === String(x.id)) }))
     .filter((x): x is { liee: (typeof x)['liee']; autre: Logement } => !!x.autre);
-  if (!enCours.length) return null;
+  if (!enCours.length || fait) {
+    return fait ? (
+      <Alert tone="succes" className="mb-3">
+        C’est terminé{NBSP}: tout est sur ce logement.
+      </Alert>
+    ) : null;
+  }
   const { liee, autre } = enCours[0];
   const terminer = async () => {
     if (envoi) return;
@@ -458,6 +467,7 @@ function LiensATerminer({ logement: l }: { logement: Logement }) {
       } else {
         await appelerConnexions<ResultatConnexion>('POST', {}, { action: 'relier-connexion', logement: l.id, annonce: String(liee.id) });
       }
+      setFait(true);
     } catch (e) {
       setErreur((e as Error).message);
     } finally {
@@ -465,18 +475,13 @@ function LiensATerminer({ logement: l }: { logement: Logement }) {
     }
   };
   return (
-    <Alert
-      tone="alerte"
-      className="mb-3"
-      titre={insecables(`Le lien avec « ${autre.nom} » n’est pas terminé`)}
-      actions={
-        <Button size="sm" chargement={envoi} onClick={() => void terminer()}>
-          Terminer le lien
-        </Button>
-      }
-      actionsDessous
-    >
-      {insecables(erreur ?? `Une partie de ce qu’il porte (ménages, linge…) est encore sur « ${autre.nom} ». Terminer le lien l’amène ici.`)}
+    // Bouton sous le texte : la carte est étroite sur ordinateur (colonne de droite de la fiche).
+    <Alert tone="alerte" className="mb-3" titre={`Le lien avec «${NBSP}${autre.nom}${NBSP}» n’est pas terminé`}>
+      <p>{insecables(`Une partie de ses ménages et de son linge est encore sur «${NBSP}${autre.nom}${NBSP}».`)}</p>
+      {erreur && <p className="mt-1 font-medium text-(--lm-danger)">{erreur}</p>}
+      <Button size="sm" className="mt-2 max-sm:min-h-11" chargement={envoi} onClick={() => void terminer()}>
+        Terminer le lien
+      </Button>
     </Alert>
   );
 }
@@ -530,7 +535,7 @@ export function SuggestionConnexion({ logement: l }: { logement: Logement }) {
             <button
               type="button"
               onClick={() => setOuvert({ canal, annonce: String(autre.repull!.id) })}
-              aria-label={`Relier l’annonce « ${autre.nom} » à ce logement`}
+              aria-label={`Relier l’annonce « ${autre.nom} » à ce logement`}
               className="inline-flex min-h-8 items-center gap-1 align-middle text-[13px] font-medium lm-lien max-sm:min-h-11"
             >
               Relier <ArrowRight className="size-3.5" aria-hidden />

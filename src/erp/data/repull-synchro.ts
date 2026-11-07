@@ -2420,7 +2420,7 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     // Passage du cron : ce qui arrive encore sur l'autre logement d'un lien récent le rejoint (s'il reste du temps).
     if (o.declencheur === 'cron' && o.echeance - Date.now() > 15_000) {
       await rattraperLiens(baseSession, maintenant(), o.echeance - 8_000).catch((e) => {
-        if (!(e instanceof DelaiEcoule)) bilan.erreurs.push(`Rattrapage des liens : ${texteErreur(e)}`);
+        if (!(e instanceof DelaiEcoule)) bilan.erreurs.push(`Rattrapage des liens : ${texteErreur(e)}`);
       });
     }
   }
