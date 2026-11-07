@@ -134,7 +134,8 @@ export const peutSupprimerLogement = (role: string | undefined, lectureSeule = f
  * « repull-… ») et pas décoché dans Connexions : le prochain import le
  * recréerait s'il disparaissait.
  */
-export const annonceSuivie = (l: Pick<Logement, 'id' | 'repull'>): boolean => (!!l.repull?.id || l.id.startsWith(PREFIXE_REPULL)) && !l.repull?.horsSelection;
+export const annonceSuivie = (l: Pick<Logement, 'id' | 'repull'>): boolean =>
+  ((!!l.repull?.id || l.id.startsWith(PREFIXE_REPULL)) && !l.repull?.horsSelection) || !!l.repull?.liees?.length;
 
 /** Ce que contient l'historique du logement (seulement ce qui existe), dans l'ordre où on le dit. */
 export function historiqueDuLogement(l: Pick<Logement, 'id' | 'nom' | 'proprietaireId' | 'proprietairesPrecedents'>, d: DonneesSuppression): TraceHistorique[] {

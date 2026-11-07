@@ -43,6 +43,7 @@ import {
   AUTEUR_REPULL,
   ID_PROPRIETAIRE_A_RENSEIGNER,
   appliquerAvis,
+  canalAnnonce,
   canalReservation,
   statutLogement,
   canonique,
@@ -73,7 +74,9 @@ import {
 } from './repull.js';
 import { faitsPageAirbnb, idAirbnbDuLogement, lirePageAirbnb, photosPageAirbnb, type FaitsPageAirbnb } from './page-airbnb.js';
 import { couleurLibre, couleursAEnregistrer, teinteConnue } from './couleurs-logement.js';
-import type { FilMessages, Id, Journal, LectureAnnonce, Lit, Logement, Reservation, TypeLit } from './types';
+import { COLLECTIONS_LOGEMENT_ID, deplacerAffectations, elementDeplace } from './annonces-liees.js';
+import type { AffectationLogement } from './types-operations';
+import type { AnnonceLiee, Canal, FilMessages, Id, Journal, LectureAnnonce, Lit, Logement, Reservation, TypeLit } from './types';
 
 type Fetch = typeof fetch;
 
@@ -970,6 +973,34 @@ function indexer<T extends { id: string; repull?: { id: string } }>(elements: It
   return m;
 }
 
+/** Trace côté serveur des annonces reliées (repull/annonces-reliees ; data/annonces-liees.ts, TraceAnnoncesReliees). */
+interface TraceReliees {
+  annonces?: Record<string, { logementId?: string; canal?: string; depuis?: string; nom?: string; le?: string; par?: string }>;
+}
+
+/**
+ * Correspondance annonce → logement de l'ERP, avec les annonces RELIÉES
+ * (data/annonces-liees.ts) : une annonce reliée va sur le logement qui la
+ * porte, même si un logement importé (« repull-<annonce> ») existe encore
+ * pour elle (la liaison l'emporte), seulement d'après la trace côté serveur
+ * (repull/annonces-reliees, écrite par le serveur pour un gérant, à la fin
+ * du lien) ; elle dit aussi où va une annonce dont le logement a été
+ * réécrit sans ses annonces reliées.
+ * `liees` : seulement les annonces reliées, et leur logement.
+ */
+export function indexerLogements(logements: Iterable<Logement>, trace?: TraceReliees | null): { parAnnonce: Map<string, Id>; liees: Map<string, Id> } {
+  const liste = [...logements];
+  const parAnnonce = indexer(liste);
+  const liees = new Map<string, Id>();
+  const ids = new Set(liste.map((l) => l.id));
+  // Seule la trace du serveur aiguille : un `repull.liees` posé autrement (compte « opérations », vieille page) ne compte pas.
+  for (const [a, t] of Object.entries(trace?.annonces ?? {})) {
+    if (t?.logementId && ids.has(t.logementId)) liees.set(a, t.logementId);
+  }
+  for (const [a, id] of liees) parAnnonce.set(a, id);
+  return { parAnnonce, liees };
+}
+
 /**
  * Une passe de synchronisation. Les collections sont lues à la demande, une
  * seule fois ; chaque phase écrit ce qu'elle a changé avant la suivante.
@@ -983,6 +1014,8 @@ export class SessionRepull {
   private reservations?: Registre<Reservation>;
   private fils?: Registre<FilMessages>;
   private logementParRepull = new Map<string, Id>();
+  /** Annonces reliées à un logement (autre plateforme du même appartement) → ce logement. */
+  private lieesParAnnonce = new Map<string, Id>();
   private reservationParRepull = new Map<string, Id>();
   private reservationParCode = new Map<string, Id>();
   private proprietaireVerifie = false;
@@ -1043,6 +1076,8 @@ export class SessionRepull {
    */
   private async mettreHorsSelection(idAnnonce: string, statutRepull?: string, couverture?: string | null): Promise<void> {
     const logements = await this.chargerLogements();
+    // Annonce reliée décochée : ses réservations n'arrivent plus, le logement (son annonce principale) ne bouge pas.
+    if (this.lieesParAnnonce.has(idAnnonce)) return;
     const existant = logements.get(this.logementParRepull.get(idAnnonce));
     if (!existant || !existant.repull) return;
     const statut: Logement['statut'] = existant.statut === 'sorti' ? 'sorti' : 'pause';
@@ -1118,8 +1153,21 @@ export class SessionRepull {
 
   private async chargerLogements(): Promise<Registre<Logement>> {
     if (!this.logements) {
-      this.logements = new Registre('logements', await this.base.lire<Logement>('logements'));
-      this.logementParRepull = indexer(this.logements.elements.values());
+      const logements = new Registre('logements', await this.base.lire<Logement>('logements'));
+      // Trace des annonces reliées : c'est elle qui aiguille (illisible : le passage s'arrête, rien n'est recréé à tort).
+      const [trace] = await this.base.lire<TraceReliees & { id: string }>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+      // Logement réécrit sans une annonce reliée que la trace connaît : elle lui revient (écrite avec les annonces).
+      for (const [a, t] of Object.entries(trace?.annonces ?? {})) {
+        const l = t?.logementId ? logements.get(t.logementId) : undefined;
+        const canal: AnnonceLiee['canal'] | undefined = t?.canal === 'airbnb' || t?.canal === 'booking' ? t.canal : undefined;
+        if (!l?.repull?.id || !canal || String(l.repull.id) === a || (l.repull.liees ?? []).some((x) => String(x?.id) === a)) continue;
+        const liee: AnnonceLiee = { id: a, canal, ...(t.nom ? { nom: t.nom } : {}), le: t.le ?? '', par: t.par ?? '', ...(t.depuis ? { depuis: t.depuis } : {}) };
+        logements.poser({ ...l, repull: { ...l.repull, liees: [...(l.repull.liees ?? []), liee] } });
+      }
+      const index = indexerLogements(logements.elements.values(), trace);
+      this.logementParRepull = index.parAnnonce;
+      this.lieesParAnnonce = index.liees;
+      this.logements = logements;
     }
     return this.logements;
   }
@@ -1151,9 +1199,37 @@ export class SessionRepull {
 
   /* ------------------------------------------------------------ annonces */
 
+  /**
+   * Annonce reliée à un logement (autre plateforme du même appartement) :
+   * seulement son entrée dans les plateformes de la fiche (canal connecté,
+   * lien). Jamais de logement créé pour elle ; nom, photos, description,
+   * prix et statut restent ceux de l'annonce principale.
+   */
+  private poserAnnonceLiee(l: RepullListing, logementId: Id, logements: Registre<Logement>): void {
+    const existant = logements.get(logementId);
+    const liee = (existant?.repull?.liees ?? []).find((x) => String(x?.id) === String(l.id));
+    const canal: Canal | undefined = liee?.canal ?? (l.channels ?? []).map((c) => canalAnnonce(c.platform)).find((c): c is Canal => !!c);
+    if (!existant || !canal || !Array.isArray(l.channels)) return;
+    const canaux = l.channels.filter((ch) => canalAnnonce(ch.platform) === canal);
+    if (!canaux.length) return;
+    const avant = existant.annonces.find((a) => a.canal === canal);
+    const idExterne = canaux.map((ch) => (typeof ch.externalId === 'string' ? ch.externalId.trim() : '')).find(Boolean);
+    const url = avant?.url || (canal === 'airbnb' && idExterne ? `https://www.airbnb.fr/rooms/${idExterne}` : undefined);
+    const annonce = { canal, ...(url ? { url } : {}), connecte: canaux.some((ch) => !!ch.active) };
+    if (avant && identiques(avant, annonce)) return;
+    const ordre = (c: Canal) => ['airbnb', 'booking', 'direct'].indexOf(c);
+    const annonces = [...existant.annonces.filter((a) => a.canal !== canal), annonce].sort((a, b) => ordre(a.canal) - ordre(b.canal));
+    logements.poser({ ...existant, annonces });
+  }
+
   /** Une annonce Repull → logement (en mémoire ; écrit par ecrireLogements). */
   private async poserAnnonce(l: RepullListing, avecEquipements: boolean): Promise<Id> {
     const logements = await this.chargerLogements();
+    const relieA = this.lieesParAnnonce.get(String(l.id));
+    if (relieA) {
+      this.poserAnnonceLiee(l, relieA, logements);
+      return relieA;
+    }
     const id = this.logementParRepull.get(String(l.id)) ?? idRepull(l.id);
     const existant = logements.get(id);
     let annonce = l;
@@ -1268,6 +1344,8 @@ export class SessionRepull {
    */
   private async enrichirAnnonce(idAnnonce: string, photosDeLAnnonce: boolean): Promise<void> {
     const logements = await this.chargerLogements();
+    // Annonce reliée : photos et prix viennent de l'annonce principale du logement, jamais d'elle.
+    if (this.lieesParAnnonce.has(idAnnonce)) return;
     const id = this.logementParRepull.get(idAnnonce);
     const l = id ? logements.get(id) : undefined;
     if (!l || l.statut === 'sorti') return;
@@ -1477,18 +1555,27 @@ export class SessionRepull {
     const reservations = await this.chargerReservations();
     await this.chargerLogements();
     let depuis = DEPUIS_TOUJOURS;
+    // Relecture demandée (un webhook a pu être manqué pendant un lien entre annonces) : on repart d'au plus tôt.
+    const [relire] = await this.base.lireVersions<Relecture>(COLLECTION_ETAT, [ID_RELIRE]).catch(() => [] as { element: Relecture; version: string }[]);
     if (this.o.mode === 'incremental') {
       for (const r of reservations.elements.values()) {
         const m = r.repull?.majLe;
         if (m && instant(m) > instant(depuis)) depuis = m;
       }
+      if (relire?.element.depuis && instant(relire.element.depuis) < instant(depuis)) depuis = relire.element.depuis;
     }
+    let toutLu = true;
     for await (const page of this.repull.pages<RepullReservation>('/v1/reservations', { updated_since: depuis })) {
       for (const r of page) if (r?.id !== undefined && r?.id !== null) await this.poserReservation(r);
       await reservations.ecrire(this.base, this.bilan.reservations);
-      if (!this.tempsRestant()) break;
+      if (!this.tempsRestant()) {
+        toutLu = false;
+        break;
+      }
     }
     await reservations.ecrire(this.base, this.bilan.reservations);
+    // Tout relu depuis la date demandée : relecture faite (seulement si elle n'a pas été renouvelée entre-temps).
+    if (toutLu && relire?.element.depuis) await this.base.remplacerSi(COLLECTION_ETAT, { id: ID_RELIRE }, relire.version).catch(() => false);
   }
 
   /** Une réservation précise (webhook reservation.*). */
@@ -1916,6 +2003,236 @@ export async function lireSelection(base: BaseErp): Promise<SelectionRepull | nu
   return lu && Array.isArray(lu.annonces) ? { ...lu, annonces: lu.annonces.map(String) } : null;
 }
 
+/* ------------------------------------------------ verrou des connexions */
+
+/**
+ * Verrou des connexions (repull/verrou), même collection que l'état : pris
+ * par un gérant qui relie une annonce d'une autre plateforme à un logement
+ * (repull-connexion.ts, data/annonces-liees.ts), le temps de déplacer
+ * réservations, conversations, ménages… d'un logement à l'autre. Pendant ce
+ * temps, aucun passage ne commence (lancer : « occupe ») ; un passage
+ * commencé avant s'arrête avant sa prochaine écriture de logements,
+ * réservations ou conversations (baseGardee : la génération a changé), sans
+ * rien écrire de ce qu'il avait lu avant. Le passage suivant relit tout.
+ * La synchronisation ne fait que LIRE ce verrou. Bail borné : un verrou
+ * oublié (fonction coupée) se libère seul.
+ */
+export const ID_VERROU = 'verrou';
+/** Trace des annonces reliées (data/annonces-liees.ts, TraceAnnoncesReliees), lue par la synchronisation. */
+export const ID_ANNONCES_RELIEES = 'annonces-reliees';
+export const DUREE_VERROU_MS = 70_000;
+
+export interface VerrouConnexions {
+  id: typeof ID_VERROU;
+  /** Augmentée à chaque prise : un passage commencé avant la voit changer. */
+  generation: number;
+  /** Instant (ms) de fin du bail ; absent : libre. */
+  jusqua?: number;
+  jeton?: string;
+  motif?: string;
+  par?: string;
+}
+
+/** Le verrou est-il pris (bail en cours) ? */
+export const verrouPris = (v: Pick<VerrouConnexions, 'jusqua' | 'jeton'> | null | undefined, maintenantMs: number): boolean =>
+  // Une fin de bail plus lointaine que le bail lui-même (forgée, horloge folle) ne bloque rien.
+  !!v?.jeton && typeof v.jusqua === 'number' && v.jusqua > maintenantMs && v.jusqua <= maintenantMs + DUREE_VERROU_MS + 5_000;
+
+export async function lireVerrou(base: BaseErp): Promise<{ verrou: VerrouConnexions | null; version: string }> {
+  const [lu] = await base.lireVersions<VerrouConnexions>(COLLECTION_ETAT, [ID_VERROU]);
+  return { verrou: lu ? { ...lu.element, generation: Number(lu.element.generation) || 0 } : null, version: lu?.version ?? '' };
+}
+
+/** Prend le verrou (écriture conditionnelle : de deux prises simultanées, une seule passe). null : déjà pris. */
+export async function prendreVerrou(base: BaseErp, o: { motif: string; par: string; maintenant: Date; dureeMs?: number }): Promise<{ jeton: string; generation: number } | null> {
+  const t = o.maintenant.getTime();
+  const jeton = `${t.toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  const jusqua = t + (o.dureeMs ?? DUREE_VERROU_MS);
+  const { verrou, version } = await lireVerrou(base);
+  if (!verrou) {
+    const neuf: VerrouConnexions = { id: ID_VERROU, generation: 1, jusqua, jeton, motif: o.motif, par: o.par };
+    const n = await base.ajouterSiAbsent(COLLECTION_ETAT, [neuf], o.par);
+    return n === 1 ? { jeton, generation: 1 } : null;
+  }
+  if (verrouPris(verrou, t)) return null;
+  const generation = verrou.generation + 1;
+  const pris: VerrouConnexions = { id: ID_VERROU, generation, jusqua, jeton, motif: o.motif, par: o.par };
+  return (await base.remplacerSi(COLLECTION_ETAT, pris, version, o.par)) ? { jeton, generation } : null;
+}
+
+/** Rend le verrou (seulement s'il est encore à ce jeton) ; la génération reste. */
+export async function rendreVerrou(base: BaseErp, jeton: string, par: string): Promise<void> {
+  const { verrou, version } = await lireVerrou(base);
+  if (!verrou || verrou.jeton !== jeton) return;
+  const libre: VerrouConnexions = { id: ID_VERROU, generation: verrou.generation };
+  await base.remplacerSi(COLLECTION_ETAT, libre, version, par);
+}
+
+/** Un lien entre annonces a commencé pendant le passage : il s'arrête (le suivant relit tout). */
+export class SynchroInterrompue extends DelaiEcoule {}
+
+/** Collections que le verrou protège (celles qu'un lien entre annonces déplace ou que la synchronisation crée). */
+const COLLECTIONS_GARDEES = new Set(['logements', 'reservations', 'filsMessages', 'proprietaires']);
+
+/**
+ * La base, avec avant chaque écriture de logements, réservations,
+ * conversations ou propriétaires une relecture du verrou : pris, ou repris
+ * depuis le début du passage (génération changée) → SynchroInterrompue.
+ * Le reste (journal, état) s'écrit normalement.
+ */
+export function baseGardee(base: BaseErp, generation: number, maintenant: () => Date): BaseErp {
+  const garde = async (collection: string) => {
+    if (!COLLECTIONS_GARDEES.has(collection)) return;
+    const { verrou } = await lireVerrou(base);
+    if (verrouPris(verrou, maintenant().getTime()) || (verrou?.generation ?? 0) !== generation) throw new SynchroInterrompue();
+  };
+  const ecritures = new Set(['ecrire', 'remplacerSi', 'ajouterSiAbsent', 'supprimer']);
+  return new Proxy(base, {
+    get(cible, prop, recepteur) {
+      const v = Reflect.get(cible, prop, recepteur);
+      if (typeof v !== 'function') return v;
+      if (typeof prop === 'string' && ecritures.has(prop)) {
+        return async (collection: string, ...reste: unknown[]) => {
+          await garde(collection);
+          return (v as (...a: unknown[]) => unknown).call(cible, collection, ...reste);
+        };
+      }
+      return (v as (...a: unknown[]) => unknown).bind(cible);
+    },
+  });
+}
+
+/** Attente d'un lien en cours avant un passage : 15 × 2 s au plus, s'il reste au moins 20 s au passage. */
+const ATTENTES_VERROU = 15;
+const PAS_ATTENTE_VERROU_MS = 2_000;
+const TEMPS_GARDE_APRES_VERROU_MS = 20_000;
+
+/* ------------------------------------------------ relecture des réservations */
+
+/**
+ * Relecture demandée (repull/relire) : pendant un lien entre annonces, un
+ * webhook a pu être remis (« occupe ») ou un passage interrompu. Le passage
+ * incrémental suivant relit les réservations depuis cette date au plus tard
+ * (sinon il repartirait de la plus récente déjà connue et sauterait celle-là).
+ */
+export const ID_RELIRE = 'relire';
+export interface Relecture {
+  id: typeof ID_RELIRE;
+  /** Instant ISO : relire les réservations modifiées depuis. Absent : rien à relire. */
+  depuis?: string;
+  /** Dernière demande (la réécriture change la version de l'élément). */
+  demandeLe?: string;
+}
+
+/** Demande une relecture depuis `depuisMs` (garde la plus ancienne demande en cours). */
+export async function noterRelecture(base: BaseErp, depuisMs: number, par: string): Promise<void> {
+  const depuis = new Date(depuisMs).toISOString();
+  for (let essai = 0; essai < 3; essai++) {
+    const [lu] = await base.lireVersions<Relecture>(COLLECTION_ETAT, [ID_RELIRE]);
+    if (!lu) {
+      const neuve: Relecture = { id: ID_RELIRE, depuis };
+      if ((await base.ajouterSiAbsent(COLLECTION_ETAT, [neuve], par)) === 1) return;
+      continue;
+    }
+    // Toujours réécrite (sa version change) : un passage commencé avant ne peut plus l'effacer.
+    const plusTot: Relecture = { id: ID_RELIRE, depuis: lu.element.depuis && instant(lu.element.depuis) <= depuisMs ? lu.element.depuis : depuis, demandeLe: new Date().toISOString() };
+    if (await base.remplacerSi(COLLECTION_ETAT, plusTot, lu.version, par)) return;
+  }
+}
+
+/* ------------------------------------------------ déplacer ce que porte un logement */
+
+/** Écritures conditionnelles menées en même temps (déplacements). */
+const EN_PARALLELE = 8;
+
+async function parLots<T>(liste: readonly T[], travail: (x: T) => Promise<void>): Promise<void> {
+  for (let i = 0; i < liste.length; i += EN_PARALLELE) await Promise.all(liste.slice(i, i + EN_PARALLELE).map(travail));
+}
+
+/**
+ * Remplace un élément par sa version transformée, seulement s'il n'a pas
+ * changé depuis la lecture ; sinon relu et transformé de nouveau (trois
+ * essais). Vrai : écrit, ou plus rien à changer.
+ */
+export async function remplacerAvecReprise<T extends { id: string }>(base: BaseErp, collection: string, lu: { element: T; version: string }, transformer: (e: T) => T, auteur: string): Promise<boolean> {
+  let courant: { element: T; version: string } | undefined = lu;
+  for (let essai = 0; essai < 3 && courant; essai++) {
+    const suivant = transformer(courant.element);
+    if (suivant === courant.element || canonique(suivant) === canonique(courant.element)) return true;
+    if (await base.remplacerSi(collection, suivant, courant.version, auteur)) return true;
+    [courant] = await base.lireVersions<T>(collection, [lu.element.id]);
+  }
+  return !courant;
+}
+
+/**
+ * Déplace vers `vers` tout ce qui porte le logement `de` (toutes les
+ * collections), élément par élément, en écritures conditionnelles (une
+ * saisie faite entre-temps est relue, pas écrasée). Sert au lien entre
+ * annonces (repull-connexion.ts) et à son rattrapage (rattraperLiens).
+ */
+export async function deplacerTout(base: BaseErp, de: string, vers: string, auteur: string): Promise<{ deplaces: Partial<Record<string, number>>; echecs: number }> {
+  const deplaces: Partial<Record<string, number>> = {};
+  let echecs = 0;
+  for (const c of [...COLLECTIONS_LOGEMENT_ID, 'conseilsPrix', 'actionsAgent', 'bilansProprietaire', 'equipe', 'reglages'] as const) {
+    const lus = await base.lireVersions<{ id: string }>(c);
+    const aDeplacer = lus.filter((x) => elementDeplace(c, x.element, de, vers) !== x.element);
+    await parLots(aDeplacer, async (x) => {
+      const ok = await remplacerAvecReprise(base, c, x, (e) => elementDeplace(c, e, de, vers) as { id: string }, auteur);
+      if (ok) deplaces[c] = (deplaces[c] ?? 0) + 1;
+      else echecs++;
+    });
+  }
+  // Qui suit le logement : l'affectation de l'autre remplit les champs vides de celle d'ici, puis part (seulement si c'est écrit).
+  const affectations = await base.lireVersions<AffectationLogement>('affectations', [de, vers]);
+  const a = deplacerAffectations(affectations.map((x) => x.element), de, vers);
+  let fusionnee = true;
+  if (a.ecrire) {
+    const ici = affectations.find((x) => x.element.id === vers);
+    const autres = affectations.filter((x) => x.element.id === de).map((x) => x.element);
+    if (ici) fusionnee = await remplacerAvecReprise(base, 'affectations', ici, (e) => deplacerAffectations([e, ...autres], de, vers).ecrire ?? e, auteur);
+    else fusionnee = (await base.ajouterSiAbsent('affectations', [a.ecrire], auteur)) === 1;
+    if (!fusionnee) echecs++;
+  }
+  if (a.supprimer && fusionnee) {
+    await base.supprimer('affectations', [a.supprimer]);
+    deplaces.affectations = (deplaces.affectations ?? 0) + 1;
+  }
+  return { deplaces, echecs };
+}
+
+/** Jours pendant lesquels le passage du cron rattrape ce qui arrive encore sur l'autre logement d'un lien. */
+export const JOURS_RATTRAPAGE = 14;
+
+/**
+ * Rattrapage des liens récents (passage du cron) : ce qui arrive encore sur
+ * l'autre logement après sa suppression (une modification faite hors ligne
+ * et envoyée plus tard, un vieil onglet) le rejoint. D'après la trace
+ * (`depuis`), seulement si l'autre logement n'existe plus et pendant
+ * JOURS_RATTRAPAGE jours après le lien. Rien n'est appelé chez le service
+ * de connexion. Rend le nombre d'éléments déplacés.
+ */
+export async function rattraperLiens(base: BaseErp, maintenant: Date, avantMs?: number): Promise<number> {
+  const [trace] = await base.lire<TraceReliees & { id: string }>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+  const recents = Object.values(trace?.annonces ?? {}).filter(
+    (t): t is { logementId: string; depuis: string; le?: string } =>
+      !!t?.logementId && !!t.depuis && t.depuis !== t.logementId && (!t.le || maintenant.getTime() - instant(t.le) < JOURS_RATTRAPAGE * JOUR),
+  );
+  if (!recents.length) return 0;
+  const ids = new Set((await base.lire<{ id: string }>('logements')).map((l) => l.id));
+  let n = 0;
+  for (const t of recents) {
+    if (ids.has(t.depuis) || !ids.has(t.logementId)) continue;
+    if (avantMs !== undefined && Date.now() > avantMs) break;
+    const r = await deplacerTout(base, t.depuis, t.logementId, AUTEUR_REPULL);
+    n += Object.values(r.deplaces).reduce<number>((s, x) => s + (x ?? 0), 0);
+  }
+  return n;
+}
+
+/** Message d'un passage remis : un gérant relie une annonce à un logement. */
+export const MESSAGE_VERROU = 'Un gérant relie en ce moment une annonce à un logement : la synchronisation reprend dans une minute.';
+
 /** Appels faits hors d'un passage (page Connexions) : ajoutés au compteur du mois. */
 export async function imputerAppels(
   base: BaseErp,
@@ -1998,9 +2315,11 @@ export interface ResultatLancement {
   ok: boolean;
   /**
    * fait : passage mené ; limite : trop tôt après le précédent ; budget :
-   * part du mois épuisée ; selection : aucun logement choisi, rien importé.
+   * part du mois épuisée ; selection : aucun logement choisi, rien importé ;
+   * occupe : un gérant relie une annonce à un logement (verrou des
+   * connexions), rien n'est lu ni écrit, le passage suivant reprend.
    */
-  statut: 'fait' | 'limite' | 'budget' | 'selection';
+  statut: 'fait' | 'limite' | 'budget' | 'selection' | 'occupe';
   message?: string;
   bilan?: BilanRepull;
   etat: EtatRepull;
@@ -2061,18 +2380,36 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
     return { ok: false, statut: 'budget', message, bilan: etat.dernierBilan, etat };
   }
 
+  // Verrou des connexions : pas de passage pendant qu'un gérant relie une annonce à un logement (aucun appel).
+  // Le lien dure quelques secondes : on attend qu'il finisse (une réservation reçue par webhook n'est pas
+  // perdue), sans entamer le temps du passage ; au-delà, « occupe ».
+  // Illisible : le passage échoue (il ne tourne jamais sans la garde du verrou).
+  let verrou = await lireVerrou(o.base);
+  const patienter = o.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < ATTENTES_VERROU && verrou && verrouPris(verrou.verrou, maintenant().getTime()) && o.echeance - maintenant().getTime() > TEMPS_GARDE_APRES_VERROU_MS; i++) {
+    await patienter(PAS_ATTENTE_VERROU_MS);
+    verrou = await lireVerrou(o.base);
+  }
+  if (verrou && verrouPris(verrou.verrou, maintenant().getTime())) {
+    // Remis : le passage suivant relira les réservations d'ici (un webhook ne revient pas).
+    await noterRelecture(o.base, maintenant().getTime() - 5 * 60_000, AUTEUR_REPULL).catch(() => undefined);
+    return { ok: true, statut: 'occupe', message: MESSAGE_VERROU, bilan: etat.dernierBilan, etat };
+  }
+  // Un lien commencé pendant le passage l'arrête avant sa prochaine écriture (baseGardee).
+  const baseSession = verrou ? baseGardee(o.base, verrou.verrou?.generation ?? 0, maintenant) : o.base;
+
   const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre, origineCle: o.origineCle });
   let bilan: BilanRepull;
   let evenement: string | undefined;
   if (o.evenement) {
     evenement = o.evenement.event ?? 'inconnu';
-    bilan = await traiterEvenement(o.evenement, { repull: client, base: o.base, maintenant, selection: choisies });
+    bilan = await traiterEvenement(o.evenement, { repull: client, base: baseSession, maintenant, selection: choisies });
   } else {
     // Passage complet (toutes les réservations relues) une fois par semaine par le cron.
     const complet = o.declencheur === 'cron' && (!etat.dernierComplet || maintenant().getTime() - instant(etat.dernierComplet) >= 6.5 * JOUR);
     bilan = await synchroniser({
       repull: client,
-      base: o.base,
+      base: baseSession,
       mode: o.forcer?.mode ?? (complet ? 'complet' : 'incremental'),
       declencheur: o.declencheur,
       maintenant,
@@ -2080,6 +2417,12 @@ export async function lancer(o: OptionsLancement): Promise<ResultatLancement> {
       selection: choisies,
       fetchPages: o.fetch,
     });
+    // Passage du cron : ce qui arrive encore sur l'autre logement d'un lien récent le rejoint (s'il reste du temps).
+    if (o.declencheur === 'cron' && o.echeance - Date.now() > 15_000) {
+      await rattraperLiens(baseSession, maintenant(), o.echeance - 8_000).catch((e) => {
+        if (!(e instanceof DelaiEcoule)) bilan.erreurs.push(`Rattrapage des liens : ${texteErreur(e)}`);
+      });
+    }
   }
 
   // Quota réel du compte (tous usages) : un appel, seulement depuis le bouton.
@@ -2152,8 +2495,12 @@ export async function releverConversations(o: Omit<OptionsLancement, 'declencheu
   const etat = await lireEtat(o.base, maintenant(), budgetMois, quotaMois);
   const restant = etat.budgetMois - etat.appelsMois;
   if (restant <= 0) throw new BudgetEpuise();
+  // Verrou des connexions (voir lancer) : rien pendant qu'un gérant relie une annonce à un logement.
+  const verrou = await lireVerrou(o.base);
+  if (verrou && verrouPris(verrou.verrou, maintenant().getTime())) return null;
+  const baseSession = verrou ? baseGardee(o.base, verrou.verrou?.generation ?? 0, maintenant) : o.base;
   const client = new ClientRepull({ cle: o.cle, workspace: o.workspace, fetch: o.fetch, base: o.baseRepull, echeance: o.echeance, budget: restant, attendre: o.attendre, origineCle: o.origineCle });
-  const s = new SessionRepull({ repull: client, base: o.base, mode: 'incremental', declencheur: 'agent', maintenant, selection: new Set(selection.annonces) });
+  const s = new SessionRepull({ repull: client, base: baseSession, mode: 'incremental', declencheur: 'agent', maintenant, selection: new Set(selection.annonces) });
   try {
     await s.phaseConversations();
   } catch (e) {

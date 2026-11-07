@@ -626,6 +626,8 @@ export function versLogement(l: RepullListing, existant: Logement | undefined, c
     // Relevé des photos et note de lecture (repull-synchro) : ils survivent au passage des annonces.
     ...(base.repull?.photosLuesLe ? { photosLuesLe: base.repull.photosLuesLe } : {}),
     ...(base.repull?.lecture ? { lecture: base.repull.lecture } : {}),
+    // Annonces des autres plateformes reliées par un gérant (data/annonces-liees.ts) : jamais touchées ici.
+    ...(base.repull?.liees?.length ? { liees: base.repull.liees } : {}),
   };
   suivant.repull = origine;
   return suivant;

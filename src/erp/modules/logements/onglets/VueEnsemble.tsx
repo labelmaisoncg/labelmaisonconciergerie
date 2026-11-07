@@ -1,19 +1,19 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { ArrowRight, BedDouble, ExternalLink, Link2, Mail, MessagesSquare, Phone, Sofa, Sparkles, X } from 'lucide-react';
+import { ArrowRight, BedDouble, Link2, Mail, MessagesSquare, Phone, Sofa, Sparkles } from 'lucide-react';
 import { ETAPES_DOSSIER } from '../../../data/dossier-proprietaire';
 import { FormProprietaire } from '../../proprietaires/FormProprietaire';
 import { FormMandat } from '../../mandats/FormMandat';
-import { Badge, Card, CardHeader, EmptyState, FicheEtapes, IconButton, Repli, cn } from '../../../ui';
+import { Card, CardHeader, EmptyState, FicheEtapes, Repli, cn } from '../../../ui';
 import { GraphiqueCourbe } from '../../../ui/Graphiques';
 import { useErp } from '../../../data/store';
 import { LIBELLES } from '../../../data/libelles';
 import { ID_PROPRIETAIRE_A_RENSEIGNER } from '../../../data/repull';
-import { aRelier, peutRelier, relie } from '../../../data/liaison-annonce';
+import { aRelier, peutRelier } from '../../../data/liaison-annonce';
 import { AUJOURDHUI, SANS_DONNEE, dateCourte, dateHeure, euros, horodatageMaintenant, jourMois, moisAnnee, note, pluriel, pourcentage } from '../../../data/format';
 import { attendEquipe } from '../../../data/attente-equipe';
 import { estActive, nuitsAnnee, proprietaireById } from '../../../data/selectors';
-import type { Canal, DescriptifLogement, Logement } from '../../../data/types';
+import type { DescriptifLogement, Logement } from '../../../data/types';
 import { CompteurNuits } from '../_composants/CompteurNuits';
 import { Galerie } from '../_composants/Galerie';
 import { SansPhoto } from '../_composants/SansPhoto';
@@ -30,8 +30,7 @@ import { PrixConseilles } from '../_composants/PrixConseilles';
 import { CarteAvisLogement } from '../_composants/Avis';
 import { TextesAnnonce } from '../_composants/TextesAnnonce';
 import { LienAnnonce, RelierAnnonce } from '../_composants/RelierAnnonce';
-
-const PLATEFORME: Record<Canal, string> = { airbnb: 'Airbnb', booking: 'Booking.com', direct: 'Site direct' };
+import { CarteConnexions, SuggestionConnexion } from '../_composants/ConnexionsLogement';
 
 function Ligne({ libelle, children }: { libelle: string; children: ReactNode }) {
   return (
@@ -101,15 +100,13 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
   // Le couchage de l'annonce (pièce par pièce) remplace la ligne saisie à la main.
   const lits = desc?.couchage?.length ? '' : l.lits.map((x) => `${x.nombre} ${LIBELLES.typeLit[x.type].toLowerCase()}`).join(', ');
   const jours = (l.tarifs?.jours ?? []).filter((j) => j.date >= AUJOURDHUI).slice(0, 60);
-  // Pas encore relié à une annonce : les lignes vides d'un logement créé à la main (Airbnb, Booking,
-  // site direct « hors ligne ») ne disent rien ; seul un lien saisi par l'équipe reste.
-  const annonces = relie(l) ? l.annonces : l.annonces.filter((a) => a.connecte || !!a.url);
   const bas = jours.length ? Math.min(...jours.map((j) => j.prixCentimes)) : 0;
   const haut = jours.length ? Math.max(...jours.map((j) => j.prixCentimes)) : 0;
 
   return (
     <>
       <LigneRelier logement={l} />
+      <SuggestionConnexion logement={l} />
       {photosLogement(l).length ? (
         <>
           <Galerie photos={photosLogement(l)} nom={l.nom} />
@@ -257,53 +254,20 @@ export function OngletVueEnsemble({ logement: l }: { logement: Logement }) {
 
           {desc && <Conditions descriptif={desc} />}
 
-          <Card>
-            <CardHeader titre="Plateformes" />
-            {annonces.length === 0 ? (
-              <p className="text-[13.5px] text-(--lm-encre-2)">Aucune annonce reliée.</p>
-            ) : (
-              <ul className="space-y-2">
-                {annonces.map((a) => {
-                  // Lien Airbnb saisi par l'équipe (pas une annonce reliée) : on peut le retirer.
-                  const saisi = a.canal === 'airbnb' && !a.connecte && !!a.url && !(l.repull?.canaux ?? []).some((c) => /airbnb/i.test(c.plateforme));
-                  return (
-                    <li key={a.canal} className="flex items-center justify-between gap-3 text-[13.5px]">
-                      <span className="flex items-center gap-2">
-                        <span className="font-medium text-(--lm-encre)">{PLATEFORME[a.canal] ?? a.canal}</span>
-                        {saisi ? (
-                          <span className="text-[12.5px] text-(--lm-encre-2)">Lien ajouté</span>
-                        ) : (
-                          <Badge tone={a.connecte ? 'succes' : 'neutre'}>{a.connecte ? 'En ligne' : 'Hors ligne'}</Badge>
-                        )}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        {a.url && /^https:\/\//.test(a.url) && (
-                          <a href={a.url} target="_blank" rel="noopener noreferrer" className={lien} aria-label={`Voir l’annonce ${PLATEFORME[a.canal] ?? a.canal}`}>
-                            Voir <ExternalLink className="size-3.5" aria-hidden />
-                          </a>
-                        )}
-                        {saisi && !d.lectureSeule && (
-                          <IconButton
-                            label="Retirer le lien Airbnb"
-                            size="sm"
-                            onClick={() => d.upsert('logements', { ...l, annonces: l.annonces.filter((x) => x !== a) })}
-                          >
-                            <X />
-                          </IconButton>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-            {/* Sans photo, l'encadré du haut propose déjà le lien : pas de doublon. */}
-            {photosLogement(l).length > 0 && !idAirbnbDuLogement(l) && !d.lectureSeule && (
-              <div className="mt-3 border-t border-(--lm-bord) pt-3">
-                <LienAirbnb logement={l} />
-              </div>
-            )}
-          </Card>
+          {/* Une ligne par plateforme : l'annonce reliée, ou « Relier l'annonce Booking.com ». */}
+          <CarteConnexions
+            logement={l}
+            enPlus={
+              // Sans photo, l'encadré du haut propose déjà le lien : pas de doublon.
+              photosLogement(l).length > 0 &&
+              !idAirbnbDuLogement(l) &&
+              !d.lectureSeule && (
+                <div className="mt-3 border-t border-(--lm-bord) pt-3">
+                  <LienAirbnb logement={l} />
+                </div>
+              )
+            }
+          />
 
           {l.residencePrincipale && <CompteurNuits compteur={nuitsAnnee(d.reservations, l.id)} />}
 

@@ -151,6 +151,9 @@ export function verifierLiaison(o: {
   if (!a || a.statutRepull === 'archived') return refus('Cette annonce n’est pas sur les plateformes connectées à cet espace : rechargez la liste.', 404);
   const deja = logementDeLAnnonce(o.annonceId, o.logements);
   if (deja) return refus(`Cette annonce est déjà dans l’ERP : ${deja.nom}.`, 409);
+  // Annonce d'une autre plateforme déjà reliée à un logement (data/annonces-liees.ts, repull.liees).
+  const reliee = o.logements.find((x) => (Array.isArray(x.repull?.liees) ? x.repull!.liees! : []).some((y) => String(y?.id) === o.annonceId));
+  if (reliee) return refus(`Cette annonce est déjà reliée à « ${reliee.nom} ».`, 409);
   return { ok: true };
 }
 
@@ -209,6 +212,8 @@ export function delierPossible(
   fils: readonly Pick<FilMessages, 'logementId' | 'repull'>[],
 ): Verdict {
   if (!creeALaMain(l) || !relie(l) || !l.liaison || l.liaison.annonce !== l.repull?.id) return refus('Ce lien ne se retire pas d’ici.', 409);
+  // Une annonce d'une autre plateforme lui est reliée (data/annonces-liees.ts) : délier la retirerait aussi.
+  if (l.repull?.liees?.length) return refus('Une annonce d’une autre plateforme est aussi reliée à ce logement : le lien ne se retire plus d’ici.', 409);
   const a = arriveesDeLAnnonce(l.id, reservations, fils);
   if (a.reservations || a.conversations) {
     return refus('Des réservations ou des messages de l’annonce sont déjà arrivés sur ce logement : le lien ne se retire plus d’ici.', 409);

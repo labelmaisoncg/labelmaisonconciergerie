@@ -69,19 +69,20 @@ export function ecritureGerantSeulement(collection: string, id: string): boolean
 }
 
 /**
- * Lien d'un logement à son annonce (repull.id, liaison ; un logement
- * « repull-… ») posé, retiré ou changé : comme le déclencheur
- * erp.garder_lien_annonce() (erp-espaces.sql, erp-installation.sql,
- * erp-acces-gerants.sql), réservé au gérant. Comparé à `avant` ; sans ligne :
- * un nouveau logement sans lien ni « repull- » reste permis.
+ * Lien d'un logement à son annonce (repull.id, liaison, annonces des autres
+ * plateformes reliées repull.liees ; un logement « repull-… ») posé, retiré
+ * ou changé : comme le déclencheur erp.garder_lien_annonce()
+ * (erp-espaces.sql, erp-installation.sql, erp-acces-gerants.sql), réservé
+ * au gérant. Comparé à `avant` ; sans ligne : un nouveau logement sans lien
+ * ni « repull- » reste permis.
  */
 export function lienAnnonceChange(op: Operation, avant: ErpDonnees): boolean {
   if (op.type !== 'ecrire' || op.collection !== 'logements') return false;
-  const nouveau = op.donnees as { repull?: { id?: unknown }; liaison?: unknown };
-  const ancien = ((avant.logements ?? []) as unknown as { id: string; repull?: { id?: unknown }; liaison?: unknown }[]).find((l) => l?.id === op.id);
+  const nouveau = op.donnees as { repull?: { id?: unknown; liees?: unknown }; liaison?: unknown };
+  const ancien = ((avant.logements ?? []) as unknown as { id: string; repull?: { id?: unknown; liees?: unknown }; liaison?: unknown }[]).find((l) => l?.id === op.id);
   const id = (x?: { id?: unknown }) => (x?.id === undefined || x?.id === null ? null : String(x.id));
-  if (ancien) return id(nouveau.repull) !== id(ancien.repull) || stable(nouveau.liaison) !== stable(ancien.liaison);
-  return id(nouveau.repull) !== null || nouveau.liaison !== undefined || op.id.startsWith('repull-');
+  if (ancien) return id(nouveau.repull) !== id(ancien.repull) || stable(nouveau.liaison) !== stable(ancien.liaison) || stable(nouveau.repull?.liees) !== stable(ancien.repull?.liees);
+  return id(nouveau.repull) !== null || nouveau.liaison !== undefined || nouveau.repull?.liees !== undefined || op.id.startsWith('repull-');
 }
 
 /**

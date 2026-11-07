@@ -6,16 +6,25 @@
 //                                  limite de l'offre (gardé 5 min, sauf forcer)
 //   GET  ?action=fournisseurs      plateformes et logiciels proposés par Repull
 //   POST { action: 'connecter', fournisseur }          → { url } page Repull Connect
-//   POST { action: 'selection', ids: string[] }        → choix enregistré + import
+//   POST { action: 'selection', ids: string[], liaisons?: { annonce, logement }[] }
+//                                                      → choix enregistré + import ; les
+//                                                        annonces de `liaisons` (cochées et
+//                                                        dites « même logement que… ») sont
+//                                                        d'abord reliées à ce logement
 //   POST { action: 'relier', logement, annonce }       → logement créé à la main
 //                                                        relié à son annonce + import
+//   POST { action: 'relier-connexion', logement, annonce }
+//                                                      → l'annonce d'une autre plateforme
+//                                                        reliée à ce logement ; son logement
+//                                                        à part (s'il existe) le rejoint
 //   POST { action: 'delier', logement }                → lien retiré (rien d'importé)
 //   POST { action: 'deconnecter', fournisseur, compte? }
 //
 // Authentification : Authorization: Bearer <jeton de session Supabase>, membre
 // de l'équipe (gérant ou opérations) ; connecter, choisir, relier, délier et
 // déconnecter sont réservés aux gérants. Relier et délier n'écrivent que dans
-// l'ERP (src/erp/data/liaison-annonce.ts). Espace : celui de l'en-tête x-erp-espace (Label Maison
+// l'ERP (src/erp/data/liaison-annonce.ts, src/erp/data/annonces-liees.ts :
+// relier une autre annonce n'appelle jamais le service de connexion). Espace : celui de l'en-tête x-erp-espace (Label Maison
 // à défaut), avec son accès Repull (workspace ou clé propre). Chaque appel
 // Repull est compté dans la part mensuelle de l'espace (REPULL_BUDGET_ERP pour
 // Label Maison). Détail : src/erp/data/repull-connexion.ts.
@@ -27,7 +36,9 @@ import {
   delierAnnonce,
   demarrerConnexion,
   enregistrerSelection,
+  enregistrerSelectionAvecLiaisons,
   relierAnnonce,
+  relierAutreAnnonce,
   lireEtatConnexions,
   lireFournisseurs,
   messageErreur,
@@ -90,7 +101,7 @@ export default async function handler(req: any, res: any) {
   const action = String((req.method === 'GET' ? req.query?.action : corps.action) ?? 'etat');
   const ecriture = req.method === 'POST';
   if (ecriture && membre.role !== 'gerant') {
-    const lien = action === 'relier' || action === 'delier';
+    const lien = action === 'relier' || action === 'delier' || action === 'relier-connexion';
     return repondre(res, 403, { ok: false, erreur: lien ? 'Seul un gérant peut relier un logement à son annonce.' : 'Seul un gérant peut connecter une plateforme ou choisir les logements.' });
   }
 
@@ -111,7 +122,12 @@ export default async function handler(req: any, res: any) {
       return repondre(res, 200, await demarrerConnexion(ctx, f, urlRetour(req, f), acces));
     }
     if (ecriture && action === 'selection') {
-      return repondre(res, 200, await enregistrerSelection(ctx, corps.ids, membre.email));
+      // Sans liaison : exactement comme avant.
+      if (!Array.isArray(corps.liaisons) || !corps.liaisons.length) return repondre(res, 200, await enregistrerSelection(ctx, corps.ids, membre.email));
+      return repondre(res, 200, await enregistrerSelectionAvecLiaisons(ctx, corps.ids, corps.liaisons, { email: membre.email, role: membre.role }));
+    }
+    if (ecriture && action === 'relier-connexion') {
+      return repondre(res, 200, await relierAutreAnnonce(ctx, corps.logement, corps.annonce, { email: membre.email, role: membre.role }));
     }
     if (ecriture && action === 'relier') {
       return repondre(res, 200, await relierAnnonce(ctx, corps.logement, corps.annonce, { email: membre.email, role: membre.role }));

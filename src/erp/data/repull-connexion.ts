@@ -34,6 +34,18 @@ import { dateParis, horodatageParis, photosDepuisContenu, tarifsDepuisBooking } 
 import type { RepullListing } from './repull.js';
 import { arriveesDeLAnnonce, delierLogement, delierPossible, depasseLimite, lierLogement, peutRelier, verifierLiaison } from './liaison-annonce.js';
 import {
+  NOM_CANAL,
+  ceQuiRejoint,
+  fusionnerLogement,
+  liees,
+  nouvelleLiee,
+  peutRelierConnexion,
+  phraseCeQuiRejoint,
+  verifierConnexion,
+  type CanalPlateforme,
+  type TraceAnnoncesReliees,
+} from './annonces-liees.js';
+import {
   BUDGET_ERP_DEFAUT,
   BaseErp,
   BudgetEpuise,
@@ -41,9 +53,15 @@ import {
   COLLECTION_ETAT,
   DelaiEcoule,
   ErreurRepull,
+  ID_ANNONCES_RELIEES,
+  deplacerTout,
+  noterRelecture,
+  remplacerAvecReprise,
   ID_SELECTION,
   QUOTA_MOIS_DEFAUT,
   conseilBudget,
+  prendreVerrou,
+  rendreVerrou,
   imputerAppels,
   lancer,
   lireEtat,
@@ -53,7 +71,7 @@ import {
   type PhaseRepull,
   type SelectionRepull,
 } from './repull-synchro.js';
-import type { FilMessages, Journal, Logement, Reservation } from './types';
+import type { AnnonceLiee, ErpDonnees, FilMessages, Journal, Logement, Reservation } from './types';
 
 type Fetch = typeof fetch;
 
@@ -470,6 +488,8 @@ async function composerEtat(ctx: ContexteConnexion, cache: CacheConnexions, aver
   ]);
   const parAnnonce = new Map<string, Logement>();
   for (const l of logements) if (l.repull?.id && !parAnnonce.has(l.repull.id)) parAnnonce.set(l.repull.id, l);
+  // Annonce reliée à un logement (autre plateforme du même appartement) : elle est dans ce logement (la liaison l'emporte).
+  for (const l of logements) for (const x of l.repull?.liees ?? []) parAnnonce.set(String(x.id), l);
   const choisies = new Set(selection?.annonces ?? []);
   const annonces: AnnonceDecouverte[] = (cache.annonces ?? [])
     .filter((a) => a.statutRepull !== 'archived')
@@ -848,6 +868,244 @@ export async function delierAnnonce(ctx: ContexteConnexion, logementIdBrut: unkn
   }
   await journaliserLiaison(ctx, qui, 'Logement délié de son annonce', logementId, 'Le logement a repris ce qu’il était avant le lien.', maintenant());
   return { ok: true, logementId, annonce };
+}
+
+/* ============================================ relier l'annonce d'une autre plateforme */
+
+/** Annonce reliée (ok toujours vrai : un échec est une erreur). */
+export interface ResultatConnexion {
+  ok: true;
+  logementId: string;
+  annonce: string;
+  canal: CanalPlateforme;
+  /** Déjà relié avant cet appel : rien n'a changé. */
+  deja: boolean;
+  /** Logement à part qui portait l'annonce, retiré : ce qui y était a rejoint ce logement. */
+  retire?: { id: string; nom: string };
+  /** « Ses 12 réservations, 3 conversations et 2 ménages rejoignent ce logement. » (vide s'il n'y avait rien). */
+  phrase: string;
+  /** Éléments déplacés, par collection. */
+  deplaces: Partial<Record<string, number>>;
+  /** Champs du logement remplis par l'autre (ils étaient vides). */
+  remplis: string[];
+}
+
+/** Attente après la prise du verrou : un passage qui écrivait juste avant finit son écriture en cours. */
+const GRACE_VERROU_MS = 2_000;
+/** Liens posés en un seul « Enregistrer mon choix » (au-delà : en plusieurs fois, la fonction a 60 s). */
+const LIAISONS_MAX = 10;
+
+/**
+ * Le travail sous le verrou des connexions (repull-synchro.ts, prendreVerrou) :
+ * aucun passage de synchronisation ne commence pendant ce temps, et un
+ * passage commencé avant s'arrête avant sa prochaine écriture. Un webhook
+ * remis pendant ce temps sera relu au passage suivant (noterRelecture).
+ */
+async function sousVerrou<T>(ctx: ContexteConnexion, qui: Gerant, travail: (maintenant: () => Date) => Promise<T>): Promise<T> {
+  const maintenant = ctx.maintenant ?? (() => new Date());
+  const verrou = await prendreVerrou(ctx.base, { motif: 'connexion', par: qui.email, maintenant: maintenant() });
+  if (!verrou) throw new ErreurConnexion('Une autre annonce est en train d’être reliée : réessayez dans une minute.', 409);
+  try {
+    await noterRelecture(ctx.base, maintenant().getTime() - 5 * 60_000, qui.email).catch(() => undefined);
+    await (ctx.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms))))(GRACE_VERROU_MS);
+    return await travail(maintenant);
+  } finally {
+    await rendreVerrou(ctx.base, verrou.jeton, qui.email).catch(() => undefined);
+  }
+}
+
+/** Logements, annonces trouvées, choix et trace des liens, pour vérifier un lien (verifierConnexion). */
+async function lireConnexion(ctx: ContexteConnexion) {
+  const [cache, selection, versions, [trace]] = await Promise.all([
+    lireCache(ctx.base),
+    lireSelection(ctx.base),
+    ctx.base.lireVersions<Logement>('logements'),
+    ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]),
+  ]);
+  const choisies = new Set(selection?.annonces ?? []);
+  return { versions, trace, logements: versions.map((v) => v.element), annonces: (cache.annonces ?? []).map((a) => ({ ...a, selectionnee: choisies.has(a.id) })) };
+}
+
+/** La trace des liens (repull/annonces-reliees) envoie-t-elle cette annonce sur ce logement ? */
+async function traceConfirme(ctx: ContexteConnexion, annonce: string, logementId: string): Promise<boolean> {
+  const [trace] = await ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+  return trace?.annonces?.[annonce]?.logementId === logementId;
+}
+
+/** Écrit (ou réécrit) l'entrée de cette annonce dans la trace des liens. */
+async function ecrireTrace(ctx: ContexteConnexion, annonce: string, logementId: string, liee: AnnonceLiee, par: string): Promise<void> {
+  const [trace] = await ctx.base.lire<TraceAnnoncesReliees>(COLLECTION_ETAT, [ID_ANNONCES_RELIEES]);
+  const suivante: TraceAnnoncesReliees = {
+    id: ID_ANNONCES_RELIEES,
+    annonces: { ...(trace?.annonces ?? {}), [annonce]: { logementId, canal: liee.canal, ...(liee.depuis ? { depuis: liee.depuis } : {}), ...(liee.nom ? { nom: liee.nom } : {}), le: liee.le, par: liee.par } },
+  };
+  await ctx.base.ecrire(COLLECTION_ETAT, [suivante], par);
+}
+/** Collections lues pour dire ce qui rejoint le logement (mêmes mots que la suppression d'un logement). */
+const COLLECTIONS_HISTORIQUE = ['reservations', 'filsMessages', 'factures', 'bilansProprietaire', 'documentsProprietaire', 'mandats', 'dossiers', 'missions', 'mouvementsLinge', 'incidents', 'controles', 'charges', 'avisADeposer', 'envoisProgrammes', 'recommandations', 'versionsAnnonce', 'conseilsPrix', 'actionsAgent'] as const;
+
+/**
+ * Relie à ce logement l'annonce d'une autre plateforme du même appartement
+ * (son annonce Booking.com quand il vient d'Airbnb, ou l'inverse). Rien
+ * n'est écrit sur les plateformes ni chez le service de connexion : c'est
+ * une opération sur les données de l'ERP seulement (data/annonces-liees.ts).
+ *
+ * Sous le verrou des connexions (repull-synchro.ts, prendreVerrou) : aucun
+ * passage de synchronisation ne commence pendant ce temps, et un passage
+ * commencé avant s'arrête avant sa prochaine écriture. Tout est relu APRÈS
+ * la prise du verrou et revérifié (verifierConnexion).
+ *
+ * Si l'annonce avait son propre logement dans l'ERP, dans cet ordre :
+ *   1. ce logement reçoit l'annonce reliée (et les champs vides remplis par
+ *      l'autre) : dès lors, la synchronisation envoie tout de l'annonce ici ;
+ *   2. tout ce qui portait l'autre logement passe ici (écritures
+ *      conditionnelles : une saisie de l'équipe faite entre-temps est relue,
+ *      pas écrasée) ;
+ *   3. la trace côté serveur (repull/annonces-reliees) ;
+ *   4. l'autre logement est supprimé (la base refuse s'il porte encore
+ *      quelque chose : on balaie une seconde fois, puis on le dit).
+ * Interrompu en route, le même appel reprend là où il en était ; refait
+ * après coup, il ne change rien (« deja »).
+ */
+export async function relierAutreAnnonce(ctx: ContexteConnexion, logementIdBrut: unknown, annonceBrute: unknown, qui: Gerant): Promise<ResultatConnexion> {
+  if (!peutRelierConnexion(qui.role)) throw new ErreurConnexion('Seul un gérant peut relier une annonce à un logement.', 403);
+  const logementId = texte(logementIdBrut);
+  const annonce = texte(annonceBrute);
+  // Déjà relié et terminé : ni verrou ni attente ; ce qui arriverait encore sur l'autre logement (supprimé) le rejoint.
+  const avant = await lireConnexion(ctx);
+  const dejaFait = verifierConnexion({ role: qui.role, logementId, annonceId: annonce, logements: avant.logements, annonces: avant.annonces });
+  if (dejaFait.ok && dejaFait.mode === 'deja' && (await traceConfirme(ctx, annonce, logementId))) {
+    const depuis = liees(dejaFait.garde).find((x) => String(x.id) === annonce)?.depuis;
+    const r = depuis && depuis !== logementId && !avant.logements.some((l) => l.id === depuis) ? await deplacerTout(ctx.base, depuis, logementId, qui.email) : undefined;
+    return { ok: true, logementId, annonce, canal: dejaFait.canal, deja: true, phrase: '', deplaces: r?.deplaces ?? {}, remplis: [] };
+  }
+  return sousVerrou(ctx, qui, (maintenant) => relierSousVerrou(ctx, logementId, annonce, qui, maintenant));
+}
+
+async function relierSousVerrou(ctx: ContexteConnexion, logementId: string, annonce: string, qui: Gerant, maintenant: () => Date): Promise<ResultatConnexion> {
+  const { versions, logements, annonces } = await lireConnexion(ctx);
+  const verdict = verifierConnexion({ role: qui.role, logementId, annonceId: annonce, logements, annonces });
+  if (!verdict.ok) throw new ErreurConnexion(verdict.erreur, verdict.statut);
+  const base = { ok: true as const, logementId, annonce, canal: verdict.canal };
+  if (verdict.mode === 'deja') {
+    // Relié sur la fiche mais pas dans la trace (coupure juste avant elle) : la trace d'abord, sinon rien n'aiguille.
+    const liee = liees(verdict.garde).find((x) => String(x.id) === annonce);
+    if (liee && !(await traceConfirme(ctx, annonce, logementId))) await ecrireTrace(ctx, annonce, logementId, liee, qui.email);
+    return { ...base, deja: true, phrase: '', deplaces: {}, remplis: [] };
+  }
+
+  const autre = verdict.autre;
+  const le = horodatageParis(maintenant());
+  const liee = liees(verdict.garde).find((x) => String(x.id) === annonce) ?? nouvelleLiee({ annonce, canal: verdict.canal, nom: verdict.nomAnnonce, le, par: qui.email, depuis: autre?.id });
+
+  // Ce qui rejoint ce logement, lu avant de rien déplacer (pour le récapitulatif et le journal).
+  let phrase = '';
+  if (autre) {
+    const lues = await Promise.all(COLLECTIONS_HISTORIQUE.map((c) => ctx.base.lire(c).then((l) => [c, l] as const)));
+    phrase = phraseCeQuiRejoint(ceQuiRejoint(autre, { logements, ...Object.fromEntries(lues) } as Partial<ErpDonnees>));
+  }
+
+  // 1. Le logement gardé : l'annonce reliée et les champs vides remplis par l'autre.
+  const lu = versions.find((v) => v.element.id === logementId)!;
+  let remplis: string[] = [];
+  const ecrit = await remplacerAvecReprise(
+    ctx.base,
+    'logements',
+    lu,
+    (g) => {
+      const f = fusionnerLogement(g, liee, autre);
+      remplis = f.remplis;
+      return f.logement;
+    },
+    qui.email,
+  );
+  if (!ecrit) throw new ErreurConnexion('Ce logement vient d’être modifié : rechargez la page, puis réessayez.', 409);
+
+  let deplaces: Partial<Record<string, number>> = {};
+  if (autre) {
+    // 2. Tout ce qui portait l'autre logement passe ici.
+    const r = await deplacerTout(ctx.base, autre.id, logementId, qui.email);
+    deplaces = r.deplaces;
+    if (r.echecs) throw new ErreurConnexion(`Presque fini : ${r.echecs > 1 ? `${r.echecs} éléments ont` : 'un élément a'} changé pendant l’opération. Touchez « Terminer le lien » sur la fiche de « ${verdict.garde.nom} ».`, 409);
+  }
+
+  // 3. Trace côté serveur : l'annonce va sur ce logement, d'où elle venait (c'est elle qui aiguille la synchronisation).
+  await ecrireTrace(ctx, annonce, logementId, liee, qui.email);
+
+  // 4. L'autre logement retiré (la base garde sa dernière version dans son historique).
+  if (autre) {
+    try {
+      await ctx.base.supprimer('logements', [autre.id]);
+    } catch {
+      // Quelque chose y est arrivé entre-temps (ménage créé, message) : on balaie encore, puis on réessaie.
+      const r = await deplacerTout(ctx.base, autre.id, logementId, qui.email);
+      for (const [c, n] of Object.entries(r.deplaces)) deplaces[c] = (deplaces[c] ?? 0) + (n ?? 0);
+      try {
+        await ctx.base.supprimer('logements', [autre.id]);
+      } catch (e) {
+        console.error('[erp-repull-connexion] autre logement non retiré', { logementId, autre: autre.id, detail: e instanceof Error ? e.message : String(e) });
+        throw new ErreurConnexion(`Presque fini : « ${autre.nom} » est encore dans la liste. Touchez « Terminer le lien » sur la fiche de « ${verdict.garde.nom} ».`, 409);
+      }
+    }
+    // Une écriture arrivée juste après la suppression (une saisie de l'équipe, une file hors ligne) :
+    // un dernier balayage ; ensuite, le passage du cron rattrape pendant 14 jours (rattraperLiens).
+    const fin = await deplacerTout(ctx.base, autre.id, logementId, qui.email);
+    for (const [c, n] of Object.entries(fin.deplaces)) deplaces[c] = (deplaces[c] ?? 0) + (n ?? 0);
+  }
+
+  const nom = liee.nom ? `« ${liee.nom} »` : annonce;
+  await journaliserLiaison(
+    ctx,
+    qui,
+    'Annonce reliée au logement',
+    logementId,
+    `Annonce ${NOM_CANAL[liee.canal]} ${nom} reliée à ce logement.${autre ? ` « ${autre.nom} » ne figure plus dans la liste.${phrase ? ` ${phrase}` : ''}` : ''}`,
+    maintenant(),
+  );
+  return { ...base, deja: false, ...(autre ? { retire: { id: autre.id, nom: autre.nom } } : {}), phrase, deplaces, remplis };
+}
+
+/** Une annonce cochée dans Connexions, reliée à un logement existant (« Est-ce le même logement que… ? » : Oui). */
+export interface LiaisonChoisie {
+  annonce: string;
+  logement: string;
+}
+
+/**
+ * « Enregistrer mon choix » avec, pour les annonces nouvellement cochées
+ * que le gérant a dites être un logement existant, le lien d'abord (comme
+ * relierAnnonce : un passage tombé entre les deux créerait le logement en
+ * double), puis le choix tel qu'avant (enregistrerSelection, inchangé). Le
+ * lien n'écrit que dans l'ERP. Un lien refusé arrête tout avant le choix ;
+ * les liens déjà posés restent (ils sont définitifs) même si le choix est
+ * ensuite refusé (limite de l'offre…). Les liens déjà faits ne sont pas
+ * refaits ; les autres sont posés sous un seul verrou, LIAISONS_MAX au plus,
+ * en s'arrêtant à temps (enregistrer de nouveau reprend la suite).
+ */
+export async function enregistrerSelectionAvecLiaisons(ctx: ContexteConnexion, idsBruts: unknown, liaisonsBrutes: unknown, qui: Gerant): Promise<ResultatSelection & { liaisons: number }> {
+  const brutes = Array.isArray(liaisonsBrutes) ? liaisonsBrutes : [];
+  if (brutes.length > LIAISONS_MAX) throw new ErreurConnexion(`Trop de liens à la fois (${LIAISONS_MAX} au plus) : enregistrez en plusieurs fois.`);
+  const ids = Array.isArray(idsBruts) ? idsBruts.map((x) => texte(x)) : [];
+  const liaisons: LiaisonChoisie[] = brutes.map((x) => ({ annonce: texte((x as LiaisonChoisie)?.annonce), logement: texte((x as LiaisonChoisie)?.logement) })).filter((x) => x.annonce && x.logement);
+  if (liaisons.some((x) => !ids.includes(x.annonce))) throw new ErreurConnexion('Choix illisible : rechargez la page.');
+  if (liaisons.length && !peutRelierConnexion(qui.role)) throw new ErreurConnexion('Seul un gérant peut relier une annonce à un logement.', 403);
+  // Déjà faits : rien à refaire (ni verrou ni attente).
+  const lus = liaisons.length ? await lireConnexion(ctx) : null;
+  const aFaire = liaisons.filter((x) => {
+    const v = lus ? verifierConnexion({ role: qui.role, logementId: x.logement, annonceId: x.annonce, logements: lus.logements, annonces: lus.annonces }) : null;
+    return !(v?.ok && v.mode === 'deja' && lus?.trace?.annonces?.[x.annonce]?.logementId === x.logement);
+  });
+  if (aFaire.length) {
+    await sousVerrou(ctx, qui, async (maintenant) => {
+      for (const [i, x] of aFaire.entries()) {
+        // Assez de temps pour le choix ensuite : sinon on s'arrête, enregistrer de nouveau reprend la suite.
+        if (Date.now() > ctx.echeance - 25_000) throw new ErreurConnexion(`Presque fini : ${i} lien${i > 1 ? 's' : ''} sur ${aFaire.length} posé${i > 1 ? 's' : ''}. Enregistrez de nouveau votre choix pour la suite.`, 409);
+        await relierSousVerrou(ctx, x.logement, x.annonce, qui, maintenant);
+      }
+    });
+  }
+  const r = await enregistrerSelection(ctx, idsBruts, qui.email);
+  return { ...r, liaisons: liaisons.length };
 }
 
 /**
