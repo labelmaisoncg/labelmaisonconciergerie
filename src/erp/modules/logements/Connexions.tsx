@@ -200,6 +200,8 @@ export default function Connexions() {
     } catch (err) {
       setMessage({ ton: 'danger', texte: (err as Error).message });
       setADeconnecter(null);
+      // Compte que Repull ne connaît plus : la liste relue ne le montre plus (sinon il reste, avec le message).
+      await charger(true).catch(() => undefined);
     } finally {
       setDeconnexion(false);
     }

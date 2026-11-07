@@ -332,7 +332,14 @@ class FauxRepull {
       return json({ sessionId: `sess_${m[1]}`, url: `https://connect.repull.dev/${m[1]}/sess`, expiresAt: '2026-10-01T00:00:00Z' });
     }
     if ((m = /^\/v1\/connect\/([^/]+)$/.exec(chemin)) && methode === 'DELETE') {
-      if (m[1] !== 'airbnb' && m[1] !== 'booking') return json({ error: { code: 'not_implemented', message: 'no', fix: 'Disconnect Repull from your Hostaway settings.' } }, 501);
+      if (m[1] !== 'airbnb' && m[1] !== 'booking' && m[1] !== 'booking-extranet-login') return json({ error: { code: 'not_implemented', message: 'no', fix: 'Disconnect Repull from your Hostaway settings.' } }, 501);
+      // Booking.com : un compte relié par « Extranet login » ne se déconnecte que sous ce nom (sinon 404, comme Repull).
+      if (m[1] !== 'airbnb') {
+        const compte = this.connexions.find((c) => c.provider === m![1] && (!p.get('accountId') || c.externalAccountId === p.get('accountId')));
+        if (!compte) return json({ error: { code: 'not_found', message: 'not connected' } }, 404);
+        this.connexions = this.connexions.filter((c) => c !== compte);
+        return json({ disconnected: true, provider: m[1], accountId: p.get('accountId'), listingsDeactivated: [] });
+      }
       const liees = R.listings.filter((l) => (l.channels as { platform: string }[]).some((c) => c.platform === m![1]) && l.status === 'active').map((l) => String(l.id));
       for (const l of R.listings) if (liees.includes(String(l.id))) l.status = 'inactive';
       this.connexions = this.connexions.filter((c) => c.provider !== m![1]);
@@ -1905,6 +1912,17 @@ async function principal() {
   let refus501 = '';
   await deconnecter(ctx(), 'hostaway').catch((e) => (refus501 = e instanceof ErreurConnexion ? e.message : String(e)));
   verifier(/depuis son propre site/.test(refus501) && /Hostaway settings/.test(refus501), `déconnexion impossible par l’API : marche à suivre de Repull (${refus501})`);
+  // Booking.com relié par « Extranet login » : déconnecté sous son vrai nom (pas « booking », qui répondrait 404).
+  repull.connexions.push({ id: 'c9', provider: 'booking-extranet-login', status: 'active', externalAccountId: '154', createdAt: '2026-09-02T10:00:00Z' });
+  await lireEtatConnexions(ctx(), { forcer: true });
+  const avantBooking = repull.appels.length;
+  await deconnecter(ctx(), 'booking', '154');
+  const essaisBooking = repull.appels.slice(avantBooking).filter((a) => a.methode === 'DELETE').map((a) => a.chemin);
+  verifier(essaisBooking.length === 1 && essaisBooking[0] === '/v1/connect/booking-extranet-login' && !repull.connexions.some((c) => c.id === 'c9'), `Booking.com (« Extranet login ») : déconnecté sous le nom que Repull lui donne (${essaisBooking.join(', ')})`);
+  let refusBooking = '';
+  await deconnecter(ctx(), 'booking', '154').catch((e) => (refusBooking = e instanceof ErreurConnexion ? `${e.statut} ${e.message}` : String(e)));
+  const e5 = await lireEtatConnexions(ctx());
+  verifier(/^404 Repull ne trouve plus ce compte/.test(refusBooking) && !e5.connexions.some((c) => c.compte === '154'), `compte que Repull ne connaît plus : message clair, liste relue sans lui (${refusBooking})`);
   const d1 = await deconnecter(ctx(), 'airbnb', '4455');
   verifier(d1.annoncesDesactivees.includes('101') && !base2.get<SelectionRepull>(COLLECTION_ETAT, ID_SELECTION)!.annonces.includes('101'), 'Airbnb déconnecté : ses logements sortent du choix');
 
