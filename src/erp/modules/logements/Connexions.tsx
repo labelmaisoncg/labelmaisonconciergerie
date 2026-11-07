@@ -203,12 +203,17 @@ export default function Connexions() {
       if (err instanceof ErreurConnexions && err.statut === 404) {
         // Repull ne connaît plus ce compte : ce que le gérant voulait est fait. La liste relue dit s'il a disparu.
         const e = await charger(true).catch(() => null);
-        const reste = !!e?.connexions.some((c) => c.fournisseur === cible.fournisseur && (c.compte ?? '') === (cible.compte ?? ''));
-        setMessage(
-          reste
-            ? { ton: 'alerte', texte: 'Repull ne trouve plus ce compte, mais il reste affiché. Retirez-le depuis votre compte Repull (repull.dev).' }
-            : { ton: 'info', texte: `Ce compte ${NOMS[cible.fournisseur] ?? cible.fournisseur} était déjà déconnecté. Il est retiré de la liste.` },
-        );
+        if (!e) {
+          // Liste illisible (l'ancienne reste à l'écran) : le message du serveur, sans rien affirmer de plus.
+          setMessage({ ton: 'alerte', texte: err.message });
+        } else {
+          const reste = e.connexions.some((c) => c.fournisseur === cible.fournisseur && (c.compte ?? '') === (cible.compte ?? ''));
+          setMessage(
+            reste
+              ? { ton: 'alerte', texte: 'Repull ne trouve plus ce compte, mais il reste affiché. Retirez-le depuis votre compte Repull (repull.dev).' }
+              : { ton: 'info', texte: `Ce compte ${nomFournisseur(cible.fournisseur)} était déjà déconnecté. Il est retiré de la liste.` },
+          );
+        }
       } else {
         setMessage({ ton: 'danger', texte: (err as Error).message });
       }
