@@ -562,7 +562,7 @@ export default function Connexions() {
         )}
         {masquees > 0 && annoncesVisibles.length > 0 && (
           <p className="mb-3 text-[12.5px] text-(--lm-encre-2)" role="note">
-            {pluriel(masquees, 'annonce d’un compte déconnecté n’est plus affichée', 'annonces de comptes déconnectés ne sont plus affichées')}. Reconnectez le compte pour les retrouver.
+            {pluriel(masquees, 'annonce d’un compte déconnecté n’est plus affichée', 'annonces de comptes déconnectés ne sont plus affichées')}. Reconnectez la plateforme ci-dessus pour les retrouver.
           </p>
         )}
 
@@ -579,8 +579,8 @@ export default function Connexions() {
             description={
               reel
                 ? masquees > 0
-                  ? 'Reconnectez une plateforme ci-dessus : ses annonces reviendront ici.'
-                  : 'Connectez une plateforme ci-dessus : vos logements apparaîtront ici.'
+                  ? `Reconnectez une plateforme ci-dessus${NBSP}: ses annonces reviendront ici.`
+                  : `Connectez une plateforme ci-dessus${NBSP}: vos logements apparaîtront ici.`
                 : undefined
             }
             action={
