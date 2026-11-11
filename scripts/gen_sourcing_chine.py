@@ -10,9 +10,9 @@ Tous les boutons ouvrent WhatsApp avec un message pré-rempli adapté à la
 section et à la ville (le visiteur n'a plus qu'à compléter).
 
 Le visuel du haut (pièces « avant » qui traversent la clé Label Maison et
-ressortent « après ») utilise des visuels d'illustration, signalés comme tels
-sous l'animation ; un bouton permet de la mettre en pause, et elle reste figée
-pour les visiteurs qui ont demandé à réduire les animations.
+ressortent « après ») utilise des visuels d'illustration ; il reste figé pour les
+visiteurs qui ont demandé à réduire les animations, et se met en pause hors de
+l'écran.
 
 Usage : python3 scripts/gen_sourcing_chine.py
 
@@ -239,10 +239,9 @@ h1 .l{display:block}
 .vignette.miroir img{transform:scaleX(-1)}
 .etiquette{position:absolute;left:50%;bottom:-13px;transform:translateX(-50%);display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#fff;box-shadow:0 8px 18px -10px rgba(43,33,20,.45);font-size:12px;font-weight:600;line-height:1;white-space:nowrap;color:var(--encre)}
 .etiquette::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--or)}
-.flux-pied{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px 16px;width:min(1040px,calc(100% - 32px));margin:16px auto 0}
+.flux-pied{display:flex;align-items:center;justify-content:space-between;gap:16px;width:min(1040px,calc(100% - 32px));margin:16px auto 0}
 .repere{font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--doux)}
 .repere.d{text-align:right}
-.mention-visuels{text-align:center;font-size:13px;color:var(--doux)}
 
 /* Section propre à la ville */
 .local-grille{display:grid;gap:32px}
@@ -273,16 +272,6 @@ h1 .l{display:block}
 .ville:hover .lien .fl{transform:translateX(3px)}
 .autre-langue{margin-top:24px;text-align:center}
 @media(min-width:860px){.villes{grid-template-columns:repeat(3,1fr)}}
-
-/* Pause de l'animation */
-.flux-centre{display:flex;align-items:center;justify-content:center;gap:12px}
-.flux-pause{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;border-radius:50%;border:1px solid var(--filet);background:var(--carte);color:var(--or-fonce);cursor:pointer;transition:border-color .2s}
-.flux-pause:hover{border-color:var(--champagne)}
-.flux-pause svg{width:15px;height:15px}
-.flux-pause .ico-lecture{display:none}
-.flux-pause[aria-pressed="true"] .ico-lecture{display:block}
-.flux-pause[aria-pressed="true"] .ico-pause{display:none}
-.flux-pause[hidden]{display:none}
 
 /* Sections */
 .section{padding:clamp(72px,10vw,128px) 0}
@@ -428,7 +417,6 @@ summary:hover h3{color:var(--or-fonce)}
 
 @media(max-width:859px){
   .repere{font-size:11px;letter-spacing:.1em}
-  .flux-pied{grid-template-columns:1fr 1fr}.flux-centre{grid-column:1/-1;grid-row:2}
   .etiquette{display:none}
   .tuile-3 .nom{display:none}
 }
@@ -500,7 +488,6 @@ JS = r"""
   var droite = [].slice.call(flux.querySelectorAll('path.d'));
   var tuile = flux.querySelector('.tuile');
   var paires = JSON.parse(flux.getAttribute('data-paires'));
-  var bouton = document.querySelector('.flux-pause'), arret = false;
   var longueurs = new Map();
   [].concat(gauche, droite).forEach(function (p) { longueurs.set(p, p.getTotalLength()); });
   var W = 0, H = 0;
@@ -545,7 +532,6 @@ JS = r"""
         chemin: (c[1] === 'avant' ? gauche : droite)[c[2]], sens: c[1], rot: c[1] === 'avant' ? (c[2] % 2 ? 5 : -6) : 0 };
       requestAnimationFrame(function () { placer(s, c[3]); });
     });
-    if (bouton) bouton.hidden = true;
     return;
   }
 
@@ -594,15 +580,7 @@ JS = r"""
     }
     requestAnimationFrame(pas);
   }
-  function reprendre() { if (enPause && !arret) { enPause = false; requestAnimationFrame(pas); } }
-  if (bouton) {
-    bouton.addEventListener('click', function () {
-      arret = !arret;
-      bouton.setAttribute('aria-pressed', arret ? 'true' : 'false');
-      bouton.setAttribute('aria-label', bouton.getAttribute(arret ? 'data-lecture' : 'data-pause'));
-      if (arret) enPause = true; else if (!document.hidden) reprendre();
-    });
-  }
+  function reprendre() { if (enPause) { enPause = false; requestAnimationFrame(pas); } }
   if (io) {
     new IntersectionObserver(function (e) { if (e[0].isIntersecting && !document.hidden) reprendre(); else enPause = true; })
       .observe(flux);
@@ -793,18 +771,9 @@ def flux(P: dict) -> str:
         '<img src="/images/key-gold-deep.png" alt="" width="586" height="223">'
         '<span class="nom">LABEL MAISON</span></div></div></div>'
         "</div>"
-        '<div class="flux-pied">'
-        f'<span class="repere g" aria-hidden="true">{t(f["avant"])}</span>'
-        '<span class="flux-centre">'
-        f'<span class="mention-visuels">{t(f["mention"])}</span>'
-        f'<button class="flux-pause" type="button" aria-pressed="false" aria-label="{t(f["pause"])}" '
-        f'data-pause="{t(f["pause"])}" data-lecture="{t(f["lecture"])}">'
-        '<svg class="ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-        '<rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>'
-        '<svg class="ico-lecture" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
-        '<path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>'
-        "</button></span>"
-        f'<span class="repere d" aria-hidden="true">{t(f["apres"])}</span></div>'
+        '<div class="flux-pied" aria-hidden="true">'
+        f'<span class="repere g">{t(f["avant"])}</span>'
+        f'<span class="repere d">{t(f["apres"])}</span></div>'
     )
 
 
