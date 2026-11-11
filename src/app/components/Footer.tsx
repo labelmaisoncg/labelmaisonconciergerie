@@ -184,6 +184,7 @@ export function Footer() {
                   ['Gestion locative à Paris', '/gestion-locative-paris'],
                   ['Gestion locative en France', '/gestion-locative-france'],
                   ['Investissement locatif', '/investissement-locatif-paris'],
+                  ['Sourcing en Chine', '/sourcing-immobilier-chine'],
                   ['Gestion de villa Côte d’Azur', '/gestion-villa-cote-d-azur'],
                 ].map(([label, href]) => (
                   <li key={href}>

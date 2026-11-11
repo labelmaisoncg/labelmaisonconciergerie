@@ -591,7 +591,8 @@ def footer(cols: list, tagline: str, lieu: str) -> str:
         '<div class="wrap" style="margin-top:28px;font-size:13px;color:var(--muted)">'
         "<strong>Conciergerie en France :</strong> "
         + " · ".join(f'<a href="{h}">{esc(n)}</a>' for n, h in REGIONS)
-        + '</div><div class="wrap fbot"><span>© 2026 Label Maison Conciergerie · Tous droits réservés</span>'
+        + "</div>" + ligne_sourcing()
+        + '<div class="wrap fbot"><span>© 2026 Label Maison Conciergerie · Tous droits réservés</span>'
         "<span>Paris · France · Marrakech · Dubaï</span></div></footer>"
     )
 
@@ -615,6 +616,22 @@ REGIONS = [
     ("Provence-Alpes-Côte d'Azur", "/conciergerie-provence-alpes-cote-d-azur"),
     ("Outre-mer", "/conciergerie-airbnb-france"),
 ]
+
+
+# Pages « Sourcing immobilier en Chine » (scripts/gen_sourcing_chine.py), liées depuis le pied
+# de page de toutes les pages statiques : les robots les atteignent depuis n'importe quelle page.
+SOURCING = [
+    ("Sourcing immobilier en Chine", "/sourcing-immobilier-chine"),
+    ("Paris", "/sourcing-chine-paris"),
+    ("Dubaï", "/sourcing-chine-dubai"),
+    ("Marrakech", "/sourcing-chine-marrakech"),
+]
+
+
+def ligne_sourcing() -> str:
+    return ('<div class="wrap" style="margin-top:10px;font-size:13px;color:var(--muted)">'
+            "<strong>Aménager votre bien :</strong> "
+            + " · ".join(f'<a href="{h}">{esc(n)}</a>' for n, h in SOURCING) + "</div>")
 
 
 def mobcta(label: str = "Faire une demande") -> str:
