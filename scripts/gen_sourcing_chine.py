@@ -1,18 +1,24 @@
 # -*- coding: utf-8 -*-
-"""Page « Sourcing immobilier en Chine » (public/sourcing-immobilier-chine.html).
+"""Pages « Sourcing immobilier en Chine » : page principale, Paris, Dubaï, Marrakech, anglais.
 
-Page d'atterrissage écrite à la main, pensée pour le référencement : HTML
-statique servi tel quel par Vercel (cleanUrls), styles et script en ligne pour
-un affichage immédiat, données structurées (Service, FAQ, fil d'Ariane).
+Pages d'atterrissage pensées pour le référencement : HTML statique servi tel quel
+par Vercel (cleanUrls), styles et script en ligne pour un affichage immédiat,
+données structurées (Service, FAQ, fil d'Ariane), hreflang entre le français et
+l'anglais. Les textes sont dans sourcing_contenu.py.
 
 Tous les boutons ouvrent WhatsApp avec un message pré-rempli adapté à la
-section (le visiteur n'a plus qu'à compléter).
+section et à la ville (le visiteur n'a plus qu'à compléter).
 
-Le visuel du haut (cuisines « avant » qui traversent la clé Label Maison et
+Le visuel du haut (pièces « avant » qui traversent la clé Label Maison et
 ressortent « après ») utilise des visuels d'illustration, signalés comme tels
-sous l'animation : aucun n'est présenté comme une réalisation.
+sous l'animation ; un bouton permet de la mettre en pause, et elle reste figée
+pour les visiteurs qui ont demandé à réduire les animations.
 
 Usage : python3 scripts/gen_sourcing_chine.py
+
+Indexation rapide : le fichier public/5d80ec79afb4f08019386c80a22eabfe.txt est la preuve de propriété du
+site pour IndexNow (Bing, Yandex, Seznam, Naver). Il est public par principe (le
+protocole impose qu'il soit lisible à la racine du site) : ce n'est pas un secret.
 """
 from __future__ import annotations
 
@@ -21,52 +27,43 @@ import re
 from urllib.parse import quote
 
 import seo_common as C
-
-SLUG = "sourcing-immobilier-chine"
-URL = f"{C.SITE}/{SLUG}"
-TITLE = "Sourcing immobilier en Chine : cuisines, bains, mobilier"
-DESC = ("Cuisines, salles de bains et mobilier sourcés auprès de fabricants chinois pour "
-        "votre bien immobilier. Un seul interlocuteur, échange sans engagement.")
-OG_IMAGE = f"{C.SITE}/images/sourcing/og-sourcing-immobilier-chine.jpg"
-
+from sourcing_contenu import LOCALES, PAGES, PRINCIPALE
 
 # --------------------------------------------------------------------------- #
-#  Typographie française : espace insécable avant ? ! : ; et dans « ».
+#  Typographie : espace insécable avant ? ! : ; et dans « » (pages françaises),
+#  apostrophe typographique partout.
 # --------------------------------------------------------------------------- #
-NBSP = " "
-FINE = " "
+NBSP = "\u00a0"
+FINE = "\u202f"
+LANGUE = "fr"
 
 
 def fr(s: str) -> str:
+    s = s.replace("'", "’")
+    if LANGUE != "fr":
+        return s
     s = re.sub(r" ([?!;])", FINE + r"\1", s)
     s = re.sub(r" :", NBSP + ":", s)
-    s = s.replace("« ", "«" + NBSP).replace(" »", NBSP + "»")
-    return s.replace("'", "’")
+    return s.replace("« ", "«" + NBSP).replace(" »", NBSP + "»")
 
 
 def t(s: str) -> str:
-    """Texte visible : typographie française puis échappement HTML."""
+    """Texte visible : typographie puis échappement HTML."""
     return C.esc(fr(s))
 
 
-# --------------------------------------------------------------------------- #
-#  WhatsApp : un message pré-rempli par intention.
-# --------------------------------------------------------------------------- #
+def t_brut(s: str) -> str:
+    """Texte des données structurées (pas d'échappement HTML)."""
+    return fr(s)
+
+
+def t_html(s: str) -> str:
+    """Texte qui contient des <em> d'emphase : seul le texte autour est échappé."""
+    return "".join(x if x in ("<em>", "</em>") else t(x) for x in re.split(r"(</?em>)", s))
+
+
 def wa(message: str) -> str:
     return f"{C.WA}?text={quote(message)}"
-
-
-GABARIT = "\n\nLocalisation du bien : \nProduits recherchés : \nBudget estimatif : "
-WA_PROJET = wa("Bonjour LabelMaison, je souhaite vous présenter mon projet de sourcing en Chine." + GABARIT)
-WA_QUESTION = wa("Bonjour LabelMaison, j'ai une question sur le sourcing en Chine.")
-WA_CUISINE = wa("Bonjour LabelMaison, je souhaite un projet de cuisine sur mesure sourcée en Chine."
-                "\n\nLocalisation du bien : \nDimensions de la pièce : \nBudget estimatif : ")
-WA_BAIN = wa("Bonjour LabelMaison, je souhaite un projet de salle de bains sourcée en Chine."
-             "\n\nLocalisation du bien : \nÉquipements recherchés : \nBudget estimatif : ")
-WA_MOBILIER = wa("Bonjour LabelMaison, je souhaite parler de mon projet de mobilier et de décoration."
-                 "\n\nType de bien : \nPièces à meubler : \nBudget estimatif : ")
-WA_COMPLET = wa("Bonjour LabelMaison, je souhaite faire étudier l'aménagement complet de mon bien."
-                + GABARIT)
 
 
 # --------------------------------------------------------------------------- #
@@ -118,111 +115,6 @@ ICO = {
                       '<path d="M9.8 14h2.4v6.5H9.8z"/>'),
     "fleche": '<span class="fl" aria-hidden="true">→</span>',
 }
-
-
-# --------------------------------------------------------------------------- #
-#  Contenu (texte du propriétaire)
-# --------------------------------------------------------------------------- #
-SOLUTIONS = [
-    ("cuisine", "01", "Cuisines sur mesure",
-     "Concevez une cuisine adaptée à votre logement, à son standing et à votre budget.",
-     ["Meubles de cuisine et rangements", "Façades et plans de travail", "Îlots centraux",
-      "Éviers et robinetterie", "Solutions d'aménagement personnalisées"],
-     "Demander un projet cuisine sur WhatsApp", WA_CUISINE),
-    ("bain", "02", "Salles de bains",
-     "Valorisez vos espaces avec des équipements et finitions sélectionnés auprès de fabricants.",
-     ["Meubles vasques", "Douches et parois", "Baignoires", "Robinetterie", "Miroirs et accessoires",
-      "Solutions de rangement"],
-     "Demander un projet salle de bains sur WhatsApp", WA_BAIN),
-    ("mobilier", "03", "Mobilier et décoration",
-     "Équipez vos appartements et villas avec une sélection de mobilier adaptée à votre positionnement immobilier.",
-     ["Canapés et fauteuils", "Lits et chambres", "Tables et chaises", "Luminaires", "Mobilier sur mesure",
-      "Accessoires et décoration"],
-     "Parler de mon projet mobilier sur WhatsApp", WA_MOBILIER),
-]
-
-AVANTAGES = [
-    ("budget", "Maîtriser votre budget",
-     "Comparer les offres des fabricants et rechercher des alternatives compétitives aux solutions "
-     "disponibles en France."),
-    ("perso", "Accéder à davantage de personnalisation",
-     "Étudier différentes dimensions, finitions, matériaux et configurations."),
-    ("centraliser", "Centraliser vos achats",
-     "Regrouper plusieurs besoins d'aménagement dans une démarche d'approvisionnement cohérente."),
-    ("accompagne", "Être accompagné",
-     "Bénéficier d'un interlocuteur pour organiser la recherche, la sélection et le suivi de votre projet."),
-]
-
-ETAPES = [
-    ("Comprendre votre projet",
-     "Nous échangeons sur votre bien immobilier, vos besoins, votre budget et le niveau de finition recherché."),
-    ("Rechercher les fabricants",
-     "Nous identifions des fabricants et étudions les solutions correspondant à votre cahier des charges."),
-    ("Comparer et sélectionner",
-     "Nous comparons les propositions, les caractéristiques techniques, les finitions et les conditions "
-     "commerciales."),
-    ("Organiser le contrôle et l'approvisionnement",
-     "Selon le projet et les contrats convenus, nous organisons les vérifications nécessaires, le suivi de "
-     "fabrication et la logistique internationale."),
-    ("Préparer la livraison et l'installation",
-     "Nous accompagnons la coordination de la livraison en France et, lorsque cela est prévu, la mise en "
-     "relation avec des professionnels qualifiés pour la pose."),
-]
-
-QUESTIONS_PROJET = [
-    ("immeuble", "Vous recherchez un appartement à aménager ?"),
-    ("plusieurs", "Vous possédez déjà plusieurs logements ?"),
-    ("renovation", "Vous préparez une rénovation avant une mise en location ?"),
-]
-
-FAQ = [
-    ("Est-il réellement moins cher de sourcer en Chine ?",
-     "Certains produits peuvent être achetés à des conditions compétitives directement auprès de fabricants. "
-     "Toutefois, le prix usine ne représente pas le coût final. Le transport, l'assurance, les formalités "
-     "douanières, les taxes, les contrôles et la pose doivent être intégrés à la comparaison."),
-    ("Quels produits peut-on sourcer en Chine ?",
-     "Nous étudions notamment les cuisines, meubles de salle de bains, équipements, mobilier, luminaires et "
-     "solutions d'aménagement intérieur, sous réserve de leur conformité aux exigences applicables en Europe."),
-    ("Travaillez-vous uniquement avec des investisseurs immobiliers ?",
-     "Nous ciblons prioritairement les investisseurs et propriétaires qui souhaitent aménager ou valoriser un "
-     "bien immobilier. Les projets de résidences secondaires et de logements haut de gamme peuvent également "
-     "être étudiés."),
-    ("Pouvez-vous aménager un appartement entier ?",
-     "Oui, nous pouvons étudier un projet global comprenant plusieurs catégories de produits : cuisine, salle "
-     "de bains, mobilier et équipements. Le périmètre de notre accompagnement est défini selon chaque projet."),
-    ("Comment se passe la livraison en France ?",
-     "Les modalités de transport, d'assurance, de dédouanement et de livraison sont définies en fonction des "
-     "produits, des volumes et du montage contractuel retenu."),
-    ("Proposez-vous également la pose ?",
-     "La pose peut être étudiée avec des professionnels partenaires qualifiés en France. Elle fait l'objet "
-     "d'un périmètre et d'un devis distincts selon les travaux concernés."),
-    ("Comment obtenir un devis ?",
-     "Contactez-nous sur WhatsApp avec une description de votre projet, la localisation du bien, les produits "
-     "recherchés et votre budget estimatif. Nous pourrons ainsi étudier votre demande."),
-]
-
-# Visuels du haut : (avant, après, étiquette de l'après). Visuels d'illustration.
-PAIRES = [
-    ("avant-cuisine-2", "apres-cuisine-2", "Cuisine sur mesure", False),
-    ("avant-bain", "apres-bain", "Salle de bains", False),
-    ("avant-cuisine-1", "apres-cuisine-2", "Cuisine sur mesure", True),
-]
-
-
-# --------------------------------------------------------------------------- #
-#  Données structurées
-# --------------------------------------------------------------------------- #
-def jsonld() -> list:
-    service = C.ld_service(
-        "Sourcing de cuisines, salles de bains et mobilier en Chine pour l'immobilier",
-        "France", URL, fr(DESC),
-        offers=[fr(s[2]) for s in SOLUTIONS] + ["Aménagement complet d'un bien immobilier"])
-    service["name"] = "Sourcing immobilier en Chine"
-    service["provider"]["name"] = "Label Maison"
-    service["provider"]["sameAs"] = [C.INSTA, C.TIKTOK]
-    faq = C.ld_faq([(fr(q), fr(r)) for q, r in FAQ])
-    fil = C.ld_breadcrumb([("Accueil", "/"), ("Sourcing immobilier en Chine", f"/{SLUG}")])
-    return [service, faq, fil]
 
 
 # --------------------------------------------------------------------------- #
@@ -351,6 +243,46 @@ h1 .l{display:block}
 .repere{font-size:13px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--doux)}
 .repere.d{text-align:right}
 .mention-visuels{text-align:center;font-size:13px;color:var(--doux)}
+
+/* Section propre à la ville */
+.local-grille{display:grid;gap:32px}
+.local-cartes{display:grid;gap:12px;grid-template-columns:1fr 1fr;align-content:start}
+.local-carte{padding:22px 20px;border-radius:22px;background:var(--carte);border:1px solid var(--filet);box-shadow:var(--ombre)}
+.local-carte .ico-tuile{width:44px;height:44px;border-radius:14px;margin-bottom:14px}
+.local-carte .ico-tuile svg{width:22px;height:22px}
+.local-carte h3{font-size:17px;line-height:1.25;letter-spacing:-.012em}
+.local-carte p{margin-top:6px;font-size:16px;color:var(--texte-2)}
+.local-liens{margin-top:28px;padding-top:20px;border-top:1px solid var(--filet)}
+.local-liens h3{margin-bottom:4px;font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--or-fonce)}
+.local-liens ul{list-style:none;padding:0}
+.local-liens a{display:inline-flex;align-items:center;gap:8px;min-height:44px;color:var(--encre);font-weight:500;text-decoration:none}
+.local-liens a .fl{color:var(--or-fonce);transition:transform .2s ease}
+.local-liens a:hover .txt{text-decoration:underline;text-underline-offset:3px}
+.local-liens a:hover .fl{transform:translateX(3px)}
+@media(min-width:960px){.local-grille{grid-template-columns:6fr 5fr;gap:72px;align-items:start}}
+@media(max-width:520px){.local-cartes{grid-template-columns:1fr}}
+
+/* Destinations */
+.villes{display:grid;gap:16px}
+.ville{display:flex;flex-direction:column;gap:10px;padding:28px 26px 18px;border-radius:24px;background:var(--carte);border:1px solid var(--filet);box-shadow:var(--ombre);color:inherit;text-decoration:none;transition:transform .2s ease,box-shadow .2s ease}
+.ville:hover{transform:translateY(-2px);box-shadow:0 1px 2px rgba(43,33,20,.04),0 24px 48px -24px rgba(43,33,20,.34)}
+.ville .nom-ville{font-size:28px;font-weight:600;line-height:1.1;letter-spacing:-.026em}
+.ville p{font-size:16px;color:var(--texte-2)}
+.ville .lien{margin-top:auto}
+.ville:hover .lien .txt{text-decoration:underline;text-underline-offset:3px}
+.ville:hover .lien .fl{transform:translateX(3px)}
+.autre-langue{margin-top:24px;text-align:center}
+@media(min-width:860px){.villes{grid-template-columns:repeat(3,1fr)}}
+
+/* Pause de l'animation */
+.flux-centre{display:flex;align-items:center;justify-content:center;gap:12px}
+.flux-pause{display:inline-flex;align-items:center;justify-content:center;width:44px;height:44px;flex:none;border-radius:50%;border:1px solid var(--filet);background:var(--carte);color:var(--or-fonce);cursor:pointer;transition:border-color .2s}
+.flux-pause:hover{border-color:var(--champagne)}
+.flux-pause svg{width:15px;height:15px}
+.flux-pause .ico-lecture{display:none}
+.flux-pause[aria-pressed="true"] .ico-lecture{display:block}
+.flux-pause[aria-pressed="true"] .ico-pause{display:none}
+.flux-pause[hidden]{display:none}
 
 /* Sections */
 .section{padding:clamp(72px,10vw,128px) 0}
@@ -496,7 +428,7 @@ summary:hover h3{color:var(--or-fonce)}
 
 @media(max-width:859px){
   .repere{font-size:11px;letter-spacing:.1em}
-  .flux-pied{grid-template-columns:1fr 1fr}.mention-visuels{grid-column:1/-1;grid-row:2}
+  .flux-pied{grid-template-columns:1fr 1fr}.flux-centre{grid-column:1/-1;grid-row:2}
   .etiquette{display:none}
   .tuile-3 .nom{display:none}
 }
@@ -568,6 +500,7 @@ JS = r"""
   var droite = [].slice.call(flux.querySelectorAll('path.d'));
   var tuile = flux.querySelector('.tuile');
   var paires = JSON.parse(flux.getAttribute('data-paires'));
+  var bouton = document.querySelector('.flux-pause'), arret = false;
   var longueurs = new Map();
   [].concat(gauche, droite).forEach(function (p) { longueurs.set(p, p.getTotalLength()); });
   var W = 0, H = 0;
@@ -612,6 +545,7 @@ JS = r"""
         chemin: (c[1] === 'avant' ? gauche : droite)[c[2]], sens: c[1], rot: c[1] === 'avant' ? (c[2] % 2 ? 5 : -6) : 0 };
       requestAnimationFrame(function () { placer(s, c[3]); });
     });
+    if (bouton) bouton.hidden = true;
     return;
   }
 
@@ -660,7 +594,15 @@ JS = r"""
     }
     requestAnimationFrame(pas);
   }
-  function reprendre() { if (enPause) { enPause = false; requestAnimationFrame(pas); } }
+  function reprendre() { if (enPause && !arret) { enPause = false; requestAnimationFrame(pas); } }
+  if (bouton) {
+    bouton.addEventListener('click', function () {
+      arret = !arret;
+      bouton.setAttribute('aria-pressed', arret ? 'true' : 'false');
+      bouton.setAttribute('aria-label', bouton.getAttribute(arret ? 'data-lecture' : 'data-pause'));
+      if (arret) enPause = true; else if (!document.hidden) reprendre();
+    });
+  }
   if (io) {
     new IntersectionObserver(function (e) { if (e[0].isIntersecting && !document.hidden) reprendre(); else enPause = true; })
       .observe(flux);
@@ -674,7 +616,7 @@ JS = r"""
 
 
 # --------------------------------------------------------------------------- #
-#  Blocs HTML
+#  Barre du haut (celle du site)
 # --------------------------------------------------------------------------- #
 FONTS = (
     '<link rel="preconnect" href="https://fonts.googleapis.com">'
@@ -684,37 +626,6 @@ FONTS = (
     '&display=swap" rel="stylesheet">'
 )
 
-
-def head() -> str:
-    title = C.title_court(TITLE)
-    desc = C.desc_courte(DESC)
-    lds = "\n".join(C.ld(o) for o in jsonld())
-    return f"""<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{C.ICONS}
-<title>{C.esc(fr(title))}</title>
-<meta name="description" content="{C.esc(fr(desc))}">
-<link rel="canonical" href="{URL}">
-<meta name="robots" content="index,follow,max-image-preview:large">
-<meta name="author" content="Label Maison">
-<meta property="og:type" content="website">
-<meta property="og:locale" content="fr_FR">
-<meta property="og:site_name" content="Label Maison">
-<meta property="og:title" content="{C.esc(fr(title))}">
-<meta property="og:description" content="{C.esc(fr(desc))}">
-<meta property="og:url" content="{URL}">
-<meta property="og:image" content="{OG_IMAGE}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#F8F4EB">
-{FONTS}
-<style>{CSS.strip()}</style>
-{lds}
-</head>
-<body>"""
 
 
 NAV_SITE = [("/#services", "Services"), ("/#faq", "F.A.Q"), ("/#histoire", "Qui sommes-nous ?"),
@@ -738,13 +649,13 @@ def logo_site(taille: int) -> str:
     )
 
 
-def entete() -> str:
+def entete(aller: str = "Aller au contenu") -> str:
     """Barre du haut identique à celle du site (src/app/components/Navigation.tsx)."""
     liens = "".join(f'<a href="{h}">{C.esc(l)}</a>' for h, l in NAV_SITE)
     tiroir = "".join(f'<li><a href="{h}">{C.esc(l)}</a></li>' for h, l in NAV_SITE)
     tel = f'href="tel:{C.TEL_URI}" aria-label="Appeler {C.esc(C.TEL)}"'
     return (
-        '<a class="saut" href="#contenu">Aller au contenu</a>'
+        f'<a class="saut" href="#contenu">{C.esc(aller)}</a>'
         '<header class="site-nav">'
         '<div class="sn-bureau"><div class="sn-in">'
         f'<a href="/" class="sn-logo" aria-label="Label Maison Conciergerie - Accueil">{logo_site(14)}</a>'
@@ -765,7 +676,91 @@ def entete() -> str:
     )
 
 
-def flux() -> str:
+# --------------------------------------------------------------------------- #
+#  Blocs HTML (P = textes d'une page, voir sourcing_contenu.py)
+# --------------------------------------------------------------------------- #
+def url_de(slug: str) -> str:
+    return f"{C.SITE}/{slug}"
+
+
+def wa_de(P: dict, cle: str) -> str:
+    w = P["wa"]
+    message = w[cle] + (w["gabarit"] if cle in ("projet", "complet") else "")
+    return wa(message)
+
+
+def lien_wa(P: dict, cle: str, texte: str, cls: str = "lien") -> str:
+    if cls == "btn":
+        return (f'<a class="btn" href="{wa_de(P, cle)}" target="_blank" rel="noopener">{ICO_WA}{t(texte)}</a>')
+    return (f'<a class="lien" href="{wa_de(P, cle)}" target="_blank" rel="noopener">{ICO_WA}'
+            f'<span class="txt">{t(texte)}</span>{ICO["fleche"]}</a>')
+
+
+def jsonld(P: dict) -> list:
+    url = url_de(P["slug"])
+    ld = P["ld"]
+    service = {
+        "@context": "https://schema.org",
+        "@type": "Service",
+        "name": t_brut(ld["nom"]),
+        "serviceType": t_brut(ld["type"]),
+        "description": t_brut(P["desc"]),
+        "url": url,
+        "inLanguage": P["langue"],
+        "provider": {"@type": "Organization", "name": "Label Maison", "url": C.SITE + "/",
+                     "logo": C.LOGO, "telephone": C.TEL, "sameAs": [C.INSTA, C.TIKTOK]},
+        "areaServed": [{"@type": ty, "name": n} for ty, n in ld["zones"]],
+        "hasOfferCatalog": {
+            "@type": "OfferCatalog", "name": t_brut(ld["nom"]),
+            "itemListElement": [{"@type": "Offer", "itemOffered": {"@type": "Service", "name": t_brut(n)}}
+                                for n in [s[1] for s in P["solutions"]["items"]] + ld["offres_extra"]],
+        },
+    }
+    faq = C.ld_faq([(t_brut(q), t_brut(r)) for q, r in P["faq"]["items"]])
+    fil = C.ld_breadcrumb([(t_brut(n), u) for n, u in ld["fil"]])
+    return [service, faq, fil]
+
+
+def head(P: dict) -> str:
+    url = url_de(P["slug"])
+    title = C.title_court(P["title"]) if P["langue"] == "fr" else P["title"]
+    desc = C.desc_courte(P["desc"]) if P["langue"] == "fr" else P["desc"]
+    alternates = ""
+    if P.get("hreflang"):
+        alternates = "".join(f'<link rel="alternate" hreflang="{hl}" href="{C.SITE}{u}">'
+                             for hl, u in P["hreflang"].items())
+    locale = "fr_FR" if P["langue"] == "fr" else "en_GB"
+    lds = "\n".join(C.ld(o) for o in jsonld(P))
+    og = f"{C.SITE}/images/sourcing/{P['og']}"
+    return f"""<!doctype html>
+<html lang="{P['langue']}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">{C.ICONS}
+<title>{t(title)}</title>
+<meta name="description" content="{t(desc)}">
+<link rel="canonical" href="{url}">{alternates}
+<meta name="robots" content="index,follow,max-image-preview:large">
+<meta name="author" content="Label Maison">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="{locale}">
+<meta property="og:site_name" content="Label Maison">
+<meta property="og:title" content="{t(title)}">
+<meta property="og:description" content="{t(desc)}">
+<meta property="og:url" content="{url}">
+<meta property="og:image" content="{og}">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#F8F4EB">
+{FONTS}
+<style>{CSS.strip()}</style>
+{lds}
+</head>
+<body>"""
+
+
+def flux(P: dict) -> str:
     # Repère : 1200 × 520, tuile centrée en (600, 260).
     gauche = [
         "M0 92 H300 C405 92 405 222 505 222 H530",
@@ -784,246 +779,296 @@ def flux() -> str:
     noeuds = [(11, 196, ""), (19, 432, " p"), (27, 92, " p"), (73, 326, ""), (82, 92, " p"), (90, 432, "")]
     pts = "".join(f'<span class="noeud{c}" style="left:{x}%;top:{y / 520 * 100:.2f}%"></span>'
                   for x, y, c in noeuds)
-    paires = C.esc(json.dumps([list(p) for p in PAIRES], ensure_ascii=False))
+    e = P["etiquettes"]
+    paires = [("avant-cuisine-2", "apres-cuisine-2", e["cuisine"], False),
+              ("avant-bain", "apres-bain", e["bain"], False),
+              ("avant-cuisine-1", "apres-cuisine-2", e["cuisine"], True)]
+    donnees = C.esc(json.dumps([list(x) for x in paires], ensure_ascii=False))
+    f = P["flux"]
     return (
-        f'<div class="flux" data-paires="{paires}" aria-hidden="true">'
+        f'<div class="flux" data-paires="{donnees}" aria-hidden="true">'
         f'<svg class="lignes" viewBox="0 0 1200 520" preserveAspectRatio="none" focusable="false">{chemins}</svg>'
         f"{pts}"
         '<div class="tuile"><div class="tuile-2"><div class="tuile-3">'
         '<img src="/images/key-gold-deep.png" alt="" width="586" height="223">'
         '<span class="nom">LABEL MAISON</span></div></div></div>'
         "</div>"
+        '<div class="flux-pied">'
+        f'<span class="repere g" aria-hidden="true">{t(f["avant"])}</span>'
+        '<span class="flux-centre">'
+        f'<span class="mention-visuels">{t(f["mention"])}</span>'
+        f'<button class="flux-pause" type="button" aria-pressed="false" aria-label="{t(f["pause"])}" '
+        f'data-pause="{t(f["pause"])}" data-lecture="{t(f["lecture"])}">'
+        '<svg class="ico-pause" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+        '<rect x="6" y="5" width="4" height="14" rx="1.2"/><rect x="14" y="5" width="4" height="14" rx="1.2"/></svg>'
+        '<svg class="ico-lecture" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">'
+        '<path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>'
+        "</button></span>"
+        f'<span class="repere d" aria-hidden="true">{t(f["apres"])}</span></div>'
     )
 
 
-def hero() -> str:
+def hero(P: dict) -> str:
+    lignes = "".join(f'<span class="l">{t_html(l)}</span>' for l in P["h1"])
     return (
         '<section class="hero" aria-labelledby="titre">'
         '<div class="env hero-tete">'
-        '<h1 id="titre"><span class="pastille">Sourcing immobilier en Chine</span>'
-        f'<span class="l">{t("Des aménagements premium.")}</span>'
-        f'<span class="l">Un budget <em>maîtrisé</em>.</span></h1>'
-        f'<p class="hero-sous"><strong>{t("Un seul interlocuteur pour votre projet.")}</strong> '
-        + t("LabelMaison vous accompagne dans le sourcing direct auprès de fabricants chinois pour vos "
-            "cuisines, salles de bains, meubles et équipements immobiliers.") + "</p>"
+        f'<h1 id="titre"><span class="pastille">{t(P["pastille"])}</span>{lignes}</h1>'
+        f'<p class="hero-sous"><strong>{t(P["sous_fort"])}</strong> {t(P["sous"])}</p>'
         '<div class="hero-cta">'
-        f'<a class="btn" href="{WA_PROJET}" target="_blank" rel="noopener">{ICO_WA}'
-        f'{t("Parler de mon projet sur WhatsApp")}</a>'
-        f'<p class="note">{t("Premier échange personnalisé, sans engagement.")}</p>'
+        f'{lien_wa(P, "projet", P["cta_projet"], "btn")}'
+        f'<p class="note">{t(P["note"])}</p>'
         "</div></div>"
-        f"{flux()}"
-        '<div class="flux-pied" aria-hidden="true">'
-        f'<span class="repere g">{t("Aujourd’hui")}</span>'
-        f'<span class="mention-visuels">{t("Visuels d’illustration.")}</span>'
-        f'<span class="repere d">{t("Avec LabelMaison")}</span></div>'
+        f"{flux(P)}"
         "</section>"
     )
 
 
-def enonce() -> str:
+def enonce(P: dict, alt: str) -> str:
+    fort, doux = P["enonce"]
+    lbl, suite = P["duo2"]
     return (
-        '<section class="section" id="contenu" style="padding-top:clamp(56px,8vw,96px)">'
+        f'<section class="section{alt}" id="contenu" style="padding-top:clamp(56px,8vw,96px)">'
         '<div class="env">'
-        '<p class="enonce revele">'
-        + t("Vous investissez dans l'immobilier et souhaitez aménager, meubler ou rénover votre bien")
-        + ' <span class="doux">'
-        + t("sans supporter systématiquement les prix élevés du marché français ?") + "</span></p>"
+        f'<p class="enonce revele">{t(fort)} <span class="doux">{t(doux)}</span></p>'
         '<div class="duo-texte revele">'
-        f'<p>{t("Nous recherchons des fabricants, comparons les solutions, sélectionnons les produits et organisons leur approvisionnement jusqu’à votre projet en France.")}</p>'
-        f'<p><strong>{t("Votre objectif :")}</strong> '
-        f'{t("obtenir un aménagement de qualité, maîtriser votre budget et améliorer le potentiel de votre investissement immobilier.")}</p>'
+        f'<p>{t(P["duo1"])}</p>'
+        f'<p><strong>{t(lbl)}</strong> {t(suite)}</p>'
         "</div></div></section>"
     )
 
 
-def dimension() -> str:
+def local(P: dict, alt: str) -> str:
+    L = P["local"]
+    if not L:
+        return ""
+    paras = "".join(f"<p>{t(x)}</p>" for x in L["paras"])
+    cartes = "".join(
+        f'<div class="local-carte"><span class="ico-tuile">{ICO[i]}</span><h3>{t(ti)}</h3><p>{t(tx)}</p></div>'
+        for i, ti, tx in L["cartes"])
+    liens = "".join(f'<li><a href="{u}"><span class="txt">{t(n)}</span>{ICO["fleche"]}</a></li>'
+                    for n, u in L["liens"])
     return (
-        '<section class="section alt" aria-labelledby="t-dimension"><div class="env duo">'
-        '<div class="colle revele"><span class="surtitre">Notre approche</span>'
-        '<h2 id="t-dimension">Donnez une <em>nouvelle dimension</em> à votre investissement immobilier</h2></div>'
+        f'<section class="section{alt}" aria-labelledby="t-local"><div class="env local-grille">'
+        f'<div class="prose revele"><span class="surtitre">{t(L["surtitre"])}</span>'
+        f'<h2 id="t-local" style="margin-bottom:24px">{t(L["h2"])}</h2>{paras}'
+        f'<nav class="local-liens" aria-label="{t(L["liens_titre"])}"><h3>{t(L["liens_titre"])}</h3>'
+        f"<ul>{liens}</ul></nav></div>"
+        f'<div class="local-cartes revele">{cartes}</div>'
+        "</div></section>"
+    )
+
+
+def dimension(P: dict, alt: str) -> str:
+    D = P["dimension"]
+    return (
+        f'<section class="section{alt}" aria-labelledby="t-dimension"><div class="env duo">'
+        f'<div class="colle revele"><span class="surtitre">{t(D["surtitre"])}</span>'
+        f'<h2 id="t-dimension">{t_html(D["h2"])}</h2></div>'
         '<div class="prose revele">'
-        f'<p class="lead">{t("Un investissement immobilier ne s’arrête pas à l’achat du bien.")}</p>'
-        f'<p>{t("L’aménagement, le mobilier et les équipements représentent une part importante du budget nécessaire pour préparer un logement à la location ou à la revente.")}</p>'
-        f'<blockquote class="citation">{t("Chez LabelMaison, nous pensons qu’il est possible de concilier esthétique, qualité et maîtrise des coûts.")}</blockquote>'
-        f'<p>{t("C’est pourquoi nous accompagnons les investisseurs dans la recherche de fabricants directement en Chine, notamment dans les secteurs de la cuisine, de la salle de bains et de l’ameublement.")}</p>'
-        f'<p>{t("Notre approche : rechercher des solutions adaptées à votre projet, comparer les offres et vous accompagner dans les différentes étapes de l’approvisionnement.")}</p>'
+        f'<p class="lead">{t(D["lead"])}</p>'
+        f'<p>{t(D["p1"])}</p>'
+        f'<blockquote class="citation">{t(D["citation"])}</blockquote>'
+        f'<p>{t(D["p2"])}</p>'
+        f'<p>{t(D["p3"])}</p>'
         "</div></div></section>"
     )
 
 
-def solutions() -> str:
+def solutions(P: dict, alt: str) -> str:
+    S = P["solutions"]
     cartes = ""
-    for ico, num, titre, texte, puces, cta, lien in SOLUTIONS:
-        li = "".join(f"<li>{t(p)}</li>" for p in puces)
+    for n, (ico, titre, texte, puces, cta, cle) in enumerate(S["items"], 1):
+        li = "".join(f"<li>{t(x)}</li>" for x in puces)
         cartes += (
             '<article class="carte revele">'
-            f'<div class="carte-haut"><span class="ico-tuile">{ICO[ico]}</span><span class="num">{num}</span></div>'
+            f'<div class="carte-haut"><span class="ico-tuile">{ICO[ico]}</span><span class="num">0{n}</span></div>'
             f"<h3>{t(titre)}</h3><p>{t(texte)}</p>"
-            f'<ul class="liste">{li}</ul>'
-            f'<a class="lien" href="{lien}" target="_blank" rel="noopener">{ICO_WA}'
-            f'<span class="txt">{t(cta)}</span>{ICO["fleche"]}</a>'
+            f'<ul class="liste">{li}</ul>{lien_wa(P, cle, cta)}'
             "</article>"
         )
-    compo = "".join(f'<div>{ICO[i]}{t(n)}</div>' for i, n in
-                    [("cuisine", "Cuisine"), ("bain", "Salle de bains"), ("mobilier", "Mobilier"),
-                     ("complet", "Équipements")])
+    G = S["large"]
+    compo = "".join(f"<div>{ICO[i]}{t(n)}</div>" for i, n in G["compo"])
+    paras = "".join(f"<p>{t(x)}</p>" for x in G["paras"])
     large = (
         '<article class="carte-large revele"><div>'
         '<span class="num">04</span>'
-        f'<h3 style="margin-top:14px">{t("Aménagement complet d’un bien immobilier")}</h3>'
-        f'<p>{t("Vous achetez un appartement destiné à la location courte durée ou une résidence haut de gamme à valoriser ?")}</p>'
-        f'<p>{t("LabelMaison peut vous accompagner dans la recherche et la sélection des équipements nécessaires à votre projet.")}</p>'
-        f'<p>{t("De la cuisine au mobilier, nous recherchons des solutions cohérentes pour aménager votre logement et maîtriser votre enveloppe budgétaire.")}</p>'
-        f'<a class="btn" href="{WA_COMPLET}" target="_blank" rel="noopener">{ICO_WA}'
-        f'{t("Étudier mon projet d’aménagement")}</a>'
+        f'<h3 style="margin-top:14px">{t(G["titre"])}</h3>{paras}'
+        f'{lien_wa(P, "complet", G["cta"], "btn")}'
         f'</div><div class="compo" aria-hidden="true">{compo}</div></article>'
     )
     return (
-        '<section class="section" id="solutions" aria-labelledby="t-solutions"><div class="env">'
-        '<div class="tete-section revele"><span class="surtitre">Cuisine · Salle de bains · Mobilier</span>'
-        '<h2 id="t-solutions">Nos solutions de sourcing</h2></div>'
+        f'<section class="section{alt}" id="solutions" aria-labelledby="t-solutions"><div class="env">'
+        f'<div class="tete-section revele"><span class="surtitre">{t(S["surtitre"])}</span>'
+        f'<h2 id="t-solutions">{t(S["h2"])}</h2></div>'
         f'<div class="grille-sol">{cartes}</div>{large}'
         "</div></section>"
     )
 
 
-def pourquoi() -> str:
+def pourquoi(P: dict, alt: str) -> str:
+    W = P["pourquoi"]
     av = "".join(
-        f'<div class="avantage revele"><span class="ico-tuile">{ICO[i]}</span>'
-        f"<h4>{t(ti)}</h4><p>{t(tx)}</p></div>"
-        for i, ti, tx in AVANTAGES)
+        f'<div class="avantage revele"><span class="ico-tuile">{ICO[i]}</span><h4>{t(ti)}</h4><p>{t(tx)}</p></div>'
+        for i, ti, tx in W["avantages"])
+    chapo = "".join(f'<p class="chapo">{t(x)}</p>' for x in W["chapo"])
     return (
-        '<section class="section alt" id="pourquoi" aria-labelledby="t-pourquoi"><div class="env">'
-        '<div class="tete-section revele">'
-        f'<h2 id="t-pourquoi">{t("Pourquoi sourcer directement en Chine ?")}</h2>'
-        f'<p class="chapo">{t("La Chine dispose d’un écosystème industriel important dans les domaines du mobilier, de la cuisine, de la salle de bains et des équipements pour l’habitat.")}</p>'
-        f'<p class="chapo">{t("L’approvisionnement direct auprès de fabricants peut ouvrir l’accès à davantage de choix, de personnalisation et d’opportunités tarifaires.")}</p>'
-        "</div>"
-        f'<h3 class="sous-titre revele">{t("Les avantages recherchés")}</h3>'
+        f'<section class="section{alt}" id="pourquoi" aria-labelledby="t-pourquoi"><div class="env">'
+        f'<div class="tete-section revele"><h2 id="t-pourquoi">{t(W["h2"])}</h2>{chapo}</div>'
+        f'<h3 class="sous-titre revele">{t(W["sous_titre"])}</h3>'
         f'<div class="avantages">{av}</div>'
-        f'<p class="note-info revele">{ICO["info"]}<span>'
-        + t("Les économies dépendent des produits, des quantités, du transport, des droits et taxes, des frais "
-            "de conformité et de la pose. Elles sont évaluées au cas par cas.") + "</span></p>"
+        f'<p class="note-info revele">{ICO["info"]}<span>{t(W["note"])}</span></p>'
         "</div></section>"
     )
 
 
-def methode() -> str:
+def methode(P: dict, alt: str) -> str:
+    M = P["methode"]
     li = "".join(
         f'<li class="etape revele"><span class="rond" aria-hidden="true">{i}</span><div class="etape-txt">'
-        f'<span class="lbl">Étape {i}</span><h3>{t(ti)}</h3><p>{t(tx)}</p></div></li>'
-        for i, (ti, tx) in enumerate(ETAPES, 1))
+        f'<span class="lbl">{t(M["etiquette"])} {i}</span><h3>{t(ti)}</h3><p>{t(tx)}</p></div></li>'
+        for i, (ti, tx) in enumerate(M["etapes"], 1))
     return (
-        '<section class="section" id="methode" aria-labelledby="t-methode"><div class="env">'
-        '<div class="tete-section revele"><span class="surtitre">Cinq étapes</span>'
-        f'<h2 id="t-methode">{t("Notre accompagnement : de la recherche à votre projet")}</h2></div>'
+        f'<section class="section{alt}" id="methode" aria-labelledby="t-methode"><div class="env">'
+        f'<div class="tete-section revele"><span class="surtitre">{t(M["surtitre"])}</span>'
+        f'<h2 id="t-methode">{t(M["h2"])}</h2></div>'
         f'<ol class="etapes">{li}</ol>'
         "</div></section>"
     )
 
 
-def partenaire() -> str:
-    q = "".join(f'<div class="question revele"><span class="ico-tuile">{ICO[i]}</span>{t(tx)}</div>'
-                for i, tx in QUESTIONS_PROJET)
+def partenaire(P: dict, alt: str) -> str:
+    A = P["partenaire"]
+    q = "".join(f'<div class="question revele"><span class="ico-tuile">{ICO[i]}</span>{t(x)}</div>'
+                for i, x in A["questions"])
+    devise = "".join(f"<span>{t(x)}</span>" for x in A["devise"])
     return (
-        '<section class="section alt" aria-labelledby="t-partenaire"><div class="env">'
-        '<div class="tete-section revele">'
-        '<h2 id="t-partenaire">Un partenaire pour valoriser votre <em>patrimoine</em> immobilier</h2>'
-        f'<p class="chapo">{t("LabelMaison ne souhaite pas simplement vous aider à acheter des meubles. Notre ambition est de vous accompagner dans les différentes étapes de votre investissement immobilier.")}</p>'
-        "</div>"
+        f'<section class="section{alt}" aria-labelledby="t-partenaire"><div class="env">'
+        f'<div class="tete-section revele"><h2 id="t-partenaire">{t_html(A["h2"])}</h2>'
+        f'<p class="chapo">{t(A["chapo"])}</p></div>'
         f'<div class="questions">{q}</div>'
         '<div class="vision revele">'
-        f'<p style="margin:0 0 32px">{t("Nous pouvons étudier avec vous les besoins d’approvisionnement et les solutions d’aménagement adaptées à votre stratégie.")}</p>'
-        '<p class="devise"><span>Acheter intelligemment.</span><span>Aménager avec cohérence.</span>'
-        f"<span>{t('Préparer son bien à l’exploitation.')}</span></p>"
-        f'<p>{t("C’est notre vision de l’accompagnement immobilier.")}</p>'
-        f'<a class="btn" href="{WA_PROJET}" target="_blank" rel="noopener">{ICO_WA}'
-        f'{t("Échanger avec LabelMaison sur WhatsApp")}</a>'
+        f'<p style="margin:0 0 32px">{t(A["etude"])}</p>'
+        f'<p class="devise">{devise}</p>'
+        f'<p>{t(A["vision"])}</p>'
+        f'{lien_wa(P, "projet", A["cta"], "btn")}'
         "</div></div></section>"
     )
 
 
-def faq() -> str:
+def villes(P: dict, alt: str) -> str:
+    V = P["villes"]
+    cartes = ""
+    for cle, nom, texte in V["cartes"]:
+        cible = "/" + (LOCALES[cle] if cle in LOCALES else PRINCIPALE)
+        cartes += (
+            f'<a class="ville revele" href="{cible}">'
+            f'<span class="nom-ville">{t(nom)}</span><p>{t(texte)}</p>'
+            f'<span class="lien"><span class="txt">{t(V["voir"])}</span>{ICO["fleche"]}</span></a>'
+        )
+    autre = ""
+    if V.get("autre_langue"):
+        texte, slug = V["autre_langue"]
+        hl = "en" if slug.startswith("en/") else "fr"
+        autre = (f'<p class="autre-langue"><a class="lien" href="/{slug}" hreflang="{hl}" lang="{hl}">'
+                 f'<span class="txt">{C.esc(texte)}</span>{ICO["fleche"]}</a></p>')
+    return (
+        f'<section class="section{alt}" id="destinations" aria-labelledby="t-villes"><div class="env">'
+        f'<div class="tete-section revele"><span class="surtitre">{t(V["surtitre"])}</span>'
+        f'<h2 id="t-villes">{t(V["h2"])}</h2><p class="chapo">{t(V["chapo"])}</p></div>'
+        f'<div class="villes">{cartes}</div>{autre}'
+        "</div></section>"
+    )
+
+
+def faq(P: dict, alt: str) -> str:
+    F = P["faq"]
     items = "".join(
         f'<details><summary><h3>{t(q)}</h3><span class="plus" aria-hidden="true"></span></summary>'
         f"<p>{t(r)}</p></details>"
-        for q, r in FAQ)
+        for q, r in F["items"])
     return (
-        '<section class="section" id="questions" aria-labelledby="t-faq"><div class="env faq-grille">'
-        '<div class="faq-cote revele"><span class="surtitre">FAQ</span>'
-        '<h2 id="t-faq">Questions fréquentes sur le sourcing en Chine</h2>'
-        f'<p>{t("Une autre question ? Écrivez-nous sur WhatsApp.")}</p>'
-        f'<a class="lien" href="{WA_QUESTION}" target="_blank" rel="noopener">{ICO_WA}'
-        f'<span class="txt">{t("Poser ma question sur WhatsApp")}</span>{ICO["fleche"]}</a>'
-        "</div>"
+        f'<section class="section{alt}" id="questions" aria-labelledby="t-faq"><div class="env faq-grille">'
+        f'<div class="faq-cote revele"><span class="surtitre">{t(F["surtitre"])}</span>'
+        f'<h2 id="t-faq">{t(F["h2"])}</h2><p>{t(F["cote"])}</p>{lien_wa(P, "question", F["lien"])}</div>'
         f'<div class="faq-liste revele">{items}</div>'
         "</div></section>"
     )
 
 
-def appel_final() -> str:
+def appel_final(P: dict) -> str:
+    Z = P["final"]
+    paras = "".join(f"<p>{t(x)}</p>" for x in Z["paras"])
     return (
         '<section class="section" id="contact" aria-labelledby="t-final" style="padding-top:0"><div class="env">'
         '<div class="final revele">'
         '<img class="filigrane" src="/images/key-gold.png" alt="" width="586" height="223" loading="lazy">'
-        f'<span class="signature">{t("LabelMaison — Sourcing & Property Improvement")}</span>'
-        '<h2 id="t-final">Parlons de votre <em>prochain investissement</em></h2>'
-        f'<p>{t("Vous avez un appartement à aménager, une villa à rénover ou un projet d’investissement immobilier ?")}</p>'
-        f'<p>{t("Présentez-nous votre projet. Nous étudierons les possibilités de sourcing auprès de fabricants chinois et les solutions adaptées à votre budget.")}</p>'
-        f'<a class="btn" href="{WA_PROJET}" target="_blank" rel="noopener">{ICO_WA}'
-        f'{t("Discuter de mon projet sur WhatsApp")}</a>'
-        f'<p class="note">{t("Premier échange personnalisé, sans engagement.")}</p>'
+        f'<span class="signature">{t(Z["signature"])}</span>'
+        f'<h2 id="t-final">{t_html(Z["h2"])}</h2>{paras}'
+        f'{lien_wa(P, "projet", Z["cta"], "btn")}'
+        f'<p class="note">{t(P["note"])}</p>'
         "</div>"
-        f'<p class="mention">{t("Chaque projet fait l’objet d’une étude personnalisée. Les prix, délais, économies et conditions d’approvisionnement dépendent des produits sélectionnés et des modalités contractuelles.")}</p>'
+        f'<p class="mention">{t(Z["mention"])}</p>'
         "</div></section>"
     )
 
 
-def pied() -> str:
+def pied(P: dict) -> str:
+    Q = P["pied"]
+    l1 = "".join(f'<li><a href="{u}">{t(n)}</a></li>' for n, u in Q["liens1"])
+    l2 = "".join(f'<li><a href="{u}">{t(n)}</a></li>' for n, u in Q["liens2"])
+    legal = " · ".join(f'<a href="{u}">{t(n)}</a>' for n, u in Q["legal"])
     return (
         '<footer class="pied"><div class="env">'
         '<div class="pied-grille">'
-        f'<div>{C.LOCKUP}<p class="pied-tag">{t("Sourcing de cuisines, salles de bains et mobilier auprès de fabricants chinois, pour les investisseurs et propriétaires.")}</p></div>'
-        '<div><h4>Label Maison</h4><ul>'
-        '<li><a href="/">Accueil</a></li>'
-        f'<li><a href="/proprietaires">{t("Conciergerie pour propriétaires")}</a></li>'
-        f'<li><a href="/investissement-locatif-paris">{t("Investissement locatif à Paris")}</a></li>'
-        f'<li><a href="/avant-apres-decoration-interieure">{t("Décoration intérieure : avant, après")}</a></li>'
-        "</ul></div>"
-        '<div><h4>Contact</h4><ul>'
-        f'<li><a href="{WA_QUESTION}" target="_blank" rel="noopener">WhatsApp</a></li>'
+        f'<div>{C.LOCKUP}<p class="pied-tag">{t(Q["tag"])}</p></div>'
+        f'<div><h4>{t(Q["col1"])}</h4><ul>{l1}</ul></div>'
+        f'<div><h4>{t(Q["col2"])}</h4><ul>{l2}</ul>'
+        f'<h4 style="margin-top:24px">{t(Q["col3"])}</h4><ul>'
+        f'<li><a href="{wa_de(P, "question")}" target="_blank" rel="noopener">WhatsApp</a></li>'
         f'<li><a href="tel:{C.TEL_URI}">{C.esc(C.TEL)}</a></li>'
         f'<li><a href="{C.INSTA}" target="_blank" rel="noopener">Instagram @labelmaisoncg</a></li>'
         "</ul></div></div>"
-        '<div class="pied-bas"><span>© 2026 Label Maison Conciergerie</span>'
-        '<span><a href="/mentions-legales">Mentions légales</a> · '
-        '<a href="/politique-de-confidentialite">Confidentialité</a></span></div>'
+        f'<div class="pied-bas"><span>© 2026 Label Maison Conciergerie</span><span>{legal}</span></div>'
         "</div></footer>"
         '<div class="barre" aria-hidden="true" inert>'
-        f'<a class="btn" href="{WA_PROJET}" target="_blank" rel="noopener">{ICO_WA}'
-        f'{t("Parler de mon projet sur WhatsApp")}</a></div>'
+        f'{lien_wa(P, "projet", P["cta_projet"], "btn")}</div>'
     )
 
 
-def page() -> str:
+def page(P: dict) -> str:
+    global LANGUE
+    LANGUE = P["langue"]
+    blocs = [enonce, local, dimension, solutions, pourquoi, methode, partenaire, villes, faq]
+    sections, n = [], 0
+    for b in blocs:
+        if b is local and not P["local"]:
+            continue
+        sections.append(b(P, " alt" if n % 2 else ""))
+        n += 1
     corps = "\n".join([
-        head(),
+        head(P),
         "<script>document.documentElement.classList.add('js')</script>",
-        entete(),
+        entete(P["pied"]["aller"]),
         "<main>",
-        hero(), enonce(), dimension(), solutions(), pourquoi(), methode(), partenaire(), faq(), appel_final(),
+        hero(P), *sections, appel_final(P),
         "</main>",
-        pied(),
+        pied(P),
         f"<script>{JS.strip()}</script>",
         "</body></html>",
     ])
     return corps + "\n"
 
 
-def main() -> None:
-    sortie = C.OUT / f"{SLUG}.html"
-    sortie.write_text(page(), encoding="utf-8")
-    print(f"Écrit : {sortie.relative_to(C.ROOT)}")
+def main() -> list:
+    ecrites = []
+    for P in PAGES:
+        sortie = C.OUT / f"{P['slug']}.html"
+        sortie.parent.mkdir(parents=True, exist_ok=True)
+        sortie.write_text(page(P), encoding="utf-8")
+        ecrites.append(sortie)
+        print(f"Écrit : {sortie.relative_to(C.ROOT)}")
+    return ecrites
 
 
 if __name__ == "__main__":

@@ -167,6 +167,7 @@ LIENS = [
     ("/simulateur-decoration-interieure-ia", "Simulateur de décoration par IA"),
     ("/avant-apres-decoration-interieure", "Avant/après décoration intérieure"),
     ("/ameliorer-photos-annonce-airbnb", "Améliorer les photos d'une annonce"),
+    ("/sourcing-immobilier-chine", "Sourcing de mobilier en Chine"),
 ]
 
 PAGES = [
