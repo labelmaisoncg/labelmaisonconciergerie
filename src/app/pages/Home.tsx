@@ -177,14 +177,14 @@ function HeroSection() {
           }`}
         >
           <span className={`h-px w-8 ${hasPhoto ? 'bg-white/50' : 'bg-[#a8813a]'}`} />
-          Paris · Essonne · Île-de-France
+          Paris · Dubaï · Marrakech
           <span className={`h-px w-8 ${hasPhoto ? 'bg-white/50' : 'bg-[#a8813a]'}`} />
         </span>
 
         <h1 className="text-[38px] md:text-[64px] leading-[1.04] font-bold tracking-tight max-w-[16ch]">
-          Conciergerie Airbnb à Paris et en Essonne :{' '}
+          Votre patrimoine,{' '}
           <span className={`font-serif-italic font-bold ${hasPhoto ? 'text-[#E7D4A6]' : 'text-[#A97C30]'}`}>
-            votre bien, géré comme une maison de confiance.
+            géré comme une maison de confiance.
           </span>
         </h1>
 
