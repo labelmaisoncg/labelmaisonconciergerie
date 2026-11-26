@@ -146,9 +146,9 @@ function coquilleOperations(page) {
 const SITE = 'https://www.labelmaisoncg.fr';
 const META = {
   '/': {
-    title: 'Conciergerie Airbnb Paris & Essonne · Label Maison Conciergerie',
+    title: 'Conciergerie Airbnb Paris · Label Maison Conciergerie',
     description:
-      'Label Maison gère votre location courte durée de A à Z à Paris, en Essonne et en Île-de-France : annonce, voyageurs, ménage hôtelier, revenus. Estimation gratuite.',
+      'Label Maison gère votre location courte durée de A à Z à Paris et en Île-de-France : annonce, voyageurs, ménage hôtelier, revenus. Estimation gratuite.',
   },
   '/proprietaires': {
     title: 'Gestion de biens immobiliers clé en main · Label Maison Conciergerie',
