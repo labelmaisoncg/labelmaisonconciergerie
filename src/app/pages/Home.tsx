@@ -2296,10 +2296,10 @@ export function Home() {
   return (
     <div className="bg-[#FBF9F4] text-[#2C2418]">
       <Helmet>
-        <title>Conciergerie Airbnb Paris &amp; Essonne · Label Maison Conciergerie</title>
+        <title>Conciergerie Airbnb Paris · Label Maison Conciergerie</title>
         <meta
           name="description"
-          content="Label Maison gère votre location courte durée de A à Z à Paris, en Essonne et en Île-de-France : annonce, voyageurs, ménage hôtelier, revenus. Estimation gratuite."
+          content="Label Maison gère votre location courte durée de A à Z à Paris et en Île-de-France : annonce, voyageurs, ménage hôtelier, revenus. Estimation gratuite."
         />
       </Helmet>
 
